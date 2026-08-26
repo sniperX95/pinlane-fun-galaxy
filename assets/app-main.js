@@ -5407,11 +5407,19 @@ function onMobileOptionsPage() {
   return Boolean(stepRoot && stepRoot.classList.contains('is-options'));
 }
 
+// L ECRAN DE REGLAGES ANNONCE SA QUESTION comme les autres : elle s ecrit mot
+// a mot a l arrivee. Sans ce rappel, le titre existait mais restait fige.
+function revelerQuestionReglages() {
+  const titre = document.querySelector('#step1.is-options .activity-configurator-title');
+  if (titre && typeof revelerQuestion === 'function') revelerQuestion(titre);
+}
+
 function showMobileOptionsPage(show) {
   const stepRoot = document.getElementById('step1');
   if (!stepRoot) return;
   stepRoot.classList.toggle('is-options', Boolean(show));
   resetStepOneScroll();
+  if (show) revelerQuestionReglages();
   if (typeof syncStepOneCta === 'function') syncStepOneCta();
   if (typeof syncMobileTopbar === 'function') syncMobileTopbar();
 }

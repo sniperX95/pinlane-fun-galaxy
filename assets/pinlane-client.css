@@ -890,6 +890,32 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    tout l ecran, et le programme (activites + total) se lit LA, une fois les
    reglages sous les yeux. Sur ordinateur ces trois blocs cohabitaient sur
    l ecran des activites ; ils s enchainent maintenant comme sur telephone. */
+/* La QUESTION de l ecran de reglages, au meme format que les autres : centree,
+   grande, et elle s ecrit mot a mot comme les siennes. « Choisissez vos
+   options » etait un simple entete de panneau, aligne a gauche au-dessus d une
+   liste. */
+#clientView #step1.is-options .activity-configurator-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  text-align: center;
+}
+#clientView #step1.is-options .activity-configurator-title {
+  font-size: clamp(21px, 2.6vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  line-height: 1.14;
+}
+/* L ECRAN DE REGLAGES EST UN ECRAN-QUESTION COMME LES AUTRES : son panneau se
+   centre et plafonne a une largeur de lecture, au lieu de coller au bord droit
+   (Movsar : « la c est toujours pas droit »). */
+#clientView #step1.is-options .activity-configurator,
+#clientView #step1.is-options #programSummary {
+  width: min(680px, 100%);
+  margin-inline: auto;
+}
+
 #clientView #step1.is-options .s1-what-head,
 #clientView #step1.is-options .activity-grid { display: none; }
 #clientView #step1:not(.is-options) #programSummary { display: none; }
@@ -1236,8 +1262,26 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    (pointer-events: none). Le JS (syncStatusDock) y reflete la source de
    verite ; hors telephone le dock n'existe pas et les messages restent a
    leur place. */
+/* LA NOTICE DE PISTES SE VOIT AUSSI SUR GRAND ECRAN (2026-08-26). Elle vit dans
+   le panneau venue, qui se replie des qu on avance : « pour 7 joueurs, nous
+   reservons 2 pistes » disparaissait donc au moment ou le client choisit
+   justement son bowling. Movsar : « remettre a un endroit le petit notice qui
+   dit donc pour bowling duckpin [...] 1 piste en dessous de 6 et 2 piste pour
+   sup a 6 ». Le dock existait deja et relayait ce message sur telephone : il
+   parle maintenant partout, en bloc centre sous l ecran plutot qu en pastille
+   flottante. */
 #clientView .step-status-dock {
-  display: none;
+  display: block;
+  width: min(680px, 100%);
+  margin: var(--space-3) auto 0;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.42s var(--ease), transform 0.52s var(--lq-spring);
+}
+#clientView .step-status-dock:empty { display: none; }
+#clientView .step-status-dock.is-live { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  #clientView .step-status-dock { transition: none; }
 }
 
 @media (max-width: 900px) {
@@ -6199,24 +6243,18 @@ body.client-mode #clientView .btn-primary.is-sealed,
      colonnes avec la seconde vide, et la grille de cartes se retrouvait collee
      a gauche sous une question centree (mesure : bloc de 765 px ancre a x=305
      dans un conteneur centre de 1000 px). C est ce que Movsar voyait : « pq
-     rien n est au milieu sur pc, ca va de gauche droite ». */
-  #clientView #step1.is-options .activity-picker:has(.activity-configurator.is-visible) {
-    display: grid;
-    /* Colonne de reglages FLUIDE (Movsar 2026-08-24, « le menu va trop
-       bas, c'est pas carre ») : dense sur grand ecran (jusqu'a 470 px),
-       mais jamais plus de 30 % du viewport. A 470 px fixes, la grille de
-       cartes passait sous ses deux colonnes de 190 px a 1280 (mesure par
-       le gate visit-booking : « 8 cartes sur 1 colonne »).  */
-    grid-template-columns: minmax(0, 1fr) minmax(340px, min(470px, 30vw));
-    column-gap: var(--space-4);
-    align-items: start;
-  }
-  #clientView .activity-picker .activity-configurator.is-visible {
-    grid-column: 2;
-    grid-row: 1;
-    margin-top: 0;
-  }
-  #clientView .activity-picker .activity-grid { grid-column: 1; align-self: stretch; }
+  /* LA COHABITATION CARTES / REGLAGES N EXISTE PLUS DU TOUT (2026-08-26).
+     Une regle mettait le conteneur en DEUX colonnes des que le bloc de reglages
+     portait sa classe. Elle a produit le defaut dans les DEUX sens :
+     - sur l ecran des activites, les reglages sont masques mais `:has()` les
+       voit quand meme, donc colonne 2 vide et cartes collees a GAUCHE ;
+     - sur l ecran des reglages, c est la grille qui est masquee, donc colonne 1
+       vide et panneau colle a DROITE (Movsar : « la c est toujours pas droit »).
+     Les deux ecrans sont desormais des colonnes uniques, centrees. */
+  /* Plus de colonnes a placer : le conteneur n en a plus qu une. Les deux
+     placements ci-dessous survivaient a la suppression de la grille a deux
+     colonnes et gardaient chaque bloc sur sa moitie d ecran. */
+  #clientView .activity-picker .activity-configurator.is-visible { margin-top: 0; }
   /* L'exemple de la demande sur mesure tient en deux lignes dans le pied
      d'ecran : le detail complet vit dans la fenetre qu'ouvre ce bouton. */
   #clientView .bespoke-entry-text small {

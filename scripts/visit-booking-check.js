@@ -484,7 +484,13 @@ async function main() {
     ok(staff.text.includes('Billards 2 x 1.5h'), 'le detail des billards (2 tables, 1h30) est lisible');
     ok(staff.text.includes('planifié') && staff.text.includes('sur place'),
       'la fiche distingue ce qui est place au planning de ce qui se regle au comptoir');
-    ok(staff.text.includes('à prévoir au comptoir'), 'le comptoir est prevenu explicitement');
+    // La GARANTIE est qu une mention distincte annonce ce qui n est pas place au
+    // planning ; la formulation, elle, a maigri le 2026-08-26 (Movsar : « evite
+    // les textes comme ca »). « Sans reservation de ressource, a prevoir au
+    // comptoir : » est devenu « Au comptoir », et chaque ligne concernee dit
+    // toujours « sur place » (assertion juste au-dessus). On verifie donc les
+    // DEUX moities de la garantie, pas une phrase.
+    ok(staff.text.includes('Au comptoir'), `le comptoir est prevenu explicitement (${staff.text.slice(0, 160)})`);
     ok(staff.monoEmpty === true, 'une reservation mono-activite n affiche AUCUN bloc programme (fiche inchangee)');
 
     // =====================================================================

@@ -16306,6 +16306,29 @@ button.pv2-cal-cell:focus-visible {
 .qb-visit-row.is-on .qb-visit-check { border-color: var(--accent); background: var(--accent); }
 .qb-visit-row.is-on .qb-visit-check::after { content: ''; position: absolute; inset: 2px 3px 4px 3px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .qb-visit-options { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Compteur d une activite qui se compte en tetes (plaine de jeux) : deux
+   boutons et un chiffre, pas un champ libre. Un champ oblige a re-rendre a
+   chaque frappe et fait perdre le focus ; ici chaque clic est un pas net. */
+.qb-visit-compteur { align-items: center; gap: 8px; }
+.qb-step-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-2, var(--muted));
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.qb-step-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.qb-step-btn:disabled { opacity: 0.4; cursor: default; }
+.qb-step-valeur { font-size: 12px; font-weight: 700; color: var(--text); min-width: 84px; text-align: center; }
 
 /* PRIX AJUSTE : quick book + fiche caisse + liste. */
 .qb-price-toggle { margin-top: 6px; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }

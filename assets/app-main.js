@@ -19052,6 +19052,17 @@ function renderFormulaActivityChecklist(r, opts = {}) {
 // deux billards : c'est exactement l'information qu'il decouvrait a l'arrivee.
 // Absent des reservations mono-activite (program null) : rien ne change pour
 // elles, la fiche reste celle d'avant.
+// « bowling », « laser_game », « arcade_time » : l identifiant technique
+// s affichait tel quel des que la ligne n avait pas de `name` (Movsar,
+// 2026-08-26, capture du programme). Le catalogue du centre porte le vrai nom.
+function nomActivite(item) {
+  if (item && item.name) return item.name;
+  const id = item && item.activityId;
+  if (!id) return 'Activité';
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  return (activite && activite.name) || String(id).replace(/_/g, ' ');
+}
+
 function renderReservationProgram(reservation) {
   const items = reservation && reservation.program && Array.isArray(reservation.program.items)
     ? reservation.program.items
@@ -19067,7 +19078,7 @@ function renderReservationProgram(reservation) {
           : '';
     const price = item.priceKnown ? `${Math.round(Number(item.price))}€` : 'sur place';
     return `<div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border);">
-      <span style="font-weight:700;color:var(--text);">${escapeHtml(item.name || item.activityId)}${detail ? ` <small style="font-weight:400;color:var(--text-3);">${escapeHtml(detail)}</small>` : ''}</span>
+      <span style="font-weight:700;color:var(--text);">${escapeHtml(nomActivite(item))}${detail ? ` <small style="font-weight:400;color:var(--text-3);">${escapeHtml(detail)}</small>` : ''}</span>
       <span style="color:var(--text-2);font-weight:700;">${item.planned ? 'planifié' : price}</span>
     </div>`;
   };
@@ -19076,8 +19087,7 @@ function renderReservationProgram(reservation) {
   return `<div class="info-block">
     <div class="info-label">Programme du groupe</div>
     ${planned.map(line).join('')}
-    ${free.length ? `<div style="margin-top:10px;color:var(--text-3);font-size:12px;">Sans réservation de ressource, à prévoir au comptoir :</div>${free.map(line).join('')}` : ''}
-    ${reservation.program.priceComplete === false ? '<div style="margin-top:10px;color:var(--text-3);font-size:12px;line-height:1.45;">Une partie du programme n\'a pas de tarif enregistré : elle se règle au comptoir.</div>' : ''}
+    ${free.length ? `<div style="margin-top:10px;color:var(--text-3);font-size:12px;">Au comptoir</div>${free.map(line).join('')}` : ''}
   </div>`;
 }
 
@@ -19145,7 +19155,13 @@ function renderPosDetails(r) {
       </div>
     </section>
     ${renderPosNoteBlock(r)}
-    ${renderReservationProgram(r)}
+    ${/* LE PROGRAMME NE SE DIT PAS DEUX FOIS. Quand le suivi des activites est
+         la, il porte deja la meme liste, avec les horaires ET les coches : le
+         bloc « Programme du groupe » juste au-dessus repetait les memes lignes
+         en moins utile. Movsar, 2026-08-26 : « pq mettre le programme du groupe
+         quand ya deja suivi de groupe avec coche ». Il reste rendu quand il n y
+         a pas de suivi, ou il est la seule vue du contenu. */''}
+    ${activityChecklistHtml ? '' : renderReservationProgram(r)}
     ${activityChecklistHtml}
     ${opsPlanHtml}
     <section class="info-block">
@@ -20794,6 +20810,73 @@ function ensureQuickVisit() {
   return quickBookState.visit;
 }
 
+// LES REGLAGES PROPRES A UNE ACTIVITE, au comptoir comme dans le tunnel public.
+// La plaine de jeux se paie PAR ENFANT (4 adultes + 2 enfants ne font pas 6
+// entrees) et le Fun Run se vend par SESSION de duree choisie. Le comptoir ne
+// pouvait rien regler des deux : il envoyait tout le groupe et la premiere
+// session de la grille. Movsar, 2026-08-26 : « playground on doit mettre cbn
+// d enfant, le fun run pixel choisir 15, 30 ». La detection passe par la DONNEE
+// du catalogue (priceType, unitLabel), jamais par un id de centre : un autre
+// centre qui vend au meme modele en herite sans une ligne de plus.
+function getQuickVisitOptions(id) {
+  const visit = ensureQuickVisit();
+  if (!visit.options) visit.options = {};
+  if (!visit.options[id]) visit.options[id] = {};
+  return visit.options[id];
+}
+
+function setQuickVisitMinutes(id, minutes) {
+  if (!quickBookState) return;
+  getQuickVisitOptions(id).minutes = Math.max(0, Math.trunc(Number(minutes) || 0));
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+function setQuickVisitParticipants(id, nombre) {
+  if (!quickBookState) return;
+  const plafond = Math.max(1, Number(quickBookState.pax) || 1);
+  getQuickVisitOptions(id).participants = Math.min(plafond, Math.max(1, Math.trunc(Number(nombre) || 1)));
+  renderQuickBook();
+}
+
+// Les enfants declares pour CETTE activite. Absent = tout le groupe, ce qui est
+// le comportement d avant : personne ne se retrouve a facturer moins sans l avoir
+// demande.
+function getQuickVisitParticipants(id) {
+  const visit = quickBookState && quickBookState.visit;
+  const declare = visit && visit.options && visit.options[id] ? Number(visit.options[id].participants) : 0;
+  const plafond = Math.max(1, Number(quickBookState && quickBookState.pax) || 1);
+  return declare >= 1 ? Math.min(plafond, Math.trunc(declare)) : plafond;
+}
+
+function getQuickVisitMinutes(id) {
+  const visit = quickBookState && quickBookState.visit;
+  const declare = visit && visit.options && visit.options[id] ? Number(visit.options[id].minutes) : 0;
+  return declare > 0 ? Math.trunc(declare) : Number(FUN_RUN_OPTIONS[0].minutes);
+}
+
+// Le petit bloc de reglages d une activite du catalogue, ou rien du tout quand
+// elle n en a pas.
+function renderQuickVisitOptions(choice) {
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(choice.id) : null;
+  if (!activite) return '';
+  if (activite.priceType === 'grid_fun_run') {
+    const courant = getQuickVisitMinutes(choice.id);
+    return `<div class="qb-visit-options">${FUN_RUN_OPTIONS.map((opt) => `<button type="button" class="qb-dur-btn ${courant === Number(opt.minutes) ? 'active' : ''}" onclick="setQuickVisitMinutes('${escapeHtml(choice.id)}',${opt.minutes})">${escapeHtml(opt.label)}<small>${opt.price}€</small></button>`).join('')}</div>`;
+  }
+  if (typeof activityCountsChildren === 'function' && activityCountsChildren(activite)) {
+    const courant = getQuickVisitParticipants(choice.id);
+    const plafond = Math.max(1, Number(quickBookState.pax) || 1);
+    const unite = /enfant/i.test(activite.unitLabel || '') ? 'enfant' : 'personne';
+    return `<div class="qb-visit-options qb-visit-compteur">`
+      + `<button type="button" class="qb-step-btn" aria-label="Retirer un ${unite}" ${courant <= 1 ? 'disabled' : ''} onclick="setQuickVisitParticipants('${escapeHtml(choice.id)}',${courant - 1})">-</button>`
+      + `<span class="qb-step-valeur">${courant} ${unite}${courant > 1 ? 's' : ''}</span>`
+      + `<button type="button" class="qb-step-btn" aria-label="Ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="setQuickVisitParticipants('${escapeHtml(choice.id)}',${courant + 1})">+</button>`
+      + `</div>`;
+  }
+  return '';
+}
+
 function toggleQuickVisitActivity(id) {
   if (!quickBookState) return;
   const visit = ensureQuickVisit();
@@ -21031,6 +21114,45 @@ function quickBookStateVisitPourTest() {
   return quickBookState ? { type: quickBookState.type, visit: quickBookState.visit || null } : null;
 }
 
+// LE « + » BASCULE, IL N AJOUTE PAS SEULEMENT. Premiere version : il ne savait
+// qu ajouter, donc une activite cochee par erreur restait la pour toujours et il
+// fallait fermer la fenetre pour repartir. Movsar, 2026-08-26 : « faut qu on
+// puisse decocher un par un et quand on en recoche plusieurs comme on veut ».
+// Retirer l avant-derniere activite ramene au mode simple de celle qui reste :
+// une seule activite n est pas une visite. On ne retire jamais la derniere, il
+// faut bien reserver quelque chose.
+function basculerQuickActivite(id) {
+  if (!quickBookState) return;
+  if (quickActiviteRetenue(id)) { retirerQuickActivite(id); return; }
+  ajouterQuickActivite(id);
+}
+
+function retirerQuickActivite(id) {
+  if (!quickBookState) return;
+  const restantes = getQuickBookActivityChoices()
+    .filter((choice) => quickActiviteRetenue(choice.id) && choice.id !== id)
+    .map((choice) => choice.id);
+  if (!restantes.length) return;
+  if (quickBookState.type !== 'visite') {
+    // Mode simple : l activite affichee EST le type. La retirer n a de sens que
+    // s il y en a une autre a mettre a la place, et il n y en a pas.
+    return;
+  }
+  const visit = ensureQuickVisit();
+  if (id === 'bowling') visit.bowling.on = false;
+  else if (id === 'laser_game') visit.laser_game.on = false;
+  else if (visit.others) delete visit.others[id];
+  if (restantes.length === 1) {
+    const seule = restantes[0];
+    if (seule === 'bowling') setQuickType('bowling');
+    else if (seule === 'laser_game') setQuickType('laser');
+    else setQuickType('activity', seule);
+    return;
+  }
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
 function ajouterQuickActivite(id) {
   if (!quickBookState) return;
   const visit = ensureQuickVisit();
@@ -21087,7 +21209,7 @@ function renderQuickBookTypeButtons() {
     // liste ne double pas, et le « + » ne coupe plus le nom en deux.
     return `<div class="qb-type-tile${active ? ' is-active' : ''}">`
       + `<button type="button" class="qb-type-btn" onclick="setQuickType(${seul})">${escapeHtml(choice.label)}</button>`
-      + `<button type="button" class="qb-type-add" title="Ajouter ${escapeHtml(choice.label)} à la visite" aria-label="Ajouter ${escapeHtml(choice.label)} à la visite" onclick="ajouterQuickActivite('${escapeHtml(choice.id)}')">+</button>`
+      + `<button type="button" class="qb-type-add" aria-pressed="${active ? 'true' : 'false'}" title="${active ? 'Retirer' : 'Ajouter'} ${escapeHtml(choice.label)}" aria-label="${active ? 'Retirer' : 'Ajouter'} ${escapeHtml(choice.label)}" onclick="basculerQuickActivite('${escapeHtml(choice.id)}')">+</button>`
       + `</div>`;
   }).join('');
   // LES MODES NE SONT PAS DES ACTIVITES : une formule et une visite sur mesure
@@ -21747,6 +21869,7 @@ function renderQuickBookInner() {
       if (on && isLaser) {
         optionsHtml = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn ${Number(visit.laser_game?.games) === games ? 'active' : ''}" onclick="setQuickVisitLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
       }
+      if (on && !isBowling && !isLaser) optionsHtml = renderQuickVisitOptions(choice);
       return `<div class="qb-visit-row ${on ? 'is-on' : ''}">
         <button type="button" class="qb-visit-toggle" aria-pressed="${on ? 'true' : 'false'}" onclick="toggleQuickVisitActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
         ${optionsHtml}
@@ -21992,7 +22115,17 @@ async function saveQuickBook() {
     if (visit.bowling?.on) visitProgram.push({ activityId: 'bowling', duration: Number(visit.bowling.duration || 1), pax: Number(quickBookState.pax) || 1 });
     if (visit.laser_game?.on) visitProgram.push({ activityId: 'laser_game', games: Math.max(1, Math.trunc(Number(visit.laser_game.games || 1))), pax: Number(quickBookState.pax) || 1 });
     Object.entries(visit.others || {}).forEach(([activityId, on]) => {
-      if (on) visitProgram.push({ activityId, pax: Number(quickBookState.pax) || 1 });
+      if (!on) return;
+      const ligne = { activityId, pax: Number(quickBookState.pax) || 1 };
+      const activite = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
+      // On n envoie un reglage QUE si l activite en a un : une cle inutile sur
+      // une ligne qui ne la comprend pas est du bruit que le serveur devra
+      // ignorer, et un jour ne plus ignorer.
+      if (activite && activite.priceType === 'grid_fun_run') ligne.minutes = getQuickVisitMinutes(activityId);
+      if (activite && typeof activityCountsChildren === 'function' && activityCountsChildren(activite)) {
+        ligne.participants = getQuickVisitParticipants(activityId);
+      }
+      visitProgram.push(ligne);
     });
     if (!visitProgram.length) { failQuickBook('Choisissez au moins une activité.'); return; }
   }

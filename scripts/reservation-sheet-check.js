@@ -343,6 +343,68 @@ async function main() {
     if (errs.length) console.log('Console errors:\n' + errs.join('\n'));
     failures += 1;
   } finally {
+    console.log('\n[PROGRAMME] La meme liste ne se dit pas deux fois');
+    // Movsar, 2026-08-26 : « pq mettre le programme du groupe quand ya deja
+    // suivi de groupe avec coche ». Le bloc « Programme du groupe » repetait,
+    // juste au-dessus du suivi, les memes activites en moins utile (pas
+    // d horaires, pas de coches). Il ne reste que quand il n y a PAS de suivi,
+    // ou il est la seule vue du contenu.
+    const doublon = await page.evaluate(async () => {
+      // Il FAUT une reservation qui produise un suivi, sinon le test ne mesure
+      // rien : le suivi n existe que pour une formule dont les activites sont
+      // connues. On la choisit en interrogeant le rendu lui-meme.
+      // Il FAUT une reservation qui produise un suivi, sinon le test ne mesure
+      // rien. Le suivi n existe que pour une FORMULE dont les activites sont
+      // connues : si le jeu de donnees n en a pas, on en fabrique une et on
+      // verifie que le rendu la reconnait avant d asserter quoi que ce soit.
+      let res = state.reservations.find((r) => renderFormulaActivityChecklist(r));
+      if (!res) {
+        const modele = state.reservations[0] || {};
+        for (const fid of ['f1', 'f2', 'f3', 'f4', 'f8']) {
+          const candidat = Object.assign({}, modele, {
+            id: 990000 + Number(fid.replace('f', '')),
+            type: 'formule', formuleId: fid, label: 'FORMULE ' + fid.replace('f', ''),
+            pax: 8, activityProgress: {},
+          });
+          if (renderFormulaActivityChecklist(candidat)) { state.reservations.push(candidat); res = candidat; break; }
+        }
+      }
+      if (!res) return { erreur: 'aucune reservation ne produit de suivi' };
+      if (!res) return { erreur: 'aucune reservation' };
+      // On lui donne un programme de deux activites, condition d apparition du
+      // bloc, et un suivi.
+      res.program = res.program && res.program.items && res.program.items.length >= 2 ? res.program : {
+        items: [
+          { activityId: 'bowling', name: 'Bowling', duration: 1, planned: true, price: 39, priceKnown: true },
+          { activityId: 'arcade_time', name: 'Arcades', planned: false, price: 0, priceKnown: false },
+        ],
+        price: 39,
+        priceComplete: false,
+      };
+      closePos(); openPos(res.id); setTab('details');
+      await new Promise((r) => setTimeout(r, 600));
+      const labels = [...document.querySelectorAll('#posOverlay .info-label, .pos-sheet .info-label')].map((n) => n.textContent.trim());
+      return {
+        suivi: labels.some((l) => /Suivi des activit/i.test(l)),
+        programme: labels.some((l) => /Programme du groupe/i.test(l)),
+        // Aucun identifiant technique ne doit s afficher a la place d un nom.
+        idsBruts: [...document.querySelectorAll('#posOverlay, .pos-sheet')]
+          .map((n) => n.textContent || '')
+          .join(' ')
+          .match(/\b(arcade_time|laser_game|fun_run|duckpin_bowling|minigolf_blacklight)\b/g) || [],
+      };
+    });
+    if (ok(doublon && !doublon.erreur, `fiche ouverte${doublon && doublon.erreur ? ` (${doublon.erreur})` : ''}`)) {
+      ok(!(doublon.suivi && doublon.programme),
+        `programme et suivi ne coexistent pas (suivi: ${doublon.suivi}, programme: ${doublon.programme})`);
+      ok(doublon.suivi,
+        `le cas teste est bien celui ou un suivi existe (suivi: ${doublon.suivi}) : sans lui, « pas de doublon » serait vrai pour rien`);
+      ok(doublon.suivi || doublon.programme,
+        `mais le contenu du dossier reste visible quelque part (suivi: ${doublon.suivi}, programme: ${doublon.programme})`);
+      ok(doublon.idsBruts.length === 0,
+        `aucun identifiant technique a l ecran (${doublon.idsBruts.join(', ') || 'aucun'})`);
+    }
+
     await browser.close();
     server.close();
   }

@@ -370,6 +370,50 @@ function run() {
     { bowlingConfig: gamesBowling });
   ok(withoutDate === 0,
     `sans la date, un centre aux parties rend 0 plutot qu un prix de grille (obtenu ${withoutDate})`);
+  section('[8] UNE SESSION CHOISIE EST UNE SESSION FACTUREE');
+  // Movsar, 2026-08-26 : « le fun run pixel choisir 15, 30 ». Les minutes
+  // n etaient jamais lues de la demande : le serveur retombait toujours sur le
+  // PREMIER palier de la grille, donc une session de 30 min etait enregistree,
+  // planifiee et facturee comme une de 15 min.
+  const programme = require(path.join(ROOT, 'lib', 'visit-program.js'));
+  const session30 = (programme.normalizeProgram(
+    [{ activityId: 'fun_run', minutes: 30 }],
+    { centerId: 'libramont', pax: 6 },
+  ).items || [])[0] || {};
+  ok(Number(session30.minutes) === 30, `30 min demandees, 30 min enregistrees (obtenu ${session30.minutes})`);
+  ok(Number(session30.price) === 55, `et facturees au palier de 30 min, 55 EUR (obtenu ${session30.price})`);
+  // CONTRE-EPREUVE : sans demande, c est le premier palier, comme avant.
+  const sessionDefaut = (programme.normalizeProgram(
+    [{ activityId: 'fun_run' }],
+    { centerId: 'libramont', pax: 6 },
+  ).items || [])[0] || {};
+  ok(Number(sessionDefaut.minutes) === 15 && Number(sessionDefaut.price) === 30,
+    `sans duree demandee, le premier palier tient (${sessionDefaut.minutes} min, ${sessionDefaut.price} EUR)`);
+  // UN PALIER QUI N EXISTE PAS NE S INVENTE PAS AU PRORATA : 45 min n est pas
+  // vendu, on retombe sur la grille au lieu de fabriquer un tarif.
+  const horsGrille = (programme.normalizeProgram(
+    [{ activityId: 'fun_run', minutes: 45 }],
+    { centerId: 'libramont', pax: 6 },
+  ).items || [])[0] || {};
+  ok(Number(horsGrille.minutes) === 15 && Number(horsGrille.price) === 30,
+    `un palier absent de la grille ne fabrique pas de tarif (${horsGrille.minutes} min, ${horsGrille.price} EUR)`);
+
+  section('[9] LA PLAINE DE JEUX SE COMPTE EN ENFANTS, PAS EN GROUPE');
+  // « playground on doit mettre cbn d enfant » : 4 adultes + 2 enfants ne font
+  // pas 6 entrees. Le serveur savait deja lire `participants` ; c est le
+  // comptoir qui ne pouvait pas le dire.
+  const deuxEnfants = (programme.normalizeProgram(
+    [{ activityId: 'playground', participants: 2 }],
+    { centerId: 'libramont', pax: 6 },
+  ).items || [])[0] || {};
+  ok(Number(deuxEnfants.participants) === 2, `2 enfants declares sur un groupe de 6 (obtenu ${deuxEnfants.participants})`);
+  const toutLeGroupe = (programme.normalizeProgram(
+    [{ activityId: 'playground' }],
+    { centerId: 'libramont', pax: 6 },
+  ).items || [])[0] || {};
+  ok(Number(toutLeGroupe.participants) === 6,
+    `sans declaration, c est tout le groupe : le comportement d avant ne bouge pas (${toutLeGroupe.participants})`);
+
 }
 
 try {

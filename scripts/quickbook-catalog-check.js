@@ -240,6 +240,78 @@ async function main() {
       ok(Number(prix.apresTotal.perso) === 25, `et dans l autre sens : 200 EUR au total = ${prix.apresTotal.perso} EUR par personne`);
     }
 
+    console.log('\n[7. Le « + » decoche autant qu il coche]');
+    // Movsar, 2026-08-26 : « faut qu on puisse decocher un par un et quand on en
+    // recoche plusieurs comme on veut ». Le « + » ne savait qu AJOUTER : une
+    // activite cochee par erreur restait la pour toujours et il fallait fermer la
+    // fenetre pour repartir.
+    await page.evaluate(() => window.setQuickType('bowling'));
+    await page.waitForTimeout(400);
+    const bascule = await page.evaluate(async () => {
+      const retenues = () => [...document.querySelectorAll('.qb-type-tile.is-active .qb-type-btn')].map((x) => x.textContent.trim());
+      const plusDe = (nom) => [...document.querySelectorAll('.qb-type-tile')]
+        .find((t) => t.querySelector('.qb-type-btn').textContent.trim() === nom)?.querySelector('.qb-type-add');
+      const etapes = [];
+      for (const nom of ['Laser Game', 'Billards']) {
+        plusDe(nom).click(); await new Promise((r) => setTimeout(r, 350));
+      }
+      etapes.push(retenues());
+      plusDe('Billards').click(); await new Promise((r) => setTimeout(r, 350));
+      etapes.push(retenues());
+      plusDe('Billards').click(); await new Promise((r) => setTimeout(r, 350));
+      etapes.push(retenues());
+      // On retire jusqu a n en laisser qu une : la derniere ne se retire pas,
+      // il faut bien reserver quelque chose.
+      plusDe('Billards').click(); await new Promise((r) => setTimeout(r, 350));
+      plusDe('Laser Game').click(); await new Promise((r) => setTimeout(r, 350));
+      const avantDerniere = retenues();
+      plusDe('Bowling').click(); await new Promise((r) => setTimeout(r, 350));
+      return { troisChoisies: etapes[0], apresRetrait: etapes[1], apresRecoche: etapes[2], avantDerniere, apresTentativeDeToutRetirer: retenues() };
+    });
+    ok(bascule.troisChoisies.length === 3, `trois activites cochees (${bascule.troisChoisies.join(' + ')})`);
+    ok(bascule.apresRetrait.length === 2 && !bascule.apresRetrait.includes('Billards'),
+      `le « + » RETIRE celle qui etait cochee (${bascule.apresRetrait.join(' + ')})`);
+    ok(bascule.apresRecoche.includes('Billards'),
+      `et la recoche ensuite comme on veut (${bascule.apresRecoche.join(' + ')})`);
+    ok(bascule.avantDerniere.length === 1,
+      `on peut redescendre a une seule activite (${bascule.avantDerniere.join(' + ')})`);
+    ok(bascule.apresTentativeDeToutRetirer.length === 1,
+      `mais jamais a zero : il faut bien reserver quelque chose (${bascule.apresTentativeDeToutRetirer.join(' + ') || 'aucune'})`);
+
+    console.log('\n[8. Chaque activite se regle selon ce qu elle vend]');
+    // « playground on doit mettre cbn d enfant, le fun run pixel choisir 15, 30 ».
+    // La detection passe par la DONNEE du catalogue (priceType, unitLabel), pas
+    // par un id : un autre centre au meme modele en herite sans une ligne.
+    const reglages = await page.evaluate(async () => {
+      const retenue = (nom) => [...document.querySelectorAll('.qb-type-tile.is-active .qb-type-btn')].some((x) => x.textContent.trim() === nom);
+      const plusDe = (nom) => [...document.querySelectorAll('.qb-type-tile')]
+        .find((t) => t.querySelector('.qb-type-btn').textContent.trim() === nom)?.querySelector('.qb-type-add');
+      for (const nom of ['Playground', 'Fun Run by PIXEL']) {
+        if (!retenue(nom)) { plusDe(nom).click(); await new Promise((r) => setTimeout(r, 350)); }
+      }
+      await new Promise((r) => setTimeout(r, 400));
+      const rangee = (nom) => [...document.querySelectorAll('.qb-visit-row')]
+        .find((row) => (row.querySelector('.qb-visit-toggle') || {}).textContent.trim() === nom);
+      const play = rangee('Playground');
+      const fun = rangee('Fun Run by PIXEL');
+      const compteurAvant = play ? (play.querySelector('.qb-step-valeur') || {}).textContent.trim() : '';
+      const moins = play && play.querySelector('.qb-step-btn');
+      if (moins) { moins.click(); await new Promise((r) => setTimeout(r, 350)); }
+      const playApres = rangee('Playground');
+      return {
+        sessions: fun ? [...fun.querySelectorAll('.qb-dur-btn')].map((b) => b.textContent.trim()) : [],
+        compteurAvant,
+        compteurApres: playApres ? (playApres.querySelector('.qb-step-valeur') || {}).textContent.trim() : '',
+        // Une activite sans reglage n en affiche pas : pas de bloc vide.
+        billardsRegle: !!(rangee('Billards') && rangee('Billards').querySelector('.qb-visit-options')),
+      };
+    });
+    ok(reglages.sessions.length >= 2 && /15 min/.test(reglages.sessions.join(' ')) && /30 min/.test(reglages.sessions.join(' ')),
+      `le Fun Run propose ses sessions (${reglages.sessions.join(' | ') || 'aucune'})`);
+    ok(/enfant/.test(reglages.compteurAvant), `la plaine de jeux se compte en enfants (${reglages.compteurAvant})`);
+    ok(reglages.compteurApres !== reglages.compteurAvant,
+      `et le compteur descend vraiment (${reglages.compteurAvant} -> ${reglages.compteurApres})`);
+
     if (process.env.QB_SHOT) {
       await page.evaluate(() => { const i = [...document.querySelectorAll('#quickBookOverlay input[type="number"]')].pop(); i.value = '9'; i.dispatchEvent(new Event('input', { bubbles: true })); });
       await page.waitForTimeout(500);

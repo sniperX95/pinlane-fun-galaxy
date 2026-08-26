@@ -223,6 +223,35 @@ async function main() {
     ok(!!avant && coche.scroll === avant.scroll, `le defilement de la fiche est conserve (${avant && avant.scroll} -> ${coche.scroll})`);
     ok(String(coche.focus || '').indexOf('fiche.activite.') === 0, `le focus reste sur la case cliquee (${coche.focus})`);
 
+    console.log('\n[3 bis] UNE MODALE NE REMONTE PAS EN HAUT QUAND ON CLIQUE EN BAS');
+    // Movsar 2026-08-26 : « quand on clique sur un bouton en bas ca nous
+    // teleporte tout en haut et ca fait ca a plein d endroits ». Le conteneur
+    // qui defile ici (.qb-modal) n a NI id NI data-scroll-key : c est exactement
+    // le cas que la premiere version de repaintKeepingScroll ne savait pas
+    // restaurer, puisqu elle ne reperait que les elements identifies.
+    await page.setViewportSize({ width: 1100, height: 620 });
+    await page.evaluate(() => { closePos(); openQuickBook({ date: state.currentDate, type: 'bowling', pax: 4 }); });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => { toggleQuickBookMore(); });
+    await page.waitForTimeout(500);
+    const modale = await page.evaluate(async () => {
+      const boite = document.querySelector('#quickBookOverlay .qb-modal');
+      if (!boite) return { erreur: 'modale absente' };
+      const course = boite.scrollHeight - boite.clientHeight;
+      boite.scrollTop = course;
+      const avant = boite.scrollTop;
+      const boutons = [...document.querySelectorAll('#quickBookOverlay .qb-dur-btn')];
+      const cible = boutons[boutons.length - 1];
+      if (cible) cible.click();
+      await new Promise((r) => setTimeout(r, 700));
+      const apres = document.querySelector('#quickBookOverlay .qb-modal');
+      return { course, avant, apres: apres ? apres.scrollTop : null };
+    });
+    ok(modale.course > 80, `la modale a de quoi defiler (${modale.course} px)`);
+    ok(modale.avant > 0 && modale.apres === modale.avant,
+      `cliquer un bouton EN BAS ne remonte pas la modale (${modale.avant} -> ${modale.apres})`);
+    await page.evaluate(() => { closeQuickBook(); });
+    await page.setViewportSize({ width: 1500, height: 950 });
     console.log('\n[4] LE PLEIN ECRAN DE LA LISTE EST UTILISABLE');
     await page.setViewportSize({ width: 1500, height: 950 });
     await page.evaluate(() => { closePos(); openStaffMenuPage('planning'); });

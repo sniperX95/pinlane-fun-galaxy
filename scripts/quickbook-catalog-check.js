@@ -111,11 +111,22 @@ async function main() {
 
     console.log('\n[1. Le selecteur suit le CATALOGUE VIVANT]');
     const buttons = await page.evaluate(() => [...document.querySelectorAll('.qb-type-row .qb-type-btn')].map((b) => b.textContent.trim()));
-    ok(buttons.length >= 9, `le selecteur propose ${buttons.length} choix, pas trois (${buttons.join(' | ')})`);
+    // Le seuil porte sur les ACTIVITES du catalogue. Il valait 9 quand
+    // « Formule » etait melangee a la liste ; depuis le 2026-08-26 les modes
+    // sont comptes a part (assertion juste en dessous), donc 8 activites +
+    // 2 modes = 10 choix au total, contre 3 boutons codes en dur a l origine.
+    ok(buttons.length >= 8, `le selecteur propose ${buttons.length} activites, pas trois (${buttons.join(' | ')})`);
     for (const expected of ['Bowling', 'Laser Game', 'Minigolf Blacklight', 'Billards', 'Arcades', 'Playground', 'Duckpin Bowling', 'Fun Run by PIXEL']) {
       ok(buttons.includes(expected), `« ${expected} » est proposee`);
     }
-    ok(buttons.includes('Formule'), 'les formules restent un mode a part');
+    // « Un mode a part » se VERIFIE desormais, au lieu de se deduire de la
+    // presence d un bouton dans la meme liste : depuis le 2026-08-26 les modes
+    // (Formule, Sur mesure) vivent dans leur propre rangee, sous « ou
+    // composer », parce que ce ne sont pas des activites a cocher.
+    const modes = await page.evaluate(() => [...document.querySelectorAll('.qb-type-row .qb-mode-btn')].map((b) => b.textContent.trim()));
+    ok(modes.includes('Formule'), `les formules restent un mode a part (${modes.join(' | ')})`);
+    ok(!buttons.includes('Formule'), 'les formules ne sont PAS melangees aux activites');
+    ok(buttons.length + modes.length >= 10, `le selecteur reste vivant : ${buttons.length} activites + ${modes.length} modes`);
 
     console.log('\n[2. Les pistes suivent le nombre de joueurs PENDANT la frappe]');
     // Le bug exact de Movsar : 9 joueurs, capacite 6 par piste -> 2 pistes.
@@ -141,7 +152,7 @@ async function main() {
     ok(!/piste requise|pistes requises/.test(freeText), `le minigolf ne reserve aucune piste (${freeText.trim()})`);
     // Mesure par le DOM : le bouton actif porte l'activite choisie (l'etat
     // interne n'est pas expose, et une sonde qui le suppose rend undefined).
-    const activeLabel = await page.evaluate(() => ((document.querySelector('.qb-type-row .qb-type-btn.active') || {}).textContent || '').trim());
+    const activeLabel = await page.evaluate(() => ((document.querySelector('.qb-type-row .qb-type-tile.is-active .qb-type-btn') || document.querySelector('.qb-type-row .qb-type-btn.active') || {}).textContent || '').trim());
     ok(activeLabel === 'Minigolf Blacklight', `le bouton actif est l activite choisie (${activeLabel})`);
 
     console.log('\n[4. Contre-epreuve : ce gate sait-il rougir ?]');

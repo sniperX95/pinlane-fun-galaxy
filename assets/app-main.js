@@ -725,7 +725,22 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
     clearReservationMutation(requestKey);
-    showPlanningMoveNotice('Déplacement annulé', error.message || 'Le serveur a refusé ce placement.', 'warning');
+    // LE REFUS DOIT PARLER DE CE QU ON A DEPLACE. Le serveur replanifie une
+    // formule ENTIERE depuis son heure de depart : deplacer sa carte de
+    // BOWLING deplace donc aussi sa partie laser, qui peut tomber sur un
+    // lancement deja pris. Son message (« Laser Game complet sur ce
+    // creneau ») est exact, mais incomprehensible pour quelqu un qui vient
+    // de faire glisser une piste de bowling : on le traduit en disant quelle
+    // activite a suivi et quoi faire (Movsar 2026-08-26).
+    const brut = error.message || 'Le serveur a refusé ce placement.';
+    const surLaser = /laser/i.test(brut) && getLaserWindowsFromReservation(reservation).length > 0;
+    showPlanningMoveNotice(
+      surLaser ? 'Le Laser Game suit le déplacement' : 'Déplacement annulé',
+      surLaser
+        ? `Cette réservation contient un Laser Game : en déplaçant le bowling, sa partie change d'heure elle aussi, et l'arène n'est plus libre (${brut}). Choisissez un autre horaire de bowling, ou déplacez d'abord la partie laser depuis le planning Laser Game.`
+        : brut,
+      'warning'
+    );
     return;
   } finally {
     clearLatestRequest();
@@ -20977,20 +20992,25 @@ function quickActiviteRetenue(id) {
 
 function renderQuickBookTypeButtons() {
   const choices = getQuickBookActivityChoices();
-  const buttons = choices.map((choice) => {
+  const tuiles = choices.map((choice) => {
     const active = quickActiviteRetenue(choice.id);
     const seul = choice.type === 'activity' ? `'activity','${escapeHtml(choice.id)}'` : `'${choice.type}'`;
-    // Le « + » AJOUTE sans remplacer : c est lui qui compose une visite.
-    return `<span class="qb-type-pair${active ? ' is-active' : ''}">`
-      + `<button class="qb-type-btn ${active ? 'active' : ''}" onclick="setQuickType(${seul})">${escapeHtml(choice.label)}</button>`
+    // La tuile CHOISIT, la pastille AJOUTE. Deux gestes, une seule tuile : la
+    // liste ne double pas, et le « + » ne coupe plus le nom en deux.
+    return `<div class="qb-type-tile${active ? ' is-active' : ''}">`
+      + `<button type="button" class="qb-type-btn" onclick="setQuickType(${seul})">${escapeHtml(choice.label)}</button>`
       + `<button type="button" class="qb-type-add" title="Ajouter ${escapeHtml(choice.label)} à la visite" aria-label="Ajouter ${escapeHtml(choice.label)} à la visite" onclick="ajouterQuickActivite('${escapeHtml(choice.id)}')">+</button>`
-      + `</span>`;
-  });
-  // Les formules restent un MODE de reservation, pas une activite du catalogue.
-  buttons.push(`<button class="qb-type-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>`);
-  // SUR MESURE : la composition libre, aussi accessible directement.
-  buttons.push(`<button class="qb-type-btn ${quickBookState.type === 'visite' ? 'active' : ''}" onclick="setQuickType('visite')">Sur mesure</button>`);
-  return buttons.join('');
+      + `</div>`;
+  }).join('');
+  // LES MODES NE SONT PAS DES ACTIVITES : une formule et une visite sur mesure
+  // sont des facons de composer, pas des choses a cocher. Ils vivent donc sur
+  // leur propre rangee, sous un intitule.
+  const modes = `<div class="qb-mode-row">`
+    + `<span class="qb-mode-label">ou composer</span>`
+    + `<button type="button" class="qb-mode-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>`
+    + `<button type="button" class="qb-mode-btn ${quickBookState.type === 'visite' ? 'active' : ''}" onclick="setQuickType('visite')">Sur mesure</button>`
+    + `</div>`;
+  return `<div class="qb-type-grid">${tuiles}</div>${modes}`;
 }
 
 function setQuickType(type, activityId = '') {
@@ -22212,11 +22232,31 @@ document.addEventListener('keydown', (event) => {
 // et on les retrouve par cette cle.
 function repaintKeepingScroll(root, render) {
   if (!root) { render(); return; }
+  // UNE CLE STABLE POUR CHAQUE CONTENEUR QUI DEFILE, MEME SANS IDENTIFIANT.
+  // Premiere version : seuls les elements portant un id ou un data-scroll-key
+  // etaient restaures. Or la plupart des surfaces qui defilent n en ont pas
+  // (.qb-body de la reservation rapide, les panneaux de la console...) : leur
+  // position etait donc perdue a chaque re-rendu, et cliquer un bouton en bas
+  // de modale renvoyait tout en haut (Movsar 2026-08-26 : « ca nous teleporte
+  // tout en haut et ca fait ca a plein d endroits »). On construit donc une cle
+  // de repli a partir de la classe et du rang parmi les elements de meme
+  // classe : stable d un rendu a l autre pour un meme ecran, et sans rien avoir
+  // a annoter dans le markup.
+  const cleDe = (el, tousMemeClasse) => {
+    if (el.dataset && el.dataset.scrollKey) return `[data-scroll-key="${el.dataset.scrollKey}"]`;
+    if (el.id) return `#${CSS.escape(el.id)}`;
+    const classes = String(el.className || '').split(/\s+/).filter(Boolean);
+    if (!classes.length) return null;
+    const selecteur = '.' + classes.map((c) => CSS.escape(c)).join('.');
+    const rang = tousMemeClasse(selecteur).indexOf(el);
+    return rang >= 0 ? { selecteur, rang } : null;
+  };
+  const memeClasse = (selecteur) => Array.from(root.querySelectorAll(selecteur));
   const scrolled = [];
-  root.querySelectorAll('[id], [data-scroll-key]').forEach((el) => {
+  root.querySelectorAll('*').forEach((el) => {
     if (!el.scrollTop && !el.scrollLeft) return;
-    const cle = el.dataset.scrollKey ? `[data-scroll-key="${el.dataset.scrollKey}"]` : `#${CSS.escape(el.id)}`;
-    scrolled.push([cle, el.scrollTop, el.scrollLeft]);
+    const cle = cleDe(el, memeClasse);
+    if (cle) scrolled.push([cle, el.scrollTop, el.scrollLeft]);
   });
   root.classList.add('is-repaint');
   try {
@@ -22225,12 +22265,12 @@ function repaintKeepingScroll(root, render) {
     // Le rendu peut lever : sans ce finally, is-repaint restait collee et
     // TOUTES les animations et transitions de la console mouraient jusqu au
     // rechargement.
-    if (scrolled.length) {
-      scrolled.forEach(([cle, top, left]) => {
-        const el = root.querySelector(cle);
-        if (el) { el.scrollTop = top; el.scrollLeft = left; }
-      });
-    }
+    scrolled.forEach(([cle, top, left]) => {
+      const el = typeof cle === 'string'
+        ? root.querySelector(cle)
+        : root.querySelectorAll(cle.selecteur)[cle.rang];
+      if (el) { el.scrollTop = top; el.scrollLeft = left; }
+    });
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('is-repaint')));
   }
 }

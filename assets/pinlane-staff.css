@@ -9499,7 +9499,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-field-note.danger { color: var(--danger); }
 .qb-block-help { margin: -2px 0 10px; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
 
-.qb-type-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+/* Le conteneur ne dispose plus rien lui-meme : il porte desormais DEUX blocs
+   (la grille des activites et la rangee des modes), et une grille parent les
+   aurait mis cote a cote au lieu de les empiler. */
+.qb-type-row { display: block; margin-bottom: 10px; }
 
 .qb-type-btn {
   min-height: 36px;
@@ -16481,25 +16484,93 @@ button.pv2-cal-cell:focus-visible {
 .edit-prix-detail li em { font-style: normal; color: var(--text-3, var(--muted)); font-size: 11px; }
 .edit-prix-detail li b { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-/* CHOISIR PLUSIEURS ACTIVITES : le bouton choisit, le « + » AJOUTE a la
-   visite. Deux gestes distincts sur une seule tuile, pour ne pas doubler la
-   liste (Movsar 2026-08-26). */
-.qb-type-pair { display: inline-flex; align-items: stretch; gap: 0; }
-.qb-type-pair .qb-type-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+
+/* LE SELECTEUR D ACTIVITES, REPOSE (2026-08-26, Movsar : « pas du tout adapté
+   et super moche, comment c'est posé positionné »). Trois defauts corriges :
+   des tuiles de largeurs inegales (le « + » etait un bloc colle qui poussait
+   le texte), les deux MODES melanges aux activites, et aucune hierarchie. */
+.qb-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.qb-type-tile {
+  position: relative;
+  display: flex;
+}
+.qb-type-tile .qb-type-btn {
+  flex: 1;
+  width: 100%;
+  min-height: 40px;
+  padding-right: 30px;
+  text-align: left;
+  padding-left: 12px;
+}
+/* Le « + » est une PASTILLE de coin, pas un second bouton colle : il ne prend
+   plus de largeur au nom de l activite. */
 .qb-type-add {
-  width: 30px;
-  border: 1px solid var(--border);
-  border-left: 0;
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
-  background: var(--surface);
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
   color: var(--text-3, var(--muted));
   font: inherit;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-.qb-type-add:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
-.qb-type-pair.is-active .qb-type-add { border-color: var(--accent); color: var(--accent); }
+.qb-type-tile:hover .qb-type-add { opacity: 1; }
+.qb-type-add:hover { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
+.qb-type-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; opacity: 1; }
+.qb-type-tile.is-active .qb-type-btn {
+  border-color: var(--accent);
+  background: var(--accent-soft, rgba(59, 130, 246, 0.1));
+  color: var(--text);
+  font-weight: 650;
+}
+.qb-type-tile.is-active .qb-type-add { border-color: var(--accent); color: var(--accent); opacity: 1; }
+
+/* Les MODES, sur leur propre rangee : ce ne sont pas des activites a cocher. */
+.qb-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  margin-bottom: 10px;
+  border-top: 1px solid var(--line);
+}
+.qb-mode-label {
+  color: var(--faint, var(--muted));
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.qb-mode-btn {
+  min-height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.qb-mode-btn:hover { color: var(--text); border-color: var(--accent); }
+.qb-mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }

@@ -643,6 +643,34 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     : reservationStartMin;
   const dragDeltaMin = hourToMinuteInt(Number(targetStart)) - firstBowlingStartMin;
   const movedReservationStartTime = minuteIntToTime(reservationStartMin + dragDeltaMin);
+  // DEPLACER LE BOWLING D UNE FORMULE DEPLACE AUSSI SON LASER, et le message
+  // doit le DIRE. Le serveur replanifie une formule entiere depuis startTime
+  // (isFormulaPatch) : la partie laser suit donc le meme decalage, et peut
+  // tomber sur un lancement deja pris. Le refus arrivait alors sous la forme
+  // « Laser Game complet sur ce creneau (17/30 joueurs, 2/1 lancement) » : exact,
+  // mais incomprehensible pour quelqu un qui vient de deplacer une carte de
+  // BOWLING (Movsar 2026-08-26 : « ce message qui est clairement un bug »).
+  // On verifie donc AVANT d envoyer, et on nomme l activite qui coince.
+  const fenetresLaser = getLaserWindowsFromReservation(reservation);
+  if (fenetresLaser.length) {
+    const laserDepart = Number(fenetresLaser[0].start) + (dragDeltaMin / 60);
+    const dispoLaser = getLaserAvailability(
+      reservation.date,
+      numToTime(laserDepart),
+      Number(fenetresLaser[0].duration) || 0.5,
+      Number(reservation.pax) || 1,
+      reservation.id,
+    );
+    if (!dispoLaser.ok) {
+      const heureLaser = formatClockDisplay(laserDepart);
+      showPlanningMoveNotice(
+        'Le Laser Game suit le déplacement',
+        `Cette réservation contient un Laser Game : en déplaçant le bowling, sa partie passerait à ${heureLaser}, et l'arène n'est pas libre à ce moment (${dispoLaser.message || 'créneau complet'}). Choisissez un autre horaire de bowling, ou déplacez d'abord la partie laser.`,
+        'warning'
+      );
+      return;
+    }
+  }
   const updated = {
     ...reservation,
     startTime: movedReservationStartTime,
@@ -994,11 +1022,18 @@ function lanesConflict(date, startTime, duration, lanes, ignoreId, candidateOpsP
 
 function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
   const players = Number(pax || 0);
+  // ON NE VALIDE QUE CE QUI SERA REELLEMENT POSE : la partie 1 et ses vagues.
+  // Les parties suivantes ne sont pas placees a la creation (elles attendent
+  // dans la file « a placer » et sont controlees au moment ou le staff les
+  // pose, par checkManualLaserPassPlacement). Les valider ici exigeait 3 h
+  // d arene CONTIGUE pour un groupe de 70 en 2 parties, et faisait donc
+  // disparaitre des heures de depart parfaitement libres (Movsar 2026-08-26 :
+  // « pour 70 personnes ca met 48/30, il doit pouvoir scinder »).
   const candidateWindows = getLaserCandidateWindows(
     typeof startTime === 'string' ? startTime : numToTime(startTime),
     duration,
     players
-  );
+  ).filter(window => Number(window.countIndex || 1) === 1);
   const waveCount = Math.max(...candidateWindows.map(window => Number(window.groupWaveCount || 1)), 1);
   let tightestRemaining = LASER_GAME_MAX_PLAYERS;
   let maxPlayersTotal = 0;
@@ -1052,9 +1087,26 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     maxPlayersTotal = Math.max(maxPlayersTotal, playersTotal);
     tightestRemaining = Math.min(tightestRemaining, Math.max(0, LASER_GAME_MAX_PLAYERS - playersTotal));
     sharedNow = sharedNow || (playersBefore > 0 && joinsExistingSession);
-    if (launchCount > LASER_GAME_PARALLEL_LAUNCHES || playersTotal > LASER_GAME_MAX_PLAYERS) {
+    // DEUX CAUSES DISTINCTES, DEUX MESSAGES. Un total brut « 48/30 » laisse
+    // croire que le groupe entier ne rentre pas, alors que le moteur l a deja
+    // scinde en vagues : ce qui coince, c est UNE vague sur UN lancement. Et
+    // une arene deja occupee par un lancement non joignable n a rien a voir
+    // avec un manque de places (Movsar 2026-08-26).
+    const heureLancement = formatClockDisplay(effStart);
+    const vagueIndex = Number(candidate.groupWaveIndex || 1);
+    const vagueTotal = Number(candidate.groupWaveCount || 1);
+    const situeVague = vagueTotal > 1
+      ? ` (vague ${vagueIndex}/${vagueTotal}, ${Number(candidate.players || 0)} joueurs)`
+      : '';
+    if (launchCount > LASER_GAME_PARALLEL_LAUNCHES) {
       ok = false;
-      message = `Laser complet (${playersTotal}/${LASER_GAME_MAX_PLAYERS} joueurs).`;
+      message = `L'arène tourne déjà à ${heureLancement} : un seul lancement à la fois. Choisissez un autre départ.`;
+      break;
+    }
+    if (playersTotal > LASER_GAME_MAX_PLAYERS) {
+      ok = false;
+      const restantes = Math.max(0, LASER_GAME_MAX_PLAYERS - playersBefore);
+      message = `Lancement de ${heureLancement} : ${playersBefore} joueur(s) déjà inscrit(s), il reste ${restantes} place(s)${situeVague}. Décalez le départ.`;
       break;
     }
   }
@@ -14342,7 +14394,10 @@ function focusStaffCustomRequests() {
 }
 window.focusStaffCustomRequests = focusStaffCustomRequests;
 
-async function setStaffCustomRequestStatus(id, status) {
+// `silencieux` : l appelant affiche SON message (creation depuis une
+// demande). Rend true/false pour qu il puisse dire la verite : sans valeur
+// de retour, un echec du seul classement etait indistinguable d un succes.
+async function setStaffCustomRequestStatus(id, status, options = {}) {
   try {
     await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
@@ -14353,9 +14408,11 @@ async function setStaffCustomRequestStatus(id, status) {
       String(item.id) === String(id) ? { ...item, status } : item);
     renderStaffGroupHost();
     loadStaffCustomRequests(true);
-    toast('Demande mise à jour.');
+    if (!options.silencieux) toast('Demande mise à jour.');
+    return true;
   } catch (error) {
-    toast(error.message || 'Mise à jour impossible.');
+    if (!options.silencieux) toast(error.message || 'Mise à jour impossible.');
+    return false;
   }
 }
 
@@ -15186,6 +15243,9 @@ function staffRequestToBooking(id) {
     phone: item.phone || '',
     pax: Number(item.pax) > 0 ? Number(item.pax) : 4,
     notes: noteParts.join(' · '),
+    // D ou vient cette reservation : sert UNIQUEMENT a classer la demande
+    // en « Traitee » une fois la creation reussie.
+    sourceRequestId: item.id,
   });
 }
 
@@ -20562,6 +20622,10 @@ function createQuickBookState(prefill = {}) {
     phone: prefill.phone ? normalizePhoneInput(prefill.phone) : '+32 ',
     email: prefill.email || '',
     notes: prefill.notes || '',
+    // Origine « demande sur mesure ». null partout ailleurs (planning,
+    // fiche client, laser...) : seule la creation issue d une demande
+    // classe cette demande.
+    sourceRequestId: prefill.sourceRequestId || null,
     date: prefill.date || state.currentDate || todayStr(),
     startTime: prefill.startTime || '',
     pax: prefill.pax || 4,
@@ -20767,16 +20831,19 @@ function patchQuickBookStatusLine(overlay) {
   const host = (overlay || document).querySelector('.qb-status-line');
   if (!host || !quickBookState) return;
   const schedule = typeof getSchedule === 'function' ? getSchedule(quickBookState.date, state.isHolidayMode) : null;
-  const needsLanes = quickBookState.type === 'visite' ? false : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
-  const requiredCount = quickBookState.type === 'visite' ? 0 : getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const { needsLanes, requiredCount } = getQuickBookLaneNeed();
   const suggestedLanes = quickBookState.startTime && needsLanes
     ? allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration) || []
     : [];
   const parts = [];
   if (schedule) parts.push(`Ouvert ${schedule.label}`);
   if (quickBookState.type === 'laser') {
-    const waves = getLaserWaveCount(quickBookState.pax);
-    parts.push(`${quickBookState.pax} joueurs • ${waves} session${waves > 1 ? 's' : ''}`);
+    const vagues = getLaserWaveCount(quickBookState.pax);
+    const parties = getLaserGameCount(Number(quickBookState.duration) || 0.5);
+    parts.push(`${quickBookState.pax} joueurs • ${parties} partie${parties > 1 ? 's' : ''}`);
+    // Le groupe ne tient pas dans une arene : on DIT le decoupage au lieu
+    // de l appeler « session », mot qui designe deja le lancement.
+    if (vagues > 1) parts.push(`groupe divisé en ${vagues} passages (${LASER_GAME_MAX_PLAYERS} armes)`);
   } else if (needsLanes) {
     parts.push(`${requiredCount} piste${requiredCount > 1 ? 's' : ''} requise${requiredCount > 1 ? 's' : ''}`);
     parts.push(quickBookState.autoAssign
@@ -20859,19 +20926,69 @@ function getQuickBookActivityChoices() {
   return choices;
 }
 
+// PLUSIEURS ACTIVITES A LA FOIS (Movsar 2026-08-26 : « autorise le fait de
+// choisir plusieurs activites en meme temps »). Le selecteur reste simple :
+// un clic choisit l activite, un DEUXIEME clic sur une autre l AJOUTE et fait
+// basculer la reservation en visite sur mesure. Le serveur accepte deja
+// plusieurs activites dans une reservation (program renormalise par
+// lib/visit-program) : il n y a rien a changer cote API.
+// Lecture seule de la composition en cours : quickBookState est un `let` de
+// module, invisible depuis un harnais de test.
+function quickBookStateVisitPourTest() {
+  return quickBookState ? { type: quickBookState.type, visit: quickBookState.visit || null } : null;
+}
+
+function ajouterQuickActivite(id) {
+  if (!quickBookState) return;
+  const visit = ensureQuickVisit();
+  // Ce qui etait deja choisi entre dans la composition, pour ne rien perdre.
+  const dejaChoisi = quickBookState.type === 'bowling' ? 'bowling'
+    : quickBookState.type === 'laser' ? 'laser_game'
+      : quickBookState.type === 'activity' ? String(quickBookState.activityId || '')
+        : '';
+  if (dejaChoisi === 'bowling') visit.bowling.on = true;
+  else if (dejaChoisi === 'laser_game') visit.laser_game.on = true;
+  else if (dejaChoisi) visit.others[dejaChoisi] = true;
+  if (id === 'bowling') visit.bowling.on = true;
+  else if (id === 'laser_game') visit.laser_game.on = true;
+  else visit.others[id] = true;
+  quickBookState.type = 'visite';
+  quickBookState.activityId = '';
+  quickBookState.formuleId = '';
+  quickBookState.lanes = [];
+  quickBookState.autoAssign = false;
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+// Une activite est-elle retenue, quel que soit le mode (mono ou visite) ?
+function quickActiviteRetenue(id) {
+  if (!quickBookState) return false;
+  if (quickBookState.type === 'visite') {
+    const visit = quickBookState.visit || {};
+    if (id === 'bowling') return Boolean(visit.bowling && visit.bowling.on);
+    if (id === 'laser_game') return Boolean(visit.laser_game && visit.laser_game.on);
+    return Boolean((visit.others || {})[id]);
+  }
+  if (id === 'bowling') return quickBookState.type === 'bowling';
+  if (id === 'laser_game') return quickBookState.type === 'laser';
+  return quickBookState.type === 'activity' && String(quickBookState.activityId || '') === id;
+}
+
 function renderQuickBookTypeButtons() {
   const choices = getQuickBookActivityChoices();
-  const current = quickBookState.type === 'activity' ? String(quickBookState.activityId || '') : quickBookState.type;
   const buttons = choices.map((choice) => {
-    const active = choice.type === 'activity' ? current === choice.id : quickBookState.type === choice.type;
-    const arg = choice.type === 'activity' ? `'activity','${escapeHtml(choice.id)}'` : `'${choice.type}'`;
-    return `<button class="qb-type-btn ${active ? 'active' : ''}" onclick="setQuickType(${arg})">${escapeHtml(choice.label)}</button>`;
+    const active = quickActiviteRetenue(choice.id);
+    const seul = choice.type === 'activity' ? `'activity','${escapeHtml(choice.id)}'` : `'${choice.type}'`;
+    // Le « + » AJOUTE sans remplacer : c est lui qui compose une visite.
+    return `<span class="qb-type-pair${active ? ' is-active' : ''}">`
+      + `<button class="qb-type-btn ${active ? 'active' : ''}" onclick="setQuickType(${seul})">${escapeHtml(choice.label)}</button>`
+      + `<button type="button" class="qb-type-add" title="Ajouter ${escapeHtml(choice.label)} à la visite" aria-label="Ajouter ${escapeHtml(choice.label)} à la visite" onclick="ajouterQuickActivite('${escapeHtml(choice.id)}')">+</button>`
+      + `</span>`;
   });
   // Les formules restent un MODE de reservation, pas une activite du catalogue.
   buttons.push(`<button class="qb-type-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>`);
-  // SUR MESURE (review manager 2026-08-25) : plusieurs activites dans UNE
-  // reservation, composees au comptoir : le meme contrat serveur que les
-  // visites du tunnel public (program renormalise par lib/visit-program).
+  // SUR MESURE : la composition libre, aussi accessible directement.
   buttons.push(`<button class="qb-type-btn ${quickBookState.type === 'visite' ? 'active' : ''}" onclick="setQuickType('visite')">Sur mesure</button>`);
   return buttons.join('');
 }
@@ -21009,6 +21126,29 @@ function getQuickBookSelectedSlotIfValid({ duration, totalDuration, needsLanes, 
   };
 }
 
+
+// LE BESOIN EN PISTES DU COMPTOIR, calcule depuis SON etat.
+// reservationNeedsLanes('visite') lit state.booking.activities, c est-a-dire
+// le panier du TUNNEL public : au comptoir il rend toujours faux. La
+// premiere version contournait en forcant le besoin a zero pour une visite,
+// ce qui desactivait toute la verification de disponibilite : la bande
+// annoncait « disponible » sur des creneaux que le serveur refusait ensuite
+// (« Aucune piste disponible pour 12 piste(s) », capture Movsar 2026-08-26).
+function getQuickBookLaneNeed() {
+  if (!quickBookState) return { needsLanes: false, requiredCount: 0 };
+  if (quickBookState.type === 'visite') {
+    const avecBowling = Boolean(quickBookState.visit && quickBookState.visit.bowling && quickBookState.visit.bowling.on);
+    return {
+      needsLanes: avecBowling,
+      requiredCount: avecBowling ? getRequiredLaneCount('bowling', quickBookState.pax, '') : 0,
+    };
+  }
+  return {
+    needsLanes: reservationNeedsLanes(quickBookState.type, quickBookState.formuleId),
+    requiredCount: getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId),
+  };
+}
+
 function getQuickBookAvailableSlots() {
   if (!quickBookState) return [];
   const schedule = getSchedule(quickBookState.date, state.isHolidayMode);
@@ -21022,8 +21162,7 @@ function getQuickBookAvailableSlots() {
 
   const duration = Number(quickBookState.duration || 0);
   const totalDuration = Number(quickBookState.totalDuration || duration || 0);
-  const needsLanes = quickBookState.type === 'visite' ? false : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
-  const requiredCount = quickBookState.type === 'visite' ? 0 : getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const { needsLanes, requiredCount } = getQuickBookLaneNeed();
   let minTime = schedule.open;
   let maxTime = schedule.close - totalDuration;
 
@@ -21262,8 +21401,7 @@ function renderQuickBookInner() {
   // Sur mesure : les pistes sont attribuees par le serveur, l UI n en
   // demande aucune (reservationNeedsLanes('visite') lirait state.booking,
   // l etat du TUNNEL, jamais celui du comptoir).
-  const needsLanes = quickBookState.type === 'visite' ? false : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
-  const requiredCount = quickBookState.type === 'visite' ? 0 : getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const { needsLanes, requiredCount } = getQuickBookLaneNeed();
   const occupied = quickBookState.startTime ? getOccupiedLanes(quickBookState.date, quickBookState.startTime, quickBookState.duration) : new Set();
   const suggestedLanes = quickBookState.startTime && needsLanes
     ? allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration) || []
@@ -21306,8 +21444,10 @@ function renderQuickBookInner() {
     : firstSlot
       ? `Premier créneau ${firstSlot.time}`
       : 'Aucun créneau trouvé';
+  const laserVagues = getLaserWaveCount(quickBookState.pax);
+  const laserParties = getLaserGameCount(Number(quickBookState.duration) || 0.5);
   const laneNeedLabel = quickBookState.type === 'laser'
-    ? `${quickBookState.pax} joueurs • ${getLaserWaveCount(quickBookState.pax)} session${getLaserWaveCount(quickBookState.pax) > 1 ? 's' : ''}`
+    ? `${quickBookState.pax} joueurs • ${laserParties} partie${laserParties > 1 ? 's' : ''}${laserVagues > 1 ? ` • ${laserVagues} passages` : ''}`
     : needsLanes ? `${requiredCount} piste${requiredCount > 1 ? 's' : ''} requise${requiredCount > 1 ? 's' : ''}` : 'Sans piste';
   const laneSuggestionLabel = !needsLanes
     ? 'Cette réservation ne prend pas de piste.'
@@ -21324,6 +21464,17 @@ function renderQuickBookInner() {
 
   const customPriceValue = getQuickBookCustomPrice();
   const canAdjustPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
+  // Une visite a besoin de pistes, mais ne les CHOISIT pas : le serveur les
+  // attribue a la creation. Le selecteur manuel et la grille de duree
+  // mono-activite ne la concernent donc pas (sa duree vient du composeur).
+  const showLanePicker = needsLanes && quickBookState.type !== 'visite';
+  // POURQUOI il n y a aucun creneau. « Changez l heure » est un mauvais
+  // conseil quand le groupe demande plus de pistes que le centre n en a :
+  // aucune heure ne conviendra jamais. On nomme alors le vrai obstacle.
+  const parcPistes = typeof getAvailabilityLaneCount === "function" ? getAvailabilityLaneCount() : TOTAL_LANES;
+  const motifAucunCreneau = needsLanes && requiredCount > parcPistes
+    ? `${quickBookState.pax} joueurs demandent ${requiredCount} pistes : le centre en a ${parcPistes}. Scindez le groupe en plusieurs réservations, ou choisissez une activité sans piste.`
+    : `Aucun créneau automatique avec ces critères. Changez la date, l'heure, le nombre de joueurs ou la formule.`;
   const header = getQuickBookHeader(formule);
   const showClient = !quickFieldKnown('client');
   const showType = !quickFieldKnown('type');
@@ -21400,7 +21551,7 @@ function renderQuickBookInner() {
     statusParts.push(laneNeedLabel);
     if (selectedSlot) statusParts.push(getLaserSlotAfterText(selectedSlot, quickBookState.pax));
     if (selectedSlot && (selectedSlot.sharedSession || selectedSlot.mayShareSession)) statusParts.push('Session partagée possible selon l’affluence');
-  } else if (needsLanes) {
+  } else if (showLanePicker) {
     statusParts.push(laneNeedLabel);
     statusParts.push(quickBookState.autoAssign ? `Attribution auto${suggestedLanes.length ? ` : pistes ${suggestedLanes.join(' · ')}` : ''}` : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}${manualLanesShort ? ` (${quickBookState.lanes.length}/${requiredCount})` : ''}`);
     if (quickBookState.startTime && selectedSlot) statusParts.push(`${Math.max(freeCount, 0)} piste(s) libre(s)`);
@@ -21529,7 +21680,7 @@ function renderQuickBookInner() {
           `).join('')}
         </div>
       ` : `
-        <div class="qb-empty-note">Aucun créneau automatique avec ces critères. Changez la date, l'heure, le nombre de joueurs ou la formule.</div>
+        <div class="qb-empty-note">${motifAucunCreneau}</div>
       `}
     </div>
 
@@ -21553,7 +21704,7 @@ function renderQuickBookInner() {
           </div>
         </div>
         <div class="qb-warn">Prévenir le client : une session Laser Game peut être complétée avec d'autres joueurs selon l'affluence.</div>
-      ` : needsLanes ? `
+      ` : showLanePicker ? `
         <div class="qb-dur-grid" style="margin-bottom:12px;">
           ${DURATION_OPTIONS.map(opt => `<button class="qb-dur-btn ${quickBookState.duration === opt.value ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}</button>`).join('')}
         </div>
@@ -21749,10 +21900,19 @@ async function saveQuickBook() {
     if (!laserAvailability.ok) { failQuickBook(laserAvailability.message); return; }
   }
 
-  const needsLanes = quickBookState.type === 'visite' ? false : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
-  const requiredCount = quickBookState.type === 'visite' ? 0 : getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const { needsLanes, requiredCount } = getQuickBookLaneNeed();
   let lanes = [];
-  if (needsLanes) {
+  if (needsLanes && quickBookState.type === 'visite') {
+    // On ne POSTE pas de pistes pour une visite (le serveur les attribue), mais
+    // on refuse de partir si le parc ne peut pas les fournir : c est ce
+    // controle manquant qui laissait creer une reservation que le serveur
+    // rejetait ensuite avec « Aucune piste disponible ».
+    const dispo = allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, duration);
+    if (!dispo || dispo.length < requiredCount) {
+      failQuickBook(`Il faut ${requiredCount} piste(s) libre(s) à ${quickBookState.startTime} : ce créneau ne les a pas.`);
+      return;
+    }
+  } else if (needsLanes) {
     if (quickBookState.autoAssign) lanes = allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, duration);
     else lanes = [...quickBookState.lanes];
     if (!lanes || lanes.length < requiredCount) { failQuickBook('Il faut ' + requiredCount + ' piste(s) disponibles.'); return; }
@@ -21828,9 +21988,19 @@ async function saveQuickBook() {
     // retirerait la résa fraîchement créée (flicker) jusqu'au poll suivant.
     markReservationMutation(payload.reservation.id, payload.reservation, ['status', 'startTime', 'lanes']);
     save();
+    // Lu AVANT closeQuickBook : celui-ci remet quickBookState a null.
+    const demandeOrigine = quickBookState.sourceRequestId;
     closeQuickBook();
     renderStaff();
-    toast('Réservation créée');
+    if (demandeOrigine) {
+      // La demande est traitee : la reservation existe. Le classement ne
+      // doit jamais voler le message de ce qui compte (la reservation),
+      // ni annoncer un echec de reservation s il n a echoue que lui-meme.
+      const classee = await setStaffCustomRequestStatus(demandeOrigine, "done", { silencieux: true });
+      toast(classee ? 'Réservation créée · demande classée « Traitée »' : 'Réservation créée · la demande reste à traiter');
+    } else {
+      toast('Réservation créée');
+    }
   } catch (error) {
     failQuickBook(error.message || 'Impossible de créer la réservation.');
   }

@@ -16480,3 +16480,26 @@ button.pv2-cal-cell:focus-visible {
 }
 .edit-prix-detail li em { font-style: normal; color: var(--text-3, var(--muted)); font-size: 11px; }
 .edit-prix-detail li b { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* CHOISIR PLUSIEURS ACTIVITES : le bouton choisit, le « + » AJOUTE a la
+   visite. Deux gestes distincts sur une seule tuile, pour ne pas doubler la
+   liste (Movsar 2026-08-26). */
+.qb-type-pair { display: inline-flex; align-items: stretch; gap: 0; }
+.qb-type-pair .qb-type-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.qb-type-add {
+  width: 30px;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  background: var(--surface);
+  color: var(--text-3, var(--muted));
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.qb-type-add:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.qb-type-pair.is-active .qb-type-add { border-color: var(--accent); color: var(--accent); }

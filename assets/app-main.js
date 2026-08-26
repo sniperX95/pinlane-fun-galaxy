@@ -5296,6 +5296,13 @@ function goStep(n, options = {}) {
     // 500 ms de course), puis s'éteint pour ne jamais rejouer sur un rendu.
     // is-travelling s'éteint au même moment : les voisines redisparaissent.
     target.dataset.arrived = '1';
+    // LA QUESTION DE L ECRAN QUI ARRIVE S ECRIT, a chaque arrivee. Le texte
+    // monte mot a mot pendant que la piste finit de glisser : les deux
+    // mouvements appartiennent au meme geste. Le titre de l etape 1 est traite
+    // par setRevealState (il arrive avec l ouverture du bloc, pas avec
+    // l etape) ; ici on prend celui des autres ecrans.
+    const titreArrive = target.querySelector('.s2-side .panel-title, .s3-side .panel-title, .recap-decision .panel-title, .success-wrap h2');
+    if (titreArrive) revelerQuestion(titreArrive);
     stepArrivalTimer = setTimeout(() => {
       stepArrivalTimer = null;
       delete target.dataset.arrived;
@@ -6773,7 +6780,9 @@ function renderSlots(formule) {
   // « Composez votre visite » deux lignes plus bas disait deux fois la même
   // chose (Movsar, 2026-08-15). Le titre de la carte porte l'intention, le
   // sous-titre porte la date, et le bloc interne n'a plus d'en-tête.
-  if (slotTitle) slotTitle.textContent = formulaHasAnchorUi() ? 'Composez votre visite' : (formule ? 'Votre programme' : 'Horaire disponible');
+  // Des QUESTIONS, pas des intitules de rubrique : l ecran demande, le client
+  // repond. « Horaire disponible » ne demandait rien.
+  if (slotTitle) slotTitle.textContent = formulaHasAnchorUi() ? 'Composez votre visite' : (formule ? 'Votre programme' : 'À quelle heure ?');
   document.getElementById('slotDate').textContent = ds;
   const tl = document.getElementById('formTimeLimit');
   if (formule) {

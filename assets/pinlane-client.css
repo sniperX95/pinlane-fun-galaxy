@@ -969,6 +969,19 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    (revelerQuestion) et monte derriere un masque, decale de son rang : la
    phrase s ecrit au lieu d apparaitre d un bloc. Le masque est un simple
    overflow sur un span en ligne - aucun filtre, rien qui floute une lettre. */
+/* La question de CHAQUE ecran, pas seulement celle des activites : meme taille,
+   meme poids, meme entree. Un parcours qui pose ses questions de la meme facon
+   se lit sans reapprendre a chaque etape. */
+#clientView .s2-side .panel-title,
+#clientView .s3-side .panel-title,
+#clientView .recap-decision .panel-title {
+  font-size: clamp(21px, 2.4vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  line-height: 1.14;
+  text-wrap: balance;
+}
+
 #clientView .q-word {
   display: inline-block;
   overflow: hidden;

@@ -2844,7 +2844,7 @@ function applyAuthState() {
   // rôle jusqu'à un refresh manuel. On le rebâtit à chaque transition d'auth
   // (login/logout) : reconstruction DOM pure, aucune requête serveur.
   if (typeof window.renderStaffMenu === 'function') window.renderStaffMenu();
-  if (!locked) document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded) ? 'hidden' : '';
+  if (!locked) document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded || state.staffTableExpanded) ? 'hidden' : '';
 }
 
 function openSaasAccess(target = 'staff') {
@@ -17203,7 +17203,15 @@ function getReservationHighlightClasses(reservation) {
   // tous les deux par ici : un seul branchement couvre les deux vues.
   // Le marquage se perime tout seul au bout de trois minutes - un ecran ou tout
   // brille est un ecran ou plus rien ne ressort.
-  if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.estNeuve(reservation.id)) classes.push('is-neuve');
+  if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.estNeuve(reservation.id)) {
+    // Le signal dure trois minutes, l ANIMATION ne joue qu une fois : sinon
+    // chaque re-rendu de la liste relancait le halo et l entree de la ligne,
+    // et l ecran clignotait sans que personne n ait touche a rien.
+    const anime = typeof PinlaneMotion.animationNeuveDue === 'function'
+      ? PinlaneMotion.animationNeuveDue(reservation.id)
+      : true;
+    classes.push(anime ? 'is-neuve' : 'is-neuve-calme');
+  }
   if (reservation.type === 'formule' || reservation.formuleId) classes.push('is-formula');
   const bowlingDuration = getBowlingDurationForReservation(reservation);
   if (bowlingDuration && Math.abs(bowlingDuration - 1) > 0.01) classes.push('is-special-duration');
@@ -18452,12 +18460,19 @@ function renderReservationSection(statusKey, title, subtitle, reservations) {
   // suivre maintenant » sous « Sur place » explique un titre qui se comprend
   // seul : c'est du texte d'aide permanent, qui coute une ligne par section et
   // n'est lu qu'une fois dans une vie de logiciel. Il reste dans l'infobulle.
+  // UNE CLE DE CASCADE PAR SECTION, jamais une clé partagée. Les trois sections
+  // portaient la meme cle « resa.liste » : leurs signatures s ecrasaient l une
+  // l autre a chaque rendu, aucune ne se retrouvait jamais identique, et
+  // l animation d entree des lignes REJOUAIT a chaque re-rendu. C est ce que
+  // Movsar voyait : « ca rafraichit toutes les resa affichees, on VOIT que ca
+  // rafraichit » (2026-08-26). La cascade ne doit se jouer que sur une liste
+  // qui a reellement change.
   return `<div class="res-section workflow ${statusKey}">
     <div class="res-section-head" title="${escapeHtml(subtitle)}">
       <span class="label">${title}</span>
       <span class="count">${ordered.length}</span>
     </div>
-    ${ordered.length ? `<div class="res-dense-list" data-pl-stagger="resa.liste">${ordered.map(renderReservationRow).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
+    ${ordered.length ? `<div class="res-dense-list" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(renderReservationRow).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
   </div>`;
 }
 
@@ -18679,6 +18694,16 @@ function toggleFormulaActivity(reservationId, key, ev) {
     if (state.view === 'staff') { try { renderStaffData(); } catch (e) { /* page peut ne plus être montée */ } }
     if (state.selectedRes && Number(state.selectedRes.id) === Number(reservationId)) { try { renderPos(); } catch (e) { /* overlay fermé */ } }
   };
+  // CE QUI EST DEJA A L ECRAN NE SE REPEINT PAS (2026-08-26, Movsar : « quand
+  // on coche ou decoche ca rafraichit 2 fois »). Le clic peint l etat optimiste ;
+  // l echo du serveur porte la MEME progression et ne changeait donc rien a
+  // l ecran, mais reconstruisait quand meme la fiche et la liste entieres. On
+  // compare ce que le serveur DIT a ce qu on a deja peint, et on ne repeint que
+  // s il dit autre chose (refus, normalisation, coche d un collegue).
+  const empreinteProgression = (p) => JSON.stringify(
+    Object.keys(p || {}).filter((cle) => p[cle] && p[cle].done).sort()
+  );
+  const empreinteOptimiste = empreinteProgression(progress);
   markReservationMutation(reservationId, nextReservation, ['activityProgress']);
   applyOptimisticReservation(nextReservation, { preserveEditState: true });
   refreshSurfaces();
@@ -18692,9 +18717,10 @@ function toggleFormulaActivity(reservationId, key, ev) {
   }).then(payload => {
     if (!isLatestRequest()) return;
     if (payload?.reservation) {
+      const empreinteServeur = empreinteProgression(payload.reservation.activityProgress);
       applyOptimisticReservation(payload.reservation, { preserveEditState: true });
       markReservationMutation(reservationId, payload.reservation, ['activityProgress']);
-      refreshSurfaces();
+      if (empreinteServeur !== empreinteOptimiste) refreshSurfaces();
     }
   }).catch(error => {
     if (!isLatestRequest()) return;
@@ -18868,7 +18894,7 @@ function renderFormulaActivityChecklist(r, opts = {}) {
     const meta = item.done
       ? [item.by ? `par ${escapeHtml(item.by)}` : '', formatActivityDoneTime(item.doneAt)].filter(Boolean).join(' · ')
       : '';
-    return `<button type="button" class="activity-check-row${item.done ? ' is-done' : ''}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
+    return `<button type="button" class="activity-check-row${item.done ? ' is-done' : ''}" data-pl-focus="fiche.activite.${escapeHtml(item.key)}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
       <span class="activity-check-box" aria-hidden="true">${item.done ? ACTIVITY_CHECK_SVG : ''}</span>
       <span class="activity-check-icon-wrap" aria-hidden="true">${renderActivityIcon(item.activityId)}</span>
       <span class="activity-check-main">
@@ -18970,7 +18996,7 @@ function renderPosDetails(r) {
   const paid = r.status === 'paid';
   const method = r.paymentMethod || (paid ? 'Comptoir' : 'Sur place');
   const lateMinutes = getLateArrivalMinutes(r);
-  return `<div class="pos-sheet fade-in">
+  return `<div class="${posSheetClass()}">
     <section class="pos-act">
       <div class="pos-act-head">
         <span class="pos-eyebrow">État du dossier</span>
@@ -19598,6 +19624,11 @@ function renderCommCenter() {
   `;
 }
 
+// Vrai a la PREMIERE peinture d une fiche seulement : l animation d entree
+// ne se joue pas sur le re-rendu d une fiche deja ouverte.
+let posSheetAnimate = true;
+function posSheetClass() { return `pos-sheet${posSheetAnimate ? ' fade-in' : ''}`; }
+
 // L editeur de prix de la fiche : ouvert/ferme par dossier, remis a zero a
 // chaque ouverture de fiche (openPos).
 let posPriceEditOpen = false;
@@ -19769,7 +19800,7 @@ function renderPosEdit(r) {
     ? resolveDisplayFormule(r.formuleId)
     : null;
   const editFormuleLignes = editFormule && Array.isArray(editFormule.desc) ? editFormule.desc : [];
-  return `<div class="edit-shell pos-sheet fade-in">
+  return `<div class="edit-shell ${posSheetClass()}">
     <form class="edit-form" onsubmit="saveEdit(event)">
       <div class="edit-layout">
         <div class="edit-stack">
@@ -21988,7 +22019,22 @@ function renderPosInner() {
   // l'identifiant réel de la réservation, celui qui est stocké et qui sort dans
   // l'export, pas un code reconstruit à l'affichage.
   const subtitle = getPosIdentityParts(r).join(' • ');
+  // LA FICHE NE S OUVRE QU UNE FOIS. Son animation d entree (.fade-in) vivait
+  // sur un conteneur reconstruit a CHAQUE rendu : cocher une activite, un poll,
+  // un changement d etat la faisaient re-apparaitre en fondu sous les yeux du
+  // staff. Elle ne se joue donc qu a la premiere peinture, et pas au re-rendu
+  // d une fiche deja ouverte (2026-08-26, Movsar : « ca rafraichit 2 fois »).
+  posSheetAnimate = !wasOpen;
   const bodyHtml = isEdit ? renderPosEdit(r) : renderPosDetails(r);
+  // Ce qui avait le focus AVANT que le rendu ne detruise le DOM : sans cette
+  // capture, un re-rendu (coche d activite, echo serveur, poll) renvoyait le
+  // clavier sur l onglet « Infos » et le bouton clique perdait son survol.
+  const actifAvant = overlay.contains(document.activeElement) ? document.activeElement : null;
+  const focusAvantRendu = actifAvant ? {
+    cle: actifAvant.getAttribute && actifAvant.getAttribute('data-pl-focus'),
+    debut: (() => { try { return actifAvant.selectionStart; } catch (e) { return null; } })(),
+    fin: (() => { try { return actifAvant.selectionEnd; } catch (e) { return null; } })(),
+  } : null;
   overlay.classList.remove('hidden');
   overlay.classList.add('centered');
   overlay.innerHTML = `
@@ -22006,7 +22052,7 @@ function renderPosInner() {
           <button type="button" role="tab" aria-selected="${isEdit}" class="tab ${isEdit ? 'active' : ''}" onclick="setTab('modifier')">Modifier</button>
         </div>
       </div>
-      <div class="edit-modal-body">${bodyHtml}</div>
+      <div class="edit-modal-body" data-scroll-key="fiche.corps">${bodyHtml}</div>
     </div>
   `;
   if (!overlay.dataset.keyboardBound) {
@@ -22015,8 +22061,30 @@ function renderPosInner() {
   }
   // Le focus entre dans la fenêtre, sur l'onglet actif : c'est le premier
   // élément utile, et ça annonce à la synthèse vocale où on vient d'arriver.
-  const entry = overlay.querySelector('.modal-tabs .tab.active') || overlay.querySelector('.edit-modal');
-  if (entry) entry.focus({ preventScroll: true });
+  // MAIS SEULEMENT A L OUVERTURE (2026-08-26) : re-rendre une fiche DEJA
+  // ouverte volait le focus a chaque fois. Cocher une activite ramenait le
+  // curseur sur l onglet « Infos », donc le bouton qu on venait de cliquer
+  // perdait son survol et son focus : c est une partie de ce que Movsar
+  // decrit comme « ca rafraichit ». On ne replace le focus que si personne
+  // ne l a dans la fiche (rendu d ouverture, ou focus perdu sur un noeud
+  // que le rendu vient de detruire).
+  if (!wasOpen) {
+    const entry = overlay.querySelector('.modal-tabs .tab.active') || overlay.querySelector('.edit-modal');
+    if (entry) entry.focus({ preventScroll: true });
+  } else if (focusAvantRendu) {
+    // Fiche deja ouverte : on REND le focus a la ou il etait, jamais a
+    // l onglet. La cle data-pl-focus survit au innerHTML ; sans elle, on
+    // rattrape au moins la fenetre pour ne pas renvoyer le clavier au body.
+    const repose = focusAvantRendu.cle
+      ? overlay.querySelector(`[data-pl-focus="${focusAvantRendu.cle}"]`)
+      : overlay.querySelector('.edit-modal');
+    if (repose) {
+      repose.focus({ preventScroll: true });
+      if (focusAvantRendu.debut !== null && typeof repose.setSelectionRange === "function") {
+        try { repose.setSelectionRange(focusAvantRendu.debut, focusAvantRendu.fin); } catch (e) {}
+      }
+    }
+  }
 }
 
 // Contact public du centre (téléphone + email) servi par

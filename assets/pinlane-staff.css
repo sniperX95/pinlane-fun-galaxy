@@ -10839,6 +10839,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .pv2-cal-meta { display: none; }
 
   .res-row { grid-template-columns: 56px minmax(0, 1fr); }
+  /* L en-tete de colonnes SUIT la grille des lignes. Il gardait les cinq
+     colonnes du bureau pendant que les lignes passaient a deux : les mots
+     ne surmontaient plus rien et la liste debordait sur la droite. Sur ce
+     format, la ligne se lit seule : l en-tete ne sert plus. */
+  .res-col-head { display: none; }
   .res-row-side { display: none; }
   .res-row-actions { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 
@@ -15967,6 +15972,13 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 .booking.is-neuve { animation: plNeuve 2.6s var(--ease-out-strong, ease) 1, plNeuvePose .3s var(--ease-out-strong, ease) 1; }
 @keyframes plNeuvePose { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
 
+/* Le meme signal, SANS mouvement : pose sur les rendus suivants pendant que
+   la reservation reste « nouvelle ». L information demeure, le clignotement
+   disparait. */
+.res-row.is-neuve-calme, .booking.is-neuve-calme {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-pl-num] { transition: none; }
   .pl-num-up, .pl-num-down { color: inherit; }
@@ -16130,7 +16142,7 @@ button.pv2-cal-cell:focus-visible {
 .table-box.expanded:not(.hidden) {
   position: fixed;
   inset: 0;
-  z-index: 400;
+  z-index: 500;
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -16138,9 +16150,39 @@ button.pv2-cal-cell:focus-visible {
   flex-direction: column;
   box-shadow: none;
   background: var(--surface);
+  /* LA HAUTEUR EST CELLE DE L ECRAN, PAS CELLE DE LA BOITE NORMALE.
+     .table-box:not(.hidden) plafonne a 704px : ce plafond restait applique en
+     plein ecran, la liste s arretait au milieu de l ecran et la sidebar
+     reapparaissait dans le vide noir en dessous (« bugge a mort », 2026-08-26).
+     Le z-index passe au-dessus de la sidebar pour la meme raison. */
+  max-height: none;
+  height: 100vh;
+  width: 100vw;
 }
 .table-box.expanded:not(.hidden) .table-head { flex: 0 0 auto; }
 .table-box.expanded:not(.hidden) .res-list { flex: 1; min-height: 0; overflow-y: auto; }
+/* PAS de `sticky` sur l en-tete de colonnes, meme en plein ecran : deux
+   surfaces collantes au meme `top` avaient deja donne un empilement
+   illisible (defaut paye, capture Movsar, cf. le commentaire de
+   .res-col-head plus haut). Les en-tetes de SECTION sont collants et disent
+   deja ou on se trouve dans la liste. */
+/* Le contenu reste DENSE et lisible au lieu de s etaler sur 1900 px : les
+   colonnes gardent leur largeur utile et la liste se centre. */
+.table-box.expanded:not(.hidden) .res-sections,
+.table-box.expanded:not(.hidden) .res-col-head,
+.table-box.expanded:not(.hidden) .table-toolbar { max-width: 1600px; margin-left: auto; margin-right: auto; }
+/* La sortie se VOIT : meme traitement accentue que le bouton Reduire du
+   planning en plein ecran, sinon on cherche comment revenir. */
+.table-box.expanded:not(.hidden) #tableToggle {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.table-box.expanded:not(.hidden) #tableToggle:hover {
+  background: var(--accent-strong, var(--accent));
+  border-color: var(--accent-strong, var(--accent));
+}
 
 /* RETARD LASER : une pastille rangee avec Formule/Partie/Vague, alignee et
    de la meme taille, plus un badge flottant qui ecrasait l heure de la

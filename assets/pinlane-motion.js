@@ -220,7 +220,22 @@
     return true;
   }
 
-  function oublierNeuves() { neuves = Object.create(null); }
+  function oublierNeuves() { neuves = Object.create(null); animees = Object.create(null); }
+
+  /* L ARRIVEE NE S ANIME QU UNE FOIS. Le marquage « nouveau » dure trois
+     minutes, mais la liste et le planning se re-rendent plusieurs fois par
+     minute : sans ce jeton, le halo et l entree rejouaient A CHAQUE rendu
+     pendant tout ce temps, et l ecran clignotait tout seul (2026-08-26,
+     Movsar : « on VOIT que ca rafraichit »). Le SIGNAL, lui, reste : la
+     ligne garde son liistere accent, sans mouvement. */
+  var animees = Object.create(null);
+  function animationNeuveDue(id) {
+    if (id == null) return false;
+    var cle = String(id);
+    if (animees[cle]) return false;
+    animees[cle] = true;
+    return true;
+  }
 
   /* ---- LE DECLENCHEUR ----------------------------------------------------
      `renderStaffData` a une demi-douzaine de sorties selon la page, et le
@@ -258,6 +273,7 @@
     marquerNeuves: marquerNeuves,
     estNeuve: estNeuve,
     oublierNeuves: oublierNeuves,
+    animationNeuveDue: animationNeuveDue,
     reduit: reduit,
   };
 }());

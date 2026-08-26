@@ -326,6 +326,72 @@ async function main() {
       }
     }
 
+    // --- G : la puce de retard ne recouvre rien ---
+    // Movsar, 2026-08-26 : « le logo pour laser game est cache par le logo en
+    // retard ». La puce etait posee en position absolue en haut a droite de la
+    // carte, donc PAR-DESSUS la tete. Mesure avant correctif : puce de 42 px sur
+    // une tete de 105 px, nom recouvert.
+    console.log('\n[G] La puce de retard prend sa place au lieu de flotter dessus');
+    const g = await page.evaluate(async () => {
+      state.reservations = window.__QA_BUILD__(state.currentDate);
+      state.staffResourceView = 'bowling'; state.staffPlanningExpanded = false;
+      const r = state.reservations.find((x) => x.id === 9004) || state.reservations[0];
+      r.opsPlan = Object.assign({}, r.opsPlan || {}, { delayFlag: { minutes: 10, from: '18:00', to: '18:10' } });
+      save(); renderStaff();
+      await new Promise((res) => setTimeout(res, 500));
+      const carte = document.querySelector(`.booking[data-booking-res-id="${r.id}"]`);
+      if (!carte) return { erreur: 'aucune carte' };
+      const puce = carte.querySelector('.delay-indicator');
+      if (!puce) return { erreur: 'aucune puce de retard' };
+      const rect = (el) => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, right: b.right, bottom: b.bottom, w: Math.round(b.width) }; };
+      const chevauche = (m, n) => !(m.right <= n.x + 0.5 || n.right <= m.x + 0.5 || m.bottom <= n.y + 0.5 || n.bottom <= m.y + 0.5);
+      const rp = rect(puce);
+      const voisins = [...carte.querySelectorAll('.booking-name, [class*="flag-"]')];
+      return {
+        largeurPuce: rp.w,
+        recouvre: voisins.filter((v) => chevauche(rp, rect(v))).map((v) => String(v.className).slice(0, 24)),
+        voisins: voisins.length,
+      };
+    });
+    if (ok(g && !g.erreur, `carte en retard rendue (${g && g.erreur ? g.erreur : `puce ${g.largeurPuce}px, ${g.voisins} voisin(s)`})`)) {
+      ok(g.recouvre.length === 0, `la puce ne recouvre ni le nom ni les marques (${g.recouvre.join(', ') || 'rien'})`);
+      // CONTRE-EPREUVE PAR MUTATION : on lui rend sa position absolue. Elle DOIT
+      // se remettre a recouvrir, sinon l assertion ne mesure rien.
+      const mute = await page.evaluate(async () => {
+        const s = document.createElement('style');
+        s.textContent = '.booking .delay-indicator { position: absolute !important; top: 3px; right: 4px; }';
+        document.head.appendChild(s);
+        await new Promise((res) => setTimeout(res, 200));
+        const carte = document.querySelector('.booking .delay-indicator')?.closest('.booking');
+        const puce = carte && carte.querySelector('.delay-indicator');
+        const rect = (el) => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, right: b.right, bottom: b.bottom }; };
+        const chevauche = (m, n) => !(m.right <= n.x + 0.5 || n.right <= m.x + 0.5 || m.bottom <= n.y + 0.5 || n.bottom <= m.y + 0.5);
+        const combien = (carte && puce)
+          ? [...carte.querySelectorAll('.booking-name, [class*="flag-"]')].filter((v) => chevauche(rect(puce), rect(v))).length
+          : 0;
+        s.remove();
+        return combien;
+      });
+      ok(mute > 0, `contre-preuve : en position absolue, la puce recouvre de nouveau ${mute} element(s) -> le gate sait rougir`);
+    }
+
+    // --- H : un refus reste affiche assez longtemps pour etre lu ---
+    // Movsar, 2026-08-26 : « on a pas le temps de lire ici la notif ». Le delai
+    // etait fixe a 3,6 s pour tous les messages ; le refus de deplacement fait
+    // ~45 mots, soit environ 13 s de lecture.
+    console.log('\n[H] Un refus reste lisible, une confirmation reste breve');
+    const long = "Cette réservation contient un Laser Game : en déplaçant le bowling, sa partie passerait à 20:30, et l'arène n'est pas libre à ce moment. Choisissez un autre horaire de bowling, ou déplacez d'abord la partie laser.";
+    await page.evaluate((texte) => { showPlanningMoveNotice('Le Laser Game suit le déplacement', texte, 'warning'); }, long);
+    await page.waitForTimeout(4200);
+    const encoreLa = await page.evaluate(() => !!document.querySelector('#planningMoveNotice.is-visible'));
+    ok(encoreLa, `un refus de 45 mots est encore lisible apres 4,2 s (${encoreLa})`);
+    // CONTRE-EPREUVE : une confirmation courte, elle, s efface vite. Sans elle,
+    // « ca reste affiche » passerait meme si la notice ne partait plus jamais.
+    await page.evaluate(() => { showPlanningMoveNotice('Deplace', '', 'success'); });
+    await page.waitForTimeout(2400);
+    const partie = await page.evaluate(() => !!document.querySelector('#planningMoveNotice.is-visible'));
+    ok(!partie, `une confirmation breve s efface bien apres 2,4 s (visible: ${partie})`);
+
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); failures += errs.length; }
   } catch (e) {
     console.error('\nlaser-drag-check FAIL:', e.stack || e.message);

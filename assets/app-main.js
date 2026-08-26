@@ -45,9 +45,20 @@ function showPlanningMoveNotice(title, message = '', tone = 'warning') {
     notice.classList.add('is-visible');
   }
   clearTimeout(planningMoveNoticeTimer);
+  // LE TEMPS D AFFICHAGE SUIT LA LONGUEUR DU TEXTE. 3,6 s etaient fixes, quel
+  // que soit le message : le refus de deplacement fait ~45 mots, soit environ
+  // 13 s de lecture a 200 mots/minute. Movsar, 2026-08-26 : « on a pas le temps
+  // de lire ici la notif ». Une confirmation courte garde son passage rapide ;
+  // un refus qui explique quoi faire reste le temps d etre lu, plafonne pour ne
+  // pas encombrer l ecran. La notice est en pointer-events: none : la rallonger
+  // ne bloque aucun clic.
+  const mots = String(`${title || ''} ${message || ''}`).trim().split(/\s+/).filter(Boolean).length;
+  const duree = tone === 'success'
+    ? 1900
+    : Math.min(14000, Math.max(4000, Math.round(mots * 300)));
   planningMoveNoticeTimer = setTimeout(() => {
     notice.classList.remove('is-visible');
-  }, tone === 'success' ? 1900 : 3600);
+  }, duree);
 }
 
 window.showPlanningMoveNotice = showPlanningMoveNotice;
@@ -17994,11 +18005,19 @@ function renderPlanning() {
       const offreHtml = renderCardActivityTag(r, 'bowling');
       const offreSurSaLigne = densClass === 'dens-lg';
       bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
-        ${renderDelayIndicator(r)}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
           ${renderCardFlags(r)}
+          ${/* LA PUCE DE RETARD PREND SA PLACE AU LIEU DE FLOTTER DESSUS. Elle
+               etait posee en position absolue en haut a droite de la carte, donc
+               par-dessus la tete : mesure, une puce de 42 px de large recouvrait
+               le nom (105 px de tete) et les icones d activite. Movsar,
+               2026-08-26 : « le logo pour laser game est cache par le logo en
+               retard ». Elle entre donc dans la ligne, apres les marques, et
+               cede son libelle toute seule quand la carte est trop courte
+               (regle .booking.dens-xs deja en place). */''}
+          ${renderDelayIndicator(r)}
           ${renderBookingStateMark(cls)}
         </div>
         ${offreSurSaLigne ? `<div class="booking-offer">${offreHtml}</div>` : ''}
@@ -20968,12 +20987,22 @@ function ajouterQuickActivite(id) {
   else if (id === 'laser_game') visit.laser_game.on = true;
   else visit.others[id] = true;
   quickBookState.type = 'visite';
+  // Cumuler des activites ne rend pas la reservation « sur mesure » : voir
+  // setQuickType. Le type sert au serveur, le drapeau sert a l ecran.
+  quickBookState.surMesure = false;
   quickBookState.activityId = '';
   quickBookState.formuleId = '';
   quickBookState.lanes = [];
   quickBookState.autoAssign = false;
   syncQuickBookDuration();
   renderQuickBook();
+}
+
+// LE NOM D UNE VISITE, C EST CE QU ELLE CONTIENT. « Sur mesure » ne dit rien a
+// quelqu un qui lit son planning : « Bowling + Laser Game » se comprend seul.
+function decrireVisiteRetenue() {
+  const choix = getQuickBookActivityChoices().filter((c) => quickActiviteRetenue(c.id));
+  return choix.length ? choix.map((c) => c.label).join(' + ') : '';
 }
 
 // Une activite est-elle retenue, quel que soit le mode (mono ou visite) ?
@@ -21008,7 +21037,7 @@ function renderQuickBookTypeButtons() {
   const modes = `<div class="qb-mode-row">`
     + `<span class="qb-mode-label">ou composer</span>`
     + `<button type="button" class="qb-mode-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>`
-    + `<button type="button" class="qb-mode-btn ${quickBookState.type === 'visite' ? 'active' : ''}" onclick="setQuickType('visite')">Sur mesure</button>`
+    + `<button type="button" class="qb-mode-btn ${quickBookState.type === 'visite' && quickBookState.surMesure ? 'active' : ''}" onclick="setQuickType('visite')">Sur mesure</button>`
     + `</div>`;
   return `<div class="qb-type-grid">${tuiles}</div>${modes}`;
 }
@@ -21028,6 +21057,14 @@ function setQuickType(type, activityId = '') {
     quickBookState.lanes = [];
     quickBookState.autoAssign = false;
   }
+  // « SUR MESURE » EST UN CHOIX, PAS UNE CONSEQUENCE. Cocher deux activites
+  // fabrique bien une visite cote donnees (le serveur ne connait que ca pour un
+  // programme multi-activites), mais ce n est PAS le mode « sur mesure » : c est
+  // juste un dossier qui contient plusieurs activites, et c est normal. Movsar,
+  // 2026-08-26 : « quand on choisis plusieurs faut pas que ca mette sur mesure
+  // hein, c est juste ils ont plusieurs activites et c est normal ». Le drapeau
+  // ne se pose donc QUE lorsqu on clique le bouton.
+  quickBookState.surMesure = type === 'visite';
   if (type === 'visite') {
     // Sur mesure : pistes et lancements attribues par le SERVEUR a la
     // creation ; le bowling est pre-coche (activite socle du centre).
@@ -21395,7 +21432,7 @@ function getQuickBookHeader(formule) {
     return { eyebrow: 'Staff Booking', title: s.type === 'laser' ? 'Nouvelle session laser' : 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
   }
   if (s.type === 'visite') {
-    return { eyebrow: 'Sur mesure', title: 'Visite multi-activités', sub: 'Composez les activités et ajustez le prix si besoin : tout part dans une seule réservation.' };
+    return { eyebrow: s.surMesure ? 'Sur mesure' : 'Plusieurs activités', title: decrireVisiteRetenue() || 'Visite multi-activités', sub: 'Composez les activités et ajustez le prix si besoin : tout part dans une seule réservation.' };
   }
   return { eyebrow: 'Staff Booking', title: 'Réservation rapide', sub: '' };
 }
@@ -21457,7 +21494,7 @@ function renderQuickBookInner() {
     : quickBookState.type === 'laser'
       ? `Laser Game - ${laserOption.label}`
       : quickBookState.type === 'visite'
-        ? 'Sur mesure'
+        ? (decrireVisiteRetenue() || 'Sur mesure')
         : formule ? formule.name : 'Choisir une formule';
   const selectedSlotLabel = selectedSlot
     ? `${selectedSlot.time} - ${quickBookState.type === 'laser' ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : needsLanes ? `${selectedSlot.freeCount} piste(s) libre(s)` : 'disponible'}`
@@ -21984,7 +22021,13 @@ async function saveQuickBook() {
       : quickBookState.type === 'laser'
         ? 'Laser Game'
         : quickBookState.type === 'visite'
-          ? 'Sur mesure'
+          // AUCUN LIBELLE IMPOSE POUR UNE VISITE. Le serveur sait la decrire
+          // depuis son programme (« Bowling 1h · Laser 2 parties »), et il garde
+          // le libelle du comptoir quand il y en a un : lui envoyer « Sur
+          // mesure » ecrasait cette description par un mot creux, et le planning
+          // affichait « Sur mesure » pour un dossier qui contient simplement
+          // deux activites.
+          ? undefined
           : quickBookState.type === 'activity'
             ? ((typeof getCenterActivity === 'function' && getCenterActivity(quickBookState.activityId)?.name) || 'Activité')
             : 'Bowling Classique',
@@ -22253,6 +22296,22 @@ function repaintKeepingScroll(root, render) {
   };
   const memeClasse = (selecteur) => Array.from(root.querySelectorAll(selecteur));
   const scrolled = [];
+  // LA PAGE ELLE-MEME FAIT PARTIE DE CE QU ON REGARDE. `querySelectorAll('*')`
+  // ne rend que les DESCENDANTS : ni la racine re-rendue, ni le document. Or
+  // beaucoup d ecrans defilent avec la fenetre, pas dans un conteneur : leur
+  // position n etait donc jamais rendue. Movsar, 2026-08-26, sur la page
+  // Clients : « quand on touche sur un client ca nous tp tout en haut de la
+  // page ». Selectionner un client RACCOURCIT la page (le panneau de detail est
+  // plus court que la liste) : le navigateur ramene alors le defilement dans la
+  // nouvelle hauteur, et l ecran saute. Mesure avant correctif : hauteur
+  // defilable 402 px -> 170 px, position 200 -> 170. On memorise donc aussi la
+  // page et la racine, et on les repose APRES le rendu, quand la hauteur est
+  // revenue.
+  const page = (typeof document !== 'undefined' && (document.scrollingElement || document.documentElement)) || null;
+  const pageTop = page ? page.scrollTop : 0;
+  const pageLeft = page ? page.scrollLeft : 0;
+  const racineTop = root.scrollTop;
+  const racineLeft = root.scrollLeft;
   root.querySelectorAll('*').forEach((el) => {
     if (!el.scrollTop && !el.scrollLeft) return;
     const cle = cleDe(el, memeClasse);
@@ -22271,7 +22330,16 @@ function repaintKeepingScroll(root, render) {
         : root.querySelectorAll(cle.selecteur)[cle.rang];
       if (el) { el.scrollTop = top; el.scrollLeft = left; }
     });
-    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('is-repaint')));
+    if (racineTop || racineLeft) { root.scrollTop = racineTop; root.scrollLeft = racineLeft; }
+    if (page && (pageTop || pageLeft)) { page.scrollTop = pageTop; page.scrollLeft = pageLeft; }
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      // Une deuxieme passe apres deux images : certains panneaux se remplissent
+      // en differe (images, mesure de hauteur), et la page n a retrouve sa
+      // hauteur qu a ce moment-la. Sans elle, la restauration ci-dessus est
+      // clampee a la hauteur intermediaire et l ecran saute quand meme.
+      if (page && pageTop && page.scrollTop !== pageTop) page.scrollTop = pageTop;
+      root.classList.remove('is-repaint');
+    }));
   }
 }
 

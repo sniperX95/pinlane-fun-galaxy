@@ -612,6 +612,58 @@ async function main() {
     ok(apresRestore < BUDGET, `restauration : le clic est redevenu vif (${apresRestore} ms, budget ${BUDGET} ms)`);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
+    console.log('\n[SCROLL] Selectionner un client ne fait pas sauter la page');
+    // Movsar, 2026-08-26 : « quand on touche sur un client ca nous tp tout en
+    // haut de la page ». La liste est bornee a 720 px et defile chez elle ; la
+    // fiche, elle, ne l etait pas : sa hauteur suivait son contenu, donc chaque
+    // client changeait la hauteur de la PAGE, et le navigateur ramenait le
+    // defilement dans la nouvelle hauteur. Mesure avant correctif : hauteur
+    // defilable 402 px -> 170 px sur un seul clic.
+    const sauts = await page.evaluate(async () => {
+      const doc = document.scrollingElement || document.documentElement;
+      const lignes = () => [...document.querySelectorAll('#staffClientsPage tr[onclick*="selectStaffClient"]')];
+      const out = [];
+      for (const index of [0, 3, 7, 1]) {
+        const l = lignes();
+        if (!l[index]) continue;
+        doc.scrollTop = doc.scrollHeight;
+        await new Promise((r) => setTimeout(r, 120));
+        const avant = Math.round(doc.scrollTop);
+        l[index].click();
+        await new Promise((r) => setTimeout(r, 450));
+        out.push(Math.abs(avant - Math.round(doc.scrollTop)));
+      }
+      return out;
+    });
+    const pireSaut = sauts.length ? Math.max(...sauts) : -1;
+    ok(sauts.length >= 3, `assez de clients pour mesurer (${sauts.length} clics)`);
+    ok(pireSaut >= 0 && pireSaut <= 8, `passer d un client a l autre ne deplace pas la page (pire saut ${pireSaut} px, sauts ${sauts.join('/')})`);
+    // CONTRE-EPREUVE PAR MUTATION : on rend a la fiche sa hauteur libre. Le saut
+    // DOIT revenir, sinon l assertion ci-dessus ne mesure rien.
+    const sautsMutes = await page.evaluate(async () => {
+      const mutation = document.createElement('style');
+      mutation.id = 'qa-mutation-fiche';
+      mutation.textContent = '.crm-fiche-panel { max-height: none !important; overflow: visible !important; }';
+      document.head.appendChild(mutation);
+      const doc = document.scrollingElement || document.documentElement;
+      const lignes = () => [...document.querySelectorAll('#staffClientsPage tr[onclick*="selectStaffClient"]')];
+      const out = [];
+      for (const index of [0, 3, 7, 1]) {
+        const l = lignes();
+        if (!l[index]) continue;
+        doc.scrollTop = doc.scrollHeight;
+        await new Promise((r) => setTimeout(r, 120));
+        const avant = Math.round(doc.scrollTop);
+        l[index].click();
+        await new Promise((r) => setTimeout(r, 450));
+        out.push(Math.abs(avant - Math.round(doc.scrollTop)));
+      }
+      mutation.remove();
+      return out;
+    });
+    const pireMute = sautsMutes.length ? Math.max(...sautsMutes) : 0;
+    ok(pireMute > 8, `contre-preuve : fiche a hauteur libre, la page saute de nouveau (${pireMute} px) -> le gate sait rougir`);
+
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); }
   } catch (e) {
     console.error('\ncrm-clients-check FAIL:', e.stack || e.message);

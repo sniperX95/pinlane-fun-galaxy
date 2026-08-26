@@ -168,6 +168,49 @@ async function main() {
     const backTo1 = await statusText(page);
     ok(/1\s*piste requise/.test(backTo1), `retour a 4 joueurs : la ligne redescend a 1 piste (${backTo1.trim()}) -> la sonde suit vraiment l etat`);
 
+    console.log('\n[5. Plusieurs activites, ce n est PAS « sur mesure »]');
+    // Movsar, 2026-08-26 : « quand on choisis plusieurs faut pas que ca mette sur
+    // mesure hein, c est juste ils ont plusieurs activites et c est normal ».
+    // Cocher deux activites fabrique bien une VISITE cote donnees (le serveur ne
+    // connait que ca pour un programme multi-activites), mais l ecran ne doit pas
+    // annoncer un mode que personne n a choisi, et le dossier doit porter le nom
+    // de ce qu il contient.
+    await page.evaluate(() => window.setQuickType('bowling'));
+    await page.waitForTimeout(400);
+    const multi = await page.evaluate(async () => {
+      const modeActif = () => {
+        const actif = [...document.querySelectorAll('.qb-mode-btn')].find((b) => b.classList.contains('active'));
+        return actif ? actif.textContent.trim() : '';
+      };
+      const avant = modeActif();
+      const plus = [...document.querySelectorAll('.qb-type-add')];
+      if (plus[1]) plus[1].click();
+      await new Promise((r) => setTimeout(r, 500));
+      return {
+        avant,
+        apres: modeActif(),
+        // `quickBookState` est un `let` de module : il vit dans le scope global
+        // lexical, PAS sur window. `window.quickBookState` rend undefined et la
+        // sonde mentirait (le gate l a deja paye plus haut, section 3).
+        type: (typeof quickBookState !== 'undefined' && quickBookState) ? quickBookState.type : 'introuvable',
+        tuiles: [...document.querySelectorAll('.qb-type-tile.is-active .qb-type-btn')].map((b) => b.textContent.trim()),
+      };
+    });
+    ok(multi.tuiles.length === 2, `deux activites sont retenues (${multi.tuiles.join(' + ')})`);
+    ok(multi.type === 'visite', `le dossier reste une visite cote donnees (${multi.type})`);
+    ok(multi.apres !== 'Sur mesure', `« Sur mesure » ne s allume PAS tout seul (mode actif : « ${multi.apres || 'aucun'} »)`);
+    // CONTRE-EPREUVE : cliquer VRAIMENT « Sur mesure » doit, lui, l allumer.
+    // Sans elle, l assertion ci-dessus passerait meme si le mode n existait plus.
+    const choisi = await page.evaluate(async () => {
+      const btn = [...document.querySelectorAll('.qb-mode-btn')].find((b) => b.textContent.trim() === 'Sur mesure');
+      if (!btn) return { erreur: 'bouton absent' };
+      btn.click();
+      await new Promise((r) => setTimeout(r, 500));
+      const actif = [...document.querySelectorAll('.qb-mode-btn')].find((b) => b.classList.contains('active'));
+      return { actif: actif ? actif.textContent.trim() : '' };
+    });
+    ok(choisi.actif === 'Sur mesure', `choisi explicitement, il s allume (${choisi.actif || 'aucun'})`);
+
     if (process.env.QB_SHOT) {
       await page.evaluate(() => { const i = [...document.querySelectorAll('#quickBookOverlay input[type="number"]')].pop(); i.value = '9'; i.dispatchEvent(new Event('input', { bubbles: true })); });
       await page.waitForTimeout(500);

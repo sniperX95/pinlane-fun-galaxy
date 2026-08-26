@@ -8828,7 +8828,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 .delay-indicator:hover { filter: brightness(0.96); }
 .delay-indicator .delay-indicator-label { font-variant-numeric: tabular-nums; }
-.booking .delay-indicator { position: absolute; top: 3px; right: 4px; z-index: 3; }
+.booking .delay-indicator { margin-left: auto; flex: none; }
 .booking.is-delayed { border-left-color: var(--warning); box-shadow: inset 0 0 0 1px var(--warning-soft); }
 .laser-group-card.is-delayed { box-shadow: inset 0 0 0 1px var(--warning); }
 .laser-group-card .delay-indicator { margin-left: auto; }
@@ -11365,7 +11365,15 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* Fiche client : UNE surface, sections séparées par hairlines (pas de
    sous-boîtes empilées : la hiérarchie vient des titres et de l'espace). */
-.crm-fiche-panel { padding: 0; position: sticky; top: 0; overflow: hidden; }
+/* LA HAUTEUR DE LA PAGE NE DOIT PAS DEPENDRE DU CLIENT SELECTIONNE. La liste
+   est bornee a 720 px et defile a l interieur ; la fiche, elle, ne l etait pas :
+   sa hauteur suivait son contenu, donc un client a gros historique allongeait
+   la page et un client sans historique la raccourcissait. A chaque clic, le
+   navigateur ramenait le defilement dans la nouvelle hauteur et l ecran sautait.
+   Movsar, 2026-08-26 : « quand on touche sur un client ca nous tp tout en haut de
+   la page ». Mesure avant correctif : hauteur defilable 402 px -> 170 px sur un
+   seul clic. La fiche est donc bornee comme la liste et defile chez elle. */
+.crm-fiche-panel { padding: 0; position: sticky; top: 0; overflow: auto; max-height: 720px; }
 .crm-fiche { display: flex; flex-direction: column; }
 .crm-sec { display: flex; flex-direction: column; gap: 10px; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--line); }
 .crm-fiche > .crm-sec:first-child { border-top: 0; }
@@ -11465,7 +11473,10 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 @media (max-width: 1100px) {
   .crm-split { grid-template-columns: 1fr; }
-  .crm-fiche-panel { position: static; }
+  /* En une seule colonne, la fiche passe SOUS la liste : un defilement
+     imbrique n aurait plus aucun sens, et la page ne saute pas puisque les
+     deux blocs s empilent. */
+  .crm-fiche-panel { position: static; max-height: none; overflow: visible; }
   .crm-table .col-secondary, .crm-table td.col-secondary { display: none; }
 }
 
@@ -16513,16 +16524,25 @@ button.pv2-cal-cell:focus-visible {
   flex: 1;
   width: 100%;
   min-height: 40px;
-  padding-right: 30px;
+  /* LE « + » A BESOIN D AIR. Avec 30 px de reserve, une pastille de 20 px posee
+     a 6 px du bord ne laissait que 4 px entre la fin du nom et le cercle : sur
+     « Minigolf Blacklight » ou « Fun Run by PIXEL », les deux se touchaient, et
+     un nom plus long serait passe SOUS la pastille faute de coupe. Movsar,
+     2026-08-26 : « le plus est mal cadre ». Reserve portee a 38 px, pastille
+     reculee a 8 px : 10 px d ecart, et le nom coupe proprement. */
+  padding-right: 38px;
   text-align: left;
   padding-left: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Le « + » est une PASTILLE de coin, pas un second bouton colle : il ne prend
    plus de largeur au nom de l activite. */
 .qb-type-add {
   position: absolute;
   top: 50%;
-  right: 6px;
+  right: 8px;
   transform: translateY(-50%);
   width: 20px;
   height: 20px;

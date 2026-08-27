@@ -8811,16 +8811,21 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .delay-notify-textarea:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Indicateur de retard sur les cartes planning (bowling + laser) */
+/* LE RETARD SE SIGNALE, IL NE CRIE PAS (2026-08-27). Movsar : « rends plus petit
+   et quali le truc de retard ». Le cerne plein et la bordure pleine en faisaient
+   l element le plus bruyant d une carte de planning, devant le nom du client.
+   Fond et bordure s adoucissent, la pastille maigrit ; la couleur d alerte reste
+   sur le texte et l icone, qui suffisent a la faire remarquer. */
 .delay-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 1px 5px 1px 3px;
-  border: 1px solid var(--warning);
+  gap: 2px;
+  padding: 0 4px 0 3px;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
   border-radius: 999px;
-  background: var(--warning-soft);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
   color: var(--warning);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -16406,7 +16411,23 @@ button.pv2-cal-cell:focus-visible {
 .planning-box.expanded:not(.hidden) .legend,
 .table-box.expanded:not(.hidden) .legend { gap: 8px; font-size: 11.5px; white-space: nowrap; }
 
-.planning-head .planning-actions,.planning-head .planning-actions,
+/* LES ACTIONS NE S EMPILENT JAMAIS (2026-08-27). Movsar : « ca rend le truc trop
+   gros, mets-le a gauche [...] trouve une place mais pas en bas comme ca ». La
+   recherche et le bouton passaient l un SOUS l autre des que la place manquait,
+   ce qui gonflait la hauteur de l en-tete. Ils restent sur une ligne, bouton
+   d abord : c est la sortie du plein ecran, elle se trouve sans chercher, et le
+   champ de recherche cede de la largeur avant que quoi que ce soit descende. */
+.table-head .table-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.table-head .table-actions .planning-toggle { order: -1; flex: none; }
+.table-head .table-actions .search-wrap { min-width: 0; flex: 0 1 auto; }
+
+.planning-head .planning-actions,.planning-head .planning-actions,.planning-head .planning-actions,
 .table-head .table-actions { flex-wrap: nowrap; }
 .planning-box.expanded:not(.hidden) .fs-switch,
 .table-box.expanded:not(.hidden) .fs-switch {

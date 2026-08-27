@@ -17708,7 +17708,7 @@ function renderDelayIndicator(reservation) {
   const range = flag.from && flag.to ? ` ${flag.from}→${flag.to}` : '';
   const tip = `Retardée de ${mins} min${range ? ` (${flag.from}→${flag.to})` : ''}, cliquer pour retirer le retard et remettre à l'heure d'origine`;
   return `<button type="button" class="delay-indicator" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}" onmousedown="event.stopPropagation()" onclick="revertDelay(event, ${reservation.id})">`
-    + `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`
+    + `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`
     + `<span class="delay-indicator-label">+${mins}</span></button>`;
 }
 
@@ -18411,7 +18411,10 @@ function renderLaserPlanning() {
         <span class="laser-card-pills">
           ${renderDelayIndicator(reservation)}
           ${isFormulaGroup ? '<span class="laser-card-pill formula">Formule</span>' : '<span class="laser-card-pill direct">Direct</span>'}
-          ${laserGames > 1 ? `<span class="laser-card-pill pass">P${passIndex}/${laserGames}</span>` : ''}
+          ${/* PAS DE PASTILLE « P1/2 » : le libelle de la carte dit deja
+               « Partie 1/2 » juste au-dessus. Movsar, 2026-08-27 : « la ya trop
+               d info inutile ». La vague, elle, reste : elle n est ecrite nulle
+               part ailleurs. */''}
           ${waveCount > 1 ? `<span class="laser-card-pill wave">V${waveIndex}/${waveCount}</span>` : ''}
           ${window.formulaFallback ? '<span class="laser-card-pill fallback">Plan estimé</span>' : ''}
         </span>`;

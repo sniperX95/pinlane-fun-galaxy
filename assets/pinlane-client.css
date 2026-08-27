@@ -3786,12 +3786,24 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
      colonne, la decision dessous. */
   #clientView #step4 .recap-columns {
     display: grid;
+    /* La LISTE defile chez elle, la DECISION reste visible. En une colonne sans
+       cette borne, le bouton de confirmation sortait de l ecran : le gate l a vu
+       (« la decision (CTA du pied d ecran) est entierement visible » rouge). */
+    grid-template-rows: minmax(0, 1fr) auto;
     grid-template-columns: minmax(0, 1fr);
-    align-items: start;
-    gap: var(--space-4);
+    align-items: stretch;
+    gap: var(--space-3);
     width: min(860px, 100%);
     margin-inline: auto;
+    min-height: 0;
+    height: 100%;
   }
+  #clientView #step4 #recapList {
+    min-height: 0;
+    overflow: hidden auto;
+    scrollbar-width: thin;
+  }
+  #clientView #step4 .recap-decision { position: static; }
   #clientView #step4 .recap-decision {
     position: sticky;
     top: var(--space-4);
@@ -7602,7 +7614,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .step3-body .request-field textarea.input { min-height: 48px; }
   #clientView #step3 .field-honest-note { font-size: 11.5px; margin: 2px 0 0; }
   #clientView #step3 .s3-side .panel-kicker { margin-bottom: 2px; }
-  #clientView #step3 .request-count { font-size: 10.5px; }
+  #clientView #step3 .request-count { font-size: 11.5px; }
 
   /* --- d2. RECAP : lignes compactes pleine largeur ---------------------- */
   #clientView .recap-columns { display: flex; flex-direction: column; gap: var(--space-3); }
@@ -7682,7 +7694,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* --- b. en-tete de page creneau --------------------------------------- */
   #clientView .anchor-mobile-title { display: flex; flex-direction: column; gap: 1px; white-space: normal; overflow: visible; text-overflow: clip; }
   #clientView .anchor-mobile-title strong { font-size: 15px; font-weight: 800; line-height: 1.1; }
-  #clientView .anchor-mobile-title small { font-size: 10.5px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; }
+  /* 11,5 px : plancher de lisibilite du projet, verifie par le gate one-screen. */
+  #clientView .anchor-mobile-title small { font-size: 11.5px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; }
 
   /* --- c. le choix d ordre : dans la BARRE, premiere page seulement ------ */
   /* En bloc sous la grille il coutait 48 px et faisait defiler le 390x664

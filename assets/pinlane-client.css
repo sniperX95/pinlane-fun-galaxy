@@ -1030,7 +1030,9 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-4);
+  /* Resserre : entre la question et le selecteur de mode, un ecart de 24 px
+     creusait un trou au milieu de l ecran. */
+  gap: var(--space-3);
   text-align: center;
 }
 #clientView .s1-what-head > * { width: 100%; }
@@ -1208,14 +1210,20 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 #clientView .s2-side {
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-4);
+  /* COMPACT. Movsar : « le bloc est aussi gros c est abuse » et « tu laisses
+     trop d espace vide ». La tete d ecran annonce, elle ne doit pas occuper le
+     tiers de l ecran : rembourrage et ecarts resserres, la place rendue aux
+     heures qui sont, elles, la vraie reponse. */
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
   text-align: center;
 }
-#clientView .s2-side .panel-kicker { flex: none; font-size: 11.5px; letter-spacing: 0.12em; color: var(--muted); }
+#clientView .s2-side .panel-kicker { flex: none; font-size: 11.5px; letter-spacing: 0.12em; color: var(--muted); margin: 0; }
 #clientView .s2-side .panel-title {
   flex: none;
-  font-size: clamp(23px, 3.4vw, 38px);
+  /* Plus mesuree que sur l ecran des activites : ici la reponse est une grille
+     de dizaines d heures, c est elle qui doit tenir a l ecran. */
+  font-size: clamp(21px, 2.6vw, 30px);
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.12;
@@ -1370,6 +1378,70 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 /* --- ETAPE 4 : la liste a gauche, la decision a droite -------------------- */
 #clientView .step4-body { grid-template-columns: 1fr; align-content: center; }
 
+/* LES DEUX DERNIERS ECRANS SE CENTRENT VRAIMENT (2026-08-27). Leur titre etait
+   centre DANS son panneau, mais le panneau, lui, etait pose sur le cote :
+   mesure a 1440 px, l ecart entre le centre du titre et le centre de l ecran
+   valait -290 px sur le contact et +460 px sur le recapitulatif. Une question
+   posee a 460 px du centre n est pas une question centree. Les deux ecrans
+   passent en UNE colonne de lecture, centree, question en haut. */
+@media (min-width: 900px) {
+  #clientView .step3-body {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+  }
+  #clientView .step3-body > * {
+    width: min(860px, 100%);
+    margin-inline: auto;
+  }
+  #clientView #step4 .recap-columns {
+    grid-template-columns: minmax(0, 1fr);
+    width: min(860px, 100%);
+    margin-inline: auto;
+  }
+}
+/* CONTACT ET RECAPITULATIF : DES ECRANS-QUESTION COMME LES AUTRES (2026-08-27).
+   Leurs titres etaient deja des questions (« Qui reserve ? », « Tout est
+   bon ? ») mais la mise en page etait restee celle d avant : un panneau lateral
+   aligne a gauche, sans centrage ni entree. Movsar : « vrm tout doit avoir une
+   question qui arrive [...] et ca pour tout le ptn de tunnel ». */
+#clientView #step3 .s3-side,
+#clientView #step4 .recap-decision {
+  text-align: center;
+}
+#clientView #step3 .s3-side .panel-kicker,
+#clientView #step4 .recap-decision .panel-kicker {
+  /* 11,5 px : le plancher du projet. Une proposition a 11 px a ete rejetee en
+     revue, elle propageait un defaut au lieu de reprendre un modele sain. */
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+#clientView #step3 .s3-side .panel-title,
+#clientView #step4 .recap-decision .panel-title {
+  font-size: clamp(21px, 2.8vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.024em;
+  line-height: 1.13;
+  text-wrap: balance;
+}
+/* Les champs, eux, se lisent alignes a gauche : un formulaire centre se remplit
+   mal (l oeil perd le rail vertical des libelles). Seule la TETE est centree. */
+#clientView #step3 .contact-grid,
+#clientView #step3 .s3-extra,
+#clientView #step4 #recapList { text-align: left; }
+
+/* L entree : la question d abord, la reponse ensuite, jamais l inverse. */
+#clientView .step[data-arrived] #step3 .contact-grid > *,
+#clientView .step[data-arrived] #step4 .recap-decision > *:not(.panel-kicker):not(.panel-title) {
+  animation: lq-pop 0.5s var(--lq-spring) both;
+  animation-delay: calc(260ms + var(--i, 0) * 48ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  #clientView .step[data-arrived] #step3 .contact-grid > *,
+  #clientView .step[data-arrived] #step4 .recap-decision > *:not(.panel-kicker):not(.panel-title) { animation: none; }
+}
+
 /* --- ETAPE 5 : confirmation centree --------------------------------------- */
 #clientView .step5-body { grid-template-columns: 1fr; align-content: center; justify-items: center; }
 
@@ -1425,7 +1497,9 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   #clientView .step-status-dock {
     order: -1;
     width: min(1148px, 100%);
-    margin: 0 auto var(--space-3);
+    /* Ecart resserre : la notice annonce, elle ne separe pas deux moities
+       d ecran (Movsar : « tu laisses trop d espace vide »). */
+    margin: 0 auto var(--space-2);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2731,7 +2805,9 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   border-radius: var(--radius-full);
   background: var(--accent);
   color: var(--accent-contrast);
-  font-size: 10.5px;
+  /* 11,5 px : le plancher de lisibilite du projet. A 10,5 px cette pastille
+     etait le seul texte du parcours sous le plancher, sur l ecran des heures. */
+  font-size: 11.5px;
   font-weight: 500;
   line-height: 1.6;
 }
@@ -3703,11 +3779,18 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   #clientView #step3 .contact-grid { grid-template-columns: 1fr; }
   #clientView #step3 .contact-grid .contact-grid-wide { grid-column: 1 / -1; }
 
+  /* UNE COLONNE, CENTREE (2026-08-27). Les faits a gauche et la decision dans
+     une colonne de 320 px a droite posaient la question « Tout est bon ? » a
+     270 px du centre de l ecran, apres correction, et 460 px avant. Un ecran
+     qui pose une question la pose AU MILIEU : le recapitulatif se lit en
+     colonne, la decision dessous. */
   #clientView #step4 .recap-columns {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
-    gap: var(--space-5);
+    gap: var(--space-4);
+    width: min(860px, 100%);
+    margin-inline: auto;
   }
   #clientView #step4 .recap-decision {
     position: sticky;
@@ -7517,7 +7600,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .occasion-chip { min-height: 44px; font-size: 11.5px; padding: 4px 6px; line-height: 1.2; }
   #clientView .occasion-chip svg { width: 13px; height: 13px; flex: none; }
   #clientView .step3-body .request-field textarea.input { min-height: 48px; }
-  #clientView #step3 .field-honest-note { font-size: 11px; margin: 2px 0 0; }
+  #clientView #step3 .field-honest-note { font-size: 11.5px; margin: 2px 0 0; }
   #clientView #step3 .s3-side .panel-kicker { margin-bottom: 2px; }
   #clientView #step3 .request-count { font-size: 10.5px; }
 
@@ -7607,7 +7690,10 @@ body.client-mode #clientView .btn-primary.is-sealed,
      a prendre. */
   #clientView .formula-anchor-picker[data-mobile-multi][data-mobile-page="0"] .anchor-mobile-alt { display: flex; flex: none; }
   #clientView .anchor-mobile-alt button {
-    min-height: 34px;
+    /* 44 px : le plancher tactile. A 34 px c etait la seule cible du parcours
+       en dessous, et elle sert a changer d activite sur l ecran des heures -
+       un geste courant, pas un reglage rare. */
+    min-height: 44px;
     padding: 2px 10px;
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-full);

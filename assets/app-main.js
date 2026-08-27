@@ -3670,7 +3670,14 @@ let revealBooted = false;
 // « Que souhaitez-vous faire ? » voient la meme phrase qu avant.
 function revelerQuestion(element) {
   if (!element) return;
-  const phrase = (element.dataset.questionSource || element.textContent || '').trim();
+  // LA PHRASE MEMORISEE NE DOIT PAS FIGER UN TITRE QUI CHANGE. La source servait
+  // toujours en priorite : un titre pose par le JS APRES un premier decoupage
+  // (l ecran des heures ecrit « À quelle heure ? » par-dessus « Horaire
+  // disponible ») se voyait remettre l ancienne phrase au rendu suivant. Elle ne
+  // sert donc que si l element est ENCORE decoupe ; des qu il a ete reecrit,
+  // c est son texte courant qui fait foi.
+  const dejaDecoupe = Boolean(element.querySelector && element.querySelector('.q-word'));
+  const phrase = ((dejaDecoupe ? element.dataset.questionSource : '') || element.textContent || '').trim();
   if (!phrase) return;
   // La phrase d origine est gardee : sans elle, un second passage decouperait
   // du markup deja decoupe et empilerait les spans a l infini.

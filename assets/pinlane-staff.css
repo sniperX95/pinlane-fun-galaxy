@@ -16393,17 +16393,18 @@ button.pv2-cal-cell:focus-visible {
   grid-column: 3;
   justify-self: end;
 }
-/* EN PLEIN ECRAN, LA LEGENDE CEDE LA PLACE A LA NAVIGATION. Arithmetique
-   mesuree a 1512 px : titre 289 px + bascule 584 px + actions 526 px, pour des
-   colonnes laterales de 428 px. Les actions debordaient donc vers la GAUCHE et
-   passaient sous la bascule - le champ de recherche s y retrouvait tronque
-   (« ...her... ») et « Session partagee » cassait sur deux lignes. La legende
-   (Confirme / Arrive / Paye, ou Direct / Formule / Session partagee) pese a elle
-   seule ~180 px et REPETE ce que la couleur des cartes dit deja. Sans elle les
-   actions tombent a ~346 px : tout tient, et la bascule reste exactement au
-   milieu. Elle reste visible hors plein ecran, ou la place ne manque pas. */
-.planning-box.expanded:not(.hidden) .planning-head .legend,
-.table-box.expanded:not(.hidden) .table-head .legend { display: none; }
+/* TOUT TIENT SUR UNE LIGNE, LEGENDE COMPRISE (2026-08-27). Movsar veut garder
+   « Confirme / Arrive / Paye » en plein ecran : la place se prend donc ailleurs.
+   Arithmetique mesuree a 1512 px avant : titre 289 + bascule 584 + actions 526
+   pour des colonnes laterales de 428, d ou un debordement vers la gauche et un
+   champ de recherche tronque. On resserre la bascule et la recherche au lieu de
+   retirer une information. */
+.planning-box.expanded:not(.hidden) .fs-switch-btn,
+.table-box.expanded:not(.hidden) .fs-switch-btn { padding-inline: 10px; }
+.planning-box.expanded:not(.hidden) .planning-search-inline input,
+.table-box.expanded:not(.hidden) .search-wrap input { width: 120px; min-width: 0; }
+.planning-box.expanded:not(.hidden) .legend,
+.table-box.expanded:not(.hidden) .legend { gap: 8px; font-size: 11.5px; white-space: nowrap; }
 
 .planning-head .planning-actions,.planning-head .planning-actions,
 .table-head .table-actions { flex-wrap: nowrap; }

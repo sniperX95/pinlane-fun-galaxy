@@ -948,7 +948,27 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
      avant. Corriger a la source plutot qu empiler une regle concurrente. */
   /* Le bloc de question se pose au premier tiers plutot que colle en haut : le
      vide se repartit au lieu de tomber entierement sous la grille. */
-  #clientView .step1-body:not(.is-solo) { align-content: center; }
+  /* LA ZONE DES CARTES PREND LA PLACE DISPONIBLE (2026-08-27). Movsar : « le
+     champ pour voir les cartes est trop petit, c est super desagreable ».
+     Mesure a 1440x900 : la zone plafonnait a 160 px alors que le pied est a 773
+     et les cartes s arretent vers 550 - plus de 200 px inutilises juste en
+     dessous. `align-content: center` centrait le bloc au lieu de le laisser
+     s etirer. Le corps devient une colonne ou la question garde sa taille et la
+     zone de choix prend TOUT le reste, a chaque hauteur d ecran. */
+  #clientView .step1-body:not(.is-solo) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+  }
+  #clientView .step1-body:not(.is-solo) > * { flex: none; }
+  #clientView .step1-body:not(.is-solo) .s1-what {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  #clientView .step1-body:not(.is-solo) .s1-scroller { flex: 1 1 auto; min-height: 0; }
 }
 
 /* L ECRAN DE REGLAGES, PARTOUT. Les memes regles existaient sous 640 px
@@ -1385,10 +1405,22 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    posee a 460 px du centre n est pas une question centree. Les deux ecrans
    passent en UNE colonne de lecture, centree, question en haut. */
 @media (min-width: 900px) {
+  /* COLONNE FLEX, PAS GRILLE. En grille, les rangees `auto` restaient calees a
+     357 px et 272 px alors que le panneau des coordonnees en demandait 458 : il
+     depassait de sa rangee et RECOUVRAIT le bloc suivant (« Confirmation envoyee
+     par email » par-dessus « Type de reservation », capture Movsar). Une colonne
+     flex ne peut pas produire ce defaut : chaque bloc prend sa hauteur et se
+     pose sous le precedent, point. L ecran defile chez lui si le total depasse,
+     ce qui est deja une zone de defilement declaree au gate. */
   #clientView .step3-body {
-    grid-template-columns: minmax(0, 1fr);
-    align-content: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    overflow: hidden auto;
   }
+  #clientView .step3-body > * { flex: none; }
   #clientView .step3-body > * {
     width: min(860px, 100%);
     margin-inline: auto;

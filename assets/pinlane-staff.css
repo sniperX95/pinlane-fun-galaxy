@@ -16357,46 +16357,58 @@ button.pv2-cal-cell:focus-visible {
    de planning sans sortir : les onglets, eux, sont recouverts par le
    panneau (mesure : .staff-resource-tabs inatteignable en plein ecran). */
 .fs-switch { display: none; }
-/* AU MILIEU DE L EN-TETE, ET ELLE RESERVE SA PLACE (corrige le 2026-08-27).
-   Elle etait posee en ABSOLU pour se centrer sans dependre de la largeur du
-   titre : elle flottait donc au-dessus de la barre, et le champ de recherche
-   passait DESSOUS. Mesure a 1512 px, planning en plein ecran : le champ occupe
-   x 962-1152, la bascule x 464-1048, soit 86 px de recouvrement - c est ce que
-   Movsar voyait (« barre de recherche super mal cadre et buggee des fois »).
-   Une grille a trois colonnes centre la bascule ET lui reserve sa place : le
-   titre a gauche, la bascule au milieu, les actions a droite, sans que rien ne
-   se chevauche a aucune largeur. */
-.planning-box.expanded:not(.hidden) .planning-head,
-.table-box.expanded:not(.hidden) .table-head {
-  position: relative;
+/* LA BASCULE DE PLANNING RESTE AU MILIEU, TOUJOURS (2026-08-27).
+   Movsar : « le choix planning bowling laser et toutes resa doit CONSTAMMENT
+   rester au milieu », et « c est la barre de recherche qui doit etre bien a
+   droite ». Trois erreurs successives corrigees ici :
+     1. la bascule etait posee en ABSOLU pour se centrer : elle ne reservait
+        aucune place et le champ de recherche passait dessous (86 px de
+        recouvrement mesures) ;
+     2. la grille a ete ecrite pour `.planning-head` alors que la bascule vivait
+        dans `.planning-actions` : elle ne s appliquait a rien ;
+     3. conditionnee a `.expanded`, elle ratait `.table-head` (« Toutes les
+        reservations »), ou la bascule finissait a 334 px du centre.
+   Une seule regle, sans condition d etat : titre a gauche, bascule au milieu,
+   recherche et actions a droite, sur UNE ligne. Hors plein ecran la bascule est
+   masquee : la colonne du milieu vaut alors zero et rien ne bouge. */
+.planning-head,
+.table-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-3);
   flex-wrap: nowrap;
 }
-/* La bascule occupe la colonne du milieu ; tout le reste de l en-tete se range
-   a droite, dans la troisieme. */
-.planning-box.expanded:not(.hidden) .planning-head > *,
-.table-box.expanded:not(.hidden) .table-head > * {
-  /* TOUT SUR LA MEME LIGNE : sans cette contrainte, la bascule passait sur une
-     seconde rangee et cessait d etre au milieu de l en-tete. */
-  grid-row: 1;
-}
-.planning-box.expanded:not(.hidden) .planning-head > *:first-child,
-.table-box.expanded:not(.hidden) .table-head > *:first-child {
-  grid-column: 1;
-  justify-self: start;
-}
-.planning-box.expanded:not(.hidden) .planning-head > *:not(.fs-switch):not(:first-child),
-.table-box.expanded:not(.hidden) .table-head > *:not(.fs-switch):not(:first-child) {
+.planning-head > *,
+.table-head > * { grid-row: 1; }
+.planning-head > *:first-child,
+.table-head > *:first-child { grid-column: 1; justify-self: start; }
+.planning-head > .fs-switch,
+.table-head > .fs-switch { grid-column: 2; justify-self: center; }
+/* Tout le reste file a DROITE, dans la meme cellule, sans jamais s empiler :
+   c est l empilement qui faisait passer « Reduire » sous la recherche et
+   gonflait la tete de 69 a 115 px. */
+.planning-head > *:not(:first-child):not(.fs-switch),
+.table-head > *:not(:first-child):not(.fs-switch) {
   grid-column: 3;
   justify-self: end;
 }
+/* EN PLEIN ECRAN, LA LEGENDE CEDE LA PLACE A LA NAVIGATION. Arithmetique
+   mesuree a 1512 px : titre 289 px + bascule 584 px + actions 526 px, pour des
+   colonnes laterales de 428 px. Les actions debordaient donc vers la GAUCHE et
+   passaient sous la bascule - le champ de recherche s y retrouvait tronque
+   (« ...her... ») et « Session partagee » cassait sur deux lignes. La legende
+   (Confirme / Arrive / Paye, ou Direct / Formule / Session partagee) pese a elle
+   seule ~180 px et REPETE ce que la couleur des cartes dit deja. Sans elle les
+   actions tombent a ~346 px : tout tient, et la bascule reste exactement au
+   milieu. Elle reste visible hors plein ecran, ou la place ne manque pas. */
+.planning-box.expanded:not(.hidden) .planning-head .legend,
+.table-box.expanded:not(.hidden) .table-head .legend { display: none; }
+
+.planning-head .planning-actions,.planning-head .planning-actions,
+.table-head .table-actions { flex-wrap: nowrap; }
 .planning-box.expanded:not(.hidden) .fs-switch,
 .table-box.expanded:not(.hidden) .fs-switch {
-  grid-column: 2;
-  justify-self: center;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -16498,11 +16510,12 @@ button.pv2-cal-cell:focus-visible {
    navigation et coupait l en-tete en deux (« la barre de recherche sur le
    cote c est plus logique », Movsar). Elle rejoint les commandes, a droite,
    avec le bouton de sortie. */
+/* Cette regle est PLUS SPECIFIQUE que la grille d en-tete : en imposant
+   `display: flex` elle la desactivait en plein ecran, et la bascule finissait a
+   334 px du centre sur « Toutes les reservations » (mesure au navigateur : trois
+   regles en lice, celle-ci gagnait). Elle garde son rembourrage de plein ecran
+   et laisse la grille faire le placement. */
 .table-box.expanded:not(.hidden) .table-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
   padding: 12px clamp(18px, 2.6vw, 46px);
 }
 .table-box.expanded:not(.hidden) .table-head > h2 { margin-right: auto; }

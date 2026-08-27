@@ -108,7 +108,14 @@ srv.listen(PORT, '127.0.0.1', async () => {
     }, id);
     await pg.waitForSelector('.pos-tabs, .edit-form, [role="tab"]', { timeout: 15000 }).catch(() => {});
     await pg.evaluate(() => {
-      const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test(t.textContent.trim()));
+      // L ONGLET SE CHERCHE DANS LA FICHE, pas dans tout le document. Le mot
+      // « Modifier » n appartient pas qu a cet onglet : le tunnel public porte
+      // des rappels « ... · Modifier » qui ramenent a une etape precedente, et
+      // le premier trouve gagnait. Mesure du 2026-08-27 : le gate cliquait le
+      // rappel de l ecran creneau, partait a l etape 1, et attendait 20 s un
+      // formulaire qui ne s ouvrirait jamais.
+      const fiche = document.querySelector('#posOverlay, .pos-sheet') || document;
+      const tab = [...fiche.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test(t.textContent.trim()));
       if (tab) tab.click();
     });
     // Le formulaire EST la condition d'entree du test : on l'attend au lieu de

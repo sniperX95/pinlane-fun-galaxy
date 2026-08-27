@@ -343,6 +343,12 @@
       <section id="step2" class="step" inert aria-hidden="true" aria-label="Étape 2 : créneau">
         <div class="step-body step2-body">
           <aside class="s2-side panel cascade">
+            <!-- Le rappel de la venue, comme sur l'ecran des activites : il dit le
+                 jour et le groupe, et il ramene a la question precedente d'un clic. -->
+            <button type="button" class="s2-venue-line" id="s2VenueLine" hidden onclick="goStep(1)">
+              <span class="s2-venue-line-text" id="s2VenueLineText"></span>
+              <span class="s2-venue-line-edit">Changer</span>
+            </button>
             <div class="panel-kicker">Votre créneau</div>
             <div class="panel-title" id="slotTitle">Horaire disponible</div>
             <p class="step-intro" id="slotDate"></p>

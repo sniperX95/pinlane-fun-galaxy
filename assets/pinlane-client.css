@@ -976,7 +976,11 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    il annonce l etape, il ne rivalise pas avec elle. */
 #clientView .s1-what-head .panel-kicker {
   margin-bottom: var(--space-2);
-  font-size: 11px;
+  /* 11,5 px est le PLANCHER du projet, et un gate l exige (aucun texte du
+     parcours en dessous). J avais ecrit 11 px en croyant copier le modele : je
+     creais une violation qu aucun gate actif n attrapait, celui qui la voit
+     n etant pas cable dans la suite. */
+  font-size: 11.5px;
   letter-spacing: 0.12em;
   color: var(--muted);
 }
@@ -1015,11 +1019,23 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   display: inline-block;
   overflow: hidden;
   vertical-align: bottom;
+  /* LE MASQUE NE DOIT PAS MANGER LES JAMBAGES. `overflow: hidden` sur un mot
+     coupe ce qui descend sous la ligne de base : le p de « souhaitez », le j,
+     le g. Le gate one-screen le voit comme du contenu coupe, et il a raison -
+     c est un defaut de lisibilite, pas une subtilite de test. On agrandit la
+     boite du masque vers le bas et on la reprend en marge negative : le mot
+     respire, la mise en page ne bouge pas d un pixel. */
+  padding-bottom: 0.16em;
+  margin-bottom: -0.16em;
 }
+/* LE MOT EST VISIBLE PAR DEFAUT. Il etait cache en dur (translate + opacity 0)
+   et ne redevenait visible que si l animation jouait : une question dont
+   revelerQuestion n est pas appele, ou dont l animation est coupee, restait
+   INVISIBLE. Le gate one-screen l a vu des qu il a ete cable (« contenu coupe »
+   sur .q-word). C est l animation, avec son `both`, qui pose l etat de depart
+   pendant son delai : sans elle, le texte se lit normalement. */
 #clientView .q-word > span {
   display: inline-block;
-  transform: translateY(115%);
-  opacity: 0;
 }
 #clientView .q-reveal .q-word > span {
   animation: q-word-rise 0.62s var(--lq-spring) both;
@@ -1119,15 +1135,63 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+/* L ECRAN-QUESTION DU CRENEAU (2026-08-27). Le bandeau se lisait EN LIGNE, de
+   gauche a droite (« VOTRE CRENEAU  Composez votre visite  samedi 24 oct. »),
+   avec un titre bride a 17 px qui ANNULAIT la taille de question posee plus
+   haut - troisieme fois que ce piege me coute une livraison : sur cette feuille,
+   une regle plus loin gagne toujours, meme specificite. La tete d ecran se pose
+   maintenant comme celle des activites : en colonne, centree, la question en
+   grand. */
 #clientView .s2-side {
-  flex-direction: row;
-  align-items: baseline;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  text-align: center;
 }
-#clientView .s2-side .panel-kicker { flex: none; }
-#clientView .s2-side .panel-title { font-size: 17px; flex: none; }
-#clientView .s2-side .step-intro { color: var(--faint); }
+#clientView .s2-side .panel-kicker { flex: none; font-size: 11.5px; letter-spacing: 0.12em; color: var(--muted); }
+#clientView .s2-side .panel-title {
+  flex: none;
+  font-size: clamp(23px, 3.4vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  text-wrap: balance;
+}
+/* La date etait dite DEUX fois : le rappel de venue la porte deja, avec le
+   groupe. */
+#clientView .s2-side .step-intro { display: none; }
+/* Le rappel de venue du creneau : meme geste que celui des activites, et meme
+   plancher tactile de 48 px (une proposition a 32 px a ete rejetee en revue,
+   sous les 44 px exiges par le gate one-screen). */
+#clientView .s2-venue-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full, 999px);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, color 0.18s ease;
+}
+#clientView .s2-venue-line:hover { border-color: var(--accent); color: var(--text); }
+#clientView .s2-venue-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#clientView .s2-venue-line-edit { color: var(--accent); font-weight: 600; }
+#clientView .s2-venue-line:empty { display: none; }
+/* Sous 640 px, c est la BARRE HAUTE qui porte le rappel de venue, comme sur
+   l ecran des activites : le laisser ici ajoutait 48 px + l ecart a une etape
+   qui ne tient deja qu a 29 px pres. Mesure du gate : 554 px de contenu pour
+   525 px de zone a 390x664 - l etape ne tenait plus. */
+@media (max-width: 640px) {
+  #clientView .s2-venue-line { display: none; }
+  #clientView .s2-side { padding: var(--space-2) var(--space-3); }
+  #clientView .s2-side .panel-title { font-size: clamp(18px, 5vw, 23px); }
+}
 #clientView .s2-side #formTimeLimit { margin-left: auto; }
 #clientView .s2-side #formTimeLimit:empty { display: none; }
 

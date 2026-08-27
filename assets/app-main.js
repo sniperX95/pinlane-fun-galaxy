@@ -6806,7 +6806,20 @@ function renderSlots(formule) {
   // sous-titre porte la date, et le bloc interne n'a plus d'en-tête.
   // Des QUESTIONS, pas des intitules de rubrique : l ecran demande, le client
   // repond. « Horaire disponible » ne demandait rien.
-  if (slotTitle) slotTitle.textContent = formulaHasAnchorUi() ? 'Composez votre visite' : (formule ? 'Votre programme' : 'À quelle heure ?');
+  if (slotTitle) {
+    slotTitle.textContent = formulaHasAnchorUi() ? 'Composez votre visite' : (formule ? 'Votre programme' : 'À quelle heure ?');
+    // La question de cet ecran s ecrit mot a mot, comme celles des autres.
+    if (typeof revelerQuestion === 'function') revelerQuestion(slotTitle);
+  }
+  // Le rappel de venue : meme contenu que celui de l ecran des activites, et il
+  // ramene a la question precedente. Il se remplit ICI pour suivre chaque
+  // changement de date ou de groupe.
+  const rappelVenue = document.getElementById('s2VenueLine');
+  if (rappelVenue) {
+    const texte = document.getElementById('s2VenueLineText');
+    if (texte && typeof venueSummaryLabel === 'function') texte.textContent = venueSummaryLabel();
+    rappelVenue.hidden = !(texte && texte.textContent);
+  }
   document.getElementById('slotDate').textContent = ds;
   const tl = document.getElementById('formTimeLimit');
   if (formule) {

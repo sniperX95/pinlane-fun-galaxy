@@ -160,9 +160,25 @@ async function bootTunnel(page) {
   await page.waitForTimeout(600);
 }
 
+// LA VENUE POSE DEUX QUESTIONS DEPUIS LE 2026-08-27 : le jour, puis le groupe.
+// Un seul tap laisse le client sur la seconde question et le programme reste
+// ferme. Ce helper fait ce que fait un client, pas moins : il tape, et retape
+// si l ecran de la venue est encore la. Rien n est masque - si le programme ne
+// s ouvre pas, les assertions d apres rougissent comme avant.
+async function passerLaVenue(page, libelle) {
+  await provenTap(page, '#btnVenueContinue', libelle);
+  await settle(page, 500);
+  const encore = await page.evaluate(() => {
+    const corps = document.querySelector('.step1-body');
+    return Boolean(corps && corps.classList.contains('is-solo'));
+  });
+  if (encore) await provenTap(page, '#btnVenueContinue', libelle + ' (2e question)');
+}
+
 async function openProgram(page) {
+
   if (await page.locator('#btnVenueContinue').isVisible().catch(() => false)) {
-    await provenTap(page, '#btnVenueContinue', 'Voir les activites');
+    await passerLaVenue(page, 'Voir les activites');
     await settle(page, 1400);
   }
   const chosen = await page.evaluate(() => getChosenActivities().length);
@@ -236,7 +252,8 @@ async function main() {
       await settle(page, 1200);
       const backToSolo = await page.evaluate(() => document.querySelector('#clientView .step1-body').classList.contains('is-solo'));
       ok(backToSolo, 'le tap Modifier ramene a la page venue (solo)');
-      await provenTap(page, '#btnVenueContinue', 'Voir les activites (retour au programme)');
+      await passerLaVenue(page, 'Voir les activites (retour au programme)');
+
       await settle(page, 1400);
     }
     // PAGE OPTIONS (2026-08-18) : avec un reglage actif, le premier tap mene

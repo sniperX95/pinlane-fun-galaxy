@@ -3378,6 +3378,10 @@ function initClient() {
   // Synchronisation d'ouverture : ni mouvement ni vol de focus, personne n'a
   // encore rien demandé.
   goStep(1, { animate: false, focus: false });
+  // La venue repart TOUJOURS de sa premiere question : l etape n est pas
+  // persistee, revenir au tunnel ne doit pas laisser le client devant la
+  // question du groupe sans avoir vu celle du jour.
+  if (typeof setVenueStage === 'function') setVenueStage('date');
 }
 
 // Stepper tactile du nombre de joueurs (boutons +/- mobile). On reste sur le
@@ -3598,6 +3602,37 @@ function reopenVenue() {
   resetStepOneScroll();
 }
 
+// LA VENUE POSE DEUX QUESTIONS, UNE PAR ECRAN (2026-08-27). Movsar : « meme la
+// toute premiere page pour mettre date joueur [...] vrm tout doit avoir une
+// question qui arrive ». Le jour d abord, le groupe ensuite. L etat n est PAS
+// persiste : revenir au tunnel repose toujours la premiere question.
+let venueStage = 'date';
+
+function setVenueStage(stage) {
+  venueStage = stage === 'pax' ? 'pax' : 'date';
+  const corps = document.querySelector('.step1-body');
+  if (corps) corps.classList.toggle('is-venue-pax', venueStage === 'pax');
+  const libelle = document.getElementById('btnVenueContinueLabel');
+  if (libelle) libelle.textContent = venueStage === 'pax' ? 'Voir les activités' : 'Continuer';
+  // La question de l ecran qui arrive s ecrit, comme partout ailleurs. Le noeud
+  // n est PAS reconstruit entre les deux ecrans (seule une classe bascule) :
+  // sans le redemarrage force de revelerQuestion, rien ne rejouerait.
+  const question = document.querySelector('.step1-body.is-solo .s1-when .panel-title'
+    + (venueStage === 'pax' ? '.s1-q-pax' : '.s1-q-date'));
+  if (question && typeof revelerQuestion === 'function') revelerQuestion(question);
+  // La reponse de l ecran entre en cascade a chaque bascule.
+  const bloc = document.querySelector('.step1-body.is-solo .s1-when');
+  if (bloc) {
+    bloc.classList.remove('is-arriving');
+    void bloc.offsetWidth;
+    bloc.classList.add('is-arriving');
+  }
+  if (venueStage === 'pax') {
+    const champ = document.getElementById('fPax');
+    if (champ) champ.focus({ preventScroll: true });
+  }
+}
+
 function confirmVenue() {
   const date = state.booking.date;
   const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(date) : null;
@@ -3606,6 +3641,13 @@ function confirmVenue() {
     && !(dayStatus && dayStatus.open === false);
   if (!dayOpen) {
     showAlert('Choisissez une date d’ouverture : le centre est fermé ce jour.');
+    return;
+  }
+  // PREMIER CLIC : le jour est valide, on passe a la question du groupe. La
+  // garde de date reste AVANT, sinon on demanderait le nombre de joueurs pour un
+  // jour ou le centre est ferme.
+  if (venueStage !== 'pax') {
+    setVenueStage('pax');
     return;
   }
   state.booking.venueConfirmed = true;

@@ -687,7 +687,70 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   justify-content: safe center;
 }
 
-#clientView .step1-body.is-solo > * { flex: none; width: min(440px, 100%); }
+#clientView .step1-body.is-solo > * { flex: none; width: min(560px, 100%); }
+
+/* LA VENUE EST UN ECRAN-QUESTION, COMME LES AUTRES (2026-08-27). Movsar :
+   « meme la toute premiere page pour mettre date joueur [...] vrm tout doit
+   avoir une question qui arrive ». Elle posait DEUX questions a la fois dans
+   une carte alignee a gauche, avec un titre de 18 px. Elle en pose une par
+   ecran, centree, a la taille du modele valide. */
+#clientView .step1-body.is-solo .s1-when {
+  align-items: center;
+  text-align: center;
+  gap: var(--space-4);
+}
+#clientView .step1-body.is-solo .s1-when-head { flex-direction: column; align-items: center; }
+#clientView .step1-body.is-solo .s1-when .panel-head-icon { display: none; }
+#clientView .step1-body.is-solo .s1-when .panel-title {
+  font-size: clamp(23px, 3.4vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  text-wrap: balance;
+}
+/* 11,5 px : le plancher du projet, qu un gate verifie. */
+#clientView .step1-body.is-solo .s1-when-kicker {
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: var(--space-1);
+}
+/* Le sous-titre disait ce que les deux questions disent deja. */
+#clientView .step1-body.is-solo #heroSubtitle { display: none; }
+/* « Date » sous « Quel jour venez-vous ? », c est le meme mot deux fois. */
+#clientView .step1-body.is-solo .s1-field-date .lbl,
+#clientView .step1-body.is-solo .s1-field-pax .lbl { display: none; }
+#clientView .step1-body.is-solo .s1-field { text-align: center; }
+#clientView .step1-body.is-solo .schedule-hint { justify-content: center; }
+
+/* UNE SEULE QUESTION ET UNE SEULE REPONSE PEINTES A LA FOIS. `display: none`
+   et pas `visibility` : le champ de l autre ecran n existe ni pour le clavier
+   ni pour le lecteur d ecran. */
+#clientView .step1-body.is-solo .s1-q-pax,
+#clientView .step1-body.is-solo:not(.is-venue-pax) .s1-field-pax { display: none; }
+#clientView .step1-body.is-solo.is-venue-pax .s1-q-date,
+#clientView .step1-body.is-solo.is-venue-pax .s1-field-date { display: none; }
+#clientView .step1-body.is-solo.is-venue-pax .s1-q-pax { display: block; }
+#clientView .step1-body.is-solo.is-venue-pax .s1-field-pax { display: block; }
+
+/* La reponse entre en cascade a chaque bascule. Le rang vient d une variable
+   posee sur les enfants, pas d un nth-child : nth-child compterait l element
+   que l autre ecran masque, et le rythme sauterait une marche. */
+#clientView .step1-body.is-solo .s1-when.is-arriving > * {
+  animation: lq-pop 0.5s var(--lq-spring) both;
+}
+#clientView .step1-body.is-solo .s1-when.is-arriving > .s1-when-head { animation-delay: 0ms; }
+#clientView .step1-body.is-solo .s1-when.is-arriving > .s1-field { animation-delay: 90ms; }
+#clientView .step1-body.is-solo .s1-when.is-arriving > .s1-continue { animation-delay: 170ms; }
+@media (prefers-reduced-motion: reduce) {
+  #clientView .step1-body.is-solo .s1-when.is-arriving > * { animation: none; }
+}
+/* Sous 640 px, la barre haute porte deja le rappel : l etiquette y ferait
+   doublon (defaut deja identifie et corrige une fois sur cette feuille). */
+@media (max-width: 640px) {
+  #clientView .step1-body.is-solo .s1-when-kicker { display: none; }
+  #clientView .step1-body.is-solo .s1-when .panel-title { font-size: clamp(20px, 5.6vw, 26px); }
+}
 
 /* Aucun message d'activite sur la venue seule : rien n'est encore pris a
    l'ecran. L'allocation revient avec le programme, pres de ce qu'elle decrit. */
@@ -6792,7 +6855,12 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .step1-body:not(.is-solo) .s1-when { display: none; }
   /* Le titre de la barre haute nomme deja la page : l en-tete riche du
      panneau (icone + « Votre venue » + sous-titre) redit la meme chose. */
-  #clientView .s1-when .panel-head-rich { display: none; }
+  /* LA QUESTION EXISTE AUSSI SUR TELEPHONE. Cette regle masquait toute la tete
+     d ecran, donc l ouverture du tunnel ne posait AUCUNE question sur mobile :
+     mesure, zero question peinte. Elle etait la pour eviter un doublon avec la
+     barre haute ; c est l ETIQUETTE qui faisait doublon, pas la question. Seule
+     l etiquette reste masquee (regle plus haut). */
+  #clientView .s1-when .panel-head-rich { display: flex; }
   #clientView .s1-when { gap: var(--space-2); padding: var(--space-3); }
   #clientView .s1-when .s1-field { gap: 4px; }
   #clientView .s1-when .input { height: 44px; }

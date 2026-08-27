@@ -626,7 +626,14 @@ async function main() {
       // toute la largeur et se range en 3 colonnes au lieu de 2. Ce n est pas un
       // relachement : l assertion « aucun texte ne deborde de sa carte » plus bas
       // couvre la lisibilite, et le nombre de LIGNES (8) reste verifie.
-      { width: 1280, expectedColumns: 2, expectedSummaryColumns: 3, settingsOnOwnPage: true },
+      // QUATRE colonnes au-dessus de 1100 px depuis le 2026-08-27. Movsar : « le
+      // fait qu on doit swip pour tout voir ca va pas, l ideal c est vrm de tout
+      // avoir d un coup ». Mesure a 1280x720 : en 2 colonnes la grille demandait
+      // 304 px pour 152 px visibles (4 rangees), la derniere entierement hors
+      // champ. En 4 colonnes elle en demande 148 : depassement ZERO. Les
+      // garde-fous ne bougent pas et restent verifies plus bas : 8 cartes, aucun
+      // texte qui deborde, aucune cible sous 44 px.
+      { width: 1280, expectedColumns: 4, expectedSummaryColumns: 3, settingsOnOwnPage: true },
       { width: 800, expectedColumns: 2, expectedSummaryColumns: 3, settingsOnOwnPage: true },
       // TELEPHONE : deux cartes par rangee depuis la refonte mobile du
       // 2026-08-15. Une carte d activite est un icone, un nom et un tarif :

@@ -4711,9 +4711,25 @@ function applyChosenActivitiesToBooking() {
 function buildBookingProgramPayload() {
   return getChosenActivities().map(activity => {
     const options = activity.options || {};
-    if (activity.id === 'bowling') return { activityId: 'bowling', duration: Number(options.duration) || 1 };
-    if (activity.id === 'laser_game') return { activityId: 'laser_game', games: Number(options.games) || 1 };
     const item = { activityId: activity.id };
+    // LES OPTIONS PARTENT SELON LE TYPE TARIFAIRE, PAS SELON UNE LISTE D IDS.
+    // Seuls 'bowling' et 'laser_game' etaient nommes ici. Or le DUCKPIN partage
+    // le meme type que le bowling (grid_bowling, option `duration`) sans porter
+    // son identifiant : sa duree ne partait donc JAMAIS. Le serveur retombait sur
+    // 1 heure et facturait 78 EUR la ou 2 h sur 2 pistes valent 156. Le FUN RUN
+    // (grid_fun_run, option `minutes`) perdait pareillement son choix : une
+    // session de 30 min a 55 EUR arrivait en 15 min a 30 EUR, et le meme panier
+    // servait a la confirmation finale - mauvais prix, mauvaise duree, mauvaise
+    // promesse au client.
+    // Le type est deja porte par le catalogue (getChosenActivities le rend), et
+    // le serveur lit deja `duration` et `minutes` : ajouter une activite au
+    // catalogue ne doit plus demander de revenir editer une liste d identifiants.
+    if (activity.priceType === 'grid_bowling') item.duration = Number(options.duration) || 1;
+    if (activity.priceType === 'grid_laser') item.games = Number(options.games) || 1;
+    if (activity.priceType === 'grid_fun_run') {
+      const parDefaut = (typeof FUN_RUN_OPTIONS !== 'undefined' && FUN_RUN_OPTIONS[0]) ? Number(FUN_RUN_OPTIONS[0].minutes) : 15;
+      item.minutes = Number(options.minutes) || parDefaut;
+    }
     if (options.units) item.units = Number(options.units);
     if (options.hours) item.hours = Number(options.hours);
     // Le compte d'enfants declare part au serveur, qui le borne au groupe et
@@ -7065,7 +7081,16 @@ async function submitCustomRequest() {
   const submitBtn = document.getElementById('crSubmit');
   const payload = {
     kind: 'custom-request',
-    centerId: (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : 'libramont') || 'libramont',
+    // LE CENTRE VIENT DE L ADRESSE PUBLIQUE, comme pour une reservation normale.
+    // Ici la demande partait avec le centre STAFF memorise, avec un repli en dur
+    // sur Libramont : depuis la page publique d un autre etablissement, elle
+    // arrivait chez le mauvais tenant. getTunnelCenterId lit le centre affiche ;
+    // le centre staff ne reste qu en dernier recours, hors tunnel public.
+    centerId: String(
+      (typeof getTunnelCenterId === 'function' && getTunnelCenterId())
+      || (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId())
+      || 'libramont',
+    ),
     contactName: name,
     company: val('crCompany'),
     email,

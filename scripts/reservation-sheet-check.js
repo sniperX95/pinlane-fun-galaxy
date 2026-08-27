@@ -382,8 +382,22 @@ async function main() {
         priceComplete: false,
       };
       closePos(); openPos(res.id); setTab('details');
-      await new Promise((r) => setTimeout(r, 600));
-      const labels = [...document.querySelectorAll('#posOverlay .info-label, .pos-sheet .info-label')].map((n) => n.textContent.trim());
+      // ON ATTEND LA CONDITION, PAS UNE DUREE. Une attente fixe de 600 ms rendait
+      // ce gate INSTABLE : mesure du 2026-08-27, trois executions d affilee sans
+      // rien changer au produit ont donne vert / rouge / vert, la fiche n ayant
+      // pas fini de peindre ses etiquettes au moment de la lecture. Un gate qui
+      // rougit au hasard ne protege plus rien : on cesse de le croire. On attend
+      // donc que les etiquettes existent, avec un plafond - si elles n arrivent
+      // JAMAIS, la mesure part quand meme et l assertion rougit pour de bon.
+      const etiquettes = () => [...document.querySelectorAll('#posOverlay .info-label, .pos-sheet .info-label')]
+        .map((n) => n.textContent.trim());
+      const limite = Date.now() + 5000;
+      while (Date.now() < limite) {
+        const vues = etiquettes();
+        if (vues.some((l) => /Suivi des activit|Programme du groupe/i.test(l))) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const labels = etiquettes();
       return {
         suivi: labels.some((l) => /Suivi des activit/i.test(l)),
         programme: labels.some((l) => /Programme du groupe/i.test(l)),

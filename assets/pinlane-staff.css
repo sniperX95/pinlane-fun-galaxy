@@ -16357,18 +16357,46 @@ button.pv2-cal-cell:focus-visible {
    de planning sans sortir : les onglets, eux, sont recouverts par le
    panneau (mesure : .staff-resource-tabs inatteignable en plein ecran). */
 .fs-switch { display: none; }
-/* AU MILIEU DE L EN-TETE, pas coincee entre deux commandes : c est la
-   navigation principale du mode plein ecran, elle se prend en un coup
-   d oeil depuis n importe quelle position d ecran. Posee en absolu pour ne
-   pas dependre de la largeur du titre ni de celle des actions. */
+/* AU MILIEU DE L EN-TETE, ET ELLE RESERVE SA PLACE (corrige le 2026-08-27).
+   Elle etait posee en ABSOLU pour se centrer sans dependre de la largeur du
+   titre : elle flottait donc au-dessus de la barre, et le champ de recherche
+   passait DESSOUS. Mesure a 1512 px, planning en plein ecran : le champ occupe
+   x 962-1152, la bascule x 464-1048, soit 86 px de recouvrement - c est ce que
+   Movsar voyait (« barre de recherche super mal cadre et buggee des fois »).
+   Une grille a trois colonnes centre la bascule ET lui reserve sa place : le
+   titre a gauche, la bascule au milieu, les actions a droite, sans que rien ne
+   se chevauche a aucune largeur. */
 .planning-box.expanded:not(.hidden) .planning-head,
-.table-box.expanded:not(.hidden) .table-head { position: relative; }
+.table-box.expanded:not(.hidden) .table-head {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: nowrap;
+}
+/* La bascule occupe la colonne du milieu ; tout le reste de l en-tete se range
+   a droite, dans la troisieme. */
+.planning-box.expanded:not(.hidden) .planning-head > *,
+.table-box.expanded:not(.hidden) .table-head > * {
+  /* TOUT SUR LA MEME LIGNE : sans cette contrainte, la bascule passait sur une
+     seconde rangee et cessait d etre au milieu de l en-tete. */
+  grid-row: 1;
+}
+.planning-box.expanded:not(.hidden) .planning-head > *:first-child,
+.table-box.expanded:not(.hidden) .table-head > *:first-child {
+  grid-column: 1;
+  justify-self: start;
+}
+.planning-box.expanded:not(.hidden) .planning-head > *:not(.fs-switch):not(:first-child),
+.table-box.expanded:not(.hidden) .table-head > *:not(.fs-switch):not(:first-child) {
+  grid-column: 3;
+  justify-self: end;
+}
 .planning-box.expanded:not(.hidden) .fs-switch,
 .table-box.expanded:not(.hidden) .fs-switch {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  grid-column: 2;
+  justify-self: center;
   display: inline-flex;
   align-items: center;
   gap: 2px;

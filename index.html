@@ -666,6 +666,14 @@
             </h2>
             <div class="planning-sub" id="planningSub"></div>
           </div>
+          <!-- DEJA-DEPLACE : la bascule de planning vit dans la TETE, pas dans les
+               actions. Dans les actions elle etait poussee sous le champ de recherche
+               (mesure 2026-08-27 : 86 px de recouvrement au plein ecran). -->
+            <div class="fs-switch" role="tablist" aria-label="Changer de planning sans quitter le plein ecran">
+            <button type="button" role="tab" class="fs-switch-btn is-active" aria-selected="true" onclick="goFullscreenResource('bowling')">Planning Bowling<span class="fs-switch-count" data-fs-count="bowling"></span></button>
+            <button type="button" role="tab" class="fs-switch-btn" aria-selected="false" onclick="goFullscreenResource('laser')">Planning Laser Game<span class="fs-switch-count" data-fs-count="laser"></span></button>
+            <button type="button" role="tab" class="fs-switch-btn" aria-selected="false" onclick="goFullscreenResource('all')">Toutes les réservations<span class="fs-switch-count" data-fs-count="all"></span></button>
+          </div>
           <div class="planning-actions">
             <div class="planning-search-inline">
               <input id="planningSearchInput" placeholder="Rechercher..." oninput="applyStaffSearch(this.value)">
@@ -677,11 +685,6 @@
               <span><i class="dot arr"></i> Arrivé</span>
               <span><i class="dot paid"></i> Payé</span>
             </div>
-            <div class="fs-switch" role="tablist" aria-label="Changer de planning sans quitter le plein ecran">
-            <button type="button" role="tab" class="fs-switch-btn is-active" aria-selected="true" onclick="goFullscreenResource('bowling')">Planning Bowling<span class="fs-switch-count" data-fs-count="bowling"></span></button>
-            <button type="button" role="tab" class="fs-switch-btn" aria-selected="false" onclick="goFullscreenResource('laser')">Planning Laser Game<span class="fs-switch-count" data-fs-count="laser"></span></button>
-            <button type="button" role="tab" class="fs-switch-btn" aria-selected="false" onclick="goFullscreenResource('all')">Toutes les réservations<span class="fs-switch-count" data-fs-count="all"></span></button>
-          </div>
             <button class="planning-toggle" id="planningToggle" onclick="togglePlanningExpanded()">Agrandir</button>
           </div>
         </div>
@@ -697,6 +700,14 @@
             </h2>
             <div class="planning-sub" id="laserPlanningSub"></div>
           </div>
+          <!-- DEJA-DEPLACE : la bascule de planning vit dans la TETE, pas dans les
+               actions. Dans les actions elle etait poussee sous le champ de recherche
+               (mesure 2026-08-27 : 86 px de recouvrement au plein ecran). -->
+            <div class="fs-switch" role="tablist" aria-label="Changer de planning sans quitter le plein ecran">
+            <button type="button" role="tab" class="fs-switch-btn" aria-selected="false" onclick="goFullscreenResource('bowling')">Planning Bowling<span class="fs-switch-count" data-fs-count="bowling"></span></button>
+            <button type="button" role="tab" class="fs-switch-btn is-active" aria-selected="true" onclick="goFullscreenResource('laser')">Planning Laser Game<span class="fs-switch-count" data-fs-count="laser"></span></button>
+            <button type="button" role="tab" class="fs-switch-btn" aria-selected="false" onclick="goFullscreenResource('all')">Toutes les réservations<span class="fs-switch-count" data-fs-count="all"></span></button>
+          </div>
           <div class="planning-actions">
             <div class="planning-search-inline">
               <input id="laserPlanningSearchInput" placeholder="Rechercher..." oninput="applyStaffSearch(this.value)">
@@ -707,11 +718,6 @@
               <span><div class="dot arr"></div> Formule</span>
               <span><div class="dot paid"></div> Session partagée</span>
             </div>
-            <div class="fs-switch" role="tablist" aria-label="Changer de planning sans quitter le plein ecran">
-            <button type="button" role="tab" class="fs-switch-btn" aria-selected="false" onclick="goFullscreenResource('bowling')">Planning Bowling<span class="fs-switch-count" data-fs-count="bowling"></span></button>
-            <button type="button" role="tab" class="fs-switch-btn is-active" aria-selected="true" onclick="goFullscreenResource('laser')">Planning Laser Game<span class="fs-switch-count" data-fs-count="laser"></span></button>
-            <button type="button" role="tab" class="fs-switch-btn" aria-selected="false" onclick="goFullscreenResource('all')">Toutes les réservations<span class="fs-switch-count" data-fs-count="all"></span></button>
-          </div>
             <button class="planning-toggle" id="laserPlanningToggle" onclick="toggleLaserPlanningExpanded()">Agrandir</button>
           </div>
         </div>

@@ -6146,6 +6146,49 @@ body.modal-open { overflow: hidden; }
   font-size: 13px;
   font-weight: 500;
 }
+/* --- LES PLANCHERS DU PROJET S APPLIQUENT AUSSI HORS DU TUNNEL (2026-08-31)
+   Le projet a trois planchers, et deux gates les font respecter... DANS
+   #clientView seulement. Or cette modale vit HORS de #clientView (le
+   commentaire juste au-dessus le dit deja pour la grille) : elle heritait donc
+   du .input generique de pinlane.css, 40 px de haut et 14 px de police.
+
+   Mesure du 2026-08-31 a 390x844 : SEPT champs a 14 px / 40 px. Consequences
+   sur un vrai iPhone : Safari ZOOME la page a la mise au point de tout champ
+   sous 16 px, et le client doit repincer pour revenir ; et une cible de 40 px
+   se rate au pouce. C est le formulaire des demandes de groupe et
+   d entreprise, donc les demandes qui valent le plus cher.
+
+   Le tunnel, lui, est propre partout (0 defaut sur ses cinq ecrans) : c est
+   bien la portee de la regle qui manquait, pas la regle. */
+.bespoke-modal .input,
+.bespoke-modal input,
+.bespoke-modal select,
+.bespoke-modal textarea {
+  height: 48px;
+  font-size: 16px;
+}
+.bespoke-modal textarea { height: auto; min-height: 88px; }
+/* La croix de fermeture est le seul geste de sortie au doigt : 40 px passait
+   sous le plancher tactile. */
+.bespoke-modal-close { width: 44px; height: 44px; }
+
+/* Les deux boutons de la modale sont le geste de sortie et le geste d envoi :
+   40 px passait sous le plancher tactile, comme les champs. */
+.bespoke-modal .cr-actions .btn-primary,
+.bespoke-modal .cr-actions .btn-secondary { min-height: 44px; }
+
+/* MEME OUBLI SUR L ECRAN DE CONNEXION. Le champ du code d acces est en
+   14 px : l equipe qui ouvre la console depuis une tablette au comptoir voit
+   la page zoomer des qu elle touche le champ.
+   `input.auth-input` et non `.auth-input` : la regle generique de
+   pinlane.css vise `input[type='password']`, soit une classe ET un element,
+   ce qui pese PLUS lourd qu une classe seule. Ecrite sans son element, la
+   regle ci-dessous perdait en silence (mesure : le champ restait a 14 px). */
+input.auth-input {
+  height: 48px;
+  font-size: 16px;
+}
+
 .bespoke-modal .hidden { display: none; }
 
 /* La modale vit hors de #clientView : sa grille de champs a besoin de ses

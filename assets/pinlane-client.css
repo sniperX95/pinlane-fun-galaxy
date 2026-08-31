@@ -534,15 +534,31 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
      bien avant le glissement faisait atterrir un ecran deja fige. */
   transition: opacity 0.5s var(--ease);
 }
+/* LE VOYAGE A DE LA PROFONDEUR (2026-08-27). Les ecrans voisins se contentaient
+   de baisser en opacite : le glissement etait juste un deplacement lateral. Ils
+   RECULENT maintenant legerement pendant le trajet et reviennent au premier plan
+   en arrivant, ce qui donne au parcours un sens de profondeur au lieu d un
+   defilement plat. L echelle reste TRES discrete (4 %) : au-dela, le texte des
+   ecrans voisins se met a vibrer pendant le voyage. */
 #clientView .tunnel-track.is-travelling .step {
   opacity: 0.35;
+  transform: scale(0.96);
+  transition: opacity 0.5s var(--ease), transform 0.62s var(--lq-spring);
 }
+#clientView .step { transform: scale(1); transform-origin: center center; }
 #clientView .step.is-current {
   opacity: 1;
-  transition: opacity 0.55s var(--ease) 0.1s;
+  transform: scale(1);
+  /* L ecran qui ARRIVE revient au premier plan un peu apres les autres : c est
+     ce decalage qui fait lire le mouvement comme une arrivee, pas comme un
+     simple fondu simultane. */
+  transition: opacity 0.55s var(--ease) 0.1s, transform 0.66s var(--lq-spring) 0.06s;
 }
 @media (prefers-reduced-motion: reduce) {
   #clientView .tunnel-track { transition: none; }
+  #clientView .step,
+  #clientView .tunnel-track.is-travelling .step,
+  #clientView .step.is-current { transform: none; transition: none; }
   #clientView .step,
   #clientView .step.is-current { transition: none; }
 }

@@ -77,7 +77,16 @@ async function main() {
   page.on('pageerror', (error) => errs.push('PAGEERROR: ' + error.message));
   try {
     await installMock(page);
-    await page.goto(BASE_URL + '/?v=leadlink-' + Date.now(), { waitUntil: 'networkidle', timeout: 45000 });
+    // ON ATTEND LA CONDITION, PAS UN ETAT RESEAU FLOU. `networkidle` exige 500 ms
+    // sans la moindre requete : sur une page qui charge ~3,3 Mio d actifs et
+    // interroge son mock au boot, ce silence n arrive pas toujours dans les 45 s.
+    // Ce gate a fait tomber la suite deux fois en une soiree (une fois
+    // ERR_NAME_NOT_RESOLVED, une fois timeout de navigation) alors qu il passe
+    // deux fois sur deux relance seul - et comme la chaine s arrete au premier
+    // echec, il empechait tous les gates suivants de tourner. On attend le
+    // chargement du document, puis la VRAIE condition d entree (setView defini),
+    // qui etait deja verifiee juste en dessous.
+    await page.goto(BASE_URL + '/?v=leadlink-' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await page.evaluate(() => window.setView('staff'));
     await page.waitForTimeout(1400);

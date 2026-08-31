@@ -147,17 +147,18 @@ async function main() {
     ok(cal.buttons >= 28, `les jours du calendrier sont de vrais boutons (${cal.buttons})`);
     ok(cal.selectedDate !== '', `le jour selectionne porte aria-pressed (${cal.selectedDate})`);
     ok(cal.todayFocusable, 'la cellule du jour est un bouton focusable');
-    // Fleche gauche depuis aujourd hui -> le focus se pose sur hier.
-    await page.evaluate(() => { document.querySelector(`.pv2-cal-cell[data-cal-date="${todayStr()}"]`).focus(); });
+    // Fleche gauche du 15 vers le 14 : DEUX jours toujours rendus dans le mois
+    // affiche (toutes les cellules du mois sont des boutons actifs, les mois
+    // voisins ne sont pas rendus). L ancienne version partait d AUJOURD HUI
+    // vers HIER : le 1er du mois, hier appartient au mois precedent, absent de
+    // la grille, et le gate rougissait par pur calendrier (mesure 2026-09-01).
+    await page.evaluate(() => { document.querySelector(`.pv2-cal-cell[data-cal-date="${todayStr().slice(0, 8)}15"]`).focus(); });
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(200);
-    const apresFleche = await page.evaluate(() => {
-      // Meme regle que le mock : date LOCALE (toISOString = la veille avant 2 h).
-      const d = new Date(); d.setDate(d.getDate() - 1);
-      const pad = (n) => String(n).padStart(2, '0');
-      const hier = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      return { attendu: hier, focus: document.activeElement ? document.activeElement.dataset.calDate || '' : '' };
-    });
+    const apresFleche = await page.evaluate(() => ({
+      attendu: `${todayStr().slice(0, 8)}14`,
+      focus: document.activeElement ? document.activeElement.dataset.calDate || '' : '',
+    }));
     ok(apresFleche.focus === apresFleche.attendu,
       `la fleche gauche deplace le focus d un jour (${apresFleche.focus} = ${apresFleche.attendu})`);
     await page.keyboard.press('Enter');

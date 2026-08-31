@@ -893,8 +893,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   };
 
   // L'ENTREPRISE qui ecrit (migration 0042). Le catalogue n'est plus partage :
-  // toute ecriture est estampillee du client du centre de SESSION, jamais d'un
-  // client choisi par l'appelant (withCenter a deja ecrase body.centerId).
+  // toute ecriture est estampillee du client du centre EFFECTIF (celui de la
+  // requete quand la barriere inter-clients l'autorise, sinon celui de la
+  // session) ; jamais d'une AUTRE entreprise que celle du staff connecte.
   // FAIL-CLOSED : un centre sans entreprise ne peut pas editer, sinon son
   // ecriture atterrirait dans le catalogue plateforme, donc chez tout le monde.
   // C'est exactement la fuite que 0042 ferme.
@@ -1788,7 +1789,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   }
 
   // Edition tarifaire CLIENT (cockpit centre, permission pricing.manage) : le
-  // centre de SESSION fait foi (withCenter a deja ecrase body.centerId), et
+  // centre AFFICHE fait foi (resolveEffectiveCenterId PREFERE le centerId de la
+  // requete, valide par la barriere inter-clients ; la session n'est qu'un
+  // repli), et
   // l'override global 'all' est refuse : un tenant n'edite QUE son propre tarif,
   // jamais le tarif partage (meme classe de faille que l'escalade de role
   // updateMemberRole). requireConcreteCenter rejette 'all'/vide (400 sans

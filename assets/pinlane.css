@@ -54,6 +54,12 @@
   --subtle: #f2f2f2;
   --line: #ebebeb;
   --line-strong: #d9d9d9;
+  /* Bordure des CONTROLES (champs, selects, switchs) : WCAG 1.4.11 exige
+     3:1 pour la frontiere d'un composant d'interface. --line-strong (1.4:1
+     sur --surface) reste pour les filets DECORATIFS ; tout controle prend
+     ce jeton. Mesure 2026-09-01 : 66 controles de la console sous le seuil.
+     Le plancher est --subtle (#f2f2f2), le fond le plus clair qu un controle habite. */
+  --control-border: #8a8a8a; /* 3.45:1 surface, 3.31:1 page, 3.08:1 subtle */
   --text: #0a0a0a;
   /* Trois rangs de texte, et le plancher d'un rang est le fond le plus SOMBRE
      qu'il ait le droit d'habiter. Ce n'est pas --subtle : c'est --accent-soft,
@@ -173,6 +179,7 @@
   --subtle: #1a1a1a;
   --line: #262626;
   --line-strong: #3d3d3d;
+  --control-border: #6e6e6e; /* 3.88:1 sur --surface, 3.70:1 sur --raised */
   --text: #ededed;
   --muted: #a1a1a1; /* AA : 8.4:1 sur --surface, 6.3:1 sur --accent-soft */
   --faint: #8a8a8a; /* AA : 5.7:1 sur --surface, 5.0:1 sur --subtle, 4.7:1 sur --accent-soft */
@@ -479,7 +486,7 @@ textarea {
   width: 100%;
   height: 40px;
   padding: 0 12px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);

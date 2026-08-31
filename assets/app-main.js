@@ -4504,7 +4504,18 @@ function renderProgramSummary() {
     const options = activity.options || {};
     if (activity.priceType === 'grid_bowling') {
       const duration = Number(options.duration) || 1;
-      const lanes = getRequiredLaneCount('bowling', pax, '');
+      // DUCKPIN : il a SES pistes (units du catalogue, 2 a Libramont) et sa
+      // regle de rotation. Ce resume comptait les pistes du BOWLING
+      // (ceil(pax/6), jamais plafonne) : a 13 joueurs il affichait 3 pistes
+      // et 117 EUR quand le serveur (lib/visit-program.js) facture 2 pistes
+      // et 78 EUR, et la notif du MEME ecran disait deja 2 pistes + rotation.
+      // Meme calcul que le serveur : plafond par la dotation, le groupe tourne.
+      const parPiste = Math.max(1, Math.trunc(Number(activity.capacityPerUnit) || 6));
+      const voulues = Math.max(1, Math.ceil(pax / parPiste));
+      const plafond = Number(activity.units) > 0 ? Math.trunc(Number(activity.units)) : null;
+      const lanes = activity.resourceType === 'duckpin_lane'
+        ? (plafond ? Math.min(plafond, voulues) : voulues)
+        : getRequiredLaneCount('bowling', pax, '');
       const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') }) : null;
       if (games) {
         // AUX PARTIES : c'est le nombre de JOUEURS qui paie, pas le nombre de

@@ -7112,8 +7112,12 @@
   /* ==========================================================================
      TARIFS : editeur client (override par centre, permission pricing.manage)
      Branche sur GET clientCatalog (prefill) + POST saveClientFormuleOverride /
-     resetClientFormuleOverride. Le serveur force le centre de session : l'UI
-     n'envoie JAMAIS de centerId. La modale vit dans document.body pour survivre
+     resetClientFormuleOverride. Chaque ecriture est SIGNEE du centre AFFICHE
+     (pevBody ajoute centerId) : le serveur VALIDE ce centre (centers.switch +
+     barriere inter-clients) puis il fait foi ; la session n'est qu'un repli.
+     Correctif du 2026-08-21 : sans cette signature, l'edition d'un fondateur
+     multi-centres partait sur le centre de sa SESSION, pas celui de l'ecran.
+     La modale vit dans document.body pour survivre
      aux reconstructions innerHTML de la page. Etat hors DOM (pricingEditor),
      encapsule dans cet IIFE, pas de variable globale sauvage.
      ======================================================================== */

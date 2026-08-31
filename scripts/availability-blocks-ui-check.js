@@ -173,7 +173,7 @@ async function installMock(page) {
         if (action === 'listAvailabilityBlocks') return J({ ok: true, centerId: 'gembloux', blocks: window.__avbBlocks.slice() });
         return J({ ok: true });
       }
-      if (u.pathname.endsWith('/public-booking-meta')) return J({ ok: true, formules: [], center: null });
+      if (u.pathname.endsWith('/public-booking-meta')) return J({ ok: true, formules: [/* forme prod reelle : depuis le durcissement anti-fuite, une liste vide = ce centre ne vend AUCUNE formule (plus de repli constante) */ { id: 'f1', name: 'FORMULE 1', family: 'Formules anniversaires', desc: ['1h de Bowling', '1 partie Laser Game', '30 min arcades', '2 cruches boissons'], price: 26, type: 'per_pax', minPax: 6, oldPrice: 34, noHolidays: false, hasBowling: true, bowlingDur: 1, notes: [] }], center: null });
       if (u.pathname.startsWith('/api/')) return J({ ok: true, reservations: [], laneStatuses: {}, communications: [] });
       return nf(input, init);
     };

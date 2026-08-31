@@ -3,7 +3,8 @@
 // Mesure du 2026-08-31, la veille de l ouverture Fun Galaxy Libramont.
 //
 // Le tunnel public sait vendre une activite « per_unit_hour » (les billards a
-// Libramont : 12 EUR la table et par heure). Il propose le nombre de tables ET
+// Libramont : 10 EUR la table et par heure en prod ; le mock du gate teste le
+// MECANISME a 12 EUR, pas le montant du tenant). Il propose le nombre de tables ET
 // la duree, et son programme part avec units et hours.
 //
 // La reservation rapide du COMPTOIR, elle, n avait aucun de ces deux reglages :
@@ -60,7 +61,10 @@ function serveStatic() {
 
 // Le catalogue du centre. Les billards declarent SIX tables (dotation) et se
 // vendent de 1h a 4h par pas d une heure : c est la donnee du tenant qui doit
-// gouverner les choix offerts, pas une liste ecrite dans le code.
+// gouverner les choix offerts, pas une liste ecrite dans le code. Les MONTANTS
+// de ce mock (12 EUR...) testent le mecanisme, pas les prix reels du tenant
+// (billards a 10 EUR en prod, mesure 2026-09-01) : les prix reels vivent en
+// base et se verifient contre le meta prod, pas contre un fichier.
 const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
   { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', priceValue: null, unitLabel: 'par personne', order: 2, defaultMinutes: 22 },

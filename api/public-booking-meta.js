@@ -60,8 +60,14 @@ async function handleCustomRequest(req, res, body) {
   const occasionRaw = clean(body.occasion, 40).toLowerCase();
   const occasion = CUSTOM_REQUEST_OCCASIONS.has(occasionRaw) ? occasionRaw : '';
   const pax = Math.max(0, Math.trunc(Number(body.pax) || 0));
-  const centerId = clean(body.centerId ?? body.center_id, 60) || 'libramont';
+  // Meme discipline que public-reservations : pas de repli 'libramont', une
+  // demande sans centre serait invisible pour la bonne equipe.
+  const centerId = clean(body.centerId ?? body.center_id, 60);
 
+  if (!centerId) {
+    sendError(res, 422, 'Centre manquant : precisez le centre de la demande.');
+    return;
+  }
   if (!contactName || !email) {
     sendError(res, 400, 'Nom du contact et email sont obligatoires.');
     return;

@@ -43,9 +43,25 @@ function ok(cond, label) {
 // Dates de reference (verifiees ci-dessous). Toutes FUTURES pour que le verdict
 // "Date passée" ne masque pas les autres cas.
 // ---------------------------------------------------------------------------
-const MON = '2026-08-31'; // lundi : grille hebdo fermee (getSchedule -> null)
-const TUE = '2026-09-01'; // mardi : 14h - 22h
-const WED = '2026-09-02'; // mercredi : 12h - 22h
+// Jours FUTURS calcules a l execution. Les dates figees de la premiere version
+// (2026-08-31...) sont passees dans le passe a minuit : le gate repondait
+// « Date passée » au lieu de « Fermé ce jour » et rougissait par pur
+// calendrier (mesure du 2026-09-01, un jour apres son propre fige). On saute
+// les vacances scolaires wallonnes : leur grille remplacerait la grille hebdo
+// que les checks citent.
+const { WALLONIA_SCHOOL_HOLIDAYS } = require('../lib/booking-config');
+function prochainJour(weekday) {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date()).split('-').map(Number);
+  const cursor = new Date(Date.UTC(y, m - 1, d));
+  const enConge = (iso) => WALLONIA_SCHOOL_HOLIDAYS.some((range) => iso >= range.start && iso <= range.end);
+  do { cursor.setUTCDate(cursor.getUTCDate() + 1); }
+  while (cursor.getUTCDay() !== weekday || enConge(cursor.toISOString().slice(0, 10)));
+  return cursor.toISOString().slice(0, 10);
+}
+const MON = prochainJour(1); // lundi : grille hebdo fermee (getSchedule -> null)
+const TUE = prochainJour(2); // mardi : 14h - 22h
+const WED = prochainJour(3); // mercredi : 12h - 22h
 const PAST = '2020-01-02'; // date passee
 
 // ---------------------------------------------------------------------------

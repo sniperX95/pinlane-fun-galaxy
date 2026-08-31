@@ -1,3 +1,7 @@
+// Fumee du parcours reel sur la PRODUCTION (mngfunglxy.com). HORS de la chaine
+// test:ops:all A DESSEIN : il depend du reseau et de l etat deploye, un rouge
+// d infrastructure bloquerait tout push. A lancer A LA MAIN apres chaque
+// deploiement : node scripts/run-webapp-smoke-tests.js
 const path = require('path');
 const { chromium } = require('playwright-core');
 
@@ -36,7 +40,11 @@ async function main() {
     });
 
     const bodyText = await page.locator('body').innerText({ timeout: 15000 });
-    assert(/Fun Galaxy|Pinlane|Date et joueurs/i.test(bodyText), 'La page publique ne rend pas le contenu attendu.');
+    // Ancres = la COPIE PRODUIT du tunnel (recapitulatif, reservation, total
+    // estime), jamais le nom du tenant ni un libelle d etape : la copie a deja
+    // change trois fois et l ancienne regex (Fun Galaxy|Pinlane|Date et
+    // joueurs) rougissait sur un site parfaitement sain (mesure 2026-08-31).
+    assert(/réservation|récapitulatif|total estimé/i.test(bodyText), 'La page publique ne rend pas le contenu attendu.');
     assert(await page.locator('#btnStaff').count(), 'Le bouton Staff est introuvable.');
     const staffButton = page.locator('#btnStaff');
     if (await staffButton.isVisible()) {

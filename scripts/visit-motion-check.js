@@ -104,7 +104,21 @@ function availabilityPayload(search) {
 
 function metaPayload() {
   return {
-    ok: true, today: DATE, durationOptions: [], formules: [],
+    ok: true, today: DATE, durationOptions: [],
+    // La forme REELLE de f1 en prod (GET /api/public-booking-meta?centerId=
+    // libramont, 2026-08-31). Depuis le durcissement anti-fuite du catalogue,
+    // une liste vide veut dire « ce centre ne vend AUCUNE formule » (plus de
+    // repli sur la constante FORMULES) : la fixture declare donc la formule
+    // qu elle reserve, comme la production la sert. SEULE deviation :
+    // noHolidays=false, car le gate vise le samedi suivant et la vraie valeur
+    // rougirait pendant chaque periode de vacances, par pur calendrier.
+    formules: [{
+      id: 'f1', name: 'FORMULE 1', family: 'Formules anniversaires',
+      desc: ['1h de Bowling', '1 partie Laser Game', '30 min arcades', '2 cruches boissons'],
+      price: 26, type: 'per_pax', minPax: 6, oldPrice: 34, noHolidays: false,
+      hasBowling: true, bowlingDur: 1,
+      notes: ['Minimum 6 personnes', 'Non valable durant les vacances scolaires et jours feries'],
+    }],
     activities: [
       { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, order: 1, defaultMinutes: 60 },
       { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', priceValue: null, order: 2, defaultMinutes: 25 },
@@ -366,6 +380,9 @@ async function checkTrack(page) {
     };
   });
   ok(Boolean(track), 'la grille du bowling existe');
+  // Grille absente : le rouge est pose juste au-dessus ; jeter ici masquerait
+  // tous les checks suivants du script (un gate mesure, il ne plante pas).
+  if (!track) return;
   ok(track.chips >= 20, `la grille porte la journee entiere (${track.chips} heures)`);
   ok(track.focusable, 'chaque heure est atteignable a la tabulation');
   ok(!track.scrollable, 'plus AUCUN defilement horizontal : tout est pose');

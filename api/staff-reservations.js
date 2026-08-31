@@ -221,7 +221,11 @@ module.exports = async (req, res) => {
       // Côté STAFF le contact est LIBRE (nom/tél/email non imposés) : le staff
       // crée souvent une résa au comptoir sans tout saisir. L'email obligatoire
       // reste réservé au parcours CLIENT PUBLIC (api/public-reservations.js).
-      const request = normalizeReservationRequest(body, { channel: 'staff' });
+      // Le centre de la SESSION voyage avec la requete (meme discipline que
+      // withCenter dans api/ops.js) : sans lui, un body sans centerId etait
+      // range chez 'libramont' QUEL QUE SOIT le centre authentifie, et la
+      // barriere inter-clients ne voyait rien (requestedCenterId vide).
+      const request = normalizeReservationRequest(body, { channel: 'staff', centerId: session.authorizedCenterId });
       const ops = await prepareReservationOps(request, 'staff');
       const reservation = await createReservation({
         ...request,

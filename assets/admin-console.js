@@ -76,6 +76,29 @@ function getAdminStatusLabel(status = '') {
   }[status] || status || 'Inconnu';
 }
 
+// L'export Direction est un document officiel en francais : les enums internes
+// riskLevel (low/high/critical) et validationStatus (staff_review...) ne
+// sortent jamais brutes. Meme vocabulaire que la pastille Risque du tableau du
+// jour, qui appelle la meme fonction (une seule definition, pas deux copies).
+function getAdminRiskLabel(reservation = {}) {
+  const risk = String(reservation.riskLevel || '').toLowerCase();
+  if (risk === 'critical') return 'Critique';
+  if (risk === 'high') return 'Élevé';
+  if (risk === 'warning') return 'À surveiller';
+  if (reservation.validationStatus === 'staff_review') return 'Validation staff';
+  return 'Normal';
+}
+
+function getAdminValidationLabel(status = '') {
+  return {
+    draft: 'Brouillon',
+    requested: 'Demandée',
+    staff_review: 'Validation staff',
+    confirmed: 'Validée',
+    rejected: 'Refusée',
+  }[status] || status || '';
+}
+
 function getAdminResourceText(reservation) {
   const bowlingWindows = getBowlingWindowsFromReservation(reservation);
   const laserWindows = getLaserWindowsFromReservation(reservation);
@@ -377,8 +400,8 @@ function buildAdminExcelXml(payload) {
       getAdminResourceText(reservation),
       guest.waiverRequired ? (guest.waiverDone ? 'OK' : 'A valider') : 'Non requis',
       guest.checkInDone ? 'OK' : 'A faire',
-      reservation.riskLevel || 'normal',
-      reservation.validationStatus || '',
+      getAdminRiskLabel(reservation),
+      getAdminValidationLabel(reservation.validationStatus),
     ]);
     })
   ];
@@ -1704,15 +1727,7 @@ function renderAdminReservationsTable(reservations = [], title = 'Réservations 
           const risk = String(reservation.riskLevel || '').toLowerCase();
           const needsReview = reservation.validationStatus === 'staff_review';
           const riskTone = risk === 'critical' ? 'danger' : (risk === 'high' || risk === 'warning' || needsReview) ? 'warn' : '';
-          const riskLabel = risk === 'critical'
-            ? 'Critique'
-            : risk === 'high'
-              ? 'Élevé'
-              : risk === 'warning'
-                ? 'À surveiller'
-                : needsReview
-                  ? 'Validation staff'
-                  : 'Normal';
+          const riskLabel = getAdminRiskLabel(reservation);
           return `<tr>
             <td><strong>${escapeHtml(reservation.startTime || '--:--')}</strong><br>${escapeHtml(formatDurationLabel(reservation.totalDuration || reservation.duration || 0))}</td>
             <td><strong>${escapeHtml(reservation.name || 'Client')}</strong><br>${escapeHtml(reservation.phone || '')}</td>

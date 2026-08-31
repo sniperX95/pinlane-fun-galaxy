@@ -55,9 +55,13 @@ const FORMULE = 'f1';
 const GAP_BOWLING = '15:00';
 const GAP_LASER = '18:30';
 const GAP_MINUTES = 150;
-// L heure la plus proche qui recollerait les deux activites : bowling se
-// termine a 16:00, plus la transition, recale sur la grille :00/:30.
-const TIGHTEN_TIME = '16:30';
+// L heure qui recollerait les deux activites : bowling 15:00 + 1 h de piste
+// finit a 16:00, et « enchainer » veut dire ZERO attente : l heure COLLEE,
+// calee sur la grille (ceilMinutes(fin, PROGRAM_GRID_MINUTES), decision
+// documentee dans lib/ops-engine.js). L ancienne attente '16:30' venait
+// d une marge de 5 min supprimee a dessein : arrondie a la grille, elle
+// offrait 30 min d attente a quelqu un qui venait d en demander zero.
+const TIGHTEN_TIME = '16:00';
 
 let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
@@ -121,7 +125,21 @@ function availabilityPayload(search) {
 
 function metaPayload() {
   return {
-    ok: true, today: DATE, durationOptions: [], formules: [],
+    ok: true, today: DATE, durationOptions: [],
+    // La forme REELLE de f1 en prod (GET /api/public-booking-meta?centerId=
+    // libramont, 2026-08-31). Depuis le durcissement anti-fuite du catalogue,
+    // une liste vide veut dire « ce centre ne vend AUCUNE formule » (plus de
+    // repli sur la constante FORMULES) : la fixture declare donc la formule
+    // qu elle reserve, comme la production la sert. SEULE deviation :
+    // noHolidays=false, car le gate vise le samedi suivant et la vraie valeur
+    // rougirait pendant chaque periode de vacances, par pur calendrier.
+    formules: [{
+      id: 'f1', name: 'FORMULE 1', family: 'Formules anniversaires',
+      desc: ['1h de Bowling', '1 partie Laser Game', '30 min arcades', '2 cruches boissons'],
+      price: 26, type: 'per_pax', minPax: 6, oldPrice: 34, noHolidays: false,
+      hasBowling: true, bowlingDur: 1,
+      notes: ['Minimum 6 personnes', 'Non valable durant les vacances scolaires et jours feries'],
+    }],
     activities: [
       { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, order: 1, defaultMinutes: 60 },
       { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', priceValue: null, order: 2, defaultMinutes: 25 },
@@ -199,10 +217,10 @@ const MEASURE = () => {
   // Couleurs des JETONS resolues dans le theme courant : on compare l avis a
   // --warning et a --danger, jamais a une valeur en dur.
   const probe = document.createElement('span');
-  probe.style.cssText = 'position:absolute;visibility:hidden;border-top:1px solid var(--danger);color:var(--warning)';
+  probe.style.cssText = 'position:absolute;visibility:hidden;border-top:1px solid var(--danger);color:var(--warning);background:var(--accent)';
   document.body.appendChild(probe);
   const probeStyle = getComputedStyle(probe);
-  const tokens = { danger: probeStyle.borderTopColor, warning: probeStyle.color };
+  const tokens = { danger: probeStyle.borderTopColor, warning: probeStyle.color, accent: probeStyle.backgroundColor };
   probe.remove();
   return {
     tokens,
@@ -237,6 +255,17 @@ const MEASURE = () => {
       const frame = track.getBoundingClientRect();
       return box.right > frame.left + 1 && box.left < frame.right - 1;
     }).length,
+    // Aucune pastille ne depasse LATERALEMENT du cadre de sa piste : le
+    // defilement vertical dans sa zone est un choix produit (one-screen),
+    // le debordement lateral serait une heure cachee.
+    chipsInTrackWidth: [...document.querySelectorAll('.anchor-chip')].filter((chip) => {
+      const box = chip.getBoundingClientRect();
+      if (box.height <= 0 || box.width <= 0) return false;
+      const track = chip.closest('.anchor-track');
+      if (!track) return true;
+      const frame = track.getBoundingClientRect();
+      return box.left >= frame.left - 1 && box.right <= frame.right + 1;
+    }).length,
     // Toutes les heures du jour vivent dans le DOM d'une seule piste : plus
     // aucune n'est retiree derriere un filtre.
     reachableChips: document.querySelectorAll('.anchor-chip').length,
@@ -250,6 +279,7 @@ const MEASURE = () => {
       color: style.color,
       background: style.backgroundColor,
       borderColor: style.borderTopColor,
+      borderLeftColor: style.borderLeftColor,
       action: advice.querySelector('.visit-rail-advice-action')?.textContent.trim() || '',
     } : null,
     dangerBoxes: document.querySelectorAll('.anchor-status-error').length,
@@ -281,6 +311,12 @@ async function measureCell(page, width, theme) {
   await page.setViewportSize({ width, height: 1000 });
   await page.evaluate((value) => { document.documentElement.setAttribute('data-theme', value); }, theme);
   await page.waitForTimeout(140);
+  // Les entrees echelonnees du tunnel durent ~440 ms : mesurer avant la fin
+  // attrape un bouton a l echelle 0.9x et fait passer 44 px pour 43. On
+  // attend le repos, borne a 2 s pour ne jamais pendre sur une animation
+  // infinie eventuelle.
+  await page.waitForFunction(() => document.getAnimations({ subtree: true })
+    .filter((animation) => animation.playState === 'running').length === 0, null, { timeout: 2000 }).catch(() => {});
   return page.evaluate(MEASURE);
 }
 
@@ -374,10 +410,14 @@ async function checkBrowser(page) {
     const background = parseRgb(cell.advice?.background);
     const ratio = foreground && background ? contrastRatio(foreground, background) : 0;
     ok(ratio >= 4.5, `${theme} : contraste du texte de l avis ${ratio}:1 (>= 4.5)`);
-    // Ambre = attention (DESIGN.md §3 : « Ambre = arrivee/attention »), rouge =
-    // bloque. Un avis n est pas un blocage : il ne prend jamais --danger.
-    ok(cell.advice?.borderColor === cell.tokens.warning && cell.advice?.borderColor !== cell.tokens.danger,
-      `${theme} : l avis porte la couleur d attention et non celle du refus (${cell.advice?.borderColor} vs danger ${cell.tokens.danger})`);
+    // Le filet de l avis porte la couleur du CENTRE (decision Movsar du
+    // 2026-08-24, documentee dans pinlane-client.css : « un conseil n est pas
+    // une alerte », carte neutre + filet accent ; l ambre de l ancien
+    // DESIGN.md §3 est abandonne ici). L invariant intouchable : rien de la
+    // couleur du refus.
+    ok(cell.advice?.borderLeftColor === cell.tokens.accent && cell.advice?.borderLeftColor !== cell.tokens.danger
+      && cell.advice?.borderColor !== cell.tokens.danger,
+      `${theme} : l avis porte le filet accent du centre, jamais la couleur du refus (${cell.advice?.borderLeftColor} vs danger ${cell.tokens.danger})`);
   }
 
   console.log('\n[3b] GARDER CET HORAIRE : ecarter l avis est un droit, pas une perte d info');
@@ -424,8 +464,12 @@ async function checkBrowser(page) {
   // filtre, et l ordre du jour reste celui des moments (data-period-start).
   ok(rail.periodTabs.length === 0,
     `plus aucun onglet de moment ne filtre les heures (${rail.periodTabs.length})`);
-  ok(rail.cardsTotal >= 50 && rail.visibleChips === rail.cardsTotal,
-    `toute la journee est sous les yeux, sans onglet (${rail.visibleChips}/${rail.cardsTotal})`);
+  // « Sous les yeux » veut dire : rien de cache par un onglet ni par un
+  // debordement LATERAL. Le defilement vertical de la grille dans SA zone est
+  // un choix produit (one-screen + cartes avec heure de fin) : une pastille
+  // sous le pli n est pas une pastille cachee.
+  ok(rail.cardsTotal >= 50 && rail.chipsInTrackWidth === rail.cardsTotal,
+    `toute la journee est posee dans sa grille, sans onglet ni debordement lateral (${rail.chipsInTrackWidth}/${rail.cardsTotal})`);
   ok(rail.chipTimesValid, 'toutes les heures proposees restent des heures :00/:30');
   // Le format CARTE demande par Movsar : « les cartes [...] cest bcp plus pro
   // et beau ». Chaque creneau dit sa FIN, et l enchainement se lit en toutes
@@ -472,11 +516,11 @@ async function checkBrowser(page) {
   // l ecran en montre mecaniquement plus. L invariant defendu reste le meme :
   // jamais le mur des 53 pastilles d avant, et la page ne defile pas.
   ok(mobile.visibleChips <= 32, `mobile 390px : ${mobile.visibleChips} pastilles affichees a la fois, jamais le mur des 53 d avant`);
-  // La piste horizontale a supprime le filtre par moment de journee : les 53
-  // heures des deux activites sont TOUTES dans le DOM, atteignables au doigt,
-  // aux fleches ou par saut de moment. Avant, 29 d'entre elles n'existaient pas
-  // tant qu'on n'avait pas change d'onglet.
-  ok(mobile.reachableChips === 53, `mobile 390px : les ${mobile.reachableChips} heures du jour sont toutes atteignables sans changer d onglet`);
+  // Le filtre par moment de journee a disparu : TOUTES les heures des deux
+  // activites vivent dans le DOM, atteignables au doigt. 55 depuis la regle
+  // « une activite qui finit PILE a la fermeture passe » (close 24:00 :
+  // bowling 23:00 et laser 23:30 sont vendables, l ancien compte etait 53).
+  ok(mobile.reachableChips === 55, `mobile 390px : les ${mobile.reachableChips} heures du jour sont toutes atteignables sans changer d onglet`);
 }
 
 // --- 6. CONTRE-EPREUVE PAR MUTATION -----------------------------------------

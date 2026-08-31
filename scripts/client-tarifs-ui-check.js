@@ -9,7 +9,9 @@
 //   2. VRAI clic sur Modifier -> la modale s'ouvre PREFILLED avec la valeur
 //      courante (prix + nom) ;
 //   3. changer le prix + Enregistrer -> une requete POST saveClientFormuleOverride
-//      part avec le bon formuleId et patch.priceValue, SANS centerId, et apres
+//      part avec le bon formuleId et patch.priceValue, SIGNEE du centre AFFICHE
+//      (centerId=libramont ici, session mockee sur gembloux : la preuve que
+//      l'ecriture suit l'ECRAN, pas la session), et apres
 //      re-fetch la ligne montre la NOUVELLE valeur ;
 //   4. toggle Retirer -> POST avec patch.removed=true ;
 //   5. bouton Reinitialiser sur une formule personnalisee -> POST
@@ -17,7 +19,8 @@
 // Puis DEUX contre-preuves par MUTATION (le gate sait rougir), restauration par
 // EDITION INVERSE exacte (jamais git checkout) :
 //   (a) neutraliser l'envoi de patch.priceValue -> le check 3 (save-post-price) rougit ;
-//   (b) neutraliser le re-render apres save -> le check "nouvelle valeur" (reload-shows-new) rougit.
+//   (b) neutraliser le re-render apres save -> le check "nouvelle valeur" (reload-shows-new) rougit ;
+//   (c) neutraliser la signature centerId de pevBody -> save-signed-center rougit.
 // Sortie 0 quand tout est vert, 1 sinon.
 // Lancement : node scripts/client-tarifs-ui-check.js
 
@@ -52,6 +55,12 @@ const MUTATIONS = [
     find: "pevToast('Tarif mis à jour.');\n      pevDismissModal();\n      pevReload();",
     replace: "pevToast('Tarif mis à jour.');\n      pevDismissModal();\n      void 0;",
     expect: 'reload-shows-new',
+  },
+  {
+    name: 'signature centerId de pevBody neutralisee',
+    find: 'return JSON.stringify(centerId ? { ...payload, centerId } : payload);',
+    replace: 'return JSON.stringify(payload);',
+    expect: 'save-signed-center',
   },
 ];
 
@@ -246,7 +255,16 @@ async function runSuite(browser, quiet) {
     const posts3 = await page.evaluate(() => window.__pevPosts.slice());
     const save = posts3.find((p) => p.action === 'saveClientFormuleOverride' && p.formuleId === 'f1');
     ok(save && save.patch && save.patch.priceValue === 55, 'save-post-price', JSON.stringify(save || posts3[posts3.length - 1] || null));
-    ok(Boolean(save) && !('centerId' in save), 'save-no-centerid', save ? `keys=${Object.keys(save).join(',')}` : 'aucun POST');
+    // DOCTRINE (2026-08-31, alignee sur catalog-editor-ui-check) : chaque
+    // ecriture tarifaire est SIGNEE du centre AFFICHE. Le serveur PREFERE ce
+    // centerId (resolveEffectiveCenterId), le valide (centers.switch + barriere
+    // inter-clients) et ne retombe sur la session qu'a defaut. La session de ce
+    // harnais est sur gembloux et l'ecran sur libramont : exiger libramont
+    // prouve que l'ecriture suit l'ECRAN. (L'ancienne version exigeait
+    // l'ABSENCE de centerId : la satisfaire aurait envoye l'edition d'un
+    // fondateur multi-centres sur le centre de sa session, exactement le bug
+    // corrige le 2026-08-21 sur le catalogue.)
+    ok(Boolean(save) && save.centerId === 'libramont', 'save-signed-center', save ? `centerId=${save.centerId}` : 'aucun POST');
 
     await page.waitForFunction(() => {
       const btn = document.querySelector('#staffPricingPage [data-pev-edit="f1"]');
@@ -266,7 +284,7 @@ async function runSuite(browser, quiet) {
     await page.waitForFunction(() => window.__pevPosts.some((p) => p.action === 'saveClientFormuleOverride' && p.patch && p.patch.removed === true), null, { timeout: 5000 }).catch(() => {});
     const posts4 = await page.evaluate(() => window.__pevPosts.slice());
     const removed = posts4.find((p) => p.action === 'saveClientFormuleOverride' && p.formuleId === 'f1' && p.patch && p.patch.removed === true);
-    ok(Boolean(removed) && !('centerId' in (removed || {})), 'save-post-removed', JSON.stringify(posts4[posts4.length - 1] || null));
+    ok(Boolean(removed) && removed.centerId === 'libramont', 'save-post-removed', JSON.stringify(posts4[posts4.length - 1] || null));
 
     // ---- 5. Reinitialiser sur une formule personnalisee (f2) ---------------
     await ensureNoModal(page);
@@ -283,7 +301,7 @@ async function runSuite(browser, quiet) {
     await page.waitForFunction(() => window.__pevPosts.some((p) => p.action === 'resetClientFormuleOverride'), null, { timeout: 5000 }).catch(() => {});
     const posts5 = await page.evaluate(() => window.__pevPosts.slice());
     const reset = posts5.find((p) => p.action === 'resetClientFormuleOverride' && p.formuleId === 'f2');
-    ok(Boolean(reset) && !('centerId' in (reset || {})), 'reset-post', JSON.stringify(posts5[posts5.length - 1] || null));
+    ok(Boolean(reset) && reset.centerId === 'libramont', 'reset-post', JSON.stringify(posts5[posts5.length - 1] || null));
   } catch (error) {
     ok(false, 'suite-exception', error && error.message);
   } finally {
@@ -339,7 +357,7 @@ async function runSuite(browser, quiet) {
       process.exitCode = 1;
       return;
     }
-    console.log('client-tarifs-ui-check: ALL OK (analytics preservee, lignes editables, modale prefilled, save priceValue sans centerId + nouvelle valeur affichee, toggle removed, reset ; 2 contre-preuves par mutation)');
+    console.log('client-tarifs-ui-check: ALL OK (analytics preservee, lignes editables, modale prefilled, save priceValue signe du centre affiche + nouvelle valeur affichee, toggle removed, reset ; 3 contre-preuves par mutation)');
   } finally {
     // Ultime garde-fou : si une exception a laisse le fichier mute, on restaure.
     try {

@@ -30,6 +30,14 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJson(req);
+    // Un POST sans centre ne retombe plus sur 'libramont' : chaque ecriture
+    // nomme son centre. Le tunnel l'envoie TOUJOURS (prouve par execution,
+    // pire cas mesure = 'libramont' explicite) : ce 422 ne peut toucher qu'un
+    // appel forge ou un integrateur incomplet, jamais le parcours reel.
+    if (!String((body && (body.centerId || body.center_id)) || '').trim()) {
+      sendError(res, 422, 'Centre manquant : precisez le centre de la reservation.');
+      return;
+    }
     // La date est bornee AVANT tout le reste : ni le champ du tunnel ni le
     // moteur n'avaient de limite haute, une reservation a deux ans passait.
     const dateVerdict = bookingDateOutOfRange(body && body.date);

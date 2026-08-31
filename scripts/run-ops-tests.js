@@ -972,6 +972,7 @@ function testPhoneNormalization() {
 
 function testRequestTypeGuardrails() {
   const staleBowling = normalizeReservationRequest({
+    centerId: 'libramont',
     type: 'bowling',
     formuleId: 'f1',
     formulaId: 'f1',
@@ -1001,6 +1002,7 @@ function testRequestTypeGuardrails() {
   assert.strictEqual(Boolean(bowlingPlan.plan.formulaId), false, 'bowling plan must not expose formula id');
 
   const staleLaser = normalizeReservationRequest({
+    centerId: 'libramont',
     type: 'laser',
     formuleId: 'f4',
     label: 'FORMULE 4',
@@ -1021,6 +1023,7 @@ function testLaserGameCountSurvivesRequestNormalization() {
   [2, 3].forEach((laserGames) => {
     const expectedDuration = laserGames === 2 ? 1 : 1.5;
     const request = normalizeReservationRequest({
+      centerId: 'libramont',
       type: 'laser',
       date: TEST_DATE,
       startTime: '15:00',
@@ -1046,6 +1049,7 @@ function testLaserGameCountSurvivesRequestNormalization() {
 
 function testStaffLaserGameCountSurvivesOpsPreparationShape() {
   const request = normalizeReservationRequest({
+    centerId: 'libramont',
     channel: 'staff',
     type: 'laser',
     date: TEST_DATE,
@@ -1090,6 +1094,7 @@ async function testPrepareReservationOpsPersistsLaserGamesInOpsPlan() {
 
   try {
     const ops = await prepareReservationOps({
+      centerId: 'libramont',
       channel: 'staff',
       type: 'laser',
       date: TEST_DATE,
@@ -1140,18 +1145,21 @@ async function testPreparePublicReservationRefusesOverlappingAnchors() {
 
   try {
     const overlapping = await prepareReservationOps({
+      centerId: 'libramont',
       ...forgedBase,
       preference: { preferredTimes: { bowling: '15:00', laser_game: '15:30' } },
     }, 'public');
     assert.strictEqual(overlapping.blockOnlineConfirmation, true, 'overlapping anchors must block online confirmation');
 
     const offGrid = await prepareReservationOps({
+      centerId: 'libramont',
       ...forgedBase,
       preference: { preferredTimes: { bowling: '15:00', laser_game: '16:45' } },
     }, 'public');
     assert.strictEqual(offGrid.blockOnlineConfirmation, true, 'off-grid anchor must block online confirmation');
 
     const valid = await prepareReservationOps({
+      centerId: 'libramont',
       ...forgedBase,
       preference: { preferredTimes: { bowling: '15:00', laser_game: '16:30' } },
     }, 'public');

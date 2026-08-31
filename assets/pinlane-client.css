@@ -345,11 +345,27 @@ body.client-mode #clientView {
    converge d'elle-meme vers la hauteur ou rien ne deborde. */
 body.client-mode.embed-mode #clientView { min-height: 560px; }
 
-/* --- PROGRESSION LIQUIDE -------------------------------------------------
-   Deux calques. Dessous : le fluide (rail + remplissage + tete ronde) sous
-   filtre gooey : quand la tete avance, elle s'etire depuis le remplissage
-   comme une goutte. Dessus : les pastilles nettes numerotees et les libelles
-   (jamais de texte sous le filtre). --p : progression 0..1 (updateProgress). */
+/* --- LE FIL DE PROGRESSION ------------------------------------------------
+   Refonte du 2026-08-31 (Movsar : « la barre de suivi je la trouve mal faite
+   [...] on a 3 questions et ca reste toujours sur le meme point, c est mal
+   opti, et meme l animation est super moche »).
+
+   Deux defauts, deux corrections :
+
+   1. IL NE BOUGEAIT PAS. Le remplissage se calait sur les 5 SECTIONS, alors
+      que l etape 1 pose jusqu a quatre questions (le jour, le groupe, les
+      activites, les options). Le client repondait trois fois de suite et le
+      fil restait au meme endroit : il avance maintenant a CHAQUE question
+      (--p est calcule sur l echelle des questions, voir updateProgress).
+
+   2. IL ETAIT LOURD ET LAID. L ancienne version passait un filtre SVG gooey
+      (feGaussianBlur + feColorMatrix) sur un calque dont la LARGEUR change en
+      continu : le navigateur refaisait le flou a chaque image de la
+      transition, et la « goutte » qui s etire etait exactement le mouvement
+      que Movsar trouvait moche. Le filtre est retire : il reste un rail, un
+      remplissage arrondi et une tete qui glisse avec son halo. Rien a
+      recalculer, et le trait est net a tous les grossissements.
+   --p : avancement 0..1, pose par updateProgress. */
 #clientView .progress {
   position: relative;
   flex: none;
@@ -358,11 +374,8 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   padding: var(--space-4) 0 var(--space-3);
 }
 
-/* Le rail NET (hors filtre : une ligne fine que le seuil alpha du gooey
-   dissoudrait) et le FLUIDE (sous filtre : les formes accent fusionnent en
-   goutte). Tous deux ancres au centre vertical des pastilles (13 px = la
-   moitie de leurs 26 px), dans la rangee elle-meme : le calage ne depend
-   d'aucun rembourrage exterieur. */
+/* Le rail gris, ancre au centre vertical des pastilles (13 px = la moitie de
+   leurs 26 px) : le calage ne depend d aucun rembourrage exterieur. */
 #clientView .lq-track {
   position: absolute;
   left: 13px;
@@ -381,7 +394,6 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   right: 13px;
   top: 0;
   height: 26px;
-  filter: url(#plGoo);
   pointer-events: none;
 }
 
@@ -391,30 +403,35 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   top: 0;
   bottom: 0;
   width: calc(var(--p, 0) * 100%);
-  min-width: 26px;
-  transition: width 0.72s var(--lq-spring);
+  min-width: 4px;
+  transition: width 0.62s var(--lq-spring);
 }
 
 #clientView .lq-fill {
   position: absolute;
   left: 0;
-  right: 6px;
+  right: 0;
   top: 50%;
-  height: 10px;
+  height: 4px;
   transform: translateY(-50%);
   border-radius: var(--radius-full);
   background: var(--accent);
 }
 
+/* LA TETE. Un point net qui glisse au bout du remplissage, pose sur un halo
+   de la meme couleur : c est lui qui donne la sensation d avancee, sans rien
+   demander au navigateur (une ombre portee ne se recalcule pas quand le
+   parent se deplace). */
 #clientView .lq-head {
   position: absolute;
   right: 0;
   top: 50%;
-  width: 26px;
-  height: 26px;
-  transform: translate(13px, -50%);
+  width: 10px;
+  height: 10px;
+  transform: translate(5px, -50%);
   border-radius: var(--radius-full);
   background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 #clientView .progress-steps {
@@ -452,8 +469,10 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform 0.45s var(--lq-spring);
 }
 
+/* 11,5 px est le PLANCHER de texte du projet : en dessous, le libelle est un
+   ornement illisible. Il etait a 11 px depuis la refonte du fil. */
 #clientView .progress-label {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
   color: var(--muted);
   transition: color var(--dur) var(--ease);
@@ -766,6 +785,41 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 @media (max-width: 640px) {
   #clientView .step1-body.is-solo .s1-when-kicker { display: none; }
   #clientView .step1-body.is-solo .s1-when .panel-title { font-size: clamp(20px, 5.6vw, 26px); }
+}
+
+/* LE RETOUR VERS LA QUESTION PRECEDENTE. Il n existe que sur la question du
+   groupe : la question du jour n a rien derriere elle. Sous 640 px la barre
+   haute porte deja une fleche de retour, en afficher une seconde ferait deux
+   chemins pour le meme geste. */
+#clientView .s1-venue-back { display: none; }
+#clientView .step1-body.is-solo.is-venue-pax .s1-venue-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  margin-inline: auto;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-full);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+#clientView .step1-body.is-solo.is-venue-pax .s1-venue-back:hover {
+  color: var(--text);
+  /* --overlay-hover est LE token de survol de la feuille : `--surface-2`,
+     que j avais ecrit de memoire, n existe pas (gate ghost-token). Un token
+     fantome ne casse rien a l ecran, il rend la valeur initiale : le survol
+     n aurait simplement rien fait. */
+  background: var(--overlay-hover);
+}
+@media (max-width: 640px) {
+  #clientView .step1-body.is-solo.is-venue-pax .s1-venue-back { display: none; }
 }
 
 /* Aucun message d'activite sur la venue seule : rien n'est encore pris a
@@ -1128,6 +1182,13 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
      respire, la mise en page ne bouge pas d un pixel. */
   padding-bottom: 0.16em;
   margin-bottom: -0.16em;
+  /* NI LES ACCENTS. Meme defaut par le haut : sur l ecran de confirmation,
+     "C EST VALIDE !" en capitales voyait l accent du E rase par le bord
+     superieur du masque (capture 2026-08-31, 390x844). Le mot part d en BAS
+     (translateY 115 %) : agrandir la boite vers le haut ne devoile rien
+     pendant l animation, et rend l accent. */
+  padding-top: 0.14em;
+  margin-top: -0.14em;
 }
 /* LE MOT EST VISIBLE PAR DEFAUT. Il etait cache en dur (translate + opacity 0)
    et ne redevenait visible que si l animation jouait : une question dont
@@ -1142,7 +1203,10 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   animation: q-word-rise 0.62s var(--lq-spring) both;
   /* 70 ms et non 42 : a 42 ms les mots se chevauchaient au point de se lire
      comme un seul fondu. A 70 ms on percoit chaque mot se poser. */
-  animation-delay: calc(var(--i, 0) * 70ms);
+  /* Le pas est pose par revelerQuestion : il retrecit quand la phrase est
+     longue, pour que l ecriture entiere tienne dans 200 ms. 70 ms reste la
+     valeur de repli si le JS n a pas parle. */
+  animation-delay: calc(var(--i, 0) * var(--q-pas, 70ms));
 }
 @keyframes q-word-rise {
   from { transform: translateY(115%); opacity: 0; }
@@ -3078,6 +3142,75 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 }
 
 /* --- Grille de créneaux : cellule surface, sélection = accent ------------ */
+/* --- LES HEURES SE LISENT PAR MOMENT (2026-08-31) -------------------------
+   La liste simple alignait jusqu a 27 boutons identiques d affilee, chacun
+   repetant la meme mention ("8 pistes libres"). Movsar : "il y a trop de
+   boutons, on comprend pas trop, il y a trop de texte, plus simple et plus
+   direct". Trois reperes decoupent la meme liste en groupes qui se balayent :
+   ce ne sont pas des onglets, aucune heure n est cachee, aucun bouton ajoute.
+   Ce qui est vrai partout se dit UNE fois, ici (voir renderSlots). */
+#clientView .slot-period + .slot-period { margin-top: var(--space-4); }
+#clientView .slot-period-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint, var(--muted));
+}
+/* Le titre porte deja la respiration : la grille qui le suit ne rajoute pas
+   la sienne, sinon chaque groupe coute 24 px de vide sur un telephone. */
+#clientView .slot-period .slot-grid { margin-top: var(--space-2); }
+/* SUR TELEPHONE, LE REPERE NE DOIT PAS COUTER UN ECRAN. Les trois
+   intertitres ont fait deborder l etape des heures de 49 px a 390x664
+   (gate tunnel-mobile-touch, 617/568) : ils gardent leur role de repere
+   mais rendent leur respiration, l ecran ne defile plus. */
+@media (max-width: 640px) {
+  #clientView .slot-period + .slot-period { margin-top: 6px; }
+  #clientView .slot-period-title { font-size: 11.5px; line-height: 1.05; letter-spacing: 0.08em; }
+  #clientView .slot-period .slot-grid { margin-top: 3px; }
+  #clientView .slot-shared-meta { margin-bottom: 4px; font-size: 11.5px; }
+}
+
+/* LE COMPOSEUR DE VISITE EST L ECRAN LE PLUS CHARGE DU TUNNEL, et Movsar a
+   pose une regle dure dessus : "si sur mobile on doit swiper en haut ou en
+   bas pour tout voir, c est echoue" (2026-08-24, gate a l appui). Les trois
+   reperes de moment lui ont coute 58 px et l ont fait deborder de 33 px a
+   390x664. Plutot que de les retirer, on rend ces pixels la ou ils ne
+   decident rien :
+   - "1 piste a chaque heure" : de l exploitation, pas un choix du client, et
+     la ligne au-dessus dit deja "1h de piste reservee" ;
+   - les respirations entre le fil et le bouton.
+   Mesure apres : la page tient, reperes compris. */
+@media (max-width: 640px) {
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-shared-meta { display: none; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-mobile-continue { margin-top: 6px; }
+  /* 4 px et non 6 : sur sept rangees d heures, ce sont 14 px rendus au fil.
+     La zone est en flex:1, donc sa hauteur mesuree ne descend jamais sous
+     celle du cadre - le gate lit 568/568 des que ca tient. Ces pixels sont
+     donc de la MARGE INVISIBLE : ils absorbent un nom d activite plus long
+     ou une journee d ouverture plus large chez un autre centre. */
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-chip-grid { gap: 4px; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .slot-period + .slot-period { margin-top: 5px; }
+}
+
+/* MEME ARBITRAGE SUR L ECRAN CONTACT. La question revenue en haut lui a fait
+   depasser sa zone de 10 px a 390x664 : ce sont les respirations entre les
+   blocs qui les rendent, pas une taille de texte ni une cible tactile (les
+   champs restent a 48 px et 16 px, les pastilles a 44 px). */
+@media (max-width: 640px) {
+  #clientView #step3 .s3-side { gap: 9px; }
+  #clientView #step3 .step3-body { gap: var(--space-2); }
+}
+
+#clientView .slot-shared-meta {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
 #clientView .slot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -6446,6 +6579,56 @@ body.client-mode #clientView .btn-primary.is-sealed,
   transition: stroke-dashoffset 220ms var(--ease-out-strong) 50ms;
 }
 
+/* --- LA FIN DU PARCOURS SE FETE (2026-08-31) ------------------------------
+   Movsar : "et plus d animation vers la fin du programme". L ecran Confirme
+   avait deja sa coche qui se dessine, mais rien autour : la reservation
+   s affichait, elle ne se celebrait pas.
+
+   Deux ondes partent du disque et s effacent. Tout se joue sur `transform` et
+   `opacity` d un pseudo-element : ni mise en page, ni peinture, ni filtre -
+   c est la seule famille d animation qu un telephone joue sans effort, et la
+   raison pour laquelle cette celebration ne coute rien la ou Movsar dit que
+   "ca bug enormement". Les ondes ne se rejouent pas : `is-current` persiste
+   tant que l ecran est affiche, et l animation est jouee une fois. */
+#clientView .success-icon { position: relative; }
+#clientView .success-icon::before,
+#clientView .success-icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+#clientView .step.is-current .success-icon::before {
+  animation: lq-onde 900ms var(--ease-out-strong) 120ms 1 both;
+}
+#clientView .step.is-current .success-icon::after {
+  animation: lq-onde 900ms var(--ease-out-strong) 200ms 1 both;
+}
+@keyframes lq-onde {
+  0% { transform: scale(1); opacity: 0.55; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* Le disque LUI-MEME arrive avec un ressort au lieu d apparaitre pose. */
+#clientView .step.is-current .success-icon {
+  animation: lq-sceau 640ms var(--lq-spring) both;
+}
+@keyframes lq-sceau {
+  from { transform: scale(0.72); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .step.is-current .success-icon,
+  #clientView .step.is-current .success-icon::before,
+  #clientView .step.is-current .success-icon::after { animation: none; }
+  #clientView .success-icon::before,
+  #clientView .success-icon::after { opacity: 0; }
+}
+
 /* RECETTE 12 : l'ecran Confirme scelle la reservation au lieu d'afficher une
    icone posee. Le disque arrive, la coche se dessine derriere lui. */
 #clientView .success-icon svg path,
@@ -6971,22 +7154,27 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .client-contact-links a { min-height: 28px; font-size: 12px; padding: 2px 4px; }
   #clientView .client-contact-links a svg { width: 13px; height: 13px; }
   #clientView .client-footer { margin-top: 0; padding-top: 2px; }
-  /* Le dock d etat en FLUX (flottant, il recouvrait cartes ou selecteur) :
-     une ligne calme sous le pied, sans chrome de panneau. */
-  #clientView .step-status-dock {
-    position: static;
-    margin: var(--space-1) 0 0;
-    transform: none;
-  }
+  /* LE BANDEAU D ALLOCATION SE POSE SOUS LES CHOIX (2026-08-31).
+     Il avait ete sorti du flottant pour ne plus recouvrir les cartes, et
+     range sous le pied d ecran : mesure a 390x844, il tombait a y=808 dans
+     une fenetre de 844, SOUS le bouton, en 11,5 px gris - a 664 px de haut
+     il ne restait que 4 px de lui a l ecran. Movsar : "la page orange il
+     faudrait la mettre plus en bas des choix parce que la on la voit pas
+     bien". Il remonte donc a sa place : flottant JUSTE AU-DESSUS du pied,
+     dans l espace que la grille depose deja sous elle (align-content:start
+     plus bas). Le recouvrement d autrefois venait d un decalage fixe de
+     140 px ; syncStatusDock MESURE le pied et se cale dessus.
+     Il reste une ligne calme : pas de panneau, juste un aplat doux, une
+     bordure d un cheveu et un texte qui se lit (12 px, couleur de texte). */
   #clientView .step-status-dock > * {
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    padding: 0 var(--space-2);
     justify-content: center;
     text-align: center;
-    font-size: 11.5px;
-    color: var(--muted);
+    padding: 7px var(--space-3);
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text-2, var(--text));
+    border-radius: var(--radius-lg, 14px);
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--text) 12%, transparent);
   }
   /* L icone decorative du dock se lisait comme un point flottant mal cadre. */
   #clientView .step-status-dock svg { display: none; }
@@ -7059,8 +7247,15 @@ body.client-mode #clientView .btn-primary.is-sealed,
 
   /* --- 3. Etape 1, page ACTIVITES : tout voir d un coup. ------------------ */
   /* Le rappel de venue vit DANS la barre haute (titre actionnable) : la
-     rangee de rappel separee cedait 42 px que la grille reclame. */
-  #clientView .s1-venue-line { display: none; }
+     rangee de rappel separee cedait 42 px que la grille reclame.
+     CETTE REGLE ETAIT MORTE (mesure 2026-08-31 : la ligne s affichait bel et
+     bien a 390 px, juste sous une barre haute qui disait deja mot pour mot
+     « sam. 5 sept. - 4 joueurs / Modifier »). En cause, la specificite : la
+     regle d affichage porte `.step1-body:not(.is-solo) ... :not([hidden])`,
+     quatre selecteurs contre un, et une media query ne change RIEN au poids
+     d un selecteur. Le rappel etait donc peint deux fois et volait 60 px de
+     grille sur un telephone. Meme selecteur, meme poids : la regle mord. */
+  #clientView .step1-body:not(.is-solo) .s1-venue-line:not([hidden]) { display: none; }
   #clientView .m-top-title {
     background: transparent;
     border: 0;
@@ -7086,8 +7281,23 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* Le panneau programme perd son chrome : la page EST le panneau. */
   #clientView .s1-what { border: 0; background: transparent; padding: 0; box-shadow: none; }
   #clientView .s1-what-head { gap: 2px; }
-  #clientView .s1-what-head .panel-kicker,
-  #clientView .s1-what-head .panel-title { display: none; }
+  /* CHAQUE ECRAN POSE SA QUESTION, TELEPHONE COMPRIS (2026-08-31).
+     Mesure du 2026-08-31 a 390x844 : la question du jour et celle du groupe
+     s ecrivaient a 21,8 px, mais celle des activites, celle du contact et
+     celle du recapitulatif etaient en display:none, et celle des heures
+     tombait a 14 px. Trois ecrans sur sept ne demandaient donc RIEN au
+     telephone. Movsar : "la question reponse n est pas aussi animee et jolie
+     que ceux du debut". Elles reviennent toutes, a la meme echelle que les
+     deux premieres : c est la meme phrase, ecrite mot a mot, au meme rang de
+     lecture. La hauteur vient du vide deja mesure sous chaque ecran. */
+  #clientView .s1-what-head .panel-kicker { display: none; }
+  #clientView .s1-what-head .panel-title {
+    display: block;
+    font-size: clamp(19px, 5.2vw, 24px);
+    line-height: 1.14;
+    text-align: center;
+    text-wrap: balance;
+  }
   #clientView .s1-what-head .segmented { width: 100%; }
   /* Le geste vertical appartient au defilement : il commence souvent SUR un
      bouton (cartes, chips, champs), pan-y le dit explicitement au moteur
@@ -7117,18 +7327,29 @@ body.client-mode #clientView .btn-primary.is-sealed,
      COUP (verdict Movsar 2026-08-18 : « faut tout voir d un coup », pense aux
      clients de 50 ans et plus). Nom qui replie sans se couper, prix en
      souffle court (« des 20/piste »), coche a droite. */
-  #clientView .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 5px; }
-  #clientView .activity-card { height: auto; min-height: 44px; position: relative; }
+  /* LE NOM SE LIT AVANT LE PRIX (2026-08-31). Movsar, sur une capture de cet
+     ecran : "on comprend pas direct que c bowling laser game etc parce que le
+     texte est trop petit et cache un peu". Mesure : le nom etait a 12,5 px
+     poids 600, l icone a 18 px, et le tarif juste dessous a 11,5 px - a un
+     demi-point d ecart, l oeil ne sait plus lequel des deux est le sujet. Le
+     nom passe a 14 px poids 700 en couleur de texte pleine et l icone a 22 px :
+     la carte s annonce d un regard. Les pixels viennent du rappel de venue en
+     double supprime plus haut, pas du confort de la grille. */
+  #clientView .activity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px 6px;
+  }
+  #clientView .activity-card { height: auto; min-height: 54px; position: relative; }
   /* La coche flotte au coin : chaque pixel de largeur va au texte (a 320,
      un prix mono qui manque de 1 px replie au slash et double la carte). */
   #clientView .activity-toggle {
-    grid-template-columns: 18px minmax(0, 1fr);
-    gap: 5px;
-    padding: 5px 8px;
-    min-height: 44px;
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 7px;
+    padding: 6px 9px;
+    min-height: 54px;
     align-items: start;
   }
-  #clientView .activity-icon { width: 18px; height: 18px; margin-top: 1px; }
+  #clientView .activity-icon { width: 22px; height: 22px; margin-top: 1px; }
   #clientView .activity-check {
     position: absolute;
     top: 5px;
@@ -7141,7 +7362,9 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .activity-text { display: block; }
   #clientView .activity-name {
     display: block;
-    font-size: 12.5px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
     line-height: 1.2;
     -webkit-line-clamp: unset;
     white-space: normal;
@@ -7206,7 +7429,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
     row-gap: 2px;
   }
   #clientView #step2 .s2-side .panel-kicker { display: none; }
-  #clientView #step2 .s2-side .panel-title { font-size: 14px; }
+  #clientView #step2 .s2-side .panel-title { font-size: clamp(19px, 5.2vw, 24px); line-height: 1.14; }
   #clientView #step2 .s2-side .step-intro { font-size: 11.5px; margin: 0; }
   #clientView #step2 .s2-side .info-box { font-size: 11.5px; padding: 4px 8px; gap: 6px; }
 
@@ -7284,12 +7507,15 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* --- 5. Etape 3 : des champs, pas des panneaux. ------------------------- */
   #clientView .s3-side { border: 0; background: transparent; box-shadow: none; padding: 0 2px; }
   #clientView .s3-side .panel-kicker { display: none; }
-  #clientView .s3-side .panel-title { font-size: 14px; }
+  #clientView .s3-side .panel-title { font-size: clamp(19px, 5.2vw, 24px); line-height: 1.14; }
   #clientView .contact-grid { gap: var(--space-2); }
   #clientView .step3-info { font-size: 11.5px; padding: 4px 8px; }
   #clientView .s3-extra { gap: var(--space-2); }
   #clientView .occasion-chip { min-height: 44px; font-size: 12.5px; }
-  #clientView .request-box .input { min-height: 64px; }
+  /* La question de l ecran reprend sa place en haut (voir plus bas) : ces
+     pixels-la se rendent ici, sur la zone la moins lue de l ecran. Trois
+     lignes de saisie restent visibles sans defiler. */
+  #clientView .request-box .input { min-height: 52px; }
   #clientView .field-honest-note { font-size: 11.5px; }
 
   /* --- 6. Etape 4 : des faits en rangees serrees, la decision en bas. ----- */
@@ -7333,8 +7559,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
     margin: 0;
     padding: var(--space-2) var(--space-3);
   }
-  #clientView #step4 .recap-decision .panel-kicker,
-  #clientView #step4 .recap-decision .panel-title { display: none; }
+  #clientView #step4 .recap-decision .panel-kicker { display: none; }
   #clientView #step4 .recap-decision .total-box {
     margin: 0;
     padding: var(--space-1) var(--space-2);
@@ -7645,17 +7870,43 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .formula-anchor-picker[data-mobile-multi] .anchor-status-copy strong { font-size: 13px; line-height: 1.35; }
   #clientView .formula-anchor-picker[data-mobile-multi] .anchor-status-copy span { font-size: 12px; }
   #clientView .formula-anchor-picker[data-mobile-multi] .anchor-suggestions { gap: 6px; }
+  /* LE NOM DE L ACTIVITE NE SE DIT PAS DEUX FOIS (2026-08-31). Sur telephone,
+     quand la visite porte plusieurs creneaux, la barre du composeur annonce
+     deja l activite en grand ("Bowling / CRENEAU 1 SUR 2") : le titre de la
+     ligne juste dessous repetait le meme mot, 15 px plus bas. Il reste dans le
+     DOM (la mise a jour en place accroche l heure retenue APRES lui, et le
+     lecteur d ecran le lit), il cesse seulement d etre peint. */
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-row-head > strong {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    /* clip-path SANS overflow:hidden. Une boite de 1 px qui cache son texte
+       par `overflow: hidden` EST du contenu coupe, et le gate one-screen le
+       signale a juste titre (il ne peut pas deviner que la coupe est
+       voulue). clip-path masque a la peinture sans creer de debordement :
+       le mot reste dans l arbre d accessibilite, et plus rien ne roule. */
+    overflow: visible;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    pointer-events: none;
+  }
   #clientView .formula-anchor-picker[data-mobile-multi] .anchor-suggestions > span { font-size: 12px; }
   #clientView .formula-anchor-picker[data-mobile-multi] .anchor-suggestion { min-height: 40px; padding: 4px 10px; font-size: 12.5px; }
   #clientView .formula-anchor-picker[data-mobile-multi] .formula-order-fallback-btn { min-height: 40px; font-size: 12px; padding: 6px 10px; }
 
   /* --- d1. CONTACT : la page EST le panneau, et elle tient -------------- */
   #clientView .s3-side.panel { border: 0; background: transparent; box-shadow: none; padding: 0; }
-  #clientView #step3 .s3-side .panel-title { display: none; }
+  #clientView #step3 .s3-side .panel-title { display: block; text-align: center; text-wrap: balance; }
   #clientView .contact-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
   #clientView #step3 .lbl { font-size: 12px; margin-bottom: 0; }
-  #clientView .step3-info { padding: 5px 8px; font-size: 12px; gap: 6px; margin-top: 6px; }
-  #clientView .s3-extra { margin-top: var(--space-2); overflow: visible; min-height: auto; display: flex; flex-direction: column; gap: var(--space-2); }
+  /* Ces marges paient la question de l ecran, revenue en haut le 2026-08-31
+     (gate tunnel-mobile-touch : la page contact debordait de 18 px). Elles
+     sont prises sur les respirations, jamais sur une taille de texte ni sur
+     une cible tactile. */
+  #clientView .step3-info { padding: 4px 8px; font-size: 12px; gap: 6px; margin-top: 4px; }
+  #clientView .s3-extra { margin-top: var(--space-1); overflow: visible; min-height: auto; display: flex; flex-direction: column; gap: var(--space-1); }
+  #clientView #step3 .s3-side .panel-title { margin-bottom: 2px; }
+  #clientView #step3 .occasion-field > .lbl { margin-bottom: 2px; }
   #clientView .step3-body .occasion-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 6px; }
   #clientView .occasion-chip { min-height: 44px; font-size: 11.5px; padding: 4px 6px; line-height: 1.2; }
   #clientView .occasion-chip svg { width: 13px; height: 13px; flex: none; }
@@ -7674,7 +7925,44 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .recap-note { font-size: 12px; padding: 8px 10px; }
   #clientView .recap-decision.panel { border: 0; background: transparent; box-shadow: none; padding: 0; }
   #clientView #step4 .recap-decision .panel-kicker { display: none; }
-  #clientView #step4 .recap-decision .panel-title { font-size: 15px; }
+  #clientView #step4 .recap-decision .panel-title { font-size: clamp(19px, 5.2vw, 24px); line-height: 1.14; text-align: center; text-wrap: balance; }
+  /* LA QUESTION EN HAUT, LA DECISION EN BAS (2026-08-31). Capture a
+     390x844 : "Tout est bon ?" arrivait APRES la liste, au deux-tiers de
+     l ecran, precede de 800 px de vide - le seul ecran du tunnel ou la
+     question ne se lisait pas en premier. Le panneau de decision passe en
+     `display: contents` : ses enfants deviennent des elements de la meme
+     colonne et se rangent (question, liste, total, boutons). Le vide qui
+     restait au milieu est repris par `margin-top: auto` sur le total, qui
+     colle la decision au bas de l ecran. Le DOM ne bouge pas : l ordre lu
+     par un lecteur d ecran reste celui du document. */
+  #clientView .recap-columns { min-height: 100%; }
+  #clientView #step4 .recap-decision.panel { display: contents; }
+  #clientView #step4 .recap-decision .panel-title { order: -1; }
+  #clientView #step4 #recapList { order: 0; }
+  #clientView #step4 .recap-decision .total-box { order: 1; margin-top: auto; }
+  #clientView #step4 .recap-decision .step-actions { order: 2; }
+}
+
+/* --- LES TRES PETITS TELEPHONES (2026-08-31) ------------------------------
+   iPhone SE et assimiles, 320x568. Mesure : les huit cartes d activite
+   demandaient 365 px pour 357 disponibles, et le defileur de cette page est
+   volontairement en overflow:visible - les deux dernieres cartes etaient donc
+   coupees de 9 px, sans aucun moyen de les atteindre. Un demi-point de police
+   et deux pixels de rembourrage suffisent a tout faire entrer ; le nom reste
+   au-dessus du plancher de lisibilite et la cible tactile au-dessus de 44 px. */
+@media (max-width: 340px) {
+  #clientView .activity-grid { gap: 4px 5px; }
+  #clientView .activity-card { min-height: 48px; }
+  #clientView .activity-toggle {
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 6px;
+    padding: 5px 7px;
+    min-height: 48px;
+  }
+  #clientView .activity-icon { width: 20px; height: 20px; }
+  #clientView .activity-name { font-size: 13px; }
+  #clientView .activity-price-compact,
+  #clientView .activity-note { font-size: 11.5px; }
 }
 
 @keyframes anchorPageFromRight { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }

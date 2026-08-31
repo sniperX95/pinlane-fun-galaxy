@@ -666,7 +666,10 @@ module.exports = async (req, res) => {
       if (visitFormula) {
         let anchorMeta = null;
         try {
-          anchorMeta = getFormulaAnchorAvailability({ centerId, formula: visitFormula, date, pax }, engineContext);
+          // preferredTimes part AVEC la demande : sans lui, la liste d une
+          // activite ignorait l heure deja retenue pour l autre et proposait
+          // des heures que la validation refusait juste apres.
+          anchorMeta = getFormulaAnchorAvailability({ centerId, formula: visitFormula, date, pax, preferredTimes }, engineContext);
         } catch (error) {
           anchorMeta = null;
         }
@@ -829,7 +832,7 @@ module.exports = async (req, res) => {
       const anchorModel = getFormulaAnchorModel(formulaDoc);
       let anchorMeta = null;
       try {
-        anchorMeta = getFormulaAnchorAvailability({ centerId, formuleId, date, pax }, engineContext);
+        anchorMeta = getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes }, engineContext);
       } catch (error) {
         anchorMeta = null;
       }

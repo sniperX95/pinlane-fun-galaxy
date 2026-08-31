@@ -217,6 +217,17 @@
              defile DANS sa zone, jamais la page. -->
         <div class="step-body step1-body">
           <aside class="s1-when panel cascade">
+            <!-- LE CHEMIN DU RETOUR EXISTE DES LA DEUXIEME QUESTION
+                 (2026-08-31). Une fois "Continuer" presse, la question du
+                 jour disparaissait sans aucun moyen d y revenir sur
+                 ordinateur : le seul retour vivait dans la barre haute du
+                 telephone, elle-meme masquee sur la venue. Movsar : "quand
+                 on fait retour on peut pas se rendre jusqu a re modifier la
+                 date". Visible uniquement sur la question du groupe (CSS). -->
+            <button type="button" class="s1-venue-back" onclick="setVenueStage('date')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+              Changer le jour
+            </button>
             <div class="s1-when-head panel-head-rich">
               <span class="panel-head-icon" aria-hidden="true">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>

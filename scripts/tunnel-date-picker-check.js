@@ -150,15 +150,34 @@ function isoInDays(delta) {
     record('il tient dans le cadre du tunnel', opened.insideViewport === true);
     record('il s annonce comme un dialogue', opened.role === 'dialog', String(opened.role));
 
+    // LE GATE DOIT SURVIVRE A LA FIN DU MOIS. `aujourd hui + 3` tombe dans le
+    // mois SUIVANT trois jours par mois : le calendrier s ouvre sur le mois
+    // courant, le jour vise n etait donc pas dans la grille et les six
+    // verifications qui suivent tombaient en cascade (constate le 2026-08-31,
+    // un 31 : cible 2026-09-03). Un gate qui rougit selon le jour du calendrier
+    // n apprend rien - il apprend seulement a ignorer les rouges. On navigue
+    // donc jusqu au mois de la cible avant de la chercher, ce qui teste EN PLUS
+    // les fleches de mois.
     const target = isoInDays(3);
-    const clicked = await frame.evaluate((iso) => {
-      const btn = [...document.querySelectorAll('.staff-cal-day')]
+    const clicked = await frame.evaluate(async (iso) => {
+      const moisDe = (valeur) => valeur.slice(0, 7);
+      const trouver = () => [...document.querySelectorAll('.staff-cal-day')]
         .find((b) => (b.getAttribute('onclick') || '').includes(iso));
-      if (!btn) return { found: false };
-      btn.click();
-      return { found: true };
+      // Au plus deux sauts : la cible est a trois jours, elle ne peut etre que
+      // dans le mois courant ou le suivant.
+      for (let saut = 0; saut < 3; saut += 1) {
+        const btn = trouver();
+        if (btn) { btn.click(); return { found: true, sauts: saut }; }
+        const suivant = [...document.querySelectorAll('.staff-cal-nav')]
+          .find((b) => (b.getAttribute('aria-label') || '').toLowerCase().includes('suivant'));
+        if (!suivant) return { found: false, sauts: saut, raison: 'aucune fleche de mois' };
+        suivant.click();
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      return { found: false, sauts: 3, raison: `cible hors des mois parcourus (${moisDe(iso)})` };
     }, target);
-    record('le jour vise est proposé par la grille', clicked.found === true, target);
+    record('le jour vise est proposé par la grille', clicked.found === true,
+      `${target}${clicked.sauts ? ` (${clicked.sauts} saut(s) de mois)` : ''}${clicked.raison ? ` - ${clicked.raison}` : ''}`);
     await frame.waitForTimeout(300);
     const after = await frame.evaluate(() => ({
       value: document.getElementById('fDate').value,
@@ -170,14 +189,33 @@ function isoInDays(delta) {
     record('le calendrier se referme apres le choix', after.popStillThere === false);
 
     section('[3] Les dates passees restent refusees');
+    // On repart d un calendrier FERME : la gachette bascule, et si l etape
+    // precedente a laisse le calendrier ouvert (cible introuvable), ce clic le
+    // refermait et les deux verifications suivantes tombaient sur une grille
+    // vide - un faux rouge qui masquait le vrai defaut.
+    await frame.evaluate(() => { if (typeof closeStaffCalendar === 'function') closeStaffCalendar(); });
+    await frame.waitForTimeout(120);
     await frame.click('.date-picker-trigger');
-    const past = await frame.evaluate((iso) => {
-      const btn = [...document.querySelectorAll('.staff-cal-day')]
+    // MEME PIEGE DANS L AUTRE SENS. Le calendrier s ouvre sur le mois de la date
+    // RETENUE : apres avoir choisi le 3 septembre a l etape precedente, il
+    // montre septembre, et hier (30 aout) n y est pas. On recule jusqu au mois
+    // de la cible, comme on avancait plus haut.
+    const past = await frame.evaluate(async (iso) => {
+      const trouver = () => [...document.querySelectorAll('.staff-cal-day')]
         .find((b) => (b.getAttribute('onclick') || '').includes(iso));
-      if (!btn) return { present: false };
-      return { present: true, disabled: btn.disabled, blocked: btn.classList.contains('is-blocked') };
+      for (let saut = 0; saut < 3; saut += 1) {
+        const btn = trouver();
+        if (btn) return { present: true, disabled: btn.disabled, blocked: btn.classList.contains('is-blocked'), sauts: saut };
+        const precedent = [...document.querySelectorAll('.staff-cal-nav')]
+          .find((b) => (b.getAttribute('aria-label') || '').toLowerCase().includes('pr'));
+        if (!precedent) return { present: false, raison: 'aucune fleche de mois' };
+        precedent.click();
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      return { present: false, raison: 'cible hors des mois parcourus' };
     }, isoInDays(-1));
-    record('hier est present dans la grille', past.present === true, 'le mois garde sa forme');
+    record('hier est present dans la grille', past.present === true,
+      past.present ? `${past.sauts} saut(s) de mois` : (past.raison || 'absent'));
     record('hier est desactive, pas cliquable', past.present && past.disabled === true && past.blocked === true);
     await frame.evaluate(() => { if (typeof closeStaffCalendar === 'function') closeStaffCalendar(); });
 

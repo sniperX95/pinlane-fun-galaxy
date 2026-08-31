@@ -3631,6 +3631,8 @@ function setVenueStage(stage) {
     const champ = document.getElementById('fPax');
     if (champ) champ.focus({ preventScroll: true });
   }
+  // Changer de question, c est avancer : le fil et la barre haute le disent.
+  if (typeof updateProgress === 'function') updateProgress();
 }
 
 function confirmVenue() {
@@ -3683,6 +3685,14 @@ function revelerQuestion(element) {
   // du markup deja decoupe et empilerait les spans a l infini.
   element.dataset.questionSource = phrase;
   const mots = phrase.split(/\s+/).filter(Boolean);
+  // LE DERNIER MOT N ARRIVE JAMAIS TROP TARD. Le decalage etait fixe (70 ms
+  // par mot) : sur une question de huit mots, le dernier partait 490 ms apres
+  // le premier, et la phrase se trainait. Le PAS s adapte donc au nombre de
+  // mots pour que l ecriture complete tienne dans 200 ms, quel que soit la
+  // longueur - c est le plafond que visit-motion-check mesure, et il vaut
+  // aussi pour l oeil. Les questions courtes gardent leur rythme (70 ms).
+  const pas = mots.length > 1 ? Math.min(70, Math.floor(200 / (mots.length - 1))) : 0;
+  element.style.setProperty('--q-pas', `${pas}ms`);
   element.innerHTML = mots
     .map((mot, index) => `<span class="q-word" style="--i:${index}"><span>${escapeHtml(mot)}</span></span>`)
     .join(' ');
@@ -3691,11 +3701,34 @@ function revelerQuestion(element) {
   element.classList.remove('q-reveal');
   void element.offsetWidth;
   element.classList.add('q-reveal');
+  // L ANIMATION SE RETIRE QUAND ELLE A FINI. Elle etait posee en
+  // `fill: both` et restait accrochee a chaque mot pour toujours : le
+  // navigateur continuait de compter l amplitude du deplacement dans le
+  // debordement du masque, qui annoncait donc 99 px de contenu pour 54 px de
+  // boite alors que le mot etait sagement en place (mesure 2026-08-31 ;
+  // c est ce que le gate one-screen voyait comme du texte coupe). En
+  // retirant la classe a la fin, il ne reste plus une seule animation vivante
+  // sur les mots : le masque redevient une simple boite, et le tunnel porte
+  // quelques dizaines d animations en moins a chaque ecran.
+  // Un jeton par passage : si la question est REJOUEE avant la fin (retour en
+  // arriere, bascule de sous-ecran), l ecouteur du passage precedent ne doit
+  // pas couper l animation du nouveau.
+  const jeton = String(Number(element.dataset.questionRun || 0) + 1);
+  element.dataset.questionRun = jeton;
+  const masques = element.querySelectorAll('.q-word > span');
+  const dernier = masques[masques.length - 1];
+  if (dernier) {
+    dernier.addEventListener('animationend', () => {
+      if (element.dataset.questionRun === jeton) element.classList.remove('q-reveal');
+    }, { once: true });
+  }
 }
 
 function syncProgressiveReveal() {
   const what = document.getElementById('s1What');
   if (!what) return;
+  // Plier ou deplier le programme fait changer de question : le fil suit.
+  if (typeof updateProgress === 'function') setTimeout(updateProgress, 0);
   const date = state.booking.date;
   const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(date) : null;
   const pending = typeof isCenterDayPending === 'function' && isCenterDayPending(date);
@@ -5072,6 +5105,50 @@ function selectFormule(id) {
   save();
 }
 
+// L ECHELLE DES QUESTIONS (2026-08-31). Movsar : « la barre de suivi je la
+// trouve mal faite parce que la on a 3 questions et ca reste toujours sur le
+// meme point ». C etait exact : le fil se calait sur les 5 SECTIONS du tunnel
+// alors que la premiere en pose jusqu a quatre (le jour, le groupe, les
+// activites, les options). Le client repondait trois fois et rien ne bougeait.
+//
+// L echelle ci-dessous est la SEULE verite d avancement : elle liste les
+// questions reellement posees, dans l ordre, et dit ou on en est. Le rang de
+// l ecran des options n existe que si un reglage existe (une formule n en a
+// pas) : sans ce test, le fil promettrait une question qui ne viendra jamais.
+function tunnelQuestionRank() {
+  const sections = tunnelStepCount();
+  const step = Math.min(Math.max(1, Number(state.step) || 1), sections);
+  const corps = document.querySelector('#clientView .step1-body');
+  const surVenue = Boolean(corps && corps.classList.contains('is-solo'));
+  const avecOptions = typeof mobileOptionsAvailable === 'function' && mobileOptionsAvailable();
+  const surOptions = !surVenue && typeof onMobileOptionsPage === 'function' && onMobileOptionsPage();
+  // Questions de l etape 1 : jour, groupe, activites (+ options si elles
+  // existent). Les sections suivantes en posent une chacune.
+  const questionsEtape1 = 3 + ((avecOptions || surOptions) ? 1 : 0);
+  const total = questionsEtape1 + (sections - 1);
+  if (step > 1) return { rang: questionsEtape1 + (step - 1), total };
+  if (surVenue) return { rang: venueStage === 'pax' ? 2 : 1, total };
+  return { rang: surOptions ? 4 : 3, total };
+}
+
+// L avancement 0..1 du fil. Le fil doit rester D ACCORD avec les pastilles :
+// il TOUCHE la pastille d une section quand cette section commence, et il
+// progresse ENTRE deux pastilles au rythme des questions de la section. Un fil
+// cale sur le seul rang de question passerait la pastille 2 alors qu on est
+// encore a l etape 1 : le repere et le trait se contrediraient.
+function tunnelProgressFraction() {
+  const sections = tunnelStepCount();
+  const step = Math.min(Math.max(1, Number(state.step) || 1), sections);
+  const denominateur = Math.max(1, sections - 1);
+  let interne = 0;
+  if (step === 1) {
+    const { rang, total } = tunnelQuestionRank();
+    const questionsEtape1 = Math.max(1, total - (sections - 1));
+    interne = Math.min(rang - 1, questionsEtape1 - 1) / questionsEtape1;
+  }
+  return Math.min(1, Math.max(0, (step - 1 + interne) / denominateur));
+}
+
 function updateProgress() {
   const total = tunnelStepCount();
   for (let i = 1; i <= total; i++) {
@@ -5087,8 +5164,7 @@ function updateProgress() {
   // 1 à la dernière. Sous filtre gooey, la tête s'étire depuis le remplissage
   // comme une goutte (transition de width, calque .lq-fluid).
   const progress = document.querySelector('#clientView .progress');
-  const denominateur = Math.max(1, tunnelStepCount() - 1);
-  if (progress) progress.style.setProperty('--p', String(((Number(state.step) || 1) - 1) / denominateur));
+  if (progress) progress.style.setProperty('--p', String(tunnelProgressFraction()));
   syncMobileTopbar();
 }
 
@@ -5140,12 +5216,21 @@ function syncMobileTopbar() {
   } else {
     title.removeAttribute('aria-label');
   }
-  const total = tunnelStepCount();
-  rank.textContent = `${step}/${total}`;
-  fill.style.width = `${(step / total) * 100}%`;
+  // LE RANG DIT LA QUESTION, PAS LA SECTION. « 1/5 » restait affiche pendant
+  // les quatre questions de l etape 1 : le client repondait et le compteur ne
+  // bougeait pas (Movsar, 2026-08-31).
+  const { rang, total } = tunnelQuestionRank();
+  rank.textContent = `${rang}/${total}`;
+  fill.style.width = `${(rang / total) * 100}%`;
   // Le retour n'existe que la ou il mene quelque part : jamais sur la page
-  // venue (premier ecran) ni sur la confirmation (le parcours est fini).
-  back.hidden = venuePage || step === tunnelStepCount();
+  // LE RETOUR EXISTE DES LA DEUXIEME QUESTION. Il etait masque sur TOUTE la
+  // page venue : arrive sur « Vous etes combien ? », le client n avait plus
+  // aucun chemin vers « Quel jour venez-vous ? » (Movsar, 2026-08-31 : « quand
+  // on fait retour on peut pas se rendre jusqu a re modifier la date »). Seule
+  // la toute premiere question n a rien derriere elle, et la confirmation
+  // ferme le parcours.
+  const premiereQuestion = venuePage && venueStage !== 'pax';
+  back.hidden = premiereQuestion || step === tunnelStepCount();
 }
 
 // Tap sur le titre de la barre haute (page activites) : meme geste que la
@@ -5162,6 +5247,12 @@ function mobileTopTitleTap() {
 function mobileTopBack() {
   const step = Number(state.step) || 1;
   if (step === 1) {
+    // La venue recule QUESTION par question : le groupe ramene au jour.
+    const corps = document.querySelector('#clientView .step1-body');
+    if (corps && corps.classList.contains('is-solo')) {
+      if (venueStage === 'pax') setVenueStage('date');
+      return;
+    }
     // Page options -> page activites -> page venue : la chaine du retour.
     if (typeof onMobileOptionsPage === 'function' && onMobileOptionsPage()) {
       showMobileOptionsPage(false);
@@ -5486,7 +5577,10 @@ function showMobileOptionsPage(show) {
   resetStepOneScroll();
   if (show) revelerQuestionReglages();
   if (typeof syncStepOneCta === 'function') syncStepOneCta();
-  if (typeof syncMobileTopbar === 'function') syncMobileTopbar();
+  // updateProgress rafraichit AUSSI la barre haute : l appeler evite que le
+  // fil et le rang se contredisent sur l ecran des reglages.
+  if (typeof updateProgress === 'function') updateProgress();
+  else if (typeof syncMobileTopbar === 'function') syncMobileTopbar();
 }
 
 // Le libelle du CTA de l etape 1 dit ou il mene : « Continuer » vers la page
@@ -6309,7 +6403,16 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   });
   if (sharedAnchorCount * 2 < allAnchorItems.length) sharedAnchorMeta = '';
   const sharedAnchorUniform = sharedAnchorCount === allAnchorItems.length;
-  const chips = groups.map(group => group.items.map((item, index) => {
+  // LES HEURES SE RANGENT PAR MOMENT (2026-08-31), exactement comme la liste
+  // simple de l ecran des heures. Ce ne sont PAS les anciens onglets que
+  // Movsar avait fait retirer ("ca s affiche par moment mais ca sert a rien")
+  // : ceux-la FILTRAIENT et cachaient 26 heures sur 27. Ici rien n est
+  // masque et aucun bouton n est ajoute - juste trois intertitres dans la
+  // meme liste, pour qu une colonne de 27 pastilles se balaye.
+  const chips = groups.map(group => `
+    <section class="slot-period">
+      <h3 class="slot-period-title">${escapeHtml(group.label)}</h3>
+      <div class="anchor-chip-grid">${group.items.map((item, index) => {
     // Multi-choix : une heure retenue est active, et quand le compte est
     // atteint les autres cessent d'etre cliquables (le compteur dit pourquoi).
     const isActive = multi ? chosen.includes(item.time) : item.time === selected;
@@ -6322,7 +6425,8 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     const model = anchorSlotCardModel(activity, item, { isChained });
     if (sharedAnchorMeta && model.meta === sharedAnchorMeta) model.meta = '';
     return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${chipDisabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${slotCardMarkup(model)}</button>`;
-  }).join('')).join('');
+      }).join('')}</div>
+    </section>`).join('');
   const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
     <div class="anchor-periods">
@@ -6331,7 +6435,7 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
       <div class="anchor-track-shell">
         ${nudge(-1, '&lsaquo;', `Heures précédentes pour ${activity.label}`)}
         <div class="anchor-track" data-anchor="${escapeHtml(activity.activityId)}" data-overflow="none">
-          <div class="anchor-chip-grid">${chips}</div>
+          ${chips}
         </div>
         ${nudge(1, '&rsaquo;', `Heures suivantes pour ${activity.label}`)}
       </div>
@@ -6927,18 +7031,78 @@ function renderSlots(formule) {
   }
   // MEME FAMILLE DE COMPOSANT que le composeur de visite : `slot-card` porte
   // la forme (heure, fin, qualification, secondaire), la donnee change.
+  //
+  // DEUX REGLES REPRISES DU COMPOSEUR (2026-08-31). Movsar, sur cet ecran :
+  // "c est vraiment moche comment tout est fait, il y a trop de boutons, on
+  // comprend pas trop, il y a trop de texte, plus simple et plus direct".
+  // Mesure d avant : 27 boutons d affilee, et les 27 disaient mot pour mot
+  // "8 pistes libres". Le composeur de visite avait deja resolu les deux
+  // problemes de son cote ; la liste simple, elle, etait restee brute.
+  //
+  // 1. LES HEURES SE LISENT PAR MOMENT (matin / apres-midi / soir), avec un
+  //    intertitre. Trois groupes courts se balayent ; une colonne de 27 non.
+  //    Ce ne sont PAS des onglets : aucun bouton de plus, aucune heure
+  //    cachee, juste des reperes dans la meme liste.
+  // 2. CE QUI EST VRAI PARTOUT SE DIT UNE FOIS. Une mention portee par plus
+  //    de la moitie des heures monte au-dessus de la liste et quitte les
+  //    cartes ; celles qui s en ecartent gardent la leur, et c est justement
+  //    celles-la que le client doit voir.
   const showLanes = reservationNeedsLanes(state.booking.type, state.booking.formuleId);
-  list.innerHTML = `<div class="slot-grid stagger">${state.availableSlots.map((s, i) => `
-    <button class="slot slot-card" onclick="selectSlot(${i})">
-      <span class="slot-card-time slot-time">${typeof displayTime === 'function' ? displayTime(s.time) : s.time}</span>
-      ${s.opsPlan?.endTime ? `<span class="slot-card-end">→ ${escapeHtml(s.opsPlan.endTime)}</span>` : ''}
-      ${!isLaser && s.opsPlan ? '<span class="slot-card-tag is-accent">Plan conseillé</span>' : ''}
-      ${isLaser ? `<span class="slot-card-tag is-accent">${s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : 'Session ouverte'}</span>` : ''}
-      ${showLanes ? `<span class="slot-card-meta slot-free">${s.freeCount} pistes libres</span>` : isLaser ? `<span class="slot-card-meta slot-free">${getLaserSlotCapacityText(s)}</span>` : ''}
-      ${isLaser ? `<span class="slot-card-meta slot-plan">${getLaserSlotAfterText(s)}</span>` : ''}
-      ${!isLaser && s.opsPlan ? `<span class="slot-card-meta slot-plan">${describeSlotPlan(s.opsPlan)}</span>` : ''}
-    </button>
-  `).join('')}</div>`;
+  const modeles = state.availableSlots.map((s, i) => {
+    const bouts = [];
+    if (showLanes) bouts.push(`${s.freeCount} piste${Number(s.freeCount) > 1 ? 's' : ''} libre${Number(s.freeCount) > 1 ? 's' : ''}`);
+    else if (isLaser) bouts.push(getLaserSlotCapacityText(s));
+    if (isLaser) bouts.push(getLaserSlotAfterText(s));
+    else if (s.opsPlan) bouts.push(describeSlotPlan(s.opsPlan));
+    return {
+      index: i,
+      time: s.time,
+      affichee: typeof displayTime === 'function' ? displayTime(s.time) : s.time,
+      endTime: s.opsPlan && s.opsPlan.endTime ? s.opsPlan.endTime : '',
+      tag: isLaser
+        ? (s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : 'Session ouverte')
+        : (s.opsPlan ? 'Plan conseillé' : ''),
+      meta: bouts.filter(Boolean).join(' · '),
+    };
+  });
+  // La valeur MAJORITAIRE d un champ, si elle couvre plus de la moitie des
+  // heures. Sous ce seuil il n y a pas de dominante : chaque carte garde la
+  // sienne, sinon on effacerait une information qui distingue vraiment.
+  const dominante = (lire) => {
+    const comptes = new Map();
+    modeles.forEach((m) => {
+      const valeur = lire(m);
+      if (valeur) comptes.set(valeur, (comptes.get(valeur) || 0) + 1);
+    });
+    let gagnante = '';
+    let compte = 0;
+    comptes.forEach((n, valeur) => { if (n > compte) { gagnante = valeur; compte = n; } });
+    if (compte * 2 <= modeles.length) return { valeur: '', partout: false };
+    return { valeur: gagnante, partout: compte === modeles.length };
+  };
+  const metaCommune = dominante((m) => m.meta);
+  const tagCommun = dominante((m) => m.tag);
+  const entete = [
+    tagCommun.valeur ? `${tagCommun.valeur}${tagCommun.partout ? '' : ' pour la plupart des heures'}` : '',
+    metaCommune.valeur ? `${metaCommune.valeur}${metaCommune.partout ? ' à chaque heure' : ', sauf mention sur l’heure'}` : '',
+  ].filter(Boolean).join(' · ');
+  const groupes = groupAnchorTimes(modeles);
+  const sections = groupes.map((groupe) => `
+    <section class="slot-period">
+      <h3 class="slot-period-title">${escapeHtml(groupe.label)}</h3>
+      <div class="slot-grid stagger">${groupe.items.map((m) => {
+        const tag = m.tag === tagCommun.valeur ? '' : m.tag;
+        const meta = m.meta === metaCommune.valeur ? '' : m.meta;
+        return `<button class="slot slot-card" data-time="${escapeHtml(m.time)}" onclick="selectSlot(${m.index})">${slotCardMarkup({
+          time: m.affichee,
+          endTime: m.endTime,
+          tag,
+          tagTone: tag ? 'accent' : '',
+          meta,
+        })}</button>`;
+      }).join('')}</div>
+    </section>`).join('');
+  list.innerHTML = `${entete ? `<p class="slot-shared-meta">${escapeHtml(entete)}</p>` : ''}${sections}`;
 }
 
 function selectSlot(i) {
@@ -7437,6 +7601,12 @@ async function confirmBooking() {
   }
 
   document.getElementById('successName').textContent = b.name.split(' ')[0];
+  // LE PARCOURS SE TERMINE COMME IL A COMMENCE : par une phrase qui s ecrit.
+  // Chaque ecran du tunnel pose sa question mot a mot ; la derniere ligne,
+  // celle qui annonce que c est pris, apparaissait d un bloc. Movsar :
+  // "plus d animation vers la fin du programme".
+  const titreFinal = document.querySelector('#step5 .success-wrap h2');
+  if (titreFinal && typeof revelerQuestion === 'function') revelerQuestion(titreFinal);
   const showLanes = reservationNeedsLanes(b.type, b.formuleId);
   const isLaser = b.type === 'laser';
   document.getElementById('successHint').style.display = 'block';

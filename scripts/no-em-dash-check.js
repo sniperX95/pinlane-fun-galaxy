@@ -31,6 +31,15 @@ const ROOT = path.resolve(__dirname, '..');
 // compris. Le scanner reviendrait a interdire un caractere aux clients.
 // (Constate le 2026-07-27 : un backup de purge a fait rougir ce gate avec
 // 41 tirets provenant de notes de reservation.)
+// `graft` : le CACHE LOCAL de l outil graft (carte du code, regenerable par
+// `graft build`, gitignore). Ses fiches sont ECRITES PAR GRAFT, pas par
+// nous, et son format de ligne utilise le tiret cadratin comme separateur
+// ("nomDeFonction - function - L2434 - signature"). Mesure du 2026-08-31 :
+// 4899 tirets, tous dans ce dossier, zero ailleurs dans le projet. Les
+// corriger reviendrait a maintenir a la main la sortie d un outil qu on
+// relance a chaque exploration, et le prochain `graft build` les remettrait.
+// Rien de tout ca ne part vers un client : ces fiches ne sortent pas de la
+// machine. Meme raison de fond que `artifacts` et `vendor`.
 // `vendor` : du code TIERS repris tel quel, sous sa propre licence. La regle du
 // tiret cadratin porte sur ce que Pinlane ECRIT (son interface, ses textes, ses
 // commits), pas sur une dependance qu'on ne modifie pas. Y toucher pour faire
@@ -40,7 +49,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.vercel', '.agents', '.firecrawl',
   '_mkdev', 'dist', 'build', '.next', 'coverage', 'database', 'artifacts',
-  'vendor',
+  'vendor', 'graft',
 ]);
 const SKIP_FILES = new Set(['package-lock.json', 'no-em-dash-check.js']);
 const EXT = new Set(['.js', '.mjs', '.cjs', '.html', '.css', '.json', '.md', '.sql']);

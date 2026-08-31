@@ -20285,15 +20285,35 @@ function peutAdapterFormule() {
 
 // Ce que CE dossier contient aujourd hui, sous une forme editable. Source :
 // son programme s il en a un, sinon la definition de sa formule.
+// LES OPTIONS D UNE LIGNE SUIVENT LE DOSSIER (2026-08-31).
+// Seuls le bowling et le laser voyaient leurs reglages recopies ici ; toute
+// autre activite ne gardait que son on/off, et units / hours / minutes /
+// participants etaient perdus. Le prix recalcule plus bas retombait alors sur
+// les defauts (une unite, une heure) : mesure sur un dossier de 3 tables de
+// billard pendant 2 h, 120 EUR vendus au comptoir devenaient 20 EUR a la
+// simple OUVERTURE du panneau, sans un clic, et un enregistrement envoyait ce
+// montant au serveur. Le programme, lui, restait intact : la perte etait donc
+// invisible sur la fiche et ne se voyait qu en caisse.
+//
+// `others` reste une carte de BOOLEENS : c est ce que toggleEditActivity
+// bascule. Les reglages voyagent a cote, dans othersOptions, pour ne pas
+// changer la semantique de la bascule.
 function buildEditProgramFromReservation(r) {
-  const etat = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {} };
+  const etat = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {}, othersOptions: {} };
   const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : null;
   if (items && items.length) {
     items.forEach((item) => {
       const id = String(item.activityId || '');
       if (id === 'bowling') { etat.bowling.on = true; etat.bowling.duration = Number(item.duration) || 1; return; }
       if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, Number(item.games) || 1); return; }
-      if (id) etat.others[id] = true;
+      if (!id) return;
+      etat.others[id] = true;
+      const reglages = {};
+      if (Number(item.units) > 0) reglages.units = Number(item.units);
+      if (Number(item.hours) > 0) reglages.hours = Number(item.hours);
+      if (Number(item.minutes) > 0) reglages.minutes = Number(item.minutes);
+      if (Number(item.participants) > 0) reglages.participants = Number(item.participants);
+      if (Object.keys(reglages).length) etat.othersOptions[id] = reglages;
     });
     return etat;
   }
@@ -20360,8 +20380,19 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     }
     const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
     const nom = (activite && activite.name) || (typeof ACTIVITY_LABELS !== 'undefined' && ACTIVITY_LABELS[id]) || id;
+    // Les reglages de la ligne comptent : une table de billard sur 2 h ne vaut
+    // pas une table sur 1 h. Omis, getFreeActivityPrice retombait sur ses
+    // defauts (units = 1, hours = 1) et divisait le montant.
     const ligne = activite && typeof getFreeActivityPrice === 'function'
-      ? getFreeActivityPrice(activite, { pax: joueurs, dateStr, startTime })
+      ? getFreeActivityPrice(activite, {
+        pax: joueurs,
+        dateStr,
+        startTime,
+        ...(Number(item.units) > 0 ? { units: Number(item.units) } : {}),
+        ...(Number(item.hours) > 0 ? { hours: Number(item.hours) } : {}),
+        ...(Number(item.minutes) > 0 ? { minutes: Number(item.minutes) } : {}),
+        ...(Number(item.participants) > 0 ? { participants: Number(item.participants) } : {}),
+      })
       : null;
     if (ligne == null) {
       complet = false;
@@ -20416,7 +20447,13 @@ function getEditProgramItems() {
   const items = [];
   if (e.programmeEdite.bowling?.on) items.push({ activityId: 'bowling', duration: Number(e.programmeEdite.bowling.duration) || 1, pax });
   if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax });
-  Object.entries(e.programmeEdite.others || {}).forEach(([id, actif]) => { if (actif) items.push({ activityId: id, pax }); });
+  Object.entries(e.programmeEdite.others || {}).forEach(([id, actif]) => {
+    if (!actif) return;
+    // Les reglages du dossier, pas les defauts : sans eux le prix repart a
+    // une unite et une heure.
+    const reglages = (e.programmeEdite.othersOptions || {})[id] || {};
+    items.push({ activityId: id, pax, ...reglages });
+  });
   return items;
 }
 

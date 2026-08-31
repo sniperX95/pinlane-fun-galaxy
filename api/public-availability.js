@@ -33,6 +33,7 @@ const {
 const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog, publicBookingBlockReason } = require('../lib/ops-knowledge');
 const {
   isCenterClosedAt,
+  isCenterClosedDuring,
   isActivityBlockedAt,
   isActivityFullyBlockedOn,
   isFormulaBlockedOn,
@@ -786,7 +787,9 @@ module.exports = async (req, res) => {
       for (let value = Math.ceil(minTime * 2) / 2; value <= schedule.close - visitHours; value += 0.5) {
         const startMin = Math.round(value * 60);
         const endMin = startMin + Math.round(visitHours * 60);
-        if (isCenterClosedAt(snapshot.blocks || [], date, startMin)) continue;
+        // La visite entiere, pas son seul depart : sinon on propose une heure
+        // dont la fin tombe dans une fermeture ponctuelle.
+        if (isCenterClosedDuring(snapshot.blocks || [], date, startMin, endMin)) continue;
         const startTime = numToTime(value);
         const endTime = numToTime(value + visitHours);
         freeSlots.push({
@@ -1144,7 +1147,7 @@ module.exports = async (req, res) => {
         // Centre ferme (scope 'center') a l'heure du depart, ou activite 'bowling'
         // bloquee (scope 'activity') sur la fenetre : creneau retire. Sans blocage
         // (liste vide) les predicats rendent false : grille strictement identique.
-        if (isCenterClosedAt(blocks, date, startMin)) continue;
+        if (isCenterClosedDuring(blocks, date, startMin, endMin)) continue;
         if (isActivityBlockedAt(blocks, date, 'bowling', startMin, endMin)) continue;
         const lanes = requiresLanes
           ? allocateLanes(laneCount, snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount, blocks, date)

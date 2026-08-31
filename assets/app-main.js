@@ -4373,6 +4373,17 @@ function activityPriceHintCompact(activity, pax) {
 // du catalogue au lieu d'etre une liste en dur : c'est ce qui fait qu'un
 // billard sans demi-heure (borne basse a 60 min) n'en propose plus, sans
 // toucher au tunnel.
+// LE NOMBRE D UNITES VENDABLES VIENT DU CATALOGUE (2026-08-31). Une liste
+// [1, 2, 3, 4] ecrite dans le code plafonnait TOUT centre a quatre : celui qui
+// declare six billards ne pouvait en vendre que quatre, dans le tunnel comme
+// au comptoir. Meme classe de defaut que la grille Tarifs du 2026-08-17 : une
+// constante figee au deploiement a la place de la donnee du tenant.
+function activityUnitChoices(activity) {
+  const dotation = Math.trunc(Number(activity && activity.units) || 0);
+  const max = dotation > 0 ? Math.min(20, dotation) : 4;
+  return Array.from({ length: max }, (_, index) => index + 1);
+}
+
 function activityHourChoices(activity) {
   const min = Math.max(15, Number(activity.minMinutes) || 60);
   const max = Math.max(min, Number(activity.maxMinutes) || min);
@@ -4468,7 +4479,7 @@ function renderActivityOptions(activity, options, pax) {
         <button type="button" class="dur-pill xs ${Number(hours) === option.hours ? 'active' : ''}" data-opt="hours" data-val="${option.hours}"
           onclick="setBookingActivityOption('${id}','hours',${option.hours})">${option.label}</button>`).join('')}</div></div>`;
     const nombre = `<div class="activity-option-group"><span class="activity-option-legend">Tables</span>
-      <div class="activity-option-pills">${[1, 2, 3, 4].map(value => `
+      <div class="activity-option-pills">${activityUnitChoices(activity).map(value => `
         <button type="button" class="dur-pill xs ${units === value ? 'active' : ''}" data-opt="units" data-val="${value}"
           onclick="setBookingActivityOption('${id}','units',${value})">${value}</button>`).join('')}</div></div>`;
     const detail = prixHeure == null ? '' :
@@ -12303,11 +12314,17 @@ const STAFF_ROLE_PRESETS = [
     summary: 'Opérations, clients et caisse',
     description: 'Pour gérer une journée complète sans toucher à la sécurité.',
     tone: 'manager',
+    // LISTE RECOPIEE DE lib/staff-auth.js, QUI EST CELLE QUI S APPLIQUE.
+    // Le bouton « preset » n envoie que l id : ce tableau ne sert qu a AFFICHER
+    // ce que le clic va donner. Les deux avaient diverge, et l ecran repondait
+    // faux a « qui peut annuler une reservation et changer un tarif ». Toute
+    // modification se fait cote serveur D ABORD ; role-presets-parity-check
+    // rougit si les deux se remettent a diverger.
     permissions: [
-      'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag',
-      'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'reservations.quick',
-      'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid', 'exports.download',
-      'emails.view'
+      'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'planning.past',
+      'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'reservations.quick',
+      'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid',
+      'emails.view', 'reports.export', 'pricing.manage'
     ]
   },
   {
@@ -12317,10 +12334,12 @@ const STAFF_ROLE_PRESETS = [
     summary: 'Accueil et rush terrain',
     description: 'Pour voir les arrivées, créer vite, encaisser et clôturer.',
     tone: 'staff',
+    // Recopie de lib/staff-auth.js (voir le preset Manager) : le bar ne modifie
+    // pas une reservation et ne voit pas les fiches clients, l ecran le disait.
     permissions: [
       'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser',
-      'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'reservations.quick',
-      'clients.view', 'payments.view', 'payments.markPaid'
+      'reservations.view', 'reservations.create', 'reservations.status', 'reservations.quick',
+      'payments.view', 'payments.markPaid'
     ]
   },
   {
@@ -21224,6 +21243,64 @@ function getQuickVisitMinutes(id) {
   return declare > 0 ? Math.trunc(declare) : Number(FUN_RUN_OPTIONS[0].minutes);
 }
 
+// LES TABLES ET LES HEURES D UNE ACTIVITE QUI SE VEND AINSI (2026-08-31).
+// Le tunnel public les demandait deja ; le comptoir, non. Sa ligne partait donc
+// en units=1 hours=1 (lib/visit-program.js l.141-142), soit 12 EUR pour trois
+// tables pendant deux heures au lieu de 72, a chaque dossier billard.
+function setQuickVisitUnits(id, nombre) {
+  if (!quickBookState) return;
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  const choix = activityUnitChoices(activite);
+  const plafond = choix[choix.length - 1] || 1;
+  getQuickVisitOptions(id).units = Math.min(plafond, Math.max(1, Math.trunc(Number(nombre) || 1)));
+  renderQuickBook();
+}
+
+function setQuickVisitHours(id, heures) {
+  if (!quickBookState) return;
+  getQuickVisitOptions(id).hours = Math.max(0.5, Number(heures) || 1);
+  renderQuickBook();
+}
+
+// Absent = une unite et le premier palier de duree du catalogue : le
+// comportement d avant, personne ne se met a facturer plus sans l avoir demande.
+function getQuickVisitUnits(id) {
+  const visit = quickBookState && quickBookState.visit;
+  const declare = visit && visit.options && visit.options[id] ? Number(visit.options[id].units) : 0;
+  return declare >= 1 ? Math.trunc(declare) : 1;
+}
+
+function getQuickVisitHours(id) {
+  const visit = quickBookState && quickBookState.visit;
+  const declare = visit && visit.options && visit.options[id] ? Number(visit.options[id].hours) : 0;
+  if (declare > 0) return declare;
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  const choix = activite ? activityHourChoices(activite) : [];
+  return choix.length ? Number(choix[0].hours) : 1;
+}
+
+// UNE SEULE DEFINITION DE LA LIGNE ENVOYEE. Elle existait en deux exemplaires :
+// la visite lisait minutes et participants, le mode « une seule activite » ne
+// lisait rien du tout. Deux ecritures d une meme intention finissent toujours
+// par diverger, et c est le comptoir qui paie la difference.
+function ligneProgrammeQuick(activityId) {
+  const ligne = { activityId, pax: Number(quickBookState.pax) || 1 };
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
+  if (!activite) return ligne;
+  // On n envoie un reglage QUE si l activite en a un : une cle inutile sur une
+  // ligne qui ne la comprend pas est du bruit que le serveur devra ignorer, et
+  // un jour ne plus ignorer.
+  if (activite.priceType === 'grid_fun_run') ligne.minutes = getQuickVisitMinutes(activityId);
+  if (activite.priceType === 'per_unit_hour') {
+    ligne.units = getQuickVisitUnits(activityId);
+    ligne.hours = getQuickVisitHours(activityId);
+  }
+  if (typeof activityCountsChildren === 'function' && activityCountsChildren(activite)) {
+    ligne.participants = getQuickVisitParticipants(activityId);
+  }
+  return ligne;
+}
+
 // Le petit bloc de reglages d une activite du catalogue, ou rien du tout quand
 // elle n en a pas.
 function renderQuickVisitOptions(choice) {
@@ -21232,6 +21309,19 @@ function renderQuickVisitOptions(choice) {
   if (activite.priceType === 'grid_fun_run') {
     const courant = getQuickVisitMinutes(choice.id);
     return `<div class="qb-visit-options">${FUN_RUN_OPTIONS.map((opt) => `<button type="button" class="qb-dur-btn ${courant === Number(opt.minutes) ? 'active' : ''}" onclick="setQuickVisitMinutes('${escapeHtml(choice.id)}',${opt.minutes})">${escapeHtml(opt.label)}<small>${opt.price}€</small></button>`).join('')}</div>`;
+  }
+  if (activite.priceType === 'per_unit_hour') {
+    const unites = activityUnitChoices(activite);
+    const heures = activityHourChoices(activite);
+    const nom = /table/i.test(activite.unitLabel || '') ? 'Tables' : 'Nombre';
+    const pastille = (cle, valeur, libelle, courant, setter) => `<button type="button" class="qb-dur-btn ${Number(courant) === Number(valeur) ? 'active' : ''}" data-opt="${cle}" data-val="${valeur}" onclick="${setter}('${escapeHtml(choice.id)}',${valeur})">${escapeHtml(libelle)}</button>`;
+    const unitCourant = getQuickVisitUnits(choice.id);
+    const heureCourante = getQuickVisitHours(choice.id);
+    return `<div class="qb-visit-options qb-visit-reglage"><span class="qb-opt-legend">${nom}</span>`
+      + unites.map((value) => pastille('units', value, String(value), unitCourant, 'setQuickVisitUnits')).join('')
+      + `</div><div class="qb-visit-options qb-visit-reglage"><span class="qb-opt-legend">Durée</span>`
+      + heures.map((option) => pastille('hours', option.hours, option.label, heureCourante, 'setQuickVisitHours')).join('')
+      + `</div>`;
   }
   if (typeof activityCountsChildren === 'function' && activityCountsChildren(activite)) {
     const courant = getQuickVisitParticipants(choice.id);
@@ -22224,6 +22314,18 @@ function renderQuickBookInner() {
   // SUR MESURE : la grille des activites du catalogue en TOGGLES : bowling
   // avec sa duree, laser avec ses parties, le reste en simple coche. Le
   // serveur renormalise le programme et attribue les ressources.
+  // UNE ACTIVITE SEULE A LES MEMES REGLAGES QU EN VISITE. Le composeur ne
+  // s affichait qu en mode « visite » : choisir les billards SEULS au comptoir
+  // ne laissait regler ni les tables, ni la duree, et la reservation partait en
+  // 1 x 1h. Le meme bloc de reglages, sans une deuxieme facon de le rendre.
+  const activityOptionsHtml = quickBookState.type === 'activity' && quickBookState.activityId ? (() => {
+    const activite = typeof getCenterActivity === 'function' ? getCenterActivity(quickBookState.activityId) : null;
+    if (!activite) return '';
+    const bloc = renderQuickVisitOptions({ id: quickBookState.activityId, label: activite.name || '' });
+    if (!bloc) return '';
+    return `<div style="margin-top:12px;"><label class="qb-mini-label">${escapeHtml(activite.name || 'Activité')}</label>${bloc}</div>`;
+  })() : '';
+
   const visitComposerHtml = quickBookState.type === 'visite' ? (() => {
     const visit = quickBookState.visit || {};
     const choices = getQuickBookActivityChoices();
@@ -22403,6 +22505,7 @@ function renderQuickBookInner() {
           </div>
           ${durationEssentialHtml}
           ${visitComposerHtml}
+          ${activityOptionsHtml}
           ${formuleGridHtml}
           ${essentialActions.length ? `<div class="qb-inline-actions" style="margin-top:12px;">${essentialActions.join('')}</div>` : ''}
           ${statusParts.length ? `<div class="qb-status-line">${statusParts.map(part => `<span>${part}</span>`).join('')}</div>` : ''}
@@ -22485,16 +22588,7 @@ async function saveQuickBook() {
     if (visit.laser_game?.on) visitProgram.push({ activityId: 'laser_game', games: Math.max(1, Math.trunc(Number(visit.laser_game.games || 1))), pax: Number(quickBookState.pax) || 1 });
     Object.entries(visit.others || {}).forEach(([activityId, on]) => {
       if (!on) return;
-      const ligne = { activityId, pax: Number(quickBookState.pax) || 1 };
-      const activite = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
-      // On n envoie un reglage QUE si l activite en a un : une cle inutile sur
-      // une ligne qui ne la comprend pas est du bruit que le serveur devra
-      // ignorer, et un jour ne plus ignorer.
-      if (activite && activite.priceType === 'grid_fun_run') ligne.minutes = getQuickVisitMinutes(activityId);
-      if (activite && typeof activityCountsChildren === 'function' && activityCountsChildren(activite)) {
-        ligne.participants = getQuickVisitParticipants(activityId);
-      }
-      visitProgram.push(ligne);
+      visitProgram.push(ligneProgrammeQuick(activityId));
     });
     if (!visitProgram.length) { failQuickBook('Choisissez au moins une activité.'); return; }
   }
@@ -22578,7 +22672,7 @@ async function saveQuickBook() {
     program: quickBookState.type === 'visite'
       ? visitProgram
       : quickBookState.type === 'activity' && quickBookState.activityId
-        ? [{ activityId: quickBookState.activityId, pax: Number(quickBookState.pax) || 1 }]
+        ? [ligneProgrammeQuick(quickBookState.activityId)]
         : undefined,
     label: formule
       ? formule.name

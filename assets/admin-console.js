@@ -123,11 +123,17 @@ function getAdminResourceHtml(reservation) {
   if (!plan) return escapeHtml(resourceText);
   const fixed = getOpsPlanFixedCommitments(plan).slice(0, 3).map(formatOpsCommitment).filter(Boolean);
   const flexible = [...new Set(getOpsPlanFlexibleEntitlements(plan).map(item => item.label || item.type).filter(Boolean))].slice(0, 3);
-  const quality = Number(plan.marketIntelligence?.qualityScore);
+  // LA NOTE DU PLAN EST UNE JAUGE DE MACHINE, PAS UNE INFORMATION DE COMPTOIR
+  // (2026-08-31, demande du proprietaire : "taux de confiance 35/100 [...] c'est
+  // pour ameliorer les agents ia, ca doit jamais etre montre"). Elle notait la
+  // qualite du plan calcule ; le staff, lui, a besoin de savoir QUELLES
+  // ressources sont engagees et lesquelles restent libres. Ces deux lignes-la
+  // restent. La note vit toujours dans opsPlan.marketIntelligence pour l espace
+  // proprietaire et pour le reglage des agents : elle n est pas perdue, elle
+  // n est plus peinte ici.
   const sub = [
     fixed.length ? `Fixe: ${fixed.join(' · ')}` : '',
     flexible.length ? `Libre: ${flexible.join(' · ')}` : '',
-    Number.isFinite(quality) ? `Qualité ${Math.round(quality)}/100` : '',
   ].filter(Boolean);
   return `<div class="admin-plan-cell">
     <div class="admin-plan-main">${escapeHtml(resourceText)}</div>
@@ -436,11 +442,12 @@ function buildAdminExcelXml(payload) {
     ]))
   ];
   const agentsRows = [
-    excelRow(['Sévérité', 'Confiance', 'Agent', 'Statut', 'Type', 'Message'], 'Header'),
+    // Meme regle que l ecran : la severite, le statut, le type et le message
+    // servent au gerant ; le pourcentage de confiance et l identifiant d agent
+    // servent a regler l algo et n ont rien a faire dans son tableur.
+    excelRow(['Sévérité', 'Statut', 'Type', 'Message'], 'Header'),
     ...(payload.suggestions || []).map(item => excelRow([
       item.severity || '',
-      Math.round(Number(item.confidence || 0) * 100),
-      item.agentId || '',
       item.status || '',
       item.suggestionType || '',
       item.payload?.recommendation || item.payload?.message || item.payload?.reason || '',

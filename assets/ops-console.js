@@ -154,7 +154,11 @@ function renderOpsSuggestions() {
         <div class="ops-row activity">
           <div>
             <div class="title">${escapeHtml(payload.title || item.suggestionType || 'Suggestion agent')}</div>
-            <div class="meta">${escapeHtml(item.agentId || 'agent')} · confiance ${Math.round(Number(item.confidence || 0) * 100)}%</div>
+            <!-- Le nom de l agent et son pourcentage de confiance reglent
+                 l algo ; ils ne disent rien au gerant d un bowling. Le titre,
+                 la recommandation et la severite, eux, restent. Les valeurs
+                 sont toujours dans la donnee pour l espace proprietaire. -->
+            <div class="meta">${escapeHtml(payload.reason || payload.detail || '')}</div>
           </div>
           <div class="meta">${escapeHtml(payload.recommendation || payload.reason || payload.message || 'À examiner par le staff.')}</div>
           <span class="ops-pill ${tone}">${escapeHtml(OPS_SEVERITY_LABELS[severity] || severity)}</span>

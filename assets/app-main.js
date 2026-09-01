@@ -3372,6 +3372,7 @@ function initClient() {
   renderFormules();
   renderFormulaPreferences();
   bindCardTilt();
+  bindKeyboardCare();
   // Demarre TOUJOURS a l'etape 1 (et synchronise le DOM avec state.step) : sinon
   // un state.step persiste (ex. 4) affichait l'etape 4 dans la barre de progression
   // alors que le contenu montrait l'etape 1 -> desynchro visible sur le formulaire.
@@ -3827,15 +3828,63 @@ function syncStatusDock() {
   // sous-barre varie d'un tenant a l'autre (contacts du centre en prod) et un
   // decalage fixe mordait le haut du CTA « Verifier les disponibilites »
   // (vu en prod le 2026-08-18 a 390x844). Mesure au moment ou il parle.
-  if (html) {
-    const foot = document.querySelector('#step1 .step-foot');
-    const footTop = foot ? foot.getBoundingClientRect().top : 0;
-    if (footTop > 0 && footTop < window.innerHeight) {
-      dock.style.bottom = `${Math.round(window.innerHeight - footTop + 8)}px`;
-    } else {
-      dock.style.removeProperty('bottom');
-    }
+  // EN FLUX depuis le 2026-09-01 : plus aucun offset a mesurer. L ancien
+  // calcul posait un style.bottom sur un dock position:fixed ; au moindre
+  // clavier ou pied variable, il atterrissait au milieu de l ecran.
+  dock.style.removeProperty('bottom');
+}
+
+// --- SOIN CLAVIER TELEPHONE (2026-09-01) -------------------------------------
+// Trois faits mesures ont dicte cette fonction :
+//   1. AUCUN code ne lisait window.visualViewport ni ne reagissait au clavier
+//      (0 occurrence sur 24k lignes) : un champ enterre par le retrecissement
+//      restait enterre, on tapait a l aveugle (147px sous le bord a 390x480).
+//   2. Le defilement natif du navigateur vers le champ focalise ignorait le
+//      pied colle en bas : le CTA se peignait sur le bas du champ Email et un
+//      tap dans le champ validait le recapitulatif. Les scroll-padding poses
+//      dans le CSS guident ce defilement ; ici on le DECLENCHE aux bons
+//      moments.
+//   3. --tunnel-header-h etait consommee par #alertBox mais definie nulle
+//      part : le repli 56px desalignait les alertes de 7 a 23px du vrai
+//      header. Elle est posee ici, depuis la mesure reelle.
+function bindKeyboardCare() {
+  if (document.body.dataset.kbCareBound === '1') return;
+  document.body.dataset.kbCareBound = '1';
+  const header = document.querySelector('body > header');
+  const poseHauteurHeader = () => {
+    if (header) document.documentElement.style.setProperty('--tunnel-header-h', `${Math.round(header.getBoundingClientRect().height)}px`);
+  };
+  poseHauteurHeader();
+  window.addEventListener('resize', poseHauteurHeader);
+
+  const champTexte = (el) => Boolean(el && el.closest && el.closest('#clientView, .bespoke-modal')
+    && el.matches('input:not([type=checkbox]):not([type=radio]), textarea, select'));
+  const revele = () => {
+    const el = document.activeElement;
+    if (!champTexte(el)) return;
+    // 'center' : 'nearest' ne defile PAS quand le champ est deja visible,
+    // meme enterre sous un CTA sticky (mesure a 320x300 : tap sur le champ
+    // date = tap sur Continuer). Centrer le degage des deux bords ; les
+    // scroll-padding gardent la reserve quand le navigateur defile de lui-meme.
+    el.scrollIntoView({ block: 'center', behavior: 'auto' });
+  };
+  document.addEventListener('focusin', (event) => {
+    if (!champTexte(event.target)) return;
+    // Deux temps : tout de suite, puis apres que le clavier a retreci la
+    // scene (Android redimensionne 150 a 300ms apres le focus).
+    requestAnimationFrame(revele);
+    setTimeout(revele, 320);
+  });
+  // iOS ne retrecit que le viewport VISUEL : visualViewport est le seul
+  // signal. Android passe aussi par resize. Les deux, amortis.
+  if (window.visualViewport) {
+    let calme = null;
+    window.visualViewport.addEventListener('resize', () => {
+      clearTimeout(calme);
+      calme = setTimeout(revele, 80);
+    });
   }
+  window.addEventListener('resize', () => setTimeout(revele, 80));
 }
 
 // --- TILT 3D DES CARTES ------------------------------------------------------

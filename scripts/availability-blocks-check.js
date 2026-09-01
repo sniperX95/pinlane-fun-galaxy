@@ -45,8 +45,28 @@ function ok(cond, label) {
 // Dates de reference (verifiees ci-dessous) : mardi et mercredi NORMAUX
 // (hors vacances scolaires) pour un moteur au comportement simple.
 // ---------------------------------------------------------------------------
-const TUE = '2026-09-01'; // mardi
-const WED = '2026-09-02'; // mercredi
+// Jours FUTURS calcules a l execution (memes raisons que availability-day :
+// les dates figees de la premiere version etaient AUJOURD HUI le jour de la
+// mesure, et planLaser refuse un creneau du jour deja passe : le gate etait
+// vert a l aube et rouge l apres-midi, par pure horloge). On saute les
+// vacances scolaires wallonnes, leur grille changerait les verdicts.
+const { WALLONIA_SCHOOL_HOLIDAYS } = require('../lib/booking-config');
+function prochainJour(weekday) {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date()).split('-').map(Number);
+  const cursor = new Date(Date.UTC(y, m - 1, d));
+  const enConge = (iso) => WALLONIA_SCHOOL_HOLIDAYS.some((range) => iso >= range.start && iso <= range.end);
+  do { cursor.setUTCDate(cursor.getUTCDate() + 1); }
+  while (cursor.getUTCDay() !== weekday || enConge(cursor.toISOString().slice(0, 10)));
+  return cursor.toISOString().slice(0, 10);
+}
+function plusJours(iso, n) {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+const TUE = prochainJour(2); // mardi futur
+const WED = plusJours(TUE, 1); // le mercredi qui le suit
 
 // ---------------------------------------------------------------------------
 // Etat en memoire servi par le faux pool.
@@ -219,8 +239,8 @@ async function captureError(run) {
 }
 
 (async () => {
-  ok(new Date(2026, 8, 1).getDay() === 2, `${TUE} est bien un mardi (dow 2)`);
-  ok(new Date(2026, 8, 2).getDay() === 3, `${WED} est bien un mercredi (dow 3)`);
+  ok(new Date(TUE + 'T12:00:00Z').getUTCDay() === 2, `${TUE} est bien un mardi (dow 2)`);
+  ok(new Date(WED + 'T12:00:00Z').getUTCDay() === 3, `${WED} est bien un mercredi (dow 3)`);
 
   // =========================================================================
   console.log('\n[1] resolveBlocksForDate : once (date exacte) + weekly (jour + bornes)');
@@ -233,10 +253,10 @@ async function captureError(run) {
   ok(ab.resolveBlocksForDate(weeklyBlocks, TUE).length === 1, 'weekly actif le bon jour de semaine (mardi)');
   ok(ab.resolveBlocksForDate(weeklyBlocks, WED).length === 0, 'weekly inactif un autre jour (mercredi)');
 
-  const bounded = normBlocks([rawBlock({ scope_type: 'center', recurrence: 'weekly', day_of_week: 2, date_from: '2026-09-08', date_until: '2026-09-30' })]);
+  const bounded = normBlocks([rawBlock({ scope_type: 'center', recurrence: 'weekly', day_of_week: 2, date_from: plusJours(TUE, 7), date_until: plusJours(TUE, 28) })]);
   ok(ab.resolveBlocksForDate(bounded, TUE).length === 0, 'weekly borne : mardi AVANT date_from => inactif');
-  ok(ab.resolveBlocksForDate(bounded, '2026-09-15').length === 1, 'weekly borne : mardi DANS [from, until] => actif');
-  ok(ab.resolveBlocksForDate(bounded, '2026-10-13').length === 0, 'weekly borne : mardi APRES date_until => inactif');
+  ok(ab.resolveBlocksForDate(bounded, plusJours(TUE, 14)).length === 1, 'weekly borne : mardi DANS [from, until] => actif');
+  ok(ab.resolveBlocksForDate(bounded, plusJours(TUE, 35)).length === 0, 'weekly borne : mardi APRES date_until => inactif');
 
   // =========================================================================
   console.log('\n[2] predicats : jour entier vs plage horaire, bord [start, end)');

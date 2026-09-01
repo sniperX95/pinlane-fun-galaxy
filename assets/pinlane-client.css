@@ -589,6 +589,32 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   display: grid;
   gap: var(--space-4);
   align-items: stretch;
+  /* SECURITE UNIVERSELLE (2026-09-01) : la zone d etape sait TOUJOURS defiler.
+     Enfermee sous max-width:640px, cette regle laissait le paysage telephone
+     (667-932px de large) avec un corps ecrase a 0-37px et des champs
+     INATTEIGNABLES (aucun ancetre defilable, mesure a 844x390). Un ecran assez
+     haut ne defile simplement pas : la regle est invisible partout ou elle ne
+     sert pas. Les scroll-padding : quand le navigateur ramene un champ
+     focalise en vue (clavier), il le degage du pied colle en bas et du bord
+     haut au lieu de le poser dessous. */
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  scroll-padding-top: 12px;
+  scroll-padding-bottom: 96px;
+}
+
+/* Les MEMES reserves pour tous les scrolleurs internes du tunnel : selon le
+   regime (solo, court ecran, listes), le conteneur qui defile n est pas
+   toujours .step-body lui-meme. Sans elles, le defilement natif posait le
+   champ focalise sous le CTA sticky de sa propre zone (mesure a 320x300 :
+   le tap sur le champ date touchait « Continuer »). */
+#clientView .step1-body,
+#clientView .s1-scroller,
+#clientView .s2-slots,
+#clientView #slotList,
+#clientView #recapList {
+  scroll-padding-top: 12px;
+  scroll-padding-bottom: 96px;
 }
 
 #clientView .step-foot {
@@ -1441,7 +1467,10 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    l'ecran au lieu de flotter en haut d'un grand vide. */
 #clientView .step3-body {
   grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
-  align-items: center;
+  /* `safe` : centre quand la place existe, ALIGNE EN HAUT des que la zone
+     deborde et defile. Un centrage pur + defilement coupe le HAUT du contenu
+     sans aucun moyen de l atteindre (mesure en paysage 844x390). */
+  align-items: safe center;
 }
 
 /* Bornee et centree, ORDINATEUR SEULEMENT (2026-08-24, Movsar : « pourquoi
@@ -1615,28 +1644,32 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  #clientView .step-status-dock { transition: none; }
+  #clientView .step-status-dock { transition: none; animation: none; }
 }
 
 @media (max-width: 900px) {
+  /* EN FLUX (2026-09-01). L ancien position:fixed cumulait trois fragilites
+     mesurees : boite sur-contrainte (left:12 + right:12 + width:min(680px,100%),
+     la largeur gagnait et le dock debordait de 12px hors ecran a DROITE sur
+     TOUTES les largeurs 320-430) ; un offset bottom regle a la main puis
+     re-mesure en JS a chaque affichage ; et un clavier Android qui le posait
+     en plein milieu de l ecran (bottom relatif au viewport retreci). Dans la
+     colonne de scene, au-dessus de la sous-barre : zero offset, zero mesure,
+     il POUSSE au lieu de recouvrir. */
   #clientView .step-status-dock {
-    display: block;
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    /* Au-dessus du pied d ecran COMPLET (pied 64 + rembourrages 24 + filet +
-       marge 12 + sous-barre ~32) : a 78 px il recouvrait le CTA « Verifier
-       les disponibilites » (vu a l ecran le 2026-08-18, 390x844). */
-    bottom: 140px;
-    z-index: 40;
-    pointer-events: none;
-    opacity: 0;
-    transform: translateY(10px);
-    transition: opacity 0.28s var(--ease), transform 0.4s var(--lq-spring);
+    display: none;
+    width: auto;
+    margin: 0 var(--space-2) var(--space-2);
   }
   #clientView .step-status-dock.is-live {
+    display: block;
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
+    animation: dockIn 0.28s var(--ease);
+  }
+  @keyframes dockIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
   }
   #clientView .step-status-dock .pax-alert,
   #clientView .step-status-dock .type-alert {
@@ -1712,7 +1745,17 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 
   /* Pied d'ecran : la demande sur mesure devient un bouton discret, le CTA
      garde toute la largeur restante. */
-  #clientView .step-foot { min-height: 64px; gap: var(--space-2); }
+  #clientView .step-foot {
+    min-height: 64px;
+    gap: var(--space-2);
+    /* OPAQUE : a 320x300 (petit telephone + clavier) la carte sur mesure du
+       pied se peignait par-dessus le champ date compresse, et taper sur son
+       propre champ ouvrait la modale. Le contenu defile DERRIERE un pied
+       plein, jamais au travers. */
+    position: relative;
+    z-index: 3;
+    background: var(--page);
+  }
   #clientView .step-foot .btn-primary { min-width: 0; flex: 1; font-size: 13px; padding: 0 var(--space-3); }
   /* Sur telephone, la demande sur mesure devient une icone seule : le texte
      tronque au milieu d'un mot etait pire qu'aucun texte. Le nom accessible
@@ -1858,6 +1901,11 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 
 /* Une seule icône calendrier : l'indicateur natif WebKit est masqué, le champ
    garde notre bouton .date-picker-trigger (cliquable, ouvre le picker). */
+/* Le declencheur du calendrier (44x44) vit DANS le champ : la valeur saisie
+   ne doit jamais glisser dessous (seul chevauchement interactif de toute la
+   matrice mobile, 14/14 cellules). */
+#clientView .date-input-wrap input { padding-right: 48px; }
+
 #clientView .date-input-wrap input[type='date']::-webkit-calendar-picker-indicator {
   display: none;
   -webkit-appearance: none;
@@ -6087,6 +6135,11 @@ body.modal-open { overflow: hidden; }
 .bespoke-modal {
   position: fixed;
   inset: 0;
+  /* Le pied d actions est sticky au bas de CE scrollport : sans reserve, le
+     defilement natif vers un champ focalise le posait sous le pied (tap sur
+     le bas du textarea = tap sur Envoyer, mesure 7968px2 le 2026-09-01). */
+  scroll-padding-top: 12px;
+  scroll-padding-bottom: 110px;
   z-index: 100;
   display: flex;
   align-items: flex-start;
@@ -6172,10 +6225,9 @@ body.modal-open { overflow: hidden; }
    sous le plancher tactile. */
 .bespoke-modal-close { width: 44px; height: 44px; }
 
-/* Les deux boutons de la modale sont le geste de sortie et le geste d envoi :
-   40 px passait sous le plancher tactile, comme les champs. */
-.bespoke-modal .cr-actions .btn-primary,
-.bespoke-modal .cr-actions .btn-secondary { min-height: 44px; }
+/* (Le plancher tactile 44px des deux boutons vit dans le bloc .cr-actions
+   plus bas : UNE seule declaration. Un correctif duplique ici s etait fait
+   avaler par la cascade, la regle historique a 40px gagnait en silence.) */
 
 /* MEME OUBLI SUR L ECRAN DE CONNEXION. Le champ du code d acces est en
    14 px : l equipe qui ouvre la console depuis une tablette au comptoir voit
@@ -6212,10 +6264,28 @@ input.auth-input {
 
 /* Actions de la modale : primaire accent plein, secondaire bordé, alignées à
    droite (le .cr-actions générique de pinlane.css les aplatirait sinon). */
-.bespoke-modal .cr-actions { justify-content: flex-end; margin-top: var(--space-4); }
+/* PIED COLLANT : la carte depasse l ecran de tous les telephones (mesure
+   320x568 a 430x844 : Envoyer n etait JAMAIS visible sans defiler, jusqu a 3
+   ecrans plus bas clavier ouvert). Le scrollport est la modale elle-meme :
+   sticky bottom y colle les actions au bas du viewport, fond opaque, et les
+   gestes de sortie/envoi tiennent le plancher tactile de 44px. */
+.bespoke-modal .cr-actions {
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-left: -24px;
+  margin-right: -24px;
+  margin-bottom: -24px;
+  padding: 12px 24px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--raised);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
 .bespoke-modal .cr-actions .btn-primary,
 .bespoke-modal .cr-actions .btn-secondary {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 18px;
   border-radius: var(--radius-sm);
   font-size: 14px;
@@ -7045,6 +7115,13 @@ body.client-mode #clientView .btn-primary.is-sealed,
 /* Barre haute telephone : n'existe que sous 640 px (bloc mobile ci-dessous). */
 #clientView .m-topbar,
 #clientView .m-top-hairline { display: none; }
+/* Le filet de progression est aria-hidden ET transparent au toucher : a
+   320x300 (clavier ouvert) cette barre decorative de 3px interceptait le tap
+   du CTA Continuer poste juste sous elle (mesure du 2026-09-01). REGLE
+   SEPAREE : posee un temps dans la regle GROUPEE ci-dessus, pointer-events
+   s heritait sur TOUTE la barre haute et le titre Modifier ne recevait plus
+   aucun tap (gate tactile rouge, 2026-09-01). */
+#clientView .m-top-hairline { pointer-events: none; }
 /* Le prix compact (« des 20/piste ») ne sert que la carte telephone. */
 #clientView .activity-price-compact { display: none; }
 
@@ -7873,8 +7950,17 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* --- b. l avance explicite, annoncee, sous la grille ------------------ */
   #clientView .anchor-mobile-continue { display: none; }
   #clientView .formula-anchor-picker[data-mobile-multi]:not([data-mobile-last]) .anchor-mobile-continue {
+    /* COLLANT au bas de la liste des heures : a 320x568 il vivait 130px sous
+       le pli, dans le flux, et rien ne signalait qu il fallait defiler. Meme
+       patron que la barre CTA d etape : degrade vers la page pour annoncer le
+       contenu qui continue dessous. */
     display: block;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
     margin-top: var(--space-3);
+    padding-top: var(--space-2);
+    background: linear-gradient(to top, var(--page) 72%, rgba(0, 0, 0, 0));
   }
   #clientView .anchor-mobile-continue .anchor-mobile-next {
     width: 100%;
@@ -8131,4 +8217,37 @@ body.client-mode #clientView .btn-primary.is-sealed,
     background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 40%, color-mix(in srgb, #000000 42%, transparent) 100%);
     box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 22%, transparent);
   }
+}
+
+/* --- ECRAN COURT, QUELLE QUE SOIT LA LARGEUR (2026-09-01) ----------------
+   Le paysage telephone (844x390, 932x430...) tombait dans un trou : le
+   chrome mobile s arrete a 900px de large mais les secours de mise en page
+   etaient enfermes sous 640px. Corps d etape ecrase a 0-37px, champs sous
+   la sous-barre, AUCUN defilement. Ce regime se declenche par la HAUTEUR :
+   c est une regle de MISE EN PAGE (le paysage change le viewport de mise en
+   page sur toutes les plateformes), pas une regle clavier : le clavier iOS,
+   lui, ne change jamais ce viewport (deja documente plus haut). */
+@media (max-height: 560px) {
+  #clientView .step3-body {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #clientView .step-foot { min-height: 52px; }
+  #clientView .tunnel-underbar { min-height: 24px; }
+  /* La carte « Groupe, entreprise ou besoin special ? » vaut ~90px : sur un
+     ecran de moins de 560px de haut (clavier ouvert sur petit telephone),
+     elle mangeait TOUT l espace du corps et se peignait par-dessus le champ
+     date. Elle s efface et revient des que le clavier se ferme. */
+  #clientView .step-foot .bespoke-entry { display: none; }
+  /* Et le CTA sticky de l etape 1 SUIT LE FLUX : dans une zone de ~90px, un
+     bouton colle en bas recouvre mecaniquement les champs, quel que soit le
+     defilement. En flux, plus aucun overlay : on defile, on touche. */
+  #clientView .step1-body.is-solo .s1-continue,
+  #clientView .s1-continue { position: static; }
+  /* Reserve de bas de zone : le dernier element defile doit pouvoir se poser
+     ENTIEREMENT au-dessus de la sous-barre (mesure : le centre du CTA en flux
+     tombait dans « Une question ? » a 320x300). */
+  #clientView .step-body,
+  #clientView .step1-body { padding-bottom: 34px; }
 }

@@ -7742,9 +7742,17 @@ async function confirmBooking() {
 
 function resetBooking() {
   clearBookingAlternatives();
+  // Le bouton Confirmer garde son sceau (disque + coche) tant qu on ne le
+  // relache pas : « Faire une autre reservation » est la seule sortie de
+  // l ecran de succes, donc l endroit ou le sceau doit tomber.
+  setBookingSubmitBusy(false);
+  // On garde la date que le client venait de choisir si elle est encore
+  // reservable, sinon la prochaine date ouverte. Jamais aujourd hui en dur :
+  // firstBookableDate lit le planning editable du centre.
+  const nextBookableDate = firstBookableDate(state.booking && state.booking.date, state.isHolidayMode);
   state.booking = {
     name:'', phone:'', email:'', pax:4,
-    date: todayStr(),
+    date: nextBookableDate,
     type:'bowling', formuleId:'', duration:1, totalDuration:1, laneCount:1, startTime:'', allocatedLanes:[],
     serverProgram: null,
     preference: createDefaultFormulaPreference(),
@@ -7759,7 +7767,7 @@ function resetBooking() {
   document.getElementById('fPhone').value = '';
   document.getElementById('fEmail').value = '';
   document.getElementById('fPax').value = 4;
-  document.getElementById('fDate').value = todayStr();
+  document.getElementById('fDate').value = nextBookableDate;
   const specialRequestInput = document.getElementById('fSpecialRequest');
   if (specialRequestInput) specialRequestInput.value = '';
   setBookingOccasion('');

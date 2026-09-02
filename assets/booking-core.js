@@ -379,6 +379,23 @@ function currentTimeDecimal() {
   const now = getBusinessNowParts();
   return now.hour + (now.minute / 60);
 }
+// La PROCHAINE date reservable a partir d une preference. On garde la date
+// voulue si elle est encore ouvrable, sinon on avance jour par jour jusqu au
+// premier jour ouvert. Tout vient de getSchedule, c est a dire du planning
+// EDITABLE du centre : aucune heure ni aucun jour code en dur ici, un centre
+// qui change ses horaires change ce que cette fonction rend. Sert le reset du
+// tunnel (jamais une date passee, jamais un jour ferme selectionne tout seul).
+function firstBookableDate(preferred, holidayMode = false) {
+  const today = todayStr();
+  let d = (!preferred || preferred < today) ? today : preferred;
+  for (let i = 0; i < 400; i += 1) {
+    const schedule = getSchedule(d, holidayMode);
+    // Un jour ouvert, sauf aujourd hui dont l heure de fermeture est deja passee.
+    if (schedule && !(d === today && currentTimeDecimal() >= schedule.close)) return d;
+    d = addDays(d, 1);
+  }
+  return d;
+}
 function filterPastSlotsForDate(slots, dateStr) {
   if (dateStr !== todayStr()) return slots;
   const minStart = roundUpHalfHour(currentTimeDecimal());
@@ -1644,6 +1661,7 @@ function getFormulaActivityProgressSummary(reservation) {
     todayStr,
     isPastBusinessDate,
     currentTimeDecimal,
+    firstBookableDate,
     filterPastSlotsForDate,
     sumExtras,
     isDateWithinRange,

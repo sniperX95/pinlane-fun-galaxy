@@ -1,4 +1,5 @@
-// UNE HEURE PROPOSEE EST UNE HEURE RESERVABLE.
+// UNE HEURE PROPOSEE EST UNE HEURE RESERVABLE, ET UNE HEURE IMPOSSIBLE DIT
+// POURQUOI.
 //
 // Movsar, 2026-08-31 : « il y a plein de bugs de temps [...] il faut autoriser
 // les activites qui finissent a la fermeture pile, parce que la on se retrouve
@@ -6,21 +7,37 @@
 // apres avoir retenu le bowling a 10:00, le composeur proposait toujours les
 // memes 28 heures de laser - dont 10:00 et 10:30, qui tombent DANS la partie de
 // bowling. Le client cliquait, et le serveur repondait « Bowling (10:00-11:00)
-// et Laser Game (10:00) se chevauchent ». 2 paires affichees sur 28 finissaient
-// en refus.
+// et Laser Game (10:00) se chevauchent ».
 //
-// Ce gate verifie deux proprietes de COMPORTEMENT sur le vrai moteur :
+// Brief du 2026-09-02 : le composeur RETIRAIT les heures qui ne passaient pas,
+// sans dire pourquoi, en jugeant chaque activite seule (les parties 2 et 3 du
+// laser n occupaient aucune place, la fermeture se jugeait sur l activite et
+// pas sur la visite). Depuis le 2026-09-03 la grille rend TOUTES les heures de
+// la journee, chacune avec le verdict de la visite ENTIERE ({ ok, code,
+// reason }), calcule par la meme porte que la validation.
+//
+// Ce gate verifie cinq proprietes de COMPORTEMENT sur le vrai moteur (l API en
+// processus, snapshot vide) :
 //
 //   A. LA FERMETURE EST UNE BORNE, PAS UN MUR. Une activite qui finit PILE a
-//      l heure de fermeture est proposee (bowling d une heure jusqu a 23:00
-//      quand le centre ferme a minuit).
-//   B. AUCUNE HEURE MENTEUSE. Toute heure encore affichee APRES un premier
-//      choix doit etre acceptee par la validation. On epingle chaque heure de
-//      la premiere ancre, on relit la liste de la seconde telle que le client
-//      la verrait, et on essaie les paires : zero refus attendu.
+//      l heure de fermeture est reservable (bowling d une heure a 23:00 quand
+//      le centre ferme a minuit) ; l heure suivante existe encore dans la
+//      grille, impossible et motivee.
+//   B. RIEN N EST CACHE, ET RIEN NE MENT. Apres un premier choix, la seconde
+//      liste garde le meme nombre d heures ; celles qui mordent sur le choix
+//      sont impossibles et le NOMMENT ; aucune heure possible ne le chevauche.
+//   C. LE VERDICT DE LA GRILLE EST CELUI DE LA VALIDATION. Sur un echantillon
+//      de paires, une heure possible est acceptee et une heure impossible est
+//      refusee par la validation complete.
+//   D. LES PARTIES DE LASER OCCUPENT LEUR PLACE. Deux parties posees a 20:00 et
+//      20:30 rendent impossibles les bowlings 19:30, 20:00 et 20:30, en les
+//      nommant ; 19:00 (fin 20:00) et 21:00 restent possibles.
+//   E. L HEURE RETENUE RESTE POSSIBLE DANS SA PROPRE LISTE : elle ne se refuse
+//      jamais elle-meme.
 //
-// Puis une CONTRE-EPREUVE par mutation : on retire le filtre du moteur, on
-// prouve que le gate rougit, et on restaure par edition inverse.
+// Puis une CONTRE-EPREUVE par mutation : on fait ignorer le verdict au moteur
+// (toute heure devient possible), on prouve que le gate rougit, et on restaure
+// par edition inverse.
 //
 // Lancement : node scripts/anchor-hours-truth-check.js
 const fs = require('fs');
@@ -31,7 +48,7 @@ const ENGINE = path.join(ROOT, 'lib/ops-engine.js');
 const PORT = Number(process.env.PINLANE_ANCHOR_TRUTH_PORT || 4489);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-// Le limiteur reel garde un etat par IP : ce gate fait des centaines de
+// Le limiteur reel garde un etat par IP : ce gate fait des dizaines de
 // requetes en rafale et se ferait refouler par lui ("Trop de requetes"), ce
 // qui ressemblerait a un refus metier. On le neutralise AVANT tout require
 // applicatif (motif de scripts/client-tarifs-check.js) : ce n est pas lui
@@ -97,8 +114,10 @@ function get(chemin) {
 }
 
 const PROGRAMME_DUO = [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }];
+const PROGRAMME_DUO_2_PARTIES = [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 2 }];
 const PROGRAMME_SOLO = [{ activityId: 'bowling', duration: 1 }];
 const minutes = (t) => Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5));
+const chevauche = (a1, a2, b1, b2) => a1 < b2 && b1 < a2;
 
 function params(extra = {}) {
   const p = new URLSearchParams({ date: DATE, type: 'visite', pax: '4', centerId: 'libramont' });
@@ -109,6 +128,13 @@ function params(extra = {}) {
 function ancres(payload) {
   return (payload && payload.anchors && Array.isArray(payload.anchors.activities)) ? payload.anchors.activities : [];
 }
+const possibles = (ancre) => (ancre ? ancre.times.filter((x) => x.ok !== false) : []);
+const impossibles = (ancre) => (ancre ? ancre.times.filter((x) => x.ok === false) : []);
+const heures = (items) => items.map((x) => x.time);
+// Une entree de grille est bien formee : une heure, et si elle est impossible,
+// un code et une raison courte (lisible sur un telephone : pas un paragraphe).
+const bienFormee = (x) => /^\d{2}:\d{2}$/.test(String(x.time))
+  && (x.ok !== false || (typeof x.code === 'string' && x.code && typeof x.reason === 'string' && x.reason.length > 0 && x.reason.length <= 60));
 
 async function main() {
   const server = await serve();
@@ -120,14 +146,18 @@ async function main() {
     // C est la LISTE D ANCRES qui porte toutes les heures proposees : pour une
     // visite a une seule activite, `slots` ne contient que le plan par defaut.
     const ancreSolo = ancres(solo)[0];
-    const heuresSolo = ancreSolo ? ancreSolo.times.map((x) => x.time) : (solo.slots || []).map((s) => s.time);
-    ok(heuresSolo.length > 0, `des heures sont proposees pour une heure de bowling (${heuresSolo.length})`);
+    ok(Boolean(ancreSolo) && ancreSolo.times.every(bienFormee), 'chaque entree de la grille est une heure, et une heure impossible porte un code et une raison courte');
+    const heuresSolo = heures(possibles(ancreSolo));
+    ok(heuresSolo.length > 0, `des heures sont reservables pour une heure de bowling (${heuresSolo.length})`);
     const derniere = heuresSolo[heuresSolo.length - 1];
     // Le samedi ferme a minuit chez ce centre : une partie d une heure lancee a
-    // 23:00 finit PILE a la fermeture, elle doit exister.
-    ok(derniere === '23:00', `la derniere heure finit pile a la fermeture (derniere proposee : ${derniere}, attendu 23:00)`);
+    // 23:00 finit PILE a la fermeture, elle doit etre reservable.
+    ok(derniere === '23:00', `la derniere heure reservable finit pile a la fermeture (derniere : ${derniere}, attendu 23:00)`);
+    const apresFermeture = ancreSolo ? ancreSolo.times.find((x) => x.time === '23:30') : null;
+    ok(Boolean(apresFermeture) && apresFermeture.ok === false && /fin apr|ferm/i.test(apresFermeture.reason || ''),
+      `l heure qui deborde (23:30) reste dans la grille, impossible et motivee (${apresFermeture ? `${apresFermeture.code} : ${apresFermeture.reason}` : 'absente'})`);
 
-    // --- B. Aucune heure menteuse ------------------------------------------
+    // --- B. Rien n est cache, et rien ne ment ------------------------------
     const duo = await get('/api/public-availability?' + params({ program: PROGRAMME_DUO }));
     const listes = ancres(duo);
     if (!ok(listes.length >= 2, `le composeur propose deux ancres (${listes.length})`)) {
@@ -135,59 +165,94 @@ async function main() {
     }
     const premiere = listes.find((a) => a.activityId === 'bowling') || listes[0];
     const seconde = listes.find((a) => a.activityId !== premiere.activityId);
+    ok(listes.every((a) => a.times.every(bienFormee)), 'les deux listes du duo sont bien formees');
 
-    let paires = 0;
-    let refus = 0;
+    let cachees = 0;
+    let menteuses = 0;
+    let muettes = 0;
+    let reniees = 0;
+    let choix = 0;
     const exemples = [];
-    let retreci = 0;
-    for (const item of premiere.times) {
+    const dureePremiere = Number(premiere.durationMinutes || 60);
+    const dureeSeconde = Number(seconde.durationMinutes || 0);
+    for (const item of possibles(premiere)) {
       const t = item.time;
+      choix += 1;
       const apres = await get('/api/public-availability?' + params({ program: PROGRAMME_DUO, preferredTimes: { [premiere.activityId]: t } }));
       const suite = ancres(apres).find((a) => a.activityId === seconde.activityId);
-      const restantes = suite ? suite.times.map((x) => x.time) : [];
-      if (restantes.length < seconde.times.length) retreci += 1;
-      // AUCUNE heure encore affichee ne doit mordre sur celle qu on vient de
-      // retenir : c est la propriete, verifiee sur la liste telle que le
-      // client la voit.
-      const fin = minutes(t) + Number(premiere.durationMinutes || 60);
-      const menteuses = restantes.filter((u) => minutes(u) < fin && minutes(u) + Number(seconde.durationMinutes || 0) > minutes(t));
-      if (menteuses.length) {
-        refus += menteuses.length;
-        if (exemples.length < 5) exemples.push(`${premiere.label} ${t} laisse encore ${seconde.label} ${menteuses.join(', ')}`);
-      }
-      paires += restantes.length;
+      const soi = ancres(apres).find((a) => a.activityId === premiere.activityId);
+      // Rien n est cache : la liste garde toutes ses heures.
+      if (!suite || suite.times.length !== seconde.times.length) cachees += 1;
+      // E. L heure retenue reste possible dans sa propre liste.
+      const moi = soi ? soi.times.find((x) => x.time === t) : null;
+      if (!moi || moi.ok === false) reniees += 1;
+      const debut = minutes(t);
+      const fin = debut + dureePremiere;
+      (suite ? suite.times : []).forEach((u) => {
+        const mord = chevauche(debut, fin, minutes(u.time), minutes(u.time) + dureeSeconde);
+        if (mord && u.ok !== false) {
+          menteuses += 1;
+          if (exemples.length < 5) exemples.push(`${premiere.label} ${t} laisse ${seconde.label} ${u.time} possible`);
+        }
+        // Une heure qui mord est impossible ET nomme ce qu elle chevauche.
+        if (mord && u.ok === false && !(String(u.reason || '').includes(premiere.label) && String(u.reason || '').includes(t))) {
+          muettes += 1;
+          if (exemples.length < 5) exemples.push(`${seconde.label} ${u.time} apres ${premiere.label} ${t} dit « ${u.reason} »`);
+        }
+      });
     }
-    ok(refus === 0, `aucune heure proposee ne chevauche le choix deja fait (${refus} sur ${paires} restantes)${exemples.length ? ` - ${exemples.join(' | ')}` : ''}`);
-    ok(retreci === premiere.times.length,
-      `chaque choix retire vraiment ce qu il occupe dans l autre liste (${retreci} choix sur ${premiere.times.length} retrecissent la liste)`);
+    ok(choix > 0, `des premiers choix sont essayes (${choix})`);
+    ok(cachees === 0, `aucun premier choix ne cache une heure de l autre liste (${cachees} sur ${choix} listes retrecies)`);
+    ok(menteuses === 0, `aucune heure encore possible ne chevauche le choix deja fait (${menteuses} menteuses)${exemples.length ? ` - ${exemples.join(' | ')}` : ''}`);
+    ok(muettes === 0, `chaque heure qui chevauche le choix le nomme dans sa raison (${muettes} muettes)`);
+    ok(reniees === 0, `l heure retenue reste possible dans sa propre liste (${reniees} reniees sur ${choix})`);
 
-    // Et la validation confirme : on essaie un echantillon de paires encore
-    // affichees, aucune ne doit etre refusee.
+    // --- C. Le verdict de la grille est celui de la validation -------------
     let testees = 0;
-    let rejetees = 0;
-    const refusVus = [];
-    const pas = Math.max(1, Math.floor(premiere.times.length / 6));
-    for (let i = 0; i < premiere.times.length; i += pas) {
-      const t = premiere.times[i].time;
+    let desaccords = 0;
+    const desaccordsVus = [];
+    const choixPossibles = possibles(premiere);
+    const pas = Math.max(1, Math.floor(choixPossibles.length / 6));
+    for (let i = 0; i < choixPossibles.length; i += pas) {
+      const t = choixPossibles[i].time;
       const apres = await get('/api/public-availability?' + params({ program: PROGRAMME_DUO, preferredTimes: { [premiere.activityId]: t } }));
       const suite = ancres(apres).find((a) => a.activityId === seconde.activityId);
-      const restantes = suite ? suite.times.map((x) => x.time) : [];
-      const pasU = Math.max(1, Math.floor(restantes.length / 5));
-      for (let j = 0; j < restantes.length; j += pasU) {
-        const u = restantes[j];
+      const entrees = suite ? suite.times : [];
+      const pasU = Math.max(1, Math.floor(entrees.length / 6));
+      for (let j = 0; j < entrees.length; j += pasU) {
+        const u = entrees[j];
         const final = await get('/api/public-availability?' + params({
           program: PROGRAMME_DUO,
-          preferredTimes: { [premiere.activityId]: t, [seconde.activityId]: u },
+          preferredTimes: { [premiere.activityId]: t, [seconde.activityId]: u.time },
         }));
         testees += 1;
-        if (!Array.isArray(final.slots) || !final.slots.length) {
-          rejetees += 1;
-          if (refusVus.length < 5) refusVus.push(`${t} + ${u} : ${final.message || 'aucun creneau'}`);
+        const acceptee = Array.isArray(final.slots) && final.slots.length > 0;
+        if (acceptee !== (u.ok !== false)) {
+          desaccords += 1;
+          if (desaccordsVus.length < 5) desaccordsVus.push(`${t} + ${u.time} : grille ${u.ok !== false ? 'possible' : `impossible (${u.reason})`}, validation ${acceptee ? 'accepte' : `refuse (${final.message || 'aucun creneau'})`}`);
         }
       }
     }
-    ok(testees > 0, `des paires affichees sont essayees (${testees})`);
-    ok(rejetees === 0, `aucune paire affichee n est refusee a la validation (${rejetees} sur ${testees})${refusVus.length ? ` - ${refusVus.join(' | ')}` : ''}`);
+    ok(testees > 0, `des paires de la grille sont soumises a la validation (${testees})`);
+    ok(desaccords === 0, `la grille et la validation rendent le meme verdict (${desaccords} desaccords sur ${testees})${desaccordsVus.length ? ` - ${desaccordsVus.join(' | ')}` : ''}`);
+
+    // --- D. Les parties de laser occupent leur place -----------------------
+    const deuxParties = await get('/api/public-availability?' + params({
+      program: PROGRAMME_DUO_2_PARTIES,
+      preferredTimes: { laser_game: '20:00' },
+      laserGameTimes: ['20:00', '20:30'],
+    }));
+    const bowlingD = ancres(deuxParties).find((a) => a.activityId === 'bowling');
+    const verdictD = (heure) => (bowlingD ? bowlingD.times.find((x) => x.time === heure) : null);
+    ['19:30', '20:00', '20:30'].forEach((heure) => {
+      const v = verdictD(heure);
+      ok(Boolean(v) && v.ok === false && /laser/i.test(v.reason || ''),
+        `bowling ${heure} est impossible et nomme le laser quand deux parties sont posees a 20:00 et 20:30 (${v ? `${v.ok === false ? 'impossible' : 'possible'} : ${v.reason || ''}` : 'absent'})`);
+    });
+    ['19:00', '21:00'].forEach((heure) => {
+      const v = verdictD(heure);
+      ok(Boolean(v) && v.ok !== false, `bowling ${heure} reste possible autour des deux parties (${v ? (v.ok === false ? `impossible : ${v.reason}` : 'possible') : 'absent'})`);
+    });
   } finally {
     server.close();
   }
@@ -196,29 +261,30 @@ async function main() {
     console.error(`\nanchor-hours-truth-check: ${failures} defaut(s).`);
     process.exit(1);
   }
-  console.log('\nanchor-hours-truth-check: ALL OK (fermeture atteignable, aucune heure menteuse apres un premier choix)');
+  console.log('\nanchor-hours-truth-check: ALL OK (fermeture atteignable, rien de cache, chaque heure impossible motivee, grille = validation, parties de laser comptees)');
 }
 
-// Contre-epreuve : `node scripts/anchor-hours-truth-check.js --mutate` retire le
-// filtre du moteur, relance le gate et attend un ECHEC, puis restaure.
+// Contre-epreuve : `node scripts/anchor-hours-truth-check.js --mutate` fait
+// ignorer le verdict au moteur (toute heure devient possible), relance le gate
+// et attend un ECHEC, puis restaure.
 if (process.argv.includes('--mutate')) {
   const source = fs.readFileSync(ENGINE, 'utf8');
-  const marqueur = '      if (retenues.some((prise) => prise.activityId !== anchor.activityId';
+  const marqueur = '        entry = verdict.ok ? { time, ok: true, ...meta } : ko(verdict.code, verdict.reason);';
   if (!source.includes(marqueur)) {
-    console.error('mutation impossible : le filtre attendu est introuvable dans lib/ops-engine.js');
+    console.error('mutation impossible : la ligne de verdict attendue est introuvable dans lib/ops-engine.js');
     process.exit(1);
   }
-  const mute = source.replace(marqueur, '      if (false && retenues.some((prise) => prise.activityId !== anchor.activityId');
+  const mute = source.replace(marqueur, '        entry = { time, ok: true, ...meta };');
   fs.writeFileSync(ENGINE, mute);
   const { spawnSync } = require('child_process');
   const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
   fs.writeFileSync(ENGINE, source);
   console.log(run.stdout || '');
   if (run.status === 0) {
-    console.error('CONTRE-EPREUVE RATEE : le gate reste vert sans le filtre.');
+    console.error('CONTRE-EPREUVE RATEE : le gate reste vert quand le moteur ignore le verdict.');
     process.exit(1);
   }
-  console.log('contre-epreuve OK : sans le filtre, le gate rougit ; moteur restaure a l identique.');
+  console.log('contre-epreuve OK : verdict ignore, le gate rougit ; moteur restaure a l identique.');
   process.exit(0);
 }
 

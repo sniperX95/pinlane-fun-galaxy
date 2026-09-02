@@ -267,8 +267,11 @@ const MEASURE = () => {
       return box.left >= frame.left - 1 && box.right <= frame.right + 1;
     }).length,
     // Toutes les heures du jour vivent dans le DOM d'une seule piste : plus
-    // aucune n'est retiree derriere un filtre.
-    reachableChips: document.querySelectorAll('.anchor-chip').length,
+    // aucune n'est retiree derriere un filtre. Depuis le 2026-09-03 les heures
+    // IMPOSSIBLES y vivent aussi, grisees avec leur raison : on compte a part
+    // celles qui se prennent au doigt.
+    renderedChips: document.querySelectorAll('.anchor-chip').length,
+    reachableChips: document.querySelectorAll('.anchor-chip:not(:disabled)').length,
     chipTimesValid: [...document.querySelectorAll('.anchor-chip')]
       .every((chip) => /^\d{2}:(00|30)$/.test((chip.querySelector('.slot-card-time') || chip).textContent.trim())),
     picks: [...document.querySelectorAll('.anchor-row-pick')].map((el) => el.textContent.trim()),
@@ -517,10 +520,18 @@ async function checkBrowser(page) {
   // jamais le mur des 53 pastilles d avant, et la page ne defile pas.
   ok(mobile.visibleChips <= 32, `mobile 390px : ${mobile.visibleChips} pastilles affichees a la fois, jamais le mur des 53 d avant`);
   // Le filtre par moment de journee a disparu : TOUTES les heures des deux
-  // activites vivent dans le DOM, atteignables au doigt. 55 depuis la regle
-  // « une activite qui finit PILE a la fermeture passe » (close 24:00 :
-  // bowling 23:00 et laser 23:30 sont vendables, l ancien compte etait 53).
-  ok(mobile.reachableChips === 55, `mobile 390px : les ${mobile.reachableChips} heures du jour sont toutes atteignables sans changer d onglet`);
+  // activites vivent dans le DOM, atteignables au doigt. Depuis le 2026-09-03
+  // la grille rend AUSSI les heures impossibles pour la visite ENTIERE (f1 =
+  // bowling + laser + 30 min d arcades : un samedi ferme a minuit, la visite
+  // ne tient plus a partir du bowling 22:30), grisees avec leur raison. Les
+  // heures prenables sont exactement celles que le moteur declare possibles,
+  // et la grille entiere (2 x 28 heures de 10:00 a 23:30) est rendue.
+  const grille = availabilityPayload('?pax=8').anchors.activities || [];
+  const attenduesPrenables = grille.reduce((n, a) => n + a.times.filter((t) => t.ok !== false).length, 0);
+  const attenduesRendues = grille.reduce((n, a) => n + a.times.length, 0);
+  ok(attenduesRendues === 56 && attenduesPrenables >= 50, `moteur : ${attenduesRendues} heures de grille (attendu 2 x 28), ${attenduesPrenables} prenables (attendu >= 50)`);
+  ok(mobile.reachableChips === attenduesPrenables, `mobile 390px : les ${mobile.reachableChips} heures prenables sont toutes atteignables sans changer d onglet (moteur : ${attenduesPrenables})`);
+  ok(mobile.renderedChips === attenduesRendues, `mobile 390px : les ${mobile.renderedChips} heures de la grille sont toutes rendues, l impossible compris (moteur : ${attenduesRendues})`);
 }
 
 // --- 6. CONTRE-EPREUVE PAR MUTATION -----------------------------------------

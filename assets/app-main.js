@@ -6022,8 +6022,8 @@ async function formulaAnchorStartWithNext() {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
   const startTime = preference.preferredTimes[first.activityId]
     || formulaAnchorData?.defaultTimes?.[first.activityId]
-    || first.times[0]?.time || '';
-  const secondItem = startTime ? second.times.find((item) => item.time >= startTime) : second.times[0];
+    || anchorOkTimes(first)[0]?.time || '';
+  const secondItem = startTime ? anchorOkTimes(second).find((item) => item.time >= startTime) : anchorOkTimes(second)[0];
   if (!secondItem) { setFormulaAnchorMobilePage(1, { direction: 1 }); return; }
   preference.preferredTimes[second.activityId] = secondItem.time;
   if (second.activityId === 'laser_game') {
@@ -6031,7 +6031,7 @@ async function formulaAnchorStartWithNext() {
     setChosenLaserTimes(preference, [secondItem.time]);
   }
   const secondEnd = timeToNum(secondItem.time) * 60 + Number(second.durationMinutes || 60);
-  const firstItem = first.times.find((item) => timeToNum(item.time) * 60 >= secondEnd);
+  const firstItem = anchorOkTimes(first).find((item) => timeToNum(item.time) * 60 >= secondEnd);
   if (firstItem) {
     preference.preferredTimes[first.activityId] = firstItem.time;
     if (first.activityId === 'laser_game') {
@@ -6115,14 +6115,14 @@ async function setFormulaAnchorTime(activityId, time) {
 function getDefaultLaserTimeAfterBowling(preference) {
   const laser = (formulaAnchorData?.activities || []).find((activity) => activity.activityId === 'laser_game');
   if (!laser) return '';
-  const fallback = formulaAnchorData?.defaultTimes?.laser_game || laser.times[0]?.time || '';
+  const fallback = formulaAnchorData?.defaultTimes?.laser_game || anchorOkTimes(laser)[0]?.time || '';
   const bowlingTime = preference.preferredTimes.bowling;
   const bowling = (formulaAnchorData?.activities || []).find((activity) => activity.activityId === 'bowling');
   if (!bowlingTime || !bowling) return fallback;
   const bowlingEnd = timeToNum(bowlingTime) * 60 + Number(bowling.durationMinutes || 60);
   // >= la fin PILE : le defaut enchaine, il ne vend pas 30 minutes d attente
   // (meme regle que le moteur depuis le 2026-08-24).
-  const next = laser.times.find((item) => timeToNum(item.time) * 60 >= bowlingEnd);
+  const next = anchorOkTimes(laser).find((item) => timeToNum(item.time) * 60 >= bowlingEnd);
   return next?.time || fallback;
 }
 
@@ -6275,8 +6275,17 @@ function getChainedAnchorTime(activityId) {
     if (earliest === null || end > earliest) earliest = end;
   });
   if (earliest === null) return '';
-  const next = self.times.find(item => timeToNum(item.time) * 60 >= earliest);
+  const next = anchorOkTimes(self).find(item => timeToNum(item.time) * 60 >= earliest);
   return next?.time || '';
+}
+
+// Les heures d une activite qui TIENNENT pour la visite entiere. Depuis le
+// 2026-09-03 le moteur rend toutes les heures de la journee et marque celles
+// qui ne passent pas ({ ok:false, reason }) : elles s affichent grisees avec
+// leur raison, mais aucun defaut, aucun enchainement, aucun resserrement ne
+// doit les choisir.
+function anchorOkTimes(activity) {
+  return (activity?.times || []).filter(item => item && item.ok !== false);
 }
 
 // Ordre RÉEL de la visite : les activités se suivent dans l'ordre des heures
@@ -6445,7 +6454,7 @@ function slotCardMarkup({ time, endTime, tag, tagTone, meta }) {
 // Le modele d une carte d heure dans le composeur de visite. Tout vient de la
 // reponse du moteur : `durationMinutes` de l activite, `lanes` allouees pour
 // le bowling, `remainingPlaces` / `sharedSession` pour le laser.
-function anchorSlotCardModel(activity, item, { isChained } = {}) {
+function anchorSlotCardModel(activity, item, { isChained, unavailable = false } = {}) {
   const duration = Number(activity.durationMinutes || 0);
   const endTime = duration > 0 ? numToTime(timeToNum(item.time) + duration / 60) : '';
   let tag = '';
@@ -6459,12 +6468,15 @@ function anchorSlotCardModel(activity, item, { isChained } = {}) {
     bits.push(`${Number(item.remainingPlaces)} place${Number(item.remainingPlaces) > 1 ? 's' : ''}`);
   }
   if (item.sharedSession) bits.push('session partagée');
-  const meta = bits.join(' · ');
+  // Heure impossible : la raison courte du moteur REMPLACE le secondaire
+  // (pistes, places), qui ne veut plus rien dire pour une heure qu on ne
+  // peut pas prendre.
+  const meta = unavailable ? (item.reason || 'Indisponible') : bits.join(' · ');
   const label = [
     item.time,
     endTime ? `fin ${endTime}` : '',
     isChained ? "enchaîné avec l'activité précédente" : '',
-    meta,
+    unavailable ? `indisponible : ${meta}` : meta,
   ].filter(Boolean).join(', ');
   return { time: item.time, endTime, tag, tagTone, meta, label };
 }
@@ -6497,8 +6509,11 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   // majoritaire se dit UNE fois au-dessus ; une carte ne parle que si elle
   // s'en ecarte. Sous la moitie des heures, pas de dominante : chacune garde
   // la sienne.
+  // Les heures impossibles ne comptent pas : leur ligne porte la raison, pas
+  // un secondaire.
+  const okAnchorItems = allAnchorItems.filter((item) => item.ok !== false);
   const anchorMetaCounts = new Map();
-  allAnchorItems.forEach((item) => {
+  okAnchorItems.forEach((item) => {
     const meta = anchorSlotCardModel(activity, item, {}).meta;
     if (meta) anchorMetaCounts.set(meta, (anchorMetaCounts.get(meta) || 0) + 1);
   });
@@ -6507,8 +6522,8 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   anchorMetaCounts.forEach((count, meta) => {
     if (count > sharedAnchorCount) { sharedAnchorMeta = meta; sharedAnchorCount = count; }
   });
-  if (sharedAnchorCount * 2 < allAnchorItems.length) sharedAnchorMeta = '';
-  const sharedAnchorUniform = sharedAnchorCount === allAnchorItems.length;
+  if (sharedAnchorCount * 2 < okAnchorItems.length) sharedAnchorMeta = '';
+  const sharedAnchorUniform = sharedAnchorCount === okAnchorItems.length;
   // LES HEURES SE RANGENT PAR MOMENT (2026-08-31), exactement comme la liste
   // simple de l ecran des heures. Ce ne sont PAS les anciens onglets que
   // Movsar avait fait retirer ("ca s affiche par moment mais ca sert a rien")
@@ -6522,15 +6537,20 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     // Multi-choix : une heure retenue est active, et quand le compte est
     // atteint les autres cessent d'etre cliquables (le compteur dit pourquoi).
     const isActive = multi ? chosen.includes(item.time) : item.time === selected;
-    const chipDisabled = disabled || (multi && full && !isActive);
-    const isChained = !isActive && item.time === chained;
+    // Une heure que le moteur juge impossible pour la visite ENTIERE reste
+    // visible, grisee, avec sa raison courte : le client sait pourquoi au
+    // moment de choisir, pas a la derniere etape (brief 2026-09-02).
+    const unavailable = item.ok === false;
+    const chipDisabled = disabled || unavailable || (multi && full && !isActive);
+    const isChained = !isActive && !unavailable && item.time === chained;
     const marker = index === 0 ? ` data-period-start="${escapeHtml(group.key)}"` : '';
     const justPicked = !formulaAnchorBusy && isActive && formulaJustPicked
       && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === item.time;
     if (justPicked) formulaJustPicked = null;
-    const model = anchorSlotCardModel(activity, item, { isChained });
-    if (sharedAnchorMeta && model.meta === sharedAnchorMeta) model.meta = '';
-    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${chipDisabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${slotCardMarkup(model)}</button>`;
+    const model = anchorSlotCardModel(activity, item, { isChained, unavailable });
+    if (!unavailable && sharedAnchorMeta && model.meta === sharedAnchorMeta) model.meta = '';
+    const reasonAttrs = unavailable ? ` data-reason="${escapeHtml(model.meta)}" title="${escapeHtml(model.meta)}"` : '';
+    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${unavailable ? 'is-unavailable' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}"${reasonAttrs} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${chipDisabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${slotCardMarkup(model)}</button>`;
       }).join('')}</div>
     </section>`).join('');
   const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
@@ -6643,7 +6663,7 @@ function renderVisitRailLink(previousStep, nextStep, notices) {
     ? `Ce temps se passe sur place : ${passLabels.join(', ')} restent accessibles.`
     : 'Ce temps se passe sur place, entre les deux activités.';
   const canTighten = Boolean(notice.tightenTime)
-    && (nextStep.activity.times || []).some(item => item.time === notice.tightenTime);
+    && anchorOkTimes(nextStep.activity).some(item => item.time === notice.tightenTime);
   // L'avis n'entre QU'UNE FOIS, et seulement quand il est neuf : le picker se
   // re-rend à chaque choix, rejouer l'animation à chaque rendu ferait clignoter
   // l'écran (même règle que le motion d'exploitation de la console).
@@ -6885,10 +6905,20 @@ function syncFormulaAnchorUi(formule, { busy }) {
     const chained = disabled || (chosen && chosen.length) ? '' : getChainedAnchorTime(activity.activityId);
     const chips = [...row.querySelectorAll('.anchor-chip')];
     if (chips.length !== (activity.times || []).length) return false;
+    // Une heure qui change de verdict (possible <-> impossible, ou de raison)
+    // change de carte entiere : c est un vrai changement d ecran, le rendu
+    // complet s en charge.
+    if (chips.some((chip, index) => {
+      const item = (activity.times || [])[index];
+      const unavailable = Boolean(item && item.ok === false);
+      if (chip.classList.contains('is-unavailable') !== unavailable) return true;
+      return unavailable && (chip.dataset.reason || '') !== (item.reason || 'Indisponible');
+    })) return false;
     chips.forEach((chip, index) => {
       const time = chip.dataset.time || '';
+      const unavailable = chip.classList.contains('is-unavailable');
       const isActive = chosen ? chosen.includes(time) : time === selected;
-      const isChained = !isActive && time === chained;
+      const isChained = !isActive && !unavailable && time === chained;
       chip.classList.toggle('active', isActive);
       chip.classList.toggle('is-chained', isChained);
       chip.setAttribute('aria-pressed', isActive ? 'true' : 'false');
@@ -6896,7 +6926,7 @@ function syncFormulaAnchorUi(formule, { busy }) {
       // reconstruire la carte : seule la ligne concernee change.
       const item = (activity.times || [])[index];
       if (item && item.time === time) {
-        const model = anchorSlotCardModel(activity, item, { isChained });
+        const model = anchorSlotCardModel(activity, item, { isChained, unavailable });
         chip.setAttribute('aria-label', model.label);
         const tag = chip.querySelector('.slot-card-tag');
         if (model.tag && !tag) {
@@ -6907,7 +6937,7 @@ function syncFormulaAnchorUi(formule, { busy }) {
       }
       // Compte atteint : les heures non retenues cessent d'etre cliquables, et
       // le compteur au-dessus dit comment en liberer une.
-      const chipDisabled = disabled || Boolean(chosen && full && !isActive);
+      const chipDisabled = disabled || unavailable || Boolean(chosen && full && !isActive);
       if (chip.disabled !== chipDisabled) chip.disabled = chipDisabled;
       // La capsule ne ressort que sur l'heure qui VIENT d'être choisie. La
       // classe reste posée tant que l'heure est active (l'animation est finie,

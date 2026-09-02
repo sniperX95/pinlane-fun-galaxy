@@ -5820,6 +5820,21 @@ body.customer-mode .client-footer {
   cursor: not-allowed;
 }
 
+/* Heure impossible pour la visite ENTIERE (2026-09-03) : elle reste visible,
+   en pointilles, avec sa raison courte en secondaire. Plus lisible qu une
+   heure simplement verrouillee (compte de parties atteint) : la raison doit
+   se lire sur un telephone. */
+#clientView .anchor-chip.is-unavailable {
+  opacity: 0.72;
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+#clientView .anchor-chip.is-unavailable .slot-card-time,
+#clientView .anchor-chip.is-unavailable .slot-card-end {
+  color: var(--muted);
+}
+
 #clientView .anchor-row-onsite .anchor-periods { opacity: 0.5; }
 
 /* Choisir « sur place » est une décision sur CETTE activité : elle se prend en

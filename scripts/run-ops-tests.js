@@ -162,8 +162,12 @@ function testFormulaPreferredTimes() {
     const bowlingTimes = availability.activities.find((activity) => activity.activityId === 'bowling');
     assert.strictEqual(bowlingTimes.times[0].time, '10:00',
       `the first bowling anchor must be the OPENING hour, not opening+welcome (got ${bowlingTimes.times[0].time})`);
+    // Listee ne suffit pas : depuis le 2026-09-03 la grille rend aussi les
+    // heures impossibles (ok:false). L ouverture doit etre RESERVABLE.
+    assert.notStrictEqual(bowlingTimes.times[0].ok, false,
+      `the opening hour must be bookable, not merely listed (reason: ${bowlingTimes.times[0].reason || ''})`);
     const laserTimes = availability.activities.find((activity) => activity.activityId === 'laser_game');
-    const laserAfterOpen = laserTimes.times.find((item) => item.time >= '11:00');
+    const laserAfterOpen = laserTimes.times.find((item) => item.ok !== false && item.time >= '11:00');
     const atOpen = anchorRequest({ bowling: '10:00', laser_game: laserAfterOpen.time });
     assert.strictEqual(atOpen.ok, true, 'booking the opening hour with a laser after must compose');
   }

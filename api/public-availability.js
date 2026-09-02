@@ -670,7 +670,7 @@ module.exports = async (req, res) => {
           // preferredTimes part AVEC la demande : sans lui, la liste d une
           // activite ignorait l heure deja retenue pour l autre et proposait
           // des heures que la validation refusait juste apres.
-          anchorMeta = getFormulaAnchorAvailability({ centerId, formula: visitFormula, date, pax, preferredTimes }, engineContext);
+          anchorMeta = getFormulaAnchorAvailability({ centerId, formula: visitFormula, date, pax, preferredTimes, laserGameTimes }, engineContext);
         } catch (error) {
           anchorMeta = null;
         }
@@ -724,7 +724,7 @@ module.exports = async (req, res) => {
               pax,
               model: getFormulaAnchorModel(visitFormula),
               candidatesByActivity: Object.fromEntries((anchorMeta.activities || [])
-                .map((activity) => [activity.activityId, activity.times.map((item) => Math.round(timeToNum(item.time) * 60))])),
+                .map((activity) => [activity.activityId, activity.times.filter((item) => item.ok !== false).map((item) => Math.round(timeToNum(item.time) * 60))])),
               reservations: snapshot.reservations,
               laneStatuses: snapshot.laneStatuses,
               blocks: snapshot.blocks || [],
@@ -835,7 +835,7 @@ module.exports = async (req, res) => {
       const anchorModel = getFormulaAnchorModel(formulaDoc);
       let anchorMeta = null;
       try {
-        anchorMeta = getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes }, engineContext);
+        anchorMeta = getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes }, engineContext);
       } catch (error) {
         anchorMeta = null;
       }
@@ -918,7 +918,7 @@ module.exports = async (req, res) => {
         const centerDocResolved = getCenter(centerId);
         const candidatesByActivity = {};
         (anchorMeta?.activities || []).forEach((activity) => {
-          candidatesByActivity[activity.activityId] = activity.times.map((item) => Math.round(timeToNum(item.time) * 60));
+          candidatesByActivity[activity.activityId] = activity.times.filter((item) => item.ok !== false).map((item) => Math.round(timeToNum(item.time) * 60));
         });
         const firstAnchorId = anchorModel.anchors[0].activityId;
         const defaultSlots = [];

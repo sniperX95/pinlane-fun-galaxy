@@ -366,7 +366,11 @@ async function checkTrack(page) {
     const rows = new Set(chips.map((chip) => Math.round(chip.getBoundingClientRect().top)));
     return {
       chips: chips.length,
-      focusable: chips.every((chip) => !chip.disabled && chip.tabIndex >= 0),
+      // Depuis le 2026-09-03 la grille rend aussi les heures IMPOSSIBLES pour
+      // la visite entiere (grisees, avec leur raison) : elles sont desactivees
+      // par construction, ce sont les heures prenables qui doivent se tabuler.
+      focusable: chips.filter((chip) => !chip.classList.contains('is-unavailable')).every((chip) => !chip.disabled && chip.tabIndex >= 0),
+      unavailableDisabled: chips.filter((chip) => chip.classList.contains('is-unavailable')).every((chip) => chip.disabled && (chip.dataset.reason || '').length > 0),
       scrollable: element.scrollWidth > element.clientWidth + 1,
       rows: rows.size,
       // CHAQUE heure est entierement dans la largeur de la grille : aucune
@@ -384,7 +388,8 @@ async function checkTrack(page) {
   // tous les checks suivants du script (un gate mesure, il ne plante pas).
   if (!track) return;
   ok(track.chips >= 20, `la grille porte la journee entiere (${track.chips} heures)`);
-  ok(track.focusable, 'chaque heure est atteignable a la tabulation');
+  ok(track.focusable, 'chaque heure prenable est atteignable a la tabulation');
+  ok(track.unavailableDisabled, 'chaque heure impossible est desactivee et porte sa raison');
   ok(!track.scrollable, 'plus AUCUN defilement horizontal : tout est pose');
   ok(track.rows >= 2, `la journee s etale en rangees (${track.rows})`);
   ok(track.allInFrame, 'chaque heure est entiere dans le cadre, aucune carte coupee');

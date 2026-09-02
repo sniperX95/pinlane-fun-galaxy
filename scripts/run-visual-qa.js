@@ -1977,7 +1977,11 @@ async function main() {
     assert(postBowling?.startTime === '15:00' && postLaser?.startTime === '17:00', 'Payload : blocs bowling/laser aux heures choisies.');
     const successText = await page.evaluate(() => document.getElementById('successDetails')?.textContent.replace(/\s+/g, ' ') || '');
     assert(/Bowling 15:00/.test(successText) && /Laser Game 17:00/.test(successText), 'Confirmation : les rendez-vous par ancre doivent être annoncés.');
-    assert(/à votre rythme/i.test(successText), 'Confirmation : le pass liberté doit être annoncé sans heure.');
+    // L annonce du pass liberte (« En accès libre : Arcades, ... ») nomme les
+    // activites libres et ne porte AUCUNE heure ; avant la passe 244 le
+    // controle cherchait la phrase « à votre rythme » et ne lisait pas l heure.
+    const passLibreLine = successText.match(/(?:En accès libre|à votre rythme)[^.]*\./i);
+    assert(passLibreLine && /Arcades/.test(passLibreLine[0]) && !/\d{1,2}:\d{2}/.test(passLibreLine[0]), `Confirmation : le pass liberté doit être annoncé sans heure (reçu "${passLibreLine ? passLibreLine[0] : 'rien'}").`);
     await screenshot(page, 'formula-anchors-confirmed');
 
     // Formule table (f7, aucune ancre) : chips d'arrivée + table dès l'arrivée
@@ -2002,7 +2006,7 @@ async function main() {
       chips: Array.from(document.querySelectorAll('.formula-arrival-chip')).map(el => el.textContent.trim()),
     }));
     assert(tableState.chips.every(chip => /^\d{2}:(00|30)$/.test(chip)), 'Formule table : chips d arrivée :00/:30.');
-    assert(/table vous attend dès votre arrivée/i.test(tableState.summary), 'Formule table : « votre table vous attend dès votre arrivée » requis.');
+    assert(/Table prête à votre arrivée/i.test(tableState.summary), `Formule table : « Table prête à votre arrivée » requis (reçu "${tableState.summary.slice(0, 120)}").`);
     assert(!/Table \d{1,2}:\d{2}/.test(tableState.summary), 'Formule table : aucune heure de table à choisir.');
     assert(!/\d{1,2}:\d{2}/.test(tableState.passText), 'Formule table : pass liberté sans aucune heure.');
     await screenshot(page, 'formula-table-arrival');

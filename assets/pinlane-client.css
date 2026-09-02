@@ -243,13 +243,19 @@ html[data-tunnel-buttons='neon'] body.client-mode #clientView .success-wrap .btn
   font-weight: 700;
   transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
-html[data-tunnel-buttons='neon'] body.client-mode #clientView .btn-primary:hover:not(:disabled) {
-  background: #ffffff;
-  border-color: #0a0a0a;
-  color: var(--accent);
-  filter: none;
-  opacity: 1;
-  transform: scale(1.02);
+/* SURVOL A LA SOURIS SEULEMENT (2026-09-01). Au doigt, un bouton tape garde
+   son etat :hover jusqu au tap suivant (iOS, et l emulation Playwright) : le
+   CTA « Confirmer la reservation » se peignait blanc sur blanc apres le tap.
+   Un ecran tactile n a pas de survol, il n a donc pas d inversion. */
+@media (hover: hover) {
+  html[data-tunnel-buttons='neon'] body.client-mode #clientView .btn-primary:hover:not(:disabled) {
+    background: #ffffff;
+    border-color: #0a0a0a;
+    color: var(--accent);
+    filter: none;
+    opacity: 1;
+    transform: scale(1.02);
+  }
 }
 html[data-tunnel-buttons='neon'] body.client-mode #clientView .btn-primary:active:not(:disabled) {
   transform: scale(0.99);
@@ -275,10 +281,12 @@ html[data-tunnel-buttons='neon'] body.client-mode #clientView .visit-rail-advice
   color: var(--accent-contrast);
   box-shadow: -1px 1px 3px var(--tenant-glow, var(--accent));
 }
-html[data-tunnel-buttons='neon'] body.client-mode #clientView .visit-rail-advice-action:hover {
-  border-color: #0a0a0a;
-  background: #ffffff;
-  color: var(--accent);
+@media (hover: hover) {
+  html[data-tunnel-buttons='neon'] body.client-mode #clientView .visit-rail-advice-action:hover {
+    border-color: #0a0a0a;
+    background: #ffffff;
+    color: var(--accent);
+  }
 }
 /* La carte de refus (« se chevauchent ») parle la meme langue : ses
    suggestions et son bouton de repli suivent la signature du centre
@@ -340,10 +348,9 @@ body.client-mode #clientView {
   padding: 0 var(--space-4);
 }
 
-/* En iframe (embed.js pose la classe), la scene refuse de s'ecraser sous
-   560 px : le scrollHeight remonte alors au parent (postMessage) et l'iframe
-   converge d'elle-meme vers la hauteur ou rien ne deborde. */
-body.client-mode.embed-mode #clientView { min-height: 560px; }
+/* En iframe (embed-mode) : la hauteur SUIT LE CONTENU. Les regles vivent en
+   FIN de feuille (bloc « MODE EMBARQUE », 2026-09-01) pour gagner la cascade
+   sur la scene horizontale definie plus bas. */
 
 /* --- LE FIL DE PROGRESSION ------------------------------------------------
    Refonte du 2026-08-31 (Movsar : « la barre de suivi je la trouve mal faite
@@ -7315,15 +7322,11 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .s1-when { gap: var(--space-2); padding: var(--space-3); }
   #clientView .s1-when .s1-field { gap: 4px; }
   #clientView .s1-when .input { height: 44px; }
-  /* La DECISION de la page venue reste sous les yeux : sur les ecrans courts
-     le corps d etape defile, et le CTA passait sous le pli (mesure prod
-     320x520). Sticky DANS le defileur, le pattern maison (s2-slots) : jamais
-     de fixed dans la piste. */
-  #clientView .step1-body.is-solo .s1-continue {
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
-  }
+  /* Le CTA de la venue a ete sticky ici (le CTA passait sous le pli, mesure
+     prod 320x520), puis il remontait PAR-DESSUS le compteur de joueurs des que
+     le clavier retrecissait la zone (verdict iPhone, passe 244). Il suit le
+     FLUX a toutes les hauteurs : regle unique en fin de feuille (REFONTE
+     MOBILE V2), plus aucune regle sticky a annuler. */
   #clientView .schedule-hint { font-size: 12px; }
   #clientView .step1-body.is-solo .pax-stepper { grid-template-columns: 44px minmax(0, 1fr) 44px; }
   #clientView .step1-body.is-solo .pax-step-btn { min-height: 44px; }
@@ -8130,14 +8133,16 @@ body.client-mode #clientView .btn-primary.is-sealed,
      feuille) : les activites restaient a l ecran sous les formules
      (2026-08-25, capture Movsar). */
   #clientView #step1:not(.is-options) #activityPicker:not(.hidden) { flex: 1 0 auto; display: flex; flex-direction: column; }
-  /* Des cartes MODEREES, l espace rendu en bas (2026-08-25, Movsar :
-     « fait moins gros, un petit espace en haut et surtout en bas ») :
-     les rangees plafonnent a 84 px, le reste de la hauteur se depose
-     SOUS la grille, avant le bouton. */
+  /* Des cartes A LEUR TAILLE, l espace rendu en bas. Le « plafond » de 84 px
+     (2026-08-25) n en etait pas un : dans une boite de hauteur definie, des
+     rangees minmax(44px, 84px) MONTENT a 84 px des qu il y a de la place
+     (mesure du 2026-09-01 : 84 px par carte pour 31 px de texte, le
+     « disproportionne » de Movsar). Les rangees prennent la hauteur de leur
+     contenu, 48 px au moins ; le reste se depose SOUS la grille. */
   #clientView #step1:not(.is-options) .activity-grid {
     flex: 1;
     align-content: start;
-    grid-auto-rows: minmax(44px, 84px);
+    grid-auto-rows: minmax(48px, auto);
     padding-top: 6px;
   }
   #clientView #step1:not(.is-options) .activity-toggle { height: 100%; align-items: center; }
@@ -8240,14 +8245,165 @@ body.client-mode #clientView .btn-primary.is-sealed,
      elle mangeait TOUT l espace du corps et se peignait par-dessus le champ
      date. Elle s efface et revient des que le clavier se ferme. */
   #clientView .step-foot .bespoke-entry { display: none; }
-  /* Et le CTA sticky de l etape 1 SUIT LE FLUX : dans une zone de ~90px, un
-     bouton colle en bas recouvre mecaniquement les champs, quel que soit le
-     defilement. En flux, plus aucun overlay : on defile, on touche. */
-  #clientView .step1-body.is-solo .s1-continue,
-  #clientView .s1-continue { position: static; }
+  /* La sous-barre (contact du centre + acces equipe) mesurait 117px a
+     844x390, un tiers de l ecran : la page venue n avait plus que 58px de
+     defileur et le centre du champ date tombait dans le pied (clavier ouvert,
+     dans la sous-barre). Hors confirmation elle s efface, comme sous 640px ;
+     le pied de l etape 1 en solo ne porte qu une note, il s efface aussi. */
+  #clientView:not([data-step='5']) .tunnel-underbar { display: none; }
+  #clientView #step1.is-solo .step-foot { display: none; }
   /* Reserve de bas de zone : le dernier element defile doit pouvoir se poser
      ENTIEREMENT au-dessus de la sous-barre (mesure : le centre du CTA en flux
      tombait dans « Une question ? » a 320x300). */
   #clientView .step-body,
   #clientView .step1-body { padding-bottom: 34px; }
+}
+
+
+/* ==========================================================================
+   REFONTE MOBILE V2 (2026-09-01) : PLUS PETIT, PLUS DENSE, ZERO DEBORDEMENT.
+   Movsar, sur son iPhone (Chrome et Safari) : « c est disproportionne, les
+   activites debordent sur le bouton Continuer, le bouton monte par-dessus le
+   nombre de joueurs, le calendrier s ouvre deux fois, et ca vivra DANS le site
+   du centre ». Mesures du 2026-09-01 (WebKit iPhone 14, 390x664, tunnel pur) :
+   la sous-barre volait 30 px a chaque ecran, les cartes faisaient 110 px
+   (2,5 rangees visibles sur 4, la 3e coupee sous le CTA), le bandeau
+   d allocation 55 px sous chaque CTA, les questions 24 px.
+   Ce bloc vient EN DERNIER dans la feuille : a specificite egale, il gagne sur
+   tout ce qui precede (le piege des trois livraisons, journal 240).
+   Planchers du gate one-screen conserves : cibles >= 44 px, textes >= 11,5 px.
+   ========================================================================== */
+@media (max-width: 640px) {
+  /* 1. Le chrome rend ses pixels : logo plus bas, sous-barre reservee a la
+        confirmation (le site du centre porte deja ses contacts ; ailleurs
+        elle redisait le pied de page a chaque question). */
+  body.client-mode .logo { height: 22px; }
+  #clientView:not([data-step='5']) .tunnel-underbar { display: none; }
+
+  /* 2. Les questions, a la MEME echelle partout : 20 px, pas 24. */
+  #clientView .step1-body.is-solo .s1-when .panel-title,
+  #clientView .s1-what-head .panel-title,
+  #clientView #step2 .s2-side .panel-title,
+  #clientView .s3-side .panel-title,
+  #clientView #step4 .recap-decision .panel-title,
+  #clientView .activity-configurator-title { font-size: clamp(18px, 5vw, 21px); line-height: 1.15; }
+
+  /* 3. Page venue : la carte respire moins, et le bouton vit EN FLUX sous le
+        compteur. Sticky, il se collait au bas d une zone retrecie par le
+        clavier, PAR-DESSUS le compteur de joueurs (verdict iPhone). La carte
+        tient en 230 px : il n y a rien a coller. SEULE regle de position du
+        CTA venue (l ancienne regle sticky et son annulation en ecran court
+        ont ete retirees : gate tunnel-mobile-v2, mutation m1). */
+  #clientView .step1-body.is-solo .s1-when { padding: var(--space-3); gap: var(--space-3); }
+  #clientView .step1-body.is-solo .s1-continue { position: static; margin-top: var(--space-2); }
+  #clientView #step1.is-solo .bespoke-entry { min-height: 48px; padding: 6px var(--space-3); }
+  #clientView #step1.is-solo .bespoke-entry-icon { width: 28px; height: 28px; }
+  #clientView #step1.is-solo .bespoke-entry-text strong { font-size: 12px; }
+  #clientView #step1.is-solo .bespoke-entry-text small { font-size: 11.5px; }
+
+  /* 4. Page activites : LES 8 CARTES D UN COUP, sans defiler (48 px chacune,
+        nom 13 px, prix 11,5 px, coche au coin). */
+  #clientView .s1-what-head { gap: var(--space-1); }
+  #clientView .activity-picker { margin-top: var(--space-2); }
+  #clientView .activity-grid { gap: 6px; }
+  #clientView .activity-card { min-height: 48px; }
+  #clientView .activity-toggle { grid-template-columns: 20px minmax(0, 1fr); gap: 6px; padding: 5px 8px; min-height: 48px; align-items: center; }
+  #clientView .activity-icon { width: 20px; height: 20px; margin-top: 0; }
+  #clientView .activity-icon svg { width: 18px; height: 18px; }
+  #clientView .activity-name { font-size: 13px; line-height: 1.15; padding-right: 12px; }
+  #clientView .activity-price-compact,
+  #clientView .activity-note { font-size: 11.5px; line-height: 1.25; }
+  #clientView .activity-check { width: 12px; height: 12px; top: 4px; right: 4px; }
+  #clientView .activity-check svg { width: 8px; height: 8px; }
+
+  /* 5. Le pied d ecran : fin, opaque, et un VOILE au-dessus qui dit « ca
+        continue dessous » la ou le contenu passe derriere lui (avant, une
+        rangee coupee net au bord du pied se lisait comme un debordement). */
+  #clientView .step-foot,
+  #clientView #step1:not(.is-solo) .step-foot { padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px)); margin-top: 2px; gap: var(--space-2); }
+  #clientView .step-foot::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -16px;
+    height: 16px;
+    background: linear-gradient(to bottom, transparent, var(--page));
+    pointer-events: none;
+  }
+  #clientView #step1.is-solo .step-foot::before { display: none; }
+
+  /* 6. Le dock ne parle que pour prevenir (JS) ; quand il parle, court. */
+  #clientView .step-status-dock > * { padding: 5px var(--space-3); font-size: 11.5px; }
+
+  /* 7. Options et formules : moins de chrome, memes faits. */
+  #clientView .activity-configurator-head { padding: var(--space-2) var(--space-3) var(--space-1); }
+  #clientView .formule-card { padding: 8px 10px; }
+  #clientView .formule-card-price strong { font-size: 14px; }
+
+  /* 8. Contact : des champs serres, une note d une ligne sans boite. */
+  #clientView .contact-grid { gap: 6px; }
+  #clientView .lbl { font-size: 12px; margin-bottom: 2px; }
+  #clientView .step3-info { background: transparent; border: 0; padding: 0 2px; font-size: 11.5px; color: var(--muted); }
+  #clientView .step3-info svg { display: none; }
+  #clientView .occasion-chip { font-size: 12px; }
+}
+
+/* LE SELECTEUR DE DATE, AU DOIGT (2026-09-01) : le champ entier ouvre le
+   calendrier NATIF du telephone, en un geste. Le bouton maison n existe plus
+   ici (il ouvrait le calendrier maison PUIS focalisait le champ, et iOS
+   rouvrait le sien par-dessus : « on doit choisir deux fois »). Une icone de
+   calendrier reste dessinee, inerte, pour dire que le champ s ouvre. Au
+   pointeur fin (ordinateur), rien ne change : le bouton et le calendrier
+   maison restent, car un clic sur un input[type=date] n ouvre rien la-bas. */
+@media (pointer: coarse) {
+  #clientView .date-picker-trigger { display: none; }
+  #clientView .date-input-wrap { position: relative; }
+  #clientView .date-input-wrap::after {
+    content: '';
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    margin-top: -9px;
+    pointer-events: none;
+    opacity: 0.75;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23777' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+  }
+  #clientView .date-input-wrap input { padding-right: 44px; }
+}
+
+/* ==========================================================================
+   MODE EMBARQUE (embed.js pose body.embed-mode) : LA HAUTEUR SUIT LE CONTENU.
+   Le verrou « un ecran = 100dvh » n a aucun sens dans un cadre : 100dvh y vaut
+   la hauteur du cadre, donc le scrollHeight poste au parent etait toujours
+   celle du cadre, l iframe restait figee a son plancher (720 px) et chaque
+   ecran defilait DANS le cadre, dans une page hote qui defile deja (mesure sur
+   une page hote simulee, iPhone 14 : cadre a 720 px, zone d etape a 336 px
+   pour 369 px de cartes, CTA sous le pli du cadre). Ici le corps prend sa
+   hauteur naturelle, UN SEUL ecran est peint (pas de piste qui glisse : un
+   cadre ne montre jamais ses voisins), aucune zone ne defile chez elle, et
+   ResizeObserver poste la vraie hauteur : le cadre suit, la page hote defile.
+   En fin de feuille : ces regles battent la scene horizontale a egalite.
+   ========================================================================== */
+body.client-mode.embed-mode { height: auto; min-height: 0; overflow: visible; display: block; }
+body.client-mode.embed-mode main,
+body.client-mode.embed-mode #clientView,
+body.embed-mode #clientView .tunnel-shell { flex: none; min-height: 0; display: block; }
+body.embed-mode #clientView .tunnel-stage { flex: none; min-height: 0; overflow: visible; contain: none; }
+body.embed-mode #clientView .tunnel-track { display: block; height: auto; transform: none; transition: none; will-change: auto; }
+body.embed-mode #clientView .step { display: none; min-width: 0; flex: none; }
+body.embed-mode #clientView .step.is-current { display: flex; opacity: 1; transform: none; }
+body.embed-mode #clientView .step-body,
+body.embed-mode #clientView .step1-body.is-solo,
+body.embed-mode #clientView .step3-body,
+body.embed-mode #clientView .s1-scroller,
+body.embed-mode #clientView .s2-slots,
+body.embed-mode #clientView #recapList { overflow: visible; flex: none; min-height: 0; }
+
+/* Page options a 320 px : « Minigolf Blacklight » se coupait en « Minigolf Bl… »
+   (mesure iPhone SE). Le nom replie, il ne se tronque pas. */
+@media (max-width: 360px) {
+  #clientView .activity-config-name { white-space: normal; overflow: visible; text-overflow: clip; }
 }

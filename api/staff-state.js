@@ -87,6 +87,6 @@ module.exports = async (req, res) => {
         return;
       }
     }
-    sendError(res, 500, error.message || 'Impossible de charger les donnees staff.');
+    sendError(res, 500, require('../lib/http').publicErrorMessage(error, 'Impossible de charger les donnees staff.'));
   }
 };

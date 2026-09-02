@@ -3343,7 +3343,12 @@ function initClient() {
     syncDateReservations(state.booking.date, { silent: true, skipRender: true });
   });
   document.getElementById('fPax').addEventListener('input', e => {
-    state.booking.pax = Number(e.target.value) || 1;
+    // Le champ porte min=1 et max=120, mais seules les fleches les respectaient :
+    // « 500 » tape au clavier traversait tout le tunnel (prix, pistes, heures)
+    // avant d etre plafonne en silence par le serveur. Le plafond se voit ici.
+    const borne = Math.min(Number(e.target.max) || 120, Math.max(Number(e.target.min) || 1, Number(e.target.value) || 1));
+    if (e.target.value !== '' && Number(e.target.value) !== borne) e.target.value = String(borne);
+    state.booking.pax = borne;
     clearBookingAlternatives();
     state.booking.formuleId = '';
     state.booking.startTime = '';
@@ -3630,7 +3635,12 @@ function setVenueStage(stage) {
   }
   if (venueStage === 'pax') {
     const champ = document.getElementById('fPax');
-    if (champ) champ.focus({ preventScroll: true });
+    // Au clavier physique seulement. Sur un ecran tactile, ce focus ouvrait le
+    // clavier numerique A L ARRIVEE sur la question (le tap sur « Continuer »
+    // est un geste utilisateur, iOS l honore) : l ecran se retrecissait et le
+    // bouton remontait sur le compteur (verdict iPhone, 2026-09-01). Au doigt,
+    // le geste est -/+ ; taper dans le champ reste possible, mais choisi.
+    if (champ && pointeurFin()) champ.focus({ preventScroll: true });
   }
   // Changer de question, c est avancer : le fil et la barre haute le disent.
   if (typeof updateProgress === 'function') updateProgress();
@@ -3820,7 +3830,14 @@ function syncStatusDock() {
   const programOpen = Boolean(what && !what.classList.contains('is-folded'));
   const pax = document.getElementById('paxAlert');
   const type = document.getElementById('typeAlert');
-  const source = (type && type.innerHTML.trim()) ? type : ((pax && pax.innerHTML.trim()) ? pax : null);
+  // LE DOCK NE PARLE QUE POUR PREVENIR (2026-09-01). La phrase d allocation
+  // (« Pour 4 personnes, nous reservons 1 piste... Vous choisirez l heure a
+  // l etape suivante ») occupait 55 px sous le CTA de chaque ecran d activites
+  // pour decrire ce que l ecran suivant fait de lui-meme ; la page options
+  // dit deja « 1 heure · 1 piste ». Seuls les avertissements (groupe trop
+  // grand, rotation, passages, activite fermee) montent ici.
+  const paxPrevient = Boolean(pax && pax.querySelector('[data-prevenir="1"]'));
+  const source = (type && type.innerHTML.trim()) ? type : ((paxPrevient && pax.innerHTML.trim()) ? pax : null);
   const html = onStepOne && programOpen && source ? source.innerHTML : '';
   if (dock.innerHTML !== html) dock.innerHTML = html;
   dock.classList.toggle('is-live', Boolean(html));
@@ -3962,7 +3979,7 @@ function renderPaxAlertContent() {
     const waveSize = getBalancedLaserWaveSize(pax);
     const remainingIfEmpty = Math.max(0, LASER_GAME_MAX_PLAYERS - (waveCount > 1 ? waveSize : pax));
     el.innerHTML = `
-      <div class="pax-alert ${waveCount > 1 ? 'warning' : ''}">
+      <div class="pax-alert ${waveCount > 1 ? 'warning' : ''}" data-prevenir="${waveCount > 1 ? '1' : '0'}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${waveCount > 1 ? '2.5' : '2'}" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg>
         <span>${waveCount > 1 ? `Groupe de <b>${pax} joueurs</b> : nous préparons <b>${waveCount} sessions Laser</b> d'environ ${waveSize} joueurs.` : `Vous réservez <b>${pax} place${pax > 1 ? 's' : ''}</b>. Dans une session vide, il restera <b>${remainingIfEmpty}</b> place${remainingIfEmpty > 1 ? 's' : ''}.`}</span>
       </div>`;
@@ -3972,11 +3989,10 @@ function renderPaxAlertContent() {
   // qu aucune formule n est choisie (ou qu elle n utilise pas de piste), on
   // n affiche PAS de compte de pistes (evite un absurde "0 pistes cote a cote").
   if (state.booking.type === 'formule' && (!state.booking.formuleId || needed <= 0)) {
-    el.innerHTML = `
-      <div class="pax-alert">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <span>Vous serez <b>${pax} personne${pax > 1 ? 's' : ''}</b>. Choisissez une formule ci-dessous : elle s'adapte à votre groupe.</span>
-      </div>`;
+    // Le compteur de joueurs est juste au-dessus et l onglet vient d etre
+    // choisi : « Vous serez 4 personnes. Choisissez une formule ci-dessous »
+    // redisait l ecran (inventaire texte du 2026-09-01).
+    el.innerHTML = '';
     return;
   }
   // VISITE : plusieurs activites dans la meme reservation. Le message ne
@@ -4031,20 +4047,23 @@ function renderPaxAlertContent() {
         }
       });
       const impossible = aBowling && needed > totalLanes;
-      // Seules les activites PLANIFIEES ont une heure a choisir. Promettre ce
-      // choix pour un billard ou une plaine de jeu serait faux : elles se
-      // vivent a l'arrivee.
-      const aCreneau = choisies.some((a) => a.planned);
+      // PREVENIR, PAS DECRIRE (inventaire texte du 2026-09-01). « Vous
+      // choisirez l heure de chaque activite a l etape suivante » decrivait
+      // l ecran suivant, et « nous reservons 1 piste » redisait la page
+      // options (« 1 heure · 1 piste »). Seuls les cas qui CHANGENT la visite
+      // (groupe impossible, rotation, passages, sessions) montent au dock du
+      // telephone : data-prevenir, lu par syncStatusDock.
+      // « 1 session de laser game » est une description, « 2 sessions » un fait
+      // qui change la visite (le groupe est coupe en deux).
+      const prevenir = impossible || consequences.some((c) => /rotation|passages?|\b(?:[2-9]|\d{2,}) sessions/i.test(c));
       el.innerHTML = `
-        <div class="pax-alert ${impossible || consequences.length ? 'warning' : ''}">
+        <div class="pax-alert ${impossible || consequences.length ? 'warning' : ''}" data-prevenir="${prevenir ? '1' : '0'}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${consequences.length ? '2.5' : '2'}" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           <span>${impossible
             ? `Groupe de <b>${pax} joueurs</b> : impossible sur ${totalLanes} pistes en même temps. Le staff proposera deux vagues ou un autre horaire.`
             : consequences.length
-              ? `Pour <b>${pax} personne${pax > 1 ? 's' : ''}</b>, nous réservons ${consequences.join(', ')}.${aCreneau ? " Vous choisirez l'heure de chaque activité à l'étape suivante." : ''}`
-              : `<b>${pax} personne${pax > 1 ? 's' : ''}</b> et <b>${choisies.length} activité${choisies.length > 1 ? 's' : ''}</b> : tout tient en une seule visite. ${aCreneau
-                ? "Vous choisirez l'heure de chaque activité à l'étape suivante."
-                : "Aucune de ces activités ne se réserve à heure fixe : choisissez simplement votre heure d'arrivée."}`}</span>
+              ? `Pour <b>${pax} personne${pax > 1 ? 's' : ''}</b> : ${consequences.join(', ')}.`
+              : `<b>${pax} personne${pax > 1 ? 's' : ''}</b>, <b>${choisies.length} activité${choisies.length > 1 ? 's' : ''}</b> : tout tient en une visite.`}</span>
         </div>`;
       return;
     }
@@ -4940,10 +4959,21 @@ function setType(t) {
   clearBookingAlternatives();
   if (t === 'formule') {
     state.booking.mode = 'formule';
+    // LE CHOIX A LA CARTE SURVIT A UN COUP D OEIL SUR LES FORMULES (2026-09-01).
+    // Mesure sur le vrai parcours telephone : trois activites cochees, un tap
+    // sur « Nos formules » pour regarder, retour « A la carte » : il ne
+    // restait que le bowling, et le recapitulatif ne facturait que lui. Le
+    // panier est mis de cote, jamais efface ; le mode formule ne le lit pas.
+    const panier = state.booking.activities && typeof state.booking.activities === 'object' ? state.booking.activities : {};
+    if (Object.keys(panier).length) state.booking.carteActivities = panier;
     state.booking.activities = {};
   } else {
     state.booking.mode = 'carte';
     state.booking.formuleId = '';
+    const panierMisDeCote = state.booking.carteActivities && typeof state.booking.carteActivities === 'object' ? state.booking.carteActivities : null;
+    if ((!state.booking.activities || !Object.keys(state.booking.activities).length) && panierMisDeCote && Object.keys(panierMisDeCote).length) {
+      state.booking.activities = panierMisDeCote;
+    }
     if (!state.booking.activities || !Object.keys(state.booking.activities).length) {
       state.booking.activities = t === 'laser' ? { laser_game: { games: 1 } } : { bowling: { duration: 1 } };
     } else if (t === 'bowling' || t === 'laser') {
@@ -5148,7 +5178,7 @@ function renderFormulaPreferences() {
       ${hasTable ? `
       <div class="formula-model-line">
         <span class="formula-model-tag table">Table</span>
-        <span>Votre table vous attend dès votre arrivée, pendant toute la visite</span>
+        <span>Table réservée pendant toute la visite</span>
       </div>` : ''}
       ${freeIds.length ? `
       <div class="formula-model-line">
@@ -5618,6 +5648,14 @@ function sealBookingSubmit() {
 // 640 px rien ne change, le configurateur reste sous la grille.
 function isPhoneLayout() {
   return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+}
+
+// Un pointeur FIN (souris, pave tactile) ou GROSSIER (doigt) : c est ce qui
+// decide si un focus programmatique est un service (le clavier physique
+// continue la saisie) ou une nuisance (le clavier virtuel surgit, l ecran se
+// retrecit, iOS rouvre un selecteur natif).
+function pointeurFin() {
+  return !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 }
 
 function mobileOptionsAvailable() {
@@ -6183,16 +6221,13 @@ function renderFormulaVisitSummary(slot, formule) {
     rows.push(`<div class="visit-line"><span class="visit-tag arrival">Arrivée</span><span>Présentez-vous ${arrivalMinutes} min avant : accueil à <strong>${escapeHtml(arrivalTime)}</strong></span></div>`);
   }
   if (tableBlock || formulaAnchorData?.hasTable || (formule && formulaHasPartyTable(formule))) {
-    rows.push(`<div class="visit-line"><span class="visit-tag table">Table</span><span>Votre table vous attend dès votre arrivée${arrivalTime ? ` (${escapeHtml(arrivalTime)})` : ''}</span></div>`);
+    rows.push(`<div class="visit-line"><span class="visit-tag table">Table</span><span>Table prête à votre arrivée${arrivalTime ? ` (${escapeHtml(arrivalTime)})` : ''}</span></div>`);
   }
   if (passLabels.length) {
-    rows.push(`<div class="visit-line"><span class="visit-tag free">À votre rythme</span><span>${passLabels.map(escapeHtml).join(' · ')} : quand vous voulez</span></div>`);
+    rows.push(`<div class="visit-line"><span class="visit-tag free">À votre rythme</span><span>${passLabels.map(escapeHtml).join(' · ')}</span></div>`);
   }
   if (remainingLaser > 0) {
-    rows.push(`<div class="visit-line"><span class="visit-tag laser">Laser</span><span>${remainingLaser} partie${remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe, selon l'affluence</span></div>`);
-  }
-  if (plan.laserSharing?.mayShare) {
-    rows.push(`<div class="visit-line visit-line-note"><span>Le Laser Game peut être complété par d'autres joueurs selon l'affluence</span></div>`);
+    rows.push(`<div class="visit-line"><span class="visit-tag laser">Laser</span><span>${remainingLaser} partie${remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe</span></div>`);
   }
   return `<div class="formula-visit-summary">${rows.join('')}</div>`;
 }
@@ -6555,7 +6590,7 @@ function renderVisitRailStep(step, position) {
   const compteur = chosen ? `
       <p class="anchor-part-count">${chosen.length} heure${chosen.length > 1 ? 's' : ''} sur ${partCount}${restantes
         ? ` · ${restantes} partie${restantes > 1 ? 's' : ''} avec l’équipe`
-        : ' · cliquez une heure retenue pour la retirer'}</p>` : '';
+        : ' · cliquez une heure pour la retirer'}</p>` : '';
   const picked = disabled || (chosen && !chosen.length)
     ? '<span class="anchor-row-pick anchor-row-pick-free">avec l’équipe</span>'
     : (chosen
@@ -6906,7 +6941,7 @@ function syncFormulaAnchorUi(formule, { busy }) {
       const restantes = Math.max(0, partCount - chosen.length);
       const texte = `${chosen.length} heure${chosen.length > 1 ? 's' : ''} sur ${partCount}${restantes
         ? ` · ${restantes} partie${restantes > 1 ? 's' : ''} avec l’équipe`
-        : ' · cliquez une heure retenue pour la retirer'}`;
+        : ' · cliquez une heure pour la retirer'}`;
       if (compteur.textContent !== texte) compteur.textContent = texte;
     }
     row.classList.toggle('anchor-row-onsite', disabled);
@@ -6973,7 +7008,7 @@ function renderFormulaArrivalPicker(formule) {
     <div class="formula-arrival-picker">
       <div class="formula-arrival-head">
         <strong>Choisissez votre heure d'arrivée</strong>
-        <span><span class="only-desktop">Votre table vous attend dès votre arrivée et les activités incluses se vivent à votre rythme : présentez-vous 10 minutes avant l'heure choisie pour l'accueil.</span><span class="only-mobile">Table prête dès l'arrivée, activités à votre rythme. Présentez-vous 10 min avant.</span></span>
+        <span>Table prête dès l'arrivée, activités à votre rythme. Présentez-vous 10 min avant.</span>
       </div>
       <div class="formula-arrival-grid">${chips}</div>
       ${activeSlot ? `
@@ -7050,13 +7085,13 @@ function renderSlots(formule) {
     // La durée estimée et le compteur brut de programmes vivent désormais dans
     // l'en-tête du picker « heure d'arrivée » : pas de double bandeau.
     tl.innerHTML = formule.timeLimit
-      ? `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><div>Créneaux limités aux horaires de la formule ${formule.name}</div></div>`
+      ? `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><div>Horaires limités à la formule</div></div>`
       : '';
   } else if (isLaser) {
     const option = getLaserOption(state.booking.duration);
     const waveCount = getLaserWaveCount(state.booking.pax);
     const splitText = waveCount > 1 ? ` • groupe réparti sur ${waveCount} sessions` : '';
-    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><div><b>${option.label} Laser Game</b> • ${option.price}€ / personne${splitText} • session possible avec d'autres joueurs selon l'affluence</div></div>`;
+    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><div><b>${option.label} Laser Game</b> • ${option.price}€ / personne${splitText} • session partagée selon l'affluence</div></div>`;
   } else tl.innerHTML = '';
 
   const list = document.getElementById('slotList');
@@ -7508,9 +7543,9 @@ function renderRecap() {
     ${formulaRecap && formulaRecap.hasTable ? `<div class="recap-item"><span class="recap-label">Votre table</span><span class="recap-value">Dès l'arrivée${formulaRecap.arrivalTime ? ` (${escapeHtml(formulaRecap.arrivalTime)})` : ''}</span></div>` : ''}
     ${formulaRecap && formulaRecap.freeLabels.length ? `<div class="recap-item"><span class="recap-label">À votre rythme</span><span class="recap-value">${formulaRecap.freeLabels.map(escapeHtml).join(' · ')}</span></div>` : ''}
     ${formule ? `<div class="recap-item"><span class="recap-label">Temps total estimé</span><span class="recap-value">${formatDurationLabel(totalDuration)}</span></div>` : ''}
-    ${isLaser ? `<div class="recap-note"><b>Laser Game :</b> ${laserWaveCount > 1 ? `votre groupe est réparti sur ${laserWaveCount} sessions successives. ` : ''}Votre session peut être complétée avec d'autres joueurs selon l'affluence. ${planLine ? `Plan retenu : ${planLine}.` : ''}</div>` : ''}
-    ${formulaRecap && (formulaRecap.remainingLaser > 0 || formulaRecap.laserOnSite) ? `<div class="recap-note"><b>Laser Game :</b> ${formulaRecap.remainingLaser > 0 ? `${formulaRecap.remainingLaser} partie${formulaRecap.remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe, selon l'affluence.` : ''} ${formulaRecap.laserOnSite ? 'Vous placez vos parties laser librement pendant la visite.' : ''}</div>` : ''}
-    ${formule ? `<div class="recap-note"><b>Le reste, à votre rythme :</b> aucune heure imposée pour les activités du pass liberté, vous les vivez quand vous voulez pendant votre visite.</div>` : ''}
+    ${isLaser && (laserWaveCount > 1 || planLine) ? `<div class="recap-note"><b>Laser Game :</b> ${laserWaveCount > 1 ? `${laserWaveCount} sessions successives. ` : ''}${planLine ? `Plan retenu : ${planLine}.` : ''}</div>` : ''}
+    ${formulaRecap && (formulaRecap.remainingLaser > 0 || formulaRecap.laserOnSite) ? `<div class="recap-note"><b>Laser Game :</b> ${formulaRecap.remainingLaser > 0 ? `${formulaRecap.remainingLaser} partie${formulaRecap.remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe.` : ''} ${formulaRecap.laserOnSite ? 'Vous placez vos parties laser librement pendant la visite.' : ''}</div>` : ''}
+    ${formule ? `<div class="recap-note"><b>Pass liberté :</b> aucune heure imposée, à vivre quand vous voulez.</div>` : ''}
   `;
 }
 
@@ -7685,7 +7720,7 @@ async function confirmBooking() {
     ? 'Votre demande est reçue. On revient vers vous après vérification du scénario.'
     : 'Votre réservation est enregistrée. Le mail de confirmation arrive dans quelques minutes.';
   const laserWaveCount = isLaser ? Number(b.opsPlan?.laserSharing?.waveCount || getLaserWaveCount(b.pax)) : 1;
-  const laserLine = isLaser ? ` ${laserWaveCount > 1 ? `Votre groupe est réparti sur ${laserWaveCount} sessions Laser. ` : ''}La session Laser Game peut être complétée avec d’autres joueurs selon l’affluence.` : '';
+  const laserLine = isLaser && laserWaveCount > 1 ? ` Votre groupe est réparti sur ${laserWaveCount} sessions Laser.` : '';
   const arrivalLine = b.type === 'formule' && b.opsPlan?.arrivalTime
     ? ` Présentez-vous <b>${Number(b.opsPlan.arrivalMinutes || 10)} minutes avant</b> pour l'accueil (arrivée conseillée <b>${escapeHtml(b.opsPlan.arrivalTime)}</b>).`
     : '';
@@ -7694,10 +7729,10 @@ async function confirmBooking() {
     ? ` Vos rendez-vous : <b>${successRecap.appointments.map(escapeHtml).join(' · ')}</b>.`
     : '';
   const tableLine = successRecap && successRecap.hasTable
-    ? ` Votre table vous attend dès votre arrivée${successRecap.arrivalTime ? ` (<b>${escapeHtml(successRecap.arrivalTime)}</b>)` : ''}.`
+    ? ` Table prête à votre arrivée${successRecap.arrivalTime ? ` (<b>${escapeHtml(successRecap.arrivalTime)}</b>)` : ''}.`
     : '';
   const freeLine = successRecap && successRecap.freeLabels.length
-    ? ` À votre rythme sur place : ${successRecap.freeLabels.map(escapeHtml).join(', ')}, quand vous voulez.`
+    ? ` En accès libre : ${successRecap.freeLabels.map(escapeHtml).join(', ')}.`
     : '';
   document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${typeof displayTime === 'function' ? displayTime(b.startTime) : b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${appointmentsLine}${tableLine}${arrivalLine}${freeLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
   releaseBookingSubmit();
@@ -17260,8 +17295,11 @@ function closeStaffCalendar() {
 // seule implementation a maintenir, elle ne depend d'aucune API du navigateur,
 // et elle prend les couleurs du centre (les jetons de marque sont poses sur
 // :root par boot-view.js). Le champ reste un input[type=date] : la saisie au
-// clavier ne bouge pas, et sur telephone le selecteur natif s'ouvre toujours
-// au toucher du champ.
+// clavier ne bouge pas. AU DOIGT (pointer: coarse), le bouton n existe plus
+// (CSS, bloc mobile v2) : tout le champ ouvre le selecteur natif du telephone,
+// en UN geste. Avant, le bouton ouvrait le calendrier maison PUIS focalisait
+// le champ, et iOS ouvrait le sien par-dessus (Movsar : « on doit choisir
+// deux fois »).
 function openClientDateCalendar(ev) {
   const input = document.getElementById('fDate');
   if (!input) return;
@@ -17274,7 +17312,9 @@ function openClientDateCalendar(ev) {
       // Meme evenement que la saisie clavier : tout ce qui ecoute la date
       // (horaires du jour, creneaux, garde anti-date-passee) part d'ici.
       input.dispatchEvent(new Event('change', { bubbles: true }));
-      input.focus();
+      // Jamais de focus au doigt : sur iPhone il rouvrait le selecteur natif
+      // par-dessus le jour deja choisi (« on doit choisir deux fois »).
+      if (pointeurFin()) input.focus();
     },
   });
 }
@@ -24096,7 +24136,11 @@ document.addEventListener('keydown', (event) => {
     var body = document.body;
     var doc = document.documentElement;
     if (!body || !doc) return;
-    var height = Math.max(body.scrollHeight, body.offsetHeight, doc.scrollHeight, doc.offsetHeight);
+    // La hauteur du CONTENU, jamais celle du cadre : documentElement.scrollHeight
+    // vaut au moins la hauteur courante de l iframe, donc le cadre ne pouvait
+    // que grandir (mesure : 480 px postes pour 358 px de contenu). En mode
+    // embarque, body est en hauteur automatique (CSS) : sa hauteur EST le contenu.
+    var height = Math.max(body.scrollHeight, body.offsetHeight);
     if (!height || Math.abs(height - last) < 8) return; // hysteresis : pas de flot de messages au pixel pres
     last = height;
     try { window.parent.postMessage({ type: 'pinlane:height', height: height }, parentOrigin); } catch (error) { /* parent parti */ }
@@ -24112,4 +24156,34 @@ document.addEventListener('keydown', (event) => {
   }
   document.addEventListener('DOMContentLoaded', post);
   window.addEventListener('load', post);
+
+  // LE SITE HOTE NE SAIT PAS QU UN ECRAN A CHANGE (2026-09-01). La hauteur
+  // suit le contenu (CSS embed-mode), donc apres « Continuer » le cadre peut
+  // devenir plus court ou plus haut : sans ce message, le visiteur regarde le
+  // bas d un cadre qui vient de changer. On lui signale l ecran ; embed.js
+  // ramene le haut du cadre en vue seulement s il est sorti de l ecran.
+  // Rien ne part au demarrage : la cle courante est memorisee avant d ecouter.
+  var dernierEcran = '';
+  function cleEcran() {
+    var view = document.getElementById('clientView');
+    var step1 = document.getElementById('step1');
+    return (view ? String(view.getAttribute('data-step') || '') : '') + '|' + (step1 ? String(step1.className || '') : '');
+  }
+  function signaleEcran() {
+    var cle = cleEcran();
+    if (cle === dernierEcran) return;
+    dernierEcran = cle;
+    try { window.parent.postMessage({ type: 'pinlane:screen' }, parentOrigin); } catch (error) { /* parent parti */ }
+  }
+  function brancheEcran() {
+    if (typeof MutationObserver !== 'function') return;
+    var view = document.getElementById('clientView');
+    var step1 = document.getElementById('step1');
+    dernierEcran = cleEcran();
+    var observateur = new MutationObserver(signaleEcran);
+    if (view) observateur.observe(view, { attributes: true, attributeFilter: ['data-step'] });
+    if (step1) observateur.observe(step1, { attributes: true, attributeFilter: ['class'] });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', brancheEcran, { once: true });
+  else brancheEcran();
 }());

@@ -16692,3 +16692,41 @@ button.pv2-cal-cell:focus-visible {
 }
 .qb-mode-btn:hover { color: var(--text); border-color: var(--accent); }
 .qb-mode-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+
+
+/* ==========================================================================
+   CONSOLE : RESPONSIVE ET TACTILE (2026-09-01). Mesures de la lentille console
+   (Playwright, 375 / 768) : le segmente de la page Activites & tarifs forcait
+   195 px de debordement horizontal du document a 375 ; les boutons d icone des
+   cartes du planning mesuraient 26 px, le « + » du quickbook 20 px, la croix
+   des modales 32 px ; a 768, l avatar du compte recouvrait le dernier item de
+   la barre de navigation. En fin de feuille : ces regles gagnent a egalite.
+   ========================================================================== */
+.pv2-bar-sub:empty { display: none; }
+@media (max-width: 768px) {
+  /* Le segmente defile chez lui au lieu de pousser toute la page. */
+  .pv2-seg { display: flex; max-width: 100%; overflow-x: auto; overflow-y: hidden; justify-self: stretch; scrollbar-width: none; }
+  .pv2-seg::-webkit-scrollbar { display: none; }
+  .pv2-seg > button { flex: none; white-space: nowrap; }
+  .pv2-bar, .pv2-bar > div { min-width: 0; }
+  /* La barre haute : la navigation garde sa place, le compte ne monte jamais
+     dessus (avatar par-dessus « Cockpit », mesure a 768). */
+  /* Mesure a 768 (geometrie reelle) : la barre porte 19 icones de 44 px, soit
+     880 px de contenu dans une bande de 589 px qui DEFILE sans aucun repere :
+     six pages (Cockpit, Journal...) n existaient qu au bout d un geste que
+     rien n annoncait. Entre 481 et 768 px (tablette), la barre replie sur deux
+     rangees : tout se voit. Sous 481 px (telephone), elle garde son defilement,
+     trois rangees d icones mangeraient l ecran. */
+  body.staff-mode .fgx-menu-nav, body.admin-mode .fgx-menu-nav { padding-right: 8px; }
+  body.staff-mode .fgx-menu-account, body.admin-mode .fgx-menu-account { flex: 0 0 auto; position: relative; z-index: 1; margin-left: 4px; }
+}
+@media (min-width: 481px) and (max-width: 768px) {
+  body.staff-mode .fgx-menu-nav, body.admin-mode .fgx-menu-nav { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
+  body.staff-mode .fgx-menu-section, body.admin-mode .fgx-menu-section { display: contents; }
+}
+@media (pointer: coarse) {
+  /* Planchers tactiles : la zone de tap grandit, l icone reste la meme. */
+  .res-icon-btn { width: 36px; height: 36px; }
+  .qb-type-add { width: 30px; height: 30px; right: 6px; }
+  .close-btn { width: 40px; height: 40px; }
+}

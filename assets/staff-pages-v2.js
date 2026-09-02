@@ -8542,7 +8542,7 @@
       ${bar({
         crumb: 'Administration / Catalogue',
         title: 'Activités & tarifs',
-        sub: 'Catalogue opérationnel, prix publics et contraintes réelles de réservation.',
+        sub: '',
         actions: `
           <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffPricingQuery || '')}" placeholder="Formule, activité, condition…" oninput="setStaffPricingQuery(this.value)"></label>
           <button type="button" class="pv2-btn" onclick="copyStaffPricingSummary()">Copier</button>

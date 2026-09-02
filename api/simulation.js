@@ -139,6 +139,6 @@ module.exports = async (req, res) => {
     }
     sendError(res, 405, 'Méthode non autorisée.');
   } catch (error) {
-    sendError(res, error.statusCode || 400, error.message || 'Simulation impossible.');
+    sendError(res, error.statusCode || 400, require('../lib/http').publicErrorMessage(error, 'Simulation impossible.'));
   }
 };

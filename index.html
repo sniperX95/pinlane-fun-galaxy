@@ -328,9 +328,9 @@
                 <div class="grid-4" id="durGrid"></div>
               </div>
               <div class="tunable hidden" id="laserBlock">
-                <div class="tunable-label">Laser Game <span class="tunable-sub">briefing inclus, partage possible selon l'affluence</span></div>
+                <div class="tunable-label">Laser Game <span class="tunable-sub">briefing inclus</span></div>
                 <div class="grid-3 laser-option-grid" id="laserGrid"></div>
-                <div class="laser-note">Une session peut être complétée avec d'autres joueurs. Le planning affiche l'heure de lancement réelle.</div>
+                <div class="laser-note" hidden></div>
               </div>
               <div class="hidden" id="formuleBlock">
                 <div class="formule-grid" id="formuleGrid"></div>
@@ -353,7 +353,7 @@
             </span>
             <span class="bespoke-entry-text">
               <strong>Groupe, entreprise ou besoin spécial ?</strong>
-              <small>Privatisation, team-building, traiteur… On vous recontacte.</small>
+              <small>Privatisation, team-building, traiteur…</small>
             </span>
           </button>
           <button class="btn-primary" id="btnStep1" onclick="goStep2()">
@@ -384,7 +384,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
             Retour
           </button>
-          <span class="step-foot-note">Choisissez une heure pour continuer</span>
+          <span class="step-foot-note"></span>
         </div>
       </section>
 
@@ -409,7 +409,7 @@
             </div>
             <div class="info-box step3-info">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-              <div>Confirmation envoyée par email. Paiement sur place.</div>
+              <div>Confirmation par email, paiement sur place.</div>
             </div>
           </aside>
           <div class="s3-extra cascade">
@@ -417,7 +417,7 @@
           <!-- Marges portées par la feuille (les styles inline bloquaient la
                mise en colonnes de l'étape aux largeurs d'ordinateur). -->
           <div class="occasion-field">
-            <label class="lbl">Type de réservation / occasion <span class="lbl-optional">(optionnel)</span></label>
+            <label class="lbl">Occasion <span class="lbl-optional">(optionnel)</span></label>
             <div class="occasion-chips" id="occasionChips" role="group" aria-label="Type de réservation ou occasion">
               <button type="button" class="occasion-chip" data-occasion="anniversaire" aria-pressed="false" onclick="setBookingOccasion('anniversaire')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3"/><path d="M12 8v3"/><path d="M17 8v3"/><path d="M7 4h.01"/><path d="M12 4h.01"/><path d="M17 4h.01"/></svg> Anniversaire</button>
               <button type="button" class="occasion-chip" data-occasion="amis" aria-pressed="false" onclick="setBookingOccasion('amis')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Groupe / amis</button>
@@ -498,7 +498,7 @@
           <p class="sub">À très vite, <b id="successName"></b>.</p>
 
           <div class="confetti-hint" id="successHint">
-            <strong>Pour un maximum de fun</strong>
+            <strong>Bon à savoir</strong>
             <p id="successDetails"></p>
           </div>
 
@@ -535,7 +535,7 @@
       </button>
       <div class="bespoke-modal-head">
         <h2 id="bespokeTitle">Demande sur mesure</h2>
-        <p>Groupe, entreprise, privatisation ou besoin particulier : décrivez votre projet, on revient vers vous. C'est une simple demande de contact, pas une réservation ferme, et rien n'est encore garanti.</p>
+        <p>Décrivez votre projet : on revient vers vous.</p>
       </div>
       <div id="bespokeSuccess" class="bespoke-success hidden"></div>
       <div id="bespokeForm">
@@ -567,7 +567,7 @@
         </div>
         <div style="margin-top:14px;">
           <label class="lbl" for="crMessage">Décrivez votre besoin *</label>
-          <textarea id="crMessage" class="input" rows="4" maxlength="2000" placeholder="Privatisation, traiteur, facture entreprise, budget, contraintes horaires…"></textarea>
+          <textarea id="crMessage" class="input" rows="4" maxlength="2000" placeholder="Ex. : soirée d'entreprise pour 40 personnes, repas sur place, budget à définir"></textarea>
         </div>
         <div id="bespokeError" class="bespoke-error hidden" role="alert"></div>
         <p class="bespoke-fineprint">Réponse sous 1 à 2 jours ouvrables. Aucune date n'est bloquée tant que nous ne l'avons pas confirmée avec vous.</p>

@@ -48,6 +48,6 @@ module.exports = async (req, res) => {
       ...(auditLane.warning ? { warnings: [auditLane.warning] } : {}),
     });
   } catch (error) {
-    sendError(res, error.statusCode || 400, error.message || 'Impossible de mettre a jour la piste.');
+    sendError(res, error.statusCode || 400, require('../lib/http').publicErrorMessage(error, 'Impossible de mettre a jour la piste.'));
   }
 };

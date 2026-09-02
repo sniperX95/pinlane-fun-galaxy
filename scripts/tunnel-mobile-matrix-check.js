@@ -24,6 +24,9 @@
 //   D. PAYSAGE (844x390, contact) : les champs et le CTA sont visibles ou
 //      atteignables en defilant leur zone (avant : corps a 37px, rien de
 //      defilable).
+//   D2. PAYSAGE, page venue : le centre du champ date se touche, avant et
+//      apres le clavier (844x200). Avant la passe 244 : la sous-barre faisait
+//      117px, le defileur 58px, le tap tombait dans le pied puis la sous-barre.
 //   E. MODALE SUR MESURE : Envoyer est VISIBLE SANS DEFILER (pied collant) et
 //      les deux boutons tiennent le plancher tactile 44px (la regle 40px avait
 //      avale un correctif par la cascade).
@@ -32,8 +35,15 @@
 //      autre ne le voit pas.
 //
 // Contre-epreuves par MUTATION (edition inverse exacte, jamais git) :
-//   (a) soin clavier debranche -> B rougit (champ enterre apres retrecissement) ;
-//   (b) CTA etape 1 re-colle en ecran court -> C rougit (tap = Continuer) ;
+//   (a) soin clavier debranche -> B rougit (champ colle au pied : 49px de
+//       reserve au lieu des 90 minimum ; depuis la passe 244 le formulaire
+//       raccourci tient dans 480px sans defiler, le tap traversant a disparu) ;
+//   (b) sous-barre re-affichee en ecran court -> D2 rougit (clavier ouvert a
+//       844x200, le centre du champ date tombe dans la sous-barre ; sans
+//       clavier le soin le recentre dans les 58px qui restent, ce controle-la
+//       reste un garde, pas un temoin ; l ancienne mutation « CTA re-colle »
+//       n avait plus de regle sticky a reveiller depuis la passe 244, le CTA
+//       venue est en flux partout : temoin dans tunnel-mobile-v2, m1) ;
 //   (c) pied de modale de-colle -> E rougit (Envoyer sous le pli) ;
 //   (d) plancher 40px remis -> E rougit (cible sous 44).
 //
@@ -162,6 +172,16 @@ const MESURES = {
     });
   },
   debordement: () => Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth),
+  // Reserve entre le bas du champ et le haut du pied de l etape courante :
+  // ce que le scroll-padding (96px) promet quand le navigateur defile seul.
+  degagement: (id) => {
+    const el = document.getElementById(id);
+    if (!el) return { absent: true };
+    const foot = document.querySelector('#clientView .step.is-current .step-foot') || document.querySelector('#clientView .step-foot');
+    const r = el.getBoundingClientRect();
+    const limite = foot ? foot.getBoundingClientRect().top : window.innerHeight;
+    return { reserve: Math.round(limite - r.bottom), bas: Math.round(r.bottom), pied: Math.round(limite) };
+  },
 };
 
 function delta(avant, apres) {
@@ -191,6 +211,12 @@ async function scenariosChromium(browser) {
   ok(emailVisible.fully, 'clavier-champ-visible', JSON.stringify(emailVisible));
   const tapBas = await page.evaluate(MESURES.hit, { id: 'fEmail', dy: -6 });
   ok(tapBas.self, 'clavier-tap-bas-du-champ', `touche ${tapBas.autre || 'le champ'}`);
+  // Un champ deja visible dans le viewport retreci n est PAS defile par le
+  // navigateur : sans le soin il reste colle au pied (49px mesures a 480),
+  // avec le soin (block:center) il garde 167px. On exige la reserve que le
+  // scroll-padding promet, que le navigateur ait defile ou non.
+  const degage = await page.evaluate(MESURES.degagement, 'fEmail');
+  ok(!degage.absent && degage.reserve >= 90, 'clavier-champ-degage-du-pied', JSON.stringify(degage));
   ok(await page.evaluate(MESURES.debordement) === 0, 'clavier-zero-debordement-h');
   await page.evaluate(() => document.getElementById('fEmail').blur());
   await page.setViewportSize({ width: 390, height: 844 });
@@ -233,6 +259,19 @@ async function scenariosChromium(browser) {
     return out;
   });
   ok(Object.values(atteignable).every((v) => v === 'ok'), 'paysage-champs-atteignables', JSON.stringify(atteignable));
+  await page.close();
+
+  // --- D2. PAYSAGE 844x390, page venue : le champ date se touche -----------
+  page = await browser.newPage({ viewport: { width: 844, height: 390 } });
+  await bootTunnel(page, 1);
+  await page.evaluate(() => { const f = document.getElementById('fDate'); if (f) f.focus(); });
+  await page.waitForTimeout(500);
+  const paysageDate = await page.evaluate(MESURES.hit, { id: 'fDate' });
+  ok(paysageDate.self, 'paysage-venue-tap-champ-date', `touche ${paysageDate.autre || 'le champ'}`);
+  await page.setViewportSize({ width: 844, height: 200 });
+  await page.waitForTimeout(700);
+  const paysageClavier = await page.evaluate(MESURES.hit, { id: 'fDate' });
+  ok(paysageClavier.self, 'paysage-venue-clavier-tap-champ-date', `touche ${paysageClavier.autre || 'le champ'}`);
   await page.close();
 
   // --- E. MODALE : Envoyer visible SANS defiler + plancher 44 --------------
@@ -311,16 +350,17 @@ const MUTATIONS = [
     file: APP,
     find: '  bindCardTilt();\n  bindKeyboardCare();',
     replace: '  bindCardTilt();\n  void 0;',
-    // Chromium re-revele seul le champ au resize ; ce que le soin empeche,
-    // c est le TAP TRAVERSANT dans le bas du champ (le pied le recevait).
-    expect: 'clavier-tap-bas-du-champ',
+    // Chromium ne defile pas un champ deja visible dans le viewport retreci :
+    // sans le soin, Email reste a 49px du pied ; le soin le centre (167px).
+    expect: 'clavier-champ-degage-du-pied',
   },
   {
-    name: 'CTA etape 1 re-colle en ecran court',
+    name: 'sous-barre re-affichee en ecran court',
     file: CSS,
-    find: '  #clientView .step1-body.is-solo .s1-continue,\n  #clientView .s1-continue { position: static; }',
+    // Les deux lignes ensemble : la premiere existe aussi sous 640px.
+    find: "  #clientView:not([data-step='5']) .tunnel-underbar { display: none; }\n  #clientView #step1.is-solo .step-foot { display: none; }",
     replace: '  /* mutation contre-epreuve */',
-    expect: 'court-tap-champ-date',
+    expect: 'paysage-venue-clavier-tap-champ-date',
   },
   {
     name: 'pied de modale de-colle',

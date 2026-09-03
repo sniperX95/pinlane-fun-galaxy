@@ -598,15 +598,28 @@ module.exports = async (req, res) => {
     }
     const laserOption = getLaserOptionFromRequest(url, requestedDuration);
     const duration = type === 'formule' ? getFormuleLaneDuration(formule) : type === 'laser' ? laserOption.value : requestedDuration;
-    const totalDuration = type === 'formule' ? getFormuleTotalDuration(formule) : type === 'laser' ? laserOption.value : requestedDuration;
+    // FENETRE OUVERTE (MATIN MALIN, KIDS FUN DAY) : la visite dure jusqu a la
+    // fin de la periode, l arrivee se choisit jusqu a la derniere demi-heure
+    // avant. La duree estimee par les lignes de la formule (2 h, 5 h) ne borne
+    // plus rien : elle vidait la liste des qu on n arrivait pas a l ouverture.
+    const openWindow = Boolean(formule && formule.orderPolicy === 'open_window');
+    const periodEnd = formule && formule.timeLimit && formule.timeLimit.max
+      ? Math.min(schedule.close, formule.timeLimit.max)
+      : schedule.close;
+    const periodStart = formule && formule.timeLimit && formule.timeLimit.min
+      ? Math.max(schedule.open, formule.timeLimit.min)
+      : schedule.open;
+    const totalDuration = type === 'formule'
+      ? (openWindow ? Math.max(0.5, periodEnd - periodStart) : getFormuleTotalDuration(formule))
+      : type === 'laser' ? laserOption.value : requestedDuration;
     const laneCount = getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig);
     const requiresLanes = reservationNeedsLanes(type, formuleId);
     let minTime = schedule.open;
-    let maxTime = schedule.close - totalDuration;
+    let maxTime = openWindow ? periodEnd - 0.5 : schedule.close - totalDuration;
 
     if (formule && formule.timeLimit) {
       if (formule.timeLimit.min) minTime = Math.max(minTime, formule.timeLimit.min);
-      if (formule.timeLimit.max) maxTime = Math.min(maxTime, formule.timeLimit.max - totalDuration);
+      if (formule.timeLimit.max && !openWindow) maxTime = Math.min(maxTime, formule.timeLimit.max - totalDuration);
     }
 
     if (date === todayStr()) {
@@ -1034,10 +1047,18 @@ module.exports = async (req, res) => {
         label: formule.name,
         snapshot,
       });
-      respondFormula(
-        guardedSlots,
-        guardedSlots.length ? '' : 'Aucun scénario automatique sûr pour cette formule. Essayez un autre horaire ou contactez le centre.',
-      );
+      // Fenetre ouverte sans aucune arrivee (periode finie avant l ouverture,
+      // par exemple MATIN MALIN un jour qui ouvre a 14:00) : la raison du
+      // moteur, pas un message generique.
+      let emptyMessage = 'Aucun scénario automatique sûr pour cette formule. Essayez un autre horaire ou contactez le centre.';
+      if (!guardedSlots.length && openWindow) {
+        const probe = planningAgent(
+          { centerId, date, type, formuleId, pax, duration, preference: { arrivalConfidence: 'normal' }, pauseMinutes },
+          { reservations: snapshot.reservations, laneStatuses: snapshot.laneStatuses, blocks: snapshot.blocks || [] },
+        );
+        if (probe && probe.plan && probe.plan.reason) emptyMessage = probe.plan.reason;
+      }
+      respondFormula(guardedSlots, guardedSlots.length ? '' : emptyMessage);
       return;
     }
 

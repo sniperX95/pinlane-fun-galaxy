@@ -7030,6 +7030,13 @@ function renderFormulaArrivalPicker(formule) {
   if (!slots.some(slot => slot.time === formulaArrivalChoice)) formulaArrivalChoice = '';
   const activeIndex = slots.findIndex(slot => slot.time === formulaArrivalChoice);
   const activeSlot = activeIndex >= 0 ? slots[activeIndex] : null;
+  // Fenetre ouverte : pas de table, des activites a volonte jusqu a la fin de
+  // la periode (l heure de fin vient du plan rendu par le serveur).
+  const openWindow = Boolean(formule && formule.orderPolicy === 'open_window');
+  const windowEnd = openWindow ? ((slots[0] && slots[0].opsPlan && slots[0].opsPlan.endTime) || '') : '';
+  const arrivalHint = openWindow
+    ? `Activités à volonté${windowEnd ? ` jusqu'à ${windowEnd}` : ''}. Présentez-vous 10 min avant.`
+    : "Table prête dès l'arrivée, activités à votre rythme. Présentez-vous 10 min avant.";
   const chips = slots.map(slot => `
     <button type="button" class="formula-arrival-chip ${activeSlot && slot.time === formulaArrivalChoice ? 'active' : ''}" onclick="setFormulaArrivalChoice('${escapeHtml(slot.time)}')">
       ${escapeHtml(typeof displayTime === 'function' ? displayTime(slot.time) : slot.time)}
@@ -7038,7 +7045,7 @@ function renderFormulaArrivalPicker(formule) {
     <div class="formula-arrival-picker">
       <div class="formula-arrival-head">
         <strong>Choisissez votre heure d'arrivée</strong>
-        <span>Table prête dès l'arrivée, activités à votre rythme. Présentez-vous 10 min avant.</span>
+        <span>${escapeHtml(arrivalHint)}</span>
       </div>
       <div class="formula-arrival-grid">${chips}</div>
       ${activeSlot ? `
@@ -23206,7 +23213,9 @@ function formulaDayBlockLabel(dayStatus, formuleId) {
 function getFormuleAvailability(formule, dateStr, pax, startTime = '') {
   const day = parseLocalDate(dateStr).getDay();
   const schedule = getSchedule(dateStr, state.isHolidayMode);
-  const totalDuration = getFormuleTotalDuration(formule);
+  // Fenetre ouverte (MATIN MALIN, KIDS FUN DAY) : seule l ARRIVEE doit tomber
+  // dans la periode, la visite dure jusqu a sa fin. Meme regle que le serveur.
+  const totalDuration = formule.orderPolicy === 'open_window' ? 0.5 : getFormuleTotalDuration(formule);
   if (!isOfferEnabled(formule.id)) return { ok: false, message: 'Offre momentanément indisponible' };
   // Verdict serveur du jour. La garde d'egalite de date est portee par
   // getCenterDayStatusFor : cette fonction sert aussi le QuickBook staff, qui

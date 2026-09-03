@@ -85,14 +85,29 @@ body.client-mode #clientView .card-icon.teal {
   color: var(--accent);
 }
 /* CTA principal aux couleurs du centre : pill accent + halo (remplace l'inversion noir/blanc). */
+/* LA FORME EST CELLE DU SYSTEME, PAS DU ROLE (2026-09-03). Les deux boutons
+   d une meme ligne de pied sortaient en deux formes : « Continuer » en pilule,
+   « Retour » en rectangle de 6 px - et la MEME classe .btn-secondary rendait
+   une pilule sur l ecran de confirmation. Le rayon appartient donc au systeme
+   (les deux roles), la couleur et le halo continuent de distinguer le
+   principal.
+   ET L HARMONISATION VA VERS LE TEXTE NORMAL, PAS VERS LES CAPITALES : la
+   decision d harmonisation dit « un seul rayon de bouton (var(--radius-full)),
+   plus de capitales forcees ». Un premier passage avait unifie en montant tout
+   le monde en capitales (« RETOUR », « FAIRE UNE AUTRE RESERVATION ») : c est
+   l inverse de la decision, et ce sont les libelles les plus longs du tunnel
+   qui y perdaient le plus. `text-transform` et l interlettrage qui servait a
+   faire respirer les capitales sont donc retires ; le poids reste, il n a
+   jamais dependu de la casse. */
+body.client-mode #clientView .btn-primary,
+body.client-mode #clientView .btn-secondary {
+  border-radius: var(--radius-full);
+  font-weight: 700;
+}
 body.client-mode #clientView .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
-  border-radius: var(--radius-full);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 700;
   box-shadow: 0 8px 28px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 body.client-mode #clientView .btn-primary:hover {
@@ -119,26 +134,17 @@ body.client-mode #clientView .success-wrap h2 {
   font-weight: 800;
   letter-spacing: 0.015em;
   line-height: 1.05;
-  /* Le titre est PLEIN par defaut et ne devient creux que la ou le contour
-     existe. `-webkit-text-stroke` n est pas standard : avec `color: transparent`
-     pose inconditionnellement, un moteur qui ignore le contour affichait un titre
-     INVISIBLE, sur l ecran qui annonce que la reservation est prise. Le rendu ne
-     change pas la ou l effet marche. */
+  /* Le titre est PLEIN, partout. Il etait rendu en lettres creuses
+     (`color: transparent` + `-webkit-text-stroke: 1.8px`) : sur le seul ecran
+     qui doit rassurer, un titre en contour se lit comme une police qui n a pas
+     fini de charger, et a 390 px l accent de « VALIDE » se posait sur le trait
+     du D voisin. La force vient du poids (800) et du corps
+     (clamp(32px, 6.4vw, 46px)), pas du vide. */
   color: var(--text);
   margin-top: var(--space-1);
 }
-@supports (-webkit-text-stroke: 1px black) {
-  body.client-mode #clientView .success-wrap h2 {
-    color: transparent;
-    -webkit-text-stroke: 1.8px var(--text);
-  }
-}
 body.client-mode #clientView .success-wrap .sub { font-size: 16px; }
 body.client-mode #clientView .success-wrap .btn-secondary {
-  border-radius: var(--radius-full);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 700;
   border-color: color-mix(in srgb, var(--accent) 50%, var(--line-strong));
 }
 body.client-mode #clientView .success-wrap .btn-secondary:hover {
@@ -223,9 +229,10 @@ html[data-tunnel-cards='shadow'] body.client-mode #clientView .panel {
   box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 7%, transparent);
 }
 
-/* Boutons : pill (defaut client) / rounded. */
+/* Boutons : pill (defaut client) / rounded. L axe porte sur LES DEUX roles,
+   comme le defaut : sinon il rendrait a nouveau deux formes sur une ligne. */
 html[data-tunnel-buttons='rounded'] body.client-mode #clientView .btn-primary,
-html[data-tunnel-buttons='rounded'] body.client-mode #clientView .success-wrap .btn-secondary {
+html[data-tunnel-buttons='rounded'] body.client-mode #clientView .btn-secondary {
   border-radius: var(--radius-md);
 }
 
@@ -6278,7 +6285,7 @@ input.auth-input {
   .bespoke-modal .grid-2 { grid-template-columns: 1fr; }
 }
 .bespoke-fineprint {
-  margin: var(--space-3) 0 0;
+  margin: 0 0 8px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-3);
@@ -6293,6 +6300,9 @@ input.auth-input {
    gestes de sortie/envoi tiennent le plancher tactile de 44px. */
 .bespoke-modal .cr-actions {
   justify-content: flex-end;
+  /* La mention legale occupe sa propre ligne au-dessus des boutons : elle est
+     DANS le pied, donc lisible a tout moment du defilement. */
+  flex-wrap: wrap;
   margin-top: var(--space-4);
   position: sticky;
   bottom: 0;
@@ -6304,6 +6314,10 @@ input.auth-input {
   background: var(--raised);
   border-top: 1px solid var(--line);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.bespoke-modal .cr-actions .bespoke-fineprint {
+  flex: 1 0 100%;
+  text-align: left;
 }
 .bespoke-modal .cr-actions .btn-primary,
 .bespoke-modal .cr-actions .btn-secondary {
@@ -6950,7 +6964,16 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* Le NOM garde le droit de passer a la ligne (aucun libelle tronque) ; c est
      le BADGE qui cesse de s exiler sur sa propre ligne. */
   #clientView .formule-card-head { gap: var(--space-2); align-items: baseline; }
-  #clientView .formule-card-title { flex-wrap: nowrap; min-width: 0; }
+  /* C EST LA PASTILLE QUI DESCEND, JAMAIS LE NOM QUI SE FEND (2026-09-03).
+     `nowrap` gardait la pastille sur la ligne du nom, mais la pastille est
+     `flex: none` : c est donc le NOM qui absorbait le manque de place. Mesure a
+     1440 : le titre disposait de 136 px pour 140 (nom 65 + gap 8 + pastille 67),
+     4 px manquants, et « FORMULE 2 » sortait en « FORMULE » puis « 2 Best
+     deal » - la carte que le centre veut vendre etait la seule a paraitre
+     cassee. En `wrap`, la repartition en lignes se fait sur la largeur NATURELLE
+     des elements : le nom garde ses 65 px et la pastille passe dessous quand,
+     et seulement quand, les 4 px manquent. */
+  #clientView .formule-card-title { flex-wrap: wrap; row-gap: 2px; min-width: 0; }
   #clientView .formule-name { min-width: 0; font-size: 13.5px; }
   #clientView .badge-best { flex: none; }
   /* Le prix rend 15 px de large au nom : c est ce qui fait tenir « BACK TO

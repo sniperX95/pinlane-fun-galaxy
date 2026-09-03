@@ -8,11 +8,19 @@
 //
 // LA REGLE REELLE DE CHAQUE ONGLET, telle qu'elle est aujourd'hui :
 //   Tout        aucun filtre
-//   Sur place   status === 'arrived'      \
-//   A venir     status === 'pending'       > TROIS ETATS EXCLUSIFS, qui se
-//   Terminees   status === 'paid'         /  totalisent exactement a « Tout »
+//   Sur place   status === 'arrived'                  \
+//   A venir     status 'pending' OU 'confirmed'        > TROIS ETATS AFFICHES,
+//   Terminees   status === 'paid'                     /  exclusifs, qui se
+//                                                        totalisent a « Tout »
 //   A gerer     status !== 'paid'            UNION de deux etats
 //   Avec note   porte une note              ATTRIBUT, vrai dans tout etat
+//
+// « A venir » n'est pas un statut, c'est une IDEE : « le groupe n'est pas
+// encore arrive ». Le produit l'ecrit de DEUX facons ('confirmed' par defaut,
+// 'pending' pour une demande en attente) et la difference est porteuse ailleurs
+// (Clients / Groupes filtre les deux separement). Trois etats AFFICHES pour
+// quatre statuts, donc, et c'est la regle que ce gate protege depuis le
+// 2026-09-03.
 //
 // Rien n'etait casse dans le filtrage : les six puces etaient peintes a
 // l'identique alors qu'elles repondent a trois questions differentes. Un gerant
@@ -77,10 +85,21 @@ function ok(cond, label, detail = '') { console.log(`${cond ? 'ok  ' : 'FAIL'}  
 
 // ---------------------------------------------------------------------------
 // LE JEU DE DONNEES. Il couvre TOUS les etats, et pas seulement ceux qui
-// arrangent : trois statuts, des notes reparties dans les trois etats (sinon
-// « Avec note » ne prouverait pas qu'il est transversal), et des reservations
-// HORS PLANNING (ni piste ni laser), qui ont leur propre section en tete de
-// liste et qui sont exactement le cas ou une ligne pourrait se dedoubler.
+// arrangent : quatre statuts, des notes reparties dans les trois etats
+// AFFICHES (sinon « Avec note » ne prouverait pas qu'il est transversal), et
+// des reservations HORS PLANNING (ni piste ni laser), qui ont leur propre
+// section en tete de liste et qui sont exactement le cas ou une ligne pourrait
+// se dedoubler.
+//
+// QUATRE STATUTS POUR TROIS ETATS AFFICHES, ET C EST LE CORRECTIF DU
+// 2026-09-03. « A venir » n est pas un statut, c est une IDEE : « le groupe
+// n est pas encore arrive ». Le produit l ecrit de deux facons - 'confirmed',
+// sa valeur par defaut, et 'pending', une demande en attente - et la difference
+// est porteuse ailleurs (la page Clients / Groupes filtre les deux
+// separement). Le jeu ne contenait AUCUN dossier 'confirmed' : les assertions
+// restaient vertes sans jamais toucher a la regle, et le jour ou le produit a
+// cesse de trier sur la seule cle 'pending', rien ici n a bouge. Un jeu qui ne
+// contient pas le cas ne teste pas la regle.
 // ---------------------------------------------------------------------------
 const JEU = [
   // id, statut, note ?, hors planning ?
@@ -96,11 +115,25 @@ const JEU = [
   { id: 70010, status: 'pending', note: '', off: false },
   { id: 70011, status: 'arrived', note: '', off: false },
   { id: 70012, status: 'paid', note: '', off: false },
+  // Les trois dossiers CONFIRMES : un ordinaire, un qui porte une note, un hors
+  // planning. Les trois formes sous lesquelles un 'confirmed' peut disparaitre.
+  { id: 70013, status: 'confirmed', note: '', off: false },
+  { id: 70014, status: 'confirmed', note: 'Anniversaire, bougies a prevoir', off: false },
+  { id: 70015, status: 'confirmed', note: '', off: true },
 ];
+// LES DEUX CLES QUI DISENT « PAS ENCORE ARRIVE ». Ecrite ici une seule fois, la
+// regle sert aux attendus ET a la lecture des sections : si le produit la
+// changeait sans la dire, ce serait le gate qui rougirait, pas l ecran du
+// gerant.
+const A_VENIR = ['pending', 'confirmed'];
+const estAVenir = (statut) => A_VENIR.includes(statut);
+// La SECTION d une ligne dans la liste du jour. Trois sections d etat pour
+// quatre statuts : 'confirmed' descend dans « A venir », comme 'pending'.
+const sectionDeStatut = (statut) => (estAVenir(statut) ? 'pending' : statut);
 const ATTENDU = {
   all: JEU.map((r) => r.id),
   arrived: JEU.filter((r) => r.status === 'arrived').map((r) => r.id),
-  pending: JEU.filter((r) => r.status === 'pending').map((r) => r.id),
+  pending: JEU.filter((r) => estAVenir(r.status)).map((r) => r.id),
   paid: JEU.filter((r) => r.status === 'paid').map((r) => r.id),
   open: JEU.filter((r) => r.status !== 'paid').map((r) => r.id),
   notes: JEU.filter((r) => r.note).map((r) => r.id),
@@ -250,6 +283,39 @@ async function main() {
     });
 
     // =====================================================================
+    console.log('\n[1bis] « À VENIR » COUVRE LES DEUX CLES QUI DISENT « PAS ENCORE ARRIVE »');
+    // =====================================================================
+    // Le produit ecrit 'confirmed' par defaut et 'pending' pour une demande en
+    // attente. Les deux disent la meme chose au comptoir. Trier sur la seule
+    // cle 'pending' les comptait dans « Tout » et ne les rendait dans aucune
+    // section : ils disparaissaient de la liste du jour. Cette section-ci est
+    // celle qui refuse ce retour en arriere.
+    const statutDe = new Map(JEU.map((r) => [r.id, r.status]));
+    const confirmes = JEU.filter((r) => r.status === 'confirmed').map((r) => r.id);
+    const enAttente = JEU.filter((r) => r.status === 'pending').map((r) => r.id);
+    const rendusAVenir = vue.pending?.ids || [];
+    ok(confirmes.length >= 2 && enAttente.length >= 2,
+      '[à venir] le jeu porte VRAIMENT les deux cles (sinon la regle ne serait pas testee)',
+      `${enAttente.length} en attente, ${confirmes.length} confirmes`);
+    const confirmesManquants = confirmes.filter((id) => !rendusAVenir.includes(id));
+    ok(confirmesManquants.length === 0, '[à venir] les dossiers CONFIRMES sont rendus par « À venir »',
+      confirmesManquants.length ? `absents : ${confirmesManquants.join(', ')}` : `${confirmes.length} rendus`);
+    const attenteManquants = enAttente.filter((id) => !rendusAVenir.includes(id));
+    ok(attenteManquants.length === 0, '[à venir] les dossiers EN ATTENTE aussi',
+      attenteManquants.length ? `absents : ${attenteManquants.join(', ')}` : `${enAttente.length} rendus`);
+    const intrus = rendusAVenir.filter((id) => !estAVenir(statutDe.get(id)));
+    ok(intrus.length === 0, '[à venir] et RIEN d autre : aucun arrive, aucun termine',
+      intrus.length ? intrus.map((id) => `${id} (${statutDe.get(id)})`).join(', ') : `${rendusAVenir.length} lignes, toutes a venir`);
+    // Et ils sont dans la SECTION « À venir » de la liste complete, pas
+    // seulement dans le filtre : c est la ou ils s etaient volatilises.
+    const sectionAVenir = (vue.all?.sections || []).find((s) => s.cle === 'pending');
+    const confirmesHorsPlanning = new Set(JEU.filter((r) => r.status === 'confirmed' && r.off).map((r) => r.id));
+    const confirmesAPlacer = confirmes.filter((id) => !confirmesHorsPlanning.has(id));
+    ok(Boolean(sectionAVenir) && confirmesAPlacer.every((id) => sectionAVenir.ids.includes(id)),
+      '[à venir] et ils descendent dans la SECTION « À venir » de la liste complete',
+      sectionAVenir ? `section a ${sectionAVenir.ids.length} lignes` : 'aucune section « À venir »');
+
+    // =====================================================================
     console.log('\n[2] L EXCLUSION : LES TROIS ETATS NE SE RECOUPENT JAMAIS');
     // =====================================================================
     const etats = ['arrived', 'pending', 'paid'];
@@ -316,7 +382,10 @@ async function main() {
     let sectionsFausses = [];
     (vue.all?.sections || []).forEach((s) => {
       s.ids.forEach((id) => {
-        const attendue = horsPlanning.has(id) ? 'offplanning' : parId.get(id);
+        // Trois sections d etat pour quatre statuts : un dossier 'confirmed'
+        // descend dans « A venir ». C est exactement ce qui manquait - il etait
+        // compte dans « Tout » et rendu dans AUCUNE section.
+        const attendue = horsPlanning.has(id) ? 'offplanning' : sectionDeStatut(parId.get(id));
         if (s.cle === attendue) sectionsJustes += 1;
         else sectionsFausses.push(`${id} dans « ${s.cle} » au lieu de « ${attendue} »`);
       });
@@ -377,12 +446,32 @@ async function main() {
     const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
     const LF = String.fromCharCode(10);
     const source = fs.readFileSync(path.join(ROOT, 'assets/app-main.js'), 'utf8').split(CRLF).join(LF);
+    // L ANCRE PORTE SUR LA DEFINITION PARTAGEE, PAS SUR UN APPELANT. Premiere
+    // version de cette contre-epreuve : l ancre citait le corps de
+    // `filterReservationsForStaff`. Le jour ou une branche y a ete inseree,
+    // l ancre est devenue introuvable et la sonde a cesse d etre injectee -
+    // precisement au moment ou le comportement changeait. Pire encore : muter
+    // ce seul filtre ne prouvait rien, les SECTIONS de la liste refiltrent de
+    // leur cote et auraient efface le debordement avant le DOM. On mute donc
+    // `isUpcomingReservationStatus`, la definition que le filtre, les sections
+    // et les compteurs partagent tous les trois : un seul endroit, trois
+    // consequences visibles.
     const mutations = [
       {
         nom: 'un etat qui deborde : « À venir » rend aussi les arrivees',
-        de: "  if (filter === 'all') return reservations;\n  return reservations.filter(r => r.status === filter);",
-        vers: "  if (filter === 'all') return reservations;\n  if (filter === 'pending') return reservations.filter(r => r.status !== 'paid');\n  return reservations.filter(r => r.status === filter);",
+        de: "function isUpcomingReservationStatus(status) {\n  return status === 'pending' || status === 'confirmed';\n}",
+        vers: "function isUpcomingReservationStatus(status) {\n  return status !== 'paid';\n}",
         attendu: /exclusion|en trop|compteurs/i,
+      },
+      {
+        // LE RETOUR EN ARRIERE, exactement celui que le lot vient de corriger :
+        // « A venir » retombe sur la seule cle 'pending' et les dossiers
+        // confirmes sortent de la liste du jour sans que « Tout » cesse de les
+        // compter.
+        nom: 'un etat qui retrograde : « À venir » oublie les dossiers confirmes',
+        de: "function isUpcomingReservationStatus(status) {\n  return status === 'pending' || status === 'confirmed';\n}",
+        vers: "function isUpcomingReservationStatus(status) {\n  return status === 'pending';\n}",
+        attendu: /compteurs|oubliee/i,
       },
       {
         nom: 'un compteur qui ment : « Terminées » compte tout',
@@ -398,7 +487,12 @@ async function main() {
       },
     ];
     for (const mutation of mutations) {
-      if (!source.includes(mutation.de)) { ok(false, `[mutation] l ancre « ${mutation.nom} » existe encore dans le source`); continue; }
+      // UNE ANCRE INTROUVABLE EST UNE GARDE MORTE, ET ELLE DOIT SE VOIR EN
+      // VERT AUTANT QU EN ROUGE. L assertion est donc ecrite, pas seulement le
+      // FAIL : le journal dit que la sonde peut encore etre injectee.
+      if (!ok(source.includes(mutation.de),
+        `[mutation] l ancre de « ${mutation.nom} » existe dans le source livre`,
+        source.includes(mutation.de) ? '' : 'ANCRE INTROUVABLE : la contre-epreuve est DESARMEE, elle ne protege plus rien')) continue;
       overrides.set('assets/app-main.js', source.replace(mutation.de, mutation.vers));
       const mutee = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       await installMock(mutee, JEU);
@@ -406,6 +500,10 @@ async function main() {
       const vm = await mesurer(mutee);
       const chipsM = vm.all?.chips || {};
       const cm = (n) => (chipsM[n] === undefined ? null : chipsM[n]);
+      // Un dossier compte dans « Tout » mais n est rendu par aucun etat : c est
+      // la disparition silencieuse, celle qui ne se voit sur aucun compteur.
+      const rendusParEtat = new Set(['arrived', 'pending', 'paid'].flatMap((e) => vm[e]?.ids || []));
+      const disparus = (vm.all?.ids || []).filter((id) => !rendusParEtat.has(id));
       const rompu =
         // exclusion cassee
         (vm.pending?.ids || []).some((id) => (vm.arrived?.ids || []).includes(id))
@@ -413,6 +511,8 @@ async function main() {
         || ((cm('Sur place') || 0) + (cm('À venir') || 0) + (cm('Terminées') || 0)) !== cm('Tout')
         // ou compteur qui n annonce pas ce qu il rend
         || cm('Terminées') !== (vm.paid?.ids || []).length
+        // ou un dossier compte quelque part et rendu nulle part
+        || disparus.length > 0
         // ou la separation des groupes disparue
         || (await mutee.evaluate(() => document.querySelectorAll('#resList .status-group-cross').length)) === 0;
       ok(rompu, `[mutation] « ${mutation.nom} » fait bien rougir la sonde`,

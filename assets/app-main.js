@@ -2288,9 +2288,15 @@ function getActiveOpsCenterId() {
   return state.adminCenterId || 'libramont';
 }
 
+// UN MONTANT EST UN SEUL MOT. L espace ordinaire qui separait le nombre du
+// symbole autorisait le navigateur a couper la ligne entre les deux : sur la
+// liste du jour en 1440 (« piste 3, 5 · 308 » puis « € » seul en dessous) et
+// sur quatre montants du mobile 390, le symbole partait a la ligne suivante et
+// le chiffre le plus regarde de la ligne se relisait deux fois. U+202F est
+// l espace fine INSECABLE : meme typographie francaise, coupure impossible.
 function formatMoney(value) {
   const amount = Math.round(Number(value) || 0);
-  return `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(amount)} €`;
+  return `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(amount)} €`;
 }
 
 function formatAdminPercent(value) {
@@ -4180,7 +4186,24 @@ function renderActivityPicker(off = []) {
   const host = document.getElementById('activityPicker');
   if (!host) return;
   const catalog = typeof getCenterActivities === 'function' ? getCenterActivities() : [];
-  if (!catalog.length) { host.innerHTML = ''; activityPickerSignature = ''; return; }
+  // CATALOGUE VIDE : un panneau litteralement vide (innerHTML de longueur 0)
+  // laissait le client devant 400 px de noir, sans un mot ni une piste. Le
+  // meme etat d attente que la venue (.s1-placeholder) dit ce qui manque et ou
+  // aller. Le libelle de l onglet vient du DOM, jamais d une chaine en dur.
+  if (!catalog.length) {
+    const ongletFormules = document.getElementById('segFormule');
+    const nomFormules = (ongletFormules && ongletFormules.textContent.trim()) || 'Nos Formules';
+    host.innerHTML = `<div class="s1-placeholder">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12.5"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <strong>Aucune activité à la carte pour ce jour</strong>
+      <span>Passez par « ${escapeHtml(nomFormules)} », ou dites-nous ce que vous cherchez.</span>
+    </div>`;
+    activityPickerSignature = '';
+    renderProgramSummary();
+    syncProgressiveReveal();
+    syncStatusDock();
+    return;
+  }
   // Le PAX fait partie de la signature : le plafond des pastilles d'enfants
   // (plaine de jeux) suit le groupe. Sans lui, un groupe passe de 4 a 6 et le
   // compteur reste borne a 4. Reconstruire au changement de groupe est sans
@@ -5365,10 +5388,25 @@ function mobileTopBack() {
   if (step > 1 && step < 5) goStep(step - 1);
 }
 
+// UNE ALERTE APPARTIENT A L ECRAN QUI L A LEVEE. Elle ne s effacait que par un
+// delai de 4,5 s : le client qui corrigeait ses champs et passait au
+// recapitulatif emmenait avec lui un reproche qui visait un ecran qu il ne
+// voyait plus, pose en position fixed par-dessus la barre d etapes (mesure a
+// 1440 : encore visible a y=66, hauteur 43 px, opacite 1). Le changement
+// d etape la vide donc, et le minuteur de la precedente est annule avec elle -
+// sinon il effacerait l alerte de l ecran d arrivee avant l heure.
+let alertBoxTimer = null;
+function clearAlert() {
+  if (alertBoxTimer) { clearTimeout(alertBoxTimer); alertBoxTimer = null; }
+  const el = document.getElementById('alertBox');
+  if (el) el.innerHTML = '';
+}
+
 function showAlert(msg) {
   const el = document.getElementById('alertBox');
+  if (alertBoxTimer) { clearTimeout(alertBoxTimer); alertBoxTimer = null; }
   el.innerHTML = `<div class="alert shake"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${escapeHtml(msg)}</div>`;
-  setTimeout(() => { el.innerHTML = ''; }, 4500);
+  alertBoxTimer = setTimeout(() => { alertBoxTimer = null; el.innerHTML = ''; }, 4500);
 }
 
 // Erreur au champ (P2-1, DESIGN.md §6) : aria-invalid → bordure --danger
@@ -5448,8 +5486,9 @@ function applyBookingAlternative(index) {
   }
   save();
   renderRecap();
-  goStep(4);
-  showAlert('Alternative appliquée. Vérifiez le récapitulatif avant confirmation.');
+  // Meme regle que les refus de confirmation : le message part AVEC l etape.
+  // L ordre etait deja juste ici ; il n est simplement plus a reinventer.
+  goStep(4, { alert: 'Alternative appliquée. Vérifiez le récapitulatif avant confirmation.' });
 }
 
 // --- Changement d'étape : la PISTE GLISSE (scène horizontale) ----------------
@@ -5509,7 +5548,18 @@ function lockStageScroll() {
 function goStep(n, options = {}) {
   const previous = Number(state.step) || 1;
   const target = document.getElementById('step' + n);
-  if (!target) return;
+  // LE MESSAGE APPARTIENT A L ECRAN D ARRIVEE, ET CE N EST PLUS A L APPELANT
+  // DE LE SAVOIR. Le changement d etape vide l alerte de l ecran qu on quitte :
+  // c est la regle, et elle est bonne. Mais trois branches de confirmBooking
+  // posaient leur explication AVANT d appeler goStep(2), donc elle etait
+  // effacee avant d avoir ete lue - mesure sur le tunnel reel :
+  // alertBox.innerHTML.length = 380 apres showAlert, 0 apres goStep(2), et le
+  // client renvoye au choix des horaires sans un mot. Un appelant qui a quelque
+  // chose a dire SUR l ecran d arrivee le confie desormais a `options.alert` :
+  // goStep vide, change d etape, puis pose. Le message survit meme a une etape
+  // introuvable (bug de code, pas une raison de laisser le client sans reponse).
+  if (!target) { if (options.alert) showAlert(options.alert); return; }
+  clearAlert();
   lockStageScroll();
   const reduce = prefersReducedMotion();
   const animate = !reduce && options.animate !== false && previous !== n;
@@ -5581,6 +5631,9 @@ function goStep(n, options = {}) {
   // Le dock telephone n'a voix qu'a l'etape 1 : il se tait des qu'on la quitte.
   if (typeof syncStatusDock === 'function') syncStatusDock();
   save();
+  // L etape d arrivee est en place : c est ici, et seulement ici, que le
+  // message de l appelant se pose. Un seul endroit, donc un seul ordre.
+  if (options.alert) showAlert(options.alert);
 }
 
 function setStep1Busy(isBusy) {
@@ -7406,7 +7459,11 @@ function openCustomRequestModal() {
   const b = state.booking || {};
   const dateInput = document.getElementById('crDate');
   const paxInput = document.getElementById('crPax');
-  if (dateInput && !dateInput.value && b.date) dateInput.value = b.date;
+  // Le champ demande une PHRASE (« Ex. samedi 12 sept. ou mi-octobre ») et part
+  // en texte libre au centre : le pre-remplir avec la valeur machine du tunnel
+  // (« 2026-09-03 ») donnait au client une date d ordinateur a relire. Meme
+  // formatage que le recapitulatif, une seule fonction pour les deux.
+  if (dateInput && !dateInput.value && b.date) dateInput.value = formatBookingDateLong(b.date);
   if (paxInput && !paxInput.value && Number(b.pax) > 0) paxInput.value = b.pax;
   setCustomRequestOccasion(b.occasion || '');
   const success = document.getElementById('bespokeSuccess');
@@ -7558,6 +7615,13 @@ function renderRecap() {
     if (totalAmount) totalAmount.textContent = `${total}€`;
   }
   const dateLabel = parseLocalDate(b.date).toLocaleDateString('fr-BE', { weekday:'long', day:'numeric', month:'long' });
+  // UNE LIGNE DU RECAP N EXISTE QUE SI ELLE A UNE VALEUR. Sans creneau retenu
+  // (retour a l ecran des heures, contexte remis a zero, session rechargee),
+  // « Horaire » s ecrivait « • 1h » sans heure de debut et « Piste assignee »
+  // sortait vide : sur le dernier ecran avant confirmation, deux lignes qui ne
+  // disent rien valent moins que deux lignes absentes.
+  const heureRetenue = String(b.startTime || '').trim();
+  const pistesAssignees = Array.isArray(b.allocatedLanes) ? b.allocatedLanes.filter(lane => lane != null && lane !== '') : [];
   const visitProgramHtml = visitProgram ? `
     <div class="recap-item recap-program-row">
       <span class="recap-label">Activités</span>
@@ -7569,10 +7633,10 @@ function renderRecap() {
     <div class="recap-item"><span class="recap-label">Client</span><span class="recap-value">${escapeHtml(b.name)}</span></div>
     <div class="recap-item"><span class="recap-label">Téléphone</span><span class="recap-value">${escapeHtml(b.phone)}</span></div>
     <div class="recap-item"><span class="recap-label">Date</span><span class="recap-value">${dateLabel}</span></div>
-    <div class="recap-item"><span class="recap-label">${formule ? 'Première activité' : 'Horaire'}</span><span class="recap-value accent">${b.startTime} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• ${b.duration}h</small></span></div>
+    ${heureRetenue ? `<div class="recap-item"><span class="recap-label">${formule ? 'Première activité' : 'Horaire'}</span><span class="recap-value accent">${escapeHtml(heureRetenue)} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• ${b.duration}h</small></span></div>` : ''}
     ${formule && b.opsPlan?.arrivalTime ? `<div class="recap-item"><span class="recap-label">Arrivée conseillée</span><span class="recap-value">${escapeHtml(b.opsPlan.arrivalTime)} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• accueil ${Number(b.opsPlan.arrivalMinutes || 10)} min avant</small></span></div>` : ''}
     <div class="recap-item"><span class="recap-label">Joueurs</span><span class="recap-value">${b.pax} personne${b.pax > 1 ? 's' : ''}</span></div>
-    ${showLanes ? `<div class="recap-item"><span class="recap-label">Piste${b.allocatedLanes.length > 1 ? 's' : ''} assignée${b.allocatedLanes.length > 1 ? 's' : ''}</span><span class="recap-value teal">${b.allocatedLanes.join(' & ')}</span></div>` : ''}
+    ${showLanes && pistesAssignees.length ? `<div class="recap-item"><span class="recap-label">Piste${pistesAssignees.length > 1 ? 's' : ''} assignée${pistesAssignees.length > 1 ? 's' : ''}</span><span class="recap-value teal">${escapeHtml(pistesAssignees.join(' & '))}</span></div>` : ''}
     ${visitProgramHtml}
     ${isLaser ? `<div class="recap-item"><span class="recap-label">Activité</span><span class="recap-value">Laser Game • ${laserOption.label}</span></div>` : ''}
     ${formule ? `<div class="recap-item"><span class="recap-label">Formule</span><span class="recap-value">${formule.name}</span></div>` : ''}
@@ -7639,8 +7703,7 @@ async function confirmBooking() {
 
   const slotCheck = validateSlotWindow(b.date, b.startTime, totalDuration);
   if (!slotCheck.ok) {
-    showAlert(slotCheck.message);
-    goStep(2);
+    goStep(2, { alert: slotCheck.message });
     await fetchSlots({ showLoading: true });
     releaseBookingSubmit();
     return;
@@ -7649,8 +7712,7 @@ async function confirmBooking() {
   if (formule) {
     const availability = getFormuleAvailability(formule, b.date, Number(b.pax), b.startTime);
     if (!availability.ok) {
-      showAlert(availability.message);
-      goStep(2);
+      goStep(2, { alert: availability.message });
       await fetchSlots({ showLoading: true });
       releaseBookingSubmit();
       return;
@@ -7666,8 +7728,7 @@ async function confirmBooking() {
       allocated.every(l => state.laneStatuses[l] !== 'maintenance');
     if (!stillFree) allocated = allocateLanes(laneCount, b.date, b.startTime, duration);
     if (!allocated) {
-      showAlert("Le créneau vient d'être pris. Merci de choisir un autre horaire.");
-      goStep(2);
+      goStep(2, { alert: "Le créneau vient d'être pris. Merci de choisir un autre horaire." });
       await fetchSlots({ showLoading: true });
       releaseBookingSubmit();
       return;
@@ -8134,6 +8195,12 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     });
   }
   const currentIndex = days.length - 1;
+  // SOMME des jours precedents de la serie (six jours quand la fenetre en
+  // compte sept), pas une moyenne : c est `revenueTrend`, juste en dessous, qui
+  // divise par leur nombre pour comparer la journee affichee a la MOYENNE de la
+  // periode. Ce trend-la sert la carte « Revenus des 7 derniers jours ». Les
+  // quatre tuiles du haut, elles, disent « vs hier » et se comparent donc toutes
+  // a la VEILLE (previousRevenueToday, plus bas).
   const previousRevenue = revenueSeries.slice(0, currentIndex).reduce((sum, value) => sum + value, 0);
   const revenueTrend = previousRevenue ? Math.round(((revenue - (previousRevenue / Math.max(currentIndex, 1))) / (previousRevenue / Math.max(currentIndex, 1))) * 100) : 0;
   const previousDate = addDays(state.currentDate, -1);
@@ -8180,6 +8247,17 @@ function formatDashboardTrend(current, previous) {
   if (!previousValue) return currentValue ? '+100%' : '0%';
   const delta = Math.round(((currentValue - previousValue) / previousValue) * 100);
   return `${delta > 0 ? '+' : ''}${delta}%`;
+}
+
+// UN POURCENTAGE CONTRE ZERO NE DIT RIEN. Quand la veille vaut 0 (centre ferme
+// le lundi, jour creux), la comparaison produit mecaniquement « +100 % » sur
+// tout ce qui bouge : trois tuiles sur quatre affichaient le meme chiffre et la
+// colonne entiere devenait illisible. Sans reference, la tuile dit la
+// reference plutot qu un rapport impossible.
+function renderDashboardKpiTrend(trendText, previousValue) {
+  return Number(previousValue) > 0
+    ? `<strong>${escapeHtml(trendText)}</strong><span>vs hier</span>`
+    : '<span>hier : 0</span>';
 }
 
 
@@ -8383,8 +8461,14 @@ function renderDashSideChartBody(host, metrics) {
     .map(([id, entry]) => {
       const formule = resolveDisplayFormule(id);
       return {
-        label: formule ? formule.name : id,
-        value: entry.count,
+        // JAMAIS L IDENTIFIANT BRUT : quand le catalogue ne connait plus la
+        // formule, la carte listait « formule3 » en minuscules entre deux vrais
+        // noms de vente.
+        label: formule ? formule.name : 'Formule non répertoriée',
+        // LA BARRE MESURE CE QU ELLE JOUXTE : elle portait le NOMBRE de
+        // reservations (1 partout un jour ordinaire, donc trois barres pleines)
+        // a cote de trois montants tres differents.
+        value: entry.revenue,
         valueText: `${entry.count} résa${entry.count > 1 ? 's' : ''} · ${formatMoney(entry.revenue)}`,
       };
     })
@@ -8497,9 +8581,9 @@ function formatMoneyShort(value) {
   if (Math.abs(amount) >= 1000) {
     const k = amount / 1000;
     const text = Number.isInteger(k) ? String(k) : k.toFixed(1).replace('.', ',');
-    return `${text}k €`;
+    return `${text}k €`;
   }
-  return `${amount} €`;
+  return `${amount} €`;
 }
 
 function renderStaffDashboardRevenue(win) {
@@ -8580,8 +8664,10 @@ function getStaffDashboardAlertDefinitions(metrics) {
       title: 'Paiement à encaisser',
       text: `${unpaidRows.length} réservation${unpaidRows.length > 1 ? 's' : ''} non payée${unpaidRows.length > 1 ? 's' : ''} · ${formatMoney(outstanding)}${onSite ? ` · ${onSite} déjà sur place` : ''}`,
       rows: unpaidRows,
+      // « les 1 client déjà sur place » : l article et le nombre etaient ecrits
+      // pour le pluriel, seul le « s » etait accorde.
       action: onSite
-        ? `Encaisser en priorité les ${onSite} client${onSite > 1 ? 's' : ''} déjà sur place, puis clôturer les réservations restantes.`
+        ? `Encaisser d'abord ${onSite > 1 ? `les ${onSite} clients déjà sur place` : 'le client déjà sur place'}, puis clôturer les réservations restantes.`
         : 'Encaisser ou clôturer les réservations restées ouvertes.'
     });
   }
@@ -8898,9 +8984,25 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
     return {
       eyebrow: 'Pilotage terrain',
       title: kind ? (visibleAlerts[0]?.title || 'Signal dashboard') : 'Alertes et notifications',
-      subtitle: visibleAlerts.length
-        ? `${visibleAlerts.length} signal${visibleAlerts.length > 1 ? 'aux' : ''} à traiter`
-        : 'Tout est à jour, rien à traiter',
+      // LE SOUS-TITRE DIT LE PERIMETRE DU PANNEAU OUVERT, ET NE COMPTE QUE CE
+      // QUI EXISTE. Sur un signal precis, il comptait les signaux VISIBLES (1)
+      // pendant que la tuile juste en dessous comptait tous les signaux actifs
+      // (2) : deux chiffres contradictoires a 80 px d ecart. Il compte donc les
+      // dossiers concernes - MAIS deux alertes n en portent aucun par
+      // construction (« Pistes en maintenance », et « N demandes sur mesure en
+      // attente » qui passe en tete par unshift) : leur perimetre n est pas un
+      // lot de reservations. Compter les dossiers y ecrivait « Aucune
+      // reservation concernee » sous un titre qui annonce justement de l argent
+      // qui attend une reponse. Sans dossier, on retombe donc sur le langage
+      // des signaux : l alerte porte deja son perimetre en toutes lettres dans
+      // son texte, juste en dessous.
+      subtitle: (() => {
+        const concernes = kind ? (visibleAlerts[0]?.rows || []).length : 0;
+        if (concernes) return `${concernes} réservation${concernes > 1 ? 's' : ''} concernée${concernes > 1 ? 's' : ''}`;
+        if (!visibleAlerts.length) return 'Tout est à jour, rien à traiter';
+        // Le pluriel de « signal » est « signaux », pas « signalaux ».
+        return `${visibleAlerts.length} ${visibleAlerts.length > 1 ? 'signaux' : 'signal'} à traiter`;
+      })(),
       stats: [
         { label: 'Alertes actives', value: String(alerts.length), note: alerts.length ? 'à traiter maintenant' : 'rien à signaler' },
         { label: 'À encaisser', value: formatMoney(outstanding), note: `${unpaidCount} réservation${unpaidCount > 1 ? 's' : ''} ouverte${unpaidCount > 1 ? 's' : ''}` },
@@ -9370,7 +9472,15 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   ensureStaffDaySeries();
   const metrics = getStaffDashboardMetrics(dayReservations);
   const d = parseLocalDate(state.currentDate);
+  // DEUX REFERENCES, DEUX NOMS. `revenueTrendText` compare la journee a la
+  // MOYENNE des jours precedents : il n a de sens que pour la carte « Revenus
+  // des 7 derniers jours », ou il sert de repli. La tuile du haut, elle, ecrit
+  // « vs hier » a cote de trois tuiles jugees sur la veille : elle se juge donc
+  // sur la veille aussi. Sans ca, un centre ferme le lundi lisait le mardi
+  // « hier : 0 » sur trois tuiles et « +1852 % vs hier » sur la quatrieme, pour
+  // une veille ou rien n avait ete vendu (mesure du 2026-09-03).
   const revenueTrendText = metrics.revenueTrend > 0 ? `+${metrics.revenueTrend}%` : `${metrics.revenueTrend}%`;
+  const revenueDayTrendText = formatDashboardTrend(metrics.revenue, metrics.previousRevenueToday);
   const reservationTrendText = formatDashboardTrend(metrics.activeReservations.length, metrics.previousReservationsCount);
   const playerTrendText = formatDashboardTrend(metrics.players, metrics.previousPlayers);
   const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.previousOccupancy);
@@ -9401,26 +9511,26 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
     <section class="dash-kpis">
       <article class="dash-kpi purple">
         <div class="dash-icon">${renderDashboardIcon('calendar')}</div>
-        <div class="dash-kpi-copy"><span>Réservations aujourd'hui</span><strong data-pl-num="dash.resa">${metrics.activeReservations.length}</strong><small>sessions piste</small></div>
-        <div class="dash-kpi-trend"><strong>${escapeHtml(reservationTrendText)}</strong><span>vs hier</span></div>
+        <div class="dash-kpi-copy"><span>Réservations</span><strong data-pl-num="dash.resa">${metrics.activeReservations.length}</strong><small>sessions piste</small></div>
+        <div class="dash-kpi-trend">${renderDashboardKpiTrend(reservationTrendText, metrics.previousReservationsCount)}</div>
         ${renderDashboardSpark(metrics.reservationSeries, 'purple')}
       </article>
       <article class="dash-kpi blue">
         <div class="dash-icon">${renderDashboardIcon('users')}</div>
-        <div class="dash-kpi-copy"><span>Joueurs aujourd'hui</span><strong data-pl-num="dash.joueurs">${metrics.players}</strong><small>personnes</small></div>
-        <div class="dash-kpi-trend"><strong>${escapeHtml(playerTrendText)}</strong><span>vs hier</span></div>
+        <div class="dash-kpi-copy"><span>Joueurs</span><strong data-pl-num="dash.joueurs">${metrics.players}</strong><small>personnes</small></div>
+        <div class="dash-kpi-trend">${renderDashboardKpiTrend(playerTrendText, metrics.previousPlayers)}</div>
         ${renderDashboardSpark(metrics.playerSeries, 'blue')}
       </article>
       <article class="dash-kpi green">
         <div class="dash-icon">${renderDashboardIcon('euro')}</div>
         <div class="dash-kpi-copy"><span>Chiffre d'affaires</span><strong data-pl-num="dash.ca">${moneyForRole(metrics.revenue)}</strong><small>${moneyForRole(metrics.collected)} validés aujourd'hui</small></div>
-        <div class="dash-kpi-trend"><strong>${escapeHtml(revenueTrendText)}</strong><span>vs hier</span></div>
+        <div class="dash-kpi-trend">${renderDashboardKpiTrend(revenueDayTrendText, metrics.previousRevenueToday)}</div>
         ${renderDashboardSpark(metrics.revenueSeries, 'green')}
       </article>
       <article class="dash-kpi orange">
         <div class="dash-icon">${renderDashboardIcon('activity')}</div>
         <div class="dash-kpi-copy"><span>Taux d'occupation</span><strong data-pl-num="dash.occupation">${metrics.occupancy}%</strong><small>${availableLanes} pistes disponibles</small></div>
-        <div class="dash-kpi-trend"><strong>${escapeHtml(occupancyTrendText)}</strong><span>vs hier</span></div>
+        <div class="dash-kpi-trend">${renderDashboardKpiTrend(occupancyTrendText, metrics.previousOccupancy)}</div>
         ${renderDashboardSpark(metrics.occupancySeries, 'orange')}
       </article>
     </section>
@@ -9492,7 +9602,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       <div><span>${renderDashboardIcon('lanes')}</span><small>Pistes disponibles</small><strong>${availableLanes} / ${TOTAL_LANES}</strong><em>${TOTAL_LANES ? Math.round((availableLanes / TOTAL_LANES) * 100) : 0}%</em></div>
       <div><span>${renderDashboardIcon('prep')}</span><small>En préparation</small><strong>${metrics.upcoming.length} session${metrics.upcoming.length > 1 ? 's' : ''}</strong></div>
       <div><span>${renderDashboardIcon('play')}</span><small>En cours</small><strong>${metrics.activeNow.length} session${metrics.activeNow.length > 1 ? 's' : ''}</strong></div>
-      <div><span>${renderDashboardIcon('check')}</span><small>Terminées</small><strong>${metrics.activeReservations.filter(r => r.status === 'paid').length} sessions</strong></div>
+      <div><span>${renderDashboardIcon('check')}</span><small>Terminées</small><strong>${metrics.activeReservations.filter(r => r.status === 'paid').length} session${metrics.activeReservations.filter(r => r.status === 'paid').length > 1 ? 's' : ''}</strong></div>
       <div><span>${renderDashboardIcon('laser')}</span><small>Lasers disponibles</small><strong>${LASER_GAME_PARALLEL_LAUNCHES} / ${LASER_GAME_PARALLEL_LAUNCHES}</strong></div>
       <div><span>${renderDashboardIcon('wrench')}</span><small>Maintenance</small><strong>${Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length}</strong></div>
     </section>
@@ -10913,7 +11023,10 @@ function renderStaffLaneBoard(model = buildStaffLaneBoardModel()) {
   const rows = model.lanes.map((item) => {
     const gapsHtml = item.gaps.map((gap) => `<button type="button" class="lane-gap" style="left:${pos(gap.start)}%;width:${Math.max(2, pos(gap.end) - pos(gap.start))}%" title="Réserver ${numToTime(gap.start)} - ${numToTime(gap.end)}" onclick="quickFromCell(${item.lane}, ${gap.start})" aria-label="Réserver la piste ${item.lane} de ${numToTime(gap.start)} à ${numToTime(gap.end)}"></button>`).join('');
     const slotsHtml = item.laneWindows.map((w) => `<button type="button" class="lane-slot" style="left:${pos(w.start)}%;width:${Math.max(2, pos(w.end) - pos(w.start))}%" title="${escapeHtml(w.reservation.name || 'Client')} · ${numToTime(w.start)} - ${numToTime(w.end)}" onclick="openStaffReservationDetail(${staffClientJs(w.reservation.id)})"></button>`).join('');
-    const strip = win.closed ? '' : `<div class="lane-strip"><span class="lane-strip-open">${numToTime(win.open)}</span>${gapsHtml}${slotsHtml}<span class="lane-strip-close">${numToTime(win.close)}</span></div>`;
+    // Les reperes d ouverture et de fermeture encadrent le ruban au lieu d y
+    // flotter : dans le ruban, un creneau qui commence a l ouverture passait
+    // par-dessus le « 14:00 » de la piste la plus chargee.
+    const strip = win.closed ? '' : `<div class="lane-strip-rail"><span class="lane-strip-open">${numToTime(win.open)}</span><div class="lane-strip">${gapsHtml}${slotsHtml}</div><span class="lane-strip-close">${numToTime(win.close)}</span></div>`;
     let statut;
     if (item.maintenance) {
       const info = item.maintInfo || {};
@@ -13709,7 +13822,10 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       eyebrow: 'Terrain',
       title: 'Formules, suivi des activités',
       subtitle: 'Cochez chaque activité au fur et à mesure : vous voyez d\'un coup d\'œil ce qui reste à faire.',
-      panelSubtitle: `${formuleRows.length} formule${formuleRows.length > 1 ? 's' : ''} sur la date · ${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} faite${totals.done > 1 ? 's' : ''}`,
+      // « 0/8 activités faite » : le pluriel de « faites » suivait le nombre de
+      // coches, pas le nombre d activites qu il qualifie. Les deux accords
+      // s indexent sur le meme mot.
+      panelSubtitle: `${formuleRows.length} formule${formuleRows.length > 1 ? 's' : ''} sur la date · ${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} faite${totals.total > 1 ? 's' : ''}`,
       secondaryAction: "openStaffMenuPage('reservations')",
       kpis: [
         ['Formules', formuleRows.length, 'sur la date'],
@@ -13721,7 +13837,12 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     };
   }
   if (page === 'sessions') {
-    const nextRows = reservations.filter(reservation => getReservationFirstResourceStart(reservation, 'all') > now && reservation.status !== 'paid').slice(0, 8);
+    // LES DEUX COLONNES SONT EXCLUSIVES. Un dossier deja arrive tombait a la
+    // fois dans « Prochain depart » (depart a venir, non paye) et dans
+    // « A cloturer » (statut arrive) : la meme carte rendue deux fois, comptee
+    // deux fois, agissable deux fois. Ce qui est arrive n a plus rien a
+    // preparer avant l arrivee.
+    const nextRows = reservations.filter(reservation => getReservationFirstResourceStart(reservation, 'all') > now && reservation.status !== 'paid' && reservation.status !== 'arrived').slice(0, 8);
     const closingRows = reservations.filter(reservation => reservation.status === 'arrived' || (getStaffResourceWindows(reservation, 'all').some(window => window.end <= now) && reservation.status !== 'paid')).slice(0, 8);
     const rows = isToday ? activeRows : openRows;
     return {
@@ -14572,7 +14693,11 @@ function getStaffEmailMetrics(rows = getStaffEmailRows()) {
   const reminders = rows.filter(row => row.templateId === 'reminder_48h').length;
   const attempted = rows.reduce((sum, row) => sum + Number(row.attempts || 0), 0);
   const deliveryBase = sent + failed;
-  const deliveryRate = deliveryBase ? Math.round((sent / deliveryBase) * 100) : 100;
+  // AUCUN ENVOI, AUCUN TAUX. La valeur par defaut etait 100, donc le bandeau
+  // affichait « 0 Envoye » surmontant « 100 % de reussite » : un taux de
+  // reussite calcule sur rien, qui se lit comme un fait. Un taux sans base
+  // n existe pas ; on renvoie l absence, et l affichage n ecrit rien.
+  const deliveryRate = deliveryBase ? Math.round((sent / deliveryBase) * 100) : null;
   return { sent, queued, failed, review, due, reminders, attempted, deliveryRate, total: rows.length };
 }
 
@@ -17960,24 +18085,22 @@ function renderReservationNoteLine(reservation) {
 // entiere de l'offre ; en icone titree, ils coutent 13px et restent lisibles
 // par la synthese vocale. Le texte complet vit dans la fiche, ou on l'ouvre
 // justement pour le lire.
-function renderCardFlags(reservation) {
+// `partiesEcrites` : la carte laser ecrit deja « Partie 1/2 » sous le nom. Y
+// remettre le marqueur « x2 », c est ecrire deux fois le meme fait sur la meme
+// carte, ce qui est exactement le defaut que `contexteSeul` corrige plus bas
+// pour les etiquettes. Restent l occasion et la note, qui n ont aucune autre
+// place sur le planning laser.
+// L ORDRE DES MARQUEURS EST UN ORDRE DE PRIORITE, PAS UN ORDRE D ECRITURE.
+// Sur la carte d une seule ligne, la piste de reference (1440px, 8 pistes,
+// 134,2px de piste) ne laisse la place qu a UN marqueur : la CSS fait donc
+// ceder les suivants (`.bk-flag:nth-child(n+2)`), et `nth-child` compte la
+// position dans le DOM. Le premier ecrit est donc le seul qui survit a la
+// carte serree, et ce doit etre celui qui change la maniere de servir : la
+// note d abord (un gateau, une allergie), l occasion ensuite, le decompte des
+// parties en dernier, parce qu il se relit sur le planning laser et dans la
+// fiche alors que la note ne se lit nulle part ailleurs sur le planning.
+function renderCardFlags(reservation, options = {}) {
   const marques = [];
-  const parties = getLaserGameCountForReservation(reservation);
-  if (parties > 1) {
-    marques.push({
-      cls: 'flag-laser',
-      label: `${parties} parties de laser`,
-      texte: `x${parties}`,
-      path: '<circle cx="12" cy="12" r="6.4"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3"/>',
-    });
-  }
-  if (getReservationOccasion(reservation) === 'birthday') {
-    marques.push({
-      cls: 'flag-birthday',
-      label: 'Anniversaire',
-      path: '<path d="M5 21h14M6 21v-6h12v6M12 9V6"/><path d="M6 15a2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0 2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0"/><circle cx="12" cy="4.4" r="1.1"/>',
-    });
-  }
   if (hasReservationNote(reservation)) {
     marques.push({
       cls: 'flag-note',
@@ -17988,6 +18111,28 @@ function renderCardFlags(reservation) {
       // ressemble a tous les autres cercles avec un point. Une bulle de message
       // ne peut se confondre avec rien, et elle dit ce qu'elle est.
       path: '<path d="M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z"/><path d="M8.4 8.6h7.6M8.4 11.8h4.8"/>',
+    });
+  }
+  // DEUX VOCABULAIRES, PAS UN. `getReservationOccasion` rend une OCCASION
+  // declaree (`anniversaire`, `entreprise`, `ecole`...), pendant que `birthday`
+  // est la CATEGORIE staff que `getStaffGroupDeclaredCategory` en deduit. La
+  // comparaison portait sur la categorie : aucune occasion ne pouvait jamais
+  // l egaler, donc le marqueur anniversaire n a jamais atteint une seule carte,
+  // meme sur les pistes assez larges pour l afficher.
+  if (getReservationOccasion(reservation) === 'anniversaire') {
+    marques.push({
+      cls: 'flag-birthday',
+      label: 'Anniversaire',
+      path: '<path d="M5 21h14M6 21v-6h12v6M12 9V6"/><path d="M6 15a2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0 2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0"/><circle cx="12" cy="4.4" r="1.1"/>',
+    });
+  }
+  const parties = getLaserGameCountForReservation(reservation);
+  if (parties > 1 && !options.partiesEcrites) {
+    marques.push({
+      cls: 'flag-laser',
+      label: `${parties} parties de laser`,
+      texte: `x${parties}`,
+      path: '<circle cx="12" cy="12" r="6.4"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3"/>',
     });
   }
   if (!marques.length) return '';
@@ -18340,8 +18485,12 @@ function renderKpis() {
   // Sans 'payments.view', le montant cede la place a un tiret : jamais a un
   // zero, qui serait un fait, et un fait faux.
   const seesMoney = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.view');
-  document.getElementById('kpiRev').textContent = seesMoney ? revTotal + '€' : '···';
-  document.getElementById('kpiCollected').textContent = seesMoney ? revColl + '€ validés' : '···';
+  // UN SEUL FORMAT MONETAIRE dans la console : formatMoney pose l espace avant
+  // l euro. Ces deux points l ecrivaient a la main (« 781€ », « 308€ validés »)
+  // a cote de tuiles qui, elles, passaient par formatMoney (« 781 € ») : deux
+  // typographies pour la meme donnee, sur des ecrans consecutifs.
+  document.getElementById('kpiRev').textContent = seesMoney ? formatMoney(revTotal) : '···';
+  document.getElementById('kpiCollected').textContent = seesMoney ? `${formatMoney(revColl)} validés` : '···';
   document.getElementById('kpiOcc').textContent = occ + '%';
 }
 
@@ -18744,6 +18893,14 @@ function renderLaserPlanning() {
       const pillHtml = `
         <span class="laser-card-pills">
           ${renderDelayIndicator(reservation)}
+          ${/* LA CONSIGNE EXISTE AUSSI SUR LE PLANNING LASER. La carte laser ne
+               fabriquait aucun marqueur : une note (« gateau a 18h », « un
+               joueur sourd ») et une occasion n apparaissaient que sur le
+               planning bowling, alors que l arene est le seul ecran que
+               l equipe regarde pendant un lancement. Meme fonction, memes
+               12px titres, meme lecture vocale ; seul le nombre de parties est
+               retire, la carte l ecrit deja sous le nom. */''}
+          ${renderCardFlags(reservation, { partiesEcrites: true })}
           ${isFormulaGroup ? '<span class="laser-card-pill formula">Formule</span>' : '<span class="laser-card-pill direct">Direct</span>'}
           ${/* PAS DE PASTILLE « P1/2 » : le libelle de la carte dit deja
                « Partie 1/2 » juste au-dessus. Movsar, 2026-08-27 : « la ya trop
@@ -18951,15 +19108,42 @@ function releaseDeadNoteFilter() {
   }
 }
 
+// UN DOSSIER « A VENIR », C EST DEUX CLES DE STATUT. Le produit ecrit
+// 'confirmed' par defaut (getStaffGroupStatusKey) et 'pending' pour une demande
+// en attente : les deux disent « le groupe n est pas encore arrive ». Trier sur
+// la seule cle 'pending' comptait les dossiers dans « Tout » et ne les rendait
+// dans aucune section - ils disparaissaient de la liste du jour. Une seule
+// definition, partagee par tout ce qui trie ou allume l etat.
+function isUpcomingReservationStatus(status) {
+  return status === 'pending' || status === 'confirmed';
+}
+
+// LA LECTURE ET L ECRITURE PARTAGENT LA MEME DEFINITION D ETAT. Le bouton
+// « Confirme » s allume pour 'pending' comme pour 'confirmed' (une seule idee :
+// le groupe n est pas encore arrive), mais son clic ecrivait toujours
+// 'pending' : sur un dossier deja 'confirmed', un bouton DEJA enfonce changeait
+// la donnee sans que rien ne bouge a l ecran. Or la difference entre les deux
+// statuts est PORTEUSE - la page Clients / Groupes filtre « Confirmes »
+// separement de « En attente » (getStaffGroupStatusKey, getFilteredStaffGroup-
+// Rows), et 'confirmed' est la valeur par defaut du produit. On ne fusionne
+// donc pas les deux statuts : on rend l ECRITURE idempotente. Un bouton deja
+// enfonce n ecrit rien.
+function reservationAlreadyInStatus(reservation, status) {
+  const courant = reservation && reservation.status;
+  if (isUpcomingReservationStatus(status)) return isUpcomingReservationStatus(courant);
+  return courant === status;
+}
+
 function filterReservationsForStaff(reservations, filter) {
   if (filter === 'open') return reservations.filter(r => r.status !== 'paid');
   if (filter === 'notes') return reservations.filter(hasReservationNote);
   if (filter === 'all') return reservations;
+  if (filter === 'pending') return reservations.filter(r => isUpcomingReservationStatus(r.status));
   return reservations.filter(r => r.status === filter);
 }
 
 function getStaffStatusCounts(reservations) {
-  const pending = reservations.filter(r => r.status === 'pending').length;
+  const pending = reservations.filter(r => isUpcomingReservationStatus(r.status)).length;
   const arrived = reservations.filter(r => r.status === 'arrived').length;
   const paid = reservations.filter(r => r.status === 'paid').length;
   return {
@@ -18996,7 +19180,7 @@ function renderReservationRow(r) {
   // dont « Arrivé » est actif, c'est la même information écrite deux fois à
   // 8px d'écart. Sur une réservation payée, elle porte le MONTANT : là, elle
   // apporte, et elle reste.
-  const stateText = r.status === 'paid' ? `${r.price}€ payé` : '';
+  const stateText = r.status === 'paid' ? `${formatMoney(r.price)} payé` : '';
   const timeLabel = resourceWindows.length ? formatClockDisplay(resourceWindows[0].start) : r.startTime;
   const parties = getLaserGameCountForReservation(r);
   const totalBowlingHours = getBowlingTotalHoursForReservation(r);
@@ -19031,7 +19215,11 @@ function renderReservationRow(r) {
   // paie sans ouvrir la fiche (prix d ami, offre sur mesure).
   const rowExtrasSum = (r.extras || []).reduce((sum, extra) => sum + (Number(extra.price) || 0), 0);
   const rowReference = (Number(r.basePrice) || 0) + rowExtrasSum;
-  const rowCustomPrice = r.status !== 'paid' && rowReference > 0 && Math.abs((Number(r.price) || 0) - rowReference) > 0.5;
+  // LE GESTE COMMERCIAL RESTE ECRIT UNE FOIS ENCAISSE. La pastille disparaissait
+  // au passage en 'paid', c est-a-dire exactement quand « ce dossier a ete
+  // negocie » devient une donnee de caisse. Elle reste donc, et cede seulement
+  // le MONTANT a la pastille d etat quand celle-ci le porte deja.
+  const rowCustomPrice = rowReference > 0 && Math.abs((Number(r.price) || 0) - rowReference) > 0.5;
 
   // La ligne reste COMPACTE (Movsar 2026-08-25 : « pas des grosses cartes
   // longues avec plein d informations ») : offre, etat, occasion, note.
@@ -19049,7 +19237,7 @@ function renderReservationRow(r) {
     <div class="res-c-what">
       <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
       ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
-      ${rowCustomPrice ? `<span class="res-state-pill custom-price" title="Prix ajusté par l'équipe (référence ${Math.round(rowReference)}€)">Prix ajusté ${Math.round(Number(r.price) || 0)}€</span>` : ''}
+      ${rowCustomPrice ? `<span class="res-state-pill custom-price" title="Prix ajusté par l'équipe (référence ${formatMoney(rowReference)})">${stateText ? `Prix ajusté (référence ${formatMoney(rowReference)})` : `Prix ajusté ${formatMoney(r.price)}`}</span>` : ''}
       ${renderReservationTags(r, { contexteSeul: true })}
       ${renderReservationNoteLine(r)}
     </div>
@@ -19058,7 +19246,7 @@ function renderReservationRow(r) {
     </div>
     <div class="res-c-state" onclick="event.stopPropagation()">
       <div class="res-status-row compact">
-        <button class="res-status-btn ${r.status === 'pending' ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending', event)">Confirmé</button>
+        <button class="res-status-btn ${isUpcomingReservationStatus(r.status) ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending', event)">Confirmé</button>
         <button class="res-status-btn ${r.status === 'arrived' ? 'active arrived' : ''}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>
         <button class="res-status-btn ${r.status === 'paid' ? 'active paid' : ''}" onclick="setReservationStatusDirect(${r.id}, 'paid', event)">Payé</button>
       </div>
@@ -19181,7 +19369,7 @@ function renderTable() {
   // tête : elles n'apparaissent sur aucune grille, donc c'est ICI ou nulle part.
   const offPlanningRows = view === 'all' ? filtered.filter(isOffPlanningReservation) : [];
   const offPlanningIds = new Set(offPlanningRows.map(r => r.id));
-  const inStatus = status => filtered.filter(r => r.status === status && !offPlanningIds.has(r.id));
+  const inStatus = status => filtered.filter(r => (status === 'pending' ? isUpcomingReservationStatus(r.status) : r.status === status) && !offPlanningIds.has(r.id));
   const sections = [
     { key: 'offplanning', title: 'Hors planning', subtitle: "Ni piste bowling ni zone laser : visibles nulle part ailleurs", rows: offPlanningRows },
     { key: 'arrived', title: 'Sur place', subtitle: 'Clients présents, à suivre maintenant', rows: inStatus('arrived') },
@@ -19235,6 +19423,8 @@ function setReservationStatusDirect(id, status, ev) {
     toast('Réservation introuvable.');
     return;
   }
+  // Le dossier est deja dans l etat que le bouton demande : rien a ecrire.
+  if (reservationAlreadyInStatus(current, status)) return;
   // Anti double-envoi : même statut déjà en vol → on ignore. La résa affiche
   // déjà la valeur voulue (optimiste), inutile de re-PATCH.
   if (isReservationMutationInFlight(id, 'status', status)) return;
@@ -19645,7 +19835,7 @@ function renderPosDetails(r) {
           : `À encaisser · ${escapeHtml(method)}`}</span>
       </div>
       <div class="res-status-row pos-act-row">
-        <button type="button" class="res-status-btn pending ${r.status === 'pending' ? 'active pending' : ''}" aria-pressed="${r.status === 'pending'}" onclick="setReservationStatusDirect(${r.id}, 'pending')">Confirmé</button>
+        <button type="button" class="res-status-btn pending ${isUpcomingReservationStatus(r.status) ? 'active pending' : ''}" aria-pressed="${isUpcomingReservationStatus(r.status)}" onclick="setReservationStatusDirect(${r.id}, 'pending')">Confirmé</button>
         <button type="button" class="res-status-btn arrived ${r.status === 'arrived' ? 'active arrived' : ''}" aria-pressed="${r.status === 'arrived'}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>
         <button type="button" class="res-status-btn paid ${r.status === 'paid' ? 'active paid' : ''}" aria-pressed="${r.status === 'paid'}" onclick="setReservationStatusDirect(${r.id}, 'paid')">Payé</button>
       </div>
@@ -20340,13 +20530,18 @@ function renderPosCaisse(r) {
         <div class="title">${escapeHtml(receiptName)}</div>
         <div style="color:var(--text-3);font-size:11px;margin-top:4px;">Ticket #${String(r.id).slice(-5)}</div>
       </div>
+      ${/* UN MONTANT, UNE TYPOGRAPHIE, SUR LA MEME FENETRE. Le sous-titre de
+           cette fiche passe par getPosIdentityParts, donc par formatMoney, et
+           rend « 308 € » (espace fine insecable) ; le ticket ecrivait « 308€ »
+           colle a quelques dizaines de pixels de la. Meme donnee, meme
+           fonction : c est formatMoney qui arrondit et qui pose l espace. */''}
       <div>
-        <div class="receipt-line"><span style="font-weight:700;flex:1;">${escapeHtml(getReservationLabel(r))}</span><span style="font-weight:700;">${basePrice}€</span></div>
-        ${extras.map((ex, i) => `<div class="receipt-line" style="color:var(--text-2);"><div style="display:flex;align-items:center;gap:6px;flex:1;">${r.status !== 'paid' ? `<button class="extra-rm" onclick="removeExtra(${i})">&times;</button>` : ''}<span>${ex.name}</span></div><span>${ex.price}€</span></div>`).join('')}
+        <div class="receipt-line"><span style="font-weight:700;flex:1;">${escapeHtml(getReservationLabel(r))}</span><span style="font-weight:700;">${formatMoney(basePrice)}</span></div>
+        ${extras.map((ex, i) => `<div class="receipt-line" style="color:var(--text-2);"><div style="display:flex;align-items:center;gap:6px;flex:1;">${r.status !== 'paid' ? `<button class="extra-rm" onclick="removeExtra(${i})">&times;</button>` : ''}<span>${ex.name}</span></div><span>${formatMoney(ex.price)}</span></div>`).join('')}
       </div>
       <div class="receipt-total">
         <span class="lbl">TOTAL${hasCustomPrice ? ' <em class="receipt-custom">prix ajusté</em>' : ''}</span>
-        <span class="amount">${total}€${hasCustomPrice ? `<small class="receipt-ref">réf. ${Math.round(referencePrice)}€</small>` : ''}</span>
+        <span class="amount">${formatMoney(total)}${hasCustomPrice ? `<small class="receipt-ref">réf. ${formatMoney(referencePrice)}</small>` : ''}</span>
       </div>
       ${priceEditorHtml}
       ${r.status === 'paid' ? `<div class="paid-overlay">
@@ -20358,7 +20553,7 @@ function renderPosCaisse(r) {
     ${r.status !== 'paid' ? `
       <div style="font-size:10px;color:var(--text-3);font-weight:800;letter-spacing:0.12em;text-transform:uppercase;padding-bottom:10px;border-bottom:1px solid var(--border);">Upsell rapide</div>
       <div class="upsell-grid">
-        ${UPSELL_CATALOG.map(u => `<button class="upsell-btn" onclick="addExtra('${u.id}')"><div class="n">${u.name}</div><div class="p">+ ${u.price}€</div></button>`).join('')}
+        ${UPSELL_CATALOG.map(u => `<button class="upsell-btn" onclick="addExtra('${u.id}')"><div class="n">${u.name}</div><div class="p">+ ${formatMoney(u.price)}</div></button>`).join('')}
       </div>
       <div style="text-align:center;font-size:10px;color:var(--text-3);font-weight:800;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Encaisser</div>
       <div class="pay-grid">
@@ -20539,7 +20734,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = unitaire * joueurs;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${unitaire} €/pers × ${joueurs}`, montant });
+      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${unitaire} €/pers × ${joueurs}`, montant });
       return;
     }
     const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
@@ -20719,7 +20914,7 @@ function majEditPrixEstime() {
     // en « 17 » et rend le champ inutilisable.
     const champPersonne = document.getElementById('editPricePerPerson');
     if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(parPersonne);
-    ligne.textContent = `${estime.complet ? '' : 'À partir de '}${facture} € · ${parPersonne} €/personne (${joueurs} joueur${joueurs > 1 ? 's' : ''})`
+    ligne.textContent = `${estime.complet ? '' : 'À partir de '}${facture} € · ${parPersonne} €/personne (${joueurs} joueur${joueurs > 1 ? 's' : ''})`
       + (estime.complet ? '' : ' · certaines activités se règlent sur place');
   }
 }
@@ -20807,10 +21002,10 @@ function renderEditFormuleBloc(r, formule, lignes) {
   // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
   // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
   const detailHtml = estime && estime.lignes.length
-    ? `<ul class="edit-prix-detail">${estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round(l.montant)} €`}</b></li>`).join('')}</ul>`
+    ? `<ul class="edit-prix-detail">${estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round(l.montant)} €`}</b></li>`).join('')}</ul>`
     : '';
   const prixLigne = estime
-    ? `${estime.complet ? '' : 'À partir de '}${factureAffichee} € · ${Math.round(factureAffichee / joueursActuels)} €/personne (${joueursActuels} joueur${joueursActuels > 1 ? 's' : ''})${estime.complet ? '' : ' · certaines activités se règlent sur place'}`
+    ? `${estime.complet ? '' : 'À partir de '}${factureAffichee} € · ${Math.round(factureAffichee / joueursActuels)} €/personne (${joueursActuels} joueur${joueursActuels > 1 ? 's' : ''})${estime.complet ? '' : ' · certaines activités se règlent sur place'}`
     : '';
   const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
   const modifie = editProgramAChange();
@@ -20830,7 +21025,7 @@ function renderEditFormuleBloc(r, formule, lignes) {
     </div>
     <div class="edit-prix-estime" id="editPrixEstime">${escapeHtml(prixLigne)}</div>
     ${detailHtml}
-    ${reference > 0 ? `<div class="qb-field-note">Référence catalogue : ${Math.round(reference)} €</div>` : ''}
+    ${reference > 0 ? `<div class="qb-field-note">Référence catalogue : ${Math.round(reference)} €</div>` : ''}
     <div class="qb-field-note">${modifie ? 'Les activités seront replanifiées à l\'enregistrement. ' : ''}Ne change QUE ce dossier : la formule du centre et le formulaire de réservation en ligne ne bougent pas.</div>
   </div>`;
 }
@@ -23441,7 +23636,7 @@ function getPosIdentityParts(r) {
   // mention, un montant plus bas que la formule affichee passe pour une erreur.
   if (Number(r.price) >= 0 && (Number(r.price) > 0 || getReservationPriceGap(r) !== 0)) {
     const ajuste = getReservationPriceGap(r) !== 0;
-    parts.push(`${Number(r.price) || 0} €${ajuste ? ' (prix ajusté)' : ''}`);
+    parts.push(`${Number(r.price) || 0} €${ajuste ? ' (prix ajusté)' : ''}`);
   }
   return parts;
 }

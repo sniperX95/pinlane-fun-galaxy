@@ -102,6 +102,7 @@
     // atterrissait (bug vidéo). La transition est neutralisée le temps de
     // poser la position, puis rendue au CSS.
     root.querySelectorAll('.pv2-seg').forEach((seg) => {
+      syncSegFade(seg);
       const active = seg.querySelector('button.active');
       const pill = seg.querySelector('.pv2-seg-pill');
       if (!active) return;
@@ -113,6 +114,22 @@
         pill.style.transition = '';
       }
     });
+  }
+
+  /* Le segmente defile chez lui sous 768 px, mais sa barre de defilement est
+     masquee : a 390 px sur Tarifs, le contenu mesurait 558 px dans une bande
+     de 366 px et « Speciales » finissait a 567 px, hors champ, sans que RIEN
+     ne l annonce. `can-scroll-x` allume le fondu de bord, et seulement s il
+     reste vraiment du contenu a droite : sinon il annoncerait un ailleurs qui
+     n existe pas. Meme mecanique que le segmente de la page Emails.
+     L ecouteur est pose SUR le noeud : il meurt avec lui a la reconstruction
+     suivante, donc il ne s accumule pas. */
+  function syncSegFade(seg) {
+    if (!seg) return;
+    seg.classList.toggle('can-scroll-x', seg.scrollWidth - seg.clientWidth - seg.scrollLeft > 4);
+    if (seg.dataset.segFadeBound === '1') return;
+    seg.dataset.segFadeBound = '1';
+    seg.addEventListener('scroll', () => syncSegFade(seg), { passive: true });
   }
 
   /* ── MOUVEMENT DE LA PAGE EMAILS ────────────────────────────────────────────
@@ -567,26 +584,68 @@
       }).join('')
       : `<div class="pv2-empty"><strong>Journée libre</strong>Aucune réservation active sur cette date.</div>`;
 
+    // UNE VARIATION SE COMPARE A QUELQUE CHOSE. Quand le mois de reference ne
+    // contient AUCUNE reservation, getStaffReservationsTrend rend « +100% » sur
+    // tout ce qui est non nul : trois tuiles sur quatre affichaient la meme
+    // pastille verte, qui ne mesurait rien. Rien n est plus honnete qu une
+    // absence de pastille : la regle porte sur la periode de reference, pas sur
+    // la tuile, donc les quatre suivent la meme.
+    const refPeriodeVide = !metrics.previousReservations.length;
+    const varia = (texte) => (refPeriodeVide ? '' : texte);
+
+    // Une courbe de tendance a besoin d une TENDANCE. Sur une serie ou un seul
+    // jour est rempli, le trace est un pic isole sur une ligne plate : il
+    // occupe 38 px par tuile et ne dit rien. On ne le passe qu a partir de
+    // trois points non nuls, ou une forme commence a exister.
+    const courbe = (serie) => (Array.isArray(serie) && serie.filter((v) => Number(v) > 0).length >= 3 ? serie : null);
+
+    // OCCUPATION : le denominateur n est PAS celui du planning. Le planning
+    // rapporte les heures-pistes vendues aux heures-pistes ouvertes DU JOUR
+    // (16% sur la journee chargee) ; cette tuile les rapporte a celles du MOIS
+    // entier. Les deux sont justes, mais un « 0% » nu a cote d un « 16% » se
+    // lit comme une contradiction. Deux corrections : le pied nomme le
+    // denominateur, et un taux non nul arrondi a zero s ecrit « < 1% » au
+    // lieu de « 0% », qui affirmait un centre vide.
+    // Ce qui prouve l arrondi, c est le NUMERATEUR, pas le nombre de
+    // reservations : un mois de laser seul ne vend aucune heure-piste, son 0%
+    // est exact et « < 1% » y serait faux. La serie `occupancy` porte
+    // justement les heures-pistes vendues jour par jour (getStaffReservations-
+    // DailySeries, metrique laneHours) : leur somme est le numerateur du taux.
+    // Non nulle avec un taux arrondi a 0 = le taux a ete rabote, et c est le
+    // seul cas ou « < 1% » dit la verite.
+    const heuresPistesVendues = (Array.isArray(metrics.series.occupancy) ? metrics.series.occupancy : [])
+      .reduce((somme, valeur) => somme + (Number(valeur) || 0), 0);
+    const occupationNulleMaisActive = metrics.occupancy === 0 && heuresPistesVendues > 0;
+
     const paint = () => {
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
         crumb: 'Opérations / Réservations',
         title: 'Réservations',
         sub: `${esc(sync)}${staffReservationsDataCache.error ? ' · <span style="color:var(--v2-amber)">API indisponible</span>' : ''}`,
+        // Les trois boutons de mois forment UN controle : ils sont groupes pour
+        // que la barre ait un bloc a poser sur sa propre ligne quand l ecran se
+        // resserre. Sans ce groupe, « + Reservation » retombait seul a gauche
+        // d un second rang (mesure a 390 px : x=12, y=214, barre a 96 px de
+        // haut). Rien ne change au bureau : meme inline-flex, meme gouttiere.
         actions: `
-          <button type="button" class="pv2-btn" onclick="shiftStaffReservationsMonth(-1)" aria-label="Mois précédent">‹</button>
-          <button type="button" class="pv2-btn" onclick="openStaffReservationsMonthPicker()">${esc(monthLabel)}</button>
-          <input id="staffReservationsMonthPicker" type="month" value="${esc(range.monthKey)}" onchange="setStaffReservationsMonthFromPicker(this.value)" style="position:absolute;opacity:0;pointer-events:none" aria-label="Choisir un mois">
-          <button type="button" class="pv2-btn" onclick="shiftStaffReservationsMonth(1)" aria-label="Mois suivant">›</button>
+          <div class="pv2-month-nav">
+            <button type="button" class="pv2-btn" onclick="shiftStaffReservationsMonth(-1)" aria-label="Mois précédent">‹</button>
+            <button type="button" class="pv2-btn" onclick="openStaffReservationsMonthPicker()">${esc(monthLabel)}</button>
+            <input id="staffReservationsMonthPicker" type="month" value="${esc(range.monthKey)}" onchange="setStaffReservationsMonthFromPicker(this.value)" style="position:absolute;opacity:0;pointer-events:none" aria-label="Choisir un mois">
+            <button type="button" class="pv2-btn" onclick="shiftStaffReservationsMonth(1)" aria-label="Mois suivant">›</button>
+          </div>
           <button type="button" class="pv2-btn" onclick="refreshStaffReservations()">Actualiser</button>
           <button type="button" class="pv2-btn primary" onclick="openStaffReservationsQuick()">+ Réservation</button>`,
       })}
 
       <section class="pv2-stats">
-        ${stat({ label: 'Réservations ce mois', count: metrics.reservations, delta: metrics.reservationTrend, deltaTone: trendTone(metrics.reservationTrend), series: metrics.series.reservations })}
-        ${stat({ label: 'Joueurs ce mois', count: metrics.players, delta: metrics.playersTrend, deltaTone: trendTone(metrics.playersTrend), series: metrics.series.players })}
-        ${stat({ label: "Chiffre d'affaires", value: (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view')) ? '···' : money(metrics.revenue), delta: metrics.revenueTrend, deltaTone: trendTone(metrics.revenueTrend), series: metrics.series.revenue })}
-        ${stat({ label: 'Occupation moyenne', count: metrics.occupancy, suffix: '%', delta: metrics.occupancyTrend, deltaTone: trendTone(metrics.occupancyTrend), series: metrics.series.occupancy })}
+        ${stat({ label: 'Réservations ce mois', count: metrics.reservations, delta: varia(metrics.reservationTrend), deltaTone: trendTone(metrics.reservationTrend), series: courbe(metrics.series.reservations) })}
+        ${stat({ label: 'Joueurs ce mois', count: metrics.players, delta: varia(metrics.playersTrend), deltaTone: trendTone(metrics.playersTrend), series: courbe(metrics.series.players) })}
+        ${stat({ label: "Chiffre d'affaires", value: (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view')) ? '···' : money(metrics.revenue), delta: varia(metrics.revenueTrend), deltaTone: trendTone(metrics.revenueTrend), series: courbe(metrics.series.revenue) })}
+        ${occupationNulleMaisActive
+          ? stat({ label: 'Occupation moyenne', value: '< 1%', delta: varia(metrics.occupancyTrend), deltaTone: trendTone(metrics.occupancyTrend), foot: 'capacité pistes du mois', series: courbe(metrics.series.occupancy) })
+          : stat({ label: 'Occupation moyenne', count: metrics.occupancy, suffix: '%', delta: varia(metrics.occupancyTrend), deltaTone: trendTone(metrics.occupancyTrend), foot: 'capacité pistes du mois', series: courbe(metrics.series.occupancy) })}
       </section>
 
       <section class="pv2-split">
@@ -4040,7 +4099,10 @@
         ${pipe('all', 'Tout', 'Tout', allRows.length, '', { paren: true })}
         ${pipe('inbound', 'Reçu', 'Reçus', inboundRows.length, inboundWaiting ? plural(inboundWaiting, 'sans réponse', 'sans réponse') : '')}
         ${pipe('queued', 'En attente', 'En attente', metrics.queued, plural(metrics.due || 0, 'prêt à partir', 'prêts à partir'))}
-        ${pipe('sent', 'Envoyé', 'Envoyés', metrics.sent, `${metrics.deliveryRate || 0} % de réussite`)}
+        ${/* Le taux de réussite ne s'écrit que s'il a une base : sans aucun
+             envoi ni aucun échec, `deliveryRate` vaut null et le segment reste
+             muet, au lieu d'annoncer « 100 % de réussite » sous un « 0 ». */''}
+        ${pipe('sent', 'Envoyé', 'Envoyés', metrics.sent, metrics.deliveryRate == null ? '' : `${metrics.deliveryRate} % de réussite`)}
         ${pipe('failed', 'Échec', 'Échecs', metrics.failed, plural(metrics.attempted || 0, 'tentative d’envoi', 'tentatives d’envoi'))}
         ${pipe('review', 'À valider', 'À valider', metrics.review, '')}
       </section>
@@ -8159,16 +8221,21 @@
           <span><strong>${money(Number(row.revenue || 0) / Number(row.count))}</strong> panier</span>
         </div>`
       : '<div class="pv2-price-stats pv2-price-stats-empty">Aucune réservation liée</div>';
-    // Pied de carte : une seule ligne, l'action du CENTRE en premier (celle de
-    // tous les jours), les deux actions de catalogue ensuite, et la suppression
-    // reduite a une icone en bout de ligne. Quatre boutons de meme poids sur
-    // deux rangs faisaient un pave illisible (Movsar, capture).
+    // Pied de carte : l'action du CENTRE en premier (celle de tous les jours),
+    // les deux actions de catalogue ensuite, la suppression reduite a une icone.
+    // Les trois actions d'edition vivent dans .pev-foot-main : c'est ce groupe
+    // qui se replie, dans la colonne souple de la grille, pendant que la
+    // corbeille garde SA colonne. Sans lui, le flex-wrap posait la corbeille
+    // seule a l'extreme droite d'un troisieme rang (mesure : pied 239x77,
+    // enfants a y=11/13/49, corbeille a x=209 y=49).
     const actions = isFormula ? `<div class="pev-card-foot">
+        <div class="pev-foot-main">
         <button type="button" class="pv2-btn primary" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Tarif du centre</button>
         ${canManage ? `
         <button type="button" class="pv2-btn sm" data-cev-steps="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
-        <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>
-        <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-cev-delete="${escJs(view.sourceId)}" title="Supprimer du catalogue" aria-label="Supprimer ${esc(view.title || 'cette formule')} du catalogue" onclick="event.stopPropagation();cevDelete('${escJs(view.sourceId)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>` : ''}
+        <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>` : ''}
+        </div>
+        ${canManage ? `<button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-cev-delete="${escJs(view.sourceId)}" title="Supprimer du catalogue" aria-label="Supprimer ${esc(view.title || 'cette formule')} du catalogue" onclick="event.stopPropagation();cevDelete('${escJs(view.sourceId)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>` : ''}
       </div>` : '';
     return `<article class="pv2-price-card ${selected ? 'selected' : ''}${view.removed ? ' pev-removed' : ''}"
       ${isFormula ? `data-cev-formula="${escJs(view.sourceId)}"` : ''} onclick="pv2SelectPricing('${escJs(row.id)}')">
@@ -8505,7 +8572,7 @@
       </div>
       <div class="pev-badges">${badges}</div>
       ${canManage ? `<div class="pev-card-foot">
-        <button type="button" class="pv2-btn sm" data-aev-edit="${escJs(activity.id)}" onclick="aevOpenEdit('${escJs(activity.id)}')">Modifier</button>
+        <div class="pev-foot-main"><button type="button" class="pv2-btn sm" data-aev-edit="${escJs(activity.id)}" onclick="aevOpenEdit('${escJs(activity.id)}')">Modifier</button></div>
         <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-aev-delete="${escJs(activity.id)}" title="Retirer du catalogue" aria-label="Retirer ${esc(activity.name)} du catalogue" onclick="aevDelete('${escJs(activity.id)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
       </div>` : ''}
     </article>`;

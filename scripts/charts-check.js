@@ -333,9 +333,19 @@ async function runSuite(browser, quiet) {
         });
       });
 
+      // L ESPACE AVANT L EURO EST UNE ESPACE FINE INSECABLE (U+202F), PAS UNE
+      // ESPACE ORDINAIRE, et elle s ecrit en ECHAPPEMENT parce que le caractere
+      // est invisible dans un editeur. La bibliotheque s est alignee sur
+      // formatMoney (app-main.js) le 2026-09-03 : les deux ecrivent le meme
+      // montant sur le meme ecran, ils doivent l ecrire au meme octet. Les
+      // attendus de ce gate etaient restes en espace ordinaire, donc quatre
+      // checks comparaient « 1 234 € » a « 1 234 € », identiques a l oeil et
+      // differents en octets. C est la reference qui suit la regle, jamais
+      // l inverse.
       const nf = new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 });
-      out.expectedEuro720 = `${nf.format(720)} €`;
-      out.expectedEuro1234 = `${nf.format(D.countValue)} €`;
+      const euro = (v) => `${nf.format(v)}\u202F€`;
+      out.expectedEuro720 = euro(720);
+      out.expectedEuro1234 = euro(D.countValue);
       return out;
     }, DATA);
 
@@ -457,7 +467,8 @@ async function runSuite(browser, quiet) {
       };
     }, host);
 
-    const euro120 = `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(120)} €`;
+    // U+202F, l espace fine insecable : voir la note sur `euro()` plus haut.
+    const euro120 = `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(120)}\u202F€`;
     let lineTipLast = { text: '', opacity: 0, hovering: false };
     let lineTipFirst = { text: '', opacity: 0 };
     let lineTipLeave = { opacity: 1 };
@@ -618,7 +629,8 @@ async function runSuite(browser, quiet) {
       out.heatMax = fills[2 * 10 + 3] ? parseFloat(getComputedStyle(fills[2 * 10 + 3]).opacity) : NaN;
       out.countText = g('hostCount').textContent;
       out.countPercentText = g('hostCountPercent').textContent;
-      out.expectedEuro = `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(D.countValue)} €`;
+      // U+202F, l espace fine insecable : voir la note sur `euro()` plus haut.
+      out.expectedEuro = `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(D.countValue)}\u202F€`;
       return out;
     }, DATA);
     ok(rm.threw.length === 0, 'rm-sans-exception', rm.threw.join(' | '));

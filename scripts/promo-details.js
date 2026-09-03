@@ -357,73 +357,74 @@ function contrasteDesBords(fichier) {
   );
 }
 
-// Trouve le PLUS PETIT element qui contient le texte et depasse les minimums.
-// Le plus petit, parce que le texte cherche apparait aussi dans les ancetres :
-// viser le plus grand ramenerait la page entiere.
-async function capturer(page, cle, texte, opts = {}) {
-  const minW = opts.minW || 150, minH = opts.minH || 70;
-  const MARGE = opts.marge === undefined ? MARGE_DEF : opts.marge;
-  const info = await page.evaluate(([needle, mw, mh, marge]) => {
+// UNE CIBLE SE DESIGNE PAR CE QUI NE BOUGE PAS, PAS PAR CE QU'ELLE DIT.
+//
+// Ce script visait ses cartes par leur LIBELLE. Un libelle est de la copie : il
+// se reecrit a chaque passe de polish sans que personne y voie un contrat.
+// Mesure du 2026-09-03 : « Reservations aujourd'hui » et « Joueurs aujourd'hui »
+// sont devenus « Reservations » et « Joueurs » (assets/app-main.js), et les deux
+// cibles sont devenues introuvables d'un coup. Or ces deux tuiles portent depuis
+// toujours un identifiant STABLE, pose pour ca : `data-pl-num="dash.resa"` et
+// `data-pl-num="dash.joueurs"`. On vise donc l'ANCRE quand il en existe une, et
+// on garde le texte pour ce qui n'en a pas.
+//
+// Dans les deux cas la regle de choix est la meme : le PLUS PETIT element qui
+// porte la cible et depasse les minimums. Le plus petit, parce que la cible
+// appartient aussi a tous les ancetres : viser le plus grand ramenerait la page
+// entiere.
+//
+// Le corps de la recherche etait ecrit DEUX FOIS a l'identique (une passe avant
+// le defilement, une apres). Deux copies, c'est deux endroits ou ajouter la
+// notion d'ancre, donc un jour une seule des deux. Une seule fonction.
+async function mesurerCible(page, cible, mw, mh, marge, defiler) {
+  return page.evaluate(([c, m1, m2, mg, scroll]) => {
     const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/\s+/g, ' ').trim().toLowerCase();
-    const want = norm(needle);
+    const want = c.ancre ? '' : norm(c.texte);
+    const porte = c.ancre
+      ? (e) => e.matches(c.ancre) || Boolean(e.querySelector(c.ancre))
+      : (e) => norm(e.textContent).includes(want);
     const el = [...document.querySelectorAll('*')]
       .filter((e) => {
         const r = e.getBoundingClientRect();
-        if (r.width < mw || r.height < mh) return false;
+        if (r.width < m1 || r.height < m2) return false;
         const st = getComputedStyle(e);
         if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) < .2) return false;
-        return norm(e.textContent).includes(want);
+        return porte(e);
       })
       .sort((a, b) => {
         const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
         return (ra.width * ra.height) - (rb.width * rb.height);
       })[0];
     if (!el) return null;
-    el.scrollIntoView({ block: 'center', inline: 'center' });
+    if (scroll) el.scrollIntoView({ block: 'center', inline: 'center' });
     const r = el.getBoundingClientRect();
     // getBoundingClientRect tient DEJA compte du zoom CSS : ces coordonnees
     // sont directement celles du viewport, aucun facteur a appliquer.
     return {
-      x: Math.max(0, Math.round(r.left - marge)),
-      y: Math.max(0, Math.round(r.top - marge)),
-      w: Math.round(Math.min(r.width + marge * 2, window.innerWidth - Math.max(0, r.left - marge))),
-      h: Math.round(Math.min(r.height + marge * 2, window.innerHeight - Math.max(0, r.top - marge))),
+      x: Math.max(0, Math.round(r.left - mg)),
+      y: Math.max(0, Math.round(r.top - mg)),
+      w: Math.round(Math.min(r.width + mg * 2, window.innerWidth - Math.max(0, r.left - mg))),
+      h: Math.round(Math.min(r.height + mg * 2, window.innerHeight - Math.max(0, r.top - mg))),
       brutW: Math.round(r.width), brutH: Math.round(r.height),
       dedans: r.top >= -1 && r.bottom <= window.innerHeight + 1,
       apercu: norm(el.textContent).slice(0, 70),
     };
-  }, [texte, minW, minH, MARGE]);
+  }, [cible, mw, mh, marge, defiler]);
+}
 
-  if (!info) { RATES.push(`${cle} : « ${texte} » introuvable`); console.log(`   MANQUE ${cle}`); return null; }
+async function capturer(page, cle, texte, opts = {}) {
+  const minW = opts.minW || 150, minH = opts.minH || 70;
+  const MARGE = opts.marge === undefined ? MARGE_DEF : opts.marge;
+  // `opts.ancre` : un selecteur CSS qui survit a la copie. Le troisieme argument
+  // reste alors le NOM lisible de la cible, pour le journal et pour details.js.
+  const cible = opts.ancre ? { ancre: opts.ancre } : { texte };
+  const designation = opts.ancre ? `« ${texte} » (ancre ${opts.ancre})` : `« ${texte} »`;
+  const info = await mesurerCible(page, cible, minW, minH, MARGE, true);
+
+  if (!info) { RATES.push(`${cle} : ${designation} introuvable`); console.log(`   MANQUE ${cle}`); return null; }
   await page.waitForTimeout(360);           // le defilement doit se poser
-  const r2 = await page.evaluate(([needle, mw, mh, marge]) => {
-    const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/\s+/g, ' ').trim().toLowerCase();
-    const want = norm(needle);
-    const el = [...document.querySelectorAll('*')]
-      .filter((e) => {
-        const r = e.getBoundingClientRect();
-        if (r.width < mw || r.height < mh) return false;
-        const st = getComputedStyle(e);
-        if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) < .2) return false;
-        return norm(e.textContent).includes(want);
-      })
-      .sort((a, b) => {
-        const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
-        return (ra.width * ra.height) - (rb.width * rb.height);
-      })[0];
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.round(r.left - marge)),
-      y: Math.max(0, Math.round(r.top - marge)),
-      w: Math.round(Math.min(r.width + marge * 2, window.innerWidth - Math.max(0, r.left - marge))),
-      h: Math.round(Math.min(r.height + marge * 2, window.innerHeight - Math.max(0, r.top - marge))),
-      brutW: Math.round(r.width), brutH: Math.round(r.height),
-      dedans: r.top >= -1 && r.bottom <= window.innerHeight + 1,
-    };
-  }, [texte, minW, minH, MARGE]);
+  const r2 = await mesurerCible(page, cible, minW, minH, MARGE, false);
   const box = r2 || info;
 
   if (!box.dedans) { RATES.push(`${cle} : deborde du viewport (${box.brutW}x${box.brutH})`); }
@@ -582,10 +583,16 @@ async function capturer(page, cle, texte, opts = {}) {
     console.log("VUE D'ENSEMBLE");
     await go('dashboard');
     await page.waitForTimeout(600);
-    await capturer(page, 'dash-resa', 'Réservations aujourd', { minW: 250, minH: 80 });
-    await capturer(page, 'dash-joueurs', 'Joueurs aujourd', { minW: 250, minH: 80 });
-    await capturer(page, 'dash-occup', "Taux d'occupation", { minW: 250, minH: 60 });
-    await capturer(page, 'dash-donut', '38 réservations aujourd', { minW: 150, minH: 150 });
+    // Les deux tuiles de tete se visent par leur identifiant, pas par leur
+    // libelle : c'est lui qui a change le 2026-09-03 (« Réservations aujourd'hui »
+    // -> « Réservations »), pas la donnee qu'elles portent.
+    await capturer(page, 'dash-resa', 'tuile Réservations', { minW: 250, minH: 80, ancre: '[data-pl-num="dash.resa"]' });
+    await capturer(page, 'dash-joueurs', 'tuile Joueurs', { minW: 250, minH: 80, ancre: '[data-pl-num="dash.joueurs"]' });
+    await capturer(page, 'dash-occup', 'tuile Taux d\'occupation', { minW: 250, minH: 60, ancre: '[data-pl-num="dash.occupation"]' });
+    // Le mix d'activites : sa carte porte une classe, son libelle porte un
+    // compte (« 38 ») qui depend du jeu de demonstration. La classe survit aux
+    // deux.
+    await capturer(page, 'dash-donut', 'mix d\'activités', { minW: 150, minH: 150, ancre: '.dash-activity-mix' });
     await capturer(page, 'dash-encaisser', 'Paiement à encaisser', { minW: 250, minH: 60 });
 
     console.log('EMAILS');

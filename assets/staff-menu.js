@@ -1350,8 +1350,16 @@
     root.querySelector('[data-fgx-group="planning"]')?.classList.toggle('active', planningActive);
     root.querySelector('[data-fgx-group="field"]')?.classList.toggle('active', fieldActive);
     root.querySelector('[data-fgx-group="activities"]')?.classList.toggle('active', activitiesActive);
+    // UN MENU NE MENT PAS SUR L'ENDROIT OU L'ON EST. L'ouverture ne suivait que
+    // l'etat memorise : sur Pistes ou Laser Game, le groupe « Activites &
+    // tarifs » restait REPLIE (max-height 0, opacite 0 - mesure) alors qu'il
+    // portait la surbrillance, et le sous-item reellement actif (`lanes`,
+    // `laserGame`) etait invisible. L'utilisateur voyait le nom du GROUPE
+    // allume en croyant lire celui de sa page. Le groupe qui contient la page
+    // ouverte est donc toujours deplie ; les autres suivent la memoire.
     root.querySelectorAll('[data-fgx-menu-toggle]').forEach(button => {
-      applyMenuGroupOpen(button, isMenuGroupOpen(button.dataset.fgxMenuToggle), { animate: false });
+      const contientLaPageActive = button.classList.contains('active');
+      applyMenuGroupOpen(button, isMenuGroupOpen(button.dataset.fgxMenuToggle) || contientLaPageActive, { animate: false });
     });
 
     if (directStaffPageActive) {

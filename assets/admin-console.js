@@ -1719,7 +1719,7 @@ function renderAdminReservationsTable(reservations = [], title = 'Réservations 
       </div>
     </div>
     ${rows.length ? `<div class="admin-table-wrap"><table class="admin-table">
-      <thead><tr><th>Heure</th><th>Client</th><th>Offre</th><th>Ressources</th><th>Engagement</th><th>Statut</th><th>Montant</th><th>Risque</th></tr></thead>
+      <thead><tr><th class="admin-cell-tight">Heure</th><th>Client</th><th>Offre</th><th>Ressources</th><th>Engagement</th><th>Statut</th><th class="admin-cell-tight">Montant</th><th>Risque</th></tr></thead>
       <tbody>
         ${rows.map(reservation => {
           const isFormula = reservation.type === 'formule' || reservation.formuleId;
@@ -1729,13 +1729,13 @@ function renderAdminReservationsTable(reservations = [], title = 'Réservations 
           const riskTone = risk === 'critical' ? 'danger' : (risk === 'high' || risk === 'warning' || needsReview) ? 'warn' : '';
           const riskLabel = getAdminRiskLabel(reservation);
           return `<tr>
-            <td><strong>${escapeHtml(reservation.startTime || '--:--')}</strong><br>${escapeHtml(formatDurationLabel(reservation.totalDuration || reservation.duration || 0))}</td>
+            <td class="admin-cell-tight"><strong>${escapeHtml(reservation.startTime || '--:--')}</strong><br>${escapeHtml(formatDurationLabel(reservation.totalDuration || reservation.duration || 0))}</td>
             <td><strong>${escapeHtml(reservation.name || 'Client')}</strong><br>${escapeHtml(reservation.phone || '')}</td>
             <td><span class="admin-pill ${isFormula ? 'formule' : isLaser ? 'laser' : ''}">${escapeHtml(getReservationLabel(reservation))}</span><br>${Number(reservation.pax || 0)} joueur(s)</td>
             <td>${getAdminResourceHtml(reservation)}</td>
             <td>${renderAdminGuestOpsCell(reservation)}</td>
             <td><span class="admin-pill ${escapeHtml(reservation.status || 'pending')}">${escapeHtml(getAdminStatusLabel(reservation.status))}</span></td>
-            <td><strong>${formatMoney(reservation.price)}</strong><br>${escapeHtml(reservation.paymentMethod || 'Sur place')}</td>
+            <td class="admin-cell-tight"><strong>${formatMoney(reservation.price)}</strong><br>${escapeHtml(reservation.paymentMethod || 'Sur place')}</td>
             <td><span class="admin-pill ${riskTone}">${escapeHtml(riskLabel)}</span></td>
           </tr>`;
         }).join('')}
@@ -1956,6 +1956,14 @@ const DIR_KPIS = [
 // inclut la vue, donc la premiere apparition d'une vue anime ses graphes).
 // L'ordre = la lecture. La vue Activite absorbe desormais le board personnalisable
 // (ex-vue 'analyse') : grille de graphes ancres ENRICHIE + analyse libre.
+// Les 5 vues sont TOUJOURS offertes. Les masquer selon le nombre de centres a
+// ete tente puis retire (2026-09-03) : `when: () => getAdminCenters().length >= 2`
+// supprimait « Mes centres » au premier rendu, quand la liste des centres n'a
+// pas encore repondu et que getAdminCenters() retombe sur un repli filtre. La
+// pastille clignotait donc (absente puis presente), le deep-link 'centres'
+// retombait sur la synthese, et le gate direction-cockpit-check sortait en
+// erreur fatale sur le clic de la pastille absente. Une destination stable vaut
+// mieux qu'un ecran d'attente economise.
 const DIR_VIEW_META = [
   { key: 'synthese', label: 'Synthèse' },
   { key: 'activite', label: 'Activité' },
@@ -2403,24 +2411,43 @@ function dirRetentionInner() {
   if (!ret || !ret.loaded) return '<div class="dir-note dir-note-loading">Chargement des donnees clients...</div>';
   if (ret.error) return dirNoteHtml('Donnees clients momentanement indisponibles. Elles reviendront au prochain rafraichissement.');
   const data = ret.data || {};
-  const seg = data.segment || {};
-  const newCount = Number(seg.new) || 0;
-  const returning = Number(seg.returning) || 0;
-  const unique = Number(seg.unique) || 0;
+  // UN CHAMP ABSENT N'EST PAS UN ZERO. `Number(seg.new) || 0` transformait une
+  // donnee MANQUANTE en un zero presente comme mesure : la vue Clients
+  // annoncait « Clients uniques 0 · Nouveaux 0 · Deja venus 0 » pendant que la
+  // vue Activite, meme centre et meme periode, lisait 2 / 0 / 2 et que le Top
+  // clients juste au-dessus listait deux clients a 30 visites. Les taux
+  // voisins savaient deja dire « n/d » ; les trois compteurs s'alignent sur
+  // eux. Quand la repartition entiere manque, on le DIT au lieu d'aligner six
+  // zeros credibles.
+  const seg = data.segment && typeof data.segment === 'object' ? data.segment : {};
+  const nombre = (valeur) => (valeur == null ? null : Number(valeur));
+  const newCount = nombre(seg.new);
+  const returning = nombre(seg.returning);
+  const unique = nombre(seg.unique);
   const returningRate = seg.returningRate == null ? null : Number(seg.returningRate);
+  // « n/d », comme les taux et les paniers de la meme grille : une seule facon
+  // de dire « pas de mesure », sinon la grille parle deux langues.
+  const entier = (valeur) => (valeur == null || !Number.isFinite(valeur) ? 'n/d' : dirFormatValue(valeur, 'int'));
   const segStats = [
-    { label: 'Clients uniques', value: dirFormatValue(unique, 'int') },
-    { label: 'Nouveaux', value: dirFormatValue(newCount, 'int') },
-    { label: 'Déjà venus', value: dirFormatValue(returning, 'int') },
+    { label: 'Clients uniques', value: entier(unique) },
+    { label: 'Nouveaux', value: entier(newCount) },
+    { label: 'Déjà venus', value: entier(returning) },
     { label: 'Taux de fidélité', value: returningRate == null ? 'n/d' : formatAdminPercent(returningRate) },
     { label: 'Panier moyen nouveaux', value: seg.avgBasketNew == null ? 'n/d' : formatMoney(seg.avgBasketNew) },
     { label: 'Panier moyen récurrents', value: seg.avgBasketReturning == null ? 'n/d' : formatMoney(seg.avgBasketReturning) },
   ].map((stat) => `<div class="dir-ret-stat"><span class="dir-ret-stat-label">${escapeHtml(stat.label)}</span><span class="dir-ret-stat-value">${escapeHtml(stat.value)}</span></div>`).join('');
-  const hasSegment = (newCount + returning) > 0;
+  const hasSegment = ((newCount || 0) + (returning || 0)) > 0;
+  // AUCUNE mesure du segment n'est arrivee : ni compteur, ni taux, ni panier.
+  // Six tuiles de zeros affirmeraient un centre sans clients ; une ligne dit la
+  // verite, qui est qu'on ne sait pas.
+  const aucuneMesure = unique == null && newCount == null && returning == null
+    && returningRate == null && seg.avgBasketNew == null && seg.avgBasketReturning == null;
   const segBlock = `<div class="dir-ret-seg">
     <h3 class="dir-card-title">Nouveaux vs récurrents</h3>
-    ${hasSegment ? '<div class="dir-ret-seg-chart" id="dirRetChart" aria-hidden="true"></div>' : dirNoteHtml('Pas encore de répartition clients sur cette période.')}
-    <div class="dir-ret-stats">${segStats}</div>
+    ${aucuneMesure
+      ? dirNoteHtml('Répartition clients indisponible pour cette période.')
+      : `${hasSegment ? '<div class="dir-ret-seg-chart" id="dirRetChart" aria-hidden="true"></div>' : dirNoteHtml('Pas encore de répartition clients sur cette période.')}
+    <div class="dir-ret-stats">${segStats}</div>`}
   </div>`;
 
   const lapsed = Array.isArray(data.lapsed) ? data.lapsed.slice() : [];

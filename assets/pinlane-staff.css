@@ -2490,13 +2490,56 @@ button.staff-date-label:focus-visible,
    et son texte cède tout seul quand la place manque : base zéro + croissance,
    aucun seuil décidé à l'avance. */
 .booking.dens-xs .bk-time { display: none; }
-/* LES MARQUEURS ONT UN RANG, COMME TOUT LE RESTE. En `dens-xs` la tête est en
-   `display: contents` : ses enfants entrent DANS la ligne unique et disputent
-   la place au nom. Ajoutés sans rang, ils décalaient de 12 à 27px des planchers
-   calculés au pixel, et le contenu sortait de la carte (mesuré : 117px dans une
-   carte de 105px). Ils partent donc en premier, avec les étiquettes : une
-   consigne se lit dans la fiche, un nom ne se lit nulle part ailleurs. */
-.booking.dens-xs .bk-flags { display: none; }
+/* LES MARQUEURS ONT UN RANG, COMME TOUT LE RESTE, MAIS ILS CEDENT UN PAR UN.
+   En `dens-xs` la tête est en `display: contents` : ses enfants entrent DANS la
+   ligne unique et disputent la place au nom. Ajoutés sans rang, ils décalaient
+   de 12 à 27px des planchers calculés au pixel, et le contenu sortait de la
+   carte (mesuré : 117px dans une carte de 105px). Ils cèdent donc avant les
+   chiffres. MAIS ILS NE PARTENT PAS D'OFFICE, pour la raison écrite six lignes
+   plus haut à propos de l'offre : la forme « une seule ligne » se décide sur la
+   HAUTEUR, pas sur la largeur. Le rang s'exprime en PLANCHER, comme les autres.
+   UN PLANCHER UNIQUE POSÉ SUR LA BOÎTE LES FAISAIT TOUS PARTIR ENSEMBLE, ET
+   C'EST LE CORRECTIF DU 2026-09-03. Il valait 152px, calibré sur le cas le plus
+   cher : deux marqueurs dont un chiffré, 35,4px. Sur la piste de référence
+   (1440px, 8 pistes, 134,2px de piste) une simple bulle de note, qui coûte 12px,
+   disparaissait avec eux alors qu'il restait 25px de libre. Movsar, 2026-09-03 :
+   la petite icône de note ne se voit nulle part.
+   LE BUDGET DE LA LIGNE SE MESURE, SUR LA CARTE LA PLUS CHARGÉE. Balayage de la
+   largeur de fenêtre de 1300 à 1620px sur le jeu de cartes hostile du gate
+   `planning-matrix` (carte de 30 min, 11 joueurs, une note) : la place libre de
+   sa ligne vaut `piste - 126,2px`, soit 8px à 134,2px de piste. Une bulle de
+   12px n'y entre donc pas, et c'est ce qui a fait rougir le gate d'un
+   débordement de 9px à la première version de ce correctif.
+   CE QUI LIBÈRE LA PLACE, C'EST LA DURÉE, ET ELLE EST LA SEULE À POUVOIR CEDER
+   SANS RIEN PERDRE : sur une carte d'une seule ligne, la durée est TOUJOURS
+   celle du plus court créneau, elle se lit déjà dans la hauteur de la carte et
+   dans son infobulle de plage horaire. La consigne, elle, ne se lit nulle part
+   ailleurs sur le planning. La durée cède donc devant un marqueur, et seulement
+   quand la carte en porte un (`:has(.bk-flags)`), en dessous de la largeur où
+   les deux tiennent ensemble : mesuré 144px de piste (débordement 1px à 141,6px,
+   0px à 142,8px). Au-dessus, rien n'est retiré : les deux sont là.
+   Les marqueurs cèdent ensuite du dernier au premier, chacun à son propre coût
+   (12px la bulle, 23,4px le marqueur laser qui porte un chiffre, 5px de
+   gouttière, 3px entre deux bulles) :
+   - une bulle, durée cédée : 17px de ligne pour `piste - 97,2` → 114px ;
+   - deux bulles, durée revenue au-dessus de 144px : 27px de marqueurs → 159px,
+     première largeur mesurée à débordement nul (1px à 156,6px, 0px à 159,1px) ;
+   - les trois avec le laser : 58,4px → 185px.
+   `renderCardFlags` les écrit dans l'ordre de ce qui change la manière de
+   servir : la note d'abord, l'occasion ensuite, le nombre de parties en dernier.
+   Le survivant de la ligne serrée est ainsi toujours la consigne. */
+@container piste (max-width: 185px) {
+  .booking.dens-xs .bk-flag.flag-laser { display: none; }
+}
+@container piste (max-width: 159px) {
+  .booking.dens-xs .bk-flag:nth-child(n+2) { display: none; }
+}
+@container piste (max-width: 144px) {
+  .booking.dens-xs:has(.bk-flags) .bk-dur { display: none; }
+}
+@container piste (max-width: 114px) {
+  .booking.dens-xs .bk-flags { display: none; }
+}
 /* Même raison pour le séparateur : il ne dit rien que la gouttière ne dise
    déjà, et ses 7px suffisaient à faire sortir le contenu de 4px sur une piste
    de 130px. Ce qui cède en premier est l'emphase, jamais la donnée. */
@@ -2571,16 +2614,32 @@ button.staff-date-label:focus-visible,
    - pastille de progression : 83px de contenu → il faut 107px de piste (10,7em) ;
      c'est du suivi terrain, elle a son écran, elle part la première ;
    - marqueurs : nom 4ch (28) + 5 + marqueurs (23) + 5 + état (11) = 72px de
-     contenu → 96px de piste (9,6em) ; la consigne se lit dans la fiche ;
+     contenu → 96px de piste ; la consigne se lit dans la fiche ;
    - séparateur : purement décoratif, il cède dès que la ligne se resserre.
-   En `em`, parce que la police passe de 10 à 12px en fenêtre agrandie. */
-@container piste (max-width: 10.7em) {
+   EN `px`, ET C'EST LE CORRECTIF DU 2026-09-03. Ces trois planchers étaient
+   écrits en `em` « parce que la police de la carte passe de 10 à 12px en
+   fenêtre agrandie ». Mais un `em` dans une requête de conteneur ne se résout
+   PAS sur la police de l'élément visé : il se résout sur celle du CONTENEUR
+   interrogé, ici `.lane-col`, qui vaut 14px et ne bouge ni en fenêtre agrandie
+   ni ailleurs. Prouvé par sonde : à 134,2px de piste les marqueurs restent
+   masqués avec `.lane-col` à 14px comme à 28px, et réapparaissent dès qu'on
+   passe `.lane-col` à 7px : ni la racine (16px) ni la carte (11px) ne
+   décident. 9,6em valait donc 134,4px au lieu des 96px calculés, et sur le
+   planning 8 pistes en 1440px (piste = 134,2px, la configuration par défaut)
+   AUCUN marqueur n'atteignait jamais l'écran : ni la note, ni l'anniversaire,
+   ni le nombre de parties de laser. Movsar, 2026-09-03 : la petite icône de
+   note ne se voit nulle part. L'`em` ne protégeait rien qu'un `px` ne protège :
+   on écrit donc les planchers dans l'unité qui a servi à les calculer.
+   Le séparateur n'a jamais eu de plancher calculé ; on écrit celui qui
+   s'applique aujourd'hui (12em × 14px = 168px) pour que les trois règles se
+   lisent dans la même unité, sans rien changer à ce qui est rendu. */
+@container piste (max-width: 107px) {
   .booking .activity-pill { display: none; }
 }
-@container piste (max-width: 9.6em) {
+@container piste (max-width: 96px) {
   .booking .bk-flags { display: none; }
 }
-@container piste (max-width: 12em) {
+@container piste (max-width: 168px) {
   .booking .bk-sep { display: none; }
 }
 /* RANG 2 : LA DURÉE, sur la carte d'une seule ligne, où le nom, l'offre, l'état
@@ -5465,8 +5524,36 @@ body.dashboard-detail-open { overflow: hidden; }
 .utility-res-card.pending { border-left: 2px solid var(--info); }
 .utility-res-card.arrived { border-left: 2px solid var(--warning); }
 .utility-res-card.paid { border-left: 2px solid var(--success); opacity: 0.8; }
-.utility-res-card.compact { grid-template-columns: 66px minmax(0, 1fr) auto; padding: 8px 10px; }
-.utility-res-card.compact .utility-res-meta { display: none; }
+/* LA CARTE COMPACTE NE TIENT PAS LES TROIS COLONNES DE LA CARTE LARGE.
+   Elle n'est utilisee que dans les colonnes du tableau « En cours », larges de
+   354px, soit 328px de carte. Sur ces trois colonnes, les boutons prenaient
+   169px (leur contenu, incompressible) et l'heure 66px : il restait 47px au
+   nom, donc 4 a 8 lignes d'un mot chacune, la fin du nom passait sous les
+   boutons et les cinq `<small>` etaient tronques. Balayage de la largeur de
+   colonne : la forme a trois colonnes ne cesse de casser le nom qu'a partir de
+   610px de colonne (302px pour le bloc central), largeur qu'aucun agencement du
+   tableau ne produit. La carte prend donc la forme deja utilisee sur telephone,
+   qui, elle, rend correctement : deux colonnes, et les boutons sur leur propre
+   rangee. Le bloc central recupere alors toute la largeur restante. */
+.utility-res-card.compact { grid-template-columns: 56px minmax(0, 1fr); padding: 8px 10px; row-gap: 4px; }
+/* L EFFECTIF NE SE CACHE PAS. « Combien de personnes arrivent » est la premiere
+   question du comptoir. La carte compacte supprimait le bloc entier
+   (display:none mesure sur 5/5 cartes de « En cours ») : la surface ou la
+   question se pose le plus etait la seule a ne pas y repondre. On REPLIE le
+   bloc sur une ligne sous le nom au lieu de l effacer : meme donnee, une
+   rangee de plus, aucune colonne en moins. */
+.utility-res-card.compact .utility-res-time { grid-column: 1; grid-row: 1 / span 2; }
+.utility-res-card.compact .utility-res-main { grid-column: 2; grid-row: 1; }
+.utility-res-card.compact .utility-res-actions { grid-column: 1 / -1; grid-row: 3; justify-content: flex-end; padding-top: 2px; }
+.utility-res-card.compact .utility-res-meta {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+}
 
 .utility-res-time { display: grid; gap: 2px; text-align: center; }
 .utility-res-time strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
@@ -5489,9 +5576,20 @@ body.dashboard-detail-open { overflow: hidden; }
 .utility-res-actions .utility-action { min-height: 28px; padding: 0 10px; font-size: 12px; }
 
 /* Rush board + accueil */
-.utility-rush-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); align-items: start; }
+/* UNE COLONNE VIDE NE RECLAME PAS SA PART. Les trois colonnes se partageaient
+   la largeur a parts strictement egales : « Maintenant » gardait 354px pour
+   une seule phrase dans un cadre pointille pendant que la colonne voisine
+   entassait quatre cartes ecrasees. Ce qui decide de la largeur, c'est le
+   contenu : la colonne qui rend son etat vide se replie sur ce que son texte
+   demande (231px mesures) et rend le reste aux colonnes chargees, qui passent
+   de 354 a 416px. C'est le contenu de la colonne qui declenche la regle, pas
+   son rang ni son titre : n'importe laquelle des trois se replie si elle est
+   celle qui est vide. */
+.utility-rush-board { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-start; }
 
 .utility-rush-column {
+  flex: 1 1 320px;
+  min-width: 0;
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3);
@@ -5499,6 +5597,8 @@ body.dashboard-detail-open { overflow: hidden; }
   border-radius: var(--radius-md);
   background: var(--page);
 }
+
+.utility-rush-column:has(.utility-mini-empty) { flex: 0 1 auto; }
 
 .utility-section-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 2px 2px 4px; }
 .utility-section-head strong { font-size: 13px; font-weight: 600; }
@@ -5543,15 +5643,34 @@ body.dashboard-detail-open { overflow: hidden; }
 .lane-row.is-busy .lane-dot { background: var(--accent); }
 .lane-row.is-maintenance .lane-dot { background: var(--warning); }
 .lane-row-status { font-size: 12.5px; margin-bottom: 5px; }
-.lane-strip { position: relative; height: 16px; border-radius: 8px; background: var(--subtle); overflow: hidden; }
+/* LES REPÈRES HORAIRES SORTENT DU RUBAN. Posés en absolu DANS le ruban, ils
+   passaient sous les créneaux : `.lane-slot` est en `z-index: 2`, eux en 1, et
+   une piste dont la première réservation commence à l'ouverture recouvrait son
+   propre « 14:00 » (mesuré : sur Piste 1, le label à x=415,7 y=268,6 l=28,5
+   chevauchait 1 créneau ; les pistes 2 à 8, occupées plus tard, non). Les
+   remonter au-dessus du créneau aurait échangé un texte illisible contre un
+   créneau troué. Ils prennent donc leur place à côté du ruban, où rien ne peut
+   les couvrir, et le ruban garde toute sa largeur pour la journée. */
+.lane-strip-rail { display: flex; align-items: center; gap: 6px; container-type: inline-size; container-name: reglette; }
+/* ET LES REPERES CEDENT AVANT LE RUBAN, comme partout ailleurs : ce qui part en
+   premier est la reference, jamais la donnee. Sortis du ruban, ils lui prennent
+   69px (28,5 + 6 + 6 + 28,5). Sur la page Pistes en 390px la reglette ne fait
+   que 40,3px de large : les garder y aurait ramene le ruban a 0px, c est-a-dire
+   supprime la journee pour afficher ses bornes. Plancher CALCULE : 69px de
+   reperes + les 40,3px que le ruban occupe deja sur ce format = 110px de
+   reglette. En dessous, le ruban reprend toute la largeur et rend exactement ce
+   qu il rendait avant ce correctif ; les heures d ouverture restent lisibles
+   dans la ligne d etat juste au-dessus. */
+@container reglette (max-width: 110px) {
+  .lane-strip-open, .lane-strip-close { display: none; }
+}
+.lane-strip { position: relative; flex: 1; min-width: 0; height: 16px; border-radius: 8px; background: var(--subtle); overflow: hidden; }
 .lane-row.is-maintenance .lane-strip { background: repeating-linear-gradient(45deg, var(--subtle), var(--subtle) 6px, transparent 6px, transparent 12px); }
 .lane-strip-open, .lane-strip-close {
-  position: absolute; top: 50%; transform: translateY(-50%);
+  flex: none;
   font-family: var(--font-data); font-size: 9.5px; color: var(--muted);
-  pointer-events: none; z-index: 1;
+  pointer-events: none;
 }
-.lane-strip-open { left: 4px; }
-.lane-strip-close { right: 4px; }
 .lane-slot, .lane-gap { position: absolute; top: 0; bottom: 0; border: 0; padding: 0; cursor: pointer; }
 .lane-slot { background: var(--accent); border-radius: 4px; opacity: 0.85; min-width: 6px; z-index: 2; }
 .lane-slot:hover { opacity: 1; }
@@ -7954,9 +8073,16 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-price-desc:empty { display: none; }
 .pv2-price-tags { display: flex; flex-wrap: wrap; gap: 5px; }
 
+/* UNE VALEUR NE SE COUPE PAS EN DEUX. Sans flex-wrap la ligne restait sur un
+   rang et c est le CONTENU qui cassait : « 234 » puis « € » dessous, mesure a
+   47 px de haut pour une police de 11,5 px, soit deux lignes dans chaque span.
+   On autorise le rang a se replier ET on interdit la coupure a l interieur
+   d une valeur : la ligne passe sur deux rangs entiers au lieu de couper les
+   montants. */
 .pv2-price-stats {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
   margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--line);
@@ -7966,6 +8092,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   color: var(--faint);
 }
 
+.pv2-price-stats > span { white-space: nowrap; }
 .pv2-price-stats strong { color: var(--text); font-weight: 600; }
 .pv2-price-stats-empty { font-family: var(--font-ui); font-variant-numeric: normal; }
 
@@ -7974,18 +8101,34 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 /* Les DEUX niveaux d'action d'une formule vivent au pied de SA carte, sur UNE
    ligne : le tarif du centre (geste quotidien) porte l'accent, la structure
    partagee reste secondaire, la suppression se reduit a une icone en bout. */
+/* Le flex-wrap ne tenait pas la promesse du commentaire ci-dessus. Mesure sur
+   un pied de 239 px : hauteur 77 px, enfants a y=11 (Tarif du centre, 32 px),
+   y=13 (Activites, 28 px), y=49 (Structure) et la corbeille SEULE a x=209 du
+   dernier rang, poussee la par margin-left:auto, alignee sur rien.
+   Une grille explicite dit ce que le flex laissait au hasard : les actions
+   d edition occupent la colonne souple et se replient entre elles, le geste
+   destructeur garde sa colonne, en haut, a cote de la premiere action. */
 .pev-card-foot {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 6px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
+.pev-foot-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+/* Une seule hauteur au pied : le decalage de 2 px entre le bouton principal
+   (--h-md) et les boutons `sm` se lisait comme un defaut d alignement. La
+   regle qui l impose est en FIN de feuille, sinon `.pv2-btn.sm`, declaree plus
+   loin a specificite egale, la battait. */
 .pev-card-foot .pv2-btn { flex: none; }
-.pev-card-foot .pv2-btn.primary { margin-right: 2px; }
 .pev-foot-danger {
-  margin-left: auto;
   display: inline-grid;
   place-items: center;
   width: 30px;
@@ -10855,10 +10998,14 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .staff-wrap { padding: 14px 12px 32px; }
   .admin-shell { padding: 16px 12px 40px; }
 
-  .kpi-grid:not(.hidden), .dash-kpis, .pv2-stats, .dash-grid-main, .dash-grid-bottom,
-  .pv2-pipeline, .utility-rush-board, .events-command-bar, .edit-summary,
+  .kpi-grid:not(.hidden), .dash-kpis, .dash-grid-main, .dash-grid-bottom,
+  .pv2-pipeline, .events-command-bar, .edit-summary,
   .qb-row.three, .qb-snapshot-row, .qb-type-row, .edit-grid-2,
   .dash-status-strip, .dashboard-detail-summary { grid-template-columns: 1fr; }
+  /* Les tuiles d indicateurs restent a DEUX colonnes : empilees, les quatre
+     tuiles mesuraient 609 px, soit trois quarts d ecran de chiffres avant la
+     premiere reservation. A deux colonnes la bande retombe a deux rangs. */
+  .pv2-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .pv2-cal-cell { min-height: 54px; padding: 5px 6px; }
   .pv2-cal-meta { display: none; }
@@ -10872,8 +11019,17 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .res-row-side { display: none; }
   .res-row-actions { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 
-  .utility-res-card { grid-template-columns: 60px minmax(0, 1fr); }
-  .utility-res-meta { display: none; }
+  /* Le tableau « En cours » n'est plus une grille a trois colonnes mais une
+     rangee souple : sur telephone, chaque colonne prend la largeur entiere,
+     colonne vide comprise, qui n'a plus de place a rendre a personne. */
+  .utility-rush-column,
+  .utility-rush-column:has(.utility-mini-empty) { flex: 1 1 100%; }
+
+  .utility-res-card { grid-template-columns: 60px minmax(0, 1fr); row-gap: 4px; }
+  /* Meme regle qu au bureau : sur telephone la ligne se REPLIE sous le nom,
+     elle ne disparait pas. Sans elle, aucune carte d Arrivees ne disait
+     combien de joueurs arrivent. */
+  .utility-res-meta { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 12px; }
   .utility-res-actions { grid-column: 1 / -1; justify-content: flex-start; }
 
   .event-row { grid-template-columns: 60px minmax(0, 1fr); }
@@ -11299,7 +11455,17 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-pill.tone-accent { color: var(--accent-strong); background: var(--accent-soft); border-color: transparent; }
 .crm-pill.tone-success { color: var(--success); background: var(--success-soft); border-color: transparent; }
 .crm-pill.tone-warn { color: var(--warning); background: var(--warning-soft); border-color: transparent; }
-.crm-pill.tone-info { color: var(--info-strong); background: var(--info-soft); border-color: transparent; }
+/* DEUX PASTILLES BLEUES NE TRIENT RIEN. Mesure : tone-accent et tone-info
+   calculaient EXACTEMENT la meme couleur (clair rgb(232,241,253)/rgb(7,97,209),
+   sombre rgb(13,33,55)/rgb(82,168,255)) parce que --info-soft == --accent-soft
+   et --info-strong == --accent-strong dans les deux themes. Le client qui a
+   depense le plus et le client inconnu portaient donc la meme pastille.
+   La separation ne peut pas venir de la teinte (elle est identique par
+   definition des jetons) : elle vient de la FORME. Plein = un signal qui vaut
+   de l argent (Client cle). Contour = une information de contexte (Nouveau,
+   Anniv. a venir). Le texte garde --info-strong, seul niveau de contraste
+   verifie AA sur fond de carte. */
+.crm-pill.tone-info { color: var(--info-strong); background: transparent; border-color: var(--info); }
 .crm-pill.tone-muted { color: var(--muted); background: var(--subtle); }
 
 /* Segments CRM v4 (fusion Clients+Groupes) : 4 vues, une active, re-clic → Tous.
@@ -11348,6 +11514,18 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-table tbody tr { border-bottom: 1px solid var(--line); cursor: pointer; transition: background var(--dur-fast) var(--ease); }
 .crm-table tbody tr:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
 .crm-table tbody tr.is-selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+/* La teinte de selection EST le fond des pastilles PLEINES (--accent-soft des
+   deux cotes, mesure rgb(232,241,253) == rgb(232,241,253) en clair). Sur la
+   ligne active la pastille pleine perdait donc sa forme et se lisait comme du
+   texte bleu nu. Elle reprend le fond de carte : elle ressort sur la selection
+   au lieu de s y dissoudre.
+   L exception s arrete au role PLEIN. Une pastille de CONTOUR (tone-info,
+   voir sa definition plus haut) n a pas de fond a dissoudre : sa forme vient
+   de la bordure, que la teinte de selection ne touche pas. Lui poser un fond
+   la rendait PLEINE sur la ligne selectionnee et annulait la separation
+   plein/contour (mesure avant : les deux a rgb(255,255,255) en clair,
+   rgb(10,10,10) en sombre). */
+.crm-table tbody tr.is-selected .crm-pill:not(.tone-info) { background: var(--surface); }
 .crm-table tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .crm-table td { height: 38px; padding: 8px 12px; color: var(--text); vertical-align: middle; }
 /* NB : un <td> en display:flex sort du layout de table (la cellule wrappe sous
@@ -16730,3 +16908,76 @@ button.pv2-cal-cell:focus-visible {
   .qb-type-add { width: 30px; height: 30px; right: 6px; }
   .close-btn { width: 40px; height: 40px; }
 }
+
+/* ==========================================================================
+   POLISH P1 GROUPE B (2026-09-03). Chaque regle porte la MESURE qui la
+   justifie : sans elle on ne saurait pas si le defaut est encore la.
+   ========================================================================== */
+
+/* La navigation de mois vit ENSEMBLE : trois boutons qui se lisent comme un
+   seul controle. Le regroupement ne change rien au bureau (meme inline-flex,
+   meme gouttiere) ; il donne a la barre un bloc a poser sur sa propre ligne
+   quand l ecran se resserre. */
+.pv2-month-nav { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* Le fondu de bord du segmente. Meme mecanique que .pv2-pipeline de la page
+   Emails : la classe est posee par slideSegPills SEULEMENT si le contenu
+   depasse vraiment, sinon le fondu annoncerait un ailleurs qui n existe pas.
+   Mesure a 390 px sur Tarifs : contenu 558 px dans une bande de 366 px, la
+   categorie « Speciales » finissait a 567 px, hors champ, sans aucun indice
+   (scrollbar-width: none). */
+.pv2-seg.can-scroll-x {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--space-6)), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--space-6)), transparent 100%);
+}
+
+@media (max-width: 480px) {
+  /* Barre d actions de Reservations. Mesure a 390 px : « ‹ septembre 2026 ›
+     Actualiser » tenait sur un rang, puis « + Reservation » retombait SEUL a
+     x=12 sur un second rang, aligne sur rien, et la barre passait de 32 a
+     96 px de haut. Le mois prend sa ligne, les deux actions se partagent la
+     suivante, la primaire finit a droite. */
+  #staffReservationsPage .pv2-bar-actions { width: 100%; row-gap: var(--space-2); }
+  #staffReservationsPage .pv2-bar-actions > .pv2-month-nav { flex: 1 1 100%; }
+  #staffReservationsPage .pv2-bar-actions > .pv2-btn { flex: 1 1 calc(50% - var(--space-2)); }
+}
+
+@media (max-width: 860px) {
+  /* Nav du poste d observation. Mesure a 390 px : conteneur 366 px, cinq
+     colonnes de 71 px, et trois pastilles debordaient leur colonne (scrollWidth
+     74 / 91 / 88 pour clientWidth 71) : mesure au Range, l ecart entre les
+     libelles « Mes centres » et « Provenance » valait -3,8 px, ils se
+     CHEVAUCHAIENT. Le rembourrage de 16 px etait a lui seul plus large que le
+     depassement : il part, et la police descend d un cran. Ecart obtenu :
+     +9,2 px, aucune pastille ne deborde. L ellipse est le garde-fou pour un
+     libelle plus long : une pastille ne sort JAMAIS de sa colonne. */
+  .dir-nav-pill {
+    min-width: 0;
+    padding: 8px 0;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Cartes d export du poste d observation. Mesure : quatre cartes de 149 px de
+   haut mais des boutons a top=612 h=36 pour deux d entre elles et top=603
+   h=45 pour les deux autres, parce que la grille etirait le bouton sur la
+   place laissee par une description plus courte. La description prend la
+   rangee souple, le bouton garde sa hauteur et se pose au bas de sa carte. */
+.admin-export-card { grid-template-rows: 1fr auto; }
+.admin-export-card .admin-btn { align-self: end; height: var(--h-lg); }
+
+/* Tableau du jour (Direction). Mesure : « Heure » 63 px et « Montant » 76 px
+   contre 237 px pour « Client » et 235 px pour « Ressources » ; « 30 min » se
+   cassait en « 30 » / « min » et « Sur place » en « Sur » / « place », ce qui
+   poussait chaque ligne a 81 px. Une heure et un montant sont des valeurs
+   atomiques : elles ne se coupent pas, et la colonne reclame alors sa largeur
+   naturelle sur les colonnes de texte libre. */
+.admin-table .admin-cell-tight { white-space: nowrap; }
+
+/* Une seule hauteur au pied des cartes formule. La regle posee pres de
+   .pev-card-foot perdait contre .pv2-btn.sm (meme specificite, declaree plus
+   loin dans la feuille) : « Tarif du centre » restait a 32 px et « Activites »
+   / « Structure » a 28 px, soit le decalage de 2 px mesure a y=11 contre y=13. */
+.pev-card-foot .pv2-btn.sm { height: var(--h-md); }

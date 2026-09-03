@@ -31,6 +31,12 @@
 //       classe de l'ancien namespace (admin-panel/admin-kpi/ops-cockpit/
 //       admin-health-panel/adm-trend-panel/admin-tabs) : mesure par querySelector.
 //   [8] aucune erreur console fatale.
+//  [8bis] LA MECANIQUE DU GATE LUI-MEME : un clic sur une cible absente sort en
+//       « FAIL » NOMME dans une borne courte, il ne LEVE plus. Mesure du
+//       2026-09-03 : la vue « Mes centres » avait disparu du nav, page.click a
+//       attendu 30 s puis leve, et tout le reste du gate n'a pas tourne. La
+//       sonde retire une pilule du DOM d'une page a part et verifie que le geste
+//       rend un constat au lieu d'une exception, et que la page reste pilotable.
 //   [9] CONTRE-PREUVE PAR MUTATION : on mute assets/admin-console.js (serie du
 //       focus amputee d'un jour ; delta decale de 1), on verifie que les
 //       invariants [4] et [3] ROUGISSENT sur une page fraiche, puis restauration
@@ -468,20 +474,74 @@ async function bootDirection(page) {
   await page.waitForTimeout(700);
 }
 
+// UN GATE NE MEURT PAS EN ROUTE, IL ROUGIT ET IL CONTINUE.
+//
+// Ce qui s'est passe le 2026-09-03 : la vue « Mes centres » avait ete mise
+// derriere un declencheur conditionnel et ne se montait plus. `page.click` sur
+// une pilule absente a attendu ses 30 000 ms par defaut (l'auto-attente de
+// Playwright), puis a LEVE. L'exception est remontee hors du try d'assertions :
+// les blocs suivants n'ont jamais tourne, et le journal s'arretait au milieu
+// sans dire QUELLE cible manquait. Une sonde qui meurt ne mesure pas ce qu'elle
+// pretend mesurer, et un « 43 assertions » tronque se lit comme « 43 assertions
+// passees ».
+//
+// Trois consequences dans la mecanique, et aucune assertion affaiblie :
+//   - l'attente est BORNEE (4 s) : on ne paie plus 30 s pour un constat ;
+//   - la PRESENCE est asserte AVANT le clic, donc l'absence sort en « FAIL »
+//     NOMME, avec le selecteur, au lieu d'une pile d'exception ;
+//   - la fonction REND un booleen au lieu de lever : les assertions qui suivent
+//     s'executent et rougissent d'elles-memes (la vue n'a pas bascule), ce qui
+//     dit l'etendue reelle des degats au lieu de la cacher.
+const ATTENTE_CIBLE = 4000;
+
+// Le geste NU : il ne juge rien, il rapporte. C'est ce qui permet a la sonde de
+// contre-preuve d'observer l'echec sans compter un FAIL de plus.
+async function cliquerCible(page, selecteur) {
+  const t0 = Date.now();
+  const present = await page.waitForSelector(selecteur, { state: 'visible', timeout: ATTENTE_CIBLE })
+    .then(() => true).catch(() => false);
+  if (!present) return { present: false, clique: false, ms: Date.now() - t0, erreur: 'cible absente ou invisible' };
+  try {
+    await page.click(selecteur, { timeout: ATTENTE_CIBLE });
+  } catch (error) {
+    return { present: true, clique: false, ms: Date.now() - t0, erreur: String(error.message).split('\n')[0] };
+  }
+  return { present: true, clique: true, ms: Date.now() - t0, erreur: '' };
+}
+
+// Le geste ASSERTE : meme mecanique, plus une ligne de journal. UNE seule ligne
+// par geste - la presence, le clic et son effet sont les trois moities du meme
+// fait, et trois lignes pour un geste noieraient les 83 assertions de fond.
+async function cliquerCibleAssertee(page, selecteur, nom, effet) {
+  const r = await cliquerCible(page, selecteur);
+  let effetOk = r.clique;
+  if (r.clique && typeof effet === 'function') effetOk = await effet();
+  const detail = !r.clique
+    ? `${r.erreur} (abandon apres ${r.ms} ms)`
+    : (effetOk ? '' : 'clic parti, mais SANS effet');
+  return ok(effetOk, `[cible] ${nom} : « ${selecteur} » cliquee et suivie d effet${detail ? ` - ${detail}` : ''}`);
+}
+
 // Bascule de vue par CLIC sur la pilule du segmented nav (vrai chemin
 // utilisateur), puis attente que l'etat de vue ait suivi. Reutilise par le
 // harnais principal et les sondes de contre-preuve.
 async function switchDirView(page, view) {
-  await page.click(`#adminContent .dir-nav-pill[data-view="${view}"]`);
-  await page.waitForFunction(
-    (v) => {
-      const D = window.PinlaneDirection;
-      return Boolean(D && typeof D.getView === 'function' && D.getView() === v);
-    },
-    view,
-    { timeout: 8000 },
+  const bascule = await cliquerCibleAssertee(
+    page,
+    `#adminContent .dir-nav-pill[data-view="${view}"]`,
+    `bascule vers « ${view} »`,
+    () => page.waitForFunction(
+      (v) => {
+        const D = window.PinlaneDirection;
+        return Boolean(D && typeof D.getView === 'function' && D.getView() === v);
+      },
+      view,
+      { timeout: 8000 },
+    ).then(() => true).catch(() => false),
   );
+  if (!bascule) return false;
   await page.waitForTimeout(250);
+  return true;
 }
 
 // Mesures brutes du poste d'observation sur la fenetre COURANTE : DOM + registre
@@ -898,7 +958,9 @@ async function main() {
 
     console.log('\n[5] INTERACTIVITE : cliquer la tuile Joueurs change la metrique du focus (le path change)');
     const focusBefore = m0.focusPaths.join('|');
-    await page.click('.dir-kpi[data-metric="pax"]');
+    await cliquerCibleAssertee(page, '.dir-kpi[data-metric="pax"]', 'tuile KPI Joueurs',
+      () => page.waitForFunction(() => window.PinlaneDirection.getFocusMetric() === 'pax', null, { timeout: 4000 })
+        .then(() => true).catch(() => false));
     await page.waitForTimeout(400);
     const afterClick = await page.evaluate(() => ({
       metric: window.PinlaneDirection.getFocusMetric(),
@@ -929,15 +991,19 @@ async function main() {
       await page.evaluate(({ start, end }) => window.__pinlaneDirRangeEmit({ start, end, granularity: 'day', compare: 'previous' }), targetWin);
     } else {
       // Vrai composant : ouvrir le popover de plage, choisir "7 derniers jours".
-      await page.click('#dirRangeHost .pdr-range-trigger');
-      await page.waitForSelector('#dirRangeHost [data-preset="last7"]', { timeout: 8000 });
-      await page.click('#dirRangeHost [data-preset="last7"]');
+      // Meme mecanique bornee que les pilules : un popover qui ne s ouvre pas
+      // donne un FAIL nomme, pas une exception qui avale la fin du gate.
+      await cliquerCibleAssertee(page, '#dirRangeHost .pdr-range-trigger', 'ouverture du popover de plage',
+        () => page.waitForSelector('#dirRangeHost [data-preset="last7"]', { timeout: ATTENTE_CIBLE })
+          .then(() => true).catch(() => false));
+      await cliquerCibleAssertee(page, '#dirRangeHost [data-preset="last7"]', 'preset « 7 derniers jours »');
     }
-    await page.waitForFunction(
+    const fenetreServie = await page.waitForFunction(
       (k) => Boolean((window.__DIR_SERVED__ || {})[k]) && Boolean(document.querySelector('#dirFocusChart svg path')),
       targetKey,
       { timeout: 15000 },
-    );
+    ).then(() => true).catch(() => false);
+    ok(fenetreServie, `[cible] la nouvelle fenetre ${targetKey} a bien ete servie et retracee`);
     await page.waitForTimeout(500);
     const m1 = await collectDirMeasures(page);
     ok(m1.windowKey === targetKey, `changement declenche via le composant (${usedStub ? 'stub onChange' : 'clic preset reel'}) : la fenetre active est la nouvelle plage (${m1.windowKey})`);
@@ -1194,6 +1260,39 @@ async function main() {
       await page.setViewportSize({ width: 1400, height: 950 });
       await switchDirView(page, 'synthese');
       console.log(`[SHOTS] captures ecrites dans ${shotDir}`);
+    }
+
+    // =====================================================================
+    console.log('\n[8bis] LA MECANIQUE ELLE-MEME : une cible absente rougit, elle ne tue pas le gate');
+    // =====================================================================
+    // On retire une pilule du DOM d'une page A PART et on tente le geste NU
+    // (`cliquerCible`, celui qui rapporte au lieu d'asserter : la sonde ne doit
+    // pas compter un FAIL pour une absence qu'elle provoque elle-meme). Ce qui
+    // est mesure : le geste REND un constat au lieu de LEVER, et il abandonne
+    // dans sa borne au lieu des 30 000 ms de l'auto-attente Playwright.
+    const pageSonde = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+    try {
+      await bootDirection(pageSonde);
+      const retiree = await pageSonde.evaluate(() => {
+        const pill = document.querySelector('#adminContent .dir-nav-pill[data-view="centres"]');
+        if (!pill) return false;
+        pill.remove();
+        return true;
+      });
+      ok(retiree, 'la sonde a bien retire la pilule « centres » du DOM (sans elle, rien ne serait teste)');
+      let leve = false;
+      const constat = await cliquerCible(pageSonde, '#adminContent .dir-nav-pill[data-view="centres"]')
+        .catch(() => { leve = true; return null; });
+      ok(!leve && constat !== null && constat.present === false && constat.clique === false,
+        `un clic sur une pilule absente REND un constat au lieu de lever (leve=${leve}, ${constat ? `present=${constat.present}` : 'aucun constat'})`);
+      ok(Boolean(constat) && constat.ms < 12000,
+        `et il abandonne dans sa borne : ${constat ? constat.ms : '?'} ms (l auto-attente Playwright en aurait pris 30 000)`);
+      // Et la page reste pilotable APRES l'echec : c'est ce qui prouve que la
+      // suite du gate aurait tourne.
+      const encoreVivante = await pageSonde.evaluate(() => document.querySelectorAll('#adminContent .dir-nav-pill').length);
+      ok(encoreVivante >= 4, `la page reste pilotable apres l echec (${encoreVivante} pilules encore la)`);
+    } finally {
+      await pageSonde.close();
     }
 
     console.log('\n[9] contre-preuve par MUTATION : le gate sait rougir, puis restauration inverse');

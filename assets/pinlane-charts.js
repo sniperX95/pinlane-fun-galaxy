@@ -104,11 +104,19 @@
     return INT_FMT.format(v);
   }
 
+  // MEME MONNAIE, MEME ECRITURE. formatMoney (app-main.js) pose une espace
+  // fine insecable U+202F avant l'euro ; la bibliotheque posait une espace
+  // ordinaire U+0020. Les deux ecrivent le MEME montant sur le MEME ecran (la
+  // tuile KPI par countUp, le total serveur par formatMoney) : « 7 350 € »
+  // contre « 7 350 € », identiques a l'oeil, differents en octets. Le
+  // caractere est invisible : il s'ecrit en echappement, jamais en litteral.
+  var NBSP_FINE = ' ';
+
   function formatValue(value, format) {
     var v = Number(value);
     if (!Number.isFinite(v)) v = 0;
     v = Math.round(v);
-    if (format === 'euro') return groupInt(v) + ' €';
+    if (format === 'euro') return groupInt(v) + NBSP_FINE + '€';
     if (format === 'percent') return String(v) + '%';
     return groupInt(v);
   }
@@ -119,7 +127,7 @@
     if (Math.abs(v) >= 1000) {
       var k = v / 1000;
       var txt = Number.isInteger(k) ? String(k) : k.toFixed(1).replace('.', ',');
-      return format === 'euro' ? txt + 'k €' : txt + 'k';
+      return format === 'euro' ? txt + 'k' + NBSP_FINE + '€' : txt + 'k';
     }
     return formatValue(v, format);
   }
@@ -174,7 +182,14 @@
     var stops = [1, 2, 3, 4, 5, 6, 8, 10];
     var mult = stops[stops.length - 1];
     for (var si = 0; si < stops.length; si += 1) { if (base <= stops[si]) { mult = stops[si]; break; } }
-    var step = mult * pow;
+    // Le palier n'etait entier que tant que `pow` valait au moins 1 : sous un
+    // max de 3, `pow` tombe a 0,1 et le pas avec lui. Max = 2 donnait un pas de
+    // 0,8, donc des graduations 0 / 0,8 / 1,6 / 2,4 que formatTick arrondit a
+    // « 0 », « 1 », « 2 », « 2 » : deux reperes a deux hauteurs pour une seule
+    // valeur, un axe faux a la lecture. Or les libelles sont TOUJOURS rendus
+    // entiers : un pas inferieur a 1 produit forcement un doublon. Le plancher
+    // de 1 est donc une consequence du format d'affichage, pas un choix.
+    var step = Math.max(1, mult * pow);
     return { top: step * 3, ticks: [0, step, step * 2, step * 3] };
   }
 

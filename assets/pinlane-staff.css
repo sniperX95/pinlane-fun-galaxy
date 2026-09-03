@@ -2380,6 +2380,21 @@ button.staff-date-label:focus-visible,
   .booking:not(.dens-xs):has(.activity-pill) .booking-stats .u-long { display: none; }
   .booking:not(.dens-xs):has(.activity-pill) .booking-stats .u-short { display: inline; }
 }
+/* MEME REGLE POUR LE MONTANT AJUSTE, ET C EST CE QUI REND SON PLANCHER
+   CALCULABLE. La pastille de prix vit dans le meme pied ; tant que
+   « 34 joueurs » pouvait remplacer « 34 j » au-dessus de 13,2em de piste,
+   la largeur a proteger BOUGEAIT avec la largeur de la piste, et un plancher
+   unique par longueur de montant ne pouvait pas la suivre. Mesure du defaut :
+   balayage de 88 a 320 px de piste, le montant a trois chiffres debordait de
+   115 a 125 px ET DE NOUVEAU de 192 a 199 px, la ou la forme longue
+   reapparait ; a quatre chiffres, de 125 a 134 px et de 186 a 208 px. Deux
+   bandes de debordement pour un seul seuil : aucune valeur ne pouvait etre
+   juste. Le confort cede donc ici aussi (« joueurs » redevient « j », zero
+   information perdue), la geometrie redevient monotone, et les trois
+   planchers ci-dessous se relevent une fois pour toutes.
+   Releve complet : artifacts/polish/p2-verrou/sonde-calibrage.json. */
+.booking:not(.dens-xs):has(.bk-price) .booking-stats .u-long { display: none; }
+.booking:not(.dens-xs):has(.bk-price) .booking-stats .u-short { display: inline; }
 
 /* Effectif : emphase croissante (gris → pastille inversée) selon le groupe. */
 /* `--faint` tombait à 4,41:1 en clair et 4,24:1 en sombre sur le fond des
@@ -2652,6 +2667,74 @@ button.staff-date-label:focus-visible,
 @container piste (max-width: 121px) {
   .booking.dens-xs .bk-dur { display: none; }
 }
+/* RANG 1 : LA PASTILLE DE PRIX, DERNIERE ARRIVEE DONC PREMIERE A PARTIR.
+   Elle vit dans le pied des cartes `dens-md` et `dens-lg` (voir la section
+   « prix ajuste » plus bas pour sa couleur et sa forme) ; rien ne cede pour
+   elle, elle cede pour tout le monde. Une premiere version faisait ceder la
+   DUREE des qu une pastille de prix etait presente sous 150 px de piste ;
+   `planning-matrix` l a refusee, et il avait raison : a 108,1 px de piste la
+   duree TENAIT (12 px de rab, aucun rang superieur ne perdait un pixel).
+   TROIS PLANCHERS, PARCE QU IL Y A TROIS LARGEURS DE MONTANT. Un plancher
+   unique calcule sur le pire cas retirait « 40 € » de pistes ou il tenait
+   largement : mesure du defaut, 0 pastille a 1280, 1100, 960, 768 et 390 px de
+   fenetre, la demande « un prix modifie doit sauter aux yeux » ne rendant rien
+   ailleurs qu en 1440 px a 8 pistes.
+   Les trois seuils ci-dessous sont RELEVES, pas calcules : balayage de 31
+   largeurs de fenetre (1020 a 1400 px), pastille forcee visible, trois
+   dossiers a 40 €, 290 € et 1 290 € en `dens-md` ET en `dens-lg`, et releve du
+   debordement reel du pied (`scrollWidth - clientWidth`) et de la sortie de la
+   pastille hors du cadre de la carte. Les deux densites tombent au MEME
+   endroit, au dixieme de pixel pres :
+     2 chiffres  (41,0 px de pastille) : propre des 103,1 px de piste,
+                                          deborde encore a 100,8 -> 102 px ;
+     3 chiffres  (46,7 px)             : propre des 113,9, deborde a 112,7
+                                          -> 113 px ;
+     4 chiffres  (55,2 px)             : propre des 123,5, deborde a 122,3
+                                          -> 123 px.
+   Mesures completes : artifacts/polish/p2-verrou/sonde-pied.json et
+   sonde-pied-fine.json. La configuration par defaut (1440 px, 8 pistes,
+   134,2 px de piste) est au-dessus des trois.
+   La carte de 30 minutes (`dens-xs`) ne porte pas la pastille du tout : sa
+   tete et son pied passent en `display: contents`, donc tout se dispute une
+   seule ligne qui a deja son echelle complete. */
+/* LES PLANCHERS SONT RELEVES SUR LE PIED LE PLUS CHARGE, PAS LE PLUS LEGER.
+   Les trois valeurs precedentes (102 / 113 / 123 px) ont ete mesurees sur des
+   cartes dont le pied ne portait que « 6 j · 1h ». Sur le dossier 9003 des
+   fixtures QA (« 34 j · 1h30 », 63,4 px de chiffres), le montant a trois
+   chiffres DEBORDAIT de 11 px a 1280 px de fenetre, soit a 115,1 px de piste :
+   deux pixels AU-DESSUS du plancher cense le proteger, et la pastille sortait
+   de 3,4 px hors du cadre de la carte. Un plancher releve sur le pied le plus
+   leger ne protege que ce pied-la.
+   Nouveau balayage, 88 a 320 px de piste au pixel, forme courte forcee (voir
+   la regle ci-dessus), chiffres les plus larges que le planning rende
+   (« 34 j · 1h30 », 63,4 px) et les trois longueurs de montant. Derniere
+   largeur QUI DEBORDE, donc plancher :
+     2 chiffres (41,0 px de pastille) : deborde jusqu a 108 px, propre des 109 ;
+     3 chiffres (46,7 px)             : deborde jusqu a 125 px, propre des 126 ;
+     4 chiffres (55,2 px)             : deborde jusqu a 134 px, propre des 135.
+   La configuration par defaut (1440 px, 8 pistes, 134,2 px de piste) porte
+   donc les montants a deux et trois chiffres, pas ceux a quatre.
+   Releve : artifacts/polish/p2-verrou/sonde-calibrage.json. */
+@container piste (max-width: 108px) {
+  .booking .bk-price-c2 { display: none; }
+}
+@container piste (max-width: 125px) {
+  .booking .bk-price-c3 { display: none; }
+}
+@container piste (max-width: 134px) {
+  .booking .bk-price-c4 { display: none; }
+}
+/* UN PIED QUI PORTE DEJA LA PROGRESSION N A PAS LA PLACE D UN MONTANT.
+   La pastille de progression d une formule vit dans le MEME pied et prend
+   26 px plus sa gouttiere. Mesure : avec elle, un montant a trois chiffres
+   demande 172 px de piste et un montant a quatre chiffres 181 px, quand la
+   configuration par defaut en offre 134,2 ; et le debordement revient par
+   bandes des que le separateur reapparait (au-dessus de 168 px). Le montant
+   cede donc entierement sur ces cartes-la : il reste lu dans la liste du meme
+   ecran, sur la ligne du jour, sur la carte d accueil, sur la page Evenements,
+   dans le tableau de la Direction et sur le ticket. Ce qui part est le rappel,
+   jamais l information. */
+.booking:has(.activity-pill) .bk-price { display: none; }
 /* Même rang, carte HAUTE. LE PLANCHER A BAISSÉ PARCE QUE LA LIGNE A CHANGÉ DE
    CONTENU : depuis que l'offre a sa propre ligne et que l'état est remonté
    contre le nom, la ligne du bas ne porte plus QUE les chiffres. Elle ne
@@ -3823,6 +3906,12 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .guest-chip.ok { background: var(--success-soft); color: var(--success); }
 .guest-chip.warn { background: var(--warning-soft); color: var(--warning); }
+/* LA NOTE PORTE L AMBRE DU PRODUIT, comme la marque de la carte du planning
+   (.bk-flag.flag-note), la ligne de note des listes (.res-note-line) et le
+   filtre « Avec note » (.status-chip.active.notes). Une meme information ne
+   change pas de couleur en changeant d ecran : c est a ca qu on la reconnait
+   sans lire. */
+.guest-chip.note { background: var(--warning-soft); color: var(--warning); }
 .guest-mini { display: flex; flex-wrap: wrap; gap: 4px; }
 
 /* ----------------------------------------------------------------------------
@@ -16522,6 +16611,120 @@ button.pv2-cal-cell:focus-visible {
 .qb-price-sep { font-size: 11px; font-weight: 600; color: var(--text-3, var(--muted)); margin-left: 4px; }
 .qb-price-edit input { width: 90px; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
 .res-state-pill.custom-price { background: var(--warning-soft); color: var(--warning); border: 1px solid var(--warning); font-weight: 800; }
+
+/* UNE SEULE FORME POUR UN SEUL VERDICT (LOT P2).
+   Le prix ajuste se lit maintenant sur la vue d ensemble, sur la carte du
+   planning, dans l arene, sur la ligne du jour, sur la carte d accueil, sur la
+   page Evenements, dans le tableau Direction et sur le ticket de caisse. Une
+   seule regle en JS et une seule couleur ici : l ambre du produit
+   (var(--warning) sur var(--warning-soft)), deja employe par la pastille de la
+   liste et par le ticket. La classe commune se pose EN PLUS de la pastille
+   d accueil de chaque surface, pour que le montant garde la typographie de son
+   voisinage. */
+.pl-price-adjusted {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* L ETIQUETTE DE PRIX : LE VERDICT A UNE SILHOUETTE, PAS SEULEMENT UNE TEINTE.
+   En forme « montant » (carte du planning, carte de l arene) le texte visible
+   est un montant NU : sans marque de forme, « 40 € » en ambre se lit comme un
+   prix ordinaire des que l ambre ne se distingue plus, et sur la carte du
+   planning c est le SEUL montant affiche. L icone est decorative
+   (`aria-hidden`) : c est le libelle qui porte l information. */
+.pl-price-icon { flex: 0 0 auto; margin-right: 3px; }
+/* Sur la carte du planning la place se compte : le montant seul, a la taille
+   du chiffre des marqueurs (9,5 px, cf. .bk-flag-num), et il ne se comprime
+   jamais - un « 4 » ampute vaudrait pire que rien. Les planchers de place de
+   cette pastille ne sont PAS ici : ils vivent dans l echelle des rangs du pied
+   de carte, avec les cinq autres (chercher « RANG 1 : LA PASTILLE DE PRIX »).
+   Un rang, une regle, un element, et tous les rangs au meme endroit. */
+.bk-price {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+.bk-price .pl-price-icon { margin-right: 2px; }
+.laser-card-pill.pl-price-adjusted { border-radius: var(--radius-full); }
+.admin-pill.pl-price-adjusted { margin-left: 6px; }
+/* UNE PASTILLE FAIT LA LARGEUR DE SON TEXTE, PAS CELLE DE SA COLONNE.
+   `.utility-res-meta` est une GRILLE a une colonne : un span y devient element
+   de grille, donc bloc, et `justify-self` vaut `stretch` par defaut. Mesure sur
+   les cartes de la page Arrivees : pastille 138,9 px pour un parent de
+   138,9 px, soit une barre ambre pleine largeur avec un long vide a droite du
+   texte, sur une rangee entiere ajoutee a la carte. Elle ne ressemblait a
+   aucune autre pastille du produit et attirait l oeil bien plus que l ecart
+   qu elle signale. Le mode compact et le mobile repassent en flex (voir
+   `.utility-res-card.compact .utility-res-meta`) : ils n etaient pas touches. */
+.utility-res-meta .pl-price-adjusted { justify-self: start; padding: 1px 8px; border-radius: var(--radius-full); font-size: 11px; }
+/* Vue d ensemble : la colonne des montants habille TOUS ses `span` en gris
+   discret (`.dashboard-detail-amount span`, 0-1-1). La pastille passe devant
+   par `.res-state-pill.custom-price` (0-2-0), mais elle doit aussi rester une
+   pastille : elle se pose sous le montant, alignee a droite comme lui. */
+.dashboard-detail-amount .pl-price-adjusted { margin-top: 2px; }
+
+/* LA CONSIGNE SUR LA PAGE EVENEMENTS : une icone, pas une phrase. La ligne
+   d evenement est deja pleine ; le texte complet vit dans l infobulle et dans
+   la fiche, exactement comme sur les cartes du planning.
+   LE SELECTEUR EST QUALIFIE PAR SON PARENT, ET C EST NECESSAIRE : la ligne de
+   titre habille TOUS ses `span` en pastille grise (`.event-title-line span`,
+   0-1-1), qui l emportait sur une classe seule. Mesure au navigateur avant
+   correction : l icone sortait en #a1a1a1 sur fond `--subtle`, avec le
+   remplissage et l arrondi d une pastille - elle ressemblait exactement au
+   signal d etat pose juste a cote, ce qui est le contraire d un marqueur. Elle
+   porte maintenant l ambre des notes, sans fond ni arrondi. */
+.event-title-line .event-note-flag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  line-height: 1;
+  color: var(--warning);
+}
+
+/* Les marqueurs de la ligne du jour (page Reservations) prennent leur propre
+   ligne sous l offre : une consigne de service est une phrase, pas une
+   etiquette qu on serre entre deux points mediants. */
+.pv2-flow-marks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  min-width: 0;
+}
+/* LE SELECTEUR EST QUALIFIE, ET LE SPAN INTERIEUR AUSSI. `.pv2-flow-body span`
+   (0-1-1) repeignait la consigne en `var(--muted)` a 12 px, alors que la MEME
+   aide rend `var(--warning)` a 11,5 px dans la liste du planning : mesure,
+   rgb(161,161,161)/12px ici contre rgb(245,166,35)/11,5px la-bas, sur le meme
+   dossier. La consigne devenait un texte gris de plus au milieu des
+   metadonnees grises, sur l ecran ou ce lot la rend justement visible pour la
+   premiere fois. Viser le span INTERIEUR est necessaire : sans lui,
+   `.pv2-flow-body span` continue de peindre le texte en gris et seule l icone
+   passe a l ambre. Une meme information ne change pas de couleur en changeant
+   d ecran : c est a ca qu on la reconnait sans lire. */
+.pv2-flow-marks .res-note-line { flex: 1 1 100%; }
+.pv2-flow-marks .res-note-line,
+.pv2-flow-marks .res-note-line span { color: var(--warning); font-size: 11.5px; }
+.pv2-flow-marks .pl-price-adjusted { padding: 1px 8px; border-radius: var(--radius-full); font-size: 11px; }
+
+/* Le seuil du badge « Client clé », ecrit sous les chiffres de la fiche. */
+.crm-kpi-note {
+  margin-top: -8px;
+  padding: 0 var(--space-5) var(--space-4);
+  font-size: 12px;
+  color: var(--muted);
+}
 .receipt-custom { font-style: normal; font-size: 10px; font-weight: 800; color: var(--warning); letter-spacing: 0.08em; text-transform: uppercase; margin-left: 6px; }
 .receipt-ref { display: block; font-size: 10px; font-weight: 600; color: var(--text-3); text-decoration: line-through; }
 .pos-price-edit-btn { width: 100%; margin-top: 10px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; background: none; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }

@@ -9108,6 +9108,13 @@ function renderStaffDashboardReservationRows(rows = [], emptyText = 'Aucune donn
       </div>
       <div class="dashboard-detail-amount">
         <strong>${formatMoney(reservation.price || 0)}</strong>
+        ${/* LE PREMIER ECRAN DE LA CONSOLE LISAIT LA REGLE NULLE PART. Ces
+             lignes imprimaient le montant nu, donc un geste commercial y
+             passait pour un tarif catalogue - sur l ecran d ouverture, et sur
+             la surface meme que le constat visait. Le montant reste, la
+             pastille s ajoute seulement en cas d ecart, en forme « mot »
+             puisque le chiffre est deja la juste au-dessus. */''}
+        ${renderReservationPriceMark(reservation, { forme: 'mot' })}
         <span>${escapeHtml(reservation.paymentMethod || (reservation.status === 'paid' ? 'Comptoir' : 'Sur place'))}</span>
       </div>
       <div class="dashboard-detail-row-actions">
@@ -9985,6 +9992,9 @@ function renderStaffUtilityReservationCard(reservation, options = {}) {
     <div class="utility-res-meta">
       <span>${Number(reservation.pax || 0)} pers.</span>
       <span>${escapeHtml(windowLabel)}</span>
+      ${/* La file d accueil est le dernier ecran avant l encaissement : c est
+           la qu un prix negocie doit deja etre connu, pas decouvert au ticket. */''}
+      ${renderReservationPriceMark(reservation, { forme: 'complet' })}
       <b class="${escapeHtml(status)}">${escapeHtml(getStaffReservationStatusLabel(status))}</b>
     </div>
     <div class="utility-res-actions">${actions}</div>
@@ -10835,6 +10845,7 @@ function renderStaffUtilityEventsBoard(rows = []) {
             const activity = getStaffReservationActivityType(reservation);
             const resources = getStaffEventResources(reservation);
             const resourceParts = String(resources || '').split(' | ').filter(Boolean);
+            const prixHtml = renderReservationPriceMark(reservation, { forme: 'complet' });
             return `<article class="event-row event-${escapeHtml(activity)} tone-${escapeHtml(signal.tone)}">
               <div class="event-time">
                 <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
@@ -10843,13 +10854,22 @@ function renderStaffUtilityEventsBoard(rows = []) {
               <div class="event-main">
                 <div class="event-title-line">
                   <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
+                  ${/* EVENEMENTS EST LA PAGE DES DOSSIERS A SURVEILLER : c est
+                       la que la consigne doit se voir, sinon elle se decouvre
+                       trop tard. Icone seule, texte complet dans l infobulle et
+                       dans la fiche : la ligne ne grossit pas. */''}
+                  ${hasReservationNote(reservation) ? `<span class="event-note-flag" role="img" aria-label="Note à lire" title="${escapeHtml(getReservationNoteText(reservation))}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z"/><path d="M8.4 8.6h7.6M8.4 11.8h4.8"/></svg></span>` : ''}
                   <span>${escapeHtml(signal.label)}</span>
                 </div>
                 <p>${escapeHtml(getReservationLabel(reservation))}</p>
                 <div class="event-meta">
                   <span>${Number(reservation.pax || 0)} joueurs</span>
                   <span>${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
-                  <span>${formatMoney(Number(reservation.price || 0))}</span>
+                  ${/* Un montant decide a la main s affichait comme un tarif
+                       catalogue : personne ne le verifiait ni ne l expliquait au
+                       client. La pastille REMPLACE le montant nu quand il y a un
+                       ecart, sinon le montant reste nu. */''}
+                  ${prixHtml || `<span>${formatMoney(Number(reservation.price || 0))}</span>`}
                   ${renderActivityProgressPill(reservation)}
                 </div>
               </div>
@@ -17979,6 +17999,127 @@ function hasReservationNote(reservation) {
   return !!getReservationNoteText(reservation);
 }
 
+// ---- LE PRIX AJUSTE : UNE SEULE REGLE, LUE PAR TOUS LES ECRANS ------------
+// Movsar, 2026-09-03 : « si on affichait le prix modifie de cette facon ca
+// serait plus visible ». Le defaut n etait pas une pastille manquante sur un
+// ecran : c est que la REGLE vivait au milieu du rendu de la liste du planning
+// et que les autres surfaces ne la connaissaient pas. Trois copies existaient
+// deja, et DEUX D ENTRE ELLES DIVERGEAIENT : la liste comparait au seul
+// `basePrice` ecrit sur le dossier (donc ne signalait RIEN quand ce champ
+// manquait), la caisse retombait sur le catalogue quand il manquait. Meme
+// dossier, deux verdicts, selon l ecran regarde.
+// Une seule fonction rend maintenant l ETAT COMPLET du prix - montant facture,
+// reference, ecart, verdict - et chaque ecran le CONSOMME. Le seuil n est
+// ecrit qu ici : il absorbe les arrondis au centime, pas un geste commercial.
+// UNIFIER N EST PAS CHOISIR LA COPIE LA PLUS BAVARDE. La premiere version de
+// cette fonction a pris le repli catalogue de la CAISSE et l a donne aux sept
+// surfaces d affichage : mesure sur la fixture QA 9005 (prix 180, aucune base
+// ecrite), la liste passait de « aucun marqueur » a « Prix ajuste 180 EUR,
+// reference 324 EUR » pour un dossier que personne n avait touche. Le repli
+// est donc revenu la ou il a un sens - le chemin d ECRITURE - et l affichage
+// a repris la regle de la liste, qui etait la bonne.
+const PRIX_AJUSTE_SEUIL_EUR = 0.5;
+
+// `options.repliCatalogue` : reserve au chemin d ECRITURE (getReservationPriceGap).
+function getReservationPriceState(reservation, options = {}) {
+  const dossier = reservation || {};
+  const extras = typeof sumExtras === 'function'
+    ? sumExtras(dossier.extras || [])
+    : (dossier.extras || []).reduce((somme, extra) => somme + (Number(extra.price) || 0), 0);
+  // LA REFERENCE ECRITE SUR LE DOSSIER, LUE COMME UN CHAMP ET NON COMME UNE
+  // VERITE JAVASCRIPT. « champ absent » et « base a zero » ne sont pas le meme
+  // fait : lib/database.js ramene une colonne `base_price` vide a 0, et
+  // lib/reservation-request.js a deja tranche en toutes lettres qu un prix
+  // envoye a 0 n est pas un prix absent. Un `||` confondait les deux, donc
+  // confondait « on ne sait pas » avec « c est offert ».
+  const brut = dossier.basePrice;
+  const baseEcrite = (brut === null || brut === undefined || brut === '' || !Number.isFinite(Number(brut)))
+    ? null
+    : Number(brut);
+  // LE CATALOGUE DU JOUR N EST PAS LA REFERENCE DU DOSSIER. Il porte les tarifs
+  // d AUJOURD HUI et du centre CHARGE dans la session ; un dossier ancien, ou
+  // celui d un autre centre, n a pas ete pris a ce tarif-la. Mesure : fixture
+  // 9001, base ecrite 60 EUR contre catalogue du jour 20 EUR, facteur 3.
+  // Il ne sert donc qu au chemin d ECRITURE, qui REPOSE une valeur au lieu d en
+  // conclure quelque chose, et qui le faisait deja avant ce lot : addExtra et
+  // removeExtra recomposent le prix avec exactement la meme formule.
+  const base = options.repliCatalogue && !baseEcrite
+    ? (typeof getBasePriceForReservation === 'function' ? (Number(getBasePriceForReservation(dossier)) || 0) : 0)
+    : (baseEcrite || 0);
+  const reference = base + extras;
+  const price = Number(dossier.price) || 0;
+  const ecart = price - reference;
+  // LE VERDICT SE GARDE SUR LA BASE, PAS SUR LA SOMME. `reference` vaut
+  // base + extras : garder l ecart sur elle laissait un seul cafe a 6 EUR
+  // ouvrir la porte a « Prix ajuste 200 EUR (reference 6 EUR) » sur un dossier
+  // dont la base n est pas ecrite. Sans reference ECRITE et non nulle, il n y a
+  // rien a comparer : on ne CLAME PAS un ajustement qu aucune donnee ne porte.
+  const aReference = baseEcrite !== null && baseEcrite > 0;
+  return {
+    price,
+    reference,
+    ecart,
+    aReference,
+    ajuste: aReference && Math.abs(ecart) > PRIX_AJUSTE_SEUIL_EUR,
+  };
+}
+
+// L INFOBULLE DIT LA REFERENCE, PAS SEULEMENT « AJUSTE ». Savoir qu un prix a
+// bouge sans savoir de combien ne permet ni de l expliquer au client ni de le
+// verifier en caisse.
+function getReservationPriceAdjustmentTitle(reservation) {
+  const etat = getReservationPriceState(reservation);
+  if (!etat.ajuste) return '';
+  return `Prix ajusté par l'équipe (référence ${formatMoney(etat.reference)})`;
+}
+
+// UNE SEULE PASTILLE, QUATRE LONGUEURS. La forme suit la place de l ecran,
+// jamais une regle differente : c est le meme verdict partout.
+//   'complet'   « Prix ajusté 40 € »               listes, cartes d accueil
+//   'reference' « Prix ajusté (référence 60 €) »   quand le montant est deja dit
+//   'montant'   « 40 € »                            cartes du planning
+//   'mot'       « Prix ajusté »                     tableaux a colonne Montant
+// RIEN NE S AFFICHE QUAND LE PRIX EGALE LA REFERENCE : un marqueur toujours
+// present ne signale plus rien.
+function renderReservationPriceMark(reservation, options = {}) {
+  const etat = getReservationPriceState(reservation);
+  if (!etat.ajuste) return '';
+  const forme = options.forme || 'complet';
+  const base = options.base || 'res-state-pill custom-price';
+  const montant = formatMoney(etat.price);
+  const texte = forme === 'montant'
+    ? montant
+    : forme === 'mot'
+      ? 'Prix ajusté'
+      : forme === 'reference'
+        ? `Prix ajusté (référence ${formatMoney(etat.reference)})`
+        : `Prix ajusté ${montant}`;
+  // LE VERDICT NE VIT PAS QUE DANS LA TEINTE. En forme « montant » le texte
+  // visible est un montant NU : « 40 € » en ambre se lit comme un prix
+  // ordinaire des que l ambre ne se distingue plus (plein soleil sur la
+  // tablette du comptoir, contraste eleve, deuteranopie), et sur la carte du
+  // planning c est le SEUL montant affiche. L etiquette de prix donne a la
+  // pastille une silhouette qu on reconnait sans lire la couleur ; elle est
+  // decorative, c est le libelle qui porte l information.
+  const icone = forme === 'montant'
+    ? '<svg class="pl-price-icon" viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.2 12.8 21a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1-.6-1.4V4.6a2 2 0 0 1 2-2h8a2 2 0 0 1 1.4.6l6.8 6.8a2 2 0 0 1 0 2.8z"/><path d="M7.3 7.3h.01"/></svg>'
+    : '';
+  // LE LIBELLE VOCAL SUIT LA FORME. En « mot » et en « reference », l ecran
+  // porte deja le montant a cote : le redire faisait entendre « 40 € Prix
+  // ajusté 40 €, référence 60 € » a chaque ligne du tableau de la Direction.
+  // Le montant n est annonce que la ou l ecran ne le dit pas deja.
+  const vocal = (forme === 'mot' || forme === 'reference')
+    ? `Prix ajusté, référence ${formatMoney(etat.reference)}`
+    : `Prix ajusté ${montant}, référence ${formatMoney(etat.reference)}`;
+  // `role="img"` : un `<span>` a le role implicite `generic`, sur lequel un nom
+  // d auteur est INTERDIT par ARIA in HTML et n est pas expose. Mesure de
+  // l arbre AX avant correction : la carte du planning s annoncait
+  // « Entreprise Ardenne · 15:00 - 16:30 : ... 290 € », sans le mot « ajusté ».
+  // La marque de note de la page Evenements porte deja `role="img"` : meme
+  // geste, meme fichier.
+  return `<span class="${base} pl-price-adjusted" role="img" title="${escapeHtml(getReservationPriceAdjustmentTitle(reservation))}" aria-label="${escapeHtml(vocal)}">${icone}${escapeHtml(texte)}</span>`;
+}
+
 // UNE NOTE QU ON NE PEUT PAS LIRE N EST PAS UNE NOTE, C EST UN RAPPEL D OUBLI.
 // Movsar, 2026-08-14 : « il y a aussi les notes a lire qui s affichent nulle
 // part, on sait pas lire la note ». L etiquette « Note a lire » etait posee sur
@@ -18294,6 +18435,14 @@ function getReservationGuestOps(reservation) {
 function getGuestOpsChips(reservation) {
   const guest = getReservationGuestOps(reservation);
   const chips = [];
+  // LA NOTE PASSE EN TETE. Le tableau Direction se presente comme exhaustif
+  // (« Toutes les lignes exploitables par la direction ») en ignorant
+  // l information la plus contextuelle du dossier. La console staff a un filtre
+  // « Avec note » depuis longtemps : c est la meme aide qui repond ici, le
+  // texte complet dans l infobulle.
+  if (hasReservationNote(reservation)) {
+    chips.push({ cls: 'note', label: 'Note', title: getReservationNoteText(reservation) });
+  }
   if (guest.waiverRequired) {
     chips.push({
       cls: guest.waiverDone ? 'ok' : 'warn',
@@ -18309,14 +18458,21 @@ function getGuestOpsChips(reservation) {
   return chips;
 }
 
+// Une pastille peut porter un TEXTE COMPLET en infobulle (la note), la ou le
+// libelle ne tient qu un mot : le rendu est le meme pour toutes.
+function renderGuestOpsChip(chip) {
+  const titre = chip.title ? ` title="${escapeHtml(chip.title)}"` : '';
+  return `<span class="guest-chip ${escapeHtml(chip.cls)}"${titre}>${escapeHtml(chip.label)}</span>`;
+}
+
 function renderGuestOpsMini(reservation) {
   const chips = getGuestOpsChips(reservation).slice(0, 3);
-  return `<div class="guest-mini">${chips.map(chip => `<span class="guest-chip ${escapeHtml(chip.cls)}">${escapeHtml(chip.label)}</span>`).join('')}</div>`;
+  return `<div class="guest-mini">${chips.map(renderGuestOpsChip).join('')}</div>`;
 }
 
 function renderAdminGuestOpsCell(reservation) {
   const chips = getGuestOpsChips(reservation);
-  return `<div class="engagement-cell">${chips.map(chip => `<span class="guest-chip ${escapeHtml(chip.cls)}">${escapeHtml(chip.label)}</span>`).join('')}</div>`;
+  return `<div class="engagement-cell">${chips.map(renderGuestOpsChip).join('')}</div>`;
 }
 
 function getOpsPlanFixedCommitments(plan) {
@@ -18646,6 +18802,32 @@ function renderPlanning() {
       // prend : c'est la hauteur reelle qui decide, pas une preference.
       const offreHtml = renderCardActivityTag(r, 'bowling');
       const offreSurSaLigne = densClass === 'dens-lg';
+      // LE PRIX NEGOCIE SE VOIT SUR LA CARTE, PAS SEULEMENT DANS LA LISTE.
+      // La carte n affichait aucun montant : un geste commercial de 20 EUR ne
+      // se decouvrait qu en descendant dans la liste du bas. Le montant y
+      // apparait maintenant, mais UNIQUEMENT quand il s ecarte de la
+      // reference : un prix catalogue n a rien a signaler.
+      // DEUX DENSITES, PAS UNE. La premiere version ne posait la pastille que
+      // sur les cartes `dens-lg` (1h30 et plus) : le dossier meme que la demande
+      // cite en exemple, une partie de 30 minutes arrangee a 40 EUR au lieu de
+      // 60, restait muet. La carte d une heure (`dens-md`) a son pied a elle et
+      // la porte donc aussi. La carte de 30 minutes ne l a pas, et c est mesure,
+      // pas choisi : en `dens-xs` la tete et le pied passent en
+      // `display: contents` (feuille de style, .booking.dens-xs), donc nom,
+      // marqueurs, retard, etat, offre, effectif et duree se disputent UNE seule
+      // ligne qui a deja son echelle de cession complete. Le montant y reste
+      // lisible dans la liste du meme ecran, une ligne plus bas.
+      // LE PLANCHER DE PLACE SUIT LA LONGUEUR DU MONTANT, PAS LE PIRE CAS. Un
+      // plancher unique calcule sur trois chiffres retirait « 40 € » de pistes
+      // ou il tenait largement : mesure, 0 pastille a 1280 px comme a 390 px
+      // alors que la carte avait 19 px de rab. La classe dit la longueur, la
+      // feuille de style pose un plancher par longueur.
+      const etatPrix = getReservationPriceState(r);
+      const chiffresPrix = String(Math.abs(Math.round(etatPrix.price))).length;
+      const classeLongueur = chiffresPrix <= 2 ? 'bk-price-c2' : chiffresPrix === 3 ? 'bk-price-c3' : 'bk-price-c4';
+      const prixHtml = (densClass === 'dens-lg' || densClass === 'dens-md')
+        ? renderReservationPriceMark(r, { forme: 'montant', base: `bk-price ${classeLongueur}` })
+        : '';
       bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
@@ -18666,6 +18848,7 @@ function renderPlanning() {
         <div class="booking-foot">
           ${offreSurSaLigne ? '' : offreHtml}
           ${statsHtml}
+          ${prixHtml}
           ${renderActivityProgressPill(r)}
         </div>
       </div>`;
@@ -18901,6 +19084,21 @@ function renderLaserPlanning() {
                12px titres, meme lecture vocale ; seul le nombre de parties est
                retire, la carte l ecrit deja sous le nom. */''}
           ${renderCardFlags(reservation, { partiesEcrites: true })}
+          ${/* Le prix negocie se lit AUSSI dans l arene : c est le seul ecran
+               regarde pendant un lancement, et rien n y disait qu un dossier
+               avait ete arrange. Meme regle, meme pastille, montant seul :
+               rien ne s affiche quand le prix suit le catalogue.
+               UN MONTANT PAR DOSSIER, PAS UN PAR CARTE. Ce bloc est rendu par
+               PASSE et par VAGUE, alors que le montant est celui du dossier
+               ENTIER : mesure, le dossier 9001 sortait deux cartes
+               « Partie 1/2 » et « Partie 2/2 » portant CHACUNE « 40 € », et
+               deux montants ambre cote a cote se lisent comme deux
+               encaissements. Le chiffre n est donc ecrit que sur la premiere
+               carte du dossier ; les suivantes gardent le verdict en forme
+               « mot », qui ne s additionne pas. */''}
+          ${(passIndex === 1 && waveIndex === 1)
+            ? renderReservationPriceMark(reservation, { forme: 'montant', base: 'laser-card-pill' })
+            : renderReservationPriceMark(reservation, { forme: 'mot', base: 'laser-card-pill' })}
           ${isFormulaGroup ? '<span class="laser-card-pill formula">Formule</span>' : '<span class="laser-card-pill direct">Direct</span>'}
           ${/* PAS DE PASTILLE « P1/2 » : le libelle de la carte dit deja
                « Partie 1/2 » juste au-dessus. Movsar, 2026-08-27 : « la ya trop
@@ -19212,14 +19410,15 @@ function renderReservationRow(r) {
     : composition || typeLabel;
 
   // PRIX AJUSTE visible de la liste : le comptoir voit combien CE dossier
-  // paie sans ouvrir la fiche (prix d ami, offre sur mesure).
-  const rowExtrasSum = (r.extras || []).reduce((sum, extra) => sum + (Number(extra.price) || 0), 0);
-  const rowReference = (Number(r.basePrice) || 0) + rowExtrasSum;
-  // LE GESTE COMMERCIAL RESTE ECRIT UNE FOIS ENCAISSE. La pastille disparaissait
-  // au passage en 'paid', c est-a-dire exactement quand « ce dossier a ete
-  // negocie » devient une donnee de caisse. Elle reste donc, et cede seulement
-  // le MONTANT a la pastille d etat quand celle-ci le porte deja.
-  const rowCustomPrice = rowReference > 0 && Math.abs((Number(r.price) || 0) - rowReference) > 0.5;
+  // paie sans ouvrir la fiche (prix d ami, offre sur mesure). LE GESTE
+  // COMMERCIAL RESTE ECRIT UNE FOIS ENCAISSE : la pastille cede seulement le
+  // MONTANT a la pastille d etat quand celle-ci le porte deja (forme
+  // « reference »).
+  // LA REGLE N EST PLUS ECRITE ICI : ces trois lignes etaient le seul endroit
+  // du produit qui savait ce qu est un prix ajuste, ce qui rendait tous les
+  // autres ecrans aveugles. La ligne LIT desormais getReservationPriceState,
+  // comme la carte du planning, l arene, la page Evenements, la file d accueil,
+  // le ticket et le tableau de la Direction.
 
   // La ligne reste COMPACTE (Movsar 2026-08-25 : « pas des grosses cartes
   // longues avec plein d informations ») : offre, etat, occasion, note.
@@ -19237,7 +19436,7 @@ function renderReservationRow(r) {
     <div class="res-c-what">
       <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
       ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
-      ${rowCustomPrice ? `<span class="res-state-pill custom-price" title="Prix ajusté par l'équipe (référence ${formatMoney(rowReference)})">${stateText ? `Prix ajusté (référence ${formatMoney(rowReference)})` : `Prix ajusté ${formatMoney(r.price)}`}</span>` : ''}
+      ${renderReservationPriceMark(r, { forme: stateText ? 'reference' : 'complet' })}
       ${renderReservationTags(r, { contexteSeul: true })}
       ${renderReservationNoteLine(r)}
     </div>
@@ -20498,12 +20697,13 @@ function renderPosCaisse(r) {
   const extras = r.extras || [];
   const basePrice = r.basePrice || getBasePriceForReservation(r);
   const total = r.price;
-  const extrasSum = extras.reduce((sum, extra) => sum + (Number(extra.price) || 0), 0);
-  const referencePrice = (Number(basePrice) || 0) + extrasSum;
   // Prix AJUSTE = un ecart entre le total facture et la reference catalogue
   // (base + extras). C est ce que les etudiants du comptoir doivent voir
   // d un clic : combien CE dossier paie (review manager 2026-08-25).
-  const hasCustomPrice = referencePrice > 0 && Math.abs((Number(total) || 0) - referencePrice) > 0.5;
+  // Le ticket lit le MEME etat que le planning, la liste et la Direction.
+  const prixDossier = getReservationPriceState(r);
+  const referencePrice = prixDossier.reference;
+  const hasCustomPrice = prixDossier.ajuste;
   const canEditPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
   const priceEditorHtml = r.status !== 'paid' && canEditPrice
     ? posPriceEditOpen
@@ -21007,6 +21207,13 @@ function renderEditFormuleBloc(r, formule, lignes) {
   const prixLigne = estime
     ? `${estime.complet ? '' : 'À partir de '}${factureAffichee} € · ${Math.round(factureAffichee / joueursActuels)} €/personne (${joueursActuels} joueur${joueursActuels > 1 ? 's' : ''})${estime.complet ? '' : ' · certaines activités se règlent sur place'}`
     : '';
+  // LE MOT « REFERENCE » NE DESIGNE PLUS DEUX CHIFFRES. Cette ligne annonce la
+  // base des ACTIVITES sans les extras, pendant que la pastille du meme dossier
+  // annonce « reference » extras compris : sur un dossier a 60 EUR de base et
+  // 6 EUR de cafe, la fiche disait 60 et la pastille 66, au moment precis ou le
+  // comptoir doit expliquer l ecart au client. La difference est PORTEE - le
+  // detail juste au-dessus ne liste que les activites - donc c est le libelle
+  // qui change, pas le calcul.
   const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
   const modifie = editProgramAChange();
   return `<div class="pos-field" style="grid-column: 1 / -1;">
@@ -21025,7 +21232,7 @@ function renderEditFormuleBloc(r, formule, lignes) {
     </div>
     <div class="edit-prix-estime" id="editPrixEstime">${escapeHtml(prixLigne)}</div>
     ${detailHtml}
-    ${reference > 0 ? `<div class="qb-field-note">Référence catalogue : ${Math.round(reference)} €</div>` : ''}
+    ${reference > 0 ? `<div class="qb-field-note">Tarif catalogue des activités : ${Math.round(reference)} €</div>` : ''}
     <div class="qb-field-note">${modifie ? 'Les activités seront replanifiées à l\'enregistrement. ' : ''}Ne change QUE ce dossier : la formule du centre et le formulaire de réservation en ligne ne bougent pas.</div>
   </div>`;
 }
@@ -21320,10 +21527,20 @@ function setStatus(id, st) {
 // la reference catalogue. Recalculer price = reference + extras l effacait au
 // premier cafe ajoute : le client se voyait rendre le plein tarif sans que
 // personne ne l ait decide. On repart donc de l ecart, jamais de zero.
+// L ecart d ECRITURE (arrondi a l euro, sans seuil : on repose la valeur
+// telle quelle) part de la MEME reference que l ecart d AFFICHAGE. Deux
+// formules pour un seul fait, c etait la porte ouverte a un dossier signale
+// ajuste a l ecran et recalcule au plein tarif a l enregistrement.
 function getReservationPriceGap(reservation) {
   if (!reservation) return 0;
-  const reference = (Number(reservation.basePrice) || getBasePriceForReservation(reservation) || 0) + sumExtras(reservation.extras);
-  return Math.round((Number(reservation.price) || 0) - reference);
+  // `repliCatalogue` : ICI, et seulement ici. addExtra et removeExtra
+  // recomposent le prix juste apres avec la MEME formule
+  // (`(basePrice || getBasePriceForReservation) + extras + ecart`). Deux
+  // references differentes de part et d autre de cette soustraction, et un
+  // cafe ajoute deplacerait le total du prix entier du catalogue. L affichage,
+  // lui, ne repose rien : il CONCLUT, et ne conclut donc que sur la reference
+  // ecrite sur le dossier.
+  return Math.round(getReservationPriceState(reservation, { repliCatalogue: true }).ecart);
 }
 
 async function addExtra(uid) {
@@ -23634,9 +23851,24 @@ function getPosIdentityParts(r) {
   // « quand on clique dessus on voit combien ils doivent payer... comme ca les
   // etudiants qui bossent au comptoir peuvent le voir directement »). Sans la
   // mention, un montant plus bas que la formule affichee passe pour une erreur.
-  if (Number(r.price) >= 0 && (Number(r.price) > 0 || getReservationPriceGap(r) !== 0)) {
-    const ajuste = getReservationPriceGap(r) !== 0;
-    parts.push(`${Number(r.price) || 0} €${ajuste ? ' (prix ajusté)' : ''}`);
+  // LA FICHE LIT LA MEME REGLE QUE LES HUIT AUTRES ECRANS. Elle decidait avec
+  // getReservationPriceGap, qui est le calcul du chemin d ECRITURE : il replie
+  // sur le catalogue du jour quand la reference n est pas ecrite sur le dossier,
+  // et il n a pas de seuil. Mesure : sur la fixture QA 9005 (prix 180, aucune
+  // base ecrite, catalogue du jour 324) la fiche annoncait « 180 € (prix
+  // ajusté) » pendant que la liste, le planning, l arene, la file d accueil, la
+  // page Evenements, la Vue d ensemble, la Direction et le ticket se taisaient ;
+  // et sur un dossier a 200 € dont la base ecrite vaut 0, un cafe a 6 € suffisait
+  // a la faire parler. C etait la derniere copie de la regle d avant le lot, sur
+  // l ecran ou le comptoir explique justement l ecart au client.
+  const prixDossier = getReservationPriceState(r);
+  if (Number(r.price) >= 0 && (Number(r.price) > 0 || prixDossier.ajuste)) {
+    // ET LE MONTANT S ECRIT COMME PARTOUT AILLEURS. Cette ligne composait le
+    // prix a la main : l espace fine insecable etait la, le groupement des
+    // milliers non. Au-dessus de mille euros la fiche ecrivait « 1290 € »
+    // quand les huit autres surfaces ecrivaient « 1 290 € », sur l ecran
+    // justement fait pour annoncer le montant au client.
+    parts.push(`${formatMoney(prixDossier.price)}${prixDossier.ajuste ? ' (prix ajusté)' : ''}`);
   }
   return parts;
 }

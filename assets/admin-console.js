@@ -629,11 +629,21 @@ function buildDirectionReportHtml(payload) {
         <thead><tr><th>Date</th><th>Heure</th><th>Client</th><th>Offre</th><th>Ressources</th><th>Engagement</th><th>Statut</th><th>Montant</th></tr></thead>
         <tbody>
           ${topReservations.map(reservation => {
-            const guest = getReservationGuestOps(reservation);
-            const engagement = [
-              guest.waiverRequired ? (guest.waiverDone ? 'Consignes OK' : 'Consignes a valider') : '',
-              guest.checkInDone ? 'Check-in OK' : 'Check-in a faire',
-            ].filter(Boolean).join(' / ');
+            // LE DOCUMENT EXPORTE DIT LA MEME CHOSE QUE L ECRAN. Cette colonne
+            // reconstruisait l engagement a la main a partir de
+            // getReservationGuestOps : la pastille « Note » posee en tete de
+            // getGuestOpsChips n atteignait donc jamais le rapport que la
+            // direction imprime ou envoie en PDF, pendant que le meme tableau
+            // l affichait a l ecran. Deux verdicts pour un seul tableau selon
+            // qu on le lit ou qu on l exporte : c est la copie divergente que ce
+            // lot supprime partout ailleurs, restee dans le meme fichier mille
+            // lignes au-dessus de la cellule corrigee.
+            const engagement = getGuestOpsChips(reservation).map(chip => chip.label).join(' / ');
+            // Le rapport est un document HTML AUTONOME : il n emporte pas la
+            // feuille de style du produit, donc la pastille ambre ne peut pas s y
+            // rendre. C est le TEXTE qui porte le verdict, issu du meme etat et
+            // du meme seuil que l ecran.
+            const prix = getReservationPriceState(reservation);
             return `<tr>
             <td>${escapeHtml(reservation.date || '')}</td>
             <td><strong>${escapeHtml(reservation.startTime || '')}</strong></td>
@@ -642,7 +652,7 @@ function buildDirectionReportHtml(payload) {
             <td>${escapeHtml(getAdminResourceText(reservation))}</td>
             <td>${escapeHtml(engagement)}</td>
             <td>${escapeHtml(getAdminStatusLabel(reservation.status))}</td>
-            <td><strong>${formatMoney(reservation.price)}</strong></td>
+            <td><strong>${formatMoney(reservation.price)}</strong>${prix.ajuste ? `<br><span style="font-size:9px;color:#a15c00;">prix ajusté, réf. ${formatMoney(prix.reference)}</span>` : ''}</td>
           </tr>`;
           }).join('')}
         </tbody>
@@ -1735,7 +1745,13 @@ function renderAdminReservationsTable(reservations = [], title = 'Réservations 
             <td>${getAdminResourceHtml(reservation)}</td>
             <td>${renderAdminGuestOpsCell(reservation)}</td>
             <td><span class="admin-pill ${escapeHtml(reservation.status || 'pending')}">${escapeHtml(getAdminStatusLabel(reservation.status))}</span></td>
-            <td class="admin-cell-tight"><strong>${formatMoney(reservation.price)}</strong><br>${escapeHtml(reservation.paymentMethod || 'Sur place')}</td>
+            ${/* Les gestes commerciaux sont exactement ce qu une directrice
+                 cherche dans un tableau de recettes, et c etait le seul ecart
+                 qui n apparaissait nulle part. La colonne imprimait le prix
+                 brut : un dossier a 40 EUR au lieu de 60 etait indiscernable
+                 d un dossier au tarif catalogue. Meme regle que la console
+                 staff, meme seuil, une seule fonction. */''}
+            <td class="admin-cell-tight"><strong>${formatMoney(reservation.price)}</strong>${renderReservationPriceMark(reservation, { forme: 'mot', base: 'admin-pill warn' })}<br>${escapeHtml(reservation.paymentMethod || 'Sur place')}</td>
             <td><span class="admin-pill ${riskTone}">${escapeHtml(riskLabel)}</span></td>
           </tr>`;
         }).join('')}

@@ -124,6 +124,17 @@ async function installQaApi(page) {
         status: 'arrived',
         pax: 4,
         price: 39,
+        // UNE REFERENCE ECRITE, DIFFERENTE DU PRIX FACTURE. Aucune fixture n en
+        // portait : le verdict « prix ajuste » ne pouvait donc naitre nulle part
+        // dans les gates, et `planning-matrix` mesurait un pied de carte qui ne
+        // portait JAMAIS la pastille de prix. Un gate qui ne monte pas la
+        // situation qu il protege est vert pour rien.
+        // C est cette carte-ci et pas une autre : une heure de bowling sans
+        // formule, donc pas de pastille de progression dans le pied, donc la
+        // seule ou le montant atteint reellement l ecran (mesure : sur 9001 et
+        // 9004, qui portent la progression, la regle masque le montant).
+        // 60 contre 39 : un geste commercial de 21 EUR, comme le comptoir en fait.
+        basePrice: 60,
         type: 'bowling',
         label: 'Bowling classique',
       },

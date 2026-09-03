@@ -501,6 +501,28 @@
     openStaffReservationDetail(id);
   };
 
+  // LA CONSIGNE ET LE PRIX NEGOCIE SUR LA LIGNE DU JOUR.
+  // La liste affichait « Bowling · 6 joueurs · piste 1 · 20 € » et rien
+  // d autre : la consigne qui change la maniere de servir et le prix negocie
+  // n existaient qu au fond de la fiche, dossier par dossier. Les deux aides
+  // du produit sont appelees ici telles quelles, zero donnee nouvelle, zero
+  // regle recopiee : une ligne sans note ni ecart ne gagne rien.
+  // LA FORME SUIT CE QUE LA LIGNE PORTE DEJA. Les deux appels de cette aide ne
+  // vivent pas dans le meme voisinage : la ligne du jour termine sa meta par
+  // « · 40 € », la ligne de recherche non. En donnant « complet » aux deux, la
+  // liste du jour ecrivait le meme nombre deux fois a deux lignes d intervalle
+  // (« Bowling · 6 joueurs · piste 1 · 40 € » puis « Prix ajusté 40 € ») et la
+  // seule information neuve, la reference de 60 €, restait dans l infobulle,
+  // donc perdue au doigt sur la tablette du comptoir. Le contrat de la regle
+  // partagee prevoit exactement ce cas : la forme « reference ».
+  function pv2MarqueursDossier(r, options = {}) {
+    const note = typeof renderReservationNoteLine === 'function' ? renderReservationNoteLine(r) : '';
+    const forme = options.montantDeja ? 'reference' : 'complet';
+    const prix = typeof renderReservationPriceMark === 'function' ? renderReservationPriceMark(r, { forme }) : '';
+    if (!note && !prix) return '';
+    return `<span class="pv2-flow-marks">${prix}${note}</span>`;
+  }
+
   function pv2ResSearchResultRow(r) {
     const when = typeof formatStaffClientDateText === 'function' ? formatStaffClientDateText(r.date) : (r.date || '');
     const time = String(r.startTime || '').slice(0, 5);
@@ -512,6 +534,7 @@
       <div class="pv2-flow-body">
         <strong>${esc(r.name || 'Sans nom')}</strong>
         <span>${esc(offer)} · ${paxN} joueur${paxN > 1 ? 's' : ''}${r.phone ? ` · ${esc(r.phone)}` : ''}</span>
+        ${pv2MarqueursDossier(r)}
       </div>
       ${statusChip(r.status)}
     </div>`;
@@ -578,6 +601,9 @@
           <div class="pv2-flow-body">
             <strong>${esc(r.name || 'Sans nom')}</strong>
             <span>${esc(typeLabel(r))} · ${Number(r.pax) || 0} joueurs${(r.lanes || []).length ? ` · piste ${(r.lanes || []).join(', ')}` : ''} · ${money(r.price)}</span>
+            ${/* La ligne au-dessus finit par le montant : la marque dit donc la
+                 REFERENCE, pas une deuxieme fois le montant. */''}
+            ${pv2MarqueursDossier(r, { montantDeja: true })}
           </div>
           ${statusChip(r.status)}
         </div>`;
@@ -1112,7 +1138,13 @@
     if (!selected) return '<div class="crm-empty crm-empty-lg"><strong>Sélectionnez un client</strong>Cliquez sur une ligne pour voir sa fiche.</div>';
     ensureStaffClientComms();
     const badges = [crmStatusPill(selected)];
-    if (ctx.vipThreshold > 0 && Number(selected.spent || 0) >= ctx.vipThreshold) badges.push(`<span class="crm-pill tone-accent" title="Plus de ${Math.round(ctx.vipThreshold)} € cumulés (seuil réglable dans Établissement)">Client clé</span>`);
+    const estClientCle = ctx.vipThreshold > 0 && Number(selected.spent || 0) >= ctx.vipThreshold;
+    // LA PHRASE DIT LA REGLE QUI EST APPLIQUEE. La condition est `>=`, donc un
+    // client a EXACTEMENT 308 € porte le badge ; « Plus de 308 € » et « au-delà
+    // de 308 € » enoncent une regle differente de celle qui decide. Puisque
+    // cette explication devient visible sous les chiffres, elle doit etre juste
+    // aux deux endroits.
+    if (estClientCle) badges.push(`<span class="crm-pill tone-accent" title="À partir de ${Math.round(ctx.vipThreshold)} € cumulés (seuil réglable dans Établissement)">Client clé</span>`);
     if (selected.hasBirthday) badges.push('<span class="crm-pill tone-info">Anniversaire</span>');
     const kpi = (label, value) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div></div>`;
     const next = selected.nextBooking;
@@ -1156,6 +1188,15 @@
           ${kpi('Visites', Number(selected.reservations) || 0)}
           ${kpi('Panier moyen', money(selected.avgBasket))}
         </section>
+        ${/* LE SEUIL SE LIT, IL NE SE SURVOLE PAS. La seule explication du
+             badge « Client clé » vivait dans un attribut `title` natif : une
+             seconde de survol souris, et rien du tout au doigt sur la tablette
+             du comptoir. Le badge le plus charge de sens de l ecran etait le
+             seul qu on ne pouvait pas comprendre. La ligne s affiche sous les
+             chiffres, la ou le montant depense est deja lu, et UNIQUEMENT
+             quand le badge est porte. Le `title` reste, il devient un doublon
+             inoffensif au lieu de l unique source. */''}
+        ${estClientCle ? `<div class="crm-kpi-note">Client clé à partir de ${money(ctx.vipThreshold)} cumulés (seuil réglable dans Établissement)</div>` : ''}
 
         ${nextBlock}
 

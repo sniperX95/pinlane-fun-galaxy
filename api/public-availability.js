@@ -41,6 +41,7 @@ const {
   isLaneBlockedAt,
 } = require('../lib/availability-blocks');
 const { buildProgramFormula, describeProgram, normalizeProgram } = require('../lib/visit-program');
+const { buildFormulaComplements } = require('../lib/booking-complements');
 
 const LASER_ARENA_MINUTES = 25;
 // Fenêtre d'accueil fixe AVANT la première activité : l'heure choisie par le
@@ -865,7 +866,70 @@ module.exports = async (req, res) => {
         label: formule.name,
         snapshot,
       };
-      const respondFormula = (slots, message, suggestions = []) => {
+      // LE CRENEAU RETENU, CELUI QUE LE TUNNEL VA VRAIMENT GARDER.
+      //
+      // Le composeur par defaut adopte tout seul la combinaison
+      // `anchorMeta.defaultTimes` (assets/app-main.js adoptDefaultFormulaAnchors),
+      // et « Valider ces horaires » n existe QUE pour le creneau qui porte ces
+      // heures-la (renderFormulaAnchorStatus : sans correspondance, le bouton
+      // n est pas rendu). Le creneau retenu est donc calculable ICI, sans
+      // aller-retour de plus, et sans jamais deviner : aucune correspondance =
+      // aucun creneau retenu = aucune carte.
+      const creneauRetenuParDefaut = (slots, meta) => {
+        const heures = (meta && meta.defaultTimes) || null;
+        const cles = heures ? Object.keys(heures).filter((cle) => heures[cle]) : [];
+        if (!cles.length) return null;
+        return slots.find((slot) => {
+          const posees = (slot && slot.opsPlan && slot.opsPlan.anchorPlan && slot.opsPlan.anchorPlan.times) || null;
+          return posees && cles.every((cle) => posees[cle] === heures[cle]);
+        }) || null;
+      };
+      const respondFormula = (slots, message, suggestions = [], retainedSlot = null) => {
+        // LES MONTEES DE FORMULE VOYAGENT AVEC LE CRENEAU QUI VIENT D ETRE
+        // RETENU (2026-09-04). Elles sont calculees APRES filterSlotsByFinalGuards,
+        // sur un creneau qui a survecu a la garde : proposer une montee sur
+        // un creneau que la garde vient de retirer serait proposer du vide. Et
+        // elles partent dans CETTE reponse, sans aucun aller-retour de plus :
+        // le tunnel a deja paye une requete pour son creneau.
+        let complements = [];
+        try {
+          complements = buildFormulaComplements({
+            centerId,
+            formuleId,
+            date,
+            pax,
+            retainedSlot,
+            type,
+            duration,
+            priceOptions: { bowlingConfig: centerBowlingConfig, dateStr: date },
+            reservations: snapshot.reservations,
+            laneStatuses: snapshot.laneStatuses,
+            blocks: snapshot.blocks || [],
+            // LA MEME GARDE FINALE QUE LE CRENEAU RETENU, avec l identite de la
+            // CANDIDATE : fermetures du jour, pistes et activites bloquees, et
+            // surtout blocage de LA formule proposee, qui n a aucune raison
+            // d etre celui de la formule courante.
+            passesFinalGuards: ({ scenario, formule: candidate, laneCount: candidateLaneCount }) => (
+              slotPassesFinalGuards(toFormulaSlot(scenario, snapshot, getFormuleLaneDuration(candidate)), {
+                ...guardContext,
+                formuleId: candidate.id,
+                label: candidate.name,
+                laneCount: candidateLaneCount,
+                requiresLanes: reservationNeedsLanes(type, candidate.id),
+                duration: getFormuleLaneDuration(candidate),
+                totalDuration: getFormuleTotalDuration(candidate),
+              })
+            ),
+          });
+        } catch (error) {
+          // Une proposition n est jamais une raison de casser une disponibilite :
+          // sans elle, le tunnel se comporte exactement comme avant ce lot. Mais
+          // elle laisse une trace : sinon « la proposition ne s affiche plus »
+          // n aurait aucune cause lisible, et personne ne saurait si c est le
+          // module qui casse ou une regle metier qui mord.
+          console.error('[public-availability] complements', error && (error.stack || error.message));
+          complements = [];
+        }
         sendJson(res, 200, {
           ok: true,
           date,
@@ -879,6 +943,7 @@ module.exports = async (req, res) => {
           label: formule.name,
           anchors: anchorMeta,
           suggestions,
+          complements,
           message,
         });
       };
@@ -914,7 +979,7 @@ module.exports = async (req, res) => {
             ? filterSlotsByFinalGuards([toFormulaSlot(recommended, snapshot, duration)], guardContext)
             : [];
           if (guarded.length) {
-            respondFormula(guarded, '');
+            respondFormula(guarded, '', [], guarded[0]);
             return;
           }
           respondFormula(
@@ -966,6 +1031,8 @@ module.exports = async (req, res) => {
         respondFormula(
           guardedDefaults,
           guardedDefaults.length ? '' : 'Aucune combinaison disponible pour cette formule ce jour-là. Essayez une autre date ou un autre groupe.',
+          [],
+          creneauRetenuParDefaut(guardedDefaults, anchorMeta),
         );
         return;
       }
@@ -1058,7 +1125,20 @@ module.exports = async (req, res) => {
         );
         if (probe && probe.plan && probe.plan.reason) emptyMessage = probe.plan.reason;
       }
-      respondFormula(guardedSlots, guardedSlots.length ? '' : emptyMessage);
+      // UNE FORMULE SANS ANCRE N A PAS DE COMBINAISON PAR DEFAUT : le client
+      // choisit une heure d arrivee dans la liste, et rien avant ce clic ne dit
+      // laquelle. Le tunnel redemande donc cette reponse avec `retainedTime`
+      // une fois le creneau retenu ; sans ce parametre, aucune carte, jamais
+      // une carte jugee sur une heure que le client n a pas choisie.
+      const heureRetenue = String(url.searchParams.get('retainedTime') || '').slice(0, 5);
+      respondFormula(
+        guardedSlots,
+        guardedSlots.length ? '' : emptyMessage,
+        [],
+        /^\d{1,2}:\d{2}$/.test(heureRetenue)
+          ? (guardedSlots.find((slot) => slot.time === heureRetenue) || null)
+          : null,
+      );
       return;
     }
 

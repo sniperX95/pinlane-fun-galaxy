@@ -348,6 +348,7 @@ async function main() {
       const rp = rect(puce);
       const voisins = [...carte.querySelectorAll('.booking-name, [class*="flag-"]')];
       return {
+        id: r.id,
         largeurPuce: rp.w,
         recouvre: voisins.filter((v) => chevauche(rp, rect(v))).map((v) => String(v.className).slice(0, 24)),
         voisins: voisins.length,
@@ -357,22 +358,47 @@ async function main() {
       ok(g.recouvre.length === 0, `la puce ne recouvre ni le nom ni les marques (${g.recouvre.join(', ') || 'rien'})`);
       // CONTRE-EPREUVE PAR MUTATION : on lui rend sa position absolue. Elle DOIT
       // se remettre a recouvrir, sinon l assertion ne mesure rien.
-      const mute = await page.evaluate(async () => {
+      // CETTE CONTRE-EPREUVE COURAIT APRES LE NAVIGATEUR. Elle posait le style
+      // puis mesurait 200 ms plus tard, en montre. Sous la charge de la suite
+      // complete (elle passe en 101e position sur 170), le recalcul de style
+      // n'etait pas fini : la puce etait encore dans le flux, elle ne recouvrait
+      // rien, et le gate rougissait en annoncant « 0 element » comme si c'etait
+      // une mesure. Constate le 2026-09-03 : vert en isole deux fois de suite,
+      // rouge dans la suite, sur un diff qui ne touche ni le markup de la carte
+      // ni pinlane-staff.css. Elle visait en plus la PREMIERE puce du document
+      // (`.booking .delay-indicator`), pas forcement la carte qu'on venait de
+      // mesurer. Une contre-epreuve qui court peut mentir dans les deux sens :
+      // elle attend maintenant que la mutation MORDE, sur la MEME carte, et son
+      // montage est asserte avant son verdict.
+      const mute = await page.evaluate(async (resId) => {
         const s = document.createElement('style');
         s.textContent = '.booking .delay-indicator { position: absolute !important; top: 3px; right: 4px; }';
         document.head.appendChild(s);
-        await new Promise((res) => setTimeout(res, 200));
-        const carte = document.querySelector('.booking .delay-indicator')?.closest('.booking');
+        const carte = document.querySelector(`.booking[data-booking-res-id="${resId}"]`);
         const puce = carte && carte.querySelector('.delay-indicator');
+        let appliquee = false;
+        if (puce) {
+          const limite = Date.now() + 3000;
+          while (Date.now() < limite) {
+            if (getComputedStyle(puce).position === 'absolute') { appliquee = true; break; }
+            await new Promise((res) => requestAnimationFrame(() => res()));
+          }
+        }
         const rect = (el) => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, right: b.right, bottom: b.bottom }; };
         const chevauche = (m, n) => !(m.right <= n.x + 0.5 || n.right <= m.x + 0.5 || m.bottom <= n.y + 0.5 || n.bottom <= m.y + 0.5);
-        const combien = (carte && puce)
-          ? [...carte.querySelectorAll('.booking-name, [class*="flag-"]')].filter((v) => chevauche(rect(puce), rect(v))).length
+        const voisins = carte ? [...carte.querySelectorAll('.booking-name, [class*="flag-"]')] : [];
+        const combien = (carte && puce && appliquee)
+          ? voisins.filter((v) => chevauche(rect(puce), rect(v))).length
           : 0;
         s.remove();
-        return combien;
-      });
-      ok(mute > 0, `contre-preuve : en position absolue, la puce recouvre de nouveau ${mute} element(s) -> le gate sait rougir`);
+        return { appliquee, voisins: voisins.length, combien, carteTrouvee: Boolean(carte) };
+      }, g.id);
+      // LE MONTAGE D'ABORD : sans carte, sans voisin ou sans mutation reellement
+      // appliquee, « 0 recouvrement » ne dit rien du produit.
+      if (ok(mute.carteTrouvee && mute.voisins > 0 && mute.appliquee,
+        `montage de la contre-epreuve : carte ${g.id} trouvee, ${mute.voisins} voisin(s), position absolue reellement appliquee (${mute.appliquee})`)) {
+        ok(mute.combien > 0, `contre-preuve : en position absolue, la puce recouvre de nouveau ${mute.combien} element(s) -> le gate sait rougir`);
+      }
     }
 
     // --- H : un refus reste affiche assez longtemps pour etre lu ---

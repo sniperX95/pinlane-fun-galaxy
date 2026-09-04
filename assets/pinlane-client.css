@@ -3841,6 +3841,125 @@ body.client-mode #clientView {
   color: var(--text);
 }
 
+/* --- Montées de formule : la proposition vit DANS la colonne qui défile -----
+   Elle est rendue en fin de #recapList, jamais dans .recap-decision. Raison
+   mécanique : #recapList est le scrolleur du récapitulatif (flex: 1 1 0 puis
+   overflow: hidden auto sous 640 px, minmax(0, 1fr) au-dessus de 1100 px) et
+   .recap-decision est en flex: none. Ce bloc est donc physiquement incapable de
+   pousser « Confirmer la réservation » hors de l'écran. Le poser dans la
+   colonne de décision casserait la garde mobile du tunnel.
+   -------------------------------------------------------------------------- */
+#clientView .recap-complements {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+}
+
+#clientView .recap-complements-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+#clientView .recap-complements-head strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#clientView .recap-complements-head small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#clientView .complement-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: left;
+}
+
+#clientView .complement-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#clientView .complement-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-wrap: pretty;
+}
+
+#clientView .complement-adds {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Ce qui ne bouge pas, ce sont les HEURES retenues : la durée de la visite,
+   elle, peut doubler (hlg vers f2 à 8 personnes : 1h30 puis 3h). La carte le
+   dit sous les ajouts, à côté du montant, avant le clic. */
+#clientView .complement-total {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Le total du groupe D'ABORD, le montant par personne ensuite : la phrase
+   entière vient du serveur (lib/booking-complements), elle ne se recompose pas
+   ici. Un chiffre par personne seul se paie en caisse sur un groupe de douze. */
+#clientView .complement-amount {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+#clientView .complement-add {
+  min-height: 44px;
+  height: auto;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+#clientView .complement-status {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* LA RÉGION DE STATUT RESTE DANS L'ARBRE, MÊME VIDE. `display: none` l'en
+   retirait : une région live absente n'annonce rien, et elle réapparaissait
+   ensuite avec son texte déjà dedans, ce qu'aucun lecteur d'écran ne restitue.
+   Elle garde donc sa place (une ligne), et app-main y écrit APRÈS le rendu pour
+   que la phrase soit une mutation, donc une annonce. */
+#clientView .complement-status { min-height: 1em; }
+
+/* Le bloc reçoit le focus après un clic sur « Ajouter » : renderRecap détruit
+   #recapList entier, et sans ce point d'ancrage l'utilisateur clavier repartait
+   du haut du récapitulatif. Le focus programmatique reste silencieux ; seule la
+   navigation clavier montre l'anneau. */
+#clientView .recap-complements:focus { outline: none; }
+#clientView .recap-complements:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#clientView .complement-status[data-tone='ko'] { color: var(--danger, var(--text)); }
+#clientView .complement-status[data-tone='ok'] { color: var(--text); }
+
 #clientView .total-box {
   display: flex;
   align-items: center;

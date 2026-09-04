@@ -19,15 +19,31 @@
 // libres de ce centre ont units=null : elles restent absorbables, et ce gate
 // verifie AUSSI qu on ne les a pas bridees par exces de zele.
 //
-// Trois proprietes de comportement, sur les vrais handlers HTTP :
+// Quatre proprietes de comportement, sur les vrais handlers HTTP :
 //   A. TEMOIN : le bowling refuse au-dela de ses pistes (la borne existe la ou
 //      le moteur connait la ressource).
-//   B. SUJET : une activite a dotation finie refuse au-dela de sa dotation.
+//   B. SUJET : une activite a dotation finie refuse au-dela de sa dotation,
+//      QUEL QUE SOIT L ORDRE DES GROUPES. La revue du 2026-09-04 a montre que
+//      le gate ne testait que des ordres HOMOGENES (12 puis 12, ou 6 puis 6),
+//      les deux seuls qui survivent a un sous-comptage : un groupe de 12 (deux
+//      pistes) suivi d un groupe de 6 (une piste) passait deux fois.
 //   C. NON-REGRESSION : une activite SANS dotation (units=null) n est pas
 //      bridee, la doctrine "le centre absorbe" reste vraie.
+//   D. LA GARDE VAUT POUR TOUTE VISITE, ET ELLE NE REFUSE QUE L IRREALISABLE.
+//      Une visite mixte (bowling + duckpin) passe sous la garde ; mais une
+//      activite libre n a AUCUNE heure imposee, donc elle n est refusee que si
+//      sa dotation est prise pendant TOUTE la fenetre de la visite.
 //
-// Puis une CONTRE-EPREUVE par mutation : on neutralise la garde, on prouve que
-// le gate rougit, on restaure par edition inverse.
+// LE STORE RANGE CE QUE LA PRODUCTION RANGE. Le faux createReservation poussait
+// le payload BRUT, qui porte laneCount ; createReservation passe en production
+// par normalizeReservationPayload, dont la liste blanche ne conserve PAS
+// laneCount. Le gate mesurait donc une forme que la production ne produit
+// jamais, et il restait vert sur un sous-comptage reel. Il normalise desormais
+// comme la base.
+//
+// Puis une CONTRE-EPREUVE PAR MUTATION SERVIE EN MEMOIRE, une par propriete de
+// la garde : on prouve que le gate rougit sans elle, et que le disque n a
+// jamais ete touche.
 //
 // Lancement : node scripts/finite-endowment-check.js
 'use strict';
@@ -38,6 +54,74 @@ const ROOT = path.resolve(__dirname, '..');
 const OPS = path.join(ROOT, 'lib/reservation-ops.js');
 const PORT = Number(process.env.PINLANE_ENDOWMENT_PORT || 4493);
 const BASE = `http://127.0.0.1:${PORT}`;
+
+// LA CONTRE-EPREUVE NE TOUCHE JAMAIS LE DEPOT.
+// `--mutate` relance ce gate dans un processus fils avec PINLANE_ENDOWMENT_MUTATION
+// pose. Le crochet ci-dessous SERT une copie mutee de lib/reservation-ops.js au
+// moment du require : le fichier sur le disque n est ni ecrit ni restaure, donc
+// une contre-epreuve interrompue ne peut pas laisser le moteur neutralise
+// derriere elle. Le crochet est pose AVANT tout require applicatif, sinon le
+// module serait deja compile quand il mordrait.
+// Les fins de ligne du depot ne sont pas uniformes (lib/reservation-ops.js est
+// en CRLF, ce script en LF) : une ancre ecrite en LF ne se trouverait nulle part
+// dans un fichier CRLF. On normalise la copie SERVIE, jamais le disque.
+const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
+const LF = String.fromCharCode(10);
+
+// UNE MUTATION PAR PROPRIETE DE LA GARDE. Chacune annule un correctif a la
+// source et doit faire rougir le gate ; une seule mutation ne protegerait que
+// la premiere des trois.
+const MUTATIONS = [
+  {
+    nom: 'la garde de dotation est neutralisee',
+    editions: [{
+      de: 'const manque = dotationDepassee(',
+      vers: 'const manque = false && dotationDepassee(',
+    }],
+  },
+  {
+    nom: 'le comptage d unites retombe au « 1 » silencieux (la forme de PRODUCTION ne porte pas laneCount)',
+    editions: [{
+      de: '  const compte = Number(item && item.laneCount);\n  if (Number.isFinite(compte) && compte > 0) return Math.trunc(compte);',
+      vers: '  const compte = Number(item && item.laneCount);\n  if (true) return Number.isFinite(compte) && compte > 0 ? Math.trunc(compte) : 1;',
+    }],
+  },
+  {
+    nom: 'la fenetre comparee redevient celle du DOSSIER entier au lieu de celle de la ligne',
+    editions: [
+      {
+        de: '    const dernierDepart = Math.max(visite.debut, visite.fin - minutes);',
+        vers: '    const dernierDepart = visite.debut;',
+      },
+      {
+        de: '      const fin = debut + minutes;',
+        vers: '      const fin = Math.max(debut + minutes, visite.fin);',
+      },
+    ],
+  },
+];
+const MUTATION_PREUVE = '[mutation] servie en memoire :';
+const MUTATION_ACTIVE = Number(process.env.PINLANE_ENDOWMENT_MUTATION || 0);
+if (MUTATION_ACTIVE) {
+  const mutation = MUTATIONS[MUTATION_ACTIVE - 1];
+  const Module = require('module');
+  const compile = Module.prototype._compile;
+  Module.prototype._compile = function (contenu, nom) {
+    if (path.resolve(nom) === path.resolve(OPS)) {
+      let mute = contenu.split(CRLF).join(LF);
+      for (const { de, vers } of mutation.editions) {
+        if (mute.split(de).length - 1 !== 1) {
+          console.error(`mutation impossible : ancre absente ou multiple dans ${OPS} : ${de.slice(0, 70)}`);
+          process.exit(1);
+        }
+        mute = mute.split(de).join(vers);
+      }
+      console.log(`${MUTATION_PREUVE} ${mutation.nom}`);
+      return compile.call(this, mute, nom);
+    }
+    return compile.call(this, contenu, nom);
+  };
+}
 
 function mock(rel, exports) {
   const resolu = require.resolve(path.join(ROOT, rel));
@@ -63,8 +147,20 @@ database.readStaffState = async (date, centerId = 'libramont') => ({
 });
 database.readAvailabilitySnapshot = database.readStaffState;
 database.createOpsEvent = async () => ({});
+// LE MEME PASSAGE QU EN PRODUCTION. api/public-reservations appelle
+// createReservation, qui normalise par normalizeReservationPayload avant
+// d ecrire : la liste blanche de normalizeReservationProgram ne conserve pas
+// laneCount. Pousser le payload BRUT rangeait un programme que la base ne
+// produit jamais, et le gate restait vert sur un sous-comptage reel.
 database.createReservation = async (payload) => {
-  const row = { ...payload, id: nextId += 1 };
+  const range = database.normalizeReservationPayload({ ...payload }, {});
+  const row = {
+    ...range,
+    id: nextId += 1,
+    date: payload.date,
+    centerId: payload.centerId,
+    status: range.status || 'pending',
+  };
   STORE.push(row);
   return row;
 };
@@ -129,14 +225,22 @@ function nextSaturday() {
 const DATE = nextSaturday();
 const CENTRE = 'libramont';
 const HEURE = '15:00';
+const PAS_MINUTES = 60;
 
-function corps(activityId, pax, index) {
+function decalerHeure(heure, minutes) {
+  const [h, m] = String(heure).split(':').map(Number);
+  const total = (h * 60 + m) + minutes;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+const HEURE_SUIVANTE = decalerHeure(HEURE, PAS_MINUTES);
+
+function corps(activityId, pax, index, heure = HEURE) {
   return {
     name: `Groupe ${index}`,
     phone: '+32470000000',
     email: `groupe${index}@exemple.be`,
     date: DATE,
-    startTime: HEURE,
+    startTime: heure,
     duration: 1,
     totalDuration: 1,
     pax,
@@ -145,6 +249,19 @@ function corps(activityId, pax, index) {
     centerId: CENTRE,
     channel: 'public',
   };
+}
+
+// LE MEME DOSSIER, AVEC UN PROGRAMME DE PLUSIEURS LIGNES.
+// C est cette forme qui bascule l aiguillage de prepareReservationOps : des qu une
+// activite PLANIFIEE (bowling, laser) entre dans le programme, buildProgramFormula
+// rend une formule, isFreeVisit tombe a false, et la visite part chez planningAgent
+// au lieu de buildFreeVisitPlanResult.
+function corpsProgramme(program, pax, index, heure = HEURE) {
+  return { ...corps(program[0].activityId, pax, index, heure), program };
+}
+
+function message(reponse) {
+  return String(((reponse && reponse.body) || {}).message || '').slice(0, 70);
 }
 
 // Combien de dossiers le serveur accepte-t-il d affilee sur la meme heure ?
@@ -186,6 +303,19 @@ async function main() {
       const moitie = await combienPassent(activite.id, parUnite, 6);
       ok(moitie.acceptes === Number(activite.units),
         `${activite.id} : ${activite.units} groupes d une unite tiennent ensemble (${moitie.acceptes} passes, attendu ${activite.units})`);
+
+      // ORDRE HETEROGENE. Les deux essais ci-dessus sont HOMOGENES (12 puis 12,
+      // 6 puis 6) : ce sont les deux seuls ordres qu un sous-comptage laisse
+      // juste, parce qu ils comparent des dossiers de meme taille. Un gros
+      // groupe SUIVI d un petit est le cas qui a survecu a la premiere version
+      // du lot - trois pistes vendues pour deux, deux fois HTTP 201.
+      STORE.length = 0;
+      const gros = await post(corps(activite.id, pax, 80));
+      ok(gros.status >= 200 && gros.status < 300,
+        `montage : un groupe de ${pax} prend les ${activite.units} unites de ${activite.id} (HTTP ${gros.status})`);
+      const petit = await post(corps(activite.id, parUnite, 81));
+      ok(petit.status === 409,
+        `ordre heterogene : apres un groupe de ${pax}, un groupe de ${parUnite} est refuse (HTTP ${petit.status} ${message(petit)})`);
     }
 
     // --- C. NON-REGRESSION : sans dotation, le centre absorbe ---------------
@@ -195,6 +325,81 @@ async function main() {
       const essai = await combienPassent(activite.id, 4, 5);
       ok(essai.acceptes === 5,
         `${activite.id} sans dotation n est pas bridee (${essai.acceptes} dossiers sur 5${essai.premierRefus ? ` - ${essai.premierRefus}` : ''})`);
+    }
+
+    // --- D. LA GARDE VAUT POUR TOUTE VISITE, ET ELLE NE REFUSE QUE
+    //        L IRREALISABLE ------------------------------------------------
+    //
+    // Defaut mesure le 2026-09-04 : dotationDepassee etait appelee DEPUIS
+    // buildFreeVisitPlanResult, et prepareReservationOps ne traverse ce chemin
+    // que si le programme ne contient AUCUNE activite planifiee. Une visite
+    // « bowling 1h + duckpin 1h » part chez planningAgent, qui ne connait que
+    // les pistes de bowling et les arenes : la dotation du duckpin n etait
+    // jamais comptee, et les 2 pistes de Libramont se revendaient a l infini.
+    //
+    // MAIS UNE ACTIVITE LIBRE N A AUCUNE HEURE IMPOSEE. La visite mixte dure
+    // deux heures ; saturer la premiere seulement ne monte PAS la situation
+    // qu on pretend tester, parce que ce groupe-la peut jouer son duckpin
+    // pendant la seconde heure. Le montage sature donc TOUTE la fenetre, et le
+    // temoin qui suit prouve qu une saturation PARTIELLE laisse passer.
+    for (const activite of finies) {
+      const parUnite = Math.max(1, Number(activite.capacityPerUnit) || 1);
+      const dotation = Math.trunc(Number(activite.units));
+      const absorbable = absorbables[0];
+      const visiteMixte = [
+        { activityId: 'bowling', duration: 1 },
+        { activityId: activite.id, duration: 1 },
+      ];
+
+      // MONTAGE ASSERTE D ABORD : sans dotation reellement saturee sur les deux
+      // heures, tout ce qui suit serait vert pour rien.
+      STORE.length = 0;
+      let poses = 0;
+      for (const heure of [HEURE, HEURE_SUIVANTE]) {
+        for (let i = 1; i <= dotation; i += 1) {
+          const r = await post(corps(activite.id, parUnite, `${heure}-${i}`, heure));
+          if (r.status >= 200 && r.status < 300) poses += 1;
+        }
+      }
+      ok(poses === dotation * 2,
+        `montage : ${dotation * 2} dossier(s) d une unite poses sur ${activite.id} a ${HEURE} et ${HEURE_SUIVANTE} (${poses}/${dotation * 2})`);
+      for (const heure of [HEURE, HEURE_SUIVANTE]) {
+        const saturation = await post(corps(activite.id, parUnite, `sat-${heure}`, heure));
+        ok(saturation.status === 409,
+          `montage : la dotation de ${activite.id} est saturee a ${heure}, un dossier de plus est refuse (HTTP ${saturation.status})`);
+      }
+
+      // SUJET : la MEME demande, avec du bowling en plus. Le refus doit tenir,
+      // parce qu il n existe AUCUNE place dans la fenetre de cette visite.
+      const melange = await post(corpsProgramme(visiteMixte, parUnite, 91));
+      ok(melange.status === 409,
+        `bowling + ${activite.id} sur une dotation saturee pendant toute la visite est refuse (HTTP ${melange.status} ${message(melange)})`);
+
+      // TEMOIN NEGATIF 1 : LE MOTEUR NE REFUSE QUE L IRREALISABLE. Meme visite
+      // mixte, mais la dotation n est prise que sur la PREMIERE heure : ce
+      // groupe-la peut jouer son duckpin pendant la seconde, donc il passe.
+      // Sans ce temoin, la propriete ci-dessus se satisferait en refusant toute
+      // visite mixte des qu une seule minute est prise.
+      STORE.length = 0;
+      let posesPartiels = 0;
+      for (let i = 1; i <= dotation; i += 1) {
+        const r = await post(corps(activite.id, parUnite, `partiel-${i}`));
+        if (r.status >= 200 && r.status < 300) posesPartiels += 1;
+      }
+      ok(posesPartiels === dotation,
+        `montage : ${dotation} dossier(s) posent ${activite.id} a ${HEURE} seulement (${posesPartiels}/${dotation})`);
+      const reportable = await post(corpsProgramme(visiteMixte, parUnite, 93));
+      ok(reportable.status >= 200 && reportable.status < 300,
+        `temoin : bowling + ${activite.id} passe quand la dotation se libere pendant la visite (HTTP ${reportable.status} ${message(reportable)})`);
+
+      // TEMOIN NEGATIF 2, meme fixture : une activite SANS dotation declaree
+      // (units null) reste acceptee dans la meme forme a deux lignes.
+      const libre = await post(corpsProgramme([
+        { activityId: 'bowling', duration: 1 },
+        { activityId: absorbable.id, duration: 1 },
+      ], parUnite, 92));
+      ok(libre.status >= 200 && libre.status < 300,
+        `temoin negatif : bowling + ${absorbable.id} (units null) reste accepte (HTTP ${libre.status} ${message(libre)})`);
     }
   } finally {
     server.close();
@@ -207,26 +412,46 @@ async function main() {
   console.log('\nfinite-endowment-check: ALL OK (dotation finie comptee, activites absorbables intactes)');
 }
 
-// Contre-epreuve : `--mutate` neutralise la garde, relance le gate et attend un
-// ECHEC, puis restaure a l identique.
+// Contre-epreuve : `--mutate` relance le gate une fois PAR MUTATION, servie EN
+// MEMOIRE, et attend un ECHEC a chaque fois. Rien n est ecrit sur le disque, et
+// on le verifie.
 if (process.argv.includes('--mutate')) {
-  const source = fs.readFileSync(OPS, 'utf8');
-  const marqueur = 'const manque = dotationDepassee(';
-  if (!source.includes(marqueur)) {
-    console.error('mutation impossible : la garde attendue est introuvable dans lib/reservation-ops.js');
-    process.exit(1);
-  }
-  const mute = source.replace(marqueur, 'const manque = false && dotationDepassee(');
-  fs.writeFileSync(OPS, mute);
+  const avant = fs.readFileSync(OPS, 'utf8');
+  const normalise = avant.split(CRLF).join(LF);
+  MUTATIONS.forEach((mutation, index) => {
+    mutation.editions.forEach(({ de }) => {
+      const occurrences = normalise.split(de).length - 1;
+      if (occurrences !== 1) {
+        console.error(`mutation ${index + 1} impossible : ancre attendue 1 fois dans lib/reservation-ops.js, trouvee ${occurrences} : ${de.slice(0, 70)}`);
+        process.exit(1);
+      }
+    });
+  });
   const { spawnSync } = require('child_process');
-  const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
-  fs.writeFileSync(OPS, source);
-  console.log(run.stdout || '');
-  if (run.status === 0) {
-    console.error('CONTRE-EPREUVE RATEE : le gate reste vert sans la garde.');
+  MUTATIONS.forEach((mutation, index) => {
+    const run = spawnSync(process.execPath, [__filename], {
+      encoding: 'utf8',
+      env: { ...process.env, PINLANE_ENDOWMENT_MUTATION: String(index + 1) },
+    });
+    console.log(run.stdout || '');
+    // Le crochet a-t-il MORDU ? Sans cette preuve, un fils qui echoue pour une
+    // toute autre raison (port pris, module absent) se lirait comme une
+    // contre-epreuve reussie.
+    if (!String(run.stdout || '').includes(`${MUTATION_PREUVE} ${mutation.nom}`)) {
+      console.error(`CONTRE-EPREUVE RATEE (${mutation.nom}) : le crochet n a pas servi la copie mutee.`);
+      process.exit(1);
+    }
+    if (run.status === 0) {
+      console.error(`CONTRE-EPREUVE RATEE : le gate reste vert alors que ${mutation.nom}.`);
+      process.exit(1);
+    }
+    console.log(`contre-epreuve OK : le gate rougit quand ${mutation.nom}.`);
+  });
+  if (fs.readFileSync(OPS, 'utf8') !== avant) {
+    console.error('CONTRE-EPREUVE RATEE : lib/reservation-ops.js a ete ecrit sur le disque.');
     process.exit(1);
   }
-  console.log('contre-epreuve OK : sans la garde, le gate rougit ; moteur restaure a l identique.');
+  console.log(`contre-epreuve OK : ${MUTATIONS.length} mutations, et lib/reservation-ops.js n a jamais ete ecrit.`);
   process.exit(0);
 }
 

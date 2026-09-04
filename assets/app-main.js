@@ -5797,6 +5797,14 @@ async function fetchSlots(options = {}) {
   // Un ancien prix ne doit jamais survivre a une nouvelle recherche. La reponse
   // courante remettra le programme normalise si le type est bien une visite.
   state.booking.serverProgram = null;
+  // Meme regle pour les montees de formule : elles sont chiffrees ET jugees
+  // faisables sur des heures precises. Une carte survivante annoncerait un
+  // supplement calcule sur un creneau qui n existe plus.
+  formulaComplements = [];
+  formulaComplementNotice = { text: '', tone: '' };
+  // Et le prix serveur du creneau courant repart de zero avec eux : c est la
+  // reference contre laquelle le clic sur une montee verifie le montant promis.
+  state.booking.serverPrice = 0;
   if (!options.keepAlternatives) clearBookingAlternatives();
   const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
   if (options.showLoading !== false) {
@@ -5856,6 +5864,12 @@ async function fetchSlots(options = {}) {
     formulaAnchorData = payload.anchors || null;
     formulaAnchorMessage = state.availableSlots.length ? '' : (payload.message || '');
     formulaAnchorSuggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
+    formulaComplements = Array.isArray(payload.complements) ? payload.complements : [];
+    // LE PRIX AUTORITAIRE DU CRENEAU, tel que le serveur vient de le calculer.
+    // C est le seul endroit du parcours ou un montant est PROMIS avant d etre
+    // applique : sans cette reference, le clic sur une montee n aurait rien a
+    // quoi confronter le montant de sa carte.
+    state.booking.serverPrice = Number(payload.price) || 0;
     resetFormulaProgramChoice();
     adoptDefaultFormulaAnchors();
     state.booking.laneCount = Number(payload.laneCount || 0);
@@ -5874,6 +5888,7 @@ async function fetchSlots(options = {}) {
     formulaAnchorData = null;
     formulaAnchorMessage = '';
     formulaAnchorSuggestions = [];
+    formulaComplements = [];
     // Panne serveur ≠ zéro créneau : renderSlots affiche l'état d'erreur
     // dédié (role="alert" + bouton Réessayer), pas l'état vide.
     slotLoadFailed = true;
@@ -5922,6 +5937,18 @@ let formulaAnchorBusy = false;      // revalidation en cours
 let formulaAdviceSignature = '';    // avis de confort deja entre en scene
 let formulaAdviceDismissed = '';    // avis que le client a choisi d ecarter
 let formulaJustPicked = null;       // heure qui vient d'etre retenue (capsule)
+// MONTEES DE FORMULE (2026-09-04). Le serveur les calcule AVEC le creneau
+// retenu et les envoie dans la meme reponse : aucun aller-retour de plus.
+// Elles ne survivent jamais a une nouvelle recherche de creneau (fetchSlots les
+// remet a zero), sinon le recapitulatif proposerait une montee chiffree sur des
+// heures que le client vient de changer.
+let formulaComplements = [];        // cartes servies par le serveur
+let formulaComplementBusy = '';     // formule dont le clic est en cours
+// La derniere phrase dite au client sur ces cartes (« ajoutee », « plus
+// disponible »). Elle vit hors du DOM parce que renderRecap reconstruit
+// #recapList entier : ecrite dans le noeud seul, elle disparaissait au rendu
+// suivant, c est-a-dire exactement quand elle sert.
+let formulaComplementNotice = { text: '', tone: '' };
 
 function resetFormulaProgramChoice() {
   formulaArrivalChoice = '';
@@ -7336,6 +7363,13 @@ function selectSlot(i) {
   if (state.booking.type === 'laser' && slot.opsPlan?.totalMinutes) {
     state.booking.totalDuration = Math.max(Number(state.booking.duration) || 0.5, Math.ceil(Number(slot.opsPlan.totalMinutes) / 30) / 2);
   }
+  // Une formule SANS plan d'ancres est une formule « pass liberté » : le
+  // serveur ne pouvait pas savoir quelle heure d'arrivée le client retiendrait,
+  // donc il n'a envoyé aucune montée. Maintenant qu'elle est choisie, on la lui
+  // dit. Fail-soft, jamais bloquant pour la suite du tunnel.
+  if (state.booking.type === 'formule' && !(slot.opsPlan && slot.opsPlan.anchorPlan)) {
+    refreshFormulaComplements();
+  }
   goStep(3);
 }
 
@@ -7647,7 +7681,239 @@ function renderRecap() {
     ${isLaser && (laserWaveCount > 1 || planLine) ? `<div class="recap-note"><b>Laser Game :</b> ${laserWaveCount > 1 ? `${laserWaveCount} sessions successives. ` : ''}${planLine ? `Plan retenu : ${planLine}.` : ''}</div>` : ''}
     ${formulaRecap && (formulaRecap.remainingLaser > 0 || formulaRecap.laserOnSite) ? `<div class="recap-note"><b>Laser Game :</b> ${formulaRecap.remainingLaser > 0 ? `${formulaRecap.remainingLaser} partie${formulaRecap.remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe.` : ''} ${formulaRecap.laserOnSite ? 'Vous placez vos parties laser librement pendant la visite.' : ''}</div>` : ''}
     ${formule ? `<div class="recap-note"><b>Pass liberté :</b> aucune heure imposée, à vivre quand vous voulez.</div>` : ''}
+    ${renderComplementCards()}
   `;
+}
+
+// LES MONTEES DE FORMULE, EN FIN DE RECAPITULATIF ET DANS #recapList.
+//
+// Pourquoi ici et nulle part ailleurs : #recapList est la colonne qui DEFILE
+// (flex: 1 1 0 puis overflow: hidden auto sous 640 px, minmax(0, 1fr) au-dessus
+// de 1100 px) et .recap-decision est en flex: none. Ce qu'on ajoute dans
+// #recapList est donc physiquement incapable de pousser « Confirmer la
+// réservation » hors de l'écran. Le poser dans .recap-decision casserait la
+// garde mobile du tunnel, mesurée par tunnel-one-screen.
+//
+// Une option impossible ne s'affiche pas : le serveur ne renvoie que les
+// montées qu'il a jugées faisables au créneau déjà retenu. Si elle meurt entre
+// l'affichage et le clic, c'est la réponse du serveur au clic que le client lit.
+//
+// CE QUI NE BOUGE PAS, CE SONT LES HEURES RETENUES. Pas la durée : mesure du
+// 2026-09-04, hlg vers f2 à 8 personnes garde son bowling à 14:00 et fait
+// passer la visite de 1h30 à 3h. La carte porte donc le nouveau temps total
+// quand il diffère, et le sous-titre ne promet que ce que le mécanisme tient.
+function renderComplementCards() {
+  const b = state.booking;
+  if (b.type !== 'formule' || !b.formuleId) return '';
+  const cards = (Array.isArray(formulaComplements) ? formulaComplements : [])
+    .filter(card => card && card.formuleId && card.formuleId !== b.formuleId);
+  const notice = formulaComplementNotice || { text: '', tone: '' };
+  // Plus aucune carte mais une phrase a dire : le bloc reste, sinon la reponse
+  // au clic (« ajoutee », « plus disponible ») disparaitrait au rendu suivant.
+  if (!cards.length && !notice.text) return '';
+  return `
+    <div class="recap-complements" id="recapComplements" tabindex="-1">
+      ${cards.length ? `<div class="recap-complements-head">
+        <strong>Envie d'un peu plus ?</strong>
+        <small>Vos heures retenues ne bougent pas.</small>
+      </div>` : ''}
+      ${cards.map(card => `
+        <div class="complement-card">
+          <span class="complement-copy">
+            <strong class="complement-name">${escapeHtml(card.name || '')}</strong>
+            <small class="complement-adds">${escapeHtml(card.addsLabel || '')}</small>
+            ${card.totalLabel ? `<small class="complement-total">${escapeHtml(card.totalLabel)}</small>` : ''}
+          </span>
+          <span class="complement-amount">${escapeHtml(card.amountLabel || '')}</span>
+          <button type="button" class="btn-secondary complement-add"
+            data-complement="${escapeHtml(card.formuleId)}"
+            onclick="acceptFormulaComplement(this.dataset.complement)"
+            aria-label="Ajouter ${escapeHtml(card.name || '')}, ${escapeHtml(card.amountLabel || '')}${card.totalLabel ? `, ${escapeHtml(card.totalLabel)}` : ''}">Ajouter</button>
+        </div>`).join('')}
+      <div class="complement-status" id="complementStatus" role="status" aria-live="polite"
+        data-tone="${escapeHtml(notice.tone || '')}">${escapeHtml(notice.text || '')}</div>
+    </div>`;
+}
+
+// La phrase vit dans `formulaComplementNotice` et le DOM n'en est que le reflet :
+// ecrite dans le seul noeud, elle serait effacee par le renderRecap qui suit.
+function setComplementStatus(text, tone = '') {
+  formulaComplementNotice = { text: text || '', tone: tone || '' };
+  const zone = document.getElementById('complementStatus');
+  if (!zone) return;
+  zone.textContent = formulaComplementNotice.text;
+  zone.dataset.tone = formulaComplementNotice.tone;
+}
+
+// REPONDRE AU CLIC SANS FAIRE PERDRE SA PLACE NI SON INFORMATION.
+//
+// renderRecap reconstruit #recapList par innerHTML : le bouton qui portait le
+// focus disparait (mesure : focus sur « Ajouter », touche Entree, puis
+// document.activeElement = BODY - un utilisateur clavier devait re-tabuler tout
+// le recapitulatif pour atteindre « Confirmer la réservation »), et la region
+// role="status" est RECREEE avec son texte deja dedans, ce qu'aucun lecteur
+// d'ecran ne restitue : seule la MUTATION d'une region deja presente est
+// annoncee.
+//
+// On rend donc, on repose le focus sur un point stable, puis on vide et
+// re-remplit la region : la phrase devient une mutation, donc une annonce.
+function renderRecapWithComplementStatus(text, tone = '') {
+  formulaComplementNotice = { text: text || '', tone: tone || '' };
+  renderRecap();
+  const cible = document.getElementById('recapComplements') || document.getElementById('btnConfirmBooking');
+  if (cible && typeof cible.focus === 'function') {
+    try { cible.focus({ preventScroll: true }); } catch (error) { cible.focus(); }
+  }
+  const zone = document.getElementById('complementStatus');
+  if (!zone || !formulaComplementNotice.text) return;
+  zone.textContent = '';
+  setTimeout(() => {
+    const encore = document.getElementById('complementStatus');
+    if (encore) encore.textContent = (formulaComplementNotice && formulaComplementNotice.text) || '';
+  }, 80);
+}
+
+// LES CARTES D'UNE FORMULE SANS ANCRE SE DEMANDENT AU MOMENT DU CHOIX.
+//
+// Une formule « pass liberté » (table anniversaire, fenêtre ouverte) n'impose
+// aucune heure : le client choisit son heure d'ARRIVÉE dans la liste, et rien
+// avant ce clic ne dit laquelle. Le serveur ne peut donc pas juger la
+// faisabilité d'une montée sur cette famille avant de connaître le créneau
+// retenu, et il refuse de le deviner : on le lui donne ici, une fois, avec
+// `retainedTime`. Sans cette requête, f6 vers f7 (+6 € par personne pour un
+// Minigolf Blacklight) était structurellement invisible.
+//
+// Fail-soft : sans réponse, le récapitulatif est exactement celui d'avant.
+let complementFetchId = 0;
+async function refreshFormulaComplements() {
+  const b = state.booking;
+  if (b.type !== 'formule' || !b.formuleId || !b.startTime) return;
+  const ticket = ++complementFetchId;
+  try {
+    const params = new URLSearchParams({
+      date: b.date,
+      type: 'formule',
+      pax: String(Number(b.pax) || 1),
+      centerId: String(typeof getTunnelCenterId === 'function' ? getTunnelCenterId() : 'libramont'),
+      formuleId: String(b.formuleId),
+      retainedTime: String(b.startTime)
+    });
+    const payload = await apiRequest(`${API_ENDPOINTS.publicAvailability || '/api/public-availability'}?${params.toString()}`, {
+      method: 'GET'
+    });
+    if (ticket !== complementFetchId) return;
+    formulaComplements = Array.isArray(payload.complements) ? payload.complements : [];
+    state.booking.serverPrice = Number(payload.price) || state.booking.serverPrice || 0;
+    if (formulaComplements.length && document.getElementById('recapList')) renderRecap();
+  } catch (error) {
+    if (ticket !== complementFetchId) return;
+    formulaComplements = [];
+  }
+}
+
+// ACCEPTER, C'EST ECHANGER UN IDENTIFIANT DE FORMULE. Rien d'autre : ni
+// program, ni extras, ni champ nouveau. Toucher `program` effacerait la formule
+// (mesure connue : f8 tombait de 112 à 79 €).
+//
+// Et l'échange repasse OBLIGATOIREMENT par la porte serveur, celle-là même qui
+// a produit le créneau retenu : une carte affichée il y a trente secondes peut
+// être morte (groupe entre-temps, formule bloquée, vacances). Refusée, RIEN ne
+// change dans la réservation et le client lit la raison courte du moteur.
+async function acceptFormulaComplement(formuleId) {
+  const b = state.booking;
+  const wanted = String(formuleId || '');
+  const card = (formulaComplements || []).find(item => item && item.formuleId === wanted);
+  if (!card || formulaComplementBusy || b.type !== 'formule' || !b.startTime) return;
+
+  // Une carte morte se retire ET dit pourquoi : la laisser inviterait a un
+  // second clic qui echouerait pareil. La RESERVATION, elle, ne bouge pas.
+  const oublier = (raison) => {
+    formulaComplements = (formulaComplements || []).filter(item => item && item.formuleId !== wanted);
+    renderRecapWithComplementStatus(raison || 'Cette option n\'est plus disponible.', 'ko');
+  };
+
+  formulaComplementBusy = wanted;
+  const button = document.querySelector(`#recapComplements .complement-add[data-complement="${wanted.replace(/"/g, '')}"]`);
+  if (button) button.disabled = true;
+  setComplementStatus('Vérification en cours…', 'busy');
+
+  try {
+    const params = new URLSearchParams({
+      date: b.date,
+      type: 'formule',
+      pax: String(Number(b.pax) || 1),
+      centerId: String(typeof getTunnelCenterId === 'function' ? getTunnelCenterId() : 'libramont'),
+      formuleId: wanted
+    });
+    // EXACTEMENT les heures déjà retenues : ce lot ne décale rien.
+    const preference = createDefaultFormulaPreference(b.preference || {});
+    const chosenTimes = {};
+    if (preference.preferredTimes.bowling) chosenTimes.bowling = preference.preferredTimes.bowling;
+    if (preference.preferredTimes.laser_game && preference.laserPlacement !== 'onsite') {
+      chosenTimes.laser_game = preference.preferredTimes.laser_game;
+    }
+    if (Object.keys(chosenTimes).length) params.set('preferredTimes', JSON.stringify(chosenTimes));
+    if (preference.laserPlacement === 'onsite') params.set('laserPlacement', 'onsite');
+    else setLaserPartTimesParam(params, preference);
+
+    const payload = await apiRequest(`${API_ENDPOINTS.publicAvailability || '/api/public-availability'}?${params.toString()}`, {
+      method: 'GET'
+    });
+    const slot = (payload.slots || []).find(item => item && item.time === b.startTime) || null;
+    if (!slot) {
+      oublier(payload.message || '');
+      return;
+    }
+    // LA VISITE NE BOUGE PAS : mêmes pistes, mêmes heures d'ancres que ce que
+    // le client a validé. Un écart ici serait un déplacement silencieux, donc
+    // un refus, pas une adoption.
+    const memesPistes = JSON.stringify(Array.isArray(slot.lanes) ? slot.lanes : [])
+      === JSON.stringify(Array.isArray(b.allocatedLanes) ? b.allocatedLanes : []);
+    const heuresRendues = slot.opsPlan?.anchorPlan?.times || {};
+    const memesHeures = Object.keys(chosenTimes).every(key => heuresRendues[key] === chosenTimes[key]);
+    if (!memesPistes || !memesHeures) {
+      oublier('Cette option déplacerait votre créneau.');
+      return;
+    }
+
+    // LE MONTANT PROMIS EST-IL ENCORE CELUI DU SERVEUR ? La réponse porte
+    // `price`, le prix AUTORITAIRE de la formule montée, calculé à l'instant.
+    // La carte, elle, a été chiffrée lors d'une requête antérieure : entre les
+    // deux, un override de catalogue enregistré depuis la console (TTL 30 s) a
+    // pu déplacer le tarif. On ne facture jamais plus que ce qu'on a promis :
+    // au-delà, la carte s'oublie et le client lit pourquoi.
+    const deltaServeur = Math.round(((Number(payload.price) || 0) - (Number(b.serverPrice) || 0)) * 100) / 100;
+    if (deltaServeur > (Number(card.deltaTotal) || 0) + 0.001) {
+      oublier('Le tarif de cette option vient de changer.');
+      return;
+    }
+
+    b.formuleId = wanted;
+    // La réponse serveur fait autorité sur le nombre de pistes, Y COMPRIS quand
+    // elle dit zéro : `|| b.laneCount` laissait des pistes fantômes au
+    // récapitulatif d'une candidate qui n'en demande aucune, et laneCount entre
+    // directement dans le prix d'une formule per_lane côté client. Même lecture
+    // que fetchSlots, sur la même réponse et le même champ.
+    b.laneCount = Number(payload.laneCount || 0);
+    b.duration = Number(payload.duration || b.duration || 0);
+    b.totalDuration = Number(payload.totalDuration || payload.duration || b.totalDuration || 0);
+    // Le prix qui vient d'être appliqué devient la nouvelle référence : une
+    // seconde montée se confronterait sinon au prix d'avant la première.
+    b.serverPrice = Number(payload.price) || 0;
+    b.opsPlan = slot.opsPlan || b.opsPlan;
+    // Le pass liberté et les rendez-vous du récap se lisent dans le bloc
+    // `anchors` du serveur : sans cette ligne, le récapitulatif continuerait de
+    // décrire le contenu de l'ancienne formule.
+    formulaAnchorData = payload.anchors || formulaAnchorData;
+    formulaComplements = Array.isArray(payload.complements) ? payload.complements : [];
+    state.availableSlots = [slot];
+    save();
+    renderRecapWithComplementStatus(`${card.name} ajoutée : ${card.amountLabel}.`, 'ok');
+  } catch (error) {
+    oublier(error && error.message ? error.message : '');
+  } finally {
+    formulaComplementBusy = '';
+  }
 }
 
 // Une ligne du programme SERVEUR dans le recap final : nom, choix effectif et
@@ -7840,6 +8106,10 @@ async function confirmBooking() {
 
 function resetBooking() {
   clearBookingAlternatives();
+  // Les montees de formule appartiennent au dossier qu on vient de confirmer :
+  // elles ne suivent pas le client dans sa reservation suivante.
+  formulaComplements = [];
+  formulaComplementNotice = { text: '', tone: '' };
   // Le bouton Confirmer garde son sceau (disque + coche) tant qu on ne le
   // relache pas : « Faire une autre reservation » est la seule sortie de
   // l ecran de succes, donc l endroit ou le sceau doit tomber.

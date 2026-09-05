@@ -7950,6 +7950,32 @@ function renderVisitRecapItem(item) {
   </div>`;
 }
 
+// LE SITE HOTE APPREND QU UNE RESERVATION VIENT D ETRE PRISE (2026-09-05).
+// Dans l iframe, GA4, GTM et le Pixel Meta du site du centre ne voient rien de
+// ce qui se passe ici : sans ce signal, poser le formulaire coupe la mesure des
+// conversions que l agence du client suivait sur son ancien formulaire (Fun
+// Galaxy compte ses demandes par un evenement Meta sur son formulaire actuel).
+// Le detail ne porte AUCUNE donnee personnelle : des identifiants, un montant,
+// une date, un centre. Le canal (origine cible, mode embarque seulement) est
+// celui de pinlane:height, expose par la fermeture du mode embarque en fin de
+// fichier ; hors iframe il n existe pas, et rien ne part.
+function signalerReservationAuSite(reservation, ops) {
+  if (!reservation || typeof window.pinlanePosterAuSite !== 'function') return;
+  window.pinlanePosterAuSite('pinlane:booking', {
+    reservationId: reservation.id != null ? String(reservation.id) : '',
+    center: getTunnelCenterId() || '',
+    amount: Number(reservation.price) || 0,
+    currency: 'EUR',
+    pax: Number(reservation.pax) || 0,
+    date: String(reservation.date || ''),
+    startTime: String(reservation.startTime || ''),
+    type: String(reservation.type || ''),
+    formuleId: String(reservation.formuleId || ''),
+    label: String(reservation.label || ''),
+    status: ops && ops.validationStatus === 'staff_review' ? 'received' : 'confirmed',
+  });
+}
+
 async function confirmBooking() {
   if (bookingSubmitBusy) return;
   bookingSubmitBusy = true;
@@ -8044,6 +8070,7 @@ async function confirmBooking() {
     extras: []
   };
 
+  let dossierCree = null;
   try {
     const payload = await apiRequest(API_ENDPOINTS.publicReservations, {
       method: 'POST',
@@ -8054,6 +8081,7 @@ async function confirmBooking() {
       }))
     });
     upsertReservationInState(payload.reservation);
+    dossierCree = payload.reservation;
     save();
     allocated = payload.reservation.lanes || allocated;
     state.booking.opsResult = payload.ops || null;
@@ -8099,6 +8127,7 @@ async function confirmBooking() {
     ? ` En accès libre : ${successRecap.freeLabels.map(escapeHtml).join(', ')}.`
     : '';
   document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${typeof displayTime === 'function' ? displayTime(b.startTime) : b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${appointmentsLine}${tableLine}${arrivalLine}${freeLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
+  signalerReservationAuSite(dossierCree, state.booking.opsResult);
   releaseBookingSubmit();
   await sealBookingSubmit();
   goStep(5);
@@ -24874,6 +24903,13 @@ document.addEventListener('keydown', (event) => {
   var parentOrigin = '';
   try { parentOrigin = document.referrer ? new URL(document.referrer).origin : ''; } catch (error) { parentOrigin = ''; }
   if (!parentOrigin) return;
+
+  // Le signal de reservation (pinlane:booking) part par le meme canal : meme
+  // origine cible, meme regle « rien hors mode embarque ». Expose pour
+  // confirmBooking, qui vit hors de cette fermeture.
+  window.pinlanePosterAuSite = function (type, detail) {
+    try { window.parent.postMessage({ type: type, detail: detail }, parentOrigin); } catch (error) { /* parent parti */ }
+  };
 
   var last = 0;
   function post() {

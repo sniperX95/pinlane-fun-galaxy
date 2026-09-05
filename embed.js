@@ -22,7 +22,11 @@
        que CE script a cree (verification de la source ET de l'origine) : un
        autre cadre de la page ne peut pas piloter notre hauteur ;
      : sans JavaScript, un lien de repli mene au parcours en pleine page - le
-       client ne perd jamais une reservation a cause d'un navigateur exotique.
+       client ne perd jamais une reservation a cause d'un navigateur exotique ;
+     : a chaque reservation prise, le site recoit un evenement de mesure
+       (dataLayer `pinlane_booking` + CustomEvent `pinlane:booking`, sans
+       donnee personnelle) : GA4, GTM et Pixel Meta du site continuent de
+       compter les conversions. Mode d'emploi : docs/embed-tracking.md.
 
    Zero dependance, zero build : le fichier est servi tel quel.
    ========================================================================== */
@@ -88,6 +92,18 @@
     if (data.type === 'pinlane:screen') {
       var top = frame.getBoundingClientRect().top;
       if (top < 0 || top > window.innerHeight * 0.5) frame.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      return;
+    }
+    if (data.type === 'pinlane:booking') {
+      // UNE RESERVATION VIENT D ETRE PRISE DANS LE CADRE. Le site hote ne voit
+      // rien de l'iframe : c'est ce message qui porte la conversion a ses outils
+      // de mesure. Deux sorties, pour ne rien imposer : un push dataLayer (GTM :
+      // declencheur « evenement personnalise » pinlane_booking, GA4 et Pixel
+      // Meta s'y branchent sans toucher a ce fichier) et un CustomEvent DOM pour
+      // un site sans GTM. Le detail ne porte aucune donnee personnelle.
+      var detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
+      try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'pinlane_booking', pinlane: detail }); } catch (error) { /* dataLayer inaccessible */ }
+      try { window.dispatchEvent(new CustomEvent('pinlane:booking', { detail: detail })); } catch (error) { /* navigateur sans CustomEvent */ }
       return;
     }
     if (data.type !== 'pinlane:height') return;

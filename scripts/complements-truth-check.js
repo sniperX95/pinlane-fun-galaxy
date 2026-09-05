@@ -55,6 +55,31 @@
 //       est refusee quand les pistes sont prises pendant toute la visite, et une
 //       activite sans dotation reste acceptee.
 //
+//   [H] UNE PARTIE DE LASER EN PLUS EST LE PALIER SUIVANT, ET ELLE NE PROMET
+//       AUCUNE HEURE. Un seul cran a la fois ; le montant est l ecart de deux
+//       calculs de PROGRAMME recalcules en Node ; au plafond de la grille,
+//       aucune carte ; et la partie ajoutee arrive bien EN ATTENTE dans le
+//       plan du moteur (a placer sur place), ce que la carte dit en toutes
+//       lettres. Une carte qui annoncerait un horaire vendrait un rendez-vous
+//       que la reservation ne pose pas.
+//
+//   [I] UNE ACTIVITE LIBRE EN PLUS NE SE PROPOSE JAMAIS SANS TARIF, et le
+//       TEMOIN POSITIF le prouve. Sans temoin positif, « aucune carte sans
+//       tarif » se satisferait en n affichant jamais rien : on mesure donc la
+//       MEME activite deux fois, une fois sans tarif (aucune carte) et une
+//       fois avec un tarif ecrit dans le JEU SERVI (une carte, au montant
+//       recalcule). Plus le maximum du groupe, la dotation declaree, et la
+//       portee (un tarif ecrit pour un centre ne fait pas parler l autre).
+//
+//   [J] LA COLONNE DE TEXTE D UNE CARTE GARDE UNE LARGEUR UTILISABLE. Mesure
+//       du 2026-09-05 sur les cartes DEJA LIVREES, 390x844 : la grille rendait
+//       « 0px 195px 95.9px » sur une carte de 341 px (le montant ne se coupe
+//       pas, le bouton garde ses 44 px), donc une colonne de texte de ZERO
+//       pixel de large et 789 px de haut - une lettre par ligne. Le bouton
+//       restait tapable et les polices restaient legales : aucune mesure de [G]
+//       ne pouvait le voir. La propriete est RELATIVE (la colonne de texte
+//       occupe au moins la moitie de la carte), jamais un nombre de pixels.
+//
 //   [G] LE DERNIER ECRAN RESTE UTILISABLE. Cartes affichees, bouton de
 //       confirmation entierement visible ET tapable (hit-test reel) en 390x844
 //       et 1440x900, deux themes ; aucune cible sous 44 px, aucun texte sous
@@ -76,6 +101,11 @@
 // modules SERVEUR sont compiles mutes par un crochet sur Module.prototype._compile
 // puis re-requis. Chaque mutation doit faire tomber LA propriete visee, pas
 // seulement le montage.
+//
+//   [K] UNE DUREE HORS GRILLE NE SE PROPOSE PAS. Relecture du 2026-09-05 : le
+//       derivateur d options inventait le premier palier de la grille quand la
+//       duree declaree par le centre ne tombait sur aucun palier. Le catalogue
+//       decide, le code n invente pas un palier.
 //
 // Usage : node scripts/complements-truth-check.js
 'use strict';
@@ -173,6 +203,17 @@ const {
 } = require(path.join(ROOT, 'lib/booking-config'));
 const { getCenter } = require(path.join(ROOT, 'lib/ops-knowledge'));
 const { listSellableActivities } = require(path.join(ROOT, 'lib/activity-catalog'));
+const { normalizeProgram } = require(path.join(ROOT, 'lib/visit-program'));
+const catalogStore = require(path.join(ROOT, 'lib/catalog-store'));
+
+// LE PRIX ATTENDU D UN PROGRAMME, RECALCULE ICI, par la meme fonction que la
+// disponibilite et sans heure de depart. Aucun montant de laser, de bowling ou
+// d activite libre n est recopie dans ce gate : ils viennent tous de la
+// normalisation du programme, donc du catalogue du centre.
+function prixProgramme(lignes, pax, centerId = CENTRE, date = DATE) {
+  return normalizeProgram(lignes, { centerId, pax, bowlingConfig: null, dateStr: date }).price;
+}
+const VISITE_BASE = [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }];
 
 // LE PRIX ATTENDU, RECALCULE ICI. Meme arithmetique que la disponibilite
 // (getBasePrice, duree de piste de la formule, pistes requises), jamais un
@@ -434,11 +475,20 @@ const LIRE_BLOC = () => {
     const cx = r ? Math.round(r.left + r.width / 2) : 0;
     const cy = r ? Math.round(r.top + r.height / 2) : 0;
     const touche = r ? document.elementFromPoint(cx, cy) : null;
+    // LA COLONNE DE TEXTE ET LA CARTE, pour la propriete [J]. Une largeur
+    // RELATIVE : un seuil en pixels ne mesurerait que la machine.
+    const copie = carte.querySelector('.complement-copy');
+    const rc = carte.getBoundingClientRect();
+    const rcopie = copie ? copie.getBoundingClientRect() : null;
     return {
       id: bouton ? bouton.dataset.complement : '',
       nom: (carte.querySelector('.complement-name') || {}).textContent || '',
       ajouts: (carte.querySelector('.complement-adds') || {}).textContent || '',
       duree: (carte.querySelector('.complement-total') || {}).textContent || '',
+      note: (carte.querySelector('.complement-note') || {}).textContent || '',
+      largeurCarte: Math.round(rc.width),
+      largeurCopie: rcopie ? Math.round(rcopie.width) : 0,
+      hauteurCarte: Math.round(rc.height),
       montantTexte: ((carte.querySelector('.complement-amount') || {}).textContent || '').trim(),
       ariaBouton: bouton ? (bouton.getAttribute('aria-label') || '') : '',
       hauteurBouton: r ? Math.round(r.height) : 0,
@@ -454,7 +504,7 @@ const LIRE_BLOC = () => {
     cartes,
     // Le module vit en portee de script : on lit la donnee SERVEUR, pas le texte.
     payload: (typeof formulaComplements !== 'undefined' && Array.isArray(formulaComplements))
-      ? formulaComplements.map((c) => ({ formuleId: c.formuleId, deltaTotal: c.deltaTotal, deltaPerPax: c.deltaPerPax, amountLabel: c.amountLabel, addsLabel: c.addsLabel, totalLabel: c.totalLabel || '' }))
+      ? formulaComplements.map((c) => ({ id: c.id, kind: c.kind, patch: c.patch || null, formuleId: c.formuleId, deltaTotal: c.deltaTotal, deltaPerPax: c.deltaPerPax, amountLabel: c.amountLabel, addsLabel: c.addsLabel, totalLabel: c.totalLabel || '', noteLabel: c.noteLabel || '' }))
       : [],
     totalTexte,
     total: nombres(totalTexte.replace(/[\u202F\u00A0]/g, ''))[0] ?? null,
@@ -516,34 +566,88 @@ async function allerAuRecap(page, { formuleId = FORMULE_COURANTE, pax = PAX, dat
   return page.evaluate(LIRE_BLOC);
 }
 
+// LE MEME PARCOURS, POUR UNE VISITE COMPOSEE A LA CARTE. Le panier part du
+// test : c est lui qui decide de ce que les generateurs [B] et [C] auront a
+// proposer. Le premier goStep2 s arrete sur l ecran de reglages, le second va
+// aux heures : on frappe jusqu a ce que les creneaux soient la, et on dit ce
+// qu on voyait si ca n arrive pas (un gate muet sur son propre montage est un
+// gate vert pour rien).
+async function allerAuRecapVisite(page, { pax = PAX, date = DATE, theme = 'light', panier = null, viewport } = {}) {
+  if (viewport) await page.setViewportSize(viewport);
+  await page.goto(`${BASE_URL}/?v=visite-${Date.now()}-${Math.random().toString(16).slice(2)}`, { waitUntil: 'networkidle', timeout: 45000 });
+  await page.waitForFunction(() => typeof window.setView === 'function' && typeof window.goStep === 'function', null, { timeout: 20000 });
+  await page.evaluate((t) => { document.documentElement.setAttribute('data-theme', t); }, theme);
+  await page.evaluate(({ d, p, pan }) => {
+    state.view = 'client';
+    state.booking.date = d;
+    state.booking.pax = p;
+    state.booking.venueConfirmed = true;
+    setView('client');
+    setType('bowling');
+    state.booking.activities = pan || { bowling: { duration: 1 }, laser_game: { games: 1 } };
+    applyChosenActivitiesToBooking();
+    syncBookingTypeUi();
+    goStep(1, { animate: false, focus: false });
+  }, { d: date, p: pax, pan: panier });
+  await page.waitForTimeout(300);
+  for (let essai = 0; essai < 5; essai += 1) {
+    await page.evaluate(() => goStep2());
+    await page.waitForTimeout(1500);
+    if (await page.evaluate(() => Array.isArray(state.availableSlots) && state.availableSlots.length > 0)) break;
+  }
+  const etat = await page.evaluate(() => ({ step: state.step, slots: (state.availableSlots || []).length, type: state.booking.type }));
+  if (!etat.slots) throw new Error(`aucun creneau pour la visite : ${JSON.stringify(etat)}`);
+  await page.evaluate(() => { const i = getCurrentFormulaAnchorSlotIndex(); selectSlot(i >= 0 ? i : 0); });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    document.getElementById('fName').value = 'Marie Dupont';
+    document.getElementById('fPhone').value = '+32 470 00 00 00';
+    document.getElementById('fEmail').value = 'marie@exemple.be';
+    goStep4();
+  });
+  await page.waitForTimeout(800);
+  await poser(page);
+  return page.evaluate(LIRE_BLOC);
+}
+
 // LE BLOC EST EN FIN DE #recapList, LA COLONNE QUI DEFILE : mesurer son bouton
 // sans l amener a vue rendrait un rectangle mis en page mais CLIPPE par le
 // scrolleur, et le hit-test taperait ce qui est peint a cette place (mesure :
 // « total-box »). Le client, lui, fait defiler. On fait donc ce que fait le
 // client, PUIS on mesure. Et on attend la fin des animations : une carte
 // mesuree en cours d entree rend 43,1 px pour un bouton de 44.
-async function poser(page) {
-  await page.evaluate(() => {
-    const bloc = document.getElementById('recapComplements');
+// Une CARTE peut etre visee : le bloc a deux cartes est plus haut que ce qui
+// reste de la colonne sur un telephone, et le centrer laisse la premiere carte
+// CLIPPEE par le scrolleur - le hit-test tape alors ce qui est peint a cette
+// place. Le client, lui, fait defiler jusqu a la carte qu il veut.
+async function poser(page, idCarte = '') {
+  await page.evaluate((id) => {
+    const bouton = id ? document.querySelector(`#recapComplements .complement-add[data-complement="${String(id).replace(/"/g, '')}"]`) : null;
+    const bloc = (bouton && bouton.closest('.complement-card')) || document.getElementById('recapComplements');
     if (bloc && typeof bloc.scrollIntoView === 'function') bloc.scrollIntoView({ block: 'center' });
-  });
+  }, idCarte);
   await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
-  await page.waitForTimeout(120);
+  await page.waitForTimeout(150);
 }
 
 // Le clic REEL, a la souris, sur le centre du bouton : pas un appel de fonction.
+// La carte est d abord amenee a vue, puis SES coordonnees sont relues : celles
+// d avant le defilement designeraient un autre pixel.
 async function cliquerAjouter(page, carte) {
+  await poser(page, carte.id);
+  const frais = await page.evaluate(LIRE_BLOC);
+  const vise = frais.cartes.find((c) => c.id === carte.id) || carte;
   await page.evaluate((id) => {
     const b = document.querySelector(`#recapComplements .complement-add[data-complement="${id}"]`);
     if (b) b.focus();
   }, carte.id);
-  await page.mouse.click(carte.centre[0], carte.centre[1]);
+  await page.mouse.click(vise.centre[0], vise.centre[1]);
   await page.waitForFunction(() => {
     const zone = document.getElementById('complementStatus');
     return Boolean(zone && (zone.textContent || '').trim() && (zone.dataset.tone || '') !== 'busy');
   }, null, { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(400);
-  await poser(page);
+  await poser(page, carte.id);
   return page.evaluate(LIRE_BLOC);
 }
 
@@ -804,6 +908,350 @@ function jugerD(m) {
 }
 
 // ---------------------------------------------------------------------------
+// [H] UNE PARTIE DE LASER EN PLUS : LE PALIER SUIVANT, ET AUCUNE HEURE PROMISE.
+// ---------------------------------------------------------------------------
+async function mesurerH(browser) {
+  RESERVATIONS.length = 0;
+  BLOCAGES.length = 0;
+  POSTS.length = 0;
+  const { page, fermer } = await pageNeuve(browser);
+  try {
+    const avant = await allerAuRecapVisite(page);
+    const carte = avant.cartes.find((c) => String(c.id).startsWith('laser:')) || null;
+    let apres = avant;
+    if (carte) apres = await cliquerAjouter(page, carte);
+    await confirmer(page);
+    // Le PLAFOND de la grille : la meme visite, deja au dernier palier.
+    const dernier = [...LASER_GAME_OPTIONS].sort((a, b) => Number(b.games) - Number(a.games))[0];
+    const plafond = await getJson({
+      date: DATE, type: 'visite', pax: String(PAX), centerId: CENTRE,
+      program: JSON.stringify([{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: Number(dernier.games) }]),
+    });
+    return { avant, apres, carte, post: POSTS[POSTS.length - 1] || null, dernier, plafond };
+  } finally {
+    await fermer();
+  }
+}
+
+function jugerH(m) {
+  const v = [];
+  const courant = [...LASER_GAME_OPTIONS].sort((a, b) => Number(a.games) - Number(b.games))[0];
+  const suivant = [...LASER_GAME_OPTIONS].sort((a, b) => Number(a.games) - Number(b.games))[1] || null;
+  const paye = (m.avant.payload || []).find((c) => String(c.id).startsWith('laser:')) || null;
+  const base = prixProgramme(VISITE_BASE, PAX);
+  const monte = suivant ? prixProgramme([{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: Number(suivant.games) }], PAX) : null;
+  const attendu = monte == null ? null : facture(monte) - facture(base);
+
+  // MONTAGE : sans carte de laser chiffree et tapable, tout ce qui suit serait
+  // vert pour rien.
+  v.push({ ok: Boolean(suivant), label: '[montage] la grille du laser a bien un palier au-dessus du premier', detail: suivant ? `${courant.label} -> ${suivant.label}` : 'un seul palier' });
+  v.push({ ok: Boolean(m.carte && m.carte.hitTest && m.carte.hauteurBouton >= 44), label: '[montage] la visite rend une carte de palier de laser, tapable et de 44 px', detail: m.carte ? `${m.carte.id} hit=${m.carte.hitTest} h=${m.carte.hauteurBouton}` : 'aucune carte de laser' });
+  v.push({ ok: m.avant.total === facture(base), label: '[montage] le total affiche AVANT est bien le prix serveur du programme courant', detail: `ecran=${m.avant.total} node=${facture(base)}` });
+
+  // [H] UN SEUL CRAN, AU PRIX DE LA GRILLE.
+  v.push({
+    ok: Boolean(paye) && Number(paye.deltaTotal) === attendu,
+    label: '[H] UNE PARTIE EN PLUS EST LE PALIER SUIVANT, AU PRIX DE LA GRILLE : la carte annonce l ecart des deux programmes',
+    detail: `annonce=${paye && paye.deltaTotal} attendu=${attendu} (${base} -> ${monte}) palier vise=${paye && paye.patch && paye.patch.options && paye.patch.options.games}`,
+  });
+  v.push({
+    ok: Boolean(paye && paye.patch && Number(paye.patch.options.games) === Number(suivant && suivant.games)),
+    label: '[H] UN SEUL CRAN A LA FOIS : la carte vise le palier immediatement superieur, pas le plafond',
+    detail: `visee=${paye && paye.patch && paye.patch.options.games} attendu=${suivant && suivant.games}`,
+  });
+  const ecartEcran = m.apres.total !== null && m.avant.total !== null ? Math.round((m.apres.total - m.avant.total) * 100) / 100 : null;
+  v.push({
+    ok: ecartEcran === attendu,
+    label: '[H] LE MONTANT ANNONCE EST LE MONTANT REEL : le total de l ecran bouge exactement de ce montant',
+    detail: `#recapTotal ${m.avant.total} -> ${m.apres.total} (ecart ${ecartEcran}, attendu ${attendu})`,
+  });
+
+  // [H] LA CARTE NE PROMET AUCUNE HEURE.
+  v.push({
+    ok: Boolean(paye && String(paye.noteLabel || '').trim().length > 10) && Boolean(m.carte && m.carte.note.trim()),
+    label: '[H] LA CARTE DIT QUE LA PARTIE SE PLACE SUR PLACE, et ne promet aucun horaire',
+    detail: `note servie « ${paye && paye.noteLabel} » / note a l ecran « ${m.carte && m.carte.note} »`,
+  });
+  // [H] ET ELLE N ANNONCE AUCUN TEMPS TOTAL ALLONGE. Une partie en attente
+  // n allonge pas la fenetre reservee (segments identiques a 1, 2 ou 3 parties).
+  // Relecture du 2026-09-05 : la carte disait « 2h au lieu de 1h30 » ET « quand
+  // vous voulez » sur le meme ecran.
+  v.push({
+    ok: Boolean(paye) && String(paye.totalLabel || '').trim() === '' && Boolean(m.carte) && String(m.carte.duree || '').trim() === '',
+    label: '[H] LA CARTE N ANNONCE AUCUN TEMPS TOTAL ALLONGE : une partie placee sur place ne change pas la fenetre reservee',
+    detail: `totalLabel servi « ${paye && paye.totalLabel} » / a l ecran « ${m.carte && m.carte.duree} »`,
+  });
+  const dossier = m.post && m.post.reponse && m.post.reponse.reservation ? m.post.reponse.reservation : null;
+  v.push({ ok: Boolean(dossier) && m.post.statut === 201, label: '[montage] la confirmation a bien cree un dossier', detail: m.post ? `HTTP ${m.post.statut}` : 'aucun POST' });
+  if (dossier) {
+    const plan = (dossier.opsPlan && dossier.opsPlan.laserPassPlan) || null;
+    const ecartParties = Number(suivant && suivant.games) - Number(courant.games);
+    v.push({
+      ok: Boolean(plan) && Number(plan.remainingGames) === ecartParties && Number(plan.scheduledGames) === Number(courant.games),
+      label: '[H] LE DOSSIER CREE LAISSE BIEN LA PARTIE EN PLUS A PLACER SUR PLACE (elle n a aucune heure)',
+      detail: plan ? `scheduledGames=${plan.scheduledGames} remainingGames=${plan.remainingGames} attendu ${courant.games}/${ecartParties}` : 'aucun laserPassPlan',
+    });
+    v.push({
+      ok: Number(dossier.price) - facture(base) <= Number(paye ? paye.deltaTotal : -1) + 0.001,
+      label: '[H] LE MONTANT FACTURE NE DEPASSE JAMAIS LE MONTANT ANNONCE',
+      detail: `facture=${dossier.price} base=${facture(base)} <= annonce=${paye && paye.deltaTotal}`,
+    });
+    v.push({
+      ok: m.avant.dossier.startTime === m.apres.dossier.startTime && m.avant.dossier.lanes === m.apres.dossier.lanes && m.avant.dossier.ancres === m.apres.dossier.ancres,
+      label: '[H] ACCEPTER NE DEPLACE RIEN : memes heures d ancres, memes pistes',
+      detail: `${m.avant.dossier.startTime}/${m.avant.dossier.lanes}/${m.avant.dossier.ancres} -> ${m.apres.dossier.startTime}/${m.apres.dossier.lanes}/${m.apres.dossier.ancres}`,
+    });
+  }
+  const auPlafond = (m.plafond.corps.complements || []).filter((c) => String(c.id).startsWith('laser:'));
+  v.push({
+    ok: (m.plafond.corps.slots || []).length > 0 && auPlafond.length === 0,
+    label: '[H] AU PLAFOND DE LA GRILLE, AUCUNE CARTE DE LASER (le moteur refuse en 422, il ne rabote pas)',
+    detail: `${(m.plafond.corps.slots || []).length} creneau(x) au palier ${m.dernier.label}, ${auPlafond.length} carte(s) de laser`,
+  });
+  return v;
+}
+
+// ---------------------------------------------------------------------------
+// [K] UNE DUREE HORS GRILLE NE SE PROPOSE PAS. Le module est re-requis a chaque
+// mesure : rechargerApi purge son cache, donc une mutation servie en memoire
+// est bien celle qui repond ici.
+// ---------------------------------------------------------------------------
+async function mesurerK() {
+  const { optionsDuCatalogue } = require(path.join(ROOT, 'lib/booking-complements'));
+  return {
+    paliers: DURATION_OPTIONS.map((o) => Math.round(Number(o.value) * 60)),
+    surGrille: optionsDuCatalogue({ priceType: 'grid_bowling', defaultMinutes: 60 }),
+    horsGrille: optionsDuCatalogue({ priceType: 'grid_bowling', defaultMinutes: 45 }),
+    sessionSansDuree: optionsDuCatalogue({ priceType: 'grid_fun_run', defaultMinutes: 0 }),
+  };
+}
+
+function jugerK(m) {
+  return [
+    { ok: m.paliers.includes(60) && !m.paliers.includes(45), label: '[montage] la grille des durees porte 60 min et aucun palier de 45 min', detail: m.paliers.join('/') },
+    { ok: Boolean(m.surGrille) && Number(m.surGrille.duration) === 1, label: '[K] UNE DUREE SUR LA GRILLE SE DERIVE : 60 min -> 1 h', detail: JSON.stringify(m.surGrille) },
+    { ok: m.horsGrille === null, label: '[K] UNE DUREE HORS GRILLE NE SE PROPOSE PAS : 45 min -> aucune option, jamais un palier invente', detail: JSON.stringify(m.horsGrille) },
+    { ok: m.sessionSansDuree === null, label: '[K] UNE SESSION SANS DUREE NE SE PROPOSE PAS', detail: JSON.stringify(m.sessionSansDuree) },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// [I] UNE ACTIVITE LIBRE : JAMAIS SANS TARIF, ET LE TEMOIN POSITIF.
+//
+// Mesure SERVEUR : aucun navigateur n est necessaire pour une regle de
+// catalogue, et le jeu servi se mute ici en memoire (applyCatalogState), sans
+// jamais toucher le disque.
+// ---------------------------------------------------------------------------
+function creneauVisite(heure = '14:00') {
+  return { time: heure, lanes: [], opsPlan: { anchorPlan: { times: { bowling: heure, laser_game: '15:00' }, laserGameTimes: ['15:00'], laserPlacement: 'scheduled' } } };
+}
+function cartesVisite(centerId, lignes, pax, date = DATE) {
+  const complements = require(path.join(ROOT, 'lib/booking-complements'));
+  return complements.buildVisitComplements({
+    centerId,
+    date,
+    pax,
+    program: normalizeProgram(lignes, { centerId, pax, bowlingConfig: null, dateStr: date }),
+    retainedSlot: creneauVisite(),
+    priceOptions: { bowlingConfig: null, dateStr: date },
+    reservations: [],
+    laneStatuses: {},
+    blocks: [],
+    passesFinalGuards: null,
+  });
+}
+
+// LE PROGRAMME DE BASE SATURE : le bowling, le laser AU DERNIER PALIER de sa
+// grille, et toutes les activites libres DEJA TARIFEES sauf celle qu on veut
+// observer. Le plafond de cartes ne peut alors plus cacher la candidate : s il
+// n en reste qu une de possible, elle est la ou elle n y est pas.
+//
+// Sans cette precaution, la premiere version de cette propriete etait verte
+// pour la mauvaise raison (mesure du 2026-09-05) : « le fun run n est pas
+// propose au-dela de son maximum » etait vrai a 5 personnes COMME a 6, parce
+// que deux cartes moins cheres par personne passaient devant. Le gate ne
+// mesurait pas le maximum du groupe, il mesurait le plafond de cartes.
+function baseSaturee(exclus, pax) {
+  const complements = require(path.join(ROOT, 'lib/booking-complements'));
+  const dernier = [...LASER_GAME_OPTIONS].sort((a, b) => Number(b.games) - Number(a.games))[0];
+  const lignes = [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: Number(dernier.games) }];
+  for (const activite of listCenterActivities(CENTRE)) {
+    if (activite.planned || activite.id === exclus) continue;
+    // Une activite qui depasse deja le maximum du groupe n a rien a faire dans
+    // le programme de base : ce serait une visite que le produit ne vend pas.
+    if (Number(activite.maxPax) > 0 && pax > Number(activite.maxPax)) continue;
+    const options = complements.optionsDuCatalogue(activite);
+    if (!options) continue;
+    const essai = normalizeProgram([...lignes, { activityId: activite.id, ...options }], { centerId: CENTRE, pax, bowlingConfig: null, dateStr: DATE });
+    const ligne = essai.items.find((item) => item.activityId === activite.id);
+    if (ligne && ligne.priceKnown === true) lignes.push({ activityId: activite.id, ...options });
+  }
+  return lignes;
+}
+
+// « Sans tarif » se MESURE, ne se suppose pas : on normalise la ligne candidate
+// et on lit priceKnown. Le duckpin et le fun run ont un priceValue VIDE et un
+// prix quand meme (ils tirent le leur d une grille) : les ranger parmi les
+// muettes rendrait la propriete verte pour la mauvaise raison.
+function tarifConnu(activite, pax = PAX) {
+  const complements = require(path.join(ROOT, 'lib/booking-complements'));
+  const options = complements.optionsDuCatalogue(activite);
+  if (!options) return false;
+  const essai = normalizeProgram([...VISITE_BASE, { activityId: activite.id, ...options }], { centerId: CENTRE, pax, bowlingConfig: null, dateStr: DATE });
+  const ligne = essai.items.find((item) => item.activityId === activite.id);
+  return Boolean(ligne && ligne.priceKnown === true);
+}
+const idActivite = (carte) => String((carte.patch && carte.patch.activityId) || '');
+
+function mesurerI() {
+  const catalogue = listCenterActivities(CENTRE);
+  const libres = catalogue.filter((activite) => !activite.planned);
+  const muettes = libres.filter((activite) => !tarifConnu(activite));
+  const muette = muettes[0] || null;
+  const bornee = libres.find((activite) => Number(activite.maxPax) > 0) || null;
+  const comptee = libres.find((activite) => Number(activite.units) > 0) || null;
+
+  // NEGATIF : un programme ou TOUTES les activites tarifees sont deja prises.
+  // Il ne reste que des muettes : la bonne reponse est ZERO carte d activite.
+  const baseMuettes = baseSaturee(null, PAX);
+  const sansTarif = cartesVisite(CENTRE, baseMuettes, PAX);
+
+  // TEMOIN POSITIF, OBLIGATOIRE : la MEME activite, avec un tarif ecrit dans le
+  // JEU SERVI (applyCatalogState, en memoire, jamais sur le disque). Sans lui,
+  // « aucune carte sans tarif » se satisferait de n afficher jamais rien.
+  const TARIF = 6;
+  const baseTemoin = muette ? baseSaturee(muette.id, PAX) : [];
+  let avecTarif = [];
+  let chezVoisin = [];
+  let attenduTemoin = null;
+  if (muette) {
+    const doc = catalogStore.getActivityDoc(muette.id, CENTRE);
+    catalogStore.applyCatalogState({
+      activities: [{
+        id: muette.id, center_id: CENTRE, name: doc.name, resource_type: doc.resourceType,
+        duration_model: doc.durationModel, service_model: doc.serviceModel, risk_drivers: doc.riskDrivers,
+        planning_pressure: doc.planningPressure, bookable: true, price_type: doc.booking.priceType,
+        price_value: TARIF, price_unit: doc.booking.unitLabel, booking_order: doc.booking.order,
+        source: 'custom', active: true,
+      }],
+    });
+    try {
+      avecTarif = cartesVisite(CENTRE, baseTemoin, PAX);
+      chezVoisin = cartesVisite('gembloux', VISITE_BASE, PAX);
+      // Le montant attendu se recalcule DANS la fenetre : dehors, le tarif
+      // n existe pas et l ecart vaudrait zero.
+      attenduTemoin = facture(prixProgramme([...baseTemoin, { activityId: muette.id }], PAX)) - facture(prixProgramme(baseTemoin, PAX));
+    } finally {
+      catalogStore.applyCatalogState({});
+    }
+  }
+
+  // LE MAXIMUM DU GROUPE : la meme activite bornee, a son maximum puis juste
+  // au-dessus. normalizeProgram ne l applique PAS (mesure du 2026-09-05 : il
+  // chiffre une session de 5 places pour 8 personnes), donc si le module ne le
+  // lit pas, personne ne le lit.
+  const maxi = bornee ? Math.trunc(Number(bornee.maxPax)) : 0;
+  const sousLeMax = bornee ? cartesVisite(CENTRE, baseSaturee(bornee.id, maxi), maxi) : [];
+  const auDessus = bornee ? cartesVisite(CENTRE, baseSaturee(bornee.id, maxi + 1), maxi + 1) : [];
+
+  // LA DOTATION DECLAREE : le groupe tient sur les unites declarees, puis une
+  // personne de trop et il tournerait.
+  const capacite = comptee ? Math.max(1, Math.trunc(Number(comptee.capacityPerUnit) || 1)) * Math.max(1, Math.trunc(Number(comptee.units) || 1)) : 0;
+  const dansLaDotation = comptee ? cartesVisite(CENTRE, baseSaturee(comptee.id, capacite), capacite) : [];
+  const horsDotation = comptee ? cartesVisite(CENTRE, baseSaturee(comptee.id, capacite + 1), capacite + 1) : [];
+  return { muette, muettes, bornee, comptee, sansTarif, baseMuettes, baseTemoin, avecTarif, chezVoisin, attenduTemoin, maxi, sousLeMax, auDessus, capacite, dansLaDotation, horsDotation, TARIF };
+}
+
+function jugerI(m) {
+  const v = [];
+  v.push({ ok: Boolean(m.muette), label: '[montage] le centre vend bien une activite libre dont le prix est INCONNU', detail: m.muettes ? m.muettes.map((a) => a.id).join(',') || 'aucune' : 'aucune' });
+  v.push({ ok: Boolean(m.bornee) && m.maxi > 0, label: '[montage] le centre vend bien une activite a MAXIMUM de groupe declare', detail: m.bornee ? `${m.bornee.id} maxPax=${m.maxi}` : 'aucune' });
+  v.push({ ok: Boolean(m.comptee) && m.capacite > 0, label: '[montage] le centre vend bien une activite a DOTATION finie', detail: m.comptee ? `${m.comptee.id} ${m.comptee.units}x${m.comptee.capacityPerUnit}=${m.capacite}` : 'aucune' });
+  v.push({
+    ok: Boolean(m.muette) && m.baseMuettes.length > VISITE_BASE.length,
+    label: '[montage] le programme de base SATURE toutes les activites tarifees : il ne reste que des muettes a proposer',
+    detail: `base = ${m.baseMuettes.map((l) => l.activityId).join(',')} ; muettes restantes = ${(m.muettes || []).map((a) => a.id).join(',')}`,
+  });
+  if (!m.muette || !m.bornee || !m.comptee) return v;
+
+  const activites = m.sansTarif.filter((c) => c.kind === 'activite');
+  v.push({
+    ok: activites.length === 0,
+    label: '[I] PRIX INCONNU = AUCUNE CARTE : aucune activite sans tarif ne se propose, meme quand elle est la seule candidate',
+    detail: activites.length ? `cartes rendues : ${activites.map((c) => `${idActivite(c)} ${c.amountLabel}`).join(' | ')}` : 'aucune carte d activite',
+  });
+  const temoin = m.avecTarif.find((c) => idActivite(c) === m.muette.id) || null;
+  v.push({
+    ok: Boolean(temoin),
+    label: '[I] TEMOIN POSITIF : la MEME activite, avec un tarif dans le jeu servi, produit bien une carte',
+    detail: temoin ? `${temoin.id} ${temoin.amountLabel} - ${temoin.addsLabel}` : `aucune carte pour ${m.muette.id} a ${m.TARIF} EUR : la propriete ci-dessus se satisfait de ne rien afficher`,
+  });
+  v.push({
+    ok: Boolean(temoin) && Number(temoin.deltaTotal) === m.attenduTemoin,
+    label: '[I] LE MONTANT DU TEMOIN EST L ECART DES DEUX PROGRAMMES, recalcule en Node',
+    detail: `annonce=${temoin && temoin.deltaTotal} attendu=${m.attenduTemoin}`,
+  });
+  v.push({
+    ok: !m.chezVoisin.some((c) => idActivite(c) === m.muette.id),
+    label: '[I] LE TARIF APPARTIENT A CE CENTRE : le centre voisin ne propose pas l activite tarifee ici',
+    detail: `cartes chez le voisin : ${m.chezVoisin.map((c) => c.id).join(',') || 'aucune'}`,
+  });
+  const dedans = m.sousLeMax.some((c) => idActivite(c) === m.bornee.id);
+  const dehors = m.auDessus.some((c) => idActivite(c) === m.bornee.id);
+  v.push({
+    ok: dedans && !dehors,
+    label: '[I] LE MAXIMUM DU GROUPE EST RESPECTE : proposee a son maximum, jamais une personne au-dessus',
+    detail: `${m.bornee.id} a ${m.maxi} personnes : ${dedans} ; a ${m.maxi + 1} : ${dehors}`,
+  });
+  const tient = m.dansLaDotation.some((c) => idActivite(c) === m.comptee.id);
+  const tourne = m.horsDotation.some((c) => idActivite(c) === m.comptee.id);
+  v.push({
+    ok: tient && !tourne,
+    label: '[I] LA DOTATION DECLAREE EST RESPECTEE : proposee tant que le groupe tient, jamais quand il tournerait',
+    detail: `${m.comptee.id} a ${m.capacite} personnes : ${tient} ; a ${m.capacite + 1} : ${tourne}`,
+  });
+  return v;
+}
+// ---------------------------------------------------------------------------
+// [J] LA COLONNE DE TEXTE D UNE CARTE GARDE UNE LARGEUR UTILISABLE.
+// ---------------------------------------------------------------------------
+async function mesurerJ(browser) {
+  const out = [];
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+    for (const theme of ['light', 'dark']) {
+      RESERVATIONS.length = 0;
+      BLOCAGES.length = 0;
+      const { page, fermer } = await pageNeuve(browser, viewport);
+      try {
+        const visite = await allerAuRecapVisite(page, { theme, viewport });
+        const formule = await allerAuRecap(page, { theme, viewport });
+        out.push({ viewport: `${viewport.width}x${viewport.height}`, theme, visite, formule });
+      } finally {
+        await fermer();
+      }
+    }
+  }
+  return out;
+}
+
+function jugerJ(mesures) {
+  const v = [];
+  mesures.forEach((m) => {
+    const cle = `${m.viewport} ${m.theme}`;
+    [['visite', m.visite], ['formule', m.formule]].forEach(([nom, bloc]) => {
+      v.push({ ok: bloc.cartes.length >= 1, label: `[montage] ${cle} ${nom} : au moins une carte a mesurer`, detail: `${bloc.cartes.length} carte(s)` });
+      const etroites = bloc.cartes.filter((c) => !(c.largeurCarte > 0) || c.largeurCopie < c.largeurCarte * 0.5);
+      v.push({
+        ok: bloc.cartes.length >= 1 && etroites.length === 0,
+        label: `[J] ${cle} ${nom} : la colonne de texte occupe au moins la moitie de la carte`,
+        detail: bloc.cartes.map((c) => `${c.id} ${c.largeurCopie}/${c.largeurCarte}px h=${c.hauteurCarte}`).join(' | ') || 'aucune carte',
+      });
+    });
+  });
+  return v;
+}
+
+// ---------------------------------------------------------------------------
 // [F] LA GARDE DE DOTATION EST JOIGNABLE SUR TOUTE VISITE.
 // ---------------------------------------------------------------------------
 const { listCenterActivities } = require(path.join(ROOT, 'lib/activity-catalog'));
@@ -983,6 +1431,7 @@ function jugerG(mesures) {
 const COMPLEMENTS = 'lib/booking-complements.js';
 const OPS = 'lib/reservation-ops.js';
 const APP = 'assets/app-main.js';
+const CSS = 'assets/pinlane-client.css';
 
 function propriete(cle, titre, mesurer, juger, mutations) {
   return { cle, titre, mesurer, juger, mutations };
@@ -1027,7 +1476,9 @@ async function construirePROPRIETES(browser) {
         {
           nom: 'une montee moins chere se propose quand meme',
           vise: /\[D\] SEUL L ECART POSITIF SE MONTRE/,
-          serveur: [{ fichier: COMPLEMENTS, de: '  if (!(deltaTotal > 0)) {', vers: '  if (false && !(deltaTotal > 0)) {' }],
+          // LA LOI D ECART POSITIF VIT DESORMAIS DANS finaliserCartes, une seule
+          // fois pour les trois generateurs : la muter les desarme tous d un coup.
+          serveur: [{ fichier: COMPLEMENTS, de: '  const gardees = cartes.filter((carte) => carte && carte.deltaTotal > 0);', vers: '  const gardees = cartes.filter((carte) => carte);' }],
         },
         {
           nom: 'le prix de la candidate est lu SANS le centre (le socle au lieu du catalogue du centre)',
@@ -1043,7 +1494,7 @@ async function construirePROPRIETES(browser) {
           vise: /\[D\] UN CENTRE INCONNU DE LA PLATEFORME NE REND AUCUNE CARTE/,
           serveur: [
             { fichier: COMPLEMENTS, de: '  const catalogue = getEffectiveFormules(centerId);', vers: '  const catalogue = getEffectiveFormules();' },
-            { fichier: COMPLEMENTS, de: '  try {\n    center = getCenter(centerId);\n  } catch (error) {\n    return [];\n  }', vers: '  try {\n    center = getCenter(centerId);\n  } catch (error) {\n    center = getCenter(\'libramont\');\n  }' },
+            { fichier: COMPLEMENTS, de: '  try {\n    return getCenter(centerId);\n  } catch (error) {\n    return null;\n  }', vers: '  try {\n    return getCenter(centerId);\n  } catch (error) {\n    return getCenter(\'libramont\');\n  }' },
           ],
         },
       ]),
@@ -1060,6 +1511,77 @@ async function construirePROPRIETES(browser) {
           nom: 'le comptage d unites retombe au « 1 » silencieux',
           vise: /\[F\] LA GARDE COMPTE DES UNITES, PAS DES DOSSIERS/,
           serveur: [{ fichier: OPS, de: '  const compte = Number(item && item.laneCount);\n  if (Number.isFinite(compte) && compte > 0) return Math.trunc(compte);', vers: '  const compte = Number(item && item.laneCount);\n  if (true) return Number.isFinite(compte) && compte > 0 ? Math.trunc(compte) : 1;' }],
+        },
+      ]),
+    propriete('H', 'UNE PARTIE DE LASER EN PLUS : LE PALIER SUIVANT, ET AUCUNE HEURE PROMISE',
+      async () => mesurerH(browser),
+      jugerH,
+      [
+        {
+          nom: 'le module saute des crans de la grille (le palier courant redevient candidat)',
+          vise: /\[H\] UN SEUL CRAN A LA FOIS|\[H\] UNE PARTIE EN PLUS EST LE PALIER SUIVANT/,
+          serveur: [{ fichier: COMPLEMENTS, de: '    .filter((option) => Number(option.games) > partiesCourantes)', vers: '    .filter((option) => Number(option.games) >= partiesCourantes)' }],
+        },
+        {
+          nom: 'la carte tait le placement sur place et laisse croire a un horaire',
+          vise: /\[H\] LA CARTE DIT QUE LA PARTIE SE PLACE SUR PLACE/,
+          serveur: [{ fichier: COMPLEMENTS, de: '    note: () => (ecartParties > 1', vers: '    note: () => false && (ecartParties > 1' }],
+        },
+        {
+          nom: 'la carte de laser recoit le temps total generique (contradiction avec la note)',
+          vise: /\[H\] LA CARTE N ANNONCE AUCUN TEMPS TOTAL ALLONGE/,
+          serveur: [{ fichier: COMPLEMENTS, de: '    allongeLaVisite: false,', vers: '    allongeLaVisite: true,' }],
+        },
+      ]),
+    propriete('I', 'UNE ACTIVITE LIBRE : JAMAIS SANS TARIF, ET LE TEMOIN POSITIF',
+      async () => mesurerI(),
+      jugerI,
+      [
+        {
+          // DEUX BARRIERES EN SERIE, et la contre-epreuve les retire toutes les
+          // deux. Mesure du 2026-09-05 : une ligne sans tarif ne compte pas dans
+          // le prix du programme (normalizeProgram n additionne que les lignes
+          // connues), donc son ecart vaut ZERO et la loi commune la refuserait
+          // meme sans le controle nomme. Ne muter que l une des deux ne change
+          // donc RIEN a l ecran, et la mutation ne prouverait rien. Les retirer
+          // ensemble prouve ce que la propriete affirme vraiment : que le module
+          // MESURE ce refus au lieu de le supposer.
+          nom: 'les deux barrieres contre une activite sans tarif sont retirees',
+          vise: /\[I\] PRIX INCONNU = AUCUNE CARTE/,
+          serveur: [
+            { fichier: COMPLEMENTS, de: '    if (ligne.priceKnown !== true) continue;', vers: '    if (false && ligne.priceKnown !== true) continue;' },
+            { fichier: COMPLEMENTS, de: '  const gardees = cartes.filter((carte) => carte && carte.deltaTotal > 0);', vers: '  const gardees = cartes.filter((carte) => carte);' },
+          ],
+        },
+        {
+          nom: 'le maximum du groupe declare au catalogue est ignore',
+          vise: /\[I\] LE MAXIMUM DU GROUPE EST RESPECTE/,
+          serveur: [{ fichier: COMPLEMENTS, de: '    if (Number.isFinite(maximum) && maximum > 0 && context.pax > maximum) continue;', vers: '    if (false && Number.isFinite(maximum) && maximum > 0 && context.pax > maximum) continue;' }],
+        },
+        {
+          nom: 'la dotation declaree est ignoree (le groupe tournerait)',
+          vise: /\[I\] LA DOTATION DECLAREE EST RESPECTEE/,
+          serveur: [{ fichier: COMPLEMENTS, de: '    if (ligne.rotation === true) continue;', vers: '    if (false && ligne.rotation === true) continue;' }],
+        },
+      ]),
+    propriete('K', 'UNE DUREE HORS GRILLE NE SE PROPOSE PAS',
+      async () => mesurerK(),
+      jugerK,
+      [
+        {
+          nom: 'le derivateur invente le premier palier de la grille',
+          vise: /\[K\] UNE DUREE HORS GRILLE NE SE PROPOSE PAS/,
+          serveur: [{ fichier: COMPLEMENTS, de: '    const palier = DURATION_OPTIONS.find((item) => Math.round(Number(item.value) * 60) === minutes) || null;', vers: '    const palier = DURATION_OPTIONS.find((item) => Math.round(Number(item.value) * 60) === minutes) || DURATION_OPTIONS[0];' }],
+        },
+      ]),
+    propriete('J', 'LA COLONNE DE TEXTE D UNE CARTE GARDE UNE LARGEUR UTILISABLE',
+      async () => mesurerJ(browser),
+      jugerJ,
+      [
+        {
+          nom: 'la carte reste en trois colonnes sur un telephone (la colonne de texte est ecrasee)',
+          vise: /\[J\] 390x844 .* la colonne de texte occupe au moins la moitie/,
+          client: [{ fichier: CSS, de: '  #clientView .complement-copy { grid-column: 1 / -1; }', vers: '  #clientView .complement-copy { grid-column: auto; }' }],
         },
       ]),
     propriete('G', 'LE DERNIER ECRAN RESTE UTILISABLE',
@@ -1118,7 +1640,21 @@ async function main() {
         let verdicts = [];
         enMutation = true;
         try {
-          const jouer = async () => p.juger(await p.mesurer());
+          const jouerUneFois = async () => p.juger(await p.mesurer());
+          // UNE ATTENTE QUI EXPIRE N EST PAS UN VERDICT. Sous mutation, le parcours
+          // rejoue des allers-retours de disponibilite, et une course avec fetchSlots
+          // (qui vide state.availableSlots pendant que le gate attend qu il se
+          // remplisse) peut faire expirer une attente de 20 s : mesure du 2026-09-05,
+          // un passage sur trois, jamais au meme endroit, jamais en phase normale, et
+          // la requete elle-meme coute 25 ms. On rejoue UNE fois, et on le dit ; un
+          // second echec reste un echec.
+          const jouer = async () => {
+            try { return await jouerUneFois(); } catch (error) {
+              if (!/Timeout/i.test(String(error && error.message))) throw error;
+              console.log(`      (mutation ${p.cle}) attente expiree (${String(error.message).split(String.fromCharCode(10))[0].slice(0, 80)}), mesure rejouee une fois`);
+              return jouerUneFois();
+            }
+          };
           verdicts = mut.serveur && mut.serveur.length
             ? await avecMutationsServeur(mut.serveur, async () => (
               mut.client && mut.client.length ? avecMutationsClient(mut.client, jouer) : jouer()
@@ -1135,7 +1671,7 @@ async function main() {
           `[mutation ${p.cle}] « ${mut.nom} » fait bien tomber la propriete [${p.cle}] elle-meme`,
           vises.length
             ? `${vises.length} verdict(s) vise(s) sur ${tombes.length} tombe(s)`
-            : `LA SONDE EST AVEUGLE sur ce point : ${tombes.length} verdict(s) tombe(s), aucun ne vise la propriete`);
+            : `LA SONDE EST AVEUGLE sur ce point : ${tombes.length} verdict(s) tombe(s), aucun ne vise la propriete : ${tombes.map((v) => `${v.label}${v.detail ? ` (${String(v.detail).slice(0, 160)})` : ''}`).join(' · ') || 'rien n est tombe'}`);
       }
     }
 

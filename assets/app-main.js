@@ -4140,8 +4140,15 @@ function deriveBookingType() {
 }
 
 // Les activites cochees, dans l'ordre du catalogue du centre.
-function getChosenActivities() {
-  const selection = state.booking.activities && typeof state.booking.activities === 'object' ? state.booking.activities : {};
+//
+// Le panier se PASSE quand on veut lire un panier qui n'est pas encore celui du
+// dossier : un complement de fin de reservation se fait verifier par le serveur
+// AVANT d'etre adopte, donc son panier existe un instant sans etre le choix du
+// client. Sans argument, la fonction lit exactement ce qu'elle lisait avant.
+function getChosenActivities(panierPropose = null) {
+  const selection = panierPropose && typeof panierPropose === 'object'
+    ? panierPropose
+    : (state.booking.activities && typeof state.booking.activities === 'object' ? state.booking.activities : {});
   const catalog = typeof getCenterActivities === 'function' ? getCenterActivities() : [];
   const list = catalog.length ? catalog : [
     { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling' },
@@ -4903,8 +4910,13 @@ function applyChosenActivitiesToBooking() {
 
 // Le panier envoye au serveur. Il ne porte que des identifiants et des options :
 // AUCUN prix. Le montant est recalcule cote serveur, toujours.
-function buildBookingProgramPayload() {
-  return getChosenActivities().map(activity => {
+//
+// Le panier se PASSE pour chiffrer une visite CANDIDATE (un complement qu'on
+// fait verifier avant de l'adopter) : c'est le meme code qui compose les deux
+// paniers, donc le programme verifie est exactement celui que la confirmation
+// enverra.
+function buildBookingProgramPayload(panierPropose = null) {
+  return getChosenActivities(panierPropose).map(activity => {
     const options = activity.options || {};
     const item = { activityId: activity.id };
     // LES OPTIONS PARTENT SELON LE TYPE TARIFAIRE, PAS SELON UNE LISTE D IDS.
@@ -5797,9 +5809,10 @@ async function fetchSlots(options = {}) {
   // Un ancien prix ne doit jamais survivre a une nouvelle recherche. La reponse
   // courante remettra le programme normalise si le type est bien une visite.
   state.booking.serverProgram = null;
-  // Meme regle pour les montees de formule : elles sont chiffrees ET jugees
-  // faisables sur des heures precises. Une carte survivante annoncerait un
-  // supplement calcule sur un creneau qui n existe plus.
+  // Meme regle pour les complements de fin de reservation (montee de formule,
+  // palier de laser, activite libre) : ils sont chiffres ET juges faisables sur
+  // des heures precises. Une carte survivante annoncerait un supplement calcule
+  // sur un creneau qui n existe plus.
   formulaComplements = [];
   formulaComplementNotice = { text: '', tone: '' };
   // Et le prix serveur du creneau courant repart de zero avec eux : c est la
@@ -5937,11 +5950,14 @@ let formulaAnchorBusy = false;      // revalidation en cours
 let formulaAdviceSignature = '';    // avis de confort deja entre en scene
 let formulaAdviceDismissed = '';    // avis que le client a choisi d ecarter
 let formulaJustPicked = null;       // heure qui vient d'etre retenue (capsule)
-// MONTEES DE FORMULE (2026-09-04). Le serveur les calcule AVEC le creneau
-// retenu et les envoie dans la meme reponse : aucun aller-retour de plus.
-// Elles ne survivent jamais a une nouvelle recherche de creneau (fetchSlots les
-// remet a zero), sinon le recapitulatif proposerait une montee chiffree sur des
-// heures que le client vient de changer.
+// COMPLEMENTS DE FIN DE RESERVATION (2026-09-04, deux generateurs de plus le
+// 2026-09-05). Trois generateurs cote serveur, une seule forme de carte ici :
+// la montee de formule pour le tunnel des formules, le palier de laser et
+// l activite libre pour celui des visites a la carte. Le serveur les calcule
+// AVEC le creneau retenu et les envoie dans la meme reponse : aucun
+// aller-retour de plus. Elles ne survivent jamais a une nouvelle recherche de
+// creneau (fetchSlots les remet a zero), sinon le recapitulatif proposerait un
+// complement chiffre sur des heures que le client vient de changer.
 let formulaComplements = [];        // cartes servies par le serveur
 let formulaComplementBusy = '';     // formule dont le clic est en cours
 // La derniere phrase dite au client sur ces cartes (« ajoutee », « plus
@@ -7685,7 +7701,7 @@ function renderRecap() {
   `;
 }
 
-// LES MONTEES DE FORMULE, EN FIN DE RECAPITULATIF ET DANS #recapList.
+// LES COMPLEMENTS, EN FIN DE RECAPITULATIF ET DANS #recapList.
 //
 // Pourquoi ici et nulle part ailleurs : #recapList est la colonne qui DEFILE
 // (flex: 1 1 0 puis overflow: hidden auto sous 640 px, minmax(0, 1fr) au-dessus
@@ -7695,18 +7711,31 @@ function renderRecap() {
 // garde mobile du tunnel, mesurée par tunnel-one-screen.
 //
 // Une option impossible ne s'affiche pas : le serveur ne renvoie que les
-// montées qu'il a jugées faisables au créneau déjà retenu. Si elle meurt entre
-// l'affichage et le clic, c'est la réponse du serveur au clic que le client lit.
+// compléments qu'il a jugés faisables au créneau déjà retenu. Si l'un meurt
+// entre l'affichage et le clic, c'est la réponse du serveur au clic que le
+// client lit.
 //
 // CE QUI NE BOUGE PAS, CE SONT LES HEURES RETENUES. Pas la durée : mesure du
 // 2026-09-04, hlg vers f2 à 8 personnes garde son bowling à 14:00 et fait
 // passer la visite de 1h30 à 3h. La carte porte donc le nouveau temps total
 // quand il diffère, et le sous-titre ne promet que ce que le mécanisme tient.
+//
+// UNE CARTE PEUT AUSSI PORTER UNE NOTE DE PLACEMENT. Une partie de laser en
+// plus est FACTURÉE mais pas planifiée : le moteur la marque « pending » et
+// l'équipe la place sur place (mesure du 2026-09-05). La carte le dit, sinon
+// elle promettrait un horaire que la réservation ne pose pas. La phrase vient
+// du serveur, qui la tire du plan du moteur : elle ne se compose pas ici.
 function renderComplementCards() {
   const b = state.booking;
-  if (b.type !== 'formule' || !b.formuleId) return '';
+  // DEUX TUNNELS, UN SEUL BLOC. Une formule recoit des montees de formule ; une
+  // visite composee a la carte recoit un palier de laser en plus et des
+  // activites libres en plus. Les cartes ont la MEME forme, donc le rendu ne
+  // sait pas de quel generateur elles viennent : il lit `id`, jamais `formuleId`
+  // (une carte de visite n'en a pas).
+  if (b.type !== 'formule' && b.type !== 'visite') return '';
+  if (b.type === 'formule' && !b.formuleId) return '';
   const cards = (Array.isArray(formulaComplements) ? formulaComplements : [])
-    .filter(card => card && card.formuleId && card.formuleId !== b.formuleId);
+    .filter(card => card && card.id && (card.kind !== 'formule' || card.formuleId !== b.formuleId));
   const notice = formulaComplementNotice || { text: '', tone: '' };
   // Plus aucune carte mais une phrase a dire : le bloc reste, sinon la reponse
   // au clic (« ajoutee », « plus disponible ») disparaitrait au rendu suivant.
@@ -7723,12 +7752,13 @@ function renderComplementCards() {
             <strong class="complement-name">${escapeHtml(card.name || '')}</strong>
             <small class="complement-adds">${escapeHtml(card.addsLabel || '')}</small>
             ${card.totalLabel ? `<small class="complement-total">${escapeHtml(card.totalLabel)}</small>` : ''}
+            ${card.noteLabel ? `<small class="complement-note">${escapeHtml(card.noteLabel)}</small>` : ''}
           </span>
           <span class="complement-amount">${escapeHtml(card.amountLabel || '')}</span>
           <button type="button" class="btn-secondary complement-add"
-            data-complement="${escapeHtml(card.formuleId)}"
-            onclick="acceptFormulaComplement(this.dataset.complement)"
-            aria-label="Ajouter ${escapeHtml(card.name || '')}, ${escapeHtml(card.amountLabel || '')}${card.totalLabel ? `, ${escapeHtml(card.totalLabel)}` : ''}">Ajouter</button>
+            data-complement="${escapeHtml(card.id)}"
+            onclick="accepterComplement(this.dataset.complement)"
+            aria-label="Ajouter ${escapeHtml(card.name || '')}, ${escapeHtml(card.amountLabel || '')}${card.totalLabel ? `, ${escapeHtml(card.totalLabel)}` : ''}${card.noteLabel ? `, ${escapeHtml(card.noteLabel)}` : ''}">Ajouter</button>
         </div>`).join('')}
       <div class="complement-status" id="complementStatus" role="status" aria-live="polite"
         data-tone="${escapeHtml(notice.tone || '')}">${escapeHtml(notice.text || '')}</div>
@@ -7808,6 +7838,135 @@ async function refreshFormulaComplements() {
   } catch (error) {
     if (ticket !== complementFetchId) return;
     formulaComplements = [];
+  }
+}
+
+// UN SEUL BOUTON POUR LES TROIS GENERATEURS.
+//
+// La carte dit ce qu'elle EST (`kind`) et ce qu'il faut appliquer (`formuleId`
+// pour une montée de formule, `patch` pour une visite) : le bouton n'a donc
+// qu'un seul attribut, l'identité de la carte, et un générateur de plus
+// n'ajoute rien au DOM. Une carte inconnue ne fait rien du tout : c'est le cas
+// d'un rendu qui aurait survécu à un changement de créneau.
+function accepterComplement(idCarte) {
+  const carte = (formulaComplements || []).find(item => item && item.id === String(idCarte || ''));
+  if (!carte) return Promise.resolve();
+  if (carte.kind === 'formule') return acceptFormulaComplement(carte.formuleId);
+  return accepterComplementVisite(carte);
+}
+
+// ACCEPTER UN COMPLEMENT DE VISITE, C'EST CHANGER UNE LIGNE DU PANIER.
+//
+// Le serveur a déjà dérivé les options de la ligne du CATALOGUE (durée, palier
+// de session, nombre de parties) : le navigateur ne devine rien, il applique le
+// `patch` de la carte sur une COPIE du panier. Le panier du dossier n'est
+// touché qu'après un aller-retour serveur réussi, sinon un refus laisserait le
+// client avec une visite qu'il n'a pas choisie et que la confirmation
+// facturerait.
+//
+// LE PROGRAMME VERIFIE EST CELUI QUE LA CONFIRMATION ENVERRA : les deux passent
+// par buildBookingProgramPayload, l'un avec le panier candidat, l'autre avec le
+// panier adopté. Aucun second chemin ne peut donc composer une visite
+// différente de celle dont le prix vient d'être accepté.
+async function accepterComplementVisite(carte) {
+  const b = state.booking;
+  const cible = carte && carte.patch && carte.patch.activityId ? String(carte.patch.activityId) : '';
+  if (!cible || formulaComplementBusy || b.type !== 'visite' || !b.startTime) return;
+
+  // Une carte morte se retire ET dit pourquoi : la laisser inviterait à un
+  // second clic qui échouerait pareil. LA VISITE, elle, ne bouge pas.
+  const renoncer = (raison) => {
+    formulaComplements = (formulaComplements || []).filter(item => item && item.id !== carte.id);
+    renderRecapWithComplementStatus(raison || 'Cette option n\'est plus disponible.', 'ko');
+  };
+
+  formulaComplementBusy = carte.id;
+  const bouton = document.querySelector(`#recapComplements .complement-add[data-complement="${String(carte.id).replace(/"/g, '')}"]`);
+  if (bouton) bouton.disabled = true;
+  setComplementStatus('Vérification en cours…', 'busy');
+
+  try {
+    const panierCourant = b.activities && typeof b.activities === 'object' ? b.activities : {};
+    const panierCandidat = { ...panierCourant };
+    panierCandidat[cible] = { ...(panierCourant[cible] || {}), ...(carte.patch.options || {}) };
+
+    const params = new URLSearchParams({
+      date: b.date,
+      type: 'visite',
+      pax: String(Number(b.pax) || 1),
+      centerId: String(typeof getTunnelCenterId === 'function' ? getTunnelCenterId() : 'libramont'),
+      program: JSON.stringify(buildBookingProgramPayload(panierCandidat))
+    });
+    // EXACTEMENT les heures déjà retenues : ce lot ne décale rien.
+    const preference = createDefaultFormulaPreference(b.preference || {});
+    const heuresChoisies = {};
+    if (preference.preferredTimes.bowling) heuresChoisies.bowling = preference.preferredTimes.bowling;
+    if (preference.preferredTimes.laser_game) heuresChoisies.laser_game = preference.preferredTimes.laser_game;
+    if (Object.keys(heuresChoisies).length) params.set('preferredTimes', JSON.stringify(heuresChoisies));
+    setLaserPartTimesParam(params, preference);
+
+    const reponse = await apiRequest(`${API_ENDPOINTS.publicAvailability || '/api/public-availability'}?${params.toString()}`, {
+      method: 'GET'
+    });
+    const creneau = (reponse.slots || []).find(item => item && item.time === b.startTime) || null;
+    if (!creneau) {
+      renoncer(reponse.message || '');
+      return;
+    }
+    // LA VISITE NE BOUGE PAS : mêmes pistes, mêmes heures d'ancres que ce que le
+    // client a validé. Un écart ici serait un déplacement silencieux, donc un
+    // refus, pas une adoption.
+    const memesPistes = JSON.stringify(Array.isArray(creneau.lanes) ? creneau.lanes : [])
+      === JSON.stringify(Array.isArray(b.allocatedLanes) ? b.allocatedLanes : []);
+    const heuresRendues = creneau.opsPlan?.anchorPlan?.times || {};
+    const memesHeures = Object.keys(heuresChoisies).every(cle => heuresRendues[cle] === heuresChoisies[cle]);
+    if (!memesPistes || !memesHeures) {
+      renoncer('Cette option déplacerait votre créneau.');
+      return;
+    }
+    // LA VISITE DURE PLUS LONGTEMPS : elle doit encore tenir dans la journée.
+    // Sans ce contrôle, une option acceptée en fin de soirée renvoyait le client
+    // à l'écran des créneaux au moment de confirmer, sans qu'il comprenne
+    // pourquoi (confirmBooking rejoue la même règle, et elle, elle est dure).
+    const nouveauTotal = Number(reponse.totalDuration || reponse.duration || 0);
+    const fenetre = validateSlotWindow(b.date, b.startTime, nouveauTotal);
+    if (!fenetre.ok) {
+      renoncer(fenetre.message || '');
+      return;
+    }
+    // LE MONTANT PROMIS EST-IL ENCORE CELUI DU SERVEUR ? La réponse porte
+    // `price`, le prix AUTORITAIRE du programme, recalculé à l'instant ligne par
+    // ligne. La carte, elle, a été chiffrée lors d'une requête antérieure : un
+    // tarif d'activité enregistré depuis la console entre les deux (TTL 30 s) a
+    // pu bouger. On ne facture jamais plus que ce qu'on a promis.
+    const ecartServeur = Math.round(((Number(reponse.price) || 0) - (Number(b.serverPrice) || 0)) * 100) / 100;
+    if (ecartServeur > (Number(carte.deltaTotal) || 0) + 0.001) {
+      renoncer('Le tarif de cette option vient de changer.');
+      return;
+    }
+
+    // ADOPTE. Le panier du dossier devient le panier candidat : c'est lui que
+    // confirmBooking enverra (buildBookingProgramPayload le relit). Le TYPE ne se
+    // recalcule pas : un complément n'enlève jamais rien du panier, donc une
+    // visite reste une visite.
+    b.activities = panierCandidat;
+    b.serverProgram = reponse.program && Array.isArray(reponse.program.items) ? reponse.program : b.serverProgram;
+    // Le prix qui vient d'être appliqué devient la nouvelle référence : un second
+    // complément se confronterait sinon au prix d'avant le premier.
+    b.serverPrice = Number(reponse.price) || 0;
+    b.laneCount = Number(reponse.laneCount || 0);
+    b.duration = Number(reponse.duration || b.duration || 0);
+    b.totalDuration = Number(reponse.totalDuration || reponse.duration || b.totalDuration || 0);
+    b.opsPlan = creneau.opsPlan || b.opsPlan;
+    formulaAnchorData = reponse.anchors || formulaAnchorData;
+    formulaComplements = Array.isArray(reponse.complements) ? reponse.complements : [];
+    state.availableSlots = [creneau];
+    save();
+    renderRecapWithComplementStatus(`${carte.name} ajouté : ${carte.amountLabel}.`, 'ok');
+  } catch (error) {
+    renoncer(error && error.message ? error.message : '');
+  } finally {
+    formulaComplementBusy = '';
   }
 }
 

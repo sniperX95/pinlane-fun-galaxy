@@ -3919,6 +3919,20 @@ body.client-mode #clientView {
   overflow-wrap: anywhere;
 }
 
+/* CE QUE LA CARTE PROMET SUR LE PLACEMENT. Une partie de laser en plus est
+   FACTURÉE mais pas planifiée : le moteur la marque « pending » et l'équipe la
+   place sur place (mesure du 2026-09-05 : laserPassPlan.mode
+   « manual_after_first », remainingGames 1). Sans cette ligne, la carte
+   laisserait croire à un horaire que la réservation ne pose pas. Elle se lit
+   comme les autres lignes de la carte, jamais comme un avertissement : c'est
+   une bonne nouvelle (« quand vous voulez »), pas une réserve. */
+#clientView .complement-note {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
 /* Le total du groupe D'ABORD, le montant par personne ensuite : la phrase
    entière vient du serveur (lib/booking-complements), elle ne se recompose pas
    ici. Un chiffre par personne seul se paie en caisse sur un groupe de douze. */
@@ -3942,6 +3956,28 @@ body.client-mode #clientView {
   font-size: 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+/* SUR UN TÉLÉPHONE, LA CARTE SE PLIE EN DEUX RANGÉES.
+
+   Mesuré le 2026-09-05 sur 390x844, sur les cartes DÉJÀ LIVRÉES (montée de
+   formule f5) : la grille à trois colonnes donnait `0px 195px 95.9px` sur une
+   carte de 341 px. Le montant ne se coupe pas (white-space: nowrap) et le
+   bouton garde ses 44 px : la colonne de texte tombait donc à ZÉRO, et
+   `overflow-wrap: anywhere` la rendait en 789 px de haut, une lettre par
+   ligne. Le bloc entier mesurait 884 px dans une colonne qui en fait 548.
+   Le bouton restait tapable, les polices restaient légales : aucune des
+   mesures du gate ne pouvait le voir.
+
+   La règle n'est donc pas « c'est petit », c'est « la colonne de texte a une
+   largeur utilisable ». En dessous du point de rupture de la maison, le texte
+   prend toute la largeur et le couple montant + bouton passe dessous ; le
+   montant peut alors se couper aux espaces, sinon il déborderait à son tour
+   (218 px de montant + 96 px de bouton pour 307 px utiles à 390). */
+@media (max-width: 640px) {
+  #clientView .complement-card { grid-template-columns: minmax(0, 1fr) auto; }
+  #clientView .complement-copy { grid-column: 1 / -1; }
+  #clientView .complement-amount { white-space: normal; }
 }
 
 /* LA RÉGION DE STATUT RESTE DANS L'ARBRE, MÊME VIDE. `display: none` l'en

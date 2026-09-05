@@ -41,7 +41,7 @@ const {
   isLaneBlockedAt,
 } = require('../lib/availability-blocks');
 const { buildProgramFormula, describeProgram, normalizeProgram } = require('../lib/visit-program');
-const { buildFormulaComplements } = require('../lib/booking-complements');
+const { buildFormulaComplements, buildVisitComplements } = require('../lib/booking-complements');
 
 const LASER_ARENA_MINUTES = 25;
 // Fenêtre d'accueil fixe AVANT la première activité : l'heure choisie par le
@@ -652,6 +652,12 @@ module.exports = async (req, res) => {
           requiresLanes: program.hasBowling,
           label: visitLabel,
           program,
+          // LES COMPLEMENTS DE VISITE : toujours presents, meme vides. Une cle
+          // absente et une liste vide se lisent pareil cote client, mais une cle
+          // toujours la dit que la question a ete posee - et les deux seuls
+          // chemins qui savent y repondre (ceux qui ont un creneau compose) la
+          // remplissent par leur bloc `extra`.
+          complements: [],
           message,
           ...extra,
         });
@@ -722,6 +728,54 @@ module.exports = async (req, res) => {
           label: visitLabel,
           snapshot,
         };
+        // LES COMPLEMENTS DE VISITE VOYAGENT AVEC LE CRENEAU QUI VIENT D ETRE
+        // RETENU (2026-09-05). Meme regle que les montees de formule : ils sont
+        // calcules APRES la garde finale, sur un creneau qui y a survecu, et ils
+        // partent dans CETTE reponse, sans aucun aller-retour de plus.
+        //
+        // La garde injectee est celle du creneau retenu, avec l identite du
+        // programme CANDIDAT : une activite ajoutee peut etre fermee toute la
+        // journee, et un palier de laser en plus ne change ni les pistes ni le
+        // besoin de pistes, mais rien ici ne le suppose - tout se relit du
+        // programme candidat.
+        const complementsDeVisite = (retainedSlot) => {
+          try {
+            return buildVisitComplements({
+              centerId,
+              date,
+              pax,
+              program,
+              retainedSlot,
+              priceOptions: { bowlingConfig: centerBowlingConfig, dateStr: date },
+              reservations: snapshot.reservations,
+              laneStatuses: snapshot.laneStatuses,
+              blocks: snapshot.blocks || [],
+              passesFinalGuards: ({ scenario, program: candidat }) => {
+                // Le programme COURANT a deja passe ce test plus haut ; la ligne
+                // que le complement ajoute, elle, ne l a jamais passe.
+                if ((candidat.items || []).some((item) => isActivityFullyBlockedOn(snapshot.blocks || [], date, item.activityId))) {
+                  return false;
+                }
+                return slotPassesFinalGuards(
+                  toFormulaSlot(scenario, snapshot, candidat.plannedItems[0]?.duration || 0),
+                  {
+                    ...guardContext,
+                    laneCount: candidat.laneCount,
+                    requiresLanes: candidat.hasBowling,
+                    duration: candidat.plannedItems[0]?.duration || 0,
+                  },
+                );
+              },
+            });
+          } catch (error) {
+            // Une proposition n est jamais une raison de casser une disponibilite :
+            // sans elle, le tunnel se comporte exactement comme avant ce lot. Mais
+            // elle laisse une trace, sinon « la proposition ne s affiche plus »
+            // n aurait aucune cause lisible.
+            console.error('[public-availability] complements visite', error && (error.stack || error.message));
+            return [];
+          }
+        };
         const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game
           || laserGameTimes.some((time) => time));
         if (!hasAnchorChoice) {
@@ -763,7 +817,7 @@ module.exports = async (req, res) => {
           respondVisit(
             defaultSlots,
             defaultSlots.length ? '' : 'Aucune combinaison disponible ce jour-là. Essayez une autre date ou un autre groupe.',
-            { anchors: anchorMeta },
+            { anchors: anchorMeta, complements: complementsDeVisite(defaultSlots[0] || null) },
           );
           return;
         }
@@ -787,7 +841,7 @@ module.exports = async (req, res) => {
         respondVisit(
           guarded,
           guarded.length ? '' : (plan?.plan?.reason || 'Cette combinaison n’est plus disponible. Essayez une heure proche.'),
-          { anchors: anchorMeta, suggestions: plan?.plan?.anchorSuggestions || [] },
+          { anchors: anchorMeta, suggestions: plan?.plan?.anchorSuggestions || [], complements: complementsDeVisite(guarded[0] || null) },
         );
         return;
       }

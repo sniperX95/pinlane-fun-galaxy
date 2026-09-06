@@ -1686,6 +1686,9 @@
     // mails simultanement, et une prise oubliee sur un mail qu on a quitte
     // bloquerait un collegue pour rien.
     prise: { communicationId: 0, battement: 0 },
+    // Les citations depliees, par mail. Repliees par defaut : c est tout
+    // l interet, et celui qui veut relire le fil le demande.
+    historiqueOuvert: {},
   };
   window.pv2Mail = pv2Mail;
 
@@ -3834,23 +3837,94 @@
     return `<div class="pv2-prise-alerte" role="status">${ci('alert')}<span><strong>${esc(nom)}</strong> répond à ce message${esc(quand)}. Écrivez aussi si vous voulez, mais le client recevrait deux réponses.</span></div>`;
   }
 
+  /* ── LE MAIL RECU, LU COMME UN MAIL ──────────────────────────────────────
+     Avant : le texte brut du mail etait jete dans un cadre a defilement, avec
+     ses chevrons de citation. Sur un « Ok », ca donnait trois ecrans de fil
+     recopie pour deux lettres de contenu, et le message se perdait dedans.
+
+     Maintenant : qui ecrit et quand, en tete ; le message seul, en grand ; et
+     la citation repliee derriere un bouton, comme dans une vraie messagerie.
+     Ce n est pas une preference de style : la question du client etait
+     INTROUVABLE dans l ecran precedent. ─────────────────────────────────── */
+  function pv2InitialeDe(nom, adresse) {
+    const source = String(nom || adresse || '?').trim();
+    const lettre = source.replace(/^[^\p{L}\p{N}]+/u, '').charAt(0);
+    return (lettre || '?').toUpperCase();
+  }
+
+  function pv2SeparerLeMail(texte) {
+    const outil = typeof window !== 'undefined' && window.PinlaneEmailThread;
+    if (!outil || typeof outil.separerCitation !== 'function') {
+      // Sans la regle chargee, on montre TOUT plutot que rien : un mail
+      // illisible reste preferable a un mail absent.
+      return { message: String(texte || ''), historique: '' };
+    }
+    return outil.separerCitation(texte);
+  }
+
+  function pv2Paragraphes(texte) {
+    const propre = String(texte || '').replace(/\r\n/g, '\n').trim();
+    if (!propre) return '<p class="pv2-mail-vide">Ce message n a pas de contenu.</p>';
+    return propre
+      .split(/\n{2,}/)
+      .map((bloc) => `<p>${esc(bloc).split('\n').join('<br>')}</p>`)
+      .join('');
+  }
+
+  function pv2EnteteMail(row) {
+    const adresse = String(row.payload?.from || row.recipient || '').trim();
+    const nom = String(row.payload?.fromName || '').trim();
+    const quand = formatOpsTimestamp(row.receivedAt || row.payload?.receivedAt || row.createdAt || row.scheduledAt) || '';
+    const repondu = Boolean(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt));
+    return `
+      <div class="pv2-mail-entete">
+        <div class="pv2-mail-pastille" aria-hidden="true">${esc(pv2InitialeDe(nom, adresse))}</div>
+        <div class="pv2-mail-identite">
+          <div class="pv2-mail-ligne">
+            <strong>${esc(nom || adresse || 'Expéditeur inconnu')}</strong>
+            ${repondu ? '<span class="pv2-mail-repondu">Répondu</span>' : ''}
+            <span class="pv2-mail-quand">${esc(quand)}</span>
+          </div>
+          ${nom && adresse ? `<div class="pv2-mail-adresse">${esc(adresse)}</div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function pv2CorpsMail(row) {
+    const brut = String(row.payload?.textBody || row.body || row.subject || '');
+    const { message, historique } = pv2SeparerLeMail(brut);
+    const ouvert = Boolean(pv2Mail.historiqueOuvert[row.uid]);
+    const outil = typeof window !== 'undefined' && window.PinlaneEmailThread;
+    const historiqueLu = historique && outil && typeof outil.historiqueLisible === 'function'
+      ? outil.historiqueLisible(historique)
+      : historique;
+    return `
+      <div class="pv2-mail-corps">
+        ${pv2Paragraphes(message)}
+        ${historique ? `
+          <button type="button" class="pv2-mail-plus${ouvert ? ' est-ouvert' : ''}"
+            onclick="pv2BasculerHistorique('${escJs(row.uid)}')"
+            aria-expanded="${ouvert}"
+            title="${ouvert ? 'Masquer' : 'Afficher'} le reste de la conversation">•••</button>
+          ${ouvert ? `<div class="pv2-mail-historique">${pv2Paragraphes(historiqueLu)}</div>` : ''}
+        ` : ''}
+      </div>`;
+  }
+
+  window.pv2BasculerHistorique = function (uid) {
+    pv2Mail.historiqueOuvert[uid] = !pv2Mail.historiqueOuvert[uid];
+    renderStaffEmailsPage();
+  };
+
   function pv2InboundDetail(row) {
     const analysis = pv2InboxAnalysis(row);
     const draft = pv2InboxReplyDraft(row);
     const busy = pv2Mail.replyBusy === row.uid;
-    const replied = !!(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt));
     const intentLabel = analysis ? (analysis.intentLabel || PV2_INTENT_LABELS[analysis.intent] || analysis.intent) : '';
     return `
       <div class="pv2-panel-body pv2-mail-detail">
-        <div class="pv2-kv">
-          <div><dt>De</dt><dd>${esc(row.payload?.from || row.recipient || '-')}</dd></div>
-          <div><dt>Reçu</dt><dd>${esc(formatOpsTimestamp(row.receivedAt || row.createdAt || row.scheduledAt) || '-')}</dd></div>
-          ${replied ? '<div><dt>Statut</dt><dd>Répondu</dd></div>' : ''}
-        </div>
-        <div>
-          <div class="pv2-mail-preview-title">Mail reçu</div>
-          <div class="pv2-mail-preview">${esc(String(row.payload?.textBody || row.subject || ''))}</div>
-        </div>
+        ${pv2EnteteMail(row)}
+        ${pv2CorpsMail(row)}
         ${analysis ? `
         <div class="pv2-inbox-analysis">
           <div class="pv2-mail-preview-title">Ce qu'il veut</div>

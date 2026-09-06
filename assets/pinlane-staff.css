@@ -12823,6 +12823,40 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 .pv2-inbox-urgent { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-full); font-size: 12px; font-weight: 500; background: var(--warning-soft); color: var(--warning); white-space: nowrap; }
 .pv2-inbox-summary { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; padding: 10px 12px; background: var(--subtle); border-radius: var(--radius-md); }
 .pv2-inbox-summary p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); flex: 1 1 100%; }
+/* ── LE MAIL RECU ────────────────────────────────────────────────────────
+   Avant, le texte brut du mail etait jete dans un cadre a defilement, chevrons
+   de citation compris : sur une reponse de deux mots, la question du client
+   etait litteralement introuvable a l ecran.
+
+   Ce qui compte ici n est pas la decoration, c est la HIERARCHIE : qui ecrit et
+   quand (petit, en tete), ce qu il dit (grand, aere), et le fil recopie
+   (replie). Le corps est en 14,5 px sur 1,65 d interligne parce qu il se lit en
+   entier, contrairement au reste de la console qui se balaie. */
+.pv2-mail-entete { display: flex; align-items: flex-start; gap: 10px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.pv2-mail-pastille { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 650; color: var(--text); background: var(--subtle); border: 1px solid var(--line); }
+.pv2-mail-identite { min-width: 0; flex: 1; }
+.pv2-mail-ligne { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pv2-mail-ligne strong { font-size: 14px; font-weight: 650; color: var(--text); }
+/* La date part a droite : on la cherche du regard toujours au meme endroit. */
+.pv2-mail-quand { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pv2-mail-repondu { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; color: var(--muted); background: var(--subtle); border: 1px solid var(--line); }
+.pv2-mail-adresse { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+
+.pv2-mail-corps { font-size: 14.5px; line-height: 1.65; color: var(--text); }
+.pv2-mail-corps p { margin: 0 0 12px; overflow-wrap: anywhere; }
+.pv2-mail-corps p:last-child { margin-bottom: 0; }
+.pv2-mail-vide { color: var(--muted); font-style: italic; }
+
+/* Le bouton du fil recopie : la meme pastille a trois points que dans une vraie
+   messagerie. Discret parce qu on l ouvre rarement, present parce que rien ne
+   doit disparaitre sans qu on puisse le retrouver. */
+.pv2-mail-plus { display: inline-flex; align-items: center; justify-content: center; margin-top: 4px; padding: 0 10px; height: 20px; font-size: 13px; line-height: 1; letter-spacing: 1px; color: var(--muted); background: var(--subtle); border: 1px solid var(--line); border-radius: 999px; cursor: pointer; transition: background 120ms ease, color 120ms ease; }
+.pv2-mail-plus:hover { background: var(--line); color: var(--text); }
+.pv2-mail-plus.est-ouvert { background: var(--line); color: var(--text); }
+.pv2-mail-plus:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.pv2-mail-historique { margin-top: 12px; padding-left: 12px; border-left: 2px solid var(--line); color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+
 /* « Untel repond a ce message » : le seul endroit de la page qui parle des
    AUTRES personnes. Un liseré chaud plutot qu un bandeau plein : il doit se
    voir sans hurler, parce qu il n interdit rien et que la gerante devant

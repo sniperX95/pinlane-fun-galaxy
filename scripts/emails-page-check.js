@@ -884,7 +884,7 @@ async function main() {
       summary: (document.querySelector('#staffEmailsPage .pv2-inbox-summary p') || {}).textContent || '',
       intent: (document.querySelector('#staffEmailsPage .pv2-inbox-analysis .pv2-inbox-intent') || {}).textContent || '',
       replySubject: (document.querySelector('#staffEmailsPage .pv2-inbox-reply-subject') || {}).value || '',
-      original: (document.querySelector('#staffEmailsPage .pv2-mail-preview') || {}).textContent || '',
+      original: (document.querySelector('#staffEmailsPage .pv2-mail-corps') || {}).textContent || '',
     }));
     ok(/anniversaire/i.test(detail.summary), `« Ce qu'il veut » affiché (${detail.summary.slice(0, 40)}…)`);
     ok(/Re: Anniversaire/.test(detail.replySubject), 'réponse proposée préremplie (sujet)');

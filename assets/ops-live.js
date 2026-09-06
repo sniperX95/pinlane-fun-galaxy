@@ -166,12 +166,39 @@
     return api;
   }
 
-  // Cablage reel de la console staff. Une seule boucle pour toute la console :
-  // c est `loadOpsAdmin` qui sait quelle page re-rendre, ce module n a pas a le
-  // savoir. Le rechargement est FORCE : le pouls vient de prouver qu il y a du
-  // neuf, l anti-rebond de 8 secondes de `loadOpsAdmin` n a plus de raison
-  // d etre ici.
+  // UNE SEULE BOUCLE POUR TOUTE LA CONSOLE, et c est la PAGE AFFICHEE qui
+  // decide ce qui se recharge. Une boucle par page se serait multipliee a
+  // chaque nouvel ecran, avec autant de reglages a garder coherents ; et un
+  // pouls unique repond a la seule question qui compte, « est-ce que quelque
+  // chose a bouge dans ce centre ».
+  //
+  // Consequence assumee : sur la page Emails, une reservation prise ailleurs
+  // fait aussi bouger l empreinte et provoque un rechargement de la console.
+  // C est un aller-retour de plus, rare, contre une regle simple ; decouper
+  // l empreinte par ecran serait plus fin, et plus facile a desynchroniser.
+  //
+  // Le rechargement est FORCE : le pouls vient de prouver qu il y a du neuf,
+  // l anti-rebond de 8 secondes des chargeurs n a plus lieu d etre ici.
   var boucle = null;
+
+  // QUELLE PAGE EST DEVANT LES YEUX. Extrait ici, avec son monde injectable,
+  // pour que la regle « telle page, tel rechargement » soit mesurable au lieu
+  // d etre enfouie dans le cablage.
+  function pageActive(monde) {
+    var m = monde || global;
+    if (typeof m.isStaffEmailsActive === 'function' && m.isStaffEmailsActive() && typeof m.loadOpsAdmin === 'function') return 'emails';
+    if (typeof m.isStaffUtilityActive === 'function' && m.isStaffUtilityActive() && typeof m.loadOpsAdmin === 'function') return 'utilitaire';
+    if (typeof m.isStaffReservationsActive === 'function' && m.isStaffReservationsActive() && typeof m.loadStaffReservationsData === 'function') return 'reservations';
+    return '';
+  }
+
+  function rechargerLaPageActive(monde) {
+    var m = monde || global;
+    var page = pageActive(m);
+    if (page === 'emails' || page === 'utilitaire') return m.loadOpsAdmin(true);
+    if (page === 'reservations') return m.loadStaffReservationsData(true);
+    return undefined;
+  }
 
   // « Est-ce que quelqu un est en train d ecrire ? » Le champ actif suffit a le
   // dire, et c est la seule chose qu un rechargement peut casser.
@@ -193,13 +220,10 @@
     if (boucle) return boucle;
     boucle = creerSynchroLive({
       estActive: function () {
-        // Les pages que `loadOpsAdmin` sait re-rendre, et elles seules :
-        // rafraichir pendant qu un autre ecran est affiche couterait un
-        // chargement complet que personne ne verrait.
-        if (typeof global.loadOpsAdmin !== 'function') return false;
-        var surEmails = typeof global.isStaffEmailsActive === 'function' && global.isStaffEmailsActive();
-        var surUtilitaire = typeof global.isStaffUtilityActive === 'function' && global.isStaffUtilityActive();
-        return Boolean(surEmails || surUtilitaire);
+        // Les pages qu on sait recharger, et elles seules : rafraichir pendant
+        // qu un autre ecran est affiche couterait un chargement complet que
+        // personne ne verrait.
+        return Boolean(pageActive(global));
       },
       centreActuel: function () {
         return typeof global.getActiveOpsCenterId === 'function' ? global.getActiveOpsCenterId() : '';
@@ -210,13 +234,15 @@
         // champ est quitte. Perdre son curseur au milieu d une reponse a cause
         // d un mail arrive chez un collegue serait pire que le retard.
         if (enTrainDeSaisir()) return false;
-        return global.loadOpsAdmin(true);
+        return rechargerLaPageActive(global);
       },
     });
     return boucle.demarrer();
   }
 
   global.creerSynchroLive = creerSynchroLive;
+  global.pageActiveDeLaConsole = pageActive;
+  global.rechargerLaPageActive = rechargerLaPageActive;
   global.synchroniserLaConsole = synchroniserLaConsole;
 
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
@@ -228,6 +254,6 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { creerSynchroLive: creerSynchroLive };
+    module.exports = { creerSynchroLive: creerSynchroLive, pageActive: pageActive, rechargerLaPageActive: rechargerLaPageActive };
   }
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -14,7 +14,7 @@
 // une horloge controlee : aucune attente reelle, aucun reseau, des verdicts
 // deterministes.
 //
-// LES HUIT PROPRIETES :
+// LES NEUF PROPRIETES :
 //
 //   [A] LA PREMIERE LECTURE NE RECHARGE PAS. La page vient d etre chargee : la
 //       recharger aussitot serait un aller-retour complet pour rien, a chaque
@@ -51,6 +51,13 @@
 //       faut alors que le changement RESTE en attente : memoriser l empreinte
 //       malgre le refus reviendrait a perdre la mise a jour pour de bon, et la
 //       page resterait fausse jusqu au prochain evenement.
+//
+//   [I] LA PAGE AFFICHEE DECIDE CE QUI SE RECHARGE. Une seule boucle sert
+//       toute la console : sur Emails elle recharge la console, sur le planning
+//       elle recharge les reservations, et sur un ecran qu on ne sait pas
+//       recharger elle n appelle rien du tout. Sans cette regle, ou bien le
+//       planning resterait fige (c est ce qu on corrige), ou bien la console
+//       serait rechargee pendant qu on regarde un tout autre ecran.
 //
 //   [G] JAMAIS DEUX LECTURES EN VOL. Une lecture lente ne doit pas se faire
 //       doubler par la suivante : ce serait le debut d une avalanche, juste
@@ -292,6 +299,41 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
   g.arreter();
 
   // =====================================================================
+  console.log('\n[I] la page affichee decide ce qui se recharge');
+  // =====================================================================
+  const { pageActive, rechargerLaPageActive } = chargerModule();
+  function monde({ emails = false, utilitaire = false, reservations = false, sansChargeurs = false } = {}) {
+    const appels = [];
+    const m = {
+      isStaffEmailsActive: () => emails,
+      isStaffUtilityActive: () => utilitaire,
+      isStaffReservationsActive: () => reservations,
+      appels,
+    };
+    if (!sansChargeurs) {
+      m.loadOpsAdmin = (force) => { appels.push(`console:${force}`); };
+      m.loadStaffReservationsData = (force) => { appels.push(`reservations:${force}`); };
+    }
+    return m;
+  }
+  const mEmails = monde({ emails: true });
+  rechargerLaPageActive(mEmails);
+  ok(pageActive(mEmails) === 'emails' && mEmails.appels.join() === 'console:true',
+    '[I] sur Emails, c est la console qui se recharge, et de force', mEmails.appels.join());
+  const mResa = monde({ reservations: true });
+  rechargerLaPageActive(mResa);
+  ok(pageActive(mResa) === 'reservations' && mResa.appels.join() === 'reservations:true',
+    '[I] sur le planning, ce sont les reservations qui se rechargent', mResa.appels.join());
+  const mAilleurs = monde({});
+  rechargerLaPageActive(mAilleurs);
+  ok(pageActive(mAilleurs) === '' && mAilleurs.appels.length === 0,
+    '[I] sur un ecran qu on ne sait pas recharger, rien n est appele', mAilleurs.appels.join());
+  const mSansChargeur = monde({ emails: true, sansChargeurs: true });
+  rechargerLaPageActive(mSansChargeur);
+  ok(pageActive(mSansChargeur) === '' && mSansChargeur.appels.length === 0,
+    '[I] et si le chargeur n existe pas encore (page pas prete), on n appelle rien');
+
+  // =====================================================================
   console.log('\n[H] un rechargement refuse n est pas oublie');
   // =====================================================================
   let onEcrit = true;
@@ -364,6 +406,25 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
       },
       attendu: (total) => total === 1,
       libelle: 'la mise a jour serait perdue pour de bon : la page resterait fausse',
+    },
+    {
+      nom: 'le planning retombe sur le chargeur de la console',
+      de: "    if (page === 'reservations') return m.loadStaffReservationsData(true);",
+      vers: '    if (false) return null;',
+      rejouer: async () => {
+        const { rechargerLaPageActive: mute } = chargerModule();
+        const appels = [];
+        mute({
+          isStaffEmailsActive: () => false,
+          isStaffUtilityActive: () => false,
+          isStaffReservationsActive: () => true,
+          loadOpsAdmin: () => { appels.push('console'); },
+          loadStaffReservationsData: () => { appels.push('reservations'); },
+        });
+        return appels.join();
+      },
+      attendu: (appels) => appels === 'reservations',
+      libelle: 'le planning resterait fige, exactement le defaut qu on corrige',
     },
     {
       nom: 'la garde de l onglet cache est retiree',

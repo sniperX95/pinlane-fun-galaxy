@@ -33,6 +33,13 @@
 //       Libramont. Un centre qui n en declare pas retombe sur les replis
 //       d avant, sans empecher l envoi.
 //
+//   [G] UNE ADRESSE DE RETOUR PAR CENTRE RAMENE LA CONVERSATION DANS PINLANE.
+//       Reglage CENTER_REPLY_TO : quand un centre declare une adresse de
+//       reception, c est elle qui porte les reponses, donc le fil revient dans
+//       l outil. Non declaree, on garde l adresse publique du centre : la
+//       reponse arrive dans SA boite, comme avant. Un centre ne prend jamais le
+//       reglage d un autre, et un reglage illisible ne casse aucun envoi.
+//
 //   [C] CREER UN DOSSIER DECLENCHE L ENVOI DE SES LIGNES DUES. Le hook de
 //       creation appelle le dispatcher pour CE dossier (reservationId), une
 //       fois, et un echec du dispatcher ne fait pas echouer la creation : il
@@ -244,6 +251,27 @@ async function passageHook({ dispatcherCasse = false } = {}) {
     '[E] un centre sans adresse publique n empeche pas l envoi (repli d avant, fail-soft)', `statut ${rSans.ligne.status}, reply_to=${rSans.corps && rSans.corps.reply_to}`);
 
   // =====================================================================
+  console.log('\n[G] une adresse de retour par centre ramene la conversation dans Pinlane');
+  // =====================================================================
+  const RETOURS = JSON.stringify({ libramont: 'libramont@inbound.pinlane.be' });
+  process.env.CENTER_REPLY_TO = RETOURS;
+  const gL = await passageReplyTo('libramont');
+  const gG = await passageReplyTo('gembloux');
+  ok(Boolean(gL.corps) && gL.corps.reply_to === 'libramont@inbound.pinlane.be',
+    '[G] l adresse de retour declaree PRIME sur l adresse publique du centre', `reply_to=${gL.corps && gL.corps.reply_to}`);
+  ok(Boolean(gG.corps) && gG.corps.reply_to === aGembloux,
+    '[G] un centre SANS reglage garde son adresse publique (le reglage d un centre ne deborde pas)', `reply_to=${gG.corps && gG.corps.reply_to}`);
+  process.env.CENTER_REPLY_TO = '{ ceci n est pas du JSON';
+  const gCasse = await passageReplyTo('libramont');
+  ok(Boolean(gCasse.corps) && gCasse.corps.reply_to === aLibramont && gCasse.ligne.status === 'sent',
+    '[G] un reglage illisible ne casse aucun envoi : on retombe sur l adresse publique', `reply_to=${gCasse.corps && gCasse.corps.reply_to}, statut ${gCasse.ligne.status}`);
+  process.env.CENTER_REPLY_TO = JSON.stringify({ libramont: 'pas-une-adresse' });
+  const gInvalide = await passageReplyTo('libramont');
+  ok(Boolean(gInvalide.corps) && gInvalide.corps.reply_to === aLibramont,
+    '[G] une adresse de retour qui n en est pas une est ignoree', `reply_to=${gInvalide.corps && gInvalide.corps.reply_to}`);
+  delete process.env.CENTER_REPLY_TO;
+
+  // =====================================================================
   console.log('\n[D] contre-epreuves par mutation (compilees en memoire, disque intact)');
   // =====================================================================
   try {
@@ -253,6 +281,16 @@ async function passageHook({ dispatcherCasse = false } = {}) {
   } catch (error) {
     ok(false, `contre-epreuve 1 impossible : ${error.message}`);
   } finally { mutations = []; }
+  try {
+    process.env.CENTER_REPLY_TO = RETOURS;
+    mutations = [{ fichier: 'lib/ops-communications.js', de: '    adresseDeRetourDuCentre(communication.centerId),', vers: "    '', // mutation" }];
+    const m = await passageReplyTo('libramont');
+    ok(Boolean(m.corps) && m.corps.reply_to !== 'libramont@inbound.pinlane.be',
+      'contre-epreuve 4 : sans l adresse de retour, la conversation ne revient plus dans Pinlane (le gate ROUGIRAIT)',
+      `reply_to=${m.corps && m.corps.reply_to}`);
+  } catch (error) {
+    ok(false, `contre-epreuve 4 impossible : ${error.message}`);
+  } finally { mutations = []; delete process.env.CENTER_REPLY_TO; }
   try {
     mutations = [{ fichier: 'lib/ops-communications.js', de: '    adresseDuCentre(communication.centerId),', vers: "    '', // mutation" }];
     const m = await passageReplyTo('libramont');

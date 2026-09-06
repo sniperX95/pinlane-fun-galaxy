@@ -534,6 +534,16 @@ async function tourDesSurfaces(browser, options = {}) {
     fusionner(total, await page.evaluate(LIRE_SURFACE));
 
     // 5. La page Reservations, ligne du jour.
+    //
+    // LA PAGE ET LE JEU D ESSAI DOIVENT PARLER DU MEME JOUR. Le montage pose
+    // les dossiers sur state.currentDate, que seedStressDay cale sur le premier
+    // jour OUVERT ; la page Reservations, elle, ouvre sur AUJOURD HUI. Les deux
+    // coincident tant que le centre est ouvert aujourd hui, et divergent des
+    // qu il ne l est pas : Libramont ferme le lundi, et un lundi cette surface
+    // affichait « Journee libre » pendant que le planning portait bien les
+    // dossiers. Le gate rougissait alors sur son propre montage, en donnant a
+    // lire une consigne disparue.
+    await page.evaluate(() => { state.staffReservationsSelectedDate = state.currentDate; save(); });
     await renderStaffPage(page, 'reservations');
     fusionner(total, await page.evaluate(LIRE_SURFACE));
 

@@ -13,7 +13,7 @@
 // Ce gate monte une fausse page de client (leur formulaire + notre script) et
 // verifie les deux etats et leurs bords.
 //
-// LES CINQ PROPRIETES :
+// LES PROPRIETES :
 //
 //   [A] EN MARCHE : le parcours Pinlane s affiche, l ancien formulaire est
 //       masque. C est l etat normal.
@@ -41,6 +41,22 @@
 //
 //   [G] ET IL RETOMBE SUR LE DEFAUT QUAND RIEN N A ETE CHOISI. Une selection
 //       absente ou illisible ne doit pas priver le visiteur du formulaire.
+//
+//   [H] LE CADRE SE MONTE OU ON LUI DIT, PAS OU LE SCRIPT EST COLLE. Sur un
+//       site verrouille, l endroit ou l on PEUT coller un script n est pas
+//       l endroit ou le formulaire DOIT apparaitre : le theme de Fun Galaxy
+//       construit lui-meme la section de reservation, aucun champ libre n y
+//       existe, et notre compte n a pas le droit d y installer quoi que ce
+//       soit. Sans data-target, le parcours s afficherait la ou on a pu coller
+//       le script. Le defaut, lui, ne bouge pas : sans data-target, le cadre
+//       reste a l endroit du script.
+//
+//   [I] LE SITE NE PEUT PAS REMONTRER SON FORMULAIRE PAR ACCIDENT. Mesure sur
+//       le site du client : Gravity Forms appelle jQuery(...).show() a
+//       l initialisation de sa logique conditionnelle, donc APRES notre
+//       passage. Un style en ligne pose par nous se ferait ecraser et le
+//       visiteur verrait DEUX formulaires. La regle !important tient, et
+//       l interrupteur la retire quand on coupe.
 //
 // Usage : node scripts/embed-killswitch-check.js
 'use strict';
@@ -73,6 +89,34 @@ function pageClient(avecRepli) {
   </body></html>`;
 }
 
+// LA PAGE D UN SITE VERROUILLE. Trois differences avec la precedente, et les
+// trois viennent du site reel :
+//   - le formulaire d origine est enterre dans la structure du theme ;
+//   - le script Pinlane est colle AILLEURS (pied de page), parce que c est le
+//     seul endroit ou l on peut ecrire ;
+//   - le site remontre son propre formulaire APRES nous, comme Gravity Forms le
+//     fait avec sa logique conditionnelle.
+function pageVerrouillee() {
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Fun Galaxy</title></head><body>
+    <h1>Reserver</h1>
+    <div class="booking__container">
+      <div class="booking__content">Reservez en moins d une minute</div>
+      <div class="booking__form">
+        <div id="gform_wrapper_1" style="display:none"><form><label>Ancien formulaire du site</label><input name="nom"></form></div>
+      </div>
+    </div>
+    <footer id="pied">
+      <script src="${BASE_URL}/embed.js" data-center="libramont" data-target=".booking__form" data-fallback="#gform_wrapper_1"></script>
+    </footer>
+    <script>
+      setTimeout(function () {
+        var w = document.getElementById('gform_wrapper_1');
+        if (w) w.style.display = 'block';
+      }, 150);
+    </script>
+  </body></html>`;
+}
+
 function serveur() {
   const srv = http.createServer((req, res) => {
     const url = new URL(req.url, BASE_URL);
@@ -90,6 +134,11 @@ function serveur() {
     if (url.pathname === '/reserver') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end('<!doctype html><title>Parcours</title><p>Parcours Pinlane</p>');
+      return;
+    }
+    if (url.pathname === '/site-verrouille') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(pageVerrouillee());
       return;
     }
     if (url.pathname === '/site' || url.pathname === '/site-sans-repli') {
@@ -112,6 +161,11 @@ async function etatPage(page) {
       ancienVisible: Boolean(ancien) && style.display !== 'none' && ancien.offsetParent !== null,
       cadre: Boolean(cadre),
       cadreSrc: cadre ? cadre.getAttribute('src') : '',
+      // Le style EN LIGNE de l ancien formulaire : la trace de ce que le SITE a
+      // fait, distincte de l affichage finalement calcule.
+      ancienStyleEnLigne: ancien ? (ancien.style.display || '') : '',
+      ancienAffichageCalcule: style ? style.display : '',
+      parentDuCadre: cadre && cadre.parentNode ? (cadre.parentNode.className || cadre.parentNode.tagName || '') : '',
     };
   });
 }
@@ -205,6 +259,41 @@ async function main() {
     ok(/center=libramont/.test(illisible.cadreSrc),
       '[G] une selection illisible ne prive personne de formulaire, elle est ignoree', illisible.cadreSrc);
     await page.evaluate(() => { try { localStorage.removeItem('guest_selection'); } catch (e) {} });
+
+    // =====================================================================
+    console.log('');
+    console.log('[H] le cadre se monte ou on lui dit, pas ou le script est colle');
+    // =====================================================================
+    etatServeur = 'actif';
+    const verrouille = await charger(page, '/site-verrouille');
+    // MONTAGE : le script est bien colle AILLEURS que dans la section visee.
+    // Sans ce controle, la propriete pourrait etre vraie par hasard.
+    const positionDuScript = await page.evaluate(() => {
+      const s = document.querySelector('script[data-target]');
+      return s && s.parentNode ? (s.parentNode.id || s.parentNode.tagName) : '';
+    });
+    ok(positionDuScript === 'pied',
+      '[H] montage : le script est colle dans le pied de page, loin de la section', positionDuScript);
+    ok(verrouille.parentDuCadre === 'booking__form',
+      '[H] et le cadre est monte dans la section de reservation quand meme', verrouille.parentDuCadre);
+    ok(marche.parentDuCadre === 'BODY',
+      '[H] sans data-target, le defaut ne bouge pas : le cadre reste a l endroit du script', marche.parentDuCadre);
+
+    // =====================================================================
+    console.log('');
+    console.log('[I] le site ne peut pas remontrer son formulaire par accident');
+    // =====================================================================
+    // MONTAGE : le site a REELLEMENT tente de remontrer son formulaire. Sans
+    // cette assertion, un vert ne prouverait que l absence de tentative.
+    ok(verrouille.ancienStyleEnLigne === 'block',
+      '[I] montage : le site a remis son formulaire en display:block apres nous', verrouille.ancienStyleEnLigne);
+    ok(verrouille.ancienAffichageCalcule === 'none',
+      '[I] et il reste invisible : la regle !important tient, le visiteur en voit UN seul');
+    etatServeur = 'coupe';
+    const verrouilleCoupe = await charger(page, '/site-verrouille');
+    ok(verrouilleCoupe.cadre === false && verrouilleCoupe.ancienVisible === true,
+      '[I] coupe : la regle est retiree, le formulaire du site revient a l ecran');
+    etatServeur = 'actif';
 
     if (errs.length) console.log('\nErreurs console :\n' + errs.slice(0, 5).join('\n'));
     console.log(failures ? `\n${failures} controle(s) en echec.` : '\nembed-killswitch-check: ALL OK');

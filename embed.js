@@ -23,6 +23,9 @@
        autre cadre de la page ne peut pas piloter notre hauteur ;
      : sans JavaScript, un lien de repli mene au parcours en pleine page - le
        client ne perd jamais une reservation a cause d'un navigateur exotique ;
+     : le cadre se monte a l endroit indique par data-target, ou a defaut la
+       ou le script est colle ; l ancien formulaire designe par data-fallback
+       est masque par une regle !important, que le site ne peut pas defaire ;
      : sur un site multi-centres, le centre suit la selection deja faite par le
        visiteur (data-center-key nomme la cle que le site utilise deja) ;
        data-center reste le defaut quand rien n a ete choisi ;
@@ -99,15 +102,31 @@
   // arriere, on veut un interrupteur, pas une intervention dans WordPress. Le
   // client garde donc son formulaire dans la page, et ce script se contente de
   // le cacher tant que le parcours Pinlane est actif.
+  // ON LE MASQUE AVEC UNE REGLE DE STYLE, PAS AVEC UN STYLE EN LIGNE.
+  //
+  // Un style en ligne se fait ecraser par le site lui-meme. Mesure sur le site
+  // de Fun Galaxy : Gravity Forms appelle `jQuery('#gform_wrapper_4').show()`
+  // quand il initialise sa logique conditionnelle, ce qui reecrit
+  // `style="display:block"` APRES notre passage. Le visiteur verrait alors les
+  // DEUX formulaires. Une regle `!important` posee dans une feuille de style
+  // gagne contre n importe quel style en ligne sans `!important`, donc contre
+  // tout ce que le site fera plus tard.
+  //
+  // Deuxieme benefice : la regle s applique meme si l element n existe pas
+  // encore au moment ou ce script tourne (script colle plus haut dans la page).
   var replisSelecteur = script.getAttribute('data-fallback') || '';
-  var repli = null;
-  var repliAffichage = '';
-  if (replisSelecteur) {
-    try { repli = document.querySelector(replisSelecteur); } catch (error) { repli = null; }
-  }
-  if (repli) {
-    repliAffichage = repli.style.display || '';
-    repli.style.display = 'none';
+  var masque = null;
+  // Un selecteur CSS valide ne contient ni accolade, ni arobase, ni chevron
+  // ouvrant : ce garde interdit qu une valeur de data-fallback sorte de la
+  // regle, ou de la balise de style qui la porte.
+  if (replisSelecteur && !/[{}@<]/.test(replisSelecteur)) {
+    try {
+      document.querySelector(replisSelecteur);
+      masque = document.createElement('style');
+      masque.setAttribute('data-pinlane', 'repli');
+      masque.appendChild(document.createTextNode(replisSelecteur + '{display:none !important;}'));
+      (document.head || document.documentElement).appendChild(masque);
+    } catch (error) { masque = null; }
   }
   var height = parseInt(script.getAttribute('data-height'), 10);
   // 480 : la hauteur du premier ecran (la question du jour) sur un telephone.
@@ -140,8 +159,30 @@
   link.textContent = 'Reserver en ligne';
   fallback.appendChild(link);
 
-  script.parentNode.insertBefore(frame, script);
-  script.parentNode.insertBefore(fallback, script);
+  // OU LE CADRE SE MONTE.
+  //
+  // Par defaut : a l endroit exact ou le script est colle. C est le cas simple,
+  // et il ne bouge pas.
+  //
+  // Mais sur un site verrouille, l endroit ou l on PEUT coller un script n est
+  // pas l endroit ou le formulaire DOIT apparaitre. Releve sur le site de Fun
+  // Galaxy : le theme construit la section de reservation lui-meme, aucun champ
+  // libre n existe a cet endroit, et le compte dont on dispose n a pas les
+  // droits d installer quoi que ce soit. Le seul point d insertion disponible
+  // est ailleurs dans la page. Sans data-target, le parcours s afficherait la
+  // ou on a pu coller le script, pas la ou le visiteur le cherche.
+  var cibleSelecteur = script.getAttribute('data-target') || '';
+  var cible = null;
+  if (cibleSelecteur) {
+    try { cible = document.querySelector(cibleSelecteur); } catch (error) { cible = null; }
+  }
+  if (cible) {
+    cible.appendChild(frame);
+    cible.appendChild(fallback);
+  } else {
+    script.parentNode.insertBefore(frame, script);
+    script.parentNode.insertBefore(fallback, script);
+  }
 
   // L INTERRUPTEUR. Le cadre est monte TOUT DE SUITE, comme avant : dans la vie
   // normale, faire attendre chaque visiteur le temps d une requete pour un
@@ -158,7 +199,7 @@
       if (frame && frame.parentNode) frame.parentNode.removeChild(frame);
       if (fallback && fallback.parentNode) fallback.parentNode.removeChild(fallback);
     } catch (error) { /* deja retire */ }
-    if (repli) repli.style.display = repliAffichage;
+    if (masque && masque.parentNode) masque.parentNode.removeChild(masque);
   }
 
   try {

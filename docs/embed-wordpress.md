@@ -36,18 +36,52 @@ immédiatement après le bloc du formulaire, et y coller ceci :
 ```html
 <script src="https://app.pinlane.be/embed.js"
         data-center="libramont"
-        data-center-key="guest_selection"
-        data-fallback=".booking__form"></script>
+        data-fallback="#gform_wrapper_4"></script>
 ```
 
-Trois attributs, et un seul est à adapter par site :
+Deux attributs suffisent dans le cas simple. Les trois autres servent aux sites
+qui ne se laissent pas faire :
 
 | Attribut | À quoi il sert |
 |---|---|
 | `data-center` | Le centre concerné : `libramont`, `gembloux`, `ciney`. C'est lui qui décide des horaires, des formules et des tarifs affichés. |
-| `data-fallback` | Le sélecteur relevé à l'étape 1. C'est l'ancien formulaire, qui reste dans la page et sera rendu si on coupe. Viser le **conteneur** du formulaire, pas le formulaire lui-même : si le site le montre et le cache avec son propre script, il rouvrirait le sien par-dessus le nôtre et le visiteur en verrait deux. |
-| `data-center-key` | Sur un site **multi-centres**, la clé que le site utilise déjà pour retenir le centre choisi par le visiteur (stockage local, puis cookie). Le parcours suit ce choix, et `data-center` sert de défaut quand rien n'a été choisi. Sans cet attribut, un visiteur de Gembloux se verrait proposer le planning de Libramont : mauvais horaires, mauvais tarifs, et personne ne s'en apercevrait avant une réservation impossible à honorer. |
+| `data-fallback` | Le sélecteur relevé à l'étape 1. C'est l'ancien formulaire : il **reste dans la page**, masqué, et il sera rendu si on coupe. Le masquage résiste aux scripts du site : Gravity Forms, par exemple, réaffiche son propre formulaire quand il initialise sa logique conditionnelle, donc après nous. |
+| `data-target` | Facultatif, et seulement si le script ne peut pas être collé à l'endroit voulu. Le sélecteur du bloc **dans lequel** afficher le parcours. Sans lui, le parcours s'affiche là où le script est collé. |
+| `data-center-key` | Sur un site **multi-centres qui affiche le même bloc à tout le monde**, la clé que le site utilise déjà pour retenir le centre choisi par le visiteur (stockage local, puis cookie). Le parcours suit ce choix, et `data-center` sert de défaut quand rien n'a été choisi. Sans cet attribut, un visiteur de Gembloux se verrait proposer le planning de Libramont : mauvais horaires, mauvais tarifs, et personne ne s'en apercevrait avant une réservation impossible à honorer. **À ne pas mettre** quand le site sert déjà un bloc différent par centre : sa décision à lui fait foi. |
 | `data-scroll-margin` | Facultatif. Hauteur en pixels de l'en-tête collé du site (80 par défaut), pour que la barre du parcours ne passe pas dessous. |
+
+### 2 bis. Si aucun bloc HTML n'est possible à cet endroit
+
+Beaucoup de thèmes sur mesure construisent la section de réservation eux-mêmes :
+il n'y a alors **aucun champ libre** à cet endroit, et un compte éditeur ne peut
+ni installer d'extension ni toucher au thème. Deux issues, dans cet ordre.
+
+**a. Un champ HTML dans le formulaire lui-même.** Gravity Forms, Contact Form 7
+et WPForms ont tous un champ « HTML » qui affiche du code brut à l'intérieur du
+formulaire. On y colle le script, et on ajoute `data-target` pour que le
+parcours s'affiche dans le bloc qui contient le formulaire plutôt que dans le
+formulaire :
+
+```html
+<script src="https://app.pinlane.be/embed.js"
+        data-center="libramont"
+        data-target=".booking__form"
+        data-fallback="#gform_wrapper_4"></script>
+```
+
+C'est souvent la **meilleure** solution, et pas seulement un pis-aller : le
+script suit le formulaire sur **toutes** les pages où le site l'affiche, sans
+qu'on ait à les retrouver une par une. Sur le site de Fun Galaxy, un seul champ
+couvre la page Contact et la page Bowling.
+
+Si le site sert un formulaire **différent selon le centre**, chaque formulaire
+reçoit le champ avec **son** `data-center`. C'est le serveur du site qui a déjà
+tranché le centre en choisissant le formulaire : le suivre est plus sûr que
+relire soi-même la sélection du visiteur.
+
+**b. Le champ « Contenu » de la page.** Il fonctionne, mais le thème l'enveloppe
+souvent dans une section à lui : on récupère une bande vide au milieu de la page.
+À n'utiliser que si a. est impossible.
 
 ### 3. Publier, puis vérifier trois choses
 

@@ -16,6 +16,7 @@ const {
   getOpsHealth,
   getOpsJob,
   listCommunications,
+  getOpsPulse,
   listAgentSuggestions,
   listOpsEvents,
   listDirectionReports,
@@ -301,6 +302,17 @@ async function handleGet(req, res, options = {}) {
       limit: Number(url.searchParams.get('limit') || 100),
     });
     sendJson(res, 200, { ok: true, suggestions });
+    return;
+  }
+
+  // LE POULS : appele toutes les quelques secondes par chaque ecran ouvert, il
+  // doit rester le plus petit appel de l API. Il ne renvoie AUCUNE donnee
+  // metier, seulement une empreinte : savoir qu il faut recharger ne demande
+  // pas de connaitre le contenu, et une empreinte ne fuit rien si elle passe
+  // par un cache.
+  if (action === 'pulse') {
+    const pulse = await getOpsPulse({ centerId });
+    sendJson(res, 200, { ok: true, centerId, ...pulse });
     return;
   }
 
@@ -2741,6 +2753,7 @@ function getRequiredOpsPermission(method, action) {
     // porte au moins une permission de vue). La liste renvoyee est deja scopee
     // au tenant par listCentersForSession : aucune fuite meme au plus bas droit.
     if (action === 'menuCenters') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
+    if (action === 'pulse') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights', 'directionComparison', 'directionRetention', 'directionAudience'].includes(action)) return 'direction.view';
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];

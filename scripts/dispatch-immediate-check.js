@@ -15,7 +15,7 @@
 //      nextRetryAt, donc rejouee a chaque passage, pour toujours. Les sept
 //      vraies lignes n atteignaient jamais leur tour.
 //
-// LES TROIS PROPRIETES :
+// LES QUATRE PROPRIETES :
 //
 //   [A] UNE ADRESSE RESERVEE EST ANNULEE, PAS REJOUEE. Apres un passage du
 //       dispatcher, la ligne porte le statut `cancelled`, aucun appel reseau
@@ -25,6 +25,14 @@
 //       exactement, au bon destinataire, depuis l expediteur configure, et la
 //       ligne passe en `sent` avec l identifiant du fournisseur.
 //
+//   [E] LA REPONSE DU CLIENT ARRIVE CHEZ SON CENTRE. Le pied de page promet
+//       « repondez simplement a ce message, il arrive directement chez nous ».
+//       L en-tete reply_to porte donc l adresse PUBLIQUE du centre (celle du
+//       site et du mail), pas l adresse d ENVOI : rien ne garantit qu une boite
+//       existe derriere celle-ci, et un client de Gembloux n ecrit pas a
+//       Libramont. Un centre qui n en declare pas retombe sur les replis
+//       d avant, sans empecher l envoi.
+//
 //   [C] CREER UN DOSSIER DECLENCHE L ENVOI DE SES LIGNES DUES. Le hook de
 //       creation appelle le dispatcher pour CE dossier (reservationId), une
 //       fois, et un echec du dispatcher ne fait pas echouer la creation : il
@@ -32,7 +40,8 @@
 //
 // CONTRE-EPREUVES PAR MUTATION, compilees en memoire (crochet sur
 // Module.prototype._compile, disque jamais touche) : sans la regle d annulation,
-// [A] retombe en `queued` ; sans l appel du hook, [C] ne voit aucun dispatch.
+// [A] retombe en `queued` ; sans l appel du hook, [C] ne voit aucun dispatch ;
+// sans l adresse du centre, [E] repart vers l adresse d envoi.
 //
 // Usage : node scripts/dispatch-immediate-check.js
 'use strict';
@@ -122,6 +131,24 @@ function ligne(id, extra = {}) {
   };
 }
 
+// [E] : une ligne par centre, dispatchee, et l en-tete reply_to capture. Le
+// payload porte l identite d expediteur exactement comme en production
+// (email_identities), donc le repli d avant est bien celui que la mutation
+// revelera.
+async function passageReplyTo(centerId) {
+  purger();
+  const comms = require(path.join(ROOT, 'lib/ops-communications'));
+  ROWS.length = 0;
+  APPELS.length = 0;
+  ROWS.push(ligne(10, {
+    centerId,
+    recipient: 'cliente@exemple.be',
+    payload: { textBody: 'Bonjour', fromEmail: 'contact@pinlane.be', fromLabel: 'Fun Galaxy' },
+  }));
+  await comms.dispatchDueCommunications({ limit: 5 });
+  return { corps: (APPELS[0] || {}).corps || null, ligne: ROWS[0] };
+}
+
 // [A] et [B] : un passage du dispatcher reel sur deux lignes dues.
 async function passageDispatcher() {
   purger();
@@ -193,6 +220,30 @@ async function passageHook({ dispatcherCasse = false } = {}) {
     'un dispatcher en panne ne fait pas echouer la creation : avertissement remonte', JSON.stringify(hc.retour && hc.retour.warnings));
 
   // =====================================================================
+  console.log('\n[E] la reponse du client arrive chez SON centre');
+  // =====================================================================
+  const { getCenter } = require(path.join(ROOT, 'lib/ops-knowledge'));
+  const adressePublique = (id) => {
+    try { const c = getCenter(id); return String((c && c.publicInfo && c.publicInfo.email) || ''); } catch (error) { return ''; }
+  };
+  const aLibramont = adressePublique('libramont');
+  const aGembloux = adressePublique('gembloux');
+  ok(Boolean(aLibramont) && Boolean(aGembloux) && aLibramont !== aGembloux && aLibramont !== 'contact@pinlane.be',
+    '[montage] deux centres declarent une adresse publique distincte, et differente de l adresse d envoi',
+    `${aLibramont} / ${aGembloux}`);
+  const rL = await passageReplyTo('libramont');
+  const rG = await passageReplyTo('gembloux');
+  ok(Boolean(rL.corps) && rL.corps.reply_to === aLibramont,
+    '[E] un client de Libramont qui repond ecrit a Libramont', `reply_to=${rL.corps && rL.corps.reply_to} attendu=${aLibramont}`);
+  ok(Boolean(rG.corps) && rG.corps.reply_to === aGembloux,
+    '[E] un client de Gembloux ecrit a Gembloux (l adresse suit le centre, ce n est pas une constante)', `reply_to=${rG.corps && rG.corps.reply_to} attendu=${aGembloux}`);
+  ok(Boolean(rL.corps) && /contact@pinlane\.be/.test(String(rL.corps.from)) && rL.corps.reply_to !== 'contact@pinlane.be',
+    '[E] l adresse d ENVOI reste l expediteur, et la reponse ne lui revient pas', `from=${rL.corps && rL.corps.from}`);
+  const rSans = await passageReplyTo('centre-inconnu-du-socle');
+  ok(rSans.ligne.status === 'sent',
+    '[E] un centre sans adresse publique n empeche pas l envoi (repli d avant, fail-soft)', `statut ${rSans.ligne.status}, reply_to=${rSans.corps && rSans.corps.reply_to}`);
+
+  // =====================================================================
   console.log('\n[D] contre-epreuves par mutation (compilees en memoire, disque intact)');
   // =====================================================================
   try {
@@ -201,6 +252,15 @@ async function passageHook({ dispatcherCasse = false } = {}) {
     ok(m.reservee.status === 'queued', 'contre-epreuve 1 : sans la regle, la ligne reservee retombe en queued (le gate ROUGIRAIT)', `statut ${m.reservee.status}`);
   } catch (error) {
     ok(false, `contre-epreuve 1 impossible : ${error.message}`);
+  } finally { mutations = []; }
+  try {
+    mutations = [{ fichier: 'lib/ops-communications.js', de: '    adresseDuCentre(communication.centerId),', vers: "    '', // mutation" }];
+    const m = await passageReplyTo('libramont');
+    ok(Boolean(m.corps) && m.corps.reply_to !== aLibramont,
+      'contre-epreuve 3 : sans l adresse du centre, la reponse repart vers l adresse d envoi (le gate ROUGIRAIT)',
+      `reply_to=${m.corps && m.corps.reply_to}`);
+  } catch (error) {
+    ok(false, `contre-epreuve 3 impossible : ${error.message}`);
   } finally { mutations = []; }
   try {
     mutations = [{ fichier: 'lib/reservation-ops.js', de: 'await dispatchDueCommunications({ limit: 5,', vers: 'await (async () => null)({ limit: 5,' }];

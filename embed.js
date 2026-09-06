@@ -23,6 +23,11 @@
        autre cadre de la page ne peut pas piloter notre hauteur ;
      : sans JavaScript, un lien de repli mene au parcours en pleine page - le
        client ne perd jamais une reservation a cause d'un navigateur exotique ;
+     : l ancien formulaire du client RESTE dans la page, simplement masque par
+       ce script. Un interrupteur cote Pinlane le rend en un clic, sans toucher
+       au site : c est la sortie de secours d un dimanche a 15 h, quand personne
+       ne veut chercher les identifiants de l agence. Le selecteur du formulaire
+       d origine se declare avec data-fallback ;
      : a chaque reservation prise, le site recoit un evenement de mesure
        (dataLayer `pinlane_booking` + CustomEvent `pinlane:booking`, sans
        donnee personnelle) : GA4, GTM et Pixel Meta du site continuent de
@@ -47,6 +52,22 @@
   }
 
   var center = script.getAttribute('data-center') || '';
+  // L ANCIEN FORMULAIRE DU CLIENT, laisse en place et masque.
+  //
+  // Il ne faut surtout pas le supprimer du site : le jour ou il faut revenir en
+  // arriere, on veut un interrupteur, pas une intervention dans WordPress. Le
+  // client garde donc son formulaire dans la page, et ce script se contente de
+  // le cacher tant que le parcours Pinlane est actif.
+  var replisSelecteur = script.getAttribute('data-fallback') || '';
+  var repli = null;
+  var repliAffichage = '';
+  if (replisSelecteur) {
+    try { repli = document.querySelector(replisSelecteur); } catch (error) { repli = null; }
+  }
+  if (repli) {
+    repliAffichage = repli.style.display || '';
+    repli.style.display = 'none';
+  }
   var height = parseInt(script.getAttribute('data-height'), 10);
   // 480 : la hauteur du premier ecran (la question du jour) sur un telephone.
   // Le premier message de hauteur arrive au chargement et remplace ce plancher ;
@@ -80,6 +101,37 @@
 
   script.parentNode.insertBefore(frame, script);
   script.parentNode.insertBefore(fallback, script);
+
+  // L INTERRUPTEUR. Le cadre est monte TOUT DE SUITE, comme avant : dans la vie
+  // normale, faire attendre chaque visiteur le temps d une requete pour un
+  // reglage qui ne change jamais serait un mauvais marche. La verification part
+  // en parallele, et ne fait quelque chose que dans le seul cas ou il y a
+  // quelque chose a faire : Pinlane a demande de rendre l ancien formulaire.
+  //
+  // UNE ERREUR RESEAU NE REND PAS L ANCIEN FORMULAIRE. Revenir en arriere est
+  // une DECISION, jamais la consequence d une coupure passagere : sinon le site
+  // du client basculerait d un formulaire a l autre au gre du reseau, sans que
+  // personne ne l ait voulu ni ne le comprenne.
+  function rendreLAncienFormulaire() {
+    try {
+      if (frame && frame.parentNode) frame.parentNode.removeChild(frame);
+      if (fallback && fallback.parentNode) fallback.parentNode.removeChild(fallback);
+    } catch (error) { /* deja retire */ }
+    if (repli) repli.style.display = repliAffichage;
+  }
+
+  try {
+    var etatUrl = origin + '/api/public-booking-meta?embedState=1'
+      + (center ? '&center=' + encodeURIComponent(center) : '');
+    if (typeof fetch === 'function') {
+      fetch(etatUrl, { credentials: 'omit' })
+        .then(function (reponse) { return reponse && reponse.ok ? reponse.json() : null; })
+        .then(function (etat) {
+          if (etat && etat.actif === false) rendreLAncienFormulaire();
+        })
+        .catch(function () { /* on garde le parcours en place */ });
+    }
+  } catch (error) { /* navigateur sans fetch : le parcours reste en place */ }
 
   window.addEventListener('message', function (event) {
     // Deux verifications, pas une : l'origine dit d'ou vient le message, la

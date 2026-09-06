@@ -347,6 +347,38 @@ module.exports = async (req, res) => {
       sendJson(res, db ? 200 : 503, { ok: db, db });
       return;
     }
+
+    // L INTERRUPTEUR DU FORMULAIRE INSTALLE, lu depuis le site du client.
+    //
+    // C est la lecture la plus exposee du produit : elle part du navigateur d un
+    // visiteur, sur le domaine du centre, avant meme que le formulaire
+    // s affiche. Elle ne renvoie donc QU UN BOOLEEN, aucune donnee metier, et
+    // elle repond meme pour un centre inconnu (actif par defaut) : un
+    // identifiant mal recopie dans le site ne doit pas priver le centre de son
+    // formulaire.
+    if (probeUrl.pathname.endsWith('/embed-state') || probeUrl.searchParams.get('embedState')) {
+      if (enforceRateLimit(req, res, { scope: 'embed-state', limit: 120, windowMs: 60_000 })) {
+        return;
+      }
+      const demande = String(probeUrl.searchParams.get('center') || probeUrl.searchParams.get('centerId') || '').trim().toLowerCase();
+      let actif = true;
+      try {
+        await refreshCenterOverrides(getPool());
+        const centre = demande ? getCenter(demande) : null;
+        const reglage = centre && centre.config && centre.config.embed;
+        if (reglage && reglage.actif === false) actif = false;
+      } catch (error) {
+        // Centre inconnu ou base indisponible : on repond ACTIF. Le pire des
+        // deux mondes serait qu une panne chez nous eteigne le formulaire d un
+        // client sans que personne ne l ait decide.
+        actif = true;
+      }
+      // Cache court : le visiteur suivant ne repaie pas la lecture, et une
+      // coupure decidee prend effet en une minute au pire.
+      res.setHeader('Cache-Control', 'public, max-age=60');
+      sendJson(res, 200, { ok: true, center: demande, actif });
+      return;
+    }
   }
 
   // Config publique du centre (horaires staff, regime vacances/feries, offres

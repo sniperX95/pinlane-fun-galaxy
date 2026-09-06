@@ -12312,6 +12312,55 @@ function establishmentAccentFieldHtml(center) {
 // AFFICHÉS mais désactivés : le gérant voit où ça se règlera le jour où
 // l'encaissement existe, sans qu'on lui vende une option fantôme (classe
 // d'écart commercial payée le 2026-08-08).
+// L INTERRUPTEUR DU FORMULAIRE INSTALLE SUR LE SITE DU CLIENT.
+//
+// Il vit ici, dans la fiche du centre, et pas dans un menu de reglages avances :
+// c est une sortie de secours, elle doit se trouver sans la chercher.
+//
+// Il agit TOUT DE SUITE, sans passer par « Enregistrer » : le jour ou on s en
+// sert, on ne veut pas d une deuxieme etape entre la decision et l effet. Et il
+// dit ce qu il fait AVANT qu on clique, avec le nom du site concerne, parce
+// qu il change ce que voient les visiteurs d un autre site que celui-ci.
+function establishmentEmbedFieldHtml(center) {
+  const reglage = (center && center.embed) || {};
+  const actif = reglage.actif !== false;
+  const quand = reglage.bascule ? new Date(reglage.bascule) : null;
+  const trace = !actif && quand
+    ? `Coupé le ${quand.toLocaleDateString('fr-BE')} à ${quand.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}${reglage.basculePar ? ` par ${escapeHtml(reglage.basculePar)}` : ''}.`
+    : '';
+  return `<div class="field estab-brand-field">
+    <label>Formulaire sur le site du client</label>
+    <div class="estab-embed-etat estab-embed-${actif ? 'on' : 'off'}">
+      <strong>${actif ? 'Le formulaire Pinlane est en ligne' : 'Le formulaire d’origine du site est rendu'}</strong>
+      <span>${actif
+        ? 'Les visiteurs du site réservent par Pinlane. Leur ancien formulaire est toujours dans la page, masqué.'
+        : `Les visiteurs réservent par l’ancien formulaire du site. ${trace}`}</span>
+    </div>
+    <button type="button" class="estab-embed-bouton" onclick="basculerFormulaireDuSite(${actif ? 'false' : 'true'})">
+      ${actif ? 'Rendre l’ancien formulaire du site' : 'Remettre le formulaire Pinlane'}
+    </button>
+    <span class="estab-brand-note">Agit immédiatement, sans passer par Enregistrer. Rien n’est touché sur leur site : leur formulaire d’origine y reste en permanence, ce réglage décide seulement lequel des deux s’affiche.</span>
+  </div>`;
+}
+
+async function basculerFormulaireDuSite(actif) {
+  const centerId = getActiveOpsCenterId();
+  const question = actif
+    ? 'Remettre le formulaire Pinlane sur le site du client ?'
+    : 'Rendre l’ancien formulaire du site ? Les visiteurs ne réserveront plus par Pinlane tant qu’il n’est pas remis.';
+  if (typeof confirm === 'function' && !confirm(question)) return;
+  try {
+    await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'setEmbedState', centerId, actif: Boolean(actif) }),
+    });
+    toast(actif ? 'Formulaire Pinlane remis en ligne.' : 'Ancien formulaire du site rendu.');
+    await loadStaffCenterConfig(true);
+  } catch (error) {
+    toast(error?.message || 'Bascule impossible.');
+  }
+}
+
 function establishmentPaymentFieldHtml(center) {
   const mode = String(center && center.payment && center.payment.mode || 'onsite');
   return `<div class="field estab-brand-field">
@@ -12534,6 +12583,7 @@ function renderEstablishmentEditPanels(center, active) {
       <div class="field"><label for="estab-name">Nom du centre</label><input type="text" id="estab-name" value="${escapeHtml(center.name)}"></div>
       ${establishmentAccentFieldHtml(center)}
       ${establishmentPaymentFieldHtml(center)}
+      ${establishmentEmbedFieldHtml(center)}
       <div class="estab-field-row">
         <div class="field"><label for="estab-status">Statut</label>
           <select id="estab-status">

@@ -2587,6 +2587,36 @@ ${draftBody}`,
     return;
   }
 
+  // RENDRE AU CLIENT SON ANCIEN FORMULAIRE, EN UN CLIC.
+  //
+  // Le parcours Pinlane vit dans une iframe sur le site du centre, a la place de
+  // leur ancien formulaire. Le jour ou quelque chose cloche un dimanche a 15 h,
+  // personne ne veut chercher les identifiants WordPress de l agence. Ce geste
+  // coupe l iframe et rend leur formulaire d origine, sans toucher a leur site.
+  //
+  // On enregistre QUI a bascule et QUAND : un centre revenu a son ancien
+  // formulaire sans trace resterait un mystere jusqu a ce que quelqu un s en
+  // apercoive, des jours plus tard.
+  if (action === 'setEmbedState') {
+    const centreEmbed = requireConcreteCenter('interrupteur du formulaire');
+    const membre = (options.session && options.session.member) || {};
+    const actif = body.actif !== false;
+    const pool = getPool();
+    // On envoie UNIQUEMENT la cle qui change : la sauvegarde fusionne avec la
+    // configuration existante. Renvoyer la configuration entiere figerait en
+    // override des valeurs qui n etaient que des defauts.
+    const config = await saveCenterConfigOverride(pool, centreEmbed, {
+      embed: {
+        actif,
+        bascule: new Date().toISOString(),
+        basculePar: String(membre.name || membre.id || ''),
+      },
+    });
+    await refreshCenterOverrides(pool, { force: true });
+    sendJson(res, 200, { ok: true, action, centerId: centreEmbed, embed: (config && config.embed) || null });
+    return;
+  }
+
   // « JE M EN OCCUPE » : la prise de main sur un mail recu, et sa liberation.
   //
   // L identite du preneur vient de LA SESSION, jamais du corps de la requete :
@@ -2974,6 +3004,10 @@ function getRequiredOpsPermission(method, action) {
   // c est un reglage du produit, pas un geste de traitement de mail. Meme droit
   // que la configuration des textes de l agent.
   if (['answerAgentQuestion', 'forgetAgentFact'].includes(action)) return ['emails.send', 'direction.view'];
+  // Couper le formulaire du site d un client est un geste de DIRECTION : il
+  // change ce que voient les visiteurs du centre, hors de Pinlane. Meme droit
+  // que le reste de la configuration du centre.
+  if (action === 'setEmbedState') return ['settings.manage', 'direction.view'];
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];

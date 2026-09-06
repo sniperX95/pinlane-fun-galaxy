@@ -85,10 +85,20 @@ function texteDepuisHtml(html) {
     .trim();
 }
 
+// LIRE ET ENVOYER SONT DEUX DROITS SEPARES (2026-09-06). Mesure sur la
+// production : la cle qui envoie nos mails est restreinte a l envoi, et le
+// fournisseur repond « This API key is restricted to only send emails » des
+// qu on lui demande le contenu d un mail recu. Chaque mail entrant repartait
+// donc en 503.
+//
+// La lecture prend sa PROPRE cle, pour que celle d envoi reste restreinte :
+// c est elle qui vit dans le plus de code, et une cle qui ne sait qu envoyer ne
+// peut pas exposer une boite de reception. A defaut, on retombe sur la cle
+// d envoi : une installation qui n en a qu une continue de marcher.
 async function recupererContenuParDefaut(emailId) {
-  const cle = process.env.RESEND_API_KEY;
+  const cle = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;
   if (!cle) {
-    const error = new Error('cle de lecture absente');
+    const error = new Error('aucune cle de lecture (RESEND_INBOUND_API_KEY)');
     error.statusCode = 503;
     throw error;
   }
@@ -253,3 +263,4 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
 
 module.exports = createHandler();
 module.exports.createHandler = createHandler;
+module.exports.__test = { recupererContenuParDefaut, texteDepuisHtml };

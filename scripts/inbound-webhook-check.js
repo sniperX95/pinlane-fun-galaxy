@@ -8,7 +8,7 @@
 // la base et fait tourner l agent : n importe qui pourrait remplir la page
 // Emails d un centre avec ce qu il veut.
 //
-// LES SEPT PROPRIETES :
+// LES HUIT PROPRIETES :
 //
 //   [A] UN APPEL SIGNE PAR NOTRE FOURNISSEUR ENTRE. Signature calculee sur le
 //       corps EXACT (id.horodatage.corps, HMAC-SHA256, base64) : le mail est
@@ -22,6 +22,16 @@
 //       identifiant ; un mail sans texte brut rend son HTML deshabille ; et si
 //       la lecture echoue, la reponse est 503 pour que le fournisseur REESSAIE,
 //       jamais 400 qui dirait « ce mail est mauvais ».
+//
+//   [H] LIRE ET ENVOYER SONT DEUX DROITS SEPARES. Mesure du 2026-09-06 sur la
+//       production : la cle qui envoie nos mails est restreinte a l envoi, et le
+//       fournisseur repond « This API key is restricted to only send emails »
+//       quand on lui demande le contenu d un mail recu. La lecture prend donc sa
+//       PROPRE cle (RESEND_INBOUND_API_KEY), et l envoi garde la sienne, qui
+//       reste restreinte. Sans cle dediee on retombe sur celle d envoi, pour ne
+//       pas casser une installation qui n en a qu une. Et quand le fournisseur
+//       refuse, SA PHRASE remonte : c est elle qui a tranche ici, la ou
+//       « lecture impossible » n apprenait rien.
 //
 //   [B] TOUT LE RESTE EST REFUSE, EN 401, SANS RIEN ECRIRE. Pas de signature,
 //       signature d un autre secret, corps modifie apres signature, en-tetes
@@ -271,6 +281,61 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
     '[F] un envoi manuel sans enveloppe (aucun type) reste ingere', `HTTP ${rPlat.statut}, ${rPlat.appels.length} ecriture(s)`);
 
   // =====================================================================
+  console.log('\n[H] lire et envoyer sont deux droits separes');
+  // =====================================================================
+  // On mesure le VRAI chemin de lecture (celui que le gate remplace ailleurs par
+  // un bouchon), en interceptant l appel reseau : quelle cle part, et que se
+  // passe-t-il quand le fournisseur refuse.
+  const { __test } = require(path.join(ROOT, CIBLE));
+  const lecture = __test && __test.recupererContenuParDefaut;
+  ok(typeof lecture === 'function', '[H] le chemin de lecture reel est mesurable');
+  const fetchOriginal = globalThis.fetch;
+  const memoireEnv = {
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    RESEND_INBOUND_API_KEY: process.env.RESEND_INBOUND_API_KEY,
+  };
+  async function lireAvec({ envoi, reception, reponse }) {
+    if (envoi === null) delete process.env.RESEND_API_KEY; else process.env.RESEND_API_KEY = envoi;
+    if (reception === null) delete process.env.RESEND_INBOUND_API_KEY; else process.env.RESEND_INBOUND_API_KEY = reception;
+    let porteur = '';
+    let url = '';
+    globalThis.fetch = async (u, options) => {
+      url = String(u);
+      porteur = String(((options && options.headers) || {}).Authorization || '');
+      return reponse || { ok: true, status: 200, json: async () => ({ text: 'ok', html: '' }) };
+    };
+    try {
+      const valeur = await lecture('id-de-mesure');
+      return { porteur, url, valeur, erreur: null };
+    } catch (error) {
+      return { porteur, url, valeur: null, erreur: error };
+    } finally {
+      globalThis.fetch = fetchOriginal;
+    }
+  }
+  const hDediee = await lireAvec({ envoi: 'cle-d-envoi', reception: 'cle-de-lecture' });
+  ok(hDediee.porteur === 'Bearer cle-de-lecture',
+    '[H] quand une cle de lecture existe, c est ELLE qui part (pas celle d envoi)', hDediee.porteur);
+  ok(/emails\/receiving\/id-de-mesure$/.test(hDediee.url),
+    '[H] elle part bien sur le point de lecture du fournisseur', hDediee.url);
+  const hRepli = await lireAvec({ envoi: 'cle-d-envoi', reception: null });
+  ok(hRepli.porteur === 'Bearer cle-d-envoi',
+    '[H] sans cle dediee on retombe sur celle d envoi : une installation a une seule cle continue de marcher', hRepli.porteur);
+  const hAucune = await lireAvec({ envoi: null, reception: null });
+  ok(hAucune.erreur && Number(hAucune.erreur.statusCode) === 503 && /cle/i.test(hAucune.erreur.message),
+    '[H] aucune cle : 503 et un message qui NOMME la cle manquante', hAucune.erreur && hAucune.erreur.message);
+  const refusFournisseur = { ok: false, status: 401, text: async () => '{"message":"This API key is restricted to only send emails"}' };
+  const hRefus = await lireAvec({ envoi: 'cle-d-envoi', reception: null, reponse: refusFournisseur });
+  ok(hRefus.erreur && /401/.test(hRefus.erreur.message) && /restricted to only send/.test(hRefus.erreur.message),
+    '[H] un refus du fournisseur remonte SA PHRASE, pas un message maison', hRefus.erreur && hRefus.erreur.message);
+  // Le message doit EXISTER avant qu on puisse le declarer propre : sans cette
+  // premiere moitie, ce controle passerait au vert sur un message absent.
+  ok(Boolean(hRefus.erreur && hRefus.erreur.message) && !/cle-d-envoi|cle-de-lecture/.test(String(hRefus.erreur.message)),
+    '[H] et la cle n apparait nulle part dans ce message');
+  if (memoireEnv.RESEND_API_KEY === undefined) delete process.env.RESEND_API_KEY; else process.env.RESEND_API_KEY = memoireEnv.RESEND_API_KEY;
+  if (memoireEnv.RESEND_INBOUND_API_KEY === undefined) delete process.env.RESEND_INBOUND_API_KEY; else process.env.RESEND_INBOUND_API_KEY = memoireEnv.RESEND_INBOUND_API_KEY;
+
+  // =====================================================================
   console.log('\n[MUTATION] le gate sait-il rougir ?');
   // =====================================================================
   const contreEpreuves = [
@@ -289,6 +354,30 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
       rejouer: async () => appeler({ corps, entetes: vieux }),
       attendu: (r) => r.statut === 200,
       libelle: 'un appel rejoue passerait',
+    },
+    {
+      nom: 'la lecture reprend la cle d envoi',
+      de: "  const cle = process.env.RESEND_INBOUND_API_KEY || process.env.RESEND_API_KEY;",
+      vers: '  const cle = process.env.RESEND_API_KEY;',
+      rejouer: async () => {
+        delete require.cache[require.resolve(path.join(ROOT, CIBLE))];
+        const mute = require(path.join(ROOT, CIBLE));
+        process.env.RESEND_API_KEY = 'cle-d-envoi';
+        process.env.RESEND_INBOUND_API_KEY = 'cle-de-lecture';
+        let porteur = '';
+        const original = globalThis.fetch;
+        globalThis.fetch = async (u, options) => {
+          porteur = String(((options && options.headers) || {}).Authorization || '');
+          return { ok: true, status: 200, json: async () => ({ text: 'ok', html: '' }) };
+        };
+        try { await mute.__test.recupererContenuParDefaut('id-de-mesure'); } catch (error) { /* le porteur suffit */ }
+        globalThis.fetch = original;
+        delete process.env.RESEND_API_KEY;
+        delete process.env.RESEND_INBOUND_API_KEY;
+        return { porteur };
+      },
+      attendu: (r) => r.porteur === 'Bearer cle-d-envoi',
+      libelle: 'la lecture repartirait avec la cle restreinte a l envoi, donc refusee',
     },
     {
       nom: 'la lecture du contenu est retiree',

@@ -88,7 +88,7 @@ function texteDepuisHtml(html) {
 async function recupererContenuParDefaut(emailId) {
   const cle = process.env.RESEND_API_KEY;
   if (!cle) {
-    const error = new Error('Lecture du mail indisponible.');
+    const error = new Error('cle de lecture absente');
     error.statusCode = 503;
     throw error;
   }
@@ -96,8 +96,13 @@ async function recupererContenuParDefaut(emailId) {
     headers: { Authorization: `Bearer ${cle}` },
   });
   if (!reponse || !reponse.ok) {
-    // Le statut, jamais la cle : cette erreur finit dans les journaux.
-    const error = new Error(`Lecture du mail refusee (${reponse && reponse.status}).`);
+    // LE STATUT DU FOURNISSEUR REMONTE JUSQU A SA PROPRE CONSOLE (2026-09-06).
+    // Un message generique nous a laisses aveugles : « lecture impossible » ne
+    // dit pas si la cle manque de droits (403), si elle est mauvaise (401) ou
+    // si le mail n existe plus (404). Le statut, jamais la cle.
+    let detail = '';
+    try { detail = String((await reponse.text()) || '').slice(0, 90); } catch (lecture) { detail = ''; }
+    const error = new Error(`le fournisseur refuse la lecture (HTTP ${reponse && reponse.status}${detail ? ` : ${detail}` : ''})`);
     error.statusCode = 503;
     throw error;
   }
@@ -210,7 +215,7 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
         // 503 et non 400 : c est NOTRE lecture qui a echoue, pas le mail qui
         // est mauvais. Le fournisseur reessaie sur un 503 ; sur un 400 il
         // conclurait que ce mail ne passera jamais.
-        sendError(res, Number(error && error.statusCode) || 503, 'Lecture du mail impossible pour le moment.');
+        sendError(res, Number(error && error.statusCode) || 503, `Lecture du mail impossible : ${String((error && error.message) || 'cause inconnue').slice(0, 140)}`);
         return;
       }
     }

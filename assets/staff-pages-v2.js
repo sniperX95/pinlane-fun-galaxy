@@ -3967,7 +3967,7 @@
       return `
         <article class="pv2-savoir-carte">
           <p class="pv2-savoir-question">${esc(q.question)}</p>
-          <p class="pv2-savoir-origine">Demandé par ${esc(q.mailDe || 'un client')} — « ${esc(String(q.mailSujet || '').slice(0, 70))} »</p>
+          <p class="pv2-savoir-origine">Demandé par ${esc(q.mailDe || 'un client')}, à propos de « ${esc(String(q.mailSujet || '').slice(0, 70))} »</p>
           <textarea class="pv2-savoir-reponse" rows="2" placeholder="Répondez une fois : l'agent le saura pour tous les prochains messages."
             aria-label="Ce que l'agent doit retenir"
             oninput="pv2SavoirBrouillon('${escJs(cle)}', this.value)">${esc(brouillon)}</textarea>

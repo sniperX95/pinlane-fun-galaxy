@@ -31,7 +31,10 @@
 (function (global) {
   'use strict';
 
-  var CADENCE_MS = 4000;
+  // 2,5 s : le pouls ne coute que 26 ms cote base et ne renvoie aucune donnee
+  // metier. La contrainte n est pas le serveur, c est la sensation : au-dela de
+  // 3 secondes, on a le temps de se demander si la page est figee.
+  var CADENCE_MS = 2500;
   var CADENCE_MAX_MS = 30000;
   var FACTEUR_RECUL = 1.8;
 

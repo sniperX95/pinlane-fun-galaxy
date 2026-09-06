@@ -1702,6 +1702,11 @@
     // Les citations depliees, par mail. Repliees par defaut : c est tout
     // l interet, et celui qui veut relire le fil le demande.
     historiqueOuvert: {},
+    // La section d apprentissage : les reponses en cours de frappe, et si la
+    // memoire deja constituee est depliee.
+    reponsesApprises: {},
+    apprentissageBusy: '',
+    memoireOuverte: false,
   };
   window.pv2Mail = pv2Mail;
 
@@ -3934,6 +3939,137 @@
     renderStaffEmailsPage();
   };
 
+  /* ── CE QUE L AGENT NE SAIT PAS ──────────────────────────────────────────
+     « L IA ne sait pas, donc il doit y avoir une section apprentissage : quand
+     elle ne sait pas, elle pose la question, on y repond, et l agent le sait
+     pour toutes les prochaines fois. »
+
+     Le declencheur est un aveu, pas une erreur : quand un message ne rentre
+     dans aucun sujet connu, la reponse proposee devient une pirouette du genre
+     « appelez-nous ». Mesure du 2026-09-06 sur un vrai mail : « est-ce que je
+     peux amener mon propre gateau ? » a produit exactement ca, parce que
+     personne n avait jamais dit a l agent si le centre l autorise.
+
+     La section montre les deux moities du systeme : les questions ouvertes ET
+     la memoire deja constituee. Sans la seconde, on ne pourrait ni verifier ce
+     que l agent a retenu, ni corriger un fait devenu faux, et l apprentissage
+     deviendrait un risque au lieu d un progres. ────────────────────────────── */
+  function pv2SectionApprentissage() {
+    const questions = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.questions) || [];
+    const appris = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.appris) || [];
+    if (!questions.length && !appris.length) return '';
+    const busy = pv2Mail.apprentissageBusy;
+
+    const cartes = questions.map((q) => {
+      const cle = String(q.communicationId);
+      const brouillon = pv2Mail.reponsesApprises[cle] || '';
+      const enCours = busy === cle;
+      return `
+        <article class="pv2-savoir-carte">
+          <p class="pv2-savoir-question">${esc(q.question)}</p>
+          <p class="pv2-savoir-origine">Demandé par ${esc(q.mailDe || 'un client')} — « ${esc(String(q.mailSujet || '').slice(0, 70))} »</p>
+          <textarea class="pv2-savoir-reponse" rows="2" placeholder="Répondez une fois : l'agent le saura pour tous les prochains messages."
+            aria-label="Ce que l'agent doit retenir"
+            oninput="pv2SavoirBrouillon('${escJs(cle)}', this.value)">${esc(brouillon)}</textarea>
+          <div class="pv2-savoir-actions">
+            <button type="button" class="pv2-btn sm primary" ${enCours || !brouillon.trim() ? 'disabled' : ''}
+              onclick="pv2ApprendreLaReponse('${escJs(cle)}')">${enCours ? 'Apprentissage…' : 'Apprendre'}</button>
+          </div>
+        </article>`;
+    }).join('');
+
+    const memoire = appris.map((f) => `
+      <li class="pv2-savoir-fait">
+        <div>
+          <strong>${esc(f.question || '')}</strong>
+          <span>${esc(f.reponse || '')}</span>
+          ${f.par ? `<small>appris par ${esc(f.par)}</small>` : ''}
+        </div>
+        <button type="button" class="pv2-btn sm ghost" title="L'agent oublie ce fait"
+          onclick="pv2OublierLeFait('${escJs(String(f.question || ''))}')">Oublier</button>
+      </li>`).join('');
+
+    return `
+      <section class="pv2-savoir">
+        <div class="pv2-savoir-head">
+          <h2>Ce que l'agent ne sait pas</h2>
+          <span class="pv2-savoir-compte">${questions.length ? `${questions.length} question${questions.length > 1 ? 's' : ''} en attente` : 'Aucune question en attente'}</span>
+        </div>
+        ${questions.length
+          ? `<div class="pv2-savoir-liste">${cartes}</div>`
+          : '<p class="pv2-savoir-vide">L\'agent a su répondre à tous les messages reçus.</p>'}
+        ${appris.length ? `
+          <button type="button" class="pv2-savoir-bascule" aria-expanded="${pv2Mail.memoireOuverte}"
+            onclick="pv2BasculerMemoire()">${pv2Mail.memoireOuverte ? 'Masquer' : 'Voir'} ce qu'il a appris (${appris.length})</button>
+          ${pv2Mail.memoireOuverte ? `<ul class="pv2-savoir-memoire">${memoire}</ul>` : ''}
+        ` : ''}
+      </section>`;
+  }
+
+  window.pv2SavoirBrouillon = function (cle, valeur) {
+    pv2Mail.reponsesApprises[cle] = valeur;
+    // Pas de re-rendu a chaque touche : il ferait perdre le curseur. Le bouton
+    // se debloque au rendu suivant, et l envoi relit le brouillon.
+  };
+
+  window.pv2BasculerMemoire = function () {
+    pv2Mail.memoireOuverte = !pv2Mail.memoireOuverte;
+    renderStaffEmailsPage();
+  };
+
+  window.pv2ApprendreLaReponse = async function (cle) {
+    if (pv2Mail.apprentissageBusy) return;
+    const reponse = String(pv2Mail.reponsesApprises[cle] || '').trim();
+    if (!reponse) { toast('Écrivez d\'abord la réponse à retenir.'); return; }
+    pv2Mail.apprentissageBusy = cle;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'answerAgentQuestion',
+          centerId: state.adminCenterId || 'libramont',
+          communicationId: Number(cle),
+          reponse,
+        }),
+      });
+      delete pv2Mail.reponsesApprises[cle];
+      // On dit ce qui s est reellement passe : si la re-analyse n a pas pu
+      // tourner, le fait est appris mais la reponse proposee n a pas bouge, et
+      // le staff doit le savoir plutot que de croire l ecran a jour.
+      toast(payload && payload.reanalyse
+        ? 'Appris. La réponse proposée a été refaite avec ce fait.'
+        : 'Appris. La réponse proposée sera refaite au prochain passage.');
+      if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
+    } catch (error) {
+      toast(error.message || 'Apprentissage impossible.');
+    } finally {
+      pv2Mail.apprentissageBusy = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  window.pv2OublierLeFait = async function (question) {
+    if (pv2Mail.apprentissageBusy) return;
+    const sur = typeof confirm !== 'function' || confirm('L\'agent oubliera ce fait. Continuer ?');
+    if (!sur) return;
+    pv2Mail.apprentissageBusy = 'oubli';
+    renderStaffEmailsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'forgetAgentFact', centerId: state.adminCenterId || 'libramont', question }),
+      });
+      toast('Oublié.');
+      if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
+    } catch (error) {
+      toast(error.message || 'Oubli impossible.');
+    } finally {
+      pv2Mail.apprentissageBusy = '';
+      renderStaffEmailsPage();
+    }
+  };
+
   function pv2InboundDetail(row) {
     const analysis = pv2InboxAnalysis(row);
     const draft = pv2InboxReplyDraft(row);
@@ -4373,6 +4509,8 @@
            sont donc annonces separement, chacun avec son chiffre, et les deux
            chiffres sont ceux affiches sur les segments (verifie au gate). -->
       <p class="pv2-pipeline-scope">Tout, En attente, Envoyés, Échecs et À valider portent sur les ${allRows.length} messages de la file ci-dessous. Reçus compte à part les ${inboundRows.length} mails arrivés dans la boîte du centre. Les cartes de séquences, plus bas, comptent sur les 30 derniers jours.</p>
+
+      ${pv2SectionApprentissage()}
 
       <section class="pv2-split">
         <article class="pv2-panel pv2-mail-list">

@@ -20,6 +20,9 @@ const {
   claimEmailThread,
   releaseEmailThread,
   listActiveEmailClaims,
+  listAgentQuestions,
+  marquerQuestionRepondue,
+  getInboundCommunication,
   listAgentSuggestions,
   listOpsEvents,
   listDirectionReports,
@@ -316,6 +319,20 @@ async function handleGet(req, res, options = {}) {
   if (action === 'pulse') {
     const pulse = await getOpsPulse({ centerId });
     sendJson(res, 200, { ok: true, centerId, ...pulse });
+    return;
+  }
+
+  // CE QUE L AGENT NE SAIT PAS, ET CE QU ON LUI A DEJA APPRIS. Les deux dans la
+  // meme lecture : la section d apprentissage montre les questions ouvertes ET
+  // la memoire deja constituee, sinon on ne peut ni verifier ce qu il a retenu,
+  // ni corriger un fait devenu faux.
+  if (action === 'agentQuestions') {
+    const { getFaitsAppris } = require('../lib/email-agent');
+    const [questions, appris] = await Promise.all([
+      listAgentQuestions({ centerId, limit: Number(url.searchParams.get('limit') || 50) }),
+      getFaitsAppris(centerId),
+    ]);
+    sendJson(res, 200, { ok: true, centerId, questions, appris });
     return;
   }
 
@@ -2496,6 +2513,80 @@ ${draftBody}`,
     return;
   }
 
+  // APPRENDRE UN FAIT. Le staff repond a la question que l agent a posee : le
+  // fait entre dans sa memoire, la question quitte la liste, et le mail est
+  // RE-ANALYSE dans la foulee. Sans cette re-analyse, la reponse proposee a
+  // l ecran resterait la pirouette d avant l apprentissage, et on croirait que
+  // rien n a change.
+  if (action === 'answerAgentQuestion') {
+    const centreApprentissage = requireConcreteCenter('apprentissage de l agent');
+    const mail = await getInboundCommunication(body.communicationId);
+    if (!mail) throw createHttpError('Ce message est introuvable.', 404);
+    if (mail.centerId !== centreApprentissage) throw createHttpError('Ce message appartient à un autre centre.', 403);
+    const question = String((mail.payload && mail.payload.analysis && mail.payload.analysis.question) || '').trim();
+    if (!question) throw createHttpError('Ce message ne porte aucune question ouverte.', 400);
+    const membre = (options.session && options.session.member) || {};
+    const { apprendreUnFait, analyzeEmail } = require('../lib/email-agent');
+    const appris = await apprendreUnFait(centreApprentissage, {
+      question,
+      reponse: body.reponse,
+      par: String(membre.name || membre.id || ''),
+    });
+    // La re-analyse est FAIL-SOFT : si elle echoue, le fait est quand meme
+    // appris. Perdre l apprentissage parce que le modele est indisponible
+    // serait le pire des deux mondes.
+    let analyse = null;
+    try {
+      analyse = await analyzeEmail({
+        from: String((mail.payload && mail.payload.from) || mail.recipient || ''),
+        subject: mail.subject,
+        body: String((mail.payload && mail.payload.textBody) || mail.body || ''),
+        centerId: centreApprentissage,
+      });
+    } catch (error) {
+      analyse = null;
+    }
+    const communication = await marquerQuestionRepondue({
+      communicationId: mail.id,
+      analyse,
+      par: String(membre.name || membre.id || ''),
+    });
+    sendJson(res, 200, { ok: true, action, appris, communication, reanalyse: Boolean(analyse) });
+    return;
+  }
+
+  // OUBLIER UN FAIT. Un fait faux appris une fois empoisonnerait toutes les
+  // reponses suivantes, sans que rien ne le signale : il faut pouvoir le
+  // retirer, sinon l apprentissage devient un risque au lieu d un progres.
+  if (action === 'forgetAgentFact') {
+    const centreOubli = requireConcreteCenter('oubli d un fait');
+    const { getFaitsAppris } = require('../lib/email-agent');
+    const cible = String(body.question || '').trim().toLowerCase();
+    if (!cible) throw createHttpError('Quelle question faut-il oublier ?', 400);
+    const actuels = await getFaitsAppris(centreOubli);
+    const restants = actuels.filter((f) => String((f && f.question) || '').toLowerCase() !== cible);
+    if (restants.length === actuels.length) throw createHttpError('Ce fait n’est plus dans la mémoire de l’agent.', 404);
+    // Meme fusion a deux niveaux que pour l apprentissage : jsonb_set ne cree
+    // pas le niveau `email_brain` s il manque, et l oubli echouerait en silence
+    // sur un centre qui n a jamais rien appris (le cas ou l on vient justement
+    // de retirer son seul fait).
+    await getPool().query(
+      `update center_automation_settings
+         set settings =
+           coalesce(settings, '{}'::jsonb)
+           || jsonb_build_object(
+                'email_brain',
+                coalesce(settings->'email_brain', '{}'::jsonb)
+                || jsonb_build_object('appris', $2::jsonb)
+              ),
+             updated_at = now()
+       where center_id = $1;`,
+      [centreOubli, JSON.stringify(restants)],
+    );
+    sendJson(res, 200, { ok: true, action, appris: restants });
+    return;
+  }
+
   // « JE M EN OCCUPE » : la prise de main sur un mail recu, et sa liberation.
   //
   // L identite du preneur vient de LA SESSION, jamais du corps de la requete :
@@ -2820,6 +2911,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'menuCenters') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
     if (action === 'pulse') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
     if (action === 'emailClaims') return 'emails.view';
+    if (action === 'agentQuestions') return 'emails.view';
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights', 'directionComparison', 'directionRetention', 'directionAudience'].includes(action)) return 'direction.view';
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
@@ -2878,6 +2970,10 @@ function getRequiredOpsPermission(method, action) {
   // la lecture de la boite. Le refuser aux roles qui lisent sans envoyer les
   // rendrait invisibles a leurs collegues, donc plus dangereux, pas moins.
   if (['claimInboundEmail', 'releaseInboundEmail'].includes(action)) return 'emails.view';
+  // Apprendre un fait au nom du centre engage TOUTES les reponses suivantes :
+  // c est un reglage du produit, pas un geste de traitement de mail. Meme droit
+  // que la configuration des textes de l agent.
+  if (['answerAgentQuestion', 'forgetAgentFact'].includes(action)) return ['emails.send', 'direction.view'];
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];

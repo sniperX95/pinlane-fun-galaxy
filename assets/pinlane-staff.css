@@ -12857,6 +12857,32 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 
 .pv2-mail-historique { margin-top: 12px; padding-left: 12px; border-left: 2px solid var(--line); color: var(--muted); font-size: 13.5px; line-height: 1.6; }
 
+/* ── CE QUE L AGENT NE SAIT PAS ──────────────────────────────────────────
+   Une section a part, au-dessus de la boite : ce n est pas un mail a traiter,
+   c est un reglage du produit qui vaut pour tous les mails suivants. Sobre a
+   dessein : elle doit se voir quand elle a quelque chose a dire, et
+   s effacer quand elle n en a pas. */
+.pv2-savoir { margin: 0 0 16px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.pv2-savoir-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.pv2-savoir-head h2 { margin: 0; font-size: 14px; font-weight: 650; color: var(--text); }
+.pv2-savoir-compte { font-size: 12px; color: var(--muted); }
+.pv2-savoir-vide { margin: 0; font-size: 13px; color: var(--muted); }
+.pv2-savoir-liste { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.pv2-savoir-carte { padding: 12px; background: var(--subtle); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.pv2-savoir-question { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; line-height: 1.45; color: var(--text); }
+.pv2-savoir-origine { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+.pv2-savoir-reponse { width: 100%; font-family: inherit; font-size: 13px; line-height: 1.5; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 8px 10px; resize: vertical; }
+.pv2-savoir-reponse:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pv2-savoir-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.pv2-savoir-bascule { margin-top: 10px; padding: 0; font-size: 12px; color: var(--muted); background: none; border: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.pv2-savoir-bascule:hover { color: var(--text); }
+.pv2-savoir-memoire { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.pv2-savoir-fait { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; background: var(--subtle); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.pv2-savoir-fait > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pv2-savoir-fait strong { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.pv2-savoir-fait span { font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.pv2-savoir-fait small { font-size: 11px; color: var(--muted); opacity: 0.8; }
+
 /* « Untel repond a ce message » : le seul endroit de la page qui parle des
    AUTRES personnes. Un liseré chaud plutot qu un bandeau plein : il doit se
    voir sans hurler, parce qu il n interdit rien et que la gerante devant

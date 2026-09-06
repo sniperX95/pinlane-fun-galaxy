@@ -58,6 +58,7 @@
     var centreMemorise = null;
     var lectures = 0;
     var rechargements = 0;
+    var reports = 0;
 
     function cache() {
       return Boolean(doc && doc.hidden);
@@ -99,9 +100,20 @@
           centreMemorise = centre;
           empreinte = nouvelle;
         } else if (nouvelle !== empreinte) {
-          empreinte = nouvelle;
-          rechargements += 1;
-          await recharger();
+          // ON NE COUPE JAMAIS QUELQU UN QUI ECRIT. Un rechargement complet
+          // reconstruit la page : si une gerante est en train de taper sa
+          // reponse, elle perdrait son curseur au milieu d une phrase, a cause
+          // d une action d un collegue. `recharger` peut donc repondre false,
+          // « pas maintenant ». Dans ce cas l empreinte n est PAS memorisee :
+          // le changement reste en attente et repassera au tour suivant. La
+          // memoriser reviendrait a oublier definitivement la mise a jour.
+          var fait = await recharger();
+          if (fait !== false) {
+            empreinte = nouvelle;
+            rechargements += 1;
+          } else {
+            reports += 1;
+          }
         }
       } catch (error) {
         cadence = Math.min(CADENCE_MAX_MS, Math.round(cadence * FACTEUR_RECUL));
@@ -148,6 +160,7 @@
       get empreinte() { return empreinte; },
       get lectures() { return lectures; },
       get rechargements() { return rechargements; },
+      get reports() { return reports; },
       get enVol() { return enVol; },
     };
     return api;
@@ -159,6 +172,22 @@
   // neuf, l anti-rebond de 8 secondes de `loadOpsAdmin` n a plus de raison
   // d etre ici.
   var boucle = null;
+
+  // « Est-ce que quelqu un est en train d ecrire ? » Le champ actif suffit a le
+  // dire, et c est la seule chose qu un rechargement peut casser.
+  function enTrainDeSaisir() {
+    if (typeof document === "undefined") return false;
+    var actif = document.activeElement;
+    if (!actif) return false;
+    if (actif.isContentEditable) return true;
+    var balise = String(actif.tagName || "").toUpperCase();
+    if (balise === "TEXTAREA") return true;
+    if (balise !== "INPUT") return false;
+    // Les cases a cocher et les boutons ne portent pas de texte en cours : les
+    // compter ferait geler la synchronisation sur un simple filtre coche.
+    var type = String(actif.type || "text").toLowerCase();
+    return ["button", "checkbox", "radio", "submit", "reset", "file"].indexOf(type) === -1;
+  }
 
   function synchroniserLaConsole() {
     if (boucle) return boucle;
@@ -176,6 +205,11 @@
         return typeof global.getActiveOpsCenterId === 'function' ? global.getActiveOpsCenterId() : '';
       },
       recharger: function () {
+        // Quelqu un est en train d ecrire : on repousse. Le pouls redira au
+        // tour suivant qu il y a du neuf, et la mise a jour arrivera des que le
+        // champ est quitte. Perdre son curseur au milieu d une reponse a cause
+        // d un mail arrive chez un collegue serait pire que le retard.
+        if (enTrainDeSaisir()) return false;
         return global.loadOpsAdmin(true);
       },
     });

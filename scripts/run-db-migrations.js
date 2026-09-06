@@ -225,6 +225,11 @@ const MIGRATIONS = [
     file: 'database/catalog-seed-ownership-schema.sql',
     description: "Le catalogue livre dans le code appartient au client qui l a apporte. 0042 avait donne les FORMULES a 'fungalaxy' mais laisse les 12 ACTIVITES en portee plateforme ('all'), donc lisibles par toute entreprise : un bowling sans arene laser se voyait servir laser_game et minigolf_blacklight. Elles passent a 'fungalaxy'. Fun Galaxy ne perd rien, les autres cessent d heriter. Idempotente. Rollback : database/rollbacks/0044_catalog_seed_ownership.down.sql",
   },
+  {
+    id: '0045_email_claims',
+    file: 'database/email-claims-schema.sql',
+    description: "Qui est en train de repondre a ce mail. Deux personnes sur la meme boite ecrivaient chacune leur reponse sans savoir que l autre ecrivait la sienne : le client recevait deux reponses. Une prise par mail, avec une date d expiration plutot qu un verrou a liberer, pour qu un onglet ferme ne bloque jamais un message. Consultative : elle previent, elle n interdit pas. Idempotente (create table/index if not exists), aucune donnee existante touchee. Rollback : database/rollbacks/0045_email_claims.down.sql",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

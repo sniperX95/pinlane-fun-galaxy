@@ -1681,6 +1681,11 @@
     identities: [], templates: [], channel: {}, metaLoaded: false, metaLoading: false,
     analyzeOpen: false, analyzeBusy: false, analyzeDraft: { from: '', body: '' },
     replyDraft: {}, replyBusy: '', analysisOverride: {}, retryingId: '',
+    // MA prise de main en cours : le mail sur lequel j ecris, et le battement
+    // qui la maintient vivante. Une seule a la fois : on ne repond pas a deux
+    // mails simultanement, et une prise oubliee sur un mail qu on a quitte
+    // bloquerait un collegue pour rien.
+    prise: { communicationId: 0, battement: 0 },
   };
   window.pv2Mail = pv2Mail;
 
@@ -2262,9 +2267,97 @@
     return pv2Mail.replyDraft[row.uid];
   }
 
+  /* ── QUI EST EN TRAIN DE REPONDRE ────────────────────────────────────────
+     Deux personnes peuvent ouvrir la meme boite. Sans ce signal, chacune ecrit
+     sa reponse sans savoir que l autre ecrit la sienne, et le client en recoit
+     deux. La synchronisation vivante ne suffit pas : elle montre une reponse
+     une fois PARTIE, pas pendant qu on la redige.
+
+     La prise se pose au PREMIER CARACTERE tape, pas a l ouverture du mail :
+     lire un message n est pas y repondre, et prendre la main en lisant
+     bloquerait des collegues pour rien. Elle se rafraichit tant qu on ecrit,
+     et elle expire toute seule si l onglet se ferme. ─────────────────────── */
+  const PV2_BATTEMENT_MS = 60000;
+
+  function pv2MonIdentifiant() {
+    return typeof getStaffSessionMemberId === 'function' ? String(getStaffSessionMemberId() || '') : '';
+  }
+
+  // La prise VIVANTE posee sur ce mail, quelle qu en soit la personne.
+  function pv2PriseSur(row) {
+    const id = Number(row && row.id);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const liste = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.claims) || [];
+    const trouvee = liste.find((c) => Number(c.communicationId) === id);
+    if (!trouvee) return null;
+    // Le serveur ne renvoie que les prises vivantes, mais la page peut afficher
+    // une reponse vieille de plusieurs minutes : on revalide sur l heure locale
+    // plutot que de montrer « Untel repond » a partir d une donnee perimee.
+    if (trouvee.expiresAt && new Date(trouvee.expiresAt).getTime() < Date.now()) return null;
+    return trouvee;
+  }
+
+  // La prise de QUELQU UN D AUTRE, la seule qui doit alerter.
+  function pv2PriseDunAutre(row) {
+    const prise = pv2PriseSur(row);
+    if (!prise) return null;
+    const moi = pv2MonIdentifiant();
+    if (moi && String(prise.memberId) === moi) return null;
+    return prise;
+  }
+
+  async function pv2PrendreLaMain(communicationId) {
+    const id = Number(communicationId);
+    if (!Number.isInteger(id) || id <= 0) return;
+    if (pv2Mail.prise.communicationId === id) return; // deja la mienne
+    await pv2RelacherLaMain();
+    pv2Mail.prise.communicationId = id;
+    const battre = async () => {
+      if (pv2Mail.prise.communicationId !== id) return;
+      try {
+        await apiRequest('/api/ops', {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'claimInboundEmail',
+            centerId: state.adminCenterId || 'libramont',
+            communicationId: id,
+          }),
+        });
+      } catch (error) {
+        // Une prise ratee ne bloque JAMAIS la redaction : elle est un confort
+        // pour les collegues, pas une autorisation d ecrire.
+      }
+    };
+    await battre();
+    pv2Mail.prise.battement = setInterval(battre, PV2_BATTEMENT_MS);
+  }
+
+  async function pv2RelacherLaMain() {
+    const id = pv2Mail.prise.communicationId;
+    if (pv2Mail.prise.battement) { clearInterval(pv2Mail.prise.battement); pv2Mail.prise.battement = 0; }
+    pv2Mail.prise.communicationId = 0;
+    if (!id) return;
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'releaseInboundEmail',
+          centerId: state.adminCenterId || 'libramont',
+          communicationId: id,
+        }),
+      });
+    } catch (error) {
+      // Rien a faire : la prise expirera d elle-meme.
+    }
+  }
+
   window.pv2InboxReplyField = function (uid, field, value) {
     if (!pv2Mail.replyDraft[uid]) pv2Mail.replyDraft[uid] = { subject: '', body: '' };
     pv2Mail.replyDraft[uid][field] = value;
+    // Premier caractere tape sur ce mail : je prends la main. L appel n est pas
+    // attendu, la frappe ne doit jamais patienter apres le reseau.
+    const row = getStaffEmailRows().find((r) => r.uid === uid);
+    if (row && row.id) pv2PrendreLaMain(row.id);
   };
 
   window.pv2InboxReply = async function (uid) {
@@ -2279,6 +2372,17 @@
     const replyCtx = pv2VarContext({ name: pv2InboxAnalysis(row)?.clientName || '' });
     const replyLeft = pv2FillVars(`${draft.subject}\n${draft.body}`, replyCtx).unresolved;
     if (replyLeft.length) { toast(`Complétez d'abord : ${replyLeft.map((k) => `{{${k}}}`).join(' · ')}`); return; }
+    // DERNIER RAPPEL AVANT D ENVOYER. Le bandeau a pu apparaitre pendant la
+    // redaction : c est ici, au moment ou le mail part, que l information
+    // compte le plus. On demande, on n interdit pas.
+    const autre = pv2PriseDunAutre(row);
+    if (autre) {
+      const nom = String(autre.memberName || autre.memberId || 'Un collègue');
+      const passer = typeof confirm === 'function'
+        ? confirm(`${nom} est en train de répondre à ce message. Envoyer quand même ? Le client recevrait deux réponses.`)
+        : true;
+      if (!passer) return;
+    }
     pv2Mail.replyBusy = uid;
     renderStaffEmailsPage();
     try {
@@ -2297,6 +2401,9 @@
       });
       toast('Réponse en file d\'envoi ✓');
       delete pv2Mail.replyDraft[uid];
+      // La reponse est partie : la prise n a plus de raison d etre, et la
+      // garder ferait croire a un collegue que quelqu un ecrit encore.
+      pv2RelacherLaMain();
       if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
     } catch (error) {
       toast(error.message || 'Envoi impossible.');
@@ -3714,6 +3821,19 @@
     </section>`;
   }
 
+  // Le bandeau se veut factuel : QUI, et DEPUIS QUAND. Pas d interdiction, pas
+  // de bouton grise : la personne devant l ecran sait des choses que le produit
+  // ignore (le collegue vient de partir, il a demande de reprendre). Elle
+  // decide, informee.
+  function pv2BandeauPrise(row) {
+    const prise = pv2PriseDunAutre(row);
+    if (!prise) return '';
+    const nom = String(prise.memberName || prise.memberId || 'Quelqu\'un');
+    const depuis = prise.claimedAt ? Math.max(0, Math.round((Date.now() - new Date(prise.claimedAt).getTime()) / 60000)) : 0;
+    const quand = depuis >= 1 ? ` depuis ${depuis} min` : ' à l\'instant';
+    return `<div class="pv2-prise-alerte" role="status">${ci('alert')}<span><strong>${esc(nom)}</strong> répond à ce message${esc(quand)}. Écrivez aussi si vous voulez, mais le client recevrait deux réponses.</span></div>`;
+  }
+
   function pv2InboundDetail(row) {
     const analysis = pv2InboxAnalysis(row);
     const draft = pv2InboxReplyDraft(row);
@@ -3740,6 +3860,7 @@
             <p>${esc(analysis.summary || '')}</p>
           </div>
         </div>
+        ${pv2BandeauPrise(row)}
         <div class="pv2-inbox-reply">
           <div class="pv2-mail-preview-title">Réponse proposée${analysis.provider && analysis.provider !== 'rules' ? ' (IA)' : ''}</div>
           <input class="pv2-inbox-reply-subject" data-pl-focus="emails.reponse.objet" value="${esc(draft.subject)}" aria-label="Objet de la réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'subject', this.value)">

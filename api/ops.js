@@ -17,6 +17,9 @@ const {
   getOpsJob,
   listCommunications,
   getOpsPulse,
+  claimEmailThread,
+  releaseEmailThread,
+  listActiveEmailClaims,
   listAgentSuggestions,
   listOpsEvents,
   listDirectionReports,
@@ -313,6 +316,15 @@ async function handleGet(req, res, options = {}) {
   if (action === 'pulse') {
     const pulse = await getOpsPulse({ centerId });
     sendJson(res, 200, { ok: true, centerId, ...pulse });
+    return;
+  }
+
+  // Les prises en cours du centre : qui repond a quoi, en ce moment. Lecture
+  // separee de `communications` pour qu elle reste utilisable seule et qu un
+  // refus sur elle ne vide pas la boite.
+  if (action === 'emailClaims') {
+    const claims = await listActiveEmailClaims({ centerId });
+    sendJson(res, 200, { ok: true, centerId, claims });
     return;
   }
 
@@ -2484,6 +2496,34 @@ ${draftBody}`,
     return;
   }
 
+  // « JE M EN OCCUPE » : la prise de main sur un mail recu, et sa liberation.
+  //
+  // L identite du preneur vient de LA SESSION, jamais du corps de la requete :
+  // sinon n importe quel appelant pourrait poser une prise au nom d un
+  // collegue, ou pire, liberer la sienne. Le refus renvoie QUI tient la main,
+  // pour que l ecran d en face puisse le dire au lieu d afficher « personne ».
+  if (action === 'claimInboundEmail') {
+    const membre = (options.session && options.session.member) || {};
+    const resultat = await claimEmailThread({
+      communicationId: body.communicationId,
+      centerId: requireConcreteCenter('prise de main sur un mail'),
+      memberId: String(membre.id || ''),
+      memberName: String(membre.name || membre.id || ''),
+    });
+    sendJson(res, 200, { ok: true, action, ...resultat });
+    return;
+  }
+
+  if (action === 'releaseInboundEmail') {
+    const membre = (options.session && options.session.member) || {};
+    const resultat = await releaseEmailThread({
+      communicationId: body.communicationId,
+      memberId: String(membre.id || ''),
+    });
+    sendJson(res, 200, { ok: true, action, ...resultat });
+    return;
+  }
+
   // Analyse d'un email reçu (collé par le staff, ou ré-analyse depuis l'inbox).
   // store:true → stocké dans la boîte de réception avec son analyse.
   if (action === 'analyzeInboundEmail') {
@@ -2754,6 +2794,7 @@ function getRequiredOpsPermission(method, action) {
     // au tenant par listCentersForSession : aucune fuite meme au plus bas droit.
     if (action === 'menuCenters') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
     if (action === 'pulse') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
+    if (action === 'emailClaims') return 'emails.view';
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights', 'directionComparison', 'directionRetention', 'directionAudience'].includes(action)) return 'direction.view';
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
@@ -2808,6 +2849,10 @@ function getRequiredOpsPermission(method, action) {
   // Ameliorer un brouillon, c'est preparer un envoi : meme droit que l'envoi.
   if (action === 'improveEmailDraft') return 'emails.send';
   if (action === 'analyzeInboundEmail') return ['emails.view', 'emails.send'];
+  // Prendre la main sur un mail, c est se preparer a repondre : meme droit que
+  // la lecture de la boite. Le refuser aux roles qui lisent sans envoyer les
+  // rendrait invisibles a leurs collegues, donc plus dangereux, pas moins.
+  if (['claimInboundEmail', 'releaseInboundEmail'].includes(action)) return 'emails.view';
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];

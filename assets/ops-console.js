@@ -35,11 +35,16 @@ async function loadOpsAdmin(force = false) {
       apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerId}&startDate=${startDate}&endDate=${endDate}`),
       maySimulate
         ? apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerId}&date=${simDate}`)
-        : Promise.resolve(null)
+        : Promise.resolve(null),
+      // QUI REPOND A QUOI, EN CE MOMENT. Bloc separe et non bloquant : un refus
+      // ici ne doit jamais vider la boite de reception, il fait seulement
+      // disparaitre les pastilles « Untel repond ».
+      apiRequest(`${API_ENDPOINTS.ops}?action=emailClaims&centerId=${centerId}`)
     ]);
     const value = (index) => (results[index].status === 'fulfilled' ? results[index].value : null) || {};
     const [communicationsPayload, samplesPayload, suggestionsPayload, eventsPayload, agentStackPayload] = [0, 1, 2, 3, 4].map(value);
     const simulationPayload = results[5].status === 'fulfilled' ? results[5].value : null;
+    const claimsPayload = results[6] && results[6].status === 'fulfilled' ? results[6].value : null;
     // Si TOUT a echoue, c est une vraie panne : elle se dit, comme avant.
     const everyFailed = results.slice(0, 5).every((entry) => entry.status === 'rejected');
     if (everyFailed) throw (results[0].reason || new Error('Console Ops indisponible.'));
@@ -50,6 +55,7 @@ async function loadOpsAdmin(force = false) {
       events: eventsPayload.events || [],
       agentStack: agentStackPayload || null,
       simulation: simulationPayload || null,
+      claims: (claimsPayload && claimsPayload.claims) || [],
       loaded: true,
       loading: false,
       lastLoadedAt: new Date().toISOString()

@@ -14,7 +14,7 @@
 // une horloge controlee : aucune attente reelle, aucun reseau, des verdicts
 // deterministes.
 //
-// LES SEPT PROPRIETES :
+// LES HUIT PROPRIETES :
 //
 //   [A] LA PREMIERE LECTURE NE RECHARGE PAS. La page vient d etre chargee : la
 //       recharger aussitot serait un aller-retour complet pour rien, a chaque
@@ -43,6 +43,14 @@
 //       deux empreintes sans rapport : les comparer ferait croire a un
 //       changement et rechargerait les donnees du centre qu on vient de
 //       quitter.
+//
+//   [H] UN RECHARGEMENT REFUSE N EST PAS OUBLIE. Un rechargement complet
+//       reconstruit la page : si quelqu un est en train de taper sa reponse, il
+//       perdrait son curseur au milieu d une phrase, a cause d une action d un
+//       collegue. Le rechargement peut donc repondre « pas maintenant ». Il
+//       faut alors que le changement RESTE en attente : memoriser l empreinte
+//       malgre le refus reviendrait a perdre la mise a jour pour de bon, et la
+//       page resterait fausse jusqu au prochain evenement.
 //
 //   [G] JAMAIS DEUX LECTURES EN VOL. Une lecture lente ne doit pas se faire
 //       doubler par la suivante : ce serait le debut d une avalanche, juste
@@ -95,8 +103,8 @@ function chargerModule() {
 // Rien n attend reellement ; « avancer d un tour » veut dire « executer le
 // prochain rendez-vous programme », ce qui rend chaque verdict reproductible.
 // ---------------------------------------------------------------------------
-function banc({ empreintes = [], estActive = () => true, centres = null } = {}) {
-  const journal = { lectures: [], rechargements: 0, erreurs: 0 };
+function banc({ empreintes = [], estActive = () => true, centres = null, refuser = null } = {}) {
+  const journal = { lectures: [], rechargements: 0, erreurs: 0, refus: 0 };
   const rendezVous = [];
   let identifiant = 0;
   let index = 0;
@@ -133,7 +141,12 @@ function banc({ empreintes = [], estActive = () => true, centres = null } = {}) 
       if (valeur instanceof Error) throw valeur;
       return { ok: true, empreinte: valeur };
     },
-    recharger: async () => { journal.rechargements += 1; },
+    recharger: async () => {
+      // « Pas maintenant » : ce que repond le vrai cablage quand quelqu un ecrit.
+      if (refuser && refuser()) { journal.refus += 1; return false; }
+      journal.rechargements += 1;
+      return true;
+    },
     surErreur: () => { journal.erreurs += 1; },
     setTimeoutImpl: (fn, ms) => {
       identifiant += 1;
@@ -279,6 +292,29 @@ function banc({ empreintes = [], estActive = () => true, centres = null } = {}) 
   g.arreter();
 
   // =====================================================================
+  console.log('\n[H] un rechargement refuse n est pas oublie');
+  // =====================================================================
+  let onEcrit = true;
+  const h = banc({ empreintes: ['avant', 'APRES', 'APRES', 'APRES'], refuser: () => onEcrit });
+  await h.demarrer();
+  await h.tour();
+  ok(h.journal.refus === 1 && h.journal.rechargements === 0,
+    '[H] pendant la saisie, la page n est PAS reconstruite sous les doigts',
+    `${h.journal.refus} refus, ${h.journal.rechargements} rechargement(s)`);
+  await h.tour();
+  ok(h.journal.refus === 2 && h.journal.rechargements === 0,
+    '[H] et le changement reste en attente : il est represente au tour suivant',
+    `${h.journal.refus} refus`);
+  onEcrit = false;
+  await h.tour();
+  ok(h.journal.rechargements === 1,
+    '[H] des que le champ est quitte, la mise a jour arrive (elle n a pas ete perdue)',
+    `${h.journal.rechargements} rechargement(s)`);
+  await h.tours(2);
+  ok(h.journal.rechargements === 1, '[H] et une seule fois, pas a chaque tour', `${h.journal.rechargements}`);
+  h.arreter();
+
+  // =====================================================================
   console.log('\n[MUTATION] le gate sait-il rougir ?');
   // =====================================================================
   const contreEpreuves = [
@@ -310,6 +346,24 @@ function banc({ empreintes = [], estActive = () => true, centres = null } = {}) 
       },
       attendu: (total) => total === 0,
       libelle: 'chaque ouverture de la page declencherait un rechargement complet immediat',
+    },
+    {
+      nom: 'l empreinte est memorisee malgre le refus',
+      de: '          if (fait !== false) {',
+      vers: '          if (true) {',
+      rejouer: async () => {
+        let ecrit = true;
+        const m = banc({ empreintes: ['avant', 'APRES', 'APRES', 'APRES'], refuser: () => ecrit });
+        await m.demarrer();
+        await m.tour();
+        ecrit = false;
+        await m.tours(2);
+        const total = m.journal.rechargements;
+        m.arreter();
+        return total;
+      },
+      attendu: (total) => total === 1,
+      libelle: 'la mise a jour serait perdue pour de bon : la page resterait fausse',
     },
     {
       nom: 'la garde de l onglet cache est retiree',

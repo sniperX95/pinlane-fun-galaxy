@@ -12823,6 +12823,14 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 .pv2-inbox-urgent { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-full); font-size: 12px; font-weight: 500; background: var(--warning-soft); color: var(--warning); white-space: nowrap; }
 .pv2-inbox-summary { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; padding: 10px 12px; background: var(--subtle); border-radius: var(--radius-md); }
 .pv2-inbox-summary p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); flex: 1 1 100%; }
+/* « Untel repond a ce message » : le seul endroit de la page qui parle des
+   AUTRES personnes. Un liseré chaud plutot qu un bandeau plein : il doit se
+   voir sans hurler, parce qu il n interdit rien et que la gerante devant
+   l ecran sait des choses que le produit ignore. */
+.pv2-prise-alerte { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; line-height: 1.45; color: var(--text); background: color-mix(in srgb, var(--warning) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--line)); border-left-width: 3px; border-radius: var(--radius-md); }
+.pv2-prise-alerte svg { flex: 0 0 auto; width: 15px; height: 15px; margin-top: 1px; color: var(--warning); }
+.pv2-prise-alerte strong { font-weight: 650; }
+
 .pv2-inbox-reply { display: flex; flex-direction: column; gap: 8px; }
 .pv2-inbox-reply-subject { width: 100%; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 0 10px; height: var(--h-md); }
 .pv2-inbox-reply-body { width: 100%; font-family: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 8px 10px; resize: vertical; line-height: 1.5; }

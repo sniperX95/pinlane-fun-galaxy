@@ -1,0 +1,11 @@
+-- LE ROLE DE QUI S OCCUPE DU MAIL (2026-09-06).
+--
+-- « On voit c'est qui, par rôle : manager, directeur ou autre. » Un prénom seul
+-- ne suffit pas dans un centre où plusieurs personnes se relaient : savoir que
+-- c'est LA DIRECTRICE qui répond, et pas un équipier du bar, change ce qu'on
+-- fait ensuite (on la laisse finir, ou on prend la main).
+--
+-- Le libellé est COPIÉ au moment de la prise, pas lu par jointure : une prise
+-- dure trois minutes, et on veut savoir quel rôle la personne avait à cet
+-- instant-là, pas celui qu'elle aura demain.
+alter table ops_email_claims add column if not exists member_role text not null default '';

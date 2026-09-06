@@ -18,7 +18,7 @@
 // la seule facon de prouver qu une pastille apparait au bon moment et qu une
 // prise part quand quelqu un commence a ecrire.
 //
-// LES SIX PROPRIETES :
+// LES HUIT PROPRIETES :
 //
 //   [A] SANS PRISE, RIEN NE S AFFICHE. Une pastille permanente serait du bruit,
 //       et le bruit finit par ne plus etre lu.
@@ -27,7 +27,22 @@
 //       a l ouverture du mail : consulter un message n est pas y repondre, et
 //       prendre la main en lisant bloquerait des collegues pour rien.
 //
-//   [C] LA PRISE D UN AUTRE SE VOIT, AVEC SON NOM. « Quelqu un repond » ne sert
+//   [G] OUVRIR UN MAIL, C EST S EN OCCUPER. Demande explicite : « des que
+//       quelqu un ouvre et donc s occupe du mail, on voit ». C est le rythme de
+//       travail reel : on ouvre un message parce qu on va le traiter, et le
+//       collegue doit le savoir tout de suite, pas au moment ou la reponse est
+//       deja a moitie ecrite. La prise expire seule en trois minutes, donc
+//       parcourir la boite ne bloque personne durablement.
+//
+//   [H] LE FONDATEUR NE POSE JAMAIS DE PRISE. Il ouvre des mails pour regarder
+//       comment tourne le produit : afficher « le fondateur s occupe de ce
+//       message » ferait attendre une equipe pour rien, et l habituerait a
+//       ignorer la pastille le jour ou elle compte.
+//
+//   [C] LA PRISE D UN AUTRE SE VOIT, AVEC SON NOM ET SON ROLE. « Quelqu un
+//       repond » ne sert a rien : on ne sait pas a qui parler. Et dans un centre
+//       ou plusieurs personnes se relaient, savoir que c est la DIRECTION qui
+//       repond, et pas un equipier du bar, change ce qu on fait ensuite. « Quelqu un repond » ne sert
 //       a rien : on ne sait pas a qui parler. Le nom, et depuis quand.
 //
 //   [D] MA PROPRE PRISE NE M ALERTE PAS. S alerter soi-meme apprendrait a
@@ -189,19 +204,20 @@ async function texteDuBandeau(page) {
   });
 }
 
-async function poserPrise(page, { memberId, memberName, ilYaMinutes = 0, expireeDepuisMinutes = 0 }) {
-  await page.evaluate(({ memberId, memberName, ilYaMinutes, expireeDepuisMinutes }) => {
+async function poserPrise(page, { memberId, memberName, memberRole = '', ilYaMinutes = 0, expireeDepuisMinutes = 0 }) {
+  await page.evaluate(({ memberId, memberName, memberRole, ilYaMinutes, expireeDepuisMinutes }) => {
     window.__QA_CLAIMS__ = [{
       communicationId: 42,
       centerId: 'libramont',
       memberId,
       memberName,
+      memberRole,
       claimedAt: new Date(Date.now() - ilYaMinutes * 60000).toISOString(),
       expiresAt: new Date(Date.now() + (expireeDepuisMinutes ? -expireeDepuisMinutes * 60000 : 180000)).toISOString(),
     }];
     if (typeof opsAdminCache === 'object' && opsAdminCache) opsAdminCache.claims = window.__QA_CLAIMS__;
     if (typeof renderStaffEmailsPage === 'function') renderStaffEmailsPage();
-  }, { memberId, memberName, ilYaMinutes, expireeDepuisMinutes });
+  }, { memberId, memberName, memberRole, ilYaMinutes, expireeDepuisMinutes });
   await page.waitForTimeout(200);
 }
 
@@ -230,48 +246,60 @@ async function main() {
     ok((await texteDuBandeau(page)) === '', '[A] aucune pastille quand personne ne repond', await texteDuBandeau(page));
 
     // =====================================================================
-    console.log('\n[B] ecrire prend la main, lire non');
+    console.log('\n[G] ouvrir un mail, c est s en occuper');
+    // =====================================================================
+    // Le mail a ete ouvert plus haut par ouvrirLeMail() : la prise doit deja
+    // etre partie, AVANT la moindre frappe.
+    const alOuverture = await page.evaluate(() => window.__QA_APPELS__.claim.slice());
+    ok(alOuverture.length >= 1 && Number(alOuverture[0]) === 42,
+      '[G] ouvrir le mail a suffi a poser la prise, sans taper un seul caractere', JSON.stringify(alOuverture));
+
+    // =====================================================================
+    console.log('\n[B] ecrire ne pose pas une deuxieme prise');
     // =====================================================================
     const avantFrappe = await page.evaluate(() => window.__QA_APPELS__.claim.length);
-    ok(avantFrappe === 0, '[B] ouvrir et LIRE le mail ne prend aucune main', `${avantFrappe} prise(s)`);
     await page.click('.pv2-inbox-reply-body');
     await page.keyboard.type('Bonjour Marie, ');
     await page.waitForTimeout(400);
     const apresFrappe = await page.evaluate(() => window.__QA_APPELS__.claim);
-    ok(apresFrappe.length >= 1 && Number(apresFrappe[0]) === 42,
-      '[B] des le premier caractere tape, la main est prise sur CE mail', JSON.stringify(apresFrappe));
+    ok(apresFrappe.length === avantFrappe,
+      '[B] ecrire sur un mail deja pris ne redemande rien : une prise, pas une par touche',
+    `${avantFrappe} -> ${apresFrappe.length}`);
+    ok(apresFrappe.every((id) => Number(id) === 42),
+      '[B] et toutes les prises portent bien sur CE mail', JSON.stringify(apresFrappe));
 
     // =====================================================================
     console.log('\n[C] la prise d un autre se voit, avec son nom');
     // =====================================================================
-    await poserPrise(page, { memberId: 'sophie', memberName: 'Sophie', ilYaMinutes: 3 });
+    await poserPrise(page, { memberId: 'sophie', memberName: 'Sophie', memberRole: 'Manager', ilYaMinutes: 3 });
     const bandeau = await texteDuBandeau(page);
     ok(/Sophie/.test(bandeau), '[C] le NOM de la personne apparait, pas « quelqu un »', bandeau);
+    ok(/Manager/.test(bandeau), '[C] et SON ROLE : on ne reagit pas pareil selon qui repond', bandeau);
     ok(/3 min/.test(bandeau), '[C] et depuis combien de temps elle y est', bandeau);
     ok(/deux r[ée]ponses/i.test(bandeau), '[C] avec la consequence dite en clair, pas un code couleur seul');
 
     // =====================================================================
     console.log('\n[D] ma propre prise ne m alerte pas');
     // =====================================================================
-    await poserPrise(page, { memberId: MOI, memberName: 'Moi QA', ilYaMinutes: 1 });
+    await poserPrise(page, { memberId: MOI, memberName: 'Moi QA', memberRole: 'Direction', ilYaMinutes: 1 });
     ok((await texteDuBandeau(page)) === '', '[D] ma propre prise ne declenche aucune alerte', await texteDuBandeau(page));
 
     // =====================================================================
     console.log('\n[E] une prise expiree ne bloque plus rien');
     // =====================================================================
-    await poserPrise(page, { memberId: 'sophie', memberName: 'Sophie', ilYaMinutes: 30, expireeDepuisMinutes: 5 });
+    await poserPrise(page, { memberId: 'sophie', memberName: 'Sophie', memberRole: 'Manager', ilYaMinutes: 30, expireeDepuisMinutes: 5 });
     ok((await texteDuBandeau(page)) === '',
       '[E] une prise perimee (onglet ferme il y a longtemps) n affiche plus rien', await texteDuBandeau(page));
     // Et la preuve que ce vert ne vient pas d un bandeau casse : la meme prise,
     // encore vivante, s affiche.
-    await poserPrise(page, { memberId: 'sophie', memberName: 'Sophie', ilYaMinutes: 30 });
+    await poserPrise(page, { memberId: 'sophie', memberName: 'Sophie', memberRole: 'Manager', ilYaMinutes: 30 });
     ok(/Sophie/.test(await texteDuBandeau(page)),
       '[E] alors que la meme prise, encore vivante, s affiche bien (le controle precedent mesure l expiration, pas une panne)');
 
     // =====================================================================
     console.log('\n[F] envoyer libere la main');
     // =====================================================================
-    await poserPrise(page, { memberId: MOI, memberName: 'Moi QA', ilYaMinutes: 1 });
+    await poserPrise(page, { memberId: MOI, memberName: 'Moi QA', memberRole: 'Direction', ilYaMinutes: 1 });
     await page.evaluate(() => { window.confirm = () => true; });
     const relachesAvant = await page.evaluate(() => window.__QA_APPELS__.release.length);
     await page.evaluate((u) => pv2InboxReply(u), uid);
@@ -281,6 +309,22 @@ async function main() {
     ok(envois === 1, '[F] la reponse part bien (sinon la suite ne prouverait rien)', `${envois} envoi(s)`);
     ok(relaches.length > relachesAvant && Number(relaches[relaches.length - 1]) === 42,
       '[F] et la main est relachee sur ce mail : plus personne ne le croit en cours', JSON.stringify(relaches));
+
+    // =====================================================================
+    console.log('\n[H] le fondateur ne pose jamais de prise');
+    // =====================================================================
+    // Mesure sur la REGLE DU SERVEUR, pas sur le bouchon du navigateur : un
+    // mock qui reproduirait la regle ne prouverait que lui-meme.
+    const { __test } = require(path.join(ROOT, 'api/ops.js'));
+    const ignore = __test && __test.priseIgnoreePourCetteSession;
+    ok(typeof ignore === 'function', '[H] la regle du fondateur est mesurable');
+    const fondateur = { member: { id: 'movsar' }, role: { id: 'founder', name: 'Fondateur' }, permissions: ['platform.admin', 'emails.view'] };
+    const directrice = { member: { id: 'sophie' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: ['emails.view', 'emails.send', 'direction.view'] };
+    const bar = { member: { id: 'lea' }, role: { id: 'bar', name: 'Bar' }, permissions: ['emails.view'] };
+    ok(ignore(fondateur) === true, '[H] une session fondateur ne pose pas de prise');
+    ok(ignore(directrice) === false, '[H] une directrice, si (sinon plus personne ne serait signale)');
+    ok(ignore(bar) === false, '[H] un equipier du bar aussi');
+    ok(ignore(null) === false, '[H] et une session absente ne passe pas pour le fondateur');
 
     if (errs.length) console.log('\nErreurs console :\n' + errs.slice(0, 5).join('\n'));
     console.log(failures ? `\n${failures} controle(s) en echec.` : '\nemail-claim-check: ALL OK');

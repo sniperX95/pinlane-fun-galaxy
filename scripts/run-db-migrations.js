@@ -230,6 +230,11 @@ const MIGRATIONS = [
     file: 'database/email-claims-schema.sql',
     description: "Qui est en train de repondre a ce mail. Deux personnes sur la meme boite ecrivaient chacune leur reponse sans savoir que l autre ecrivait la sienne : le client recevait deux reponses. Une prise par mail, avec une date d expiration plutot qu un verrou a liberer, pour qu un onglet ferme ne bloque jamais un message. Consultative : elle previent, elle n interdit pas. Idempotente (create table/index if not exists), aucune donnee existante touchee. Rollback : database/rollbacks/0045_email_claims.down.sql",
   },
+  {
+    id: '0046_email_claims_role',
+    file: 'database/email-claims-role-schema.sql',
+    description: "Le role de qui s occupe du mail. Un prenom seul ne suffit pas quand plusieurs personnes se relaient : savoir que c est la DIRECTRICE qui repond, et pas un equipier du bar, change ce qu on fait ensuite. Libelle copie au moment de la prise (une prise dure trois minutes ; on veut le role d alors, pas celui de demain). ORDRE : apres 0045, qui cree la table qu elle altere. Idempotente (add column if not exists), aucune donnee existante touchee. Rollback : database/rollbacks/0046_email_claims_role.down.sql",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

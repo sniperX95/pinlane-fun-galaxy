@@ -2503,12 +2503,25 @@ ${draftBody}`,
   // collegue, ou pire, liberer la sienne. Le refus renvoie QUI tient la main,
   // pour que l ecran d en face puisse le dire au lieu d afficher « personne ».
   if (action === 'claimInboundEmail') {
+    // LE FONDATEUR NE COMPTE PAS. Il ouvre des mails pour regarder comment
+    // tourne le produit, pas pour repondre a la place du centre : afficher
+    // « le fondateur s occupe de ce message » ferait attendre une equipe pour
+    // rien, et l habituerait a ignorer la pastille. Il voit celles des autres,
+    // il n en pose aucune.
+    if (priseIgnoreePourCetteSession(options.session)) {
+      sendJson(res, 200, { ok: true, action, ignore: 'fondateur' });
+      return;
+    }
     const membre = (options.session && options.session.member) || {};
+    const role = (options.session && options.session.role) || {};
     const resultat = await claimEmailThread({
       communicationId: body.communicationId,
       centerId: requireConcreteCenter('prise de main sur un mail'),
       memberId: String(membre.id || ''),
       memberName: String(membre.name || membre.id || ''),
+      // Le LIBELLE du role, pas son identifiant : c est ce qui sera lu a
+      // l ecran par quelqu un qui ne connait pas la table des roles.
+      memberRole: String(role.name || role.id || ''),
     });
     sendJson(res, 200, { ok: true, action, ...resultat });
     return;
@@ -2743,6 +2756,18 @@ async function runCampaignEnqueue({ centerId, campaignId, recipients, subject, b
     personalize: personalizeCampaignText,
   });
   return result.queued;
+}
+
+// LE FONDATEUR NE POSE JAMAIS DE PRISE SUR UN MAIL. Il ouvre des messages pour
+// regarder comment tourne le produit, pas pour repondre a la place du centre :
+// afficher « le fondateur s occupe de ce message » ferait attendre une equipe
+// pour rien, et l habituerait a ignorer la pastille le jour ou elle compte. Il
+// voit celles des autres, il n en pose aucune.
+//
+// Extrait en fonction nommee et exportee pour etre MESURABLE : une regle de ce
+// genre, noyee dans un handler, ne se teste que par accident.
+function priseIgnoreePourCetteSession(session) {
+  return sessionHasPermission(session, 'platform.admin');
 }
 
 function getRequiredOpsPermission(method, action) {
@@ -3046,3 +3071,4 @@ module.exports = async (req, res) => {
 // la lit, il ne la recopie pas. Une regle recopiee dans un test derive du
 // produit au premier changement, et le test finit par prouver une regle morte.
 module.exports.getRequiredOpsPermission = getRequiredOpsPermission;
+module.exports.__test = { priseIgnoreePourCetteSession };

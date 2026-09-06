@@ -1365,6 +1365,19 @@
     state.staffEmailSelectedId = uid;
     save();
     renderStaffEmailsPage();
+    // OUVRIR UN MAIL RECU, C EST S EN OCCUPER. La prise part ici, sans attendre
+    // le premier caractere tape : sinon le collegue ne l apprend qu une fois la
+    // reponse a moitie ecrite, c est-a-dire trop tard. Elle expire toute seule
+    // en trois minutes si on n en fait rien, donc parcourir la boite ne bloque
+    // personne durablement. L appel n est pas attendu : l ecran ne patiente
+    // jamais apres le reseau.
+    if (typeof pv2PrendreLaMain === 'function') {
+      const rows = typeof getStaffEmailRows === 'function' ? getStaffEmailRows() : [];
+      const ligne = rows.find((r) => r.uid === uid);
+      if (ligne && ligne.id && (ligne.direction === 'inbound' || ligne.status === 'received')) {
+        pv2PrendreLaMain(ligne.id);
+      }
+    }
   };
 
   window.pv2EmailFilter = function (key) {
@@ -2381,8 +2394,9 @@
     const autre = pv2PriseDunAutre(row);
     if (autre) {
       const nom = String(autre.memberName || autre.memberId || 'Un collègue');
+      const roleAutre = String(autre.memberRole || '').trim();
       const passer = typeof confirm === 'function'
-        ? confirm(`${nom} est en train de répondre à ce message. Envoyer quand même ? Le client recevrait deux réponses.`)
+        ? confirm(`${nom}${roleAutre ? ` (${roleAutre})` : ''} s'occupe de ce message. Envoyer quand même ? Le client recevrait deux réponses.`)
         : true;
       if (!passer) return;
     }
@@ -3832,9 +3846,13 @@
     const prise = pv2PriseDunAutre(row);
     if (!prise) return '';
     const nom = String(prise.memberName || prise.memberId || 'Quelqu\'un');
+    // Le ROLE, quand il est connu : dans un centre ou plusieurs personnes se
+    // relaient, savoir que c est la direction qui repond, et pas un equipier du
+    // bar, change ce qu on fait ensuite.
+    const role = String(prise.memberRole || '').trim();
     const depuis = prise.claimedAt ? Math.max(0, Math.round((Date.now() - new Date(prise.claimedAt).getTime()) / 60000)) : 0;
     const quand = depuis >= 1 ? ` depuis ${depuis} min` : ' à l\'instant';
-    return `<div class="pv2-prise-alerte" role="status">${ci('alert')}<span><strong>${esc(nom)}</strong> répond à ce message${esc(quand)}. Écrivez aussi si vous voulez, mais le client recevrait deux réponses.</span></div>`;
+    return `<div class="pv2-prise-alerte" role="status">${ci('alert')}<span><strong>${esc(nom)}</strong>${role ? ` <span class="pv2-prise-role">${esc(role)}</span>` : ''} s'occupe de ce message${esc(quand)}. Écrivez aussi si vous voulez, mais le client recevrait deux réponses.</span></div>`;
   }
 
   /* ── LE MAIL RECU, LU COMME UN MAIL ──────────────────────────────────────

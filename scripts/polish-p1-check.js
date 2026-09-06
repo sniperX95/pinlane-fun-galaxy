@@ -242,18 +242,26 @@ async function installMockStaff(page, jeu, options = {}) {
   }, { expiresAt, jeu, lanesEnMaintenance: options.lanesEnMaintenance || [] });
 }
 
-async function ouvrirStaff(page, pageStaff, vue) {
+async function ouvrirStaff(page, pageStaff, vue, jour = null) {
   await page.goto(`${BASE_URL}/?v=p1-${Date.now()}-${Math.random().toString(36).slice(2)}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForFunction(() => typeof window.setView === 'function' && typeof state !== 'undefined', null, { timeout: 20000 });
-  await page.evaluate(({ cible, resource }) => {
+  await page.evaluate(({ cible, resource, jour }) => {
     if (typeof hasSavedAuth === 'function') hasSavedAuth();
     setView('staff');
+    // LE PLANNING SE MESURE UN JOUR OU LE CENTRE EST OUVERT.
+    //
+    // Sans cette ligne, le gate travaillait sur AUJOURD HUI : il est passe au
+    // vert des mois durant, puis a rougi net a minuit un dimanche soir, parce
+    // que Libramont ferme le lundi. Un jour ferme ne dessine aucune piste, donc
+    // aucune carte a mesurer, et l echec ressemblait a une regression de code.
+    // Le samedi est deja le jour de reference du tunnel ici (ouvert 10h-minuit).
+    if (jour) state.currentDate = jour;
     state.staffStatusFilter = 'all';
     state.searchTerm = '';
     state.staffPlanningExpanded = false;
     if (typeof openStaffMenuPage === 'function') openStaffMenuPage(cible);
     if (resource && typeof setStaffResourceView === 'function') setStaffResourceView(resource);
-  }, { cible: pageStaff, resource: vue });
+  }, { cible: pageStaff, resource: vue, jour });
   await page.waitForTimeout(600);
 }
 
@@ -294,7 +302,7 @@ async function mesurerA(browser) {
     const { page, fermer } = await pageNeuve(browser, vp);
     try {
       await installMockStaff(page, JEU_PLANNING);
-      await ouvrirStaff(page, 'planning', 'bowling');
+      await ouvrirStaff(page, 'planning', 'bowling', DATE_TUNNEL);
       await page.waitForSelector('.booking[data-booking-res-id="80001"]', { timeout: 20000 });
       await page.waitForTimeout(400);
       resultat[vp.width] = await page.evaluate(() => {

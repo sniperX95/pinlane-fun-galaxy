@@ -23,6 +23,9 @@
        autre cadre de la page ne peut pas piloter notre hauteur ;
      : sans JavaScript, un lien de repli mene au parcours en pleine page - le
        client ne perd jamais une reservation a cause d'un navigateur exotique ;
+     : sur un site multi-centres, le centre suit la selection deja faite par le
+       visiteur (data-center-key nomme la cle que le site utilise deja) ;
+       data-center reste le defaut quand rien n a ete choisi ;
      : l ancien formulaire du client RESTE dans la page, simplement masque par
        ce script. Un interrupteur cote Pinlane le rend en un clic, sans toucher
        au site : c est la sortie de secours d un dimanche a 15 h, quand personne
@@ -51,7 +54,45 @@
     return;
   }
 
-  var center = script.getAttribute('data-center') || '';
+  // LE CENTRE VIENT DE LA SELECTION QUE LE SITE A DEJA FAITE.
+  //
+  // Un site multi-centres demande au visiteur ou il va, une fois, et retient sa
+  // reponse. Coller un centre FIXE dans la page enverrait un visiteur de
+  // Gembloux sur le planning de Libramont : mauvais horaires, mauvais tarifs,
+  // et personne ne s en apercevrait avant une reservation impossible a honorer.
+  //
+  // On lit donc la MEME source que le site : la cle nommee par
+  // data-center-key, dans le stockage local puis dans les cookies. La valeur
+  // est reduite a un identifiant (« Libramont » devient « libramont ») ; si
+  // elle ne ressemble a rien d exploitable, data-center reprend la main. Aucune
+  // table de correspondance a tenir : c est le nom du centre qui fait foi des
+  // deux cotes.
+  function identifiantDeCentre(valeur) {
+    var brut = String(valeur == null ? '' : valeur).trim().toLowerCase();
+    if (!brut) return '';
+    try { brut = brut.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (error) { /* navigateur sans normalize */ }
+    var id = brut.replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+    return /^[a-z][a-z0-9-]{1,40}$/.test(id) ? id : '';
+  }
+
+  function centreChoisiParLeVisiteur() {
+    var cle = script.getAttribute('data-center-key') || '';
+    if (!cle) return '';
+    var valeur = '';
+    try { valeur = window.localStorage.getItem(cle) || ''; } catch (error) { valeur = ''; }
+    if (!valeur) {
+      try {
+        var parts = String(document.cookie || '').split(';');
+        for (var i = 0; i < parts.length; i += 1) {
+          var paire = parts[i].split('=');
+          if (paire[0] && paire[0].trim() === cle) { valeur = decodeURIComponent((paire[1] || '').trim()); break; }
+        }
+      } catch (error) { valeur = ''; }
+    }
+    return identifiantDeCentre(valeur);
+  }
+
+  var center = centreChoisiParLeVisiteur() || script.getAttribute('data-center') || '';
   // L ANCIEN FORMULAIRE DU CLIENT, laisse en place et masque.
   //
   // Il ne faut surtout pas le supprimer du site : le jour ou il faut revenir en

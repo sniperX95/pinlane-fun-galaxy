@@ -33,6 +33,15 @@
 //   [E] SANS ANCIEN FORMULAIRE DECLARE, COUPER RETIRE QUAND MEME LE CADRE. Un
 //       centre qui n a rien a quoi revenir doit pouvoir eteindre le parcours.
 //
+//   [F] LE CENTRE SUIT LA SELECTION DEJA FAITE PAR LE VISITEUR. Un site
+//       multi-centres demande une fois ou l on va et retient la reponse. Un
+//       centre FIXE dans la page enverrait un visiteur de Gembloux sur le
+//       planning de Libramont : mauvais horaires, mauvais tarifs, et personne
+//       ne s en apercevrait avant une reservation impossible a honorer.
+//
+//   [G] ET IL RETOMBE SUR LE DEFAUT QUAND RIEN N A ETE CHOISI. Une selection
+//       absente ou illisible ne doit pas priver le visiteur du formulaire.
+//
 // Usage : node scripts/embed-killswitch-check.js
 'use strict';
 const fs = require('fs');
@@ -60,7 +69,7 @@ function pageClient(avecRepli) {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Fun Galaxy</title></head><body>
     <h1>Reserver</h1>
     <div id="gform_wrapper_1"><form><label>Ancien formulaire du site</label><input name="nom"></form></div>
-    <script src="${BASE_URL}/embed.js" data-center="libramont"${avecRepli ? ' data-fallback="#gform_wrapper_1"' : ''}></script>
+    <script src="${BASE_URL}/embed.js" data-center="libramont" data-center-key="guest_selection"${avecRepli ? ' data-fallback="#gform_wrapper_1"' : ''}></script>
   </body></html>`;
 }
 
@@ -167,6 +176,35 @@ async function main() {
     const sansRepliActif = await charger(page, '/site-sans-repli');
     ok(sansRepliActif.cadre === true,
       '[E] et il revient des que l interrupteur est remis (le controle precedent mesure bien la coupure)');
+
+    // =====================================================================
+    console.log('\n[F] le centre suit la selection deja faite par le visiteur');
+    // =====================================================================
+    // On ecrit la selection AVEC LA CLE DU SITE, comme le site le ferait
+    // lui-meme, puis on recharge : c est le seul moyen de prouver que les deux
+    // lisent bien au meme endroit.
+    etatServeur = 'actif';
+    await page.evaluate(() => { try { localStorage.setItem('guest_selection', 'Gembloux'); } catch (e) {} });
+    const gembloux = await charger(page, '/site');
+    ok(/center=gembloux/.test(gembloux.cadreSrc),
+      '[F] un visiteur qui a choisi Gembloux ouvre le parcours de Gembloux', gembloux.cadreSrc);
+    await page.evaluate(() => { try { localStorage.setItem('guest_selection', 'Libramont'); } catch (e) {} });
+    const libramont = await charger(page, '/site');
+    ok(/center=libramont/.test(libramont.cadreSrc),
+      '[F] et un visiteur qui a choisi Libramont, celui de Libramont', libramont.cadreSrc);
+
+    // =====================================================================
+    console.log('\n[G] et il retombe sur le defaut quand rien n a ete choisi');
+    // =====================================================================
+    await page.evaluate(() => { try { localStorage.removeItem('guest_selection'); } catch (e) {} });
+    const sansChoix = await charger(page, '/site');
+    ok(/center=libramont/.test(sansChoix.cadreSrc),
+      '[G] aucune selection : le centre par defaut du bloc s applique', sansChoix.cadreSrc);
+    await page.evaluate(() => { try { localStorage.setItem('guest_selection', '???'); } catch (e) {} });
+    const illisible = await charger(page, '/site');
+    ok(/center=libramont/.test(illisible.cadreSrc),
+      '[G] une selection illisible ne prive personne de formulaire, elle est ignoree', illisible.cadreSrc);
+    await page.evaluate(() => { try { localStorage.removeItem('guest_selection'); } catch (e) {} });
 
     if (errs.length) console.log('\nErreurs console :\n' + errs.slice(0, 5).join('\n'));
     console.log(failures ? `\n${failures} controle(s) en echec.` : '\nembed-killswitch-check: ALL OK');

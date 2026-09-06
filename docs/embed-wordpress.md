@@ -36,7 +36,8 @@ immédiatement après le bloc du formulaire, et y coller ceci :
 ```html
 <script src="https://app.pinlane.be/embed.js"
         data-center="libramont"
-        data-fallback="#gform_wrapper_1"></script>
+        data-center-key="guest_selection"
+        data-fallback=".booking__form"></script>
 ```
 
 Trois attributs, et un seul est à adapter par site :
@@ -44,7 +45,8 @@ Trois attributs, et un seul est à adapter par site :
 | Attribut | À quoi il sert |
 |---|---|
 | `data-center` | Le centre concerné : `libramont`, `gembloux`, `ciney`. C'est lui qui décide des horaires, des formules et des tarifs affichés. |
-| `data-fallback` | Le sélecteur relevé à l'étape 1. C'est l'ancien formulaire, qui reste dans la page et sera rendu si on coupe. |
+| `data-fallback` | Le sélecteur relevé à l'étape 1. C'est l'ancien formulaire, qui reste dans la page et sera rendu si on coupe. Viser le **conteneur** du formulaire, pas le formulaire lui-même : si le site le montre et le cache avec son propre script, il rouvrirait le sien par-dessus le nôtre et le visiteur en verrait deux. |
+| `data-center-key` | Sur un site **multi-centres**, la clé que le site utilise déjà pour retenir le centre choisi par le visiteur (stockage local, puis cookie). Le parcours suit ce choix, et `data-center` sert de défaut quand rien n'a été choisi. Sans cet attribut, un visiteur de Gembloux se verrait proposer le planning de Libramont : mauvais horaires, mauvais tarifs, et personne ne s'en apercevrait avant une réservation impossible à honorer. |
 | `data-scroll-margin` | Facultatif. Hauteur en pixels de l'en-tête collé du site (80 par défaut), pour que la barre du parcours ne passe pas dessous. |
 
 ### 3. Publier, puis vérifier trois choses

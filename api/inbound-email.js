@@ -216,11 +216,13 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
     let html = String(data.html || '');
     // L enveloppe ne porte pas le corps : on va le chercher. Un envoi manuel,
     // lui, porte deja son texte et ne declenche aucun appel.
+    let contenuCherche = false;
     if (!texte && !html && emailId) {
       try {
         const lu = await recupererContenu(emailId);
         texte = String((lu && lu.text) || '').trim();
         html = String((lu && lu.html) || '');
+        contenuCherche = true;
       } catch (error) {
         // 503 et non 400 : c est NOTRE lecture qui a echoue, pas le mail qui
         // est mauvais. Le fournisseur reessaie sur un 503 ; sur un 400 il
@@ -229,7 +231,13 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
         return;
       }
     }
-    const text = texte || texteDepuisHtml(html) || subject;
+    // LE SUJET N EST UN DERNIER RECOURS QU APRES AVOIR CHERCHE LE CORPS. Un mail
+    // reellement vide de corps existe (tout est dans l objet), et le refuser
+    // ferait perdre un vrai client. Mais un envoi qui n a NI corps NI
+    // identifiant a aller chercher est un envoi incomplet : le laisser entrer en
+    // recopiant son objet mettrait dans la boite un message dont personne n a le
+    // contenu, sans que rien ne le signale.
+    const text = texte || texteDepuisHtml(html) || (contenuCherche ? subject : '');
     if (!from || !from.includes('@') || !text) {
       sendError(res, 400, 'Payload invalide : from et contenu requis.');
       return;

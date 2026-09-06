@@ -33,6 +33,15 @@
 //       refuse, SA PHRASE remonte : c est elle qui a tranche ici, la ou
 //       « lecture impossible » n apprenait rien.
 //
+//   [J] LE SUJET N EST UN DERNIER RECOURS QU APRES AVOIR CHERCHE LE CORPS.
+//       Un mail reellement vide de corps existe (le tout est dans l objet) : le
+//       refuser ferait perdre un vrai client. Mais un envoi qui n a NI corps NI
+//       identifiant a aller chercher est un envoi incomplet, et l accepter en
+//       recopiant son objet ferait entrer dans la boite un message dont personne
+//       n a le contenu, sans que rien ne le signale. La difference n est pas
+//       cosmetique : d un cote on a interroge le fournisseur et il a repondu
+//       « vide », de l autre on n a jamais rien demande.
+//
 //   [B] TOUT LE RESTE EST REFUSE, EN 401, SANS RIEN ECRIRE. Pas de signature,
 //       signature d un autre secret, corps modifie apres signature, en-tetes
 //       partiels : dans les quatre cas, l ingestion n est jamais appelee.
@@ -254,6 +263,16 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
   const echec = await appeler({ corps, entetes: signer(corps), contenu: 'echec' });
   ok(echec.statut === 503 && echec.appels.length === 0,
     '[G] si la lecture echoue : 503 pour que le fournisseur REESSAIE, et rien n est ecrit', `HTTP ${echec.statut}`);
+  const vide = await appeler({ corps, entetes: signer(corps), contenu: { text: '', html: '' } });
+  ok(vide.statut === 200 && vide.appels[0] && vide.appels[0].body === 'Anniversaire samedi',
+    '[J] un mail dont le contenu recupere est VIDE entre quand meme, avec son objet pour corps',
+    `HTTP ${vide.statut}, corps ${JSON.stringify(vide.appels[0] && vide.appels[0].body)}`);
+  const sansRien = JSON.stringify({ from: 'marie@exemple.be', subject: 'Objet seul, aucun corps' });
+  const refusIncomplet = await appeler({ corps: sansRien, entetes: { 'x-inbound-secret': SECRET_MANUEL } });
+  ok(refusIncomplet.statut === 400 && refusIncomplet.appels.length === 0 && refusIncomplet.lectures.length === 0,
+    '[J] un envoi sans corps NI identifiant est refuse : on n a rien a aller chercher, et son objet ne fait pas un mail',
+    `HTTP ${refusIncomplet.statut}, ${refusIncomplet.appels.length} ecriture(s), ${refusIncomplet.lectures.length} lecture(s)`);
+
   const recu = await appeler({ corps: payload({ to: ['gembloux@inbound.pinlane.be'] }), entetes: signer(payload({ to: ['gembloux@inbound.pinlane.be'] })) });
   ok(recu.appels[0] && recu.appels[0].centerId === 'gembloux',
     '[G] le centre se lit sur received_for, la vraie cle de routage du fournisseur', recu.appels[0] && recu.appels[0].centerId);
@@ -354,6 +373,17 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
       rejouer: async () => appeler({ corps, entetes: vieux }),
       attendu: (r) => r.statut === 200,
       libelle: 'un appel rejoue passerait',
+    },
+    {
+      nom: 'le sujet remplace le corps sans etre alle le chercher',
+      de: "    const text = texte || texteDepuisHtml(html) || (contenuCherche ? subject : '');",
+      vers: '    const text = texte || texteDepuisHtml(html) || subject;',
+      rejouer: async () => appeler({
+        corps: JSON.stringify({ from: 'marie@exemple.be', subject: 'Objet seul, aucun corps' }),
+        entetes: { 'x-inbound-secret': SECRET_MANUEL },
+      }),
+      attendu: (r) => r.statut === 200 && r.appels.length === 1,
+      libelle: 'un envoi incomplet entrerait dans la boite avec son objet en guise de contenu',
     },
     {
       nom: 'la lecture reprend la cle d envoi',

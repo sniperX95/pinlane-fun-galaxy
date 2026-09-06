@@ -8,11 +8,20 @@
 // la base et fait tourner l agent : n importe qui pourrait remplir la page
 // Emails d un centre avec ce qu il veut.
 //
-// LES SIX PROPRIETES :
+// LES SEPT PROPRIETES :
 //
 //   [A] UN APPEL SIGNE PAR NOTRE FOURNISSEUR ENTRE. Signature calculee sur le
 //       corps EXACT (id.horodatage.corps, HMAC-SHA256, base64) : le mail est
 //       ingere, la reponse est 200.
+//
+//   [G] LE CORPS DU MAIL SE VA CHERCHER. Mesure du 2026-09-06 sur un vrai
+//       mail : l enveloppe du webhook porte l expediteur, le destinataire, le
+//       sujet et un IDENTIFIANT, et RIEN du contenu (le fournisseur l a voulu
+//       ainsi pour que la requete reste petite). Chaque mail entrant etait donc
+//       refuse en 400 « from et text requis ». Le contenu se recupere avec cet
+//       identifiant ; un mail sans texte brut rend son HTML deshabille ; et si
+//       la lecture echoue, la reponse est 503 pour que le fournisseur REESSAIE,
+//       jamais 400 qui dirait « ce mail est mauvais ».
 //
 //   [B] TOUT LE RESTE EST REFUSE, EN 401, SANS RIEN ECRIRE. Pas de signature,
 //       signature d un autre secret, corps modifie apres signature, en-tetes
@@ -96,22 +105,28 @@ Module.prototype._compile = function (contenu, nom) {
   }
   return compileOrigine.call(this, mute, nom);
 };
-function chargerHandler(ingest) {
+function chargerHandler(ingest, recupererContenu) {
   delete require.cache[require.resolve(path.join(ROOT, CIBLE))];
   const { createHandler } = require(path.join(ROOT, CIBLE));
-  return createHandler({ ingest });
+  return createHandler({ ingest, recupererContenu });
 }
 
 // ---------------------------------------------------------------------------
 // UN APPEL HTTP, sans reseau : le handler est le VRAI, req et res sont ceux
 // qu il recevrait de la plateforme.
 // ---------------------------------------------------------------------------
-async function appeler({ corps, entetes = {}, requete = '/api/inbound-email', methode = 'POST', ingest = null } = {}) {
+async function appeler({ corps, entetes = {}, requete = '/api/inbound-email', methode = 'POST', ingest = null, contenu = null } = {}) {
   const appels = [];
+  const lectures = [];
   const ingestion = ingest || (async (args) => { appels.push(args); return { communication: { id: 1 }, deduped: false }; });
   const handler = chargerHandler(async (args) => {
     appels.push(args);
     return ingestion === ingest ? ingestion(args) : { communication: { id: 1 }, deduped: false };
+  }, async (emailId) => {
+    lectures.push(emailId);
+    if (typeof contenu === 'function') return contenu(emailId);
+    if (contenu === 'echec') { const e = new Error('lecture refusee'); e.statusCode = 503; throw e; }
+    return contenu || { text: 'Bonjour, avez-vous de la place ?', html: '' };
   });
   const req = Object.assign(Readable.from([corps]), {
     method: methode,
@@ -128,14 +143,27 @@ async function appeler({ corps, entetes = {}, requete = '/api/inbound-email', me
   await handler(req, res);
   let corpsRendu = null;
   try { corpsRendu = JSON.parse(rendu); } catch (error) { corpsRendu = { brut: rendu }; }
-  return { statut: statut || res.statusCode, corps: corpsRendu, appels };
+  return { statut: statut || res.statusCode, corps: corpsRendu, appels, lectures };
 }
 
-function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.be', subject = 'Anniversaire samedi', text = 'Bonjour, avez-vous de la place ?' } = {}) {
+// L ENVELOPPE REELLE, relevee sur la production le 2026-09-06 : elle ne porte
+// AUCUN corps, seulement l identifiant du mail. C est la forme que le gate doit
+// mesurer ; l ancienne fixture (avec un champ texte) validait un monde qui
+// n existe pas.
+function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.be', subject = 'Anniversaire samedi', emailId = '7865d93e-c9e6-42a9-9ef2-8d92e09ecc06' } = {}) {
   return JSON.stringify({
     type: 'email.received',
-    created_at: '2026-09-06T10:00:00.000Z',
-    data: { from, to, subject, text },
+    created_at: '2026-09-06T18:10:40.000Z',
+    data: {
+      attachments: [], bcc: [], cc: [],
+      created_at: '2026-09-06T18:10:54.274Z',
+      email_id: emailId,
+      from,
+      message_id: '<CA+q0sthV3rFhsMJ8J4xCJT@mail.gmail.com>',
+      received_for: to,
+      subject,
+      to,
+    },
   });
 }
 
@@ -204,6 +232,23 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
   ok(enGet.statut === 405, '[E] une methode autre que POST est refusee', `HTTP ${enGet.statut}`);
 
   // =====================================================================
+  console.log('\n[G] le corps du mail se va chercher');
+  // =====================================================================
+  ok(bon.lectures.length === 1 && bon.lectures[0] === '7865d93e-c9e6-42a9-9ef2-8d92e09ecc06',
+    '[G] le contenu est reclame avec l identifiant recu dans l enveloppe', JSON.stringify(bon.lectures));
+  ok(bon.appels[0] && /place/.test(bon.appels[0].body),
+    '[G] le texte recupere est celui qui part a l ingestion', JSON.stringify(bon.appels[0] && bon.appels[0].body));
+  const htmlSeul = await appeler({ corps, entetes: signer(corps), contenu: { text: null, html: '<p>Bonjour,<br>nous serons 30.</p>' } });
+  ok(htmlSeul.statut === 200 && htmlSeul.appels[0] && /nous serons 30\./.test(htmlSeul.appels[0].body) && !/</.test(htmlSeul.appels[0].body),
+    '[G] un mail sans texte brut rend son HTML deshabille (le cas d une reponse Gmail)', JSON.stringify(htmlSeul.appels[0] && htmlSeul.appels[0].body));
+  const echec = await appeler({ corps, entetes: signer(corps), contenu: 'echec' });
+  ok(echec.statut === 503 && echec.appels.length === 0,
+    '[G] si la lecture echoue : 503 pour que le fournisseur REESSAIE, et rien n est ecrit', `HTTP ${echec.statut}`);
+  const recu = await appeler({ corps: payload({ to: ['gembloux@inbound.pinlane.be'] }), entetes: signer(payload({ to: ['gembloux@inbound.pinlane.be'] })) });
+  ok(recu.appels[0] && recu.appels[0].centerId === 'gembloux',
+    '[G] le centre se lit sur received_for, la vraie cle de routage du fournisseur', recu.appels[0] && recu.appels[0].centerId);
+
+  // =====================================================================
   console.log('\n[F] un evenement qui n est pas une reception n est jamais ingere');
   // =====================================================================
   // Ce corps a TOUT d un mail recu (expediteur, sujet, texte) : seul son TYPE
@@ -244,6 +289,17 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
       rejouer: async () => appeler({ corps, entetes: vieux }),
       attendu: (r) => r.statut === 200,
       libelle: 'un appel rejoue passerait',
+    },
+    {
+      nom: 'la lecture du contenu est retiree',
+      de: '      const lu = await recupererContenu(emailId);',
+      vers: '      const lu = {};',
+      rejouer: async () => appeler({ corps, entetes: signer(corps) }),
+      // Le repli sur le SUJET fait que le mail passe encore, mais VIDE de son
+      // contenu : c est exactement ce que la propriete interdit. La sonde vise
+      // donc le corps ingere, pas le simple fait qu il y ait eu une ecriture.
+      attendu: (r) => r.appels.length === 0 || !/place/.test(String(r.appels[0].body || '')),
+      libelle: 'le mail entrerait sans une ligne de son contenu',
     },
     {
       nom: 'le filtre d evenement est retire',

@@ -21,6 +21,11 @@
 // Compatible Resend Inbound (`type: 'email.received'`, données sous `data`)
 // et POST générique { from, subject, text|body, receivedAt }.
 
+// LE WEBHOOK NE PORTE QUE L ENVELOPPE (mesure du 2026-09-06 sur un vrai mail).
+// Le fournisseur envoie l expediteur, le destinataire, le sujet et un
+// IDENTIFIANT, et rien du contenu : les corps de mail ne passent pas dans une
+// requete serverless. Le corps se recupere donc par un second appel, avec cet
+// identifiant. Sans lui, chaque mail entrant repartait en 400.
 const crypto = require('crypto');
 const { readRawBody, sendError, sendJson } = require('../lib/http');
 const { ingestInboundEmail } = require('../lib/email-agent');
@@ -64,6 +69,41 @@ function signatureFournisseurValide(brut, entetes, secret) {
   });
 }
 
+// Le texte d un mail qui n a que du HTML (une reponse Gmail, par exemple).
+// L agent lit du texte : lui donner des balises reviendrait a lui faire lire
+// le code source de la reponse.
+function texteDepuisHtml(html) {
+  return String(html || '')
+    .replace(/<\s*(br|\/p|\/div|\/tr)\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function recupererContenuParDefaut(emailId) {
+  const cle = process.env.RESEND_API_KEY;
+  if (!cle) {
+    const error = new Error('Lecture du mail indisponible.');
+    error.statusCode = 503;
+    throw error;
+  }
+  const reponse = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
+    headers: { Authorization: `Bearer ${cle}` },
+  });
+  if (!reponse || !reponse.ok) {
+    // Le statut, jamais la cle : cette erreur finit dans les journaux.
+    const error = new Error(`Lecture du mail refusee (${reponse && reponse.status}).`);
+    error.statusCode = 503;
+    throw error;
+  }
+  return reponse.json();
+}
+
 function autorise(brut, req) {
   const entetes = (req && req.headers) || {};
   const attendu = process.env.INBOUND_EMAIL_SECRET;
@@ -88,7 +128,10 @@ function centreConnu(valeur) {
 // centres : `libramont@...` va a Libramont, `gembloux@...` a Gembloux. C est
 // la donnee du mail qui decide, pas une constante ni un webhook par centre.
 function centreDuDestinataire(data) {
-  const brut = data && (data.to || data.recipient || data.envelope_to);
+  // `received_for` d abord : c est l adresse pour laquelle le fournisseur a
+  // accepte le mail, donc la vraie cle de routage. `to` peut porter une liste
+  // ou une copie qui ne nous concerne pas.
+  const brut = data && (data.received_for || data.to || data.recipient || data.envelope_to);
   const liste = Array.isArray(brut) ? brut : (brut ? [brut] : []);
   for (const entree of liste) {
     const adresse = entree && typeof entree === 'object'
@@ -101,7 +144,7 @@ function centreDuDestinataire(data) {
   return '';
 }
 
-function createHandler({ ingest = ingestInboundEmail } = {}) {
+function createHandler({ ingest = ingestInboundEmail, recupererContenu = recupererContenuParDefaut } = {}) {
   return async (req, res) => {
     if (req.method !== 'POST') {
       sendError(res, 405, 'Méthode non autorisée.');
@@ -153,9 +196,27 @@ function createHandler({ ingest = ingestInboundEmail } = {}) {
       : (data.from || '');
     const { email: from, name: fromName } = parseAddress(fromRaw);
     const subject = String(data.subject || '').trim();
-    const text = String(data.text || data.body || '').trim();
+    const emailId = String(data.email_id || data.id || '').trim();
+    let texte = String(data.text || data.body || '').trim();
+    let html = String(data.html || '');
+    // L enveloppe ne porte pas le corps : on va le chercher. Un envoi manuel,
+    // lui, porte deja son texte et ne declenche aucun appel.
+    if (!texte && !html && emailId) {
+      try {
+        const lu = await recupererContenu(emailId);
+        texte = String((lu && lu.text) || '').trim();
+        html = String((lu && lu.html) || '');
+      } catch (error) {
+        // 503 et non 400 : c est NOTRE lecture qui a echoue, pas le mail qui
+        // est mauvais. Le fournisseur reessaie sur un 503 ; sur un 400 il
+        // conclurait que ce mail ne passera jamais.
+        sendError(res, Number(error && error.statusCode) || 503, 'Lecture du mail impossible pour le moment.');
+        return;
+      }
+    }
+    const text = texte || texteDepuisHtml(html) || subject;
     if (!from || !from.includes('@') || !text) {
-      sendError(res, 400, 'Payload invalide : from et text requis.');
+      sendError(res, 400, 'Payload invalide : from et contenu requis.');
       return;
     }
 

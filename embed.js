@@ -137,8 +137,41 @@
   var target = origin + '/reserver?embed=1'
     + (center ? '&center=' + encodeURIComponent(center) : '');
 
+  // LA COULEUR DE FOND DU SITE, LUE CHEZ LUI.
+  // Un cadre dont le document declare `color-scheme: dark` n est PAS
+  // transparent : le navigateur peint son canevas avec sa propre couleur
+  // sombre (un gris ~#121212). Sur une page noire, ca donne exactement ce que
+  // Movsar a vu : « c est clairement un rectangle visible de fou ». Rendre nos
+  // fonds transparents n y change rien, le gris vient du canevas, pas du CSS.
+  // La seule couleur juste est celle du site, et lui seul la connait : on la
+  // lit ici, en remontant depuis l endroit ou le cadre va se poser jusqu au
+  // premier ancetre qui peint vraiment quelque chose.
+  // OU LE CADRE VA SE POSER. Calcule avant sa creation : c est de la que se lit
+  // la couleur de fond du site.
+  function cibleDeMontage() {
+    var selecteur = script.getAttribute('data-target') || '';
+    if (selecteur) {
+      try { return document.querySelector(selecteur) || script.parentNode; } catch (error) { return script.parentNode; }
+    }
+    return script.parentNode;
+  }
+
+  function fondDuSite(depart) {
+    var noeud = depart;
+    while (noeud && noeud.nodeType === 1) {
+      var couleur = getComputedStyle(noeud).backgroundColor;
+      if (couleur && couleur !== 'transparent' && couleur.indexOf('rgba(0, 0, 0, 0)') === -1) return couleur;
+      noeud = noeud.parentElement;
+    }
+    return '';
+  }
+
   var frame = document.createElement('iframe');
-  frame.src = target;
+  // La couleur part dans l ADRESSE, pas dans un message : elle est ainsi connue
+  // AVANT la premiere peinture. Postee apres coup, le visiteur verrait le gris
+  // du navigateur clignoter une image avant de disparaitre.
+  var fondHote = fondDuSite(cibleDeMontage());
+  frame.src = target + (fondHote ? '&fond=' + encodeURIComponent(fondHote) : '');
   frame.title = 'Reservation en ligne';
   frame.loading = 'lazy';
   frame.style.cssText = 'display:block;width:100%;border:0;min-height:' + minHeight + 'px;';
@@ -206,11 +239,7 @@
   // droits d installer quoi que ce soit. Le seul point d insertion disponible
   // est ailleurs dans la page. Sans data-target, le parcours s afficherait la
   // ou on a pu coller le script, pas la ou le visiteur le cherche.
-  var cibleSelecteur = script.getAttribute('data-target') || '';
-  var cible = null;
-  if (cibleSelecteur) {
-    try { cible = document.querySelector(cibleSelecteur); } catch (error) { cible = null; }
-  }
+  var cible = cibleDeMontage();
   if (cible) {
     cible.appendChild(frame);
     cible.appendChild(fallback);

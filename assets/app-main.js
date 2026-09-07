@@ -4342,6 +4342,7 @@ function buildActivityPicker(host, catalog) {
       <section class="activity-config-row" data-activity-options="${escapeHtml(activity.id)}" aria-label="Réglages ${escapeHtml(activity.name)}" aria-hidden="true">
         <div class="activity-config-row-inner">
           <div class="activity-config-label">
+            <span class="activity-config-mark" aria-hidden="true">${activityIconMarkup(activity.id)}</span>
             <span class="activity-config-name">${escapeHtml(activity.name)}</span>
             <span class="activity-config-hint">${escapeHtml(activityConfigHint(activity))}</span>
           </div>
@@ -25348,6 +25349,27 @@ document.addEventListener('keydown', (event) => {
   window.pinlanePosterAuSite = function (type, detail) {
     try { window.parent.postMessage({ type: type, detail: detail }, parentOrigin); } catch (error) { /* parent parti */ }
   };
+
+  // LE FOND DU SITE, RECU DANS L ADRESSE. Un document en `color-scheme: dark`
+  // n a pas de canevas transparent : le navigateur le peint en gris sombre, ce
+  // qui dessine un rectangle au milieu de la page du client. On peint donc
+  // exactement la couleur que l hote nous donne.
+  // La valeur vient d une page tierce : on ne la pose que si elle ne contient
+  // QUE des caracteres de couleur CSS. Un point-virgule ou une accolade suffit
+  // a la refuser.
+  var fondRecu = params.get('fond') || '';
+  if (fondRecu && fondRecu.length < 40) {
+    var permis = '0123456789abcdefABCDEF#rgbaRGBA(), .%';
+    var propre = true;
+    for (var i = 0; i < fondRecu.length; i += 1) { if (permis.indexOf(fondRecu.charAt(i)) === -1) { propre = false; break; } }
+    if (propre) {
+      document.documentElement.style.setProperty('--tunnel-fond-hote', fondRecu);
+      // La classe porte la REGLE : sans elle, le selecteur ne pourrait pas
+      // viser la racine, qui est le seul element dont le fond decide de la
+      // couleur du canevas d un document.
+      document.documentElement.classList.add('embed-fond');
+    }
+  }
 
   // La bande visible, recue de l hote (voir embed.js). On ne fait confiance
   // qu a l origine du parent : n importe quel site peut poster un message.

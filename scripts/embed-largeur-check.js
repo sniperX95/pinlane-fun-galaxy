@@ -153,6 +153,7 @@ async function mesurer(browser, largeur, hauteur) {
       pageDeborde: doc.scrollWidth - doc.clientWidth,
       cadre: b ? { l: Math.round(b.width), x: Math.round(b.left) } : null,
       rembourrage: style ? Math.round(parseFloat(style.paddingLeft) || 0) : 0,
+      fondSite: getComputedStyle(document.body).backgroundColor,
     };
   });
   const cadre = page.frames().find((f) => f !== page.mainFrame());
@@ -165,6 +166,7 @@ async function mesurer(browser, largeur, hauteur) {
       deborde: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       fondVue: cs ? cs.backgroundImage + " | " + cs.backgroundColor : "",
       fondCorps: cb.backgroundImage + " | " + cb.backgroundColor,
+      canevas: getComputedStyle(document.documentElement).backgroundColor,
     };
   }) : null;
   await ctx.close();
@@ -195,9 +197,13 @@ async function main() {
     }
 
     console.log("");
-    console.log("[C] le parcours ne peint AUCUN fond : c est celui du site qui se voit");
-    ok(transparent(temoin.dedans.fondVue), "aucun fond sur #clientView", temoin.dedans.fondVue);
-    ok(transparent(temoin.dedans.fondCorps), "aucun fond sur le corps", temoin.dedans.fondCorps);
+    console.log("[C] le cadre porte EXACTEMENT le fond du site, pas un rectangle");
+    // Transparent ne suffit pas : un document en `color-scheme: dark` n a pas
+    // de canevas transparent, le navigateur le peint avec sa propre couleur
+    // sombre. C est ce gris sur fond noir que Movsar a vu.
+    ok(temoin.dedans.canevas === temoin.hote.fondSite,
+      "le canevas du cadre vaut le fond du site", temoin.dedans.canevas + " contre " + temoin.hote.fondSite);
+    ok(transparent(temoin.dedans.fondVue), "et le parcours lui-meme ne peint rien par-dessus", temoin.dedans.fondVue);
 
     console.log("");
     console.log("[D] au-dela de 720 px, la colonne du site est respectee");
@@ -219,6 +225,18 @@ async function main() {
       embedServi = original;
       const c = mute.hote.cadre;
       ok(Boolean(c) && c.l < mute.hote.vue - 20, "mise en pleine largeur retiree : le cadre redevient une colonne etroite", c ? c.l + "px pour " + mute.hote.vue + "px" : "cadre absent");
+    }
+
+    // La couleur du site retiree de l adresse du cadre : le canevas doit
+    // redevenir le gris du navigateur, donc cesser de valoir le fond du site.
+    const ancreFond = "(fondHote ? '&fond=' + encodeURIComponent(fondHote) : '')";
+    const presentFond = original.split(ancreFond).length - 1;
+    if (ok(presentFond === 1, "MONTAGE : la couleur du site part bien dans l adresse", presentFond + " occurrence(s)")) {
+      embedServi = original.split(ancreFond).join("''");
+      const muteFond = await mesurer(browser, 390, 844);
+      embedServi = original;
+      ok(muteFond.dedans.canevas !== muteFond.hote.fondSite,
+        "couleur retiree : le canevas cesse de valoir le fond du site", muteFond.dedans.canevas + " contre " + muteFond.hote.fondSite);
     }
     ok(fs.readFileSync(EMBED, "utf8") === original, "et le script sur le disque est intact (mutation servie en memoire)");
   } finally {

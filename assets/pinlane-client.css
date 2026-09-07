@@ -2539,33 +2539,118 @@ body.client-mode #clientView {
   border-top: 1px solid var(--line);
 }
 
+/* L EN-TETE D UNE ACTIVITE EST UN TITRE, PAS UNE ETIQUETTE DE FORMULAIRE
+   (2026-09-07, Movsar, apres l avoir demande plusieurs fois : « les noms des
+   activites devaient etre centres, plus visibles, styles, et avec une ADN dans
+   le texte : Bowling plus gros, ecrit dans le theme bowling, pareil pour Laser
+   Game, pareil pour Arcade »). Il tenait dans une colonne de 124 px a gauche
+   de ses pastilles, a 13 px, aligne a gauche : le nom de l activite pesait
+   moins que le mot « Duree » en face de lui.
+   Il occupe maintenant la largeur, centre, au-dessus de ses reglages, avec
+   l objet de l activite et un filet aux deux couleurs de la marque. */
 #clientView .activity-config-row-inner {
   display: grid;
-  grid-template-columns: 124px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-3);
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 10px 12px;
 }
 
 #clientView .activity-config-label {
+  position: relative;
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 9px;
+  padding-bottom: 7px;
 }
 
+/* Le filet est en pseudo-element, donc hors flux : il souligne sans ajouter
+   un pixel de hauteur a un ecran qui vit sur son budget. */
+#clientView .activity-config-label::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 42px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--accent), var(--tenant-glow, var(--accent)));
+  opacity: 0.85;
+}
+
+#clientView .activity-config-mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--accent);
+}
+#clientView .activity-config-mark svg { width: 17px; height: 17px; }
+
 #clientView .activity-config-name {
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 600;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
   color: var(--text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 #clientView .activity-config-hint {
-  font-size: 12px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--muted);
+}
+
+/* L ADN DE CHAQUE ACTIVITE, ECRITE DANS LE TEXTE.
+   Aucune couleur inventee : la teinte reste celle de la marque du centre, et
+   ce qui distingue les activites est la LETTRE (graisse, chasse, casse,
+   famille). Un nom de police par activite couterait un chargement et ferait
+   cheap ; la chasse et la graisse ne coutent rien et se lisent tout de suite.
+   Les arcades prennent la police de donnees du projet, deja chargee : une
+   mono en capitales EST la typographie des bornes. */
+#clientView [data-activity-options="bowling"] .activity-config-name,
+#clientView [data-activity-options="duckpin_bowling"] .activity-config-name {
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+}
+#clientView [data-activity-options="laser_game"] .activity-config-name,
+#clientView [data-activity-options="minigolf_blacklight"] .activity-config-name {
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  /* Un halo NET et court, pas une floraison : un halo assez fort pour deborder
+     efface la forme qu il eclaire. */
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+#clientView [data-activity-options="arcade_time"] .activity-config-name {
+  font-family: var(--font-data);
+  font-weight: 700;
+  font-size: 15.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+#clientView [data-activity-options="fun_run"] .activity-config-name {
+  font-style: italic;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+#clientView [data-activity-options="playground"] .activity-config-name {
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: 0.005em;
+}
+#clientView [data-activity-options="billards"] .activity-config-name,
+#clientView [data-activity-options="golf_oclock"] .activity-config-name {
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 #clientView .activity-config-controls { min-width: 0; }
@@ -2709,9 +2794,9 @@ body.client-mode #clientView {
 
   #clientView .activity-config-label {
     flex-direction: row;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2);
+    align-items: center;
+    justify-content: center;
+    gap: 4px 8px;
   }
 }
 
@@ -7420,9 +7505,9 @@ body.client-mode #clientView .btn-primary.is-sealed,
   }
   #clientView #step1 .activity-config-label {
     flex-direction: row;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2);
+    align-items: center;
+    justify-content: center;
+    gap: 4px 8px;
   }
   #clientView #step1 .activity-config-controls .activity-option-row {
     grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
@@ -8866,7 +8951,14 @@ body.client-mode #clientView .btn-primary.is-sealed,
    presente regle n en comptait qu un et perdait, en silence. Mesure : fond
    toujours peint (IMAGE, rgb(0,0,0)) apres la premiere tentative. A egalite,
    c est l ordre du fichier qui tranche, et celle-ci vient apres. */
-html body.embed-mode.client-mode,
+/* Le fond du SITE, pas le notre, et pas le gris du navigateur. Un cadre dont
+   le document declare `color-scheme: dark` n a pas de canevas transparent :
+   le navigateur le peint avec sa propre couleur sombre. Mettre nos fonds a
+   `transparent` ne suffisait donc pas, et laissait un rectangle gris sur une
+   page noire. --tunnel-fond-hote est la couleur lue chez l hote et passee
+   dans l adresse du cadre (voir embed.js) ; elle est posee sur la RACINE,
+   qui est ce qui decide de la couleur du canevas. */
+html.embed-fond, html.embed-fond body.client-mode { background: var(--tunnel-fond-hote, transparent); }
 html body.embed-mode.client-mode #clientView,
 html body.embed-mode.client-mode #clientView .tunnel-shell,
 html body.embed-mode.client-mode #clientView .tunnel-stage { background: transparent; }

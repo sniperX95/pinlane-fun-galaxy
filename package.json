@@ -210,6 +210,7 @@
     "pg": "^8.20.0"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "playwright-core": "^1.61.0"
   }
 }

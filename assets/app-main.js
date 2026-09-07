@@ -10251,24 +10251,6 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
     </section>
 
-    <!-- « PROCHAINES ARRIVEES » A ETE RETIREE D ICI (2026-08-14). Verbatim
-         Movsar : « tu as rajoute ca dans dashboard et c'est bugge a mort et ca
-         sert a rien en plus ici ». Elle ne venait d'aucun agent : elle est dans
-         le tout premier commit de la console. Deux raisons de la retirer, et
-         la seconde est la vraie.
-         (1) Elle etait FAUSSE : « metrics.upcoming » retient toute reservation
-             dont l'heure de depart est encore devant, QUEL QUE SOIT son etat.
-             Une carte intitulee « Prochaines arrivees » listait donc des
-             clients deja marques « Arrive » et des dossiers deja « Paye », et
-             sa pastille melangeait l'etat et le TYPE (« Formule » a la place
-             d'un statut) : la meme classe d'erreur que les onglets qui
-             melangeaient trois questions.
-         (2) Elle REJOUAIT une liste qui a sa propre page. Le dashboard repond
-             a « comment va ma journee » : des indicateurs, des courbes, des
-             alertes, un etat des ressources. Une liste de dossiers se lit ou
-             on peut agir dessus, c'est-a-dire dans Planning et Reservations.
-         « metrics.upcoming » reste : la bande du bas s'en sert pour compter les
-         sessions en preparation. -->
     <section class="dash-grid-bottom">
       <article class="dash-card">
         <div class="dash-card-head"><h2>Alertes & notifications</h2><button type="button" onclick="openStaffDashboardAlerts()">Voir toutes</button></div>
@@ -20763,10 +20745,6 @@ function renderPosDetails(r) {
     <section class="pos-act">
       <div class="pos-act-head">
         <span class="pos-eyebrow">État du dossier</span>
-        <!-- Le MONTANT est dans la ligne d'identité, deux lignes plus haut :
-             le réécrire ici en ferait la seule chose dite deux fois de toute
-             la fiche. Ce qui manque à l'en-tête, et qui se décide ici, c'est
-             l'état de l'encaissement et par quel moyen. -->
         <span class="pos-act-money ${paid ? 'is-paid' : ''}">${paid
           ? `Encaissé · ${escapeHtml(method)}`
           : `À encaisser · ${escapeHtml(method)}`}</span>
@@ -22020,19 +21998,6 @@ function renderPosEdit(r) {
                 <label class="lbl" for="editStartInput">Heure</label>
                 <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
               </div>
-              <!-- UNE DUREE SE CHOISIT EN HEURES ET MINUTES, PAS EN DECIMAL.
-                   Movsar, 2026-08-14 : « pour le temps c'est mal foutu aussi, ca
-                   montre pas en minutes, genre ca montre en ,5 ». Le champ etait
-                   un compteur numerique au pas de 0,5 : il fallait traduire
-                   « 1,5 » en « une heure et demie » de tete, et rien n'empechait
-                   de saisir 3,7. La liste ne propose que des durees qui existent
-                   au comptoir, ecrites comme on les dit. -->
-              <!-- UN LASER NE SE MESURE PAS EN HEURES, IL SE COMPTE EN PARTIES
-                   (2026-08-19, Movsar : « quand on va dans modifier pour un truc
-                   de laser game ça montre comme pour du bowling »). La fiche
-                   parlait bowling a toute reservation : des heures et huit
-                   pistes, y compris pour une session laser qui n'occupe aucune
-                   piste. Chaque type montre desormais CE QU'IL a. -->
               <div class="pos-field">
                 <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties' : 'Durée'}</label>
                 <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
@@ -22054,14 +22019,6 @@ function renderPosEdit(r) {
                   <option value="paid" ${e.status === 'paid' ? 'selected' : ''}>Payé</option>
                 </select>
               </div>
-              <!-- LES PISTES SE CHOISISSENT, ELLES NE SE TAPENT PAS.
-                   Movsar : « le truc modifier aussi pour les pistes, c'est mal
-                   foutu ». C'etait un champ texte libre avec « Ex: 1,2 » pour
-                   seule indication : il fallait connaitre le nombre de pistes du
-                   centre, la syntaxe attendue, et rien n'empechait d'ecrire 99.
-                   Une piste est un objet fini et denombrable, donc elle se
-                   presente comme telle : une case par piste, celles qui sont en
-                   maintenance sont hors service et le disent. -->
               ${renderEditFormuleBloc(r, editFormule, editFormuleLignes)}
               ${!editNeedsLanes ? (editFormuleLignes.length ? '' : `
               <div class="pos-field pos-field-wide">
@@ -22088,11 +22045,6 @@ function renderPosEdit(r) {
           </section>
         </div>
       </div>
-      <!-- DEUX GROUPES, ET UN VIDE ENTRE LES DEUX. « Supprimer » était collé à
-           « Enregistrer » : le geste qui détruit et le geste qui enregistre à
-           8px l'un de l'autre, sur la même ligne, avec la même forme. Ce qui
-           détruit part à GAUCHE, ce qui fait avancer reste à DROITE, et
-           « Supprimer » est le seul bouton à porter la couleur de danger. -->
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
       <div class="edit-actions">
         <div class="edit-actions-destructive">

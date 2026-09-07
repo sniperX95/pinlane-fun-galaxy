@@ -4455,19 +4455,9 @@
 
       ${failureBanner}
 
-      <!-- FAMILLE B. Ces panneaux apparaissent VRAIMENT sur une action de la
-           gerante, mais ils sont aussi re-rendus a chaque frappe dans la
-           recherche : sans la garde de markEmailsMounts(), leur entree
-           rejouerait a chaque lettre tapee. Le COMPOSEUR, lui, ne vit plus
-           ici : il est monte dans document.body (pv2RenderComposer) pour que
-           les re-rendus de la page ne puissent plus fermer ses menus. -->
       ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
       ${pv2Settings.open ? pv2SettingsPanel() : ''}
 
-      <!-- ORIGINE (demande du proprio) : dissocier ce qui part TOUT SEUL de ce
-           que l'equipe envoie ELLE-MEME. Segmente a part du segmente de statut :
-           les deux se COMBINENT (ex. Envois manuels + Echecs). Compteurs reels
-           par categorie, calcules sur toutes les communications chargees. -->
       <section class="pv2-origins" role="group" aria-label="Origine des messages">
         <span class="pv2-origins-label">Origine</span>
         ${[
@@ -4479,11 +4469,6 @@
         <span class="pv2-origins-hint">Automatiques : partis tout seuls (séquences, rappels). Envois manuels : envoyés par vous ou l'équipe (messages, relances, campagnes, tests).</span>
       </section>
 
-      <!-- Le rail est le SEUL element stable du segmente : il ne porte aucun
-           texte, donc aucune donnee ne le detruit. slidePipeRail() le
-           repositionne apres chaque reconstruction depuis une memoire hors
-           DOM : il GLISSE quand la gerante change de filtre, et il ne bouge
-           pas d'un pixel quand seules les donnees ont change. -->
       <section class="pv2-pipeline" role="group" aria-label="Filtrer la file">
         <span class="pv2-pipe-rail" aria-hidden="true"></span>
         ${pipe('all', 'Tout', 'Tout', allRows.length, '', { paren: true })}
@@ -4496,18 +4481,6 @@
         ${pipe('failed', 'Échec', 'Échecs', metrics.failed, plural(metrics.attempted || 0, 'tentative d’envoi', 'tentatives d’envoi'))}
         ${pipe('review', 'À valider', 'À valider', metrics.review, '')}
       </section>
-      <!-- TROIS CHIFFRES DIFFERENTS POUR LA MEME CHOSE sur le meme ecran : le
-           bandeau comptait les echecs de la file, le segmente comptait des
-           tentatives, les cartes de sequences comptent sur 30 jours. Aucun des
-           trois perimetres n'etait annonce. Une gerante qui voit trois chiffres
-           pour une seule question cesse de faire confiance a l'ecran : chaque
-           perimetre est desormais ecrit a cote de son chiffre. -->
-      <!-- LA LEGENDE MENTAIT SUR SON PROPRE PERIMETRE : « ces compteurs portent
-           sur les N messages de la file » englobait « Reçus », qui est
-           precisement ce qui n'est PAS dans la file sortante. Une legende
-           censee lever une confusion en creait une autre. Les deux perimetres
-           sont donc annonces separement, chacun avec son chiffre, et les deux
-           chiffres sont ceux affiches sur les segments (verifie au gate). -->
       <p class="pv2-pipeline-scope">Tout, En attente, Envoyés, Échecs et À valider portent sur les ${allRows.length} messages de la file ci-dessous. Reçus compte à part les ${inboundRows.length} mails arrivés dans la boîte du centre. Les cartes de séquences, plus bas, comptent sur les 30 derniers jours.</p>
 
       ${pv2SectionApprentissage()}
@@ -4532,20 +4505,8 @@
         </article>
       </section>
 
-      <!-- ORDRE DE LECTURE (défaut n°7 de la capture : « trop de défilement »).
-           L'ancien ordre était séquences → inventaire → filtres → file :
-           il fallait passer deux sections de RÉGLAGE avant de voir ce qui se
-           passe AUJOURD'HUI. Or la page se consulte tous les jours pour deux
-           questions (« qu'est-ce qui n'est pas parti ? », « qu'est-ce qui part
-           maintenant ? ») et se règle trois fois par an. Ce qui se consulte
-           passe donc devant ce qui se règle : échecs, filtres, file, détail
-           tiennent haut ; les séquences, l'inventaire et les campagnes suivent
-           pour qui descend les chercher. -->
       <section class="pv2-panel mk-auto-panel">
         <div class="pv2-panel-head has-sub">
-          <!-- Le reste de la page vouvoie la directrice, cette phrase la
-               tutoyait (« Active, coupe, personnalise, ou crée les tiennes »).
-               Un seul registre sur tout l'écran. -->
           <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Activez, coupez, personnalisez, ou créez les vôtres. Les compteurs de chaque carte portent sur les 30 derniers jours.</p></div>
           <div class="pv2-panel-head-actions">
             ${mkAuto.error ? `<button type="button" class="pv2-btn sm" onclick="loadStaffAutomations(true)">Réessayer</button>` : ''}
@@ -4562,9 +4523,6 @@
         </div>
       </section>
 
-      <!-- Le Journal des modifications ne vit PLUS ici : il n'a rien a faire
-           dans Mail marketing. Il vit dans la console Direction, onglet
-           Journal (renderAdminJournalTab, admin-console.js). -->
       ${pv2SuppressionPanel()}
       ${mailInventoryPanel()}
       ${typeof renderPv2RealCampaigns === 'function' ? renderPv2RealCampaigns() : ''}

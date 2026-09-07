@@ -1,46 +1,26 @@
-/* ==========================================================================
-   PINLANE EMBED : le parcours de reservation, installe chez le client.
-   ==========================================================================
-
-   Le tunnel client n'est pas fait pour vivre sur le domaine de Pinlane : le
-   visiteur arrive sur le site de SON centre, il doit y rester. Jusqu'ici,
-   installer voulait dire ecrire une iframe a la main et vivre avec une hauteur
-   fixe qui coupe les etapes longues ou laisse un trou blanc sur les courtes.
-
-   Ce que le client colle, une fois, la ou il veut le formulaire :
-
-     <script src="https://app.pinlane.be/embed.js" data-center="libramont"></script>
-
-   Ce que le script garantit :
-     : l'iframe se cree A L'ENDROIT du script (pas en fin de page) ;
-     : la HAUTEUR suit le contenu, etape par etape, via postMessage - c'est ce
-       qui separe un vrai widget d'un cadre avec ascenseur ;
-     : a chaque changement d'ecran du parcours, le haut du cadre revient en vue
-       s'il etait sorti de l'ecran (le visiteur ne regarde jamais le bas d'un
-       cadre qui vient de changer de hauteur) ;
-     : le message de redimensionnement n'est accepte que s'il vient de l'iframe
-       que CE script a cree (verification de la source ET de l'origine) : un
-       autre cadre de la page ne peut pas piloter notre hauteur ;
-     : sans JavaScript, un lien de repli mene au parcours en pleine page - le
-       client ne perd jamais une reservation a cause d'un navigateur exotique ;
-     : le cadre se monte a l endroit indique par data-target, ou a defaut la
-       ou le script est colle ; l ancien formulaire designe par data-fallback
-       est masque par une regle !important, que le site ne peut pas defaire ;
-     : sur un site multi-centres, le centre suit la selection deja faite par le
-       visiteur (data-center-key nomme la cle que le site utilise deja) ;
-       data-center reste le defaut quand rien n a ete choisi ;
-     : l ancien formulaire du client RESTE dans la page, simplement masque par
-       ce script. Un interrupteur cote Pinlane le rend en un clic, sans toucher
-       au site : c est la sortie de secours d un dimanche a 15 h, quand personne
-       ne veut chercher les identifiants de l agence. Le selecteur du formulaire
-       d origine se declare avec data-fallback ;
-     : a chaque reservation prise, le site recoit un evenement de mesure
-       (dataLayer `pinlane_booking` + CustomEvent `pinlane:booking`, sans
-       donnee personnelle) : GA4, GTM et Pixel Meta du site continuent de
-       compter les conversions. Mode d'emploi : docs/embed-tracking.md.
-
-   Zero dependance, zero build : le fichier est servi tel quel.
-   ========================================================================== */
+/*!
+ * Pinlane, module de réservation embarqué
+ * https://app.pinlane.be
+ *
+ * Installation : une ligne, à l'endroit où le formulaire doit apparaître.
+ *
+ *   <script src="https://app.pinlane.be/embed.js" data-center="libramont"></script>
+ *
+ * Attributs disponibles :
+ *   data-center         identifiant du centre (obligatoire si data-center-key est absent)
+ *   data-center-key     clé de stockage local ou cookie où le site garde déjà le centre
+ *                       choisi par le visiteur ; data-center sert alors de valeur par défaut
+ *   data-target         sélecteur CSS du conteneur d'accueil (défaut : à l'endroit du script)
+ *   data-fallback       sélecteur CSS du formulaire existant, masqué tant que le module est actif
+ *   data-height         hauteur initiale en pixels avant le premier calcul (défaut : 480)
+ *   data-scroll-margin  marge haute au défilement, pour passer sous un en-tête fixe (défaut : 80)
+ *
+ * Le cadre s'adapte à la hauteur de son contenu. À chaque réservation confirmée, un
+ * événement `pinlane_booking` est poussé dans le dataLayer de la page et un événement
+ * DOM `pinlane:booking` est émis, sans aucune donnée personnelle.
+ *
+ * Aucune dépendance, aucune étape de compilation.
+ */
 
 (function () {
   'use strict';
@@ -48,8 +28,7 @@
   var script = document.currentScript;
   if (!script) return;
 
-  // L'origine vient de l'URL du script lui-meme : le client n'a rien a
-  // configurer, et un changement de domaine cote Pinlane suit tout seul.
+  // L'origine est déduite de l'URL du script : rien à configurer côté site.
   var origin;
   try {
     origin = new URL(script.src, window.location.href).origin;
@@ -57,23 +36,14 @@
     return;
   }
 
-  // LE CENTRE VIENT DE LA SELECTION QUE LE SITE A DEJA FAITE.
-  //
-  // Un site multi-centres demande au visiteur ou il va, une fois, et retient sa
-  // reponse. Coller un centre FIXE dans la page enverrait un visiteur de
-  // Gembloux sur le planning de Libramont : mauvais horaires, mauvais tarifs,
-  // et personne ne s en apercevrait avant une reservation impossible a honorer.
-  //
-  // On lit donc la MEME source que le site : la cle nommee par
-  // data-center-key, dans le stockage local puis dans les cookies. La valeur
-  // est reduite a un identifiant (« Libramont » devient « libramont ») ; si
-  // elle ne ressemble a rien d exploitable, data-center reprend la main. Aucune
-  // table de correspondance a tenir : c est le nom du centre qui fait foi des
-  // deux cotes.
+  // Sur un site multi-centres, le centre affiché suit celui que le visiteur a déjà
+  // choisi. On lit la même source que le site (stockage local, puis cookies) via la
+  // clé nommée par data-center-key. La valeur est normalisée en identifiant ;
+  // si elle est inexploitable, data-center reprend la main.
   function identifiantDeCentre(valeur) {
     var brut = String(valeur == null ? '' : valeur).trim().toLowerCase();
     if (!brut) return '';
-    try { brut = brut.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (error) { /* navigateur sans normalize */ }
+    try { brut = brut.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (error) { /* normalize indisponible */ }
     var id = brut.replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
     return /^[a-z][a-z0-9-]{1,40}$/.test(id) ? id : '';
   }
@@ -96,29 +66,18 @@
   }
 
   var center = centreChoisiParLeVisiteur() || script.getAttribute('data-center') || '';
-  // L ANCIEN FORMULAIRE DU CLIENT, laisse en place et masque.
+
+  // Le formulaire existant est masqué, jamais retiré de la page : le retour en
+  // arrière reste un simple réglage, sans intervention sur le site.
   //
-  // Il ne faut surtout pas le supprimer du site : le jour ou il faut revenir en
-  // arriere, on veut un interrupteur, pas une intervention dans WordPress. Le
-  // client garde donc son formulaire dans la page, et ce script se contente de
-  // le cacher tant que le parcours Pinlane est actif.
-  // ON LE MASQUE AVEC UNE REGLE DE STYLE, PAS AVEC UN STYLE EN LIGNE.
-  //
-  // Un style en ligne se fait ecraser par le site lui-meme. Mesure sur le site
-  // de Fun Galaxy : Gravity Forms appelle `jQuery('#gform_wrapper_4').show()`
-  // quand il initialise sa logique conditionnelle, ce qui reecrit
-  // `style="display:block"` APRES notre passage. Le visiteur verrait alors les
-  // DEUX formulaires. Une regle `!important` posee dans une feuille de style
-  // gagne contre n importe quel style en ligne sans `!important`, donc contre
-  // tout ce que le site fera plus tard.
-  //
-  // Deuxieme benefice : la regle s applique meme si l element n existe pas
-  // encore au moment ou ce script tourne (script colle plus haut dans la page).
+  // Le masquage passe par une feuille de style et non par un style en ligne. Un
+  // style en ligne peut être réécrit par un script du site qui s'exécute après
+  // celui-ci ; une règle `!important` l'emporte, et s'applique même si l'élément
+  // n'existe pas encore au moment où ce script tourne.
   var replisSelecteur = script.getAttribute('data-fallback') || '';
   var masque = null;
-  // Un selecteur CSS valide ne contient ni accolade, ni arobase, ni chevron
-  // ouvrant : ce garde interdit qu une valeur de data-fallback sorte de la
-  // regle, ou de la balise de style qui la porte.
+  // Un sélecteur valide ne contient ni accolade, ni arobase, ni chevron ouvrant :
+  // ce contrôle empêche la valeur de sortir de la règle ou de la balise de style.
   if (replisSelecteur && !/[{}@<]/.test(replisSelecteur)) {
     try {
       document.querySelector(replisSelecteur);
@@ -128,26 +87,17 @@
       (document.head || document.documentElement).appendChild(masque);
     } catch (error) { masque = null; }
   }
+
   var height = parseInt(script.getAttribute('data-height'), 10);
-  // 480 : la hauteur du premier ecran (la question du jour) sur un telephone.
-  // Le premier message de hauteur arrive au chargement et remplace ce plancher ;
-  // un plancher plus haut faisait un saut de mise en page visible chez l hote.
+  // Hauteur de départ, remplacée dès le premier message de hauteur. Un plancher
+  // plus élevé produirait un saut de mise en page visible.
   var minHeight = Number.isFinite(height) && height > 0 ? height : 480;
 
   var target = origin + '/reserver?embed=1'
     + (center ? '&center=' + encodeURIComponent(center) : '');
 
-  // LA COULEUR DE FOND DU SITE, LUE CHEZ LUI.
-  // Un cadre dont le document declare `color-scheme: dark` n est PAS
-  // transparent : le navigateur peint son canevas avec sa propre couleur
-  // sombre (un gris ~#121212). Sur une page noire, ca donne exactement ce que
-  // Movsar a vu : « c est clairement un rectangle visible de fou ». Rendre nos
-  // fonds transparents n y change rien, le gris vient du canevas, pas du CSS.
-  // La seule couleur juste est celle du site, et lui seul la connait : on la
-  // lit ici, en remontant depuis l endroit ou le cadre va se poser jusqu au
-  // premier ancetre qui peint vraiment quelque chose.
-  // OU LE CADRE VA SE POSER. Calcule avant sa creation : c est de la que se lit
-  // la couleur de fond du site.
+  // Conteneur d'accueil, résolu avant la création du cadre : c'est de là qu'est
+  // lue la couleur de fond du site.
   function cibleDeMontage() {
     var selecteur = script.getAttribute('data-target') || '';
     if (selecteur) {
@@ -156,6 +106,9 @@
     return script.parentNode;
   }
 
+  // Premier ancêtre qui peint réellement un fond. Un document en `color-scheme:
+  // dark` n'a pas de canevas transparent : le navigateur le peint lui-même. Le
+  // cadre reprend donc la couleur du site pour se fondre dans la page.
   function fondDuSite(depart) {
     var noeud = depart;
     while (noeud && noeud.nodeType === 1) {
@@ -167,31 +120,22 @@
   }
 
   var frame = document.createElement('iframe');
-  // La couleur part dans l ADRESSE, pas dans un message : elle est ainsi connue
-  // AVANT la premiere peinture. Postee apres coup, le visiteur verrait le gris
-  // du navigateur clignoter une image avant de disparaitre.
+  // La couleur voyage dans l'adresse et non dans un message : elle est ainsi
+  // connue avant la première peinture.
   var fondHote = fondDuSite(cibleDeMontage());
   frame.src = target + (fondHote ? '&fond=' + encodeURIComponent(fondHote) : '');
   frame.title = 'Reservation en ligne';
   frame.loading = 'lazy';
   frame.style.cssText = 'display:block;width:100%;border:0;min-height:' + minHeight + 'px;';
-  // Quand le parcours change d ecran, le haut du cadre revient en vue ; la
-  // plupart des sites ont un en-tete colle en haut, qui recouvrirait la barre
-  // haute du parcours. Cette marge (80 px par defaut, data-scroll-margin pour
-  // l ajuster) laisse l en-tete du site au-dessus, pas par-dessus.
+  // Au changement d'écran, le haut du cadre revient en vue. Cette marge laisse
+  // la place à un en-tête fixe du site.
   var scrollMargin = parseInt(script.getAttribute('data-scroll-margin'), 10);
   frame.style.scrollMarginTop = (Number.isFinite(scrollMargin) && scrollMargin >= 0 ? scrollMargin : 80) + 'px';
 
-  // SUR TELEPHONE, LE FORMULAIRE PREND TOUTE LA LARGEUR DE L ECRAN.
-  // Mesure sur la vraie page du client : dans un ecran de 320 px, le cadre ne
-  // faisait que 244 px, pose a 38 px du bord, parce que le conteneur du site
-  // porte un rembourrage lateral prevu pour du texte. Le parcours se
-  // retrouvait dans une colonne etroite, au point qu il fallait balayer de
-  // gauche a droite pour tout voir. Movsar : « c est juste un espace dedie
-  // rectangulaire, non, faut que ce soit libre ».
-  // On ne touche a AUCUN element du site : on tire seulement NOTRE cadre par
-  // des marges negatives egales au rembourrage qu on vient de mesurer. Au-dela
-  // de 720 px la colonne du site a un sens, donc on la respecte.
+  // Sous 720 px, le cadre reprend la largeur de l'écran. Les conteneurs de
+  // contenu portent souvent un rembourrage latéral prévu pour du texte, qui
+  // réduit le formulaire à une colonne étroite. Aucun élément du site n'est
+  // modifié : seules les marges du cadre compensent ce rembourrage.
   function pleineLargeurTelephone() {
     frame.style.marginLeft = '0px';
     frame.style.marginRight = '0px';
@@ -201,24 +145,19 @@
     var boite = frame.getBoundingClientRect();
     var gauche = Math.round(boite.left);
     var droite = Math.round(document.documentElement.clientWidth - boite.right);
-    // Deja pleine largeur, ou deja plus large que l ecran : on ne touche pas.
+    // Déjà pleine largeur, ou déjà plus large que l'écran : on ne touche à rien.
     if (gauche <= 1 && droite <= 1) return;
     if (gauche < 0 || droite < 0) return;
     frame.style.marginLeft = '-' + gauche + 'px';
     frame.style.marginRight = '-' + droite + 'px';
-    // LARGEUR EXPLICITE, PAS `auto`. Une iframe est un element remplace : sans
-    // largeur declaree elle retombe sur sa taille intrinseque de 300 px, quelle
-    // que soit celle de son parent. Mesure : le cadre restait a 300 px sur tous
-    // les telephones, meme sur un ecran de 430.
+    // Largeur explicite : une iframe est un élément remplacé, sans largeur
+    // déclarée elle retombe sur sa taille intrinsèque de 300 px.
     frame.style.width = 'calc(100% + ' + (gauche + droite) + 'px)';
-    // Butee au pixel : les arrondis de sous-pixel du site peuvent faire
-    // depasser le cadre d un pixel, et un pixel suffit a faire glisser la page
-    // de gauche a droite sur un telephone.
+    // Butée au pixel : les arrondis sous-pixel du site peuvent faire dépasser le
+    // cadre, et un pixel suffit à faire défiler la page latéralement.
     frame.style.maxWidth = document.documentElement.clientWidth + 'px';
   }
-  // Le parcours a besoin d'ecrire son propre stockage (brouillon de
-  // reservation) et de poster le formulaire : same-origin sur SON origine, pas
-  // sur celle du client.
+
   frame.setAttribute('allow', 'payment');
 
   var fallback = document.createElement('noscript');
@@ -227,18 +166,8 @@
   link.textContent = 'Reserver en ligne';
   fallback.appendChild(link);
 
-  // OU LE CADRE SE MONTE.
-  //
-  // Par defaut : a l endroit exact ou le script est colle. C est le cas simple,
-  // et il ne bouge pas.
-  //
-  // Mais sur un site verrouille, l endroit ou l on PEUT coller un script n est
-  // pas l endroit ou le formulaire DOIT apparaitre. Releve sur le site de Fun
-  // Galaxy : le theme construit la section de reservation lui-meme, aucun champ
-  // libre n existe a cet endroit, et le compte dont on dispose n a pas les
-  // droits d installer quoi que ce soit. Le seul point d insertion disponible
-  // est ailleurs dans la page. Sans data-target, le parcours s afficherait la
-  // ou on a pu coller le script, pas la ou le visiteur le cherche.
+  // Montage dans le conteneur désigné par data-target, ou à défaut à l'endroit
+  // du script.
   var cible = cibleDeMontage();
   if (cible) {
     cible.appendChild(frame);
@@ -248,17 +177,9 @@
     script.parentNode.insertBefore(fallback, script);
   }
 
-  // Une fois monte, on sait enfin ou le site nous a places : c est la seule
-  // position qui permette de mesurer son rembourrage.
-  // CE QUI EST VISIBLE DU CADRE, DIT AU CADRE.
-  // Une iframe dont la hauteur suit le contenu NE DEFILE PAS : c est la page
-  // hote qui defile. Donc `position: fixed` a l interieur se colle au haut du
-  // CADRE, pas au haut de l ecran. Un message pose la se retrouve hors champ
-  // des que le visiteur est descendu un peu (Movsar : « il s affiche trop en
-  // haut, on le voit pas quand on est un peu plus bas »). Le cadre ne peut pas
-  // savoir tout seul ou il en est : seule la page hote le sait. On lui envoie
-  // donc, a chaque defilement, combien de pixels de lui-meme sont caches en
-  // haut et en bas, et il pose ses messages dans la bande qui reste visible.
+  // Une iframe dont la hauteur suit son contenu ne défile pas : c'est la page
+  // hôte qui défile. Le cadre ne peut donc pas savoir seul quelle partie de
+  // lui-même est visible. La page le lui indique à chaque défilement.
   var vueEnAttente = false;
   function posterZoneVisible() {
     vueEnAttente = false;
@@ -271,7 +192,7 @@
       cacheEnBas: Math.max(0, Math.round(boite.bottom - hauteurEcran)),
       hauteurEcran: Math.round(hauteurEcran),
     };
-    try { frame.contentWindow.postMessage(message, origin); } catch (error) { /* cadre parti */ }
+    try { frame.contentWindow.postMessage(message, origin); } catch (error) { /* cadre retire */ }
   }
   function planifierZoneVisible() {
     if (vueEnAttente) return;
@@ -290,16 +211,10 @@
     minuteurLargeur = setTimeout(pleineLargeurTelephone, 120);
   });
 
-  // L INTERRUPTEUR. Le cadre est monte TOUT DE SUITE, comme avant : dans la vie
-  // normale, faire attendre chaque visiteur le temps d une requete pour un
-  // reglage qui ne change jamais serait un mauvais marche. La verification part
-  // en parallele, et ne fait quelque chose que dans le seul cas ou il y a
-  // quelque chose a faire : Pinlane a demande de rendre l ancien formulaire.
-  //
-  // UNE ERREUR RESEAU NE REND PAS L ANCIEN FORMULAIRE. Revenir en arriere est
-  // une DECISION, jamais la consequence d une coupure passagere : sinon le site
-  // du client basculerait d un formulaire a l autre au gre du reseau, sans que
-  // personne ne l ait voulu ni ne le comprenne.
+  // Le cadre est monté immédiatement ; la lecture du réglage part en parallèle et
+  // n'agit que dans le cas où le formulaire d'origine doit être rétabli. Une
+  // erreur réseau ne rétablit jamais l'ancien formulaire : c'est un choix, pas la
+  // conséquence d'une coupure passagère.
   function rendreLAncienFormulaire() {
     try {
       if (frame && frame.parentNode) frame.parentNode.removeChild(frame);
@@ -317,14 +232,14 @@
         .then(function (etat) {
           if (etat && etat.actif === false) rendreLAncienFormulaire();
         })
-        .catch(function () { /* on garde le parcours en place */ });
+        .catch(function () { /* le module reste en place */ });
     }
-  } catch (error) { /* navigateur sans fetch : le parcours reste en place */ }
+  } catch (error) { /* fetch indisponible : le module reste en place */ }
 
   window.addEventListener('message', function (event) {
-    // Deux verifications, pas une : l'origine dit d'ou vient le message, la
-    // source dit QUEL cadre l'a envoye. Sans la seconde, n'importe quelle autre
-    // iframe servie par la meme origine pourrait redimensionner celle-ci.
+    // Deux contrôles : l'origine dit d'où vient le message, la source dit quel
+    // cadre l'a envoyé. Sans le second, une autre iframe de la même origine
+    // pourrait redimensionner celle-ci.
     if (event.origin !== origin) return;
     if (event.source !== frame.contentWindow) return;
     var data = event.data;
@@ -335,15 +250,14 @@
       return;
     }
     if (data.type === 'pinlane:booking') {
-      // UNE RESERVATION VIENT D ETRE PRISE DANS LE CADRE. Le site hote ne voit
-      // rien de l'iframe : c'est ce message qui porte la conversion a ses outils
-      // de mesure. Deux sorties, pour ne rien imposer : un push dataLayer (GTM :
-      // declencheur « evenement personnalise » pinlane_booking, GA4 et Pixel
-      // Meta s'y branchent sans toucher a ce fichier) et un CustomEvent DOM pour
-      // un site sans GTM. Le detail ne porte aucune donnee personnelle.
+      // Réservation confirmée. La page hôte ne voit rien de l'intérieur du cadre :
+      // c'est ce message qui porte la conversion à ses outils de mesure. Deux
+      // sorties, pour n'imposer aucun outillage : un push dataLayer (déclencheur
+      // « événement personnalisé » pinlane_booking dans GTM) et un événement DOM
+      // pour un site sans gestionnaire de balises. Aucune donnée personnelle.
       var detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
       try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'pinlane_booking', pinlane: detail }); } catch (error) { /* dataLayer inaccessible */ }
-      try { window.dispatchEvent(new CustomEvent('pinlane:booking', { detail: detail })); } catch (error) { /* navigateur sans CustomEvent */ }
+      try { window.dispatchEvent(new CustomEvent('pinlane:booking', { detail: detail })); } catch (error) { /* CustomEvent indisponible */ }
       return;
     }
     if (data.type !== 'pinlane:height') return;

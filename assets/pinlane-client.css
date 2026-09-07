@@ -7460,11 +7460,6 @@ body.client-mode #clientView .btn-primary.is-sealed,
      CTA de la page venue passait sous le pli. */
   body.client-mode .logo { height: 20px; }
   body.customer-mode.client-mode header { padding-top: 1px; padding-bottom: 1px; min-height: 0; }
-  /* EN IFRAME (embed-mode) : le site du gerant porte deja sa marque et ses
-     contacts, notre chrome ne fait que voler la hauteur du tunnel (Movsar :
-     « pense que ce sera encore plus petit, faudra integrer sur un site »). */
-  body.embed-mode.client-mode header { display: none; }
-  body.embed-mode #clientView .tunnel-underbar { display: none; }
   #clientView .client-contact-intro { display: none; }
   #clientView .tunnel-underbar { gap: var(--space-1); min-height: 0; padding: 2px 0; }
   /* Les contacts du centre : une rangee compacte qui plie, pas une pile de
@@ -8566,6 +8561,20 @@ body.client-mode #clientView .btn-primary.is-sealed,
   }
   #clientView .date-input-wrap input { padding-right: 44px; }
 }
+
+/* CHEZ LE CLIENT, ON NE REMET PAS NOTRE ENSEIGNE SUR LA SIENNE.
+   La page du centre porte deja son logo, son menu et ses contacts. Notre en-tete
+   y ajoute un DEUXIEME logo et un DEUXIEME menu a quelques centimetres, et ce
+   menu navigue DANS LE CADRE : cliquer « Activites » remplace le formulaire de
+   reservation par une autre page, a l interieur du bloc du client, sans que rien
+   ne l explique. C est un piege, pas une decoration.
+   Cette regle vivait dans la requete media telephone, ecrite pendant un travail
+   sur la hauteur des petits ecrans. Sa raison n a jamais dependu de la largeur :
+   mesure en production le 2026-09-07, l en-tete faisait 81 px a 1440 px et
+   101 px a 900 px dans le cadre, avec ses quatre liens actifs. Gate
+   embed-chrome-check. */
+body.embed-mode.client-mode header { display: none; }
+body.embed-mode #clientView .tunnel-underbar { display: none; }
 
 /* ==========================================================================
    MODE EMBARQUE (embed.js pose body.embed-mode) : LA HAUTEUR SUIT LE CONTENU.

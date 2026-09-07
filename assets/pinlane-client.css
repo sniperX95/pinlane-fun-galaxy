@@ -2304,10 +2304,10 @@ body.client-mode #clientView {
    une carte inclinee flotte, une carte posee n'a pas d'ombre (DESIGN.md §5). */
 #clientView .activity-card {
   position: relative;
-  /* La signature deborde volontairement du coin : elle est COUPEE par la
-     carte, ce qui la fait lire comme une matiere et pas comme un dessin pose
-     au milieu. */
-  overflow: hidden;
+  /* PAS d overflow:hidden ici, et rien ne deborde non plus. Une premiere
+     version faisait couper la carte, et le gate un-ecran l a lu pour ce que
+     c etait : un bloc qui fait disparaitre du contenu sans aucun signal. Le
+     recadrage de la signature vit desormais dans son SVG. */
   min-width: 0;
   min-height: 64px;
   border: 1px solid var(--line-strong);
@@ -2397,22 +2397,26 @@ body.client-mode #clientView {
    pour que le choix se voie jusque dans le fond de la carte. */
 #clientView .activity-sign {
   position: absolute;
-  right: -13px;
-  bottom: -15px;
-  display: flex;
+  right: 0;
+  bottom: 0;
+  width: 51px;
+  height: 49px;
+  /* Ni debordement, ni coupe, ni transformation : le recadrage et l inclinaison
+     vivent DANS le SVG (viewBox + <g rotate>). Tout ce qui deborde d une carte
+     remonte jusqu au corps de l etape, et en embarque ce corps est le defileur :
+     un debordement de 18 px suffisait a faire defiler le cadre au lieu de le
+     faire grandir. */
   color: var(--text);
   opacity: 0.06;
   pointer-events: none;
-  transform: rotate(-9deg);
-  transition-property: opacity, color, transform;
+  transition-property: opacity, color;
   transition-duration: 220ms;
   transition-timing-function: var(--ease-out-strong);
 }
-#clientView .activity-sign svg { width: 64px; height: 64px; }
+#clientView .activity-sign svg { display: block; width: 100%; height: 100%; }
 #clientView .activity-card.is-on .activity-sign {
   color: var(--accent);
   opacity: 0.17;
-  transform: rotate(-9deg) translate(-3px, -3px) scale(1.05);
 }
 #clientView .activity-card.is-off .activity-sign { opacity: 0.03; }
 @media (prefers-reduced-motion: reduce) {
@@ -7954,6 +7958,20 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* Le panneau est aplati ici (ni cadre ni fond) : la lumiere de bord n a plus
      de bord a eclairer, elle flotterait au-dessus du texte. */
   #clientView .anchor-row::before { content: none; }
+  /* L ECRAN CRENEAU DOIT TENIR SANS DEFILER (mesure du gate : 580 pour 573
+     disponibles a 390x664). L objet en tete de panneau vaut 26 px et il
+     imposait sa hauteur a la rangee, la pastille d heure 2 px de plus : les
+     deux ensemble faisaient deborder l etape. Ici l objet reste lisible a
+     18 px et la pastille reprend son ancien rembourrage. Vise 6 px de marge :
+     a 575 pour 575 autorises, le prochain ajout ferait rougir le gate. */
+  #clientView .anchor-row-icon { width: 18px; height: 18px; border-radius: 6px; }
+  #clientView .anchor-row-icon svg { width: 13px; height: 13px; }
+  #clientView .anchor-row-pick { padding-top: 1px; padding-bottom: 1px; }
+  /* La carte d activite fait 48 px de haut ici et son nom passe souvent sur
+     deux lignes : une signature de 64 px ne remplit plus un vide, elle se
+     glisse DERRIERE le texte. Elle rapetisse et s efface. */
+  #clientView .activity-sign { width: 42px; height: 40px; opacity: 0.04; }
+  #clientView .activity-card.is-on .activity-sign { opacity: 0.12; }
   #clientView .anchor-row-head strong { font-size: 13.5px; }
   #clientView .anchor-row-head small { font-size: 11.5px; }
   #clientView .anchor-row-pick { font-size: 12px; }

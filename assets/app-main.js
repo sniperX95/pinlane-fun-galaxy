@@ -4235,6 +4235,10 @@ let activityPickerSignature = '';
 // Icones en trait, un dessin par activite. Une grille de huit rectangles de
 // texte se lit comme un formulaire administratif ; la meme grille avec un objet
 // reconnaissable par carte se lit d'un coup d'oeil.
+// L objet servi quand le catalogue d un centre porte une activite qu on ne
+// connait pas : un plus cercle, jamais un vide.
+const ACTIVITY_ICON_FALLBACK = '<path d="M12 2.6a9.4 9.4 0 1 0 0 18.8 9.4 9.4 0 0 0 0-18.8Zm.9 4.6v3.9h3.9a.9.9 0 0 1 0 1.8h-3.9v3.9a.9.9 0 0 1-1.8 0v-3.9H7.2a.9.9 0 0 1 0-1.8h3.9V7.2a.9.9 0 0 1 1.8 0Z"/>';
+
 const ACTIVITY_ICONS = {
   // Boule de bowling : les trois trous en negatif, pas trois points poses.
   bowling: '<path d="M12 2.6a9.4 9.4 0 1 0 0 18.8 9.4 9.4 0 0 0 0-18.8Zm-2.7 5.1a1.35 1.35 0 1 1 0 2.7 1.35 1.35 0 0 1 0-2.7Zm3.9-1.1a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm-2.2 5.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z"/>',
@@ -4256,9 +4260,25 @@ const ACTIVITY_ICONS = {
   party_table: '<path d="M11.2 2.2c.6.7 1 1.3 1 1.9a1.2 1.2 0 0 1-2.4 0c0-.6.4-1.2 1-1.9a.3.3 0 0 1 .4 0Z"/><path d="M10.1 5.6h1.8v3.1h-1.8Z"/><path d="M6.6 8.7h8.8a2.4 2.4 0 0 1 2.4 2.4v1.6c-1 0-1.4.9-2.4.9s-1.4-.9-2.4-.9-1.4.9-2.4.9-1.4-.9-2.4-.9-1.4.9-2.4.9v-2.5a2.4 2.4 0 0 1 2.4-2.4Z"/><path d="M4.2 15.1c1 0 1.4-.9 2.4-.9s1.4.9 2.4.9 1.4-.9 2.4-.9 1.4.9 2.4.9 1.4-.9 2.4-.9 1.4.9 2.4.9v3.3a2.4 2.4 0 0 1-2.4 2.4H6.6a2.4 2.4 0 0 1-2.4-2.4Z" opacity=".75"/>',
 };
 
+// LA SIGNATURE SE RECADRE DANS LE SVG, JAMAIS PAR LA MISE EN PAGE (2026-09-07).
+// Deux tentatives ont ete refusees par les gates, chacune pour une bonne raison.
+// Un dessin surdimensionne pose en negatif avec overflow:hidden sur la carte :
+// la carte devient une boite qui COUPE son contenu, et le gate un-ecran le lit
+// comme de l information qui disparait sans signal. Le meme dessin avec
+// clip-path : ca masque la peinture mais ca ne stoppe PAS la propagation du
+// debordement, qui remonte jusqu au corps de l etape ; en embarque, ce corps est
+// le defileur, donc le cadre se mettait a defiler dans lui-meme au lieu de
+// grandir. La seule facon propre : le recadrage vit dans le viewBox et
+// l inclinaison dans un <g>, ou rien de tout cela n existe pour la mise en page.
+// Le viewBox 19.2 x 18.4 sur 24 montre le haut-gauche de l objet : c est
+// exactement le cadrage que donnait le debordement, sans un pixel de trop.
+function activitySignMarkup(activityId) {
+  const paths = ACTIVITY_ICONS[activityId] || ACTIVITY_ICON_FALLBACK;
+  return `<svg viewBox="0 0 19.2 18.4" fill="currentColor" aria-hidden="true"><g transform="rotate(-9 12 12)">${paths}</g></svg>`;
+}
+
 function activityIconMarkup(activityId) {
-  const paths = ACTIVITY_ICONS[activityId]
-    || '<path d="M12 2.6a9.4 9.4 0 1 0 0 18.8 9.4 9.4 0 0 0 0-18.8Zm.9 4.6v3.9h3.9a.9.9 0 0 1 0 1.8h-3.9v3.9a.9.9 0 0 1-1.8 0v-3.9H7.2a.9.9 0 0 1 0-1.8h3.9V7.2a.9.9 0 0 1 1.8 0Z"/>';
+  const paths = ACTIVITY_ICONS[activityId] || ACTIVITY_ICON_FALLBACK;
   return `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${paths}</svg>`;
 }
 
@@ -4304,7 +4324,7 @@ function buildActivityPicker(host, catalog) {
   const pax = Math.max(1, Number(state.booking.pax) || 1);
   const cards = catalog.map((activity, index) => `
       <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
-        <span class="activity-sign" aria-hidden="true">${activityIconMarkup(activity.id)}</span>
+        <span class="activity-sign" aria-hidden="true">${activitySignMarkup(activity.id)}</span>
         <button type="button" class="activity-toggle" aria-pressed="false" aria-label="${escapeHtml(activityToggleLabel(activity, { pax }))}" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
           <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
           <span class="activity-text">

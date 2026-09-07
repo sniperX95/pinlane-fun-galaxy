@@ -53,6 +53,7 @@
     "test:embed-chrome": "node scripts/embed-chrome-check.js",
     "test:branding-axes": "node scripts/branding-axes-check.js",
     "repetition:site-client": "node scripts/repetition-site-client.js",
+    "apercu:marque-client": "node scripts/apercu-marque-client.js",
     "test:daily-metrics": "node scripts/daily-metrics-check.js",
     "test:llm-client": "node scripts/llm-client-check.js",
     "test:email-agent": "node scripts/email-agent-check.js",

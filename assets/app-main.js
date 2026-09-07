@@ -25349,6 +25349,32 @@ document.addEventListener('keydown', (event) => {
     try { window.parent.postMessage({ type: type, detail: detail }, parentOrigin); } catch (error) { /* parent parti */ }
   };
 
+  // La bande visible, recue de l hote (voir embed.js). On ne fait confiance
+  // qu a l origine du parent : n importe quel site peut poster un message.
+  window.addEventListener('message', function (event) {
+    if (event.origin !== parentOrigin) return;
+    var d = event.data;
+    if (!d || d.type !== 'pinlane:vue') return;
+    var racine = document.documentElement;
+    racine.style.setProperty('--tunnel-vue-haut', Math.max(0, Number(d.cacheEnHaut) || 0) + 'px');
+    racine.style.setProperty('--tunnel-vue-bas', Math.max(0, Number(d.cacheEnBas) || 0) + 'px');
+    racine.style.setProperty('--tunnel-vue-ecran', Math.max(0, Number(d.hauteurEcran) || 0) + 'px');
+    // OU POSER UN MESSAGE FLOTTANT. Pas au ras du bord haut de la bande : les
+    // sites collent souvent un en-tete de 60 a 90 px, qui le recouvrirait. Pas
+    // au milieu non plus : c est exactement la ligne que le visiteur est en
+    // train de lire. Un quart dans la bande, avec un plancher de 64 px, tombe
+    // sous les en-tetes colles et loin des barres d action du bas.
+    var hautCache = Math.max(0, Number(d.cacheEnHaut) || 0);
+    var basCache = Math.max(0, Number(d.cacheEnBas) || 0);
+    var visible = Math.max(0, (document.body ? document.body.scrollHeight : 0) - hautCache - basCache);
+    var ideal = Math.max(72, Math.round(visible * 0.22));
+    // Et jamais si bas qu il sorte de la bande : quand il ne reste qu un
+    // ruban visible, le message se replie vers le haut plutot que de tomber
+    // dessous.
+    var plafond = Math.max(8, visible - 76);
+    racine.style.setProperty('--tunnel-vue-message', (hautCache + Math.min(ideal, plafond)) + 'px');
+  });
+
   var last = 0;
   function post() {
     var body = document.body;

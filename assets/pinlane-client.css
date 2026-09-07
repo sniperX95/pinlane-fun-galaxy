@@ -6178,6 +6178,15 @@ body.customer-mode .client-footer {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: center;
+  /* AU MILIEU, PAS EN HAUT (2026-09-07, Movsar : « les boutons sont gros avec
+     les heures affichees au-dessus de l interieur du bouton, ca fait cheap a
+     mort »). La grille etire toutes les cartes a la hauteur de la plus haute
+     (celle qui porte « 16 places · session partagee » sur deux lignes) ; dans
+     un conteneur flex qui passe a la ligne, la valeur par defaut d
+     align-content colle la ligne unique en haut de la boite etiree. C est
+     cette propriete qui manquait, une seule, et elle explique tout l ecart
+     entre le rendu et l intention. */
+  align-content: center;
   column-gap: 6px;
   row-gap: 2px;
   padding: 8px;
@@ -8843,6 +8852,39 @@ body.client-mode #clientView .btn-primary.is-sealed,
    mesure en production le 2026-09-07, l en-tete faisait 81 px a 1440 px et
    101 px a 900 px dans le cadre, avec ses quatre liens actifs. Gate
    embed-chrome-check. */
+/* LE PARCOURS N EST PAS UN ENCART POSE SUR LA PAGE (2026-09-07, Movsar :
+   « ya un fond un peu neon qui fait remarquer direct que le truc est ancre
+   dans un espace rectangulaire, c est moche, pas pro »). En autonome, le
+   halo de marque est le decor de la page. En EMBARQUE, la page appartient au
+   client : notre fond opaque dessinait un rectangle net au milieu du sien.
+   Il devient transparent, et ce sont les panneaux et les cartes qui portent
+   la matiere. Cette regle vient APRES les regles de decor et a la meme
+   specificite qu elles : c est l ordre du fichier qui tranche, volontairement. */
+/* `html` EN TETE, ET CE N EST PAS UN ORNEMENT. La regle de decor s ecrit
+   `html[data-tunnel-backdrop='aurora'] body.client-mode #clientView` : elle
+   compte DEUX selecteurs de type (html et body). Sans le `html` ici, la
+   presente regle n en comptait qu un et perdait, en silence. Mesure : fond
+   toujours peint (IMAGE, rgb(0,0,0)) apres la premiere tentative. A egalite,
+   c est l ordre du fichier qui tranche, et celle-ci vient apres. */
+html body.embed-mode.client-mode,
+html body.embed-mode.client-mode #clientView,
+html body.embed-mode.client-mode #clientView .tunnel-shell,
+html body.embed-mode.client-mode #clientView .tunnel-stage { background: transparent; }
+
+/* LES MESSAGES FLOTTANTS SUIVENT LA BANDE VISIBLE (2026-09-07, Movsar : « il
+   s affiche trop en haut, on le voit pas quand on est un peu plus bas »).
+   Un cadre dont la hauteur suit le contenu NE DEFILE PAS : c est la page hote
+   qui defile. `position: fixed` s y colle donc au haut du CADRE, pas au haut
+   de l ecran, et un message pose la sort du champ des que le visiteur
+   descend. L hote envoie combien de pixels du cadre sont caches en haut
+   (--tunnel-vue-haut, voir embed.js), et le message se pose juste sous ce
+   bord. Le max() garde l ancien comportement quand le haut du cadre est
+   visible : le message ne remonte jamais sur la barre d etapes. */
+body.embed-mode #alertBox,
+body.embed-mode .visit-ordre-annonce {
+  top: max(var(--tunnel-alert-top, 90px), var(--tunnel-vue-message, 90px));
+}
+
 body.embed-mode.client-mode header { display: none; }
 body.embed-mode #clientView .tunnel-underbar { display: none; }
 

@@ -148,6 +148,41 @@
   // l ajuster) laisse l en-tete du site au-dessus, pas par-dessus.
   var scrollMargin = parseInt(script.getAttribute('data-scroll-margin'), 10);
   frame.style.scrollMarginTop = (Number.isFinite(scrollMargin) && scrollMargin >= 0 ? scrollMargin : 80) + 'px';
+
+  // SUR TELEPHONE, LE FORMULAIRE PREND TOUTE LA LARGEUR DE L ECRAN.
+  // Mesure sur la vraie page du client : dans un ecran de 320 px, le cadre ne
+  // faisait que 244 px, pose a 38 px du bord, parce que le conteneur du site
+  // porte un rembourrage lateral prevu pour du texte. Le parcours se
+  // retrouvait dans une colonne etroite, au point qu il fallait balayer de
+  // gauche a droite pour tout voir. Movsar : « c est juste un espace dedie
+  // rectangulaire, non, faut que ce soit libre ».
+  // On ne touche a AUCUN element du site : on tire seulement NOTRE cadre par
+  // des marges negatives egales au rembourrage qu on vient de mesurer. Au-dela
+  // de 720 px la colonne du site a un sens, donc on la respecte.
+  function pleineLargeurTelephone() {
+    frame.style.marginLeft = '0px';
+    frame.style.marginRight = '0px';
+    frame.style.width = '100%';
+    frame.style.maxWidth = 'none';
+    if (!frame.parentNode || window.innerWidth > 720) return;
+    var boite = frame.getBoundingClientRect();
+    var gauche = Math.round(boite.left);
+    var droite = Math.round(document.documentElement.clientWidth - boite.right);
+    // Deja pleine largeur, ou deja plus large que l ecran : on ne touche pas.
+    if (gauche <= 1 && droite <= 1) return;
+    if (gauche < 0 || droite < 0) return;
+    frame.style.marginLeft = '-' + gauche + 'px';
+    frame.style.marginRight = '-' + droite + 'px';
+    // LARGEUR EXPLICITE, PAS `auto`. Une iframe est un element remplace : sans
+    // largeur declaree elle retombe sur sa taille intrinseque de 300 px, quelle
+    // que soit celle de son parent. Mesure : le cadre restait a 300 px sur tous
+    // les telephones, meme sur un ecran de 430.
+    frame.style.width = 'calc(100% + ' + (gauche + droite) + 'px)';
+    // Butee au pixel : les arrondis de sous-pixel du site peuvent faire
+    // depasser le cadre d un pixel, et un pixel suffit a faire glisser la page
+    // de gauche a droite sur un telephone.
+    frame.style.maxWidth = document.documentElement.clientWidth + 'px';
+  }
   // Le parcours a besoin d'ecrire son propre stockage (brouillon de
   // reservation) et de poster le formulaire : same-origin sur SON origine, pas
   // sur celle du client.
@@ -183,6 +218,48 @@
     script.parentNode.insertBefore(frame, script);
     script.parentNode.insertBefore(fallback, script);
   }
+
+  // Une fois monte, on sait enfin ou le site nous a places : c est la seule
+  // position qui permette de mesurer son rembourrage.
+  // CE QUI EST VISIBLE DU CADRE, DIT AU CADRE.
+  // Une iframe dont la hauteur suit le contenu NE DEFILE PAS : c est la page
+  // hote qui defile. Donc `position: fixed` a l interieur se colle au haut du
+  // CADRE, pas au haut de l ecran. Un message pose la se retrouve hors champ
+  // des que le visiteur est descendu un peu (Movsar : « il s affiche trop en
+  // haut, on le voit pas quand on est un peu plus bas »). Le cadre ne peut pas
+  // savoir tout seul ou il en est : seule la page hote le sait. On lui envoie
+  // donc, a chaque defilement, combien de pixels de lui-meme sont caches en
+  // haut et en bas, et il pose ses messages dans la bande qui reste visible.
+  var vueEnAttente = false;
+  function posterZoneVisible() {
+    vueEnAttente = false;
+    if (!frame.contentWindow) return;
+    var boite = frame.getBoundingClientRect();
+    var hauteurEcran = window.innerHeight || document.documentElement.clientHeight || 0;
+    var message = {
+      type: 'pinlane:vue',
+      cacheEnHaut: Math.max(0, Math.round(-boite.top)),
+      cacheEnBas: Math.max(0, Math.round(boite.bottom - hauteurEcran)),
+      hauteurEcran: Math.round(hauteurEcran),
+    };
+    try { frame.contentWindow.postMessage(message, origin); } catch (error) { /* cadre parti */ }
+  }
+  function planifierZoneVisible() {
+    if (vueEnAttente) return;
+    vueEnAttente = true;
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(posterZoneVisible);
+    else setTimeout(posterZoneVisible, 60);
+  }
+  window.addEventListener('scroll', planifierZoneVisible, { passive: true });
+  window.addEventListener('resize', planifierZoneVisible);
+  frame.addEventListener('load', posterZoneVisible);
+
+  pleineLargeurTelephone();
+  var minuteurLargeur = null;
+  window.addEventListener('resize', function () {
+    if (minuteurLargeur) clearTimeout(minuteurLargeur);
+    minuteurLargeur = setTimeout(pleineLargeurTelephone, 120);
+  });
 
   // L INTERRUPTEUR. Le cadre est monte TOUT DE SUITE, comme avant : dans la vie
   // normale, faire attendre chaque visiteur le temps d une requete pour un
@@ -244,6 +321,8 @@
     var next = Number(data.height);
     if (!Number.isFinite(next) || next < 200 || next > 20000) return;
     frame.style.height = Math.ceil(next) + 'px';
+    // La hauteur change, donc la part visible aussi.
+    planifierZoneVisible();
     frame.style.minHeight = '0';
   }, false);
 }());

@@ -46,7 +46,7 @@ qui ne se laissent pas faire :
 |---|---|
 | `data-center` | Le centre concerné : `libramont`, `gembloux`, `ciney`. C'est lui qui décide des horaires, des formules et des tarifs affichés. |
 | `data-fallback` | Le sélecteur relevé à l'étape 1. C'est l'ancien formulaire : il **reste dans la page**, masqué, et il sera rendu si on coupe. Le masquage résiste aux scripts du site : Gravity Forms, par exemple, réaffiche son propre formulaire quand il initialise sa logique conditionnelle, donc après nous. |
-| `data-target` | Facultatif, et seulement si le script ne peut pas être collé à l'endroit voulu. Le sélecteur du bloc **dans lequel** afficher le parcours. Sans lui, le parcours s'affiche là où le script est collé. |
+| `data-target` | Facultatif, et seulement si le script ne peut pas être collé à l'endroit voulu. Le sélecteur du bloc **dans lequel** afficher le parcours. Sans lui, le parcours s'affiche là où le script est collé. Il vise en général le parent de ce que masque `data-fallback`, pour que le parcours prenne exactement sa place. |
 | `data-center-key` | Sur un site **multi-centres qui affiche le même bloc à tout le monde**, la clé que le site utilise déjà pour retenir le centre choisi par le visiteur (stockage local, puis cookie). Le parcours suit ce choix, et `data-center` sert de défaut quand rien n'a été choisi. Sans cet attribut, un visiteur de Gembloux se verrait proposer le planning de Libramont : mauvais horaires, mauvais tarifs, et personne ne s'en apercevrait avant une réservation impossible à honorer. **À ne pas mettre** quand le site sert déjà un bloc différent par centre : sa décision à lui fait foi. |
 | `data-scroll-margin` | Facultatif. Hauteur en pixels de l'en-tête collé du site (80 par défaut), pour que la barre du parcours ne passe pas dessous. |
 
@@ -65,9 +65,17 @@ formulaire :
 ```html
 <script src="https://app.pinlane.be/embed.js"
         data-center="libramont"
-        data-target=".booking__form"
-        data-fallback="#gform_wrapper_4"></script>
+        data-target=".booking .container"
+        data-fallback=".booking__container"></script>
 ```
+
+**Viser large avec `data-fallback`.** Le réflexe est de masquer le formulaire
+lui-même ; il vaut mieux masquer le **bloc entier** qui le contient, illustration
+et décor compris. Deux raisons. La première est visuelle : sinon le parcours
+s'affiche à l'intérieur du cadre décoré du site, avec son titre et son image
+autour, au lieu de le remplacer. La seconde est solide : masquer un **ancêtre**
+bat toute tentative du site de réafficher son formulaire, quel que soit le
+script qui la fait et quand.
 
 C'est souvent la **meilleure** solution, et pas seulement un pis-aller : le
 script suit le formulaire sur **toutes** les pages où le site l'affiche, sans

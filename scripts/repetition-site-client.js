@@ -46,15 +46,25 @@ const SITES = {
   libramont: {
     page: 'https://fungalaxy.be/contact/',
     cookie: { name: 'guest_selection', value: 'Libramont', domain: 'fungalaxy.be', path: '/' },
-    formulaire: '#gform_wrapper_4',
-    bloc: '.booking__form',
+    // CE QU ON MASQUE : le bloc degrade ENTIER (illustration, texte, cadre neon
+    // et formulaire). Movsar, le 2026-09-07 : « il faut que ca remplace vraiment
+    // tout le bloc bleu turquoise neon ».
+    masque: '.booking__container',
+    // CE QUE LE SITE REMONTRE TOUT SEUL, plus bas dans l arbre : Gravity Forms
+    // reaffiche SON enveloppe a l initialisation de sa logique conditionnelle.
+    // Masquer un ANCETRE bat cette tentative, et c est ce qui se verifie.
+    revele: '#gform_wrapper_4',
+    bloc: '.booking .container',
+    marqueurDuCentre: 'gform_wrapper_4',
     centre: 'libramont',
   },
   gembloux: {
     page: 'https://fungalaxy.be/contact/',
     cookie: { name: 'guest_selection', value: 'Gembloux', domain: 'fungalaxy.be', path: '/' },
-    formulaire: '#gform_wrapper_1',
-    bloc: '.booking__form',
+    masque: '.booking__container',
+    revele: '#gform_wrapper_1',
+    bloc: '.booking .container',
+    marqueurDuCentre: 'gform_wrapper_1',
     centre: 'gembloux',
   },
 };
@@ -77,7 +87,7 @@ function ok(cond, label, detail) {
 // HTML : si cette chaine change, la repetition et l installation divergent.
 function blocAColler(site) {
   return '<script src="https://app.pinlane.be/embed.js" data-center="' + site.centre
-    + '" data-target="' + site.bloc + '" data-fallback="' + site.formulaire + '"></' + 'script>';
+    + '" data-target="' + site.bloc + '" data-fallback="' + site.masque + '"></' + 'script>';
 }
 
 // L INJECTION SE FAIT LA OU LE CHAMP HTML ATTERRIRA : dans la liste des champs
@@ -99,7 +109,8 @@ function poserLeBloc(html, site) {
 // CE QU ON LIT SUR LA PAGE. Une seule lecture, pour que toutes les assertions
 // parlent du meme instant.
 const LIRE = function (args) {
-  const anc = document.querySelector(args.formulaire);
+  const anc = document.querySelector(args.masque);
+  const rev = document.querySelector(args.revele);
   const conteneur = document.querySelector(args.bloc);
   const cadreDedans = conteneur ? conteneur.querySelector('iframe[src*="/reserver"]') : null;
   const cadreOu = document.querySelector('iframe[src*="/reserver"]');
@@ -115,6 +126,12 @@ const LIRE = function (args) {
     ancienStyleEnLigne: anc ? (anc.style.display || '') : '',
     ancienAffichage: st ? st.display : '',
     ancienVisible: Boolean(anc) && st.display !== 'none' && anc.offsetParent !== null,
+    // L element que le site remontre : son style EN LIGNE dit ce que le site a
+    // TENTE, sa hauteur rendue dit ce que le visiteur voit vraiment.
+    revelePresent: Boolean(rev),
+    releveStyleEnLigne: rev ? (rev.style.display || '') : '',
+    releveHauteurRendue: rev ? Math.round(rev.getBoundingClientRect().height) : -1,
+    releveVisible: Boolean(rev) && rev.offsetParent !== null && rev.getBoundingClientRect().height > 40,
     cadreDansLeBloc: Boolean(cadreDedans),
     cadreQuelquePart: Boolean(cadreOu),
     cadreParent: cadreOu && cadreOu.parentNode ? (cadreOu.parentNode.className || cadreOu.parentNode.tagName) : '',
@@ -137,8 +154,8 @@ async function main() {
   const reponse = await fetch(SITE.page, { headers: { Cookie: SITE.cookie.name + '=' + SITE.cookie.value } });
   ok(reponse.ok, '[0] la page du client repond', 'HTTP ' + reponse.status);
   const brut = await reponse.text();
-  ok(brut.indexOf(SITE.formulaire.slice(1)) !== -1,
-    '[0] et elle sert bien ' + SITE.formulaire + ' pour ce centre');
+  ok(brut.indexOf(SITE.marqueurDuCentre) !== -1,
+    '[0] et elle sert bien le formulaire de ce centre', SITE.marqueurDuCentre);
 
   const pose = poserLeBloc(brut, SITE);
   if (!ok(pose.pose, '[0] MONTAGE : le bloc a ete pose dans la liste des champs du formulaire')) {
@@ -196,7 +213,7 @@ async function main() {
   // seul endroit ou il y a quelque chose a juger, et une capture du hero ne
   // prouverait rien a personne.
   async function capturerLaSection(page, nom) {
-    const cible = page.locator('.booking__container').first();
+    const cible = page.locator('.booking.section, section.booking').first();
     try {
       await cible.scrollIntoViewIfNeeded({ timeout: 5000 });
       await page.waitForTimeout(400);
@@ -212,11 +229,11 @@ async function main() {
     console.log('[A] UN SEUL FORMULAIRE, ET C EST LE NOTRE');
     // =====================================================================
     const s1 = await ouvrir({});
-    const vu = await s1.page.evaluate(LIRE, { formulaire: SITE.formulaire, bloc: SITE.bloc });
+    const vu = await s1.page.evaluate(LIRE, { masque: SITE.masque, revele: SITE.revele, bloc: SITE.bloc });
     ok(vu.cadreDansLeBloc,
       '[A] le parcours Pinlane est monte dans ' + SITE.bloc, 'parent ' + vu.cadreParent);
     ok(vu.ancienPresent && !vu.ancienVisible,
-      '[A] et l ancien formulaire est toujours dans la page, mais invisible',
+      '[A] et le bloc d origine est toujours dans la page, mais invisible',
       'present=' + vu.ancienPresent + ' affichage=' + vu.ancienAffichage);
     ok(vu.formulairesVisibles === 0,
       '[A] aucun formulaire du site ne reste a l ecran a cote du notre',
@@ -228,11 +245,32 @@ async function main() {
     // =====================================================================
     // MONTAGE : Gravity Forms a REELLEMENT tente de reafficher le formulaire.
     // Sans cette assertion, un vert ne prouverait que l absence de tentative.
-    ok(vu.ancienStyleEnLigne === 'block',
-      '[B] MONTAGE : Gravity Forms a bien remis le formulaire en display:block apres nous',
-      'style en ligne « ' + (vu.ancienStyleEnLigne || '(vide)') + ' »');
-    ok(vu.ancienAffichage === 'none',
-      '[B] et il reste invisible : la regle !important tient sur la vraie page');
+    // ON NE SE CONTENTE PAS D ESPERER QUE LE SITE ESSAIE : ON LE FAIT ESSAYER.
+    //
+    // Gravity Forms reaffiche son enveloppe par jQuery('#gform_wrapper_N').show()
+    // quand il initialise sa logique conditionnelle. Selon la version, le
+    // moment et l etat de la page, il le fait ou ne le fait pas : un gate qui
+    // ATTEND cette tentative rendrait un vert le jour ou elle n a simplement pas
+    // eu lieu, ce qui ne prouverait rien. On rejoue donc le geste nous-memes,
+    // exactement comme jQuery le fait (style en ligne display:block), et on
+    // regarde ce que le visiteur verrait. C est la version adverse de la meme
+    // question, et elle a une reponse tous les jours.
+    const forceLeSite = await s1.page.evaluate(function (sel) {
+      const el = document.querySelector(sel);
+      if (!el) return { pose: false };
+      el.style.display = 'block';
+      return { pose: true, styleEnLigne: el.style.display };
+    }, SITE.revele);
+    await s1.page.waitForTimeout(300);
+    const apresForce = await s1.page.evaluate(LIRE, { masque: SITE.masque, revele: SITE.revele, bloc: SITE.bloc });
+    ok(forceLeSite.pose && apresForce.releveStyleEnLigne === 'block',
+      '[B] MONTAGE : le site remet SON formulaire en display:block, comme Gravity Forms le fait',
+      'style en ligne « ' + (apresForce.releveStyleEnLigne || '(vide)') + ' »');
+    ok(apresForce.releveHauteurRendue === 0 && apresForce.releveVisible === false,
+      '[B] et rien n en apparait : masquer l ANCETRE bat la tentative du site',
+      'hauteur rendue ' + apresForce.releveHauteurRendue + 'px');
+    ok(apresForce.cadreDansLeBloc === true,
+      '[B] et notre parcours, lui, est toujours la');
 
     // =====================================================================
     console.log('');
@@ -269,7 +307,7 @@ async function main() {
     console.log('[D] SUR TELEPHONE AUSSI');
     // =====================================================================
     const s2 = await ouvrir({ largeur: 390, hauteur: 844 });
-    const surMobile = await s2.page.evaluate(LIRE, { formulaire: SITE.formulaire, bloc: SITE.bloc });
+    const surMobile = await s2.page.evaluate(LIRE, { masque: SITE.masque, revele: SITE.revele, bloc: SITE.bloc });
     ok(surMobile.cadreDansLeBloc && surMobile.ancienAffichage === 'none',
       '[D] meme resultat a 390px : un seul formulaire, le notre');
     ok(surMobile.debordementPage <= 2,
@@ -282,14 +320,14 @@ async function main() {
     console.log('[E] L INTERRUPTEUR REND LEUR FORMULAIRE, SUR LEUR VRAIE PAGE');
     // =====================================================================
     const s3 = await ouvrir({ interrupteurCoupe: true });
-    const coupe = await s3.page.evaluate(LIRE, { formulaire: SITE.formulaire, bloc: SITE.bloc });
+    const coupe = await s3.page.evaluate(LIRE, { masque: SITE.masque, revele: SITE.revele, bloc: SITE.bloc });
     ok(coupe.cadreQuelquePart === false,
       '[E] coupe : le cadre Pinlane a disparu de la page');
     ok(coupe.ancienVisible === true,
       '[E] et le formulaire du client est de retour a l ecran', 'affichage ' + coupe.ancienAffichage);
-    ok(coupe.formulairesVisibles >= 1,
+    ok(coupe.formulairesVisibles >= 1 && coupe.releveVisible === true,
       '[E] il est reellement utilisable, pas seulement present dans le code',
-      coupe.formulairesVisibles + ' formulaire(s) visible(s)');
+      coupe.formulairesVisibles + ' formulaire(s) visible(s), enveloppe ' + coupe.releveHauteurRendue + 'px');
     await capturerLaSection(s3.page, SITE.centre + '-coupe.png');
     await s3.context.close();
 

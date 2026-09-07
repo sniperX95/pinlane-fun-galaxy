@@ -536,8 +536,14 @@ const MESURER_REORDRE = () => new Promise((resolve) => {
     const li = lignes().find((x) => idDe(x) === 'bowling');
     if (li) echantillons.push(!identite(getComputedStyle(li).transform));
     if (performance.now() - depart < 900) { requestAnimationFrame(sonde); return; }
+    const annonce = document.querySelector('.visit-ordre-annonce');
     resolve({
       heure: chip.dataset.time,
+      // La phrase qui NOMME le nouvel ordre : le deplacement seul demandait au
+      // client de deviner ce qui venait de se passer.
+      annonce: annonce ? annonce.textContent.trim() : '',
+      hauteurAnnonce: annonce ? Math.round(annonce.getBoundingClientRect().height) : 0,
+      debordement: (() => { const p = document.querySelector('#slotList .formula-anchor-picker'); return p ? p.scrollHeight - p.clientHeight : -1; })(),
       ordreAvant, ordreApres: ordre(),
       images: echantillons.length,
       enMouvement: echantillons.filter(Boolean).length,
@@ -569,6 +575,17 @@ async function checkReorderMotion(page) {
   ok(mesure.enMouvement >= 6,
     `la ligne deplacee porte une transformation pendant ${mesure.enMouvement} image(s) : le trajet est joue`);
   ok(mesure.finImmobile, 'et elle finit immobile : rien ne reste accroche apres le trajet');
+  // LA PHRASE DIT L ORDRE, dans l ordre. Un texte qui nommerait les activites
+  // dans le desordre serait pire que pas de texte du tout.
+  const noms = { bowling: 'Bowling', laser_game: 'Laser Game' };
+  const attendus = mesure.ordreApres.map((id) => noms[id] || id);
+  const places = attendus.map((nom) => mesure.annonce.indexOf(nom));
+  ok(Boolean(mesure.annonce) && places.every((p) => p >= 0),
+    'une phrase annonce le nouvel ordre pendant le trajet : "' + mesure.annonce + '"');
+  ok(places.every((p, i) => i === 0 || p > places[i - 1]),
+    'et elle nomme les activites DANS le nouvel ordre (' + attendus.join(' puis ') + ')');
+  ok(mesure.debordement <= 0,
+    'elle ne prend aucune hauteur : le composeur ne deborde pas (' + mesure.debordement + ' px)');
   return mesure;
 }
 

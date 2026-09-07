@@ -6339,8 +6339,14 @@ function renderFormulaVisitSummary(slot, formule) {
   const blocks = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
   const bowlingBlock = blocks.find(block => block.resourceType === 'bowling_lane');
   const tableBlock = blocks.find(block => block.resourceType === 'party_table');
-  const appointments = [];
-  if (bowlingBlock?.startTime) appointments.push(`Bowling ${bowlingBlock.startTime}`);
+  // L ORDRE DU RESUME EST CELUI DE LA VISITE, PAS CELUI DU CATALOGUE
+  // (2026-09-07, Movsar : « cite simplement, a chaque fois, les activites qui
+  // sont en premier »). Le bowling etait pousse en tete quoi qu il arrive :
+  // avec un bowling a 14h30 et un laser a 14h, la ligne annoncait
+  // « Bowling 14:30 · Laser Game 14:00 », soit l inverse de ce que le client
+  // va vivre, juste sous un fil qui, lui, affichait le bon ordre.
+  const rendezVous = [];
+  if (bowlingBlock?.startTime) rendezVous.push({ heure: bowlingBlock.startTime, texte: `Bowling ${bowlingBlock.startTime}` });
   // CHAQUE PARTIE POSEE EST UN RENDEZ-VOUS. Le resume n'en montrait qu'une :
   // un client qui place sa partie 1 a 15h et sa partie 3 a 19h validait un
   // recapitulatif qui taisait son deuxieme choix.
@@ -6352,14 +6358,14 @@ function renderFormulaVisitSummary(slot, formule) {
     .map(([, block]) => block);
   laserParts.forEach((block, index) => {
     const rang = laserParts.length > 1 ? ` (partie ${Number(block.countIndex || index + 1)})` : '';
-    appointments.push(`Laser Game ${block.startTime}${rang}`);
+    rendezVous.push({ heure: block.startTime, texte: `Laser Game ${block.startTime}${rang}` });
   });
+  // Les heures sont en HH:MM : l ordre alphabetique EST l ordre chronologique.
+  rendezVous.sort((gauche, droite) => String(gauche.heure).localeCompare(String(droite.heure)));
+  const appointments = rendezVous.map((item) => item.texte);
   const arrivalTime = plan.arrivalTime || '';
   const arrivalMinutes = Number(plan.arrivalMinutes || 10);
-  const passLabels = (formulaAnchorData?.freePass || []).map(item => item.label);
-  if (!passLabels.length && formule) {
-    passLabels.push(...getFormulaFreePassIds(formule).map(id => ACTIVITY_LABELS[id] || id));
-  }
+
   const remainingLaser = Number(plan.laserPassPlan?.remainingGames || 0);
   const rows = [];
   if (appointments.length) {
@@ -6371,9 +6377,13 @@ function renderFormulaVisitSummary(slot, formule) {
   if (tableBlock || formulaAnchorData?.hasTable || (formule && formulaHasPartyTable(formule))) {
     rows.push(`<div class="visit-line"><span class="visit-tag table">Table</span><span>Table prête à votre arrivée${arrivalTime ? ` (${escapeHtml(arrivalTime)})` : ''}</span></div>`);
   }
-  if (passLabels.length) {
-    rows.push(`<div class="visit-line"><span class="visit-tag free">À votre rythme</span><span>${passLabels.map(escapeHtml).join(' · ')}</span></div>`);
-  }
+  // PAS DE LIGNE « A votre rythme » ICI (2026-09-07, Movsar : « tu te repetes
+  // a chaque fois [...] ca revient a le dire deux fois, c est inutile, ca gene
+  // en plus »). Les deux appelants de ce resume rendent DEJA le bloc
+  // renderFormulaFreePassBlock juste au-dessus, qui dit la meme chose en plus
+  // complet (« Sans horaire · Le reste de votre visite, a votre rythme sur
+  // place · Arcades regle sur place »). Une information qui a deja sa place
+  // n en prend pas une seconde.
   if (remainingLaser > 0) {
     rows.push(`<div class="visit-line"><span class="visit-tag laser">Laser</span><span>${remainingLaser} partie${remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe</span></div>`);
   }
@@ -6595,6 +6605,52 @@ function releverPositionsFilVisite() {
   return positions;
 }
 
+// L ANNONCE DU NOUVEL ORDRE (2026-09-07). Movsar, sur la premiere version du
+// FLIP : « tu m as fait une animation, mais on ne comprend pas, elle est trop
+// rapide [...] mets un petit texte vraiment en motion design, un truc tres bref
+// qui dit OK, laser game en premier ». Le deplacement seul demande au client de
+// deviner ce qui vient de se passer ; la phrase le lui DIT, pendant que ca se
+// passe. Elle est en position absolue : elle ne prend aucune hauteur, donc elle
+// ne peut pas faire respirer un cadre embarque.
+function nommerLesEtapesDuFil() {
+  const noms = [];
+  document.querySelectorAll('#slotList .visit-rail-step').forEach((ligne) => {
+    const titre = ligne.querySelector('.anchor-row-head strong');
+    const nom = titre ? titre.textContent.trim() : '';
+    // Trois parties de laser portent trois fois le meme nom : on ne repete pas.
+    if (nom && nom !== noms[noms.length - 1]) noms.push(nom);
+  });
+  return noms;
+}
+
+function annoncerNouvelOrdre(noms) {
+  if (!noms || noms.length < 2) return;
+  // ELLE VIT DANS LE BODY, PAS DANS LE PICKER. Un clic d heure declenche DEUX
+  // rendus : celui d avant la reponse serveur, puis celui d apres. Le second
+  // remplace tout le contenu de #slotList, donc il effacait la phrase au bout
+  // de quelques centaines de millisecondes, exactement quand le client
+  // commencait a la lire. Mesure : absente 420 ms apres le clic.
+  const hote = document.body;
+  const precedente = hote.querySelector('.visit-ordre-annonce');
+  if (precedente) precedente.remove();
+  const texte = noms.length === 2
+    ? noms[0] + " d’abord, puis " + noms[1]
+    : 'Nouvel ordre : ' + noms.join(', puis ');
+  const bulle = document.createElement('div');
+  bulle.className = 'visit-ordre-annonce';
+  // role=status : la phrase est lue par les lecteurs d ecran, qui ne voient
+  // pas le deplacement.
+  bulle.setAttribute('role', 'status');
+  // Elle se pose sous la barre d etapes, a la meme hauteur mesuree que les
+  // alertes : le seul endroit du cadre qui ne cache rien d utile.
+  if (typeof poserPlafondAlerte === 'function') poserPlafondAlerte();
+  bulle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6.5 9.4 17.1l-5.4-5.4"/></svg><span></span>';
+  bulle.querySelector('span').textContent = texte;
+  hote.appendChild(bulle);
+  const sortie = setTimeout(() => bulle.classList.add('is-leaving'), 1400);
+  setTimeout(() => { clearTimeout(sortie); bulle.remove(); }, 1780);
+}
+
 function jouerFlipFilVisite(avant) {
   if (!avant || !avant.size) return;
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -6618,6 +6674,15 @@ function jouerFlipFilVisite(avant) {
     gestes.push([ligne, dx, dy]);
   });
   if (!gestes.length) return;
+  // L ORDRE DES ACTIVITES a-t-il change, ou est-ce une partie de laser qui a
+  // bouge dans sa propre activite ? Seul le premier cas merite une phrase.
+  const suiteAvant = [...avant.keys()].map((cle) => cle.split('#')[0]).filter((id, i, tous) => id !== tous[i - 1]);
+  const suiteApres = [];
+  document.querySelectorAll('#slotList .visit-rail-step').forEach((ligne) => {
+    const row = ligne.querySelector('.anchor-row[data-anchor]');
+    if (row && row.dataset.anchor !== suiteApres[suiteApres.length - 1]) suiteApres.push(row.dataset.anchor);
+  });
+  if (suiteAvant.join('>') !== suiteApres.join('>')) annoncerNouvelOrdre(nommerLesEtapesDuFil());
   for (const [ligne, dx, dy] of gestes) {
     ligne.style.transition = 'none';
     ligne.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
@@ -6636,7 +6701,9 @@ function jouerFlipFilVisite(avant) {
   void gestes[0][0].offsetWidth;
   requestAnimationFrame(() => {
     for (const [ligne] of gestes) {
-      ligne.style.transition = 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1)';
+      // 620 ms et non 420 : « on ne comprend pas, elle est trop rapide ». Une
+      // colonne qui traverse 500 px en 420 ms se lit comme un saut.
+      ligne.style.transition = 'transform 620ms cubic-bezier(0.16, 1, 0.3, 1)';
       ligne.style.transform = 'translate(0, 0)';
     }
     setTimeout(() => {
@@ -6646,7 +6713,7 @@ function jouerFlipFilVisite(avant) {
         ligne.style.removeProperty('position');
         ligne.style.removeProperty('z-index');
       }
-    }, 470);
+    }, 680);
   });
 }
 

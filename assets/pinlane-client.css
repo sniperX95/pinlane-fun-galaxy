@@ -2406,19 +2406,22 @@ body.client-mode #clientView {
      remonte jusqu au corps de l etape, et en embarque ce corps est le defileur :
      un debordement de 18 px suffisait a faire defiler le cadre au lieu de le
      faire grandir. */
-  color: var(--text);
-  opacity: 0.06;
+  /* L ALPHA EST DANS LA COULEUR, PAS DANS opacity. Mesure : avec
+     `opacity: 0.06`, le glissement de l etape 1 vers l etape 2 a 390 px
+     perdait UNE image (33,2 ms) contre ZERO avant la signature. Un element
+     a opacite < 1 forme un groupe de composition que le navigateur doit
+     rasteriser a part, huit fois, pendant que la piste glisse. La meme
+     teinte ecrite dans la couleur ne coute rien de plus qu un remplissage.
+     Rendu identique au pixel. */
+  color: color-mix(in srgb, var(--text) 6%, transparent);
   pointer-events: none;
-  transition-property: opacity, color;
+  transition-property: color;
   transition-duration: 220ms;
   transition-timing-function: var(--ease-out-strong);
 }
 #clientView .activity-sign svg { display: block; width: 100%; height: 100%; }
-#clientView .activity-card.is-on .activity-sign {
-  color: var(--accent);
-  opacity: 0.17;
-}
-#clientView .activity-card.is-off .activity-sign { opacity: 0.03; }
+#clientView .activity-card.is-on .activity-sign { color: color-mix(in srgb, var(--accent) 17%, transparent); }
+#clientView .activity-card.is-off .activity-sign { color: color-mix(in srgb, var(--text) 3%, transparent); }
 @media (prefers-reduced-motion: reduce) {
   #clientView .activity-sign { transition: none; }
 }
@@ -5830,6 +5833,69 @@ body.customer-mode .client-footer {
 }
 #clientView .anchor-row-icon svg { width: 17px; height: 17px; }
 
+/* L ANNONCE DU NOUVEL ORDRE (2026-09-07). Movsar : « mets un petit texte
+   vraiment en motion design super style qui gache pas, qui fait un petit flou,
+   un truc tres bref qui dit OK, laser game en premier ». Elle entre en se
+   defloutant, tient 1,4 s, repart en se refloutant. Elle est en position
+   ABSOLUE dans le composeur : elle ne prend aucune hauteur, donc elle ne peut
+   pas faire respirer un cadre embarque, et sa largeur est bornee pour ne
+   jamais pousser la page de cote. */
+/* Fixe, et posee dans le body : le picker est reconstruit deux fois par clic
+   d heure, il aurait efface la phrase en pleine lecture (mesure : absente
+   420 ms apres le clic). Fixe veut aussi dire hors flux : elle ne prend
+   aucune hauteur, dans un cadre embarque ou la hauteur du contenu EST celle
+   de la fenetre. z-index sous celui des alertes : un vrai message d erreur
+   passe devant une confirmation. */
+.visit-ordre-annonce {
+  position: fixed;
+  left: 50%;
+  top: var(--tunnel-alert-top, calc(var(--tunnel-header-h, 56px) + 10px));
+  z-index: 59;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: min(92vw, 520px);
+  padding: 9px 18px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(138deg, var(--accent), var(--tenant-glow, var(--accent)));
+  color: var(--accent-contrast);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+  pointer-events: none;
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 34%, transparent);
+  animation: visite-ordre-entre 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.visit-ordre-annonce svg { width: 15px; height: 15px; flex: none; }
+
+/* Chaque keyframe ecrit son etat final : une image de fin implicite retombe
+   sur la valeur calculee et l element se repose ailleurs qu ou on croit. */
+@keyframes visite-ordre-entre {
+  from { opacity: 0; filter: blur(10px); transform: translate(-50%, -10px) scale(0.96); }
+  to { opacity: 1; filter: blur(0); transform: translate(-50%, 0) scale(1); }
+}
+@keyframes visite-ordre-sort {
+  from { opacity: 1; filter: blur(0); transform: translate(-50%, 0) scale(1); }
+  to { opacity: 0; filter: blur(9px); transform: translate(-50%, -8px) scale(0.98); }
+}
+.visit-ordre-annonce.is-leaving {
+  animation: visite-ordre-sort 340ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* La phrase reste : c est de l information, pas de la decoration. Seuls le
+     flou et le deplacement disparaissent. */
+  .visit-ordre-annonce,
+  .visit-ordre-annonce.is-leaving {
+    animation: none;
+    filter: none;
+    transform: translate(-50%, 0);
+  }
+}
+
 /* L'heure retenue se lit dans le titre de l'étape : le client sait ce qu'il a
    choisi sans redescendre dans la grille. */
 #clientView .anchor-row-pick {
@@ -7970,8 +8036,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* La carte d activite fait 48 px de haut ici et son nom passe souvent sur
      deux lignes : une signature de 64 px ne remplit plus un vide, elle se
      glisse DERRIERE le texte. Elle rapetisse et s efface. */
-  #clientView .activity-sign { width: 42px; height: 40px; opacity: 0.04; }
-  #clientView .activity-card.is-on .activity-sign { opacity: 0.12; }
+  #clientView .activity-sign { width: 42px; height: 40px; color: color-mix(in srgb, var(--text) 4%, transparent); }
+  #clientView .activity-card.is-on .activity-sign { color: color-mix(in srgb, var(--accent) 12%, transparent); }
   #clientView .anchor-row-head strong { font-size: 13.5px; }
   #clientView .anchor-row-head small { font-size: 11.5px; }
   #clientView .anchor-row-pick { font-size: 12px; }

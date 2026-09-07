@@ -589,7 +589,7 @@ const LIRE_CASCADE_CONTACT = () => {
 };
 
 // [3e] L ECRAN DE CONTACT ARRIVE PETIT A PETIT.
-// Movsar, sur la video : « les choses arrivent petit a petit » — il decrivait
+// Movsar, sur la video : « les choses arrivent petit a petit » : il decrivait
 // ce qu il attendait. La regle d entree existait deja mais lisait un --i que
 // PERSONNE n ecrivait : les trois champs recevaient le meme delai de 260 ms et
 // arrivaient ensemble, et le reste de l ecran n arrivait pas du tout. Ce check

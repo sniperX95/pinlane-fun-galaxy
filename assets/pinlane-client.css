@@ -517,7 +517,7 @@ body.client-mode #clientView {
 }
 
 /* Les deux dessins occupent LA MEME cellule de grille : ils se croisent sur
-   place. Rien ne change de taille, donc rien ne se decale autour — dans un
+   place. Rien ne change de taille, donc rien ne se decale autour, et dans un
    embed, la hauteur du contenu EST la hauteur du cadre. */
 #clientView .progress-glyph,
 #clientView .progress-tick {
@@ -533,7 +533,7 @@ body.client-mode #clientView {
 
 /* L ONDE D ARRIVEE. Elle NE BOUCLE PAS : une pulsation permanente devient du
    bruit qu on cesse de voir au bout de dix secondes. Elle joue UNE fois, quand
-   l etape devient courante — ce qui n est vrai que depuis que updateProgress
+   l etape devient courante, ce qui n est vrai que depuis que updateProgress
    ne retire plus la classe pour la remettre a chaque rendu. Le cercle est en
    position absolue : il ne compte pas dans la hauteur du document, donc il ne
    peut pas faire respirer le cadre embarque. */
@@ -2390,7 +2390,7 @@ body.client-mode #clientView {
 /* LA SIGNATURE DE L ACTIVITE (2026-09-07, Movsar sur la video : « le texte du
    bowling plus grand, avec une toute petite place avec une toute petite image
    stylee, ou il y a un peu d espace vide »). C est le MEME objet que l icone de
-   tete — la boule a trois trous pour le bowling, le pistolet pour le laser —
+   tete (la boule a trois trous pour le bowling, le pistolet pour le laser),
    agrandi, incline et pose dans le coin vide en bas a droite. Il ne se lit pas,
    il se sent : a 6 % d opacite c est une matiere, la carte reste un texte. Il
    prend la couleur d accent et remonte d un cran quand l activite est cochee,
@@ -5812,7 +5812,7 @@ body.customer-mode .client-footer {
 /* LE MEME OBJET QU A L ECRAN DES ACTIVITES (2026-09-07). Le client a coche une
    boule de bowling deux ecrans plus tot ; il retrouve la meme boule en tete de
    la colonne qui lui demande son heure. C est ce qui rattache les deux ecrans
-   l un a l autre — sans lui, « Bowling » n est qu un mot de plus. */
+   l un a l autre : sans lui, « Bowling » n est qu un mot de plus. */
 #clientView .anchor-row-icon {
   display: inline-flex;
   align-items: center;

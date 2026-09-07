@@ -5298,7 +5298,7 @@ function updateProgress() {
     // la remettre a chaque rendu : une animation posee sur .active repartait
     // de zero a chaque appel d updateProgress, meme quand l etape n avait pas
     // bouge. Avec toggle(classe, condition), la classe n est ecrite que si
-    // elle change vraiment — l onde d arrivee joue exactement une fois, au
+    // elle change vraiment : l onde d arrivee joue exactement une fois, au
     // moment ou l etape devient courante.
     el.classList.toggle('done', i < state.step);
     el.classList.toggle('active', i === state.step);
@@ -5425,7 +5425,7 @@ function clearAlert() {
 // video du parcours embarque : « ca devrait s afficher dans un endroit ou ca
 // ne cache rien »). Elle etait posee a « hauteur du header + 10 » ; dans un
 // embed le header n existe pas, la barre d etapes remonte a sa place, et le
-// bandeau rouge se peignait exactement dessus — on ne voyait plus ou on en
+// bandeau rouge se peignait exactement dessus, et on ne voyait plus ou on en
 // etait au moment precis ou on venait de se tromper. On ne devine plus la
 // place : on MESURE le bas de tout ce qui occupe le haut de la scene (header,
 // barre haute telephone, son filet, barre d etapes) et l alerte se pose
@@ -6529,7 +6529,7 @@ function snapshotAnchorTrackScroll() {
 // Movsar, sur la video : « ca le passe en premier, sauf qu il n y a aucune
 // animation, on ne comprend rien ». Choisir pour le bowling une heure anterieure
 // a celle du laser fait passer le bowling devant : le fil suit l ordre REEL de
-// la visite, pas celui du catalogue. C est juste, mais invisible — l ordre
+// la visite, pas celui du catalogue. C est juste, mais invisible : l ordre
 // change, donc syncFormulaAnchorUi rend false, donc le picker est reconstruit
 // en entier. Les lignes ne se DEPLACENT pas : elles cessent d exister et
 // reapparaissent ailleurs.
@@ -6592,7 +6592,7 @@ function jouerFlipFilVisite(avant) {
     const dx = depart.x - boite.left;
     const dy = depart.y - boite.top;
     // Sous 4 px ce n est pas un deplacement, c est un arrondi de mise en page.
-    // L animer ferait vibrer des lignes qui n ont pas bouge — exactement le
+    // L animer ferait vibrer des lignes qui n ont pas bouge, exactement le
     // defaut qu on vient de corriger sur l ecran des activites.
     if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
     gestes.push([ligne, dx, dy]);
@@ -6608,7 +6608,7 @@ function jouerFlipFilVisite(avant) {
   }
   // FORCER LE RECALCUL DE STYLE. requestAnimationFrame NE SUFFIT PAS : les
   // callbacks rAF s executent AVANT le premier calcul de style de la frame, si
-  // bien que le navigateur ne voyait jamais la position de depart — il lisait
+  // bien que le navigateur ne voyait jamais la position de depart : il lisait
   // directement translate(0,0) et il n y avait rien a interpoler. Mesure : la
   // ligne se teleportait quand personne ne lisait le DOM, et se deplacait
   // quand un observateur (une sonde, l inspecteur) forcait le calcul par

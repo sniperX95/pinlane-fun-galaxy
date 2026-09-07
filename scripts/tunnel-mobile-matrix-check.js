@@ -358,7 +358,7 @@ const MUTATIONS = [
     name: 'sous-barre re-affichee en ecran court',
     file: CSS,
     // Les deux lignes ensemble : la premiere existe aussi sous 640px.
-    find: "  #clientView:not([data-step='5']) .tunnel-underbar { display: none; }\n  #clientView #step1.is-solo .step-foot { display: none; }",
+    find: "  :where(body:not(.embed-mode)) #clientView:not([data-step='5']) .tunnel-underbar { display: none; }\n  :where(body:not(.embed-mode)) #clientView #step1.is-solo .step-foot { display: none; }",
     replace: '  /* mutation contre-epreuve */',
     expect: 'paysage-venue-clavier-tap-champ-date',
   },

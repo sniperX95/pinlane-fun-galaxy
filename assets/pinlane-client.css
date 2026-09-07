@@ -8452,30 +8452,29 @@ body.client-mode #clientView .btn-primary.is-sealed,
    page sur toutes les plateformes), pas une regle clavier : le clavier iOS,
    lui, ne change jamais ce viewport (deja documente plus haut). */
 @media (max-height: 560px) {
-  #clientView .step3-body {
+  :where(body:not(.embed-mode)) #clientView .step3-body {
     display: flex;
     flex-direction: column;
     align-items: stretch;
   }
-  #clientView .step-foot { min-height: 52px; }
-  #clientView .tunnel-underbar { min-height: 24px; }
+  :where(body:not(.embed-mode)) #clientView .step-foot { min-height: 52px; }
+  :where(body:not(.embed-mode)) #clientView .tunnel-underbar { min-height: 24px; }
   /* La carte « Groupe, entreprise ou besoin special ? » vaut ~90px : sur un
      ecran de moins de 560px de haut (clavier ouvert sur petit telephone),
      elle mangeait TOUT l espace du corps et se peignait par-dessus le champ
      date. Elle s efface et revient des que le clavier se ferme. */
-  #clientView .step-foot .bespoke-entry { display: none; }
+  :where(body:not(.embed-mode)) #clientView .step-foot .bespoke-entry { display: none; }
   /* La sous-barre (contact du centre + acces equipe) mesurait 117px a
      844x390, un tiers de l ecran : la page venue n avait plus que 58px de
      defileur et le centre du champ date tombait dans le pied (clavier ouvert,
      dans la sous-barre). Hors confirmation elle s efface, comme sous 640px ;
      le pied de l etape 1 en solo ne porte qu une note, il s efface aussi. */
-  #clientView:not([data-step='5']) .tunnel-underbar { display: none; }
-  #clientView #step1.is-solo .step-foot { display: none; }
+  :where(body:not(.embed-mode)) #clientView:not([data-step='5']) .tunnel-underbar { display: none; }
+  :where(body:not(.embed-mode)) #clientView #step1.is-solo .step-foot { display: none; }
   /* Reserve de bas de zone : le dernier element defile doit pouvoir se poser
      ENTIEREMENT au-dessus de la sous-barre (mesure : le centre du CTA en flux
      tombait dans « Une question ? » a 320x300). */
-  #clientView .step-body,
-  #clientView .step1-body { padding-bottom: 34px; }
+  :where(body:not(.embed-mode)) #clientView .step-body, :where(body:not(.embed-mode)) #clientView .step1-body { padding-bottom: 34px; }
 }
 
 

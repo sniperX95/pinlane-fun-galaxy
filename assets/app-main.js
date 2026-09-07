@@ -12269,7 +12269,7 @@ const ESTABLISHMENT_STYLE_AXES = [
   { key: 'radius', label: 'Angles', options: [['soft', 'Doux (défaut)'], ['sharp', 'Carrés'], ['round', 'Très arrondis']] },
   { key: 'font', label: 'Police', options: [['geist', 'Geist (défaut)'], ['humanist', 'Humaniste'], ['serif', 'Serif'], ['mono', 'Monospace']] },
   { key: 'backdrop', label: 'Fond de page', options: [['plain', 'Neutre (défaut)'], ['tint', 'Teinté à votre couleur'], ['aurora', 'Halo à votre couleur']] },
-  { key: 'cards', label: 'Panneaux', options: [['line', 'Bordure fine (défaut)'], ['flat', 'Aplat sans bordure'], ['shadow', 'Ombre douce']] },
+  { key: 'cards', label: 'Panneaux', options: [['line', 'Bordure fine (défaut)'], ['flat', 'Aplat sans bordure'], ['shadow', 'Ombre douce'], ['neon', 'Néon (anneau + halo, suit votre 2ᵉ couleur)']] },
   { key: 'buttons', label: 'Boutons', options: [['pill', 'Pilule (défaut)'], ['rounded', 'Rectangle arrondi'], ['neon', 'Pilule néon (contour + halo)']] },
 ];
 
@@ -24579,7 +24579,7 @@ const TENANT_STYLE_AXES = {
   radius: ['sharp', 'soft', 'round'],
   font: ['geist', 'humanist', 'serif', 'mono'],
   backdrop: ['plain', 'tint', 'aurora'],
-  cards: ['line', 'flat', 'shadow'],
+  cards: ['line', 'flat', 'shadow', 'neon'],
   buttons: ['pill', 'rounded', 'neon'],
 };
 

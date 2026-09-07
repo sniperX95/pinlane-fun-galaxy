@@ -212,10 +212,15 @@ html[data-tunnel-backdrop='tint'] body.client-mode #clientView {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--page)) 0%, var(--page) 42%);
 }
+/* Le deuxieme pole prend la DEUXIEME couleur de marque quand elle existe
+   (--tenant-glow), pas une nuance de la premiere. Une marque a deux couleurs
+   (Fun Galaxy : violet et turquoise) se reconnaissait a une seule : les deux
+   halos etaient violets, donc l identite tenait sur la moitie de sa palette.
+   Un centre a une seule couleur retombe sur --accent-strong, comme avant. */
 html[data-tunnel-backdrop='aurora'] body.client-mode #clientView {
   background:
     radial-gradient(52% 44% at 12% 0%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%),
-    radial-gradient(44% 38% at 92% 6%, color-mix(in srgb, var(--accent-strong) 9%, transparent), transparent 72%),
+    radial-gradient(44% 38% at 92% 6%, color-mix(in srgb, var(--tenant-glow, var(--accent-strong)) 9%, transparent), transparent 72%),
     var(--page);
 }
 
@@ -227,6 +232,32 @@ html[data-tunnel-cards='flat'] body.client-mode #clientView .panel {
 html[data-tunnel-cards='shadow'] body.client-mode #clientView .panel {
   border-color: var(--line);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+/* NEON : LA MATIERE, PAS UNE OMBRE DE PLUS.
+   Trois regles tenues d un bout a l autre, et chacune vient d un piege connu.
+   1. UN ANNEAU NET, PAS UNE FLORAISON. Un halo assez fort pour deborder efface
+      la forme qu il eclaire ; le contour du site du client est un liseré franc
+      de 3 px, pas un nuage.
+   2. UNE SEULE DIRECTION DE LUMIERE, TENUE PAR TOUT. Le bouton neon porte
+      -1px 1px : le panneau porte la meme. Deux voisins eclaires de deux cotes
+      cassent l illusion plus surement qu une ombre absente.
+   3. LA PROFONDEUR EST UN EMPILEMENT DE COUCHES FAIBLES, jamais une ombre
+      unique : un lisere interne clair (le panneau accroche la lumiere sur son
+      bord haut), l anneau de marque, puis une ombre portee large et tres
+      faible. En sombre, c est ce lisere qui detache la surface, pas un gris
+      plus clair invente pour l occasion : les surfaces gardent leur ton. */
+html[data-tunnel-cards='neon'] body.client-mode #clientView .panel {
+  border: 2px solid color-mix(in srgb, var(--text) 14%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text) 12%, transparent),
+    -1px 1px 3px var(--tenant-glow, var(--accent)),
+    0 18px 44px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+/* Le fond du panneau reste au ton de la scene : en sombre, une carte plus
+   claire que la page est un decollement invente, pas une elevation. */
+html[data-theme='dark'][data-tunnel-cards='neon'] body.client-mode #clientView .panel {
+  background: color-mix(in srgb, var(--surface) 72%, var(--page));
 }
 
 /* Boutons : pill (defaut client) / rounded. L axe porte sur LES DEUX roles,
@@ -8597,6 +8628,34 @@ body.embed-mode #clientView .tunnel-stage { flex: none; min-height: 0; overflow:
 body.embed-mode #clientView .tunnel-track { display: block; height: auto; transform: none; transition: none; will-change: auto; }
 body.embed-mode #clientView .step { display: none; min-width: 0; flex: none; }
 body.embed-mode #clientView .step.is-current { display: flex; opacity: 1; transform: none; }
+
+/* DANS LE CADRE, RIEN NE BOUGEAIT ENTRE DEUX ECRANS. La piste qui glisse est
+   desactivee ici (un cadre ne montre jamais ses voisins), donc passer a l ecran
+   suivant etait un remplacement sec : le visiteur ne voyait pas qu il avait
+   avance, il voyait un autre contenu apparaitre. L entree redonne ce lien de
+   cause a effet. Elle reste discrete : c est la lumiere qui bouge, pas le
+   bouton.
+
+   DEUX CONTRAINTES TENUES, ET CHACUNE VIENT D UN PIEGE PAYE.
+   1. LE MOUVEMENT NE PEUT PAS ALLONGER LA PAGE. La hauteur postee au site hote
+      est body.scrollHeight : une entree partant de translateY(+8px) pousse le
+      contenu vers le bas pendant toute l animation, le cadre grandit puis
+      retrecit, et la page du client sursaute a chaque ecran. On part donc du
+      HAUT : un decalage vers le haut ne cree jamais de surface a defiler.
+   2. L ETAT FINAL EST ECRIT. Une keyframe qui ne declare que son « from »
+      retombe sur la valeur CALCULEE de l element ; le jour ou cet etat de repos
+      change, l animation ramene l ecran a l invisible sans que personne l ait
+      demande. Le « to » est donc explicite. */
+@keyframes pinlane-entree-ecran {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+body.embed-mode #clientView .step.is-current {
+  animation: pinlane-entree-ecran 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  body.embed-mode #clientView .step.is-current { animation: none; }
+}
 body.embed-mode #clientView .step-body,
 body.embed-mode #clientView .step1-body.is-solo,
 body.embed-mode #clientView .step3-body,

@@ -496,10 +496,16 @@ body.client-mode #clientView {
   min-width: 26px;
 }
 
+/* LA PASTILLE PORTE UN OBJET, PLUS UN CHIFFRE (2026-09-07, Movsar sur la
+   video : « a la place de mettre 1, 2, 3, 4, 5, tu mets des petits icones »).
+   Un chiffre ne se lit qu en comptant ; une horloge ou un bonhomme se
+   reconnait sans lire. Le libelle sous la pastille garde le sens exact, et
+   c est lui que porte l arbre d accessibilite : les dessins sont aria-hidden,
+   ils ne doublent aucun nom. */
 #clientView .progress-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  display: grid;
+  place-items: center;
   width: 26px;
   height: 26px;
   flex: none;
@@ -507,11 +513,48 @@ body.client-mode #clientView {
   border-radius: var(--radius-full);
   background: var(--surface);
   color: var(--muted);
-  font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  font-weight: 500;
   transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform 0.45s var(--lq-spring);
+}
+
+/* Les deux dessins occupent LA MEME cellule de grille : ils se croisent sur
+   place. Rien ne change de taille, donc rien ne se decale autour — dans un
+   embed, la hauteur du contenu EST la hauteur du cadre. */
+#clientView .progress-glyph,
+#clientView .progress-tick {
+  grid-area: 1 / 1;
+  display: flex;
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease);
+}
+#clientView .progress-glyph svg,
+#clientView .progress-tick svg { width: 14px; height: 14px; }
+#clientView .progress-tick { opacity: 0; transform: scale(0.4); }
+#clientView .progress-step.done .progress-glyph { opacity: 0; transform: scale(0.4); }
+#clientView .progress-step.done .progress-tick { opacity: 1; transform: scale(1); }
+
+/* L ONDE D ARRIVEE. Elle NE BOUCLE PAS : une pulsation permanente devient du
+   bruit qu on cesse de voir au bout de dix secondes. Elle joue UNE fois, quand
+   l etape devient courante — ce qui n est vrai que depuis que updateProgress
+   ne retire plus la classe pour la remettre a chaque rendu. Le cercle est en
+   position absolue : il ne compte pas dans la hauteur du document, donc il ne
+   peut pas faire respirer le cadre embarque. */
+@keyframes pl-progress-onde {
+  from { opacity: 0.5; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.9); }
+}
+#clientView .progress-step.active .progress-index::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  animation: pl-progress-onde 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  #clientView .progress-step.active .progress-index::after { animation: none; }
+  #clientView .progress-glyph,
+  #clientView .progress-tick { transition: none; }
 }
 
 /* 11,5 px est le PLANCHER de texte du projet : en dessous, le libelle est un
@@ -1618,14 +1661,36 @@ body.client-mode #clientView {
 #clientView #step4 #recapList { text-align: left; }
 
 /* L entree : la question d abord, la reponse ensuite, jamais l inverse. */
-#clientView .step[data-arrived] #step3 .contact-grid > *,
-#clientView .step[data-arrived] #step4 .recap-decision > *:not(.panel-kicker):not(.panel-title) {
+#clientView .step[data-arrived]#step3 .contact-grid > *,
+#clientView .step[data-arrived]#step3 .step3-info,
+#clientView .step[data-arrived]#step3 .s3-extra > *,
+#clientView .step[data-arrived]#step4 .recap-decision > *:not(.panel-kicker):not(.panel-title) {
   animation: lq-pop 0.5s var(--lq-spring) both;
-  animation-delay: calc(260ms + var(--i, 0) * 48ms);
+  animation-delay: calc(260ms + var(--i, 0) * 42ms);
 }
+
+/* --i N ETAIT ECRIT NULLE PART (mesure 2026-09-07 : 0 occurrence de « --i: »
+   pour un descendant de #step3). Les trois champs de « Qui reserve ? »
+   recevaient donc tous le MEME delai de 260 ms et arrivaient d un bloc. C est
+   la remarque de Movsar sur la video : « les choses arrivent petit a petit »
+   decrivait ce qu il voulait, pas ce qu il voyait. Le rang est pose ici, et la
+   cascade ne s arrete plus aux champs : elle continue sur l encart de
+   confirmation, l occasion, puis la demande particuliere. */
+#clientView #step3 .contact-grid > :nth-child(1) { --i: 0; }
+#clientView #step3 .contact-grid > :nth-child(2) { --i: 1; }
+#clientView #step3 .contact-grid > :nth-child(3) { --i: 2; }
+#clientView #step3 .step3-info { --i: 3; }
+#clientView #step3 .s3-extra > :nth-child(1) { --i: 4; }
+#clientView #step3 .s3-extra > :nth-child(2) { --i: 5; }
+#clientView #step4 .recap-decision > :nth-child(3) { --i: 0; }
+#clientView #step4 .recap-decision > :nth-child(4) { --i: 1; }
+#clientView #step4 .recap-decision > :nth-child(5) { --i: 2; }
+
 @media (prefers-reduced-motion: reduce) {
-  #clientView .step[data-arrived] #step3 .contact-grid > *,
-  #clientView .step[data-arrived] #step4 .recap-decision > *:not(.panel-kicker):not(.panel-title) { animation: none; }
+  #clientView .step[data-arrived]#step3 .contact-grid > *,
+  #clientView .step[data-arrived]#step3 .step3-info,
+  #clientView .step[data-arrived]#step3 .s3-extra > *,
+  #clientView .step[data-arrived]#step4 .recap-decision > *:not(.panel-kicker):not(.panel-title) { animation: none; }
 }
 
 /* --- ETAPE 5 : confirmation centree --------------------------------------- */
@@ -1634,7 +1699,9 @@ body.client-mode #clientView {
 /* --- ALERTES : elles FLOTTENT au-dessus de la scene ----------------------- */
 #alertBox {
   position: fixed;
-  top: calc(var(--tunnel-header-h, 56px) + 10px);
+  /* Pose sous la barre d etapes, mesuree par poserPlafondAlerte(). Le repli
+     est l ancien calcul : si rien n est mesurable, on retombe sur le header. */
+  top: var(--tunnel-alert-top, calc(var(--tunnel-header-h, 56px) + 10px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
@@ -2236,6 +2303,11 @@ body.client-mode #clientView {
    toucher ni en mouvement reduit). L'ombre n'existe QUE pendant le survol :
    une carte inclinee flotte, une carte posee n'a pas d'ombre (DESIGN.md §5). */
 #clientView .activity-card {
+  position: relative;
+  /* La signature deborde volontairement du coin : elle est COUPEE par la
+     carte, ce qui la fait lire comme une matiere et pas comme un dessin pose
+     au milieu. */
+  overflow: hidden;
   min-width: 0;
   min-height: 64px;
   border: 1px solid var(--line-strong);
@@ -2315,10 +2387,44 @@ body.client-mode #clientView {
   gap: 2px;
 }
 
+/* LA SIGNATURE DE L ACTIVITE (2026-09-07, Movsar sur la video : « le texte du
+   bowling plus grand, avec une toute petite place avec une toute petite image
+   stylee, ou il y a un peu d espace vide »). C est le MEME objet que l icone de
+   tete — la boule a trois trous pour le bowling, le pistolet pour le laser —
+   agrandi, incline et pose dans le coin vide en bas a droite. Il ne se lit pas,
+   il se sent : a 6 % d opacite c est une matiere, la carte reste un texte. Il
+   prend la couleur d accent et remonte d un cran quand l activite est cochee,
+   pour que le choix se voie jusque dans le fond de la carte. */
+#clientView .activity-sign {
+  position: absolute;
+  right: -13px;
+  bottom: -15px;
+  display: flex;
+  color: var(--text);
+  opacity: 0.06;
+  pointer-events: none;
+  transform: rotate(-9deg);
+  transition-property: opacity, color, transform;
+  transition-duration: 220ms;
+  transition-timing-function: var(--ease-out-strong);
+}
+#clientView .activity-sign svg { width: 64px; height: 64px; }
+#clientView .activity-card.is-on .activity-sign {
+  color: var(--accent);
+  opacity: 0.17;
+  transform: rotate(-9deg) translate(-3px, -3px) scale(1.05);
+}
+#clientView .activity-card.is-off .activity-sign { opacity: 0.03; }
+@media (prefers-reduced-motion: reduce) {
+  #clientView .activity-sign { transition: none; }
+}
+
+/* 16 px, pas 14 : le nom de l activite est LA donnee de la carte, le prix et la
+   note sont ses annexes. A 14 px il pesait le meme poids que sa propre note. */
 #clientView .activity-name {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.2;
   text-wrap: balance;
@@ -5497,6 +5603,11 @@ body.customer-mode .client-footer {
 
 #clientView .visit-rail > li:last-child::before { bottom: calc(100% - 12px); }
 
+/* LE RANG DE L ETAPE PORTE LA MARQUE (2026-09-07). C etait un chiffre gris
+   cercle de gris : il disait le rang sans rien dire de la marque, sur l ecran
+   que Movsar trouvait « trop moche ». Il prend les DEUX poles du tenant
+   (accent -> glow), comme le degrade de Fun Galaxy. Le repli sur --accent seul
+   garde le rendu juste pour un centre qui n a qu une couleur. */
 #clientView .visit-rail-mark {
   position: absolute;
   left: 0;
@@ -5508,9 +5619,9 @@ body.customer-mode .client-footer {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-full);
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--muted);
+  border: 0;
+  background: linear-gradient(138deg, var(--accent), var(--tenant-glow, var(--accent)));
+  color: var(--accent-contrast);
   font-family: var(--font-data);
   font-size: 12px;
   font-weight: 600;
@@ -5660,6 +5771,7 @@ body.customer-mode .client-footer {
 #clientView .visit-rail-step-free .anchor-free-pass { margin: 0; }
 
 #clientView .anchor-row {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -5669,20 +5781,61 @@ body.customer-mode .client-footer {
   background: var(--page);
 }
 
+/* UNE LUMIERE DE BORD, PAS UN CADRE DE PLUS. Le panneau se detachait par un
+   trait gris de 1 px, le meme que tout le reste de l ecran. Un filet en
+   degrade pose sur l arete haute suffit a le faire exister : c est la lumiere
+   qui separe les surfaces, pas une nuance de gris inventee. Il est en
+   pseudo-element, donc hors flux : il ne change aucune hauteur. */
+#clientView .anchor-row::before {
+  content: '';
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  top: -1px;
+  height: 1px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--accent), var(--tenant-glow, var(--accent)), transparent);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 #clientView .anchor-row-head {
   display: flex;
-  align-items: baseline;
+  /* « center » et non « baseline » : la tete porte maintenant l objet de
+     l activite, et une icone alignee sur la ligne de base flotte au-dessus du
+     texte. */
+  align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
 }
 
+/* LE MEME OBJET QU A L ECRAN DES ACTIVITES (2026-09-07). Le client a coche une
+   boule de bowling deux ecrans plus tot ; il retrouve la meme boule en tete de
+   la colonne qui lui demande son heure. C est ce qui rattache les deux ecrans
+   l un a l autre — sans lui, « Bowling » n est qu un mot de plus. */
+#clientView .anchor-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+#clientView .anchor-row-icon svg { width: 17px; height: 17px; }
+
 /* L'heure retenue se lit dans le titre de l'étape : le client sait ce qu'il a
    choisi sans redescendre dans la grille. */
 #clientView .anchor-row-pick {
-  padding: 1px 8px;
+  padding: 2px 10px;
   border-radius: var(--radius-full);
-  background: var(--accent-soft);
-  color: var(--text);
+  /* L heure RETENUE est la reponse a la question de l ecran : elle se lit avant
+     tout le reste. En --accent-soft sur --text elle avait le poids d une note
+     de bas de page. */
+  background: linear-gradient(138deg, var(--accent), var(--tenant-glow, var(--accent)));
+  color: var(--accent-contrast);
   font-family: var(--font-data);
   font-size: 12.5px;
   font-weight: 600;
@@ -7798,6 +7951,9 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .visit-rail-mark { display: none; }
   #clientView .visit-rail-step { padding: 0 0 var(--space-2); }
   #clientView .anchor-row { border: 0; background: transparent; box-shadow: none; padding: 0; gap: 6px; }
+  /* Le panneau est aplati ici (ni cadre ni fond) : la lumiere de bord n a plus
+     de bord a eclairer, elle flotterait au-dessus du texte. */
+  #clientView .anchor-row::before { content: none; }
   #clientView .anchor-row-head strong { font-size: 13.5px; }
   #clientView .anchor-row-head small { font-size: 11.5px; }
   #clientView .anchor-row-pick { font-size: 12px; }

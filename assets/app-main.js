@@ -3879,6 +3879,7 @@ function bindKeyboardCare() {
   };
   poseHauteurHeader();
   window.addEventListener('resize', poseHauteurHeader);
+  window.addEventListener('resize', () => { if (typeof poserPlafondAlerte === 'function') poserPlafondAlerte(); });
 
   const champTexte = (el) => Boolean(el && el.closest && el.closest('#clientView, .bespoke-modal')
     && el.matches('input:not([type=checkbox]):not([type=radio]), textarea, select'));
@@ -4303,6 +4304,7 @@ function buildActivityPicker(host, catalog) {
   const pax = Math.max(1, Number(state.booking.pax) || 1);
   const cards = catalog.map((activity, index) => `
       <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
+        <span class="activity-sign" aria-hidden="true">${activityIconMarkup(activity.id)}</span>
         <button type="button" class="activity-toggle" aria-pressed="false" aria-label="${escapeHtml(activityToggleLabel(activity, { pax }))}" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
           <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
           <span class="activity-text">
@@ -5292,9 +5294,14 @@ function updateProgress() {
     // Une pastille peut manquer sans que le parcours soit casse : on ne plante
     // pas la progression pour autant.
     if (!el) continue;
-    el.classList.remove('active', 'done');
-    if (i < state.step) el.classList.add('done');
-    if (i === state.step) el.classList.add('active');
+    // TOGGLE, PAS remove-puis-add. L ancienne version retirait la classe pour
+    // la remettre a chaque rendu : une animation posee sur .active repartait
+    // de zero a chaque appel d updateProgress, meme quand l etape n avait pas
+    // bouge. Avec toggle(classe, condition), la classe n est ecrite que si
+    // elle change vraiment — l onde d arrivee joue exactement une fois, au
+    // moment ou l etape devient courante.
+    el.classList.toggle('done', i < state.step);
+    el.classList.toggle('active', i === state.step);
   }
   // Le FLUIDE avance jusqu'à la pastille courante : --p vaut 0 à l'étape 1 et
   // 1 à la dernière. Sous filtre gooey, la tête s'étire depuis le remplissage
@@ -5414,8 +5421,33 @@ function clearAlert() {
   if (el) el.innerHTML = '';
 }
 
+// L ALERTE NE RECOUVRE PLUS LA BARRE D ETAPES (2026-09-07, Movsar sur la
+// video du parcours embarque : « ca devrait s afficher dans un endroit ou ca
+// ne cache rien »). Elle etait posee a « hauteur du header + 10 » ; dans un
+// embed le header n existe pas, la barre d etapes remonte a sa place, et le
+// bandeau rouge se peignait exactement dessus — on ne voyait plus ou on en
+// etait au moment precis ou on venait de se tromper. On ne devine plus la
+// place : on MESURE le bas de tout ce qui occupe le haut de la scene (header,
+// barre haute telephone, son filet, barre d etapes) et l alerte se pose
+// dessous. Le repli CSS reste l ancien calcul, pour le cas ou rien n est
+// mesurable.
+function poserPlafondAlerte() {
+  let bas = 0;
+  for (const selecteur of ['body > header', '#clientView .m-topbar', '#clientView .m-top-hairline', '#clientView .progress']) {
+    const el = document.querySelector(selecteur);
+    if (!el) continue;
+    const boite = el.getBoundingClientRect();
+    // Un element masque (display:none) mesure 0 : il ne compte pas.
+    if (boite.height > 0) bas = Math.max(bas, boite.bottom);
+  }
+  if (bas > 0) document.documentElement.style.setProperty('--tunnel-alert-top', Math.round(bas + 10) + 'px');
+}
+
 function showAlert(msg) {
   const el = document.getElementById('alertBox');
+  // Mesure AU MOMENT d afficher : la barre d etapes change de hauteur d un
+  // ecran a l autre et disparait sous 640 px.
+  poserPlafondAlerte();
   if (alertBoxTimer) { clearTimeout(alertBoxTimer); alertBoxTimer = null; }
   el.innerHTML = `<div class="alert shake"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${escapeHtml(msg)}</div>`;
   alertBoxTimer = setTimeout(() => { alertBoxTimer = null; el.innerHTML = ''; }, 4500);
@@ -6493,6 +6525,111 @@ function snapshotAnchorTrackScroll() {
   });
 }
 
+// --- LE FIL SE REORDONNE SOUS LES YEUX (2026-09-07) --------------------------
+// Movsar, sur la video : « ca le passe en premier, sauf qu il n y a aucune
+// animation, on ne comprend rien ». Choisir pour le bowling une heure anterieure
+// a celle du laser fait passer le bowling devant : le fil suit l ordre REEL de
+// la visite, pas celui du catalogue. C est juste, mais invisible — l ordre
+// change, donc syncFormulaAnchorUi rend false, donc le picker est reconstruit
+// en entier. Les lignes ne se DEPLACENT pas : elles cessent d exister et
+// reapparaissent ailleurs.
+//
+// Une animation d entree ne reparerait rien : un noeud qui vient d etre cree ne
+// peut pas montrer d ou il vient. Il faut la position d AVANT. FLIP : relever
+// les positions avant de reconstruire, comparer apres, ramener chaque ligne a
+// son ancienne place, puis la laisser rejoindre la nouvelle. Le mouvement EST
+// le message.
+//
+// L identite d une ligne, c est son activite ET son rang parmi les lignes de la
+// meme activite : trois parties de laser portent le meme data-anchor, et leur
+// ordre relatif ne change pas quand une autre activite les depasse.
+function releverPositionsFilVisite() {
+  const positions = new Map();
+  const compteurs = new Map();
+  // UNE ANIMATION ENCORE EN VOL FAUSSE LA MESURE : getBoundingClientRect INCLUT
+  // la transformation. Un clic d heure declenche DEUX rendus (le rendu
+  // « occupe », puis celui d apres la reponse du serveur) ; sans ce nettoyage,
+  // le second relevait la ligne a sa position ANIMEE, croyait a un deplacement
+  // de 497 px qui n existait pas, et rejouait le trajet. Mesure : le meme saut
+  // joue deux fois de suite.
+  document.querySelectorAll('#slotList .visit-rail-step').forEach((ligne) => {
+    if (!ligne.style.transform) return;
+    ligne.style.removeProperty('transition');
+    ligne.style.removeProperty('transform');
+    ligne.style.removeProperty('position');
+    ligne.style.removeProperty('z-index');
+  });
+  document.querySelectorAll('#slotList .visit-rail-step').forEach((ligne) => {
+    const row = ligne.querySelector('.anchor-row[data-anchor]');
+    if (!row) return;
+    const id = row.dataset.anchor;
+    const rang = compteurs.get(id) || 0;
+    compteurs.set(id, rang + 1);
+    const boite = ligne.getBoundingClientRect();
+    // LES DEUX AXES. Le fil est vertical sur telephone, mais au-dela de ~900 px
+    // les etapes se rangent COTE A COTE : mesure a 1100 px, « passer le bowling
+    // devant » echange deux colonnes, un deplacement purement horizontal. Un
+    // FLIP qui ne connait que Y ne montrerait rien la ou le client regarde.
+    positions.set(id + '#' + rang, { x: boite.left, y: boite.top });
+  });
+  return positions;
+}
+
+function jouerFlipFilVisite(avant) {
+  if (!avant || !avant.size) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const compteurs = new Map();
+  const gestes = [];
+  document.querySelectorAll('#slotList .visit-rail-step').forEach((ligne) => {
+    const row = ligne.querySelector('.anchor-row[data-anchor]');
+    if (!row) return;
+    const id = row.dataset.anchor;
+    const rang = compteurs.get(id) || 0;
+    compteurs.set(id, rang + 1);
+    const depart = avant.get(id + '#' + rang);
+    if (!depart) return;
+    const boite = ligne.getBoundingClientRect();
+    const dx = depart.x - boite.left;
+    const dy = depart.y - boite.top;
+    // Sous 4 px ce n est pas un deplacement, c est un arrondi de mise en page.
+    // L animer ferait vibrer des lignes qui n ont pas bouge — exactement le
+    // defaut qu on vient de corriger sur l ecran des activites.
+    if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+    gestes.push([ligne, dx, dy]);
+  });
+  if (!gestes.length) return;
+  for (const [ligne, dx, dy] of gestes) {
+    ligne.style.transition = 'none';
+    ligne.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+    // Au-dessus des voisines pendant qu elle passe devant : sans ca, la carte
+    // qui se deplace glisse SOUS l autre et on perd le trajet a mi-chemin.
+    ligne.style.position = 'relative';
+    ligne.style.zIndex = '2';
+  }
+  // FORCER LE RECALCUL DE STYLE. requestAnimationFrame NE SUFFIT PAS : les
+  // callbacks rAF s executent AVANT le premier calcul de style de la frame, si
+  // bien que le navigateur ne voyait jamais la position de depart — il lisait
+  // directement translate(0,0) et il n y avait rien a interpoler. Mesure : la
+  // ligne se teleportait quand personne ne lisait le DOM, et se deplacait
+  // quand un observateur (une sonde, l inspecteur) forcait le calcul par
+  // accident. Cette lecture EST le declencheur, elle ne decore pas.
+  void gestes[0][0].offsetWidth;
+  requestAnimationFrame(() => {
+    for (const [ligne] of gestes) {
+      ligne.style.transition = 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1)';
+      ligne.style.transform = 'translate(0, 0)';
+    }
+    setTimeout(() => {
+      for (const [ligne] of gestes) {
+        ligne.style.removeProperty('transition');
+        ligne.style.removeProperty('transform');
+        ligne.style.removeProperty('position');
+        ligne.style.removeProperty('z-index');
+      }
+    }, 470);
+  });
+}
+
 // Un seul écouteur passif par piste, calé sur la fréquence d'affichage : on ne
 // touche au DOM que lorsque l'état CHANGE (voir syncAnchorTrackState).
 function bindAnchorTracks() {
@@ -6717,6 +6854,7 @@ function renderVisitRailStep(step, position) {
       <span class="visit-rail-mark" aria-hidden="true">${position}</span>
       <div class="anchor-row ${disabled ? 'anchor-row-onsite' : ''}" data-anchor="${escapeHtml(activity.activityId)}"${chosen ? ` data-multi="${partCount}"` : ''}>
         <div class="anchor-row-head">
+          <span class="anchor-row-icon" aria-hidden="true">${activityIconMarkup(activity.activityId)}</span>
           <strong>${escapeHtml(activity.label)}</strong>
           ${picked}
           <small>${escapeHtml(detail)}</small>
@@ -7255,8 +7393,12 @@ function renderSlots(formule) {
     // client jetait des ancres valides et affichait « Aucun créneau
     // disponible » alors que le serveur en proposait neuf.
     snapshotAnchorTrackScroll();
+    // Positions d AVANT la reconstruction : c est la seule chose que le nouveau
+    // DOM ne pourra plus dire.
+    const positionsAvant = releverPositionsFilVisite();
     list.innerHTML = renderFormulaAnchorPicker(formule);
     bindAnchorTracks();
+    jouerFlipFilVisite(positionsAvant);
     return;
   }
   if (!state.availableSlots.length) {

@@ -515,6 +515,104 @@ async function checkClickCalm(page) {
   return result;
 }
 
+// LA MESURE DU REORDONNEMENT. On ne regarde pas une capture : on compte les
+// IMAGES pendant lesquelles la ligne deplacee porte une transformation, et on
+// verifie qu elle finit immobile. Une capture avant / une capture apres
+// montreraient exactement la meme chose avec ou sans animation.
+const MESURER_REORDRE = () => new Promise((resolve) => {
+  const lignes = () => [...document.querySelectorAll('#slotList .visit-rail-step')];
+  const idDe = (li) => { const r = li.querySelector('.anchor-row[data-anchor]'); return r ? r.dataset.anchor : ''; };
+  const ordre = () => lignes().map(idDe).filter(Boolean);
+  const ordreAvant = ordre();
+  // Le fil est monte bowling (15:00) puis laser (18:30). Une heure de bowling
+  // POSTERIEURE a 18:30 renverse l ordre reel de la visite.
+  const chip = [...document.querySelectorAll('.anchor-row[data-anchor="bowling"] .anchor-chip')]
+    .find((item) => !item.disabled && !item.classList.contains('is-unavailable') && (item.dataset.time || '') > '18:30');
+  if (!chip) { resolve({ erreur: 'aucune heure de bowling posterieure a 18:30' }); return; }
+  const echantillons = [];
+  const depart = performance.now();
+  const identite = (t) => t === 'none' || t === 'matrix(1, 0, 0, 1, 0, 0)';
+  const sonde = () => {
+    const li = lignes().find((x) => idDe(x) === 'bowling');
+    if (li) echantillons.push(!identite(getComputedStyle(li).transform));
+    if (performance.now() - depart < 900) { requestAnimationFrame(sonde); return; }
+    resolve({
+      heure: chip.dataset.time,
+      ordreAvant, ordreApres: ordre(),
+      images: echantillons.length,
+      enMouvement: echantillons.filter(Boolean).length,
+      finImmobile: echantillons.length > 0 && echantillons[echantillons.length - 1] === false,
+    });
+  };
+  chip.click();
+  requestAnimationFrame(sonde);
+});
+
+// [3d] LE FIL SE REORDONNE SOUS LES YEUX.
+// Movsar, sur la video du parcours embarque : « ca le passe en premier, sauf
+// qu il n y a aucune animation, on ne comprend rien ». Le fil suit l ordre REEL
+// de la visite ; quand il change, le picker est reconstruit en entier et les
+// lignes n ont aucun moyen de dire d ou elles viennent. Ce check exige d abord
+// que l ordre ait VRAIMENT change (sans quoi il serait vert sur rien), puis que
+// le deplacement soit joue.
+async function checkReorderMotion(page) {
+  console.log('');
+  console.log('[3d] Reordonner la visite se VOIT : la ligne qui change de place s y rend');
+  await bootTunnel(page, 'reorder');
+  await page.evaluate(() => goStep2());
+  await page.waitForTimeout(1200);
+  const mesure = await page.evaluate(MESURER_REORDRE);
+  if (mesure.erreur) { ok(false, `MONTAGE : ${mesure.erreur}`); return mesure; }
+  console.log(`      heure choisie ${mesure.heure} · ordre ${mesure.ordreAvant.join(' > ')} -> ${mesure.ordreApres.join(' > ')} · ${mesure.enMouvement}/${mesure.images} image(s) en mouvement`);
+  ok(mesure.ordreAvant.join('>') !== mesure.ordreApres.join('>'),
+    `MONTAGE : l ordre du fil a REELLEMENT change (${mesure.ordreAvant.join(' > ')} -> ${mesure.ordreApres.join(' > ')})`);
+  ok(mesure.enMouvement >= 6,
+    `la ligne deplacee porte une transformation pendant ${mesure.enMouvement} image(s) : le trajet est joue`);
+  ok(mesure.finImmobile, 'et elle finit immobile : rien ne reste accroche apres le trajet');
+  return mesure;
+}
+
+// Les six blocs de l ecran « Qui reserve ? », dans l ordre ou le client les
+// remplit. C est la MEME liste que celle du CSS : si l une bouge sans l autre,
+// le montage de [3e] tombe.
+const LIRE_CASCADE_CONTACT = () => {
+  goStep(3, { animate: true, focus: false });
+  const step = document.getElementById('step3');
+  const cibles = [...step.querySelectorAll('.contact-grid > *, .step3-info, .s3-extra > *')];
+  return {
+    arrive: step.hasAttribute('data-arrived'),
+    lignes: cibles.map((el) => ({
+      nom: getComputedStyle(el).animationName,
+      delai: Math.round(parseFloat(getComputedStyle(el).animationDelay || '0') * 1000),
+    })),
+  };
+};
+
+// [3e] L ECRAN DE CONTACT ARRIVE PETIT A PETIT.
+// Movsar, sur la video : « les choses arrivent petit a petit » — il decrivait
+// ce qu il attendait. La regle d entree existait deja mais lisait un --i que
+// PERSONNE n ecrivait : les trois champs recevaient le meme delai de 260 ms et
+// arrivaient ensemble, et le reste de l ecran n arrivait pas du tout. Ce check
+// exige d abord que l animation soit REELLEMENT montee (sinon il serait vert
+// sur six elements immobiles), puis que les six delais soient tous differents
+// et croissants, puis qu ils restent bornes.
+async function checkContactCascade(page) {
+  console.log('');
+  console.log('[3e] « Qui reserve ? » arrive petit a petit, pas d un bloc');
+  await bootTunnel(page, 'cascade');
+  const mesure = await page.evaluate(LIRE_CASCADE_CONTACT);
+  const delais = mesure.lignes.map((l) => l.delai);
+  console.log('      delais : ' + delais.join(' / ') + ' ms');
+  ok(mesure.arrive && mesure.lignes.length === 6 && mesure.lignes.every((l) => l.nom === 'lq-pop'),
+    'MONTAGE : les 6 blocs de l ecran sont bien en cours d entree (' + mesure.lignes.length + ' bloc(s), animation ' + [...new Set(mesure.lignes.map((l) => l.nom))].join('+') + ')');
+  ok(new Set(delais).size === delais.length,
+    'les 6 delais sont tous DIFFERENTS (' + new Set(delais).size + ' valeur(s) distinctes) : rien n arrive en bloc');
+  ok(delais.every((v, i) => i === 0 || v > delais[i - 1]),
+    'et ils croissent dans l ordre de lecture : la question, puis les champs, puis le reste');
+  ok(delais[delais.length - 1] <= 700,
+    'le dernier bloc n attend pas plus de 700 ms (' + delais[delais.length - 1] + ' ms) : une cascade, pas une file d attente');
+  return mesure;
+}
 async function checkFluidity(page) {
   console.log('\n[4] Fluidite mesuree (60 Hz : une image « normale » vaut ~16,8 ms,');
   console.log('    le signal utile est donc l image PERDUE au-dela de 32 ms et la tache longue)');
@@ -622,6 +720,60 @@ async function checkMutations(page) {
   const calmAgain = await burstDiff(page, () => clickFreshChip(page));
   ok(calmAgain.bigWaves <= 1 && calmAgain.sameTrack,
     `restauration inverse : le clic redevient UNE vague (${calmAgain.bigWaves}) sur la meme piste`);
+
+  // (d) le reordonnement muet d avant, remis expres : le FLIP est neutralise et
+  // la mesure de [3d] doit tomber a zero image en mouvement. Sinon elle ne
+  // mesure pas ce qu elle croit.
+  const app3 = fs.readFileSync(APP, 'utf8');
+  const flipAnchor = '    jouerFlipFilVisite(positionsAvant);';
+  ok(app3.split(flipAnchor).length - 1 === 1, 'ancre JS de mutation du reordonnement unique');
+  let mutatedFlip = null;
+  try {
+    fs.writeFileSync(APP, app3.replace(flipAnchor, '    void positionsAvant;'));
+    await bootTunnel(page, 'mutation-flip');
+    await page.evaluate(() => goStep2());
+    await page.waitForTimeout(1200);
+    mutatedFlip = await page.evaluate(MESURER_REORDRE);
+  } finally {
+    fs.writeFileSync(APP, app3);
+  }
+  ok(!mutatedFlip.erreur && mutatedFlip.ordreAvant.join('>') !== mutatedFlip.ordreApres.join('>'),
+    'MONTAGE de la mutation : l ordre change quand meme (le reordonnement lui-meme n est pas casse)');
+  ok(!mutatedFlip.erreur && mutatedFlip.enMouvement === 0,
+    `FLIP retire : la ligne se teleporte (${mutatedFlip.enMouvement} image en mouvement) -> le check [3d] ROUGIRAIT`);
+  await bootTunnel(page, 'restore-flip');
+  await page.evaluate(() => goStep2());
+  await page.waitForTimeout(1200);
+  const flipAgain = await page.evaluate(MESURER_REORDRE);
+  ok(!flipAgain.erreur && flipAgain.enMouvement >= 6,
+    `restauration inverse : le trajet est de nouveau joue (${flipAgain.enMouvement} image(s))`);
+
+  // (e) les rangs de la cascade de contact retires : les six blocs doivent
+  // retomber sur un seul et meme delai, comme avant le correctif.
+  const css2 = fs.readFileSync(CLIENT_CSS, 'utf8');
+  const rangAnchor = "#clientView #step3 .contact-grid > :nth-child(1) { --i: 0; }";
+  ok(css2.split(rangAnchor).length - 1 === 1, 'ancre CSS des rangs de cascade unique');
+  let mutatedCascade = null;
+  try {
+    const sansRangs = css2.split(String.fromCharCode(10))
+      .filter((ligne) => { const t = ligne.trim(); return !(t.startsWith('#clientView #step3 ') && t.includes('--i:') && t.endsWith('}')); })
+      .join(String.fromCharCode(10));
+    fs.writeFileSync(CLIENT_CSS, sansRangs);
+    await bootTunnel(page, 'mutation-cascade');
+    mutatedCascade = await page.evaluate(LIRE_CASCADE_CONTACT);
+  } finally {
+    fs.writeFileSync(CLIENT_CSS, css2);
+  }
+  const delaisMutes = mutatedCascade.lignes.map((l) => l.delai);
+  ok(mutatedCascade.arrive && delaisMutes.length === 6,
+    'MONTAGE de la mutation : les 6 blocs entrent toujours (l entree elle-meme n est pas cassee)');
+  ok(new Set(delaisMutes).size === 1,
+    `rangs retires : les 6 blocs arrivent au MEME instant (${delaisMutes.join('/')}) -> le check [3e] ROUGIRAIT`);
+  await bootTunnel(page, 'restore-cascade');
+  const cascadeAgain = await page.evaluate(LIRE_CASCADE_CONTACT);
+  const delaisRendus = cascadeAgain.lignes.map((l) => l.delai);
+  ok(new Set(delaisRendus).size === 6,
+    `restauration inverse : les 6 delais redeviennent distincts (${delaisRendus.join('/')})`);
 }
 
 async function main() {
@@ -639,6 +791,8 @@ async function main() {
     await checkTrack(page);
     await checkSeal(page);
     await checkClickCalm(page);
+    await checkReorderMotion(page);
+    await checkContactCascade(page);
     await checkFluidity(page);
     await checkMutations(page);
     ok(consoleErrors.length === 0, `aucune erreur console (${consoleErrors.length})${consoleErrors.length ? ' : ' + consoleErrors.slice(0, 3).join(' | ') : ''}`);

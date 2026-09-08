@@ -79,8 +79,27 @@ script qui la fait et quand.
 
 C'est souvent la **meilleure** solution, et pas seulement un pis-aller : le
 script suit le formulaire sur **toutes** les pages où le site l'affiche, sans
-qu'on ait à les retrouver une par une. Sur le site de Fun Galaxy, un seul champ
-couvre la page Contact et la page Bowling.
+qu'on ait à les retrouver une par une.
+
+**Mais viser large n'est utile que si le bloc contient autre chose.** Relevé sur
+le site du premier client (2026-09-08) : le conteneur du formulaire ne portait
+QUE le formulaire, et le décor (illustration, titre) vivait dans un bloc voisin.
+Masquer l'ancêtre aurait emporté le décor pour rien. Regarder la structure avant
+de choisir :
+
+```
+section
+  conteneur
+    contenu      (illustration + titre)   <- à GARDER
+    formulaire   (le wrapper, et rien d'autre)   <- à masquer
+```
+
+Le `data-fallback` vise alors le wrapper seul, et le `data-target` son parent :
+le parcours prend exactement la place du formulaire, dans la mise en page du
+site. L'argument du « viser large » (battre un script du site qui réaffiche son
+formulaire) ne s'applique pas ici : la règle `!important` d'une feuille de style
+l'emporte déjà sur le `style="display:block"` en ligne que pose ce genre de
+script.
 
 Si le site sert un formulaire **différent selon le centre**, chaque formulaire
 reçoit le champ avec **son** `data-center`. C'est le serveur du site qui a déjà

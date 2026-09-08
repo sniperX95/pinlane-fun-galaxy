@@ -226,6 +226,27 @@ function resolveEffectiveCenterId(session, requestedCenterId = '') {
   return normalizeCenterId(requestedCenterId || session?.authorizedCenterId || session?.centerId || 'libramont');
 }
 
+// LA PORTEE 'all' EST UN PRIVILEGE PLATEFORME, PAS UN MOT-CLE.
+//
+// centerScope('all') rend une chaine VIDE, et une chaine vide DESACTIVE le
+// filtre de centre dans les requetes ecrites `($3 = '' or center_id = $3)`.
+// La barriere inter-clients de requireStaffPermission exempte volontairement
+// 'all' : ce n est le centre de personne, il n y a rien a comparer. Il ne
+// restait donc que `centers.switch`, que TOUT role verrouille possede
+// d office. Une direction de centre pouvait ainsi muter la demande d un
+// prospect appartenant a un AUTRE client, et en recevoir le nom et le
+// contact dans la reponse de la meme requete.
+//
+// Le refus est explicite plutot que silencieux : rabattre la demande sur le
+// centre de la session rendrait une reponse partielle sans dire pourquoi, et
+// on croirait le produit vide au lieu de se savoir refuse.
+function refuserPorteePlateforme(res, session, requestedCenterId) {
+  if (requestedCenterId !== 'all') return false;
+  if (sessionHasPermission(session, 'platform.admin')) return false;
+  sendError(res, 403, 'Acces centre insuffisant.');
+  return true;
+}
+
 function centerScope(centerId) {
   return centerId === 'all' ? '' : centerId;
 }
@@ -1964,12 +1985,22 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   }
 
   if (action === 'learning') {
+    // LE CENTRE D UNE SUGGESTION VIENT DU SERVEUR, PAS DES EVENEMENTS RECUS.
+    // `withCenter` reecrit body.centerId, body.reservation, body.job et
+    // body.event, mais JAMAIS body.events[] : le centre de chaque suggestion
+    // etait donc celui que l appelant avait ecrit dans ses evenements. Une
+    // session portant `ai.ops` ecrivait ainsi des lignes de suggestion, au
+    // texte qu elle choisissait, dans le centre d un AUTRE client, sans
+    // jamais declencher la barriere inter-clients. Son action voisine
+    // `event` force le centre depuis toujours ; celle-ci ne le faisait pas.
+    const concreteCenterId = requireConcreteCenter('apprentissage');
     const result = learningAgent(body);
     let savedSuggestions = [];
     if (body.persist !== false && result.suggestions.length) {
       savedSuggestions = await saveAgentSuggestions(
         result.suggestions.map((suggestion) => ({
           ...suggestion,
+          centerId: concreteCenterId,
           agentId: 'learning-agent',
           suggestionType: 'duration_adjustment',
           severity: suggestion.confidence >= 0.75 ? 'high' : 'medium',
@@ -3114,6 +3145,7 @@ module.exports = async (req, res) => {
         centerId: requestedCenterId,
       });
       if (!session) return;
+      if (refuserPorteePlateforme(res, session, requestedCenterId)) return;
       await handleGet(req, res, { centerId: resolveEffectiveCenterId(session, requestedCenterId), session });
       return;
     }
@@ -3125,6 +3157,7 @@ module.exports = async (req, res) => {
         centerId: requestedCenterId,
       });
       if (!session) return;
+      if (refuserPorteePlateforme(res, session, requestedCenterId)) return;
       const effectiveCenterId = resolveEffectiveCenterId(session, requestedCenterId);
 
       const audited = !NON_MUTATING_POST_ACTIONS.has(action);

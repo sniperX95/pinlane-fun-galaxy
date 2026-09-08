@@ -385,7 +385,18 @@ module.exports = async (req, res) => {
   // activees) pour que l'affichage client reflete la meme verite que le moteur.
   // Fail-soft : sans DB ou centre inconnu, le client retombe sur la grille locale.
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
-  const centerId = String(url.searchParams.get('centerId') || 'libramont');
+  // LE MEME ENDPOINT LISAIT DEUX NOMS DE PARAMETRE DIFFERENTS SUR SES DEUX
+  // CHEMINS. La sonde d etat, juste au-dessus, accepte center OU centerId ;
+  // le catalogue n acceptait que centerId et retombait EN SILENCE sur
+  // libramont. Mesure en production : ?center=gembloux rendait 200 avec le
+  // catalogue et les PRIX de Libramont, sans une erreur. Le tunnel envoie bien
+  // centerId, donc aucun visiteur n etait touche, mais embed.js met center=
+  // dans l adresse du cadre : la premiere integration qui recopiait ce nom
+  // servait les tarifs du mauvais client sans que rien ne rougisse. Un ecart
+  // de tarif ne se voit sur aucun ecran, seulement en caisse.
+  // Les deux noms sont desormais lus ici aussi, et un centre inconnu tombe sur
+  // le meme 404 quel que soit le nom employe.
+  const centerId = String(url.searchParams.get('centerId') || url.searchParams.get('center') || 'libramont');
   // Verdict DU JOUR. Parametre OPTIONNEL : sans date (ou date malformee), la
   // reponse est STRICTEMENT celle d'avant, cle 'day' absente. Aucune 400 : cet
   // endpoint est une surface de CONFIG, jamais l'autorite de reservation (c'est

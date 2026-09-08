@@ -96,6 +96,42 @@ if ((original.split(anchor).length - 1) !== 1) {
     'restauration inverse : la liste blanche est intacte');
 }
 
+// LES DEUX CHEMINS DE public-booking-meta LISENT-ILS LE MEME NOM DE CENTRE ?
+//
+// Cet endpoint a DEUX entrees : une sonde d etat (embedState) et le catalogue.
+// La sonde acceptait `center` ou `centerId`, le catalogue seulement `centerId`,
+// et retombait EN SILENCE sur libramont. Mesure en production le 2026-09-08 :
+// ?center=gembloux rendait 200 avec les PRIX de Libramont. Aucun visiteur
+// n etait touche (le tunnel envoie centerId), mais embed.js met bien `center=`
+// dans l adresse du cadre : la premiere integration qui recopiait ce nom
+// servait les tarifs du mauvais client. Un ecart de tarif ne se voit sur aucun
+// ecran, seulement en caisse.
+{
+  const META = path.join(root, 'api', 'public-booking-meta.js');
+  const source = fs.readFileSync(META, 'utf8');
+  // Chaque lecture du centre depuis l URL, avec les noms qu elle accepte.
+  const lectures = [];
+  // La capture va jusqu au point-virgule : un motif qui s arrete a la premiere
+  // parenthese fermante ne verrait que la PREMIERE des deux lectures, et
+  // declarerait manquante une alternative pourtant presente.
+  const motif = /const\s+(?:centerId|demande)\s*=\s*String\(([^;]*);/g;
+  let trouve;
+  while ((trouve = motif.exec(source)) !== null) {
+    const expression = trouve[1];
+    lectures.push({
+      centerId: expression.includes("get('centerId')"),
+      center: expression.includes("get('center')"),
+    });
+  }
+  // MONTAGE : sans les deux lectures, l assertion suivante ne mesure rien.
+  if (ok(lectures.length >= 2,
+    `MONTAGE : les deux lectures du centre sont trouvees dans public-booking-meta (${lectures.length})`)) {
+    const toutes = lectures.every((l) => l.centerId && l.center);
+    ok(toutes,
+      'les deux chemins de public-booking-meta acceptent center ET centerId (pas de repli silencieux sur un autre client)');
+  }
+}
+
 if (failures) {
   console.error(`\npublic-endpoints-check: FAIL ${failures} assertion(s)`);
   process.exit(1);

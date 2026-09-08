@@ -18,6 +18,7 @@ const {
   revealRoleCode,
   revealMemberCode,
   requireStaffPermission,
+  requestedCenterIsSameClient,
   sessionHasPermission,
   setRolePreset,
   toggleMemberStatus,
@@ -93,13 +94,25 @@ async function sendSessionSnapshot(req, res, centerId, session = null, extra = {
     sendJson(res, 200, { ok: true, authenticated: false, accessControl: null });
     return;
   }
-  if (
-    centerId
-    && centerId !== activeSession.centerId
-    && !sessionHasPermission(activeSession, 'centers.switch')
-  ) {
-    sendError(res, 403, 'Acces centre insuffisant.');
-    return;
+  // DEUX BARRIERES, COMME LE POST. `requireStaffPermission` en applique deux :
+  // `centers.switch` (changer de centre) PUIS `requestedCenterIsSameClient`
+  // (rester chez le meme client). Ce chemin de lecture les refaisait a la
+  // main et ne gardait que la premiere. Or `centers.switch` est accordee
+  // d office a tout role verrouille : la direction d un client lisait donc
+  // `listAccessControl` du centre d un AUTRE client, c est-a-dire ses roles,
+  // ses membres, leurs contacts, les quatre derniers caracteres de leurs
+  // codes et son journal d acces. La surface la plus sensible du produit.
+  if (centerId && centerId !== activeSession.centerId) {
+    if (!sessionHasPermission(activeSession, 'centers.switch')) {
+      sendError(res, 403, 'Acces centre insuffisant.');
+      return;
+    }
+    if (centerId !== 'all'
+      && !sessionHasPermission(activeSession, 'platform.admin')
+      && !(await requestedCenterIsSameClient(activeSession.centerId, centerId))) {
+      sendError(res, 403, 'Acces centre insuffisant.');
+      return;
+    }
   }
   const canManageUsers = activeSession.permissions.includes('users.manage') || activeSession.role?.locked;
   let accessControl = null;

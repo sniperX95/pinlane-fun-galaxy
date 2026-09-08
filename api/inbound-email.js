@@ -142,21 +142,35 @@ function centreConnu(valeur) {
 // LE CENTRE SE LIT SUR L ADRESSE QUI A RECU. Un seul webhook sert tous les
 // centres : `libramont@...` va a Libramont, `gembloux@...` a Gembloux. C est
 // la donnee du mail qui decide, pas une constante ni un webhook par centre.
-function centreDuDestinataire(data) {
-  // `received_for` d abord : c est l adresse pour laquelle le fournisseur a
-  // accepte le mail, donc la vraie cle de routage. `to` peut porter une liste
-  // ou une copie qui ne nous concerne pas.
-  const brut = data && (data.received_for || data.to || data.recipient || data.envelope_to);
-  const liste = Array.isArray(brut) ? brut : (brut ? [brut] : []);
-  for (const entree of liste) {
-    const adresse = entree && typeof entree === 'object'
-      ? (entree.address || entree.email || '')
-      : String(entree || '');
-    const { email } = parseAddress(adresse);
-    const id = centreConnu(String(email || '').split('@')[0]);
-    if (id) return id;
+//
+// TOUTES LES SOURCES SE LISENT, DANS L ORDRE (2026-09-08). `received_for` est
+// l adresse a laquelle le fournisseur a accepte le mail ; `to` est l en-tete,
+// qui garde l adresse D ORIGINE quand l hebergeur d un centre transfere (le
+// client a ecrit a gembloux@fungalaxy.be, le mail nous arrive pour
+// gembloux@inbound...). Selon le chemin, l une ou l autre est generique : ne
+// lire que la premiere source non vide perdait le centre nomme dans la seconde.
+function destinatairesDe(data) {
+  const sources = [data && data.received_for, data && data.to, data && data.recipient, data && data.envelope_to];
+  const adresses = [];
+  for (const brut of sources) {
+    const liste = Array.isArray(brut) ? brut : (brut ? [brut] : []);
+    for (const entree of liste) {
+      const adresse = entree && typeof entree === 'object'
+        ? (entree.address || entree.email || '')
+        : String(entree || '');
+      const { email } = parseAddress(adresse);
+      if (email && !adresses.includes(email)) adresses.push(email);
+    }
   }
-  return '';
+  return adresses;
+}
+
+function centreDuDestinataire(adresses) {
+  for (const email of adresses) {
+    const id = centreConnu(String(email || '').split('@')[0]);
+    if (id) return { id, adresse: email };
+  }
+  return null;
 }
 
 function createHandler({ ingest = ingestInboundEmail, recupererContenu = recupererContenuParDefaut } = {}) {
@@ -245,8 +259,23 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
 
     try {
       const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+      // L ADRESSE PRIME SUR LE PARAMETRE D URL (2026-09-08). Un seul webhook
+      // sert tous les centres ; si son URL porte `?centerId=libramont`, un
+      // parametre prioritaire classait a Libramont TOUT ce qui arrivait,
+      // Gembloux compris, sans erreur ni trace. Mesure sur la production : cinq
+      // mails recus, cinq classes libramont, destinataire stocke nulle part.
+      // Le parametre ne sert plus que si aucune adresse ne designe un centre ;
+      // et quand on retombe sur le defaut, on le DIT, dans le journal et dans
+      // la ligne ecrite, pour qu un mail mal classe se voie.
+      const adresses = destinatairesDe(data);
+      const parAdresse = centreDuDestinataire(adresses);
       const centreDemande = centreConnu(url.searchParams.get('centerId'));
-      const centerId = centreDemande || centreDuDestinataire(data) || CENTRE_PAR_DEFAUT;
+      const routage = parAdresse ? 'destinataire' : (centreDemande ? 'parametre' : 'defaut');
+      const centerId = parAdresse ? parAdresse.id : (centreDemande || CENTRE_PAR_DEFAUT);
+      const destinataire = parAdresse ? parAdresse.adresse : (adresses[0] || '');
+      if (routage === 'defaut') {
+        console.warn(`inbound-email: aucun centre reconnu, classe par defaut (${CENTRE_PAR_DEFAUT}) ; destinataires recus : ${adresses.join(', ') || '(aucun)'}`);
+      }
       const result = await ingest({
         centerId,
         from,
@@ -254,6 +283,8 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
         subject,
         body: text,
         receivedAt: data.receivedAt || data.created_at || null,
+        to: destinataire,
+        routage,
       });
       sendJson(res, 200, {
         ok: true,

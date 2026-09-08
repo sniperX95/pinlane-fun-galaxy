@@ -51,7 +51,10 @@
 //
 //   [D] LE MAIL ARRIVE CHEZ LE CENTRE QUI L A RECU. Le centre se lit sur
 //       l ADRESSE DESTINATAIRE (`libramont@...` va a Libramont, `gembloux@...`
-//       a Gembloux) ; le parametre d URL prime quand il est donne ; une adresse
+//       a Gembloux), en lisant TOUTES les sources (received_for, puis to) ;
+//       l ADRESSE prime sur le parametre d URL, qui ne sert que si aucune
+//       adresse ne designe un centre ; l adresse recue et le mode de routage
+//       (destinataire, parametre, defaut) partent a l ingestion ; une adresse
 //       qui ne designe aucun centre connu ne fabrique pas un centre invente.
 //
 //   [F] UN EVENEMENT QUI N EST PAS UNE RECEPTION N EST JAMAIS INGERE, MEME
@@ -169,7 +172,7 @@ async function appeler({ corps, entetes = {}, requete = '/api/inbound-email', me
 // AUCUN corps, seulement l identifiant du mail. C est la forme que le gate doit
 // mesurer ; l ancienne fixture (avec un champ texte) validait un monde qui
 // n existe pas.
-function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.be', subject = 'Anniversaire samedi', emailId = '7865d93e-c9e6-42a9-9ef2-8d92e09ecc06' } = {}) {
+function payload({ to = ['libramont@inbound.pinlane.be'], receivedFor, from = 'marie@exemple.be', subject = 'Anniversaire samedi', emailId = '7865d93e-c9e6-42a9-9ef2-8d92e09ecc06' } = {}) {
   return JSON.stringify({
     type: 'email.received',
     created_at: '2026-09-06T18:10:40.000Z',
@@ -179,7 +182,7 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
       email_id: emailId,
       from,
       message_id: '<CA+q0sthV3rFhsMJ8J4xCJT@mail.gmail.com>',
-      received_for: to,
+      received_for: receivedFor === undefined ? to : receivedFor,
       subject,
       to,
     },
@@ -229,12 +232,52 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
   ok(g.appels[0] && g.appels[0].centerId === 'gembloux', '[D] gembloux@... arrive chez Gembloux', g.appels[0] && g.appels[0].centerId);
   ok(bon.appels[0] && bon.appels[0].centerId === 'libramont', '[D] libramont@... arrive chez Libramont (ce n est pas une constante)', bon.appels[0] && bon.appels[0].centerId);
   const force = await appeler({ corps: versGembloux, entetes: signer(versGembloux), requete: '/api/inbound-email?centerId=libramont' });
-  ok(force.appels[0] && force.appels[0].centerId === 'libramont', '[D] le parametre d URL prime sur l adresse', force.appels[0] && force.appels[0].centerId);
+  // POURQUOI L ADRESSE PRIME SUR LE PARAMETRE D URL (2026-09-08). Un seul
+  // webhook sert tous les centres. Si son URL porte `?centerId=libramont`, un
+  // parametre prioritaire classe a Libramont TOUT ce qui arrive, Gembloux
+  // compris, sans erreur ni trace. Mesure sur la production : 5 mails recus,
+  // 5 classes libramont, destinataire stocke nulle part. Le parametre ne sert
+  // plus que quand aucune adresse ne designe un centre.
+  ok(force.appels[0] && force.appels[0].centerId === 'gembloux', '[D] l ADRESSE prime sur le parametre d URL : un webhook fige sur libramont ne detourne pas Gembloux', force.appels[0] && force.appels[0].centerId);
   const inventé = payload({ to: ['nimportequoi@inbound.pinlane.be'] });
   const inc = await appeler({ corps: inventé, entetes: signer(inventé) });
   ok(inc.appels[0] && inc.appels[0].centerId === 'libramont', '[D] une adresse qui ne designe aucun centre connu ne fabrique pas un centre invente', inc.appels[0] && inc.appels[0].centerId);
   const faux = await appeler({ corps, entetes: signer(corps), requete: '/api/inbound-email?centerId=centre-qui-n-existe-pas' });
   ok(faux.appels[0] && faux.appels[0].centerId !== 'centre-qui-n-existe-pas', '[D] un parametre d URL qui ne designe aucun centre est ignore, pas ecrit tel quel', faux.appels[0] && faux.appels[0].centerId);
+  // LE PARAMETRE D URL NE SERT QUE QUAND AUCUNE ADRESSE NE DESIGNE UN CENTRE.
+  const inconnu = payload({ to: ['nimportequoi@inbound.pinlane.be'] });
+  const parametreSeul = await appeler({ corps: inconnu, entetes: signer(inconnu), requete: '/api/inbound-email?centerId=gembloux' });
+  ok(parametreSeul.appels[0] && parametreSeul.appels[0].centerId === 'gembloux', '[D] le parametre d URL sert quand aucune adresse ne designe un centre', parametreSeul.appels[0] && parametreSeul.appels[0].centerId);
+  // LE MAIL TRANSFERE PAR L HEBERGEUR DU CENTRE. L en-tete `to` garde l adresse
+  // d origine (gembloux@fungalaxy.be) ; `received_for` porte celle a laquelle
+  // le fournisseur l a accepte. Selon le chemin, l une ou l autre nomme le
+  // centre : toutes les sources se lisent, dans l ordre.
+  const transfere = payload({ to: ['gembloux@fungalaxy.be'], receivedFor: ['gembloux@inbound.pinlane.be'] });
+  const t = await appeler({ corps: transfere, entetes: signer(transfere) });
+  ok(t.appels[0] && t.appels[0].centerId === 'gembloux', '[D] un mail transfere par l hebergeur (to = adresse d origine) arrive chez Gembloux', t.appels[0] && t.appels[0].centerId);
+  const generique = payload({ to: ['gembloux@fungalaxy.be'], receivedFor: ['boite@inbound.pinlane.be'] });
+  const gen = await appeler({ corps: generique, entetes: signer(generique) });
+  ok(gen.appels[0] && gen.appels[0].centerId === 'gembloux', '[D] received_for generique : l en-tete to est lu a son tour, le centre n est pas perdu', gen.appels[0] && gen.appels[0].centerId);
+  // LE DESTINATAIRE ET LE MODE DE ROUTAGE SONT TRANSMIS. Sans eux, un mail mal
+  // classe ne se distingue en rien d un mail bien classe, et personne ne peut
+  // le prouver apres coup.
+  ok(g.appels[0] && g.appels[0].to === 'gembloux@inbound.pinlane.be' && g.appels[0].routage === 'destinataire', '[D] l ingestion recoit l adresse qui a decide et le mode « destinataire »', JSON.stringify(g.appels[0] && { to: g.appels[0].to, routage: g.appels[0].routage }));
+  ok(parametreSeul.appels[0] && parametreSeul.appels[0].routage === 'parametre', '[D] un centre venu du parametre d URL est marque « parametre »', parametreSeul.appels[0] && parametreSeul.appels[0].routage);
+  ok(inc.appels[0] && inc.appels[0].routage === 'defaut' && inc.appels[0].to === 'nimportequoi@inbound.pinlane.be', '[D] un centre par defaut est marque « defaut », avec l adresse recue, pour qu on le voie', JSON.stringify(inc.appels[0] && { to: inc.appels[0].to, routage: inc.appels[0].routage }));
+  // LE REPLI PAR DEFAUT SE DIT. Un mail classe faute de mieux laisse une ligne
+  // dans le journal, avec les adresses recues : c est la seule chose qu on
+  // verra de l exterieur.
+  async function appelerEnEcoutant(options) {
+    const avertissements = [];
+    const warnOriginal = console.warn;
+    console.warn = (...args) => { avertissements.push(args.map(String).join(' ')); };
+    try { await appeler(options); } finally { console.warn = warnOriginal; }
+    return avertissements;
+  }
+  const avertis = await appelerEnEcoutant({ corps: inconnu, entetes: signer(inconnu) });
+  ok(avertis.some((l) => /defaut/.test(l) && /nimportequoi@inbound[.]pinlane[.]be/.test(l)), '[D] le repli par defaut ecrit un avertissement qui nomme l adresse recue', JSON.stringify(avertis));
+  const silencieux = await appelerEnEcoutant({ corps: versGembloux, entetes: signer(versGembloux) });
+  ok(silencieux.length === 0, '[D] un mail bien route n ecrit aucun avertissement', JSON.stringify(silencieux));
 
   // =====================================================================
   console.log('\n[E] le chemin manuel survit, et aucun secret ne fuit');
@@ -430,11 +473,43 @@ function payload({ to = ['libramont@inbound.pinlane.be'], from = 'marie@exemple.
     },
     {
       nom: 'le centre est fige sur le defaut',
-      de: '    const centerId = centreDemande || centreDuDestinataire(data) || CENTRE_PAR_DEFAUT;',
-      vers: '    const centerId = CENTRE_PAR_DEFAUT;',
+      de: '      const centerId = parAdresse ? parAdresse.id : (centreDemande || CENTRE_PAR_DEFAUT);',
+      vers: '      const centerId = CENTRE_PAR_DEFAUT;',
       rejouer: async () => appeler({ corps: versGembloux, entetes: signer(versGembloux) }),
       attendu: (r) => r.appels[0] && r.appels[0].centerId !== 'gembloux',
       libelle: 'un mail pour Gembloux atterrirait a Libramont',
+    },
+    {
+      nom: 'le parametre d URL reprend la priorite sur l adresse',
+      de: '      const centerId = parAdresse ? parAdresse.id : (centreDemande || CENTRE_PAR_DEFAUT);',
+      vers: '      const centerId = centreDemande || (parAdresse ? parAdresse.id : CENTRE_PAR_DEFAUT);',
+      rejouer: async () => appeler({ corps: versGembloux, entetes: signer(versGembloux), requete: '/api/inbound-email?centerId=libramont' }),
+      attendu: (r) => r.appels[0] && r.appels[0].centerId !== 'gembloux',
+      libelle: 'un webhook fige sur libramont detournerait Gembloux',
+    },
+    {
+      nom: 'le destinataire n est plus transmis a l ingestion',
+      de: '        to: destinataire,',
+      vers: '',
+      rejouer: async () => appeler({ corps: versGembloux, entetes: signer(versGembloux) }),
+      attendu: (r) => r.appels[0] && !r.appels[0].to,
+      libelle: 'un mail mal classe ne laisserait aucune trace de l adresse qui l a recu',
+    },
+    {
+      nom: 'seule la premiere source d adresse est lue',
+      de: '  const sources = [data && data.received_for, data && data.to, data && data.recipient, data && data.envelope_to];',
+      vers: '  const sources = [data && (data.received_for || data.to || data.recipient || data.envelope_to)];',
+      rejouer: async () => appeler({ corps: generique, entetes: signer(generique) }),
+      attendu: (r) => r.appels[0] && r.appels[0].centerId !== 'gembloux',
+      libelle: 'une adresse generique en received_for masquerait le centre nomme dans to',
+    },
+    {
+      nom: 'le repli par defaut redevient muet',
+      de: "      if (routage === 'defaut') {",
+      vers: '      if (false) {',
+      rejouer: async () => ({ avertis: await appelerEnEcoutant({ corps: inconnu, entetes: signer(inconnu) }) }),
+      attendu: (r) => r.avertis.length === 0,
+      libelle: 'un mail classe faute de mieux ne laisserait aucune ligne dans le journal',
     },
   ];
   for (const c of contreEpreuves) {

@@ -236,6 +236,54 @@
     }
   } catch (error) { /* fetch indisponible : le module reste en place */ }
 
+  // LES OUTILS DE MESURE DU SITE SE DECLENCHENT TOUT SEULS.
+  //
+  // Le push dataLayer ne compte rien tant que personne n'a créé un déclencheur
+  // dans GTM. Or ce que demande l'agence du client, c'est de ne PAS perdre de
+  // données : on appelle donc directement les outils DÉJÀ chargés par la page.
+  // `fbq` (Pixel Meta) et `gtag` (GA4) sont des variables globales posées par
+  // leurs propres scripts. Si le visiteur a refusé les cookies, ces scripts ne
+  // sont jamais chargés, donc les globales n'existent pas et rien ne part : le
+  // consentement du site est respecté par construction, sans que ce fichier ait
+  // à le lire ni à le comprendre.
+  //
+  // data-track="datalayer" coupe cet appel direct, pour un site qui préfère
+  // câbler l'événement lui-même dans GTM : sans ce réglage il compterait deux
+  // fois. data-meta-event nomme l'événement Meta quand ce n'est pas celui-là.
+  var mesureDirecte = (script.getAttribute('data-track') || '').toLowerCase() !== 'datalayer';
+  var evenementMeta = script.getAttribute('data-meta-event') || 'CompleteRegistration';
+  function declencherLesOutilsDuSite(detail) {
+    if (!mesureDirecte) return;
+    var montant = Number(detail.amount) || 0;
+    var devise = detail.currency || 'EUR';
+    try {
+      if (typeof window.fbq === 'function') {
+        window.fbq('track', evenementMeta, { value: montant, currency: devise, content_name: detail.label || '', status: detail.status || '' });
+      }
+    } catch (error) { /* le pixel du site a refusé : ce n'est pas à nous de le rattraper */ }
+    // GA4 : `purchase`, PAS un nom maison. Seuls les événements RECOMMANDÉS de
+    // la spécification alimentent les rapports d'eux-mêmes ; un nom inventé
+    // oblige le site à aller le cocher à la main comme événement clé, ce qui
+    // est exactement le travail qu'on lui épargne. `purchase` exige quatre
+    // champs : currency, transaction_id, value et items.
+    try {
+      if (typeof window.gtag === 'function') {
+        window.gtag('event', 'purchase', {
+          transaction_id: String(detail.reservationId || ''),
+          value: montant,
+          currency: devise,
+          items: [{
+            item_id: String(detail.formuleId || detail.type || 'reservation'),
+            item_name: String(detail.label || 'Réservation'),
+            item_category: String(detail.center || ''),
+            price: montant,
+            quantity: 1,
+          }],
+        });
+      }
+    } catch (error) { /* idem pour l'analytics du site */ }
+  }
+
   window.addEventListener('message', function (event) {
     // Deux contrôles : l'origine dit d'où vient le message, la source dit quel
     // cadre l'a envoyé. Sans le second, une autre iframe de la même origine
@@ -258,6 +306,7 @@
       var detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
       try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'pinlane_booking', pinlane: detail }); } catch (error) { /* dataLayer inaccessible */ }
       try { window.dispatchEvent(new CustomEvent('pinlane:booking', { detail: detail })); } catch (error) { /* CustomEvent indisponible */ }
+      declencherLesOutilsDuSite(detail);
       return;
     }
     if (data.type !== 'pinlane:height') return;

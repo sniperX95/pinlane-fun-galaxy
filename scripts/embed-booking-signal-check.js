@@ -23,6 +23,14 @@
 //   [C] AUCUNE DONNEE PERSONNELLE NE SORT DU CADRE. Ni le nom, ni le telephone,
 //       ni l email du client n apparaissent dans ce qui est pousse au site.
 //
+//   [E] LES OUTILS DU SITE SE DECLENCHENT TOUT SEULS. Un push dataLayer ne
+//       compte rien tant que personne n a cable un declencheur dans GTM : le
+//       cadre appelle donc directement `fbq` et `gtag`, les globales posees
+//       par le Pixel Meta et par GA4 quand ils sont chargés. L agence n a
+//       plus rien a faire. `data-track="datalayer"` coupe cet appel pour un
+//       site qui prefere cabler lui-meme (sinon il compterait deux fois), et
+//       le montant transmis est celui du dossier, pas un chiffre d ecran.
+//
 //   [D] LE SIGNAL EST NECESSAIRE ET SUFFISANT. Contre-epreuves par mutation
 //       servies en memoire : sans l emission dans le tunnel, le site ne recoit
 //       rien ; sans le relais dans embed.js, le message arrive mais le
@@ -135,18 +143,30 @@ function metaPayload() {
 // LA PAGE HOTE : le site d un centre, qui colle LA ligne d installation et
 // ecoute ce qui lui arrive, comme le ferait un conteneur GTM.
 // ---------------------------------------------------------------------------
-const HOST_HTML = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
+function hostHtml() { return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
 <header style="height:56px;background:#1b1b2f"></header><main><h1>Réservez</h1>
 <script>
 window.dataLayer = [];
 window.__messages = [];
 window.__customs = [];
+// Le Pixel Meta et GA4 du site, reduits a leur seule trace observable : une
+// globale appelable. C est exactement ce que le cadre trouve sur une vraie
+// page une fois les scripts charges.
+window.__fbq = [];
+window.__gtag = [];
+if (${HOTE.outils}) {
+  window.fbq = function () { window.__fbq.push(Array.prototype.slice.call(arguments)); };
+  window.gtag = function () { window.__gtag.push(Array.prototype.slice.call(arguments)); };
+}
 addEventListener('message', function (e) { if (e.data && typeof e.data.type === 'string') window.__messages.push(e.data.type); });
 addEventListener('pinlane:booking', function (e) { window.__customs.push(e.detail); });
 </script>
-<script src="${BASE_URL}/embed.js" data-center="${CENTRE}"></script>
-</main></body></html>`;
+<script src="${BASE_URL}/embed.js" data-center="${CENTRE}"${HOTE.track ? ` data-track="${HOTE.track}"` : ''}></script>
+</main></body></html>`; }
 
+// La page hote change entre scenarios : avec ou sans outils charges, avec ou
+// sans data-track. Le serveur la fabrique a chaque requete.
+const HOTE = { outils: true, track: '' };
 const overrides = new Map();
 function sourceDisque(fichier) {
   return fs.readFileSync(path.join(ROOT, fichier), 'utf8').split(CRLF).join(LF);
@@ -163,7 +183,7 @@ async function avecMutationClient(editions, fn) {
 function serveur() {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, BASE_URL);
-    if (url.pathname === '/host.html') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(HOST_HTML); return; }
+    if (url.pathname === '/host.html') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(hostHtml()); return; }
     if (url.pathname === '/api/public-booking-meta') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(metaPayload())); return; }
     if (url.pathname === '/api/public-availability') {
       try { await availabilityHandler(req, res); } catch (error) { res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, message: String((error && error.message) || error) })); }
@@ -210,6 +230,8 @@ async function parcours(browser) {
     pousses: (window.dataLayer || []).filter((e) => e && e.event === 'pinlane_booking'),
     customs: window.__customs.slice(),
     messages: window.__messages.slice(),
+    fbq: (window.__fbq || []).slice(),
+    gtag: (window.__gtag || []).slice(),
     iframes: document.querySelectorAll('iframe').length,
   }));
   try {
@@ -308,6 +330,54 @@ async function parcours(browser) {
     ok(r.hote.pousses.length > 0 && fuites.length === 0, 'ni nom, ni telephone, ni email dans ce qui est pousse au site', fuites.length ? `fuite : ${fuites.join(', ')}` : '');
 
     // =====================================================================
+    // =====================================================================
+    console.log('\n[E] les outils du site se declenchent tout seuls');
+    // =====================================================================
+    ok(r.hote.fbq.length === 1, 'le Pixel Meta du site a ete appele exactement une fois', JSON.stringify(r.hote.fbq));
+    ok(r.hote.gtag.length === 1, 'GA4 (gtag) a ete appele exactement une fois', JSON.stringify(r.hote.gtag));
+    const appelMeta = r.hote.fbq[0] || [];
+    const appelGa = r.hote.gtag[0] || [];
+    if (m.dossier) {
+      ok(appelMeta[0] === 'track' && appelMeta[1] === 'CompleteRegistration',
+        'l appel Meta est un track CompleteRegistration (l evenement que le client comptait deja)', JSON.stringify(appelMeta.slice(0, 2)));
+      ok(Boolean(appelMeta[2]) && Number(appelMeta[2].value) === Number(m.dossier.price) && appelMeta[2].currency === 'EUR',
+        'le montant envoye au Pixel est celui du dossier cree, jamais un chiffre d ecran', JSON.stringify(appelMeta[2]));
+      ok(appelGa[0] === 'event' && appelGa[1] === 'purchase',
+        'l appel GA4 est l evenement RECOMMANDE purchase (un nom maison n alimenterait aucun rapport sans reglage)', JSON.stringify(appelGa.slice(0, 2)));
+      ok(Boolean(appelGa[2]) && Number(appelGa[2].value) === Number(m.dossier.price) && appelGa[2].transaction_id === String(m.dossier.id),
+        'GA4 recoit le montant et l identifiant du dossier', JSON.stringify(appelGa[2]));
+      // Les QUATRE champs exiges par la specification purchase, pas trois.
+      const items = (appelGa[2] && appelGa[2].items) || [];
+      ok(appelGa[2] && appelGa[2].currency === 'EUR' && items.length === 1,
+        'purchase porte currency et un tableau items d un element (les 4 champs exiges)', JSON.stringify(appelGa[2] && appelGa[2].currency) + ', ' + items.length + ' item(s)');
+      ok(items[0] && Number(items[0].price) === Number(m.dossier.price) && Number(items[0].quantity) === 1 && String(items[0].item_name || '') !== '',
+        'l item porte le prix du dossier, une quantite de 1 et un nom', JSON.stringify(items[0]));
+      ok(Boolean(appelMeta[2]) && typeof appelMeta[2].status === 'string' && appelMeta[2].status !== '',
+        'l appel Meta porte le parametre status documente pour CompleteRegistration', JSON.stringify(appelMeta[2] && appelMeta[2].status));
+    }
+    const sortiOutils = JSON.stringify({ f: r.hote.fbq, g: r.hote.gtag }).toLowerCase();
+    ok(r.hote.fbq.length > 0 && ['marie', 'dupont', '470 00 00 00', 'exemple.be'].every((t) => !sortiOutils.includes(t)),
+      'ni nom, ni telephone, ni email ne partent aux outils du site par ce chemin');
+
+    // UN SITE SANS OUTILS NE DOIT RIEN CASSER : c est le cas de la majorite des
+    // pages, et de la leur tant que le consentement n est pas donne.
+    HOTE.outils = false;
+    const sansOutils = await parcours(browser);
+    HOTE.outils = true;
+    ok(sansOutils.montage.etapeFinale === 5 && sansOutils.montage.dossiers === 1, 'sur un site SANS Pixel ni gtag, le parcours confirme quand meme');
+    ok(sansOutils.hote.pousses.length === 1 && sansOutils.hote.fbq.length === 0 && sansOutils.hote.gtag.length === 0,
+      'et le dataLayer est alimente sans qu aucun appel direct ne parte', `${sansOutils.hote.pousses.length} push`);
+
+    // data-track="datalayer" : le site cable lui-meme dans GTM, on se tait, sinon
+    // il compterait deux fois.
+    HOTE.track = 'datalayer';
+    const cableMain = await parcours(browser);
+    HOTE.track = '';
+    ok(cableMain.montage.etapeFinale === 5 && cableMain.hote.pousses.length === 1, 'montage : avec data-track=datalayer le parcours confirme et pousse toujours dans le dataLayer');
+    ok(cableMain.hote.fbq.length === 0 && cableMain.hote.gtag.length === 0,
+      'data-track=datalayer coupe l appel direct : pas de double comptage pour un site qui cable lui-meme', `fbq ${cableMain.hote.fbq.length}, gtag ${cableMain.hote.gtag.length}`);
+
+    // =====================================================================
     console.log('\n[D] contre-epreuves par mutation (servies en memoire, disque intact)');
     // =====================================================================
     enMutation = true;
@@ -334,6 +404,18 @@ async function parcours(browser) {
         'contre-epreuve 2 : sans le relais d embed.js, le dataLayer du site reste vide');
     } catch (error) {
       ok(false, `contre-epreuve 2 impossible : ${error.message}`);
+    }
+    try {
+      const sansOutilsDirects = await avecMutationClient([{
+        fichier: 'embed.js',
+        de: '      declencherLesOutilsDuSite(detail);',
+        vers: '      /* mutation : les outils du site ne sont plus appeles */',
+      }], () => parcours(browser));
+      ok(sansOutilsDirects.montage.etapeFinale === 5 && sansOutilsDirects.hote.pousses.length === 1, 'montage de la contre-epreuve 3 : le tunnel confirme et pousse toujours');
+      ok(sansOutilsDirects.hote.fbq.length === 0 && sansOutilsDirects.hote.gtag.length === 0,
+        'contre-epreuve 3 : sans l appel direct, le Pixel et GA4 du site ne comptent RIEN (le push seul ne suffit pas)');
+    } catch (error) {
+      ok(false, `contre-epreuve 3 impossible : ${error.message}`);
     }
     enMutation = false;
   } finally {

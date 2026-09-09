@@ -607,6 +607,102 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   adn.buildDnaBlock = vraiAdn;
   delete require.cache[require.resolve('../lib/center-metrics')];
 
+
+  // ── L AGENT SAIT CE QUE LE STAFF A CHANGE, SANS QU ON LUI DISE ────────────
+  // `getCenter` rend le socle du DEPOT tant que personne n a appele
+  // refreshCenterOverrides dans ce processus. La configuration VRAIE, celle que
+  // le staff modifie dans l application, vit dans `centers.settings.config` en
+  // base. Le cron rafraichissait avant son cycle, la route manuelle non : ce que
+  // l agent savait dependait de qui l appelait. Et deux portes sur trois lisaient
+  // l identite AVANT de charger la fiche, donc avant tout rafraichissement.
+  console.log('\n[CONNAISSANCE] la config changee en base atteint l agent');
+  const {
+    connaissanceDuCentre, chargerFicheDuRegistre: chargerVraiment, joursOuvertsDeclares,
+  } = require('../lib/center-facts');
+  const { applyCenterOverrides, getCenter: centreCourant } = require('../lib/ops-knowledge');
+
+  // MONTAGE : le socle du DEPOT dit 8 pistes et un lundi ferme.
+  ok('MONTAGE : le depot declare 8 pistes', centreCourant('libramont').resources.bowling.laneCount === 8,
+    String(centreCourant('libramont').resources.bowling.laneCount));
+  ok('MONTAGE : le depot declare le lundi ferme',
+    centreCourant('libramont').defaultSchedule.regular['1'] === null);
+
+  // LA BASE dit autre chose : 4 pistes, et le lundi OUVERT de 9 h a 23 h. C est
+  // exactement le geste du gerant : « demain j ouvre le lundi ».
+  const configDeLaBase = JSON.parse(JSON.stringify(centreCourant('libramont')));
+  configDeLaBase.resources.bowling.laneCount = 4;
+  configDeLaBase.defaultSchedule.regular['1'] = { open: '09:00', close: '23:00' };
+  const ligneDuStaff = {
+    id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active',
+    timezone: 'Europe/Brussels', settings: { config: configDeLaBase },
+  };
+  const poolDuStaff = {
+    query: async (sql) => (/from centers/.test(sql) ? { rows: [ligneDuStaff] } : { rows: [] }),
+  };
+
+  // 1. LA FICHE SEULE rafraichit. Testee AVANT l identite : si connaissance
+  //    DuCentre passait en premier, ce serait ELLE qui aurait rafraichi, et
+  //    retirer le rafraichissement de la fiche laisserait ce gate vert.
+  const ficheApresChangement = await chargerVraiment({ centerId: 'libramont', aujourdhui: '2026-09-09', pool: poolDuStaff });
+  ok('MONTAGE : la fiche est bien chargee', Boolean(ficheApresChangement && ficheApresChangement.registre_taille));
+  ok('LE POINT : la fiche seule suffit a faire entrer le lundi ouvert',
+    (joursOuvertsDeclares(centreCourant('libramont').defaultSchedule) || []).includes(1),
+    JSON.stringify(joursOuvertsDeclares(centreCourant('libramont').defaultSchedule)));
+
+  // 2. L IDENTITE SEULE rafraichit aussi. On rend le socle avant, sinon on
+  //    lirait ce que la fiche vient de charger.
+  applyCenterOverrides(new Map());
+  ok('MONTAGE : socle rendu, le depot redit 8 pistes',
+    centreCourant('libramont').resources.bowling.laneCount === 8);
+  const identiteFraiche = await connaissanceDuCentre('libramont', poolDuStaff);
+  ok('LE POINT : l identite seule lit les 4 pistes de la BASE',
+    identiteFraiche.laneCount === 4, String(identiteFraiche.laneCount));
+
+  // 3. ET LA PORTE « IDEES » LA DEMANDE VRAIMENT. Les deux points precedents
+  //    prouvent que la fonction lit la base ; celui-ci prouve que le cycle
+  //    l appelle. Sans lui, la fonction serait juste et personne ne s en
+  //    servirait : c est le motif deja paye quatre fois dans ce projet.
+  applyCenterOverrides(new Map());
+  baseDeDonnees.getPool = () => poolDuStaff;
+  faitsDuRegistre.chargerFicheDuRegistre = vraiChargerFiche;
+  let identiteVueParLeConseiller = null;
+  conseiller.proposerDepuisLaFiche = async (entree) => {
+    identiteVueParLeConseiller = entree && entree.centerFacts;
+    return { proposition: null, motifs: ['rien a dire'], piste: null };
+  };
+  delete require.cache[require.resolve('../lib/center-metrics')];
+  const cycleFrais = require('../lib/center-metrics');
+  await cycleFrais.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  ok('LE POINT : la porte Idees passe au conseiller l identite de la BASE',
+    Boolean(identiteVueParLeConseiller) && identiteVueParLeConseiller.laneCount === 4,
+    String(identiteVueParLeConseiller && identiteVueParLeConseiller.laneCount));
+
+  // 4. LES DEUX AUTRES PORTES passent par la meme fonction. Controle
+  //    STRUCTUREL assume : la FRAICHEUR est prouvee au-dessus par le
+  //    comportement, ce qui reste ici est « chaque porte y passe », qui est une
+  //    propriete de cablage. Un harnais de bout en bout pour ces deux portes
+  //    n existe pas encore dans leurs gates ; tant qu il n existe pas, ce
+  //    controle vaut mieux que rien et le dit.
+  const lireLaSource = (relatif) => require('fs').readFileSync(
+    require('path').join(__dirname, '..', relatif), 'utf8');
+  const sourceAsk = lireLaSource('lib/marketing-ask.js');
+  const sourceBrief = lireLaSource('lib/marketing-brief.js');
+  ok('la porte Demander demande la connaissance fraiche',
+    /connaissanceDuCentre\(/.test(sourceAsk));
+  ok('la cause du silence aussi', /connaissanceDuCentre\(/.test(sourceBrief));
+
+  // Tout est rendu une seconde fois : les gates suivants doivent voir les
+  // vrais modules et le socle du depot.
+  applyCenterOverrides(new Map());
+  baseDeDonnees.getPool = vraiGetPool;
+  conseiller.proposerDepuisLaFiche = vraiConseiller;
+  faitsDuRegistre.chargerFicheDuRegistre = vraiChargerFiche;
+  delete require.cache[require.resolve('../lib/center-metrics')];
+  ok('CONTRE-PREUVE : socle rendu, le depot redit 8 pistes',
+    centreCourant('libramont').resources.bowling.laneCount === 8,
+    String(centreCourant('libramont').resources.bowling.laneCount));
+  ok('CONTRE-PREUVE : et le lundi redevient ferme',
+    centreCourant('libramont').defaultSchedule.regular['1'] === null);
   // ── UN REGISTRE ENDORMI NE CONSEILLE RIEN ─────────────────────────────────
   // Les faits restent vrais au passe et le mode Demander y repond toujours. Ce
   // qui devient impossible, c est le geste au present.

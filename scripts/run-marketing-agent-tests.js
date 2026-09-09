@@ -3,6 +3,7 @@ const {
   buildCenterFacts,
   buildDraftForPlatform,
   buildSignalPack,
+  buildMarketingStrategy,
   collectFactNumbers,
   defaultCriteriaFor,
   scoreDraft,
@@ -165,6 +166,122 @@ function run() {
   const reduction = ungroundedPriceClaims('Grosse reduction ce soir', libramontFacts, signals);
   assert.ok(reduction.some((c) => /reduction/.test(c)), 'le mot « reduction » de forbiddenClaims ne fonde pas une offre');
 
+
+  // ── UN CREUX MESURE N EST PAS UN CENTRE VIDE ──────────────────────────────
+  // `quiet = activeReservations.length <= 3` sur la fenetre du contexte
+  // marketing, qui vaut TRENTE JOURS. Trois reservations en un mois sur un
+  // centre de 8 pistes ouvert 6 jours sur 7, ce n est pas une periode calme :
+  // c est un centre a l arret. L angle « creneau calme » se declenchait donc
+  // exactement quand il n y a rien a remplir, et jamais quand il y a un vrai
+  // trou (mesure du 2026-09-09 : 75 reservations sur 30 jours dont un mardi
+  // entierement mort, quiet = false, l angle ne partait pas).
+
+  // MONTAGE : le fait du creux vient du VRAI producteur, pas de ma main. Sans
+  // ca, ce gate testerait un `dow_worst` que l entrepot n emet peut-etre pas.
+  const { computeFactsFromRows } = require('../lib/center-metrics');
+  const lignesEntrepot = Array.from({ length: 140 }, (unused, i) => {
+    const jour = new Date(Date.parse('2026-04-05T00:00:00Z') + i * 86400000);
+    const dow = jour.getUTCDay();
+    const visiteurs = dow === 2 ? 40 : 150 + dow * 5;
+    return {
+      date: jour.toISOString().slice(0, 10),
+      visitors: visiteurs,
+      revenue_total: visiteurs * 30,
+      weather_tmax: null,
+      is_school_holiday: false,
+    };
+  });
+  const bundleReel = computeFactsFromRows(lignesEntrepot);
+  const faitCreux = (bundleReel.facts || []).find((f) => f.id === 'dow_worst');
+  assert.ok(faitCreux, 'MONTAGE : l entrepot emet bien un fait dow_worst');
+  assert.strictEqual(faitCreux.dow, 2, 'MONTAGE : le creux mesure est bien le mardi');
+  assert.strictEqual(faitCreux.confidence, 'solide',
+    `MONTAGE : sur 140 jours la confiance est solide (obtenu ${faitCreux.confidence})`);
+
+  const resaActives = Array.from({ length: 75 }, () => ({
+    type: 'bowling', pax: 5, price: 150, status: 'paid', start_time: '18:00',
+  }));
+  const resaArret = resaActives.slice(0, 3);
+
+  const actifAvecCreux = buildSignalPack({ reservations: resaActives, dataFacts: bundleReel });
+  assert.strictEqual(actifAvecCreux.quiet, false, 'MONTAGE : 75 reservations, la fenetre n est pas vide');
+  assert.ok(actifAvecCreux.creux, 'LE POINT : un centre ACTIF avec un creux mesure declenche l angle');
+  assert.strictEqual(actifAvecCreux.creux.dow, 2, 'et le creux est celui que l entrepot a mesure');
+
+  // CONTRE-PREUVE, le defaut d avant : un centre a l arret SANS creux mesure
+  // ne declenche plus rien. C etait le seul cas ou l angle partait.
+  const arretSansCreux = buildSignalPack({ reservations: resaArret, dataFacts: null });
+  assert.strictEqual(arretSansCreux.quiet, true, 'MONTAGE : 3 reservations, la fenetre EST vide');
+  assert.strictEqual(arretSansCreux.creux, null,
+    'CONTRE-PREUVE : une fenetre vide ne fabrique plus un creneau calme');
+
+  // FAIL-OPEN : sans entrepot, aucun creux. On ne constate que ce qu on mesure.
+  assert.strictEqual(buildSignalPack({ reservations: resaActives, dataFacts: null }).creux, null,
+    'sans entrepot, aucun creux');
+
+  // EXPLORATOIRE NE COMPTE PAS : sous 90 jours l entrepot marque lui-meme ses
+  // faits ainsi, et un angle commercial ne se batit pas sur une donnee que son
+  // producteur declare insuffisante.
+  const bundleCourt = computeFactsFromRows(lignesEntrepot.slice(0, 40));
+  const faitCourt = (bundleCourt.facts || []).find((f) => f.id === 'dow_worst');
+  assert.ok(!faitCourt || faitCourt.confidence === 'exploratoire',
+    `MONTAGE : sur 40 jours le fait est exploratoire (obtenu ${faitCourt && faitCourt.confidence})`);
+  assert.strictEqual(buildSignalPack({ reservations: resaActives, dataFacts: bundleCourt }).creux, null,
+    'un creux exploratoire ne declenche pas l angle');
+
+  // L INSIGHT EST LE FAIT, plus une phrase prefaite. « Periode calme detectee:
+  // pousser les creneaux tranquilles remplit les creux » ne nommait ni le jour,
+  // ni le chiffre, ni l echantillon.
+  const strategieAvecCreux = buildMarketingStrategy({
+    facts: libramontFacts, signals: actifAvecCreux, drafts: [], observations: [],
+  });
+  const caseCreux = (strategieAvecCreux.gapAnalysis || []).find((g) => g.occasion === 'creneau_calme');
+  assert.ok(caseCreux, 'MONTAGE : l occasion creneau calme est bien dans l analyse');
+  assert.strictEqual(caseCreux.status, 'a-renforcer', 'le creux mesure rend l occasion prioritaire');
+  assert.strictEqual(caseCreux.insight, faitCreux.label,
+    `l insight EST le fait mesure, recopie (obtenu : ${caseCreux.insight})`);
+  assert.ok(!/Periode calme detectee/.test(caseCreux.insight),
+    'et plus la phrase prefaite qui ne nommait rien');
+
+  // CONTRE-PREUVE : un run PERSISTE avant ce changement n a pas de `creux`.
+  // L angle ne part pas, et rien ne casse.
+  const signauxAnciens = { ...actifAvecCreux };
+  delete signauxAnciens.creux;
+  const strategieAncienne = buildMarketingStrategy({
+    facts: libramontFacts, signals: signauxAnciens, drafts: [], observations: [],
+  });
+  const caseAncienne = (strategieAncienne.gapAnalysis || []).find((g) => g.occasion === 'creneau_calme');
+  assert.ok(caseAncienne, 'CONTRE-PREUVE : un run d avant ne fait pas tomber l analyse');
+  assert.notStrictEqual(caseAncienne.status, 'a-renforcer',
+    'et son angle ne se declenche pas faute de creux mesure');
+
+  // L OBJECTIF DU CYCLE SUIT LE CREUX, pas la fenetre. `chooseObjective` n est
+  // pas exporte : on l observe par l occasion que buildDraftForPlatform
+  // choisit, qui est aussi ce que le gerant verra.
+  const brouillonAvecCreux = buildDraftForPlatform({
+    platform: 'facebook', facts: libramontFacts, signals: actifAvecCreux,
+  });
+  assert.strictEqual(brouillonAvecCreux.occasion, 'creneau_calme',
+    `un creux mesure oriente le cycle sur le creneau calme (obtenu ${brouillonAvecCreux.occasion})`);
+  const brouillonFenetreVide = buildDraftForPlatform({
+    platform: 'facebook', facts: libramontFacts, signals: arretSansCreux,
+  });
+  assert.notStrictEqual(brouillonFenetreVide.occasion, 'creneau_calme',
+    'une fenetre vide n oriente plus le cycle sur le creneau calme');
+
+  // ET L ATTRIBUTION PAR CANAL suit la meme regle. Elle porte la meme
+  // intention que chooseObjective et n avait aucune couverture : la mutation
+  // qui la recablait sur une fenetre vide laissait tout vert.
+  // Le canal `email` recoit creneau_calme par AFFINITE de canal, avec ou sans
+  // creux : ce n est pas le signal. Ce qui change, c est la PRIORITE, qui le
+  // place sur le premier canal dont l affinite le contient, donc facebook.
+  const { assignPlatformOccasions } = require('../lib/marketing-agents');
+  const canauxAvecCreux = assignPlatformOccasions(actifAvecCreux);
+  assert.strictEqual(canauxAvecCreux.facebook, 'creneau_calme',
+    `un creux mesure rend le creneau calme prioritaire (obtenu ${JSON.stringify(canauxAvecCreux)})`);
+  const canauxFenetreVide = assignPlatformOccasions(arretSansCreux);
+  assert.notStrictEqual(canauxFenetreVide.facebook, 'creneau_calme',
+    `une fenetre vide ne le rend plus prioritaire (obtenu ${JSON.stringify(canauxFenetreVide)})`);
   console.log('Marketing agent tests passed.');
 }
 

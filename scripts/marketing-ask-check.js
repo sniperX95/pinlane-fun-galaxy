@@ -227,6 +227,56 @@ function deps({ answer, calls, provider = 'kimi', exhausted = false }) {
   const control = checkAnswerGrounding('Ton panier moyen est de 15,4 € et la pluie te fait +12 %.', { centerFacts: facts, dossier });
   ok(control.blocked === false, 'CONTRE-PREUVE inverse : les vrais chiffres du dossier passent', JSON.stringify(control.reasons));
 
+
+  // ── LES DEUX PORTES DU MEME AGENT ONT LA MEME EXIGENCE ────────────────────
+  // Asymetrie mesuree avant correction : ce controle ne regardait que les
+  // pourcentages et les montants en euros. Tout nombre nu passait, un conseil
+  // de changer une regle passait, un tiret cadratin passait, et son
+  // normaliseur local n aplatissait pas la ponctuation : « golf o clock »
+  // passait ici alors que la porte « Idees » l attrapait.
+  console.log('\n[MEME EXIGENCE] ce que la porte Idees refuse, celle-ci le refuse aussi');
+  const refusesAttendus = [
+    ['regle commerciale', 'Il faudrait passer le minimum des formules a 8 personnes.', 'regle commerciale'],
+    ['activite absente', 'Propose une session de karting le mardi.', 'absente du centre'],
+    ['ponctuation contournee', 'Mets en avant le golf o clock le mardi.', 'absente du centre'],
+    ['tiret cadratin', `Le mardi ${String.fromCharCode(8212)} ton jour creux ${String.fromCharCode(8212)} merite un post.`, 'cadratin'],
+  ];
+  refusesAttendus.forEach(([nom, texte, motifAttendu]) => {
+    const verdict = checkAnswerGrounding(texte, { centerFacts: facts, dossier });
+    ok(verdict.blocked === true && verdict.reasons.some((r) => r.includes(motifAttendu)),
+      `refuse : ${nom}`, JSON.stringify(verdict.reasons));
+  });
+
+  // LE PRIX DE CES GARDES : un faux positif ferme la porte sur une reponse
+  // VRAIE, et le gerant ne voit rien. Le bloc « modele reel » plus bas ne
+  // tourne pas sans cle pour un usage sensible, donc on mesure ici, sur des
+  // reponses ecrites a la main dont chaque chiffre sort du dossier.
+  console.log('\n[FAUX POSITIFS] une reponse vraie ne doit jamais etre bloquee');
+  const REPONSES_VRAIES = [
+    'Ton panier moyen est de 15,4 € sur 540 visiteurs en 30 jours.',
+    'Le mardi tourne a 34 visiteurs contre 40 en mediane, soit -41 %.',
+    'La pluie te fait +12 % de monde, mesure sur 210 jours.',
+    'Tu as 102 personnes posees sur 5 reservations a venir, soit 2864 € deja reserves.',
+    'Ta meilleure journee reste le 11 juillet avec 234 visiteurs et 4009 € de chiffre.',
+    'Je posterais samedi pour remplir lundi : un post evenement local a fait +22 %.',
+  ];
+  let bloqueesAtort = 0;
+  REPONSES_VRAIES.forEach((texte) => {
+    const verdict = checkAnswerGrounding(texte, { centerFacts: facts, dossier });
+    if (verdict.blocked) bloqueesAtort += 1;
+    ok(verdict.blocked === false, `passe : ${texte.slice(0, 52)}`, JSON.stringify(verdict.reasons));
+  });
+  ok(bloqueesAtort === 0, `aucune reponse vraie bloquee (${REPONSES_VRAIES.length} testees)`);
+
+  // CE QUE CE CONTROLE N ATTRAPE PAS, ecrit noir sur blanc pour que personne
+  // ne le croie plus fort qu il ne l est : un petit entier existe presque
+  // toujours quelque part dans le dossier, ne serait-ce que dans une date. La
+  // reponse a ce trou n est pas ici, c est unitesIncoherentes, qui verifie un
+  // chiffre CONTRE SON UNITE.
+  const petitEntier = checkAnswerGrounding('Il reste 3 creneaux libres.', { centerFacts: facts, dossier });
+  ok(petitEntier.blocked === false,
+    'LIMITE ASSUMEE : un petit entier present dans une date du dossier passe',
+    JSON.stringify(petitEntier.reasons));
   console.log('\n[SANS MODELE] zero appel, zero invention, le filet deterministe reprend');
   calls = [];
   const noKey = await answerMarketingQuestion('libramont', { question: 'Comment je remplis lundi ?' }, deps({ answer: GOOD_ANSWER, calls, provider: null }));

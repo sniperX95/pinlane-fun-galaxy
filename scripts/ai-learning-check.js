@@ -112,10 +112,39 @@ ok(debutCycle > 0 && corpsCycle.length > 800,
   'MONTAGE : le corps de runDataIdeasCycle est bien inspecte');
 ok(/if \(rendu\.proposition\)/.test(corpsCycle) && /auteur: 'ai'/.test(corpsCycle),
   'et l auteur suit le FAIT : seule une proposition qui a passe les gardes est publiee, comme venant du modele');
-ok(!/auteur: 'rules'/.test(corpsCycle),
-  'aucune idee « gabarit » ne peut plus sortir de ce cycle : il n y a plus de texte de repli');
-ok(corpsCycle.indexOf('insertIdeaIfNew') > corpsCycle.indexOf('if (rendu.proposition)'),
-  'l insertion se fait DANS la branche de la proposition : pas de publication sans texte verifie');
+// L invariant defendu ici est « aucun texte n est publie sans avoir passe les
+// gardes ». Il etait mesure par deux proxys : l absence totale de
+// `auteur: 'rules'` dans le cycle, et la position de la PREMIERE insertion.
+// Les deux sont tombes le jour ou le cycle a commence a ecrire une PISTE :
+// une question a trancher, ecrite avant la branche, marquee 'rules' parce
+// qu aucun modele ne l a redigee. L invariant, lui, tenait toujours : une
+// piste ne porte aucun texte a publier. On asserte donc la propriete
+// elle-meme au lieu de ses proxys.
+const contenusEcrits = [...corpsCycle.matchAll(/readyContent: ([^,\n]+)/g)].map((m) => m[1].trim());
+ok(contenusEcrits.length >= 2, `MONTAGE : le cycle ecrit bien plusieurs lignes (${contenusEcrits.length})`);
+ok(contenusEcrits.every((valeur) => valeur === 'null' || valeur === 'rendu.proposition.corps'),
+  `le SEUL contenu pret a coller que ce cycle ecrit vient de la proposition (${contenusEcrits.join(' | ')})`);
+ok(corpsCycle.indexOf('readyContent: rendu.proposition.corps') > corpsCycle.indexOf('if (rendu.proposition)'),
+  'et il est ecrit DANS la branche de la proposition : pas de publication sans texte verifie');
+
+// La piste, elle, est une question : ni texte, ni canal. Si elle gagnait un
+// jour un contenu ou un canal, l assertion ci-dessus tomberait, et celle-ci
+// dit pourquoi.
+const debutPiste = corpsCycle.indexOf('const piste = {');
+const corpsPiste = debutPiste > 0 ? corpsCycle.slice(debutPiste, corpsCycle.indexOf('};', debutPiste)) : '';
+ok(corpsPiste.length > 100, 'MONTAGE : le litteral de la piste est bien inspecte');
+ok(/readyContent: null/.test(corpsPiste) && /channel: null/.test(corpsPiste),
+  'la piste ne porte ni texte a coller ni canal : elle se tranche, elle ne se publie pas');
+
+// Et elle ne peut pas fausser la comparaison modele / gabarit : cette lecture
+// ne prend que les lignes MESUREES, et une piste ne rejoint jamais le panneau
+// « Appliquer » qui declenche la mesure (lib/founder-cockpit.js).
+const sourceApprentissage = fs.readFileSync(path.join(root, 'lib/marketing-learning.js'), 'utf8');
+ok(/measured_at is not null and result is not null/.test(sourceApprentissage),
+  'la comparaison des auteurs ne lit que des publications MESUREES');
+const sourceCockpitServeur = fs.readFileSync(path.join(root, 'lib/founder-cockpit.js'), 'utf8');
+ok(/kind <> 'piste'/.test(sourceCockpitServeur),
+  'et une piste n atteint jamais le bouton qui la ferait passer en mesure');
 
 const mesure = (auteur, nets, wins = 0) => nets.map((netDeltaPct, index) => ({
   auteur, result: { netDeltaPct }, status: index < wins ? 'validated' : 'inconclusive',

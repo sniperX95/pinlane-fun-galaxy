@@ -116,6 +116,8 @@ ok('« passe le minimum de 6 a 8 » est refuse comme conclusion',
 const geant = fait({
   id: 'geant',
   libelle: 'le meme fait avec 10000 observations sur 3 ans',
+  // Il compare des mois : c'est ce qui lui donne le droit de parler de saison.
+  periode: 'mois_annee',
   valeur: 10000,
   n: 10000,
   du: '2023-01-01',
@@ -142,12 +144,14 @@ ok('et POURTANT le changement de regle reste refuse : impossibilite de nature, p
 // c est leur ORDRE qui etait faux.
 console.log('\n[ORDRE] une affirmation plus forte n exige jamais moins');
 const echantillon = [
+  // Les trois declarent une periode mensuelle : ce bloc mesure l'ORDRE des
+  // barres de maturite, pas la barre de periode, qui est testee plus bas.
   // dense et cyclique
-  fait({ id: 'a', valeur: 1, n: 500, mois: MOIS_OBSERVES.concat(['2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07']), genre: 'estimation' }),
+  fait({ id: 'a', valeur: 1, n: 500, periode: 'mois_annee', mois: MOIS_OBSERVES.concat(['2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07']), genre: 'estimation' }),
   // cyclique mais MINCE : le cas qui passait saisonnier sans passer constat
-  fait({ id: 'b', valeur: 1, n: 4, mois: MOIS_OBSERVES.concat(['2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07']), genre: 'estimation' }),
+  fait({ id: 'b', valeur: 1, n: 4, periode: 'mois_annee', mois: MOIS_OBSERVES.concat(['2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07']), genre: 'estimation' }),
   // dense mais sur un seul ete
-  fait({ id: 'c', valeur: 1, n: 500, mois: ['2026-07', '2026-08'], genre: 'estimation' }),
+  fait({ id: 'c', valeur: 1, n: 500, periode: 'mois_annee', mois: ['2026-07', '2026-08'], genre: 'estimation' }),
 ];
 ok('MONTAGE : l echantillon contient bien un fait cyclique ET mince',
   echantillon.some((f) => maturite(f).saison === 'cycle_complet' && maturite(f).volume === 'anecdote'));
@@ -163,6 +167,46 @@ ok('CONTRE-PREUVE : le meme fait devenu dense passe en saisonnier',
   peutAffirmer(fait({ ...echantillon[1], n: 500 }), 'saisonnier').autorise === true);
 
 // ── LE REFUS RESTE UTILE ────────────────────────────────────────────────────
+
+// ── UNE RECURRENCE EXIGE UN FAIT QUI A UN RYTHME ────────────────────────────
+// Mesure qui a declenche cette barre : sur un registre simule de 18 mois, 37
+// faits sur 39 pouvaient porter « saisonnier », dont le panier moyen, le taux
+// d'annulation et le trou de donnees de paiement. Les deux premieres
+// conditions ne parlent que de la QUANTITE de donnee ; aucune ne demandait si
+// le fait compare quoi que ce soit de cyclique.
+console.log('\n[PERIODE] une recurrence exige un fait qui a un rythme');
+const DIX_NEUF_MOIS = Array.from({ length: 19 }, (unused, i) => {
+  const annee = 2026 + Math.floor((i + 2) / 12);
+  return `${annee}-${String(((i + 2) % 12) + 1).padStart(2, '0')}`;
+});
+const agregat = fait({
+  id: 'panier_moyen',
+  libelle: 'panier moyen',
+  valeur: '174 EUR',
+  n: 1880,
+  mois: DIX_NEUF_MOIS,
+  genre: 'estimation',
+});
+ok('MONTAGE : cet agregat est dense et couvre un cycle complet',
+  maturite(agregat).volume === 'dense' && maturite(agregat).saison === 'cycle_complet',
+  JSON.stringify(maturite(agregat)));
+ok('il porte bien un constat', peutAffirmer(agregat, 'constat').autorise === true);
+ok('mais AUCUNE affirmation saisonniere : un panier moyen ne compare aucun cycle',
+  peutAffirmer(agregat, 'saisonnier').autorise === false,
+  JSON.stringify(peutAffirmer(agregat, 'saisonnier')));
+ok('CONTRE-PREUVE : le meme fait declare mensuel passe en saisonnier',
+  peutAffirmer(fait({ ...agregat, periode: 'mois_annee' }), 'saisonnier').autorise === true);
+ok('un jour de semaine et une heure de journee ouvrent aussi la recurrence',
+  peutAffirmer(fait({ ...agregat, periode: 'jour_semaine' }), 'saisonnier').autorise === true
+  && peutAffirmer(fait({ ...agregat, periode: 'heure_jour' }), 'saisonnier').autorise === true);
+// Une tendance a 90 jours compare deux periodes qui ne reviennent pas : un
+// mouvement, pas un rythme. La confondre avec une saison serait exactement la
+// conclusion trop rapide que tout ce module cherche a empecher.
+ok('une fenetre glissante n ouvre PAS la recurrence',
+  peutAffirmer(fait({ ...agregat, periode: 'fenetre_glissante' }), 'saisonnier').autorise === false);
+ok('une periode inventee vaut absence de periode',
+  fait({ ...agregat, periode: 'phase_lunaire' }).periode === '',
+  fait({ ...agregat, periode: 'phase_lunaire' }).periode);
 console.log('\n[HYPOTHESE] un refus n est pas un silence');
 const hypo = reformulerEnHypothese({
   sujet: 'porter le minimum des formules anniversaire de 6 a 8 personnes',

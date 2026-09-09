@@ -197,6 +197,90 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('citer la ville DU CENTRE est accepte (sinon le refus de Namur ne prouverait rien)',
     Boolean(villeDuCentre.proposition), JSON.stringify(villeDuCentre.motifs));
 
+  // ── UN CENTRE N ECRIT PAS L ACTIVITE D UN AUTRE ───────────────────────────
+  // La crainte exprimee par Movsar : « il va sortir des infos d un autre
+  // centre ». Le garde-fou des nombres ne couvre PAS ce cas, « venez au Golf
+  // o'Clock » ne contient aucun chiffre. C est la liste forbiddenClaims de
+  // buildCenterFacts qui le rattrape, et elle est calculee depuis les activites
+  // reelles du centre.
+  console.log('\n[CENTRE] une activite que ce centre n a pas est refusee');
+  const { buildCenterFacts } = require('../lib/marketing-agents');
+  const LIBRAMONT = buildCenterFacts('libramont');
+  const GEMBLOUX = buildCenterFacts('gembloux');
+  const dit = (texte) => ({ titre: 'Ton centre', corps: texte, nature: 'constat', faitsUtilises: [idConstat] });
+
+  ok('MONTAGE : Gembloux propose bien le Golf o Clock',
+    (GEMBLOUX.activities || []).some((a) => /golf o.?clock/i.test(a)), JSON.stringify(GEMBLOUX.activities));
+  ok('MONTAGE : Libramont ne le propose PAS',
+    !(LIBRAMONT.activities || []).some((a) => /golf o.?clock/i.test(a)), JSON.stringify(LIBRAMONT.activities));
+  ok('MONTAGE : et sa liste de mots interdits le contient',
+    (LIBRAMONT.forbiddenClaims || []).some((c) => /golf o.?clock/i.test(c)),
+    JSON.stringify((LIBRAMONT.forbiddenClaims || []).filter((c) => /golf o.?clock/i.test(c))));
+
+  const texteGolf = 'Pense a mettre en avant ton Golf o Clock ce mois-ci.';
+  const surLibramont = await proposerDepuisLaFiche({
+    fiche, lieu: LIEU, centerFacts: LIBRAMONT, fetchImpl: modeleQuiRepond(dit(texteGolf)),
+  });
+  ok('le texte est REFUSE pour Libramont',
+    surLibramont.proposition === null
+    && surLibramont.motifs.some((m) => /golf|revendications/i.test(m)), JSON.stringify(surLibramont.motifs));
+
+  const surGembloux = await proposerDepuisLaFiche({
+    fiche,
+    lieu: { nom: 'Fun Galaxy Gembloux', ville: 'Gembloux' },
+    centerFacts: GEMBLOUX,
+    fetchImpl: modeleQuiRepond(dit(texteGolf)),
+  });
+  ok('CONTRE-PREUVE : le MEME texte passe pour Gembloux, qui a bien cette activite',
+    Boolean(surGembloux.proposition), JSON.stringify(surGembloux.motifs));
+
+  // « Golf o Clock » est aussi un nom propre : DEUX gardes independantes le
+  // rattrapent, ce qui est une bonne nouvelle mais empeche d isoler celle des
+  // activites. On la prouve donc seule avec un mot INTERDIT QUI N EST PAS UN NOM
+  // PROPRE : « cinema », commun et en minuscules, invisible pour la garde des
+  // noms propres.
+  const communInterdit = await proposerDepuisLaFiche({
+    fiche, lieu: LIEU, centerFacts: LIBRAMONT,
+    fetchImpl: modeleQuiRepond(dit('On peut aussi pousser le cinema du centre.')),
+  });
+  ok('un mot interdit COMMUN (cinema) est refuse quand l identite est fournie',
+    communInterdit.proposition === null
+    && communInterdit.motifs.some((m) => /cinema/i.test(m)), JSON.stringify(communInterdit.motifs));
+  const memeTexteSansIdentite = await proposerDepuisLaFiche({
+    fiche, lieu: LIEU,
+    fetchImpl: modeleQuiRepond(dit('On peut aussi pousser le cinema du centre.')),
+  });
+  ok('CONTRE-PREUVE : le MEME texte passe sans identite, donc c est bien elle qui l arrete',
+    Boolean(memeTexteSansIdentite.proposition), JSON.stringify(memeTexteSansIdentite.motifs));
+
+  const accentue = await proposerDepuisLaFiche({
+    fiche, lieu: LIEU, centerFacts: LIBRAMONT,
+    fetchImpl: modeleQuiRepond(dit('Notre CINÉMA vous attend.')),
+  });
+  ok('la casse et les accents ne font pas passer le mot au travers',
+    accentue.proposition === null && accentue.motifs.some((m) => /cinema/i.test(m)),
+    JSON.stringify(accentue.motifs));
+  // Le tiret doit rester EN DERNIER dans la classe de caracteres qui aplatit la
+  // ponctuation. Place au milieu, il forme une plage avec ses voisins : [`-–]
+  // couvre de U+0060 a U+2013, donc presque tout l alphabet, et TOUT devient
+  // une revendication interdite. Bug introduit et attrape ici en une minute.
+  const { revendicationsInterdites } = require('../lib/center-advisor');
+  const listeTest = { forbiddenClaims: ['cinema', 'escape game'] };
+  ok('un texte ordinaire ne declenche AUCUNE revendication interdite',
+    revendicationsInterdites('Une soiree bowling entre amis, simple et efficace.', listeTest).length === 0,
+    JSON.stringify(revendicationsInterdites('Une soiree bowling entre amis, simple et efficace.', listeTest)));
+  ok('la garde reste selective : elle ne matche que ce qui est vraiment interdit',
+    revendicationsInterdites('cinema', listeTest).length === 1
+    && revendicationsInterdites('bowling', listeTest).length === 0);
+
+  const ponctue = await proposerDepuisLaFiche({
+    fiche, lieu: LIEU, centerFacts: LIBRAMONT,
+    fetchImpl: modeleQuiRepond(dit('Le escape-game du centre marche bien.')),
+  });
+  ok('la ponctuation non plus : « escape-game » est attrape alors que la liste dit « escape game »',
+    ponctue.proposition === null && ponctue.motifs.some((m) => /escape/i.test(m)),
+    JSON.stringify(ponctue.motifs));
+
   // ── AUCUN GABARIT NE PEUT ATTEINDRE LA SORTIE ─────────────────────────────
   // C'est LA contrainte : plus une seule phrase preecrite. On inspecte le corps
   // reel de runDataIdeasCycle plutot que de faire confiance a un commentaire.

@@ -759,5 +759,49 @@ ok('une seule ligne sans date de commande fait basculer TOUT le registre sur la 
 ok('CONTRE-PREUVE : quand toutes les lignes la portent, c est la commande qui parle',
   String(ficheArretee.derniere_activite.source).includes('date de commande'),
   String(ficheArretee.derniere_activite.source));
+
+// ── UN CENTRE SANS OFFRE DECLAREE LE DIT ────────────────────────────────────
+// Mesure du 2026-09-09 sur la vraie configuration : Libramont declare 8
+// activites, Gembloux 6, Ciney ZERO. Rien ne le disait. Un agent muet sur
+// l offre d un centre ressemblait a un agent sans idees, alors que c est une
+// configuration vide.
+console.log('\n[IDENTITE] la configuration vide se dit, elle ne se devine pas');
+
+const identiteVide = ajouterIdentite(ficheDuRegistre({ reservations: [], formules: [] }), { centerId: 'test', activities: [] });
+ok('aucune activite declaree : la fiche le DIT', Boolean(identiteVide.identite_absente));
+ok('et elle dit la consequence : toute mention d une activite sera refusee',
+  /toute mention d une activite sera refusee/.test(String((identiteVide.identite_absente || {}).valeur)),
+  String((identiteVide.identite_absente || {}).valeur));
+ok('le fait reste reserve au gerant : c est un trou de configuration, pas un sujet public',
+  (identiteVide.identite_absente || {}).audience === 'interne');
+
+// CONTRE-PREUVE : un centre configure ne porte pas ce fait, et porte la liste.
+const identitePleine = ajouterIdentite(ficheDuRegistre({ reservations: [], formules: [] }), { centerId: 'test', activities: ['Bowling', 'Laser game'] });
+ok('CONTRE-PREUVE : un centre configure ne declare aucun trou',
+  !identitePleine.identite_absente && Boolean(identitePleine.identite_activites));
+
+// ── AUCUNE ACTIVITE N EST SUPPOSEE PRESENTE ─────────────────────────────────
+// La table qui traduit une activite en mots interdits mappait golf, karting,
+// duckpin, billard... et PAS bowling ni laser game. Ces deux-la etaient donc
+// supposees partout : sur un centre qui ne declare rien, « nos pistes de
+// bowling » passait alors que « billard » etait refuse. L asymetrie ETAIT le
+// trou. On le verifie sur la VRAIE configuration, pas sur un montage.
+console.log('\n[IDENTITE] sur la vraie configuration des trois centres');
+const { buildCenterFacts: identiteReelle } = require('../lib/marketing-agents');
+const interditesDe = (centre) => new Set((identiteReelle(centre) || {}).forbiddenClaims || []);
+const declareesDe = (centre) => ((identiteReelle(centre) || {}).activities || []).length;
+
+ok('MONTAGE : Libramont et Gembloux sont configures, un troisieme centre ne l est pas',
+  declareesDe('libramont') > 0 && declareesDe('gembloux') > 0 && declareesDe('ciney') === 0,
+  `libramont=${declareesDe('libramont')} gembloux=${declareesDe('gembloux')} ciney=${declareesDe('ciney')}`);
+ok('un centre qui DECLARE le bowling peut en parler',
+  !interditesDe('libramont').has('bowling') && !interditesDe('gembloux').has('bowling'));
+ok('un centre qui ne declare RIEN ne peut pas parler de bowling',
+  interditesDe('ciney').has('bowling'));
+ok('ni de laser game', interditesDe('ciney').has('laser game'));
+// CONTRE-PREUVE de symetrie : le billard etait deja verifie, il l est encore.
+// Si seul le nouveau mot mordait, la regle serait un cas particulier de plus.
+ok('CONTRE-PREUVE : le billard, deja verifie avant, se comporte pareil',
+  !interditesDe('libramont').has('billard') && interditesDe('ciney').has('billard'));
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

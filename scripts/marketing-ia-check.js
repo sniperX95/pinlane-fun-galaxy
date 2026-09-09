@@ -842,14 +842,44 @@ async function main() {
       window.mkBrief.published = {};
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 250));
-      const empties = document.querySelectorAll('#mkwSheet .mkw-bempty').length;
+      const lignesVides = [...document.querySelectorAll('#mkwSheet .mkw-bempty')];
+      const empties = lignesVides.length;
+      const videsTexte = lignesVides.map((el) => el.textContent).join(' | ');
       const fake = document.querySelectorAll('#mkwSheet .mkw-bcard, #mkwSheet .mkw-brow, #mkwSheet .mkw-piste').length;
       window.mkBrief.data = JSON.parse(saved);
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 250));
-      return { empties, fake };
+      return { empties, fake, videsTexte };
     });
     ok(calm.empties >= 2 && calm.fake <= 1, `CONTRE-PREUVE : sans rien a faire, le panneau est CALME (${calm.empties} lignes vides honnetes)`);
+
+    // ET SI LE VIDE A UNE CAUSE, elle se LIT. Le serveur la calcule sans
+    // appeler le modele (lib/marketing-brief.js, causeDuSilence) : le cas qui
+    // compte aujourd hui est « aucune cle de modele posee », ou le gerant voyait
+    // le meme ecran que sur un centre en pleine forme.
+    const cause = await page.evaluate(async () => {
+      const sauve = JSON.stringify(window.mkBrief.data);
+      const b = window.mkBrief.data;
+      b.propositions = [];
+      b.pistes = [];
+      b.silence = { cause: 'sans_modele', phrase: 'Aucune cle de modele n est disponible pour cet usage.' };
+      window.mkBrief.published = {};
+      window.renderStaffCampaignsPage();
+      await new Promise((r) => setTimeout(r, 250));
+      const vides = [...document.querySelectorAll('#mkwSheet .mkw-bempty')].map((el) => el.textContent);
+      window.mkBrief.data = JSON.parse(sauve);
+      window.renderStaffCampaignsPage();
+      await new Promise((r) => setTimeout(r, 250));
+      return { vides: vides.join(' | ') };
+    });
+    ok(/Aucune cle de modele/.test(cause.vides),
+      `la CAUSE du vide est affichee au gerant, pas une phrase generique (${cause.vides.slice(0, 120)})`);
+    ok(!/Rien à valider : la surveillance continue/.test(cause.vides),
+      'et elle REMPLACE la phrase generique au lieu de s ajouter a cote');
+    // CONTRE-PREUVE : sans cause calculee, la phrase generique revient. Sans
+    // elle, un texte ecrit en dur passerait les deux assertions ci-dessus.
+    ok(/Rien à valider : la surveillance continue/.test(calm.videsTexte || ''),
+      `CONTRE-PREUVE : sans cause, la phrase generique tient sa place (${String(calm.videsTexte).slice(0, 80)})`);
     const scope = await page.evaluate(async () => {
       state.adminCenterId = 'gembloux';
       window.renderStaffCampaignsPage();

@@ -6512,7 +6512,12 @@
     </div>`;
     const pisteRows = mkwPisteRows();
     const pisteCount = ((b.pistes || []).slice(0, 5)).length;
-    return `${group('À valider', validateCount, validateCards, 'Rien à valider : la surveillance continue.')}
+    // « Rien a valider » disait la meme chose quand tout allait bien et quand
+    // la cle du modele manquait. Le serveur calcule maintenant la cause (sans
+    // appeler le modele, sans rien depenser) : on la montre telle quelle.
+    const vide = (b.silence && b.silence.phrase)
+      || 'Rien à valider : la surveillance continue.';
+    return `${group('À valider', validateCount, validateCards, vide)}
       ${group('À trancher', pisteCount, pisteRows, 'Aucune question ouverte de mon côté.')}
       ${group('En cours', running.length, running.join(''), 'Rien ne tourne en ce moment.')}
       ${group('À surveiller', 0, watch.join(''), 'Rien à surveiller de particulier.')}

@@ -151,6 +151,57 @@ const {
   ok(bundle.receipts.length === 1 && bundle.receipts[0].result === '+18 % de monde', 'reçus mesurés');
   ok(bundle.veille.count === 2 && bundle.veille.changed[0].name === 'Bowling Arlon', 'veille résumée');
 
+  // ── POURQUOI LA FILE EST VIDE ───────────────────────────────────────────
+  // Un ecran vide disait deux choses opposees avec les memes mots : « ton
+  // centre va bien » et « personne n a pose la cle du modele ». Les causes se
+  // LISENT sur la fiche du centre, sans un seul appel modele.
+  console.log('\n[SILENCE] la file vide dit pourquoi elle est vide');
+
+  const briefSansRien = (fiche, fournisseur) => buildMarketingBriefBundle(
+    'libramont', { days: 30 }, {
+      buildMarketingBrain: async () => ({ ...fakeBrain, plan: [], instagram: null }),
+      computeMarketingRoi: async () => ({ revenue: 0, conversions: 0, sent: 0, reviewClicks: 0, days: 30, bySource: [] }),
+      listMarketingInsights: async () => [],
+      listMarketingPatterns: async () => [],
+      listDailyMetrics: async () => [],
+      chargerFicheDuRegistre: async () => fiche,
+      centerFacts: () => ({ centerId: 'libramont', activities: fiche.identite_absente ? [] : ['Bowling'] }),
+      llmProvider: () => fournisseur,
+      query: async (text) => (String(text).includes('count(*)') ? { rows: [{ count: 0 }] } : { rows: [] }),
+    },
+  );
+
+  const registreVide = await briefSansRien({ registre_vide: { valeur: 'x' } }, 'anthropic');
+  ok(registreVide.propositions.length === 0,
+    'MONTAGE : la file est bien vide, sinon la question ne se poserait pas');
+  ok(registreVide.silence && registreVide.silence.cause === 'registre_vide',
+    'registre vide : la cause est nommee', JSON.stringify(registreVide.silence));
+
+  const arrete = await briefSansRien({
+    registre_dormant: { valeur: 'aucune reservation depuis 240 jours' },
+  }, 'anthropic');
+  ok(arrete.silence && arrete.silence.cause === 'registre_dormant'
+    && arrete.silence.phrase.includes('240 jours'),
+    'registre arrete : la cause porte le nombre de jours', JSON.stringify(arrete.silence));
+
+  const sansOffre = await briefSansRien({ identite_absente: { valeur: 'rien de declare' } }, 'anthropic');
+  ok(sansOffre.silence && sansOffre.silence.cause === 'identite_absente',
+    'configuration sans activite : la cause est nommee', JSON.stringify(sansOffre.silence));
+
+  // LE CAS QUI COMPTE AUJOURD HUI : aucune cle de modele en production. Le
+  // gerant voyait exactement le meme ecran que sur un centre en pleine forme.
+  const sansCle = await briefSansRien({ panier_moyen: { valeur: '42 EUR' } }, '');
+  ok(sansCle.silence && sansCle.silence.cause === 'sans_modele'
+    && /configuration/.test(sansCle.silence.phrase),
+    'aucune cle : la cause dit que c est la configuration, pas la matiere',
+    JSON.stringify(sansCle.silence));
+
+  // CONTRE-PREUVE : quand la file N EST PAS vide, aucune cause n est fabriquee.
+  ok(bundle.propositions.length > 0 && !bundle.silence,
+    'CONTRE-PREUVE : file pleine, aucun silence invente',
+    JSON.stringify(bundle.silence));
+
+
   // ── LA PREUVE ARRIVE JUSQU AU GERANT ────────────────────────────────────
   // Chaque proposition est stockee avec sa tracabilite pour que le gerant
   // puisse REFAIRE le calcul et prendre l agent en defaut. Elle dormait en

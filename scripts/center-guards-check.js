@@ -12,6 +12,7 @@ const {
   distributionSuspecte,
   nombresDe,
   verifierProvenance,
+  conseilDeRegleCommerciale,
   NATURES,
   N_POUR_ELIRE,
 } = require('../lib/center-guards');
@@ -241,6 +242,42 @@ ok('un montant faux de 1 EUR est REFUSE : aucune tolerance sur une valeur fausse
 
 // ── CONTRE-PREUVES PAR MUTATION ─────────────────────────────────────────────
 // Une garde qu'on n'a pas vue mordre n'est pas une garde.
+
+// ── LA GARDE QUI LIT LE TEXTE, PAS L'ETIQUETTE ──────────────────────────────
+// Le cas nomme par Movsar : « il voit que les formules anniversaire sont a 6
+// personnes minimum, il constate que 8 serait plus rentable, il ne faut pas
+// qu'il dise ca apres 10 reservations ». Le modele ne declarera jamais
+// « regle_commerciale » : cette nature n'est pas dans la liste qu'il peut
+// choisir. Il ecrira le conseil sous l'etiquette « levier_reversible », et la
+// nature declaree ne l'arretera pas.
+console.log('\n[REGLE COMMERCIALE] un conseil de changement est vu dans le texte');
+const CONSEILS_INTERDITS = [
+  'Il faudrait passer le minimum anniversaire a 8 personnes.',
+  'Je recommande d augmenter le prix du samedi soir.',
+  'On peut supprimer la formule qui ne se vend pas.',
+  'Revoyez les horaires du dimanche matin.',
+  'Instaurez un acompte pour les groupes.',
+];
+CONSEILS_INTERDITS.forEach((texte) => {
+  const verdict = conseilDeRegleCommerciale(texte);
+  ok(`rejete : ${texte}`, verdict.detecte === true, JSON.stringify(verdict.extraits));
+});
+
+// Le prix d'une garde lexicale, c'est le faux positif. Ces phrases DECRIVENT,
+// ou visent un objectif qui ne touche a aucune regle : elles doivent passer,
+// sinon l'agent devient muet sur sa propre activite et on debranche la garde.
+console.log('\n[REGLE COMMERCIALE] ce qui decrit ou vise un objectif passe');
+const CONSEILS_LEGITIMES = [
+  'La frequentation baisse le mardi.',
+  'Le panier moyen augmente en juillet.',
+  'Objectif : augmenter la notoriete locale.',
+  '32 reservations sont sous 8 personnes.',
+  'Le prix moyen est de 25 EUR par personne.',
+];
+CONSEILS_LEGITIMES.forEach((texte) => {
+  const verdict = conseilDeRegleCommerciale(texte);
+  ok(`passe : ${texte}`, verdict.detecte === false, JSON.stringify(verdict.extraits));
+});
 console.log('\n[CONTRE-PREUVES] chaque garde est montree en train de mordre');
 
 const natureSansRefus = { exige: () => true };
@@ -259,5 +296,24 @@ const sansFiche = verifierProvenance(vrai, ficheVide);
 ok('fiche videe : le texte VRAI devient intrus, donc la provenance mordait',
   sansFiche.propre === false && sansFiche.intrus.length > 0, JSON.stringify(sansFiche.intrus));
 
+
+// La conjonction verbe + objet : retirer l'un des deux doit suffire a laisser
+// passer, sinon la garde ne mesure qu'un seul des deux termes.
+ok('sans verbe de changement, la meme phrase passe',
+  conseilDeRegleCommerciale('Le minimum anniversaire est a 6 personnes.').detecte === false);
+ok('sans objet de regle, la meme phrase passe',
+  conseilDeRegleCommerciale('Il faudrait passer a une communication plus locale.').detecte === false);
+ok('MONTAGE : les deux ensemble tombent bien',
+  conseilDeRegleCommerciale('Il faudrait passer le minimum a 8.').detecte === true);
+
+// Les deux defauts que j'ai ecrits avant de les corriger, verrouilles ici :
+// (1) normaliser avant de decouper efface le point, donc tout le texte devient
+// une seule phrase et un verbe rencontre un objet qu'il n'a jamais croise ;
+// (2) comparer sans borne d'espace fait matcher « passer » dans « depasser ».
+// Si l'une de ces deux lignes repasse a true, le defaut est revenu.
+ok('CONTRE-PREUVE decoupage : verbe et objet dans DEUX phrases ne comptent pas',
+  conseilDeRegleCommerciale('Le prix est stable. Il faudrait changer la communication.').detecte === false);
+ok('CONTRE-PREUVE bornes : depasser ne vaut pas passer',
+  conseilDeRegleCommerciale('Il faut depasser les formules classiques du secteur.').detecte === false);
 console.log(`\n${failures ? `center-guards-check: ${failures} ECHEC(S)` : 'center-guards-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

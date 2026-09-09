@@ -83,6 +83,49 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('elle garde les faits cites',
     acceptee.proposition && acceptee.proposition.faitsUtilises.includes(idConstat));
 
+
+  // ── LE MODELE QUI MENT SUR LA NATURE ──────────────────────────────────────
+  // Le cas de Movsar, monte de facon a ce qu AUCUNE autre garde ne puisse le
+  // rejeter : le nombre utilise est pris DANS la fiche, donc la provenance est
+  // propre, et la nature declaree est « levier_reversible », qui est permise.
+  // Seule la lecture du texte peut l arreter. Si ce test passe au vert sans la
+  // garde, c est qu une autre garde faisait le travail par accident.
+  console.log('\n[REGLE COMMERCIALE] la nature declaree ne sauve pas le conseil');
+  const { nombresAutorises, verifierProvenance: provenance } = require('../lib/center-guards');
+  const autorises = [...nombresAutorises(fiche)].filter((n) => Number.isInteger(n) && n > 1 && n < 100);
+  ok('MONTAGE : la fiche contient un entier citable', autorises.length > 0, String(autorises.length));
+  const corpsMenteur = `Il faudrait passer le minimum des formules a ${autorises[0]} personnes.`;
+  ok('MONTAGE : ce corps est propre pour la provenance',
+    provenance(corpsMenteur, fiche).propre === true, JSON.stringify(provenance(corpsMenteur, fiche).intrus));
+  const menteur = await proposerDepuisLaFiche({
+    fiche,
+    lieu: LIEU,
+    fetchImpl: modeleQuiRepond({
+      titre: 'Une piste pour les groupes',
+      corps: corpsMenteur,
+      nature: 'levier_reversible',
+      faitsUtilises: [idConstat],
+    }),
+  });
+  ok('le conseil de changer le minimum est jete', menteur.proposition === null,
+    JSON.stringify(menteur.motifs));
+  ok('et le motif nomme la regle commerciale, pas un nombre invente',
+    menteur.motifs.some((m) => m.includes('regle commerciale')), JSON.stringify(menteur.motifs));
+
+  // CONTRE-EPREUVE : le meme fait, decrit au lieu d etre transforme en consigne,
+  // doit passer. Sinon la garde interdit de PARLER du minimum, pas de le changer.
+  const descriptif = await proposerDepuisLaFiche({
+    fiche,
+    lieu: LIEU,
+    fetchImpl: modeleQuiRepond({
+      titre: 'Ce que dit ton registre',
+      corps: `Les groupes de ${autorises[0]} personnes reviennent souvent le week-end.`,
+      nature: 'constat',
+      faitsUtilises: [idConstat],
+    }),
+  });
+  ok('CONTRE-EPREUVE : decrire le meme nombre reste autorise',
+    Boolean(descriptif.proposition), JSON.stringify(descriptif.motifs));
   // ── REJETS ────────────────────────────────────────────────────────────────
   console.log('\n[REJETE] chaque garde jette ce qu elle doit jeter');
 

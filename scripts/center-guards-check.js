@@ -9,6 +9,7 @@ const {
   peutAffirmer,
   reformulerEnHypothese,
   elire,
+  elireRobuste,
   distributionSuspecte,
   nombresDe,
   verifierProvenance,
@@ -498,5 +499,144 @@ ok('CONTRE-PREUVE decoupage : verbe et objet dans DEUX phrases ne comptent pas',
   conseilDeRegleCommerciale('Le prix est stable. Il faudrait changer la communication.').detecte === false);
 ok('CONTRE-PREUVE bornes : depasser ne vaut pas passer',
   conseilDeRegleCommerciale('Il faut depasser les formules classiques du secteur.').detecte === false);
+
+// ── UNE ELECTION QU UNE SEULE RESERVATION RENVERSE ──────────────────────────
+// N_POUR_ELIRE repond a « y a-t-il assez de matiere pour classer ». Il ne dit
+// rien de l ECART entre le premier et le deuxieme. Deux mois a 5 100 et 4 900
+// EUR passent tous les deux la barre, et le premier devient « ton mois le plus
+// rentable » alors qu un seul anniversaire de 40 personnes fait la difference.
+//
+// La regle : on retire au gagnant sa plus grosse ligne, on mesure de combien
+// son score bouge, on compare ce mouvement a son avance. Si une ligne pese plus
+// que l avance, le classement est porte par cette ligne.
+console.log('\n[FRAGILITE] un classement porte par une seule ligne');
+
+// Le retrait de la plus grosse ligne, tel que la fiche le fait.
+const sansLaPlusGrosse = (candidat) => {
+  const rows = candidat.rows || [];
+  if (rows.length < 2) return null;
+  let max = 0;
+  for (let i = 1; i < rows.length; i += 1) if (rows[i].price > rows[max].price) max = i;
+  const restant = rows.filter((unused, i) => i !== max);
+  return {
+    ...candidat,
+    rows: restant,
+    n: restant.length,
+    ca: restant.reduce((somme, r) => somme + r.price, 0),
+  };
+};
+const lignes = (combien, prix) => Array.from({ length: combien }, () => ({ price: prix }));
+const bucket = (nom, rows) => ({
+  nom, rows, n: rows.length, ca: rows.reduce((somme, r) => somme + r.price, 0),
+});
+
+// CAS 1 : le vrai signal. Le samedi mene de 8 longueurs, une ligne pese 1.
+const samediFranc = elireRobuste(
+  [bucket('samedi', lignes(20, 50)), bucket('vendredi', lignes(12, 50))],
+  (b) => b.n,
+  { affaiblir: sansLaPlusGrosse },
+);
+ok('MONTAGE : le samedi gagne bien', samediFranc.elu && samediFranc.elu.nom === 'samedi');
+ok('avance de 8 contre un poids de 1 : le classement tient',
+  samediFranc.fragile === false, `marge=${samediFranc.marge} poids=${samediFranc.poids}`);
+
+// CAS 2 : le bruit. Une seule reservation d ecart.
+const samediDeJustesse = elireRobuste(
+  [bucket('samedi', lignes(13, 50)), bucket('vendredi', lignes(12, 50))],
+  (b) => b.n,
+  { affaiblir: sansLaPlusGrosse },
+);
+ok('avance de 1 contre un poids de 1 : le classement est fragile',
+  samediDeJustesse.fragile === true, `marge=${samediDeJustesse.marge} poids=${samediDeJustesse.poids}`);
+
+// CAS 3 : l argent. C'est le cas que le gerant paie. Mars mene de 200 EUR sur
+// juillet, et doit son avance a UNE reservation de 2 400 EUR.
+const marsPorteParUnAnniversaire = elireRobuste(
+  [
+    bucket('mars', [...lignes(60, 45), { price: 2400 }]),
+    bucket('juillet', lignes(100, 49)),
+  ],
+  (b) => b.ca,
+  { affaiblir: sansLaPlusGrosse },
+);
+ok('MONTAGE : mars gagne bien en argent',
+  marsPorteParUnAnniversaire.elu && marsPorteParUnAnniversaire.elu.nom === 'mars',
+  JSON.stringify((marsPorteParUnAnniversaire.elu || {}).ca));
+ok('mais une seule reservation de 2 400 EUR porte l avance : fragile',
+  marsPorteParUnAnniversaire.fragile === true,
+  `marge=${marsPorteParUnAnniversaire.marge} poids=${marsPorteParUnAnniversaire.poids}`);
+
+// CAS 4 : le sens inverse. Pour un creux le score est negatif, retirer une
+// ligne fait MONTER le score. C'est la valeur absolue du mouvement qui compte,
+// sinon la garde ne mordrait que dans un seul sens et la moitie des
+// classements de la fiche (jour_creux, creneau_creux, mois_creux) passerait.
+const creuxDeJustesse = elireRobuste(
+  [bucket('mardi', lignes(9, 50)), bucket('lundi', lignes(10, 50))],
+  (b) => -b.n,
+  { affaiblir: sansLaPlusGrosse },
+);
+ok('MONTAGE : le mardi est bien le plus creux', creuxDeJustesse.elu && creuxDeJustesse.elu.nom === 'mardi');
+ok('CREUX : la garde mord aussi dans le sens inverse',
+  creuxDeJustesse.fragile === true, `marge=${creuxDeJustesse.marge} poids=${creuxDeJustesse.poids}`);
+const creuxFranc = elireRobuste(
+  [bucket('mardi', lignes(9, 50)), bucket('lundi', lignes(30, 50))],
+  (b) => -b.n,
+  { affaiblir: sansLaPlusGrosse },
+);
+ok('CONTRE-PREUVE creux : un vrai trou de 21 longueurs tient',
+  creuxFranc.fragile === false, `marge=${creuxFranc.marge} poids=${creuxFranc.poids}`);
+
+// CAS 5 : sans dauphin il n y a pas d avance a effacer. Un seul candidat passe
+// la barre de volume : la question ne se pose pas, et la reponse est dite
+// plutot que laissee a l interpretation.
+const seulEnLice = elireRobuste(
+  [bucket('samedi', lignes(20, 50)), bucket('vendredi', lignes(2, 50))],
+  (b) => b.n,
+  { affaiblir: sansLaPlusGrosse },
+);
+ok('un seul candidat eligible : robuste, et pas de faux rouge',
+  seulEnLice.elu && !seulEnLice.dauphin && seulEnLice.fragile === false);
+
+// CAS 6 : elire() n'a pas change. Les autres appelants doivent survivre.
+const sansGarde = elire(
+  [bucket('samedi', lignes(13, 50)), bucket('vendredi', lignes(12, 50))],
+  (b) => b.n,
+);
+ok('CONTRE-PREUVE : elire() classe toujours pareil, la garde est un ajout',
+  sansGarde.elu.nom === 'samedi' && sansGarde.fragile === undefined);
+
+// LE POINT : un fait fragile ne s'affirme dans AUCUNE nature. Le volume dit
+// « il y a de la matiere », la fragilite dit « le vainqueur ne tient pas » :
+// attendre plus de donnee ne repare pas cet ecart-la.
+const classementFragile = fait({
+  id: 'mois_fort', libelle: 'mois le plus rentable', valeur: 'mars : 190 reservations',
+  n: 190, du: '2024-01-01', au: '2025-09-30',
+  mois: ['2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06',
+    '2024-07', '2024-08', '2024-09', '2024-10', '2024-11', '2024-12'],
+  periode: 'mois_annee', audience: 'public',
+  fragile: true, motifFragilite: 'classement decide par une seule reservation',
+});
+ok('MONTAGE : ce fait est au PLUS HAUT niveau de volume et couvre un cycle complet',
+  maturite(classementFragile).volume === 'dense' && maturite(classementFragile).saison === 'cycle_complet',
+  JSON.stringify(maturite(classementFragile)));
+['constat', 'levier_reversible', 'saisonnier'].forEach((nature) => {
+  const verdict = peutAffirmer(classementFragile, nature);
+  ok(`fragile : ${nature} refuse malgre 190 observations et 12 mois`,
+    verdict.autorise === false, verdict.motif);
+});
+ok('et le refus NOMME la cause, il ne parle pas de volume',
+  peutAffirmer(classementFragile, 'constat').motif.includes('une seule reservation'),
+  peutAffirmer(classementFragile, 'constat').motif);
+
+// CONTRE-PREUVE : le MEME fait sans le drapeau s'affirme. Sans ca, on aurait
+// seulement montre un fait trop mince, pas une garde qui mord.
+const memeClassementSolide = fait({ ...classementFragile, fragile: false });
+ok('CONTRE-PREUVE : le meme fait sans le drapeau passe les trois natures',
+  ['constat', 'levier_reversible', 'saisonnier'].every((n) => peutAffirmer(memeClassementSolide, n).autorise));
+
+// Le drapeau ne s'invente pas : fait() le normalise, et un motif sans drapeau
+// ne cree pas une fragilite fantome qui bloquerait un fait sain.
+ok('un motif sans drapeau ne bloque rien',
+  peutAffirmer(fait({ ...classementFragile, fragile: false, motifFragilite: 'bruit' }), 'constat').autorise);
 console.log(`\n${failures ? `center-guards-check: ${failures} ECHEC(S)` : 'center-guards-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

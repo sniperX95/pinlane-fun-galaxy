@@ -781,11 +781,17 @@
 
   // Idees de l'agent encore en attente d'arbitrage, remontees comme items
   // ACTIONNABLES : chacune doit porter un id numerique (insightStatus le coerce
-  // en Number et scope au centre), sinon pas de bouton. Le bundle founderAgents
-  // actuel n'expose que des agregats (agents.marketing.byStatus est un compte
-  // par statut, pas des lignes) : tant qu'il ne joint pas les lignes en attente
-  // (ex. `insights: [...]` issu de listMarketingInsights status 'pending'),
-  // cette liste reste vide et aucun bouton n'apparait. On ne fabrique rien.
+  // en Number et scope au centre), sinon pas de bouton.
+  //
+  // Le bundle founderAgents porte bien les lignes, dans `pendingInsights`
+  // (lib/founder-cockpit.js, loadPendingInsights) : il lit l'etat reel
+  // 'proposed' et le traduit dans le 'pending' attendu ici. Le commentaire
+  // precedent decrivait l'etat d'AVANT cette jointure et affirmait que la liste
+  // restait vide pour toujours : il etait faux, et il a induit en erreur une
+  // relecture. Un commentaire perime coute plus cher que pas de commentaire.
+  //
+  // Les PISTES n'arrivent pas ici, et c'est voulu : « Appliquer » sur une
+  // question declencherait une mesure a 14 jours pour une action jamais faite.
   function collectActionableInsights(d) {
     const out = [];
     const consider = (list) => {

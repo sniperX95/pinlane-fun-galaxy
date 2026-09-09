@@ -610,5 +610,86 @@ ok('CONTRE-PREUVE : un seul minimum au catalogue, aucune comparaison possible',
   String(ficheUnSeulMinimum.comparaison_de_minimums.valeur));
 ok('CONTRE-PREUVE : sans min_pax declare, le fait n existe pas',
   !ficheDuRegistre({ reservations: serie(60, {}, new Date('2026-01-05T00:00:00Z'), 'sans'), formules: [{ id: 'f1', name: 'A', active: true }] }).comparaison_de_minimums);
+
+// ── LE MOIS LE PLUS RENTABLE, DECIDE PAR UNE SEULE RESERVATION ──────────────
+// Montage : deux ans de registre. Chaque mois a 16 reservations a 100 EUR sauf
+// juillet (22 lignes, 2 200 EUR par an) et janvier (16 a 20 EUR, 320 EUR).
+// Juillet mene de 600 EUR sur son dauphin et une ligne en pese 100 : ce
+// classement-la tient tout seul, et janvier est le creux sans discussion.
+// Les comptes sont volontairement au-dessus de la barre d'anecdote (30
+// observations) : sinon le refus viendrait du volume et non de la fragilite,
+// et le gate serait vert pour la mauvaise raison.
+// On ajoute ensuite UNE reservation de 2 400 EUR en mars, et mars passe devant.
+// Sans garde, l'agent dirait « mars est ton mois le plus rentable » et le
+// gerant planifierait son annee dessus.
+console.log('\n[FRAGILITE] le classement porte par une seule reservation');
+
+// Registre construit mois par mois : rien de tire au sort, chaque total est
+// une multiplication qui se refait de tete.
+function registreDeDeuxAns() {
+  const lignes = [];
+  [2024, 2025].forEach((annee) => {
+    for (let mois = 1; mois <= 12; mois += 1) {
+      const combien = mois === 7 ? 22 : 16;
+      const prix = mois === 1 ? 20 : 100;
+      for (let i = 0; i < combien; i += 1) {
+        lignes.push(resa({
+          date: `${annee}-${String(mois).padStart(2, '0')}-${String(1 + i).padStart(2, '0')}`,
+          price: prix,
+          email: `m${annee}-${mois}-${i}@example.test`,
+        }));
+      }
+    }
+  });
+  return lignes;
+}
+const fragilesDe = (fiche) => Object.values(fiche).filter((f) => f.fragile).map((f) => f.id).sort();
+
+const ficheSansAccident = ficheDuRegistre({ reservations: registreDeDeuxAns(), formules: [] });
+ok('MONTAGE : sans l accident, juillet est le mois le plus rentable',
+  String(ficheSansAccident.mois_fort.valeur).startsWith('juillet'),
+  String(ficheSansAccident.mois_fort.valeur));
+ok('MONTAGE : et ce classement-la n est pas fragile',
+  ficheSansAccident.mois_fort.fragile === false);
+ok('donc il s affirme', peutAffirmer(ficheSansAccident.mois_fort, 'constat').autorise);
+
+// Une seule ligne ajoutee. Rien d autre ne change.
+const ficheAvecAccident = ficheDuRegistre({
+  reservations: [...registreDeDeuxAns(), resa({ date: '2024-03-16', price: 2400, pax: 60, email: 'gros@example.test' })],
+  formules: [],
+});
+ok('une seule reservation de 2 400 EUR fait passer mars devant',
+  String(ficheAvecAccident.mois_fort.valeur).startsWith('mars'),
+  String(ficheAvecAccident.mois_fort.valeur));
+ok('LE POINT : ce classement est marque fragile', ficheAvecAccident.mois_fort.fragile === true);
+ok('et il ne s affirme plus, malgre les 2 ans et les 400 lignes derriere',
+  peutAffirmer(ficheAvecAccident.mois_fort, 'constat').autorise === false,
+  peutAffirmer(ficheAvecAccident.mois_fort, 'constat').motif);
+// Le refus doit venir de la FRAGILITE. Un refus de volume donnerait le meme
+// autorise === false et rendrait l'assertion precedente vraie pour rien.
+ok('et le refus nomme la fragilite, pas le volume',
+  peutAffirmer(ficheAvecAccident.mois_fort, 'constat').motif.includes('une seule reservation'),
+  peutAffirmer(ficheAvecAccident.mois_fort, 'constat').motif);
+ok('la valeur le DIT au gerant qui lit le dossier',
+  String(ficheAvecAccident.mois_fort.valeur).includes('classement fragile'),
+  String(ficheAvecAccident.mois_fort.valeur));
+ok('le jumeau en argent porte la meme reserve',
+  ficheAvecAccident.chiffre_mois_fort.fragile === true);
+
+// CONTRE-PREUVE DE PORTEE, en DIFFERENCE et pas en liste figee : entre les deux
+// fiches, UNE seule ligne a change. Si la garde repeignait large, d'autres
+// classements deviendraient fragiles en meme temps. On compare donc les deux
+// ensembles, ce qui reste vrai meme si le montage evolue.
+const apparus = fragilesDe(ficheAvecAccident).filter((id) => !fragilesDe(ficheSansAccident).includes(id));
+ok('la ligne ajoutee ne fragilise QUE le classement des mois',
+  apparus.join(',') === 'chiffre_mois_fort,mois_fort',
+  `apparus=[${apparus.join(',')}] avant=[${fragilesDe(ficheSansAccident).join(',')}]`);
+ok('CONTRE-PREUVE : le mois le plus CREUX, lui, reste solide',
+  ficheAvecAccident.mois_creux.fragile === false
+  && peutAffirmer(ficheAvecAccident.mois_creux, 'constat').autorise,
+  String(ficheAvecAccident.mois_creux.valeur));
+ok('CONTRE-PREUVE : le panier moyen, qui n est pas un classement, reste sain',
+  ficheAvecAccident.panier_moyen.fragile === false
+  && peutAffirmer(ficheAvecAccident.panier_moyen, 'constat').autorise);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

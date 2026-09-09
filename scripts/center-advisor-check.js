@@ -308,6 +308,186 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('CONTRE-PREUVE : un refus ordinaire ne rend aucune piste',
     refusOrdinaire.proposition === null && !refusOrdinaire.piste,
     JSON.stringify(refusOrdinaire.motifs));
+
+  // ── CHAQUE SILENCE DIT SA CAUSE ───────────────────────────────────────────
+  // callLlm rend null dans trois situations qui n ont rien a voir : aucun
+  // fournisseur, plafond de budget, appel echoue. Le conseiller les ecrasait
+  // toutes en « le modele n a rien rendu », alors que le mode Demander les
+  // distingue depuis toujours. Un silence sans cause ressemble a « ce centre n a
+  // rien a dire », et ca peut etre une cle absente : deux situations opposees,
+  // le meme ecran vide.
+  console.log('\n[SILENCE] un ecran vide dit pourquoi il est vide');
+
+  // Sans AUCUNE cle : la cause est la configuration, pas la matiere. Et rien
+  // n'est appele, donc rien n'est depense.
+  const CLES = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'KIMI_API_KEY', 'MOONSHOT_API_KEY', 'OPENROUTER_API_KEY'];
+  const clesSauvees = {};
+  CLES.forEach((cle) => { clesSauvees[cle] = process.env[cle]; delete process.env[cle]; });
+  let appelsSansCle = 0;
+  const compteurSansCle = async () => { appelsSansCle += 1; return { ok: false, status: 500, text: async () => '' }; };
+  const sansModele = await proposerDepuisLaFiche({ fiche, lieu: LIEU, fetchImpl: compteurSansCle });
+  ok('sans fournisseur : la cause est nommee',
+    sansModele.silence === 'sans_modele', String(sansModele.silence));
+  ok('et le motif dit que c est la cle, pas la matiere',
+    sansModele.motifs.some((m) => m.includes('c est la cle')), JSON.stringify(sansModele.motifs));
+  ok('AUCUN appel n est tente : rien ne se depense pour rien', appelsSansCle === 0, String(appelsSansCle));
+  CLES.forEach((cle) => { if (clesSauvees[cle] !== undefined) process.env[cle] = clesSauvees[cle]; });
+  process.env.ANTHROPIC_API_KEY = 'cle-de-mesure';
+
+  // Registre sans matiere : la cause est la donnee, et c'est un silence sain.
+  const ficheSansMatiere = ficheDuRegistre({ reservations: [], formules: [] });
+  const rienADire = await proposerDepuisLaFiche({ fiche: ficheSansMatiere, lieu: LIEU, fetchImpl: modeleQuiRepond(bonne) });
+  ok('registre vide : la cause est la matiere',
+    rienADire.silence === 'rien_a_dire', String(rienADire.silence));
+
+  // Modele injoignable : la cause est le fournisseur, pas nous.
+  const modeleMuet = await proposerDepuisLaFiche({
+    fiche, lieu: LIEU,
+    fetchImpl: async () => ({ ok: false, status: 500, text: async () => 'boom' }),
+  });
+  ok('modele injoignable : la cause est l echec d appel',
+    modeleMuet.silence === 'echec', String(modeleMuet.silence));
+
+  // Sortie refusee par les gardes : la cause est ce que le modele a ecrit.
+  const sortieJetee = await proposerDepuisLaFiche({
+    fiche, lieu: LIEU,
+    fetchImpl: modeleQuiRepond({ titre: 'X', corps: 'Nos clients notent 4,73 sur cinq.', nature: 'constat', faitsUtilises: [idConstat] }),
+  });
+  ok('sortie refusee : la cause est la sortie elle-meme',
+    sortieJetee.silence === 'sortie_jetee', String(sortieJetee.silence));
+
+  // Les quatre causes sont DISTINCTES : si deux se confondaient, nommer la
+  // cause ne servirait a rien.
+  const causes = [sansModele.silence, rienADire.silence, modeleMuet.silence, sortieJetee.silence];
+  ok('les quatre causes sont distinctes', new Set(causes).size === 4, causes.join(','));
+
+  // CONTRE-EPREUVE : la meme fiche, avec une cle et un modele qui repond bien,
+  // rend une proposition et AUCUN silence. Sans ca, on n'aurait montre qu'un
+  // conseiller qui refuse toujours.
+  const parle = await proposerDepuisLaFiche({ fiche, lieu: LIEU, fetchImpl: modeleQuiRepond(bonne) });
+  ok('CONTRE-EPREUVE : avec une cle et une bonne sortie, il parle et ne dit aucun silence',
+    Boolean(parle.proposition) && !parle.silence, JSON.stringify(parle.motifs));
+
+  // Le plafond de budget. Le crochet se pose sur l OBJET module AVANT de
+  // recharger le conseiller : il capture isBudgetExhausted par destructuration
+  // au chargement, donc reassigner l'export apres coup ne changerait rien.
+  const budget = require('../lib/llm-budget');
+  const budgetReel = budget.isBudgetExhausted;
+  budget.isBudgetExhausted = () => true;
+  delete require.cache[require.resolve('../lib/center-advisor')];
+  const conseillerSousPlafond = require('../lib/center-advisor').proposerDepuisLaFiche;
+  let appelsSousPlafond = 0;
+  const auPlafond = await conseillerSousPlafond({
+    fiche, lieu: LIEU,
+    fetchImpl: async () => { appelsSousPlafond += 1; return { ok: false, status: 500, text: async () => '' }; },
+  });
+  ok('plafond de budget atteint : la cause est le budget',
+    auPlafond.silence === 'budget', String(auPlafond.silence));
+  ok('et aucun appel n est tente non plus', appelsSousPlafond === 0, String(appelsSousPlafond));
+  budget.isBudgetExhausted = budgetReel;
+  delete require.cache[require.resolve('../lib/center-advisor')];
+
+  // ── LE CYCLE PERSISTE LA PISTE, SANS CONTENU A COLLER ─────────────────────
+  // Une piste que personne ne persiste est une question posee dans le vide. Et
+  // son contenu pret a coller DOIT rester nul, sinon la console la rend comme
+  // un texte a publier.
+  //
+  // Premiere version de ce bloc : trois expressions regulieres sur le SOURCE de
+  // center-metrics. Mutation faite sur ce gate : `if (rendu.piste)` remplace par
+  // `if (false)`. La piste n etait plus jamais ecrite, et le gate restait VERT,
+  // parce que /rendu\.piste/ matche encore le corps du bloc devenu mort. Un test
+  // qui verifie une PRESENCE au lieu d un EFFET est un faux vert.
+  //
+  // On appelle donc le vrai cycle. La seule chose simulee est la frontiere de
+  // base (getPool) : insertIdeaIfNew, sa requete de dedoublonnage et son INSERT
+  // sont les vrais. Le crochet se pose sur l OBJET module avant tout require
+  // applicatif, parce que center-metrics destructure getPool a son chargement :
+  // reassigner l export apres coup ne changerait rien.
+  console.log('\n[CABLAGE] la piste est ECRITE comme piste, jamais comme post');
+
+  const requetes = [];
+  const faussePool = {
+    query: async (sql, params) => {
+      requetes.push({ sql: String(sql), params: params || [] });
+      return { rows: [] };
+    },
+  };
+  const baseDeDonnees = require('../lib/database');
+  const vraiGetPool = baseDeDonnees.getPool;
+  baseDeDonnees.getPool = () => faussePool;
+
+  // Le conseiller rend une piste et aucune proposition : exactement ce que
+  // produit un refus de regle commerciale.
+  const conseiller = require('../lib/center-advisor');
+  const vraiConseiller = conseiller.proposerDepuisLaFiche;
+  const pisteRendue = {
+    sujet: 'le minimum des anniversaires',
+    populationARisque: '42 sur 500 (8.4 %)',
+    chiffreARisque: '51304 EUR',
+    comparaisonDisponible: 'oui : 2 et 6 personnes coexistent deja au catalogue',
+  };
+
+  // La fiche et la memoire viennent de la base : on les court-circuite pour que
+  // le test porte sur le CABLAGE de la piste, et sur rien d'autre.
+  const faitsDuRegistre = require('../lib/center-facts');
+  const vraiChargerFiche = faitsDuRegistre.chargerFicheDuRegistre;
+  const vraiChargerMemoire = faitsDuRegistre.chargerMemoireDuCentre;
+  faitsDuRegistre.chargerFicheDuRegistre = async () => ({});
+  faitsDuRegistre.chargerMemoireDuCentre = async () => [];
+  const adn = require('../lib/marketing-dna');
+  const vraiAdn = adn.buildDnaBlock;
+  adn.buildDnaBlock = async () => '';
+
+  delete require.cache[require.resolve('../lib/center-metrics')];
+  const cycle = require('../lib/center-metrics');
+
+  const bundleMinimal = {
+    today: '2026-09-09', forecast7: [], weatherHistory: [], localEvents: [],
+    nextSchoolHoliday: null, facts: [],
+  };
+  const insertsDePiste = () => requetes.filter(
+    (r) => /insert into marketing_insights/.test(r.sql) && r.params[1] === 'piste',
+  );
+
+  conseiller.proposerDepuisLaFiche = async () => ({
+    proposition: null, motifs: ['regle commerciale'], piste: pisteRendue,
+  });
+  const avecPiste = await cycle.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  ok('MONTAGE : le conseil remonte bien une piste',
+    Boolean(avecPiste.conseil && avecPiste.conseil.piste), JSON.stringify(avecPiste.conseil));
+  const ecrite = insertsDePiste()[0];
+  ok('LE POINT : une ligne est ECRITE en base avec le genre piste',
+    Boolean(ecrite), `${requetes.length} requete(s), aucune de genre piste`);
+  ok('son titre annonce une question a trancher',
+    Boolean(ecrite) && String(ecrite.params[2]).startsWith('A trancher : le minimum'),
+    ecrite && String(ecrite.params[2]));
+  ok('son corps porte la population, l argent et la comparaison deja possible',
+    Boolean(ecrite) && String(ecrite.params[3]).includes('42 sur 500')
+    && String(ecrite.params[3]).includes('51304')
+    && String(ecrite.params[3]).includes('coexistent deja au catalogue'),
+    ecrite && String(ecrite.params[3]));
+  ok('et AUCUN contenu pret a coller : elle ne se publie pas',
+    Boolean(ecrite) && ecrite.params[5] === null, ecrite && JSON.stringify(ecrite.params[5]));
+  ok('ni canal de publication', Boolean(ecrite) && ecrite.params[4] === null,
+    ecrite && JSON.stringify(ecrite.params[4]));
+
+  // CONTRE-PREUVE : le meme cycle, sans piste rendue, n'ecrit rien de tel. Sans
+  // elle, un INSERT inconditionnel passerait le test precedent.
+  requetes.length = 0;
+  conseiller.proposerDepuisLaFiche = async () => ({
+    proposition: null, motifs: ['rien a dire'], piste: null,
+  });
+  await cycle.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  ok('CONTRE-PREUVE : sans piste rendue, aucune ligne de genre piste',
+    insertsDePiste().length === 0, `${insertsDePiste().length} ecriture(s)`);
+
+  // Tout est rendu : les gates suivants doivent voir les vrais modules.
+  baseDeDonnees.getPool = vraiGetPool;
+  conseiller.proposerDepuisLaFiche = vraiConseiller;
+  faitsDuRegistre.chargerFicheDuRegistre = vraiChargerFiche;
+  faitsDuRegistre.chargerMemoireDuCentre = vraiChargerMemoire;
+  adn.buildDnaBlock = vraiAdn;
+  delete require.cache[require.resolve('../lib/center-metrics')];
   // ── REJETS ────────────────────────────────────────────────────────────────
   console.log('\n[REJETE] chaque garde jette ce qu elle doit jeter');
 

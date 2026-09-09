@@ -124,6 +124,10 @@ const {
     listMarketingInsights: async () => [
       { id: 21, kind: 'idea', title: 'Post Foire', body: 'Foire à 5 min.', channel: 'facebook', ready_content: 'T.', signature: 'local_event:facebook', status: 'proposed', payload: {}, due_date: null },
       { id: 22, kind: 'idea', title: 'Post pluie', body: '', channel: 'facebook', ready_content: 'T.', signature: 'rain_forecast:facebook', status: 'validated', applied_at: '2026-07-01T08:00:00Z', result: { deltaPct: 18 }, payload: {} },
+      // Une PISTE : proposee comme les autres, mais ce n est pas un texte a
+      // publier. Sans genre distinct, propositionFromInsight en ferait un
+      // conseil a coller sur Facebook.
+      { id: 23, kind: 'piste', title: 'A trancher : le minimum des anniversaires', body: 'concerne 42 sur 500 (8.4 %) | en jeu 51304 EUR | oui : 2 et 6 personnes coexistent deja au catalogue', channel: null, ready_content: null, signature: 'piste:le minimum des anniversaires', status: 'proposed', payload: {}, due_date: null },
     ],
     query: async (text) => (String(text).includes('count(*)') ? { rows: [{ count: 2 }] } : { rows: [{ name: 'Bowling Arlon', diff_summary: 'Nouvelle offre étudiants.', fetched_at: '2026-07-16T02:00:00Z' }] }),
     listDailyMetrics: async () => ({ totals: { visitors: 540, revenue: 8334 }, bestDay: { date: '2026-07-11', revenue_total: 4009, visitors: 234 }, rows: [] }),
@@ -138,6 +142,29 @@ const {
   ok(bundle.brief.text.includes('préparé') && bundle.brief.degraded === true, 'brief composé + flag dégradé sans IA');
   ok(bundle.receipts.length === 1 && bundle.receipts[0].result === '+18 % de monde', 'reçus mesurés');
   ok(bundle.veille.count === 2 && bundle.veille.changed[0].name === 'Bowling Arlon', 'veille résumée');
+
+  // ── UNE PISTE N EST PAS UN POST ─────────────────────────────────────────
+  // Le conseiller rend une piste quand il refuse un changement de regle : une
+  // question a trancher, avec la population concernee, l argent en jeu et la
+  // comparaison deja possible au catalogue. Elle doit atteindre le gerant, et
+  // surtout jamais la file des textes a publier.
+  ok(bundle.pistes && bundle.pistes.length === 1, 'la piste remonte au gerant, a part');
+  ok(bundle.pistes[0].sujet === 'le minimum des anniversaires',
+    'son sujet est lisible, sans le prefixe technique');
+  ok(String(bundle.pistes[0].pourquoi).includes('coexistent deja au catalogue'),
+    'elle porte la comparaison qui existe deja, donc la reponse sans rien changer');
+  // LE POINT : aucune proposition ne la reprend. Si elle passait par la file,
+  // le gerant verrait « a trancher : le minimum » comme un post a coller.
+  ok(!bundle.propositions.some((proposition) => Number(proposition.id) === 23),
+    'AUCUNE proposition ne la reprend : elle ne se publie pas',
+    JSON.stringify(bundle.propositions.map((proposition) => proposition.id)));
+  ok(!JSON.stringify(bundle.propositions).includes('A trancher'),
+    'et son titre n apparait nulle part dans la file des posts');
+  // CONTRE-PREUVE : les idees ordinaires, elles, sont bien passees par la file.
+  // Sans ca, un filtre trop large ferait disparaitre tout le monde.
+  ok(bundle.propositions.some((proposition) => Number(proposition.id) === 21),
+    'CONTRE-PREUVE : l idee ordinaire reste bien dans la file');
+
   ok(bundle.paie.young === false && tenantNetworks('libramont').join(',') === 'facebook,instagram,story', 'réseaux du tenant (TikTok/LinkedIn masqués)');
 
   console.log('\n[ACTIONS] intégrité de la mesure');

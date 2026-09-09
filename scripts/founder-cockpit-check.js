@@ -63,6 +63,11 @@ const MARKETING_INSIGHTS = [
   { id: 102, center_id: 'libramont', kind: 'insight', status: 'validated', title: 'Meteo et frequentation', body: '', channel: '', at: NOW - 10 * DAY },
   { id: 103, center_id: 'gembloux', kind: 'idea', status: 'refuted', title: 'Idee refutee', body: '', channel: 'sms', at: NOW - 20 * DAY },
   { id: 104, center_id: 'libramont', kind: 'experiment', status: 'validated', title: 'Vieille experience', body: '', channel: '', at: NOW - 40 * DAY },
+  // Une PISTE proposee : elle a le bon statut pour remonter, et elle ne doit
+  // PAS remonter. Le panneau propose « Appliquer », et une question ne
+  // s applique pas : status = 'applied' declencherait une mesure a 14 jours
+  // pour une action que personne n a faite.
+  { id: 105, center_id: 'libramont', kind: 'piste', status: 'proposed', title: 'A trancher : le minimum des anniversaires', body: 'concerne 42 sur 500', channel: '', at: NOW - 45 * DAY },
 ];
 
 // Suggestions terrain : total 3, pending 2, d7 = 1, d30 = 2 (la 3e a 45 j).
@@ -208,8 +213,11 @@ function marketingLatestRow() {
 function pendingInsightRows(sql) {
   const m = sql.match(/status = '(\w+)'/);
   const wanted = m ? m[1] : 'proposed';
+  // Le genre EXCLU est lu dans la requete lui aussi : retirer la clause du SQL
+  // fait remonter la piste et rougir l assertion, ce qui est le but.
+  const exclu = (sql.match(/kind <> '(\w+)'/) || [])[1] || '';
   return MARKETING_INSIGHTS
-    .filter((row) => row.status === wanted)
+    .filter((row) => row.status === wanted && (!exclu || row.kind !== exclu))
     .slice()
     .sort((a, b) => (b.at - a.at) || (b.id - a.id))
     .map((row) => ({
@@ -534,6 +542,11 @@ async function probeConsoleMapping(mod) {
     && groups[0].count === 3;
 }
 
+async function probeAucunePiste(mod) {
+  const bundle = await mod.buildFounderAgents();
+  return !(bundle.pendingInsights || []).some((ligne) => String(ligne.kind) === 'piste');
+}
+
 async function probePendingInsights(mod) {
   const bundle = await mod.buildFounderAgents();
   const list = bundle.pendingInsights || [];
@@ -637,6 +650,16 @@ async function probePendingInsights(mod) {
     `pendingInsights : titre, centre et kind mappes (obtenu ${JSON.stringify({ title: pend.title, centerId: pend.centerId, kind: pend.kind })})`);
   ok(pend.proposedAt === isoAgo(2 * DAY),
     'pendingInsights : proposedAt = la date REELLE du propose (pas un faux zero de date)');
+
+  // Une PISTE ne rejoint JAMAIS ce panneau. « Appliquer » ecrirait
+  // status = 'applied', donc measureAppliedInsights produirait un effet mesure a
+  // 14 jours pour une action que personne n a faite. Une mesure fabriquee est
+  // pire qu une absence de mesure.
+  ok(MARKETING_INSIGHTS.some((ligne) => ligne.kind === 'piste' && ligne.status === 'proposed'),
+    'MONTAGE : la fixture contient bien une piste proposee, sinon l exclusion ne prouverait rien');
+  ok(!pendingInsights.some((ligne) => String(ligne.kind) === 'piste'),
+    `pendingInsights : aucune piste dans le panneau Appliquer (obtenu ${JSON.stringify(pendingInsights.map((l) => l.kind))})`);
+
   ok(!pendingInsights.some((p) => ['validated', 'refuted', 'applied', 'ignored'].includes(String(p.title).toLowerCase()))
     && !pendingInsights.some((p) => p.id === 102 || p.id === 103 || p.id === 104),
   'pendingInsights : aucun insight deja arbitre (valide/refute) ne fuite dans la file en attente');
@@ -827,6 +850,15 @@ async function probePendingInsights(mod) {
     "where status = 'validated'",
     probePendingInsights,
     'filtre des insights actionnables devie vers un statut deja arbitre',
+  );
+
+  // Retirer l exclusion des pistes ferait remonter « A trancher : ... » avec un
+  // bouton Appliquer, donc une mesure a 14 jours pour une action jamais faite.
+  await withMutation(
+    " and kind <> 'piste'",
+    '',
+    probeAucunePiste,
+    'exclusion des pistes retiree du panneau Appliquer',
   );
 
   if (failures) {

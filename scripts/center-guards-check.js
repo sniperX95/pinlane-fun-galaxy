@@ -18,6 +18,8 @@ const {
   distributionSuspecte,
   nombresDe,
   verifierProvenance,
+  jetonsTypesDe,
+  jetonsTypesIntrus,
   conseilDeRegleCommerciale,
   unitesIncoherentes,
   repetitionRecente,
@@ -814,5 +816,86 @@ ok('CONTRE-PREUVE : sans aucun fait fragile, la garde ne mord jamais',
 ok('MONTAGE : l etiquette lue est bien le vainqueur, pas le libelle',
   etiquetteDuClassement(ficheServee.mois_fort) === 'mars',
   etiquetteDuClassement(ficheServee.mois_fort));
+
+// ── UN POURCENTAGE VIENT D UN POURCENTAGE ───────────────────────────────────
+// Le controle general compare chaque nombre a l ENSEMBLE des nombres de la
+// fiche, sans regarder ce que ces nombres SONT. Mesure du 2026-09-09 sur un
+// registre de 120 reservations a 200 EUR : « une hausse de 200 % » passait
+// (200 est un prix), « le panier moyen grimpe a 120 % » passait (120 est un
+// compte), et « une remise de 8 % sur toutes les formules » passait (8 est un
+// nombre de personnes). Ces textes partent AUX CLIENTS : une remise promise
+// qui n existe pas est un engagement a tenir ou a renier au comptoir.
+console.log('\n[PROVENANCE TYPEE] un chiffre doit venir de sa propre nature');
+
+// Une fiche minimale qui reproduit exactement le piege : 200 existe comme
+// MONTANT, 120 et 8 comme comptes, et aucun des trois comme pourcentage.
+const fichePiegee = {
+  panier_moyen: fait({ id: 'panier_moyen', libelle: 'panier moyen', valeur: '200 EUR', n: 120 }),
+  resa_actives: fait({ id: 'resa_actives', libelle: 'reservations actives', valeur: 120, n: 120, genre: 'denombrement' }),
+  pax_moyen: fait({ id: 'pax_moyen', libelle: 'personnes par reservation', valeur: 8, n: 120 }),
+  part_week_end: fait({ id: 'part_week_end', libelle: 'part du week-end', valeur: '62 %', n: 120 }),
+};
+const jetons = jetonsTypesDe(fichePiegee);
+ok('MONTAGE : 200 est un MONTANT de la fiche', jetons.montants.has(200));
+ok('MONTAGE : 200 n est PAS un pourcentage de la fiche', !jetons.pourcents.has(200));
+ok('MONTAGE : le seul pourcentage de la fiche est 62', [...jetons.pourcents].join(',') === '62',
+  [...jetons.pourcents].join(','));
+
+// Les trois phrases qui passaient. Le controle general les laisse toujours
+// passer (les nombres existent), et c est bien pour ca qu il fallait l autre.
+[
+  ['Une hausse de 200 % des reservations.', '200 %'],
+  ['Le panier moyen grimpe a 120 %.', '120 %'],
+  ['Une remise de 8 % sur toutes les formules.', '8 %'],
+].forEach(([texte, attendu]) => {
+  const verdict = verifierProvenance(texte, fichePiegee);
+  ok(`"${attendu}" est refuse alors que le nombre existe ailleurs dans la fiche`,
+    verdict.propre === false && verdict.intrus.includes(attendu), JSON.stringify(verdict.intrus));
+});
+
+// Le meme piege dans l autre sens : 120 existe comme COMPTE, jamais comme
+// montant. Sans cette assertion, retirer la verification des monnaies
+// laisserait le gate vert (trouve par mutation).
+const montantInvente = verifierProvenance('La formule passe a 120 EUR.', fichePiegee);
+ok('un MONTANT invente est refuse alors que 120 existe comme compte',
+  montantInvente.propre === false && montantInvente.intrus.includes('120 EUR'),
+  JSON.stringify(montantInvente.intrus));
+
+// CONTRE-PREUVE : le controle general seul ne les voyait pas. Sans ca, on ne
+// saurait pas si le nouveau controle apporte quelque chose ou repete l ancien.
+const generalSeul = require('../lib/center-guards').nombresAutorises(fichePiegee);
+ok('CONTRE-PREUVE : 200, 120 et 8 sont TOUS autorises par le controle general',
+  generalSeul.has(200) && generalSeul.has(120) && generalSeul.has(8));
+
+// CONTRE-PREUVE : les memes nombres sous leur VRAIE nature passent.
+[
+  'Le panier moyen est de 200 EUR par reservation.',
+  'Nos 120 reservations de l annee parlent d elles-memes.',
+  '8 personnes autour d une piste, ca se prepare.',
+  '62 % de nos reservations tombent le week-end.',
+].forEach((texte) => {
+  const verdict = verifierProvenance(texte, fichePiegee);
+  ok(`CONTRE-PREUVE : "${texte.slice(0, 42)}..." passe`, verdict.propre === true,
+    JSON.stringify(verdict.intrus));
+});
+
+// LE PIEGE DES MILLIERS, verrouille : un montant formate a la francaise porte
+// une espace FINE INSECABLE. Une regex qui s arrete au premier separateur lit
+// « 607 EUR », ne le trouve pas, et rejette un texte VRAI : on debrancherait la
+// garde, et il n y aurait plus de garde.
+const ficheGrosMontant = { ca: fait({ id: 'ca', libelle: 'chiffre d affaires', valeur: '5607 EUR', n: 192 }) };
+const montantFormate = `Ces reservations pesent ${(5607).toLocaleString('fr-FR')} EUR.`;
+ok('MONTAGE : le montant formate contient bien un separateur invisible',
+  montantFormate !== 'Ces reservations pesent 5607 EUR.', JSON.stringify(montantFormate));
+ok('le controle type lit le montant ENTIER, pas son dernier groupe',
+  jetonsTypesIntrus(montantFormate, ficheGrosMontant).length === 0,
+  JSON.stringify(jetonsTypesIntrus(montantFormate, ficheGrosMontant)));
+
+// La meme fonction sert aux DEUX formes : la fiche du registre nomme sa
+// derivation `source`, le dossier du mode Demander la nomme `calcul`.
+ok('un pourcentage cache dans la derivation compte aussi',
+  jetonsTypesDe({ x: { valeur: 'oui', source: 'part des 30 % restants' } }).pourcents.has(30));
+ok('sous le nom calcul du dossier egalement',
+  jetonsTypesDe({ x: { valeur: 'oui', calcul: 'part des 30 % restants' } }).pourcents.has(30));
 console.log(`\n${failures ? `center-guards-check: ${failures} ECHEC(S)` : 'center-guards-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

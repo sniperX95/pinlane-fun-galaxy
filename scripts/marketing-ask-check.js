@@ -426,6 +426,45 @@ function deps({ answer, calls, provider = 'kimi', exhausted = false }) {
   const dossierSolide = { registre: [{ ...dossierServe.registre[0], fragile: false }] };
   ok(checkAnswerGrounding('Ton meilleur mois est mars.', { centerFacts: {}, dossier: dossierSolide }).blocked === false,
     'CONTRE-PREUVE : sur un classement solide, le superlatif passe');
+    
+  // ── UN NOM PROPRE INVENTE NE PASSE PAS ICI NON PLUS ────────────────────────
+  // Quatrieme asymetrie entre les deux portes du meme agent, apres le nombre
+  // non type, la cause du silence et le classement fragile. La reponse va au
+  // GERANT : « le Bowling Arlon a baisse ses prix » est une phrase sur laquelle
+  // il peut agir.
+  console.log('\n[NOMS PROPRES] la porte Demander refuse ce qui n est nulle part');
+  const socleAsk = {
+    centerFacts: buildCenterFacts('libramont'),
+    dossier: { registre: [{ id: 'jour_fort', libelle: 'jour le plus rempli', valeur: 'samedi : 30 reservations', observations: 30, calcul: 'groupe par jour', peutPorter: ['constat'] }] },
+  };
+  const invente = checkAnswerGrounding('Le Bowling Arlon a baisse ses prix la semaine derniere.', socleAsk);
+  ok(invente.blocked === true,
+    'un nom propre absent du dossier bloque la reponse', JSON.stringify(invente.reasons));
+  ok(invente.reasons.some((r) => r.includes('nom propre absent du dossier')),
+    'et le motif le nomme', JSON.stringify(invente.reasons));
+  // CONTRE-PREUVE : les noms propres LEGITIMES passent. Le socle, c est tout le
+  // dossier plus l identite declaree : la ville, les activites et les formules y
+  // sont deja. Une garde qui les bloquerait rendrait la porte inutilisable.
+  [
+    'Ton samedi est le jour le plus rempli du registre.',
+    'Sur Libramont, le taux de retour reste faible.',
+    'Le laser game et le bowling sont tes activites declarees.',
+  ].forEach((texte, index) => {
+    const verdict = checkAnswerGrounding(texte, socleAsk);
+    ok(!verdict.reasons.some((r) => r.includes('nom propre')),
+      `CONTRE-PREUVE ${index + 1} : une reponse ancree garde ses noms propres`,
+      JSON.stringify(verdict.reasons));
+  });
+  // CONTRE-PREUVE de portee : le MEME nom devient legitime des qu il est dans le
+  // dossier. Sans elle, on aurait montre une garde qui bloque un mot, pas une
+  // garde qui compare au dossier.
+  const socleAvecConcurrent = {
+    ...socleAsk,
+    dossier: { ...socleAsk.dossier, veille: [{ nom: 'Bowling Arlon', diff: 'nouvelle offre' }] },
+  };
+  ok(!checkAnswerGrounding('Le Bowling Arlon a baisse ses prix la semaine derniere.', socleAvecConcurrent)
+    .reasons.some((r) => r.includes('nom propre')),
+    'CONTRE-PREUVE : le meme nom passe des qu il figure dans le dossier');
     console.log(`\nmarketing-ask-check: ${failures ? `${failures} FAIL` : 'ALL OK'}`);
   process.exit(failures ? 1 : 0);
 })().catch((error) => {

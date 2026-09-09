@@ -803,5 +803,56 @@ ok('ni de laser game', interditesDe('ciney').has('laser game'));
 // Si seul le nouveau mot mordait, la regle serait un cas particulier de plus.
 ok('CONTRE-PREUVE : le billard, deja verifie avant, se comporte pareil',
   !interditesDe('libramont').has('billard') && interditesDe('ciney').has('billard'));
+
+// ── UNE DUREE PROMISE EST CELLE QUE LE CENTRE DECLARE ───────────────────────
+// Mesure du 2026-09-09 sur la configuration reelle : Libramont declare
+// « parties de 20 minutes », « 500 m2 », « a partir de 130 cm ». Ces trois
+// chiffres sont DANS la fiche, et rien ne les verifiait : « une session de 90
+// minutes » passait alors que « nos 12 pistes » etait deja refuse. Ce n etait
+// pas une regle plus faible, c etait une liste incomplete.
+console.log('\n[UNITES] duree, surface et taille se verifient comme les pistes');
+const identitePourUnites = require('../lib/marketing-agents').buildCenterFacts('libramont');
+const { unitesIncoherentes: unitesDuTexte, couplesChiffreUnite: couplesDuTexte } = require('../lib/center-guards');
+const ficheAvecUnites = ajouterIdentite(
+  ficheDuRegistre({ reservations: serie(60), formules: [], aujourdhui: '2026-07-01' }),
+  identitePourUnites,
+);
+
+ok('MONTAGE : le centre declare bien une duree de partie',
+  /parties de \d+ minutes/.test(String((ficheAvecUnites.identite_laser_game || {}).valeur)),
+  String((ficheAvecUnites.identite_laser_game || {}).valeur));
+ok('MONTAGE : la duree est LUE comme un couple chiffre + unite',
+  couplesDuTexte(ficheAvecUnites.identite_laser_game.valeur).some((c) => c.unite === 'minute'),
+  JSON.stringify(couplesDuTexte(ficheAvecUnites.identite_laser_game.valeur)));
+
+[
+  ['Notre session de laser dure 90 minutes.', 'minute'],
+  ['Le laser, c est 1000 m2 de jeu.', 'm2'],
+  ['A partir de 100 cm.', 'cm'],
+].forEach(([texte, unite]) => {
+  const fautes = unitesDuTexte(texte, ficheAvecUnites);
+  ok(`une ${unite} promise que le centre ne declare pas est refusee`,
+    fautes.some((f) => f.includes(unite)), JSON.stringify(fautes));
+});
+
+// CONTRE-PREUVE : les VRAIES valeurs passent. Une garde qui bloquerait la
+// verite rendrait l agent muet sur ce qu il a de plus concret a dire.
+[
+  'Parties de 20 minutes au laser.',
+  '500 m2 de terrain de jeu.',
+  'A partir de 130 cm.',
+  '8 pistes de bowling.',
+].forEach((texte) => {
+  ok(`CONTRE-PREUVE : "${texte}" passe`, unitesDuTexte(texte, ficheAvecUnites).length === 0,
+    JSON.stringify(unitesDuTexte(texte, ficheAvecUnites)));
+});
+
+// CONTRE-PREUVE de portee : les unites volontairement laissees dehors restent
+// libres. « 2 ans de reservations » et « 670 jours » sans activite parlent de
+// la donnee, pas d une promesse commerciale.
+ok('CONTRE-PREUVE : une duree de donnee en annees reste libre',
+  unitesDuTexte('Le registre couvre 2 ans de reservations.', ficheAvecUnites).length === 0);
+ok('CONTRE-PREUVE : un nombre de jours reste libre',
+  unitesDuTexte('Aucune reservation depuis 670 jours.', ficheAvecUnites).length === 0);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

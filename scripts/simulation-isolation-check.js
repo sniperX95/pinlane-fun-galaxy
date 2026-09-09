@@ -177,6 +177,64 @@ ok(sql.includes("'sim-client'") && sql.includes("'sim-staff'") && /not\s+in/i.te
 ok(/coalesce\(\s*channel/i.test(sql), 'fragment SQL neutralise le NULL (coalesce)');
 ok(simulationSqlExclusion('res').includes('res.channel'), 'fragment SQL supporte un alias de table');
 
+// ── [UNIT] ligne FABRIQUEE : les deux marqueurs, en JS ──────────────────────
+// Le jeu de demonstration passe par le vrai chemin serveur avec un channel
+// reel : isSimulationReservation ne le voit pas, et c'est voulu. Le predicat
+// « fabriquee » retient les DEUX marqueurs.
+console.log('\n[UNIT] ligne fabriquee (simulation OU jeu de demonstration)');
+const { isFabricatedReservation, DEMONSTRATION_EMAIL_DOMAIN } = require(filterPath);
+const mailDemo = `client@${DEMONSTRATION_EMAIL_DOMAIN}`;
+ok(isSimulationReservation({ channel: 'public', email: mailDemo }) === false,
+  'MONTAGE : une ligne de demonstration n est PAS une ligne de simulation (channel reel)');
+ok(isFabricatedReservation({ channel: 'public', email: mailDemo }) === true,
+  'mais elle est bien reconnue comme fabriquee');
+ok(isFabricatedReservation({ channel: 'sim-client', email: 'vrai@client.be' }) === true,
+  'une ligne de simulation reste fabriquee');
+ok(isFabricatedReservation({ channel: 'public', email: mailDemo.toUpperCase() }) === true,
+  'la casse de l adresse ne fait pas passer la ligne au travers');
+ok(isFabricatedReservation({ channel: 'public', email: 'vrai@client.be' }) === false,
+  'une vraie ligne n est jamais declaree fabriquee');
+ok(isFabricatedReservation({ channel: 'public', email: '' }) === false,
+  'une adresse vide ne suffit pas a declarer une ligne fabriquee');
+ok(isFabricatedReservation({ channel: 'public', email: 'demo.fungalaxy.test@vrai.be' }) === false,
+  'le domaine doit etre en FIN d adresse, pas n importe ou dedans');
+ok(isFabricatedReservation(null) === false, 'ligne nulle non traitee comme fabriquee');
+
+// ── [SENS 1b] aucune ligne fabriquee ne recoit de courrier ──────────────────
+// Assertion COMPORTEMENTALE : on ne cherche pas une chaine dans le fichier, on
+// compare deux audiences. Releve du 2026-09-09 : le segment « Fideles » de
+// Libramont comptait 80 destinataires dont 77 en @demo.fungalaxy.test. 77
+// rebonds durs d un seul envoi suffisent a faire suspendre un domaine.
+console.log('\n[SENS 1b] audience de campagne : aucune adresse fabriquee');
+const { buildCampaignAudience } = require(path.join(root, 'lib', 'campaigns.js'));
+const AUJOURDHUI_CAMPAGNE = '2026-09-09';
+const clientReel = {
+  id: 10, date: '2026-08-20', status: 'paid', price: 200, channel: 'public',
+  email: 'vrai@client.be', phone: '+32470000010', pax: 6, name: 'Vrai Client',
+};
+const clientDemo = {
+  id: 11, date: '2026-08-21', status: 'paid', price: 500, channel: 'public',
+  email: mailDemo, phone: '+32470000011', pax: 8, name: 'Client Demo',
+};
+const clientSimule = {
+  id: 12, date: '2026-08-22', status: 'paid', price: 400, channel: 'sim-client',
+  email: 'persona@simulation.be', phone: '+32470000012', pax: 5, name: 'Persona',
+};
+const audienceSeule = buildCampaignAudience({
+  history: [clientReel], segment: 'all', today: AUJOURDHUI_CAMPAGNE,
+});
+ok(audienceSeule.length === 1,
+  `MONTAGE : le client reel EST joignable seul (obtenu ${audienceSeule.length})`);
+const audienceMelangee = buildCampaignAudience({
+  history: [clientReel, clientDemo, clientSimule], segment: 'all', today: AUJOURDHUI_CAMPAGNE,
+});
+ok(audienceMelangee.length === 1,
+  `ajouter une ligne de demonstration et une de simulation ne change RIEN a l audience (obtenu ${audienceMelangee.length})`);
+ok(audienceMelangee.every((d) => !String(d.email || '').toLowerCase().endsWith(`@${DEMONSTRATION_EMAIL_DOMAIN}`)),
+  'aucune adresse du jeu de demonstration ne figure parmi les destinataires');
+ok(audienceMelangee[0] && audienceMelangee[0].email === 'vrai@client.be',
+  'le destinataire retenu est bien le client reel');
+
 // ── [SENS 1] exclusion PRESENTE aux points analytiques ──────────────────────
 console.log('\n[SENS 1] exclusion presente aux points de consommation analytiques');
 for (const point of ANALYTIC_POINTS) {
@@ -312,7 +370,12 @@ for (const relative of discovered) {
   scannedFiles += 1;
   scannedReads += reads;
   if (UNFILTERED_ALLOWLIST.has(relative)) continue;
-  const exclusions = (content.match(/simulationSqlExclusion\s*\(/g) || []).length;
+  // fabricatedSqlPredicate compte comme une exclusion, et une STRICTE : il
+  // retient les DEUX marqueurs (channels de simulation ET domaine du jeu de
+  // demonstration) la ou simulationSqlExclusion ne regarde que le channel. Ne
+  // reconnaitre que le second faisait echouer ce gate sur lib/center-facts.js,
+  // qui filtre pourtant PLUS que ce qui est exige.
+  const exclusions = (content.match(/(?:simulationSqlExclusion|fabricatedSqlPredicate)\s*\(/g) || []).length;
   // Derogation par LECTURE, pas par fichier. L'allowlist par fichier ne sait
   // pas exprimer un module mixte : lib/platform-clients.js porte a la fois une
   // lecture de CA (qui DOIT etre filtree) et un garde-fou de suppression (qui

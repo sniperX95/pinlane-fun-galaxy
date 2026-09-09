@@ -19,7 +19,7 @@ function resa(over = {}) {
   return {
     date: '2026-07-04',
     start_time: '14:00',
-    status: 'confirmed',
+    status: 'paid',
     channel: 'public',
     pax: 8,
     price: 200,
@@ -54,6 +54,27 @@ ok('elle ne produit aucun taux ni moyenne', !vide.panier_moyen && !vide.taux_ret
 const queDesAnnulees = ficheDuRegistre({ reservations: [resa({ status: 'cancelled' })], formules: [] });
 ok('un registre fait uniquement d annulations est vide aussi',
   Boolean(queDesAnnulees.registre_vide), Object.keys(queDesAnnulees).join(','));
+
+// ── LES STATUTS VIENNENT DU PRODUIT, PAS D'UNE LISTE ECRITE A LA MAIN ───────
+// Defaut reel de la premiere version : STATUTS_ACTIFS etait ecrit a la main et
+// contenait 'confirmed', 'completed' et 'seated' (aucun n'existe en base) tout
+// en OUBLIANT 'paid', le statut le plus courant (301 lignes, 51 435 EUR au
+// releve du 2026-09-09). La fiche jetait la majorite du registre en silence, et
+// aucun test ne rougissait.
+console.log('\n[STATUTS] la fiche compte les memes reservations que le reste du produit');
+const { ACTIVE_STATUSES } = require('../lib/direction-analytics');
+const { STATUTS_ACTIFS } = require('../lib/center-facts');
+ok('la fiche partage la liste de statuts du produit, elle n en redefinit pas une',
+  STATUTS_ACTIFS === ACTIVE_STATUSES, `${[...STATUTS_ACTIFS]} contre ${[...ACTIVE_STATUSES]}`);
+[...ACTIVE_STATUSES].forEach((statut) => {
+  const uneSeule = ficheDuRegistre({ reservations: [resa({ status: statut })], formules: [] });
+  ok(`une reservation « ${statut} » est comptee comme active`,
+    !uneSeule.registre_vide && uneSeule.resa_actives.valeur === 1,
+    Object.keys(uneSeule).join(','));
+});
+const inventee = ficheDuRegistre({ reservations: [resa({ status: 'confirmed' })], formules: [] });
+ok('un statut qui n existe pas en base ne cree pas d activite fantome',
+  Boolean(inventee.registre_vide), Object.keys(inventee).join(','));
 
 // ── GENRE : compter n'est pas estimer ───────────────────────────────────────
 console.log('\n[GENRE] les comptages et les taux ne portent pas la meme etiquette');

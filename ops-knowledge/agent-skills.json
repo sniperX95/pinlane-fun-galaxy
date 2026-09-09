@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-05-20",
+  "updatedAt": "2026-09-09",
   "productContext": {
     "name": "Fun Galaxy Ops Booking",
     "goal": "Automatiser les reservations Bowling, Laser Game et formules tout en gardant un planning explicable, auditable et prudent.",
@@ -376,25 +376,38 @@
       "status": "live",
       "category": "growth",
       "priority": 2,
-      "mission": "Lire le registre d un centre et n en dire que ce qui se prouve, sans aucune phrase preecrite.",
+      "mission": "Lire tout ce qui est connu d UN centre, n en dire que ce qui se prouve, ne jamais resservir ce qui a deja ete dit, et ne publier vers les clients que ce qui les regarde.",
       "skills": [
         "center-fact-sheet",
+        "center-identity",
         "claim-maturity",
+        "period-required-for-recurrence",
         "provenance-check",
+        "unit-coherence",
+        "audience-separation",
+        "writing-doctrine",
+        "agent-memory",
         "cross-center-isolation",
         "hypothesis-reframing"
       ],
       "guardrails": [
         "Un centre, une fiche : les faits d un centre ne decrivent jamais un autre centre.",
         "Aucun nombre qui ne figure pas deja dans la fiche du centre.",
+        "Un nombre colle a une unite doit etre celui que ce centre declare pour cette unite.",
         "Aucune activite absente du catalogue de CE centre.",
-        "Un changement de prix, d horaire ou de minimum de personnes n est jamais une conclusion : l historique a ete produit sous l ancienne regle.",
-        "Registre sans estimation solide : silence, et aucun appel modele."
+        "Un changement de prix, d horaire, de duree ou de minimum de personnes n est jamais une conclusion : l historique a ete produit sous la regle actuelle, et ce refus se lit dans le TEXTE, pas dans l etiquette annoncee.",
+        "Une affirmation de recurrence exige un fait qui compare des tranches d un cycle qui revient.",
+        "Un texte destine aux clients ne porte ni chiffre d affaires, ni trou de donnees, ni sujet interne.",
+        "Aucun tiret cadratin ni demi-cadratin, ni dans la sortie ni dans ce qu on montre au modele.",
+        "La doctrine d ecriture dit la FORME : ses nombres et ses noms propres n ont aucune autorite.",
+        "Une analyse deja partie sur exactement les memes faits ne repart pas.",
+        "Registre sans estimation publiable et solide : silence, et aucun appel modele."
       ],
       "nextUpgrades": [
-        "Brancher l ADN d ecriture (marketing_dna) comme doctrine de style",
         "Mesurer l effet reel d un conseil applique a 14 jours",
-        "Elargir la fiche aux creneaux vides valorises"
+        "Distinguer en base une idee refusee d une idee jamais lue (expireStaleInsights ecrit le meme statut)",
+        "Valoriser les creneaux vides a partir de la capacite declaree du centre",
+        "Elargir l ADN aux angles absents : prix, retention, SEO local, avis, groupes entreprise"
       ]
     }
   ],

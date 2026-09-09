@@ -79,4 +79,33 @@ assert.ok(orchestration.activations.some((item) => item.agentId === 'security-ag
 assert.ok(orchestration.continuousLearning.dataFeeds.some((feed) => feed.id === 'ops_events' && feed.status === 'active'));
 assert.ok(orchestration.agentUsage.some((agent) => agent.id === 'research-agent' && agent.runtimeUse === 'collect' && agent.executable === false));
 
+// L agent marketing : sa declaration et son handler ne peuvent plus diverger,
+// parce que le handler LIT la declaration. Le test verifie cette identite, et
+// que la declaration dit bien les gardes reellement en place. Sans ca, la liste
+// se perime en silence, comme elle l avait deja fait.
+const { marketingAgent } = require('../lib/ops-agents');
+const marketingDeclare = catalog.agents.find((agent) => agent.id === 'marketing-agent');
+assert.ok(marketingDeclare, 'marketing agent missing from catalog');
+assert.strictEqual(marketingDeclare.status, 'live');
+const marketingRuntime = marketingAgent({ centerId: 'libramont', fiche: {} });
+assert.strictEqual(marketingRuntime.agent, 'marketing-agent');
+assert.ok(marketingRuntime.guardrails.length >= 8, "marketing guardrails look truncated");
+assert.deepStrictEqual(
+  marketingRuntime.guardrails,
+  marketingDeclare.guardrails,
+  'le handler doit RENDRE les gardes declarees, pas une copie',
+);
+// Les gardes reellement ecrites doivent etre nommees dans la declaration : un
+// mot-cle par garde, verifie sur le texte declare.
+for (const mot of ['unite', 'recurrence', 'clients', 'cadratin', 'FORME', 'memes faits']) {
+  assert.ok(
+    marketingDeclare.guardrails.some((ligne) => ligne.includes(mot)),
+    `garde non declaree : ${mot}`,
+  );
+}
+// Ce qui est FAIT ne doit plus figurer dans ce qui reste a faire.
+assert.ok(
+  !(marketingDeclare.nextUpgrades || []).some((ligne) => /ADN d ecriture|doctrine de style/.test(ligne)),
+  'la doctrine d ecriture est branchee : elle ne peut plus etre annoncee comme a faire',
+);
 console.log('agent-stack-tests-ok');

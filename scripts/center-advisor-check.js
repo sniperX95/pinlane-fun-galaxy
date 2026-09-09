@@ -204,6 +204,55 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   });
   ok('CONTRE-EPREUVE : sans historique, la meme proposition passe',
     Boolean(neuve.proposition), JSON.stringify(neuve.motifs));
+
+  // ── LE POST NE PARLE PAS D'ARGENT ─────────────────────────────────────────
+  console.log('\n[AUDIENCE] un post client ne sort ni le chiffre ni les sujets internes');
+  const idInterne = Object.keys(fiche).find((id) => fiche[id].audience !== 'public');
+  ok('MONTAGE : la fiche contient bien un fait reserve au gerant',
+    Boolean(idInterne), idInterne);
+
+  const citeInterne = await proposerDepuisLaFiche({
+    fiche,
+    lieu: LIEU,
+    fetchImpl: modeleQuiRepond({ titre: 'Une idee', corps: 'Voila une idee simple.', nature: 'constat', faitsUtilises: [idInterne] }),
+  });
+  ok('citer un fait reserve au gerant comme source est refuse',
+    citeInterne.proposition === null, JSON.stringify(citeInterne.motifs));
+  ok('et le motif dit que ce fait n est pas publiable',
+    citeInterne.motifs.some((m) => m.includes('non publiables')), JSON.stringify(citeInterne.motifs));
+
+  // Le nombre du chiffre d affaires, ecrit sans citer le fait : la garde de
+  // provenance le laisserait passer, puisqu il existe dans la fiche.
+  const montant = String(fiche.ca_total && fiche.ca_total.valeur).match(/[0-9]+/);
+  ok('MONTAGE : la fiche porte bien un chiffre d affaires', Boolean(montant), String(montant));
+  const sortLeChiffre = await proposerDepuisLaFiche({
+    fiche,
+    lieu: LIEU,
+    fetchImpl: modeleQuiRepond({
+      titre: 'Merci a vous',
+      corps: `Cette annee represente ${montant[0]} chez nous.`,
+      nature: 'constat',
+      faitsUtilises: [idConstat],
+    }),
+  });
+  ok('ecrire le chiffre d affaires dans un post est refuse',
+    sortLeChiffre.proposition === null, JSON.stringify(sortLeChiffre.motifs));
+  ok('et le motif nomme un chiffre reserve au gerant',
+    sortLeChiffre.motifs.some((m) => m.includes('reserves au gerant')), JSON.stringify(sortLeChiffre.motifs));
+
+  // Le modele ne voit meme pas ces faits : confort, pas garde, mais mesurable.
+  const espionAudience = [];
+  const espion = async (url, options) => {
+    espionAudience.push(String((options && options.body) || ''));
+    return {
+      ok: true,
+      json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(bonne) }] }),
+    };
+  };
+  await proposerDepuisLaFiche({ fiche, lieu: LIEU, fetchImpl: espion });
+  ok('le chiffre d affaires n arrive meme pas dans le prompt',
+    espionAudience.length === 1 && !espionAudience[0].includes(String(montant[0])),
+    espionAudience[0] ? espionAudience[0].slice(0, 120) : 'aucune requete');
   // ── REJETS ────────────────────────────────────────────────────────────────
   console.log('\n[REJETE] chaque garde jette ce qu elle doit jeter');
 
@@ -255,7 +304,13 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     formules: [],
     aujourdhui: '2026-12-31',
   });
+  // Le temoin doit etre PUBLIABLE et assez nourri pour porter un constat, en
+  // plus de ne couvrir qu une partie de l annee. Un fait interne serait rejete
+  // pour une autre raison, un fait trop mince aussi, et la contre-preuve ne
+  // prouverait plus que c est la NATURE qui a bloque. On encode donc les trois.
   const idEte = Object.keys(ficheEte).find((id) => ficheEte[id].genre === 'estimation'
+    && ficheEte[id].audience === 'public'
+    && require('../lib/center-guards').peutAffirmer(ficheEte[id], 'constat').autorise
     && ficheEte[id].mois.length > 0 && ficheEte[id].mois.length < 12);
   ok('MONTAGE : cette fiche est nourrie mais ne couvre pas une annee',
     Boolean(idEte) && ficheEte[idEte].mois.length === 3, idEte ? String(ficheEte[idEte].mois) : 'aucun');

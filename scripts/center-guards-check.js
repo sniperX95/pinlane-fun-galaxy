@@ -16,6 +16,8 @@ const {
   unitesIncoherentes,
   repetitionRecente,
   JOURS_DE_MEMOIRE,
+  fuiteVersLePublic,
+  nombresReservesAuGerant,
   NATURES,
   N_POUR_ELIRE,
 } = require('../lib/center-guards');
@@ -420,6 +422,45 @@ ok(`hors de la fenetre de ${JOURS_DE_MEMOIRE} jours, le meme sujet redevient pos
 // assertions ci-dessus pourraient tenir pour une autre raison.
 ok('CONTRE-PREUVE : sans historique, aucune repetition detectee',
   repetitionRecente({ titre: 'Ton mardi est ton jour creux', faitsUtilises: ['jour_creux', 'panier_moyen'] }, [], AUJOURDHUI).repete === false);
+
+// ── CE QUI SE DIT A UN CLIENT, ET CE QUI NE SE DIT QU AU GERANT ─────────────
+// Le cycle publie un texte pret a coller sur Facebook. Rien n'empechait de
+// proposer comme post « ton chiffre d'affaires est de 327 416 EUR ».
+console.log('\n[AUDIENCE] le chiffre d affaires ne part pas vers les clients');
+
+// Le defaut doit etre INTERNE : un fait qu'on a oublie de classer ne part pas
+// vers le public. La prudence va dans ce sens-la, jamais dans l autre.
+ok('un fait sans audience declaree est INTERNE',
+  fait({ id: 'x', valeur: 1 }).audience === 'interne',
+  fait({ id: 'x', valeur: 1 }).audience);
+ok('une audience inventee vaut interne',
+  fait({ id: 'x', valeur: 1, audience: 'presse' }).audience === 'interne',
+  fait({ id: 'x', valeur: 1, audience: 'presse' }).audience);
+
+const ficheMixte = {
+  jour_fort: fait({ id: 'jour_fort', libelle: 'jour fort', valeur: 'dimanche : 489 reservations', n: 489, audience: 'public' }),
+  chiffre_jour_fort: fait({ id: 'chiffre_jour_fort', libelle: 'jour fort en argent', valeur: 'dimanche : 86689 EUR', n: 489, audience: 'interne' }),
+  identite_bowling: fait({ id: 'identite_bowling', libelle: 'bowling', valeur: '8 pistes', n: 1, audience: 'public' }),
+  trou_paiement: fait({ id: 'trou_paiement', libelle: 'trou', valeur: '173 sur 1880 (9.2 %)', n: 1880, audience: 'interne' }),
+};
+
+const reserves = nombresReservesAuGerant(ficheMixte);
+ok('MONTAGE : le montant du dimanche est bien reserve au gerant', reserves.has(86689));
+ok('MONTAGE : le nombre de reservations du dimanche ne l est PAS', !reserves.has(489));
+// 8 apparait des deux cotes (8 pistes, et dans 1880). On ne refuse que ce qui
+// est EXCLUSIVEMENT interne, sinon la garde mordrait sur un fait public.
+ok('un nombre present des DEUX cotes n est pas reserve', !reserves.has(8));
+
+ok('un texte client qui sort le chiffre d affaires est attrape',
+  fuiteVersLePublic('Notre dimanche a rapporte 86689 EUR.', ficheMixte).length > 0,
+  JSON.stringify(fuiteVersLePublic('Notre dimanche a rapporte 86689 EUR.', ficheMixte)));
+ok('le trou de donnees interne aussi',
+  fuiteVersLePublic('Il manque 173 moyens de paiement.', ficheMixte).length > 0);
+ok('CONTRE-PREUVE : le meme texte avec le chiffre PUBLIC passe',
+  fuiteVersLePublic('Notre dimanche, c est 489 reservations.', ficheMixte).length === 0,
+  JSON.stringify(fuiteVersLePublic('Notre dimanche, c est 489 reservations.', ficheMixte)));
+ok('CONTRE-PREUVE : sans aucun fait interne, plus rien n est reserve',
+  nombresReservesAuGerant({ a: ficheMixte.jour_fort }).size === 0);
 console.log('\n[CONTRE-PREUVES] chaque garde est montree en train de mordre');
 
 const natureSansRefus = { exige: () => true };

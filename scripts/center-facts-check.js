@@ -530,5 +530,44 @@ const sansMemoire = ajouterMemoire(ficheDuRegistre({ reservations: [], formules:
 ok('CONTRE-PREUVE : sans historique, aucun fait memoire_',
   Object.keys(sansMemoire).every((cle) => !cle.startsWith('memoire_')),
   Object.keys(sansMemoire).join(','));
+
+// ── L ARGENT RESTE DU COTE DU GERANT ────────────────────────────────────────
+console.log('\n[AUDIENCE] aucun fait publiable ne porte d argent');
+// Une reservation par JOUR : sans ca, tous les jours de la semaine sont le
+// meme jour et aucun jour fort ne peut etre elu, donc le jumeau en argent
+// n'existerait pas et le montage serait faux.
+const ficheArgent = ficheDuRegistre({
+  reservations: serieQuotidienne(400, '2026-01-01T00:00:00Z', 'aud'),
+  formules: [{ id: 'f1', name: 'Formule', min_pax: 4, active: true }],
+  aujourdhui: '2027-02-05',
+});
+const publics = Object.values(ficheArgent).filter((f) => f.audience === 'public');
+ok('la fiche produit bien des faits publiables', publics.length >= 5, String(publics.length));
+ok('AUCUN d eux ne contient de montant',
+  publics.every((f) => !String(f.valeur).includes('EUR')),
+  publics.filter((f) => String(f.valeur).includes('EUR')).map((f) => f.id).join(','));
+
+// Le fait comparatif se dedouble : le public dit QUI et COMBIEN DE FOIS,
+// l interne dit combien ca rapporte. Sans ce dedoublement, citer « ton meilleur
+// jour » dans un post revenait a publier le chiffre d'affaires de ce jour.
+ok('MONTAGE : le jumeau en argent du jour fort existe',
+  Boolean(ficheArgent.chiffre_jour_fort),
+  Object.keys(ficheArgent).filter((k) => k.startsWith('chiffre_')).join(','));
+ok('et il est reserve au gerant',
+  ficheArgent.chiffre_jour_fort && ficheArgent.chiffre_jour_fort.audience === 'interne');
+ok('alors que le jour fort lui-meme est publiable',
+  ficheArgent.jour_fort && ficheArgent.jour_fort.audience === 'public');
+
+// Ce qui ne se dit jamais a un client : l'argent, les trous de la donnee, la
+// memoire des idees passees.
+const INTERDITS_AU_PUBLIC = [
+  'ca_total', 'panier_moyen', 'ca_par_personne', 'taux_annulation', 'argent_annule',
+  'trou_email', 'trou_paiement', 'trou_occasion', 'clients_dormants',
+  'sous_le_minimum_de_la_formule', 'formules_jamais_vendues',
+];
+INTERDITS_AU_PUBLIC.forEach((id) => {
+  if (!ficheArgent[id]) return;
+  ok(`${id} reste reserve au gerant`, ficheArgent[id].audience === 'interne', ficheArgent[id].audience);
+});
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

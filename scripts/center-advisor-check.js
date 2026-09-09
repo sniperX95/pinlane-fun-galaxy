@@ -749,6 +749,115 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   Object.entries(clesRangees).forEach(([cle, valeur]) => {
     if (valeur !== undefined) process.env[cle] = valeur;
   });
+
+  // ── LES FORMULES DE CE CENTRE, PAS LE CATALOGUE COMMUN ────────────────────
+  // La table `formulas` n a pas de center_id : c est le catalogue commun. La
+  // couche PAR CENTRE vit dans `formule_overrides`, et la fiche ne l appliquait
+  // pas. Une formule desactivee pour un centre ressortait donc « active sans une
+  // seule vente », et son min_pax entrait dans la comparaison des minimums, le
+  // fait meme qui sert a discuter un changement de regle commerciale.
+  console.log('\n[FORMULES] la fiche lit le catalogue de CE centre');
+  const { chargerFicheDuRegistre: chargerAvecFormules } = require('../lib/center-facts');
+
+  const catalogueCommun = [
+    { id: 'f1', name: 'Anniversaire enfant', min_pax: 6, price_type: 'per_person', price_value: 22, is_birthday_formula: true, active: true },
+    { id: 'f2', name: 'Anniversaire ado', min_pax: 2, price_type: 'per_person', price_value: 25, is_birthday_formula: true, active: true },
+    { id: 'f3', name: 'Teambuilding', min_pax: 10, price_type: 'per_person', price_value: 35, is_birthday_formula: false, active: true },
+  ];
+  const ventes = Array.from({ length: 30 }, (unused, i) => ({
+    date: `2026-08-0${1 + (i % 9)}`, start_time: '18:00', status: 'paid', pax: 6, price: 132,
+    formule_id: 'f1', email: `formule${i}@example.test`, created_at: '2026-07-20T10:00:00Z',
+  }));
+  const poolCatalogue = (surcouches) => ({
+    query: async (sql) => {
+      if (/from formule_overrides/.test(sql)) return { rows: surcouches };
+      if (/from reservations/.test(sql)) return { rows: ventes };
+      if (/from formulas/.test(sql)) return { rows: catalogueCommun };
+      return { rows: [] };
+    },
+  });
+
+  const sansSurcouche = await chargerAvecFormules({ centerId: 'gembloux', aujourdhui: '2026-09-10', pool: poolCatalogue([]) });
+  ok('MONTAGE : sans surcouche, les trois formules du catalogue commun sont la',
+    Number(sansSurcouche.catalogue_actif.valeur) === 3, String(sansSurcouche.catalogue_actif.valeur));
+  ok('MONTAGE : et la comparaison des minimums part de 2',
+    /\b2 et 6 et 10\b/.test(String(sansSurcouche.comparaison_de_minimums.valeur)),
+    String(sansSurcouche.comparaison_de_minimums.valeur));
+
+  // La formule « Anniversaire ado » est DESACTIVEE pour ce centre.
+  const avecSurcouche = await chargerAvecFormules({
+    centerId: 'gembloux', aujourdhui: '2026-09-10',
+    pool: poolCatalogue([{
+      formule_id: 'f2', center_id: 'gembloux', name: null, price_value: null,
+      price_old: null, enabled: false, removed: false, sort_index: null,
+    }]),
+  });
+  ok('LE POINT : une formule desactivee sort du catalogue de ce centre',
+    Number(avecSurcouche.catalogue_actif.valeur) === 2, String(avecSurcouche.catalogue_actif.valeur));
+  ok('elle n est plus conseillee comme « active sans une seule vente »',
+    !/Anniversaire ado/.test(String(avecSurcouche.formules_jamais_vendues.valeur)),
+    String(avecSurcouche.formules_jamais_vendues.valeur));
+  ok('et son minimum sort de la comparaison qui fonde un changement de regle',
+    /^oui : 6 et 10 personnes/.test(String(avecSurcouche.comparaison_de_minimums.valeur)),
+    String(avecSurcouche.comparaison_de_minimums.valeur));
+  ok('la liste des minimums ne la porte plus non plus',
+    !/Anniversaire ado/.test(String(avecSurcouche.minimums_du_catalogue.valeur)),
+    String(avecSurcouche.minimums_du_catalogue.valeur));
+
+  // UNE FORMULE RETIREE sort aussi, par un autre champ.
+  const avecRetrait = await chargerAvecFormules({
+    centerId: 'gembloux', aujourdhui: '2026-09-10',
+    pool: poolCatalogue([{
+      formule_id: 'f3', center_id: 'gembloux', name: null, price_value: null,
+      price_old: null, enabled: null, removed: true, sort_index: null,
+    }]),
+  });
+  ok('une formule RETIREE sort aussi du catalogue',
+    Number(avecRetrait.catalogue_actif.valeur) === 2, String(avecRetrait.catalogue_actif.valeur));
+
+  // LA PRECEDENCE : une ligne « all » desactive partout, une ligne du CENTRE la
+  // reactive pour lui. On importe cette regle, on ne la recopie pas.
+  const avecPrecedence = await chargerAvecFormules({
+    centerId: 'gembloux', aujourdhui: '2026-09-10',
+    pool: poolCatalogue([
+      { formule_id: 'f2', center_id: 'all', name: null, price_value: null, price_old: null, enabled: false, removed: false, sort_index: null },
+      { formule_id: 'f2', center_id: 'gembloux', name: null, price_value: null, price_old: null, enabled: true, removed: false, sort_index: null },
+    ]),
+  });
+  ok('le centre PRIME sur la ligne « all »',
+    Number(avecPrecedence.catalogue_actif.valeur) === 3, String(avecPrecedence.catalogue_actif.valeur));
+
+  // CLOISONNEMENT : la surcouche d un centre ne touche pas l autre.
+  const surcoucheGembloux = [{
+    formule_id: 'f2', center_id: 'gembloux', name: null, price_value: null,
+    price_old: null, enabled: false, removed: false, sort_index: null,
+  }];
+  const chezLibramont = await chargerAvecFormules({
+    centerId: 'libramont', aujourdhui: '2026-09-10', pool: poolCatalogue(surcoucheGembloux),
+  });
+  ok('CLOISONNEMENT : une surcouche de Gembloux ne retire rien a Libramont',
+    Number(chezLibramont.catalogue_actif.valeur) === 3, String(chezLibramont.catalogue_actif.valeur));
+
+  // CONTRE-PREUVE : sans aucune surcouche, la fiche est identique a avant.
+  // Sans elle, on aurait montre un filtre qui coupe, pas un filtre qui lit.
+  ok('CONTRE-PREUVE : aucune surcouche, catalogue inchange',
+    Number(sansSurcouche.catalogue_actif.valeur) === 3
+    && /Anniversaire ado/.test(String(sansSurcouche.formules_jamais_vendues.valeur)));
+
+  // FAIL-SOFT : si la table des surcouches est absente, on garde le catalogue
+  // commun plutot que de rendre une fiche vide. On n invente rien, on perd
+  // seulement la couche par centre.
+  const poolSansTable = {
+    query: async (sql) => {
+      if (/from formule_overrides/.test(sql)) throw new Error('relation formule_overrides does not exist');
+      if (/from reservations/.test(sql)) return { rows: ventes };
+      if (/from formulas/.test(sql)) return { rows: catalogueCommun };
+      return { rows: [] };
+    },
+  };
+  const sansTable = await chargerAvecFormules({ centerId: 'gembloux', aujourdhui: '2026-09-10', pool: poolSansTable });
+  ok('FAIL-SOFT : sans la table des surcouches, le catalogue commun tient',
+    Number(sansTable.catalogue_actif.valeur) === 3, String(sansTable.catalogue_actif.valeur));
   console.log('\n[SOMMEIL] le conseiller se tait sur un centre qui ne vend plus');
   let appelsSurDormant = 0;
   const ficheDormante = {

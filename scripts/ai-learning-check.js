@@ -97,8 +97,25 @@ ok(/'auteur', \$7::text/.test(brief),
   'une variante reecrite met l auteur A JOUR (c est la version publiee qui compte)');
 ok(/auteur: idea\.auteur === 'ai' \? 'ai' : 'rules'/.test(metrics),
   'une idee du cycle data enregistre aussi son auteur');
-ok(/\? \{ \.\.\.candidate, readyContent: polished, auteur: 'ai' \}/.test(metrics),
-  'et l auteur suit le FAIT : reecriture aboutie = le modele, sinon le gabarit');
+// L invariant defendu n a pas bouge : l auteur est un FAIT, jamais une
+// intention. Ce qui a bouge, c est le code qui le porte. Avant, le cycle
+// publiait soit la reecriture du modele (auteur 'ai'), soit le gabarit
+// (auteur 'rules'), et l assertion lisait ce ternaire. Depuis le passage a
+// lib/center-advisor.js il n y a plus de gabarit : soit une proposition passe
+// les garde-fous et elle est publiee comme venant du modele, soit RIEN n est
+// publie. On asserte donc la meme propriete sur le nouveau chemin, en
+// inspectant le corps reel de la fonction.
+const debutCycle = metrics.indexOf('async function runDataIdeasCycle');
+const finCycle = metrics.indexOf('\nfunction computeInsightMeasurement', debutCycle);
+const corpsCycle = metrics.slice(debutCycle, finCycle > debutCycle ? finCycle : debutCycle + 6000);
+ok(debutCycle > 0 && corpsCycle.length > 800,
+  'MONTAGE : le corps de runDataIdeasCycle est bien inspecte');
+ok(/if \(rendu\.proposition\)/.test(corpsCycle) && /auteur: 'ai'/.test(corpsCycle),
+  'et l auteur suit le FAIT : seule une proposition qui a passe les gardes est publiee, comme venant du modele');
+ok(!/auteur: 'rules'/.test(corpsCycle),
+  'aucune idee « gabarit » ne peut plus sortir de ce cycle : il n y a plus de texte de repli');
+ok(corpsCycle.indexOf('insertIdeaIfNew') > corpsCycle.indexOf('if (rendu.proposition)'),
+  'l insertion se fait DANS la branche de la proposition : pas de publication sans texte verifie');
 
 const mesure = (auteur, nets, wins = 0) => nets.map((netDeltaPct, index) => ({
   auteur, result: { netDeltaPct }, status: index < wins ? 'validated' : 'inconclusive',

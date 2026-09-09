@@ -150,6 +150,26 @@ ok('CONTRE-PREUVE : des heures etalees ne sont PAS declarees inexploitables',
   !String(ficheEtalee.heure_de_commande.valeur).startsWith('inexploitable'),
   String(ficheEtalee.heure_de_commande.valeur));
 
+// ── FUSEAU : l'heure de commande est celle du centre ────────────────────────
+// getHours() rendrait l'heure du SERVEUR, UTC sur Vercel. Un fait dont l'unique
+// usage est de repondre a « quand publier » ne peut pas etre decale de deux
+// heures. On melange ete (UTC+2) et hiver (UTC+1) : si la conversion etait un
+// decalage fixe, l'un des deux tomberait a cote.
+console.log('\n[FUSEAU] les heures sont celles du centre, pas du serveur');
+const ETE = new Date(Date.UTC(2026, 6, 15, 19, 0, 0));    // 15 juillet : Bruxelles = UTC+2 -> 21h
+const HIVER = new Date(Date.UTC(2026, 0, 14, 19, 0, 0));  // 14 janvier : Bruxelles = UTC+1 -> 20h
+const saisonnieres = serie(40).map((r, i) => ({
+  ...r,
+  created_at: (i % 2 ? ETE : HIVER).toISOString(),
+}));
+const ficheFuseau = ficheDuRegistre({ reservations: saisonnieres, formules: [], aujourdhui: '2026-12-31' });
+const heures = String(ficheFuseau.heure_de_commande.valeur);
+ok('MONTAGE : les deux instants sont a 19h UTC, donc un decalage fixe ne peut pas donner deux resultats',
+  ETE.getUTCHours() === 19 && HIVER.getUTCHours() === 19);
+ok('l heure d ete ressort a 21h (UTC+2)', heures.includes('21h'), heures);
+ok('l heure d hiver ressort a 20h (UTC+1)', heures.includes('20h'), heures);
+ok('et jamais 19h, l heure du serveur', !heures.includes('19h'), heures);
+
 // ── LE CATALOGUE QUI DORT ───────────────────────────────────────────────────
 // Invisible autrement : une formule sans vente n'apparait dans aucun
 // regroupement sur les reservations.

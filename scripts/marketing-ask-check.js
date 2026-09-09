@@ -256,6 +256,61 @@ function deps({ answer, calls, provider = 'kimi', exhausted = false }) {
   // reponse qui SURVIT au controle : il pourrait la faire echouer a chaque fois
   // et personne ne le saurait avant la prod. Cout : 3 appels, de l'ordre de
   // 0,01 $. Sans cle : saute proprement.
+  // ── LA FICHE DU REGISTRE ARRIVE JUSQU AU MODELE ───────────────────────────
+  // Le dossier savait parler de meteo, de frequentation et de prix, jamais de
+  // QUI reserve ni de ce qui dort au catalogue. La fiche (lib/center-facts.js)
+  // apporte clients, taux de retour, dormants, formules jamais vendues,
+  // annulations, anticipation et trous de la donnee. Elle exclut en plus les
+  // lignes fabriquees, ce que le bundle du brief ne fait pas.
+  console.log('\n[REGISTRE] la fiche du registre nourrit la reponse');
+  const { fait } = require('../lib/center-guards');
+  const MONTANT_DU_REGISTRE = '4924 EUR';
+  const ficheInjectee = {
+    ca_total: fait({
+      id: 'ca_total', libelle: 'chiffre d affaires', valeur: MONTANT_DU_REGISTRE,
+      n: 120, du: '2026-01-05', au: '2026-08-31',
+      mois: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'],
+      genre: 'denombrement', source: 'somme des price',
+    }),
+  };
+  const dossierAvecRegistre = buildAskDossier({
+    bundle: briefBundle(), centerFacts: buildCenterFacts('libramont'),
+    formulas: [], activities: listCenterActivities('libramont'), registre: ficheInjectee,
+  });
+  ok(Array.isArray(dossierAvecRegistre.registre) && dossierAvecRegistre.registre.length === 1,
+    'le dossier envoye au modele porte la fiche du registre',
+    JSON.stringify(dossierAvecRegistre.registre));
+  ok(dossierAvecRegistre.registre[0].calcul === 'somme des price',
+    'chaque fait annonce le calcul qui le produit, donc il se rejoue a la main');
+  ok(Array.isArray(dossierAvecRegistre.registre[0].peutPorter),
+    'et ce qu il autorise, pour que le modele ne batisse pas sur une anecdote');
+
+  // Le controle d apres coup lit le dossier ENTIER : un montant du registre
+  // devient donc prouve. Sans ca, le modele citerait un vrai chiffre et se
+  // ferait bloquer, ce qui est le pire des deux mondes.
+  // La signature est (texte, { centerFacts, dossier }) : passer l objet reponse
+  // en premier argument donnerait "[object Object]", aucun nombre ne serait lu,
+  // et l assertion serait verte pour une raison fausse. C est la contre-preuve
+  // plus bas qui a demasque ce faux vert.
+  const texteCitantLeRegistre = `Ton registre porte ${MONTANT_DU_REGISTRE} de chiffre.`;
+  const socle = { centerFacts: buildCenterFacts('libramont'), dossier: dossierAvecRegistre };
+  const avecFiche = checkAnswerGrounding(texteCitantLeRegistre, socle);
+  ok(avecFiche.blocked === false,
+    'un montant tire de la fiche passe le controle anti-invention',
+    JSON.stringify(avecFiche.reasons));
+
+  // CONTRE-PREUVE : le meme texte, sur un dossier SANS la fiche, doit etre
+  // bloque. Sinon l assertion ci-dessus ne prouverait rien.
+  const dossierSansRegistre = buildAskDossier({
+    bundle: briefBundle(), centerFacts: buildCenterFacts('libramont'),
+    formulas: [], activities: listCenterActivities('libramont'),
+  });
+  ok(dossierSansRegistre.registre === null, 'MONTAGE : ce dossier n a pas de fiche');
+  const sansFiche = checkAnswerGrounding(texteCitantLeRegistre, { centerFacts: buildCenterFacts('libramont'), dossier: dossierSansRegistre });
+  ok(sansFiche.blocked === true,
+    'CONTRE-PREUVE : le meme montant est refuse sans la fiche, donc c est bien elle qui l autorise',
+    JSON.stringify(sansFiche.reasons));
+
   if (!llmProvider('sensitive')) {
     console.log('\n[MODELE REEL] SKIP (aucune cle LLM dans l\'environnement)');
   } else {

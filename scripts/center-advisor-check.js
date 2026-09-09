@@ -261,7 +261,7 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     accentue.proposition === null && accentue.motifs.some((m) => /cinema/i.test(m)),
     JSON.stringify(accentue.motifs));
   // Le tiret doit rester EN DERNIER dans la classe de caracteres qui aplatit la
-  // ponctuation. Place au milieu, il forme une plage avec ses voisins : [`-–]
+  // ponctuation. Place au milieu, il forme une plage avec ses voisins : [accent grave, tiret, tiret demi-cadratin]
   // couvre de U+0060 a U+2013, donc presque tout l alphabet, et TOUT devient
   // une revendication interdite. Bug introduit et attrape ici en une minute.
   const { revendicationsInterdites } = require('../lib/center-advisor');

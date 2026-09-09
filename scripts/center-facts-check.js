@@ -991,5 +991,121 @@ const ficheSaine = ficheDuRegistre({
 ok('CONTRE-PREUVE : un centre qui vend tous ses jours ouverts ne recoit rien',
   !ficheSaine.jour_ouvert_sans_vente,
   String(ficheSaine.jour_ouvert_sans_vente && ficheSaine.jour_ouvert_sans_vente.valeur));
+
+// ── L AGENDA REEL DU CENTRE ────────────────────────────────────────────────
+// La fiche ne regardait jamais le calendrier d ouverture : ni les jours forces
+// « vacances », ni la grille des vacances scolaires, ni une fermeture posee a
+// la main par le staff. Le moteur de RESERVATION lit les trois depuis toujours.
+// L agent conseillait donc « publie un rappel pour ton creneau de 18 h » sans
+// savoir si le centre ouvrait ce jour-la.
+console.log('\n[AGENDA] l agent sait quand le centre ouvre, et quand il ferme');
+const { agendaDuCentre } = require('../lib/center-facts');
+const { getCenter: centrePourAgenda } = require('../lib/ops-knowledge');
+const { normalizeBlockRow } = require('../lib/availability-blocks');
+const centreReel = centrePourAgenda('libramont');
+
+// MONTAGE : la configuration REELLE ferme le lundi et ouvre le samedi de 10 h
+// a minuit. Sans ca, ce gate decrirait un centre imaginaire.
+ok('MONTAGE : le lundi est ferme par la grille', centreReel.defaultSchedule.regular['1'] === null);
+ok('MONTAGE : le samedi ouvre a 10 h et ferme a 24 h',
+  centreReel.defaultSchedule.regular['6'].open === '10:00'
+  && centreReel.defaultSchedule.regular['6'].close === '24:00',
+  JSON.stringify(centreReel.defaultSchedule.regular['6']));
+
+const blocDe = (o) => normalizeBlockRow({
+  id: 1, center_id: 'libramont', scope_type: 'center', scope_ref: null,
+  recurrence: 'once', date: null, day_of_week: null, date_from: null, date_until: null,
+  start_time: null, end_time: null, reason: '', created_by: 'staff', ...o,
+});
+
+// 2026-09-14 est un lundi. La fenetre couvre donc un lundi ferme par la grille,
+// un samedi ouvert, et ce que le staff pose par-dessus.
+const agendaSansBloc = agendaDuCentre(centreReel, [], '2026-09-14', 7);
+ok('la grille du centre est resolue jour par jour', agendaSansBloc.length === 7);
+ok('le lundi est un jour NON OUVERT, pas une fermeture exceptionnelle',
+  agendaSansBloc[0].ouvert === false && agendaSansBloc[0].ferme === false,
+  JSON.stringify(agendaSansBloc[0]));
+ok('le samedi porte sa vraie plage',
+  agendaSansBloc[5].ouvert === true && agendaSansBloc[5].plage === '10h - Minuit',
+  JSON.stringify(agendaSansBloc[5]));
+
+// UNE FERMETURE PONCTUELLE, et une RECURRENTE avec sa plage horaire.
+const blocsDuStaff = [
+  blocDe({ id: 1, date: '2026-09-19', reason: 'travaux electriques' }),
+  blocDe({
+    id: 2, recurrence: 'weekly', day_of_week: 3, date_from: '2026-09-01',
+    date_until: '2026-12-31', start_time: '12:00', end_time: '23:00', reason: 'fermeture mercredi',
+  }),
+];
+const agendaAvecBlocs = agendaDuCentre(centreReel, blocsDuStaff, '2026-09-14', 7);
+ok('une fermeture ponctuelle ferme le jour, avec sa raison',
+  agendaAvecBlocs[5].ferme === true && agendaAvecBlocs[5].raisons.includes('travaux electriques'),
+  JSON.stringify(agendaAvecBlocs[5]));
+ok('une fermeture recurrente aussi',
+  agendaAvecBlocs[2].ferme === true && agendaAvecBlocs[2].raisons.includes('fermeture mercredi'),
+  JSON.stringify(agendaAvecBlocs[2]));
+ok('CONTRE-PREUVE : les autres jours restent ouverts',
+  agendaAvecBlocs[1].ferme === false && agendaAvecBlocs[6].ferme === false,
+  JSON.stringify([agendaAvecBlocs[1], agendaAvecBlocs[6]]));
+
+// UNE FERMETURE PARTIELLE NE FERME PAS LA JOURNEE. Deux heures de coupure un
+// samedi de 10 h a minuit laissent le centre ouvert : dire « ferme » serait
+// aussi faux que de dire « ouvert » un jour de travaux.
+const agendaPartiel = agendaDuCentre(centreReel, [
+  blocDe({ id: 3, date: '2026-09-19', start_time: '14:00', end_time: '16:00', reason: 'maintenance' }),
+], '2026-09-14', 7);
+ok('une coupure de deux heures ne ferme pas la journee',
+  agendaPartiel[5].ferme === false, JSON.stringify(agendaPartiel[5]));
+ok('mais elle est RENDUE : ne pas fermer le jour ne veut pas dire se taire',
+  agendaPartiel[5].coupures.length === 1
+  && agendaPartiel[5].coupures[0].raison === 'maintenance',
+  JSON.stringify(agendaPartiel[5].coupures));
+const ficheAvecCoupure = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-14', agenda: agendaPartiel,
+});
+ok('et le fait la porte en clair, avec ses heures',
+  /coupure de 14 h a 16 h \(maintenance\)/.test(String(ficheAvecCoupure.agenda_ouverture.valeur)),
+  String(ficheAvecCoupure.agenda_ouverture.valeur));
+ok('CONTRE-PREUVE : une coupure ne fabrique pas une fermeture a venir',
+  !ficheAvecCoupure.fermetures_a_venir);
+
+// LES FAITS, SUR UN REGISTRE VIDE. C est precisement la qu on a besoin de
+// savoir si le centre ouvre : l agenda parle du CENTRE, pas du registre.
+const ficheSansRegistre = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-14',
+  agenda: agendaDuCentre(centreReel, blocsDuStaff, '2026-09-14', 14),
+});
+ok('MONTAGE : le registre est bien vide', Boolean(ficheSansRegistre.registre_vide));
+ok('l agenda est pose malgre un registre vide', Boolean(ficheSansRegistre.agenda_ouverture),
+  String(ficheSansRegistre.agenda_ouverture && ficheSansRegistre.agenda_ouverture.valeur));
+ok('les fermetures a venir sont nommees avec leur raison',
+  Boolean(ficheSansRegistre.fermetures_a_venir)
+  && /travaux electriques/.test(String(ficheSansRegistre.fermetures_a_venir.valeur)),
+  String(ficheSansRegistre.fermetures_a_venir && ficheSansRegistre.fermetures_a_venir.valeur));
+ok('ces faits restent INTERNES : une fermeture se communique par decision du gerant',
+  ficheSansRegistre.agenda_ouverture.audience === 'interne'
+  && ficheSansRegistre.fermetures_a_venir.audience === 'interne');
+ok('CONTRE-PREUVE : le centre n est PAS declare ferme, il ouvre les autres jours',
+  !ficheSansRegistre.centre_ferme);
+
+// AUCUN JOUR OUVERT DANS LA FENETRE : fermeture annuelle, travaux, saison.
+const fermeturePartout = [0, 1, 2, 3, 4, 5, 6].map((jour) => blocDe({
+  id: 10 + jour, recurrence: 'weekly', day_of_week: jour,
+  date_from: '2026-09-01', date_until: '2026-12-31', reason: 'fermeture annuelle',
+}));
+const ficheCentreFerme = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-14',
+  agenda: agendaDuCentre(centreReel, fermeturePartout, '2026-09-14', 14),
+});
+ok('un centre qui n ouvre aucun jour le dit', Boolean(ficheCentreFerme.centre_ferme),
+  String(ficheCentreFerme.centre_ferme && ficheCentreFerme.centre_ferme.valeur));
+
+// FAIL-OPEN : sans agenda, aucun fait. On ne constate que ce qu on peut lire.
+const ficheSansAgenda = ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-14' });
+ok('FAIL-OPEN : sans agenda, aucun fait d ouverture',
+  !ficheSansAgenda.agenda_ouverture && !ficheSansAgenda.fermetures_a_venir && !ficheSansAgenda.centre_ferme);
+ok('FAIL-OPEN : une date absente ne fabrique pas d agenda',
+  agendaDuCentre(centreReel, [], '', 7).length === 0);
+ok('FAIL-OPEN : un centre absent non plus', agendaDuCentre(null, [], '2026-09-14', 7).length === 0);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

@@ -706,6 +706,49 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   // ── UN REGISTRE ENDORMI NE CONSEILLE RIEN ─────────────────────────────────
   // Les faits restent vrais au passe et le mode Demander y repond toujours. Ce
   // qui devient impossible, c est le geste au present.
+
+  // ── UN CENTRE QUI N OUVRE PAS NE CONSEILLE RIEN ───────────────────────────
+  // Meme raisonnement que la dormance, autre cause : le registre peut etre
+  // plein et vivant, si le centre n ouvre aucun jour de la fenetre (fermeture
+  // annuelle, travaux, saison), « viens ce soir » est faux.
+  console.log('\n[FERMETURE] le conseiller se tait sur un centre qui n ouvre pas');
+  let appelsSurFerme = 0;
+  const ficheFermee = {
+    ...fiche,
+    centre_ferme: {
+      id: 'centre_ferme', libelle: 'le centre n ouvre aucun jour dans la fenetre',
+      valeur: 'aucun jour ouvert sur les 14 prochains jours',
+      n: 14, genre: 'denombrement', audience: 'interne', mois: [], du: '', au: '',
+      source: 'grille du centre et fermetures declarees',
+    },
+  };
+  const surFerme = await proposerDepuisLaFiche({
+    fiche: ficheFermee, lieu: LIEU,
+    fetchImpl: async () => { appelsSurFerme += 1; return { ok: false, status: 500, text: async () => '' }; },
+  });
+  ok('le silence a sa propre cause', surFerme.silence === 'centre_ferme', String(surFerme.silence));
+  ok('le motif recopie le fait', surFerme.motifs.some((m) => m.includes('aucun jour ouvert')),
+    JSON.stringify(surFerme.motifs));
+  ok('AUCUN appel au modele : on ne paie pas pour conseiller un centre ferme',
+    appelsSurFerme === 0, String(appelsSurFerme));
+
+  // CONTRE-PREUVE : la MEME fiche sans le fait parle normalement. Sans elle,
+  // on aurait seulement montre un conseiller qui refuse toujours.
+  const surOuvert = await proposerDepuisLaFiche({ fiche, lieu: LIEU, fetchImpl: modeleQuiRepond(bonne) });
+  ok('CONTRE-PREUVE : la meme fiche sans fermeture rend bien une proposition',
+    Boolean(surOuvert.proposition) && !surOuvert.silence, JSON.stringify(surOuvert.motifs));
+
+  // La fermeture passe AVANT la cause globale, comme la dormance : une cle
+  // absente est la meme pour les trois centres, la fermeture parle de CELUI-ci.
+  const clesRangees = {};
+  ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'KIMI_API_KEY', 'MOONSHOT_API_KEY', 'OPENROUTER_API_KEY']
+    .forEach((cle) => { clesRangees[cle] = process.env[cle]; delete process.env[cle]; });
+  const sansCleEtFerme = await proposerDepuisLaFiche({ fiche: ficheFermee, lieu: LIEU, fetchImpl: modeleQuiRepond(bonne) });
+  ok('sans cle ET ferme : c est la fermeture qui est nommee, pas la cle',
+    sansCleEtFerme.silence === 'centre_ferme', String(sansCleEtFerme.silence));
+  Object.entries(clesRangees).forEach(([cle, valeur]) => {
+    if (valeur !== undefined) process.env[cle] = valeur;
+  });
   console.log('\n[SOMMEIL] le conseiller se tait sur un centre qui ne vend plus');
   let appelsSurDormant = 0;
   const ficheDormante = {

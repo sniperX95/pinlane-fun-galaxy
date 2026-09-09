@@ -12,6 +12,7 @@ const {
   deriveIdeaCandidates,
   makeIdeaSignature,
   computeInsightMeasurement,
+  polishIdeaWithAi,
 } = require('../lib/center-metrics');
 const { WALLONIA_SCHOOL_HOLIDAYS } = require('../lib/booking-config');
 
@@ -131,10 +132,50 @@ ok(rainIdea[0].readyContent.includes('15 mm'), 'contenu prêt cite la prévision
 
 const heatIdea = deriveIdeaCandidates({
   today: '2026-07-10',
-  forecast: [{ date: '2026-07-13', tmax: 27, precipMm: 0 }],
+  forecast: [{ date: '2026-07-13', tmax: 29, precipMm: 0 }],
 });
-ok(heatIdea.length === 1 && heatIdea[0].trigger === 'heat_forecast', 'chaleur ≥25° J+3 → idée plan fraîcheur');
-ok(heatIdea[0].readyContent.includes('27°'), 'contenu cite la température prévue');
+ok(heatIdea.length === 1 && heatIdea[0].trigger === 'heat_forecast', 'vraie chaleur J+3 → idée plan fraîcheur');
+ok(heatIdea[0].readyContent.includes('29°'), 'contenu cite la température prévue');
+
+
+// UNE IDEE « PLAN FRAICHEUR » EXIGE UNE VRAIE CHALEUR, ET LA RARETE SE CALCULE.
+// Releve en production le 2026-09-04 : trois posts « plan fraicheur » proposes
+// pour 26 degres, avec « rare par ici » ecrit EN DUR dans les deux branches du
+// gabarit. En Belgique en septembre, 26 degres n est ni rare ni une chaleur :
+// personne ne fuit vers l interieur, et le gerant lit une betise. Les seuils
+// STATISTIQUES (23 et 25) ne bougent pas, ils servent a mesurer un effet sur la
+// frequentation ; c est le seuil de l IDEE qui monte. Et une affirmation sur le
+// climat d un lieu se calcule sur les releves de ce lieu, ou ne se dit pas.
+const chaleurTiede = deriveIdeaCandidates({
+  today: '2026-09-04',
+  forecast: [{ date: '2026-09-07', tmax: 26, precipMm: 0 }],
+});
+ok(chaleurTiede.length === 0, "26° un 7 septembre : AUCUNE idée plan fraîcheur (ce n'est pas une chaleur)");
+
+const histoireChaude = Array.from({ length: 60 }, (_, i) => ({ weather_tmax: 30 - (i % 3) }));
+const sansRarete = deriveIdeaCandidates({
+  today: '2026-07-10',
+  forecast: [{ date: '2026-07-13', tmax: 29, precipMm: 0 }],
+  weatherHistory: histoireChaude,
+});
+ok(sansRarete.length === 1 && !/rare/i.test(String(sansRarete[0].why) + String(sansRarete[0].readyContent)),
+  'chez un centre où 29° est banal, le mot rare n apparaît nulle part');
+
+const histoireFroide = Array.from({ length: 60 }, (_, i) => ({ weather_tmax: i < 3 ? 30 : 14 }));
+const avecRarete = deriveIdeaCandidates({
+  today: '2026-07-10',
+  forecast: [{ date: '2026-07-13', tmax: 29, precipMm: 0 }],
+  weatherHistory: histoireFroide,
+});
+ok(avecRarete.length === 1 && /5\s*%/.test(String(avecRarete[0].why)),
+  'chez un centre où 29° est exceptionnel, la rareté est CHIFFRÉE (5 % des jours)');
+
+const sansHistorique = deriveIdeaCandidates({
+  today: '2026-07-10',
+  forecast: [{ date: '2026-07-13', tmax: 29, precipMm: 0 }],
+});
+ok(sansHistorique.length === 1 && !/rare/i.test(String(sansHistorique[0].why) + String(sansHistorique[0].readyContent)),
+  'sans historique météo, aucune affirmation de rareté n est faite');
 
 const holidayIdea = deriveIdeaCandidates({
   today: '2026-06-25',
@@ -150,16 +191,38 @@ ok(eventIdea.length === 1 && eventIdea[0].trigger === 'local_event', 'Foire de L
 ok(eventIdea[0].targetDate === '2026-07-27', 'l\'idée événement meurt à la FIN de l\'événement');
 ok(holidayIdea[0].targetDate === '2026-07-03', 'l\'idée congé meurt au DÉBUT du congé (après, « ça commence le X » est périmé)');
 
+// UN « JOUR LE PLUS CALME » N EXISTE QUE S IL Y A UNE ACTIVITE A COMPARER.
+// Releve en production le 2026-09-03 sur Gembloux : « Le mardi est ton jour le
+// plus calme : 0 visiteurs en moyenne (sur 6 mardis) », avec une campagne email
+// redigee dessus. L echantillon passait le filtre, mais le centre n avait AUCUNE
+// reservation dans l outil : l agent lisait une base vide comme un fait
+// commercial. Le garde-fou porte donc sur le MEILLEUR jour, pas sur le pire.
+const jourActif = { id: 'dow_best', dow: 6, value: 48, sampleSize: 26, label: 'x' };
 const quietTuesday = deriveIdeaCandidates({
   today: '2026-03-10',
-  facts: [{ id: 'dow_worst', dow: 2, value: 20, sampleSize: 26, label: 'Le mardi est ton jour le plus calme : 20 visiteurs en moyenne (sur 26 mardis).' }],
+  facts: [jourActif, { id: 'dow_worst', dow: 2, value: 20, sampleSize: 26, label: 'Le mardi est ton jour le plus calme : 20 visiteurs en moyenne (sur 26 mardis).' }],
 });
 ok(quietTuesday.length === 1 && quietTuesday[0].trigger === 'quiet_day', 'mardi creux → idée offre creuse');
 const quietWednesday = deriveIdeaCandidates({
   today: '2026-03-10',
-  facts: [{ id: 'dow_worst', dow: 3, value: 30, sampleSize: 26, label: 'x' }],
+  facts: [jourActif, { id: 'dow_worst', dow: 3, value: 30, sampleSize: 26, label: 'x' }],
 });
 ok(quietWednesday.length === 0, 'mercredi creux → PAS d\'idée (jour des enfants en Belgique)');
+
+const baseVide = deriveIdeaCandidates({
+  today: '2026-03-10',
+  facts: [
+    { id: 'dow_best', dow: 6, value: 1, sampleSize: 26, label: 'x' },
+    { id: 'dow_worst', dow: 2, value: 0, sampleSize: 6, label: 'Le mardi est ton jour le plus calme : 0 visiteurs en moyenne (sur 6 mardis).' },
+  ],
+});
+ok(baseVide.length === 0, "un centre SANS activité réelle ne produit aucun constat de creux (0 visiteur n'est pas un fait)");
+
+const creuxSansMeilleurJour = deriveIdeaCandidates({
+  today: '2026-03-10',
+  facts: [{ id: 'dow_worst', dow: 2, value: 20, sampleSize: 26, label: 'x' }],
+});
+ok(creuxSansMeilleurJour.length === 0, 'sans point de comparaison (aucun dow_best), aucun constat de creux');
 
 const allTriggers = deriveIdeaCandidates({
   today: '2026-07-15',
@@ -199,5 +262,40 @@ const flat = computeInsightMeasurement({
 });
 ok(flat.verdict === 'inconclusive', `bruit ±10 % → inconclusive (obtenu ${flat.verdict} ${flat.deltaPct}%)`);
 
-if (failures) { console.error(`\ndaily-metrics-check: ${failures} FAIL`); process.exit(1); }
-console.log('\ndaily-metrics-check: ALL OK');
+(async () => {
+// UNE REECRITURE IA N INVENTE PAS UN LIEU.
+// Releve en production le 2026-09-04 : le post de LIBRAMONT portait « #Namur ».
+// Libramont est en province de Luxembourg, Namur est celle de Gembloux. La
+// cause n est pas le modele : la consigne Facebook lui demande « 0 a 2 hashtags
+// en fin, du type nom du lieu et ville », et la ville ne lui etait JAMAIS
+// donnee, donc il la devinait. On comble le trou (la ville entre dans les
+// faits) ET on ferme la porte (le controle d ancrage ne regardait que les
+// CHIFFRES : un lieu, une enseigne ou une promo inventes passaient librement).
+console.log('\n[ANCRAGE] la reecriture IA n invente pas un lieu');
+  const envSauve = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = 'cle-de-mesure';
+  const repondre = (texte) => async () => ({
+    ok: true,
+    json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ content: texte }) }] }),
+  });
+  const candidat = {
+    trigger: 'heat_forecast', channel: 'facebook', tmax: 29, dayLabel: 'lundi 07/09',
+    readyContent: '29° annoncés lundi 07/09 : chez nous il fait frais toute la journée. Bowling, laser game, arcades.',
+    why: '29 °C annoncés lundi 07/09.',
+    dataBasis: [{ source: 'weather_daily_forecast', date: '2026-09-07', tmax: 29 }],
+  };
+  const facts = { centerName: 'Libramont', city: 'Libramont' };
+  const attendu = '29° annoncés lundi 07/09 : chez nous il fait frais. #Libramont';
+  const propre = await polishIdeaWithAi(candidat, { fetchImpl: repondre(attendu), centerFacts: facts });
+  ok(propre === attendu, 'MONTAGE : un hashtag qui est la VILLE du centre est accepté (sinon le refus ne prouverait rien)');
+  const invente = await polishIdeaWithAi(candidat, { fetchImpl: repondre('29° annoncés lundi 07/09 : chez nous il fait frais. #Namur'), centerFacts: facts });
+  ok(invente === null, 'un hashtag de lieu ABSENT des faits (#Namur sur Libramont) est refusé');
+  const enseigne = await polishIdeaWithAi(candidat, { fetchImpl: repondre('29° annoncés lundi 07/09 : venez au SuperFunPark, il fait frais.'), centerFacts: facts });
+  ok(enseigne === null, 'un nom propre inventé dans le corps (une enseigne qui n existe pas) est refusé');
+  const chiffre = await polishIdeaWithAi(candidat, { fetchImpl: repondre('29° annoncés lundi 07/09 : 12 € la partie, il fait frais.'), centerFacts: facts });
+  ok(chiffre === null, 'un prix inventé reste refusé (le garde-fou des nombres tient toujours)');
+  if (envSauve === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = envSauve;
+
+  if (failures) { console.error(`\ndaily-metrics-check: ${failures} FAIL`); process.exit(1); }
+  console.log('\ndaily-metrics-check: ALL OK');
+})().catch((error) => { console.error('FAIL  gate interrompu :', error && error.stack || error); process.exit(1); });

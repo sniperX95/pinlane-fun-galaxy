@@ -126,6 +126,53 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   });
   ok('CONTRE-EPREUVE : decrire le meme nombre reste autorise',
     Boolean(descriptif.proposition), JSON.stringify(descriptif.motifs));
+
+  // ── LES CHIFFRES DU CENTRE PASSENT ENFIN LA PROVENANCE ────────────────────
+  // Avant l'identite dans la fiche, le modele voyait « laser 500 m2, 30
+  // joueurs » dans son prompt et se faisait jeter s il les ecrivait. Le seul
+  // comportement possible etait de se taire sur ce que le centre vend.
+  console.log('\n[IDENTITE] ce que le centre EST devient citable');
+  const { ajouterIdentite } = require('../lib/center-facts');
+  // buildCenterFacts est deja importe plus bas dans ce gate : on le prend
+  // sous un autre nom plutot que de le redeclarer dans la meme portee.
+  const { buildCenterFacts: identiteDuCentre } = require('../lib/marketing-agents');
+  const identiteL = identiteDuCentre('libramont');
+  const ficheAvecIdentite = ajouterIdentite(fiche, identiteL);
+  ok('MONTAGE : la fiche enrichie porte le laser du centre',
+    Boolean(ficheAvecIdentite.identite_laser_game),
+    Object.keys(ficheAvecIdentite).filter((k) => k.startsWith('identite_')).join(','));
+
+  const corpsIdentite = `Notre laser game fait 500 m2 sur 2 etages et accueille 30 joueurs.`;
+  const avecIdentite = await proposerDepuisLaFiche({
+    fiche: ficheAvecIdentite,
+    lieu: LIEU,
+    centerFacts: identiteL,
+    fetchImpl: modeleQuiRepond({ titre: 'Notre laser', corps: corpsIdentite, nature: 'constat', faitsUtilises: [idConstat] }),
+  });
+  ok('une proposition qui cite le laser du centre est acceptee',
+    Boolean(avecIdentite.proposition), JSON.stringify(avecIdentite.motifs));
+
+  // CONTRE-PREUVE : la MEME phrase sur la fiche SANS identite est rejetee. Sans
+  // ca, l'assertion ci-dessus ne prouverait pas que c'est l'identite qui
+  // autorise ces chiffres.
+  const sansIdentite = await proposerDepuisLaFiche({
+    fiche,
+    lieu: LIEU,
+    centerFacts: identiteL,
+    fetchImpl: modeleQuiRepond({ titre: 'Notre laser', corps: corpsIdentite, nature: 'constat', faitsUtilises: [idConstat] }),
+  });
+  ok('CONTRE-EPREUVE : sans l identite dans la fiche, la meme phrase est jetee',
+    sansIdentite.proposition === null, JSON.stringify(sansIdentite.motifs));
+
+  // Et l'identite du VOISIN reste interdite, evidemment.
+  const laserDuVoisin = await proposerDepuisLaFiche({
+    fiche: ficheAvecIdentite,
+    lieu: LIEU,
+    centerFacts: identiteL,
+    fetchImpl: modeleQuiRepond({ titre: 'Notre laser', corps: 'Notre laser fait 370 m2.', nature: 'constat', faitsUtilises: [idConstat] }),
+  });
+  ok('les 370 m2 de Gembloux restent refuses sur Libramont',
+    laserDuVoisin.proposition === null, JSON.stringify(laserDuVoisin.motifs));
   // ── REJETS ────────────────────────────────────────────────────────────────
   console.log('\n[REJETE] chaque garde jette ce qu elle doit jeter');
 

@@ -1,7 +1,8 @@
 // Gate de la fiche de faits (lib/center-facts.js).
 // SANS réseau ni DB : ficheDuRegistre est pure, on lui injecte des lignes.
 // node scripts/center-facts-check.js
-const { ficheDuRegistre } = require('../lib/center-facts');
+const { ficheDuRegistre, ajouterIdentite } = require('../lib/center-facts');
+const { buildCenterFacts } = require('../lib/marketing-agents');
 const { maturite, peutAffirmer, N_POUR_ELIRE, PART_QUI_TRAHIT_UN_ARTEFACT } = require('../lib/center-guards');
 
 let failures = 0;
@@ -405,5 +406,73 @@ ok('CONTRE-PREUVE : trois observations de chaque cote ne font aucune tendance',
   !ficheSansTendance.tendance_frequentation_90j && !ficheSansTendance.tendance_demande_90j,
   Object.keys(ficheSansTendance).join(','));
 
+
+// ── L'IDENTITE PHYSIQUE, PAR CENTRE ─────────────────────────────────────────
+// Le conseiller recevait deja `themes` dans son prompt (laser 500 m2, 30
+// joueurs, parties de 20 minutes) et la garde de provenance, qui ne lit que la
+// fiche, REJETAIT ces chiffres vrais. On montrait au modele des faits quon lui
+// interdisait ensuite d'ecrire.
+console.log('\n[IDENTITE] la fiche porte ce que le centre EST, pas seulement ce qu il a vendu');
+const identiteLibramont = ajouterIdentite(ficheDuRegistre({ reservations: [], formules: [] }), buildCenterFacts('libramont'));
+const identiteGembloux = ajouterIdentite(ficheDuRegistre({ reservations: [], formules: [] }), buildCenterFacts('gembloux'));
+const texteDe = (fiche) => Object.values(fiche).map((f) => `${f.libelle} ${f.valeur}`).join(' | ');
+
+ok('Libramont declare son laser Urban Guerilla sur 500 m2',
+  identiteLibramont.identite_laser_game
+  && String(identiteLibramont.identite_laser_game.valeur).includes('Urban Guerilla')
+  && String(identiteLibramont.identite_laser_game.valeur).includes('500 m2'),
+  String(identiteLibramont.identite_laser_game && identiteLibramont.identite_laser_game.valeur));
+ok('Gembloux declare le sien Star Wars sur 370 m2',
+  identiteGembloux.identite_laser_game
+  && String(identiteGembloux.identite_laser_game.valeur).includes('Star Wars')
+  && String(identiteGembloux.identite_laser_game.valeur).includes('370 m2'),
+  String(identiteGembloux.identite_laser_game && identiteGembloux.identite_laser_game.valeur));
+
+// ISOLATION : c'est la peur nommee par Movsar, « il va sortir des chiffres d un
+// autre centre ». Elle se mesure ici plutot que de se supposer.
+ok('ISOLATION : rien de Gembloux dans la fiche de Libramont',
+  !texteDe(identiteLibramont).includes('Star Wars')
+  && !texteDe(identiteLibramont).includes('370')
+  && !/golfs*o/i.test(texteDe(identiteLibramont)),
+  texteDe(identiteLibramont).slice(0, 120));
+ok('ISOLATION : rien de Libramont dans la fiche de Gembloux',
+  !texteDe(identiteGembloux).includes('Urban Guerilla')
+  && !texteDe(identiteGembloux).includes('Jurassic'),
+  texteDe(identiteGembloux).slice(0, 120));
+
+// Une declaration de configuration n'est pas une mesure : elle s'enonce, elle
+// ne fonde rien. Sans cette limite, « notre laser fait 500 m2 » deviendrait un
+// appui pour « donc publie le mardi ».
+ok('un fait declare porte un constat',
+  peutAffirmer(identiteLibramont.identite_bowling, 'constat').autorise === true);
+ok('mais JAMAIS un levier ni une saison : il est declare, pas mesure',
+  peutAffirmer(identiteLibramont.identite_bowling, 'levier_reversible').autorise === false
+  && peutAffirmer(identiteLibramont.identite_bowling, 'saisonnier').autorise === false);
+
+// Un prix a UNE source d'autorite, et c'est le catalogue. Le fichier de
+// configuration en porte un pour le Golf o'Clock : il ne doit pas remonter
+// dans la fiche, sinon un prix perime part vers un client.
+ok('le prix declare dans la configuration n est PAS repris comme fait',
+  identiteGembloux.identite_golf_oclock
+  && !String(identiteGembloux.identite_golf_oclock.valeur).includes('12,5')
+  && !String(identiteGembloux.identite_golf_oclock.valeur).includes('12.5')
+  && !String(identiteGembloux.identite_golf_oclock.valeur).includes('par personne'),
+  String(identiteGembloux.identite_golf_oclock && identiteGembloux.identite_golf_oclock.valeur));
+
+// L'absence de note publique est un fait, et le taire serait l'invitation a
+// emprunter celle du centre voisin.
+ok('Libramont dit explicitement qu il n a aucune note publique',
+  String(identiteLibramont.identite_note_publique.valeur).includes('aucune note publiee'),
+  String(identiteLibramont.identite_note_publique.valeur));
+ok('Gembloux annonce la sienne, chiffree',
+  String(identiteGembloux.identite_note_publique.valeur).includes('418'),
+  String(identiteGembloux.identite_note_publique.valeur));
+
+// CONTRE-PREUVE : sans identite fournie, aucun fait d'identite. Sinon les
+// assertions ci-dessus pourraient etre vraies pour une autre raison.
+const sansIdentite = ajouterIdentite(ficheDuRegistre({ reservations: [], formules: [] }), {});
+ok('CONTRE-PREUVE : sans identite du centre, aucun fait identite_',
+  Object.keys(sansIdentite).every((cle) => !cle.startsWith('identite_')),
+  Object.keys(sansIdentite).join(','));
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

@@ -338,10 +338,24 @@ async function main() {
       const r = state.reservations.find((x) => x.id === 9004) || state.reservations[0];
       r.opsPlan = Object.assign({}, r.opsPlan || {}, { delayFlag: { minutes: 10, from: '18:00', to: '18:10' } });
       save(); renderStaff();
-      await new Promise((res) => setTimeout(res, 500));
-      const carte = document.querySelector(`.booking[data-booking-res-id="${r.id}"]`);
+      // On attend la CONDITION, pas une duree. Un sleep fixe de 500 ms mesure la
+      // machine : sous charge (suite complete, plusieurs navigateurs en
+      // parallele) le rendu n'etait pas fini et le gate rougissait alors que le
+      // code etait sain. Faux rouge observe le 2026-09-09 dans test:ops:all,
+      // vert des que le gate tournait seul.
+      // L'echeance reste BORNEE : si la puce n'apparait jamais, la boucle
+      // s'epuise et le message d'erreur d'origine part quand meme. Attendre la
+      // condition ne desarme pas l'assertion, ca supprime seulement le hasard.
+      const jusqua = Date.now() + 5000;
+      let carte = null;
+      let puce = null;
+      while (Date.now() < jusqua) {
+        carte = document.querySelector(`.booking[data-booking-res-id="${r.id}"]`);
+        puce = carte ? carte.querySelector('.delay-indicator') : null;
+        if (carte && puce) break;
+        await new Promise((res) => setTimeout(res, 50));
+      }
       if (!carte) return { erreur: 'aucune carte' };
-      const puce = carte.querySelector('.delay-indicator');
       if (!puce) return { erreur: 'aucune puce de retard' };
       const rect = (el) => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, right: b.right, bottom: b.bottom, w: Math.round(b.width) }; };
       const chevauche = (m, n) => !(m.right <= n.x + 0.5 || n.right <= m.x + 0.5 || m.bottom <= n.y + 0.5 || n.bottom <= m.y + 0.5);

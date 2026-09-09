@@ -197,6 +197,26 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('citer la ville DU CENTRE est accepte (sinon le refus de Namur ne prouverait rien)',
     Boolean(villeDuCentre.proposition), JSON.stringify(villeDuCentre.motifs));
 
+  // ── AUCUN GABARIT NE PEUT ATTEINDRE LA SORTIE ─────────────────────────────
+  // C'est LA contrainte : plus une seule phrase preecrite. On inspecte le corps
+  // reel de runDataIdeasCycle plutot que de faire confiance a un commentaire.
+  console.log('\n[SANS GABARIT] le cycle ne publie plus de texte preecrit');
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'center-metrics.js'), 'utf8');
+  const debut = source.indexOf('async function runDataIdeasCycle');
+  ok('MONTAGE : runDataIdeasCycle est bien localisee', debut > 0, String(debut));
+  const suivante = source.indexOf('\nfunction computeInsightMeasurement', debut);
+  const corps = source.slice(debut, suivante > debut ? suivante : debut + 6000);
+  ok('MONTAGE : le corps inspecte est substantiel', corps.length > 800, String(corps.length));
+  ok('le cycle appelle bien proposerDepuisLaFiche', corps.includes('proposerDepuisLaFiche'), 'absent');
+  ok('il construit la fiche complete du registre', corps.includes('chargerFicheDuRegistre'), 'absent');
+  ok('le texte publie vient de la proposition, pas d un gabarit',
+    corps.includes('readyContent: rendu.proposition.corps'), 'la source du texte publie a change');
+  ok('candidate.readyContent (le gabarit) n est plus publie',
+    !/readyContent:\s*(?:polished|candidate\.readyContent)/.test(corps)
+    && !corps.includes('polishIdeaWithAi('), 'un gabarit peut encore sortir');
+
   if (cleSauvee === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = cleSauvee;
 

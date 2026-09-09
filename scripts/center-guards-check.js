@@ -12,6 +12,9 @@ const {
   elireRobuste,
   sommeilDuRegistre,
   PLANCHER_DE_SILENCE,
+  pisteDeClassementFragile,
+  affirmationDeClassementFragile,
+  etiquetteDuClassement,
   distributionSuspecte,
   nombresDe,
   verifierProvenance,
@@ -722,5 +725,94 @@ const saisonnierVraimentMort = sommeilDuRegistre([...jalons(40, 2, 218), ...jalo
 ok('le saisonnier dort quand il depasse son propre record',
   saisonnierVraimentMort.dormant === true,
   `${saisonnierVraimentMort.jours} jours contre ${saisonnierVraimentMort.reference}`);
+
+// ── LA QUESTION OUVERTE PAR UN CLASSEMENT TROP SERRE ────────────────────────
+// La garde de fragilite RETIRE une capacite et ne rend rien. Or « mars mene,
+// mais une seule reservation suffit a changer le vainqueur » est exactement ce
+// qu un gerant doit savoir, surtout s il croit deja le contraire.
+console.log('\n[FRAGILITE] le classement trop serre devient une question');
+
+const classementServe = (id, libelle, valeur, n) => fait({
+  id, libelle, valeur, n, audience: 'public', fragile: true,
+  motifFragilite: 'classement decide par une seule reservation',
+});
+
+ok('sans aucun classement fragile, aucune question n est posee',
+  pisteDeClassementFragile({ panier_moyen: fait({ id: 'panier_moyen', libelle: 'panier moyen', valeur: '42 EUR', n: 300, audience: 'public' }) }) === null);
+ok('sur une fiche vide non plus', pisteDeClassementFragile({}) === null && pisteDeClassementFragile(null) === null);
+
+// On rend LA plus credible : celle qui porte le plus d observations, parce que
+// c est celle qu un gerant est le plus enclin a croire. Un classement mince se
+// defend tout seul par sa maigreur.
+const deuxFragiles = {
+  jour_fort: classementServe('jour_fort', 'jour de semaine le plus rempli', 'samedi : 13 reservations', 13),
+  mois_fort: classementServe('mois_fort', 'mois de l annee le plus rentable', 'mars : 190 reservations', 190),
+};
+const choisie = pisteDeClassementFragile(deuxFragiles);
+ok('la question porte sur le classement le plus GROS, pas le premier venu',
+  choisie && choisie.factId === 'mois_fort', JSON.stringify(choisie));
+ok('son sujet dit que l ecart est trop serre',
+  /ecart est trop serre/.test(choisie.sujet), choisie.sujet);
+ok('elle recopie la valeur du fait, sans rien recalculer',
+  choisie.comparaisonDisponible.includes('mars : 190 reservations'), choisie.comparaisonDisponible);
+ok('et elle dit la regle qui l a rendue fragile',
+  /retirer la plus grosse reservation/.test(choisie.comparaisonDisponible));
+ok('elle porte le volume derriere le classement',
+  /190 reservations/.test(choisie.populationARisque), choisie.populationARisque);
+
+// UNE SEULE par appel : trois questions par semaine sur le meme sujet ne se
+// lisent pas, elles se sautent.
+ok('une seule question, meme avec deux classements fragiles',
+  Boolean(choisie) && !Array.isArray(choisie));
+
+// CONTRE-PREUVE : le jumeau en argent est fragile lui aussi, et il ne doit PAS
+// etre choisi. Un fait reserve au gerant porte des montants : la question
+// n a pas a les transporter alors que le fait public dit la meme chose.
+const avecJumeau = {
+  ...deuxFragiles,
+  chiffre_mois_fort: fait({ id: 'chiffre_mois_fort', libelle: 'mois le plus rentable, en argent', valeur: 'mars : 51304 EUR', n: 900, audience: 'interne', fragile: true }),
+};
+ok('CONTRE-PREUVE : le jumeau en argent n est jamais choisi, malgre son volume',
+  pisteDeClassementFragile(avecJumeau).factId === 'mois_fort',
+  JSON.stringify(pisteDeClassementFragile(avecJumeau)));
+
+// ── UN SUPERLATIF SUR UN CLASSEMENT TROP SERRE ──────────────────────────────
+// « Ton meilleur mois est mars » alors que retirer une seule reservation change
+// le vainqueur. La garde vise le SUPERLATIF pose sur l etiquette, pas la
+// mention : « mars mene, mais l ecart tient a une reservation » est justement la
+// bonne reponse, et elle doit passer.
+console.log('\n[FRAGILITE] affirmer un classement trop serre');
+
+const ficheServee = {
+  mois_fort: fait({
+    id: 'mois_fort', libelle: 'mois de l annee le plus rentable',
+    valeur: 'mars : 190 reservations (classement fragile : sans sa plus grosse reservation, le vainqueur change)',
+    n: 190, audience: 'public', fragile: true, motifFragilite: 'classement decide par une seule reservation',
+  }),
+  panier_moyen: fait({ id: 'panier_moyen', libelle: 'panier moyen', valeur: '42 EUR', n: 300, audience: 'public' }),
+};
+
+const affirme = affirmationDeClassementFragile('Mars est ton meilleur mois, profites-en.', ficheServee);
+ok('un superlatif pose sur le vainqueur fragile est attrape', affirme.detecte === true, JSON.stringify(affirme));
+ok('et le motif nomme le fait ET le mot fautif',
+  affirme.extraits[0].includes('mois_fort') && affirme.extraits[0].includes('meilleur'), affirme.extraits[0]);
+
+// LE POINT DE LA GARDE ETROITE : la seule reponse juste doit survivre. Une
+// garde qui interdirait de NOMMER mars interdirait aussi de dire la verite.
+ok('CONTRE-PREUVE : la mention nuancee passe',
+  affirmationDeClassementFragile('Mars mene, mais l ecart tient a une seule reservation.', ficheServee).detecte === false);
+ok('CONTRE-PREUVE : un superlatif sur une AUTRE etiquette passe',
+  affirmationDeClassementFragile('Juillet est ton meilleur mois.', ficheServee).detecte === false);
+ok('CONTRE-PREUVE : etiquette et superlatif dans DEUX phrases ne comptent pas',
+  affirmationDeClassementFragile('Mars ressort. Le meilleur creneau est 18 h.', ficheServee).detecte === false);
+ok('CONTRE-PREUVE : sans aucun fait fragile, la garde ne mord jamais',
+  affirmationDeClassementFragile('Mars est ton meilleur mois.', { panier_moyen: ficheServee.panier_moyen }).detecte === false);
+
+// L etiquette se lit AVANT le deux-points de la valeur, pas dans le libelle :
+// le libelle dit « mois de l annee le plus rentable » et contient donc deja un
+// superlatif. Le confondre avec l etiquette ferait mordre la garde sur tout.
+ok('MONTAGE : l etiquette lue est bien le vainqueur, pas le libelle',
+  etiquetteDuClassement(ficheServee.mois_fort) === 'mars',
+  etiquetteDuClassement(ficheServee.mois_fort));
 console.log(`\n${failures ? `center-guards-check: ${failures} ECHEC(S)` : 'center-guards-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

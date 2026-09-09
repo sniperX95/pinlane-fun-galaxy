@@ -130,9 +130,14 @@ ok(corpsCycle.indexOf('readyContent: rendu.proposition.corps') > corpsCycle.inde
 // La piste, elle, est une question : ni texte, ni canal. Si elle gagnait un
 // jour un contenu ou un canal, l assertion ci-dessus tomberait, et celle-ci
 // dit pourquoi.
-const debutPiste = corpsCycle.indexOf('const piste = {');
+// Ancre SEMANTIQUE : ce qui identifie la ligne (son genre), pas le nom de la
+// variable qui la porte. Un refactor peut renommer la variable sans rien
+// changer a la propriete defendue ; il ne peut pas changer le genre sans
+// changer la ligne.
+const debutPiste = corpsCycle.indexOf("kind: 'piste'");
 const corpsPiste = debutPiste > 0 ? corpsCycle.slice(debutPiste, corpsCycle.indexOf('};', debutPiste)) : '';
-ok(corpsPiste.length > 100, 'MONTAGE : le litteral de la piste est bien inspecte');
+ok(debutPiste > 0 && corpsPiste.length > 60,
+  `MONTAGE : le litteral de la piste est bien inspecte (${corpsPiste.length} caracteres)`);
 ok(/readyContent: null/.test(corpsPiste) && /channel: null/.test(corpsPiste),
   'la piste ne porte ni texte a coller ni canal : elle se tranche, elle ne se publie pas');
 

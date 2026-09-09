@@ -481,6 +481,65 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('CONTRE-PREUVE : sans piste rendue, aucune ligne de genre piste',
     insertsDePiste().length === 0, `${insertsDePiste().length} ecriture(s)`);
 
+  // ── LA QUESTION QUI PART SANS MODELE ─────────────────────────────────────
+  // Le point qui compte aujourd hui : aucune cle de modele ne semble posee en
+  // production. Un classement trop serre est calcule dans la FICHE, donc cette
+  // question-la se pose quand meme. C est la seule chose que l agent peut encore
+  // livrer quand il ne peut ecrire aucun texte.
+  requetes.length = 0;
+  faitsDuRegistre.chargerFicheDuRegistre = async () => ({
+    mois_fort: {
+      id: 'mois_fort',
+      libelle: 'mois de l annee le plus rentable',
+      valeur: 'mars : 190 reservations (classement fragile : sans sa plus grosse reservation, le vainqueur change)',
+      n: 190,
+      audience: 'public',
+      fragile: true,
+      motifFragilite: 'classement decide par une seule reservation',
+    },
+  });
+  let appelsSansModele = 0;
+  conseiller.proposerDepuisLaFiche = async () => {
+    appelsSansModele += 1;
+    return { proposition: null, motifs: ['aucun fournisseur de modele disponible'], silence: 'sans_modele', piste: null };
+  };
+  await cycle.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  const question = insertsDePiste()[0];
+  ok('MONTAGE : le conseiller n a rendu AUCUNE piste de son cote',
+    appelsSansModele === 1, String(appelsSansModele));
+  ok('LE POINT : une question est quand meme ECRITE, sans un seul texte de modele',
+    Boolean(question), `${requetes.length} requete(s)`);
+  ok('son titre porte le classement concerne',
+    Boolean(question) && /mois de l annee le plus rentable/.test(String(question.params[2])),
+    question && String(question.params[2]));
+  ok('son corps recopie la valeur du fait et la regle qui l a rendu fragile',
+    Boolean(question) && String(question.params[3]).includes('mars : 190 reservations')
+    && /retirer la plus grosse reservation/.test(String(question.params[3])),
+    question && String(question.params[3]));
+  ok('et elle ne se publie pas : aucun contenu, aucun canal',
+    Boolean(question) && question.params[5] === null && question.params[4] === null);
+
+  // ET ELLE SURVIT A UN CONSEILLER QUI PLANTE. C est ce qui verrouille l ORDRE :
+  // posee apres l appel au modele, elle disparaitrait a la premiere exception,
+  // avalee par le try/catch du cycle. Posee avant, elle est deja en base.
+  requetes.length = 0;
+  conseiller.proposerDepuisLaFiche = async () => { throw new Error('modele injoignable'); };
+  await cycle.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  ok('la question survit a un conseiller qui leve une exception',
+    insertsDePiste().length === 1, `${insertsDePiste().length} ecriture(s)`);
+
+  // CONTRE-PREUVE : sur une fiche SANS classement fragile, rien n est ecrit.
+  requetes.length = 0;
+  faitsDuRegistre.chargerFicheDuRegistre = async () => ({
+    mois_fort: {
+      id: 'mois_fort', libelle: 'mois de l annee le plus rentable',
+      valeur: 'juillet : 190 reservations', n: 190, audience: 'public', fragile: false,
+    },
+  });
+  await cycle.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  ok('CONTRE-PREUVE : un classement solide n ouvre aucune question',
+    insertsDePiste().length === 0, `${insertsDePiste().length} ecriture(s)`);
+
   // Tout est rendu : les gates suivants doivent voir les vrais modules.
   baseDeDonnees.getPool = vraiGetPool;
   conseiller.proposerDepuisLaFiche = vraiConseiller;
@@ -530,6 +589,52 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     if (valeur !== undefined) process.env[cle] = valeur;
   });
   process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'cle-de-mesure';
+
+  // ── UN CLASSEMENT TROP SERRE NE S AFFIRME PAS ICI NON PLUS ────────────────
+  // Le fait fragile n arrive meme pas dans les faits utiles (faitsUtiles filtre
+  // sur peutAffirmer), mais rien n empeche le modele de nommer un mois de
+  // lui-meme. Les deux portes portent la meme regle, c est tout l objet.
+  console.log('\n[FRAGILITE] la porte Idees refuse le meme superlatif');
+  const ficheAvecServe = {
+    ...fiche,
+    mois_fort: {
+      id: 'mois_fort', libelle: 'mois de l annee le plus rentable',
+      valeur: 'mars : 190 reservations (classement fragile : sans sa plus grosse reservation, le vainqueur change)',
+      n: 190, du: '', au: '', mois: [], genre: 'estimation', periode: 'mois_annee',
+      audience: 'public', source: 'chiffre par mois', fragile: true,
+      motifFragilite: 'classement decide par une seule reservation',
+    },
+  };
+  const proposeServe = await proposerDepuisLaFiche({
+    fiche: ficheAvecServe, lieu: LIEU,
+    fetchImpl: modeleQuiRepond({ titre: 'Mars', corps: 'Mars est ton meilleur mois : viens en profiter.', nature: 'constat', faitsUtilises: [idConstat] }),
+  });
+  ok('la proposition qui affirme un classement trop serre est jetee',
+    proposeServe.proposition === null, JSON.stringify(proposeServe.motifs));
+  ok('et le motif dit pourquoi',
+    proposeServe.motifs.some((m) => m.includes('classement trop serre')), JSON.stringify(proposeServe.motifs));
+
+  // CONTRE-PREUVE : le MEME texte sur la meme fiche, classement non fragile,
+  // passe. Sans elle, on aurait montre un conseiller qui refuse ce texte-la,
+  // pas une garde qui reagit a la fragilite.
+  // Le jumeau en argent du montage porte la MEME etiquette et il est fragile
+  // lui aussi : le rendre solide fait partie de la contre-preuve, sinon on
+  // testerait « un des deux est solide », pas « le classement tient ».
+  const ficheSolide = { ...ficheAvecServe };
+  Object.keys(ficheSolide).forEach((cle) => {
+    if (ficheSolide[cle] && ficheSolide[cle].fragile) {
+      ficheSolide[cle] = { ...ficheSolide[cle], fragile: false, motifFragilite: '' };
+    }
+  });
+  ok('MONTAGE : plus aucun fait fragile dans la fiche de contre-preuve',
+    Object.values(ficheSolide).every((f) => !f || !f.fragile));
+  const proposeSolide = await proposerDepuisLaFiche({
+    fiche: ficheSolide, lieu: LIEU,
+    fetchImpl: modeleQuiRepond({ titre: 'Mars', corps: 'Mars est ton meilleur mois : viens en profiter.', nature: 'constat', faitsUtilises: [idConstat] }),
+  });
+  ok('CONTRE-PREUVE : le meme texte passe quand le classement tient',
+    !proposeSolide.motifs.some((m) => m.includes('classement trop serre')),
+    JSON.stringify(proposeSolide.motifs));
   // ── REJETS ────────────────────────────────────────────────────────────────
   console.log('\n[REJETE] chaque garde jette ce qu elle doit jeter');
 

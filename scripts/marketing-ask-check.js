@@ -395,7 +395,38 @@ function deps({ answer, calls, provider = 'kimi', exhausted = false }) {
     }
   }
 
-  console.log(`\nmarketing-ask-check: ${failures ? `${failures} FAIL` : 'ALL OK'}`);
+  
+  // ── UN CLASSEMENT TROP SERRE NE S AFFIRME PAS ICI NON PLUS ──────────────────
+  // La porte « Idees » ne recoit meme pas ces faits (faitsUtiles filtre sur
+  // peutAffirmer). Celle-ci remet tout le registre au modele, parce que le gerant
+  // pose une question sur SES chiffres : le fait fragile y arrivait avec
+  // peutPorter vide, un signal que rien n obligeait a respecter.
+  console.log('\n[FRAGILITE] la porte Demander refuse le meme superlatif');
+  const dossierServe = {
+    registre: [
+      {
+        id: 'mois_fort', libelle: 'mois de l annee le plus rentable',
+        valeur: 'mars : 190 reservations (classement fragile : sans sa plus grosse reservation, le vainqueur change)',
+        observations: 190, moisCouverts: 12, calcul: 'chiffre par mois', peutPorter: [],
+        fragile: true, motifFragilite: 'classement decide par une seule reservation',
+      },
+    ],
+  };
+  const refuseServe = checkAnswerGrounding('Ton meilleur mois est mars.', { centerFacts: {}, dossier: dossierServe });
+  ok(refuseServe.blocked === true,
+    'la reponse qui affirme un classement trop serre est bloquee',
+    JSON.stringify(refuseServe.reasons));
+  ok(refuseServe.reasons.some((r) => r.includes('classement trop serre')),
+    'et le motif dit pourquoi', JSON.stringify(refuseServe.reasons));
+  // CONTRE-PREUVE : la reponse NUANCEE passe. C est elle que le gerant doit lire.
+  const nuanceServee = checkAnswerGrounding('Mars mene, mais l ecart tient a une seule reservation : rien ne permet de trancher.', { centerFacts: {}, dossier: dossierServe });
+  ok(nuanceServee.blocked === false,
+    'CONTRE-PREUVE : la reponse nuancee passe', JSON.stringify(nuanceServee.reasons));
+  // CONTRE-PREUVE : le meme texte sur un registre SOLIDE passe aussi.
+  const dossierSolide = { registre: [{ ...dossierServe.registre[0], fragile: false }] };
+  ok(checkAnswerGrounding('Ton meilleur mois est mars.', { centerFacts: {}, dossier: dossierSolide }).blocked === false,
+    'CONTRE-PREUVE : sur un classement solide, le superlatif passe');
+    console.log(`\nmarketing-ask-check: ${failures ? `${failures} FAIL` : 'ALL OK'}`);
   process.exit(failures ? 1 : 0);
 })().catch((error) => {
   console.error('marketing-ask-check: CRASH', error && error.stack);

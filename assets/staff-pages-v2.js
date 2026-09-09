@@ -4799,6 +4799,31 @@
   // ── L'ATELIER d'une proposition ─────────────────────────────────────────
   // Le corps déployé (onglets réseau, papier, copier, autre angle, publié ?),
   // rendu par la carte mkwPropCard. Le câblage serveur est inchangé.
+  // LES FAITS DERRIERE une proposition. Chaque ligne porte la valeur exacte,
+  // le nombre d observations qui la soutient et la derivation : le gerant doit
+  // pouvoir refaire le calcul a la main et prendre l agent en defaut. Sans ca,
+  // « Voir les faits » etait un mot sur une carte, et la tracabilite dormait en
+  // base sans que personne puisse la lire.
+  function mkwPropFacts(p) {
+    const faits = (p.faits || []).filter((f) => f.id || f.valeur || f.autres);
+    if (!faits.length) return '';
+    const lignes = faits.map((f) => {
+      const detail = [
+        f.observations ? `${f.observations} observation${f.observations > 1 ? 's' : ''}` : '',
+        f.calcul,
+        f.calcul ? '' : f.autres,
+      ].filter(Boolean).join(' · ');
+      return `<li class="mkw-fact">
+        <span class="mkw-fact-val">${esc(f.valeur || f.id)}</span>
+        ${detail ? `<span class="mkw-fact-how">${esc(detail)}</span>` : ''}
+      </li>`;
+    }).join('');
+    return `<details class="mkw-facts"><summary>Les faits derrière (${faits.length})</summary>
+      <ul class="mkw-fact-list">${lignes}</ul>
+      <p class="mkw-fact-note">Chaque chiffre se refait à la main depuis sa dérivation.</p>
+    </details>`;
+  }
+
   function mkwPropOpenBody(p) {
     if (p.kind === 'offre') {
       const note = (p.networks && (p.networks.interne || p.networks.facebook) || {}).text || p.why || '';
@@ -4825,6 +4850,7 @@
       photoIdea ? `<p class="mkw-under">Idée photo : ${esc(photoIdea)}</p>` : '',
       bestSlot ? `<p class="mkw-under mkw-under-mono">Meilleur moment : ${esc(bestSlot)}</p>` : '',
       imagePrompt ? `<details class="mkw-prompt"><summary>prompt pour une image IA</summary><div class="mkw-prompt-text">${esc(imagePrompt)}</div><button type="button" class="mkw-link" onclick="mkBrCopyPrompt('${escJs(p.key)}')">Copier</button></details>` : '',
+      mkwPropFacts(p),
     ].join('');
     const angleOpen = mkBrief.angleOpen === p.key;
     const askPublished = mkBrief.publishedAsk === p.key;
@@ -6418,6 +6444,35 @@
     }).join('');
   }
 
+  // ── LES QUESTIONS QUE L AGENT NE TRANCHE PAS ─────────────────────────────
+  // Une piste nait d un refus : le conseiller a vu quelque chose qui ressemble
+  // a un changement de regle (prix, minimum de personnes, horaire) et il
+  // s interdit de le conclure, parce que tout l historique a ete produit SOUS
+  // la regle actuelle. Ce qu il peut faire, c est poser la question avec ce qui
+  // est mesurable autour : combien de monde est concerne, combien d argent est
+  // en jeu, et si la comparaison existe deja au catalogue.
+  //
+  // Volontairement SANS bouton. Publier n a pas de sens (ce n est pas un
+  // texte), et « appliquer » encore moins : le cockpit fondateur ecrirait
+  // status = 'applied' et lancerait une mesure a 14 jours sur une action que
+  // personne n a faite (lib/founder-cockpit.js). Ca se tranche dans le
+  // catalogue, a la main, par quelqu un qui connait son affaire.
+  // Forme propre, PAS une ligne .mkw-brow : celles-ci sont a une ligne, et leur
+  // <em> est en `flex: none`, donc un pourquoi de cent caracteres pousserait le
+  // panneau plus large que lui-meme au lieu de revenir a la ligne. Ici le sujet
+  // et son pourquoi s empilent dans une grille a deux colonnes.
+  function mkwPisteRows() {
+    const b = mkBrief.data;
+    return ((b && b.pistes) || []).slice(0, 5).map((piste) => {
+      const pourquoi = String(piste.pourquoi || '').trim();
+      return `<div class="mkw-piste">
+        <span class="mkw-brow-dot is-warn"></span>
+        <span class="mkw-piste-sujet">${esc(cap(String(piste.sujet || '')))}</span>
+        ${pourquoi ? `<span class="mkw-piste-why">${esc(pourquoi)}</span>` : ''}
+      </div>`;
+    }).join('');
+  }
+
   function mkwBoard() {
     const b = mkBrief.data;
     if (!b) {
@@ -6455,7 +6510,10 @@
       <div class="mkw-bgroup-head"><h3>${title}</h3>${count ? `<span class="mkw-bcount">${count}</span>` : ''}</div>
       ${rows || `<p class="mkw-bempty">${empty}</p>`}
     </div>`;
+    const pisteRows = mkwPisteRows();
+    const pisteCount = ((b.pistes || []).slice(0, 5)).length;
     return `${group('À valider', validateCount, validateCards, 'Rien à valider : la surveillance continue.')}
+      ${group('À trancher', pisteCount, pisteRows, 'Aucune question ouverte de mon côté.')}
       ${group('En cours', running.length, running.join(''), 'Rien ne tourne en ce moment.')}
       ${group('À surveiller', 0, watch.join(''), 'Rien à surveiller de particulier.')}
       ${mkwPanelRadar()}`;

@@ -12360,6 +12360,24 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-brow em { margin-left: auto; flex: none; font-style: normal; font-family: var(--font-data); font-size: 11px; color: var(--faint); }
 .mkw-brow em .mkw-link { font-size: 11.5px; }
 .mkw-brow-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--control-border); }
+/* Une question a trancher : deux lignes, pas une. Le pourquoi porte une
+   population, un montant et une comparaison, donc il est long par nature ;
+   dans .mkw-brow il aurait pousse le panneau plus large que lui-meme. */
+.mkw-piste { display: grid; grid-template-columns: 6px minmax(0, 1fr); gap: 4px 8px; align-items: start; width: 100%; padding: 8px 2px; border-top: 1px solid var(--line); font-family: var(--font-ui); font-size: 12.5px; color: var(--text); }
+.mkw-bgroup .mkw-piste:first-of-type { border-top: 0; }
+.mkw-piste .mkw-brow-dot { margin-top: 6px; }
+.mkw-piste-sujet { min-width: 0; overflow-wrap: anywhere; }
+.mkw-piste-why { grid-column: 2; min-width: 0; font-family: var(--font-data); font-size: 11px; line-height: 1.45; color: var(--faint); overflow-wrap: anywhere; }
+/* La preuve d une proposition : une valeur par ligne, sa derivation dessous.
+   Le gerant doit pouvoir refaire le calcul, donc rien ne se tronque. */
+.mkw-facts { margin-top: 8px; }
+.mkw-facts > summary { cursor: pointer; font-family: var(--font-ui); font-size: 11.5px; color: var(--muted); }
+.mkw-facts > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.mkw-fact-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.mkw-fact { display: grid; gap: 2px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--subtle); }
+.mkw-fact-val { font-family: var(--font-data); font-size: 12px; color: var(--text); overflow-wrap: anywhere; }
+.mkw-fact-how { font-family: var(--font-ui); font-size: 11px; line-height: 1.45; color: var(--faint); overflow-wrap: anywhere; }
+.mkw-fact-note { margin: 6px 0 0; font-family: var(--font-ui); font-size: 11px; color: var(--faint); }
 .mkw-brow-dot.is-run { background: var(--accent); animation: mkwBreath 1.8s var(--mkw-io) infinite; }
 .mkw-brow-dot.is-warn { background: var(--warning); }
 

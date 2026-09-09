@@ -100,7 +100,10 @@ async function installMock(page) {
           { context: 'Email · jour calme', kind: 'email', channel: 'email', netDeltaPct: 14, basis: 'brut', n: 4, confidence: 'signal' },
         ],
         propositions: [
-          { key: 'daily', id: null, trigger: 'pluie', why: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', dueDate: dstr(0), kind: 'post', pinned: true, network: 'instagram', networks: { instagram: { text: 'Il pleut samedi ? Nos 8 pistes sont au sec, réserve la tienne.\n\n#bowling #libramont' } }, photoIdea: 'arrivée du groupe sous la pluie, strike final', imagePrompt: 'Rainy day bowling, no text, no logos', bestSlot: '17h-19h', status: 'proposed', signature: 'daily:x' },
+          { key: 'daily', id: null, trigger: 'pluie', why: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', dueDate: dstr(0), kind: 'post', pinned: true, network: 'instagram', networks: { instagram: { text: 'Il pleut samedi ? Nos 8 pistes sont au sec, réserve la tienne.\n\n#bowling #libramont' } }, photoIdea: 'arrivée du groupe sous la pluie, strike final', imagePrompt: 'Rainy day bowling, no text, no logos', bestSlot: '17h-19h', status: 'proposed', signature: 'daily:x',
+            // La tracabilite figee a la proposition : valeur, volume,
+            // derivation. Le gerant doit pouvoir refaire le calcul.
+            faits: [{ id: 'creneau_creux', valeur: '11 h : 9 reservations', observations: 9, calcul: 'groupe par heure de start_time, minimum 8 observations', autres: '' }] },
           { key: 'plan:social-1', id: null, trigger: 'creux', why: 'Dimanche s\'annonce très calme : 12 visiteurs attendus. Je posterais mercredi pour le remplir.', whyShort: 'Dimanche s\'annonce très calme, je posterais mercredi pour le remplir.', dueDate: dstr(2), targetDate: dstr(4), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'plan:social-1' },
           { key: 'db:21', id: 21, trigger: 'concurrent', why: 'Bowling Arlon a lancé une offre étudiants, on répond ?', whyShort: 'Bowling Arlon a lancé une offre étudiants, on répond ?', dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: 'Chez nous, pas besoin de carte étudiant pour passer une bonne soirée. 8 pistes, laser game, arcades.\n\n#bowling' } }, photoIdea: '', imagePrompt: '', bestSlot: '18h', status: 'proposed', signature: 'concurrent:x' },
           { key: 'db:22', id: 22, trigger: 'demande', why: 'Tu m\'as demandé : « soirée fluo », voilà ce que je posterais.', whyShort: 'Tu m\'as demandé : « soirée fluo », voilà ce que je posterais.', dueDate: dstr(3), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: 'Soirée fluo samedi.' } }, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'demande:x' },
@@ -111,6 +114,12 @@ async function installMock(page) {
           { key: 'db:96', id: 96, trigger: 'chaleur', why: 'JOURVISEPASSE ne doit pas apparaitre.', whyShort: 'JOURVISEPASSE ne doit pas apparaitre.', dueDate: null, targetDate: dstr(-1), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'vise:x' },
           { key: 'db:98', id: 98, trigger: 'pluie', why: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'doublon:x' },
           ...window.__QA_CREATED__,
+        ],
+        // UNE PISTE, telle que lib/marketing-brief.js la rend : un sujet, un
+        // pourquoi chiffre, et AUCUN texte a publier. Elle ne doit jamais
+        // apparaitre dans la file des posts, et elle doit se voir quand meme.
+        pistes: [
+          { id: 501, sujet: 'le minimum des anniversaires', pourquoi: 'concerne 42 sur 500 (8.4 %) | en jeu 51304 EUR | oui : 2 et 6 personnes coexistent deja au catalogue', proposeeLe: dstr(-1) },
         ],
         receipts: [
           { id: 31, label: 'Post pluie du 03/07', tone: 'good', result: '+18 % de monde', redoable: true },
@@ -363,13 +372,26 @@ async function main() {
         heads,
         badge: (groups[0] && groups[0].querySelector('.mkw-bcount') || {}).textContent || '',
         facts: (groups[0] && [...groups[0].querySelectorAll('.mkw-bcard')] || []).every((el) => /Voir les faits/.test(el.textContent)),
-        pending: /verdict le 26 juillet/.test(groups[1] ? groups[1].textContent : ''),
-        watch: groups[2] ? groups[2].textContent : '',
+        pending: /verdict le 26 juillet/.test(groups[2] ? groups[2].textContent : ''),
+        watch: groups[3] ? groups[3].textContent : '',
+        // « A trancher » : le texte rendu, et la preuve qu il ne porte AUCUN
+        // bouton. C est la moitie qui compte : publier une question n a pas de
+        // sens, et « appliquer » en lancerait la mesure a 14 jours pour rien.
+        piste: groups[1] ? groups[1].textContent : '',
+        pisteRows: document.querySelectorAll('#mkwSheet .mkw-piste').length,
+        pisteBoutons: groups[1] ? groups[1].querySelectorAll('button').length : -1,
         minis: document.querySelectorAll('#mkwSheet .mkw-mini').length,
         title: (document.querySelector('#mkwSheet .mkw-panel-title') || {}).textContent || '',
       };
     });
-    ok(board.heads.slice(0, 3).join('|') === 'À valider|En cours|À surveiller', `les trois groupes du panneau (${board.heads.join(', ')})`);
+    ok(board.heads.slice(0, 4).join('|') === 'À valider|À trancher|En cours|À surveiller', `les quatre groupes du panneau (${board.heads.join(', ')})`);
+    ok(board.pisteRows === 1, `la piste du serveur est DESSINEE (${board.pisteRows} ligne(s))`);
+    ok(/minimum des anniversaires/i.test(board.piste)
+      && /42 sur 500/.test(board.piste)
+      && /coexistent deja au catalogue/.test(board.piste),
+      'elle porte son sujet, la population concernee et la comparaison deja possible');
+    ok(board.pisteBoutons === 0,
+      `AUCUN bouton sur une question a trancher (${board.pisteBoutons}) : ni publier, ni appliquer`);
     ok(Number(board.badge) >= 4 && board.facts, 'chaque carte « À valider » compte et porte « Voir les faits »');
     ok(board.pending, '« En cours » = la mesure J+14 REELLE (verdict date), pas un spinner inventé');
     ok(/calme/.test(board.watch) && /Bowling Arlon a bougé/.test(board.watch) && /Foire de Libramont/.test(board.watch), '« À surveiller » : jour calme + concurrent + evenement, tous reels');
@@ -462,10 +484,18 @@ async function main() {
         paper: (prop && prop.querySelector('.mkw-paper') || {}).textContent || '',
         nets: prop ? [...prop.querySelectorAll('.mkw-net')].map((el) => el.textContent) : [],
         noScore: prop ? !/\d+\/100/.test(prop.textContent) : false,
+        // LA PREUVE. Elle est stockee depuis longtemps et n arrivait jamais a
+        // l ecran : la carte disait « Voir les faits » sans en montrer un seul.
+        faits: (prop && prop.querySelector('.mkw-facts') || {}).textContent || '',
+        lignesDeFait: prop ? prop.querySelectorAll('.mkw-fact').length : 0,
       };
     });
     ok(shown.inChat && /pistes sont au sec/.test(shown.paper), 'la carte arrive OUVERTE dans le chat : l\'agent montre son travail');
     ok(shown.nets.join(',') === 'Facebook,Instagram,Story' && shown.noScore, 'reseaux du tenant, jamais de score interne');
+    ok(shown.lignesDeFait === 1, `la preuve de la proposition est AFFICHEE (${shown.lignesDeFait} fait)`);
+    ok(/11 h : 9 reservations/.test(shown.faits) && /9 observations/.test(shown.faits)
+      && /groupe par heure de start_time/.test(shown.faits),
+      'elle porte la valeur, le volume et la derivation : le calcul se refait a la main');
     const variant = await page.evaluate(async () => {
       const card = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-prop.is-open');
       [...card.querySelectorAll('.mkw-net')].find((el) => el.textContent === 'Facebook').click();
@@ -488,6 +518,20 @@ async function main() {
       return { posted: posts.length, compact: (document.querySelector('#staffCampaignsPage .mkw-prop-published') || {}).textContent || '' };
     });
     ok(published.posted === 1 && /la mesure court 14 jours/.test(published.compact), '« Oui » -> publiee + carte compactee (la mesure demarre)');
+
+    // CONTRE-PREUVE : une proposition SANS tracabilite n affiche aucun bloc de
+    // preuve. Sans elle, un bloc rendu en dur passerait l assertion precedente.
+    const sansFait = await page.evaluate(async () => {
+      const card = [...document.querySelectorAll('#mkwSheet .mkw-bcard')].find((el) => /offre étudiants/.test(el.textContent));
+      if (!card) return { trouve: false, blocs: -1 };
+      card.click();
+      await new Promise((r) => setTimeout(r, 450));
+      const props = [...document.querySelectorAll('#staffCampaignsPage .mkw-chat .mkw-prop.is-open')];
+      const prop = props[props.length - 1];
+      return { trouve: Boolean(prop), blocs: prop ? prop.querySelectorAll('.mkw-facts').length : -1 };
+    });
+    ok(sansFait.trouve && sansFait.blocs === 0,
+      `CONTRE-PREUVE : sans tracabilite, aucun bloc de preuve n est fabrique (${sansFait.blocs})`);
 
     console.log('\n[COMPOSER] Créer prepare un livrable reel qui ARRIVE dans le chat, la frappe survit');
     const compose = await page.evaluate(async () => {
@@ -790,6 +834,8 @@ async function main() {
       const saved = JSON.stringify(window.mkBrief.data);
       const b = window.mkBrief.data;
       b.propositions = [];
+      // Une question ouverte est du travail : le panneau calme n en a aucune.
+      b.pistes = [];
       b.receipts = [];
       b.veille = { count: 0, changed: [] };
       b.radar = b.radar.map((d) => ({ ...d, level: 'normal', event: '' }));
@@ -797,7 +843,7 @@ async function main() {
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 250));
       const empties = document.querySelectorAll('#mkwSheet .mkw-bempty').length;
-      const fake = document.querySelectorAll('#mkwSheet .mkw-bcard, #mkwSheet .mkw-brow').length;
+      const fake = document.querySelectorAll('#mkwSheet .mkw-bcard, #mkwSheet .mkw-brow, #mkwSheet .mkw-piste').length;
       window.mkBrief.data = JSON.parse(saved);
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 250));

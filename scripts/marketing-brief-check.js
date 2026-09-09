@@ -122,7 +122,15 @@ const {
     buildMarketingBrain: async () => fakeBrain,
     computeMarketingRoi: async () => ({ revenue: 1240, conversions: 5, sent: 17, reviewClicks: 4, days: 30, bySource: [{ key: 'birthday_j30', label: 'Anniversaires', sent: 12, conversions: 3, revenue: 770 }] }),
     listMarketingInsights: async () => [
-      { id: 21, kind: 'idea', title: 'Post Foire', body: 'Foire à 5 min.', channel: 'facebook', ready_content: 'T.', signature: 'local_event:facebook', status: 'proposed', payload: {}, due_date: null },
+      { id: 21, kind: 'idea', title: 'Post Foire', body: 'Foire à 5 min.', channel: 'facebook', ready_content: 'T.', signature: 'local_event:facebook', status: 'proposed', payload: {}, due_date: null,
+        // La tracabilite telle que le conseiller la fige : chaque fait cite
+        // porte sa valeur, son volume et la derivation qui permet de refaire
+        // le calcul a la main.
+        data_basis: [{ factId: 'creneau_creux', valeur: '11 h : 9 reservations', observations: 9, calcul: 'groupe par heure de start_time, minimum 8 observations' }] },
+      // Sa jumelle SANS tracabilite : elle doit arriver dans la file comme les
+      // autres, et n afficher aucune preuve. Sans elle, un bloc rendu en dur
+      // passerait les assertions ci-dessous.
+      { id: 24, kind: 'idea', title: 'Post sans preuve', body: 'Aucune tracabilite.', channel: 'facebook', ready_content: 'T.', signature: 'sans_preuve:facebook', status: 'proposed', payload: {}, due_date: null },
       { id: 22, kind: 'idea', title: 'Post pluie', body: '', channel: 'facebook', ready_content: 'T.', signature: 'rain_forecast:facebook', status: 'validated', applied_at: '2026-07-01T08:00:00Z', result: { deltaPct: 18 }, payload: {} },
       // Une PISTE : proposee comme les autres, mais ce n est pas un texte a
       // publier. Sans genre distinct, propositionFromInsight en ferait un
@@ -142,6 +150,28 @@ const {
   ok(bundle.brief.text.includes('préparé') && bundle.brief.degraded === true, 'brief composé + flag dégradé sans IA');
   ok(bundle.receipts.length === 1 && bundle.receipts[0].result === '+18 % de monde', 'reçus mesurés');
   ok(bundle.veille.count === 2 && bundle.veille.changed[0].name === 'Bowling Arlon', 'veille résumée');
+
+  // ── LA PREUVE ARRIVE JUSQU AU GERANT ────────────────────────────────────
+  // Chaque proposition est stockee avec sa tracabilite pour que le gerant
+  // puisse REFAIRE le calcul et prendre l agent en defaut. Elle dormait en
+  // base : propositionFromInsight ne lisait meme pas la colonne, donc la carte
+  // disait « Voir les faits » sans jamais en montrer un seul.
+  const avecPreuve = bundle.propositions.find((proposition) => Number(proposition.id) === 21);
+  ok(avecPreuve && Array.isArray(avecPreuve.faits) && avecPreuve.faits.length === 1,
+    'la proposition porte les faits qui la soutiennent',
+    JSON.stringify(avecPreuve && avecPreuve.faits));
+  ok(avecPreuve && avecPreuve.faits[0].valeur === '11 h : 9 reservations',
+    'la VALEUR exacte, pas un identifiant technique');
+  ok(avecPreuve && avecPreuve.faits[0].observations === 9,
+    'le nombre d observations qui la soutient');
+  ok(avecPreuve && avecPreuve.faits[0].calcul.includes('groupe par heure'),
+    'et la DERIVATION : le calcul se refait a la main');
+  // CONTRE-PREUVE : sans tracabilite en base, aucune preuve n est fabriquee.
+  const sansPreuve = bundle.propositions.find((proposition) => Number(proposition.id) === 24);
+  ok(sansPreuve && Array.isArray(sansPreuve.faits) && sansPreuve.faits.length === 0,
+    'CONTRE-PREUVE : une proposition sans tracabilite n en invente aucune',
+    JSON.stringify(sansPreuve && sansPreuve.faits));
+
 
   // ── UNE PISTE N EST PAS UN POST ─────────────────────────────────────────
   // Le conseiller rend une piste quand il refuse un changement de regle : une

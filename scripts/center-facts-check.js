@@ -691,5 +691,73 @@ ok('CONTRE-PREUVE : le mois le plus CREUX, lui, reste solide',
 ok('CONTRE-PREUVE : le panier moyen, qui n est pas un classement, reste sain',
   ficheAvecAccident.panier_moyen.fragile === false
   && peutAffirmer(ficheAvecAccident.panier_moyen, 'constat').autorise);
+
+// ── LE FAIT DU SOMMEIL ──────────────────────────────────────────────────────
+console.log('\n[SOMMEIL] la fiche dit quand elle a cesse de decrire le present');
+const AUJOURDHUI = '2026-09-09';
+const ilYA = (n) => new Date(Date.parse(`${AUJOURDHUI}T00:00:00Z`) - n * 86400000)
+  .toISOString().slice(0, 10);
+// 60 commandes tous les 2 jours : un rythme dense, donc un silence de 120
+// jours est anormal pour ce centre-la.
+const registreArrete = Array.from({ length: 60 }, (unused, i) => resa({
+  date: ilYA(120 + (60 - i) * 2),
+  created_at: `${ilYA(122 + (60 - i) * 2)}T10:00:00Z`,
+  email: `arret${i}@example.test`,
+}));
+const ficheArretee = ficheDuRegistre({ reservations: registreArrete, formules: [], aujourdhui: AUJOURDHUI });
+ok('la fiche porte la derniere activite', Boolean(ficheArretee.derniere_activite),
+  ficheArretee.derniere_activite && String(ficheArretee.derniere_activite.valeur));
+ok('et elle DIT que le registre ne bouge plus', Boolean(ficheArretee.registre_dormant));
+ok('le fait donne le silence ET la reference qui le rend anormal',
+  /aucune reservation depuis \d+ jours/.test(String((ficheArretee.registre_dormant || {}).valeur))
+  && /plus long silence[^0-9]+\d+ jours/.test(String((ficheArretee.registre_dormant || {}).valeur)),
+  String((ficheArretee.registre_dormant || {}).valeur));
+ok('les deux restent reserves au gerant : ce n est pas un sujet de publication',
+  ficheArretee.derniere_activite.audience === 'interne'
+  && ficheArretee.registre_dormant.audience === 'interne');
+
+// CONTRE-PREUVE 1 : le MEME registre, decale pour finir hier. Rien ne dort.
+const registreVivant = Array.from({ length: 60 }, (unused, i) => resa({
+  date: ilYA(1 + (60 - i) * 2),
+  created_at: `${ilYA(3 + (60 - i) * 2)}T10:00:00Z`,
+  email: `vivant${i}@example.test`,
+}));
+const ficheVivante = ficheDuRegistre({ reservations: registreVivant, formules: [], aujourdhui: AUJOURDHUI });
+ok('CONTRE-PREUVE : le meme registre, frais, ne declenche rien',
+  Boolean(ficheVivante.derniere_activite) && !ficheVivante.registre_dormant,
+  ficheVivante.derniere_activite && String(ficheVivante.derniere_activite.valeur));
+
+// CONTRE-PREUVE 2 : sans date du jour, aucun verdict. Une fiche calculee hors
+// horloge ne doit pas inventer une dormance ni une fraicheur.
+const ficheSansHorloge = ficheDuRegistre({ reservations: registreArrete, formules: [] });
+ok('CONTRE-PREUVE : sans date du jour, ni fraicheur ni dormance',
+  !ficheSansHorloge.derniere_activite && !ficheSansHorloge.registre_dormant);
+
+// CONTRE-PREUVE 3 : le meme registre arrete, plus UN groupe attendu la semaine
+// prochaine. Le centre n est pas mort, et aucune lecture de tendance ne doit
+// pouvoir dire le contraire.
+const ficheAvecClientAttendu = ficheDuRegistre({
+  reservations: [...registreArrete, resa({
+    date: ilYA(-7), created_at: `${ilYA(2)}T10:00:00Z`, email: 'groupe@example.test',
+  })],
+  formules: [], aujourdhui: AUJOURDHUI,
+});
+ok('CONTRE-PREUVE : un groupe attendu la semaine prochaine reveille le centre',
+  !ficheAvecClientAttendu.registre_dormant,
+  String((ficheAvecClientAttendu.registre_dormant || {}).valeur));
+
+// Le melange d horloges : si UNE ligne n a pas de date de commande, tout le
+// registre se lit a la date de venue. Sinon on compare la commande des unes a
+// la venue des autres, et on fabrique des trous qui n ont jamais existe.
+const registreSansCommande = registreArrete.map((r, i) => (i === 0 ? { ...r, created_at: null } : r));
+const ficheUneSeuleHorloge = ficheDuRegistre({
+  reservations: registreSansCommande, formules: [], aujourdhui: AUJOURDHUI,
+});
+ok('une seule ligne sans date de commande fait basculer TOUT le registre sur la venue',
+  String((ficheUneSeuleHorloge.derniere_activite || {}).source).includes('date de venue'),
+  String((ficheUneSeuleHorloge.derniere_activite || {}).source));
+ok('CONTRE-PREUVE : quand toutes les lignes la portent, c est la commande qui parle',
+  String(ficheArretee.derniere_activite.source).includes('date de commande'),
+  String(ficheArretee.derniere_activite.source));
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

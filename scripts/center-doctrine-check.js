@@ -115,7 +115,7 @@ const DOCTRINE_HOSTILE = [
   const cleSauvee = process.env.ANTHROPIC_API_KEY;
   process.env.ANTHROPIC_API_KEY = 'cle-de-mesure';
 
-  const fiche = ficheDuRegistre({ reservations: serie(120), formules: [], aujourdhui: '2028-06-01' });
+  const fiche = ficheDuRegistre({ reservations: serie(120), formules: [], aujourdhui: '2028-04-20' });
   const autorises = nombresAutorises(fiche);
   const porteur = faitsUtiles(fiche).find((f) => f.peutPorter.includes('constat'));
 

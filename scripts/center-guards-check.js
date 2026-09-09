@@ -10,6 +10,8 @@ const {
   reformulerEnHypothese,
   elire,
   elireRobuste,
+  sommeilDuRegistre,
+  PLANCHER_DE_SILENCE,
   distributionSuspecte,
   nombresDe,
   verifierProvenance,
@@ -638,5 +640,87 @@ ok('CONTRE-PREUVE : le meme fait sans le drapeau passe les trois natures',
 // ne cree pas une fragilite fantome qui bloquerait un fait sain.
 ok('un motif sans drapeau ne bloque rien',
   peutAffirmer(fait({ ...classementFragile, fragile: false, motifFragilite: 'bruit' }), 'constat').autorise);
+
+// ── UN REGISTRE QUI NE BOUGE PLUS ───────────────────────────────────────────
+// La fiche decrivait le registre sans jamais regarder l horloge : un centre
+// dont la derniere commande date de huit mois produisait la meme fiche qu un
+// centre actif. « Ton creneau le plus demande est 18 h, publie un rappel » sur
+// un centre qui ne vend plus rien n est pas un conseil faible, c est un conseil
+// faux.
+//
+// Le seuil ne peut pas etre un nombre de jours choisi a la main : il serait
+// faux pour tout le monde. On prend le PLUS LONG SILENCE deja connu du centre.
+console.log('\n[SOMMEIL] le silence anormal se mesure contre le passe du centre');
+
+// Fabrique de jalons : une commande tous les `pas` jours, `combien` fois, en
+// terminant `ilYA` jours avant la date de reference.
+const REFERENCE = '2026-09-09';
+const jourAvant = (n) => new Date(Date.parse(`${REFERENCE}T00:00:00Z`) - n * 86400000)
+  .toISOString().slice(0, 10);
+const jalons = (combien, pas, ilYA) => Array.from({ length: combien },
+  (unused, i) => jourAvant(ilYA + (combien - 1 - i) * pas));
+
+ok('sans jalon, rien n est mesure et rien n est affirme',
+  sommeilDuRegistre([], REFERENCE).mesurable === false
+  && sommeilDuRegistre([], REFERENCE).dormant === false);
+ok('sans date du jour non plus : pas d horloge, pas de verdict',
+  sommeilDuRegistre(jalons(50, 2, 300), '').mesurable === false);
+
+// CENTRE DENSE : une commande tous les 2 jours pendant 6 mois. Son plus long
+// silence vaut 2 jours, donc la reference retombe sur le plancher.
+const dense = jalons(90, 2, 20);
+const denseEndormi = sommeilDuRegistre(dense, REFERENCE);
+ok('MONTAGE : le centre dense n a jamais connu de long silence',
+  denseEndormi.plusLongSilence === 2, String(denseEndormi.plusLongSilence));
+ok('la reference ne descend jamais sous le plancher',
+  denseEndormi.reference === PLANCHER_DE_SILENCE, String(denseEndormi.reference));
+ok('20 jours de silence : ce centre-la dort', denseEndormi.dormant === true,
+  `${denseEndormi.jours} jours contre une reference de ${denseEndormi.reference}`);
+const denseFrais = sommeilDuRegistre(jalons(90, 2, 10), REFERENCE);
+ok('CONTRE-PREUVE : 10 jours de silence, le meme centre ne dort pas',
+  denseFrais.dormant === false, `${denseFrais.jours} jours`);
+
+// CENTRE SAISONNIER : le meme rythme, mais son histoire porte une fermeture de
+// 42 jours. Le trou est fabrique en collant deux series separees par ce trou.
+const saisonnier = [...jalons(40, 2, 160), ...jalons(45, 2, 30)];
+const saisonnierSilencieux = sommeilDuRegistre(saisonnier, REFERENCE);
+ok('MONTAGE : son histoire porte bien une longue fermeture',
+  saisonnierSilencieux.plusLongSilence >= 40, String(saisonnierSilencieux.plusLongSilence));
+ok('30 jours de silence : ce centre-la NE dort PAS, il a deja vecu pire',
+  saisonnierSilencieux.dormant === false,
+  `${saisonnierSilencieux.jours} jours contre une reference de ${saisonnierSilencieux.reference}`);
+
+// LE POINT DE TOUT LE CALCUL : meme silence, verdicts opposes. Un seuil fixe
+// choisi a la main ne saurait pas faire cette difference, quel que soit le
+// nombre choisi.
+const denseA30 = sommeilDuRegistre(jalons(90, 2, 30), REFERENCE);
+const saisonnierA30 = sommeilDuRegistre([...jalons(40, 2, 160), ...jalons(45, 2, 30)], REFERENCE);
+ok('MONTAGE : les deux centres se taisent depuis exactement le meme temps',
+  denseA30.jours === saisonnierA30.jours, `${denseA30.jours} / ${saisonnierA30.jours}`);
+ok('LE POINT : le dense dort, le saisonnier non, au meme jour',
+  denseA30.dormant === true && saisonnierA30.dormant === false,
+  `dense=${denseA30.dormant} saisonnier=${saisonnierA30.dormant}`);
+
+// LE VETO : des clients sont attendus. Un centre dont personne n a commande
+// depuis 60 jours mais qui a un groupe sur le planning de la semaine
+// prochaine n est pas mort, et aucune lecture de tendance ne doit pouvoir dire
+// le contraire. Le fait le plus dur du registre prime.
+const arreteMaisAttendu = sommeilDuRegistre(jalons(90, 2, 60), REFERENCE, { reservationsAVenir: 1 });
+const arreteEtVide = sommeilDuRegistre(jalons(90, 2, 60), REFERENCE, { reservationsAVenir: 0 });
+ok('MONTAGE : sans client attendu, ce centre-la dort bien',
+  arreteEtVide.dormant === true, `${arreteEtVide.jours} jours`);
+ok('LE VETO : une seule reservation a venir suffit a le reveiller',
+  arreteMaisAttendu.dormant === false,
+  `${arreteMaisAttendu.jours} jours, ${arreteMaisAttendu.reservationsAVenir} a venir`);
+ok('et le silence reste MESURE, il n est pas efface',
+  arreteMaisAttendu.jours === arreteEtVide.jours && arreteMaisAttendu.mesurable === true);
+
+// Et le saisonnier finit par dormir lui aussi, quand il depasse son propre
+// record. Sans ca, la garde ne serait qu une facon elegante de ne jamais rien
+// dire des centres qui ferment.
+const saisonnierVraimentMort = sommeilDuRegistre([...jalons(40, 2, 218), ...jalons(45, 2, 88)], REFERENCE);
+ok('le saisonnier dort quand il depasse son propre record',
+  saisonnierVraimentMort.dormant === true,
+  `${saisonnierVraimentMort.jours} jours contre ${saisonnierVraimentMort.reference}`);
 console.log(`\n${failures ? `center-guards-check: ${failures} ECHEC(S)` : 'center-guards-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

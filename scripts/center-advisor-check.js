@@ -54,7 +54,7 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   process.env.ANTHROPIC_API_KEY = 'cle-de-mesure';
 
   // 120 réservations étalées sur ~28 mois : assez pour que des faits portent.
-  const fiche = ficheDuRegistre({ reservations: serie(120), formules: [], aujourdhui: '2028-06-01' });
+  const fiche = ficheDuRegistre({ reservations: serie(120), formules: [], aujourdhui: '2028-04-20' });
   const utiles = faitsUtiles(fiche);
 
   console.log('[MONTAGE] la fiche porte de quoi parler');
@@ -185,7 +185,7 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     fiche,
     lieu: LIEU,
     historique: dejaSorti,
-    aujourdhui: '2028-06-01',
+    aujourdhui: '2028-04-20',
     fetchImpl: modeleQuiRepond(bonne),
   });
   ok('la meme proposition, deja partie, est jetee',
@@ -199,7 +199,7 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     fiche,
     lieu: LIEU,
     historique: [],
-    aujourdhui: '2028-06-01',
+    aujourdhui: '2028-04-20',
     fetchImpl: modeleQuiRepond(bonne),
   });
   ok('CONTRE-EPREUVE : sans historique, la meme proposition passe',
@@ -266,7 +266,7 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
       { id: 'f1', name: 'Anniversaire Kids', min_pax: 6, active: true },
       { id: 'f2', name: 'Sortie Scolaire', min_pax: 15, active: true },
     ],
-    aujourdhui: '2028-06-01',
+    aujourdhui: '2028-04-20',
   });
   const idPublie = Object.keys(ficheCatalogue).find((id) => ficheCatalogue[id].audience === 'public');
   ok('MONTAGE : cette fiche porte un fait publiable et un catalogue a deux minimums',
@@ -488,6 +488,48 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   faitsDuRegistre.chargerMemoireDuCentre = vraiChargerMemoire;
   adn.buildDnaBlock = vraiAdn;
   delete require.cache[require.resolve('../lib/center-metrics')];
+
+  // ── UN REGISTRE ENDORMI NE CONSEILLE RIEN ─────────────────────────────────
+  // Les faits restent vrais au passe et le mode Demander y repond toujours. Ce
+  // qui devient impossible, c est le geste au present.
+  console.log('\n[SOMMEIL] le conseiller se tait sur un centre qui ne vend plus');
+  let appelsSurDormant = 0;
+  const ficheDormante = {
+    ...fiche,
+    registre_dormant: {
+      id: 'registre_dormant', libelle: 'le registre ne bouge plus',
+      valeur: 'aucune reservation depuis 240 jours, alors que le plus long silence deja connu de ce centre est de 21 jours',
+      n: 200, genre: 'denombrement', audience: 'interne', mois: [], du: '', au: '', source: 'silence observe',
+    },
+  };
+  const surDormant = await proposerDepuisLaFiche({
+    fiche: ficheDormante, lieu: LIEU,
+    fetchImpl: async () => { appelsSurDormant += 1; return { ok: false, status: 500, text: async () => '' }; },
+  });
+  ok('le silence a sa propre cause', surDormant.silence === 'registre_dormant', String(surDormant.silence));
+  ok('le motif porte le nombre de jours, pas une formule vague',
+    surDormant.motifs.some((m) => m.includes('240 jours')), JSON.stringify(surDormant.motifs));
+  ok('AUCUN appel au modele : on ne paie pas pour conseiller un centre arrete',
+    appelsSurDormant === 0, String(appelsSurDormant));
+
+  // CONTRE-PREUVE : la MEME fiche sans le fait de dormance parle normalement.
+  // Sans elle, on aurait seulement montre un conseiller qui refuse toujours.
+  const surVivant = await proposerDepuisLaFiche({ fiche, lieu: LIEU, fetchImpl: modeleQuiRepond(bonne) });
+  ok('CONTRE-PREUVE : la meme fiche sans dormance rend bien une proposition',
+    Boolean(surVivant.proposition) && !surVivant.silence, JSON.stringify(surVivant.motifs));
+
+  // La dormance passe AVANT la cause globale (cle absente) : une cle manquante
+  // est la meme pour les trois centres, la dormance parle de CELUI-ci.
+  const clesSauvegardees = {};
+  ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'KIMI_API_KEY', 'MOONSHOT_API_KEY', 'OPENROUTER_API_KEY']
+    .forEach((cle) => { clesSauvegardees[cle] = process.env[cle]; delete process.env[cle]; });
+  const sansCleEtDormant = await proposerDepuisLaFiche({ fiche: ficheDormante, lieu: LIEU, fetchImpl: modeleQuiRepond(bonne) });
+  ok('sans cle ET endormi : c est la dormance qui est nommee, pas la cle',
+    sansCleEtDormant.silence === 'registre_dormant', String(sansCleEtDormant.silence));
+  Object.entries(clesSauvegardees).forEach(([cle, valeur]) => {
+    if (valeur !== undefined) process.env[cle] = valeur;
+  });
+  process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'cle-de-mesure';
   // ── REJETS ────────────────────────────────────────────────────────────────
   console.log('\n[REJETE] chaque garde jette ce qu elle doit jeter');
 

@@ -132,6 +132,35 @@ ok('il porte un constat ET une affirmation saisonniere',
 ok('et POURTANT le changement de regle reste refuse : impossibilite de nature, pas manque de donnees',
   peutAffirmer(geant, 'regle_commerciale').autorise === false);
 
+// ── LES BARRES SONT ORDONNEES ───────────────────────────────────────────────
+// Une affirmation plus forte ne peut pas exiger moins qu une plus faible.
+// Releve en instrumentant le handler de l agent marketing : sur un registre
+// riche, la barre saisonniere passait sur 20 faits quand le constat n en
+// passait que 18. Deux faits trop minces pour etre simplement ENONCES pouvaient
+// donc porter une conclusion sur l annee. Chaque barre etait defendable seule,
+// c est leur ORDRE qui etait faux.
+console.log('\n[ORDRE] une affirmation plus forte n exige jamais moins');
+const echantillon = [
+  // dense et cyclique
+  fait({ id: 'a', valeur: 1, n: 500, mois: MOIS_OBSERVES.concat(['2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07']), genre: 'estimation' }),
+  // cyclique mais MINCE : le cas qui passait saisonnier sans passer constat
+  fait({ id: 'b', valeur: 1, n: 4, mois: MOIS_OBSERVES.concat(['2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07']), genre: 'estimation' }),
+  // dense mais sur un seul ete
+  fait({ id: 'c', valeur: 1, n: 500, mois: ['2026-07', '2026-08'], genre: 'estimation' }),
+];
+ok('MONTAGE : l echantillon contient bien un fait cyclique ET mince',
+  echantillon.some((f) => maturite(f).saison === 'cycle_complet' && maturite(f).volume === 'anecdote'));
+const compte = (nature) => echantillon.filter((f) => peutAffirmer(f, nature).autorise).length;
+ok(`saisonnier (${compte('saisonnier')}) ne depasse jamais constat (${compte('constat')})`,
+  compte('saisonnier') <= compte('constat'));
+ok('le fait cyclique MAIS mince est refuse en saisonnier',
+  peutAffirmer(echantillon[1], 'saisonnier').autorise === false,
+  JSON.stringify(peutAffirmer(echantillon[1], 'saisonnier')));
+ok('MONTAGE : il couvre pourtant bien un cycle complet',
+  maturite(echantillon[1]).saison === 'cycle_complet');
+ok('CONTRE-PREUVE : le meme fait devenu dense passe en saisonnier',
+  peutAffirmer(fait({ ...echantillon[1], n: 500 }), 'saisonnier').autorise === true);
+
 // ── LE REFUS RESTE UTILE ────────────────────────────────────────────────────
 console.log('\n[HYPOTHESE] un refus n est pas un silence');
 const hypo = reformulerEnHypothese({

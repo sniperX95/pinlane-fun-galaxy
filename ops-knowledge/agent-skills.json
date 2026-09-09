@@ -145,13 +145,23 @@
       "category": "orchestration",
       "priority": 1,
       "mission": "Lire les donnees du site, choisir quels agents activer, prioriser les risques et organiser l'amelioration continue.",
-      "skills": ["agent-routing", "data-health-checks", "continuous-learning-loop", "priority-arbitration", "safe-escalation"],
+      "skills": [
+        "agent-routing",
+        "data-health-checks",
+        "continuous-learning-loop",
+        "priority-arbitration",
+        "safe-escalation"
+      ],
       "guardrails": [
         "Ne modifie jamais le planning, les prix ou les mails directement.",
         "Declenche les agents en mode analyse, proposition ou alerte selon le risque.",
         "L'apprentissage automatique reste limite aux suggestions tracables et approuvables."
       ],
-      "nextUpgrades": ["CorrelationId par reservation", "Mode shadow pour nouveaux agents", "Tableau de bord qualite IA par centre"]
+      "nextUpgrades": [
+        "CorrelationId par reservation",
+        "Mode shadow pour nouveaux agents",
+        "Tableau de bord qualite IA par centre"
+      ]
     },
     {
       "id": "planning-agent",
@@ -160,13 +170,23 @@
       "category": "operations",
       "priority": 1,
       "mission": "Calculer les scenarios Bowling/Laser/Formules compatibles avec capacites, horaires, groupes, retards et ressources critiques.",
-      "skills": ["capacity-planning", "constraint-solving", "resource-conflict-detection", "risk-scoring", "explainable-scenarios"],
+      "skills": [
+        "capacity-planning",
+        "constraint-solving",
+        "resource-conflict-detection",
+        "risk-scoring",
+        "explainable-scenarios"
+      ],
       "guardrails": [
         "Aucun conflit bowling/laser/table ne peut etre confirme automatiquement.",
         "Les dates passees et horaires hors ouverture sont bloques.",
         "Le mode formule ne valide que les heures Bowling/Laser compatibles."
       ],
-      "nextUpgrades": ["Ajouter simulation Monte Carlo retard", "Comparer scenarios par satisfaction client", "Tracer chaque choix de scenario"]
+      "nextUpgrades": [
+        "Ajouter simulation Monte Carlo retard",
+        "Comparer scenarios par satisfaction client",
+        "Tracer chaque choix de scenario"
+      ]
     },
     {
       "id": "delay-agent",
@@ -175,9 +195,19 @@
       "category": "operations",
       "priority": 1,
       "mission": "Evaluer l'impact d'un retard terrain et proposer absorption, decalage ou alerte staff.",
-      "skills": ["delay-impact-analysis", "resource-replanning", "staff-alerting"],
-      "guardrails": ["Ne deplace jamais une reservation sans trace.", "Alerte quand un decalage touche un autre client."],
-      "nextUpgrades": ["Notifications client automatiques", "Simulation impact multi-centres"]
+      "skills": [
+        "delay-impact-analysis",
+        "resource-replanning",
+        "staff-alerting"
+      ],
+      "guardrails": [
+        "Ne deplace jamais une reservation sans trace.",
+        "Alerte quand un decalage touche un autre client."
+      ],
+      "nextUpgrades": [
+        "Notifications client automatiques",
+        "Simulation impact multi-centres"
+      ]
     },
     {
       "id": "communication-agent",
@@ -186,9 +216,21 @@
       "category": "customer",
       "priority": 1,
       "mission": "Preparer confirmations, rappels et messages humains sans surcharger le design email.",
-      "skills": ["human-email-copy", "reservation-summary", "laser-disclaimer", "reminder-scheduling"],
-      "guardrails": ["Ne promet pas une formule si validation staff requise.", "Rappelle l'avance necessaire pour formules avec laser."],
-      "nextUpgrades": ["Variantes ton humain par centre", "SMS lorsque fournisseur choisi", "Relance no-show"]
+      "skills": [
+        "human-email-copy",
+        "reservation-summary",
+        "laser-disclaimer",
+        "reminder-scheduling"
+      ],
+      "guardrails": [
+        "Ne promet pas une formule si validation staff requise.",
+        "Rappelle l'avance necessaire pour formules avec laser."
+      ],
+      "nextUpgrades": [
+        "Variantes ton humain par centre",
+        "SMS lorsque fournisseur choisi",
+        "Relance no-show"
+      ]
     },
     {
       "id": "learning-agent",
@@ -197,9 +239,21 @@
       "category": "learning",
       "priority": 1,
       "mission": "Transformer les evenements terrain en suggestions de duree, buffer et risque par centre.",
-      "skills": ["event-learning", "duration-drift-detection", "center-specific-suggestions"],
-      "guardrails": ["Aucune modification automatique des durees critiques.", "Suggestions separees par centre.", "Besoin d'approbation direction pour appliquer."],
-      "nextUpgrades": ["Dataset golden reservations", "Evaluation mensuelle automatique", "Mode shadow avant activation"]
+      "skills": [
+        "event-learning",
+        "duration-drift-detection",
+        "center-specific-suggestions"
+      ],
+      "guardrails": [
+        "Aucune modification automatique des durees critiques.",
+        "Suggestions separees par centre.",
+        "Besoin d'approbation direction pour appliquer."
+      ],
+      "nextUpgrades": [
+        "Dataset golden reservations",
+        "Evaluation mensuelle automatique",
+        "Mode shadow avant activation"
+      ]
     },
     {
       "id": "director-agent",
@@ -208,9 +262,21 @@
       "category": "admin",
       "priority": 1,
       "mission": "Resumer reservations, revenus, risques, mails et alertes par centre ou periode.",
-      "skills": ["multi-center-summary", "kpi-analysis", "risk-surfacing", "export-explanation"],
-      "guardrails": ["Ne melange pas les centres.", "Affiche les risques au lieu de les masquer."],
-      "nextUpgrades": ["Comparaisons semaine/mois", "Insights business automatiques", "Export direction signe"]
+      "skills": [
+        "multi-center-summary",
+        "kpi-analysis",
+        "risk-surfacing",
+        "export-explanation"
+      ],
+      "guardrails": [
+        "Ne melange pas les centres.",
+        "Affiche les risques au lieu de les masquer."
+      ],
+      "nextUpgrades": [
+        "Comparaisons semaine/mois",
+        "Insights business automatiques",
+        "Export direction signe"
+      ]
     },
     {
       "id": "security-agent",
@@ -219,13 +285,22 @@
       "category": "security",
       "priority": 1,
       "mission": "Controler les risques IA: prompt injection, excessive agency, fuite donnees, actions sensibles et consommation non bornee.",
-      "skills": ["owasp-llm-mapping", "sensitive-action-review", "redteam-scenarios", "policy-checks"],
+      "skills": [
+        "owasp-llm-mapping",
+        "sensitive-action-review",
+        "redteam-scenarios",
+        "policy-checks"
+      ],
       "guardrails": [
         "Toute action destructive ou externe doit etre classee sensible.",
         "Les donnees client ne servent jamais a entrainer un modele externe sans accord explicite.",
         "Les sorties IA qui modifient planning, mail ou prix passent par validation schema."
       ],
-      "nextUpgrades": ["Promptfoo CI", "Journal des decisions IA", "Tests injection indirecte via contenu centre"]
+      "nextUpgrades": [
+        "Promptfoo CI",
+        "Journal des decisions IA",
+        "Tests injection indirecte via contenu centre"
+      ]
     },
     {
       "id": "research-agent",
@@ -234,9 +309,21 @@
       "category": "product",
       "priority": 2,
       "mission": "Surveiller frameworks, concurrents, bonnes pratiques agents et opportunites produit bowling/loisirs.",
-      "skills": ["web-research", "source-ranking", "competitor-analysis", "implementation-briefs"],
-      "guardrails": ["Toujours citer les sources.", "Ne pas remplacer la verite metier du centre par du marketing externe."],
-      "nextUpgrades": ["Veille mensuelle", "Comparatif concurrents", "Backlog automatiquement priorise"]
+      "skills": [
+        "web-research",
+        "source-ranking",
+        "competitor-analysis",
+        "implementation-briefs"
+      ],
+      "guardrails": [
+        "Toujours citer les sources.",
+        "Ne pas remplacer la verite metier du centre par du marketing externe."
+      ],
+      "nextUpgrades": [
+        "Veille mensuelle",
+        "Comparatif concurrents",
+        "Backlog automatiquement priorise"
+      ]
     },
     {
       "id": "qa-redteam-agent",
@@ -245,9 +332,21 @@
       "category": "quality",
       "priority": 1,
       "mission": "Generer et executer des cas limites: gros groupes, dates passees, formules impossibles, horaires critiques, injections et couts.",
-      "skills": ["scenario-generation", "boundary-testing", "security-redteam", "regression-testing"],
-      "guardrails": ["Les tests prod ne creent pas de vraies reservations sans mode sandbox.", "Les attaques restent dans les endpoints de test."],
-      "nextUpgrades": ["Promptfoo", "Tests navigateur nocturnes", "Rapport qualite direction"]
+      "skills": [
+        "scenario-generation",
+        "boundary-testing",
+        "security-redteam",
+        "regression-testing"
+      ],
+      "guardrails": [
+        "Les tests prod ne creent pas de vraies reservations sans mode sandbox.",
+        "Les attaques restent dans les endpoints de test."
+      ],
+      "nextUpgrades": [
+        "Promptfoo",
+        "Tests navigateur nocturnes",
+        "Rapport qualite direction"
+      ]
     },
     {
       "id": "design-agent",
@@ -256,9 +355,47 @@
       "category": "product",
       "priority": 2,
       "mission": "Maintenir un design simple, lisible, non generique et coherent avec Fun Galaxy sans casser les workflows staff.",
-      "skills": ["ui-audit", "accessibility-checks", "copy-cleanup", "visual-consistency"],
-      "guardrails": ["Ne pas sacrifier la lisibilite pour un effet visuel.", "Verifier les textes et boutons apres changement."],
-      "nextUpgrades": ["Snapshots visuels Playwright", "Checklist mobile/staff/public"]
+      "skills": [
+        "ui-audit",
+        "accessibility-checks",
+        "copy-cleanup",
+        "visual-consistency"
+      ],
+      "guardrails": [
+        "Ne pas sacrifier la lisibilite pour un effet visuel.",
+        "Verifier les textes et boutons apres changement."
+      ],
+      "nextUpgrades": [
+        "Snapshots visuels Playwright",
+        "Checklist mobile/staff/public"
+      ]
+    },
+    {
+      "id": "marketing-agent",
+      "label": "Agent Marketing",
+      "status": "live",
+      "category": "growth",
+      "priority": 2,
+      "mission": "Lire le registre d un centre et n en dire que ce qui se prouve, sans aucune phrase preecrite.",
+      "skills": [
+        "center-fact-sheet",
+        "claim-maturity",
+        "provenance-check",
+        "cross-center-isolation",
+        "hypothesis-reframing"
+      ],
+      "guardrails": [
+        "Un centre, une fiche : les faits d un centre ne decrivent jamais un autre centre.",
+        "Aucun nombre qui ne figure pas deja dans la fiche du centre.",
+        "Aucune activite absente du catalogue de CE centre.",
+        "Un changement de prix, d horaire ou de minimum de personnes n est jamais une conclusion : l historique a ete produit sous l ancienne regle.",
+        "Registre sans estimation solide : silence, et aucun appel modele."
+      ],
+      "nextUpgrades": [
+        "Brancher l ADN d ecriture (marketing_dna) comme doctrine de style",
+        "Mesurer l effet reel d un conseil applique a 14 jours",
+        "Elargir la fiche aux creneaux vides valorises"
+      ]
     }
   ],
   "skillPacks": [
@@ -266,40 +403,78 @@
       "id": "planning-reliability",
       "label": "Planning fiable",
       "priority": 1,
-      "recommendedTools": ["custom-ops-engine", "OpenAI Agents SDK guardrails", "Vercel Workflow later"],
-      "appliesTo": ["planning-agent", "delay-agent"],
+      "recommendedTools": [
+        "custom-ops-engine",
+        "OpenAI Agents SDK guardrails",
+        "Vercel Workflow later"
+      ],
+      "appliesTo": [
+        "planning-agent",
+        "delay-agent"
+      ],
       "definition": "Contraintes ressources, simulations, buffers, explications et blocage automatique des scenarios dangereux."
     },
     {
       "id": "communications-human",
       "label": "Communication humaine",
       "priority": 1,
-      "recommendedTools": ["Resend", "OpenAI structured drafts later", "cron dispatch"],
-      "appliesTo": ["communication-agent"],
+      "recommendedTools": [
+        "Resend",
+        "OpenAI structured drafts later",
+        "cron dispatch"
+      ],
+      "appliesTo": [
+        "communication-agent"
+      ],
       "definition": "Mails simples, humains, personnalises, rappels et relances avec ton centre."
     },
     {
       "id": "security-governance",
       "label": "Securite IA",
       "priority": 1,
-      "recommendedTools": ["OWASP GenAI", "NIST AI RMF", "Promptfoo"],
-      "appliesTo": ["security-agent", "qa-redteam-agent"],
+      "recommendedTools": [
+        "OWASP GenAI",
+        "NIST AI RMF",
+        "Promptfoo"
+      ],
+      "appliesTo": [
+        "security-agent",
+        "qa-redteam-agent"
+      ],
       "definition": "Menaces LLM/agentic, donnees sensibles, permissions outil, couts, logs et tests rouges."
     },
     {
       "id": "observability-evals",
       "label": "Observabilite et evals",
       "priority": 1,
-      "recommendedTools": ["OpenAI traces", "LangSmith or OpenTelemetry later", "local ops events"],
-      "appliesTo": ["learning-agent", "director-agent", "qa-redteam-agent"],
+      "recommendedTools": [
+        "OpenAI traces",
+        "LangSmith or OpenTelemetry later",
+        "local ops events"
+      ],
+      "appliesTo": [
+        "learning-agent",
+        "director-agent",
+        "qa-redteam-agent"
+      ],
       "definition": "Chaque decision importante doit etre rejouable, mesuree et comparable avant de remplacer un agent."
     },
     {
       "id": "codex-product-skills",
       "label": "Skills Codex projet",
       "priority": 2,
-      "recommendedTools": ["design-taste-frontend", "redesign-existing-projects", "vercel verification", "browser", "spreadsheets"],
-      "appliesTo": ["design-agent", "research-agent", "director-agent"],
+      "recommendedTools": [
+        "design-taste-frontend",
+        "redesign-existing-projects",
+        "vercel verification",
+        "browser",
+        "spreadsheets"
+      ],
+      "appliesTo": [
+        "design-agent",
+        "research-agent",
+        "director-agent"
+      ],
       "definition": "Workflows reutilisables pour design, verification navigateur, exports, documents et veille."
     }
   ],
@@ -309,35 +484,60 @@
       "priority": "P1",
       "status": "blocked_by_ai_gateway_or_openai_key",
       "title": "Activer brouillons IA controles",
-      "steps": ["Configurer AI Gateway ou OPENAI_API_KEY", "Limiter l'agent aux drafts", "Valider sortie JSON", "Tracer cout et decision"]
+      "steps": [
+        "Configurer AI Gateway ou OPENAI_API_KEY",
+        "Limiter l'agent aux drafts",
+        "Valider sortie JSON",
+        "Tracer cout et decision"
+      ]
     },
     {
       "id": "promptfoo-redteam-ci",
       "priority": "P1",
       "status": "ready",
       "title": "Ajouter red team IA en CI",
-      "steps": ["Installer promptfoo", "Cibler endpoints sandbox", "Tester injection/fuite/excessive agency", "Bloquer deploy si regression critique"]
+      "steps": [
+        "Installer promptfoo",
+        "Cibler endpoints sandbox",
+        "Tester injection/fuite/excessive agency",
+        "Bloquer deploy si regression critique"
+      ]
     },
     {
       "id": "agent-tracing",
       "priority": "P1",
       "status": "partial",
       "title": "Tracer decisions agents",
-      "steps": ["Conserver ops events", "Ajouter correlationId reservation", "Ajouter decision log par agent", "Exporter rapport direction"]
+      "steps": [
+        "Conserver ops events",
+        "Ajouter correlationId reservation",
+        "Ajouter decision log par agent",
+        "Exporter rapport direction"
+      ]
     },
     {
       "id": "durable-workflows",
       "priority": "P2",
       "status": "planned",
       "title": "Workflows durables emails/retards",
-      "steps": ["Evaluer Vercel Workflow", "Rejouer dispatch email", "Ajouter retries nommes", "Pause/resume pour validations humaines exceptionnelles"]
+      "steps": [
+        "Evaluer Vercel Workflow",
+        "Rejouer dispatch email",
+        "Ajouter retries nommes",
+        "Pause/resume pour validations humaines exceptionnelles"
+      ]
     },
     {
       "id": "project-codex-skills",
       "priority": "P2",
       "status": "ready",
       "title": "Creer skills Codex dedies Fun Galaxy",
-      "steps": ["skill planning audit", "skill design QA", "skill security review", "skill export pro"]
+      "steps": [
+        "skill planning audit",
+        "skill design QA",
+        "skill security review",
+        "skill export pro"
+      ]
     }
   ]
 }

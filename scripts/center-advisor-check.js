@@ -300,6 +300,11 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('candidate.readyContent (le gabarit) n est plus publie',
     !/readyContent:\s*(?:polished|candidate\.readyContent)/.test(corps)
     && !corps.includes('polishIdeaWithAi('), 'un gabarit peut encore sortir');
+  // Le branchement de l identite doit exister EN PRODUCTION, pas seulement dans
+  // ce gate : sans lui, la garde des revendications interdites ne recoit aucune
+  // liste et laisse tout passer.
+  ok('le cycle passe l identite COMPLETE du centre, pas seulement son nom',
+    /centerFacts:\s*lieu/.test(corps), 'centerFacts absent du cycle de production');
 
   if (cleSauvee === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = cleSauvee;

@@ -854,5 +854,142 @@ ok('CONTRE-PREUVE : une duree de donnee en annees reste libre',
   unitesDuTexte('Le registre couvre 2 ans de reservations.', ficheAvecUnites).length === 0);
 ok('CONTRE-PREUVE : un nombre de jours reste libre',
   unitesDuTexte('Aucune reservation depuis 670 jours.', ficheAvecUnites).length === 0);
+
+// ── UN JOUR OUVERT QUI NE VEND RIEN ────────────────────────────────────────
+// parJour vient DES RESERVATIONS : un jour sans reservation n est pas un
+// candidat perdant, il n existe pas. jour_creux elit donc le moins rempli
+// PARMI CEUX QUI ONT VENDU. Mesure du 2026-09-09 sur la configuration reelle :
+// Libramont declare ouvrir le mardi de 14:00 a 22:00 ; sur un registre ou
+// aucun mardi n a jamais vendu, la fiche annonçait « jour_creux = dimanche,
+// 79 reservations » et ne nommait le mardi dans aucun de ses 51 faits.
+console.log('\n[JOUR MUET] un jour d ouverture qui ne vend rien devient visible');
+
+// MONTAGE 1 : la configuration REELLE declare bien le mardi ouvert et le
+// lundi ferme. Sans ca, ce gate testerait un centre imaginaire.
+const grilleReelle = require('../lib/ops-knowledge').getCenter('libramont').defaultSchedule;
+ok('MONTAGE : Libramont declare une vraie grille horaire',
+  grilleReelle && typeof grilleReelle === 'object' && grilleReelle.regular
+  && typeof grilleReelle.regular['2'] === 'object' && grilleReelle.regular['1'] === null,
+  JSON.stringify(grilleReelle && grilleReelle.regular));
+const joursOuvertsReels = Object.entries(grilleReelle.regular)
+  .filter(([, plage]) => plage && typeof plage === 'object').map(([jour]) => Number(jour));
+ok('MONTAGE : six jours ouverts declares, le lundi n en fait pas partie',
+  joursOuvertsReels.length === 6 && !joursOuvertsReels.includes(1), JSON.stringify(joursOuvertsReels));
+
+// Un registre qui vend tous les jours ouverts SAUF le mardi. Les volumes
+// varient d un jour a l autre : a egalite parfaite il n y a ni meilleur ni
+// pire jour, et la contre-preuve sur jour_creux ne testerait rien.
+function registreSansMardi(semaines, sansCeJour = 2) {
+  const lignes = [];
+  let curseur = Date.parse('2026-01-04T00:00:00Z'); // un dimanche
+  for (let semaine = 0; semaine < semaines; semaine += 1) {
+    joursOuvertsReels.filter((j) => j !== sansCeJour).forEach((jour, rang) => {
+      const combien = 1 + ((semaine + rang) % 3);
+      for (let k = 0; k < combien; k += 1) {
+        const d = new Date(curseur + jour * 86400000);
+        lignes.push(resa({
+          date: d.toISOString().slice(0, 10),
+          email: `muet${semaine}-${rang}-${k}@example.test`,
+          created_at: new Date(curseur + jour * 86400000 - 6 * 86400000).toISOString(),
+        }));
+      }
+    });
+    curseur += 7 * 86400000;
+  }
+  return lignes;
+}
+const lignesMuettes = registreSansMardi(40);
+
+// MONTAGE 2 : le registre ne contient VRAIMENT aucun mardi, et le mardi s est
+// VRAIMENT presente 40 fois dans la fenetre. Le denominateur est compte ici a
+// la main, independamment du code teste : si les deux comptes divergent, c est
+// le code qui a tort, pas le gate.
+const mardisDuRegistre = lignesMuettes.filter((r) => new Date(`${r.date}T00:00:00Z`).getUTCDay() === 2).length;
+ok('MONTAGE : aucune reservation un mardi dans ce registre', mardisDuRegistre === 0, String(mardisDuRegistre));
+const datesTriees = lignesMuettes.map((r) => r.date).sort();
+let mardisDeLaFenetre = 0;
+for (let t = Date.parse(`${datesTriees[0]}T00:00:00Z`); t <= Date.parse(`${datesTriees[datesTriees.length - 1]}T00:00:00Z`); t += 86400000) {
+  if (new Date(t).getUTCDay() === 2) mardisDeLaFenetre += 1;
+}
+ok('MONTAGE : la fenetre couvre bien 40 mardis', mardisDeLaFenetre === 40, String(mardisDeLaFenetre));
+
+const ficheMuette = ficheDuRegistre({
+  reservations: lignesMuettes, formules: [], aujourdhui: '2026-10-15', joursOuverts: joursOuvertsReels,
+});
+const faitMuet = ficheMuette.jour_ouvert_sans_vente;
+ok('le jour ouvert sans vente est POSE', Boolean(faitMuet), JSON.stringify(faitMuet && faitMuet.valeur));
+ok('il nomme le mardi', Boolean(faitMuet) && /mardi/.test(String(faitMuet.valeur)));
+ok('il porte son denominateur, le meme que le compte independant',
+  Boolean(faitMuet) && Number(faitMuet.n) === mardisDeLaFenetre,
+  `${faitMuet && faitMuet.n} vs ${mardisDeLaFenetre}`);
+ok('il ne nomme PAS le lundi, que le centre declare ferme',
+  Boolean(faitMuet) && !/lundi/.test(String(faitMuet.valeur)));
+ok('il reste INTERNE : « personne ne vient le mardi » ne se publie pas',
+  Boolean(faitMuet) && faitMuet.audience === 'interne', String(faitMuet && faitMuet.audience));
+
+// CE QUE LE CLASSEMENT DISAIT A LA PLACE. Sans cette assertion on ne saurait
+// pas si le nouveau fait apporte quelque chose ou repete jour_creux.
+ok('CONTRE-PREUVE : jour_creux, lui, elit un jour qui a VENDU',
+  Boolean(ficheMuette.jour_creux) && !/mardi/.test(String(ficheMuette.jour_creux.valeur)),
+  String(ficheMuette.jour_creux && ficheMuette.jour_creux.valeur));
+
+// FAIL-OPEN : sans horaire declare (Gembloux porte une chaine sentinelle,
+// Ciney aussi), aucun fait. On ne constate que ce qu on peut comparer, et on
+// n emprunte jamais la grille d un autre centre.
+ok('FAIL-OPEN : sans horaire declare, aucun fait',
+  !ficheDuRegistre({ reservations: lignesMuettes, formules: [], aujourdhui: '2026-10-15' }).jour_ouvert_sans_vente);
+
+// LA DERIVATION ELLE-MEME, sur les TROIS configurations reelles. C est le
+// point ou un centre pourrait heriter de la grille du voisin : Gembloux porte
+// litteralement « same_as_libramont_public_schedule », et resoudre cette
+// phrase en code donnerait a Gembloux les horaires de Libramont.
+const { joursOuvertsDeclares, occurrencesDuJour } = require('../lib/center-facts');
+const { getCenter: centreDeclare } = require('../lib/ops-knowledge');
+ok('MONTAGE : Gembloux porte bien une CHAINE au lieu d une grille',
+  typeof centreDeclare('gembloux').defaultSchedule === 'string',
+  JSON.stringify(centreDeclare('gembloux').defaultSchedule));
+ok('Libramont : six jours ouverts derives de sa propre grille',
+  JSON.stringify((joursOuvertsDeclares(centreDeclare('libramont').defaultSchedule) || []).sort((a, b) => a - b)) === '[0,2,3,4,5,6]',
+  JSON.stringify(joursOuvertsDeclares(centreDeclare('libramont').defaultSchedule)));
+ok('CLOISONNEMENT : Gembloux n herite d AUCUN jour, malgre le texte qui renvoie a Libramont',
+  joursOuvertsDeclares(centreDeclare('gembloux').defaultSchedule) === null);
+ok('CLOISONNEMENT : Ciney non plus',
+  joursOuvertsDeclares(centreDeclare('ciney').defaultSchedule) === null);
+ok('une grille ou tous les jours sont a null ne declare aucune ouverture',
+  joursOuvertsDeclares({ regular: { 0: null, 1: null } }) === null);
+ok('une grille partielle rend le seul jour pose',
+  JSON.stringify(joursOuvertsDeclares({ regular: { 6: { open: '10:00', close: '18:00' } } })) === '[6]');
+
+// LE BORD DE LA FENETRE, teste directement. Une borne exclusive perdrait une
+// occurrence quand la fenetre FINIT sur le jour compte. Ce cas ne peut jamais
+// se produire a travers le fait : un jour muet n a par definition aucune
+// reservation, donc il ne peut pas fermer la fenetre du registre. Trouve par
+// mutation : passer `t <= fin` a `t < fin` laissait tout vert.
+ok('le denominateur compte les DEUX bornes',
+  occurrencesDuJour(2, '2026-01-06', '2026-01-20') === 3,
+  String(occurrencesDuJour(2, '2026-01-06', '2026-01-20')));
+ok('zero quand le jour ne tombe pas dans la fenetre',
+  occurrencesDuJour(2, '2026-01-07', '2026-01-12') === 0,
+  String(occurrencesDuJour(2, '2026-01-07', '2026-01-12')));
+ok('zero sur une fenetre absurde ou sans date', occurrencesDuJour(2, '2026-02-01', '2026-01-01') === 0
+  && occurrencesDuJour(2, '', '2026-01-20') === 0);
+
+// MATURITE : un jour qui ne s est presente que trois fois ne se declare pas
+// muet. Sans ce filtre, un registre de deux semaines rendrait cinq jours muets.
+const ficheCourte = ficheDuRegistre({
+  reservations: registreSansMardi(3), formules: [], aujourdhui: '2026-01-26', joursOuverts: joursOuvertsReels,
+});
+ok('MATURITE : trois semaines ne suffisent pas a declarer un jour muet',
+  !ficheCourte.jour_ouvert_sans_vente,
+  String(ficheCourte.jour_ouvert_sans_vente && ficheCourte.jour_ouvert_sans_vente.valeur));
+
+// CONTRE-PREUVE : un centre qui vend TOUS ses jours ouverts ne recoit rien.
+// Une garde qui accuserait un centre sain serait pire que le trou comble.
+const ficheSaine = ficheDuRegistre({
+  reservations: registreSansMardi(40, -1), formules: [], aujourdhui: '2026-10-15', joursOuverts: joursOuvertsReels,
+});
+ok('CONTRE-PREUVE : un centre qui vend tous ses jours ouverts ne recoit rien',
+  !ficheSaine.jour_ouvert_sans_vente,
+  String(ficheSaine.jour_ouvert_sans_vente && ficheSaine.jour_ouvert_sans_vente.valeur));
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

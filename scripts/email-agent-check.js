@@ -410,6 +410,75 @@ const anthropicOk = (object) => ({
   try { await sendDirectEmail({ centerId: 'libramont', to: 'x@y.be', subject: 'a', body: 'b', scheduledAt: 'pas-une-date' }, makeDeps({})); } catch (e) { schedThrew = e.expose === true; }
   ok(schedThrew, 'date invalide → rejetée');
 
+
+  console.log('\n[HORAIRES] un horaire non declare n est pas un horaire ferme');
+  // Mesure du 2026-09-09 : `defaultSchedule` vaut une CHAINE sentinelle pour
+  // Gembloux (« same_as_libramont_public_schedule ») et Ciney (« to_confirm »).
+  // `?.regular || {}` en faisait une grille vide et les sept jours sortaient
+  // « fermé » vers le modele qui repond AUX CLIENTS, sur un centre ACTIF dont
+  // le telephone et l adresse sont publies.
+  const { buildCenterFacts: faitsDuCentre } = require('../lib/email-agent');
+  const { getCenter: centrePose } = require('../lib/ops-knowledge');
+  const JOUR_HEURE = /(Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche) (fermé|non renseigné|\d)/;
+
+  // MONTAGE : sans ces trois assertions, le gate testerait une situation qui
+  // n existe pas. C est exactement le piege qui a laisse passer le defaut.
+  const grilleLibramont = centrePose('libramont').defaultSchedule;
+  const grilleGembloux = centrePose('gembloux').defaultSchedule;
+  ok(typeof grilleGembloux === 'string', 'MONTAGE : Gembloux declare une CHAINE, pas une grille');
+  ok(centrePose('gembloux').status === 'active', 'MONTAGE : Gembloux est un centre ACTIF');
+  ok(grilleLibramont && typeof grilleLibramont === 'object' && grilleLibramont.regular
+    && grilleLibramont.regular['1'] === null, 'MONTAGE : Libramont declare son lundi FERME (null)');
+
+  const faitsGembloux = String(faitsDuCentre('gembloux'));
+  const faitsCiney = String(faitsDuCentre('ciney'));
+  const faitsLibramont = String(faitsDuCentre('libramont'));
+
+  ok(!JOUR_HEURE.test(faitsGembloux), 'Gembloux : aucun jour ne recoit d horaire ni de fermeture inventee');
+  ok(!faitsGembloux.includes('Samedi fermé') && !faitsGembloux.includes('Dimanche fermé'),
+    'Gembloux : le week-end n est plus annonce ferme');
+  ok(faitsGembloux.includes('NON RENSEIGNÉS'), 'Gembloux : le trou est NOMME au modele');
+  ok(/N annonce jamais une ouverture, une fermeture/.test(faitsGembloux),
+    'Gembloux : le modele a l INTERDICTION de combler le vide');
+  ok(/ne les déduis d aucun autre centre/.test(faitsGembloux),
+    'Gembloux : et l interdiction de reprendre l horaire d un autre centre');
+  ok(faitsGembloux.includes('0472/89.04.11'), 'Gembloux : la sortie donnee au client est son propre telephone');
+  ok(!faitsGembloux.includes('0491/30.16.67'), 'CLOISONNEMENT : le telephone de Libramont n apparait pas');
+  ok(!JOUR_HEURE.test(faitsCiney), 'Ciney : aucun jour ne recoit d horaire ni de fermeture inventee');
+  ok(/invite le client à nous appeler/.test(faitsCiney), 'Ciney, sans telephone publie, garde une sortie');
+
+  // CONTRE-PREUVE : le seul centre qui declare vraiment sa grille garde
+  // EXACTEMENT la ligne d avant, fermeture du lundi comprise. Une garde qui
+  // rendrait muet le centre configure serait pire que le defaut corrige.
+  ok(faitsLibramont.includes('Horaires habituels : Lundi fermé · Mardi 14h à 22h · Mercredi 12h à 22h · Jeudi 14h à 22h · Vendredi 14h à minuit · Samedi 10h à minuit · Dimanche 10h à 22h.'),
+    'CONTRE-PREUVE : Libramont annonce ses 7 jours, lundi ferme compris',
+    faitsLibramont.split('\n').find((l) => l.startsWith('Horaires')) || '(aucune ligne)');
+  ok(/Congés scolaires : ouvert tous les jours \(10h à 22h en semaine/.test(faitsLibramont),
+    'CONTRE-PREUVE : la ligne conges de Libramont survit');
+  ok(!/Congés scolaires/.test(faitsGembloux), 'et elle ne se fabrique pas la ou rien n est declare');
+
+  // LE MEME DEFAUT AU NIVEAU DU JOUR. Une grille PARTIELLE est atteignable :
+  // normalizeScheduleBlock garde les jours declares et saute les autres, donc
+  // une sauvegarde staff qui ne touche que le samedi produit une grille a un
+  // seul jour. Sans le filtre, les six autres sortaient « fermé ».
+  // Le crochet se pose sur l objet module AVANT le require applicatif :
+  // email-agent destructure getCenter a son chargement.
+  const moduleOps = require('../lib/ops-knowledge');
+  const vraiGetCenter = moduleOps.getCenter;
+  moduleOps.getCenter = (id) => (id === '__partiel' ? {
+    name: 'Centre partiel', status: 'active',
+    defaultSchedule: { regular: { '6': { open: '10:00', close: '18:00' } } },
+    publicInfo: { phone: '000' }, activityAvailability: {},
+  } : vraiGetCenter(id));
+  delete require.cache[require.resolve('../lib/email-agent')];
+  const faitsPartiels = String(require('../lib/email-agent').buildCenterFacts('__partiel'));
+  moduleOps.getCenter = vraiGetCenter;
+  delete require.cache[require.resolve('../lib/email-agent')];
+  ok(/^Horaires habituels : Samedi 10h à 18h\.$/m.test(faitsPartiels),
+    'grille PARTIELLE : seul le jour declare est annonce',
+    faitsPartiels.split('\n').find((l) => l.startsWith('Horaires')) || '(aucune ligne)');
+  ok(!/(Lundi|Dimanche) fermé/.test(faitsPartiels),
+    'grille PARTIELLE : les jours non declares ne deviennent pas des fermetures');
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

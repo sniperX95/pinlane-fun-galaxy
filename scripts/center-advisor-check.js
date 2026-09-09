@@ -540,6 +540,65 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('CONTRE-PREUVE : un classement solide n ouvre aucune question',
     insertsDePiste().length === 0, `${insertsDePiste().length} ecriture(s)`);
 
+
+  // ── LE JOUR OUVERT QUI NE VEND RIEN, JUSQU EN BASE ────────────────────────
+  // Le fait est INTERNE : la porte Idees ne voit que le public, donc sans ce
+  // cablage il serait calcule correctement et n arriverait nulle part. C est
+  // le motif deja paye trois fois dans ce projet, un tuyau sans robinet.
+  requetes.length = 0;
+  faitsDuRegistre.chargerFicheDuRegistre = async () => ({
+    jour_ouvert_sans_vente: {
+      id: 'jour_ouvert_sans_vente',
+      libelle: 'jours d ouverture sans aucune reservation',
+      valeur: 'mardi (40 fois dans la fenetre, aucune reservation)',
+      n: 40, audience: 'interne', genre: 'denombrement',
+    },
+  });
+  let appelsSurJourMuet = 0;
+  conseiller.proposerDepuisLaFiche = async () => {
+    appelsSurJourMuet += 1;
+    return { proposition: null, motifs: ['rien a dire'], piste: null };
+  };
+  await cycle.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  const jourMuet = insertsDePiste()[0];
+  ok('MONTAGE : le conseiller n a rendu AUCUNE piste de son cote',
+    appelsSurJourMuet === 1, String(appelsSurJourMuet));
+  ok('LE POINT : le jour muet arrive EN BASE comme question a trancher',
+    Boolean(jourMuet), `${requetes.length} requete(s)`);
+  ok('son titre nomme le jour et ne porte aucun compteur',
+    Boolean(jourMuet) && String(jourMuet.params[2]) === 'A trancher : mardi : le centre ouvre et ne vend rien',
+    jourMuet && String(jourMuet.params[2]));
+  ok('son corps porte le denominateur ET la valeur du fait recopiee',
+    Boolean(jourMuet) && String(jourMuet.params[3]).includes('40 journees d ouverture')
+    && String(jourMuet.params[3]).includes('mardi (40 fois dans la fenetre, aucune reservation)'),
+    jourMuet && String(jourMuet.params[3]));
+  ok('elle ne se publie pas : « personne ne vient le mardi » n est pas un post',
+    Boolean(jourMuet) && jourMuet.params[5] === null && jourMuet.params[4] === null);
+
+  // ELLE SURVIT AU CONSEILLER, comme la question de fragilite : posee apres
+  // l appel au modele, elle serait avalee par le try/catch du cycle.
+  requetes.length = 0;
+  conseiller.proposerDepuisLaFiche = async () => { throw new Error('modele injoignable'); };
+  await cycle.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  ok('elle survit a un conseiller qui leve une exception',
+    insertsDePiste().length === 1, `${insertsDePiste().length} ecriture(s)`);
+
+  // CONTRE-PREUVE : sur un centre qui vend tous ses jours ouverts, le fait
+  // n existe pas et rien n est ecrit. Sans elle, un INSERT inconditionnel
+  // passerait tout ce qui precede.
+  requetes.length = 0;
+  faitsDuRegistre.chargerFicheDuRegistre = async () => ({
+    jour_fort: {
+      id: 'jour_fort', libelle: 'jour de semaine le plus rempli',
+      valeur: 'samedi : 190 reservations', n: 190, audience: 'public', fragile: false,
+    },
+  });
+  conseiller.proposerDepuisLaFiche = async () => ({
+    proposition: null, motifs: ['rien a dire'], piste: null,
+  });
+  await cycle.runDataIdeasCycle({ centerId: 'libramont', bundle: bundleMinimal });
+  ok('CONTRE-PREUVE : sans jour muet, aucune question n est ecrite',
+    insertsDePiste().length === 0, `${insertsDePiste().length} ecriture(s)`);
   // Tout est rendu : les gates suivants doivent voir les vrais modules.
   baseDeDonnees.getPool = vraiGetPool;
   conseiller.proposerDepuisLaFiche = vraiConseiller;

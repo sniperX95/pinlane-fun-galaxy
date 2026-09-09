@@ -13,6 +13,7 @@ const {
   sommeilDuRegistre,
   PLANCHER_DE_SILENCE,
   pisteDeClassementFragile,
+  pisteDuJourMuet,
   affirmationDeClassementFragile,
   etiquetteDuClassement,
   distributionSuspecte,
@@ -897,5 +898,53 @@ ok('un pourcentage cache dans la derivation compte aussi',
   jetonsTypesDe({ x: { valeur: 'oui', source: 'part des 30 % restants' } }).pourcents.has(30));
 ok('sous le nom calcul du dossier egalement',
   jetonsTypesDe({ x: { valeur: 'oui', calcul: 'part des 30 % restants' } }).pourcents.has(30));
+
+// ── LA PISTE DU JOUR MUET ──────────────────────────────────────────────────
+// Le fait est INTERNE, donc la porte Idees ne le voit jamais (faitsUtiles ne
+// garde que le public) : sans piste, il serait calcule et n arriverait nulle
+// part. C est le motif deja paye trois fois : un tuyau construit sans robinet.
+console.log('\n[PISTE JOUR MUET] le fait interne atteint le gerant');
+const ficheJourMuet = { jour_ouvert_sans_vente: fait({
+  id: 'jour_ouvert_sans_vente', libelle: 'jours d ouverture sans aucune reservation',
+  valeur: 'mardi (40 fois dans la fenetre, aucune reservation)', n: 40,
+  genre: 'denombrement', audience: 'interne',
+}) };
+const pisteMuette = pisteDuJourMuet(ficheJourMuet);
+ok('une piste est rendue', Boolean(pisteMuette), JSON.stringify(pisteMuette));
+ok('elle nomme le jour', Boolean(pisteMuette) && /mardi/.test(pisteMuette.sujet), pisteMuette && pisteMuette.sujet);
+
+// LA SIGNATURE QUI DEDOUBLONNE EST CALCULEE SUR LE SUJET. Un compteur dans le
+// sujet vaudrait « 41 fois » la semaine suivante, donc une signature neuve,
+// donc une piste de plus a trancher chaque semaine pour le meme constat.
+ok('le sujet ne porte AUCUN chiffre : la piste ne se dedouble pas chaque semaine',
+  Boolean(pisteMuette) && !/\d/.test(pisteMuette.sujet), pisteMuette && pisteMuette.sujet);
+const pisteSemaineSuivante = pisteDuJourMuet({
+  jour_ouvert_sans_vente: fait({ ...ficheJourMuet.jour_ouvert_sans_vente, valeur: 'mardi (41 fois dans la fenetre, aucune reservation)', n: 41 }),
+});
+ok('une semaine plus tard, le meme constat garde le MEME sujet',
+  Boolean(pisteSemaineSuivante) && pisteSemaineSuivante.sujet === pisteMuette.sujet,
+  `${pisteMuette && pisteMuette.sujet} vs ${pisteSemaineSuivante && pisteSemaineSuivante.sujet}`);
+ok('mais le compte, lui, suit : il vit dans le pourquoi, qui ne signe pas',
+  Boolean(pisteSemaineSuivante) && pisteSemaineSuivante.populationARisque.includes('41'),
+  pisteSemaineSuivante && pisteSemaineSuivante.populationARisque);
+
+// RIEN N EST RECALCULE : la valeur du fait est RECOPIEE telle quelle.
+ok('la valeur du fait est recopiee mot pour mot, donc rien ne peut etre invente',
+  Boolean(pisteMuette) && pisteMuette.comparaisonDisponible.includes('mardi (40 fois dans la fenetre, aucune reservation)'),
+  pisteMuette && pisteMuette.comparaisonDisponible);
+ok('la piste renvoie au fait qui la fonde', Boolean(pisteMuette) && pisteMuette.factId === 'jour_ouvert_sans_vente');
+ok('CONTRE-PREUVE : sans le fait, aucune piste', pisteDuJourMuet({}) === null);
+
+// L ORDRE DANS LE CYCLE. Le COMPORTEMENT est prouve ailleurs (center-advisor
+// -check ecrit la ligne en base avec une fausse pool). Ce qui reste ici est
+// la seule chose qu un test de comportement ne montre pas : la piste est
+// posee AVANT l appel au modele. Posee apres, elle disparaitrait dans le
+// try/catch du cycle a la premiere exception.
+const sourceCycleMuet = require('fs').readFileSync(require('path').join(__dirname, '../lib/center-metrics.js'), 'utf8');
+ok('MONTAGE : les deux reperes existent dans le cycle',
+  sourceCycleMuet.includes('pisteDuJourMuet(fiche)') && sourceCycleMuet.includes('proposerDepuisLaFiche({'));
+ok('la piste est posee AVANT l appel au modele',
+  sourceCycleMuet.indexOf('pisteDuJourMuet(fiche)') < sourceCycleMuet.indexOf('proposerDepuisLaFiche({'),
+  `${sourceCycleMuet.indexOf('pisteDuJourMuet(fiche)')} < ${sourceCycleMuet.indexOf('proposerDepuisLaFiche({')}`);
 console.log(`\n${failures ? `center-guards-check: ${failures} ECHEC(S)` : 'center-guards-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

@@ -392,7 +392,11 @@
         "ranking-robustness",
         "named-silence",
         "open-question-handoff",
-        "registry-liveness"
+        "registry-liveness",
+        "declared-schedule",
+        "silent-open-day",
+        "proper-noun-grounding",
+        "typed-provenance"
       ],
       "guardrails": [
         "Un centre, une fiche : les faits d un centre ne decrivent jamais un autre centre.",
@@ -409,15 +413,20 @@
         "Un classement que le retrait d une seule reservation renverse ne s affirme dans aucune nature : le fait reste lisible, avec sa reserve ecrite.",
         "Un silence dit toujours SA cause : plafond de budget, aucun fournisseur, appel echoue, aucune matiere publiable, ou sortie refusee par les gardes.",
         "Une question a trancher atteint le gerant a part, sans texte a coller ni canal, et ne rejoint jamais le bouton qui declencherait une mesure a 14 jours.",
-        "Un registre dont le silence depasse le plus long silence deja connu du centre ne porte plus aucun geste au present."
+        "Un registre dont le silence depasse le plus long silence deja connu du centre ne porte plus aucun geste au present.",
+        "Un pourcentage vient d un pourcentage et un montant d un montant : un nombre present dans la fiche sous une AUTRE nature ne l autorise pas.",
+        "Une duree, une surface et une taille promises sont celles que le centre declare, comme un nombre de pistes.",
+        "Un nom propre absent du dossier et de la fiche du centre est refuse : ni concurrent, ni lieu, ni evenement invente.",
+        "Un horaire non declare ne s annonce jamais, ni comme ouverture ni comme fermeture, et ne se deduit d aucun autre centre.",
+        "Un jour d ouverture sans aucune reservation reste interne et part en question au gerant : ca ne se publie pas."
       ],
       "nextUpgrades": [
         "Mesurer l effet reel d un conseil applique a 14 jours",
         "Distinguer en base une idee refusee d une idee jamais lue (expireStaleInsights ecrit le meme statut)",
-        "Valoriser les creneaux vides a partir de la capacite declaree du centre",
         "Elargir l ADN aux angles absents : prix, retention, SEO local, avis, groupes entreprise",
-        "Rendre une piste quand un classement fragile bloque une proposition : « samedi et vendredi sont au coude a coude » est une information, pas un refus",
-        "Detecter un classement porte par DEUX lignes exceptionnelles, pas seulement une"
+        "Detecter un classement porte par DEUX lignes exceptionnelles, pas seulement une",
+        "Valoriser les creneaux HORAIRES vides a partir de l amplitude declaree : le jour muet est traite, l heure creuse ne l est pas encore",
+        "Surfacer les jours d ouverture au modele pour qu il puisse les DIRE : la fiche les connait maintenant, aucun fait public ne les porte"
       ]
     }
   ],

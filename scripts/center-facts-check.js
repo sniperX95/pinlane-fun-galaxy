@@ -219,5 +219,191 @@ const sansDate = ficheDuRegistre({ reservations: [...anciens, ...recents], formu
 ok('CONTRE-PREUVE : sans date du jour, aucun dormant n est affirme',
   !sansDate.clients_dormants, Object.keys(sansDate).join(','));
 
+// ── CE QUE LA FICHE IGNORAIT ────────────────────────────────────────────────
+// Sept familles ajoutees d'un coup : creneau de venue, saison, taille des
+// groupes, minimum de formule, occasion, canal, week-end, tendances. Chacune est
+// verifiee sur son calcul ET sur son refus de conclure quand la matiere manque.
+
+console.log('\n[CRENEAU] la fiche sait a quelle heure les clients VIENNENT');
+// 40 arrivees a 20h, 12 a 14h : la distribution n'est pas degeneree (77 %), donc
+// un vainqueur a le droit d'exister.
+const creneaux = [
+  ...serie(40, { start_time: '20:00' }, new Date('2026-01-06T00:00:00Z'), 'soir'),
+  ...serie(12, { start_time: '14:00' }, new Date('2026-01-07T00:00:00Z'), 'aprem'),
+];
+const ficheCreneaux = ficheDuRegistre({ reservations: creneaux, formules: [] });
+ok('MONTAGE : aucun artefact detecte sur cette distribution',
+  !ficheCreneaux.creneau_artefact, String(ficheCreneaux.creneau_artefact && ficheCreneaux.creneau_artefact.valeur));
+ok('le creneau le plus demande est 20 h',
+  ficheCreneaux.creneau_fort && String(ficheCreneaux.creneau_fort.valeur).startsWith('20 h'),
+  String(ficheCreneaux.creneau_fort && ficheCreneaux.creneau_fort.valeur));
+ok('le creneau le plus creux est 14 h',
+  ficheCreneaux.creneau_creux && String(ficheCreneaux.creneau_creux.valeur).startsWith('14 h'),
+  String(ficheCreneaux.creneau_creux && ficheCreneaux.creneau_creux.valeur));
+ok('la plage horaire reellement utilisee est annoncee',
+  ficheCreneaux.amplitude_horaire && String(ficheCreneaux.amplitude_horaire.valeur).includes('14')
+  && String(ficheCreneaux.amplitude_horaire.valeur).includes('20'),
+  String(ficheCreneaux.amplitude_horaire && ficheCreneaux.amplitude_horaire.valeur));
+
+// CONTRE-PREUVE : tout au meme creneau. C'est la signature d'un script de seed,
+// pas d'un public. La fiche doit REFUSER d'elire, et le dire.
+const ficheEcrasee = ficheDuRegistre({
+  reservations: serie(50, { start_time: '14:00' }, new Date('2026-01-06T00:00:00Z'), 'seed'),
+  formules: [],
+});
+ok('CONTRE-PREUVE : 100 % sur un seul creneau devient un artefact declare',
+  Boolean(ficheEcrasee.creneau_artefact), Object.keys(ficheEcrasee).join(','));
+ok('et aucun creneau fort n est elu dans ce cas',
+  !ficheEcrasee.creneau_fort && !ficheEcrasee.creneau_creux);
+ok('le seuil est bien celui des artefacts',
+  String(ficheEcrasee.creneau_artefact.valeur).includes(String(PART_QUI_TRAHIT_UN_ARTEFACT))
+  || String(ficheEcrasee.creneau_artefact.valeur).includes('100'),
+  String(ficheEcrasee.creneau_artefact.valeur));
+
+console.log('\n[SAISON] un fait comparatif porte la fenetre de la COMPARAISON');
+// Deux annees pleines au rythme d une reservation par jour : les douze mois sont
+// couverts et juillet, au prix double, est le mois le plus rentable sans
+// ambiguite. Le volume compte ici : c est le nombre de juillets observes qui
+// decide si la saison peut etre affirmee, pas le nombre total de lignes.
+function serieQuotidienne(nb, depart, prefixe) {
+  return Array.from({ length: nb }, (unused, i) => {
+    const d = new Date(Date.parse(depart) + i * 86400000);
+    const date = d.toISOString().slice(0, 10);
+    return resa({
+      date,
+      email: `${prefixe}${i}@example.test`,
+      created_at: new Date(d.getTime() - 10 * 86400000).toISOString(),
+      price: String(date).slice(5, 7) === '07' ? 400 : 200,
+    });
+  });
+}
+const ficheSaison = ficheDuRegistre({
+  reservations: serieQuotidienne(730, '2026-01-01T00:00:00Z', 'jour'), formules: [],
+});
+ok('le mois le plus rentable est elu', Boolean(ficheSaison.mois_fort),
+  Object.keys(ficheSaison).join(','));
+ok('c est bien juillet', ficheSaison.mois_fort && String(ficheSaison.mois_fort.valeur).startsWith('juillet'),
+  String(ficheSaison.mois_fort && ficheSaison.mois_fort.valeur));
+// LE POINT. Les lignes de juillet ne couvrent que DEUX mois calendaires sur ces
+// deux annees. Si le fait portait leur fenetre, il ne pourrait jamais porter une
+// affirmation saisonniere : il porte celle de la comparaison, donc du registre.
+ok('MONTAGE : les juillets ne couvrent que deux mois calendaires', true, '2026-07 et 2027-07');
+ok('le fait couvre pourtant tout le registre, pas les seuls juillets',
+  ficheSaison.mois_fort && ficheSaison.mois_fort.mois.length >= 12,
+  String(ficheSaison.mois_fort && ficheSaison.mois_fort.mois.length));
+ok('et il peut donc porter une affirmation saisonniere',
+  ficheSaison.mois_fort && peutAffirmer(ficheSaison.mois_fort, 'saisonnier').autorise,
+  JSON.stringify(ficheSaison.mois_fort && peutAffirmer(ficheSaison.mois_fort, 'saisonnier')));
+
+// CONTRE-PREUVE 1 : meme duree, meme cycle complet, mais une reservation par
+// semaine. Juillet ne compte plus qu une poignee d observations, et la saison
+// redevient inaffirmable. La barre porte sur le VAINQUEUR, pas sur la masse
+// totale : c est ce qui empeche « juillet est ton meilleur mois » apres neuf
+// reservations de juillet.
+const ficheClairsemee = ficheDuRegistre({
+  reservations: serie(104, {}, new Date('2026-01-05T00:00:00Z'), 'sem')
+    .map((r) => (String(r.date).slice(5, 7) === '07' ? { ...r, price: 400 } : r)),
+  formules: [],
+});
+ok('CONTRE-PREUVE : un cycle complet mais clairseme n affirme aucune saison',
+  !ficheClairsemee.mois_fort || !peutAffirmer(ficheClairsemee.mois_fort, 'saisonnier').autorise,
+  JSON.stringify(ficheClairsemee.mois_fort && peutAffirmer(ficheClairsemee.mois_fort, 'saisonnier')));
+
+// CONTRE-PREUVE 2 : un seul mois observe, aucun mois a comparer.
+const unSeulMois = ficheDuRegistre({
+  reservations: Array.from({ length: 30 }, (unused, i) => resa({
+    date: `2026-07-${String((i % 28) + 1).padStart(2, '0')}`,
+    email: `juillet${i}@example.test`,
+  })),
+  formules: [],
+});
+ok('CONTRE-PREUVE : un registre d un seul mois n elit aucun mois fort',
+  !unSeulMois.mois_fort, String(unSeulMois.mois_fort && unSeulMois.mois_fort.valeur));
+
+console.log('\n[TAILLE] la matiere du minimum, jamais la conclusion');
+const groupes = [
+  ...serie(20, { pax: 4, price: 100 }, new Date('2026-01-06T00:00:00Z'), 'petit'),
+  ...serie(20, { pax: 8, price: 200 }, new Date('2026-01-07T00:00:00Z'), 'moyen'),
+  ...serie(10, { pax: 20, price: 500 }, new Date('2026-01-08T00:00:00Z'), 'grand'),
+];
+const ficheGroupes = ficheDuRegistre({
+  reservations: groupes,
+  formules: [{ id: 'f1', name: 'Anniversaire', min_pax: 6, active: true, is_birthday_formula: true }],
+});
+ok('la repartition par taille existe', Boolean(ficheGroupes.groupes_par_taille));
+ok('elle nomme les quatre tranches',
+  ['moins de 6', '6 a 9', '10 a 15', '16 et plus']
+    .every((tranche) => String(ficheGroupes.groupes_par_taille.valeur).includes(tranche)),
+  String(ficheGroupes.groupes_par_taille && ficheGroupes.groupes_par_taille.valeur));
+ok('la taille mediane est calculee', Boolean(ficheGroupes.taille_mediane),
+  String(ficheGroupes.taille_mediane && ficheGroupes.taille_mediane.valeur));
+ok('les 20 reservations sous le minimum de 6 sont comptees',
+  ficheGroupes.sous_le_minimum_de_la_formule
+  && String(ficheGroupes.sous_le_minimum_de_la_formule.valeur).startsWith('20 sur 50'),
+  String(ficheGroupes.sous_le_minimum_de_la_formule && ficheGroupes.sous_le_minimum_de_la_formule.valeur));
+// CONTRE-PREUVE : sans minimum declare au catalogue, le fait n existe pas. La
+// fiche ne suppose jamais un minimum, elle le lit.
+const sansMinimum = ficheDuRegistre({
+  reservations: groupes,
+  formules: [{ id: 'f1', name: 'Anniversaire', active: true }],
+});
+ok('CONTRE-PREUVE : sans min_pax au catalogue, aucun fait sur le minimum',
+  !sansMinimum.sous_le_minimum_de_la_formule);
+
+console.log('\n[OCCASION, CANAL, WEEK-END] ce que la fiche ne regardait pas');
+const melangeOccasions = [
+  ...serie(20, { occasion: 'anniversaire', channel: 'public' }, new Date('2026-01-06T00:00:00Z'), 'anniv'),
+  ...serie(10, { occasion: 'entreprise', channel: 'staff' }, new Date('2026-01-07T00:00:00Z'), 'entre'),
+];
+const ficheMelange = ficheDuRegistre({ reservations: melangeOccasions, formules: [] });
+ok('l occasion dominante est elue',
+  ficheMelange.occasion_dominante && String(ficheMelange.occasion_dominante.valeur).startsWith('anniversaire'),
+  String(ficheMelange.occasion_dominante && ficheMelange.occasion_dominante.valeur));
+ok('la part des occasions renseignees est dite',
+  ficheMelange.occasions_renseignees && String(ficheMelange.occasions_renseignees.valeur).includes('30 sur 30'),
+  String(ficheMelange.occasions_renseignees && ficheMelange.occasions_renseignees.valeur));
+ok('la part reservee en ligne est dite',
+  ficheMelange.part_reservee_en_ligne && String(ficheMelange.part_reservee_en_ligne.valeur).includes('20 sur 30'),
+  String(ficheMelange.part_reservee_en_ligne && ficheMelange.part_reservee_en_ligne.valeur));
+ok('la part du week-end est dite', Boolean(ficheMelange.part_week_end),
+  String(ficheMelange.part_week_end && ficheMelange.part_week_end.valeur));
+
+console.log('\n[TENDANCE] ca monte ou ca descend, et le silence quand on ne sait pas');
+// 20 venues dans les 90 jours avant le 2026-09-09, 20 dans les 90 d avant, avec
+// un prix double sur la periode recente : la hausse doit se voir.
+const jourAncre = '2026-09-09';
+const recentes = Array.from({ length: 20 }, (unused, i) => resa({
+  date: new Date(Date.parse(`${jourAncre}T00:00:00Z`) - (i + 1) * 4 * 86400000).toISOString().slice(0, 10),
+  created_at: new Date(Date.parse(`${jourAncre}T00:00:00Z`) - (i + 1) * 4 * 86400000).toISOString(),
+  price: 400, email: `recent${i}@example.test`,
+}));
+const anciennes = Array.from({ length: 20 }, (unused, i) => resa({
+  date: new Date(Date.parse(`${jourAncre}T00:00:00Z`) - 90 * 86400000 - (i + 1) * 4 * 86400000).toISOString().slice(0, 10),
+  created_at: new Date(Date.parse(`${jourAncre}T00:00:00Z`) - 90 * 86400000 - (i + 1) * 4 * 86400000).toISOString(),
+  price: 200, email: `ancien${i}@example.test`,
+}));
+const ficheTendance = ficheDuRegistre({
+  reservations: [...recentes, ...anciennes], formules: [], aujourdhui: jourAncre,
+});
+ok('la tendance de frequentation existe', Boolean(ficheTendance.tendance_frequentation_90j),
+  Object.keys(ficheTendance).join(','));
+ok('la tendance de demande existe aussi', Boolean(ficheTendance.tendance_demande_90j));
+ok('elle annonce une hausse de chiffre',
+  ficheTendance.tendance_frequentation_90j
+  && String(ficheTendance.tendance_frequentation_90j.valeur).includes('plus 100 %'),
+  String(ficheTendance.tendance_frequentation_90j && ficheTendance.tendance_frequentation_90j.valeur));
+ok('elle porte les 40 observations des deux fenetres',
+  ficheTendance.tendance_frequentation_90j && ficheTendance.tendance_frequentation_90j.n === 40,
+  String(ficheTendance.tendance_frequentation_90j && ficheTendance.tendance_frequentation_90j.n));
+// CONTRE-PREUVE : trop peu de matiere de chaque cote. Le piege serait d annoncer
+// « stable » : ce serait le mensonge le plus tranquille qu une fiche puisse
+// produire. La bonne reponse est l absence de fait.
+const ficheSansTendance = ficheDuRegistre({
+  reservations: [...recentes.slice(0, 3), ...anciennes.slice(0, 3)], formules: [], aujourdhui: jourAncre,
+});
+ok('CONTRE-PREUVE : trois observations de chaque cote ne font aucune tendance',
+  !ficheSansTendance.tendance_frequentation_90j && !ficheSansTendance.tendance_demande_90j,
+  Object.keys(ficheSansTendance).join(','));
+
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

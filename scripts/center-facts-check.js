@@ -569,5 +569,46 @@ INTERDITS_AU_PUBLIC.forEach((id) => {
   if (!ficheArgent[id]) return;
   ok(`${id} reste reserve au gerant`, ficheArgent[id].audience === 'interne', ficheArgent[id].audience);
 });
+
+// ── LA COMPARAISON QUI EXISTE DEJA ──────────────────────────────────────────
+// La question de Movsar : « les formules anniversaire sont a 6 personnes
+// minimum, est-ce que 8 serait plus rentable ? ». Aucun historique produit sous
+// la regle des 6 ne peut y repondre. Mais si DEUX minimums coexistent deja au
+// catalogue, la comparaison se lit dans le registre, sans rien changer et sans
+// rien risquer. La fiche le dit au lieu de laisser chercher.
+console.log('\n[MINIMUMS] la comparaison qui existe deja au catalogue');
+const ficheMinimums = ficheDuRegistre({
+  reservations: serie(60, {}, new Date('2026-01-05T00:00:00Z'), 'min'),
+  formules: [
+    { id: 'f1', name: 'Anniversaire Kids', min_pax: 6, active: true },
+    { id: 'f2', name: 'Sortie Scolaire', min_pax: 15, active: true },
+  ],
+});
+ok('les minimums declares sont listes, formule par formule',
+  ficheMinimums.minimums_du_catalogue
+  && String(ficheMinimums.minimums_du_catalogue.valeur).includes('Anniversaire Kids : 6'),
+  String(ficheMinimums.minimums_du_catalogue && ficheMinimums.minimums_du_catalogue.valeur));
+ok('et la fiche dit que la comparaison existe deja',
+  String(ficheMinimums.comparaison_de_minimums.valeur).startsWith('oui'),
+  String(ficheMinimums.comparaison_de_minimums.valeur));
+ok('ces deux faits restent reserves au gerant',
+  ficheMinimums.minimums_du_catalogue.audience === 'interne'
+  && ficheMinimums.comparaison_de_minimums.audience === 'interne');
+
+// CONTRE-PREUVE : un catalogue dont toutes les formules partagent le meme
+// minimum n offre aucun point de comparaison, et la fiche le dit aussi. Un
+// « oui » systematique ne prouverait rien.
+const ficheUnSeulMinimum = ficheDuRegistre({
+  reservations: serie(60, {}, new Date('2026-01-05T00:00:00Z'), 'uni'),
+  formules: [
+    { id: 'f1', name: 'Formule A', min_pax: 6, active: true },
+    { id: 'f2', name: 'Formule B', min_pax: 6, active: true },
+  ],
+});
+ok('CONTRE-PREUVE : un seul minimum au catalogue, aucune comparaison possible',
+  String(ficheUnSeulMinimum.comparaison_de_minimums.valeur).startsWith('non'),
+  String(ficheUnSeulMinimum.comparaison_de_minimums.valeur));
+ok('CONTRE-PREUVE : sans min_pax declare, le fait n existe pas',
+  !ficheDuRegistre({ reservations: serie(60, {}, new Date('2026-01-05T00:00:00Z'), 'sans'), formules: [{ id: 'f1', name: 'A', active: true }] }).comparaison_de_minimums);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

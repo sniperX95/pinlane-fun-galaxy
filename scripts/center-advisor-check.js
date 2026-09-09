@@ -253,6 +253,61 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('le chiffre d affaires n arrive meme pas dans le prompt',
     espionAudience.length === 1 && !espionAudience[0].includes(String(montant[0])),
     espionAudience[0] ? espionAudience[0].slice(0, 120) : 'aucune requete');
+
+  // ── UN REFUS N EST PAS UN SILENCE ─────────────────────────────────────────
+  // reformulerEnHypothese existait, etait exportee, avait son gate, et n etait
+  // appelee NULLE PART. Le refus produisait donc du vide : l'agent voyait
+  // quelque chose et n'en disait rien. Il rend maintenant une PISTE, qui est une
+  // question a trancher, jamais une conclusion.
+  console.log('\n[PISTE] le refus d une regle commerciale ouvre une question');
+  const ficheCatalogue = ficheDuRegistre({
+    reservations: serie(120),
+    formules: [
+      { id: 'f1', name: 'Anniversaire Kids', min_pax: 6, active: true },
+      { id: 'f2', name: 'Sortie Scolaire', min_pax: 15, active: true },
+    ],
+    aujourdhui: '2028-06-01',
+  });
+  const idPublie = Object.keys(ficheCatalogue).find((id) => ficheCatalogue[id].audience === 'public');
+  ok('MONTAGE : cette fiche porte un fait publiable et un catalogue a deux minimums',
+    Boolean(idPublie) && Boolean(ficheCatalogue.comparaison_de_minimums),
+    String(idPublie));
+
+  const refusAvecPiste = await proposerDepuisLaFiche({
+    fiche: ficheCatalogue,
+    lieu: LIEU,
+    fetchImpl: modeleQuiRepond({
+      titre: 'Le minimum des anniversaires',
+      corps: 'Il faudrait passer le minimum des formules a 8 personnes.',
+      nature: 'levier_reversible',
+      faitsUtilises: [idPublie],
+    }),
+  });
+  ok('la proposition reste jetee', refusAvecPiste.proposition === null);
+  ok('mais une piste est rendue', Boolean(refusAvecPiste.piste), JSON.stringify(refusAvecPiste.motifs));
+  ok('elle est marquee hypothese a tester',
+    refusAvecPiste.piste.statut === 'hypothese' && refusAvecPiste.piste.aTester === true);
+  ok('elle porte la population concernee, tiree de la fiche',
+    Boolean(refusAvecPiste.piste.populationARisque), JSON.stringify(refusAvecPiste.piste));
+  // LE POINT : la reponse est deja dans le registre. Deux minimums coexistent au
+  // catalogue, donc la question se tranche en lisant, sans changer aucune regle.
+  ok('et elle dit que la comparaison existe DEJA, sans rien changer',
+    String(refusAvecPiste.piste.comparaisonDisponible).startsWith('oui'),
+    String(refusAvecPiste.piste.comparaisonDisponible));
+
+  // CONTRE-PREUVE : un refus pour une AUTRE raison ne rend aucune piste. Sinon
+  // la piste serait un decor accroche a tous les refus.
+  const refusOrdinaire = await proposerDepuisLaFiche({
+    fiche: ficheCatalogue,
+    lieu: LIEU,
+    fetchImpl: modeleQuiRepond({
+      titre: 'Un chiffre invente', corps: 'Nos clients notent 4,73 sur cinq.',
+      nature: 'constat', faitsUtilises: [idPublie],
+    }),
+  });
+  ok('CONTRE-PREUVE : un refus ordinaire ne rend aucune piste',
+    refusOrdinaire.proposition === null && !refusOrdinaire.piste,
+    JSON.stringify(refusOrdinaire.motifs));
   // ── REJETS ────────────────────────────────────────────────────────────────
   console.log('\n[REJETE] chaque garde jette ce qu elle doit jeter');
 

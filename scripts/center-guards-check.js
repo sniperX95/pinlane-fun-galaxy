@@ -14,6 +14,8 @@ const {
   verifierProvenance,
   conseilDeRegleCommerciale,
   unitesIncoherentes,
+  repetitionRecente,
+  JOURS_DE_MEMOIRE,
   NATURES,
   N_POUR_ELIRE,
 } = require('../lib/center-guards');
@@ -372,6 +374,52 @@ ok('COUT ASSUME : une somme legitime tombe aussi',
 // declaration du centre.
 ok('CONTRE-PREUVE : fiche sans unite declaree, plus aucun refus',
   unitesIncoherentes('Nos 7 pistes de bowling.', {}).length === 0);
+
+// ── NE PAS RESSERVIR LE MEME PLAT ───────────────────────────────────────────
+// Le reproche de depart, mot pour mot : « c'est tout le temps les memes
+// phrases, les memes analyses ». Dire au modele de ne pas se repeter est une
+// consigne ; ceci est une garde.
+console.log('\n[REPETITION] ce qui est deja parti ne repart pas');
+const AUJOURDHUI = '2026-09-09';
+const dejaParti = [
+  {
+    title: 'Ton mardi est ton jour creux', proposed_at: '2026-09-01T10:00:00.000Z',
+    data_basis: [{ factId: 'jour_creux' }, { factId: 'panier_moyen' }],
+  },
+  {
+    title: 'Les formules qui dorment au catalogue', proposed_at: '2026-08-20T10:00:00.000Z',
+    data_basis: [{ factId: 'formules_jamais_vendues' }],
+  },
+];
+
+ok('le meme titre est refuse',
+  repetitionRecente({ titre: 'Ton mardi est ton jour creux', faitsUtilises: ['creneau_fort'] }, dejaParti, AUJOURDHUI).repete === true);
+ok('le meme titre a la casse et aux accents pres est refuse aussi',
+  repetitionRecente({ titre: 'TON MARDI EST TON JOUR CREUX', faitsUtilises: ['creneau_fort'] }, dejaParti, AUJOURDHUI).repete === true);
+// La substance d une idee, c est le jeu de faits sur lequel elle est batie.
+// Reformuler la meme analyse ne la rend pas neuve.
+ok('un titre neuf sur EXACTEMENT les memes faits est refuse',
+  repetitionRecente({ titre: 'Un mardi a reveiller', faitsUtilises: ['panier_moyen', 'jour_creux'] }, dejaParti, AUJOURDHUI).repete === true,
+  JSON.stringify(repetitionRecente({ titre: 'Un mardi a reveiller', faitsUtilises: ['panier_moyen', 'jour_creux'] }, dejaParti, AUJOURDHUI)));
+ok('l ordre des faits ne change rien : c est un ensemble',
+  repetitionRecente({ titre: 'Autre chose', faitsUtilises: ['jour_creux', 'panier_moyen'] }, dejaParti, AUJOURDHUI).repete === true);
+
+ok('une analyse sur d AUTRES faits passe',
+  repetitionRecente({ titre: 'Le creneau de 20 h', faitsUtilises: ['creneau_fort', 'mois_fort'] }, dejaParti, AUJOURDHUI).repete === false);
+// Un sujet a le droit de revenir quand la donnee a bouge. Ce qu on interdit,
+// c'est de le resservir la semaine d'apres.
+const vieux = [{
+  title: 'Ton mardi est ton jour creux',
+  proposed_at: new Date(Date.parse(`${AUJOURDHUI}T00:00:00Z`) - (JOURS_DE_MEMOIRE + 5) * 86400000).toISOString(),
+  data_basis: [{ factId: 'jour_creux' }],
+}];
+ok(`hors de la fenetre de ${JOURS_DE_MEMOIRE} jours, le meme sujet redevient possible`,
+  repetitionRecente({ titre: 'Ton mardi est ton jour creux', faitsUtilises: ['jour_creux'] }, vieux, AUJOURDHUI).repete === false);
+
+// CONTRE-PREUVE : sans historique, plus rien n'est refuse. Sinon les
+// assertions ci-dessus pourraient tenir pour une autre raison.
+ok('CONTRE-PREUVE : sans historique, aucune repetition detectee',
+  repetitionRecente({ titre: 'Ton mardi est ton jour creux', faitsUtilises: ['jour_creux', 'panier_moyen'] }, [], AUJOURDHUI).repete === false);
 console.log('\n[CONTRE-PREUVES] chaque garde est montree en train de mordre');
 
 const natureSansRefus = { exige: () => true };

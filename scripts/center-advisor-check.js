@@ -173,6 +173,37 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   });
   ok('les 370 m2 de Gembloux restent refuses sur Libramont',
     laserDuVoisin.proposition === null, JSON.stringify(laserDuVoisin.motifs));
+
+  // ── LE CONSEILLER NE SE REPETE PAS ────────────────────────────────────────
+  console.log('\n[REPETITION] une idee deja partie ne repart pas');
+  const dejaSorti = [{
+    title: 'Ce que dit ton registre',
+    proposed_at: '2028-05-20T10:00:00.000Z',
+    data_basis: [{ factId: idConstat }],
+  }];
+  const rabache = await proposerDepuisLaFiche({
+    fiche,
+    lieu: LIEU,
+    historique: dejaSorti,
+    aujourdhui: '2028-06-01',
+    fetchImpl: modeleQuiRepond(bonne),
+  });
+  ok('la meme proposition, deja partie, est jetee',
+    rabache.proposition === null, JSON.stringify(rabache.motifs));
+  ok('et le motif dit que c est du deja-dit',
+    rabache.motifs.some((m) => m.includes('deja dit')), JSON.stringify(rabache.motifs));
+
+  // CONTRE-EPREUVE : la MEME proposition sans historique passe. C'est ce qui
+  // prouve que c'est bien la memoire qui l'arrete, et rien d'autre.
+  const neuve = await proposerDepuisLaFiche({
+    fiche,
+    lieu: LIEU,
+    historique: [],
+    aujourdhui: '2028-06-01',
+    fetchImpl: modeleQuiRepond(bonne),
+  });
+  ok('CONTRE-EPREUVE : sans historique, la meme proposition passe',
+    Boolean(neuve.proposition), JSON.stringify(neuve.motifs));
   // ── REJETS ────────────────────────────────────────────────────────────────
   console.log('\n[REJETE] chaque garde jette ce qu elle doit jeter');
 

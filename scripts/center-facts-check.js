@@ -1,7 +1,7 @@
 // Gate de la fiche de faits (lib/center-facts.js).
 // SANS réseau ni DB : ficheDuRegistre est pure, on lui injecte des lignes.
 // node scripts/center-facts-check.js
-const { ficheDuRegistre, ajouterIdentite } = require('../lib/center-facts');
+const { ficheDuRegistre, ajouterIdentite, ajouterMemoire } = require('../lib/center-facts');
 const { buildCenterFacts } = require('../lib/marketing-agents');
 const { maturite, peutAffirmer, N_POUR_ELIRE, PART_QUI_TRAHIT_UN_ARTEFACT } = require('../lib/center-guards');
 
@@ -474,5 +474,61 @@ const sansIdentite = ajouterIdentite(ficheDuRegistre({ reservations: [], formule
 ok('CONTRE-PREUVE : sans identite du centre, aucun fait identite_',
   Object.keys(sansIdentite).every((cle) => !cle.startsWith('identite_')),
   Object.keys(sansIdentite).join(','));
+
+// ── LA MEMOIRE, SANS SES VIEUX CHIFFRES ─────────────────────────────────────
+console.log('\n[MEMOIRE] l agent sait ce qu il a deja dit, sans ressusciter les chiffres d alors');
+const HISTORIQUE = [
+  {
+    title: 'Ton mardi creux pese 6 946 EUR', proposed_at: '2026-09-01T10:00:00.000Z',
+    status: 'ignored', applied_at: null, measured_at: null, result: null,
+    data_basis: [{ factId: 'jour_creux' }],
+  },
+  {
+    title: 'Relancer les 42 dormants', proposed_at: '2026-08-10T10:00:00.000Z',
+    status: 'applied', applied_at: '2026-08-12T10:00:00.000Z', measured_at: '2026-08-30T10:00:00.000Z',
+    result: '+18 % de reservations la semaine suivante',
+    data_basis: [{ factId: 'clients_dormants' }],
+  },
+];
+const avecMemoire = ajouterMemoire(ficheDuRegistre({ reservations: [], formules: [] }), HISTORIQUE);
+
+ok('la fiche compte ce qui a ete propose, applique et mesure',
+  avecMemoire.memoire_propositions
+  && String(avecMemoire.memoire_propositions.valeur) === '2 proposees, 1 appliquees, 1 mesurees',
+  String(avecMemoire.memoire_propositions && avecMemoire.memoire_propositions.valeur));
+ok('elle rappelle les sujets deja servis',
+  avecMemoire.memoire_deja_dit && String(avecMemoire.memoire_deja_dit.valeur).includes('mardi creux'),
+  String(avecMemoire.memoire_deja_dit && avecMemoire.memoire_deja_dit.valeur));
+
+// LE POINT. Un titre d'il y a trois semaines portait « 6 946 EUR ». Le
+// remettre tel quel rendrait 6946 citable pour toujours, alors que le chiffre
+// a bouge depuis. Le modele doit savoir CE QUI a ete dit, pas recuperer les
+// nombres d'alors : ceux d'aujourd'hui sont ailleurs dans la fiche.
+ok('MONTAGE : le titre d origine contenait bien un montant',
+  HISTORIQUE[0].title.includes('6 946'));
+ok('aucun chiffre du passe ne revient dans la fiche',
+  !/[0-9]/.test(String(avecMemoire.memoire_deja_dit.valeur)),
+  String(avecMemoire.memoire_deja_dit.valeur));
+ok('idem pour les resultats mesures',
+  avecMemoire.memoire_resultats && !/[0-9]/.test(String(avecMemoire.memoire_resultats.valeur)),
+  String(avecMemoire.memoire_resultats && avecMemoire.memoire_resultats.valeur));
+
+// Aucun taux d'adoption, et le trou est nomme. expireStaleInsights passe en
+// « ignored » toute idee non ouverte pendant dix jours : le statut confond un
+// refus du staff et une idee que personne n'a lue. J'ai deja servi ce faux
+// chiffre une fois.
+ok('le trou du suivi des idees est declare',
+  Boolean(avecMemoire.trou_suivi_des_idees),
+  Object.keys(avecMemoire).filter((k) => k.startsWith('memoire_') || k.startsWith('trou_')).join(','));
+ok('et il dit qu aucun taux d adoption n est calculable',
+  String(avecMemoire.trou_suivi_des_idees.valeur).includes('aucun taux'),
+  String(avecMemoire.trou_suivi_des_idees.valeur));
+
+// CONTRE-PREUVE : sans historique, aucun fait de memoire. Un centre neuf n'a
+// rien a se rappeler et ne doit pas faire semblant.
+const sansMemoire = ajouterMemoire(ficheDuRegistre({ reservations: [], formules: [] }), []);
+ok('CONTRE-PREUVE : sans historique, aucun fait memoire_',
+  Object.keys(sansMemoire).every((cle) => !cle.startsWith('memoire_')),
+  Object.keys(sansMemoire).join(','));
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

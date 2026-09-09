@@ -300,7 +300,10 @@ const DOCTRINE_HOSTILE = [
   const cycle = fs.readFileSync(`${__dirname}/../lib/center-metrics.js`, 'utf8');
   ok('le cycle charge l ADN', cycle.includes('buildDnaBlock'));
   ok('il le fait en fail-soft', /buildDnaBlock\([^)]*\)[\s\S]{0,40}catch/.test(cycle));
-  ok('il passe la doctrine au conseiller', /doctrine,\s*\r?\n\s*fetchImpl,/.test(cycle));
+  const appel = (cycle.match(/proposerDepuisLaFiche\(\{[\s\S]*?\n {4}\}\);/) || [''])[0];
+  ok('MONTAGE : l appel au conseiller est bien retrouve dans le cycle',
+    appel.length > 0, String(appel.length));
+  ok('il passe la doctrine au conseiller', /\bdoctrine,/.test(appel), appel.slice(0, 160));
 
   process.env.ANTHROPIC_API_KEY = cleSauvee;
   console.log(`\n${failures ? `center-doctrine-check: ${failures} ECHEC(S)` : 'center-doctrine-check: ALL OK'}`);

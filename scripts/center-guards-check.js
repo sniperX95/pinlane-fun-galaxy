@@ -172,8 +172,17 @@ ok('le motif nomme la part et le seau', suspect.part === 89.3 && suspect.motif.i
 const soiree = { 17: 40, 18: 35, 19: 30, 20: 25 };
 ok('une vraie soiree etalee passe sans alerte',
   distributionSuspecte(soiree).suspecte === false, JSON.stringify(distributionSuspecte(soiree)));
-ok('un seul seau connu ne declenche rien : il n y a pas de distribution a juger',
-  distributionSuspecte({ 19: 12 }).suspecte === false);
+// Ce qui autorise le jugement est le VOLUME, pas le nombre de seaux. Douze
+// reservations toutes a 19h peuvent etre un vrai creneau ; quarante lignes
+// horodatees a la meme seconde par un seed ne le sont pas. La premiere version
+// sortait des qu'il n'y avait qu'un seul seau, donc laissait passer le cas le
+// plus degenere possible : le gate de la fiche l'a montre.
+ok('12 commandes toutes a 19h ne suffisent pas pour crier a l artefact',
+  distributionSuspecte({ 19: 12 }).suspecte === false, JSON.stringify(distributionSuspecte({ 19: 12 })));
+ok('mais 40 commandes toutes a la meme heure, si : un seul seau a 100 %',
+  distributionSuspecte({ 0: 40 }).suspecte === true, JSON.stringify(distributionSuspecte({ 0: 40 })));
+ok('MONTAGE : les deux cas ont bien UN seul seau, seul le volume les separe',
+  Object.keys({ 19: 12 }).length === 1 && Object.keys({ 0: 40 }).length === 1);
 
 // ── PROVENANCE : aucun nombre inventé ───────────────────────────────────────
 console.log('\n[PROVENANCE] tout nombre ecrit doit exister dans la fiche');

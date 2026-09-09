@@ -13,6 +13,7 @@ const {
   nombresDe,
   verifierProvenance,
   conseilDeRegleCommerciale,
+  unitesIncoherentes,
   NATURES,
   N_POUR_ELIRE,
 } = require('../lib/center-guards');
@@ -322,6 +323,55 @@ CONSEILS_LEGITIMES.forEach((texte) => {
   const verdict = conseilDeRegleCommerciale(texte);
   ok(`passe : ${texte}`, verdict.detecte === false, JSON.stringify(verdict.extraits));
 });
+
+// ── UN CHIFFRE COLLE A UNE UNITE ────────────────────────────────────────────
+// Trou mesure : « nos 7 pistes de bowling » passait la garde de provenance,
+// parce que 7 existe ailleurs dans la fiche (« laser des 7 ans »). Le centre
+// en a 8. La provenance dit quun nombre EXISTE ; elle ne peut pas dire quil
+// est au bon endroit.
+console.log('\n[UNITES] un chiffre se verifie contre SON unite');
+const ficheUnites = {
+  identite_bowling: fait({ id: 'identite_bowling', libelle: 'bowling', valeur: '8 pistes, 450 m2, 6 joueurs maximum par piste', n: 3, genre: 'denombrement' }),
+  identite_duckpin: fait({ id: 'identite_duckpin', libelle: 'duckpin', valeur: '2 pistes, 40 m2', n: 2, genre: 'denombrement' }),
+  identite_minigolf: fait({ id: 'identite_minigolf', libelle: 'minigolf', valeur: '300 m2, 12 trous', n: 2, genre: 'denombrement' }),
+  identite_laser: fait({ id: 'identite_laser', libelle: 'laser', valeur: '500 m2, 30 joueurs maximum, des 7 ans', n: 3, genre: 'denombrement' }),
+};
+
+const UNITES_ATTENDUES = [
+  ['Nos 8 pistes de bowling.', false],
+  ['Nos 2 pistes de duckpin.', false],
+  ['Le laser accueille 30 joueurs.', false],
+  ['Le minigolf a 12 trous.', false],
+  ['Nos 7 pistes de bowling.', true],
+  ['Le laser accueille 45 joueurs.', true],
+  ['Le minigolf a 18 trous.', true],
+];
+UNITES_ATTENDUES.forEach(([texte, doitTomber]) => {
+  const fautes = unitesIncoherentes(texte, ficheUnites);
+  ok(`${doitTomber ? 'rejete' : 'passe '} : ${texte}`,
+    (fautes.length > 0) === doitTomber, JSON.stringify(fautes));
+});
+
+// La garde ne contraint QUE ce que la fiche declare. Inventer une contrainte
+// sur ce qu'on ne connait pas produirait des refus aveugles : le centre ne dit
+// rien de ses tables, donc un nombre de tables ne se juge pas ici.
+ok('une unite absente de la fiche ne contraint rien',
+  unitesIncoherentes('Nos 9 tables de billard.', ficheUnites).length === 0);
+ok('un mot qui n est pas une unite verifiable ne declenche rien',
+  unitesIncoherentes('Une soiree pour 40 personnes.', ficheUnites).length === 0);
+
+// LE COUT ASSUME, ecrit pour qu il ne surprenne personne : une somme vraie est
+// refusee. Le centre a 8 pistes de bowling et 2 de duckpin, donc « 10 pistes au
+// total » tombe. Refuser une phrase vraie coute une phrase ; accepter
+// « 7 pistes » coute un client devant un comptoir.
+ok('COUT ASSUME : une somme legitime tombe aussi',
+  unitesIncoherentes('On a 10 pistes au total.', ficheUnites).length > 0);
+
+// CONTRE-PREUVE : sur une fiche qui ne declare aucune unite, plus rien ne
+// tombe. Si ce test restait rouge, la garde mordrait sur autre chose que la
+// declaration du centre.
+ok('CONTRE-PREUVE : fiche sans unite declaree, plus aucun refus',
+  unitesIncoherentes('Nos 7 pistes de bowling.', {}).length === 0);
 console.log('\n[CONTRE-PREUVES] chaque garde est montree en train de mordre');
 
 const natureSansRefus = { exige: () => true };

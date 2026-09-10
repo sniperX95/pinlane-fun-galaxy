@@ -4,6 +4,7 @@ const {
   currentTimeDecimal,
   getBasePrice,
   getEffectiveFormules,
+  getFormuleArrivalWindow,
   getFormuleAvailability,
   getFormuleLaneDuration,
   getFormuleTotalDuration,
@@ -20,7 +21,7 @@ const {
   bookingDateOutOfRange,
   BOOKING_HORIZON_DAYS,
 } = require('../lib/booking-config');
-const { allocateLanes, getPool, readAvailabilitySnapshot, validateReservationResources } = require('../lib/database');
+const { allocateLanes, getPool, readAvailabilitySnapshot } = require('../lib/database');
 const { sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
@@ -38,10 +39,24 @@ const {
   isActivityFullyBlockedOn,
   isFormulaBlockedOn,
   isFormulaFullyBlockedOn,
-  isLaneBlockedAt,
 } = require('../lib/availability-blocks');
 const { buildProgramFormula, describeProgram, normalizeProgram } = require('../lib/visit-program');
 const { buildFormulaComplements, buildVisitComplements } = require('../lib/booking-complements');
+// La projection d un scenario en creneau, la garde finale et les compositions
+// par defaut d une formule : le code que l agent lit aussi (proposedArrivals),
+// pour dire aux clients les heures et les durees que ce tunnel propose.
+const {
+  anchoredDefaultSlots,
+  filterSlotsByFinalGuards,
+  firstActivityTime,
+  formulaOccupiedDuration,
+  getFreeCount,
+  laneWindowsFromReservation,
+  plannedArrivalSlots,
+  readBlockHour,
+  slotPassesFinalGuards,
+  toFormulaSlot,
+} = require('../lib/availability-slots');
 
 const LASER_ARENA_MINUTES = 25;
 // Fenêtre d'accueil fixe AVANT la première activité : l'heure choisie par le
@@ -59,18 +74,6 @@ const PROGRAM_GRID_MINUTES = 30;
 // programme (contrainte d'exploitation des pistes).
 const BOWLING_GRID_MINUTES = PROGRAM_GRID_MINUTES;
 
-function overlap(startA, durationA, startB, durationB) {
-  return startA < startB + durationB && startB < startA + durationA;
-}
-
-function readBlockHour(block, key, fallback = 0) {
-  const raw = Number(block?.[key]);
-  if (Number.isFinite(raw)) return raw > 24 ? raw / 60 : raw;
-  const timeKey = key === 'start' ? 'startTime' : 'endTime';
-  if (block?.[timeKey]) return timeToNum(block[timeKey]);
-  return fallback;
-}
-
 function getLaserOptionFromRequest(url, fallbackDuration = 0.5) {
   const requestedGames = Number(url.searchParams.get('laserGames') || url.searchParams.get('games') || url.searchParams.get('gameCount') || 0);
   if (requestedGames >= 1) {
@@ -79,28 +82,6 @@ function getLaserOptionFromRequest(url, fallbackDuration = 0.5) {
     if (option) return option;
   }
   return LASER_GAME_OPTIONS.find((item) => Number(item.value) === Number(fallbackDuration)) || LASER_GAME_OPTIONS[0];
-}
-
-function laneWindowsFromReservation(reservation) {
-  const blocks = Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : [];
-  const planned = blocks
-    .filter((block) => block.resourceType === 'bowling_lane')
-    .map((block) => {
-      const start = readBlockHour(block, 'start');
-      const end = readBlockHour(block, 'end', start + Number(block.durationMinutes || 60) / 60);
-      return {
-        start,
-        duration: Math.max(0, end - start),
-        lanes: (block.lanes?.length ? block.lanes : reservation.lanes || []).map(Number),
-      };
-    })
-    .filter((window) => window.duration > 0 && window.lanes.length);
-  if (planned.length) return planned;
-  return [{
-    start: timeToNum(reservation.startTime),
-    duration: Number(reservation.duration),
-    lanes: (reservation.lanes || []).map(Number),
-  }];
 }
 
 function laserWindowsFromReservation(reservation) {
@@ -162,97 +143,10 @@ function getFormulaFallbackLaserWindows(reservation) {
   return windows;
 }
 
-function getOccupiedLanes(reservations, startTime, duration) {
-  const occupied = new Set();
-  const requestStart = timeToNum(startTime);
-
-  reservations.forEach((reservation) => {
-    laneWindowsFromReservation(reservation).forEach((window) => {
-      if (overlap(requestStart, Number(duration), window.start, window.duration)) {
-        window.lanes.forEach((lane) => occupied.add(Number(lane)));
-      }
-    });
-  });
-
-  return occupied;
-}
-
 function getFormulaStepCount(formulaDoc, activityId) {
   return (formulaDoc?.steps || [])
     .filter((step) => step.activityId === activityId)
     .reduce((sum, step) => sum + Math.max(1, Number(step.count || 1)), 0);
-}
-
-function centerLaneBound(centerId) {
-  try {
-    const value = Number(getCenter(centerId || 'libramont')?.resources?.bowling?.laneCount);
-    return Number.isFinite(value) && value > 0 ? value : TOTAL_LANES;
-  } catch (error) {
-    return TOTAL_LANES;
-  }
-}
-
-function getFreeCount(reservations, laneStatuses, startTime, duration, laneCount = TOTAL_LANES, blocks = [], dateISO = '') {
-  const occupied = getOccupiedLanes(reservations, startTime, duration);
-  const startMin = Math.round(timeToNum(startTime) * 60);
-  const endMin = startMin + Math.round(Number(duration || 0) * 60);
-  let count = 0;
-  for (let lane = 1; lane <= laneCount; lane += 1) {
-    // Une piste bloquee (scope 'lane') sur la fenetre ne compte pas comme libre,
-    // comme la maintenance. Sans blocage la liste est vide : compte inchange.
-    if (!occupied.has(lane)
-      && laneStatuses[lane] !== 'maintenance'
-      && !isLaneBlockedAt(blocks, dateISO, lane, startMin, endMin)) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function findBowlingBlock(scenario) {
-  return (scenario?.resourceBlocks || []).find((block) => block.resourceType === 'bowling_lane') || null;
-}
-
-function firstActivityTime(scenario, activityId) {
-  const step = (scenario?.timeline || []).find((item) => item.activityId === activityId);
-  return step?.startTime || '';
-}
-
-function toFormulaSlot(scenario, snapshot, duration) {
-  const bowlingBlock = findBowlingBlock(scenario);
-  const laneStart = bowlingBlock?.startTime || scenario.startTime;
-  const laneDuration = bowlingBlock?.durationMinutes ? bowlingBlock.durationMinutes / 60 : duration;
-
-  return {
-    time: scenario.startTime,
-    lanes: scenario.assignedLanes || [],
-    freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, laneStart, laneDuration, centerLaneBound(snapshot.centerId), snapshot.blocks || [], snapshot.date || ''),
-    opsPlan: {
-      startTime: scenario.startTime,
-      endTime: scenario.endTime,
-      totalMinutes: scenario.totalMinutes,
-      arrivalTime: scenario.arrivalTime || null,
-      arrivalMinutes: scenario.arrivalMinutes || null,
-      bufferMinutes: scenario.bufferMinutes,
-      risk: scenario.risk,
-      staffSummary: scenario.staffSummary,
-      assignedLanes: scenario.assignedLanes || [],
-      timeline: scenario.timeline || [],
-      resourceBlocks: scenario.resourceBlocks || [],
-      marketIntelligence: scenario.marketIntelligence || null,
-      entitlements: scenario.entitlements || null,
-      operationsChecklist: scenario.operationsChecklist || [],
-      customerCommitment: scenario.customerCommitment || [],
-      firstLaserTime: firstActivityTime(scenario, 'laser_game'),
-      firstBowlingTime: firstActivityTime(scenario, 'bowling'),
-      laserSharing: scenario.laserSharing || null,
-      laserPassPlan: scenario.laserPassPlan || null,
-      anchorPlan: scenario.anchorPlan || null,
-      // Avis de confort (trou entre deux activités) : le créneau est
-      // réservable, l'écran l'annonce sans jamais barrer la route.
-      comfortNotices: scenario.comfortNotices || [],
-    },
-  };
 }
 
 // Ce que le client a choisi pour une activite libre, en une ligne. AUCUN
@@ -307,49 +201,6 @@ function toLaserSlot(scenario, pax) {
       laserSharing: scenario.laserSharing || null,
     },
   };
-}
-
-function slotPassesFinalGuards(slot, context) {
-  try {
-    validateReservationResources(
-      {
-        centerId: context.centerId,
-        channel: 'public',
-        name: 'Availability Probe',
-        phone: '+32000000000',
-        email: '',
-        date: context.date,
-        startTime: slot.time,
-        duration: context.duration,
-        totalDuration: context.totalDuration,
-        lanes: slot.lanes || [],
-        pax: context.pax,
-        status: 'pending',
-        basePrice: 0,
-        price: 0,
-        type: context.type,
-        formuleId: context.formuleId || '',
-        label: context.label || 'Availability Probe',
-        opsPlan: slot.opsPlan || null,
-        laneCount: context.laneCount || 0,
-        requiresLanes: Boolean(context.requiresLanes),
-      },
-      context.snapshot.reservations || [],
-      context.snapshot.laneStatuses || {},
-      // Blocages resolus a la date : la garde finale retire les creneaux dont le
-      // centre est ferme, la piste/l'activite/la formule est bloquee. Sans
-      // blocage (liste vide) la garde est strictement identique a aujourd'hui.
-      context.snapshot.blocks || [],
-      context.date || context.snapshot.date || '',
-    );
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
-function filterSlotsByFinalGuards(slots, context) {
-  return slots.filter((slot) => slotPassesFinalGuards(slot, context));
 }
 
 module.exports = async (req, res) => {
@@ -603,25 +454,25 @@ module.exports = async (req, res) => {
     // fin de la periode, l arrivee se choisit jusqu a la derniere demi-heure
     // avant. La duree estimee par les lignes de la formule (2 h, 5 h) ne borne
     // plus rien : elle vidait la liste des qu on n arrivait pas a l ouverture.
+    // LA FENETRE D ARRIVEE VIENT DU MOTEUR (getFormuleArrivalWindow), la meme
+    // que l agent lit pour dire aux clients quels jours et jusqu a quelle heure
+    // une formule se reserve, et dont le navigateur porte la jumelle. Elle etait
+    // ecrite ici en dur, demi-heure de marge comprise : changer la regle d un
+    // cote aurait fait promettre par mail une heure que ce tunnel refuse.
+    // Elle ne s applique qu a une FORMULE : une demande de bowling ou de laser
+    // qui porterait un formuleId (aucun appel du site ne l envoie) n est plus
+    // bornee par la plage d une formule qu elle ne reserve pas.
     const openWindow = Boolean(formule && formule.orderPolicy === 'open_window');
-    const periodEnd = formule && formule.timeLimit && formule.timeLimit.max
-      ? Math.min(schedule.close, formule.timeLimit.max)
-      : schedule.close;
-    const periodStart = formule && formule.timeLimit && formule.timeLimit.min
-      ? Math.max(schedule.open, formule.timeLimit.min)
-      : schedule.open;
+    const fenetreFormule = type === 'formule' && formule ? getFormuleArrivalWindow(formule, schedule) : null;
+    // Ce qu une reservation de formule occupe : sa duree estimee, ou toute la
+    // periode pour une fenetre ouverte. Meme fonction que l agent.
     const totalDuration = type === 'formule'
-      ? (openWindow ? Math.max(0.5, periodEnd - periodStart) : getFormuleTotalDuration(formule))
+      ? formulaOccupiedDuration(formule, schedule)
       : type === 'laser' ? laserOption.value : requestedDuration;
     const laneCount = getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig);
     const requiresLanes = reservationNeedsLanes(type, formuleId);
-    let minTime = schedule.open;
-    let maxTime = openWindow ? periodEnd - 0.5 : schedule.close - totalDuration;
-
-    if (formule && formule.timeLimit) {
-      if (formule.timeLimit.min) minTime = Math.max(minTime, formule.timeLimit.min);
-      if (formule.timeLimit.max && !openWindow) maxTime = Math.min(maxTime, formule.timeLimit.max - totalDuration);
-    }
+    let minTime = fenetreFormule ? fenetreFormule.earliestStart : schedule.open;
+    let maxTime = fenetreFormule ? fenetreFormule.latestStart : schedule.close - totalDuration;
 
     if (date === todayStr()) {
       minTime = Math.max(minTime, roundUpHalfHour(currentTimeDecimal()));
@@ -1047,41 +898,18 @@ module.exports = async (req, res) => {
         // Défaut zéro friction : pour chaque heure possible de la première
         // ancre, la combinaison valide la plus simple (ancres enchaînées,
         // pass liberté autour). Le client peut ensuite modifier chaque ancre.
-        const centerDocResolved = getCenter(centerId);
-        const candidatesByActivity = {};
-        (anchorMeta?.activities || []).forEach((activity) => {
-          candidatesByActivity[activity.activityId] = activity.times.filter((item) => item.ok !== false).map((item) => Math.round(timeToNum(item.time) * 60));
+        // Composee et gardee par lib/availability-slots, que l agent lit aussi.
+        const guardedDefaults = anchoredDefaultSlots({
+          center: getCenter(centerId),
+          formula: formulaDoc,
+          date,
+          pax,
+          model: anchorModel,
+          anchorMeta,
+          snapshot,
+          duration,
+          guardContext,
         });
-        const firstAnchorId = anchorModel.anchors[0].activityId;
-        const defaultSlots = [];
-        (candidatesByActivity[firstAnchorId] || []).forEach((firstStart) => {
-          const anchorTimes = buildDefaultAnchorTimes({
-            center: centerDocResolved,
-            formula: formulaDoc,
-            date,
-            pax,
-            model: anchorModel,
-            candidatesByActivity,
-            reservations: snapshot.reservations,
-            laneStatuses: snapshot.laneStatuses,
-            blocks: snapshot.blocks || [],
-            firstStart,
-          });
-          if (!anchorTimes) return;
-          const combo = evaluateAnchoredCombination({
-            center: centerDocResolved,
-            formula: formulaDoc,
-            date,
-            pax,
-            anchorTimes,
-            laserPlacement: 'scheduled',
-            reservations: snapshot.reservations,
-            laneStatuses: snapshot.laneStatuses,
-            blocks: snapshot.blocks || [],
-          });
-          if (combo.ok) defaultSlots.push(toFormulaSlot(combo.scenario, snapshot, duration));
-        });
-        const guardedDefaults = filterSlotsByFinalGuards(defaultSlots, guardContext);
         respondFormula(
           guardedDefaults,
           guardedDefaults.length ? '' : 'Aucune combinaison disponible pour cette formule ce jour-là. Essayez une autre date ou un autre groupe.',
@@ -1093,80 +921,26 @@ module.exports = async (req, res) => {
 
       // Formules sans ancre (table anniversaire + pass liberté) : le client
       // choisit simplement son heure d'arrivée : la table suit automatiquement.
-      const slotsByPlan = new Map();
-
-      // Départs de programme proposés au client : uniquement aux heures
-      // pleines ou demies (grille :00/:30), on recale la borne basse si la
-      // config (timeLimit, horaires) l'a désalignée.
-      const formulaMinTime = Math.ceil(minTime * 2) / 2;
-      for (let value = formulaMinTime; value <= maxTime; value += 0.5) {
-        const startTime = numToTime(value);
-        const plan = planningAgent(
-          {
-            centerId,
-            date,
-            type,
-            formuleId,
-            pax,
-            startTime,
-            duration,
-            preference: {
-              firstActivityId,
-              activityOrder,
-              arrivalConfidence: 'normal',
-              preferredTimes,
-            },
-            pauseMinutes,
-          },
-          {
-            reservations: snapshot.reservations,
-            laneStatuses: snapshot.laneStatuses,
-            blocks: snapshot.blocks || [],
-          },
-        );
-        const recommended = plan?.plan?.recommended;
-        const scenarios = Array.isArray(plan?.plan?.scenarios) && plan.plan.scenarios.length
-          ? plan.plan.scenarios
-          : recommended
-            ? [recommended]
-            : [];
-
-        scenarios
-          .filter((scenario) => scenario && scenario.ok)
-          .forEach((scenario) => {
-            const slot = toFormulaSlot(scenario, snapshot, duration);
-            const key = [
-              slot.time,
-              slot.opsPlan?.firstBowlingTime || '',
-              slot.opsPlan?.firstLaserTime || '',
-              slot.opsPlan?.endTime || '',
-            ].join('|');
-            if (!slotsByPlan.has(key)) {
-              slotsByPlan.set(key, slot);
-            }
-          });
-      }
-
-      const slots = [...slotsByPlan.values()].sort((left, right) => (
-        timeToNum(left.time) - timeToNum(right.time)
-        || timeToNum(left.opsPlan?.firstBowlingTime || left.opsPlan?.firstLaserTime || left.time)
-          - timeToNum(right.opsPlan?.firstBowlingTime || right.opsPlan?.firstLaserTime || right.time)
-        || timeToNum(left.opsPlan?.firstLaserTime || left.opsPlan?.firstBowlingTime || left.time)
-          - timeToNum(right.opsPlan?.firstLaserTime || right.opsPlan?.firstBowlingTime || right.time)
-        || timeToNum(left.opsPlan?.endTime || left.time) - timeToNum(right.opsPlan?.endTime || right.time)
-      ));
-      const guardedSlots = filterSlotsByFinalGuards(slots, {
+      // Départs aux heures pleines ou demies, un plan par combinaison, triés
+      // puis gardés : lib/availability-slots, que l agent lit aussi.
+      const guardedSlots = plannedArrivalSlots({
         centerId,
         date,
         type,
         formuleId,
         pax,
         duration,
-        totalDuration,
-        laneCount,
-        requiresLanes,
-        label: formule.name,
+        minTime,
+        maxTime,
+        preference: {
+          firstActivityId,
+          activityOrder,
+          arrivalConfidence: 'normal',
+          preferredTimes,
+        },
+        pauseMinutes,
         snapshot,
+        guardContext,
       });
       // Fenetre ouverte sans aucune arrivee (periode finie avant l ouverture,
       // par exemple MATIN MALIN un jour qui ouvre a 14:00) : la raison du

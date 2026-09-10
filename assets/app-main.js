@@ -24316,8 +24316,10 @@ function getFormuleAvailability(formule, dateStr, pax, startTime = '') {
   const day = parseLocalDate(dateStr).getDay();
   const schedule = getSchedule(dateStr, state.isHolidayMode);
   // Fenetre ouverte (MATIN MALIN, KIDS FUN DAY) : seule l ARRIVEE doit tomber
-  // dans la periode, la visite dure jusqu a sa fin. Meme regle que le serveur.
-  const totalDuration = formule.orderPolicy === 'open_window' ? 0.5 : getFormuleTotalDuration(formule);
+  // dans la periode, la visite dure jusqu a sa fin. Meme regle que le serveur,
+  // lue dans booking-core (jumelle comparee a lib/booking-config par le gate
+  // de derive) au lieu d etre recopiee ici.
+  const totalDuration = getFormuleBookedDuration(formule);
   if (!isOfferEnabled(formule.id)) return { ok: false, message: 'Offre momentanément indisponible' };
   // Verdict serveur du jour. La garde d'egalite de date est portee par
   // getCenterDayStatusFor : cette fonction sert aussi le QuickBook staff, qui
@@ -24342,12 +24344,13 @@ function getFormuleAvailability(formule, dateStr, pax, startTime = '') {
     if (formule.timeLimit.min && start < formule.timeLimit.min) return { ok: false, message: `À partir de ${formule.timeLimit.min}h` };
     if (formule.timeLimit.max && start + totalDuration > formule.timeLimit.max) return { ok: false, message: `Jusqu'à ${formule.timeLimit.max}h` };
   } else {
-    let earliest = schedule.open;
-    let latest = schedule.close - totalDuration;
-    if (formule.timeLimit && formule.timeLimit.min) earliest = Math.max(earliest, formule.timeLimit.min);
-    if (formule.timeLimit && formule.timeLimit.max) latest = Math.min(latest, formule.timeLimit.max - totalDuration);
+    // LA FENETRE D ARRIVEE, jumelle de celle du serveur : la route qui compose
+    // les creneaux et l agent qui repond aux clients lisent la meme. Seules
+    // les heures deja passees du jour meme se retirent ici.
+    const fenetre = getFormuleArrivalWindow(formule, schedule);
+    let earliest = fenetre.earliestStart;
     if (dateStr === todayStr()) earliest = Math.max(earliest, roundUpHalfHour(currentTimeDecimal()));
-    if (earliest > latest) return { ok: false, message: 'Aucun créneau possible ce jour' };
+    if (earliest > fenetre.latestStart) return { ok: false, message: 'Aucun créneau possible ce jour' };
   }
   return { ok: true, message: 'Disponible' };
 }

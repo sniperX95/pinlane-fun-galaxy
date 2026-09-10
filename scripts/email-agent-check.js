@@ -5,6 +5,28 @@
 // overrides automations (défauts C1, validation C2, builders + timings),
 // sendDirectEmail C3 (validation, payload, replyTo → marquage + leçon),
 // ingestion inbound (idempotence) et webhook C5 (401/Resend/payload plat).
+// L HORLOGE DU GATE EST POSEE (patch 72e). Les tarifs comptent les jours ou le
+// TUNNEL propose une heure, et le tunnel ne propose rien a une date passee
+// ni, le jour meme, a une heure passee : sur l horloge de la machine, ce gate
+// perdrait ses jours un par un apres le 10 septembre 2026. Elle part d un
+// instant connu, le 2026-09-10 a 10 h UTC (12 h a Bruxelles), et elle avance :
+// les ecarts de temps que le code mesure restent vrais. poserLHorloge la
+// deplace pour une mesure, rendreLHorloge la remet.
+const HORLOGE_DU_GATE = Date.parse('2026-09-10T10:00:00Z');
+const DateDeLaMachine = Date;
+let decalageDuGate = HORLOGE_DU_GATE - DateDeLaMachine.now();
+class DateDuGate extends DateDeLaMachine {
+  constructor(...args) {
+    if (args.length) super(...args);
+    else super(DateDeLaMachine.now() + decalageDuGate);
+  }
+
+  static now() { return DateDeLaMachine.now() + decalageDuGate; }
+}
+global.Date = DateDuGate;
+const poserLHorloge = (instant) => { decalageDuGate = DateDeLaMachine.parse(instant) - DateDeLaMachine.now(); };
+const rendreLHorloge = () => { decalageDuGate = HORLOGE_DU_GATE - DateDeLaMachine.now(); };
+
 const path = require('path');
 const {
   buildEmailBrain,
@@ -650,6 +672,22 @@ const anthropicOk = (object) => ({
     .map((ligne) => ligne.split(' : ')[0]).filter(Boolean).sort();
   ok(nomsDuMail.length >= 5 && JSON.stringify(nomsDuMail) === JSON.stringify(nomsPublics),
     'LE POINT : la porte email annonce EXACTEMENT les formules de la porte publique');
+  // ET LES MEMES JOURS. Les deux portes comptent a partir de demain, sur le
+  // meme agenda : une porte qui compterait aujourd hui dirait « 4 jours sur 12 »
+  // quand l autre dit « 4 jours sur 11 ».
+  const joursDits = (texte, separateur) => new Map(texte.split(separateur).map((ligne) => {
+    const nom = ligne.split(' : ')[0];
+    const sur = /(\d+) jours sur (\d+)/.exec(ligne);
+    return [nom, sur ? `${sur[1]}/${sur[2]}` : 'tous'];
+  }).filter(([nom]) => nom));
+  const joursDuMail = joursDits(tarifsLibramont.split('\n').slice(1).join('\n'), '\n');
+  const joursPublics = joursDits(String((fichePublique.prix_du_catalogue || {}).valeur || ''), ' | ');
+  const ecartsDeJours = nomsDuMail.filter((nom) => joursDuMail.get(nom) !== joursPublics.get(nom));
+  ok(nomsDuMail.some((nom) => joursDuMail.get(nom) !== 'tous') && ecartsDeJours.length === 0,
+    'LE POINT : et chaque formule y compte les MEMES jours, a partir de demain',
+    ecartsDeJours.map((nom) => `${nom} mail ${joursDuMail.get(nom)} / public ${joursPublics.get(nom)}`).join(' ; '));
+  ok(/^Tarifs releves le 2026-09-10 pour CE centre, sur les \d+ jours a partir de demain\./.test(tarifsLibramont),
+    'et l entete des tarifs dit de quels jours ils parlent', tarifsLibramont.split('\n')[0].slice(0, 120));
 
   // CHAQUE LIGNE PORTE SA CONDITION. Un prix nu se cite ensuite sans reserve.
   const lignesDeTarif = tarifsLibramont.split('\n').slice(1);
@@ -789,9 +827,22 @@ const anthropicOk = (object) => ({
     .map((ligne) => ligne.split(' : ')[0]).filter(Boolean);
   ok(nomsDeGembloux.length > 0,
     'MONTAGE : une grille horaire posee donne enfin des tarifs a Gembloux');
-  ok(nomsDeGembloux.length === nomsDuMail.length - 1
-    && nomsDeGembloux.every((nom) => nomsDuMail.includes(nom)),
-    'LE POINT : la liste de Gembloux est la SIENNE, amputee de la formule qu il a desactivee');
+  // SA liste : amputee de la formule qu il a desactivee, ET de celles que SON
+  // tunnel refuse. Gembloux n a pas de plaine de jeu, et le moteur refuse toute
+  // formule qui en contient une (« Activite non disponible dans ce centre »).
+  // L oracle est la configuration du centre, pas le tunnel qu on juge.
+  const { getFormula: documentDeFormule } = require('../lib/ops-knowledge');
+  const activitesDeGembloux = centreConfigure('gembloux').activityAvailability || {};
+  const idParNom = new Map(require('../lib/booking-config').getEffectiveFormules('libramont').map((f) => [String(f.name || f.id), f.id]));
+  const refuseesParSonTunnel = nomsDuMail.filter((nom) => ((documentDeFormule(idParNom.get(nom)) || {}).steps || [])
+    .some((etape) => activitesDeGembloux[etape.activityId] === false));
+  ok(refuseesParSonTunnel.length > 0,
+    'MONTAGE : des formules de Libramont passent par une activite que Gembloux n a pas',
+    refuseesParSonTunnel.join(', '));
+  const attenduDeGembloux = nomsDuMail.filter((nom) => idParNom.get(nom) !== 'f1' && !refuseesParSonTunnel.includes(nom)).sort();
+  ok(JSON.stringify([...nomsDeGembloux].sort()) === JSON.stringify(attenduDeGembloux),
+    'LE POINT : la liste de Gembloux est la SIENNE, amputee de la formule qu il a desactivee et de celles que son tunnel refuse',
+    `lu ${[...nomsDeGembloux].sort().join(', ')} / attendu ${attenduDeGembloux.join(', ')}`);
 
   // UNE GRILLE POSEE MAIS AUCUNE FORMULE ACTIVE : c est l etat d un centre qui
   // a saisi ses horaires et pas encore son catalogue. Il a un agenda, donc la
@@ -2100,9 +2151,14 @@ const anthropicOk = (object) => ({
     String(avecHoraire.length - sansHoraire.length));
 
   // ── COMBIEN DE TEMPS DURE UNE FORMULE ? ───────────────────────────────
-  console.log('\n[DUREE] « ca dure combien de temps ? »');
-  const { getEffectiveFormules: catalogueDuree, getFormuleTotalDuration: dureeDuMoteur } = require('../lib/booking-config');
-  const { tempsDeLaFormule: tempsDuGate } = require('../lib/email-agent');
+  console.log('\n[DUREE] « ca dure combien de temps ? » : ce que le tunnel planifie');
+  const {
+    getEffectiveFormules: catalogueDuree, getFormuleTotalDuration: dureeDesLignes, timeToNum: heureEnNombre,
+  } = require('../lib/booking-config');
+  const { proposedArrivals: arriveesPourLaDuree } = require('../lib/availability-slots');
+  const { agendaDuCentre: agendaPourLaDuree, agendaDesPrix: aPartirDeDemain } = require('../lib/center-facts');
+  const { getCenter: centrePourLaDuree } = require('../lib/ops-knowledge');
+  const { tempsDuTunnel: tempsDuGate } = require('../lib/email-agent');
 
   const cerveauDuree = await buildEmailBrain('libramont', makeDeps({}), INSTANT_DU_JOUR);
   const catalogueDeLaDuree = catalogueDuree('libramont');
@@ -2114,29 +2170,61 @@ const anthropicOk = (object) => ({
   ok(fenetres.length > 0 && classiques.length > 0 && catalogueDeLaDuree.every((f) => ligneDeLaFormule(f)),
     'MONTAGE : a cette date chaque formule a sa ligne de tarif, et le catalogue a les deux sortes',
     `${classiques.length} a duree, ${fenetres.length} a fenetre ouverte, sans ligne : ${catalogueDeLaDuree.filter((f) => !ligneDeLaFormule(f)).map((f) => f.id).join(',') || 'aucune'}`);
-  ok(new Set(classiques.map((f) => Number(dureeDuMoteur(f)))).size >= 3,
-    'MONTAGE : les durees different d une formule a l autre (une valeur unique ne prouverait rien)',
-    [...new Set(classiques.map((f) => Number(dureeDuMoteur(f))))].join(', '));
 
-  // LE CHIFFRE EST CELUI DU MOTEUR, RELU SUR LA LIGNE. Rien n est recopie :
-  // getFormuleTotalDuration dit ce qui est attendu, formule par formule.
-  const heuresLues = (ligne) => {
-    const lu = /\| dure environ (?:(\d+) h(?: (\d{2}))?|(\d+) min)/.exec(ligne);
-    if (!lu) return null;
-    return lu[3] ? Number(lu[3]) / 60 : Number(lu[1]) + (lu[2] ? Number(lu[2]) / 60 : 0);
+  // CE QUE LE TUNNEL PLANIFIE, formule par formule, sur les memes jours que les
+  // tarifs (a partir de demain) : de l heure d arrivee a la fin de la derniere
+  // activite. La ligne le dit a cinq minutes pres.
+  const joursDesTarifs = aPartirDeDemain(agendaPourLaDuree(centrePourLaDuree('libramont'), [], JOUR), JOUR)
+    .filter((j) => j.ouvert && !j.ferme).map((j) => j.date);
+  const dureesDuTunnel = (formule) => {
+    const minimum = Number(formule.minPax) > 0 ? Number(formule.minPax) : 1;
+    const minutes = joursDesTarifs
+      .flatMap((date) => arriveesPourLaDuree({ centerId: 'libramont', date, formule, pax: minimum }))
+      .map((a) => Math.round((heureEnNombre(a.endTime) - heureEnNombre(a.time)) * 60));
+    return minutes.length ? { min: Math.min(...minutes), max: Math.max(...minutes) } : null;
   };
-  const ecartsDuree = classiques.filter((f) => heuresLues(ligneDeLaFormule(f)) !== Number(dureeDuMoteur(f)));
+  const aCinqMinutes = (minutes) => Math.round(minutes / 5) * 5;
+  const enMinutes = (heures, minutes) => Number(heures) * 60 + Number(minutes || 0);
+  const dureeLue = (ligne) => {
+    const environ = /\| dure environ (\d+) h(?: (\d{2}))?(?= \||$)/.exec(ligne);
+    if (environ) return { min: enMinutes(environ[1], environ[2]), max: enMinutes(environ[1], environ[2]) };
+    const fourchette = /\| dure de (\d+) h(?: (\d{2}))? a (\d+) h(?: (\d{2}))? selon l heure d arrivee/.exec(ligne);
+    if (fourchette) return { min: enMinutes(fourchette[1], fourchette[2]), max: enMinutes(fourchette[3], fourchette[4]) };
+    const minutes = /\| dure environ (\d+) min/.exec(ligne);
+    return minutes ? { min: Number(minutes[1]), max: Number(minutes[1]) } : null;
+  };
+  ok(new Set(classiques.map((f) => (dureesDuTunnel(f) || {}).min)).size >= 3,
+    'MONTAGE : les durees du tunnel different d une formule a l autre (une valeur unique ne prouverait rien)',
+    [...new Set(classiques.map((f) => (dureesDuTunnel(f) || {}).min))].join(', '));
+  const ecartsDuree = classiques.filter((f) => {
+    const tunnel = dureesDuTunnel(f);
+    const lue = dureeLue(ligneDeLaFormule(f));
+    return !tunnel || !lue || lue.min !== aCinqMinutes(tunnel.min) || lue.max !== aCinqMinutes(tunnel.max);
+  });
   ok(ecartsDuree.length === 0,
-    'LE POINT : chaque formule a duree annonce EXACTEMENT la duree que le moteur applique',
-    ecartsDuree.map((f) => `${f.id} lu ${heuresLues(ligneDeLaFormule(f))} / moteur ${dureeDuMoteur(f)}`).join(' ; '));
+    'LE POINT : chaque formule a duree annonce la duree que le TUNNEL planifie, a cinq minutes pres',
+    ecartsDuree.map((f) => `${f.id} lu ${JSON.stringify(dureeLue(ligneDeLaFormule(f)))} / tunnel ${JSON.stringify(dureesDuTunnel(f))}`).join(' ; '));
 
-  // UNE FENETRE OUVERTE N A PAS DE DUREE. La fonction du moteur rend quand
-  // meme un chiffre pour elle : c est exactement le piege.
-  ok(fenetres.every((f) => Number(dureeDuMoteur(f)) > 0),
-    'MONTAGE : pour une fenetre ouverte, la fonction du moteur rend quand meme un chiffre (le piege existe)',
-    fenetres.map((f) => `${f.id} ${dureeDuMoteur(f)} h`).join(', '));
+  // LE PIEGE DU PATCH 71 : les lignes d une formule estiment une autre duree.
+  // Pour chacune ou les deux different, c est celle du tunnel qui se lit.
+  const trompeuses = classiques.filter((f) => {
+    const tunnel = dureesDuTunnel(f);
+    return tunnel && aCinqMinutes(tunnel.min) !== Math.round(Number(dureeDesLignes(f)) * 60);
+  });
+  ok(trompeuses.length >= 3,
+    'MONTAGE : pour plusieurs formules, les lignes estiment une autre duree que le tunnel',
+    trompeuses.map((f) => `${f.id} tunnel ${(dureesDuTunnel(f) || {}).min} min / lignes ${Number(dureeDesLignes(f)) * 60} min`).join(', '));
+  ok(trompeuses.every((f) => (dureeLue(ligneDeLaFormule(f)) || {}).min !== Math.round(Number(dureeDesLignes(f)) * 60)),
+    'LE POINT : aucune de ces formules n annonce la duree de ses lignes',
+    trompeuses.filter((f) => (dureeLue(ligneDeLaFormule(f)) || {}).min === Math.round(Number(dureeDesLignes(f)) * 60)).map((f) => f.id).join(','));
+
+  // UNE FENETRE OUVERTE N A PAS DE DUREE : le tunnel planifie pour elle des
+  // visites plus ou moins longues selon l heure d arrivee.
+  ok(fenetres.every((f) => { const d = dureesDuTunnel(f); return !d || d.min < d.max; }),
+    'MONTAGE : pour une fenetre ouverte, la duree des plans du tunnel change avec l heure d arrivee',
+    fenetres.map((f) => `${f.id} ${JSON.stringify(dureesDuTunnel(f))}`).join(', '));
   ok(fenetres.every((f) => /\| fenetre ouverte : on arrive quand on veut/.test(ligneDeLaFormule(f))
-    && !/dure environ/.test(ligneDeLaFormule(f))),
+    && !/\| dure /.test(ligneDeLaFormule(f))),
     'LE POINT : une fenetre ouverte annonce sa REGLE, jamais une duree',
     fenetres.map((f) => ligneDeLaFormule(f).slice(0, 40)).join(' // '));
   ok(classiques.every((f) => !/fenetre ouverte/.test(ligneDeLaFormule(f))),
@@ -2146,7 +2234,7 @@ const anthropicOk = (object) => ({
   // conditions.
   const bienRangee = (ligne) => {
     const comprend = ligne.indexOf(' | comprend : ');
-    const temps = Math.max(ligne.indexOf(' | dure environ '), ligne.indexOf(' | fenetre ouverte : '));
+    const temps = Math.max(ligne.indexOf(' | dure '), ligne.indexOf(' | fenetre ouverte : '));
     const conditions = ligne.indexOf(' | conditions : ');
     return comprend !== -1 && temps > comprend && (conditions === -1 || conditions > temps);
   };
@@ -2155,17 +2243,105 @@ const anthropicOk = (object) => ({
     catalogueDeLaDuree.filter((f) => !bienRangee(ligneDeLaFormule(f))).map((f) => f.id).join(','));
 
   // LE FORMAT QUE LE CLIENT LIT, et le silence quand il n y a rien a mesurer.
-  ok(tempsDuGate({ desc: ['1h de Bowling'], estimatedTotalDuration: 2.5 }) === 'dure environ 2 h 30'
-    && tempsDuGate({ estimatedTotalDuration: 3 }) === 'dure environ 3 h'
-    && tempsDuGate({ estimatedTotalDuration: 0.5 }) === 'dure environ 30 min',
-    'LE POINT : une duree se lit comme un client la dit (« 2 h 30 », « 3 h », « 30 min »)',
-    [2.5, 3, 0.5].map((h) => tempsDuGate({ estimatedTotalDuration: h })).join(' / '));
-  ok(Number(dureeDuMoteur({})) > 0,
-    'MONTAGE : la fonction du moteur rend un chiffre de repli pour un document vide',
-    String(dureeDuMoteur({})));
-  ok(tempsDuGate({}) === '' && tempsDuGate({ desc: [] }) === '' && tempsDuGate(null) === '',
-    'CONTRE-PREUVE : sans lignes a lire ni total declare, aucune duree (pas de « 30 min » de repli)',
-    JSON.stringify([tempsDuGate({}), tempsDuGate({ desc: [] }), tempsDuGate(null)]));
+  ok(tempsDuGate({ duree: { min: 150, max: 150 } }, {}) === 'dure environ 2 h 30'
+    && tempsDuGate({ duree: { min: 178, max: 182 } }, {}) === 'dure environ 3 h'
+    && tempsDuGate({ duree: { min: 30, max: 30 } }, {}) === 'dure environ 30 min'
+    && tempsDuGate({ duree: { min: 170, max: 180 } }, {}) === 'dure de 2 h 50 a 3 h selon l heure d arrivee',
+    'LE POINT : une duree se lit comme un client la dit, a cinq minutes pres, et une duree qui change se dit en fourchette',
+    [[150, 150], [178, 182], [30, 30], [170, 180]].map(([min, max]) => tempsDuGate({ duree: { min, max } }, {})).join(' / '));
+  ok(tempsDuGate({ duree: null }, {}) === '' && tempsDuGate({}, {}) === '' && tempsDuGate(null, null) === '',
+    'CONTRE-PREUVE : sans plan du tunnel, aucune duree (jamais un chiffre de repli)',
+    JSON.stringify([tempsDuGate({ duree: null }, {}), tempsDuGate({}, {}), tempsDuGate(null, null)]));
+  ok(/^fenetre ouverte/.test(tempsDuGate({ duree: { min: 30, max: 120 } }, { orderPolicy: 'open_window' })),
+    'et une fenetre ouverte dit sa regle, meme quand le tunnel lui connait des plans');
+
+  // ── L HEURE QU IL EST, ET CE QU IL RESTE AUJOURD HUI ───────────────────
+  console.log('\n[AUJOURD HUI] « on peut venir cet apres-midi ? » : les heures que le tunnel propose encore');
+  const moteurDuJour = require('../lib/booking-config');
+  const { jourDuCentre: jourDuGateHeure } = require('../lib/center-facts');
+  const { ligneDuJour: ligneDuJourSeule, plagesDesHeures } = require('../lib/email-agent');
+  const { proposedArrivals: arriveesDuJour } = require('../lib/availability-slots');
+
+  // LE FORMAT D ABORD : des heures en plages, comme on les dit.
+  ok(plagesDesHeures(['16:00', '16:30', '17:00', '19:00', '19:30']) === 'de 16 h a 17 h et de 19 h a 19 h 30'
+    && plagesDesHeures(['19:00']) === 'a 19 h'
+    && plagesDesHeures(['17:30', '17:00', '17:00']) === 'de 17 h a 17 h 30',
+    'LE POINT : des heures se disent en plages, une heure seule se dit seule, et l ordre ou les doublons ne changent rien',
+    [plagesDesHeures(['16:00', '16:30', '17:00', '19:00', '19:30']), plagesDesHeures(['19:00']), plagesDesHeures(['17:30', '17:00', '17:00'])].join(' / '));
+
+  // L AGENT CONTRE LE TUNNEL, a trois moments d un meme samedi et un lundi de
+  // fermeture. L horloge du gate est posee sur chaque instant : le moteur ne
+  // retire les heures passees que de SON aujourd hui, c est lui qu on juge.
+  const SAMEDI = '2026-09-12';
+  const catalogueDuSamedi = moteurDuJour.getEffectiveFormules('libramont');
+  const attenduAujourdhui = () => catalogueDuSamedi.map((formule) => {
+    const minimum = Number(formule.minPax) > 0 ? Number(formule.minPax) : 1;
+    const heures = arriveesDuJour({ centerId: 'libramont', date: moteurDuJour.todayStr(), formule, pax: minimum }).map((a) => a.time);
+    return { nom: String(formule.name), heures };
+  });
+  const ligneDuJourDe = (cerveau) => cerveau.context.split('\n').find((l) => l.startsWith('AUJOURD HUI')) || '';
+  const partie = (ligne, debut) => (ligne.split(' ; ').find((p) => p.includes(debut)) || '');
+  const conforme = (ligne, attendu) => attendu.every((a) => (a.heures.length
+    ? partie(ligne, 'arrivee encore possible pour').includes(`${a.nom} ${plagesDesHeures(a.heures)}`)
+    : partie(ligne, 'plus possible aujourd hui').includes(a.nom) || /plus aucune formule ne se reserve aujourd hui/.test(ligne)));
+  const aLInstant = async (instant) => {
+    poserLHorloge(instant);
+    const cerveau = await buildEmailBrain('libramont', makeDeps({}), Date.parse(instant));
+    const attendu = attenduAujourdhui();
+    rendreLHorloge();
+    return { cerveau, attendu };
+  };
+
+  const quinzeHeures = `${SAMEDI}T13:20:00Z`;
+  const aQuinze = await aLInstant(quinzeHeures);
+  ok(aQuinze.attendu.some((a) => a.heures.length) && aQuinze.attendu.some((a) => !a.heures.length),
+    'MONTAGE : a 15 h 20 ce samedi, le tunnel propose encore certaines formules et plus d autres',
+    `${aQuinze.attendu.filter((a) => a.heures.length).length} encore, ${aQuinze.attendu.filter((a) => !a.heures.length).length} plus`);
+  ok(conforme(ligneDuJourDe(aQuinze.cerveau), aQuinze.attendu),
+    'LE POINT : a 15 h 20, chaque formule est dite avec les heures que le tunnel propose encore, ou comme plus possible',
+    ligneDuJourDe(aQuinze.cerveau).slice(0, 200));
+  ok(aQuinze.cerveau.context.includes(`il est ${jourDuGateHeure(Date.parse(quinzeHeures)).heureDite}, heure de Belgique`)
+    && ligneDuJourDe(aQuinze.cerveau).startsWith(`AUJOURD HUI, il est ${jourDuGateHeure(Date.parse(quinzeHeures)).heureDite} :`),
+    'LE POINT : le bloc du jour et la ligne du jour disent la MEME heure, celle de Bruxelles',
+    (aQuinze.cerveau.context.split('\n').find((l) => /Nous sommes le/.test(l)) || '').slice(0, 90));
+  ok(/L heure compte pour une demande du JOUR MEME/.test(aQuinze.cerveau.context),
+    'et le bloc du jour renvoie a la ligne du jour, puisqu elle existe');
+
+  const dixHeuresCinq = `${SAMEDI}T08:05:00Z`;
+  const aDix = await aLInstant(dixHeuresCinq);
+  ok(conforme(ligneDuJourDe(aDix.cerveau), aDix.attendu),
+    'LE POINT : a 10 h 05, les heures dites sont celles que le tunnel propose encore',
+    ligneDuJourDe(aDix.cerveau).slice(0, 200));
+
+  const vingtDeuxHeures = `${SAMEDI}T20:00:00Z`;
+  const aVingtDeux = await aLInstant(vingtDeuxHeures);
+  ok(aVingtDeux.attendu.every((a) => !a.heures.length) && /plus aucune formule ne se reserve aujourd hui/.test(ligneDuJourDe(aVingtDeux.cerveau)),
+    'LE POINT : a 22 h, le tunnel ne propose plus rien, et la ligne du jour le dit au lieu de se taire',
+    ligneDuJourDe(aVingtDeux.cerveau).slice(0, 120));
+
+  const lundiMatin = '2026-09-14T09:00:00Z';
+  ok(!moteurDuJour.getSchedule('2026-09-14', require('../lib/ops-knowledge').getCenter('libramont')),
+    'MONTAGE : ce lundi, la grille du centre est fermee');
+  ok(/plus aucune formule ne se reserve aujourd hui/.test(ligneDuJourDe((await aLInstant(lundiMatin)).cerveau)),
+    'LE POINT : un jour de fermeture, la ligne du jour le dit');
+
+  // UN INSTANT QUI N EST PAS LE JOUR DU MOTEUR n ecrit pas de ligne du jour : le
+  // tunnel ne sait retirer les heures passees que de son aujourd hui, et une
+  // ligne calculee a cote serait une ligne inventee.
+  const horsDuJour = await buildEmailBrain('libramont', makeDeps({}), Date.parse(quinzeHeures));
+  ok(horsDuJour.context.includes('(2026-09-12)') && !/^AUJOURD HUI/m.test(horsDuJour.context)
+    && !/L heure compte/.test(horsDuJour.context),
+    'CONTRE-PREUVE : un instant qui n est pas le jour du moteur n ecrit ni la ligne du jour ni la phrase qui y renvoie',
+    (horsDuJour.context.split('\n').find((l) => l.startsWith('AUJOURD HUI')) || 'pas de ligne').slice(0, 80));
+
+  // CONTRE-PREUVES : sans heure, pas de ligne ; sans tarif, ni ligne ni phrase.
+  ok(ligneDuJourSeule([{ nom: 'X', heures: ['14:00'] }], null) === '',
+    'CONTRE-PREUVE : sans heure donnee, aucune ligne du jour');
+  poserLHorloge(quinzeHeures);
+  const cerveauSansTarif = await buildEmailBrain('gembloux', makeDeps({}), Date.parse(quinzeHeures));
+  rendreLHorloge();
+  ok(!/^AUJOURD HUI/m.test(cerveauSansTarif.context) && !/L heure compte/.test(cerveauSansTarif.context),
+    'CONTRE-PREUVE : un centre sans tarif publiable ne recoit ni la ligne du jour ni la phrase qui y renvoie');
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

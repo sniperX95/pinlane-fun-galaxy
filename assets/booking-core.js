@@ -834,6 +834,29 @@ function getFormuleTotalDuration(formule) {
   return formule ? estimateFormulaDurationFromLines(formule) : 0;
 }
 
+// JUMELLES EXACTES de lib/booking-config.js. Le navigateur grise une formule
+// sans heure d arrivee possible avec LA MEME regle que la route qui compose
+// les creneaux et que l agent qui repond aux clients. Le gate de derive
+// (scripts/booking-constants-drift-check.js) les compare a celles du serveur,
+// formule par formule, sur plusieurs grilles horaires.
+function getFormuleBookedDuration(formule) {
+  if (!formule) return 0;
+  return formule.orderPolicy === 'open_window' ? 0.5 : getFormuleTotalDuration(formule);
+}
+
+function getFormuleArrivalWindow(formule, schedule) {
+  if (!formule || !schedule) return null;
+  const limit = formule.timeLimit || {};
+  const periodStart = limit.min ? Math.max(schedule.open, limit.min) : schedule.open;
+  const periodEnd = limit.max ? Math.min(schedule.close, limit.max) : schedule.close;
+  return {
+    periodStart,
+    periodEnd,
+    earliestStart: periodStart,
+    latestStart: periodEnd - getFormuleBookedDuration(formule),
+  };
+}
+
 function getBookingTotalDuration(booking) {
   if (booking.type === 'formule') {
     const formule = FORMULES.find(x => x.id === booking.formuleId);
@@ -1713,6 +1736,8 @@ function getFormulaActivityProgressSummary(reservation) {
     getFormuleLaneDuration,
     estimateFormulaDurationFromLines,
     getFormuleTotalDuration,
+    getFormuleBookedDuration,
+    getFormuleArrivalWindow,
     getBookingTotalDuration,
     legacyGetFormuleAvailability,
     validateSlotWindow,

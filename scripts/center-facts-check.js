@@ -1,6 +1,28 @@
 // Gate de la fiche de faits (lib/center-facts.js).
 // SANS réseau ni DB : ficheDuRegistre est pure, on lui injecte des lignes.
 // node scripts/center-facts-check.js
+// L HORLOGE DU GATE EST POSEE (patch 72e). Les prix comptent les jours ou le
+// TUNNEL propose une heure, et le tunnel ne propose rien a une date passee
+// ni, le jour meme, a une heure passee : sur l horloge de la machine, ce gate
+// perdrait ses jours un par un apres le 10 septembre 2026. Elle part d un
+// instant connu, le 2026-09-10 a 10 h UTC (12 h a Bruxelles), et elle avance :
+// les ecarts de temps que le code mesure restent vrais. poserLHorloge la
+// deplace pour une mesure, rendreLHorloge la remet.
+const HORLOGE_DU_GATE = Date.parse('2026-09-10T10:00:00Z');
+const DateDeLaMachine = Date;
+let decalageDuGate = HORLOGE_DU_GATE - DateDeLaMachine.now();
+class DateDuGate extends DateDeLaMachine {
+  constructor(...args) {
+    if (args.length) super(...args);
+    else super(DateDeLaMachine.now() + decalageDuGate);
+  }
+
+  static now() { return DateDeLaMachine.now() + decalageDuGate; }
+}
+global.Date = DateDuGate;
+const poserLHorloge = (instant) => { decalageDuGate = DateDeLaMachine.parse(instant) - DateDeLaMachine.now(); };
+const rendreLHorloge = () => { decalageDuGate = HORLOGE_DU_GATE - DateDeLaMachine.now(); };
+
 const { ficheDuRegistre, ajouterIdentite, ajouterMemoire } = require('../lib/center-facts');
 const { buildCenterFacts } = require('../lib/marketing-agents');
 const { maturite, peutAffirmer, N_POUR_ELIRE, PART_QUI_TRAHIT_UN_ARTEFACT } = require('../lib/center-guards');
@@ -1280,7 +1302,13 @@ const TARIFS = [
   // Prix absent : idem.
   { id: 'tz', name: 'TARIF SANS PRIX', price: null, type: 'per_pax', minPax: 1, ressources: [] },
 ];
-const lus = prixReservables(TARIFS, centrePrix, agendaPrix);
+// CES TARIFS N EXISTENT PAS AU CATALOGUE : le tunnel ne saurait pas les
+// composer, et ce n est pas ce qu on mesure ici. Chacun isole UNE regle de la
+// fiche (unite, jour, minimum, fenetre dite, blocage) ; le tunnel d essai
+// propose une arrivee chaque jour que le moteur laisse passer. Le vrai
+// tunnel se juge plus bas, sur le vrai catalogue ([ARRIVEE]).
+const UNE_ARRIVEE_PAR_JOUR = () => [{ time: '14:00', endTime: '16:00' }];
+const lus = prixReservables(TARIFS, centrePrix, agendaPrix, [], null, UNE_ARRIVEE_PAR_JOUR);
 const parId = Object.fromEntries(lus.map((p) => [p.id, p]));
 
 ok('une unite de prix INCONNUE exclut la formule',
@@ -1312,15 +1340,15 @@ const blocsFormule = agendaPrix.map((j, i) => ({
   startMin: null, endMin: null, reason: 'suspendue', createdBy: 'gerant',
 }));
 ok('une formule bloquee tous les jours ouverts sort des prix',
-  !prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule).some((p) => p.id === 'tl'),
-  JSON.stringify(prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule).map((p) => p.id)));
+  !prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule, null, UNE_ARRIVEE_PAR_JOUR).some((p) => p.id === 'tl'),
+  JSON.stringify(prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule, null, UNE_ARRIVEE_PAR_JOUR).map((p) => p.id)));
 ok('CONTRE-PREUVE : bloquee un seul jour, elle reste, avec un jour de moins',
-  (prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule.slice(0, 1))
+  (prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule.slice(0, 1), null, UNE_ARRIVEE_PAR_JOUR)
     .find((p) => p.id === 'tl') || {}).jours === 3,
-  JSON.stringify(prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule.slice(0, 1))
+  JSON.stringify(prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule.slice(0, 1), null, UNE_ARRIVEE_PAR_JOUR)
     .find((p) => p.id === 'tl')));
 ok('sans un seul jour ouvert, aucun prix (c est le centre qui est ferme)',
-  prixReservables(TARIFS, centrePrix, agendaPrix.map((j) => ({ ...j, ouvert: false }))).length === 0);
+  prixReservables(TARIFS, centrePrix, agendaPrix.map((j) => ({ ...j, ouvert: false })), [], null, UNE_ARRIVEE_PAR_JOUR).length === 0);
 
 // ── LES DEUX FAITS ────────────────────────────────────────────────────────
 const fichePrix = ficheDuRegistre({
@@ -1332,6 +1360,9 @@ ok('prix_du_catalogue est pose et PUBLIC : un prix, un client vient le chercher'
 ok('il porte la condition de jour de chaque formule',
   /TARIF JEUDI : 12 EUR par personne, sans minimum de personnes, reservable 1 jours sur 4/
     .test(String(fichePrix.prix_du_catalogue.valeur)),
+  String(fichePrix.prix_du_catalogue.valeur));
+ok('et il dit de quels jours il parle : a partir de demain',
+  /reservable 1 jours sur 4 a partir de demain/.test(String(fichePrix.prix_du_catalogue.valeur)),
   String(fichePrix.prix_du_catalogue.valeur));
 ok('et la fenetre horaire quand il y en a une',
   /TARIF MATIN[^|]*avant 12 h/.test(String(fichePrix.prix_du_catalogue.valeur)),
@@ -2200,72 +2231,126 @@ ok('LE POINT : sur toute la fenetre, horaire de vacances et periodes designent l
   ecartsHoraire === 0,
   `${ecartsHoraire} ecart(s) sur ${vuSurUnAn.horizon} jours`);
 
-// ── UN JOUR NE COMPTE QUE S IL OFFRE UNE HEURE D ARRIVEE ───────────────
-console.log('\n[ARRIVEE] « reservable 12 jours », sauf que le tunnel n offre rien avant l ouverture');
+// ── UN JOUR NE COMPTE QUE SI LE TUNNEL Y PROPOSE UNE HEURE ─────────────
+console.log('\n[ARRIVEE] un jour ne compte que si le tunnel y propose une heure, et la duree est celle de ses plans');
 const moteurFenetre = require('../lib/booking-config');
-const { agendaDuCentre: agendaFenetre, formuleAvecSesRessources: ressourcesFenetre } = require('../lib/center-facts');
+const { proposedArrivals: arriveesDuTunnel } = require('../lib/availability-slots');
+const {
+  agendaDuCentre: agendaFenetre, formuleAvecSesRessources: ressourcesFenetre,
+  agendaDesPrix: agendaAPartirDeDemain, arriveesDAujourdhui, dureeDesPlans,
+} = require('../lib/center-facts');
+const { loadOpsKnowledge: reglesDuMoteur } = require('../lib/ops-knowledge');
 
-// LA FORME CLOSE : la derniere arrivee d une formule est la fin de sa fenetre
-// moins le temps que le moteur reserve. Un jour ne compte que s il ouvre au
-// plus tard a cette heure-la. Ce n est pas la boucle de la fiche recopiee
-// mais son resultat, obtenu autrement.
-const tarifMatin = TARIFS.find((t) => t.id === 'tm');
-const derniereArriveeMatin = tarifMatin.timeLimit.max - moteurFenetre.getFormuleBookedDuration(tarifMatin);
-const ouvertures = agendaPrix.map((j) => ({ date: j.date, plage: moteurFenetre.getSchedule(j.date, centrePrix) }));
-const joursAssezTot = ouvertures.filter((o) => o.plage && o.plage.open <= derniereArriveeMatin).length;
-ok('MONTAGE : parmi les quatre jours, certains ouvrent trop tard pour une formule du matin, d autres non',
-  joursAssezTot > 0 && joursAssezTot < agendaPrix.length,
-  `${ouvertures.map((o) => `${o.date} ouvre a ${o.plage ? o.plage.open : '-'} h`).join(', ')} ; derniere arrivee ${derniereArriveeMatin} h`);
-ok('LE POINT : une formule « avant 12 h » ne compte que les jours ou l on peut encore arriver avant midi',
-  Boolean(parId.tm) && parId.tm.jours === joursAssezTot,
-  `fiche ${parId.tm && parId.tm.jours} jours, attendu ${joursAssezTot} sur ${agendaPrix.length}`);
+// LA REGLE DE COMPTE, sur un tunnel d essai qui ne propose que deux jours, avec
+// des durees differentes. Un jour sans heure ne compte pas, une reponse vide
+// (null) non plus.
+const tarifLibre = TARIFS.find((t) => t.id === 'tl');
+const deuxJours = (formule, date) => {
+  if (date === agendaPrix[1].date) return [{ time: '14:00', endTime: '16:20' }, { time: '14:30', endTime: '16:50' }];
+  if (date === agendaPrix[3].date) return [{ time: '10:00', endTime: '12:35' }];
+  return date === agendaPrix[2].date ? null : [];
+};
+const lusSurDeuxJours = prixReservables([tarifLibre], centrePrix, agendaPrix, [], null, deuxJours)[0] || {};
+ok('LE POINT : la fiche compte les jours ou le tunnel propose une heure, pas ceux que le moteur laisse passer',
+  lusSurDeuxJours.jours === 2 && lusSurDeuxJours.surTotal === 4,
+  JSON.stringify(lusSurDeuxJours));
+ok('LE POINT : la duree est celle des plans du tunnel, la plus courte et la plus longue',
+  Boolean(lusSurDeuxJours.duree) && lusSurDeuxJours.duree.min === 140 && lusSurDeuxJours.duree.max === 155,
+  JSON.stringify(lusSurDeuxJours.duree));
+ok('CONTRE-PREUVE : un tunnel qui ne propose rien ne publie rien',
+  prixReservables([tarifLibre], centrePrix, agendaPrix, [], null, () => []).length === 0);
+ok('LE POINT : une duree se mesure de l arrivee a la fin du plan, meme apres minuit, et sans fin lisible il n y en a pas',
+  dureeDesPlans([{ time: '21:30', endTime: '24:05' }]).min === 155
+    && dureeDesPlans([{ time: '10:00', endTime: '' }]) === null && dureeDesPlans([]) === null && dureeDesPlans(null) === null,
+  JSON.stringify([dureeDesPlans([{ time: '21:30', endTime: '24:05' }]), dureeDesPlans([{ time: '10:00', endTime: '' }])]));
 
-// UNE VISITE PLUS LONGUE QUE LA JOURNEE : le tunnel ne lui propose aucune
-// heure de debut ce jour-la, parce qu elle finirait apres la fermeture.
-const TARIF_LONG = { id: 'tlg', name: 'TARIF LONG', price: 30, type: 'per_pax', minPax: 1, estimatedTotalDuration: 9, ressources: [] };
-const joursAssezLongs = ouvertures.filter((o) => o.plage && o.plage.close - o.plage.open >= 9).length;
-const lusLong = prixReservables([TARIF_LONG], centrePrix, agendaPrix)[0];
-ok('MONTAGE : certains des quatre jours sont trop courts pour une visite de neuf heures, d autres non',
-  joursAssezLongs > 0 && joursAssezLongs < agendaPrix.length,
-  ouvertures.map((o) => `${o.date} ${o.plage ? o.plage.close - o.plage.open : 0} h`).join(', '));
-ok('LE POINT : une visite qui finirait apres la fermeture ne rend pas le jour reservable',
-  Boolean(lusLong) && lusLong.jours === joursAssezLongs,
-  `fiche ${lusLong && lusLong.jours} jours, attendu ${joursAssezLongs}`);
+// LES PRIX COMPTENT A PARTIR DE DEMAIN. Aujourd hui, le tunnel retire deja les
+// heures passees : le compter ferait perdre un jour a chaque formule le soir.
+const autourDuDix = [{ date: '2026-09-09' }, { date: '2026-09-10' }, { date: '2026-09-11' }];
+ok('LE POINT : les prix comptent a partir de demain, jamais aujourd hui ni avant',
+  agendaAPartirDeDemain(autourDuDix, '2026-09-10').map((j) => j.date).join(',') === '2026-09-11',
+  JSON.stringify(agendaAPartirDeDemain(autourDuDix, '2026-09-10')));
 
-// LE VRAI CATALOGUE, SUR UNE FENETRE FIXE de quatorze jours a partir du
-// 2026-09-10 : le resultat depend du calendrier, donc la date est posee ici,
-// jamais lue sur l horloge.
+// LE VRAI TUNNEL, SUR LE VRAI CATALOGUE, a l horloge du gate : quatorze jours a
+// partir du 2026-09-10. La route elle-meme est comparee a l agent dans
+// agent-tunnel-check ; ici, la fiche doit lire le tunnel par defaut, pour ce
+// centre et au minimum de chaque formule.
 const agendaDeLaFenetre = agendaFenetre(centrePrix, [], '2026-09-10');
 const catalogueReel = moteurFenetre.getEffectiveFormules('libramont').map(ressourcesFenetre);
 const prixReels = prixReservables(catalogueReel, centrePrix, agendaDeLaFenetre);
 const joursOuvertsDeLaFenetre = agendaDeLaFenetre.filter((j) => j.ouvert && !j.ferme).map((j) => j.date);
-const arriveePossible = (formule, date) => {
-  const plage = moteurFenetre.getSchedule(date, centrePrix);
-  if (!plage) return false;
-  const limite = formule.timeLimit || {};
-  const premiere = Math.max(plage.open, limite.min ? Number(limite.min) : -Infinity);
-  const derniere = Math.min(plage.close, limite.max ? Number(limite.max) : Infinity)
-    - moteurFenetre.getFormuleBookedDuration(formule);
-  return premiere <= derniere;
-};
 const attenduParFormule = catalogueReel.map((formule) => {
   const minimum = Number(formule.minPax) > 0 ? Number(formule.minPax) : 1;
-  const vendable = joursOuvertsDeLaFenetre.filter((date) => moteurFenetre.getFormuleAvailability(formule, date, minimum, '', centrePrix).ok);
-  return { id: formule.id, sansHeure: vendable.length, jours: vendable.filter((date) => arriveePossible(formule, date)).length };
+  const parJour = joursOuvertsDeLaFenetre
+    .map((date) => arriveesDuTunnel({ centerId: 'libramont', date, formule, pax: minimum }))
+    .filter((liste) => liste.length);
+  return { id: formule.id, jours: parJour.length, duree: dureeDesPlans(parJour.flat()) };
 });
-const luSurLaFiche = (id) => (prixReels.find((p) => String(p.id) === String(id)) || { jours: 0 }).jours;
-const amputees = attenduParFormule.filter((a) => a.jours < a.sansHeure);
-ok('MONTAGE : sur le vrai catalogue, une formule au moins a une fenetre qui ferme avant certaines ouvertures',
-  amputees.length > 0,
-  amputees.map((a) => `${a.id} ${a.sansHeure} -> ${a.jours}`).join(', ') || 'aucune');
-ok('LE POINT : pour CHAQUE formule, la fiche compte exactement les jours ou une arrivee est possible',
-  attenduParFormule.every((a) => luSurLaFiche(a.id) === a.jours),
-  attenduParFormule.filter((a) => luSurLaFiche(a.id) !== a.jours).map((a) => `${a.id} fiche ${luSurLaFiche(a.id)} / attendu ${a.jours}`).join(' ; '));
-ok('CONTRE-PREUVE : et d autres gardent tous leurs jours (la correction ne retire pas tout)',
-  attenduParFormule.some((a) => a.jours > 0 && a.jours === a.sansHeure && luSurLaFiche(a.id) === a.jours));
+const luSurLaFiche = (id) => prixReels.find((p) => String(p.id) === String(id)) || { jours: 0, duree: null };
+ok('LE POINT : pour CHAQUE formule, la fiche compte exactement les jours ou le tunnel propose une heure',
+  attenduParFormule.every((a) => luSurLaFiche(a.id).jours === a.jours),
+  attenduParFormule.filter((a) => luSurLaFiche(a.id).jours !== a.jours).map((a) => `${a.id} fiche ${luSurLaFiche(a.id).jours} / tunnel ${a.jours}`).join(' ; '));
+ok('LE POINT : et sa duree est exactement celle des plans du tunnel',
+  attenduParFormule.every((a) => JSON.stringify(luSurLaFiche(a.id).duree || null) === JSON.stringify(a.jours ? a.duree : null)),
+  attenduParFormule.filter((a) => JSON.stringify(luSurLaFiche(a.id).duree || null) !== JSON.stringify(a.jours ? a.duree : null))
+    .map((a) => `${a.id} fiche ${JSON.stringify(luSurLaFiche(a.id).duree)} / tunnel ${JSON.stringify(a.duree)}`).join(' ; '));
+const lignesTrompeuses = catalogueReel.filter((f) => f.orderPolicy !== 'open_window')
+  .filter((f) => luSurLaFiche(f.id).duree && luSurLaFiche(f.id).duree.min !== Math.round(moteurFenetre.getFormuleTotalDuration(f) * 60));
+ok('MONTAGE : pour plusieurs formules, les lignes estiment une autre duree que le tunnel (le piege du patch 71 existe)',
+  lignesTrompeuses.length >= 3,
+  lignesTrompeuses.map((f) => `${f.id} tunnel ${luSurLaFiche(f.id).duree.min} min / lignes ${moteurFenetre.getFormuleTotalDuration(f) * 60} min`).join(', '));
+
+// UN ORACLE QUI NE PASSE PAS PAR LE TUNNEL : une formule « avant 12 h » ne
+// se fait que les jours ou le centre ouvre assez tot pour une arrivee a la
+// derniere demi-heure avant midi. La grille le dit, jour par jour.
+const matinMalin = catalogueReel.find((f) => f.orderPolicy === 'open_window' && f.timeLimit && f.timeLimit.max === 12);
+const joursDuMatin = joursOuvertsDeLaFenetre.filter((date) => {
+  const plage = moteurFenetre.getSchedule(date, centrePrix);
+  return plage && plage.open <= 11.5 && moteurFenetre.getFormuleAvailability(matinMalin, date, 1, '', centrePrix).ok;
+}).length;
+ok('MONTAGE : sur la fenetre, certains jours ouvrent assez tot pour la formule du matin, d autres non',
+  Boolean(matinMalin) && joursDuMatin > 0 && joursDuMatin < joursOuvertsDeLaFenetre.length,
+  `${matinMalin && matinMalin.id} : ${joursDuMatin} jours sur ${joursOuvertsDeLaFenetre.length}`);
+ok('LE POINT : la formule du matin ne compte que les jours ou le centre ouvre avant sa derniere arrivee',
+  luSurLaFiche(matinMalin.id).jours === joursDuMatin,
+  `fiche ${luSurLaFiche(matinMalin.id).jours} jours, grille ${joursDuMatin}`);
+
+// UN CENTRE OU LA FENETRE PASSE ET OU LE TUNNEL REFUSE. Gembloux n a pas de
+// plaine de jeu : le moteur refuse toute formule qui en contient une
+// (« Activite non disponible dans ce centre »). On lui pose les jours que la
+// grille du moteur lui ouvre, pour que la fenetre ait de quoi proposer.
+const centreGembloux = centrePourPrix('gembloux');
+const agendaDeGembloux = joursOuvertsDeLaFenetre.map((date) => ({ date, ouvert: Boolean(moteurFenetre.getSchedule(date, centreGembloux)), ferme: false }));
+const catalogueDeGembloux = moteurFenetre.getEffectiveFormules('gembloux').map(ressourcesFenetre);
+const avecPlaine = catalogueDeGembloux
+  .filter((f) => ((formuleDuCatalogue(f.id) || {}).steps || []).some((etape) => etape.activityId === 'playground'))
+  .map((f) => f.id);
+const prixDeGembloux = prixReservables(catalogueDeGembloux, centreGembloux, agendaDeGembloux);
+const gemblouxSansTunnel = prixReservables(catalogueDeGembloux, centreGembloux, agendaDeGembloux, [], null, UNE_ARRIVEE_PAR_JOUR);
+ok('MONTAGE : Gembloux n a pas de plaine de jeu, des formules en contiennent une, et sans le tunnel elles passeraient',
+  (centreGembloux.activityAvailability || {}).playground === false && avecPlaine.length > 0
+    && avecPlaine.every((id) => gemblouxSansTunnel.some((p) => p.id === id)),
+  JSON.stringify({ avecPlaine, sansTunnel: gemblouxSansTunnel.map((p) => p.id) }));
+ok('LE POINT : avec le tunnel, aucune formule a plaine de jeu n est publiee a Gembloux',
+  !prixDeGembloux.some((p) => avecPlaine.includes(p.id)),
+  JSON.stringify(prixDeGembloux.map((p) => p.id)));
+ok('CONTRE-PREUVE : et ses autres formules le restent',
+  prixDeGembloux.length > 0 && gemblouxSansTunnel.filter((p) => !avecPlaine.includes(p.id)).every((p) => prixDeGembloux.some((q) => q.id === p.id)),
+  JSON.stringify(prixDeGembloux.map((p) => p.id)));
+
+// UN CENTRE QUE LE TUNNEL REFUSE EN ENTIER : pas encore ouvert aux reservations.
+const { publicBookingBlockReason: refusDuCentre } = require('../lib/ops-knowledge');
+const centreCiney = centrePourPrix('ciney');
+const agendaDeCiney = joursOuvertsDeLaFenetre.map((date) => ({ date, ouvert: Boolean(moteurFenetre.getSchedule(date, centreCiney)), ferme: false }));
+const catalogueDeCiney = moteurFenetre.getEffectiveFormules('ciney').map(ressourcesFenetre);
+ok('MONTAGE : Ciney refuse les reservations, et sans le tunnel la fenetre publierait ses formules',
+  Boolean(refusDuCentre('ciney')) && prixReservables(catalogueDeCiney, centreCiney, agendaDeCiney, [], null, UNE_ARRIVEE_PAR_JOUR).length > 0,
+  String(refusDuCentre('ciney')));
+ok('LE POINT : un centre que le tunnel refuse n a aucun prix de formule',
+  prixReservables(catalogueDeCiney, centreCiney, agendaDeCiney).length === 0);
 
 // LA DUREE QUE LE MOTEUR RESERVE : la demi-heure d arrivee pour une fenetre
-// ouverte, la duree de la formule sinon.
+// ouverte, la duree de la formule sinon. C est elle qui borne la fenetre.
 const fenetresReelles = catalogueReel.filter((f) => f.orderPolicy === 'open_window');
 ok('LE POINT : une fenetre ouverte ne reserve que la demi-heure d arrivee, une formule a duree reserve sa duree',
   fenetresReelles.length > 0
@@ -2274,16 +2359,104 @@ ok('LE POINT : une fenetre ouverte ne reserve que la demi-heure d arrivee, une f
       .every((f) => moteurFenetre.getFormuleBookedDuration(f) === moteurFenetre.getFormuleTotalDuration(f)),
   catalogueReel.map((f) => `${f.id} ${moteurFenetre.getFormuleBookedDuration(f)}`).join(' '));
 
-// CE QUE LA LIGNE DE TARIF PROMET, TENU PAR LE MOTEUR : dans une fenetre
-// ouverte on arrive jusqu a une demi-heure avant la fin, pas au-dela.
-const fenetreBornee = fenetresReelles.find((f) => f.timeLimit && f.timeLimit.max);
-const jourDeLaFenetre = fenetreBornee && joursOuvertsDeLaFenetre.find((date) => moteurFenetre.getFormuleAvailability(fenetreBornee, date, 1, '', centrePrix).ok
-  && arriveePossible(fenetreBornee, date));
-const finDeFenetre = fenetreBornee ? Number(fenetreBornee.timeLimit.max) : 0;
-ok('LE POINT : dans une fenetre ouverte, l arrivee est acceptee une demi-heure avant la fin et refusee a la fin',
-  Boolean(jourDeLaFenetre)
-    && moteurFenetre.getFormuleAvailability(fenetreBornee, jourDeLaFenetre, 1, moteurFenetre.numToTime(finDeFenetre - 0.5), centrePrix).ok
-    && !moteurFenetre.getFormuleAvailability(fenetreBornee, jourDeLaFenetre, 1, moteurFenetre.numToTime(finDeFenetre), centrePrix).ok,
-  `${fenetreBornee && fenetreBornee.id} le ${jourDeLaFenetre} : ${finDeFenetre - 0.5} h puis ${finDeFenetre} h`);
+// CE QUE LA LIGNE DE TARIF PROMET D UNE FENETRE OUVERTE, TENU PAR LE TUNNEL :
+// on arrive a chaque demi-heure de la plage jusqu a une demi-heure avant la
+// fin, et chaque visite finit a la fin de la plage.
+let casOuverts = 0;
+const ecartsOuverts = [];
+fenetresReelles.forEach((formule) => joursOuvertsDeLaFenetre.filter((date) => date > '2026-09-10').forEach((date) => {
+  const liste = arriveesDuTunnel({ centerId: 'libramont', date, formule, pax: 1 });
+  if (!liste.length) return;
+  casOuverts += 1;
+  const fenetre = moteurFenetre.getFormuleArrivalWindow(formule, moteurFenetre.getSchedule(date, centrePrix));
+  const attendues = [];
+  for (let v = Math.ceil(fenetre.periodStart * 2) / 2; v <= fenetre.periodEnd - 0.5 + 1e-9; v += 0.5) attendues.push(moteurFenetre.numToTime(v));
+  const fins = [...new Set(liste.map((a) => a.endTime))];
+  if (JSON.stringify(liste.map((a) => a.time)) !== JSON.stringify(attendues) || fins.length !== 1 || fins[0] !== moteurFenetre.numToTime(fenetre.periodEnd)) {
+    ecartsOuverts.push(`${formule.id} ${date} : ${liste.map((a) => `${a.time}>${a.endTime}`).join(' ')}`);
+  }
+}));
+ok('LE POINT : dans le tunnel, une fenetre ouverte accueille chaque demi-heure jusqu a une demi-heure avant la fin, et chaque visite finit a la fin',
+  casOuverts > 0 && ecartsOuverts.length === 0, `${casOuverts} jours ; ${ecartsOuverts.join(' ; ')}`);
+
+// LA FENETRE DU MOTEUR EST LA FORME CLOSE, formule par formule et jour par
+// jour : c est la fonction que la route lit pour borner ses heures d arrivee,
+// et dont le navigateur porte la jumelle.
+const fenetreAttendue = (formule, plage) => {
+  const limite = formule.timeLimit || {};
+  return {
+    debut: Math.max(plage.open, limite.min ? Number(limite.min) : -Infinity),
+    fin: Math.min(plage.close, limite.max ? Number(limite.max) : Infinity) - moteurFenetre.getFormuleBookedDuration(formule),
+  };
+};
+let casFenetre = 0;
+let ecartsFenetre = 0;
+catalogueReel.forEach((formule) => joursOuvertsDeLaFenetre.forEach((date) => {
+  const plage = moteurFenetre.getSchedule(date, centrePrix);
+  const lue = moteurFenetre.getFormuleArrivalWindow(formule, plage);
+  const attendue = fenetreAttendue(formule, plage);
+  casFenetre += 1;
+  if (!lue || lue.earliestStart !== attendue.debut || lue.latestStart !== attendue.fin) ecartsFenetre += 1;
+}));
+ok('LE POINT : la fenetre du moteur est la forme close, formule par formule et jour par jour',
+  casFenetre > 0 && ecartsFenetre === 0,
+  `${ecartsFenetre} ecart(s) sur ${casFenetre}`);
+ok('CONTRE-PREUVE : un jour ou le centre n ouvre pas n a aucune fenetre',
+  moteurFenetre.getFormuleArrivalWindow(catalogueReel[0], null) === null);
+
+// AUJOURD HUI, HEURE PAR HEURE : les arrivees que le tunnel propose ENCORE.
+// Sur un tunnel d essai d abord : chaque formule dont le prix se dit est
+// listee, et un jour que le moteur refuse a la formule n offre aucune heure.
+const JEUDI = agendaPrix[0].date;
+const essaiDuJour = () => [{ time: '15:00', endTime: '17:00' }, { time: '15:30', endTime: '17:30' }];
+const duJeudi = arriveesDAujourdhui(TARIFS, centrePrix, JEUDI, [], null, essaiDuJour);
+const duVendredi = arriveesDAujourdhui(TARIFS, centrePrix, agendaPrix[1].date, [], null, essaiDuJour);
+const heuresDuJour = (liste, id) => (liste.find((f) => f.id === id) || { heures: null }).heures;
+ok('LE POINT : aujourd hui liste chaque formule dont le prix se dit, avec les heures du tunnel',
+  duJeudi.map((f) => f.id).sort().join(',') === lus.map((p) => p.id).sort().join(',')
+    && JSON.stringify(heuresDuJour(duJeudi, 'tl')) === '["15:00","15:30"]',
+  JSON.stringify(duJeudi));
+ok('LE POINT : un jour que le moteur refuse a la formule n offre aucune heure, quoi que dise le tunnel',
+  JSON.stringify(heuresDuJour(duVendredi, 'tj')) === '[]' && JSON.stringify(heuresDuJour(duJeudi, 'tj')) === '["15:00","15:30"]',
+  JSON.stringify([heuresDuJour(duJeudi, 'tj'), heuresDuJour(duVendredi, 'tj')]));
+
+// PUIS LE VRAI TUNNEL, l horloge du gate posee sur un samedi : c est le moteur
+// qui retire les heures trop proches, avec l avance et le pas de ses regles,
+// puis une formule demarre a l heure pleine ou a la demie. A 15 h 20, la
+// demi-heure suivante serait 15 h 30 ; l avance du moteur repousse la premiere
+// arrivee plus loin.
+const regles = ((reglesDuMoteur() || {}).rules || {}).scenarioGeneration || {};
+const pas = Number(regles.slotStepMinutes) || 15;
+const plancherDuMoteur = Math.ceil((15 * 60 + 20 + Number(regles.sameDayLeadMinutes || 15)) / pas) * pas;
+const plancher = Math.ceil(plancherDuMoteur / 30) * 30;
+poserLHorloge('2026-09-12T13:20:00Z');
+const aQuinzeHeures = arriveesDAujourdhui(catalogueReel, centrePrix, '2026-09-12');
+poserLHorloge('2026-09-12T07:10:00Z');
+const aNeufHeures = arriveesDAujourdhui(catalogueReel, centrePrix, '2026-09-12');
+rendreLHorloge();
+const f1 = catalogueReel.find((f) => f.id === 'f1');
+ok('MONTAGE : a 15 h 20, l avance du moteur repousse la premiere arrivee au-dela de la demi-heure suivante',
+  plancher > 15 * 60 + 30, `${Math.floor(plancher / 60)} h ${plancher % 60}`);
+ok('LE POINT : a 15 h 20, la premiere arrivee est celle du moteur ; a 9 h 10, c est l ouverture',
+  (heuresDuJour(aQuinzeHeures, f1.id) || [])[0] === moteurFenetre.numToTime(plancher / 60)
+    && (heuresDuJour(aNeufHeures, f1.id) || [])[0] === moteurFenetre.numToTime(moteurFenetre.getSchedule('2026-09-12', centrePrix).open),
+  JSON.stringify([heuresDuJour(aQuinzeHeures, f1.id), heuresDuJour(aNeufHeures, f1.id)]));
+ok('LE POINT : a 15 h 20, la formule du matin n offre plus rien ; a 9 h 10, toutes ses demi-heures avant midi',
+  JSON.stringify(heuresDuJour(aQuinzeHeures, matinMalin.id)) === '[]'
+    && JSON.stringify(heuresDuJour(aNeufHeures, matinMalin.id)) === '["10:00","10:30","11:00","11:30"]',
+  JSON.stringify([heuresDuJour(aQuinzeHeures, matinMalin.id), heuresDuJour(aNeufHeures, matinMalin.id)]));
+
+// L HEURE DU CENTRE : Bruxelles, ete comme hiver, et la meme date a minuit.
+const { jourDuCentre: jourAvecHeure, heureDite: heureDiteDuGate } = require('../lib/center-facts');
+const ete = jourAvecHeure(Date.parse('2026-09-10T13:20:00Z'));
+const hiver = jourAvecHeure(Date.parse('2026-12-24T13:20:00Z'));
+const apresMinuit = jourAvecHeure(Date.parse('2026-09-10T22:30:00Z'));
+ok('LE POINT : l heure du centre est celle de Bruxelles, ete comme hiver, et suit la date passe minuit',
+  ete.heureDite === '15 h 20' && hiver.heureDite === '14 h 20' && apresMinuit.date === '2026-09-11' && apresMinuit.heure === 0.5,
+  `${ete.heureDite} / ${hiver.heureDite} / ${apresMinuit.date} ${apresMinuit.heure}`);
+ok('LE POINT : une heure se dit comme un client la dit, et ce qui n en est pas une ne se dit pas',
+  heureDiteDuGate(14) === '14 h' && heureDiteDuGate(19.5) === '19 h 30' && heureDiteDuGate(0.5) === '0 h 30'
+    && heureDiteDuGate(null) === '' && heureDiteDuGate('x') === '',
+  [14, 19.5, 0.5].map(heureDiteDuGate).join(' / '));
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

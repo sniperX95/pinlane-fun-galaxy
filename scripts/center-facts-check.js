@@ -1139,5 +1139,107 @@ ok('FAIL-OPEN : sans statut, aucun fait',
   !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10' }).statut_du_centre);
 ok('FAIL-OPEN : un statut vide non plus',
   !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10', statut: '   ' }).statut_du_centre);
+
+// ── UNE ACTIVITE BLOQUEE TOUTE LA FENETRE NE SE VEND PLUS ──────────────────
+// Le gerant bloque « Laser Game » dans la console ops (portee activity, jour
+// entier). Le tunnel de reservation repond deja « Laser Game bloque » au
+// client. L agent marketing, lui, lisait la liste des activites DECLAREES et
+// pouvait ecrire « viens tester notre laser game ce week-end ».
+console.log('\n[ACTIVITES] ce que le centre ne peut pas honorer sur la fenetre');
+const { activitesIndisponibles } = require('../lib/center-facts');
+const { getCenter: centrePourBlocs } = require('../lib/ops-knowledge');
+const centreBloc = centrePourBlocs('libramont');
+
+// MONTAGE : sans lui, tout ce qui suit teste un centre qui n a pas de laser.
+ok('MONTAGE : Libramont declare bien un laser game',
+  centreBloc.activityAvailability.laser_game === true,
+  JSON.stringify(centreBloc.activityAvailability));
+
+const agendaTrois = [
+  { date: '2026-09-10', ouvert: true, ferme: false },
+  { date: '2026-09-11', ouvert: true, ferme: false },
+  { date: '2026-09-12', ouvert: true, ferme: false },
+  { date: '2026-09-13', ouvert: false, ferme: false },
+];
+const blocActivite = (date, ref, over = {}) => ({
+  id: 1, centerId: 'libramont', scopeType: 'activity', scopeRef: ref,
+  recurrence: 'once', date, dayOfWeek: null, dateFrom: null, dateUntil: null,
+  startMin: null, endMin: null, reason: 'maintenance', createdBy: 'gerant', ...over,
+});
+const troisJours = (ref, over = {}) => ['2026-09-10', '2026-09-11', '2026-09-12']
+  .map((d) => blocActivite(d, ref, over));
+
+ok('sans aucun bloc, aucune activite n est indisponible',
+  activitesIndisponibles(centreBloc, [], agendaTrois).length === 0,
+  JSON.stringify(activitesIndisponibles(centreBloc, [], agendaTrois)));
+ok('LE POINT : bloquee sur CHAQUE jour ouvert, l activite sort',
+  activitesIndisponibles(centreBloc, troisJours('laser_game'), agendaTrois).includes('laser_game'),
+  JSON.stringify(activitesIndisponibles(centreBloc, troisJours('laser_game'), agendaTrois)));
+
+// AUCUN SEUIL. Un jour ouvert qui reste, et le centre a toujours son laser :
+// le dire resterait vrai, donc on ne l interdit pas.
+ok('un seul jour ouvert epargne, et l activite reste vendable',
+  !activitesIndisponibles(
+    centreBloc, troisJours('laser_game').slice(0, 2), agendaTrois,
+  ).includes('laser_game'),
+  JSON.stringify(activitesIndisponibles(centreBloc, troisJours('laser_game').slice(0, 2), agendaTrois)));
+
+// UNE PLAGE HORAIRE N EST PAS UNE FERMETURE. isActivityFullyBlockedOn le dit
+// deja au tunnel ; la fiche applique le MEME predicat, donc le meme verdict.
+ok('un blocage de PLAGE horaire ne retire pas l activite',
+  !activitesIndisponibles(
+    centreBloc, troisJours('laser_game', { startMin: 840, endMin: 1080 }), agendaTrois,
+  ).includes('laser_game'),
+  'un blocage partiel a ete traite comme une fermeture');
+
+// Une activite que le centre N A PAS ne devient pas « indisponible » : elle
+// est deja interdite en permanence par forbiddenClaims, et la faire
+// apparaitre ici ferait croire a une panne.
+ok('une activite non declaree ne devient pas indisponible',
+  !activitesIndisponibles(centreBloc, troisJours('karting_vr'), agendaTrois).includes('karting_vr'),
+  'une activite absente du centre est ressortie comme bloquee');
+
+// Aucun jour ouvert : c est le CENTRE qui est ferme. centre_ferme le dit
+// deja, et mieux ; lister toutes les activites ici serait un doublon bruyant.
+ok('sans un seul jour ouvert, la liste est vide (c est centre_ferme qui parle)',
+  activitesIndisponibles(centreBloc, troisJours('laser_game'),
+    agendaTrois.map((j) => ({ ...j, ouvert: false }))).length === 0,
+  'une fermeture de centre a produit une liste d activites');
+
+// Un jour FERME (bloc de centre) ne compte pas comme jour ouvert : sinon une
+// activite bloquee tous les jours SAUF un jour de fermeture serait declaree
+// vendable, alors que ce jour-la personne n entre.
+ok('un jour ferme ne sauve pas une activite bloquee partout ailleurs',
+  activitesIndisponibles(
+    centreBloc, troisJours('laser_game').slice(0, 2),
+    [agendaTrois[0], agendaTrois[1], { ...agendaTrois[2], ferme: true }, agendaTrois[3]],
+  ).includes('laser_game'),
+  'un jour de fermeture a ete compte comme jour de vente');
+
+// ── LE FAIT ────────────────────────────────────────────────────────────────
+const ficheBloquee = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-10',
+  activitesBloquees: [{ id: 'laser_game', nom: 'Laser Game', mots: ['laser game', 'lasergame'] }],
+});
+ok('le fait activites_indisponibles est pose',
+  Boolean(ficheBloquee.activites_indisponibles),
+  JSON.stringify(Object.keys(ficheBloquee)));
+ok('il nomme l activite en clair pour le gerant',
+  String(ficheBloquee.activites_indisponibles.valeur) === 'Laser Game',
+  String(ficheBloquee.activites_indisponibles.valeur));
+ok('il est INTERNE : la liste des pannes ne se publie pas',
+  ficheBloquee.activites_indisponibles.audience === 'interne',
+  ficheBloquee.activites_indisponibles.audience);
+ok('il porte les mots que la garde devra chercher',
+  ficheBloquee.activites_indisponibles.motsInterdits.join('|') === 'laser game|lasergame',
+  JSON.stringify(ficheBloquee.activites_indisponibles.motsInterdits));
+ok('il est pose MALGRE un registre vide : il parle du centre, pas du registre',
+  Boolean(ficheBloquee.registre_vide) && Boolean(ficheBloquee.activites_indisponibles));
+ok('un fait ordinaire ne porte aucun mot interdit',
+  Array.isArray(ficheBloquee.registre_vide.motsInterdits)
+  && ficheBloquee.registre_vide.motsInterdits.length === 0,
+  JSON.stringify(ficheBloquee.registre_vide.motsInterdits));
+ok('FAIL-OPEN : sans liste transmise, aucun fait',
+  !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10' }).activites_indisponibles);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

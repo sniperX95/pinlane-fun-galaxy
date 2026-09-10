@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-09",
+  "updatedAt": "2026-09-10",
   "productContext": {
     "name": "Fun Galaxy Ops Booking",
     "goal": "Automatiser les reservations Bowling, Laser Game et formules tout en gardant un planning explicable, auditable et prudent.",
@@ -396,7 +396,14 @@
         "declared-schedule",
         "silent-open-day",
         "proper-noun-grounding",
-        "typed-provenance"
+        "typed-provenance",
+        "live-center-config",
+        "real-opening-agenda",
+        "per-center-catalog",
+        "declared-center-status",
+        "measured-trough",
+        "blocked-activity-awareness",
+        "tunnel-catalog-parity"
       ],
       "guardrails": [
         "Un centre, une fiche : les faits d un centre ne decrivent jamais un autre centre.",
@@ -418,15 +425,26 @@
         "Une duree, une surface et une taille promises sont celles que le centre declare, comme un nombre de pistes.",
         "Un nom propre absent du dossier et de la fiche du centre est refuse : ni concurrent, ni lieu, ni evenement invente.",
         "Un horaire non declare ne s annonce jamais, ni comme ouverture ni comme fermeture, et ne se deduit d aucun autre centre.",
-        "Un jour d ouverture sans aucune reservation reste interne et part en question au gerant : ca ne se publie pas."
+        "Un jour d ouverture sans aucune reservation reste interne et part en question au gerant : ca ne se publie pas.",
+        "La configuration du centre est relue en base avant d etre lue : ce que l agent sait ne depend pas de qui l appelle.",
+        "Un centre qui n est pas declare actif ne recoit aucun geste au present, et cette declaration prime sur toute deduction tiree du registre.",
+        "Un centre qui n ouvre aucun jour de la fenetre ne recoit aucun geste au present ; une coupure partielle n est pas une fermeture.",
+        "Le catalogue lu est celui de CE centre, surcouches appliquees : une formule desactivee ici ne se conseille pas.",
+        "Un angle « creneau calme » exige un creux MESURE avec sa confiance, jamais une fenetre a trois reservations.",
+        "Une activite bloquee toute la journee sur CHAQUE jour ouvert de la fenetre sort de ce que l agent peut vendre, et le refus dit BLOQUEE, jamais « absente de ce centre » : le centre l a, il ne peut pas la tenir.",
+        "Le modele recoit exactement la liste d interdictions sur laquelle il sera juge, et l activite retiree sort en meme temps de la liste positive : lui donner les deux reviendrait a le faire trancher au hasard.",
+        "Le catalogue lu par l agent est celui que le TUNNEL vend, lu par la meme fonction (getEffectiveFormules), les trois couches empilees : socle du produit, ligne de la table formulas, surcouche formule_overrides du centre."
       ],
       "nextUpgrades": [
         "Mesurer l effet reel d un conseil applique a 14 jours",
         "Distinguer en base une idee refusee d une idee jamais lue (expireStaleInsights ecrit le meme statut)",
         "Elargir l ADN aux angles absents : prix, retention, SEO local, avis, groupes entreprise",
-        "Detecter un classement porte par DEUX lignes exceptionnelles, pas seulement une",
         "Valoriser les creneaux HORAIRES vides a partir de l amplitude declaree : le jour muet est traite, l heure creuse ne l est pas encore",
-        "Surfacer les jours d ouverture au modele pour qu il puisse les DIRE : la fiche les connait maintenant, aucun fait public ne les porte"
+        "Surfacer les jours d ouverture au modele pour qu il puisse les DIRE : la fiche les connait maintenant, aucun fait public ne les porte",
+        "distributionSuspecte ne lit que le seau DOMINANT : 100 % de la masse sur DEUX heures ne declenche rien (mesure du 2026-09-10). Le seuil d une regle de concentration demande des donnees reelles, absentes depuis la remise a zero de la base",
+        "Compter les PISTES disponibles jour par jour (lane_statuses, fenetre de maintenance datee) : deuxieme source du meme mensonge cote bowling, mais elle demande de decider ce que « plus assez de pistes » veut dire, donc un seuil",
+        "L agent EMAIL ne lit pas la fiche : il repond encore « oui nous avons un laser game » pendant un blocage. Meme classe que les horaires du patch 29, autre porte",
+        "Faire entrer le PRIX des formules dans la fiche : price et type arrivent desormais du tunnel. Il faut porter AUSSI les conditions (jours valides, plage horaire, vacances, minimum de personnes), sans quoi « des 20 EUR par personne » serait vrai quatre jours sur sept"
       ]
     }
   ],

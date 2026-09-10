@@ -674,6 +674,107 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
       pool: { query: async () => ({ rows: [] }) },
     })).statut_du_centre);
 
+
+  // ── ET LES BLOCAGES D ACTIVITE PASSENT PAR LE MEME CHEMIN ───────────────
+  // La fonction pure est prouvee dans center-facts-check. Ici c est le
+  // CHARGEUR qui doit lire availability_blocks, croiser avec l agenda et
+  // traduire l identifiant en mots interdits. Sans cette assertion, couper la
+  // lecture des blocs laisserait tous les gates verts.
+  applyCenterOverrides(new Map());
+  const blocsDuLaser = [];
+  for (let i = 0; i < 14; i += 1) {
+    blocsDuLaser.push({
+      id: 900 + i, center_id: 'libramont', scope_type: 'activity', scope_ref: 'laser_game',
+      recurrence: 'once',
+      date: new Date(Date.parse('2026-09-10T00:00:00Z') + i * 86400000).toISOString().slice(0, 10),
+      day_of_week: null, date_from: null, date_until: null,
+      start_time: null, end_time: null, reason: 'remplacement des gilets', created_by: 'gerant',
+    });
+  }
+  // Le registre doit porter de la MATIERE : sans estimation publiable, le
+  // conseiller se tait avant d appeler le modele, et le test du prompt plus
+  // bas ne testerait rien du tout.
+  const poolAvecBlocage = {
+    query: async (sql) => {
+      const texte = String(sql);
+      if (/from availability_blocks/i.test(texte)) return { rows: blocsDuLaser };
+      if (/from reservations/i.test(texte)) return { rows: serie(120) };
+      return { rows: [] };
+    },
+  };
+  const ficheLaserBloque = await chargerVraiment({
+    centerId: 'libramont', aujourdhui: '2026-09-10', pool: poolAvecBlocage,
+  });
+  ok('LE POINT : le chargeur lit les blocs en BASE et pose l activite bloquee',
+    Boolean(ficheLaserBloque.activites_indisponibles)
+    && /Laser Game/.test(String(ficheLaserBloque.activites_indisponibles.valeur)),
+    String(ficheLaserBloque.activites_indisponibles
+      && ficheLaserBloque.activites_indisponibles.valeur));
+  ok('et il traduit l identifiant en mots que la garde sait chercher',
+    ((ficheLaserBloque.activites_indisponibles || {}).motsInterdits || []).includes('laser game'),
+    JSON.stringify((ficheLaserBloque.activites_indisponibles || {}).motsInterdits));
+  ok('CONTRE-PREUVE : sans bloc en base, aucun fait',
+    !(await chargerVraiment({
+      centerId: 'libramont', aujourdhui: '2026-09-10',
+      pool: {
+        query: async (sql) => (/from reservations/i.test(String(sql))
+          ? { rows: serie(120) } : { rows: [] }),
+      },
+    })).activites_indisponibles);
+
+  // LA GARDE. Le centre A un laser game : le motif doit dire BLOQUE, jamais
+  // « absent de ce centre ». Un gerant qui lit le mauvais motif va corriger
+  // une configuration qui est juste.
+  const identiteLibramont = require('../lib/marketing-agents').buildCenterFacts('libramont');
+  const venteDuLaser = {
+    titre: 'Une soiree laser game',
+    corps: 'Reunis ta bande pour une partie de laser game cette semaine.',
+    nature: 'constat', faitsUtilises: [],
+  };
+  const motifsBloque = motifsDeRejet(venteDuLaser, ficheLaserBloque, LIEU, identiteLibramont);
+  ok('LE POINT : vendre une activite bloquee est refuse',
+    motifsBloque.some((m) => /activites bloquees sur toute la fenetre/.test(m)),
+    JSON.stringify(motifsBloque));
+  ok('et le motif ne pretend PAS que le centre n a pas de laser game',
+    !motifsBloque.some((m) => /revendications absentes/.test(m)),
+    JSON.stringify(motifsBloque));
+  ok('CONTRE-PREUVE : sans blocage, le meme texte ne declenche pas ce motif',
+    !motifsDeRejet(venteDuLaser, {}, LIEU, identiteLibramont)
+      .some((m) => /activites bloquees/.test(m)),
+    JSON.stringify(motifsDeRejet(venteDuLaser, {}, LIEU, identiteLibramont)));
+  ok('et ce que le centre n a PAS garde son propre motif',
+    motifsDeRejet({ ...venteDuLaser, corps: 'Notre cinema ouvre.' }, {}, LIEU, identiteLibramont)
+      .some((m) => /revendications absentes/.test(m)),
+    'le motif permanent a disparu');
+
+  // LE PROMPT VOIT LA MEME REGLE QUE LA GARDE. C est le point qu aucune
+  // lecture ne rattrape : un modele honnete juge sur ce qu on lui donne.
+  const promptsVus = [];
+  await proposerDepuisLaFiche({
+    fiche: ficheLaserBloque, lieu: LIEU, centerFacts: identiteLibramont,
+    fetchImpl: async (url, options) => {
+      promptsVus.push(String((options && options.body) || ''));
+      return {
+        ok: true,
+        json: async () => ({
+          stop_reason: 'end_turn',
+          content: [{ type: 'text', text: JSON.stringify({ titre: 'X', corps: 'Y', nature: 'constat', faitsUtilises: [] }) }],
+        }),
+      };
+    },
+  });
+  const charge = promptsVus[0] ? JSON.parse(JSON.parse(promptsVus[0]).messages[0].content) : null;
+  ok('MONTAGE : le prompt a bien ete construit',
+    Boolean(charge && charge.centre), promptsVus[0] ? promptsVus[0].slice(0, 120) : 'aucun appel');
+  ok('LE POINT : le modele recoit l interdiction dans aNePasEcrire',
+    (charge.centre.aNePasEcrire || []).includes('laser game'),
+    JSON.stringify(charge.centre.aNePasEcrire));
+  ok('et l activite bloquee SORT de la liste positive',
+    !(charge.centre.activites || []).some((n) => /laser/i.test(String(n))),
+    JSON.stringify(charge.centre.activites));
+  ok('CONTRE-PREUVE : les autres activites du centre restent proposees',
+    (charge.centre.activites || []).some((n) => /bowling/i.test(String(n))),
+    JSON.stringify(charge.centre.activites));
   // 2. L IDENTITE SEULE rafraichit aussi. On rend le socle avant, sinon on
   //    lirait ce que la fiche vient de charger.
   applyCenterOverrides(new Map());
@@ -833,13 +934,16 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   // pas. Une formule desactivee pour un centre ressortait donc « active sans une
   // seule vente », et son min_pax entrait dans la comparaison des minimums, le
   // fait meme qui sert a discuter un changement de regle commerciale.
-  console.log('\n[FORMULES] la fiche lit le catalogue de CE centre');
+  console.log('\n[FORMULES] la fiche voit exactement ce que le tunnel vend');
   const { chargerFicheDuRegistre: chargerAvecFormules } = require('../lib/center-facts');
+  const { getEffectiveFormules, setFormuleOverrides } = require('../lib/booking-config');
 
+  // Trois lignes en base. Le tunnel, lui, empile le socle FICHIER sous la
+  // table : il en vend beaucoup plus. C est tout le defaut du patch 39.
   const catalogueCommun = [
-    { id: 'f1', name: 'Anniversaire enfant', min_pax: 6, price_type: 'per_person', price_value: 22, is_birthday_formula: true, active: true },
-    { id: 'f2', name: 'Anniversaire ado', min_pax: 2, price_type: 'per_person', price_value: 25, is_birthday_formula: true, active: true },
-    { id: 'f3', name: 'Teambuilding', min_pax: 10, price_type: 'per_person', price_value: 35, is_birthday_formula: false, active: true },
+    { id: 'f1', name: 'Anniversaire enfant', min_pax: 6, price_type: 'per_pax', price_value: 22, is_birthday_formula: true, active: true },
+    { id: 'f2', name: 'Anniversaire ado', min_pax: 2, price_type: 'per_pax', price_value: 25, is_birthday_formula: true, active: true },
+    { id: 'f3', name: 'Teambuilding', min_pax: 10, price_type: 'per_pax', price_value: 35, is_birthday_formula: false, active: true },
   ];
   const ventes = Array.from({ length: 30 }, (unused, i) => ({
     date: `2026-08-0${1 + (i % 9)}`, start_time: '18:00', status: 'paid', pax: 6, price: 132,
@@ -853,13 +957,29 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
       return { rows: [] };
     },
   });
+  // Ce que le TUNNEL vendrait dans l etat que la fiche vient de charger. On le
+  // lit APRES chaque chargement, dans le meme processus : c est exactement
+  // l etat que la fiche a utilise.
+  const vendables = (centerId) => getEffectiveFormules(centerId).length;
 
   const sansSurcouche = await chargerAvecFormules({ centerId: 'gembloux', aujourdhui: '2026-09-10', pool: poolCatalogue([]) });
-  ok('MONTAGE : sans surcouche, les trois formules du catalogue commun sont la',
-    Number(sansSurcouche.catalogue_actif.valeur) === 3, String(sansSurcouche.catalogue_actif.valeur));
-  ok('MONTAGE : et la comparaison des minimums part de 2',
-    /\b2 et 6 et 10\b/.test(String(sansSurcouche.comparaison_de_minimums.valeur)),
+  // MONTAGE, et c est LE montage : sans lui, tout ce qui suit pourrait passer
+  // sur un tunnel qui vendrait lui aussi trois formules.
+  ok('MONTAGE : le tunnel vend PLUS que ce que la table porte',
+    vendables('gembloux') > catalogueCommun.length,
+    `${vendables('gembloux')} vendables contre ${catalogueCommun.length} lignes en base`);
+  ok('LE POINT : la fiche voit exactement ce que le tunnel vend',
+    Number(sansSurcouche.catalogue_actif.valeur) === vendables('gembloux'),
+    `fiche ${sansSurcouche.catalogue_actif.valeur} contre tunnel ${vendables('gembloux')}`);
+  // Et les lignes de la TABLE sont bien dans le compte : sans ca, la fiche
+  // pourrait ne lire que le fichier et l egalite tiendrait quand meme.
+  ok('les lignes de la table sont dans le catalogue lu',
+    /Anniversaire ado/.test(String(sansSurcouche.minimums_du_catalogue.valeur)),
+    String(sansSurcouche.minimums_du_catalogue.valeur).slice(0, 120));
+  ok('MONTAGE : le minimum 2 de la table entre dans la comparaison',
+    /\b2\b/.test(String(sansSurcouche.comparaison_de_minimums.valeur)),
     String(sansSurcouche.comparaison_de_minimums.valeur));
+  const referenceSansSurcouche = Number(sansSurcouche.catalogue_actif.valeur);
 
   // La formule « Anniversaire ado » est DESACTIVEE pour ce centre.
   const avecSurcouche = await chargerAvecFormules({
@@ -870,16 +990,20 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     }]),
   });
   ok('LE POINT : une formule desactivee sort du catalogue de ce centre',
-    Number(avecSurcouche.catalogue_actif.valeur) === 2, String(avecSurcouche.catalogue_actif.valeur));
+    Number(avecSurcouche.catalogue_actif.valeur) === referenceSansSurcouche - 1,
+    `${avecSurcouche.catalogue_actif.valeur} contre ${referenceSansSurcouche} sans surcouche`);
+  ok('et le tunnel dit la meme chose',
+    Number(avecSurcouche.catalogue_actif.valeur) === vendables('gembloux'),
+    `fiche ${avecSurcouche.catalogue_actif.valeur} contre tunnel ${vendables('gembloux')}`);
   ok('elle n est plus conseillee comme « active sans une seule vente »',
     !/Anniversaire ado/.test(String(avecSurcouche.formules_jamais_vendues.valeur)),
-    String(avecSurcouche.formules_jamais_vendues.valeur));
+    String(avecSurcouche.formules_jamais_vendues.valeur).slice(0, 120));
   ok('et son minimum sort de la comparaison qui fonde un changement de regle',
-    /^oui : 6 et 10 personnes/.test(String(avecSurcouche.comparaison_de_minimums.valeur)),
+    !/\b2\b/.test(String(avecSurcouche.comparaison_de_minimums.valeur)),
     String(avecSurcouche.comparaison_de_minimums.valeur));
   ok('la liste des minimums ne la porte plus non plus',
     !/Anniversaire ado/.test(String(avecSurcouche.minimums_du_catalogue.valeur)),
-    String(avecSurcouche.minimums_du_catalogue.valeur));
+    String(avecSurcouche.minimums_du_catalogue.valeur).slice(0, 120));
 
   // UNE FORMULE RETIREE sort aussi, par un autre champ.
   const avecRetrait = await chargerAvecFormules({
@@ -890,7 +1014,11 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     }]),
   });
   ok('une formule RETIREE sort aussi du catalogue',
-    Number(avecRetrait.catalogue_actif.valeur) === 2, String(avecRetrait.catalogue_actif.valeur));
+    Number(avecRetrait.catalogue_actif.valeur) === referenceSansSurcouche - 1,
+    `${avecRetrait.catalogue_actif.valeur} contre ${referenceSansSurcouche}`);
+  ok('et le tunnel ne la vend plus non plus',
+    Number(avecRetrait.catalogue_actif.valeur) === vendables('gembloux'),
+    `fiche ${avecRetrait.catalogue_actif.valeur} contre tunnel ${vendables('gembloux')}`);
 
   // LA PRECEDENCE : une ligne « all » desactive partout, une ligne du CENTRE la
   // reactive pour lui. On importe cette regle, on ne la recopie pas.
@@ -902,7 +1030,8 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     ]),
   });
   ok('le centre PRIME sur la ligne « all »',
-    Number(avecPrecedence.catalogue_actif.valeur) === 3, String(avecPrecedence.catalogue_actif.valeur));
+    Number(avecPrecedence.catalogue_actif.valeur) === referenceSansSurcouche,
+    `${avecPrecedence.catalogue_actif.valeur} contre ${referenceSansSurcouche}`);
 
   // CLOISONNEMENT : la surcouche d un centre ne touche pas l autre.
   const surcoucheGembloux = [{
@@ -913,17 +1042,23 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     centerId: 'libramont', aujourdhui: '2026-09-10', pool: poolCatalogue(surcoucheGembloux),
   });
   ok('CLOISONNEMENT : une surcouche de Gembloux ne retire rien a Libramont',
-    Number(chezLibramont.catalogue_actif.valeur) === 3, String(chezLibramont.catalogue_actif.valeur));
+    Number(chezLibramont.catalogue_actif.valeur) === vendables('libramont'),
+    `fiche ${chezLibramont.catalogue_actif.valeur} contre tunnel ${vendables('libramont')}`);
+  ok('et Libramont garde bien la formule desactivee chez Gembloux',
+    /Anniversaire ado/.test(String(chezLibramont.minimums_du_catalogue.valeur)),
+    String(chezLibramont.minimums_du_catalogue.valeur).slice(0, 120));
 
-  // CONTRE-PREUVE : sans aucune surcouche, la fiche est identique a avant.
-  // Sans elle, on aurait montre un filtre qui coupe, pas un filtre qui lit.
-  ok('CONTRE-PREUVE : aucune surcouche, catalogue inchange',
-    Number(sansSurcouche.catalogue_actif.valeur) === 3
-    && /Anniversaire ado/.test(String(sansSurcouche.formules_jamais_vendues.valeur)));
+  // CONTRE-PREUVE : sans aucune surcouche, la formule est bien la. Sans elle,
+  // on aurait montre un filtre qui coupe, pas un filtre qui lit.
+  ok('CONTRE-PREUVE : aucune surcouche, la formule reste au catalogue',
+    /Anniversaire ado/.test(String(sansSurcouche.formules_jamais_vendues.valeur)),
+    String(sansSurcouche.formules_jamais_vendues.valeur).slice(0, 120));
 
   // FAIL-SOFT : si la table des surcouches est absente, on garde le catalogue
-  // commun plutot que de rendre une fiche vide. On n invente rien, on perd
-  // seulement la couche par centre.
+  // commun plutot que de rendre une fiche vide. La carte est remise a zero
+  // AVANT : sans ca, on testerait le dernier etat charge par le scenario
+  // precedent, et le gate mesurerait sa propre memoire.
+  setFormuleOverrides(new Map());
   const poolSansTable = {
     query: async (sql) => {
       if (/from formule_overrides/.test(sql)) throw new Error('relation formule_overrides does not exist');
@@ -934,7 +1069,8 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   };
   const sansTable = await chargerAvecFormules({ centerId: 'gembloux', aujourdhui: '2026-09-10', pool: poolSansTable });
   ok('FAIL-SOFT : sans la table des surcouches, le catalogue commun tient',
-    Number(sansTable.catalogue_actif.valeur) === 3, String(sansTable.catalogue_actif.valeur));
+    Number(sansTable.catalogue_actif.valeur) === referenceSansSurcouche,
+    `${sansTable.catalogue_actif.valeur} contre ${referenceSansSurcouche}`);
   console.log('\n[SOMMEIL] le conseiller se tait sur un centre qui ne vend plus');
   let appelsSurDormant = 0;
   const ficheDormante = {

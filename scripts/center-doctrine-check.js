@@ -152,17 +152,29 @@ const DOCTRINE_HOSTILE = [
   ok('le prompt dit que ses nombres sont interdits', systeme.includes('Aucun de leurs nombres'));
   ok('la proposition ancree passe quand meme', Boolean(rendu.proposition), JSON.stringify(rendu.motifs));
 
+  // SANS REGLE ADN, LE BLOC NE PORTE QUE LA VOIX DE LA MAISON.
+  // Le bloc a deux sources depuis le patch 52 : la voix, toujours la, et les
+  // regles ADN, souvent absentes. L en-tete existe donc meme sans regle ; ce
+  // qui ne doit JAMAIS exister, c est une regle fantome sous cet en-tete.
   const sansDoctrine = modeleEspion(bonne);
   const renduSans = await proposerDepuisLaFiche({ fiche, lieu: LIEU, fetchImpl: sansDoctrine });
-  ok('sans doctrine, aucun bloc doctrine dans le prompt',
-    !blocSysteme(sansDoctrine).includes('DOCTRINE D ECRITURE'));
+  ok('sans regle ADN, la regle de forme n apparait nulle part',
+    !blocSysteme(sansDoctrine).includes('Montrer une preuve locale'),
+    blocSysteme(sansDoctrine).slice(-200));
+  ok('mais la voix de la maison, elle, est bien la',
+    blocSysteme(sansDoctrine).includes('DOCTRINE D ECRITURE'),
+    'la porte a perdu sa voix en meme temps que sa doctrine');
   ok('sans doctrine, le verdict est identique',
     Boolean(renduSans.proposition) === Boolean(rendu.proposition));
 
+  // UNE DOCTRINE BLANCHE REND LE MEME PROMPT, AU CARACTERE PRES. Plus strict
+  // que l ancienne formulation : elle interdit non seulement une regle
+  // fantome, mais toute difference, jusqu a une ligne vide de plus.
   const doctrineVide = modeleEspion(bonne);
   await proposerDepuisLaFiche({ fiche, lieu: LIEU, doctrine: '   ', fetchImpl: doctrineVide });
-  ok('une doctrine vide ou blanche n ajoute rien au prompt',
-    !blocSysteme(doctrineVide).includes('DOCTRINE D ECRITURE'));
+  ok('une doctrine vide ou blanche rend EXACTEMENT le meme prompt',
+    blocSysteme(doctrineVide) === blocSysteme(sansDoctrine),
+    `${blocSysteme(doctrineVide).length} contre ${blocSysteme(sansDoctrine).length} caracteres`);
 
   // ── 2. SES NOMBRES NE DEVIENNENT PAS DES FAITS ────────────────────────────
   console.log('\n[FAITS] un nombre venu de la doctrine est jete');

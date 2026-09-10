@@ -992,6 +992,52 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     (charge.centre.activites || []).length >= 3,
     JSON.stringify(charge.centre.activites));
 
+  // ── LA VOIX DE LA MAISON ARRIVE, ET ELLE OBEIT ─────────────────────────
+  // voice.md est titre « ton des contenus Fun Galaxy (agent marketing) » et
+  // seule la porte EMAIL le lisait : sa destinataire ne l avait jamais vu.
+  const cheminDeLaVoix = require('path').join(__dirname, '..', 'ops-knowledge', 'marketing-brain', 'voice.md');
+  const voixDuFichier = require('fs').readFileSync(cheminDeLaVoix, 'utf8').replace(/\r\n/g, '\n');
+  // Une phrase PRISE DANS LE FICHIER, pas recopiee ici : un gate qui recopie
+  // une doctrine ment le jour ou la doctrine change.
+  const phraseDeLaVoix = voixDuFichier.split('\n')
+    .map((ligne) => ligne.replace(/^[-*>#\s]+/, '').trim())
+    .filter((ligne) => ligne.length > 40 && !/^Voice|^Public/.test(ligne))[0];
+  ok('MONTAGE : une phrase de la voix a bien ete prelevee du fichier',
+    Boolean(phraseDeLaVoix), String(phraseDeLaVoix));
+
+  ok('LE POINT : la porte Idees recoit la voix de la maison',
+    blocSysteme.includes(phraseDeLaVoix), blocSysteme.slice(-300));
+
+  // UNE ENTREPRISE, UN TON. Les deux portes lisent le MEME fichier : sans
+  // cette assertion, chacune pourrait deriver vers sa propre voix.
+  const { buildEmailBrain: cerveauDuMail } = require('../lib/email-agent');
+  const cerveauVoix = await cerveauDuMail('libramont', { query: async () => ({ rows: [] }) });
+  ok('LE POINT : la porte EMAIL lit exactement la meme phrase',
+    cerveauVoix.stable.includes(phraseDeLaVoix),
+    'les deux portes de la meme entreprise ecrivent avec deux voix');
+
+  // LA HIERARCHIE. La voix arrive APRES les regles dures, sous l en-tete qui
+  // les fait gagner, et la regle dure survit a un fichier qui la contredit
+  // (« Emojis : 1-3 max » contre « sans emoji »).
+  ok('la voix arrive APRES les regles dures',
+    blocSysteme.indexOf('REGLES DURES') < blocSysteme.indexOf(phraseDeLaVoix),
+    `regles a ${blocSysteme.indexOf('REGLES DURES')}, voix a ${blocSysteme.indexOf(phraseDeLaVoix)}`);
+  ok('et sous l en-tete qui dit que les regles dures gagnent',
+    /les regles dures gagnent/.test(blocSysteme)
+    && blocSysteme.indexOf('les regles dures gagnent') < blocSysteme.indexOf(phraseDeLaVoix),
+    'la voix arrive sans son arbitrage');
+  ok('LE POINT : la regle dure sans emoji survit a une voix qui en autorise',
+    /sans emoji/.test(blocSysteme) && /moji/.test(voixDuFichier),
+    'le montage de la contradiction ne tient plus, ou la regle dure a disparu');
+
+  // ET LA VOIX NE DECRIT AUCUN CENTRE. L assertion « le bloc systeme ne nomme
+  // AUCUNE activite » ci-dessus couvre deja le bloc entier ; celle-ci vise le
+  // FICHIER, pour que la faute soit nommee la ou elle se corrige.
+  const nommesParLaVoix = ['libramont', 'gembloux', 'ciney', 'ardenne', 'luxembourg', 'bowling', 'laser']
+    .filter((mot) => voixDuFichier.toLowerCase().includes(mot));
+  ok('LE POINT : le fichier de voix ne nomme ni ville, ni region, ni activite',
+    nommesParLaVoix.length === 0, JSON.stringify(nommesParLaVoix));
+
   // ── ET LES PRIX PASSENT PAR LE MEME CHEMIN ──────────────────────────────
   // La fonction pure est prouvee dans center-facts-check. Ici, c est le
   // CHARGEUR qui doit croiser le catalogue du tunnel avec l agenda du centre.

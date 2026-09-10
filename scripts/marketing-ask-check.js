@@ -465,6 +465,36 @@ function deps({ answer, calls, provider = 'kimi', exhausted = false }) {
   ok(!checkAnswerGrounding('Le Bowling Arlon a baisse ses prix la semaine derniere.', socleAvecConcurrent)
     .reasons.some((r) => r.includes('nom propre')),
     'CONTRE-PREUVE : le meme nom passe des qu il figure dans le dossier');
+
+  // ── LE PROMPT NE DECRIT PLUS UN CENTRE AU NOM DE TOUS ──────────────────
+  console.log('\n[AMORCE] la porte Demander ne nomme aucune activite ni aucune occasion');
+  const { askSystemPrompt: promptDuGerant } = require('../lib/marketing-ask');
+  const { CLAIM_WORDS_BY_ACTIVITY: motsDActivite } = require('../lib/marketing-agents');
+  const { OCCASION_VALUES: occasionsDuRegistre } = require('../lib/database');
+  const promptAsk = promptDuGerant().toLowerCase();
+
+  ok(promptAsk.length > 400 && /interdits absolus/.test(promptAsk),
+    'MONTAGE : le prompt du gerant a bien ete construit', String(promptAsk.length));
+
+  // Les mots viennent des vocabulaires du PRODUIT, pas d une liste ecrite ici.
+  const activitesNommees = [...new Set(Object.values(motsDActivite).flat())]
+    .filter((mot) => promptAsk.includes(mot));
+  ok(activitesNommees.length === 0,
+    'LE POINT : le prompt ne nomme AUCUNE activite', JSON.stringify(activitesNommees));
+
+  // « autre » est une occasion du registre ET un mot francais courant : le
+  // chercher aveuglement ferait rougir un prompt sain.
+  const occasionsNommees = [...occasionsDuRegistre].filter((mot) => mot !== 'autre')
+    .filter((mot) => promptAsk.includes(mot));
+  ok(occasionsNommees.length === 0,
+    'LE POINT : ni aucune occasion du registre', JSON.stringify(occasionsNommees));
+
+  // CONTRE-PREUVES : ce que la premiere ligne promettait est toujours dit,
+  // ailleurs et correctement, par le dossier et par les interdits.
+  ok(/seule matiere est le dossier/.test(promptAsk),
+    'CONTRE-PREUVE : le dossier reste annonce comme la seule matiere');
+  ok(/activite absente de centre\.activitesdisponibles/.test(promptAsk),
+    'CONTRE-PREUVE : et l interdit de citer une activite absente tient toujours');
     console.log(`\nmarketing-ask-check: ${failures ? `${failures} FAIL` : 'ALL OK'}`);
   process.exit(failures ? 1 : 0);
 })().catch((error) => {

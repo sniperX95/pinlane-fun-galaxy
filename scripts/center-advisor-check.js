@@ -722,6 +722,35 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
       },
     })).activites_indisponibles);
 
+  // ── ET LES PRIX SUIVENT LE MEME BLOCAGE ────────────────────────────────
+  // Le tunnel refuse une formule dont l arene est fermee toute la journee
+  // (mesure du 2026-09-10 : « Le Laser Game est indisponible sur ce
+  // creneau. »). La fonction pure sait s en taire ; c est le CHARGEUR qui
+  // doit resoudre les ressources de chaque formule et les lui transmettre.
+  // Sans cette assertion, retirer ce geste laisserait tous les gates verts,
+  // et le centre deviendrait muet sur TOUS ses prix sans un seul rouge.
+  //
+  // Les noms ne sont pas recopies : ils sont derives du catalogue par la
+  // fonction meme que le chargeur utilise.
+  const { ressourcesDeLaFormule: ressourcesDuTunnel } = require('../lib/center-facts');
+  const { getEffectiveFormules: catalogueDuCentre } = require('../lib/booking-config');
+  const nomsAArene = catalogueDuCentre('libramont')
+    .filter((formule) => {
+      try { return ressourcesDuTunnel(formule).includes('laser_game'); } catch (error) { return true; }
+    })
+    .map((formule) => String(formule.name || formule.id));
+  const prixAnnonces = ['prix_du_catalogue', 'prix_plancher']
+    .map((id) => String((ficheLaserBloque[id] || {}).valeur || '')).join(' | ');
+  ok('MONTAGE : le catalogue porte des formules a arene', nomsAArene.length > 0,
+    JSON.stringify(nomsAArene));
+  ok('LE POINT : le chargeur retire les formules dont l arene est fermee',
+    !nomsAArene.some((nom) => prixAnnonces.includes(nom)),
+    JSON.stringify(nomsAArene.filter((nom) => prixAnnonces.includes(nom))));
+  ok('CONTRE-PREUVE : et il annonce quand meme les autres prix',
+    Boolean(ficheLaserBloque.prix_du_catalogue)
+    && ficheLaserBloque.prix_du_catalogue.audience === 'public',
+    'le centre est devenu muet sur ses prix');
+
   // LA GARDE. Le centre A un laser game : le motif doit dire BLOQUE, jamais
   // « absent de ce centre ». Un gerant qui lit le mauvais motif va corriger
   // une configuration qui est juste.

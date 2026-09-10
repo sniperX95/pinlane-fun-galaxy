@@ -361,6 +361,62 @@ console.log('\n[ANCRAGE] la reecriture IA n invente pas un lieu');
   ok(!(surDeuxJours.verdict.reportees || []).includes(77),
     'et l idee n est PAS reportee : elle a ete regardee');
 
+
+  // ── QUI A IGNORE CETTE IDEE ? ───────────────────────────────────────────
+  console.log('\n[CAUSE] chaque geste qui ignore une idee signe le sien');
+
+  // Le refus du panneau : propositionAction accepte un `query` injectable.
+  const { propositionAction } = require('../lib/marketing-brief');
+  const sqlRefus = [];
+  await propositionAction('libramont', { action: 'refusee', id: 42 }, {
+    query: async (texte, params) => { sqlRefus.push({ texte: String(texte), params }); return { rows: [{ id: 42 }] }; },
+  });
+  ok(sqlRefus.length >= 2, `MONTAGE : le refus emet bien deux instructions (${sqlRefus.length})`);
+  ok(sqlRefus.some((r) => /ignoredBy', 'staff'/.test(r.texte) && /update marketing_insights/i.test(r.texte)),
+    'LE POINT : le refus du panneau ECRIT la cause staff');
+  ok(sqlRefus.some((r) => /ignoredBy/.test(r.texte)
+    && Array.isArray(r.params) && Number(r.params[0]) === 42 && r.params[1] === 'libramont'),
+    'et il la porte sur l id refuse, dans SON centre');
+
+  // CONTRE-PREUVE : publier ne signe aucun refus.
+  const sqlPublie = [];
+  await propositionAction('libramont', { action: 'publiee', id: 43 }, {
+    query: async (texte) => { sqlPublie.push(String(texte)); return { rows: [{ id: 43 }] }; },
+  }).catch(() => null);
+  ok(!sqlPublie.some((t) => /ignoredBy/.test(t)),
+    'CONTRE-PREUVE : publier n ecrit aucune cause de refus');
+
+  // Le bouton du cockpit et l expiration passent par getPool : meme crochet
+  // que le report de mesure, pose AVANT le rechargement du module.
+  const rejouerStatut = async (statut) => {
+    const emis = [];
+    base.getPool = () => ({
+      query: async (sql, params) => { emis.push({ texte: String(sql), params }); return { rows: [{ id: 9, status: statut, applied_at: null }] }; },
+    });
+    delete require.cache[cheminMetrics];
+    const frais = require('../lib/center-metrics');
+    await frais.setInsightStatus(9, statut, { centerId: 'libramont' });
+    return emis;
+  };
+  const surIgnore = await rejouerStatut('ignored');
+  ok(surIgnore.some((r) => /ignoredBy', 'staff'/.test(r.texte)),
+    `LE POINT : le bouton Ignorer ECRIT la cause staff (${surIgnore.length} instruction(s))`);
+  const surApplique = await rejouerStatut('applied');
+  ok(!surApplique.some((r) => /ignoredBy/.test(r.texte)),
+    'CONTRE-PREUVE : appliquer n ecrit aucune cause de refus');
+
+  // L expiration : meme harnais, on regarde son UPDATE.
+  const expiration = [];
+  base.getPool = () => ({
+    query: async (sql) => { expiration.push(String(sql)); return { rows: [] }; },
+  });
+  delete require.cache[cheminMetrics];
+  await require('../lib/center-metrics').expireStaleInsights('libramont', '2026-09-10');
+  ok(expiration.some((t) => /ignoredBy', 'expiration'/.test(t) && /set status = 'ignored'/.test(t)),
+    'LE POINT : l expiration ECRIT sa cause dans le meme update');
+
+  base.getPool = getPoolReel;
+  if (metricsReel) require.cache[cheminMetrics] = metricsReel;
   base.getPool = getPoolReel;
   if (dbReel) require.cache[cheminDb] = dbReel;
   if (metricsReel) require.cache[cheminMetrics] = metricsReel;

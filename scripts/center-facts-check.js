@@ -520,8 +520,11 @@ ok('idem pour les resultats mesures',
 ok('le trou du suivi des idees est declare',
   Boolean(avecMemoire.trou_suivi_des_idees),
   Object.keys(avecMemoire).filter((k) => k.startsWith('memoire_') || k.startsWith('trou_')).join(','));
-ok('et il dit qu aucun taux d adoption n est calculable',
-  String(avecMemoire.trou_suivi_des_idees.valeur).includes('aucun taux'),
+ok('et il dit que ces lignes-la sont HORS de tout taux d adoption',
+  String(avecMemoire.trou_suivi_des_idees.valeur).includes('hors de tout taux d adoption'),
+  String(avecMemoire.trou_suivi_des_idees.valeur));
+ok('et il compte combien de lignes sont concernees',
+  /^[0-9]+ idee/.test(String(avecMemoire.trou_suivi_des_idees.valeur)),
   String(avecMemoire.trou_suivi_des_idees.valeur));
 
 // CONTRE-PREUVE : sans historique, aucun fait de memoire. Un centre neuf n'a
@@ -1259,19 +1262,23 @@ ok('MONTAGE : le 2026-09-10 est bien un jeudi',
   new Date('2026-09-10T00:00:00').getDay() === 4,
   String(new Date('2026-09-10T00:00:00').getDay()));
 
+// `ressources: []` sur chacun : ces tarifs isolent UNE condition a la fois
+// (unite, jour, heure, minimum), et ne consomment donc ni piste ni arene.
+// Une formule qui ne dit pas ce qu elle consomme n est pas publiable depuis
+// le patch 47 : l omettre ici testerait une formule qui ne peut pas exister.
 const TARIFS = [
   // La moins chere de toutes, mais A LA PISTE : autre unite.
-  { id: 'tp', name: 'TARIF PISTE', price: 9, type: 'per_lane', minPax: 1 },
+  { id: 'tp', name: 'TARIF PISTE', price: 9, type: 'per_lane', minPax: 1, ressources: [] },
   // La moins chere PAR PERSONNE, mais le JEUDI seulement.
-  { id: 'tj', name: 'TARIF JEUDI', price: 12, type: 'per_pax', minPax: 1, validDays: [4] },
+  { id: 'tj', name: 'TARIF JEUDI', price: 12, type: 'per_pax', minPax: 1, validDays: [4], ressources: [] },
   // Moins chere que la suivante, mais AVANT 12 h seulement.
-  { id: 'tm', name: 'TARIF MATIN', price: 15, type: 'per_pax', minPax: 1, timeLimit: { max: 12 } },
+  { id: 'tm', name: 'TARIF MATIN', price: 15, type: 'per_pax', minPax: 1, timeLimit: { max: 12 }, ressources: [] },
   // Celle-ci n a aucune condition : c est elle, le plancher.
-  { id: 'tl', name: 'TARIF LIBRE', price: 21, type: 'per_pax', minPax: 6 },
+  { id: 'tl', name: 'TARIF LIBRE', price: 21, type: 'per_pax', minPax: 6, ressources: [] },
   // Unite inconnue : elle ne doit apparaitre nulle part.
-  { id: 'tx', name: 'TARIF INCONNU', price: 5, type: 'per_hour', minPax: 1 },
+  { id: 'tx', name: 'TARIF INCONNU', price: 5, type: 'per_hour', minPax: 1, ressources: [] },
   // Prix absent : idem.
-  { id: 'tz', name: 'TARIF SANS PRIX', price: null, type: 'per_pax', minPax: 1 },
+  { id: 'tz', name: 'TARIF SANS PRIX', price: null, type: 'per_pax', minPax: 1, ressources: [] },
 ];
 const lus = prixReservables(TARIFS, centrePrix, agendaPrix);
 const parId = Object.fromEntries(lus.map((p) => [p.id, p]));
@@ -1441,5 +1448,324 @@ ok('un centre qui n ouvre aucun jour ne dit aucun jour',
     reservations: [], formules: [], aujourdhui: '2026-09-10',
     agenda: deuxSemaines().map((j) => ({ ...j, ouvert: false, plage: '' })),
   }).jours_ouverts);
+
+// ── LE SORT DES IDEES, ET SON DENOMINATEUR ────────────────────────────────
+// Trois chemins ecrivent 'ignored' : l expiration a dix jours, le bouton
+// « Ignorer » du cockpit, et le refus du panneau. Les deux derniers sont des
+// DECISIONS ; le premier ne dit rien. Les confondre a deja produit un « 0 %
+// d adoption » faux, ecrit a Movsar.
+console.log('\n[ADOPTION] un taux ne se calcule que sur ce qui a ete tranche');
+
+const memoire = (payloads) => ajouterMemoire(
+  ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10' }),
+  payloads.map((p, i) => ({
+    title: `Idee ${i}`,
+    status: p.status,
+    proposed_at: `2026-08-${String(1 + i).padStart(2, '0')}`,
+    applied_at: p.status === 'applied' ? `2026-08-${String(2 + i).padStart(2, '0')}` : null,
+    measured_at: null,
+    result: null,
+    payload: p.payload || {},
+  })),
+);
+
+// DEUX appliquees, UNE refusee par le staff, DEUX jamais ouvertes.
+const melangeDesSorts = memoire([
+  { status: 'applied' },
+  { status: 'applied' },
+  { status: 'ignored', payload: { ignoredBy: 'staff' } },
+  { status: 'ignored', payload: { ignoredBy: 'expiration' } },
+  { status: 'ignored', payload: { ignoredBy: 'expiration' } },
+]);
+ok('MONTAGE : la memoire compte bien cinq propositions',
+  /5 proposees/.test(String(melangeDesSorts.memoire_propositions.valeur)),
+  String(melangeDesSorts.memoire_propositions.valeur));
+ok('LE POINT : le denominateur EXCLUT les idees jamais ouvertes',
+  /sur 3 idees dont le sort est connu/.test(String(melangeDesSorts.taux_adoption.valeur)),
+  String(melangeDesSorts.taux_adoption.valeur));
+ok('et le taux est celui des idees tranchees, pas de toutes',
+  String(melangeDesSorts.taux_adoption.valeur).startsWith('66.7 %'),
+  String(melangeDesSorts.taux_adoption.valeur));
+ok('les idees jamais ouvertes sont DITES, pas cachees',
+  /2 jamais ouvertes \(hors calcul\)/.test(String(melangeDesSorts.taux_adoption.valeur)),
+  String(melangeDesSorts.taux_adoption.valeur));
+ok('le fait reste INTERNE : un taux d adoption ne se publie pas',
+  melangeDesSorts.taux_adoption.audience === 'interne', melangeDesSorts.taux_adoption.audience);
+
+// CONTRE-PREUVE : si les jamais-ouvertes comptaient comme des refus, le taux
+// serait de 40 % sur cinq. C est le chiffre faux qu on refuse d ecrire.
+ok('CONTRE-PREUVE : le taux n est PAS celui qui compte tout le monde (40 %)',
+  !/^40/.test(String(melangeDesSorts.taux_adoption.valeur)),
+  String(melangeDesSorts.taux_adoption.valeur));
+
+// AUCUNE idee tranchee : pas de taux du tout. Le silence, pas un zero.
+const queDesExpirees = memoire([
+  { status: 'ignored', payload: { ignoredBy: 'expiration' } },
+  { status: 'ignored', payload: { ignoredBy: 'expiration' } },
+]);
+ok('aucune idee tranchee : AUCUN taux, jamais un zero',
+  !queDesExpirees.taux_adoption,
+  String(queDesExpirees.taux_adoption && queDesExpirees.taux_adoption.valeur));
+
+// LE TROU RESTE NOMME tant qu il reste une ligne sans cause.
+const avecAncienne = memoire([
+  { status: 'applied' },
+  { status: 'ignored', payload: { ignoredBy: 'staff' } },
+  { status: 'ignored' },
+]);
+ok('une ligne ignoree sans cause maintient le trou nomme',
+  Boolean(avecAncienne.trou_suivi_des_idees)
+  && /1 idee a ete ignoree/.test(String(avecAncienne.trou_suivi_des_idees.valeur)),
+  String(avecAncienne.trou_suivi_des_idees && avecAncienne.trou_suivi_des_idees.valeur));
+ok('et elle n entre PAS dans le denominateur du taux',
+  /sur 2 idees dont le sort est connu/.test(String(avecAncienne.taux_adoption.valeur)),
+  String(avecAncienne.taux_adoption.valeur));
+ok('CONTRE-PREUVE : sans ligne sans cause, le trou se referme tout seul',
+  !melangeDesSorts.trou_suivi_des_idees,
+  String(melangeDesSorts.trou_suivi_des_idees && melangeDesSorts.trou_suivi_des_idees.valeur));
+
+// Les TROIS ecritures qui signent leur geste sont prouvees par leur
+// COMPORTEMENT dans daily-metrics-check : ce gate-ci est synchrone, et un
+// grep sur la source serait un test de presence, qui reste vert quand le bloc
+// devient INATTEIGNABLE. Ici on prouve la LECTURE, qui se voit dans la
+// requete elle-meme.
+ok('la memoire va CHERCHER payload en base',
+  /result, data_basis, payload/.test(require('fs').readFileSync(require.resolve('../lib/center-facts'), 'utf8')),
+  'chargerMemoireDuCentre ne selectionne plus payload');
+
+// ── UN CENTRE N EMPRUNTE PAS L HORAIRE DU VOISIN ──────────────────────────
+// getSchedule retombe sur la grille de Libramont pour tout centre dont
+// defaultSchedule est un marqueur TEXTE. Le patch 41 ayant rendu les jours
+// d ouverture PUBLICS, Gembloux et Ciney annoncaient mot pour mot les horaires
+// de Libramont. Le montage tourne sur la configuration REELLE : c est elle qui
+// a produit le defaut, une fixture inventee ne l aurait jamais montre.
+console.log('\n[EMPRUNT] un horaire non declare ne se deduit d aucun autre centre');
+const { getCenter: centrePourHoraire } = require('../lib/ops-knowledge');
+const { agendaDuCentre: agendaReel, joursOuvertsDeclares: declaresReel } = require('../lib/center-facts');
+
+// MONTAGE : c est la configuration reelle qui porte les marqueurs texte.
+ok('MONTAGE : Libramont porte une vraie grille',
+  Array.isArray(declaresReel(centrePourHoraire('libramont').defaultSchedule)),
+  JSON.stringify(declaresReel(centrePourHoraire('libramont').defaultSchedule)));
+ok('MONTAGE : Gembloux porte un marqueur texte, pas une grille',
+  typeof centrePourHoraire('gembloux').defaultSchedule === 'string',
+  JSON.stringify(centrePourHoraire('gembloux').defaultSchedule));
+ok('MONTAGE : Ciney aussi',
+  typeof centrePourHoraire('ciney').defaultSchedule === 'string',
+  JSON.stringify(centrePourHoraire('ciney').defaultSchedule));
+
+// MONTAGE DU DEFAUT : sans la garde, getSchedule rend la MEME plage pour les
+// trois. Sans cette assertion, le test pourrait passer sur un moteur qui
+// refuserait deja, et on ne saurait pas que la garde sert a quelque chose.
+const { getSchedule: horaireDuMoteur } = require('../lib/booking-config');
+const plagesDuJour = ['libramont', 'gembloux', 'ciney']
+  .map((id) => JSON.stringify(horaireDuMoteur('2026-09-12', centrePourHoraire(id))));
+ok('MONTAGE : le moteur d horaires, LUI, rend la meme plage aux trois',
+  plagesDuJour[0] === plagesDuJour[1] && plagesDuJour[1] === plagesDuJour[2],
+  JSON.stringify(plagesDuJour));
+
+// LE POINT : l agenda refuse de se construire sur cet emprunt.
+ok('LE POINT : le centre qui a une grille garde son agenda',
+  agendaReel(centrePourHoraire('libramont'), [], '2026-09-10').length === 14,
+  String(agendaReel(centrePourHoraire('libramont'), [], '2026-09-10').length));
+ok('LE POINT : le centre sans grille n a AUCUN agenda',
+  agendaReel(centrePourHoraire('gembloux'), [], '2026-09-10').length === 0,
+  String(agendaReel(centrePourHoraire('gembloux'), [], '2026-09-10').length));
+ok('et celui dont l horaire est « a confirmer » non plus',
+  agendaReel(centrePourHoraire('ciney'), [], '2026-09-10').length === 0,
+  String(agendaReel(centrePourHoraire('ciney'), [], '2026-09-10').length));
+
+// ET TOUT CE QUI EN DEPEND SE TAIT. C est la vraie portee du correctif : la
+// garde est posee a UN endroit et ferme quatre fuites.
+const ficheEmpruntee = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-10',
+  joursOuverts: declaresReel(centrePourHoraire('gembloux').defaultSchedule),
+  agenda: agendaReel(centrePourHoraire('gembloux'), [], '2026-09-10'),
+  prix: [],
+});
+ok('aucun jour d ouverture publie',
+  !ficheEmpruntee.jours_ouverts, String(ficheEmpruntee.jours_ouverts && ficheEmpruntee.jours_ouverts.valeur));
+ok('aucun agenda interne non plus',
+  !ficheEmpruntee.agenda_ouverture, 'un agenda emprunte reste dans la fiche');
+ok('et le centre n est pas declare « ferme » pour autant',
+  !ficheEmpruntee.centre_ferme,
+  'un centre sans horaire declare a ete pris pour un centre ferme');
+ok('AUCUN fait public ne sort de ce centre',
+  Object.values(ficheEmpruntee).filter((f) => f.audience === 'public').length === 0,
+  JSON.stringify(Object.values(ficheEmpruntee).filter((f) => f.audience === 'public').map((f) => f.id)));
+
+// LE TROU EST NOMME : sans lui, le gerant voit un ecran vide sans la cause.
+ok('le trou est nomme au gerant',
+  Boolean(ficheEmpruntee.horaires_non_declares)
+  && ficheEmpruntee.horaires_non_declares.audience === 'interne',
+  String(ficheEmpruntee.horaires_non_declares && ficheEmpruntee.horaires_non_declares.audience));
+ok('et il dit que rien ne se deduit d un autre centre',
+  /ne se deduisent d aucun autre/.test(String(ficheEmpruntee.horaires_non_declares.valeur)),
+  String(ficheEmpruntee.horaires_non_declares.valeur));
+
+// CONTRE-PREUVE : le centre qui a une grille garde tout.
+const fichePosee = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-10',
+  joursOuverts: declaresReel(centrePourHoraire('libramont').defaultSchedule),
+  agenda: agendaReel(centrePourHoraire('libramont'), [], '2026-09-10'),
+});
+ok('CONTRE-PREUVE : le centre qui declare ses horaires les publie',
+  Boolean(fichePosee.jours_ouverts) && fichePosee.jours_ouverts.audience === 'public',
+  String(fichePosee.jours_ouverts && fichePosee.jours_ouverts.valeur));
+ok('CONTRE-PREUVE : et le trou ne lui est pas reproche',
+  !fichePosee.horaires_non_declares,
+  'un centre qui declare ses horaires porte quand meme le trou');
+
+// ── UNE FORMULE NE SE VEND PAS SANS SES RESSOURCES ─────────────────────────
+console.log('\n[RESSOURCES] une formule dont la piste ou l arene est fermee ne se publie pas');
+const { getCenter: centreDesPrix, getFormula: formuleDuCatalogue } = require('../lib/ops-knowledge');
+const { getEffectiveFormules: catalogueDesPrix } = require('../lib/booking-config');
+const { countFormulaLaserGames: areneDuTunnel, validateReservationResources: tunnelDeResa } = require('../lib/database');
+const { prixReservables: prixDeLaFiche, agendaDuCentre: agendaPourLesPrix,
+  ressourcesDeLaFormule, formuleAvecSesRessources } = require('../lib/center-facts');
+
+// MONTAGE : la fenetre reelle, le catalogue reel.
+const lieuDesPrix = centreDesPrix('libramont');
+const agendaDesPrix = agendaPourLesPrix(lieuDesPrix, [], '2026-09-10');
+const joursDesPrix = agendaDesPrix.filter((j) => j.ouvert && !j.ferme).map((j) => j.date);
+ok('MONTAGE : la fenetre de Libramont porte des jours ouverts',
+  joursDesPrix.length >= 7, String(joursDesPrix.length));
+const formulesDesPrix = catalogueDesPrix('libramont').map(formuleAvecSesRessources);
+ok('MONTAGE : le catalogue du centre est charge',
+  formulesDesPrix.length >= 10, String(formulesDesPrix.length));
+
+// LES RESSOURCES SONT CELLES DU TUNNEL, PAS UNE LISTE ECRITE ICI.
+ok('une formule bowling + laser reclame les deux ressources',
+  JSON.stringify(ressourcesDeLaFormule({ id: 'f1' })) === '["bowling","laser_game"]',
+  JSON.stringify(ressourcesDeLaFormule({ id: 'f1' })));
+ok('une formule laser sans piste ne reclame pas le bowling',
+  JSON.stringify(ressourcesDeLaFormule({ id: 'f2' })) === '["laser_game"]',
+  JSON.stringify(ressourcesDeLaFormule({ id: 'f2' })));
+ok('une formule bowling sans laser ne reclame pas l arene',
+  JSON.stringify(ressourcesDeLaFormule({ id: 'css' })) === '["bowling"]',
+  JSON.stringify(ressourcesDeLaFormule({ id: 'css' })));
+ok('une formule table + plaine + arcade ne reclame AUCUNE ressource',
+  JSON.stringify(ressourcesDeLaFormule({ id: 'f6' })) === '[]',
+  JSON.stringify(ressourcesDeLaFormule({ id: 'f6' })));
+ok('et la reponse sur l arene est bien celle du tunnel',
+  areneDuTunnel(formuleDuCatalogue('f1')) > 0 && areneDuTunnel(formuleDuCatalogue('f6')) === 0,
+  `f1=${areneDuTunnel(formuleDuCatalogue('f1'))} f6=${areneDuTunnel(formuleDuCatalogue('f6'))}`);
+
+// LE DOUTE NE SE PUBLIE PAS. Trois marches, et la derniere est celle qui
+// compte : une formule arrivee SANS ressources resolues ne sort pas.
+let fantomeAJete = false;
+try { ressourcesDeLaFormule({ id: 'formule-fantome' }); } catch (error) { fantomeAJete = true; }
+ok('une formule inconnue du catalogue jette au lieu de repondre',
+  fantomeAJete, 'ressourcesDeLaFormule a repondu pour une formule inexistante');
+ok('et la version qui ne jette pas laisse ses ressources a null',
+  formuleAvecSesRessources({ id: 'formule-fantome' }).ressources === null,
+  JSON.stringify(formuleAvecSesRessources({ id: 'formule-fantome' }).ressources));
+ok('LE POINT : une formule sans ressources resolues n est PAS publiee',
+  prixDeLaFiche([{ id: 'formule-fantome', name: 'FANTOME', type: 'per_pax', price: 20, minPax: 1, ressources: null }],
+    lieuDesPrix, agendaDesPrix, []).length === 0,
+  'une formule dont on ignore les ressources a ete publiee');
+
+// LE CAS QUE getFormula NE JETTE PAS. Une formule CONNUE du catalogue mais
+// DESACTIVEE : getFormula rend null, sans jeter, exprès (lib/ops-knowledge :
+// « on rend null SANS fallback, sinon la formule soft-deleted ressusciterait
+// par le fichier »). C est la SEULE porte vers la branche `!document`, et
+// sans elle la garde qui la ferme n est prouvee par rien.
+//
+// Le crochet est pose sur le MODULE : ressourcesDeLaFormule require
+// ops-knowledge paresseusement, donc apres ce remplacement. On prouve
+// d abord que le crochet mord, sinon on testerait le vide.
+const savoirDuCatalogue = require('../lib/ops-knowledge');
+const vraiGetFormula = savoirDuCatalogue.getFormula;
+savoirDuCatalogue.getFormula = (id, centre) => (id === 'formule-desactivee' ? null : vraiGetFormula(id, centre));
+ok('MONTAGE : le crochet mord, getFormula rend null sans jeter',
+  savoirDuCatalogue.getFormula('formule-desactivee') === null, 'le crochet n a pas pris');
+let desactiveeAJete = false;
+try { ressourcesDeLaFormule({ id: 'formule-desactivee' }); } catch (error) { desactiveeAJete = true; }
+ok('LE POINT : une formule DESACTIVEE jette au lieu de passer pour sans ressource',
+  desactiveeAJete, 'une formule soft-deleted a ete traitee comme ne consommant rien');
+ok('et prixReservables refuse alors de la publier',
+  prixDeLaFiche([formuleAvecSesRessources({ id: 'formule-desactivee', name: 'DESACTIVEE',
+    type: 'per_pax', price: 20, minPax: 1 })], lieuDesPrix, agendaDesPrix, []).length === 0,
+  'une formule desactivee a ete publiee');
+savoirDuCatalogue.getFormula = vraiGetFormula;
+ok('CONTRE-PREUVE : crochet retire, le catalogue repond de nouveau',
+  ressourcesDeLaFormule({ id: 'f1' }).length === 2,
+  JSON.stringify(ressourcesDeLaFormule({ id: 'f1' })));
+
+// QUI CONSOMME QUOI, d apres le catalogue lui-meme.
+const avecLaser = formulesDesPrix.filter((f) => (f.ressources || []).includes('laser_game')).map((f) => f.id);
+const sansLaser = formulesDesPrix.filter((f) => !(f.ressources || []).includes('laser_game')).map((f) => f.id);
+ok('MONTAGE : des formules consomment l arene, d autres non',
+  avecLaser.length > 0 && sansLaser.length > 0,
+  JSON.stringify({ avecLaser, sansLaser }));
+
+// MONTAGE DU DEFAUT : le TUNNEL refuse vraiment. Sans cette assertion, la
+// garde pourrait proteger d un danger qui n existe pas, et personne ne le
+// saurait. C est aussi elle qui tiendra le jour ou le tunnel changera d avis.
+const blocDuJourEntier = (scopeRef) => joursDesPrix.map((date, i) => ({
+  id: i + 1, centerId: 'libramont', scopeType: 'activity', scopeRef,
+  recurrence: 'once', date, startMin: null, endMin: null, reason: 'gate',
+}));
+const refusDuTunnel = (scopeRef) => {
+  try {
+    tunnelDeResa({
+      centerId: 'libramont', type: 'formule', formuleId: 'f1', name: 'Gate',
+      phone: '0470000000', email: 'gate@example.test', date: joursDesPrix[0],
+      startTime: '15:00', pax: 6, channel: 'public', duration: 1, totalDuration: 2,
+    }, [], {}, blocDuJourEntier(scopeRef), joursDesPrix[0]);
+  } catch (error) { return String(error.message); }
+  return '';
+};
+ok('MONTAGE : le tunnel REFUSE la formule quand l arene est fermee',
+  /Laser Game/.test(refusDuTunnel('laser_game')),
+  refusDuTunnel('laser_game') || 'le tunnel a accepte');
+ok('MONTAGE : et quand la piste est fermee',
+  /bowling/i.test(refusDuTunnel('bowling')),
+  refusDuTunnel('bowling') || 'le tunnel a accepte');
+ok('MONTAGE : mais il ACCEPTE quand une activite LIBRE est fermee',
+  refusDuTunnel('arcade_time') === '', refusDuTunnel('arcade_time'));
+
+const prixSansBlocage = prixDeLaFiche(formulesDesPrix, lieuDesPrix, agendaDesPrix, []);
+const prixLaserFerme = prixDeLaFiche(formulesDesPrix, lieuDesPrix, agendaDesPrix, blocDuJourEntier('laser_game'));
+const prixBowlingFerme = prixDeLaFiche(formulesDesPrix, lieuDesPrix, agendaDesPrix, blocDuJourEntier('bowling'));
+const prixArcadeFerme = prixDeLaFiche(formulesDesPrix, lieuDesPrix, agendaDesPrix, blocDuJourEntier('arcade_time'));
+ok('MONTAGE : sans blocage, les formules a arene sont bien publiees',
+  avecLaser.every((id) => prixSansBlocage.some((p) => p.id === id)),
+  JSON.stringify(avecLaser.filter((id) => !prixSansBlocage.some((p) => p.id === id))));
+
+// LE POINT.
+ok('LE POINT : arene fermee, AUCUNE formule qui la consomme n est publiee',
+  !prixLaserFerme.some((p) => avecLaser.includes(p.id)),
+  JSON.stringify(prixLaserFerme.filter((p) => avecLaser.includes(p.id)).map((p) => p.nom)));
+const aBesoinDePiste = (id) => (formulesDesPrix.find((f) => f.id === id) || {}).ressources || [];
+ok('LE POINT : piste fermee, aucune formule qui la consomme non plus',
+  !prixBowlingFerme.some((p) => aBesoinDePiste(p.id).includes('bowling')),
+  JSON.stringify(prixBowlingFerme.filter((p) => aBesoinDePiste(p.id).includes('bowling')).map((p) => p.nom)));
+
+// CONTRE-PREUVES. Une garde qui fait tout taire est une panne, pas une garde.
+ok('CONTRE-PREUVE : les formules sans arene restent publiees',
+  sansLaser.some((id) => prixLaserFerme.some((p) => p.id === id))
+  && prixLaserFerme.length > 0 && prixLaserFerme.length < prixSansBlocage.length,
+  `${prixLaserFerme.length} publiees sur ${prixSansBlocage.length}`);
+ok('CONTRE-PREUVE : une activite LIBRE fermee ne retire RIEN',
+  prixArcadeFerme.length === prixSansBlocage.length,
+  `${prixArcadeFerme.length} sur ${prixSansBlocage.length} : la garde depasse la regle du tunnel`);
+
+// DE BOUT EN BOUT : ce qu un client lirait. Les faits de prix sont PUBLICS et
+// marques `offre` : c est par eux qu un nom de formule sort du programme.
+const nomsALaser = formulesDesPrix.filter((f) => avecLaser.includes(f.id)).map((f) => String(f.name || f.id));
+const ficheDesPrix = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-10',
+  joursOuverts: null, agenda: agendaDesPrix, prix: prixLaserFerme,
+});
+const texteDesPrix = ['prix_du_catalogue', 'prix_plancher']
+  .map((id) => String((ficheDesPrix[id] || {}).valeur || '')).join(' | ');
+ok('DE BOUT EN BOUT : aucun nom de formule a arene dans les faits publics',
+  !nomsALaser.some((nom) => texteDesPrix.includes(nom)),
+  JSON.stringify(nomsALaser.filter((nom) => texteDesPrix.includes(nom))));
+ok('DE BOUT EN BOUT : et le centre a quand meme des prix a annoncer',
+  Boolean(ficheDesPrix.prix_du_catalogue)
+  && ficheDesPrix.prix_du_catalogue.audience === 'public',
+  'le centre est devenu muet sur ses prix');
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

@@ -408,7 +408,10 @@
         "sayable-opening-days",
         "speaks-without-history",
         "email-knows-todays-state",
-        "defers-unmeasurable-verdicts"
+        "defers-unmeasurable-verdicts",
+        "knows-why-an-idea-died",
+        "no-borrowed-schedule",
+        "resource-verified-offer"
       ],
       "guardrails": [
         "Un centre, une fiche : les faits d un centre ne decrivent jamais un autre centre.",
@@ -445,15 +448,18 @@
         "L horaire d un jour n est annonce que s il est le MEME sur toutes ses occurrences ; sinon le jour se dit sans horaire, jamais avec un horaire faux.",
         "Un centre actif et ouvert peut etre commente SANS aucun historique, a partir de ses seuls faits d OFFRE (jours d ouverture, prix). Le fait declare lui-meme qu il decrit l offre : un comptage du REGISTRE ne debloque toujours rien, et « tu as 1 reservation » reste impossible.",
         "La porte EMAIL relit la configuration en base avant d annoncer un horaire, et recoit l ETAT du centre (dates ou il n ouvre pas, activites indisponibles AVEC leurs dates) annonce comme PRIMANT sur les horaires habituels. La raison d une fermeture ne sort jamais vers le client, et la fenetre de quatorze jours est dite : au-dela, le modele sait qu il ne sait pas.",
-        "Une idee appliquee dont la fenetre de mesure ne porte AUCUNE ligne de metriques n est pas « non concluante » : elle n est pas encore mesuree. Aucun verdict n est ecrit, l idee repasse au cycle suivant, et ni les patterns ni le bandit d angles n apprennent d une mesure qui n a pas eu lieu. Des lignes presentes dont la comparaison ne conclut pas restent un vrai « non concluant »."
+        "Une idee appliquee dont la fenetre de mesure ne porte AUCUNE ligne de metriques n est pas « non concluante » : elle n est pas encore mesuree. Aucun verdict n est ecrit, l idee repasse au cycle suivant, et ni les patterns ni le bandit d angles n apprennent d une mesure qui n a pas eu lieu. Des lignes presentes dont la comparaison ne conclut pas restent un vrai « non concluant ».",
+        "Chaque geste qui ignore une idee signe le sien dans payload.ignoredBy : l expiration a dix jours, le bouton Ignorer du cockpit, le refus du panneau. Le taux d adoption ne se calcule QUE sur les idees tranchees (appliquees + refusees par un geste du staff) ; les idees jamais ouvertes sont exclues du denominateur ET dites, et les lignes sans cause enregistree maintiennent le trou nomme jusqu a ce qu elles sortent de la fenetre.",
+        "Un marqueur TEXTE n est pas un horaire pose : un centre dont defaultSchedule vaut « same_as_libramont_public_schedule » ou « to_confirm » n a AUCUN agenda, donc aucun jour d ouverture publie, aucune fermeture, aucune activite indisponible et aucun prix. Le moteur d horaires, lui, retombe sur la grille de Libramont : c est la fiche qui refuse, en un seul endroit, et le trou est nomme au gerant.",
+        "Un prix ne se publie que si les RESSOURCES de la formule sont ouvertes. Une formule consomme deux ressources et deux seulement, celles que le tunnel verifie : la piste de bowling et l arene laser. Fermee le jour entier, l une ou l autre retire ce jour du compte des jours reservables, et une formule sans aucun jour ne se publie pas. Les deux reponses sont celles du tunnel (reservationNeedsLanes, countFormulaLaserGames), jamais une relecture des steps. Une formule dont les ressources n ont pas pu etre resolues n est PAS publiee : le tunnel echoue ouvert car il arbitre une demande deja formee, la fiche echoue ferme car elle emet une promesse publique."
       ],
       "nextUpgrades": [
-        "Distinguer en base une idee refusee d une idee jamais lue (expireStaleInsights ecrit le meme statut)",
-        "Elargir l ADN aux angles absents : prix, retention, SEO local, avis, groupes entreprise",
         "Valoriser les creneaux HORAIRES vides a partir de l amplitude declaree : le jour muet est traite, l heure creuse ne l est pas encore",
         "distributionSuspecte ne lit que le seau DOMINANT : 100 % de la masse sur DEUX heures ne declenche rien (mesure du 2026-09-10). Le seuil d une regle de concentration demande des donnees reelles, absentes depuis la remise a zero de la base",
         "Compter les PISTES disponibles jour par jour (lane_statuses, fenetre de maintenance datee) : deuxieme source du meme mensonge cote bowling, mais elle demande de decider ce que « plus assez de pistes » veut dire, donc un seuil",
-        "Un blocage d ACTIVITE ne retire pas les FORMULES qui la contiennent : la route publique n applique isActivityFullyBlockedOn qu aux visites libres. La fiche fait exactement ce que le tunnel fait, sans le corriger. Question de produit, pas de fiche"
+        "Le tunnel ACCEPTE une formule dont une activite LIBRE est fermee toute la journee : mesure du 2026-09-10, arcade_time ferme, FORMULE 1 (qui porte 30 min d arcade) passe validateReservationResources sans un mot. Seules la piste et l arene sont des ressources verrouillees ; les autres etapes ne reservent rien, donc rien ne les protege. Un client peut reserver et arriver pour trouver l arcade fermee. La fiche ne fait que refleter le tunnel : ce qu il faut, c est decider si une etape non critique fermee doit refuser la formule, la vendre amputee, ou prevenir. Question de produit, pas de fiche. (L entree precedente disait que le tunnel ne refusait rien : elle etait fausse, la mesure montre qu il refuse la piste et l arene depuis toujours.)",
+        "L ADN sectoriel (marketing_dna) n a qu une seule porte d entree : le colle-un-post, ou l HUMAIN apporte ce qu il a vu. La colonne source est obligatoire et non vide, par construction : des regles ecrites depuis un savoir d entrainement n ont pas de source verifiable et ne peuvent pas y entrer. Elargir l ADN demande un vrai workflow de recherche sourcee, pas une generation",
+        "Gembloux et Ciney n ont AUCUNE grille horaire posee (marqueur texte dans defaultSchedule) : leurs agents ne peuvent donc rien dire de leurs horaires ni de leurs prix. Une grille posee par le staff debloque les deux d un coup. Decision de Movsar, pas de code"
       ]
     }
   ],

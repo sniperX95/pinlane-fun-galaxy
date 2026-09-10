@@ -608,6 +608,194 @@ const anthropicOk = (object) => ({
   const cerveauDuDepot = await buildEmailBrain('libramont', depsAvec([]));
   ok(/Lundi fermé/.test(cerveauDuDepot.context),
     'CONTRE-PREUVE : socle rendu, le lundi redevient ferme');
+
+  // ── LES TARIFS ATTEIGNENT LA PORTE EMAIL ────────────────────────────────
+  console.log('\n[TARIFS] la porte email peut enfin repondre « combien ca coute »');
+  const { prixDuCentre, __test: outilsDuMail } = require('../lib/email-agent');
+  const { chargerFicheDuRegistre: ficheDuCentre } = require('../lib/center-facts');
+  applyCenterOverrides(new Map());
+
+  const tarifsLibramont = await prixDuCentre('libramont', depsAvec([]), JOUR);
+  ok(tarifsLibramont.length > 200, 'MONTAGE : le centre qui a une grille horaire a des tarifs');
+
+  // LE POINT : les deux portes annoncent le MEME catalogue. Elles appellent la
+  // meme fonction, donc le meme moteur de reservation ; sans cette comparaison
+  // rien n interdirait a une porte de deriver de l autre.
+  const fichePublique = await ficheDuCentre({ centerId: 'libramont', aujourdhui: JOUR, pool: depsAvec([]) });
+  const nomsPublics = String((fichePublique.prix_du_catalogue || {}).valeur || '')
+    .split(' | ').map((ligne) => ligne.split(' : ')[0]).filter(Boolean).sort();
+  const nomsDuMail = tarifsLibramont.split('\n').slice(1)
+    .map((ligne) => ligne.split(' : ')[0]).filter(Boolean).sort();
+  ok(nomsDuMail.length >= 5 && JSON.stringify(nomsDuMail) === JSON.stringify(nomsPublics),
+    'LE POINT : la porte email annonce EXACTEMENT les formules de la porte publique');
+
+  // CHAQUE LIGNE PORTE SA CONDITION. Un prix nu se cite ensuite sans reserve.
+  const lignesDeTarif = tarifsLibramont.split('\n').slice(1);
+  ok(lignesDeTarif.every((ligne) => /EUR (par personne|par piste)/.test(ligne)),
+    'chaque tarif porte son unite');
+  ok(lignesDeTarif.every((ligne) => /(des \d+ personnes|sans minimum de personnes)/.test(ligne)),
+    'chaque tarif porte son minimum de personnes');
+  ok(lignesDeTarif.some((ligne) => /jours sur \d+ seulement/.test(ligne))
+    && lignesDeTarif.some((ligne) => /(avant|a partir de|de) \d+ h/.test(ligne)),
+    'les tarifs conditionnes portent leur jour et leur heure');
+
+  // ET LE MODELE EST PREVENU DE CE QU IL NE DOIT PAS FAIRE.
+  ok(/JAMAIS un total/.test(tarifsLibramont) && /n additionnes rien/.test(tarifsLibramont),
+    'LE POINT : le bloc interdit de calculer un total pour un groupe');
+
+  // LE FILET TIENT AVEC LES PRIX. Un tarif recopie passe ; un total calcule
+  // par le modele est JETE, parce que le nombre n existe nulle part dans le
+  // cerveau. C est ce qui rend le bloc sur.
+  const cerveauTarife = await buildEmailBrain('libramont', depsAvec([]));
+  const socleAutorise = `${cerveauTarife.stable}\n${cerveauTarife.context}`;
+  const unTarifReel = lignesDeTarif[0];
+  ok(!outilsDuMail.hasUngroundedNumbers(unTarifReel, socleAutorise),
+    'un tarif recopie tel quel est ancre');
+  ok(outilsDuMail.hasUngroundedNumbers('Pour 8 personnes cela fera 208 EUR au total.', socleAutorise),
+    'LE POINT : un total calcule par le modele est JETE, le nombre n existe nulle part');
+
+  // AUCUNE CONTRADICTION : des prix, ou un refus, jamais les deux. La
+  // verification porte sur le cerveau ENTIER : le refus vivait dans les FAITS
+  // DU CENTRE, qui partent dans le contexte, pas dans le bloc stable. Ne
+  // regarder que stable laisserait la contradiction revenir sans un mot.
+  const cerveauEntier = `${cerveauTarife.stable}\n${cerveauTarife.context}`;
+  ok(!/ne jamais donner un prix|ne donne jamais un prix/i.test(cerveauEntier),
+    'LE POINT : aucun refus de prix ne survit nulle part a cote des tarifs');
+  ok(/--- TARIFS DE CE CENTRE/.test(cerveauTarife.context),
+    'et le contexte annonce les tarifs comme etant CEUX DE CE CENTRE');
+
+  // ET UNE RESSOURCE FERMEE RETIRE SES FORMULES, ICI AUSSI. Annoncer par mail
+  // un tarif que le tunnel refusera est pire que ne pas repondre : le client
+  // a la reponse ecrite sous les yeux quand la reservation echoue.
+  const blocsDeLArene = Array.from({ length: 14 }, (inutilise, i) => bloc({
+    id: 300 + i, scope_type: 'activity', scope_ref: 'laser_game',
+    date: new Date(Date.parse(`${JOUR}T00:00:00Z`) + i * 86400000).toISOString().slice(0, 10),
+  }));
+  const tarifsAreneFermee = await prixDuCentre('libramont', depsAvec(blocsDeLArene), JOUR);
+  const nomsAreneFermee = tarifsAreneFermee.split('\n').slice(1)
+    .map((ligne) => ligne.split(' : ')[0]).filter(Boolean);
+  ok(nomsAreneFermee.length > 0 && nomsAreneFermee.length < nomsDuMail.length,
+    'LE POINT : arene fermee, la porte email retire les formules qui la consomment');
+  ok(nomsAreneFermee.every((nom) => nomsDuMail.includes(nom)),
+    'CONTRE-PREUVE : et elle n en invente aucune au passage');
+
+  // CONTRE-PREUVE ET CLOISONNEMENT : un centre sans grille horaire n a aucun
+  // prix (patch 46), donc il garde le refus, et ne voit RIEN de son voisin.
+  for (const sansGrille of ['gembloux', 'ciney']) {
+    const tarifsVides = await prixDuCentre(sansGrille, depsAvec([]), JOUR);
+    ok(tarifsVides === '', `CONTRE-PREUVE : ${sansGrille} n a aucun tarif a annoncer`);
+    const cerveauSansPrix = await buildEmailBrain(sansGrille, depsAvec([]));
+    ok(/Aucun tarif n est disponible pour ce centre/.test(cerveauSansPrix.context)
+      && /ne donne jamais un prix/.test(cerveauSansPrix.context),
+      `${sansGrille} recoit le refus de prix, mot pour mot`);
+    ok(!nomsPublics.some((nom) => cerveauSansPrix.context.includes(nom)),
+      `ISOLATION : aucune formule de Libramont n apparait chez ${sansGrille}`);
+  }
+
+
+  // ET LE PARC DE PISTES, ICI AUSSI. Corriger une porte et pas l autre est
+  // exactement le defaut que ces patches n arretent pas de rencontrer.
+  const depsParcArrete = {
+    query: async (sql) => (/from lane_statuses/i.test(String(sql))
+      ? { rows: Array.from({ length: 8 }, (inutilise, i) => ({ lane_number: i + 1, status: 'maintenance', maintenance_from: null, maintenance_until: null, maintenance_note: '' })) }
+      : { rows: [] }),
+  };
+  const tarifsParcArrete = await prixDuCentre('libramont', depsParcArrete, JOUR);
+  const nomsParcArrete = tarifsParcArrete.split('\n').slice(1)
+    .map((ligne) => ligne.split(' : ')[0]).filter(Boolean);
+  ok(nomsParcArrete.length > 0 && nomsParcArrete.length < nomsDuMail.length,
+    'LE POINT : parc de pistes a l arret, la porte email retire les formules bowling');
+  ok(nomsParcArrete.every((nom) => nomsDuMail.includes(nom)),
+    'CONTRE-PREUVE : et elle n en invente aucune au passage');
+  // LE CLOISONNEMENT, PROUVE PAR UNE DIFFERENCE REELLE.
+  // Tant que Gembloux n a aucune grille horaire il n a aucun tarif, et « les
+  // tarifs de CE centre » ne se distingue en rien de « les tarifs de
+  // Libramont » : les deux listes sont vides. On lui pose donc une grille ET
+  // on desactive une formule pour lui seul. Sa liste doit alors etre la
+  // SIENNE, strictement plus courte. Sans ce montage, remplacer centerId par
+  // 'libramont' dans la lecture du catalogue ne ferait rougir personne.
+  const { getCenter: centreConfigure, applyCenterOverrides: poserConfig } = require('../lib/ops-knowledge');
+  const configDeGembloux = JSON.parse(JSON.stringify(centreConfigure('gembloux')));
+  configDeGembloux.defaultSchedule = JSON.parse(JSON.stringify(centreConfigure('libramont').defaultSchedule));
+  const depsDeGembloux = {
+    query: async (sql) => {
+      const texte = String(sql);
+      if (/from centers/i.test(texte)) {
+        return {
+          rows: [{
+            id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active',
+            timezone: 'Europe/Brussels', settings: { config: configDeGembloux },
+          }],
+        };
+      }
+      if (/from formule_overrides/i.test(texte)) {
+        return {
+          rows: [{
+            formule_id: 'f1', center_id: 'gembloux', name: null, price_value: null,
+            price_old: null, enabled: false, removed: false, sort_index: null,
+          }],
+        };
+      }
+      return { rows: [] };
+    },
+  };
+  // prixDuCentre lit la configuration DEJA rafraichie, comme etatDuCentre :
+  // c est buildEmailBrain qui rafraichit, une fois, avant les deux. Le montage
+  // doit donc faire le meme geste, sinon il testerait le socle du depot.
+  await require('../lib/ops-knowledge').refreshCenterOverrides(depsDeGembloux, { force: true });
+  const tarifsDeGembloux = await prixDuCentre('gembloux', depsDeGembloux, JOUR);
+  const nomsDeGembloux = tarifsDeGembloux.split('\n').slice(1)
+    .map((ligne) => ligne.split(' : ')[0]).filter(Boolean);
+  ok(nomsDeGembloux.length > 0,
+    'MONTAGE : une grille horaire posee donne enfin des tarifs a Gembloux');
+  ok(nomsDeGembloux.length === nomsDuMail.length - 1
+    && nomsDeGembloux.every((nom) => nomsDuMail.includes(nom)),
+    'LE POINT : la liste de Gembloux est la SIENNE, amputee de la formule qu il a desactivee');
+
+  // UNE GRILLE POSEE MAIS AUCUNE FORMULE ACTIVE : c est l etat d un centre qui
+  // a saisi ses horaires et pas encore son catalogue. Il a un agenda, donc la
+  // garde des jours ne le protege pas ; c est celle des prix vides qui doit
+  // rendre la main au refus, sinon le modele recoit un entete « TARIFS » suivi
+  // de rien, et comble.
+  const idsDuCatalogue = require('../lib/booking-config')
+    .getEffectiveFormules('libramont').map((formule) => formule.id);
+  const depsSansCatalogue = {
+    query: async (sql) => {
+      const texte = String(sql);
+      if (/from centers/i.test(texte)) {
+        return {
+          rows: [{
+            id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active',
+            timezone: 'Europe/Brussels', settings: { config: configDeGembloux },
+          }],
+        };
+      }
+      if (/from formule_overrides/i.test(texte)) {
+        return {
+          rows: idsDuCatalogue.map((id) => ({
+            formule_id: id, center_id: 'gembloux', name: null, price_value: null,
+            price_old: null, enabled: false, removed: false, sort_index: null,
+          })),
+        };
+      }
+      return { rows: [] };
+    },
+  };
+  await require('../lib/ops-knowledge').refreshCenterOverrides(depsSansCatalogue, { force: true });
+  const tarifsSansCatalogue = await prixDuCentre('gembloux', depsSansCatalogue, JOUR);
+  ok(tarifsSansCatalogue === '',
+    'LE POINT : une grille sans aucune formule active ne produit AUCUN bloc tarifs');
+  const cerveauSansCatalogue = await buildEmailBrain('gembloux', depsSansCatalogue);
+  ok(/Aucun tarif n est disponible pour ce centre/.test(cerveauSansCatalogue.context)
+    && !/--- TARIFS DE CE CENTRE/.test(cerveauSansCatalogue.context),
+    'et le refus reprend la main, sans entete de tarifs vide');
+
+  // RESTAURATION : la configuration et le catalogue redeviennent ceux du depot.
+  poserConfig(new Map());
+  await require('../lib/booking-config').refreshFormuleOverrides(depsAvec([]), { force: true });
+  const tarifsApresRestauration = await prixDuCentre('libramont', depsAvec([]), JOUR);
+  ok(tarifsApresRestauration === tarifsLibramont,
+    'CONTRE-PREUVE : apres restauration, Libramont retrouve exactement ses tarifs');
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

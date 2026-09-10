@@ -819,6 +819,81 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
       },
     })).demandes_sur_mesure);
 
+  const { joursSansPisteDisponible } = require('../lib/database');
+  
+  // LA LECTURE D ABORD : une maintenance DATEE ne vaut que dans sa fenetre, et
+  // une piste sans ligne est active. Ce sont les regles du tunnel, pas des
+  // nouvelles : joursSansPisteDisponible les reprend de resolveLaneStatusForDate.
+  const baseDesPistes = (rows) => ({ query: async () => ({ rows }) });
+  const huitPistes = (statut, from = null, until = null) => Array.from({ length: 8 }, (inutilise, i) => ({
+    lane_number: i + 1, status: statut, maintenance_from: from, maintenance_until: until,
+    maintenance_note: '',
+  }));
+  const JOURS_DES_PISTES = ['2026-09-10', '2026-09-11', '2026-09-12'];
+  ok('MONTAGE : sans aucune ligne, toutes les pistes sont actives',
+    (await joursSansPisteDisponible(baseDesPistes([]), 'libramont', JOURS_DES_PISTES)).size === 0,
+    'une piste sans ligne a ete comptee en panne');
+  ok('LE POINT : les huit pistes en maintenance ferment le jour',
+    (await joursSansPisteDisponible(baseDesPistes(huitPistes('maintenance')), 'libramont', JOURS_DES_PISTES)).size === 3,
+    String((await joursSansPisteDisponible(baseDesPistes(huitPistes('maintenance')), 'libramont', JOURS_DES_PISTES)).size));
+  ok('CONTRE-PREUVE : SEPT pistes sur huit ne ferment rien',
+    (await joursSansPisteDisponible(
+      baseDesPistes(huitPistes('maintenance').slice(0, 7)), 'libramont', JOURS_DES_PISTES)).size === 0,
+    'un parc partiellement en panne a ete pris pour un parc a l arret');
+  ok('LE POINT : une maintenance DATEE ne vaut que dans sa fenetre',
+    (await joursSansPisteDisponible(
+      baseDesPistes(huitPistes('maintenance', '2026-09-11', '2026-09-11')), 'libramont', JOURS_DES_PISTES)).size === 1,
+    JSON.stringify([...(await joursSansPisteDisponible(
+      baseDesPistes(huitPistes('maintenance', '2026-09-11', '2026-09-11')), 'libramont', JOURS_DES_PISTES))]));
+  
+
+  // ── ET LE PARC DE PISTES PASSE PAR LE MEME CHEMIN ──────────────────────
+  // La fonction pure est prouvee dans center-facts-check. Ici c est le
+  // CHARGEUR qui doit lire lane_statuses et transmettre les jours concernes :
+  // sans cette assertion, couper la lecture laisserait tous les gates verts.
+  const sqlDesPistes = [];
+  const parcArrete = Array.from({ length: 8 }, (inutilise, i) => ({
+    lane_number: i + 1, status: 'maintenance', maintenance_from: null,
+    maintenance_until: null, maintenance_note: 'renovation',
+  }));
+  const poolParcArrete = {
+    query: async (sql) => {
+      const texte = String(sql);
+      if (/from lane_statuses/i.test(texte)) { sqlDesPistes.push(texte); return { rows: parcArrete }; }
+      if (/from reservations/i.test(texte)) return { rows: serie(120) };
+      return { rows: [] };
+    },
+  };
+  const ficheParcArrete = await chargerVraiment({
+    centerId: 'libramont', aujourdhui: '2026-09-10', pool: poolParcArrete,
+  });
+  ok('MONTAGE : le chargeur a bien interroge lane_statuses',
+    sqlDesPistes.length >= 1, `${sqlDesPistes.length} requete(s)`);
+  ok('LE POINT : parc a l arret, le chargeur pose le trou et le nomme',
+    Boolean(ficheParcArrete.pistes_toutes_en_maintenance),
+    String(ficheParcArrete.pistes_toutes_en_maintenance
+      && ficheParcArrete.pistes_toutes_en_maintenance.valeur));
+  const nomsAPiste = catalogueDuCentre('libramont')
+    .filter((formule) => {
+      try { return ressourcesDuTunnel(formule).includes('bowling'); } catch (error) { return true; }
+    })
+    .map((formule) => String(formule.name || formule.id));
+  const prixDuParcArrete = ['prix_du_catalogue', 'prix_plancher']
+    .map((id) => String((ficheParcArrete[id] || {}).valeur || '')).join(' | ');
+  ok('MONTAGE : le catalogue porte des formules a piste', nomsAPiste.length > 0,
+    JSON.stringify(nomsAPiste));
+  ok('LE POINT : et il retire les formules qui consomment une piste',
+    !nomsAPiste.some((nom) => prixDuParcArrete.includes(nom)),
+    JSON.stringify(nomsAPiste.filter((nom) => prixDuParcArrete.includes(nom))));
+  ok('CONTRE-PREUVE : parc normal, aucun trou et les formules reviennent',
+    !(await chargerVraiment({
+      centerId: 'libramont', aujourdhui: '2026-09-10',
+      pool: {
+        query: async (sql) => (/from reservations/i.test(String(sql))
+          ? { rows: serie(120) } : { rows: [] }),
+      },
+    })).pistes_toutes_en_maintenance);
+
   // LA GARDE. Le centre A un laser game : le motif doit dire BLOQUE, jamais
   // « absent de ce centre ». Un gerant qui lit le mauvais motif va corriger
   // une configuration qui est juste.
@@ -871,6 +946,50 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     JSON.stringify(charge.centre.activites));
   ok('CONTRE-PREUVE : les autres activites du centre restent proposees',
     (charge.centre.activites || []).some((n) => /bowling/i.test(String(n))),
+    JSON.stringify(charge.centre.activites));
+
+  // ── LE BLOC SYSTEME NE DECRIT PLUS UN SEUL CENTRE ──────────────────────
+  // Les gardes de sortie refusent une revendication fausse ; elles ne voient
+  // pas l AMORCE. Trois activites nommees en dur dans la premiere ligne du
+  // prompt orientaient le modele sans jamais declencher un refus.
+  const enveloppe = promptsVus[0] ? JSON.parse(promptsVus[0]) : null;
+  const blocSysteme = enveloppe && Array.isArray(enveloppe.system)
+    ? enveloppe.system.map((bloc) => String((bloc && bloc.text) || '')).join('\n')
+    : String((enveloppe && enveloppe.system) || '');
+  ok('MONTAGE : le bloc systeme a bien ete capture',
+    blocSysteme.length > 200 && /REGLES DURES/.test(blocSysteme),
+    `${blocSysteme.length} caracteres`);
+
+  // Les noms viennent du CENTRE COURANT, pas d une liste recopiee ici : un
+  // gate qui ecrirait « bowling, laser game, arcades » deviendrait faux le
+  // jour ou la configuration change.
+  const systemeEnMinuscules = blocSysteme.toLowerCase();
+  const activitesDuCentre = [
+    ...(charge.centre.activites || []),
+    ...(charge.centre.aNePasEcrire || []),
+  ].map((nom) => String(nom).toLowerCase()).filter((nom) => nom.length > 3);
+  ok('MONTAGE : le centre declare bien des activites a chercher',
+    activitesDuCentre.length >= 3, JSON.stringify(activitesDuCentre));
+  const nommeesEnDur = activitesDuCentre.filter((nom) => systemeEnMinuscules.includes(nom));
+  ok('LE POINT : le bloc systeme ne nomme AUCUNE activite',
+    nommeesEnDur.length === 0, JSON.stringify(nommeesEnDur));
+
+  // ET IL DIT CE QUE LA FICHE PORTE VRAIMENT. « calculee sur son registre de
+  // reservations » etait devenu faux : l offre y entre, et ses faits sont vrais
+  // sans une seule vente. C est l etat de ce centre depuis la remise a zero de
+  // sa base, donc la phrase decide de ce qu il peut encore dire.
+  ok('LE POINT : le bloc systeme annonce l OFFRE a cote du registre',
+    /OFFRE/.test(blocSysteme) && /REGISTRE/.test(blocSysteme),
+    blocSysteme.slice(0, 200));
+  ok('et il dit que les faits d offre valent SANS aucune vente',
+    /sans aucune vente/i.test(blocSysteme), blocSysteme.slice(0, 300));
+  ok('et que l etat du moment est DEJA applique a ce qu il recoit',
+    /deja applique/i.test(blocSysteme)
+    && /centre\.activites/.test(blocSysteme) && /aNePasEcrire/.test(blocSysteme),
+    blocSysteme.slice(0, 400));
+
+  ok('CONTRE-PREUVE : les activites du centre sont bien passees, dans la CHARGE',
+    (charge.centre.activites || []).length >= 3,
     JSON.stringify(charge.centre.activites));
 
   // ── ET LES PRIX PASSENT PAR LE MEME CHEMIN ──────────────────────────────

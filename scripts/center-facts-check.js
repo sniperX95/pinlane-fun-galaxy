@@ -1896,5 +1896,60 @@ ok('FAIL-OPEN : sans demande, aucun des trois faits',
   ['demandes_sur_mesure', 'occasions_demandees', 'demande_jamais_vendue']
     .every((id) => !ficheSansDemande[id]),
   'un fait de demande a ete pose sans demande');
+
+// ── UN PARC DE PISTES A L ARRET EST UNE RESSOURCE FERMEE ───────────────────
+console.log('\n[PISTES] un jour sans une seule piste ne vend aucune formule bowling');
+// PUIS LE PRIX. On reutilise le catalogue et la fenetre reels du bloc
+// [RESSOURCES] : c est la configuration qui a produit le defaut.
+const avecPiste = formulesDesPrix.filter((f) => (f.ressources || []).includes('bowling')).map((f) => f.id);
+const sansPiste = formulesDesPrix.filter((f) => !(f.ressources || []).includes('bowling')).map((f) => f.id);
+ok('MONTAGE : des formules consomment une piste, d autres non',
+  avecPiste.length > 0 && sansPiste.length > 0, JSON.stringify({ avecPiste, sansPiste }));
+
+const prixParcArrete = prixDeLaFiche(formulesDesPrix, lieuDesPrix, agendaDesPrix, [], new Set(joursDesPrix));
+ok('LE POINT : parc a l arret, AUCUNE formule a piste n est publiee',
+  !prixParcArrete.some((p) => avecPiste.includes(p.id)),
+  JSON.stringify(prixParcArrete.filter((p) => avecPiste.includes(p.id)).map((p) => p.nom)));
+ok('CONTRE-PREUVE : les formules sans piste restent publiees',
+  sansPiste.some((id) => prixParcArrete.some((p) => p.id === id))
+  && prixParcArrete.length > 0 && prixParcArrete.length < prixSansBlocage.length,
+  `${prixParcArrete.length} sur ${prixSansBlocage.length}`);
+
+// UN SEUL JOUR SANS PISTE N EFFACE PAS LA FORMULE : il lui retire un jour.
+const prixUnJourSansPiste = prixDeLaFiche(
+  formulesDesPrix, lieuDesPrix, agendaDesPrix, [], new Set([joursDesPrix[0]]));
+const uneFormuleAPiste = prixUnJourSansPiste.find((p) => avecPiste.includes(p.id));
+const memeFormuleSansBlocage = prixSansBlocage.find((p) => p.id === (uneFormuleAPiste || {}).id);
+ok('CONTRE-PREUVE : un seul jour sans piste retire un jour, pas la formule',
+  Boolean(uneFormuleAPiste) && Boolean(memeFormuleSansBlocage)
+  && uneFormuleAPiste.jours === memeFormuleSansBlocage.jours - 1,
+  JSON.stringify({ apres: uneFormuleAPiste, avant: memeFormuleSansBlocage }));
+
+// FAIL-OPEN ASSUME : ne pas savoir ne retire rien.
+ok('FAIL-OPEN : sans lecture du parc, aucune formule n est retiree',
+  prixDeLaFiche(formulesDesPrix, lieuDesPrix, agendaDesPrix, [], null).length === prixSansBlocage.length,
+  'le fail-open ne tient plus');
+
+// ET LE TROU EST NOMME, sinon le gerant voit ses prix bowling disparaitre
+// sans en connaitre la cause.
+const ficheParcArrete = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-10',
+  agenda: agendaDesPrix, prix: prixParcArrete, joursSansPiste: joursDesPrix,
+});
+ok('le trou des pistes est nomme au gerant',
+  Boolean(ficheParcArrete.pistes_toutes_en_maintenance)
+  && ficheParcArrete.pistes_toutes_en_maintenance.audience === 'interne',
+  String(ficheParcArrete.pistes_toutes_en_maintenance
+    && ficheParcArrete.pistes_toutes_en_maintenance.audience));
+ok('et il compte les jours concernes',
+  new RegExp(`^${joursDesPrix.length} jours ouverts`)
+    .test(String(ficheParcArrete.pistes_toutes_en_maintenance.valeur)),
+  String(ficheParcArrete.pistes_toutes_en_maintenance.valeur));
+ok('CONTRE-PREUVE : sans jour sans piste, aucun fait',
+  !ficheDuRegistre({
+    reservations: [], formules: [], aujourdhui: '2026-09-10',
+    agenda: agendaDesPrix, prix: prixSansBlocage,
+  }).pistes_toutes_en_maintenance,
+  'un fait de pistes a ete pose sans une seule journee concernee');
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

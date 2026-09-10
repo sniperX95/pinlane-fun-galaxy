@@ -184,6 +184,36 @@ const {
     && arrete.silence.phrase.includes('240 jours'),
     'registre arrete : la cause porte le nombre de jours', JSON.stringify(arrete.silence));
 
+  // LE STATUT ET LA FERMETURE, qui ne traversaient pas jusqu a l ecran. Le
+  // conseiller rendait deja `silence: 'centre_ferme'` mais causeDuSilence ne
+  // connaissait pas la cause : elle rendait null et le panneau retombait sur
+  // sa phrase generique. C est le defaut du journal 277, refait trois patches
+  // plus tard, et attrape par ce gate.
+  const pasActive = await briefSansRien({
+    statut_du_centre: { valeur: 'centre declare « planned » : il n ouvre pas encore' },
+  }, 'anthropic');
+  ok(pasActive.silence && pasActive.silence.cause === 'statut_du_centre'
+    && /planned/.test(pasActive.silence.phrase),
+    'centre pas actif : la cause est nommee et porte la declaration',
+    JSON.stringify(pasActive.silence));
+
+  const pasOuvert = await briefSansRien({
+    centre_ferme: { valeur: 'aucun jour ouvert sur les 14 prochains jours' },
+  }, 'anthropic');
+  ok(pasOuvert.silence && pasOuvert.silence.cause === 'centre_ferme'
+    && /14 prochains jours/.test(pasOuvert.silence.phrase),
+    'centre ferme : la cause traverse jusqu a l ecran',
+    JSON.stringify(pasOuvert.silence));
+
+  // LE RANG : un centre pas actif dont le registre est vide nomme le STATUT.
+  const pasActiveEtVide = await briefSansRien({
+    statut_du_centre: { valeur: 'centre declare « closed »' },
+    registre_vide: { valeur: 'x' },
+  }, 'anthropic');
+  ok(pasActiveEtVide.silence && pasActiveEtVide.silence.cause === 'statut_du_centre',
+    'statut et registre vide ensemble : c est le statut qui est nomme',
+    JSON.stringify(pasActiveEtVide.silence));
+
   const sansOffre = await briefSansRien({ identite_absente: { valeur: 'rien de declare' } }, 'anthropic');
   ok(sansOffre.silence && sansOffre.silence.cause === 'identite_absente',
     'configuration sans activite : la cause est nommee', JSON.stringify(sansOffre.silence));

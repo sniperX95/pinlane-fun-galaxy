@@ -1107,5 +1107,37 @@ ok('FAIL-OPEN : sans agenda, aucun fait d ouverture',
 ok('FAIL-OPEN : une date absente ne fabrique pas d agenda',
   agendaDuCentre(centreReel, [], '', 7).length === 0);
 ok('FAIL-OPEN : un centre absent non plus', agendaDuCentre(null, [], '2026-09-14', 7).length === 0);
+
+// ── LE STATUT DECLARE DU CENTRE ────────────────────────────────────────────
+// Le produit connait trois statuts : active, planned, closed. Le cerveau de
+// l agent n en lisait AUCUN. Ciney est declare `planned` aujourd hui : un
+// centre qui n ouvre pas encore, et qui recevrait les memes conseils au present
+// qu un centre ouvert des que son registre porterait de l histoire.
+console.log('\n[STATUT] un centre qui n est pas actif le dit');
+ok('MONTAGE : Ciney est bien declare planned dans la configuration reelle',
+  require('../lib/ops-knowledge').getCenter('ciney').status === 'planned',
+  String(require('../lib/ops-knowledge').getCenter('ciney').status));
+
+ok('un centre actif ne pose aucun fait de statut',
+  !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10', statut: 'active' }).statut_du_centre);
+const fichePlanned = ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10', statut: 'planned' });
+ok('un centre planned le dit, et dit qu il n ouvre pas ENCORE',
+  Boolean(fichePlanned.statut_du_centre) && /n ouvre pas encore/.test(String(fichePlanned.statut_du_centre.valeur)),
+  String(fichePlanned.statut_du_centre && fichePlanned.statut_du_centre.valeur));
+const ficheClosed = ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10', statut: 'closed' });
+ok('un centre closed aussi', Boolean(ficheClosed.statut_du_centre)
+  && /closed/.test(String(ficheClosed.statut_du_centre.valeur)),
+  String(ficheClosed.statut_du_centre && ficheClosed.statut_du_centre.valeur));
+ok('le fait reste INTERNE : le statut d un centre ne se publie pas',
+  fichePlanned.statut_du_centre.audience === 'interne');
+ok('il est pose MALGRE un registre vide, comme l agenda : il parle du centre',
+  Boolean(fichePlanned.registre_vide) && Boolean(fichePlanned.statut_du_centre));
+
+// FAIL-OPEN : sans statut transmis, aucun fait. La fiche ne suppose pas
+// qu un centre est ferme parce qu elle ne sait pas.
+ok('FAIL-OPEN : sans statut, aucun fait',
+  !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10' }).statut_du_centre);
+ok('FAIL-OPEN : un statut vide non plus',
+  !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10', statut: '   ' }).statut_du_centre);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

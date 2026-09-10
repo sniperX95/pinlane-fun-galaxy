@@ -649,6 +649,31 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     (joursOuvertsDeclares(centreCourant('libramont').defaultSchedule) || []).includes(1),
     JSON.stringify(joursOuvertsDeclares(centreCourant('libramont').defaultSchedule)));
 
+  // ET LE STATUT PASSE PAR LE MEME CHEMIN. La fonction pure qui pose le fait
+  // est prouvee dans center-facts-check ; ici c est le CHARGEUR qui doit aller
+  // chercher le statut en base et le lui transmettre. setCenterStatus ecrit
+  // dans la colonne ET dans settings.config, donc les deux portent la valeur.
+  const ligneCentreFerme = {
+    ...ligneDuStaff, status: 'closed',
+    settings: { config: { ...configDeLaBase, status: 'closed' } },
+  };
+  const poolCentreFerme = {
+    query: async (sql) => (/from centers/.test(sql) ? { rows: [ligneCentreFerme] } : { rows: [] }),
+  };
+  const ficheStatutDeLaBase = await chargerVraiment({
+    centerId: 'libramont', aujourdhui: '2026-09-10', pool: poolCentreFerme,
+  });
+  ok('LE POINT : le chargeur lit le statut de la BASE et le pose dans la fiche',
+    Boolean(ficheStatutDeLaBase.statut_du_centre)
+    && /closed/.test(String(ficheStatutDeLaBase.statut_du_centre.valeur)),
+    String(ficheStatutDeLaBase.statut_du_centre && ficheStatutDeLaBase.statut_du_centre.valeur));
+  applyCenterOverrides(new Map());
+  ok('CONTRE-PREUVE : socle rendu, le centre redevient actif et le fait disparait',
+    !(await chargerVraiment({
+      centerId: 'libramont', aujourdhui: '2026-09-10',
+      pool: { query: async () => ({ rows: [] }) },
+    })).statut_du_centre);
+
   // 2. L IDENTITE SEULE rafraichit aussi. On rend le socle avant, sinon on
   //    lirait ce que la fiche vient de charger.
   applyCenterOverrides(new Map());
@@ -711,6 +736,58 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   // Meme raisonnement que la dormance, autre cause : le registre peut etre
   // plein et vivant, si le centre n ouvre aucun jour de la fenetre (fermeture
   // annuelle, travaux, saison), « viens ce soir » est faux.
+
+  // ── UN CENTRE QUI N EST PAS DECLARE ACTIF NE CONSEILLE RIEN ───────────────
+  // Trois statuts existent : active, planned, closed. Le conseiller n en lisait
+  // aucun. Un centre « planned » n ouvre pas encore, un centre « closed » a
+  // ferme : dans les deux cas la declaration est immediate, la ou la dormance
+  // attend son propre delai de silence.
+  console.log('\n[STATUT] le conseiller se tait sur un centre qui n est pas actif');
+  let appelsSurPlanned = 0;
+  const fichePasActive = {
+    ...fiche,
+    statut_du_centre: {
+      id: 'statut_du_centre', libelle: 'ce centre n est pas declare actif',
+      valeur: 'centre declare « planned » : il n ouvre pas encore',
+      n: 1, genre: 'denombrement', audience: 'interne', mois: [], du: '', au: '',
+      source: 'champ status de la configuration du centre',
+    },
+  };
+  const surPlanned = await proposerDepuisLaFiche({
+    fiche: fichePasActive, lieu: LIEU,
+    fetchImpl: async () => { appelsSurPlanned += 1; return { ok: false, status: 500, text: async () => '' }; },
+  });
+  ok('le silence a sa propre cause', surPlanned.silence === 'statut_du_centre', String(surPlanned.silence));
+  ok('le motif recopie la declaration', surPlanned.motifs.some((m) => m.includes('planned')),
+    JSON.stringify(surPlanned.motifs));
+  ok('AUCUN appel au modele', appelsSurPlanned === 0, String(appelsSurPlanned));
+
+  // LE RANG COMPTE. Un centre pas encore ouvert dont le registre dort aussi doit
+  // nommer le STATUT : la dormance est une deduction tiree du registre, le
+  // statut est une declaration du gerant.
+  const pasActiveEtDormante = {
+    ...fichePasActive,
+    registre_dormant: {
+      id: 'registre_dormant', libelle: 'le registre ne bouge plus',
+      valeur: 'aucune reservation depuis 240 jours', n: 200, genre: 'denombrement',
+      audience: 'interne', mois: [], du: '', au: '', source: 'silence observe',
+    },
+    centre_ferme: {
+      id: 'centre_ferme', libelle: 'le centre n ouvre aucun jour dans la fenetre',
+      valeur: 'aucun jour ouvert sur les 14 prochains jours', n: 14, genre: 'denombrement',
+      audience: 'interne', mois: [], du: '', au: '', source: 'grille et fermetures',
+    },
+  };
+  const surLesTrois = await proposerDepuisLaFiche({
+    fiche: pasActiveEtDormante, lieu: LIEU, fetchImpl: modeleQuiRepond(bonne),
+  });
+  ok('statut, dormance et fermeture ensemble : c est le STATUT qui est nomme',
+    surLesTrois.silence === 'statut_du_centre', String(surLesTrois.silence));
+
+  // CONTRE-PREUVE : la MEME fiche sans le fait de statut parle normalement.
+  const surActive = await proposerDepuisLaFiche({ fiche, lieu: LIEU, fetchImpl: modeleQuiRepond(bonne) });
+  ok('CONTRE-PREUVE : la meme fiche sans statut rend bien une proposition',
+    Boolean(surActive.proposition) && !surActive.silence, JSON.stringify(surActive.motifs));
   console.log('\n[FERMETURE] le conseiller se tait sur un centre qui n ouvre pas');
   let appelsSurFerme = 0;
   const ficheFermee = {

@@ -464,8 +464,10 @@ module.exports = async (req, res) => {
     // bornee par la plage d une formule qu elle ne reserve pas.
     const openWindow = Boolean(formule && formule.orderPolicy === 'open_window');
     const fenetreFormule = type === 'formule' && formule ? getFormuleArrivalWindow(formule, schedule) : null;
-    // Ce qu une reservation de formule occupe : sa duree estimee, ou toute la
-    // periode pour une fenetre ouverte. Meme fonction que l agent.
+    // Ce qu une reservation de formule occupe SANS PLAN : sa duree estimee, ou
+    // toute la periode pour une fenetre ouverte. Meme fonction que l agent.
+    // Chaque creneau compose porte son plan, et la garde finale mesure alors la
+    // visite planifiee : cette duree n est que son repli.
     const totalDuration = type === 'formule'
       ? formulaOccupiedDuration(formule, schedule)
       : type === 'laser' ? laserOption.value : requestedDuration;

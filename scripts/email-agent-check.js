@@ -680,17 +680,36 @@ const anthropicOk = (object) => ({
     'CONTRE-PREUVE : et elle n en invente aucune au passage');
 
   // CONTRE-PREUVE ET CLOISONNEMENT : un centre sans grille horaire n a aucun
-  // prix (patch 46), donc il garde le refus, et ne voit RIEN de son voisin.
+  // prix de FORMULE (patch 46) et ne voit RIEN de son voisin. Le REFUS, lui,
+  // ne tombe que s il n a rien d autre a dire : les prix a l unite ne
+  // dependent d aucune grille horaire, une piste coute le meme prix qu on
+  // connaisse ou non les heures d ouverture. Les deux cas existent pour de
+  // vrai et sont joues ici, l assertion de montage le prouve.
+  const { prixALaCarte: prixUnitaires } = require('../lib/email-agent');
+  const branchesJouees = new Set();
   for (const sansGrille of ['gembloux', 'ciney']) {
     const tarifsVides = await prixDuCentre(sansGrille, depsAvec([]), JOUR);
-    ok(tarifsVides === '', `CONTRE-PREUVE : ${sansGrille} n a aucun tarif a annoncer`);
+    ok(tarifsVides === '', `CONTRE-PREUVE : ${sansGrille} n a aucun tarif de FORMULE a annoncer`);
     const cerveauSansPrix = await buildEmailBrain(sansGrille, depsAvec([]));
-    ok(/Aucun tarif n est disponible pour ce centre/.test(cerveauSansPrix.context)
-      && /ne donne jamais un prix/.test(cerveauSansPrix.context),
-      `${sansGrille} recoit le refus de prix, mot pour mot`);
+    ok(!/--- TARIFS DE CE CENTRE/.test(cerveauSansPrix.context),
+      `LE POINT : ${sansGrille} ne recoit AUCUN bloc de tarifs de formule`);
+    const aLaCarteDeLui = prixUnitaires(sansGrille, JOUR);
+    branchesJouees.add(aLaCarteDeLui ? 'prix a l unite' : 'refus complet');
+    if (aLaCarteDeLui) {
+      ok(!/Aucun tarif n est disponible pour ce centre/.test(cerveauSansPrix.context)
+        && cerveauSansPrix.context.includes(aLaCarteDeLui),
+        `LE POINT : ${sansGrille} annonce ses prix a l unite au lieu d un refus`);
+    } else {
+      ok(/Aucun tarif n est disponible pour ce centre/.test(cerveauSansPrix.context)
+        && /ne donne jamais un prix/.test(cerveauSansPrix.context),
+        `LE POINT : ${sansGrille}, qui n a RIEN a dire, garde le refus mot pour mot`);
+    }
     ok(!nomsPublics.some((nom) => cerveauSansPrix.context.includes(nom)),
       `ISOLATION : aucune formule de Libramont n apparait chez ${sansGrille}`);
   }
+  ok(branchesJouees.size === 2,
+    'MONTAGE : les deux cas ont ete joues, prix a l unite ET refus complet',
+    [...branchesJouees].join(' | '));
 
 
   // ET LE PARC DE PISTES, ICI AUSSI. Corriger une porte et pas l autre est
@@ -786,9 +805,14 @@ const anthropicOk = (object) => ({
   ok(tarifsSansCatalogue === '',
     'LE POINT : une grille sans aucune formule active ne produit AUCUN bloc tarifs');
   const cerveauSansCatalogue = await buildEmailBrain('gembloux', depsSansCatalogue);
-  ok(/Aucun tarif n est disponible pour ce centre/.test(cerveauSansCatalogue.context)
-    && !/--- TARIFS DE CE CENTRE/.test(cerveauSansCatalogue.context),
-    'et le refus reprend la main, sans entete de tarifs vide');
+  ok(!/--- TARIFS DE CE CENTRE/.test(cerveauSansCatalogue.context),
+    'et aucun entete de tarifs de formule vide ne reste');
+  // Ce que l ancienne assertion protegeait vraiment : qu aucun contenu de
+  // formule ne se glisse dans ce qui reste. Verifie directement, donc plus
+  // strictement qu en exigeant un refus qui n a plus lieu d etre.
+  ok(!nomsDuMail.some((nom) => cerveauSansCatalogue.context.includes(nom)),
+    'CONTRE-PREUVE : et pas une seule formule ne se glisse dans ce qui reste',
+    nomsDuMail.filter((nom) => cerveauSansCatalogue.context.includes(nom)).join(', '));
 
   // RESTAURATION : la configuration et le catalogue redeviennent ceux du depot.
   poserConfig(new Map());
@@ -989,6 +1013,292 @@ const anthropicOk = (object) => ({
 
   ok(!/Conditions d'accès : NON RENSEIGNÉES/.test(faitsDAcces('libramont')),
     'CONTRE-PREUVE : un centre qui a ses conditions ne porte pas le refus');
+
+  // ── CE QUE LA FORMULE COMPREND ────────────────────────────────────────
+  console.log('\n[CONTENU] chaque tarif dit ce qu il comprend, mot pour mot comme le site');
+
+  // On rejoue une lecture PROPRE : les montages precedents ont pousse des
+  // surcharges de catalogue, et prixDuCentre rafraichit avant de lire.
+  const tarifsAvecContenu = await prixDuCentre('libramont', depsAvec([]), JOUR);
+  const catalogueLu = require('../lib/booking-config').getEffectiveFormules('libramont');
+  const lignesDuContenu = tarifsAvecContenu.split('\n').slice(1);
+
+  // MONTAGE : sans desc ni notes au catalogue, il n y a rien a prouver.
+  const avecContenu = catalogueLu.filter((f) => Array.isArray(f.desc) && f.desc.length
+    && Array.isArray(f.notes) && f.notes.length);
+  ok(avecContenu.length >= 10,
+    'MONTAGE : le catalogue effectif porte bien un contenu et des conditions',
+    `${avecContenu.length} formules sur ${catalogueLu.length}`);
+
+  const ligneDe = (formule) => lignesDuContenu.find((l) => l.startsWith(`${formule.name} : `)) || '';
+  const publiees = avecContenu.filter((f) => ligneDe(f));
+  ok(publiees.length >= 10,
+    'MONTAGE : et ces formules sont bien publiees au client', String(publiees.length));
+
+  // LE POINT : mot pour mot, et sur LA BONNE formule. Un decalage d une case
+  // ferait payer 39 EUR ce que le client a lu a 26.
+  const contenuFaux = publiees.filter((f) => !ligneDe(f).includes(` | comprend : ${f.desc.join(' · ')}`));
+  ok(contenuFaux.length === 0,
+    'LE POINT : chaque tarif porte le contenu de SA formule, mot pour mot',
+    contenuFaux.map((f) => f.name).join(', '));
+  const conditionsFausses = publiees.filter((f) => !ligneDe(f).includes(` | conditions : ${f.notes.join(' · ')}`));
+  ok(conditionsFausses.length === 0,
+    'LE POINT : et ses conditions ecrites, mot pour mot',
+    conditionsFausses.map((f) => f.name).join(', '));
+
+  ok(/cite-la telle quelle/.test(tarifsAvecContenu),
+    'LE POINT : et le modele est prevenu que ce contenu se cite, pas se reecrit');
+
+  // UNE FORMULE SANS CONTENU NE PRODUIT PAS D ENTETE VIDE. Aucune formule
+  // reelle n est dans ce cas : on monte la situation par un crochet sur le
+  // MODULE, pose avant que prixDuCentre ne le destructure.
+  const reservation = require('../lib/booking-config');
+  const vraiCatalogue = reservation.getEffectiveFormules;
+  const nomVide = publiees[0].name;
+  reservation.getEffectiveFormules = (id) => vraiCatalogue(id)
+    .map((f) => (f.name === nomVide ? { ...f, desc: [], notes: [] } : f));
+  ok(reservation.getEffectiveFormules('libramont').find((f) => f.name === nomVide).desc.length === 0,
+    'MONTAGE : le crochet mord, cette formule n a plus ni contenu ni conditions', nomVide);
+  const tarifsAmputes = await prixDuCentre('libramont', depsAvec([]), JOUR);
+  reservation.getEffectiveFormules = vraiCatalogue;
+  const ligneAmputee = tarifsAmputes.split('\n').find((l) => l.startsWith(`${nomVide} : `)) || '';
+  ok(Boolean(ligneAmputee) && !/comprend :/.test(ligneAmputee) && !/conditions :/.test(ligneAmputee),
+    'LE POINT : sans contenu, aucun entete vide, et le tarif reste publie', ligneAmputee);
+  const uneAutre = tarifsAmputes.split('\n').find((l) => l.startsWith(`${publiees[1].name} : `)) || '';
+  ok(/comprend :/.test(uneAutre) && /conditions :/.test(uneAutre),
+    'CONTRE-PREUVE : et les autres formules gardent le leur', uneAutre.slice(0, 110));
+
+  const tarifsRendus = await prixDuCentre('libramont', depsAvec([]), JOUR);
+  ok(tarifsRendus === tarifsAvecContenu,
+    'CONTRE-PREUVE : crochet retire, le bloc est EXACTEMENT celui du depart');
+
+  // ── LE MOYEN D AGIR : DES LIENS VRAIS, OU AUCUN ───────────────────────
+  console.log('\n[LIENS] la voix reclame un moyen d agir, le cerveau doit le fournir');
+  const { buildCenterFacts: faitsAvecLiens } = require('../lib/email-agent');
+  const { getCenter: centreIdentifie, applyCenterOverrides: rendreIdentite,
+    refreshCenterOverrides: poserIdentite } = require('../lib/ops-knowledge');
+  rendreIdentite(new Map());
+
+  const identiteDe = (id) => {
+    try { return centreIdentifie(id).identity || {}; } catch (error) { return {}; }
+  };
+
+  // MONTAGE : la voix EXIGE bien un moyen d agir. Sans cette exigence, ne rien
+  // donner ne serait pas un defaut.
+  const voixLue = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'ops-knowledge', 'marketing-brain', 'voice.md'), 'utf8');
+  ok(/moyen d.agir/i.test(voixLue) && /lien/i.test(voixLue),
+    'MONTAGE : la voix de la maison demande bien de terminer par un lien');
+
+  const liensDeclares = (id) => (Array.isArray(identiteDe(id).siteLinks) ? identiteDe(id).siteLinks : []);
+  ok(liensDeclares('libramont').length >= 3 && liensDeclares('ciney').length === 0,
+    'MONTAGE : Libramont declare plusieurs liens, Ciney aucun',
+    `${liensDeclares('libramont').length} contre ${liensDeclares('ciney').length}`);
+
+  // LE POINT : chaque lien declare sort ENTIER, avec son intitule declare.
+  const ficheLibramont = faitsAvecLiens('libramont');
+  const liensManquants = liensDeclares('libramont')
+    .filter((lien) => !ficheLibramont.includes(`${lien.label} : ${lien.url}.`));
+  ok(liensManquants.length === 0,
+    'LE POINT : chaque lien declare sort entier, avec son intitule',
+    liensManquants.map((l) => l.label).join(', '));
+  ok(ficheLibramont.includes(`Site : ${identiteDe('libramont').siteUrl}.`),
+    'LE POINT : et l adresse du site aussi');
+
+  // LE POINT : ce qui n est PAS une adresse web ne sort pas. logoUrl est un
+  // chemin relatif, il n a aucun sens dans un mail.
+  ok(/^\.\//.test(String(identiteDe('libramont').logoUrl || '')),
+    'MONTAGE : le logo declare est bien un chemin relatif, pas une adresse web',
+    String(identiteDe('libramont').logoUrl));
+  ok(!ficheLibramont.includes(String(identiteDe('libramont').logoUrl)),
+    'LE POINT : et il ne sort pas vers le client');
+
+  // LE POINT : le modele est prevenu de ne rien rebaptiser.
+  ok(/n'appelle pas « réservation » une page qui ne le dit pas/.test(ficheLibramont),
+    'LE POINT : et il lui est interdit de rebaptiser un lien en reservation');
+
+  // UN CENTRE QUI N A QUE SON SITE : il le donne, et rien de plus.
+  const ficheDeCiney = faitsAvecLiens('ciney');
+  ok(ficheDeCiney.includes(`Site : ${identiteDe('ciney').siteUrl}.`),
+    'LE POINT : un centre qui ne declare que son site donne son site');
+  const empruntes = liensDeclares('libramont').filter((lien) => ficheDeCiney.includes(lien.url));
+  ok(empruntes.length === 0,
+    'ISOLATION : et jamais les liens declares par un autre centre',
+    empruntes.map((l) => l.label).join(', '));
+
+  // AUCUNE IDENTITE DU TOUT : le refus explicite, parce que la voix vient de
+  // reclamer un moyen d agir et qu un modele comble.
+  const configSansIdentite = JSON.parse(JSON.stringify(centreIdentifie('ciney')));
+  configSansIdentite.identity = null;
+  await poserIdentite({
+    query: async (sql) => (/from centers/i.test(String(sql))
+      ? { rows: [{ id: 'ciney', name: 'Fun Galaxy Ciney', status: 'planned',
+        timezone: 'Europe/Brussels', settings: { config: configSansIdentite } }] }
+      : { rows: [] }),
+  }, { force: true });
+  ok(!identiteDe('ciney').siteUrl,
+    'MONTAGE : le centre ne declare plus aucune identite',
+    JSON.stringify(identiteDe('ciney')));
+  const ficheSansLien = faitsAvecLiens('ciney');
+  ok(/AUCUN lien officiel n est déclaré pour ce centre/.test(ficheSansLien)
+    && /N écris jamais une adresse web/.test(ficheSansLien),
+    'LE POINT : sans aucun lien, un refus explicite prend la place',
+    ficheSansLien.split('\n').find((l) => l.startsWith('Liens')) || '(aucune ligne)');
+  ok(!/https?:\/\//.test(ficheSansLien),
+    'LE POINT : et pas une seule adresse web ne traine dans sa fiche');
+  rendreIdentite(new Map());
+
+  ok(!/AUCUN lien officiel/.test(faitsAvecLiens('libramont')),
+    'CONTRE-PREUVE : un centre qui a ses liens ne porte pas le refus');
+
+  // ── UNE COUPURE N EST PAS UNE FERMETURE, ET CE N EST PAS RIEN ─────────
+  console.log('\n[COUPURES] quelques heures fermees arrivent aussi jusqu au client');
+
+  // MONTAGE : le bloc de deux heures ne ferme PAS la journee. Sans cette
+  // assertion, la ligne suivante pourrait passer sur une simple fermeture.
+  const { agendaDuCentre: agendaLu } = require('../lib/center-facts');
+  const { loadAvailabilityBlocks: chargerBlocs } = require('../lib/availability-blocks');
+  const coupureCentre = [bloc({ id: 60, start_time: '14:00', end_time: '16:00' })];
+  const blocsLus = await chargerBlocs(depsAvec(coupureCentre), 'libramont', { force: true });
+  const jourCoupe = agendaLu(centreLu('libramont'), blocsLus, JOUR)
+    .find((j) => j.date === '2026-09-12') || {};
+  ok(jourCoupe.ouvert === true && jourCoupe.ferme === false
+    && (jourCoupe.coupures || []).length === 1,
+    'MONTAGE : deux heures posees font une COUPURE, pas une fermeture',
+    JSON.stringify(jourCoupe));
+
+  const etatCoupeCentre = await etatDuCentre('libramont', depsAvec(coupureCentre), JOUR);
+  ok(/Le centre est FERME de 14 h a 16 h/.test(etatCoupeCentre)
+    && /2026-09-12/.test(etatCoupeCentre),
+    'LE POINT : la coupure du centre atteint le modele, avec ses heures et sa date',
+    etatCoupeCentre);
+  ok(!/travaux/i.test(etatCoupeCentre),
+    'LE POINT : et sa raison ne sort pas vers le client', etatCoupeCentre);
+
+  // UNE COUPURE D ACTIVITE : celle-la n etait calculee NULLE PART.
+  const coupureLaser = [bloc({ id: 61, scope_type: 'activity', scope_ref: 'laser_game',
+    start_time: '14:00', end_time: '16:00' })];
+  const etatCoupeLaser = await etatDuCentre('libramont', depsAvec(coupureLaser), JOUR);
+  ok(/laser game : INDISPONIBLE de 14 h a 16 h/.test(etatCoupeLaser)
+    && /2026-09-12/.test(etatCoupeLaser),
+    'LE POINT : la coupure d une activite aussi', etatCoupeLaser);
+  ok(!/travaux/i.test(etatCoupeLaser),
+    'LE POINT : sans sa raison non plus');
+
+  // UNE BORNE ABSENTE SE DIT. « Ferme a partir de 20 h » n est pas « ferme de
+  // 20 h a rien ».
+  const coupureOuverte = [bloc({ id: 62, scope_type: 'activity', scope_ref: 'laser_game',
+    start_time: '20:00', end_time: null })];
+  const etatBorneOuverte = await etatDuCentre('libramont', depsAvec(coupureOuverte), JOUR);
+  ok(/de 20 h a la fermeture/.test(etatBorneOuverte),
+    'LE POINT : une borne absente se dit au lieu de disparaitre', etatBorneOuverte);
+
+  // LA MEME PLAGE PLUSIEURS JOURS FAIT UNE LIGNE, PAS DIX.
+  const troisJours = [
+    bloc({ id: 63, scope_type: 'activity', scope_ref: 'laser_game', date: '2026-09-12', start_time: '14:00', end_time: '16:00' }),
+    bloc({ id: 64, scope_type: 'activity', scope_ref: 'laser_game', date: '2026-09-13', start_time: '14:00', end_time: '16:00' }),
+    bloc({ id: 65, scope_type: 'activity', scope_ref: 'laser_game', date: '2026-09-15', start_time: '14:00', end_time: '16:00' }),
+  ];
+  const etatTroisJours = await etatDuCentre('libramont', depsAvec(troisJours), JOUR);
+  const lignesLaser = etatTroisJours.split('\n').filter((l) => /^laser game/.test(l));
+  ok(lignesLaser.length === 1 && /2026-09-12 -> 2026-09-13/.test(lignesLaser[0])
+    && /2026-09-15/.test(lignesLaser[0]),
+    'LE POINT : la meme plage sur plusieurs jours fait UNE ligne, dates groupees',
+    lignesLaser.join(' | '));
+
+  // CONTRE-PREUVE : un jour deja annonce ENTIEREMENT indisponible ne recoit
+  // pas en plus sa coupure. Deux phrases dont l une contredit l autre font
+  // trancher le modele au hasard.
+  const journeeEtCoupure = [
+    bloc({ id: 66, scope_type: 'activity', scope_ref: 'laser_game', date: '2026-09-12' }),
+    bloc({ id: 67, scope_type: 'activity', scope_ref: 'laser_game', date: '2026-09-12', start_time: '14:00', end_time: '16:00' }),
+  ];
+  const etatDouble = await etatDuCentre('libramont', depsAvec(journeeEtCoupure), JOUR);
+  ok(/laser game : INDISPONIBLE 2026-09-12/.test(etatDouble)
+    && !/laser game : INDISPONIBLE de 14 h/.test(etatDouble),
+    'CONTRE-PREUVE : la journee entiere absorbe la coupure du meme jour', etatDouble);
+
+  // CONTRE-PREUVE : sans aucun bloc, rien de tout cela n apparait.
+  const etatSansRien = await etatDuCentre('libramont', depsAvec([]), JOUR);
+  ok(etatSansRien === '',
+    'CONTRE-PREUVE : sans bloc, le prompt ne gagne pas une ligne', etatSansRien);
+
+  // ── LE PRIX D UNE PARTIE, PAS SEULEMENT CELUI D UN PACK ───────────────
+  console.log('\n[A L UNITE] ce que le tunnel facture hors formule, centre par centre');
+  const { prixALaCarte: tarifsUnitaires } = require('../lib/email-agent');
+  const { BOWLING_PRICES: grilleParPiste, LASER_GAME_OPTIONS: grilleLaser,
+    getBowlingGameOptions: optionsAuxParties } = require('../lib/booking-config');
+  const { getCenter: centreTarife, applyCenterOverrides: rendreTarifs,
+    refreshCenterOverrides: poserTarifs } = require('../lib/ops-knowledge');
+  rendreTarifs(new Map());
+
+  // MONTAGE : le moteur a bien deux grilles a annoncer.
+  ok(Object.keys(grilleParPiste).length >= 2 && grilleLaser.length >= 2,
+    'MONTAGE : le moteur porte une grille bowling et une grille laser',
+    `${Object.keys(grilleParPiste).length} paliers bowling, ${grilleLaser.length} paliers laser`);
+
+  const blocUnitaire = tarifsUnitaires('libramont', JOUR);
+  ok(blocUnitaire.length > 80,
+    'MONTAGE : Libramont a bien un bloc de prix a l unite', String(blocUnitaire.length));
+
+  // LE POINT : chaque palier du moteur est annonce, avec SON montant.
+  const paliersBowlingManquants = Object.entries(grilleParPiste)
+    .filter(([, prix]) => !blocUnitaire.includes(`${prix} EUR la piste`));
+  ok(paliersBowlingManquants.length === 0,
+    'LE POINT : chaque palier de la grille bowling est annonce, avec son montant',
+    JSON.stringify(paliersBowlingManquants));
+  const paliersLaserManquants = grilleLaser
+    .filter((o) => !blocUnitaire.includes(`${o.price} EUR par personne pour ${o.label}`));
+  ok(paliersLaserManquants.length === 0,
+    'LE POINT : et chaque palier laser, avec son libelle',
+    JSON.stringify(paliersLaserManquants.map((o) => o.label)));
+
+  // LE POINT : ce que le moteur ne chiffre pas est NOMME, pas taxi.
+  ok(/Aucun prix a l unite n existe dans le systeme pour :/.test(blocUnitaire)
+    && /Ne les chiffre jamais/.test(blocUnitaire),
+    'LE POINT : les activites sans tarif sont nommees, avec l interdit de les chiffrer');
+
+  // CONTRE-PREUVE : une activite que le centre ne propose PAS n y figure pas.
+  ok(centreTarife('libramont').activityAvailability.golf_oclock !== true
+    && !/Golf O'Clock/.test(blocUnitaire),
+    'CONTRE-PREUVE : une activite absente du centre n apparait nulle part ici');
+
+  // UN CENTRE SANS BOWLING NI LASER N A RIEN A DIRE ICI.
+  ok(tarifsUnitaires('ciney', JOUR) === '',
+    'LE POINT : un centre qui ne declare ni bowling ni laser n a aucun prix a l unite',
+    tarifsUnitaires('ciney', JOUR));
+
+  // LA GRILLE DU CENTRE GAGNE SUR CELLE DU MOTEUR, comme dans getBasePrice.
+  // Sans ce montage, coder la grille globale en dur passerait sans un bruit.
+  const configAuxParties = JSON.parse(JSON.stringify(centreTarife('libramont')));
+  configAuxParties.resources.bowling.pricing = {
+    mode: 'per_game_per_person', minutesPerGame: 60,
+    tiers: [{ days: [0, 1, 2, 3, 4, 5, 6], prices: [7, 12, 16] }],
+  };
+  await poserTarifs({
+    query: async (sql) => (/from centers/i.test(String(sql))
+      ? { rows: [{ id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active',
+        timezone: 'Europe/Brussels', settings: { config: configAuxParties } }] }
+      : { rows: [] }),
+  }, { force: true });
+  const optionsDuCentre = optionsAuxParties((centreTarife('libramont').resources || {}).bowling,
+    JOUR, { pax: 1, laneCount: 1 });
+  ok(Array.isArray(optionsDuCentre) && optionsDuCentre.length === 3,
+    'MONTAGE : le centre declare desormais sa propre grille aux parties',
+    JSON.stringify(optionsDuCentre));
+  const blocAuxParties = tarifsUnitaires('libramont', JOUR);
+  const siennesManquantes = optionsDuCentre
+    .filter((o) => !blocAuxParties.includes(`${o.price} EUR par personne pour ${o.label}`));
+  ok(siennesManquantes.length === 0,
+    'LE POINT : il annonce SA grille, pas celle du moteur',
+    JSON.stringify(siennesManquantes.map((o) => o.label)));
+  ok(!Object.values(grilleParPiste).some((prix) => blocAuxParties.includes(`${prix} EUR la piste`)),
+    'ISOLATION : et plus un seul montant de la grille du moteur');
+  ok(/tarif du jour/.test(blocAuxParties),
+    'LE POINT : un tarif qui depend du jour est annonce comme tel', blocAuxParties.split('\n')[0]);
+  rendreTarifs(new Map());
+  ok(tarifsUnitaires('libramont', JOUR) === blocUnitaire,
+    'CONTRE-PREUVE : surcharge retiree, le bloc redevient EXACTEMENT celui du depart');
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

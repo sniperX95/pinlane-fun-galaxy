@@ -495,6 +495,104 @@ function deps({ answer, calls, provider = 'kimi', exhausted = false }) {
     'CONTRE-PREUVE : le dossier reste annonce comme la seule matiere');
   ok(/activite absente de centre\.activitesdisponibles/.test(promptAsk),
     'CONTRE-PREUVE : et l interdit de citer une activite absente tient toujours');
+
+  // ── CE QUE L EQUIPE A APPRIS ARRIVE AUSSI ICI ─────────────────────────
+  console.log('\n[APPRIS] le gerant retrouve ce que son equipe a appris a l agent');
+
+  const FAITS_APPRIS = [
+    { question: 'On prend les groupes de quarante ?',
+      reponse: 'Oui, en deux passages, previens la cuisine la veille.',
+      par: 'Seb', le: '2026-09-01T10:00:00.000Z' },
+    { question: '', reponse: 'sans question, donc sans valeur' },
+  ];
+
+  // MONTAGE : sans rien d appris, la cle n existe pas. Sans ca, les
+  // assertions suivantes ne prouveraient pas que c est le chargement qui la
+  // fait apparaitre.
+  const dossierNu = buildAskDossier({ bundle: briefBundle(), centerFacts: facts, formulas, activities });
+  ok(!Object.prototype.hasOwnProperty.call(dossierNu, 'ceQueLEquipeAAppris'),
+    'MONTAGE : un centre qui n a rien appris n a pas la cle du tout');
+
+  // LE CHARGEUR, pas la fonction pure : on lit le dossier REELLEMENT envoye
+  // au modele, et on note quel centre a ete demande.
+  const centresDemandes = [];
+  let appelsAppris = [];
+  const reponseApprise = await answerMarketingQuestion('libramont', { question: 'On peut prendre quarante personnes ?' }, {
+    ...deps({ answer: GOOD_ANSWER, calls: appelsAppris }),
+    getFaitsAppris: async (id) => { centresDemandes.push(id); return FAITS_APPRIS; },
+  });
+  const dossierEnvoye = JSON.parse((appelsAppris.find((c) => c.kind === 'llm') || { options: { user: '{}' } }).options.user).dossier;
+  ok(reponseApprise.grounded === true, 'MONTAGE : la reponse passe toujours les gardes',
+    JSON.stringify(reponseApprise.blockers || reponseApprise.reason || ''));
+  ok(centresDemandes.length === 1 && centresDemandes[0] === 'libramont',
+    'LE POINT : les faits appris sont demandes POUR CE CENTRE',
+    JSON.stringify(centresDemandes));
+  ok(Array.isArray(dossierEnvoye.ceQueLEquipeAAppris)
+    && dossierEnvoye.ceQueLEquipeAAppris.length === 1
+    && dossierEnvoye.ceQueLEquipeAAppris[0].question === FAITS_APPRIS[0].question
+    && dossierEnvoye.ceQueLEquipeAAppris[0].reponse === FAITS_APPRIS[0].reponse,
+    'LE POINT : et ils arrivent au modele, question et reponse, mot pour mot',
+    JSON.stringify(dossierEnvoye.ceQueLEquipeAAppris));
+
+  // ISOLATION : le chargeur recoit le centre DEMANDE, pas un centre en dur.
+  // Mesure du 2026-09-10 : sans une question posee a un AUTRE centre, coder
+  // « libramont » en dur dans le chargeur ne faisait rougir personne.
+  const centreVoisinDemande = [];
+  let appelsVoisin = [];
+  await answerMarketingQuestion('gembloux', { question: 'On peut prendre quarante personnes ?' }, {
+    ...deps({ answer: GOOD_ANSWER, calls: appelsVoisin }),
+    getFaitsAppris: async (id) => { centreVoisinDemande.push(id); return []; },
+  });
+  ok(centreVoisinDemande.length === 1 && centreVoisinDemande[0] === 'gembloux',
+    'ISOLATION : un autre centre demande SES faits, pas ceux de son voisin',
+    JSON.stringify(centreVoisinDemande));
+
+  // NI L AUTEUR NI LA DATE : un prenom d employe n a rien a faire dans un
+  // prompt, une date n y ajouterait que des nombres.
+  const dossierEcrit = JSON.stringify(dossierEnvoye);
+  ok(!dossierEcrit.includes(FAITS_APPRIS[0].par)
+    && !dossierEcrit.includes(FAITS_APPRIS[0].le)
+    && !dossierEcrit.includes('2026-09-01'),
+    'LE POINT : ni l auteur ni la date du fait n entrent dans le prompt');
+
+  // LA HIERARCHIE EST DITE : un fait appris ne bat jamais une mesure.
+  const { askSystemPrompt: promptAvecAppris } = require('../lib/marketing-ask');
+  ok(/mesure gagne/.test(promptAvecAppris()) && /ceQueLEquipeAAppris/.test(promptAvecAppris()),
+    'LE POINT : et le prompt dit qu une mesure bat un fait appris');
+
+  // LES GARDES NE SONT PAS DESARMEES. Un fait appris qui nomme une activite
+  // que le centre n a pas ne deverrouille RIEN : la garde lit la REPONSE.
+  let appelsPiege = [];
+  const piege = await answerMarketingQuestion('libramont', { question: 'On a du karting ?' }, {
+    ...deps({
+      answer: { ...GOOD_ANSWER, reponse: `${GOOD_ANSWER.reponse} On a aussi du karting VR.` },
+      calls: appelsPiege,
+    }),
+    getFaitsAppris: async () => [{ question: 'On a du karting ?', reponse: 'Oui, karting VR depuis juin.' }],
+  });
+  const dossierPiege = JSON.parse((appelsPiege.find((c) => c.kind === 'llm') || { options: { user: '{}' } }).options.user).dossier;
+  ok(/karting/i.test(JSON.stringify(dossierPiege.ceQueLEquipeAAppris || [])),
+    'MONTAGE : le fait appris nomme bien une activite que le centre n a pas');
+  ok(piege.grounded === false
+    && (piege.blockers || []).some((raison) => /karting/i.test(raison)),
+    'LE POINT : et la garde bloque quand meme la revendication',
+    JSON.stringify(piege.blockers || piege.reason || ''));
+
+  // CONTRE-PREUVE : un centre qui n a rien appris envoie EXACTEMENT le
+  // dossier qu il envoyait avant ce patch.
+  let appelsVides = [];
+  await answerMarketingQuestion('libramont', { question: 'Comment je remplis lundi ?' }, {
+    ...deps({ answer: GOOD_ANSWER, calls: appelsVides }),
+    getFaitsAppris: async () => [],
+  });
+  let appelsSansChargeur = [];
+  await answerMarketingQuestion('libramont', { question: 'Comment je remplis lundi ?' },
+    deps({ answer: GOOD_ANSWER, calls: appelsSansChargeur }));
+  const userDe = (liste) => (liste.find((c) => c.kind === 'llm') || { options: { user: '' } }).options.user;
+  ok(userDe(appelsVides) === userDe(appelsSansChargeur) && userDe(appelsVides).length > 100,
+    'CONTRE-PREUVE : rien d appris, et le prompt est au caractere pres celui d avant');
+  ok(!/ceQueLEquipeAAppris/.test(userDe(appelsVides)),
+    'CONTRE-PREUVE : aucune cle vide ne traine dans le dossier');
     console.log(`\nmarketing-ask-check: ${failures ? `${failures} FAIL` : 'ALL OK'}`);
   process.exit(failures ? 1 : 0);
 })().catch((error) => {

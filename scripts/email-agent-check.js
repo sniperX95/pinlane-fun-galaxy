@@ -521,6 +521,17 @@ const anthropicOk = (object) => ({
     query: async (sql) => (/from availability_blocks/i.test(String(sql)) ? { rows } : { rows: [] }),
   });
   const JOUR = '2026-09-10';
+  // L INSTANT DU CERVEAU, FIXE. buildEmailBrain lisait l heure de la machine :
+  // la fermeture des 12 et 13 septembre ci-dessous sortait de sa fenetre de
+  // quatorze jours le 14 septembre, et la suite passait au rouge sans une
+  // ligne de code changee. Meme chose aux vacances de Noel pour les mesures
+  // qui exigent toutes les formules. Le cerveau se mesure donc au meme jour
+  // que le reste de ce gate.
+  const INSTANT_DU_JOUR = Date.parse(`${JOUR}T10:00:00Z`);
+  const cerveauNoel = await buildEmailBrain('libramont', depsAvec([]), Date.parse('2026-12-24T10:00:00Z'));
+  ok(cerveauNoel.context.includes('(2026-12-24)'),
+    'LE POINT : le cerveau se construit sur l instant qu on lui donne',
+    (cerveauNoel.context.split('\n').find((l) => /Nous sommes le/.test(l)) || '').slice(0, 90));
 
   // SANS RIEN : le prompt ne bouge pas d un caractere.
   const etatVide = await etatDuCentre('libramont', depsAvec([]), JOUR);
@@ -583,14 +594,14 @@ const anthropicOk = (object) => ({
   // ── ET LE CERVEAU LE TRANSMET ───────────────────────────────────────────
   // La fonction peut etre juste et personne ne l appeler : c est le defaut
   // paye plusieurs fois sur l autre porte de l agent.
-  const cerveauFerme = await buildEmailBrain('libramont', depsAvec(fermeture));
+  const cerveauFerme = await buildEmailBrain('libramont', depsAvec(fermeture), INSTANT_DU_JOUR);
   ok(/ETAT DU CENTRE/.test(cerveauFerme.context),
     'LE POINT : le bloc entre dans le CONTEXTE du modele');
   ok(/PRIME sur les horaires habituels/.test(cerveauFerme.context),
     'et il est annonce comme primant sur les horaires habituels');
   ok(!/ETAT DU CENTRE/.test(cerveauFerme.stable),
     'il n entre PAS dans le bloc stable : il change tous les jours');
-  const cerveauNormal = await buildEmailBrain('libramont', depsAvec([]));
+  const cerveauNormal = await buildEmailBrain('libramont', depsAvec([]), INSTANT_DU_JOUR);
   ok(!/ETAT DU CENTRE/.test(cerveauNormal.context),
     'CONTRE-PREUVE : sans fermeture, le contexte ne porte aucun bloc d etat');
 
@@ -1813,7 +1824,7 @@ const anthropicOk = (object) => ({
 
   // ── LES PERIODES SPECIALES ARRIVENT AU MODELE ─────────────────────────
   console.log('\n[PERIODES] le texte des conditions dit vacances, le moteur dit autre chose');
-  const cerveauPeriodes = await buildEmailBrain('libramont', makeDeps({}));
+  const cerveauPeriodes = await buildEmailBrain('libramont', makeDeps({}), INSTANT_DU_JOUR);
 
   // MONTAGE : sans cette phrase dans les conditions, il n y aurait aucune
   // contradiction a lever, et le bloc ne servirait a rien.
@@ -1839,7 +1850,7 @@ const anthropicOk = (object) => ({
   // une periode calculee et on verifie que son quantieme est bien dans le texte.
   const { periodesSpeciales: periodesDuGate, MOIS_FR: moisDuGate, jourDuCentre: jourDuGate } = require('../lib/center-facts');
   const { getCenter: centreDuGate } = require('../lib/ops-knowledge');
-  const attenduPeriodes = periodesDuGate(centreDuGate('libramont'), jourDuGate().date);
+  const attenduPeriodes = periodesDuGate(centreDuGate('libramont'), jourDuGate(INSTANT_DU_JOUR).date);
   const premiere = (attenduPeriodes && attenduPeriodes.periodes[0]) || null;
   // LA FIN D UNE PERIODE S ECRIT TOUJOURS EN ENTIER (« 31 octobre 2026 »),
   // quelle que soit sa forme : c est le point de comparaison qui tient pour
@@ -1989,7 +2000,7 @@ const anthropicOk = (object) => ({
     'MONTAGE : ce centre a bien des formules a valider, dont une TOUJOURS, et d autres non',
     `${toujoursAValider.length} toujours et ${aValider.length - toujoursAValider.length} selon le laser, sur ${catalogueLibramont.length}`);
 
-  const cerveauConfirmation = await buildEmailBrain('libramont', makeDeps({}));
+  const cerveauConfirmation = await buildEmailBrain('libramont', makeDeps({}), INSTANT_DU_JOUR);
   const lignesDeTarifDuGate = cerveauConfirmation.context.split('\n')
     .filter((ligne) => / EUR (par personne|par piste)/.test(ligne));
   ok(lignesDeTarifDuGate.length >= catalogueLibramont.length,
@@ -2087,6 +2098,74 @@ const anthropicOk = (object) => ({
   ok(sansHoraire.length > 200 && avecHoraire.replace(/^.*Ces memes periodes.*$/m, '').replace(/\n\n/g, '\n').trim() === sansHoraire.trim(),
     'CONTRE-PREUVE : et le reste du bloc est identique au caractere pres',
     String(avecHoraire.length - sansHoraire.length));
+
+  // ── COMBIEN DE TEMPS DURE UNE FORMULE ? ───────────────────────────────
+  console.log('\n[DUREE] « ca dure combien de temps ? »');
+  const { getEffectiveFormules: catalogueDuree, getFormuleTotalDuration: dureeDuMoteur } = require('../lib/booking-config');
+  const { tempsDeLaFormule: tempsDuGate } = require('../lib/email-agent');
+
+  const cerveauDuree = await buildEmailBrain('libramont', makeDeps({}), INSTANT_DU_JOUR);
+  const catalogueDeLaDuree = catalogueDuree('libramont');
+  const ligneDeLaFormule = (formule) => cerveauDuree.context.split('\n')
+    .find((ligne) => ligne.startsWith(`${String(formule.name || formule.id).trim()} :`)
+      && / EUR (par personne|par piste)/.test(ligne)) || '';
+  const fenetres = catalogueDeLaDuree.filter((f) => String(f.orderPolicy || '') === 'open_window');
+  const classiques = catalogueDeLaDuree.filter((f) => String(f.orderPolicy || '') !== 'open_window');
+  ok(fenetres.length > 0 && classiques.length > 0 && catalogueDeLaDuree.every((f) => ligneDeLaFormule(f)),
+    'MONTAGE : a cette date chaque formule a sa ligne de tarif, et le catalogue a les deux sortes',
+    `${classiques.length} a duree, ${fenetres.length} a fenetre ouverte, sans ligne : ${catalogueDeLaDuree.filter((f) => !ligneDeLaFormule(f)).map((f) => f.id).join(',') || 'aucune'}`);
+  ok(new Set(classiques.map((f) => Number(dureeDuMoteur(f)))).size >= 3,
+    'MONTAGE : les durees different d une formule a l autre (une valeur unique ne prouverait rien)',
+    [...new Set(classiques.map((f) => Number(dureeDuMoteur(f))))].join(', '));
+
+  // LE CHIFFRE EST CELUI DU MOTEUR, RELU SUR LA LIGNE. Rien n est recopie :
+  // getFormuleTotalDuration dit ce qui est attendu, formule par formule.
+  const heuresLues = (ligne) => {
+    const lu = /\| dure environ (?:(\d+) h(?: (\d{2}))?|(\d+) min)/.exec(ligne);
+    if (!lu) return null;
+    return lu[3] ? Number(lu[3]) / 60 : Number(lu[1]) + (lu[2] ? Number(lu[2]) / 60 : 0);
+  };
+  const ecartsDuree = classiques.filter((f) => heuresLues(ligneDeLaFormule(f)) !== Number(dureeDuMoteur(f)));
+  ok(ecartsDuree.length === 0,
+    'LE POINT : chaque formule a duree annonce EXACTEMENT la duree que le moteur applique',
+    ecartsDuree.map((f) => `${f.id} lu ${heuresLues(ligneDeLaFormule(f))} / moteur ${dureeDuMoteur(f)}`).join(' ; '));
+
+  // UNE FENETRE OUVERTE N A PAS DE DUREE. La fonction du moteur rend quand
+  // meme un chiffre pour elle : c est exactement le piege.
+  ok(fenetres.every((f) => Number(dureeDuMoteur(f)) > 0),
+    'MONTAGE : pour une fenetre ouverte, la fonction du moteur rend quand meme un chiffre (le piege existe)',
+    fenetres.map((f) => `${f.id} ${dureeDuMoteur(f)} h`).join(', '));
+  ok(fenetres.every((f) => /\| fenetre ouverte : on arrive quand on veut/.test(ligneDeLaFormule(f))
+    && !/dure environ/.test(ligneDeLaFormule(f))),
+    'LE POINT : une fenetre ouverte annonce sa REGLE, jamais une duree',
+    fenetres.map((f) => ligneDeLaFormule(f).slice(0, 40)).join(' // '));
+  ok(classiques.every((f) => !/fenetre ouverte/.test(ligneDeLaFormule(f))),
+    'CONTRE-PREUVE : aucune formule a duree ne se dit fenetre ouverte');
+
+  // L ORDRE DE LA QUESTION : ce que ca comprend, combien de temps, a quelles
+  // conditions.
+  const bienRangee = (ligne) => {
+    const comprend = ligne.indexOf(' | comprend : ');
+    const temps = Math.max(ligne.indexOf(' | dure environ '), ligne.indexOf(' | fenetre ouverte : '));
+    const conditions = ligne.indexOf(' | conditions : ');
+    return comprend !== -1 && temps > comprend && (conditions === -1 || conditions > temps);
+  };
+  ok(catalogueDeLaDuree.every((f) => bienRangee(ligneDeLaFormule(f))),
+    'LE POINT : le temps se lit entre ce que la formule comprend et ses conditions',
+    catalogueDeLaDuree.filter((f) => !bienRangee(ligneDeLaFormule(f))).map((f) => f.id).join(','));
+
+  // LE FORMAT QUE LE CLIENT LIT, et le silence quand il n y a rien a mesurer.
+  ok(tempsDuGate({ desc: ['1h de Bowling'], estimatedTotalDuration: 2.5 }) === 'dure environ 2 h 30'
+    && tempsDuGate({ estimatedTotalDuration: 3 }) === 'dure environ 3 h'
+    && tempsDuGate({ estimatedTotalDuration: 0.5 }) === 'dure environ 30 min',
+    'LE POINT : une duree se lit comme un client la dit (« 2 h 30 », « 3 h », « 30 min »)',
+    [2.5, 3, 0.5].map((h) => tempsDuGate({ estimatedTotalDuration: h })).join(' / '));
+  ok(Number(dureeDuMoteur({})) > 0,
+    'MONTAGE : la fonction du moteur rend un chiffre de repli pour un document vide',
+    String(dureeDuMoteur({})));
+  ok(tempsDuGate({}) === '' && tempsDuGate({ desc: [] }) === '' && tempsDuGate(null) === '',
+    'CONTRE-PREUVE : sans lignes a lire ni total declare, aucune duree (pas de « 30 min » de repli)',
+    JSON.stringify([tempsDuGate({}), tempsDuGate({ desc: [] }), tempsDuGate(null)]));
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

@@ -2199,5 +2199,91 @@ ok('MONTAGE : la fenetre contient bien des jours d horaire de vacances',
 ok('LE POINT : sur toute la fenetre, horaire de vacances et periodes designent les MEMES jours',
   ecartsHoraire === 0,
   `${ecartsHoraire} ecart(s) sur ${vuSurUnAn.horizon} jours`);
+
+// ── UN JOUR NE COMPTE QUE S IL OFFRE UNE HEURE D ARRIVEE ───────────────
+console.log('\n[ARRIVEE] « reservable 12 jours », sauf que le tunnel n offre rien avant l ouverture');
+const moteurFenetre = require('../lib/booking-config');
+const { agendaDuCentre: agendaFenetre, formuleAvecSesRessources: ressourcesFenetre } = require('../lib/center-facts');
+
+// LA FORME CLOSE : la derniere arrivee d une formule est la fin de sa fenetre
+// moins le temps que le moteur reserve. Un jour ne compte que s il ouvre au
+// plus tard a cette heure-la. Ce n est pas la boucle de la fiche recopiee
+// mais son resultat, obtenu autrement.
+const tarifMatin = TARIFS.find((t) => t.id === 'tm');
+const derniereArriveeMatin = tarifMatin.timeLimit.max - moteurFenetre.getFormuleBookedDuration(tarifMatin);
+const ouvertures = agendaPrix.map((j) => ({ date: j.date, plage: moteurFenetre.getSchedule(j.date, centrePrix) }));
+const joursAssezTot = ouvertures.filter((o) => o.plage && o.plage.open <= derniereArriveeMatin).length;
+ok('MONTAGE : parmi les quatre jours, certains ouvrent trop tard pour une formule du matin, d autres non',
+  joursAssezTot > 0 && joursAssezTot < agendaPrix.length,
+  `${ouvertures.map((o) => `${o.date} ouvre a ${o.plage ? o.plage.open : '-'} h`).join(', ')} ; derniere arrivee ${derniereArriveeMatin} h`);
+ok('LE POINT : une formule « avant 12 h » ne compte que les jours ou l on peut encore arriver avant midi',
+  Boolean(parId.tm) && parId.tm.jours === joursAssezTot,
+  `fiche ${parId.tm && parId.tm.jours} jours, attendu ${joursAssezTot} sur ${agendaPrix.length}`);
+
+// UNE VISITE PLUS LONGUE QUE LA JOURNEE : le tunnel ne lui propose aucune
+// heure de debut ce jour-la, parce qu elle finirait apres la fermeture.
+const TARIF_LONG = { id: 'tlg', name: 'TARIF LONG', price: 30, type: 'per_pax', minPax: 1, estimatedTotalDuration: 9, ressources: [] };
+const joursAssezLongs = ouvertures.filter((o) => o.plage && o.plage.close - o.plage.open >= 9).length;
+const lusLong = prixReservables([TARIF_LONG], centrePrix, agendaPrix)[0];
+ok('MONTAGE : certains des quatre jours sont trop courts pour une visite de neuf heures, d autres non',
+  joursAssezLongs > 0 && joursAssezLongs < agendaPrix.length,
+  ouvertures.map((o) => `${o.date} ${o.plage ? o.plage.close - o.plage.open : 0} h`).join(', '));
+ok('LE POINT : une visite qui finirait apres la fermeture ne rend pas le jour reservable',
+  Boolean(lusLong) && lusLong.jours === joursAssezLongs,
+  `fiche ${lusLong && lusLong.jours} jours, attendu ${joursAssezLongs}`);
+
+// LE VRAI CATALOGUE, SUR UNE FENETRE FIXE de quatorze jours a partir du
+// 2026-09-10 : le resultat depend du calendrier, donc la date est posee ici,
+// jamais lue sur l horloge.
+const agendaDeLaFenetre = agendaFenetre(centrePrix, [], '2026-09-10');
+const catalogueReel = moteurFenetre.getEffectiveFormules('libramont').map(ressourcesFenetre);
+const prixReels = prixReservables(catalogueReel, centrePrix, agendaDeLaFenetre);
+const joursOuvertsDeLaFenetre = agendaDeLaFenetre.filter((j) => j.ouvert && !j.ferme).map((j) => j.date);
+const arriveePossible = (formule, date) => {
+  const plage = moteurFenetre.getSchedule(date, centrePrix);
+  if (!plage) return false;
+  const limite = formule.timeLimit || {};
+  const premiere = Math.max(plage.open, limite.min ? Number(limite.min) : -Infinity);
+  const derniere = Math.min(plage.close, limite.max ? Number(limite.max) : Infinity)
+    - moteurFenetre.getFormuleBookedDuration(formule);
+  return premiere <= derniere;
+};
+const attenduParFormule = catalogueReel.map((formule) => {
+  const minimum = Number(formule.minPax) > 0 ? Number(formule.minPax) : 1;
+  const vendable = joursOuvertsDeLaFenetre.filter((date) => moteurFenetre.getFormuleAvailability(formule, date, minimum, '', centrePrix).ok);
+  return { id: formule.id, sansHeure: vendable.length, jours: vendable.filter((date) => arriveePossible(formule, date)).length };
+});
+const luSurLaFiche = (id) => (prixReels.find((p) => String(p.id) === String(id)) || { jours: 0 }).jours;
+const amputees = attenduParFormule.filter((a) => a.jours < a.sansHeure);
+ok('MONTAGE : sur le vrai catalogue, une formule au moins a une fenetre qui ferme avant certaines ouvertures',
+  amputees.length > 0,
+  amputees.map((a) => `${a.id} ${a.sansHeure} -> ${a.jours}`).join(', ') || 'aucune');
+ok('LE POINT : pour CHAQUE formule, la fiche compte exactement les jours ou une arrivee est possible',
+  attenduParFormule.every((a) => luSurLaFiche(a.id) === a.jours),
+  attenduParFormule.filter((a) => luSurLaFiche(a.id) !== a.jours).map((a) => `${a.id} fiche ${luSurLaFiche(a.id)} / attendu ${a.jours}`).join(' ; '));
+ok('CONTRE-PREUVE : et d autres gardent tous leurs jours (la correction ne retire pas tout)',
+  attenduParFormule.some((a) => a.jours > 0 && a.jours === a.sansHeure && luSurLaFiche(a.id) === a.jours));
+
+// LA DUREE QUE LE MOTEUR RESERVE : la demi-heure d arrivee pour une fenetre
+// ouverte, la duree de la formule sinon.
+const fenetresReelles = catalogueReel.filter((f) => f.orderPolicy === 'open_window');
+ok('LE POINT : une fenetre ouverte ne reserve que la demi-heure d arrivee, une formule a duree reserve sa duree',
+  fenetresReelles.length > 0
+    && fenetresReelles.every((f) => moteurFenetre.getFormuleBookedDuration(f) === 0.5)
+    && catalogueReel.filter((f) => f.orderPolicy !== 'open_window')
+      .every((f) => moteurFenetre.getFormuleBookedDuration(f) === moteurFenetre.getFormuleTotalDuration(f)),
+  catalogueReel.map((f) => `${f.id} ${moteurFenetre.getFormuleBookedDuration(f)}`).join(' '));
+
+// CE QUE LA LIGNE DE TARIF PROMET, TENU PAR LE MOTEUR : dans une fenetre
+// ouverte on arrive jusqu a une demi-heure avant la fin, pas au-dela.
+const fenetreBornee = fenetresReelles.find((f) => f.timeLimit && f.timeLimit.max);
+const jourDeLaFenetre = fenetreBornee && joursOuvertsDeLaFenetre.find((date) => moteurFenetre.getFormuleAvailability(fenetreBornee, date, 1, '', centrePrix).ok
+  && arriveePossible(fenetreBornee, date));
+const finDeFenetre = fenetreBornee ? Number(fenetreBornee.timeLimit.max) : 0;
+ok('LE POINT : dans une fenetre ouverte, l arrivee est acceptee une demi-heure avant la fin et refusee a la fin',
+  Boolean(jourDeLaFenetre)
+    && moteurFenetre.getFormuleAvailability(fenetreBornee, jourDeLaFenetre, 1, moteurFenetre.numToTime(finDeFenetre - 0.5), centrePrix).ok
+    && !moteurFenetre.getFormuleAvailability(fenetreBornee, jourDeLaFenetre, 1, moteurFenetre.numToTime(finDeFenetre), centrePrix).ok,
+  `${fenetreBornee && fenetreBornee.id} le ${jourDeLaFenetre} : ${finDeFenetre - 0.5} h puis ${finDeFenetre} h`);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

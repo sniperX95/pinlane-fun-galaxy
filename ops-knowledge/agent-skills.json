@@ -411,7 +411,8 @@
         "defers-unmeasurable-verdicts",
         "knows-why-an-idea-died",
         "no-borrowed-schedule",
-        "resource-verified-offer"
+        "resource-verified-offer",
+        "unserved-demand"
       ],
       "guardrails": [
         "Un centre, une fiche : les faits d un centre ne decrivent jamais un autre centre.",
@@ -451,6 +452,7 @@
         "Une idee appliquee dont la fenetre de mesure ne porte AUCUNE ligne de metriques n est pas « non concluante » : elle n est pas encore mesuree. Aucun verdict n est ecrit, l idee repasse au cycle suivant, et ni les patterns ni le bandit d angles n apprennent d une mesure qui n a pas eu lieu. Des lignes presentes dont la comparaison ne conclut pas restent un vrai « non concluant ».",
         "Chaque geste qui ignore une idee signe le sien dans payload.ignoredBy : l expiration a dix jours, le bouton Ignorer du cockpit, le refus du panneau. Le taux d adoption ne se calcule QUE sur les idees tranchees (appliquees + refusees par un geste du staff) ; les idees jamais ouvertes sont exclues du denominateur ET dites, et les lignes sans cause enregistree maintiennent le trou nomme jusqu a ce qu elles sortent de la fenetre.",
         "Un marqueur TEXTE n est pas un horaire pose : un centre dont defaultSchedule vaut « same_as_libramont_public_schedule » ou « to_confirm » n a AUCUN agenda, donc aucun jour d ouverture publie, aucune fermeture, aucune activite indisponible et aucun prix. Le moteur d horaires, lui, retombe sur la grille de Libramont : c est la fiche qui refuse, en un seul endroit, et le trou est nomme au gerant.",
+        "L agent voit la demande que le catalogue n a PAS servie : custom_requests, remplie par le formulaire « demande sur mesure » du site public, est la seule source du produit qui parle de ce que le centre rate ; tout le reste decrit ce qui a ete vendu ou ce qui est offert. Trois limites la rendent utilisable. Elle est INTERNE : « on nous demande de l entreprise et on n en vend pas » se dit au gerant, jamais dans un texte public. Elle ne porte AUCUNE donnee personnelle : la requete ne selectionne ni nom, ni societe, ni telephone, ni message, et l email ne sert qu a ecarter les lignes de demonstration. Et « jamais vendue » ne se dit que d une occasion du vocabulaire ferme que le registre valide, en comptant TOUTES les reservations, annulees comprises : une occasion vendue puis annulee a ete vendue une fois.",
         "Un prix ne se publie que si les RESSOURCES de la formule sont ouvertes. Une formule consomme deux ressources et deux seulement, celles que le tunnel verifie : la piste de bowling et l arene laser. Fermee le jour entier, l une ou l autre retire ce jour du compte des jours reservables, et une formule sans aucun jour ne se publie pas. Les deux reponses sont celles du tunnel (reservationNeedsLanes, countFormulaLaserGames), jamais une relecture des steps. Une formule dont les ressources n ont pas pu etre resolues n est PAS publiee : le tunnel echoue ouvert car il arbitre une demande deja formee, la fiche echoue ferme car elle emet une promesse publique."
       ],
       "nextUpgrades": [

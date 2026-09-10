@@ -751,6 +751,74 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     && ficheLaserBloque.prix_du_catalogue.audience === 'public',
     'le centre est devenu muet sur ses prix');
 
+  // ── ET LA DEMANDE NON SERVIE PASSE PAR LE MEME CHEMIN ──────────────────
+  // La fonction pure et les trois faits sont prouves dans center-facts-check.
+  // Ici c est le CHARGEUR qui doit interroger custom_requests, scoper au
+  // centre, et ne demander AUCUNE colonne personnelle. Sans cette assertion,
+  // couper la requete laisserait tous les gates verts.
+  const sqlDesDemandes = [];
+  const demandesEnBase = [
+    { date: '2026-08-01', pax: 24, occasion: 'entreprise', status: 'new' },
+    { date: '2026-08-14', pax: 30, occasion: 'entreprise', status: 'handled' },
+  ];
+  const poolAvecDemandes = {
+    query: async (sql, params) => {
+      const texte = String(sql);
+      if (/from custom_requests/i.test(texte)) {
+        sqlDesDemandes.push({ texte, params });
+        return { rows: demandesEnBase };
+      }
+      if (/from reservations/i.test(texte)) return { rows: serie(120) };
+      return { rows: [] };
+    },
+  };
+  const ficheAvecDemandes = await chargerVraiment({
+    centerId: 'libramont', aujourdhui: '2026-09-10', pool: poolAvecDemandes,
+  });
+  ok('MONTAGE : le chargeur a bien interroge custom_requests',
+    sqlDesDemandes.length === 1, `${sqlDesDemandes.length} requete(s)`);
+  ok('LE POINT : la demande lue en base devient un fait de la fiche',
+    Boolean(ficheAvecDemandes.demandes_sur_mesure)
+    && ficheAvecDemandes.demandes_sur_mesure.n === 2,
+    String(ficheAvecDemandes.demandes_sur_mesure
+      && ficheAvecDemandes.demandes_sur_mesure.valeur));
+  ok('et l occasion demandee que le registre ne porte pas est nommee',
+    Boolean(ficheAvecDemandes.demande_jamais_vendue)
+    && /entreprise/.test(String(ficheAvecDemandes.demande_jamais_vendue.valeur)),
+    String(ficheAvecDemandes.demande_jamais_vendue
+      && ficheAvecDemandes.demande_jamais_vendue.valeur));
+
+  // LA REQUETE ELLE-MEME. Prouver qu une colonne n est PAS demandee ne peut se
+  // faire qu en lisant le SQL : une fausse base qui ne la renvoie pas ne
+  // prouverait que sa propre discretion.
+  const sqlDemande = sqlDesDemandes.length ? sqlDesDemandes[0].texte : '';
+  ok('la requete est scopee au centre',
+    /center_id\s*=\s*\$1/.test(sqlDemande)
+    && (sqlDesDemandes[0] || { params: [] }).params[0] === 'libramont',
+    sqlDemande.slice(0, 120));
+  // LA LISTE DU SELECT, pas le SQL entier : `email` figure legitimement dans
+  // le WHERE, pour ecarter la demonstration. Chercher le mot partout ferait
+  // passer ce test pour vert sur une requete qui selectionnerait tout.
+  const listeSelect = (sqlDemande.match(/select([\s\S]*?)\bfrom\b/i) || [''])[0];
+  ok('MONTAGE : la liste du select a bien ete isolee',
+    /\boccasion\b/i.test(listeSelect) && !/custom_requests/i.test(listeSelect),
+    listeSelect.slice(0, 160));
+  const colonnesInterdites = ['contact_name', 'company', 'phone', 'message', 'email']
+    .filter((colonne) => new RegExp(`\\b${colonne}\\b`, 'i').test(listeSelect));
+  ok('LE POINT : la requete ne SELECTIONNE aucune colonne personnelle',
+    colonnesInterdites.length === 0, JSON.stringify(colonnesInterdites));
+  ok('et l email ne sert que dans le WHERE, pour ecarter la demonstration',
+    /email/i.test(sqlDemande), sqlDemande.slice(0, 200));
+
+  ok('CONTRE-PREUVE : sans demande en base, aucun fait de demande',
+    !(await chargerVraiment({
+      centerId: 'libramont', aujourdhui: '2026-09-10',
+      pool: {
+        query: async (sql) => (/from reservations/i.test(String(sql))
+          ? { rows: serie(120) } : { rows: [] }),
+      },
+    })).demandes_sur_mesure);
+
   // LA GARDE. Le centre A un laser game : le motif doit dire BLOQUE, jamais
   // « absent de ce centre ». Un gerant qui lit le mauvais motif va corriger
   // une configuration qui est juste.

@@ -1767,5 +1767,134 @@ ok('DE BOUT EN BOUT : et le centre a quand meme des prix a annoncer',
   Boolean(ficheDesPrix.prix_du_catalogue)
   && ficheDesPrix.prix_du_catalogue.audience === 'public',
   'le centre est devenu muet sur ses prix');
+
+// ── CE QU ON DEMANDE ET QU ON NE VEND PAS ─────────────────────────────────
+console.log('\n[DEMANDE] la demande non servie entre dans la fiche, sans une seule donnee personnelle');
+const { demandesSurMesure } = require('../lib/center-facts');
+const { OCCASION_VALUES: vocabulaireDuRegistre } = require('../lib/database');
+
+// MONTAGE : le vocabulaire compare est celui que le REGISTRE valide. Les deux
+// ecritures y passent (createCustomRequest appelle normalizeReservationOccasion).
+ok('MONTAGE : le vocabulaire du registre porte les occasions du formulaire',
+  ['anniversaire', 'amis', 'entreprise', 'ecole', 'evg', 'autre'].every((o) => vocabulaireDuRegistre.has(o)),
+  JSON.stringify([...vocabulaireDuRegistre]));
+ok('MONTAGE : et il n en porte pas d autres',
+  !vocabulaireDuRegistre.has('mariage'), 'le montage de la contre-preuve ne tient plus');
+
+const DEMANDES = [
+  { date: '2026-08-01', pax: 24, occasion: 'entreprise' },
+  { date: '2026-08-14', pax: 30, occasion: 'entreprise' },
+  { date: '2026-08-20', pax: 8, occasion: 'anniversaire' },
+  { date: '2026-09-05', pax: 12, occasion: 'evg' },
+  { date: '2026-09-06', pax: 0, occasion: '' },
+];
+// Le registre VEND de l anniversaire, et il a vendu un EVG qui a ete ANNULE.
+const REGISTRE_DEMANDE = [
+  resa({ date: '2026-07-01', occasion: 'anniversaire' }),
+  resa({ date: '2026-07-08', occasion: 'evg', status: 'cancelled' }),
+];
+const lecture = demandesSurMesure(DEMANDES, REGISTRE_DEMANDE);
+ok('MONTAGE : les cinq demandes sont lues', lecture && lecture.total === 5, JSON.stringify(lecture && lecture.total));
+
+ok('la taille des groupes demandes est bornee par les demandes reelles',
+  lecture.tailleMin === 8 && lecture.tailleMax === 30,
+  `${lecture.tailleMin} a ${lecture.tailleMax}`);
+ok('une demande sans occasion compte dans le total mais dans aucune occasion',
+  lecture.total === 5 && lecture.occasions.reduce((s, c) => s + c.n, 0) === 4,
+  JSON.stringify(lecture.occasions.map((c) => `${c.occasion}:${c.n}`)));
+ok('les occasions sont classees par nombre de demandes',
+  lecture.occasions[0].occasion === 'entreprise' && lecture.occasions[0].n === 2,
+  JSON.stringify(lecture.occasions.map((c) => `${c.occasion}:${c.n}`)));
+
+// LE POINT.
+ok('LE POINT : une occasion demandee et absente du registre est nommee',
+  lecture.jamaisVendues.some((c) => c.occasion === 'entreprise' && c.n === 2),
+  JSON.stringify(lecture.jamaisVendues.map((c) => c.occasion)));
+ok('CONTRE-PREUVE : une occasion que le registre VEND ne l est pas',
+  !lecture.jamaisVendues.some((c) => c.occasion === 'anniversaire'),
+  JSON.stringify(lecture.jamaisVendues.map((c) => c.occasion)));
+// Une occasion vendue puis ANNULEE a ete vendue une fois : la dire jamais
+// vendue serait faux, et le gerant corrigerait une offre qui existe.
+ok('LE POINT : une occasion vendue puis ANNULEE compte comme vendue',
+  !lecture.jamaisVendues.some((c) => c.occasion === 'evg'),
+  JSON.stringify(lecture.jamaisVendues.map((c) => c.occasion)));
+
+// LE VOCABULAIRE FERME PROTEGE DU REPROCHE ABSURDE : une occasion que le
+// registre ne PEUT pas porter sort de la comparaison, elle n est pas declaree
+// « jamais vendue ». Sans cette regle on reprocherait au centre de ne pas
+// vendre une categorie qui n existe pas de son cote.
+const horsVocabulaire = demandesSurMesure(
+  [...DEMANDES, { date: '2026-09-07', pax: 40, occasion: 'mariage' }], REGISTRE_DEMANDE);
+ok('une occasion hors vocabulaire est COMPTEE dans les demandes',
+  horsVocabulaire.occasions.some((c) => c.occasion === 'mariage'),
+  JSON.stringify(horsVocabulaire.occasions.map((c) => c.occasion)));
+ok('LE POINT : mais elle n est JAMAIS declaree jamais vendue',
+  !horsVocabulaire.jamaisVendues.some((c) => c.occasion === 'mariage'),
+  JSON.stringify(horsVocabulaire.jamaisVendues.map((c) => c.occasion)));
+
+// LES FAITS, DANS LA FICHE.
+const ficheDemande = ficheDuRegistre({
+  reservations: REGISTRE_DEMANDE, formules: [], aujourdhui: '2026-09-10', demandes: DEMANDES,
+});
+ok('le fait des demandes est pose et dit combien, et de quelle taille',
+  Boolean(ficheDemande.demandes_sur_mesure)
+  && /5 demandes, de 8 a 30 personnes/.test(String(ficheDemande.demandes_sur_mesure.valeur)),
+  String(ficheDemande.demandes_sur_mesure && ficheDemande.demandes_sur_mesure.valeur));
+ok('le fait des occasions demandees est pose',
+  Boolean(ficheDemande.occasions_demandees)
+  && /entreprise \(2\)/.test(String(ficheDemande.occasions_demandees.valeur)),
+  String(ficheDemande.occasions_demandees && ficheDemande.occasions_demandees.valeur));
+ok('LE POINT : le fait de la demande jamais vendue nomme l occasion et son compte',
+  Boolean(ficheDemande.demande_jamais_vendue)
+  && /entreprise : 2 demandes, aucune reservation/.test(String(ficheDemande.demande_jamais_vendue.valeur)),
+  String(ficheDemande.demande_jamais_vendue && ficheDemande.demande_jamais_vendue.valeur));
+ok('et il ne nomme ni l anniversaire vendu ni l EVG annule',
+  !/anniversaire|evg/.test(String(ficheDemande.demande_jamais_vendue.valeur)),
+  String(ficheDemande.demande_jamais_vendue.valeur));
+
+// LES TROIS SONT INTERNES. « On nous demande de l entreprise et on n en vend
+// pas » se dit au gerant, jamais dans un texte public.
+ok('les trois faits de la demande sont INTERNES',
+  ['demandes_sur_mesure', 'occasions_demandees', 'demande_jamais_vendue']
+    .every((id) => ficheDemande[id] && ficheDemande[id].audience === 'interne'),
+  JSON.stringify(['demandes_sur_mesure', 'occasions_demandees', 'demande_jamais_vendue']
+    .map((id) => `${id}:${ficheDemande[id] && ficheDemande[id].audience}`)));
+ok('et aucun ne se declare fait d OFFRE : ils parlent de ce qui manque',
+  ['demandes_sur_mesure', 'occasions_demandees', 'demande_jamais_vendue']
+    .every((id) => ficheDemande[id] && ficheDemande[id].offre === false),
+  'un fait de demande a ete marque comme une offre publiable');
+
+// LA FENETRE EST CELLE DES DEMANDES, pas celle du registre : sinon un fait de
+// cinq semaines emprunterait la maturite de six mois de reservations.
+ok('la fenetre du fait est celle des demandes',
+  ficheDemande.demandes_sur_mesure.du === '2026-08-01'
+  && ficheDemande.demandes_sur_mesure.au === '2026-09-06',
+  `${ficheDemande.demandes_sur_mesure.du} -> ${ficheDemande.demandes_sur_mesure.au}`);
+
+// AUCUNE DONNEE PERSONNELLE, MEME FOURNIE. La fiche part vers un modele : ce
+// n est pas la requete seule qui doit proteger, la fiche doit etre incapable
+// de laisser passer un nom, un email, un telephone ou un message libre.
+const AVEC_PERSONNEL = [{
+  date: '2026-08-01', pax: 24, occasion: 'entreprise',
+  contact_name: 'Jeanne Dupont', company: 'ACME SPRL', email: 'jeanne@acme.test',
+  phone: '0470112233', message: 'on veut privatiser pour le CE',
+}];
+const fichePersonnelle = ficheDuRegistre({ reservations: REGISTRE_DEMANDE, formules: [], aujourdhui: '2026-09-10', demandes: AVEC_PERSONNEL });
+const texteEntier = JSON.stringify(fichePersonnelle);
+const fuites = ['Jeanne Dupont', 'ACME SPRL', 'jeanne@acme.test', '0470112233', 'privatiser']
+  .filter((secret) => texteEntier.includes(secret));
+ok('LE POINT : AUCUNE donnee personnelle n atteint la fiche',
+  fuites.length === 0, JSON.stringify(fuites));
+ok('MONTAGE : et pourtant la demande a bien ete comptee',
+  Boolean(fichePersonnelle.demandes_sur_mesure)
+  && fichePersonnelle.demandes_sur_mesure.n === 1,
+  'la contre-preuve de fuite ne testait rien : la demande n a pas ete lue');
+
+// FAIL-OPEN : sans demande transmise, aucun fait invente.
+const ficheSansDemande = ficheDuRegistre({ reservations: REGISTRE_DEMANDE, formules: [], aujourdhui: '2026-09-10' });
+ok('FAIL-OPEN : sans demande, aucun des trois faits',
+  ['demandes_sur_mesure', 'occasions_demandees', 'demande_jamais_vendue']
+    .every((id) => !ficheSansDemande[id]),
+  'un fait de demande a ete pose sans demande');
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

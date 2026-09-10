@@ -165,6 +165,7 @@ function serveStatic() {
     if (url.pathname === '/api/public-availability') return json(200, availabilityPayload(url.search));
     if (url.pathname === '/api/public-reservations') {
       let body = '';
+      req.setEncoding('utf8');
       req.on('data', (chunk) => { body += chunk; });
       req.on('end', () => {
         let parsed = null;

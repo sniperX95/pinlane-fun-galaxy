@@ -202,6 +202,7 @@ function post(payload) {
       headers: { 'content-type': 'application/json', 'content-length': data.length },
     }, (res) => {
       let body = '';
+      res.setEncoding('utf8');
       res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
         try { resolve({ status: res.statusCode, body: JSON.parse(body) }); }

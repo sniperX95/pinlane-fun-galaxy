@@ -144,6 +144,7 @@ function serveStatic() {
     }
     if (url.pathname === '/api/public-reservations') {
       let body = '';
+      req.setEncoding('utf8');
       req.on('data', (chunk) => { body += chunk; });
       req.on('end', () => json({ ok: true, reservation: { id: 9001, lanes: [1], status: 'pending', price: 78 }, ops: {}, communications: [], warnings: [] }));
       return undefined;

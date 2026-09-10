@@ -381,6 +381,7 @@ function serveur() {
       // Le corps est relu pour la trace ET re-injecte : le handler consomme le
       // flux, on ne peut pas le lire deux fois.
       let brut = '';
+      req.setEncoding('utf8');
       req.on('data', (c) => { brut += c; });
       await new Promise((resolve) => req.on('end', resolve));
       let corps = null;
@@ -424,6 +425,7 @@ function getJson(params) {
   return new Promise((resolve, reject) => {
     http.get(url, (res) => {
       let body = '';
+      res.setEncoding('utf8');
       res.on('data', (c) => { body += c; });
       res.on('end', () => { try { resolve({ statut: res.statusCode, corps: JSON.parse(body) }); } catch (e) { resolve({ statut: res.statusCode, corps: {} }); } });
     }).on('error', reject);
@@ -436,6 +438,7 @@ function postJson(payload) {
       method: 'POST', headers: { 'content-type': 'application/json', 'content-length': data.length },
     }, (res) => {
       let body = '';
+      res.setEncoding('utf8');
       res.on('data', (c) => { body += c; });
       res.on('end', () => { try { resolve({ statut: res.statusCode, corps: JSON.parse(body) }); } catch (e) { resolve({ statut: res.statusCode, corps: {} }); } });
     });

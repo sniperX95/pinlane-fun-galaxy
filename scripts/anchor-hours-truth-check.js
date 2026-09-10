@@ -105,6 +105,7 @@ function get(chemin) {
   return new Promise((resolve, reject) => {
     http.get(BASE_URL + chemin, (res) => {
       let body = '';
+      res.setEncoding('utf8');
       res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
         try { resolve(JSON.parse(body)); } catch (error) { reject(new Error(`reponse illisible : ${body.slice(0, 200)}`)); }

@@ -138,7 +138,7 @@ function serveStatic() {
     const json = (status, payload) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(payload)); };
     if (url.pathname === '/api/public-booking-meta') return json(200, metaPayload());
     if (url.pathname === '/api/public-availability') return json(200, availabilityPayload(url.search));
-    if (url.pathname === '/api/public-reservations') { let body = ''; req.on('data', (c) => { body += c; }); req.on('end', () => json(201, { ok: true, reservation: { id: 1 }, ops: {}, communications: [], warnings: [] })); return undefined; }
+    if (url.pathname === '/api/public-reservations') { let body = ''; req.setEncoding('utf8'); req.on('data', (c) => { body += c; }); req.on('end', () => json(201, { ok: true, reservation: { id: 1 }, ops: {}, communications: [], warnings: [] })); return undefined; }
     let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
     if (url.pathname === '/' || url.pathname === '') filePath = path.join(ROOT, 'index.html');
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return undefined; }

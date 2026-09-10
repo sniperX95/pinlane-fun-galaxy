@@ -98,6 +98,7 @@ function post(payload) {
       headers: { 'content-type': 'application/json', 'content-length': data.length },
     }, (res) => {
       let body = '';
+      res.setEncoding('utf8');
       res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
         try { resolve({ status: res.statusCode, body: JSON.parse(body) }); }
@@ -113,6 +114,7 @@ function get(chemin) {
   return new Promise((resolve, reject) => {
     http.get(BASE + chemin, (res) => {
       let body = '';
+      res.setEncoding('utf8');
       res.on('data', (c) => { body += c; });
       res.on('end', () => {
         try { resolve({ status: res.statusCode, body: JSON.parse(body) }); }

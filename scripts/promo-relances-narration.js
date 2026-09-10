@@ -234,6 +234,7 @@ const appel = () => new Promise((resolve, reject) => {
     headers: { 'xi-api-key': cle, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(corps) },
   }, (res) => {
     let d = '';
+    res.setEncoding('utf8');
     res.on('data', (c) => { d += c; });
     res.on('end', () => {
       if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode} : ${d.slice(0, 300)}`));

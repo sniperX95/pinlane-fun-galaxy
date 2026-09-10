@@ -2004,6 +2004,7 @@ async function fetchStaticPage(pathname) {
     return await new Promise((resolve, reject) => {
       http.get(`${BASE_URL}${pathname}`, (response) => {
         let body = '';
+        response.setEncoding('utf8');
         response.on('data', (chunk) => { body += chunk; });
         response.on('end', () => resolve(body));
       }).on('error', reject);

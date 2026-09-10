@@ -2470,7 +2470,8 @@
 
   const PV2_INTENT_LABELS = {
     reservation: 'Réservation', annulation: 'Annulation', anniversaire: 'Anniversaire',
-    prix: 'Prix', horaires: 'Horaires', reclamation: 'Réclamation', autre: 'Autre',
+    prix: 'Prix', horaires: 'Horaires', reclamation: 'Réclamation',
+    hors_sujet: 'Pas une demande client', autre: 'Autre',
   };
 
   /* ── SÉQUENCES PERSONNALISÉES : le gérant crée SES automatisations

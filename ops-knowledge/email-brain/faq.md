@@ -15,7 +15,7 @@ réponse de référence invite à les confirmer, elle ne les récite pas.
 Objet : Votre demande de réservation, {{centre}}
 Bonjour {{prenom}},
 
-Merci pour votre message ! Le plus simple et le plus rapide : réservez directement en ligne depuis notre page de réservation, vous choisissez la date, l'heure et l'activité, et c'est confirmé tout de suite.
+Merci pour votre message ! Le plus simple et le plus rapide : réservez directement en ligne depuis notre page de réservation, vous choisissez la date, l'heure et l'activité. La plupart des formules sont confirmées immédiatement ; pour quelques-unes, l'équipe valide d'abord et vous recevez la réponse par mail.
 
 Si vous préférez, répondez à ce message avec la date souhaitée, l'heure et le nombre de personnes : on vous confirme le créneau par retour.
 
@@ -75,6 +75,15 @@ Merci d'avoir pris le temps de nous écrire : et sincèrement désolés que votr
 Pour qu'on puisse bien faire les choses, pouvez-vous nous préciser la date de votre venue et ce qui s'est passé ? Vous pouvez aussi nous laisser un numéro : on vous rappelle.
 
 Merci de votre confiance,
+L'équipe {{centre}}
+
+## intent:hors_sujet
+Objet : Bien reçu, {{centre}}
+Bonjour,
+
+Merci pour votre message : il a bien été reçu et transmis à la personne concernée.
+
+Bien à vous,
 L'équipe {{centre}}
 
 ## intent:autre

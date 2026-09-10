@@ -2074,5 +2074,130 @@ ok('LE POINT : les douze mois donnent douze mots distincts, aucun chiffre',
 
   ok('LE POINT : une date invalide rend null au lieu d une phrase fausse',
     jourLocal('pas une date') === null);
+
+// ── LES PERIODES SPECIALES ──────────────────────────────────────────────
+console.log('\n[PERIODES] « non valable vacances scolaires », sauf que si');
+const { periodesSpeciales: periodesLues } = require('../lib/center-facts');
+const moteurConges = require('../lib/booking-config');
+const { getCenter: centrePourPeriodes } = require('../lib/ops-knowledge');
+
+// LE GATE SE PLACE PAR RAPPORT A LA TABLE, jamais sur une date recopiee.
+const tableDesConges = moteurConges.WALLONIA_SCHOOL_HOLIDAYS || [];
+const grandesVacances = tableDesConges.filter((p) => p.kind === 'summer').sort((a, b) => (a.start < b.start ? -1 : 1)).pop();
+const petitConge = tableDesConges.filter((p) => p.kind === 'short').sort((a, b) => (a.start < b.start ? -1 : 1)).pop();
+ok('MONTAGE : la table du depot porte bien un ete et un petit conge',
+  Boolean(grandesVacances && petitConge),
+  `${grandesVacances && grandesVacances.label} / ${petitConge && petitConge.label}`);
+
+// LA TABLE PERIME, ET LE GATE LE DIT AVANT. Passe sa derniere date, le moteur
+// traite tous les jours comme normaux : faux, et silencieux.
+const derniereDateConnue = tableDesConges.map((p) => p.end).sort().pop() || '';
+const dansSixMois = new Date(Date.now() + (180 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+ok('LE POINT : la table des conges couvre encore les 180 prochains jours',
+  derniereDateConnue >= dansSixMois,
+  `la table s arrete le ${derniereDateConnue} : mettez-la a jour dans booking-config`);
+
+const centreDeReference = centrePourPeriodes('libramont');
+// Trente jours avant l ete : la fenetre d un an couvre alors l ete entier.
+const avantLEte = new Date(`${grandesVacances.start}T12:00:00Z`);
+avantLEte.setUTCDate(avantLEte.getUTCDate() - 30);
+const depuisAvantLEte = avantLEte.toISOString().slice(0, 10);
+const vuDepuisAvantLEte = periodesLues(centreDeReference, depuisAvantLEte);
+ok('MONTAGE : la fenetre d un an voit bien des periodes',
+  Boolean(vuDepuisAvantLEte && vuDepuisAvantLEte.periodes.length),
+  `${vuDepuisAvantLEte && vuDepuisAvantLEte.periodes.length} periodes depuis ${depuisAvantLEte}`);
+
+// LE POINT DU PATCH : les grandes vacances NE bloquent PAS les formules,
+// alors que le texte de leurs conditions dit « non valable vacances ».
+// PAR TYPE, PAS PAR LIBELLE : « Fete du Travail » et « Fete nationale »
+// contiennent le mot « ete ». Le type vient du moteur, il ne se confond pas.
+const periodesDEte = vuDepuisAvantLEte.periodes.filter((p) => p.type === 'school_summer');
+ok('LE POINT : les GRANDES VACANCES ne bloquent PAS les formules',
+  periodesDEte.length > 0 && periodesDEte.every((p) => p.bloqueLesFormules === false),
+  periodesDEte.map((p) => `${p.debut}->${p.fin}:${p.bloqueLesFormules}`).join(' '));
+
+// ET LA SUBTILITE QUE PERSONNE NE GARDE EN TETE : un ferie DANS les grandes
+// vacances bloque quand meme. Le moteur le fait, le gate le prouve.
+const ferieDansLEte = vuDepuisAvantLEte.periodes.filter((p) => p.debut >= grandesVacances.start
+  && p.fin <= grandesVacances.end && p.type === 'public');
+ok('LE POINT : un jour ferie TOMBANT dans les grandes vacances bloque quand meme',
+  ferieDansLEte.length > 0 && ferieDansLEte.every((p) => p.bloqueLesFormules === true),
+  ferieDansLEte.map((p) => `${p.libelle} ${p.debut}`).join(' · '));
+
+// UN PETIT CONGE BLOQUE, LUI.
+const avantLePetitConge = new Date(`${petitConge.start}T12:00:00Z`);
+avantLePetitConge.setUTCDate(avantLePetitConge.getUTCDate() - 5);
+const vuDepuisLePetitConge = periodesLues(centreDeReference, avantLePetitConge.toISOString().slice(0, 10));
+const lePetitConge = vuDepuisLePetitConge.periodes.filter((p) => p.debut >= petitConge.start && p.fin <= petitConge.end);
+ok('LE POINT : un petit conge scolaire, lui, bloque les formules',
+  lePetitConge.length > 0 && lePetitConge.every((p) => p.bloqueLesFormules === true),
+  lePetitConge.map((p) => `${p.libelle} ${p.debut}->${p.fin}`).join(' · '));
+
+// LES JOURS SE GROUPENT EN PERIODES : quatorze dates ne se lisent pas, une
+// periode si. La preuve est qu une periode couvre plusieurs jours.
+ok('LE POINT : les jours qui se suivent forment UNE periode, pas quatorze',
+  vuDepuisLePetitConge.periodes.some((p) => p.fin > p.debut),
+  vuDepuisLePetitConge.periodes.map((p) => `${p.debut}->${p.fin}`).join(' '));
+
+// LA FIN DU CALENDRIER EST CALCULEE SUR LA TABLE, pas recopiee.
+ok('LE POINT : la limite annoncee est la derniere date de la table',
+  vuDepuisAvantLEte.finDuCalendrier === derniereDateConnue,
+  `${vuDepuisAvantLEte.finDuCalendrier} contre ${derniereDateConnue}`);
+
+// LE CENTRE DECIDE : trois reglages, trois effets. Recopier la regle par
+// defaut dans le module aurait rendu ces trois assertions impossibles.
+const centreSansDetection = { ...centreDeReference, holidaySettings: { enabled: false } };
+ok('CONTRE-PREUVE : un centre qui DESACTIVE la detection n a plus aucune periode',
+  periodesLues(centreSansDetection, depuisAvantLEte).periodes.length === 0,
+  String(periodesLues(centreSansDetection, depuisAvantLEte).periodes.length));
+
+const centreQuiBloqueLEte = { ...centreDeReference, holidaySettings: { formulaBlockedPeriods: ['public', 'school_short', 'school_summer', 'manual'] } };
+const eteBloque = periodesLues(centreQuiBloqueLEte, depuisAvantLEte).periodes.filter((p) => p.type === 'school_summer');
+ok('LE POINT : un centre qui CHOISIT de bloquer l ete voit ses formules refusees l ete',
+  eteBloque.length > 0 && eteBloque.every((p) => p.bloqueLesFormules === true),
+  eteBloque.map((p) => `${p.debut}:${p.bloqueLesFormules}`).join(' '));
+
+// UN JOUR FORCE A LA MAIN par le gerant devient une periode d un jour.
+const jourForce = new Date(`${depuisAvantLEte}T12:00:00Z`);
+jourForce.setUTCDate(jourForce.getUTCDate() + 3);
+const dateForcee = jourForce.toISOString().slice(0, 10);
+const centreQuiForce = { ...centreDeReference, holidaySettings: { overrides: [{ date: dateForcee, mode: 'holiday' }] } };
+const forcee = periodesLues(centreQuiForce, depuisAvantLEte).periodes.filter((p) => p.debut === dateForcee);
+ok('LE POINT : un jour force a la main par le gerant devient une periode',
+  forcee.length === 1 && forcee[0].fin === dateForcee && forcee[0].bloqueLesFormules === true,
+  `${dateForcee} : ${JSON.stringify(forcee[0] || null)}`);
+ok('CONTRE-PREUVE : sans ce reglage, ce meme jour n est aucune periode',
+  periodesLues(centreDeReference, depuisAvantLEte).periodes.every((p) => p.debut !== dateForcee || p.fin !== dateForcee),
+  dateForcee);
+
+ok('CONTRE-PREUVE : une date invalide rend null au lieu d une liste fausse',
+  periodesLues(centreDeReference, 'pas une date') === null);
+
+// ── L HORAIRE DE VACANCES SUIT EXACTEMENT LES PERIODES ──────────────────
+console.log('\n[HORAIRES] les periodes sont AUSSI les jours d horaire de vacances');
+const { isHolidayScheduleDate: horaireDeVacances } = require('../lib/booking-config');
+
+// UNE EQUIVALENCE NE SE PROUVE PAS PAR UN EXEMPLE. Chaque jour de la fenetre
+// est demande au moteur, puis cherche dans la liste : un seul ecart et la
+// phrase du cerveau devient fausse.
+const departEquivalence = jourLocal().date;
+const vuSurUnAn = periodesLues(centreDeReference, departEquivalence);
+const dansUnePeriode = (date) => vuSurUnAn.periodes.some((p) => date >= p.debut && date <= p.fin);
+let ecartsHoraire = 0;
+let joursDeVacances = 0;
+const curseur = new Date(`${departEquivalence}T12:00:00Z`);
+for (let i = 0; i < vuSurUnAn.horizon; i += 1) {
+  const date = curseur.toISOString().slice(0, 10);
+  curseur.setUTCDate(curseur.getUTCDate() + 1);
+  const selonLeMoteur = Boolean(horaireDeVacances(date, centreDeReference));
+  if (selonLeMoteur) joursDeVacances += 1;
+  if (selonLeMoteur !== dansUnePeriode(date)) ecartsHoraire += 1;
+}
+ok('MONTAGE : la fenetre contient bien des jours d horaire de vacances',
+  joursDeVacances > 0,
+  `${joursDeVacances} jours sur ${vuSurUnAn.horizon}`);
+ok('LE POINT : sur toute la fenetre, horaire de vacances et periodes designent les MEMES jours',
+  ecartsHoraire === 0,
+  `${ecartsHoraire} ecart(s) sur ${vuSurUnAn.horizon} jours`);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

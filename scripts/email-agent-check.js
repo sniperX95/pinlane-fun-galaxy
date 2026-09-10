@@ -97,7 +97,13 @@ const anthropicOk = (object) => ({
   const brain = await buildEmailBrain('libramont', depsBrain);
   ok(brain.stable.includes('Jamais promettre une disponibilité'), 'rules.md chargé dans le bloc stable');
   ok(brain.stable.includes('Français de Belgique'), 'voice.md (marketing-brain) chargé');
-  ok(Object.keys(brain.faq).length === 7, `FAQ parsée : 7 intents (obtenu ${Object.keys(brain.faq).length})`);
+  // CHAQUE SUJET DECLARE A SA REPONSE, ET AUCUNE SECTION ORPHELINE. Un
+  // comptage en dur passait au rouge au premier sujet ajoute sans rien avoir
+  // mesure de faux ; cette egalite, elle, attrape les deux vrais defauts :
+  // un sujet sans reponse de reference, et une section que plus rien ne lit.
+  const sujetsDeclares = Object.keys(require('../lib/email-agent').INTENT_LABELS).sort().join(',');
+  ok(Object.keys(brain.faq).sort().join(',') === sujetsDeclares,
+    `FAQ parsée : une réponse par sujet déclaré, sans orpheline (${Object.keys(brain.faq).sort().join(',')})`);
   ok(brain.context.includes('Lundi fermé') && brain.context.includes('Samedi 10h à minuit'), 'horaires RÉELS du centre dans le contexte');
   ok(brain.context.includes('LEÇONS APPRISES') && brain.context.includes('Corps corrigé par le staff'), 'leçons mémoire injectées dans le contexte');
   // Libramont n'a pas le Golf o'Clock, mais Gembloux l'a : la question se pose
@@ -1352,8 +1358,17 @@ const anthropicOk = (object) => ({
   // verte parce que le cerveau le contient, pas parce que la fiche le porte.
   const cerveauDeMesure = await buildEmailBrain('libramont', makeDeps({}));
   const texteDuCerveau = `${cerveauDeMesure.stable}\n${cerveauDeMesure.context}`;
-  const paxDeMesure = [23, 29, 31, 37, 41, 43, 47, 53, 59]
-    .find((n) => !texteDuCerveau.includes(String(n)));
+  // UN NOMBRE DE PERSONNES, PAS UN QUANTIEME : le cerveau porte desormais
+  // presque tous les nombres de 1 a 31 (les periodes de vacances y ecrivent
+  // leurs dates), et une liste courte de candidats se vidait au premier
+  // decalage du calendrier scolaire. Douze a deux cent cinquante reste un
+  // nombre de personnes plausible pour un groupe, et laisse deux cents
+  // valeurs libres au lieu d une.
+  const nombreAbsentDuCerveau = (texte) => {
+    for (let n = 12; n <= 250; n += 1) if (!texte.includes(String(n))) return n;
+    return 0;
+  };
+  const paxDeMesure = nombreAbsentDuCerveau(texteDuCerveau);
   ok(Boolean(paxDeMesure), 'MONTAGE : un nombre de personnes absent du cerveau a ete trouve', String(paxDeMesure));
 
   // ORDRE DESCENDANT, comme la vraie requete : c est justement parce que la
@@ -1511,8 +1526,8 @@ const anthropicOk = (object) => ({
   // contre-preuve serait verte pour la mauvaise raison.
   const cerveauFil = await buildEmailBrain('libramont', makeDeps({}));
   const texteCerveauFil = `${cerveauFil.stable}\n${cerveauFil.context}`;
-  const quantiemeDit = [17, 19, 21, 23, 27, 29].find((n) => !texteCerveauFil.includes(String(n)));
-  ok(Boolean(quantiemeDit), 'MONTAGE : un quantieme absent du cerveau a ete trouve', String(quantiemeDit));
+  const nombreDitParLeCentre = nombreAbsentDuCerveau(texteCerveauFil);
+  ok(Boolean(nombreDitParLeCentre), 'MONTAGE : un nombre absent du cerveau a ete trouve', String(nombreDitParLeCentre));
 
   // LE MAIL RECU PORTE SA CITATION, comme en vrai : le corps stocke contient
   // tout le fil precedent.
@@ -1525,7 +1540,7 @@ const anthropicOk = (object) => ({
 
   const lignesDuFil = [
     { id: 10, center_id: 'libramont', channel: 'email', direction: 'inbound', status: 'received', template_id: 'inbound_email', recipient: CLIENT_FIL, subject: 'Anniversaire', jour: '2026-09-06', body: 'Bonjour, ce serait pour un anniversaire.' },
-    { id: 11, center_id: 'libramont', channel: 'email', direction: 'outbound', status: 'sent', template_id: 'studio_direct', recipient: CLIENT_FIL, subject: 'Re: Anniversaire', jour: '2026-09-08', body: `Bonjour, avec plaisir. Il reste de la place le ${quantiemeDit} septembre.` },
+    { id: 11, center_id: 'libramont', channel: 'email', direction: 'outbound', status: 'sent', template_id: 'studio_direct', recipient: CLIENT_FIL, subject: 'Re: Anniversaire', jour: '2026-09-08', body: `Bonjour, avec plaisir. Nous avons note ${nombreDitParLeCentre} personnes.` },
     // UNE RELANCE PARTIE TOUTE SEULE : elle a bien ete envoyee, elle compte
     // donc, mais personne ne l a ecrite pour ce client.
     { id: 12, center_id: 'libramont', channel: 'email', direction: 'outbound', status: 'sent', template_id: 'reminder_48h', recipient: CLIENT_FIL, subject: 'Petit rappel', jour: '2026-09-08', body: 'Petit rappel de votre venue.' },
@@ -1555,7 +1570,7 @@ const anthropicOk = (object) => ({
     centerId: 'libramont', deps: depsFil(lignesDuFil, etatFil),
     fetchImpl: async (adresse, options) => {
       corpsDuFil = String((options && options.body) || '');
-      return anthropicOk({ intent: 'reservation', summary: 'Confirmation', urgency: 'normale', reply: { subject: 'Votre venue', body: `Bonjour, c est note pour le ${quantiemeDit} septembre.` } });
+      return anthropicOk({ intent: 'reservation', summary: 'Confirmation', urgency: 'normale', reply: { subject: 'Votre venue', body: `Bonjour, c est note pour ${nombreDitParLeCentre} personnes.` } });
     },
   });
   ok(corpsDuFil.length > 200, 'MONTAGE : le corps envoye au modele a bien ete capture', String(corpsDuFil.length));
@@ -1610,7 +1625,7 @@ const anthropicOk = (object) => ({
   const analyseSansFil = await analyzeEmail({
     from: CLIENT_FIL, subject: 'Re: Anniversaire', body: 'Oui parfait, on prend.',
     centerId: 'libramont', deps: makeDeps({}),
-    fetchImpl: async () => anthropicOk({ intent: 'reservation', summary: 'Confirmation', urgency: 'normale', reply: { subject: 'Votre venue', body: `Bonjour, c est note pour le ${quantiemeDit} septembre.` } }),
+    fetchImpl: async () => anthropicOk({ intent: 'reservation', summary: 'Confirmation', urgency: 'normale', reply: { subject: 'Votre venue', body: `Bonjour, c est note pour ${nombreDitParLeCentre} personnes.` } }),
   });
   ok(analyseSansFil.provider === 'rules',
     'CONTRE-PREUVE : le MEME nombre, sans fil, est rejete par le garde-fou', analyseSansFil.provider);
@@ -1653,6 +1668,425 @@ const anthropicOk = (object) => ({
     'LE POINT : ce sont les SIX DERNIERS qui restent, pas les six premiers',
     filBorne.map((m) => (m.texte.match(/numero (\d+)/) || [])[1]).join(' '));
   delete process.env.ANTHROPIC_API_KEY;
+
+  // ── UN CENTRE QUI NE PREND PAS DE RESERVATION ─────────────────────────
+  console.log('\n[STATUT] le moteur refuse le tunnel, l agent doit le savoir');
+  const { publicBookingBlockReason: refusDuMoteur } = require('../lib/ops-knowledge');
+
+  // MONTAGE : deux centres, deux verdicts du moteur. Sans cet ecart, tout ce
+  // qui suit serait vrai pour une raison qui n a rien a voir.
+  const refusCiney = refusDuMoteur('ciney');
+  const refusLibramont = refusDuMoteur('libramont');
+  ok(Boolean(refusCiney) && !refusLibramont,
+    'MONTAGE : le moteur refuse le tunnel de ciney et accepte celui de libramont',
+    `ciney « ${refusCiney} » / libramont « ${refusLibramont} »`);
+
+  const cerveauRefuse = await buildEmailBrain('ciney', makeDeps({}));
+  const cerveauActif = await buildEmailBrain('libramont', makeDeps({}));
+
+  // LE CERVEAU DIT EXACTEMENT CE QUE LE MOTEUR DIT. Pas une reformulation :
+  // deux phrases pour un meme refus finiraient par diverger.
+  ok(cerveauRefuse.context.includes(refusCiney),
+    'LE POINT : le cerveau porte le refus du moteur, mot pour mot',
+    (cerveauRefuse.context.split('\n').find((l) => /NE PREND PAS/.test(l)) || ''));
+  ok(/N invite JAMAIS a reserver en ligne/.test(cerveauRefuse.context)
+    && /ne confirme aucune date/.test(cerveauRefuse.context),
+    'LE POINT : la consigne qui va avec est explicite, pas laissee a deduire');
+
+  // LA PLACE COMPTE : apres le jour (tout s y accroche), avant les faits du
+  // centre (ils se lisent avec ce refus en tete).
+  const posJour = cerveauRefuse.context.indexOf('--- LE JOUR ---');
+  const posRefus = cerveauRefuse.context.indexOf('--- CE CENTRE NE PREND PAS DE RESERVATION EN LIGNE ---');
+  const posFaits = cerveauRefuse.context.indexOf('--- FAITS DU CENTRE ---');
+  ok(posJour === 0 && posRefus > posJour && posRefus < posFaits,
+    'LE POINT : le refus se lit apres le jour et AVANT les faits du centre',
+    `jour ${posJour}, refus ${posRefus}, faits ${posFaits}`);
+
+  ok(!cerveauActif.context.includes('NE PREND PAS DE RESERVATION EN LIGNE'),
+    'CONTRE-PREUVE : un centre actif ne porte aucun bloc de refus');
+
+  // LA REPONSE DETERMINISTE : c est elle qui promettait, c est elle qui doit
+  // guerir. Le mode sans cle est celui qui tourne aujourd hui en production.
+  // LE REFUS PARLE LUI AUSSI DE RESERVATION EN LIGNE : le chercher betement
+  // dans le texte rendrait le gate vert ou rouge pour le mauvais paragraphe.
+  // Ce qu on cherche est une INVITATION, donc un paragraphe qui en parle et
+  // qui n est pas le refus.
+  const inviteEncore = (corps, refus) => String(corps)
+    .split(/\r?\n\s*\r?\n/)
+    .filter((p) => p.trim() !== String(refus || '').trim())
+    .some((p) => /en ligne|page de r[eé]servation/i.test(p));
+  const promet = (faq, refus) => Object.entries(faq)
+    .filter(([, entree]) => inviteEncore(entree.body, refus))
+    .map(([intent]) => intent);
+  ok(promet(cerveauRefuse.faq, refusCiney).length === 0,
+    'LE POINT : plus AUCUNE reponse de reference n invite a reserver en ligne',
+    promet(cerveauRefuse.faq, refusCiney).join(', '));
+  ok(promet(cerveauActif.faq, '').length > 0,
+    'CONTRE-PREUVE : le centre actif, lui, invite toujours a reserver en ligne',
+    promet(cerveauActif.faq, '').join(', '));
+
+  // QUAND LE MOTEUR ACCEPTE, LE FILTRE EST L IDENTITE. « Il invite toujours »
+  // ne suffit pas : un filtre qui remplacerait le paragraphe par un autre texte
+  // parlant lui aussi de reservation en ligne resterait vert. Ce qui se prouve,
+  // c est que le texte est celui du fichier, octet pour octet.
+  const referenceLibramont = getEmailBrainDefaults('libramont').faq;
+  const abimes = Object.keys(referenceLibramont)
+    .filter((intent) => cerveauActif.faq[intent].body !== referenceLibramont[intent].body);
+  ok(abimes.length === 0,
+    'CONTRE-PREUVE : moteur ouvert, le filtre ne touche a RIEN, octet pour octet',
+    abimes.join(', '));
+  const referenceCiney = getEmailBrainDefaults('ciney').faq;
+  const changes = Object.keys(referenceCiney)
+    .filter((intent) => cerveauRefuse.faq[intent].body !== referenceCiney[intent].body);
+  ok(changes.length > 0,
+    'MONTAGE : moteur ferme, plusieurs reponses de reference ont bien change',
+    changes.join(', '));
+
+  // DEUX INVITATIONS DANS LE MEME TEXTE : le gerant ecrit ce qu il veut dans
+  // ses reponses, et rien ne l empeche de renvoyer deux fois vers le tunnel.
+  // Retirer la premiere et laisser la seconde serait pire que ne rien faire.
+  const cerveauDeuxFois = await buildEmailBrain('ciney', makeDeps({
+    settings: {
+      email_brain: {
+        faq: {
+          autre: {
+            subject: 'Bien recu',
+            body: 'Bonjour,\r\n\r\nReservez en ligne quand vous voulez.\r\n\r\nOn reste dispo par mail.\r\n\r\nEt sinon, tout se fait depuis notre page de reservation.\r\n\r\nA bientot,',
+          },
+        },
+      },
+    },
+  }));
+  const corpsDeuxFois = String(cerveauDeuxFois.faq.autre.body);
+  ok(!inviteEncore(corpsDeuxFois, refusCiney)
+    && corpsDeuxFois.includes('On reste dispo par mail.')
+    && (corpsDeuxFois.match(new RegExp(refusCiney.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length === 1,
+    'LE POINT : DEUX invitations dans le meme texte partent toutes les deux, et le refus n est ecrit qu une fois',
+    corpsDeuxFois.replace(/\s+/g, ' ').slice(0, 120));
+
+  // LE REFUS PREND LA PLACE DU PARAGRAPHE RETIRE, pas la fin du texte : mis
+  // apres, il se lirait comme une precision apportee a une invitation.
+  const corpsResa = String(cerveauRefuse.faq.reservation.body);
+  const paragraphesResa = corpsResa.split(/\r?\n\s*\r?\n/);
+  ok(paragraphesResa.length >= 3 && /^Bonjour/.test(paragraphesResa[0])
+    && paragraphesResa[1] === refusCiney,
+    'LE POINT : le refus occupe la place exacte du paragraphe retire',
+    paragraphesResa.map((p) => p.slice(0, 28)).join(' | '));
+
+  // CE QUI NE PROMETTAIT RIEN N EST PAS TOUCHE : une reclamation n a pas
+  // besoin qu on lui parle du tunnel.
+  ok(cerveauRefuse.faq.reclamation.body === cerveauActif.faq.reclamation.body.replace(/Libramont/g, 'Ciney'),
+    'CONTRE-PREUVE : une reponse qui ne promettait rien en ligne est intacte',
+    cerveauRefuse.faq.reclamation.body.slice(0, 60));
+
+  // LE SCENARIO DE MOVSAR : « si demain je mets centre ferme, il doit savoir ».
+  // Le statut se pose EN BASE, comme setCenterStatus l ecrit : la colonne et
+  // settings.config.status. Rien n est redeploye entre les deux mesures.
+  const depsAvecStatut = (statut) => {
+    const socle = makeDeps({});
+    return {
+      ...socle,
+      query: async (texte, params) => {
+        if (String(texte).includes('from centers')) {
+          return {
+            rows: [{ id: 'libramont', name: 'Fun Galaxy Libramont', status: statut, timezone: 'Europe/Brussels', settings: { config: { status: statut } } }],
+          };
+        }
+        return socle.query(texte, params);
+      },
+    };
+  };
+  const avantFermeture = await analyzeEmail({ from: 'x@test.be', subject: 'Reserver', body: 'Je voudrais reserver une piste samedi.', centerId: 'libramont', deps: depsAvecStatut('active') });
+  const apresFermeture = await analyzeEmail({ from: 'x@test.be', subject: 'Reserver', body: 'Je voudrais reserver une piste samedi.', centerId: 'libramont', deps: depsAvecStatut('closed') });
+  ok(/en ligne/i.test(avantFermeture.reply.body),
+    'MONTAGE : centre actif en base, la reponse invite bien a reserver en ligne',
+    avantFermeture.reply.body.replace(/\s+/g, ' ').slice(0, 70));
+  const refusApresFermeture = refusDuMoteur('libramont');
+  ok(Boolean(refusApresFermeture)
+    && apresFermeture.reply.body.includes(refusApresFermeture)
+    && !inviteEncore(apresFermeture.reply.body, refusApresFermeture),
+    'LE POINT : centre passe a `closed` EN BASE, la reponse change dans la meme requete',
+    apresFermeture.reply.body.replace(/\s+/g, ' ').slice(0, 90));
+  const rouvert = await analyzeEmail({ from: 'x@test.be', subject: 'Reserver', body: 'Je voudrais reserver une piste samedi.', centerId: 'libramont', deps: depsAvecStatut('active') });
+  ok(rouvert.reply.body === avantFermeture.reply.body,
+    'CONTRE-PREUVE : rendu actif, le texte redevient EXACTEMENT celui du depart');
+
+  // ── LES PERIODES SPECIALES ARRIVENT AU MODELE ─────────────────────────
+  console.log('\n[PERIODES] le texte des conditions dit vacances, le moteur dit autre chose');
+  const cerveauPeriodes = await buildEmailBrain('libramont', makeDeps({}));
+
+  // MONTAGE : sans cette phrase dans les conditions, il n y aurait aucune
+  // contradiction a lever, et le bloc ne servirait a rien.
+  ok(/vacances scolaires/i.test(cerveauPeriodes.context),
+    'MONTAGE : le texte des conditions parle bien de vacances scolaires',
+    (cerveauPeriodes.context.split('\n').find((l) => /vacances scolaires/i.test(l)) || '').slice(0, 80));
+
+  const posTarifs = cerveauPeriodes.context.indexOf('--- TARIFS DE CE CENTRE');
+  const posPeriodes = cerveauPeriodes.context.indexOf('--- PERIODES SPECIALES DE L ANNEE QUI VIENT');
+  ok(posTarifs !== -1 && posPeriodes > posTarifs,
+    'LE POINT : le bloc des periodes se lit APRES les tarifs qu il qualifie',
+    `tarifs ${posTarifs}, periodes ${posPeriodes}`);
+  ok(/PRIME sur le texte des conditions/.test(cerveauPeriodes.context),
+    'LE POINT : le bloc annonce qu il PRIME sur le texte des conditions');
+  ok(/REFUSEES par le moteur sur ces periodes, et sur elles seules/.test(cerveauPeriodes.context),
+    'LE POINT : le bloc dit que la liste est EXHAUSTIVE, pas indicative');
+  ok(/ET DISPONIBLES sur ces periodes-la, malgre le mot/.test(cerveauPeriodes.context),
+    'LE POINT : les periodes qui ne bloquent PAS sont annoncees comme telles');
+  ok(/le calendrier scolaire n est pas connu/.test(cerveauPeriodes.context),
+    'LE POINT : la limite de ce que l agent sait est dite au modele');
+
+  // LES DATES DU BLOC SONT CELLES DU MOTEUR, pas une reecriture. On reprend
+  // une periode calculee et on verifie que son quantieme est bien dans le texte.
+  const { periodesSpeciales: periodesDuGate, MOIS_FR: moisDuGate, jourDuCentre: jourDuGate } = require('../lib/center-facts');
+  const { getCenter: centreDuGate } = require('../lib/ops-knowledge');
+  const attenduPeriodes = periodesDuGate(centreDuGate('libramont'), jourDuGate().date);
+  const premiere = (attenduPeriodes && attenduPeriodes.periodes[0]) || null;
+  // LA FIN D UNE PERIODE S ECRIT TOUJOURS EN ENTIER (« 31 octobre 2026 »),
+  // quelle que soit sa forme : c est le point de comparaison qui tient pour
+  // une periode d un jour comme pour une periode a cheval sur deux mois.
+  const finDite = premiere
+    ? `${Number(premiere.fin.slice(8, 10))} ${moisDuGate[Number(premiere.fin.slice(5, 7))]} ${premiere.fin.slice(0, 4)}`
+    : '';
+  ok(Boolean(premiere)
+    && cerveauPeriodes.context.includes(premiere.libelle)
+    && cerveauPeriodes.context.includes(finDite),
+    'LE POINT : les dates du bloc sont celles que le moteur calcule',
+    `${JSON.stringify(premiere)} -> « ${finDite} »`);
+
+  // UN CENTRE SANS FORMULE NE RECOIT PAS LE BLOC : lui dire « les formules
+  // marquees non valable vacances » lui inventerait des formules.
+  const cerveauSansFormule = await buildEmailBrain('gembloux', makeDeps({}));
+  ok(!cerveauSansFormule.context.includes('--- TARIFS DE CE CENTRE')
+    && !cerveauSansFormule.context.includes('PERIODES SPECIALES'),
+    'CONTRE-PREUVE : un centre sans formule ne recoit aucun bloc de periodes');
+
+  // ── UN MESSAGE QUI NE VIENT PAS D UN CLIENT ───────────────────────────
+  console.log('\n[HORS SUJET] un CV recevait une invitation a reserver une piste');
+
+  // LES QUATRE FAMILLES QUI ARRIVENT DANS TOUTE BOITE D ENTREPRISE.
+  const messagesHorsSujet = [
+    ['candidature', 'Candidature spontanee', 'Bonjour, je vous envoie mon CV pour un poste de serveur. Je suis disponible immediatement.'],
+    ['fournisseur', 'Facture 2026-0912', 'Bonjour, veuillez trouver ci-joint notre facture pour la livraison de boissons.'],
+    ['demarchage', 'Referencement', 'Bonjour, notre agence peut placer votre site en premiere position. Referencement naturel garanti.'],
+    ['hameconnage', 'URGENT', 'Votre compte sera suspendu. Cliquez ici pour confirmer vos coordonnees bancaires.'],
+  ];
+
+  // ET QUATRE VRAIS CLIENTS QUI EMPLOIENT DES MOTS VOISINS. Sans eux, une
+  // detection qui range TOUT en hors sujet serait verte.
+  const messagesDeClients = [
+    ['facture demandee', 'Facture', 'Bonjour, pouvez-vous m envoyer une facture pour notre soiree d entreprise de vendredi ?'],
+    ['disponibilite', 'Disponibilite', 'Bonjour, avez-vous encore de la place samedi soir ? On serait 8.'],
+    ['anniversaire', 'Anniversaire', 'Bonjour, c est pour l anniversaire de ma fille, elle est disponible le mercredi.'],
+    ['horaires', 'Emploi du temps', 'Bonjour, quels sont vos horaires le dimanche ?'],
+  ];
+
+  const analyses = {};
+  for (const [nom, sujet, corps] of messagesHorsSujet) {
+    analyses[nom] = await analyzeEmail({ from: 'x@ailleurs.be', subject: sujet, body: corps, centerId: 'libramont', deps: makeDeps({}) });
+    ok(analyses[nom].intent === 'hors_sujet',
+      `LE POINT : ${nom} est reconnu comme « pas une demande client »`,
+      analyses[nom].intent);
+  }
+  for (const [nom, sujet, corps] of messagesDeClients) {
+    const vu = await analyzeEmail({ from: 'x@test.be', subject: sujet, body: corps, centerId: 'libramont', deps: makeDeps({}) });
+    ok(vu.intent !== 'hors_sujet',
+      `CONTRE-PREUVE : un vrai client qui dit « ${nom} » reste un client`,
+      vu.intent);
+  }
+
+  // LE DEFAUT EXACT D AVANT : « disponible immediatement » d un CV tombait
+  // dans « reservation », donc dans un argumentaire de reservation.
+  ok(!/en ligne|r[eé]server|cr[eé]neau|tarif/i.test(analyses.candidature.reply.body),
+    'LE POINT : un CV ne recoit plus d argumentaire de reservation',
+    analyses.candidature.reply.body.replace(/\s+/g, ' ').slice(0, 90));
+  ok(!/\d/.test(analyses.candidature.reply.body),
+    'LE POINT : la reponse proposee ne porte aucun chiffre a promettre');
+
+  // ET AUCUNE QUESTION AU STAFF : « autre » demande au staff ce qu il aurait
+  // fallu repondre, et cette reponse devient un fait appris de l agent. Un mail
+  // de hameconnage n a rien a apprendre a personne.
+  for (const [nom] of messagesHorsSujet) {
+    ok(!analyses[nom].question,
+      `LE POINT : ${nom} ne pose aucune question au staff`,
+      analyses[nom].question);
+  }
+  const messageAutre = await analyzeEmail({
+    from: 'x@test.be', subject: 'Une idee', body: 'Est-ce qu on peut amener notre propre gateau ?',
+    deps: makeDeps({}),
+  });
+  ok(messageAutre.intent === 'autre' && Boolean(messageAutre.question),
+    'CONTRE-PREUVE : un vrai « autre » pose bien sa question au staff',
+    `${messageAutre.intent} / ${messageAutre.question}`);
+
+  // LE MODELE N EST MEME PAS APPELE quand la liste de mots a deja tranche :
+  // aucun jeton depense, et RIEN du cerveau du centre ne part dans un prompt
+  // construit autour d un mail de hameconnage.
+  process.env.ANTHROPIC_API_KEY = 'test-key-hors-sujet';
+  let appelsPourHorsSujet = 0;
+  const compteur = async () => {
+    appelsPourHorsSujet += 1;
+    return anthropicOk({ intent: 'reservation', summary: 'x', urgency: 'normale', reply: { subject: 'a', body: 'b' } });
+  };
+  const dejaTranche = await analyzeEmail({
+    from: 'x@ailleurs.be', subject: 'URGENT', body: 'Votre compte sera suspendu. Cliquez ici pour confirmer vos coordonnees bancaires.',
+    deps: makeDeps({}), fetchImpl: compteur,
+  });
+  ok(appelsPourHorsSujet === 0 && dejaTranche.intent === 'hors_sujet' && dejaTranche.provider === 'rules',
+    'LE POINT : un message deja reconnu hors sujet ne part PAS vers le modele',
+    `${appelsPourHorsSujet} appel(s), ${dejaTranche.intent}, ${dejaTranche.provider}`);
+  const vraiClient = await analyzeEmail({
+    from: 'x@test.be', subject: 'Prix', body: 'Combien pour 8 personnes ?',
+    deps: makeDeps({}), fetchImpl: compteur,
+  });
+  ok(appelsPourHorsSujet === 1,
+    'CONTRE-PREUVE : un vrai message de client, lui, part bien vers le modele',
+    `${appelsPourHorsSujet} appel(s), ${vraiClient.provider}`);
+
+  // ET LE MODELE PEUT AJOUTER CE SUJET sur ce que la liste de mots rate : le
+  // sens qui coute peu et rapporte reste ouvert, seul le sens inverse est ferme.
+  const rendu = await analyzeEmail({
+    from: 'x@ailleurs.be', subject: 'Partenariat', body: 'Bonjour, une proposition commerciale.',
+    deps: makeDeps({}),
+    fetchImpl: async () => anthropicOk({ intent: 'hors_sujet', summary: 'Demarchage', urgency: 'normale', reply: { subject: 'Bien recu', body: 'Bonjour, message transmis a la personne concernee.' } }),
+  });
+  ok(rendu.provider === 'anthropic' && rendu.intent === 'hors_sujet',
+    'LE POINT : le modele peut rendre ce sujet, il est dans la liste fermee',
+    `${rendu.provider} / ${rendu.intent}`);
+  delete process.env.ANTHROPIC_API_KEY;
+
+  // LA CONSOLE A SA PROPRE LISTE DE SECOURS : si elle reste en arriere, le
+  // huitieme sujet disparait de l ecran le jour ou le serveur ne repond pas.
+  const ecran = require('fs').readFileSync(path.join(__dirname, '..', 'assets', 'staff-pages-v2.js'), 'utf8');
+  const listeDeSecours = (ecran.match(/const PV2_INTENT_LABELS = \{[\s\S]*?\};/) || [''])[0];
+  const manquants = Object.keys(require('../lib/email-agent').INTENT_LABELS)
+    .filter((intent) => !new RegExp(`\\b${intent}\\s*:`).test(listeDeSecours));
+  ok(manquants.length === 0,
+    'LE POINT : la liste de secours de la console connait tous les sujets declares',
+    manquants.join(', '));
+
+  // ── « CONFIRME TOUT DE SUITE », SAUF POUR TROIS FORMULES ──────────────
+  console.log('\n[CONFIRMATION] ce que le client recoit apres avoir reserve');
+  const { planningDecisionFor: decideDuGate } = require('../lib/validation-policy');
+  const { getFormula: formuleDuGate } = require('../lib/ops-knowledge');
+  const { getEffectiveFormules: catalogueDuGate } = require('../lib/booking-config');
+
+  // CE QUE LE PRODUIT DECIDE, demande a la fonction que le tunnel utilise.
+  const areneLibre = { conflicts: [], laserSharing: null, resourceBlocks: [] };
+  const arenePrise = { conflicts: [], laserSharing: { sharedNow: true }, resourceBlocks: [] };
+  const catalogueLibramont = catalogueDuGate('libramont');
+  const aValider = catalogueLibramont.filter((formule) => {
+    let document = null;
+    try { document = formuleDuGate(formule.id); } catch (error) { return false; }
+    const mode = String((document && document.humanValidation) || '').trim();
+    if (!mode) return false;
+    return Boolean(decideDuGate({ ok: true, validationMode: mode, recommended: arenePrise }).requiresHumanReview);
+  });
+  const toujoursAValider = aValider.filter((formule) => {
+    const mode = String(formuleDuGate(formule.id).humanValidation || '').trim();
+    return Boolean(decideDuGate({ ok: true, validationMode: mode, recommended: areneLibre }).requiresHumanReview);
+  });
+  ok(aValider.length > 0 && toujoursAValider.length > 0 && aValider.length < catalogueLibramont.length,
+    'MONTAGE : ce centre a bien des formules a valider, dont une TOUJOURS, et d autres non',
+    `${toujoursAValider.length} toujours et ${aValider.length - toujoursAValider.length} selon le laser, sur ${catalogueLibramont.length}`);
+
+  const cerveauConfirmation = await buildEmailBrain('libramont', makeDeps({}));
+  const lignesDeTarifDuGate = cerveauConfirmation.context.split('\n')
+    .filter((ligne) => / EUR (par personne|par piste)/.test(ligne));
+  ok(lignesDeTarifDuGate.length >= catalogueLibramont.length,
+    'MONTAGE : les lignes de tarif du cerveau ont bien ete trouvees',
+    String(lignesDeTarifDuGate.length));
+
+  // LA CORRESPONDANCE, DANS LES DEUX SENS. Ni une formule oubliee, ni une
+  // formule marquee pour rien.
+  const nomsAvecMention = lignesDeTarifDuGate.filter((ligne) => / \| confirmation : /.test(ligne))
+    .map((ligne) => ligne.split(' : ')[0].trim());
+  const nomsAttendus = aValider.map((formule) => String(formule.name || formule.id).trim());
+  ok(nomsAvecMention.slice().sort().join('|') === nomsAttendus.slice().sort().join('|'),
+    'LE POINT : les formules marquees sont EXACTEMENT celles que le produit envoie en validation',
+    `marquees ${nomsAvecMention.join(', ')} / attendues ${nomsAttendus.join(', ')}`);
+
+  // ET LES DEUX CAS SE DISENT DIFFEREMMENT : « jamais immediate » n est pas
+  // « immediate sauf si le laser est pris ».
+  const ligneDuTarif = (nom) => lignesDeTarifDuGate.find((ligne) => ligne.startsWith(`${nom} :`)) || '';
+  const nomToujours = String(toujoursAValider[0].name || toujoursAValider[0].id).trim();
+  ok(/JAMAIS confirmee immediatement/.test(ligneDuTarif(nomToujours)),
+    'LE POINT : une formule qui passe TOUJOURS par l equipe le dit sans condition',
+    ligneDuTarif(nomToujours).slice(ligneDuTarif(nomToujours).indexOf('| confirmation')));
+  const selonLeLaser = aValider.filter((formule) => !toujoursAValider.includes(formule));
+  if (selonLeLaser.length) {
+    const nomSelon = String(selonLeLaser[0].name || selonLeLaser[0].id).trim();
+    ok(/SAUF si l arene laser est deja prise/.test(ligneDuTarif(nomSelon)),
+      'LE POINT : une formule qui ne passe par l equipe QUE si le laser est pris le dit ainsi',
+      ligneDuTarif(nomSelon).slice(ligneDuTarif(nomSelon).indexOf('| confirmation')));
+  }
+
+  // CONTRE-PREUVE : une formule que le produit confirme tout de suite ne porte
+  // AUCUNE mention. Sinon la mention serait du bruit sur quatorze lignes.
+  const sansValidation = catalogueLibramont.filter((formule) => !aValider.includes(formule));
+  ok(sansValidation.length > 0
+    && sansValidation.every((formule) => !/ \| confirmation : /.test(ligneDuTarif(String(formule.name || formule.id).trim()))),
+    'CONTRE-PREUVE : une formule confirmee tout de suite ne porte aucune mention',
+    String(sansValidation.length));
+
+  // LA REPONSE DE REFERENCE, celle qui part en mode sans cle, cesse
+  // d affirmer ce qui n est vrai que la plupart du temps.
+  const corpsReservation = String(cerveauConfirmation.faq.reservation.body);
+  ok(!/c'est confirmé tout de suite/i.test(corpsReservation),
+    'LE POINT : la reponse de reference ne promet plus une confirmation immediate pour tout',
+    corpsReservation.replace(/\s+/g, ' ').slice(0, 120));
+  ok(/l'équipe valide d'abord/i.test(corpsReservation) && /confirmées immédiatement/i.test(corpsReservation),
+    'LE POINT : elle dit les DEUX branches, celle qui confirme et celle qui valide');
+
+  // ET LES DEUX MAILS QUE LE CLIENT RECOIT SONT BIEN DIFFERENTS : sans cet
+  // ecart, la promesse « confirme tout de suite » ne couterait rien.
+  const { buildMessage: messageDuGate } = require('../lib/ops-communications');
+  const resaTemoin = {
+    id: 1, centerId: 'libramont', clientName: 'Marie Dupont', name: 'Marie Dupont',
+    date: '2026-09-20', startTime: '18:00', pax: 8, label: nomToujours, type: 'formule',
+    formuleId: toujoursAValider[0].id, email: 'm@test.be',
+  };
+  const mailDemande = messageDuGate({ reservation: resaTemoin, templateId: 'request_received', channel: 'email' });
+  const mailConfirme = messageDuGate({ reservation: resaTemoin, templateId: 'confirmation', channel: 'email' });
+  ok(mailDemande.subject !== mailConfirme.subject
+    && /demande/i.test(mailDemande.subject)
+    && /confirm/i.test(mailConfirme.subject),
+    'MONTAGE : le client ne recoit PAS le meme mail dans les deux cas',
+    `« ${mailDemande.subject} » contre « ${mailConfirme.subject} »`);
+
+  // ── LES PERIODES DISENT AUSSI QUEL HORAIRE S APPLIQUE ─────────────────
+  console.log('\n[HORAIRES] « vous ouvrez a quelle heure le 27 octobre ? »');
+  const { periodesDuCentre: composerLesPeriodes } = require('../lib/email-agent');
+  const { jourDuCentre: jourPourHoraires } = require('../lib/center-facts');
+
+  // MONTAGE : le cerveau porte bien les deux horaires, sinon la phrase qui les
+  // departage ne departagerait rien.
+  ok(/Horaires habituels/.test(cerveauPeriodes.context)
+    && /Cong[ée]s scolaires/.test(cerveauPeriodes.context),
+    'MONTAGE : le cerveau porte bien DEUX horaires, l habituel et celui des vacances');
+
+  ok(/Ces memes periodes sont celles ou l horaire « Conges scolaires » s applique/.test(cerveauPeriodes.context),
+    'LE POINT : le cerveau dit quels jours portent l horaire de vacances',
+    (cerveauPeriodes.context.split('\n').find((l) => /Ces memes periodes/.test(l)) || '').slice(0, 90));
+
+  // ELLE SE LIT AVEC LA LISTE QU ELLE QUALIFIE, pas a la fin du bloc.
+  const lignesDesPeriodes = cerveauPeriodes.context.slice(posPeriodes).split('\n');
+  const rangHoraire = lignesDesPeriodes.findIndex((l) => /Ces memes periodes/.test(l));
+  const rangDisponibles = lignesDesPeriodes.findIndex((l) => /ET DISPONIBLES sur ces periodes-la/.test(l));
+  ok(rangHoraire > 0 && rangDisponibles > rangHoraire,
+    'LE POINT : la phrase suit la liste des periodes bloquantes, avant le reste du bloc',
+    `horaire ${rangHoraire}, disponibles ${rangDisponibles}`);
+
+  // CONTRE-PREUVE : un centre qui ne declare AUCUN horaire de vacances ne
+  // recoit pas la phrase, qui pointerait alors vers une ligne inexistante.
+  const jourPourLaPreuve = jourPourHoraires().date;
+  const avecHoraire = composerLesPeriodes('libramont', jourPourLaPreuve, true);
+  const sansHoraire = composerLesPeriodes('libramont', jourPourLaPreuve, false);
+  ok(/Ces memes periodes/.test(avecHoraire) && !/Ces memes periodes/.test(sansHoraire),
+    'CONTRE-PREUVE : sans horaire de vacances declare, la phrase ne s ecrit pas',
+    `${avecHoraire.length} car. avec, ${sansHoraire.length} car. sans`);
+  ok(sansHoraire.length > 200 && avecHoraire.replace(/^.*Ces memes periodes.*$/m, '').replace(/\n\n/g, '\n').trim() === sansHoraire.trim(),
+    'CONTRE-PREUVE : et le reste du bloc est identique au caractere pres',
+    String(avecHoraire.length - sansHoraire.length));
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

@@ -796,6 +796,199 @@ const anthropicOk = (object) => ({
   const tarifsApresRestauration = await prixDuCentre('libramont', depsAvec([]), JOUR);
   ok(tarifsApresRestauration === tarifsLibramont,
     'CONTRE-PREUVE : apres restauration, Libramont retrouve exactement ses tarifs');
+
+  // ── CE QUE LE LIEU PEUT ACCUEILLIR ─────────────────────────────────────
+  console.log('\n[CAPACITE] chaque centre annonce SES chiffres, et un centre sans rien n annonce rien');
+  const { getCenter: centreDeclare } = require('../lib/ops-knowledge');
+  const { buildCenterFacts: faitsDeLaPorteMail } = require('../lib/email-agent');
+  applyCenterOverrides(new Map());
+
+  // MONTAGE : les trois centres declarent des choses DIFFERENTES. Sans cette
+  // assertion, les suivantes pourraient toutes passer sur trois centres
+  // identiques, et ne rien prouver du cloisonnement.
+  const laserDe = (id) => ((centreDeclare(id).resources || {}).laser || {});
+  ok(laserDe('libramont').maxPlayers !== laserDe('gembloux').maxPlayers
+    && laserDe('libramont').parallelLaunches !== laserDe('gembloux').parallelLaunches,
+    'MONTAGE : Libramont et Gembloux declarent des lasers differents',
+    JSON.stringify({ libramont: laserDe('libramont'), gembloux: laserDe('gembloux') }));
+  ok(!laserDe('ciney').maxPlayers && !((centreDeclare('ciney').resources || {}).bowling || {}).laneCount,
+    'MONTAGE : Ciney ne declare aucune ressource',
+    JSON.stringify(centreDeclare('ciney').resources));
+
+  const ligneCapacite = (id) => (faitsDeLaPorteMail(id).split('\n').find((l) => l.startsWith('Capacité')) || '');
+
+  ok(ligneCapacite('libramont').includes(String(laserDe('libramont').maxPlayers)),
+    'LE POINT : Libramont annonce SON nombre de joueurs laser', ligneCapacite('libramont'));
+  ok(ligneCapacite('gembloux').includes(String(laserDe('gembloux').maxPlayers)),
+    'LE POINT : Gembloux annonce le SIEN', ligneCapacite('gembloux'));
+  ok(!ligneCapacite('gembloux').includes(String(laserDe('libramont').maxPlayers)),
+    'ISOLATION : et jamais celui de son voisin', ligneCapacite('gembloux'));
+
+  // LE POINT QUI COMPTE : aucun repli. Le moteur retombe sur les valeurs de
+  // Libramont quand rien n est declare ; la porte email, elle, se tait.
+  ok(ligneCapacite('ciney') === '',
+    'LE POINT : un centre sans ressource declaree n annonce AUCUNE capacite',
+    ligneCapacite('ciney'));
+  // On cherche une LIGNE DE CAPACITE, pas un chiffre : « 30 » se retrouve
+  // dans un numero de telephone, et ce gate rougirait le jour ou le staff
+  // pose enfin un numero pour Ciney. Plus strict, pas moins.
+  ok(!faitsDeLaPorteMail('ciney').split('\n').some((l) => /piste|joueur|session/i.test(l)),
+    'ISOLATION : et surtout aucune ligne de capacite, meme deguisee, ni le repli du moteur',
+    faitsDeLaPorteMail('ciney'));
+
+  // CAPACITE N EST PAS DISPONIBILITE, et la ligne le dit.
+  ok(/PAS une disponibilit/.test(ligneCapacite('libramont')),
+    'la ligne rappelle qu une capacite n est pas une disponibilite');
+
+  // LA REGLE DU GROUPE COMPLET N EST DITE QUE LA OU ELLE EST DECLAREE.
+  ok(laserDe('libramont').requiresCompleteGroupBeforeLaunch === true
+    && /groupe complet/.test(ligneCapacite('libramont')),
+    'LE POINT : la regle du groupe complet est dite ou elle est declaree');
+  ok(laserDe('gembloux').requiresCompleteGroupBeforeLaunch !== true
+    && !/groupe complet/.test(ligneCapacite('gembloux')),
+    'CONTRE-PREUVE : et tue la ou elle ne l est pas', ligneCapacite('gembloux'));
+
+  // ── OU EST LE CENTRE, ET COMMENT ON LE JOINT ──────────────────────────
+  console.log('\n[COORDONNEES] chaque centre dit ou il est, ou dit qu il n en sait rien');
+  const { buildCenterFacts: faitsDuLieu } = require('../lib/email-agent');
+  const { getCenter: lieuDeclare } = require('../lib/ops-knowledge');
+  applyCenterOverrides(new Map());
+
+  const infoDe = (id) => {
+    try { return lieuDeclare(id).publicInfo || {}; } catch (error) { return {}; }
+  };
+
+  // MONTAGE : sans deux adresses DIFFERENTES et un centre qui n en a AUCUNE,
+  // les assertions suivantes passeraient sur trois centres identiques et ne
+  // prouveraient rien.
+  ok(Boolean(infoDe('libramont').address) && Boolean(infoDe('gembloux').address)
+    && infoDe('libramont').address !== infoDe('gembloux').address,
+    'MONTAGE : Libramont et Gembloux declarent des adresses differentes',
+    JSON.stringify([infoDe('libramont').address, infoDe('gembloux').address]));
+  ok(Object.keys(infoDe('ciney')).length === 0,
+    'MONTAGE : Ciney ne declare aucune coordonnee', JSON.stringify(infoDe('ciney')));
+
+  ['libramont', 'gembloux'].forEach((id) => {
+    const info = infoDe(id);
+    const fiche = faitsDuLieu(id);
+    ['address', 'phone', 'email', 'parking'].forEach((cle) => {
+      ok(fiche.includes(String(info[cle])),
+        `LE POINT : ${id} annonce SON ${cle}`, String(info[cle]));
+    });
+  });
+
+  // ISOLATION : une adresse empruntee envoie un client a cent trente
+  // kilometres. Les deux sens sont verifies : une garde posee sur une seule
+  // porte ne dit rien de sa voisine.
+  ok(!faitsDuLieu('gembloux').includes(infoDe('libramont').address)
+    && !faitsDuLieu('gembloux').includes(infoDe('libramont').phone),
+    'ISOLATION : Gembloux ne porte ni l adresse ni le telephone de Libramont');
+  ok(!faitsDuLieu('libramont').includes(infoDe('gembloux').address)
+    && !faitsDuLieu('libramont').includes(infoDe('gembloux').phone),
+    'ISOLATION : et reciproquement');
+
+  // LE CENTRE QUI N A RIEN : il n emprunte a personne, ET il le dit.
+  const ficheCiney = faitsDuLieu('ciney');
+  ok(!ficheCiney.includes(infoDe('libramont').address)
+    && !ficheCiney.includes(infoDe('gembloux').address)
+    && !ficheCiney.includes(infoDe('libramont').phone)
+    && !ficheCiney.includes(infoDe('gembloux').phone),
+    'LE POINT : un centre sans coordonnees n emprunte celles de personne');
+  ok(/Coordonnées : NON RENSEIGNÉES pour ce centre/.test(ficheCiney)
+    && /N invente ni adresse/.test(ficheCiney),
+    'LE POINT : et il porte le refus explicite, parce qu une adresse s invente',
+    ficheCiney.split('\n').find((l) => l.startsWith('Coordonnées')) || '(aucune ligne)');
+
+  // CONTRE-PREUVE : le refus et les coordonnees ne coexistent jamais. Un
+  // modele qui lit une adresse et « n invente pas d adresse » tranche au
+  // hasard, comme il le faisait pour les prix avant le patch 50.
+  ok(!/NON RENSEIGNÉES pour ce centre\. N invente ni adresse/.test(faitsDuLieu('libramont')),
+    'CONTRE-PREUVE : un centre qui a ses coordonnees ne porte pas le refus');
+
+  // ── QUI PEUT ENTRER, ET POUR COMBIEN DE TEMPS ─────────────────────────
+  console.log('\n[ACCES] chaque centre dit SES conditions, et seulement pour ce qu il propose');
+  const { buildCenterFacts: faitsDAcces } = require('../lib/email-agent');
+  const { getCenter: centreThematique, applyCenterOverrides: rendreLaConfig,
+    refreshCenterOverrides: poserLaConfig } = require('../lib/ops-knowledge');
+  rendreLaConfig(new Map());
+
+  const themeDe = (id, activite) => {
+    try { return (centreThematique(id).activityThemes || {})[activite] || {}; }
+    catch (error) { return {}; }
+  };
+
+  // MONTAGE : les deux centres partagent l age ET la taille. Sans univers
+  // distincts, une lecture croisee ne ferait rougir personne.
+  ok(themeDe('libramont', 'laser_game').minAge === themeDe('gembloux', 'laser_game').minAge
+    && themeDe('libramont', 'laser_game').minHeightCm === themeDe('gembloux', 'laser_game').minHeightCm,
+    'MONTAGE : les deux centres ont le MEME age et la MEME taille minimum',
+    JSON.stringify([themeDe('libramont', 'laser_game').minAge, themeDe('libramont', 'laser_game').minHeightCm]));
+  ok(Boolean(themeDe('libramont', 'laser_game').theme) && Boolean(themeDe('gembloux', 'laser_game').theme)
+    && themeDe('libramont', 'laser_game').theme !== themeDe('gembloux', 'laser_game').theme,
+    'MONTAGE : mais des univers DIFFERENTS, et c est lui qui prouve le cloisonnement',
+    JSON.stringify([themeDe('libramont', 'laser_game').theme, themeDe('gembloux', 'laser_game').theme]));
+
+  const ligneAccesDe = (id, etiquette) => (faitsDAcces(id).split('\n')
+    .find((l) => l.trim().startsWith(`- ${etiquette} :`)) || '');
+
+  ['libramont', 'gembloux'].forEach((id) => {
+    const laser = themeDe(id, 'laser_game');
+    const ligne = ligneAccesDe(id, 'laser game');
+    ok(ligne.includes(`${laser.minAge} ans`),
+      `LE POINT : ${id} annonce l age minimum de SON laser`, ligne);
+    ok(ligne.includes(`${laser.minHeightCm} cm`),
+      `LE POINT : ${id} annonce la taille minimum`, ligne);
+    ok(ligne.includes(`${laser.gameMinutes} minutes`),
+      `LE POINT : ${id} annonce la duree d une partie`, ligne);
+    ok(ligne.includes(laser.theme),
+      `LE POINT : ${id} annonce SON univers`, ligne);
+  });
+
+  ok(!faitsDAcces('gembloux').includes(themeDe('libramont', 'laser_game').theme),
+    'ISOLATION : Gembloux ne porte jamais l univers de Libramont');
+  ok(!faitsDAcces('libramont').includes(themeDe('gembloux', 'laser_game').theme),
+    'ISOLATION : et reciproquement');
+
+  // UNE ACTIVITE THEMEE MAIS NON PROPOSEE NE SORT PAS. Le theme reste dans la
+  // config, seule la disponibilite bascule : c est la seule facon de prouver
+  // que c est bien activityAvailability qui commande, et pas la presence du
+  // theme.
+  ok(/Golf O'Clock/.test(faitsDAcces('gembloux')),
+    'MONTAGE : avant bascule, Gembloux annonce les conditions du Golf O Clock');
+  const configSansGolf = JSON.parse(JSON.stringify(centreThematique('gembloux')));
+  configSansGolf.activityAvailability = {
+    ...configSansGolf.activityAvailability, golf_oclock: false,
+  };
+  await poserLaConfig({
+    query: async (sql) => (/from centers/i.test(String(sql))
+      ? { rows: [{ id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active',
+        timezone: 'Europe/Brussels', settings: { config: configSansGolf } }] }
+      : { rows: [] }),
+  }, { force: true });
+  ok(Boolean((centreThematique('gembloux').activityThemes || {}).golf_oclock)
+    && centreThematique('gembloux').activityAvailability.golf_oclock === false,
+    'MONTAGE : le theme du Golf O Clock est toujours declare, seule sa disponibilite tombe');
+  const apresBascule = faitsDAcces('gembloux');
+  ok(!/- Golf O'Clock :/.test(apresBascule),
+    'LE POINT : une activite themee mais NON proposee ne sort pas des conditions',
+    apresBascule.split('\n').filter((l) => l.trim().startsWith('- ')).join(' | '));
+  ok(/- laser game :/.test(apresBascule),
+    'CONTRE-PREUVE : et le reste des conditions tient toujours');
+  rendreLaConfig(new Map());
+
+  // LE CENTRE QUI N A RIEN : refus explicite, et aucune condition empruntee.
+  const accesCiney = faitsDAcces('ciney');
+  ok(/Conditions d'accès : NON RENSEIGNÉES pour ce centre/.test(accesCiney)
+    && /N annonce jamais un âge minimum/.test(accesCiney),
+    'LE POINT : un centre sans condition porte le refus, parce qu un age s invente',
+    accesCiney.split('\n').find((l) => l.startsWith("Conditions d'accès")) || '(aucune ligne)');
+  ok(!accesCiney.includes(themeDe('libramont', 'laser_game').theme)
+    && !accesCiney.includes(themeDe('gembloux', 'laser_game').theme)
+    && !/ans|cm/.test(accesCiney.split('\n').filter((l) => l.trim().startsWith('- ')).join(' ')),
+    'ISOLATION : et il n emprunte aucune condition a personne');
+
+  ok(!/Conditions d'accès : NON RENSEIGNÉES/.test(faitsDAcces('libramont')),
+    'CONTRE-PREUVE : un centre qui a ses conditions ne porte pas le refus');
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

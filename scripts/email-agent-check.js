@@ -35,7 +35,12 @@ const {
 const { createHandler } = require('../api/inbound-email.js');
 
 let failures = 0;
-function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
+function ok(cond, label, detail) {
+  const vu = !cond && detail !== undefined && detail !== '' ? `  <-- ${String(detail).slice(0, 160)}` : '';
+  console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}${vu}`);
+  if (!cond) failures += 1;
+  return cond;
+}
 const iso = (offsetDays) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + offsetDays); return d.toISOString().slice(0, 10); };
 
 const ENV_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_MARKETING_MODEL', 'OPENAI_MARKETING_MODEL', 'INBOUND_EMAIL_SECRET'];
@@ -1330,6 +1335,324 @@ const anthropicOk = (object) => ({
   ok(Boolean(dateDuBlocJour) && dateDuBlocJour === dateDesTarifs,
     'LE POINT : le bloc du jour et le bloc des tarifs portent la MEME date',
     `${dateDuBlocJour} contre ${dateDesTarifs}`);
+
+  // ── LE CLIENT : CE QUI A EU LIEU, ET CE QUI EST PREVU ─────────────────
+  console.log('\n[CLIENT] une visite passee n est pas une reservation a venir');
+  const { jourDuCentre: jourPourClient } = require('../lib/center-facts');
+  const jourDeMesure = jourPourClient().date;
+  const decaleDe = (jours) => {
+    const d = new Date(`${jourDeMesure}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + jours);
+    return d.toISOString().slice(0, 10);
+  };
+  const dateVenue = decaleDe(-180);
+  const datePrevue = decaleDe(10);
+
+  // LE NOMBRE DOIT ETRE ABSENT DU CERVEAU, sinon la contre-preuve serait
+  // verte parce que le cerveau le contient, pas parce que la fiche le porte.
+  const cerveauDeMesure = await buildEmailBrain('libramont', makeDeps({}));
+  const texteDuCerveau = `${cerveauDeMesure.stable}\n${cerveauDeMesure.context}`;
+  const paxDeMesure = [23, 29, 31, 37, 41, 43, 47, 53, 59]
+    .find((n) => !texteDuCerveau.includes(String(n)));
+  ok(Boolean(paxDeMesure), 'MONTAGE : un nombre de personnes absent du cerveau a ete trouve', String(paxDeMesure));
+
+  // ORDRE DESCENDANT, comme la vraie requete : c est justement parce que la
+  // plus RECENTE arrive en tete que l ancien code servait une date a venir
+  // comme « derniere visite ». DEUX dates a venir, pour que « prochaine »
+  // veuille dire la plus PROCHE et pas la premiere venue.
+  const dateLointaine = decaleDe(45);
+  const lignesDuClient = [
+    { name: 'Marie Dupont', phone: '+32 471 55 66 77', email: 'marie.resa@test.be', date: dateLointaine, heure: '11:00', pax: 8, label: 'Bowling' },
+    { name: 'Marie Dupont', phone: '+32 471 55 66 77', email: 'marie.resa@test.be', date: datePrevue, heure: '18:00', pax: paxDeMesure, label: 'FORMULE 2' },
+    { name: 'Marie Dupont', phone: '+32 471 55 66 77', email: 'marie.resa@test.be', date: dateVenue, heure: '14:30', pax: 6, label: 'Bowling' },
+  ];
+  ok(lignesDuClient[0].date > lignesDuClient[1].date && lignesDuClient[1].date > jourDeMesure
+    && lignesDuClient[2].date < jourDeMesure,
+    'MONTAGE : DEUX reservations a venir et UNE visite passee, la plus lointaine en tete',
+    `${lignesDuClient[2].date} | ${lignesDuClient[1].date} | ${lignesDuClient[0].date}, aujourd hui ${jourDeMesure}`);
+
+  process.env.ANTHROPIC_API_KEY = 'test-key-client';
+  let corpsVersLeModele = '';
+  const analyseAvecResa = await analyzeEmail({
+    from: 'marie.resa@test.be', subject: 'Notre venue', body: 'Bonjour, tout est bon pour nous ?',
+    deps: makeDeps({ clientRows: lignesDuClient }),
+    fetchImpl: async (adresse, options) => {
+      corpsVersLeModele = String((options && options.body) || '');
+      return anthropicOk({ intent: 'reservation', summary: 'Confirmation', urgency: 'normale', reply: { subject: 'Votre venue', body: `Bonjour Marie, votre venue a ${paxDeMesure} personnes est bien notee.` } });
+    },
+  });
+  ok(corpsVersLeModele.length > 200, 'MONTAGE : le corps reellement envoye au modele a bien ete capture', String(corpsVersLeModele.length));
+  const chargeUtile = JSON.parse(JSON.parse(corpsVersLeModele).messages[0].content);
+  const ficheVue = chargeUtile.client;
+
+  // LE MENSONGE D AVANT, PRIS PAR LES DEUX BOUTS : le compte de visites et la
+  // date de la derniere sortaient de la meme confusion.
+  ok(ficheVue.visits === 1, 'LE POINT : visits ne compte que les visites DEJA EUES', JSON.stringify(ficheVue));
+  ok(ficheVue.lastVisit === dateVenue && ficheVue.lastVisit < jourDeMesure,
+    'LE POINT : lastVisit est une date PASSEE, jamais une reservation a venir', ficheVue.lastVisit);
+
+  // ET CE QUI N ARRIVAIT PAS DU TOUT. « prochaine » veut dire la plus PROCHE :
+  // la lointaine est arrivee en premier dans la liste, elle ne gagne pas.
+  ok(ficheVue.reservationsAVenir === 2 && ficheVue.prochaineReservation
+    && ficheVue.prochaineReservation.date === datePrevue
+    && ficheVue.prochaineReservation.heure === '18:00'
+    && ficheVue.prochaineReservation.personnes === paxDeMesure
+    && ficheVue.prochaineReservation.intitule === 'FORMULE 2',
+    'LE POINT : la PLUS PROCHE des reservations a venir arrive au modele, datee, heuree et chiffree',
+    JSON.stringify(ficheVue.prochaineReservation));
+  ok(chargeUtile.legendeClient
+    && /DEJA EUES/.test(chargeUtile.legendeClient.visits)
+    && /PASSEE/.test(chargeUtile.legendeClient.lastVisit)
+    && /ne la repropose pas/.test(chargeUtile.legendeClient.prochaineReservation),
+    'LE POINT : la legende dit au modele le sens exact de chaque champ',
+    JSON.stringify(chargeUtile.legendeClient));
+
+  // LA CLE CRM EST LE NUMERO DE TELEPHONE DU CLIENT : le code en a besoin, le
+  // modele non, et un numero dans un prompt est un numero recopiable.
+  ok(!Object.prototype.hasOwnProperty.call(ficheVue, 'clientKey') && !corpsVersLeModele.includes('+32471556677'),
+    'LE POINT : la cle CRM ne part pas vers le modele', Object.keys(ficheVue).join(', '));
+  ok(analyseAvecResa.clientKey === '+32471556677',
+    'CONTRE-PREUVE : le code, lui, garde la cle : c est une vue, pas une amputation', String(analyseAvecResa.clientKey));
+
+  // LA PREUVE COMPORTEMENTALE : le nombre de personnes de la reservation
+  // devient citable. Il ne l etait pas, puisqu il n arrivait pas.
+  ok(analyseAvecResa.provider === 'anthropic',
+    'LE POINT : le modele peut citer le nombre de personnes de SA reservation', analyseAvecResa.provider);
+  const analyseSansFiche = await analyzeEmail({
+    from: 'jamais-vu@test.be', subject: 'Notre venue', body: 'Bonjour, tout est bon pour nous ?',
+    deps: makeDeps({}),
+    fetchImpl: async () => anthropicOk({ intent: 'reservation', summary: 'Confirmation', urgency: 'normale', reply: { subject: 'Votre venue', body: `Bonjour, votre venue a ${paxDeMesure} personnes est bien notee.` } }),
+  });
+  ok(analyseSansFiche.provider === 'rules',
+    'CONTRE-PREUVE : le MEME nombre, sans fiche client, est rejete par le garde-fou', analyseSansFiche.provider);
+
+  // LES DEUX MOITIES SEULES, pour qu aucune ne soit vraie par accident.
+  let corpsPasseSeul = '';
+  await analyzeEmail({
+    from: 'marie.resa@test.be', subject: 'Bonjour', body: 'Merci pour tout.',
+    deps: makeDeps({ clientRows: [lignesDuClient[2]] }),
+    fetchImpl: async (adresse, options) => {
+      corpsPasseSeul = String((options && options.body) || '');
+      return anthropicOk({ intent: 'autre', summary: 'x', urgency: 'normale', reply: { subject: 'a', body: 'b' } });
+    },
+  });
+  const fichePasseSeul = JSON.parse(JSON.parse(corpsPasseSeul).messages[0].content).client;
+  ok(fichePasseSeul.visits === 1 && fichePasseSeul.reservationsAVenir === 0 && fichePasseSeul.prochaineReservation === null,
+    'CONTRE-PREUVE : un client qui n a que du passe n a AUCUNE reservation a venir', JSON.stringify(fichePasseSeul));
+
+  let corpsFuturSeul = '';
+  await analyzeEmail({
+    from: 'marie.resa@test.be', subject: 'Bonjour', body: 'A bientot.',
+    deps: makeDeps({ clientRows: [lignesDuClient[1]] }),
+    fetchImpl: async (adresse, options) => {
+      corpsFuturSeul = String((options && options.body) || '');
+      return anthropicOk({ intent: 'autre', summary: 'x', urgency: 'normale', reply: { subject: 'a', body: 'b' } });
+    },
+  });
+  const ficheFuturSeul = JSON.parse(JSON.parse(corpsFuturSeul).messages[0].content).client;
+  ok(ficheFuturSeul.visits === 0 && ficheFuturSeul.lastVisit === '' && ficheFuturSeul.reservationsAVenir === 1,
+    'CONTRE-PREUVE : un client qui n est jamais venu a 0 visite et aucune derniere visite', JSON.stringify(ficheFuturSeul));
+
+  // LE JOUR MEME EST A VENIR, PAS DU PASSE. C est le cas le plus courant du
+  // lot (« on arrive ce soir ») : le classer en visite passee ferait dire au
+  // modele « lors de votre derniere visite » a propos de dans deux heures.
+  let corpsDuJourMeme = '';
+  await analyzeEmail({
+    from: 'marie.resa@test.be', subject: 'Ce soir', body: 'On arrive bien tout a l heure ?',
+    deps: makeDeps({ clientRows: [{ name: 'Marie Dupont', phone: '+32 471 55 66 77', email: 'marie.resa@test.be', date: jourDeMesure, heure: '20:00', pax: 8, label: 'Laser game' }] }),
+    fetchImpl: async (adresse, options) => {
+      corpsDuJourMeme = String((options && options.body) || '');
+      return anthropicOk({ intent: 'autre', summary: 'x', urgency: 'normale', reply: { subject: 'a', body: 'b' } });
+    },
+  });
+  const ficheDuJourMeme = JSON.parse(JSON.parse(corpsDuJourMeme).messages[0].content).client;
+  ok(ficheDuJourMeme.visits === 0 && ficheDuJourMeme.reservationsAVenir === 1
+    && ficheDuJourMeme.prochaineReservation && ficheDuJourMeme.prochaineReservation.date === jourDeMesure,
+    'LE POINT : une reservation du jour meme compte comme A VENIR, pas comme visite passee',
+    JSON.stringify(ficheDuJourMeme));
+  delete process.env.ANTHROPIC_API_KEY;
+
+  // ── LA CONVERSATION EN COURS ──────────────────────────────────────────
+  console.log('\n[CONVERSATION] « Oui parfait, on prend » se lit avec ce qui precede');
+  const CLIENT_FIL = 'famille.leroy@test.be';
+
+  // FAUSSE BASE QUI OBEIT A LA REQUETE : elle applique les filtres que le SQL
+  // demande, et seulement ceux-la. Une condition retiree du code est un piege
+  // qui remonte.
+  const depsFil = (lignes, etat = {}) => ({
+    enqueue: async () => ({ id: 0 }),
+    query: async (texte, params) => {
+      const sql = String(texte);
+      if (!sql.includes('from communications')) return { rows: [] };
+      etat.sql = sql;
+      etat.params = params;
+      const parCentre = sql.includes('center_id = $1') ? params[0] : null;
+      const parDestinataire = sql.includes("lower(coalesce(recipient, '')) = $2") ? params[1] : null;
+      const sortantsPartisSeuls = sql.includes("status in ('sent', 'delivered')");
+      const canalMail = sql.includes("coalesce(channel, '') = 'email'");
+      const gardees = lignes.filter((l) => (
+        (parCentre === null || l.center_id === parCentre)
+        && (parDestinataire === null || String(l.recipient).toLowerCase() === parDestinataire)
+        && (!canalMail || l.channel === 'email')
+        && (l.direction === 'inbound' || !sortantsPartisSeuls || ['sent', 'delivered'].includes(l.status))
+      ));
+      // ET LA FAUSSE BASE NE REND QUE LES COLONNES DEMANDEES. Une base rend
+      // ce que le SELECT nomme ; une fausse base qui rend tout laisserait
+      // passer une colonne oubliee dans la requete.
+      const projection = sql.slice(0, sql.indexOf('from communications'));
+      const colonnes = ['direction', 'subject', 'body', 'status', 'template_id', 'jour']
+        .filter((nom) => projection.includes(nom));
+      const projeter = (ligne) => Object.fromEntries(colonnes.map((nom) => [nom, ligne[nom]]));
+      return { rows: gardees.slice().sort((a, b) => b.id - a.id).map(projeter) };
+    },
+  });
+
+  // LE NOMBRE QUE LE CENTRE A ECRIT doit etre absent du cerveau, sinon la
+  // contre-preuve serait verte pour la mauvaise raison.
+  const cerveauFil = await buildEmailBrain('libramont', makeDeps({}));
+  const texteCerveauFil = `${cerveauFil.stable}\n${cerveauFil.context}`;
+  const quantiemeDit = [17, 19, 21, 23, 27, 29].find((n) => !texteCerveauFil.includes(String(n)));
+  ok(Boolean(quantiemeDit), 'MONTAGE : un quantieme absent du cerveau a ete trouve', String(quantiemeDit));
+
+  // LE MAIL RECU PORTE SA CITATION, comme en vrai : le corps stocke contient
+  // tout le fil precedent.
+  const recuAvecCitation = [
+    'Super, merci pour la reponse rapide.',
+    '',
+    'Le 08/09/2026, Fun Galaxy a ecrit :',
+    '> Bonjour, avec plaisir. Il reste de la place.',
+  ].join('\n');
+
+  const lignesDuFil = [
+    { id: 10, center_id: 'libramont', channel: 'email', direction: 'inbound', status: 'received', template_id: 'inbound_email', recipient: CLIENT_FIL, subject: 'Anniversaire', jour: '2026-09-06', body: 'Bonjour, ce serait pour un anniversaire.' },
+    { id: 11, center_id: 'libramont', channel: 'email', direction: 'outbound', status: 'sent', template_id: 'studio_direct', recipient: CLIENT_FIL, subject: 'Re: Anniversaire', jour: '2026-09-08', body: `Bonjour, avec plaisir. Il reste de la place le ${quantiemeDit} septembre.` },
+    // UNE RELANCE PARTIE TOUTE SEULE : elle a bien ete envoyee, elle compte
+    // donc, mais personne ne l a ecrite pour ce client.
+    { id: 12, center_id: 'libramont', channel: 'email', direction: 'outbound', status: 'sent', template_id: 'reminder_48h', recipient: CLIENT_FIL, subject: 'Petit rappel', jour: '2026-09-08', body: 'Petit rappel de votre venue.' },
+    { id: 13, center_id: 'libramont', channel: 'email', direction: 'inbound', status: 'received', template_id: 'inbound_email', recipient: CLIENT_FIL, subject: 'Re: Anniversaire', jour: '2026-09-09', body: recuAvecCitation },
+    // LES QUATRE PIEGES.
+    { id: 14, center_id: 'libramont', channel: 'email', direction: 'outbound', status: 'draft', template_id: 'studio_direct', recipient: CLIENT_FIL, subject: 'Brouillon', jour: '2026-09-09', body: 'Nous vous offrons le gouter pour tout le groupe.' },
+    { id: 15, center_id: 'libramont', channel: 'email', direction: 'outbound', status: 'sent', template_id: 'studio_direct', recipient: 'quelqu.un.dautre@test.be', subject: 'Autre', jour: '2026-09-09', body: 'Voici le devis de la famille Martin.' },
+    { id: 16, center_id: 'gembloux', channel: 'email', direction: 'outbound', status: 'sent', template_id: 'studio_direct', recipient: CLIENT_FIL, subject: 'Gembloux', jour: '2026-09-09', body: 'A Gembloux nous avons le Golf O Clock.' },
+    { id: 17, center_id: 'libramont', channel: 'sms', direction: 'outbound', status: 'sent', template_id: 'reminder_day_sms', recipient: CLIENT_FIL, subject: '', jour: '2026-09-09', body: 'Rappel SMS de votre venue.' },
+    // LE CINQUIEME PIEGE : le message qu on analyse, DEJA range. Il ne l est
+    // pas a l ingestion (l analyse precede l ecriture), il l est des qu on
+    // rejoue une analyse sur un mail stocke.
+    { id: 18, center_id: 'libramont', channel: 'email', direction: 'inbound', status: 'received', template_id: 'inbound_email', recipient: CLIENT_FIL, subject: 'Re: Anniversaire', jour: '2026-09-10', body: 'Oui parfait, on prend.' },
+  ];
+  ok(lignesDuFil.some((l) => l.status === 'draft')
+    && lignesDuFil.some((l) => l.recipient !== CLIENT_FIL)
+    && lignesDuFil.some((l) => l.center_id !== 'libramont')
+    && lignesDuFil.some((l) => l.channel !== 'email')
+    && lignesDuFil.some((l) => l.body === 'Oui parfait, on prend.'),
+    'MONTAGE : le jeu de lignes contient les CINQ pieges (brouillon, autre client, autre centre, SMS, le message en cours)');
+
+  process.env.ANTHROPIC_API_KEY = 'test-key-fil';
+  const etatFil = {};
+  let corpsDuFil = '';
+  const analyseDuFil = await analyzeEmail({
+    from: CLIENT_FIL, subject: 'Re: Anniversaire', body: 'Oui parfait, on prend.',
+    centerId: 'libramont', deps: depsFil(lignesDuFil, etatFil),
+    fetchImpl: async (adresse, options) => {
+      corpsDuFil = String((options && options.body) || '');
+      return anthropicOk({ intent: 'reservation', summary: 'Confirmation', urgency: 'normale', reply: { subject: 'Votre venue', body: `Bonjour, c est note pour le ${quantiemeDit} septembre.` } });
+    },
+  });
+  ok(corpsDuFil.length > 200, 'MONTAGE : le corps envoye au modele a bien ete capture', String(corpsDuFil.length));
+  const chargeDuFil = JSON.parse(JSON.parse(corpsDuFil).messages[0].content);
+  const fil = chargeDuFil.conversation || [];
+
+  ok(fil.length === 4, 'LE POINT : les quatre vrais messages du fil arrivent au modele', JSON.stringify(fil.map((m) => m.jour)));
+  ok(fil.length === 4 && fil.every((m, i) => i === 0 || fil[i - 1].jour <= m.jour),
+    'LE POINT : du plus ANCIEN au plus RECENT, pas dans l ordre de la requete',
+    fil.map((m) => `${m.jour} ${m.qui}`).join(' | '));
+  ok(fil.length === 4 && fil[0].qui === 'le client' && fil[1].qui === 'nous' && fil[3].qui === 'le client',
+    'LE POINT : « nous » designe ce qui est PARTI, « le client » ce qui est ARRIVE',
+    fil.map((m) => m.qui).join(' | '));
+  // UNE RELANCE PARTIE TOUTE SEULE N EST PAS UNE REPONSE : la confondre avec
+  // une reponse ferait lire au modele une discussion la ou il n y a eu qu un
+  // mailing, et l autoriserait a s appuyer dessus comme sur un engagement.
+  ok(fil.length === 4 && fil[2].qui === 'nous (message automatique)' && /rappel/i.test(fil[2].texte),
+    'LE POINT : un envoi AUTOMATIQUE est etiquete comme tel, pas comme une reponse',
+    `${fil[2].qui} : ${fil[2].texte}`);
+
+  // LA CITATION EST COUPEE, comme a l ingestion : sinon chaque message du bloc
+  // contient tous les precedents et le bloc grossit en carre.
+  const dernier = fil[fil.length - 1] || {};
+  ok(/Super, merci/.test(dernier.texte || '') && !/^>|a ecrit :/m.test(dernier.texte || ''),
+    'LE POINT : la citation est coupee des mails recus', dernier.texte);
+
+  ok(/du plus ANCIEN au plus RECENT/.test(String(chargeDuFil.legendeConversation || ''))
+    && /n a pas ete promis/.test(String(chargeDuFil.legendeConversation || ''))
+    && /message automatique/.test(String(chargeDuFil.legendeConversation || '')),
+    'LE POINT : la legende dit comment lire le bloc et ce qu il n autorise pas');
+
+  // LES QUATRE PIEGES, UN PAR UN.
+  const toutLeFil = JSON.stringify(fil);
+  ok(!toutLeFil.includes('offrons le gouter'),
+    'CONTRE-PREUVE : un brouillon JAMAIS parti n est pas une chose que le centre a dite');
+  ok(!toutLeFil.includes('famille Martin'),
+    'CONTRE-PREUVE : le mail d un AUTRE client n entre pas dans le fil');
+  ok(!toutLeFil.includes('Golf O Clock'),
+    'ISOLATION : le mail d un AUTRE centre n entre pas dans le fil');
+  ok(!toutLeFil.includes('Rappel SMS'),
+    'CONTRE-PREUVE : un SMS n est pas un mail : il reste hors du fil');
+  ok(!toutLeFil.includes('Oui parfait, on prend'),
+    'LE POINT : le message qu on est en train de lire n est pas servi comme antecedent');
+
+  // LA REQUETE EST BORNEE : sans DB ici, ce sont les parametres qui le disent.
+  ok(Array.isArray(etatFil.params) && etatFil.params[0] === 'libramont' && etatFil.params[1] === CLIENT_FIL,
+    'LE POINT : la requete est bornee au centre ET a l adresse du client', JSON.stringify(etatFil.params));
+
+  // LA PREUVE COMPORTEMENTALE : ce que le centre a ECRIT devient citable.
+  ok(analyseDuFil.provider === 'anthropic',
+    'LE POINT : un nombre que le centre a lui-meme ecrit devient citable', analyseDuFil.provider);
+  const analyseSansFil = await analyzeEmail({
+    from: CLIENT_FIL, subject: 'Re: Anniversaire', body: 'Oui parfait, on prend.',
+    centerId: 'libramont', deps: makeDeps({}),
+    fetchImpl: async () => anthropicOk({ intent: 'reservation', summary: 'Confirmation', urgency: 'normale', reply: { subject: 'Votre venue', body: `Bonjour, c est note pour le ${quantiemeDit} septembre.` } }),
+  });
+  ok(analyseSansFil.provider === 'rules',
+    'CONTRE-PREUVE : le MEME nombre, sans fil, est rejete par le garde-fou', analyseSansFil.provider);
+
+  // PAS DE SECTION VIDE : un fil absent ne se declare pas.
+  let corpsSansFil = '';
+  await analyzeEmail({
+    from: 'personne@test.be', subject: 'Bonjour', body: 'Une question.',
+    centerId: 'libramont', deps: makeDeps({}),
+    fetchImpl: async (adresse, options) => {
+      corpsSansFil = String((options && options.body) || '');
+      return anthropicOk({ intent: 'autre', summary: 'x', urgency: 'normale', reply: { subject: 'a', body: 'b' } });
+    },
+  });
+  const chargeSansFil = JSON.parse(JSON.parse(corpsSansFil).messages[0].content);
+  ok(!('conversation' in chargeSansFil) && !('legendeConversation' in chargeSansFil),
+    'CONTRE-PREUVE : sans echange precedent, aucune section conversation vide',
+    Object.keys(chargeSansFil).join(', '));
+
+  // LES BORNES : six messages, et pas un mail entier par message.
+  const filLong = Array.from({ length: 14 }, (inutilise, i) => ({
+    id: 100 + i, center_id: 'libramont', channel: 'email', direction: 'inbound', status: 'received',
+    recipient: CLIENT_FIL, subject: 'Fil', jour: `2026-08-${String(i + 1).padStart(2, '0')}`,
+    body: `message numero ${i} ${'x'.repeat(900)}`,
+  }));
+  let corpsLong = '';
+  await analyzeEmail({
+    from: CLIENT_FIL, subject: 'Fil', body: 'Et donc ?',
+    centerId: 'libramont', deps: depsFil(filLong),
+    fetchImpl: async (adresse, options) => {
+      corpsLong = String((options && options.body) || '');
+      return anthropicOk({ intent: 'autre', summary: 'x', urgency: 'normale', reply: { subject: 'a', body: 'b' } });
+    },
+  });
+  const filBorne = JSON.parse(JSON.parse(corpsLong).messages[0].content).conversation || [];
+  ok(filBorne.length === 6 && filBorne.every((m) => m.texte.length <= 400),
+    'LE POINT : au plus six messages, au plus 400 caracteres chacun',
+    `${filBorne.length} messages, le plus long ${Math.max(...filBorne.map((m) => m.texte.length))} car.`);
+  ok(filBorne.length === 6 && /message numero 13/.test(filBorne[filBorne.length - 1].texte),
+    'LE POINT : ce sont les SIX DERNIERS qui restent, pas les six premiers',
+    filBorne.map((m) => (m.texte.match(/numero (\d+)/) || [])[1]).join(' '));
+  delete process.env.ANTHROPIC_API_KEY;
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

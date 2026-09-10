@@ -1951,5 +1951,128 @@ ok('CONTRE-PREUVE : sans jour sans piste, aucun fait',
     agenda: agendaDesPrix, prix: prixSansBlocage,
   }).pistes_toutes_en_maintenance,
   'un fait de pistes a ete pose sans une seule journee concernee');
+
+// ── LE PRIX D UNE PARTIE ────────────────────────────────────────────────
+console.log('\n[PRIX A L UNITE] ce que le tunnel facture hors formule');
+const { prixUnitaires: unitairesDuCentre } = require('../lib/center-facts');
+const { BOWLING_PRICES: grillePiste, LASER_GAME_OPTIONS: grilleLaser } = require('../lib/booking-config');
+
+const centreQuiVend = { activityAvailability: { bowling: true, laser_game: true, billards: true }, resources: {} };
+const centreSansRien = { activityAvailability: {}, resources: {} };
+
+const unitairesVendeur = unitairesDuCentre(centreQuiVend, '2026-09-10');
+ok('MONTAGE : un centre qui declare bowling et laser rend les deux',
+  Boolean(unitairesVendeur.bowling) && Boolean(unitairesVendeur.laser),
+  JSON.stringify(unitairesVendeur));
+
+// LE POINT : chaque palier du moteur est rendu, avec SON montant. Aucun
+// chiffre n est recopie ici, ils viennent de booking-config.
+ok('LE POINT : chaque palier de la grille par piste est rendu, avec son montant',
+  Object.values(grillePiste)
+    .every((prix) => unitairesVendeur.bowling.options.some((o) => o.includes(`${prix} EUR la piste`))),
+  unitairesVendeur.bowling.options.join(' | '));
+ok('LE POINT : et chaque palier laser, avec son libelle',
+  grilleLaser.every((o) => unitairesVendeur.laser.options.includes(`${o.price} EUR par personne pour ${o.label}`)),
+  unitairesVendeur.laser.options.join(' | '));
+ok('LE POINT : sans grille declaree, ce n est PAS un tarif du jour',
+  unitairesVendeur.bowling.tarifDuJour === false);
+
+// LA GRILLE DU CENTRE GAGNE, comme dans getBasePrice.
+const centreAuxParties = {
+  activityAvailability: { bowling: true },
+  resources: {
+    bowling: {
+      pricing: {
+        mode: 'per_game_per_person', minutesPerGame: 60,
+        tiers: [{ days: [0, 1, 2, 3, 4, 5, 6], prices: [7, 12, 16] }],
+      },
+    },
+  },
+};
+const unitairesDuSien = unitairesDuCentre(centreAuxParties, '2026-09-10');
+ok('LE POINT : la grille declaree par le centre gagne sur celle du moteur',
+  unitairesDuSien.bowling.options.some((o) => o.startsWith('7 EUR par personne'))
+    && !unitairesDuSien.bowling.options.some((o) => o.includes(`${grillePiste[1]} EUR la piste`)),
+  unitairesDuSien.bowling.options.join(' | '));
+ok('LE POINT : et elle est signalee comme un tarif du jour',
+  unitairesDuSien.bowling.tarifDuJour === true);
+
+const unitairesMuet = unitairesDuCentre(centreSansRien, '2026-09-10');
+ok('LE POINT : un centre qui ne declare ni bowling ni laser ne rend aucun prix',
+  unitairesMuet.bowling === null && unitairesMuet.laser === null,
+  JSON.stringify(unitairesMuet));
+
+ok('ISOLATION : sansTarif ne porte que les activites declarees, jamais bowling ni laser',
+  unitairesVendeur.sansTarif.join(',') === 'billards'
+    && unitairesMuet.sansTarif.length === 0,
+  JSON.stringify(unitairesVendeur.sansTarif));
+
+// LA FICHE POSE LE FAIT, ET SEULEMENT QUAND IL EXISTE.
+const ficheAvecUnitaires = ficheDuRegistre({ aujourdhui: '2026-09-10', unitaires: unitairesVendeur });
+ok('LE POINT : la fiche pose un fait PUBLIC quand le centre a des prix a l unite',
+  Boolean(ficheAvecUnitaires.prix_a_l_unite)
+    && ficheAvecUnitaires.prix_a_l_unite.audience === 'public'
+    && /Bowling : /.test(ficheAvecUnitaires.prix_a_l_unite.valeur)
+    && /Laser Game : /.test(ficheAvecUnitaires.prix_a_l_unite.valeur),
+  JSON.stringify(ficheAvecUnitaires.prix_a_l_unite));
+ok('CONTRE-PREUVE : aucun fait quand le centre n a aucun prix a l unite',
+  !ficheDuRegistre({ aujourdhui: '2026-09-10', unitaires: unitairesMuet }).prix_a_l_unite);
+ok('CONTRE-PREUVE : ni quand la structure est absente',
+  !ficheDuRegistre({ aujourdhui: '2026-09-10' }).prix_a_l_unite);
+
+// ── QUEL JOUR ON EST ────────────────────────────────────────────────────
+console.log('\n[LE JOUR] dans le fuseau du centre, pas dans celui d UTC');
+const { jourDuCentre: jourLocal, JOURS_FR: joursEnFrancais } = require('../lib/center-facts');
+
+// LE POINT QUI COMPTE : a 23 h 30 UTC, Bruxelles est DEJA le lendemain. Un
+// agent qui repond la nuit se tromperait de jour, donc de « samedi », donc de
+// creneau. La date UTC est calculee ici pour montrer l ecart, pas recopiee.
+const instantDeNuit = '2026-09-10T23:30:00Z';
+const jourDeNuit = jourLocal(instantDeNuit);
+ok('LE POINT : la nuit, le centre est deja au lendemain d UTC',
+  jourDeNuit && jourDeNuit.date !== instantDeNuit.slice(0, 10),
+  JSON.stringify(jourDeNuit));
+
+const instantDeJour = '2026-09-10T09:00:00Z';
+const jourDeJour = jourLocal(instantDeJour);
+ok('CONTRE-PREUVE : en pleine journee, les deux coincident',
+  jourDeJour && jourDeJour.date === instantDeJour.slice(0, 10),
+  JSON.stringify(jourDeJour));
+
+// LES MOTS VIENNENT DES CONSTANTES DEJA POSEES, pas d une deuxieme liste.
+ok('LE POINT : le nom du jour vient de la liste deja posee dans le module',
+  joursEnFrancais.includes(jourDeJour.jourSemaine),
+  jourDeJour.jourSemaine);
+
+// LA PHRASE ET LA DATE PARLENT DU MEME JOUR. Sans ca, un decalage entre les
+// deux donnerait au modele deux verites dans la meme ligne.
+ok('LE POINT : la phrase et la date ISO parlent du meme jour',
+  jourDeNuit.enToutesLettres.startsWith(jourDeNuit.jourSemaine)
+    && jourDeNuit.enToutesLettres.includes(String(Number(jourDeNuit.date.slice(8, 10))))
+    && jourDeNuit.enToutesLettres.endsWith(jourDeNuit.date.slice(0, 4)),
+  jourDeNuit.enToutesLettres);
+
+// DOUZE MOIS, DOUZE MOTS DISTINCTS ET AUCUN CHIFFRE. Prouve que le nom du
+// mois vient d une table et non du numero, sans recopier la table.
+const moisDits = Array.from({ length: 12 }, (inutilise, i) => {
+  const mois = String(i + 1).padStart(2, '0');
+  const lu = jourLocal(`2026-${mois}-15T09:00:00Z`);
+  return lu ? lu.enToutesLettres.split(' ')[2] : '';
+});
+ok('LE POINT : les douze mois donnent douze mots distincts, aucun chiffre',
+  new Set(moisDits).size === 12 && moisDits.every((mot) => mot && !/\d/.test(mot)),
+  moisDits.join(', '));
+
+// LE NOM DU JOUR EST RATTACHE A LA DATE, pas a lui-meme. Le gate le
+// recalcule par le chemin du langage (getUTCDay), pas par celui du module :
+// un decalage d un jour se verrait.
+  const isoTemoin = '2026-09-10';
+  const luTemoin = jourLocal(`${isoTemoin}T09:00:00Z`);
+  ok('LE POINT : le nom du jour correspond a la date, sans decalage',
+    luTemoin.jourSemaine === joursEnFrancais[new Date(`${isoTemoin}T12:00:00Z`).getUTCDay()],
+    `${luTemoin.jourSemaine} pour ${isoTemoin}`);
+
+  ok('LE POINT : une date invalide rend null au lieu d une phrase fausse',
+    jourLocal('pas une date') === null);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

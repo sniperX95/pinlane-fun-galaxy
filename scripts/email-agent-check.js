@@ -1299,6 +1299,37 @@ const anthropicOk = (object) => ({
   rendreTarifs(new Map());
   ok(tarifsUnitaires('libramont', JOUR) === blocUnitaire,
     'CONTRE-PREUVE : surcharge retiree, le bloc redevient EXACTEMENT celui du depart');
+
+  // ── LE MODELE SAIT QUEL JOUR ON EST ───────────────────────────────────
+  console.log('\n[LE JOUR] le cerveau porte une ancre datee, et une seule');
+  const { jourDuCentre: jourDuCerveau } = require('../lib/center-facts');
+  applyCenterOverrides(new Map());
+
+  for (const centre of ['libramont', 'gembloux', 'ciney']) {
+    const cerveauDate = await buildEmailBrain(centre, depsAvec([]));
+    const attendu = jourDuCerveau();
+    ok(cerveauDate.context.startsWith('--- LE JOUR ---'),
+      `LE POINT : ${centre} recoit l ancre datee, et EN PREMIER`,
+      cerveauDate.context.split('\n')[0]);
+    ok(cerveauDate.context.includes(attendu.date)
+      && cerveauDate.context.includes(attendu.enToutesLettres),
+      `LE POINT : ${centre} porte la date du jour, en chiffres et en toutes lettres`,
+      cerveauDate.context.split('\n')[1]);
+    ok(/jamais de ta memoire/.test(cerveauDate.context),
+      `LE POINT : ${centre} a l interdiction de resoudre une date de memoire`);
+    ok(cerveauDate.context.split('--- LE JOUR ---').length === 2,
+      `CONTRE-PREUVE : ${centre} ne porte pas deux ancres`);
+  }
+
+  // UNE SEULE HORLOGE : le bloc du jour et le bloc des tarifs, qui se date
+  // lui-meme, doivent parler du MEME jour. Deux appels qui se croisent a
+  // minuit auraient donne deux dates dans le meme message.
+  const cerveauHorloge = await buildEmailBrain('libramont', depsAvec([]));
+  const dateDuBlocJour = (cerveauHorloge.context.match(/\((\d{4}-\d{2}-\d{2})\)/) || [])[1] || '';
+  const dateDesTarifs = (cerveauHorloge.context.match(/Tarifs releves le (\d{4}-\d{2}-\d{2})/) || [])[1] || '';
+  ok(Boolean(dateDuBlocJour) && dateDuBlocJour === dateDesTarifs,
+    'LE POINT : le bloc du jour et le bloc des tarifs portent la MEME date',
+    `${dateDuBlocJour} contre ${dateDesTarifs}`);
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

@@ -1812,6 +1812,91 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   if (cleSauvee === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = cleSauvee;
 
+
+  // ── LE PRIX D UNE PARTIE REND LA PAROLE A UN CENTRE ───────────────────
+  console.log('\n[PRIX A L UNITE] le chargeur le produit, et ca debloque un centre entier');
+  const { chargerFicheDuRegistre: chargerPourPrix, ajouterIdentite: identiteDuPrix } = require('../lib/center-facts');
+  const { faitsUtiles: faitsServisPourPrix, porteDeQuoiParler: aDeQuoiParlerPrix } = require('../lib/center-advisor');
+  const { buildCenterFacts: identiteMarketing } = require('../lib/marketing-agents');
+  const poolMuet = { query: async () => ({ rows: [] }) };
+  const ficheDe = async (id) => identiteDuPrix(
+    await chargerPourPrix({ centerId: id, aujourdhui: '2026-09-10', pool: poolMuet }),
+    identiteMarketing(id));
+
+  const ficheGembloux = await ficheDe('gembloux');
+
+  // MONTAGE : Gembloux se taisait pour une raison precise, et elle tient
+  // toujours : aucune grille horaire, donc aucun jour et aucun prix de
+  // formule. Sans cette assertion, la suivante pourrait passer sur un centre
+  // qui avait deja de quoi parler.
+  ok('MONTAGE : Gembloux n a toujours ni jours ouverts ni prix de formule',
+    !ficheGembloux.jours_ouverts && !ficheGembloux.prix_du_catalogue && !ficheGembloux.prix_plancher,
+    Object.keys(ficheGembloux).join(', '));
+
+  ok('LE POINT : le chargeur produit bien le fait, sur la configuration reelle',
+    Boolean(ficheGembloux.prix_a_l_unite)
+      && ficheGembloux.prix_a_l_unite.audience === 'public',
+    JSON.stringify(ficheGembloux.prix_a_l_unite || null));
+  ok('LE POINT : et le modele le recoit',
+    faitsServisPourPrix(ficheGembloux).some((f) => f.id === 'prix_a_l_unite'));
+  ok('LE POINT : un centre qui se taisait a desormais de quoi parler',
+    aDeQuoiParlerPrix(ficheGembloux) === true);
+
+  // CONTRE-PREUVE : c est bien CE fait qui rend la parole. On le retire, le
+  // silence revient. Sans ca, l assertion ci-dessus pourrait tenir a un autre
+  // fait pose entre-temps.
+  const ficheSansPrix = { ...ficheGembloux };
+  delete ficheSansPrix.prix_a_l_unite;
+  ok('CONTRE-PREUVE : ce fait retire, le centre redevient muet',
+    aDeQuoiParlerPrix(ficheSansPrix) === false);
+
+  // ISOLATION : un centre qui ne declare aucune activite n a pas ce fait, et
+  // ne prend pas celui du voisin.
+  const ficheCineyPrix = await ficheDe('ciney');
+  ok('ISOLATION : un centre sans activite declaree n a aucun prix a l unite',
+    !ficheCineyPrix.prix_a_l_unite && aDeQuoiParlerPrix(ficheCineyPrix) === false);
+
+  // ET LA PORTE EMAIL LIT LE MEME CALCUL, pas un deuxieme.
+  const { prixALaCarte: aLaCarteDeLaPorteMail } = require('../lib/email-agent');
+  const blocMail = aLaCarteDeLaPorteMail('gembloux', '2026-09-10');
+  const optionsDeLaFiche = String(ficheGembloux.prix_a_l_unite.valeur)
+    .split(' | ').map((bloc) => bloc.split(' : ')[1]).filter(Boolean)
+    .join(' · ').split(' · ');
+  ok('LE POINT : la porte email cite EXACTEMENT les memes montants que la fiche',
+    optionsDeLaFiche.every((option) => blocMail.includes(option)),
+    optionsDeLaFiche.filter((option) => !blocMail.includes(option)).join(' | '));
+
+  // ── LA PORTE IDEES SAIT AUSSI QUEL JOUR ON EST ────────────────────────
+  console.log('\n[LE JOUR] la porte Idees porte la meme ancre, calculee pareil');
+  const { proposerDepuisLaFiche: proposerAvecJour } = require('../lib/center-advisor');
+  const { jourDuCentre: jourPourIdees } = require('../lib/center-facts');
+  const cleSauveePourJour = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = 'cle-de-mesure';
+  let corpsEnvoye = '';
+  await proposerAvecJour({
+    fiche: await chargerPourPrix({ centerId: 'libramont', aujourdhui: '2026-09-10', pool: poolMuet }),
+    lieu: { nom: 'Fun Galaxy Libramont', ville: 'Libramont' },
+    aujourdhui: '2026-09-10',
+    fetchImpl: async (adresse, options) => {
+      corpsEnvoye = String((options && options.body) || '');
+      return {
+        ok: true,
+        json: async () => ({
+          stop_reason: 'end_turn',
+          content: [{ type: 'text', text: JSON.stringify({ titre: 'x', corps: 'x', nature: 'constat', faitsUtilises: [] }) }],
+        }),
+      };
+    },
+  });
+  if (cleSauveePourJour === undefined) delete process.env.ANTHROPIC_API_KEY;
+  else process.env.ANTHROPIC_API_KEY = cleSauveePourJour;
+  ok('MONTAGE : le corps reellement envoye au modele a bien ete capture',
+    corpsEnvoye.length > 200, String(corpsEnvoye.length));
+  const jourAttendu = jourPourIdees('2026-09-10T12:00:00Z');
+  ok('LE POINT : la porte Idees porte le jour, calcule comme celui de la porte email',
+    corpsEnvoye.includes(jourAttendu.date)
+      && corpsEnvoye.includes(jourAttendu.enToutesLettres),
+    JSON.stringify(jourAttendu));
   console.log(`\n${failures ? `center-advisor-check: ${failures} ECHEC(S)` : 'center-advisor-check: ALL OK'}`);
   process.exit(failures ? 1 : 0);
 })().catch((error) => {

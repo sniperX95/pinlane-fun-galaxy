@@ -775,6 +775,39 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('CONTRE-PREUVE : les autres activites du centre restent proposees',
     (charge.centre.activites || []).some((n) => /bowling/i.test(String(n))),
     JSON.stringify(charge.centre.activites));
+
+  // ── ET LES PRIX PASSENT PAR LE MEME CHEMIN ──────────────────────────────
+  // La fonction pure est prouvee dans center-facts-check. Ici, c est le
+  // CHARGEUR qui doit croiser le catalogue du tunnel avec l agenda du centre.
+  applyCenterOverrides(new Map());
+  const ficheAvecPrix = await chargerVraiment({
+    centerId: 'libramont', aujourdhui: '2026-09-10',
+    pool: {
+      query: async (sql) => (/from reservations/i.test(String(sql))
+        ? { rows: serie(120) } : { rows: [] }),
+    },
+  });
+  ok('LE POINT : le chargeur pose le prix plancher du catalogue reel',
+    Boolean(ficheAvecPrix.prix_plancher)
+    && /EUR par personne/.test(String(ficheAvecPrix.prix_plancher.valeur)),
+    String(ficheAvecPrix.prix_plancher && ficheAvecPrix.prix_plancher.valeur));
+  ok('et la liste complete porte autant de lignes que le catalogue en vend',
+    Number(ficheAvecPrix.prix_du_catalogue.n) > 0
+    && Number(ficheAvecPrix.prix_du_catalogue.n) <= Number(ficheAvecPrix.catalogue_actif.valeur),
+    `${ficheAvecPrix.prix_du_catalogue.n} prix pour ${ficheAvecPrix.catalogue_actif.valeur} formules`);
+  // Le prix doit pouvoir etre ECRIT : la garde des nombres inventes le lit
+  // dans la fiche, sinon le modele citerait un prix vrai et le texte serait
+  // jete pour nombre intrus.
+  const provenanceDuPrix = require('../lib/center-guards')
+    .verifierProvenance(String(ficheAvecPrix.prix_plancher.valeur), ficheAvecPrix);
+  ok('le prix plancher est un nombre AUTORISE dans un texte',
+    provenanceDuPrix.propre, JSON.stringify(provenanceDuPrix.intrus));
+  // CONTRE-PREUVE : un centre qui n ouvre aucun jour n a aucun prix a annoncer.
+  ok('CONTRE-PREUVE : sans agenda, aucun prix',
+    !(await chargerVraiment({
+      centerId: 'libramont', aujourdhui: '',
+      pool: { query: async (sql) => (/from reservations/i.test(String(sql)) ? { rows: serie(120) } : { rows: [] }) },
+    })).prix_du_catalogue);
   // 2. L IDENTITE SEULE rafraichit aussi. On rend le socle avant, sinon on
   //    lirait ce que la fiche vient de charger.
   applyCenterOverrides(new Map());
@@ -1384,6 +1417,136 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('le cycle passe l identite COMPLETE du centre, pas seulement son nom',
     /centerFacts:\s*lieu/.test(corps), 'centerFacts absent du cycle de production');
 
+
+  // ── UN CENTRE QUI VIENT D OUVRIR A DE QUOI PARLER ───────────────────────
+  // porteDeQuoiParler exigeait une ESTIMATION publique et solide. Ecrite quand
+  // la fiche ne portait que le REGISTRE, elle faisait taire un centre actif,
+  // ouvert, avec ses horaires et ses prix, au motif « rien a dire sur ce
+  // centre ». Le motif etait faux.
+  console.log('\n[OUVERTURE] un centre sans historique a de quoi dire');
+  const { porteDeQuoiParler: aDeQuoiParler } = require('../lib/center-advisor');
+
+  // LE DEFAUT D ORIGINE, teste EN PREMIER : un comptage du registre ne
+  // debloque rien. C est la garde que ce patch doit laisser intacte.
+  const uneSeuleVente = ficheDuRegistre({
+    reservations: [resa({ date: '2026-08-01' })], formules: [], aujourdhui: '2026-09-10',
+  });
+  ok('MONTAGE : une seule vente produit bien une fiche',
+    Boolean(uneSeuleVente.registre_taille), JSON.stringify(Object.keys(uneSeuleVente).length));
+  ok('LE DEFAUT D ORIGINE RESTE FERME : une seule reservation ne debloque rien',
+    aDeQuoiParler(uneSeuleVente) === false,
+    JSON.stringify(Object.values(uneSeuleVente).filter((f) => f.audience === 'public').map((f) => f.id)));
+  ok('et aucun fait de cette fiche ne se declare fait d offre',
+    Object.values(uneSeuleVente).every((f) => f.offre === false),
+    JSON.stringify(Object.values(uneSeuleVente).filter((f) => f.offre).map((f) => f.id)));
+
+  // LE POINT : un fait d OFFRE seul suffit.
+  const offreSeule = {
+    jours_ouverts: {
+      id: 'jours_ouverts', libelle: 'jours de la semaine ou le centre ouvre',
+      valeur: 'mardi 14h - 22h | samedi 10h - Minuit', n: 2, genre: 'denombrement',
+      audience: 'public', offre: true, mois: [], du: '', au: '', source: 'grille du centre',
+      fragile: false, motifFragilite: '', motsInterdits: [], periode: '',
+    },
+  };
+  ok('LE POINT : un fait d offre seul suffit a avoir de quoi parler',
+    aDeQuoiParler(offreSeule) === true);
+  ok('CONTRE-PREUVE : le MEME fait sans le drapeau offre ne suffit pas',
+    aDeQuoiParler({ jours_ouverts: { ...offreSeule.jours_ouverts, offre: false } }) === false,
+    'un denombrement public quelconque debloque la parole');
+  ok('CONTRE-PREUVE : un fait d offre INTERNE ne suffit pas non plus',
+    aDeQuoiParler({ jours_ouverts: { ...offreSeule.jours_ouverts, audience: 'interne' } }) === false,
+    'un fait interne a atteint la porte publique');
+
+  // DE LA VRAIE FICHE JUSQU AU VERDICT. Les assertions ci-dessus partent d un
+  // fait ECRIT A LA MAIN : elles prouvent que la garde lit le drapeau, jamais
+  // que les faits le portent. Trois mutations restaient vertes sans celle-ci
+  // (poser() qui cesse de transmettre le drapeau, jours_ouverts et
+  // prix_plancher qui cessent de se declarer). Celle-ci part de la fabrique
+  // reelle et finit sur le verdict.
+  const ficheReelleSansVente = ficheDuRegistre({
+    reservations: [], formules: [], aujourdhui: '2026-09-10',
+    agenda: Array.from({ length: 14 }, (unused, i) => ({
+      date: new Date(Date.parse('2026-09-10T00:00:00Z') + i * 86400000).toISOString().slice(0, 10),
+      ouvert: true, ferme: false, plage: '10h - 22h', raisons: [], coupures: [],
+    })),
+    prix: [{
+      id: 'f6', nom: 'FORMULE 6', prix: 18, unite: 'par personne',
+      minimum: 6, jours: 14, surTotal: 14, horaire: '',
+    }],
+  });
+  ok('MONTAGE : la fiche reelle est bien celle d un centre sans une vente',
+    Boolean(ficheReelleSansVente.registre_vide),
+    JSON.stringify(Object.keys(ficheReelleSansVente)));
+  ok('LE POINT DE BOUT EN BOUT : la fabrique pose des faits d offre',
+    Object.values(ficheReelleSansVente).filter((f) => f.offre).map((f) => f.id).sort().join(',')
+      === 'jours_ouverts,prix_du_catalogue,prix_plancher',
+    JSON.stringify(Object.values(ficheReelleSansVente).filter((f) => f.offre).map((f) => f.id)));
+  ok('et le verdict suit : ce centre a de quoi parler',
+    aDeQuoiParler(ficheReelleSansVente) === true,
+    JSON.stringify(Object.values(ficheReelleSansVente)
+      .filter((f) => f.audience === 'public').map((f) => `${f.id}:${f.offre}`)));
+
+  // L ANCIENNE REGLE TIENT TOUJOURS : une estimation publique et solide
+  // debloque, sans aucun fait d offre.
+  ok('l ancienne regle tient : une estimation publique et solide suffit encore',
+    aDeQuoiParler(fiche) === true && Object.values(fiche).every((f) => !f.offre),
+    JSON.stringify(Object.values(fiche).filter((f) => f.offre).map((f) => f.id)));
+
+  // ET LE CONSEILLER PARLE. Sans cette assertion, la garde serait juste et
+  // personne ne s en servirait.
+  let appelsSurNeuf = 0;
+  const surCentreNeuf = await proposerDepuisLaFiche({
+    fiche: {
+      ...offreSeule,
+      prix_plancher: {
+        id: 'prix_plancher', libelle: 'la formule la moins chere sans condition de jour ni d heure',
+        valeur: 'FORMULE 6 : 18 EUR par personne, des 6 personnes, reservable les 12 jours ouverts de la fenetre',
+        n: 9, genre: 'denombrement', audience: 'public', offre: true, mois: [], du: '', au: '',
+        source: 'moteur de reservation', fragile: false, motifFragilite: '', motsInterdits: [], periode: '',
+      },
+    },
+    lieu: LIEU,
+    fetchImpl: async (url, options) => {
+      appelsSurNeuf += 1;
+      return {
+        ok: true,
+        json: async () => ({
+          stop_reason: 'end_turn',
+          content: [{ type: 'text', text: JSON.stringify({
+            titre: 'Ouvert du mardi au samedi',
+            corps: 'Le centre ouvre le mardi et le samedi, des 18 EUR par personne.',
+            nature: 'constat',
+            faitsUtilises: ['jours_ouverts', 'prix_plancher'],
+          }) }],
+        }),
+      };
+    },
+  });
+  ok('LE POINT : le conseiller ecrit sur un centre sans une seule reservation',
+    Boolean(surCentreNeuf.proposition) && !surCentreNeuf.silence,
+    JSON.stringify(surCentreNeuf.motifs));
+  ok('et il a bien appele le modele une fois',
+    appelsSurNeuf === 1, String(appelsSurNeuf));
+  ok('le texte cite des nombres qui viennent de la fiche',
+    surCentreNeuf.proposition && /18 EUR/.test(surCentreNeuf.proposition.corps),
+    surCentreNeuf.proposition && surCentreNeuf.proposition.corps);
+
+  // CONTRE-PREUVE : la MEME fiche sans le drapeau offre se tait, et le motif
+  // nomme les trois manques au lieu de parler d estimation seule.
+  let appelsSansOffre = 0;
+  const sansOffre = await proposerDepuisLaFiche({
+    fiche: { jours_ouverts: { ...offreSeule.jours_ouverts, offre: false } },
+    lieu: LIEU,
+    fetchImpl: async () => { appelsSansOffre += 1; return { ok: false, status: 500, text: async () => '' }; },
+  });
+  ok('CONTRE-PREUVE : sans fait d offre, le silence revient',
+    sansOffre.silence === 'rien_a_dire', String(sansOffre.silence));
+  ok('AUCUN appel au modele dans ce cas',
+    appelsSansOffre === 0, String(appelsSansOffre));
+  ok('le motif nomme les trois manques, pas seulement l estimation',
+    sansOffre.motifs.some((m) => /horaires/.test(m) && /prix/.test(m)),
+    JSON.stringify(sansOffre.motifs));
   if (cleSauvee === undefined) delete process.env.ANTHROPIC_API_KEY;
   else process.env.ANTHROPIC_API_KEY = cleSauvee;
 

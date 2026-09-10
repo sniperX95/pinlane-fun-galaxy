@@ -403,7 +403,10 @@
         "declared-center-status",
         "measured-trough",
         "blocked-activity-awareness",
-        "tunnel-catalog-parity"
+        "tunnel-catalog-parity",
+        "engine-verified-pricing",
+        "sayable-opening-days",
+        "speaks-without-history"
       ],
       "guardrails": [
         "Un centre, une fiche : les faits d un centre ne decrivent jamais un autre centre.",
@@ -433,18 +436,22 @@
         "Un angle « creneau calme » exige un creux MESURE avec sa confiance, jamais une fenetre a trois reservations.",
         "Une activite bloquee toute la journee sur CHAQUE jour ouvert de la fenetre sort de ce que l agent peut vendre, et le refus dit BLOQUEE, jamais « absente de ce centre » : le centre l a, il ne peut pas la tenir.",
         "Le modele recoit exactement la liste d interdictions sur laquelle il sera juge, et l activite retiree sort en meme temps de la liste positive : lui donner les deux reviendrait a le faire trancher au hasard.",
-        "Le catalogue lu par l agent est celui que le TUNNEL vend, lu par la meme fonction (getEffectiveFormules), les trois couches empilees : socle du produit, ligne de la table formulas, surcouche formule_overrides du centre."
+        "Le catalogue lu par l agent est celui que le TUNNEL vend, lu par la meme fonction (getEffectiveFormules), les trois couches empilees : socle du produit, ligne de la table formulas, surcouche formule_overrides du centre.",
+        "Un prix ne se publie qu avec ce qui le conditionne : chaque formule est soumise au MOTEUR de reservation jour par jour, sur chaque jour ouvert de la fenetre, au minimum de personnes de la formule, et le fait dit « reservable 8 jours sur 12 », un nombre mesure et jamais une phrase redigee.",
+        "Le prix plancher public ne retient qu une formule par personne, reservable TOUS les jours ouverts et SANS fenetre horaire : c est le seul fait de prix qui puisse etre cite seul, sans reserve. Une unite de prix inconnue exclut la formule des deux faits.",
+        "Les JOURS DE SEMAINE d ouverture sont publics et dicibles ; l agenda DATE reste interne. Un jour de semaine ne se dit ouvert que si TOUTES ses occurrences de la fenetre le sont : un seul samedi ferme et le samedi disparait de la phrase, parce que « on est ouvert le samedi » serait faux une fois sur deux.",
+        "L horaire d un jour n est annonce que s il est le MEME sur toutes ses occurrences ; sinon le jour se dit sans horaire, jamais avec un horaire faux.",
+        "Un centre actif et ouvert peut etre commente SANS aucun historique, a partir de ses seuls faits d OFFRE (jours d ouverture, prix). Le fait declare lui-meme qu il decrit l offre : un comptage du REGISTRE ne debloque toujours rien, et « tu as 1 reservation » reste impossible."
       ],
       "nextUpgrades": [
         "Mesurer l effet reel d un conseil applique a 14 jours",
         "Distinguer en base une idee refusee d une idee jamais lue (expireStaleInsights ecrit le meme statut)",
         "Elargir l ADN aux angles absents : prix, retention, SEO local, avis, groupes entreprise",
         "Valoriser les creneaux HORAIRES vides a partir de l amplitude declaree : le jour muet est traite, l heure creuse ne l est pas encore",
-        "Surfacer les jours d ouverture au modele pour qu il puisse les DIRE : la fiche les connait maintenant, aucun fait public ne les porte",
         "distributionSuspecte ne lit que le seau DOMINANT : 100 % de la masse sur DEUX heures ne declenche rien (mesure du 2026-09-10). Le seuil d une regle de concentration demande des donnees reelles, absentes depuis la remise a zero de la base",
         "Compter les PISTES disponibles jour par jour (lane_statuses, fenetre de maintenance datee) : deuxieme source du meme mensonge cote bowling, mais elle demande de decider ce que « plus assez de pistes » veut dire, donc un seuil",
         "L agent EMAIL ne lit pas la fiche : il repond encore « oui nous avons un laser game » pendant un blocage. Meme classe que les horaires du patch 29, autre porte",
-        "Faire entrer le PRIX des formules dans la fiche : price et type arrivent desormais du tunnel. Il faut porter AUSSI les conditions (jours valides, plage horaire, vacances, minimum de personnes), sans quoi « des 20 EUR par personne » serait vrai quatre jours sur sept"
+        "Un blocage d ACTIVITE ne retire pas les FORMULES qui la contiennent : la route publique n applique isActivityFullyBlockedOn qu aux visites libres. La fiche fait exactement ce que le tunnel fait, sans le corriger. Question de produit, pas de fiche"
       ]
     }
   ],

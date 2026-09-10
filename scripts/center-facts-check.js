@@ -1241,5 +1241,205 @@ ok('un fait ordinaire ne porte aucun mot interdit',
   JSON.stringify(ficheBloquee.registre_vide.motsInterdits));
 ok('FAIL-OPEN : sans liste transmise, aucun fait',
   !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10' }).activites_indisponibles);
+
+// ── LES PRIX QUE LE CENTRE PEUT REELLEMENT TENIR ──────────────────────────
+console.log('\n[PRIX] un prix ne se publie qu avec ce qui le conditionne');
+const { prixReservables } = require('../lib/center-facts');
+const { getCenter: centrePourPrix } = require('../lib/ops-knowledge');
+const centrePrix = centrePourPrix('libramont');
+
+// Quatre jours ouverts, dont UN SEUL jeudi (le 2026-09-10 est un jeudi).
+const agendaPrix = [
+  { date: '2026-09-10', ouvert: true, ferme: false },
+  { date: '2026-09-11', ouvert: true, ferme: false },
+  { date: '2026-09-12', ouvert: true, ferme: false },
+  { date: '2026-09-13', ouvert: true, ferme: false },
+];
+ok('MONTAGE : le 2026-09-10 est bien un jeudi',
+  new Date('2026-09-10T00:00:00').getDay() === 4,
+  String(new Date('2026-09-10T00:00:00').getDay()));
+
+const TARIFS = [
+  // La moins chere de toutes, mais A LA PISTE : autre unite.
+  { id: 'tp', name: 'TARIF PISTE', price: 9, type: 'per_lane', minPax: 1 },
+  // La moins chere PAR PERSONNE, mais le JEUDI seulement.
+  { id: 'tj', name: 'TARIF JEUDI', price: 12, type: 'per_pax', minPax: 1, validDays: [4] },
+  // Moins chere que la suivante, mais AVANT 12 h seulement.
+  { id: 'tm', name: 'TARIF MATIN', price: 15, type: 'per_pax', minPax: 1, timeLimit: { max: 12 } },
+  // Celle-ci n a aucune condition : c est elle, le plancher.
+  { id: 'tl', name: 'TARIF LIBRE', price: 21, type: 'per_pax', minPax: 6 },
+  // Unite inconnue : elle ne doit apparaitre nulle part.
+  { id: 'tx', name: 'TARIF INCONNU', price: 5, type: 'per_hour', minPax: 1 },
+  // Prix absent : idem.
+  { id: 'tz', name: 'TARIF SANS PRIX', price: null, type: 'per_pax', minPax: 1 },
+];
+const lus = prixReservables(TARIFS, centrePrix, agendaPrix);
+const parId = Object.fromEntries(lus.map((p) => [p.id, p]));
+
+ok('une unite de prix INCONNUE exclut la formule',
+  !parId.tx, JSON.stringify(lus.map((p) => p.id)));
+ok('un prix absent exclut la formule',
+  !parId.tz, JSON.stringify(lus.map((p) => p.id)));
+ok('LE POINT : une formule sans condition est reservable tous les jours ouverts',
+  parId.tl && parId.tl.jours === 4 && parId.tl.surTotal === 4,
+  JSON.stringify(parId.tl));
+ok('LE POINT : une formule limitee au jeudi ne l est qu un jour sur quatre',
+  parId.tj && parId.tj.jours === 1 && parId.tj.surTotal === 4,
+  JSON.stringify(parId.tj));
+ok('le minimum interroge est celui de la FORMULE, pas 1',
+  parId.tl && parId.tl.minimum === 6 && parId.tl.jours === 4,
+  'une formule a 6 personnes minimum a ete refusee par son propre minimum');
+ok('la fenetre horaire est DITE, pas deduite d un refus',
+  parId.tm && parId.tm.horaire === 'avant 12 h', JSON.stringify(parId.tm));
+ok('une formule sans fenetre horaire n en annonce aucune',
+  parId.tl && parId.tl.horaire === '', JSON.stringify(parId.tl && parId.tl.horaire));
+ok('l unite est celle du produit, pas une devinette',
+  parId.tp && parId.tp.unite === 'par piste' && parId.tl.unite === 'par personne',
+  JSON.stringify([parId.tp && parId.tp.unite, parId.tl && parId.tl.unite]));
+
+// UN BLOCAGE DE FORMULE, jour entier, sur chaque jour ouvert : la formule
+// disparait. Meme predicat que la route publique.
+const blocsFormule = agendaPrix.map((j, i) => ({
+  id: i, centerId: 'libramont', scopeType: 'formula', scopeRef: 'tl',
+  recurrence: 'once', date: j.date, dayOfWeek: null, dateFrom: null, dateUntil: null,
+  startMin: null, endMin: null, reason: 'suspendue', createdBy: 'gerant',
+}));
+ok('une formule bloquee tous les jours ouverts sort des prix',
+  !prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule).some((p) => p.id === 'tl'),
+  JSON.stringify(prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule).map((p) => p.id)));
+ok('CONTRE-PREUVE : bloquee un seul jour, elle reste, avec un jour de moins',
+  (prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule.slice(0, 1))
+    .find((p) => p.id === 'tl') || {}).jours === 3,
+  JSON.stringify(prixReservables(TARIFS, centrePrix, agendaPrix, blocsFormule.slice(0, 1))
+    .find((p) => p.id === 'tl')));
+ok('sans un seul jour ouvert, aucun prix (c est le centre qui est ferme)',
+  prixReservables(TARIFS, centrePrix, agendaPrix.map((j) => ({ ...j, ouvert: false }))).length === 0);
+
+// ── LES DEUX FAITS ────────────────────────────────────────────────────────
+const fichePrix = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-10', prix: lus,
+});
+ok('prix_du_catalogue est pose et PUBLIC : un prix, un client vient le chercher',
+  Boolean(fichePrix.prix_du_catalogue) && fichePrix.prix_du_catalogue.audience === 'public',
+  fichePrix.prix_du_catalogue && fichePrix.prix_du_catalogue.audience);
+ok('il porte la condition de jour de chaque formule',
+  /TARIF JEUDI : 12 EUR par personne, sans minimum de personnes, reservable 1 jours sur 4/
+    .test(String(fichePrix.prix_du_catalogue.valeur)),
+  String(fichePrix.prix_du_catalogue.valeur));
+ok('et la fenetre horaire quand il y en a une',
+  /TARIF MATIN[^|]*avant 12 h/.test(String(fichePrix.prix_du_catalogue.valeur)),
+  String(fichePrix.prix_du_catalogue.valeur));
+
+ok('LE POINT : le plancher ecarte la moins chere quand elle est limitee a un jour',
+  !/TARIF JEUDI/.test(String(fichePrix.prix_plancher.valeur)),
+  String(fichePrix.prix_plancher.valeur));
+ok('il ecarte aussi celle qui n existe que le matin',
+  !/TARIF MATIN/.test(String(fichePrix.prix_plancher.valeur)),
+  String(fichePrix.prix_plancher.valeur));
+ok('il ecarte aussi l autre unite de prix, meme moins chere',
+  !/TARIF PISTE/.test(String(fichePrix.prix_plancher.valeur)),
+  String(fichePrix.prix_plancher.valeur));
+ok('il retient bien la seule formule citable SEULE, sans reserve',
+  /TARIF LIBRE : 21 EUR par personne, des 6 personnes/.test(String(fichePrix.prix_plancher.valeur)),
+  String(fichePrix.prix_plancher.valeur));
+
+// CONTRE-PREUVE : sans aucune formule inconditionnelle, PAS de plancher. Le
+// silence est la bonne reponse ; annoncer la moins chere serait le mensonge.
+const sansPlancher = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-10',
+  prix: lus.filter((p) => p.id !== 'tl'),
+});
+ok('CONTRE-PREUVE : aucune formule sans condition, aucun plancher',
+  !sansPlancher.prix_plancher && Boolean(sansPlancher.prix_du_catalogue),
+  String(sansPlancher.prix_plancher && sansPlancher.prix_plancher.valeur));
+ok('les deux faits sont poses MALGRE un registre vide : un centre sans vente a des prix',
+  Boolean(fichePrix.registre_vide) && Boolean(fichePrix.prix_plancher));
+ok('FAIL-OPEN : sans prix transmis, aucun fait',
+  !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10' }).prix_du_catalogue);
+
+// ── LES JOURS DE SEMAINE DICIBLES ─────────────────────────────────────────
+// L agenda date est INTERNE depuis le patch 34, et pour une bonne raison : une
+// fermeture exceptionnelle se communique par une decision du gerant. Le
+// pendant public ne dit donc jamais une date : il dit « ouvert le samedi ».
+console.log('\n[JOURS] le centre peut enfin DIRE quand il ouvre');
+const { joursOuvertsPublics } = require('../lib/center-facts');
+
+// Deux semaines pleines : chaque jour de semaine apparait DEUX fois. C est le
+// montage qui rend la regle « toutes les occurrences » testable.
+const deuxSemaines = (over = {}) => {
+  const lignes = [];
+  for (let i = 0; i < 14; i += 1) {
+    const date = new Date(Date.parse('2026-09-10T00:00:00Z') + i * 86400000).toISOString().slice(0, 10);
+    lignes.push({
+      date, ouvert: true, ferme: false, plage: '10h - 22h', raisons: [], coupures: [],
+      ...(over[date] || {}),
+    });
+  }
+  return lignes;
+};
+ok('MONTAGE : la fenetre porte deux occurrences de chacun des sept jours',
+  deuxSemaines().length === 14 && joursOuvertsPublics(deuxSemaines()).length === 7,
+  String(joursOuvertsPublics(deuxSemaines()).length));
+ok('l ordre commence au lundi, comme une semaine se lit',
+  joursOuvertsPublics(deuxSemaines())[0].nom === 'lundi',
+  JSON.stringify(joursOuvertsPublics(deuxSemaines()).map((j) => j.nom)));
+
+// UNE SEULE occurrence fermee, et le jour ne se dit plus. C est le mensonge
+// vise : publier « on est ouvert le samedi » la semaine ou l un des deux
+// samedis est ferme. Le 2026-09-12 est un samedi, l autre est le 19.
+const unSamediFerme = joursOuvertsPublics(
+  deuxSemaines({ '2026-09-12': { ferme: true, raisons: ['travaux'] } }),
+);
+ok('LE POINT : un seul samedi ferme, et le samedi ne se dit plus',
+  !unSamediFerme.some((j) => j.nom === 'samedi'),
+  JSON.stringify(unSamediFerme.map((j) => j.nom)));
+ok('CONTRE-PREUVE : les six autres jours restent dicibles',
+  unSamediFerme.length === 6 && unSamediFerme.some((j) => j.nom === 'dimanche'),
+  JSON.stringify(unSamediFerme.map((j) => j.nom)));
+ok('un jour non ouvert a la grille ne se dit pas non plus',
+  !joursOuvertsPublics(deuxSemaines({ '2026-09-14': { ouvert: false, plage: '' } }))
+    .some((j) => j.nom === 'lundi'),
+  'un lundi ferme a la grille est ressorti comme ouvert');
+
+// L HORAIRE ne s annonce que s il est le MEME partout. Deux samedis a deux
+// horaires laissent le jour sans horaire, jamais avec un horaire faux.
+const samedisDifferents = joursOuvertsPublics(
+  deuxSemaines({ '2026-09-19': { plage: '14h - Minuit' } }),
+);
+ok('LE POINT : deux horaires differents, le jour se dit SANS horaire',
+  (samedisDifferents.find((j) => j.nom === 'samedi') || {}).plage === '',
+  JSON.stringify(samedisDifferents.find((j) => j.nom === 'samedi')));
+ok('CONTRE-PREUVE : un horaire constant est bien annonce',
+  (samedisDifferents.find((j) => j.nom === 'dimanche') || {}).plage === '10h - 22h',
+  JSON.stringify(samedisDifferents.find((j) => j.nom === 'dimanche')));
+ok('sans agenda, aucun jour',
+  joursOuvertsPublics([]).length === 0 && joursOuvertsPublics(null).length === 0);
+
+// ── LE FAIT ───────────────────────────────────────────────────────────────
+const ficheJours = ficheDuRegistre({
+  reservations: [], formules: [], aujourdhui: '2026-09-10', agenda: deuxSemaines(),
+});
+ok('jours_ouverts est PUBLIC : c est ce qu un client vient chercher',
+  Boolean(ficheJours.jours_ouverts) && ficheJours.jours_ouverts.audience === 'public',
+  ficheJours.jours_ouverts && ficheJours.jours_ouverts.audience);
+ok('il nomme les jours et leur horaire',
+  String(ficheJours.jours_ouverts.valeur).startsWith('lundi 10h - 22h | mardi 10h - 22h'),
+  String(ficheJours.jours_ouverts.valeur));
+ok('l agenda date, lui, RESTE interne : une fermeture ne se publie pas',
+  ficheJours.agenda_ouverture.audience === 'interne',
+  ficheJours.agenda_ouverture.audience);
+ok('il ne nomme AUCUNE date ni aucune fermeture',
+  !/[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(String(ficheJours.jours_ouverts.valeur))
+  && !/FERME/.test(String(ficheJours.jours_ouverts.valeur)),
+  String(ficheJours.jours_ouverts.valeur));
+ok('il est pose MALGRE un registre vide : il parle du centre',
+  Boolean(ficheJours.registre_vide) && Boolean(ficheJours.jours_ouverts));
+ok('FAIL-OPEN : sans agenda, aucun fait',
+  !ficheDuRegistre({ reservations: [], formules: [], aujourdhui: '2026-09-10' }).jours_ouverts);
+ok('un centre qui n ouvre aucun jour ne dit aucun jour',
+  !ficheDuRegistre({
+    reservations: [], formules: [], aujourdhui: '2026-09-10',
+    agenda: deuxSemaines().map((j) => ({ ...j, ouvert: false, plage: '' })),
+  }).jours_ouverts);
 console.log(`\n${failures ? `center-facts-check: ${failures} ECHEC(S)` : 'center-facts-check: ALL OK'}`);
 process.exit(failures ? 1 : 0);

@@ -296,6 +296,74 @@ console.log('\n[ANCRAGE] la reecriture IA n invente pas un lieu');
   ok(chiffre === null, 'un prix inventé reste refusé (le garde-fou des nombres tient toujours)');
   if (envSauve === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = envSauve;
 
+
+  // ── UNE FENETRE VIDE N EST PAS UN VERDICT ───────────────────────────────
+  // measureAppliedInsights ecrivait `measured_at = now()` meme quand aucune
+  // ligne de daily_center_metrics ne couvrait la fenetre. La requete du haut
+  // filtre sur `measured_at is null` : l idee etait close pour toujours, et
+  // aggregateMarketingPatterns comme le bandit d angles apprenaient d une
+  // mesure qui n avait pas eu lieu. C est l etat d une base remise a zero.
+  console.log('\n[REPORT] une fenetre sans donnee ne conclut rien');
+
+  // MONTAGE : le calcul pur est deja honnete sur une fenetre vide. Ce n est
+  // donc pas lui qu on corrige, c est ce qu on FAIT de sa reponse.
+  const surRienDuTout = computeInsightMeasurement({ before: [], after: [] });
+  ok(surRienDuTout.verdict === 'inconclusive' && surRienDuTout.sampleDays === 0,
+    `MONTAGE : sur une fenetre vide le calcul rend deja 0 jour d echantillon (${JSON.stringify(surRienDuTout)})`);
+
+  // Crochet AVANT rechargement : center-metrics destructure getPool au
+  // chargement du module.
+  const cheminDb = require.resolve('../lib/database');
+  const cheminMetrics = require.resolve('../lib/center-metrics');
+  const dbReel = require.cache[cheminDb];
+  const metricsReel = require.cache[cheminMetrics];
+  const base = require('../lib/database');
+  const getPoolReel = base.getPool;
+
+  const rejouer = async (lignesDuJour) => {
+    const ecrits = [];
+    base.getPool = () => ({
+      query: async (sql, params) => {
+        const texte = String(sql);
+        if (/from marketing_insights/i.test(texte) && /status = 'applied'/i.test(texte)) {
+          return { rows: [{ id: 77, applied_date: '2026-08-27', payload: { angle: 'creneau_calme' } }] };
+        }
+        if (/update marketing_insights/i.test(texte)) { ecrits.push(params); return { rows: [] }; }
+        if (/from daily_center_metrics/i.test(texte)) return { rows: lignesDuJour };
+        return { rows: [] };
+      },
+    });
+    delete require.cache[cheminMetrics];
+    const frais = require('../lib/center-metrics');
+    const verdict = await frais.measureAppliedInsights({ centerId: 'libramont' });
+    return { verdict, ecrits };
+  };
+
+  // LE POINT : aucune ligne dans la fenetre, aucune ecriture.
+  const surBaseVide = await rejouer([]);
+  ok(surBaseVide.ecrits.length === 0,
+    `LE POINT : sur une base sans metriques, AUCUN verdict n est ecrit (${surBaseVide.ecrits.length} ecriture(s))`);
+  ok((surBaseVide.verdict.reportees || []).includes(77),
+    `l idee est rendue comme REPORTEE, pas silencieusement sautee (${JSON.stringify(surBaseVide.verdict.reportees)})`);
+  ok((surBaseVide.verdict.measured || []).length === 0,
+    'et elle ne compte pas comme mesuree');
+
+  // CONTRE-PREUVE : des lignes existent, la comparaison ne conclut pas. C est
+  // un VRAI « non concluant » : les jours ont existe, l effet ne s est pas vu.
+  // Sans cette assertion, tout reporter aurait aussi rendu le gate vert.
+  const deuxJours = [
+    { date: '2026-08-20', visitors: 10, revenue_total: 100, is_school_holiday: false, weather_tmax: 20, weather_precip_mm: 0 },
+    { date: '2026-09-01', visitors: 12, revenue_total: 120, is_school_holiday: false, weather_tmax: 20, weather_precip_mm: 0 },
+  ];
+  const surDeuxJours = await rejouer(deuxJours);
+  ok(surDeuxJours.ecrits.length === 1,
+    `CONTRE-PREUVE : des lignes presentes, le verdict est bien ecrit (${surDeuxJours.ecrits.length} ecriture(s))`);
+  ok(!(surDeuxJours.verdict.reportees || []).includes(77),
+    'et l idee n est PAS reportee : elle a ete regardee');
+
+  base.getPool = getPoolReel;
+  if (dbReel) require.cache[cheminDb] = dbReel;
+  if (metricsReel) require.cache[cheminMetrics] = metricsReel;
   if (failures) { console.error(`\ndaily-metrics-check: ${failures} FAIL`); process.exit(1); }
   console.log('\ndaily-metrics-check: ALL OK');
 })().catch((error) => { console.error('FAIL  gate interrompu :', error && error.stack || error); process.exit(1); });

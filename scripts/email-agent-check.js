@@ -479,6 +479,135 @@ const anthropicOk = (object) => ({
     faitsPartiels.split('\n').find((l) => l.startsWith('Horaires')) || '(aucune ligne)');
   ok(!/(Lundi|Dimanche) fermé/.test(faitsPartiels),
     'grille PARTIELLE : les jours non declares ne deviennent pas des fermetures');
+
+  // ── L ETAT REEL DU CENTRE ATTEINT LA BOITE MAIL ─────────────────────────
+  // Mesure du 2026-09-10, centre ferme du 12 au 20 et laser bloque : l agent
+  // email annoncait « Samedi 10h a minuit » et listait le laser game comme
+  // disponible. Une personne reelle lit la reponse et prend la voiture.
+  console.log('\n[ETAT] ce que le centre peut tenir aujourd hui');
+  const { etatDuCentre, plagesDeDates } = require('../lib/email-agent');
+
+  // La compression de dates, pure et testee seule.
+  ok(plagesDeDates(['2026-09-12', '2026-09-13', '2026-09-14']).join(';') === '2026-09-12 -> 2026-09-14',
+    'des dates contigues font UNE plage');
+  ok(plagesDeDates(['2026-09-12', '2026-09-14']).join(';') === '2026-09-12;2026-09-14',
+    'un trou coupe la plage en deux dates seules');
+  ok(plagesDeDates(['2026-09-12']).join(';') === '2026-09-12',
+    'une date seule reste une date, pas une plage');
+  ok(plagesDeDates([]).length === 0 && plagesDeDates(null).length === 0,
+    'aucune date, aucune plage');
+  ok(plagesDeDates(['2026-09-14', '2026-09-12', '2026-09-13']).join(';') === '2026-09-12 -> 2026-09-14',
+    'des dates en desordre sont triees avant d etre compressees');
+
+  // Fabrique de blocs, dans la forme exacte de la table.
+  const bloc = (over) => ({
+    id: 1, center_id: 'libramont', scope_type: 'center', scope_ref: null,
+    recurrence: 'once', date: '2026-09-12', day_of_week: null, date_from: null,
+    date_until: null, start_time: null, end_time: null,
+    reason: 'travaux prives', created_by: 'gerant', ...over,
+  });
+  const depsAvec = (rows) => ({
+    query: async (sql) => (/from availability_blocks/i.test(String(sql)) ? { rows } : { rows: [] }),
+  });
+  const JOUR = '2026-09-10';
+
+  // SANS RIEN : le prompt ne bouge pas d un caractere.
+  const etatVide = await etatDuCentre('libramont', depsAvec([]), JOUR);
+  ok(etatVide === '', 'sans fermeture ni blocage, aucun bloc ajoute au prompt');
+
+  // UNE FERMETURE EXCEPTIONNELLE.
+  const fermeture = ['2026-09-12', '2026-09-13'].map((date, i) => bloc({ id: 10 + i, date }));
+  const etatFerme = await etatDuCentre('libramont', depsAvec(fermeture), JOUR);
+  ok(/N OUVRE PAS/.test(etatFerme), 'une fermeture declaree atteint le modele');
+  // Les jours deja fermes A LA GRILLE entrent dans la liste : sinon « 12 -> 13,
+  // 15 -> 20 » laisse croire qu on ouvre le 14, qui est un lundi.
+  ok(/2026-09-12 -> 2026-09-14/.test(etatFerme),
+    `la plage englobe le lundi ferme a la grille : ${etatFerme.split('\n')[1] || ''}`);
+  ok(!/travaux/i.test(etatFerme),
+    'la RAISON de la fermeture ne sort jamais vers le client');
+  ok(/14 prochains jours SEULEMENT/.test(etatFerme),
+    'la fenetre est annoncee : au-dela, le modele sait qu il ne sait pas');
+
+  // CONTRE-PREUVE : des lundis fermes a la grille, SANS fermeture
+  // exceptionnelle, ne produisent aucun bloc. Sans elle, chaque centre
+  // trainerait la liste de ses lundis dans chaque reponse.
+  ok(await etatDuCentre('libramont', depsAvec([]), JOUR) === '',
+    'CONTRE-PREUVE : les jours fermes a la grille seuls ne declenchent rien');
+
+  // UNE ACTIVITE BLOQUEE, AVEC SES DATES.
+  const blocLaser = ['2026-09-10', '2026-09-11'].map((date, i) => bloc({
+    id: 20 + i, date, scope_type: 'activity', scope_ref: 'laser_game', reason: 'gilets',
+  }));
+  const etatLaser = await etatDuCentre('libramont', depsAvec(blocLaser), JOUR);
+  ok(/laser game : INDISPONIBLE 2026-09-10 -> 2026-09-11/.test(etatLaser),
+    `l activite bloquee est nommee AVEC ses dates : ${etatLaser.split('\n')[1] || ''}`);
+  ok(!/gilets/i.test(etatLaser), 'la raison du blocage ne sort pas non plus');
+  ok(!/N OUVRE PAS/.test(etatLaser),
+    'un blocage d activite ne se transforme pas en fermeture du centre');
+  ok(!/bowling/i.test(etatLaser),
+    'les activites NON bloquees ne sont pas nommees dans ce bloc');
+
+  // Une activite que ce centre ne declare PAS ne se nomme jamais, meme
+  // bloquee : la nommer apprendrait au modele qu elle existe ici.
+  const blocGolf = ['2026-09-10'].map((date, i) => bloc({
+    id: 30 + i, date, scope_type: 'activity', scope_ref: 'golf_oclock',
+  }));
+  ok(await etatDuCentre('libramont', depsAvec(blocGolf), JOUR) === '',
+    'une activite que ce centre n a pas n apparait jamais, meme bloquee');
+
+  // CLOISONNEMENT. La contrainte posee par Movsar mot pour mot : chaque centre
+  // a son propre agent, il ne doit jamais sortir l info d un autre. Le pool
+  // simule respecte le filtre center_id de la requete, comme la vraie base.
+  const depsParCentre = {
+    query: async (sql, params) => {
+      if (!/from availability_blocks/i.test(String(sql))) return { rows: [] };
+      return { rows: params && params[0] === 'libramont' ? fermeture : [] };
+    },
+  };
+  ok(/N OUVRE PAS/.test(await etatDuCentre('libramont', depsParCentre, JOUR)),
+    'MONTAGE : la fermeture est bien vue chez le centre qui la porte');
+  ok(await etatDuCentre('gembloux', depsParCentre, JOUR) === '',
+    'CLOISONNEMENT : une fermeture de Libramont ne dit rien chez Gembloux');
+
+  // ── ET LE CERVEAU LE TRANSMET ───────────────────────────────────────────
+  // La fonction peut etre juste et personne ne l appeler : c est le defaut
+  // paye plusieurs fois sur l autre porte de l agent.
+  const cerveauFerme = await buildEmailBrain('libramont', depsAvec(fermeture));
+  ok(/ETAT DU CENTRE/.test(cerveauFerme.context),
+    'LE POINT : le bloc entre dans le CONTEXTE du modele');
+  ok(/PRIME sur les horaires habituels/.test(cerveauFerme.context),
+    'et il est annonce comme primant sur les horaires habituels');
+  ok(!/ETAT DU CENTRE/.test(cerveauFerme.stable),
+    'il n entre PAS dans le bloc stable : il change tous les jours');
+  const cerveauNormal = await buildEmailBrain('libramont', depsAvec([]));
+  ok(!/ETAT DU CENTRE/.test(cerveauNormal.context),
+    'CONTRE-PREUVE : sans fermeture, le contexte ne porte aucun bloc d etat');
+
+  // ── ET LES HORAIRES ANNONCES VIENNENT DE LA BASE ────────────────────────
+  // getCenter rend le socle du DEPOT tant que personne n a rafraichi dans ce
+  // processus. Les horaires envoyes au client etaient donc ceux du fichier,
+  // pas ceux que le staff a poses. La ligne simulee porte une valeur que le
+  // socle NE PORTE PAS (lundi ouvert) : sans ca on ne saurait pas si le gate a
+  // lu la base ou le fichier.
+  const { applyCenterOverrides, getCenter: centreLu } = require('../lib/ops-knowledge');
+  applyCenterOverrides(new Map());
+  ok(centreLu('libramont').defaultSchedule.regular['1'] === null,
+    'MONTAGE : le socle du depot declare bien le lundi ferme');
+  const configDeLaBase = JSON.parse(JSON.stringify(centreLu('libramont')));
+  configDeLaBase.defaultSchedule.regular['1'] = { open: '09:00', close: '23:00' };
+  const depsDuStaff = {
+    query: async (sql) => (/from centers/.test(String(sql))
+      ? { rows: [{ id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', settings: { config: configDeLaBase } }] }
+      : { rows: [] }),
+  };
+  const cerveauDeLaBase = await buildEmailBrain('libramont', depsDuStaff);
+  ok(/Lundi 09h a 23h/.test(cerveauDeLaBase.context.normalize('NFD').replace(/[̀-ͯ]/g, '')),
+    `LE POINT : les horaires annonces viennent de la BASE : ${
+      cerveauDeLaBase.context.split('\n').find((l) => l.startsWith('Horaires')) || '(aucune ligne)'}`);
+  applyCenterOverrides(new Map());
+  const cerveauDuDepot = await buildEmailBrain('libramont', depsAvec([]));
+  ok(/Lundi fermé/.test(cerveauDuDepot.context),
+    'CONTRE-PREUVE : socle rendu, le lundi redevient ferme');
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemail-agent-check: ALL OK');

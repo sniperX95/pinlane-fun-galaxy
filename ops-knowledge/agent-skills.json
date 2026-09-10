@@ -406,7 +406,9 @@
         "tunnel-catalog-parity",
         "engine-verified-pricing",
         "sayable-opening-days",
-        "speaks-without-history"
+        "speaks-without-history",
+        "email-knows-todays-state",
+        "defers-unmeasurable-verdicts"
       ],
       "guardrails": [
         "Un centre, une fiche : les faits d un centre ne decrivent jamais un autre centre.",
@@ -441,16 +443,16 @@
         "Le prix plancher public ne retient qu une formule par personne, reservable TOUS les jours ouverts et SANS fenetre horaire : c est le seul fait de prix qui puisse etre cite seul, sans reserve. Une unite de prix inconnue exclut la formule des deux faits.",
         "Les JOURS DE SEMAINE d ouverture sont publics et dicibles ; l agenda DATE reste interne. Un jour de semaine ne se dit ouvert que si TOUTES ses occurrences de la fenetre le sont : un seul samedi ferme et le samedi disparait de la phrase, parce que « on est ouvert le samedi » serait faux une fois sur deux.",
         "L horaire d un jour n est annonce que s il est le MEME sur toutes ses occurrences ; sinon le jour se dit sans horaire, jamais avec un horaire faux.",
-        "Un centre actif et ouvert peut etre commente SANS aucun historique, a partir de ses seuls faits d OFFRE (jours d ouverture, prix). Le fait declare lui-meme qu il decrit l offre : un comptage du REGISTRE ne debloque toujours rien, et « tu as 1 reservation » reste impossible."
+        "Un centre actif et ouvert peut etre commente SANS aucun historique, a partir de ses seuls faits d OFFRE (jours d ouverture, prix). Le fait declare lui-meme qu il decrit l offre : un comptage du REGISTRE ne debloque toujours rien, et « tu as 1 reservation » reste impossible.",
+        "La porte EMAIL relit la configuration en base avant d annoncer un horaire, et recoit l ETAT du centre (dates ou il n ouvre pas, activites indisponibles AVEC leurs dates) annonce comme PRIMANT sur les horaires habituels. La raison d une fermeture ne sort jamais vers le client, et la fenetre de quatorze jours est dite : au-dela, le modele sait qu il ne sait pas.",
+        "Une idee appliquee dont la fenetre de mesure ne porte AUCUNE ligne de metriques n est pas « non concluante » : elle n est pas encore mesuree. Aucun verdict n est ecrit, l idee repasse au cycle suivant, et ni les patterns ni le bandit d angles n apprennent d une mesure qui n a pas eu lieu. Des lignes presentes dont la comparaison ne conclut pas restent un vrai « non concluant »."
       ],
       "nextUpgrades": [
-        "Mesurer l effet reel d un conseil applique a 14 jours",
         "Distinguer en base une idee refusee d une idee jamais lue (expireStaleInsights ecrit le meme statut)",
         "Elargir l ADN aux angles absents : prix, retention, SEO local, avis, groupes entreprise",
         "Valoriser les creneaux HORAIRES vides a partir de l amplitude declaree : le jour muet est traite, l heure creuse ne l est pas encore",
         "distributionSuspecte ne lit que le seau DOMINANT : 100 % de la masse sur DEUX heures ne declenche rien (mesure du 2026-09-10). Le seuil d une regle de concentration demande des donnees reelles, absentes depuis la remise a zero de la base",
         "Compter les PISTES disponibles jour par jour (lane_statuses, fenetre de maintenance datee) : deuxieme source du meme mensonge cote bowling, mais elle demande de decider ce que « plus assez de pistes » veut dire, donc un seuil",
-        "L agent EMAIL ne lit pas la fiche : il repond encore « oui nous avons un laser game » pendant un blocage. Meme classe que les horaires du patch 29, autre porte",
         "Un blocage d ACTIVITE ne retire pas les FORMULES qui la contiennent : la route publique n applique isActivityFullyBlockedOn qu aux visites libres. La fiche fait exactement ce que le tunnel fait, sans le corriger. Question de produit, pas de fiche"
       ]
     }

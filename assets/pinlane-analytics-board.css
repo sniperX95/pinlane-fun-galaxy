@@ -90,6 +90,17 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface);
+  /* Au doigt, un appui long ouvre l edition puis leve la carte
+     (assets/pinlane-touch-drag.js) : pas de bulle « Copier » a la place. */
+  -webkit-touch-callout: none;
+}
+
+/* Ni selection de texte sous le doigt ; a la souris, rien ne change. */
+@media (pointer: coarse) {
+  .pab-widget {
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 .pab-widget-head {

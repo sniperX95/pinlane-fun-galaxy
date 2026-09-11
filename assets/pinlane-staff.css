@@ -1503,6 +1503,9 @@ button.staff-date-label:focus-visible,
   -webkit-user-select: none;
   user-select: none;
   caret-color: transparent;
+  /* Au doigt, un appui long leve une carte (assets/pinlane-touch-drag.js) :
+     Safari ne doit pas ouvrir sa bulle « Copier » a la place. */
+  -webkit-touch-callout: none;
 }
 
 /* Plein écran RÉEL : bord à bord, par-dessus la sidebar (z-index 70) et le
@@ -2856,6 +2859,12 @@ button.staff-date-label:focus-visible,
 .bowling-drag-ghost-card,
 .laser-drag-ghost {
   position: fixed;
+  /* Le fantome se place par transform depuis le coin de l ecran. Sans left
+     ni top, le fantome bowling partait de sa place dans le flux, en bas de
+     la page, et suivait le pointeur HORS de l ecran, a la souris comme au
+     doigt (mesure du 2026-09-11 : 2 076 px de haut sur un ecran de 680). */
+  left: 0;
+  top: 0;
   z-index: 600;
   pointer-events: none;
   opacity: 0.96;

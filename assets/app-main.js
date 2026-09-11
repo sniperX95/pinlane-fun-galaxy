@@ -275,6 +275,23 @@ function onLaserDragWheel(event) {
   scrollLaserDragBy(event.deltaY);
 }
 
+// OU POSER LE FANTOME. A la souris, en bas a droite du curseur, comme toujours.
+// Au doigt, AU-DESSUS et centre : en bas a droite, le doigt et la main le
+// cachent, et on deposerait a l aveugle (voir startLaserPassTouchDrag).
+function dragGhostTransform(drag, clientX, clientY) {
+  if (drag && drag.touch) {
+    const top = Math.max(4, clientY - (drag.ghostH || 0) - 20);
+    return `translate3d(${clientX - (drag.ghostW || 0) / 2}px, ${top}px, 0)`;
+  }
+  return `translate3d(${clientX + 14}px, ${clientY + 14}px, 0)`;
+}
+
+function measureDragGhost(drag, ghost) {
+  if (!drag || !ghost) return;
+  drag.ghostW = ghost.offsetWidth;
+  drag.ghostH = ghost.offsetHeight;
+}
+
 function createLaserDragGhost(sourceEl, event) {
   const rect = sourceEl.getBoundingClientRect();
   const ghost = sourceEl.cloneNode(true);
@@ -282,14 +299,15 @@ function createLaserDragGhost(sourceEl, event) {
   ghost.style.width = `${rect.width}px`;
   ghost.style.left = '0px';
   ghost.style.top = '0px';
-  ghost.style.transform = `translate3d(${event.clientX + 14}px, ${event.clientY + 14}px, 0)`;
   document.body.appendChild(ghost);
+  measureDragGhost(laserPointerDrag, ghost);
+  ghost.style.transform = dragGhostTransform(laserPointerDrag, event.clientX, event.clientY);
   return ghost;
 }
 
 function updateLaserPointerGhost(event) {
   if (!laserPointerDrag?.ghost) return;
-  laserPointerDrag.ghost.style.transform = `translate3d(${event.clientX + 14}px, ${event.clientY + 14}px, 0)`;
+  laserPointerDrag.ghost.style.transform = dragGhostTransform(laserPointerDrag, event.clientX, event.clientY);
 }
 
 function startLaserPointerDragMode(event) {
@@ -321,6 +339,26 @@ function onLaserPointerMove(event) {
   setLaserUnplaceDropTarget(slotTarget ? null : getLaserUnplaceDropFromPoint(event.clientX, event.clientY));
 }
 
+function endLaserPointerDragVisuals(drag) {
+  laserDragActive = false;
+  stopLaserDragAutoScroll();
+  document.body.classList.remove('laser-dragging');
+  document.removeEventListener('wheel', onLaserDragWheel);
+  drag.sourceEl.classList.remove('is-dragging');
+  if (drag.ghost) drag.ghost.remove();
+}
+
+// Un geste interrompu (second doigt, appel entrant) : la carte revient, rien
+// n est depose.
+function cancelLaserPointerDrag() {
+  const drag = laserPointerDrag;
+  laserPointerDrag = null;
+  if (!drag || !drag.dragging) return;
+  endLaserPointerDragVisuals(drag);
+  clearLaserDragDropTarget();
+  clearLaserUnplaceDropTarget();
+}
+
 function onLaserPointerUp(event) {
   if (!laserPointerDrag) return;
   const drag = laserPointerDrag;
@@ -332,12 +370,7 @@ function onLaserPointerUp(event) {
   event.preventDefault();
   event.stopPropagation();
   laserDragSuppressClickUntil = Date.now() + 350;
-  laserDragActive = false;
-  stopLaserDragAutoScroll();
-  document.body.classList.remove('laser-dragging');
-  document.removeEventListener('wheel', onLaserDragWheel);
-  drag.sourceEl.classList.remove('is-dragging');
-  if (drag.ghost) drag.ghost.remove();
+  endLaserPointerDragVisuals(drag);
   const unplaceZone = getLaserUnplaceDropFromPoint(event.clientX, event.clientY);
   const target = getLaserDropTargetFromPoint(event.clientX, event.clientY) || laserDragDropTarget;
   clearLaserDragDropTarget();
@@ -356,22 +389,56 @@ function onLaserPointerUp(event) {
   scheduleLaserPass(drag.reservationId, drag.unitKey, targetStart, targetEnd);
 }
 
-function startLaserPassPointerDrag(event, reservationId, unitKey) {
-  if (event.button !== 0) return;
-  event.stopPropagation();
-  laserPointerDrag = {
+function createLaserPointerDrag(sourceEl, reservationId, unitKey, point, touch) {
+  return {
     reservationId,
     unitKey,
-    sourceEl: event.currentTarget,
-    startX: event.clientX,
-    startY: event.clientY,
-    lastX: event.clientX,
-    lastY: event.clientY,
+    sourceEl,
+    touch: Boolean(touch),
+    startX: point.clientX,
+    startY: point.clientY,
+    lastX: point.clientX,
+    lastY: point.clientY,
     dragging: false,
     ghost: null
   };
+}
+
+function startLaserPassPointerDrag(event, reservationId, unitKey) {
+  if (event.button !== 0) return;
+  event.stopPropagation();
+  laserPointerDrag = createLaserPointerDrag(event.currentTarget, reservationId, unitKey, event, false);
   document.addEventListener('mousemove', onLaserPointerMove, true);
   document.addEventListener('mouseup', onLaserPointerUp, true);
+}
+
+// AU DOIGT (2026-09-11) : un appui long leve la carte, le doigt la deplace, le
+// relacher la depose (assets/pinlane-touch-drag.js). La suite passe par les
+// memes fonctions que la souris : fantome, cible, defilement du bord, depot.
+function startLaserPassTouchDrag(event, reservationId, unitKey) {
+  if (!window.PinlaneTouchDrag) return;
+  const sourceEl = event.currentTarget;
+  window.PinlaneTouchDrag.demarrer(event, {
+    lever(point) {
+      laserPointerDrag = createLaserPointerDrag(sourceEl, reservationId, unitKey, point, true);
+      startLaserPointerDragMode(point);
+    },
+    bouger: onLaserPointerMove,
+    deposer: onLaserPointerUp,
+    annuler(etaitLeve) { if (etaitLeve) cancelLaserPointerDrag(); }
+  });
+}
+
+// LES GESTIONNAIRES TACTILES D UNE CARTE DU PLANNING. Poses sur la carte
+// elle-meme : un geste tactile lui reste adresse meme si le planning se
+// redessine pendant le glisser.
+function onPlanningTouchMove(event) { if (window.PinlaneTouchDrag) window.PinlaneTouchDrag.bouger(event); }
+function onPlanningTouchEnd(event) { if (window.PinlaneTouchDrag) window.PinlaneTouchDrag.finir(event); }
+function onPlanningTouchCancel(event) { if (window.PinlaneTouchDrag) window.PinlaneTouchDrag.interrompre(event); }
+function onPlanningTouchMenu(event) { if (window.PinlaneTouchDrag) window.PinlaneTouchDrag.menu(event); }
+
+function planningTouchAttrs(startCall) {
+  return `ontouchstart="${startCall}" ontouchmove="onPlanningTouchMove(event)" ontouchend="onPlanningTouchEnd(event)" ontouchcancel="onPlanningTouchCancel(event)" oncontextmenu="onPlanningTouchMenu(event)"`;
 }
 
 function shouldIgnoreLaserPassClick(event) {
@@ -770,25 +837,31 @@ function createBowlingDragGhost(sourceEl, event) {
   const ghost = document.createElement('div');
   ghost.className = `bowling-drag-ghost-card ${reservation ? getReservationHighlightClasses(reservation) : ''}`;
   ghost.style.width = `${Math.max(220, Math.min(360, rect.width))}px`;
-  ghost.style.transform = `translate3d(${event.clientX + 14}px, ${event.clientY + 14}px, 0)`;
   const label = reservation ? getReservationLabel(reservation) : 'Bowling';
   const lanes = reservation?.lanes?.length ? `Pistes ${reservation.lanes.join(', ')}` : 'Affectation libre';
   const sourceWindow = reservation ? getBowlingDragSourceWindow(reservation, bowlingPointerDrag?.sourceLane, bowlingPointerDrag?.sourceStart) : null;
   const isMultiLane = (sourceWindow?.lanes?.length || reservation?.lanes?.length || 0) > 1;
   const dragMode = isMultiLane ? (bowlingPointerDrag?.splitLane ? 'Piste seule' : 'Groupe de pistes') : lanes;
+  // Sans clavier, la piste seule s obtient en restant immobile une fois la
+  // carte levee (setBowlingTouchSplitLane) : le fantome le dit au doigt.
+  const hint = !isMultiLane ? ''
+    : !bowlingPointerDrag?.touch ? 'Shift/Ctrl : piste seule'
+      : bowlingPointerDrag.splitLane ? '' : 'Maintenez sans bouger : piste seule';
   ghost.innerHTML = `
     <strong>${escapeHtml(reservation?.name || 'Réservation')}</strong>
     <span>${escapeHtml(label)}</span>
-    <small>${escapeHtml(dragMode)}</small>
-    ${isMultiLane ? '<small>Shift/Ctrl : piste seule</small>' : ''}
+    <small class="bowling-drag-mode">${escapeHtml(dragMode)}</small>
+    ${hint ? `<small class="bowling-drag-hint">${escapeHtml(hint)}</small>` : ''}
   `;
   document.body.appendChild(ghost);
+  measureDragGhost(bowlingPointerDrag, ghost);
+  ghost.style.transform = dragGhostTransform(bowlingPointerDrag, event.clientX, event.clientY);
   return ghost;
 }
 
 function updateBowlingPointerGhost(event) {
   if (!bowlingPointerDrag?.ghost) return;
-  bowlingPointerDrag.ghost.style.transform = `translate3d(${event.clientX + 14}px, ${event.clientY + 14}px, 0)`;
+  bowlingPointerDrag.ghost.style.transform = dragGhostTransform(bowlingPointerDrag, event.clientX, event.clientY);
 }
 
 function startBowlingPointerDragMode(event) {
@@ -817,6 +890,24 @@ function onBowlingPointerMove(event) {
   setBowlingDragDropTarget(getBowlingDropTargetFromPoint(event.clientX, event.clientY));
 }
 
+function endBowlingPointerDragVisuals(drag) {
+  laserDragActive = false;
+  stopLaserDragAutoScroll();
+  document.body.classList.remove('bowling-dragging');
+  document.removeEventListener('wheel', onLaserDragWheel);
+  setBowlingSourceDragging(drag.reservationId, false);
+  if (drag.ghost) drag.ghost.remove();
+}
+
+// Un geste interrompu : la carte revient, rien n est depose.
+function cancelBowlingPointerDrag() {
+  const drag = bowlingPointerDrag;
+  bowlingPointerDrag = null;
+  if (!drag || !drag.dragging) return;
+  endBowlingPointerDragVisuals(drag);
+  clearBowlingDragDropTarget();
+}
+
 function onBowlingPointerUp(event) {
   if (!bowlingPointerDrag) return;
   const drag = bowlingPointerDrag;
@@ -828,12 +919,7 @@ function onBowlingPointerUp(event) {
   event.preventDefault();
   event.stopPropagation();
   bowlingDragSuppressClickUntil = Date.now() + 350;
-  laserDragActive = false;
-  stopLaserDragAutoScroll();
-  document.body.classList.remove('bowling-dragging');
-  document.removeEventListener('wheel', onLaserDragWheel);
-  setBowlingSourceDragging(drag.reservationId, false);
-  if (drag.ghost) drag.ghost.remove();
+  endBowlingPointerDragVisuals(drag);
   const target = getBowlingDropTargetFromPoint(event.clientX, event.clientY) || bowlingDragDropTarget;
   clearBowlingDragDropTarget();
   if (!target) {
@@ -850,24 +936,77 @@ function onBowlingPointerUp(event) {
   );
 }
 
-function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null, sourceStart = null) {
-  if (event.button !== 0) return;
-  event.stopPropagation();
-  bowlingPointerDrag = {
+function createBowlingPointerDrag(sourceEl, reservationId, sourceLane, sourceStart, point, splitLane, touch) {
+  return {
     reservationId,
     sourceLane,
     sourceStart,
-    splitLane: event.shiftKey || event.altKey || event.ctrlKey || event.metaKey,
-    sourceEl: event.currentTarget,
-    startX: event.clientX,
-    startY: event.clientY,
-    lastX: event.clientX,
-    lastY: event.clientY,
+    splitLane: Boolean(splitLane),
+    touch: Boolean(touch),
+    sourceEl,
+    startX: point.clientX,
+    startY: point.clientY,
+    lastX: point.clientX,
+    lastY: point.clientY,
     dragging: false,
     ghost: null
   };
+}
+
+function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null, sourceStart = null) {
+  if (event.button !== 0) return;
+  event.stopPropagation();
+  bowlingPointerDrag = createBowlingPointerDrag(
+    event.currentTarget, reservationId, sourceLane, sourceStart, event,
+    event.shiftKey || event.altKey || event.ctrlKey || event.metaKey, false
+  );
   document.addEventListener('mousemove', onBowlingPointerMove, true);
   document.addEventListener('mouseup', onBowlingPointerUp, true);
+}
+
+// LA PISTE SEULE, SANS CLAVIER. A la souris, Shift ou Ctrl au moment de
+// saisir la carte deplace une seule piste d un groupe. Au doigt, il n y a pas
+// de touche : la carte levee qui reste immobile BOWLING_TOUCH_SPLIT_MS de plus
+// passe en piste seule, le fantome l annonce, et le glisser qui suit fait
+// exactement ce que fait la souris avec Shift (meme calcul de pistes).
+const BOWLING_TOUCH_SPLIT_MS = 900;
+
+function isBowlingDragMultiLane(drag) {
+  const reservation = drag && state.reservations.find(item => Number(item.id) === Number(drag.reservationId));
+  if (!reservation) return false;
+  const sourceWindow = getBowlingDragSourceWindow(reservation, drag.sourceLane, drag.sourceStart);
+  return (sourceWindow?.lanes?.length || reservation.lanes?.length || 0) > 1;
+}
+
+function setBowlingTouchSplitLane(point) {
+  const drag = bowlingPointerDrag;
+  if (!drag || !drag.touch || drag.splitLane || !isBowlingDragMultiLane(drag)) return;
+  drag.splitLane = true;
+  const mode = drag.ghost && drag.ghost.querySelector('.bowling-drag-mode');
+  if (mode) mode.textContent = 'Piste seule';
+  const hint = drag.ghost && drag.ghost.querySelector('.bowling-drag-hint');
+  if (hint) hint.remove();
+  if (drag.ghost) {
+    measureDragGhost(drag, drag.ghost);
+    if (point) drag.ghost.style.transform = dragGhostTransform(drag, point.clientX, point.clientY);
+  }
+  if (bowlingDragDropTarget) setBowlingDragDropTarget(bowlingDragDropTarget);
+}
+
+// AU DOIGT : voir startLaserPassTouchDrag.
+function startBowlingBookingTouchDrag(event, reservationId, sourceLane = null, sourceStart = null) {
+  if (!window.PinlaneTouchDrag) return;
+  const sourceEl = event.currentTarget;
+  window.PinlaneTouchDrag.demarrer(event, {
+    lever(point) {
+      bowlingPointerDrag = createBowlingPointerDrag(sourceEl, reservationId, sourceLane, sourceStart, point, false, true);
+      startBowlingPointerDragMode(point);
+    },
+    maintienLong: setBowlingTouchSplitLane,
+    bouger: onBowlingPointerMove,
+    deposer: onBowlingPointerUp,
+    annuler(etaitLeve) { if (etaitLeve) cancelBowlingPointerDrag(); }
+  }, { maintienLongMs: BOWLING_TOUCH_SPLIT_MS });
 }
 
 function shouldIgnoreBowlingDragClick(event) {
@@ -19548,7 +19687,7 @@ function renderPlanning() {
       const prixHtml = (densClass === 'dens-lg' || densClass === 'dens-md')
         ? renderReservationPriceMark(r, { forme: 'montant', base: `bk-price ${classeLongueur}` })
         : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
@@ -19724,7 +19863,7 @@ function renderLaserPlanning() {
         const unitLabel = pass.waveCount > 1
           ? `Vague ${pass.waveIndex}/${pass.waveCount}${pass.totalGames > 1 ? ` • Partie ${pass.countIndex}/${pass.totalGames}` : ''}`
           : `Partie ${pass.countIndex}/${pass.totalGames}`;
-        return `<button type="button" class="laser-pass-card" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette vague">
+        return `<button type="button" class="laser-pass-card" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette vague">
           <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
           <span class="laser-pass-meta">${unitLabel} • ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
           <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
@@ -19831,7 +19970,7 @@ function renderLaserPlanning() {
         ? `Déplacer la vague ${waveIndex}/${waveCount}${laserGames > 1 ? ` (partie ${passIndex})` : ''}`
         : passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
       const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
-      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
+      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
           <small>${escapeHtml(label)}${waveLabel ? ` • ${escapeHtml(waveLabel)}` : ''}</small>

@@ -338,6 +338,15 @@
         + '<button type="button" class="pab-remove" aria-label="Supprimer ' + esc(meta.label) + '">' + closeSVG() + '</button>'
         + '<div class="pab-widget-body"></div>';
       card.addEventListener('pointerdown', function (ev) { onCardPointerDown(ev, card, w); });
+      // Le doigt passe par le geste tactile commun (assets/pinlane-touch-drag.js),
+      // sur la carte elle-meme : voir onCardTouchStart.
+      if (window.PinlaneTouchDrag) {
+        card.addEventListener('touchstart', function (ev) { onCardTouchStart(ev, card, w); }, { passive: true });
+        card.addEventListener('touchmove', function (ev) { window.PinlaneTouchDrag.bouger(ev); }, { passive: false });
+        card.addEventListener('touchend', function (ev) { window.PinlaneTouchDrag.finir(ev); }, { passive: false });
+        card.addEventListener('touchcancel', function (ev) { window.PinlaneTouchDrag.interrompre(ev); });
+        card.addEventListener('contextmenu', function (ev) { window.PinlaneTouchDrag.menu(ev); });
+      }
       var rm = card.querySelector('.pab-remove');
       rm.addEventListener('click', function (ev) { ev.stopPropagation(); removeWidget(w.id); });
       return card;
@@ -570,6 +579,12 @@
 
     // ---- Geste pointeur : appui long (entree edition) + glisser (reordre) ----
     function onCardPointerDown(ev, card, w) {
+      // Au doigt, le navigateur annule le pointeur des qu il fait defiler : le
+      // geste tactile commun prend le relais (onCardTouchStart). Sauf sur la
+      // poignee : touch-action: none y interdit le defilement, le pointeur y
+      // tient, et le doigt la tire tout de suite, sans appui long.
+      var surPoignee = ev.target && ev.target.closest && ev.target.closest('.pab-handle');
+      if (ev.pointerType === 'touch' && window.PinlaneTouchDrag && !surPoignee) return;
       if (ev.button != null && ev.button !== 0) return; // gauche uniquement
       if (ev.target && ev.target.closest && ev.target.closest('.pab-remove')) return;
       if (!editing) {
@@ -580,6 +595,43 @@
         return;
       }
       gesture = { mode: 'armed', card: card, widget: w, x0: ev.clientX, y0: ev.clientY };
+    }
+
+    // AU DOIGT (2026-09-11). Hors edition, un appui long ouvre l edition, comme
+    // a la souris. En edition, un appui long leve la carte et le doigt la
+    // deplace ; un doigt qui part tout de suite fait defiler la page. Seule la
+    // petite poignee bloquait le defilement : attraper la carte par son corps
+    // ne faisait rien. Interrompu, le geste rend la carte a sa place. La
+    // poignee reste au pointeur (voir onCardPointerDown).
+    function onCardTouchStart(ev, card, w) {
+      if (ev.target && ev.target.closest && ev.target.closest('.pab-remove, .pab-handle')) return;
+      if (!editing) {
+        window.PinlaneTouchDrag.demarrer(ev, {
+          lever: function () { setEditing(true); },
+          bouger: function () {},
+          deposer: function () {},
+          annuler: function () {},
+        }, { maintienMs: LONG_PRESS_MS });
+        return;
+      }
+      window.PinlaneTouchDrag.demarrer(ev, {
+        lever: function (p) {
+          gesture = { mode: 'armed', card: card, widget: w, x0: p.clientX, y0: p.clientY };
+          startDrag(p);
+        },
+        bouger: function (p) { if (gesture && gesture.mode === 'drag') updateDrag(p); },
+        deposer: function () {
+          if (gesture && gesture.mode === 'drag') endDrag();
+          gesture = null;
+        },
+        annuler: function (etaitLeve) {
+          if (etaitLeve && gesture && gesture.mode === 'drag') {
+            grid.insertBefore(gesture.placeholder, gesture.card);
+            endDrag();
+          }
+          gesture = null;
+        },
+      });
     }
 
     function onDocPointerMove(ev) {
@@ -597,7 +649,12 @@
       if (gesture.mode === 'drag') { ev.preventDefault(); updateDrag(ev); }
     }
 
-    function onDocPointerUp() {
+    function onDocPointerUp(ev) {
+      // Le doigt leve ou interrompu passe ici AVANT le touchend ou le
+      // touchcancel : pendant un geste tactile, laisser faire reposerait la
+      // carte la ou elle etait visee alors que le geste allait la rendre a sa
+      // place. La poignee, tiree au pointeur, se termine bien ici.
+      if (ev && ev.pointerType === 'touch' && window.PinlaneTouchDrag && window.PinlaneTouchDrag.actif()) return;
       if (!gesture) return;
       if (gesture.mode === 'press') { window.clearTimeout(gesture.timer); gesture = null; return; }
       if (gesture.mode === 'armed') { gesture = null; return; }

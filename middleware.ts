@@ -1,4 +1,12 @@
 import { next } from '@vercel/functions';
+import deploymentConfig from './vercel.json';
+
+// Source unique des directives de chargement. Le middleware remplace cet
+// en-tete sur Vercel : il doit donc reprendre TOUTE la politique statique,
+// puis y ajouter l'autorisation iframe dynamique, sans perdre une directive.
+const BASE_CONTENT_SECURITY_POLICY = deploymentConfig.headers
+  .flatMap((rule) => rule.headers)
+  .find((header) => header.key.toLowerCase() === 'content-security-policy')!.value;
 
 declare const process:
   | {
@@ -48,7 +56,11 @@ function embedAncestors(): string {
 }
 
 function passThrough() {
-  return next({ headers: { 'Content-Security-Policy': embedAncestors() } });
+  return next({ headers: { 'Content-Security-Policy': contentSecurityPolicy() } });
+}
+
+function contentSecurityPolicy(): string {
+  return `${BASE_CONTENT_SECURITY_POLICY}; ${embedAncestors()}`;
 }
 
 function unauthorized() {
@@ -58,6 +70,7 @@ function unauthorized() {
       'WWW-Authenticate': 'Basic realm="Pinlane", charset="UTF-8"',
       'Cache-Control': 'no-store',
       'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Security-Policy': contentSecurityPolicy(),
     },
   });
 }
@@ -69,6 +82,7 @@ function forbiddenDirection() {
       'WWW-Authenticate': 'Basic realm="Pinlane Direction", charset="UTF-8"',
       'Cache-Control': 'no-store',
       'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Security-Policy': contentSecurityPolicy(),
     },
   });
 }
@@ -218,6 +232,7 @@ export default async function middleware(request: Request) {
       headers: {
         'Cache-Control': 'no-store',
         'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Security-Policy': contentSecurityPolicy(),
       },
     });
   }

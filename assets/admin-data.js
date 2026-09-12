@@ -588,7 +588,10 @@ async function dhExportCsv(kind) {
     for (const f of a.byFormule) rows.push(['Formule', f.label, f.count, f.pax, f.revenue]);
   } else if (kind === 'reservations-brutes') {
     try {
-      const payload = await apiRequest(`/api/admin-range?startDate=${a.startDate}&endDate=${a.endDate}&centerId=${encodeURIComponent(dhCenterId())}`);
+      const payload = await window.PinlaneApiClient.collectAdminRange(
+        `/api/admin-range?startDate=${a.startDate}&endDate=${a.endDate}&centerId=${encodeURIComponent(dhCenterId())}`,
+        apiRequest,
+      );
       rows.push(['Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Type', 'Formule', 'Joueurs', 'Pistes', 'Durée (h)', 'Prix (EUR)', 'Statut', 'Canal', 'Occasion']);
       for (const r of payload.reservations || []) {
         rows.push([r.date, r.startTime, r.name, r.phone, r.email, r.type, r.label, r.pax, (r.lanes || []).join(' '), r.totalDuration || r.duration, r.price, r.status, r.channel, r.occasion]);

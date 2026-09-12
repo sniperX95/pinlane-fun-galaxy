@@ -2,6 +2,14 @@
 // Le modèle est SIMULÉ : on lui fait dire exactement ce qu'on veut, et on
 // vérifie que les garde-fous acceptent ou jettent. Aucun réseau, aucune DB.
 // node scripts/center-advisor-check.js
+// Une horloge commune AVANT les imports : le chargeur et le tunnel lisent
+// le meme jour que les fixtures d'agenda, meme si le gate tourne plus tard.
+const RealDate = global.Date;
+const FIXTURE_NOW = RealDate.parse('2026-09-10T10:00:00Z');
+global.Date = class FixtureDate extends RealDate {
+  constructor(...args) { super(...(args.length ? args : [FIXTURE_NOW])); }
+  static now() { return FIXTURE_NOW; }
+};
 const { proposerDepuisLaFiche, faitsUtiles, motifsDeRejet, NATURES_PROPOSABLES } = require('../lib/center-advisor');
 const { ficheDuRegistre } = require('../lib/center-facts');
 
@@ -442,7 +450,7 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   const cycle = require('../lib/center-metrics');
 
   const bundleMinimal = {
-    today: '2026-09-09', forecast7: [], weatherHistory: [], localEvents: [],
+    today: '2026-09-10', forecast7: [], weatherHistory: [], localEvents: [],
     nextSchoolHoliday: null, facts: [],
   };
   const insertsDePiste = () => requetes.filter(
@@ -643,7 +651,7 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   // 1. LA FICHE SEULE rafraichit. Testee AVANT l identite : si connaissance
   //    DuCentre passait en premier, ce serait ELLE qui aurait rafraichi, et
   //    retirer le rafraichissement de la fiche laisserait ce gate vert.
-  const ficheApresChangement = await chargerVraiment({ centerId: 'libramont', aujourdhui: '2026-09-09', pool: poolDuStaff });
+  const ficheApresChangement = await chargerVraiment({ centerId: 'libramont', aujourdhui: '2026-09-10', pool: poolDuStaff });
   ok('MONTAGE : la fiche est bien chargee', Boolean(ficheApresChangement && ficheApresChangement.registre_taille));
   ok('LE POINT : la fiche seule suffit a faire entrer le lundi ouvert',
     (joursOuvertsDeclares(centreCourant('libramont').defaultSchedule) || []).includes(1),
@@ -1053,6 +1061,19 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     Boolean(ficheAvecPrix.prix_plancher)
     && /EUR par personne/.test(String(ficheAvecPrix.prix_plancher.valeur)),
     String(ficheAvecPrix.prix_plancher && ficheAvecPrix.prix_plancher.valeur));
+  if (!ficheAvecPrix.prix_plancher) {
+    throw new Error(`G106 : prix_plancher absent au ${new Date().toISOString()} ; faits=${Object.keys(ficheAvecPrix).join(',')}`);
+  }
+  const { proposedArrivals: arriveesDuTunnel } = require('../lib/availability-slots');
+  const formuleTemoin = catalogueDuCentre('libramont').find(formule => arriveesDuTunnel({
+    centerId: 'libramont', date: '2026-09-11', formule, pax: 8,
+  }).length > 0);
+  ok('G106 : une formule reelle reste proposable demain', Boolean(formuleTemoin));
+  ok('G106 : le meme moteur refuse toujours hier', Boolean(formuleTemoin)
+    && arriveesDuTunnel({ centerId: 'libramont', date: '2026-09-09', formule: formuleTemoin, pax: 8 }).length === 0);
+  ok('G106 : Date, Date.now et le jour metier partagent la fixture',
+    new Date().getTime() === Date.now()
+    && require('../lib/booking-config').todayStr() === '2026-09-10');
   ok('et la liste complete porte autant de lignes que le catalogue en vend',
     Number(ficheAvecPrix.prix_du_catalogue.n) > 0
     && Number(ficheAvecPrix.prix_du_catalogue.n) <= Number(ficheAvecPrix.catalogue_actif.valeur),
@@ -1898,8 +1919,10 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
       && corpsEnvoye.includes(jourAttendu.enToutesLettres),
     JSON.stringify(jourAttendu));
   console.log(`\n${failures ? `center-advisor-check: ${failures} ECHEC(S)` : 'center-advisor-check: ALL OK'}`);
+  global.Date = RealDate;
   process.exit(failures ? 1 : 0);
 })().catch((error) => {
+  global.Date = RealDate;
   console.error('FAIL  gate interrompu :', (error && error.stack) || error);
   process.exit(1);
 });

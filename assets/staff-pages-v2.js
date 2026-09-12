@@ -410,7 +410,7 @@
     try {
       const startDate = encodeURIComponent(addDays(todayStr(), -60));
       const endDate = encodeURIComponent(addDays(todayStr(), 365));
-      const payload = await apiRequest(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${encodeURIComponent(center)}`);
+      const payload = await window.PinlaneApiClient.collectAdminRange(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${encodeURIComponent(center)}`, apiRequest);
       pv2ResSearch.rows = payload.reservations || [];
       pv2ResSearch.loaded = true;
       pv2ResSearch.loadedAt = Date.now();
@@ -1275,7 +1275,7 @@
       const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
       const th = (key, label, num) => {
         const on = sortState.key === key;
-        return `<th class="${num ? 'num ' : ''}crm-th${on ? ' is-active' : ''}" aria-sort="${on ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="setStaffClientSort('${key}')">${esc(label)} <span class="crm-sort">${ci(on ? (sortState.dir === 'asc' ? 'chevronUp' : 'chevronDown') : 'chevrons')}</span></th>`;
+        return `<th scope="col" class="${num ? 'num ' : ''}crm-th${on ? ' is-active' : ''}" aria-sort="${on ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button type="button" class="crm-sort-button" data-crm-sort="${key}" onclick="setStaffClientSort('${key}')">${esc(label)} <span class="crm-sort" aria-hidden="true">${ci(on ? (sortState.dir === 'asc' ? 'chevronUp' : 'chevronDown') : 'chevrons')}</span></button></th>`;
       };
       const lastTh = segment === 'relancer'
         ? '<th class="crm-th">Pourquoi</th>'
@@ -2174,6 +2174,13 @@
     }
   };
 
+  // Une tentative appartient au brouillon et à son contenu réellement envoyé.
+  // Une réponse perdue garde la clé ; une édition ou un nouveau brouillon en
+  // reçoit une autre. La clé n'est jamais régénérée dans le catch réseau.
+  function pv2MessageAttempt(draft, payload, idField = 'attemptId') {
+    return window.PinlaneApiClient.withMessageAttempt(draft, payload, idField);
+  }
+
   window.pv2ComposerSend = async function () {
     if (pv2Mail.busy) return;
     const d = pv2Mail.draft;
@@ -2207,7 +2214,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({
+        body: JSON.stringify(pv2MessageAttempt(d, {
           action: 'sendDirectEmail',
           centerId: state.adminCenterId || 'libramont',
           to,
@@ -2218,7 +2225,7 @@
           templateRef: d.templateRef || '',
           replyToCommunicationId: d.replyTo || null,
           scheduledAt,
-        }),
+        })),
       });
       pv2Mail.composerOpen = false;
       pv2Mail.draft = { to: '', name: '', subject: '', body: '', identityId: pv2Mail.draft.identityId, templateRef: '', replyTo: null, when: 'now', scheduledAt: '' };
@@ -2256,7 +2263,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'analyzeInboundEmail', centerId: state.adminCenterId || 'libramont', from, body, store: true }),
+        body: JSON.stringify(pv2MessageAttempt(pv2Mail.analyzeDraft, { action: 'analyzeInboundEmail', centerId: state.adminCenterId || 'libramont', from, body, store: true }, 'requestId')),
       });
       pv2Mail.analyzeOpen = false;
       pv2Mail.analyzeDraft = { from: '', body: '' };
@@ -2410,7 +2417,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({
+        body: JSON.stringify(pv2MessageAttempt(draft, {
           action: 'sendDirectEmail',
           centerId: state.adminCenterId || 'libramont',
           to,
@@ -2419,7 +2426,7 @@
           body: pv2FillVars(draft.body, replyCtx).text,
           identityId: pv2Mail.draft.identityId || null,
           replyToCommunicationId: row.id || null,
-        }),
+        })),
       });
       toast('Réponse en file d\'envoi ✓');
       delete pv2Mail.replyDraft[uid];
@@ -4722,14 +4729,25 @@
         mkBrief.data.paie = {
           ...mkBrief.data.paie,
           euros: roi.revenue, venues: roi.conversions, sent: roi.sent, reviewClicks: roi.reviewClicks, days: roi.days,
-          sources: (roi.bySource || []).filter((s) => s.sent > 0).sort((a, b) => b.revenue - a.revenue),
+          available: roi.available !== false,
+          unavailableReason: roi.unavailableReason || null,
+          excludedMissingSentAt: roi.available === false ? null : (roi.excludedMissingSentAt ?? 0),
+          sources: roi.available === false ? (roi.bySource || []) : (roi.bySource || []).filter((s) => s.sent > 0).sort((a, b) => b.revenue - a.revenue),
           // Même doctrine que le serveur : jeune = rien envoyé ET rien jamais
           // mesuré ; fenêtre calme = un historique existe, cette période est vide.
-          young: roi.sent === 0 && measuredCount === 0,
-          quietWindow: roi.sent === 0 && measuredCount > 0,
+          young: roi.available !== false && roi.sent === 0 && measuredCount === 0,
+          quietWindow: roi.available !== false && roi.sent === 0 && measuredCount > 0,
         };
       }
-    } catch (error) { /* la paie précédente reste */ } finally {
+    } catch (error) {
+      // Une période qui n'a pas pu être chargée n'hérite pas du chiffre de la précédente.
+      if (mkBrief.data) mkBrief.data.paie = {
+        ...mkBrief.data.paie, available: false, unavailableReason: 'network_error', days: mkBrief.period,
+        euros: null, venues: null, sent: null, reviewClicks: null, excludedMissingSentAt: null,
+        young: false, quietWindow: false,
+        sources: (mkBrief.data.paie?.sources || []).map(s => ({ ...s, sent: null, conversions: null, revenue: null })),
+      };
+    } finally {
       scheduleCampaignsRender();
     }
   };
@@ -6085,13 +6103,13 @@
     }
     if (/(rapport[eé]|r[eé]sultat|impact|combien|euros?|chiffre)/.test(q)) {
       const p = b.paie || {};
-      const reco = p.young ? `Encore trop tôt pour un chiffre honnête : premier bilan le ${p.firstVerdictDate || ''}.`
+      const reco = p.available === false ? 'Mesure indisponible. Réessayez depuis Impact.' : p.young ? `Encore trop tôt pour un chiffre honnête : premier bilan le ${p.firstVerdictDate || ''}.`
         : (p.euros > 0 ? `${money(p.euros)} de visites honorées liées à tes messages sur ${p.days} jours.` : `${p.sent || 0} messages partis sur ${p.days} jours : aucune visite honorée ne leur est encore liée.`);
       return {
         q: question,
         title: 'Ce que le marketing a rapporté',
         reco,
-        facts: p.young ? [] : [`${p.venues || 0} visites honorées`, `${p.sent || 0} messages envoyés`],
+        facts: p.available === false || p.young ? [] : [`${p.venues || 0} visites honorées`, `${p.sent || 0} messages envoyés`],
         actions: [{ label: 'Ouvrir Impact (le détail et les reçus)', js: "mkwTab('results')" }],
         source: 'assemblé depuis la mesure réelle (visites honorées, jamais les annulées ni les à-venir)',
       };
@@ -6664,9 +6682,12 @@
     // machine travaille encore. L etat choisi nomme CE QUE la page attend.
     if (!b || !b.paie) return `<section class="mkw-hero">${typeof renderThinking === 'function' ? renderThinking('breathing', { size: 64, label: 'L’agent analyse le centre' }) : '<div class="mkw-skel mkw-skel-hero"></div>'}</section>`;
     const p = b.paie;
+    const unavailable = p.available === false;
     const periods = [7, 30, 90].map((d) => `<button type="button" class="mkw-seg-btn ${mkBrief.period === d ? 'active' : ''}" onclick="mkBrPeriod(${d})">${d} j</button>`).join('');
     let fig;
-    if (p.young) {
+    if (unavailable) {
+      fig = '<div class="mkw-hero-fig"><span class="mkw-hero-cap" role="status"><strong>Mesure indisponible</strong></span></div>';
+    } else if (p.young) {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">-</span><span class="mkw-hero-cap">Encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.</span></div>`;
     } else if (p.quietWindow) {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">0</span><span class="mkw-hero-cap">message envoyé sur les <strong>${p.days} derniers jours</strong>. Tes mesures passées restent plus bas.</span></div>`;
@@ -6675,12 +6696,12 @@
     } else {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis : aucune visite honorée ne leur est encore liée sur ${p.days} j</span></div>`;
     }
-    const chips = !p.young && !p.quietWindow ? `<div class="mkw-hero-chips">
+    const chips = !unavailable && !p.young && !p.quietWindow ? `<div class="mkw-hero-chips">
       <span class="mkw-hchip"><b>${p.venues}</b> visites honorées</span>
       <span class="mkw-hchip-dot"></span>
       <span class="mkw-hchip"><b>${p.sent}</b> messages envoyés</span>
     </div>` : '';
-    const detail = mkBrief.payOpen && !p.young ? mkwSources(p) : '';
+    const detail = unavailable || (mkBrief.payOpen && !p.young) ? mkwSources(p) : '';
     return `<section class="mkw-hero">
       <div class="mkw-hero-top">
         <span class="mkw-eyebrow">Ce que le marketing a rapporté</span>
@@ -6688,13 +6709,15 @@
       </div>
       ${fig}
       ${chips}
-      ${!p.young ? `<button type="button" class="mkw-link" onclick="mkBrPayDetail()">${mkBrief.payOpen ? 'Masquer le détail' : 'D’où vient ce chiffre'}</button>` : ''}
+      ${Number(p.excludedMissingSentAt) > 0 ? `<p class="mkw-quiet">${Number(p.excludedMissingSentAt)} message(s) exclu(s) de la mesure : date d'envoi manquante.</p>` : ''}
+      ${unavailable ? `<button type="button" class="mkw-link" onclick="mkBrPeriod(${mkBrief.period})">Réessayer</button>` : !p.young ? `<button type="button" class="mkw-link" onclick="mkBrPayDetail()">${mkBrief.payOpen ? 'Masquer le détail' : 'D’où vient ce chiffre'}</button>` : ''}
       ${detail}
     </section>`;
   }
 
   function mkwSources(p) {
     const rows = (p.sources || []).map((s) => {
+      if (p.available === false) return `<div class="mkw-src"><span class="mkw-src-name">${esc(s.label)}</span><span class="mkw-src-bar"></span><span class="mkw-src-val" aria-label="Mesure indisponible">-</span></div>`;
       const share = p.euros > 0 ? Math.round((s.revenue / p.euros) * 100) : 0;
       return `<div class="mkw-src"><span class="mkw-src-name">${esc(s.label)}</span><span class="mkw-src-bar"><span style="width:${Math.max(2, share)}%"></span></span><span class="mkw-src-val">${money(s.revenue)}<em>${share}%</em></span></div>`;
     }).join('');
@@ -6702,7 +6725,7 @@
     // hors sources marketing) : ils s'affichent avec leur vraie origine, pas
     // en chip du héros comme s'ils étaient du ROI de publication (audit 4.6).
     return `<div class="mkw-src-panel">
-      ${rows || '<p class="mkw-quiet">Pas encore de visite honorée attribuée sur la période.</p>'}
+      ${rows || (p.available === false ? '' : '<p class="mkw-quiet">Pas encore de visite honorée attribuée sur la période.</p>')}
       ${p.reviewClicks ? `<p class="mkw-src-extra"><b>${p.reviewClicks}</b> clics vers ta fiche Google (emails de suivi post-visite, hors chiffre ci-dessus)</p>` : ''}
       <p class="mkw-method">Ne comptent que les visites <strong>déjà passées et réellement honorées</strong> (client marqué arrivé ou payé) : les réservations annulées, les demandes en attente de validation, les clients qui ne sont jamais venus et les réservations à venir sont tous exclus. Chaque visite est créditée au dernier message reçu dans les 60 jours : c’est un lien, pas une preuve absolue.</p>
     </div>`;

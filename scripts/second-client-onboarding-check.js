@@ -1260,6 +1260,12 @@ async function captureConsoleJourney() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
     await installConsoleMock(page, { session: ownerSession, platformClients, centerConfig: { ok: true, centers: [], activities: [] } });
     await page.goto(`${BASE_URL}/?v=second-client-console`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    // OPS-07 : les exports founder arrivent apres l'entree staff, pas au boot public.
+    await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+    await page.evaluate(async () => {
+      setView('staff');
+      await ensureStaffConsolesLoaded();
+    });
     await page.waitForFunction(() => typeof window.renderPlatformClientsPage === 'function' && Boolean(window.PinlaneBrand), null, { timeout: 15000 });
     out.provisioning = await page.evaluate(async ({ clientId, clientName, centerId, centerName, accent, senderLabel, senderEmail, unreadable }) => {
       const host = document.getElementById('staffCockpitPage');
@@ -1404,6 +1410,7 @@ async function captureConsoleJourney() {
       state.adminCenterId = centerId;
       save();
       setView('staff');
+      await ensureStaffConsolesLoaded();
       await wait(600);
       startEstablishmentEdit();
       await wait(300);

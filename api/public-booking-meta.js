@@ -10,7 +10,7 @@ const {
   todayStr,
   BOOKING_HORIZON_DAYS,
 } = require('../lib/booking-config');
-const { getPool, createCustomRequest } = require('../lib/database');
+const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
@@ -336,11 +336,7 @@ module.exports = async (req, res) => {
       }
       let db = false;
       try {
-        await Promise.race([
-          getPool().query('select 1'),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
-        ]);
-        db = true;
+        db = await checkDatabaseHealth();
       } catch (error) {
         db = false;
       }

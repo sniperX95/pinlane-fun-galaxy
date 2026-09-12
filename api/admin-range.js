@@ -34,7 +34,10 @@ module.exports = async (req, res) => {
       sendError(res, 400, 'Periode manquante.');
       return;
     }
-    const snapshot = await readAdminRangeState(startDate, endDate, centerId);
+    const snapshot = await readAdminRangeState(startDate, endDate, centerId, {
+      pageSize: requestUrl.searchParams.get('pageSize') ?? 500,
+      cursor: requestUrl.searchParams.get('cursor') ?? undefined,
+    });
     // Les indicateurs de supervision restent a la Direction : ce qui s ouvre
     // au Manager, ce sont les reservations, pas la sante interne du systeme.
     const canSeeOps = sessionHasPermission(session, 'direction.view');
@@ -49,16 +52,30 @@ module.exports = async (req, res) => {
         generatedAt: new Date().toISOString(),
       };
     }
+    // A page validator must also distinguish the permission-specific envelope.
+    const revision = '"' + require('crypto').createHash('sha256')
+      .update(JSON.stringify([snapshot.revision, canSeeOps])).digest('hex') + '"';
+    const payload = { ok: true, ...snapshot, revision, opsHealth };
+    // Notes, plans and maintenance/ops metadata have no fixed schema size.
+    // Always enforce the final UTF-8 envelope, not just the reservation count.
+    if (Buffer.byteLength(JSON.stringify(payload), 'utf8') >= 3_800_000) {
+      sendError(res, 413, 'Ces données dépassent la taille de lecture autorisée. Contactez le support.');
+      return;
+    }
     const requestRevision = req.headers['if-none-match'];
-    if (requestRevision && requestRevision === snapshot.revision) {
+    if (requestRevision && requestRevision === revision) {
       res.statusCode = 304;
-      res.setHeader('ETag', snapshot.revision);
+      res.setHeader('ETag', revision);
       res.end();
       return;
     }
-    res.setHeader('ETag', snapshot.revision);
-    sendJson(res, 200, { ok: true, ...snapshot, opsHealth });
+    res.setHeader('ETag', revision);
+    sendJson(res, 200, payload);
   } catch (error) {
+    if (error.code === 'ADMIN_RANGE_INPUT') {
+      sendError(res, error.statusCode, error.message);
+      return;
+    }
     // Jamais de message technique brut à l'écran (ex : "tuple concurrently
     // updated"). Détail en logs, message propre côté client.
     console.error('[admin-range] échec', error && (error.stack || error.message || error));

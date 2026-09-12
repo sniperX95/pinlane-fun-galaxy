@@ -1487,7 +1487,7 @@ button.staff-date-label:focus-visible,
   overflow: hidden;
   margin-bottom: var(--space-6);
   --planning-hour-h: 48px;
-  --planning-header-h: 38px;
+  --planning-header-h: 46px;
   --planning-lane-w: 88px;
   --planning-hour-col: 54px;
 }
@@ -1922,6 +1922,7 @@ button.staff-date-label:focus-visible,
   align-items: center;
   justify-content: center;
   gap: 5px;
+  padding-inline: 4px 45px;
   position: sticky;
   top: 0;
   z-index: 3;
@@ -1934,12 +1935,12 @@ button.staff-date-label:focus-visible,
 
 .lane-header .settings {
   position: absolute;
-  top: 3px;
-  right: 3px;
+  top: 1px;
+  right: 1px;
   display: inline-grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -11172,7 +11173,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .planning-grid-wrap::-webkit-scrollbar { height: 8px; }
   .planning-grid-wrap::-webkit-scrollbar-track { background: var(--subtle); }
   .planning-grid-wrap::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-full); }
-  .lane-header { gap: 4px; }
+  .lane-header { gap: 4px; padding-inline: 0; }
   .lane-header .settings { display: none; }
   .booking { left: 2px; right: 2px; }
 
@@ -11601,8 +11602,26 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-table-wrap { overflow: auto; flex: 1; }
 .crm-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 0; table-layout: auto; }
 .crm-table thead th { position: sticky; top: 0; z-index: 1; background: var(--subtle); color: var(--muted); font-size: 12px; font-weight: 600; text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-.crm-th { cursor: pointer; user-select: none; }
-.crm-th:hover { color: var(--text); }
+.crm-th { user-select: none; }
+.crm-table thead th:has(.crm-sort-button) { padding: 0; }
+.crm-sort-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.crm-th.num .crm-sort-button { justify-content: flex-end; }
+.crm-sort-button:hover { color: var(--text); }
+.crm-sort-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 .crm-th.is-active { color: var(--accent-strong); }
 .crm-table th.num, .crm-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .crm-table td.num { font-family: var(--font-data); }
@@ -12502,6 +12521,8 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 @media (max-width: 720px) {
   .mkw-head { padding-top: var(--space-6); }
+  .mkw-head-id { flex-wrap: wrap; }
+  .mkw-head-main { flex: 1 1 180px; }
   .mkw-head-nav { width: 100%; justify-content: flex-start; margin-left: 0; }
   .mkw-hello { font-size: 25px; }
   .mkw-cta .pv2-btn { height: 44px; }

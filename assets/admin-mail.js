@@ -288,6 +288,7 @@ async function msImproveWithAi(button) {
 }
 
 async function msSendDirect(button) {
+  if (msState.sendBusy) return;
   const d = msState.draft;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.to.trim())) {
     if (typeof toast === 'function') toast('Adresse email du destinataire invalide.');
@@ -305,9 +306,9 @@ async function msSendDirect(button) {
   msState.sendBusy = true;
   msRefresh();
   try {
-    const payload = await apiRequest('/api/ops', {
+    await apiRequest('/api/ops', {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(window.PinlaneApiClient.withMessageAttempt(d, {
         action: 'sendDirectEmail',
         centerId: msCenterId(),
         to: d.to.trim(),
@@ -316,10 +317,11 @@ async function msSendDirect(button) {
         identityId: d.identityId || null,
         category: d.category,
         templateRef: d.templateRef,
-      }),
+      })),
     });
-    const sentNow = payload.resendConfigured;
-    if (typeof toast === 'function') toast(sentNow ? 'Mail envoyé : visible dans l\'historique.' : 'Mail enregistré en file : il partira dès que le canal d\'envoi sera configuré.');
+    // Provider configuration is not a delivery receipt. The history carries
+    // the actual status, including a queued retry or an earlier cancellation.
+    if (typeof toast === 'function') toast('Mail enregistré : consultez son état d\'envoi dans l\'historique.');
     msState.draft = { to: '', subject: '', body: '', identityId: msState.draft.identityId, category: 'marketing', templateRef: '' };
     msState.aiTips = [];
     msState.historyLoaded = false;

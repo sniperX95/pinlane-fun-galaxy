@@ -144,10 +144,80 @@
     return payload || {};
   }
 
+  // Fetch every page before publishing the history to a cache or CSV export.
+  // requestPage is the app's authenticated apiRequest (also accepts one-page mocks).
+  async function collectAdminRange(url, requestPage) {
+    const target = new URL(url, window.location.origin);
+    const incomplete = () => buildError('Historique incomplet. Réessayez le chargement.', { url });
+    if (target.searchParams.has('cursor')) throw incomplete();
+    const scope = {
+      startDate: target.searchParams.get('startDate'),
+      endDate: target.searchParams.get('endDate') || target.searchParams.get('startDate'),
+      centerId: target.searchParams.get('centerId') || 'libramont',
+    };
+    let pageUrl = url;
+    let first = null;
+    const reservations = [];
+    const cursors = new Set();
+    const ids = new Set();
+    for (;;) {
+      const page = await requestPage(pageUrl);
+      if (!page || page.ok === false || !Array.isArray(page.reservations)) throw incomplete();
+      for (const key of Object.keys(scope)) {
+        if (page[key] !== undefined && page[key] !== scope[key]) throw incomplete();
+      }
+      // Legacy fixtures and small older servers expose no pagination metadata.
+      if (!first && page.pagination === undefined) return page;
+      const pagination = page.pagination;
+      if (!pagination || typeof pagination.hasMore !== 'boolean') throw incomplete();
+      if (!first) first = page;
+      for (const row of page.reservations) {
+        if (!row || row.id === undefined || ids.has(String(row.id))) throw incomplete();
+        ids.add(String(row.id));
+        reservations.push(row);
+      }
+      if (!pagination.hasMore) {
+        if (pagination.nextCursor !== null) throw incomplete();
+        break;
+      }
+      const cursor = pagination.nextCursor;
+      if (typeof cursor !== 'string' || !cursor || !page.reservations.length || cursors.has(cursor)) throw incomplete();
+      cursors.add(cursor);
+      target.searchParams.set('cursor', cursor);
+      pageUrl = target.pathname + target.search;
+    }
+    // The transport uses immutable ids. Restore the reader's business ordering.
+    reservations.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))
+      || String(a.startTime || '').localeCompare(String(b.startTime || ''))
+      || Number(a.id) - Number(b.id));
+    return {
+      ...first,
+      reservations,
+      // The first page's ETag cannot validate a combined history.
+      revision: null,
+      pagination: { ...first.pagination, hasMore: false, nextCursor: null },
+    };
+  }
+
+  // The attempt belongs to a draft and the exact content sent. Retrying a
+  // lost response keeps its identity; editing or starting a draft creates one.
+  function withMessageAttempt(draft, payload, idField = 'attemptId') {
+    const content = JSON.stringify(payload);
+    if (!draft.directEmailAttempt || draft.directEmailAttempt.content !== content) {
+      const id = typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+      draft.directEmailAttempt = { id, content };
+    }
+    return { ...payload, [idField]: draft.directEmailAttempt.id };
+  }
+
   window.PinlaneApiClient = {
     endpoints,
     isProtectedStaffApi,
     staffAuthHeaders,
     request,
+    collectAdminRange,
+    withMessageAttempt,
   };
 })();

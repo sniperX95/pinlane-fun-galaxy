@@ -3393,7 +3393,9 @@ async function loadAdminOpsForCenter(centerId = state.adminCenterId || 'libramon
 }
 
 function prefetchAdminPeriodSnapshots(centerId = state.adminCenterId || 'libramont', anchor = state.adminDate || todayStr()) {
-  ['day', 'week', 'month', 'year'].forEach(period => {
+  // Keep speculative reads short. Month/year histories are fetched completely
+  // on demand, not in parallel on every dashboard visit.
+  ['day', 'week'].forEach(period => {
     const range = getAdminPeriodRangeFor(period, anchor);
     const key = getAdminRangeCacheKey(centerId, range);
     if (adminSnapshotCache[key] || adminSnapshotLoadingKeys[key]) return;
@@ -3401,7 +3403,7 @@ function prefetchAdminPeriodSnapshots(centerId = state.adminCenterId || 'libramo
     const centerQuery = encodeURIComponent(centerId);
     const startDate = encodeURIComponent(range.startDate);
     const endDate = encodeURIComponent(range.endDate);
-    apiRequest(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${centerQuery}`)
+    window.PinlaneApiClient.collectAdminRange(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${centerQuery}`, apiRequest)
       .then(snapshotPayload => {
         adminSnapshotCache[key] = {
           loading: false,
@@ -3493,7 +3495,7 @@ async function loadAdminDashboard(force = false) {
     const centerQuery = encodeURIComponent(centerId);
     const startDate = encodeURIComponent(range.startDate);
     const endDate = encodeURIComponent(range.endDate);
-    const snapshotPayload = await apiRequest(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${centerQuery}`);
+    const snapshotPayload = await window.PinlaneApiClient.collectAdminRange(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${centerQuery}`, apiRequest);
     if (requestId !== adminLoadRequestId) return;
     const entry = {
       loading: false,

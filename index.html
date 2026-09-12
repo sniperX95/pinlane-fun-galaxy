@@ -21,14 +21,14 @@
 <link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20260818i">
-<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20260911a">
+<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20260912a">
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20260911a">
 <link rel="stylesheet" href="/assets/pinlane-client.css?v=20260818k">
 <script defer src="/assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="/assets/staff-auth-session.js?v=20260703b"></script>
-<script defer src="/assets/api-client.js?v=20260710a"></script>
+<script defer src="/assets/api-client.js?v=20260912a"></script>
 <script defer src="/assets/booking-core.js?v=20260910a"></script>
 <!-- La marque d'un centre a partir d'UNE couleur (derivation + mesure de
      contraste WCAG). Charge avant app-main et founder-clients-platform : les
@@ -56,29 +56,31 @@
 <!-- Le glisser au doigt (appui long, glisser, relacher), ecrit une fois pour
      le planning et le tableau d analyse. Charge avant app-main. -->
 <script defer src="/assets/pinlane-touch-drag.js?v=20260911a"></script>
-<script defer src="/assets/app-main.js?v=20260911a"></script>
-<script defer src="/assets/ops-progress.js?v=20260717a"></script>
+<script defer src="/assets/app-main.js?v=20260912a"></script>
+<!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
+     Les src restent lisibles par le detecteur de mise a jour. -->
+<script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260717a"></script>
 <!-- Synchronisation vivante de la console : lit un pouls minuscule et ne
      recharge la page que lorsque quelque chose a REELLEMENT bouge. Charge apres
      app-main (il utilise isStaffEmailsActive et loadOpsAdmin) et avant les
      pages staff, qui n ont rien a en savoir. -->
-<script defer src="/assets/ops-live.js?v=20260906a"></script>
+<script type="text/plain" data-staff-console src="/assets/ops-live.js?v=20260906a"></script>
 <!-- La regle qui separe ce que la personne a ecrit de ce que son logiciel a
      recopie. Chargee avant les pages staff, qui l utilisent pour l affichage ;
      le serveur require le MEME fichier pour l analyse, pour qu il n existe
      jamais deux versions de cette regle. -->
-<script defer src="/assets/email-thread.js?v=20260906a"></script>
-<script defer src="/assets/staff-menu.js?v=20260806a"></script>
-<script defer src="/assets/pinlane-fx.js?v=20260728e"></script>
-<script defer src="/assets/staff-pages-v2.js?v=20260807b"></script>
-<script defer src="/assets/pinlane-charts.js?v=20260728b"></script>
-<script defer src="/assets/pinlane-daterange.js?v=20260721a"></script>
-<script defer src="/assets/pinlane-analytics-board.js?v=20260911a"></script>
-<script defer src="/assets/founder-cockpit.js?v=20260728c"></script>
-<script defer src="/assets/founder-clients-platform.js?v=20260723a"></script>
-<script defer src="/assets/founder-centres.js?v=20260723a"></script>
-<script defer src="/assets/founder-tarifs.js?v=20260721a"></script>
-<script defer src="/assets/founder-team.js?v=20260721a"></script>
+<script type="text/plain" data-staff-console src="/assets/email-thread.js?v=20260906a"></script>
+<script type="text/plain" data-staff-console src="/assets/staff-menu.js?v=20260806a"></script>
+<script type="text/plain" data-staff-console src="/assets/pinlane-fx.js?v=20260728e"></script>
+<script type="text/plain" data-staff-console src="/assets/staff-pages-v2.js?v=20260912a"></script>
+<script type="text/plain" data-staff-console src="/assets/pinlane-charts.js?v=20260728b"></script>
+<script type="text/plain" data-staff-console src="/assets/pinlane-daterange.js?v=20260721a"></script>
+<script type="text/plain" data-staff-console src="/assets/pinlane-analytics-board.js?v=20260911a"></script>
+<script type="text/plain" data-staff-console src="/assets/founder-cockpit.js?v=20260728c"></script>
+<script type="text/plain" data-staff-console src="/assets/founder-clients-platform.js?v=20260723a"></script>
+<script type="text/plain" data-staff-console src="/assets/founder-centres.js?v=20260723a"></script>
+<script type="text/plain" data-staff-console src="/assets/founder-tarifs.js?v=20260721a"></script>
+<script type="text/plain" data-staff-console src="/assets/founder-team.js?v=20260721a"></script>
 <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
 </head>
 <body class="client-mode">

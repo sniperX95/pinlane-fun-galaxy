@@ -283,6 +283,11 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
         subject,
         body: text,
         receivedAt: data.receivedAt || data.created_at || null,
+        // L'ID du mail, pas celui de la livraison Svix : les reprises du meme
+        // mail gardent leur identite, meme si leur horodatage change.
+        provider: emailId ? String(data.provider || body.provider || 'resend') : '',
+        providerEmailId: emailId,
+        requestId: data.requestId || req.headers['idempotency-key'] || null,
         to: destinataire,
         routage,
       });

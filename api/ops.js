@@ -2520,6 +2520,9 @@ ${draftBody}`,
 
   if (action === 'sendDirectEmail') {
     const studioCenterId = requireConcreteCenter('sendDirectEmail');
+    if (!body.attemptId && !body.idempotencyKey) {
+      throw createHttpError('Identifiant de tentative requis pour envoyer le message.', 400);
+    }
     let identity = null;
     if (body.identityId) {
       const identities = await listEmailIdentities({ centerId: studioCenterId });
@@ -2537,8 +2540,10 @@ ${draftBody}`,
       templateRef: body.templateRef || '',
       staffMember: options.session?.member?.name || options.session?.member?.id || 'direction',
       identityId: body.identityId || null,
-      replyToCommunicationId: body.replyToCommunicationId || null,
+      replyToCommunicationId: body.replyToCommunicationId ?? null,
       scheduledAt: body.scheduledAt || null,
+      attemptId: body.attemptId || '',
+      idempotencyKey: body.idempotencyKey || '',
     });
     sendJson(res, 200, { ok: true, ...result });
     return;
@@ -2705,6 +2710,7 @@ ${draftBody}`,
         subject: String(body.subject || ''),
         body: text,
         receivedAt: body.receivedAt || null,
+        requestId: body.requestId || null,
       });
       sendJson(res, 200, {
         ok: true,

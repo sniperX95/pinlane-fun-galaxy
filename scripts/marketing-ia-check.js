@@ -257,6 +257,28 @@ async function installMock(page) {
       if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: new Date().toISOString().slice(0, 10), durationOptions: [], formules: [], center: { id: 'libramont', status: 'active', defaultSchedule: { regular: { '0': { open: '10:00', close: '22:00' }, '1': null, '2': { open: '14:00', close: '22:00' }, '3': { open: '12:00', close: '22:00' }, '4': { open: '14:00', close: '22:00' }, '5': { open: '14:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' } }, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
       return nf(input, init);
     };
+    // Trace de requete du mock : les en-tetes seuls ne terminent pas la lecture.
+    // Le gate attend le corps consomme ET le nouveau tour rendu par l'UI.
+    window.__QA_ASK_REQUESTS__ = [];
+    const mockFetch = window.fetch;
+    window.fetch = async (input, init = {}) => {
+      let body;
+      try { body = JSON.parse(init.body || '{}'); } catch (error) { body = {}; }
+      if (body.action !== 'marketingAsk') return mockFetch(input, init);
+      const request = { id: window.__QA_ASK_REQUESTS__.length + 1, question: body.question, centerId: body.centerId, status: 'pending' };
+      window.__QA_ASK_REQUESTS__.push(request);
+      try {
+        const response = await mockFetch(input, init);
+        for (const method of ['text', 'json']) {
+          const read = response[method].bind(response);
+          response[method] = async () => {
+            try { const result = await read(); request.status = 'complete'; return result; }
+            catch (error) { request.status = 'failed'; throw error; }
+          };
+        }
+        return response;
+      } catch (error) { request.status = 'failed'; throw error; }
+    };
     window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(qaSession));
   }, { expiresAt });
 }
@@ -264,15 +286,68 @@ async function installMock(page) {
 let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
 
+// Aucune dependance a un temps de reponse suppose. L'identite vient du numero
+// de requete, de la question ET du centre; le DOM doit porter ce nouveau tour.
+function readAskState(expected) {
+  const root = document.getElementById('staffCampaignsPage');
+  const answers = root.querySelectorAll('.mkw-turn-answer');
+  const last = answers[answers.length - 1];
+  const request = (window.__QA_ASK_REQUESTS__ || [])[expected.asksBefore];
+  const asks = window.__QA_ASKS__ || [];
+  const lastAsk = asks[expected.asksBefore];
+  const observed = {
+    requests: asks.length, answers: answers.length,
+    requestId: request?.id, requestStatus: request?.status || 'absent',
+    sentQuestion: lastAsk?.question || '', sentCenter: lastAsk?.centerId || '',
+    question: last?.previousElementSibling?.querySelector('.mkw-msg-user')?.textContent.trim() || '',
+    pending: Boolean(root.querySelector('[aria-busy="true"]')),
+    text: last?.textContent || '', source: last?.querySelector('.mkw-ans-src')?.textContent || '',
+  };
+  observed.complete = observed.requests === expected.asksBefore + 1
+    && observed.requestId === expected.asksBefore + 1 && observed.requestStatus === 'complete'
+    && observed.sentQuestion === expected.question && observed.sentCenter === expected.centerId
+    && observed.question === expected.question && !observed.pending && Boolean(observed.text.trim());
+  return expected.waitForCompletion ? (observed.complete ? observed : false) : observed;
+}
+
+async function waitForAsk(page, expected, timeout = 15000) {
+  try {
+    const handle = await page.waitForFunction(readAskState, { ...expected, waitForCompletion: true }, { timeout });
+    const result = await handle.jsonValue();
+    await handle.dispose();
+    return result;
+  } catch (error) {
+    const observed = await page.evaluate(readAskState, expected);
+    throw new Error(`G143 attente de reponse echouee : attendu=${JSON.stringify(expected)} observe=${JSON.stringify(observed)} ; ${error.message}`);
+  }
+}
+
+async function askAndWait(page, question) {
+  const expected = await page.evaluate(q => {
+    const input = document.getElementById('brAskInput');
+    input.value = q; input.dispatchEvent(new Event('input'));
+    const before = { asksBefore: (window.__QA_ASKS__ || []).length, question: q, centerId: state.adminCenterId || 'libramont' };
+    window.mkwSend();
+    return before;
+  }, question);
+  return waitForAsk(page, expected);
+}
+
 async function main() {
   const server = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
-  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, serviceWorkers: 'block' });
   const errs = [];
   page.on('console', (msg) => { if (msg.type() === 'error') errs.push(msg.text()); });
   page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));
   const go = async (tab) => { await page.evaluate((t) => window.mkwTab(t), tab); await page.waitForTimeout(300); };
   try {
+    // Ce gate utilise exclusivement les mocks et les fichiers localhost.
+    await page.route('**/*', route => {
+      const url = new URL(route.request().url());
+      if (url.origin === BASE_URL && !url.pathname.startsWith('/api/')) return route.continue();
+      return route.fulfill({ status: url.origin === BASE_URL ? 503 : 200, body: '', contentType: 'text/javascript' });
+    });
     await installMock(page);
     await page.goto(`${BASE_URL}/?v=mkw-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
@@ -445,10 +520,15 @@ async function main() {
     ok(toggled.pushBack, 'et le chat se recentre a cote (le shell reserve la place, anime)');
 
     console.log('\n[MINI-RADAR] un clic sur un jour POSE LA QUESTION dans le chat');
-    const dayAsk = await page.evaluate(async () => {
+    const dayInput = await page.evaluate(() => {
+      const asksBefore = (window.__QA_ASKS__ || []).length;
       const minis = [...document.querySelectorAll('#mkwSheet .mkw-mini')];
       minis[9].click(); // le jour CALME du mock (sans proposition liee)
-      await new Promise((r) => setTimeout(r, 1000));
+      const turns = document.querySelectorAll('#staffCampaignsPage .mkw-msg-user');
+      return { asksBefore, question: turns[turns.length - 1].textContent.trim(), centerId: state.adminCenterId || 'libramont' };
+    });
+    await waitForAsk(page, dayInput);
+    const dayAsk = await page.evaluate(() => {
       const answer = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-turn-answer');
       const heroGone = !document.querySelector('#staffCampaignsPage .mkw-chat.is-hero');
       return {
@@ -617,7 +697,7 @@ async function main() {
     // Le refus d'inventer, lui, se prouve la ou il vit : scripts/marketing-ask-check.js
     // (controle d'apres coup + contre-preuve par mutation).
     console.log('\n[DEMANDER] la question part au serveur, la reponse est ancree et sourcee');
-    const asked = await page.evaluate(async () => {
+    const askedInput = await page.evaluate(async () => {
       window.mkwMode('demander');
       await new Promise((r) => setTimeout(r, 150));
       const chip = [...document.querySelectorAll('#staffCampaignsPage .mkw-chip-suggest')].find((el) => /Que fait Bowling Arlon/.test(el.textContent));
@@ -626,19 +706,10 @@ async function main() {
       const filled = (document.getElementById('brAskInput') || {}).value || '';
       const asksBefore = (window.__QA_ASKS__ || []).length;
       [...document.querySelectorAll('#staffCampaignsPage .mkw-composer-send')].find((el) => /Demander/.test(el.textContent)).click();
-      await new Promise((r) => setTimeout(r, 1000));
-      const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
-      const answer = answers[answers.length - 1];
-      const asks = window.__QA_ASKS__ || [];
-      return {
-        filled,
-        asksDelta: asks.length - asksBefore,
-        sentQuestion: asks.length ? String(asks[asks.length - 1].question || '') : '',
-        sentCenter: asks.length ? String(asks[asks.length - 1].centerId || '') : '',
-        answer: answer ? answer.textContent : '',
-        source: (answer && answer.querySelector('.mkw-ans-src') || {}).textContent || '',
-      };
+      return { filled, question: filled, asksBefore, centerId: state.adminCenterId || 'libramont' };
     });
+    const askedResponse = await waitForAsk(page, askedInput);
+    const asked = { ...askedInput, ...askedResponse, asksDelta: askedResponse.requests - askedInput.asksBefore, answer: askedResponse.text };
     ok(/^Que fait Bowling Arlon/.test(asked.filled), 'la suggestion remplit la question ET bascule le mode');
     ok(asked.asksDelta === 1 && /Bowling Arlon/.test(asked.sentQuestion) && asked.sentCenter === 'libramont',
       `la question part au SERVEUR, telle quelle, avec son centre (${asked.asksDelta} appel)`);
@@ -646,31 +717,13 @@ async function main() {
       'la reponse affichee est ANCREE : elle cite la veille reelle ET un chiffre mesure du centre');
     ok(/jours mesurés/.test(asked.source) && /210/.test(asked.source),
       `la SOURCE dit ce que la reponse a eu sous les yeux ("${asked.source.trim().slice(0, 80)}")`);
-    const unknown = await page.evaluate(async () => {
-      const input = document.getElementById('brAskInput');
-      input.value = 'quelle est la capitale du danemark';
-      input.dispatchEvent(new Event('input'));
-      window.mkwSend();
-      await new Promise((r) => setTimeout(r, 1000));
-      const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
-      const last = answers[answers.length - 1];
-      return { text: last ? last.textContent : '' };
-    });
+    const unknown = await askAndWait(page, 'quelle est la capitale du danemark');
     ok(/n'ai aucune donnée|aucune donnée là-dessus|pas mon sujet/i.test(unknown.text) && !/copenhague/i.test(unknown.text),
-      'question hors perimetre -> l\'agent DIT qu\'il ne sait pas, et n\'invente pas la reponse');
+      `question hors perimetre -> l'agent DIT qu'il ne sait pas, et n'invente pas la reponse (${JSON.stringify(unknown)})`);
     // Le FILET : le serveur refuse une reponse qui inventait. Le navigateur ne
     // reste pas muet et ne fait pas semblant : il rend sa reponse deterministe
     // et ecrit a l'ecran POURQUOI elle est en mode simple.
-    const degraded = await page.evaluate(async () => {
-      const input = document.getElementById('brAskInput');
-      input.value = 'que penses-tu de la soiree fluo interdit';
-      input.dispatchEvent(new Event('input'));
-      window.mkwSend();
-      await new Promise((r) => setTimeout(r, 1000));
-      const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
-      const last = answers[answers.length - 1];
-      return { text: last ? last.textContent : '', source: (last && last.querySelector('.mkw-ans-src') || {}).textContent || '' };
-    });
+    const degraded = await askAndWait(page, 'que penses-tu de la soiree fluo interdit');
     ok(/mode simple/.test(degraded.source) && /jetée/.test(degraded.source),
       `reponse du modele REFUSEE -> le filet deterministe reprend, et l'ecran le dit ("${degraded.source.trim().slice(0, 90)}")`);
     ok(degraded.text.length > 40, 'le gerant recoit quand meme une reponse : jamais un ecran vide');

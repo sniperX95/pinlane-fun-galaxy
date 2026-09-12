@@ -3,7 +3,9 @@
 // Couvre (spec 2026-07-14-emails-v3) : brain chargé, fallback règles (7
 // intents), grounding anti-chiffres, mémoire apprenante (leçon si diff, cap),
 // overrides automations (défauts C1, validation C2, builders + timings),
-// sendDirectEmail C3 (validation, payload, replyTo → marquage + leçon),
+// sendDirectEmail C3 (validation, identite de tentative, payload, replyTo en
+// attente : aucun marquage ni lecon avant envoi ; depart reel couvert par
+// preprod-communications-check),
 // ingestion inbound (idempotence) et webhook C5 (401/Resend/payload plat).
 // L HORLOGE DU GATE EST POSEE (patch 72e). Les tarifs comptent les jours ou le
 // TUNNEL propose une heure, et le tunnel ne propose rien a une date passee
@@ -85,8 +87,14 @@ function makeDeps(state) {
       if (sql.includes('insert into email_agent_memory')) { state.memoryInserts.push(params); return { rows: [] }; }
       if (sql.includes('delete from email_agent_memory')) { state.memoryDeletes += 1; return { rows: [] }; }
       if (sql.includes('payload = payload ||')) { state.payloadMerges.push(params); return { rows: [] }; }
-      if (sql.includes("direction = 'inbound' and idempotency_key")) return { rows: state.inboundDupe ? [{ id: 55 }] : [] };
-      if (sql.includes("direction = 'inbound'")) return { rows: state.inboundRow ? [{ payload: state.inboundRow }] : [] };
+      if (sql.includes("direction = 'inbound' and idempotency_key")) return { rows: state.inboundDupe === params[1] ? [{ id: 55 }] : [] };
+      if (sql.includes("direction = 'inbound'")) {
+        const row = state.inboundRecord;
+        const matches = row && sql.includes('center_id = $2') && sql.includes('lower(recipient) = lower($3)')
+          && Number(params[0]) === row.id && params[1] === row.centerId
+          && String(params[2]).toLowerCase() === row.recipient.toLowerCase();
+        return { rows: matches ? [{ payload: row.payload }] : [] };
+      }
       if (sql.includes("jsonb_build_object('email_brain'")) { state.brainSaved = JSON.parse(params[1]); state.settings = { ...(state.settings || {}), email_brain: state.brainSaved }; return { rows: [] }; }
       if (sql.includes("jsonb_build_object('custom_sequences'")) { state.seqSaved = JSON.parse(params[1]); state.settings = { ...(state.settings || {}), custom_sequences: state.seqSaved }; return { rows: [] }; }
       if (sql.includes("payload->>'dedupeKey'")) return { rows: state.customDupe ? [{ 1: 1 }] : [] };
@@ -318,37 +326,41 @@ const anthropicOk = (object) => ({
   const reactExplicit = await runReactivationSweep('libramont', depsReactExplicit, { today: iso(0), cap: 1 });
   ok(reactExplicit.enqueued === 1, 'cap explicite (tests/cron) prioritaire sur le réglage');
 
-  console.log('\n[SENDDIRECT] composer libre + boucle inbox (répondu + leçon)');
+  console.log('\n[SENDDIRECT] composer libre + reponse en attente (aucune lecon avant depart)');
   let rejected = false;
-  try { await sendDirectEmail({ to: 'pas-un-email', subject: 'a', body: 'b' }, makeDeps({})); } catch (error) { rejected = true; }
+  try { await sendDirectEmail({ to: 'pas-un-email', subject: 'a', body: 'b', attemptId: 'gate-invalid-email' }, makeDeps({})); } catch (error) { rejected = true; }
   ok(rejected, 'email invalide → rejeté');
   const depsSend = makeDeps({});
-  await sendDirectEmail({ centerId: 'libramont', to: 'georges@test.be', name: 'Georges Dupuis', subject: 'Hello', body: 'Corps du message', identityId: 3 }, depsSend);
+  await sendDirectEmail({ centerId: 'libramont', to: 'georges@test.be', name: 'Georges Dupuis', subject: 'Hello', body: 'Corps du message', identityId: 3, attemptId: 'gate-direct-one' }, depsSend);
   const sentRow = depsSend.state.enqueued[0];
   ok(sentRow.payload.direct === true && sentRow.payload.clientKey === 'georges@test.be' && sentRow.payload.identityId === 3, 'payload direct : clientKey + identité tracés');
+  ok(sentRow.idempotencyKey === 'direct:libramont:gate-direct-one' && sentRow.payload.attemptId === 'gate-direct-one', 'identite de tentative conservee dans la file');
   const proposal = { subject: 'Nos tarifs, Fun Galaxy', body: 'Bonjour,\n\nRéponse proposée standard de l\'agent.' };
-  const depsReply = makeDeps({ inboundRow: { textBody: 'Combien pour 8 ?', analysis: { intent: 'prix', reply: proposal } } });
-  await sendDirectEmail({
+  const inboundFixture = { id: 42, centerId: 'libramont', recipient: 'client@test.be', payload: { textBody: 'Combien pour 8 ?', analysis: { intent: 'prix', reply: proposal } } };
+  const depsReply = makeDeps({ inboundRecord: inboundFixture });
+  const queuedReply = await sendDirectEmail({
     centerId: 'libramont', to: 'client@test.be', subject: 'Nos tarifs, Fun Galaxy',
     body: 'Bonjour Marie, pour 8 personnes voici comment on fait : on vous confirme le tarif exact par retour, promis vite.',
     replyToCommunicationId: 42,
+    attemptId: 'gate-reply-edited',
   }, depsReply);
-  const merge = depsReply.state.payloadMerges[0];
-  ok(Boolean(merge) && Number(merge[0]) === 42 && JSON.parse(merge[1]).repliedAt, 'inbound marqué répondu (repliedAt)');
-  ok(depsReply.state.memoryInserts.length === 1, 'réponse modifiée par le staff → leçon apprise');
-  const depsReplySame = makeDeps({ inboundRow: { textBody: 'Combien pour 8 ?', analysis: { intent: 'prix', reply: proposal } } });
-  await sendDirectEmail({ centerId: 'libramont', to: 'client@test.be', subject: proposal.subject, body: proposal.body, replyToCommunicationId: 43 }, depsReplySame);
-  ok(depsReplySame.state.memoryInserts.length === 0 && depsReplySame.state.payloadMerges.length === 1, 'réponse envoyée telle quelle → répondu marqué, PAS de leçon');
+  ok(queuedReply.dispatched === null && depsReply.state.enqueued[0].status === 'queued'
+    && depsReply.state.enqueued[0].payload.replyToCommunicationId === 42, 'reponse rattachee dans la file, aucun envoi simule par enqueue id=0');
+  ok(depsReply.state.payloadMerges.length === 0, 'reponse en attente : inbound NON marque repondu');
+  ok(depsReply.state.memoryInserts.length === 0, 'reponse modifiee mais non envoyee : aucune lecon apprise');
+  const depsReplySame = makeDeps({ inboundRecord: { ...inboundFixture, id: 43 } });
+  await sendDirectEmail({ centerId: 'libramont', to: 'client@test.be', subject: proposal.subject, body: proposal.body, replyToCommunicationId: 43, attemptId: 'gate-reply-same' }, depsReplySame);
+  ok(depsReplySame.state.memoryInserts.length === 0 && depsReplySame.state.payloadMerges.length === 0, 'reponse identique en attente : ni repondu ni lecon');
 
   console.log('\n[INGEST] boîte de réception (collage manuel / webhook)');
   const depsIngest = makeDeps({});
-  const ingested = await ingestInboundEmail({ centerId: 'libramont', from: 'client@test.be', subject: 'Prix ?', body: 'Combien pour 8 personnes ?', deps: depsIngest });
+  const ingested = await ingestInboundEmail({ centerId: 'libramont', from: 'client@test.be', subject: 'Prix ?', body: 'Combien pour 8 personnes ?', requestId: 'manual-test-one', deps: depsIngest });
   const inboundRow = depsIngest.state.enqueued[0];
   ok(inboundRow.direction === 'inbound' && inboundRow.status === 'received' && inboundRow.templateId === 'inbound_email', 'communication inbound status received');
   ok(ingested.analysis.intent === 'prix' && inboundRow.payload.analysis.intent === 'prix', 'analyse stockée dans le payload');
-  ok(String(inboundRow.idempotencyKey || '').startsWith('inbound:libramont:client@test.be'), 'clé d\'idempotence posée');
-  const depsIngestDupe = makeDeps({ inboundDupe: true });
-  const deduped = await ingestInboundEmail({ centerId: 'libramont', from: 'client@test.be', subject: 'Prix ?', body: 'Combien ?', deps: depsIngestDupe });
+  ok(/^inbound:v2:[0-9a-f]{64}$/.test(inboundRow.idempotencyKey || '') && inboundRow.payload.requestId === 'manual-test-one', 'cle d\'idempotence et identite manuelle posees');
+  const depsIngestDupe = makeDeps({ inboundDupe: inboundRow.idempotencyKey });
+  const deduped = await ingestInboundEmail({ centerId: 'libramont', from: 'client@test.be', subject: 'Prix ?', body: 'Combien pour 8 personnes ?', requestId: 'manual-test-one', deps: depsIngestDupe });
   ok(deduped.deduped === true && depsIngestDupe.state.enqueued.length === 0, 'même mail re-reçu → dédupliqué, zéro doublon');
 
   console.log('\n[WEBHOOK] /api/inbound-email (secret + Resend + payload plat)');
@@ -436,11 +448,11 @@ const anthropicOk = (object) => ({
   console.log('\n[ENVOI PROGRAMMÉ] composer → plus tard');
   const depsSched = makeDeps({});
   const futureAt = new Date(Date.now() + 3600000).toISOString();
-  await sendDirectEmail({ centerId: 'libramont', to: 'x@y.be', subject: 'Programmé', body: 'Contenu', scheduledAt: futureAt }, depsSched);
+  await sendDirectEmail({ centerId: 'libramont', to: 'x@y.be', subject: 'Programmé', body: 'Contenu', scheduledAt: futureAt, attemptId: 'gate-scheduled-one' }, depsSched);
   const schedRow = depsSched.state.enqueued[0];
   ok(schedRow.scheduledAt === futureAt && schedRow.payload.scheduled === true, 'scheduledAt futur → file au moment choisi (pas de dispatch immédiat)');
   let schedThrew = false;
-  try { await sendDirectEmail({ centerId: 'libramont', to: 'x@y.be', subject: 'a', body: 'b', scheduledAt: 'pas-une-date' }, makeDeps({})); } catch (e) { schedThrew = e.expose === true; }
+  try { await sendDirectEmail({ centerId: 'libramont', to: 'x@y.be', subject: 'a', body: 'b', scheduledAt: 'pas-une-date', attemptId: 'gate-scheduled-invalid' }, makeDeps({})); } catch (e) { schedThrew = e.expose === true; }
   ok(schedThrew, 'date invalide → rejetée');
 
 

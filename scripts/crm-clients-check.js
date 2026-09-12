@@ -438,13 +438,13 @@ async function main() {
     console.log('\n[TRI] les en-têtes de colonnes restent triables');
     await page.evaluate(() => { setStaffClientSegment('tous'); });
     await page.waitForTimeout(200);
+    const sortBefore = await page.evaluate(() => JSON.stringify(state.staffClientSort));
+    await page.locator('#staffClientsPage th[aria-sort]').getByRole('button', { name: /dépens/i }).click();
     const sortInfo = await page.evaluate(() => {
-      const before = JSON.stringify(state.staffClientSort);
       const th = [...document.querySelectorAll('#staffClientsPage th[aria-sort]')].find((t) => /dépens/i.test(t.textContent));
-      if (th) th.click();
-      return { before, hadTh: !!th, after: JSON.stringify(state.staffClientSort) };
+      return { hadTh: !!th, after: JSON.stringify(state.staffClientSort) };
     });
-    ok(sortInfo.hadTh && sortInfo.before !== sortInfo.after, 'clic en-tête change le tri');
+    ok(sortInfo.hadTh && sortBefore !== sortInfo.after, 'clic en-tête change le tri');
 
     // [SHOT] captures des 4 segments + fiche. Même règle que le gate emails :
     // setStaffTheme() est le SEUL chemin qui pose data-theme, et le clair + le

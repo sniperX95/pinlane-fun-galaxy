@@ -47,21 +47,24 @@ module.exports = async (req, res) => {
     const requestUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
     const action = getAction(req);
     if (action === 'agent-orchestrator') {
-      sendJson(res, 200, await runAgentOrchestratorCron({
+      const result = await runAgentOrchestratorCron({
         days: requestUrl.searchParams.get('days') || 30,
-      }));
+      });
+      sendJson(res, result.ok === false ? 503 : 200, result);
       return;
     }
     if (action === 'dispatch-communications') {
-      sendJson(res, 200, await runDispatchCommunicationsCron({
+      const result = await runDispatchCommunicationsCron({
         limit: requestUrl.searchParams.get('limit') || 50,
-      }));
+      });
+      sendJson(res, result.ok === false ? 503 : 200, result);
       return;
     }
     if (action === 'ops-jobs') {
-      sendJson(res, 200, await runOpsJobsCron({
+      const result = await runOpsJobsCron({
         limit: requestUrl.searchParams.get('limit') || 25,
-      }));
+      });
+      sendJson(res, result.ok === false ? 503 : 200, result);
       return;
     }
     sendError(res, 400, 'Action cron inconnue.');

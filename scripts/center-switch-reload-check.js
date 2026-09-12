@@ -307,6 +307,13 @@ async function centerMetaInPopover(page, centerId) {
 }
 
 async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
+  // OPS-07 : l'entree staff declenche les modules ; leurs exports ne sont
+  // plus disponibles depuis le seul boot public. Garder les controles suivants.
+  await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+  await page.evaluate(async () => {
+    setView('staff');
+    await ensureStaffConsolesLoaded();
+  });
   await page.waitForFunction(
     () => typeof window.setView === 'function' && typeof window.renderStaffMenu === 'function',
     null, { timeout: 15000 },

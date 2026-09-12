@@ -557,7 +557,7 @@ function renderBowlingDragPreview(target) {
   const planningBox = document.getElementById('planningBox');
   const computed = planningBox ? getComputedStyle(planningBox) : null;
   const hourHeight = parseFloat(computed?.getPropertyValue('--planning-hour-h')) || 48;
-  const headerHeight = parseFloat(computed?.getPropertyValue('--planning-header-h')) || 38;
+  const headerHeight = parseFloat(computed?.getPropertyValue('--planning-header-h')) || 46;
   const top = (plan.targetStart - config.open) * hourHeight + headerHeight + 3;
   const height = Math.max(28, (Number(plan.duration) * hourHeight) - 6);
   const previewLanes = plan.lanes?.length ? plan.lanes : [plan.targetLane];
@@ -3243,11 +3243,17 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260728c';
-const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
-const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
-const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260912a';
+const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260720b';
+const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20260912a';
+const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260912a';
+// Les declarations inertes de l'index gardent l'ordre et les versions en un
+// seul endroit. Aucun de ces modules n'est demande pour la vue publique.
+const STAFF_CONSOLE_SOURCES = Array.from(document.querySelectorAll('script[data-staff-console]'), script => script.getAttribute('src'));
 const dynamicConsoleScripts = {};
+let staffConsolesPromise = null;
+let staffConsolesReady = false;
+let consoleViewRequest = 0;
 
 function loadConsoleScriptOnce(src) {
   if (!dynamicConsoleScripts[src]) {
@@ -3266,13 +3272,29 @@ function loadConsoleScriptOnce(src) {
   return dynamicConsoleScripts[src];
 }
 
+function ensureStaffConsolesLoaded() {
+  if (!staffConsolesPromise) {
+    // Une dependance executee avant la suivante, y compris apres un retry.
+    // Les scripts deja charges restent en cache ; seul le fichier en panne
+    // est reinjecte. Deux demandes partagent toute la sequence.
+    staffConsolesPromise = STAFF_CONSOLE_SOURCES.reduce(
+      (pending, src) => pending.then(() => loadConsoleScriptOnce(src)),
+      Promise.resolve()
+    ).then(() => { staffConsolesReady = true; }).catch(error => {
+      staffConsolesPromise = null;
+      throw error;
+    });
+  }
+  return staffConsolesPromise;
+}
+
 function ensureAdminConsolesLoaded() {
-  return Promise.all([
-    loadConsoleScriptOnce(ADMIN_CONSOLE_SRC),
-    loadConsoleScriptOnce(OPS_CONSOLE_SRC),
-    loadConsoleScriptOnce(ADMIN_DATA_SRC),
-    loadConsoleScriptOnce(ADMIN_MAIL_SRC)
-  ]);
+  return ensureStaffConsolesLoaded().then(() =>
+    [ADMIN_CONSOLE_SRC, OPS_CONSOLE_SRC, ADMIN_DATA_SRC, ADMIN_MAIL_SRC].reduce(
+      (pending, src) => pending.then(() => loadConsoleScriptOnce(src)),
+      Promise.resolve()
+    )
+  );
 }
 
 function ensureOpsConsoleLoaded() {
@@ -3325,6 +3347,7 @@ function requestOpsDispatch() {
 }
 
 function setView(v) {
+  const request = ++consoleViewRequest;
   // Le voile de demarrage (index.html) meurt ici : des qu'une vue est
   // reellement appliquee, il n'a plus de raison d'etre. Premiere ligne, avant
   // tout retour anticipe, sinon un refus d'acces le laisserait colle.
@@ -3354,6 +3377,55 @@ function setView(v) {
   document.getElementById('clientDemoAccess').classList.toggle('hidden', v !== 'client');
   syncOpsSidebar();
   applyStaffTheme();
+  // OPS-07 : le login reste disponible pendant le chargement. Les autres
+  // callers peuvent rendre leur contenu, mais aucun controle partiel ne
+  // devient utilisable avant l'arrivee de toutes ses dependances.
+  const needsStaff = v === 'staff' || v === 'admin';
+  const staffRoot = document.getElementById('staffView');
+  const adminRoot = document.getElementById('adminView');
+  const sidebar = document.querySelector('[data-staff-menu-root]');
+  let status = document.getElementById('staffConsoleLoadStatus');
+  if (status && !needsStaff) { status.remove(); status = null; }
+  if (needsStaff && !staffConsolesReady) {
+    for (const root of [staffRoot, adminRoot]) {
+      if (root) { root.style.display = 'none'; root.inert = true; }
+    }
+    if (sidebar) sidebar.inert = true;
+    if (!status) {
+      status = document.createElement('div');
+      status.id = 'staffConsoleLoadStatus';
+      status.className = 'admin-load-error';
+      staffRoot.before(status);
+    }
+    status.setAttribute('role', 'status');
+    status.textContent = 'Chargement de la console...';
+    applyAuthState();
+    ensureStaffConsolesLoaded().then(() => {
+      if (request !== consoleViewRequest || state.view !== v) return;
+      setView(v);
+    }).catch(() => {
+      if (request !== consoleViewRequest || state.view !== v) return;
+      status.setAttribute('role', 'alert');
+      status.innerHTML = `<div><strong>Console indisponible</strong>
+        <p>Le module n'a pas pu être chargé. Réessayez pour ouvrir la console.</p></div>`;
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'admin-btn';
+      retry.textContent = 'Réessayer';
+      retry.addEventListener('click', () => setView(state.view));
+      status.appendChild(retry);
+    });
+    scheduleRemoteSync();
+    save();
+    return;
+  }
+  if (staffConsolesReady) {
+    if (status) status.remove();
+    for (const root of [staffRoot, adminRoot]) {
+      if (root) { root.style.display = ''; root.inert = false; }
+    }
+    if (sidebar) sidebar.inert = false;
+  }
   if ((v === 'staff' || v === 'admin') && !hasSavedAuth()) {
     if (v === 'staff') renderStaffShell(todaysReservations());
     applyAuthState();
@@ -3376,12 +3448,13 @@ function setView(v) {
     if (adminRoot) adminRoot.style.pointerEvents = 'none';
     ensureAdminConsolesLoaded()
       .then(() => {
+        if (request !== consoleViewRequest || state.view !== 'admin') return;
         if (adminRoot) adminRoot.style.pointerEvents = '';
-        if (state.view !== 'admin') return;
         renderAdminDashboard();
         loadAdminDashboard(false);
       })
       .catch(() => {
+        if (request !== consoleViewRequest) return;
         if (state.view !== 'admin') {
           if (adminRoot) adminRoot.style.pointerEvents = '';
           return;
@@ -7773,7 +7846,9 @@ function goStep4() {
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fieldErrors.push(['fEmail', 'Adresse email invalide, vérifiez-la pour recevoir votre confirmation.']);
   if (fieldErrors.length) {
     fieldErrors.forEach(([inputId, text]) => setFieldError(inputId, text));
-    showAlert('Vérifiez les champs signalés avant de continuer.');
+    // Les erreurs sont déjà annoncées et liées aux champs. Un bandeau flottant
+    // recouvrait leur label sur téléphone au moment même de les corriger.
+    clearAlert();
     const firstInvalid = document.getElementById(fieldErrors[0][0]);
     if (firstInvalid) firstInvalid.focus();
     return;
@@ -15730,7 +15805,7 @@ async function loadStaffClientData(force = false) {
     const centerQuery = encodeURIComponent(getActiveOpsCenterId());
     const startDate = encodeURIComponent(range.startDate);
     const endDate = encodeURIComponent(range.endDate);
-    const payload = await apiRequest(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${centerQuery}`);
+    const payload = await window.PinlaneApiClient.collectAdminRange(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${centerQuery}`, apiRequest);
     staffClientDataCache = {
       key,
       loading: false,
@@ -16689,8 +16764,9 @@ function toggleStaffRequestReply(id) {
     const centreName = getCurrentStaffCenterName() || getCurrentStaffCenterId();
     const occ = STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] || '';
     staffRequestReplyState[key] = {
+      ...current,
       open: true,
-      busy: false,
+      busy: !!(current && current.busy),
       // Horodatage de l ouverture : c est lui, et lui seul, qui autorise
       // l animation d entree du composeur (voir renderStaffRequestReplyComposer).
       openedAt: Date.now(),
@@ -16711,15 +16787,15 @@ async function staffRequestSendReply(id) {
   const key = String(id);
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
   const reply = staffRequestReplyState[key];
-  if (!item || !reply) return;
+  if (!item || !reply || reply.busy) return;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email || '').trim())) { toast('Adresse email de la demande invalide.'); return; }
   if (!String(reply.subject || '').trim() || !String(reply.body || '').trim()) { toast('Objet et message sont requis.'); return; }
-  staffRequestReplyState[key] = { ...reply, busy: true };
+  reply.busy = true;
   renderStaffUtilityPage();
   try {
-    const payload = await apiRequest(API_ENDPOINTS.ops, {
+    await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
-      body: JSON.stringify({
+      body: JSON.stringify(window.PinlaneApiClient.withMessageAttempt(reply, {
         action: 'sendDirectEmail',
         centerId: getActiveOpsCenterId(),
         to: String(item.email).trim(),
@@ -16727,9 +16803,9 @@ async function staffRequestSendReply(id) {
         body: reply.body,
         category: 'direct',
         templateRef: 'demande-sur-mesure',
-      }),
+      })),
     });
-    toast(payload.resendConfigured ? 'Réponse envoyée : visible dans l\'historique mails.' : 'Réponse en file : elle partira dès que le canal d\'envoi sera configuré.');
+    toast('Réponse enregistrée : consultez son état d\'envoi dans l\'historique mails.');
     // Le fil se recharge : le mail qui vient de partir doit apparaitre ici,
     // sinon le staff doute de l'envoi et le renvoie une seconde fois.
     loadStaffRequestThread(id, true);
@@ -16738,7 +16814,7 @@ async function staffRequestSendReply(id) {
     if (item.status === 'new') { setStaffCustomRequestStatus(item.id, 'in_progress'); return; }
     renderStaffUtilityPage();
   } catch (error) {
-    staffRequestReplyState[key] = { ...reply, busy: false };
+    staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || reply), busy: false };
     renderStaffUtilityPage();
     toast(error.message || 'Envoi impossible pour le moment.');
   }
@@ -17350,12 +17426,14 @@ function sortStaffClientRows(rows) {
 
 // Tri par en-tête de colonne : bascule asc/desc si même colonne.
 function setStaffClientSort(key) {
+  const focusedSort = document.activeElement?.getAttribute('data-crm-sort');
   const current = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
   state.staffClientSort = current.key === key
     ? { key, dir: current.dir === 'desc' ? 'asc' : 'desc' }
     : { key, dir: ['name', 'status'].includes(key) ? 'asc' : 'desc' };
   save();
   renderStaffClientsPage();
+  if (focusedSort) document.querySelector(`button[data-crm-sort="${CSS.escape(focusedSort)}"]`)?.focus({ preventScroll: true });
 }
 
 function getStaffClientDailySeries(reservations = [], metric = 'count') {
@@ -17593,7 +17671,7 @@ async function loadStaffReservationsData(force = false) {
     const centerQuery = encodeURIComponent(getActiveOpsCenterId());
     const startDate = encodeURIComponent(range.previousMonthStart);
     const endDate = encodeURIComponent(range.gridEnd);
-    const payload = await apiRequest(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${centerQuery}`);
+    const payload = await window.PinlaneApiClient.collectAdminRange(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${centerQuery}`, apiRequest);
     staffReservationsDataCache = {
       key,
       loading: false,
@@ -19571,7 +19649,9 @@ function renderPlanning() {
   const MIN_CARD_H = compactTouch ? 42 : 22;
   const MIN_HOUR_H = (MIN_CARD_H + verticalInset * 2) * 2;
   let HH = state.staffPlanningExpanded ? 52 : compactTouch ? 88 : 48;
-  let HEADER_H = state.staffPlanningExpanded ? 46 : 38;
+  // Les réglages restent dans l'en-tête : leur cible fait 44 px + 2 px de marge.
+  // Les cartes et l'aperçu de déplacement utilisent la même hauteur.
+  const HEADER_H = compactTouch ? 38 : 46;
   if (state.staffPlanningExpanded) {
     // Plein écran comptoir : toutes les heures d'ouverture doivent tenir d'une
     // traite, sans scroll vertical. La hauteur de ligne n'est donc PAS fixe :
@@ -22503,6 +22583,8 @@ function createQuickBookState(prefill = {}) {
   };
 }
 
+let quickBookDialogRelease = null;
+
 function openQuickBook(prefill = {}) {
   if (!requireClientPermission('reservations.quick', 'Votre role ne permet pas la reservation rapide.')) return;
   quickBookState = createQuickBookState(prefill);
@@ -22516,6 +22598,12 @@ function openQuickBook(prefill = {}) {
   syncQuickBookDuration();
   reconcileQuickLaneSelection();
   renderQuickBook();
+  if (!quickBookDialogRelease) {
+    quickBookDialogRelease = containStaffDialog(document.getElementById('quickBookOverlay'), '.qb-modal', '#qbName, #qbEmail, #qbPax', () => {
+      // Une création en vol reste visible jusqu'à sa réponse, comme son bouton occupé.
+      if (!quickBookState?.submitting) closeQuickBook();
+    });
+  }
 }
 
 function quickFromCell(lane, startTime) {
@@ -22534,6 +22622,7 @@ function closeQuickBook() {
   const overlay = document.getElementById('quickBookOverlay');
   overlay.classList.add('hidden');
   overlay.innerHTML = '';
+  if (quickBookDialogRelease) { quickBookDialogRelease(); quickBookDialogRelease = null; }
 }
 
 function syncQuickBookDuration() {
@@ -23466,7 +23555,18 @@ function getQuickBookHeader(formule) {
 function renderQuickBook() {
   const qbOverlay = document.getElementById('quickBookOverlay');
   if (qbOverlay && !qbOverlay.classList.contains('hidden')) {
+    const active = qbOverlay.contains(document.activeElement) ? document.activeElement : null;
+    const id = active?.id;
+    const action = active?.getAttribute('onclick');
+    const selection = active && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
     repaintKeepingScroll(qbOverlay, () => renderQuickBookInner());
+    if (active) {
+      const next = (id && document.getElementById(id))
+        || (action && [...qbOverlay.querySelectorAll('[onclick]')].find(el => el.getAttribute('onclick') === action))
+        || qbOverlay.querySelector('.qb-modal');
+      next?.focus({ preventScroll: true });
+      if (selection && typeof next?.setSelectionRange === 'function') next.setSelectionRange(...selection);
+    }
     return;
   }
   renderQuickBookInner();
@@ -23575,8 +23675,8 @@ function renderQuickBookInner() {
   const emailValid = isValidEmail(quickBookState.email);
   const emailInputHtml = `
     <div>
-      <label class="qb-mini-label">Email</label>
-      <input class="qb-input ${quickBookState.email && !emailValid ? 'qb-input-invalid' : ''}" type="email" value="${escapeHtml(quickBookState.email)}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
+      <label class="qb-mini-label" for="qbEmail">Email</label>
+      <input id="qbEmail" class="qb-input ${quickBookState.email && !emailValid ? 'qb-input-invalid' : ''}" type="email" value="${escapeHtml(quickBookState.email)}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
       ${quickBookState.email && !emailValid ? '<div class="qb-field-note danger">Format email invalide.</div>' : '<div class="qb-field-note">Sert aux confirmations et rappels automatiques.</div>'}
     </div>`;
 
@@ -23605,18 +23705,18 @@ function renderQuickBookInner() {
   const essentialCells = [];
   if (showDate) essentialCells.push(`
     <div>
-      <label class="qb-mini-label">Date</label>
-      <input class="qb-input" type="date" value="${quickBookState.date}" oninput="quickBookState.date=this.value; renderQuickBook()">
+      <label class="qb-mini-label" for="qbDate">Date</label>
+      <input id="qbDate" class="qb-input" type="date" value="${quickBookState.date}" oninput="quickBookState.date=this.value; renderQuickBook()">
     </div>`);
   if (showTime) essentialCells.push(`
     <div>
-      <label class="qb-mini-label">Heure</label>
-      <input class="qb-input" type="time" step="1800" value="${quickBookState.startTime}" oninput="quickBookState.startTime=this.value; renderQuickBook()">
+      <label class="qb-mini-label" for="qbTime">Heure</label>
+      <input id="qbTime" class="qb-input" type="time" step="1800" value="${quickBookState.startTime}" oninput="quickBookState.startTime=this.value; renderQuickBook()">
     </div>`);
   essentialCells.push(`
     <div>
-      <label class="qb-mini-label">Joueurs</label>
-      <input class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="onQuickPaxInput(this.value)" onblur="onQuickPaxBlur(this, event)">
+      <label class="qb-mini-label" for="qbPax">Joueurs</label>
+      <input id="qbPax" class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="onQuickPaxInput(this.value)" onblur="onQuickPaxBlur(this, event)">
     </div>`);
 
   const essentialActions = [];
@@ -23838,23 +23938,23 @@ function renderQuickBookInner() {
     </div>
 
     <div class="qb-block">
-      <div class="blk-label">Notes internes</div>
+      <label class="blk-label" for="qbNotes">Notes internes</label>
       <div class="qb-block-help">Visible par le staff uniquement : jamais envoyé au client.</div>
-      <textarea class="qb-input qb-textarea" rows="2" oninput="quickBookState.notes=this.value" placeholder="Ex. anniversaire, gâteau à prévoir, paiement à l'arrivée…">${escapeHtml(quickBookState.notes || '')}</textarea>
+      <textarea id="qbNotes" class="qb-input qb-textarea" rows="2" oninput="quickBookState.notes=this.value" placeholder="Ex. anniversaire, gâteau à prévoir, paiement à l'arrivée…">${escapeHtml(quickBookState.notes || '')}</textarea>
     </div>
   ` : '';
 
   overlay.classList.remove('hidden');
   overlay.className = 'qb-overlay';
   overlay.innerHTML = `
-    <div class="qb-modal qb-context-${quickBookState.context.source}">
+    <div class="qb-modal qb-context-${quickBookState.context.source}" role="dialog" aria-modal="true" aria-labelledby="qbTitle" tabindex="-1">
       <div class="qb-head">
         <div>
           <div class="ticket-id">${header.eyebrow}</div>
-          <h3>${header.title}</h3>
+          <h3 id="qbTitle">${header.title}</h3>
           ${header.sub ? `<div class="sub">${header.sub}</div>` : ''}
         </div>
-        <button class="close-btn" onclick="closeQuickBook()">
+        <button type="button" class="close-btn" aria-label="Fermer la réservation rapide" onclick="closeQuickBook()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -23865,12 +23965,12 @@ function renderQuickBookInner() {
           <div class="blk-label">Client</div>
           <div class="qb-row two">
             <div>
-              <label class="qb-mini-label">Nom</label>
-              <input class="qb-input" value="${escapeHtml(quickBookState.name)}" oninput="quickBookState.name=this.value" placeholder="Marie Dupont">
+              <label class="qb-mini-label" for="qbName">Nom</label>
+              <input id="qbName" class="qb-input" value="${escapeHtml(quickBookState.name)}" oninput="quickBookState.name=this.value" placeholder="Marie Dupont">
             </div>
             <div>
-              <label class="qb-mini-label">Téléphone</label>
-              <input class="qb-input" value="${escapeHtml(quickBookState.phone)}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
+              <label class="qb-mini-label" for="qbPhone">Téléphone</label>
+              <input id="qbPhone" class="qb-input" type="tel" value="${escapeHtml(quickBookState.phone)}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
             </div>
           </div>
           <div class="qb-row" style="margin-top:12px;">
@@ -24396,7 +24496,7 @@ function staffConfirm({ title, body = '', confirmLabel = 'Confirmer', cancelLabe
   return new Promise((resolve) => {
     const host = document.createElement('div');
     host.className = 'staff-confirm-overlay';
-    host.innerHTML = `<div class="staff-confirm" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+    host.innerHTML = `<div class="staff-confirm" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
       <strong>${escapeHtml(title)}</strong>
       ${body ? `<p>${escapeHtml(body)}</p>` : ''}
       <div class="staff-confirm-actions">
@@ -24404,18 +24504,20 @@ function staffConfirm({ title, body = '', confirmLabel = 'Confirmer', cancelLabe
         <button type="button" class="${danger ? 'is-danger' : 'is-primary'}" data-role="confirm-ok">${escapeHtml(confirmLabel)}</button>
       </div>
     </div>`;
+    let release = null;
+    let settled = false;
     const done = (value) => {
+      if (settled) return;
+      settled = true;
       host.remove();
-      document.removeEventListener('keydown', onKey, true);
+      if (release) release();
       resolve(value);
     };
-    const onKey = (event) => { if (event.key === 'Escape') { event.stopPropagation(); done(false); } };
     host.addEventListener('click', (event) => { if (event.target === host) done(false); });
     host.querySelector('[data-role="confirm-ok"]').onclick = () => done(true);
     host.querySelector('[data-role="confirm-cancel"]').onclick = () => done(false);
-    document.addEventListener('keydown', onKey, true);
     document.body.appendChild(host);
-    host.querySelector('[data-role="confirm-cancel"]').focus();
+    release = containStaffDialog(host, '.staff-confirm', '[data-role="confirm-cancel"]', () => done(false));
   });
 }
 
@@ -24721,10 +24823,70 @@ let posReturnFocus = null;
 //      19 tabulations sur 25 s'echappaient de la fenetre.
 // On exclut donc explicitement ce qui vit sous un `details` ferme.
 function focusablesInPos() {
-  const modal = document.querySelector('#posOverlay .edit-modal');
+  return focusablesInDialog(document.querySelector('#posOverlay .edit-modal'));
+}
+
+// Même liste et mêmes bornes pour la fiche, la réservation rapide et les
+// confirmations. Les descendants d'un details fermé ne sont pas tabulables,
+// mais son premier summary l'est ; les contrôles inert/disabled sont exclus.
+function focusablesInDialog(modal) {
   if (!modal) return [];
   return [...modal.querySelectorAll('button, summary, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
-    .filter((el) => !el.disabled && el.offsetParent !== null && !el.closest('details:not([open])'));
+    .filter(el => {
+      if (el.tabIndex < 0 || el.matches(':disabled') || el.closest('[inert], [hidden]') || !el.getClientRects().length || getComputedStyle(el).visibility === 'hidden') return false;
+      for (let p = el.parentElement; p && p !== modal; p = p.parentElement) {
+        if (p.matches('details:not([open])') && !p.querySelector(':scope > summary')?.contains(el)) return false;
+      }
+      return true;
+    });
+}
+
+function trapDialogFocus(ev, modal) {
+  if (ev.key !== 'Tab' || !modal) return;
+  const items = focusablesInDialog(modal);
+  if (!items.length) { ev.preventDefault(); modal.focus(); return; }
+  const active = document.activeElement;
+  if (ev.shiftKey && (active === items[0] || !items.includes(active))) { ev.preventDefault(); items[items.length - 1].focus(); }
+  else if (!ev.shiftKey && (active === items[items.length - 1] || !items.includes(active))) { ev.preventDefault(); items[0].focus(); }
+}
+
+const staffDialogStack = [];
+function containStaffDialog(host, modalSelector, initialSelector, onEscape) {
+  const returnFocus = document.activeElement;
+  const inert = [];
+  // Inert uniquement les branches extérieures au dialogue, en conservant leur
+  // état précédent. Une confirmation peut ainsi recouvrir une fiche ouverte.
+  for (let branch = host; branch && branch !== document.body; branch = branch.parentElement) {
+    for (const sibling of branch.parentElement.children) {
+      if (sibling !== branch && !sibling.inert) { inert.push(sibling); sibling.inert = true; }
+    }
+  }
+  const entry = {};
+  staffDialogStack.push(entry);
+  const modal = () => host.querySelector(modalSelector);
+  const onKey = ev => {
+    if (staffDialogStack[staffDialogStack.length - 1] !== entry) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); ev.stopImmediatePropagation(); onEscape(); }
+    else if (ev.key === 'Tab') { ev.stopPropagation(); trapDialogFocus(ev, modal()); }
+  };
+  const onFocus = () => {
+    if (staffDialogStack[staffDialogStack.length - 1] === entry && !host.contains(document.activeElement)) {
+      (focusablesInDialog(modal())[0] || modal())?.focus({ preventScroll: true });
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+  document.addEventListener('focusin', onFocus, true);
+  (host.querySelector(initialSelector) || focusablesInDialog(modal())[0] || modal())?.focus({ preventScroll: true });
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('focusin', onFocus, true);
+    staffDialogStack.splice(staffDialogStack.indexOf(entry), 1);
+    inert.forEach(el => { el.inert = false; });
+    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+  };
 }
 
 // Piège à focus + Échap. La fiche est une fenêtre modale : tabuler dedans ne
@@ -24734,14 +24896,7 @@ function focusablesInPos() {
 function handlePosKeydown(ev) {
   if (!state.selectedRes) return;
   if (ev.key === 'Escape') { ev.stopPropagation(); closePos(); return; }
-  if (ev.key !== 'Tab') return;
-  const items = focusablesInPos();
-  if (!items.length) return;
-  const first = items[0];
-  const last = items[items.length - 1];
-  const active = document.activeElement;
-  if (ev.shiftKey && (active === first || !items.includes(active))) { ev.preventDefault(); last.focus(); }
-  else if (!ev.shiftKey && active === last) { ev.preventDefault(); first.focus(); }
+  trapDialogFocus(ev, document.querySelector('#posOverlay .edit-modal'));
 }
 
 function renderPos() {
@@ -25224,8 +25379,9 @@ bootstrapApp();
 // fois la vue active : la page se remplit sans que personne ne recharge.
 window.addEventListener('load', () => {
   try {
-    if (state.view === 'staff') renderStaff();
-    else if (state.view === 'admin' && typeof renderAdmin === 'function') renderAdmin();
+    // Les modules staff sont desormais injectes : load seul ne prouve plus
+    // leur disponibilite. Le meme point d'entree garde attente et retry.
+    if (staffConsolesReady && (state.view === 'staff' || state.view === 'admin')) setView(state.view);
   } catch (error) { /* un filet ne casse jamais le demarrage */ }
 });
 

@@ -2,7 +2,7 @@
 // Zéro réseau, zéro DB : lib/database est patché AVANT tout require applicatif
 // (getPool → query routée par fragments SQL, createCommunication → capture).
 // Couvre : contrat computeMarketingRoi (mapping sources, sommes, bornes,
-// invariants SQL last-touch/annulées/60 j/sent-delivered, erreur → zéros),
+// invariants SQL last-touch/annulées/60 j/sent-delivered, erreur → indisponible),
 // resolveReviewClick (format token, marquage unique, destination stockée),
 // endpoint /api/r (302/404/405, jamais de destination en paramètre),
 // validation reviewUrl (https + hôtes Google), et le mail post-visite
@@ -60,7 +60,9 @@ const opsJobs = require('../lib/ops-jobs');
   ok(custom.sent === 0 && custom.revenue === 0, 'source sans envoi → zéros propres');
 
   const roiSql = dbState.sqlLog.find((entry) => entry.sql.includes('marketing_msgs')).sql;
-  ok(roiSql.includes('distinct on (res.id)') && roiSql.includes('order by res.id, m.created_at desc'), 'INVARIANT : attribution last-touch (une résa = un seul message, le dernier)');
+  ok(roiSql.includes('distinct on (res.id)') && roiSql.includes('order by res.id, m.sent_at desc, m.id desc'), 'INVARIANT : attribution last-touch selon le depart (une resa = un seul message, le dernier)');
+  ok(roiSql.includes('res.created_at > m.sent_at') && roiSql.includes("res.created_at <= m.sent_at + interval '60 days'"), 'INVARIANT : reservation strictement apres envoi, fenetre depuis le depart');
+  ok(roi.available === true && roi.unavailableReason === null, 'mesure disponible explicitement signalee');
   // Les annulées ne sont plus exclues par une liste noire ('!= cancelled') mais
   // par une liste BLANCHE des statuts qui prouvent une venue : plus strict, et
   // vérifié pour de vrai par les cas de comportement plus bas.
@@ -146,7 +148,7 @@ const opsJobs = require('../lib/ops-jobs');
   ok(clamped.days === 365, 'fenêtre bornée à 365 j');
   dbState.route = () => { throw new Error('db down'); };
   const down = await computeMarketingRoi('libramont', { days: 30 });
-  ok(down.revenue === 0 && down.bySource.length === MARKETING_SOURCES.length, 'DB en panne → zéros, jamais de throw');
+  ok(down.available === false && down.unavailableReason === 'query_failed' && down.revenue === null && down.bySource.length === MARKETING_SOURCES.length, 'DB en panne → indisponible, chiffres null et sources preservees');
 
   console.log('\n[CLIC AVIS] resolveReviewClick');
   dbState.route = () => [];

@@ -44,6 +44,9 @@ function summarizeResult(result) {
       ok: result.ok,
       action: result.action,
       checked: result.checked,
+      failed: result.failed || 0,
+      retried: result.retried || 0,
+      superseded: result.superseded || 0,
       results: result.results.length,
     };
   }
@@ -79,7 +82,8 @@ async function runTask(task) {
   try {
     const result = await task.run();
     hadWork = taskDidWork(result);
-    log('info', `${task.name}:ok`, {
+    const degraded = result?.ok === false;
+    log(degraded ? 'error' : 'info', `${task.name}:${degraded ? 'failed' : 'ok'}`, {
       task: task.name,
       durationMs: Date.now() - startedAt,
       result: summarizeResult(result),
@@ -130,8 +134,10 @@ const OPS_LOG_TABLES = [
   ['marketing_agent_runs', 'created_at'],
   ['ops_decision_logs', 'created_at'],
   ['ops_events', 'created_at'],
-  ['ops_agent_suggestions', 'created_at'],
 ];
+// Suggestions are business decisions, not logs: a pending item still awaits
+// review, and a rejected item is the durable memory used by deduplication.
+// Archiving those decisions needs a separate policy, never the log TTL.
 async function pruneOpsLogs() {
   const pool = getPool();
   let deleted = 0;

@@ -35,9 +35,10 @@ const PORT = Number(process.env.PINLANE_EDIT_PRICE_PORT || 4503);
 const http = require('http');
 const fs = require('fs');
 const p = require('path');
-const ROOT = p.resolve(__dirname, '..', '..', '..', '..', '..', '..'); // placeholder, overridden below
-const REPO = 'C:\\Users\\movsa\\Documents\\Codex\\2026-04-24\\doctype-html-html-lang-fr-head';
-const { chromium } = require(p.join(REPO, 'node_modules', 'playwright-core'));
+// Le depot est celui qui contient ce script. Un chemin Windows ecrit en dur ici
+// faisait mourir la CI Linux sur ce gate depuis le 2026-08-31.
+const REPO = p.resolve(__dirname, '..');
+const { chromium } = require('playwright-core');
 const EDGE = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 

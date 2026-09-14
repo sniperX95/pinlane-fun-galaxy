@@ -23,7 +23,8 @@
 //   [3] bowling + activite libre                       -> 201, les deux lignes
 //   [4] un centre du FICHIER n'a pas regresse          -> 201
 //   [5] CONTRE-PREUVE par mutation : on neutralise la ligne ajoutee dans
-//       api/public-reservations.js, le cas [1] doit RETROUVER son 422, puis
+//       api/public-reservations.js, le cas [1] doit RETROUVER un refus (404
+//       « Centre inconnu » depuis le 2026-09-14, 422 avant), puis
 //       restauration par ecriture inverse exacte (jamais git checkout).
 //
 // Zero reseau, zero base : un double Postgres alimente en memoire, qui OBEIT au
@@ -369,7 +370,7 @@ function reason(result) {
   const legacy = await postReservation(bowlingBody(FILE_CENTER));
   ok(legacy.status === 201, `${FILE_CENTER} cree toujours sa reservation (201)`, reason(legacy));
 
-  console.log('\n[5] CONTRE-PREUVE : sans la ligne ajoutee, le 422 revient');
+  console.log('\n[5] CONTRE-PREUVE : sans la ligne ajoutee, le centre ne dans la console redevient inconnu');
   const original = fs.readFileSync(HANDLER_PATH, 'utf8');
   const eol = original.includes('\r\n') ? '\r\n' : '\n';
   const anchor = 'try { await refreshCenterOverrides(getPool()); }';
@@ -386,9 +387,14 @@ function reason(result) {
   } finally {
     fs.writeFileSync(HANDLER_PATH, original); // ECRITURE INVERSE exacte
   }
+  // Depuis le 2026-09-14 (public-center-guard-check), le handler refuse un
+  // centre inconnu en 404 AVANT de construire la visite. Sans le rechauffage,
+  // le centre ne dans la console est inconnu d'une instance froide : le refus
+  // attendu est donc ce 404, et non plus le 422 « Choisissez au moins une
+  // activite » d'avant, qui arrivait plus loin pour la meme cause.
   const redAgain = ok(
-    mutatedResult && mutatedResult.status === 422,
-    'mutation : le handler refuse de nouveau en 422 (le gate SAIT rougir)',
+    Boolean(mutatedResult && mutatedResult.status === 404 && /inconnu/i.test(String((mutatedResult.json && mutatedResult.json.message) || ''))),
+    'mutation : le handler refuse de nouveau, en 404 « Centre inconnu » (le gate SAIT rougir)',
     mutatedResult ? reason(mutatedResult) : 'aucune reponse',
   );
   ok(fs.readFileSync(HANDLER_PATH, 'utf8') === original, `restauration : ${path.basename(HANDLER_PATH)} identique a l'original`);

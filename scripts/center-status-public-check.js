@@ -130,7 +130,7 @@ function bodyFor(centerId, date) {
 
     section('[3] CONTRE-EPREUVE : sans la garde, le centre en preparation encaisse');
     {
-      const anchor = '    const centerBlock = publicBookingBlockReason(body && body.centerId);';
+      const anchor = '    const centerBlock = publicBookingBlockReason(requestedCenterId);';
       const occurrences = HANDLER_SRC.split(anchor).length - 1;
       if (occurrences !== 1) throw new Error(`ancre de mutation introuvable ou ambigue (${occurrences})`);
       try {

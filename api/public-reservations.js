@@ -5,7 +5,7 @@ const { findReservationAlternatives } = require('../lib/reservation-alternatives
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { refreshFormuleOverrides, bookingDateOutOfRange, BOOKING_HORIZON_DAYS } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
-const { refreshCenterOverrides, publicBookingBlockReason } = require('../lib/ops-knowledge');
+const { getCenter, refreshCenterOverrides, publicBookingBlockReason } = require('../lib/ops-knowledge');
 const { enforceRateLimit } = require('../lib/rate-limit');
 
 module.exports = async (req, res) => {
@@ -45,13 +45,6 @@ module.exports = async (req, res) => {
       sendError(res, 422, 'Cette date est déjà passée. Choisissez une date à venir.');
       return;
     }
-    // Le statut du centre est lu APRES le rechauffage des overrides ci-dessus :
-    // un centre ne dans la console n'existe qu'en base, son statut avec lui.
-    const centerBlock = publicBookingBlockReason(body && body.centerId);
-    if (centerBlock) {
-      sendError(res, 422, centerBlock);
-      return;
-    }
     if (dateVerdict === 'far') {
       sendError(res, 422, `Les réservations sont ouvertes jusqu'à ${BOOKING_HORIZON_DAYS} jours à l'avance. Choisissez une date plus proche.`);
       return;
@@ -68,6 +61,30 @@ module.exports = async (req, res) => {
     // public-booking-meta font cet appel depuis le debut, pas ce handler.
     // Fail-soft comme les deux suivantes : sans base, socle fichier.
     try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
+    // Le centre se resout comme l'ecriture le fera (centerId ou center_id,
+    // espaces retires). La garde lisait body.centerId seul : un POST en
+    // center_id retombait sur 'libramont' (le defaut de getCenter), et le refus
+    // du centre en preparation ne tombait jamais.
+    const requestedCenterId = String((body && (body.centerId || body.center_id)) || '').trim();
+    // CENTRE INCONNU, apres le rechauffage : le meme 404 que la lecture. Avant
+    // le 2026-09-14, un identifiant invente traversait jusqu'au planificateur
+    // et repartait en 409 « choisissez un autre horaire », pour un centre qui
+    // n'existe pas.
+    let requestedCenter = null;
+    try { requestedCenter = getCenter(requestedCenterId); } catch (error) { requestedCenter = null; }
+    if (!requestedCenter) {
+      sendError(res, 404, 'Centre inconnu.');
+      return;
+    }
+    // Le statut du centre est lu APRES le rechauffage des overrides ci-dessus :
+    // un centre ne dans la console n'existe qu'en base, son statut avec lui.
+    // Jusqu'au 2026-09-14 le code le lisait avant, malgre ce commentaire : une
+    // instance froide croyait le centre inconnu, et son refus ne tombait pas.
+    const centerBlock = publicBookingBlockReason(requestedCenterId);
+    if (centerBlock) {
+      sendError(res, 422, centerBlock);
+      return;
+    }
     // Carte d'overrides catalogue chaude AVANT le calcul du prix (sync) : une
     // instance serverless fraiche doit facturer le meme prix que celui affiche
     // par le tunnel (public-booking-meta). Fail-soft : sans base, prix fichier.

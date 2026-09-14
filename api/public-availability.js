@@ -233,13 +233,6 @@ module.exports = async (req, res) => {
       return;
     }
     const centerId = String(url.searchParams.get('centerId') || 'libramont');
-    // Meme verdict que l ecriture : un centre pas encore ouvert ne propose
-    // aucun creneau, et il DIT pourquoi au lieu d inviter a changer de date.
-    const centerBlock = publicBookingBlockReason(centerId);
-    if (centerBlock) {
-      sendJson(res, 200, { ok: true, date, slots: [], message: centerBlock });
-      return;
-    }
     // Reflect the latest per-center config edits (cached ~30s). Fails soft on a
     // DB outage: the file baseline is used so availability never breaks.
     try {
@@ -268,6 +261,27 @@ module.exports = async (req, res) => {
       centerDoc = getCenter(centerId) || null;
     } catch (error) {
       centerDoc = null;
+    }
+    // CENTRE INCONNU : la meme reponse que public-booking-meta depuis le
+    // 2026-08-20. Jusqu'au 2026-09-14, un identifiant invente recevait ici le
+    // calendrier de repli (horaires historiques, catalogue par defaut, tout
+    // libre) : un site mal branche proposait les creneaux d'un centre qui
+    // n'existe pas. Sans centerId, 'libramont' comme depuis toujours. Un centre
+    // qui n'existe qu'en base repond 404 tant que la base est muette, comme le
+    // catalogue : sans sa configuration, ce calendrier ne dirait rien de vrai.
+    if (!centerDoc) {
+      sendError(res, 404, 'Centre inconnu.', { centerId: centerId.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60) });
+      return;
+    }
+    // Meme verdict que l ecriture : un centre pas encore ouvert ne propose
+    // aucun creneau, et il DIT pourquoi au lieu d inviter a changer de date.
+    // Lu APRES le rechauffage : un centre ne dans la console n'existe qu'en
+    // base, son statut avec lui. Lu avant (jusqu'au 2026-09-14), une instance
+    // froide le croyait inconnu, son statut vide, et servait ses creneaux.
+    const centerBlock = publicBookingBlockReason(centerId);
+    if (centerBlock) {
+      sendJson(res, 200, { ok: true, date, slots: [], message: centerBlock });
+      return;
     }
     const centerBowlingConfig = centerDoc?.resources?.bowling || null;
     const centerLaneCount = Number(centerBowlingConfig?.laneCount) || TOTAL_LANES;

@@ -48,7 +48,24 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const APP = path.join(ROOT, 'assets', 'app-main.js');
 const CSS = path.join(ROOT, 'assets', 'pinlane-client.css');
-const DATE = '2026-09-12';
+// LA DATE DU GATE SE CALCULE, ELLE NE S ECRIT PLUS EN DUR. Posee '2026-09-12'
+// le 2026-09-02, elle est devenue passee le 13 : le tunnel remettait le champ a
+// aujourd hui avec « Cette date est deja passee », et le gate mourait sur le
+// bouton retour du haut, invisible, sans qu une ligne du produit ait bouge. Le
+// catalogue factice n ouvre que le samedi : on prend le prochain samedi a trois
+// jours au moins, heure de Bruxelles. PINLANE_MOBILE_V2_DATE force une date
+// (preuve a plusieurs dates) ; today reste le vrai jour, comme l API reelle.
+function jourBruxelles(decalage = 0) {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + decalage));
+}
+function prochainSamedi(auMoins = 3) {
+  const curseur = jourBruxelles(auMoins);
+  while (curseur.getUTCDay() !== 6) curseur.setUTCDate(curseur.getUTCDate() + 1);
+  return curseur.toISOString().slice(0, 10);
+}
+const AUJOURDHUI = jourBruxelles(0).toISOString().slice(0, 10);
+const DATE = process.env.PINLANE_MOBILE_V2_DATE || prochainSamedi(3);
 
 let failures = [];
 function ok(cond, id, detail) {
@@ -75,7 +92,7 @@ const ACTIVITIES = [
 
 function metaPayload() {
   return {
-    ok: true, today: DATE, durationOptions: [],
+    ok: true, today: AUJOURDHUI, durationOptions: [],
     formules: [{ id: 'f1', name: 'FORMULE 1', family: 'Formules anniversaires', desc: ['1h de Bowling', '1 partie Laser Game'], price: 26, type: 'per_pax', minPax: 6, oldPrice: 34, noHolidays: false, hasBowling: true, bowlingDur: 1, notes: [] }],
     activities: ACTIVITIES.map((a) => ({ ...a })),
     center: {
@@ -313,6 +330,10 @@ const MUTATIONS = [
 
 async function main() {
   console.log('=== MOBILE V2 : gestes reels, deux moteurs ===');
+  // MONTAGE : le parcours suppose un samedi a venir, seul jour ouvert du
+  // catalogue factice ; une date passee ou un autre jour ferait mentir la suite.
+  const jourSemaine = new Date(`${DATE}T12:00:00Z`).getUTCDay();
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(DATE) && DATE >= AUJOURDHUI && jourSemaine === 6, 'montage : la date du gate est un samedi a venir', `${DATE} (aujourd hui ${AUJOURDHUI}, jour ${jourSemaine})`);
   await runSuite();
   const nominal = failures.slice();
   if (nominal.length) {

@@ -79,7 +79,9 @@ async function webhook(store, data, eventId = 'event-one') {
   const secret = Buffer.from('synthetic-signature-key');
   process.env.RESEND_WEBHOOK_SECRET = `whsec_${secret.toString('base64')}`;
   const raw = JSON.stringify({ type: 'email.received', data: { from: 'sender@example.test',
-    to: ['libramont@example.test'], subject: 'Ma demande', ...data } });
+    // L adresse de RECEPTION reelle : depuis le 2026-09-16, une adresse ne
+    // designe un centre que sur le domaine de reception (api/inbound-email.js).
+    to: ['libramont@inbound.pinlane.be'], subject: 'Ma demande', ...data } });
   const stamp = Math.floor(Date.now() / 1000);
   const signature = crypto.createHmac('sha256', secret).update(`${eventId}.${stamp}.${raw}`).digest('base64');
   const handler = createHandler({ ingest: store.ingest,

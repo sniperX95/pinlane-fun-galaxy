@@ -57,6 +57,7 @@ const {
   normalizeActivityEvents,
 } = require('../lib/audit-log');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
+const { adresseDePlateforme } = require('../lib/sender-domains');
 const { llmProvider, callLlm } = require('../lib/llm-client');
 const { listDailyMetrics, listMarketingInsights, setInsightStatus, buildMarketingWeek, redoInsight } = require('../lib/center-metrics');
 const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
@@ -802,7 +803,10 @@ async function handleGet(req, res, options = {}) {
       channel: {
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
         aiConfigured: Boolean(llmProvider()),
-        defaultFrom: process.env.RESEND_FROM || 'onboarding@resend.dev',
+        // L adresse plateforme SEULE : une variable posee sur l adresse d un
+        // client (ou avec son nom) s afficherait dans le studio de tous les
+        // autres (lib/sender-domains.js).
+        defaultFrom: adresseDePlateforme(process.env.RESEND_FROM) || 'onboarding@resend.dev',
       },
     });
     return;
@@ -2754,6 +2758,9 @@ ${draftBody}`,
       label: body.label,
       email: body.email,
       isDefault: Boolean(body.isDefault),
+      // Un domaine NEUF ne s ouvre que par la plateforme (lib/sender-domains.js) :
+      // c est la session, jamais le corps de la requete, qui le dit.
+      declarationPlateforme: sessionHasPermission(options.session, 'platform.admin'),
     });
     sendJson(res, 200, { ok: true, identity });
     return;

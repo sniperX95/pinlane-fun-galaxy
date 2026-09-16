@@ -29,12 +29,17 @@
 const crypto = require('crypto');
 const { readRawBody, sendError, sendJson } = require('../lib/http');
 const { ingestInboundEmail } = require('../lib/email-agent');
-const { getCenter } = require('../lib/ops-knowledge');
+const { getCenter, loadOpsKnowledge } = require('../lib/ops-knowledge');
+const { domaineReception } = require('../lib/sender-domains');
 
 // Cinq minutes : la fenetre standard d une signature de webhook. Assez large
 // pour une horloge qui derive, trop courte pour un rejeu utile.
 const TOLERANCE_SECONDES = 5 * 60;
-const CENTRE_PAR_DEFAUT = 'libramont';
+// PLUS DE CENTRE PAR DEFAUT (2026-09-16). Un mail qu aucune adresse ne
+// rattachait a un centre etait classe chez libramont : avec plusieurs clients,
+// le courrier mal adresse de TOUS atterrissait dans la boite de Fun Galaxy.
+// Il n est plus classe nulle part : la redirection garde sa copie dans la
+// boite du centre, rien n est perdu, et l avertissement nomme les adresses.
 
 // "Marie Dupont <marie@test.be>" → { email, name } ; adresse nue acceptée.
 function parseAddress(raw = '') {
@@ -119,10 +124,15 @@ async function recupererContenuParDefaut(emailId) {
   return reponse.json();
 }
 
-function autorise(brut, req) {
+function parSecretMaison(req) {
   const entetes = (req && req.headers) || {};
   const attendu = process.env.INBOUND_EMAIL_SECRET;
-  if (attendu && entetes['x-inbound-secret'] === attendu) return true;
+  return Boolean(attendu) && entetes['x-inbound-secret'] === attendu;
+}
+
+function autorise(brut, req) {
+  if (parSecretMaison(req)) return true;
+  const entetes = (req && req.headers) || {};
   return signatureFournisseurValide(brut, entetes, process.env.RESEND_WEBHOOK_SECRET);
 }
 
@@ -165,9 +175,33 @@ function destinatairesDe(data) {
   return adresses;
 }
 
+// UNE ADRESSE NE DESIGNE UN CENTRE QUE SUR NOTRE DOMAINE DE RECEPTION, OU SI
+// ELLE EST EXACTEMENT L ADRESSE PUBLIQUE QU UN CENTRE DECLARE (2026-09-16).
+// Seule la partie avant l arobase etait lue, quel que soit le domaine : un
+// en-tete `gembloux@un-autre-bowling.be` classait le mail chez Fun Galaxy
+// Gembloux. Avec plusieurs clients, un nom de ville partage suffisait a faire
+// lire les clients de l un par l autre.
+function centreDeLAdressePublique(adresse) {
+  let centres = [];
+  try {
+    centres = loadOpsKnowledge().centers || [];
+  } catch (error) {
+    return '';
+  }
+  const trouves = centres.filter((centre) => String((centre && centre.publicInfo && centre.publicInfo.email) || '').trim().toLowerCase() === adresse);
+  // Une adresse partagee par deux centres ne designe personne.
+  return trouves.length === 1 ? String(trouves[0].id) : '';
+}
+
 function centreDuDestinataire(adresses) {
+  const reception = domaineReception();
   for (const email of adresses) {
-    const id = centreConnu(String(email || '').split('@')[0]);
+    const adresse = String(email || '').trim().toLowerCase();
+    const arobase = adresse.lastIndexOf('@');
+    if (arobase <= 0) continue;
+    const id = adresse.slice(arobase + 1) === reception
+      ? centreConnu(adresse.slice(0, arobase))
+      : centreDeLAdressePublique(adresse);
     if (id) return { id, adresse: email };
   }
   return null;
@@ -269,13 +303,19 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
       // la ligne ecrite, pour qu un mail mal classe se voie.
       const adresses = destinatairesDe(data);
       const parAdresse = centreDuDestinataire(adresses);
-      const centreDemande = centreConnu(url.searchParams.get('centerId'));
-      const routage = parAdresse ? 'destinataire' : (centreDemande ? 'parametre' : 'defaut');
-      const centerId = parAdresse ? parAdresse.id : (centreDemande || CENTRE_PAR_DEFAUT);
-      const destinataire = parAdresse ? parAdresse.adresse : (adresses[0] || '');
-      if (routage === 'defaut') {
-        console.warn(`inbound-email: aucun centre reconnu, classe par defaut (${CENTRE_PAR_DEFAUT}) ; destinataires recus : ${adresses.join(', ') || '(aucun)'}`);
+      // LE PARAMETRE D URL N EST PLUS QU UN OUTIL D ESSAI DE LA PLATEFORME
+      // (2026-09-16). L URL du webhook est la meme pour tous les clients : sur
+      // un vrai mail du fournisseur, `?centerId=` ne designe personne, et un
+      // webhook fige sur libramont y classait tout le courrier non reconnu.
+      const centreDemande = parSecretMaison(req) ? centreConnu(url.searchParams.get('centerId')) : '';
+      if (!parAdresse && !centreDemande) {
+        console.warn(`inbound-email: aucun centre reconnu, mail NON classe ; destinataires recus : ${adresses.join(', ') || '(aucun)'}`);
+        sendJson(res, 200, { ok: true, ignored: 'destinataire-inconnu' });
+        return;
       }
+      const routage = parAdresse ? 'destinataire' : 'parametre';
+      const centerId = parAdresse ? parAdresse.id : centreDemande;
+      const destinataire = parAdresse ? parAdresse.adresse : (adresses[0] || '');
       const result = await ingest({
         centerId,
         from,

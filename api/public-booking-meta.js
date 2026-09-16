@@ -103,6 +103,9 @@ async function handleCustomRequest(req, res, body) {
 
   // Accusé de réception client (best-effort, tracé mais non bloquant).
   const ack = await sendCustomRequestAck({
+    // Le centre DE LA REQUETE, pas lead.centerId : mapCustomRequest retombe sur
+    // libramont, et l accuse partait signe Fun Galaxy pour tous les clients.
+    centerId,
     id: lead.id,
     email: lead.email,
     contactName: lead.contactName,

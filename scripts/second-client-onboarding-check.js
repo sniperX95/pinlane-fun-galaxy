@@ -51,7 +51,6 @@ delete process.env.VERCEL;
 process.env.DATABASE_URL = 'postgres://gate/gate';
 process.env.DATABASE_SSL = 'disable';
 process.env.STAFF_AUTH_SECRET = 'gate-second-client-secret-2026';
-process.env.STAFF_DIRECTION_CODE = 'GATE-DIRECTION-2026-AAAA';
 process.env.PLATFORM_OWNER_CODE = 'GATE-OWNER-2026-BBBB';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -229,11 +228,9 @@ class FakePool {
     // -- staff auth ---------------------------------------------------------
     if (/select id, access_code_hash from staff_members where id = any/i.test(sql)) {
       const ids = Array.isArray(params[0]) ? params[0] : [];
-      const rows = ids.map((id) => ({
+      const rows = ids.filter((id) => id.endsWith(':platform-owner')).map((id) => ({
         id,
-        access_code_hash: id.endsWith(':platform-owner')
-          ? hashSecret(process.env.PLATFORM_OWNER_CODE)
-          : hashSecret(process.env.STAFF_DIRECTION_CODE),
+        access_code_hash: hashSecret(process.env.PLATFORM_OWNER_CODE),
       }));
       return { rows, rowCount: rows.length };
     }

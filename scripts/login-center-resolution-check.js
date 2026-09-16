@@ -38,13 +38,17 @@ delete process.env.VERCEL;
 process.env.DATABASE_URL = 'postgres://gate/gate';
 process.env.DATABASE_SSL = 'disable';
 process.env.STAFF_AUTH_SECRET = 'gate-login-center-secret-2026';
-process.env.STAFF_DIRECTION_CODE = 'GATE-DIRECTION-2026-EEEE';
 process.env.PLATFORM_OWNER_CODE = 'GATE-OWNER-2026-FFFF';
 
 const ROOT = path.resolve(__dirname, '..');
 const STAFF_AUTH_PATH = path.join(ROOT, 'lib', 'staff-auth.js');
 const ALPHA = { client: 'bowling-du-lac', center: 'lac-centre' };
 const BETA = { client: 'bowling-du-nord', center: 'nord-centre' };
+// Le code Direction COMMUN aux trois centres du socle, tel que la prod le porte
+// encore : les lignes « Poste direction » heritees de l'ancien bootstrap, qui
+// l'imposait depuis STAFF_DIRECTION_CODE (retire le 2026-09-16). Le gate pose
+// ces lignes lui-meme : plus aucun code ne vient de l'environnement.
+const SOCLE_DIRECTION_CODE = 'GATE-DIRECTION-2026-EEEE';
 
 let failures = 0;
 let assertions = 0;
@@ -186,10 +190,21 @@ async function runQuery(text, params = []) {
     if (inserted) return inserted;
   }
 
+  // Garde de production : un membre partage de role (`<centre>:role:<role>`)
+  // ne compte que tant que son role a encore ce code. Appliquee SEULEMENT si
+  // le SQL la porte, comme le ferait Postgres.
+  const shareGuard = sql.includes("and (m.id <> (m.center_id || ':role:' || m.role_id) or r.access_code_hash = m.access_code_hash)");
+  const passesShareGuard = (member) => {
+    if (!shareGuard) return true;
+    const role = db.staff_roles.find((item) => item.center_id === member.center_id && item.id === member.role_id);
+    return member.id !== `${member.center_id}:role:${member.role_id}` || (role && role.access_code_hash === member.access_code_hash);
+  };
+
   // -- resolution du centre d'origine d'un code -----------------------------
   if (/from staff_members m .* where m\.access_code_hash = \$1/i.test(sql)) {
     const eligible = db.staff_members.filter((member) => member.access_code_hash === params[0]
       && member.status !== 'blocked'
+      && passesShareGuard(member)
       && db.staff_roles.some((role) => role.center_id === member.center_id && role.id === member.role_id));
     const first = orderMembersLikeSql(eligible)[0];
     return first ? { rows: [{ center_id: first.center_id }], rowCount: 1 } : { rows: [], rowCount: 0 };
@@ -216,7 +231,8 @@ async function runQuery(text, params = []) {
   if (/from staff_members m join staff_roles r/i.test(sql)) {
     const row = db.staff_members.find((member) => member.center_id === params[0]
       && member.access_code_hash === params[1]
-      && member.status !== 'blocked');
+      && member.status !== 'blocked'
+      && passesShareGuard(member));
     if (!row) return { rows: [], rowCount: 0 };
     const role = db.staff_roles.find((item) => item.center_id === row.center_id && item.id === row.role_id);
     if (!role) return { rows: [], rowCount: 0 };
@@ -277,13 +293,25 @@ async function runQuery(text, params = []) {
   if (/^update staff_roles set/i.test(sql)) {
     const row = db.staff_roles.find((item) => item.center_id === params[0] && item.id === params[1]);
     if (!row) return { rows: [], rowCount: 0 };
-    row.access_code_hash = params[2];
-    row.access_code_hint = params[3];
-    if (params[4] !== undefined) {
-      try { row.permissions = JSON.parse(params[4]); } catch (error) { row.permissions = params[4]; }
+    // Colonnes et valeurs lues DANS la requete : le bootstrap ne pose plus de
+    // code sur le role Direction (2026-09-16), regenerateRoleCode si.
+    const assignments = (sql.match(/^update staff_roles set (.*?) where /i) || [])[1] || '';
+    for (const piece of assignments.split(',')) {
+      const index = piece.indexOf('=');
+      if (index < 0) continue;
+      const column = piece.slice(0, index).trim();
+      const rawValue = piece.slice(index + 1).trim();
+      const placeholder = rawValue.match(/^\$(\d+)(::jsonb)?$/i);
+      if (placeholder) {
+        let value = params[Number(placeholder[1]) - 1];
+        if (placeholder[2] && typeof value === 'string') {
+          try { value = JSON.parse(value); } catch (error) { /* laisse la chaine telle quelle */ }
+        }
+        row[column] = value;
+      } else if (/^now\(\)$/i.test(rawValue)) row[column] = nextStamp();
+      else if (/^(true|false)$/i.test(rawValue)) row[column] = /^true$/i.test(rawValue);
+      else UNHANDLED.push(`update staff_roles ${column} = ${rawValue}`);
     }
-    row.locked = true;
-    if (params[5] !== undefined) row.access_code_enc = params[5];
     return { rows: [{ ...row }], rowCount: 1 };
   }
   if (/^update staff_members set status = \$2/i.test(sql)) {
@@ -371,8 +399,27 @@ function codeOf(provisioned, roleName) {
   const betaDirection = codeOf(beta, 'Direction');
   ok(Boolean(alphaDirection && betaDirection && alphaDirection !== betaDirection), 'chaque client a recu SON code Direction');
 
+  const SOCLE = ['libramont', 'gembloux', 'ciney'];
+  for (const centerId of SOCLE) {
+    db.staff_members.push({
+      id: `${centerId}:direction-local`,
+      center_id: centerId,
+      name: 'Poste direction',
+      contact: 'Acces bootstrap securise',
+      role_id: 'direction',
+      status: 'active',
+      access_code_hash: hashSecret(SOCLE_DIRECTION_CODE),
+      access_code_hint: '',
+      created_at: nextStamp(),
+    });
+  }
+  ok(
+    SOCLE.every((centerId) => db.staff_roles.some((role) => role.center_id === centerId && role.id === 'direction')),
+    'montage : les lignes « Poste direction » heritees sont rattachees aux roles Direction du socle',
+  );
+
   section('[1] Le code ouvre SON centre, meme quand la console en affiche un autre');
-  const seedFromClient = await login(ALPHA.center, process.env.STAFF_DIRECTION_CODE);
+  const seedFromClient = await login(ALPHA.center, SOCLE_DIRECTION_CODE);
   ok(seedFromClient.ok, 'le code Direction du socle n\'est plus refuse depuis la console d\'un client');
   ok(
     seedFromClient.ok && seedFromClient.session.centerId === 'libramont',
@@ -388,8 +435,8 @@ function codeOf(provisioned, roleName) {
   );
 
   section('[2] Le dernier centre de travail l\'emporte quand un code est partage');
-  await login('gembloux', process.env.STAFF_DIRECTION_CODE);
-  const afterGembloux = await login(BETA.center, process.env.STAFF_DIRECTION_CODE);
+  await login('gembloux', SOCLE_DIRECTION_CODE);
+  const afterGembloux = await login(BETA.center, SOCLE_DIRECTION_CODE);
   ok(
     afterGembloux.ok && afterGembloux.session.centerId === 'gembloux',
     'le code Direction ramene au centre ou il a servi en dernier',

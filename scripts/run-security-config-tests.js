@@ -66,7 +66,9 @@ try {
   resetEnv({ NODE_ENV: 'development', ALLOW_INSECURE_STAFF_CODES: 'true' });
   assert.strictEqual(staffAuth.isProductionRuntime(), false);
   assert.strictEqual(staffAuth.allowDevelopmentFallbacks(), true);
-  assert.strictEqual(staffAuth.getDirectionCode(), 'SESSION-DIRECTION');
+  // Plus aucun code Direction ne vient de l'environnement (2026-09-16) : les
+  // codes Direction se gerent par centre, dans la console.
+  assert.strictEqual(staffAuth.getDirectionCode, undefined, 'no environment direction code anymore');
   assert.strictEqual(staffAuth.getPlatformOwnerCode(), 'pinlane-owner-demo-code');
   assert.strictEqual(staffAuth.normalizeStaffCenterId('Fun Galaxy Centre'), 'libramont');
   assert.strictEqual(staffAuth.normalizeStaffCenterId('fun galaxy center'), 'libramont');
@@ -99,28 +101,35 @@ try {
   resetEnv({ NODE_ENV: 'production', ALLOW_INSECURE_STAFF_CODES: 'true' });
   assert.strictEqual(staffAuth.isProductionRuntime(), true);
   assert.strictEqual(staffAuth.allowDevelopmentFallbacks(), false, 'production must never enable fallback staff codes');
-  assertThrowsMessage(() => staffAuth.getDirectionCode(), /manquant en production/i, 'missing direction code');
   assertThrowsMessage(() => staffAuth.getPlatformOwnerCode(), /manquant en production/i, 'missing owner code');
   assertThrowsMessage(() => staffAuth.getAuthSecret(), /manquant en production/i, 'missing auth secret');
+
+  // H2 (pentest 2026-09-15) : le mot de passe du site et les anciens codes,
+  // meme forts, ne remplacent JAMAIS un secret manquant.
+  resetEnv({
+    NODE_ENV: 'production',
+    SITE_PASSWORD: 'site-password-strong-local-test',
+    DIRECTOR_PASSWORD: 'director-password-strong-local-test',
+    STAFF_DIRECTION_CODE: 'direction-access-code-local-test',
+    STAFF_OWNER_CODE: 'legacy-owner-code-local-test',
+  });
+  assertThrowsMessage(() => staffAuth.getAuthSecret(), /manquant en production/i, 'site password must not become the signing secret');
+  assertThrowsMessage(() => staffAuth.getPlatformOwnerCode(), /manquant en production/i, 'no legacy code may become the owner code');
 
   resetEnv({
     NODE_ENV: 'production',
     STAFF_AUTH_SECRET: 'change-me',
-    STAFF_DIRECTION_CODE: 'SESSION-DIRECTION',
     PLATFORM_OWNER_CODE: 'PINLANE-OWNER',
   });
   assertThrowsMessage(() => staffAuth.getAuthSecret(), /interdite en production/i, 'weak auth secret');
-  assertThrowsMessage(() => staffAuth.getDirectionCode(), /interdite en production/i, 'default direction code');
   assertThrowsMessage(() => staffAuth.getPlatformOwnerCode(), /interdite en production/i, 'default owner code');
 
   resetEnv({
     NODE_ENV: 'production',
     STAFF_AUTH_SECRET: 'staff-auth-secret-64-chars-local-test-value',
-    STAFF_DIRECTION_CODE: 'direction-access-code-local-test',
     PLATFORM_OWNER_CODE: 'owner-access-code-local-test',
   });
   assert.strictEqual(staffAuth.getAuthSecret(), 'staff-auth-secret-64-chars-local-test-value');
-  assert.strictEqual(staffAuth.getDirectionCode(), 'direction-access-code-local-test');
   assert.strictEqual(staffAuth.getPlatformOwnerCode(), 'owner-access-code-local-test');
   const emergency = staffAuth.createEmergencyOwnerSession({
     centerId: 'Fun Galaxy Gembloux',
@@ -189,7 +198,6 @@ try {
   resetEnv({
     NODE_ENV: 'production',
     STAFF_AUTH_SECRET: 'staff-auth-secret-64-chars-local-test-value',
-    STAFF_DIRECTION_CODE: 'direction-access-code-local-test',
     PLATFORM_OWNER_CODE: 'owner-access-code-local-test',
   });
   const plainCode = 'FG-A1B2-C3D4';
@@ -207,7 +215,6 @@ try {
   resetEnv({
     NODE_ENV: 'production',
     STAFF_AUTH_SECRET: 'rotated-staff-auth-secret-different-value',
-    STAFF_DIRECTION_CODE: 'direction-access-code-local-test',
     PLATFORM_OWNER_CODE: 'owner-access-code-local-test',
   });
   assert.strictEqual(staffAuth.decryptAccessCode(cipher), '', 'ciphertext must not decrypt under a rotated secret');

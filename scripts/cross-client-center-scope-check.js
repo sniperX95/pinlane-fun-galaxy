@@ -44,7 +44,6 @@ delete process.env.VERCEL;
 process.env.DATABASE_URL = 'postgres://gate/gate';
 process.env.DATABASE_SSL = 'disable';
 process.env.STAFF_AUTH_SECRET = 'gate-cross-client-isolation-secret-2026';
-process.env.STAFF_DIRECTION_CODE = 'GATE-DIRECTION-2026-AAAA';
 process.env.PLATFORM_OWNER_CODE = 'GATE-OWNER-2026-BBBB';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -166,11 +165,9 @@ class FakePool {
     // exactement les lignes attendues pour que le bootstrap DDL soit saute.
     if (/select\s+id,\s*access_code_hash\s+from\s+staff_members\s+where\s+id\s*=\s*any/i.test(sql)) {
       const ids = Array.isArray(params[0]) ? params[0] : [];
-      const rows = ids.map((id) => ({
+      const rows = ids.filter((id) => id.endsWith(':platform-owner')).map((id) => ({
         id,
-        access_code_hash: id.endsWith(':platform-owner')
-          ? hashSecret(process.env.PLATFORM_OWNER_CODE)
-          : hashSecret(process.env.STAFF_DIRECTION_CODE),
+        access_code_hash: hashSecret(process.env.PLATFORM_OWNER_CODE),
       }));
       return { rows, rowCount: rows.length };
     }

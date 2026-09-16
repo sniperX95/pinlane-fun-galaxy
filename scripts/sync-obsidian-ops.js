@@ -192,7 +192,7 @@ function build() {
     'ops-worker',
     'node',
     '-e',
-    "const keys=['DATABASE_URL','RESEND_API_KEY','RESEND_FROM','STAFF_REVIEW_EMAIL','STAFF_AUTH_SECRET','STAFF_DIRECTION_CODE','PLATFORM_OWNER_CODE','CRON_SECRET']; console.log(JSON.stringify(Object.fromEntries(keys.map(k=>[k,Boolean(process.env[k])]))))",
+    "const keys=['DATABASE_URL','RESEND_API_KEY','RESEND_FROM','STAFF_REVIEW_EMAIL','STAFF_AUTH_SECRET','PLATFORM_OWNER_CODE','CRON_SECRET']; console.log(JSON.stringify(Object.fromEntries(keys.map(k=>[k,Boolean(process.env[k])]))))",
   ], { timeout: 120000 });
   const envJson = parseJson(envPresence, {});
   const testResult = RUN_TESTS

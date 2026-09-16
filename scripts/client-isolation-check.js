@@ -41,7 +41,6 @@ delete process.env.VERCEL;
 process.env.DATABASE_URL = 'postgres://gate/gate';
 process.env.DATABASE_SSL = 'disable';
 process.env.STAFF_AUTH_SECRET = 'gate-client-isolation-secret-2026';
-process.env.STAFF_DIRECTION_CODE = 'GATE-DIRECTION-2026-CCCC';
 process.env.PLATFORM_OWNER_CODE = 'GATE-OWNER-2026-DDDD';
 
 const ROOT = path.resolve(__dirname, '..');

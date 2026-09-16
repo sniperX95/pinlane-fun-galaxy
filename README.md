@@ -20,12 +20,11 @@ Copier `.env.example` vers `.env` puis remplir:
 - `DATABASE_URL`
 - `DATABASE_SSL` (`require` par defaut, `disable` si votre base locale n'utilise pas SSL, `no-verify` uniquement pour une base de test avec certificat non verifie)
 - `PUBLIC_FORM_ORIGIN` pour limiter le CORS au vrai site Fungalaxy
-- `STAFF_AUTH_SECRET` secret long utilise pour signer les sessions staff
-- `STAFF_DIRECTION_CODE` code d'acces direction du client
-- `PLATFORM_OWNER_CODE` code d'acces proprietaire de la plateforme
+- `STAFF_AUTH_SECRET` secret long qui signe les sessions staff et verifie TOUS les codes d'acces de tous les clients : le changer ou le supprimer invalide tous les codes et toutes les sessions, et il n'a aucun repli
+- `PLATFORM_OWNER_CODE` code d'acces proprietaire de la plateforme (tous les centres de tous les clients), sans repli
 - `ALLOW_INSECURE_STAFF_CODES=false` en production
 
-`SITE_PASSWORD` est conserve seulement pour compatibilite historique. Ne pas l'utiliser comme code staff en production.
+Les codes Direction et equipe se gerent par centre, dans la console : aucune variable d'environnement n'en porte (`STAFF_DIRECTION_CODE` n'est plus lu depuis le 2026-09-16). `SITE_USERNAME` / `SITE_PASSWORD` ne servent qu'a la fenetre de connexion du navigateur devant les pages internes : aucun code staff ni secret ne s'y rabat.
 
 ## Mise en place de la base
 

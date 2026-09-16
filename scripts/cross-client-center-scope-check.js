@@ -449,6 +449,65 @@ function makeRes() {
       'la creation d un centre NEUF reste possible pour la direction');
   }
 
+  // ==========================================================================
+  console.log('\n[H] api/marketing-agents.js : la portee "all" est reservee au plateforme');
+  // ==========================================================================
+  // Ce dispatcher a le SIEN, hors du refuserPorteePlateforme de api/ops.js. Il
+  // gardait 'all' sur 'centers.switch' (que toute Direction verrouillee possede),
+  // donc getCenterIds('all') rendait les centres de TOUS les clients. Le moteur
+  // est stubbe : on ne teste que la DECISION d'autorisation, pas un vrai cycle.
+  {
+    const maPath = require.resolve(path.join(ROOT, 'lib', 'marketing-agents.js'));
+    require.cache[maPath] = {
+      id: maPath,
+      filename: maPath,
+      loaded: true,
+      exports: {
+        getMarketingAgentStatus: async ({ centerId }) => ({ centerId, ok: true, stub: true }),
+        runMarketingAgentCycle: async ({ centerId }) => ({ centerId, ok: true, stub: true }),
+        recordMarketingFeedback: async () => ({ ok: true, stub: true }),
+      },
+    };
+    const agentsPath = require.resolve(path.join(ROOT, 'api', 'marketing-agents.js'));
+    delete require.cache[agentsPath];
+    const handler = require(agentsPath);
+
+    // Direction Fun Galaxy (centers.switch, PAS platform.admin) + centerId=all : REFUS.
+    const reqAllStatus = makeReq({ url: '/api/marketing-agents?action=status&centerId=all', token: DIRECTION_TOKEN });
+    const resAllStatus = makeRes();
+    try { await handler(reqAllStatus, resAllStatus); } catch (error) { resAllStatus.body = `exception:${error && error.message}`; }
+    ok(resAllStatus.statusCode === 403,
+      `GET status centerId=all d une Direction repart en 403 (obtenu statusCode=${resAllStatus.statusCode})`);
+    ok(!resAllStatus.body.includes(MARQUEUR_MI12),
+      'aucune donnee d un autre client ne sort par le statut multi-centres');
+
+    // Meme refus a l ECRITURE (POST run), le chemin qui declenche les cycles + LLM.
+    const reqAllRun = makeReq({
+      method: 'POST',
+      url: '/api/marketing-agents',
+      token: DIRECTION_TOKEN,
+      body: { action: 'run', centerId: 'all' },
+    });
+    const resAllRun = makeRes();
+    try { await handler(reqAllRun, resAllRun); } catch (error) { resAllRun.body = `exception:${error && error.message}`; }
+    ok(resAllRun.statusCode === 403,
+      `POST run centerId=all d une Direction repart en 403 (obtenu statusCode=${resAllRun.statusCode})`);
+
+    // NON-REGRESSION : la Direction garde son PROPRE centre.
+    const reqOwn = makeReq({ url: '/api/marketing-agents?action=status&centerId=libramont', token: DIRECTION_TOKEN });
+    const resOwn = makeRes();
+    try { await handler(reqOwn, resOwn); } catch (error) { resOwn.body = `exception:${error && error.message}`; }
+    ok(resOwn.statusCode !== 403,
+      `la Direction lit toujours le statut de SON centre (obtenu statusCode=${resOwn.statusCode})`);
+
+    // NON-REGRESSION : le proprietaire plateforme garde la portee 'all'.
+    const reqOwner = makeReq({ url: '/api/marketing-agents?action=status&centerId=all', token: OWNER_TOKEN });
+    const resOwner = makeRes();
+    try { await handler(reqOwner, resOwner); } catch (error) { resOwner.body = `exception:${error && error.message}`; }
+    ok(resOwner.statusCode !== 403,
+      `platform.admin garde la portee multi-centres (obtenu statusCode=${resOwner.statusCode})`);
+  }
+
   if (failures) {
     console.error(`\ncross-client-center-scope-check: ${failures} FAIL`);
     process.exit(1);

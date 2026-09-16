@@ -72,8 +72,13 @@ module.exports = async (req, res) => {
       const permissionCenterId = centerId === 'all' ? '' : centerId;
       const session = await requireStaffPermission(req, res, ['campaigns.manage', 'marketing.agents'], { centerId: permissionCenterId });
       if (!session) return;
-      if (centerId === 'all' && !sessionHasPermission(session, 'centers.switch')) {
-        sendError(res, 403, 'Acces multi-centres insuffisant.');
+      if (centerId === 'all' && !sessionHasPermission(session, 'platform.admin')) {
+        // Portee 'all' = privilege plateforme (meme regle que
+        // refuserPorteePlateforme dans api/ops.js). 'centers.switch' ne suffit
+        // PAS : tout role verrouille, donc toute Direction, le possede, ce qui
+        // exposait via getCenterIds('all') les centres de TOUS les clients
+        // (statut lu + cycles declenches + budget LLM). Isolation cross-tenant.
+        sendError(res, 403, 'Acces plateforme requis pour la portee multi-centres.');
         return;
       }
       if (action === 'status') {
@@ -95,8 +100,13 @@ module.exports = async (req, res) => {
       const permissionCenterId = centerId === 'all' ? '' : centerId;
       const session = await requireStaffPermission(req, res, ['campaigns.manage', 'marketing.agents'], { centerId: permissionCenterId });
       if (!session) return;
-      if (centerId === 'all' && !sessionHasPermission(session, 'centers.switch')) {
-        sendError(res, 403, 'Acces multi-centres insuffisant.');
+      if (centerId === 'all' && !sessionHasPermission(session, 'platform.admin')) {
+        // Portee 'all' = privilege plateforme (meme regle que
+        // refuserPorteePlateforme dans api/ops.js). 'centers.switch' ne suffit
+        // PAS : tout role verrouille, donc toute Direction, le possede, ce qui
+        // exposait via getCenterIds('all') les centres de TOUS les clients
+        // (statut lu + cycles declenches + budget LLM). Isolation cross-tenant.
+        sendError(res, 403, 'Acces plateforme requis pour la portee multi-centres.');
         return;
       }
       if (action === 'run') {

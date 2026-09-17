@@ -319,6 +319,9 @@ async function main() {
         question: (msgs[1].querySelector('.pv2-thread-question') || {}).textContent || '',
         statut: (document.querySelector('#staffEmailsPage .pv2-thread-head .pv2-chip') || {}).textContent || '',
         tete: (document.querySelector('#staffEmailsPage .pv2-thread-title') || {}).textContent || '',
+        sujetTete: (document.querySelector('#staffEmailsPage .pv2-thread-title strong') || {}).textContent || '',
+        origineTete: (document.querySelector('#staffEmailsPage .pv2-thread-origine') || {}).textContent || '',
+        avatarTete: !!document.querySelector('#staffEmailsPage .pv2-thread-head .pv2-thread-avatar'),
         signature: (document.querySelector('#staffEmailsPage .pv2-thread-reply-sign input[type="checkbox"]') || {}).checked,
         signataire: [...document.querySelectorAll('#staffEmailsPage .pv2-thread-reply-sign input:not([type="checkbox"])')].map((i) => i.value),
         sandbox: [...document.querySelectorAll('#staffEmailsPage iframe')].every((f) => f.getAttribute('sandbox') === ''),
@@ -336,6 +339,8 @@ async function main() {
     ok(/gâteau/.test(fil.analyse), 'ce que l agent a compris est affiche sous le message', fil.analyse.slice(0, 60));
     ok(/L'agent ne sait pas/.test(fil.question), 'la question de l agent est rattachee au message qui l a posee');
     ok(fil.statut === 'À répondre' && /Ansar Bis/.test(fil.tete) && /ansarbis2\.0@gmail\.com/.test(fil.tete), 'en tete : le contact, son adresse, l etat « A repondre »', fil.statut);
+    ok(/^Commencée par le centre/.test(fil.origineTete) && !fil.avatarTete && fil.sujetTete.trim().length > 0 && !/Ansar Bis/.test(fil.sujetTete),
+      'en tete de CONVERSATION : l objet en titre et « Commencee par le centre » (41 est parti avant 42), sans l avatar du client qui faisait lire un mail recu', JSON.stringify({ sujet: fil.sujetTete, origine: fil.origineTete, avatar: fil.avatarTete }));
     ok(fil.signature === true && fil.signataire[0] === 'Camille Dev' && fil.signataire[1] === 'Direction', 'la signature est proposee (portee « manuels » active) avec MON nom et MON role', fil.signataire.join(' / '));
     ok(fil.sandbox, 'toute iframe de la page est sandbox=""');
 
@@ -395,7 +400,24 @@ async function main() {
     await dormir(250);
     const brouillon = await page.evaluate(() => ({ body: pv2Threads.reply['901'].body, subject: pv2Threads.reply['901'].subject, focus: document.activeElement ? document.activeElement.id : '' }));
     ok(/apportez votre gâteau/.test(brouillon.body) && brouillon.focus === 'pv2ThreadReplyBody', 'la frappe alimente le brouillon du fil et garde le focus', brouillon.focus);
-    ok(Boolean(brouillon.subject), 'l objet de la reponse est prerempli', brouillon.subject);
+    ok(brouillon.subject === "Re: C'est confirmé : on vous attend mardi 8 septembre",
+      'l objet de la reponse est « Re: » + l objet de la conversation, pas l objet propose par l agent (sinon Gmail range la reponse a part chez le client)', brouillon.subject);
+    const objetAgentAutre = await page.evaluate(() => {
+      const d = pv2Threads.detail;
+      const cle = String(d.thread.id);
+      const entrant = [...d.messages].reverse().find((m) => m.direction === 'inbound');
+      const avant = { brouillon: pv2Threads.reply[cle], analyse: entrant ? entrant.analysis : null };
+      delete pv2Threads.reply[cle];
+      if (entrant) entrant.analysis = { ...(entrant.analysis || {}), reply: { subject: 'Bien reçu, Fun Galaxy Libramont', body: 'Bonjour,' } };
+      renderStaffEmailsPage();
+      const sujet = (pv2Threads.reply[cle] || {}).subject;
+      pv2Threads.reply[cle] = avant.brouillon;
+      if (entrant) entrant.analysis = avant.analyse;
+      renderStaffEmailsPage();
+      return { sujet, objetFil: d.thread.subject, agentMonte: Boolean(entrant) };
+    });
+    ok(objetAgentAutre.agentMonte && objetAgentAutre.sujet === `Re: ${objetAgentAutre.objetFil}`,
+      'l agent propose un AUTRE objet (cas reel du 17/09) : la reponse garde « Re: » + l objet de la conversation', JSON.stringify(objetAgentAutre));
     await page.evaluate(() => [...document.querySelectorAll('#staffEmailsPage .pv2-thread-reply button')].find((b) => /Voir le mail final/.test(b.textContent)).click());
     await attendre(page, () => window.__APPELS__.some((e) => e.action === 'directEmailPreview' && e.fini) && document.querySelector('#emailPreviewOverlay iframe'), null, 'l apercu du mail final s ouvre');
     const apercuReponse = await page.evaluate(() => {

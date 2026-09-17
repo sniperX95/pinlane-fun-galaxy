@@ -2404,7 +2404,14 @@
       const fil = d.thread && String(d.thread.id) === cle ? d.thread : null;
       const entrant = fil ? pv2ThreadDernierEntrant(d.messages) : null;
       const analysis = entrant && entrant.analysis ? entrant.analysis : null;
-      const sujet = String((analysis && analysis.reply && analysis.reply.subject) || (fil && fil.subject ? `Re: ${fil.subject}` : '')).trim();
+      // UNE REPONSE GARDE L OBJET DE LA CONVERSATION (2026-09-17). L objet
+      // propose par l agent la sortait de la conversation chez le client : Gmail
+      // regroupe aussi par objet. « Re: » + l objet, sans doubler le « Re: » ;
+      // l objet de l agent ne sert que s il n y a aucun objet.
+      const objetFil = String((fil && fil.subject) || (entrant && entrant.subject) || '').trim();
+      const sujet = objetFil
+        ? (/^re\s*:/i.test(objetFil) ? objetFil : `Re: ${objetFil}`)
+        : String((analysis && analysis.reply && analysis.reply.subject) || '').trim();
       const session = state.staffAuthSession || {};
       const membre = session.member || {};
       const role = session.role || {};
@@ -5814,13 +5821,20 @@
     const autres = Array.isArray(contact.autresFils) ? contact.autresFils : [];
     const nom = String(contact.name || fil.contactName || contact.email || fil.contactEmail || 'Expéditeur inconnu');
     const email = String(contact.email || fil.contactEmail || '');
+    // L EN-TETE EST CELUI DE LA CONVERSATION, pas d un message (2026-09-17) :
+    // l objet en titre, avec qui on parle, et qui a ecrit le premier. L avatar
+    // et le nom du client en tete faisaient lire un mail du client, meme quand
+    // le centre avait ecrit le premier.
+    const premier = messages.length ? messages[0] : null;
+    const premierEntrant = Boolean(premier) && premier.direction === 'inbound';
+    const quandPremier = premier ? pv2Quand(premierEntrant ? (premier.receivedAt || premier.createdAt) : (premier.sentAt || premier.createdAt)) : '';
+    const origineTete = premier ? `${premierEntrant ? 'Commencée par le client' : 'Commencée par le centre'}${quandPremier ? ` · ${quandPremier}` : ''}` : '';
     return `<div class="pv2-thread-detail pv2-mail-detail">
       <div class="pv2-thread-head">
-        <span class="pv2-thread-avatar" aria-hidden="true">${esc(pv2InitialeDe(contact.name || fil.contactName, email))}</span>
         <div class="pv2-thread-title">
-          <strong>${esc(nom)}</strong>
-          ${email && email !== nom ? `<small>${esc(email)}</small>` : ''}
-          <div class="pv2-thread-subjectline">${esc(fil.subject || '(sans objet)')}</div>
+          <strong class="pv2-thread-subject">${esc(fil.subject || '(sans objet)')}</strong>
+          <small class="pv2-thread-with">Conversation avec <b>${esc(nom)}</b>${email && email !== nom ? ` · ${esc(email)}` : ''}</small>
+          ${origineTete ? `<small class="pv2-thread-origine">${esc(origineTete)}</small>` : ''}
         </div>
         <div class="pv2-thread-actions">
           <span class="pv2-chip ${statusTone}">${statusLabel}</span>

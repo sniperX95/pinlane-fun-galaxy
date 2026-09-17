@@ -506,12 +506,32 @@ module.exports = async (req, res) => {
     if (type === 'visite') {
       const program = normalizeProgram(programInput, { centerId, pax, bowlingConfig: centerBowlingConfig, dateStr: date });
       const visitLabel = 'Votre visite';
+      // LA FIN QUE LE CLIENT LIT EST CELLE DE SA VISITE, pas celle du plan du
+      // staff : `opsPlan.endTime` ne porte que les activites planifiees (plus la
+      // marge de risque du staff), donc il annoncait « fin 15:05 » pour une
+      // visite d 1 h 45. La reserve ne s ajoute QUE s il y a un plan : sur une
+      // visite 100 % libre, le plan porte deja tout le programme.
+      const reserveAffichee = program.plannedItems.length
+        ? Math.max(0, Math.round(Number(program.freeMinutes) || 0))
+        : 0;
+      const finDeVisiteMinutes = (slot) => {
+        if (!slot || !slot.time) return null;
+        const debut = Math.round(timeToNum(slot.time) * 60);
+        const plan = slot.opsPlan || null;
+        const marge = Math.max(0, Number(plan && plan.bufferMinutes) || 0);
+        const finPlan = plan && plan.endTime ? Math.round(timeToNum(plan.endTime) * 60) - marge : debut;
+        return Math.max(finPlan, debut) + reserveAffichee;
+      };
       const respondVisit = (slots, message, extra = {}) => {
+        const creneaux = (Array.isArray(slots) ? slots : []).map((slot) => {
+          const fin = finDeVisiteMinutes(slot);
+          return fin === null ? slot : { ...slot, visitEndTime: numToTime(fin / 60) };
+        });
         sendJson(res, 200, {
           ok: true,
           date,
           ...scheduleMeta,
-          slots,
+          slots: creneaux,
           laneCount: program.laneCount,
           duration: program.plannedItems[0]?.duration || 0,
           totalDuration: Math.round((program.items.reduce((sum, item) => sum + (item.minutes || 0), 0) / 60) * 100) / 100,
@@ -557,7 +577,13 @@ module.exports = async (req, res) => {
           // preferredTimes part AVEC la demande : sans lui, la liste d une
           // activite ignorait l heure deja retenue pour l autre et proposait
           // des heures que la validation refusait juste apres.
-          anchorMeta = getFormulaAnchorAvailability({ centerId, formula: visitFormula, date, pax, preferredTimes, laserGameTimes }, engineContext);
+          anchorMeta = getFormulaAnchorAvailability({
+            centerId, formula: visitFormula, date, pax, preferredTimes, laserGameTimes,
+            // La fermeture se juge sur la VISITE ENTIERE : les activites libres
+            // ne prennent aucune ressource, mais elles prennent du temps.
+            reserveMinutes: program.freeMinutes,
+            reserveLabel: program.freeLabel,
+          }, engineContext);
         } catch (error) {
           anchorMeta = null;
         }
@@ -673,6 +699,8 @@ module.exports = async (req, res) => {
               pax,
               anchorTimes: defaultTimes,
               laserPlacement: 'scheduled',
+              reserveMinutes: program.freeMinutes,
+              reserveLabel: program.freeLabel,
               reservations: snapshot.reservations,
               laneStatuses: snapshot.laneStatuses,
               blocks: snapshot.blocks || [],

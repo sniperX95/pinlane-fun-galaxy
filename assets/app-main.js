@@ -7764,7 +7764,10 @@ function renderSlots(formule) {
       index: i,
       time: s.time,
       affichee: typeof displayTime === 'function' ? displayTime(s.time) : s.time,
-      endTime: s.opsPlan && s.opsPlan.endTime ? s.opsPlan.endTime : '',
+      // LA FIN DE LA VISITE, activites libres comprises (`visitEndTime`,
+      // rendue par public-availability). `opsPlan.endTime` est le plan du
+      // STAFF : il ne porte que les activites planifiees.
+      endTime: s.visitEndTime || (s.opsPlan && s.opsPlan.endTime) || '',
       tag: isLaser
         ? (s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : 'Session ouverte')
         : (s.opsPlan ? 'Plan conseillé' : ''),

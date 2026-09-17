@@ -4729,6 +4729,32 @@
      `sandbox=""`, et son contenu est pose en propriete apres la peinture,
      jamais serialise dans l attribut. ── */
   const PV2_FRAMES = {};
+  // CLAIR OU SOMBRE (2026-09-17) : sur telephone, la plupart des messageries
+  // passent le mail en sombre. L apercu sombre est une APPROXIMATION (couleurs
+  // inversees, images intactes, comme Gmail ou Outlook) : chaque messagerie
+  // adapte a sa facon. Le HTML du serveur n est jamais modifie : seul l apercu.
+  let pv2ApercuTheme = 'clair';
+  try { if (window.localStorage.getItem('pinlane_apercu_mail_theme') === 'sombre') pv2ApercuTheme = 'sombre'; } catch (e) { /* stockage indisponible */ }
+  const PV2_STYLE_SOMBRE = '<style data-pv2-sombre>html{background:#121212!important}body{background:#ffffff!important;filter:invert(1) hue-rotate(180deg)}img{filter:invert(1) hue-rotate(180deg)}</style>';
+  function pv2HtmlSelonTheme(html) {
+    const brut = String(html || '');
+    if (pv2ApercuTheme !== 'sombre' || !brut) return brut;
+    return /<\/head>/i.test(brut) ? brut.replace(/<\/head>/i, `${PV2_STYLE_SOMBRE}</head>`) : `${PV2_STYLE_SOMBRE}${brut}`;
+  }
+  function pv2ThemeChoixHtml() {
+    const bouton = (id, libelle) => `<button type="button" class="pv2-theme-btn${pv2ApercuTheme === id ? ' is-active' : ''}" data-pv2-theme-choix="${id}" aria-pressed="${pv2ApercuTheme === id}" onclick="pv2ApercuThemeChoisir('${id}')">${libelle}</button>`;
+    return `<span class="pv2-theme-choix" role="group" aria-label="Aperçu du mail en clair ou en sombre">${bouton('clair', 'Clair')}${bouton('sombre', 'Sombre')}</span>`;
+  }
+  window.pv2ApercuThemeChoisir = function (theme) {
+    pv2ApercuTheme = theme === 'sombre' ? 'sombre' : 'clair';
+    try { window.localStorage.setItem('pinlane_apercu_mail_theme', pv2ApercuTheme); } catch (e) { /* stockage indisponible */ }
+    document.querySelectorAll('#staffEmailsPage iframe[data-pv2-frame]').forEach((frame) => { frame.srcdoc = pv2HtmlSelonTheme(frame.__pv2Html || ''); });
+    document.querySelectorAll('#staffEmailsPage [data-pv2-theme-choix]').forEach((b) => {
+      const actif = b.getAttribute('data-pv2-theme-choix') === pv2ApercuTheme;
+      b.classList.toggle('is-active', actif);
+      b.setAttribute('aria-pressed', String(actif));
+    });
+  };
   function pv2FrameHtml(cle, html, classe, titre) {
     PV2_FRAMES[cle] = String(html || '');
     return `<iframe class="${esc(classe)}" sandbox="" title="${esc(titre || 'Aperçu du mail')}" data-pv2-frame="${esc(cle)}"></iframe>`;
@@ -4737,7 +4763,7 @@
     root.querySelectorAll('iframe[data-pv2-frame]').forEach((frame) => {
       const html = PV2_FRAMES[frame.getAttribute('data-pv2-frame')] || '';
       frame.__pv2Html = html;
-      frame.srcdoc = html;
+      frame.srcdoc = pv2HtmlSelonTheme(html);
     });
   }
 
@@ -4795,7 +4821,7 @@
   function pv2ApercuVivantHtml(cle, { titre = 'Aperçu', tete = '', cadre = 'pv2-seq-preview-frame', classe = '' } = {}) {
     const etat = PV2_APERCU_ETAT[cle] || { etat: 'vide' };
     return `<div class="pv2-seq-preview${classe ? ` ${classe}` : ''}" data-pv2-apercu="${esc(cle)}">
-      <div class="pv2-seq-preview-head">${tete || `<span>${esc(titre)}</span>`}<span class="pv2-live-state${etat.etat === 'erreur' ? ' is-error' : ''}" aria-live="polite" data-pv2-apercu-etat>${esc(pv2ApercuEtatTexte(etat))}</span></div>
+      <div class="pv2-seq-preview-head">${tete || `<span>${esc(titre)}</span>`}<span class="pv2-live-state${etat.etat === 'erreur' ? ' is-error' : ''}" aria-live="polite" data-pv2-apercu-etat>${esc(pv2ApercuEtatTexte(etat))}</span>${pv2ThemeChoixHtml()}</div>
       <div class="pv2-seq-preview-subject" data-pv2-apercu-sujet>${esc(etat.subject || '')}</div>
       ${pv2FrameHtml(cle, etat.html || '', cadre, titre)}
     </div>`;
@@ -4809,7 +4835,7 @@
       const sujet = box.querySelector('[data-pv2-apercu-sujet]');
       if (sujet) sujet.textContent = etat.subject || '';
       const frame = box.querySelector('iframe[data-pv2-frame]');
-      if (frame && frame.__pv2Html !== (etat.html || '')) { frame.__pv2Html = etat.html || ''; frame.srcdoc = frame.__pv2Html; }
+      if (frame && frame.__pv2Html !== (etat.html || '')) { frame.__pv2Html = etat.html || ''; frame.srcdoc = pv2HtmlSelonTheme(frame.__pv2Html); }
     });
   }
 

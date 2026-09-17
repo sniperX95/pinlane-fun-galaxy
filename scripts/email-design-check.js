@@ -159,23 +159,26 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   ok(liens(htmlNu) === 0 && images(htmlNu) === 0 && /L&#39;équipe Centre Nu/.test(htmlNu),
     '[A] signe par defaut chez un centre sans catalogue : « L équipe Centre Nu », zero lien, zero image');
   const inconnu = await m.comms.resolveEmailDesign('centre-qui-n-existe-pas', deps);
-  ok(inconnu.signature.phone === '' && inconnu.signature.logoUrl === '' && inconnu.preset === 'classique', '[A] un centre inconnu du catalogue recoit des defauts vides, jamais ceux de Libramont');
+  ok(inconnu.signature.phone === '' && inconnu.signature.logoUrl === '' && inconnu.preset === 'simple', '[A] un centre inconnu du catalogue recoit des defauts vides (gabarit Mail simple), jamais ceux de Libramont');
   const resoluLibramont = await m.comms.resolveEmailDesign('libramont', deps);
   ok(resoluLibramont.signature.phone === LIBRAMONT.publicInfo.phone && resoluLibramont.signatureScope.manual === true && resoluLibramont.signatureScope.campaigns === false,
     '[A] resolveEmailDesign sans design enregistre = les defauts du centre (manuel et sequences signes, campagnes non)');
 
   // =====================================================================
-  console.log('\n[B] les quatre gabarits rendent un mail complet');
+  console.log('\n[B] les cinq gabarits rendent un mail complet');
   // =====================================================================
   const presets = m.comms.EMAIL_DESIGN_PRESETS.map((x) => x.id);
-  ok(presets.join(',') === 'classique,epure,carte,contraste', '[B] montage : quatre gabarits declares', presets.join(','));
+  ok(presets.join(',') === 'simple,classique,epure,carte,contraste', '[B] montage : cinq gabarits declares, Mail simple en tete', presets.join(','));
   const rendus = {};
   for (const preset of presets) {
     const design = { ...defautsLibramont, preset, header: { ...defautsLibramont.header, mode: 'logo' } };
     const html = await rendu(m, { design, portee: 'manual', person: KEVIN });
     rendus[preset] = html;
-    ok(/^<!doctype html>/i.test(html) && /<table role="presentation" width="600"/.test(html) && !/<script/i.test(html) && /style="/.test(html) && /Objet de test/.test(html) && /Voici la reponse/.test(html),
-      `[B] ${preset} : HTML complet en tables, styles en ligne, largeur 600, sans script`);
+    ok(/^<!doctype html>/i.test(html) && /<table role="presentation" width="600"/.test(html) && !/<script/i.test(html) && /style="/.test(html) && /Voici la reponse/.test(html)
+      // Mail simple (2026-09-17) : le sujet reste dans l objet du mail, jamais en
+      // titre dans le corps, et pas de pied de marque ; les autres le gardent.
+      && (preset === 'simple' ? !/<h1/i.test(html) && !/Une question \?/.test(html) : /Objet de test/.test(html)),
+      `[B] ${preset} : HTML complet en tables, styles en ligne, largeur 600, sans script${preset === 'simple' ? ', sans titre repete ni pied de marque' : ', titre en tete'}`);
   }
   ok(/border-top:4px solid #17151F/.test(rendus.carte) && !/border-top:4px solid/.test(rendus.classique), '[B] carte : une barre de 4 px en haut de carte ; classique : aucune');
   ok(!/border:1px solid #E6E6EB;border-radius:12px/.test(rendus.epure) && /border-bottom:1px solid #EFEFF3;font-family/.test(rendus.epure), '[B] epure : pas de carte bordee, un filet fin sous le titre');
@@ -316,9 +319,9 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   ok(refus && refus.expose === true && ECRITURES.length === 1, '[I] un brouillon invalide n ecrit rien');
   REGLAGES.set('libramont', { ...REGLAGES.get('libramont'), email_design: { preset: 'neon', signature: { logoUrl: 'javascript:x' } } });
   const indulgent = await m.comms.resolveEmailDesign('libramont', deps);
-  ok(indulgent.preset === 'classique' && indulgent.signature.logoUrl === defautsLibramont.signature.logoUrl, '[I] un design en base devenu invalide retombe sur les defauts (aucun envoi bloque)');
+  ok(indulgent.preset === 'simple' && indulgent.signature.logoUrl === defautsLibramont.signature.logoUrl, '[I] un design en base devenu invalide retombe sur les defauts (aucun envoi bloque)');
   const paquet = await m.comms.getEmailDesignBundle('libramont', deps);
-  ok(paquet.presets.length === 4 && paquet.logos.length === 2 && paquet.center.id === 'libramont' && paquet.defaults.signature.phone === LIBRAMONT.publicInfo.phone && paquet.stored && paquet.stored.preset === 'neon',
+  ok(paquet.presets.length === 5 && paquet.logos.length === 2 && paquet.center.id === 'libramont' && paquet.defaults.signature.phone === LIBRAMONT.publicInfo.phone && paquet.stored && paquet.stored.preset === 'neon',
     '[I] le paquet de la page Apparence : gabarits, logos declares, centre, defauts, brut enregistre');
   const paquetNu = await m.comms.getEmailDesignBundle('centre-qui-n-existe-pas', deps);
   ok(paquetNu.logos.length === 0 && paquetNu.center.name === '', '[I] un centre sans logo au catalogue n en propose aucun');
@@ -334,10 +337,11 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   ok(sweep.length === 1 && equipe(anniversaire.body) === 1 && /À très vite,/.test(anniversaire.payload.textBody) && !/À très vite,<\/p>/.test(anniversaire.body),
     '[J] anniversaire : UNE seule « L équipe Fun Galaxy Libramont » dans le HTML (la signature), la cloture textuelle retiree ; l alternative texte reste entiere');
   ok(/\/api\/u\?k=[0-9a-f]{32}/.test(anniversaire.body) && anniversaire.payload.unsubToken, '[J] contraste : le lien de retrait marketing est toujours la');
-  const dedup = await rendu(m, { design: defautsLibramont, portee: 'manual' });
+  // Le pied de marque n existe que hors Mail simple : ces deux regles se testent sur Classique.
+  const dedup = await rendu(m, { design: { ...defautsLibramont, preset: 'classique' }, portee: 'manual' });
   ok((dedup.match(/0491\/30\.16\.67/g) || []).length === 1 && !/Tel\. 0491/.test(dedup) && (dedup.match(/6800 Libramont/g) || []).length === 1,
     '[J] le pied ne repete pas le telephone ni l adresse que la signature porte');
-  const sansTelSignature = await rendu(m, { design: { ...defautsLibramont, signature: { ...defautsLibramont.signature, phone: '' } }, portee: 'manual' });
+  const sansTelSignature = await rendu(m, { design: { ...defautsLibramont, preset: 'classique', signature: { ...defautsLibramont.signature, phone: '' } }, portee: 'manual' });
   ok(/Tel\. 0491\/30\.16\.67/.test(sansTelSignature), '[J] telephone retire de la signature : le pied le garde (interrupteur de pied allume)');
   const piedCoupe = await rendu(m, { design: { ...defautsLibramont, footer: { adresse: false, telephone: false, email: false, mention: 'TVA BE 0123.456.789' }, signature: { ...defautsLibramont.signature, enabled: false } }, portee: 'manual' });
   ok(!/6800 Libramont/.test(piedCoupe) && !/Tel\./.test(piedCoupe) && /TVA BE 0123\.456\.789/.test(piedCoupe), '[J] interrupteurs de pied coupes et mention libre : le pied obeit');

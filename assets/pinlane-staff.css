@@ -13799,6 +13799,10 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 #staffEmailsPage .pv2-design-schema.is-classique::before { top: 9px; bottom: 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); }
 #staffEmailsPage .pv2-design-schema.is-classique::after { top: 17px; height: 3px; left: 18px; right: 30px; border-radius: 2px; background: var(--text); }
 #staffEmailsPage .pv2-design-schema.is-epure { background: var(--surface); }
+/* Mail simple : deux lignes de texte a gauche, puis la signature (un filet). */
+#staffEmailsPage .pv2-design-schema.is-simple { background: var(--surface); }
+#staffEmailsPage .pv2-design-schema.is-simple::before { top: 12px; height: 12px; right: 34px; border-top: 2px solid var(--muted); border-bottom: 2px solid var(--muted); }
+#staffEmailsPage .pv2-design-schema.is-simple::after { top: 32px; height: 12px; right: auto; width: 38px; border-left: 2px solid var(--line-strong); background: var(--subtle); }
 #staffEmailsPage .pv2-design-schema.is-epure::before { top: 14px; height: 3px; right: 26px; border-radius: 2px; background: var(--text); }
 #staffEmailsPage .pv2-design-schema.is-epure::after { top: 23px; height: 1px; background: var(--line-strong); }
 #staffEmailsPage .pv2-design-schema.is-carte::before { top: 9px; bottom: 6px; border: 1px solid var(--line-strong); border-top: 3px solid var(--text); border-radius: 4px; background: var(--surface); }

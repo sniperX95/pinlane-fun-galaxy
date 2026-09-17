@@ -5180,6 +5180,7 @@
   window.loadPv2Design = loadPv2Design;
 
   const PV2_DESIGN_PRESETS = [
+    { id: 'simple', label: 'Mail simple', description: 'Comme un mail écrit à la main : pas de titre ni de cadre, le texte puis la signature.' },
     { id: 'classique', label: 'Classique', description: 'Carte blanche à filet fin sur fond gris, nom du centre en tête.' },
     { id: 'epure', label: 'Épuré', description: 'Pas de carte : fond blanc, grandes marges, un filet fin sous le titre.' },
     { id: 'carte', label: 'Carte', description: 'La carte classique avec une barre de couleur en haut.' },

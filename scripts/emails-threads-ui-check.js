@@ -578,6 +578,28 @@ async function main() {
     ok(seq1.focus === 'mkAutoBody', 'le focus est reste dans le champ pendant la mise a jour de l apercu', seq1.focus);
 
     // =====================================================================
+    console.log('\n[EXPEDITEURS] l adresse de reponse est celle que les mails donnent vraiment');
+    // =====================================================================
+    await page.evaluate(() => pv2EmailsGo('expediteurs'));
+    await attendre(page, () => { const b = document.querySelector('#staffEmailsPage .pv2-reply-address'); return Boolean(b && b.querySelector('strong')); }, null, 'le panneau de l adresse de reponse s affiche');
+    const adresseReponse = await page.evaluate(async () => {
+      const lire = () => (document.querySelector('#staffEmailsPage .pv2-reply-address') || {}).textContent || '';
+      const boite = lire();
+      const avant = pv2Design.reponse;
+      pv2Design.reponse = { adresse: 'libramont@inbound.pinlane.be', versPinlane: true };
+      renderStaffEmailsPage();
+      await new Promise((r) => setTimeout(r, 150));
+      const pinlane = lire();
+      pv2Design.reponse = avant;
+      renderStaffEmailsPage();
+      return { boite, pinlane, serveur: avant || null };
+    });
+    ok(Boolean(adresseReponse.serveur) && adresseReponse.serveur.adresse === 'libramont@fungalaxy.be' && /libramont@fungalaxy\.be/.test(adresseReponse.boite) && /arrivent dans cette boîte mail/.test(adresseReponse.boite),
+      'sans reglage de retour : la boite du centre, et le panneau dit que les reponses y arrivent', adresseReponse.boite);
+    ok(/libramont@inbound\.pinlane\.be/.test(adresseReponse.pinlane) && /arrivent directement dans Reçus/.test(adresseReponse.pinlane) && !/libramont@fungalaxy\.be/.test(adresseReponse.pinlane),
+      'avec le reglage de retour : l adresse de reception, et le panneau dit que les reponses n arrivent pas dans la boite', adresseReponse.pinlane);
+
+    // =====================================================================
     console.log('\n[THEME SOMBRE] chaque section, sans erreur');
     // =====================================================================
     const erreursAvantSombre = desktop.journal.console.length + desktop.journal.pageErrors.length;

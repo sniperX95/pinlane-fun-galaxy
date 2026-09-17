@@ -325,6 +325,18 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     '[I] le paquet de la page Apparence : gabarits, logos declares, centre, defauts, brut enregistre');
   const paquetNu = await m.comms.getEmailDesignBundle('centre-qui-n-existe-pas', deps);
   ok(paquetNu.logos.length === 0 && paquetNu.center.name === '', '[I] un centre sans logo au catalogue n en propose aucun');
+  // L ADRESSE DE REPONSE que la page Expediteurs affiche est celle que les mails
+  // donnent vraiment (2026-09-17) : la boite du centre sans reglage de retour,
+  // l adresse de reception de Pinlane quand CENTER_REPLY_TO la pose.
+  const retourAvant = process.env.CENTER_REPLY_TO;
+  delete process.env.CENTER_REPLY_TO;
+  const reponseBoite = (await m.comms.getEmailDesignBundle('libramont', deps)).reponse || {};
+  process.env.CENTER_REPLY_TO = JSON.stringify({ libramont: 'libramont@inbound.pinlane.be' });
+  const reponsePinlane = (await m.comms.getEmailDesignBundle('libramont', deps)).reponse || {};
+  if (retourAvant === undefined) delete process.env.CENTER_REPLY_TO; else process.env.CENTER_REPLY_TO = retourAvant;
+  ok(Boolean(paquet.center.publicInfo.email) && reponseBoite.adresse === paquet.center.publicInfo.email && reponseBoite.versPinlane === false
+    && reponsePinlane.adresse === 'libramont@inbound.pinlane.be' && reponsePinlane.versPinlane === true,
+    '[I] le paquet dit l adresse de reponse REELLE : la boite du centre sans reglage, l adresse de reception de Pinlane avec', JSON.stringify({ reponseBoite, reponsePinlane }));
 
   // =====================================================================
   console.log('\n[J] pas de double signature, pas de double coordonnee');

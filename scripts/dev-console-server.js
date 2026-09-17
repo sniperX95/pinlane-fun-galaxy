@@ -559,7 +559,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
         return fil;
       }
       case 'emailSent': return listerEnvoyes({ origine: params.get('origine') || 'tous', statut: params.get('statut') || 'tous', q: params.get('q') || '', limit: Number(params.get('limit') || 100) });
-      case 'emailDesign': return { design: designEffectif(), stored: etat.design ? clone(etat.design) : null, defaults: designParDefaut(), presets: clone(DESIGN_PRESETS), center: clone(CENTRE), logos: [{ label: 'Logo du centre (fond clair)', url: logoAbsolu(CENTRE.branding.emailLogo) }, { label: 'Logo du centre (fond sombre)', url: logoAbsolu(CENTRE.branding.emailLogoDark) }] };
+      case 'emailDesign': return { design: designEffectif(), stored: etat.design ? clone(etat.design) : null, defaults: designParDefaut(), presets: clone(DESIGN_PRESETS), reponse: { adresse: CENTRE.publicInfo.email, versPinlane: false }, center: clone(CENTRE), logos: [{ label: 'Logo du centre (fond clair)', url: logoAbsolu(CENTRE.branding.emailLogo) }, { label: 'Logo du centre (fond sombre)', url: logoAbsolu(CENTRE.branding.emailLogoDark) }] };
       default: return { ok: true };
     }
   }

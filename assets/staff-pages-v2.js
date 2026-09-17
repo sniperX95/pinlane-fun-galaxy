@@ -3262,7 +3262,11 @@
     const identity = pv2Settings.idEditing;
     const channel = pv2Mail.channel || {};
     const centre = pv2Design.center || null;
-    const reponse = centre && centre.publicInfo ? String(centre.publicInfo.email || '').trim() : '';
+    // L adresse que les mails donnent VRAIMENT en Reply-To, dite par le serveur
+    // (2026-09-17). L adresse publique de la fiche n est qu un repli.
+    const reponseServeur = pv2Design.reponse && typeof pv2Design.reponse === 'object' ? pv2Design.reponse : null;
+    const reponse = reponseServeur ? String(reponseServeur.adresse || '').trim() : (centre && centre.publicInfo ? String(centre.publicInfo.email || '').trim() : '');
+    const reponseVersPinlane = Boolean(reponseServeur && reponseServeur.versPinlane);
     const liste = identity ? `<div class="pv2-composer-grid">
         <label class="pv2-composer-field"><span>Nom affiché</span><input data-pl-focus="emails.identite.nom" value="${esc(identity.label)}" placeholder="Ex. le nom de votre centre" oninput="pv2IdField('label', this.value)"></label>
         <label class="pv2-composer-field"><span>Adresse email</span><input data-pl-focus="emails.identite.email" value="${esc(identity.email)}" placeholder="contact@votre-centre.be" oninput="pv2IdField('email', this.value)"></label>
@@ -3294,7 +3298,7 @@
           <div class="pv2-panel-head has-sub"><div><h2>Adresse de réponse</h2><p class="pv2-panel-sub">Quand un client répond à un mail du centre, sa réponse arrive ici.</p></div></div>
           <div class="pv2-panel-body pv2-reply-address">
             ${pv2Design.loaded
-              ? (reponse ? `<strong>${esc(reponse)}</strong><p class="pv2-note">Adresse publique du centre, lue dans sa fiche. Elle se change avec l'adresse publique, pas ici.</p>` : '<strong>Non renseignée pour ce centre</strong><p class="pv2-note">La fiche du centre n\'a pas d\'adresse publique : les réponses des clients suivent l\'adresse d\'envoi.</p>')
+              ? (reponse ? `<strong>${esc(reponse)}</strong><p class="pv2-note">${reponseVersPinlane ? 'Les réponses des clients arrivent directement dans Reçus. Elles n\'arrivent pas dans la boîte mail du centre.' : 'Les réponses des clients arrivent dans cette boîte mail. Elles arrivent aussi dans Reçus quand la boîte les redirige vers Pinlane.'}</p>` : '<strong>Non renseignée pour ce centre</strong><p class="pv2-note">La fiche du centre n\'a pas d\'adresse publique : les réponses des clients suivent l\'adresse d\'envoi.</p>')
               : `<span class="pv2-live-state" aria-live="polite">${pv2Design.error ? esc(pv2Design.error) : 'Lecture de la fiche du centre…'}</span>`}
           </div>
         </section>
@@ -5221,6 +5225,7 @@
       pv2Design.presets = Array.isArray(payload && payload.presets) && payload.presets.length ? payload.presets : PV2_DESIGN_PRESETS;
       pv2Design.center = payload && payload.center && typeof payload.center === 'object' ? payload.center : null;
       pv2Design.logos = Array.isArray(payload && payload.logos) ? payload.logos : [];
+      pv2Design.reponse = payload && payload.reponse && typeof payload.reponse === 'object' ? payload.reponse : null;
       pv2Design.loaded = true;
       pv2ApercuDesign(0);
     } catch (error) {

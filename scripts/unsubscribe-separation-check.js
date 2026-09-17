@@ -250,6 +250,45 @@ function makeDeps(state = {}) {
   ok(mesures === TRANSACTIONNELS.length, `les ${TRANSACTIONNELS.length} transactionnels mesures (obtenu ${mesures})`);
   console.log('  profil transactionnel mesure :', JSON.stringify(profil));
 
+  // Un DESIGN de centre (2026-09-16) avec logo, site et reseaux dans la
+  // signature ajoute des liens et une image aux transactionnels. Ce n est pas
+  // un signal de desabonnement, et la ligne de retrait reste reservee au
+  // marketing : la separation ne depend pas du design choisi par le gerant.
+  // Le profil epingle ci-dessus reste celui du design PAR DEFAUT.
+  console.log('\n[DESIGN] un design avec logo et reseaux ne cree aucun signal de retrait sur le transactionnel');
+  {
+    const designComplet = {
+      email_design: {
+        preset: 'carte',
+        accent: { mode: 'centre' },
+        signature: {
+          enabled: true,
+          website: 'https://www.fungalaxy.be',
+          logoUrl: '/assets/brand/logo-fun-galaxy-email-clair.png',
+          socials: { facebook: 'https://www.facebook.com/fungalaxy', instagram: 'https://www.instagram.com/fungalaxy' },
+        },
+        signatureScope: { manual: true, sequences: true, campaigns: true },
+      },
+    };
+    for (const cle of TRANSACTIONNELS) {
+      const rendu = await buildAutomationPreview('libramont', cle, {}, makeDeps({ settings: designComplet }));
+      const liens = (rendu.html.match(/<a\s/gi) || []).length;
+      ok(liens >= 4 && /facebook\.com\/fungalaxy/.test(rendu.html) && /<img\s/.test(rendu.html),
+        `${cle} avec design complet : la signature porte bien ses liens et son logo (obtenu ${liens} liens), le cas mesure quelque chose`);
+      ok(!UNSUB_LINK.test(rendu.html) && !DESAB.test(rendu.html), `${cle} avec design complet : aucun lien /api/u, aucun signal de desabonnement`);
+    }
+    const deps = makeDeps({ settings: designComplet });
+    const { enqueueCampaign } = require('../lib/ops-communications');
+    await enqueueCampaign({
+      centerId: 'libramont', campaignId: 45,
+      recipients: [{ email: 'client@test.be', name: 'Client Test' }],
+      subject: 'Nos nouveautes', body: 'Bonjour.', scheduledAt: iso(1), personalize: (t) => t,
+      deps, enqueue: deps.enqueue,
+    });
+    const mail = deps.enqueued[0] || {};
+    ok(UNSUB_LINK.test(mail.body || '') && /facebook\.com\/fungalaxy/.test(mail.body || ''), 'campagne avec design complet : la signature ET la ligne de retrait cohabitent');
+  }
+
   // Chemin d'enfilement REEL : confirmation + rappel + demande recue.
   {
     const deps = makeDeps({});

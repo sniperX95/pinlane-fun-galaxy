@@ -157,6 +157,8 @@
         "note": "Aucune note publiee pour Libramont : ne jamais utiliser celle de Gembloux."
       },
       "branding": {
+        "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
+        "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
         "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",
@@ -289,6 +291,8 @@
         "source": "widget Google Reviews du site (Gembloux)"
       },
       "branding": {
+        "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
+        "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
         "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",
@@ -335,6 +339,8 @@
       },
       "activityAvailability": {},
       "branding": {
+        "emailLogo": "/assets/brand/logo-fun-galaxy-email-clair.png",
+        "emailLogoDark": "/assets/brand/logo-fun-galaxy-email.png",
         "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",

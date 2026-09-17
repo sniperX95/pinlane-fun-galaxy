@@ -4,6 +4,11 @@
 // identités, modèles, envoi sendDirectEmail), boîte de réception (pipe Reçus,
 // analyse IA, réponse 1-clic avec replyToCommunicationId), « Coller un mail
 // reçu », pv2OpenComposer préfill. Contrats : spec emails-v3 (C1-C5, C8, C9).
+// 2026-09-16 (spec emails v4) : la page est en SECTIONS (Aperçu, Reçus,
+// Envoyés, Séquences…). Le montage navigue de section en section avec
+// pv2EmailsGo ; les mails reçus se lisent comme des CONVERSATIONS (contrats
+// emailThreads / emailThread, servis par le bouchon ci-dessous). Aucune
+// assertion n'a été affaiblie : seul le chemin pour monter la situation change.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -32,6 +37,11 @@ function serveStatic() {
 async function installMock(page) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt }) => {
+    // Ce script d'amorcage tourne dans CHAQUE cadre, y compris les iframes
+    // sandbox (sans allow-same-origin) qui rendent les mails : elles n'ont pas
+    // de localStorage, et l'erreur remonterait en pageerror alors qu'elle ne
+    // vient pas de l'application. Le bouchon ne concerne que la page.
+    if (window !== window.top) return;
     const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view', 'emails.send', 'campaigns.manage', 'marketing.agents', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'QA', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
     // État serveur simulé des séquences : settings = overrides, defaults =
@@ -54,7 +64,9 @@ async function installMock(page) {
       post_visit: { sent30d: 28, failed30d: 2 }, birthday_j30: { sent30d: 4, failed30d: 0 }, reactivation: { sent30d: 0, failed30d: 0 },
     };
     const comms = [
-      { id: 1, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'confirmation', recipient: 'a@x.be', subject: 'Votre réservation est confirmée', status: 'delivered', sentAt: new Date(Date.now() - 3600e3).toISOString(), payload: { textBody: 'Bonjour, votre réservation est confirmée.' } },
+      // Suivi de remise et d'ouverture (colonnes 0047) : les filtres « Remis »
+      // et « Ouverts » de la file ont besoin d'au moins une ligne qui les porte.
+      { id: 1, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'confirmation', recipient: 'a@x.be', subject: 'Votre réservation est confirmée', status: 'delivered', sentAt: new Date(Date.now() - 3600e3).toISOString(), deliveredAt: new Date(Date.now() - 3590e3).toISOString(), openedAt: new Date(Date.now() - 3000e3).toISOString(), openCount: 2, payload: { textBody: 'Bonjour, votre réservation est confirmée.' } },
       { id: 2, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'reminder_48h', recipient: 'b@x.be', subject: 'Rappel de votre venue', status: 'queued', scheduledAt: new Date(Date.now() + 3600e3).toISOString(), payload: {} },
       { id: 3, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'birthday_j30', recipient: 'c@x.be', subject: 'L’anniversaire approche 🎂', status: 'failed', lastError: 'You can only send testing emails to your own email address (proprio@example.com). To send emails to other recipients, please verify a domain at resend.com/domains', attempts: 2, payload: {} },
       // Boîte de réception : 2 mails reçus analysés (contrat C4/C5).
@@ -67,6 +79,34 @@ async function installMock(page) {
     for (let i = 0; i < 30; i += 1) {
       comms.push({ id: 100 + i, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: i % 2 ? 'reminder_48h' : 'confirmation', recipient: `client${i}@demo.fungalaxy.test`, subject: i % 2 ? 'Alors, cette partie ?' : `C'est confirmé : on vous attend`, status: 'queued', scheduledAt: new Date(Date.now() + (i + 2) * 3600e3).toISOString(), payload: {} });
     }
+    // 2026-09-16 : les mails recus se lisent dans leur CONVERSATION (section
+    // Recus, contrats emailThreads / emailThread de la spec §3.7). Le fil est
+    // DERIVE du mail recu : meme donnee, presentee comme le serveur la
+    // presente desormais (un fil par mail recu de ce jeu, id = 900 + id).
+    const inboundDe = (c) => c.direction === 'inbound' || c.status === 'received';
+    comms.forEach((c) => { if (inboundDe(c)) c.threadId = 900 + c.id; });
+    const filDe = (c) => {
+      const p = c.payload || {};
+      const repondu = Boolean(p.replyCommunicationId || p.repliedAt);
+      return {
+        id: 900 + c.id, centerId: 'libramont', contactEmail: String(p.from || c.recipient || ''), contactName: String(p.fromName || (p.analysis && p.analysis.clientName) || ''),
+        subject: c.subject, status: repondu ? 'answered' : 'open', origin: 'inbound', rootCommunicationId: c.id,
+        messageCount: 1, inboundCount: 1, outboundCount: 0, firstMessageAt: c.createdAt, lastMessageAt: c.createdAt, lastInboundAt: c.createdAt, lastOutboundAt: null,
+        lastDirection: 'inbound', snippet: String(p.textBody || '').slice(0, 120), lastInboundId: c.id, luParMoi: false, lecteurs: [], prise: null,
+        intention: p.analysis ? String(p.analysis.intent || '') : '', question: false,
+        reponduPar: repondu ? { memberName: 'QA', memberRole: 'Direction', at: p.repliedAt || c.createdAt } : null,
+      };
+    };
+    const messageDe = (c) => {
+      const p = c.payload || {};
+      return {
+        id: c.id, direction: 'inbound', subject: c.subject, body: '', textBody: String(p.textBody || ''), message: String(p.textBody || ''), historique: '',
+        createdAt: c.createdAt, sentAt: null, receivedAt: p.receivedAt || c.createdAt, status: 'received', templateId: '', origine: 'inbound', sequenceLabel: '',
+        sentBy: null, fromEmail: String(p.from || ''), fromLabel: String(p.fromName || ''), recipient: c.recipient, providerMessageId: '', messageId: '', inReplyTo: '',
+        suivi: { deliveredAt: null, openedAt: null, openCount: 0, clickedAt: null, clickCount: 0, bouncedAt: null, complainedAt: null, lastError: '' },
+        evenements: [], lectures: [], prise: null, analysis: p.analysis || null, reservationId: null, errorReason: '', threadId: 900 + c.id,
+      };
+    };
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {});
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
     const nf = window.fetch.bind(window);
@@ -114,7 +154,7 @@ async function installMock(page) {
         if (b.action === 'analyzeInboundEmail') {
           const analysis = { intent: 'prix', intentLabel: 'Prix', summary: 'Demande le prix pour un groupe', urgency: 'normale', reply: { subject: 'Re: votre demande', body: 'Bonjour, on vous confirme le tarif par retour.' }, provider: 'rules' };
           if (b.store) {
-            comms.push({ id: 6, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: b.from, subject: 'Mail collé', createdAt: new Date().toISOString(), payload: { from: b.from, textBody: b.body, analysis } });
+            comms.push({ id: 6, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: b.from, subject: 'Mail collé', createdAt: new Date().toISOString(), threadId: 906, payload: { from: b.from, textBody: b.body, analysis } });
             return J({ ok: true, communication: { id: 6 }, analysis });
           }
           return J({ ok: true, analysis });
@@ -156,6 +196,27 @@ async function installMock(page) {
         return J({ ok: false, error: 'Action Ops GET inconnue.' });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'communications') return J({ ok: true, communications: comms });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailThreads') {
+        const filtre = u.searchParams.get('filtre') || 'a-repondre';
+        const statut = { 'a-repondre': 'open', repondus: 'answered', termines: 'closed', tous: '' }[filtre];
+        const fils = comms.filter(inboundDe).map(filDe).filter((f) => !statut || f.status === statut).sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+        return J({ ok: true, threads: fils, total: fils.length });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailThread') {
+        const c = comms.find((x) => inboundDe(x) && 900 + x.id === Number(u.searchParams.get('id')));
+        if (!c) return new Response(JSON.stringify({ ok: false, message: 'Conversation introuvable.' }), { status: 404, headers: { 'content-type': 'application/json; charset=utf-8' } });
+        return J({ ok: true, thread: filDe(c), messages: [messageDe(c)], contact: { email: String(c.payload.from || ''), name: String(c.payload.fromName || (c.payload.analysis && c.payload.analysis.clientName) || ''), autresFils: [], nbFils: 1 } });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailOverview') {
+        const sortants = comms.filter((c) => !inboundDe(c));
+        return J({
+          ok: true, aRepondre: comms.filter(inboundDe).map(filDe).filter((f) => f.status === 'open').length, plusAncienneAttenteAt: new Date(Date.now() - 7200e3).toISOString(),
+          recus7j: comms.filter(inboundDe).length, envoyes7j: sortants.filter((c) => ['sent', 'delivered'].includes(c.status)).length, remis7j: sortants.filter((c) => c.deliveredAt).length,
+          ouverts7j: sortants.filter((c) => c.openedAt).length, echecs7j: sortants.filter((c) => c.status === 'failed').length, enAttente: sortants.filter((c) => c.status === 'queued').length,
+          programmes24h: sortants.filter((c) => c.status === 'queued' && c.scheduledAt && new Date(c.scheduledAt) < new Date(Date.now() + 86400e3)).length,
+          sequences: [], questions: 0, suivi: { evenementsRecus30j: true, ouverturesObservees: true, clicsObserves: false }, aJourA: new Date().toISOString(),
+        });
+      }
       if (u.pathname === '/api/ops') return J({ ok: true, communications: comms, samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
       if (u.pathname === '/api/simulation') return J({ ok: true, status: 'idle', simulation: null });
       if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: new Date().toISOString().slice(0, 10), durationOptions: [], formules: [], center: { id: 'libramont', status: 'active', defaultSchedule: { regular: { '0': { open: '10:00', close: '22:00' }, '1': null, '2': { open: '14:00', close: '22:00' }, '3': { open: '12:00', close: '22:00' }, '4': { open: '14:00', close: '22:00' }, '5': { open: '14:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' } }, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
@@ -225,8 +286,24 @@ async function main() {
       console.log(`[SHOTS] captures ecrites dans ${shotDir}`);
     }
 
-    console.log('\n[LOAD] page Emails v3');
-    const load = await page.evaluate(() => ({
+    console.log('\n[LOAD] page Emails v4 : Aperçu au boot, puis Séquences, puis Envoyés');
+    // 2026-09-16 : la page est en SECTIONS (spec emails v4, §5). Ce que
+    // l'ancienne page montrait d'un seul bloc se lit desormais dans trois
+    // d'entre elles : le montage les visite dans l'ordre, les assertions qui
+    // suivent sont les memes qu'avant (aucune n'est affaiblie).
+    const loadApercu = await page.evaluate(() => ({
+      section: (document.querySelector('#staffEmailsPage #pv2EmailsPanel') || { getAttribute: () => '' }).getAttribute('data-section'),
+      tabs: [...document.querySelectorAll('#staffEmailsPage .pl-subnav-item')].map((b) => b.getAttribute('data-section')),
+      tiles: document.querySelectorAll('#staffEmailsPage .pv2-stat').length,
+      newMsgBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Nouveau message/.test(b.textContent)),
+      // Libelle renomme : « Analyser un reçu » se lisait comme un reçu de
+      // caisse. Le panneau sert a COLLER un mail reçu d'un client.
+      analyzeBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Coller un mail reçu/.test(b.textContent)),
+      pageText: (document.getElementById('staffEmailsPage') || {}).textContent || '',
+    }));
+    await page.evaluate(() => pv2EmailsGo('sequences'));
+    await page.waitForTimeout(400);
+    const loadSeq = await page.evaluate(() => ({
       cards: document.querySelectorAll('#staffEmailsPage .mk-auto').length,
       labels: [...document.querySelectorAll('#staffEmailsPage .mk-auto-head strong')].map((el) => el.textContent),
       switches: document.querySelectorAll('#staffEmailsPage .mk-switch').length,
@@ -234,13 +311,28 @@ async function main() {
       statsTxt: (document.querySelector('#staffEmailsPage .mk-auto .mk-auto-stats') || {}).textContent || '',
       previewBtns: [...document.querySelectorAll('#staffEmailsPage .mk-auto .mk-auto-preview')].filter((el) => /Voir le mail/.test(el.textContent)).length,
       editBtns: document.querySelectorAll('#staffEmailsPage .mk-auto-edit-btn').length,
+      pageText: (document.getElementById('staffEmailsPage') || {}).textContent || '',
+    }));
+    // COMPORTEMENT : le clic carte (éditeur FERMÉ) rend le mail réellement en
+    // vigueur (aucun brouillon d'une autre carte), dans l'iframe sandboxée.
+    // Mesure prise ICI, dans la section Séquences ou vivent les cartes.
+    const cardPreview = await page.evaluate(async () => {
+      const before = window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').length;
+      [...document.querySelectorAll('#staffEmailsPage .mk-auto .mk-auto-preview')].find((el) => /Voir le mail/.test(el.textContent)).click();
+      await new Promise((r) => setTimeout(r, 400));
+      const post = window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').slice(-1)[0];
+      const overlay = document.getElementById('emailPreviewOverlay');
+      const frame = overlay ? overlay.querySelector('iframe') : null;
+      const out = { posted: window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').length - before, noDraft: post && post.subject === undefined && post.body === undefined, sandboxed: frame ? frame.getAttribute('sandbox') === '' : false };
+      if (typeof closeEmailPreview === 'function') closeEmailPreview();
+      return out;
+    });
+    await page.evaluate(() => pv2EmailsGo('envoyes'));
+    await page.waitForTimeout(400);
+    const loadEnv = await page.evaluate(() => ({
       pipeline: document.querySelectorAll('#staffEmailsPage .pv2-pipe').length,
+      pipeKeys: [...document.querySelectorAll('#staffEmailsPage .pv2-pipe')].map((b) => b.getAttribute('data-pipe')),
       tableRows: document.querySelectorAll('#staffEmailsPage .pv2-table tbody tr').length,
-      newMsgBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Nouveau message/.test(b.textContent)),
-      emailMetaRequests: { ...window.__QA_EMAIL_META_REQUESTS__ },
-      // Libelle renomme : « Analyser un reçu » se lisait comme un reçu de
-      // caisse. Le panneau sert a COLLER un mail reçu d'un client.
-      analyzeBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Coller un mail reçu/.test(b.textContent)),
       alert: (document.querySelector('#staffEmailsPage .pv2-alert') || {}).textContent || '',
       failedCellTxt: [...document.querySelectorAll('#staffEmailsPage .pv2-cell-fail')].map((el) => el.textContent).join(' | '),
       pageText: (document.getElementById('staffEmailsPage') || {}).textContent || '',
@@ -249,8 +341,12 @@ async function main() {
       pipeFailed: ((document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="failed"] .pv2-pipe-value') || {}).textContent || '') + ' ' + ((document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="failed"] .pv2-pipe-label') || {}).textContent || ''),
       pipeQueuedTone: [...document.querySelectorAll('#staffEmailsPage .pv2-table tbody .pv2-chip')].map((c) => (/En attente/.test(c.textContent) ? [...c.classList].find((k) => k !== 'pv2-chip') : '')).filter(Boolean)[0] || '',
     }));
+    const load = { ...loadApercu, ...loadSeq, ...loadEnv, pageText: [loadApercu.pageText, loadSeq.pageText, loadEnv.pageText].join(' ') };
     if (missed.size) console.log('URLs 404 :', [...missed].slice(0, 5).join(' · '));
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
+    ok(loadApercu.section === 'apercu' && loadApercu.tabs.join(',') === 'apercu,recus,envoyes,sequences,modeles,apparence,expediteurs,agent,exclusions,campagnes',
+      `la page s'ouvre sur l'Aperçu et sa sous-navigation porte les dix sections (obtenu ${loadApercu.tabs.join(' · ')})`);
+    ok(loadApercu.tiles === 4, `quatre tuiles chiffrées sur l'Aperçu (obtenu ${loadApercu.tiles})`);
     ok(load.cards === 6, `6 cartes séquences, Demande recue incluse (obtenu ${load.cards})`);
     ok(load.labels.some((l) => /30 jours avant l’anniversaire/.test(l)) && load.labels.some((l) => /Réactiver les clients dormants/.test(l)), 'séquences anniversaire + réactivation présentes, libellées en français lisible');
     // F6 : aucun jargon ne doit revenir par la fenêtre sur cet écran.
@@ -264,22 +360,12 @@ async function main() {
     ok(/sur 30\u00a0jours/.test(load.statsTxt), 'période explicite sur la carte de séquence (F8), unité insécable');
     ok(load.previewBtns === 6, `« Voir le mail » sur chaque carte : l'aperçu est le VRAI mail rendu serveur (obtenu ${load.previewBtns})`);
     ok(load.editBtns === 6, `bouton Modifier sur chaque carte (obtenu ${load.editBtns})`);
-    // COMPORTEMENT : le clic carte (éditeur FERMÉ) rend le mail réellement en
-    // vigueur (aucun brouillon d'une autre carte), dans l'iframe sandboxée.
-    const cardPreview = await page.evaluate(async () => {
-      const before = window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').length;
-      [...document.querySelectorAll('#staffEmailsPage .mk-auto .mk-auto-preview')].find((el) => /Voir le mail/.test(el.textContent)).click();
-      await new Promise((r) => setTimeout(r, 400));
-      const post = window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').slice(-1)[0];
-      const overlay = document.getElementById('emailPreviewOverlay');
-      const frame = overlay ? overlay.querySelector('iframe') : null;
-      const out = { posted: window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').length - before, noDraft: post && post.subject === undefined && post.body === undefined, sandboxed: frame ? frame.getAttribute('sandbox') === '' : false };
-      if (typeof closeEmailPreview === 'function') closeEmailPreview();
-      return out;
-    });
     ok(cardPreview.posted === 1 && cardPreview.sandboxed, 'clic « Voir le mail » -> rendu serveur dans l\'iframe sandboxée');
     ok(cardPreview.noDraft, 'éditeur fermé -> AUCUN brouillon joint : le mail montré est celui en vigueur');
-    ok(load.pipeline === 6, `pipeline avec pipe Reçus (obtenu ${load.pipeline})`);
+    // « Reçus » n'est plus un segment de la file (c'est la section des
+    // conversations) ; la file gagne Remis et Ouverts (colonnes 0047).
+    ok(load.pipeline === 7 && load.pipeKeys.join(',') === 'all,queued,sent,delivered,opened,failed,review',
+      `pipeline de la file : Tout, En attente, Envoyés, Remis, Ouverts, Échecs, À valider (obtenu ${load.pipeKeys.join(',')})`);
     ok(/^1 Échec$/.test(load.pipeFailed), `accord du libellé au compteur : « ${load.pipeFailed} » et non « 1 Échecs »`);
     ok(/^1 Envoyé$/.test(load.pipeSent), `accord du libellé au compteur : « ${load.pipeSent} »`);
     ok(/^Tout\s*\(33\)$/.test(load.pipeAll), `total invariable écrit « Tout (33) » et non « 33 Tout » (obtenu « ${load.pipeAll} »)`);
@@ -314,6 +400,10 @@ async function main() {
         failed: out.filter((r) => r.statusKind === 'failed').length,
         sent: out.filter((r) => r.statusKind === 'sent').length,
         queued: out.filter((r) => r.statusKind === 'queued').length,
+        // Colonnes 0047 : la remise et l'ouverture se lisent sur la donnee
+        // brute (deliveredAt / openedAt), pas via le filtre teste.
+        delivered: out.filter((r) => Boolean(r.deliveredAt) || String(r.status || '').toLowerCase() === 'delivered').length,
+        opened: out.filter((r) => Boolean(r.openedAt) || Number(r.openCount) > 0).length,
         inbound: rows.filter(inbound).length,
         review: out.filter((r) => r.templateId === 'staff_review_request').length,
       };
@@ -323,17 +413,22 @@ async function main() {
       { key: 'failed', status: 'Échec', head: 'Message' },
       { key: 'sent', status: 'Envoyé', head: 'Message' },
       { key: 'queued', status: 'En attente', head: 'Message' },
-      { key: 'inbound', status: null, head: 'De' },
+      // « Remis » et « Ouverts » se lisent sur le mini-parcours de chaque
+      // ligne (2e et 3e point pleins), le statut restant « Envoyé ».
+      { key: 'delivered', status: null, head: 'Message', dot: 1, dotLabel: 'Remis' },
+      { key: 'opened', status: null, head: 'Message', dot: 2, dotLabel: 'Ouvert' },
       { key: 'review', status: null, head: 'Message' },
     ];
     // Un jeu de donnees ou tous les segments seraient vides validerait tout et
     // ne prouverait rien : on exige au moins un segment non vide avant de lire.
     ok(expected.failed + expected.sent + expected.queued + expected.inbound > 0,
       'echantillon non vide : ' + JSON.stringify(expected));
+    ok(expected.delivered > 0 && expected.opened > 0,
+      'echantillon : au moins une ligne remise et une ouverte, sinon les segments Remis / Ouverts ne prouveraient rien');
     for (const c of segCases) {
       const seen = await page.evaluate(async (key) => {
         const btn = document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="' + key + '"]');
-        if (!btn) return { missing: true, rows: -1, head: '', statuses: [], activeKey: '' };
+        if (!btn) return { missing: true, rows: -1, head: '', statuses: [], dots: [], activeKey: '' };
         btn.click();
         await new Promise((r) => setTimeout(r, 250));
         const body = [...document.querySelectorAll('#staffEmailsPage .pv2-mail-list .pv2-table tbody tr')];
@@ -344,7 +439,10 @@ async function main() {
           activeKey: active ? active.getAttribute('data-pipe') : '',
           rows: dataRows.length,
           head: ((document.querySelector('#staffEmailsPage .pv2-mail-list thead th') || {}).textContent || '').trim(),
-          statuses: dataRows.map((tr) => (tr.children[tr.children.length - 2].textContent || '').trim()),
+          // Le statut se lit dans SA colonne (data-col), plus par position :
+          // la table porte desormais Message / Origine / Statut / Parcours / Date.
+          statuses: dataRows.map((tr) => ((tr.querySelector('td[data-col="statut"] .pv2-chip') || {}).textContent || '').trim()),
+          dots: dataRows.map((tr) => [...tr.querySelectorAll('.pl-journey-dot')].map((d) => d.classList.contains('is-done'))),
         };
       }, c.key);
       ok(!seen.missing && seen.activeKey === c.key, 'segment « ' + c.key + ' » : c\'est bien lui qui devient actif (obtenu ' + (seen.activeKey || 'aucun') + ')');
@@ -354,7 +452,30 @@ async function main() {
         ok(seen.statuses.length > 0 && seen.statuses.every((t) => t.includes(c.status)),
           'segment « ' + c.key + ' » : chaque ligne affichee porte le statut « ' + c.status + ' » (obtenu ' + JSON.stringify(seen.statuses) + ')');
       }
+      if (c.dot !== undefined) {
+        ok(seen.dots.length > 0 && seen.dots.every((d) => d[c.dot] === true),
+          'segment « ' + c.key + ' » : chaque ligne affichee porte le point « ' + c.dotLabel + ' » plein sur son parcours (obtenu ' + JSON.stringify(seen.dots) + ')');
+      }
     }
+    // Le segment « Reçus » de l'ancienne file est devenu la section Reçus :
+    // le meme geste (pv2EmailFilter('inbound')) y mene, et chaque mail recu y
+    // est une conversation. On le mesure au lieu de le supposer.
+    const recus = await page.evaluate(async () => {
+      pv2EmailFilter('inbound');
+      await new Promise((r) => setTimeout(r, 350));
+      pv2ThreadsFilter('tous');
+      await new Promise((r) => setTimeout(r, 350));
+      const out = {
+        section: state.staffEmailsSection,
+        panel: (document.querySelector('#staffEmailsPage #pv2EmailsPanel') || { getAttribute: () => '' }).getAttribute('data-section'),
+        rows: document.querySelectorAll('#staffEmailsPage .pv2-thread-row').length,
+      };
+      pv2EmailsGo('envoyes');
+      await new Promise((r) => setTimeout(r, 250));
+      return out;
+    });
+    ok(recus.section === 'recus' && recus.panel === 'recus', 'segment « inbound » : le geste ouvre la section Reçus (obtenu ' + recus.section + ' / ' + recus.panel + ')');
+    ok(recus.rows === expected.inbound, 'segment « inbound » : une conversation par mail reçu (' + expected.inbound + ' attendue(s), ' + recus.rows + ' affichee(s))');
     await page.evaluate(() => { pv2EmailFilter('all'); });
     await page.waitForTimeout(250);
     console.log('\n[ECHECS] remontee proactive en tete de page');
@@ -385,6 +506,9 @@ async function main() {
     ok(retried && Number(retried.id) === 3, `POST retryCommunication {id} (obtenu ${JSON.stringify(retried)})`);
 
     console.log('\n[TOGGLE] activer Réactivation → POST + switch ON');
+    // Les cartes de sequences vivent dans la section Séquences.
+    await page.evaluate(() => pv2EmailsGo('sequences'));
+    await page.waitForTimeout(300);
     await page.evaluate(() => {
       const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => c.querySelector('[data-switch-key="auto:reactivation"]'));
       card.querySelector('.mk-switch').click();
@@ -522,6 +646,12 @@ async function main() {
     ok(!resetState.modified, 'pilule « modifié » retirée après reset');
 
     console.log('\n[SCROLL] ouvrir un message ne renvoie JAMAIS en haut de page');
+    // La file vit dans la section Envoyés, plus courte que l'ancienne page
+    // monobloc : la fenetre est raccourcie pour que la page ait de quoi defiler
+    // (le geste mesure reste le meme : cliquer une ligne ne remonte pas).
+    await page.evaluate(() => pv2EmailsGo('envoyes'));
+    await page.setViewportSize({ width: 1400, height: 640 });
+    await page.waitForTimeout(300);
     const scrollKept = await page.evaluate(async () => {
       window.scrollTo(0, 500);
       await new Promise((r) => setTimeout(r, 120));
@@ -560,6 +690,8 @@ async function main() {
     });
     ok(innerKept.found, 'la file interne defile assez pour reproduire le geste');
     ok(innerKept.kept, `cliquer une ligne au fond de la FILE INTERNE garde sa position (${innerKept.before} -> ${innerKept.after})`);
+    await page.setViewportSize({ width: 1400, height: 950 });
+    await page.waitForTimeout(200);
 
     console.log('\n[COMPOSER] nouveau message : sélecteur maison PILOTÉ, modèle, envoi');
     await page.evaluate(() => {
@@ -859,27 +991,36 @@ async function main() {
     ok(keepAsTpl.open && keepAsTpl.view === 'templates' && /ma version/.test(keepAsTpl.name) && /longtemps/.test(keepAsTpl.subject),
       `« Garder en modèle » ouvre la bibliothèque préremplie (« ${keepAsTpl.name} », objet repris)`);
 
-    console.log('\n[INBOX] pipe Reçus → analyse → réponse 1-clic');
+    console.log('\n[INBOX] Reçus = les conversations → analyse → réponse 1-clic');
+    // « Reçus » est la section des conversations (spec emails v4) : le geste
+    // historique pv2EmailFilter('inbound') y mene toujours, et chaque mail
+    // recu y est un fil. Le filtre « Tous » montre aussi les fils repondus.
     await page.evaluate(() => pv2EmailFilter('inbound'));
     await page.waitForTimeout(400);
+    await page.evaluate(() => pv2ThreadsFilter('tous'));
+    await page.waitForTimeout(400);
     const inbox = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('#staffEmailsPage .pv2-table tbody tr')];
+      const rows = [...document.querySelectorAll('#staffEmailsPage .pv2-thread-row')];
+      const ligne904 = rows.find((r) => r.getAttribute('data-thread-id') === '904');
       return {
+        section: state.staffEmailsSection,
         count: rows.length,
-        pipeActive: !!document.querySelector('#staffEmailsPage .pv2-pipe.active'),
-        firstIntent: rows[0] ? (rows[0].querySelector('.pv2-inbox-intent') || {}).textContent : '',
+        tabActive: !!document.querySelector('#staffEmailsPage .pl-subnav-item.is-active[data-section="recus"]'),
+        intent904: ligne904 ? ((ligne904.querySelector('.pv2-inbox-intent') || {}).textContent || '') : '',
         repliedBadge: rows.some((r) => /Répondu/.test(r.textContent)),
         toReplyBadge: rows.some((r) => /À répondre/.test(r.textContent)),
       };
     });
-    ok(inbox.count === 2, `2 mails reçus listés (obtenu ${inbox.count})`);
-    ok(inbox.firstIntent === 'Anniversaire', `badge intent sur la ligne (${inbox.firstIntent})`);
+    ok(inbox.section === 'recus' && inbox.tabActive, `pv2EmailFilter('inbound') ouvre la section Reçus, onglet actif (obtenu ${inbox.section})`);
+    ok(inbox.count === 2, `2 conversations listées, une par mail reçu (obtenu ${inbox.count})`);
+    ok(inbox.intent904 === 'Anniversaire', `badge intent sur la ligne de la conversation (${inbox.intent904})`);
     ok(inbox.repliedBadge && inbox.toReplyBadge, 'badges « Répondu » et « À répondre » distincts');
+    // Ouvrir le mail recu (geste historique par son uid) ouvre SA conversation.
     await page.evaluate(() => {
       const uid = getStaffEmailRows().find((r) => r.id === 4).uid;
       pv2SelectEmail(uid);
     });
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(450);
     const detail = await page.evaluate(() => ({
       summary: (document.querySelector('#staffEmailsPage .pv2-inbox-summary p') || {}).textContent || '',
       intent: (document.querySelector('#staffEmailsPage .pv2-inbox-analysis .pv2-inbox-intent') || {}).textContent || '',
@@ -914,10 +1055,10 @@ async function main() {
     await page.waitForTimeout(500);
     const analyzed = await page.evaluate(() => ({
       post: window.__QA_POSTS__.filter((p) => p.action === 'analyzeInboundEmail').slice(-1)[0],
-      filter: state.staffEmailFilter,
+      section: state.staffEmailsSection,
     }));
     ok(analyzed.post && analyzed.post.store === true && analyzed.post.from === 'groupe@ecole.be', 'POST analyzeInboundEmail {from, store:true}');
-    ok(analyzed.filter === 'inbound', 'bascule automatique sur les Reçus');
+    ok(analyzed.section === 'recus', `bascule automatique sur la section Reçus (obtenu ${analyzed.section})`);
 
     console.log('\n[PV2OPENCOMPOSER] préfill depuis la fiche client');
     await page.evaluate(() => pv2OpenComposer({ to: 'x@y.be', name: 'X Y' }));
@@ -1017,6 +1158,9 @@ async function main() {
        lignes, et on verifie que l'inventaire DISTINGUE ce qui part au client de
        ce qui part a l'equipe. */
     console.log('\n[G1 INVENTAIRE] la liste de tous les mails du centre, ouverte par un clic');
+    // L'inventaire vit sous les sequences, dans la section Séquences.
+    await page.evaluate(() => pv2EmailsGo('sequences'));
+    await page.waitForTimeout(300);
     const inv = await page.evaluate(async () => {
       const find = () => [...document.querySelectorAll('#staffEmailsPage .mail-inv button')].find((b) => /Voir la liste|Masquer la liste/.test(b.textContent));
       let btn = find();
@@ -1056,6 +1200,9 @@ async function main() {
       pv2CloseComposer();
       await new Promise((r) => setTimeout(r, 250));
       pv2OpenComposer({ to: 'motion@test.be' });
+      await new Promise((r) => setTimeout(r, 250));
+      // Le segmente et son rail vivent dans la section Envoyés.
+      pv2EmailsGo('envoyes');
       await new Promise((r) => setTimeout(r, 250));
       // Surcouche : l'entree est posee sur le panneau a l'OUVERTURE reelle, et
       // comme la page ne le reconstruit jamais, elle ne peut pas rejouer : on
@@ -1226,14 +1373,17 @@ async function main() {
         const el = document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="' + k + '"] .pv2-pipe-value');
         return el ? Number(String(el.textContent).replace(/\D/g, '')) : null;
       };
-      return { text: p ? p.textContent.replace(/\s+/g, ' ').trim() : '', all: val('all'), inbound: val('inbound') };
+      // Les recus n'ont plus de segment : leur nombre se lit sur la donnee
+      // brute, par un chemin independant de la phrase testee.
+      const inbound = getStaffEmailRows().filter((r) => r.direction === 'inbound' || r.status === 'received').length;
+      return { text: p ? p.textContent.replace(/\s+/g, ' ').trim() : '', all: val('all'), inbound };
     });
     const fileClaim = scope.text.match(/portent sur les (\d+) messages de la file/);
-    const inboundClaim = scope.text.match(/Reçus compte à part les (\d+) mails/);
+    const inboundClaim = scope.text.match(/Les (\d+) mails reçus se lisent dans/);
     ok(!!fileClaim && Number(fileClaim[1]) === scope.all,
       'le perimetre « file » annonce le meme chiffre que le segment Tout (' + scope.all + ' affiche, ' + (fileClaim ? fileClaim[1] : 'aucun') + ' annonce)');
     ok(!!inboundClaim && Number(inboundClaim[1]) === scope.inbound,
-      'le perimetre « recus » est annonce A PART, avec le chiffre du segment Recus (' + scope.inbound + ' affiche, ' + (inboundClaim ? inboundClaim[1] : 'aucun') + ' annonce)');
+      'le perimetre « recus » est annonce A PART, avec le vrai nombre de mails recus, et renvoie vers la section Reçus (' + scope.inbound + ' recus, ' + (inboundClaim ? inboundClaim[1] : 'aucun') + ' annonce)');
     ok(!/Reçus/.test(scope.text.split('.')[0] || ''),
       'la phrase qui decrit la file ne compte pas « Recus » dedans : « ' + (scope.text.split('.')[0] || '').slice(0, 90) + ' »');
 

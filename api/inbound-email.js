@@ -31,6 +31,70 @@ const { readRawBody, sendError, sendJson } = require('../lib/http');
 const { ingestInboundEmail } = require('../lib/email-agent');
 const { getCenter, loadOpsKnowledge } = require('../lib/ops-knowledge');
 const { domaineReception } = require('../lib/sender-domains');
+const { enregistrerEvenementFournisseur, cleDEvenement } = require('../lib/email-events');
+
+// LE BRUT D UN MAIL RECU, pour ses en-tetes seulement (2026-09-16). Le
+// fournisseur ne rend pas toujours In-Reply-To et References dans `headers` ;
+// le fichier brut (raw.download_url) les porte toujours. On ne lit que le
+// debut : le bloc d en-tetes tient en quelques kilo-octets, une piece jointe
+// peut en faire des milliers.
+const LIMITE_BRUT_OCTETS = 256 * 1024;
+
+async function recupererBrutParDefaut(url) {
+  const reponse = await fetch(String(url), { headers: { Range: `bytes=0-${LIMITE_BRUT_OCTETS - 1}` } });
+  if (!reponse || !reponse.ok) throw new Error(`brut illisible (HTTP ${reponse && reponse.status})`);
+  const texte = await reponse.text();
+  return String(texte || '').slice(0, LIMITE_BRUT_OCTETS);
+}
+
+// Les en-tetes rendus par le fournisseur, cles en minuscules. Deux formes
+// existent chez lui : un objet { 'Message-ID': '...' } ou une liste de
+// { name, value } ; les deux se lisent.
+function entetesEnMinuscules(brut) {
+  const entetes = {};
+  if (Array.isArray(brut)) {
+    for (const entree of brut) {
+      const nom = String((entree && (entree.name || entree.key)) || '').trim().toLowerCase();
+      if (nom && entetes[nom] === undefined) entetes[nom] = String((entree && entree.value) || '').trim();
+    }
+    return entetes;
+  }
+  if (brut && typeof brut === 'object') {
+    for (const [nom, valeur] of Object.entries(brut)) {
+      const cle = String(nom || '').trim().toLowerCase();
+      if (cle && entetes[cle] === undefined) entetes[cle] = Array.isArray(valeur) ? valeur.map(String).join(' ') : String(valeur == null ? '' : valeur).trim();
+    }
+  }
+  return entetes;
+}
+
+// Le bloc d en-tetes d un mail brut (RFC 5322) : jusqu a la premiere ligne
+// vide, lignes de continuation (espace ou tabulation en tete) depliees.
+function entetesDuBrut(brut) {
+  const texte = String(brut || '').replace(/\r\n/g, '\n');
+  const bloc = texte.split('\n\n')[0] || '';
+  const depliees = [];
+  for (const ligne of bloc.split('\n')) {
+    if (/^[ \t]/.test(ligne) && depliees.length) depliees[depliees.length - 1] += ` ${ligne.trim()}`;
+    else depliees.push(ligne);
+  }
+  const entetes = {};
+  for (const ligne of depliees) {
+    const deuxPoints = ligne.indexOf(':');
+    if (deuxPoints <= 0) continue;
+    const nom = ligne.slice(0, deuxPoints).trim().toLowerCase();
+    if (!/^[a-z0-9-]+$/.test(nom)) continue;
+    if (entetes[nom] === undefined) entetes[nom] = ligne.slice(deuxPoints + 1).trim();
+  }
+  return entetes;
+}
+
+// L enregistrement reel d un evenement du fournisseur : la base du produit.
+// Require paresseux : le module de base n a pas a se charger pour un refus 401.
+async function enregistrerEvenementParDefaut(args) {
+  const { getPool } = require('../lib/database');
+  return enregistrerEvenementFournisseur((texte, params) => getPool().query(texte, params), args);
+}
 
 // Cinq minutes : la fenetre standard d une signature de webhook. Assez large
 // pour une horloge qui derive, trop courte pour un rejeu utile.
@@ -207,7 +271,12 @@ function centreDuDestinataire(adresses) {
   return null;
 }
 
-function createHandler({ ingest = ingestInboundEmail, recupererContenu = recupererContenuParDefaut } = {}) {
+function createHandler({
+  ingest = ingestInboundEmail,
+  recupererContenu = recupererContenuParDefaut,
+  enregistrerEvenement = enregistrerEvenementParDefaut,
+  recupererBrut = recupererBrutParDefaut,
+} = {}) {
   return async (req, res) => {
     if (req.method !== 'POST') {
       sendError(res, 405, 'Méthode non autorisée.');
@@ -242,12 +311,33 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
     // abonne a TOUT (envoi, remise, rebond, plainte) : ces evenements portent
     // la meme signature et decrivent NOS PROPRES messages. Les ingerer
     // remplirait la page Emails de nos envois, presentes comme des messages de
-    // clients. On les acquitte en 200 : un refus les ferait rejouer en boucle.
-    // Le test porte sur « received » et « inbound » plutot que sur un nom
-    // exact, parce que ce nom a deja change chez eux.
+    // clients. Depuis le 2026-09-16 ils sont ENREGISTRES (lib/email-events :
+    // remis, ouvert, clique, rebond, plainte) puis acquittes en 200. Une
+    // relivraison Svix rend « deduped » sans toucher un compteur ; une panne
+    // interne rend 503 pour que le fournisseur reessaie, l operation etant
+    // idempotente. Le test porte sur « received » et « inbound » plutot que
+    // sur un nom exact, parce que ce nom a deja change chez eux.
     const type = String((body && body.type) || '').toLowerCase();
     if (type && !type.includes('received') && !type.includes('inbound')) {
-      sendJson(res, 200, { ok: true, ignored: type });
+      const evenement = body && body.data && typeof body.data === 'object' ? body.data : {};
+      let resultat;
+      try {
+        resultat = await enregistrerEvenement({
+          type,
+          createdAt: (body && body.created_at) || evenement.created_at || null,
+          data: evenement,
+          eventKey: cleDEvenement(req.headers, type, evenement),
+        });
+      } catch (error) {
+        console.warn(`inbound-email: evenement ${type} non enregistre (${String((error && error.message) || error).slice(0, 120)})`);
+        sendError(res, 503, 'Evenement non enregistre pour le moment.');
+        return;
+      }
+      if (!resultat || resultat.ignored) {
+        sendJson(res, 200, { ok: true, ignored: (resultat && resultat.ignored) || type });
+        return;
+      }
+      sendJson(res, 200, { ok: true, recorded: resultat.type || type, deduped: Boolean(resultat.deduped) });
       return;
     }
 
@@ -262,6 +352,14 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
     const emailId = String(data.email_id || data.id || '').trim();
     let texte = String(data.text || data.body || '').trim();
     let html = String(data.html || '');
+    // LES EN-TETES QUI RATTACHENT LE MAIL A SON FIL (2026-09-16). Le Message-ID
+    // du mail recu, et ceux qu il cite (In-Reply-To, References) : c est par
+    // eux qu une reponse de client retrouve NOTRE message plutot que d ouvrir
+    // une conversation a part. L enveloppe porte parfois le Message-ID ; le
+    // reste vient du contenu recupere, ou du brut a defaut.
+    let messageId = String(data.message_id || data.messageId || '').trim();
+    let inReplyTo = String(data.in_reply_to || '').trim();
+    let references = String(data.references || '').trim();
     // L enveloppe ne porte pas le corps : on va le chercher. Un envoi manuel,
     // lui, porte deja son texte et ne declenche aucun appel.
     let contenuCherche = false;
@@ -271,6 +369,23 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
         texte = String((lu && lu.text) || '').trim();
         html = String((lu && lu.html) || '');
         contenuCherche = true;
+        const entetes = entetesEnMinuscules(lu && lu.headers);
+        messageId = messageId || String((lu && lu.message_id) || entetes['message-id'] || '').trim();
+        inReplyTo = inReplyTo || String(entetes['in-reply-to'] || '').trim();
+        references = references || String(entetes.references || '').trim();
+        // Sans In-Reply-To ni References dans la reponse structuree, le brut
+        // les porte : on ne le lit que dans ce cas, et un brut illisible ne
+        // bloque rien (le fil se retrouvera par le sujet, ou sera nouveau).
+        if (!inReplyTo && !references && lu && lu.raw && lu.raw.download_url) {
+          try {
+            const lus = entetesDuBrut(await recupererBrut(lu.raw.download_url));
+            inReplyTo = String(lus['in-reply-to'] || '').trim();
+            references = String(lus.references || '').trim();
+            messageId = messageId || String(lus['message-id'] || '').trim();
+          } catch (error) {
+            console.warn(`inbound-email: brut du mail ${emailId} illisible, en-tetes de fil ignores (${String((error && error.message) || error).slice(0, 120)})`);
+          }
+        }
       } catch (error) {
         // 503 et non 400 : c est NOTRE lecture qui a echoue, pas le mail qui
         // est mauvais. Le fournisseur reessaie sur un 503 ; sur un 400 il
@@ -330,6 +445,9 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
         requestId: data.requestId || req.headers['idempotency-key'] || null,
         to: destinataire,
         routage,
+        messageId,
+        inReplyTo,
+        references,
       });
       sendJson(res, 200, {
         ok: true,
@@ -347,4 +465,4 @@ function createHandler({ ingest = ingestInboundEmail, recupererContenu = recuper
 
 module.exports = createHandler();
 module.exports.createHandler = createHandler;
-module.exports.__test = { recupererContenuParDefaut, texteDepuisHtml };
+module.exports.__test = { recupererContenuParDefaut, texteDepuisHtml, entetesDuBrut, entetesEnMinuscules, recupererBrutParDefaut };

@@ -1058,6 +1058,184 @@ kbd, .kbd {
 }
 
 /* ----------------------------------------------------------------------------
+   11c. SOUS-NAVIGATION, MINI-PARCOURS, FIL DE MESSAGES (2026-09-16)
+   Trois composants generiques nes avec la page Emails & relances, ecrits ici
+   parce qu'ils ne lui appartiennent pas : une page a sections, un suivi en
+   quatre points et un fil de messages se retrouveront ailleurs. Tokens
+   uniquement, aucune ombre posee, aucun degrade.
+   -------------------------------------------------------------------------- */
+
+/* Sous-navigation d'une page (role tablist). L'indicateur glisse par
+   transform seul : translateX pour la position, scaleX (base 100px) pour la
+   largeur, exactement comme le rail du segmente de la page Emails. Le JS pose
+   --pl-subnav-x et --pl-subnav-k depuis une memoire hors DOM, donc une
+   reconstruction de page ne rejoue jamais le glissement. */
+.pl-subnav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  isolation: isolate;
+}
+.pl-subnav::-webkit-scrollbar { display: none; }
+
+.pl-subnav-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 100px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transform-origin: 0 50%;
+  transform: translateX(var(--pl-subnav-x, 0px)) scaleX(var(--pl-subnav-k, 0));
+  transition: transform var(--dur-move) var(--ease-in-out-strong);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pl-subnav-item {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: color var(--dur) var(--ease-out-strong);
+}
+.pl-subnav-item.is-active,
+.pl-subnav-item[aria-selected='true'] { color: var(--text); font-weight: 600; }
+/* Le halo de focus se pose a l'interieur : dehors, l'overflow du conteneur
+   le rognerait et le clavier ne verrait plus ou il est. */
+.pl-subnav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+@media (hover: hover) and (pointer: fine) {
+  .pl-subnav-item:hover { color: var(--text); }
+}
+
+.pl-subnav-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+.pl-subnav-item.is-active .pl-subnav-badge { color: var(--text); border-color: var(--line-strong); }
+
+@media (max-width: 768px) {
+  .pl-subnav { scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+}
+
+/* Mini-parcours d'un envoi : quatre points (envoye, remis, ouvert, clique).
+   Plein = fait, vide = pas encore, tirete = suivi inactif (le fournisseur ne
+   dira jamais rien pour cette etape), rouge = echec. Le libelle voyage dans
+   le title et l'aria-label : jamais la couleur seule (WCAG 1.4.1). */
+.pl-journey { display: inline-flex; align-items: center; vertical-align: middle; }
+.pl-journey-dot {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--faint);
+  background: transparent;
+}
+.pl-journey-dot + .pl-journey-dot { margin-left: 14px; }
+.pl-journey-dot + .pl-journey-dot::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  width: 14px;
+  height: 1px;
+  margin-top: -0.5px;
+  background: var(--line-strong);
+}
+.pl-journey-dot.is-done { background: var(--text); border-color: var(--text); }
+.pl-journey-dot.is-done + .pl-journey-dot.is-done::before { background: var(--text); }
+.pl-journey-dot.is-off { border-style: dashed; border-color: var(--line-strong); }
+.pl-journey-dot.is-fail { background: var(--danger); border-color: var(--danger); }
+
+/* Fil de messages d'une conversation : une carte par message, les sortants
+   sur un fond a peine plus sombre pour que l'oeil distingue les deux voix
+   sans lire. La ligne « parcours » ferme chaque carte. */
+.pl-timeline { display: grid; gap: 12px; }
+.pl-timeline-msg {
+  position: relative;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.pl-timeline-msg.is-outbound { background: var(--subtle); }
+[data-theme='dark'] .pl-timeline-msg { background: var(--raised); }
+[data-theme='dark'] .pl-timeline-msg.is-outbound { background: var(--subtle); }
+.pl-timeline-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pl-timeline-meta strong { font-size: 13px; font-weight: 600; color: var(--text); }
+.pl-timeline-when { margin-left: auto; font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pl-timeline-body { font-size: 14px; line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
+.pl-timeline-trace {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 0;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+/* `inline`, pas `inline-flex` : une etape contient du texte, une heure, puis
+   une virgule et la suite (« Lu par Sophie 14:05, Kevin 14:30 ») ; en flex,
+   chaque morceau devenait un item et une espace s ouvrait avant la virgule. */
+.pl-timeline-trace > span { display: inline; }
+.pl-timeline-trace > span + span::before { content: '·'; margin: 0 8px; color: var(--line-strong); }
+.pl-timeline-trace time { margin-left: 3px; }
+.pl-timeline-trace .is-done { color: var(--text); }
+.pl-timeline-trace .is-fail { color: var(--danger); font-weight: 500; }
+.pl-timeline-trace time { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* ----------------------------------------------------------------------------
    12. REDUCED MOTION : !important autorisé ici (DESIGN.md §8)
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {

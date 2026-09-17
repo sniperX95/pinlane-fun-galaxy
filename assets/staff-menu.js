@@ -10,11 +10,12 @@
   // Duree de sortie des popovers : DOIT couvrir l'animation CSS fgx-menu-pop-out
   // (--dur-fast = 120ms) avant le retrait du DOM.
   const POPOVER_EXIT_MS = 140;
-  const DEFAULT_OPEN_GROUPS = { planning: false, field: false, activities: false };
+  const DEFAULT_OPEN_GROUPS = { planning: false, field: false, activities: false, emails: false };
   const GROUP_DEFAULT_TARGETS = {
     planning: 'planning',
     field: 'arrivals',
-    activities: 'prices'
+    activities: 'prices',
+    emails: 'emails'
   };
   // Le nom et la signature de la marque sont DESSINES dans le lockup : les
   // retaper en police d'interface donnait un « Pinlane » en casse mixte a cote
@@ -122,7 +123,30 @@
         // et il vit sur SA page depuis le 2026-08-18 : les demandes etaient
         // enterrees dans un segment de Clients.
         { key: 'requests', label: 'Demandes sur mesure', icon: 'events', badge: () => (typeof window.getStaffActiveCustomRequestCount === 'function' ? (window.getStaffActiveCustomRequestCount() || '') : '') },
-        { key: 'emails', label: 'Emails & relances', icon: 'emails' },
+        // Groupe A PAGE D'ACCUEIL (2026-09-16) : contrairement a Planning, le
+        // parent est lui-meme une page (l'aperçu) ET il deplie ses sections.
+        // Les cles enfants sont prefixees « emails- » pour rester uniques dans
+        // la barre ; `section` est ce que la page Emails ouvre reellement.
+        {
+          key: 'emails',
+          label: 'Emails & relances',
+          icon: 'emails',
+          landing: true,
+          children: [
+            { key: 'emails-apercu', label: 'Aperçu', section: 'apercu' },
+            { key: 'emails-recus', label: 'Reçus', section: 'recus' },
+            { key: 'emails-envoyes', label: 'Envoyés', section: 'envoyes' },
+            { key: 'emails-sequences', label: 'Séquences', section: 'sequences' },
+            { key: 'emails-modeles', label: 'Modèles', section: 'modeles' },
+            { key: 'emails-apparence', label: 'Apparence', section: 'apparence' },
+            { key: 'emails-expediteurs', label: 'Expéditeurs', section: 'expediteurs' },
+            { key: 'emails-agent', label: 'L’agent', section: 'agent' },
+            { key: 'emails-exclusions', label: 'Exclusions', section: 'exclusions' },
+            // Les campagnes exigent leur propre droit : le serveur refuse sans
+            // lui, l'entree ne se propose donc pas (DESIGN.md §9).
+            { key: 'emails-campagnes', label: 'Campagnes', section: 'campagnes', permission: 'campaigns.manage' }
+          ]
+        },
         { key: 'campaigns', label: 'Marketing', icon: 'campaigns' }
       ]
     },
@@ -170,6 +194,8 @@
   function menuKeyToPage(key) {
     if (key === 'bowling' || key === 'laser' || key === 'complete') return 'planning';
     if (key === 'field' || key === 'activities') return null; // conteneurs : gérés par leurs enfants
+    // Les sections de la page Emails s'ouvrent avec le droit de la page.
+    if (String(key || '').startsWith('emails-')) return 'emails';
     return key;
   }
 
@@ -182,8 +208,13 @@
 
   function filterMenuItem(item) {
     if (item.children) {
-      const children = item.children.filter(child => menuKeyVisible(child.key));
-      if (!children.length) return null;
+      const children = item.children.filter(child => menuKeyVisible(child.key)
+        // Un enfant peut exiger un droit de plus que sa page (Campagnes) :
+        // sans lui, l'entree disparait, elle n'est pas grisee.
+        && (!child.permission || typeof canUseStaffPermission !== 'function' || canUseStaffPermission(child.permission)));
+      // Un groupe a page d'accueil survit sans enfant : la page, elle, existe.
+      if (!children.length && !item.landing) return null;
+      if (item.landing && !menuKeyVisible(item.key)) return null;
       return Object.assign({}, item, { children });
     }
     return menuKeyVisible(item.key) ? item : null;
@@ -614,6 +645,33 @@
   }
 
   function itemMarkup(item) {
+    if (item.children && item.landing) {
+      // Parent = une vraie page (data-fgx-menu-key, comme un item simple) et
+      // un chevron separe qui ne fait QUE deplier. Deux boutons, jamais l'un
+      // dans l'autre : un bouton imbrique n'est pas un HTML valide.
+      const open = isMenuGroupOpen(item.key);
+      const subnavId = getMenuSubnavId(item.key);
+      const children = item.children.map(child => `
+        <button type="button" class="fgx-menu-subitem" title="${escapeHtml(child.label)}" data-fgx-menu-key="${escapeHtml(child.key)}" data-fgx-menu-section="${escapeHtml(child.section || '')}" tabindex="${open ? '0' : '-1'}">
+          <span class="fgx-menu-subitem-mark" aria-hidden="true"></span>
+          <span class="fgx-menu-label">${escapeHtml(child.label)}</span>
+        </button>
+      `).join('');
+      return `
+        <div class="fgx-menu-group fgx-menu-group-landing ${open ? 'is-open' : 'is-collapsed'}" data-fgx-group="${escapeHtml(item.key)}">
+          <div class="fgx-menu-item-row">
+            <button type="button" class="fgx-menu-item" title="${escapeHtml(item.label)}" data-fgx-menu-key="${escapeHtml(item.key)}">
+              <span class="fgx-menu-icon">${icons[item.icon] || ''}</span>
+              <span class="fgx-menu-label">${escapeHtml(item.label)}</span>
+            </button>
+            ${children ? `<button type="button" class="fgx-menu-unfold" data-fgx-menu-toggle="${escapeHtml(item.key)}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${subnavId}" aria-label="${escapeHtml(open ? 'Replier les sections' : 'Déplier les sections')}" title="${escapeHtml(open ? 'Replier les sections' : 'Déplier les sections')}">
+              <span class="fgx-menu-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M6 4l4 4-4 4"/></svg></span>
+            </button>` : ''}
+          </div>
+          <div id="${subnavId}" class="fgx-menu-subnav" aria-hidden="${open ? 'false' : 'true'}" data-state="${open ? 'open' : 'closed'}">${children}</div>
+        </div>
+      `;
+    }
     if (item.children) {
       const open = isMenuGroupOpen(item.key);
       const subnavId = getMenuSubnavId(item.key);
@@ -1128,6 +1186,11 @@
     event.stopPropagation();
     closeMenuPopover();
     const key = target.dataset.fgxMenuKey;
+    const section = target.dataset.fgxMenuSection;
+    if (section) {
+      navigateEmailsSection(section);
+      return;
+    }
     const resource = target.dataset.opsResource;
     if (resource) {
       setMenuGroupOpen('planning', true);
@@ -1152,7 +1215,26 @@
     syncStaffMenuState();
   }
 
-  function navigateMenu(key) {
+  // Une section de la page Emails depuis la barre laterale. La page est deja
+  // ouverte : on lui passe la main (pv2EmailsGo garde son etat et son
+  // adresse) ; sinon on la monte directement sur la bonne section.
+  function navigateEmailsSection(section) {
+    if (typeof canUseStaffPage === 'function' && !canUseStaffPage('emails')) {
+      if (typeof toast === 'function') toast('Accès non autorisé pour ce rôle.');
+      return;
+    }
+    setMenuGroupOpen('emails', true);
+    const dejaLa = typeof state !== 'undefined' && state.view === 'staff' && state.staffMenuPage === 'emails';
+    if (dejaLa && typeof window.pv2EmailsGo === 'function') {
+      window.pv2EmailsGo(section);
+      syncStaffMenuState();
+      return;
+    }
+    if (typeof state !== 'undefined') state.staffEmailsSection = section;
+    navigateMenu('emails', { keepSection: true });
+  }
+
+  function navigateMenu(key, options = {}) {
     if (key === 'field') {
       navigateMenu('arrivals');
       return;
@@ -1235,11 +1317,17 @@
       return;
     }
     if (key === 'emails') {
+      // L'entree parente est la page d'accueil de la rubrique : elle ouvre
+      // l'aperçu. Une section demandee explicitement (enfant, lien profond)
+      // passe par keepSection et n'est pas ecrasee.
+      if (!options.keepSection && typeof state !== 'undefined') state.staffEmailsSection = 'apercu';
+      setMenuGroupOpen('emails', true);
       setMenuPage('emails');
       if (typeof setView === 'function') setView('staff');
       if (typeof renderStaff === 'function') renderStaff();
       if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(false);
       else if (typeof loadOpsAdmin === 'function') loadOpsAdmin(false);
+      syncStaffMenuState();
       return;
     }
     if (key === 'campaigns') {
@@ -1364,6 +1452,19 @@
 
     if (directStaffPageActive) {
       root.querySelector(`.fgx-menu-nav [data-fgx-menu-key="${page}"]`)?.classList.add('active');
+    }
+    // Page Emails : le groupe se deplie (meme regle que les autres groupes,
+    // « un menu ne ment pas sur l'endroit ou l'on est ») et la section ouverte
+    // porte la marque, pas le parent seul.
+    const emailsActive = view === 'staff' && page === 'emails';
+    const emailsToggle = root.querySelector('[data-fgx-menu-toggle="emails"]');
+    root.querySelector('[data-fgx-group="emails"]')?.classList.toggle('active', emailsActive);
+    if (emailsToggle) {
+      applyMenuGroupOpen(emailsToggle, isMenuGroupOpen('emails') || emailsActive, { animate: false });
+    }
+    if (emailsActive) {
+      const section = (typeof state !== 'undefined' && state.staffEmailsSection) || 'apercu';
+      root.querySelector(`.fgx-menu-nav [data-fgx-menu-section="${section}"]`)?.classList.add('active');
     }
     if (view === 'admin') {
       const adminKey = page && root.querySelector(`.fgx-menu-nav [data-fgx-menu-key="${page}"]`) ? page : 'dashboard';

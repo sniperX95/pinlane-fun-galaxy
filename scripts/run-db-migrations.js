@@ -235,6 +235,11 @@ const MIGRATIONS = [
     file: 'database/email-claims-role-schema.sql',
     description: "Le role de qui s occupe du mail. Un prenom seul ne suffit pas quand plusieurs personnes se relaient : savoir que c est la DIRECTRICE qui repond, et pas un equipier du bar, change ce qu on fait ensuite. Libelle copie au moment de la prise (une prise dure trois minutes ; on veut le role d alors, pas celui de demain). ORDRE : apres 0045, qui cree la table qu elle altere. Idempotente (add column if not exists), aucune donnee existante touchee. Rollback : database/rollbacks/0046_email_claims_role.down.sql",
   },
+  {
+    id: '0047_email_threads',
+    file: 'database/email-threads-schema.sql',
+    description: "Les fils de conversation des mails, le suivi de remise et les lectures par l equipe. Chaque reponse d un client faisait un message a part ; personne ne savait qui avait lu un mail recu ni si un mail envoye etait arrive, ouvert ou revenu en erreur. Table email_threads (bornee par centre), colonnes additives sur communications (thread_id, Message-ID / In-Reply-To / References, remis / ouvert / clique / rebond / plainte), table email_events (une ligne par evenement du fournisseur, cle unique svix-id, jamais d adresse IP), table communication_reads (qui a lu quoi). Rattrapage idempotent des mails existants sans fil, borne par centre. Rollback : database/rollbacks/0047_email_threads.down.sql",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -115,7 +115,27 @@ const {
   saveCustomSequence,
   toggleCustomSequence,
   deleteCustomSequence,
+  AUTOMATION_DEFAULTS,
+  AUTOMATION_TEMPLATE_IDS,
+  // Emails v4 (2026-09-16) : design des mails, apercus et tests.
+  saveEmailDesign,
+  getEmailDesignBundle,
+  buildDesignPreview,
+  sendDesignTest,
+  buildCustomSequencePreview,
+  sendCustomSequenceTest,
 } = require('../lib/ops-communications');
+// Emails v4 : fils de conversation, lectures, vue globale, envoyes. Chaque
+// fonction recoit `query` : le centre de la session voyage en parametre.
+const {
+  listerFils,
+  chargerFil,
+  marquerLu,
+  changerStatutFil,
+  compteursDeLaBoite,
+  listerEnvoyes,
+  libellesDesSequences,
+} = require('../lib/email-threads');
 const { enqueueReservationAutomation, processDueOpsJobs, processOpsJobById } = require('../lib/ops-jobs');
 const { listSuppressions, suppressEmail, removeSuppression } = require('../lib/marketing-suppression');
 const { loadOpsKnowledge, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
@@ -943,7 +963,124 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // ── Emails v4 (2026-09-16) : vue globale, fils, envoyes, design ──────────
+  // Toutes ces lectures sont bornees par `centerId` (le centre effectif de la
+  // session) : un fil, un message, un evenement d un autre centre ne sort
+  // jamais, et un id etranger repond 404 comme un id inexistant.
+  if (action === 'emailOverview') {
+    const query = (text, params) => getPool().query(text, params);
+    const [compteurs, settings, stats, custom, parTemplate, libelle] = await Promise.all([
+      compteursDeLaBoite(query, { centerId }),
+      getAutomationSettings(centerId),
+      getAutomationStats(centerId),
+      listCustomSequences(centerId),
+      query(
+        `select template_id,
+                count(*) filter (where status in ('sent', 'delivered'))::int as sent30d,
+                count(*) filter (where status = 'failed')::int as failed30d,
+                max(sent_at) as last_sent_at
+         from communications
+         where center_id = $1 and channel = 'email' and direction = 'outbound'
+           and created_at > now() - interval '30 days'
+           and coalesce(payload->>'simulation', '') = ''
+           and coalesce(idempotency_key, '') not like 'simulation:%'
+         group by template_id;`,
+        [centerId],
+      ).catch(() => ({ rows: [] })),
+      libellesDesSequences(query, centerId),
+    ]);
+    const parId = new Map((parTemplate.rows || []).map((row) => [String(row.template_id || ''), row]));
+    const derniereDate = (ids) => ids
+      .map((id) => (parId.get(id) || {}).last_sent_at || null)
+      .filter(Boolean)
+      .sort()
+      .pop() || null;
+    const sequences = Object.keys(AUTOMATION_DEFAULTS).map((key) => {
+      const ids = AUTOMATION_TEMPLATE_IDS[key] || [key];
+      return {
+        key,
+        label: libelle(ids[0]) || key,
+        custom: false,
+        enabled: settings[key] ? settings[key].enabled !== false : true,
+        sent30d: Number((stats[key] || {}).sent30d || 0),
+        failed30d: Number((stats[key] || {}).failed30d || 0),
+        lastSentAt: derniereDate(ids),
+      };
+    });
+    for (const sequence of Array.isArray(custom) ? custom : []) {
+      if (!sequence || !sequence.id) continue;
+      const ligne = parId.get(`custom_${sequence.id}`) || {};
+      sequences.push({
+        key: String(sequence.id),
+        label: String(sequence.name || 'Séquence personnalisée'),
+        custom: true,
+        enabled: sequence.enabled !== false,
+        sent30d: Number(ligne.sent30d || 0),
+        failed30d: Number(ligne.failed30d || 0),
+        lastSentAt: ligne.last_sent_at || null,
+      });
+    }
+    sendJson(res, 200, { ok: true, centerId, ...compteurs, sequences, aJourA: new Date().toISOString() });
+    return;
+  }
+
+  if (action === 'emailThreads') {
+    const query = (text, params) => getPool().query(text, params);
+    const resultat = await listerFils(query, {
+      centerId,
+      filtre: url.searchParams.get('filtre') || 'a-repondre',
+      recherche: url.searchParams.get('q') || '',
+      limit: Number(url.searchParams.get('limit') || 50),
+      offset: Number(url.searchParams.get('offset') || 0),
+      memberId: options.session && options.session.member ? options.session.member.id : '',
+    });
+    sendJson(res, 200, { ok: true, centerId, ...resultat });
+    return;
+  }
+
+  if (action === 'emailThread') {
+    const query = (text, params) => getPool().query(text, params);
+    const fil = await chargerFil(query, { centerId, threadId: url.searchParams.get('id') });
+    if (!fil) throw createHttpError('Conversation introuvable.', 404);
+    sendJson(res, 200, { ok: true, centerId, ...fil });
+    return;
+  }
+
+  if (action === 'emailSent') {
+    const query = (text, params) => getPool().query(text, params);
+    const resultat = await listerEnvoyes(query, {
+      centerId,
+      origine: url.searchParams.get('origine') || 'tous',
+      statut: url.searchParams.get('statut') || 'tous',
+      recherche: url.searchParams.get('q') || '',
+      limit: Number(url.searchParams.get('limit') || 100),
+      offset: Number(url.searchParams.get('offset') || 0),
+    });
+    sendJson(res, 200, { ok: true, centerId, ...resultat });
+    return;
+  }
+
+  if (action === 'emailDesign') {
+    sendJson(res, 200, { ok: true, centerId, ...(await getEmailDesignBundle(centerId)) });
+    return;
+  }
+
   sendError(res, 400, 'Action Ops GET inconnue.');
+}
+
+// Le membre de session tel que les envois le signent : { id, name, role,
+// contact }. Le ROLE est son libelle (ce qu on lit dans un mail), pas son
+// identifiant. Une session sans membre rend null : personne ne signe.
+function membreDeSession(session) {
+  const membre = session && session.member && typeof session.member === 'object' ? session.member : null;
+  if (!membre) return null;
+  const role = session && session.role && typeof session.role === 'object' ? session.role : {};
+  return {
+    id: String(membre.id || ''),
+    name: String(membre.name || ''),
+    role: String(role.name || role.id || ''),
+    contact: String(membre.contact || ''),
+  };
 }
 
 async function handlePost(req, res, providedBody = null, options = {}) {
@@ -1580,6 +1717,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         subject: body.subject || '',
         body: body.body || '',
         staffMember,
+        member: membreDeSession(sendSession),
       });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Envoi du message impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
@@ -2360,6 +2498,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         subject: body.subject || '',
         body: body.body || '',
         staffMember: relanceSession.member?.name || relanceSession.member?.id || 'staff',
+        member: membreDeSession(relanceSession),
       });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Relance impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
@@ -2548,6 +2687,14 @@ ${draftBody}`,
       scheduledAt: body.scheduledAt || null,
       attemptId: body.attemptId || '',
       idempotencyKey: body.idempotencyKey || '',
+      // Fil, signature et signataire (2026-09-16) : passe-plat vers la lib. Le
+      // signataire par defaut est le membre de session ; le composeur peut le
+      // renommer (un collegue qui ecrit pour un autre), jamais l inventer.
+      threadId: body.threadId ?? null,
+      signature: typeof body.signature === 'boolean' ? body.signature : undefined,
+      signatoryName: String(body.signatoryName || '').slice(0, 120),
+      signatoryRole: String(body.signatoryRole || '').slice(0, 80),
+      member: membreDeSession(options.session),
     });
     sendJson(res, 200, { ok: true, ...result });
     return;
@@ -2865,7 +3012,110 @@ ${draftBody}`,
   // aucune écriture. Le front l'affiche dans l'iframe sandboxée existante.
   if (action === 'directEmailPreview') {
     const previewCenterId = requireConcreteCenter('aperçu email');
-    sendJson(res, 200, { ok: true, ...buildDirectEmailPreview({ centerId: previewCenterId, subject: body.subject, body: body.body }) });
+    const preview = await buildDirectEmailPreview({
+      centerId: previewCenterId,
+      subject: body.subject,
+      body: body.body,
+      signature: typeof body.signature === 'boolean' ? body.signature : undefined,
+      signatoryName: String(body.signatoryName || '').slice(0, 120),
+      signatoryRole: String(body.signatoryRole || '').slice(0, 80),
+      member: membreDeSession(options.session),
+    });
+    sendJson(res, 200, { ok: true, ...preview });
+    return;
+  }
+
+  // ── Emails v4 (2026-09-16) : design, lectures, statut de fil, apercus ────
+  // Le design du centre : validation stricte (erreurs FR exposables), ecriture
+  // d UNE cle du jsonb (jamais le blob entier : les sequences et le cerveau de
+  // l agent vivent dans le meme objet).
+  if (action === 'emailDesign') {
+    const designCenterId = requireConcreteCenter('design des mails');
+    const design = await saveEmailDesign(designCenterId, body.design || {}, { member: membreDeSession(options.session) });
+    sendJson(res, 200, { ok: true, action, design });
+    return;
+  }
+
+  // L apercu du design : le VRAI emailShell sur un message d exemple, avec le
+  // brouillon non enregistre. Aucune ecriture.
+  if (action === 'emailDesignPreview') {
+    const previewCenterId = requireConcreteCenter('aperçu du design');
+    const preview = await buildDesignPreview({
+      centerId: previewCenterId,
+      design: body.design && typeof body.design === 'object' ? body.design : null,
+      sample: String(body.sample || 'confirmation'),
+      member: membreDeSession(options.session),
+    });
+    sendJson(res, 200, { ok: true, action, ...preview });
+    return;
+  }
+
+  // « M envoyer un test » du design : destinataire = la SESSION, jamais la
+  // requete (meme regle que sendAutomationTest).
+  if (action === 'sendDesignTest') {
+    const testCenterId = requireConcreteCenter('test du design');
+    const result = await sendDesignTest({
+      centerId: testCenterId,
+      member: options.session?.member || null,
+      design: body.design && typeof body.design === 'object' ? body.design : null,
+      sample: String(body.sample || 'confirmation'),
+    });
+    sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
+
+  // QUI A LU. Le lecteur est le membre de SESSION, jamais un id fourni par le
+  // client ; une session de secours (fondateur) ne compte pas comme lecture.
+  if (action === 'markCommunicationRead') {
+    const lectureCenterId = requireConcreteCenter('lecture d un mail');
+    if (options.session && options.session.emergency) {
+      sendJson(res, 200, { ok: true, action, marques: 0, ignore: 'secours' });
+      return;
+    }
+    const membre = membreDeSession(options.session);
+    const resultat = await marquerLu((text, params) => getPool().query(text, params), {
+      centerId: lectureCenterId,
+      communicationIds: Array.isArray(body.communicationIds) ? body.communicationIds : [],
+      member: membre || {},
+    });
+    sendJson(res, 200, { ok: true, action, ...resultat });
+    return;
+  }
+
+  // Terminer / rouvrir une conversation. Un id d un autre centre : 404, comme
+  // un id inexistant.
+  if (action === 'setThreadStatus') {
+    const filCenterId = requireConcreteCenter('statut de conversation');
+    const thread = await changerStatutFil((text, params) => getPool().query(text, params), {
+      centerId: filCenterId,
+      threadId: body.threadId,
+      status: String(body.status || ''),
+    });
+    if (!thread) throw createHttpError('Conversation introuvable.', 404);
+    sendJson(res, 200, { ok: true, action, thread });
+    return;
+  }
+
+  // Apercu d une sequence personnalisee (brouillon), memes builders que le
+  // sweep, client d exemple neutre. Aucune ecriture.
+  if (action === 'customSequencePreview') {
+    const previewCenterId = requireConcreteCenter('aperçu de séquence');
+    const preview = await buildCustomSequencePreview({
+      centerId: previewCenterId,
+      sequence: body.sequence && typeof body.sequence === 'object' ? body.sequence : {},
+    });
+    sendJson(res, 200, { ok: true, action, ...preview });
+    return;
+  }
+
+  if (action === 'sendCustomSequenceTest') {
+    const testCenterId = requireConcreteCenter('test de séquence');
+    const result = await sendCustomSequenceTest({
+      centerId: testCenterId,
+      member: options.session?.member || null,
+      sequence: body.sequence && typeof body.sequence === 'object' ? body.sequence : {},
+    });
+    sendJson(res, 200, { ok: true, action, ...result });
     return;
   }
 
@@ -2947,6 +3197,8 @@ function getRequiredOpsPermission(method, action) {
   if (['agentStack', 'agentStackAudit'].includes(action)) return 'platform.admin';
   if (method === 'GET') {
     if (['communications', 'emailSamples'].includes(action)) return 'emails.view';
+    // Emails v4 : vue globale, fils, envoyes, design : lire la boite suffit.
+    if (['emailOverview', 'emailThreads', 'emailThread', 'emailSent', 'emailDesign'].includes(action)) return 'emails.view';
     // `job` = la lecture du poller de progression : mêmes permissions que
     // health (même surface, même sensibilité), plus les rôles marketing qui
     // déclenchent les jobs qu'ils suivent (plan marketing en live).
@@ -3029,6 +3281,13 @@ function getRequiredOpsPermission(method, action) {
   // L'envoi de test et le renvoi font partir un vrai mail : `emails.send`.
   if (action === 'automationPreview') return ['emails.view', 'direction.view'];
   if (['sendAutomationTest', 'retryCommunication'].includes(action)) return 'emails.send';
+  // Emails v4 (2026-09-16). Le design des mails est un reglage du centre (meme
+  // droit que les sequences) ; ses apercus ne rendent qu un gabarit ; les tests
+  // et la reponse dans un fil font partir un vrai mail ; lire un mail et le
+  // marquer lu vont ensemble.
+  if (action === 'emailDesign') return ['settings.manage', 'emails.send', 'direction.view'];
+  if (['emailDesignPreview', 'customSequencePreview', 'markCommunicationRead'].includes(action)) return 'emails.view';
+  if (['sendDesignTest', 'sendCustomSequenceTest', 'setThreadStatus'].includes(action)) return 'emails.send';
   if (['customSequences', 'emailBrain'].includes(action)) return ['settings.manage', 'emails.send', 'direction.view'];
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
@@ -3100,7 +3359,9 @@ const NON_MUTATING_POST_ACTIONS = new Set([
   'clientMessageComposer',
   'communicationDraft',
   'automationPreview', // previsualisation
-  'directEmailPreview', // buildDirectEmailPreview : pur, ne touche ni base ni file
+  'directEmailPreview', // buildDirectEmailPreview : lecture du design du centre, ne touche ni base en ecriture ni file
+  'emailDesignPreview', // buildDesignPreview : rendu d un brouillon, aucune ecriture
+  'customSequencePreview', // buildCustomSequencePreview : rendu d un brouillon, aucune ecriture
   'agentStackAudit',   // audit de lecture
   'logClientError',    // telemetrie plafonnee : le journal d'audit trace les
   'activityLog',       // parcours d'equipe : n'ecrit AUCUNE donnee metier ;

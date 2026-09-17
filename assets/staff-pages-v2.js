@@ -157,7 +157,7 @@
      c'est ca qui compte, aucune ne declenche de reflow. Une version precedente
      de ce commentaire affirmait « transform et opacity UNIQUEMENT », ce que la
      mesure a dementi. ── */
-  const PV2_EMAILS_MOTION = { open: {}, pipeRail: null, switches: {}, pipeScroll: 0, resizeBound: false };
+  const PV2_EMAILS_MOTION = { open: {}, pipeRail: null, switches: {}, pipeScroll: 0, resizeBound: false, subnav: null, subnavResizeBound: false, section: '' };
 
   /* FAMILLE B : on ne pose la classe d'entree que si l'etat du panneau vient
      de passer de ferme a ouvert. Sur une simple reconstruction (frappe
@@ -1361,48 +1361,50 @@
      EMAILS : communication pipeline
      ======================================================================== */
 
+  /* La page vit en SECTIONS depuis le 2026-09-16 : les mails recus se lisent
+     dans leur conversation (section Recus), la file des envoyes dans Envoyes.
+     Les deux fonctions ci-dessous gardent leur nom (gates, fiche client) mais
+     menent desormais a la bonne section. */
   window.pv2SelectEmail = function (uid) {
+    const rows = typeof getStaffEmailRows === 'function' ? getStaffEmailRows() : [];
+    const ligne = rows.find((r) => r.uid === uid);
+    // Un mail RECU n a plus de detail a part : on ouvre la conversation qui le
+    // contient. OUVRIR UN MAIL RECU, C EST S EN OCCUPER : la prise de main
+    // part a l ouverture du fil (pv2ThreadApresOuverture), sans attendre le
+    // premier caractere tape.
+    if (ligne && pv2IsInbound(ligne)) {
+      pv2ThreadOpenForCommunication(ligne);
+      return;
+    }
     state.staffEmailSelectedId = uid;
     save();
-    renderStaffEmailsPage();
-    // OUVRIR UN MAIL RECU, C EST S EN OCCUPER. La prise part ici, sans attendre
-    // le premier caractere tape : sinon le collegue ne l apprend qu une fois la
-    // reponse a moitie ecrite, c est-a-dire trop tard. Elle expire toute seule
-    // en trois minutes si on n en fait rien, donc parcourir la boite ne bloque
-    // personne durablement. L appel n est pas attendu : l ecran ne patiente
-    // jamais apres le reseau.
-    if (typeof pv2PrendreLaMain === 'function') {
-      const rows = typeof getStaffEmailRows === 'function' ? getStaffEmailRows() : [];
-      const ligne = rows.find((r) => r.uid === uid);
-      if (ligne && ligne.id && (ligne.direction === 'inbound' || ligne.status === 'received')) {
-        pv2PrendreLaMain(ligne.id);
-      }
-    }
+    if (state.staffEmailsSection !== 'envoyes') pv2EmailsGo('envoyes');
+    else renderStaffEmailsPage();
   };
 
   window.pv2EmailFilter = function (key) {
-    state.staffEmailFilter = key;
-    // Les deux segmentés (statut + origine) restent d'accord entre eux :
-    // « Reçus » est la même vue des deux côtés, et revenir sur un statut
-    // d'envoi quitte la vue Reçus du segmenté d'origine.
-    if (key === 'inbound') state.staffEmailOriginFilter = 'inbound';
-    else if (state.staffEmailOriginFilter === 'inbound') state.staffEmailOriginFilter = 'all';
+    // « Recus » n est plus un filtre de la file : c est une section entiere.
+    if (key === 'inbound') { pv2EmailsGo('recus'); return; }
+    const allowed = ['all', 'queued', 'sent', 'delivered', 'opened', 'failed', 'review'];
+    state.staffEmailFilter = allowed.includes(key) ? key : 'all';
+    if (state.staffEmailOriginFilter === 'inbound') state.staffEmailOriginFilter = 'all';
     save();
-    renderStaffEmailsPage();
+    if (state.staffEmailsSection !== 'envoyes') pv2EmailsGo('envoyes');
+    else renderStaffEmailsPage();
   };
 
   // Segmenté d'ORIGINE (demande du proprio : dissocier les mails partis tout
   // seuls des mails envoyés par l'équipe). Combinable avec les statuts : le
-  // choix vit dans state.staffEmailOriginFilter et getStaffEmailRowsFiltered
-  // (app-main.js) le cumule avec le filtre de statut.
+  // choix vit dans state.staffEmailOriginFilter ; depuis le 2026-09-16 les
+  // envois de l equipe se lisent en trois familles (manuel, campagne, test).
   window.pv2EmailOriginFilter = function (key) {
-    const allowed = ['all', 'auto', 'manual', 'inbound'];
+    if (key === 'inbound') { pv2EmailsGo('recus'); return; }
+    const allowed = ['all', 'auto', 'manual', 'campagne', 'test'];
     state.staffEmailOriginFilter = allowed.includes(key) ? key : 'all';
-    if (state.staffEmailOriginFilter === 'inbound') state.staffEmailFilter = 'inbound';
-    else if (state.staffEmailFilter === 'inbound') state.staffEmailFilter = 'all';
     state.staffEmailSelectedId = '';
     save();
-    renderStaffEmailsPage();
+    if (state.staffEmailsSection !== 'envoyes') pv2EmailsGo('envoyes');
+    else renderStaffEmailsPage();
   };
 
   /* ── Composer universel + boîte de réception (Emails v3) ──────────────────
@@ -1602,6 +1604,7 @@
     seqBody: (v) => pv2SeqField('body', v),
     tplSubject: (v) => pv2TplField('subject', v),
     tplBody: (v) => pv2TplField('body', v),
+    threadReplyBody: (v) => pv2InboxReplyField(pv2Threads.selectedId, 'body', v),
   };
   window.pv2TokeditInput = function (el) {
     const sink = PV2_TOKEDIT_SINKS[el.dataset.sink];
@@ -1625,8 +1628,8 @@
   function pv2Humanize(text) {
     return String(text || '').replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, k) => PV2_VAR_LABELS_ALL[k.toLowerCase()] || k);
   }
-  function pv2TokeditHtml({ id, sink, value, single = false, plFocus = '', placeholder = '' }) {
-    return `<div class="pv2-tokedit${single ? ' is-single' : ''}" id="${esc(id)}" data-sink="${esc(sink)}"${single ? ' data-single="1"' : ''}${plFocus ? ` data-pl-focus="${esc(plFocus)}"` : ''} contenteditable="true" role="textbox" aria-multiline="${single ? 'false' : 'true'}" data-placeholder="${esc(pv2Humanize(placeholder))}" spellcheck="false" oninput="pv2TokeditInput(this)" onkeydown="pv2TokeditKey(event)" onpaste="pv2TokeditPaste(event)">${pv2TokeditRender(value)}</div>`;
+  function pv2TokeditHtml({ id, sink, value, single = false, plFocus = '', placeholder = '', classe = '' }) {
+    return `<div class="pv2-tokedit${single ? ' is-single' : ''}${classe ? ` ${classe}` : ''}" id="${esc(id)}" data-sink="${esc(sink)}"${single ? ' data-single="1"' : ''}${plFocus ? ` data-pl-focus="${esc(plFocus)}"` : ''} contenteditable="true" role="textbox" aria-multiline="${single ? 'false' : 'true'}" data-placeholder="${esc(pv2Humanize(placeholder))}" spellcheck="false" oninput="pv2TokeditInput(this)" onkeydown="pv2TokeditKey(event)" onpaste="pv2TokeditPaste(event)">${pv2TokeditRender(value)}</div>`;
   }
 
   // Insertion d'une variable au CURSEUR d'un éditeur identifié. Grâce aux
@@ -2143,8 +2146,9 @@
     // modèle prérempli attend dans Réglages.
     pv2Mail.composerOpen = false;
     pv2RenderComposer();
-    renderStaffEmailsPage();
-    toast('Brouillon repris dans Réglages : donnez-lui un nom et enregistrez.');
+    pv2ModeleAllerEditer();
+    pv2ApercuModele(0);
+    toast('Brouillon repris dans Modèles : donnez-lui un nom et enregistrez.');
   };
 
   window.pv2ComposerImprove = async function () {
@@ -2267,8 +2271,9 @@
       });
       pv2Mail.analyzeOpen = false;
       pv2Mail.analyzeDraft = { from: '', body: '' };
-      state.staffEmailFilter = 'inbound';
+      state.staffEmailsSection = 'recus';
       save();
+      if (typeof pv2ThreadsInvalider === 'function') pv2ThreadsInvalider();
       toast('Mail analysé : il est dans les Reçus avec sa réponse proposée.');
       if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
     } catch (error) {
@@ -2278,22 +2283,6 @@
       renderStaffEmailsPage();
     }
   };
-
-  /* ── Détail d'un reçu : réponse proposée éditable, envoi 1-clic, ré-analyse. ── */
-  function pv2InboxAnalysis(row) {
-    return pv2Mail.analysisOverride[row.uid] || (row.payload && row.payload.analysis) || null;
-  }
-
-  function pv2InboxReplyDraft(row) {
-    if (!pv2Mail.replyDraft[row.uid]) {
-      const analysis = pv2InboxAnalysis(row);
-      pv2Mail.replyDraft[row.uid] = {
-        subject: analysis?.reply?.subject || `Re: ${row.subject || ''}`.trim(),
-        body: analysis?.reply?.body || '',
-      };
-    }
-    return pv2Mail.replyDraft[row.uid];
-  }
 
   /* ── QUI EST EN TRAIN DE REPONDRE ────────────────────────────────────────
      Deux personnes peuvent ouvrir la meme boite. Sans ce signal, chacune ecrit
@@ -2379,31 +2368,126 @@
     }
   }
 
-  window.pv2InboxReplyField = function (uid, field, value) {
-    if (!pv2Mail.replyDraft[uid]) pv2Mail.replyDraft[uid] = { subject: '', body: '' };
-    pv2Mail.replyDraft[uid][field] = value;
-    // Premier caractere tape sur ce mail : je prends la main. L appel n est pas
-    // attendu, la frappe ne doit jamais patienter apres le reseau.
-    const row = getStaffEmailRows().find((r) => r.uid === uid);
-    if (row && row.id) pv2PrendreLaMain(row.id);
+  /* ── LA REPONSE DANS LE FIL (2026-09-16) ─────────────────────────────────
+     Le brouillon de reponse est indexe par CONVERSATION, plus par mail : une
+     conversation n a qu une reponse en cours, et elle suit le fil quand un
+     nouveau message du client arrive. Les noms pv2InboxReplyField /
+     pv2InboxReply sont conserves (gates, fiche client) ; la reference acceptee
+     est l id du fil, ou l id d un message de ce fil (les appels historiques
+     passaient l identifiant du mail recu). ── */
+  function pv2ThreadRefResoudre(ref) {
+    const cle = String(ref || '');
+    if (!cle) return String(pv2Threads.selectedId || '');
+    if (cle === String(pv2Threads.selectedId)) return cle;
+    const d = pv2Threads.detail;
+    if (d.thread && (d.messages || []).some((m) => String(m.id) === cle)) return String(d.thread.id);
+    const fil = pv2Threads.threads.find((t) => String(t.id) === cle || String(t.lastInboundId) === cle);
+    return fil ? String(fil.id) : cle;
+  }
+
+  function pv2ThreadDernierEntrant(messages) {
+    return [...(messages || [])].reverse().find((m) => m.direction === 'inbound') || null;
+  }
+
+  // Le brouillon d une conversation : objet « Re: », corps propose par l agent
+  // s il en a un, signature selon la portee reglee dans Apparence, signataire
+  // = la personne connectee (modifiable : c est elle qui signe, pas le role).
+  function pv2ThreadReplyDraft(threadId) {
+    const cle = String(threadId);
+    if (!pv2Threads.reply[cle]) {
+      const d = pv2Threads.detail;
+      const fil = d.thread && String(d.thread.id) === cle ? d.thread : null;
+      const entrant = fil ? pv2ThreadDernierEntrant(d.messages) : null;
+      const analysis = entrant && entrant.analysis ? entrant.analysis : null;
+      const sujet = String((analysis && analysis.reply && analysis.reply.subject) || (fil && fil.subject ? `Re: ${fil.subject}` : '')).trim();
+      const session = state.staffAuthSession || {};
+      const membre = session.member || {};
+      const role = session.role || {};
+      const design = pv2Design.design;
+      const portee = design && design.signatureScope && typeof design.signatureScope.manual === 'boolean' ? design.signatureScope.manual : true;
+      const identite = pv2Mail.identities.find((i) => i.isDefault) || pv2Mail.identities[0] || null;
+      pv2Threads.reply[cle] = {
+        subject: sujet,
+        body: String((analysis && analysis.reply && analysis.reply.body) || ''),
+        identityId: pv2Mail.draft.identityId || (identite ? String(identite.id) : ''),
+        signature: portee,
+        signatoryName: String(membre.name || ''),
+        signatoryRole: String(role.name || membre.roleId || ''),
+      };
+    }
+    return pv2Threads.reply[cle];
+  }
+
+  window.pv2InboxReplyField = function (ref, field, value) {
+    const threadId = pv2ThreadRefResoudre(ref);
+    const draft = pv2ThreadReplyDraft(threadId);
+    draft[field] = field === 'signature' ? Boolean(value) : value;
+    // La case « signature » change l etat des champs signataire : un rendu
+    // s impose. Le texte tape, lui, ne re-rend jamais (le focus survit).
+    if (field === 'signature') { renderStaffEmailsPage(); return; }
+    // Premier caractere tape sur cette conversation : je prends la main sur le
+    // dernier message recu. L appel n est pas attendu, la frappe ne doit
+    // jamais patienter apres le reseau.
+    const entrant = pv2ThreadDernierEntrant(pv2Threads.detail.messages);
+    if (entrant && entrant.id) pv2PrendreLaMain(entrant.id);
   };
 
-  window.pv2InboxReply = async function (uid) {
-    if (pv2Mail.replyBusy) return;
-    const row = getStaffEmailRows().find((r) => r.uid === uid);
-    if (!row) return;
-    const to = String(row.payload?.from || row.recipient || '').trim();
+  window.pv2ThreadUtiliserProposition = function (ref) {
+    const threadId = pv2ThreadRefResoudre(ref);
+    const entrant = pv2ThreadDernierEntrant(pv2Threads.detail.messages);
+    const reply = entrant && entrant.analysis && entrant.analysis.reply;
+    if (!reply) { toast('L\'agent n\'a pas de réponse proposée pour cette conversation.'); return; }
+    const draft = pv2ThreadReplyDraft(threadId);
+    draft.subject = String(reply.subject || draft.subject || '');
+    draft.body = String(reply.body || '');
+    renderStaffEmailsPage();
+  };
+
+  // Le mail FINAL tel qu il partira : meme chemin serveur que l envoi
+  // (directEmailPreview avec signature et signataire), dans l iframe sandbox.
+  window.pv2ThreadReplyPreview = async function (ref) {
+    const threadId = pv2ThreadRefResoudre(ref);
+    const draft = pv2ThreadReplyDraft(threadId);
+    const contact = pv2Threads.detail.contact || {};
+    const ctx = pv2VarContext({ name: contact.name || '' });
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'directEmailPreview',
+          centerId: state.adminCenterId || 'libramont',
+          subject: pv2FillVars(draft.subject, ctx).text,
+          body: pv2FillVars(draft.body, ctx).text,
+          signature: Boolean(draft.signature),
+          signatoryName: draft.signature ? draft.signatoryName : '',
+          signatoryRole: draft.signature ? draft.signatoryRole : '',
+        }),
+      });
+      previewOpsEmailHtml(payload.html || '', payload.subject || 'Aperçu de la réponse');
+    } catch (error) {
+      toast(error.message || 'Aperçu indisponible.');
+    }
+  };
+
+  window.pv2InboxReply = async function (ref) {
+    if (pv2Threads.replyBusy) return;
+    const threadId = pv2ThreadRefResoudre(ref);
+    const d = pv2Threads.detail;
+    if (!d.thread || String(d.thread.id) !== threadId) { toast('Ouvrez d\'abord la conversation.'); return; }
+    const contact = d.contact || {};
+    const to = String(contact.email || d.thread.contactEmail || '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Adresse de l\'expéditeur introuvable.'); return; }
-    const draft = pv2InboxReplyDraft(row);
+    const draft = pv2ThreadReplyDraft(threadId);
     if (!String(draft.subject || '').trim() || !String(draft.body || '').trim()) { toast('Objet et réponse obligatoires.'); return; }
     // Même garde que le composeur : une réponse ne part jamais avec {{…}}.
-    const replyCtx = pv2VarContext({ name: pv2InboxAnalysis(row)?.clientName || '' });
+    const replyCtx = pv2VarContext({ name: contact.name || d.thread.contactName || '' });
     const replyLeft = pv2FillVars(`${draft.subject}\n${draft.body}`, replyCtx).unresolved;
     if (replyLeft.length) { toast(`Complétez d'abord : ${replyLeft.map((k) => `{{${k}}}`).join(' · ')}`); return; }
+    const entrant = pv2ThreadDernierEntrant(d.messages);
     // DERNIER RAPPEL AVANT D ENVOYER. Le bandeau a pu apparaitre pendant la
     // redaction : c est ici, au moment ou le mail part, que l information
     // compte le plus. On demande, on n interdit pas.
-    const autre = pv2PriseDunAutre(row);
+    const autre = entrant ? pv2PriseDunAutre({ id: entrant.id }) : null;
     if (autre) {
       const nom = String(autre.memberName || autre.memberId || 'Un collègue');
       const roleAutre = String(autre.memberRole || '').trim();
@@ -2412,7 +2496,7 @@
         : true;
       if (!passer) return;
     }
-    pv2Mail.replyBusy = uid;
+    pv2Threads.replyBusy = threadId;
     renderStaffEmailsPage();
     try {
       await apiRequest('/api/ops', {
@@ -2421,32 +2505,43 @@
           action: 'sendDirectEmail',
           centerId: state.adminCenterId || 'libramont',
           to,
-          name: pv2InboxAnalysis(row)?.clientName || '',
+          name: contact.name || d.thread.contactName || '',
           subject: pv2FillVars(draft.subject, replyCtx).text,
           body: pv2FillVars(draft.body, replyCtx).text,
-          identityId: pv2Mail.draft.identityId || null,
-          replyToCommunicationId: row.id || null,
+          identityId: draft.identityId || pv2Mail.draft.identityId || null,
+          replyToCommunicationId: entrant ? entrant.id : null,
+          threadId: d.thread.id,
+          signature: Boolean(draft.signature),
+          signatoryName: draft.signature ? String(draft.signatoryName || '') : '',
+          signatoryRole: draft.signature ? String(draft.signatoryRole || '') : '',
         })),
       });
       toast('Réponse en file d\'envoi ✓');
-      delete pv2Mail.replyDraft[uid];
+      delete pv2Threads.reply[threadId];
       // La reponse est partie : la prise n a plus de raison d etre, et la
       // garder ferait croire a un collegue que quelqu un ecrit encore.
       pv2RelacherLaMain();
+      loadPv2ThreadDetail(threadId, true);
+      loadPv2Threads(true);
       if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
     } catch (error) {
       toast(error.message || 'Envoi impossible.');
     } finally {
-      pv2Mail.replyBusy = '';
+      pv2Threads.replyBusy = '';
       renderStaffEmailsPage();
     }
   };
 
-  window.pv2InboxReanalyze = async function (uid) {
-    if (pv2Mail.replyBusy) return;
-    const row = getStaffEmailRows().find((r) => r.uid === uid);
-    if (!row) return;
-    pv2Mail.replyBusy = uid;
+  // Re-analyser le dernier message recu de la conversation ouverte : l agent
+  // relit le mail avec ce qu il a appris depuis.
+  window.pv2InboxReanalyze = async function (ref) {
+    if (pv2Threads.replyBusy) return;
+    const threadId = pv2ThreadRefResoudre(ref);
+    const d = pv2Threads.detail;
+    if (!d.thread || String(d.thread.id) !== threadId) return;
+    const entrant = pv2ThreadDernierEntrant(d.messages);
+    if (!entrant) return;
+    pv2Threads.replyBusy = threadId;
     renderStaffEmailsPage();
     try {
       const payload = await apiRequest('/api/ops', {
@@ -2454,23 +2549,24 @@
         body: JSON.stringify({
           action: 'analyzeInboundEmail',
           centerId: state.adminCenterId || 'libramont',
-          from: row.payload?.from || row.recipient || '',
-          subject: row.subject || '',
-          body: row.payload?.textBody || '',
+          from: entrant.fromEmail || (d.contact && d.contact.email) || '',
+          subject: entrant.subject || '',
+          body: entrant.textBody || entrant.message || '',
         }),
       });
       if (payload.analysis) {
-        pv2Mail.analysisOverride[uid] = payload.analysis;
-        pv2Mail.replyDraft[uid] = {
-          subject: payload.analysis.reply?.subject || '',
-          body: payload.analysis.reply?.body || '',
-        };
+        entrant.analysis = payload.analysis;
+        pv2Threads.reply[threadId] = undefined;
+        delete pv2Threads.reply[threadId];
+        const draft = pv2ThreadReplyDraft(threadId);
+        draft.subject = String((payload.analysis.reply && payload.analysis.reply.subject) || draft.subject || '');
+        draft.body = String((payload.analysis.reply && payload.analysis.reply.body) || '');
         toast('Analyse actualisée.');
       }
     } catch (error) {
       toast(error.message || 'Ré-analyse impossible.');
     } finally {
-      pv2Mail.replyBusy = '';
+      pv2Threads.replyBusy = '';
       renderStaffEmailsPage();
     }
   };
@@ -2513,11 +2609,19 @@
     return '';
   }
 
+  // L editeur vit dans la section Sequences : ouvrir une sequence depuis une
+  // autre section y conduit d abord, sinon l editeur serait rendu nulle part.
+  function pv2SeqAllerEditer() {
+    if (state.staffEmailsSection !== 'sequences') pv2EmailsGo('sequences');
+    else renderStaffEmailsPage();
+  }
+
   window.pv2SeqNew = function () {
     pv2Seq.creating = true;
     pv2Seq.editId = '';
     pv2Seq.draft = { name: '', trigger: { type: 'after_visit', days: 7, weekday: 4 }, segment: 'all', subject: '', body: '', cap: 20, enabled: true };
-    renderStaffEmailsPage();
+    pv2SeqAllerEditer();
+    pv2ApercuSequencePerso(0);
     setTimeout(() => { const el = document.getElementById('pv2SeqName'); if (el) el.focus(); }, 60);
   };
 
@@ -2527,12 +2631,14 @@
     pv2Seq.creating = false;
     pv2Seq.editId = id;
     pv2Seq.draft = JSON.parse(JSON.stringify(sequence));
-    renderStaffEmailsPage();
+    pv2SeqAllerEditer();
+    pv2ApercuSequencePerso(0);
   };
 
   window.pv2SeqCloseEditor = function () {
     pv2Seq.creating = false;
     pv2Seq.editId = '';
+    pv2ApercuAnnuler('seq');
     renderStaffEmailsPage();
   };
 
@@ -2540,6 +2646,7 @@
     if (field === 'trigger.type') {
       pv2Seq.draft.trigger = { type: value, days: value === 'inactive' ? 90 : 7, weekday: 4, monthday: 1 };
       renderStaffEmailsPage();
+      pv2ApercuSequencePerso();
       return;
     }
     if (field === 'trigger.days') { pv2Seq.draft.trigger.days = Number(value); return; }
@@ -2547,6 +2654,63 @@
     if (field === 'trigger.monthday') { pv2Seq.draft.trigger.monthday = Number(value); return; }
     if (field === 'cap') { pv2Seq.draft.cap = Number(value); return; }
     pv2Seq.draft[field] = value;
+    if (field === 'subject' || field === 'body') pv2ApercuSequencePerso();
+  };
+
+  // L apercu vivant d une sequence personnalisee : le brouillon tel quel,
+  // rendu par le serveur avec un client d exemple. 500 ms apres la derniere
+  // frappe, la requete precedente annulee.
+  function pv2ApercuSequencePerso(delai = 500) {
+    if (!pv2Seq.creating && !pv2Seq.editId) return;
+    pv2PlanifierApercu('seq', () => ({
+      action: 'customSequencePreview',
+      centerId: state.adminCenterId || 'libramont',
+      sequence: { ...pv2Seq.draft },
+    }), delai);
+  }
+
+  // « Voir le mail » sur une carte fermee : la sequence telle qu enregistree,
+  // jamais le brouillon d une autre carte reste en memoire.
+  window.pv2SeqPreview = async function (id) {
+    if (pv2Seq.busy) return;
+    const sequence = pv2Seq.editId === id ? pv2Seq.draft : pv2Seq.sequences.find((item) => item.id === id);
+    if (!sequence) return;
+    pv2Seq.busy = true;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'customSequencePreview', centerId: state.adminCenterId || 'libramont', sequence }),
+      });
+      previewOpsEmailHtml(payload.html || '', payload.subject || sequence.subject || 'Aperçu du mail');
+    } catch (error) {
+      toast(error.message || 'Aperçu impossible.');
+    } finally {
+      pv2Seq.busy = false;
+      renderStaffEmailsPage();
+    }
+  };
+
+  window.pv2SeqSendTest = async function (id) {
+    if (pv2Seq.busy) return;
+    const sequence = pv2Seq.editId === id ? pv2Seq.draft : pv2Seq.sequences.find((item) => item.id === id);
+    if (!sequence) return;
+    pv2Seq.busy = true;
+    renderStaffEmailsPage();
+    try {
+      // Aucune adresse n est envoyee : le serveur envoie au membre connecte.
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sendCustomSequenceTest', centerId: state.adminCenterId || 'libramont', sequence }),
+      });
+      if (payload.status === 'sent') toast(`Test envoyé à ${payload.recipient}`);
+      else toast(`Le test n'est pas parti : ${payload.error || 'cause inconnue'}`);
+    } catch (error) {
+      toast(error.message || 'Envoi de test impossible.');
+    } finally {
+      pv2Seq.busy = false;
+      renderStaffEmailsPage();
+    }
   };
 
   window.pv2SeqSave = async function () {
@@ -2563,6 +2727,7 @@
       pv2Seq.sequences = payload.sequences || pv2Seq.sequences;
       pv2Seq.creating = false;
       pv2Seq.editId = '';
+      pv2ApercuAnnuler('seq');
       toast('Séquence enregistrée ✓ : elle tourne chaque matin avec les autres.');
     } catch (error) {
       toast(error.message || 'Enregistrement impossible.');
@@ -2613,19 +2778,61 @@
     }
   };
 
+  // La premiere ligne non vide d un corps : ce que le client lira en premier.
+  function pv2PremiereLigne(texte) {
+    return String(texte || '').split('\n').map((l) => l.trim()).find(Boolean) || '';
+  }
+
+  // Un texte de sequence ou de modele avec ses variables en jetons NEUTRES :
+  // ici {{date}} n est pas un trou a remplir (le serveur le resout a l envoi,
+  // client par client), il ne doit pas s afficher en ambre « a completer »
+  // comme dans le composeur, ou la regle est inverse.
+  function pv2TexteJetons(texte) {
+    return String(texte || '').split(/(\{\{\s*[a-z_][a-z0-9_]*\s*\}\})/gi).map((part) => {
+      const m = part.match(/^\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}$/i);
+      if (!m) return esc(part);
+      const k = m[1].toLowerCase();
+      return `<span class="pl-var${PV2_VAR_LABELS_ALL[k] ? '' : ' is-fill'}">${esc(PV2_VAR_LABELS_ALL[k] || k)}</span>`;
+    }).join('');
+  }
+
+  // Les stats 30 j d une sequence personnalisee viennent de la vue globale
+  // (emailOverview.sequences, cle = id). Sans elles, on ne fabrique pas un 0 :
+  // la carte dit que les envois ne sont pas encore comptes.
+  function pv2SeqStats30j(sequence) {
+    const liste = (pv2Overview.data && Array.isArray(pv2Overview.data.sequences)) ? pv2Overview.data.sequences : [];
+    return liste.find((s) => s && s.custom && String(s.key) === String(sequence.id)) || null;
+  }
+
   function pv2SeqCard(sequence) {
     const editing = pv2Seq.editId === sequence.id;
+    const stats = pv2SeqStats30j(sequence);
+    const NB = ' ';
+    const sent30 = stats ? Number(stats.sent30d) || 0 : null;
+    const failed30 = stats ? Number(stats.failed30d) || 0 : 0;
+    const statsTxt = stats
+      ? `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''}${failed30 ? ` · <span class="mk-auto-fail">${failed30}${NB}échec${failed30 > 1 ? 's' : ''}</span>` : ''} sur 30${NB}jours`
+      : 'Envois des 30 derniers jours : pas encore comptés';
     return `<article class="mk-auto pv2-seq-card${sequence.enabled ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="mk-auto-head">
         <strong>${esc(sequence.name)}<span class="pv2-seq-pill">perso</span></strong>
         <button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>
       </div>
       <p class="mk-auto-desc">${esc(pv2SeqTriggerLabel(sequence))} · max ${Number(sequence.cap) || 0} envois</p>
-      <details class="mk-auto-preview"><summary><span class="pv2-caret" aria-hidden="true"></span>Aperçu du message</summary><div class="mk-auto-preview-body">${pv2RenderEmailPreview(sequence.body || '', null)}</div></details>
-      <div class="mk-auto-stats">
-        <button type="button" class="pv2-btn sm" onclick="pv2SeqEdit('${escJs(sequence.id)}')">${ci('pencil')}Modifier</button>
-        <button type="button" class="pv2-btn sm" onclick="pv2SeqDelete('${escJs(sequence.id)}')">Supprimer</button>
+      <div class="mk-auto-effectif">
+        <span class="mk-auto-effectif-label">Ce qui part</span>
+        <span class="mk-auto-subject">${pv2TexteJetons(sequence.subject) || '<em>Sans objet</em>'}</span>
+        <span class="mk-auto-line">${pv2TexteJetons(pv2PremiereLigne(sequence.body)) || '<em>Message vide</em>'}</span>
       </div>
+      <div class="mk-auto-foot">
+        <span class="mk-auto-stats">${statsTxt}</span>
+        <div class="mk-auto-actions">
+          <button type="button" class="mkw-link mk-auto-preview" onclick="pv2SeqPreview('${escJs(sequence.id)}')" ${pv2Seq.busy ? 'disabled' : ''}>Voir le mail</button>
+          <button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="${editing ? 'pv2SeqCloseEditor()' : `pv2SeqEdit('${escJs(sequence.id)}')`}">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
+          <button type="button" class="pv2-btn sm ghost" onclick="pv2SeqDelete('${escJs(sequence.id)}')" ${pv2Seq.busy ? 'disabled' : ''}>Supprimer</button>
+        </div>
+      </div>
+      ${editing ? pv2SeqEditor() : ''}
     </article>`;
   }
 
@@ -2639,7 +2846,10 @@
     const segmentOptions = Object.entries(limits.segments || {})
       .map(([key, label]) => `<option value="${key}"${d.segment === key ? ' selected' : ''}>${esc(label)}</option>`).join('');
     const daysBounds = meta.days || [1, 90];
+    // Deux colonnes : les champs a gauche, le mail VIVANT a droite. La gerante
+    // voit ce que la sequence ecrit reellement pendant qu elle l ecrit.
     return `<div class="pv2-seq-editor" data-pv2-mount="seqEditor" aria-label="Éditeur de séquence">
+      <div class="pv2-seq-editor-cols">
       <div class="pv2-composer-grid">
         <label class="pv2-composer-field"><span>Nom de la séquence</span>
           <input id="pv2SeqName" data-pl-focus="emails.sequence.nom" value="${esc(d.name || '')}" placeholder="Ex. Relance une semaine après la visite" oninput="pv2SeqField('name', this.value)">
@@ -2673,40 +2883,45 @@
           ${pv2VarBar('pv2SeqBody', meta.variables || ['prenom', 'centre'])}
           ${pv2TokeditHtml({ id: 'pv2SeqBody', sink: 'seqBody', value: d.body || '', plFocus: 'emails.sequence.message', placeholder: 'Bonjour {{prenom}},…' })}
         </div>
-        <div class="pv2-composer-actions pv2-composer-wide">
-          <button type="button" class="pv2-btn" onclick="pv2SeqCloseEditor()">Annuler</button>
-          <span class="pv2-composer-spacer"></span>
-          <button type="button" class="pv2-btn primary" onclick="pv2SeqSave()" ${pv2Seq.busy ? 'disabled' : ''}>${pv2Seq.busy ? 'Enregistrement…' : 'Enregistrer la séquence'}</button>
-        </div>
+      </div>
+      ${pv2ApercuVivantHtml('seq', { titre: 'Aperçu avec un client d\'exemple' })}
+      </div>
+      <div class="pv2-composer-actions">
+        <button type="button" class="pv2-btn" onclick="pv2SeqCloseEditor()">Annuler</button>
+        ${pv2Seq.editId ? `<button type="button" class="pv2-btn" onclick="pv2SeqPreview('${escJs(pv2Seq.editId)}')" ${pv2Seq.busy ? 'disabled' : ''}>Voir en grand</button>
+        <button type="button" class="pv2-btn" onclick="pv2SeqSendTest('${escJs(pv2Seq.editId)}')" ${pv2Seq.busy ? 'disabled' : ''}>M'envoyer un test</button>` : ''}
+        <span class="pv2-composer-spacer"></span>
+        <button type="button" class="pv2-btn primary" onclick="pv2SeqSave()" ${pv2Seq.busy ? 'disabled' : ''}>${pv2Seq.busy ? 'Enregistrement…' : 'Enregistrer la séquence'}</button>
       </div>
     </div>`;
   }
 
-  /* ── RÉGLAGES EMAILS : modèles, adresses d'envoi, cerveau de l'agent 
-     un panneau, trois vues. Tout ce que le gérant peut posséder. ── */
+  /* ── LES ANCIENS « REGLAGES » SONT DEVENUS DES SECTIONS (2026-09-16) ────
+     Modeles, Expediteurs et L agent ont chacun leur page. Les deux fonctions
+     ci-dessous gardent leur nom : la fiche client et les gates les appellent
+     encore avec les vues historiques (templates / identities / agent). ── */
   const pv2Settings = {
     open: false, view: 'templates', busy: false,
     tplEditing: null, idEditing: null,
     brain: { loaded: false, loading: false, overrides: null, defaults: null, draft: null },
   };
   window.pv2Settings = pv2Settings;
+  const PV2_SETTINGS_SECTIONS = { templates: 'modeles', identities: 'expediteurs', agent: 'agent' };
 
   window.pv2OpenSettings = function (view) {
-    pv2Settings.open = !pv2Settings.open || (view && pv2Settings.view !== view);
-    if (view) pv2Settings.view = view;
-    if (pv2Settings.open) {
-      loadPv2MailMeta();
-      if (pv2Settings.view === 'agent') loadPv2Brain();
-    }
-    renderStaffEmailsPage();
+    pv2Settings.open = true;
+    if (view && PV2_SETTINGS_SECTIONS[view]) pv2Settings.view = view;
+    if (pv2Settings.view === 'agent') loadPv2Brain();
+    loadPv2MailMeta();
+    pv2EmailsGo(PV2_SETTINGS_SECTIONS[pv2Settings.view] || 'modeles');
   };
 
   window.pv2SettingsView = function (view) {
-    pv2Settings.view = view;
+    pv2Settings.view = PV2_SETTINGS_SECTIONS[view] ? view : 'templates';
     pv2Settings.tplEditing = null;
     pv2Settings.idEditing = null;
-    if (view === 'agent') loadPv2Brain();
-    renderStaffEmailsPage();
+    if (pv2Settings.view === 'agent') loadPv2Brain();
+    pv2EmailsGo(PV2_SETTINGS_SECTIONS[pv2Settings.view]);
   };
 
   async function loadPv2Brain(force = false) {
@@ -2773,7 +2988,24 @@
     }
   };
 
-  /* Modèles : créer / modifier / archiver (serveur email-studio existant). */
+  /* Modèles : créer / modifier / archiver (serveur email-studio existant).
+     L editeur vit dans la section Modeles, avec un apercu serveur vivant. */
+  function pv2ModeleAllerEditer() {
+    if (state.staffEmailsSection !== 'modeles') pv2EmailsGo('modeles');
+    else renderStaffEmailsPage();
+  }
+
+  function pv2ApercuModele(delai = 500) {
+    const tpl = pv2Settings.tplEditing;
+    if (!tpl) return;
+    pv2PlanifierApercu('modele', () => ({
+      action: 'directEmailPreview',
+      centerId: state.adminCenterId || 'libramont',
+      subject: String(tpl.subject || ''),
+      body: String(tpl.body || ''),
+    }), delai);
+  }
+
   window.pv2TplEdit = function (id) {
     if (id === null) { pv2Settings.tplEditing = { id: null, name: '', category: 'marketing', subject: '', body: '' }; }
     else {
@@ -2781,11 +3013,38 @@
       if (!tpl) return;
       pv2Settings.tplEditing = { id: tpl.id, name: tpl.label || tpl.name || '', category: tpl.category || 'marketing', subject: tpl.subject || '', body: tpl.body || '' };
     }
-    renderStaffEmailsPage();
+    pv2ModeleAllerEditer();
+    pv2ApercuModele(0);
   };
 
   window.pv2TplField = function (field, value) {
-    if (pv2Settings.tplEditing) pv2Settings.tplEditing[field] = value;
+    if (!pv2Settings.tplEditing) return;
+    pv2Settings.tplEditing[field] = value;
+    if (field === 'subject' || field === 'body') pv2ApercuModele();
+  };
+
+  window.pv2TplCancel = function () {
+    pv2Settings.tplEditing = null;
+    pv2ApercuAnnuler('modele');
+    renderStaffEmailsPage();
+  };
+
+  // Un modele fourni qui plait devient un modele A SOI : l editeur s ouvre
+  // prerempli, il ne reste qu a le nommer.
+  window.pv2ModeleCopier = function (key) {
+    const starter = PV2_STARTERS.find((s) => s.key === key);
+    if (!starter) return;
+    pv2Settings.tplEditing = { id: null, name: `${starter.name} (ma version)`, category: 'marketing', subject: starter.subject, body: starter.body };
+    pv2ModeleAllerEditer();
+    pv2ApercuModele(0);
+    setTimeout(() => { const el = document.getElementById('pv2TplName'); if (el) el.focus(); }, 60);
+  };
+
+  // « Utiliser » : le composeur s ouvre avec ce texte, le client reste a
+  // choisir. Le remplissage des variables est celui du composeur.
+  window.pv2ModeleUtiliser = function (ref) {
+    pv2OpenComposer({});
+    pv2ComposerTemplate(String(ref || ''));
   };
 
   window.pv2TplSave = async function () {
@@ -2800,6 +3059,7 @@
         body: JSON.stringify({ action: 'saveEmailTemplate', centerId: state.adminCenterId || 'libramont', id: tpl.id, name: tpl.name, category: tpl.category, subject: tpl.subject, body: tpl.body }),
       });
       pv2Settings.tplEditing = null;
+      pv2ApercuAnnuler('modele');
       toast('Modèle enregistré ✓');
       await loadPv2MailMeta(true);
     } catch (error) {
@@ -2833,7 +3093,8 @@
   /* Adresses d'envoi : ajouter / définir par défaut / supprimer. */
   window.pv2IdEdit = function () {
     pv2Settings.idEditing = { label: '', email: '', isDefault: !pv2Mail.identities.length };
-    renderStaffEmailsPage();
+    if (state.staffEmailsSection !== 'expediteurs') pv2EmailsGo('expediteurs');
+    else renderStaffEmailsPage();
   };
 
   window.pv2IdField = function (field, value) {
@@ -2903,90 +3164,160 @@
   };
 
   const PV2_TPL_CATEGORIES = [['marketing', 'Marketing'], ['promotion', 'Promotion'], ['information', 'Information'], ['serieux', 'Sérieux'], ['relance', 'Relance']];
+  const PV2_TPL_CATEGORY_LABELS = Object.fromEntries(PV2_TPL_CATEGORIES);
 
-  function pv2SettingsPanel() {
-    const seg = [['templates', 'Modèles'], ['identities', 'Adresses d\'envoi'], ['agent', 'L\'agent']]
-      .map(([key, label]) => `<button type="button" class="crm-seg${pv2Settings.view === key ? ' is-active' : ''}" onclick="pv2SettingsView('${key}')">${esc(label)}</button>`).join('');
-    let content = '';
-    if (pv2Settings.view === 'templates') {
-      const tpl = pv2Settings.tplEditing;
-      content = tpl ? `<div class="pv2-composer-grid">
-          <label class="pv2-composer-field"><span>Nom</span><input value="${esc(tpl.name)}" placeholder="Ex. Offre rentrée" oninput="pv2TplField('name', this.value)"></label>
-          <label class="pv2-composer-field"><span>Catégorie</span><select onchange="pv2TplField('category', this.value)">${PV2_TPL_CATEGORIES.map(([key, label]) => `<option value="${key}"${tpl.category === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
-          <div class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
-            ${pv2TokeditHtml({ id: 'pv2TplSubject', sink: 'tplSubject', value: tpl.subject, single: true, placeholder: 'Objet du modèle' })}
-          </div>
-          <div class="pv2-composer-field pv2-composer-wide"><span>Message</span>
-            ${pv2VarBar('pv2TplBody', ['prenom', 'nom', 'centre'])}
-            ${pv2TokeditHtml({ id: 'pv2TplBody', sink: 'tplBody', value: tpl.body, placeholder: 'Bonjour {{prenom}},…' })}
-          </div>
-          <div class="pv2-composer-actions pv2-composer-wide">
-            <button type="button" class="pv2-btn" onclick="pv2Settings.tplEditing = null; renderStaffEmailsPage();">Annuler</button>
-            <span class="pv2-composer-spacer"></span>
-            <button type="button" class="pv2-btn primary" onclick="pv2TplSave()" ${pv2Settings.busy ? 'disabled' : ''}>Enregistrer le modèle</button>
-          </div>
-        </div>`
-        : `<div class="pv2-settings-list">
-          ${pv2Mail.templates.length ? pv2Mail.templates.map((t) => `
-            <div class="pv2-settings-row">
-              <div><strong>${esc(t.label || t.name || `Modèle ${t.id}`)}</strong><small>${esc(t.category || '')} · ${esc(t.subject || '')}</small></div>
-              <button type="button" class="pv2-btn sm" onclick="pv2TplEdit('${escJs(String(t.id))}')">${ci('pencil')}Modifier</button>
-              <button type="button" class="pv2-btn sm" onclick="pv2TplArchive('${escJs(String(t.id))}')">Archiver</button>
-            </div>`).join('') : '<div class="pv2-empty"><strong>Aucun modèle personnalisé</strong>Crée tes propres modèles : ils apparaissent dans le composer.</div>'}
-          <div class="pv2-composer-actions"><button type="button" class="pv2-btn primary" onclick="pv2TplEdit(null)">+ Nouveau modèle</button></div>
-        </div>`;
-    } else if (pv2Settings.view === 'identities') {
-      const identity = pv2Settings.idEditing;
-      content = identity ? `<div class="pv2-composer-grid">
-          <label class="pv2-composer-field"><span>Nom affiché</span><input value="${esc(identity.label)}" placeholder="Ex. le nom de votre centre" oninput="pv2IdField('label', this.value)"></label>
-          <label class="pv2-composer-field"><span>Adresse email</span><input value="${esc(identity.email)}" placeholder="contact@votre-centre.be" oninput="pv2IdField('email', this.value)"></label>
-          <label class="pv2-composer-field pv2-settings-check"><span>&nbsp;</span><label><input type="checkbox" ${identity.isDefault ? 'checked' : ''} onchange="pv2IdField('isDefault', this.checked)"> Adresse par défaut</label></label>
-          <div class="pv2-composer-actions pv2-composer-wide">
-            <button type="button" class="pv2-btn" onclick="pv2Settings.idEditing = null; renderStaffEmailsPage();">Annuler</button>
-            <span class="pv2-composer-spacer"></span>
-            <button type="button" class="pv2-btn primary" onclick="pv2IdSave()" ${pv2Settings.busy ? 'disabled' : ''}>Ajouter l'adresse</button>
-          </div>
-        </div>`
-        : `<div class="pv2-settings-list">
-          ${pv2Mail.identities.length ? pv2Mail.identities.map((i) => `
-            <div class="pv2-settings-row">
-              <div><strong>${esc(i.label || i.email)}</strong><small>${esc(i.email)}${i.isDefault ? ' · par défaut' : ''}</small></div>
-              ${i.isDefault ? '' : `<button type="button" class="pv2-btn sm" onclick="pv2IdDefault('${escJs(String(i.id))}')">Par défaut</button>`}
-              <button type="button" class="pv2-btn sm" onclick="pv2IdDelete('${escJs(String(i.id))}')">Supprimer</button>
-            </div>`).join('') : '<div class="pv2-empty"><strong>Aucune adresse configurée</strong>Ajoute l\'adresse (ou les adresses) avec lesquelles tes emails partent.</div>'}
-          <div class="pv2-composer-actions"><button type="button" class="pv2-btn primary" onclick="pv2IdEdit()">+ Nouvelle adresse</button></div>
-        </div>`;
-    } else {
-      const brain = pv2Settings.brain;
-      content = !brain.loaded
-        ? `<div class="pv2-empty">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
-        : `<div class="pv2-composer-grid">
-          <p class="pv2-panel-sub pv2-composer-wide">L'agent répond aux mails reçus avec CES textes. Modifie-les librement : ce que tu écris ici gagne toujours sur le modèle d'origine. Champ vidé = retour au modèle.</p>
-          <label class="pv2-composer-field"><span>Signature</span>
-            <input value="${esc(brain.draft.signature)}" placeholder="${esc(brain.defaults.signature || '')}" oninput="pv2BrainField('signature', null, this.value)">
-          </label>
-          <label class="pv2-composer-field pv2-composer-wide"><span>Consignes libres (ce que l'agent doit toujours savoir)</span>
-            <textarea rows="3" placeholder="Ex. Le parking est gratuit derrière le bâtiment. On ne prend pas de réservation le lundi." oninput="pv2BrainField('extra', null, this.value)">${esc(brain.draft.extra)}</textarea>
-          </label>
-          ${Object.entries(brain.defaults.intents || PV2_INTENT_LABELS).map(([intent, label]) => `
-          <label class="pv2-composer-field pv2-composer-wide"><span>Réponse « ${esc(label)} »${brain.overrides.faq[intent] ? ' <em class="pv2-seq-pill">modifiée</em>' : ''}</span>
-            <textarea rows="4" placeholder="${esc(brain.defaults.faq[intent]?.body || 'Réponse type…')}" oninput="pv2BrainField('faq', '${escJs(intent)}', this.value)">${esc(brain.draft.faq[intent] || '')}</textarea>
-          </label>`).join('')}
-          <div class="pv2-composer-actions pv2-composer-wide">
-            <button type="button" class="pv2-btn primary" onclick="pv2BrainSave()" ${pv2Settings.busy ? 'disabled' : ''}>${pv2Settings.busy ? 'Enregistrement…' : 'Enregistrer, l\'agent apprend'}</button>
-          </div>
-        </div>`;
+  /* ── SECTION MODELES : la galerie, puis l editeur avec son apercu ──────── */
+  function pv2ModeleCarte({ ref, name, cat, subject, body, own, id, key }) {
+    const excerpt = String(body || '').split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 2).join(' ');
+    return `<article class="pv2-model-card">
+      <div class="pv2-model-name"><span>${esc(name)}</span>${own ? '<em class="pv2-tpl-origin">maison</em>' : ''}</div>
+      <span class="pv2-model-cat">${esc(cat)}</span>
+      <div class="pv2-model-subject">${pv2TexteJetons(subject) || '<em>Sans objet</em>'}</div>
+      <div class="pv2-model-excerpt">${pv2TexteJetons(excerpt)}</div>
+      <div class="pv2-model-actions">
+        <button type="button" class="pv2-btn sm" onclick="pv2ModeleUtiliser('${escJs(ref)}')">${ci('send')}Utiliser</button>
+        ${own
+          ? `<button type="button" class="pv2-btn sm" onclick="pv2TplEdit('${escJs(String(id))}')">${ci('pencil')}Modifier</button>
+             <button type="button" class="pv2-btn sm ghost" onclick="pv2TplArchive('${escJs(String(id))}')">Archiver</button>`
+          : `<button type="button" class="pv2-btn sm ghost" onclick="pv2ModeleCopier('${escJs(key)}')">${ci('copy')}Copier en modèle</button>`}
+      </div>
+    </article>`;
+  }
+
+  function pv2ModeleEditeur() {
+    const tpl = pv2Settings.tplEditing;
+    return `<div class="pv2-seq-editor-cols" data-pv2-mount="tplEditor">
+      <div class="pv2-composer-grid">
+        <label class="pv2-composer-field"><span>Nom</span><input id="pv2TplName" data-pl-focus="emails.modele.nom" value="${esc(tpl.name)}" placeholder="Ex. Offre rentrée" oninput="pv2TplField('name', this.value)"></label>
+        <label class="pv2-composer-field"><span>Catégorie</span><select onchange="pv2TplField('category', this.value)">${PV2_TPL_CATEGORIES.map(([key, label]) => `<option value="${key}"${tpl.category === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+        <div class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
+          ${pv2TokeditHtml({ id: 'pv2TplSubject', sink: 'tplSubject', value: tpl.subject, single: true, plFocus: 'emails.modele.objet', placeholder: 'Objet du modèle' })}
+        </div>
+        <div class="pv2-composer-field pv2-composer-wide"><span>Message</span>
+          ${pv2VarBar('pv2TplBody', ['prenom', 'nom', 'centre'])}
+          ${pv2TokeditHtml({ id: 'pv2TplBody', sink: 'tplBody', value: tpl.body, plFocus: 'emails.modele.message', placeholder: 'Bonjour {{prenom}},…' })}
+        </div>
+        <div class="pv2-composer-actions pv2-composer-wide">
+          <button type="button" class="pv2-btn" onclick="pv2TplCancel()">Annuler</button>
+          <span class="pv2-composer-spacer"></span>
+          <button type="button" class="pv2-btn primary" onclick="pv2TplSave()" ${pv2Settings.busy ? 'disabled' : ''}>${tpl.id ? 'Enregistrer le modèle' : 'Créer le modèle'}</button>
+        </div>
+      </div>
+      ${pv2ApercuVivantHtml('modele', { titre: 'Aperçu du mail (variables non remplies)' })}
+    </div>`;
+  }
+
+  function pv2EmailsSectionModeles() {
+    const tpl = pv2Settings.tplEditing;
+    const groups = [];
+    for (const s of PV2_STARTERS) {
+      let g = groups.find((x) => x.label === s.cat);
+      if (!g) { g = { label: s.cat, cards: [] }; groups.push(g); }
+      g.cards.push(pv2ModeleCarte({ ref: `starter:${s.key}`, name: s.name, cat: s.cat, subject: s.subject, body: s.body, own: false, key: s.key }));
     }
-    return `<section class="pv2-panel pv2-settings" data-pv2-mount="settings" aria-label="Réglages emails">
+    const owned = pv2Mail.templates.map((t) => pv2ModeleCarte({
+      ref: `tpl:${t.id}`, name: t.label || t.name || `Modèle ${t.id}`, cat: PV2_TPL_CATEGORY_LABELS[t.category] || t.category || 'Modèle',
+      subject: t.subject || '', body: t.body || '', own: true, id: t.id,
+    }));
+    return `<section class="pv2-panel pv2-settings" data-pv2-mount="settings" aria-label="Modèles">
       <div class="pv2-panel-head has-sub">
-        <div><h2>Réglages emails</h2><p class="pv2-panel-sub">Modèles, adresses d'envoi et cerveau de l'agent : tout vous appartient.</p></div>
-        <button type="button" class="pv2-btn sm" onclick="pv2OpenSettings()">Fermer</button>
+        <div><h2>Modèles</h2><p class="pv2-panel-sub">Des textes prêts à envoyer. Les nôtres servent de départ ; les vôtres apparaissent aussi dans le composeur.</p></div>
+        ${tpl ? '' : `<button type="button" class="pv2-btn sm primary" onclick="pv2TplEdit(null)">+ Nouveau modèle</button>`}
       </div>
       <div class="pv2-panel-body">
-        <div class="crm-segbar pv2-settings-seg" role="tablist">${seg}</div>
-        ${content}
+        ${tpl ? pv2ModeleEditeur() : `
+        <div class="pv2-model-group">
+          <h3>Vos modèles${owned.length ? ` (${owned.length})` : ''}</h3>
+          ${owned.length ? `<div class="pv2-model-grid">${owned.join('')}</div>` : '<div class="pv2-empty"><strong>Aucun modèle personnalisé</strong>Copiez un modèle fourni ou partez d\'une page blanche : il apparaîtra dans le composeur.</div>'}
+        </div>
+        ${groups.map((g) => `<div class="pv2-model-group"><h3>${esc(g.label)}</h3><div class="pv2-model-grid">${g.cards.join('')}</div></div>`).join('')}`}
       </div>
     </section>`;
+  }
+
+  /* ── SECTION EXPEDITEURS : les identites, et l adresse de reponse ───────── */
+  function pv2EmailsSectionExpediteurs() {
+    const identity = pv2Settings.idEditing;
+    const channel = pv2Mail.channel || {};
+    const centre = pv2Design.center || null;
+    const reponse = centre && centre.publicInfo ? String(centre.publicInfo.email || '').trim() : '';
+    const liste = identity ? `<div class="pv2-composer-grid">
+        <label class="pv2-composer-field"><span>Nom affiché</span><input data-pl-focus="emails.identite.nom" value="${esc(identity.label)}" placeholder="Ex. le nom de votre centre" oninput="pv2IdField('label', this.value)"></label>
+        <label class="pv2-composer-field"><span>Adresse email</span><input data-pl-focus="emails.identite.email" value="${esc(identity.email)}" placeholder="contact@votre-centre.be" oninput="pv2IdField('email', this.value)"></label>
+        <label class="pv2-composer-field pv2-settings-check"><span>&nbsp;</span><label class="pv2-check"><input type="checkbox" ${identity.isDefault ? 'checked' : ''} onchange="pv2IdField('isDefault', this.checked)"> Adresse par défaut</label></label>
+        <div class="pv2-composer-actions pv2-composer-wide">
+          <button type="button" class="pv2-btn" onclick="pv2Settings.idEditing = null; renderStaffEmailsPage();">Annuler</button>
+          <span class="pv2-composer-spacer"></span>
+          <button type="button" class="pv2-btn primary" onclick="pv2IdSave()" ${pv2Settings.busy ? 'disabled' : ''}>Ajouter l'adresse</button>
+        </div>
+      </div>`
+      : `<div class="pv2-settings-list">
+        ${pv2Mail.identities.length ? pv2Mail.identities.map((i) => `
+          <div class="pv2-settings-row">
+            <div><strong>${esc(i.label || i.email)}</strong><small>${esc(i.email)}${i.isDefault ? ' · par défaut' : ''}</small></div>
+            ${i.isDefault ? '<span class="pv2-chip">Par défaut</span>' : `<button type="button" class="pv2-btn sm" onclick="pv2IdDefault('${escJs(String(i.id))}')">Par défaut</button>`}
+            <button type="button" class="pv2-btn sm ghost" onclick="pv2IdDelete('${escJs(String(i.id))}')">Supprimer</button>
+          </div>`).join('') : '<div class="pv2-empty"><strong>Aucune adresse configurée</strong>Ajoutez l\'adresse (ou les adresses) avec lesquelles vos emails partent.</div>'}
+      </div>`;
+    return `<div class="pv2-overview-grid">
+      <section class="pv2-panel pv2-settings" data-pv2-mount="settings" aria-label="Expéditeurs">
+        <div class="pv2-panel-head has-sub">
+          <div><h2>Adresses d'envoi</h2><p class="pv2-panel-sub">Le nom et l'adresse que vos clients voient en tête de mail. Une adresse par défaut, les autres au choix dans le composeur.</p></div>
+          ${identity ? '' : `<button type="button" class="pv2-btn sm primary" onclick="pv2IdEdit()">+ Nouvelle adresse</button>`}
+        </div>
+        <div class="pv2-panel-body">${liste}</div>
+      </section>
+      <div class="pv2-overview-col">
+        <section class="pv2-panel" aria-label="Adresse de réponse">
+          <div class="pv2-panel-head has-sub"><div><h2>Adresse de réponse</h2><p class="pv2-panel-sub">Quand un client répond à un mail du centre, sa réponse arrive ici.</p></div></div>
+          <div class="pv2-panel-body pv2-reply-address">
+            ${pv2Design.loaded
+              ? (reponse ? `<strong>${esc(reponse)}</strong><p class="pv2-note">Adresse publique du centre, lue dans sa fiche. Elle se change avec l'adresse publique, pas ici.</p>` : '<strong>Non renseignée pour ce centre</strong><p class="pv2-note">La fiche du centre n\'a pas d\'adresse publique : les réponses des clients suivent l\'adresse d\'envoi.</p>')
+              : `<span class="pv2-live-state" aria-live="polite">${pv2Design.error ? esc(pv2Design.error) : 'Lecture de la fiche du centre…'}</span>`}
+          </div>
+        </section>
+        <section class="pv2-panel" aria-label="Fournisseur d'envoi">
+          <div class="pv2-panel-head has-sub"><div><h2>Fournisseur d'envoi</h2><p class="pv2-panel-sub">Ce que Pinlane sait de la chaîne d'envoi.</p></div></div>
+          <div class="pv2-panel-body pv2-reply-address">
+            ${pv2Mail.metaLoaded
+              ? `<strong>${channel.resendConfigured ? 'Envoi configuré' : 'Envoi non configuré'}</strong><p class="pv2-note">${channel.resendConfigured ? 'Les mails partent par le fournisseur relié à Pinlane.' : 'Aucun fournisseur relié : les mails restent en file sans partir.'}${channel.aiConfigured ? ' L\'agent utilise un modèle de langage pour lire les mails reçus.' : ' L\'agent lit les mails reçus avec ses règles internes.'}</p>`
+              : '<span class="pv2-live-state" aria-live="polite">Chargement…</span>'}
+          </div>
+        </section>
+      </div>
+    </div>`;
+  }
+
+  /* ── SECTION L AGENT : ses textes, et ce qu il ne sait pas ───────────────── */
+  function pv2EmailsSectionAgent() {
+    const brain = pv2Settings.brain;
+    const form = !brain.loaded
+      ? `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
+      : `<div class="pv2-composer-grid">
+        <p class="pv2-panel-sub pv2-composer-wide">L'agent répond aux mails reçus avec CES textes. Modifiez-les librement : ce que vous écrivez ici gagne toujours sur le modèle d'origine. Champ vidé = retour au modèle.</p>
+        <label class="pv2-composer-field"><span>Signature</span>
+          <input data-pl-focus="emails.agent.signature" value="${esc(brain.draft.signature)}" placeholder="${esc(brain.defaults.signature || '')}" oninput="pv2BrainField('signature', null, this.value)">
+        </label>
+        <label class="pv2-composer-field pv2-composer-wide"><span>Consignes libres (ce que l'agent doit toujours savoir)</span>
+          <textarea rows="3" data-pl-focus="emails.agent.consignes" placeholder="Ex. Le parking est gratuit derrière le bâtiment. On ne prend pas de réservation le lundi." oninput="pv2BrainField('extra', null, this.value)">${esc(brain.draft.extra)}</textarea>
+        </label>
+        ${Object.entries(brain.defaults.intents || PV2_INTENT_LABELS).map(([intent, label]) => `
+        <label class="pv2-composer-field pv2-composer-wide"><span>Réponse « ${esc(label)} »${brain.overrides.faq[intent] ? ' <em class="pv2-seq-pill">modifiée</em>' : ''}</span>
+          <textarea rows="4" data-pl-focus="emails.agent.faq.${esc(intent)}" placeholder="${esc(brain.defaults.faq[intent]?.body || 'Réponse type…')}" oninput="pv2BrainField('faq', '${escJs(intent)}', this.value)">${esc(brain.draft.faq[intent] || '')}</textarea>
+        </label>`).join('')}
+        <div class="pv2-composer-actions pv2-composer-wide">
+          <button type="button" class="pv2-btn primary" onclick="pv2BrainSave()" ${pv2Settings.busy ? 'disabled' : ''}>${pv2Settings.busy ? 'Enregistrement…' : 'Enregistrer, l\'agent apprend'}</button>
+        </div>
+      </div>`;
+    return `<div class="pv2-agent-grid">
+      <section class="pv2-panel pv2-settings" data-pv2-mount="settings" aria-label="Réglages de l'agent">
+        <div class="pv2-panel-head has-sub">
+          <div><h2>Ce que l'agent écrit</h2><p class="pv2-panel-sub">Sa signature, ses consignes, et sa réponse type par sujet.</p></div>
+        </div>
+        <div class="pv2-panel-body">${form}</div>
+      </section>
+      ${pv2SectionApprentissage({ toujours: true })}
+    </div>`;
   }
 
   /* ── Séquences automatiques : les emails qui partent tout seuls, pilotés
@@ -3103,8 +3434,8 @@
     }
   };
 
-  function pv2SuppressionPanel() {
-    const open = !!state.staffSuppressOpen;
+  function pv2SuppressionPanel(options = {}) {
+    const open = !!options.toujoursOuvert || !!state.staffSuppressOpen;
     const count = pv2Suppress.loaded ? pv2Suppress.total : (pv2Suppress.entries.length || 0);
     const rows = pv2Suppress.entries.map((entry) => {
       const when = formatOpsTimestamp(entry.createdAt) || '-';
@@ -3125,7 +3456,7 @@
             ? `${count} adresse${count > 1 ? 's' : ''} exclue${count > 1 ? 's' : ''} des envois marketing (campagnes, anniversaire, réactivation).`
             : 'Les adresses qui se sont retirées des envois marketing (campagnes, anniversaire, réactivation).'} Elles continuent de recevoir les confirmations et rappels de leurs réservations.</p>
         </div>
-        <button type="button" class="pv2-btn sm" onclick="pv2ToggleSuppress()" aria-expanded="${open}">${open ? 'Masquer' : 'Voir la liste'}</button>
+        ${options.toujoursOuvert ? '' : `<button type="button" class="pv2-btn sm" onclick="pv2ToggleSuppress()" aria-expanded="${open}">${open ? 'Masquer' : 'Voir la liste'}</button>`}
       </div>
       ${open ? `<div class="pv2-panel-body" data-pv2-mount="suppress">
         <div class="pv2-suppress-add" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;">
@@ -3446,8 +3777,12 @@
 
   /* ── Édition d'une séquence : sujet, message, timing, cap, tout modifiable
      (contrat C2), défauts visibles en placeholder, reset 1-clic. ── */
+  /* ── Édition d'une séquence : sujet, message, timing, cap, tout modifiable
+     (contrat C2), défauts visibles en placeholder, reset 1-clic. Depuis le
+     2026-09-16 l editeur montre a droite le mail VIVANT rendu par le serveur
+     avec le brouillon en cours : la gerante voit ce que la sequence ecrit. ── */
   window.pv2AutoEdit = function (key) {
-    if (mkAuto.editKey === key) { mkAuto.editKey = ''; renderStaffEmailsPage(); return; }
+    if (mkAuto.editKey === key) { mkAuto.editKey = ''; pv2ApercuAnnuler('auto'); renderStaffEmailsPage(); return; }
     const setting = (mkAuto.settings && mkAuto.settings[key]) || {};
     const def = mkAuto.defaults[key] || {};
     mkAuto.editKey = key;
@@ -3458,12 +3793,24 @@
       cap: setting.cap !== undefined ? Number(setting.cap) : (def.cap !== undefined ? Number(def.cap) : undefined),
       reviewUrl: setting.reviewUrl || '',
     };
-    renderStaffEmailsPage();
+    if (state.staffEmailsSection !== 'sequences') pv2EmailsGo('sequences');
+    else renderStaffEmailsPage();
+    pv2ApercuAuto(0);
   };
 
   window.pv2AutoEditField = function (field, value) {
     mkAuto.editDraft[field] = field === 'offsetDays' || field === 'cap' ? Number(value) : value;
+    if (field === 'subject' || field === 'body' || field === 'reviewUrl') pv2ApercuAuto();
   };
+
+  // L apercu vivant d une sequence Pinlane : le brouillon de l editeur OUVERT,
+  // jamais sans editeur (« Voir le mail » d une carte fermee reste un rendu du
+  // texte en vigueur, et le gate compte ses appels).
+  function pv2ApercuAuto(delai = 500) {
+    const key = mkAuto.editKey;
+    if (!key) return;
+    pv2PlanifierApercu('auto', () => (mkAuto.editKey === key ? { ...pv2AutoDraftBody(key), action: 'automationPreview' } : null), delai);
+  }
 
   window.pv2AutoEditSave = async function (key) {
     if (mkAuto.busyKey) return;
@@ -3484,6 +3831,7 @@
       mkAuto.settings = payload.settings || mkAuto.settings;
       if (payload.defaults) mkAuto.defaults = payload.defaults;
       mkAuto.editKey = '';
+      pv2ApercuAnnuler('auto');
       toast('Séquence personnalisée ✓');
     } catch (error) {
       toast(error.message || 'Enregistrement impossible.');
@@ -3505,6 +3853,7 @@
       mkAuto.settings = payload.settings || mkAuto.settings;
       if (payload.defaults) mkAuto.defaults = payload.defaults;
       mkAuto.editKey = '';
+      pv2ApercuAnnuler('auto');
       toast('Séquence remise au modèle d\'origine.');
     } catch (error) {
       toast(error.message || 'Réinitialisation impossible.');
@@ -3656,26 +4005,59 @@
     const warning = hasDetails && String(d.body || '').trim()
       ? `<p class="mk-auto-edit-warn">Votre texte remplace le message entier : le récapitulatif (date, heure, formule, participants) ne sera plus affiché. Pensez à y remettre les infos utiles, avec les variables ci-dessus.</p>`
       : '';
+    // Deux colonnes : les champs, et le mail vivant rendu par le serveur.
     return `<div class="mk-auto-edit" data-pv2-mount="autoEditor">
-      <div class="mk-auto-edit-field"><span>Objet</span>
-        ${pv2TokeditHtml({ id: 'mkAutoSubject', sink: 'autoSubject', value: d.subject, single: true, plFocus: 'emails.auto.objet', placeholder: def.subject || 'Objet par défaut' })}
+      <div class="mk-auto-edit-fields">
+        <div class="mk-auto-edit-field"><span>Objet</span>
+          ${pv2TokeditHtml({ id: 'mkAutoSubject', sink: 'autoSubject', value: d.subject, single: true, plFocus: 'emails.auto.objet', placeholder: def.subject || 'Objet par défaut' })}
+        </div>
+        <div class="mk-auto-edit-field"><span>Message</span>
+          ${pv2TokeditHtml({ id: 'mkAutoBody', sink: 'autoBody', value: d.body, plFocus: 'emails.auto.message', placeholder: def.body || 'Message par défaut' })}
+        </div>
+        ${variables}
+        ${timingSelect}
+        ${capSelect}
+        ${reviewField}
+        ${warning}
       </div>
-      <div class="mk-auto-edit-field"><span>Message</span>
-        ${pv2TokeditHtml({ id: 'mkAutoBody', sink: 'autoBody', value: d.body, plFocus: 'emails.auto.message', placeholder: def.body || 'Message par défaut' })}
-      </div>
-      ${variables}
-      ${timingSelect}
-      ${capSelect}
-      ${reviewField}
-      ${warning}
+      ${pv2ApercuVivantHtml('auto', { titre: 'Aperçu avec une réservation d\'exemple' })}
       <div class="mk-auto-edit-actions">
-        <button type="button" class="pv2-btn sm" onclick="pv2AutoEditReset('${meta.key}')" ${busy ? 'disabled' : ''}>Réinitialiser</button>
-        <button type="button" class="pv2-btn sm" onclick="pv2AutoPreview('${meta.key}')" ${busy ? 'disabled' : ''}>Voir le mail</button>
-        <button type="button" class="pv2-btn sm" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>
-        <button type="button" class="pv2-btn sm" onclick="pv2AutoEdit('${meta.key}')">Fermer</button>
         <button type="button" class="pv2-btn sm primary" onclick="pv2AutoEditSave('${meta.key}')" ${busy ? 'disabled' : ''}>${busy ? 'Enregistrement…' : 'Enregistrer'}</button>
+        <button type="button" class="pv2-btn sm" onclick="pv2AutoEditReset('${meta.key}')" ${busy ? 'disabled' : ''}>Réinitialiser</button>
+        <button type="button" class="pv2-btn sm" onclick="pv2AutoPreview('${meta.key}')" ${busy ? 'disabled' : ''}>Voir le mail en grand</button>
+        <button type="button" class="pv2-btn sm" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>
+        <button type="button" class="pv2-btn sm ghost" onclick="pv2AutoEdit('${meta.key}')">Fermer</button>
       </div>
     </div>`;
+  }
+
+  // Le texte EFFECTIF d une sequence Pinlane : celui du gerant s il en a ecrit
+  // un, sinon le texte d usine servi par le serveur. Jamais un blurb code en
+  // dur : c est ce que le client recoit.
+  function mkAutoTexteEffectif(key) {
+    const setting = (mkAuto.settings && mkAuto.settings[key]) || {};
+    const def = mkAuto.defaults[key] || {};
+    return {
+      subject: String(setting.subject || def.subject || ''),
+      body: String(setting.body || def.body || ''),
+      connu: Boolean(setting.subject || setting.body || def.subject || def.body),
+    };
+  }
+
+  // La phrase de declenchement telle qu elle s applique VRAIMENT (timing du
+  // reglage, sinon celui d usine), pas la description generique.
+  function mkAutoPhraseDeclenchement(meta) {
+    const setting = (mkAuto.settings && mkAuto.settings[meta.key]) || {};
+    const def = mkAuto.defaults[meta.key] || {};
+    if (meta.timing) {
+      const n = setting.offsetDays !== undefined ? Number(setting.offsetDays) : (def.offsetDays !== undefined ? Number(def.offsetDays) : undefined);
+      if (Number.isFinite(n)) { const phrase = meta.timing.label(n); return phrase.charAt(0).toUpperCase() + phrase.slice(1); }
+    }
+    if (meta.cap) {
+      const n = setting.cap !== undefined ? Number(setting.cap) : (def.cap !== undefined ? Number(def.cap) : undefined);
+      if (Number.isFinite(n)) return `${meta.desc} ${meta.cap.label(n)}.`;
+    }
+    return meta.desc;
   }
 
   function mkAutoCard(meta) {
@@ -3685,11 +4067,7 @@
     const busy = mkAuto.busyKey === meta.key;
     const editing = mkAuto.editKey === meta.key;
     const modified = pv2AutoHasOverride(meta.key);
-    // L'aperçu de la carte montrait une phrase CODÉE EN DUR qui ne
-    // correspondait à aucun texte réellement envoyé. On affiche maintenant le
-    // vrai texte : celui du gérant s'il en a écrit un, sinon le texte d'usine
-    // servi par le serveur. Le rendu HTML complet est derrière « Voir le mail ».
-    const def = mkAuto.defaults[meta.key] || {};
+    const effectif = mkAutoTexteEffectif(meta.key);
     // ÉTOILE AMBRE SUPPRIMÉE : elle ne portait aucune information lisible (son
     // seul sens vivait dans un title=, invisible), et elle dépensait l'ambre
     // que cet écran réserve à l'ATTENTE. Couleur = sens, sinon rien.
@@ -3705,11 +4083,21 @@
         <strong>${esc(meta.label)}${modified ? '<span class="mk-auto-mod">modifié</span>' : ''}</strong>
         <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
       </div>
-      <p class="mk-auto-desc">${esc(meta.desc)}</p>
-      <button type="button" class="mkw-link mk-auto-preview" onclick="pv2AutoPreview('${meta.key}')" ${mkAuto.busyKey === meta.key ? 'disabled' : ''}>Voir le mail</button>
+      <p class="mk-auto-desc">${esc(mkAutoPhraseDeclenchement(meta))}</p>
+      <div class="mk-auto-effectif">
+        <span class="mk-auto-effectif-label">Ce qui part</span>
+        ${effectif.connu
+          ? `<span class="mk-auto-subject">${pv2TexteJetons(effectif.subject) || '<em>Sans objet</em>'}</span>
+             <span class="mk-auto-line">${pv2TexteJetons(pv2PremiereLigne(effectif.body)) || '<em>Message vide</em>'}</span>`
+          : '<span class="mk-auto-line">Texte d\'usine non chargé</span>'}
+      </div>
       <div class="mk-auto-foot">
         <span class="mk-auto-stats">${statsTxt}</span>
-        <button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="pv2AutoEdit('${meta.key}')">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
+        <div class="mk-auto-actions">
+          <button type="button" class="mkw-link mk-auto-preview" onclick="pv2AutoPreview('${meta.key}')" ${mkAuto.busyKey === meta.key ? 'disabled' : ''}>Voir le mail</button>
+          <button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="pv2AutoEdit('${meta.key}')">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
+          <button type="button" class="pv2-btn sm ghost mk-auto-test" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>
+        </div>
       </div>
       ${editing ? mkAutoEditor(meta) : ''}
     </article>`;
@@ -3851,23 +4239,6 @@
     </section>`;
   }
 
-  // Le bandeau se veut factuel : QUI, et DEPUIS QUAND. Pas d interdiction, pas
-  // de bouton grise : la personne devant l ecran sait des choses que le produit
-  // ignore (le collegue vient de partir, il a demande de reprendre). Elle
-  // decide, informee.
-  function pv2BandeauPrise(row) {
-    const prise = pv2PriseDunAutre(row);
-    if (!prise) return '';
-    const nom = String(prise.memberName || prise.memberId || 'Quelqu\'un');
-    // Le ROLE, quand il est connu : dans un centre ou plusieurs personnes se
-    // relaient, savoir que c est la direction qui repond, et pas un equipier du
-    // bar, change ce qu on fait ensuite.
-    const role = String(prise.memberRole || '').trim();
-    const depuis = prise.claimedAt ? Math.max(0, Math.round((Date.now() - new Date(prise.claimedAt).getTime()) / 60000)) : 0;
-    const quand = depuis >= 1 ? ` depuis ${depuis} min` : ' à l\'instant';
-    return `<div class="pv2-prise-alerte" role="status">${ci('alert')}<span><strong>${esc(nom)}</strong>${role ? ` <span class="pv2-prise-role">${esc(role)}</span>` : ''} s'occupe de ce message${esc(quand)}. Écrivez aussi si vous voulez, mais le client recevrait deux réponses.</span></div>`;
-  }
-
   /* ── LE MAIL RECU, LU COMME UN MAIL ──────────────────────────────────────
      Avant : le texte brut du mail etait jete dans un cadre a defilement, avec
      ses chevrons de citation. Sur un « Ok », ca donnait trois ecrans de fil
@@ -3962,13 +4333,20 @@
      la memoire deja constituee. Sans la seconde, on ne pourrait ni verifier ce
      que l agent a retenu, ni corriger un fait devenu faux, et l apprentissage
      deviendrait un risque au lieu d un progres. ────────────────────────────── */
-  function pv2SectionApprentissage() {
+  // `options.max` : l Apercu ne montre que les premieres questions et renvoie
+  // vers la section L agent pour le reste ; `options.toujours` : la section
+  // L agent affiche le bloc meme quand il n y a rien, pour dire que l agent a
+  // su repondre a tout (un bloc absent y serait une page trouee).
+  function pv2SectionApprentissage(options = {}) {
     const questions = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.questions) || [];
     const appris = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.appris) || [];
-    if (!questions.length && !appris.length) return '';
+    if (!questions.length && !appris.length && !options.toujours) return '';
     const busy = pv2Mail.apprentissageBusy;
+    const max = Number(options.max) > 0 ? Number(options.max) : questions.length;
+    const visibles = questions.slice(0, max);
+    const reste = questions.length - visibles.length;
 
-    const cartes = questions.map((q) => {
+    const cartes = visibles.map((q) => {
       const cle = String(q.communicationId);
       const brouillon = pv2Mail.reponsesApprises[cle] || '';
       const enCours = busy === cle;
@@ -3977,7 +4355,7 @@
           <p class="pv2-savoir-question">${esc(q.question)}</p>
           <p class="pv2-savoir-origine">Demandé par ${esc(q.mailDe || 'un client')}, à propos de « ${esc(String(q.mailSujet || '').slice(0, 70))} »</p>
           <textarea class="pv2-savoir-reponse" rows="2" placeholder="Répondez une fois : l'agent le saura pour tous les prochains messages."
-            aria-label="Ce que l'agent doit retenir"
+            aria-label="Ce que l'agent doit retenir" data-pl-focus="emails.savoir.${esc(cle)}"
             oninput="pv2SavoirBrouillon('${escJs(cle)}', this.value)">${esc(brouillon)}</textarea>
           <div class="pv2-savoir-actions">
             <button type="button" class="pv2-btn sm primary" ${enCours || !brouillon.trim() ? 'disabled' : ''}
@@ -3998,7 +4376,7 @@
       </li>`).join('');
 
     return `
-      <section class="pv2-savoir">
+      <section class="pv2-savoir" aria-label="Ce que l'agent ne sait pas">
         <div class="pv2-savoir-head">
           <h2>Ce que l'agent ne sait pas</h2>
           <span class="pv2-savoir-compte">${questions.length ? `${questions.length} question${questions.length > 1 ? 's' : ''} en attente` : 'Aucune question en attente'}</span>
@@ -4006,6 +4384,7 @@
         ${questions.length
           ? `<div class="pv2-savoir-liste">${cartes}</div>`
           : '<p class="pv2-savoir-vide">L\'agent a su répondre à tous les messages reçus.</p>'}
+        ${reste > 0 ? `<button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('agent')">${reste} autre${reste > 1 ? 's' : ''} question${reste > 1 ? 's' : ''} dans L'agent</button>` : ''}
         ${appris.length ? `
           <button type="button" class="pv2-savoir-bascule" aria-expanded="${pv2Mail.memoireOuverte}"
             onclick="pv2BasculerMemoire()">${pv2Mail.memoireOuverte ? 'Masquer' : 'Voir'} ce qu'il a appris (${appris.length})</button>
@@ -4077,44 +4456,6 @@
       renderStaffEmailsPage();
     }
   };
-
-  function pv2InboundDetail(row) {
-    const analysis = pv2InboxAnalysis(row);
-    const draft = pv2InboxReplyDraft(row);
-    const busy = pv2Mail.replyBusy === row.uid;
-    const intentLabel = analysis ? (analysis.intentLabel || PV2_INTENT_LABELS[analysis.intent] || analysis.intent) : '';
-    return `
-      <div class="pv2-panel-body pv2-mail-detail">
-        ${pv2EnteteMail(row)}
-        ${pv2CorpsMail(row)}
-        ${analysis ? `
-        <div class="pv2-inbox-analysis">
-          <div class="pv2-mail-preview-title">Ce qu'il veut</div>
-          <div class="pv2-inbox-summary">
-            <span class="pv2-inbox-intent">${esc(intentLabel)}</span>
-            ${analysis.urgency === 'haute' ? '<span class="pv2-inbox-urgent">Urgent</span>' : ''}
-            <p>${esc(analysis.summary || '')}</p>
-          </div>
-        </div>
-        ${pv2BandeauPrise(row)}
-        <div class="pv2-inbox-reply">
-          <div class="pv2-mail-preview-title">Réponse proposée${analysis.provider && analysis.provider !== 'rules' ? ' (IA)' : ''}</div>
-          <input class="pv2-inbox-reply-subject" data-pl-focus="emails.reponse.objet" value="${esc(draft.subject)}" aria-label="Objet de la réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'subject', this.value)">
-          <textarea class="pv2-inbox-reply-body" data-pl-focus="emails.reponse.message" rows="7" aria-label="Réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'body', this.value)">${esc(draft.body)}</textarea>
-          <div class="pv2-composer-actions">
-            <button type="button" class="pv2-btn" onclick="pv2InboxReanalyze('${escJs(row.uid)}')" ${busy ? 'disabled' : ''}>${ci('refresh')}Ré-analyser</button>
-            <span class="pv2-composer-spacer"></span>
-            <button type="button" class="pv2-btn primary" onclick="pv2InboxReply('${escJs(row.uid)}')" ${busy ? 'disabled' : ''}>${ci('send')}${busy ? 'Envoi…' : 'Envoyer la réponse'}</button>
-          </div>
-        </div>` : `
-        <div class="pv2-inbox-analysis">
-          <div class="pv2-mail-preview-title">Pas encore analysé</div>
-          <div class="pv2-composer-actions">
-            <button type="button" class="pv2-btn" onclick="pv2InboxReanalyze('${escJs(row.uid)}')" ${busy ? 'disabled' : ''}>${ci('sparkles')}${busy ? 'Analyse…' : 'Analyser ce mail'}</button>
-          </div>
-        </div>`}
-      </div>`;
-  }
 
   // Accord singulier/pluriel des compteurs. « 1 prêt(s) à partir » et
   // « 2 tentative(s) » traînaient sur un écran lu tous les jours par la
@@ -4244,7 +4585,7 @@
     // scrollTop repartait a zero. On memorise LES DEUX (page + cadres
     // defilants internes) et on les repose apres le paint.
     const scrollY = window.scrollY;
-    const innerScrolls = [...root.querySelectorAll('.pv2-mail-list, .pv2-mail-detail')]
+    const innerScrolls = [...root.querySelectorAll('.pv2-mail-list, .pv2-mail-detail, .pv2-thread-list')]
       .map((el) => ({ cls: el.className, top: el.scrollTop }))
       .filter((s) => s.top > 0);
     const paint = () => renderStaffEmailsPaint(root, errorMessage);
@@ -4261,152 +4602,1270 @@
     if (pv2Mail.composerOpen && pv2Combo.open) pv2ComboPaint();
   };
 
-  function renderStaffEmailsPaint(root, errorMessage = '') {
-    if (!mkAuto.loaded && !mkAuto.loading) setTimeout(() => loadStaffAutomations(), 0);
-    if (!pv2Seq.loaded && !pv2Seq.loading) setTimeout(() => loadPv2Sequences(), 0);
-    // Chargé à l'ouverture de la page, pas seulement à l'ouverture du panneau :
-    // le compteur est le seul signal utile quand la section est repliée, et
-    // afficher « 0 » sans avoir demandé serait un chiffre inventé.
-    if (!pv2Suppress.loaded && !pv2Suppress.loading) setTimeout(() => loadPv2Suppressions(), 0);
-    // C14 : ops-console.js est injecté à la demande, requestOpsAdminLoad
-    // (app-main) charge le script puis déclenche loadOpsAdmin.
-    if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => requestOpsAdminLoad(false), 0);
-    const everyRow = getStaffEmailRows();
-    const inboundRows = everyRow.filter(pv2IsInbound);
-    /* ORIGINE (demande du proprio) : dissocier les mails partis TOUT SEULS
-       (séquences, rappels, worker) des mails envoyés PAR L'ÉQUIPE (messages,
-       relances, campagnes, tests). Le classifieur est getStaffEmailOrigin
-       (app-main.js), ancré sur les champs payload posés par le serveur.
-       Compteurs : le VRAI nombre par catégorie, sur toutes les communications
-       chargées, indépendamment des filtres de statut. */
-    const originFilter = ['all', 'auto', 'manual', 'inbound'].includes(state.staffEmailOriginFilter)
-      ? state.staffEmailOriginFilter
-      : 'all';
-    const originCounts = { auto: 0, manual: 0, inbound: 0 };
-    everyRow.forEach((row) => { originCounts[getStaffEmailOrigin(row)] += 1; });
-    // La file (et ses compteurs de statut) se restreint à l'origine choisie :
-    // les chiffres des segments de statut collent toujours à la liste affichée.
-    const scopedRows = originFilter === 'auto' || originFilter === 'manual'
-      ? everyRow.filter((row) => getStaffEmailOrigin(row) === originFilter)
-      : everyRow;
-    const allRows = scopedRows.filter((row) => !pv2IsInbound(row));
-    const filter = state.staffEmailFilter || 'all';
-    const query = String(state.staffEmailQuery || '').trim().toLowerCase();
-    // Le filtre « Reçus » vit ici (app-main ne connaît que les statuts d'envoi).
-    const rows = filter === 'inbound'
-      ? inboundRows.filter((row) => !query || getStaffEmailText(row).includes(query))
-      : getStaffEmailRowsFiltered().filter((row) => !pv2IsInbound(row));
-    const selected = getSelectedStaffEmailRow(rows);
-    if (selected && state.staffEmailSelectedId !== selected.uid) state.staffEmailSelectedId = selected.uid;
-    const metrics = getStaffEmailMetrics(allRows);
-    const inboundWaiting = inboundRows.filter((row) => !(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt))).length;
-    const updatedAt = opsAdminCache.lastLoadedAt ? formatOpsTimestamp(opsAdminCache.lastLoadedAt) : 'non chargé';
+  /* ==========================================================================
+     EMAILS v4 (2026-09-16) : LA PAGE EN SECTIONS
+     Une vue globale (Apercu) puis neuf sections, chacune sa page. Les mails
+     recus se lisent en CONVERSATIONS (un fil par echange, la reponse du client
+     reste dedans), les envoyes portent leur suivi (remis, ouvert, clique), les
+     sequences montrent le texte qui part vraiment, et le design des mails
+     (gabarit + signature) se regle avec un apercu vivant.
+     Contrats serveur : spec §3.7 (emailOverview, emailThreads, emailThread,
+     emailDesign, emailDesignPreview, markCommunicationRead, setThreadStatus,
+     customSequencePreview, sendCustomSequenceTest).
+     ======================================================================== */
 
-    /* « En file » était BLEU, c'est-à-dire de la couleur réservée à
-       l'information, alors qu'un mail programmé pas encore parti est un état
-       d'ATTENTE : sa couleur est l'ambre. Et « en file » est du vocabulaire de
-       serveur de mails ; pour une gérante c'est « en attente ». */
-    const KIND_META = {
-      queued: { label: 'En attente', tone: 'amber' },
-      sent: { label: 'Envoyé', tone: 'green' },
-      failed: { label: 'Échec', tone: 'red' },
-      draft: { label: 'Brouillon', tone: '' },
-      cancelled: { label: 'Annulé', tone: '' },
+  const PV2_EMAILS_TABS = [
+    { key: 'apercu', label: 'Aperçu' },
+    { key: 'recus', label: 'Reçus' },
+    { key: 'envoyes', label: 'Envoyés' },
+    { key: 'sequences', label: 'Séquences' },
+    { key: 'modeles', label: 'Modèles' },
+    { key: 'apparence', label: 'Apparence' },
+    { key: 'expediteurs', label: 'Expéditeurs' },
+    { key: 'agent', label: 'L’agent' },
+    { key: 'exclusions', label: 'Exclusions' },
+    // Les campagnes exigent leur permission : sans elle, l onglet n existe pas
+    // (regle DESIGN.md 9 : un bouton mene a une action reelle, ou il n existe pas).
+    { key: 'campagnes', label: 'Campagnes', permission: 'campaigns.manage' },
+  ];
+  const PV2_SECTION_SUB = {
+    apercu: 'Ce qui arrive, ce qui part, ce qui n\'est pas parti',
+    recus: 'Les conversations avec vos clients, message par message',
+    envoyes: 'Chaque mail parti du centre, avec son suivi',
+    sequences: 'Les mails qui partent tout seuls, au bon moment',
+    modeles: 'Des textes prêts à envoyer, les nôtres et les vôtres',
+    apparence: 'Le gabarit et la signature de tous vos mails',
+    expediteurs: 'Les adresses avec lesquelles vos mails partent',
+    agent: 'Ce que l\'agent sait, et ce qu\'il vous demande',
+    exclusions: 'Qui ne veut plus recevoir de marketing',
+    campagnes: 'Un mail à un groupe de clients, ciblé depuis votre base',
+  };
+
+  function pv2PeutVoirSection(key) {
+    const tab = PV2_EMAILS_TABS.find((t) => t.key === key);
+    if (!tab) return false;
+    if (!tab.permission) return true;
+    return typeof canUseStaffPermission !== 'function' || canUseStaffPermission(tab.permission);
+  }
+
+  // La section courante, toujours une section que ce role peut voir : un
+  // hash « campagnes » chez un manager retombe sur l apercu, sans message.
+  function pv2SectionCourante() {
+    const brute = typeof normalizeStaffEmailsSection === 'function'
+      ? normalizeStaffEmailsSection(state.staffEmailsSection)
+      : (PV2_EMAILS_TABS.some((t) => t.key === state.staffEmailsSection) ? state.staffEmailsSection : 'apercu');
+    if (pv2PeutVoirSection(brute)) return brute;
+    state.staffEmailsSection = 'apercu';
+    return 'apercu';
+  }
+
+  window.pv2EmailsGo = function (section) {
+    const cible = pv2PeutVoirSection(section) ? section : 'apercu';
+    const avant = state.staffEmailsSection;
+    state.staffEmailsSection = cible;
+    save();
+    // Quitter les conversations, c est lacher le message qu on lisait : un
+    // collegue ne doit pas voir « Marie repond » alors que Marie est partie
+    // regler les sequences.
+    if (avant === 'recus' && cible !== 'recus' && pv2Mail.prise.communicationId) pv2RelacherLaMain();
+    if (typeof setStaffRouteHash === 'function') setStaffRouteHash('emails', cible);
+    renderStaffEmailsPage();
+    if (typeof syncStaffMenuState === 'function') syncStaffMenuState();
+  };
+
+  // Clavier sur la sous-navigation (motif tablist) : fleches, Home, End
+  // deplacent ET activent. `event.currentTarget` est le bouton porteur de
+  // l attribut onkeydown, jamais un enfant.
+  window.pv2EmailsTabKey = function (event) {
+    const touches = { ArrowLeft: -1, ArrowRight: 1, Home: 'home', End: 'end' };
+    const mouvement = touches[event.key];
+    if (mouvement === undefined) return;
+    const tabs = [...document.querySelectorAll('#staffEmailsPage .pl-subnav-item')];
+    const courant = tabs.indexOf(event.currentTarget);
+    if (courant < 0 || !tabs.length) return;
+    event.preventDefault();
+    let index = courant;
+    if (mouvement === 'home') index = 0;
+    else if (mouvement === 'end') index = tabs.length - 1;
+    else index = (courant + mouvement + tabs.length) % tabs.length;
+    const section = tabs[index].getAttribute('data-section');
+    pv2EmailsGo(section);
+    const frais = document.querySelector(`#staffEmailsPage .pl-subnav-item[data-section="${section}"]`);
+    if (frais) frais.focus();
+  };
+
+  // « Actualiser » : les donnees de la page ET celles de la section ouverte.
+  window.pv2EmailsActualiser = function () {
+    if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
+    const section = pv2SectionCourante();
+    if (section === 'apercu') { loadPv2Overview(true); loadPv2ThreadsApercu(true); }
+    if (section === 'recus') { loadPv2Threads(true); loadPv2Overview(true); if (pv2Threads.selectedId) loadPv2ThreadDetail(pv2Threads.selectedId, true); }
+    if (section === 'envoyes') loadPv2Overview(true);
+    if (section === 'sequences') { loadStaffAutomations(true); loadPv2Sequences(true); loadPv2Overview(true); }
+    if (section === 'apparence' || section === 'expediteurs') { loadPv2Design(true); loadPv2MailMeta(true); }
+    if (section === 'modeles') loadPv2MailMeta(true);
+    if (section === 'agent') loadPv2Brain(true);
+    if (section === 'exclusions') loadPv2Suppressions(true);
+    if (section === 'campagnes' && typeof loadPv2Campaigns === 'function') loadPv2Campaigns(true);
+  };
+
+  // Un rendu ne se fait que si la page est celle a l ecran : un chargement qui
+  // finit pendant qu on est ailleurs ne doit pas reconstruire la page cachee.
+  function pv2RenderSiActive() {
+    if (typeof isStaffEmailsActive === 'function' && !isStaffEmailsActive()) return;
+    renderStaffEmailsPage();
+  }
+
+  /* ── LES CADRES DE MAIL : iframe sandbox, srcdoc pose en PROPRIETE ───────
+     Le HTML d un mail (celui du serveur, ou celui stocke tel qu envoye) n est
+     jamais injecte dans le document de la console : il vit dans une iframe
+     `sandbox=""`, et son contenu est pose en propriete apres la peinture,
+     jamais serialise dans l attribut. ── */
+  const PV2_FRAMES = {};
+  function pv2FrameHtml(cle, html, classe, titre) {
+    PV2_FRAMES[cle] = String(html || '');
+    return `<iframe class="${esc(classe)}" sandbox="" title="${esc(titre || 'Aperçu du mail')}" data-pv2-frame="${esc(cle)}"></iframe>`;
+  }
+  function pv2FillFrames(root) {
+    root.querySelectorAll('iframe[data-pv2-frame]').forEach((frame) => {
+      const html = PV2_FRAMES[frame.getAttribute('data-pv2-frame')] || '';
+      frame.__pv2Html = html;
+      frame.srcdoc = html;
+    });
+  }
+
+  /* ── L APERCU VIVANT : un seul mecanisme pour sequences, modeles, design ──
+     500 ms apres la derniere frappe, une requete part ; la precedente est
+     annulee ; et une reponse en retard ne peut jamais ecraser une reponse plus
+     recente (numero de serie). Le resultat est peint SUR PLACE, sans rendu de
+     page : le focus de la gerante reste dans son champ. ── */
+  const PV2_APERCUS = {};
+  const PV2_APERCU_ETAT = {};
+  function pv2ApercuMemoire(cle) {
+    if (!PV2_APERCUS[cle]) PV2_APERCUS[cle] = { timer: 0, ctrl: null, serie: 0 };
+    return PV2_APERCUS[cle];
+  }
+  function pv2PlanifierApercu(cle, construire, delai = 500) {
+    const a = pv2ApercuMemoire(cle);
+    clearTimeout(a.timer);
+    if (delai <= 0) { pv2LancerApercu(cle, construire); return; }
+    a.timer = setTimeout(() => pv2LancerApercu(cle, construire), delai);
+  }
+  async function pv2LancerApercu(cle, construire) {
+    const a = pv2ApercuMemoire(cle);
+    clearTimeout(a.timer);
+    a.timer = 0;
+    if (a.ctrl) a.ctrl.abort();
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    a.ctrl = ctrl;
+    const serie = ++a.serie;
+    const corps = construire();
+    if (!corps) return;
+    PV2_APERCU_ETAT[cle] = { ...(PV2_APERCU_ETAT[cle] || {}), etat: 'chargement' };
+    pv2PeindreApercu(cle);
+    try {
+      const payload = await apiRequest('/api/ops', { method: 'POST', body: JSON.stringify(corps), signal: ctrl ? ctrl.signal : undefined });
+      if (serie !== a.serie) return;
+      PV2_APERCU_ETAT[cle] = { etat: 'pret', html: String(payload.html || ''), subject: String(payload.subject || '') };
+    } catch (error) {
+      // Une requete annulee par la suivante n est pas une erreur a montrer.
+      if (serie !== a.serie) return;
+      PV2_APERCU_ETAT[cle] = { ...(PV2_APERCU_ETAT[cle] || {}), etat: 'erreur', message: (error && error.message) || 'Aperçu indisponible.' };
+    }
+    pv2PeindreApercu(cle);
+  }
+  function pv2ApercuAnnuler(cle) {
+    const a = PV2_APERCUS[cle];
+    if (a) { clearTimeout(a.timer); a.timer = 0; if (a.ctrl) a.ctrl.abort(); a.serie += 1; }
+    delete PV2_APERCU_ETAT[cle];
+  }
+  function pv2ApercuEtatTexte(etat) {
+    if (!etat || etat.etat === 'vide') return 'Écrivez pour voir le mail';
+    if (etat.etat === 'chargement') return 'Mise à jour…';
+    if (etat.etat === 'erreur') return etat.message || 'Aperçu indisponible.';
+    return 'À jour';
+  }
+  function pv2ApercuVivantHtml(cle, { titre = 'Aperçu', tete = '', cadre = 'pv2-seq-preview-frame', classe = '' } = {}) {
+    const etat = PV2_APERCU_ETAT[cle] || { etat: 'vide' };
+    return `<div class="pv2-seq-preview${classe ? ` ${classe}` : ''}" data-pv2-apercu="${esc(cle)}">
+      <div class="pv2-seq-preview-head">${tete || `<span>${esc(titre)}</span>`}<span class="pv2-live-state${etat.etat === 'erreur' ? ' is-error' : ''}" aria-live="polite" data-pv2-apercu-etat>${esc(pv2ApercuEtatTexte(etat))}</span></div>
+      <div class="pv2-seq-preview-subject" data-pv2-apercu-sujet>${esc(etat.subject || '')}</div>
+      ${pv2FrameHtml(cle, etat.html || '', cadre, titre)}
+    </div>`;
+  }
+  function pv2PeindreApercu(cle) {
+    const etat = PV2_APERCU_ETAT[cle] || { etat: 'vide' };
+    PV2_FRAMES[cle] = etat.html || '';
+    document.querySelectorAll(`#staffEmailsPage [data-pv2-apercu="${cle}"]`).forEach((box) => {
+      const s = box.querySelector('[data-pv2-apercu-etat]');
+      if (s) { s.textContent = pv2ApercuEtatTexte(etat); s.classList.toggle('is-error', etat.etat === 'erreur'); }
+      const sujet = box.querySelector('[data-pv2-apercu-sujet]');
+      if (sujet) sujet.textContent = etat.subject || '';
+      const frame = box.querySelector('iframe[data-pv2-frame]');
+      if (frame && frame.__pv2Html !== (etat.html || '')) { frame.__pv2Html = etat.html || ''; frame.srcdoc = frame.__pv2Html; }
+    });
+  }
+
+  /* ── SOUS-NAVIGATION : l indicateur glisse entre deux sections ──────────
+     Meme discipline que le rail du segmente : la position precedente vit hors
+     du DOM, on repose l indicateur dessus sans transition, reflow, puis il
+     glisse. Un simple re-rendu (poll) ne le fait pas bouger d un pixel. ── */
+  function pv2SubnavHtml(section) {
+    const o = pv2Overview.data;
+    const aRepondre = o && Number.isFinite(Number(o.aRepondre)) ? Number(o.aRepondre) : null;
+    return `<nav class="pv2-emails-nav" aria-label="Sections de la page Emails">
+      <div class="pl-subnav" role="tablist" aria-label="Sections">
+        <span class="pl-subnav-indicator" aria-hidden="true"></span>
+        ${PV2_EMAILS_TABS.filter((t) => pv2PeutVoirSection(t.key)).map((t) => {
+          const active = t.key === section;
+          const badge = t.key === 'recus' && aRepondre ? `<span class="pl-subnav-badge" aria-label="${aRepondre} à répondre">${aRepondre}</span>` : '';
+          return `<button type="button" class="pl-subnav-item${active ? ' is-active' : ''}" role="tab" id="pv2EmailsTab-${t.key}" aria-selected="${active}" aria-controls="pv2EmailsPanel" tabindex="${active ? '0' : '-1'}" data-section="${t.key}" data-pl-focus="emails.subnav.${t.key}" onclick="pv2EmailsGo('${t.key}')" onkeydown="pv2EmailsTabKey(event)">${esc(t.label)}${badge}</button>`;
+        }).join('')}
+      </div>
+    </nav>`;
+  }
+
+  function pv2PoserIndicateurSousNav(root, instant) {
+    const nav = root.querySelector('.pl-subnav');
+    if (!nav) return;
+    const ind = nav.querySelector('.pl-subnav-indicator');
+    const active = nav.querySelector('.pl-subnav-item.is-active');
+    if (!ind || !active) return;
+    const from = PV2_EMAILS_MOTION.subnav;
+    const place = (p) => { nav.style.setProperty('--pl-subnav-x', `${p.x}px`); nav.style.setProperty('--pl-subnav-k', String(p.w / 100)); };
+    // Noeud detache ou page cachee : aucune geometrie lisible, on repose la
+    // derniere connue et on ne touche pas a la memoire.
+    if (!document.contains(nav) || !active.offsetWidth) {
+      if (from) { ind.style.transition = 'none'; place(from); void ind.offsetWidth; ind.style.transition = ''; }
+      ind.setAttribute('data-moved', '0');
+      return;
+    }
+    const to = { key: active.getAttribute('data-section'), x: active.offsetLeft, w: active.offsetWidth };
+    const moved = !instant && !!(from && from.key && from.key !== to.key) && !reducedMotion;
+    ind.style.transition = 'none';
+    place(moved ? from : to);
+    void ind.offsetWidth;
+    ind.style.transition = '';
+    if (moved) place(to);
+    PV2_EMAILS_MOTION.subnav = to;
+    ind.setAttribute('data-moved', moved ? '1' : '0');
+    // Sous 768 px la barre defile : l onglet actif se centre dans la fenetre.
+    if (nav.scrollWidth > nav.clientWidth + 2) {
+      nav.scrollLeft = Math.max(0, active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2);
+    }
+    if (!PV2_EMAILS_MOTION.subnavResizeBound) {
+      PV2_EMAILS_MOTION.subnavResizeBound = true;
+      window.addEventListener('resize', () => {
+        const live = document.getElementById('staffEmailsPage');
+        if (live) pv2PoserIndicateurSousNav(live, true);
+      }, { passive: true });
+    }
+  }
+
+  /* ── ETATS ET CHARGEMENTS ───────────────────────────────────────────────── */
+  const pv2Threads = {
+    loaded: false, loading: false, error: '', centre: '', serie: 0,
+    filtre: 'a-repondre', q: '', qTimer: 0,
+    threads: [], total: 0, selectedId: '',
+    detail: { id: '', loaded: false, loading: false, error: '', thread: null, messages: [], contact: null, serie: 0 },
+    // Les fils deja marques lus dans cette session : une fois par fil, pas a
+    // chaque poll ni a chaque re-rendu.
+    marquesLus: new Set(),
+    reply: {}, replyBusy: '', statusBusy: '',
+    // Les cinq conversations de l apercu, chargees a part : le filtre de la
+    // section Recus ne doit pas changer ce que la vue globale montre.
+    apercu: { loaded: false, loading: false, threads: [] },
+  };
+  window.pv2Threads = pv2Threads;
+
+  const pv2Overview = { loaded: false, loading: false, error: '', data: null, centre: '' };
+  window.pv2Overview = pv2Overview;
+
+  const pv2Design = {
+    loaded: false, loading: false, error: '', centre: '',
+    design: null, stored: null, defaults: null, presets: [], center: null, logos: [],
+    sample: 'confirmation', dirty: false, busy: '', erreurServeur: '',
+  };
+  window.pv2Design = pv2Design;
+
+  function pv2CentreCourant() { return state.adminCenterId || 'libramont'; }
+
+  // Changer de centre = les donnees de l autre centre meurent tout de suite
+  // (isolation multi-tenant : jamais un fil d un centre affiche chez l autre).
+  function pv2PurgerSiCentreChange(cache) {
+    const centre = pv2CentreCourant();
+    if (cache.centre && cache.centre !== centre) {
+      cache.loaded = false;
+      if ('data' in cache) cache.data = null;
+      if ('threads' in cache) { cache.threads = []; cache.total = 0; cache.selectedId = ''; cache.detail = { id: '', loaded: false, loading: false, error: '', thread: null, messages: [], contact: null, serie: 0 }; cache.reply = {}; cache.apercu = { loaded: false, loading: false, threads: [] }; }
+      if ('design' in cache) { cache.design = null; cache.stored = null; cache.dirty = false; }
+    }
+    cache.centre = centre;
+  }
+
+  async function loadPv2Overview(force = false) {
+    pv2PurgerSiCentreChange(pv2Overview);
+    if (pv2Overview.loading || (pv2Overview.loaded && !force)) return;
+    pv2Overview.loading = true;
+    pv2Overview.error = '';
+    try {
+      const payload = await apiRequest(`/api/ops?action=emailOverview&centerId=${encodeURIComponent(pv2CentreCourant())}`);
+      pv2Overview.data = payload && typeof payload === 'object' ? payload : {};
+    } catch (error) {
+      pv2Overview.error = error.message || 'Vue globale indisponible.';
+    } finally {
+      pv2Overview.loaded = true;
+      pv2Overview.loading = false;
+      pv2RenderSiActive();
+    }
+  }
+  window.loadPv2Overview = loadPv2Overview;
+
+  async function loadPv2Threads(force = false) {
+    pv2PurgerSiCentreChange(pv2Threads);
+    if (pv2Threads.loaded && !force) return;
+    if (pv2Threads.loading && !force) return;
+    pv2Threads.loading = true;
+    pv2Threads.error = '';
+    const serie = ++pv2Threads.serie;
+    try {
+      const params = new URLSearchParams({ action: 'emailThreads', centerId: pv2CentreCourant(), filtre: pv2Threads.filtre, limit: '50' });
+      if (String(pv2Threads.q || '').trim()) params.set('q', String(pv2Threads.q).trim());
+      const payload = await apiRequest(`/api/ops?${params.toString()}`);
+      if (serie !== pv2Threads.serie) return;
+      pv2Threads.threads = Array.isArray(payload.threads) ? payload.threads : [];
+      pv2Threads.total = Number.isFinite(Number(payload.total)) ? Number(payload.total) : pv2Threads.threads.length;
+      pv2Threads.loaded = true;
+    } catch (error) {
+      if (serie !== pv2Threads.serie) return;
+      pv2Threads.error = error.message || 'Conversations indisponibles.';
+      pv2Threads.loaded = true;
+    } finally {
+      if (serie === pv2Threads.serie) pv2Threads.loading = false;
+      pv2RenderSiActive();
+    }
+  }
+  window.loadPv2Threads = loadPv2Threads;
+
+  async function loadPv2ThreadsApercu(force = false) {
+    const a = pv2Threads.apercu;
+    if (a.loading || (a.loaded && !force)) return;
+    a.loading = true;
+    try {
+      const params = new URLSearchParams({ action: 'emailThreads', centerId: pv2CentreCourant(), filtre: 'a-repondre', limit: '5' });
+      const payload = await apiRequest(`/api/ops?${params.toString()}`);
+      a.threads = Array.isArray(payload.threads) ? payload.threads : [];
+    } catch (error) {
+      a.threads = [];
+    } finally {
+      a.loaded = true;
+      a.loading = false;
+      pv2RenderSiActive();
+    }
+  }
+
+  async function loadPv2ThreadDetail(id, force = false) {
+    const d = pv2Threads.detail;
+    const cle = String(id || '');
+    if (!cle) return;
+    const meme = String(d.id) === cle;
+    if (meme && (d.loading || (d.loaded && !force))) return;
+    if (!meme) { d.loaded = false; d.thread = null; d.messages = []; d.contact = null; }
+    d.id = cle;
+    d.loading = true;
+    d.error = '';
+    const serie = ++d.serie;
+    try {
+      const payload = await apiRequest(`/api/ops?action=emailThread&centerId=${encodeURIComponent(pv2CentreCourant())}&id=${encodeURIComponent(cle)}`);
+      if (serie !== d.serie) return;
+      d.thread = payload && payload.thread && typeof payload.thread === 'object' ? payload.thread : null;
+      d.messages = Array.isArray(payload && payload.messages) ? payload.messages : [];
+      d.contact = payload && payload.contact && typeof payload.contact === 'object' ? payload.contact : null;
+      d.loaded = true;
+      if (!d.thread) d.error = 'Conversation introuvable.';
+      else pv2ThreadApresOuverture(d);
+    } catch (error) {
+      if (serie !== d.serie) return;
+      d.error = error.message || 'Conversation indisponible.';
+      d.loaded = true;
+    } finally {
+      if (serie === d.serie) d.loading = false;
+      pv2RenderSiActive();
+    }
+  }
+  window.loadPv2ThreadDetail = loadPv2ThreadDetail;
+
+  // A l ouverture d un fil : les messages recus que JE n ai pas encore lus sont
+  // marques lus (une fois par fil et par session), et je prends la main sur le
+  // dernier message recu tant que la conversation attend une reponse.
+  function pv2ThreadApresOuverture(d) {
+    const fil = d.thread;
+    if (!fil) return;
+    const moi = pv2MonIdentifiant();
+    const cle = String(fil.id);
+    const nonLus = d.messages.filter((m) => m.direction === 'inbound' && m.id && !(Array.isArray(m.lectures) && moi && m.lectures.some((l) => String(l.memberId) === moi)));
+    if (nonLus.length && !pv2Threads.marquesLus.has(cle)) {
+      pv2Threads.marquesLus.add(cle);
+      const session = state.staffAuthSession || {};
+      const membre = session.member || {};
+      const role = session.role || {};
+      apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'markCommunicationRead', centerId: pv2CentreCourant(), communicationIds: nonLus.map((m) => Number(m.id)) }),
+      }).then(() => {
+        // Ce que le serveur vient d enregistrer se lit tout de suite dans la
+        // trace, sans recharger le fil.
+        const maintenant = new Date().toISOString();
+        nonLus.forEach((m) => {
+          if (!Array.isArray(m.lectures)) m.lectures = [];
+          if (moi && !m.lectures.some((l) => String(l.memberId) === moi)) {
+            m.lectures.push({ memberId: moi, memberName: String(membre.name || ''), memberRole: String(role.name || ''), firstReadAt: maintenant, lastReadAt: maintenant, readCount: 1 });
+          }
+        });
+        const ligne = pv2Threads.threads.find((t) => String(t.id) === cle);
+        if (ligne) ligne.luParMoi = true;
+        const apercu = pv2Threads.apercu.threads.find((t) => String(t.id) === cle);
+        if (apercu) apercu.luParMoi = true;
+        pv2RenderSiActive();
+      }).catch(() => {
+        // Une lecture non enregistree ne bloque rien : on la retentera a la
+        // prochaine ouverture de ce fil dans une autre session.
+        pv2Threads.marquesLus.delete(cle);
+      });
+    }
+    const entrant = pv2ThreadDernierEntrant(d.messages);
+    if (entrant && entrant.id && fil.status === 'open') pv2PrendreLaMain(entrant.id);
+  }
+
+  window.pv2ThreadOpen = function (id) {
+    const cle = String(id || '');
+    if (!cle) return;
+    pv2Threads.selectedId = cle;
+    // Un fil ouvert depuis ailleurs (apercu, envoyes) peut ne pas etre dans
+    // le filtre courant : on elargit a « Tous » pour que la liste le montre.
+    if (pv2Threads.loaded && !pv2Threads.threads.some((t) => String(t.id) === cle) && pv2Threads.filtre !== 'tous') {
+      pv2Threads.filtre = 'tous';
+      loadPv2Threads(true);
+    }
+    loadPv2ThreadDetail(cle);
+    if (state.staffEmailsSection !== 'recus') pv2EmailsGo('recus');
+    else renderStaffEmailsPage();
+    setTimeout(() => {
+      const ligne = document.querySelector(`#staffEmailsPage .pv2-thread-row[data-thread-id="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(cle) : cle}"]`);
+      if (ligne && ligne.scrollIntoView) ligne.scrollIntoView({ block: 'nearest' });
+    }, 0);
+  };
+
+  // Depuis une ligne de communication (mail recu de la file historique) : le
+  // fil qu elle porte, sinon celui dont elle est le dernier message recu.
+  function pv2ThreadOpenForCommunication(row) {
+    const fil = row.threadId || (pv2Threads.threads.find((t) => Number(t.lastInboundId) === Number(row.id)) || {}).id;
+    if (fil) { pv2ThreadOpen(fil); return; }
+    // Sans fil connu (message anterieur a la migration) : la section Recus
+    // s ouvre, la recherche vise l expediteur.
+    pv2Threads.q = String((row.payload && row.payload.from) || row.recipient || '');
+    pv2Threads.filtre = 'tous';
+    pv2Threads.loaded = false;
+    pv2EmailsGo('recus');
+  }
+
+  window.pv2ThreadsFilter = function (key) {
+    const allowed = ['a-repondre', 'repondus', 'termines', 'tous'];
+    pv2Threads.filtre = allowed.includes(key) ? key : 'a-repondre';
+    loadPv2Threads(true);
+    renderStaffEmailsPage();
+  };
+
+  // La recherche part 300 ms apres la derniere frappe ; aucun rendu pendant
+  // la frappe (le champ garderait son focus grace a garderFocus, mais un rendu
+  // par lettre reste du travail inutile).
+  window.pv2ThreadsSearch = function (value) {
+    pv2Threads.q = String(value || '');
+    clearTimeout(pv2Threads.qTimer);
+    pv2Threads.qTimer = setTimeout(() => loadPv2Threads(true), 300);
+  };
+
+  // Apres un mail colle (analyse) : les listes de fils sont a recharger.
+  window.pv2ThreadsInvalider = function () {
+    pv2Threads.loaded = false;
+    pv2Threads.apercu.loaded = false;
+  };
+
+  window.pv2ThreadSetStatus = async function (id, status) {
+    if (pv2Threads.statusBusy) return;
+    const cle = String(id || '');
+    if (!cle || !['open', 'answered', 'closed'].includes(status)) return;
+    pv2Threads.statusBusy = cle;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'setThreadStatus', centerId: pv2CentreCourant(), threadId: Number(cle) || cle, status }),
+      });
+      const fil = payload && payload.thread;
+      if (fil && pv2Threads.detail.thread && String(pv2Threads.detail.thread.id) === cle) pv2Threads.detail.thread = { ...pv2Threads.detail.thread, ...fil };
+      const ligne = pv2Threads.threads.find((t) => String(t.id) === cle);
+      if (ligne && fil) Object.assign(ligne, fil);
+      toast(status === 'closed' ? 'Conversation terminée.' : 'Conversation rouverte.');
+      loadPv2Threads(true);
+      loadPv2Overview(true);
+    } catch (error) {
+      toast(error.message || 'Impossible de changer le statut.');
+    } finally {
+      pv2Threads.statusBusy = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  // La fiche client : la page Clients s ouvre filtree sur cette adresse.
+  window.pv2ThreadVoirClient = function (email) {
+    state.staffClientQuery = String(email || '');
+    state.staffClientSegment = 'tous';
+    save();
+    if (typeof openStaffMenuPage === 'function') openStaffMenuPage('clients');
+  };
+
+  // Le mail sortant TEL QU ENVOYE (HTML stocke), en grand, dans l iframe
+  // sandbox de la console.
+  window.pv2ThreadVoirMail = function (messageId) {
+    const m = (pv2Threads.detail.messages || []).find((x) => String(x.id) === String(messageId));
+    if (!m || !m.body) { toast('Le contenu complet de ce mail n\'est pas disponible.'); return; }
+    previewOpsEmailHtml(m.body, m.subject || 'Mail envoyé');
+  };
+
+  async function loadPv2Design(force = false) {
+    pv2PurgerSiCentreChange(pv2Design);
+    if (pv2Design.loading || (pv2Design.loaded && !force)) return;
+    pv2Design.loading = true;
+    pv2Design.error = '';
+    try {
+      const payload = await apiRequest(`/api/ops?action=emailDesign&centerId=${encodeURIComponent(pv2CentreCourant())}`);
+      const design = payload && payload.design && typeof payload.design === 'object' ? payload.design : null;
+      // Le brouillon en cours n est pas ecrase par un rechargement de fond :
+      // ce que la gerante a tape sans enregistrer reste devant elle.
+      if (!pv2Design.dirty || !pv2Design.design) pv2Design.design = pv2DesignNormaliser(design);
+      pv2Design.stored = payload && payload.stored && typeof payload.stored === 'object' ? payload.stored : null;
+      pv2Design.defaults = pv2DesignNormaliser(payload && payload.defaults);
+      pv2Design.presets = Array.isArray(payload && payload.presets) && payload.presets.length ? payload.presets : PV2_DESIGN_PRESETS;
+      pv2Design.center = payload && payload.center && typeof payload.center === 'object' ? payload.center : null;
+      pv2Design.logos = Array.isArray(payload && payload.logos) ? payload.logos : [];
+      pv2Design.loaded = true;
+      pv2ApercuDesign(0);
+    } catch (error) {
+      pv2Design.error = error.message || 'Apparence indisponible.';
+      pv2Design.loaded = true;
+    } finally {
+      pv2Design.loading = false;
+      pv2RenderSiActive();
+    }
+  }
+  window.loadPv2Design = loadPv2Design;
+
+  const PV2_DESIGN_PRESETS = [
+    { id: 'classique', label: 'Classique', description: 'Carte blanche à filet fin sur fond gris, nom du centre en tête.' },
+    { id: 'epure', label: 'Épuré', description: 'Pas de carte : fond blanc, grandes marges, un filet fin sous le titre.' },
+    { id: 'carte', label: 'Carte', description: 'La carte classique avec une barre de couleur en haut.' },
+    { id: 'contraste', label: 'Contraste', description: 'Bandeau d\'en-tête sombre avec le nom ou le logo blanc du centre.' },
+  ];
+
+  // Le modele §4.1 complet : un design venu du serveur peut etre partiel
+  // (ancien enregistrement), un formulaire n a pas le droit de lire undefined.
+  function pv2DesignVide() {
+    return {
+      preset: 'classique',
+      accent: { mode: 'encre', hex: '' },
+      header: { mode: 'nom', logoUrl: '', logoWidth: 140 },
+      footer: { adresse: true, telephone: true, email: true, mention: '' },
+      signature: {
+        enabled: true, closing: 'À très bientôt,', teamLabel: '', role: '', phone: '', email: '', website: '', address: '',
+        logoUrl: '', logoWidth: 120, socials: { facebook: '', instagram: '', tiktok: '', linkedin: '' }, layout: 'carte',
+      },
+      signatureScope: { manual: true, sequences: true, campaigns: false },
+      updatedAt: null, updatedBy: '',
     };
+  }
+  function pv2DesignNormaliser(source) {
+    const base = pv2DesignVide();
+    const s = source && typeof source === 'object' ? source : {};
+    const objet = (a, b) => ({ ...a, ...(b && typeof b === 'object' ? b : {}) });
+    return {
+      ...base,
+      ...s,
+      accent: objet(base.accent, s.accent),
+      header: objet(base.header, s.header),
+      footer: objet(base.footer, s.footer),
+      signature: { ...objet(base.signature, s.signature), socials: objet(base.signature.socials, s.signature && s.signature.socials) },
+      signatureScope: objet(base.signatureScope, s.signatureScope),
+    };
+  }
 
-    /* Les six tuiles occupaient une bande pleine largeur et pesaient autant que
-       la file elle-même, alors que ce sont des FILTRES : on clique dessus pour
-       restreindre la liste. Rendues comme telles (bande de chips, chiffre puis
-       libellé sur une ligne), elles descendent de ~120 px à ~52 px et la file
-       remonte d'autant. Aucune n'est supprimée : chacune est le seul chemin
-       vers son filtre, « Tout » compris (c'est le retour à la vue complète).
-       <button> plutôt que <div> : le filtre devient atteignable au clavier. */
-    /* ACCORDS. « 1 Échecs », « 1 Envoyés », « 3 Tout » traînaient sur un écran
-       relu tous les jours. Le libellé s'accorde donc au compteur, et « Tout »,
-       qui est invariable, ne se met plus DERRIÈRE un nombre (« 3 Tout » ne veut
-       rien dire) : il s'écrit « Tout (3) ». */
-    const pipe = (key, one, many, value, hint, opts = {}) => {
-      const n = Number(value) || 0;
-      const label = esc(n > 1 ? many : one);
-      // Le compte-à-rebours animé écrase le textContent : il ne peut pas porter
-      // les parenthèses. Le total ne s'anime donc pas, et c'est sans importance,
-      // il ne change quasiment jamais.
-      const valueHtml = opts.paren
-        ? `<span class="pv2-pipe-value">(${n})</span>`
-        : `<span class="pv2-pipe-value" ${PV2.lastPage !== 'emails' ? `data-pv2-count="${n}"` : ''}>${n}</span>`;
-      return `<button type="button" class="pv2-pipe ${filter === key ? 'active' : ''}" data-pipe="${key}" onclick="pv2EmailFilter('${key}')" aria-pressed="${filter === key}">
-      ${opts.paren ? `<span class="pv2-pipe-label">${label}</span>${valueHtml}` : `${valueHtml}<span class="pv2-pipe-label">${label}</span>`}
-      ${hint ? `<span class="pv2-pipe-hint">${esc(hint)}</span>` : ''}
+  function pv2DesignPoser(path, value) {
+    if (!pv2Design.design) pv2Design.design = pv2DesignVide();
+    const parts = String(path).split('.');
+    let o = pv2Design.design;
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      if (!o[parts[i]] || typeof o[parts[i]] !== 'object') o[parts[i]] = {};
+      o = o[parts[i]];
+    }
+    o[parts[parts.length - 1]] = value;
+    pv2Design.dirty = true;
+    pv2Design.erreurServeur = '';
+  }
+
+  function pv2ApercuDesign(delai = 500) {
+    if (!pv2Design.design) return;
+    pv2PlanifierApercu('design', () => ({
+      action: 'emailDesignPreview',
+      centerId: pv2CentreCourant(),
+      design: JSON.parse(JSON.stringify(pv2Design.design)),
+      sample: pv2Design.sample,
+    }), delai);
+  }
+
+  // Un champ texte : pas de rendu (le focus reste), apercu 500 ms apres.
+  window.pv2DesignField = function (path, value) {
+    const nombre = /logoWidth$/.test(path);
+    pv2DesignPoser(path, nombre ? Number(value) : value);
+    pv2ApercuDesign();
+  };
+  // Un choix (gabarit, mode, interrupteur) : le formulaire change de forme,
+  // donc rendu, et apercu tout de suite.
+  window.pv2DesignChoix = function (path, value) {
+    pv2DesignPoser(path, value);
+    renderStaffEmailsPage();
+    pv2ApercuDesign(120);
+  };
+  window.pv2DesignBascule = function (path) {
+    const parts = String(path).split('.');
+    let o = pv2Design.design || pv2DesignVide();
+    for (let i = 0; i < parts.length - 1; i += 1) o = o[parts[i]] || {};
+    pv2DesignChoix(path, !o[parts[parts.length - 1]]);
+  };
+  window.pv2DesignSample = function (key) {
+    pv2Design.sample = ['confirmation', 'reponse', 'campagne'].includes(key) ? key : 'confirmation';
+    renderStaffEmailsPage();
+    pv2ApercuDesign(0);
+  };
+  window.pv2DesignReset = function () {
+    if (!pv2Design.defaults) return;
+    pv2Design.design = pv2DesignNormaliser(pv2Design.defaults);
+    pv2Design.dirty = true;
+    pv2Design.erreurServeur = '';
+    renderStaffEmailsPage();
+    pv2ApercuDesign(0);
+    toast('Défauts rétablis : enregistrez pour les appliquer.');
+  };
+  window.pv2DesignSave = async function () {
+    if (pv2Design.busy || !pv2Design.design) return;
+    pv2Design.busy = 'save';
+    pv2Design.erreurServeur = '';
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'emailDesign', centerId: pv2CentreCourant(), design: pv2Design.design }),
+      });
+      if (payload && payload.design) {
+        pv2Design.design = pv2DesignNormaliser(payload.design);
+        pv2Design.stored = payload.design;
+      }
+      pv2Design.dirty = false;
+      toast('Apparence enregistrée ✓ : elle s\'applique aux prochains mails.');
+      pv2ApercuDesign(0);
+    } catch (error) {
+      // L erreur de validation du serveur (en francais, exposable) se lit sous
+      // les actions, pas seulement dans un toast qui disparait.
+      pv2Design.erreurServeur = error.message || 'Enregistrement impossible.';
+    } finally {
+      pv2Design.busy = '';
+      renderStaffEmailsPage();
+    }
+  };
+  window.pv2DesignTest = async function () {
+    if (pv2Design.busy || !pv2Design.design) return;
+    pv2Design.busy = 'test';
+    renderStaffEmailsPage();
+    try {
+      // Aucune adresse n est envoyee : le serveur envoie au membre connecte.
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sendDesignTest', centerId: pv2CentreCourant(), design: pv2Design.design, sample: pv2Design.sample }),
+      });
+      if (payload.status === 'sent') toast(`Test envoyé à ${payload.recipient}`);
+      else toast(`Le test n'est pas parti : ${payload.error || 'cause inconnue'}`);
+    } catch (error) {
+      toast(error.message || 'Envoi de test impossible.');
+    } finally {
+      pv2Design.busy = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  /* ── QUI ECRIT : le bandeau, a partir d une prise ───────────────────────── */
+  function pv2BandeauPriseHtml(prise) {
+    if (!prise) return '';
+    const nom = String(prise.memberName || prise.memberId || 'Quelqu\'un');
+    // Le ROLE, quand il est connu : dans un centre ou plusieurs personnes se
+    // relaient, savoir que c est la direction qui repond, et pas un equipier du
+    // bar, change ce qu on fait ensuite.
+    const role = String(prise.memberRole || '').trim();
+    const depuis = prise.claimedAt ? Math.max(0, Math.round((Date.now() - new Date(prise.claimedAt).getTime()) / 60000)) : 0;
+    const quand = depuis >= 1 ? ` depuis ${depuis} min` : ' à l\'instant';
+    return `<div class="pv2-prise-alerte" role="status">${ci('alert')}<span><strong>${esc(nom)}</strong>${role ? ` <span class="pv2-prise-role">${esc(role)}</span>` : ''} s'occupe de ce message${esc(quand)}. Écrivez aussi si vous voulez, mais le client recevrait deux réponses.</span></div>`;
+  }
+
+  // Le bandeau se veut factuel : QUI, et DEPUIS QUAND. Pas d interdiction, pas
+  // de bouton grise : la personne devant l ecran sait des choses que le produit
+  // ignore (le collegue vient de partir, il a demande de reprendre). Elle
+  // decide, informee.
+  function pv2BandeauPrise(row) {
+    return pv2BandeauPriseHtml(pv2PriseDunAutre(row));
+  }
+
+  // La prise d un autre sur un message du fil : la liste vivante des prises
+  // (opsAdminCache.claims, rafraichie par le poll) fait foi ; a defaut, la
+  // prise que le serveur a jointe au fil.
+  function pv2PriseDunAutreSurLeFil(entrant, fil) {
+    if (!entrant) return null;
+    const cache = typeof opsAdminCache === 'object' && opsAdminCache && Array.isArray(opsAdminCache.claims) && opsAdminCache.loaded;
+    if (cache) return pv2PriseDunAutre({ id: entrant.id });
+    const prise = entrant.prise || (fil && fil.prise) || null;
+    if (!prise) return null;
+    const moi = pv2MonIdentifiant();
+    if (moi && String(prise.memberId) === moi) return null;
+    if (prise.expiresAt && new Date(prise.expiresAt).getTime() < Date.now()) return null;
+    return prise;
+  }
+
+  /* ── PETITS OUTILS DE LECTURE ───────────────────────────────────────────── */
+  function pv2Quand(value) {
+    const t = formatOpsTimestamp(value);
+    return t && t !== 'Non planifié' ? t : '';
+  }
+  function pv2Depuis(value) {
+    const t = value ? new Date(value).getTime() : NaN;
+    if (!Number.isFinite(t)) return '';
+    const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (min < 60) return `${min} min`;
+    const h = Math.round(min / 60);
+    if (h < 48) return `${h} h`;
+    return `${Math.round(h / 24)} jours`;
+  }
+  function pv2Relatif(value) {
+    return typeof staffRequestMoment === 'function' ? staffRequestMoment(value) : pv2Quand(value);
+  }
+  function pv2Nombre(value) {
+    return Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+  // Le suivi d ouverture est une CAPACITE du domaine d envoi, pas un fait sur
+  // chaque mail : null = on ne sait pas encore (vue globale non chargee).
+  function pv2OuverturesObservees() {
+    const o = pv2Overview.data;
+    if (!o || !o.suivi || typeof o.suivi !== 'object') return null;
+    return Boolean(o.suivi.ouverturesObservees);
+  }
+  const PV2_THREAD_STATUS = { open: ['À répondre', 'amber'], answered: ['Répondu', 'green'], closed: ['Terminé', ''] };
+  // `manual` est la cle historique de la console (getStaffEmailOrigin), `manuel`
+  // celle du serveur (origineDuMessage) : les deux se lisent pareil.
+  const PV2_ORIGINE_LABELS = { auto: 'Automatique', manuel: 'Manuel', manual: 'Manuel', campagne: 'Campagne', test: 'Test', inbound: 'Reçu' };
+  const PV2_EVENT_LABELS = { sent: 'Envoyé', delivered: 'Remis', delivery_delayed: 'Remise retardée', opened: 'Ouvert', clicked: 'Cliqué', bounced: 'Rebond', complained: 'Signalé comme indésirable', failed: 'Échec' };
+
+  /* ── APERCU ───────────────────────────────────────────────────────────── */
+  function pv2TuileHtml({ label, value, foot, go, danger = false }) {
+    const n = pv2Nombre(value);
+    const cle = `stat.${String(label).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+    return `<button type="button" class="pv2-stat${danger && n > 0 ? ' is-danger' : ''}" onclick="${go}">
+      <div class="pv2-stat-label"><span>${esc(label)}</span></div>
+      <div class="pv2-stat-value">${n === null
+        ? '<span class="pv2-stat-value is-empty">indisponible</span>'
+        : `<span ${PV2.lastPage !== 'emails' ? `data-pv2-count="${n}"` : ''} data-pl-num="${cle}">${n.toLocaleString('fr-BE')}</span>`}</div>
+      <div class="pv2-stat-foot">${esc(foot || '')}</div>
     </button>`;
-    };
+  }
 
-    /* Un mail qui ne part pas ne se voyait NULLE PART : le pipe « Échecs »
-       existait, mais il fallait déjà savoir qu'il y avait un problème pour
-       aller cliquer dessus. Personne ne le faisait, et 51 mails sont restés
-       invisibles. Ce bandeau est la réponse : il s'impose en tête de page,
-       nomme la cause dominante en français et dit quoi faire. */
+  function pv2SuiviHtml(o) {
+    if (!o) {
+      return `<div class="pv2-suivi"><div class="pv2-suivi-ligne"><strong>Suivi des envois</strong><span class="pv2-suivi-etat">${pv2Overview.error ? 'indisponible' : 'chargement…'}</span></div></div>`;
+    }
+    const suivi = o.suivi && typeof o.suivi === 'object' ? o.suivi : null;
+    const evenements = suivi ? Boolean(suivi.evenementsRecus30j) : null;
+    const ouvertures = suivi ? Boolean(suivi.ouverturesObservees) : null;
+    const remis7 = pv2Nombre(o.remis7j);
+    const ouverts7 = pv2Nombre(o.ouverts7j);
+    return `<div class="pv2-suivi">
+      <div class="pv2-suivi-ligne">
+        <strong>Remise (accusés du fournisseur)</strong>
+        <span class="pv2-suivi-etat${evenements ? ' is-on' : ''}">${evenements === null ? 'indisponible' : evenements ? `actif${remis7 !== null ? ` · ${remis7} remis sur 7 j` : ''}` : 'aucun événement reçu sur 30 j'}</span>
+        ${evenements === false ? '<small>Le fournisseur n\'a envoyé aucun accusé de remise pour ce centre : les mails se lisent « en attente d\'événement ».</small>' : ''}
+      </div>
+      <div class="pv2-suivi-ligne">
+        <strong>Ouvertures par le client</strong>
+        <span class="pv2-suivi-etat${ouvertures ? ' is-on' : ''}">${ouvertures === null ? 'indisponible' : ouvertures ? `observées${ouverts7 !== null ? ` · ${ouverts7} sur 7 j` : ''}` : 'jamais observées'}</span>
+        ${ouvertures === false ? '<small>Le suivi d\'ouverture se règle sur le domaine d\'envoi chez le fournisseur (ligne DNS chez l\'hébergeur du client). Tant qu\'il est inactif, aucune ouverture ne remonte.</small>' : ''}
+      </div>
+      <div class="pv2-suivi-ligne">
+        <strong>Lu par l'équipe</strong>
+        <span class="pv2-suivi-etat is-on">toujours actif</span>
+        <small>Suivi dans Pinlane : qui a ouvert chaque mail reçu, et quand.</small>
+      </div>
+    </div>`;
+  }
+
+  function pv2SeqMiniHtml() {
+    if (!mkAuto.loaded && !mkAuto.error) return `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`;
+    if (mkAuto.error) return `<div class="pv2-empty"><strong>${esc(mkAuto.error)}</strong></div>`;
+    const NB = ' ';
+    const items = AUTOMATION_META.map((meta) => {
+      const setting = mkAuto.settings ? mkAuto.settings[meta.key] : null;
+      const enabled = !!(setting && setting.enabled);
+      const stats = mkAuto.stats[meta.key] || {};
+      const sent30 = Number(stats.sent30d) || 0;
+      const failed30 = Number(stats.failed30d) || 0;
+      return `<div class="pv2-seq-mini-item${enabled ? ' is-on' : ''}">
+        <strong>${esc(meta.label)}</strong>
+        <span>${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''}${failed30 ? ` · ${failed30}${NB}échec${failed30 > 1 ? 's' : ''}` : ''} · 30${NB}j</span>
+        <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${mkAuto.busyKey === meta.key || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
+      </div>`;
+    });
+    pv2Seq.sequences.forEach((sequence) => {
+      const stats = pv2SeqStats30j(sequence);
+      const sent30 = stats ? Number(stats.sent30d) || 0 : null;
+      items.push(`<div class="pv2-seq-mini-item${sequence.enabled ? ' is-on' : ''}">
+        <strong>${esc(sequence.name)}</strong>
+        <span>${sent30 === null ? 'perso · envois non comptés' : `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''} · 30${NB}j · perso`}</span>
+        <button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>
+      </div>`);
+    });
+    return `<div class="pv2-seq-mini">${items.join('')}</div>`;
+  }
+
+  function pv2EmailsSectionApercu() {
+    const o = pv2Overview.data;
+    const rows = getStaffEmailRows().filter((r) => !pv2IsInbound(r));
+    const metrics = getStaffEmailMetrics(rows);
+    const plusAncienne = o && o.plusAncienneAttenteAt ? pv2Depuis(o.plusAncienneAttenteAt) : '';
+    const evenements = o && o.suivi ? Boolean(o.suivi.evenementsRecus30j) : false;
+    const remis7 = o ? pv2Nombre(o.remis7j) : null;
+    const enAttente = o ? pv2Nombre(o.enAttente) : null;
+    const apercu = pv2Threads.apercu;
+    const convos = apercu.threads.slice(0, 5);
+    return `${pv2AlerteEchecsHtml(rows, metrics)}
+      <section class="pv2-stats" aria-label="Les chiffres du jour">
+        ${pv2TuileHtml({ label: 'À répondre', value: o ? o.aRepondre : null, foot: plusAncienne ? `la plus ancienne attend depuis ${plusAncienne}` : (o && Number(o.aRepondre) === 0 ? 'aucune conversation en attente' : ''), go: "pv2ThreadsFilter('a-repondre'); pv2EmailsGo('recus')" })}
+        ${pv2TuileHtml({ label: 'Envoyés sur 7 jours', value: o ? o.envoyes7j : null, foot: evenements && remis7 !== null ? `remis : ${remis7}` : 'remise : aucun événement reçu', go: "pv2EmailFilter('sent')" })}
+        ${pv2TuileHtml({ label: 'Échecs sur 7 jours', value: o ? o.echecs7j : null, foot: o && Number(o.echecs7j) > 0 ? 'à corriger dans Envoyés' : 'aucun échec récent', go: "pv2EmailFilter('failed')", danger: true })}
+        ${pv2TuileHtml({ label: 'Programmés sur 24 h', value: o ? o.programmes24h : null, foot: enAttente !== null ? `${enAttente} en attente au total` : '', go: "pv2EmailFilter('queued')" })}
+      </section>
+      <div class="pv2-overview-grid">
+        <div class="pv2-overview-col">
+          <section class="pv2-panel" aria-label="Conversations à répondre">
+            <div class="pv2-panel-head pv2-list-head">
+              <h2>Conversations à répondre</h2>
+              <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsGo('recus')">Toutes les conversations</button>
+            </div>
+            <div class="pv2-panel-body is-flush">
+              ${!apercu.loaded
+                ? `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
+                : convos.length
+                  ? `<div class="pv2-convo-mini">${convos.map((t) => pv2ThreadRowHtml(t, { compact: true })).join('')}</div>`
+                  : '<div class="pv2-empty"><strong>Rien à répondre</strong>Chaque conversation reçue a sa réponse.</div>'}
+            </div>
+          </section>
+          ${pv2SectionApprentissage({ max: 4 })}
+        </div>
+        <div class="pv2-overview-col">
+          <section class="pv2-panel" aria-label="Suivi des envois">
+            <div class="pv2-panel-head"><h2>Suivi des envois</h2></div>
+            <div class="pv2-panel-body">${pv2SuiviHtml(o)}</div>
+          </section>
+          <section class="pv2-panel" aria-label="Séquences">
+            <div class="pv2-panel-head pv2-list-head">
+              <h2>Séquences</h2>
+              <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsGo('sequences')">Gérer</button>
+            </div>
+            <div class="pv2-panel-body">${pv2SeqMiniHtml()}</div>
+          </section>
+        </div>
+      </div>`;
+  }
+
+  /* Un mail qui ne part pas ne se voyait NULLE PART : le pipe « Échecs »
+     existait, mais il fallait déjà savoir qu'il y avait un problème pour
+     aller cliquer dessus. Ce bandeau est la réponse : il s'impose en tête de
+     page, nomme la cause dominante en français et dit quoi faire. */
+  function pv2AlerteEchecsHtml(allRows, metrics) {
+    if (!(metrics.failed > 0)) return '';
     const failureGroups = getStaffEmailFailureGroups(allRows);
     const topFailure = failureGroups[0];
-    const failureBanner = metrics.failed > 0 ? `
-      <section class="pv2-alert" role="alert">
+    return `<section class="pv2-alert" role="alert">
         <div class="pv2-alert-main">
           <strong>${metrics.failed} mail${metrics.failed > 1 ? 's ne sont jamais partis' : ' n\'est jamais parti'} <span class="pv2-alert-scope">sur les ${allRows.length} messages de la file</span></strong>
           ${topFailure ? `<p class="pv2-alert-cause"><b>${esc(topFailure.label)}</b>${failureGroups.length > 1 ? ` (${topFailure.count} sur ${metrics.failed})` : ''} : ${esc(topFailure.fix)}</p>` : ''}
           ${failureGroups.length > 1 ? `<p class="pv2-alert-other">Autres causes : ${failureGroups.slice(1).map((g) => `${esc(g.label)} (${g.count})`).join(' · ')}</p>` : ''}
         </div>
         <button type="button" class="pv2-btn" onclick="pv2EmailFilter('failed')">${metrics.failed > 1 ? `Voir les ${metrics.failed} échecs` : 'Voir cet échec'}</button>
-      </section>` : '';
+      </section>`;
+  }
 
-    const tableHead = filter === 'inbound'
-      ? '<thead><tr><th>De</th><th>Demande</th><th>Statut</th><th class="num">Reçu</th></tr></thead>'
-      : '<thead><tr><th>Message</th><th>Modèle</th><th>Statut</th><th class="num">Date</th></tr></thead>';
+  /* ── RECUS : la liste des fils ──────────────────────────────────────────── */
+  function pv2ThreadRowHtml(t, { compact = false } = {}) {
+    const selected = String(t.id) === String(pv2Threads.selectedId) && !compact;
+    const unread = !t.luParMoi;
+    const nom = String(t.contactName || t.contactEmail || 'Expéditeur inconnu');
+    const [statusLabel, statusTone] = PV2_THREAD_STATUS[t.status] || PV2_THREAD_STATUS.open;
+    const priseAutre = pv2PriseDunAutreSurLeFil({ id: t.lastInboundId, prise: t.prise }, t);
+    const chips = [];
+    if (unread) chips.push('<span class="pv2-chip is-new">Nouveau</span>');
+    if (priseAutre) chips.push(`<span class="pv2-chip amber">${esc(String(priseAutre.memberName || 'Un collègue'))} répond…</span>`);
+    if (!compact && pv2Threads.filtre !== 'a-repondre') chips.push(`<span class="pv2-chip ${statusTone}">${statusLabel}${t.status === 'answered' && t.reponduPar && t.reponduPar.memberName ? ` par ${esc(t.reponduPar.memberName)}` : ''}</span>`);
+    else if (t.status === 'answered' && t.reponduPar && t.reponduPar.memberName) chips.push(`<span class="pv2-chip green">Répondu par ${esc(t.reponduPar.memberName)}</span>`);
+    if (Number(t.messageCount) > 1) chips.push(`<span class="pv2-chip is-count">${Number(t.messageCount)} messages</span>`);
+    if (t.intention) chips.push(`<span class="pv2-inbox-intent">${esc(PV2_INTENT_LABELS[t.intention] || t.intention)}</span>`);
+    if (t.question) chips.push('<span class="pv2-inbox-urgent">Question</span>');
+    return `<button type="button" class="pv2-thread-row${selected ? ' is-selected' : ''}${unread ? ' is-unread' : ''}" data-thread-id="${esc(String(t.id))}" aria-current="${selected ? 'true' : 'false'}" onclick="pv2ThreadOpen('${escJs(String(t.id))}')">
+      <span class="pv2-thread-avatar" aria-hidden="true">${esc(pv2InitialeDe(t.contactName, t.contactEmail))}</span>
+      <span class="pv2-thread-main">
+        <span class="pv2-thread-line"><strong>${esc(nom)}</strong><span class="pv2-thread-when">${esc(pv2Relatif(t.lastMessageAt))}</span></span>
+        <span class="pv2-thread-subject">${esc(t.subject || '(sans objet)')}</span>
+        ${compact ? '' : `<span class="pv2-thread-snippet">${esc(t.snippet || '')}</span>`}
+        ${chips.length ? `<span class="pv2-thread-chips">${chips.join('')}</span>` : ''}
+      </span>
+    </button>`;
+  }
 
-    const tableRows = rows.slice(0, 80).map((row) => {
-      if (filter === 'inbound') {
-        const analysis = pv2InboxAnalysis(row);
-        const replied = !!(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt));
-        const intentLabel = analysis ? (analysis.intentLabel || PV2_INTENT_LABELS[analysis.intent] || analysis.intent) : '';
-        return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
-          <td><strong>${esc(analysis?.clientName || row.payload?.from || row.recipient || '-')}</strong><small class="pv2-cell-sub">${esc(row.subject || '')}</small></td>
-          <td>${analysis ? `<span class="pv2-inbox-intent">${esc(intentLabel)}</span>${analysis.urgency === 'haute' ? ' <span class="pv2-inbox-urgent">Urgent</span>' : ''}<small class="pv2-cell-sub">${esc(analysis.summary || '')}</small>` : '<span class="pv2-chip">À analyser</span>'}</td>
-          <td>${replied ? '<span class="pv2-chip green">Répondu</span>' : '<span class="pv2-chip blue">À répondre</span>'}</td>
-          <td class="num">${esc(formatOpsTimestamp(row.receivedAt || row.createdAt || row.scheduledAt) || '-')}</td>
-        </tr>`;
-      }
-      const meta = KIND_META[row.statusKind] || KIND_META.draft;
-      // La cause de l'échec se lit dans la LISTE, pas seulement après avoir
-      // sélectionné la ligne : c'est ce qui rend un échec impossible à rater.
-      const failure = row.statusKind === 'failed' ? getStaffEmailFailureReason(row) : null;
-      // Badge d'origine discret sur chaque ligne : Auto (parti tout seul) ou
-      // Manuel (envoyé par l'équipe). Étiquette, pas statut : chip neutre.
-      const rowOrigin = getStaffEmailOrigin(row);
-      return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}${failure ? ' is-failed' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
-        <td><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '-')}</small></td>
-        <td><span class="pv2-chip">${esc(row.templateLabel || row.templateId || '-')}</span><span class="pv2-chip pv2-origin-badge" data-origin="${rowOrigin}">${rowOrigin === 'manual' ? 'Manuel' : 'Auto'}</span></td>
-        <td><span class="pv2-chip ${meta.tone}">${meta.label}</span>${failure ? `<small class="pv2-cell-sub pv2-cell-fail">${esc(failure.label)}</small>` : ''}</td>
-        <td class="num">${esc(formatOpsTimestamp(row.sentAt || row.scheduledAt || row.createdAt) || '-')}</td>
-      </tr>`;
-    }).join('');
+  function pv2TraceEntrantHtml(m, messages, fil) {
+    const items = [`<span class="is-done">Reçu <time>${esc(pv2Quand(m.receivedAt || m.createdAt))}</time></span>`];
+    const moi = pv2MonIdentifiant();
+    const lectures = Array.isArray(m.lectures) ? m.lectures : [];
+    if (lectures.length) {
+      items.push(`<span class="is-done">Lu par ${lectures.map((l) => `${esc(moi && String(l.memberId) === moi ? 'vous' : (l.memberName || l.memberId || 'un membre'))}${l.memberRole ? ` (${esc(l.memberRole)})` : ''} <time>${esc(pv2Quand(l.firstReadAt || l.lastReadAt))}</time>`).join(', ')}</span>`);
+    } else {
+      items.push('<span class="is-off">Pas encore lu</span>');
+    }
+    const index = messages.indexOf(m);
+    const reponse = messages.slice(index + 1).find((x) => x.direction !== 'inbound');
+    if (reponse) {
+      const par = reponse.sentBy && reponse.sentBy.memberName ? reponse.sentBy.memberName : (reponse.origine === 'auto' ? 'la séquence' : 'l\'équipe');
+      items.push(`<span class="is-done">Répondu par ${esc(par)} <time>${esc(pv2Quand(reponse.sentAt || reponse.createdAt))}</time></span>`);
+    } else if (fil && fil.status === 'closed') {
+      items.push('<span class="is-off">Terminé sans réponse</span>');
+    } else {
+      const depuis = pv2Depuis(m.receivedAt || m.createdAt);
+      items.push(`<span class="is-off">Sans réponse${depuis ? ` depuis ${esc(depuis)}` : ''}</span>`);
+    }
+    return items;
+  }
 
-    const payload = selected?.payload || {};
-    const detail = !selected
-      ? '<div class="pv2-empty"><strong>Aucun message</strong>Sélectionnez une communication.</div>'
-      : pv2IsInbound(selected)
-        ? pv2InboundDetail(selected)
-        : `
-      <div class="pv2-panel-body pv2-mail-detail">
+  // Le parcours d un mail sortant, en etapes { cls, label, when } : la meme
+  // verite se lit en ligne sous un message du fil et en colonne dans le
+  // detail d un envoye. « Pas d evenement » se dit comme tel, jamais en vert.
+  function pv2TraceSortantItems(m) {
+    const s = m.suivi && typeof m.suivi === 'object' ? m.suivi : {};
+    const items = [];
+    const statut = String(m.status || '').toLowerCase();
+    if (statut === 'failed' || statut === 'error') {
+      const raison = getStaffEmailFailureReason({ lastError: m.errorReason || s.lastError || '' });
+      items.push({ cls: 'is-fail', label: `Échec : ${raison && raison.label ? raison.label : (m.errorReason || 'cause inconnue')}`, when: '' });
+      return items;
+    }
+    if (statut === 'queued' || statut === 'pending' || statut === 'processing') {
+      items.push({ cls: 'is-off', label: 'En attente d\'envoi', when: m.scheduledAt ? pv2Quand(m.scheduledAt) : '' });
+      return items;
+    }
+    items.push({ cls: 'is-done', label: 'Envoyé', when: pv2Quand(m.sentAt || m.createdAt) });
+    if (s.bouncedAt) items.push({ cls: 'is-fail', label: 'Rebond', when: pv2Quand(s.bouncedAt) });
+    else if (s.deliveredAt || statut === 'delivered') items.push({ cls: 'is-done', label: 'Remis', when: s.deliveredAt ? pv2Quand(s.deliveredAt) : '' });
+    else items.push({ cls: 'is-off', label: 'Remise : en attente d\'événement', when: '' });
+    const ouvertures = pv2OuverturesObservees();
+    if (s.openedAt || Number(s.openCount) > 0) items.push({ cls: 'is-done', label: `Ouvert${Number(s.openCount) > 1 ? ` (${Number(s.openCount)}×)` : ''}`, when: s.openedAt ? pv2Quand(s.openedAt) : '' });
+    else if (ouvertures === false) items.push({ cls: 'is-off', label: 'Ouverture : suivi inactif sur ce domaine', when: '' });
+    else items.push({ cls: 'is-off', label: 'Pas encore ouvert', when: '' });
+    if (s.clickedAt || Number(s.clickCount) > 0) items.push({ cls: 'is-done', label: `Cliqué${Number(s.clickCount) > 1 ? ` (${Number(s.clickCount)}×)` : ''}`, when: s.clickedAt ? pv2Quand(s.clickedAt) : '' });
+    if (s.complainedAt) items.push({ cls: 'is-fail', label: 'Signalé comme indésirable', when: pv2Quand(s.complainedAt) });
+    return items;
+  }
+  function pv2TraceSortantHtml(m) {
+    return pv2TraceSortantItems(m).map((it) => `<span class="${it.cls}">${esc(it.label)}${it.when ? ` <time>${esc(it.when)}</time>` : ''}</span>`);
+  }
+  function pv2TraceSortantVerticalHtml(m) {
+    return pv2TraceSortantItems(m).map((it) => `<div class="${it.cls}"><span>${esc(it.label.split(' : ')[0])}</span><span>${it.label.includes(' : ') ? esc(it.label.split(' : ').slice(1).join(' : ')) : ''}${it.when ? ` <time>${esc(it.when)}</time>` : ''}</span></div>`).join('');
+  }
+
+  function pv2EvenementsHtml(m) {
+    const liste = Array.isArray(m.evenements) ? m.evenements : [];
+    if (!liste.length) return '';
+    const ligne = (e) => {
+      const data = e.data && typeof e.data === 'object' ? e.data : {};
+      const detail = [data.link ? `lien : ${data.link}` : '', data.userAgent ? String(data.userAgent).slice(0, 80) : '', data.message ? String(data.message).slice(0, 120) : ''].filter(Boolean).join(' · ');
+      return `<li><time>${esc(pv2Quand(e.occurredAt))}</time><span>${esc(PV2_EVENT_LABELS[e.type] || e.type)}</span>${detail ? `<small>${esc(detail)}</small>` : ''}</li>`;
+    };
+    return `<details class="pv2-thread-events"><summary>${liste.length} événement${liste.length > 1 ? 's' : ''} du fournisseur</summary><ul>${liste.map(ligne).join('')}</ul></details>`;
+  }
+
+  function pv2ThreadMessageHtml(m, messages, fil, contact) {
+    const inbound = m.direction === 'inbound';
+    const uid = `msg:${m.id}`;
+    const nom = inbound
+      ? String(m.fromLabel || (contact && contact.name) || m.fromEmail || (contact && contact.email) || 'Expéditeur inconnu')
+      : String((m.sentBy && m.sentBy.memberName) || (m.origine === 'auto' ? (m.sequenceLabel || 'Séquence') : m.fromLabel || 'Le centre'));
+    const adresse = inbound ? String(m.fromEmail || (contact && contact.email) || '') : (m.recipient ? `à ${m.recipient}` : '');
+    const voie = inbound ? 'Reçu' : (m.origine === 'auto' ? `Envoyé · ${m.sequenceLabel || 'automatique'}` : `Envoyé · ${PV2_ORIGINE_LABELS[m.origine] || 'manuel'}`);
+    const quand = pv2Quand(inbound ? (m.receivedAt || m.createdAt) : (m.sentAt || m.createdAt));
+    const analysis = inbound && m.analysis && typeof m.analysis === 'object' ? m.analysis : null;
+    const intentLabel = analysis ? (analysis.intentLabel || PV2_INTENT_LABELS[analysis.intent] || analysis.intent) : '';
+    const questions = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.questions) || [];
+    const question = inbound ? questions.find((q) => Number(q.communicationId) === Number(m.id)) : null;
+    const trace = inbound ? pv2TraceEntrantHtml(m, messages, fil) : pv2TraceSortantHtml(m);
+    let corps;
+    if (inbound || m.textBody || m.message) {
+      corps = pv2CorpsMail({ uid, payload: { textBody: String(m.textBody || m.message || '') }, body: '', subject: m.subject || '' });
+    } else if (m.body) {
+      corps = `<div class="pv2-thread-outbound-html">${pv2FrameHtml(uid, m.body, 'pv2-mail-frame', 'Mail tel qu\'envoyé')}</div>`;
+    } else {
+      corps = '<div class="pv2-mail-corps"><p class="pv2-mail-vide">Ce message n a pas de contenu.</p></div>';
+    }
+    return `<article class="pl-timeline-msg${inbound ? ' is-inbound' : ' is-outbound'}" data-message-id="${esc(String(m.id))}">
+      <div class="pv2-mail-entete">
+        <div class="pv2-mail-pastille${inbound ? '' : ' is-nous'}" aria-hidden="true">${esc(pv2InitialeDe(nom, adresse))}</div>
+        <div class="pv2-mail-identite">
+          <div class="pv2-mail-ligne">
+            <strong>${esc(nom)}</strong>
+            <span class="pv2-mail-voie">${esc(voie)}</span>
+            <span class="pv2-mail-quand">${esc(quand)}</span>
+          </div>
+          ${adresse ? `<div class="pv2-mail-adresse">${esc(adresse)}</div>` : ''}
+        </div>
+      </div>
+      ${corps}
+      ${!inbound && m.body && (m.textBody || m.message) ? `<button type="button" class="pv2-link-btn" onclick="pv2ThreadVoirMail('${escJs(String(m.id))}')">Voir le mail tel qu'envoyé</button>` : ''}
+      ${analysis ? `
+      <div class="pv2-inbox-analysis pv2-thread-analyse">
+        <div class="pv2-mail-preview-title">Ce que l'agent a compris</div>
+        <div class="pv2-inbox-summary">
+          <span class="pv2-inbox-intent">${esc(intentLabel)}</span>
+          ${analysis.urgency === 'haute' ? '<span class="pv2-inbox-urgent">Urgent</span>' : ''}
+          <p>${esc(analysis.summary || '')}</p>
+        </div>
+      </div>` : ''}
+      <div class="pl-timeline-trace" aria-label="Parcours du message">
+        ${trace.join('')}
+        ${question ? `<p class="pv2-thread-question"><b>L'agent ne sait pas :</b> ${esc(question.question)} <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('agent')">Lui répondre</button></p>` : ''}
+        ${pv2EvenementsHtml(m)}
+      </div>
+    </article>`;
+  }
+
+  function pv2ThreadReplyHtml(fil, contact, messages) {
+    const cle = String(fil.id);
+    const r = pv2ThreadReplyDraft(cle);
+    const maySend = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
+    const busy = pv2Threads.replyBusy === cle;
+    const entrant = pv2ThreadDernierEntrant(messages);
+    const proposition = entrant && entrant.analysis && entrant.analysis.reply && (entrant.analysis.reply.body || entrant.analysis.reply.subject);
+    const identityOptions = pv2Mail.identities.length
+      ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(r.identityId) ? ' selected' : ''}>${esc(i.label || i.email)}, ${esc(i.email)}</option>`).join('')
+      : `<option value="">${pv2Mail.metaLoading ? 'Chargement des adresses…' : 'Expéditeur par défaut'}</option>`;
+    const nom = String((contact && contact.name) || fil.contactName || (contact && contact.email) || fil.contactEmail || 'ce client');
+    return `<section class="pv2-thread-reply" data-pv2-mount="threadReply" aria-label="Répondre">
+      <div class="pv2-thread-reply-head">
+        <h3>Répondre à ${esc(nom)}</h3>
+        <div class="pv2-thread-actions">
+          ${proposition ? `<button type="button" class="pv2-btn sm" onclick="pv2ThreadUtiliserProposition('${escJs(cle)}')">${ci('sparkles')}Utiliser la réponse proposée</button>` : ''}
+          ${entrant ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2InboxReanalyze('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${ci('refresh')}Ré-analyser</button>` : ''}
+        </div>
+      </div>
+      ${pv2BandeauPriseHtml(pv2PriseDunAutreSurLeFil(entrant, fil))}
+      <div class="pv2-thread-reply-grid">
+        <label class="pv2-composer-field"><span>Expéditeur</span>
+          <select onchange="pv2InboxReplyField('${escJs(cle)}', 'identityId', this.value)" aria-label="Adresse d'envoi">${identityOptions}</select>
+        </label>
+        <label class="pv2-composer-field"><span>Objet</span>
+          <input class="pv2-inbox-reply-subject" data-pl-focus="emails.reponse.objet" value="${esc(r.subject)}" aria-label="Objet de la réponse" oninput="pv2InboxReplyField('${escJs(cle)}', 'subject', this.value)">
+        </label>
+      </div>
+      <div class="pv2-composer-field"><span>Réponse</span>
+        ${pv2TokeditHtml({ id: 'pv2ThreadReplyBody', sink: 'threadReplyBody', value: r.body, plFocus: 'emails.reponse.message', placeholder: 'Bonjour…', classe: 'pv2-inbox-reply-body' })}
+      </div>
+      <div class="pv2-thread-reply-sign${r.signature ? '' : ' is-off'}">
+        <label class="pv2-check"><input type="checkbox" ${r.signature ? 'checked' : ''} onchange="pv2InboxReplyField('${escJs(cle)}', 'signature', this.checked)"> Ajouter la signature du centre</label>
+        <input value="${esc(r.signatoryName)}" placeholder="Votre nom" aria-label="Nom du signataire" data-pl-focus="emails.reponse.signataire" oninput="pv2InboxReplyField('${escJs(cle)}', 'signatoryName', this.value)" ${r.signature ? '' : 'disabled'}>
+        <input value="${esc(r.signatoryRole)}" placeholder="Votre rôle" aria-label="Rôle du signataire" data-pl-focus="emails.reponse.role" oninput="pv2InboxReplyField('${escJs(cle)}', 'signatoryRole', this.value)" ${r.signature ? '' : 'disabled'}>
+      </div>
+      <div class="pv2-composer-actions">
+        <button type="button" class="pv2-btn" onclick="pv2ThreadReplyPreview('${escJs(cle)}')">Voir le mail final</button>
+        <span class="pv2-composer-spacer"></span>
+        ${maySend
+          ? `<button type="button" class="pv2-btn primary" onclick="pv2InboxReply('${escJs(cle)}')" ${busy ? 'disabled' : ''}>${ci('send')}${busy ? 'Envoi…' : 'Envoyer'}</button>`
+          : '<p class="pv2-thread-reply-locked">Votre rôle ne permet pas d\'envoyer des mails.</p>'}
+      </div>
+    </section>`;
+  }
+
+  function pv2ThreadDetailHtml() {
+    const d = pv2Threads.detail;
+    if (!pv2Threads.selectedId) {
+      return '<div class="pv2-thread-empty"><strong>Choisissez une conversation</strong><span>Elle s\'affiche ici, message par message, avec qui l\'a lue et qui a répondu.</span></div>';
+    }
+    if (!d.loaded) {
+      return `<div class="pv2-thread-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`;
+    }
+    if (d.error || !d.thread) {
+      return `<div class="pv2-thread-empty"><strong>${esc(d.error || 'Conversation introuvable.')}</strong><button type="button" class="pv2-btn sm" onclick="loadPv2ThreadDetail('${escJs(String(pv2Threads.selectedId))}', true)">Réessayer</button></div>`;
+    }
+    const fil = d.thread;
+    const contact = d.contact || {};
+    const messages = d.messages;
+    const [statusLabel, statusTone] = PV2_THREAD_STATUS[fil.status] || PV2_THREAD_STATUS.open;
+    const maySend = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send');
+    const busyStatut = pv2Threads.statusBusy === String(fil.id);
+    const autres = Array.isArray(contact.autresFils) ? contact.autresFils : [];
+    const nom = String(contact.name || fil.contactName || contact.email || fil.contactEmail || 'Expéditeur inconnu');
+    const email = String(contact.email || fil.contactEmail || '');
+    return `<div class="pv2-thread-detail pv2-mail-detail">
+      <div class="pv2-thread-head">
+        <span class="pv2-thread-avatar" aria-hidden="true">${esc(pv2InitialeDe(contact.name || fil.contactName, email))}</span>
+        <div class="pv2-thread-title">
+          <strong>${esc(nom)}</strong>
+          ${email && email !== nom ? `<small>${esc(email)}</small>` : ''}
+          <div class="pv2-thread-subjectline">${esc(fil.subject || '(sans objet)')}</div>
+        </div>
+        <div class="pv2-thread-actions">
+          <span class="pv2-chip ${statusTone}">${statusLabel}</span>
+          ${maySend ? (fil.status === 'closed'
+            ? `<button type="button" class="pv2-btn sm" onclick="pv2ThreadSetStatus('${escJs(String(fil.id))}', 'open')" ${busyStatut ? 'disabled' : ''}>Rouvrir</button>`
+            : `<button type="button" class="pv2-btn sm" onclick="pv2ThreadSetStatus('${escJs(String(fil.id))}', 'closed')" ${busyStatut ? 'disabled' : ''}>Terminer</button>`) : ''}
+          ${email ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2ThreadVoirClient('${escJs(email)}')">Client</button>` : ''}
+        </div>
+        ${autres.length ? `<details class="pv2-thread-others">
+          <summary>${ci('chevronDown')}Autres conversations (${autres.length})</summary>
+          <div class="pv2-thread-others-list">${autres.map((a) => `<button type="button" onclick="pv2ThreadOpen('${escJs(String(a.id))}')"><span>${esc(a.subject || '(sans objet)')}</span><small>${esc((PV2_THREAD_STATUS[a.status] || PV2_THREAD_STATUS.open)[0])}</small><small>${esc(pv2Relatif(a.lastMessageAt))}</small></button>`).join('')}</div>
+        </details>` : ''}
+      </div>
+      <div class="pl-timeline">
+        ${messages.length ? messages.map((m) => pv2ThreadMessageHtml(m, messages, fil, contact)).join('') : '<div class="pv2-thread-empty"><strong>Aucun message</strong></div>'}
+      </div>
+      ${pv2ThreadReplyHtml(fil, contact, messages)}
+    </div>`;
+  }
+
+  function pv2EmailsSectionRecus() {
+    const o = pv2Overview.data;
+    const aRepondre = o && Number.isFinite(Number(o.aRepondre)) ? Number(o.aRepondre) : undefined;
+    const filtres = [
+      { key: 'a-repondre', label: 'À répondre', count: aRepondre },
+      { key: 'repondus', label: 'Répondus' },
+      { key: 'termines', label: 'Terminés' },
+      { key: 'tous', label: 'Tous' },
+    ].map((f) => ({ ...f, active: pv2Threads.filtre === f.key }));
+    const liste = pv2Threads.error
+      ? `<div class="pv2-thread-empty"><strong>${esc(pv2Threads.error)}</strong><button type="button" class="pv2-btn sm" onclick="loadPv2Threads(true)">Réessayer</button></div>`
+      : !pv2Threads.loaded
+        ? `<div class="pv2-thread-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
+        : pv2Threads.threads.length
+          ? pv2Threads.threads.map((t) => pv2ThreadRowHtml(t)).join('')
+          : `<div class="pv2-thread-empty"><strong>${pv2Threads.q ? 'Aucune conversation ne correspond' : { 'a-repondre': 'Rien à répondre', repondus: 'Aucune conversation répondue', termines: 'Aucune conversation terminée', tous: 'Aucune conversation' }[pv2Threads.filtre]}</strong><span>${pv2Threads.q ? 'Essayez un autre nom ou une autre adresse.' : 'Collez un mail avec « Coller un mail reçu » : l\'agent prépare la réponse.'}</span></div>`;
+    const reste = pv2Threads.loaded && pv2Threads.total > pv2Threads.threads.length ? pv2Threads.total - pv2Threads.threads.length : 0;
+    return `<section class="pv2-thread-split">
+      <article class="pv2-panel pv2-thread-panel">
+        <div class="pv2-thread-tools">
+          ${seg(filtres, 'pv2ThreadsFilter')}
+          <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recus.recherche" value="${esc(pv2Threads.q || '')}" placeholder="Client, adresse, objet…" aria-label="Rechercher une conversation" oninput="pv2ThreadsSearch(this.value)"></label>
+        </div>
+        <div class="pv2-thread-list" aria-live="polite" aria-busy="${pv2Threads.loading ? 'true' : 'false'}">${liste}</div>
+        ${reste ? `<p class="pv2-note" style="padding:10px 14px;border-top:1px solid var(--line)">${reste} autre${reste > 1 ? 's' : ''} conversation${reste > 1 ? 's' : ''} : affinez la recherche pour les voir.</p>` : ''}
+      </article>
+      <article class="pv2-panel">${pv2ThreadDetailHtml()}</article>
+    </section>`;
+  }
+
+  /* ── ENVOYES : la file, son suivi, le detail ────────────────────────────── */
+  const PV2_SENT_ORIGINS = [['all', 'Toutes'], ['auto', 'Automatiques'], ['manual', 'Envois manuels'], ['campagne', 'Campagnes'], ['test', 'Tests']];
+  function pv2SentOrigin(row) {
+    const p = row.payload && typeof row.payload === 'object' ? row.payload : {};
+    const flag = (v) => v === true || v === 'true';
+    if (flag(p.test)) return 'test';
+    if (p.campaignId) return 'campagne';
+    return getStaffEmailOrigin(row) === 'manual' ? 'manual' : 'auto';
+  }
+  function pv2SentRemis(row) {
+    return Boolean(row.deliveredAt) || String(row.status || '').toLowerCase() === 'delivered';
+  }
+  function pv2SentOuvert(row) {
+    return Boolean(row.openedAt) || Number(row.openCount) > 0;
+  }
+  function pv2SentClique(row) {
+    return Boolean(row.clickedAt) || Number(row.clickCount) > 0;
+  }
+  function pv2SentRows() {
+    const every = getStaffEmailRows().filter((r) => !pv2IsInbound(r));
+    const origin = ['auto', 'manual', 'campagne', 'test'].includes(state.staffEmailOriginFilter) ? state.staffEmailOriginFilter : 'all';
+    const filter = ['all', 'queued', 'sent', 'delivered', 'opened', 'failed', 'review'].includes(state.staffEmailFilter) ? state.staffEmailFilter : 'all';
+    const query = String(state.staffEmailQuery || '').trim().toLowerCase();
+    const scoped = origin === 'all' ? every : every.filter((r) => pv2SentOrigin(r) === origin);
+    const rows = scoped.filter((r) => {
+      if (filter === 'review') return r.templateId === 'staff_review_request';
+      if (filter === 'delivered') return pv2SentRemis(r);
+      if (filter === 'opened') return pv2SentOuvert(r);
+      if (filter !== 'all' && r.statusKind !== filter) return false;
+      return true;
+    }).filter((r) => !query || getStaffEmailText(r).includes(query));
+    return { every, scoped, rows, origin, filter, query };
+  }
+
+  // Le mini-parcours a quatre points : plein = fait, vide = pas encore,
+  // tiret = suivi inactif, rouge = echec.
+  function pv2JourneyHtml(row) {
+    const echec = row.statusKind === 'failed';
+    const envoye = row.statusKind === 'sent' || pv2SentRemis(row) || pv2SentOuvert(row);
+    const remis = pv2SentRemis(row);
+    const ouvert = pv2SentOuvert(row);
+    const clique = pv2SentClique(row);
+    const ouvertures = pv2OuverturesObservees();
+    const dot = (etat) => `<span class="pl-journey-dot ${etat}" aria-hidden="true"></span>`;
+    const titre = [
+      echec ? 'Échec' : envoye ? 'Envoyé' : 'Pas encore envoyé',
+      remis ? 'Remis' : 'Remise : aucun événement',
+      ouvert ? 'Ouvert' : ouvertures === false ? 'Ouverture : suivi inactif' : 'Pas encore ouvert',
+      clique ? 'Cliqué' : 'Pas de clic',
+    ].join(' · ');
+    return `<span class="pl-journey" role="img" aria-label="${esc(titre)}" title="${esc(titre)}">
+      ${dot(echec ? 'is-fail' : envoye ? 'is-done' : '')}${dot(remis ? 'is-done' : '')}${dot(ouvert ? 'is-done' : ouvertures === false ? 'is-off' : '')}${dot(clique ? 'is-done' : '')}
+    </span>`;
+  }
+
+  function pv2SentDetailHtml(selected, KIND_META) {
+    if (!selected) return '<div class="pv2-empty"><strong>Aucun message</strong>Sélectionnez une communication.</div>';
+    const payload = selected.payload || {};
+    const origine = pv2SentOrigin(selected);
+    const sentBy = payload.sentBy && typeof payload.sentBy === 'object' ? payload.sentBy : null;
+    const origineTxt = origine === 'auto'
+      ? `Automatique · ${selected.templateLabel || selected.templateId || 'séquence'}`
+      : `${PV2_ORIGINE_LABELS[origine]}${sentBy && sentBy.memberName ? ` · ${sentBy.memberName}` : (payload.staffMember ? ` · ${payload.staffMember}` : '')}`;
+    // « Voir la conversation » : seulement si le client a repondu apres cet
+    // envoi. Un fil qui n a que ce mail n apporterait rien de plus.
+    const reponse = selected.threadId
+      ? getStaffEmailRows().find((r) => pv2IsInbound(r) && Number(r.threadId) === Number(selected.threadId) && new Date(r.createdAt || r.receivedAt || 0).getTime() > new Date(selected.sentAt || selected.createdAt || 0).getTime())
+      : null;
+    const traceVertical = pv2TraceSortantVerticalHtml({
+      status: selected.status, sentAt: selected.sentAt, createdAt: selected.createdAt, scheduledAt: selected.scheduledAt, errorReason: selected.lastError,
+      suivi: { deliveredAt: selected.deliveredAt, openedAt: selected.openedAt, openCount: selected.openCount, clickedAt: selected.clickedAt, clickCount: selected.clickCount, bouncedAt: selected.bouncedAt, complainedAt: selected.complainedAt, lastError: selected.lastError },
+    });
+    return `<div class="pv2-panel-body pv2-mail-detail pv2-sent-detail">
         <div class="pv2-kv">
           <div><dt>Destinataire</dt><dd>${esc(selected.recipient || '-')}</dd></div>
+          <div><dt>Origine</dt><dd>${esc(origineTxt)}</dd></div>
           <div><dt>Modèle</dt><dd>${esc(selected.templateLabel || selected.templateId || '-')}</dd></div>
-          <div><dt>Origine</dt><dd>${esc(getStaffEmailOrigin(selected) === 'manual'
-            ? `Envoi manuel${payload.staffMember ? ` · ${payload.staffMember}` : ''}`
-            : 'Automatique · parti tout seul')}</dd></div>
           <div><dt>Canal</dt><dd>${esc({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp' }[selected.channel] || selected.channel || 'Email')}</dd></div>
           <div><dt>Statut</dt><dd>${esc((KIND_META[selected.statusKind] || {}).label || selected.status || '-')}</dd></div>
           <div><dt>Programmé</dt><dd>${esc(formatOpsTimestamp(selected.scheduledAt) || '-')}</dd></div>
           ${selected.sentAt ? `<div><dt>Envoyé</dt><dd>${esc(formatOpsTimestamp(selected.sentAt))}</dd></div>` : ''}
           ${selected.attempts ? `<div><dt>Tentatives</dt><dd>${Number(selected.attempts)}</dd></div>` : ''}
         </div>
+        <div>
+          <div class="pv2-mail-preview-title">Parcours</div>
+          <div class="pv2-sent-trace">${traceVertical}</div>
+        </div>
+        ${reponse ? `<div class="pv2-sent-actions"><button type="button" class="pv2-btn sm" onclick="pv2ThreadOpen('${escJs(String(selected.threadId))}')">${ci('message')}Voir la conversation : le client a répondu</button></div>` : ''}
         ${selected.statusKind === 'failed' ? (() => {
           const failure = getStaffEmailFailureReason(selected);
           // Le renvoi n'est proposé que si le mail garde un sens aujourd'hui :
@@ -4432,127 +5891,363 @@
             ${selected.body ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2ViewStoredMail('${escJs(selected.uid)}')">Plein écran</button>` : ''}
           </div>
           ${selected.body
-            ? `<iframe class="pv2-mail-frame" sandbox="" title="Mail tel qu'envoyé" srcdoc="${esc(selected.body)}"></iframe>`
+            ? pv2FrameHtml(`sent:${selected.uid}`, selected.body, 'pv2-mail-frame', 'Mail tel qu\'envoyé')
             : `<div class="pv2-mail-render pv2-mail-render-detail">${pv2RenderEmailPreview(String(payload.textBody || selected.subject || 'Pas de contenu texte.'), null) || '<p class="pv2-preview-empty">Pas de contenu texte.</p>'}</div>`}
         </div>
       </div>`;
+  }
 
-    root.innerHTML = `<div class="pv2-shell">
-      ${bar({
-        crumb: 'Clients & Marketing / Communications',
-        title: 'Emails & relances',
-        /* « File opérationnelle · actualisé 20/07 01:06 » : deux termes de
-           jargon interne pour une gérante de centre. Le sous-titre dit
-           maintenant ce que la page contient, en français, et l'heure de
-           fraîcheur passe en fin de ligne où elle ne bloque plus la lecture. */
-        sub: `Ce qui part, ce qui arrive, ce qui n'est pas parti <span class="pv2-bar-stamp">· à jour à ${esc(updatedAt)}</span>${errorMessage ? ` · <span style="color:var(--v2-red)">${esc(errorMessage)}</span>` : ''}`,
-        /* Six boutons de poids identique = aucune hiérarchie : l'œil ne sait
-           pas par où commencer, et « Analyser un reçu » se lisait comme un
-           reçu de caisse alors que le panneau sert à COLLER un mail reçu d'un
-           client. Trois niveaux désormais : une seule action primaire
-           (Nouveau message), une secondaire (Coller un mail reçu), le reste en
-           discret. « Exporter » et « Envoyer la file » quittent la tête pour
-           se poser sur la file, l'objet sur lequel ils agissent. */
-        actions: `
-          <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recherche" value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" oninput="setStaffEmailQuery(this.value)"></label>
-          <button type="button" class="pv2-btn sm ghost" onclick="requestOpsAdminLoad(true)" title="Recharger les données">${ci('refresh')}Actualiser</button>
-          <button type="button" class="pv2-btn sm ghost" onclick="pv2OpenSettings()">${ci('wrench')}Réglages</button>
-          <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Coller un mail reçu</button>
-          <button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>`,
-      })}
+  function pv2EmailsSectionEnvoyes() {
+    const { every, scoped, rows, origin, filter } = pv2SentRows();
+    const inboundCount = getStaffEmailRows().filter(pv2IsInbound).length;
+    const selected = getSelectedStaffEmailRow(rows);
+    if (selected && state.staffEmailSelectedId !== selected.uid) state.staffEmailSelectedId = selected.uid;
+    const metrics = getStaffEmailMetrics(scoped);
+    const remisCount = scoped.filter(pv2SentRemis).length;
+    const ouvertsCount = scoped.filter(pv2SentOuvert).length;
+    const ouvertures = pv2OuverturesObservees();
+    const originCounts = { auto: 0, manual: 0, campagne: 0, test: 0 };
+    every.forEach((row) => { originCounts[pv2SentOrigin(row)] += 1; });
 
-      ${failureBanner}
+    /* « En file » était BLEU, c'est-à-dire de la couleur réservée à
+       l'information, alors qu'un mail programmé pas encore parti est un état
+       d'ATTENTE : sa couleur est l'ambre. */
+    const KIND_META = {
+      queued: { label: 'En attente', tone: 'amber' },
+      sent: { label: 'Envoyé', tone: 'green' },
+      failed: { label: 'Échec', tone: 'red' },
+      draft: { label: 'Brouillon', tone: '' },
+      cancelled: { label: 'Annulé', tone: '' },
+    };
 
-      ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
-      ${pv2Settings.open ? pv2SettingsPanel() : ''}
+    /* Les segments sont des FILTRES : chiffre puis libellé sur une ligne,
+       <button> pour le clavier. ACCORDS : le libellé s'accorde au compteur, et
+       « Tout », invariable, s'écrit « Tout (3) ». */
+    const pipe = (key, one, many, value, hint, opts = {}) => {
+      const n = Number(value) || 0;
+      const label = esc(n > 1 ? many : one);
+      const valueHtml = opts.paren
+        ? `<span class="pv2-pipe-value">(${n})</span>`
+        : `<span class="pv2-pipe-value" ${PV2.lastPage !== 'emails' ? `data-pv2-count="${n}"` : ''}>${n}</span>`;
+      return `<button type="button" class="pv2-pipe ${filter === key ? 'active' : ''}" data-pipe="${key}" onclick="pv2EmailFilter('${key}')" aria-pressed="${filter === key}">
+      ${opts.paren ? `<span class="pv2-pipe-label">${label}</span>${valueHtml}` : `${valueHtml}<span class="pv2-pipe-label">${label}</span>`}
+      ${hint ? `<span class="pv2-pipe-hint">${esc(hint)}</span>` : ''}
+    </button>`;
+    };
 
+    const tableRows = rows.slice(0, 80).map((row) => {
+      const meta = KIND_META[row.statusKind] || KIND_META.draft;
+      // La cause de l'échec se lit dans la LISTE, pas seulement après avoir
+      // sélectionné la ligne : c'est ce qui rend un échec impossible à rater.
+      const failure = row.statusKind === 'failed' ? getStaffEmailFailureReason(row) : null;
+      const rowOrigin = pv2SentOrigin(row);
+      const p = row.payload && typeof row.payload === 'object' ? row.payload : {};
+      const sentBy = p.sentBy && typeof p.sentBy === 'object' ? p.sentBy : null;
+      const origineTxt = rowOrigin === 'auto'
+        ? (row.templateLabel || row.templateId || 'Auto')
+        : `${PV2_ORIGINE_LABELS[rowOrigin]}${sentBy && sentBy.memberName ? ` · ${sentBy.memberName}` : ''}`;
+      const selectedRow = selected && row.uid === selected.uid;
+      return `<tr class="${selectedRow ? 'selected' : ''}${failure ? ' is-failed' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')" aria-selected="${selectedRow ? 'true' : 'false'}">
+        <td data-col="message"><button type="button" class="pv2-row-btn" onclick="event.stopPropagation(); pv2SelectEmail('${escJs(row.uid)}')"><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '-')}</small></button></td>
+        <td data-col="origine"><span class="pv2-chip pv2-origin-badge pv2-origin-chip" data-origin="${rowOrigin}">${esc(origineTxt)}</span></td>
+        <td data-col="statut"><span class="pv2-chip ${meta.tone}">${meta.label}</span>${failure ? `<small class="pv2-cell-sub pv2-cell-fail">${esc(failure.label)}</small>` : ''}</td>
+        <td data-col="parcours" class="pv2-col-parcours">${pv2JourneyHtml(row)}</td>
+        <td data-col="date" class="num">${esc(formatOpsTimestamp(row.sentAt || row.scheduledAt || row.createdAt) || '-')}</td>
+      </tr>`;
+    }).join('');
+
+    return `${pv2AlerteEchecsHtml(scoped, metrics)}
       <section class="pv2-origins" role="group" aria-label="Origine des messages">
         <span class="pv2-origins-label">Origine</span>
-        ${[
-          { key: 'all', label: 'Tous', count: null },
-          { key: 'auto', label: 'Automatiques', count: originCounts.auto },
-          { key: 'manual', label: 'Envois manuels', count: originCounts.manual },
-          { key: 'inbound', label: 'Reçus', count: originCounts.inbound },
-        ].map((seg) => `<button type="button" class="pv2-chip-btn pv2-origin-seg${originFilter === seg.key ? ' active' : ''}" onclick="pv2EmailOriginFilter('${seg.key}')" aria-pressed="${originFilter === seg.key}">${esc(seg.label)}${seg.count === null ? '' : `<span class="pv2-origin-count">(${seg.count})</span>`}</button>`).join('')}
-        <span class="pv2-origins-hint">Automatiques : partis tout seuls (séquences, rappels). Envois manuels : envoyés par vous ou l'équipe (messages, relances, campagnes, tests).</span>
+        ${PV2_SENT_ORIGINS.map(([key, label]) => `<button type="button" class="pv2-chip-btn pv2-origin-seg${origin === key ? ' active' : ''}" onclick="pv2EmailOriginFilter('${key}')" aria-pressed="${origin === key}">${esc(label)}${key === 'all' ? '' : `<span class="pv2-origin-count">(${originCounts[key]})</span>`}</button>`).join('')}
+        <span class="pv2-origins-hint">Automatiques : partis tout seuls (séquences, rappels). Envois manuels : écrits par vous ou l'équipe. Campagnes et tests : à part.</span>
       </section>
 
       <section class="pv2-pipeline" role="group" aria-label="Filtrer la file">
         <span class="pv2-pipe-rail" aria-hidden="true"></span>
-        ${pipe('all', 'Tout', 'Tout', allRows.length, '', { paren: true })}
-        ${pipe('inbound', 'Reçu', 'Reçus', inboundRows.length, inboundWaiting ? plural(inboundWaiting, 'sans réponse', 'sans réponse') : '')}
+        ${pipe('all', 'Tout', 'Tout', scoped.length, '', { paren: true })}
         ${pipe('queued', 'En attente', 'En attente', metrics.queued, plural(metrics.due || 0, 'prêt à partir', 'prêts à partir'))}
-        ${/* Le taux de réussite ne s'écrit que s'il a une base : sans aucun
-             envoi ni aucun échec, `deliveryRate` vaut null et le segment reste
-             muet, au lieu d'annoncer « 100 % de réussite » sous un « 0 ». */''}
-        ${pipe('sent', 'Envoyé', 'Envoyés', metrics.sent, metrics.deliveryRate == null ? '' : `${metrics.deliveryRate} % de réussite`)}
+        ${pipe('sent', 'Envoyé', 'Envoyés', metrics.sent, metrics.deliveryRate == null ? '' : `${metrics.deliveryRate} % de réussite`)}
+        ${pipe('delivered', 'Remis', 'Remis', remisCount, remisCount ? '' : 'aucun accusé de remise')}
+        ${pipe('opened', 'Ouvert', 'Ouverts', ouvertsCount, ouvertsCount ? '' : ouvertures === false ? 'suivi inactif' : 'aucune ouverture')}
         ${pipe('failed', 'Échec', 'Échecs', metrics.failed, plural(metrics.attempted || 0, 'tentative d’envoi', 'tentatives d’envoi'))}
         ${pipe('review', 'À valider', 'À valider', metrics.review, '')}
       </section>
-      <p class="pv2-pipeline-scope">Tout, En attente, Envoyés, Échecs et À valider portent sur les ${allRows.length} messages de la file ci-dessous. Reçus compte à part les ${inboundRows.length} mails arrivés dans la boîte du centre. Les cartes de séquences, plus bas, comptent sur les 30 derniers jours.</p>
-
-      ${pv2SectionApprentissage()}
+      <p class="pv2-pipeline-scope">Tout, En attente, Envoyés, Remis, Ouverts, Échecs et À valider portent sur les ${scoped.length} messages de la file ci-dessous. Les ${inboundCount} mails reçus se lisent dans <button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('recus')">Reçus</button>.</p>
 
       <section class="pv2-split">
         <article class="pv2-panel pv2-mail-list">
           <div class="pv2-panel-head pv2-list-head">
-            <h2>${filter === 'inbound' ? 'Mails reçus' : 'La file'}</h2>
-            <div class="pv2-panel-head-actions">
-              <button type="button" class="pv2-btn sm ghost" onclick="exportStaffEmailsCsv()">Exporter</button>
+            <h2>La file</h2>
+            <div class="pv2-panel-head-actions pv2-sent-tools">
+              <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recherche" value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" aria-label="Rechercher dans la file" oninput="setStaffEmailQuery(this.value)"></label>
+              <button type="button" class="pv2-btn sm ghost" onclick="pv2ExporterEnvoyes()">Exporter</button>
               <button type="button" class="pv2-btn sm" onclick="requestOpsDispatch()">Envoyer la file</button>
             </div>
           </div>
           <table class="pv2-table">
-            ${tableHead}
-            <tbody data-pl-stagger="comms.file">${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Collez un mail avec « Coller un mail reçu » : l\'agent prépare la réponse.' : originFilter === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : originFilter === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
+            <thead><tr><th>Message</th><th>Origine</th><th>Statut</th><th>Parcours</th><th class="num">Date</th></tr></thead>
+            <tbody data-pl-stagger="comms.file">${tableRows || `<tr><td colspan="5"><div class="pv2-empty"><strong>File vide</strong>${origin === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : origin === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : origin === 'campagne' ? 'Aucun mail de campagne ne correspond à ce filtre.' : origin === 'test' ? 'Aucun mail de test ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
           </table>
         </article>
         <article class="pv2-panel">
-          <div class="pv2-panel-head"><h2>${esc(selected?.subject || 'Détail')}</h2></div>
-          ${detail}
+          <div class="pv2-panel-head"><h2>${esc(selected ? (selected.subject || 'Détail') : 'Détail')}</h2></div>
+          ${pv2SentDetailHtml(selected, KIND_META)}
         </article>
-      </section>
+      </section>`;
+  }
 
-      <section class="pv2-panel mk-auto-panel">
+  // L export porte exactement la file affichee (filtres Remis/Ouverts compris).
+  window.pv2ExporterEnvoyes = function () {
+    if (typeof exportStaffEmailsCsv !== 'function') return;
+    exportStaffEmailsCsv(pv2SentRows().rows);
+  };
+
+  /* ── SEQUENCES ─────────────────────────────────────────────────────────── */
+  function pv2EmailsSectionSequences() {
+    return `<div class="pv2-seq-groups">
+      <section class="pv2-panel mk-auto-panel" aria-label="Séquences Pinlane">
         <div class="pv2-panel-head has-sub">
-          <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Activez, coupez, personnalisez, ou créez les vôtres. Les compteurs de chaque carte portent sur les 30 derniers jours.</p></div>
+          <div><h2>Les séquences Pinlane</h2><p class="pv2-panel-sub">Les mails qui partent tout seuls, au bon moment. Chaque carte montre le texte qui part vraiment. Les compteurs portent sur les 30 derniers jours.</p></div>
           <div class="pv2-panel-head-actions">
             ${mkAuto.error ? `<button type="button" class="pv2-btn sm" onclick="loadStaffAutomations(true)">Réessayer</button>` : ''}
-            <button type="button" class="pv2-btn sm" onclick="pv2SeqNew()">+ Créer une séquence</button>
           </div>
         </div>
         <div class="pv2-panel-body">
           ${mkAuto.error
             ? `<div class="pv2-empty"><strong>${esc(mkAuto.error)}</strong></div>`
             : mkAuto.loaded
-              ? `<div class="mk-auto-grid">${AUTOMATION_META.map(mkAutoCard).join('')}${pv2Seq.sequences.map(pv2SeqCard).join('')}</div>`
-              : `<div class="pv2-empty"><strong>Chargement des séquences…</strong></div>`}
-          ${(pv2Seq.creating || pv2Seq.editId) ? pv2SeqEditor() : ''}
+              ? `<div class="mk-auto-grid">${AUTOMATION_META.map(mkAutoCard).join('')}</div>`
+              : `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement des séquences…</strong>'}</div>`}
         </div>
       </section>
-
-      ${pv2SuppressionPanel()}
+      <section class="pv2-panel mk-auto-panel" aria-label="Vos séquences">
+        <div class="pv2-panel-head has-sub">
+          <div><h2>Vos séquences</h2><p class="pv2-panel-sub">Vos propres automatisations : un déclencheur, une cible, un message, un plafond.</p></div>
+          <div class="pv2-panel-head-actions">
+            <button type="button" class="pv2-btn sm primary" onclick="pv2SeqNew()" ${pv2Seq.creating ? 'disabled' : ''}>+ Créer une séquence</button>
+          </div>
+        </div>
+        <div class="pv2-panel-body">
+          ${pv2Seq.creating ? `<div class="mk-auto-grid" style="margin-bottom:var(--space-4)"><article class="mk-auto pv2-seq-card is-editing"><div class="mk-auto-head"><strong>Nouvelle séquence<span class="pv2-seq-pill">perso</span></strong></div>${pv2SeqEditor()}</article></div>` : ''}
+          ${pv2Seq.sequences.length
+            ? `<div class="mk-auto-grid">${pv2Seq.sequences.map(pv2SeqCard).join('')}</div>`
+            : (pv2Seq.creating ? '' : '<div class="pv2-empty"><strong>Aucune séquence à vous</strong>Créez la première : elle tourne chaque matin avec celles de Pinlane.</div>')}
+        </div>
+      </section>
       ${mailInventoryPanel()}
-      ${typeof renderPv2RealCampaigns === 'function' ? renderPv2RealCampaigns() : ''}
+    </div>`;
+  }
+
+  /* ── APPARENCE & SIGNATURE ─────────────────────────────────────────────── */
+  function pv2DesignFormHtml(d, mayEdit) {
+    const dis = mayEdit ? '' : ' disabled';
+    const presets = pv2Design.presets.length ? pv2Design.presets : PV2_DESIGN_PRESETS;
+    const centre = pv2Design.center || {};
+    const branding = centre.branding && typeof centre.branding === 'object' ? centre.branding : {};
+    const info = centre.publicInfo && typeof centre.publicInfo === 'object' ? centre.publicInfo : {};
+    const accentCentre = /^#[0-9a-f]{6}$/i.test(String(branding.accent || '')) ? String(branding.accent) : '';
+    const logos = pv2Design.logos || [];
+    const logoOptions = (valeur) => `<option value="">Aucun logo</option>${logos.map((l) => `<option value="${esc(l.url)}"${l.url === valeur ? ' selected' : ''}>${esc(l.label)}</option>`).join('')}${valeur && !logos.some((l) => l.url === valeur) ? `<option value="${esc(valeur)}" selected>Adresse personnalisée</option>` : ''}`;
+    const champ = (path, label, valeur, { type = 'text', placeholder = '', hint = '', wide = false } = {}) => `<label class="pv2-composer-field${wide ? ' pv2-composer-wide' : ''}"><span>${esc(label)}${hint ? ` <small class="mk-auto-edit-hint">${esc(hint)}</small>` : ''}</span><input type="${type}" value="${esc(valeur === undefined || valeur === null ? '' : valeur)}" placeholder="${esc(placeholder)}" data-pl-focus="emails.design.${esc(path)}" oninput="pv2DesignField('${escJs(path)}', this.value)"${dis}></label>`;
+    const interrupteur = (path, on, label) => `<button type="button" class="mk-switch${on ? ' is-on' : ''}" data-switch-key="design:${esc(path)}" role="switch" aria-checked="${on}" aria-label="${esc(label)}" onclick="pv2DesignBascule('${escJs(path)}')"${dis}><span></span></button>`;
+    const radio = (name, path, valeur, courant, label, extra = '') => `<label class="pv2-check"><input type="radio" name="${name}" value="${esc(valeur)}" ${courant === valeur ? 'checked' : ''} onchange="pv2DesignChoix('${escJs(path)}', '${escJs(valeur)}')"${dis}${extra}> ${label}</label>`;
+    const headerLogo = d.header.mode === 'logo' || d.header.mode === 'logo-nom';
+    const nomCentre = String(centre.name || (typeof pv2CenterName === 'function' ? pv2CenterName() : '') || 'votre centre');
+    return `<div class="pv2-design-form">
+      <section class="pv2-design-block" aria-label="Gabarit">
+        <h3>Gabarit</h3>
+        <p class="pv2-design-hint">La structure du mail : une carte, du papier, une barre de couleur ou un bandeau.</p>
+        <div class="pv2-design-presets" role="radiogroup" aria-label="Gabarit">
+          ${presets.map((p) => `<button type="button" class="pv2-design-preset${d.preset === p.id ? ' is-active' : ''}" role="radio" aria-checked="${d.preset === p.id}" onclick="pv2DesignChoix('preset', '${escJs(p.id)}')"${dis}><span class="pv2-design-schema is-${esc(p.id)}" aria-hidden="true"></span><strong>${esc(p.label)}</strong><small>${esc(p.description || '')}</small></button>`).join('')}
+        </div>
+      </section>
+      <section class="pv2-design-block" aria-label="Couleur d'accent">
+        <h3>Couleur d'accent</h3>
+        <p class="pv2-design-hint">Les titres, les boutons et la barre du gabarit Carte. Le texte courant reste en encre.</p>
+        <div class="pv2-design-radios">
+          ${radio('pv2DesignAccent', 'accent.mode', 'encre', d.accent.mode, 'Encre <small>(sobre)</small>')}
+          ${accentCentre
+            ? radio('pv2DesignAccent', 'accent.mode', 'centre', d.accent.mode, `<span class="pv2-design-swatch" style="background:${accentCentre}"></span> Couleurs du centre`)
+            : radio('pv2DesignAccent', 'accent.mode', 'centre', d.accent.mode, 'Couleurs du centre <small>(aucune couleur dans la fiche du centre)</small>', ' disabled')}
+          ${radio('pv2DesignAccent', 'accent.mode', 'perso', d.accent.mode, 'Personnalisée')}
+          ${d.accent.mode === 'perso' ? `<span class="pv2-design-inline"><input type="color" value="${/^#[0-9a-f]{6}$/i.test(String(d.accent.hex || '')) ? esc(d.accent.hex) : '#0a0a0a'}" aria-label="Choisir la couleur" oninput="pv2DesignField('accent.hex', this.value)"${dis}><input type="text" value="${esc(d.accent.hex || '')}" placeholder="#0a0a0a" maxlength="7" aria-label="Code couleur" data-pl-focus="emails.design.accent.hex" oninput="pv2DesignField('accent.hex', this.value)"${dis}></span>` : ''}
+        </div>
+      </section>
+      <section class="pv2-design-block" aria-label="En-tête">
+        <h3>En-tête</h3>
+        <div class="pv2-design-fields">
+          <label class="pv2-composer-field"><span>Affiche</span>
+            <select onchange="pv2DesignChoix('header.mode', this.value)"${dis}>
+              ${[['nom', 'Le nom du centre'], ['logo', 'Le logo'], ['logo-nom', 'Le logo et le nom'], ['aucun', 'Rien']].map(([v, l]) => `<option value="${v}"${d.header.mode === v ? ' selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>
+          ${headerLogo ? `<label class="pv2-composer-field"><span>Logo</span><select onchange="pv2DesignChoix('header.logoUrl', this.value)"${dis}>${logoOptions(d.header.logoUrl)}</select></label>
+          ${champ('header.logoUrl', 'Adresse de l\'image (https)', d.header.logoUrl, { type: 'url', placeholder: 'https://…/logo.png', wide: true })}
+          ${champ('header.logoWidth', 'Largeur du logo (px, 60 à 300)', d.header.logoWidth, { type: 'number' })}` : ''}
+        </div>
+        ${headerLogo && !logos.length ? '<p class="pv2-design-hint">Aucun logo déclaré pour ce centre : collez l\'adresse https d\'une image, ou laissez l\'en-tête en texte.</p>' : ''}
+      </section>
+      <section class="pv2-design-block" aria-label="Pied de page">
+        <h3>Pied de page</h3>
+        <p class="pv2-design-hint">Les coordonnées viennent de la fiche du centre. Ce qui n'y est pas renseigné reste absent du mail.</p>
+        <div class="pv2-design-scope">
+          ${[['adresse', 'Adresse', info.address], ['telephone', 'Téléphone', info.phone], ['email', 'Adresse email', info.email]].map(([k, l, v]) => `<div class="pv2-design-scope-row"><strong>${l}</strong><small>${v ? esc(String(v)) : 'non renseigné dans la fiche du centre'}</small>${interrupteur(`footer.${k}`, Boolean(d.footer[k]), l)}</div>`).join('')}
+        </div>
+        <label class="pv2-composer-field"><span>Mention libre <small class="mk-auto-edit-hint">laissée vide = absente du mail</small></span><textarea rows="2" maxlength="300" placeholder="Ex. Fermé le lundi hors vacances scolaires." data-pl-focus="emails.design.footer.mention" oninput="pv2DesignField('footer.mention', this.value)"${dis}>${esc(d.footer.mention || '')}</textarea></label>
+      </section>
+      <section class="pv2-design-block" aria-label="Signature">
+        <h3>Signature</h3>
+        <div class="pv2-design-scope">
+          <div class="pv2-design-scope-row"><strong>Signer les mails</strong><small>Une signature pro en fin de mail : formule, équipe ou personne, coordonnées, réseaux.</small>${interrupteur('signature.enabled', Boolean(d.signature.enabled), 'Signer les mails')}</div>
+        </div>
+        ${d.signature.enabled ? `
+        <div class="pv2-design-radios">
+          <span class="pv2-note">Disposition</span>
+          ${radio('pv2DesignLayout', 'signature.layout', 'carte', d.signature.layout, 'Carte <small>(logo à gauche, texte à droite)</small>')}
+          ${radio('pv2DesignLayout', 'signature.layout', 'ligne', d.signature.layout, 'Une ligne')}
+        </div>
+        <div class="pv2-design-fields">
+          ${champ('signature.closing', 'Formule de fin', d.signature.closing, { placeholder: 'À très bientôt,', hint: 'vide = absente' })}
+          ${champ('signature.teamLabel', 'Nom d\'équipe', d.signature.teamLabel, { placeholder: `L'équipe ${nomCentre}`, hint: 'vide = « L\'équipe » + nom du centre' })}
+          ${champ('signature.role', 'Rôle affiché', d.signature.role, { placeholder: 'Ex. Direction', hint: 'sur les mails manuels, le rôle de la personne prime' })}
+          ${champ('signature.phone', 'Téléphone', d.signature.phone, { type: 'tel', placeholder: 'vide = absent du mail' })}
+          ${champ('signature.email', 'Email', d.signature.email, { type: 'email', placeholder: 'vide = absent du mail' })}
+          ${champ('signature.website', 'Site web (https)', d.signature.website, { type: 'url', placeholder: 'vide = absent du mail' })}
+          ${champ('signature.address', 'Adresse', d.signature.address, { placeholder: 'vide = absente du mail', wide: true })}
+          <label class="pv2-composer-field"><span>Logo de signature</span><select onchange="pv2DesignChoix('signature.logoUrl', this.value)"${dis}>${logoOptions(d.signature.logoUrl)}</select></label>
+          ${champ('signature.logoWidth', 'Largeur du logo (px, 60 à 300)', d.signature.logoWidth, { type: 'number' })}
+          ${champ('signature.logoUrl', 'Adresse de l\'image (https)', d.signature.logoUrl, { type: 'url', placeholder: 'https://…/logo.png', wide: true })}
+          ${champ('signature.socials.facebook', 'Facebook', d.signature.socials.facebook, { type: 'url', placeholder: 'https://facebook.com/…' })}
+          ${champ('signature.socials.instagram', 'Instagram', d.signature.socials.instagram, { type: 'url', placeholder: 'https://instagram.com/…' })}
+          ${champ('signature.socials.tiktok', 'TikTok', d.signature.socials.tiktok, { type: 'url', placeholder: 'https://tiktok.com/@…' })}
+          ${champ('signature.socials.linkedin', 'LinkedIn', d.signature.socials.linkedin, { type: 'url', placeholder: 'https://linkedin.com/company/…' })}
+        </div>
+        ${!logos.length ? '<p class="pv2-design-hint">Aucun logo déclaré pour ce centre. Les réseaux s\'affichent en liens texte, jamais en icônes inventées.</p>' : ''}` : ''}
+      </section>
+      <section class="pv2-design-block" aria-label="Où l'appliquer">
+        <h3>Où appliquer la signature</h3>
+        <div class="pv2-design-scope">
+          <div class="pv2-design-scope-row"><strong>Messages manuels</strong><small>Vos réponses et messages libres : signés par la personne qui écrit.</small>${interrupteur('signatureScope.manual', Boolean(d.signatureScope.manual), 'Messages manuels')}</div>
+          <div class="pv2-design-scope-row"><strong>Séquences</strong><small>Confirmations, rappels, relances automatiques : signés par l'équipe.</small>${interrupteur('signatureScope.sequences', Boolean(d.signatureScope.sequences), 'Séquences')}</div>
+          <div class="pv2-design-scope-row"><strong>Campagnes</strong><small>Les envois groupés gardent leur ligne de retrait quoi qu'il arrive.</small>${interrupteur('signatureScope.campaigns', Boolean(d.signatureScope.campaigns), 'Campagnes')}</div>
+        </div>
+      </section>
+    </div>`;
+  }
+
+  function pv2EmailsSectionApparence() {
+    if (!pv2Design.loaded) {
+      return `<section class="pv2-panel"><div class="pv2-panel-body"><div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div></div></section>`;
+    }
+    if (pv2Design.error && !pv2Design.design) {
+      return `<section class="pv2-panel"><div class="pv2-panel-body"><div class="pv2-empty"><strong>${esc(pv2Design.error)}</strong><button type="button" class="pv2-btn sm" onclick="loadPv2Design(true)">Réessayer</button></div></div></section>`;
+    }
+    const d = pv2Design.design || pv2DesignVide();
+    const mayEdit = typeof canUseStaffPermission !== 'function' || ['settings.manage', 'emails.send', 'direction.view'].some((p) => canUseStaffPermission(p));
+    const samples = [['confirmation', 'Confirmation'], ['reponse', 'Réponse'], ['campagne', 'Campagne']].map(([key, label]) => ({ key, label, active: pv2Design.sample === key }));
+    const busy = pv2Design.busy;
+    return `<div class="pv2-design-layout">
+      ${pv2DesignFormHtml(d, mayEdit)}
+      <div class="pv2-design-preview">
+        ${pv2ApercuVivantHtml('design', { titre: 'Le mail tel qu\'il partira', tete: seg(samples, 'pv2DesignSample'), cadre: 'pv2-design-frame' })}
+        ${mayEdit ? `<div class="pv2-design-actions">
+          <button type="button" class="pv2-btn primary" onclick="pv2DesignSave()" ${busy || !pv2Design.dirty ? 'disabled' : ''}>${busy === 'save' ? 'Enregistrement…' : 'Enregistrer'}</button>
+          <button type="button" class="pv2-btn" onclick="pv2DesignTest()" ${busy ? 'disabled' : ''}>${busy === 'test' ? 'Envoi…' : 'M\'envoyer un test'}</button>
+          <button type="button" class="pv2-btn ghost" onclick="pv2DesignReset()" ${busy ? 'disabled' : ''}>Rétablir les défauts</button>
+        </div>` : '<p class="pv2-note">Votre rôle ne permet pas de modifier l\'apparence des mails : vous la consultez.</p>'}
+        ${pv2Design.erreurServeur ? `<p class="pv2-design-error" role="alert">${esc(pv2Design.erreurServeur)}</p>` : ''}
+        <p class="pv2-note">${pv2Design.dirty ? 'Modifications non enregistrées.' : d.updatedAt ? `Dernière modification ${esc(formatOpsTimestamp(d.updatedAt))}${d.updatedBy ? ` par ${esc(d.updatedBy)}` : ''}.` : 'Apparence par défaut : rien n\'a encore été enregistré pour ce centre.'}</p>
+      </div>
+    </div>`;
+  }
+
+  /* ── EXCLUSIONS, CAMPAGNES ─────────────────────────────────────────────── */
+  function pv2EmailsSectionExclusions() {
+    return pv2SuppressionPanel({ toujoursOuvert: true });
+  }
+
+  function pv2EmailsSectionCampagnes() {
+    const bloc = typeof renderPv2RealCampaigns === 'function' ? renderPv2RealCampaigns() : '';
+    return bloc || '<section class="pv2-panel"><div class="pv2-panel-body"><div class="pv2-empty"><strong>Campagnes indisponibles</strong>Votre rôle ne permet pas de les gérer.</div></div></section>';
+  }
+
+  /* ── LE ROUTEUR ─────────────────────────────────────────────────────────── */
+  function renderStaffEmailsPaint(root, errorMessage = '') {
+    // Chargements communs a toutes les sections. Chacun se garde lui-meme
+    // contre un double appel.
+    if (!mkAuto.loaded && !mkAuto.loading) setTimeout(() => loadStaffAutomations(), 0);
+    if (!pv2Seq.loaded && !pv2Seq.loading) setTimeout(() => loadPv2Sequences(), 0);
+    if (!pv2Suppress.loaded && !pv2Suppress.loading) setTimeout(() => loadPv2Suppressions(), 0);
+    // C14 : ops-console.js est injecté à la demande, requestOpsAdminLoad
+    // (app-main) charge le script puis déclenche loadOpsAdmin.
+    if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => requestOpsAdminLoad(false), 0);
+    if (!pv2Mail.metaLoaded && !pv2Mail.metaLoading) setTimeout(() => loadPv2MailMeta(), 0);
+    const section = pv2SectionCourante();
+    // Chargements propres a la section ouverte.
+    if (section === 'apercu' || section === 'recus' || section === 'envoyes' || section === 'sequences') { if (!pv2Overview.loaded && !pv2Overview.loading) setTimeout(() => loadPv2Overview(), 0); }
+    if (section === 'apercu' && !pv2Threads.apercu.loaded && !pv2Threads.apercu.loading) setTimeout(() => loadPv2ThreadsApercu(), 0);
+    if (section === 'recus' && !pv2Threads.loaded && !pv2Threads.loading) setTimeout(() => loadPv2Threads(), 0);
+    if ((section === 'apparence' || section === 'expediteurs' || section === 'recus') && !pv2Design.loaded && !pv2Design.loading) setTimeout(() => loadPv2Design(), 0);
+    if (section === 'agent' && !pv2Settings.brain.loaded && !pv2Settings.brain.loading) setTimeout(() => loadPv2Brain(), 0);
+    const mayCampaigns = pv2PeutVoirSection('campagnes');
+    if (section === 'campagnes' && mayCampaigns && typeof pv2Camp !== 'undefined' && !pv2Camp.loaded && !pv2Camp.loading) setTimeout(() => loadPv2Campaigns(), 0);
+
+    const updatedAt = opsAdminCache.lastLoadedAt ? formatOpsTimestamp(opsAdminCache.lastLoadedAt) : 'non chargé';
+    const renderers = {
+      apercu: pv2EmailsSectionApercu,
+      recus: pv2EmailsSectionRecus,
+      envoyes: pv2EmailsSectionEnvoyes,
+      sequences: pv2EmailsSectionSequences,
+      modeles: pv2EmailsSectionModeles,
+      apparence: pv2EmailsSectionApparence,
+      expediteurs: pv2EmailsSectionExpediteurs,
+      agent: pv2EmailsSectionAgent,
+      exclusions: pv2EmailsSectionExclusions,
+      campagnes: pv2EmailsSectionCampagnes,
+    };
+    const sectionHtml = (renderers[section] || renderers.apercu)();
+    const sectionChanged = PV2_EMAILS_MOTION.section !== section;
+    const premierePeinture = !PV2_EMAILS_MOTION.section;
+    PV2_EMAILS_MOTION.section = section;
+
+    root.innerHTML = `<div class="pv2-shell">
+      ${bar({
+        crumb: 'Clients & marketing / Emails & relances',
+        title: 'Emails & relances',
+        sub: `${esc(PV2_SECTION_SUB[section] || '')} <span class="pv2-bar-stamp">· à jour à ${esc(updatedAt)}</span>${errorMessage ? ` · <span style="color:var(--danger)">${esc(errorMessage)}</span>` : ''}`,
+        /* Trois niveaux : une seule action primaire (Nouveau message), une
+           secondaire (Coller un mail reçu), le reste en discret. */
+        actions: `
+          <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsActualiser()" title="Recharger les données">${ci('refresh')}Actualiser</button>
+          <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Coller un mail reçu</button>
+          <button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>`,
+      })}
+      ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
+      ${pv2SubnavHtml(section)}
+      <section class="pv2-emails-section${sectionChanged && !premierePeinture && !reducedMotion ? ' pv2-mount' : ''}" id="pv2EmailsPanel" role="tabpanel" aria-labelledby="pv2EmailsTab-${section}" data-section="${section}">
+        ${sectionHtml}
+      </section>
     </div>`;
     mount(root, 'emails');
-    // Le mouvement se recale APRES la reconstruction, jamais pendant : les trois
-    // appels lisent une memoire hors DOM, comparent, et ne bougent que ce qui a
-    // reellement change d'etat. C'est ce qui rend la page animee sans qu'aucune
-    // animation ne rejoue quand seules les donnees ont bouge.
+    // Le mouvement se recale APRES la reconstruction, jamais pendant : ces
+    // appels lisent une memoire hors DOM, comparent, et ne bougent que ce qui
+    // a reellement change d'etat.
+    pv2PoserIndicateurSousNav(root, false);
     slidePipeRail(root);
     replaySwitchKnobs(root);
     pv2TokeditAdoptAll(root);
     markEmailsMounts(root, {
       analyze: pv2Mail.analyzeOpen,
-      settings: pv2Settings.open,
+      settings: section === 'modeles' || section === 'expediteurs' || section === 'agent',
       seqEditor: pv2Seq.creating || pv2Seq.editId,
       autoEditor: mkAuto.editKey,
+      tplEditor: pv2Settings.tplEditing,
       inventory: state.staffEmailInventoryOpen,
+      threadReply: pv2Threads.selectedId && pv2Threads.detail.loaded && pv2Threads.detail.thread,
     });
-    const mayCampaigns = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage');
-    if (mayCampaigns && typeof pv2Camp !== 'undefined' && !pv2Camp.loaded && !pv2Camp.loading) setTimeout(() => loadPv2Campaigns(), 0);
-  };
+    pv2FillFrames(root);
+  }
 
   /* ==========================================================================
      CAMPAGNES : parcours gamifié « agence marketing » (style Duolingo)

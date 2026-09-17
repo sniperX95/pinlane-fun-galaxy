@@ -105,6 +105,25 @@ async function installMock(page) {
         },
       },
     }];
+    // 2026-09-16 : le mail recu se lit dans SA CONVERSATION (spec emails v4,
+    // contrats emailThreads / emailThread §3.7). Le fil est DERIVE du mail :
+    // meme donnee, presentee comme le serveur la presente desormais. Le corps
+    // du message (avec sa citation) reste celui du mail reel.
+    comms[0].threadId = 901;
+    const filDe = (c) => ({
+      id: 901, centerId: 'libramont', contactEmail: c.payload.from, contactName: c.payload.fromName || (c.payload.analysis && c.payload.analysis.clientName) || '',
+      subject: c.subject, status: 'open', origin: 'outbound', rootCommunicationId: c.id,
+      messageCount: 1, inboundCount: 1, outboundCount: 0, firstMessageAt: c.createdAt, lastMessageAt: c.createdAt, lastInboundAt: c.createdAt, lastOutboundAt: null,
+      lastDirection: 'inbound', snippet: String(c.payload.textBody || '').slice(0, 120), lastInboundId: c.id, luParMoi: false, lecteurs: [], prise: null,
+      intention: c.payload.analysis ? c.payload.analysis.intent : '', question: false, reponduPar: null,
+    });
+    const messageDe = (c) => ({
+      id: c.id, direction: 'inbound', subject: c.subject, body: '', textBody: String(c.payload.textBody || ''), message: String(c.payload.textBody || ''), historique: '',
+      createdAt: c.createdAt, sentAt: null, receivedAt: c.payload.receivedAt || c.createdAt, status: 'received', templateId: '', origine: 'inbound', sequenceLabel: '',
+      sentBy: null, fromEmail: c.payload.from, fromLabel: c.payload.fromName || '', recipient: c.recipient, providerMessageId: '', messageId: '', inReplyTo: '',
+      suivi: { deliveredAt: null, openedAt: null, openCount: 0, clickedAt: null, clickCount: 0, bouncedAt: null, complainedAt: null, lastError: '' },
+      evenements: [], lectures: [], prise: null, analysis: c.payload.analysis || null, reservationId: null, errorReason: '', threadId: 901,
+    });
 
     const nf = window.fetch.bind(window);
     const J = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -115,6 +134,16 @@ async function installMock(page) {
       if (!u.pathname.startsWith('/api/')) return nf(input, init);
       const method = String((init && init.method) || 'GET').toUpperCase();
       if (method === 'POST' && u.pathname === '/api/ops') return J({ ok: true });
+      const action = u.searchParams.get('action');
+      if (u.pathname === '/api/ops' && action === 'emailThreads') {
+        const filtre = u.searchParams.get('filtre') || 'a-repondre';
+        const threads = filtre === 'repondus' || filtre === 'termines' ? [] : [filDe(comms[0])];
+        return J({ ok: true, threads, total: threads.length });
+      }
+      if (u.pathname === '/api/ops' && action === 'emailThread') {
+        if (u.searchParams.get('id') !== '901') return new Response(JSON.stringify({ ok: false, message: 'Conversation introuvable.' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        return J({ ok: true, thread: filDe(comms[0]), messages: [messageDe(comms[0])], contact: { email: comms[0].payload.from, name: filDe(comms[0]).contactName, autresFils: [], nbFils: 1 } });
+      }
       if (u.pathname === '/api/staff-auth') {
         return J({
           ok: true, authenticated: true, session: qaSession,
@@ -126,7 +155,6 @@ async function installMock(page) {
           },
         });
       }
-      const action = u.searchParams.get('action');
       if (u.pathname === '/api/ops' && action === 'pulse') return J({ ok: true, empreinte: 'stable' });
       if (u.pathname === '/api/ops' && action === 'emailClaims') return J({ ok: true, claims: [] });
       if (u.pathname === '/api/ops' && action === 'communications') return J({ ok: true, communications: comms });

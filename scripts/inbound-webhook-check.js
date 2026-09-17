@@ -67,7 +67,11 @@
 //       (envoi, remise, rebond, plainte) nous envoie NOS PROPRES messages avec
 //       la meme signature : les ingerer remplirait la page Emails de nos
 //       envois, a l envers. Ils sont acquittes en 200 pour que le fournisseur
-//       ne les rejoue pas, sans rien ecrire.
+//       ne les rejoue pas, sans rien ecrire dans la boite de reception. Depuis
+//       le 2026-09-16 ils sont ENREGISTRES comme evenements de suivi (remis,
+//       ouvert, rebond : lib/email-events.js, gate email-events-check.js) :
+//       ici l enregistrement est un espion, et on prouve qu il recoit
+//       l evenement pendant que l ingestion ne recoit rien.
 //
 //   [E] LE CHEMIN MANUEL SURVIT. L en-tete `x-inbound-secret` continue de
 //       fonctionner (c est lui qui permet de tester tout le circuit sans DNS),
@@ -132,10 +136,14 @@ Module.prototype._compile = function (contenu, nom) {
   }
   return compileOrigine.call(this, mute, nom);
 };
-function chargerHandler(ingest, recupererContenu) {
+function chargerHandler(ingest, recupererContenu, enregistrerEvenement) {
   delete require.cache[require.resolve(path.join(ROOT, CIBLE))];
   const { createHandler } = require(path.join(ROOT, CIBLE));
-  return createHandler({ ingest, recupererContenu });
+  // L enregistrement des evenements du fournisseur (sent, delivered, bounced,
+  // complained) ecrit en base : il est remplace par un espion, sa logique a son
+  // propre gate (scripts/email-events-check.js). Ici la question est le
+  // ROUTAGE : un evenement va au suivi, jamais a l ingestion.
+  return createHandler({ ingest, recupererContenu, enregistrerEvenement });
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +153,7 @@ function chargerHandler(ingest, recupererContenu) {
 async function appeler({ corps, entetes = {}, requete = '/api/inbound-email', methode = 'POST', ingest = null, contenu = null } = {}) {
   const appels = [];
   const lectures = [];
+  const evenements = [];
   const ingestion = ingest || (async (args) => { appels.push(args); return { communication: { id: 1 }, deduped: false }; });
   const handler = chargerHandler(async (args) => {
     appels.push(args);
@@ -154,6 +163,9 @@ async function appeler({ corps, entetes = {}, requete = '/api/inbound-email', me
     if (typeof contenu === 'function') return contenu(emailId);
     if (contenu === 'echec') { const e = new Error('lecture refusee'); e.statusCode = 503; throw e; }
     return contenu || { text: 'Bonjour, avez-vous de la place ?', html: '' };
+  }, async (args) => {
+    evenements.push(args);
+    return { ok: true, deduped: false, type: String(args.type || '').replace(/^email\./, '') };
   });
   const req = Object.assign(Readable.from([corps]), {
     method: methode,
@@ -170,7 +182,7 @@ async function appeler({ corps, entetes = {}, requete = '/api/inbound-email', me
   await handler(req, res);
   let corpsRendu = null;
   try { corpsRendu = JSON.parse(rendu); } catch (error) { corpsRendu = { brut: rendu }; }
-  return { statut: statut || res.statusCode, corps: corpsRendu, appels, lectures };
+  return { statut: statut || res.statusCode, corps: corpsRendu, appels, lectures, evenements };
 }
 
 // L ENVELOPPE REELLE, relevee sur la production le 2026-09-06 : elle ne porte
@@ -355,8 +367,17 @@ function payload({ to = ['libramont@inbound.pinlane.be'], receivedFor, from = 'm
     const corpsEvenement = notreEnvoi.replace('email.sent', evenement);
     const r = await appeler({ corps: corpsEvenement, entetes: signer(corpsEvenement) });
     ok(r.statut === 200 && r.appels.length === 0,
-      `[F] ${evenement} : acquitte en 200, rien n est ecrit`, `HTTP ${r.statut}, ${r.appels.length} ecriture(s)`);
+      `[F] ${evenement} : acquitte en 200, rien n est ingere`, `HTTP ${r.statut}, ${r.appels.length} ecriture(s)`);
+    // Le meme evenement va au SUIVI, avec la cle d idempotence du fournisseur
+    // (svix-id) et la reponse qui dit ce qui a ete enregistre.
+    ok(r.evenements.length === 1 && r.evenements[0].type === evenement && r.evenements[0].eventKey === 'msg_2026'
+      && r.corps && r.corps.recorded === evenement.replace('email.', '') && r.corps.deduped === false,
+      `[F] ${evenement} : enregistre comme evenement de suivi, cle = svix-id`, `${r.evenements.length} evenement(s), corps ${JSON.stringify(r.corps)}`);
   }
+  // Un evenement NON SIGNE ne va nulle part : ni au suivi, ni a l ingestion.
+  const rNonSigne = await appeler({ corps: notreEnvoi });
+  ok(rNonSigne.statut === 401 && rNonSigne.evenements.length === 0 && rNonSigne.appels.length === 0,
+    '[F] un evenement non signe n est ni enregistre ni ingere', `HTTP ${rNonSigne.statut}`);
   // L envoi manuel est un essai de la plateforme : il nomme son centre par le
   // parametre d URL. Sans centre, il n est classe nulle part, comme un vrai mail.
   const platSansType = JSON.stringify({ from: 'marie@exemple.be', subject: 'Sans enveloppe', text: 'Bonjour' });

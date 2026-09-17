@@ -45,6 +45,12 @@
 //       fois, et un echec du dispatcher ne fait pas echouer la creation : il
 //       remonte en avertissement.
 //
+//   [H] UNE REPONSE A UN MAIL RECU PART AVEC SES EN-TETES DE FIL (2026-09-16).
+//       Le payload d une reponse porte inReplyTo et references (poses par
+//       sendDirectEmail) : l appel au fournisseur les transmet en en-tetes
+//       In-Reply-To et References, c est ce qui range notre reponse dans la
+//       conversation du client. Sans eux, aucun bloc headers n est envoye.
+//
 // CONTRE-EPREUVES PAR MUTATION, compilees en memoire (crochet sur
 // Module.prototype._compile, disque jamais touche) : sans la regle d annulation,
 // [A] retombe en `queued` ; sans l appel du hook, [C] ne voit aucun dispatch ;
@@ -272,6 +278,29 @@ async function passageHook({ dispatcherCasse = false } = {}) {
   delete process.env.CENTER_REPLY_TO;
 
   // =====================================================================
+  console.log('\n[H] une reponse a un mail recu part avec ses en-tetes de fil');
+  // =====================================================================
+  const passageFil = async (payload) => {
+    purger();
+    const comms = require(path.join(ROOT, 'lib/ops-communications'));
+    ROWS.length = 0;
+    APPELS.length = 0;
+    ROWS.push(ligne(20, { templateId: 'manual', recipient: 'cliente@exemple.be', payload: { textBody: 'Bonjour', ...payload } }));
+    await comms.dispatchDueCommunications({ limit: 5 });
+    return { corps: (APPELS[0] || {}).corps || null, ligne: ROWS[0] };
+  };
+  const EN_TETES_FIL = { inReplyTo: '<q1@gmail.com>', references: '<conf-1@fungalaxy.be> <q1@gmail.com>' };
+  const fil = await passageFil(EN_TETES_FIL);
+  const entetesFil = (fil.corps && fil.corps.headers) || {};
+  ok(entetesFil['In-Reply-To'] === EN_TETES_FIL.inReplyTo && entetesFil.References === EN_TETES_FIL.references,
+    '[H] In-Reply-To et References du payload sont poses sur l appel au fournisseur', JSON.stringify(entetesFil));
+  ok(!('List-Unsubscribe' in entetesFil) && fil.ligne.status === 'sent',
+    '[H] une reponse ne porte pas de List-Unsubscribe, et elle part', `statut ${fil.ligne.status}`);
+  const sansFil = await passageFil({});
+  ok(Boolean(sansFil.corps) && !('headers' in sansFil.corps),
+    '[H] contraste : sans en-tetes de fil, aucun bloc headers n est envoye');
+
+  // =====================================================================
   console.log('\n[D] contre-epreuves par mutation (compilees en memoire, disque intact)');
   // =====================================================================
   try {
@@ -306,6 +335,15 @@ async function passageHook({ dispatcherCasse = false } = {}) {
     ok(m.espion.appels.length === 0, 'contre-epreuve 2 : sans l appel du hook, aucun dispatch (le gate ROUGIRAIT)', `${m.espion.appels.length}`);
   } catch (error) {
     ok(false, `contre-epreuve 2 impossible : ${error.message}`);
+  } finally { mutations = []; }
+  try {
+    mutations = [{ fichier: 'lib/ops-communications.js', de: "  if (inReplyTo) entetes['In-Reply-To'] = inReplyTo;", vers: '' }];
+    const m = await passageFil(EN_TETES_FIL);
+    ok(!((m.corps && m.corps.headers) || {})['In-Reply-To'],
+      'contre-epreuve 5 : sans la pose de In-Reply-To, la reponse sort du fil du client (le gate ROUGIRAIT)',
+      JSON.stringify(m.corps && m.corps.headers));
+  } catch (error) {
+    ok(false, `contre-epreuve 5 impossible : ${error.message}`);
   } finally { mutations = []; }
 
   console.log(failures ? `\n${failures} controle(s) en echec.` : '\nTous les controles passent.');

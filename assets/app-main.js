@@ -2747,6 +2747,18 @@ function normalizeStaffMenuPage(page) {
   const key = String(page || 'planning').trim();
   return STAFF_MENU_PAGES.includes(key) ? key : 'planning';
 }
+// LES SECTIONS DE LA PAGE EMAILS (2026-09-16). Une seule liste pour l'adresse
+// (#/staff/emails/<section>), la barre laterale et la sous-navigation de la
+// page : deux listes auraient diverge au premier ajout, comme les pages
+// Plateforme l'avaient fait pour STAFF_MENU_PAGES.
+const STAFF_EMAILS_SECTIONS = ['apercu', 'recus', 'envoyes', 'sequences', 'modeles', 'apparence', 'expediteurs', 'agent', 'exclusions', 'campagnes'];
+function normalizeStaffEmailsSection(section) {
+  const key = String(section || 'apercu').trim().toLowerCase();
+  return STAFF_EMAILS_SECTIONS.includes(key) ? key : 'apercu';
+}
+window.STAFF_EMAILS_SECTIONS = STAFF_EMAILS_SECTIONS;
+window.normalizeStaffEmailsSection = normalizeStaffEmailsSection;
+state.staffEmailsSection = normalizeStaffEmailsSection(state.staffEmailsSection);
 state.staffPlanningExpanded = !!state.staffPlanningExpanded;
 state.staffLaserPlanningExpanded = !!state.staffLaserPlanningExpanded;
 state.staffResourceView = ['all', 'bowling', 'laser'].includes(state.staffResourceView) ? state.staffResourceView : 'bowling';
@@ -2809,10 +2821,15 @@ state.staffPricingFilter = (['all', 'bowling', 'laser', 'formula', 'special'].in
   ? state.staffPricingFilter : 'all';
 state.staffPricingQuery = state.staffPricingQuery || '';
 state.staffPricingSelectedId = state.staffPricingSelectedId || '';
-state.staffEmailFilter = ['all', 'queued', 'sent', 'failed', 'review'].includes(state.staffEmailFilter) ? state.staffEmailFilter : 'all';
+// 'delivered' et 'opened' (2026-09-16) : la file des envoyes se filtre aussi
+// sur le suivi de remise et d'ouverture (colonnes 0047), pas seulement sur le
+// statut d'envoi.
+state.staffEmailFilter = ['all', 'queued', 'sent', 'delivered', 'opened', 'failed', 'review'].includes(state.staffEmailFilter) ? state.staffEmailFilter : 'all';
 // 'inbound' suit la meme regle que staffEmailFilter (qui retombe sur 'all' au
 // boot) : les deux etats voyagent ensemble a l'ecran, ils retombent ensemble.
-state.staffEmailOriginFilter = ['all', 'auto', 'manual'].includes(state.staffEmailOriginFilter) ? state.staffEmailOriginFilter : 'all';
+// 'campagne' et 'test' : les envois de l'equipe se distinguent desormais en
+// trois familles (manuel, campagne, test) au lieu d'une seule.
+state.staffEmailOriginFilter = ['all', 'auto', 'manual', 'campagne', 'test'].includes(state.staffEmailOriginFilter) ? state.staffEmailOriginFilter : 'all';
 state.staffEmailQuery = state.staffEmailQuery || '';
 state.staffEmailTemplateFilter = state.staffEmailTemplateFilter || 'all';
 state.staffEmailSelectedId = state.staffEmailSelectedId || '';
@@ -3468,10 +3485,13 @@ function setView(v) {
 }
 
 function syncRouteFromHash() {
+  // La section Emails fait partie de l'adresse : sans elle dans la
+  // comparaison, le bouton Retour entre deux sections ne re-rendait rien.
   const before = [
     state.view,
     state.staffMenuPage,
     state.staffResourceView,
+    state.staffEmailsSection,
     state.adminTab
   ].join('|');
   applyInitialRouteFromHash();
@@ -3479,6 +3499,7 @@ function syncRouteFromHash() {
     state.view,
     state.staffMenuPage,
     state.staffResourceView,
+    state.staffEmailsSection,
     state.adminTab
   ].join('|');
   if (before === after) return;
@@ -10597,8 +10618,16 @@ function openStaffMenuPage(page, resource = '') {
     state.staffTableExpanded = false;
   }
   state.staffMenuPage = cleanPage;
-  if (resource) state.staffResourceView = resource;
-  setStaffRouteHash(state.staffMenuPage, resource || state.staffResourceView);
+  // Page Emails : le second argument est une SECTION (#/staff/emails/recus),
+  // jamais une ressource du planning. Sans cette branche, « recus » finissait
+  // dans state.staffResourceView, que le planning relit ensuite.
+  if (cleanPage === 'emails') {
+    if (resource) state.staffEmailsSection = normalizeStaffEmailsSection(resource);
+    setStaffRouteHash('emails', state.staffEmailsSection);
+  } else {
+    if (resource) state.staffResourceView = resource;
+    setStaffRouteHash(state.staffMenuPage, resource || state.staffResourceView);
+  }
   save();
   renderStaff();
   syncOpsSidebar();
@@ -10622,9 +10651,16 @@ function setStaffRouteHash(page = getStaffMenuPage(), resource = '') {
   if (typeof window === 'undefined') return;
   const cleanPage = String(page || 'dashboard').trim();
   const cleanResource = String(resource || '').trim();
+  // La section Emails a sa propre adresse : un lien profond ouvre directement
+  // la bonne section, et le bouton Retour du navigateur la retrouve.
+  const emailsSection = cleanPage === 'emails'
+    ? normalizeStaffEmailsSection(cleanResource || state.staffEmailsSection)
+    : '';
   const route = cleanPage === 'planning' && ['all', 'bowling', 'laser'].includes(cleanResource)
     ? `#/staff/planning/${cleanResource}`
-    : `#/staff/${cleanPage}`;
+    : emailsSection
+      ? `#/staff/emails/${emailsSection}`
+      : `#/staff/${cleanPage}`;
   writeAppUrl(APP_ROUTE_PATH, route);
 }
 
@@ -10705,7 +10741,9 @@ function syncViewUrl(view = state.view, { push = false } = {}) {
   const page = String(getStaffMenuPage() || 'dashboard').trim();
   const resource = page === 'planning' && ['all', 'bowling', 'laser'].includes(state.staffResourceView)
     ? `/${state.staffResourceView}`
-    : '';
+    : page === 'emails'
+      ? `/${normalizeStaffEmailsSection(state.staffEmailsSection)}`
+      : '';
   writeAppUrl(APP_ROUTE_PATH, `#/staff/${page}${resource}`, { push });
 }
 
@@ -15668,9 +15706,11 @@ function getSelectedStaffEmailRow(rows = getStaffEmailRowsFiltered()) {
   return selected || rows[0];
 }
 
-function exportStaffEmailsCsv() {
+// `rows` optionnel : la section Envoyés exporte exactement la file qu'elle
+// affiche (ses filtres Remis/Ouverts n'existent pas dans le filtre historique).
+function exportStaffEmailsCsv(rowsAffichees = null) {
   if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
-  const rows = getStaffEmailRowsFiltered();
+  const rows = Array.isArray(rowsAffichees) ? rowsAffichees : getStaffEmailRowsFiltered();
   const header = ['Statut', 'Origine', 'Modele', 'Sujet', 'Destinataire', 'Canal', 'Planifie', 'Envoye', 'Tentatives', 'Erreur'];
   const body = rows.map(row => [
     getStaffEmailStatusLabel(row),
@@ -25486,6 +25526,10 @@ function applyInitialRouteFromHash() {
     } else {
       if (typeof STAFF_MENU_PAGES !== 'undefined' && STAFF_MENU_PAGES.includes(normalizedPage)) state.staffMenuPage = normalizedPage;
       if (['all', 'bowling', 'laser'].includes(resource || normalizedPage)) state.staffResourceView = resource || normalizedPage;
+      // #/staff/emails/<section> : la section est lue ici et nulle part
+      // ailleurs. Une section inconnue retombe sur l'aperçu, jamais sur une
+      // page vide.
+      if (normalizedPage === 'emails' && resource) state.staffEmailsSection = normalizeStaffEmailsSection(resource);
     }
   }
   if (view === 'admin') {

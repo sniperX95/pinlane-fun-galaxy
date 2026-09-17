@@ -362,6 +362,16 @@ const anthropicOk = (object) => ({
   const depsIngestDupe = makeDeps({ inboundDupe: inboundRow.idempotencyKey });
   const deduped = await ingestInboundEmail({ centerId: 'libramont', from: 'client@test.be', subject: 'Prix ?', body: 'Combien pour 8 personnes ?', requestId: 'manual-test-one', deps: depsIngestDupe });
   ok(deduped.deduped === true && depsIngestDupe.state.enqueued.length === 0, 'même mail re-reçu → dédupliqué, zéro doublon');
+  // Les en-tetes de fil (2026-09-16) : le Message-ID du mail recu et ceux qu il
+  // cite arrivent en COLONNES (message_id, in_reply_to, references) et dans le
+  // payload. C est par eux que la reponse du centre et la prochaine reponse du
+  // client retrouvent le meme fil (lib/email-threads.js).
+  const depsIngestFil = makeDeps({});
+  await ingestInboundEmail({ centerId: 'libramont', from: 'client@test.be', subject: 'Re: Votre reservation', body: 'Merci, une question.', requestId: 'manual-test-fil', messageId: '<q1@gmail.com>', inReplyTo: '<conf-1@fungalaxy.be>', references: '<conf-1@fungalaxy.be>', deps: depsIngestFil });
+  const filRow = depsIngestFil.state.enqueued[0] || {};
+  ok(filRow.messageId === '<q1@gmail.com>' && filRow.inReplyTo === '<conf-1@fungalaxy.be>' && filRow.references === '<conf-1@fungalaxy.be>', 'en-tetes de fil poses en colonnes (message_id, in_reply_to, references)');
+  ok(filRow.payload && filRow.payload.messageId === '<q1@gmail.com>' && filRow.payload.inReplyTo === '<conf-1@fungalaxy.be>' && filRow.payload.references === '<conf-1@fungalaxy.be>', 'en-tetes de fil repris dans le payload');
+  ok(inboundRow.messageId === '' && inboundRow.inReplyTo === '' && inboundRow.references === '', 'un collage manuel sans en-tete : colonnes vides, jamais inventees');
 
   console.log('\n[WEBHOOK] /api/inbound-email (secret + Resend + payload plat)');
   process.env.INBOUND_EMAIL_SECRET = 'test-secret';
@@ -382,6 +392,11 @@ const anthropicOk = (object) => ({
   await handler(fakeReq({ type: 'email.received', data: { from: 'Marie Dupont <marie@test.be>', subject: 'Résa', text: 'Je veux réserver vendredi.' } }, 'test-secret'), resResend);
   ok(resResend.statusCode === 200 && calls.length === 1, 'enveloppe Resend → 200 + ingestion');
   ok(calls[0].from === 'marie@test.be' && calls[0].fromName === 'Marie Dupont' && calls[0].centerId === 'libramont', 'adresse « Nom <email> » proprement extraite');
+  // L enveloppe du fournisseur porte les en-tetes de fil : ils partent tels
+  // quels a l ingestion (2026-09-16).
+  const resFil = fakeRes();
+  await handler(fakeReq({ type: 'email.received', data: { from: 'marie@test.be', subject: 'Re: Résa', text: 'Merci !', message_id: '<r1@gmail.com>', in_reply_to: '<c1@fungalaxy.be>', references: '<c0@fungalaxy.be> <c1@fungalaxy.be>' } }, 'test-secret'), resFil);
+  ok(resFil.statusCode === 200 && calls.length === 2 && calls[1].messageId === '<r1@gmail.com>' && calls[1].inReplyTo === '<c1@fungalaxy.be>' && calls[1].references === '<c0@fungalaxy.be> <c1@fungalaxy.be>', 'enveloppe Resend : Message-ID, In-Reply-To et References passes a l ingestion');
   const resFlat = fakeRes();
   await handler(fakeReq({ from: 'x@y.be', subject: 'Sans texte' }, 'test-secret'), resFlat);
   ok(resFlat.statusCode === 400, 'payload sans texte → 400');

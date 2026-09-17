@@ -174,11 +174,11 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
     const design = { ...defautsLibramont, preset, header: { ...defautsLibramont.header, mode: 'logo' } };
     const html = await rendu(m, { design, portee: 'manual', person: KEVIN });
     rendus[preset] = html;
-    ok(/^<!doctype html>/i.test(html) && /<table role="presentation" width="600"/.test(html) && !/<script/i.test(html) && /style="/.test(html) && /Voici la reponse/.test(html)
+    ok(/^<!doctype html>/i.test(html) && (preset === 'simple' ? /<table role="presentation" width="100%"/.test(html) && /font-size:14px;line-height:1.5;/.test(html) && !/font-size:16px/.test(html) : /<table role="presentation" width="600"/.test(html)) && !/<script/i.test(html) && /style="/.test(html) && /Voici la reponse/.test(html)
       // Mail simple (2026-09-17) : le sujet reste dans l objet du mail, jamais en
       // titre dans le corps, et pas de pied de marque ; les autres le gardent.
       && (preset === 'simple' ? !/<h1/i.test(html) && !/Une question \?/.test(html) : /Objet de test/.test(html)),
-      `[B] ${preset} : HTML complet en tables, styles en ligne, largeur 600, sans script${preset === 'simple' ? ', sans titre repete ni pied de marque' : ', titre en tete'}`);
+      `[B] ${preset} : HTML complet en tables, styles en ligne, sans script${preset === 'simple' ? ', pleine largeur, texte 14 px, sans titre repete ni pied de marque' : ', largeur 600, titre en tete'}`);
   }
   ok(/border-top:4px solid #17151F/.test(rendus.carte) && !/border-top:4px solid/.test(rendus.classique), '[B] carte : une barre de 4 px en haut de carte ; classique : aucune');
   ok(!/border:1px solid #E6E6EB;border-radius:12px/.test(rendus.epure) && /border-bottom:1px solid #EFEFF3;font-family/.test(rendus.epure), '[B] epure : pas de carte bordee, un filet fin sous le titre');

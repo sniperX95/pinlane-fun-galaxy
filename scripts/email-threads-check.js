@@ -91,6 +91,7 @@ function triFils(rows) {
 
 function filtreFils(sql, params) {
   let rows = DB.email_threads.filter((t) => t.center_id === params[0]);
+  if (/inbound_count > 0/.test(sql)) rows = rows.filter((t) => Number(t.inbound_count) > 0);
   const mStatut = sql.match(/and status = \$(\d+)/);
   if (mStatut) rows = rows.filter((t) => t.status === params[Number(mStatut[1]) - 1]);
   const mRecherche = sql.match(/contact_email ilike \$(\d+)/);
@@ -365,7 +366,7 @@ async function requete(texte, params = []) {
     return lignes(rows.map(clone));
   }
   if (/^select count\(\*\) filter \(where status = 'open'\)::int as a_repondre/i.test(sql)) {
-    const ouverts = DB.email_threads.filter((t) => t.center_id === p[0] && t.status === 'open');
+    const ouverts = DB.email_threads.filter((t) => t.center_id === p[0] && t.status === 'open' && (!/inbound_count > 0/.test(sql) || Number(t.inbound_count) > 0));
     return lignes([{ a_repondre: ouverts.length, plus_ancienne: ouverts.map((t) => t.last_inbound_at).filter(Boolean).sort()[0] || null }]);
   }
 
@@ -663,6 +664,9 @@ async function requeteHttp(m, { url, token = JETON_LIBRAMONT }) {
   console.log('\n[J] listerFils : filtres, recherche, extrait sans citation, reponduPar');
   // =====================================================================
   const citation = await recevoir(m, { from: 'paul@exemple.be', fromName: 'Paul Martin', subject: 'Re: Anniversaire de Tom', body: 'Ok pour 14 h.\n\nLe 16 sept. 2026, Fun Galaxy <libramont@fungalaxy.be> a écrit :\n> Bonjour Paul, 14 h ou 16 h ?\n> Merci' });
+  // Un mail automatique parti sans reponse du client n est pas une conversation
+  // de Recus (2026-09-17) : il reste dans Envoyes.
+  DB.email_threads.push({ id: 9999, center_id: 'libramont', contact_email: 'auto@exemple.be', contact_name: '', subject: 'C est confirme', status: 'answered', origin: 'outbound', root_communication_id: null, message_count: 1, inbound_count: 0, outbound_count: 1, first_message_at: iso(now()), last_message_at: iso(now()), last_inbound_at: null, last_outbound_at: iso(now()), created_at: iso(now()), updated_at: iso(now()) });
   const tous = await m.fils.listerFils(requete, { centerId: 'libramont', filtre: 'tous', memberId: kevin.id, limit: 50 });
   const filPaul = tous.threads.find((t) => t.id === citation.thread_id);
   ok(Boolean(filPaul) && filPaul.snippet === 'Ok pour 14 h.' && filPaul.contactName === 'Paul Martin',
@@ -670,6 +674,8 @@ async function requeteHttp(m, { url, token = JETON_LIBRAMONT }) {
   const aRepondre = await m.fils.listerFils(requete, { centerId: 'libramont', filtre: 'a-repondre', memberId: kevin.id });
   const repondus = await m.fils.listerFils(requete, { centerId: 'libramont', filtre: 'repondus', memberId: kevin.id });
   const termines = await m.fils.listerFils(requete, { centerId: 'libramont', filtre: 'termines', memberId: kevin.id });
+  ok(!tous.threads.some((t) => t.id === 9999) && !repondus.threads.some((t) => t.id === 9999),
+    '[J] un mail automatique sans reponse du client n apparait pas dans Recus (ni Tous, ni Repondus)');
   ok(aRepondre.threads.every((t) => t.status === 'open') && repondus.threads.every((t) => t.status === 'answered') && termines.threads.every((t) => t.status === 'closed')
     && aRepondre.total + repondus.total + termines.total === tous.total && tous.total >= 5,
     '[J] les trois filtres partitionnent « tous »', JSON.stringify({ aRepondre: aRepondre.total, repondus: repondus.total, termines: termines.total, tous: tous.total }));
@@ -856,6 +862,14 @@ async function requeteHttp(m, { url, token = JETON_LIBRAMONT }) {
       vers: '  if (true) return communication;',
       rejouer: async (mm) => { reset(); const a = await recevoir(mm, { subject: 'Anniversaire samedi' }); return a.thread_id; },
       rouge: (threadId) => !threadId,
+    },
+    {
+      nom: 'Recus liste les mails automatiques sans reponse du client',
+      fichier: 'lib/email-threads.js',
+      de: "  let where = 'center_id = $1 and inbound_count > 0';",
+      vers: "  let where = 'center_id = $1';",
+      rejouer: async (mm) => { reset(); DB.email_threads.push({ id: 9999, center_id: 'libramont', contact_email: 'auto@exemple.be', contact_name: '', subject: 'C est confirme', status: 'answered', origin: 'outbound', root_communication_id: null, message_count: 1, inbound_count: 0, outbound_count: 1, first_message_at: iso(now()), last_message_at: iso(now()), last_inbound_at: null, last_outbound_at: iso(now()), created_at: iso(now()), updated_at: iso(now()) }); const r = await mm.fils.listerFils(requete, { centerId: 'libramont', filtre: 'tous' }); return r.threads.length; },
+      rouge: (n) => n > 0,
     },
   ];
   for (const c of contreEpreuves) {

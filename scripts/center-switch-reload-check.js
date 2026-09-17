@@ -70,7 +70,16 @@ function serveStatic() {
 }
 
 // ---- Mock : deux centres, des donnees distinctes, et un COMPTEUR d'appels ---
-async function installMock(page, { withSession, breakCatalog = false }) {
+async function installMock(page, { withSession, breakCatalog = false, rechargementReel = false }) {
+  // Depuis le 2026-09-17, changer de centre RECHARGE la page. Les sections
+  // [B] a [H2] eprouvent la purge EN PLACE, qui reste la defense si le
+  // rechargement n a pas lieu : le rechargement y est remplace par un
+  // compteur. La section [R] eprouve le vrai rechargement.
+  if (!rechargementReel) {
+    await page.addInitScript(() => {
+      window.pinlaneRechargerPourCentre = () => { window.__rechargementsDemandes = (window.__rechargementsDemandes || 0) + 1; };
+    });
+  }
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, withSession, breakCatalog, A, B }) => {
     const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'direction.view', 'centers.switch', 'settings.manage', 'emails.view', 'users.manage', 'platform.admin'];
@@ -419,6 +428,8 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
 
       const after = await readState(page);
       record('le centre courant a bascule', after.centerId === CENTER_B.id, `centre=${after.centerId}`);
+      const rechargements = await page.evaluate(() => window.__rechargementsDemandes || 0);
+      record('la bascule demande UN rechargement de la page', rechargements === 1, `${rechargements} demande(s)`);
       record('une VRAIE requete est partie pour le nouveau centre', blockCalls(after.calls, CENTER_B.id) >= 1, `${blockCalls(after.calls, CENTER_B.id)} appel(s)`);
       record('les blocs affiches sont ceux du nouveau centre', after.blockReasons.includes('BLOC-N4-UN'), after.blockReasons.join(',') || 'aucun');
       record('AUCUNE donnee du centre quitte ne survit', !after.blockReasons.includes('BLOC-LIBRAMONT'), after.blockReasons.join(',') || 'aucun');
@@ -713,6 +724,83 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
       record('retour Fun Galaxy : sa grille bowling par piste est revenue', backOnA.pricingCardTitles.some((title) => /^Bowling /.test(title)), backOnA.pricingCardTitles.join(' | ') || 'aucune carte');
       record('retour Fun Galaxy : aucune formule de N4 ne traine', !backOnA.pricingCardTitles.includes('JEUDI FOU N4'), backOnA.pricingCardTitles.join(' | ') || 'aucune carte');
       await context.close();
+    }
+
+    // ===================================================================== [R]
+    // CHANGER DE CENTRE RECHARGE LA PAGE (Movsar, 2026-09-17 : « ca synchronise
+    // pas toutes les donnees »). Mesure : une vraie navigation, une page neuve
+    // (la marque posee avant a disparu), le centre choisi et la meme vue apres.
+    section('[R] Changer de centre RECHARGE LA PAGE, sur le centre choisi et la meme vue');
+    {
+      const parcours = async (etiquette) => {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        await installMock(page, { withSession: true, rechargementReel: true });
+        await page.goto(`${BASE_URL}/?v=switch-r-${etiquette}-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+        await bootStaff(page);
+        const avant = await page.evaluate(() => { window.__marqueAvantRechargement = true; return { hash: location.hash, view: state.view, centre: state.adminCenterId }; });
+        await openCenterMenu(page);
+        const navigation = page.waitForNavigation({ waitUntil: 'networkidle', timeout: 20000 }).then(() => true).catch(() => false);
+        await page.click(`[data-fgx-center-option="${CENTER_B.id}"]`);
+        const recharge = await navigation;
+        await page.waitForFunction((id) => typeof state !== 'undefined' && state.adminCenterId === id, CENTER_B.id, { timeout: 15000 }).catch(() => null);
+        const apres = await page.evaluate(() => ({ marque: Boolean(window.__marqueAvantRechargement), hash: location.hash, view: typeof state !== 'undefined' ? state.view : '', centre: typeof state !== 'undefined' ? state.adminCenterId : '' }));
+        await context.close();
+        return { avant, apres, recharge };
+      };
+      const vrai = await parcours('vrai');
+      record('la page s est VRAIMENT rechargee : plus rien de l ancienne en memoire', vrai.recharge && vrai.apres.marque === false, JSON.stringify({ recharge: vrai.recharge, marque: vrai.apres.marque }));
+      record('apres le rechargement : le centre choisi', vrai.apres.centre === CENTER_B.id, `centre=${vrai.apres.centre}`);
+      record('apres le rechargement : la meme vue', vrai.avant.centre === CENTER_A.id && vrai.apres.view === vrai.avant.view && vrai.apres.hash === vrai.avant.hash, JSON.stringify({ avant: vrai.avant, apres: vrai.apres }));
+
+      // Contre-preuve : sans l appel de production, aucune navigation.
+      const MENU = path.join(ROOT, 'assets', 'staff-menu.js');
+      const menuOriginal = fs.readFileSync(MENU, 'utf8');
+      const appel = 'window.pinlaneRechargerPourCentre(centerId);';
+      record('contre-preuve montable : l appel de rechargement existe une seule fois', menuOriginal.split(appel).length === 2);
+      try {
+        fs.writeFileSync(MENU, menuOriginal.replace(appel, '/* mutation du gate */'));
+        const mute = await parcours('mute');
+        record('sans l appel de rechargement : la page ne se recharge pas, ce gate ROUGIRAIT', !(mute.recharge && mute.apres.marque === false), JSON.stringify({ recharge: mute.recharge, marque: mute.apres.marque }));
+      } finally {
+        fs.writeFileSync(MENU, menuOriginal);
+      }
+      record('staff-menu.js est restaure a l identique', fs.readFileSync(MENU, 'utf8') === menuOriginal);
+
+      // Meme regle depuis les CARTES DE CENTRES de la page Direction.
+      const parcoursDirection = async (etiquette) => {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        await installMock(page, { withSession: true, rechargementReel: true });
+        await page.goto(`${BASE_URL}/?v=switch-rd-${etiquette}-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+        await bootStaff(page);
+        await page.evaluate(() => setView('admin'));
+        const carte = `#adminCenterGrid .admin-center-card[onclick*="${CENTER_B.id}"]`;
+        const visible = await page.waitForSelector(carte, { timeout: 20000 }).then(() => true).catch(() => false);
+        const avant = await page.evaluate(() => { window.__marqueAvantRechargement = true; return { view: state.view, centre: state.adminCenterId }; });
+        const navigation = page.waitForNavigation({ waitUntil: 'networkidle', timeout: 20000 }).then(() => true).catch(() => false);
+        if (visible) await page.click(carte);
+        const recharge = await navigation;
+        await page.waitForFunction((id) => typeof state !== 'undefined' && state.adminCenterId === id, CENTER_B.id, { timeout: 15000 }).catch(() => null);
+        const apres = await page.evaluate(() => ({ marque: Boolean(window.__marqueAvantRechargement), view: typeof state !== 'undefined' ? state.view : '', centre: typeof state !== 'undefined' ? state.adminCenterId : '' }));
+        await context.close();
+        return { visible, avant, apres, recharge };
+      };
+      const direction = await parcoursDirection('vrai');
+      record('page Direction : la carte du second centre est la', direction.visible);
+      record('page Direction : cliquer une carte de centre RECHARGE la page, sur ce centre et la meme vue', direction.recharge && direction.apres.marque === false && direction.apres.centre === CENTER_B.id && direction.apres.view === direction.avant.view, JSON.stringify(direction));
+      const ADMIN = path.join(ROOT, 'assets', 'admin-console.js');
+      const adminOriginal = fs.readFileSync(ADMIN, 'utf8');
+      const appelDirection = 'window.pinlaneRechargerPourCentre(state.adminCenterId);';
+      record('contre-preuve Direction montable : l appel existe une seule fois', adminOriginal.split(appelDirection).length === 2);
+      try {
+        fs.writeFileSync(ADMIN, adminOriginal.replace(appelDirection, '/* mutation du gate */'));
+        const directionMute = await parcoursDirection('mute');
+        record('sans l appel, la carte de centre ne recharge pas la page, ce gate ROUGIRAIT', !(directionMute.recharge && directionMute.apres.marque === false), JSON.stringify({ recharge: directionMute.recharge, marque: directionMute.apres.marque }));
+      } finally {
+        fs.writeFileSync(ADMIN, adminOriginal);
+      }
+      record('admin-console.js est restaure a l identique', fs.readFileSync(ADMIN, 'utf8') === adminOriginal);
     }
 
     // ===================================================================== [H]

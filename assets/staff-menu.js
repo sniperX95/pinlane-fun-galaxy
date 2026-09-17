@@ -892,6 +892,14 @@
     `);
   }
 
+  // CHANGER DE CENTRE RECHARGE LA PAGE (Movsar, 2026-09-17 : « ca synchronise
+  // pas toutes les donnees »). Un seul point d entree, sur window : le gate
+  // de la bascule eprouve aussi la purge en place, qui reste la defense si le
+  // rechargement n a pas lieu.
+  if (typeof window !== 'undefined' && typeof window.pinlaneRechargerPourCentre !== 'function') {
+    window.pinlaneRechargerPourCentre = function pinlaneRechargerPourCentre() { window.location.reload(); };
+  }
+
   function selectMenuCenter(centerId) {
     const center = getMenuCenters().find(item => item.id === centerId);
     if (!center) return;
@@ -966,6 +974,12 @@
         if (typeof renderStaff === 'function' && typeof state !== 'undefined' && state.view === 'staff') renderStaff();
       }
       renderMenu();
+      // Le centre est enregistre et le serveur a confirme l acces : on repart
+      // d une page neuve pour ce centre, sur la meme vue (l adresse la garde).
+      if (typeof window !== 'undefined' && typeof window.pinlaneRechargerPourCentre === 'function'
+        && typeof state !== 'undefined' && state.adminCenterId === centerId) {
+        window.pinlaneRechargerPourCentre(centerId);
+      }
     };
     if (typeof loadStaffAuthSession === 'function') {
       loadStaffAuthSession({ silent: true }).then(applyActiveView).catch(applyActiveView);

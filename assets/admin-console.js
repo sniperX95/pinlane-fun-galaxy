@@ -3540,6 +3540,9 @@ function setAdminCenter(centerId) {
   const previousCenterId = state.adminCenterId;
   state.adminCenterId = centerId || 'libramont';
   save();
+  // CHANGER DE CENTRE RECHARGE LA PAGE (Movsar, 2026-09-17), depuis ces cartes
+  // comme depuis le menu : le centre est enregistre, la page repart neuve.
+  const centreChange = previousCenterId !== state.adminCenterId;
   // Les cartes de centre de la Direction appellent cette fonction SANS passer
   // par le switcher du menu : la purge doit donc vivre ici aussi, sinon le
   // meme changement de centre nettoie ou ne nettoie pas selon le bouton clique.
@@ -3549,6 +3552,12 @@ function setAdminCenter(centerId) {
   // Force : la donnee du centre qu'on ouvre se relit, elle ne se devine pas
   // dans un instantane garde en memoire.
   loadAdminDashboard(true);
+  if (centreChange && typeof window !== 'undefined') {
+    if (typeof window.pinlaneRechargerPourCentre !== 'function') {
+      window.pinlaneRechargerPourCentre = function pinlaneRechargerPourCentre() { window.location.reload(); };
+    }
+    window.pinlaneRechargerPourCentre(state.adminCenterId);
+  }
 }
 
 function setAdminDate(value) {

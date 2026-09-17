@@ -198,6 +198,9 @@
   function rechargerLaPageActive(monde) {
     var m = monde || global;
     var page = pageActive(m);
+    // La page Emails v4 lit aussi des conversations et une vue globale, hors
+    // de loadOpsAdmin : elle les relit elle-meme (pv2EmailsSurSynchro).
+    if (page === 'emails' && typeof m.pv2EmailsSurSynchro === 'function') m.pv2EmailsSurSynchro();
     if (page === 'emails' || page === 'utilitaire') return m.loadOpsAdmin(true);
     if (page === 'reservations') return m.loadStaffReservationsData(true);
     return undefined;

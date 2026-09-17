@@ -5091,6 +5091,24 @@
     pv2Threads.apercu.loaded = false;
   };
 
+  // LA SYNCHRONISATION EN DIRECT (assets/ops-live.js) appelle ceci quand le
+  // pouls annonce du neuf. Les conversations, la vue globale et le fil ouvert
+  // sont relus comme les communications : sans cela, un mail arrive restait
+  // invisible dans Recus et dans l Apercu jusqu a un rechargement a la main.
+  // Les brouillons de reponse et la selection ne bougent pas.
+  window.pv2EmailsSurSynchro = function () {
+    const section = typeof state !== 'undefined' ? state.staffEmailsSection : '';
+    pv2Overview.loaded = false;
+    pv2Threads.loaded = false;
+    pv2Threads.apercu.loaded = false;
+    if (['apercu', 'recus', 'envoyes', 'sequences'].includes(section)) loadPv2Overview(true);
+    if (section === 'apercu') loadPv2ThreadsApercu(true);
+    if (section === 'recus') {
+      loadPv2Threads(true);
+      if (pv2Threads.detail && pv2Threads.detail.id) loadPv2ThreadDetail(pv2Threads.detail.id, true);
+    }
+  };
+
   window.pv2ThreadSetStatus = async function (id, status) {
     if (pv2Threads.statusBusy) return;
     const cle = String(id || '');

@@ -95,6 +95,10 @@ async function installMock(page) {
       // fois le POULS a ete lu. C est leur ecart qui prouve l economie.
       lecturesLourdes: 0,
       lecturesPouls: 0,
+      // Depuis la refonte v4 (2026-09-17), la page Recus lit des CONVERSATIONS
+      // (action emailThreads) derivees des memes mails : elles aussi doivent
+      // etre relues quand l empreinte change, et seulement dans ce cas.
+      lecturesFils: 0,
     };
     window.__QA_FAIRE_ARRIVER_UN_MAIL__ = function () {
       const s = window.__QA_SERVEUR__;
@@ -128,6 +132,16 @@ async function installMock(page) {
         s.lecturesPouls += 1;
         return J({ ok: true, empreinte: s.empreinte });
       }
+      if (u.pathname === '/api/ops' && action === 'emailThreads') {
+        s.lecturesFils += 1;
+        const threads = s.comms.filter((c) => c.direction === 'inbound').map((c) => ({
+          id: c.id, centerId: 'libramont', contactEmail: c.recipient, contactName: '', subject: c.subject, status: 'open', origin: 'inbound',
+          messageCount: 1, inboundCount: 1, outboundCount: 0, firstMessageAt: c.createdAt, lastMessageAt: c.createdAt, lastInboundAt: c.createdAt, lastOutboundAt: null,
+          lastDirection: 'inbound', snippet: String(c.payload.textBody || '').slice(0, 120), lastInboundId: c.id, luParMoi: false, lecteurs: [], prise: null,
+          intention: c.payload.analysis ? c.payload.analysis.intent : '', question: false, reponduPar: null,
+        }));
+        return J({ ok: true, threads, total: threads.length });
+      }
       if (u.pathname === '/api/ops' && action === 'emailClaims') return J({ ok: true, claims: [] });
       if (u.pathname === '/api/ops' && action === 'communications') {
         s.lecturesLourdes += 1;
@@ -158,7 +172,8 @@ async function main() {
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await page.evaluate(() => { state.staffMenuPage = 'emails'; state.staffTheme = 'dark'; save(); setView('staff'); renderStaff(); });
     await page.waitForTimeout(1200);
-    await page.evaluate(() => { if (typeof pv2EmailFilter === 'function') pv2EmailFilter('inbound'); });
+    // La section Recus : les conversations, comme un membre de l equipe les lit.
+    await page.evaluate(() => { if (typeof pv2EmailsGo === 'function') pv2EmailsGo('recus'); });
     await page.waitForTimeout(400);
 
     // =====================================================================
@@ -189,6 +204,9 @@ async function main() {
     ok(apresRepos.lecturesLourdes === avant.lecturesLourdes,
       '[D] et les donnees lourdes ne sont PAS redemandees tant que rien ne bouge',
       `${avant.lecturesLourdes} -> ${apresRepos.lecturesLourdes}`);
+    ok(avant.lecturesFils > 0 && apresRepos.lecturesFils === avant.lecturesFils,
+      '[D] les conversations ont ete lues une fois, et ne sont PAS relues tant que rien ne bouge',
+      `${avant.lecturesFils} -> ${apresRepos.lecturesFils}`);
 
     // =====================================================================
     console.log('\n[B] un mail qui arrive apparait tout seul');
@@ -206,6 +224,9 @@ async function main() {
     ok(apresMail.lecturesLourdes > apresRepos.lecturesLourdes,
       '[B] et il a bien fallu recharger les donnees pour ca (l empreinte avait change)',
       `${apresRepos.lecturesLourdes} -> ${apresMail.lecturesLourdes}`);
+    ok(apresMail.lecturesFils > apresRepos.lecturesFils,
+      '[B] et les conversations ont ete relues aussi (sinon Recus resterait fige)',
+      `${apresRepos.lecturesFils} -> ${apresMail.lecturesFils}`);
 
     // =====================================================================
     console.log('\n[C] et la page n a pas ete rechargee pour autant');

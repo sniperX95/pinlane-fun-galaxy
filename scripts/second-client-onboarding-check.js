@@ -1834,6 +1834,27 @@ async function mutationCounterProof() {
     anchor: "  const bandName = String(center?.name || '').trim();",
     replacement: "  const bandName = 'Fun Galaxy' || String(center?.name || '').trim();",
     label: 'en-tete des emails signe Fun Galaxy en dur',
+    // Le gabarit « Mail simple », par defaut depuis le 2026-09-17, n a plus
+    // d en-tete : l en-tete se verifie sur le rendu historique (sans design),
+    // celui des gabarits qui en ont un.
+    probe: async (mutated) => {
+      const html = mutated.emailShell({
+        title: 'Votre reservation est confirmee',
+        body: 'Bonjour,\n\nA bientot.',
+        preheader: 'x',
+        center: { name: SECOND_CENTER_NAME },
+      });
+      return html.includes(SECOND_CENTER_NAME) && !FORBIDDEN_BRAND.test(html);
+    },
+  });
+
+  // PURGE DE MARQUE, contre-preuve 2 bis : la signature d equipe du mail
+  // d arrivee (gabarit « Mail simple ») signe de nouveau « Fun Galaxy » en dur.
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'ops-communications.js'),
+    anchor: "const equipe = String(sig.teamLabel || '').trim() || (nomCentre ? `L'équipe ${nomCentre}` : \"L'équipe du centre\");",
+    replacement: "const equipe = String(sig.teamLabel || '').trim() || (nomCentre ? `L'équipe Fun Galaxy` : \"L'équipe du centre\");",
+    label: 'signature des emails signee Fun Galaxy en dur',
     probe: async (mutated) => {
       const queue = [];
       await mutated.enqueueReservationCommunications({

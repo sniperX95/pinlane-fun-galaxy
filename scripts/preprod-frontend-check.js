@@ -246,14 +246,25 @@ async function main({ roiOnly = false, capture = false } = {}) {
             await pv2ComposerSend();
             pv2Mail.draft = { to: 'qa@example.test', name: 'QA', subject: 'Objet QA', body: 'Correction QA', when: 'now' };
             await pv2ComposerSend();
-            const row = { uid: 'c2-qa', id: 9876, recipient: 'qa@example.test', subject: 'Objet QA', payload: { from: 'qa@example.test' } };
-            getStaffEmailRows = () => [row]; fail = true;
-            pv2Mail.replyDraft[row.uid] = { subject: 'Re: QA', body: 'Réponse QA' };
-            await pv2InboxReply(row.uid); await pv2InboxReply(row.uid);
-            pv2Mail.replyDraft[row.uid].body = 'Réponse corrigée'; fail = false;
-            await pv2InboxReply(row.uid);
-            pv2Mail.replyDraft[row.uid] = { subject: 'Re: QA', body: 'Réponse corrigée' };
-            await pv2InboxReply(row.uid);
+            // Depuis la refonte v4 (2026-09-17), on repond dans la CONVERSATION
+            // ouverte (pv2Threads.detail), avec son brouillon pv2Threads.reply[id] :
+            // meme contrat de tentative que le composeur. ouvrir() remet la
+            // conversation apres l envoi reussi, qui la recharge en arriere-plan.
+            const ouvrir = () => {
+              pv2Threads.selectedId = '901';
+              pv2Threads.detail = { id: '901', loaded: true, loading: false, error: '', serie: 0,
+                thread: { id: 901, contactEmail: 'qa@example.test', contactName: 'QA', subject: 'QA' },
+                messages: [{ id: 9876, direction: 'inbound', subject: 'QA', analysis: null }],
+                contact: { email: 'qa@example.test', name: 'QA' } };
+            };
+            ouvrir(); fail = true;
+            pv2Threads.reply['901'] = { subject: 'Re: QA', body: 'Réponse QA', signature: false };
+            await pv2InboxReply('901'); await pv2InboxReply('901');
+            pv2Threads.reply['901'].body = 'Réponse corrigée'; fail = false;
+            await pv2InboxReply('901');
+            ouvrir();
+            pv2Threads.reply['901'] = { subject: 'Re: QA', body: 'Réponse corrigée', signature: false };
+            await pv2InboxReply('901');
           } finally { apiRequest = originalApi; getStaffEmailRows = originalRows; }
           return posts;
         });

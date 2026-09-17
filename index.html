@@ -25,7 +25,7 @@
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20260911a">
-<link rel="stylesheet" href="/assets/pinlane-client.css?v=20260917a">
+<link rel="stylesheet" href="/assets/pinlane-client.css?v=20260917c">
 <script defer src="/assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="/assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="/assets/api-client.js?v=20260912a"></script>
@@ -56,7 +56,7 @@
 <!-- Le glisser au doigt (appui long, glisser, relacher), ecrit une fois pour
      le planning et le tableau d analyse. Charge avant app-main. -->
 <script defer src="/assets/pinlane-touch-drag.js?v=20260911a"></script>
-<script defer src="/assets/app-main.js?v=20260917c"></script>
+<script defer src="/assets/app-main.js?v=20260917e"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260717a"></script>
@@ -410,7 +410,7 @@
           <div class="s2-slots cascade" id="slotList"></div>
         </div>
         <div class="step-foot">
-          <button class="btn-secondary" id="btnStep2Back" onclick="goStep(1)">
+          <button class="btn-secondary" id="btnStep2Back" onclick="retourDepuisCreneau()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
             Retour
           </button>

@@ -259,6 +259,16 @@ const MEASURE = () => {
     // Aucune pastille ne depasse LATERALEMENT du cadre de sa piste : le
     // defilement vertical dans sa zone est un choix produit (one-screen),
     // le debordement lateral serait une heure cachee.
+    // LES MOMENTS SE PLIENT DEPUIS LE 2026-09-17 (Movsar : « menu regroupe
+    // quon peut degroupe pour tout voir comme ca, ca fait moins de trop »).
+    // Une heure repliee vit dans la page SANS SURFACE : le cadre se mesure sur
+    // les heures PEINTES. Plier n est pas filtrer, et c est un gate a part qui
+    // le tient (hour-groups-check : chaque moment annonce ses heures, un clic
+    // le deplie, rien n est retire du DOM).
+    chipsPainted: [...document.querySelectorAll('.anchor-chip')].filter((chip) => {
+      const box = chip.getBoundingClientRect();
+      return box.height > 0 && box.width > 0;
+    }).length,
     chipsInTrackWidth: [...document.querySelectorAll('.anchor-chip')].filter((chip) => {
       const box = chip.getBoundingClientRect();
       if (box.height <= 0 || box.width <= 0) return false;
@@ -472,8 +482,8 @@ async function checkBrowser(page) {
   // debordement LATERAL. Le defilement vertical de la grille dans SA zone est
   // un choix produit (one-screen + cartes avec heure de fin) : une pastille
   // sous le pli n est pas une pastille cachee.
-  ok(rail.cardsTotal >= 50 && rail.chipsInTrackWidth === rail.cardsTotal,
-    `toute la journee est posee dans sa grille, sans onglet ni debordement lateral (${rail.chipsInTrackWidth}/${rail.cardsTotal})`);
+  ok(rail.cardsTotal >= 50 && rail.chipsPainted > 0 && rail.chipsInTrackWidth === rail.chipsPainted,
+    `les heures peintes tiennent dans leur piste, la journee entiere reste dans la page (${rail.chipsInTrackWidth}/${rail.chipsPainted} peintes sur ${rail.cardsTotal})`);
   ok(rail.chipTimesValid, 'toutes les heures proposees restent des heures :00/:30');
   // Le format CARTE demande par Movsar : « les cartes [...] cest bcp plus pro
   // et beau ». Chaque creneau dit sa FIN, et l enchainement se lit en toutes

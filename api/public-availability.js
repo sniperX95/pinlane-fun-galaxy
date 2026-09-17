@@ -716,6 +716,23 @@ module.exports = async (req, res) => {
           );
           return;
         }
+        // UNE HEURE CHOISIE NE DOIT PAS EN EXIGER DEUX (entretien Seb,
+        // 2026-09-17). Le client qui pose UNE heure, ou qui DECALE une activite
+        // pour prendre l heure qu il veut, laisse l autre activite libre. Le
+        // moteur repondait « Choisissez une heure pour Bowling » et fermait le
+        // creneau : la reponse juste est de PLACER l activite restante autour de
+        // l heure choisie. Ces defauts viennent de la grille elle-meme
+        // (anchorMeta.defaultTimes, calcules avec les heures retenues) : le
+        // client lit donc exactement ce que le moteur a compose.
+        const heuresCompletes = { ...preferredTimes };
+        const defautsDeLaGrille = (anchorMeta && anchorMeta.ok && anchorMeta.defaultTimes) || {};
+        ((anchorMeta && anchorMeta.activities) || []).forEach((activity) => {
+          const id = activity.activityId;
+          if (!heuresCompletes[id] && defautsDeLaGrille[id]) heuresCompletes[id] = defautsDeLaGrille[id];
+        });
+        const partiesCompletes = laserGameTimes.some((time) => time)
+          ? laserGameTimes
+          : (heuresCompletes.laser_game ? [heuresCompletes.laser_game] : laserGameTimes);
         const plan = planningAgent(
           {
             centerId,
@@ -724,7 +741,7 @@ module.exports = async (req, res) => {
             formula: visitFormula,
             pax,
             duration: program.plannedItems[0]?.duration || 0,
-            preference: { preferredTimes, laserGameTimes, laserPlacement: 'scheduled', arrivalConfidence: 'normal' },
+            preference: { preferredTimes: heuresCompletes, laserGameTimes: partiesCompletes, laserPlacement: 'scheduled', arrivalConfidence: 'normal' },
             pauseMinutes,
           },
           engineContext,

@@ -373,9 +373,13 @@ async function checkTrack(page) {
       unavailableDisabled: chips.filter((chip) => chip.classList.contains('is-unavailable')).every((chip) => chip.disabled && (chip.dataset.reason || '').length > 0),
       scrollable: element.scrollWidth > element.clientWidth + 1,
       rows: rows.size,
-      // CHAQUE heure est entierement dans la largeur de la grille : aucune
-      // carte coupee, aucune hors champ.
-      allInFrame: chips.every((chip) => {
+      // CHAQUE heure PEINTE est entierement dans la largeur de la grille :
+      // aucune carte coupee, aucune hors champ. Depuis le 2026-09-17 les
+      // moments de la journee se plient (Movsar : « genre pliant depliant ») :
+      // une heure repliee est dans la page sans surface, elle n a pas de cadre
+      // a respecter. Le pliage a son propre gate (hour-groups-check).
+      peintes: chips.filter((chip) => chip.getBoundingClientRect().width > 0).length,
+      allInFrame: chips.filter((chip) => chip.getBoundingClientRect().width > 0).every((chip) => {
         const box = chip.getBoundingClientRect();
         return box.left >= frame.left - 1 && box.right <= frame.right + 1 && box.width > 60;
       }),
@@ -392,7 +396,7 @@ async function checkTrack(page) {
   ok(track.unavailableDisabled, 'chaque heure impossible est desactivee et porte sa raison');
   ok(!track.scrollable, 'plus AUCUN defilement horizontal : tout est pose');
   ok(track.rows >= 2, `la journee s etale en rangees (${track.rows})`);
-  ok(track.allInFrame, 'chaque heure est entiere dans le cadre, aucune carte coupee');
+  ok(track.peintes > 0 && track.allInFrame, `chaque heure peinte est entiere dans le cadre, aucune carte coupee (${track.peintes} peintes sur ${track.chips})`);
   ok(track.visibleNudges === 0, `les fleches de defilement ont disparu avec le defilement (${track.visibleNudges})`);
 }
 

@@ -3475,6 +3475,51 @@ body.client-mode #clientView {
    ce ne sont pas des onglets, aucune heure n est cachee, aucun bouton ajoute.
    Ce qui est vrai partout se dit UNE fois, ici (voir renderSlots). */
 #clientView .slot-period + .slot-period { margin-top: var(--space-4); }
+
+/* LES MOMENTS SE PLIENT ET SE DEPLIENT (Movsar, 2026-09-17, maquette a
+   l appui : « menu regroupe quon peut degroupe pour tout voir comme ca, ca
+   fait moins de trop », « genre pliant depliant »). Le moment utile est
+   ouvert, les autres se replient derriere une ligne qui dit leur nom, leur
+   icone et le nombre d heures libres : la journee entiere reste accessible
+   en un clic, sans 28 pastilles d un coup. La liste des creneaux simples
+   (renderSlots) n a pas de tete de moment : elle ne bouge pas. */
+#clientView .slot-period-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-md);
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+#clientView .slot-period-head:hover { background: var(--overlay-hover); }
+#clientView .slot-period-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#clientView .slot-period-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+#clientView .slot-period-count {
+  margin-left: auto;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+#clientView .slot-period-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform var(--dur) var(--ease);
+}
+#clientView .slot-period.is-open .slot-period-chevron { transform: rotate(180deg); }
+#clientView .slot-period:not(.is-open) .anchor-chip-grid { display: none; }
 #clientView .slot-period-title {
   margin: 0;
   font-family: var(--font-ui);
@@ -6378,6 +6423,27 @@ body.customer-mode .client-footer {
 #clientView .anchor-chip.is-unavailable .slot-card-end {
   color: var(--muted);
 }
+
+/* UNE HEURE QUI CHEVAUCHE L AUTRE ACTIVITE SE PREND QUAND MEME (entretien Seb,
+   2026-09-17). Elle n est ni grisee ni verrouillee : elle annonce ce qu elle
+   deplace (« On decale », « Bowling se decale ») et le clic replace l autre
+   activite. Pointilles comme l heure enchainee, pleine opacite comme une heure
+   prenable : le geste est possible, il a juste une consequence annoncee. */
+#clientView .anchor-chip.is-shiftable {
+  border-style: dashed;
+  cursor: pointer;
+}
+#clientView .anchor-chip.is-shiftable:hover { border-color: var(--accent); }
+
+/* UNE DUREE QUI NE RENTRE PLUS AVANT LA FERMETURE reste visible (le client
+   voit ce que le centre vend) mais ne se prend pas, et la note sous la
+   rangee dit ce qu il reste. Movsar, 2026-09-17 : « ici ya que 30 minutes de
+   dispo avant la fermeture et ici ca met toute possibilite ». */
+#clientView .dur-pill[data-too-late] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+#clientView .slot-card-tag.is-shift { color: var(--accent-strong); }
 
 #clientView .anchor-row-onsite .anchor-periods { opacity: 0.5; }
 

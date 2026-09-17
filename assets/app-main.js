@@ -4601,6 +4601,62 @@ function buildActivityPicker(host, catalog) {
 // remplace, donc les transitions CSS partent de la valeur courante au lieu de
 // repartir de zero (elles restent interruptibles : on peut cocher/decocher vite
 // sans saccade).
+// LES DUREES QUI NE RENTRENT PLUS AVANT LA FERMETURE : pastilles verrouillees
+// (visibles, jamais retirees du catalogue) et une note qui dit ce qu il reste.
+// Rien ne se verrouille quand on ne connait pas l horaire du jour.
+function syncOptionsFermeture(optionsRow, activity, chosenOptions, visible = true) {
+  if (!optionsRow || !activity) return;
+  // Une activite non retenue n a rien a dire : sa rangee est masquee, et une
+  // note posee dedans serait quatre fois la meme phrase dans la page.
+  if (!visible) {
+    const ancienne = optionsRow.querySelector('[data-role="closing-note"]');
+    if (ancienne) ancienne.remove();
+    return;
+  }
+  const restant = heuresJusquALaFermeture();
+  const heuresDe = (pill) => {
+    const key = pill.getAttribute('data-opt');
+    const valeur = Number(pill.getAttribute('data-val'));
+    if (!Number.isFinite(valeur)) return null;
+    if (key === 'duration' || key === 'hours') return valeur;
+    if (key === 'minutes') return valeur / 60;
+    if (key === 'games') {
+      const option = LASER_GAME_OPTIONS.find((item) => Number(item.games) === valeur);
+      return option ? Number(option.value) : null;
+    }
+    return null;
+  };
+  const durees = [];
+  optionsRow.querySelectorAll('[data-opt]').forEach((pill) => {
+    const heures = heuresDe(pill);
+    if (heures === null) return;
+    durees.push(heures);
+    const trop = restant !== null && heures > restant + 0.001;
+    if (trop) {
+      pill.setAttribute('data-too-late', '1');
+      pill.setAttribute('title', 'Plus le temps avant la fermeture');
+      pill.disabled = true;
+    } else {
+      pill.removeAttribute('data-too-late');
+      pill.removeAttribute('title');
+      pill.disabled = false;
+    }
+  });
+  const existante = optionsRow.querySelector('[data-role="closing-note"]');
+  const html = noteFermetureOptions(activity.id, durees);
+  if (!html) {
+    if (existante) existante.remove();
+    return;
+  }
+  if (existante) {
+    existante.outerHTML = html;
+    return;
+  }
+  const rangee = optionsRow.querySelector('.activity-option-row');
+  if (rangee) rangee.insertAdjacentHTML('afterend', html);
+  else optionsRow.insertAdjacentHTML('beforeend', html);
+}
+
 function syncActivityPickerState(off = []) {
   const host = document.getElementById('activityPicker');
   if (!host) return;
@@ -4663,6 +4719,11 @@ function syncActivityPickerState(off = []) {
       const courant = chosenOptions[key] == null ? activityDefaut(key) : Number(chosenOptions[key]);
       pill.classList.toggle('active', courant === value);
     });
+    // CE QUI NE RENTRE PLUS AVANT LA FERMETURE (Movsar, 2026-09-17). La
+    // contrainte est VIVANTE : elle depend du jour choisi ET de l heure qu il
+    // est. Elle vit donc ici, dans la synchronisation d etat, et pas seulement
+    // dans le balisage, qui n est pas reecrit a chaque clic.
+    syncOptionsFermeture(optionsRow, activity, chosenOptions, showOptions);
     // Le stepper d'enfants suit la valeur (sans voler une frappe en cours),
     // les boutons -/+ se desactivent aux bornes, la note de prix recalcule.
     if (activityCountsChildren(activity)) {
@@ -4761,6 +4822,101 @@ function activityHourChoices(activity) {
 // Les options d'une activite. data-opt / data-val servent a
 // syncActivityPickerState : il bascule la pastille active SANS reconstruire le
 // bloc, donc sans casser le retour au press ni le focus d'un select ouvert.
+// LE TEMPS QU IL RESTE AVANT LA FERMETURE, pour la date choisie (Movsar,
+// 2026-09-17). Aujourd hui : de la prochaine demie jusqu a la fermeture,
+// exactement la borne que la liste des creneaux applique deja
+// (filterPastSlotsForDate). Un autre jour : la journee entiere. Rend null
+// quand on ne sait pas (jour ferme, horaires absents) : on ne retire alors
+// AUCUNE option, on n invente pas une contrainte.
+function heuresJusquALaFermeture() {
+  if (typeof getSchedule !== 'function') return null;
+  const schedule = getSchedule(state.booking.date, state.isHolidayMode);
+  if (!schedule || !Number.isFinite(Number(schedule.close))) return null;
+  const aujourdhui = typeof todayStr === 'function' && state.booking.date === todayStr();
+  const debut = aujourdhui && typeof roundUpHalfHour === 'function' && typeof currentTimeDecimal === 'function'
+    ? Math.max(Number(schedule.open), roundUpHalfHour(currentTimeDecimal()))
+    : Number(schedule.open);
+  return Math.max(0, Number(schedule.close) - debut);
+}
+
+// L heure de fermeture, dite comme le client la lit.
+function libelleFermetureDuJour() {
+  if (typeof getSchedule !== 'function') return '';
+  const schedule = getSchedule(state.booking.date, state.isHolidayMode);
+  if (!schedule || !Number.isFinite(Number(schedule.close))) return '';
+  const close = Number(schedule.close);
+  if (close >= 24) return 'minuit';
+  return typeof formatClockShort === 'function' ? formatClockShort(numToTime(close)) : numToTime(close);
+}
+
+// Les attributs d une option qui ne rentre plus : elle reste VISIBLE (le
+// client voit ce que le centre vend) mais elle ne se prend pas.
+function attributsOptionTropLongue(heures) {
+  const restant = heuresJusquALaFermeture();
+  if (restant === null || !(Number(heures) > restant + 0.001)) return '';
+  return ' disabled data-too-late="1" title="Plus le temps avant la fermeture"';
+}
+
+// LA NOTE SOUS LES OPTIONS : ce qu il reste, et la duree ramenee quand elle
+// l a ete. Elle n existe que s il y a quelque chose a dire.
+function noteFermetureOptions(activityId, durees) {
+  const restant = heuresJusquALaFermeture();
+  if (restant === null) return '';
+  const ramenee = dureesRamenees.find((item) => item.activityId === activityId);
+  const tropLongue = durees.some((heures) => Number(heures) > restant + 0.001);
+  if (!tropLongue && !ramenee) return '';
+  const fermeture = libelleFermetureDuJour();
+  const reste = typeof formatDurationLabel === 'function' ? formatDurationLabel(restant) : `${restant} h`;
+  const phrases = [`Il reste ${reste} avant la fermeture${fermeture ? ` (${fermeture})` : ''}.`];
+  if (ramenee) phrases.push(`Durée ramenée à ${ramenee.label}.`);
+  return `<div class="activity-option-note" data-role="closing-note">${escapeHtml(phrases.join(' '))}</div>`;
+}
+
+// LES DUREES RAMENEES a l ouverture de l ecran des reglages et avant de
+// verifier les disponibilites : une duree qui ne rentre plus est remplacee
+// par la plus longue qui tient, et la note le DIT. Sans ca, le client partait
+// avec 2 h de bowling un soir ou il restait 30 min et l ecran suivant
+// n avait plus rien a lui proposer.
+let dureesRamenees = [];
+function ajusterDureesAvantFermeture() {
+  const restant = heuresJusquALaFermeture();
+  dureesRamenees = [];
+  if (restant === null) return false;
+  let change = false;
+  (typeof getChosenActivities === 'function' ? getChosenActivities() : []).forEach((activity) => {
+    const options = (state.booking.activities || {})[activity.id] || {};
+    let paliers = [];
+    let champ = '';
+    if (activity.priceType === 'grid_bowling') {
+      const parties = typeof getBowlingGameOptions === 'function'
+        ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') })
+        : null;
+      paliers = (parties && parties.length ? parties : DURATION_OPTIONS).map((option) => ({ valeur: Number(option.value), heures: Number(option.value), label: option.label }));
+      champ = 'duration';
+    } else if (activity.priceType === 'grid_laser') {
+      paliers = LASER_GAME_OPTIONS.map((option) => ({ valeur: Number(option.games), heures: Number(option.value), label: option.label }));
+      champ = 'games';
+    } else if (activity.priceType === 'grid_fun_run') {
+      paliers = FUN_RUN_OPTIONS.map((option) => ({ valeur: Number(option.minutes), heures: Number(option.minutes) / 60, label: option.label }));
+      champ = 'minutes';
+    } else {
+      return;
+    }
+    const courant = Number(options[champ]) || Number(paliers[0].valeur);
+    const palierCourant = paliers.find((palier) => palier.valeur === courant) || paliers[0];
+    if (!(palierCourant.heures > restant + 0.001)) return;
+    const tiennent = paliers.filter((palier) => palier.heures <= restant + 0.001);
+    if (!tiennent.length) return;
+    const cible = tiennent[tiennent.length - 1];
+    state.booking.activities = state.booking.activities || {};
+    state.booking.activities[activity.id] = { ...options, [champ]: cible.valeur };
+    dureesRamenees.push({ activityId: activity.id, label: cible.label });
+    change = true;
+  });
+  if (change) save();
+  return change;
+}
+
 function renderActivityOptions(activity, options, pax) {
   if (!activity) return '';
   const id = escapeHtml(activity.id);
@@ -4775,33 +4931,37 @@ function renderActivityOptions(activity, options, pax) {
     const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') }) : null;
     if (games) {
       if (!games.length) return '<div class="activity-option-row"><span class="activity-option-empty">Aucun tarif publié pour ce jour.</span></div>';
-      return `<div class="activity-option-row">${games.map(option => `
-        <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"
+      const rangee = `<div class="activity-option-row">${games.map(option => `
+        <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"${attributsOptionTropLongue(option.value)}
           onclick="setBookingActivityOption('${id}','duration',${option.value})">
           ${option.label}<span class="price">${option.price}€ / pers</span>
         </button>`).join('')}</div>`;
+      return rangee;
     }
-    return `<div class="activity-option-row">${DURATION_OPTIONS.map(option => `
-      <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"
+    const rangee = `<div class="activity-option-row">${DURATION_OPTIONS.map(option => `
+      <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"${attributsOptionTropLongue(option.value)}
         onclick="setBookingActivityOption('${id}','duration',${option.value})">
         ${option.label}<span class="price">${option.price}€ / piste</span>
       </button>`).join('')}</div>`;
+    return rangee;
   }
   if (activity.priceType === 'grid_laser') {
     const current = Number(options.games) || 1;
-    return `<div class="activity-option-row">${LASER_GAME_OPTIONS.map(option => `
-      <button type="button" class="dur-pill sm ${current === Number(option.games) ? 'active' : ''}" data-opt="games" data-val="${option.games}"
+    const rangee = `<div class="activity-option-row">${LASER_GAME_OPTIONS.map(option => `
+      <button type="button" class="dur-pill sm ${current === Number(option.games) ? 'active' : ''}" data-opt="games" data-val="${option.games}"${attributsOptionTropLongue(option.value)}
         onclick="setBookingActivityOption('${id}','games',${option.games})">
         ${option.label}<span class="price">${option.price}€ / pers</span>
       </button>`).join('')}</div>`;
+    return rangee;
   }
   if (activity.priceType === 'grid_fun_run') {
     const current = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
-    return `<div class="activity-option-row">${FUN_RUN_OPTIONS.map(option => `
-      <button type="button" class="dur-pill sm ${current === Number(option.minutes) ? 'active' : ''}" data-opt="minutes" data-val="${option.minutes}"
+    const rangee = `<div class="activity-option-row">${FUN_RUN_OPTIONS.map(option => `
+      <button type="button" class="dur-pill sm ${current === Number(option.minutes) ? 'active' : ''}" data-opt="minutes" data-val="${option.minutes}"${attributsOptionTropLongue(Number(option.minutes) / 60)}
         onclick="setBookingActivityOption('${id}','minutes',${option.minutes})">
         ${option.label}<span class="price">${option.price}€ / session</span>
       </button>`).join('')}</div>`;
+    return rangee;
   }
   if (activityCountsChildren(activity)) {
     // Le compte d'enfants se regle au MEME stepper -/+ que le compte de
@@ -5662,7 +5822,22 @@ function mobileTopBack() {
     reopenVenue();
     return;
   }
+  // LE RETOUR DEPUIS LES HEURES REVIENT A L ECRAN PRECEDENT (Movsar,
+  // 2026-09-17 : « quand on fait retour on tombe sur le choix dactivite et
+  // pas a la page precedente de base qui est choix des options »).
+  if (step === 2) { retourDepuisCreneau(); return; }
   if (step > 1 && step < 5) goStep(step - 1);
+}
+
+// L ecran des heures a UN precedent : l ecran des reglages quand la visite en
+// a (a la carte, au moins un reglage), sinon le choix des activites. Un seul
+// point d entree pour le pied de page et pour la barre haute du telephone.
+function retourDepuisCreneau() {
+  goStep(1);
+  if (typeof mobileOptionsAvailable === 'function' && mobileOptionsAvailable()
+    && typeof showMobileOptionsPage === 'function') {
+    showMobileOptionsPage(true);
+  }
 }
 
 // UNE ALERTE APPARTIENT A L ECRAN QUI L A LEVEE. Elle ne s effacait que par un
@@ -6037,6 +6212,11 @@ function revelerQuestionReglages() {
 function showMobileOptionsPage(show) {
   const stepRoot = document.getElementById('step1');
   if (!stepRoot) return;
+  // Les durees qui ne rentrent plus avant la fermeture sont ramenees AVANT
+  // que l ecran ne s affiche : le client lit la duree qu il aura vraiment.
+  if (show && typeof ajusterDureesAvantFermeture === 'function') {
+    if (ajusterDureesAvantFermeture() && typeof renderActivityPicker === 'function') renderActivityPicker();
+  }
   stepRoot.classList.toggle('is-options', Boolean(show));
   resetStepOneScroll();
   if (show) revelerQuestionReglages();
@@ -6442,8 +6622,39 @@ async function revalidateFormulaAnchors() {
   if (!syncFormulaAnchorUi(formule, { busy: false })) renderSlots(formule);
 }
 
-async function setFormulaAnchorTime(activityId, time) {
+// `decaler` : l heure demandee gagne, et les autres activites se replacent
+// autour d elle (le moteur les pose automatiquement quand aucune heure n est
+// retenue pour elles). C est la reponse au chevauchement : on deplace, on ne
+// refuse pas (entretien Seb, 2026-09-17).
+async function setFormulaAnchorTime(activityId, time, decaler = false) {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  if (decaler) {
+    // ON NE DEPLACE QUE CE QUI CHEVAUCHE. Liberer toutes les autres heures
+    // ferait perdre au client un choix qui ne genait personne : trois parties
+    // de laser posees, dont une seule tombe sur l heure demandee.
+    const ancres = (typeof formulaAnchorData === 'object' && formulaAnchorData && formulaAnchorData.activities) || [];
+    const moi = ancres.find((item) => item.activityId === activityId) || null;
+    const debut = timeToNum(time) * 60;
+    const fin = debut + Number((moi && moi.durationMinutes) || 0);
+    const chevauche = (heure, minutes) => {
+      if (!heure) return false;
+      const d = timeToNum(heure) * 60;
+      return d < fin && d + Number(minutes || 0) > debut;
+    };
+    Object.keys(preference.preferredTimes || {}).forEach((id) => {
+      if (id === activityId) return;
+      const autre = ancres.find((item) => item.activityId === id) || null;
+      if (chevauche(preference.preferredTimes[id], autre && autre.durationMinutes)) preference.preferredTimes[id] = '';
+    });
+    // Les PARTIES de laser posees occupent leur place comme une heure retenue :
+    // celles qui tombent sur l heure demandee la liberent, les autres restent.
+    if (activityId !== 'laser_game' && Array.isArray(preference.laserGameTimes) && preference.laserGameTimes.length) {
+      const laser = ancres.find((item) => item.activityId === 'laser_game') || null;
+      const gardees = preference.laserGameTimes.filter((heure) => heure && !chevauche(heure, laser && laser.durationMinutes));
+      preference.laserGameTimes = gardees;
+      preference.preferredTimes.laser_game = gardees[0] || '';
+    }
+  }
   const parties = activityId === 'laser_game' ? getBookingLaserPartCount() : 1;
   // PLUSIEURS PARTIES : la liste est un choix MULTIPLE. Un clic ajoute l'heure,
   // un clic sur une heure deja retenue la retire. Le compte ne depasse jamais
@@ -6639,6 +6850,31 @@ const ANCHOR_PERIODS = [
   { key: 'apresmidi', label: 'Après-midi', maxHour: 18 },
   { key: 'soir', label: 'Soir', maxHour: 24 },
 ];
+
+// L ICONE DU MOMENT (Movsar, 2026-09-17, maquette a l appui) : un lever de
+// soleil, un soleil, une lune. Elle est DECORATIVE (aria-hidden) : le nom du
+// moment reste ecrit a cote, jamais porte par le dessin seul.
+const ANCHOR_PERIOD_ICONS = {
+  matin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v3"/><path d="m5.6 8.6 1.8 1.8"/><path d="m18.4 8.6-1.8 1.8"/><path d="M8 18a4 4 0 0 1 8 0"/><path d="M3 18h18"/><path d="M5 22h14"/></svg>',
+  apresmidi: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2"/><path d="M12 19.8V22"/><path d="M2 12h2.2"/><path d="M19.8 12H22"/><path d="m5 5 1.6 1.6"/><path d="m17.4 17.4 1.6 1.6"/><path d="m19 5-1.6 1.6"/><path d="m6.6 17.4-1.6 1.6"/></svg>',
+  soir: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 14.2A8.6 8.6 0 1 1 10.4 3.4a6.8 6.8 0 0 0 10.4 10.8Z"/></svg>',
+};
+
+// CE QUE LE CLIENT A DEPLIE, par activite et par moment. L etat vit ICI et
+// pas dans le DOM : chaque revalidation reconstruit la grille, et un moment
+// ouvert a la main ne doit pas se refermer dans le dos du client.
+const anchorPeriodsOpen = {};
+
+// PLIE / DEPLIE UN MOMENT DE LA JOURNEE (« genre pliant depliant »).
+function basculerPeriodeHeures(bouton) {
+  const section = bouton && bouton.closest ? bouton.closest('.slot-period') : null;
+  if (!section) return;
+  const cle = section.getAttribute('data-period-key') || '';
+  const ouvert = !section.classList.contains('is-open');
+  section.classList.toggle('is-open', ouvert);
+  bouton.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+  if (cle) anchorPeriodsOpen[cle] = ouvert;
+}
 
 function getAnchorPeriodKey(time) {
   const hour = Math.floor(timeToNum(time));
@@ -7012,12 +7248,15 @@ function slotCardMarkup({ time, endTime, tag, tagTone, meta }) {
 // Le modele d une carte d heure dans le composeur de visite. Tout vient de la
 // reponse du moteur : `durationMinutes` de l activite, `lanes` allouees pour
 // le bowling, `remainingPlaces` / `sharedSession` pour le laser.
-function anchorSlotCardModel(activity, item, { isChained, unavailable = false } = {}) {
+function anchorSlotCardModel(activity, item, { isChained, unavailable = false, decale = null } = {}) {
   const duration = Number(activity.durationMinutes || 0);
   const endTime = duration > 0 ? numToTime(timeToNum(item.time) + duration / 60) : '';
   let tag = '';
   let tagTone = '';
   if (isChained) { tag = 'Enchaîné'; tagTone = 'accent'; }
+  // L heure se prend et DEPLACE l autre activite : la carte le dit avant le
+  // clic, en toutes lettres, jamais par la seule couleur.
+  if (decale) { tag = 'On décale'; tagTone = 'shift'; }
   const bits = [];
   if (Array.isArray(item.lanes) && item.lanes.length) {
     bits.push(`${item.lanes.length} piste${item.lanes.length > 1 ? 's' : ''}`);
@@ -7029,12 +7268,14 @@ function anchorSlotCardModel(activity, item, { isChained, unavailable = false } 
   // Heure impossible : la raison courte du moteur REMPLACE le secondaire
   // (pistes, places), qui ne veut plus rien dire pour une heure qu on ne
   // peut pas prendre.
-  const meta = unavailable ? (item.reason || 'Indisponible') : bits.join(' · ');
+  const meta = decale
+    ? `${decale.label} se décale`
+    : unavailable ? (item.reason || 'Indisponible') : bits.join(' · ');
   const label = [
     item.time,
     endTime ? `fin ${endTime}` : '',
     isChained ? "enchaîné avec l'activité précédente" : '',
-    unavailable ? `indisponible : ${meta}` : meta,
+    decale ? `possible, ${decale.label} se décale` : (unavailable ? `indisponible : ${meta}` : meta),
   ].filter(Boolean).join(', ');
   return { time: item.time, endTime, tag, tagTone, meta, label };
 }
@@ -7088,10 +7329,32 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   // : ceux-la FILTRAIENT et cachaient 26 heures sur 27. Ici rien n est
   // masque et aucun bouton n est ajoute - juste trois intertitres dans la
   // meme liste, pour qu une colonne de 27 pastilles se balaye.
-  const chips = groups.map(group => `
-    <section class="slot-period">
-      <h3 class="slot-period-title">${escapeHtml(group.label)}</h3>
-      <div class="anchor-chip-grid">${group.items.map((item, index) => {
+  // LE MOMENT OUVERT PAR DEFAUT : celui qui porte l heure retenue, sinon
+  // celui de la proposition enchainee, sinon le premier qui a des heures
+  // libres. Les autres se plient : 28 pastilles d un coup faisaient un mur
+  // (Movsar : « ca fait moins de trop »). Rien n est cache : chaque moment
+  // annonce combien d heures il porte, et un clic le deplie.
+  const aLHeureRetenue = (group) => group.items.some((item) => (multi ? chosen.includes(item.time) : item.time === selected));
+  const momentRetenu = groups.find(aLHeureRetenue) || null;
+  const momentPropose = chained ? (groups.find((group) => group.items.some((item) => item.time === chained)) || null) : null;
+  const momentLibre = groups.find((group) => group.items.some((item) => item.ok !== false)) || null;
+  const momentParDefaut = momentRetenu || momentPropose || momentLibre;
+  const chips = groups.map(group => {
+    const clePeriode = `${activity.activityId}:${group.key}`;
+    const libres = group.items.filter((item) => item.ok !== false).length;
+    const ouvert = Object.prototype.hasOwnProperty.call(anchorPeriodsOpen, clePeriode)
+      ? Boolean(anchorPeriodsOpen[clePeriode])
+      : group === momentParDefaut;
+    const idGrille = `heures-${activity.activityId}-${group.key}`;
+    return `
+    <section class="slot-period${ouvert ? ' is-open' : ''}" data-period="${escapeHtml(group.key)}" data-period-key="${escapeHtml(clePeriode)}">
+      <button type="button" class="slot-period-head" aria-expanded="${ouvert ? 'true' : 'false'}" aria-controls="${escapeHtml(idGrille)}" onclick="basculerPeriodeHeures(this)">
+        <span class="slot-period-icon" aria-hidden="true">${ANCHOR_PERIOD_ICONS[group.key] || ''}</span>
+        <span class="slot-period-title">${escapeHtml(group.label)}</span>
+        <span class="slot-period-count">${libres > 0 ? `${libres} heure${libres > 1 ? 's' : ''}` : 'aucune heure libre'}</span>
+        <svg class="slot-period-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="anchor-chip-grid" id="${escapeHtml(idGrille)}">${group.items.map((item, index) => {
     // Multi-choix : une heure retenue est active, et quand le compte est
     // atteint les autres cessent d'etre cliquables (le compteur dit pourquoi).
     const isActive = multi ? chosen.includes(item.time) : item.time === selected;
@@ -7099,18 +7362,31 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     // visible, grisee, avec sa raison courte : le client sait pourquoi au
     // moment de choisir, pas a la derniere etape (brief 2026-09-02).
     const unavailable = item.ok === false;
-    const chipDisabled = disabled || unavailable || (multi && full && !isActive);
+    // UNE HEURE QUI CHEVAUCHE L AUTRE ACTIVITE N EST PAS UN MUR (entretien Seb,
+    // 2026-09-17 : « si qlq veut 18H30 laser game il comprend pas pq il peut
+    // pas [...] fait un truc plus logique [...] mais pas empecher comme ca »).
+    // Le seul obstacle est une heure retenue pour l AUTRE activite : le client
+    // la prend, et l autre activite se replace autour (le moteur sait le faire,
+    // c est ce qu il fait quand aucune heure n est retenue). Une capacite
+    // pleine, une fermeture ou un blocage restent des refus : rien ne les
+    // deplace.
+    const conflit = item.conflict && item.conflict.activityId && item.conflict.activityId !== activity.activityId
+      ? item.conflict
+      : null;
+    const decalable = unavailable && item.code === 'anchor_overlap' && Boolean(conflit);
+    const chipDisabled = disabled || (unavailable && !decalable) || (multi && full && !isActive);
     const isChained = !isActive && !unavailable && item.time === chained;
     const marker = index === 0 ? ` data-period-start="${escapeHtml(group.key)}"` : '';
     const justPicked = !formulaAnchorBusy && isActive && formulaJustPicked
       && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === item.time;
     if (justPicked) formulaJustPicked = null;
-    const model = anchorSlotCardModel(activity, item, { isChained, unavailable });
+    const model = anchorSlotCardModel(activity, item, { isChained, unavailable, decale: conflit && decalable ? conflit : null });
     if (!unavailable && sharedAnchorMeta && model.meta === sharedAnchorMeta) model.meta = '';
     const reasonAttrs = unavailable ? ` data-reason="${escapeHtml(model.meta)}" title="${escapeHtml(model.meta)}"` : '';
-    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${unavailable ? 'is-unavailable' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}"${reasonAttrs} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${chipDisabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${slotCardMarkup(model)}</button>`;
+    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${unavailable && !decalable ? 'is-unavailable' : ''} ${decalable ? 'is-shiftable' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}"${reasonAttrs} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${chipDisabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}'${decalable ? ', true' : ''})">${slotCardMarkup(model)}</button>`;
       }).join('')}</div>
-    </section>`).join('');
+    </section>`;
+  }).join('');
   const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
     <div class="anchor-periods">

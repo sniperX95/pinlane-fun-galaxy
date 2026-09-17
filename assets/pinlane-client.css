@@ -1188,6 +1188,40 @@ body.client-mode #clientView {
 
 #clientView #step1.is-options .s1-what-head,
 #clientView #step1.is-options .activity-grid { display: none; }
+
+/* LE RETOUR VERS LE CHOIX DES ACTIVITES, ECRIT DANS L ECRAN DES REGLAGES
+   (entretien Seb, 2026-09-17). La grille est masquee ici : sur ordinateur
+   l ecran devenait un cul-de-sac, le seul retour vivant dans la barre haute
+   du telephone. Movsar : « quand on arrive sur ca on peut pas aller a l
+   endroit precedent qui montre choix d activite cest con ». Meme regle que
+   `.s1-venue-back` : sous 640 px la barre haute porte deja une fleche, un
+   seul chemin de retour par largeur. */
+#clientView .s1-options-back { display: none; }
+#clientView #step1.is-options .s1-options-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-full);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+#clientView #step1.is-options .s1-options-back:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+}
+@media (max-width: 640px) {
+  #clientView #step1.is-options .s1-options-back { display: none; }
+}
 #clientView #step1:not(.is-options) #programSummary { display: none; }
 #clientView #step1.is-options #programSummary { margin-top: var(--space-3); }
 #clientView #step1:not(.is-options) .activity-configurator { display: none; }

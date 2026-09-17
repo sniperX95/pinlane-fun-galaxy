@@ -4585,6 +4585,10 @@ function buildActivityPicker(host, catalog) {
   host.innerHTML = `
     <div class="activity-grid" data-role="activity-grid">${cards}</div>
     <div class="activity-configurator" data-role="activity-configurator" aria-hidden="true">
+      <button type="button" class="s1-options-back" onclick="showMobileOptionsPage(false)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        Modifier les activités
+      </button>
       <div class="activity-configurator-head">
         <span class="activity-configurator-title">Choisissez vos options</span>
         <span class="activity-configurator-count" data-role="config-count"></span>

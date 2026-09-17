@@ -25,7 +25,7 @@
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20260911a">
-<link rel="stylesheet" href="/assets/pinlane-client.css?v=20260818k">
+<link rel="stylesheet" href="/assets/pinlane-client.css?v=20260917a">
 <script defer src="/assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="/assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="/assets/api-client.js?v=20260912a"></script>
@@ -56,7 +56,7 @@
 <!-- Le glisser au doigt (appui long, glisser, relacher), ecrit une fois pour
      le planning et le tableau d analyse. Charge avant app-main. -->
 <script defer src="/assets/pinlane-touch-drag.js?v=20260911a"></script>
-<script defer src="/assets/app-main.js?v=20260917a"></script>
+<script defer src="/assets/app-main.js?v=20260917b"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260717a"></script>
@@ -377,13 +377,13 @@
         </div>
 
         <div class="step-foot">
-          <button type="button" class="bespoke-entry" aria-label="Demande sur mesure : groupe, entreprise ou besoin spécial" onclick="openCustomRequestModal()">
+          <button type="button" class="bespoke-entry" aria-label="Événement d'entreprise ou d'école : décrivez votre projet, sans remplir ce formulaire" onclick="openCustomRequestModal()">
             <span class="bespoke-entry-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
             </span>
             <span class="bespoke-entry-text">
-              <strong>Groupe, entreprise ou besoin spécial ?</strong>
-              <small>Privatisation, team-building, traiteur…</small>
+              <strong>Événement d'entreprise ou d'école ?</strong>
+              <small>Grand groupe : décrivez votre projet, pas besoin de remplir ce formulaire.</small>
             </span>
           </button>
           <button class="btn-primary" id="btnStep1" onclick="goStep2()">
@@ -569,8 +569,8 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
       <div class="bespoke-modal-head">
-        <h2 id="bespokeTitle">Demande sur mesure</h2>
-        <p>Décrivez votre projet : on revient vers vous.</p>
+        <h2 id="bespokeTitle">Événement d'entreprise ou d'école</h2>
+        <p>Grand groupe, journée complète, privatisation : dites-nous ce que vous voulez, on revient vers vous avec une proposition. Pas besoin de remplir le formulaire de réservation.</p>
       </div>
       <div id="bespokeSuccess" class="bespoke-success hidden"></div>
       <div id="bespokeForm">

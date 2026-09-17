@@ -90,8 +90,12 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'clients.view', 'payments.view', 'payments.markPaid', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    const localDay = new Date();
-    const today = `${localDay.getFullYear()}-${String(localDay.getMonth() + 1).padStart(2, '0')}-${String(localDay.getDate()).padStart(2, '0')}`;
+    // Date du CENTRE, calculee comme todayStr() de l'app (booking-core.js,
+    // fuseau Europe/Brussels), jamais dans le fuseau du navigateur : juste sur
+    // un poste belge, fausse sur un runner CI en UTC entre 22 h et minuit UTC.
+    const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const lire = (type) => jour.find((part) => part.type === type)?.value;
+    const today = `${lire('year')}-${lire('month')}-${lire('day')}`;
     // Reservation reelle : 3 tables de billard reservees pour 2 HEURES.
     // Prix facture reel au dossier = 120 EUR (20 EUR/table/heure x 3 tables x 2h).
     // C'est EXACTEMENT ce que le staff a vendu au comptoir.

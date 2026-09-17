@@ -39,11 +39,16 @@ async function installMock(page) {
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view','planning.view','reservations.view','reservations.create','reservations.quick','reservations.edit','reservations.status','reservations.cancel','reservations.delete','clients.view','clients.edit','emails.view','emails.send','settings.manage','direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    // Date LOCALE, jamais toISOString : l app compare a todayStr() (local) ;
-    // en zone UTC+2, entre minuit et 2 h, toISOString rend encore la veille
-    // et les resas « du jour » du mock tombaient hier (rouge nocturne local,
-    // 2026-08-26 ; un runner CI en UTC ne le voit jamais).
-    const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+    // Date du CENTRE, calculee comme todayStr() de l app (booking-core.js,
+    // fuseau Europe/Brussels), jamais dans le fuseau du navigateur :
+    // toISOString rendait la date UTC, et la date locale du navigateur, juste
+    // sur un poste belge, est fausse sur un runner CI en UTC entre 22 h et
+    // minuit UTC. Dans les deux cas les resas « du jour » tombaient la veille.
+    const dstr = (off) => {
+      const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+      const lire = (type) => Number(jour.find((part) => part.type === type)?.value);
+      return new Date(Date.UTC(lire('year'), lire('month') - 1, lire('day') + off)).toISOString().slice(0, 10);
+    };
     const R = [
       { id: 81001, name: 'Clavier Un', phone: '+32471008101', date: dstr(0), startTime: '14:00', duration: 1, pax: 4, price: 60, type: 'bowling', label: 'Bowling', lanes: [1], status: 'paid', centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, createdAt: new Date().toISOString() },
       { id: 81002, name: 'Clavier Deux', phone: '+32471008102', date: dstr(-1), startTime: '18:00', duration: 1, pax: 3, price: 45, type: 'bowling', label: 'Bowling', lanes: [2], status: 'paid', centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, createdAt: new Date().toISOString() },

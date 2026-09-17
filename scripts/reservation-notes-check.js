@@ -35,12 +35,17 @@ async function installMock(page) {
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'clients.view', 'clients.edit', 'emails.view', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    // Date LOCALE, comme todayStr() de l'app. toISOString() rend la date UTC :
-    // entre minuit et 2h (heure d'ete belge), le jeu d'essai etait date de la
-    // VEILLE pendant que la page affichait le jour meme -> liste vide et 10
-    // assertions rouges, chaque nuit. Defaut du banc d'essai, pas du produit.
-    const nowLocal = new Date();
-    const today = new Date(nowLocal.getTime() - nowLocal.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    // Date du jour DU CENTRE, calculee comme todayStr() de l'app
+    // (booking-core.js, fuseau Europe/Brussels), jamais dans le fuseau du
+    // navigateur. toISOString() rendait la date UTC, puis la date locale du
+    // navigateur a pris le relais : juste sur un poste belge, fausse sur le
+    // runner CI qui tourne en UTC. Dans les deux cas, entre minuit et 2h (heure
+    // d'ete belge), le jeu d'essai etait date de la VEILLE pendant que la page
+    // affichait le jour meme -> liste vide et 10 assertions rouges. Defaut du
+    // banc d'essai, pas du produit.
+    const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const lire = (type) => jour.find((part) => part.type === type)?.value;
+    const today = `${lire('year')}-${lire('month')}-${lire('day')}`;
     let id = 9100;
     const R = [];
     const add = (o) => { R.push({ id: id++, date: today, lanes: [], status: 'pending', duration: 1, centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, type: 'bowling', label: 'Bowling', price: 100, pax: 6, ...o }); };
@@ -125,6 +130,14 @@ async function main() {
   try {
     await installMock(page);
     await boot(page);
+
+    // Montage d'abord : si le jeu d'essai n'est pas date du jour que la page
+    // affiche, les assertions suivantes rougissent pour une autre raison que
+    // celle qu'elles nomment.
+    console.log('\n[MONTAGE] le jeu d essai est date du jour que la page affiche');
+    const montage = await page.evaluate(() => ({ page: todayStr(), liste: state.currentDate, jeu: [...new Set(window.__QA_BUILD__().map((r) => r.date))] }));
+    ok(montage.jeu.length === 1 && montage.jeu[0] === montage.page && montage.liste === montage.page,
+      `jeu d essai date du ${montage.jeu.join(', ')}, page au ${montage.page}, liste du ${montage.liste}`);
 
     console.log('\n[MARQUEURS] la liste du jour signale la note et l occasion');
     const base = await page.evaluate(READ_LIST);

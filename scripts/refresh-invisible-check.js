@@ -38,7 +38,14 @@ function serveStatic() {
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, '127.0.0.1', () => resolve(server)); });
 }
 
-const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+// Date du CENTRE, calculee comme todayStr() de l app (booking-core.js, fuseau
+// Europe/Brussels), jamais dans le fuseau de la machine : juste sur un poste
+// belge, fausse sur un runner CI en UTC entre 22 h et minuit UTC.
+const dstr = (off) => {
+  const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const lire = (type) => Number(jour.find((part) => part.type === type)?.value);
+  return new Date(Date.UTC(lire('year'), lire('month') - 1, lire('day') + off)).toISOString().slice(0, 10);
+};
 
 async function installMock(page) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();

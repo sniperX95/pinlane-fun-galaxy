@@ -46,13 +46,16 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.addInitScript(({ expiresAt, FORMULES }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'clients.view', 'payments.view', 'payments.markPaid', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    // DATE LOCALE, comme l'app (todayStr). `toISOString()` rend de l'UTC :
-    // passe minuit a Bruxelles, la fixture se serait posee la veille pendant
-    // que la console affiche aujourd hui, et le gate aurait rougi sans qu'un
-    // seul defaut de produit existe. Meme classe que les fixtures datees du
-    // 2026-08-08.
-    const localDay = new Date();
-    const today = `${localDay.getFullYear()}-${String(localDay.getMonth() + 1).padStart(2, '0')}-${String(localDay.getDate()).padStart(2, '0')}`;
+    // DATE DU CENTRE, calculee comme todayStr() de l'app (booking-core.js,
+    // fuseau Europe/Brussels), jamais dans le fuseau du navigateur.
+    // `toISOString()` rend de l'UTC, et la date locale du navigateur, juste sur
+    // un poste belge, est fausse sur un runner CI en UTC : dans les deux cas,
+    // passe minuit a Bruxelles, la fixture se posait la veille pendant que la
+    // console affiche aujourd hui, et le gate rougissait sans qu'un seul defaut
+    // de produit existe. Meme classe que les fixtures datees du 2026-08-08.
+    const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const lire = (type) => jour.find((part) => part.type === type)?.value;
+    const today = `${lire('year')}-${lire('month')}-${lire('day')}`;
     const R = [
       { id: 1332, name: 'TEST', phone: '+32487784816', email: 't@x.be', date: today, startTime: '10:00', duration: 1.5, pax: 23, price: 236, basePrice: 236, type: 'bowling', label: 'Bowling Classique', lanes: [3, 4, 5, 6], status: 'paid', centerId: 'libramont', channel: 'staff', activityProgress: {}, extras: [] },
       { id: 1333, name: 'LASER TEST', phone: '+32487784817', email: 'l@x.be', date: today, startTime: '14:00', duration: 0.5, pax: 10, price: 100, basePrice: 100, type: 'laser', label: 'Laser Game', lanes: [], status: 'pending', centerId: 'libramont', channel: 'staff', laserGames: 1, activityProgress: {}, extras: [] },

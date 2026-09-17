@@ -40,11 +40,19 @@ async function installMock(page) {
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view','planning.view','reservations.view','reservations.create','reservations.quick','reservations.edit','reservations.status','clients.view','clients.edit','emails.view','emails.send','settings.manage','direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    // Date LOCALE, jamais toISOString : l app compare a todayStr() (local). En
-    // zone UTC+2, entre minuit et 2 h, toISOString rend ENCORE la veille : les
-    // resas « du jour » tombaient hier et le gate rougissait toutes les nuits
-    // en local (vu 2026-08-26 ~01 h ; un runner CI en UTC ne le voit jamais).
-    const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+    // Date du CENTRE, calculee comme todayStr() de l app (booking-core.js,
+    // fuseau Europe/Brussels), jamais dans le fuseau du navigateur :
+    // toISOString rendait la date UTC, et la date locale du navigateur, juste
+    // sur un poste belge, est fausse sur un runner CI en UTC. Dans les deux cas,
+    // entre minuit et 2 h (heure d ete belge), les resas « du jour » tombaient
+    // la veille et le gate rougissait (vu en local le 2026-08-26 vers 1 h, et
+    // reproduit le 2026-09-15 avec un navigateur en Etc/GMT+12).
+    const dstr = (off) => {
+      const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+      const lire = (type) => Number(jour.find((part) => part.type === type)?.value);
+      return new Date(Date.UTC(lire('year'), lire('month') - 1, lire('day') + off)).toISOString().slice(0, 10);
+    };
+    window.__QA_DSTR__ = dstr;
     const R = [];
     let id = 70000;
     const add = (o) => { R.push({ id: id++, lanes: [], status: 'paid', duration: 1, centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, createdAt: new Date().toISOString(), ...o }); };
@@ -77,7 +85,7 @@ async function installMock(page) {
       if (u.pathname === '/api/staff-lanes') { const b = JSON.parse(init.body || '{}'); return J({ ok: true, lane: { lane: b.lane, status: b.status, maintenanceFrom: b.maintenanceFrom || '', maintenanceUntil: b.maintenanceUntil || '', maintenanceNote: b.note || '' } }); }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customRequests') return J({ ok: true, customRequests: [] });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
-      if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: new Date().toISOString().slice(0, 10), durationOptions: [], formules: [], center: { id: 'libramont', status: 'active', defaultSchedule: { regular: { '0': { open: '10:00', close: '22:00' }, '1': { open: '10:00', close: '22:00' }, '2': { open: '10:00', close: '22:00' }, '3': { open: '10:00', close: '22:00' }, '4': { open: '10:00', close: '22:00' }, '5': { open: '10:00', close: '22:00' }, '6': { open: '10:00', close: '22:00' } }, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
+      if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: dstr(0), durationOptions: [], formules: [], center: { id: 'libramont', status: 'active', defaultSchedule: { regular: { '0': { open: '10:00', close: '22:00' }, '1': { open: '10:00', close: '22:00' }, '2': { open: '10:00', close: '22:00' }, '3': { open: '10:00', close: '22:00' }, '4': { open: '10:00', close: '22:00' }, '5': { open: '10:00', close: '22:00' }, '6': { open: '10:00', close: '22:00' } }, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
       return nf(input, init);
     };
     window.__QA_BUILD__ = build;
@@ -107,6 +115,13 @@ async function main() {
       save(); setView('staff'); openStaffMenuPage('lanes');
     });
     await page.waitForTimeout(900);
+
+    // Montage d abord : les resas « du jour » du jeu d essai doivent etre datees
+    // du jour que la page affiche, sinon les rouges suivants ne disent pas ce
+    // qu ils nomment.
+    console.log('\n[MONTAGE] les resas du jour sont datees du jour de la page');
+    const montage = await page.evaluate(() => ({ page: todayStr(), jour: [...new Set(window.__QA_BUILD__().filter((r) => /^Jour /.test(r.name)).map((r) => r.date))] }));
+    ok(montage.jour.length === 1 && montage.jour[0] === montage.page, `resas du jour datees du ${montage.jour.join(', ')}, page au ${montage.page}`);
 
     console.log('\n[PISTES : le mur des pistes, un geste par probleme]');
     const mur = await page.evaluate(() => {
@@ -192,11 +207,8 @@ async function main() {
     });
     ok(form.present && form.dates === 2 && form.motif, `le formulaire d entretien vit DANS la rangee (2 dates + motif) et non dans un prompt (${JSON.stringify(form)})`);
     await page.evaluate(() => {
-      // Date LOCALE, jamais toISOString : l app compare a todayStr() (local). En
-    // zone UTC+2, entre minuit et 2 h, toISOString rend ENCORE la veille : les
-    // resas « du jour » tombaient hier et le gate rougissait toutes les nuits
-    // en local (vu 2026-08-26 ~01 h ; un runner CI en UTC ne le voit jamais).
-    const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+      // Meme date du centre que le jeu d essai (installMock la pose).
+      const dstr = window.__QA_DSTR__;
       document.getElementById('laneMaintFrom-5').value = dstr(0);
       document.getElementById('laneMaintUntil-5').value = dstr(2);
       document.getElementById('laneMaintNote-5').value = 'huilage';
@@ -227,7 +239,11 @@ async function main() {
         s0: s0 ? s0.textContent.replace(/\s+/g, ' ').trim() : '',
         completer: s0 ? [...s0.querySelectorAll('button')].some((b) => /Compl[ée]ter|Ajouter/.test(b.textContent)) : false,
         bilan: (document.querySelector('#staffUtilityPage .laser-30d') || {}).textContent || '',
-        heureNow: new Date().getHours() + new Date().getMinutes() / 60,
+        // L heure du CENTRE (Europe/Brussels), celle avec laquelle l app decide si
+        // un lancement est encore a venir, jamais l heure du navigateur : sur un
+        // runner CI en UTC, le branchement prenait le mauvais cote deux heures
+        // par jour (vu le 2026-09-15 avec un navigateur en Etc/GMT+12).
+        heureNow: (() => { const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()); const lire = (t) => Number(p.find((x) => x.type === t)?.value); return lire('hour') + lire('minute') / 60; })(),
       };
     });
     // Le bandeau repond a LA question du comptoir, calculee comme le client :

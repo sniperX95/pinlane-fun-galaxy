@@ -57,10 +57,13 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.addInitScript(({ expiresAt, FORMULES }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'clients.view', 'payments.view', 'payments.markPaid', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    // Date LOCALE, comme todayStr() : un toISOString() aurait pose la fixture la
-    // veille passe minuit a Bruxelles et fait rougir le gate sans defaut reel.
-    const localDay = new Date();
-    const today = `${localDay.getFullYear()}-${String(localDay.getMonth() + 1).padStart(2, '0')}-${String(localDay.getDate()).padStart(2, '0')}`;
+    // Date du CENTRE, calculee comme todayStr() de l app (booking-core.js,
+    // fuseau Europe/Brussels), jamais dans le fuseau du navigateur :
+    // toISOString() aurait pose la fixture la veille passe minuit a Bruxelles,
+    // et la date locale du navigateur fait pareil sur un runner CI en UTC.
+    const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const lire = (type) => jour.find((part) => part.type === type)?.value;
+    const today = `${lire('year')}-${lire('month')}-${lire('day')}`;
 
     // LA VISITE, telle que le serveur l'ecrit (verifie au harnais serveur dans
     // scripts/plan-lane-fidelity-check) : type 'bowling', pas de formuleId, le

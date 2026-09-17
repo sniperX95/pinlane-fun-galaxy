@@ -35,7 +35,14 @@ async function installMock(page) {
     // Fixtures RELATIVES À AUJOURD'HUI RÉEL (todayStr/staffGroupToday) → déterministes
     // quel que soit le jour d'exécution : dormance, fenêtre anniversaire 335-395 j,
     // dossiers « à venir » filtrés sur la date réelle.
-    const dstr = (offsetDays) => { const d = new Date(); d.setDate(d.getDate() + offsetDays); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }; // date LOCALE (todayStr est local ; toISOString = la veille avant 2 h)
+    // Date du CENTRE, calculee comme todayStr() de l app (booking-core.js,
+    // fuseau Europe/Brussels), jamais dans le fuseau du navigateur : juste sur
+    // un poste belge, fausse sur un runner CI en UTC entre 22 h et minuit UTC.
+    const dstr = (offsetDays) => {
+      const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+      const lire = (type) => Number(jour.find((part) => part.type === type)?.value);
+      return new Date(Date.UTC(lire('year'), lire('month') - 1, lire('day') + offsetDays)).toISOString().slice(0, 10);
+    };
     const iso = (offsetDays) => { const d = new Date(); d.setDate(d.getDate() + offsetDays); return d.toISOString(); };
     const R = [];
     let id = 7000;
@@ -491,7 +498,10 @@ async function main() {
     await page.evaluate(() => {
       let seed = 42;
       const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
-      const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }; // date LOCALE (idem mock principal)
+      // Date du centre (Europe/Brussels), comme le mock principal et todayStr() de l app.
+      const jour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+      const lire = (type) => Number(jour.find((part) => part.type === type)?.value);
+      const dstr = (off) => new Date(Date.UTC(lire('year'), lire('month') - 1, lire('day') + off)).toISOString().slice(0, 10);
       const R = [];
       let id = 90000;
       for (let c = 0; c < 400; c += 1) {

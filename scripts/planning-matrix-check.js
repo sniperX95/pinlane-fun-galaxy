@@ -720,6 +720,23 @@ async function setExpanded(page, expanded) {
   await page.waitForTimeout(90);
 }
 
+// Mesurer un contraste pendant qu une transition de couleur court, c est mesurer
+// une couleur qui n existe a aucun moment stable. Un delai fixe ne le garantit
+// pas : sur une machine chargee, le fil principal peut rester occupe au-dela
+// (le 2026-09-15, 600 ms ont encore mesure la couleur de depart, 1,17:1). On
+// attend deux trames, puis la FIN de chaque transition finie en cours, avec un
+// plafond pour ne jamais pendre.
+async function attendreFinDesTransitions(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const finies = document.getAnimations().filter((a) => a.effect && a.effect.getTiming().iterations !== Infinity);
+    await Promise.race([
+      Promise.all(finies.map((a) => a.finished.catch(() => {}))),
+      new Promise((resolve) => setTimeout(resolve, 5000)),
+    ]);
+  });
+}
+
 // La ligne « maintenant » n'existe que si l'heure reelle tombe dans la plage du
 // jour affiche. On la force pour la mesurer a coup sur, sans dependre de
 // l'horloge de la machine qui lance le gate.
@@ -822,8 +839,8 @@ async function main() {
       // Les couleurs heritees TRANSITIONNENT au changement de theme. Mesurer a
       // 120 ms, c'est mesurer une interpolation entre les deux palettes : le
       // gate accusait alors le planning d'un contraste de 1,17:1 qui n'existait
-      // a aucun moment stable. On attend que la transition soit finie.
-      await page.waitForTimeout(600);
+      // a aucun moment stable. On attend que la transition soit VRAIMENT finie.
+      await attendreFinDesTransitions(page);
       const rows = await page.evaluate(() => window.__PLANNING_CONTRAST__());
       ok(rows.length >= 8, `theme ${theme} : ${rows.length} elements de texte mesures`);
       rows.forEach((row) => {

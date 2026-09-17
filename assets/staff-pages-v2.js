@@ -5626,7 +5626,11 @@
     const nom = inbound
       ? String(m.fromLabel || (contact && contact.name) || m.fromEmail || (contact && contact.email) || 'Expéditeur inconnu')
       : String((m.sentBy && m.sentBy.memberName) || (m.origine === 'auto' ? (m.sequenceLabel || 'Séquence') : m.fromLabel || 'Le centre'));
-    const adresse = inbound ? String(m.fromEmail || (contact && contact.email) || '') : (m.recipient ? `à ${m.recipient}` : '');
+    // Un mail du formulaire du site montre le client, puis par quelle adresse
+    // il est arrive (2026-09-17).
+    const adresse = inbound
+      ? `${String(m.fromEmail || (contact && contact.email) || '')}${m.via ? ` · via le formulaire (${m.via})` : ''}`
+      : (m.recipient ? `à ${m.recipient}` : '');
     const voie = inbound ? 'Reçu' : (m.origine === 'auto' ? `Envoyé · ${m.sequenceLabel || 'automatique'}` : `Envoyé · ${PV2_ORIGINE_LABELS[m.origine] || 'manuel'}`);
     const quand = pv2Quand(inbound ? (m.receivedAt || m.createdAt) : (m.sentAt || m.createdAt));
     const analysis = inbound && m.analysis && typeof m.analysis === 'object' ? m.analysis : null;

@@ -99,6 +99,11 @@ const JEU = [
 async function installMock(page, jeu) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, jeu }) => {
+    // La session simulee ne concerne que la console. Playwright injecte ce script
+    // dans CHAQUE cadre, y compris les apercus de mail (iframes sandbox, origine
+    // opaque, 2026-09-17) ou localStorage est interdit : sans cette garde, le
+    // balayage comptait l erreur du script de test comme une erreur de la page.
+    if (window.top !== window) return;
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'reservations.quick', 'clients.view', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'QA', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
     const openWeek = { '0': { open: '10:00', close: '24:00' }, '1': { open: '10:00', close: '24:00' }, '2': { open: '10:00', close: '24:00' }, '3': { open: '10:00', close: '24:00' }, '4': { open: '10:00', close: '24:00' }, '5': { open: '10:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' } };

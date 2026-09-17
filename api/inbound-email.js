@@ -360,6 +360,8 @@ function createHandler({
     let messageId = String(data.message_id || data.messageId || '').trim();
     let inReplyTo = String(data.in_reply_to || '').trim();
     let references = String(data.references || '').trim();
+    // Reply-To (2026-09-17) : un formulaire de site y met souvent le client.
+    let replyTo = (Array.isArray(data.reply_to) ? data.reply_to.join(', ') : String(data.reply_to || '')).trim();
     // L enveloppe ne porte pas le corps : on va le chercher. Un envoi manuel,
     // lui, porte deja son texte et ne declenche aucun appel.
     let contenuCherche = false;
@@ -373,6 +375,7 @@ function createHandler({
         messageId = messageId || String((lu && lu.message_id) || entetes['message-id'] || '').trim();
         inReplyTo = inReplyTo || String(entetes['in-reply-to'] || '').trim();
         references = references || String(entetes.references || '').trim();
+        replyTo = replyTo || (Array.isArray(lu && lu.reply_to) ? lu.reply_to.join(', ') : String((lu && lu.reply_to) || entetes['reply-to'] || '')).trim();
         // Sans In-Reply-To ni References dans la reponse structuree, le brut
         // les porte : on ne le lit que dans ce cas, et un brut illisible ne
         // bloque rien (le fil se retrouvera par le sujet, ou sera nouveau).
@@ -381,6 +384,7 @@ function createHandler({
             const lus = entetesDuBrut(await recupererBrut(lu.raw.download_url));
             inReplyTo = String(lus['in-reply-to'] || '').trim();
             references = String(lus.references || '').trim();
+            replyTo = replyTo || String(lus['reply-to'] || '').trim();
             messageId = messageId || String(lus['message-id'] || '').trim();
           } catch (error) {
             console.warn(`inbound-email: brut du mail ${emailId} illisible, en-tetes de fil ignores (${String((error && error.message) || error).slice(0, 120)})`);
@@ -448,6 +452,7 @@ function createHandler({
         messageId,
         inReplyTo,
         references,
+        replyTo,
       });
       sendJson(res, 200, {
         ok: true,

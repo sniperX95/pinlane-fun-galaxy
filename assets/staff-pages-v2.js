@@ -2523,11 +2523,19 @@
           signatoryRole: draft.signature ? String(draft.signatoryRole || '') : '',
         })),
       });
-      toast('Réponse en file d\'envoi ✓');
+      toast('Réponse en file d\'envoi ✓ La conversation passe dans Répondus.');
       delete pv2Threads.reply[threadId];
       // La reponse est partie : la prise n a plus de raison d etre, et la
       // garder ferait croire a un collegue que quelqu un ecrit encore.
       pv2RelacherLaMain();
+      // LE SUIVI SUIT LA CONVERSATION (2026-09-17) : elle quitte « A repondre »
+      // et s affiche dans « Repondus », toujours ouverte. « Tous » ne bouge pas.
+      if (pv2Threads.filtre === 'a-repondre') pv2Threads.filtre = 'repondus';
+      pv2Threads.selectedId = String(threadId);
+      if (pv2Threads.detail.thread && String(pv2Threads.detail.thread.id) === String(threadId)) pv2Threads.detail.thread.status = 'answered';
+      pv2Threads.apercu.loaded = false;
+      loadPv2ThreadsApercu(true);
+      loadPv2Overview(true);
       loadPv2ThreadDetail(threadId, true);
       loadPv2Threads(true);
       if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
@@ -5056,9 +5064,10 @@
           }
         });
         const ligne = pv2Threads.threads.find((t) => String(t.id) === cle);
-        if (ligne) ligne.luParMoi = true;
+        const moiLecteur = { memberId: moi, memberName: String(membre.name || ''), memberRole: String(role.name || ''), lastReadAt: maintenant };
+        if (ligne) { ligne.luParMoi = true; ligne.lecteurs = [...(ligne.lecteurs || []).filter((l) => String(l.memberId) !== moi), moiLecteur]; }
         const apercu = pv2Threads.apercu.threads.find((t) => String(t.id) === cle);
-        if (apercu) apercu.luParMoi = true;
+        if (apercu) { apercu.luParMoi = true; apercu.lecteurs = [...(apercu.lecteurs || []).filter((l) => String(l.memberId) !== moi), moiLecteur]; }
         pv2RenderSiActive();
       }).catch(() => {
         // Une lecture non enregistree ne bloque rien : on la retentera a la
@@ -5157,7 +5166,12 @@
       if (fil && pv2Threads.detail.thread && String(pv2Threads.detail.thread.id) === cle) pv2Threads.detail.thread = { ...pv2Threads.detail.thread, ...fil };
       const ligne = pv2Threads.threads.find((t) => String(t.id) === cle);
       if (ligne && fil) Object.assign(ligne, fil);
-      toast(status === 'closed' ? 'Conversation terminée.' : 'Conversation rouverte.');
+      toast(status === 'closed' ? 'Conversation terminée : elle passe dans Terminés.' : 'Conversation rouverte : elle revient dans À répondre.');
+      // Le suivi suit la conversation : l onglet de son nouveau statut, fil ouvert.
+      if (pv2Threads.filtre !== 'tous') pv2Threads.filtre = status === 'closed' ? 'termines' : status === 'open' ? 'a-repondre' : 'repondus';
+      pv2Threads.selectedId = cle;
+      pv2Threads.apercu.loaded = false;
+      loadPv2ThreadsApercu(true);
       loadPv2Threads(true);
       loadPv2Overview(true);
     } catch (error) {
@@ -5560,14 +5574,37 @@
   }
 
   /* ── RECUS : la liste des fils ──────────────────────────────────────────── */
+  // QUI A OUVERT le dernier message du client : la liste du serveur, plus moi
+  // si je viens de l ouvrir dans cette session.
+  function pv2LecteursDuFil(t) {
+    const moi = pv2MonIdentifiant();
+    const liste = (Array.isArray(t.lecteurs) ? t.lecteurs : []).filter((l) => l && (l.memberId || l.memberName));
+    if (t.luParMoi && moi && !liste.some((l) => String(l.memberId) === moi)) liste.push({ memberId: moi, memberName: '' });
+    return liste;
+  }
+  function pv2NomsLecteurs(lecteurs) {
+    const moi = pv2MonIdentifiant();
+    const noms = [];
+    for (const l of lecteurs) {
+      const nom = moi && String(l.memberId) === moi ? 'vous' : String(l.memberName || 'un collègue');
+      if (!noms.includes(nom)) noms.push(nom);
+    }
+    return noms.length > 2 ? `${noms.slice(0, 2).join(', ')} +${noms.length - 2}` : noms.join(' et ');
+  }
+
   function pv2ThreadRowHtml(t, { compact = false } = {}) {
     const selected = String(t.id) === String(pv2Threads.selectedId) && !compact;
-    const unread = !t.luParMoi;
+    // NOUVEAU = PERSONNE n a ouvert le dernier message du client (2026-09-17).
+    // Des qu un membre l ouvre, la pastille disparait pour tout le monde et la
+    // ligne dit qui l a ouvert. Un nouveau message du client la remet.
+    const lecteurs = pv2LecteursDuFil(t);
+    const unread = lecteurs.length === 0;
     const nom = String(t.contactName || t.contactEmail || 'Expéditeur inconnu');
     const [statusLabel, statusTone] = PV2_THREAD_STATUS[t.status] || PV2_THREAD_STATUS.open;
     const priseAutre = pv2PriseDunAutreSurLeFil({ id: t.lastInboundId, prise: t.prise }, t);
     const chips = [];
     if (unread) chips.push('<span class="pv2-chip is-new">Nouveau</span>');
+    else if (t.status === 'open') chips.push(`<span class="pv2-chip is-opened">Ouvert par ${esc(pv2NomsLecteurs(lecteurs))}</span>`);
     if (priseAutre) chips.push(`<span class="pv2-chip amber">${esc(String(priseAutre.memberName || 'Un collègue'))} répond…</span>`);
     if (!compact && pv2Threads.filtre !== 'a-repondre') chips.push(`<span class="pv2-chip ${statusTone}">${statusLabel}${t.status === 'answered' && t.reponduPar && t.reponduPar.memberName ? ` par ${esc(t.reponduPar.memberName)}` : ''}</span>`);
     else if (t.status === 'answered' && t.reponduPar && t.reponduPar.memberName) chips.push(`<span class="pv2-chip green">Répondu par ${esc(t.reponduPar.memberName)}</span>`);

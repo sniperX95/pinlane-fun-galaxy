@@ -297,7 +297,11 @@ async function main() {
       id: r.getAttribute('data-thread-id'), nouveau: !!r.querySelector('.pv2-chip.is-new'), texte: r.textContent.replace(/\s+/g, ' ').trim(),
     })));
     ok(liste.map((l) => l.id).join(',') === '901,904', 'filtre A repondre : les fils 901 puis 904, le plus recent d abord', liste.map((l) => l.id).join(','));
-    ok(liste.every((l) => l.nouveau), 'les deux sont marques « Nouveau » : je ne les ai pas encore lus');
+    // Regle du 2026-09-17 : « Nouveau » tant que PERSONNE n a ouvert ; sinon la ligne dit qui.
+    const l901 = liste.find((l) => l.id === '901') || {};
+    const l904 = liste.find((l) => l.id === '904') || {};
+    ok(!l901.nouveau && /Ouvert par Sophie Martin/.test(l901.texte || '') && l904.nouveau === true,
+      '« Nouveau » seulement si personne n a ouvert : 901 deja ouvert par Sophie Martin (la ligne le dit), 904 jamais ouvert (Nouveau)', JSON.stringify({ l901: l901.nouveau, l904: l904.nouveau }));
     await page.click('#staffEmailsPage .pv2-thread-row[data-thread-id="901"]');
     await attendre(page, () => pv2Threads.detail.loaded && pv2Threads.detail.thread && String(pv2Threads.detail.thread.id) === '901' && document.querySelectorAll('#staffEmailsPage .pl-timeline-msg').length === 2, null, 'le fil 901 s ouvre avec ses deux messages');
     await dormir(200);
@@ -341,6 +345,22 @@ async function main() {
     await attendre(page, () => /Lu par [^|]*vous/.test(document.querySelectorAll('#staffEmailsPage .pl-timeline-msg')[1].querySelector('.pl-timeline-trace').textContent), null, 'la trace montre aussitot « vous » parmi les lecteurs, sans recharger le fil');
     const chip901 = await page.evaluate(() => !!document.querySelector('#staffEmailsPage .pv2-thread-row[data-thread-id="901"] .pv2-chip.is-new'));
     ok(chip901 === false, 'la pastille « Nouveau » du fil 901 disparait de la liste');
+    const ouvert901 = await page.evaluate(() => ((document.querySelector('#staffEmailsPage .pv2-thread-row[data-thread-id="901"] .pv2-chip.is-opened') || {}).textContent || ''));
+    ok(/Ouvert par .*vous/.test(ouvert901), 'et la ligne dit tous ceux qui l ont ouvert, moi compris', ouvert901);
+    const parUnCollegue = await page.evaluate(() => {
+      const t = pv2Threads.threads.find((x) => String(x.id) === '904');
+      const avant = { lecteurs: t.lecteurs, luParMoi: t.luParMoi };
+      t.lecteurs = [{ memberId: 'libramont:sophie', memberName: 'Sophie Martin', memberRole: 'Direction' }];
+      t.luParMoi = false;
+      renderStaffEmailsPage();
+      const r = document.querySelector('#staffEmailsPage .pv2-thread-row[data-thread-id="904"]');
+      const res = { nouveau: !!(r && r.querySelector('.pv2-chip.is-new')), ouvert: ((r && r.querySelector('.pv2-chip.is-opened')) || {}).textContent || '' };
+      t.lecteurs = avant.lecteurs;
+      t.luParMoi = avant.luParMoi;
+      renderStaffEmailsPage();
+      return res;
+    });
+    ok(!parUnCollegue.nouveau && /Ouvert par Sophie Martin/.test(parUnCollegue.ouvert), 'ouvert par un collegue : plus de « Nouveau » pour personne, la ligne dit qui', JSON.stringify(parUnCollegue));
     const prises1 = await appels(page, 'claimInboundEmail');
     ok(prises1.length === 1 && Number(prises1[0].body.communicationId) === 42, 'ouvrir un fil a repondre, c est s en occuper : prise de main sur le message 42', JSON.stringify(prises1.map((p) => p.body.communicationId)));
 
@@ -349,6 +369,12 @@ async function main() {
     await dormir(300);
     const lectures2 = await appels(page, 'markCommunicationRead');
     ok(lectures2.length === 2 && JSON.stringify(lectures2[1].body.communicationIds) === '[49]', 'ouvrir le fil 904 marque son message 49 (un appel de plus)', JSON.stringify(lectures2.map((l) => l.body.communicationIds)));
+    await page.waitForTimeout(400);
+    const ligne904 = await page.evaluate(() => {
+      const r = document.querySelector('#staffEmailsPage .pv2-thread-row[data-thread-id="904"]');
+      return { nouveau: !!(r && r.querySelector('.pv2-chip.is-new')), ouvert: ((r && r.querySelector('.pv2-chip.is-opened')) || {}).textContent || '' };
+    });
+    ok(!ligne904.nouveau && /Ouvert par vous/.test(ligne904.ouvert), 'des que je l ouvre, 904 perd « Nouveau » et dit « Ouvert par vous »', JSON.stringify(ligne904));
     await page.click('#staffEmailsPage .pv2-thread-row[data-thread-id="901"]');
     await attendre(page, () => pv2Threads.detail.loaded && pv2Threads.detail.thread && String(pv2Threads.detail.thread.id) === '901', null, 'le fil 901 se rouvre');
     await page.evaluate(() => renderStaffEmailsPage());
@@ -399,6 +425,8 @@ async function main() {
         statut: (document.querySelector('#staffEmailsPage .pv2-thread-head .pv2-chip') || {}).textContent || '',
         releases: window.__APPELS__.filter((e) => e.action === 'releaseInboundEmail').map((e) => Number(e.body.communicationId)),
         listeARepondre: [...document.querySelectorAll('#staffEmailsPage .pv2-thread-row')].map((r) => r.getAttribute('data-thread-id')),
+        filtre: pv2Threads.filtre,
+        selection: String(pv2Threads.selectedId),
       };
     });
     const b = envoi.body || {};
@@ -409,7 +437,11 @@ async function main() {
     ok(envoi.ordre.length === 3 && envoi.dernierSortant && envoi.dernierNom === 'Camille Dev' && /Manuel/.test(envoi.dernierVoie), 'la reponse apparait en fin de fil, signee Camille Dev, voie « Envoye · Manuel »', `${envoi.dernierNom} / ${envoi.dernierVoie}`);
     ok(envoi.statut === 'Répondu', 'le fil passe en « Repondu »', envoi.statut);
     ok(envoi.releases.slice(-1)[0] === 42, 'la main est relachee sur le message 42 apres l envoi', envoi.releases.join(','));
-    ok(envoi.listeARepondre.join(',') === '904', 'le fil repondu quitte la liste « A repondre »', envoi.listeARepondre.join(','));
+    ok(envoi.filtre === 'repondus' && envoi.listeARepondre.includes('901') && envoi.selection === '901', 'le suivi suit la conversation : l onglet passe sur « Repondus », le fil y est, toujours ouvert', `${envoi.filtre} / ${envoi.listeARepondre.join(',')} / ${envoi.selection}`);
+    await page.evaluate(() => pv2ThreadsFilter('a-repondre'));
+    await page.waitForTimeout(900);
+    const resteARepondre = await page.evaluate(() => [...document.querySelectorAll('#staffEmailsPage .pv2-thread-row')].map((r) => r.getAttribute('data-thread-id')));
+    ok(resteARepondre.join(',') === '904', 'et il a quitte la liste « A repondre »', resteARepondre.join(','));
 
     // =====================================================================
     console.log('\n[APPARENCE] gabarit -> emailDesignPreview, l iframe recoit le HTML');

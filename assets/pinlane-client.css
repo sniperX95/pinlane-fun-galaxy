@@ -6439,6 +6439,48 @@ body.customer-mode .client-footer {
    voit ce que le centre vend) mais ne se prend pas, et la note sous la
    rangee dit ce qu il reste. Movsar, 2026-09-17 : « ici ya que 30 minutes de
    dispo avant la fermeture et ici ca met toute possibilite ». */
+/* L OFFRE D ATTENTE a son propre bloc : elle ne repond pas a « envie d un peu
+   plus ? » mais a une contrainte du plan (un sous-groupe attend son tour).
+   Un filet d accent la distingue sans en faire une alerte. */
+#clientView .recap-attente {
+  border-left: 2px solid var(--accent);
+  padding-left: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+/* Les cartes vivent d ordinaire dans le recapitulatif (#clientView) : la
+   fenetre d attente les sort de cette portee, elles reprennent donc ici la
+   meme forme (variante etroite : le texte sur sa ligne, le montant et le
+   bouton sous lui), sans recopier la feuille entiere. */
+#waitOfferModal .recap-complements { display: block; }
+#waitOfferModal .complement-card + .complement-card { margin-top: var(--space-2); }
+#waitOfferModal .complement-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: left;
+}
+#waitOfferModal .complement-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  grid-column: 1 / -1;
+}
+#waitOfferModal .complement-name { font-weight: 700; }
+#waitOfferModal .complement-adds,
+#waitOfferModal .complement-total,
+#waitOfferModal .complement-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+#waitOfferModal .complement-amount { font-weight: 700; }
+#waitOfferModal .complement-add { justify-self: end; }
+
 #clientView .dur-pill[data-too-late] {
   opacity: 0.4;
   cursor: not-allowed;

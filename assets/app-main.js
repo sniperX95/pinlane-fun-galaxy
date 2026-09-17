@@ -5362,6 +5362,10 @@ function buildBookingProgramPayload(panierPropose = null) {
     // Le compte d'enfants declare part au serveur, qui le borne au groupe et
     // recalcule le prix (le navigateur n'est jamais cru sur un montant).
     if (options.participants) item.participants = Number(options.participants);
+    // L OFFRE D ATTENTE voyage avec la ligne. Le navigateur ne fixe aucun
+    // prix : il DEMANDE le tarif d attente, et le serveur ne l applique que
+    // si le groupe est vraiment scinde (groupIsSplit, lib/visit-program).
+    if (options.waitOffer === true) item.waitOffer = true;
     return item;
   });
 }
@@ -8168,6 +8172,10 @@ function goStep4() {
     : '';
   renderRecap();
   goStep(4);
+  // L OFFRE D ATTENTE arrive AVANT la confirmation, une seule fois : c est le
+  // dernier moment ou le client peut encore l ajouter sans rien changer a ses
+  // heures (Movsar : « ptite pop up apparait avec loffre avant confirmation »).
+  if (typeof proposerOffreAttente === 'function') proposerOffreAttente();
 }
 
 // Occasion DÉCLARÉE par le client. Les six clés sont alignées sur l'enum
@@ -8374,6 +8382,59 @@ function getFormulaRecapModel(booking) {
   };
 }
 
+// L OFFRE D ATTENTE S ANNONCE AVANT LA CONFIRMATION (Movsar, 2026-09-17 :
+// « ptite pop up apparait avec loffre avant confirmation sur pinlane »). Une
+// seule fois par jeu de cartes : fermee, elle ne revient pas, et les cartes
+// restent dans le recapitulatif pour qui change d avis.
+let offreAttenteAnnoncee = '';
+function cartesDAttente() {
+  return (Array.isArray(formulaComplements) ? formulaComplements : [])
+    .filter((carte) => carte && carte.id && carte.kind === 'attente');
+}
+
+// La phrase qui dit POURQUOI, tiree des cartes elles-memes : elles portent
+// le nombre de personnes qui attendent et la duree du temps mort.
+function texteAttente() {
+  const carte = cartesDAttente()[0] || null;
+  if (!carte) return '';
+  const personnes = Math.max(1, Number(carte.pax) || 1);
+  return `Votre groupe joue en deux fois : ${personnes} personne${personnes > 1 ? 's' : ''} patientent pendant que les autres jouent.`;
+}
+
+function fermerOffreAttente() {
+  const modale = document.getElementById('waitOfferModal');
+  if (modale) modale.classList.add('hidden');
+}
+
+function proposerOffreAttente() {
+  const cartes = cartesDAttente();
+  const modale = document.getElementById('waitOfferModal');
+  if (!modale) return;
+  if (!cartes.length) { modale.classList.add('hidden'); return; }
+  const signature = cartes.map((carte) => carte.id).join('|');
+  if (offreAttenteAnnoncee === signature) return;
+  offreAttenteAnnoncee = signature;
+  const intro = document.getElementById('waitOfferIntro');
+  if (intro) intro.textContent = texteAttente();
+  const liste = document.getElementById('waitOfferList');
+  if (liste) {
+    liste.innerHTML = cartes.map((carte) => `
+      <div class="complement-card">
+        <span class="complement-copy">
+          <strong class="complement-name">${escapeHtml(carte.name || '')}</strong>
+          <small class="complement-adds">${escapeHtml(carte.addsLabel || '')}</small>
+          ${carte.totalLabel ? `<small class="complement-total">${escapeHtml(carte.totalLabel)}</small>` : ''}
+          ${carte.noteLabel ? `<small class="complement-note">${escapeHtml(carte.noteLabel)}</small>` : ''}
+        </span>
+        <span class="complement-amount">${escapeHtml(carte.amountLabel || '')}</span>
+        <button type="button" class="btn-secondary complement-add" data-complement="${escapeHtml(carte.id)}"
+          onclick="accepterComplement(this.dataset.complement); fermerOffreAttente();"
+          aria-label="Ajouter ${escapeHtml(carte.name || '')}, ${escapeHtml(carte.amountLabel || '')}">Ajouter</button>
+      </div>`).join('');
+  }
+  modale.classList.remove('hidden');
+}
+
 function renderRecap() {
   const b = state.booking;
   const formule = b.type === 'formule' ? resolveDisplayFormule(b.formuleId) : null;
@@ -8482,19 +8543,19 @@ function renderComplementCards() {
   // (une carte de visite n'en a pas).
   if (b.type !== 'formule' && b.type !== 'visite') return '';
   if (b.type === 'formule' && !b.formuleId) return '';
-  const cards = (Array.isArray(formulaComplements) ? formulaComplements : [])
+  const toutes = (Array.isArray(formulaComplements) ? formulaComplements : [])
     .filter(card => card && card.id && (card.kind !== 'formule' || card.formuleId !== b.formuleId));
+  // DEUX BESOINS, DEUX BLOCS. « Envie d un peu plus ? » propose un supplement ;
+  // l offre d attente repond a une contrainte du plan (un sous-groupe attend
+  // son tour pendant que l autre joue). Les melanger ferait lire la seconde
+  // comme une vente de plus.
+  const cartesAttente = toutes.filter(card => card.kind === 'attente');
+  const cards = toutes.filter(card => card.kind !== 'attente');
   const notice = formulaComplementNotice || { text: '', tone: '' };
   // Plus aucune carte mais une phrase a dire : le bloc reste, sinon la reponse
   // au clic (« ajoutee », « plus disponible ») disparaitrait au rendu suivant.
-  if (!cards.length && !notice.text) return '';
-  return `
-    <div class="recap-complements" id="recapComplements" tabindex="-1">
-      ${cards.length ? `<div class="recap-complements-head">
-        <strong>Envie d'un peu plus ?</strong>
-        <small>Vos heures retenues ne bougent pas.</small>
-      </div>` : ''}
-      ${cards.map(card => `
+  if (!cards.length && !cartesAttente.length && !notice.text) return '';
+  const carteHtml = (card) => `
         <div class="complement-card">
           <span class="complement-copy">
             <strong class="complement-name">${escapeHtml(card.name || '')}</strong>
@@ -8507,7 +8568,21 @@ function renderComplementCards() {
             data-complement="${escapeHtml(card.id)}"
             onclick="accepterComplement(this.dataset.complement)"
             aria-label="Ajouter ${escapeHtml(card.name || '')}, ${escapeHtml(card.amountLabel || '')}${card.totalLabel ? `, ${escapeHtml(card.totalLabel)}` : ''}${card.noteLabel ? `, ${escapeHtml(card.noteLabel)}` : ''}">Ajouter</button>
-        </div>`).join('')}
+        </div>`;
+  return `
+    <div class="recap-complements" id="recapComplements" tabindex="-1">
+      ${cartesAttente.length ? `<div class="recap-attente">
+        <div class="recap-complements-head">
+          <strong>Un groupe attend son tour</strong>
+          <small>${escapeHtml(texteAttente())}</small>
+        </div>
+        ${cartesAttente.map(carteHtml).join('')}
+      </div>` : ''}
+      ${cards.length ? `<div class="recap-complements-head">
+        <strong>Envie d'un peu plus ?</strong>
+        <small>Vos heures retenues ne bougent pas.</small>
+      </div>` : ''}
+      ${cards.map(carteHtml).join('')}
       <div class="complement-status" id="complementStatus" role="status" aria-live="polite"
         data-tone="${escapeHtml(notice.tone || '')}">${escapeHtml(notice.text || '')}</div>
     </div>`;

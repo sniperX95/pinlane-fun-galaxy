@@ -189,7 +189,11 @@
           { "label": "Formules", "url": "https://fungalaxy.be/formules/" },
           { "label": "Contact", "url": "https://fungalaxy.be/contact/" }
         ]
-      }
+      },
+      "waitOffers": [
+        { "activityId": "arcade_time", "pricePerPax": 10, "minutes": 30 },
+        { "activityId": "minigolf_blacklight", "pricePerPax": 8 }
+      ]
     },
     {
       "id": "gembloux",
@@ -323,7 +327,11 @@
           { "label": "Formules", "url": "https://fungalaxy.be/formules/" },
           { "label": "Contact", "url": "https://fungalaxy.be/contact/" }
         ]
-      }
+      },
+      "waitOffers": [
+        { "activityId": "arcade_time", "pricePerPax": 10, "minutes": 30 },
+        { "activityId": "minigolf_blacklight", "pricePerPax": 8 }
+      ]
     },
     {
       "id": "ciney",

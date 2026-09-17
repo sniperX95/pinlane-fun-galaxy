@@ -40,7 +40,7 @@ const {
   isFormulaBlockedOn,
   isFormulaFullyBlockedOn,
 } = require('../lib/availability-blocks');
-const { buildProgramFormula, describeProgram, normalizeProgram } = require('../lib/visit-program');
+const { buildProgramFormula, describeProgram, groupIsSplit, normalizeProgram } = require('../lib/visit-program');
 const { buildFormulaComplements, buildVisitComplements } = require('../lib/booking-complements');
 // La projection d un scenario en creneau, la garde finale et les compositions
 // par defaut d une formule : le code que l agent lit aussi (proposedArrivals),
@@ -504,7 +504,11 @@ module.exports = async (req, res) => {
     //     rien a allouer. Les creneaux sont simplement les heures d'ouverture, a
     //     la demie, moins les fermetures du jour.
     if (type === 'visite') {
-      const program = normalizeProgram(programInput, { centerId, pax, bowlingConfig: centerBowlingConfig, dateStr: date });
+      // Le tarif d attente ne s applique que si le groupe est VRAIMENT scinde :
+      // une ligne marquee `waitOffer` par un navigateur complaisant est sinon
+      // facturee au tarif du catalogue, comme n importe quelle autre.
+      const groupeScinde = groupIsSplit({ centerId, pax, items: Array.isArray(programInput) ? programInput : (programInput && programInput.items) || [] });
+      const program = normalizeProgram(programInput, { centerId, pax, bowlingConfig: centerBowlingConfig, dateStr: date, waitOffers: groupeScinde });
       const visitLabel = 'Votre visite';
       // LA FIN QUE LE CLIENT LIT EST CELLE DE SA VISITE, pas celle du plan du
       // staff : `opsPlan.endTime` ne porte que les activites planifiees (plus la
@@ -631,6 +635,40 @@ module.exports = async (req, res) => {
         // journee, et un palier de laser en plus ne change ni les pistes ni le
         // besoin de pistes, mais rien ici ne le suppose - tout se relit du
         // programme candidat.
+        // LE SOUS-GROUPE QUI ATTEND, lu sur le plan REELLEMENT pose. Quand le
+        // moteur joue une activite en plusieurs vagues (« groupe 2/2 »), le
+        // dernier groupe attend que les precedents aient joue : c est ce temps
+        // mort que l offre d attente vient remplir. Rien n est recalcule ici a
+        // partir d une regle refaite : on lit les blocs du plan.
+        const attenteDuPlan = (retainedSlot) => {
+          const blocs = ((retainedSlot && retainedSlot.opsPlan && Array.isArray(retainedSlot.opsPlan.resourceBlocks))
+            ? retainedSlot.opsPlan.resourceBlocks : [])
+            .filter((bloc) => bloc && bloc.startTime && Number(bloc.players || bloc.pax) > 0)
+            .map((bloc) => ({
+              activite: String(bloc.activityId || bloc.resourceType || ''),
+              debut: Math.round(timeToNum(bloc.startTime) * 60),
+              personnes: Math.trunc(Number(bloc.players || bloc.pax)),
+            }));
+          const parActivite = new Map();
+          blocs.forEach((bloc) => {
+            const liste = parActivite.get(bloc.activite) || [];
+            liste.push(bloc);
+            parActivite.set(bloc.activite, liste);
+          });
+          let meilleure = null;
+          parActivite.forEach((liste) => {
+            const heures = [...new Set(liste.map((bloc) => bloc.debut))].sort((gauche, droite) => gauche - droite);
+            if (heures.length < 2) return;
+            const derniere = heures[heures.length - 1];
+            const personnes = liste.filter((bloc) => bloc.debut === derniere)
+              .reduce((somme, bloc) => somme + bloc.personnes, 0);
+            const minutes = derniere - heures[0];
+            if (personnes > 0 && minutes > 0 && (!meilleure || minutes > meilleure.minutes)) {
+              meilleure = { personnes, minutes };
+            }
+          });
+          return meilleure;
+        };
         const complementsDeVisite = (retainedSlot) => {
           try {
             return buildVisitComplements({
@@ -639,6 +677,7 @@ module.exports = async (req, res) => {
               pax,
               program,
               retainedSlot,
+              attente: attenteDuPlan(retainedSlot),
               priceOptions: { bowlingConfig: centerBowlingConfig, dateStr: date },
               reservations: snapshot.reservations,
               laneStatuses: snapshot.laneStatuses,

@@ -25,7 +25,7 @@
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20260911a">
-<link rel="stylesheet" href="/assets/pinlane-client.css?v=20260917c">
+<link rel="stylesheet" href="/assets/pinlane-client.css?v=20260917d">
 <script defer src="/assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="/assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="/assets/api-client.js?v=20260912a"></script>
@@ -56,7 +56,7 @@
 <!-- Le glisser au doigt (appui long, glisser, relacher), ecrit une fois pour
      le planning et le tableau d analyse. Charge avant app-main. -->
 <script defer src="/assets/pinlane-touch-drag.js?v=20260911a"></script>
-<script defer src="/assets/app-main.js?v=20260917e"></script>
+<script defer src="/assets/app-main.js?v=20260917f"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260717a"></script>
@@ -560,6 +560,23 @@
           <button id="clientDemoAccess" class="client-demo-access" onclick="openSaasAccess('staff')">Espace équipe</button>
         </footer>
       </div>
+    </div>
+  </div>
+
+  <!-- L OFFRE D ATTENTE, annoncee avant la confirmation quand le plan fait
+       attendre un sous-groupe. Les memes cartes restent dans le
+       recapitulatif : cette fenetre ne fait que les porter au bon moment. -->
+  <div id="waitOfferModal" class="bespoke-modal hidden" role="dialog" aria-modal="true" aria-labelledby="waitOfferTitle" onclick="if(event.target===this)fermerOffreAttente()">
+    <div class="bespoke-modal-card">
+      <button type="button" class="bespoke-modal-close" aria-label="Fermer" onclick="fermerOffreAttente()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="bespoke-modal-head">
+        <h2 id="waitOfferTitle">Un groupe attend son tour</h2>
+        <p id="waitOfferIntro"></p>
+      </div>
+      <div id="waitOfferList" class="recap-complements"></div>
+      <button type="button" class="btn-secondary" onclick="fermerOffreAttente()">Non merci</button>
     </div>
   </div>
 

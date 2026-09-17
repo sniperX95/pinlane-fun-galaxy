@@ -721,20 +721,30 @@ async function setExpanded(page, expanded) {
 }
 
 // Mesurer un contraste pendant qu une transition de couleur court, c est mesurer
-// une couleur qui n existe a aucun moment stable. Un delai fixe ne le garantit
-// pas : sur une machine chargee, le fil principal peut rester occupe au-dela
-// (le 2026-09-15, 600 ms ont encore mesure la couleur de depart, 1,17:1). On
-// attend deux trames, puis la FIN de chaque transition finie en cours, avec un
-// plafond pour ne jamais pendre.
-async function attendreFinDesTransitions(page) {
-  await page.evaluate(async () => {
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const finies = document.getAnimations().filter((a) => a.effect && a.effect.getTiming().iterations !== Infinity);
-    await Promise.race([
-      Promise.all(finies.map((a) => a.finished.catch(() => {}))),
-      new Promise((resolve) => setTimeout(resolve, 5000)),
-    ]);
-  });
+// une couleur qui n existe a aucun moment stable. Deux tentatives ont echoue :
+// un delai fixe (600 ms le 2026-09-15, encore la couleur de depart, 1,17:1) et
+// l attente de `document.getAnimations()` apres deux trames. Cette derniere est
+// PIRE, parce qu elle rend la main tout de suite quand aucune transition n a
+// encore demarre : le changement de theme rebatit la grille, les transitions des
+// elements qui survivent partent APRES ces deux trames, et on mesurait alors la
+// couleur de l ancien theme sur le fond du nouveau (d ou « #0a0a0a sur #0a0a0a »
+// en sombre : du texte clair-theme sur un fond sombre-theme).
+//
+// On n attend donc plus un signal indirect : on attend que LA MESURE elle-meme
+// ne bouge plus. Deux relevés consecutifs identiques, sinon on recommence, avec
+// un plafond pour ne jamais pendre. C est la seule forme qui ne depend ni de la
+// charge de la machine ni du moment ou la transition demarre.
+async function attendreCouleursStables(page, lire) {
+  const PLAFOND = 60; // ~60 trames, soit une seconde de transition largement couverte
+  let precedent = null;
+  for (let essai = 0; essai < PLAFOND; essai += 1) {
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const rows = await page.evaluate(lire);
+    const empreinte = JSON.stringify((rows || []).map((row) => [row.sel, row.fg, row.bg]));
+    if (precedent !== null && empreinte === precedent) return rows;
+    precedent = empreinte;
+  }
+  throw new Error('les couleurs ne se stabilisent pas : mesure impossible');
 }
 
 // La ligne « maintenant » n'existe que si l'heure reelle tombe dans la plage du
@@ -836,12 +846,11 @@ async function main() {
     await page.setViewportSize({ width: 1440, height: 780 });
     for (const theme of ['light', 'dark']) {
       await page.evaluate((t) => { state.staffTheme = t; document.documentElement.setAttribute('data-theme', t); renderStaff(); }, theme);
-      // Les couleurs heritees TRANSITIONNENT au changement de theme. Mesurer a
-      // 120 ms, c'est mesurer une interpolation entre les deux palettes : le
+      // Les couleurs heritees TRANSITIONNENT au changement de theme. Mesurer
+      // trop tot, c'est mesurer une interpolation entre les deux palettes : le
       // gate accusait alors le planning d'un contraste de 1,17:1 qui n'existait
-      // a aucun moment stable. On attend que la transition soit VRAIMENT finie.
-      await attendreFinDesTransitions(page);
-      const rows = await page.evaluate(() => window.__PLANNING_CONTRAST__());
+      // a aucun moment stable. On mesure jusqu'a ce que la mesure ne bouge plus.
+      const rows = await attendreCouleursStables(page, () => window.__PLANNING_CONTRAST__());
       ok(rows.length >= 8, `theme ${theme} : ${rows.length} elements de texte mesures`);
       rows.forEach((row) => {
         ok(row.ratio >= row.required, `theme ${theme} · ${row.sel} : contraste ${row.ratio}:1 (requis ${row.required}:1, police ${row.size}px, ${row.fg} sur ${row.bg})`);

@@ -2392,6 +2392,11 @@
   // Le brouillon d une conversation : objet « Re: », corps propose par l agent
   // s il en a un, signature selon la portee reglee dans Apparence, signataire
   // = la personne connectee (modifiable : c est elle qui signe, pas le role).
+  function pv2SignataireTechnique(membre) {
+    const nom = String((membre && membre.name) || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    return nom === 'proprietaire plateforme' || /platform-owner/.test(String((membre && membre.id) || '')) || Boolean(membre && membre.emergency);
+  }
+
   function pv2ThreadReplyDraft(threadId) {
     const cle = String(threadId);
     if (!pv2Threads.reply[cle]) {
@@ -2411,8 +2416,10 @@
         body: String((analysis && analysis.reply && analysis.reply.body) || ''),
         identityId: pv2Mail.draft.identityId || (identite ? String(identite.id) : ''),
         signature: portee,
-        signatoryName: String(membre.name || ''),
-        signatoryRole: String(role.name || membre.roleId || ''),
+        // Le compte « Proprietaire plateforme » ne signe pas : champ vide,
+        // l equipe du centre signe (meme regle cote serveur).
+        signatoryName: pv2SignataireTechnique(membre) ? '' : String(membre.name || ''),
+        signatoryRole: pv2SignataireTechnique(membre) ? '' : String(role.name || membre.roleId || ''),
       };
     }
     return pv2Threads.reply[cle];

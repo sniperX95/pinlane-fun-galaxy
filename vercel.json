@@ -109,6 +109,15 @@
           "value": "cross-origin"
         }
       ]
+    },
+    {
+      "source": "/assets/brand/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "cross-origin"
+        }
+      ]
     }
   ]
 }

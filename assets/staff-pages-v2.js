@@ -974,6 +974,26 @@
   /* ── Relance 1-clic : composer inline prérempli, envoi RÉEL via la queue
      communications (action sendClientRelance). Boucle fermée : le marqueur
      « relancé il y a X j » (comms) se met à jour après envoi. ── */
+  // LES DEUX RELANCES DE FICHE CLIENT, SORTIES DE LEUR FONCTION. Elles vivaient
+  // en dur au milieu de crmRelancePrefill, donc hors de portee du gate
+  // d ecriture (scripts/ecriture-client-check.js), qui extrait et evalue les
+  // tableaux de modeles. Ce sont pourtant des textes que le client lit.
+  // Le DERNIER element sert de repli : la relance « dormant ».
+  const PV2_RELANCES = [
+    {
+      kind: 'anniversaire',
+      reason: 'birthday',
+      subject: 'L’anniversaire approche 🎂',
+      body: (v) => `Bonjour ${v.firstName},\n\nL'an dernier vous aviez fêté un anniversaire chez ${v.centreName}, et c'était un beau moment.\nLa date approche à nouveau. Les créneaux du week-end partent vite, alors réservez tôt si vous voulez remettre ça.\n\nRépondez à ce message ou réservez en ligne, l'équipe s'occupe du reste.\n\nBien à vous,\nL'équipe ${v.centreName}`,
+    },
+    {
+      kind: 'dormant',
+      reason: 'dormant',
+      subject: 'Une piste vous attend 🎳',
+      body: (v) => `Bonjour ${v.firstName},\n\nCela fait un moment sans vous voir au centre. Bowling, laser, arcades, tout est prêt.\nVenez en semaine, c'est plus calme, et plus tranquille pour jouer.\n\nRéservez en ligne quand vous voulez, ou répondez simplement à ce message.\n\nÀ bientôt,\nL'équipe ${v.centreName}`,
+    },
+  ];
+
   const crmRelance = { openFor: null, reason: 'dormant', subject: '', body: '', busy: false };
   const crmRelanceStats = { loaded: false, loading: false, sent: 0, converted: 0, revenue: 0 };
   const crmNotes = { key: '', body: '', loaded: false, loading: false, saving: false };
@@ -985,17 +1005,11 @@
     const centreName = (typeof getCurrentStaffCenterName === 'function' && getCurrentStaffCenterName())
       || (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId())
       || 'du centre';
-    if (relance.kind === 'anniversaire') {
-      return {
-        reason: 'birthday',
-        subject: `L'anniversaire approche, on vous re-réserve la fête ? 🎂`,
-        body: `Bonjour ${firstName},\n\nL'an dernier vous aviez fêté un anniversaire chez nous, et c'était un super moment !\nLa date approche : on vous re-réserve la formule ? Les créneaux du week-end partent vite.\n\nRépondez à ce message ou réservez en ligne, on s'occupe du reste.\n\nÀ très vite,\nL'équipe ${centreName}`,
-      };
-    }
+    const modele = PV2_RELANCES.find((item) => item.kind === relance.kind) || PV2_RELANCES[PV2_RELANCES.length - 1];
     return {
-      reason: 'dormant',
-      subject: 'Ça fait un moment, on vous a gardé une piste 🎳',
-      body: `Bonjour ${firstName},\n\nÇa fait un moment qu'on ne vous a pas vus au centre, bowling, laser, arcades… tout est prêt.\nVenez en semaine, c'est plus calme (et plus tranquille pour jouer).\n\nRéservez en ligne quand vous voulez, ou répondez simplement à ce message.\n\nÀ bientôt,\nL'équipe ${centreName}`,
+      reason: modele.reason,
+      subject: modele.subject,
+      body: modele.body({ firstName, centreName }),
     };
   }
 
@@ -1426,22 +1440,22 @@
          jamais un chiffre que le centre n'a pas donné. */
   const PV2_STARTERS = [
     // Relancer
-    { key: 'relance-client', cat: 'Relancer', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
-    { key: 'relance-devis', cat: 'Relancer', name: 'Devis resté sans réponse', subject: 'Votre projet chez {{centre}} tient toujours ?', body: 'Bonjour {{prenom}},\n\nOn vous avait préparé une proposition et on est resté sans nouvelle. Si le projet tient toujours, répondez simplement à ce message : on vous garde la date.\n\nEt si vos plans ont changé, dites-le en une ligne, on ne vous relancera plus.\n\nL\'équipe {{centre}}' },
+    { key: 'relance-client', cat: 'Relancer', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nCela fait un moment sans vous voir au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
+    { key: 'relance-devis', cat: 'Relancer', name: 'Devis resté sans réponse', subject: 'Votre projet chez {{centre}} tient toujours ?', body: 'Bonjour {{prenom}},\n\nUne proposition vous avait été préparée, et elle est restée sans réponse. Si le projet tient toujours, répondez simplement à ce message et la date sera gardée.\n\nEt si vos plans ont changé, dites-le en une ligne, il n\'y aura plus de relance.\n\nL\'équipe {{centre}}' },
     // Anniversaires & groupes
-    { key: 'marketing-anniversaire', cat: 'Anniversaires & groupes', name: 'Pack anniversaire enfant', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et boissons : on s\'occupe de tout, vous profitez.\n\nDites-nous la date et le nombre d\'enfants, on vous propose la formule adaptée.\n\nL\'équipe {{centre}}' },
-    { key: 'anniversaire-adulte', cat: 'Anniversaires & groupes', name: 'Anniversaire adulte / EVG-EVJF', subject: 'Un anniversaire qui change des restos', body: 'Bonjour {{prenom}},\n\nPour un anniversaire adulte, un EVG ou un EVJF : bowling, laser game et arcades, tout au même endroit, sans organisation de votre côté.\n\nDonnez-nous la date et la taille du groupe, on vous monte la soirée.\n\nL\'équipe {{centre}}' },
-    { key: 'merci-groupe', cat: 'Anniversaires & groupes', name: 'Merci après un groupe', subject: 'Merci pour votre venue, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nMerci pour votre venue avec votre groupe : on espère que tout le monde est reparti avec le sourire.\n\nSi quelque chose peut être amélioré pour la prochaine fois, répondez à ce message, on lit tout.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
+    { key: 'marketing-anniversaire', cat: 'Anniversaires & groupes', name: 'Pack anniversaire enfant', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et boissons, l\'équipe s\'occupe de tout pendant que vous profitez.\n\nIndiquez la date et le nombre d\'enfants, et la formule adaptée vous sera proposée.\n\nL\'équipe {{centre}}' },
+    { key: 'anniversaire-adulte', cat: 'Anniversaires & groupes', name: 'Anniversaire adulte / EVG-EVJF', subject: 'Un anniversaire qui change des restos', body: 'Bonjour {{prenom}},\n\nPour un anniversaire adulte, un EVG ou un EVJF, bowling, laser game et arcades sont au même endroit, sans organisation de votre côté.\n\nDonnez la date et la taille du groupe, et l\'équipe monte la soirée.\n\nL\'équipe {{centre}}' },
+    { key: 'merci-groupe', cat: 'Anniversaires & groupes', name: 'Merci après un groupe', subject: 'Merci pour votre venue, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nMerci pour votre venue avec votre groupe. L\'équipe espère que tout le monde est reparti avec le sourire.\n\nSi quelque chose peut être amélioré pour la prochaine fois, répondez à ce message, tout est lu.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
     // Entreprises & écoles
-    { key: 'serieux-entreprise', cat: 'Entreprises & écoles', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez {{centre}}, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau réservé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction {{centre}}' },
-    { key: 'devis-groupe-ecole', cat: 'Entreprises & écoles', name: 'Sortie école / mouvement de jeunesse', subject: 'Votre sortie de groupe chez {{centre}}', body: 'Bonjour {{prenom}},\n\nPour une sortie d\'école ou de mouvement de jeunesse, les créneaux en semaine sont les plus calmes : le groupe a de la place et l\'équipe est disponible pour encadrer.\n\nDites-nous la date envisagée, l\'âge et le nombre d\'enfants : on vous prépare un devis clair.\n\nLa direction {{centre}}' },
+    { key: 'serieux-entreprise', cat: 'Entreprises & écoles', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez {{centre}}, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici la proposition de {{centre}} pour votre événement d\'équipe, avec un créneau réservé, les activités au choix (bowling, laser game) et un espace repas.\n\nL\'équipe reste disponible pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction {{centre}}' },
+    { key: 'devis-groupe-ecole', cat: 'Entreprises & écoles', name: 'Sortie école / mouvement de jeunesse', subject: 'Votre sortie de groupe chez {{centre}}', body: 'Bonjour {{prenom}},\n\nPour une sortie d\'école ou de mouvement de jeunesse, les créneaux en semaine sont les plus calmes, le groupe a de la place et l\'équipe est disponible pour encadrer.\n\nIndiquez la date envisagée, l\'âge et le nombre d\'enfants, et un devis clair vous sera préparé.\n\nLa direction {{centre}}' },
     // Offres & saisons
-    { key: 'promo-semaine', cat: 'Offres & saisons', name: 'Offre de la semaine', subject: 'Cette semaine chez {{centre}} : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe {{centre}}' },
-    { key: 'creux-semaine', cat: 'Offres & saisons', name: 'Jour calme en semaine', subject: 'Envie d\'une piste tranquille cette semaine ?', body: 'Bonjour {{prenom}},\n\nEn semaine, le centre est plus calme : pas d\'attente, tout le temps de jouer.\n\nRéservez votre créneau en ligne, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
-    { key: 'vacances-annonce', cat: 'Offres & saisons', name: 'Annonce vacances scolaires', subject: 'Les vacances arrivent, {{prenom}}', body: 'Bonjour {{prenom}},\n\nLes vacances scolaires approchent et les créneaux partent vite, surtout l\'après-midi.\n\nPensez à réserver à l\'avance en ligne : vous choisissez votre heure, c\'est réglé en une minute.\n\nL\'équipe {{centre}}' },
+    { key: 'promo-semaine', cat: 'Offres & saisons', name: 'Offre de la semaine', subject: 'Cette semaine chez {{centre}}, {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine chez {{centre}}, {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en une minute.\n\nBien à vous,\nL\'équipe {{centre}}' },
+    { key: 'creux-semaine', cat: 'Offres & saisons', name: 'Jour calme en semaine', subject: 'Envie d\'une piste tranquille cette semaine ?', body: 'Bonjour {{prenom}},\n\nEn semaine, le centre est plus calme, sans attente, avec tout le temps de jouer.\n\nRéservez votre créneau en ligne, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
+    { key: 'vacances-annonce', cat: 'Offres & saisons', name: 'Annonce vacances scolaires', subject: 'Les vacances arrivent, {{prenom}}', body: 'Bonjour {{prenom}},\n\nLes vacances scolaires approchent et les créneaux partent vite, surtout l\'après-midi.\n\nPensez à réserver à l\'avance en ligne, vous choisissez votre heure et c\'est réglé en une minute.\n\nL\'équipe {{centre}}' },
     // Service client
-    { key: 'reponse-reclamation', cat: 'Service client', name: 'Réponse à une réclamation', subject: 'On vous répond, {{prenom}}', body: 'Bonjour {{prenom}},\n\nMerci d\'avoir pris le temps de nous écrire : ce que vous décrivez n\'est pas l\'expérience qu\'on veut offrir, et on vous présente nos excuses.\n\nVoici ce qu\'on vous propose : {{geste}}.\n\nOn espère vous revoir dans de meilleures conditions.\n\nLa direction {{centre}}' },
-    { key: 'avis-google', cat: 'Service client', name: 'Demande d\'avis Google', subject: 'Un petit mot sur votre visite ?', body: 'Bonjour {{prenom}},\n\nSi vous avez passé un bon moment chez nous, un avis nous aide énormément : ça prend trente secondes.\n\n[[bouton: Laisser un avis | {{lien_avis}}]]\n\nMerci, et à bientôt,\nL\'équipe {{centre}}' },
+    { key: 'reponse-reclamation', cat: 'Service client', name: 'Réponse à une réclamation', subject: 'Réponse à votre message, {{prenom}}', body: 'Bonjour {{prenom}},\n\nMerci d\'avoir pris le temps d\'écrire. Ce que vous décrivez n\'est pas l\'expérience que {{centre}} veut offrir, et l\'équipe vous présente ses excuses.\n\nVoici ce qui vous est proposé, {{geste}}.\n\nL\'équipe espère vous revoir dans de meilleures conditions.\n\nLa direction {{centre}}' },
+    { key: 'avis-google', cat: 'Service client', name: 'Demande d\'avis Google', subject: 'Un mot sur votre visite ?', body: 'Bonjour {{prenom}},\n\nSi vous avez passé un bon moment chez {{centre}}, un avis aide énormément, et ça prend trente secondes.\n\n[[bouton: Laisser un avis | {{lien_avis}}]]\n\nMerci, et à bientôt,\nL\'équipe {{centre}}' },
   ];
 
   /* ── LE MOTEUR DE VARIABLES : une seule implémentation ───────────────────

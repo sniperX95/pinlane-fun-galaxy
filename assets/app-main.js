@@ -17103,25 +17103,25 @@ const STAFF_REQUEST_PRESETS = [
     id: 'dispo',
     label: 'Proposer un créneau',
     subject: (ctx) => `Votre demande chez ${ctx.centre}`,
-    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nNous pouvons vous accueillir le [DATE] à [HEURE]. Dites-nous si cela vous convient et nous bloquons le créneau.\n\nÀ très vite,\n${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nLe créneau du [DATE] à [HEURE] est disponible. Dites si cela vous convient, et il sera retenu à votre nom dès votre réponse.\n\nBien à vous,\n${ctx.centre}`,
   },
   {
     id: 'devis',
     label: 'Envoyer une proposition',
     subject: (ctx) => `Proposition pour votre venue chez ${ctx.centre}`,
-    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nVoici ce que nous vous proposons :\n- [ACTIVITÉ] : [DURÉE]\n- Total estimé : [MONTANT] (à régler sur place)\n\nCe montant reste indicatif tant que la réservation n’est pas confirmée. Dites-nous si cela vous convient.\n\nÀ très vite,\n${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nVoici la proposition de l’équipe.\n- [ACTIVITÉ] : [DURÉE]\n- Total estimé : [MONTANT] (à régler sur place)\n\nCe montant reste indicatif tant que la réservation n’est pas confirmée. Dites si cela vous convient.\n\nBien à vous,\n${ctx.centre}`,
   },
   {
     id: 'infos',
     label: 'Demander des précisions',
     subject: (ctx) => `Quelques précisions pour votre demande`,
-    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande. Pour vous proposer le meilleur créneau, pouvez-vous nous préciser :\n- la date et l’heure souhaitées\n- le nombre exact de participants\n- les activités qui vous intéressent\n\nDès votre réponse, nous vous envoyons une proposition.\n\nÀ très vite,\n${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande. Pour vous proposer le meilleur créneau, quelques précisions sont nécessaires.\n- la date et l’heure souhaitées\n- le nombre exact de participants\n- les activités qui vous intéressent\n\nDès votre réponse, une proposition vous sera envoyée.\n\nBien à vous,\n${ctx.centre}`,
   },
   {
     id: 'complet',
     label: 'Répondre complet',
     subject: (ctx) => `Votre demande chez ${ctx.centre}`,
-    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.quand}. Nous sommes malheureusement complets sur ce créneau.\n\nNous pouvons vous proposer [ALTERNATIVE]. Dites-nous si cela vous arrange, nous gardons la place le temps de votre réponse.\n\nÀ très vite,\n${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.quand}. Ce créneau est malheureusement complet.\n\nL’équipe peut vous proposer [ALTERNATIVE]. Dites si cela vous arrange, la place reste disponible le temps de votre réponse.\n\nBien à vous,\n${ctx.centre}`,
   },
 ];
 
@@ -17236,7 +17236,7 @@ function toggleStaffRequestReply(id) {
       // l animation d entree du composeur (voir renderStaffRequestReplyComposer).
       openedAt: Date.now(),
       subject: (current && current.subject) || `Votre demande${occ ? ` ${occ.toLowerCase()}` : ''} chez ${centreName}`,
-      body: (current && current.body) || `Bonjour ${firstName || ''},\n\nMerci pour votre demande${Number(item.pax) > 0 ? ` pour ${item.pax} personnes` : ''}${item.requestedDate ? ` (${item.requestedDate})` : ''}.\n\n\n\nÀ très vite,\n${centreName}`,
+      body: (current && current.body) || `Bonjour ${firstName || ''},\n\nMerci pour votre demande${Number(item.pax) > 0 ? ` pour ${item.pax} personnes` : ''}${item.requestedDate ? ` (${item.requestedDate})` : ''}.\n\n\n\nBien à vous,\n${centreName}`,
     };
   }
   renderStaffUtilityPage();

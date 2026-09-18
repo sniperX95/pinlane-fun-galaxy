@@ -346,8 +346,21 @@ async function rendu(m, { design, portee = 'manual', person = null, body = 'Bonj
   await m.comms.runBirthdayJ30Sweep('libramont', { query: requete, enqueue: async (row) => { sweep.push(row); return { id: 1 }; } }, { today: iso(0) });
   const anniversaire = sweep[0] || {};
   const equipe = (html) => (String(html).match(/L&#39;équipe Fun Galaxy Libramont/g) || []).length;
-  ok(sweep.length === 1 && equipe(anniversaire.body) === 1 && /À très vite,/.test(anniversaire.payload.textBody) && !/À très vite,<\/p>/.test(anniversaire.body),
-    '[J] anniversaire : UNE seule « L équipe Fun Galaxy Libramont » dans le HTML (la signature), la cloture textuelle retiree ; l alternative texte reste entiere');
+  // LA CLOTURE SE LIT DANS LE MESSAGE, elle ne se recopie pas ici. Ce controle
+  // affirmait « À très vite, » en dur : le jour ou la formule de politesse a
+  // change (regles d ecriture client, 2026-09-18), il a rougi sur un texte
+  // parfaitement sain, alors que la regle qu il defend (ne pas signer deux
+  // fois) n avait pas bouge. La cloture est desormais DERIVEE du gabarit, et
+  // c est son retrait qui est verifie, pas son libelle.
+  const modeleAnniv = m.comms.buildBirthdayJ30Message({ name: 'Lucie', partyDateFr: '12 octobre 2025', centerName: 'Fun Galaxy Libramont' });
+  const lignesAnniv = String(modeleAnniv.body).split('\n').map((ligne) => ligne.trim()).filter(Boolean);
+  const cloture = lignesAnniv[lignesAnniv.length - 2] || '';
+  ok(/,$/.test(cloture) && cloture.length <= 60,
+    `[J] montage : le gabarit anniversaire finit bien par une cloture textuelle (« ${cloture} »)`);
+  ok(sweep.length === 1 && equipe(anniversaire.body) === 1
+    && String(anniversaire.payload.textBody).includes(cloture)
+    && !String(anniversaire.body).includes(`${cloture}</p>`),
+    `[J] anniversaire : UNE seule « L équipe Fun Galaxy Libramont » dans le HTML (la signature), la cloture « ${cloture} » retiree ; l alternative texte reste entiere`);
   ok(/\/api\/u\?k=[0-9a-f]{32}/.test(anniversaire.body) && anniversaire.payload.unsubToken, '[J] contraste : le lien de retrait marketing est toujours la');
   // Le pied de marque n existe que hors Mail simple : ces deux regles se testent sur Classique.
   const dedup = await rendu(m, { design: { ...defautsLibramont, preset: 'classique' }, portee: 'manual' });

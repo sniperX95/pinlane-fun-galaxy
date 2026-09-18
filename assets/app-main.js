@@ -4564,12 +4564,16 @@ function activityHasConfigurableOptions(activity) {
   ].includes(activity.priceType));
 }
 
+// UNE QUESTION, PAS UNE ETIQUETTE (Movsar, 2026-09-18 : « tous ceux a qui jai
+// montrer ils ont du passer 2minutes a comprendre »). « Durée » et « Nombre de
+// parties » nomment un champ ; ils ne disent pas qu il y a quelque chose a
+// faire. La question, elle, se repond sans reflechir.
 function activityConfigHint(activity) {
   if (!activity) return '';
-  if (activityCountsChildren(activity)) return 'Nombre d’enfants';
-  if (activity.priceType === 'grid_laser') return 'Nombre de parties';
-  if (activity.priceType === 'per_unit_hour') return 'Tables et durée';
-  return 'Durée';
+  if (activityCountsChildren(activity)) return 'Combien d’enfants ?';
+  if (activity.priceType === 'grid_laser') return 'Combien de parties ?';
+  if (activity.priceType === 'per_unit_hour') return 'Combien de tables, et combien de temps ?';
+  return 'Combien de temps ?';
 }
 
 // Le nom accessible d'une carte d'activite est EXPLICITE (aria-label), jamais
@@ -4620,9 +4624,10 @@ function buildActivityPicker(host, catalog) {
         Modifier les activités
       </button>
       <div class="activity-configurator-head">
-        <span class="activity-configurator-title">Choisissez vos options</span>
+        <span class="activity-configurator-title">Réglez votre visite</span>
         <span class="activity-configurator-count" data-role="config-count"></span>
       </div>
+      <p class="activity-configurator-lead">Le prix suit vos choix, et rien ne se paie à l’avance.</p>
       <div class="activity-config-list">${settings}</div>
     </div>`;
 }
@@ -4780,8 +4785,10 @@ function syncActivityPickerState(off = []) {
     configurator.classList.toggle('is-visible', visibleConfigCount > 0);
     configurator.setAttribute('aria-hidden', visibleConfigCount > 0 ? 'false' : 'true');
   }
+  // « 2 reglages actifs » comptait des rangees, pas quelque chose que le client
+  // possede. Il lit maintenant ce qu il a a faire, dans ses mots.
   const count = host.querySelector('[data-role="config-count"]');
-  if (count) count.textContent = `${visibleConfigCount} réglage${visibleConfigCount > 1 ? 's' : ''} actif${visibleConfigCount > 1 ? 's' : ''}`;
+  if (count) count.textContent = `${visibleConfigCount} activité${visibleConfigCount > 1 ? 's' : ''} à régler`;
 }
 
 // Ce qu'on annonce sous le nom : un prix quand le centre l'a saisi, la mention
@@ -6851,26 +6858,26 @@ function renderFormulaVisitSummary(slot, formule) {
 
   const remainingLaser = Number(plan.laserPassPlan?.remainingGames || 0);
   const rows = [];
+  // L ORDRE EST CELUI DE LA VISITE : on arrive, puis on joue. L arrivee etait
+  // en deuxieme, sous les rendez-vous, alors que c est la premiere chose que le
+  // client doit faire et la seule heure qu il doit retenir.
+  if (arrivalTime) {
+    rows.push(`<div class="visit-line"><span class="visit-tag arrival">Arrivée</span><span><strong>${escapeHtml(arrivalTime)}</strong>, soit ${arrivalMinutes} min avant le début</span></div>`);
+  }
   if (appointments.length) {
     rows.push(`<div class="visit-line"><span class="visit-tag reserved">Vos rendez-vous</span><strong>${appointments.map(escapeHtml).join(' · ')}</strong></div>`);
-  }
-  if (arrivalTime) {
-    rows.push(`<div class="visit-line"><span class="visit-tag arrival">Arrivée</span><span>Présentez-vous ${arrivalMinutes} min avant : accueil à <strong>${escapeHtml(arrivalTime)}</strong></span></div>`);
   }
   if (tableBlock || formulaAnchorData?.hasTable || (formule && formulaHasPartyTable(formule))) {
     rows.push(`<div class="visit-line"><span class="visit-tag table">Table</span><span>Table prête à votre arrivée${arrivalTime ? ` (${escapeHtml(arrivalTime)})` : ''}</span></div>`);
   }
-  // PAS DE LIGNE « A votre rythme » ICI (2026-09-07, Movsar : « tu te repetes
-  // a chaque fois [...] ca revient a le dire deux fois, c est inutile, ca gene
-  // en plus »). Les deux appelants de ce resume rendent DEJA le bloc
-  // renderFormulaFreePassBlock juste au-dessus, qui dit la meme chose en plus
-  // complet (« Sans horaire · Le reste de votre visite, a votre rythme sur
-  // place · Arcades regle sur place »). Une information qui a deja sa place
-  // n en prend pas une seconde.
   if (remainingLaser > 0) {
     rows.push(`<div class="visit-line"><span class="visit-tag laser">Laser</span><span>${remainingLaser} partie${remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe</span></div>`);
   }
-  return `<div class="formula-visit-summary">${rows.join('')}</div>`;
+  // CE QUI SE VIT SANS HORAIRE EST LA DERNIERE LIGNE DE LA VISITE, pas un
+  // second panneau. La regle de 2026-09-07 (« ne pas le dire deux fois ») est
+  // tenue MIEUX qu avant : il n y a plus qu un seul endroit qui le dit.
+  rows.push(ligneSansHoraire(formule));
+  return `<div class="formula-visit-summary">${rows.filter(Boolean).join('')}</div>`;
 }
 
 // --- Hiérarchie des heures ---------------------------------------------------
@@ -7314,6 +7321,68 @@ function anchorSlotCardModel(activity, item, { isChained, unavailable = false, d
   return { time: item.time, endTime, tag, tagTone, meta, label };
 }
 
+// POURQUOI CETTE HEURE COINCE, en une phrase que le client peut agir.
+// Ecrite UNE fois : le rendu initial et la mise a jour en place s en servent
+// tous les deux, et le gate la lit au meme endroit.
+// Une chaine vide = l heure est prenable.
+function raisonHeureCoincee({ rangeeVerrouillee, listePleine, parties, indisponible, raisonCourte }) {
+  if (rangeeVerrouillee) return 'Vous avez choisi de laisser l’équipe placer vos parties. Décochez la case juste au-dessus pour choisir une heure vous-même.';
+  if (listePleine) {
+    const total = Math.max(1, Number(parties) || 1);
+    return `Vos ${total} heures sont déjà choisies. Cliquez l’une d’elles pour la libérer, puis reprenez celle-ci.`;
+  }
+  if (indisponible) {
+    const courte = String(raisonCourte || '').trim();
+    // La raison du moteur quand il en donne une (« Complet », « Fermé »), et
+    // jamais une raison inventee quand il n en donne pas.
+    return courte
+      ? `${courte}. Cette heure n’est pas prenable pour votre groupe ce jour-là.`
+      : 'Cette heure n’est pas prenable pour votre groupe ce jour-là.';
+  }
+  return '';
+}
+
+// Le clic d une heure qui coince : il OUVRE l explication, il ne fait pas rien.
+// Une seule bulle ouverte a la fois, et un second clic la referme.
+function expliquerHeureCoincee(bouton) {
+  if (!bouton) return;
+  const ouvert = bouton.hasAttribute('data-coince-ouvert');
+  document.querySelectorAll('[data-coince-ouvert]').forEach((el) => {
+    el.removeAttribute('data-coince-ouvert');
+    const b = el.querySelector('.slot-card-why');
+    if (b) b.style.removeProperty('--bulle-decalage');
+  });
+  if (ouvert) return;
+  bouton.setAttribute('data-coince-ouvert', '1');
+  // LA BULLE RESTE DANS L ECRAN. Centree sur sa pastille, elle debordait sur la
+  // colonne voisine des que la pastille etait au bord de la grille. On la
+  // recale APRES l ouverture, quand sa largeur reelle est connue : une largeur
+  // devinee au rendu aurait ete fausse des que le texte change.
+  const bulle = bouton.querySelector('.slot-card-why');
+  if (!bulle) return;
+  const marge = 8;
+  const boite = bulle.getBoundingClientRect();
+  // ON RECADRE SUR LA GRILLE D HEURES, PAS SUR LA FENETRE. En trois colonnes,
+  // une bulle qui tient dans l ecran depassait quand meme de SA colonne et se
+  // posait sur le panneau voisin. La grille est la bonne limite ; l ecran reste
+  // une seconde borne, pour le telephone ou la grille prend toute la largeur.
+  const grille = bouton.closest('.anchor-chip-grid') || bouton.closest('.anchor-row');
+  const cadre = grille ? grille.getBoundingClientRect() : null;
+  const gauche = Math.max(marge, cadre ? cadre.left : marge);
+  const droite = Math.min(document.documentElement.clientWidth - marge, cadre ? cadre.right : Infinity);
+  let decalage = 0;
+  if (boite.right > droite) decalage = droite - boite.right;
+  if (boite.left + decalage < gauche) decalage = gauche - boite.left;
+  if (decalage) bulle.style.setProperty('--bulle-decalage', `${Math.round(decalage)}px`);
+}
+
+// Un clic ailleurs referme la bulle : sinon elle reste posee sur la grille
+// pendant que le client continue a choisir.
+document.addEventListener('click', (event) => {
+  if (event.target && event.target.closest && event.target.closest('[data-coince]')) return;
+  document.querySelectorAll('[data-coince-ouvert]').forEach((el) => el.removeAttribute('data-coince-ouvert'));
+}, true);
+
 function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen = null, full = false }) {
   const groups = groupAnchorTimes(activity.times);
   if (!groups.length) return '';
@@ -7408,7 +7477,6 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
       ? item.conflict
       : null;
     const decalable = unavailable && item.code === 'anchor_overlap' && Boolean(conflit);
-    const chipDisabled = disabled || (unavailable && !decalable) || (multi && full && !isActive);
     const isChained = !isActive && !unavailable && item.time === chained;
     const marker = index === 0 ? ` data-period-start="${escapeHtml(group.key)}"` : '';
     const justPicked = !formulaAnchorBusy && isActive && formulaJustPicked
@@ -7417,7 +7485,26 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     const model = anchorSlotCardModel(activity, item, { isChained, unavailable, decale: conflit && decalable ? conflit : null });
     if (!unavailable && sharedAnchorMeta && model.meta === sharedAnchorMeta) model.meta = '';
     const reasonAttrs = unavailable ? ` data-reason="${escapeHtml(model.meta)}" title="${escapeHtml(model.meta)}"` : '';
-    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${unavailable && !decalable ? 'is-unavailable' : ''} ${decalable ? 'is-shiftable' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}"${reasonAttrs} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${chipDisabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}'${decalable ? ', true' : ''})">${slotCardMarkup(model)}</button>`;
+    // UNE HEURE QUI COINCE RESTE CLIQUABLE, ET ELLE DIT POURQUOI (Movsar,
+    // 2026-09-18 : « ya toujours des fois ou des boutons sont impossible a
+    // cliquer. Non, meme si ca coince faut que ce soit cliquable, mais
+    // explique alors, sous un ptit design pointille [...] avec un i en rond »).
+    // Un bouton mort ne se distingue pas d un bouton casse : le client reclique,
+    // croit que la page ne repond plus, et part. Il garde donc son clic, qui
+    // OUVRE la raison au lieu de ne rien faire, et il reste `aria-disabled`
+    // pour qu un lecteur d ecran sache que l heure n est pas prenable.
+    const raisonCoince = raisonHeureCoincee({
+      rangeeVerrouillee: disabled,
+      listePleine: Boolean(multi && full && !isActive),
+      parties: Number(activity.count || 1),
+      indisponible: Boolean(unavailable && !decalable),
+      raisonCourte: model.meta,
+    });
+    const coince = Boolean(raisonCoince);
+    const action = coince
+      ? `expliquerHeureCoincee(this)`
+      : `setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}'${decalable ? ', true' : ''})`;
+    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${unavailable && !decalable ? 'is-unavailable' : ''} ${decalable ? 'is-shiftable' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}"${reasonAttrs}${coince ? ` data-coince="${escapeHtml(raisonCoince)}" aria-disabled="true"` : ''} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(coince ? `${model.label}. ${raisonCoince}` : model.label)}" onclick="${action}">${slotCardMarkup(model)}${coince ? '<span class="slot-card-info" aria-hidden="true">i</span><span class="slot-card-why" role="note">' + escapeHtml(raisonCoince) + '</span>' : ''}</button>`;
       }).join('')}</div>
     </section>`;
   }).join('');
@@ -7437,6 +7524,30 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
 }
 
 // Un ÉTAPE de la visite : son rang, son heure retenue, et ses heures possibles.
+// OU EN EST LE CLIENT DANS SES PARTIES DE LASER, ecrit UNE fois.
+//
+// Ce texte vivait en DEUX exemplaires, avec DEUX formulations differentes pour
+// le meme etat : le rendu initial ecrivait « 1 heure choisie sur 3 · 2 placees
+// par l equipe », et la mise a jour en place, quelques lignes plus bas,
+// « 1 heure sur 3 · 2 parties avec l equipe ». Le client lisait donc une phrase
+// au premier affichage et une autre des qu il cliquait une heure, sans que rien
+// n ait change. Trouve le 2026-09-18 en relevant l ecran ligne par ligne.
+//
+// `poses` = heures deja retenues, `total` = parties achetees.
+function etatDesPartiesLaser(poses, total) {
+  const choisies = Math.max(0, Number(poses) || 0);
+  const parties = Math.max(1, Number(total) || 1);
+  // LE NOMBRE DE PARTIES ACHETEES OUVRE LA PHRASE, parce que c est le fait que
+  // le client a decide et qu il doit retrouver. La ligne de detail qui le
+  // portait a disparu : si cette phrase ne le disait pas, il disparaitrait de
+  // l ecran.
+  const tete = `${parties} partie${parties > 1 ? 's' : ''}`;
+  if (!choisies) return `${tete} · l’équipe place vos heures, ou choisissez-les`;
+  const reste = Math.max(0, parties - choisies);
+  if (!reste) return `${tete} · vos ${parties} heures sont choisies, cliquez-en une pour la retirer`;
+  return `${tete} · ${choisies} heure${choisies > 1 ? 's' : ''} choisie${choisies > 1 ? 's' : ''}, ${reste} placée${reste > 1 ? 's' : ''} par l’équipe`;
+}
+
 function renderVisitRailStep(step, position) {
   const activity = step.activity;
   const { preference, times } = getCurrentFormulaAnchorSelection();
@@ -7461,9 +7572,16 @@ function renderVisitRailStep(step, position) {
   const restantes = chosen ? Math.max(0, partCount - chosen.length) : 0;
   const selected = disabled ? '' : (chosen ? (chosen[0] || '') : (times[activity.activityId] || ''));
   const chained = disabled || (chosen && chosen.length) ? '' : getChainedAnchorTime(activity.activityId);
+  // UNE SEULE LIGNE D ETAT POUR LE LASER (Movsar, 2026-09-18 : « pour laser
+  // game ya 3phrases c trop et souvent ca dit la meme chose »). La ligne
+  // « 3 parties · choisissez vos heures, l equipe place les autres » et le
+  // compteur « 1 heure choisie sur 3 · 2 placees par l equipe » disaient la
+  // MEME chose, l une sous l autre. Le compteur suffit : il porte deja le
+  // nombre de parties (« sur 3 »), ou on en est, et ce que l equipe fait du
+  // reste. La ligne de detail disparait donc quand il y a un compteur.
   const detail = isLaser
     ? (partCount > 1
-      ? `${partCount} parties · choisissez vos heures, l’équipe place les autres`
+      ? ''
       : `Session de ${activity.durationMinutes} min`)
     : `${formatDurationLabel(Number(activity.durationMinutes || 60) / 60)} de piste réservée`;
   // Le choix « sur place » est une DÉCISION sur cette activité : il vit en tête
@@ -7473,16 +7591,7 @@ function renderVisitRailStep(step, position) {
         <input type="checkbox" ${laserOnSite ? 'checked' : ''} onchange="setFormulaLaserPlacement(this.checked ? 'onsite' : 'scheduled')">
         <span>${partCount > 1 ? 'Je place mes parties laser sur place, selon l’affluence' : 'Je place ma partie laser sur place, selon l’affluence'}</span>
       </label>` : '';
-  // Ce que le compteur dit : combien sont posées, combien restent, et comment
-  // en changer. Sans ça, une liste qui cesse de répondre à 3 clics est un mur.
-  // « 0 heure sur 3 · 3 parties avec l équipe » melangeait le choisi et le
-  // restant. Une phrase par situation, qui dit ce qui va se passer.
-  const compteur = chosen ? `
-      <p class="anchor-part-count">${chosen.length === 0
-        ? `Aucune heure choisie · vos ${partCount} parties seront placées par l’équipe`
-        : (restantes
-          ? `${chosen.length} heure${chosen.length > 1 ? 's' : ''} choisie${chosen.length > 1 ? 's' : ''} sur ${partCount} · ${restantes} placée${restantes > 1 ? 's' : ''} par l’équipe`
-          : `${partCount} heures choisies · cliquez une heure pour la retirer`)}</p>` : '';
+  const compteur = chosen ? `<p class="anchor-part-count">${escapeHtml(etatDesPartiesLaser(chosen.length, partCount))}</p>` : '';
   const picked = disabled || (chosen && !chosen.length)
     ? '<span class="anchor-row-pick anchor-row-pick-free">avec l’équipe</span>'
     : (chosen
@@ -7600,14 +7709,12 @@ function renderFormulaAnchorRows(formule) {
     if (index > 0) parts.push(renderVisitRailLink(steps[index - 1], step, notices));
     parts.push(renderVisitRailStep(step, index + 1));
   });
-  const freePass = renderFormulaFreePassBlock(formule);
-  if (freePass) {
-    parts.push(`
-      <li class="visit-rail-step visit-rail-step-free">
-        <span class="visit-rail-mark visit-rail-mark-free" aria-hidden="true"></span>
-        ${freePass}
-      </li>`);
-  }
+  // PLUS DE BLOC SEPARE POUR LES ACTIVITES SANS HORAIRE (Movsar, 2026-09-18 :
+  // « en bas ya aussi 2bloc alors que on peut en faire un bloc bcp plus beau
+  // [...] genre le "sans horaire" pq a part ? »). Ce qui se vit sans horaire
+  // fait partie de LA visite : c est une ligne du recapitulatif, au meme titre
+  // que l arrivee et les rendez-vous, et non un second panneau qui coupe
+  // l ecran en deux. Voir ligneSansHoraire().
   // Le nombre de rendez-vous à placer décide si les repères numérotés servent
   // à quelque chose : à une seule activité, « 1 » ne numérote rien.
   return `<ol class="visit-rail" data-anchors="${steps.length}">${parts.join('')}</ol>`;
@@ -7617,7 +7724,10 @@ function renderFormulaAnchorRows(formule) {
 // Pour une formule ce sont les avantages inclus ; pour une visite composée à la
 // carte ce sont ses propres activités (minigolf, arcades, billards...), qui
 // n'apparaissaient nulle part et donnaient un écran qui amputait sa visite.
-function renderFormulaFreePassBlock(formule) {
+// UNE LIGNE DU RECAPITULATIF, plus un bloc a part. Elle garde la classe
+// `anchor-free-pass` : c est elle que lisent les gates, et c est bien elle qui
+// porte le sujet. Elle ne contient AUCUNE heure, par construction comme avant.
+function ligneSansHoraire(formule) {
   const entries = (formulaAnchorData?.freePass || []).map(item => ({
     label: item.label,
     detail: item.detail || '',
@@ -7629,24 +7739,17 @@ function renderFormulaFreePassBlock(formule) {
   const drinks = formulaAnchorData?.drinks || [];
   if (!entries.length && !drinks.length) return '';
   const included = Boolean(formule);
+  // « Pass liberté » quand c est un avantage INCLUS dans une formule,
+  // « Sans horaire » quand le client a mis ces activites dans son panier :
+  // ce n est pas le meme fait, et le libelle ne doit pas le gommer.
   const badge = included ? 'Pass liberté' : 'Sans horaire';
-  const headline = included
-    ? '<strong><span class="only-desktop">Inclus, à votre rythme sur place, quand vous voulez</span><span class="only-mobile">Inclus, quand vous voulez</span></strong>'
-    : '<strong><span class="only-desktop">Le reste de votre visite, à votre rythme sur place</span><span class="only-mobile">À votre rythme sur place</span></strong>';
-  const note = included
-    ? '<span class="only-desktop">Aucune heure à choisir : ces avantages se vivent librement pendant toute votre visite.</span><span class="only-mobile">Sans horaire : à vivre librement.</span>'
-    : '<span class="only-desktop">Aucune heure à choisir : vous en profitez quand vous voulez pendant votre visite.</span><span class="only-mobile">Sans horaire : quand vous voulez.</span>';
+  const items = entries.map(entry => `<span class="anchor-free-item">${escapeHtml(entry.label)}${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ''}${entry.onSitePayment ? '<em>réglé sur place</em>' : ''}</span>`)
+    .concat(drinks.map(label => `<span class="anchor-free-item anchor-free-drink">${escapeHtml(label)}</span>`))
+    .join('');
   return `
-    <div class="anchor-free-pass">
-      <div class="anchor-free-head">
-        <span class="anchor-free-badge">${escapeHtml(badge)}</span>
-        ${headline}
-      </div>
-      <div class="anchor-free-items">
-        ${entries.map(entry => `<span class="anchor-free-item">${escapeHtml(entry.label)}${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ''}${entry.onSitePayment ? '<em>réglé sur place</em>' : ''}</span>`).join('')}
-        ${drinks.map(label => `<span class="anchor-free-item anchor-free-drink">${escapeHtml(label)}</span>`).join('')}
-      </div>
-      <small>${note}</small>
+    <div class="visit-line anchor-free-pass">
+      <span class="visit-tag free">${escapeHtml(badge)}</span>
+      <span class="anchor-free-items">${items}<em class="anchor-free-note">à votre rythme</em></span>
     </div>`;
 }
 
@@ -7678,6 +7781,7 @@ function renderFormulaAnchorStatus(formule) {
         </div>
         ${suggestions ? `<div class="anchor-suggestions"><span>Ces horaires fonctionnent :</span>${suggestions}</div>` : ''}
         <button type="button" class="formula-order-fallback-btn" onclick="resetFormulaAnchorChoices()">Repartir de la proposition automatique</button>
+        ${ligneSansHoraire(formule)}
       </div>`;
 }
 
@@ -7810,8 +7914,37 @@ function syncFormulaAnchorUi(formule, { busy }) {
       }
       // Compte atteint : les heures non retenues cessent d'etre cliquables, et
       // le compteur au-dessus dit comment en liberer une.
-      const chipDisabled = disabled || unavailable || Boolean(chosen && full && !isActive);
-      if (chip.disabled !== chipDisabled) chip.disabled = chipDisabled;
+      // LA MEME REGLE QU AU RENDU INITIAL : une heure qui coince reste
+      // cliquable et porte sa raison. Ce chemin posait `disabled`, donc le
+      // client qui remplissait sa liste voyait les autres heures devenir
+      // MORTES alors que le rendu initial, lui, les explique. Deux chemins,
+      // deux comportements : c est ce que ce fichier a deja paye sur le
+      // compteur des parties.
+      const raisonCoince = raisonHeureCoincee({
+        rangeeVerrouillee: disabled,
+        listePleine: Boolean(chosen && full && !isActive),
+        parties: Number(activity.count || 1),
+        indisponible: unavailable,
+        raisonCourte: chip.getAttribute('data-reason') || '',
+      });
+      if (chip.disabled) chip.disabled = false;
+      if (raisonCoince) {
+        if (chip.getAttribute('data-coince') !== raisonCoince) {
+          chip.setAttribute('data-coince', raisonCoince);
+          const bulle = chip.querySelector('.slot-card-why');
+          if (bulle) bulle.textContent = raisonCoince;
+          else chip.insertAdjacentHTML('beforeend', `<span class="slot-card-info" aria-hidden="true">i</span><span class="slot-card-why" role="note">${escapeHtml(raisonCoince)}</span>`);
+        }
+        chip.setAttribute('aria-disabled', 'true');
+        chip.setAttribute('onclick', 'expliquerHeureCoincee(this)');
+      } else if (chip.hasAttribute('data-coince')) {
+        chip.removeAttribute('data-coince');
+        chip.removeAttribute('data-coince-ouvert');
+        chip.removeAttribute('aria-disabled');
+        chip.querySelector('.slot-card-info')?.remove();
+        chip.querySelector('.slot-card-why')?.remove();
+        chip.setAttribute('onclick', `setFormulaAnchorTime('${activity.activityId}','${time}')`);
+      }
       // La capsule ne ressort que sur l'heure qui VIENT d'être choisie. La
       // classe reste posée tant que l'heure est active (l'animation est finie,
       // elle ne rejoue pas) : la retirer en cours de course couperait le pop
@@ -7841,10 +7974,9 @@ function syncFormulaAnchorUi(formule, { busy }) {
     // lui qui explique pourquoi les autres pastilles s'eteignent.
     const compteur = row.querySelector('.anchor-part-count');
     if (compteur && chosen) {
-      const restantes = Math.max(0, partCount - chosen.length);
-      const texte = `${chosen.length} heure${chosen.length > 1 ? 's' : ''} sur ${partCount}${restantes
-        ? ` · ${restantes} partie${restantes > 1 ? 's' : ''} avec l’équipe`
-        : ' · cliquez une heure pour la retirer'}`;
+      // LA MEME FONCTION QUE LE RENDU INITIAL : c est tout l interet. Deux
+      // ecritures cote a cote avaient diverge en silence.
+      const texte = etatDesPartiesLaser(chosen.length, partCount);
       if (compteur.textContent !== texte) compteur.textContent = texte;
     }
     row.classList.toggle('anchor-row-onsite', disabled);
@@ -7926,8 +8058,8 @@ function renderFormulaArrivalPicker(formule) {
           ${renderFormulaVisitSummary(activeSlot, formule)}
           <button type="button" class="btn-primary formula-plan-confirm" onclick="selectSlot(${activeIndex})">Choisir cette arrivée</button>
         </div>` : `
-        <p class="formula-arrival-hint">Touchez une heure pour voir le résumé de votre visite.</p>`}
-      ${renderFormulaFreePassBlock(formule)}
+        <p class="formula-arrival-hint">Touchez une heure pour voir le résumé de votre visite.</p>
+        ${ligneSansHoraire(formule)}`}
     </div>`;
 }
 

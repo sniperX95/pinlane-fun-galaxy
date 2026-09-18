@@ -177,12 +177,19 @@ server.listen(PORT, '127.0.0.1', async () => {
   const lireEcran = () => page.evaluate(() => {
     const ligne = document.querySelector('.anchor-row[data-anchor="laser_game"]');
     const actives = [...(ligne?.querySelectorAll('.anchor-chip.active') || [])].map((chip) => chip.dataset.time);
-    const eteintes = [...(ligne?.querySelectorAll('.anchor-chip[disabled]') || [])].map((chip) => chip.dataset.time);
+    // UNE HEURE QUI COINCE N EST PLUS `disabled` : elle reste cliquable et
+    // porte sa raison (2026-09-18). Ce qui compte est qu elle ne soit pas
+    // PRENABLE, ce que dit aria-disabled, et qu elle EXPLIQUE, ce que dit
+    // data-coince. On exige les deux.
+    const bloquees = [...(ligne?.querySelectorAll('.anchor-chip[aria-disabled="true"]') || [])];
+    const eteintes = bloquees.map((chip) => chip.dataset.time);
+    const sansRaison = bloquees.filter((chip) => !(chip.getAttribute('data-coince') || '').trim()).length;
     return {
       retenue: ((ligne?.querySelector('.anchor-row-pick') || {}).textContent || '').trim(),
       compteur: ((ligne?.querySelector('.anchor-part-count') || {}).textContent || '').trim(),
       actives,
       eteintes: eteintes.length,
+      sansRaison,
       etat: getChosenLaserTimes(createDefaultFormulaPreference(state.booking.preference || {})),
     };
   });
@@ -190,7 +197,9 @@ server.listen(PORT, '127.0.0.1', async () => {
     await page.evaluate((valeur) => {
       const ligne = document.querySelector('.anchor-row[data-anchor="laser_game"]');
       const chip = ligne ? ligne.querySelector(`.anchor-chip[data-time="${valeur}"]`) : null;
-      if (chip && !chip.disabled) chip.click();
+      // On clique TOUJOURS, comme un client : une heure qui coince repond
+      // desormais par son explication, elle ne fait plus la morte.
+      if (chip) chip.click();
     }, time);
     await page.waitForTimeout(900);
   };
@@ -221,17 +230,26 @@ server.listen(PORT, '127.0.0.1', async () => {
   const etape = await page.evaluate(() => ({
     lignes: document.querySelectorAll('.visit-rail-step .anchor-row[data-anchor="laser_game"]').length,
     pistes: document.querySelectorAll('.anchor-track[data-anchor="laser_game"]').length,
-    detail: (document.querySelector('.anchor-row[data-anchor="laser_game"] .anchor-row-head small') || {}).textContent || '',
+    // LA REGLE NE VIT PLUS DANS UN ELEMENT PRECIS. La refonte du 2026-09-18
+    // (Movsar : « pour laser game ya 3phrases c trop et souvent ca dit la meme
+    // chose ») a fusionne la ligne de detail et le compteur : ce qui doit
+    // tenir, c est que LE CLIENT LISE la regle sur cette etape, pas qu un
+    // <small> la porte. On releve donc tout le texte de l etape.
+    detail: (document.querySelector('.anchor-row[data-anchor="laser_game"]') || {}).textContent || '',
   }));
   ok(etape.lignes === 1, `UNE seule etape laser, pas une par partie (${etape.lignes})`);
   ok(etape.pistes === 1, `UNE seule liste d heures (${etape.pistes})`);
-  // LA REGLE, PAS LA PHRASE. Le libelle a change le 2026-09-18 (« 3 parties ·
-  // choisissez vos heures, l equipe place les autres ») : ce qui doit tenir,
-  // c est que le nombre de parties ACHETEES soit annonce et que le sort des
-  // heures non choisies soit dit. Asserter la phrase mot pour mot rendait ce
-  // gate rouge sur une reformulation qui dit exactement la meme chose.
-  ok(/3 partie/.test(etape.detail) && /(sur place|quipe)/i.test(etape.detail),
-    `elle annonce la regle : 3 parties, et qui place les heures non choisies (${JSON.stringify(etape.detail)})`);
+  // LA REGLE, PAS LA PHRASE. Ce qui doit tenir : le nombre de parties ACHETEES
+  // est annonce, et le sort des heures non choisies est dit. Asserter la phrase
+  // mot pour mot rendait ce gate rouge sur une reformulation qui dit exactement
+  // la meme chose.
+  const tete = etape.detail.replace(/\s+/g, ' ').slice(0, 160);
+  ok(/3 partie/.test(tete) && /(sur place|quipe)/i.test(tete),
+    `elle annonce la regle : 3 parties, et qui place les heures non choisies (${JSON.stringify(tete)})`);
+  // ET UNE SEULE FOIS : c est la plainte de Movsar. « 3 parties » ne doit pas
+  // etre repete par deux elements de la meme etape.
+  const redites = (etape.detail.match(/3 parties/g) || []).length;
+  ok(redites === 1, `« 3 parties » est ecrit UNE fois sur l etape, pas deux (${redites})`);
 
   // ---------------------------------------------------------------------
   console.log('\n[2] Une 2e heure s AJOUTE, elle ne remplace pas la 1re');
@@ -245,7 +263,8 @@ server.listen(PORT, '127.0.0.1', async () => {
   ok(deux.etat.join(' ') === '15:00 17:00', `deux heures retenues (${JSON.stringify(deux.etat)})`);
   ok(deux.actives.join(' ') === '15:00 17:00', `les DEUX pastilles sont marquees a l ecran (${JSON.stringify(deux.actives)})`);
   ok(deux.retenue === '15:00 · 17:00', `la tete d etape liste les deux heures (${JSON.stringify(deux.retenue)})`);
-  ok(/2 heures sur 3/.test(deux.compteur) && /1 partie avec l/.test(deux.compteur),
+  // LA REGLE : ou on en est (2 posees), et ce que devient la troisieme.
+  ok(/2 heures? choisies?/.test(deux.compteur) && /1 plac/.test(deux.compteur) && /quipe/i.test(deux.compteur),
     `le compteur dit ou on en est (${JSON.stringify(deux.compteur)})`);
   ok(deux.eteintes === 0, 'tant qu il reste une partie, aucune heure n est eteinte');
 
@@ -259,8 +278,12 @@ server.listen(PORT, '127.0.0.1', async () => {
   await cliquer('19:00');
   const pleine = await lireEcran();
   ok(pleine.etat.join(' ') === '15:00 17:00 19:00', `trois heures retenues (${JSON.stringify(pleine.etat)})`);
-  ok(pleine.eteintes === 7, `les heures non retenues s eteignent (${pleine.eteintes} sur 10)`);
-  ok(/3 heures sur 3/.test(pleine.compteur) && /retirer/.test(pleine.compteur),
+  ok(pleine.eteintes === 7, `les heures non retenues ne sont plus prenables (${pleine.eteintes} sur 10)`);
+  // ET CHACUNE DIT POURQUOI. C est la demande de Movsar : un bouton qui ne
+  // repond pas ressemble a un bouton casse.
+  ok(pleine.sansRaison === 0, `chacune porte sa raison (${pleine.sansRaison} sans raison)`);
+  // LA REGLE : la liste est pleine, et le moyen d en liberer une est dit.
+  ok(/3 heures/.test(pleine.compteur) && /retirer/.test(pleine.compteur),
     `le compteur explique comment en liberer une (${JSON.stringify(pleine.compteur)})`);
 
   // Un clic sur une heure eteinte ne fait RIEN : pas de remplacement silencieux.

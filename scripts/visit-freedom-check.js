@@ -229,6 +229,13 @@ const MEASURE = () => {
     scrollW: document.documentElement.scrollWidth,
     clientW: document.documentElement.clientWidth,
     railSteps: document.querySelectorAll('.visit-rail > .visit-rail-step').length,
+    // CE QUI SE VIT SANS HORAIRE N EST PLUS UNE ETAPE DU FIL : depuis la
+    // refonte du 2026-09-18 c est une LIGNE du recapitulatif (Movsar : « en
+    // bas ya aussi 2bloc [...] genre le sans horaire pq a part ? »). Ce qui
+    // doit tenir, c est que l information ne DISPARAISSE pas : on la cherche
+    // donc a son nouvel endroit, et on verifie qu elle ne porte aucune heure.
+    passLibre: (document.querySelector('.anchor-free-pass') || {}).textContent || '',
+    passDansRecap: Boolean(document.querySelector('.formula-visit-summary .anchor-free-pass')),
     railLinks: document.querySelectorAll('.visit-rail > .visit-rail-link').length,
     railOrder: [...document.querySelectorAll('.anchor-row')].map((row) => row.dataset.anchor),
     periodTabs: [...document.querySelectorAll('.anchor-period-tab')].map((tab) => tab.querySelector('.anchor-period-name')?.textContent.trim()),
@@ -468,7 +475,12 @@ async function checkBrowser(page) {
   // L etat de [3b] a deplace le laser : on repart de la paire de reference.
   await bootFormula(page, 'rail', { bowling: GAP_BOWLING, laser: GAP_LASER });
   const rail = await measureCell(page, 1280, 'dark');
-  ok(rail.railSteps === 3, `le fil porte les deux activites ET le pass liberte (${rail.railSteps} etapes)`);
+  ok(rail.railSteps === 2, `le fil porte UNE etape par activite, et rien d autre (${rail.railSteps} etapes)`);
+  // LA MEME GARANTIE QU AVANT, a son nouvel endroit : le pass liberte reste
+  // lisible, et il reste sans heure. Compter 3 etapes ne testait que la forme.
+  ok(rail.passDansRecap && /rythme/i.test(rail.passLibre),
+    `le pass liberte est dans le recapitulatif de la visite (${JSON.stringify(rail.passLibre.replace(/\s+/g, ' ').slice(0, 90))})`);
+  ok(!/\d{1,2}:\d{2}/.test(rail.passLibre), 'et il ne porte toujours aucune heure');
   ok(rail.railLinks === 1, `le lien entre les deux activites est represente (${rail.railLinks})`);
   ok(rail.picks.includes(GAP_BOWLING) && rail.picks.includes(GAP_LASER),
     `chaque etape affiche l heure retenue dans son titre (${rail.picks.join(', ')})`);

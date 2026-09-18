@@ -1952,7 +1952,7 @@ async function main() {
     await page.evaluate(() => setFormulaLaserPlacement('onsite'));
     await page.waitForTimeout(350);
     const onSiteState = await page.evaluate(() => ({
-      laserDisabled: Array.from(document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip')).every(el => el.disabled),
+      laserDisabled: Array.from(document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip')).every(el => el.getAttribute('aria-disabled') === 'true'),
       summary: document.querySelector('.formula-visit-summary')?.textContent.replace(/\s+/g, ' ') || '',
       toggle: Boolean(document.querySelector('.anchor-onsite input:checked')),
     }));

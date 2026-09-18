@@ -370,7 +370,13 @@ async function checkTrack(page) {
       // la visite entiere (grisees, avec leur raison) : elles sont desactivees
       // par construction, ce sont les heures prenables qui doivent se tabuler.
       focusable: chips.filter((chip) => !chip.classList.contains('is-unavailable')).every((chip) => !chip.disabled && chip.tabIndex >= 0),
-      unavailableDisabled: chips.filter((chip) => chip.classList.contains('is-unavailable')).every((chip) => chip.disabled && (chip.dataset.reason || '').length > 0),
+      // UNE HEURE INDISPONIBLE RESTE ATTEIGNABLE AU CLAVIER, et elle porte sa
+      // raison (2026-09-18). `disabled` la sortait du parcours de tabulation :
+      // un client au clavier ne pouvait meme pas lire pourquoi elle coince.
+      unavailableDisabled: chips.filter((chip) => chip.classList.contains('is-unavailable')).every((chip) => chip.getAttribute('aria-disabled') === 'true'
+        && (chip.dataset.reason || '').length > 0
+        && (chip.getAttribute('data-coince') || '').length > 0
+        && chip.tabIndex >= 0),
       scrollable: element.scrollWidth > element.clientWidth + 1,
       rows: rows.size,
       // CHAQUE heure PEINTE est entierement dans la largeur de la grille :
@@ -647,7 +653,8 @@ async function checkFluidity(page) {
     // 2026-08-24 (la grille montre toute la journee). Mesurer un clic dans le
     // vide serait un faux vert : la mesure est retiree avec la fonctionnalite.
     results[`pick-${width}`] = await measureInteraction(page, 'choix d une heure', () => page.evaluate(() => {
-      const chip = [...document.querySelectorAll('.anchor-chip')].find((item) => !item.classList.contains('active') && !item.disabled);
+      // Une pastille REELLEMENT prenable : ni retenue, ni coincee.
+      const chip = [...document.querySelectorAll('.anchor-chip')].find((item) => !item.classList.contains('active') && !item.disabled && !item.hasAttribute('data-coince'));
       if (chip) chip.click();
     }));
     results[`back-${width}`] = await measureInteraction(page, 'retour arriere (sens inverse)', () => page.evaluate(() => goStep(1)));

@@ -7380,17 +7380,77 @@ function anchorSlotCardModel(activity, item, { isChained, unavailable = false, d
   return { time: item.time, endTime, tag, tagTone, meta, label };
 }
 
+// LES HEURES QU UNE PARTIE DE LASER EMPORTE AVEC ELLE.
+//
+// Un groupe trop nombreux pour l arene joue en plusieurs passages : 49 joueurs
+// dans une arene de 30 postes, c est 25 puis 24. Le moteur place ces passages
+// l un apres l autre sur la grille des departs (:00/:30) : une partie lancee a
+// 10:00 occupe AUSSI 10:30. Le client, lui, ne voyait rien : il choisissait
+// 10:00 puis 10:30 comme deux parties, et son second passage tombait sur sa
+// propre partie suivante (mesure du 2026-09-18 sur le tunnel reel).
+//
+// Rend une Map heure -> { rang, total, depuis, fin } :
+//   rang   : le numero du passage qui occupe cette heure (2 pour le second) ;
+//   total  : en combien de passages le groupe joue ;
+//   depuis : l heure retenue qui emporte celle-ci ;
+//   fin    : la fin du dernier passage de cette partie.
+//
+// Rien n est calcule ici : `getLaserCandidateWindows` est la fonction que le
+// moteur et le serveur utilisent deja, avec la capacite REELLE de l arene du
+// centre affiche. On ne garde que la partie 1 (`countIndex`), parce qu on
+// demande les vagues d UNE partie, pas la suite des parties achetees.
+function heuresEmporteesParLeLaser(heuresRetenues, pax) {
+  const emportees = new Map();
+  if (typeof getBalancedLaserWaveSizes !== 'function' || typeof getLaserCandidateWindows !== 'function') return emportees;
+  // Un groupe qui tient en une fois n emporte rien : pas de pointille, pas de
+  // phrase, rien ne change pour la grande majorite des reservations.
+  if (getBalancedLaserWaveSizes(pax).length <= 1) return emportees;
+  (Array.isArray(heuresRetenues) ? heuresRetenues : []).filter(Boolean).forEach((heure) => {
+    const passages = getLaserCandidateWindows(heure, 0.5, pax).filter((f) => Number(f.countIndex || 1) === 1);
+    if (passages.length <= 1) return;
+    const fin = numToTime(passages[passages.length - 1].end);
+    passages.forEach((passage, index) => {
+      // Le premier passage EST l heure cliquee : elle n est pas emportee.
+      if (index === 0) return;
+      const quand = numToTime(passage.start);
+      if (!emportees.has(quand)) emportees.set(quand, { rang: index + 1, total: passages.length, depuis: heure, fin });
+    });
+  });
+  return emportees;
+}
+
 // POURQUOI CETTE HEURE COINCE, en une phrase que le client peut agir.
 // Ecrite UNE fois : le rendu initial et la mise a jour en place s en servent
 // tous les deux, et le gate la lit au meme endroit.
 // Une chaine vide = l heure est prenable.
-function raisonHeureCoincee({ rangeeVerrouillee, listePleine, parties, indisponible, raisonCourte }) {
+function raisonHeureCoincee({ rangeeVerrouillee, listePleine, parties, indisponible, raisonCourte, vague = null, retenue = false }) {
+  // UNE HEURE DEJA PRISE NE COINCE JAMAIS. Le verdict du moteur porte sur une
+  // heure A PRENDRE ; celle-ci, le client l a prise, et le seul geste qui lui
+  // reste dessus est de la retirer. La faire coincer lui volait ce geste : le
+  // clic ouvrait une bulle au lieu de liberer l heure, pendant que le compteur
+  // juste au-dessus disait « cliquez l une d elles pour la retirer »
+  // (mesure du 2026-09-18 : 11:00 retenue ET « pas prenable »). Ce que le
+  // moteur refuse alors, c est la COMBINAISON, et cela se dit dans le plan,
+  // pas sur le bouton qui sert a en sortir.
+  if (retenue) return { motif: '', texte: '' };
   // LE MOTIF, A COTE DE LA RAISON. Le rouge doit dire « il y a un obstacle »,
   // pas « vous avez choisi ca » : quand le client coche « l equipe place mes
   // parties », TOUTE la grille coince, et la peindre en rouge pointille ferait
   // une alarme pour un etat parfaitement normal.
   if (rangeeVerrouillee) {
     return { motif: 'choix', texte: 'Vous avez choisi de laisser l’équipe placer vos parties. Décochez la case juste au-dessus pour choisir une heure vous-même.' };
+  }
+  // CETTE HEURE EST DEJA A LUI : c est son propre second passage. Ce n est ni
+  // une panne ni un refus du centre, donc ni rouge ni « indisponible ». Elle
+  // passe AVANT le compteur plein : « vos 3 heures sont choisies » serait vrai
+  // mais a cote de la question, le client veut savoir pourquoi CETTE heure-la.
+  if (vague) {
+    const rang = Math.max(2, Number(vague.rang) || 2);
+    const total = Math.max(2, Number(vague.total) || 2);
+    return {
+      motif: 'vague',
+      texte: `C’est le passage de votre ${rang}e groupe. Trop nombreux pour l’arène, vous jouez en ${total} fois : la partie lancée à ${vague.depuis} occupe l’arène jusqu’à ${vague.fin}.`,
+    };
   }
   if (listePleine) {
     const total = Math.max(1, Number(parties) || 1);
@@ -7458,6 +7518,12 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   // heures retenues qui decident de l'etat des pastilles ET des onglets de
   // moment, declare ici parce que les deux s'en servent.
   const multi = Array.isArray(chosen);
+  // LES HEURES QUE SES PROPRES PASSAGES EMPORTENT. Calculees UNE fois pour
+  // toute la grille : une heure retenue occupe la sienne et celles de ses
+  // passages suivants.
+  const emportees = activity.activityId === 'laser_game' && !disabled
+    ? heuresEmporteesParLeLaser(multi ? chosen : (selected ? [selected] : []), state.booking.pax)
+    : new Map();
   // HORIZONTAL : une seule piste par activité qui porte TOUTE la journée. Les
   // onglets de moment cessent d'être un filtre (26 heures sur 27 masquées) et
   // deviennent des points de saut dans la piste : rien n'est plus caché.
@@ -7529,6 +7595,9 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     // Multi-choix : une heure retenue est active, et quand le compte est
     // atteint les autres cessent d'etre cliquables (le compteur dit pourquoi).
     const isActive = multi ? chosen.includes(item.time) : item.time === selected;
+    // Une heure RETENUE n est jamais « emportee » : le client l a prise, c est
+    // elle qui emporte les autres.
+    const emportee = isActive ? null : (emportees.get(item.time) || null);
     // Une heure que le moteur juge impossible pour la visite ENTIERE reste
     // visible, grisee, avec sa raison courte : le client sait pourquoi au
     // moment de choisir, pas a la derniere etape (brief 2026-09-02).
@@ -7552,6 +7621,10 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     if (justPicked) formulaJustPicked = null;
     const model = anchorSlotCardModel(activity, item, { isChained, unavailable, decale: conflit && decalable ? conflit : null });
     if (!unavailable && sharedAnchorMeta && model.meta === sharedAnchorMeta) model.meta = '';
+    // Le secondaire de la carte dit A QUI est cette heure, pas la mecanique du
+    // moteur (« Chevauche Laser Game (partie 1) 10:00 ») : la phrase complete
+    // vit dans la bulle, sous le ⓘ.
+    if (emportee) model.meta = `Votre ${Math.max(2, Number(emportee.rang) || 2)}e groupe`;
     const reasonAttrs = unavailable ? ` data-reason="${escapeHtml(model.meta)}" title="${escapeHtml(model.meta)}"` : '';
     // UNE HEURE QUI COINCE RESTE CLIQUABLE, ET ELLE DIT POURQUOI (Movsar,
     // 2026-09-18 : « ya toujours des fois ou des boutons sont impossible a
@@ -7567,6 +7640,8 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
       parties: Number(activity.count || 1),
       indisponible: Boolean(unavailable && !decalable),
       raisonCourte: model.meta,
+      vague: emportee,
+      retenue: isActive,
     });
     const raisonCoince = blocage.texte;
     const coince = Boolean(raisonCoince);
@@ -7949,6 +8024,12 @@ function syncFormulaAnchorUi(formule, { busy }) {
       ? ''
       : (chosen ? (chosen[0] || '') : (times[activity.activityId] || ''));
     const chained = disabled || (chosen && chosen.length) ? '' : getChainedAnchorTime(activity.activityId);
+    // LA MEME REGLE QU AU RENDU INITIAL (voir heuresEmporteesParLeLaser) :
+    // sans elle, ce chemin effacerait le pointille du second passage des que le
+    // client reclique, parce qu il ne saurait pas d ou vient le `data-coince`.
+    const emportees = isLaser && !disabled
+      ? heuresEmporteesParLeLaser(chosen || (selected ? [selected] : []), state.booking.pax)
+      : new Map();
     const chips = [...row.querySelectorAll('.anchor-chip')];
     if (chips.length !== (activity.times || []).length) return false;
     // Une heure qui change de verdict (possible <-> impossible, ou de raison)
@@ -7958,6 +8039,13 @@ function syncFormulaAnchorUi(formule, { busy }) {
       const item = (activity.times || [])[index];
       const unavailable = Boolean(item && item.ok === false);
       if (chip.classList.contains('is-unavailable') !== unavailable) return true;
+      // Une heure qui devient (ou cesse d etre) le passage d un autre groupe
+      // change de CARTE : son secondaire et sa bulle viennent du rendu complet,
+      // qui les ecrit d un seul geste. Ce chemin-ci ne sait patcher qu un etat,
+      // pas reecrire une carte.
+      const heure = chip.dataset.time || '';
+      const retenue = chosen ? chosen.includes(heure) : heure === selected;
+      if ((chip.getAttribute('data-coince-motif') === 'vague') !== Boolean(!retenue && emportees.get(heure))) return true;
       return unavailable && (chip.dataset.reason || '') !== (item.reason || 'Indisponible');
     })) return false;
     chips.forEach((chip, index) => {
@@ -7995,6 +8083,8 @@ function syncFormulaAnchorUi(formule, { busy }) {
         parties: Number(activity.count || 1),
         indisponible: unavailable,
         raisonCourte: chip.getAttribute('data-reason') || '',
+        vague: isActive ? null : (emportees.get(time) || null),
+        retenue: isActive,
       });
       const raisonCoince = blocage.texte;
       if (chip.disabled) chip.disabled = false;

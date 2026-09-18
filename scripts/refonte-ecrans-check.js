@@ -52,7 +52,22 @@ const DATE = nextSaturday();
 // l API ne soit chargee, donc aucune lecture de base.
 const database = require(path.join(ROOT, 'lib/database'));
 database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont' });
-const availability = require(path.join(ROOT, 'api/public-availability.js'));
+let availability = require(path.join(ROOT, 'api/public-availability.js'));
+
+// RECHARGER L API APRES AVOIR MUTE LE MOTEUR. Un fichier mute sur le disque ne
+// change rien a un module deja require : la contre-epreuve du bloc [10] ne
+// mordrait pas et se tairait. On vide donc le cache du moteur ET de tout ce qui
+// le require sur ce chemin. Le module lib/database n est PAS vide : c est sur lui
+// que l instantane est neutralise plus haut, et le rechargement de l API va le
+// relire tel quel.
+const MODULES_DU_MOTEUR = [
+  'lib/ops-engine.js', 'lib/availability-slots.js', 'lib/booking-complements.js',
+  'lib/ops-agents.js', 'api/public-availability.js',
+];
+function rechargerLApi() {
+  MODULES_DU_MOTEUR.forEach((m) => { delete require.cache[require.resolve(path.join(ROOT, m))]; });
+  availability = require(path.join(ROOT, 'api/public-availability.js'));
+}
 
 let failures = 0;
 function record(label, cond, detail = '') {
@@ -355,8 +370,17 @@ async function main() {
     if (case_) { case_.checked = true; case_.dispatchEvent(new Event('change', { bubbles: true })); }
     return { pleines, cocheFaite: Boolean(case_) };
   });
-  record('liste pleine : le motif est un OBSTACLE',
-    motifs.pleines.length > 0 && motifs.pleines.every((m) => m.motif === 'obstacle'),
+  // UN TROISIEME MOTIF EXISTE DEPUIS LE 2026-09-19 : « vague », les heures que
+  // les propres passages du groupe emportent (bloc [10]). Ce n est ni un
+  // obstacle du centre ni une decision du client : elles sont peintes en
+  // accent, pas en rouge. La regle tenue ici reste la meme qu avant : avec une
+  // liste pleine, AUCUNE heure ne se presente comme un choix du client, et
+  // l obstacle est bien present. Asserter « toutes obstacle » etait une
+  // formulation, pas la regle.
+  record('liste pleine : le motif est un OBSTACLE, jamais un choix du client',
+    motifs.pleines.length > 0
+      && motifs.pleines.every((m) => m.motif === 'obstacle' || m.motif === 'vague')
+      && motifs.pleines.some((m) => m.motif === 'obstacle'),
     JSON.stringify([...new Set(motifs.pleines.map((m) => m.motif))]));
   await page.waitForTimeout(2200);
   const choix = await page.evaluate(() => {
@@ -578,6 +602,165 @@ async function main() {
     JSON.stringify({ visite: laserVisite, validation: laserRecap }));
 
   await context.close();
+
+  // ===================================================================== [10]
+  section('[10] Ce que le second passage du groupe emporte est dit, et pointille');
+  // Le groupe de 49 ne tient pas dans une arene de 30 : il joue en DEUX
+  // passages. Une partie lancee a 10:00 tient donc l arene jusqu a 10:55, et
+  // 10:30 est deja prise par le client lui-meme. Avant le 2026-09-18 l ecran
+  // offrait 10:30 avec « Bowling se decale » et l acceptait : trois heures
+  // retenues 10:00, 10:30, 11:00, soit 49 joueurs dans 30 postes a 10:30.
+  const { context: ctx10, page: p10 } = await ouvrirLesDeuxEcrans(browser, 'vagues');
+  await allerAuxHeures(p10);
+  const LIGNE_LASER = '.anchor-row[data-anchor="laser_game"]';
+  // LE MONTAGE, AVANT LE COMPORTEMENT. Le nombre de passages est derive ICI, a
+  // partir du nombre de joueurs et de la capacite declaree du centre : ce n est
+  // pas la fonction sous test qui le fournit.
+  const montage = await p10.evaluate((sel) => ({
+    pax: Number(state.booking.pax) || 0,
+    postes: typeof getLaserArenaCapacity === 'function' ? getLaserArenaCapacity() : 0,
+    pastilles: document.querySelectorAll(`${sel} .anchor-chip`).length,
+  }), LIGNE_LASER);
+  const passages = montage.postes > 0 ? Math.ceil(montage.pax / montage.postes) : 0;
+  record('montage : le groupe ne tient pas en une fois dans l arene',
+    montage.pax === 49 && montage.postes > 0 && passages === 2 && montage.pastilles > 10,
+    JSON.stringify({ ...montage, passages }));
+
+  // On retient une heure LIBRE, puis on regarde ce que l ecran fait de la
+  // suivante. Les heures sont sur la grille des departs (:00/:30) et se
+  // suivent dans la liste : la « suivante » est la pastille d apres, prise
+  // dans le MEME moment deplie (un moment replie n a pas de pastille a
+  // l ecran, et un clic dessus ne serait pas celui d un client).
+  const suite = await p10.evaluate((sel) => {
+    const chips = [...document.querySelectorAll(`${sel} .slot-period.is-open .anchor-chip`)];
+    const index = chips.findIndex((c, i) => i + 1 < chips.length && !c.classList.contains('active')
+      && !c.hasAttribute('data-coince') && !c.classList.contains('is-unavailable'));
+    return { cliquee: index >= 0 ? chips[index].dataset.time : '', suivante: index >= 0 ? chips[index + 1].dataset.time : '' };
+  }, LIGNE_LASER);
+  record('montage : une heure libre et son heure suivante existent', Boolean(suite.cliquee && suite.suivante), JSON.stringify(suite));
+  const cliquer = (page, heure) => page.evaluate((args) => {
+    const chip = document.querySelector(`${args[0]} .anchor-chip[data-time="${args[1]}"]`);
+    if (chip) chip.click();
+  }, [LIGNE_LASER, heure]);
+  await cliquer(p10, suite.cliquee);
+  await p10.waitForTimeout(2500);
+
+  const vu = await p10.evaluate((args) => {
+    const [sel, heure] = args;
+    const chip = document.querySelector(`${sel} .anchor-chip[data-time="${heure}"]`);
+    const cliquee = document.querySelector(`${sel} .anchor-chip[data-time="${args[2]}"]`);
+    if (!chip) return null;
+    const style = getComputedStyle(chip);
+    const racine = getComputedStyle(document.documentElement);
+    const pas = typeof getVisitRailSteps === 'function' ? getVisitRailSteps() : [];
+    const laser = pas.find((s) => s.activity.activityId === 'laser_game');
+    const item = laser ? (laser.activity.times || []).find((t) => t.time === heure) : null;
+    return {
+      motif: chip.getAttribute('data-coince-motif') || '',
+      phrase: chip.getAttribute('data-coince') || '',
+      secondaire: ((chip.querySelector('.slot-card-meta') || {}).textContent || '').trim(),
+      info: Boolean(chip.querySelector('.slot-card-info')),
+      pointille: style.borderTopStyle,
+      bord: style.borderTopColor,
+      danger: (racine.getPropertyValue('--danger') || '').trim(),
+      accent: (racine.getPropertyValue('--accent') || '').trim(),
+      cliqueeActive: Boolean(cliquee && cliquee.classList.contains('active')),
+      retenues: [...document.querySelectorAll(`${sel} .anchor-chip.active`)].map((c) => c.dataset.time),
+      moteur: item ? { ok: item.ok !== false, conflit: (item.conflict || {}).activityId || '', raison: item.reason || '' } : null,
+    };
+  }, [LIGNE_LASER, suite.suivante, suite.cliquee]);
+  record('montage : l heure cliquee est bien retenue', Boolean(vu && vu.cliqueeActive), JSON.stringify({ retenues: vu && vu.retenues }));
+  record('l heure du second passage porte le motif « vague »', Boolean(vu && vu.motif === 'vague'),
+    JSON.stringify({ heure: suite.suivante, motif: vu && vu.motif, phrase: (vu && vu.phrase || '').slice(0, 90) }));
+  // POINTILLE, ET PAS ROUGE : ce n est pas une panne, l heure est deja a lui.
+  record('elle est en POINTILLE, et son bord n est pas celui d un obstacle',
+    Boolean(vu && vu.pointille === 'dashed' && vu.bord && vu.danger && vu.bord !== vu.danger),
+    JSON.stringify({ style: vu && vu.pointille, bord: vu && vu.bord, danger: vu && vu.danger }));
+  record('elle porte un ⓘ et une phrase qui nomme l autre groupe ET l heure d ou il vient',
+    Boolean(vu && vu.info && /groupe/i.test(vu.phrase) && vu.phrase.includes(suite.cliquee)),
+    JSON.stringify({ info: vu && vu.info, phrase: (vu && vu.phrase || '').slice(0, 160) }));
+  record('son secondaire dit a QUI est l heure, pas la mecanique du moteur',
+    Boolean(vu && /groupe/i.test(vu.secondaire) && !/chevauche/i.test(vu.secondaire)),
+    JSON.stringify({ secondaire: vu && vu.secondaire }));
+  // LE MOTEUR DIT LA MEME CHOSE QUE L ECRAN. Nommer le bowling faisait proposer
+  // « On decale », et decaler le bowling ne libere pas l arene.
+  record('le moteur nomme le chevauchement INDEPLACABLE : la partie de laser',
+    Boolean(vu && vu.moteur && vu.moteur.ok === false && vu.moteur.conflit === 'laser_game'),
+    JSON.stringify(vu && vu.moteur));
+
+  // ET SURTOUT : elle ne se prend pas. C est le trou, pas l habillage.
+  const avantClic = (vu && vu.retenues || []).join('|');
+  await cliquer(p10, suite.suivante);
+  await p10.waitForTimeout(2000);
+  const apresClicVague = await p10.evaluate((sel) => [...document.querySelectorAll(`${sel} .anchor-chip.active`)].map((c) => c.dataset.time).join('|'), LIGNE_LASER);
+  record('cliquer cette heure ne la retient PAS : le clic explique, il ne reserve pas',
+    apresClicVague === avantClic, JSON.stringify({ avant: avantClic, apres: apresClicVague }));
+
+  // UNE HEURE RETENUE SE RETIRE TOUJOURS (mesure du 2026-09-18 : 11:00 restait
+  // retenue ET disait « pas prenable », et son clic ouvrait une bulle au lieu
+  // de la liberer, pendant que le compteur invitait a cliquer pour retirer).
+  await cliquer(p10, suite.cliquee);
+  await p10.waitForTimeout(2000);
+  const apresRetrait = await p10.evaluate((sel) => [...document.querySelectorAll(`${sel} .anchor-chip.active`)].map((c) => c.dataset.time), LIGNE_LASER);
+  record('une heure retenue se retire d un clic, toujours',
+    !apresRetrait.includes(suite.cliquee), JSON.stringify({ avant: avantClic, apres: apresRetrait.join('|') }));
+  await ctx10.close();
+
+  // =================================================== [10] contre-epreuves
+  section('[10 bis] Contre-epreuves : sans la regle, ce gate rougit-il ?');
+  const appAvant = fs.readFileSync(APP_JS, 'utf8');
+  const moteurAvant = fs.readFileSync(path.join(ROOT, 'lib/ops-engine.js'), 'utf8');
+  try {
+    const fdl = appAvant.includes('\r\n') ? '\r\n' : '\n';
+    // (a) L ECRAN : la carte des heures emportees redevient vide. Rien d autre
+    // ne bouge, donc ce qui rougit ne peut venir que de cette regle-la.
+    const ancre = 'function heuresEmporteesParLeLaser(heuresRetenues, pax) {';
+    if (appAvant.split(ancre).length - 1 !== 1) throw new Error('ancre de heuresEmporteesParLeLaser introuvable');
+    fs.writeFileSync(APP_JS, appAvant.split(ancre).join(`${ancre}${fdl}  if (true) return new Map();`));
+    const { context: ctxA, page: pA } = await ouvrirLesDeuxEcrans(browser, 'vagues-mutant-ecran');
+    await allerAuxHeures(pA);
+    await cliquer(pA, suite.cliquee);
+    await pA.waitForTimeout(2500);
+    const sansRegle = await pA.evaluate((args) => {
+      const chip = document.querySelector(`${args[0]} .anchor-chip[data-time="${args[1]}"]`);
+      return chip ? { motif: chip.getAttribute('data-coince-motif') || '', secondaire: ((chip.querySelector('.slot-card-meta') || {}).textContent || '').trim() } : null;
+    }, [LIGNE_LASER, suite.suivante]);
+    record('sans la carte des heures emportees, l heure perd son motif « vague » : ce gate ROUGIRAIT',
+      Boolean(sansRegle && sansRegle.motif !== 'vague'), JSON.stringify(sansRegle));
+    await ctxA.close();
+    fs.writeFileSync(APP_JS, appAvant);
+
+    // (b) LE MOTEUR : on remet le premier chevauchement venu, celui qui nommait
+    // le bowling. Le module est deja charge : sans rechargement, la mutation ne
+    // mordrait pas et la contre-epreuve se tairait.
+    const ancreMoteur = `    const hit = windows.find((item) => item.activityId === anchor.activityId && chevauche(item))
+      || windows.find(chevauche);`.split('\n').join(moteurAvant.includes('\r\n') ? '\r\n' : '\n');
+    if (moteurAvant.split(ancreMoteur).length - 1 !== 1) throw new Error('ancre du chevauchement introuvable');
+    fs.writeFileSync(path.join(ROOT, 'lib/ops-engine.js'), moteurAvant.split(ancreMoteur).join('    const hit = windows.find(chevauche);'));
+    rechargerLApi();
+    const { context: ctxB, page: pB } = await ouvrirLesDeuxEcrans(browser, 'vagues-mutant-moteur');
+    await allerAuxHeures(pB);
+    await cliquer(pB, suite.cliquee);
+    await pB.waitForTimeout(2500);
+    const sansPriorite = await pB.evaluate((args) => {
+      const pas = typeof getVisitRailSteps === 'function' ? getVisitRailSteps() : [];
+      const laser = pas.find((s) => s.activity.activityId === 'laser_game');
+      const item = laser ? (laser.activity.times || []).find((t) => t.time === args[1]) : null;
+      return item ? { conflit: (item.conflict || {}).activityId || '', raison: item.reason || '' } : null;
+    }, [LIGNE_LASER, suite.suivante]);
+    record('avec le premier chevauchement venu, le moteur nomme une AUTRE activite : ce gate ROUGIRAIT',
+      Boolean(sansPriorite && sansPriorite.conflit && sansPriorite.conflit !== 'laser_game'), JSON.stringify(sansPriorite));
+    await ctxB.close();
+  } catch (error) {
+    record('contre-epreuves des vagues montables', false, error.message);
+  } finally {
+    fs.writeFileSync(APP_JS, appAvant);
+    fs.writeFileSync(path.join(ROOT, 'lib/ops-engine.js'), moteurAvant);
+    rechargerLApi();
+  }
+  record('app-main.js restaure apres les contre-epreuves des vagues', fs.readFileSync(APP_JS, 'utf8') === appAvant);
+  record('lib/ops-engine.js restaure apres les contre-epreuves des vagues',
+    fs.readFileSync(path.join(ROOT, 'lib/ops-engine.js'), 'utf8') === moteurAvant);
 
   // ====================================================================== [6]
   section('[6] Contre-epreuve par mutation : ce gate sait-il rougir ?');

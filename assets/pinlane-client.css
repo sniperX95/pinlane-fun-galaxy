@@ -6613,6 +6613,37 @@ body.customer-mode .client-footer {
   color: var(--muted);
 }
 
+/* LE SECOND PASSAGE DU GROUPE (2026-09-18, Movsar : « faut montrer la
+   prochaine heure [...] de maniere pointiller et expliquer que cest pour
+   l autre groupe »). Un groupe trop nombreux pour l arene joue en plusieurs
+   fois : la partie lancee a 10:00 revient a 10:30 avec son second groupe.
+   Cette heure-la n est pas un refus du centre, elle est deja a lui. Pointille
+   d accent, pas de rouge, pas le gris d une heure morte ; et le curseur reste
+   une main, parce que le clic OUVRE l explication.
+   Pose apres la regle .is-unavailable : specificite egale, l ordre tranche. */
+#clientView .anchor-chip[data-coince-motif="vague"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  opacity: 1;
+  cursor: pointer;
+}
+
+#clientView .anchor-chip[data-coince-motif="vague"]:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+#clientView .anchor-chip[data-coince-motif="vague"] .slot-card-time,
+#clientView .anchor-chip[data-coince-motif="vague"] .slot-card-end,
+#clientView .anchor-chip[data-coince-motif="vague"] .slot-card-meta {
+  color: var(--accent-strong);
+}
+
+#clientView .anchor-chip[data-coince-motif="vague"] .slot-card-info { color: var(--accent); }
+
+#clientView .anchor-chip[data-coince-motif="vague"] .slot-card-why {
+  border-color: var(--accent);
+}
+
 /* UNE HEURE QUI CHEVAUCHE L AUTRE ACTIVITE SE PREND QUAND MEME (entretien Seb,
    2026-09-17). Elle n est ni grisee ni verrouillee : elle annonce ce qu elle
    deplace (« On decale », « Bowling se decale ») et le clic replace l autre

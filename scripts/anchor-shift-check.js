@@ -194,7 +194,13 @@ const ETAT_PASTILLE = () => {
   const donnee = laser ? (laser.times || []).find((t) => t.time === '14:00') : null;
   return {
     existe: Boolean(chip),
-    desactivee: chip ? chip.disabled : null,
+    // PRENABLE ET ATTEIGNABLE SONT DEUX CHOSES (2026-09-18). Une heure qui
+    // coince reste cliquable pour expliquer : ce n est plus `disabled` qui dit
+    // qu elle est refusee, c est `aria-disabled`, et `data-coince` porte la
+    // raison. `desactivee` garde son nom mais mesure la bonne chose.
+    desactivee: chip ? chip.getAttribute('aria-disabled') === 'true' : null,
+    morte: chip ? chip.disabled : null,
+    raison: chip ? (chip.getAttribute('data-coince') || '') : '',
     decalable: chip ? chip.classList.contains('is-shiftable') : null,
     grisee: chip ? chip.classList.contains('is-unavailable') : null,
     tag: chip ? ((chip.querySelector('.slot-card-tag') || {}).textContent || '').trim() : '',
@@ -254,13 +260,22 @@ async function main() {
         const dernier = chips[chips.length - 1];
         return {
           time: dernier ? dernier.getAttribute('data-time') : '',
-          desactivee: dernier ? dernier.disabled : null,
+          // Le refus se lit sur aria-disabled, plus sur `disabled` : une heure
+          // refusee reste cliquable pour dire pourquoi (2026-09-18).
+          desactivee: dernier ? dernier.getAttribute('aria-disabled') === 'true' : null,
           grisee: dernier ? dernier.classList.contains('is-unavailable') : null,
           decalable: dernier ? dernier.classList.contains('is-shiftable') : null,
           meta: dernier ? ((dernier.querySelector('.slot-card-meta') || {}).textContent || '').trim() : '',
+          morte: dernier ? dernier.disabled : null,
+          raison: dernier ? (dernier.getAttribute('data-coince') || '') : '',
         };
       });
-      record('la derniere heure de la journee est refusee par la FERMETURE', fermeture.grisee === true && fermeture.desactivee === true, JSON.stringify(fermeture));
+      record('la derniere heure de la journee est refusee par la FERMETURE',
+        fermeture.grisee === true && fermeture.desactivee === true, JSON.stringify(fermeture));
+      // ET ELLE RESTE CLIQUABLE POUR LE DIRE. Un refus muet ressemble a un
+      // bouton casse : le client reclique et croit que la page ne repond plus.
+      record('elle n est pas MORTE pour autant, et elle porte sa raison',
+        fermeture.morte === false && fermeture.raison.length > 10, JSON.stringify({ morte: fermeture.morte, raison: fermeture.raison.slice(0, 70) }));
       record('elle n est pas presentee comme deplacable', fermeture.decalable === false, `decalable=${fermeture.decalable}`);
       record('elle dit pourquoi', /fin apr|minuit|ferm/i.test(fermeture.meta), fermeture.meta);
       await ctx2.close();
@@ -285,7 +300,9 @@ async function main() {
           return { etat, heures };
         },
       );
-      record('sans la regle, la pastille redevient un mur : ce gate ROUGIRAIT', mute.etat.desactivee === true && mute.etat.decalable === false, JSON.stringify({ disabled: mute.etat.desactivee, decalable: mute.etat.decalable }));
+      record('sans la regle, la pastille redevient un mur : ce gate ROUGIRAIT',
+        mute.etat.desactivee === true && mute.etat.decalable === false,
+        JSON.stringify({ refusee: mute.etat.desactivee, decalable: mute.etat.decalable, raison: String(mute.etat.raison || '').slice(0, 60) }));
       record('et le clic ne donne plus l heure demandee', mute.heures.laser_game !== '14:00', JSON.stringify(mute.heures));
     } catch (error) {
       record('contre-epreuve montable', false, error.message);

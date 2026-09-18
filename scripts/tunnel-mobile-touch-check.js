@@ -410,7 +410,7 @@ async function main() {
     if (shape.height >= 640) {
       ok(paging.fits, `mobile : l etape creneau tient sans defiler (${shape.width}x${shape.height}, ${paging.fitsMesure})`);
     }
-    const chips = await page.evaluate(() => document.querySelectorAll('.anchor-chip:not([disabled])').length);
+    const chips = await page.evaluate(() => document.querySelectorAll('.anchor-chip:not([data-coince])').length);
     ok(chips > 0, `grille d ancres rendue (${chips} heures)`);
     const hOverflow = await page.evaluate(() => {
       const W = window.innerWidth; const out = [];
@@ -479,7 +479,7 @@ async function main() {
     await page.evaluate(() => document.querySelector('.anchor-mobile-back')?.scrollIntoView({ block: 'center' }));
     await provenTap(page, '.anchor-mobile-back', 'retour a la page bowling');
     await settle(page, 600);
-    const chipLabel = await markReachable(page, '.anchor-chip:not([disabled]):not(.active)');
+    const chipLabel = await markReachable(page, '.anchor-chip:not([data-coince]):not(.active)');
     ok(!!chipLabel, `une heure atteignable (${chipLabel || 'aucune'})`);
     await provenTap(page, '[data-touch-target]', `heure ${chipLabel}`);
     await settle(page, 1200);
@@ -510,7 +510,7 @@ async function main() {
     const laserTime = await page.evaluate(() => {
       const bowlingTime = state.booking.preference?.preferredTimes?.bowling || '';
       const fin = (Number(bowlingTime.split(':')[0]) + 1) * 60 + Number(bowlingTime.split(':')[1] || 0);
-      const chips = [...document.querySelectorAll('.visit-rail-step[data-mobile-index="1"] .anchor-chip:not([disabled])')];
+      const chips = [...document.querySelectorAll('.visit-rail-step[data-mobile-index="1"] .anchor-chip:not([data-coince])')];
       const chip = chips.find((el) => {
         const [h, m] = String(el.dataset.time || '').split(':').map(Number);
         return h * 60 + (m || 0) >= fin;

@@ -240,7 +240,7 @@ async function main() {
     record('et son annonce accessible le dit', Boolean(deplie && deplie.annonce === 'true'));
 
     const heureDuMoment = await page.evaluate((cle) => {
-      const chip = document.querySelector(`.anchor-row[data-anchor="bowling"] .slot-period[data-period="${cle}"] .anchor-chip:not([disabled])`);
+      const chip = document.querySelector(`.anchor-row[data-anchor="bowling"] .slot-period[data-period="${cle}"] .anchor-chip:not([data-coince])`);
       if (!chip) return '';
       chip.click();
       return chip.getAttribute('data-time') || '';

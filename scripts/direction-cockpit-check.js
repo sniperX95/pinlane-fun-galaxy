@@ -896,7 +896,12 @@ async function main() {
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
   const errs = [];
-  page.on('console', (msg) => { if (msg.type() === 'error') errs.push(msg.text()); });
+  // L URL VOYAGE AVEC LE TEXTE. La suite du 2026-09-18 est sortie rouge ici
+  // sur « Failed to load resource: net::ERR_NAME_NOT_RESOLVED », parce que
+  // cdn.vercel-insights.com n avait pas resolu : le filtre du bloc [8] cite
+  // pourtant ce domaine, mais il ne le voyait pas, l adresse etant dans la
+  // localisation du message et non dans son texte.
+  page.on('console', (msg) => { if (msg.type() === 'error') errs.push(`${msg.text()}${msg.location && msg.location().url ? ` @${msg.location().url}` : ''}`); });
   page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));
 
   try {

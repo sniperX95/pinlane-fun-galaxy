@@ -67,7 +67,8 @@ async function allerA(page, section) {
 async function ouvrirPage(context, { hash = '#/staff/emails/apercu', theme = 'light' } = {}) {
   const page = await context.newPage();
   const journal = { console: [], pageErrors: [], manques: new Set() };
-  page.on('console', (m) => { if (m.type() === 'error') journal.console.push(m.text()); });
+  // L URL VOYAGE AVEC LE TEXTE (voir daterange-check).
+  page.on('console', (m) => { if (m.type() === 'error') journal.console.push(`${m.text()}${m.location && m.location().url ? ` @${m.location().url}` : ''}`); });
   page.on('pageerror', (e) => journal.pageErrors.push(e.message));
   page.on('response', (r) => { if (r.status() === 404) { const u = new URL(r.url()); journal.manques.add(u.pathname + u.search); } });
   // Le script d amorcage enregistre chaque appel /api (corps et reponse) sans

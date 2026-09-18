@@ -138,7 +138,10 @@ async function runSuite(browser, quiet) {
   const consoleErrors = [];
   const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
   page.on('pageerror', (e) => consoleErrors.push(`PAGEERROR: ${e.message}`));
-  page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(`CONSOLE: ${msg.text()}`); });
+  // L URL VOYAGE AVEC LE TEXTE : le texte d un sous-chargement rate ne la
+  // porte pas, et le filtre plus bas (favicon, vercel-insights) ne pouvait
+  // donc jamais mordre sur un echec reseau.
+  page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(`CONSOLE: ${msg.text()}${msg.location && msg.location().url ? ` @${msg.location().url}` : ''}`); });
 
   const lastChange = () => page.evaluate(() => window.__changes[window.__changes.length - 1] || null);
 

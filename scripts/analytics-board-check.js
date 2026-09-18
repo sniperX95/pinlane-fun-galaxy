@@ -171,7 +171,9 @@ async function runSuite(browser, quiet) {
   const consoleErrors = [];
   const page = await browser.newPage({ viewport: { width: 1200, height: 1400 } });
   page.on('pageerror', (e) => consoleErrors.push(`PAGEERROR: ${e.message}`));
-  page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(`CONSOLE: ${msg.text()}`); });
+  // L URL VOYAGE AVEC LE TEXTE (voir daterange-check) : sans elle, le filtre
+  // « vercel-insights » ne mord pas sur « Failed to load resource ».
+  page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(`CONSOLE: ${msg.text()}${msg.location && msg.location().url ? ` @${msg.location().url}` : ''}`); });
   await page.addInitScript(INIT_SCRIPT);
 
   const sig = () => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.pab-widget'), (c) => c.getAttribute('data-metric') + ':' + c.getAttribute('data-viz')));

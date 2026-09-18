@@ -619,7 +619,17 @@ async function main() {
       const id = getStaffClientRows()[2].id;
       const t0 = performance.now(); selectStaffClient(id); return Math.round(performance.now() - t0);
     });
-    ok(apresRestore < BUDGET, `restauration : le clic est redevenu vif (${apresRestore} ms, budget ${BUDGET} ms)`);
+    // LE VERDICT DE LA RESTAURATION EST RELATIF, LUI AUSSI. Le budget est
+    // etalonne AVANT la contre-epreuve, et celle-ci vient de marteler la page
+    // pendant une minute a CPU x6 : la machine n est plus dans le meme etat.
+    // Mesure du 2026-09-19, meme commit : 2927 ms pour un budget de 3555 ms
+    // quand ce gate tourne seul, 4198 ms pour un budget de 3331 ms dans la
+    // suite complete, alors que le chemin SANS cache coute 55 a 61 SECONDES
+    // dans les deux cas. Ce qui doit etre prouve ici, c est que le memo est
+    // REVENU, pas que la machine est au repos.
+    const seuilRestore = Math.max(BUDGET, 3 * perfSel.t);
+    ok(apresRestore < seuilRestore && apresRestore * 3 < sansMemo,
+      `restauration : le clic est redevenu vif (${apresRestore} ms, borne ${seuilRestore} ms, et ${sansMemo} ms sans cache)`);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
     console.log('\n[SCROLL] Selectionner un client ne fait pas sauter la page');

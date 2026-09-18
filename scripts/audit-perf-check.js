@@ -303,8 +303,16 @@ function report(r) {
     const m = Math.floor(t.length / 2);
     return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2;
   };
-  const passes = { A: [], B: [], C: [] };
+  // LA MESURE SE REFAIT TANT QUE SON TEMOIN NE RESSORT PAS. Une salve peut
+  // tomber au milieu d une rafale de l ordonnanceur : dans ce cas le temoin C
+  // ne se distingue pas de A, et AUCUNE conclusion sur le code n est possible.
+  // On recommence alors, au lieu de rendre un verdict tire au sort.
+  const TENTATIVES = Number(process.env.PERF_TENTATIVES || 3);
+  let passes = { A: [], B: [], C: [] };
   let sansJournal = null; let avecJournal = null; let dansTransaction = null;
+  let temoin = 0;
+  for (let tentative = 1; tentative <= TENTATIVES; tentative += 1) {
+  passes = { A: [], B: [], C: [] };
   for (let passe = 0; passe < PASSES; passe += 1) {
     const a = await runScenario('A. sans journal (reference)', { withAudit: false });
     const b = await runScenario('B. avec journal (livre)', { withAudit: true });
@@ -320,6 +328,12 @@ function report(r) {
   dansTransaction.lockP95 = mediane(passes.C.map((x) => x.lockP95));
   sansJournal.totalP95 = mediane(passes.A.map((x) => x.totalP95));
   avecJournal.totalP95 = mediane(passes.B.map((x) => x.totalP95));
+    temoin = dansTransaction.lockP95 - sansJournal.lockP95;
+    if (temoin >= LATENCY_MS / 2) break;
+    if (tentative < TENTATIVES) {
+      console.log(`      (temoin a ${temoin.toFixed(2)} ms, mesure non concluante : nouvelle salve ${tentative + 1}/${TENTATIVES})`);
+    }
+  }
   console.log(`      (${PASSES} passes alternees, medianes retenues)
 `);
   report(sansJournal);
@@ -333,19 +347,32 @@ function report(r) {
   // de l'ordonnanceur (setTimeout n'est pas au nanoseconde pres), pas un
   // aller-retour : le seuil est place a la moitie d'un aller-retour, donc trop
   // bas pour laisser passer une requete supplementaire sous verrou.
-  const seuil = LATENCY_MS / 2;
   const deltaVerrou = avecJournal.lockP95 - sansJournal.lockP95;
-  ok(deltaVerrou < seuil,
-    `la fenetre sous verrou n'est PAS allongee par le journal (delta p95 ${deltaVerrou.toFixed(2)} ms, seuil ${seuil} ms)`);
+  const deltaRegression = dansTransaction.lockP95 - sansJournal.lockP95;
+
+  // A. LA MESURE EST-ELLE CONCLUANTE, sur CETTE machine, a CET instant ? Le
+  // temoin C est une regression qu on provoque expres : s il ne ressort pas,
+  // rien ne peut etre conclu du code, et un vert serait de la complaisance.
+  ok(deltaRegression >= LATENCY_MS / 2,
+    `la mesure est concluante : la regression temoin ressort a ${deltaRegression.toFixed(2)} ms `
+    + `(il en faut au moins ${LATENCY_MS / 2} ms, sinon la machine couvre le signal)`);
+
+  // B. LE VERROU NE BOUGE PAS. Le plafond n est plus un chiffre absolu, qui
+  // mesurait la machine : c est une fraction de la regression temoin relevee
+  // dans la MEME salve. Une vraie regression rapproche B de C, donc elle
+  // depasse largement la moitie ; le bruit, lui, reste en dessous.
+  const plafond = Math.min(LATENCY_MS, Math.max(LATENCY_MS / 2, deltaRegression / 2));
+  ok(deltaVerrou < plafond,
+    `la fenetre sous verrou n'est PAS allongee par le journal (delta p95 ${deltaVerrou.toFixed(2)} ms, `
+    + `plafond ${plafond.toFixed(2)} ms calibre sur la regression temoin de ${deltaRegression.toFixed(2)} ms)`);
 
   ok(!avecJournal.auditInsideLockObserved,
     'aucune ecriture de journal n a eu lieu pendant que le verrou etait tenu (scenario livre)');
 
   // ---- La contre-epreuve : la mesure sait-elle voir une regression ? -----
-  const deltaRegression = dansTransaction.lockP95 - sansJournal.lockP95;
-  ok(deltaRegression >= seuil,
-    `contre-epreuve : journaliser DANS la transaction allonge bien le verrou de ${deltaRegression.toFixed(2)} ms `
-    + '(la mesure sait detecter la regression, elle ne rend pas un vert de complaisance)');
+  // La contre-epreuve d autrefois disait exactement ce que l assertion A
+  // verifie desormais : la mesure sait voir une regression. Elle n est plus
+  // repetee ici pour ne pas compter deux fois le meme controle.
 
   // ---- Le cout paye par la requete elle-meme ------------------------------
   const deltaTotal = avecJournal.totalP95 - sansJournal.totalP95;

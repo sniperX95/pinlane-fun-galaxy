@@ -8016,7 +8016,11 @@ function syncFormulaAnchorUi(formule, { busy }) {
   // Réponse arrivée : les maillons du fil disent le nouvel écart réel.
   const notices = getSlotComfortNotices();
   picker.querySelectorAll('.visit-rail-link').forEach((link) => link.remove());
-  const stepLis = [...picker.querySelectorAll('.visit-rail-step:not(.visit-rail-step-free)')];
+  // Plus de filtre `:not(.visit-rail-step-free)` : cette etape n existe plus
+  // depuis que ce qui se vit sans horaire est une ligne du recapitulatif
+  // (2026-09-18). Un `:not` qui vise une classe morte se lit comme une regle
+  // qui protege quelque chose, alors qu il ne protege plus rien.
+  const stepLis = [...picker.querySelectorAll('.visit-rail-step')];
   for (let index = steps.length - 1; index >= 1; index -= 1) {
     const html = renderVisitRailLink(steps[index - 1], steps[index], notices);
     if (html) stepLis[index].insertAdjacentHTML('beforebegin', html);

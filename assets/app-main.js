@@ -7326,20 +7326,29 @@ function anchorSlotCardModel(activity, item, { isChained, unavailable = false, d
 // tous les deux, et le gate la lit au meme endroit.
 // Une chaine vide = l heure est prenable.
 function raisonHeureCoincee({ rangeeVerrouillee, listePleine, parties, indisponible, raisonCourte }) {
-  if (rangeeVerrouillee) return 'Vous avez choisi de laisser l’équipe placer vos parties. Décochez la case juste au-dessus pour choisir une heure vous-même.';
+  // LE MOTIF, A COTE DE LA RAISON. Le rouge doit dire « il y a un obstacle »,
+  // pas « vous avez choisi ca » : quand le client coche « l equipe place mes
+  // parties », TOUTE la grille coince, et la peindre en rouge pointille ferait
+  // une alarme pour un etat parfaitement normal.
+  if (rangeeVerrouillee) {
+    return { motif: 'choix', texte: 'Vous avez choisi de laisser l’équipe placer vos parties. Décochez la case juste au-dessus pour choisir une heure vous-même.' };
+  }
   if (listePleine) {
     const total = Math.max(1, Number(parties) || 1);
-    return `Vos ${total} heures sont déjà choisies. Cliquez l’une d’elles pour la libérer, puis reprenez celle-ci.`;
+    return { motif: 'obstacle', texte: `Vos ${total} heures sont déjà choisies. Cliquez l’une d’elles pour la libérer, puis reprenez celle-ci.` };
   }
   if (indisponible) {
     const courte = String(raisonCourte || '').trim();
     // La raison du moteur quand il en donne une (« Complet », « Fermé »), et
     // jamais une raison inventee quand il n en donne pas.
-    return courte
-      ? `${courte}. Cette heure n’est pas prenable pour votre groupe ce jour-là.`
-      : 'Cette heure n’est pas prenable pour votre groupe ce jour-là.';
+    return {
+      motif: 'obstacle',
+      texte: courte
+        ? `${courte}. Cette heure n’est pas prenable pour votre groupe ce jour-là.`
+        : 'Cette heure n’est pas prenable pour votre groupe ce jour-là.',
+    };
   }
-  return '';
+  return { motif: '', texte: '' };
 }
 
 // Le clic d une heure qui coince : il OUVRE l explication, il ne fait pas rien.
@@ -7493,18 +7502,19 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     // croit que la page ne repond plus, et part. Il garde donc son clic, qui
     // OUVRE la raison au lieu de ne rien faire, et il reste `aria-disabled`
     // pour qu un lecteur d ecran sache que l heure n est pas prenable.
-    const raisonCoince = raisonHeureCoincee({
+    const blocage = raisonHeureCoincee({
       rangeeVerrouillee: disabled,
       listePleine: Boolean(multi && full && !isActive),
       parties: Number(activity.count || 1),
       indisponible: Boolean(unavailable && !decalable),
       raisonCourte: model.meta,
     });
+    const raisonCoince = blocage.texte;
     const coince = Boolean(raisonCoince);
     const action = coince
       ? `expliquerHeureCoincee(this)`
       : `setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}'${decalable ? ', true' : ''})`;
-    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${unavailable && !decalable ? 'is-unavailable' : ''} ${decalable ? 'is-shiftable' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}"${reasonAttrs}${coince ? ` data-coince="${escapeHtml(raisonCoince)}" aria-disabled="true"` : ''} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(coince ? `${model.label}. ${raisonCoince}` : model.label)}" onclick="${action}">${slotCardMarkup(model)}${coince ? '<span class="slot-card-info" aria-hidden="true">i</span><span class="slot-card-why" role="note">' + escapeHtml(raisonCoince) + '</span>' : ''}</button>`;
+    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${unavailable && !decalable ? 'is-unavailable' : ''} ${decalable ? 'is-shiftable' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}"${reasonAttrs}${coince ? ` data-coince="${escapeHtml(raisonCoince)}" data-coince-motif="${escapeHtml(blocage.motif)}" aria-disabled="true"` : ''} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(coince ? `${model.label}. ${raisonCoince}` : model.label)}" onclick="${action}">${slotCardMarkup(model)}${coince ? '<span class="slot-card-info" aria-hidden="true">i</span><span class="slot-card-why" role="note">' + escapeHtml(raisonCoince) + '</span>' : ''}</button>`;
       }).join('')}</div>
     </section>`;
   }).join('');
@@ -7920,13 +7930,14 @@ function syncFormulaAnchorUi(formule, { busy }) {
       // MORTES alors que le rendu initial, lui, les explique. Deux chemins,
       // deux comportements : c est ce que ce fichier a deja paye sur le
       // compteur des parties.
-      const raisonCoince = raisonHeureCoincee({
+      const blocage = raisonHeureCoincee({
         rangeeVerrouillee: disabled,
         listePleine: Boolean(chosen && full && !isActive),
         parties: Number(activity.count || 1),
         indisponible: unavailable,
         raisonCourte: chip.getAttribute('data-reason') || '',
       });
+      const raisonCoince = blocage.texte;
       if (chip.disabled) chip.disabled = false;
       if (raisonCoince) {
         if (chip.getAttribute('data-coince') !== raisonCoince) {
@@ -7935,10 +7946,12 @@ function syncFormulaAnchorUi(formule, { busy }) {
           if (bulle) bulle.textContent = raisonCoince;
           else chip.insertAdjacentHTML('beforeend', `<span class="slot-card-info" aria-hidden="true">i</span><span class="slot-card-why" role="note">${escapeHtml(raisonCoince)}</span>`);
         }
+        if (chip.getAttribute('data-coince-motif') !== blocage.motif) chip.setAttribute('data-coince-motif', blocage.motif);
         chip.setAttribute('aria-disabled', 'true');
         chip.setAttribute('onclick', 'expliquerHeureCoincee(this)');
       } else if (chip.hasAttribute('data-coince')) {
         chip.removeAttribute('data-coince');
+        chip.removeAttribute('data-coince-motif');
         chip.removeAttribute('data-coince-ouvert');
         chip.removeAttribute('aria-disabled');
         chip.querySelector('.slot-card-info')?.remove();

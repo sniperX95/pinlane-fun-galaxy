@@ -302,22 +302,72 @@ async function main() {
   record('chacune reste atteignable au clavier', coince.horsClavier === 0, `${coince.horsClavier} hors du parcours`);
   record('et leur contour est pointille', coince.pointille === 'dashed', coince.pointille);
 
+  // LE ROUGE NE SERT QUE POUR UN OBSTACLE. Quand le client coche « l equipe
+  // place mes parties », les 28 heures coincent d un coup : les peindre en
+  // rouge ferait une alarme pour un etat parfaitement normal, qu il a choisi.
+  const motifs = await page.evaluate(() => {
+    const lire = () => [...document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip[data-coince]')]
+      .map((c) => ({ motif: c.getAttribute('data-coince-motif'), bord: getComputedStyle(c).borderTopColor }));
+    const pleines = lire();
+    const case_ = document.querySelector('.anchor-row[data-anchor="laser_game"] .anchor-onsite input');
+    if (case_) { case_.checked = true; case_.dispatchEvent(new Event('change', { bubbles: true })); }
+    return { pleines, cocheFaite: Boolean(case_) };
+  });
+  record('liste pleine : le motif est un OBSTACLE',
+    motifs.pleines.length > 0 && motifs.pleines.every((m) => m.motif === 'obstacle'),
+    JSON.stringify([...new Set(motifs.pleines.map((m) => m.motif))]));
+  await page.waitForTimeout(2200);
+  const choix = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip[data-coince]')];
+    const rouge = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim();
+    return {
+      n: chips.length,
+      motifs: [...new Set(chips.map((c) => c.getAttribute('data-coince-motif')))],
+      bords: [...new Set(chips.map((c) => getComputedStyle(c).borderTopColor))],
+      styles: [...new Set(chips.map((c) => getComputedStyle(c).borderTopStyle))],
+      rouge,
+    };
+  });
+  record('montage : cocher « l equipe place mes parties » fait coincer toute la grille',
+    motifs.cocheFaite && choix.n >= 10, JSON.stringify({ coche: motifs.cocheFaite, n: choix.n }));
+  record('et ce cas-la porte le motif « choix », pas « obstacle »',
+    choix.motifs.length === 1 && choix.motifs[0] === 'choix', JSON.stringify(choix.motifs));
+  record('donc AUCUNE de ces heures n est peinte en rouge',
+    choix.bords.every((b) => !b.includes('203, 42, 47') && !b.includes('247, 85, 85')), JSON.stringify(choix.bords));
+  record('elles restent pointillees (l heure n est pas prenable)',
+    choix.styles.length === 1 && choix.styles[0] === 'dashed', JSON.stringify(choix.styles));
+
+  // On remet la case comme avant, pour que les blocs suivants mesurent l etat
+  // nominal et pas celui-ci.
+  await page.evaluate(() => {
+    const c = document.querySelector('.anchor-row[data-anchor="laser_game"] .anchor-onsite input');
+    if (c) { c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); }
+  });
+  await page.waitForTimeout(2200);
+
   // Le clic OUVRE l explication, au lieu de ne rien faire.
   const apresClic = await page.evaluate(() => {
     const c = document.querySelector('.anchor-row[data-anchor="laser_game"] .anchor-chip[aria-disabled="true"]');
     if (!c) return null;
+    // AVANT / APRES, pas un chiffre en dur : le bloc du motif a coche puis
+    // decoche la case juste au-dessus, ce qui a remis les choix a zero. Un
+    // « 3 » ecrit ici affirmerait un etat que ce gate ne monte plus.
+    const avant = document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip.active').length;
     c.click();
     const bulle = c.querySelector('.slot-card-why');
     return {
       ouverte: c.hasAttribute('data-coince-ouvert'),
       visible: bulle ? getComputedStyle(bulle).display !== 'none' : false,
       texte: bulle ? bulle.textContent.trim() : '',
+      retenuesAvant: avant,
       retenuesApres: document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip.active').length,
     };
   });
   record('cliquer une heure qui coince OUVRE son explication', Boolean(apresClic && apresClic.ouverte && apresClic.visible),
     JSON.stringify(apresClic && apresClic.texte.slice(0, 90)));
-  record('et ne change RIEN au choix du client', apresClic && apresClic.retenuesApres === 3, `${apresClic && apresClic.retenuesApres}`);
+  record('et ne change RIEN au choix du client',
+    Boolean(apresClic) && apresClic.retenuesApres === apresClic.retenuesAvant,
+    `${apresClic && apresClic.retenuesAvant} -> ${apresClic && apresClic.retenuesApres}`);
 
   // LA BULLE RESTE CHEZ ELLE. Centree sur sa pastille, elle debordait de la
   // colonne et se posait sur le panneau voisin ; on la recadre sur la grille.

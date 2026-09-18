@@ -6367,16 +6367,27 @@ body.customer-mode .client-footer {
    ========================================================================== */
 #clientView .anchor-chip[data-coince] {
   border-style: dashed;
-  border-color: var(--danger, #c2410c);
+  border-color: var(--line-strong);
   color: var(--muted);
   background: var(--surface);
   cursor: pointer;
   opacity: 1;
 }
 
+/* LE ROUGE EST RESERVE A L OBSTACLE. Quand le client coche « l equipe place
+   mes parties », les 28 heures coincent d un coup : un mur de rouge pointille
+   pour une decision volontaire serait une alarme qui ment. Ce cas-la reste
+   pointille (l heure n est pas prenable) mais neutre. */
+#clientView .anchor-chip[data-coince-motif="obstacle"] {
+  border-color: var(--danger);
+}
+
 #clientView .anchor-chip[data-coince]:hover {
-  border-color: var(--danger, #c2410c);
-  background: color-mix(in srgb, var(--danger, #c2410c) 7%, var(--surface));
+  background: var(--subtle);
+}
+
+#clientView .anchor-chip[data-coince-motif="obstacle"]:hover {
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
 }
 
 /* La pastille ⓘ, en haut a droite de la case : elle annonce qu il y a quelque
@@ -6392,7 +6403,7 @@ body.customer-mode .client-footer {
   height: 14px;
   border-radius: var(--radius-full);
   border: 1px solid currentColor;
-  color: var(--danger, #c2410c);
+  color: var(--muted);
   font-family: var(--font-ui);
   font-size: 10px;
   font-weight: 700;
@@ -6402,6 +6413,8 @@ body.customer-mode .client-footer {
 
 /* La raison, fermee par defaut. Elle s ouvre AU CLIC, ce qui rend le bouton
    utile au lieu de muet. */
+#clientView .anchor-chip[data-coince-motif="obstacle"] .slot-card-info { color: var(--danger); }
+
 #clientView .slot-card-why { display: none; }
 
 #clientView .anchor-chip[data-coince-ouvert] {
@@ -6419,7 +6432,7 @@ body.customer-mode .client-footer {
   width: max-content;
   max-width: min(240px, calc(100vw - 32px));
   padding: 8px 10px;
-  border: 1px solid var(--danger, #c2410c);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--text) 45%, transparent);
@@ -6430,6 +6443,10 @@ body.customer-mode .client-footer {
   line-height: 1.4;
   text-align: left;
   white-space: normal;
+}
+
+#clientView .anchor-chip[data-coince-motif="obstacle"] .slot-card-why {
+  border-color: var(--danger);
 }
 
 /* Sur la carte retenue, les trois niveaux restent lisibles sur l aplat

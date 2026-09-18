@@ -55,6 +55,7 @@ function charger() {
   return {
     availability: require(path.join(ROOT, 'api/public-availability.js')),
     visitProgram: require(path.join(ROOT, 'lib/visit-program.js')),
+    opsEngine: require(path.join(ROOT, 'lib/ops-engine.js')),
     reservationRequest: require(path.join(ROOT, 'lib/reservation-request.js')),
     opsKnowledge: require(path.join(ROOT, 'lib/ops-knowledge.js')),
   };
@@ -99,7 +100,7 @@ async function withSourceMutation(file, from, to, run, attendu = 1) {
 }
 
 async function main() {
-  const { availability, visitProgram, reservationRequest, opsKnowledge } = charger();
+  const { availability, visitProgram, reservationRequest, opsKnowledge, opsEngine } = charger();
 
   section('Montage : la situation de Movsar existe pour de vrai');
   const centre = opsKnowledge.getCenter(CENTER_ID);
@@ -179,6 +180,48 @@ async function main() {
     record('groupe entier : la reservation refuse le tarif d attente', Boolean(ligneEntiere) && ligneEntiere.waitOffer !== true, JSON.stringify(ligneEntiere && { prix: ligneEntiere.price, attente: ligneEntiere.waitOffer || false }));
   }
 
+  section('[5] Ce qui se joue PENDANT l attente ne repousse pas la fin');
+  {
+    // La fin annoncee au client (`visitEndTime`) porte le temps des activites
+    // libres. Mais celle-ci se joue dans le temps mort que le plan contient
+    // deja : seul son debordement compte. Mesure du 2026-09-18 avant
+    // correction : la fin reculait de 45 min au lieu de 15.
+    const attenteDuCreneau = (reponse, heure) => {
+      const slot = (reponse.slots || []).find((item) => item && item.time === heure) || null;
+      const creux = opsEngine.attenteDuSousGroupe(slot && slot.opsPlan ? slot.opsPlan.resourceBlocks : null);
+      return creux ? creux.minutes : 0;
+    };
+    const enMinutes = (t) => (t ? Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5)) : null);
+    const sans = await appel(availability, requete(grand));
+    const heure = ((sans.slots || [])[0] || {}).time || null;
+    record('montage : un creneau est propose et annonce sa fin',
+      Boolean(heure && (sans.slots || [])[0].visitEndTime), `${heure} -> ${((sans.slots || [])[0] || {}).visitEndTime}`);
+    const attente = attenteDuCreneau(sans, heure);
+    record('montage : le plan contient bien un temps mort', attente > 0, `${attente} min`);
+
+    for (const offre of offres) {
+      const avec = await appel(availability, requete(grand, [...PROGRAMME, { activityId: offre.activityId, waitOffer: true, participants: attendent }]));
+      const creneauAvec = (avec.slots || []).find((item) => item && item.time === heure) || null;
+      const programme = visitProgram.normalizeProgram([...PROGRAMME, { activityId: offre.activityId, waitOffer: true, participants: attendent }],
+        { centerId: CENTER_ID, pax: grand, dateStr: DATE, waitOffers: true });
+      const ligne = programme.items.find((item) => item.activityId === offre.activityId) || null;
+      const duree = ligne ? Math.max(0, Math.round(Number(ligne.minutes) || 0)) : 0;
+      const attendu = Math.max(0, duree - attente);
+      const recul = creneauAvec ? enMinutes(creneauAvec.visitEndTime) - enMinutes((sans.slots || [])[0].visitEndTime) : null;
+      record(`${offre.activityId} : la fin ne recule que du debordement`, recul === attendu,
+        `${duree} min d activite sur ${attente} min d attente -> recul ${recul} min, attendu ${attendu}`);
+    }
+  }
+
+  section('[6] Sans centre nomme, le groupe n est jamais declare scinde');
+  {
+    // Un repli sur un centre ferait juger le groupe sur une AUTRE arene, et le
+    // tarif d attente est sous le catalogue : la reponse sans centre est NON.
+    record('centerId vide : non', visitProgram.groupIsSplit({ centerId: '', pax: grand, items: PROGRAMME }) === false);
+    record('centerId absent : non', visitProgram.groupIsSplit({ pax: grand, items: PROGRAMME }) === false);
+    record('centerId inconnu : non', visitProgram.groupIsSplit({ centerId: 'centre-qui-n-existe-pas', pax: grand, items: PROGRAMME }) === false);
+    record('le centre nomme, lui, repond oui', visitProgram.groupIsSplit({ centerId: CENTER_ID, pax: grand, items: PROGRAMME }) === true);
+  }
   section('Contre-epreuves par mutation du code de production');
   try {
     const sansOffres = await withSourceMutation(
@@ -213,6 +256,42 @@ async function main() {
     record('contre-epreuve de la detection montable', false, error.message);
   }
 
+  try {
+    // La fin AFFICHEE ne passe pas par le moteur : elle ajoute la reserve a la
+    // fin du plan. La mutation coupe donc la deduction LA, au seul endroit qui
+    // decide ce que le client lit. Sans elle, la fin recule de toute la duree
+    // de l activite au lieu de son seul debordement.
+    // La duree REELLE de chaque offre est celle du programme normalise, pas le
+    // champ `minutes` du centre : le minigolf n en declare aucun et tient sa
+    // duree du catalogue. Trier sur le champ aurait choisi la plus courte.
+    const dureeDe = (activityId) => {
+      const programme = visitProgram.normalizeProgram([...PROGRAMME, { activityId, waitOffer: true, participants: attendent }],
+        { centerId: CENTER_ID, pax: grand, dateStr: DATE, waitOffers: true });
+      const ligne = programme.items.find((item) => item.activityId === activityId) || null;
+      return ligne ? Math.max(0, Math.round(Number(ligne.minutes) || 0)) : 0;
+    };
+    const plusLongue = offres.slice().sort((a, b) => dureeDe(b.activityId) - dureeDe(a.activityId))[0];
+    const programmeLong = [...PROGRAMME, { activityId: plusLongue.activityId, waitOffer: true, participants: attendent }];
+    const dureeLongue = dureeDe(plusLongue.activityId);
+    const sansDeduction = await withSourceMutation(
+      path.join(ROOT, 'api/public-availability.js'),
+      'return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert);',
+      'return Math.max(finPlan, debut) + reserveAffichee;',
+      async () => {
+        const neuf = charger();
+        const enMinutes = (t) => (t ? Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5)) : null);
+        const sans = await appel(neuf.availability, requete(grand));
+        const avec = await appel(neuf.availability, requete(grand, programmeLong));
+        const heure = ((sans.slots || [])[0] || {}).time || null;
+        const creneauAvec = (avec.slots || []).find((item) => item && item.time === heure) || null;
+        return creneauAvec ? enMinutes(creneauAvec.visitEndTime) - enMinutes((sans.slots || [])[0].visitEndTime) : null;
+      },
+    );
+    record('sans la deduction du temps mort, la fin recule de TOUTE la duree : ce gate ROUGIRAIT',
+      sansDeduction === dureeLongue, `recul ${sansDeduction} min pour ${dureeLongue} min d activite`);
+  } catch (error) {
+    record('contre-epreuve de la deduction montable', false, error.message);
+  }
   charger();
   record('centers.json restaure a l identique', fs.readFileSync(CENTERS, 'utf8').includes('"waitOffers"'));
   record('public-availability.js restaure a l identique', fs.readFileSync(path.join(ROOT, 'api/public-availability.js'), 'utf8').includes('attente: attenteDuPlan(retainedSlot),'));

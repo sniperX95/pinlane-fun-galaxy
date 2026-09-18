@@ -26,6 +26,7 @@ const { sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
 const {
+  attenteDuSousGroupe,
   buildDefaultAnchorTimes,
   evaluateAnchoredCombination,
   getFormulaAnchorAvailability,
@@ -518,13 +519,21 @@ module.exports = async (req, res) => {
       const reserveAffichee = program.plannedItems.length
         ? Math.max(0, Math.round(Number(program.freeMinutes) || 0))
         : 0;
+      // CE QUI SE JOUE PENDANT L ATTENTE NE REPOUSSE PAS LA FIN. Le temps mort
+      // se mesure sur le plan de CE creneau (les vagues n ont pas le meme ecart
+      // partout), avec la regle du moteur, jamais une copie.
       const finDeVisiteMinutes = (slot) => {
         if (!slot || !slot.time) return null;
         const debut = Math.round(timeToNum(slot.time) * 60);
         const plan = slot.opsPlan || null;
         const marge = Math.max(0, Number(plan && plan.bufferMinutes) || 0);
         const finPlan = plan && plan.endTime ? Math.round(timeToNum(plan.endTime) * 60) - marge : debut;
-        return Math.max(finPlan, debut) + reserveAffichee;
+        const creux = attenteDuSousGroupe(plan && plan.resourceBlocks);
+        const couvert = Math.min(
+          Math.max(0, Math.round(Number(program.waitMinutes) || 0)),
+          Math.max(0, Math.round(Number(creux && creux.minutes) || 0)),
+        );
+        return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert);
       };
       const respondVisit = (slots, message, extra = {}) => {
         const creneaux = (Array.isArray(slots) ? slots : []).map((slot) => {
@@ -587,6 +596,7 @@ module.exports = async (req, res) => {
             // ne prennent aucune ressource, mais elles prennent du temps.
             reserveMinutes: program.freeMinutes,
             reserveLabel: program.freeLabel,
+            reserveWaitMinutes: program.waitMinutes,
           }, engineContext);
         } catch (error) {
           anchorMeta = null;
@@ -640,35 +650,12 @@ module.exports = async (req, res) => {
         // dernier groupe attend que les precedents aient joue : c est ce temps
         // mort que l offre d attente vient remplir. Rien n est recalcule ici a
         // partir d une regle refaite : on lit les blocs du plan.
-        const attenteDuPlan = (retainedSlot) => {
-          const blocs = ((retainedSlot && retainedSlot.opsPlan && Array.isArray(retainedSlot.opsPlan.resourceBlocks))
-            ? retainedSlot.opsPlan.resourceBlocks : [])
-            .filter((bloc) => bloc && bloc.startTime && Number(bloc.players || bloc.pax) > 0)
-            .map((bloc) => ({
-              activite: String(bloc.activityId || bloc.resourceType || ''),
-              debut: Math.round(timeToNum(bloc.startTime) * 60),
-              personnes: Math.trunc(Number(bloc.players || bloc.pax)),
-            }));
-          const parActivite = new Map();
-          blocs.forEach((bloc) => {
-            const liste = parActivite.get(bloc.activite) || [];
-            liste.push(bloc);
-            parActivite.set(bloc.activite, liste);
-          });
-          let meilleure = null;
-          parActivite.forEach((liste) => {
-            const heures = [...new Set(liste.map((bloc) => bloc.debut))].sort((gauche, droite) => gauche - droite);
-            if (heures.length < 2) return;
-            const derniere = heures[heures.length - 1];
-            const personnes = liste.filter((bloc) => bloc.debut === derniere)
-              .reduce((somme, bloc) => somme + bloc.personnes, 0);
-            const minutes = derniere - heures[0];
-            if (personnes > 0 && minutes > 0 && (!meilleure || minutes > meilleure.minutes)) {
-              meilleure = { personnes, minutes };
-            }
-          });
-          return meilleure;
-        };
+        // Le sous-groupe qui attend, lu sur le plan REELLEMENT pose, avec la
+        // regle du moteur : c est la meme que celle qui deduit le temps mort de
+        // la reserve, et elle ne doit exister qu une fois.
+        const attenteDuPlan = (retainedSlot) => attenteDuSousGroupe(
+          retainedSlot && retainedSlot.opsPlan ? retainedSlot.opsPlan.resourceBlocks : null,
+        );
         const complementsDeVisite = (retainedSlot) => {
           try {
             return buildVisitComplements({
@@ -740,6 +727,7 @@ module.exports = async (req, res) => {
               laserPlacement: 'scheduled',
               reserveMinutes: program.freeMinutes,
               reserveLabel: program.freeLabel,
+              reserveWaitMinutes: program.waitMinutes,
               reservations: snapshot.reservations,
               laneStatuses: snapshot.laneStatuses,
               blocks: snapshot.blocks || [],

@@ -4253,16 +4253,28 @@ function renderPaxAlertContent() {
       const consequences = [];
       const aBowling = choisies.find((a) => a.priceType === 'grid_bowling');
       if (aBowling && needed > 0) {
-        consequences.push(`<b>${needed} piste${needed > 1 ? 's' : ''}</b> de ${escapeHtml(aBowling.name.toLowerCase())}`);
+        // Le client veut savoir comment son groupe se repartit, pas seulement
+        // combien de pistes on bloque.
+        const parPiste = Math.max(1, Math.ceil(pax / Math.max(1, needed)));
+        consequences.push(`<b>${escapeHtml(aBowling.name)}</b> : <b>${needed} piste${needed > 1 ? 's' : ''}</b> réservée${needed > 1 ? 's' : ''} côte à côte, environ <b>${parPiste} joueur${parPiste > 1 ? 's' : ''}</b> par piste.`);
       }
       const aLaser = choisies.find((a) => a.priceType === 'grid_laser');
       if (aLaser) {
         const vagues = getLaserWaveCount(pax);
-        // TOUJOURS annonce (2026-08-24) : ne le dire qu a partir de deux
-        // sessions laissait le laser muet dans une visite qui le reserve.
-        consequences.push(vagues > 1
-          ? `<b>${vagues} sessions</b> de laser game`
-          : `<b>1 session</b> de laser game`);
+        const tailles = typeof getBalancedLaserWaveSizes === 'function' ? getBalancedLaserWaveSizes(pax) : [];
+        const postes = Math.max(1, Math.trunc(Number(LASER_GAME_MAX_PLAYERS) || 1));
+        // LA CAUSE AVANT LA CONSEQUENCE. « 2 sessions » ne veut rien dire tant
+        // que le client ignore que l arene compte 30 postes et qu ils sont 49.
+        // Les tailles viennent du MEME calcul que le plan (vagues equilibrees),
+        // pas d une division refaite ici.
+        if (vagues > 1) {
+          const reparties = tailles.length === vagues
+            ? ` : ${tailles.slice(0, -1).join(', ')} puis ${tailles[tailles.length - 1]} joueurs`
+            : '';
+          consequences.push(`<b>Laser game</b> : l’arène compte <b>${postes} postes</b> et vous êtes <b>${pax}</b>. Votre groupe jouera en <b>${vagues} sessions</b> qui se suivent${reparties}. Chacune fait le même nombre de parties.`);
+        } else {
+          consequences.push(`<b>Laser game</b> : vous êtes <b>${pax}</b>, l’arène en accueille ${postes}. Tout le groupe joue <b>en une seule session</b>.`);
+        }
       }
       // DUCKPIN (2026-08-24) : il a SES pistes (2 a Libramont, servies par le
       // catalogue), sa regle de groupe, et un plafond que le bowling n a pas.
@@ -4295,15 +4307,30 @@ function renderPaxAlertContent() {
       // telephone : data-prevenir, lu par syncStatusDock.
       // « 1 session de laser game » est une description, « 2 sessions » un fait
       // qui change la visite (le groupe est coupe en deux).
-      const prevenir = impossible || consequences.some((c) => /rotation|passages?|\b(?:[2-9]|\d{2,}) sessions/i.test(c));
+      // Le drapeau se lit sur les FAITS, plus sur une expression reguliere
+      // appliquee au texte affiche : reformuler une phrase ne doit pas
+      // eteindre en silence l alerte du telephone.
+      const groupeCoupe = Boolean(choisies.find((a) => a.priceType === 'grid_laser')) && getLaserWaveCount(pax) > 1;
+      const prevenir = impossible || groupeCoupe || consequences.some((c) => /rotation|passages?/i.test(c));
+      // UNE LIGNE PAR CONTRAINTE, sous un titre qui dit l essentiel. La phrase
+      // unique separee par des virgules obligeait a tout lire pour comprendre
+      // qu une seule activite posait probleme.
+      const titre = impossible
+        ? `Groupe de ${pax} joueurs : cette visite ne tient pas en une fois`
+        : (consequences.length > 1
+          ? `Ce que votre groupe de ${pax} personnes implique`
+          : `Votre groupe de ${pax} personne${pax > 1 ? 's' : ''}`);
       el.innerHTML = `
         <div class="pax-alert ${impossible || consequences.length ? 'warning' : ''}" data-prevenir="${prevenir ? '1' : '0'}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${consequences.length ? '2.5' : '2'}" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          <span>${impossible
-            ? `Groupe de <b>${pax} joueurs</b> : impossible sur ${totalLanes} pistes en même temps. Le staff proposera deux vagues ou un autre horaire.`
+          ${impossible
+            ? `<span>Groupe de <b>${pax} joueurs</b> : impossible sur ${totalLanes} pistes en même temps. Le staff proposera deux vagues ou un autre horaire.</span>`
             : consequences.length
-              ? `Pour <b>${pax} personne${pax > 1 ? 's' : ''}</b> : ${consequences.join(', ')}.`
-              : `<b>${pax} personne${pax > 1 ? 's' : ''}</b>, <b>${choisies.length} activité${choisies.length > 1 ? 's' : ''}</b> : tout tient en une visite.`}</span>
+              ? `<div class="pax-alert-body">
+                  <strong class="pax-alert-title">${escapeHtml(titre)}</strong>
+                  <ul class="pax-alert-list">${consequences.map((c) => `<li>${c}</li>`).join('')}</ul>
+                </div>`
+              : `<span><b>${pax} personne${pax > 1 ? 's' : ''}</b>, <b>${choisies.length} activité${choisies.length > 1 ? 's' : ''}</b> : tout tient en une visite.</span>`}
         </div>`;
       return;
     }
@@ -7355,7 +7382,9 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
       <button type="button" class="slot-period-head" aria-expanded="${ouvert ? 'true' : 'false'}" aria-controls="${escapeHtml(idGrille)}" onclick="basculerPeriodeHeures(this)">
         <span class="slot-period-icon" aria-hidden="true">${ANCHOR_PERIOD_ICONS[group.key] || ''}</span>
         <span class="slot-period-title">${escapeHtml(group.label)}</span>
-        <span class="slot-period-count">${libres > 0 ? `${libres} heure${libres > 1 ? 's' : ''}` : 'aucune heure libre'}</span>
+        <!-- UN NOMBRE DE CRENEAUX, pas une duree. « 8 heures » a cote de
+             « APRES-MIDI » se lisait comme huit heures de jeu. -->
+        <span class="slot-period-count">${libres > 0 ? `${libres} créneau${libres > 1 ? 'x' : ''}` : 'aucun créneau libre'}</span>
         <svg class="slot-period-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div class="anchor-chip-grid" id="${escapeHtml(idGrille)}">${group.items.map((item, index) => {
@@ -7433,7 +7462,7 @@ function renderVisitRailStep(step, position) {
   const chained = disabled || (chosen && chosen.length) ? '' : getChainedAnchorTime(activity.activityId);
   const detail = isLaser
     ? (partCount > 1
-      ? `${partCount} parties : choisissez jusqu’à ${partCount} heures, le reste se place sur place`
+      ? `${partCount} parties · choisissez vos heures, l’équipe place les autres`
       : `Session de ${activity.durationMinutes} min`)
     : `${formatDurationLabel(Number(activity.durationMinutes || 60) / 60)} de piste réservée`;
   // Le choix « sur place » est une DÉCISION sur cette activité : il vit en tête
@@ -7445,10 +7474,14 @@ function renderVisitRailStep(step, position) {
       </label>` : '';
   // Ce que le compteur dit : combien sont posées, combien restent, et comment
   // en changer. Sans ça, une liste qui cesse de répondre à 3 clics est un mur.
+  // « 0 heure sur 3 · 3 parties avec l équipe » melangeait le choisi et le
+  // restant. Une phrase par situation, qui dit ce qui va se passer.
   const compteur = chosen ? `
-      <p class="anchor-part-count">${chosen.length} heure${chosen.length > 1 ? 's' : ''} sur ${partCount}${restantes
-        ? ` · ${restantes} partie${restantes > 1 ? 's' : ''} avec l’équipe`
-        : ' · cliquez une heure pour la retirer'}</p>` : '';
+      <p class="anchor-part-count">${chosen.length === 0
+        ? `Aucune heure choisie · vos ${partCount} parties seront placées par l’équipe`
+        : (restantes
+          ? `${chosen.length} heure${chosen.length > 1 ? 's' : ''} choisie${chosen.length > 1 ? 's' : ''} sur ${partCount} · ${restantes} placée${restantes > 1 ? 's' : ''} par l’équipe`
+          : `${partCount} heures choisies · cliquez une heure pour la retirer`)}</p>` : '';
   const picked = disabled || (chosen && !chosen.length)
     ? '<span class="anchor-row-pick anchor-row-pick-free">avec l’équipe</span>'
     : (chosen
@@ -7955,7 +7988,21 @@ function renderSlots(formule) {
     if (texte && typeof venueSummaryLabel === 'function') texte.textContent = venueSummaryLabel();
     rappelVenue.hidden = !(texte && texte.textContent);
   }
-  document.getElementById('slotDate').textContent = ds;
+  // L HORAIRE DU JOUR, ICI AUSSI. Sans lui, un client qui regarde a 11h un
+  // vendredi (ouverture 14h) ne voit aucune heure du matin et croit a une
+  // panne. La plage est celle deja calculee pour l ecran precedent : une
+  // seule source, pas une phrase recalculee a cote.
+  const creneauDate = document.getElementById('slotDate');
+  if (creneauDate) {
+    let plage = '';
+    try {
+      const sch = typeof getSchedule === 'function' ? getSchedule(state.booking.date, state.isHolidayMode) : null;
+      plage = sch && sch.label ? String(sch.label) : '';
+    } catch (error) {
+      plage = '';
+    }
+    creneauDate.textContent = plage ? `${ds} · ouvert ${plage}` : ds;
+  }
   const tl = document.getElementById('formTimeLimit');
   if (formule) {
     // La durée estimée et le compteur brut de programmes vivent désormais dans
@@ -11044,6 +11091,23 @@ function isClientRoutePath(rawPath) {
   const path = String(rawPath == null ? '' : rawPath).toLowerCase().replace(/\/+$/, '') || '/';
   return path === CLIENT_ROUTE_PATH || path.startsWith(CLIENT_ROUTE_PATH + '/');
 }
+// LE CHEMIN CLIENT REELLEMENT OUVERT, retenu AU CHARGEMENT. Il est lu une
+// seule fois, avant le premier `replaceState` : une fois l adresse reecrite,
+// `location.pathname` ne dirait plus quel centre le visiteur a demande.
+//
+// Mesure en production (2026-09-18) : /reserver/gembloux devenait /reserver,
+// et le rechargement servait Libramont, sans que rien ne le signale. Le tarif
+// d un centre affiche sous le nom d un autre ne se voit sur aucun ecran.
+const CLIENT_ROUTE_OPENED = (() => {
+  try {
+    const brut = String(window.location.pathname || '').toLowerCase().replace(/\/+$/, '');
+    const m = brut.match(/^\/reserver\/([a-z][a-z0-9-]{1,40})$/);
+    return m ? `${CLIENT_ROUTE_PATH}/${m[1]}` : CLIENT_ROUTE_PATH;
+  } catch (error) {
+    return CLIENT_ROUTE_PATH;
+  }
+})();
+
 const APP_ROUTE_PATH = '/';
 
 // LA DEMONSTRATION PUBLIQUE A SON CHEMIN, ET IL DOIT SURVIVRE (2026-08-08).
@@ -11088,7 +11152,9 @@ function writeAppUrl(pathname, hash = '', { push = false } = {}) {
 
 function syncViewUrl(view = state.view, { push = false } = {}) {
   if (view === 'client') {
-    writeAppUrl(CLIENT_ROUTE_PATH, '', { push });
+    // Le centre reste dans l adresse : elle doit pouvoir se recharger, se
+    // partager et se mettre en favori sans changer de centre.
+    writeAppUrl(CLIENT_ROUTE_OPENED, '', { push });
     return;
   }
   if (view === 'admin') {

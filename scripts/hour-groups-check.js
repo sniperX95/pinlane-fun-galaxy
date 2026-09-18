@@ -214,7 +214,12 @@ async function main() {
     const etat = await page.evaluate(ETAT_MOMENTS, 'bowling');
     record('montage : la journee est decoupee en plusieurs moments', etat.moments.length >= 2, JSON.stringify(etat.moments.map((m) => m.cle)));
     record('chaque moment porte un dessin', etat.moments.every((m) => m.dessin));
-    record('chaque moment dit combien d heures il porte', etat.moments.every((m) => /heure|aucune/i.test(m.compte)), JSON.stringify(etat.moments.map((m) => m.compte)));
+    // Le compte est un NOMBRE DE CRENEAUX, pas une duree : « 8 heures » a cote
+    // de « APRES-MIDI » se lisait comme huit heures de jeu (Movsar, 2026-09-18).
+    // On exige donc un chiffre ET le mot, ou la mention d absence.
+    record('chaque moment dit combien de creneaux il porte',
+      etat.moments.every((m) => /^\d+ créneaux?$/.test(m.compte) || /aucun créneau/i.test(m.compte)),
+      JSON.stringify(etat.moments.map((m) => m.compte)));
     record('sa tete est une cible tactile (>= 44 px)', etat.moments.every((m) => m.hauteurTete >= 44), JSON.stringify(etat.moments.map((m) => m.hauteurTete)));
     const ouverts = etat.moments.filter((m) => m.ouvert);
     record('UN SEUL moment est ouvert a l arrivee', ouverts.length === 1, `${ouverts.length} ouvert(s)`);

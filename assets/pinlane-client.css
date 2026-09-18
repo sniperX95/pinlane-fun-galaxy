@@ -6272,13 +6272,22 @@ body.customer-mode .client-footer {
   grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   /* TOUTES LES PASTILLES A LA MEME HAUTEUR (Movsar, 2026-09-18 : « des fois
      les boutons sont gros, des fois ils sont petits, j aime pas du tout »).
-     Une rangee de grille prend la hauteur de son element le plus haut : une
-     rangee qui portait « Chevauche Laser Game (partie 2) » sur trois lignes
-     etait deux fois plus haute que la rangee d a cote. `1fr` sur les rangees
-     implicites les egalise TOUTES sur la plus haute, dans un conteneur dont
-     la hauteur reste libre. La raison longue, elle, est bornee a deux lignes
-     (.slot-card-meta) pour qu une seule case ne gonfle pas la grille entiere. */
-  grid-auto-rows: 1fr;
+     Une rangee de grille prend la hauteur de son element le plus haut, et
+     trois structures de pastille coexistent : [heure + fin], [heure +
+     « Enchaine » + fin], et [heure + fin + raison + ⓘ]. Les deux dernieres
+     occupent une ligne de plus.
+     `1fr` egalisait une grille sur SA plus haute : mesure sur la production,
+     une grille tombait a 67 px et sa voisine a 51 px, parce qu une seule
+     pastille riche suffisait a tirer ses trois voisines. Le reproche n etait
+     pas regle, il etait deplace d un cran.
+     Un PLANCHER PARTAGE donne la meme hauteur de rangee a toutes les grilles
+     de l ecran. Le maximum reste `auto` : une rangee qui aurait besoin de
+     plus grandit au lieu d ecraser son texte. Le plancher n est tenable que
+     parce que la raison est bornee a UNE ligne (.slot-card-meta) : le maximum
+     est alors deterministe, et le gate refonte-ecrans le verifie sur les deux
+     largeurs. */
+  --hauteur-pastille: 67px;
+  grid-auto-rows: minmax(var(--hauteur-pastille), auto);
   gap: 6px;
   width: 100%;
 }
@@ -6286,7 +6295,13 @@ body.customer-mode .client-footer {
 /* Telephone : memes rangees, trois colonnes pleines. La zone de l'etape
    defile dans sa boite si la journee est longue (defilement assume). */
 @media (max-width: 640px) {
-  #clientView .anchor-chip-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #clientView .anchor-chip-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Trois colonnes etroites : la ligne de fin passe sous l heure, et la
+       pastille la plus haute n a pas la meme taille qu au bureau. Le plancher
+       du telephone est donc le sien. */
+    --hauteur-pastille: 58px;
+  }
 }
 
 /* ==========================================================================
@@ -6347,14 +6362,23 @@ body.customer-mode .client-footer {
   font-size: 11.5px;
   line-height: 1.25;
   color: var(--muted);
-  /* BORNEE A DEUX LIGNES. Avec des rangees egalisees, une seule raison longue
-     (« Chevauche Laser Game (partie 2) 18:30 ») imposerait sa hauteur a toute
-     la grille. Le texte complet reste lisible : il est dans le title, et la
-     bulle ⓘ le donne en entier sur les heures qui coincent. */
+}
+
+/* BORNEE A UNE LIGNE, ET SEULEMENT DANS LA GRILLE D HEURES. Deux lignes
+   bornaient la grille, pas la HAUTEUR : sur un ecran large la raison en
+   occupait une, au telephone deux, et le maximum d une pastille dependait
+   donc du texte du jour. Une ligne le rend deterministe, ce sans quoi le
+   plancher partage de .anchor-chip-grid ne tient pas. Le texte complet ne se
+   perd nulle part : il est dans le title, et la bulle ⓘ le donne en entier
+   sur les heures qui coincent.
+   AILLEURS, PAS DE BORNE : la meme classe porte le plan du staff
+   (.slot-card-meta.slot-plan) et le secondaire de la grille simple, ou rien
+   n oblige a tenir sur une ligne. */
+#clientView .anchor-chip .slot-card-meta {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
   overflow: hidden;
 }
 
@@ -6510,6 +6534,21 @@ body.customer-mode .client-footer {
   font-size: 13px;
   font-weight: 400;
 }
+
+/* L HEURE ET SA FIN SUR LA MEME LIGNE, TOUJOURS.
+   Dans le DOM la qualification (« Enchaine ») est ecrite ENTRE l heure et sa
+   fin. La pastille etant une boite flex qui passe a la ligne, la fin se
+   retrouvait poussee sur une troisieme ligne des qu une qualification
+   s intercalait : une pastille pouvait donc empiler quatre lignes (heure,
+   qualification, raison, fin) et mesurer 83 px la ou sa voisine en faisait
+   51. Remises cote a cote, l heure et sa fin tiennent ensemble (99 px pour
+   104 disponibles) : le maximum d une pastille redevient TROIS lignes, et il
+   ne depend plus de l ordre d ecriture du gabarit. C est ce qui rend le
+   plancher partage de .anchor-chip-grid tenable. */
+#clientView .anchor-chip.slot-card > .slot-card-time { order: 0; }
+#clientView .anchor-chip.slot-card > .slot-card-end { order: 1; }
+#clientView .anchor-chip.slot-card > .slot-card-tag { order: 2; }
+#clientView .anchor-chip.slot-card > .slot-card-meta { order: 3; }
 
 #clientView .anchor-shared-meta {
   margin: 0 0 6px;

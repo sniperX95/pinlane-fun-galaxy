@@ -391,26 +391,108 @@ async function main() {
   // plus haut : sans egalisation, deux rangees voisines n avaient pas la meme.
   // Toutes les periodes ouvertes : c est la liste complete que le client
   // balaye, et c est la qu il voyait des tailles differentes.
+  // TOUTES les periodes de TOUTES les activites : c est l ecran entier que
+  // Movsar balaye, et l ecart mesure en production etait ENTRE deux activites.
   await page.evaluate(() => {
-    document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .slot-period:not(.is-open) .slot-period-head').forEach((h) => h.click());
+    document.querySelectorAll('.slot-period:not(.is-open) .slot-period-head').forEach((h) => h.click());
   });
-  await page.waitForTimeout(800);
-  const hauteurs = await page.evaluate(() => {
-    const grilles = [...document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip-grid')]
+  await page.waitForTimeout(900);
+  // Le releve sert deux fois : au bureau et au telephone. Une seule fonction,
+  // pour que les deux largeurs soient jugees a la meme aune.
+  const releverHauteurs = async (pg) => pg.evaluate(() => {
+    const grilles = [...document.querySelectorAll('.anchor-chip-grid')]
       .filter((g) => g.getBoundingClientRect().height > 0);
     const parGrille = grilles.map((g) => {
       const h = [...g.querySelectorAll('.anchor-chip')].map((c) => Math.round(c.getBoundingClientRect().height));
-      return { n: h.length, distinctes: [...new Set(h)].length, min: Math.min(...h), max: Math.max(...h) };
+      const rangee = g.closest('.anchor-row');
+      return {
+        ou: rangee ? rangee.getAttribute('data-anchor') : '?',
+        n: h.length,
+        distinctes: [...new Set(h)].length,
+        min: Math.min(...h),
+        max: Math.max(...h),
+      };
     });
-    return { grilles: parGrille.length, total: parGrille.reduce((s, g) => s + g.n, 0), parGrille };
+    const toutes = [...document.querySelectorAll('.anchor-chip')]
+      .filter((c) => c.getBoundingClientRect().height > 0)
+      .map((c) => Math.round(c.getBoundingClientRect().height));
+    // LA PLUS HAUTE, ET CE QU ELLE PORTE. Un gate qui dit seulement « 83 px »
+    // laisse regler un chiffre a tatons ; celui qui nomme la structure dit
+    // quoi corriger.
+    const visibles = [...document.querySelectorAll('.anchor-chip')]
+      .filter((c) => c.getBoundingClientRect().height > 0);
+    const plusHaute = visibles.reduce((m, c) => (
+      c.getBoundingClientRect().height > (m ? m.getBoundingClientRect().height : 0) ? c : m
+    ), null);
+    return {
+      grilles: parGrille.length,
+      total: toutes.length,
+      hauteursDeLEcran: [...new Set(toutes)].sort((a, b) => a - b),
+      parGrille,
+      laPlusHaute: plusHaute ? {
+        h: Math.round(plusHaute.getBoundingClientRect().height),
+        structure: [...plusHaute.children].map((e) => String(e.className).trim().split(/\s+/)[0]).join('+'),
+        lignes: [...plusHaute.children].map((e) => `${String(e.className).trim().split(/\s+/)[0]}=${Math.round(e.getBoundingClientRect().height)}px`).join(' '),
+        txt: (plusHaute.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60),
+      } : null,
+    };
   });
-  record('montage : la rangee porte assez de pastilles pour comparer',
-    hauteurs && hauteurs.total >= 8, JSON.stringify({ grilles: hauteurs.grilles, total: hauteurs.total }));
+
+  const hauteurs = await releverHauteurs(page);
+  record('montage : l ecran porte plusieurs listes et assez de pastilles pour comparer',
+    hauteurs && hauteurs.total >= 20 && hauteurs.grilles >= 2,
+    JSON.stringify({ grilles: hauteurs.grilles, total: hauteurs.total }));
   // Une liste ouverte = une grille. C est DANS une liste que Movsar voyait des
   // cases de tailles differentes cote a cote.
   const bancales = (hauteurs.parGrille || []).filter((g) => g.distinctes !== 1);
   record('dans chaque liste, toutes les pastilles ont la MEME hauteur',
     bancales.length === 0, JSON.stringify(bancales.length ? bancales : hauteurs.parGrille));
+  // ET ENTRE LES LISTES. C est la moitie de la regle qui manquait : mesuree en
+  // production le 2026-09-18, une grille tombait a 67 px et sa voisine a
+  // 51 px, chacune parfaitement uniforme de son cote.
+  record('et d une liste a l autre, la hauteur ne change pas non plus',
+    (hauteurs.hauteursDeLEcran || []).length === 1,
+    JSON.stringify({ hauteurs: hauteurs.hauteursDeLEcran, laPlusHaute: hauteurs.laPlusHaute, parGrille: hauteurs.parGrille.map((g) => `${g.ou}:${g.min}-${g.max}`) }));
+
+  // AU TELEPHONE AUSSI, la ou Movsar regarde. Trois colonnes etroites : la
+  // pastille n a pas la meme forme, donc pas le meme plancher.
+  await page.setViewportSize({ width: 390, height: 1400 });
+  await page.waitForTimeout(900);
+  // LE MEME ECRAN, PAS UN SOUS-ENSEMBLE. Le changement de largeur replie des
+  // periodes : mesurer sans les rouvrir jugeait trois grilles sur six, et une
+  // moitie d ecran uniforme ne prouve rien sur l autre.
+  await page.evaluate(() => {
+    document.querySelectorAll('.slot-period:not(.is-open) .slot-period-head').forEach((h) => h.click());
+  });
+  await page.waitForTimeout(900);
+  // AU TELEPHONE, LE CLIENT VOIT UNE ACTIVITE A LA FOIS. L ecran est pagine
+  // (data-mobile-page, « Continuer »), donc mesurer la premiere page jugeait
+  // trois grilles sur six. On parcourt les pages, et la regle porte sur leur
+  // REUNION : c est le meme client qui les traverse a la suite.
+  const pagesTel = [];
+  for (let n = 0; n < 6; n += 1) {
+    await page.evaluate(() => {
+      document.querySelectorAll('.slot-period:not(.is-open) .slot-period-head').forEach((h) => h.click());
+    });
+    await page.waitForTimeout(700);
+    pagesTel.push(await releverHauteurs(page));
+    const suivante = await page.$('.anchor-mobile-continue:not([disabled])');
+    const dernier = await page.evaluate(() => Boolean(document.querySelector('.formula-anchor-picker[data-mobile-last]')));
+    if (!suivante || dernier) break;
+    await suivante.click().catch(() => {});
+    await page.waitForTimeout(1200);
+  }
+  const activitesTel = [...new Set(pagesTel.flatMap((t) => (t.parGrille || []).map((g) => g.ou)))];
+  const totalTel = pagesTel.reduce((acc, t) => acc + t.total, 0);
+  const hauteursTel = [...new Set(pagesTel.flatMap((t) => t.hauteursDeLEcran || []))].sort((a, b) => a - b);
+  record('montage : les pages telephone couvrent les MEMES activites que le bureau',
+    totalTel >= 20 && activitesTel.length >= 2,
+    JSON.stringify({ pages: pagesTel.length, total: totalTel, activites: activitesTel }));
+  record('au telephone, toutes les pastilles ont la MEME hauteur, page apres page',
+    hauteursTel.length === 1,
+    JSON.stringify({ hauteurs: hauteursTel, parPage: pagesTel.map((t) => `${(t.parGrille[0] || {}).ou}:${(t.hauteursDeLEcran || []).join('/')}`) }));
+  await page.setViewportSize({ width: 1280, height: 1600 });
+  await page.waitForTimeout(400);
 
   await context.close();
 
@@ -435,10 +517,11 @@ async function main() {
     if (mutant.split(ancreBouton).length - 1 !== 1) throw new Error('ancre du bouton introuvable');
     mutant = mutant.split(ancreBouton).join('${coince ? \' disabled\' : \'\'} ' + ancreBouton);
     fs.writeFileSync(APP_JS, mutant);
-    // Et on retire l egalisation des rangees : les tailles repartent en vrac.
-    const ancreCss = '  grid-auto-rows: 1fr;';
+    // Et on remet l ancienne egalisation, celle qui calait chaque grille sur
+    // SON propre contenu : c est exactement le defaut mesure en production.
+    const ancreCss = '  grid-auto-rows: minmax(var(--hauteur-pastille), auto);';
     if (originalCss.split(ancreCss).length - 1 !== 1) throw new Error('ancre CSS des rangees introuvable');
-    fs.writeFileSync(CSS, originalCss.split(ancreCss).join('  grid-auto-rows: auto;'));
+    fs.writeFileSync(CSS, originalCss.split(ancreCss).join('  grid-auto-rows: 1fr;'));
 
     const { context: ctx2, page: p2 } = await ouvrirLesDeuxEcrans(browser, 'mutant');
     await allerAuxHeures(p2);
@@ -464,14 +547,18 @@ async function main() {
     record('avec `disabled` remis, les heures bloquees redeviennent MORTES : ce gate ROUGIRAIT',
       mortes > 0, `${mortes} pastille(s) morte(s)`);
 
-    const inegales = await p2.evaluate(() => {
-      const g = [...document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip-grid')]
-        .filter((x) => x.getBoundingClientRect().height > 0)
-        .map((x) => [...new Set([...x.querySelectorAll('.anchor-chip')].map((c) => Math.round(c.getBoundingClientRect().height)))].length);
-      return { grilles: g, bancales: g.filter((n) => n !== 1).length };
+    await p2.evaluate(() => {
+      document.querySelectorAll('.slot-period:not(.is-open) .slot-period-head').forEach((h) => h.click());
     });
-    record('sans l egalisation des rangees, des pastilles de la MEME liste n ont plus la meme hauteur : ce gate ROUGIRAIT',
-      inegales.bancales > 0, JSON.stringify(inegales));
+    await p2.waitForTimeout(900);
+    const inegales = await p2.evaluate(() => {
+      const toutes = [...document.querySelectorAll('.anchor-chip')]
+        .filter((c) => c.getBoundingClientRect().height > 0)
+        .map((c) => Math.round(c.getBoundingClientRect().height));
+      return { total: toutes.length, hauteurs: [...new Set(toutes)].sort((a, b) => a - b) };
+    });
+    record('sans le plancher partage, l ecran reprend DEUX hauteurs de pastille : ce gate ROUGIRAIT',
+      inegales.total >= 20 && inegales.hauteurs.length > 1, JSON.stringify(inegales));
     await ctx2.close();
   } catch (error) {
     record('contre-epreuve montable', false, error.message);

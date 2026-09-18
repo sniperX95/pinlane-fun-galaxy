@@ -159,13 +159,19 @@ function validatePlanResult(result, input, context, knowledge) {
     assert.strictEqual(result.requiresHumanReview, true, 'required validation mode must request staff review');
   }
 
-  const schedule = getSchedule(input.date);
+  // L HORAIRE DU CENTRE JUGE, PAS CELUI D UN AUTRE. Sans le second argument,
+  // `getSchedule` retombe sur `getLegacySchedule`, un horaire historique code
+  // en dur : le plan d un centre etait compare aux heures de Libramont. Un
+  // centre ouvrant plus tot voyait ses plans refuses ; un centre ouvrant plus
+  // tard voyait ses blocs trop matinaux ACCEPTES, et ce faux vert-la cachait
+  // le vrai defaut. Le centre est resolu en haut de cette fonction.
+  const schedule = getSchedule(input.date, center);
   if (schedule) {
     const open = Math.round(schedule.open * 60);
     const close = Math.round(schedule.close * 60);
     result.plan.recommended.resourceBlocks.forEach((block) => {
-      assert.ok(block.start >= open, 'resource starts before opening');
-      assert.ok(block.end <= close, 'resource ends after closing');
+      assert.ok(block.start >= open, `resource starts before opening (${input.centerId} ${input.date} : ${block.start} < ${open})`);
+      assert.ok(block.end <= close, `resource ends after closing (${input.centerId} ${input.date} : ${block.end} > ${close})`);
     });
   }
 

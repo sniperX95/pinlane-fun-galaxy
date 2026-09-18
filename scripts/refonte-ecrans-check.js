@@ -115,6 +115,48 @@ function serveStatic() {
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, '127.0.0.1', () => resolve(server)); });
 }
 
+// LES VAGUES DU GROUPE, TELLES QUE LES DEUX ECRANS LES ANNONCENT.
+// On lit le plan du creneau (ce que le moteur a reellement pose), la ligne
+// « Vos rendez-vous » de la carte de visite, et les rendez-vous du
+// recapitulatif de validation apres que le VRAI chargeur a pose le plan.
+async function releverLesVagues(page, options) {
+  const valider = !options || options.valider !== false;
+  const avantClic = await page.evaluate(() => {
+    const i = typeof getCurrentFormulaAnchorSlotIndex === 'function' ? getCurrentFormulaAnchorSlotIndex() : -1;
+    const slot = i >= 0 ? (state.availableSlots || [])[i] : null;
+    const blocs = ((slot && slot.opsPlan && slot.opsPlan.resourceBlocks) || [])
+      .filter((b) => b.resourceType === 'laser_arena' && b.startTime)
+      .map((b) => ({
+        debut: b.startTime,
+        partie: Number(b.countIndex || 1),
+        vague: Number(b.groupWaveIndex || 1),
+        vagues: Number(b.groupWaveCount || 1),
+        joueurs: Number(b.players || 0),
+      }));
+    const ligne = [...document.querySelectorAll('.visit-line')]
+      .map((l) => l.textContent.replace(/\s+/g, ' ').trim())
+      .find((t) => /rendez-vous/i.test(t)) || '';
+    return { pax: state.booking.pax, blocs, ligneVisite: ligne };
+  });
+  // Le VRAI chargeur : « Valider ces horaires » appelle selectSlot, qui pose
+  // opsPlan sur la reservation. C est ce que le recapitulatif de validation
+  // relit ensuite.
+  const bouton = valider ? await page.$('.formula-plan-confirm') : null;
+  if (bouton) await bouton.click().catch(() => {});
+  if (valider) await page.waitForTimeout(1600);
+  const recapValidation = !valider ? null : await page.evaluate(() => {
+    if (typeof getFormulaRecapModel !== 'function') return null;
+    const modele = getFormulaRecapModel(state.booking);
+    return modele && Array.isArray(modele.appointments) ? modele.appointments : null;
+  });
+  return {
+    ...avantClic,
+    heuresDistinctes: [...new Set(avantClic.blocs.map((b) => b.debut))].sort(),
+    partiesDistinctes: new Set(avantClic.blocs.map((b) => b.partie)).size,
+    recapValidation,
+  };
+}
+
 // Le parcours d un client, jusqu aux deux ecrans : 49 joueurs (l effectif de la
 // capture), bowling + laser + minigolf, et trois parties de laser. Le minigolf
 // est ce qui fait apparaitre le « sans horaire ».
@@ -482,6 +524,16 @@ async function main() {
     await suivante.click().catch(() => {});
     await page.waitForTimeout(1200);
   }
+  // LE COMPTEUR COMPTE DES ACTIVITES, IL DOIT DONC LE DIRE. Il annoncait
+  // « Creneau 1 sur 2 » sous « Bowling » : un client qui choisit UNE heure de
+  // bowling lisait qu il lui en faut deux.
+  const compteurTel = await page.evaluate(() => (
+    (document.querySelector('[data-role="anchor-mobile-count"]') || {}).textContent || ''
+  ).replace(/\s+/g, ' ').trim());
+  record('le compteur du telephone compte des ACTIVITES, et le dit',
+    /^Activit/i.test(compteurTel) && /sur \d+/.test(compteurTel) && !/cr[eé]neau/i.test(compteurTel),
+    JSON.stringify({ compteur: compteurTel }));
+
   const activitesTel = [...new Set(pagesTel.flatMap((t) => (t.parGrille || []).map((g) => g.ou)))];
   const totalTel = pagesTel.reduce((acc, t) => acc + t.total, 0);
   const hauteursTel = [...new Set(pagesTel.flatMap((t) => t.hauteursDeLEcran || []))].sort((a, b) => a - b);
@@ -493,6 +545,37 @@ async function main() {
     JSON.stringify({ hauteurs: hauteursTel, parPage: pagesTel.map((t) => `${(t.parGrille[0] || {}).ou}:${(t.hauteursDeLEcran || []).join('/')}`) }));
   await page.setViewportSize({ width: 1280, height: 1600 });
   await page.waitForTimeout(400);
+
+  // ====================================================================== [9]
+  section('[9] Un groupe scinde lit TOUTES ses heures de laser, sur les deux ecrans');
+  // 49 joueurs pour une arene de 30 postes : le groupe passe en DEUX vagues
+  // (lib/ops-engine.js, splitGroupIntoWaves). Les deux vagues d une meme
+  // partie portent le MEME countIndex, et les deux ecrans qui annoncent
+  // l heure s en remettaient a cette cle : la carte de visite gardait la
+  // derniere vague, le recapitulatif de validation la premiere. Mesure sur la
+  // production : pastille 11:00, panneau « Laser Game 11:30 ».
+  // On passe par le VRAI chargeur (« Valider ces horaires » appelle
+  // selectSlot, qui pose opsPlan sur la reservation) plutot que de fabriquer
+  // l entree du calcul : prouver la fonction ne prouve pas qu elle est nourrie.
+  const vagues = await releverLesVagues(page);
+  record('montage : le plan pose bien PLUSIEURS vagues pour la meme partie',
+    vagues.blocs.length >= 2 && vagues.heuresDistinctes.length >= 2 && vagues.partiesDistinctes === 1,
+    JSON.stringify({ pax: vagues.pax, blocs: vagues.blocs }));
+  const toutesDites = vagues.heuresDistinctes.every((h) => vagues.ligneVisite.includes(h));
+  record('la carte de visite annonce CHAQUE vague, pas la derniere',
+    vagues.heuresDistinctes.length >= 2 && toutesDites,
+    JSON.stringify({ heures: vagues.heuresDistinctes, ligne: vagues.ligneVisite.slice(0, 130) }));
+  record('et elle DIT que le groupe passe en plusieurs fois',
+    /groupe\s*1\s*sur\s*2/i.test(vagues.ligneVisite) && /groupe\s*2\s*sur\s*2/i.test(vagues.ligneVisite),
+    JSON.stringify({ ligne: vagues.ligneVisite.slice(0, 130) }));
+  // LES DEUX ECRANS DISENT LA MEME CHOSE. C est l ecart entre eux qui faisait
+  // le mensonge : la meme reservation annoncait 11:30 ici et 11:00 la.
+  const laserVisite = vagues.ligneVisite.match(/Laser Game \d{2}:\d{2}/g) || [];
+  const laserRecap = (vagues.recapValidation || []).filter((t) => /^Laser Game/.test(t))
+    .map((t) => (t.match(/Laser Game \d{2}:\d{2}/) || [''])[0]);
+  record('le recapitulatif de validation annonce exactement les memes heures',
+    laserVisite.length >= 2 && JSON.stringify(laserVisite) === JSON.stringify(laserRecap),
+    JSON.stringify({ visite: laserVisite, validation: laserRecap }));
 
   await context.close();
 
@@ -516,6 +599,10 @@ async function main() {
     const ancreBouton = 'aria-pressed="${isActive ? \'true\' : \'false\'}" aria-label="${escapeHtml(coince';
     if (mutant.split(ancreBouton).length - 1 !== 1) throw new Error('ancre du bouton introuvable');
     mutant = mutant.split(ancreBouton).join('${coince ? \' disabled\' : \'\'} ' + ancreBouton);
+    // Et on remet la cle d origine du dedoublonnage des vagues.
+    const ancreCle = '.map((block) => [`${Number(block.countIndex || 1)}.${Number(block.groupWaveIndex || 1)}`, block]))';
+    if (mutant.split(ancreCle).length - 1 !== 1) throw new Error('ancre de la cle des vagues introuvable');
+    mutant = mutant.split(ancreCle).join('.map((block) => [Number(block.countIndex || 1), block]))');
     fs.writeFileSync(APP_JS, mutant);
     // Et on remet l ancienne egalisation, celle qui calait chaque grille sur
     // SON propre contenu : c est exactement le defaut mesure en production.
@@ -533,6 +620,16 @@ async function main() {
     const foisMute = (mute.match(/3 parties/g) || []).length;
     record('avec la ligne de detail remise, « 3 parties » est ecrit DEUX fois : ce gate ROUGIRAIT',
       foisMute === 2, `${foisMute} fois :: ${JSON.stringify(mute.slice(0, 140))}`);
+
+    // ET LA CLE D ORIGINE FAIT DISPARAITRE UNE VAGUE. Releve AVANT les clics
+    // qui suivent : ils changent le choix du client et cassent la combinaison,
+    // donc la carte de visite ne serait plus la pour etre jugee. Et sans
+    // valider, pour que la suite du mutant garde son ecran.
+    const vaguesMute = await releverLesVagues(p2, { valider: false });
+    const perdues = vaguesMute.heuresDistinctes.filter((h) => !vaguesMute.ligneVisite.includes(h));
+    record('avec la cle d origine, une vague DISPARAIT du recapitulatif : ce gate ROUGIRAIT',
+      vaguesMute.heuresDistinctes.length >= 2 && perdues.length >= 1,
+      JSON.stringify({ heures: vaguesMute.heuresDistinctes, perdues, ligne: vaguesMute.ligneVisite.slice(0, 110) }));
 
     // Dans le MEME chargement mute : les deux autres regressions.
     await p2.evaluate(() => {
@@ -559,6 +656,7 @@ async function main() {
     });
     record('sans le plancher partage, l ecran reprend DEUX hauteurs de pastille : ce gate ROUGIRAIT',
       inegales.total >= 20 && inegales.hauteurs.length > 1, JSON.stringify(inegales));
+
     await ctx2.close();
   } catch (error) {
     record('contre-epreuve montable', false, error.message);

@@ -6588,7 +6588,7 @@ function setFormulaAnchorMobilePage(next, options = {}) {
   const titleActivity = picker.querySelector('[data-role="anchor-mobile-activity"]');
   if (titleActivity && pages[formulaAnchorMobilePage]) titleActivity.textContent = pages[formulaAnchorMobilePage].label || '';
   const titleCount = picker.querySelector('[data-role="anchor-mobile-count"]');
-  if (titleCount) titleCount.textContent = `Créneau ${formulaAnchorMobilePage + 1} sur ${count}`;
+  if (titleCount) titleCount.textContent = `Activité ${formulaAnchorMobilePage + 1} sur ${count}`;
   const heroBox = picker.querySelector('[data-role="anchor-mobile-hero"]');
   if (heroBox) {
     const heroUrl = getTenantActivityImage(pages[formulaAnchorMobilePage]?.activityId);
@@ -6821,6 +6821,39 @@ async function resetFormulaAnchorChoices() {
   await revalidateFormulaAnchors();
 }
 
+// LES RENDEZ-VOUS LASER, UNE SEULE FOIS POUR TOUT LE TUNNEL.
+//
+// Un groupe plus grand que l arene passe en plusieurs VAGUES, et toutes les
+// vagues d une meme partie portent le meme `countIndex` (lib/ops-engine.js).
+// Les deux ecrans qui annoncaient l heure s en remettaient a cette cle et n en
+// gardaient qu une : la carte de visite gardait la DERNIERE vague, le
+// recapitulatif de validation la PREMIERE. Un groupe de 49 lisait donc 11:30
+// d un cote et 11:00 de l autre, apres avoir choisi 11:00.
+//
+// Ici la cle est la paire (partie, vague) : chaque passage compte. Et quand le
+// groupe passe en plusieurs fois, le rang de vague est DIT, parce qu une
+// moitie du groupe doit savoir qu elle passe apres l autre. Les deux nombres
+// viennent du bloc (`groupWaveIndex`, `groupWaveCount`), rien n est estime.
+function rendezVousLaser(blocks) {
+  const passages = [...new Map((Array.isArray(blocks) ? blocks : [])
+    .filter((block) => block.resourceType === 'laser_arena' && block.startTime)
+    .map((block) => [`${Number(block.countIndex || 1)}.${Number(block.groupWaveIndex || 1)}`, block]))
+    .values()]
+    .sort((gauche, droite) => (Number(gauche.countIndex || 1) - Number(droite.countIndex || 1))
+      || (Number(gauche.groupWaveIndex || 1) - Number(droite.groupWaveIndex || 1)));
+  const parties = new Set(passages.map((block) => Number(block.countIndex || 1))).size;
+  return passages.map((block, index) => {
+    const vagues = Number(block.groupWaveCount || 1);
+    const precisions = [];
+    if (parties > 1) precisions.push(`partie ${Number(block.countIndex || index + 1)}`);
+    if (vagues > 1) precisions.push(`groupe ${Number(block.groupWaveIndex || 1)} sur ${vagues}`);
+    return {
+      heure: block.startTime,
+      texte: `Laser Game ${block.startTime}${precisions.length ? ` (${precisions.join(', ')})` : ''}`,
+    };
+  });
+}
+
 // Carte « votre visite » : les rendez-vous (ancres), la table dès l'arrivée et
 // le pass liberté : sans aucune heure pour les activités libres.
 function renderFormulaVisitSummary(slot, formule) {
@@ -6837,19 +6870,12 @@ function renderFormulaVisitSummary(slot, formule) {
   // va vivre, juste sous un fil qui, lui, affichait le bon ordre.
   const rendezVous = [];
   if (bowlingBlock?.startTime) rendezVous.push({ heure: bowlingBlock.startTime, texte: `Bowling ${bowlingBlock.startTime}` });
-  // CHAQUE PARTIE POSEE EST UN RENDEZ-VOUS. Le resume n'en montrait qu'une :
-  // un client qui place sa partie 1 a 15h et sa partie 3 a 19h validait un
-  // recapitulatif qui taisait son deuxieme choix.
-  const laserParts = [...new Map(blocks
-    .filter(block => block.resourceType === 'laser_arena' && block.startTime)
-    .map(block => [Number(block.countIndex || 1), block]))
-    .entries()]
-    .sort((left, right) => left[0] - right[0])
-    .map(([, block]) => block);
-  laserParts.forEach((block, index) => {
-    const rang = laserParts.length > 1 ? ` (partie ${Number(block.countIndex || index + 1)})` : '';
-    rendezVous.push({ heure: block.startTime, texte: `Laser Game ${block.startTime}${rang}` });
-  });
+  // CHAQUE PARTIE POSEE EST UN RENDEZ-VOUS, ET CHAQUE VAGUE AUSSI : un client
+  // qui place sa partie 1 a 15h et sa partie 3 a 19h validait un recapitulatif
+  // qui taisait son deuxieme choix, et un groupe scinde en deux vagues n en
+  // lisait qu une. Le calcul vit dans `rendezVousLaser`, partage avec le
+  // recapitulatif de validation : c est la meme heure des deux cotes.
+  rendezVous.push(...rendezVousLaser(blocks));
   // Les heures sont en HH:MM : l ordre alphabetique EST l ordre chronologique.
   rendezVous.sort((gauche, droite) => String(gauche.heure).localeCompare(String(droite.heure)));
   const appointments = rendezVous.map((item) => item.texte);
@@ -7824,7 +7850,7 @@ function renderFormulaAnchorPicker(formule) {
   const mobileNav = mobileCount > 1 ? `
       <div class="anchor-mobile-nav">
         <button type="button" class="anchor-mobile-back" aria-label="Créneau précédent" onclick="formulaAnchorMobileBack()">&lsaquo;</button>
-        <span class="anchor-mobile-title" data-role="anchor-mobile-title"><strong data-role="anchor-mobile-activity">${escapeHtml(mobilePages[formulaAnchorMobilePage]?.label || '')}</strong><small data-role="anchor-mobile-count">Créneau ${formulaAnchorMobilePage + 1} sur ${mobileCount}</small></span>
+        <span class="anchor-mobile-title" data-role="anchor-mobile-title"><strong data-role="anchor-mobile-activity">${escapeHtml(mobilePages[formulaAnchorMobilePage]?.label || '')}</strong><small data-role="anchor-mobile-count">Activité ${formulaAnchorMobilePage + 1} sur ${mobileCount}</small></span>
         ${mobileCount === 2 ? `<div class="anchor-mobile-alt"><button type="button" onclick="formulaAnchorStartWithNext()">${escapeHtml(mobilePages[1]?.label || '')} d’abord&nbsp;?</button></div>` : ''}
       </div>` : '';
   const mobileHeroUrl = mobileCount > 1 ? getTenantActivityImage(mobilePages[formulaAnchorMobilePage]?.activityId) : '';
@@ -8561,10 +8587,16 @@ function getFormulaRecapModel(booking) {
   const appointments = [];
   const bowlingTime = blocks.find(block => block.resourceType === 'bowling_lane')?.startTime
     || preference.preferredTimes.bowling;
-  const laserTime = blocks.find(block => block.resourceType === 'laser_arena')?.startTime
-    || (preference.laserPlacement === 'onsite' ? '' : preference.preferredTimes.laser_game);
+  // TOUTES LES VAGUES, PAS LA PREMIERE. `find` ramenait un seul bloc d arene
+  // la ou un groupe scinde en a plusieurs : cet ecran annoncait 11:00 pendant
+  // que la carte de visite annoncait 11:30, pour la meme reservation.
+  const passagesLaser = rendezVousLaser(blocks);
+  const laserTime = passagesLaser.length
+    ? ''
+    : (preference.laserPlacement === 'onsite' ? '' : preference.preferredTimes.laser_game);
   if (bowlingTime) appointments.push(`Bowling ${bowlingTime}`);
-  if (laserTime) appointments.push(`Laser Game ${laserTime}`);
+  if (passagesLaser.length) appointments.push(...passagesLaser.map((item) => item.texte));
+  else if (laserTime) appointments.push(`Laser Game ${laserTime}`);
   const freeLabels = (formulaAnchorData?.freePass || []).map(item => item.label);
   if (!freeLabels.length && formule) {
     freeLabels.push(...getFormulaFreePassIds(formule).map(id => ACTIVITY_LABELS[id] || id));

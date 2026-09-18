@@ -377,6 +377,83 @@
         "logoOnDark": true,
         "siteUrl": "https://fungalaxy.be"
       }
+    },
+    {
+      "id": "demo",
+      "name": "Démonstration Pinlane",
+      "status": "active",
+      "demonstration": true,
+      "timezone": "Europe/Brussels",
+      "defaultSchedule": {
+        "regular": {
+          "0": { "open": "10:00", "close": "22:00" },
+          "1": { "open": "10:00", "close": "22:00" },
+          "2": { "open": "10:00", "close": "22:00" },
+          "3": { "open": "10:00", "close": "22:00" },
+          "4": { "open": "10:00", "close": "22:00" },
+          "5": { "open": "10:00", "close": "22:00" },
+          "6": { "open": "10:00", "close": "22:00" }
+        },
+        "holiday": {
+          "0": { "open": "10:00", "close": "22:00" },
+          "1": { "open": "10:00", "close": "22:00" },
+          "2": { "open": "10:00", "close": "22:00" },
+          "3": { "open": "10:00", "close": "22:00" },
+          "4": { "open": "10:00", "close": "22:00" },
+          "5": { "open": "10:00", "close": "22:00" },
+          "6": { "open": "10:00", "close": "22:00" }
+        }
+      },
+      "resources": {
+        "bowling": {
+          "laneCount": 6,
+          "normalCapacityPerLane": 6,
+          "emergencyCapacityPerLane": 7,
+          "preferAdjacentLanes": true
+        },
+        "laser": {
+          "weaponCount": 20,
+          "parallelLaunches": 1,
+          "canSplitGroupsCleanly": false,
+          "requiresCompleteGroupBeforeLaunch": true,
+          "riskLevel": "critical",
+          "maxPlayers": 20
+        },
+        "partyTables": { "softCapacity": 6, "hardCapacity": 8 },
+        "barDesk": {
+          "handlesBooking": true,
+          "handlesBriefing": true,
+          "handlesFoodAndDrink": true,
+          "activityEscort": false
+        }
+      },
+      "activityAvailability": {
+        "bowling": true,
+        "laser_game": true,
+        "minigolf_blacklight": true,
+        "golf_oclock": false,
+        "arcade_time": true,
+        "playground": true,
+        "duckpin_bowling": false,
+        "axe_throwing": false,
+        "darts": false,
+        "free_roaming_vr": false,
+        "karting_vr": false,
+        "billards": false,
+        "fun_run": false
+      },
+      "publicInfo": {
+        "email": "contact@pinlane.be"
+      },
+      "activityThemes": {
+        "laser_game": { "maxPlayers": 20, "gameMinutes": 20 },
+        "bowling": { "lanes": 6, "maxPlayersPerLane": 6 }
+      },
+      "identity": {
+        "logoUrl": "./assets/brand/pinlane-logo.svg",
+        "logoOnDark": false,
+        "siteUrl": "https://pinlane.be"
+      }
     }
   ],
   "groupProof": {

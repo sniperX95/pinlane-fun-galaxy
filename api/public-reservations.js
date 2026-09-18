@@ -76,6 +76,22 @@ module.exports = async (req, res) => {
       sendError(res, 404, 'Centre inconnu.');
       return;
     }
+    // LA DEMONSTRATION N ECRIT RIEN. Le centre de demonstration sert le
+    // formulaire de Pinlane sur `/reserver` quand l adresse ne nomme aucun
+    // locataire. Son statut est `active`, donc le controle juste en dessous
+    // le laisserait passer : une soumission creerait une reservation sur un
+    // centre que personne n exploite, et enverrait a une vraie personne un
+    // message disant que sa venue est confirmee dans un lieu qui n existe
+    // pas. La garde est ICI parce que c est ici qu on ecrit : quoi que fasse
+    // le navigateur, rien ne part.
+    //
+    // C est la DONNEE qui le declare (`demonstration: true` dans le registre
+    // des centres), pas un identifiant recopie ici : un deuxieme centre de
+    // demonstration serait couvert sans toucher a cette ligne.
+    if (requestedCenter && requestedCenter.demonstration === true) {
+      sendError(res, 422, 'Ce formulaire est la démonstration de Pinlane, et rien n\'y est enregistré. Pour réserver dans un centre, passez par l\'adresse de ce centre.');
+      return;
+    }
     // Le statut du centre est lu APRES le rechauffage des overrides ci-dessus :
     // un centre ne dans la console n'existe qu'en base, son statut avec lui.
     // Jusqu'au 2026-09-14 le code le lisait avant, malgre ce commentaire : une

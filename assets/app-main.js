@@ -1912,11 +1912,44 @@ function getUrlCenterId() {
   return publicCenterIdFromUrl;
 }
 
+// LA DEMONSTRATION PINLANE : le tunnel quand l adresse ne nomme personne.
+//
+// `/reserver` sans centre servait le tunnel de Fun Galaxy Libramont, marque,
+// telephone et adresse mail compris (mesure en production, 2026-09-18). Un
+// visiteur qui arrive la n a rien demande a ce centre, et une integration qui
+// oublie `data-center` dans embed.js lui faisait meme afficher les PRIX d un
+// autre client.
+//
+// L entree est retenue au PREMIER appel, comme le slug juste au-dessus :
+// l application reecrit l adresse (`/reserver/gembloux` devient `/reserver`),
+// donc relire le chemin plus tard ferait basculer sur la demonstration un
+// visiteur venu avec son centre.
+const PUBLIC_DEMO_CENTER_ID = 'demo';
+let publicEntreeSansCentre;
+function ouvertSurLeTunnelSansCentre() {
+  if (publicEntreeSansCentre !== undefined) return publicEntreeSansCentre;
+  publicEntreeSansCentre = false;
+  try {
+    const chemin = String(window.location.pathname || '').toLowerCase().replace(/\/+$/, '');
+    publicEntreeSansCentre = chemin === '/reserver';
+  } catch (error) {
+    publicEntreeSansCentre = false;
+  }
+  return publicEntreeSansCentre;
+}
+
 // Le centre du TUNNEL (catalogue, horaires, creneaux, POST de reservation).
-// L'URL fait autorite quand elle porte un centre ; sinon on garde le centre de
-// la session staff, qui est ce que le tunnel interne utilise.
+// L'URL fait autorite quand elle porte un centre ; sinon, `/reserver` ouvert
+// sans session sert la demonstration, et tout le reste garde le centre de la
+// session staff, qui est ce que le tunnel interne utilise.
 function getTunnelCenterId() {
-  return getUrlCenterId() || getCurrentStaffCenterId();
+  const deLAdresse = getUrlCenterId();
+  if (deLAdresse) return deLAdresse;
+  // Une session staff annule la demonstration : un membre de l equipe qui
+  // clique « Réserver » veut voir SON centre, pas la vitrine du produit.
+  const connecte = typeof hasSavedAuth === 'function' && hasSavedAuth();
+  if (!connecte && ouvertSurLeTunnelSansCentre()) return PUBLIC_DEMO_CENTER_ID;
+  return getCurrentStaffCenterId();
 }
 
 function getCurrentStaffCenterId() {
@@ -25804,13 +25837,17 @@ function sanitizeTunnelIdentity(center) {
     }))
     .filter(link => link.label && link.url.length <= 300 && TENANT_SITE_URL.test(link.url))
     .slice(0, TENANT_IDENTITY_MAX_LINKS);
-  if (!name && !city && !logoUrl && !siteLinks.length) return null;
+  // LA DEMONSTRATION EST UNE PROPRIETE DE L IDENTITE, pas un cas a part : le
+  // sous-titre en a besoin, et c est cette fonction qui le nourrit.
+  const demonstration = Boolean(center && center.demonstration === true);
+  if (!name && !city && !logoUrl && !siteLinks.length && !demonstration) return null;
   return {
     name,
     city,
     logoUrl,
     logoOnDark: Boolean(logoUrl && identity.logoOnDark === true),
     siteLinks,
+    demonstration,
   };
 }
 
@@ -25850,9 +25887,13 @@ function renderTunnelIdentity(identity) {
   }
   const hero = document.getElementById('heroSubtitle');
   if (hero) {
-    hero.textContent = safe.city
-      ? `À ${safe.city} : le jour, votre groupe, le reste suit.`
-      : 'Le jour et votre groupe : le reste suit.';
+    // UNE DEMONSTRATION LE DIT TOUT DE SUITE. Le visiteur doit savoir avant de
+    // choisir sa date que rien ne sera enregistre, pas apres avoir tout rempli.
+    hero.textContent = safe.demonstration
+      ? 'Démonstration : le formulaire fonctionne, aucune réservation n’est enregistrée.'
+      : (safe.city
+        ? `À ${safe.city} : le jour, votre groupe, le reste suit.`
+        : 'Le jour et votre groupe : le reste suit.');
   }
   // Le titre d'onglet ne porte une identite que sur le TUNNEL (mode client pur
   // ou centre explicite dans l'URL) : la console garde son titre neutre.

@@ -509,6 +509,13 @@ module.exports = async (req, res) => {
         city: centerPublicInfo && typeof centerPublicInfo.city === 'string' ? centerPublicInfo.city : '',
         identity: normalizeIdentity(center.identity),
         status: center.status || 'active',
+        // CE CENTRE EST-IL UNE DEMONSTRATION ? Le tunnel doit pouvoir le DIRE
+        // au visiteur, et le dire AVANT qu il remplisse le formulaire : la
+        // porte d ecriture refuse la demonstration, donc sans cette annonce
+        // il decouvrirait le refus a la derniere seconde. Booleen strict : un
+        // centre ordinaire rend `false`, jamais `undefined`, pour qu un client
+        // ne prenne pas l absence d information pour une reponse.
+        demonstration: center.demonstration === true,
         contact: centerContact,
         // La MARQUE du centre (couleurs du tunnel). Bornee ici, comme partout :
         // quatre jetons hexadecimaux par theme, tout le reste est jete. null =

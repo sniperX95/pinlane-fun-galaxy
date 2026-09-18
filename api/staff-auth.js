@@ -9,7 +9,9 @@ const {
   getAuditSubjectSnapshot,
   STAFF_SESSION_COOKIE,
   getStaffSessionFromRequest,
+  isDatabaseError,
   isStaffAuthStorageError,
+  publicIncidentMessage,
   listAccessControl,
   loginStaffByCode,
   logoutStaff,
@@ -495,6 +497,17 @@ module.exports = async (req, res) => {
       res.setHeader('Retry-After', String(error.retryAfterSeconds));
     }
     const isStorageError = isStaffAuthStorageError(error);
-    sendError(res, isStorageError ? 503 : (error.statusCode || 400), isStorageError ? publicStorageErrorMessage() : (error.message || 'Authentification staff impossible.'));
+    // CE QUI PART AU CLIENT EST CE QUE CE PRODUIT A ECRIT POUR LUI. Une erreur
+    // venue de la base est un incident, pas une reponse : elle prend un
+    // message neutre et un code 500 (dire 400 ferait porter au client la faute
+    // du serveur). Son detail reste dans la trace d audit ecrite juste avant.
+    const venuDeLaBase = !isStorageError && isDatabaseError(error);
+    sendError(
+      res,
+      isStorageError ? 503 : (venuDeLaBase ? 500 : (error.statusCode || 400)),
+      isStorageError
+        ? publicStorageErrorMessage()
+        : (venuDeLaBase ? publicIncidentMessage() : (error.message || 'Authentification staff impossible.')),
+    );
   }
 };

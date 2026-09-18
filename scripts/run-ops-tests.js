@@ -861,7 +861,13 @@ function testDelayNotificationChannelsAndMessages() {
     change: { kind: 'shift', previousStartTime: '15:00', newStartTime: '15:15', shiftMinutes: 15, previousLanes: [1], newLanes: [1], laneChanged: false },
   });
   assert.ok(shifted.body.includes('15:00') && shifted.body.includes('15:15'), 'the shift email states old and new time');
-  assert.ok(shifted.body.includes('reste bien confirmée'), 'the email stays reassuring');
+  // LA REGLE, PAS SA FORMULATION. Ce controle affirmait « reste bien
+  // confirmée » mot pour mot ; le « bien » a saute avec les regles d ecriture
+  // client (2026-09-18) et le test a rougi sur un message qui rassure toujours.
+  // Ce qui compte, c est que le mail dise que la reservation TIENT, et ce qu il
+  // advient du montant.
+  assert.ok(/reste (bien )?confirmée/.test(shifted.body), 'the email says the reservation still stands');
+  assert.ok(/montant/i.test(shifted.body), 'and the email says what happens to the amount');
 
   const relocated = buildDelayChangeMessage({
     reservation,

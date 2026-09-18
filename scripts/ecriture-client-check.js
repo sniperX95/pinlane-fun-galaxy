@@ -227,6 +227,18 @@ function inventaire(comms) {
   ajouter('merci post-visite, sans lien avis',
     comms.buildPostVisitMessage({ name: 'Lucie Martin', hasReviewLink: false, centerName: 'Fun Galaxy Libramont' }), 'confirme');
 
+  // LES DEFAUTS D AUTOMATISATION. Ce que le gerant voit sur la page Emails, et
+  // ce que « Reinitialiser » remet. Des qu il enregistre, ce texte-la EST le
+  // mail envoye : il se juge donc comme les autres, pas comme un exemple.
+  // Les {{variables}} ne changent rien a l ecriture jugee ici.
+  const etatsSequences = { request_received: 'a-confirmer' };
+  Object.entries(comms.getAutomationDefaults()).forEach(([cle, def]) => {
+    if (!def || !def.body) return;
+    ajouter(`defaut de sequence « ${cle} »`,
+      { subject: def.subject, body: def.body },
+      etatsSequences[cle] || 'confirme');
+  });
+
   // L accuse d une demande sur mesure : le cas type ou rien ne peut etre
   // tranche tout de suite, donc celui qui doit annoncer les 24 h ouvrables.
   //
@@ -326,6 +338,26 @@ function brouillonsDeLaConsole() {
   return textes;
 }
 
+// LE CONTENU PRET A COLLER DU CERVEAU MARKETING. Le gerant le copie tel quel
+// vers ses clients : c est un texte client, pas une note interne. Les autres
+// `readyContent` de ce module (« Idee a cadrer », « Checklist du jour fort »)
+// s adressent au staff et ne sont pas juges ; le repere « Objet : » les
+// distingue, et un mail qui perdrait cette ligne sortirait du jugement, ce que
+// le bloc [8] refuse en comptant ce qui doit etre la.
+function mailsPretsDuCerveau() {
+  // Fins de ligne normalisees : le fichier de travail est en CRLF, et un motif
+  // ecrit en LF n y trouve rien, ce qui viderait le jugement en silence.
+  const cerveau = fs.readFileSync(path.join(ROOT, 'lib/marketing-brain.js'), 'utf8').replace(/\r\n/g, '\n');
+  return (cerveau.match(/readyContent: `Objet :[\s\S]*?`,\n/g) || []).map((bloc, index) => ({
+    nom: `cerveau marketing, mail pret a coller n${index + 1}`,
+    // Les ${...} sont des trous de gabarit : leur contenu ne change pas
+    // l ecriture jugee. Ils deviennent un mot neutre pour que le juge ne lise
+    // pas « ${emailTarget.label} » comme de la prose.
+    texte: bloc.replace(/^readyContent: `/, '').replace(/`,\n$/, '').replace(/\$\{[^}]*\}/g, 'mardi'),
+    etat: 'confirme',
+  }));
+}
+
 function juger(ecriture, textes) {
   const fautifs = [];
   textes.forEach((entree) => {
@@ -342,7 +374,10 @@ function main() {
   const brouillons = brouillonsDeLaConsole();
   record('les brouillons de la console sont extraits et evalues',
     brouillons.length >= 18, `${brouillons.length} modeles`);
-  const textes = inventaire(comms).concat(brouillons);
+  const prets = mailsPretsDuCerveau();
+  record('le mail pret a coller du cerveau marketing est extrait',
+    prets.length >= 1 && prets[0].texte.length > 100, `${prets.length} mail(s)`);
+  const textes = inventaire(comms).concat(brouillons, prets);
   record('l inventaire couvre les textes clients', textes.length >= 30, `${textes.length} textes`);
   // « Message vierge » est VIDE PAR CONSTRUCTION : c est la feuille blanche que
   // le staff remplit lui-meme. Elle est nommee ici, pas filtree par un seuil,
@@ -435,6 +470,23 @@ function main() {
     ajoute <= motsDuClient.length + 40, `${ajoute} caracteres ajoutes pour ${motsDuClient.length} cites`);
   record('la version sans citation reste irreprochable',
     ecriture.verifierEcritureClient(proseDe(sansCitation), { etat: 'a-confirmer' }).length === 0);
+
+  section('[8] Aucun nid de texte client ne sort du jugement');
+  // Ce gate a ete elargi deux fois apres coup : les brouillons de la console,
+  // puis les defauts de sequence et le mail pret a coller du cerveau marketing.
+  // Chacun de ces nids etait un texte que le client lit et qu aucun controle ne
+  // regardait. Ce bloc compte ce qui DOIT etre juge, pour qu un nid ne
+  // disparaisse pas en silence.
+  const nids = [
+    ['defauts de sequence', Object.values(comms.getAutomationDefaults()).filter((d) => d && d.body).length, 6],
+    ['brouillons de la console', brouillonsDeLaConsole().length, 22],
+    ['gabarits envoyes a la main', comms.__test.CLIENT_MESSAGE_TEMPLATES.length, 9],
+    ['mails prets a coller du cerveau marketing',
+      (fs.readFileSync(path.join(ROOT, 'lib/marketing-brain.js'), 'utf8').match(/readyContent: `Objet :/g) || []).length, 1],
+  ];
+  nids.forEach(([nom, compte, attendu]) => {
+    record(`${nom} : ${attendu} attendus, tous juges`, compte === attendu, `${compte}`);
+  });
 
   section('Contre-epreuve par mutation : ce gate sait-il rougir ?');
   const original = fs.readFileSync(SOURCE, 'utf8');

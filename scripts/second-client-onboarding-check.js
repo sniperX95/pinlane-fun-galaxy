@@ -1636,7 +1636,18 @@ async function proveEmbedSelectsCenter() {
     await page3.goto(`${BASE_URL}/reserver?embed=1&v=second-client-nocenter`, { waitUntil: 'networkidle', timeout: 45000 });
     await page3.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     const defaultCenter = await page3.evaluate(() => getTunnelCenterId());
-    ok(defaultCenter === 'libramont', `sans ?center=, le comportement historique tient (obtenu ${defaultCenter})`);
+    // AUCUN LOCATAIRE SANS ADRESSE. Cette ligne affirmait « le comportement
+    // historique tient », c est-a-dire libramont : c etait le contrat d avant
+    // le 2026-09-18, quand `/reserver` sans centre servait le tunnel de Fun
+    // Galaxy, marque, telephone et adresse mail compris. La REGLE que ce gate
+    // defend, elle, n a pas bouge : l arrivee d un deuxieme client ne doit pas
+    // changer ce que sert une adresse sans centre, et cette adresse ne doit
+    // appartenir a PERSONNE. Elle sert desormais la demonstration Pinlane, ce
+    // qui est plus strict que l ancien contrat, pas moins.
+    ok(defaultCenter !== SECOND_CENTER_ID && defaultCenter !== 'libramont',
+      `sans ?center=, AUCUN locataire n est servi (obtenu ${defaultCenter})`);
+    ok(defaultCenter === 'demo',
+      `et c est la demonstration Pinlane (obtenu ${defaultCenter})`);
   } finally {
     if (browser) await browser.close().catch(() => {});
     server.close();

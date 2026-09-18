@@ -225,6 +225,14 @@ async function runQuery(text, params = []) {
       .map((row) => ({ id: row.id, access_code_hash: row.access_code_hash }));
     return { rows, rowCount: rows.length };
   }
+  // LA PORTE DU PROPRIETAIRE VERIFIE QUE LE CENTRE EXISTE avant d y ecrire.
+  // En production, `staff_roles.center_id` pointe vers cette table par cle
+  // etrangere ; sans ce controle c est la base qui repondait, et son message
+  // partait au client (panne du 2026-09-19).
+  if (/^select 1 from centers where id = \$1/i.test(sql)) {
+    const hit = db.centers.some((row) => row.id === params[0]);
+    return { rows: hit ? [{ '?column?': 1 }] : [], rowCount: hit ? 1 : 0 };
+  }
   if (/^select id from centers/i.test(sql)) {
     return { rows: db.centers.map((row) => ({ id: row.id })), rowCount: db.centers.length };
   }
@@ -417,6 +425,18 @@ function codeOf(provisioned, roleName) {
     SOCLE.every((centerId) => db.staff_roles.some((role) => role.center_id === centerId && role.id === 'direction')),
     'montage : les lignes « Poste direction » heritees sont rattachees aux roles Direction du socle',
   );
+  // LA TABLE `centers` PORTE LES CENTRES DU SOCLE, comme
+  // database/tenant-integrity-schema.sql les seme en production. Sans eux,
+  // cette base synthetique serait plus permissive que la vraie, et c est
+  // exactement ce qui a laisse passer « staff_roles_center_fk ».
+  SOCLE.forEach((centerId) => {
+    if (!db.centers.some((row) => row.id === centerId)) db.centers.push({ id: centerId });
+  });
+  ok(
+    SOCLE.every((centerId) => db.centers.some((row) => row.id === centerId)),
+    'montage : la table centers connait les centres du socle, comme en production',
+    JSON.stringify(db.centers.map((row) => row.id)),
+  );
 
   section('[1] Le code ouvre SON centre, meme quand la console en affiche un autre');
   const seedFromClient = await login(ALPHA.center, SOCLE_DIRECTION_CODE);
@@ -441,6 +461,32 @@ function codeOf(provisioned, roleName) {
     afterGembloux.ok && afterGembloux.session.centerId === 'gembloux',
     'le code Direction ramene au centre ou il a servi en dernier',
     afterGembloux.ok ? afterGembloux.session.centerId : afterGembloux.message,
+  );
+  // LE CAS QUI MANQUAIT, ajoute le 2026-09-19 : jusque-la, le partage n etait
+  // teste que depuis un centre qui n avait PAS le code. Depuis un centre qui LE
+  // PARTAGE, c est ce centre qui ouvre. Ce n est pas « l ecran decide » : c est
+  // la seule facon qu a une personne aux acces multiples de dire ou elle va,
+  // tant qu on ne le lui demande pas. Le bloc [7] montre ce que cette etape
+  // protege : sans elle, un code partage n ouvre plus jamais qu un seul centre.
+  const depuisUnCentreQuiPartage = await login('libramont', SOCLE_DIRECTION_CODE);
+  ok(
+    depuisUnCentreQuiPartage.ok && depuisUnCentreQuiPartage.session.centerId === 'libramont',
+    'depuis un centre qui PARTAGE le code, ce centre-la ouvre',
+    depuisUnCentreQuiPartage.ok ? depuisUnCentreQuiPartage.session.centerId : depuisUnCentreQuiPartage.message,
+  );
+  const depuisLeTroisieme = await login('ciney', SOCLE_DIRECTION_CODE);
+  ok(
+    depuisLeTroisieme.ok && depuisLeTroisieme.session.centerId === 'ciney',
+    'et le troisieme aussi : un acces multiple reste joignable partout',
+    depuisLeTroisieme.ok ? depuisLeTroisieme.session.centerId : depuisLeTroisieme.message,
+  );
+  // ET DEPUIS UN CENTRE OU CE CODE N A AUCUN ACCES, c est son dernier travail
+  // qui ouvre, pas un refus. Le dernier travail est ciney, juste au-dessus.
+  const depuisUnCentreEtranger = await login(BETA.center, SOCLE_DIRECTION_CODE);
+  ok(
+    depuisUnCentreEtranger.ok && depuisUnCentreEtranger.session.centerId === 'ciney',
+    'et depuis un centre etranger, le dernier travail ouvre',
+    depuisUnCentreEtranger.ok ? depuisUnCentreEtranger.session.centerId : depuisUnCentreEtranger.message,
   );
 
   section('[3] Le code du proprietaire n\'appartient a aucun centre');
@@ -470,6 +516,33 @@ function codeOf(provisioned, roleName) {
     ownerOnSeed.ok && ownerOnSeed.session.centerId === 'ciney',
     'et il ouvre aussi n\'importe quel centre du socle',
     ownerOnSeed.ok ? ownerOnSeed.session.centerId : ownerOnSeed.message,
+  );
+
+  // La porte du proprietaire ECRIT dans le centre qu on lui demande. Si ce
+  // centre n existe pas, c est la cle etrangere qui repondait, et son message
+  // partait a l ecran : « insert or update on table "staff_roles" violates
+  // foreign key constraint "staff_roles_center_fk" » (panne du 2026-09-19).
+  const CENTRE_FANTOME = 'centre-qui-nexiste-pas-2026';
+  const ownerSurInconnu = await login(CENTRE_FANTOME, process.env.PLATFORM_OWNER_CODE);
+  // LA REGLE N EST PAS « il est refuse », c est « rien n est ecrit ». Le
+  // proprietaire n a pas a payer l erreur d un identifiant venu du navigateur :
+  // on ne lui ecrit rien dans un centre qui n existe pas, et son code le ramene
+  // sur un vrai centre par son empreinte.
+  ok(
+    !db.staff_roles.some((row) => row.center_id === CENTRE_FANTOME)
+      && !db.staff_members.some((row) => row.center_id === CENTRE_FANTOME),
+    'AUCUNE ligne n est ecrite pour un centre qui n existe pas',
+    JSON.stringify({ roles: db.staff_roles.filter((r) => r.center_id === CENTRE_FANTOME).length }),
+  );
+  ok(
+    !/constraint|staff_roles|violates|insert or update/i.test(ownerSurInconnu.ok ? '' : ownerSurInconnu.message),
+    'et la reponse ne porte jamais le message d une contrainte de la base',
+    ownerSurInconnu.ok ? `ouverte sur ${ownerSurInconnu.session.centerId}` : ownerSurInconnu.message,
+  );
+  ok(
+    !ownerSurInconnu.ok || ownerSurInconnu.session.centerId !== CENTRE_FANTOME,
+    'et aucune session ne porte ce centre fantome',
+    ownerSurInconnu.ok ? ownerSurInconnu.session.centerId : ownerSurInconnu.message,
   );
 
   section('[4] Ce qui reste refuse');
@@ -534,6 +607,49 @@ function codeOf(provisioned, roleName) {
   ok(fs.readFileSync(STAFF_AUTH_PATH, 'utf8') === original, 'fichier de production restaure a l\'identique');
   const restored = await login(BETA.center, alphaDirection);
   ok(restored.ok && restored.session.centerId === ALPHA.center, 'et le comportement correct est revenu');
+
+  section('[7] Contre-epreuve : sans le centre demande, un acces multiple s enferme');
+  // MESURE DU 2026-09-19. En retirant la premiere etape (« le centre demande,
+  // quand ce code y a deja un acces »), la resolution se fait uniquement par
+  // l empreinte : « dernier travail, sinon le plus ancien cree ». Un code
+  // partage n ouvre alors plus qu UN seul centre, et aucune connexion ne peut
+  // deplacer ce dernier travail, puisque toute connexion y revient. C est ce
+  // que cette premiere etape protege, et ce gate doit savoir le voir.
+  const avantOrdre = fs.readFileSync(STAFF_AUTH_PATH, 'utf8');
+  const ancreOrdre = `  const direct = await findLoginSubjectInCenter(centerId, code);
+  if (direct) return direct;
+
+`.split('\n').join(avantOrdre.includes('\r\n') ? '\r\n' : '\n');
+  ok(avantOrdre.split(ancreOrdre).length - 1 === 1, 'la premiere etape de resolution est bien la partie mutee');
+  try {
+    fs.writeFileSync(STAFF_AUTH_PATH, avantOrdre.split(ancreOrdre).join(''));
+    reloadStaffAuth();
+    const premier = await login('libramont', SOCLE_DIRECTION_CODE);
+    const second = await login('gembloux', SOCLE_DIRECTION_CODE);
+    const troisieme = await login('ciney', SOCLE_DIRECTION_CODE);
+    const ouverts = [premier, second, troisieme]
+      .map((r) => (r.ok ? r.session.centerId : `refus:${r.message}`));
+    // Ce que la mutation produit : les trois centres du partage ne s ouvrent
+    // plus tous les trois. Un seul reste joignable, et le demander lui-meme
+    // devient un refus (la resolution par empreinte rend null quand le centre
+    // d origine EST le centre demande). Le code est enferme.
+    const vraimentOuverts = [...new Set(ouverts.filter((o) => !o.startsWith('refus:')))];
+    ok(
+      vraimentOuverts.length <= 1,
+      'sans cette etape, le code partage n atteint plus ses centres : ce gate ROUGIRAIT',
+      JSON.stringify(ouverts),
+    );
+  } finally {
+    fs.writeFileSync(STAFF_AUTH_PATH, avantOrdre);
+    reloadStaffAuth();
+  }
+  ok(fs.readFileSync(STAFF_AUTH_PATH, 'utf8') === avantOrdre, 'fichier de production restaure apres la contre-epreuve d ordre');
+  const ordreRevenu = await login('gembloux', SOCLE_DIRECTION_CODE);
+  ok(
+    ordreRevenu.ok && ordreRevenu.session.centerId === 'gembloux',
+    'et chaque centre du partage redevient joignable',
+    ordreRevenu.ok ? ordreRevenu.session.centerId : ordreRevenu.message,
+  );
 
   ok(UNHANDLED.length === 0, `aucune requete SQL non couverte par le gate (${UNHANDLED.length})`);
   if (UNHANDLED.length) UNHANDLED.slice(0, 5).forEach((sql) => console.log(`      ${sql}`));

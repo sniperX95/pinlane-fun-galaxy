@@ -760,6 +760,8 @@ async function forceNowLine(page) {
   });
 }
 
+const MESURES_MAX = 12;
+
 async function runCell(page, ctx) {
   await page.setViewportSize({ width: ctx.vw, height: ctx.vh });
   // Deux trames APRES le rendu : le redimensionnement declenche lui-meme un
@@ -769,10 +771,35 @@ async function runCell(page, ctx) {
     if (typeof renderStaff === 'function') renderStaff();
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   }));
-  await page.waitForTimeout(60);
-  const defects = await page.evaluate(() => window.__PLANNING_AUDIT__());
-  const scrollDefects = await page.evaluate(() => window.__PLANNING_SCROLL_AUDIT__());
-  return [...defects, ...scrollDefects];
+  // DEUX RELEVES IDENTIQUES D AFFILEE, pas un delai fixe. Un delai mesure la
+  // machine : sous la charge d une suite complete, 60 ms laissaient la grille
+  // a moitie construite et le releve rendait des colonnes de 0 px (suite du
+  // 2026-09-18, dix occurrences toutes sur la meme combinaison, zero quand le
+  // gate tourne seul).
+  //
+  // On n attend PAS qu une colonne ait une largeur non nulle : une colonne de
+  // 0 px est justement ce que ce gate cherche. On attend que le releve ne
+  // BOUGE plus, ce qui est un signal different de son contenu.
+  let precedent = null;
+  let releve = [];
+  let mesures = 0;
+  while (mesures < MESURES_MAX) {
+    await page.waitForTimeout(60);
+    mesures += 1;
+    const defects = await page.evaluate(() => window.__PLANNING_AUDIT__());
+    const scrollDefects = await page.evaluate(() => window.__PLANNING_SCROLL_AUDIT__());
+    releve = [...defects, ...scrollDefects];
+    const signature = JSON.stringify(releve);
+    if (precedent === signature) return releve;
+    precedent = signature;
+  }
+  // L attente bornee ne sort PAS en silence : ce qui n a jamais tenu en place
+  // n a pas ete mesure, et le gate doit le dire au lieu de rendre le dernier
+  // releve comme s il faisait foi.
+  return [...releve, {
+    kind: 'mise-en-page-jamais-stable',
+    detail: `releve encore mouvant apres ${mesures} mesures (viewport ${ctx.vw}x${ctx.vh})`,
+  }];
 }
 
 function report(title, tally, cellCount) {

@@ -225,8 +225,13 @@ server.listen(PORT, '127.0.0.1', async () => {
   }));
   ok(etape.lignes === 1, `UNE seule etape laser, pas une par partie (${etape.lignes})`);
   ok(etape.pistes === 1, `UNE seule liste d heures (${etape.pistes})`);
-  ok(/3 heures/.test(etape.detail) && /sur place/.test(etape.detail),
-    `elle annonce la regle : jusqu a 3 heures, le reste sur place (${JSON.stringify(etape.detail)})`);
+  // LA REGLE, PAS LA PHRASE. Le libelle a change le 2026-09-18 (« 3 parties ·
+  // choisissez vos heures, l equipe place les autres ») : ce qui doit tenir,
+  // c est que le nombre de parties ACHETEES soit annonce et que le sort des
+  // heures non choisies soit dit. Asserter la phrase mot pour mot rendait ce
+  // gate rouge sur une reformulation qui dit exactement la meme chose.
+  ok(/3 partie/.test(etape.detail) && /(sur place|quipe)/i.test(etape.detail),
+    `elle annonce la regle : 3 parties, et qui place les heures non choisies (${JSON.stringify(etape.detail)})`);
 
   // ---------------------------------------------------------------------
   console.log('\n[2] Une 2e heure s AJOUTE, elle ne remplace pas la 1re');

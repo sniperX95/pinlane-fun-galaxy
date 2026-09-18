@@ -1200,7 +1200,10 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     players
   ).filter(window => Number(window.countIndex || 1) === 1);
   const waveCount = Math.max(...candidateWindows.map(window => Number(window.groupWaveCount || 1)), 1);
-  let tightestRemaining = LASER_GAME_MAX_PLAYERS;
+  // La capacite du centre affiche, jamais la constante : une arene de 20
+  // postes ne partage pas 30 places.
+  const postesArene = typeof getLaserArenaCapacity === 'function' ? getLaserArenaCapacity() : LASER_GAME_MAX_PLAYERS;
+  let tightestRemaining = postesArene;
   let maxPlayersTotal = 0;
   let sharedNow = false;
   let ok = true;
@@ -1231,7 +1234,7 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     });
     const joinable = [...sessions.values()]
       .filter(session =>
-        session.players + Number(candidate.players || 0) <= LASER_GAME_MAX_PLAYERS
+        session.players + Number(candidate.players || 0) <= postesArene
         && Math.abs(normalizeKey(session.start) - candidateStartMin) <= 15
         && Math.abs(normalizeKey(session.end) - candidateEndMin) <= 15)
       .sort((a, b) => Math.abs(normalizeKey(a.start) - candidateStartMin) - Math.abs(normalizeKey(b.start) - candidateStartMin))[0] || null;
@@ -1250,7 +1253,7 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     const playersBefore = overlapping.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), 0);
     const playersTotal = playersBefore + Number(candidate.players || 0);
     maxPlayersTotal = Math.max(maxPlayersTotal, playersTotal);
-    tightestRemaining = Math.min(tightestRemaining, Math.max(0, LASER_GAME_MAX_PLAYERS - playersTotal));
+    tightestRemaining = Math.min(tightestRemaining, Math.max(0, postesArene - playersTotal));
     sharedNow = sharedNow || (playersBefore > 0 && joinsExistingSession);
     // DEUX CAUSES DISTINCTES, DEUX MESSAGES. Un total brut « 48/30 » laisse
     // croire que le groupe entier ne rentre pas, alors que le moteur l a deja
@@ -1268,9 +1271,9 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
       message = `L'arène tourne déjà à ${heureLancement} : un seul lancement à la fois. Choisissez un autre départ.`;
       break;
     }
-    if (playersTotal > LASER_GAME_MAX_PLAYERS) {
+    if (playersTotal > postesArene) {
       ok = false;
-      const restantes = Math.max(0, LASER_GAME_MAX_PLAYERS - playersBefore);
+      const restantes = Math.max(0, postesArene - playersBefore);
       message = `Lancement de ${heureLancement} : ${playersBefore} joueur(s) déjà inscrit(s), il reste ${restantes} place(s)${situeVague}. Décalez le départ.`;
       break;
     }
@@ -1285,7 +1288,7 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     splitGroup: waveCount > 1,
     remainingPlaces: Math.max(0, tightestRemaining),
     sharedNow,
-    mayShare: maxPlayersTotal < LASER_GAME_MAX_PLAYERS,
+    mayShare: maxPlayersTotal < postesArene,
     message: ok ? '' : message
   };
 }
@@ -4217,7 +4220,7 @@ function renderPaxAlertContent() {
   if (state.booking.type === 'laser') {
     const waveCount = getLaserWaveCount(pax);
     const waveSize = getBalancedLaserWaveSize(pax);
-    const remainingIfEmpty = Math.max(0, LASER_GAME_MAX_PLAYERS - (waveCount > 1 ? waveSize : pax));
+    const remainingIfEmpty = Math.max(0, getLaserArenaCapacity() - (waveCount > 1 ? waveSize : pax));
     el.innerHTML = `
       <div class="pax-alert ${waveCount > 1 ? 'warning' : ''}" data-prevenir="${waveCount > 1 ? '1' : '0'}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${waveCount > 1 ? '2.5' : '2'}" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg>
@@ -4262,7 +4265,7 @@ function renderPaxAlertContent() {
       if (aLaser) {
         const vagues = getLaserWaveCount(pax);
         const tailles = typeof getBalancedLaserWaveSizes === 'function' ? getBalancedLaserWaveSizes(pax) : [];
-        const postes = Math.max(1, Math.trunc(Number(LASER_GAME_MAX_PLAYERS) || 1));
+        const postes = Math.max(1, Math.trunc(Number(getLaserArenaCapacity()) || 1));
         // LA CAUSE AVANT LA CONSEQUENCE. « 2 sessions » ne veut rien dire tant
         // que le client ignore que l arene compte 30 postes et qu ils sont 49.
         // Les tailles viennent du MEME calcul que le plan (vagues equilibrees),
@@ -4273,7 +4276,7 @@ function renderPaxAlertContent() {
             : '';
           consequences.push(`<b>Laser game</b> : l’arène compte <b>${postes} postes</b> et vous êtes <b>${pax}</b>. Votre groupe jouera en <b>${vagues} sessions</b> qui se suivent${reparties}. Chacune fait le même nombre de parties.`);
         } else {
-          consequences.push(`<b>Laser game</b> : vous êtes <b>${pax}</b>, l’arène en accueille ${postes}. Tout le groupe joue <b>en une seule session</b>.`);
+          consequences.push(`<b>Laser game</b> : l’arène compte <b>${postes} postes</b> et vous êtes <b>${pax}</b>. Tout le groupe joue <b>en une seule session</b>.`);
         }
       }
       // DUCKPIN (2026-08-24) : il a SES pistes (2 a Libramont, servies par le
@@ -7382,8 +7385,6 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
       <button type="button" class="slot-period-head" aria-expanded="${ouvert ? 'true' : 'false'}" aria-controls="${escapeHtml(idGrille)}" onclick="basculerPeriodeHeures(this)">
         <span class="slot-period-icon" aria-hidden="true">${ANCHOR_PERIOD_ICONS[group.key] || ''}</span>
         <span class="slot-period-title">${escapeHtml(group.label)}</span>
-        <!-- UN NOMBRE DE CRENEAUX, pas une duree. « 8 heures » a cote de
-             « APRES-MIDI » se lisait comme huit heures de jeu. -->
         <span class="slot-period-count">${libres > 0 ? `${libres} créneau${libres > 1 ? 'x' : ''}` : 'aucun créneau libre'}</span>
         <svg class="slot-period-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </button>

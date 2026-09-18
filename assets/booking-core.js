@@ -609,8 +609,20 @@ function getLaserGameCount(duration = state.booking?.duration || 0.5) {
   return getLaserOption(duration).games;
 }
 
+// LES POSTES DE L ARENE DU CENTRE AFFICHE. La constante ne decide plus : elle
+// n est que le dernier recours quand le centre n a rien declare. Un centre
+// a 20 postes voyait sinon ses groupes annonces sur la base de 30, et le
+// tunnel contredisait le plan du moteur (mesure Gembloux, 2026-09-18).
+function getLaserArenaCapacity() {
+  const declare = Number(
+    getBookingCatalogConfig()?.laserArenaCapacity
+    ?? centerScheduleConfig?.resources?.laser?.weaponCount,
+  );
+  return Number.isFinite(declare) && declare > 0 ? Math.trunc(declare) : LASER_GAME_MAX_PLAYERS;
+}
+
 function getLaserWaveCount(pax) {
-  return Math.max(1, Math.ceil((Number(pax) || 1) / LASER_GAME_MAX_PLAYERS));
+  return Math.max(1, Math.ceil((Number(pax) || 1) / getLaserArenaCapacity()));
 }
 
 function getBalancedLaserWaveSize(pax) {

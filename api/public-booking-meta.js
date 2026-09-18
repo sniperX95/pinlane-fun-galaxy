@@ -533,6 +533,12 @@ module.exports = async (req, res) => {
           emergencyCapacityPerLane: bowlingCapacity.emergencyCapacityPerLane,
           bowlingPrices: BOWLING_PRICES,
           laserOptions: LASER_GAME_OPTIONS,
+          // LES POSTES DE L ARENE, declares par le centre. Sans cette cle, le
+          // tunnel retombait sur une constante de 30 : juste a Libramont par
+          // coincidence, FAUX a Gembloux qui en a 20 (25 joueurs y jouent en
+          // deux sessions, le tunnel en annoncait une). Meme regle que
+          // `laneCount` juste au-dessus : la capacite est une donnee du centre.
+          laserArenaCapacity: Math.max(0, Math.trunc(Number(center?.resources?.laser?.weaponCount) || 0)) || null,
           // Cle ADDITIVE : presente uniquement quand le centre vend le bowling
           // AUX PARTIES, par personne (N4 Bowling). Absente, le tunnel garde la
           // grille par piste et par duree, exactement comme avant.

@@ -289,7 +289,12 @@ const MEASURE = () => {
     // IMPOSSIBLES y vivent aussi, grisees avec leur raison : on compte a part
     // celles qui se prennent au doigt.
     renderedChips: document.querySelectorAll('.anchor-chip').length,
+    // DEUX COMPTES, PARCE QUE CE SONT DEUX CHOSES (2026-09-18). Depuis que
+    // les heures qui coincent restent cliquables et expliquent, `:not(:disabled)`
+    // compte TOUTES les pastilles : il mesure l atteignabilite, plus la
+    // prenabilite. Une heure PRENABLE est une heure sans data-coince.
     reachableChips: document.querySelectorAll('.anchor-chip:not(:disabled)').length,
+    prenableChips: document.querySelectorAll('.anchor-chip:not([data-coince])').length,
     chipTimesValid: [...document.querySelectorAll('.anchor-chip')]
       .every((chip) => /^\d{2}:(00|30)$/.test((chip.querySelector('.slot-card-time') || chip).textContent.trim())),
     picks: [...document.querySelectorAll('.anchor-row-pick')].map((el) => el.textContent.trim()),
@@ -553,7 +558,11 @@ async function checkBrowser(page) {
   const attenduesPrenables = grille.reduce((n, a) => n + a.times.filter((t) => t.ok !== false).length, 0);
   const attenduesRendues = grille.reduce((n, a) => n + a.times.length, 0);
   ok(attenduesRendues === 56 && attenduesPrenables >= 50, `moteur : ${attenduesRendues} heures de grille (attendu 2 x 28), ${attenduesPrenables} prenables (attendu >= 50)`);
-  ok(mobile.reachableChips === attenduesPrenables, `mobile 390px : les ${mobile.reachableChips} heures prenables sont toutes atteignables sans changer d onglet (moteur : ${attenduesPrenables})`);
+  ok(mobile.prenableChips === attenduesPrenables, `mobile 390px : les ${mobile.prenableChips} heures prenables sont exactement celles du moteur (${attenduesPrenables})`);
+  // ET TOUTE LA GRILLE EST ATTEIGNABLE AU DOIGT, l impossible compris : c est
+  // ce qui permet a une heure qui coince de dire pourquoi au lieu de faire
+  // la morte (Movsar, 2026-09-18).
+  ok(mobile.reachableChips === attenduesRendues, `mobile 390px : les ${mobile.reachableChips} heures sont toutes atteignables sans changer d onglet (grille : ${attenduesRendues})`);
   ok(mobile.renderedChips === attenduesRendues, `mobile 390px : les ${mobile.renderedChips} heures de la grille sont toutes rendues, l impossible compris (moteur : ${attenduesRendues})`);
 }
 

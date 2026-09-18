@@ -120,7 +120,13 @@ async function provenTap(page, selector, label) {
   ok(probe.inViewport, `${label} : entierement dans l ecran (${JSON.stringify(probe.rect)})`);
   ok(probe.hit, `${label} : recoit le doigt (hit-test reel)${probe.hit ? '' : ' - intercepte par ' + (probe.cover || '?')}`);
   if (!probe.inViewport || !probe.hit) return false;
-  await page.tap(selector, { timeout: 5000 });
+  // CE DELAI N EST PAS LA MESURE. Ce qui est PROUVE ci-dessus, c est que le
+  // bouton existe, tient dans l ecran et recoit le doigt (hit-test reel) ; le
+  // tap qui suit n est que le geste. A 5 s, il rougissait dans la suite
+  // complete (machine chargee, une vingtaine de navigateurs) et passait seul :
+  // il mesurait la charge de la machine, pas l interface. Un doigt qui
+  // n atteint pas sa cible est attrape par `probe.hit`, pas par cette horloge.
+  await page.tap(selector, { timeout: 20000 });
   return true;
 }
 

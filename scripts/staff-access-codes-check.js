@@ -83,7 +83,15 @@ const NON_COUVERTES = [];
 let horloge = Date.parse('2026-09-16T08:00:00.000Z');
 function tic() { horloge += 1000; return new Date(horloge).toISOString(); }
 function viderBase() {
-  db = { staff_roles: [], staff_members: [], staff_sessions: [], staff_access_events: [] };
+  // LA TABLE `centers` EXISTE, comme en production, et elle porte les centres
+  // du socle ET ceux nes dans la console. La porte du proprietaire la consulte
+  // avant d ecrire : sans elle, ce gate servirait une base plus permissive que
+  // la vraie, et c est ce genre d ecart qui a laisse passer la panne du
+  // 2026-09-19 (« staff_roles_center_fk »).
+  db = {
+    centers: [{ id: 'libramont' }, { id: 'gembloux' }, { id: 'ciney' }, { id: 'n4-bowling' }],
+    staff_roles: [], staff_members: [], staff_sessions: [], staff_access_events: [],
+  };
   DDL = 0;
 }
 viderBase();
@@ -91,6 +99,13 @@ viderBase();
 const vide = () => ({ rows: [], rowCount: 0 });
 const lignes = (rows) => ({ rows, rowCount: rows.length });
 function sqlPlat(texte) { return String(texte).replace(/\s+/g, ' ').trim(); }
+
+// `select 1 from centers where id = $1` : la porte du proprietaire s en sert
+// pour ne jamais ecrire dans un centre qui n existe pas.
+function centreExiste(params) {
+  const trouve = db.centers.some((c) => c.id === params[0]);
+  return trouve ? lignes([{ '?column?': 1 }]) : vide();
+}
 
 function lireInsert(sql, params) {
   const tete = sql.match(/^insert into (\w+) \(([^)]*)\) values \(/i);
@@ -181,6 +196,7 @@ async function requete(texte, params = []) {
   if (/^insert into/i.test(sql)) { const r = inserer(sql, params); if (r) return r; }
   const garde = sql.includes(GARDE);
 
+  if (/^select 1 from centers where id = \$1/i.test(sql)) return centreExiste(params);
   if (/^select m\.center_id from staff_members m join staff_roles r .* where m\.access_code_hash = \$1/i.test(sql)) {
     const eligibles = db.staff_members
       .filter((m) => m.access_code_hash === params[0] && m.status !== 'blocked' && retenu(m, garde))

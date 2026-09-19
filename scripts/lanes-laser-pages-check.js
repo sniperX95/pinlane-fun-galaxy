@@ -215,14 +215,23 @@ async function main() {
       const zone = document.querySelector('.lane-row[data-lane="5"] [data-role="lane-maint-form"]');
       [...zone.querySelectorAll('button')].find((b) => /Planifier/.test(b.textContent)).click();
     });
-    await page.waitForTimeout(600);
-    const planifie = await page.evaluate(() => {
+    // ATTENTE PAR CONDITION, PAS PAR CHRONO. Le clic « Planifier » sauvegarde
+    // puis re-rend : sous la charge de la suite complete, 600 ms en dur ne
+    // suffisaient pas et le gate lisait la rangee d AVANT le clic. Le butoir
+    // atteint laisse l assertion ROUGIR, il ne la sauve pas.
+    const lireRangee5 = () => page.evaluate(() => {
       const row = document.querySelector('.lane-row[data-lane="5"]');
       return {
         maintenance: row ? row.classList.contains('is-maintenance') : false,
         texte: row ? row.textContent.replace(/\s+/g, ' ') : '',
       };
     });
+    const butoirEntretien = Date.now() + 10000;
+    let planifie = await lireRangee5();
+    while (!(planifie.maintenance && /huilage/.test(planifie.texte)) && Date.now() < butoirEntretien) {
+      await page.waitForTimeout(100);
+      planifie = await lireRangee5();
+    }
     ok(planifie.maintenance && /huilage/.test(planifie.texte),
       `l entretien planifie se voit sur la rangee, motif compris (« ${planifie.texte.slice(0, 90)} »)`);
 

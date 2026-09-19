@@ -154,7 +154,19 @@ async function bootStaff(page) {
     if (typeof renderStaff === 'function') renderStaff();
     if (typeof renderStaffMenu === 'function') renderStaffMenu();
   });
-  await page.waitForTimeout(600);
+  // ON ATTEND QUE L ECRAN SE STABILISE, PAS UN CHRONO. Le tableau de bord
+  // peint sa date apres le rendu : sous la charge de la suite complete, 600 ms
+  // en dur ne suffisaient pas et le texte lu ne portait pas encore le mois,
+  // alors que l etat etait juste partout. La condition reste NEUTRE (elle ne
+  // regarde aucun mois), donc l assertion garde son pouvoir de discrimination
+  // et la contre-epreuve du bloc [C] est attendue de la meme façon.
+  await page.evaluate(() => { window.__QA_TAILLE_ECRAN__ = -1; });
+  await page.waitForFunction(() => {
+    const n = document.body.innerText.length;
+    const avant = window.__QA_TAILLE_ECRAN__;
+    window.__QA_TAILLE_ECRAN__ = n;
+    return n > 400 && avant === n;
+  }, null, { timeout: 20000, polling: 150 });
 }
 
 async function readDates(page) {

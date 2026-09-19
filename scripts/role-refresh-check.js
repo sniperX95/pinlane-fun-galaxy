@@ -77,7 +77,8 @@ async function proveColdLogin(page, fixture) {
   await page.evaluate(() => { window.__roleRefreshDocument = true; });
   // Les handlers HTML reels appellent setView et submitLogin.
   // Aucun setView/ensureStaffConsolesLoaded injecte ici par le test.
-  await page.locator('#btnStaff').click();
+  await page.locator('.entry-login').click();
+  await page.locator('#authOverlay').waitFor({ state: 'visible' });
   await page.locator('#loginPass').fill('QA-LOCAL-ROLE');
   await page.locator('#authOverlay button[type="submit"]').click();
   await page.waitForFunction(() => Boolean(state.staffAuthSession?.cookieBacked)

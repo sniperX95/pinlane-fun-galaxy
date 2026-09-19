@@ -9528,7 +9528,7 @@ body.entry-mode main {
   line-height: 1.65;
   text-wrap: pretty;
 }
-.entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-7); }
+.entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-6); }
 .entry-actions a {
   min-height: 44px;
   display: inline-flex;
@@ -9694,7 +9694,7 @@ body.client-mode:not(.embed-mode) #clientView .tunnel-stage {
   .entry-view { width: calc(100% - 28px); }
   .entry-brand img { width: 122px; }
   .entry-login { min-height: 44px; padding-inline: 12px; }
-  .entry-main { align-items: start; gap: var(--space-7); padding: 44px 0 36px; }
+  .entry-main { align-items: start; gap: var(--space-6); padding: 44px 0 36px; }
   .entry-copy h1 { font-size: clamp(40px, 11.5vw, 48px); }
   .entry-copy > p { margin-top: var(--space-5); }
   .entry-actions { display: grid; margin-top: var(--space-6); }
@@ -9706,7 +9706,10 @@ body.client-mode:not(.embed-mode) #clientView .tunnel-stage {
     border-inline: 0;
     border-radius: var(--radius-md);
   }
-  #clientView .contact-confidence { padding: 8px 10px; gap: var(--space-2); }
+  #clientView .contact-confidence { padding: 2px; gap: var(--space-2); }
+  #clientView .contact-confidence > div { display: block; }
+  #clientView .contact-confidence strong,
+  #clientView .contact-confidence span { display: inline; }
   #clientView .contact-confidence span { font-size: 12px; }
   #clientView .booking-facts { margin-bottom: var(--space-2); }
   #clientView .booking-facts > div { min-height: 54px; padding: 7px 8px; }

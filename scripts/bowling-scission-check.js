@@ -53,7 +53,9 @@ const DATE = prochainSamedi();
 // verrait au lieu de passer en silence.
 const database = require(path.join(ROOT, 'lib/database'));
 let dayReservations = [];
-database.readAvailabilitySnapshot = async () => ({ reservations: dayReservations, laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont' });
+let dayLaneStatuses = {};
+let dayBlocks = [];
+database.readAvailabilitySnapshot = async () => ({ reservations: dayReservations, laneStatuses: dayLaneStatuses, blocks: dayBlocks, date: DATE, centerId: 'libramont' });
 let appelsBase = 0;
 database.getPool = () => { appelsBase += 1; throw new Error('ce gate ne touche pas la base'); };
 
@@ -89,6 +91,9 @@ async function visite(pax, dureeHeures = 1) {
   const blocs = creneau && creneau.opsPlan && Array.isArray(creneau.opsPlan.timeline)
     ? creneau.opsPlan.timeline.filter((b) => b.activityId === 'bowling')
     : [];
+  const blocsRessource = creneau && creneau.opsPlan && Array.isArray(creneau.opsPlan.resourceBlocks)
+    ? creneau.opsPlan.resourceBlocks.filter((b) => b.resourceType === 'bowling_lane')
+    : [];
   return {
     data,
     creneau,
@@ -96,6 +101,7 @@ async function visite(pax, dureeHeures = 1) {
     derniereLibre: libres[libres.length - 1] || '',
     refusFinaux: heures.filter((t) => t.ok === false).slice(-1).map((t) => t.reason || ''),
     blocs,
+    blocsRessource,
     totalMinutes: creneau && creneau.opsPlan ? Number(creneau.opsPlan.totalMinutes) || 0 : 0,
     prix: Number(data.price) || 0,
   };
@@ -245,6 +251,72 @@ async function main() {
   const flattened = JSON.parse(JSON.stringify(input));
   bowlingBlocks(flattened.opsPlan).forEach((b) => { b.lanes = [...input.lanes]; });
   record('contre-epreuve : appliquer l union aux deux services est refuse', !validate(flattened).ok);
+
+  section('[5 ter] La maintenance change la capacite de service, pas les identifiants physiques');
+  dayLaneStatuses = { 1: 'maintenance', 2: 'maintenance', 3: 'maintenance', 4: 'maintenance' };
+  try {
+    const reduit = await visite(48);
+    const blocsReduits = reduit.blocs;
+    record('48 joueurs deviennent deux services de 24 quand seules les pistes 5 a 8 sont exploitables',
+      blocsReduits.length === 2
+        && blocsReduits.every((bloc) => bloc.players === 24 && bloc.requiredLanes === 4),
+      JSON.stringify({ blocs: blocsReduits.map((bloc) => ({ players: bloc.players, requiredLanes: bloc.requiredLanes })), reason: reduit.data.reason, anchors: reduit.data.anchors }));
+    record('les identifiants physiques 5 a 8 sont conserves dans chaque service',
+      reduit.blocsRessource.length === 2
+        && reduit.blocsRessource.every((bloc) => JSON.stringify(bloc.lanes) === JSON.stringify([5, 6, 7, 8])),
+      JSON.stringify(reduit.blocsRessource.map((bloc) => bloc.lanes)));
+    const prixMaintenance = await visite(29);
+    const prixAttenduMaintenance = (BOWLING_PRICES[1] || 0) * 6;
+    record('29 joueurs sont chiffres sur les six pistes facturees des deux services du jour',
+      prixMaintenance.prix === prixAttenduMaintenance
+        && Number(prixMaintenance.data.program?.price) === prixAttenduMaintenance,
+      JSON.stringify({ prix: prixMaintenance.prix, programme: prixMaintenance.data.program?.price, attendu: prixAttenduMaintenance }));
+    const creationMaintenance = await prepareReservationOps({
+      centerId: 'libramont', type: 'visite', date: DATE,
+      startTime: prixMaintenance.derniereLibre || '10:00', pax: 29,
+      name: 'Offline QA', phone: '0470000000', email: 'qa@example.invalid',
+      program: { items: [{ activityId: 'bowling', duration: 1 }] },
+    }, 'public', {
+      readState: async () => ({ reservations: [], laneStatuses: dayLaneStatuses, blocks: [] }),
+    });
+    record('la creation recalcule le meme prix apres lecture des maintenances',
+      creationMaintenance.planAvailable
+        && creationMaintenance.price === prixAttenduMaintenance
+        && creationMaintenance.basePrice === prixAttenduMaintenance
+        && creationMaintenance.program?.price === prixAttenduMaintenance,
+      JSON.stringify({ prix: creationMaintenance.price, base: creationMaintenance.basePrice, programme: creationMaintenance.program?.price }));
+    const secoursReduit = await visite(28);
+    record('28 joueurs tiennent encore en un service a la capacite de secours des quatre pistes',
+      secoursReduit.blocs.length === 1
+        && secoursReduit.blocs[0].players === 28
+        && secoursReduit.blocs[0].requiredLanes === 4,
+      JSON.stringify({ blocs: secoursReduit.blocs.map((bloc) => ({ players: bloc.players, requiredLanes: bloc.requiredLanes })), reason: secoursReduit.data.reason, anchors: secoursReduit.data.anchors }));
+  } finally {
+    dayLaneStatuses = {};
+  }
+  dayLaneStatuses = Object.fromEntries(Array.from({ length: bowling.laneCount }, (_, index) => [index + 1, 'maintenance']));
+  try {
+    const ferme = await visite(8);
+    record('huit pistes en maintenance refusent toute reservation bowling',
+      ferme.libres.length === 0 && ferme.blocs.length === 0,
+      JSON.stringify({ heures: ferme.libres.length, blocs: ferme.blocs.length }));
+  } finally {
+    dayLaneStatuses = {};
+  }
+  dayReservations = [{
+    id: 990, centerId: 'libramont', type: 'bowling', date: DATE,
+    startTime: '10:00', duration: 1, pax: 24, lanes: [1, 2, 3, 4], status: 'pending',
+  }];
+  try {
+    const occupe = await visite(48);
+    const dixHeures = ((occupe.data.anchors || {}).activities || [])
+      .flatMap((ancre) => ancre.activityId === 'bowling' ? ancre.times || [] : [])
+      .find((heure) => heure.time === '10:00');
+    record('une occupation temporaire ne transforme pas 48 joueurs en deux services',
+      Boolean(dixHeures && dixHeures.ok === false), JSON.stringify(dixHeures || null));
+  } finally {
+    dayReservations = [];
+  }
 
   // ====================================================================== [6]
   section('[6] Contre-epreuve par mutation : ce gate sait-il rougir ?');

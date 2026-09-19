@@ -116,6 +116,7 @@ Deux univers, un même langage :
 
 - **Console staff/admin** : dense, scannable, monochrome + bleu. L'opérateur lit un état en 2 secondes.
 - **Client (tenant)** : mêmes composants, plus d'air (spacing ×1.5), titres plus grands, orienté réassurance et conversion.
+- **Entrée plateforme** : une porte sobre à deux colonnes qui sépare l'accès équipe du tunnel public, avec preuve produit structurée par des filets plutôt que par des cartes décoratives.
 
 ## 2. Thèmes light / dark
 
@@ -134,7 +135,7 @@ Deux univers, un même langage :
 
 - **Geist** (UI) et **Geist Mono** (data) : self-hostées, WOFF2 variables, `assets/fonts/`, `font-display: swap`, preload sur les 2 fichiers latin. ~84 KB au total. Inter et IBM Plex Mono ne sont plus chargées.
 - Tout ce qui est **donnée** passe en Geist Mono avec `font-variant-numeric: tabular-nums` : heures, prix, capacités, compteurs, IDs, numéros de piste.
-- Échelle (UI) : 12 (label/meta) · 13 (dense/table) · 14 (body) · 16 (section) · 20 (page title console) · 24-32 (titres client) · 40-56 (landing). Titres : weight 600, letter-spacing -0.02em. Jamais de texte < 12px, jamais d'UPPERCASE avec letter-spacing > 0.05em (l'ancien style « label espacé » disparaît).
+- Échelle (UI) : 12 (label/meta) · 13 (dense/table) · 14 (body) · 16 (section) · 20 (page title console) · 24-32 (titres client) · 40-56 (display d'entrée). Titres : weight 600, letter-spacing -0.02em. Le display de l'entrée plateforme resserre à -0.04em, line-height 1.02 et 13ch maximum. Jamais de texte < 12px, jamais d'UPPERCASE avec letter-spacing > 0.05em (l'ancien style « label espacé » disparaît).
 
 ## 5. Forme, profondeur, motion
 
@@ -153,6 +154,8 @@ Deux univers, un même langage :
 - **Tables/listes** : header 12px/500 `muted`, lignes 13-14px séparées par `line`, hover `subtle`, colonnes numériques en Geist Mono alignées à droite.
 - **Badges statut** : pill (radius full), 12px/500, padding 2px 10px, fond `-soft` + texte statut. Point 6px optionnel devant.
 - **Navigation staff** : sidebar fond `surface`, bordure droite `line` ; item actif = fond `subtle` + texte `text` + barre 2px `accent` à gauche ; inactif = `muted`. Top bar 56px.
+- **Entrée plateforme** : conteneur centré 1180px, navigation 76px avec filet bas, grille contenu/preuves `1.25fr / .75fr`, display 40-56px et deux vraies destinations. Sous 760px, la grille devient une colonne ; sous 640px, les deux actions occupent toute la largeur et toutes les cibles font au moins 44px.
+- **Synthèse de réservation** : trois faits issus de l'état du moteur dans une grille bordée unique ; valeur en Geist Mono tabulaire, libellé et unité en 12px. Sur mobile, la grille reste à trois colonnes et compresse la typographie sans descendre sous 12px.
 - **Planning** : grille bordures `line` ; créneau libre = `surface` ; réservé = fond `accent-soft` + bordure gauche 2px `accent` ; states via couleurs statut. Heures en Geist Mono.
 - **Empty states** : icône trait 1.5px `faint`, titre 14/500, texte 13 `muted`, action secondaire.
 - **Focus (tout élément interactif)** : `outline: 2px solid var(--accent); outline-offset: 2px`. Cibles tactiles ≥ 44px (mobile) / ≥ 32px + spacing (desktop dense).
@@ -172,7 +175,7 @@ Contraste ≥ 4.5:1 (texte) et 3:1 (UI) dans les **deux** thèmes · focus visib
 | `assets/pinlane-charts.css` | moteur de graphiques `window.PinlaneCharts` (classes `plc-`, ne consomme que les tokens) | index.html |
 | `assets/pinlane-daterange.css` | sélecteur de plage de dates `window.PinlaneDateRange` (classes `pdr-`, ne consomme que les tokens) | index.html |
 | `assets/pinlane-analytics-board.css` | tableau d'analyse customisable `window.PinlaneAnalyticsBoard` (classes `pab-`, widgets iOS-style) | index.html |
-| `assets/pinlane-client.css` | parcours résa client (tunnel de réservation dans index.html) + direction.html | index.html, direction.html |
+| `assets/pinlane-client.css` | entrée plateforme à la racine + parcours résa client (tunnel de réservation dans index.html) + direction.html | index.html, direction.html |
 | `assets/pinlane-landing.css` | landing marketing (reconstruite sur les tokens) | pro.html |
 
 Règles : zéro `!important` sauf `prefers-reduced-motion` et override d'un `style=""` inline historique (commenter la raison) · zéro couleur en dur hors définition des tokens · un composant nouveau se crée dans `pinlane.css`, jamais dans une couche page.

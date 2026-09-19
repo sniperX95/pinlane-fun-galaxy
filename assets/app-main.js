@@ -3405,6 +3405,9 @@ function setView(v) {
   // reellement appliquee, il n'a plus de raison d'etre. Premiere ligne, avant
   // tout retour anticipe, sinon un refus d'acces le laisserait colle.
   document.documentElement.removeAttribute('data-boot');
+  document.body.classList.remove('entry-mode');
+  const entryView = document.getElementById('entryView');
+  if (entryView) entryView.classList.add('hidden');
   if (v === 'admin' && !canOpenAdminView()) {
     toast('Accès non autorisé pour ce rôle.');
     v = 'staff';
@@ -8294,6 +8297,10 @@ function renderFormulaEmptySlots(formule) {
       <div>
         <strong>Aucun créneau disponible</strong>
         <span>${escapeHtml(formulaAnchorMessage || 'Essayez une autre date, un autre horaire ou un groupe plus petit.')}</span>
+        <div class="slot-state-actions">
+          <button type="button" class="btn-secondary" onclick="openCustomRequestModal()">Demander une proposition</button>
+          <small>Votre demande sera étudiée par l'équipe, sans bloquer de date.</small>
+        </div>
       </div>
     </div>`;
 }
@@ -8886,6 +8893,20 @@ function renderRecap() {
   // disent rien valent moins que deux lignes absentes.
   const heureRetenue = String(b.startTime || '').trim();
   const pistesAssignees = Array.isArray(b.allocatedLanes) ? b.allocatedLanes.filter(lane => lane != null && lane !== '') : [];
+  const nombreEtapes = visitProgram
+    ? visitProgram.items.length
+    : (isLaser ? laserWaveCount : (pistesAssignees.length || 1));
+  const allocationLabel = visitProgram
+    ? `activité${nombreEtapes > 1 ? 's' : ''}`
+    : (isLaser
+      ? `session${nombreEtapes > 1 ? 's' : ''}`
+      : `piste${nombreEtapes > 1 ? 's' : ''}`);
+  const bookingFactsHtml = `
+    <div class="booking-facts" aria-label="Synthèse de la réservation">
+      <div><span>Groupe</span><strong>${Number(b.pax) || 0}</strong><small>personne${Number(b.pax) > 1 ? 's' : ''}</small></div>
+      <div><span>Durée</span><strong>${escapeHtml(formatDurationLabel(totalDuration))}</strong><small>sur place</small></div>
+      <div><span>Organisation</span><strong>${nombreEtapes}</strong><small>${allocationLabel}</small></div>
+    </div>`;
   const visitProgramHtml = visitProgram ? `
     <div class="recap-item recap-program-row">
       <span class="recap-label">Activités</span>
@@ -8894,6 +8915,7 @@ function renderRecap() {
       </div>
     </div>` : '';
   document.getElementById('recapList').innerHTML = `
+    ${bookingFactsHtml}
     <div class="recap-item"><span class="recap-label">Client</span><span class="recap-value">${escapeHtml(b.name)}</span></div>
     <div class="recap-item"><span class="recap-label">Téléphone</span><span class="recap-value">${escapeHtml(b.phone)}</span></div>
     <div class="recap-item"><span class="recap-label">Date</span><span class="recap-value">${dateLabel}</span></div>
@@ -26172,8 +26194,39 @@ function detectCustomerMode() {
   try { return sessionStorage.getItem('pinlane-customer-mode') === '1'; } catch (e) { return false; }
 }
 
+// La racine est la porte d'entree de la plateforme. Elle ne remplace aucune
+// route metier : /reserver reste le tunnel, #staff et #admin restent les liens
+// historiques. Une session existante reprend directement son espace de travail.
+function shouldShowPublicEntry() {
+  if (getCurrentPathname() !== '/') return false;
+  if (String(window.location.hash || '').replace(/^#\/?/, '').trim()) return false;
+  return !hasSavedAuth();
+}
+
+function showPublicEntry() {
+  document.documentElement.removeAttribute('data-boot');
+  document.body.classList.add('entry-mode');
+  document.body.classList.remove('client-mode', 'staff-mode', 'admin-mode', 'customer-mode');
+  const entry = document.getElementById('entryView');
+  if (entry) entry.classList.remove('hidden');
+  ['clientView', 'staffView', 'adminView'].forEach(id => {
+    const view = document.getElementById(id);
+    if (view) view.classList.add('hidden');
+  });
+  document.title = 'Pinlane · Opérations des centres de loisirs';
+}
+
 async function bootstrapApp() {
   isAuthenticated = hasSavedAuth();
+  if (shouldShowPublicEntry()) {
+    // Precharge le tunnel masque : le clic "Reserver" arrive sur une vue deja
+    // initialisee et les integrations historiques peuvent encore l'activer.
+    initClient();
+    loadCenterScheduleConfig();
+    showPublicEntry();
+    applyAuthState();
+    return;
+  }
   const customerMode = detectCustomerMode();
   if (customerMode) document.body.classList.add('customer-mode');
   applyInitialRouteFromHash();

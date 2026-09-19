@@ -138,6 +138,34 @@
 </div>
 
 <main>
+  <!-- La racine app.pinlane.be presente la plateforme. Les deux destinations
+       sont de vraies routes deja servies par l'application : /reserver pour
+       le public, /#/staff/planning pour l'acces equipe. Aucun bouton decoratif. -->
+  <section id="entryView" class="entry-view hidden" aria-labelledby="entryTitle">
+    <nav class="entry-nav" aria-label="Navigation Pinlane">
+      <a class="entry-brand" href="/" aria-label="Pinlane, accueil">
+        <img src="/assets/brand/pinlane-logo-signe.svg" alt="Pinlane" width="168" height="38">
+      </a>
+      <a class="entry-login" href="/#/staff/planning">Connexion équipe</a>
+    </nav>
+    <div class="entry-main">
+      <div class="entry-copy">
+        <h1 id="entryTitle">Chaque réservation trouve sa place.</h1>
+        <p>Pinlane réunit le planning, les réservations publiques et le suivi de l'équipe dans une interface conçue pour le terrain.</p>
+        <div class="entry-actions">
+          <a class="btn btn-primary entry-primary" href="/#/staff/planning">Accéder à la console</a>
+          <a class="btn btn-secondary entry-secondary" href="/reserver">Ouvrir la réservation</a>
+        </div>
+      </div>
+      <div class="entry-proof" aria-label="Ce que centralise Pinlane">
+        <div><strong>Planning opérationnel</strong><small>Bowling, Laser Game et formules dans un même calendrier.</small></div>
+        <div><strong>Réservation guidée</strong><small>Le client voit uniquement les créneaux que le centre peut tenir.</small></div>
+        <div><strong>Suivi d'équipe</strong><small>Arrivées, paiements et exceptions restent lisibles au comptoir.</small></div>
+      </div>
+    </div>
+    <footer class="entry-footer"><span>Pinlane</span><span>Plateforme multi-centres</span></footer>
+  </section>
+
   <!-- FILTRE LIQUIDE (effet gooey) : blur + remontee de contraste alpha.
        Applique a des CALQUES DE FORMES uniquement (progression, pilule des
        selecteurs), jamais a du texte : le filtre fusionne les formes proches
@@ -437,9 +465,9 @@
                 <input id="fEmail" type="email" class="input" placeholder="marie@email.com" required/>
               </div>
             </div>
-            <div class="info-box step3-info">
+            <div class="contact-confidence step3-info">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-              <div>Confirmation par email, paiement sur place.</div>
+              <div><strong>Confirmation par email</strong><span>L'équipe utilise ces coordonnées uniquement pour le suivi de cette demande. Le paiement se fait sur place.</span></div>
             </div>
           </aside>
           <div class="s3-extra cascade">

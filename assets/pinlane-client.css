@@ -9435,6 +9435,292 @@ body.embed-mode #clientView .s1-scroller,
 body.embed-mode #clientView .s2-slots,
 body.embed-mode #clientView #recapList { overflow: visible; flex: none; min-height: 0; }
 
+/* ========================================================================== 
+   RESYNCHRONISATION 2026-09-19 : ENTREE PLATEFORME + TUNNEL PRECISION
+
+   Une racine sobre pour choisir son parcours, puis des surfaces client plus
+   lisibles. Cette couche ne change ni les mouvements existants, ni la logique
+   du moteur : elle clarifie uniquement la hierarchie et les faits rendus.
+   ========================================================================== */
+
+body.entry-mode {
+  min-height: 100dvh;
+  background: var(--page);
+  color: var(--text);
+  overflow: auto;
+}
+
+body.entry-mode > header,
+body.entry-mode > #logoutBtn { display: none; }
+
+body.entry-mode main {
+  min-height: 100dvh;
+  display: block;
+}
+
+.entry-view {
+  min-height: 100dvh;
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.entry-view.hidden { display: none; }
+.entry-view:not(.hidden) .entry-main {
+  animation: entry-rise 180ms var(--ease) both;
+}
+@keyframes entry-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.entry-nav {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+
+.entry-brand,
+.entry-login { color: var(--text); text-decoration: none; }
+.entry-brand { display: inline-flex; align-items: center; }
+.entry-brand img { display: block; width: 144px; height: auto; }
+.entry-login {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.entry-login:hover { background: var(--subtle); border-color: var(--text); }
+
+.entry-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
+  align-items: center;
+  gap: clamp(56px, 9vw, 132px);
+  padding: 72px 0;
+}
+
+.entry-copy { max-width: 690px; }
+.entry-copy h1 {
+  max-width: 13ch;
+  margin: 0;
+  font-size: clamp(40px, 5vw, 56px);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+.entry-copy > p {
+  max-width: 59ch;
+  margin: var(--space-6) 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+.entry-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-7); }
+.entry-actions a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 18px;
+  text-decoration: none;
+}
+
+.entry-proof { border-top: 1px solid var(--line-strong); }
+.entry-proof > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  padding: var(--space-5) 0;
+  border-bottom: 1px solid var(--line-strong);
+}
+.entry-proof strong { font-size: 16px; font-weight: 600; }
+.entry-proof small { color: var(--muted); font-size: 13px; line-height: 1.5; text-wrap: pretty; }
+.entry-footer {
+  min-height: 64px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 12px;
+}
+
+/* Des couches neutres separables remplacent la grande plaque sombre et plate.
+   La profondeur vient de la bordure, conformement a Precision Tooling. */
+body.client-mode:not(.embed-mode) #clientView {
+  background: var(--page);
+}
+body.client-mode:not(.embed-mode) #clientView .tunnel-stage {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+#clientView .panel,
+#clientView .activity-card,
+#clientView .formule-card,
+#clientView .slot-card,
+#clientView .occasion-chip {
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+#clientView .activity-card.is-on,
+#clientView .formule-card.active,
+#clientView .slot-card.active,
+#clientView .occasion-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Le grand encart ambre devient une note neutre : l'ambre reste sur l'icone et
+   le libelle de statut, l'information ne colore plus toute la surface. */
+#clientView .pax-alert.warning {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+#clientView .pax-alert.warning > svg { color: var(--warning); background: var(--warning-soft); }
+#clientView .pax-alert.warning .pax-alert-title { color: var(--warning); }
+
+/* Contact : une seule surface de saisie, puis une promesse courte reliee aux
+   usages reels du produit. */
+#clientView .contact-confidence {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+  color: var(--muted);
+  text-align: left;
+}
+#clientView .contact-confidence svg { flex: none; margin-top: 2px; color: var(--accent); }
+#clientView .contact-confidence > div { display: flex; flex-direction: column; gap: 2px; }
+#clientView .contact-confidence strong { color: var(--text); font-size: 13px; font-weight: 600; }
+#clientView .contact-confidence span { font-size: 12px; line-height: 1.45; text-wrap: pretty; }
+
+/* Synthese du moteur : les nombres deja presents dans state.booking prennent
+   une place stable avant les details. Aucun calcul de disponibilite cote UI. */
+#clientView .booking-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+#clientView .booking-facts > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-content: center;
+  gap: 0 var(--space-2);
+  min-height: 68px;
+  padding: 10px 14px;
+  border-right: 1px solid var(--line);
+}
+#clientView .booking-facts > div:last-child { border-right: 0; }
+#clientView .booking-facts span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+#clientView .booking-facts strong {
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#clientView .booking-facts small {
+  align-self: end;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#clientView .total-box { border: 1px solid var(--line-strong); background: var(--surface); }
+
+/* Etat vide actionnable : le bouton ouvre le formulaire /api/custom-request
+   existant, le texte precise qu'aucune date n'est reservee. */
+#clientView .slot-state-empty > div { min-width: 0; }
+#clientView .slot-state-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+}
+#clientView .slot-state-actions .btn-secondary { min-height: 44px; flex: none; }
+#clientView .slot-state-actions small { max-width: 38ch; color: var(--faint); font-size: 12px; line-height: 1.4; }
+
+@media (min-width: 641px) {
+  #clientView #step3 .s3-side {
+    padding: var(--space-5);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+}
+
+@media (max-width: 760px) {
+  .entry-view { width: min(100% - 32px, 560px); }
+  .entry-nav { min-height: 68px; }
+  .entry-main { grid-template-columns: 1fr; gap: var(--space-8); padding: 52px 0; }
+  .entry-copy h1 { max-width: 12ch; font-size: clamp(40px, 12vw, 52px); }
+  .entry-copy > p { font-size: 16px; }
+}
+
+@media (max-width: 640px) {
+  .entry-view { width: calc(100% - 28px); }
+  .entry-brand img { width: 122px; }
+  .entry-login { min-height: 44px; padding-inline: 12px; }
+  .entry-main { align-items: start; gap: var(--space-7); padding: 44px 0 36px; }
+  .entry-copy h1 { font-size: clamp(40px, 11.5vw, 48px); }
+  .entry-copy > p { margin-top: var(--space-5); }
+  .entry-actions { display: grid; margin-top: var(--space-6); }
+  .entry-actions a { width: 100%; }
+  .entry-proof > div { padding: var(--space-4) 0; }
+  .entry-footer { min-height: 56px; }
+
+  body.client-mode:not(.embed-mode) #clientView .tunnel-stage {
+    border-inline: 0;
+    border-radius: var(--radius-md);
+  }
+  #clientView .contact-confidence { padding: 8px 10px; gap: var(--space-2); }
+  #clientView .contact-confidence span { font-size: 12px; }
+  #clientView .booking-facts { margin-bottom: var(--space-2); }
+  #clientView .booking-facts > div { min-height: 54px; padding: 7px 8px; }
+  #clientView .booking-facts strong { font-size: 14px; }
+  #clientView .booking-facts span,
+  #clientView .booking-facts small { font-size: 12px; }
+  #clientView .slot-state-actions { align-items: stretch; flex-direction: column; }
+  #clientView .slot-state-actions .btn-secondary { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-view:not(.hidden) .entry-main { animation: none; }
+}
+
 /* Page options a 320 px : « Minigolf Blacklight » se coupait en « Minigolf Bl… »
    (mesure iPhone SE). Le nom replie, il ne se tronque pas. */
 @media (max-width: 360px) {

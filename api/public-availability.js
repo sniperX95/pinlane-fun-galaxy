@@ -31,6 +31,7 @@ const {
   evaluateAnchoredCombination,
   getFormulaAnchorAvailability,
   getFormulaAnchorModel,
+  getOperationalBowlingConfig,
 } = require('../lib/ops-engine');
 const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog, publicBookingBlockReason } = require('../lib/ops-knowledge');
 const {
@@ -74,6 +75,17 @@ const PROGRAM_GRID_MINUTES = 30;
 // Les pistes de bowling restent en plus alignées :00/:30 même au milieu d'un
 // programme (contrainte d'exploitation des pistes).
 const BOWLING_GRID_MINUTES = PROGRAM_GRID_MINUTES;
+
+// Une visite scindee peut facturer huit pistes au total tout en n'en occupant
+// que quatre par service. La garde finale doit verifier l'occupation maximale
+// d'UN bloc, pas le nombre facture ni l'union des pistes physiques.
+function plannedLaneCount(plan, fallback = 0) {
+  const blocks = Array.isArray(plan && plan.resourceBlocks) ? plan.resourceBlocks : [];
+  const counts = blocks
+    .filter((block) => block.resourceType === 'bowling_lane')
+    .map((block) => Math.max(Number(block.requiredLanes) || 0, Array.isArray(block.lanes) ? block.lanes.length : 0));
+  return counts.length ? Math.max(...counts) : Math.max(0, Number(fallback) || 0);
+}
 
 function getLaserOptionFromRequest(url, fallbackDuration = 0.5) {
   const requestedGames = Number(url.searchParams.get('laserGames') || url.searchParams.get('games') || url.searchParams.get('gameCount') || 0);
@@ -443,6 +455,7 @@ module.exports = async (req, res) => {
     }
 
     const snapshot = await readAvailabilitySnapshot(date, centerId);
+    const operationalBowlingConfig = getOperationalBowlingConfig(centerDoc, snapshot.laneStatuses || {});
     // Formule bloquee TOUTE la journee (scope 'formula', jour entier) : message
     // clair et aucun creneau, comme un refus de getFormuleAvailability. Un blocage
     // de PLAGE horaire ne coupe pas ici : ses creneaux sont retires par la garde
@@ -509,7 +522,13 @@ module.exports = async (req, res) => {
       // une ligne marquee `waitOffer` par un navigateur complaisant est sinon
       // facturee au tarif du catalogue, comme n importe quelle autre.
       const groupeScinde = groupIsSplit({ centerId, pax, items: Array.isArray(programInput) ? programInput : (programInput && programInput.items) || [] });
-      const program = normalizeProgram(programInput, { centerId, pax, bowlingConfig: centerBowlingConfig, dateStr: date, waitOffers: groupeScinde });
+      const program = normalizeProgram(programInput, {
+        centerId,
+        pax,
+        bowlingConfig: operationalBowlingConfig || centerBowlingConfig,
+        dateStr: date,
+        waitOffers: groupeScinde,
+      });
       const visitLabel = 'Votre visite';
       // LA FIN QUE LE CLIENT LIT EST CELLE DE SA VISITE, pas celle du plan du
       // staff : `opsPlan.endTime` ne porte que les activites planifiees (plus la
@@ -665,7 +684,7 @@ module.exports = async (req, res) => {
               program,
               retainedSlot,
               attente: attenteDuPlan(retainedSlot),
-              priceOptions: { bowlingConfig: centerBowlingConfig, dateStr: date },
+              priceOptions: { bowlingConfig: operationalBowlingConfig || centerBowlingConfig, dateStr: date },
               reservations: snapshot.reservations,
               laneStatuses: snapshot.laneStatuses,
               blocks: snapshot.blocks || [],
@@ -679,7 +698,7 @@ module.exports = async (req, res) => {
                   toFormulaSlot(scenario, snapshot, candidat.plannedItems[0]?.duration || 0),
                   {
                     ...guardContext,
-                    laneCount: candidat.laneCount,
+                    laneCount: plannedLaneCount(scenario, candidat.laneCount),
                     requiresLanes: candidat.hasBowling,
                     duration: candidat.plannedItems[0]?.duration || 0,
                   },
@@ -734,7 +753,10 @@ module.exports = async (req, res) => {
             })
             : null;
           const defaultSlots = defaultCombo && defaultCombo.ok
-            ? filterSlotsByFinalGuards([toFormulaSlot(defaultCombo.scenario, snapshot, program.plannedItems[0]?.duration || 0)], guardContext)
+            ? filterSlotsByFinalGuards(
+              [toFormulaSlot(defaultCombo.scenario, snapshot, program.plannedItems[0]?.duration || 0)],
+              { ...guardContext, laneCount: plannedLaneCount(defaultCombo.scenario, program.laneCount) },
+            )
             : [];
           respondVisit(
             defaultSlots,
@@ -775,7 +797,10 @@ module.exports = async (req, res) => {
         );
         const recommended = plan?.plan?.recommended;
         const guarded = recommended && recommended.ok
-          ? filterSlotsByFinalGuards([toFormulaSlot(recommended, snapshot, program.plannedItems[0]?.duration || 0)], guardContext)
+          ? filterSlotsByFinalGuards(
+            [toFormulaSlot(recommended, snapshot, program.plannedItems[0]?.duration || 0)],
+            { ...guardContext, laneCount: plannedLaneCount(recommended, program.laneCount) },
+          )
           : [];
         respondVisit(
           guarded,
@@ -969,7 +994,10 @@ module.exports = async (req, res) => {
           );
           const recommended = plan?.plan?.recommended;
           const guarded = recommended && recommended.ok
-            ? filterSlotsByFinalGuards([toFormulaSlot(recommended, snapshot, duration)], guardContext)
+            ? filterSlotsByFinalGuards(
+              [toFormulaSlot(recommended, snapshot, duration)],
+              { ...guardContext, laneCount: plannedLaneCount(recommended, laneCount) },
+            )
             : [];
           if (guarded.length) {
             respondFormula(guarded, '', [], guarded[0]);

@@ -48,7 +48,18 @@ async function installMock(page) {
       opsPlan: { formulaId: CFG.formuleId, startTime: '15:00', resourceBlocks: CFG.blocks, laserPassPlan: { mode: 'manual_after_first', totalGames: 2, scheduledGames: 2, remainingGames: 0 } },
     }]);
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i+1] = 'active'; return a; }, {});
-    const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
+    // UN SERVEUR NE CHANGE PAS D ETAG QUAND RIEN N A BOUGE. La console lit
+    // l ETag avant payload.revision et re-rend des qu il change : un etag
+    // horodate faisait re-rendre la console A CHAQUE SONDAGE, et un re-rendu qui
+    // tombe pendant un geste detruit la carte tiree ou remet le defilement a
+    // zero. Le vrai /api/staff-state pose ETag = snapshot.revision : ici l etag
+    // est l empreinte du contenu servi, meme contenu donc meme etag.
+    const J = (p) => {
+      const corps = JSON.stringify(p);
+      let h = 0;
+      for (let i = 0; i < corps.length; i += 1) h = (h * 31 + corps.charCodeAt(i)) | 0;
+      return new Response(corps, { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${(h >>> 0).toString(36)}` } });
+    };
     const nativeFetch = window.fetch.bind(window);
     window.__QA_PATCHES__ = []; window.__QA_STORE__ = {};
     window.fetch = async (input, init = {}) => {
@@ -81,14 +92,30 @@ async function main() {
     await installMock(page);
     await page.goto(`${BASE_URL}/?v=lfd-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
-    await page.evaluate(() => {
+    const seed = () => {
       const d = '2026-07-18'; // samedi (10:00-24:00 ouvert dans le planning mock)
       state.currentDate = d; state.staffMenuPage = 'planning'; state.staffResourceView = 'laser'; state.staffTheme = 'dark';
       state.staffLaserPlanningExpanded = true; state.staffPlanningExpanded = false;
       state.reservations = window.__QA_BUILD__(d); state.laneStatuses = window.__QA_LANES__();
       save(); setView('staff'); renderStaff();
-    });
+    };
+    await page.evaluate(seed);
     await page.waitForTimeout(500);
+    // L AGENDA DOIT MESURER QUELQUE CHOSE. Le demarrage de la console est
+    // asynchrone : un rendu tardif reprend la main apres le seed et referme le
+    // planning laser. Les cartes existent alors dans le DOM, mais tous leurs
+    // rectangles valent zero (mesure : « carte 0-0, cible 0-0, agenda defilable
+    // 0>0 »), et le geste tombe dans le vide. On re-impose la vue tant que
+    // l agenda ne mesure rien.
+    let agendaPret = false;
+    for (let essai = 0; essai < 8 && !agendaPret; essai += 1) {
+      agendaPret = await page.evaluate(() => {
+        const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
+        return Boolean(ag) && ag.getBoundingClientRect().height > 100;
+      });
+      if (!agendaPret) { await page.evaluate(seed); await page.waitForTimeout(400); }
+    }
+    ok(agendaPret, 'montage : l agenda du planning laser est rendu et mesurable');
 
     const DRAG_UNIT = process.env.DRAG_UNIT || '1.2'; // unité (jeu.vague) à glisser
 
@@ -113,29 +140,42 @@ async function main() {
     ok(beforeReal.windows.some(w => w.unit === DRAG_UNIT), `unité ${DRAG_UNIT} présente au départ`);
     const startBefore = Object.fromEntries(beforeReal.windows.map(w => [w.unit, w.start]));
 
-    // Amener la carte de l'unité ciblée au milieu du viewport
-    await page.evaluate((unit) => {
+    // ON CHOISIT LA CIBLE, PUIS ON L AMENE DANS LA VUE AVEC LA CARTE.
+    // L ancien montage defilait pour amener la CARTE au milieu, puis cherchait
+    // un slot vide qui se trouvait PAR CHANCE dans la bande visible et assez
+    // loin des heures deja prises : un lancement sur deux n en trouvait aucun.
+    const pos = await page.evaluate((args) => {
+      const { unit, avoid } = args;
       const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
       const card = [...document.querySelectorAll('.laser-group-card[onmousedown*="9500"]')]
         .find(c => c.getAttribute('onmousedown').includes(`, '${unit}')`));
-      if (ag && card) { const top = card.getBoundingClientRect().top - ag.getBoundingClientRect().top + ag.scrollTop; ag.scrollTop = Math.max(0, top - 260); }
-    }, DRAG_UNIT);
-    await page.waitForTimeout(200);
-
-    const pos = await page.evaluate((args) => {
-      const { unit, avoid } = args;
-      const card = [...document.querySelectorAll('.laser-group-card[onmousedown*="9500"]')]
-        .find(c => c.getAttribute('onmousedown').includes(`, '${unit}')`));
-      const slots = [...document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]')]
-        .map(s => ({ s, b: s.getBoundingClientRect(), t: Number(s.dataset.laserDropStart) }))
-        .filter(o => o.b.top > 150 && o.b.bottom < window.innerHeight - 40)
+      if (!ag || !card) return { raison: `agenda=${Boolean(ag)} carte=${Boolean(card)}` };
+      const eligibles = [...document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]')]
+        .map(el => ({ el, t: Number(el.dataset.laserDropStart) }))
         .filter(o => avoid.every(a => Math.abs(o.t - a) >= 1.0));
-      const pick = slots[0];
-      if (!card || !pick) return null;
+      if (!eligibles.length) return { raison: `aucun slot vide a 1h des heures prises (${document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]').length} vides au total)` };
+      // La plus proche de la carte : elles tiennent alors ensemble dans la vue.
+      const cible = eligibles
+        .map(o => ({ ...o, d: Math.abs(o.el.getBoundingClientRect().top - card.getBoundingClientRect().top) }))
+        .sort((a, b) => a.d - b.d)[0];
+      const hautBande = 150;
+      const basBande = window.innerHeight - 40;
+      const milieuVise = hautBande + (basBande - hautBande) / 2;
+      for (let essai = 0; essai < 12; essai += 1) {
+        const bc = card.getBoundingClientRect();
+        const bs = cible.el.getBoundingClientRect();
+        const centre = ((bc.top + bc.height / 2) + (bs.top + bs.height / 2)) / 2;
+        const ecart = centre - milieuVise;
+        if (Math.abs(ecart) <= 2) break;
+        ag.scrollTop += ecart;
+      }
       const c = card.getBoundingClientRect();
-      return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, tgt: { x: pick.b.x + pick.b.width/2, y: pick.b.y + pick.b.height/2, t: pick.t } };
+      const b = cible.el.getBoundingClientRect();
+      const dansLaBande = (r) => r.height > 4 && r.top > hautBande && r.bottom < basBande;
+      if (!dansLaBande(c) || !dansLaBande(b)) return { raison: `bande ${hautBande}-${Math.round(basBande)}, carte ${Math.round(c.top)}-${Math.round(c.bottom)}, cible ${Math.round(b.top)}-${Math.round(b.bottom)}, agenda defilable ${ag.scrollHeight}>${ag.clientHeight}` };
+      return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, tgt: { x: b.x + b.width/2, y: b.y + b.height/2, t: cible.t } };
     }, { unit: DRAG_UNIT, avoid: beforeReal.windows.map(w => w.start) });
-    if (!ok(!!pos, `carte ${DRAG_UNIT} + slot vide visible éloigné trouvés`)) { throw new Error('setup drag introuvable'); }
+    if (!ok(Boolean(pos && pos.card), `carte ${DRAG_UNIT} + slot vide amenes dans la vue${pos && pos.raison ? ' :: ' + pos.raison : ''}`)) { throw new Error('setup drag introuvable'); }
 
     await page.evaluate(() => {
       window.__NOTICES__ = [];

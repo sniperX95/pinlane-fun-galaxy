@@ -132,7 +132,18 @@ async function installMock(page) {
       { id: 9010, name: 'Ansar Bisultanov #9010', phone: '+32470860010', email: 'ansar@x.test', date, startTime: '17:30', duration: 0.5, lanes: [], status: 'confirmed', pax: 4, price: 20, type: 'laser', label: 'Laser direct' },
     ]);
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i+1] = 'active'; return a; }, {});
-    const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
+    // UN SERVEUR NE CHANGE PAS D ETAG QUAND RIEN N A BOUGE. La console lit
+    // l ETag avant payload.revision et re-rend des qu il change : un etag
+    // horodate faisait re-rendre la console A CHAQUE SONDAGE, et un re-rendu qui
+    // tombe pendant un geste detruit la carte tiree ou remet le defilement a
+    // zero. Le vrai /api/staff-state pose ETag = snapshot.revision : ici l etag
+    // est l empreinte du contenu servi, meme contenu donc meme etag.
+    const J = (p) => {
+      const corps = JSON.stringify(p);
+      let h = 0;
+      for (let i = 0; i < corps.length; i += 1) h = (h * 31 + corps.charCodeAt(i)) | 0;
+      return new Response(corps, { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${(h >>> 0).toString(36)}` } });
+    };
     const nativeFetch = window.fetch.bind(window);
     window.__QA_PATCHES__ = [];
     window.__QA_STORE__ = {};
@@ -215,7 +226,7 @@ function ecartMax(avant, apres) {
 // vient d envoyer contre un rafraichissement qui le contredirait : cette memoire
 // est purgee aussi, sinon le scenario suivant retrouve la carte deja deplacee.
 async function ouvrirPlanning(page, vue) {
-  await page.evaluate((v) => {
+  const poser = (v) => {
     const d = '2026-07-18';
     state.currentDate = d; state.staffMenuPage = 'planning'; state.staffResourceView = v; state.staffTheme = 'dark';
     state.staffLaserPlanningExpanded = v === 'laser'; state.staffPlanningExpanded = false;
@@ -223,20 +234,55 @@ async function ouvrirPlanning(page, vue) {
     state.reservations.forEach((r) => clearReservationMutation(r.id));
     window.__QA_STORE__ = {};
     save(); setView('staff'); renderStaff();
-  }, vue);
+  };
+  await page.evaluate(poser, vue);
   await page.waitForTimeout(350);
+  // LA GRILLE DOIT MESURER QUELQUE CHOSE, et le rester. Le demarrage de la
+  // console est asynchrone : un rendu tardif reprend la main apres ce montage
+  // et referme le planning. Les cartes existent alors dans le DOM avec des
+  // rectangles a zero, le doigt se pose en (0,0) et rien ne se leve. On
+  // re-impose la vue tant que la grille ne mesure rien.
+  // ET ELLE DOIT LE RESTER. Une seule mesure ne suffit pas : le rendu tardif
+  // peut arriver APRES la verification et refermer le planning juste avant le
+  // geste. On exige donc deux mesures a 500 ms d intervalle, ce qui laisse
+  // passer le rendu tardif ; s il a referme la grille, on re-impose.
+  const mesurable = () => page.evaluate((v) => {
+    const cadre = document.getElementById(v === 'laser' ? 'laserPlanningBox' : 'planningGridWrap');
+    return Boolean(cadre) && cadre.getBoundingClientRect().height > 100;
+  }, vue);
+  let prete = false;
+  for (let essai = 0; essai < 8 && !prete; essai += 1) {
+    if (await mesurable()) {
+      await page.waitForTimeout(500);
+      prete = await mesurable();
+    }
+    if (!prete) { await page.evaluate(poser, vue); await page.waitForTimeout(350); }
+  }
+  ok(prete, `montage : le planning ${vue} est rendu et mesurable`);
 }
 
 // Centre d un element, apres l avoir amene au milieu de l ecran, et s il est
 // entierement visible (sinon le geste ne prouve rien).
+// UN RECTANGLE A ZERO N EST PAS UNE POSITION. Une carte lue avant que la
+// console ait fini sa mise en page rend {0,0,0,0} : le centre tombe en (0,0),
+// et l ancien test « visible » le declarait VISIBLE (0 >= 0 et 0 <= hauteur).
+// Le doigt se posait alors dans le coin de l ecran, sur la barre laterale, et
+// le gate accusait le produit de ne pas lever la carte. Mesure du 2026-09-19 :
+// doigt [0,0] alors que la carte etait en [435,737,531,783].
 function centre(page, selecteur, amener = false) {
-  return page.evaluate(({ sel, amener }) => {
+  return attendre(page, (sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return false;
+    const b = el.getBoundingClientRect();
+    return b.width > 1 && b.height > 1;
+  }, selecteur, 8000).then(() => page.evaluate(({ sel, amener }) => {
     const el = document.querySelector(sel);
     if (!el) return null;
     if (amener) el.scrollIntoView({ block: 'center', inline: 'nearest' });
     const b = el.getBoundingClientRect();
+    if (b.width < 1 || b.height < 1) return null;
     return { x: b.x + b.width / 2, y: b.y + b.height / 2, visible: b.top >= 0 && b.bottom <= window.innerHeight && b.left >= 0 && b.right <= window.innerWidth };
-  }, { sel: selecteur, amener });
+  }, { sel: selecteur, amener }));
 }
 
 // Ou est le fantome par rapport au doigt : ecart entre son bas et le doigt
@@ -262,7 +308,14 @@ async function main() {
   page.on('pageerror', (e) => errs.push('PAGE: ' + e.message));
   try {
     await installMock(page);
-    await page.goto(`${BASE_URL}/?v=touch-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+    // ON OUVRE LA CONSOLE A SON ADRESSE REELLE. Forcer state.view en memoire
+    // sans toucher l URL laisse les deux en desaccord : un evenement de
+    // navigation tardif (hashchange, popstate) re-synchronise la route depuis
+    // l adresse et RAMENE la vue client. Mesure du 2026-09-19, pile a l appui :
+    // syncRouteFromHash -> setView("client") a 6,4 s, la grille passe de 742 px
+    // a 0, le doigt se pose dans le vide. En production la console s ouvre sur
+    // #/staff/... : le gate fait desormais pareil.
+    await page.goto(`${BASE_URL}/?v=touch-${Date.now()}#/staff/planning`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     const tactile = await page.evaluate(() => ({ points: navigator.maxTouchPoints, evenements: 'ontouchstart' in window }));
     ok(tactile.points > 0 && tactile.evenements, `MONTAGE : ecran tactile emule (${tactile.points} point(s), evenements tactiles : ${tactile.evenements})`);

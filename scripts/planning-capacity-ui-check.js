@@ -63,7 +63,18 @@ async function installMock(page) {
       { id: 9010, name: 'Laser C #9010', phone: '+32470860010', email: 'c@x.test', date, startTime: '17:30', duration: 0.5, lanes: [], status: 'confirmed', pax: 8, price: 40, type: 'laser', label: 'Laser direct' },
     ]);
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {});
-    const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
+    // UN SERVEUR NE CHANGE PAS D ETAG QUAND RIEN N A BOUGE. La console lit
+    // l ETag avant payload.revision et re-rend des qu il change : un etag
+    // horodate faisait re-rendre la console A CHAQUE SONDAGE, et un re-rendu qui
+    // tombe pendant un geste detruit la carte tiree ou remet le defilement a
+    // zero. Le vrai /api/staff-state pose ETag = snapshot.revision : ici l etag
+    // est l empreinte du contenu servi, meme contenu donc meme etag.
+    const J = (p) => {
+      const corps = JSON.stringify(p);
+      let h = 0;
+      for (let i = 0; i < corps.length; i += 1) h = (h * 31 + corps.charCodeAt(i)) | 0;
+      return new Response(corps, { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${(h >>> 0).toString(36)}` } });
+    };
     const nativeFetch = window.fetch.bind(window);
     window.__CFG_MODE__ = 'configured';
     window.fetch = async (input, init = {}) => {

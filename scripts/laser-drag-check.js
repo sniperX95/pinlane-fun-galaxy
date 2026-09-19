@@ -46,18 +46,33 @@ async function installMock(page) {
       { id: 9002, name: 'Famille Lambert #9002', phone: '+32470860012', email: 'b@x.test', date, startTime: '14:30', duration: 1, lanes: [2], status: 'arrived', pax: 4, price: 39, type: 'bowling', label: 'Bowling' },
       { id: 9004, name: 'Ecole SH #9004', phone: '+32470860014', email: 'd@x.test', date, startTime: '18:00', duration: 2, lanes: [4,6,8], status: 'confirmed', pax: 17, price: 234, type: 'bowling', label: 'Bowling 2h' },
       { id: 9010, name: 'Ansar Bisultanov #9010', phone: '+32470860010', email: 'ansar@x.test', date, startTime: '17:30', duration: 0.5, lanes: [], status: 'confirmed', pax: 4, price: 20, type: 'laser', label: 'Laser direct' },
-    ]);
+    ].concat((window.__QA_EXTRA__ || []).map((extra) => ({ ...extra, date }))));
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i+1] = 'active'; return a; }, {});
-    const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
+    const J = (p, etag) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: etag || `qa-${Date.now()}` } });
+    // L empreinte des donnees servies : meme contenu, meme etag.
+    const empreinte = (texte) => { let h = 0; for (let i = 0; i < texte.length; i += 1) h = (h * 31 + texte.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+    const entete = (init, nom) => { const h = init.headers || {}; if (typeof h.get === 'function') return h.get(nom) || ''; return h[nom] || h[nom.toLowerCase()] || ''; };
     const nativeFetch = window.fetch.bind(window);
     window.__QA_PATCHES__ = [];
+    // Les reservations qu un bloc de test pose lui-meme : le serveur les sert,
+    // sinon le premier sondage les efface de la journee.
+    window.__QA_EXTRA__ = [];
     window.__QA_STORE__ = {};
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : input?.url || '';
       const u = new URL(raw, window.location.origin);
       const m = String(init.method || 'GET').toUpperCase();
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
-      if (u.pathname === '/api/staff-state') { const d = u.searchParams.get('date') || new Date().toISOString().slice(0,10); const base = build(d).map(r => window.__QA_STORE__[r.id] ? { ...r, ...window.__QA_STORE__[r.id] } : r); return J({ ok: true, revision: `qa-${d}-${Object.keys(window.__QA_STORE__).length}`, reservations: base, laneStatuses: lanes(), centerId: 'libramont' }); }
+      if (u.pathname === '/api/staff-state') {
+        const d = u.searchParams.get('date') || new Date().toISOString().slice(0,10);
+        const base = build(d).map(r => window.__QA_STORE__[r.id] ? { ...r, ...window.__QA_STORE__[r.id] } : r);
+        // UN SERVEUR QUI CHANGE D ETAG A CHAQUE REPONSE FAIT RE-RENDRE LA CONSOLE
+        // A CHAQUE SONDAGE. Pendant un glisser, le re-rendu detruit la carte tiree
+        // et le deplacement se perd : c est ce qui rougissait un lancement sur trois.
+        const rev = `qa-${d}-${empreinte(JSON.stringify(base))}`;
+        if (entete(init, 'If-None-Match') === rev) return new Response(null, { status: 304, headers: { etag: rev } });
+        return J({ ok: true, revision: rev, reservations: base, laneStatuses: lanes(), centerId: 'libramont' }, rev);
+      }
       if (u.pathname === '/api/staff-reservations' && m === 'PATCH') {
         const b = JSON.parse(init.body || '{}');
         window.__QA_PATCHES__.push(b);
@@ -105,20 +120,72 @@ async function main() {
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await seedBowling(page);
     await page.waitForTimeout(400);
+    // LA GRILLE DOIT MESURER QUELQUE CHOSE. Le demarrage de la console est
+    // asynchrone : un rendu tardif reprend la main apres le seed et referme le
+    // planning. Les cellules existent alors dans le DOM, mais tous leurs
+    // rectangles valent zero, et chaque geste tombe dans le vide.
+    let grillePrete = false;
+    for (let essai = 0; essai < 8 && !grillePrete; essai += 1) {
+      grillePrete = await page.evaluate(() => {
+        const cadre = document.getElementById('planningGridWrap');
+        return Boolean(cadre) && cadre.getBoundingClientRect().height > 100;
+      });
+      if (!grillePrete) { await seedBowling(page); await page.waitForTimeout(400); }
+    }
+    ok(grillePrete, 'montage : la grille du planning est rendue et mesurable');
 
     // --- A : bowling normal, drop au centre, page immobile ---
     console.log('\n[A] Bowling normal : drop ne fait pas remonter la page');
     await setPageTop(400);
-    const beforeA = await pageTop();
     const posA = await page.evaluate(() => {
+      // ON CONSTRUIT LA SITUATION AU LIEU DE L ESPERER. Le produit ne retient
+      // comme cible de depot que `.slot-cell.clickable`, et le planning a son
+      // propre defileur : selon la hauteur rendue, la rangee visee tombait hors
+      // de la bande utile et il ne restait AUCUNE cellule libre atteignable.
+      const cadre = document.getElementById('planningGridWrap');
+      const rc = cadre ? cadre.getBoundingClientRect() : null;
+      const cellules = [...document.querySelectorAll('.slot-cell.clickable[data-bowling-drop-lane="5"]')];
+      const viser = cellules.find((c) => Number(c.dataset.bowlingDropStart) === 16)
+        || cellules[Math.floor(cellules.length / 2)] || null;
+      // LA BANDE UTILE EST CELLE DU PLANNING. Le produit n accepte un depot que
+      // dans #planningGridWrap : c est ce rectangle qui decide, pas une
+      // constante. On y amene la cellule visee avec le defileur qui la porte.
+      const milieu = rc ? rc.top + rc.height / 2 : 325;
+      if (viser) {
+        let defileur = viser.parentElement;
+        while (defileur && defileur !== cadre && defileur.scrollHeight <= defileur.clientHeight + 4) defileur = defileur.parentElement;
+        if (defileur && defileur.scrollHeight > defileur.clientHeight + 4) {
+          for (let essai = 0; essai < 12; essai += 1) {
+            const b = viser.getBoundingClientRect();
+            const ecart = (b.top + b.height / 2) - milieu;
+            if (Math.abs(ecart) <= 2) break;
+            defileur.scrollTop += ecart;
+          }
+        }
+      }
       const src = document.querySelector('.booking[data-booking-res-id="9002"]');
-      const tgt = document.querySelector('.slot-cell[data-bowling-drop-lane="5"][data-bowling-drop-start="16"]') || document.querySelector('.slot-cell[data-bowling-drop-lane="5"]');
-      const r = (el) => { const b = el.getBoundingClientRect(); return { x: b.x + b.width/2, y: b.y + b.height/2 }; };
-      return { src: r(src), tgt: r(tgt), before: (state.reservations.find(x=>x.id===9002)||{}).startTime };
+      const bs = src ? src.getBoundingClientRect() : null;
+      const bt = viser ? viser.getBoundingClientRect() : null;
+      const dedans = (b) => Boolean(rc) && Boolean(b) && b.height > 4
+        && (b.top + b.height / 2) > rc.top + 4 && (b.top + b.height / 2) < rc.bottom - 4;
+      return {
+        src: bs ? { x: bs.x + bs.width / 2, y: bs.y + bs.height / 2 } : null,
+        tgt: bt ? { x: bt.x + bt.width / 2, y: bt.top + bt.height / 2 } : null,
+        heure: viser ? Number(viser.dataset.bowlingDropStart) : null,
+        libres: cellules.length,
+        visible: dedans(bs) && dedans(bt),
+        mesure: `cadre ${rc ? Math.round(rc.top) : '?'}-${rc ? Math.round(rc.bottom) : '?'}, carte ${bs ? Math.round(bs.top + bs.height / 2) : '?'}, cible ${bt ? Math.round(bt.top + bt.height / 2) : '?'}`,
+        before: (state.reservations.find(x=>x.id===9002)||{}).startTime,
+      };
     });
+    ok(Boolean(posA.src) && Boolean(posA.tgt) && posA.visible,
+      `montage : carte 9002 et cellule libre de la piste 5 dans le planning (${posA.libres} libre(s), cible ${posA.heure}h, ${posA.mesure})`);
+    // LE POINT DE DEPART SE LIT APRES LE MONTAGE : amener la cible dans la vue
+    // peut faire defiler, et ce defilement-la n est pas un saut pendant le depot.
+    const beforeA = await pageTop();
     await page.mouse.move(posA.src.x, posA.src.y); await page.mouse.down();
     await page.mouse.move(posA.src.x + 8, posA.src.y + 8, { steps: 2 });
-    await page.mouse.move(posA.tgt.x, Math.min(Math.max(posA.tgt.y, 150), 500), { steps: 8 });
+    await page.mouse.move(posA.tgt.x, posA.tgt.y, { steps: 8 });
     await page.mouse.up(); await page.waitForTimeout(350);
     const afterA = await pageTop();
     const movedA = await page.evaluate(() => (state.reservations.find(x=>x.id===9002)||{}).startTime);
@@ -165,12 +232,30 @@ async function main() {
     });
     if (ok(Number.isFinite(pisteF), `une piste passe sous le toast (piste ${pisteF})`)) {
       await page.evaluate((piste) => {
-        state.reservations.push({ id: 9020, name: 'Demi heure #9020', phone: '+32470860020', email: 'f@x.test', date: state.currentDate, startTime: '20:00', duration: 0.5, lanes: [piste], status: 'confirmed', pax: 2, price: 12, type: 'bowling', label: 'Bowling 30 min' });
+        // DANS LA VERITE DU SERVEUR D ABORD. Poussee seulement en memoire, elle
+        // disparaissait au premier sondage (replaceReservationsForDate remplace
+        // la journee par ce que le serveur renvoie).
+        const resa = { id: 9020, name: 'Demi heure #9020', phone: '+32470860020', email: 'f@x.test', date: state.currentDate, startTime: '20:00', duration: 0.5, lanes: [piste], status: 'confirmed', pax: 2, price: 12, type: 'bowling', label: 'Bowling 30 min' };
+        window.__QA_EXTRA__ = [{ ...resa }];
+        state.reservations.push(resa);
         save(); renderStaff();
       }, pisteF);
       await page.waitForTimeout(350);
       // On CONSTRUIT la situation au lieu de l esperer : le planning est fait
       // defiler jusqu a ce que la carte tombe dans le rectangle du toast.
+      // LE MONTAGE SE VERIFIE JUSTE AVANT LE GESTE. Un rafraichissement de la
+      // console remplace `state.reservations`, et la reservation posee a la main
+      // plus haut disparait alors sans bruit : le drag ne porterait plus sur
+      // rien, et l assertion d apres serait verte pour une carte volatilisee.
+      const reposee = await page.evaluate((piste) => {
+        if (state.reservations.some((x) => x.id === 9020)) return false;
+        state.reservations.push({ id: 9020, name: 'Demi heure #9020', phone: '+32470860020', email: 'f@x.test', date: state.currentDate, startTime: '20:00', duration: 0.5, lanes: [piste], status: 'confirmed', pax: 2, price: 12, type: 'bowling', label: 'Bowling 30 min' });
+        save(); renderStaff();
+        return true;
+      }, pisteF);
+      if (reposee) await page.waitForTimeout(350);
+      ok(await page.evaluate(() => state.reservations.some((x) => x.id === 9020)),
+        `montage : la reservation de 30 min est bien en place${reposee ? ' (reposee apres un rafraichissement)' : ''}`);
       const posF = await page.evaluate((piste) => {
         toast('Bowling deplace a 16:00 piste 5');
         const toastEl = document.getElementById('toast');
@@ -192,8 +277,12 @@ async function main() {
         const dansLeToast = point.x >= tr.left && point.x <= tr.right && point.y >= tr.top && point.y <= tr.bottom;
         const dessous = document.elementFromPoint(point.x, point.y);
         const autrePiste = piste === 7 ? 5 : 7;
-        const cible = document.querySelector(`.slot-cell[data-bowling-drop-lane="${autrePiste}"][data-bowling-drop-start="16"]`)
-          || document.querySelector(`.slot-cell[data-bowling-drop-lane="${autrePiste}"]`);
+        // LA CIBLE EST NOMMEE, PAS DEVINEE. Le repli "n importe quelle cellule
+        // de cette piste" tombait parfois sur un creneau ou le deplacement est
+        // refuse, et la reservation disparaissait de la liste : un lancement sur
+        // quatre sortait rouge, sans rien dire du produit. Si la cellule de 16:00
+        // n existe pas, le montage le DIT au lieu de viser ailleurs.
+        const cible = document.querySelector(`.slot-cell[data-bowling-drop-lane="${autrePiste}"][data-bowling-drop-start="16"]`);
         const cb = cible ? cible.getBoundingClientRect() : null;
         return {
           hauteurCarte: Math.round(cr.height),
@@ -214,8 +303,21 @@ async function main() {
         await page.mouse.move(posF.point.x + 8, posF.point.y - 8, { steps: 2 });
         await page.mouse.move(posF.cible.x, posF.cible.y, { steps: 8 });
         await page.mouse.up(); await page.waitForTimeout(400);
-        const apresF = await page.evaluate(() => (state.reservations.find((x) => x.id === 9020) || {}).startTime);
-        ok(apresF !== posF.avant, `la resa de 30 min a bien bouge malgre le toast (${posF.avant} -> ${apresF})`);
+        // ON LA RETROUVE PAR SON NOM AUTANT QUE PAR SON IDENTIFIANT. Une
+        // reservation injectee a la main peut etre remplacee par un
+        // rafraichissement de la console pendant le geste : elle revient alors
+        // du serveur avec un autre identifiant, et chercher 9020 rendait
+        // , ce qui satisfaisait l ancienne assertion.
+        const apresBrut = await page.evaluate(() => {
+          const parId = state.reservations.find((x) => x.id === 9020);
+          const parNom = state.reservations.find((x) => String(x.name || "").includes("#9020"));
+          const r = parId || parNom || null;
+          return { heure: r ? r.startTime : null, total: state.reservations.length, parNom: Boolean(parNom && !parId) };
+        });
+        const apresF = apresBrut.heure;
+        // ELLE DOIT EXISTER ENCORE. Sans cette moitie, une reservation disparue
+        // rendait cette ligne verte : `undefined !== '20:00'` est vrai.
+        ok(Boolean(apresF) && apresF !== posF.avant, `la resa de 30 min a bien bouge malgre le toast (${posF.avant} -> ${apresF}, ${apresBrut.total} resa(s)${apresBrut.parNom ? ', retrouvee par son nom' : ''})`);
         // CONTRE-EPREUVE : sans toast, le meme geste doit marcher. Si celle-ci
         // echoue, l assertion precedente ne prouvait rien du tout.
         const posG = await page.evaluate(() => {

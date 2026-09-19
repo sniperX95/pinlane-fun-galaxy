@@ -7088,10 +7088,19 @@ function nudgeAnchorTrack(activityId, direction) {
 // État visible de la piste : ce qui dépasse à gauche, ce qui dépasse à droite,
 // et le moment de journée où l'on se trouve. Un défilement horizontal sans
 // indicateur est un piège : on ne sait pas qu'il reste des heures.
+// TOUTES LES LECTURES D ABORD, LES ECRITURES ENSUITE. Lire une geometrie
+// (offsetLeft) APRES avoir ecrit dans le DOM oblige le navigateur a recalculer
+// la mise en page avant de repondre, et il le refaisait a chaque appel. Profil
+// DevTools du changement d etape, 2026-09-19 : 102 ms passes ici, 12 images
+// perdues, une tache longue de 113 a 184 ms, alors que la meme page au repos
+// n en perd aucune.
 function syncAnchorTrackState(track) {
   if (!track) return;
   const max = track.scrollWidth - track.clientWidth;
   const left = track.scrollLeft;
+  const trackLeft = track.offsetLeft;
+  const marks = [...track.querySelectorAll('[data-period-start]')];
+  const positions = marks.map((mark) => mark.offsetLeft);
   const state_ = max <= 1 ? 'none' : (left <= 1 ? 'end' : (left >= max - 1 ? 'start' : 'both'));
   if (track.dataset.overflow !== state_) track.dataset.overflow = state_;
   const shell = track.closest('.anchor-periods');
@@ -7107,9 +7116,9 @@ function syncAnchorTrackState(track) {
     if (button.disabled !== disabled) button.disabled = disabled;
   });
   // Onglet actif = le moment réellement sous les yeux (bord gauche de la piste).
-  const marks = [...track.querySelectorAll('[data-period-start]')];
+  // Les positions ont ete relevees en tete de fonction, avant toute ecriture.
   let current = marks[0]?.dataset.periodStart || '';
-  marks.forEach((mark) => { if (mark.offsetLeft - track.offsetLeft <= left + 8) current = mark.dataset.periodStart; });
+  marks.forEach((mark, index) => { if (positions[index] - trackLeft <= left + 8) current = mark.dataset.periodStart; });
   shell.querySelectorAll('.anchor-period-tab').forEach((tab) => {
     const active = tab.dataset.period === current;
     tab.classList.toggle('active', active);
@@ -7303,22 +7312,23 @@ function bindAnchorTracks() {
       queued = true;
       requestAnimationFrame(() => { queued = false; syncAnchorTrackState(track); });
     }, { passive: true });
-    syncAnchorTrackState(track);
+    // ON PLACE LA PISTE, PUIS ON LIT SON ETAT, UNE SEULE FOIS. L appel qui
+    // precedait le positionnement lisait une geometrie qu on allait changer
+    // juste apres : deux recalculs de mise en page pour un seul resultat.
     const remembered = anchorTrackScrollMemory.get(track.dataset.anchor);
     if (remembered != null) {
       // Rendu complet en cours de parcours : la piste reprend sa position, elle
       // ne saute pas.
       if (Math.abs(track.scrollLeft - remembered) > 1) track.scrollLeft = remembered;
-      syncAnchorTrackState(track);
-      return;
+    } else {
+      // L'heure retenue doit être sous les yeux à l'ouverture, pas trois écrans
+      // plus loin dans la piste.
+      const active = track.querySelector('.anchor-chip.active');
+      if (active) {
+        track.scrollLeft = Math.max(0, active.offsetLeft - track.offsetLeft - track.clientWidth / 2 + active.offsetWidth / 2);
+      }
     }
-    // L'heure retenue doit être sous les yeux à l'ouverture, pas trois écrans
-    // plus loin dans la piste.
-    const active = track.querySelector('.anchor-chip.active');
-    if (active) {
-      track.scrollLeft = Math.max(0, active.offsetLeft - track.offsetLeft - track.clientWidth / 2 + active.offsetWidth / 2);
-      syncAnchorTrackState(track);
-    }
+    syncAnchorTrackState(track);
   });
 }
 

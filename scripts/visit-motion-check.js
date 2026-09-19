@@ -243,6 +243,8 @@ const READ_APPLIED = (layoutProperties) => {
 };
 
 const START_PERF = () => {
+  cancelAnimationFrame(window.__perfFrame);
+  if (window.__po) window.__po.disconnect();
   window.__frames = [];
   window.__long = [];
   try {
@@ -250,13 +252,12 @@ const START_PERF = () => {
     window.__po.observe({ entryTypes: ['longtask'] });
   } catch (error) { window.__po = null; }
   let last = performance.now();
-  window.__raf = true;
-  const tick = (now) => { window.__frames.push(now - last); last = now; if (window.__raf) requestAnimationFrame(tick); };
-  requestAnimationFrame(tick);
+  const tick = (now) => { window.__frames.push(now - last); last = now; window.__perfFrame = requestAnimationFrame(tick); };
+  window.__perfFrame = requestAnimationFrame(tick);
 };
 
 const STOP_PERF = () => {
-  window.__raf = false;
+  cancelAnimationFrame(window.__perfFrame);
   if (window.__po) window.__po.disconnect();
   const deltas = window.__frames.slice(1);
   return {
@@ -270,9 +271,13 @@ const STOP_PERF = () => {
 
 async function measureInteraction(page, label, action) {
   await page.evaluate(START_PERF);
-  await action();
-  await page.waitForTimeout(900);
-  const result = await page.evaluate(STOP_PERF);
+  let result;
+  try {
+    await action();
+    await page.waitForTimeout(900);
+  } finally {
+    result = await page.evaluate(STOP_PERF);
+  }
   console.log(`      ${label} : ${result.frames} images, ${result.dropped} au-dessus de 32 ms (max ${result.maxFrame} ms), ${result.longTasks} tache(s) longue(s)`);
   return result;
 }
@@ -502,10 +507,14 @@ function describeBurst(result) {
 }
 
 async function clickFreshChip(page) {
-  await page.evaluate(() => {
+  return page.evaluate(() => {
     const chip = [...document.querySelectorAll('.anchor-row[data-anchor="bowling"] .anchor-chip')]
-      .find((item) => !item.classList.contains('active') && !item.disabled);
-    if (chip) chip.click();
+      .find((item) => !item.classList.contains('active') && !item.disabled
+        && !item.hasAttribute('data-coince') && item.getBoundingClientRect().width > 0);
+    if (!chip) throw new Error('MONTAGE : aucune heure visible et prenable a cliquer');
+    const time = chip.dataset.time;
+    chip.click();
+    return time;
   });
 }
 
@@ -644,25 +653,88 @@ async function checkFluidity(page) {
   console.log('\n[4] Fluidite mesuree (60 Hz : une image « normale » vaut ~16,8 ms,');
   console.log('    le signal utile est donc l image PERDUE au-dela de 32 ms et la tache longue)');
   const results = {};
+  const repos = {};
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await bootTunnel(page, `perf-${width}`);
     console.log(`    ${width} px :`);
-    results[`step-${width}`] = await measureInteraction(page, 'changement d etape 1 vers 2', () => page.evaluate(() => goStep2()));
+    // ETALON AU REPOS : ce que la machine perd quand la page ne fait rien.
+    repos[width] = await measureInteraction(page, 'repos (etalon machine)', async () => {});
+    results[`step-${width}`] = await measureInteraction(page, 'changement d etape 1 vers 2', async () => {
+      if (!process.env.PINLANE_MOTION_PROFILE) { await page.evaluate(() => goStep2()); return; }
+      // PROFIL OPTIONNEL : qui prend le temps pendant le changement d etape.
+      // Repartition script / mise en page, et taille du DOM produit.
+      const repartition = await page.evaluate(async () => {
+        const avant = document.querySelectorAll("*").length;
+        const t0 = performance.now();
+        await goStep2();
+        const t1 = performance.now();
+        const h = document.body.offsetHeight;
+        const t2 = performance.now();
+        return { script: Math.round(t1 - t0), miseEnPage: Math.round(t2 - t1), noeudsAvant: avant, noeudsApres: document.querySelectorAll("*").length, pastilles: document.querySelectorAll(".anchor-chip").length, h };
+      });
+      console.log("      REPARTITION :", JSON.stringify(repartition));
+      if (repartition.pastilles === 0) throw new Error('Montage du profil vide : aucune heure rendue apres goStep2');
+      await page.evaluate(() => goStep(1, { animate: false, focus: false }));
+      await page.waitForTimeout(500);
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Profiler.enable');
+      await cdp.send('Profiler.setSamplingInterval', { interval: 500 });
+      await cdp.send('Profiler.start');
+      await page.evaluate(() => goStep2());
+      await page.waitForTimeout(900);
+      const { profile } = await cdp.send('Profiler.stop');
+      const parId = new Map(profile.nodes.map((n) => [n.id, n]));
+      const propre = new Map();
+      (profile.samples || []).forEach((id) => { propre.set(id, (propre.get(id) || 0) + 1); });
+      const total = (profile.samples || []).length || 1;
+      const dureeMs = (profile.endTime - profile.startTime) / 1000;
+      const lignes = [...propre.entries()]
+        .map(([id, n]) => { const noeud = parId.get(id); const c = (noeud && noeud.callFrame) || {}; return { nom: c.functionName || '(anonyme)', url: String(c.url || '').split('/').pop(), ligne: c.lineNumber, ms: Math.round((n / total) * dureeMs) }; })
+        .filter((x) => x.ms >= 3)
+        .sort((a, b) => b.ms - a.ms)
+        .slice(0, 14);
+      console.log(`      PROFIL ${width} px (${Math.round(dureeMs)} ms echantillonnes) :`);
+      lignes.forEach((x) => console.log(`        ${String(x.ms).padStart(4)} ms  ${x.nom}  ${x.url}:${x.ligne}`));
+      await cdp.detach();
+    });
+    const montage = await page.evaluate(() => ({
+      total: document.querySelectorAll('.anchor-chip').length,
+      visibles: [...document.querySelectorAll('.anchor-chip')].filter((chip) => chip.getBoundingClientRect().height > 0).length,
+    }));
+    if (!ok(montage.total > 0 && montage.visibles > 0,
+      `MONTAGE fluidite ${width} : des heures sont rendues et visibles (${montage.total}/${montage.visibles})`)) {
+      throw new Error('La fluidite ne se mesure pas sur une grille vide');
+    }
     // Le « saut de moment » n existe plus : les onglets ont ete retires le
     // 2026-08-24 (la grille montre toute la journee). Mesurer un clic dans le
     // vide serait un faux vert : la mesure est retiree avec la fonctionnalite.
     results[`pick-${width}`] = await measureInteraction(page, 'choix d une heure', () => page.evaluate(() => {
       // Une pastille REELLEMENT prenable : ni retenue, ni coincee.
       const chip = [...document.querySelectorAll('.anchor-chip')].find((item) => !item.classList.contains('active') && !item.disabled && !item.hasAttribute('data-coince'));
-      if (chip) chip.click();
+      if (!chip) throw new Error('Montage du choix vide : aucune heure prenable');
+      chip.click();
     }));
     results[`back-${width}`] = await measureInteraction(page, 'retour arriere (sens inverse)', () => page.evaluate(() => goStep(1)));
+    // Le repos est repris APRES : une machine qui se charge en cours de route
+    // ne doit pas faire passer sa charge pour un defaut du parcours.
+    const apres = await measureInteraction(page, 'repos (etalon machine, reprise)', async () => {});
+    repos[width] = {
+      longTasks: Math.max(repos[width].longTasks, apres.longTasks),
+      dropped: Math.max(repos[width].dropped, apres.dropped),
+    };
   }
   Object.entries(results).forEach(([key, value]) => {
-    ok(value.longTasks === 0, `${key} : aucune tache longue sur le fil principal (${value.longTasks})`);
-    // Une seule image perdue reste dans le bruit d'un ordonnanceur ; deux, non.
-    ok(value.dropped <= 1, `${key} : ${value.dropped} image perdue au plus (max ${value.maxFrame} ms)`);
+    const largeur = Number(key.split('-')[1]);
+    const bruit = repos[largeur] || { longTasks: 0, dropped: 0 };
+    // L INTERACTION NE DOIT PAS AJOUTER DE JANK AU REPOS. Un seuil absolu
+    // (zero tache longue, une image perdue) mesure le poste, pas le parcours.
+    ok(value.longTasks <= bruit.longTasks,
+      `${key} : pas plus de taches longues qu au repos (${value.longTasks} contre ${bruit.longTasks})`);
+    // Une seule image perdue reste dans le bruit d'un ordonnanceur ; deux, non,
+    // sauf si le repos en perd deja autant.
+    ok(value.dropped <= Math.max(1, bruit.dropped),
+      `${key} : ${value.dropped} image(s) perdue(s), repos ${bruit.dropped} (max ${value.maxFrame} ms)`);
   });
   await page.setViewportSize({ width: 1280, height: 900 });
 }

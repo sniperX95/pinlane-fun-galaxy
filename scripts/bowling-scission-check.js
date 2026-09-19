@@ -52,7 +52,8 @@ const DATE = prochainSamedi();
 // la journee est vide. `getPool` jette, donc toute tentative d aller en base se
 // verrait au lieu de passer en silence.
 const database = require(path.join(ROOT, 'lib/database'));
-database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont' });
+let dayReservations = [];
+database.readAvailabilitySnapshot = async () => ({ reservations: dayReservations, laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont' });
 let appelsBase = 0;
 database.getPool = () => { appelsBase += 1; throw new Error('ce gate ne touche pas la base'); };
 
@@ -190,6 +191,60 @@ async function main() {
   record('scinder ne coute pas plus cher que jouer d un coup sur un grand parc',
     facture <= surUnParcAssezGrand + 1,
     JSON.stringify({ facture, surUnParcAssezGrand }));
+
+  section('[5 bis] La validation finale conserve les pistes de CHAQUE service');
+  const { normalizeReservationRequest } = require('../lib/reservation-request');
+  const { prepareReservationOps } = require('../lib/reservation-ops');
+  const reservations = [
+    { id: 901, centerId: 'libramont', type: 'bowling', date: DATE, startTime: '10:00', duration: 1, pax: 12, lanes: [1, 2], status: 'pending' },
+    { id: 902, centerId: 'libramont', type: 'bowling', date: DATE, startTime: '11:00', duration: 1, pax: 12, lanes: [3, 4], status: 'pending' },
+  ];
+  const request = normalizeReservationRequest({
+    centerId: 'libramont', type: 'visite', date: DATE, startTime: '10:00', pax: 70,
+    name: 'Offline QA', phone: '0470000000', email: 'qa@example.invalid',
+    program: { items: [{ activityId: 'bowling', duration: 1 }] },
+    preference: { preferredTimes: { bowling: '10:00' } },
+  }, { channel: 'public' });
+  const plan = await prepareReservationOps(request, 'public', {
+    readState: async () => ({ reservations, laneStatuses: {} }),
+  });
+  const input = { ...request, ...plan, lanes: plan.opsPlan?.assignedLanes };
+  const bowlingBlocks = (p) => p.resourceBlocks.filter((b) => b.resourceType === 'bowling_lane');
+  record('montage : deux services sur des pistes differentes', plan.planAvailable
+    && bowlingBlocks(plan.opsPlan).length === 2
+    && bowlingBlocks(plan.opsPlan)[0].lanes.join(',') !== bowlingBlocks(plan.opsPlan)[1].lanes.join(','));
+  const validate = (candidate = input, existing = reservations, statuses = {}, blocks = []) => {
+    try { return database.validateReservationResources(candidate, existing, statuses, blocks, DATE); }
+    catch (error) { return { ok: false, reason: error.message }; }
+  };
+  const accepted = validate();
+  record('le plan valide garde exactement chaque attribution et leur union', accepted.ok
+    && JSON.stringify(bowlingBlocks(accepted.payload.opsPlan)) === JSON.stringify(bowlingBlocks(plan.opsPlan))
+    && accepted.lanes.length === 8, accepted.reason || '6 pistes par service, 8 pistes distinctes au total');
+  dayReservations = reservations;
+  try {
+    const occupiedDay = await visite(70);
+    record('la porte publique propose aussi le depart de 10h sur cette journee occupee',
+      occupiedDay.libres.includes('10:00')
+        && occupiedDay.data.slots.some((slot) => slot.time === '10:00' && slot.ok !== false));
+  } finally {
+    dayReservations = [];
+  }
+  record('une occupation apparue sur le SECOND service est refusee', !validate(input, [
+    ...reservations, { ...reservations[0], id: 903, startTime: '11:00', lanes: [1] },
+  ]).ok);
+  record('une piste du SECOND service passee en maintenance est refusee', !validate(input, reservations, { 1: 'maintenance' }).ok);
+  const laneBlock = { centerId: 'libramont', scopeType: 'lane', scopeRef: '1', recurrence: 'once', date: DATE, startMin: 660, endMin: 720 };
+  record('un blocage sur le SECOND service est refuse', !validate(input, reservations, {}, [laneBlock]).ok);
+  record('un blocage hors de la fenetre de cette piste reste acceptable', validate(input, reservations, {}, [
+    { ...laneBlock, startMin: 600, endMin: 660 },
+  ]).ok);
+  const missingLane = JSON.parse(JSON.stringify(input));
+  bowlingBlocks(missingLane.opsPlan)[1].lanes.pop();
+  record('un service prive d une piste necessaire est refuse', !validate(missingLane).ok);
+  const flattened = JSON.parse(JSON.stringify(input));
+  bowlingBlocks(flattened.opsPlan).forEach((b) => { b.lanes = [...input.lanes]; });
+  record('contre-epreuve : appliquer l union aux deux services est refuse', !validate(flattened).ok);
 
   // ====================================================================== [6]
   section('[6] Contre-epreuve par mutation : ce gate sait-il rougir ?');

@@ -198,14 +198,26 @@ async function main() {
     await page.goto(`${BASE_URL}/?v=read-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await page.evaluate(() => { state.staffMenuPage = 'emails'; state.staffTheme = 'dark'; save(); setView('staff'); renderStaff(); });
-    await page.waitForTimeout(1200);
+    // ATTENTE PAR CONDITION, PAS PAR CHRONO. La page Emails se remplit apres un
+    // aller-retour serveur : sous la charge de la suite complete, 1200 ms en dur
+    // ne suffisaient pas, la ligne 42 n existait pas encore, la selection ne
+    // selectionnait rien, et les neuf assertions suivantes lisaient du vide.
+    // Un butoir atteint leve, et le try/catch du gate le compte en echec.
+    await page.waitForFunction(
+      () => typeof getStaffEmailRows === 'function' && typeof pv2EmailFilter === 'function' && typeof pv2SelectEmail === 'function',
+      null, { timeout: 20000 },
+    );
+    await page.evaluate(() => { pv2EmailFilter('inbound'); });
+    await page.waitForFunction(() => getStaffEmailRows().some((r) => Number(r.id) === 42), null, { timeout: 20000 });
     await page.evaluate(() => {
-      if (typeof pv2EmailFilter === 'function') pv2EmailFilter('inbound');
-      const rows = typeof getStaffEmailRows === 'function' ? getStaffEmailRows() : [];
-      const cible = rows.find((r) => Number(r.id) === 42);
-      if (cible && typeof pv2SelectEmail === 'function') pv2SelectEmail(cible.uid);
+      const cible = getStaffEmailRows().find((r) => Number(r.id) === 42);
+      pv2SelectEmail(cible.uid);
     });
-    await page.waitForTimeout(500);
+    // Le panneau de lecture est monte quand son corps porte du texte.
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#staffEmailsPage .pv2-mail-corps');
+      return Boolean(el && el.textContent.trim());
+    }, null, { timeout: 20000 });
 
     // Capture optionnelle : PINLANE_READ_SHOT=<dossier> pour REGARDER l ecran au
     // lieu de le deviner. Le harnais est deja monte (session, mock, navigation) :

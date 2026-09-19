@@ -559,6 +559,28 @@ function resolveDisplayFormule(formuleId) {
   }
   return FORMULES.find(x => x.id === formuleId) || null;
 }
+// LE GROUPE QUI NE TIENT PAS SUR LES PISTES JOUE EN PLUSIEURS SERVICES.
+//
+// Jumeau client de splitGroupIntoBowlingServices (lib/booking-config.js), sur
+// la capacite REELLE du centre affiche : le parc de pistes, la capacite de
+// confort et celle de secours viennent toutes trois de la configuration
+// servie, jamais d une constante.
+//
+// UN SEUL element = le groupe tient en une fois, et rien ne change pour lui.
+// Le seuil est celui du REFUS (pistes x secours), pas celui du confort : entre
+// les deux, le centre sait deja recevoir le groupe d un coup.
+function splitGroupIntoBowlingServices(pax) {
+  const players = Math.max(1, Number(pax) || 1);
+  const lanes = Math.max(1, Math.trunc(Number(getTotalLanes()) || 1));
+  const confort = Math.max(1, lanes * Math.max(1, Math.trunc(Number(getMaxPerLane()) || 1)));
+  const secours = Math.max(confort, lanes * Math.max(1, Math.trunc(Number(getEmergencyMaxPerLane()) || 1)));
+  if (players <= secours) return [players];
+  const services = Math.ceil(players / confort);
+  const base = Math.floor(players / services);
+  const extra = players % services;
+  return Array.from({ length: services }, (_, index) => base + (index < extra ? 1 : 0));
+}
+
 function getBasePrice(type, duration, laneCount, pax, formuleId, dateStr) {
   if (type === 'bowling') {
     const gameOptions = getBowlingGameOptions(dateStr, { pax, laneCount });

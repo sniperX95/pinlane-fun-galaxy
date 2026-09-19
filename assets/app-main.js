@@ -7419,6 +7419,39 @@ function heuresEmporteesParLeLaser(heuresRetenues, pax) {
   return emportees;
 }
 
+// LES HEURES QU UN SECOND SERVICE DE BOWLING EMPORTE.
+//
+// Meme idee que pour le laser, autre ressource. Un groupe trop grand pour les
+// pistes joue en plusieurs fois : une heure retenue a 10:00 pour une heure de
+// jeu fait jouer le second groupe de 11:00 a 12:00. Les pastilles de cette
+// tranche-la sont deja prises, par le client lui-meme.
+//
+// LES PASTILLES DU PREMIER SERVICE NE SONT PAS MARQUEES : 10:30 est occupee,
+// mais par le groupe qui joue, pas par « l autre groupe ». Leur refus d origine
+// dit deja la verite.
+function heuresEmporteesParLeBowling(heuresRetenues, pax, dureeMinutes) {
+  const emportees = new Map();
+  if (typeof splitGroupIntoBowlingServices !== 'function') return emportees;
+  const services = splitGroupIntoBowlingServices(pax);
+  if (services.length <= 1) return emportees;
+  const duree = Math.max(1, Math.round(Number(dureeMinutes) || 60));
+  const PAS = 30;
+  (Array.isArray(heuresRetenues) ? heuresRetenues : []).filter(Boolean).forEach((heure) => {
+    const debut = Math.round(timeToNum(heure) * 60);
+    const fin = debut + duree * services.length;
+    for (let rang = 1; rang < services.length; rang += 1) {
+      const debutService = debut + duree * rang;
+      for (let minute = debutService; minute < debutService + duree; minute += PAS) {
+        const quand = numToTime(minute / 60);
+        if (!emportees.has(quand)) {
+          emportees.set(quand, { rang: rang + 1, total: services.length, depuis: heure, fin: numToTime(fin / 60), lieu: 'les pistes' });
+        }
+      }
+    }
+  });
+  return emportees;
+}
+
 // POURQUOI CETTE HEURE COINCE, en une phrase que le client peut agir.
 // Ecrite UNE fois : le rendu initial et la mise a jour en place s en servent
 // tous les deux, et le gate la lit au meme endroit.
@@ -7449,7 +7482,7 @@ function raisonHeureCoincee({ rangeeVerrouillee, listePleine, parties, indisponi
     const total = Math.max(2, Number(vague.total) || 2);
     return {
       motif: 'vague',
-      texte: `C’est le passage de votre ${rang}e groupe. Trop nombreux pour l’arène, vous jouez en ${total} fois : la partie lancée à ${vague.depuis} occupe l’arène jusqu’à ${vague.fin}.`,
+      texte: `C’est le passage de votre ${rang}e groupe. Trop nombreux pour ${vague.lieu || 'l’arène'}, vous jouez en ${total} fois : le jeu lancé à ${vague.depuis} occupe ${vague.lieu || 'l’arène'} jusqu’à ${vague.fin}.`,
     };
   }
   if (listePleine) {
@@ -7521,9 +7554,14 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   // LES HEURES QUE SES PROPRES PASSAGES EMPORTENT. Calculees UNE fois pour
   // toute la grille : une heure retenue occupe la sienne et celles de ses
   // passages suivants.
-  const emportees = activity.activityId === 'laser_game' && !disabled
-    ? heuresEmporteesParLeLaser(multi ? chosen : (selected ? [selected] : []), state.booking.pax)
-    : new Map();
+  const heuresRetenues = multi ? chosen : (selected ? [selected] : []);
+  const emportees = disabled
+    ? new Map()
+    : activity.activityId === 'laser_game'
+      ? heuresEmporteesParLeLaser(heuresRetenues, state.booking.pax)
+      : activity.activityId === 'bowling'
+        ? heuresEmporteesParLeBowling(heuresRetenues, state.booking.pax, Number(activity.durationMinutes) || 60)
+        : new Map();
   // HORIZONTAL : une seule piste par activité qui porte TOUTE la journée. Les
   // onglets de moment cessent d'être un filtre (26 heures sur 27 masquées) et
   // deviennent des points de saut dans la piste : rien n'est plus caché.
@@ -8027,9 +8065,14 @@ function syncFormulaAnchorUi(formule, { busy }) {
     // LA MEME REGLE QU AU RENDU INITIAL (voir heuresEmporteesParLeLaser) :
     // sans elle, ce chemin effacerait le pointille du second passage des que le
     // client reclique, parce qu il ne saurait pas d ou vient le `data-coince`.
-    const emportees = isLaser && !disabled
-      ? heuresEmporteesParLeLaser(chosen || (selected ? [selected] : []), state.booking.pax)
-      : new Map();
+    const retenuesIci = chosen || (selected ? [selected] : []);
+    const emportees = disabled
+      ? new Map()
+      : isLaser
+        ? heuresEmporteesParLeLaser(retenuesIci, state.booking.pax)
+        : activity.activityId === 'bowling'
+          ? heuresEmporteesParLeBowling(retenuesIci, state.booking.pax, Number(activity.durationMinutes) || 60)
+          : new Map();
     const chips = [...row.querySelectorAll('.anchor-chip')];
     if (chips.length !== (activity.times || []).length) return false;
     // Une heure qui change de verdict (possible <-> impossible, ou de raison)

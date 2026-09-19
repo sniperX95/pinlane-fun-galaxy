@@ -175,17 +175,20 @@ async function releverLesVagues(page, options) {
 // Le parcours d un client, jusqu aux deux ecrans : 49 joueurs (l effectif de la
 // capture), bowling + laser + minigolf, et trois parties de laser. Le minigolf
 // est ce qui fait apparaitre le « sans horaire ».
-async function ouvrirLesDeuxEcrans(browser, etiquette) {
+// LE NOMBRE DE JOUEURS EST UN PARAMETRE depuis le 2026-09-19 : le bloc [11]
+// a besoin d un groupe que les pistes ne peuvent pas recevoir d un coup. Les
+// autres blocs gardent 49, et rien ne change pour eux.
+async function ouvrirLesDeuxEcrans(browser, etiquette, joueurs = 49) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   await page.goto(`${BASE_URL}/reserver/libramont?v=refonte-${etiquette}-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
   await page.waitForFunction(() => typeof window.goStep2 === 'function' && document.querySelectorAll('#clientView .activity-card').length >= 8, null, { timeout: 20000 });
-  await page.evaluate((date) => {
+  await page.evaluate(({ date, joueurs }) => {
     const d = document.getElementById('fDate');
     d.value = date; d.dispatchEvent(new Event('change', { bubbles: true }));
     const p = document.getElementById('fPax');
-    if (p) { p.value = '49'; p.dispatchEvent(new Event('change', { bubbles: true })); p.dispatchEvent(new Event('input', { bubbles: true })); }
-  }, DATE);
+    if (p) { p.value = String(joueurs); p.dispatchEvent(new Event('change', { bubbles: true })); p.dispatchEvent(new Event('input', { bubbles: true })); }
+  }, { date: DATE, joueurs });
   await page.waitForTimeout(600);
   const grilleVisible = () => page.evaluate(() => {
     const g = document.querySelector('#clientView .activity-grid');
@@ -763,6 +766,93 @@ async function main() {
     fs.readFileSync(path.join(ROOT, 'lib/ops-engine.js'), 'utf8') === moteurAvant);
 
   // ====================================================================== [6]
+  // ===================================================================== [11]
+  section('[11] A l ecran, le second service de BOWLING se voit et s explique');
+  const { context: ctx11, page: p11 } = await ouvrirLesDeuxEcrans(browser, 'bowling-scinde', 70);
+  // On ne touche PAS au reglage du laser : une seule partie suffit, et trois
+  // parties pour 70 joueurs feraient neuf lancements qui brouilleraient la
+  // lecture du bowling.
+  await p11.evaluate(() => { const b = document.getElementById('btnStep1'); if (b) b.click(); });
+  await p11.waitForFunction(() => document.querySelectorAll('.anchor-row[data-anchor="bowling"] .anchor-chip').length > 10, null, { timeout: 25000 });
+  await p11.waitForTimeout(1200);
+  const LIGNE_BOWLING = '.anchor-row[data-anchor="bowling"]';
+  const montage11 = await p11.evaluate(() => ({
+    pax: Number(state.booking.pax) || 0,
+    services: typeof splitGroupIntoBowlingServices === 'function' ? splitGroupIntoBowlingServices(Number(state.booking.pax) || 0) : null,
+    pastilles: document.querySelectorAll('.anchor-row[data-anchor="bowling"] .anchor-chip').length,
+  }));
+  record('montage : 70 joueurs ne tiennent pas sur les pistes d un coup',
+    montage11.pax === 70 && Array.isArray(montage11.services) && montage11.services.length >= 2 && montage11.pastilles > 10,
+    JSON.stringify(montage11));
+
+  const cliquerB = (heure) => p11.evaluate((args) => {
+    const chip = document.querySelector(`${args[0]} .anchor-chip[data-time="${args[1]}"]`);
+    if (chip) chip.click();
+  }, [LIGNE_BOWLING, heure]);
+  const libre11 = await p11.evaluate((sel) => {
+    const chips = [...document.querySelectorAll(`${sel} .slot-period.is-open .anchor-chip`)];
+    const c = chips.find((x) => !x.classList.contains('active') && !x.hasAttribute('data-coince') && !x.classList.contains('is-unavailable'));
+    return c ? c.dataset.time : '';
+  }, LIGNE_BOWLING);
+  record('montage : une heure de bowling est libre', Boolean(libre11), libre11);
+  await cliquerB(libre11);
+  await p11.waitForTimeout(2500);
+
+  const vu11 = await p11.evaluate((args) => {
+    const [sel, heure, duree] = args;
+    const minutes = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+    const lire = (t) => {
+      const chip = document.querySelector(`${sel} .anchor-chip[data-time="${t}"]`);
+      if (!chip) return null;
+      const style = getComputedStyle(chip);
+      return {
+        heure: t,
+        actif: chip.classList.contains('active'),
+        motif: chip.getAttribute('data-coince-motif') || '',
+        phrase: chip.getAttribute('data-coince') || '',
+        meta: ((chip.querySelector('.slot-card-meta') || {}).textContent || '').trim(),
+        info: Boolean(chip.querySelector('.slot-card-info')),
+        pointille: style.borderTopStyle,
+        bord: style.borderTopColor,
+      };
+    };
+    const base = minutes(heure);
+    const enTexte = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    return {
+      retenue: lire(heure),
+      // Dans le PREMIER service : occupee, mais par le groupe qui joue.
+      pendantLePremier: lire(enTexte(base + 30)),
+      // Le SECOND service commence une duree plus tard.
+      secondService: [lire(enTexte(base + duree)), lire(enTexte(base + duree + 30))],
+      danger: (getComputedStyle(document.documentElement).getPropertyValue('--danger') || '').trim(),
+    };
+  }, [LIGNE_BOWLING, libre11, 60]);
+
+  record('montage : l heure cliquee est retenue', Boolean(vu11.retenue && vu11.retenue.actif), JSON.stringify(vu11.retenue));
+  record('les heures du SECOND service portent le motif « vague »',
+    vu11.secondService.every((c) => c && c.motif === 'vague'),
+    JSON.stringify(vu11.secondService.map((c) => c && `${c.heure}:${c.motif}`)));
+  record('et leur phrase nomme l autre groupe ET l heure d ou il vient',
+    vu11.secondService.every((c) => c && /groupe/i.test(c.phrase) && c.phrase.includes(libre11) && /piste/i.test(c.phrase)),
+    JSON.stringify((vu11.secondService[0] || {}).phrase || ''));
+  record('elles sont en POINTILLE, et pas peintes comme un obstacle',
+    vu11.secondService.every((c) => c && c.pointille === 'dashed' && c.bord && c.bord !== vu11.danger),
+    JSON.stringify(vu11.secondService.map((c) => c && `${c.pointille}/${c.bord}`)));
+  record('elles portent un i en rond', vu11.secondService.every((c) => c && c.info),
+    JSON.stringify(vu11.secondService.map((c) => c && c.info)));
+  // CE QUI NE DOIT PAS ETRE MARQUE : l heure ou le PREMIER groupe joue encore.
+  record('l heure ou le premier groupe joue n est PAS annoncee comme le second',
+    Boolean(vu11.pendantLePremier) && vu11.pendantLePremier.motif !== 'vague',
+    JSON.stringify(vu11.pendantLePremier && `${vu11.pendantLePremier.heure}:${vu11.pendantLePremier.motif}`));
+  // ET ELLE NE SE PREND PAS : c est le trou, pas l habillage.
+  const avant11 = await p11.evaluate((sel) => [...document.querySelectorAll(`${sel} .anchor-chip.active`)].map((c) => c.dataset.time).join('|'), LIGNE_BOWLING);
+  await cliquerB((vu11.secondService[0] || {}).heure || '');
+  await p11.waitForTimeout(2000);
+  const apres11 = await p11.evaluate((sel) => [...document.querySelectorAll(`${sel} .anchor-chip.active`)].map((c) => c.dataset.time).join('|'), LIGNE_BOWLING);
+  record('cliquer l heure du second groupe ne la retient pas', apres11 === avant11,
+    JSON.stringify({ avant: avant11, apres: apres11 }));
+  await ctx11.close();
+
   section('[6] Contre-epreuve par mutation : ce gate sait-il rougir ?');
   const original = fs.readFileSync(APP_JS, 'utf8');
   const originalCss = fs.readFileSync(CSS, 'utf8');

@@ -3909,6 +3909,9 @@ function syncBookingContext() {
   const dateNode = document.getElementById('bookingContextDate');
   const paxNode = document.getElementById('bookingContextPax');
   const choiceNode = document.getElementById('bookingContextChoice');
+  const contactDateNode = document.getElementById('fgContactDate');
+  const contactPaxNode = document.getElementById('fgContactPax');
+  const contactTimeNode = document.getElementById('fgContactTime');
   let dateLabel = 'À choisir';
   if (booking.date) {
     try {
@@ -3919,6 +3922,9 @@ function syncBookingContext() {
   const pax = Math.max(1, Number(booking.pax) || 1);
   if (paxNode) paxNode.textContent = `${pax} personne${pax > 1 ? 's' : ''}`;
   if (choiceNode) choiceNode.textContent = bookingContextChoiceLabel();
+  if (contactDateNode) contactDateNode.textContent = dateLabel;
+  if (contactPaxNode) contactPaxNode.textContent = `${pax} personne${pax > 1 ? 's' : ''}`;
+  if (contactTimeNode) contactTimeNode.textContent = booking.startTime || 'À choisir';
   const body = document.querySelector('#clientView .step1-body');
   const venueOpen = Number(state.step) === 1 && Boolean(body && body.classList.contains('is-solo'));
   root.classList.toggle('is-muted', venueOpen);
@@ -3961,11 +3967,14 @@ function toggleContactExtras(forceOpen) {
 let venueStage = 'date';
 
 function setVenueStage(stage) {
+  if (document.documentElement.hasAttribute('data-fun-galaxy-v2')) stage = 'pax';
   venueStage = stage === 'pax' ? 'pax' : 'date';
   const corps = document.querySelector('.step1-body');
   if (corps) corps.classList.toggle('is-venue-pax', venueStage === 'pax');
   const libelle = document.getElementById('btnVenueContinueLabel');
-  if (libelle) libelle.textContent = venueStage === 'pax' ? 'Voir les activités' : 'Continuer';
+  if (libelle) libelle.textContent = document.documentElement.hasAttribute('data-fun-galaxy-v2')
+    ? 'Choisir mes activités'
+    : (venueStage === 'pax' ? 'Voir les activités' : 'Continuer');
   // La question de l ecran qui arrive s ecrit, comme partout ailleurs. Le noeud
   // n est PAS reconstruit entre les deux ecrans (seule une classe bascule) :
   // sans le redemarrage force de revelerQuestion, rien ne rejouerait.
@@ -4005,7 +4014,7 @@ function confirmVenue() {
   // PREMIER CLIC : le jour est valide, on passe a la question du groupe. La
   // garde de date reste AVANT, sinon on demanderait le nombre de joueurs pour un
   // jour ou le centre est ferme.
-  if (venueStage !== 'pax') {
+  if (venueStage !== 'pax' && !document.documentElement.hasAttribute('data-fun-galaxy-v2')) {
     setVenueStage('pax');
     return;
   }
@@ -4741,7 +4750,7 @@ function buildActivityPicker(host, catalog) {
         Modifier les activités
       </button>
       <div class="activity-configurator-head">
-        <span class="activity-configurator-title">Réglez votre visite</span>
+        <span class="activity-configurator-title">Vos activités</span>
         <span class="activity-configurator-count" data-role="config-count"></span>
       </div>
       <p class="activity-configurator-lead">Le prix suit vos choix, et rien ne se paie à l’avance.</p>
@@ -6398,6 +6407,15 @@ function syncStepOneCta() {
   const towardOptions = !onMobileOptionsPage() && mobileOptionsAvailable();
   const text = towardOptions ? 'Continuer' : 'Vérifier les disponibilités';
   if (label.textContent !== text) label.textContent = text;
+  const button = document.getElementById('btnStep1');
+  if (button) {
+    const booking = state && state.booking ? state.booking : {};
+    const hasChoice = normalizeBookingMode(booking.mode) === 'formule'
+      ? Boolean(booking.formuleId)
+      : getChosenActivities().length > 0;
+    button.disabled = !hasChoice;
+    button.setAttribute('aria-disabled', hasChoice ? 'false' : 'true');
+  }
 }
 
 async function goStep2() {
@@ -8416,7 +8434,9 @@ function renderSlots(formule) {
   // Des QUESTIONS, pas des intitules de rubrique : l ecran demande, le client
   // repond. « Horaire disponible » ne demandait rien.
   if (slotTitle) {
-    slotTitle.textContent = formulaHasAnchorUi() ? 'Composez votre visite' : (formule ? 'Votre programme' : 'À quelle heure ?');
+    slotTitle.textContent = document.documentElement.hasAttribute('data-fun-galaxy-v2')
+      ? 'À quelle heure ?'
+      : (formulaHasAnchorUi() ? 'Composez votre visite' : (formule ? 'Votre programme' : 'À quelle heure ?'));
     // La question de cet ecran s ecrit mot a mot, comme celles des autres.
     if (typeof revelerQuestion === 'function') revelerQuestion(slotTitle);
   }
@@ -26151,6 +26171,10 @@ function renderTunnelIdentity(identity) {
 
 function applyCenterIdentity(center, centerId = '') {
   const identity = sanitizeTunnelIdentity(center);
+  const identitySite = String(center?.identity?.siteUrl || '').toLowerCase();
+  const requestedCenter = `${location.hostname} ${location.search}`.toLowerCase();
+  document.documentElement.toggleAttribute('data-fun-galaxy-v2',
+    identitySite.includes('fungalaxy.be') || requestedCenter.includes('fun-galaxy') || requestedCenter.includes('fungalaxy'));
   renderTunnelIdentity(identity);
   const key = String(centerId || '').trim().toLowerCase();
   if (!key) return;

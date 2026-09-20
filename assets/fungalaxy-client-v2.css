@@ -1,0 +1,2011 @@
+@font-face {
+  font-family: FGDisplay;
+  src: url(/menu/assets/fonts/anton-latin.woff2) format("woff2");
+  font-display: swap;
+  font-weight: 400;
+}
+
+/* Finish review: truthful states and a complete photographic contact panel. */
+html[data-fun-galaxy-v2] body.client-mode #clientView .btn-primary:disabled {
+  cursor: not-allowed;
+  border-color: #4a454c;
+  color: #77727a;
+  background: #181619;
+  opacity: 1;
+}
+
+html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-context {
+  display: none;
+}
+
+@media (min-width: 641px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .progress,
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-booking-logo {
+    opacity: 1;
+    visibility: visible;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .step3-body::after {
+    position: absolute;
+    inset: 0 0 0 58%;
+    min-height: 100%;
+    clip-path: none;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .step3-body::before {
+    content: none;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-context {
+    position: absolute;
+    top: 32px;
+    right: 28px;
+    z-index: 3;
+    display: grid;
+    width: min(330px, 36%);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(5, 5, 5, 0.82);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-context > span {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    align-items: baseline;
+    gap: 12px;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-context .fg-contact-context-kicker {
+    display: block;
+    border-top: 0;
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-context small {
+    color: #b2adb5;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-context strong {
+    color: #fff;
+    font-size: 13px;
+  }
+}
+
+@media (min-width: 641px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-title span {
+    display: none !important;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title::before,
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title::after {
+    display: block;
+    white-space: nowrap;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title::before {
+    content: "À QUI";
+    color: #f8f5f1;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title::after {
+    content: "RÉSERVE-T-ON ?";
+    color: var(--accent);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-more,
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-extra {
+    display: none;
+  }
+}
+
+/* Final comp-alignment pass. */
+@media (min-width: 641px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .progress {
+    margin-left: 118px;
+    width: calc(100% - 118px);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .s2-slots {
+    flex: 0 0 auto;
+    align-self: start;
+    min-height: 0;
+    height: auto;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .s2-slots::after {
+    content: "Choisissez une heure pour continuer";
+    display: block;
+    margin-top: 18px;
+    color: #f5f2ee;
+    font-size: 13px;
+    text-align: center;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body {
+    grid-template-columns: minmax(0, 58%) 42%;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-side {
+    padding: 18px clamp(38px, 5vw, 76px) 120px clamp(18px, 3vw, 42px);
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .s3-side
+    .panel-title {
+    font-size: clamp(50px, 4.6vw, 68px);
+    line-height: 0.86;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-title span {
+    display: none !important;
+    white-space: nowrap !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title
+    span:last-child {
+    color: var(--accent);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-grid {
+    grid-template-columns: 1fr;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .contact-grid-wide {
+    grid-column: 1;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .step-foot {
+    position: absolute;
+    left: clamp(18px, 3vw, 42px);
+    bottom: 24px;
+    z-index: 4;
+    width: min(520px, calc(58% - 76px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .step-foot
+    .btn-primary {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .step3-body::before {
+    content: none;
+    position: absolute;
+    top: 28px;
+    right: 24px;
+    z-index: 2;
+    width: 34%;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-align: center;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns {
+    grid-template-columns: 48% minmax(0, 52%);
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .recap-decision
+    > .panel-title {
+    margin: clamp(42px, 6vh, 68px) clamp(24px, 4vw, 56px) 0;
+    font-size: clamp(58px, 6vw, 82px);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #recapList {
+    padding: clamp(145px, 18vh, 178px) clamp(24px, 4vw, 56px) 190px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .step3-body::before {
+    content: none;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .step3-body::after {
+    position: absolute !important;
+    inset: 0 0 0 58% !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: auto !important;
+    min-height: 100% !important;
+    margin: 0 !important;
+    clip-path: none !important;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .step3-body {
+    width: 100%;
+    margin-inline: 0;
+  }
+}
+
+/* Finish-review rebuild: branded frame, billboard question, paired controls. */
+html[data-fun-galaxy-v2] body.client-mode #clientView .tunnel-shell {
+  position: relative;
+  width: min(100%, 1280px);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .fg-booking-logo {
+  position: absolute;
+  top: 8px;
+  left: clamp(18px, 3vw, 42px);
+  z-index: 5;
+  display: block;
+  width: 98px;
+  height: 58px;
+  object-fit: contain;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #pd1
+  .progress-label,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #pd2
+  .progress-label {
+  font-size: 0;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #pd1
+  .progress-label::after {
+  content: "Votre venue";
+  font-size: 10px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #pd2
+  .progress-label::after {
+  content: "Horaire";
+  font-size: 10px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .progress-step.active
+  .progress-index {
+  box-shadow: 0 2px 0 var(--cyan);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .btn-primary {
+  border-bottom: 2px solid var(--cyan);
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step1-body.is-solo {
+  grid-template-columns: minmax(0, 48%) 52%;
+  min-height: 470px;
+  padding-top: 16px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo::after {
+  min-height: 470px;
+  background: url("/assets/img/heroes/hero-bowling.jpg") center 72% / cover
+    no-repeat;
+  clip-path: polygon(13% 0, 100% 0, 100% 100%, 0 100%);
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-when {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+  padding-right: clamp(18px, 3vw, 42px);
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-when-head,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-continue {
+  grid-column: 1 / -1;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-q-pax {
+  white-space: nowrap;
+  font-size: clamp(48px, 5vw, 72px);
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-field {
+  margin: 0;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-field
+  .lbl {
+  display: block !important;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  input[type="number"]::-webkit-inner-spin-button,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-card.is-on,
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip.active,
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-card.active {
+  border-bottom-color: var(--cyan);
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .bespoke-entry,
+html[data-fun-galaxy-v2] body.client-mode #clientView .client-contact-bar {
+  display: none !important;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .progress-steps {
+  width: calc(100% - 150px);
+  max-width: none;
+  margin-left: 150px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .schedule-hint,
+html[data-fun-galaxy-v2] body.client-mode #clientView .schedule-hint * {
+  border: 0 !important;
+  background: transparent !important;
+  color: #8e8993 !important;
+}
+@media (max-width: 640px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-booking-logo {
+    position: static;
+    width: 72px;
+    height: 42px;
+    margin: 4px auto 0;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .m-top-rank {
+    display: none;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .progress-steps {
+    width: auto;
+    margin-left: 0;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo
+    .s1-when {
+    grid-template-columns: 1fr;
+    padding-right: 0;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo
+    .s1-field {
+    grid-column: 1;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo
+    .s1-q-pax {
+    white-space: normal;
+    font-size: 43px;
+  }
+}
+@font-face {
+  font-family: FGSans;
+  src: url(/menu/assets/fonts/montserrat-latin-600.woff2) format("woff2");
+  font-display: swap;
+  font-weight: 600;
+}
+@font-face {
+  font-family: FGSans;
+  src: url(/menu/assets/fonts/montserrat-latin-700.woff2) format("woff2");
+  font-display: swap;
+  font-weight: 700;
+}
+html[data-fun-galaxy-v2] body.client-mode {
+  --page: #050505;
+  --surface: #0c0c0e;
+  --text: #f7f4f2;
+  --muted: #918d96;
+  --line: #29272d;
+  --accent: #b644b4;
+  --accent-2: #cf58ca;
+  --cyan: #62c5ba;
+  background: var(--page);
+  color: var(--text);
+  font-family: FGSans, Arial, sans-serif;
+}
+html[data-fun-galaxy-v2],
+html[data-fun-galaxy-v2] body,
+html[data-fun-galaxy-v2] #clientView,
+html[data-fun-galaxy-v2] #clientView .tunnel-shell,
+html[data-fun-galaxy-v2] #clientView .tunnel-stage {
+  background: var(--page);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .tunnel-shell {
+  width: min(100%, 1180px);
+  padding: 0 clamp(18px, 3vw, 42px);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .panel-title,
+html[data-fun-galaxy-v2] body.client-mode #clientView .success-wrap h2 {
+  font-family: FGDisplay, Impact, sans-serif;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.92;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .panel-kicker {
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .progress {
+  padding: 15px 0 9px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .progress-steps {
+  max-width: 760px;
+  margin: auto;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .progress-index {
+  width: 22px;
+  height: 22px;
+  background: #09090a;
+  border-color: #3a373e;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .progress-step.active
+  .progress-index {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--cyan);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .progress-label {
+  font-size: 10px;
+  color: #716e77;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .progress-step.active
+  .progress-label {
+  color: #fff;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .booking-context {
+  display: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .tunnel-stage {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step {
+  position: relative;
+  background: transparent;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step-body {
+  padding: 28px 0 18px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .btn-primary {
+  min-height: 50px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 1px var(--cyan);
+  font:
+    700 12px FGSans,
+    Arial,
+    sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .btn-primary:hover {
+  background: var(--accent-2);
+  transform: translate(-1px, -1px);
+  box-shadow: 0 0 0 1px var(--cyan);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .btn-secondary {
+  border-radius: 2px;
+  background: transparent;
+  border-color: #48454e;
+  color: #fff;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .input {
+  border-radius: 2px;
+  background: #080809;
+  border-color: #3b3840;
+  color: #fff;
+  font-family: FGSans, Arial, sans-serif;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step1-body.is-solo {
+  display: grid;
+  grid-template-columns: minmax(0, 56%) 44%;
+  min-height: 430px;
+  padding: 22px 0 0;
+  overflow: hidden;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo::after {
+  content: "";
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 430px;
+  background: url(/assets/img/heroes/hero-bowling.jpg) center/cover no-repeat;
+  clip-path: polygon(18% 0, 100% 0, 100% 100%, 0 100%);
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-when {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  width: min(100%, 570px);
+  padding: 8px clamp(12px, 3vw, 54px) 8px 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  z-index: 1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s1-venue-back,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .s1-when-head
+  .panel-head-icon,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .s1-when-head
+  .panel-kicker,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .s1-when-head
+  .step-intro {
+  display: none !important;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-q-date,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-q-pax {
+  display: block !important;
+  font-size: clamp(47px, 5.3vw, 76px);
+  margin: 0 0 30px;
+  text-align: left;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-q-date {
+  display: none !important;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-field {
+  display: block !important;
+  margin: 0 0 14px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step1-body.is-solo .lbl {
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #aaa5ad;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .date-input-wrap,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .pax-stepper {
+  min-height: 58px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-continue {
+  width: 100%;
+  margin-top: 10px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .schedule-hint {
+  min-height: 0;
+  margin-top: 5px;
+  font-size: 11px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body:not(.is-solo) {
+  display: block;
+  position: relative;
+  min-height: 410px;
+  padding: 18px 0 0;
+  overflow: visible;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body:not(.is-solo)::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 38% 42%;
+  background: url(/assets/img/heroes/hero-laser-game.jpg) center 38% / cover
+    no-repeat;
+  opacity: 0.72;
+  pointer-events: none;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .s1-venue-line:not([hidden]) {
+  position: relative;
+  width: auto;
+  min-height: 36px;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #aaa5ad;
+  z-index: 1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s1-venue-line-edit {
+  color: var(--accent);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s1-what {
+  position: relative;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  z-index: 1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s1-what-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 24px;
+  padding: 0;
+  border: 0;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .s1-what-head
+  .panel-kicker {
+  display: none;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .s1-what-head
+  .panel-title {
+  max-width: 520px;
+  font-size: clamp(45px, 5vw, 70px);
+  text-align: left;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s1-what-head .segmented {
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid #3a3740;
+  border-radius: 0;
+  background: transparent;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s1-what-head .seg-btn {
+  min-height: 38px;
+  padding: 0 18px;
+  border-radius: 0;
+  background: transparent;
+  color: #77727c;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .s1-what-head
+  .seg-btn.active {
+  color: #fff;
+  border-bottom: 2px solid var(--accent);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s1-scroller {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-card {
+  min-height: 112px;
+  border: 1px solid #34313a;
+  border-radius: 3px;
+  background: rgba(7, 7, 8, 0.9);
+  box-shadow: none;
+  overflow: hidden;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-card:hover {
+  border-color: #69636f;
+  transform: translateY(-2px);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-card.is-on {
+  border-color: var(--accent);
+  background: #1a0b19;
+  box-shadow: 0 0 0 1px var(--cyan);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-toggle {
+  grid-template-columns: 34px 1fr 22px;
+  grid-template-rows: 1fr;
+  align-items: center;
+  gap: 11px;
+  padding: 15px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-icon {
+  grid-column: 1;
+  grid-row: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #211321;
+  color: var(--accent);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-text {
+  grid-column: 2;
+  grid-row: 1;
+  gap: 5px;
+  padding: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-name {
+  font-size: 14px;
+  line-height: 1.15;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-price {
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: #99949e;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-price-compact,
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-note,
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-sign {
+  display: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-check {
+  grid-column: 3;
+  grid-row: 1;
+  width: 22px;
+  height: 22px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-configurator {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .activity-configurator-head {
+  padding: 0 0 18px;
+  background: transparent;
+  text-align: left;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .activity-configurator-title {
+  font:
+    400 42px/0.95 FGDisplay,
+    Impact,
+    sans-serif;
+  text-transform: uppercase;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .activity-configurator-lead {
+  display: none;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .activity-config-row.is-visible {
+  border: 0;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .activity-config-row-inner {
+  padding: 0;
+  gap: 12px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-config-label {
+  padding: 0;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .activity-config-controls
+  .activity-option-row {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .activity-config-controls
+  .dur-pill.sm {
+  min-height: 52px;
+  border-radius: 2px;
+  background: #0b0b0d;
+  border-color: #34313a;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .program-summary {
+  margin-top: 16px;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  border-radius: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step-status-dock {
+  display: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step-foot {
+  min-height: 66px;
+  margin-top: 8px;
+  padding: 10px 0;
+  border-top: 1px solid #201e23;
+  background: transparent;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .bespoke-entry {
+  border: 0;
+  background: transparent;
+  padding-left: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .bespoke-entry-icon,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .bespoke-entry-text
+  small {
+  display: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step-foot .btn-primary {
+  min-width: 260px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step2-body {
+  display: block;
+  position: relative;
+  min-height: 430px;
+  padding: 26px 0 10px;
+  overflow: visible;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step2-body::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 58% 48%;
+  background: url(/assets/img/heroes/hero-fun-run.jpg) center/cover no-repeat;
+  opacity: 0.42;
+  pointer-events: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-side {
+  display: flex;
+  position: relative;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  z-index: 1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-side .panel-kicker,
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-side .step-intro {
+  display: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-side .panel-title {
+  font-size: clamp(48px, 5.4vw, 74px);
+  text-align: left;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-venue-line {
+  order: 2;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #aaa5ad;
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-venue-line-edit {
+  color: var(--accent);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-slots {
+  flex: 0 0 auto;
+  align-self: start;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .formula-anchor-picker {
+  display: block !important;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .visit-rail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .visit-rail-step {
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .visit-rail-mark,
+html[data-fun-galaxy-v2] body.client-mode #clientView .visit-rail-link {
+  display: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-row {
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid #34313a;
+  background: transparent;
+  border-radius: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-row-head {
+  min-height: 34px;
+  padding: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-row-icon {
+  background: #261526;
+  color: var(--accent);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip-grid,
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  overflow: visible;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip,
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-card {
+  min-height: 48px;
+  border-radius: 2px;
+  background: #09090a;
+  border-color: #34313a;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip.active,
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-card.active {
+  border-color: var(--accent);
+  background: #231122;
+  box-shadow: 0 0 0 1px var(--cyan);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-period {
+  margin-top: 10px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-period-head {
+  min-height: 32px;
+  padding: 0;
+  background: transparent;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .formula-anchor-status-zone {
+  position: static;
+  margin-top: 14px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .formula-program-panel,
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 13px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .formula-plan-confirm {
+  flex: none;
+  min-width: 245px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body {
+  display: grid;
+  grid-template-columns: minmax(0, 58%) 42%;
+  position: relative;
+  min-height: 430px;
+  padding: 24px 0 0;
+  overflow: hidden;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body::after {
+  content: "";
+  grid-column: 2;
+  grid-row: 1/4;
+  min-height: 430px;
+  background: url(/assets/img/heroes/hero-bowling.jpg) center/cover no-repeat;
+  clip-path: polygon(20% 0, 100% 0, 100% 100%, 0 100%);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-side {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  width: min(100%, 600px);
+  padding: 0 52px 0 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  z-index: 1;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #step3
+  .s3-side
+  .panel-kicker {
+  display: none;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #step3
+  .s3-side
+  .panel-title {
+  margin-bottom: 24px;
+  font-size: clamp(46px, 5vw, 70px);
+  text-align: left;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #step3
+  .contact-grid-wide {
+  grid-column: 1/-1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .lbl {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #aaa5ad;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #step3
+  .contact-confidence {
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #8e8993;
+  font-size: 10.5px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #step3
+  .contact-confidence
+  svg {
+  display: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-more {
+  grid-column: 1;
+  grid-row: 2;
+  width: min(100%, 548px);
+  z-index: 1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-extra {
+  grid-column: 1;
+  grid-row: 3;
+  width: min(100%, 548px);
+  z-index: 1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step4-body {
+  min-height: 430px;
+  padding: 24px 0 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns {
+  display: grid;
+  grid-template-columns: 42% minmax(0, 58%);
+  gap: 0;
+  min-height: 430px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #recapList {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 104px 0 0 48px;
+  max-height: 315px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns::before {
+  content: "";
+  grid-column: 1;
+  grid-row: 1/3;
+  background: url(/assets/img/heroes/hero-duckpin.jpg) center/cover no-repeat;
+  clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .recap-decision {
+  display: contents;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .recap-decision
+  > .panel-kicker {
+  display: none;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .recap-decision
+  > .panel-title {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  margin: 14px 0 0 48px;
+  font-size: clamp(50px, 5vw, 72px);
+  z-index: 1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .total-box {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: end;
+  margin: 0 0 64px 48px;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step-actions {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: end;
+  margin-left: 48px;
+}
+@media (max-width: 900px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .activity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip-grid,
+  html[data-fun-galaxy-v2] body.client-mode #clientView .slot-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .tunnel-shell {
+    padding: 0 15px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .progress {
+    display: none;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step-body {
+    padding-top: 16px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step1-body.is-solo {
+    display: block;
+    min-height: auto;
+    overflow: visible;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo::after {
+    display: block;
+    min-height: 125px;
+    margin: 0 -15px 20px;
+    clip-path: none;
+    background-position: center;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo
+    .s1-when {
+    width: 100%;
+    padding: 0;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo
+    .s1-q-pax {
+    font-size: 45px;
+    margin-bottom: 24px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .s1-what-head {
+    display: block;
+    margin-bottom: 18px;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .s1-what-head
+    .panel-title {
+    font-size: 43px;
+    margin-bottom: 17px;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .s1-what-head
+    .segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .activity-card {
+    min-height: 92px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .activity-toggle {
+    padding: 12px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step-foot {
+    margin-top: 10px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .bespoke-entry {
+    display: none;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step-foot
+    .btn-primary {
+    width: 100%;
+    min-width: 0;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step2-body::before {
+    inset: 0 -15px 72% 35%;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .s2-side {
+    display: block;
+    margin-bottom: 16px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .s2-side .panel-title {
+    font-size: 44px;
+    margin-bottom: 10px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .visit-rail {
+    grid-template-columns: 1fr;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .formula-program-panel,
+  html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-status {
+    display: block;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .formula-plan-confirm {
+    width: 100%;
+    margin-top: 12px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body {
+    display: block;
+    min-height: auto;
+    overflow: visible;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body::after {
+    display: block;
+    min-height: 120px;
+    margin: 18px -15px 0;
+    clip-path: none;
+    background-position: center;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-side {
+    width: 100%;
+    padding: 0;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .s3-side
+    .panel-title {
+    font-size: 43px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-grid {
+    grid-template-columns: 1fr;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .contact-grid-wide {
+    grid-column: 1;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-more,
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-extra {
+    width: 100%;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns {
+    display: flex;
+    flex-direction: column;
+    min-height: auto;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns::before {
+    min-height: 130px;
+    margin: 0 -15px 18px;
+    clip-path: none;
+    background-position: center;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .recap-decision {
+    display: flex;
+    flex-direction: column;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .recap-decision
+    > .panel-title {
+    order: -2;
+    margin: 0;
+    font-size: 46px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #recapList {
+    order: -1;
+    padding: 16px 0 0;
+    max-height: none;
+    overflow: visible;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .total-box,
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step-actions {
+    margin: 14px 0 0;
+  }
+}
+
+/* Finish-review rebuild overrides. */
+html[data-fun-galaxy-v2] body.client-mode #clientView .tunnel-shell {
+  position: relative;
+  width: min(100%, 1280px);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .fg-booking-logo {
+  position: absolute;
+  top: 8px;
+  left: clamp(18px, 3vw, 42px);
+  z-index: 5;
+  display: block !important;
+  width: 98px;
+  height: 58px;
+  object-fit: contain;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #pd1
+  .progress-label,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #pd2
+  .progress-label {
+  font-size: 0;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #pd1
+  .progress-label::after {
+  content: "Votre venue";
+  font-size: 10px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #pd2
+  .progress-label::after {
+  content: "Horaire";
+  font-size: 10px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .progress-step.active
+  .progress-index {
+  box-shadow: 0 2px 0 var(--cyan);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .btn-primary {
+  border-bottom: 2px solid var(--cyan);
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step1-body.is-solo {
+  grid-template-columns: minmax(0, 48%) 52%;
+  min-height: 470px;
+  padding-top: 16px;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo::after {
+  min-height: 470px;
+  background: url("/assets/img/heroes/hero-bowling.jpg") center 72% / cover
+    no-repeat;
+  clip-path: polygon(13% 0, 100% 0, 100% 100%, 0 100%);
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-when {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+  padding-right: clamp(18px, 3vw, 42px);
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-when-head,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-continue {
+  grid-column: 1 / -1;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-q-pax {
+  white-space: nowrap;
+  font-size: clamp(48px, 5vw, 72px);
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-field {
+  margin: 0;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step1-body.is-solo
+  .s1-field
+  .lbl {
+  display: block !important;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  input[type="number"]::-webkit-inner-spin-button,
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .activity-card.is-on,
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip.active,
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-card.active {
+  border-bottom-color: var(--cyan);
+  box-shadow: none;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .bespoke-entry,
+html[data-fun-galaxy-v2] body.client-mode #clientView .client-contact-bar {
+  display: none !important;
+}
+@media (max-width: 640px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-booking-logo {
+    position: static;
+    width: 72px;
+    height: 42px;
+    margin: 4px auto 0;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .m-top-rank {
+    display: none;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo
+    .s1-when {
+    grid-template-columns: 1fr;
+    padding-right: 0;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo
+    .s1-field {
+    grid-column: 1;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .step1-body.is-solo
+    .s1-q-pax {
+    white-space: normal;
+    font-size: 43px;
+  }
+}
+
+/* Rebuild 02 — cinematic downstream steps, flat materials, no nested cards. */
+html[data-fun-galaxy-v2] body.client-mode #clientView .step2-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  min-height: calc(100% - 74px);
+  padding: clamp(28px, 5vh, 64px) clamp(18px, 4vw, 58px) 22px;
+  isolation: isolate;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step2-body::before {
+  inset: 0;
+  background: url("/assets/img/heroes/hero-fun-run.jpg") center 58% / cover
+    no-repeat;
+  opacity: 0.22;
+  z-index: -2;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step2-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 5, 0.62);
+  pointer-events: none;
+  z-index: -1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-side {
+  display: block;
+  width: min(100%, 980px);
+  margin: 0 auto 26px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-side .panel-title {
+  margin: 0 0 8px;
+  font-size: clamp(58px, 7vw, 96px);
+  line-height: 0.86;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-venue-line {
+  justify-content: flex-start;
+  min-height: 28px;
+  font-size: 13px;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .s2-slots {
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: 24px 28px 22px;
+  background: rgba(5, 5, 5, 0.88);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-period-head {
+  color: #f5f2ee;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-card,
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip {
+  min-height: 58px;
+  background: #0b0b0d;
+  border-color: #4a4650;
+  color: #f8f5f1;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .slot-card:hover,
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip:hover {
+  border-color: var(--accent);
+  background: #171017;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .formula-program-panel,
+html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-status {
+  margin-top: 18px;
+  padding: 18px 0 0;
+  color: #f8f5f1;
+}
+
+html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body {
+  grid-template-columns: minmax(0, 55%) 45%;
+  min-height: calc(100% - 74px);
+  padding: 0;
+  align-items: stretch;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body::after {
+  min-height: 100%;
+  background: url("/assets/img/heroes/hero-bowling.jpg") center / cover
+    no-repeat;
+  clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .fg-title-nowrap {
+  white-space: nowrap;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-side {
+  align-self: center;
+  width: min(100%, 650px);
+  padding: 28px clamp(38px, 5vw, 76px) 28px clamp(18px, 3vw, 42px);
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #step3
+  .s3-side
+  .panel-title {
+  margin-bottom: 28px;
+  font-size: clamp(42px, 3.5vw, 54px);
+  line-height: 0.86;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  #step3
+  .s3-side
+  .panel-title
+  span {
+  display: block;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-more,
+html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-extra {
+  grid-column: 1;
+  width: min(100%, 570px);
+  margin-left: clamp(18px, 3vw, 42px);
+  z-index: 2;
+}
+
+html[data-fun-galaxy-v2] body.client-mode #clientView .step4-body {
+  min-height: calc(100% - 74px);
+  padding: 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns {
+  position: relative;
+  grid-template-columns: 44% minmax(0, 56%);
+  min-height: 100%;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns::before {
+  min-height: 100%;
+  background: url("/assets/img/heroes/hero-duckpin.jpg") center / cover
+    no-repeat;
+  clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .recap-decision.panel {
+  display: contents !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .recap-decision
+  > .panel-title {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  margin: clamp(48px, 7vh, 76px) clamp(24px, 5vw, 70px) 0;
+  font-size: clamp(58px, 6vw, 88px);
+  line-height: 0.86;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView #recapList {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  padding: clamp(150px, 20vh, 196px) clamp(24px, 5vw, 70px) 190px;
+  max-height: none;
+  overflow: visible;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .total-box {
+  position: absolute;
+  grid-area: auto !important;
+  left: auto !important;
+  right: clamp(24px, 5vw, 70px);
+  bottom: 96px;
+  width: 400px !important;
+  min-height: 76px;
+  margin: 0;
+  padding: 12px 0;
+}
+html[data-fun-galaxy-v2] body.client-mode #clientView .step-actions {
+  position: absolute;
+  grid-area: auto !important;
+  left: auto !important;
+  right: clamp(24px, 5vw, 70px);
+  bottom: 24px;
+  display: grid !important;
+  grid-template-columns: 118px minmax(0, 1fr) !important;
+  width: 400px !important;
+  margin: 0;
+}
+html[data-fun-galaxy-v2]
+  body.client-mode
+  #clientView
+  .step-actions
+  .btn-primary {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step2-body {
+    display: block;
+    min-height: auto;
+    padding: 20px 0 0;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step2-body::before {
+    inset: 0 -15px;
+    opacity: 0.16;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .s2-slots {
+    padding: 18px 0;
+    background: rgba(5, 5, 5, 0.9);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .slot-grid,
+  html[data-fun-galaxy-v2] body.client-mode #clientView .anchor-chip-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body {
+    display: flex;
+    flex-direction: column;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body::after {
+    order: -1;
+    min-height: 150px;
+    margin: 0 -15px 22px;
+    clip-path: none;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-side,
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-more,
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-extra {
+    margin-left: 0;
+    padding: 0;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .s3-side
+    .panel-title {
+    font-size: 50px;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns {
+    display: flex;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns::before {
+    min-height: 150px;
+    margin: 0 -15px;
+    clip-path: none;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .recap-decision {
+    display: flex;
+    padding: 28px 0 0;
+    background: transparent;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .total-box,
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step-actions {
+    position: static;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: auto !important;
+    margin: 14px 0 0;
+  }
+}
+
+@media (min-width: 641px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-title span {
+    display: none !important;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title::before,
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title::after {
+    display: block;
+    white-space: nowrap;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title::before {
+    content: "À QUI";
+    color: #f8f5f1;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title::after {
+    content: "RÉSERVE-T-ON ?";
+    color: var(--accent);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-more,
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-extra {
+    display: none;
+  }
+}
+
+/* Final comp-alignment pass. */
+@media (min-width: 641px) {
+  html[data-fun-galaxy-v2] body.client-mode #clientView .progress {
+    margin-left: 118px;
+    width: calc(100% - 118px);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .s2-slots {
+    flex: 0 0 auto;
+    align-self: start;
+    min-height: 0;
+    height: auto;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .s2-slots::after {
+    content: "Choisissez une heure pour continuer";
+    display: block;
+    margin-top: 18px;
+    color: #f5f2ee;
+    font-size: 13px;
+    text-align: center;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .step3-body {
+    grid-template-columns: minmax(0, 58%) 42%;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .s3-side {
+    padding: 18px clamp(38px, 5vw, 76px) 120px clamp(18px, 3vw, 42px);
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .s3-side
+    .panel-title {
+    font-size: clamp(50px, 4.6vw, 68px);
+    line-height: 0.86;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .fg-contact-title span {
+    display: none !important;
+    white-space: nowrap !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .fg-contact-title
+    span:last-child {
+    color: var(--accent);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .contact-grid {
+    grid-template-columns: 1fr;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .contact-grid-wide {
+    grid-column: 1;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #step3 .step-foot {
+    position: absolute;
+    left: clamp(18px, 3vw, 42px);
+    bottom: 24px;
+    z-index: 4;
+    width: min(520px, calc(58% - 76px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .step-foot
+    .btn-primary {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    #step3
+    .step3-body::before {
+    content: none;
+    position: absolute;
+    top: 28px;
+    right: 24px;
+    z-index: 2;
+    width: 34%;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-align: center;
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView .recap-columns {
+    grid-template-columns: 48% minmax(0, 52%);
+  }
+  html[data-fun-galaxy-v2]
+    body.client-mode
+    #clientView
+    .recap-decision
+    > .panel-title {
+    margin: clamp(42px, 6vh, 68px) clamp(24px, 4vw, 56px) 0;
+    font-size: clamp(58px, 6vw, 82px);
+  }
+  html[data-fun-galaxy-v2] body.client-mode #clientView #recapList {
+    padding: clamp(145px, 18vh, 178px) clamp(24px, 4vw, 56px) 190px;
+  }
+}

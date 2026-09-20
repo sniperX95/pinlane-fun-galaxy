@@ -4005,7 +4005,7 @@ function confirmVenue() {
   // PREMIER CLIC : le jour est valide, on passe a la question du groupe. La
   // garde de date reste AVANT, sinon on demanderait le nombre de joueurs pour un
   // jour ou le centre est ferme.
-  if (venueStage !== 'pax') {
+  if (venueStage !== 'pax' && !document.documentElement.hasAttribute('data-fun-galaxy')) {
     setVenueStage('pax');
     return;
   }
@@ -26151,6 +26151,11 @@ function renderTunnelIdentity(identity) {
 
 function applyCenterIdentity(center, centerId = '') {
   const identity = sanitizeTunnelIdentity(center);
+  const identitySite = String(center?.identity?.siteUrl || '').toLowerCase();
+  const isFunGalaxy = identitySite.includes('fungalaxy.be');
+  document.documentElement.toggleAttribute('data-fun-galaxy', isFunGalaxy);
+  const venueButtonLabel = document.getElementById('btnVenueContinueLabel');
+  if (venueButtonLabel && isFunGalaxy) venueButtonLabel.textContent = 'Voir les activités';
   renderTunnelIdentity(identity);
   const key = String(centerId || '').trim().toLowerCase();
   if (!key) return;

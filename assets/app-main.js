@@ -3886,6 +3886,74 @@ function reopenVenue() {
   resetStepOneScroll();
 }
 
+// Le fil de contexte garde les trois decisions qui expliquent le parcours.
+// Il ne recalcule rien : il reformule uniquement l etat deja valide par le
+// moteur et ramene a l ecran qui possede la decision.
+function bookingContextChoiceLabel() {
+  const booking = state && state.booking ? state.booking : {};
+  const mode = normalizeBookingMode(booking.mode);
+  if (mode === 'formule' && booking.formuleId) {
+    const formule = typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(booking.formuleId) : null;
+    return formule && formule.name ? formule.name : 'Formule choisie';
+  }
+  const activities = typeof getChosenActivities === 'function' ? getChosenActivities() : [];
+  if (!activities.length) return 'À composer';
+  if (activities.length === 1) return activities[0].name || '1 activité';
+  return `${activities[0].name || 'Activités'} + ${activities.length - 1}`;
+}
+
+function syncBookingContext() {
+  const root = document.getElementById('bookingContext');
+  if (!root || !state || !state.booking) return;
+  const booking = state.booking;
+  const dateNode = document.getElementById('bookingContextDate');
+  const paxNode = document.getElementById('bookingContextPax');
+  const choiceNode = document.getElementById('bookingContextChoice');
+  let dateLabel = 'À choisir';
+  if (booking.date) {
+    try {
+      dateLabel = parseLocalDate(booking.date).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' });
+    } catch (error) { dateLabel = booking.date; }
+  }
+  if (dateNode) dateNode.textContent = dateLabel;
+  const pax = Math.max(1, Number(booking.pax) || 1);
+  if (paxNode) paxNode.textContent = `${pax} personne${pax > 1 ? 's' : ''}`;
+  if (choiceNode) choiceNode.textContent = bookingContextChoiceLabel();
+  const body = document.querySelector('#clientView .step1-body');
+  const venueOpen = Number(state.step) === 1 && Boolean(body && body.classList.contains('is-solo'));
+  root.classList.toggle('is-muted', venueOpen);
+}
+
+function editBookingContext(part) {
+  const target = part === 'pax' ? 'pax' : 'date';
+  if (part === 'choice') {
+    state.booking.venueConfirmed = true;
+    goStep(1);
+    if (typeof showMobileOptionsPage === 'function') showMobileOptionsPage(false);
+    syncProgressiveReveal();
+    return;
+  }
+  goStep(1);
+  reopenVenue();
+  setVenueStage(target);
+}
+
+function toggleContactExtras(forceOpen) {
+  const button = document.getElementById('contactMore');
+  const extras = document.getElementById('contactExtras');
+  if (!button || !extras) return;
+  const currentlyOpen = button.getAttribute('aria-expanded') === 'true';
+  const open = typeof forceOpen === 'boolean' ? forceOpen : !currentlyOpen;
+  button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  extras.classList.toggle('is-collapsed', !open);
+  if (open) {
+    const first = extras.querySelector('button, input, textarea');
+    if (first && typeof first.focus === 'function') first.focus({ preventScroll: true });
+  } else if (extras.contains(document.activeElement)) {
+    button.focus({ preventScroll: true });
+  }
+}
+
 // LA VENUE POSE DEUX QUESTIONS, UNE PAR ECRAN (2026-08-27). Movsar : « meme la
 // toute premiere page pour mettre date joueur [...] vrm tout doit avoir une
 // question qui arrive ». Le jour d abord, le groupe ensuite. L etat n est PAS
@@ -4156,6 +4224,7 @@ function bindKeyboardCare() {
   const champTexte = (el) => Boolean(el && el.closest && el.closest('#clientView, .bespoke-modal')
     && el.matches('input:not([type=checkbox]):not([type=radio]), textarea, select'));
   const revele = () => {
+    document.body.classList.toggle('kb-care-active', window.innerHeight <= 520);
     const el = document.activeElement;
     if (!champTexte(el)) return;
     // 'center' : 'nearest' ne defile PAS quand le champ est deja visible,
@@ -4163,6 +4232,18 @@ function bindKeyboardCare() {
     // date = tap sur Continuer). Centrer le degage des deux bords ; les
     // scroll-padding gardent la reserve quand le navigateur defile de lui-meme.
     el.scrollIntoView({ block: 'center', behavior: 'auto' });
+    // Le formulaire contact est son propre defileur. Avec un pied fixe,
+    // scrollIntoView peut juger le champ visible alors qu il touche deja le
+    // CTA. On recentre donc dans la hauteur reellement libre, pied exclu.
+    const defileur = el.closest('.step-body, .bespoke-body');
+    const foot = el.closest('.step')?.querySelector('.step-foot');
+    if (defileur && foot && defileur.scrollHeight > defileur.clientHeight) {
+      const champ = el.getBoundingClientRect();
+      const zone = defileur.getBoundingClientRect();
+      const basLibre = Math.min(zone.bottom, foot.getBoundingClientRect().top);
+      const centreLibre = zone.top + ((basLibre - zone.top) / 2);
+      defileur.scrollTop += (champ.top + (champ.height / 2)) - centreLibre;
+    }
   };
   document.addEventListener('focusin', (event) => {
     if (!champTexte(event.target)) return;
@@ -5804,6 +5885,7 @@ function updateProgress() {
   const progress = document.querySelector('#clientView .progress');
   if (progress) progress.style.setProperty('--p', String(tunnelProgressFraction()));
   syncMobileTopbar();
+  syncBookingContext();
 }
 
 // --- BARRE HAUTE TELEPHONE ---------------------------------------------------
@@ -6196,7 +6278,7 @@ function setStep1Busy(isBusy) {
   btn.disabled = !!isBusy;
   btn.innerHTML = isBusy
     ? 'Recherche des cr\u00e9neaux...'
-    : `V\u00e9rifier les disponibilit\u00e9s
+    : `Voir les horaires
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
 }
 

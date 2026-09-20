@@ -1,64 +1,68 @@
 ---
 name: "Pinlane Platform"
-description: "Precision Tooling for the platform; a photographic booking world for the Fun Galaxy tenant."
+description: "Multi-tenant operations OS for bowling and leisure centres."
+version: 2
+northStar: "Precision Tooling"
 colors:
-  page-light: "#fafafa"
-  surface-light: "#ffffff"
-  subtle-light: "#f2f2f2"
-  line-light: "#ebebeb"
-  text-light: "#0a0a0a"
-  muted-light: "#5e5e5e"
-  accent-light: "#0070f3"
-  page-dark: "#000000"
-  surface-dark: "#0a0a0a"
-  raised-dark: "#111111"
-  line-dark: "#262626"
-  text-dark: "#ededed"
-  muted-dark: "#a1a1a1"
-  accent-dark: "#3291ff"
-  success: "#0f7b3c"
-  warning: "#a35200"
-  danger: "#cb2a2f"
-  fg-page: "#050505"
-  fg-surface: "#0c0c0e"
-  fg-text: "#f7f4f2"
-  fg-muted: "#918d96"
-  fg-line: "#29272d"
-  fg-magenta: "#b644b4"
-  fg-magenta-hover: "#cf58ca"
-  fg-cyan-edge: "#62c5ba"
+  light:
+    page: "#fafafa"
+    surface: "#ffffff"
+    raised: "#ffffff"
+    subtle: "#f2f2f2"
+    line: "#ebebeb"
+    line-strong: "#d9d9d9"
+    text: "#0a0a0a"
+    muted: "#5e5e5e"
+    faint: "#6c6c6c"
+    accent: "#0070f3"
+    accent-strong: "#0761d1"
+    accent-soft: "#e8f1fd"
+    success: "#0f7b3c"
+    success-soft: "#e6f4ea"
+    warning: "#a35200"
+    warning-soft: "#fff3e0"
+    danger: "#cb2a2f"
+    danger-soft: "#fdecec"
+    info: "#0070f3"
+  dark:
+    page: "#000000"
+    surface: "#0a0a0a"
+    raised: "#111111"
+    subtle: "#1a1a1a"
+    line: "#262626"
+    line-strong: "#3d3d3d"
+    text: "#ededed"
+    muted: "#a1a1a1"
+    faint: "#8a8a8a"
+    accent: "#3291ff"
+    accent-strong: "#52a8ff"
+    accent-soft: "#0d2137"
+    success: "#3dd68c"
+    success-soft: "#0e2517"
+    warning: "#f5a623"
+    warning-soft: "#2a1e05"
+    danger: "#f75555"
+    danger-soft: "#2c1213"
+    info: "#3291ff"
 typography:
-  display:
-    fontFamily: "FGDisplay, Impact, sans-serif"
-    fontSize: "clamp(45px, 5vw, 96px)"
-    fontWeight: 400
-    lineHeight: 0.86
-    letterSpacing: "0.01em"
+  family:
+    ui: "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    data: "'Geist Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace"
   body:
-    fontFamily: "FGSans, Arial, sans-serif"
     fontSize: "14px"
-    fontWeight: 600
+    fontWeight: 400
     lineHeight: 1.55
-  platform-title:
-    fontFamily: "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+  title:
     fontSize: "24px"
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-0.02em"
-  data:
-    fontFamily: "'Geist Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace"
-    fontSize: "14px"
-    fontWeight: 400
-    lineHeight: 1.55
   label:
-    fontFamily: "FGSans, Arial, sans-serif"
-    fontSize: "10px"
-    fontWeight: 700
+    fontSize: "12px"
+    fontWeight: 500
     lineHeight: 1.3
-    letterSpacing: "0.12em"
+    letterSpacing: "0"
 rounded:
-  fg-sharp: "2px"
-  fg-action: "3px"
   sm: "6px"
   md: "8px"
   lg: "12px"
@@ -70,193 +74,112 @@ spacing:
   md: "16px"
   lg: "24px"
   xl: "40px"
+shadows:
+  border: "0 0 0 1px var(--line)"
+  sm: "0 1px 2px rgba(0,0,0,.05)"
+  md: "0 4px 12px rgba(0,0,0,.08)"
+  overlay: "0 8px 30px rgba(0,0,0,.12)"
 components:
-  fg-button-primary:
-    backgroundColor: "{colors.fg-magenta}"
-    textColor: "#ffffff"
-    rounded: "{rounded.fg-action}"
-    height: "50px"
-    padding: "0 24px"
-  fg-button-disabled:
-    backgroundColor: "#181619"
-    textColor: "#77727a"
-    rounded: "{rounded.fg-action}"
-    height: "50px"
-  fg-input:
-    backgroundColor: "#080809"
-    textColor: "#ffffff"
-    rounded: "{rounded.fg-sharp}"
-    height: "48px"
-    padding: "0 12px"
-  platform-button-primary:
-    backgroundColor: "{colors.text-light}"
-    textColor: "{colors.surface-light}"
+  button-primary:
+    backgroundColor: "{colors.text}"
+    textColor: "{colors.surface}"
     rounded: "{rounded.sm}"
     height: "40px"
     padding: "0 14px"
-  platform-card:
-    backgroundColor: "{colors.surface-light}"
-    textColor: "{colors.text-light}"
+  button-secondary:
+    backgroundColor: "{colors.surface}"
+    border: "1px solid {colors.line-strong}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.sm}"
+    height: "40px"
+    padding: "0 14px"
+  card:
+    backgroundColor: "{colors.surface}"
+    border: "1px solid {colors.line}"
     rounded: "{rounded.lg}"
     padding: "20px"
 ---
 
-# Design System: Pinlane Platform
+# Design System v2 : Pinlane Platform
 
-## Overview
+## 0. Statut
 
-**Creative North Star: “Precision Tooling”**
+Ce document **remplace intégralement** l'ancien système « The Operating Console » (fond #050609, accent platine #b8ad9b, Inter). Toute trace de l'ancien système (tokens `--v2-*`, `--pl-*`, `--pf-*`, `--pp-*`, couches CSS empilées) est obsolète et supprimée. Le CSS vit dans un ensemble consolidé unique (voir §8).
 
-Pinlane reste le système global : une interface de production calme, exacte et neutre, inspirée par Vercel. Geist, les filets de 1 px, les surfaces sobres et un seul accent bleu structurent les consoles staff, admin et l’entrée plateforme. Les états opérationnels restent fonctionnels et le moteur déterministe fait foi.
+## 1. North Star : « Precision Tooling »
 
-### Frontière tenant — Fun Galaxy
+Pinlane est un outil de précision, dans le langage visuel de Vercel : surfaces neutres calibrées, bordures 1px, un seul accent bleu, typographie Geist, densité maîtrisée. Rien ne brille, rien ne flotte : la hiérarchie vient du contraste typographique, de l'espacement et des bordures, pas des ombres ni des dégradés.
 
-Le monde **Fun Galaxy Booking** est une exception client strictement bornée au tunnel public activé par `?center=libramont&theme=fun-galaxy` et par l’attribut `data-fun-galaxy-v2`. Il ne remplace ni les tokens, ni les composants, ni l’identité Pinlane ailleurs. Sa North Star est **“Cinematic Venue Booking”** : noir photographique, vraies images du centre, grands titres Anton, actions magenta et un filet cyan de précision.
+Interdits permanents : dégradés violet/indigo, glassmorphism, glow néon, ombres portées molles « AI look », fonds quasi-noirs teintés, accent platine/champagne.
 
-Le tunnel pose une seule décision évidente par écran : date et groupe, activités, horaire, contact, récapitulatif. Le contenu utile domine le premier viewport ; navigation et contexte restent secondaires. Cette exception vit dans `assets/fungalaxy-client-v2.css` et ne doit pas fuir vers les surfaces plateforme.
+Deux univers, un même langage :
 
-**Key Characteristics:**
+- **Console staff/admin** : dense, scannable, monochrome + bleu. L'opérateur lit un état en 2 secondes.
+- **Client (tenant)** : mêmes composants, plus d'air (spacing ×1.5), titres plus grands, orienté réassurance et conversion.
+- **Entrée plateforme** : une porte sobre à deux colonnes qui sépare l'accès équipe du tunnel public, avec preuve produit structurée par des filets plutôt que par des cartes décoratives.
 
-- Pinlane global : neutres, Geist, bleu fonctionnel, densité maîtrisée.
-- Fun Galaxy uniquement : noir profond, photographie réelle, Anton + Montserrat, magenta rare et cyan limité au filet d’état.
-- Hiérarchie par échelle, espace, contraste et règles de 1 px ; pas par empilement décoratif.
-- États affichés fidèles au moteur : aucun créneau, prix, total ou CTA ne simule une disponibilité.
+## 2. Thèmes light / dark
 
-## Colors
+- Attribut `data-theme="light" | "dark"` sur `<html>`. Défaut : `prefers-color-scheme`, persisté en `localStorage('pinlane-theme')`, togglable dans la navigation.
+- Chaque token existe dans les deux thèmes (frontmatter ci-dessus). Le CSS ne référence **que** les variables : jamais une couleur en dur.
+- Light = thème de référence (console de jour, impression). Dark = pur Vercel : page #000, surfaces #0a0a0a/#111, bordures #262626.
 
-La plateforme utilise ses neutres light/dark et son bleu fonctionnel. Le tunnel Fun Galaxy remplace localement cette palette par un noir photographique chaud et un accent magenta.
+## 3. Couleur
 
-### Pinlane global
+- **Neutres** : 90 % de l'UI. Page, surface, subtle, line, c'est la structure.
+- **Accent bleu** (`--accent`) : actions primaires, liens, états actifs de navigation, focus. Un seul accent, jamais deux couleurs vives côte à côte.
+- **Statuts** (fonctionnels uniquement, jamais décoratifs) : badge = fond `-soft` + texte couleur pleine + pas de bordure. Vert = payée/active/réussie · Ambre = arrivée/attention · Bleu = confirmée · Rouge = échec/bloquée/annulée. Contraste texte/fond ≥ 4.5:1 dans les deux thèmes.
+- **Tenant** : `--tenant-accent` (défaut = `--accent`). Le branding Fun Galaxy n'existe plus que par son logo ; magenta #b356ad et teal #5ec8c8 sont retirés de l'UI.
 
-- **Page / Surface light** (`#fafafa` / `#ffffff`) : canevas des consoles de jour et de l’entrée plateforme.
-- **Page / Surface dark** (`#000000` / `#0a0a0a`) : canevas sombre neutre, sans teinte violette.
-- **Pinlane Blue** (`#0070f3` light, `#3291ff` dark) : action primaire, lien, navigation active et focus.
-- **Statuts** : vert réussite, ambre attention, rouge échec ; toujours accompagnés d’un libellé.
+## 4. Typographie
 
-### Fun Galaxy tenant
+- **Geist** (UI) et **Geist Mono** (data) : self-hostées, WOFF2 variables, `assets/fonts/`, `font-display: swap`, preload sur les 2 fichiers latin. ~84 KB au total. Inter et IBM Plex Mono ne sont plus chargées.
+- Tout ce qui est **donnée** passe en Geist Mono avec `font-variant-numeric: tabular-nums` : heures, prix, capacités, compteurs, IDs, numéros de piste.
+- Échelle (UI) : 12 (label/meta) · 13 (dense/table) · 14 (body) · 16 (section) · 20 (page title console) · 24-32 (titres client) · 40-56 (display d'entrée). Titres : weight 600, letter-spacing -0.02em. Le display de l'entrée plateforme resserre à -0.04em, line-height 1.02 et 13ch maximum. Jamais de texte < 12px, jamais d'UPPERCASE avec letter-spacing > 0.05em (l'ancien style « label espacé » disparaît).
 
-- **Photographic Black** (`#050505`) : page et espace négatif autour des scènes.
-- **Venue Surface** (`#0c0c0e`) : surface technique plate, rarement distinguée du fond.
-- **Warm White** (`#f7f4f2`) : titres, valeurs et actions secondaires importantes.
-- **Venue Muted** (`#918d96`) : métadonnées et texte d’aide.
-- **Fun Galaxy Magenta** (`#b644b4`) : CTA, sélection, étape active et mot clé du titre Contact. Le hover livré est `#cf58ca`.
-- **Registration Cyan** (`#62c5ba`) : uniquement un filet de 1 px autour d’une action ou sélection active ; jamais une deuxième masse colorée.
-- **Venue Line** (`#29272d`) : séparation des champs, créneaux et listes.
+## 5. Forme, profondeur, motion
 
-### Named Rules
+- **Radius** : 6 (boutons, inputs, badges) · 8 (cellules planning, menus) · 12 (cartes, modales) · full (pills, avatars).
+- **Profondeur** : bordure 1px d'abord. Ombres réservées aux surfaces flottantes (menus, modales, palette) : `shadows.overlay`. Aucune ombre sur les cartes posées.
+- **Motion (console)** : 120-200ms, `cubic-bezier(0.25, 0.1, 0.25, 1)`, `transform`/`opacity` uniquement. Hover = changement de fond/bordure, pas de translation. Entrées de page : fade 8px une fois par navigation, jamais sur le poll 1,2s. `prefers-reduced-motion` : tout à 0.01ms.
+- **Motion (tunnel client, 2026-08-17)** : le parcours public a sa grammaire LIQUIDE, décidée par Movsar (référence liquid-gooey). Scène horizontale : changement d'étape = glissement de piste au ressort (`--lq-spring`, `linear()` à léger rebond, retombée `cubic-bezier(0.30,1.25,0.42,1)`, 620ms) ; cascade `lq-pop` sur les blocs qui arrivent (500ms, délais 45ms, plafond 135ms) ; progression et pilule du sélecteur sous filtre gooey SVG (`#plGoo`, formes uniquement, jamais de texte). Exception ENCADRÉE à « transform/opacity seulement » : la largeur du fluide de progression et les bords de la pilule transitionnent en layout, parce qu'un métaball exige des formes dont la taille réelle change (un cercle en scaleX devient une ellipse) ; coût local à des calques absolus ≤26px, liste blanche tenue par le gate visit-motion. `prefers-reduced-motion` : tout se pose instantanément, piste comprise.
 
-**The Tenant Boundary Rule.** Les couleurs `fg-*` ne s’appliquent que sous `html[data-fun-galaxy-v2] body.client-mode #clientView`.
+## 6. Composants de base
 
-**The One Loud Color Rule.** Le magenta porte l’action ou le choix courant. Le cyan reste un trait de registre de 1 px ; les deux ne deviennent jamais deux aplats concurrents.
+- **Bouton primaire** : fond `text`, texte `surface` (noir sur blanc en light, blanc sur noir en dark, signature Vercel). Hover : opacité fond 0.9. H 40px (32px en contexte dense), radius 6, weight 500.
+- **Bouton secondaire** : fond `surface`, bordure `line-strong`, texte `text`. Hover : fond `subtle`.
+- **Bouton danger** : fond `danger`, texte blanc. Ghost : texte `muted`, hover fond `subtle`.
+- **Inputs** : fond `surface`, bordure `line-strong`, radius 6, H 40px, label visible 13px/500 au-dessus. Focus : bordure `accent` + ring 3px `accent-soft`. Erreur : bordure `danger` + message 12px sous le champ, `role="alert"`.
+- **Cartes** : fond `surface`, bordure 1px `line`, radius 12, padding 20. Titre 16/600 + meta 12 `muted`.
+- **Tables/listes** : header 12px/500 `muted`, lignes 13-14px séparées par `line`, hover `subtle`, colonnes numériques en Geist Mono alignées à droite.
+- **Badges statut** : pill (radius full), 12px/500, padding 2px 10px, fond `-soft` + texte statut. Point 6px optionnel devant.
+- **Navigation staff** : sidebar fond `surface`, bordure droite `line` ; item actif = fond `subtle` + texte `text` + barre 2px `accent` à gauche ; inactif = `muted`. Top bar 56px.
+- **Entrée plateforme** : conteneur centré 1180px, navigation 76px avec filet bas, grille contenu/preuves `1.25fr / .75fr`, display 40-56px et deux vraies destinations. Sous 760px, la grille devient une colonne ; sous 640px, les deux actions occupent toute la largeur et toutes les cibles font au moins 44px.
+- **Synthèse de réservation** : trois faits issus de l'état du moteur dans une grille bordée unique ; valeur en Geist Mono tabulaire, libellé et unité en 12px. Sur mobile, la grille reste à trois colonnes et compresse la typographie sans descendre sous 12px.
+- **Planning** : grille bordures `line` ; créneau libre = `surface` ; réservé = fond `accent-soft` + bordure gauche 2px `accent` ; states via couleurs statut. Heures en Geist Mono.
+- **Empty states** : icône trait 1.5px `faint`, titre 14/500, texte 13 `muted`, action secondaire.
+- **Focus (tout élément interactif)** : `outline: 2px solid var(--accent); outline-offset: 2px`. Cibles tactiles ≥ 44px (mobile) / ≥ 32px + spacing (desktop dense).
 
-## Typography
+## 7. Accessibilité (non négociable)
 
-**Platform UI Font:** Geist, avec fallbacks système.
+Contraste ≥ 4.5:1 (texte) et 3:1 (UI) dans les **deux** thèmes · focus visible partout · cibles ≥ 44px mobile · `prefers-reduced-motion` respecté · formulaires labellisés · pas d'info portée par la couleur seule (les statuts ont toujours un libellé).
 
-**Platform Data Font:** Geist Mono, chiffres tabulaires.
+## 8. Architecture CSS
 
-**Fun Galaxy Display Font:** FGDisplay, police Anton auto-hébergée, fallback Impact.
+7 fichiers, ordre de chargement fixe, aucune autre feuille autorisée :
 
-**Fun Galaxy Body Font:** FGSans, police Montserrat auto-hébergée en 600 et 700, fallback Arial.
+| Fichier | Rôle | Pages |
+|---|---|---|
+| `assets/pinlane.css` | @font-face, tokens light/dark, reset, base, composants (§6) | toutes |
+| `assets/pinlane-staff.css` | console staff + admin (sidebar, dashboard, planning, pages pv2, groupes) | index.html |
+| `assets/pinlane-charts.css` | moteur de graphiques `window.PinlaneCharts` (classes `plc-`, ne consomme que les tokens) | index.html |
+| `assets/pinlane-daterange.css` | sélecteur de plage de dates `window.PinlaneDateRange` (classes `pdr-`, ne consomme que les tokens) | index.html |
+| `assets/pinlane-analytics-board.css` | tableau d'analyse customisable `window.PinlaneAnalyticsBoard` (classes `pab-`, widgets iOS-style) | index.html |
+| `assets/pinlane-client.css` | entrée plateforme à la racine + parcours résa client (tunnel de réservation dans index.html) + direction.html | index.html, direction.html |
+| `assets/pinlane-landing.css` | landing marketing (reconstruite sur les tokens) | pro.html |
 
-La plateforme est rationnelle et compacte. Le tenant Fun Galaxy oppose une voix d’affiche très condensée à une UI robuste et familière.
+Règles : zéro `!important` sauf `prefers-reduced-motion` et override d'un `style=""` inline historique (commenter la raison) · zéro couleur en dur hors définition des tokens · un composant nouveau se crée dans `pinlane.css`, jamais dans une couche page.
 
-### Hierarchy
+## 9. Product Rule (inchangée)
 
-- **Fun Galaxy Display** (400, `clamp(45px, 5vw, 96px)`, line-height `0.86–0.92`) : une question dominante en capitales par écran. Les tailles mobiles observées se resserrent à `43–50px`.
-- **Platform Title** (600, `24px`, line-height `1.2`) : titre de page de console.
-- **Body** (600, `14px`, line-height `1.55`) : instructions, valeurs et libellés courants du tunnel.
-- **Data** (400, `14px`, tabular nums) : heures, prix, capacités, IDs et données opérationnelles Pinlane.
-- **Fun Galaxy Label** (700, `10px`, `0.10–0.12em`, uppercase) : labels de champ et métadonnées brèves. Aucun paragraphe n’adopte ce traitement.
-
-### Named Rules
-
-**The Question Is the Hero Rule.** Dans le tunnel, Anton formule la décision présente, pas une accroche marketing secondaire. Une seule question domine chaque écran.
-
-## Layout
-
-Pinlane global conserve sa grille de production, ses conteneurs neutres et son rythme de 4 px. La console est dense ; les parcours client disposent d’environ 1,5× plus d’air.
-
-Le tunnel Fun Galaxy utilise un conteneur de `1280px` maximum avec gutters fluides `clamp(18px, 3vw, 42px)`. Sur desktop, le premier écran et Contact sont des splits photographie/contenu ; le récapitulatif utilise un split photo `48%` / données `52%`. Activités emploie une grille de quatre choix ; Horaire une grille de quatre créneaux. Les photos sont de vrais assets du centre, cadrés en plans larges et parfois découpés en diagonale.
-
-Sous `900px`, les grilles de choix se réduisent. À `640px` et moins, le tunnel devient une colonne : la progression desktop disparaît, le CTA prend toute la largeur, la photographie devient un bandeau ou un bloc pleine largeur, et le contenu reste sans scroll interne. Les titres restent grands mais plafonnent autour de `43–50px`.
-
-## Elevation & Depth
-
-Le système est plat par défaut. Pinlane utilise d’abord les bordures ; seules les surfaces réellement flottantes reçoivent une ombre. Fun Galaxy supprime les ombres de carte et construit la profondeur avec les photographies, les aplats noirs, les filets et les découpes. L’unique “glow” autorisé dans le tunnel est en réalité un `box-shadow: 0 0 0 1px` cyan ou magenta : un second filet net, pas une lumière diffuse.
-
-### Named Rules
-
-**The Photographic Depth Rule.** Dans Fun Galaxy, la profondeur vient d’un plan photo réel derrière ou à côté de la décision, jamais d’une carte vitrée, d’un dégradé ou d’une ombre molle.
-
-## Shapes
-
-Pinlane global conserve les rayons `6 / 8 / 12px` et les pills fonctionnelles. Fun Galaxy est plus tranchant : champs et créneaux `2px`, CTA et tuiles d’activité `3px`, séparateurs de `1px`. Les cercles sont réservés aux icônes, contrôles de sélection et étapes de progression. Les découpes diagonales appartiennent aux photographies de transition, pas aux conteneurs de formulaire.
-
-## Components
-
-### Progression Fun Galaxy
-
-- Logo du centre à gauche et rail horizontal discret sur desktop.
-- Étape active en magenta avec filet cyan ; étapes terminées identifiables, labels secondaires atténués.
-- Sur mobile, la progression complète cède la place au logo, au libellé d’étape et à une ligne simple.
-
-### Buttons
-
-- **Fun Galaxy Primary:** hauteur minimale `50px`, magenta `#b644b4`, texte blanc uppercase 12/700, rayon `3px`, filet cyan 1 px.
-- **Hover:** magenta `#cf58ca`, déplacement net de `-1px / -1px`, sans ombre diffuse.
-- **Disabled:** fond `#181619`, texte `#77727a`, curseur interdit ; il doit expliquer ou suivre la sélection manquante.
-- **Secondary:** transparent, texte blanc, bord `#48454e`, rayon `2px`.
-- **Pinlane Primary:** hauteur `40px`, contraste noir/blanc selon le thème, rayon `6px`.
-
-### Activity Choices
-
-- Grille de quatre colonnes desktop, deux sous `900px`.
-- Chaque choix est une rangée plate : icône ronde 34px, nom, prix ou mode de règlement, contrôle circulaire.
-- État sélectionné : bord magenta, fond sombre `#1a0b19`, filet cyan 1 px. Le CTA reste disabled tant que la sélection n’est pas vraie.
-
-### Time Slots
-
-- Créneaux en grille de quatre, hauteur minimale `58px`, fond `#0b0b0d`, bord `#4a4650`.
-- L’état actif utilise fond `#231122`, bord magenta et filet cyan.
-- Une consigne textuelle accompagne l’absence de sélection ; la couleur seule ne porte pas l’état.
-
-### Inputs / Fields
-
-- Fond `#080809`, bord `#3b3840`, rayon `2px`, texte blanc.
-- Label uppercase 10px au-dessus ; placeholders atténués.
-- Focus : bord et filet magenta 1 px. Contact empile les trois champs sur desktop dans la colonne de gauche ; la photo et le contexte de réservation occupent la droite.
-
-### Contact Split
-
-- Titre deux lignes “À QUI / RÉSERVE-T-ON ?”, deuxième ligne magenta.
-- Formulaire à gauche, photographie bowling pleine hauteur à droite, petit contexte de réservation superposé en surface noire semi-opaque bordée.
-- Les informations optionnelles sont retirées du premier viewport desktop ; l’action “Voir le récapitulatif” reste au bord de la décision.
-
-### Recap Split
-
-- Photo Duckpin à gauche, données de réservation à droite, sans carte englobante.
-- Informations structurées par lignes horizontales ; total estimé séparé par un filet.
-- CTA “Confirmer la réservation” magenta uniquement quand les données sont complètes. Les valeurs présentées proviennent de l’état réel du moteur.
-
-## Do's and Don'ts
-
-### Do:
-
-- **Do** garder l’exception Fun Galaxy strictement sous `data-fun-galaxy-v2` et laisser le reste de Pinlane sur Precision Tooling.
-- **Do** faire de la question courante le plus grand élément de l’écran.
-- **Do** utiliser une photographie réelle du lieu comme plan de composition, avec un cadrage intentionnel.
-- **Do** montrer explicitement sélection, horaire, total et état du CTA ; les données réelles priment sur la composition.
-- **Do** empiler proprement sur mobile, sans scroll interne ni texte illisible.
-
-### Don't:
-
-- **Don't** appliquer Anton, le magenta ou les photos Fun Galaxy aux consoles staff/admin ou à l’entrée Pinlane.
-- **Don't** utiliser de dégradé, glassmorphism, halo néon, carte dans une carte ou ombre décorative.
-- **Don't** transformer chaque option en grande carte marketing ; les choix restent des rangées compactes et comparables.
-- **Don't** ajouter du texte explicatif quand l’état, le libellé et l’action suffisent.
-- **Don't** afficher une sélection, une disponibilité, un prix ou une confirmation que le moteur n’a pas fournis.
-
-### Not canonized
-
-Le build contient encore quelques sélecteurs de finition dupliqués et des `!important` de compatibilité locale. Ils ne sont pas une règle de système et ne doivent pas être copiés sur de nouvelles surfaces.
+Le moteur déterministe fait foi. Aucun composant ne doit donner l'illusion d'une action (dispo, prix, confirmation) que le backend ne fournit pas. Un bouton déclenche une action réelle, navigue vers une page réelle, ouvre un menu réel, ou il est supprimé.

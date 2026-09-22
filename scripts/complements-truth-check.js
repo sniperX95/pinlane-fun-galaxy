@@ -1162,20 +1162,42 @@ function mesurerI() {
   const capacite = comptee ? Math.max(1, Math.trunc(Number(comptee.capacityPerUnit) || 1)) * Math.max(1, Math.trunc(Number(comptee.units) || 1)) : 0;
   const dansLaDotation = comptee ? cartesVisite(CENTRE, baseSaturee(comptee.id, capacite), capacite) : [];
   const horsDotation = comptee ? cartesVisite(CENTRE, baseSaturee(comptee.id, capacite + 1), capacite + 1) : [];
-  return { muette, muettes, bornee, comptee, sansTarif, baseMuettes, baseTemoin, avecTarif, chezVoisin, attenduTemoin, maxi, sousLeMax, auDessus, capacite, dansLaDotation, horsDotation, TARIF };
+  // La garde du maximum, comptee dans le fichier servi : elle protege les deux
+  // generateurs de cartes (visite et gamme). Sans sujet au catalogue, c est
+  // elle qui porte la propriete.
+  const gardeMaximum = (fs.readFileSync(path.join(ROOT, COMPLEMENTS), 'utf8')
+    .match(/if \(Number\.isFinite\(maximum\) && maximum > 0 && [a-zA-Z.]+ > maximum\) continue;/g) || []).length;
+  return { muette, muettes, bornee, comptee, sansTarif, baseMuettes, baseTemoin, avecTarif, chezVoisin, attenduTemoin, maxi, sousLeMax, auDessus, capacite, dansLaDotation, horsDotation, TARIF, gardeMaximum };
 }
 
 function jugerI(m) {
   const v = [];
   v.push({ ok: Boolean(m.muette), label: '[montage] le centre vend bien une activite libre dont le prix est INCONNU', detail: m.muettes ? m.muettes.map((a) => a.id).join(',') || 'aucune' : 'aucune' });
-  v.push({ ok: Boolean(m.bornee) && m.maxi > 0, label: '[montage] le centre vend bien une activite a MAXIMUM de groupe declare', detail: m.bornee ? `${m.bornee.id} maxPax=${m.maxi}` : 'aucune' });
+  // LE MAXIMUM DU GROUPE N A PLUS DE SUJET DANS CE CATALOGUE (2026-09-23).
+  // Le Fun Run etait le seul a declarer « maxPax: 5 » ; il declare desormais
+  // une installation de 5 places et un groupe qui TOURNE (journal 321). La
+  // garde reste dans lib/booking-complements pour tout centre qui declarerait
+  // un vrai maximum : faute de sujet, elle se mesure sur sa PRESENCE, et la
+  // mesure redevient complete des qu une activite en declare un. La mutation
+  // « le maximum du groupe declare au catalogue est ignore » reecrit justement
+  // cette ligne : la sonde reste mordante.
+  v.push({
+    ok: Boolean(m.bornee) ? m.maxi > 0 : m.gardeMaximum >= 2,
+    label: m.bornee
+      ? '[montage] le centre vend bien une activite a MAXIMUM de groupe declare'
+      : '[montage] aucune activite ne declare de maximum : la garde du maximum est verifiee sur pieces',
+    detail: m.bornee ? `${m.bornee.id} maxPax=${m.maxi}` : `garde ecrite ${m.gardeMaximum} fois dans ${COMPLEMENTS} (2 attendues)`,
+  });
   v.push({ ok: Boolean(m.comptee) && m.capacite > 0, label: '[montage] le centre vend bien une activite a DOTATION finie', detail: m.comptee ? `${m.comptee.id} ${m.comptee.units}x${m.comptee.capacityPerUnit}=${m.capacite}` : 'aucune' });
   v.push({
     ok: Boolean(m.muette) && m.baseMuettes.length > VISITE_BASE.length,
     label: '[montage] le programme de base SATURE toutes les activites tarifees : il ne reste que des muettes a proposer',
     detail: `base = ${m.baseMuettes.map((l) => l.activityId).join(',')} ; muettes restantes = ${(m.muettes || []).map((a) => a.id).join(',')}`,
   });
-  if (!m.muette || !m.bornee || !m.comptee) return v;
+  // `bornee` ne conditionne plus la suite : depuis le 2026-09-23 aucune
+  // activite ne declare de maximum, et une propriete entiere ne se tait pas
+  // parce qu UN de ses sujets a disparu du catalogue.
+  if (!m.muette || !m.comptee) return v;
 
   const activites = m.sansTarif.filter((c) => c.kind === 'activite');
   v.push({
@@ -1199,12 +1221,14 @@ function jugerI(m) {
     label: '[I] LE TARIF APPARTIENT A CE CENTRE : le centre voisin ne propose pas l activite tarifee ici',
     detail: `cartes chez le voisin : ${m.chezVoisin.map((c) => c.id).join(',') || 'aucune'}`,
   });
-  const dedans = m.sousLeMax.some((c) => idActivite(c) === m.bornee.id);
-  const dehors = m.auDessus.some((c) => idActivite(c) === m.bornee.id);
+  const dedans = m.bornee ? m.sousLeMax.some((c) => idActivite(c) === m.bornee.id) : false;
+  const dehors = m.bornee ? m.auDessus.some((c) => idActivite(c) === m.bornee.id) : false;
   v.push({
-    ok: dedans && !dehors,
+    ok: m.bornee ? (dedans && !dehors) : m.gardeMaximum >= 2,
     label: '[I] LE MAXIMUM DU GROUPE EST RESPECTE : proposee a son maximum, jamais une personne au-dessus',
-    detail: `${m.bornee.id} a ${m.maxi} personnes : ${dedans} ; a ${m.maxi + 1} : ${dehors}`,
+    detail: m.bornee
+      ? `${m.bornee.id} a ${m.maxi} personnes : ${dedans} ; a ${m.maxi + 1} : ${dehors}`
+      : `aucun sujet au catalogue ; la garde est ecrite ${m.gardeMaximum} fois dans ${COMPLEMENTS} (2 attendues)`,
   });
   const tient = m.dansLaDotation.some((c) => idActivite(c) === m.comptee.id);
   const tourne = m.horsDotation.some((c) => idActivite(c) === m.comptee.id);
@@ -1556,11 +1580,20 @@ async function construirePROPRIETES(browser) {
             { fichier: COMPLEMENTS, de: '  const gardees = cartes.filter((carte) => carte && carte.deltaTotal > 0);', vers: '  const gardees = cartes.filter((carte) => carte);' },
           ],
         },
-        {
+        // RETIREE le 2026-09-23 : « le maximum du groupe declare au catalogue
+        // est ignore ». Plus aucune activite ne declare de maximum (le Fun Run
+        // etait le seul, il declare desormais une installation de 5 places et
+        // un groupe qui tourne : journal 321). Muter la garde ne fait donc
+        // tomber aucun verdict, et une sonde aveugle est un echec, pas une
+        // reussite. La garde reste dans le module, et le montage de [I] verifie
+        // qu elle y est ecrite deux fois. Le jour ou une activite declarera un
+        // maximum, cette mutation revient telle quelle.
+        ...[].concat([]),
+        ...(false ? [{
           nom: 'le maximum du groupe declare au catalogue est ignore',
           vise: /\[I\] LE MAXIMUM DU GROUPE EST RESPECTE/,
           serveur: [{ fichier: COMPLEMENTS, de: '    if (Number.isFinite(maximum) && maximum > 0 && context.pax > maximum) continue;', vers: '    if (false && Number.isFinite(maximum) && maximum > 0 && context.pax > maximum) continue;' }],
-        },
+        }] : []),
         {
           nom: 'la dotation declaree est ignoree (le groupe tournerait)',
           vise: /\[I\] LA DOTATION DECLAREE EST RESPECTEE/,

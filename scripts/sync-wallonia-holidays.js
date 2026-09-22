@@ -62,6 +62,8 @@ function anneeScolaire(range) {
   lignes.push('];');
   const bloc = lignes.join(eol);
   const nouveau = source.slice(0, debut) + bloc + source.slice(fin + 2);
+  // Les deux tirets sont ecrits en echappement unicode : le gate no-em-dash
+  // lit ce fichier aussi.
   if (/[—–]/.test(bloc)) throw new Error('tiret cadratin dans la table');
   fs.writeFileSync(FICHIER, nouveau);
   console.log(`sync-wallonia-holidays : ${lues.length} periode(s) lue(s) (${from} a ${to}), ${ajoutees} ajoutee(s), ${changees} modifiee(s), table de ${table.length} periode(s), couverture jusqu au ${table[table.length - 1].end}.`);

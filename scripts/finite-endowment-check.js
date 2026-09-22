@@ -352,23 +352,40 @@ async function main() {
         { activityId: activite.id, duration: 1 },
       ];
 
-      // MONTAGE ASSERTE D ABORD : sans dotation reellement saturee sur les deux
-      // heures, tout ce qui suit serait vert pour rien.
+      // MONTAGE ASSERTE D ABORD : sans dotation reellement saturee sur TOUTE la
+      // fenetre, tout ce qui suit serait vert pour rien.
+      //
+      // Poser un dossier a l heure et un a l heure suivante suffisait tant que
+      // la ligne de l activite durait une heure (le duckpin). Le Fun Run, entre
+      // dans cette liste le 2026-09-23 avec sa session de 5 places, tient en
+      // 30 minutes : deux dossiers laissaient deux trous de 30 min dans la
+      // fenetre, la visite mixte s y placait, et le moteur avait RAISON de
+      // l accepter. Le montage sature donc au PAS DE PLACEMENT du moteur
+      // (30 min), de l heure jusqu au bout de la fenetre de deux heures.
       STORE.length = 0;
+      const departs = [];
+      for (let t = 0; t <= PAS_MINUTES * 2; t += 30) departs.push(decalerHeure(HEURE, t));
+      // On pose ce qui PEUT l etre a chaque marque de 30 min. Un refus ici ne
+      // dit pas que le montage rate : il dit que la marque est deja couverte
+      // par un dossier plus long (une piste de duckpin prise pour une heure
+      // couvre deux marques). Ce qui compte est asserte juste apres, et c est
+      // la vraie propriete : il ne reste de place NULLE PART dans la fenetre.
       let poses = 0;
-      for (const heure of [HEURE, HEURE_SUIVANTE]) {
+      for (const heure of departs) {
         for (let i = 1; i <= dotation; i += 1) {
           const r = await post(corps(activite.id, parUnite, `${heure}-${i}`, heure));
           if (r.status >= 200 && r.status < 300) poses += 1;
         }
       }
-      ok(poses === dotation * 2,
-        `montage : ${dotation * 2} dossier(s) d une unite poses sur ${activite.id} a ${HEURE} et ${HEURE_SUIVANTE} (${poses}/${dotation * 2})`);
-      for (const heure of [HEURE, HEURE_SUIVANTE]) {
-        const saturation = await post(corps(activite.id, parUnite, `sat-${heure}`, heure));
-        ok(saturation.status === 409,
-          `montage : la dotation de ${activite.id} est saturee a ${heure}, un dossier de plus est refuse (HTTP ${saturation.status})`);
+      ok(poses >= dotation, `montage : ${poses} dossier(s) poses sur ${activite.id} entre ${departs[0]} et ${departs[departs.length - 1]}`);
+      const marquesLibres = [];
+      for (const heure of departs) {
+        const sonde = await post(corps(activite.id, parUnite, `sat-${heure}`, heure));
+        if (sonde.status !== 409) marquesLibres.push(`${heure} -> HTTP ${sonde.status}`);
       }
+      ok(marquesLibres.length === 0,
+        `montage : la dotation de ${activite.id} est saturee aux ${departs.length} marques de la fenetre, un dossier de plus est refuse partout`,
+        marquesLibres.join(' ; '));
 
       // SUJET : la MEME demande, avec du bowling en plus. Le refus doit tenir,
       // parce qu il n existe AUCUNE place dans la fenetre de cette visite.

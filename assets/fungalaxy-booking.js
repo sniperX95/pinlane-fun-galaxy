@@ -717,8 +717,8 @@
         var multi = laser && count > 1;
         var detail = (laser ? count + ' partie' + (count > 1 ? 's' : '') + ' · ' : '') + minutesLabel(a.durationMinutes) + (count > 1 ? ' chacune' : '') + (multi ? ' · choisissez jusqu’à ' + count + ' heures' : '');
         html += '<section class="fg-track' + (rendusFrais ? ' fg-rise' : '') + '" style="--i:' + i + '" data-activity="' + esc(a.activityId) + '" data-count="' + count + '">'
-          + '<header class="fg-track__head"><span class="fg-track__icon"><svg aria-hidden="true"><use href="#' + icone(a.activityId) + '"/></svg></span><b>' + esc(a.label || a.activityId) + '</b><span class="fg-track__detail">' + esc(detail) + '</span>'
-          + (actifs.length ? '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '">Laisser l’équipe placer</button>' : '') + '</header>'
+          + '<div class="fg-track__head"><span class="fg-track__icon"><svg aria-hidden="true"><use href="#' + icone(a.activityId) + '"/></svg></span><b>' + esc(a.label || a.activityId) + '</b><span class="fg-track__detail">' + esc(detail) + '</span>'
+          + (actifs.length ? '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '">Laisser l’équipe placer</button>' : '') + '</div>'
           + rendreChips(a.times || [], actifs, actifs.length ? '' : (defauts[a.activityId] || ''), multi)
           + '<p class="fg-why" role="status" hidden></p>'
           + '</section>';

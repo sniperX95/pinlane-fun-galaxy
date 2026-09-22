@@ -9,10 +9,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260921a">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260922a">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
+
+<!-- Le rideau d ouverture : une bande violette qui balaie l ecran une seule
+     fois, au chargement. Un element, une animation de transform. -->
+<div class="fg-curtain" aria-hidden="true"></div>
 
 <!-- Les icones, une seule fois, reutilisees partout par <use>. Traits fins,
      couleur courante : elles se colorent avec le texte qui les porte. -->
@@ -28,6 +32,7 @@
     <symbol id="i-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/></symbol>
     <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7zM4 3l.5 1.5L6 5l-1.5.5L4 7l-.5-1.5L2 5l1.5-.5z"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
     <!-- Les activites -->
     <symbol id="a-bowling" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5c-2.6 0-4 1.6-4 4 0 2.6 2 4.4 2 8s-4 6-4 12c0 6 2 12 6 12s6-6 6-12-4-8.4-4-12 2-5.4 2-8c0-2.4-1.4-4-4-4z"/><path d="M27 4c-2.6 0-4 1.6-4 4 0 2.6 2 4.4 2 8s-4 6-4 12" opacity=".55"/><circle cx="33" cy="32" r="10"/><circle cx="31" cy="29" r="1.2" fill="currentColor"/><circle cx="35.5" cy="28.5" r="1.2" fill="currentColor"/><circle cx="34" cy="33" r="1.2" fill="currentColor"/></symbol>
     <symbol id="a-laser" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="9"/><circle cx="24" cy="24" r="2.5" fill="currentColor"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7"/></symbol>
@@ -48,6 +53,9 @@
 </header>
 
 <main class="fg-shell" id="fg">
+  <!-- Deux halos de couleur qui derivent lentement derriere les scenes :
+       deux degrades, un transform chacun, rien d autre. -->
+  <div class="fg-glow" aria-hidden="true"><i></i><i></i></div>
   <p class="fg-alert" id="fgAlert" role="alert" hidden></p>
   <div class="fg-stage" id="fgStage">
 
@@ -60,7 +68,7 @@
 <div class="fg-art"><img src="/assets/fungalaxy/pistes-strike-800.webp" srcset="/assets/fungalaxy/pistes-strike-800.webp 800w, /assets/fungalaxy/pistes-strike-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async" fetchpriority="high"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h1 class="fg-title" id="t-date" data-words>Quand venez-vous ?</h1>
+        <h1 class="fg-title" id="t-date" data-words>Quand venez-vous&nbsp;?</h1>
         <div class="fg-fields fg-fields--2">
           <div class="fg-field fg-rise" style="--i:1">
             <span class="fg-field__label" id="l-day">Quel jour ?</span>
@@ -72,6 +80,7 @@
               </button>
               <ul class="fg-day__list" id="dayList" role="listbox" aria-labelledby="l-day" hidden></ul>
             </div>
+            <span class="fg-field__hint fg-field__hint--day" id="dayHint" aria-live="polite"></span>
           </div>
           <div class="fg-field fg-rise" style="--i:2">
             <span class="fg-field__label" id="l-pax">Vous êtes combien ?</span>
@@ -84,7 +93,7 @@
           </div>
         </div>
         <div class="fg-actions fg-rise" style="--i:3">
-          <button type="button" class="fg-btn fg-btn--shine" id="goActivities">Choisir mes activités</button>
+          <button type="button" class="fg-btn fg-btn--shine" id="goActivities">Choisir mes activités<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
         </div>
       </div>
     </section>
@@ -94,10 +103,11 @@
       <div class="fg-art"><img data-src="/assets/fungalaxy/salle-bowling-800.webp" data-srcset="/assets/fungalaxy/salle-bowling-800.webp 800w, /assets/fungalaxy/salle-bowling-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-act" data-words>Qu’est-ce qui<br><em>vous tente ?</em></h2>
+        <h2 class="fg-title" id="t-act" data-words>Qu’est-ce qui<br><em>vous tente&nbsp;?</em></h2>
         <div class="fg-tabs fg-rise" style="--i:1" role="tablist" aria-label="Activités ou formules">
           <button type="button" class="fg-tab" role="tab" id="tabAct" aria-selected="true" aria-controls="panelAct">Activités</button>
           <button type="button" class="fg-tab" role="tab" id="tabFor" aria-selected="false" aria-controls="panelFor">Formules</button>
+          <span class="fg-tabs__bar" id="tabBar" aria-hidden="true"></span>
         </div>
         <div class="fg-panel fg-rise" style="--i:2" id="panelAct" role="tabpanel" aria-labelledby="tabAct">
           <ul class="fg-grid" id="gridAct"></ul>
@@ -120,14 +130,14 @@
       <div class="fg-art"><img data-src="/assets/fungalaxy/laser-couloir-800.webp" data-srcset="/assets/fungalaxy/laser-couloir-800.webp 800w, /assets/fungalaxy/laser-couloir-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-hour" data-words>À quelle heure ?</h2>
+        <h2 class="fg-title" id="t-hour" data-words>À quelle heure&nbsp;?</h2>
         <p class="fg-sub" id="hourSub"></p>
         <div id="hourZone" aria-live="polite">
           <p class="fg-loading">On regarde ce qui est libre…</p>
         </div>
         <div class="fg-actions fg-actions--center fg-rise" style="--i:2">
           <button type="button" class="fg-btn fg-btn--ghost" data-back><svg aria-hidden="true"><use href="#i-back"/></svg>Retour</button>
-          <button type="button" class="fg-btn" id="goContact" disabled>Garder <span id="keepTime"></span></button>
+          <button type="button" class="fg-btn" id="goContact" disabled><span id="keepLabel">Garder ces horaires</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
         </div>
       </div>
     </section>
@@ -142,7 +152,7 @@
       </aside>
       <form class="fg-scene__body" id="contactForm" novalidate>
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-who" data-words>À qui<br><em>réserve-t-on ?</em></h2>
+        <h2 class="fg-title" id="t-who" data-words>À qui<br><em>réserve-t-on&nbsp;?</em></h2>
         <div class="fg-fields" style="max-width:520px">
           <div class="fg-field fg-rise" style="--i:1">
             <label class="fg-field__label" for="cPrenom">Prénom</label>
@@ -172,7 +182,7 @@
         </div>
         <div class="fg-actions fg-rise" style="--i:6">
           <button type="button" class="fg-btn fg-btn--ghost" data-back><svg aria-hidden="true"><use href="#i-back"/></svg>Retour</button>
-          <button type="submit" class="fg-btn" id="goRecap">Voir le récapitulatif</button>
+          <button type="submit" class="fg-btn" id="goRecap">Voir le récapitulatif<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
         </div>
       </form>
     </section>
@@ -182,7 +192,7 @@
       <div class="fg-art"><img data-src="/assets/fungalaxy/fun-run-800.webp" data-srcset="/assets/fungalaxy/fun-run-800.webp 800w, /assets/fungalaxy/fun-run-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title fg-title--spark" id="t-ok"><svg class="spark" aria-hidden="true"><use href="#i-spark"/></svg><span data-words>Tout est bon ?</span></h2>
+        <h2 class="fg-title fg-title--spark" id="t-ok"><svg class="spark" aria-hidden="true"><use href="#i-spark"/></svg><span data-words>Tout est bon&nbsp;?</span></h2>
         <div class="fg-recap" id="recap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:520px">
           <button type="button" class="fg-btn fg-btn--shine" id="confirmBtn">Confirmer la réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
@@ -197,8 +207,8 @@
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <div class="fg-done">
-          <div class="fg-done__ring" aria-hidden="true"><svg><use href="#i-check"/></svg></div>
-          <h2 class="fg-title" id="t-fin" data-words>C’est noté !</h2>
+          <div class="fg-done__ring" aria-hidden="true"><span class="fg-burst" id="finBurst"></span><svg><use href="#i-check"/></svg></div>
+          <h2 class="fg-title" id="t-fin" data-words>C’est noté&nbsp;!</h2>
           <div id="finBody"></div>
         </div>
       </div>
@@ -207,6 +217,6 @@
   </div>
 </main>
 
-<script src="/assets/fungalaxy-booking.js?v=20260921a" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260922a" defer></script>
 </body>
 </html>

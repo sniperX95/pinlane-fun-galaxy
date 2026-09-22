@@ -20,7 +20,10 @@ const http = require('http');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const database = require('../lib/database');
-const { BOWLING_PRICES, LASER_GAME_OPTIONS, FUN_RUN_OPTIONS, FORMULES } = require('../lib/booking-config');
+// Hors reseau : la table statique des conges scolaires fait foi (c est le
+// serveur de prod qui relit le calendrier officiel, pas le mock).
+process.env.PINLANE_CALENDAR_SYNC = 'off';
+const { BOWLING_PRICES, DURATION_OPTIONS, LASER_GAME_OPTIONS, FUN_RUN_OPTIONS, FORMULES } = require('../lib/booking-config');
 const FUN_GALAXY_CENTER = require('../ops-knowledge/centers.json').centers.find((center) => center.id === 'libramont');
 
 const PORT = Number(process.env.PINLANE_DEVTUNNEL_PORT || 4230);
@@ -41,6 +44,9 @@ const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', ye
 
 database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont' });
 const availability = require('../api/public-availability.js');
+// Le calendrier des prochains jours, calcule par le VRAI code du serveur (feries,
+// conges scolaires, horaires de vacances du centre reel), sans base : blocages vides.
+const { buildCalendar } = require('../api/public-booking-meta.js').__test;
 
 const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
@@ -77,11 +83,11 @@ function brandingFor(mode) {
 // (api/public-booking-meta.js) : grilles reelles (lib/booking-config), identite
 // et contact reels du centre (ops-knowledge/centers.json). Seule la liste des
 // activites est un mock, faute de base.
-function metaPayload(brandMode) {
+function metaPayload(brandMode, calendarDays = 0) {
   const info = FUN_GALAXY_CENTER.publicInfo || {};
   const bowling = FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.bowling ? FUN_GALAXY_CENTER.resources.bowling : {};
   return {
-    ok: true, today: TODAY, bookingHorizonDays: 365, durationOptions: [], formules: FORMULES, activities: ACTIVITIES,
+    ok: true, today: TODAY, bookingHorizonDays: 365, durationOptions: DURATION_OPTIONS, formules: FORMULES, activities: ACTIVITIES,
     laserOptions: LASER_GAME_OPTIONS, bowlingPrices: BOWLING_PRICES, funRunOptions: FUN_RUN_OPTIONS,
     center: {
       id: 'libramont', status: 'active', demonstration: false,
@@ -101,6 +107,7 @@ function metaPayload(brandMode) {
         laserArenaCapacity: Number(FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.laser && FUN_GALAXY_CENTER.resources.laser.weaponCount) || null,
       },
       day: { date: DATE, open: true, schedule: { open: 10, close: 24, label: '10h - Minuit' }, closedLabel: '', closedWindows: [], unavailableFormulaIds: [], unavailableActivityIds: [], unavailableFormulaReason: {} },
+      ...(calendarDays ? { calendar: buildCalendar([], calendarDays, FUN_GALAXY_CENTER, 'libramont') } : {}),
     },
   };
 }
@@ -193,7 +200,12 @@ function createServer(options = {}) {
       }
       return;
     }
-    if (url.pathname === '/api/public-booking-meta') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(metaPayload(brandMode))); return; }
+    if (url.pathname === '/api/public-booking-meta') {
+      const calendarDays = Math.min(90, Math.max(0, Math.trunc(Number(url.searchParams.get('calendar')) || 0)));
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(metaPayload(brandMode, calendarDays)));
+      return;
+    }
     if (url.pathname === '/api/public-availability') { try { await availability(req, res); } catch (error) { res.writeHead(500); res.end(JSON.stringify({ ok: false })); } return; }
     if (url.pathname === '/api/public-reservations') {
       let body = '';

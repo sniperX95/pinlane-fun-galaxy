@@ -5,8 +5,10 @@ const {
   FUN_RUN_OPTIONS,
   LASER_GAME_OPTIONS,
   getEffectiveFormules,
+  getHolidayContext,
   getSchedule,
   refreshFormuleOverrides,
+  refreshWalloniaSchoolHolidays,
   resolveBowlingCapacity,
   todayStr,
   BOOKING_HORIZON_DAYS,
@@ -404,6 +406,11 @@ module.exports = async (req, res) => {
   // mockent avec center:null.
   const rawDate = String(url.searchParams.get('date') || '');
   const dayDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : '';
+  // `calendar=N` (1 a 90) : les N prochains jours, chacun avec ses horaires,
+  // sa fermeture et sa periode (ferie legal, conge scolaire). Cle ADDITIVE,
+  // absente sans le parametre.
+  const rawCalendar = Number(url.searchParams.get('calendar') || 0);
+  const calendarDays = Number.isFinite(rawCalendar) ? Math.min(90, Math.max(0, Math.trunc(rawCalendar))) : 0;
   // Rate limit UNIQUEMENT sur le chemin date : l'appel de boot (sans date) reste
   // non limite. Meme budget que api/public-availability.
   if (dayDate && enforceRateLimit(req, res, { scope: 'public-booking-meta-day', limit: 60, windowMs: 60_000 })) {
@@ -471,12 +478,19 @@ module.exports = async (req, res) => {
   // base il rend l'etat connu ou []), et tout le reste est enveloppe. `day` a
   // null signifie, cote client, rendu strictement historique.
   let day = null;
-  if (dayDate) {
-    try {
-      const blocks = await loadAvailabilityBlocks(getPool(), centerId);
-      day = buildDayStatus(blocks, dayDate, center, centerId);
-    } catch (error) {
-      day = null;
+  let calendar = null;
+  if (center && (dayDate || calendarDays)) {
+    // Le calendrier scolaire officiel se relit fail-soft (24 h par instance,
+    // delai borne) : les horaires de vacances suivent l annee en cours sans
+    // retaper la table. Un echec laisse la table statique faire foi.
+    try { await refreshWalloniaSchoolHolidays(); } catch (error) { /* table statique */ }
+    let blocks = [];
+    try { blocks = await loadAvailabilityBlocks(getPool(), centerId); } catch (error) { blocks = []; }
+    if (dayDate) {
+      try { day = buildDayStatus(blocks, dayDate, center, centerId); } catch (error) { day = null; }
+    }
+    if (calendarDays) {
+      try { calendar = buildCalendar(blocks, calendarDays, center, centerId); } catch (error) { calendar = null; }
     }
   }
 
@@ -567,11 +581,40 @@ module.exports = async (req, res) => {
         },
         // Cle ADDITIVE, presente uniquement quand une date valide est demandee.
         ...(day ? { day } : {}),
+        // Cle ADDITIVE, presente uniquement avec `calendar=N`.
+        ...(calendar ? { calendar } : {}),
       }
       : null,
   });
 };
 
-// Expose pour les gates (scripts/availability-day-check.js) : le verdict se
-// teste unitairement, sans reseau ni base.
-module.exports.__test = { buildDayStatus };
+// Les N prochains jours, chacun avec son verdict (buildDayStatus) et sa
+// periode. Le libelle de periode vient du calendrier (ferie legal, conge
+// scolaire FWB, jour force par le centre), jamais du texte libre du staff.
+function buildCalendar(blocks, days, center, centerId) {
+  const [y, m, d] = todayStr().split('-').map(Number);
+  const out = [];
+  for (let i = 0; i < days; i += 1) {
+    const jour = new Date(Date.UTC(y, m - 1, d + i));
+    const date = jour.toISOString().slice(0, 10);
+    const status = buildDayStatus(blocks, date, center, centerId);
+    const context = getHolidayContext(date, center);
+    out.push({
+      date,
+      weekday: jour.getUTCDay(),
+      open: status.open,
+      schedule: status.schedule,
+      closedLabel: status.closedLabel,
+      closedWindows: status.closedWindows,
+      holiday: context.active ? { type: context.periodType, label: context.label } : null,
+      unavailableActivityIds: status.unavailableActivityIds,
+      unavailableFormulaIds: status.unavailableFormulaIds,
+    });
+  }
+  return out;
+}
+
+// Expose pour les gates (scripts/availability-day-check.js,
+// scripts/wallonia-calendar-check.js, le mock du serveur de dev) : le verdict
+// se teste unitairement, sans reseau ni base.
+module.exports.__test = { buildDayStatus, buildCalendar };

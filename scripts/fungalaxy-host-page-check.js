@@ -44,6 +44,14 @@ async function inspecter(browser, viewport, nom) {
   const reponse = await page.goto(`${BASE_URL}/fungalaxy-local#booking`, { waitUntil: 'networkidle', timeout: 60000 });
   if (!ok(reponse && reponse.status() === 200, `${nom} : la copie locale de fungalaxy.be/contact/ est servie`, reponse ? `HTTP ${reponse.status()}` : 'aucune reponse')) { await ctx.close(); return; }
   ok(await attendre(page, () => document.querySelector('.pinlane-local-slot iframe[title="Reservation en ligne"]'), 10000), `${nom} : embed.js monte le cadre a la place du Gravity Form`);
+  // LA MESURE ATTEND L ETAT STABLE. Le cadre recoit sa hauteur par message, et
+  // Chrome re-ancre le defilement sur #booking quand l en-tete finit de se
+  // charger (deux defilements a 100 ms d ecart, vus le 2026-09-22) : lire la
+  // position pendant ce va-et-vient rendait un faux rouge. On attend la hauteur
+  // du cadre, puis deux lectures egales du defilement a 300 ms d ecart (au plus
+  // 6 s) ; l assertion juge ensuite l etat reel.
+  ok(await attendre(page, () => { const f = document.querySelector('.pinlane-local-slot iframe'); return f && parseInt(f.style.height, 10) > 300; }, 10000), `${nom} : le cadre a recu sa hauteur avant toute mesure`);
+  await page.evaluate(() => new Promise((resolve) => { let last = -1; let stable = 0; let tours = 0; const tick = () => { const y = Math.round(window.scrollY); if (y === last) stable += 1; else { stable = 0; last = y; } tours += 1; if (stable >= 2 || tours >= 20) resolve(); else setTimeout(tick, 300); }; tick(); }));
   const hote = await page.evaluate(() => {
     const frame = document.querySelector('.pinlane-local-slot iframe[title="Reservation en ligne"]');
     const rect = frame ? frame.getBoundingClientRect() : { width: 0, left: 0, right: 0, top: 0 };
@@ -69,7 +77,7 @@ async function inspecter(browser, viewport, nom) {
   ok(hote.popupCache && hote.cookieCache && hote.defile, `${nom} : aucun overlay ne bloque la page locale`);
   ok(hote.deborde <= 1, `${nom} : aucun debordement horizontal`, `${hote.deborde}px`);
   ok(hote.gauche >= -1 && hote.droite <= hote.ecran + 1 && hote.largeur > 300, `${nom} : cadre contenu dans l ecran`, `${Math.round(hote.largeur)}px de large`);
-  ok(nom !== 'ordinateur' || hote.haut >= hote.menuBas - 2, `${nom} : l ancre #booking n est pas masquee par le menu`);
+  ok(nom !== 'ordinateur' || hote.haut >= hote.menuBas - 2, `${nom} : l ancre #booking n est pas masquee par le menu`, `cadre a ${Math.round(hote.haut)} px, menu jusqu a ${Math.round(hote.menuBas)} px`);
 
   const cadre = page.frames().find((f) => f.url().indexOf('/fungalaxy/libramont?embed=1') >= 0);
   if (ok(Boolean(cadre), `${nom} : le contenu du formulaire est accessible`)) {

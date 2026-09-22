@@ -13,6 +13,7 @@ const {
   getSchedule,
   numToTime,
   refreshFormuleOverrides,
+  refreshWalloniaSchoolHolidays,
   reservationNeedsLanes,
   roundUpHalfHour,
   timeToNum,
@@ -311,6 +312,11 @@ module.exports = async (req, res) => {
     // un pax géant non authentifié déclencherait des allocations de tableau
     // proportionnelles dans le moteur de planning (DoS). Le trunc neutralise aussi NaN.
     const pax = Math.min(240, Math.max(1, Math.trunc(Number(url.searchParams.get('pax')) || 1)));
+    // Le calendrier scolaire officiel se relit fail-soft (24 h par instance,
+    // delai borne) avant de lire les horaires du jour : les heures de vacances
+    // suivent l annee en cours sans retaper la table. Un echec ou un delai
+    // laisse la table statique faire foi.
+    try { await refreshWalloniaSchoolHolidays(); } catch (error) { /* table statique */ }
     const formuleId = String(url.searchParams.get('formuleId') || '');
     const requestedDuration = Number(url.searchParams.get('duration') || (type === 'laser' ? 0.5 : 1));
     // Le catalogue DU CENTRE d'abord, la constante fichier seulement en repli.

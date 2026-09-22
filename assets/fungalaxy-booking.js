@@ -1,13 +1,13 @@
 /* =============================================================================
-   FUN GALAXY, LE FORMULAIRE DE RESERVATION (v3, 2026-09-21)
+   FUN GALAXY, LE FORMULAIRE DE RESERVATION (v3, 2026-09-22)
    -----------------------------------------------------------------------------
    Un client leger au-dessus des trois API publiques de Pinlane, sans aucune
    bibliotheque :
-     GET  /api/public-booking-meta   le catalogue, les horaires, la marque
+     GET  /api/public-booking-meta   le catalogue, le calendrier, la marque
      GET  /api/public-availability   les heures possibles et le plan de visite
      POST /api/public-reservations   la creation, le serveur recalcule tout
    Tout ce qui s affiche vient de ces reponses : aucun prix, aucune heure,
-   aucun nom d activite n est ecrit ici.
+   aucun nom d activite, aucun jour ferie n est ecrit ici.
 
    Embarque dans fungalaxy.be par /embed.js (iframe), il parle le meme
    protocole que le tunnel actuel : pinlane:height, pinlane:screen,
@@ -22,6 +22,7 @@
   var $ = function (sel, ctx) { return (ctx || doc).querySelector(sel); };
   var $$ = function (sel, ctx) { return Array.prototype.slice.call((ctx || doc).querySelectorAll(sel)); };
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var finPointer = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
   /* --- L adresse : le centre, le mode embarque, le fond de l hote ------------ */
 
@@ -36,6 +37,7 @@
   var CENTER = centreDepuisAdresse();
   var EMBED = params.get('embed') === '1' && window.parent !== window;
   if (EMBED) body.classList.add('is-embed');
+  if (finPointer) body.classList.add('has-pointer');
 
   // Le fond du site hote voyage dans l URL : liste blanche de caracteres
   // stricte, sinon color-scheme: dark peint un rectangle gris chez le client.
@@ -84,9 +86,12 @@
     date: '',
     pax: 4,
     selection: [],             // ids d activites cochees (onglet Activites)
+    options: {},               // id -> { duration | games | minutes } choisis sur la carte
     formuleId: '',             // ou une formule (onglet Formules)
     onglet: 'activites',
-    heure: '',                 // heure retenue
+    pins: {},                  // activityId -> 'HH:MM' : les heures que le client a posees
+    laserParts: [],            // heures des parties de laser posees (si plusieurs parties)
+    heure: '',                 // debut de visite du creneau retenu
     dispo: null,               // la derniere reponse de public-availability
     creneau: null,             // le slot retenu (avec opsPlan)
     contact: { prenom: '', nom: '', email: '', telephone: '' },
@@ -117,17 +122,22 @@
   function personnes(n) { return n + ' personne' + (n > 1 ? 's' : ''); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function minutesLabel(m) { m = Number(m) || 0; if (m >= 60) { var h = Math.floor(m / 60), r = m % 60; return r ? h + 'h' + String(r).padStart(2, '0') : h + ' heure' + (h > 1 ? 's' : ''); } return m + ' min'; }
-  function ouvertureDuJour(dateStr) {
-    var s = meta && meta.center && meta.center.defaultSchedule;
-    if (!s || !s.regular) return null;
-    var d = deIso(dateStr).getDay();
-    var r = s.regular[String(d)];
-    return r && r.open ? r : null;
-  }
-  function horaireLabel(r) {
-    if (!r) return 'Fermé';
-    var f = function (t) { var p = String(t).split(':'); return p[1] === '00' ? Number(p[0]) + 'h' : p[0] + 'h' + p[1]; };
-    return f(r.open) + ' - ' + (r.close === '24:00' ? 'minuit' : f(r.close));
+  function heuresLabel(v) { v = Number(v) || 0; if (v === 0.5) return '30 min'; if (v === 1) return '1 heure'; if (v === 1.5) return '1h30'; if (v === 2) return '2 heures'; return minutesLabel(Math.round(v * 60)); }
+  // Les libelles du serveur sont sans accent (une table partagee avec les
+  // mails et les statistiques) : la seule chose qu on refait ici, ce sont
+  // les accents, jamais le sens.
+  var ACCENTS = {
+    "Conge d'automne": 'Congé d’automne', "Vacances d'hiver": 'Vacances d’hiver', 'Conge de detente': 'Congé de détente',
+    'Vacances de printemps': 'Vacances de printemps', "Vacances d'ete": 'Vacances d’été', 'Lundi de Paques': 'Lundi de Pâques',
+    'Fete du Travail': 'Fête du Travail', 'Lundi de Pentecote': 'Lundi de Pentecôte', 'Fete nationale': 'Fête nationale', 'Noel': 'Noël',
+    "Jour de l'An": 'Jour de l’An', 'Jour special (manuel)': 'Jour spécial',
+  };
+  function accentuer(s) { return ACCENTS[s] || String(s || '').replace("'", '’'); }
+  function horaireLabel(sch) {
+    if (!sch) return 'Fermé';
+    if (sch.label) return String(sch.label).replace('Minuit', 'minuit');
+    var f = function (t) { var h = Math.floor(t), m = Math.round((t - h) * 60); return m ? h + 'h' + String(m).padStart(2, '0') : h + 'h'; };
+    return f(sch.open) + ' - ' + (sch.close === 24 ? 'minuit' : f(sch.close));
   }
   function icone(id) {
     var s = String(id || '').toLowerCase();
@@ -153,28 +163,48 @@
     if (/fun_run|funrun|fun-run/.test(s)) return 'fun-run';
     return '';
   }
+  function activitesVendables() {
+    return (meta && meta.activities ? meta.activities.slice() : []).sort(function (a, b) { return (a.order || 99) - (b.order || 99); });
+  }
+  function activite(id) { return activitesVendables().filter(function (x) { return x.id === id; })[0] || null; }
 
-  /* --- Les prix affiches sur les cartes, depuis le catalogue seulement ------- */
+  /* --- Les options d une activite (duree, parties, session) --------------------- */
 
+  // Les grilles viennent du catalogue servi : bowling et duckpin par duree de
+  // piste, laser par nombre de parties, Fun Run par session. Une activite sans
+  // grille n a pas d option.
+  function optionsPour(a) {
+    if (!meta || !a) return [];
+    if (a.priceType === 'grid_bowling') {
+      return (meta.durationOptions || []).map(function (o) { return { cle: 'duration', valeur: Number(o.value), label: o.label || heuresLabel(o.value), prix: Number(o.price) || 0, unite: '/ piste' }; });
+    }
+    if (a.priceType === 'grid_laser') {
+      return (meta.laserOptions || []).map(function (o) { return { cle: 'games', valeur: Number(o.games), label: o.label || (o.games + ' partie' + (o.games > 1 ? 's' : '')), prix: Number(o.price) || 0, unite: '/ personne' }; });
+    }
+    if (a.priceType === 'grid_fun_run') {
+      return (meta.funRunOptions || []).map(function (o) { return { cle: 'minutes', valeur: Number(o.minutes), label: o.label || (o.minutes + ' min'), prix: Number(o.price) || 0, unite: '/ session' }; });
+    }
+    return [];
+  }
+  function optionChoisie(a) {
+    var liste = optionsPour(a);
+    if (!liste.length) return null;
+    var choix = state.options[a.id] || {};
+    var trouvee = liste.filter(function (o) { return choix[o.cle] === o.valeur; })[0];
+    if (trouvee) return trouvee;
+    // Le defaut : 1 h de piste, 1 partie, la session la plus courte.
+    return liste.filter(function (o) { return (o.cle === 'duration' && o.valeur === 1) || (o.cle === 'games' && o.valeur === 1); })[0] || liste[0];
+  }
   function prixCarte(a) {
     if (!meta) return '';
+    var opt = optionChoisie(a);
+    if (opt) {
+      if (state.selection.indexOf(a.id) >= 0) return euros(opt.prix) + ' ' + opt.unite;
+      var mini = Math.min.apply(null, optionsPour(a).map(function (o) { return o.prix; }).filter(function (p) { return p > 0; }));
+      return isFinite(mini) ? 'Dès ' + euros(mini) + ' ' + opt.unite : 'Tarif sur place';
+    }
     var unite = a.unitLabel ? ' ' + a.unitLabel.replace(/^par /, '/ ') : '';
     switch (a.priceType) {
-      case 'grid_bowling': {
-        var grille = (meta.center && meta.center.booking && meta.center.booking.bowlingPrices) || meta.bowlingPrices || {};
-        var vals = Object.keys(grille).map(function (k) { return Number(grille[k]); }).filter(function (n) { return n > 0; });
-        return vals.length ? 'Dès ' + euros(Math.min.apply(null, vals)) + ' / piste' : 'Tarif sur place';
-      }
-      case 'grid_laser': {
-        var opts = meta.laserOptions || [];
-        var mini = opts.length ? Math.min.apply(null, opts.map(function (o) { return Number(o.price) || 0; }).filter(Boolean)) : 0;
-        return mini ? 'Dès ' + euros(mini) + ' / personne' : 'Tarif sur place';
-      }
-      case 'grid_fun_run': {
-        var sessions = meta.funRunOptions || [];
-        var bas = sessions.length ? Math.min.apply(null, sessions.map(function (o) { return Number(o.price) || 0; }).filter(Boolean)) : 0;
-        return bas ? 'Dès ' + euros(bas) + ' / session' : 'Tarif sur place';
-      }
       case 'per_pax':
       case 'per_unit_hour':
         return a.priceValue ? 'Dès ' + euros(a.priceValue) + unite : 'Tarif sur place';
@@ -210,15 +240,17 @@
         Array.prototype.slice.call(node.childNodes).forEach(function (n) {
           if (n.nodeType === 3) {
             var frag = doc.createDocumentFragment();
-            n.textContent.split(/(\s+)/).forEach(function (part) {
+            // Les espaces ordinaires separent les mots ; l espace insecable
+            // (« vous ? ») reste dans son mot, le « ? » ne part jamais seul.
+            n.textContent.split(/([ \t\r\n]+)/).forEach(function (part) {
               if (!part) return;
-              if (/^\s+$/.test(part)) { frag.appendChild(doc.createTextNode(' ')); return; }
+              if (/^[ \t\r\n]+$/.test(part)) { frag.appendChild(doc.createTextNode(' ')); return; }
               var w = doc.createElement('span'); w.className = 'w';
               var s = doc.createElement('span'); s.style.setProperty('--i', i++); s.textContent = part;
               w.appendChild(s); frag.appendChild(w);
             });
             node.replaceChild(frag, n);
-          } else if (n.nodeType === 1 && n.tagName !== 'SVG' && n.tagName !== 'svg') walk(n);
+          } else if (n.nodeType === 1 && n.tagName !== 'SVG' && n.tagName !== 'svg' && n.tagName !== 'BR') walk(n);
         });
       };
       walk(el);
@@ -296,33 +328,62 @@
 
   /* --- Etape 1 : le jour et le groupe ------------------------------------------- */
 
-  var dayBtn = $('#dayBtn'), dayList = $('#dayList'), dayLabel = $('#dayLabel');
+  var dayBtn = $('#dayBtn'), dayList = $('#dayList'), dayLabel = $('#dayLabel'), dayHint = $('#dayHint');
+  var dayField = dayBtn.closest('.fg-field');
   var paxOut = $('#paxOut'), paxValue = $('#paxValue'), paxHint = $('#paxHint');
   var PAX_MIN = 1, PAX_MAX = 240;
 
+  // Le calendrier vient du serveur (calendar=45, cle center.calendar, a cote
+  // de center.day) : ouverture, horaires, fermeture, ferie ou conge scolaire,
+  // jour par jour. Sans lui (vieille reponse), la grille hebdomadaire du
+  // centre fait un repli sans periode.
   function joursProposes() {
+    var cal = meta && meta.center && Array.isArray(meta.center.calendar) ? meta.center.calendar : null;
     var today = meta && meta.today ? deIso(meta.today) : new Date();
     var out = [];
-    for (var i = 0; i < 28; i += 1) {
+    if (cal && cal.length) {
+      cal.forEach(function (j, i) {
+        out.push({ date: j.date, ouvert: Boolean(j.open), horaire: j.open ? horaireLabel(j.schedule) : (j.closedLabel || 'Fermé'), periode: j.holiday ? { type: j.holiday.type, label: accentuer(j.holiday.label) } : null, coupures: j.closedWindows || [], aujourdhui: i === 0, demain: i === 1 });
+      });
+      return out;
+    }
+    var regular = meta && meta.center && meta.center.defaultSchedule && meta.center.defaultSchedule.regular;
+    for (var i = 0; i < 45; i += 1) {
       var d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
-      var s = iso(d);
-      out.push({ date: s, ouvert: Boolean(ouvertureDuJour(s)), horaire: horaireLabel(ouvertureDuJour(s)), aujourdhui: i === 0, demain: i === 1 });
+      var r = regular ? regular[String(d.getDay())] : null;
+      var sch = r && r.open ? { open: Number(r.open.split(':')[0]), close: Number(r.close.split(':')[0]) } : null;
+      out.push({ date: iso(d), ouvert: Boolean(sch), horaire: horaireLabel(sch), periode: null, coupures: [], aujourdhui: i === 0, demain: i === 1 });
     }
     return out;
   }
+  function jourInfo(dateStr) { return joursProposes().filter(function (j) { return j.date === dateStr; })[0] || null; }
   function rendreJours() {
-    dayList.innerHTML = joursProposes().map(function (j) {
+    var moisVu = '';
+    dayList.innerHTML = joursProposes().map(function (j, i) {
+      var d = deIso(j.date);
+      var mois = MOIS[d.getMonth()] + ' ' + d.getFullYear();
+      var tete = '';
+      if (mois !== moisVu) { tete = '<li class="fg-day__month" role="presentation">' + esc(cap(mois)) + '</li>'; moisVu = mois; }
       var libelle = jourLong(j.date) + (j.aujourdhui ? ' (aujourd’hui)' : j.demain ? ' (demain)' : '');
-      return '<li role="presentation">'
-        + '<button type="button" class="fg-day__opt" data-date="' + j.date + '" ' + (j.ouvert ? '' : 'disabled') + ' role="option" aria-selected="' + (j.date === state.date) + '">'
-        + '<span>' + esc(libelle) + '</span><small>' + esc(j.horaire) + '</small></button></li>';
+      var tag = j.periode ? '<i class="fg-tag ' + (j.periode.type === 'public' ? 'fg-tag--ferie' : 'fg-tag--vacances') + '">' + esc(j.periode.type === 'public' ? 'Férié · ' + j.periode.label : j.periode.label) + '</i>' : '';
+      return tete + '<li role="presentation" style="--i:' + (i % 12) + '">'
+        + '<button type="button" class="fg-day__opt' + (j.ouvert ? '' : ' is-off') + '" data-date="' + j.date + '" ' + (j.ouvert ? '' : 'disabled') + ' role="option" aria-selected="' + (j.date === state.date) + '">'
+        + '<span class="fg-day__opt-main"><span>' + esc(libelle) + '</span>' + tag + '</span>'
+        + '<small>' + esc(j.horaire) + '</small></button></li>';
     }).join('');
   }
   function choisirJour(dateStr) {
     state.date = dateStr;
     dayLabel.textContent = jourLong(dateStr);
-    var r = ouvertureDuJour(dateStr);
-    dayBtn.setAttribute('title', r ? 'Ouvert ' + horaireLabel(r) : '');
+    var j = jourInfo(dateStr);
+    var morceaux = [];
+    if (j) {
+      morceaux.push(j.ouvert ? 'Ouvert ' + j.horaire : j.horaire);
+      if (j.periode) morceaux.push(j.periode.type === 'public' ? 'Férié : ' + j.periode.label : j.periode.label);
+      if (j.coupures && j.coupures.length) morceaux.push('Fermé ' + j.coupures.map(function (c) { return c.start + '-' + c.end; }).join(', '));
+    }
+    dayHint.textContent = morceaux.join(' · ');
+    dayBtn.setAttribute('title', dayHint.textContent);
     invaliderDispo();
   }
   function ouvrirJours(ouvrir) {
@@ -330,7 +391,10 @@
     if (o) rendreJours();
     dayList.hidden = !o;
     dayBtn.setAttribute('aria-expanded', String(o));
-    if (o) { var sel = $('.fg-day__opt[aria-selected="true"]', dayList) || $('.fg-day__opt:not([disabled])', dayList); if (sel) sel.focus(); }
+    // Le champ passe au-dessus de ses voisins tant que la liste est ouverte :
+    // chaque champ anime porte son propre contexte d empilement.
+    if (dayField) dayField.classList.toggle('is-open', o);
+    if (o) { var sel = $('.fg-day__opt[aria-selected="true"]', dayList) || $('.fg-day__opt:not([disabled])', dayList); if (sel) { sel.focus({ preventScroll: true }); sel.scrollIntoView({ block: 'nearest' }); } }
     setTimeout(posterHauteur, 260);
   }
   dayBtn.addEventListener('click', function () { ouvrirJours(); });
@@ -375,33 +439,44 @@
     // Le groupe a pu changer depuis le dernier rendu : une activite bornee
     // (Fun Run, 5 joueurs) sort de la selection si le groupe la depasse.
     state.selection = state.selection.filter(function (id) {
-      var a = activitesVendables().filter(function (x) { return x.id === id; })[0];
+      var a = activite(id);
       return a && !(a.maxPax && state.pax > a.maxPax);
     });
     rendreActivites();
     rendreFormules();
     rendreCompteur(false);
     aller('activites');
+    placerBarre();
   });
 
   /* --- Etape 2 : les activites et les formules ----------------------------------- */
 
   var gridAct = $('#gridAct'), gridFor = $('#gridFor'), actCount = $('#actCount'), goHours = $('#goHours');
-  function activitesVendables() {
-    return (meta && meta.activities ? meta.activities.slice() : []).sort(function (a, b) { return (a.order || 99) - (b.order || 99); });
+  function rendreOptions(a) {
+    var liste = optionsPour(a);
+    if (!liste.length) return '';
+    var choix = optionChoisie(a);
+    return '<div class="fg-opts" role="group" aria-label="Options ' + esc(a.name) + '">' + liste.map(function (o, i) {
+      var on = choix && choix.cle === o.cle && choix.valeur === o.valeur;
+      return '<button type="button" class="fg-opt' + (on ? ' is-on' : '') + '" style="--i:' + i + '" data-cle="' + o.cle + '" data-valeur="' + o.valeur + '" aria-pressed="' + on + '"><b>' + esc(o.label) + '</b><small>' + esc(euros(o.prix)) + '</small></button>';
+    }).join('') + '</div>';
   }
   function rendreActivites() {
     gridAct.innerHTML = activitesVendables().map(function (a, i) {
       var p = photo(a.id);
       var on = state.selection.indexOf(a.id) >= 0;
       var trop = a.maxPax && state.pax > a.maxPax;
-      return '<li><button type="button" class="fg-card fg-rise' + (on ? ' is-on' : '') + '" style="--i:' + (i % 8) + '" data-activity="' + esc(a.id) + '" aria-pressed="' + on + '" ' + (trop ? 'disabled title="' + esc(a.name) + ' : ' + a.maxPax + ' personnes maximum"' : '') + '>'
+      return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '" data-activity="' + esc(a.id) + '">'
+        + '<div class="fg-card fg-rise' + (on ? ' is-on' : '') + (trop ? ' is-off' : '') + '" style="--i:' + (i % 8) + '" data-activity="' + esc(a.id) + '" role="checkbox" tabindex="' + (trop ? '-1' : '0') + '" aria-checked="' + on + '" ' + (trop ? 'aria-disabled="true" title="' + esc(a.name) + ' : ' + a.maxPax + ' personnes maximum"' : '') + '>'
         + (p ? '<span class="fg-card__photo" aria-hidden="true"><img data-src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async"></span>' : '')
+        + '<span class="fg-card__glow" aria-hidden="true"></span>'
         + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
         + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
         + '<span class="fg-card__name">' + esc(a.name) + '</span>'
         + '<span class="fg-card__price">' + esc(prixCarte(a)) + (a.note ? ' · ' + esc(a.note) : '') + '</span>'
-        + '</button></li>';
+        + '</div>'
+        + rendreOptions(a)
+        + '</li>';
     }).join('') || '<li class="fg-empty">Aucune activité réservable en ligne pour le moment.</li>';
     // Une carte deja cochee (retour a cet ecran) montre sa photo tout de suite.
     $$('.fg-card.is-on', gridAct).forEach(chargerPhotoCarte);
@@ -412,13 +487,14 @@
       var on = state.formuleId === f.id;
       var mini = f.minPax && state.pax < f.minPax;
       var prix = f.type === 'per_lane' ? euros(f.price) + ' / piste' : euros(f.price) + ' / personne';
-      return '<li><button type="button" class="fg-card fg-card--formule fg-rise' + (on ? ' is-on' : '') + '" style="--i:' + (i % 8) + '" data-formule="' + esc(f.id) + '" aria-pressed="' + on + '" ' + (mini ? 'disabled title="Minimum ' + f.minPax + ' personnes"' : '') + '>'
+      return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '"><div class="fg-card fg-card--formule fg-rise' + (on ? ' is-on' : '') + (mini ? ' is-off' : '') + '" style="--i:' + (i % 8) + '" data-formule="' + esc(f.id) + '" role="radio" tabindex="' + (mini ? '-1' : '0') + '" aria-checked="' + on + '" ' + (mini ? 'aria-disabled="true" title="Minimum ' + f.minPax + ' personnes"' : '') + '>'
+        + '<span class="fg-card__glow" aria-hidden="true"></span>'
         + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
         + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#a-formule"/></svg></span>'
         + '<span class="fg-card__name">' + esc(f.name) + '</span>'
-        + '<span class="fg-card__price">' + esc(prix) + (f.oldPrice ? ' <s style="color:var(--fg-faint)">' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
+        + '<span class="fg-card__price">' + esc(prix) + (f.oldPrice ? ' <s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
         + '<span class="fg-card__meta">' + esc((f.desc || []).slice(0, 3).join(' · ')) + (f.minPax ? ' · dès ' + f.minPax + ' pers.' : '') + '</span>'
-        + '</button></li>';
+        + '</div></li>';
     }).join('') || '<li class="fg-empty">Aucune formule proposée en ligne pour le moment.</li>';
   }
   function rendreCompteur(bump) {
@@ -439,27 +515,91 @@
   }
   gridAct.addEventListener('pointerenter', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); }, true);
   gridAct.addEventListener('focusin', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); });
-  gridAct.addEventListener('click', function (e) {
-    var card = e.target.closest('.fg-card');
-    if (!card || card.disabled) return;
+  // Le halo qui suit le pointeur sur une carte (souris seulement) : deux
+  // variables CSS, aucun calcul de mise en page.
+  if (finPointer) {
+    var rectCarte = null, carteSurvolee = null;
+    gridAct.addEventListener('pointerover', function (e) {
+      var card = e.target.closest && e.target.closest('.fg-card');
+      if (!card || card === carteSurvolee) return;
+      carteSurvolee = card;
+      rectCarte = card.getBoundingClientRect();
+    });
+    gridAct.addEventListener('pointermove', function (e) {
+      var card = e.target.closest && e.target.closest('.fg-card');
+      if (!card || card !== carteSurvolee || !rectCarte) return;
+      var x = e.clientX - rectCarte.left, y = e.clientY - rectCarte.top;
+      card.style.setProperty('--mx', x.toFixed(0) + 'px');
+      card.style.setProperty('--my', y.toFixed(0) + 'px');
+      card.style.setProperty('--rx', ((x / rectCarte.width - 0.5) * 7).toFixed(2) + 'deg');
+      card.style.setProperty('--ry', ((0.5 - y / rectCarte.height) * 7).toFixed(2) + 'deg');
+    });
+    gridAct.addEventListener('pointerout', function (e) {
+      var card = e.target.closest && e.target.closest('.fg-card');
+      if (!card || card !== carteSurvolee) return;
+      if (e.relatedTarget && card.contains(e.relatedTarget)) return;
+      ['--mx', '--my', '--rx', '--ry'].forEach(function (v) { card.style.removeProperty(v); });
+      carteSurvolee = null; rectCarte = null;
+    });
+  }
+  function basculerActivite(card) {
+    if (!card || card.classList.contains('is-off')) return;
     chargerPhotoCarte(card);
-    var id = card.dataset.activity;
+    var item = card.closest('.fg-grid__item');
+    var id = item.dataset.activity;
     var i = state.selection.indexOf(id);
     if (i >= 0) state.selection.splice(i, 1); else state.selection.push(id);
-    card.classList.toggle('is-on', i < 0);
-    card.setAttribute('aria-pressed', String(i < 0));
+    var on = i < 0;
+    card.classList.toggle('is-on', on);
+    item.classList.toggle('is-on', on);
+    card.setAttribute('aria-checked', String(on));
+    var prix = $('.fg-card__price', card);
+    var a = activite(id);
+    if (prix && a) prix.textContent = prixCarte(a) + (a.note ? ' · ' + a.note : '');
     rendreCompteur(true);
     invaliderDispo();
+    setTimeout(posterHauteur, 320);
+  }
+  gridAct.addEventListener('click', function (e) {
+    var opt = e.target.closest('.fg-opt');
+    if (opt) {
+      var item = opt.closest('.fg-grid__item');
+      var a = activite(item.dataset.activity);
+      if (!a) return;
+      state.options[a.id] = {};
+      state.options[a.id][opt.dataset.cle] = Number(opt.dataset.valeur);
+      $$('.fg-opt', item).forEach(function (o) { var on = o === opt; o.classList.toggle('is-on', on); o.setAttribute('aria-pressed', String(on)); });
+      var prix = $('.fg-card__price', item);
+      if (prix) prix.textContent = prixCarte(a) + (a.note ? ' · ' + a.note : '');
+      invaliderDispo();
+      return;
+    }
+    basculerActivite(e.target.closest('.fg-card'));
   });
-  gridFor.addEventListener('click', function (e) {
-    var card = e.target.closest('.fg-card');
-    if (!card || card.disabled) return;
+  gridAct.addEventListener('keydown', function (e) {
+    if ((e.key === ' ' || e.key === 'Enter') && e.target.classList && e.target.classList.contains('fg-card')) { e.preventDefault(); basculerActivite(e.target); }
+  });
+  function choisirFormule(card) {
+    if (!card || card.classList.contains('is-off')) return;
     var id = card.dataset.formule;
     state.formuleId = state.formuleId === id ? '' : id;
-    $$('.fg-card', gridFor).forEach(function (c) { var on = c.dataset.formule === state.formuleId; c.classList.toggle('is-on', on); c.setAttribute('aria-pressed', String(on)); });
+    $$('.fg-card', gridFor).forEach(function (c) { var on = c.dataset.formule === state.formuleId; c.classList.toggle('is-on', on); c.closest('.fg-grid__item').classList.toggle('is-on', on); c.setAttribute('aria-checked', String(on)); });
     rendreCompteur(true);
     invaliderDispo();
+  }
+  gridFor.addEventListener('click', function (e) { choisirFormule(e.target.closest('.fg-card')); });
+  gridFor.addEventListener('keydown', function (e) {
+    if ((e.key === ' ' || e.key === 'Enter') && e.target.classList && e.target.classList.contains('fg-card')) { e.preventDefault(); choisirFormule(e.target); }
   });
+  // Le soulignement glisse sous l onglet courant : mesure une fois par
+  // changement, quand la scene est visible (cachee, tout mesure zero).
+  function placerBarre() {
+    var barre = $('#tabBar');
+    var onglet = state.onglet === 'activites' ? $('#tabAct') : $('#tabFor');
+    if (!barre || !onglet || !onglet.offsetWidth) return;
+    barre.style.transform = 'translateX(' + onglet.offsetLeft + 'px) scaleX(' + (onglet.offsetWidth / 100) + ')';
+  }
+  window.addEventListener('resize', placerBarre);
   function choisirOnglet(quel) {
     state.onglet = quel;
     var act = quel === 'activites';
@@ -467,6 +607,7 @@
     $('#tabFor').setAttribute('aria-selected', String(!act));
     $('#panelAct').hidden = !act;
     $('#panelFor').hidden = act;
+    placerBarre();
     rendreCompteur(false);
     setTimeout(posterHauteur, 50);
   }
@@ -476,42 +617,64 @@
 
   /* --- Etape 3 : les heures ---------------------------------------------------- */
 
-  var hourZone = $('#hourZone'), hourSub = $('#hourSub'), goContact = $('#goContact'), keepTime = $('#keepTime');
+  var hourZone = $('#hourZone'), hourSub = $('#hourSub'), goContact = $('#goContact'), keepLabel = $('#keepLabel');
   var requeteEnCours = 0;
-  function invaliderDispo() { state.dispo = null; state.creneau = null; state.heure = ''; goContact.disabled = true; keepTime.textContent = ''; }
+  var rendusFrais = true;      // la cascade des puces ne joue qu au premier rendu
+  var derniereAction = null;   // { activity, time } : la puce a retrouver apres un re-rendu
+  function invaliderDispo() { state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; goContact.disabled = true; }
   function programme() {
     return state.selection.map(function (id) {
-      var a = activitesVendables().filter(function (x) { return x.id === id; })[0] || {};
+      var a = activite(id) || {};
       var ligne = { activityId: id };
-      if (a.priceType === 'grid_bowling') ligne.duration = 1;
-      if (a.priceType === 'grid_laser') ligne.games = 1;
-      if (a.priceType === 'grid_fun_run') ligne.minutes = a.defaultMinutes || 30;
+      var opt = optionChoisie(a);
+      if (a.priceType === 'grid_bowling') ligne.duration = opt ? opt.valeur : 1;
+      if (a.priceType === 'grid_laser') ligne.games = opt ? opt.valeur : 1;
+      if (a.priceType === 'grid_fun_run') ligne.minutes = opt ? opt.valeur : (a.defaultMinutes || 15);
       return ligne;
     });
   }
   function nomsChoisis() {
     if (state.onglet === 'formules') { var f = ((meta && meta.formules) || []).filter(function (x) { return x.id === state.formuleId; })[0]; return f ? f.name : ''; }
-    return state.selection.map(function (id) { var a = activitesVendables().filter(function (x) { return x.id === id; })[0]; return a ? a.name : id; }).join(' + ');
+    return state.selection.map(function (id) { var a = activite(id); return a ? a.name : id; }).join(' + ');
   }
-  function urlDispo(preferred) {
+  function urlDispo() {
     var q = new URLSearchParams();
     q.set('centerId', CENTER); q.set('date', state.date); q.set('pax', String(state.pax));
     if (state.onglet === 'formules') { q.set('type', 'formule'); q.set('formuleId', state.formuleId); }
     else { q.set('type', 'visite'); q.set('program', JSON.stringify(programme())); }
-    if (preferred) q.set('preferredTimes', JSON.stringify(preferred));
+    var pins = {};
+    Object.keys(state.pins).forEach(function (k) { if (state.pins[k]) pins[k] = state.pins[k]; });
+    if (state.laserParts.length) { pins.laser_game = state.laserParts[0]; q.set('laserGameTimes', JSON.stringify(state.laserParts)); }
+    if (Object.keys(pins).length) q.set('preferredTimes', JSON.stringify(pins));
     return '/api/public-availability?' + q.toString();
   }
   function chargerHeures() {
-    hourSub.innerHTML = '<b>' + esc(jourCourt(state.date)) + '</b> · ' + esc(personnes(state.pax)) + ' · ' + esc(nomsChoisis());
+    var j = jourInfo(state.date);
+    hourSub.innerHTML = '<b>' + esc(jourCourt(state.date)) + '</b> · ' + esc(personnes(state.pax)) + ' · ' + esc(nomsChoisis())
+      + (j && j.ouvert ? '<span class="fg-sub__open">Ouvert ' + esc(j.horaire) + (j.periode ? ' · ' + esc(j.periode.label) : '') + '</span>' : '');
+    rendusFrais = true; derniereAction = null;
     if (state.dispo) { rendreHeures(); return; }
     hourZone.innerHTML = '<p class="fg-loading">On regarde ce qui est libre…</p>';
+    chargerPlan();
+  }
+  // Une seule route pour tout : sans heure posee, le serveur compose la
+  // premiere combinaison possible et rend la grille ; avec des heures posees,
+  // il recalcule la grille autour d elles et le plan qui en decoule.
+  function chargerPlan() {
     var id = ++requeteEnCours;
-    fetch(urlDispo(null), { credentials: 'omit' }).then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j }; }); })
-      .then(function (res) {
+    goContact.disabled = true;
+    var zone = $('#planZone');
+    if (zone) zone.innerHTML = '<p class="fg-loading">On compose votre visite…</p>';
+    fetch(urlDispo(), { credentials: 'omit' }).then(function (r) { return r.json(); })
+      .then(function (j) {
         if (id !== requeteEnCours) return;
-        if (!res.json || res.json.ok === false) throw new Error((res.json && res.json.message) || 'Disponibilités indisponibles.');
-        state.dispo = res.json;
+        if (!j || j.ok === false) throw new Error((j && j.message) || 'Disponibilités indisponibles.');
+        state.dispo = j;
+        var slot = (j.slots || [])[0] || null;
+        state.creneau = slot ? { slot: slot, reponse: j } : null;
+        state.heure = slot ? slot.time : '';
         rendreHeures();
+        goContact.disabled = !slot;
       })
       .catch(function (err) {
         if (id !== requeteEnCours) return;
@@ -519,91 +682,142 @@
         posterHauteur();
       });
   }
-  // Les heures proposees : pour une visite, la premiere activite ancree porte
-  // toute la journee dans anchors ; pour une formule ou une visite sans
-  // activite planifiee, ce sont les slots.
-  function heuresProposees(d) {
-    var ancre = d.anchors && d.anchors.activities && d.anchors.activities[0];
-    if (ancre && Array.isArray(ancre.times) && ancre.times.length) {
-      return ancre.times.map(function (t) { return { time: t.time, ok: t.ok !== false, reason: t.reason || '' }; });
-    }
-    return (d.slots || []).map(function (s) { return { time: s.time, ok: true, reason: '' }; });
-  }
+  var MOTS_COURTS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', anchor_overlap: 'chevauche', resource_conflict: 'occupé', business_rules: 'non valable', unknown_anchor: 'indispo' };
+  function motCourt(t) { return MOTS_COURTS[t.code] || 'indispo'; }
   function periode(h) { var n = Number(String(h).split(':')[0]); return n < 12 ? 'Matin' : n < 18 ? 'Après-midi' : 'Soirée'; }
-  function rendreHeures() {
-    var d = state.dispo;
-    var heures = heuresProposees(d);
-    if (!heures.length) {
-      hourZone.innerHTML = '<div class="fg-notice fg-notice--warn"><b>' + esc(d.message || 'Aucun créneau ce jour-là.') + '</b>'
-        + (d.suggestions && d.suggestions.length ? '<br>Essayez plutôt : ' + d.suggestions.map(function (s) { return esc(s.label || ''); }).join(', ') : '')
-        + '</div>';
-      posterHauteur();
-      return;
-    }
-    var html = '';
-    if (d.message && !heures.some(function (h) { return h.ok; })) html += '<div class="fg-notice fg-notice--warn">' + esc(d.message) + '</div>';
+  function rendreChips(times, actif, propose, multi) {
     var groupes = {};
-    heures.forEach(function (h) { var p = periode(h.time); (groupes[p] = groupes[p] || []).push(h); });
+    times.forEach(function (t) { var p = periode(t.time); (groupes[p] = groupes[p] || []).push(t); });
     var k = 0;
-    html += '<ul class="fg-chips is-fresh" role="listbox" aria-label="Heures de début">';
+    var html = '<ul class="fg-chips' + (rendusFrais ? ' is-fresh' : '') + '" role="listbox" aria-label="Heures de début"' + (multi ? ' aria-multiselectable="true"' : '') + '>';
     Object.keys(groupes).forEach(function (p) {
       html += '<li class="fg-period fg-kicker" role="presentation">' + esc(p) + '</li>';
-      groupes[p].forEach(function (h) {
-        html += '<li role="presentation"><button type="button" class="fg-chip' + (h.time === state.heure ? ' is-on' : '') + '" role="option" aria-selected="' + (h.time === state.heure) + '" data-time="' + esc(h.time) + '" style="--i:' + (k++) + '" ' + (h.ok ? '' : 'disabled title="' + esc(h.reason || 'Indisponible') + '"') + '>' + esc(h.time) + '</button></li>';
+      groupes[p].forEach(function (t) {
+        var ok = t.ok !== false;
+        var on = actif.indexOf(t.time) >= 0;
+        var prop = !on && propose === t.time;
+        html += '<li role="presentation"><button type="button" class="fg-chip' + (on ? ' is-on' : '') + (prop ? ' is-proposed' : '') + (ok ? '' : ' is-off') + '" role="option" aria-selected="' + on + '" data-time="' + esc(t.time) + '" data-ok="' + ok + '" data-reason="' + esc(t.reason || '') + '" style="--i:' + (k++) + '" title="' + esc(ok ? '' : (t.reason || 'Indisponible')) + '">'
+          + '<b>' + esc(t.time) + '</b>' + (ok ? (prop ? '<small>proposé</small>' : '') : '<small>' + esc(motCourt(t)) + '</small>') + '</button></li>';
       });
     });
-    html += '</ul><div id="planZone"></div>';
+    return html + '</ul>';
+  }
+  function rendreHeures() {
+    var d = state.dispo;
+    var ancres = (d.anchors && d.anchors.activities) || [];
+    var html = '';
+    if (ancres.length) {
+      // Une piste par activite planifiee : TOUTES les heures du jour, celles
+      // qui ne tiennent pas restent visibles avec leur raison.
+      var defauts = (d.anchors && d.anchors.defaultTimes) || {};
+      ancres.forEach(function (a, i) {
+        var laser = a.activityId === 'laser_game';
+        var count = Math.max(1, Number(a.count) || 1);
+        var actifs = laser && state.laserParts.length ? state.laserParts : (state.pins[a.activityId] ? [state.pins[a.activityId]] : []);
+        var multi = laser && count > 1;
+        var detail = (laser ? count + ' partie' + (count > 1 ? 's' : '') + ' · ' : '') + minutesLabel(a.durationMinutes) + (count > 1 ? ' chacune' : '') + (multi ? ' · choisissez jusqu’à ' + count + ' heures' : '');
+        html += '<section class="fg-track' + (rendusFrais ? ' fg-rise' : '') + '" style="--i:' + i + '" data-activity="' + esc(a.activityId) + '" data-count="' + count + '">'
+          + '<header class="fg-track__head"><span class="fg-track__icon"><svg aria-hidden="true"><use href="#' + icone(a.activityId) + '"/></svg></span><b>' + esc(a.label || a.activityId) + '</b><span class="fg-track__detail">' + esc(detail) + '</span>'
+          + (actifs.length ? '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '">Laisser l’équipe placer</button>' : '') + '</header>'
+          + rendreChips(a.times || [], actifs, actifs.length ? '' : (defauts[a.activityId] || ''), multi)
+          + '<p class="fg-why" role="status" hidden></p>'
+          + '</section>';
+      });
+    } else {
+      var slots = (d.slots || []).map(function (s) { return { time: s.time, ok: true }; });
+      if (!slots.length) {
+        html += '<div class="fg-notice fg-notice--warn"><b>' + esc(d.message || 'Aucun créneau ce jour-là.') + '</b></div>';
+      } else {
+        html += '<section class="fg-track' + (rendusFrais ? ' fg-rise' : '') + '" style="--i:0" data-activity="">' + rendreChips(slots, state.heure ? [state.heure] : [], '', false) + '<p class="fg-why" role="status" hidden></p></section>';
+      }
+    }
+    html += '<div id="planZone"></div>';
     hourZone.innerHTML = html;
-    if (state.creneau) rendrePlan(state.creneau, d);
+    keepLabel.textContent = ancres.length ? 'Garder ces horaires' : 'Garder ce créneau';
+    rendusFrais = false;
+    // La puce que l on vient de poser retrouve le focus et lance son onde.
+    if (derniereAction) {
+      var posee = $('.fg-track[data-activity="' + derniereAction.activity + '"] .fg-chip[data-time="' + derniereAction.time + '"]', hourZone);
+      if (posee) { posee.classList.add('is-just'); posee.focus({ preventScroll: true }); }
+      derniereAction = null;
+    }
+    rendrePlan();
     posterHauteur();
   }
   hourZone.addEventListener('click', function (e) {
+    var reset = e.target.closest('[data-reset]');
+    if (reset) {
+      var idr = reset.dataset.reset;
+      delete state.pins[idr];
+      if (idr === 'laser_game') state.laserParts = [];
+      chargerPlan();
+      return;
+    }
     var chip = e.target.closest('.fg-chip');
-    if (!chip || chip.disabled) return;
-    state.heure = chip.dataset.time;
-    $$('.fg-chip', hourZone).forEach(function (c) { var on = c === chip; c.classList.toggle('is-on', on); c.setAttribute('aria-selected', String(on)); });
-    goContact.disabled = true;
-    keepTime.textContent = state.heure;
-    var zone = $('#planZone');
-    zone.innerHTML = '<p class="fg-loading">On compose votre visite…</p>';
-    posterHauteur();
-    var ancre = state.dispo.anchors && state.dispo.anchors.activities && state.dispo.anchors.activities[0];
-    if (state.onglet === 'formules' || !ancre) {
-      // Formule, ou visite sans activite planifiee : chaque creneau de la
-      // premiere reponse porte deja son plan, rien a redemander.
-      var direct = (state.dispo.slots || []).filter(function (s) { return s.time === state.heure; })[0];
-      if (!direct) { zone.innerHTML = '<div class="fg-notice fg-notice--warn">Ce créneau ne tient pas. Choisissez une autre heure.</div>'; posterHauteur(); return; }
+    if (!chip) return;
+    var track = chip.closest('.fg-track');
+    var why = $('.fg-why', track);
+    if (chip.dataset.ok === 'false') {
+      // Une heure impossible se lit : la raison vient du moteur, mot pour mot.
+      $$('.fg-chip.is-asked', track).forEach(function (c) { c.classList.remove('is-asked'); });
+      chip.classList.add('is-asked');
+      why.innerHTML = '<b>' + esc(chip.dataset.time) + '</b> : ' + esc(chip.dataset.reason || 'indisponible à cette heure.');
+      why.hidden = false;
+      posterHauteur();
+      return;
+    }
+    why.hidden = true;
+    var idA = track.dataset.activity;
+    var t = chip.dataset.time;
+    if (!idA) {
+      // Formule ou visite sans activite planifiee : le creneau se retient tel quel.
+      var direct = (state.dispo.slots || []).filter(function (s) { return s.time === t; })[0];
+      if (!direct) return;
+      state.heure = t;
       state.creneau = { slot: direct, reponse: state.dispo };
-      rendrePlan(state.creneau, state.dispo);
+      $$('.fg-chip', track).forEach(function (c) { var on = c === chip; c.classList.toggle('is-on', on); c.setAttribute('aria-selected', String(on)); });
+      rendrePlan();
       goContact.disabled = false;
       return;
     }
-    var id = ++requeteEnCours;
-    var preferred = {};
-    preferred[ancre.activityId] = state.heure;
-    fetch(urlDispo(preferred), { credentials: 'omit' }).then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (id !== requeteEnCours) return;
-        if (!j || j.ok === false) throw new Error((j && j.message) || 'Créneau indisponible.');
-        var slot = (j.slots || []).filter(function (s) { return s.time === state.heure; })[0] || (j.slots || [])[0] || null;
-        if (!slot) throw new Error(j.message || 'Ce créneau ne tient pas. Choisissez une autre heure.');
-        state.creneau = { slot: slot, reponse: j };
-        rendrePlan(state.creneau, j);
-        goContact.disabled = false;
-      })
-      .catch(function (err) {
-        if (id !== requeteEnCours) return;
-        $('#planZone').innerHTML = '<div class="fg-notice fg-notice--warn">' + esc(err.message) + '</div>';
-        posterHauteur();
-      });
+    var count = Number(track.dataset.count) || 1;
+    derniereAction = { activity: idA, time: t };
+    if (idA === 'laser_game' && count > 1) {
+      var i = state.laserParts.indexOf(t);
+      if (i >= 0) state.laserParts.splice(i, 1);
+      else { if (state.laserParts.length >= count) state.laserParts.shift(); state.laserParts.push(t); }
+      state.laserParts.sort();
+      if (state.laserParts.length) state.pins.laser_game = state.laserParts[0]; else delete state.pins.laser_game;
+    } else if (state.pins[idA] === t) {
+      delete state.pins[idA];
+    } else {
+      state.pins[idA] = t;
+    }
+    chargerPlan();
   });
   function blocsDuPlan(cr) {
-    var plan = cr.slot.opsPlan || {};
+    var plan = cr && cr.slot ? (cr.slot.opsPlan || {}) : {};
     return (plan.resourceBlocks || []).filter(function (b) { return b.type === 'activity' || b.activityId; });
   }
-  function rendrePlan(cr, reponse) {
+  function rendrePlan() {
     var zone = $('#planZone');
     if (!zone) return;
+    var d = state.dispo || {};
+    var cr = state.creneau;
+    if (!cr) {
+      var html = '<div class="fg-notice fg-notice--warn"><b>' + esc(d.message || 'Cette combinaison d’heures ne tient pas.') + '</b>';
+      var sugg = Array.isArray(d.suggestions) ? d.suggestions.slice(0, 4) : [];
+      if (sugg.length) {
+        html += '<span class="fg-suggest">' + sugg.map(function (s, i) {
+          var times = s.times || {};
+          var texte = s.label || Object.keys(times).map(function (k) { var a = activite(k); return (a ? a.name : k) + ' ' + times[k]; }).join(' · ');
+          return '<button type="button" class="fg-suggest__btn" data-suggest="' + esc(JSON.stringify(times)) + '" style="--i:' + i + '">' + esc(texte) + '</button>';
+        }).join('') + '</span>';
+      }
+      zone.innerHTML = html + '</div>';
+      posterHauteur();
+      return;
+    }
     var plan = cr.slot.opsPlan || {};
     var parties = [];
     if (plan.arrivalTime) parties.push('Arrivée <b>' + esc(plan.arrivalTime) + '</b>');
@@ -615,8 +829,8 @@
       parties.push(esc(nom) + ' <b>' + esc(b.startTime) + '</b>' + (b.groupWaveCount > 1 ? ' <small>(' + b.groupWaveIndex + '/' + b.groupWaveCount + ')</small>' : ''));
     });
     if (!parties.length) parties.push('Début <b>' + esc(cr.slot.time) + '</b>');
-    var prix = Number(reponse.price);
-    var complet = !reponse.program || reponse.program.priceComplete !== false;
+    var prix = Number(cr.reponse.price);
+    var complet = !cr.reponse.program || cr.reponse.program.priceComplete !== false;
     var fin = cr.slot.visitEndTime || '';
     zone.innerHTML = '<div class="fg-plan is-swap"><svg aria-hidden="true"><use href="#i-clock"/></svg>' + parties.join('<span class="dot">·</span>')
       + (fin ? '<span class="dot">·</span>Fin vers <b>' + esc(fin) + '</b>' : '')
@@ -626,9 +840,19 @@
     if (avis.length) zone.innerHTML += '<div class="fg-notice">' + avis.map(esc).join('<br>') + '</div>';
     posterHauteur();
   }
+  hourZone.addEventListener('click', function (e) {
+    var s = e.target.closest('[data-suggest]');
+    if (!s) return;
+    try {
+      var times = JSON.parse(s.dataset.suggest);
+      state.pins = {}; state.laserParts = [];
+      Object.keys(times).forEach(function (k) { if (times[k]) state.pins[k] = String(times[k]).slice(0, 5); });
+      chargerPlan();
+    } catch (err) { /* suggestion illisible : rien */ }
+  });
   goContact.addEventListener('click', function () {
-    if (goContact.disabled) return;
-    $('#recallLine').textContent = jourCourt(state.date) + ' · ' + personnes(state.pax) + ' · ' + state.heure;
+    if (goContact.disabled || !state.creneau) return;
+    $('#recallLine').textContent = jourCourt(state.date) + ' · ' + personnes(state.pax) + ' · ' + (state.creneau.slot.opsPlan && state.creneau.slot.opsPlan.arrivalTime ? 'arrivée ' + state.creneau.slot.opsPlan.arrivalTime : state.heure);
     aller('contact');
   });
 
@@ -685,19 +909,21 @@
         lignes.push({ icone: icone(it.activityId), nom: it.name || it.activityId, detail: detail, aside: bloc && bloc.startTime ? bloc.startTime : '' });
       });
     } else {
-      state.selection.forEach(function (id) { var a = activitesVendables().filter(function (x) { return x.id === id; })[0]; lignes.push({ icone: icone(id), nom: a ? a.name : id, detail: '', aside: '' }); });
+      state.selection.forEach(function (id) { var a = activite(id); lignes.push({ icone: icone(id), nom: a ? a.name : id, detail: '', aside: '' }); });
     }
     var prix = Number(rep.price) || 0;
     var complet = !rep.program || rep.program.priceComplete !== false;
-    var html = '<div class="fg-recap__row fg-rise" style="--i:1"><svg aria-hidden="true"><use href="#i-calendar"/></svg>' + esc(jourLong(state.date)) + '</div>'
+    var j = jourInfo(state.date);
+    var html = '<div class="fg-recap__row fg-rise" style="--i:1"><svg aria-hidden="true"><use href="#i-calendar"/></svg>' + esc(jourLong(state.date)) + (j && j.periode ? ' <i class="fg-tag ' + (j.periode.type === 'public' ? 'fg-tag--ferie' : 'fg-tag--vacances') + '">' + esc(j.periode.label) + '</i>' : '') + '</div>'
       + '<div class="fg-recap__row fg-rise" style="--i:2"><svg aria-hidden="true"><use href="#i-users"/></svg>' + esc(personnes(state.pax)) + '</div>'
       + '<div class="fg-recap__sep"></div>';
     lignes.forEach(function (l, i) {
       html += '<div class="fg-recap__item fg-rise" style="--i:' + (3 + i) + '"><span class="fg-recap__badge"><svg aria-hidden="true"><use href="#' + l.icone + '"/></svg></span>'
         + '<span><span class="fg-recap__name">' + esc(l.nom) + '</span>' + (l.detail ? '<br><span class="fg-recap__detail">' + esc(l.detail) + '</span>' : '') + '</span>'
-        + '<span class="fg-recap__aside">' + (i === 0 && plan.arrivalTime ? 'Arrivée<b>' + esc(plan.arrivalTime) + '</b>' : (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : '')) + '</span></div>';
+        + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : (i === 0 && plan.arrivalTime ? 'Arrivée<b>' + esc(plan.arrivalTime) + '</b>' : '')) + '</span></div>';
     });
     html += '<div class="fg-recap__sep"></div>'
+      + (plan.arrivalTime ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg>Arrivée conseillée à <b>&nbsp;' + esc(plan.arrivalTime) + '</b>' + (cr.slot.visitEndTime ? ', fin vers ' + esc(cr.slot.visitEndTime) : '') + '</div>' : '')
       + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + (complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place') + '</div>'
       + '<div class="fg-total__amount" id="totalAmount" data-total="' + prix + '">' + (prix > 0 ? esc(euros(prix)) : 'Sur place') + '</div></div>'
       + '<div class="fg-total__pay"><svg aria-hidden="true"><use href="#i-card"/></svg><span>Paiement<br>sur place</span></div></div>'
@@ -705,8 +931,7 @@
     $('#recap').innerHTML = html;
     if (prix > 0 && !reduced) compterJusqua($('#totalAmount'), prix);
   }
-  // Le total monte jusqu a sa valeur reelle : transform seulement, aucune
-  // mise en page pendant le defile, et la valeur finale est toujours exacte.
+  // Le total monte jusqu a sa valeur reelle : la valeur finale est toujours exacte.
   function compterJusqua(el, cible) {
     var t0 = null, duree = 700;
     var pas = function (t) {
@@ -724,6 +949,10 @@
   var confirmBtn = $('#confirmBtn');
   function payload() {
     var cr = state.creneau, rep = cr ? cr.reponse : {};
+    var plan = cr && cr.slot.opsPlan ? cr.slot.opsPlan : null;
+    var preferredTimes = {};
+    if (plan && plan.anchorPlan && plan.anchorPlan.times) Object.keys(plan.anchorPlan.times).forEach(function (k) { if (plan.anchorPlan.times[k]) preferredTimes[k] = plan.anchorPlan.times[k]; });
+    Object.keys(state.pins).forEach(function (k) { if (state.pins[k]) preferredTimes[k] = state.pins[k]; });
     var base = {
       centerId: CENTER,
       name: (state.contact.prenom + ' ' + state.contact.nom).trim(),
@@ -734,25 +963,23 @@
       pax: state.pax,
       channel: 'public',
       notes: '',
-      preference: {},
+      // Les heures posees par le client et celles composees par le serveur
+      // repartent ensemble : le serveur revalide exactement ce qui a ete montre.
+      preference: { preferredTimes: preferredTimes, laserGameTimes: state.laserParts.slice(), laserPlacement: plan && plan.anchorPlan && plan.anchorPlan.laserPlacement === 'onsite' ? 'onsite' : 'scheduled', arrivalConfidence: 'normal' },
       // Le montant affiche part avec la demande, comme dans le tunnel ; le
       // serveur recalcule tout et c est son montant qui est enregistre.
       price: Number(rep.price) || 0,
       basePrice: Number(rep.price) || 0,
+      duration: Number(rep.duration) || 1,
+      totalDuration: Number(rep.totalDuration) || Number(rep.duration) || 1,
+      laneCount: Number(rep.laneCount) || 0,
+      requiresLanes: Boolean(rep.requiresLanes),
+      label: rep.label || '',
     };
-    if (state.onglet === 'formules') {
-      base.type = 'formule'; base.formuleId = state.formuleId;
-      base.duration = Number(rep.duration) || 1; base.totalDuration = Number(rep.totalDuration) || base.duration;
-      base.laneCount = Number(rep.laneCount) || 0; base.requiresLanes = Boolean(rep.requiresLanes); base.label = rep.label || '';
-      if (cr && cr.slot.opsPlan && cr.slot.opsPlan.anchorPlan) base.preference = { preferredTimes: cr.slot.opsPlan.anchorPlan.times || {}, laserPlacement: cr.slot.opsPlan.anchorPlan.laserPlacement || 'scheduled' };
-    } else {
-      base.type = 'visite'; base.program = programme();
-      base.duration = Number(rep.duration) || 1; base.totalDuration = Number(rep.totalDuration) || base.duration;
-      base.laneCount = Number(rep.laneCount) || 0; base.requiresLanes = Boolean(rep.requiresLanes); base.label = rep.label || '';
-      if (cr && cr.slot.opsPlan && cr.slot.opsPlan.anchorPlan) base.preference = { preferredTimes: cr.slot.opsPlan.anchorPlan.times || {}, laserPlacement: cr.slot.opsPlan.anchorPlan.laserPlacement || 'scheduled' };
-    }
+    if (state.onglet === 'formules') { base.type = 'formule'; base.formuleId = state.formuleId; }
+    else { base.type = 'visite'; base.program = programme(); }
     if (cr && cr.slot.lanes) base.lanes = cr.slot.lanes;
-    if (cr && cr.slot.opsPlan) base.opsPlan = cr.slot.opsPlan;
+    if (plan) base.opsPlan = plan;
     return base;
   }
   confirmBtn.addEventListener('click', function () {
@@ -795,6 +1022,8 @@
       + (Number(r.price) > 0 ? '<p class="fg-rise" style="--i:4">Montant estimé <b>' + esc(euros(r.price)) + '</b>, à régler sur place.</p>' : '')
       + (contact && contact.phone ? '<p class="fg-rise" style="--i:5">Une question ? ' + esc(contact.phone) + (contact.email ? ' · ' + esc(contact.email) : '') + '</p>' : '')
       + (!EMBED && meta && meta.center && meta.center.identity && meta.center.identity.siteUrl ? '<div class="fg-actions fg-actions--center fg-rise" style="--i:6"><a class="fg-btn fg-btn--ghost" href="' + esc(meta.center.identity.siteUrl) + '">Retour au site</a></div>' : '');
+    var burst = $('#finBurst');
+    if (burst && !reduced) { burst.innerHTML = ''; for (var i = 0; i < 14; i += 1) { var s = doc.createElement('i'); s.style.setProperty('--a', (i * 360 / 14) + 'deg'); s.style.setProperty('--d', (60 + (i % 3) * 30) + 'px'); s.style.setProperty('--t', (i % 2 ? 0.05 : 0) + 's'); burst.appendChild(s); } }
     aller('fin');
     // La mesure de conversion pour le site hote : relue dans le dossier cree,
     // sans aucune donnee personnelle.
@@ -804,13 +1033,29 @@
     } });
   }
 
+  /* --- La photo qui suit la souris (ordinateur seulement) ---------------------- */
+
+  if (finPointer && !reduced) {
+    var rafPara = 0;
+    doc.addEventListener('pointermove', function (e) {
+      if (rafPara) return;
+      rafPara = requestAnimationFrame(function () {
+        rafPara = 0;
+        var x = (e.clientX / window.innerWidth - 0.5).toFixed(3);
+        var y = (e.clientY / window.innerHeight - 0.5).toFixed(3);
+        root.style.setProperty('--px', x);
+        root.style.setProperty('--py', y);
+      });
+    });
+  }
+
   /* --- Le demarrage ----------------------------------------------------------------- */
 
   function demarrer() {
     decouperTitres();
     rendreEtapes();
     rendrePax(0);
-    var q = new URLSearchParams(); q.set('centerId', CENTER);
+    var q = new URLSearchParams(); q.set('centerId', CENTER); q.set('calendar', '45');
     fetch('/api/public-booking-meta?' + q.toString(), { credentials: 'omit' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
@@ -824,16 +1069,17 @@
         }
         // Le premier jour ouvert : aujourd hui si le centre est ouvert, sinon
         // le prochain.
-        var jours = joursProposes();
-        var premier = jours.filter(function (x) { return x.ouvert; })[0];
+        var premier = joursProposes().filter(function (x) { return x.ouvert; })[0];
         if (premier) choisirJour(premier.date);
         rendrePax(0);
         rendreActivites();
         rendreFormules();
         rendreCompteur(false);
+        choisirOnglet('activites');
+        body.classList.add('is-ready');
         posterHauteur();
       })
-      .catch(function (err) { direErreur(err.message || 'Le catalogue ne répond pas. Réessayez dans un instant.'); });
+      .catch(function (err) { direErreur(err.message || 'Le catalogue ne répond pas. Réessayez dans un instant.'); body.classList.add('is-ready'); });
     posterHauteur();
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', demarrer); else demarrer();

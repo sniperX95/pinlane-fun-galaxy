@@ -28,6 +28,7 @@ const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
 const {
   attenteDuSousGroupe,
+  intersticesDuGroupe,
   buildDefaultAnchorTimes,
   evaluateAnchoredCombination,
   getFormulaAnchorAvailability,
@@ -336,6 +337,10 @@ module.exports = async (req, res) => {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
+    // `softReserve=1` (formulaire Fun Galaxy) : le temps des activites libres
+    // est un conseil, pas un interdit ; les heures qui le rognent restent
+    // valables avec un avertissement, et la visite finit a la fermeture.
+    const reserveSoft = url.searchParams.get('softReserve') === '1';
     let preferredTimes = {};
     try {
       preferredTimes = JSON.parse(String(url.searchParams.get('preferredTimes') || '{}')) || {};
@@ -558,12 +563,23 @@ module.exports = async (req, res) => {
           Math.max(0, Math.round(Number(program.waitMinutes) || 0)),
           Math.max(0, Math.round(Number(creux && creux.minutes) || 0)),
         );
-        return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert);
+        // Les trous entre les activites a creneau absorbent le libre : meme
+        // mesure que la reserve du moteur.
+        const trous = intersticesDuGroupe(plan && plan.resourceBlocks);
+        return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert - trous);
       };
       const respondVisit = (slots, message, extra = {}) => {
         const creneaux = (Array.isArray(slots) ? slots : []).map((slot) => {
           const fin = finDeVisiteMinutes(slot);
-          return fin === null ? slot : { ...slot, visitEndTime: numToTime(fin / 60) };
+          if (fin === null) return slot;
+          // EN MODE SOUPLE, la visite peut deborder la fermeture : la fin
+          // affichee s arrete a la fermeture, et le manque est dit a part
+          // (`visitShortfallMinutes`), pour que l ecran l explique.
+          const fermeture = Math.round(Number(schedule.close) * 60);
+          if (reserveSoft && Number.isFinite(fermeture) && fermeture > 0 && fin > fermeture) {
+            return { ...slot, visitEndTime: numToTime(fermeture / 60), visitEndsAtClose: true, visitShortfallMinutes: fin - fermeture };
+          }
+          return { ...slot, visitEndTime: numToTime(fin / 60) };
         });
         sendJson(res, 200, {
           ok: true,
@@ -622,6 +638,7 @@ module.exports = async (req, res) => {
             reserveMinutes: program.freeMinutes,
             reserveLabel: program.freeLabel,
             reserveWaitMinutes: program.waitMinutes,
+            reserveSoft,
           }, engineContext);
         } catch (error) {
           anchorMeta = null;

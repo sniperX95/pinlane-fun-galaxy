@@ -22,6 +22,12 @@
 // Ce gate prouve les deux cotes : la reserve mord quand il y a des activites
 // libres, et RIEN ne change sans elles.
 //
+// LES TROUS ABSORBENT LE LIBRE (2026-09-22). Quand deux activites a creneau
+// laissent un trou entre elles, le minigolf s y joue : la reserve ne se compte
+// que pour ce qui ne tient pas dans ce trou. Sans cela, un laser a 14:00 et un
+// bowling a 21:00 se refusaient « faute de temps pour le minigolf » alors que
+// sept heures etaient libres. Section [5], avec sa contre-epreuve.
+//
 // Lancement : node scripts/visit-free-time-check.js
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
@@ -75,10 +81,13 @@ function appel(api, params) {
   });
 }
 
-function disponibilite(api, programme) {
-  return appel(api, new URLSearchParams({
+function disponibilite(api, programme, poses) {
+  const params = new URLSearchParams({
     centerId: CENTER_ID, date: DATE, type: 'visite', pax: String(PAX), program: JSON.stringify(programme),
-  }));
+  });
+  if (poses && poses.preferredTimes) params.set('preferredTimes', JSON.stringify(poses.preferredTimes));
+  if (poses && poses.laserGameTimes) params.set('laserGameTimes', JSON.stringify(poses.laserGameTimes));
+  return appel(api, params);
 }
 
 const minutes = (texte) => { const [h, m] = String(texte).split(':').map(Number); return h * 60 + m; };
@@ -147,7 +156,50 @@ async function main() {
   const dernierLibre = creneaux[creneaux.length - 1];
   record('la derniere arrivee laisse le temps de l activite', Boolean(dernierLibre) && minutes(dernierLibre.opsPlan.endTime) <= fermeture, `${dernierLibre?.time} -> ${dernierLibre?.opsPlan?.endTime}`);
 
+  section('[5] Un trou entre deux activites a creneau absorbe le libre');
+  // Bowling 1 h + laser 1 partie + minigolf, le meme jeudi. Le bowling a sa
+  // derniere heure possible SANS libre (fermeture - 1 h).
+  const TROIS = [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }, { activityId: libre.id }];
+  const ouverture = minutes(horaire.open);
+  const laserTot = heure(Math.ceil(ouverture / GRILLE) * GRILLE);
+  const laserColle = heure(minutes(dernierSansLibre) - GRILLE);
+  const bowlingTard = dernierSansLibre;
+  const heuresBowling = (body) => ((body.anchors?.activities || []).find((a) => a.activityId === 'bowling')?.times || []);
+  const loin = await disponibilite(api, TROIS, { preferredTimes: { laser_game: laserTot }, laserGameTimes: [laserTot] });
+  const bowlingLoin = heuresBowling(loin.body).find((item) => item.time === bowlingTard) || null;
+  record(`laser pose a ${laserTot} : le bowling a ${bowlingTard} est offert (le minigolf tient dans le trou)`, Boolean(bowlingLoin) && bowlingLoin.ok !== false, JSON.stringify(bowlingLoin));
+  const planLoin = await disponibilite(api, TROIS, { preferredTimes: { laser_game: laserTot, bowling: bowlingTard }, laserGameTimes: [laserTot] });
+  const creneauLoin = (planLoin.body.slots || [])[0] || null;
+  record(`et la visite finit avec le bowling (${heure(minutes(bowlingTard) + dureeBowling)}), sans y ajouter le minigolf deja joue`, Boolean(creneauLoin) && creneauLoin.visitEndTime === heure(minutes(bowlingTard) + dureeBowling), `visitEndTime=${creneauLoin && creneauLoin.visitEndTime}`);
+  const colle = await disponibilite(api, TROIS, { preferredTimes: { laser_game: laserColle }, laserGameTimes: [laserColle] });
+  const bowlingColle = heuresBowling(colle.body).find((item) => item.time === bowlingTard) || null;
+  record(`laser pose a ${laserColle} (trou de 5 min) : le bowling a ${bowlingTard} reste refuse, avec la raison du minigolf`, Boolean(bowlingColle) && bowlingColle.ok === false && new RegExp(libre.name.split(' ')[0], 'i').test(bowlingColle.reason || ''), JSON.stringify(bowlingColle));
+  const libreSansPose = await disponibilite(api, TROIS);
+  const bowlingLibre = heuresBowling(libreSansPose.body).find((item) => item.time === bowlingTard) || null;
+  record(`sans rien poser, le bowling a ${bowlingTard} est offert : le moteur place le laser assez tot pour le minigolf`, Boolean(bowlingLibre) && bowlingLibre.ok !== false, JSON.stringify(bowlingLibre));
+  const planLibre = await disponibilite(api, TROIS, { preferredTimes: { bowling: bowlingTard } });
+  const creneauLibre = (planLibre.body.slots || [])[0] || null;
+  const laserPlace = creneauLibre ? (creneauLibre.opsPlan.resourceBlocks || []).find((b) => b.activityId === 'laser_game') : null;
+  record('et la proposition qui suit la pose tient avant la fermeture, laser place avant le bowling', Boolean(creneauLibre) && Boolean(laserPlace) && minutes(laserPlace.endTime) <= minutes(bowlingTard) && minutes(creneauLibre.visitEndTime) <= fermeture, `laser ${laserPlace && laserPlace.startTime}, fin ${creneauLibre && creneauLibre.visitEndTime}`);
+
   section('Contre-epreuve par mutation du code de production');
+  const MOTEUR = path.join(ROOT, 'lib/ops-engine.js');
+  const moteurOriginal = fs.readFileSync(MOTEUR, 'utf8');
+  const ancreTrous = ' - couvert - intersticesDuGroupe(raw.resourceBlocks));';
+  const nombreTrous = moteurOriginal.split(ancreTrous).length - 1;
+  record('contre-epreuve montable : la reserve du moteur deduit les trous a un seul endroit', nombreTrous === 1, `${nombreTrous} occurrence(s)`);
+  if (nombreTrous === 1) {
+    try {
+      fs.writeFileSync(MOTEUR, moteurOriginal.split(ancreTrous).join(' - couvert);'));
+      const apiSansTrous = chargerApi();
+      const muteLoin = await disponibilite(apiSansTrous, TROIS, { preferredTimes: { laser_game: laserTot }, laserGameTimes: [laserTot] });
+      const muteBowling = heuresBowling(muteLoin.body).find((item) => item.time === bowlingTard) || null;
+      record(`sans la deduction des trous, le bowling a ${bowlingTard} se refuse de nouveau : ce gate ROUGIRAIT`, Boolean(muteBowling) && muteBowling.ok === false, JSON.stringify(muteBowling));
+    } finally {
+      fs.writeFileSync(MOTEUR, moteurOriginal);
+    }
+  }
+  record('lib/ops-engine.js restaure a l identique', fs.readFileSync(MOTEUR, 'utf8') === moteurOriginal);
   const original = fs.readFileSync(API, 'utf8');
   // La reserve part par DEUX chemins : la grille des heures et la combinaison
   // par defaut. La contre-epreuve doit couper les deux, sinon elle ne prouve

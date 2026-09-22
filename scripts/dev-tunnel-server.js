@@ -46,7 +46,7 @@ database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuse
 const availability = require('../api/public-availability.js');
 // Le calendrier des prochains jours, calcule par le VRAI code du serveur (feries,
 // conges scolaires, horaires de vacances du centre reel), sans base : blocages vides.
-const { buildCalendar } = require('../api/public-booking-meta.js').__test;
+const { buildCalendar, calendarFromParam } = require('../api/public-booking-meta.js').__test;
 
 const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
@@ -83,7 +83,7 @@ function brandingFor(mode) {
 // (api/public-booking-meta.js) : grilles reelles (lib/booking-config), identite
 // et contact reels du centre (ops-knowledge/centers.json). Seule la liste des
 // activites est un mock, faute de base.
-function metaPayload(brandMode, calendarDays = 0) {
+function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
   const info = FUN_GALAXY_CENTER.publicInfo || {};
   const bowling = FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.bowling ? FUN_GALAXY_CENTER.resources.bowling : {};
   return {
@@ -107,7 +107,7 @@ function metaPayload(brandMode, calendarDays = 0) {
         laserArenaCapacity: Number(FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.laser && FUN_GALAXY_CENTER.resources.laser.weaponCount) || null,
       },
       day: { date: DATE, open: true, schedule: { open: 10, close: 24, label: '10h - Minuit' }, closedLabel: '', closedWindows: [], unavailableFormulaIds: [], unavailableActivityIds: [], unavailableFormulaReason: {} },
-      ...(calendarDays ? { calendar: buildCalendar([], calendarDays, FUN_GALAXY_CENTER, 'libramont') } : {}),
+      ...(calendarDays ? { calendar: buildCalendar([], calendarDays, FUN_GALAXY_CENTER, 'libramont', calendarFrom) } : {}),
     },
   };
 }
@@ -202,8 +202,9 @@ function createServer(options = {}) {
     }
     if (url.pathname === '/api/public-booking-meta') {
       const calendarDays = Math.min(90, Math.max(0, Math.trunc(Number(url.searchParams.get('calendar')) || 0)));
+      const calendarFrom = calendarFromParam(url.searchParams.get('calendarFrom'));
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify(metaPayload(brandMode, calendarDays)));
+      res.end(JSON.stringify(metaPayload(brandMode, calendarDays, calendarFrom)));
       return;
     }
     if (url.pathname === '/api/public-availability') { try { await availability(req, res); } catch (error) { res.writeHead(500); res.end(JSON.stringify({ ok: false })); } return; }

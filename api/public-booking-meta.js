@@ -411,6 +411,9 @@ module.exports = async (req, res) => {
   // absente sans le parametre.
   const rawCalendar = Number(url.searchParams.get('calendar') || 0);
   const calendarDays = Number.isFinite(rawCalendar) ? Math.min(90, Math.max(0, Math.trunc(rawCalendar))) : 0;
+  // `calendarFrom=YYYY-MM-DD` : le premier jour servi (au plus tot aujourd hui),
+  // pour qu un calendrier par mois se demande mois par mois.
+  const calendarFrom = calendarFromParam(url.searchParams.get('calendarFrom'));
   // Rate limit UNIQUEMENT sur le chemin date : l'appel de boot (sans date) reste
   // non limite. Meme budget que api/public-availability.
   if (dayDate && enforceRateLimit(req, res, { scope: 'public-booking-meta-day', limit: 60, windowMs: 60_000 })) {
@@ -490,7 +493,7 @@ module.exports = async (req, res) => {
       try { day = buildDayStatus(blocks, dayDate, center, centerId); } catch (error) { day = null; }
     }
     if (calendarDays) {
-      try { calendar = buildCalendar(blocks, calendarDays, center, centerId); } catch (error) { calendar = null; }
+      try { calendar = buildCalendar(blocks, calendarDays, center, centerId, calendarFrom); } catch (error) { calendar = null; }
     }
   }
 
@@ -591,8 +594,22 @@ module.exports = async (req, res) => {
 // Les N prochains jours, chacun avec son verdict (buildDayStatus) et sa
 // periode. Le libelle de periode vient du calendrier (ferie legal, conge
 // scolaire FWB, jour force par le centre), jamais du texte libre du staff.
-function buildCalendar(blocks, days, center, centerId) {
-  const [y, m, d] = todayStr().split('-').map(Number);
+// Le premier jour demande, s il est un VRAI jour entre 2000 et 2099 : le 31
+// fevrier est refuse (Date.parse le decalait au 3 mars), tout le reste aussi.
+// Refuse, il vaut '' et le calendrier part d aujourd hui.
+function calendarFromParam(raw) {
+  const texte = String(raw || '');
+  const m = /^(20[0-9]{2})-([0-9]{2})-([0-9]{2})$/.exec(texte);
+  if (!m) return '';
+  const jour = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return jour.toISOString().slice(0, 10) === texte ? texte : '';
+}
+
+function buildCalendar(blocks, days, center, centerId, from = '') {
+  // Jamais avant aujourd hui : un jour passe n a pas de verdict utile.
+  const today = todayStr();
+  const depart = from && from > today ? from : today;
+  const [y, m, d] = depart.split('-').map(Number);
   const out = [];
   for (let i = 0; i < days; i += 1) {
     const jour = new Date(Date.UTC(y, m - 1, d + i));
@@ -617,4 +634,4 @@ function buildCalendar(blocks, days, center, centerId) {
 // Expose pour les gates (scripts/availability-day-check.js,
 // scripts/wallonia-calendar-check.js, le mock du serveur de dev) : le verdict
 // se teste unitairement, sans reseau ni base.
-module.exports.__test = { buildDayStatus, buildCalendar };
+module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam };

@@ -22,7 +22,9 @@
 //       conge d automne ouvre 10h-22h a Libramont, un lundi ordinaire est ferme,
 //       Noel (un vendredi de vacances) ouvre 10h-minuit ;
 //   [G] le calendrier servi au formulaire (calendar=N) porte, jour par jour,
-//       l ouverture, les horaires et la periode.
+//       l ouverture, les horaires et la periode ; `calendarFrom` le fait partir
+//       d un autre jour (le calendrier par mois du formulaire), n accepte qu un
+//       VRAI jour et jamais avant aujourd hui.
 //
 // Usage : node scripts/wallonia-calendar-check.js
 'use strict';
@@ -132,6 +134,18 @@ function plusJours(dateStr, n) {
   const automne = calendrier.filter((j) => j.date >= '2026-10-19' && j.date <= '2026-11-01');
   ok(automne.length === 0 || automne.every((j) => j.holiday && /automne|Toussaint/.test(j.holiday.label)), '[G] les jours du conge d automne portent leur periode', automne.length ? `${automne.length} jours, ${automne[0].holiday && automne[0].holiday.label}` : 'hors fenetre');
   ok(calendrier.every((j) => typeof j.open === 'boolean' && (j.schedule === null || (typeof j.schedule.open === 'number' && typeof j.schedule.label === 'string'))), '[G] chaque jour porte ouverture et horaires');
+  const { calendarFromParam } = meta.__test;
+  const essais = { '2027-03-01': '2027-03-01', '2028-02-29': '2028-02-29', '2027-02-29': '', '2027-02-31': '', '2027-13-01': '', '1999-12-31': '', '2100-01-01': '', '2027-3-1': '', 'abc': '', '': '' };
+  const rates = Object.entries(essais).filter(([brut, attendu]) => calendarFromParam(brut) !== attendu);
+  ok(rates.length === 0 && calendarFromParam(null) === '', '[G] calendarFrom n accepte qu un VRAI jour entre 2000 et 2099 (le 31 fevrier et le 29 fevrier 2027 sont refuses)', rates.map(([b]) => b).join(', ') || `${Object.keys(essais).length} cas`);
+  const [ay, am] = today.split('-').map(Number);
+  const dansSixMois = new Date(Date.UTC(ay, am - 1 + 6, 1)).toISOString().slice(0, 10);
+  const mois = meta.__test.buildCalendar([], 31, libramont, 'libramont', dansSixMois);
+  const suite = mois.every((j, i) => j.date === new Date(Date.UTC(ay, am - 1 + 6, 1 + i)).toISOString().slice(0, 10));
+  ok(mois.length === 31 && mois[0].date === dansSixMois && suite, '[G] calendarFrom sert 31 jours d affilee a partir du jour demande (six mois plus loin)', `${mois[0] && mois[0].date} a ${mois[30] && mois[30].date}`);
+  ok(mois.every((j) => j.open === (cfg.getSchedule(j.date, libramont) !== null)), '[G] ces jours-la, l ouverture servie est celle des horaires du centre (feries et conges compris)');
+  const passe = meta.__test.buildCalendar([], 3, libramont, 'libramont', '2020-01-01');
+  ok(passe[0] && passe[0].date === today, '[G] un calendarFrom passe repart d aujourd hui', passe[0] && passe[0].date);
 
   console.log('');
   if (failures) { console.error(`wallonia-calendar-check: ${failures} verification(s) en echec.`); process.exit(1); }

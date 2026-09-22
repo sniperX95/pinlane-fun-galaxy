@@ -275,7 +275,7 @@ async function main() {
     const dureeLongue = dureeDe(plusLongue.activityId);
     const sansDeduction = await withSourceMutation(
       path.join(ROOT, 'api/public-availability.js'),
-      'return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert);',
+      'return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert - trous);',
       'return Math.max(finPlan, debut) + reserveAffichee;',
       async () => {
         const neuf = charger();

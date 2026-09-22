@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260922a">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260922b">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -30,10 +30,12 @@
     <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
     <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 14.4c2.9.2 5 2.4 5 5.6"/></symbol>
     <symbol id="i-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/></symbol>
-    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7zM4 3l.5 1.5L6 5l-1.5.5L4 7l-.5-1.5L2 5l1.5-.5z"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
     <!-- Les activites -->
+    <symbol id="i-matin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v3M4.9 7.9l2.1 2.1M2 15h3M19 15h3M17 10l2.1-2.1M7 18a5 5 0 0 1 10 0M3 21h18"/></symbol>
+    <symbol id="i-jour" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
+    <symbol id="i-soir" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
     <symbol id="a-bowling" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5c-2.6 0-4 1.6-4 4 0 2.6 2 4.4 2 8s-4 6-4 12c0 6 2 12 6 12s6-6 6-12-4-8.4-4-12 2-5.4 2-8c0-2.4-1.4-4-4-4z"/><path d="M27 4c-2.6 0-4 1.6-4 4 0 2.6 2 4.4 2 8s-4 6-4 12" opacity=".55"/><circle cx="33" cy="32" r="10"/><circle cx="31" cy="29" r="1.2" fill="currentColor"/><circle cx="35.5" cy="28.5" r="1.2" fill="currentColor"/><circle cx="34" cy="33" r="1.2" fill="currentColor"/></symbol>
     <symbol id="a-laser" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="9"/><circle cx="24" cy="24" r="2.5" fill="currentColor"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7"/></symbol>
     <symbol id="a-minigolf" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 42V7l14 5-14 5"/><path d="M8 42c0-3.3 6-6 14-6s14 2.7 14 6"/><circle cx="34" cy="36" r="2.4"/></symbol>
@@ -53,8 +55,9 @@
 </header>
 
 <main class="fg-shell" id="fg">
-  <!-- Deux halos de couleur qui derivent lentement derriere les scenes :
-       deux degrades, un transform chacun, rien d autre. -->
+  <!-- Deux halos de couleur qui derivent lentement derriere les scenes (page
+       autonome seulement : dans le cadre du client ils dessineraient un
+       rectangle). Deux degrades, un transform chacun, rien d autre. -->
   <div class="fg-glow" aria-hidden="true"><i></i><i></i></div>
   <p class="fg-alert" id="fgAlert" role="alert" hidden></p>
   <div class="fg-stage" id="fgStage">
@@ -73,20 +76,35 @@
           <div class="fg-field fg-rise" style="--i:1">
             <span class="fg-field__label" id="l-day">Quel jour ?</span>
             <div class="fg-day">
-              <button type="button" class="fg-day__btn" id="dayBtn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="l-day dayBtn">
+              <button type="button" class="fg-day__btn" id="dayBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="dayPop" aria-labelledby="l-day dayBtn">
                 <svg aria-hidden="true"><use href="#i-calendar"/></svg>
                 <span id="dayLabel">Choisir un jour</span>
                 <svg class="chev" aria-hidden="true"><use href="#i-chevron"/></svg>
               </button>
-              <ul class="fg-day__list" id="dayList" role="listbox" aria-labelledby="l-day" hidden></ul>
+              <!-- Le calendrier, mois par mois : jours fermes grises, feries et
+                   conges marques, l horaire du jour sous la grille. -->
+              <div class="fg-cal" id="dayPop" role="dialog" aria-label="Choisir un jour" hidden>
+                <div class="fg-cal__head">
+                  <button type="button" class="fg-cal__nav" id="calPrev" aria-label="Mois précédent"><svg aria-hidden="true"><use href="#i-back"/></svg></button>
+                  <span class="fg-cal__title" id="calTitle" aria-live="polite"></span>
+                  <button type="button" class="fg-cal__nav" id="calNext" aria-label="Mois suivant"><svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+                </div>
+                <div class="fg-cal__grid" id="calGrid" role="grid" aria-labelledby="calTitle"></div>
+                <p class="fg-cal__info" id="calInfo" aria-live="polite"></p>
+                <p class="fg-cal__legend"><i class="fg-cal__dot fg-cal__dot--vac"></i>Congé scolaire <i class="fg-cal__dot fg-cal__dot--ferie"></i>Férié <span>· jours grisés : fermé</span></p>
+              </div>
             </div>
             <span class="fg-field__hint fg-field__hint--day" id="dayHint" aria-live="polite"></span>
           </div>
           <div class="fg-field fg-rise" style="--i:2">
-            <span class="fg-field__label" id="l-pax">Vous êtes combien ?</span>
-            <div class="fg-stepper" role="group" aria-labelledby="l-pax">
+            <label class="fg-field__label" for="paxInput">Vous êtes combien ?</label>
+            <div class="fg-stepper" role="group" aria-label="Nombre de personnes">
               <button type="button" class="fg-stepper__btn" id="paxMinus" aria-label="Une personne de moins">&minus;</button>
-              <div class="fg-stepper__value" id="paxValue"><output id="paxOut" aria-live="polite">4 personnes</output></div>
+              <div class="fg-stepper__value" id="paxValue">
+                <input class="fg-stepper__input" id="paxInput" type="number" inputmode="numeric" min="1" max="240" step="1" value="4" autocomplete="off">
+                <span class="fg-stepper__unit" aria-hidden="true">personnes</span>
+                <output id="paxOut" class="sr-only" aria-live="polite" for="paxInput">4 personnes</output>
+              </div>
               <button type="button" class="fg-stepper__btn" id="paxPlus" aria-label="Une personne de plus">+</button>
             </div>
             <span class="fg-field__hint" id="paxHint"></span>
@@ -192,7 +210,7 @@
       <div class="fg-art"><img data-src="/assets/fungalaxy/fun-run-800.webp" data-srcset="/assets/fungalaxy/fun-run-800.webp 800w, /assets/fungalaxy/fun-run-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title fg-title--spark" id="t-ok"><svg class="spark" aria-hidden="true"><use href="#i-spark"/></svg><span data-words>Tout est bon&nbsp;?</span></h2>
+        <h2 class="fg-title" id="t-ok"><span data-words>Tout est bon&nbsp;?</span></h2>
         <div class="fg-recap" id="recap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:520px">
           <button type="button" class="fg-btn fg-btn--shine" id="confirmBtn">Confirmer la réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
@@ -217,6 +235,6 @@
   </div>
 </main>
 
-<script src="/assets/fungalaxy-booking.js?v=20260922a" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260922b" defer></script>
 </body>
 </html>

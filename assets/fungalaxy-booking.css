@@ -38,6 +38,7 @@
   --fg-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --fg-radius: 6px;
   --fg-gutter: clamp(20px, 5vw, 72px);
+  --fg-top-h: 94px; /* bandeau autonome : 18 px de marge + logo de 76 px */
   --px: 0;
   --py: 0;
   color-scheme: dark;
@@ -272,11 +273,16 @@
   max-width: 1280px;
   margin: 0 auto;
 }
-.fg-scene--split .fg-scene__body { padding-right: calc(52% + 12px); }
+/* La colonne de texte s arrete la ou la photo commence, quelle que soit la
+   largeur : la photo est posee sur 52 % de l ECRAN, la colonne se mesure
+   donc sur l ecran aussi (le corps n a plus de largeur maximale ici), et
+   son bord gauche reste celui du bloc centre de 1280 px. Sur un ecran de
+   2560 px, l ancienne colonne montait de 13 px sur la photo. */
+.fg-scene--split .fg-scene__body { max-width: none; padding-left: max(var(--fg-gutter), calc(50% - 640px)); padding-right: calc(52% + 12px); }
 /* A cote d une photo, la colonne de texte est etroite : le titre descend d un
    cran pour que « Réserve-t-on ? » tienne sur sa ligne. */
 .fg-scene--split .fg-title { font-size: clamp(40px, 5.4vw, 66px); }
-.fg-scene--split.fg-scene--art-left .fg-scene__body { padding-right: var(--fg-gutter); padding-left: calc(52% + 12px); }
+.fg-scene--split.fg-scene--art-left .fg-scene__body { padding-right: max(var(--fg-gutter), calc(50% - 640px)); padding-left: calc(52% + 12px); }
 .fg-scene--center .fg-scene__body { text-align: center; }
 
 /* --- Le fil des etapes ------------------------------------------------------ */
@@ -1192,16 +1198,19 @@
 /* --- Etape 5 : le recapitulatif ------------------------------------------------ */
 
 .fg-recap { display: grid; gap: 0; max-width: 520px; }
+/* Une rangee : l icone, le texte, parfois une etiquette. Le texte se replie
+   sur lui-meme (min-width: 0), jamais sous l icone : une rangee qui passait
+   a la ligne laissait l icone seule au-dessus sur telephone. */
 .fg-recap__row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
+  gap: 14px;
   padding: 9px 0;
   font-size: 16px;
   font-weight: 600;
 }
 .fg-recap__row svg { width: 20px; height: 20px; color: var(--fg-muted); flex: none; }
+.fg-recap__row > span { min-width: 0; }
 .fg-recap__sep { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 12px 0; }
 .fg-recap__item {
   display: grid;
@@ -1313,6 +1322,17 @@
 }
 .fg-alert[hidden] { display: none; }
 
+/* --- Grands ecrans ------------------------------------------------------------- */
+
+/* Page autonome : la scene occupe au moins la fenetre sous le bandeau, la
+   photo avec elle (elle couvre la scene). Sinon un ecran de 1080 px voit la
+   photo s arreter a 650 px et du noir dessous. Jamais dans le cadre du
+   client : la sa hauteur suit le contenu, un plancher en vh s y mordrait
+   la queue. */
+@media (min-width: 901px) {
+  .fg:not(.is-embed) .fg-scene { min-height: max(560px, calc(100vh - var(--fg-top-h))); }
+}
+
 /* --- Ecrans etroits ------------------------------------------------------------ */
 
 @media (max-width: 1080px) {
@@ -1348,6 +1368,11 @@
   .fg-track { padding: 14px 14px 4px; }
   .fg-visit { padding: 14px; }
 }
+/* Telephone en paysage : 200 px de photo sur une fenetre de 390 px laissent
+   le titre sous le pli. La bande descend a 120 px. */
+@media (max-width: 900px) and (max-height: 520px) {
+  .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { height: 120px; }
+}
 @media (max-width: 560px) {
   .fg-steps { max-width: none; margin-bottom: 26px; }
   .fg-steps__item { font-size: 9px; letter-spacing: 0.08em; }
@@ -1375,8 +1400,15 @@
   .fg-visit__step { grid-template-columns: 48px 1fr; }
   .fg-total { grid-template-columns: 1fr; }
   .fg-total__pay { border-left: 0; padding-left: 0; }
+  .fg-total__br { display: none; }
   .fg-btn { padding: 0 22px; font-size: 13px; }
   .fg-glow i { width: 120vw; height: 120vw; }
+}
+/* Sous 360 px (iPhone SE de premiere generation, petits Android), deux
+   cartes par rangee laissent 49 px a une pastille : « 2 heures » n y tient
+   pas. Une carte par rangee, et les pastilles respirent. */
+@media (max-width: 359px) {
+  .fg-grid { grid-template-columns: 1fr; }
 }
 
 /* --- Moins de mouvement -------------------------------------------------------- */

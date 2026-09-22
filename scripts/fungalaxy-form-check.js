@@ -871,6 +871,14 @@ async function main() {
     };
     let a = await accord();
     ok(a.ecart <= 8, '[F] la hauteur du cadre suit le corps du formulaire (ecart <= 8 px)', JSON.stringify(a));
+    // Le cadre reserve le samedi du mock, pas « aujourd hui » : le soir, les
+    // heures du jour sont passees, la piste du bowling arrive sans case
+    // ouverte et « Garder » reste gris (rouge vu a 21:25 le 2026-09-22 sur le
+    // code qui etait vert a 19:50). Un gate ne depend pas de l heure qu il est.
+    await f.click('#dayBtn');
+    ok(await allerAuMois(f, mock.DATE), '[F] le mois du samedi du mock s affiche dans le cadre');
+    await f.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+    ok(await attendre(f, (l) => document.querySelector('#dayPop').hidden && document.querySelector('#dayLabel').textContent.trim() === l, 3000, jourLong(mock.DATE)), '[F] le samedi du mock est retenu dans le cadre', mock.DATE);
     await f.click('#goActivities');
     ok(await attendre(pageHote, () => window.__ecrans > 0, 5000), '[F] changer d ecran previent l hote (pinlane:screen)');
     ok(await (async () => {

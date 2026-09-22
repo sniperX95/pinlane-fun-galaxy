@@ -5220,8 +5220,12 @@ function renderProgramSummary() {
     if (activity.priceType === 'grid_fun_run') {
       const minutes = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
       const option = FUN_RUN_OPTIONS.find(item => item.minutes === minutes) || FUN_RUN_OPTIONS[0];
-      total += option.price;
-      return { id: activity.id, name: activity.name, detail: option.label };
+      // Un groupe plus grand que l'installation TOURNE (Fun Run : 5 joueurs
+      // a la fois) : autant de sessions, autant de fois le prix, et le detail
+      // le dit pour que le comptoir et l'ecran comptent pareil.
+      const sessions = typeof getActivitySessionCount === 'function' ? getActivitySessionCount(activity, pax) : 1;
+      total += option.price * sessions;
+      return { id: activity.id, name: activity.name, detail: sessions > 1 ? `${sessions} sessions de ${option.label}` : option.label };
     }
     // Le compte d'enfants declare remplace le groupe entier dans le calcul
     // (meme regle que le serveur : borne au groupe, absent = tout le monde).

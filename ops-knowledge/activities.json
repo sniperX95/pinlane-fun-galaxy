@@ -343,8 +343,9 @@
         "order": 9,
         "priceType": "grid_fun_run",
         "unitLabel": "la session",
-        "maxPax": 5,
-        "note": "5 joueurs max."
+        "units": 1,
+        "capacityPerUnit": 5,
+        "note": "5 joueurs par session"
       }
     }
   ]

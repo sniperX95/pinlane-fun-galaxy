@@ -619,10 +619,15 @@ async function main() {
     const carte = (id, liste) => (liste || cartes).find((c) => c.id === id) || {};
     ok(carte('bowling').prix === `Dès ${euros(minPiste)} / piste`, '[B] bowling : « des » = minimum de la grille servie', carte('bowling').prix);
     ok(carte('laser_game').prix === `Dès ${euros(minLaser)} / personne`, '[B] laser : « des » = minimum des parties servies', carte('laser_game').prix);
-    ok(carte('fun_run').prix === `Dès ${euros(minFunRun)} / session · 5 joueurs max.`, '[B] fun run : « des » = minimum des sessions servies', carte('fun_run').prix);
+    ok(carte('fun_run').prix === `Dès ${euros(minFunRun)} / session · 5 joueurs par session`, '[B] fun run : « des » = minimum des sessions servies, et la capacite D UNE session', carte('fun_run').prix);
     ok(carte('minigolf_blacklight').prix === 'Dès 10 € / personne · 12 niveaux', '[B] minigolf : tarif saisi par le centre, avec sa note', carte('minigolf_blacklight').prix);
     ok(carte('arcade_time').prix === 'Tarif sur place', '[B] arcades : sans tarif saisi, « Tarif sur place », jamais un chiffre', carte('arcade_time').prix);
-    ok(carte('fun_run').off === true && carte('bowling').off === false, '[B] Fun Run desactive a 6 joueurs (5 max), le bowling non');
+    // A SIX JOUEURS, LE FUN RUN NE DISPARAIT PLUS : IL TOURNE (demande de
+    // Movsar, 2026-09-23). Le catalogue declare une installation de 5 places,
+    // pas un maximum de groupe : six personnes font deux passages. Cette
+    // ligne disait l inverse jusqu au 2026-09-23 ; la regle a change, pas le
+    // gate qui la lisait. Le detail est prouve par funrun-rotation-check.
+    ok(carte('fun_run').off === false && carte('bowling').off === false, '[B] a 6 joueurs, le Fun Run reste choisissable (il tourne en 2 sessions), le bowling aussi');
     const grille = (liste, cle) => liste.map((o) => `${o.label}=${euros(o.price)}`).join(' | ');
     const pastillesDe = (c) => c.pastilles.map((p) => `${p.label}=${p.prix}`).join(' | ');
     ok(pastillesDe(carte('bowling')) === grille(meta.durationOptions) && pastillesDe(carte('laser_game')) === grille(meta.laserOptions) && pastillesDe(carte('fun_run')) === grille(meta.funRunOptions) && carte('minigolf_blacklight').pastilles.length === 0,
@@ -942,6 +947,116 @@ async function main() {
     const sautTel = await pageTel.evaluate(() => ({ meme: document.querySelector('#hourZone .fg-track[data-activity="bowling"] .fg-chip.is-on') === window.__qaCase, saut: window.__qaCase ? Math.abs(window.__qaCase.getBoundingClientRect().top + window.scrollY - window.__qaHaut) : -1 }));
     ok(sautTel.meme && sautTel.saut <= 1, '[G] sur telephone aussi, poser une heure ne fait rien sauter (le lien « laisser l equipe placer » avait deja sa place)', JSON.stringify(sautTel));
     await tel.close();
+
+    // =====================================================================
+    console.log('');
+    console.log('[I] FORMULES A L ECRAN, ET LE FUN RUN QUI TOURNE');
+    // Movsar, 2026-09-23 : « les formules sont super mal faites, c est moche,
+    // pas bien range, et ya pas les contraintes d indisponibilite visibles » ;
+    // « pixel game on peut pas le choisir quand ya plus de 5 joueurs, on peut
+    // faire plusieurs sessions, tournante ». La REGLE est prouvee sur une
+    // grille complete par fungalaxy-formules-check et funrun-rotation-check :
+    // ici, c est l ECRAN qui est mesure.
+    // =====================================================================
+    const vitrine = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const pageV = await vitrine.newPage();
+    await pageV.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    ok(await attendre(pageV, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), '[I] le catalogue est lu');
+    await pageV.click('#dayBtn');
+    ok(await allerAuMois(pageV, mock.DATE), '[I] le mois du samedi du mock s affiche');
+    await pageV.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+    await pageV.fill('#paxInput', '12');
+    await pageV.press('#paxInput', 'Enter');
+    await pageV.click('#goActivities');
+    ok(await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), '[I] ecran 2 atteint a 12 personnes');
+
+    // --- Le Fun Run tourne au lieu de disparaitre -------------------------
+    const funCarte = await pageV.evaluate(() => {
+      const c = document.querySelector('#gridAct .fg-card[data-activity="fun_run"]');
+      if (!c) return null;
+      return { off: c.classList.contains('is-off'), aria: c.getAttribute('aria-disabled'), tab: c.getAttribute('tabindex'), prix: (c.querySelector('.fg-card__price') || {}).textContent.trim() };
+    });
+    ok(Boolean(funCarte) && funCarte.off === false && !funCarte.aria && funCarte.tab === '0',
+      '[I] a 12 personnes, le Fun Run se choisit (avant, la carte etait eteinte)', JSON.stringify(funCarte));
+    ok(Boolean(funCarte) && /5 joueurs par session/.test(funCarte.prix), '[I] et la carte dit la capacite d une session', funCarte && funCarte.prix);
+    await pageV.click('#gridAct .fg-card[data-activity="fun_run"]');
+    ok(await attendre(pageV, () => { const n = document.querySelector('#gridAct li[data-activity="fun_run"] .fg-card__rot'); return n && n.getBoundingClientRect().height > 0; }, 3000),
+      '[I] cochee, la carte annonce la rotation sous ses pastilles');
+    const rot = await pageV.evaluate(() => (document.querySelector('#gridAct li[data-activity="fun_run"] .fg-card__rot') || {}).textContent || '');
+    ok(/3 sessions/.test(rot) && /5 joueurs/.test(rot), '[I] « 3 sessions, 5 joueurs a la fois » pour 12 personnes', rot.trim());
+    await pageV.click('#goHours');
+    ok(await attendre(pageV, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[I] l ecran des heures repond pour le Fun Run');
+    const visite = await pageV.evaluate(() => {
+      const v = document.querySelector('#planZone .fg-visit');
+      return { prix: (v.querySelector('.fg-visit__price') || {}).textContent || '', detail: Array.from(v.querySelectorAll('.fg-visit__step small')).map((n) => n.textContent.trim()).join(' | ') };
+    });
+    // 3 sessions de 15 min a 30 EUR : le montant vient du SERVEUR, jamais du
+    // navigateur. 90 EUR est le prix que le comptoir encaisserait.
+    ok(/90/.test(visite.prix), '[I] le serveur chiffre les trois sessions : 90 EUR', visite.prix.trim());
+    ok(/3 sessions de 15 min/.test(visite.detail), '[I] et la visite dit « 3 sessions de 15 min »', visite.detail);
+
+    // --- Les formules : familles, contraintes, refus explique -------------
+    await pageV.click('.fg-scene.is-active [data-back]');
+    ok(await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), '[I] retour a l ecran 2');
+    // Le groupe reste a 12 : la FORMULE 1 (6 minimum) les accepte, et les
+    // cinq formules d un autre jour se refusent pour le JOUR, pas pour le
+    // groupe. Le champ du nombre de personnes vit a l ecran 1 : on ne
+    // remonte pas le chercher pour rien.
+    await pageV.click('#tabFor');
+    ok(await attendre(pageV, () => document.querySelectorAll('#gridFor .fg-fam').length > 0, 4000), '[I] l onglet Formules affiche des familles');
+    const vue = await pageV.evaluate(() => ({
+      familles: Array.from(document.querySelectorAll('#gridFor .fg-fam')).map((s) => ({
+        titre: (s.querySelector('.fg-fam__title') || {}).textContent.trim(),
+        cartes: s.querySelectorAll('.fg-card--formule').length,
+      })),
+      cartes: Array.from(document.querySelectorAll('#gridFor .fg-card--formule')).map((c) => ({
+        id: c.dataset.formule,
+        refus: c.classList.contains('is-refus'),
+        aria: c.getAttribute('aria-disabled'),
+        tab: c.getAttribute('tabindex'),
+        regles: Array.from(c.querySelectorAll('.fg-for__rules i')).map((n) => n.textContent.trim()),
+        contenu: Array.from(c.querySelectorAll('.fg-for__list li')).map((n) => n.textContent.trim()),
+        pourquoi: (c.querySelector('.fg-for__off') || {}).textContent ? c.querySelector('.fg-for__off').textContent.trim() : '',
+        prix: (c.querySelector('.fg-for__price') || {}).textContent.trim(),
+      })),
+    }));
+    ok(vue.familles.length === 2, '[I] deux familles : les anniversaires et les offres speciales', JSON.stringify(vue.familles.map((f) => f.titre)));
+    ok(vue.familles[0].cartes === 8 && vue.familles[1].cartes === 6, '[I] 8 formules d anniversaire, 6 offres speciales', JSON.stringify(vue.familles.map((f) => f.cartes)));
+    ok(vue.familles.every((f) => /\d+ formules?$/.test(f.titre)), '[I] chaque famille annonce son compte', JSON.stringify(vue.familles.map((f) => f.titre)));
+    ok(vue.cartes.length === 14, '[I] les quatorze formules du catalogue sont a l ecran', String(vue.cartes.length));
+    ok(vue.cartes.every((c) => c.contenu.length > 0), '[I] chaque carte liste ce qu elle contient, ligne par ligne');
+    const f1 = vue.cartes.find((c) => c.id === 'f1');
+    ok(Boolean(f1) && f1.regles.includes('dès 6 personnes') && f1.regles.includes('hors vacances et fériés'),
+      '[I] FORMULE 1 affiche ses contraintes (groupe minimum, vacances)', JSON.stringify(f1 && f1.regles));
+    const btsV = vue.cartes.find((c) => c.id === 'bts');
+    ok(Boolean(btsV) && btsV.regles.includes('de 18h à 22h') && btsV.regles.some((r) => /mardi/.test(r)),
+      '[I] BACK TO SCHOOL affiche sa plage horaire et ses jours', JSON.stringify(btsV && btsV.regles));
+    // Un SAMEDI : les cinq formules d un autre jour se voient refusees, avec
+    // leur raison, et restent atteignables (jamais aria-disabled).
+    const refus = vue.cartes.filter((c) => c.refus).map((c) => c.id);
+    ok(['bts', 'css', 'kfd', 'hlg', 'ffm'].every((id) => refus.includes(id)),
+      '[I] un samedi, les cinq formules d un autre jour sont refusees a l ecran', refus.join(', '));
+    ok(vue.cartes.filter((c) => c.refus).every((c) => c.pourquoi.length > 10 && !c.aria && c.tab === '0'),
+      '[I] chaque refus dit pourquoi et reste atteignable au clavier (jamais aria-disabled)',
+      JSON.stringify(vue.cartes.filter((c) => c.refus).map((c) => c.pourquoi).slice(0, 2)));
+    ok(vue.cartes.filter((c) => !c.refus).every((c) => c.pourquoi === ''),
+      '[I] et aucune formule disponible ne porte de refus');
+    // Toucher un refus ne coche rien, mais fait battre la raison.
+    await pageV.click('#gridFor .fg-card--formule[data-formule="ffm"]');
+    const apresRefus = await pageV.evaluate(() => {
+      const c = document.querySelector('#gridFor .fg-card--formule[data-formule="ffm"]');
+      return { coche: c.getAttribute('aria-checked'), pulse: Boolean(c.querySelector('.fg-for__off.is-pulse')), compteur: (document.querySelector('#actCount') || {}).textContent.trim() };
+    });
+    ok(apresRefus.coche === 'false' && apresRefus.pulse && /^0/.test(apresRefus.compteur),
+      '[I] cliquer une formule refusee ne la coche pas et fait battre sa raison', JSON.stringify(apresRefus));
+    // Une formule valable se choisit et mene aux heures.
+    await pageV.click('#gridFor .fg-card--formule[data-formule="f1"]');
+    ok(await attendre(pageV, () => document.querySelector('#gridFor .fg-card--formule[data-formule="f1"]').getAttribute('aria-checked') === 'true' && !document.querySelector('#goHours').disabled, 3000),
+      '[I] une formule valable se coche et ouvre la suite');
+    await pageV.click('#goHours');
+    ok(await attendre(pageV, () => document.querySelectorAll('#hourZone .fg-chip').length > 0 && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000),
+      '[I] et la FORMULE 1 trouve des heures ce samedi');
+    await vitrine.close();
 
     // =====================================================================
     console.log('');

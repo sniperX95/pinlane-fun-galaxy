@@ -171,12 +171,27 @@ function resolveActivityUnitPrice(pricing, basePrice, { dateStr = '', startTime 
   return base;
 }
 
+// Combien de passages pour ce groupe sur une installation qui n'en prend
+// qu'une partie a la fois (Fun Run : 5 joueurs). MIROIR de
+// activitySessionCount de lib/activity-catalog : le serveur fait foi, le gate
+// funrun-rotation-check compare les deux au centime.
+function getActivitySessionCount(activity, pax) {
+  const capacity = Math.trunc(Number(activity && activity.capacityPerUnit) || 0);
+  const units = Math.trunc(Number(activity && activity.units) || 0);
+  if (capacity <= 0) return 1;
+  const places = capacity * (units > 0 ? units : 1);
+  const sessions = Math.ceil(Math.max(1, Math.trunc(Number(pax) || 1)) / places);
+  return Math.min(40, Math.max(1, sessions));
+}
+
 function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes = null, dateStr = '', startTime = '' } = {}) {
   if (!activity) return null;
   // Grille de session : le montant vient de la grille, pas d'un tarif saisi.
+  // Un groupe plus grand que l'installation TOURNE : autant de sessions, donc
+  // autant de fois le prix de la grille.
   if (activity.priceType === 'grid_fun_run') {
     const option = FUN_RUN_OPTIONS.find((item) => item.minutes === Number(minutes)) || FUN_RUN_OPTIONS[0];
-    return option.price;
+    return option.price * getActivitySessionCount(activity, pax);
   }
   const unitPrice = resolveActivityUnitPrice(activity.pricing || null, activity.priceValue, { dateStr, startTime });
   if (unitPrice == null) return null;

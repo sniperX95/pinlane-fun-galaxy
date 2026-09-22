@@ -6,6 +6,8 @@ const {
   LASER_GAME_OPTIONS,
   getEffectiveFormules,
   getHolidayContext,
+  isFormulaBlockedDate,
+  isOfferEnabled,
   getSchedule,
   refreshFormuleOverrides,
   refreshWalloniaSchoolHolidays,
@@ -297,6 +299,12 @@ function buildDayStatus(blocks, dayDate, center, centerId) {
     unavailableFormulaIds,
     unavailableActivityIds,
     unavailableFormulaReason,
+    // « Ce jour tombe-t-il dans une periode qui bloque les formules
+    // noHolidays ? » Le TYPE de periode qui bloque se regle par centre
+    // (holidaySettings.formulaBlockedPeriods) : un formulaire qui relirait
+    // holiday.type devinerait, celui-ci lit le verdict de la meme fonction
+    // que la reservation (isFormulaBlockedDate).
+    formulaHolidayOff: isFormulaBlockedDate(dayDate, center),
   };
 }
 
@@ -506,7 +514,13 @@ module.exports = async (req, res) => {
     durationOptions: DURATION_OPTIONS,
     // Formules avec overrides catalogue appliques (prix/nom/retrait) pour ce
     // centre ; sans override, strictement identique a FORMULES.
-    formules: getEffectiveFormules(centerId),
+    // `offerOff` : l interrupteur du staff (centers.settings.config
+    // .offerAvailability), que seul le serveur connait. Cle ADDITIVE, posee
+    // uniquement quand l offre est coupee : un formulaire qui ne la lit pas se
+    // comporte comme avant.
+    formules: getEffectiveFormules(centerId).map((formule) => (isOfferEnabled(formule.id, center)
+      ? formule
+      : { ...formule, offerOff: true })),
     laserOptions: LASER_GAME_OPTIONS,
     bowlingPrices: BOWLING_PRICES,
     // La grille du Fun Run (sessions de 15 et 30 min), cle ADDITIVE : le
@@ -626,6 +640,7 @@ function buildCalendar(blocks, days, center, centerId, from = '') {
       holiday: context.active ? { type: context.periodType, label: context.label } : null,
       unavailableActivityIds: status.unavailableActivityIds,
       unavailableFormulaIds: status.unavailableFormulaIds,
+      formulaHolidayOff: status.formulaHolidayOff,
     });
   }
   return out;

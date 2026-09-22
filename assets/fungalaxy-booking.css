@@ -870,7 +870,113 @@
 .fg-card.is-off { opacity: 0.45; cursor: not-allowed; }
 .fg-card.is-off:hover { transform: none; border-color: var(--fg-line); }
 .fg-card.is-off .fg-card__photo { display: none; }
-.fg-card--formule { min-height: 168px; }
+
+/* --- Les formules ---------------------------------------------------------- */
+
+/* UNE FAMILLE, UNE SECTION (retour de Movsar, 2026-09-23 : « les formules sont
+   pas bien rangees »). Quatorze cartes a la suite, huit « FORMULE N » et six
+   offres nommees, ne se lisaient pas. Les familles sont celles du catalogue
+   (champ `family`), jamais une liste ecrite ici. */
+.fg-fams { display: grid; gap: 30px; }
+.fg-fam__title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-text);
+}
+.fg-fam__title::after { content: ""; flex: 1 1 auto; height: 1px; background: rgba(255, 255, 255, 0.14); }
+.fg-fam__title span { order: 3; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-faint); }
+/* Une carte de formule porte une liste et des contraintes : trois colonnes,
+   pas quatre, et une seule sur telephone. */
+.fg-grid--for { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.fg-card--formule {
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 0;
+  padding: 16px 16px 14px;
+}
+.fg-for__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 34px; }
+.fg-for__best {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(103, 186, 172, 0.16);
+  border: 1px solid rgba(103, 186, 172, 0.5);
+  color: var(--fg-teal-ink);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* Le prix se lit d un coup : le montant en gros, son unite et l ancien prix
+   barre a cote, sur la meme ligne de base. */
+.fg-for__price { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.fg-for__price b { font-family: var(--fg-display); font-size: 28px; line-height: 1; letter-spacing: 0.01em; font-variant-numeric: tabular-nums; }
+.fg-for__price small { font-size: 12px; color: var(--fg-muted); font-weight: 600; }
+.fg-for__price s { font-size: 12px; color: var(--fg-faint); }
+/* Ce que la formule contient : une ligne par element, jamais une phrase a
+   points. */
+.fg-for__list { display: grid; gap: 4px; margin: 2px 0 0; padding: 0; list-style: none; }
+.fg-for__list li { position: relative; padding-left: 14px; font-size: 12.5px; line-height: 1.35; color: var(--fg-muted); }
+.fg-for__list li::before { content: ""; position: absolute; left: 3px; top: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--fg-purple-2); }
+/* Les contraintes declarees au catalogue : groupe minimum, jours, plage
+   horaire, vacances. Elles n etaient nulle part avant. */
+.fg-for__rules { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; padding-top: 4px; }
+.fg-for__rules i {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--fg-line-2);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.4;
+}
+/* Refusee ce jour-la : la carte reste lisible et TOUCHABLE, et dit pourquoi.
+   Elle n est pas `aria-disabled` : une raison qu on ne peut pas atteindre ne
+   sert a personne. */
+.fg-card--formule.is-refus { opacity: 0.66; border-style: dashed; }
+.fg-card--formule.is-refus:hover { opacity: 1; border-color: var(--fg-amber); transform: none; }
+.fg-card--formule.is-refus .fg-card__box { display: none; }
+.fg-for__off {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: rgba(227, 179, 65, 0.1);
+  border: 1px solid rgba(227, 179, 65, 0.4);
+  color: var(--fg-amber-ink);
+  font-size: 12px;
+  line-height: 1.35;
+  transition: background-color 0.3s;
+}
+.fg-for__off svg { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-for__off.is-pulse { animation: fg-pulse-raison 0.6s var(--fg-ease); }
+}
+@keyframes fg-pulse-raison {
+  0%, 100% { background: rgba(227, 179, 65, 0.1); }
+  35% { background: rgba(227, 179, 65, 0.32); }
+}
+/* La rotation d un groupe trop grand pour l installation, sous les pastilles
+   du tiroir (Fun Run : 5 joueurs a la fois). */
+.fg-card__rot {
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px dashed var(--fg-line-2);
+  font-size: 12px;
+  color: var(--fg-teal-ink);
+  font-weight: 600;
+}
 .fg-card__meta { font-size: 12px; color: var(--fg-faint); }
 .fg-empty { color: var(--fg-muted); font-size: 14px; padding: 22px 0; }
 
@@ -1337,6 +1443,7 @@
 
 @media (max-width: 1080px) {
   .fg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fg-grid--for { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art {
@@ -1362,6 +1469,7 @@
   .fg-recall { position: static; margin: 0 0 22px; min-width: 0; }
   .fg-scene--split.fg-scene--art-left .fg-recall { display: none; }
   .fg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .fg-grid--for { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   @supports (grid-template-rows: subgrid) { .fg-grid { row-gap: 0; } .fg-grid > li { margin-bottom: 12px; } }
   .fg-fields--2 { grid-template-columns: 1fr; }
   .fg-stage, .fg-scene { min-height: 0; }
@@ -1403,6 +1511,8 @@
   .fg-total__br { display: none; }
   .fg-btn { padding: 0 22px; font-size: 13px; }
   .fg-glow i { width: 120vw; height: 120vw; }
+  .fg-grid--for { grid-template-columns: 1fr; }
+  .fg-fams { gap: 24px; }
 }
 /* Sous 360 px (iPhone SE de premiere generation, petits Android), deux
    cartes par rangee laissent 49 px a une pastille : « 2 heures » n y tient

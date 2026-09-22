@@ -124,6 +124,15 @@
   function euros(n) { n = Number(n); if (!isFinite(n)) return ''; return (Math.round(n * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'; }
   function personnes(n) { return n + ' personne' + (n > 1 ? 's' : ''); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // « 3 sessions de 15 min » quand le groupe tourne sur une installation qui
+  // ne le prend pas d un coup (Fun Run). `sessions` est calcule par le
+  // SERVEUR (lib/visit-program) et voyage dans la ligne de programme.
+  function detailSessions(it) {
+    var n = Math.trunc(Number(it && it.sessions) || 1);
+    var mn = Number(it && it.minutes) || 0;
+    if (n < 2 || !mn) return '';
+    return n + ' sessions de ' + minutesLabel(Math.round(mn / n));
+  }
   function minutesLabel(m) { m = Number(m) || 0; if (m >= 60) { var h = Math.floor(m / 60), r = m % 60; return r ? h + 'h' + String(r).padStart(2, '0') : h + ' heure' + (h > 1 ? 's' : ''); } return m + ' min'; }
   function dureeApprox(m) { m = Number(m) || 0; if (m < 60) return m + ' min'; var h = Math.floor(m / 60), r = m % 60; return 'environ ' + h + ' h' + (r >= 30 ? '30' : ''); }
   function heuresLabel(v) { v = Number(v) || 0; if (v === 0.5) return '30 min'; if (v === 1) return '1 heure'; if (v === 1.5) return '1h30'; if (v === 2) return '2 heures'; return minutesLabel(Math.round(v * 60)); }
@@ -202,6 +211,25 @@
     return 0;
   }
   function optionChoisie(a) { var i = indexOption(a); return i < 0 ? null : optionsPour(a)[i]; }
+  // Combien de passages pour CE groupe sur une installation qui n en prend
+  // qu une partie a la fois (Fun Run : 5 joueurs). MIROIR de
+  // activitySessionCount (lib/activity-catalog) : le serveur fait foi, le gate
+  // funrun-rotation-check compare les deux.
+  function sessionsPour(a) {
+    var capacite = Math.trunc(Number(a && a.capacityPerUnit) || 0);
+    var unites = Math.trunc(Number(a && a.units) || 0);
+    if (capacite <= 0) return 1;
+    var places = capacite * (unites > 0 ? unites : 1);
+    return Math.min(40, Math.max(1, Math.ceil(Math.max(1, state.pax) / places)));
+  }
+  // « 12 personnes : 3 sessions, 5 joueurs a la fois. » Vide quand le groupe
+  // passe en une fois.
+  function noteRotation(a) {
+    var n = sessionsPour(a);
+    if (n < 2) return '';
+    var places = Math.trunc(Number(a.capacityPerUnit) || 0) * Math.max(1, Math.trunc(Number(a.units) || 1));
+    return 'Le groupe tourne : ' + n + ' sessions, ' + places + ' joueurs à la fois.';
+  }
   function prixCarte(a) {
     if (!meta) return '';
     var opt = optionChoisie(a);
@@ -536,6 +564,12 @@
       var a = activite(id);
       return a && !(a.maxPax && state.pax > a.maxPax);
     });
+    // Le jour ou le groupe a pu changer : une formule qui n est plus valable
+    // ce jour-la se decoche, sinon le client part vers un ecran d heures vide.
+    if (state.formuleId) {
+      var choisie = ((meta && meta.formules) || []).filter(function (x) { return x.id === state.formuleId; })[0];
+      if (!choisie || !verdictFormule(choisie).ok) state.formuleId = '';
+    }
     rendreActivites();
     rendreFormules();
     rendreCompteur(false);
@@ -564,7 +598,9 @@
       + liste.map(function (o, k) {
         return '<button type="button" class="fg-pill' + (k === i ? ' is-on' : '') + '" role="radio" aria-checked="' + (k === i) + '" tabindex="' + (k === i ? '0' : '-1') + '" data-valeur="' + esc(String(o.valeur)) + '"><b>' + esc(o.label) + '</b><small>' + esc(euros(o.prix)) + '</small></button>';
       }).join('')
-      + '</div></div></div></div>';
+      + '</div>'
+      + (noteRotation(a) ? '<p class="fg-card__rot">' + esc(noteRotation(a)) + '</p>' : '')
+      + '</div></div></div>';
   }
   function choisirPastille(pill) {
     var item = pill.closest('.fg-grid__item');
@@ -596,20 +632,101 @@
     // Une carte deja cochee (retour a cet ecran) montre sa photo tout de suite.
     $$('.fg-card.is-on', gridAct).forEach(chargerPhotoCarte);
   }
+  var JOURS_SEM = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  // Les jours dans l ordre de la semaine, lundi d abord : « mardi, mercredi,
+  // jeudi et dimanche », jamais « dimanche, mardi… » comme le tableau brut.
+  function joursLisibles(liste) {
+    var noms = (liste || []).slice().sort(function (a, b) { return ((a + 6) % 7) - ((b + 6) % 7); })
+      .map(function (d) { return JOURS_SEM[d] || ''; }).filter(Boolean);
+    if (!noms.length) return '';
+    if (noms.length === 1) return 'le ' + noms[0];
+    return 'les ' + noms.slice(0, -1).join(', ') + ' et ' + noms[noms.length - 1];
+  }
+  function heureRonde(v) { var h = Math.floor(Number(v)); var m = Math.round((Number(v) - h) * 60); return m ? h + 'h' + String(m).padStart(2, '0') : h + 'h'; }
+  function plageLisible(limite) {
+    if (!limite) return '';
+    if (limite.min && limite.max) return 'de ' + heureRonde(limite.min) + ' à ' + heureRonde(limite.max);
+    if (limite.max) return 'avant ' + heureRonde(limite.max);
+    if (limite.min) return 'à partir de ' + heureRonde(limite.min);
+    return '';
+  }
+  // LE VERDICT D UNE FORMULE POUR CE JOUR ET CE GROUPE, dans l ordre de
+  // getFormuleAvailability (lib/booking-config), la fonction qui accepte ou
+  // refuse la vraie reservation. Rien n est devine ici : le jour bloque
+  // (vacances, feries) et l interrupteur du staff sont des verdicts DU
+  // SERVEUR, lus dans le calendrier (formulaHolidayOff) et dans la formule
+  // (offerOff). Le gate fungalaxy-form compare ce verdict au serveur sur une
+  // grille complete de formules, de jours et de tailles de groupe.
+  function verdictFormule(f) {
+    var j = jourInfo(state.date) || {};
+    if (f.offerOff) return { ok: false, court: 'Indisponible', pourquoi: 'Cette offre est momentanément suspendue.' };
+    if ((j.unavailableFormulaIds || []).indexOf(f.id) >= 0) return { ok: false, court: 'Indisponible ce jour', pourquoi: 'Une des activités de cette formule n’est pas disponible ce jour-là.' };
+    if (f.minPax && state.pax < f.minPax) return { ok: false, court: 'Dès ' + f.minPax + ' personnes', pourquoi: 'Vous êtes ' + state.pax + ' : cette formule part de ' + f.minPax + ' personnes.' };
+    if (f.noHolidays && j.formulaHolidayOff) return { ok: false, court: 'Pas pendant les vacances', pourquoi: 'Non valable pendant les vacances scolaires et les jours fériés.' };
+    if (f.validDays && f.validDays.length && f.validDays.indexOf(jourSemaine(state.date)) < 0) return { ok: false, court: joursLisibles(f.validDays), pourquoi: 'Cette formule se réserve ' + joursLisibles(f.validDays) + ', pas ' + (JOURS_SEM[jourSemaine(state.date)] ? 'le ' + JOURS_SEM[jourSemaine(state.date)] : 'ce jour-là') + '.' };
+    return { ok: true, court: '', pourquoi: '' };
+  }
+  function jourSemaine(dateStr) {
+    var j = jourInfo(dateStr);
+    if (j && typeof j.weekday === 'number') return j.weekday;
+    var p = String(dateStr || '').split('-').map(Number);
+    return p.length === 3 ? new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() : -1;
+  }
+  // Les contraintes de la formule, telles que le catalogue les declare : le
+  // groupe minimum, les jours, la plage horaire, les vacances. Ce sont elles
+  // que le client cherchait et qui n etaient nulle part (retour de Movsar).
+  function reglesFormule(f) {
+    var out = [];
+    if (f.minPax > 1) out.push('dès ' + f.minPax + ' personnes');
+    if (f.validDays && f.validDays.length && f.validDays.length < 7) out.push(joursLisibles(f.validDays));
+    if (plageLisible(f.timeLimit)) out.push(plageLisible(f.timeLimit));
+    if (f.noHolidays) out.push('hors vacances et fériés');
+    return out;
+  }
+  // Le catalogue ecrit « Formules speciales » SANS accent : c est sa valeur
+  // canonique, gardee par booking-constants-drift-check. Ce formulaire est lu
+  // par des clients, il ecrit le francais, et sous un onglet « Formules » le
+  // mot ne se repete pas. La cle ignore accents et casse, comme la console ;
+  // une famille creee par le staff s affiche telle qu elle est ecrite.
+  var LIBELLE_FAMILLE = { 'formules anniversaires': 'Anniversaires', 'formules speciales': 'Offres spéciales' };
+  function libelleFamille(nom) {
+    var cle = String(nom == null ? '' : nom).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+    return LIBELLE_FAMILLE[cle] || nom;
+  }
   function rendreFormules() {
     var liste = (meta && meta.formules) || [];
-    gridFor.innerHTML = liste.map(function (f, i) {
-      var on = state.formuleId === f.id;
-      var mini = f.minPax && state.pax < f.minPax;
-      var prix = f.type === 'per_lane' ? euros(f.price) + ' / piste' : euros(f.price) + ' / personne';
-      return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '"><div class="fg-card fg-card--formule fg-rise' + (on ? ' is-on' : '') + (mini ? ' is-off' : '') + '" style="--i:' + (i % 8) + '" data-formule="' + esc(f.id) + '" role="radio" tabindex="' + (mini ? '-1' : '0') + '" aria-checked="' + on + '" ' + (mini ? 'aria-disabled="true" title="Minimum ' + f.minPax + ' personnes"' : '') + '>'
-        + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
-        + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#a-formule"/></svg></span>'
-        + '<span class="fg-card__name">' + esc(f.name) + '</span>'
-        + '<span class="fg-card__price">' + esc(prix) + (f.oldPrice ? ' <s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
-        + '<span class="fg-card__meta">' + esc((f.desc || []).slice(0, 3).join(' · ')) + (f.minPax ? ' · dès ' + f.minPax + ' pers.' : '') + '</span>'
-        + '</div></li>';
-    }).join('') || '<li class="fg-empty">Aucune formule proposée en ligne pour le moment.</li>';
+    if (!liste.length) { gridFor.innerHTML = '<p class="fg-empty">Aucune formule proposée en ligne pour le moment.</p>'; return; }
+    // Une famille par section (anniversaires, offres speciales) : quatorze
+    // cartes a la suite ne se lisaient pas. L ordre des familles est celui du
+    // catalogue, jamais une liste ecrite ici.
+    var familles = [], parFamille = {};
+    liste.forEach(function (f) {
+      var cle = f.family || 'Formules';
+      if (!parFamille[cle]) { parFamille[cle] = []; familles.push(cle); }
+      parFamille[cle].push(f);
+    });
+    var n = 0;
+    gridFor.innerHTML = familles.map(function (cle) {
+      var cartes = parFamille[cle].map(function (f) {
+        var on = state.formuleId === f.id;
+        var v = verdictFormule(f);
+        var regles = reglesFormule(f);
+        n += 1;
+        return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '">'
+          + '<div class="fg-card fg-card--formule fg-rise' + (on ? ' is-on' : '') + (v.ok ? '' : ' is-refus') + '" style="--i:' + (n % 8) + '" data-formule="' + esc(f.id) + '" role="radio" tabindex="0" aria-checked="' + on + '">'
+          + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
+          + '<span class="fg-for__head"><span class="fg-card__name">' + esc(f.name) + '</span>'
+          + (f.best ? '<span class="fg-for__best">Le plus pris</span>' : '') + '</span>'
+          + '<span class="fg-for__price"><b>' + esc(euros(f.price)) + '</b><small>' + (f.type === 'per_lane' ? 'la piste' : 'par personne') + '</small>'
+          + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
+          + '<ul class="fg-for__list">' + (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>'
+          + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '')
+          + (v.ok ? '' : '<span class="fg-for__off" role="status"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(v.pourquoi) + '</span>')
+          + '</div></li>';
+      }).join('');
+      return '<section class="fg-fam"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '<span>' + parFamille[cle].length + ' formule' + (parFamille[cle].length > 1 ? 's' : '') + '</span></h3>'
+        + '<ul class="fg-grid fg-grid--for">' + cartes + '</ul></section>';
+    }).join('');
   }
   function rendreCompteur(bump) {
     var n = state.onglet === 'formules' ? (state.formuleId ? 1 : 0) : state.selection.length;
@@ -667,6 +784,14 @@
     }
   });
   function choisirFormule(card) {
+    // Une formule refusee ce jour-la reste TOUCHABLE (sa raison est ecrite sur
+    // la carte, et on la fait clignoter au clic) : la declarer inoperable la
+    // rendrait muette pour un lecteur d ecran comme pour un doigt.
+    if (card && card.classList.contains('is-refus')) {
+      var pourquoi = card.querySelector('.fg-for__off');
+      if (pourquoi) { pourquoi.classList.remove('is-pulse'); void pourquoi.offsetWidth; pourquoi.classList.add('is-pulse'); }
+      return;
+    }
     if (!card || card.classList.contains('is-off')) return;
     var id = card.dataset.formule;
     state.formuleId = state.formuleId === id ? '' : id;
@@ -1100,7 +1225,7 @@
       var nom = it.name || nomActivite(b.activityId);
       var total = Number(it.games) || 0;
       var posees = partiesPosees(cr, b.activityId);
-      var detail = total ? total + ' partie' + (total > 1 ? 's' : '') : (it.minutes ? minutesLabel(it.minutes) : '');
+      var detail = total ? total + ' partie' + (total > 1 ? 's' : '') : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) : ''));
       // « partie 2/3 » compte les PARTIES (countIndex), jamais les vagues d une
       // meme partie : un grand groupe joue sa partie en deux groupes.
       if (total > 1 && posees > 1) detail = 'partie ' + (Number(b.countIndex) || 1) + '/' + total;
@@ -1110,7 +1235,7 @@
       lignes += '<li class="fg-visit__step' + (bouge ? ' is-moved' : '') + '"><b>' + esc(b.startTime) + '</b><span><svg aria-hidden="true"><use href="#' + icone(b.activityId) + '"/></svg>' + esc(nom) + '</span><small>' + esc(detail) + (bouge ? ' · déplacé pour votre ' + esc(nomActivite(adaptation.pour)) + ' à ' + esc(adaptation.t) : '') + '</small></li>';
     });
     if (libres.length) {
-      lignes += '<li class="fg-visit__step fg-visit__step--free"><b>libre</b><span>' + libres.map(function (it) { return '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(it.name || nomActivite(it.activityId)) + '</i>'; }).join('') + '</span><small>à votre rythme' + (minutesLibres ? ' · ' + esc(dureeApprox(minutesLibres)) : '') + '</small></li>';
+      lignes += '<li class="fg-visit__step fg-visit__step--free"><b>libre</b><span>' + libres.map(function (it) { return '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(it.name || nomActivite(it.activityId)) + (detailSessions(it) ? ' (' + esc(detailSessions(it)) + ')' : '') + '</i>'; }).join('') + '</span><small>à votre rythme' + (minutesLibres ? ' · ' + esc(dureeApprox(minutesLibres)) : '') + '</small></li>';
     }
     if (!lignes) lignes = '<li class="fg-visit__step"><b>' + esc(slot.time) + '</b><span>Début</span><small></small></li>';
     var html2 = '<div class="fg-visit"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
@@ -1187,7 +1312,7 @@
     } else if (items.length) {
       items.forEach(function (it) {
         var bloc = blocsDuPlan(cr).filter(function (b) { return b.activityId === it.activityId; })[0];
-        var detail = it.games ? it.games + ' partie' + (it.games > 1 ? 's' : '') : (it.minutes ? minutesLabel(it.minutes) : '');
+        var detail = it.games ? it.games + ' partie' + (it.games > 1 ? 's' : '') : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) : ''));
         if (bloc && resteSurPlace(Number(it.games) || 0, partiesPosees(cr, it.activityId))) detail += ' · ' + resteSurPlace(Number(it.games) || 0, partiesPosees(cr, it.activityId));
         if (it.services && it.services.length > 1) detail += ' · ' + it.services.length + ' services';
         lignes.push({ icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: detail, aside: bloc && bloc.startTime ? bloc.startTime : '' });

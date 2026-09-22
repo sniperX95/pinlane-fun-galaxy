@@ -59,7 +59,7 @@ const ACTIVITIES = [
   { id: 'arcade_time', name: 'Arcades', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: '', order: 6, defaultMinutes: 30 },
   { id: 'playground', name: 'Playground', planned: false, priceType: 'per_pax', priceValue: 12, unitLabel: 'par enfant', note: 'accès à la journée', order: 7, defaultMinutes: 60 },
   { id: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 8, defaultMinutes: 60 },
-  { id: 'fun_run', name: 'Fun Run by PIXEL', planned: false, priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs max.', order: 9, defaultMinutes: 15, maxPax: 5 },
+  { id: 'fun_run', name: 'Fun Run by PIXEL', planned: false, priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs par session', order: 9, defaultMinutes: 15, units: 1, capacityPerUnit: 5 },
 ];
 
 // Le branding se regle a la volee : /?brand=aurora pose un exemple complet
@@ -106,7 +106,7 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
         bowlingPrices: BOWLING_PRICES, laserOptions: LASER_GAME_OPTIONS,
         laserArenaCapacity: Number(FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.laser && FUN_GALAXY_CENTER.resources.laser.weaponCount) || null,
       },
-      day: { date: DATE, open: true, schedule: { open: 10, close: 24, label: '10h - Minuit' }, closedLabel: '', closedWindows: [], unavailableFormulaIds: [], unavailableActivityIds: [], unavailableFormulaReason: {} },
+      day: { date: DATE, open: true, schedule: { open: 10, close: 24, label: '10h - Minuit' }, closedLabel: '', closedWindows: [], unavailableFormulaIds: [], unavailableActivityIds: [], unavailableFormulaReason: {}, formulaHolidayOff: false },
       ...(calendarDays ? { calendar: buildCalendar([], calendarDays, FUN_GALAXY_CENTER, 'libramont', calendarFrom) } : {}),
     },
   };

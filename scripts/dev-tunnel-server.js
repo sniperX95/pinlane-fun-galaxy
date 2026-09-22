@@ -5,14 +5,30 @@
 // instantane vide. Zero acces base.
 //
 // Lancement : node scripts/dev-tunnel-server.js  (port 4230)
+//
+//   http://127.0.0.1:4230/reserver                 le tunnel actuel
+//   http://127.0.0.1:4230/fungalaxy/libramont      le formulaire Fun Galaxy (v3)
+//   http://127.0.0.1:4230/fungalaxy-local#booking  la page /contact/ de
+//       fungalaxy.be, telechargee a chaque requete, avec le formulaire Fun
+//       Galaxy monte a la place du Gravity Form, par embed.js. Rien n est
+//       ecrit sur le site du client : c est une copie locale, en lecture.
+//
+// Le module s exporte aussi (metaPayload, createServer) pour les gates qui
+// veulent le MEME mock que l ecran regarde a la main, sans le recopier.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const database = require('../lib/database');
+const { BOWLING_PRICES, LASER_GAME_OPTIONS, FUN_RUN_OPTIONS, FORMULES } = require('../lib/booking-config');
+const FUN_GALAXY_CENTER = require('../ops-knowledge/centers.json').centers.find((center) => center.id === 'libramont');
 
 const PORT = Number(process.env.PINLANE_DEVTUNNEL_PORT || 4230);
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp',
+  '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2',
+};
 
 function nextSaturday() {
   const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
@@ -21,6 +37,7 @@ function nextSaturday() {
   return c.toISOString().slice(0, 10);
 }
 const DATE = nextSaturday();
+const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont' });
 const availability = require('../api/public-availability.js');
@@ -36,7 +53,7 @@ const ACTIVITIES = [
   { id: 'arcade_time', name: 'Arcades', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: '', order: 6, defaultMinutes: 30 },
   { id: 'playground', name: 'Playground', planned: false, priceType: 'per_pax', priceValue: 12, unitLabel: 'par enfant', note: 'accès à la journée', order: 7, defaultMinutes: 60 },
   { id: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 8, defaultMinutes: 60 },
-  { id: 'fun_run', name: 'Fun Run by PIXEL', planned: false, priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs max.', order: 9, defaultMinutes: 15 },
+  { id: 'fun_run', name: 'Fun Run by PIXEL', planned: false, priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs max.', order: 9, defaultMinutes: 15, maxPax: 5 },
 ];
 
 // Le branding se regle a la volee : /?brand=aurora pose un exemple complet
@@ -56,37 +73,159 @@ function brandingFor(mode) {
   return null;
 }
 
+// La reponse de /api/public-booking-meta, avec les MEMES cles que la prod
+// (api/public-booking-meta.js) : grilles reelles (lib/booking-config), identite
+// et contact reels du centre (ops-knowledge/centers.json). Seule la liste des
+// activites est un mock, faute de base.
 function metaPayload(brandMode) {
+  const info = FUN_GALAXY_CENTER.publicInfo || {};
+  const bowling = FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.bowling ? FUN_GALAXY_CENTER.resources.bowling : {};
   return {
-    ok: true, today: DATE, durationOptions: [], formules: [], activities: ACTIVITIES,
+    ok: true, today: TODAY, bookingHorizonDays: 365, durationOptions: [], formules: FORMULES, activities: ACTIVITIES,
+    laserOptions: LASER_GAME_OPTIONS, bowlingPrices: BOWLING_PRICES, funRunOptions: FUN_RUN_OPTIONS,
     center: {
-      id: 'libramont', status: 'active',
-      branding: brandingFor(brandMode),
+      id: 'libramont', status: 'active', demonstration: false,
+      name: FUN_GALAXY_CENTER.name,
+      city: info.city || '',
+      identity: FUN_GALAXY_CENTER.identity,
+      contact: { phone: info.phone || '', email: info.email || '' },
+      branding: brandingFor(brandMode) || FUN_GALAXY_CENTER.branding,
       defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: null, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' }, 5: { open: '14:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} },
       holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {},
+      activityAvailability: FUN_GALAXY_CENTER.activityAvailability || null,
+      booking: {
+        laneCount: Number(bowling.laneCount) || 8,
+        normalCapacityPerLane: Number(bowling.normalCapacityPerLane) || 6,
+        emergencyCapacityPerLane: Number(bowling.emergencyCapacityPerLane) || 7,
+        bowlingPrices: BOWLING_PRICES, laserOptions: LASER_GAME_OPTIONS,
+        laserArenaCapacity: Number(FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.laser && FUN_GALAXY_CENTER.resources.laser.weaponCount) || null,
+      },
       day: { date: DATE, open: true, schedule: { open: 10, close: 24, label: '10h - Minuit' }, closedLabel: '', closedWindows: [], unavailableFormulaIds: [], unavailableActivityIds: [], unavailableFormulaReason: {} },
     },
   };
 }
 
-let brandMode = String(process.env.PINLANE_DEVTUNNEL_BRAND || '').trim();
+// Le POST est un FAUX : rien n est ecrit nulle part. Il renvoie un dossier
+// qui reprend la demande (date, heure, groupe, contact, montant affiche) avec
+// les cles que le vrai serveur rend (validationStatus, ops.autoDecision), pour
+// que l ecran final se lise comme en prod. Le corps recu est garde en memoire
+// pour les gates (dernierePose).
+let compteur = 0;
+const dernierePose = { body: null };
+function fauxDossier(body) {
+  compteur += 1;
+  const b = body && typeof body === 'object' ? body : {};
+  return {
+    ok: true,
+    reservation: {
+      id: 4200 + compteur, centerId: b.centerId || 'libramont', channel: 'public', status: 'pending',
+      validationStatus: 'confirmed', date: b.date || DATE, startTime: b.startTime || '', pax: Number(b.pax) || 0,
+      name: b.name || '', email: b.email || '', phone: b.phone || '', type: b.type || 'visite', formuleId: b.formuleId || '',
+      label: b.label || '', price: Number(b.price) || 0, opsPlan: b.opsPlan || null, lanes: Array.isArray(b.lanes) ? b.lanes : [],
+    },
+    ops: { validationStatus: 'confirmed', autoDecision: 'auto_confirmed', riskLevel: 'low', riskScore: 0, planWarning: '' },
+    communications: [], warnings: [],
+  };
+}
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
-  if (url.searchParams.has('brand')) brandMode = url.searchParams.get('brand');
-  if (url.pathname === '/api/public-booking-meta') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(metaPayload(brandMode))); return; }
-  if (url.pathname === '/api/public-availability') { try { await availability(req, res); } catch (error) { res.writeHead(500); res.end(JSON.stringify({ ok: false })); } return; }
-  if (url.pathname === '/api/public-reservations') { let body = ''; req.setEncoding('utf8'); req.on('data', (c) => { body += c; }); req.on('end', () => { res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, reservation: { id: 1 }, ops: {}, communications: [], warnings: [] })); }); return; }
-  let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
-  if (url.pathname === '/' || url.pathname === '/reserver' || /^\/reserver\/[a-z0-9-]+\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'index.html');
-  if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
-  fs.readFile(filePath, (err, content) => {
-    if (err) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-    res.end(content);
+// LA PAGE DU CLIENT, EN COPIE LOCALE. On telecharge /contact/ de fungalaxy.be
+// a chaque requete (aucun cache : on regarde toujours la page du jour), on
+// ancre ses liens relatifs sur le vrai site (<base>), on eteint ses overlays
+// (popup, bandeau cookies), on vide le bloc #booking (titre, portrait, Gravity
+// Form) et on y monte le formulaire par embed.js, exactement comme le fera
+// l agence du client : une balise <script>, rien d autre.
+const FUN_GALAXY_CONTACT_URL = 'https://fungalaxy.be/contact/';
+async function funGalaxyHostPage(port) {
+  const response = await fetch(FUN_GALAXY_CONTACT_URL, { headers: { 'User-Agent': 'Pinlane local integration preview' } });
+  if (!response.ok) throw new Error(`Fun Galaxy ${response.status}`);
+  let html = await response.text();
+  const head = [
+    '<base href="https://fungalaxy.be/">',
+    '<meta name="robots" content="noindex,nofollow">',
+    '<style data-pinlane-local-host>',
+    'html,body{overflow-x:hidden}',
+    'body.no-scroll{overflow-y:auto!important}',
+    '#popup,#cookie-law-info-bar,.cli-modal-backdrop{display:none!important}',
+    '#booking{scroll-margin-top:180px;padding:32px 0 72px}',
+    '#booking>.container{width:min(1440px,100%);max-width:none}',
+    '#booking>.container>*{display:none!important}',
+    '#booking>.container>.pinlane-local-slot{display:block!important}',
+    '#booking .pinlane-local-slot{width:100%}',
+    '#booking .pinlane-local-slot iframe{background:#050505;display:block;width:100%;border:0}',
+    '</style>',
+  ].join('');
+  html = html.replace(/<head([^>]*)>/i, `<head$1>${head}`);
+  const embed = [
+    '<script>',
+    'document.body.classList.remove("no-scroll");',
+    'var localCenter=document.getElementById("selection-1");',
+    'if(localCenter)localCenter.value="Libramont";',
+    'var localBooking=document.querySelector("#booking>.container");',
+    'if(localBooking)localBooking.innerHTML="<div class=\\"pinlane-local-slot\\"></div>";',
+    '</script>',
+    '<script',
+    ` src="http://127.0.0.1:${port}/embed.js"`,
+    ' data-center="libramont"',
+    ' data-design="fungalaxy"',
+    ' data-target=".pinlane-local-slot"',
+    ' data-height="720"',
+    ' data-scroll-margin="32"',
+    ' data-track="datalayer"',
+    '></script>',
+  ].join('');
+  return html.replace(/<\/body>/i, `${embed}</body>`);
+}
+
+function createServer(options = {}) {
+  const port = Number(options.port || PORT);
+  let brandMode = String(process.env.PINLANE_DEVTUNNEL_BRAND || '').trim();
+  return http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://127.0.0.1:${port}`);
+    if (url.searchParams.has('brand')) brandMode = url.searchParams.get('brand');
+    if (url.pathname === '/fungalaxy-local' || url.pathname === '/fungalaxy-local/') {
+      try {
+        const html = await funGalaxyHostPage(port);
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(html);
+      } catch (error) {
+        res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(`Impossible de charger la copie locale de Fun Galaxy: ${error.message}`);
+      }
+      return;
+    }
+    if (url.pathname === '/api/public-booking-meta') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(metaPayload(brandMode))); return; }
+    if (url.pathname === '/api/public-availability') { try { await availability(req, res); } catch (error) { res.writeHead(500); res.end(JSON.stringify({ ok: false })); } return; }
+    if (url.pathname === '/api/public-reservations') {
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        let parsed = null;
+        try { parsed = JSON.parse(body); } catch (error) { parsed = null; }
+        dernierePose.body = parsed;
+        res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(fauxDossier(parsed)));
+      });
+      return;
+    }
+    let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
+    if (url.pathname === '/' || url.pathname === '/reserver' || /^\/reserver\/[a-z0-9-]+\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'index.html');
+    if (url.pathname === '/fungalaxy' || /^\/fungalaxy\/[a-z0-9-]+\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'fungalaxy.html');
+    if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
+    fs.readFile(filePath, (err, content) => {
+      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+      res.end(content);
+    });
   });
-});
+}
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`dev-tunnel-server: http://127.0.0.1:${PORT}/reserver (brand: /?brand=aurora | sharp | none)`);
-});
+module.exports = { ACTIVITIES, DATE, TODAY, PORT, createServer, metaPayload, dernierePose };
+
+if (require.main === module) {
+  createServer({ port: PORT }).listen(PORT, '127.0.0.1', () => {
+    console.log(`dev-tunnel-server: http://127.0.0.1:${PORT}/reserver (brand: /?brand=aurora | sharp | none)`);
+    console.log(`fun-galaxy-form:   http://127.0.0.1:${PORT}/fungalaxy/libramont`);
+    console.log(`fun-galaxy-host:   http://127.0.0.1:${PORT}/fungalaxy-local#booking`);
+  });
+}

@@ -177,6 +177,11 @@ export default async function middleware(request: Request) {
     '/public-form.html',
     '/pro.html',
     '/reserver',
+    // Le formulaire Fun Galaxy (fungalaxy.html), le meme parcours que
+    // /reserver dans l habillage du client. Meme ouverture : il vit dans
+    // l iframe du site du centre, personne n y a d identifiants.
+    '/fungalaxy',
+    '/fungalaxy.html',
     '/robots.txt',
     '/sitemap.xml',
     // Demonstration publique de la vitrine. Depuis le 2026-08-13 c'est une
@@ -207,6 +212,8 @@ export default async function middleware(request: Request) {
     // l'adresse d'un centre recevait un 401 Basic : exactement la classe de
     // defaut « /demo/ verrouille » trouvee en prod le 2026-08-13.
     || pathname.startsWith('/reserver/')
+    // L adresse PAR CENTRE du formulaire Fun Galaxy (« /fungalaxy/libramont »).
+    || pathname.startsWith('/fungalaxy/')
     || pathname === '/menu'
     || pathname.startsWith('/menu/')
   ) {

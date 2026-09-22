@@ -2,6 +2,7 @@ const {
   BOWLING_PRICES,
   DURATION_OPTIONS,
   FORMULES,
+  FUN_RUN_OPTIONS,
   LASER_GAME_OPTIONS,
   getEffectiveFormules,
   getSchedule,
@@ -491,6 +492,10 @@ module.exports = async (req, res) => {
     formules: getEffectiveFormules(centerId),
     laserOptions: LASER_GAME_OPTIONS,
     bowlingPrices: BOWLING_PRICES,
+    // La grille du Fun Run (sessions de 15 et 30 min), cle ADDITIVE : le
+    // formulaire Fun Galaxy affiche « des X EUR / session » depuis cette
+    // grille au lieu de recopier le montant, qui n aurait alors deux verites.
+    funRunOptions: FUN_RUN_OPTIONS,
     // Ce que CE centre vend, planifie ou non, avec son tarif quand il est saisi.
     // Cle ADDITIVE : un centre inconnu ou pas encore configure rend bowling +
     // laser, c'est-a-dire exactement le tunnel d'avant.

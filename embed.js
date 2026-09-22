@@ -14,6 +14,8 @@
  *   data-fallback       sélecteur CSS du formulaire existant, masqué tant que le module est actif
  *   data-height         hauteur initiale en pixels avant le premier calcul (défaut : 480)
  *   data-scroll-margin  marge haute au défilement, pour passer sous un en-tête fixe (défaut : 80)
+ *   data-design         "fungalaxy" monte le formulaire aux couleurs du centre
+ *                       (même parcours, mêmes réservations) ; absent, le parcours standard
  *
  * Le cadre s'adapte à la hauteur de son contenu. À chaque réservation confirmée, un
  * événement `pinlane_booking` est poussé dans le dataLayer de la page et un événement
@@ -93,8 +95,13 @@
   // plus élevé produirait un saut de mise en page visible.
   var minHeight = Number.isFinite(height) && height > 0 ? height : 480;
 
-  var target = origin + '/reserver?embed=1'
-    + (center ? '&center=' + encodeURIComponent(center) : '');
+  // data-design="fungalaxy" monte le formulaire habille aux couleurs du centre
+  // (fungalaxy.html, meme parcours, memes API). Sans l attribut, rien ne
+  // change : c est le parcours /reserver, exactement comme avant.
+  var design = (script.getAttribute('data-design') || '').toLowerCase();
+  var target = design === 'fungalaxy'
+    ? origin + '/fungalaxy/' + encodeURIComponent(center || 'libramont') + '?embed=1'
+    : origin + '/reserver?embed=1' + (center ? '&center=' + encodeURIComponent(center) : '');
 
   // Conteneur d'accueil, résolu avant la création du cadre : c'est de là qu'est
   // lue la couleur de fond du site.

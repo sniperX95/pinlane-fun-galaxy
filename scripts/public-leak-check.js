@@ -27,7 +27,7 @@ const { execFileSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..');
 const CONSTRUCTEUR = path.join(ROOT, 'tools', 'build-public.js');
 const DOSSIERS = ['assets', 'demo', 'menu'];
-const PAGES = ['index.html', 'pro.html', 'public-form.html'];
+const PAGES = ['index.html', 'pro.html', 'public-form.html', 'fungalaxy.html'];
 const EXCLUS = new Set(['embed.js']);
 
 // Ce qui ne doit JAMAIS sortir. La liste est courte et sans ambiguite : un mot

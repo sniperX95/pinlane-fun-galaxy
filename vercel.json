@@ -43,6 +43,14 @@
       "destination": "/index.html"
     },
     {
+      "source": "/fungalaxy",
+      "destination": "/fungalaxy.html"
+    },
+    {
+      "source": "/fungalaxy/:center",
+      "destination": "/fungalaxy.html"
+    },
+    {
       "source": "/api/healthz",
       "destination": "/api/public-booking-meta"
     },

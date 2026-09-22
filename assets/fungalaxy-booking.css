@@ -1,0 +1,931 @@
+/* =============================================================================
+   FUN GALAXY, LE FORMULAIRE DE RESERVATION (v3, 2026-09-21)
+   -----------------------------------------------------------------------------
+   Un seul fichier, aucune bibliotheque. Tout ce qui bouge ne touche que
+   transform et opacity : un poste faible tient 60 images par seconde sans
+   recalculer la mise en page. Les photos sont celles du site fungalaxy.be,
+   servies en WebP a deux largeurs, une seule par ecran.
+
+   Palette = la marque du client, relevee dans le theme WordPress :
+   violet #944292, sarcelle #67baac, sur noir. Les maquettes validees par
+   Movsar echantillonnent les memes teintes (CTA #a349a5, ombre #46828b).
+   ========================================================================== */
+
+:root {
+  --fg-bg: #050505;
+  --fg-bg-2: #0b0b0b;
+  --fg-card: #0a0a0a;
+  --fg-line: #262626;
+  --fg-line-2: #3a3a3a;
+  --fg-text: #ffffff;
+  --fg-muted: #b3b3b3;
+  --fg-faint: #7c7c7c;
+  --fg-purple: #944292;
+  --fg-purple-2: #b04fb0;
+  --fg-purple-ink: #d98ad4;
+  --fg-purple-glow: rgba(176, 79, 176, 0.45);
+  --fg-teal: #67baac;
+  --fg-teal-dim: #3f8c84;
+  --fg-danger: #ff6b6b;
+  --fg-display: "Anton", "Impact", "Arial Narrow", sans-serif;
+  --fg-body: "Montserrat", "Segoe UI", system-ui, sans-serif;
+  --fg-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fg-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --fg-radius: 6px;
+  --fg-gutter: clamp(20px, 5vw, 72px);
+  color-scheme: dark;
+}
+
+/* --- Socle --------------------------------------------------------------- */
+
+.fg-page, .fg-page body { margin: 0; padding: 0; }
+.fg-page { background: var(--fg-bg); }
+.fg-page body {
+  background: var(--fg-bg);
+  color: var(--fg-text);
+  font-family: var(--fg-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.fg *, .fg *::before, .fg *::after { box-sizing: border-box; }
+/* Les remises a zero passent par :where() : specificite d une seule classe,
+   pour que .fg-btn, .fg-chip ou .fg-card, ecrits plus bas, gardent la main. */
+.fg :where(button, input) { font: inherit; color: inherit; }
+.fg :where(button) { cursor: pointer; background: none; border: 0; padding: 0; }
+.fg img { display: block; max-width: 100%; }
+.fg a { color: inherit; }
+.fg :focus-visible { outline: 2px solid var(--fg-teal); outline-offset: 3px; }
+.fg .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* --- Bandeau du haut (page autonome seulement, l hote a le sien) --------- */
+
+.fg-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px var(--fg-gutter) 0;
+}
+.fg-top__brand { display: inline-flex; }
+.fg-top__logo { width: 112px; height: auto; }
+.fg-top__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1.5px solid var(--fg-text);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background-color 0.2s, color 0.2s;
+}
+.fg-top__cta:hover { background: var(--fg-text); color: var(--fg-bg); }
+.fg.is-embed .fg-top { display: none; }
+/* Dans le cadre du client, la hauteur suit le contenu : un plancher a 100vh
+   vaudrait la hauteur du cadre, et le cadre ne saurait alors que grandir. */
+.fg.is-embed { min-height: 0; }
+
+/* --- Coquille et scenes ---------------------------------------------------- */
+
+.fg-shell { position: relative; }
+.fg-stage { position: relative; min-height: 560px; }
+.fg-scene {
+  position: relative;
+  display: none;
+  min-height: 560px;
+}
+.fg-scene.is-active { display: block; }
+.fg-scene.is-leaving {
+  display: block;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Le glissement de scene : la sortante part a gauche, l entrante arrive de
+   droite. Le retour arriere inverse le sens (classe .fg-stage.is-back). */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-entering { animation: fg-enter 0.42s var(--fg-ease-out) both; }
+  .fg-scene.is-leaving { animation: fg-leave 0.32s var(--fg-ease) both; }
+  .fg-stage.is-back .fg-scene.is-entering { animation-name: fg-enter-back; }
+  .fg-stage.is-back .fg-scene.is-leaving { animation-name: fg-leave-back; }
+}
+@keyframes fg-enter { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: none; } }
+@keyframes fg-leave { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-40px); } }
+@keyframes fg-enter-back { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
+@keyframes fg-leave-back { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(40px); } }
+
+/* --- La photo de chaque scene ---------------------------------------------- */
+
+.fg-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  background: #0c0c0c;
+}
+.fg-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  will-change: transform;
+}
+/* Derive lente : 14 secondes, transform seulement, en pause si l utilisateur
+   prefere moins de mouvement. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-active .fg-art img { animation: fg-drift 14s ease-in-out infinite alternate; }
+}
+@keyframes fg-drift { from { transform: scale(1.04) translate3d(0, 0, 0); } to { transform: scale(1.1) translate3d(-1.5%, -1%, 0); } }
+.fg-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(5, 5, 5, 0.96) 0%, rgba(5, 5, 5, 0.72) 32%, rgba(5, 5, 5, 0.35) 62%, rgba(5, 5, 5, 0.15) 100%);
+}
+
+/* Scene a deux colonnes : texte a gauche, photo coupee en diagonale a droite
+   (maquettes 1, 4 et 5). */
+.fg-scene--split .fg-art {
+  left: auto;
+  width: 52%;
+  clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
+}
+.fg-scene--split .fg-art::after {
+  background: linear-gradient(90deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.05) 45%, rgba(5, 5, 5, 0.25) 100%);
+}
+/* La photo a gauche pour le recapitulatif (maquette 5). */
+.fg-scene--split.fg-scene--art-left .fg-art {
+  left: 0;
+  right: auto;
+  clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
+}
+.fg-scene--split.fg-scene--art-left .fg-art::after {
+  background: linear-gradient(270deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.05) 45%, rgba(5, 5, 5, 0.25) 100%);
+}
+
+/* Scene pleine photo : le contenu passe dessus (maquettes 2 et 3). */
+.fg-scene--full .fg-art::after {
+  background: linear-gradient(90deg, rgba(5, 5, 5, 0.94) 0%, rgba(5, 5, 5, 0.86) 40%, rgba(5, 5, 5, 0.55) 75%, rgba(5, 5, 5, 0.4) 100%);
+}
+.fg-scene--full.fg-scene--center .fg-art::after {
+  background: linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.78) 45%, rgba(5, 5, 5, 0.94) 100%);
+}
+
+.fg-scene__body {
+  position: relative;
+  z-index: 2;
+  padding: 26px var(--fg-gutter) 44px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.fg-scene--split .fg-scene__body { padding-right: calc(52% + 12px); }
+/* A cote d une photo, la colonne de texte est etroite : le titre descend d un
+   cran pour que « Réserve-t-on ? » tienne sur sa ligne. */
+.fg-scene--split .fg-title { font-size: clamp(40px, 5.4vw, 66px); }
+.fg-scene--split.fg-scene--art-left .fg-scene__body { padding-right: var(--fg-gutter); padding-left: calc(52% + 12px); }
+.fg-scene--center .fg-scene__body { text-align: center; }
+
+/* --- Le fil des etapes ------------------------------------------------------ */
+
+.fg-steps {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin: 0 0 34px;
+  padding: 0;
+  list-style: none;
+  position: relative;
+  max-width: 560px;
+}
+.fg-scene--center .fg-steps { margin-left: auto; margin-right: auto; }
+.fg-steps__item .lbl { white-space: nowrap; }
+.fg-steps__item {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.fg-steps__item::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--fg-line-2);
+  z-index: 0;
+}
+.fg-steps__item:first-child::before { display: none; }
+/* Le trait se remplit de violet jusqu a l etape atteinte : une largeur qui
+   part de zero, en transform, pour ne rien recalculer. */
+.fg-steps__item::after {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--fg-purple);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 0.45s var(--fg-ease);
+  z-index: 0;
+}
+.fg-steps__item:first-child::after { display: none; }
+.fg-steps__item.is-done::after, .fg-steps__item.is-active::after { transform: scaleX(1); }
+.fg-steps__dot {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--fg-line-2);
+  background: var(--fg-bg);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fg-muted);
+  transition: background-color 0.3s, border-color 0.3s, color 0.3s, transform 0.3s var(--fg-ease);
+}
+.fg-steps__dot svg { width: 12px; height: 12px; display: none; }
+.fg-steps__item.is-active .fg-steps__dot {
+  background: var(--fg-purple);
+  border-color: var(--fg-purple);
+  color: var(--fg-text);
+  box-shadow: 0 0 0 4px rgba(148, 66, 146, 0.25);
+}
+.fg-steps__item.is-active { color: var(--fg-text); }
+.fg-steps__item.is-done .fg-steps__dot { background: var(--fg-purple); border-color: var(--fg-purple); color: var(--fg-text); }
+.fg-steps__item.is-done .fg-steps__dot span { display: none; }
+.fg-steps__item.is-done .fg-steps__dot svg { display: block; }
+.fg-steps__item.is-done { color: var(--fg-muted); }
+/* L anneau qui s ouvre a l arrivee sur une etape. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-steps__item.is-active .fg-steps__dot { animation: fg-dot-pop 0.5s var(--fg-ease-out); }
+}
+@keyframes fg-dot-pop { 0% { transform: scale(0.85); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
+.fg-steps__item button { color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; display: contents; }
+
+/* --- Titres ----------------------------------------------------------------- */
+
+.fg-title {
+  font-family: var(--fg-display);
+  font-weight: 400;
+  font-size: clamp(42px, 6.6vw, 78px);
+  line-height: 0.94;
+  letter-spacing: 0.005em;
+  text-transform: uppercase;
+  margin: 0 0 22px;
+  text-wrap: balance;
+}
+.fg-title em { font-style: normal; color: var(--fg-purple-2); }
+/* Chaque mot monte dans son masque, comme le tunnel actuel (q-word). */
+/* Le masque de chaque mot laisse de la place aux accents (« À ») au-dessus des
+   capitales et aux jambages en dessous : le rembourrage est repris en marge
+   negative, la ligne ne bouge pas. */
+.fg-title .w { display: inline-block; overflow: hidden; vertical-align: bottom; padding: 0.18em 0.03em 0.06em; margin: -0.18em -0.03em -0.06em; }
+.fg-title .w > span { display: inline-block; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-active .fg-title .w > span { animation: fg-word 0.6s var(--fg-ease-out) both; animation-delay: calc(60ms * var(--i, 0) + 80ms); }
+}
+@keyframes fg-word { from { transform: translateY(110%); } to { transform: none; } }
+.fg-sub {
+  margin: -6px 0 26px;
+  color: var(--fg-muted);
+  font-size: 15px;
+  font-weight: 500;
+}
+.fg-sub b { color: var(--fg-text); font-weight: 600; }
+.fg-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin-bottom: 8px;
+}
+
+/* --- Apparition en cascade des blocs d une scene ----------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-active .fg-rise { animation: fg-rise 0.55s var(--fg-ease-out) both; animation-delay: calc(70ms * var(--i, 0) + 120ms); }
+}
+@keyframes fg-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+/* --- Champs ------------------------------------------------------------------ */
+
+.fg-fields { display: grid; gap: 22px; }
+/* Deux colonnes tant que chacune garde 220 px (jour + groupe cote a cote),
+   sinon elles s empilent : jamais un chevauchement, quelle que soit la largeur
+   du cadre chez le client. */
+.fg-fields--2 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 22px 26px; max-width: 600px; }
+/* « 4 personnes » ne se coupe jamais en deux lignes, quelle que soit la colonne. */
+.fg-stepper__value, .fg-stepper__value output { white-space: nowrap; }
+.fg-field { display: grid; gap: 9px; }
+.fg-field__label { font-size: 15px; font-weight: 700; }
+.fg-field__hint { font-size: 12px; color: var(--fg-faint); }
+.fg-input {
+  width: 100%;
+  height: 50px;
+  padding: 0 16px;
+  border-radius: var(--fg-radius);
+  border: 1.5px solid var(--fg-line-2);
+  background: var(--fg-bg-2);
+  color: var(--fg-text);
+  font-size: 15px;
+  font-weight: 500;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.fg-input::placeholder { color: var(--fg-faint); }
+.fg-input:hover { border-color: #555; }
+.fg-input:focus { outline: none; border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.25); }
+.fg-field.is-invalid .fg-input { border-color: var(--fg-danger); }
+.fg-field__error { font-size: 12px; color: var(--fg-danger); min-height: 0; }
+.fg-field__error:empty { display: none; }
+
+/* Le choix du jour : un bouton qui ouvre la liste des prochains jours. */
+.fg-day { position: relative; }
+.fg-day__btn {
+  width: 100%;
+  height: 50px;
+  white-space: nowrap;
+  padding: 0 38px 0 14px;
+  border-radius: var(--fg-radius);
+  border: 1.5px solid var(--fg-line-2);
+  background: var(--fg-bg-2);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 500;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.fg-day__btn:hover { border-color: #555; }
+.fg-day__btn[aria-expanded="true"], .fg-day__btn:focus-visible { border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.25); outline: none; }
+.fg-day__btn svg { width: 18px; height: 18px; flex: none; color: var(--fg-muted); }
+.fg-day__btn .chev { position: absolute; right: 14px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); transition: transform 0.25s var(--fg-ease); }
+.fg-day__btn[aria-expanded="true"] .chev { transform: translateY(-50%) rotate(180deg); }
+.fg-day__list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #101010;
+  border: 1px solid var(--fg-line-2);
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+  transform-origin: top center;
+}
+.fg-day__list[hidden] { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-day__list { animation: fg-pop 0.22s var(--fg-ease-out); }
+}
+@keyframes fg-pop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
+.fg-day__opt {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+.fg-day__opt:hover, .fg-day__opt:focus-visible { background: rgba(148, 66, 146, 0.22); outline: none; }
+.fg-day__opt[aria-selected="true"] { background: var(--fg-purple); }
+.fg-day__opt small { color: var(--fg-muted); font-size: 12px; }
+.fg-day__opt[disabled] { color: var(--fg-faint); cursor: not-allowed; }
+.fg-day__opt[disabled] small { color: var(--fg-faint); }
+
+/* Le compteur de personnes. */
+.fg-stepper {
+  display: grid;
+  grid-template-columns: 50px 1fr 50px;
+  height: 50px;
+  border-radius: var(--fg-radius);
+  border: 1.5px solid var(--fg-line-2);
+  background: var(--fg-bg-2);
+  overflow: hidden;
+}
+.fg-stepper__btn {
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--fg-text);
+  border-right: 1.5px solid var(--fg-line-2);
+  transition: background-color 0.15s, color 0.15s;
+}
+.fg-stepper__btn:last-child { border-right: 0; border-left: 1.5px solid var(--fg-line-2); }
+.fg-stepper__btn:hover { background: rgba(148, 66, 146, 0.25); }
+.fg-stepper__btn:active { background: var(--fg-purple); }
+.fg-stepper__btn[disabled] { color: var(--fg-faint); cursor: not-allowed; background: none; }
+.fg-stepper__value {
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  position: relative;
+}
+.fg-stepper__value output { display: inline-block; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-stepper__value.is-up output { animation: fg-tick-up 0.28s var(--fg-ease-out); }
+  .fg-stepper__value.is-down output { animation: fg-tick-down 0.28s var(--fg-ease-out); }
+}
+@keyframes fg-tick-up { from { transform: translateY(70%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fg-tick-down { from { transform: translateY(-70%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Case a cocher. */
+.fg-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.fg-check input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.fg-check__box {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 5px;
+  border: 1.5px solid var(--fg-line-2);
+  display: grid;
+  place-items: center;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.fg-check__box svg { width: 13px; height: 13px; stroke-dasharray: 22; stroke-dashoffset: 22; transition: stroke-dashoffset 0.3s var(--fg-ease-out); }
+.fg-check input:checked + .fg-check__box { background: var(--fg-purple); border-color: var(--fg-purple); }
+.fg-check input:checked + .fg-check__box svg { stroke-dashoffset: 0; }
+.fg-check input:focus-visible + .fg-check__box { outline: 2px solid var(--fg-teal); outline-offset: 3px; }
+.fg-check.is-invalid .fg-check__box { border-color: var(--fg-danger); }
+
+/* --- Boutons ----------------------------------------------------------------- */
+
+.fg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 0 34px;
+  border-radius: var(--fg-radius);
+  background: var(--fg-purple);
+  color: var(--fg-text);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  box-shadow: 6px 6px 0 var(--fg-teal);
+  transition: transform 0.18s var(--fg-ease), box-shadow 0.18s var(--fg-ease), background-color 0.2s, opacity 0.2s;
+  will-change: transform;
+}
+.fg-btn svg { width: 18px; height: 18px; flex: none; transition: transform 0.25s var(--fg-ease); }
+.fg-btn:hover { background: var(--fg-purple-2); transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--fg-teal); }
+.fg-btn:hover svg { transform: translateX(4px); }
+.fg-btn:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--fg-teal); }
+.fg-btn[disabled], .fg-btn.is-busy { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: 6px 6px 0 var(--fg-teal-dim); }
+.fg-btn.is-busy { position: relative; color: transparent; }
+.fg-btn.is-busy::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: fg-spin 0.8s linear infinite;
+}
+@keyframes fg-spin { to { transform: rotate(360deg); } }
+/* Un reflet passe une fois sur le bouton quand la scene arrive. */
+.fg-btn--shine { position: relative; overflow: hidden; }
+.fg-btn--shine::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 40%;
+  left: -60%;
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
+  transform: skewX(-18deg);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-active .fg-btn--shine::before { animation: fg-shine 1.2s var(--fg-ease) 0.9s both; }
+}
+@keyframes fg-shine { from { left: -60%; } to { left: 130%; } }
+.fg-btn--ghost {
+  background: transparent;
+  box-shadow: none;
+  border: 1.5px solid var(--fg-line-2);
+  color: var(--fg-muted);
+  min-height: 46px;
+  padding: 0 20px;
+  letter-spacing: 0.06em;
+}
+.fg-btn--ghost:hover { background: rgba(255, 255, 255, 0.06); color: var(--fg-text); transform: none; box-shadow: none; border-color: #555; }
+.fg-btn--ghost:active { transform: none; box-shadow: none; }
+.fg-link {
+  background: none;
+  border: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.2s;
+}
+.fg-link:hover { color: var(--fg-text); }
+.fg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 24px; margin-top: 34px; }
+.fg-actions--center { justify-content: center; }
+.fg-actions--column { flex-direction: column; align-items: stretch; }
+.fg-actions--column .fg-btn { width: 100%; }
+.fg-actions--column .fg-link { align-self: center; }
+
+/* --- Etape 2 : les activites ------------------------------------------------ */
+
+.fg-tabs {
+  display: flex;
+  gap: 28px;
+  margin: 4px 0 22px;
+  border-bottom: 1px solid var(--fg-line);
+}
+.fg-tab {
+  position: relative;
+  padding: 4px 2px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  transition: color 0.2s;
+}
+.fg-tab::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: var(--fg-purple-2);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.3s var(--fg-ease);
+}
+.fg-tab[aria-selected="true"] { color: var(--fg-text); }
+.fg-tab[aria-selected="true"]::after { transform: scaleX(1); }
+.fg-tab:hover { color: var(--fg-text); }
+.fg-panel[hidden] { display: none; }
+
+.fg-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fg-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 146px;
+  padding: 18px 18px 16px;
+  border-radius: 8px;
+  border: 1.5px solid var(--fg-line);
+  background: rgba(8, 8, 8, 0.93);
+  text-align: left;
+  overflow: hidden;
+  transition: border-color 0.25s, transform 0.25s var(--fg-ease), box-shadow 0.25s;
+  will-change: transform;
+}
+.fg-card > * { position: relative; z-index: 1; }
+/* Un bouton se serre sur son texte : dans la grille, chaque carte prend toute
+   sa colonne, et la colonne ne s elargit jamais sur un nom long. */
+.fg-grid > li { min-width: 0; }
+.fg-grid .fg-card { width: 100%; }
+/* La photo de l activite se devoile derriere la carte au survol. */
+.fg-card__photo {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.45s var(--fg-ease);
+}
+.fg-card__photo img { width: 100%; height: 100%; object-fit: cover; }
+.fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.25) 0%, rgba(5, 5, 5, 0.9) 100%); }
+.fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }
+.fg-card:hover .fg-card__photo { opacity: 1; }
+.fg-card.is-on { border-color: var(--fg-purple-2); box-shadow: 0 0 0 1px var(--fg-purple-2), 0 12px 30px rgba(148, 66, 146, 0.22); }
+.fg-card.is-on .fg-card__photo { opacity: 0.55; }
+.fg-card__icon { width: 40px; height: 40px; color: var(--fg-text); margin-bottom: 8px; }
+.fg-card__icon svg { width: 100%; height: 100%; }
+.fg-card__name { font-size: 16px; font-weight: 700; line-height: 1.2; }
+.fg-card__price { font-size: 13px; color: var(--fg-muted); font-weight: 500; }
+.fg-card__box {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1.5px solid var(--fg-line-2);
+  display: grid;
+  place-items: center;
+  transition: background-color 0.2s, border-color 0.2s, transform 0.3s var(--fg-ease-out);
+}
+.fg-card__box svg { width: 13px; height: 13px; stroke-dasharray: 22; stroke-dashoffset: 22; transition: stroke-dashoffset 0.3s var(--fg-ease-out) 0.05s; }
+.fg-card.is-on .fg-card__box { background: var(--fg-purple); border-color: var(--fg-purple); transform: scale(1.08); }
+.fg-card.is-on .fg-card__box svg { stroke-dashoffset: 0; }
+.fg-card[disabled] { opacity: 0.45; cursor: not-allowed; }
+.fg-card[disabled]:hover { transform: none; }
+.fg-card--formule { min-height: 168px; }
+.fg-card__meta { font-size: 12px; color: var(--fg-faint); }
+.fg-empty { color: var(--fg-muted); font-size: 14px; padding: 22px 0; }
+
+/* La barre du bas : compteur a gauche, bouton a droite (maquette 2). */
+.fg-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.fg-bar__count { font-size: 15px; font-weight: 500; color: var(--fg-muted); }
+.fg-bar__count b { color: var(--fg-purple-ink); font-weight: 700; font-size: 20px; margin-right: 6px; display: inline-block; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-bar__count b.is-bump { animation: fg-bump 0.35s var(--fg-ease-out); }
+}
+@keyframes fg-bump { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+
+/* --- Etape 3 : les heures ----------------------------------------------------- */
+
+.fg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 0 26px;
+  padding: 0;
+  list-style: none;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.fg-chip {
+  min-width: 92px;
+  height: 50px;
+  padding: 0 18px;
+  border-radius: var(--fg-radius);
+  border: 1.5px solid var(--fg-line-2);
+  background: rgba(10, 10, 10, 0.8);
+  font-size: 16px;
+  font-weight: 600;
+  transition: border-color 0.2s, background-color 0.2s, transform 0.2s var(--fg-ease), box-shadow 0.2s;
+  will-change: transform;
+}
+.fg-chip:hover { border-color: var(--fg-purple-2); transform: translateY(-2px); }
+.fg-chip.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 4px 4px 0 var(--fg-teal); transform: translateY(-2px); }
+.fg-chip[disabled] { color: var(--fg-faint); border-style: dashed; cursor: not-allowed; }
+.fg-chip[disabled]:hover { transform: none; border-color: var(--fg-line-2); }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-chips.is-fresh .fg-chip { animation: fg-rise 0.45s var(--fg-ease-out) both; animation-delay: calc(28ms * var(--i, 0)); }
+}
+.fg-period { width: 100%; text-align: center; margin: 8px 0 2px; }
+.fg-period:first-child { margin-top: 0; }
+.fg-plan {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 14px;
+  margin: 0 auto 26px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: rgba(10, 10, 10, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 15px;
+  color: var(--fg-muted);
+}
+.fg-plan svg { width: 18px; height: 18px; color: var(--fg-purple-ink); }
+.fg-plan b { color: var(--fg-text); font-weight: 700; }
+.fg-plan .dot { color: var(--fg-faint); }
+.fg-plan__price { color: var(--fg-teal); font-weight: 700; }
+.fg-plan.is-swap { animation: fg-swap 0.35s var(--fg-ease-out); }
+@keyframes fg-swap { from { opacity: 0.3; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.fg-notice {
+  max-width: 720px;
+  margin: 0 auto 22px;
+  padding: 14px 18px;
+  border-radius: 8px;
+  background: rgba(148, 66, 146, 0.14);
+  border: 1px solid rgba(176, 79, 176, 0.4);
+  font-size: 14px;
+  color: var(--fg-text);
+  text-align: left;
+}
+.fg-notice--warn { background: rgba(255, 107, 107, 0.1); border-color: rgba(255, 107, 107, 0.4); }
+.fg-notice b { font-weight: 700; }
+.fg-loading { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--fg-muted); font-size: 14px; padding: 30px 0; }
+.fg-loading::before { content: ""; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); border-top-color: var(--fg-purple-2); animation: fg-spin 0.8s linear infinite; }
+
+/* --- Etape 4 : le contact, et la carte de rappel sur la photo -------------- */
+
+.fg-recall {
+  position: absolute;
+  z-index: 3;
+  top: 32px;
+  right: var(--fg-gutter);
+  min-width: 300px;
+  padding: 18px 22px;
+  background: rgba(5, 5, 5, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+}
+.fg-recall__line { font-size: 18px; font-weight: 700; margin-top: 6px; }
+.fg-recall__bar { width: 46px; height: 3px; background: var(--fg-purple-2); margin-top: 12px; border-radius: 2px; transform-origin: left center; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-active .fg-recall { animation: fg-rise 0.6s var(--fg-ease-out) 0.35s both; }
+  .fg-scene.is-active .fg-recall__bar { animation: fg-grow 0.6s var(--fg-ease-out) 0.7s both; }
+}
+@keyframes fg-grow { from { transform: scaleX(0); } to { transform: none; } }
+
+/* --- Etape 5 : le recapitulatif ------------------------------------------------ */
+
+.fg-title--spark { position: relative; padding-left: 4px; }
+.fg-title--spark .spark { position: absolute; left: -6px; top: -30px; width: 30px; height: 30px; color: var(--fg-purple-2); }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-active .fg-title--spark .spark { animation: fg-spark 1.4s var(--fg-ease) 0.4s both; }
+}
+@keyframes fg-spark { 0% { transform: scale(0) rotate(-40deg); opacity: 0; } 50% { transform: scale(1.25) rotate(8deg); opacity: 1; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+.fg-recap { display: grid; gap: 0; max-width: 520px; }
+.fg-recap__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.fg-recap__row svg { width: 20px; height: 20px; color: var(--fg-muted); flex: none; }
+.fg-recap__sep { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 12px 0; }
+.fg-recap__item {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0;
+}
+.fg-recap__badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(148, 66, 146, 0.18);
+  border: 1px solid rgba(176, 79, 176, 0.5);
+  color: var(--fg-purple-ink);
+}
+.fg-recap__badge svg { width: 22px; height: 22px; }
+.fg-recap__name { font-weight: 700; font-size: 16px; }
+.fg-recap__detail { font-size: 13px; color: var(--fg-muted); font-weight: 500; }
+.fg-recap__aside { text-align: right; font-size: 12px; color: var(--fg-muted); }
+.fg-recap__aside b { display: block; font-size: 17px; color: var(--fg-text); font-weight: 700; }
+.fg-total {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding-top: 4px;
+}
+.fg-total__label { font-size: 13px; color: var(--fg-muted); font-weight: 500; }
+.fg-total__amount { font-family: var(--fg-display); font-size: 44px; line-height: 1; letter-spacing: 0.01em; }
+.fg-total__amount small { font-size: 0.6em; margin-left: 2px; }
+.fg-total__pay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 18px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  color: var(--fg-muted);
+  line-height: 1.3;
+}
+.fg-total__pay svg { width: 26px; height: 26px; color: var(--fg-text); flex: none; }
+
+/* --- Confirmation ------------------------------------------------------------- */
+
+.fg-done { text-align: center; max-width: 620px; margin: 0 auto; }
+.fg-done__ring {
+  width: 96px;
+  height: 96px;
+  margin: 10px auto 26px;
+  border-radius: 50%;
+  border: 3px solid var(--fg-teal);
+  display: grid;
+  place-items: center;
+  position: relative;
+  color: var(--fg-teal);
+}
+.fg-done__ring svg { width: 44px; height: 44px; stroke-dasharray: 60; stroke-dashoffset: 60; }
+.fg-done__ring::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid var(--fg-teal); opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-scene.is-active .fg-done__ring svg { animation: fg-draw 0.7s var(--fg-ease-out) 0.35s both; }
+  .fg-scene.is-active .fg-done__ring::after { animation: fg-ring 1.4s var(--fg-ease-out) 0.5s both; }
+}
+@keyframes fg-draw { to { stroke-dashoffset: 0; } }
+@keyframes fg-ring { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.9); opacity: 0; } }
+.fg-done__ref { display: inline-block; margin: 6px 0 18px; padding: 8px 16px; border-radius: 999px; background: rgba(103, 186, 172, 0.12); border: 1px solid rgba(103, 186, 172, 0.45); color: var(--fg-teal); font-weight: 700; font-size: 14px; letter-spacing: 0.06em; }
+.fg-done p { color: var(--fg-muted); font-size: 15px; margin: 0 0 10px; }
+.fg-done p b { color: var(--fg-text); }
+
+/* --- Erreur globale --------------------------------------------------------- */
+
+.fg-alert {
+  margin: 0 0 20px;
+  padding: 14px 18px;
+  border-radius: 8px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  color: var(--fg-text);
+  font-size: 14px;
+}
+.fg-alert[hidden] { display: none; }
+
+/* --- Ecrans etroits ------------------------------------------------------------ */
+
+@media (max-width: 1080px) {
+  .fg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    height: 200px;
+    clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
+  }
+  .fg-scene--split.fg-scene--art-left .fg-art { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 78%); }
+  .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after {
+    background: linear-gradient(180deg, rgba(5, 5, 5, 0.1) 0%, rgba(5, 5, 5, 0.75) 100%);
+  }
+  .fg-scene--split .fg-scene__body, .fg-scene--split.fg-scene--art-left .fg-scene__body { padding-left: var(--fg-gutter); padding-right: var(--fg-gutter); padding-top: 10px; }
+  .fg-scene--full .fg-art::after { background: linear-gradient(180deg, rgba(5, 5, 5, 0.9) 0%, rgba(5, 5, 5, 0.94) 100%); }
+  .fg-recall { position: static; margin: 0 0 22px; min-width: 0; }
+  .fg-scene--split.fg-scene--art-left .fg-recall { display: none; }
+  .fg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .fg-fields--2 { grid-template-columns: 1fr; }
+  .fg-stage, .fg-scene { min-height: 0; }
+}
+@media (max-width: 560px) {
+  .fg-steps { max-width: none; margin-bottom: 26px; }
+  .fg-steps__item { font-size: 9px; letter-spacing: 0.08em; }
+  .fg-steps__item:not(.is-active) span.lbl { display: none; }
+  .fg-title { font-size: clamp(38px, 12vw, 52px); }
+  .fg-card { min-height: 128px; padding: 14px; }
+  .fg-card__icon { width: 32px; height: 32px; }
+  .fg-bar { flex-direction: column; align-items: stretch; }
+  .fg-bar .fg-btn { width: 100%; }
+  .fg-actions .fg-btn { width: 100%; }
+  .fg-chip { min-width: 78px; padding: 0 12px; font-size: 15px; }
+  .fg-total { grid-template-columns: 1fr; }
+  .fg-total__pay { border-left: 0; padding-left: 0; }
+  .fg-btn { padding: 0 22px; font-size: 13px; }
+}
+
+/* --- Moins de mouvement -------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .fg *, .fg *::before, .fg *::after { animation: none !important; transition-duration: 0.01ms !important; }
+}

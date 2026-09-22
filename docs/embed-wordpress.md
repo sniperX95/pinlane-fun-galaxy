@@ -49,6 +49,7 @@ qui ne se laissent pas faire :
 | `data-target` | Facultatif, et seulement si le script ne peut pas être collé à l'endroit voulu. Le sélecteur du bloc **dans lequel** afficher le parcours. Sans lui, le parcours s'affiche là où le script est collé. Il vise en général le parent de ce que masque `data-fallback`, pour que le parcours prenne exactement sa place. |
 | `data-center-key` | Sur un site **multi-centres qui affiche le même bloc à tout le monde**, la clé que le site utilise déjà pour retenir le centre choisi par le visiteur (stockage local, puis cookie). Le parcours suit ce choix, et `data-center` sert de défaut quand rien n'a été choisi. Sans cet attribut, un visiteur de Gembloux se verrait proposer le planning de Libramont : mauvais horaires, mauvais tarifs, et personne ne s'en apercevrait avant une réservation impossible à honorer. **À ne pas mettre** quand le site sert déjà un bloc différent par centre : sa décision à lui fait foi. |
 | `data-scroll-margin` | Facultatif. Hauteur en pixels de l'en-tête collé du site (80 par défaut), pour que la barre du parcours ne passe pas dessous. |
+| `data-design` | Facultatif. `fungalaxy` affiche le formulaire habillé aux couleurs de Fun Galaxy (fond noir, violet et sarcelle, photos du centre) : même parcours, mêmes horaires, mêmes réservations, seule l'apparence change. Sans l'attribut, le parcours standard s'affiche. |
 
 ### 2 bis. Si aucun bloc HTML n'est possible à cet endroit
 

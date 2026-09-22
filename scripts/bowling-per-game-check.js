@@ -376,16 +376,21 @@ function run() {
   // PREMIER palier de la grille, donc une session de 30 min etait enregistree,
   // planifiee et facturee comme une de 15 min.
   const programme = require(path.join(ROOT, 'lib', 'visit-program.js'));
+  // CINQ PERSONNES : un seul passage, donc le palier se lit tout nu. Depuis le
+  // 2026-09-23, le Fun Run declare une installation de 5 places (et non plus un
+  // maximum de groupe) : au-dela, le groupe TOURNE, et la ligne porte autant de
+  // fois la session. Le palier choisi reste le palier choisi, ce que la
+  // derniere assertion de cette section verifie a 6 personnes.
   const session30 = (programme.normalizeProgram(
     [{ activityId: 'fun_run', minutes: 30 }],
-    { centerId: 'libramont', pax: 6 },
+    { centerId: 'libramont', pax: 5 },
   ).items || [])[0] || {};
   ok(Number(session30.minutes) === 30, `30 min demandees, 30 min enregistrees (obtenu ${session30.minutes})`);
   ok(Number(session30.price) === 55, `et facturees au palier de 30 min, 55 EUR (obtenu ${session30.price})`);
   // CONTRE-EPREUVE : sans demande, c est le premier palier, comme avant.
   const sessionDefaut = (programme.normalizeProgram(
     [{ activityId: 'fun_run' }],
-    { centerId: 'libramont', pax: 6 },
+    { centerId: 'libramont', pax: 5 },
   ).items || [])[0] || {};
   ok(Number(sessionDefaut.minutes) === 15 && Number(sessionDefaut.price) === 30,
     `sans duree demandee, le premier palier tient (${sessionDefaut.minutes} min, ${sessionDefaut.price} EUR)`);
@@ -393,10 +398,20 @@ function run() {
   // vendu, on retombe sur la grille au lieu de fabriquer un tarif.
   const horsGrille = (programme.normalizeProgram(
     [{ activityId: 'fun_run', minutes: 45 }],
-    { centerId: 'libramont', pax: 6 },
+    { centerId: 'libramont', pax: 5 },
   ).items || [])[0] || {};
   ok(Number(horsGrille.minutes) === 15 && Number(horsGrille.price) === 30,
     `un palier absent de la grille ne fabrique pas de tarif (${horsGrille.minutes} min, ${horsGrille.price} EUR)`);
+  // LE PALIER SURVIT A LA ROTATION : six personnes ne tiennent pas en un
+  // passage (5 places), elles en font deux. La session reste celle qui a ete
+  // choisie, deux fois : 2 x 30 min et 2 x 55 EUR, jamais un palier rabote
+  // pour faire tenir le groupe. Le detail est prouve par funrun-rotation-check.
+  const rotation30 = (programme.normalizeProgram(
+    [{ activityId: 'fun_run', minutes: 30 }],
+    { centerId: 'libramont', pax: 6 },
+  ).items || [])[0] || {};
+  ok(Number(rotation30.sessions) === 2 && Number(rotation30.minutes) === 60 && Number(rotation30.price) === 110,
+    `a 6 personnes, le palier de 30 min se joue deux fois (${rotation30.sessions} sessions, ${rotation30.minutes} min, ${rotation30.price} EUR)`);
 
   section('[9] LA PLAINE DE JEUX SE COMPTE EN ENFANTS, PAS EN GROUPE');
   // « playground on doit mettre cbn d enfant » : 4 adultes + 2 enfants ne font

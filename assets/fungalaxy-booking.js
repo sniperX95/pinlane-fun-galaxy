@@ -263,18 +263,38 @@
 
   /* --- Le fil des etapes ------------------------------------------------------- */
 
+  // UNE BARRE SEGMENTEE, PAS UN COLLIER DE PASTILLES. Cinq segments qui se
+  // remplissent, un numero a deux chiffres et un libelle sous chacun. Le
+  // mouvement dit ce qui vient de se passer : en avancant, le segment de
+  // l etape atteinte se REMPLIT et celui qu on quitte passe au blanc ; en
+  // reculant, celui qu on quitte se VIDE ; a la fin, les cinq se balaient une
+  // fois, de gauche a droite. Rien ne bouge en continu. Le rendu est refait a
+  // chaque changement d ecran (les ecrans caches sont en `display: none`),
+  // donc chaque animation part exactement quand l ecran apparait.
+  var etapePrecedente = -1;
   function rendreEtapes() {
-    var rang = SCENES.indexOf(sceneCourante);
-    var actif = Math.min(rang, ETAPES.length - 1);
+    var total = ETAPES.length;
+    var fin = sceneCourante === 'fin';
+    var actif = Math.min(SCENES.indexOf(sceneCourante), total - 1);
+    var avant = etapePrecedente;
+    etapePrecedente = fin ? total : actif;
+    var sens = avant < 0 ? 'depart' : fin ? 'fin' : actif > avant ? 'avance' : actif < avant ? 'recule' : 'reste';
+    var deux = function (n) { return String(n).padStart(2, '0'); };
     var html = ETAPES.map(function (e, i) {
-      var cls = i < actif || sceneCourante === 'fin' ? 'is-done' : (i === actif ? 'is-active' : '');
-      var cliquable = i < actif && sceneCourante !== 'fin';
-      // Le rang ne s affiche que dans une colonne etroite (regle CSS), la ou
-      // les quatre autres libelles ont disparu : sans lui, « Créneaux » tout
-      // seul ne dit plus ou on en est.
-      var inner = '<span class="fg-steps__dot"><span>' + (i + 1) + '</span><svg aria-hidden="true"><use href="#i-check"/></svg></span><span class="lbl">' + esc(e.label) + '</span>'
-        + (i === actif && sceneCourante !== 'fin' ? '<span class="fg-steps__of" aria-hidden="true">' + (i + 1) + '/' + ETAPES.length + '</span>' : '');
-      return '<li class="fg-steps__item ' + cls + '" ' + (i === actif ? 'aria-current="step"' : '') + '>'
+      var cls = fin || i < actif ? 'is-done' : (i === actif ? 'is-active' : '');
+      var geste = '';
+      if (sens === 'avance' && i === actif) geste = ' is-filling';
+      if (sens === 'avance' && i === avant) geste = ' is-settling';
+      if (sens === 'recule' && i === avant) geste = ' is-draining';
+      if (sens === 'fin') geste = ' is-sweep';
+      var cliquable = i < actif && !fin;
+      // Le rang « /05 » ne s affiche que dans une colonne etroite (regle CSS),
+      // la ou les quatre autres libelles tombent.
+      var inner = '<span class="fg-steps__seg" aria-hidden="true"></span>'
+        + '<span class="fg-steps__txt"><span class="fg-steps__num">' + deux(i + 1) + '</span>'
+        + (i === actif && !fin ? '<span class="fg-steps__of" aria-hidden="true">/' + deux(total) + '</span>' : '')
+        + '<span class="lbl">' + esc(e.label) + '</span></span>';
+      return '<li class="fg-steps__item ' + cls + geste + '" style="--i:' + i + '"' + (i === actif && !fin ? ' aria-current="step"' : '') + '>'
         + (cliquable ? '<button type="button" data-goto="' + e.id + '" aria-label="Revenir à l’étape ' + esc(e.label) + '">' + inner + '</button>' : inner)
         + '</li>';
     }).join('');
@@ -565,6 +585,9 @@
     }
   }
   paxInput.addEventListener('animationend', function () { paxInput.classList.remove('is-up', 'is-down'); });
+  // Le champ fait la largeur de son nombre : toucher n importe ou dans la case
+  // du milieu le donne a taper, nombre deja selectionne (on tape par-dessus).
+  $('#paxValue').addEventListener('click', function (e) { if (e.target !== paxInput) { paxInput.focus(); paxInput.select(); } });
   function rendrePax() {
     paxOut.textContent = personnes(state.pax);
     if (String(paxInput.value) !== String(state.pax) && doc.activeElement !== paxInput) paxInput.value = String(state.pax);
@@ -944,16 +967,129 @@
   // Les etats d une heure, lus dans la reponse :
   //   ok    : rien a dire ;
   //   soft  : possible, mais la visite finira a la fermeture (avertissement du moteur) ;
-  //   shift : chevauche l autre activite posee ; la choisir deplace cette autre activite ;
-  //   hard  : impossible ce jour-la (complet, ferme, trop tard) : on lit pourquoi, sans pouvoir la prendre.
-  var MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', resource_conflict: 'occupé', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo' };
-  function etatHeure(t) {
+  //   shift : chevauche une AUTRE activite posee ; la choisir replace cette autre activite ;
+  //   hard  : impossible ce jour-la (complet, ferme, trop tard, deja pris par une autre
+  //           partie du meme groupe) : on lit pourquoi, sans pouvoir la prendre ;
+  //   wave  : l heure ou joue le 2e (3e...) groupe d un groupe scinde : elle est deja au client.
+  // UN CHEVAUCHEMENT AVEC SOI-MEME N EST PAS UN DECALAGE. Le tunnel le sait
+  // depuis le 2026-09-18 (`conflict.activityId !== activity.activityId`) : une
+  // autre partie du MEME laser ne se replace pas, c est le groupe lui-meme qui
+  // occupe l arene. Le formulaire en faisait un « decale ».
+  var MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', schedule_free: 'trop tard', resource_conflict: 'complet', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo', anchor_overlap: 'pris' };
+  function etatHeure(t, idPiste) {
     if (t.ok === false) {
-      if (t.code === 'anchor_overlap') return { etat: 'shift', mot: 'décale', raison: t.reason || 'Chevauche une autre activité', conflit: t.conflict || null };
-      return { etat: 'hard', mot: MOTS_DURS[t.code] || 'indispo', raison: t.reason || 'Indisponible', conflit: null };
+      var autre = t.code === 'anchor_overlap' && t.conflict && t.conflict.activityId && t.conflict.activityId !== idPiste;
+      if (autre) return { etat: 'shift', mot: 'décale', raison: t.reason || 'Chevauche une autre activité', conflit: t.conflict };
+      // Sa propre partie garde son conflit : la phrase dira laquelle, et quand elle joue.
+      return { etat: 'hard', mot: MOTS_DURS[t.code] || 'indispo', raison: t.reason || 'Indisponible', conflit: t.code === 'anchor_overlap' ? (t.conflict || null) : null };
     }
     if (t.warning) return { etat: 'soft', mot: 'serré', raison: t.warning.reason || 'Peu de temps pour le reste de la visite', conflit: null };
     return { etat: 'ok', mot: '', raison: '', conflit: null };
+  }
+  function minutesDe(h) { var p = /^(\d{1,2}):(\d{2})$/.exec(String(h || '')); return p ? Number(p[1]) * 60 + Number(p[2]) : NaN; }
+  function hhmm(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+  function minuscule(s) { s = String(s || ''); return s.charAt(0).toLowerCase() + s.slice(1); }
+  function joindreHeures(liste) { return liste.length < 2 ? (liste[0] || '') : liste.slice(0, -1).join(', ') + ' et ' + liste[liste.length - 1]; }
+  // LES HEURES QU EMPORTENT LES GROUPES SUIVANTS, lues dans le PLAN rendu par le
+  // serveur (jamais recalculees ici) : heure -> { rang, total, joueurs, debut, fin,
+  // depuis }, « depuis » etant l heure retenue ou part le 1er groupe de la partie.
+  // Une vague couvre chaque demi-heure de la grille qu elle occupe : la 2e vague
+  // d un laser (14:00-14:25) emporte 14:00, le 2e service d un bowling
+  // (13:30-14:30) emporte 13:30 et 14:00. Le 1er groupe n emporte rien : son
+  // heure est celle que le client a choisie.
+  // SEULES LES HEURES RETENUES PAR LE CLIENT EMPORTENT (la regle du tunnel,
+  // heuresEmporteesParLeLaser). L heure que l equipe PROPOSE n est pas un choix :
+  // marquer « groupe 2 » la demi-heure suivante bloquait le client qui voulait
+  // justement faire partir son 1er groupe a cette heure-la, ce que la note des
+  // groupes lui demande de faire. Meme chose pour une 2e partie que le moteur
+  // place seul : ses heures restent a prendre.
+  function heuresEmportees(cr, id, retenues) {
+    var out = {};
+    var blocs = ((cr && cr.slot && cr.slot.opsPlan && cr.slot.opsPlan.resourceBlocks) || []).filter(function (b) { return b && b.activityId === id; });
+    (retenues || []).forEach(function (h) {
+      // La partie que lance CETTE heure : celle dont le 1er groupe part a h.
+      var tete = blocs.filter(function (b) { return b.startTime === h && Number(b.groupWaveCount) > 1 && (Number(b.groupWaveIndex) || 1) === 1; })[0];
+      if (!tete) return;
+      var partie = Number(tete.countIndex) || 1;
+      blocs.forEach(function (b) {
+        if ((Number(b.countIndex) || 1) !== partie || !(Number(b.groupWaveIndex) > 1)) return;
+        var debut = minutesDe(b.startTime), fin = minutesDe(b.endTime);
+        if (!isFinite(debut) || !isFinite(fin)) return;
+        for (var m = Math.floor(debut / 30) * 30; m < fin; m += 30) {
+          var quand = hhmm(m);
+          if (!out[quand]) out[quand] = { rang: Number(b.groupWaveIndex), total: Number(b.groupWaveCount), joueurs: Number(b.players) || 0, debut: b.startTime, fin: b.endTime, depuis: h };
+        }
+      });
+    });
+    return out;
+  }
+  // TOUCHER L HEURE D UN GROUPE SUIVANT y fait partir le 1er groupe de sa
+  // partie. Le moteur juge chaque heure comme « l activite part ici » : pour
+  // une activite d une seule partie, c est exactement ce depart. Un laser de
+  // plusieurs parties, lui, remplace la PLUS TOT des parties posees quand
+  // toutes le sont, et en ajoute une sinon (visitFeasibilityAt) : son verdict
+  // ne vaut pour ce depart que si la partie qui emporte l heure est la plus
+  // tot, toutes posees. Sinon il n a rien juge de ce depart : l heure se
+  // prend, et la reponse au clic dira si la combinaison tient.
+  function deplacementEvalue(idPiste, depuis, compte) {
+    if (idPiste !== 'laser_game' || !(compte > 1)) return true;
+    return state.laserParts.length >= compte && state.laserParts[0] === depuis;
+  }
+  // La plage REELLE qu occupe une activite du plan, a partir de son depart :
+  // toutes ses vagues comprises (un laser de 13:30 en deux groupes occupe
+  // 13:30 a 14:25). Sans correspondance dans le plan, rien : la phrase dit
+  // alors l heure de depart seule.
+  function plageOccupee(cr, id, debut) {
+    var blocs = ((cr && cr.slot && cr.slot.opsPlan && cr.slot.opsPlan.resourceBlocks) || []).filter(function (b) { return b && b.activityId === id; });
+    var tete = blocs.filter(function (b) { return b.startTime === debut; })[0];
+    if (!tete) return '';
+    var partie = Number(tete.countIndex) || 1;
+    var fin = blocs.filter(function (b) { return (Number(b.countIndex) || 1) === partie; }).map(function (b) { return String(b.endTime || ''); }).sort().pop();
+    return fin ? debut + ' à ' + fin : '';
+  }
+  function nomBas(s) { return String(s || '').toLowerCase(); }
+  // LA PHRASE D UNE RAISON, pour un groupe d heures qui la partagent. Chaque
+  // phrase CITE ce que le moteur a dit : sa raison courte, ou l activite et
+  // l heure en conflit, avec la plage que le plan lui donne. Rien n est
+  // invente, tout se retrouve dans la reponse.
+  function phraseRaison(g, nomPiste) {
+    var n = g.heures.length > 1;
+    var piste = nomBas(nomPiste || 'activité');
+    if (g.etat === 'shift') {
+      var autre = nomBas(g.conflit.label || 'autre activité');
+      var plage = g.conflit.id ? plageOccupee(state.creneau, g.conflit.id, g.conflit.time) : '';
+      return 'Votre ' + piste + ' tomberait pendant votre ' + autre + (plage ? ' (' + plage + ')' : ' de ' + g.conflit.time) + ' : '
+        + (n ? 'en prendre une' : 'la prendre') + ' replace votre ' + autre + ' avant ou après.';
+    }
+    if (g.etat === 'wave') {
+      var suite = 'Votre ' + g.vague.rang + 'e groupe (' + g.vague.joueurs + ' joueurs) joue de ' + g.vague.debut + ' à ' + g.vague.fin + ', juste après le premier';
+      if (g.sous === 'hard') return suite + ' : ' + (n ? 'ces heures sont' : 'cette heure est') + ' déjà à vous. Y faire partir le 1er groupe est impossible : ' + minuscule(g.motif || 'indisponible') + '.';
+      var choisir = (n ? 'Choisir l’une de ces heures' : 'La choisir') + ' y fait partir votre 1er groupe';
+      if (g.sous === 'shift') return suite + '. ' + choisir + ' et replace votre ' + nomBas(g.conflit.label || 'autre activité') + ' avant ou après.';
+      if (g.sous === 'soft') return suite + '. ' + choisir + ', mais ' + minuscule(g.motif) + '.';
+      return suite + '. ' + choisir + '.';
+    }
+    if (g.etat === 'soft') return 'Possible, mais ' + minuscule(g.raison) + '.';
+    var r = g.raison || 'Indisponible';
+    switch (g.code) {
+      case 'capacity':
+      case 'resource_conflict':
+        return 'Complet pour votre groupe' + (r && r !== 'Complet' ? ' : ' + minuscule(r) : '') + '.';
+      case 'schedule':
+        return 'Trop tard : ' + minuscule(r) + '.';
+      case 'schedule_free':
+        return 'Trop tard pour tout faire : ' + minuscule(r) + '.';
+      case 'blocked':
+        return 'Fermé : ' + minuscule(r) + '.';
+      case 'anchor_overlap':
+        // SA PROPRE PARTIE : laquelle, et quand elle joue, groupes compris.
+        if (!g.conflit.time) return 'Déjà pris par votre autre partie de ' + piste + ' (' + nomBas(r) + ').';
+        var sienne = plageOccupee(state.creneau, g.conflit.id || '', g.conflit.time);
+        return 'Votre autre partie de ' + piste + ' joue ' + (sienne ? 'de ' + sienne : 'à ' + g.conflit.time) + ' : '
+          + (n ? 'commencer à l’une de ces heures la chevaucherait.' : 'commencer à cette heure la chevaucherait.');
+      default:
+        return r.charAt(0).toUpperCase() + r.slice(1) + '.';
+    }
   }
   function periode(h) { var n = Number(String(h).split(':')[0]); return n < 12 ? 'Matin' : n < 18 ? 'Après-midi' : 'Soirée'; }
   var ICONES_PERIODE = { 'Matin': 'i-matin', 'Après-midi': 'i-jour', 'Soirée': 'i-soir' };
@@ -974,11 +1110,11 @@
         + '<span class="fg-period__sum"></span>'
         + '<svg class="fg-period__chev" aria-hidden="true"><use href="#i-chevron"/></svg>'
         + '</button>'
-        + '<div class="fg-period__body" id="' + id + '"><ul class="fg-chips" role="listbox" aria-label="' + esc(p) + '"' + (multi ? ' aria-multiselectable="true"' : '') + '>';
+        + '<div class="fg-period__body" id="' + id + '"><div class="fg-period__inner"><ul class="fg-chips" role="listbox" aria-label="' + esc(p) + '"' + (multi ? ' aria-multiselectable="true"' : '') + '>';
       groupes[p].forEach(function (t, k) {
         html += '<li role="presentation"><button type="button" class="fg-chip" role="option" data-time="' + esc(t.time) + '" style="--i:' + k + '"><b>' + esc(t.time) + '</b><small></small></button></li>';
       });
-      html += '</ul></div></section>';
+      html += '</ul><ul class="fg-why-list" hidden></ul></div></div></section>';
     });
     return html + '</div>';
   }
@@ -1005,7 +1141,7 @@
     var utile = null;
     secs.forEach(function (sec) {
       var chips = $$('.fg-chip', sec);
-      var n = chips.filter(function (c) { return c.dataset.state !== 'hard'; }).length;
+      var n = chips.filter(function (c) { return c.dataset.ok !== 'false'; }).length;
       var choisis = chips.filter(function (c) { return c.classList.contains('is-on'); }).map(function (c) { return c.dataset.time; });
       var propose = chips.filter(function (c) { return c.classList.contains('is-proposed'); }).map(function (c) { return c.dataset.time; })[0];
       var sum = n ? n + ' créneau' + (n > 1 ? 'x' : '') : 'rien de possible';
@@ -1023,8 +1159,8 @@
   // La mise a jour d une puce SUR PLACE : etat, raison, choix, proposition.
   // Rien n est reconstruit, rien ne saute : c est ce qui evite le tremblement
   // a chaque heure posee.
-  function majChip(chip, t, actifs, propose, toutSerre) {
-    var e = etatHeure(t);
+  function majChip(chip, t, actifs, propose, toutSerre, idPiste, emportees, compte) {
+    var e = etatHeure(t, idPiste || '');
     // Quand TOUTES les heures possibles de la piste sont serrees, le mot ne
     // dit plus rien sur l heure : la cause est ailleurs (une autre activite
     // posee tard, ou une journee trop courte). Les puces restent normales,
@@ -1032,18 +1168,77 @@
     if (toutSerre && e.etat === 'soft') { e.etat = 'ok'; e.mot = ''; }
     var on = actifs.indexOf(t.time) >= 0;
     var prop = !on && propose === t.time;
+    // L HEURE DU GROUPE SUIVANT. Une heure retenue ne l est jamais : le client
+    // l a prise, c est la sienne. Les autres heures qu une vague occupe restent
+    // MARQUEES « groupe N » : la suite du groupe y joue. Mais elles se
+    // CHOISISSENT (Movsar, 2026-09-23 : « faut qu ils puissent cliquer quand
+    // meme pour changer ») : en toucher une y fait partir le 1er groupe.
+    // « sous » garde le verdict du moteur sur ce depart quand il l a juge
+    // (deplacementEvalue) : impossible reste impossible, decale replace
+    // l autre activite, serre le dit.
+    var vague = !on && emportees ? emportees[t.time] : null;
+    if (vague) {
+      var sous = deplacementEvalue(idPiste || '', vague.depuis, compte) ? e.etat : 'ok';
+      e = {
+        etat: 'wave', sous: sous, motif: sous === 'ok' ? '' : e.raison, mot: 'groupe ' + vague.rang, conflit: sous === 'shift' ? e.conflit : null,
+        raison: 'Votre ' + vague.rang + 'e groupe (' + vague.joueurs + ' joueurs) joue de ' + vague.debut + ' à ' + vague.fin + ', juste après le premier.'
+          + (sous === 'hard' ? ' Y faire partir le 1er groupe est impossible : ' + minuscule(e.raison) + '.' : ' La choisir y fait partir votre 1er groupe.'),
+      };
+    }
     chip.dataset.state = e.etat;
     chip.dataset.reason = e.raison;
-    chip.dataset.ok = e.etat === 'hard' ? 'false' : 'true';
-    if (e.conflit) chip.dataset.conflict = e.conflit.activityId || ''; else delete chip.dataset.conflict;
+    chip.dataset.ok = e.etat === 'hard' || e.sous === 'hard' ? 'false' : 'true';
+    // Ce qu il faut pour ecrire la phrase de la plage, sans rien relire ailleurs.
+    chip.dataset.code = t.ok === false && e.etat !== 'wave' ? String(t.code || '') : '';
+    if (e.etat === 'wave') { chip.dataset.sous = e.sous; chip.dataset.motif = e.motif; } else { delete chip.dataset.sous; delete chip.dataset.motif; }
+    if (e.conflit) { chip.dataset.conflict = e.conflit.activityId || ''; chip.dataset.conflictLabel = e.conflit.label || ''; chip.dataset.conflictTime = e.conflit.time || ''; }
+    else { delete chip.dataset.conflict; delete chip.dataset.conflictLabel; delete chip.dataset.conflictTime; }
+    if (vague) chip.dataset.wave = JSON.stringify(vague); else delete chip.dataset.wave;
     chip.classList.toggle('is-on', on);
     chip.classList.toggle('is-proposed', prop);
     chip.classList.toggle('is-soft', e.etat === 'soft');
     chip.classList.toggle('is-shift', e.etat === 'shift');
     chip.classList.toggle('is-off', e.etat === 'hard');
+    chip.classList.toggle('is-wave', e.etat === 'wave');
     chip.setAttribute('aria-selected', String(on));
     chip.setAttribute('title', e.etat === 'ok' ? (prop ? 'Heure proposée par l’équipe' : e.raison) : e.raison);
     $('small', chip).textContent = on ? 'choisi' : (prop ? 'proposé' : e.mot);
+  }
+  // LES RAISONS D UNE PLAGE, SOUS SES HEURES. Une ligne par raison, avec toutes
+  // les heures qui la partagent ; rien pour une plage ou tout est prenable. La
+  // puce retenue ou proposee ne s explique pas : c est un choix, pas un
+  // obstacle.
+  // Chaque heure expliquee POINTE sa ligne (aria-describedby) : un lecteur
+  // d ecran lit la raison en arrivant sur l heure.
+  function expliquerPeriode(sec, nomPiste) {
+    var liste = $('.fg-why-list', sec);
+    if (!liste) return;
+    var racine = ($('.fg-period__body', sec) || {}).id || 'per';
+    var groupes = [], index = {};
+    $$('.fg-chip', sec).forEach(function (c) {
+      c.removeAttribute('aria-describedby');
+      var etat = c.dataset.state;
+      if (!etat || etat === 'ok' || c.classList.contains('is-on') || c.classList.contains('is-proposed')) return;
+      var vague = c.dataset.wave ? JSON.parse(c.dataset.wave) : null;
+      var cle = etat + '|' + (c.dataset.code || '') + '|' + (c.dataset.conflictLabel || '') + '@' + (c.dataset.conflictTime || '')
+        + '|' + (vague ? vague.rang + '@' + vague.debut + '|' + (c.dataset.sous || '') + '|' + (c.dataset.motif || '') : '') + '|' + (etat === 'shift' || etat === 'wave' ? '' : c.dataset.reason || '');
+      if (!index[cle]) {
+        index[cle] = {
+          etat: etat, code: c.dataset.code || '', raison: c.dataset.reason || '', mot: ($('small', c) || {}).textContent || '',
+          conflit: { id: c.dataset.conflict || '', label: c.dataset.conflictLabel || '', time: c.dataset.conflictTime || '' }, vague: vague, sous: c.dataset.sous || '', motif: c.dataset.motif || '', heures: [], puces: [],
+        };
+        groupes.push(index[cle]);
+      }
+      index[cle].heures.push(c.dataset.time);
+      index[cle].puces.push(c);
+    });
+    liste.innerHTML = groupes.map(function (g, k) {
+      return '<li class="fg-why-list__item" id="' + esc(racine) + '-why-' + k + '" data-etat="' + esc(g.etat) + '" data-heures="' + esc(g.heures.join(' ')) + '">'
+        + '<i class="fg-key fg-key--' + esc(g.etat) + '">' + esc(g.mot) + '</i>'
+        + '<span><b>' + esc(joindreHeures(g.heures)) + '</b> · ' + esc(phraseRaison(g, nomPiste)) + '</span></li>';
+    }).join('');
+    groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.setAttribute('aria-describedby', racine + '-why-' + k); }); });
+    liste.hidden = !groupes.length;
   }
   function vaguesPour(cr, id) {
     var blocs = ((cr && cr.slot && cr.slot.opsPlan && cr.slot.opsPlan.resourceBlocks) || [])
@@ -1059,14 +1254,27 @@
     for (var i = 1; i <= total; i += 1) if (tailles[i]) liste.push(tailles[i]);
     return { total: total, tailles: liste };
   }
-  function noteVagues(v) {
+  // LE GROUPE SCINDE, DIT AVEC SES HEURES. Chaque groupe, sa taille et son
+  // depart, lus dans le plan pour la 1re partie : le client voit d un coup
+  // que choisir 13:30 fait aussi jouer quelqu un a 14:00.
+  function departsDesVagues(cr, id) {
+    var vus = {};
+    return ((cr && cr.slot && cr.slot.opsPlan && cr.slot.opsPlan.resourceBlocks) || [])
+      .filter(function (b) { return b && b.activityId === id && Number(b.groupWaveCount) > 1 && (Number(b.countIndex) || 1) === 1; })
+      .filter(function (b) { var k = Number(b.groupWaveIndex) || 1; if (vus[k]) return false; vus[k] = 1; return true; })
+      .sort(function (a, b) { return (Number(a.groupWaveIndex) || 1) - (Number(b.groupWaveIndex) || 1); })
+      .map(function (b) { return { rang: Number(b.groupWaveIndex) || 1, joueurs: Number(b.players) || 0, debut: b.startTime }; });
+  }
+  function noteVagues(v, departs) {
     if (!v || !(v.total > 1)) return '';
-    var memes = v.tailles.length === v.total && v.tailles.every(function (n) { return n === v.tailles[0]; });
-    var quoi = memes
-      ? '<b>' + v.total + ' groupes de ' + v.tailles[0] + '</b>'
-      : '<b>' + v.total + ' groupes</b>' + (v.tailles.length ? ' (' + v.tailles.join(' puis ') + ')' : '');
-    return 'Votre groupe ne tient pas en une fois : ' + quoi + ', l’un après l’autre. '
-      + 'L’heure choisie ici est celle du premier, le suivant enchaîne.';
+    if (!departs || departs.length < 2) {
+      return 'Votre groupe ne tient pas en une fois : <b>' + v.total + ' groupes</b>, l’un après l’autre. L’heure choisie ici est celle du premier.';
+    }
+    var morceaux = departs.map(function (d, i) {
+      return (i === 0 ? 'le 1er groupe' : 'le ' + d.rang + 'e') + ' (' + d.joueurs + ') ' + (i === 0 ? 'joue à ' : 'enchaîne à ') + '<b>' + esc(d.debut) + '</b>';
+    });
+    return 'Vous êtes ' + esc(personnes(state.pax)) + ', trop pour jouer tous en même temps : ' + morceaux.join(', ') + '. '
+      + 'Choisissez l’heure du 1er groupe, la suite se cale seule.';
   }
   function actifsDe(a) {
     var laser = a.activityId === 'laser_game';
@@ -1082,10 +1290,13 @@
       var propose = actifs.length ? '' : (defauts[a.activityId] || '');
       var possibles = (a.times || []).filter(function (t) { return t.ok !== false; });
       var toutSerre = possibles.length > 0 && possibles.every(function (t) { return t.warning; });
+      var emportees = heuresEmportees(state.creneau, a.activityId, actifs);
+      var compte = Math.max(1, Number(a.count) || 1);
       (a.times || []).forEach(function (t) {
         var chip = $('.fg-chip[data-time="' + t.time + '"]', track);
-        if (chip) majChip(chip, t, actifs, propose, toutSerre);
+        if (chip) majChip(chip, t, actifs, propose, toutSerre, a.activityId, emportees, compte);
       });
+      $$('.fg-period', track).forEach(function (sec) { expliquerPeriode(sec, a.label || a.activityId); });
       var note = $('.fg-track__note', track);
       if (note) {
         var autres = ancres.filter(function (b) { return b.activityId !== a.activityId && actifsDe(b).length; })
@@ -1098,13 +1309,11 @@
       var vagues = $('.fg-track__waves', track);
       if (vagues) {
         var v = vaguesPour(state.creneau, a.activityId);
-        vagues.innerHTML = v ? noteVagues(v) : '';
+        vagues.innerHTML = v ? noteVagues(v, departsDesVagues(state.creneau, a.activityId)) : '';
         vagues.hidden = !v;
       }
       var reset = $('[data-reset]', track);
       if (reset) reset.hidden = !actifs.length;
-      var why = $('.fg-why', track);
-      if (why) why.hidden = true;
       majPeriodes(track);
     });
   }
@@ -1130,7 +1339,7 @@
       // mobile »). Chaque cle PORTE le contour de la puce qu elle decrit :
       // sous 680 px, les trois contours parlent seuls et la glose disparait.
       html += '<p class="fg-legend fg-rise" style="--i:0">'
-        + '<span class="fg-legend__tip">Touchez une heure en pointillés pour lire ce qui coince.</span>'
+        + '<span class="fg-legend__tip">Ce qui coince est expliqué sous chaque plage horaire.</span>'
         + '<span class="fg-legend__key fg-legend__key--soft"><i>Serré</i><em>tout ne tiendra peut-être pas</em></span>'
         + '<span class="fg-legend__key fg-legend__key--shift"><i>Décale</i><em>l’autre activité se déplace</em></span>'
         + '<span class="fg-legend__key fg-legend__key--off"><i>Complet</i><em>impossible ce jour-là</em></span>'
@@ -1154,7 +1363,6 @@
           + '<span class="fg-track__note" role="status" hidden></span>'
           + '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '" hidden>Laisser l’équipe placer</button>'
           + '</div>'
-          + '<p class="fg-why" role="status" hidden></p>'
           + '</section>';
       });
     } else {
@@ -1162,7 +1370,7 @@
       if (!slots.length) {
         html += '<div class="fg-notice fg-notice--warn"><b>' + esc(d.message || 'Aucun créneau ce jour-là.') + '</b></div>';
       } else {
-        html += '<section class="fg-track fg-rise" style="--i:1" data-activity="">' + rendreChips(slots, false, 'slot') + '<p class="fg-why" role="status" hidden></p></section>';
+        html += '<section class="fg-track fg-rise" style="--i:1" data-activity="">' + rendreChips(slots, false, 'slot') + '</section>';
       }
     }
     html += '<div id="planZone" class="fg-rise" style="--i:' + (ancres.length + 2) + '"></div>';
@@ -1201,19 +1409,21 @@
     var chip = e.target.closest('.fg-chip');
     if (!chip) return;
     var track = chip.closest('.fg-track');
-    var why = $('.fg-why', track);
     var t = chip.dataset.time;
-    if (chip.dataset.state === 'hard') {
-      // Une heure impossible se lit : la raison vient du moteur, mot pour mot.
+    if (chip.dataset.ok === 'false') {
+      // Une heure qui ne se prend pas s EXPLIQUE deja sous sa plage : la toucher
+      // eclaire la ligne qui la concerne (plus de seconde boite qui repete).
       $$('.fg-chip.is-asked', hourZone).forEach(function (c) { c.classList.remove('is-asked'); });
+      $$('.fg-why-list__item.is-lit', hourZone).forEach(function (l) { l.classList.remove('is-lit'); });
       chip.classList.add('is-asked');
-      why.innerHTML = '<b>' + esc(t) + '</b> : ' + esc(chip.dataset.reason || 'indisponible à cette heure.');
-      why.hidden = false;
+      var sec = chip.closest('.fg-period');
+      var ligne = sec ? $$('.fg-why-list__item', sec).filter(function (l) { return (' ' + l.dataset.heures + ' ').indexOf(' ' + t + ' ') >= 0; })[0] : null;
+      if (ligne) { void ligne.offsetWidth; ligne.classList.add('is-lit'); }
       posterHauteur();
       return;
     }
-    why.hidden = true;
     $$('.fg-chip.is-asked', hourZone).forEach(function (c) { c.classList.remove('is-asked'); });
+    $$('.fg-why-list__item.is-lit', hourZone).forEach(function (l) { l.classList.remove('is-lit'); });
     var idA = track.dataset.activity;
     if (!idA) {
       // Formule ou visite sans activite planifiee : le creneau se retient tel quel.
@@ -1227,7 +1437,8 @@
       return;
     }
     adaptation = null;
-    if (chip.dataset.state === 'shift' && chip.dataset.conflict) {
+    var vague = chip.dataset.state === 'wave' && chip.dataset.wave ? JSON.parse(chip.dataset.wave) : null;
+    if ((chip.dataset.state === 'shift' || (vague && chip.dataset.sous === 'shift')) && chip.dataset.conflict) {
       // L heure chevauche l autre activite posee : c est l AUTRE qui bouge.
       // Sa pose s efface, le moteur la replace autour de l heure choisie.
       var autre = chip.dataset.conflict;
@@ -1238,10 +1449,16 @@
     var count = Number(track.dataset.count) || 1;
     if (idA === 'laser_game' && count > 1) {
       var i = state.laserParts.indexOf(t);
-      if (i >= 0) state.laserParts.splice(i, 1);
+      // La partie SUIT son 1er groupe : celle qui emporte cette heure y part,
+      // les autres parties ne bougent pas.
+      var j = vague ? state.laserParts.indexOf(vague.depuis) : -1;
+      if (j >= 0) state.laserParts[j] = t;
+      else if (i >= 0) state.laserParts.splice(i, 1);
       else { if (state.laserParts.length >= count) state.laserParts.shift(); state.laserParts.push(t); }
       state.laserParts.sort();
       if (state.laserParts.length) state.pins.laser_game = state.laserParts[0]; else delete state.pins.laser_game;
+    } else if (vague) {
+      state.pins[idA] = t;
     } else if (state.pins[idA] === t) {
       delete state.pins[idA];
     } else {
@@ -1355,9 +1572,24 @@
       chargerPlan();
     } catch (err) { /* suggestion illisible : rien */ }
   });
+  // A l ecran des coordonnees, le recapitulatif ENTIER (htmlRecap). Sur
+  // telephone il se replie sous sa ligne de resume, pour que le formulaire
+  // reste en tete ; sur ordinateur il est ouvert a cote, sans bouton.
+  var recall = $('#recall'), recallToggle = $('#recallToggle');
+  function basculerRappel(ouvrir) {
+    recall.classList.toggle('is-open', ouvrir);
+    recallToggle.setAttribute('aria-expanded', String(ouvrir));
+    $('span', recallToggle).textContent = ouvrir ? 'Masquer le détail' : 'Voir le détail';
+  }
+  recallToggle.addEventListener('click', function () {
+    basculerRappel(recallToggle.getAttribute('aria-expanded') !== 'true');
+    posterHauteur();
+  });
   goContact.addEventListener('click', function () {
     if (goContact.disabled || !state.creneau) return;
     $('#recallLine').textContent = jourCourt(state.date) + ' · ' + personnes(state.pax) + ' · ' + (state.creneau.slot.opsPlan && state.creneau.slot.opsPlan.arrivalTime ? 'arrivée ' + state.creneau.slot.opsPlan.arrivalTime : state.heure);
+    $('#recallBody').innerHTML = htmlRecap(false);
+    basculerRappel(false);
     aller('contact');
   });
 
@@ -1399,7 +1631,12 @@
 
   /* --- Etape 5 : le recapitulatif ------------------------------------------------ */
 
-  function rendreRecap() {
+  // LE RECAPITULATIF, UNE SEULE SOURCE. L ecran des coordonnees le montre en
+  // entier a cote du formulaire (Movsar, 2026-09-23 : « pourquoi y a pas le
+  // recap ici, y a juste un mini recap ») ; le dernier ecran le reprend, avec
+  // l adresse ou partira la confirmation. Une seule fonction pour les deux :
+  // deux rendus finiraient par se contredire.
+  function htmlRecap(final) {
     var cr = state.creneau, rep = cr ? cr.reponse : {}, plan = cr ? (cr.slot.opsPlan || {}) : {};
     var lignes = [];
     var items = (rep.program && rep.program.items) || [];
@@ -1432,10 +1669,16 @@
     html += '<div class="fg-recap__sep"></div>'
       + (plan.arrivalTime ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>Arrivée conseillée à <b>' + esc(plan.arrivalTime) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(plan.arrivalTime, fin) + '</span></div>' : '')
       + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + (complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place') + '</div>'
-      + '<div class="fg-total__amount" id="totalAmount" data-total="' + prix + '">' + (prix > 0 ? esc(euros(prix)) : 'Sur place') + '</div></div>'
-      + '<div class="fg-total__pay"><svg aria-hidden="true"><use href="#i-card"/></svg><span>Paiement <br class="fg-total__br">sur place</span></div></div>'
-      + '<p class="fg-recap__detail fg-rise" style="--i:' + (5 + lignes.length) + '; margin-top:14px">La confirmation partira à <b style="color:var(--fg-text)">' + esc(state.contact.email) + '</b>' + (state.heure ? ' · début à ' + esc(state.heure) : '') + '</p>';
-    $('#recap').innerHTML = html;
+      + '<div class="fg-total__amount"' + (final ? ' id="totalAmount"' : '') + ' data-total="' + prix + '">' + (prix > 0 ? esc(euros(prix)) : 'Sur place') + '</div></div>'
+      // Les deux moyens acceptes sur place (Movsar, 2026-09-23 : « on accepte
+      // le liquide ») : la carte et le billet, puis les mots.
+      + '<div class="fg-total__pay"><span class="fg-total__icons" aria-hidden="true"><svg><use href="#i-card"/></svg><svg><use href="#i-cash"/></svg></span><span class="fg-total__how"><b>Paiement sur place</b> <small>Carte ou espèces</small></span></div></div>';
+    if (final) html += '<p class="fg-recap__detail fg-rise" style="--i:' + (5 + lignes.length) + '; margin-top:14px">La confirmation partira à <b style="color:var(--fg-text)">' + esc(state.contact.email) + '</b>' + (state.heure ? ' · début à ' + esc(state.heure) : '') + '</p>';
+    return html;
+  }
+  function rendreRecap() {
+    $('#recap').innerHTML = htmlRecap(true);
+    var prix = Number(((state.creneau || {}).reponse || {}).price) || 0;
     if (prix > 0 && !reduced) compterJusqua($('#totalAmount'), prix);
   }
   // Le total monte jusqu a sa valeur reelle : la valeur finale est toujours exacte.
@@ -1510,6 +1753,13 @@
         direErreur('Le réseau n’a pas répondu. Vérifiez votre connexion et réessayez.');
       });
   });
+  // Un titre change de texte : il se redecoupe mot a mot, comme au depart.
+  function poserTitre(el, html) {
+    if (!el) return;
+    el.innerHTML = html;
+    delete el.dataset.cut;
+    decouperTitres();
+  }
   function reussite(reponse) {
     var r = reponse.reservation || {};
     state.reservation = r;
@@ -1521,12 +1771,16 @@
     var mailRes = r.email || state.contact.email;
     var confirme = r.validationStatus === 'confirmed' || (reponse.ops && reponse.ops.autoDecision === 'auto_confirmed');
     var contact = meta && meta.center && meta.center.contact;
+    // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que
+    // l equipe va verifier. « C est enregistre » etait vrai dans les deux cas,
+    // et ne disait rien.
+    poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');
     $('#finBody').innerHTML = '<div class="fg-done__ref fg-rise" style="--i:1">Réservation n° ' + esc(r.id) + '</div>'
       + '<p class="fg-rise" style="--i:2">' + (confirme
         ? '<b>' + esc(jourLong(dateRes)) + ' à ' + esc(heureRes) + '</b>, ' + esc(personnes(paxRes)) + '. Votre place est réservée.'
         : '<b>' + esc(jourLong(dateRes)) + ' à ' + esc(heureRes) + '</b>, ' + esc(personnes(paxRes)) + '. L’équipe vérifie votre demande et revient vers vous rapidement.') + '</p>'
       + '<p class="fg-rise" style="--i:3"><svg style="width:18px;height:18px;vertical-align:-3px;margin-right:6px" aria-hidden="true"><use href="#i-mail"/></svg>' + (confirme ? 'La confirmation part' : 'Un accusé de réception part') + ' à <b>' + esc(mailRes) + '</b>.</p>'
-      + (Number(r.price) > 0 ? '<p class="fg-rise" style="--i:4">Montant estimé <b>' + esc(euros(r.price)) + '</b>, à régler sur place.</p>' : '')
+      + (Number(r.price) > 0 ? '<p class="fg-rise" style="--i:4">Montant estimé <b>' + esc(euros(r.price)) + '</b>, à régler sur place, par carte ou en espèces.</p>' : '')
       + (contact && contact.phone ? '<p class="fg-rise" style="--i:5">Une question ? ' + esc(contact.phone) + (contact.email ? ' · ' + esc(contact.email) : '') + '</p>' : '')
       + (!EMBED && meta && meta.center && meta.center.identity && meta.center.identity.siteUrl ? '<div class="fg-actions fg-actions--center fg-rise" style="--i:6"><a class="fg-btn fg-btn--ghost" href="' + esc(meta.center.identity.siteUrl) + '">Retour au site</a></div>' : '');
     var burst = $('#finBurst');

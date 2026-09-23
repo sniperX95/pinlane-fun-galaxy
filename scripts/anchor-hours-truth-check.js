@@ -34,6 +34,15 @@
 //      nommant ; 19:00 (fin 20:00) et 21:00 restent possibles.
 //   E. L HEURE RETENUE RESTE POSSIBLE DANS SA PROPRE LISTE : elle ne se refuse
 //      jamais elle-meme.
+//   F. UNE HEURE QUI REMPLACE LA SIENNE NOMME LE VRAI OBSTACLE (2026-09-23).
+//      49 personnes (le laser joue en deux groupes), bowling retenu a 12:30,
+//      laser d UNE partie retenu a 13:30. Reposer le laser a 13:00 est
+//      impossible a cause du BOWLING (13:00-13:55 mord sur 12:30-13:30). Le
+//      moteur disait « Chevauche Laser Game 13:30 » : la partie que 13:00
+//      REMPLACE. Le formulaire en faisait un « decale » sur lui-meme, et le
+//      clic menait a une combinaison refusee. Aucune heure de la liste du
+//      laser ne doit donc accuser le laser, et 13:00 doit accuser le bowling.
+//      Contre-epreuve dediee : `--mutate-raison` remet l ancienne ligne.
 //
 // Puis une CONTRE-EPREUVE par mutation : on fait ignorer le verdict au moteur
 // (toute heure devient possible), on prouve que le gate rougit, et on restaure
@@ -254,6 +263,26 @@ async function main() {
       const v = verdictD(heure);
       ok(Boolean(v) && v.ok !== false, `bowling ${heure} reste possible autour des deux parties (${v ? (v.ok === false ? `impossible : ${v.reason}` : 'possible') : 'absent'})`);
     });
+
+    // --- F. Une heure qui remplace la sienne nomme le vrai obstacle ---------
+    const repose = await get('/api/public-availability?' + params({
+      pax: '49',
+      program: PROGRAMME_DUO,
+      preferredTimes: { bowling: '12:30', laser_game: '13:30' },
+      laserGameTimes: ['13:30'],
+    }));
+    const laserF = ancres(repose).find((a) => a.activityId === 'laser_game');
+    // Le montage : sans deux groupes de laser, 13:00 ne mordrait pas sur le
+    // bowling et la propriete n aurait pas de sujet.
+    const plan = ((repose.slots || [])[0] || {}).opsPlan || {};
+    const vagues = (plan.resourceBlocks || []).filter((b) => b.activityId === 'laser_game' && Number(b.groupWaveCount) > 1).length;
+    ok(vagues === 2, `MONTAGE : a 49 personnes, le laser retenu joue en deux groupes (${vagues} bloc(s) de vague)`);
+    const treize = laserF ? laserF.times.find((x) => x.time === '13:00') : null;
+    ok(Boolean(treize) && treize.ok === false && treize.conflict && treize.conflict.activityId === 'bowling' && /bowling/i.test(treize.reason || ''),
+      `laser 13:00 est impossible a cause du BOWLING, et le dit (${treize ? `${treize.ok === false ? 'impossible' : 'possible'} : ${treize.reason || ''} / conflit ${treize.conflict ? treize.conflict.activityId : 'aucun'}` : 'absent'})`);
+    const accusentLeLaser = laserF ? laserF.times.filter((x) => x.ok === false && x.conflict && x.conflict.activityId === 'laser_game') : [];
+    ok(accusentLeLaser.length === 0,
+      `une partie UNIQUE ne s accuse jamais elle-meme (${accusentLeLaser.length ? accusentLeLaser.map((x) => `${x.time} : ${x.reason}`).join(' | ') : 'aucune heure du laser n accuse le laser'})`);
   } finally {
     server.close();
   }
@@ -263,6 +292,39 @@ async function main() {
     process.exit(1);
   }
   console.log('\nanchor-hours-truth-check: ALL OK (fermeture atteignable, rien de cache, chaque heure impossible motivee, grille = validation, parties de laser comptees)');
+}
+
+// Contre-epreuve de F : `--mutate-raison` remet la liste des parties AVANT le
+// remplacement (la partie sortante reste dans la raison) ; F doit rougir.
+if (process.argv.includes('--mutate-raison')) {
+  const source = fs.readFileSync(ENGINE, 'utf8');
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  const avant = ['    if (next.length >= laserCount) next = next.slice(1);', ''].join(eol);
+  const ligne = '    partsForReason = next;' + eol;
+  const debut = source.indexOf('    let next = parts.filter((minutes) => minutes !== start);' + eol);
+  const fin = source.indexOf(ligne, debut);
+  if (debut < 0 || fin < 0 || source.indexOf(avant, debut) < 0 || source.indexOf(avant, debut) > fin) {
+    console.error('mutation impossible : le bloc des parties du laser a change dans lib/ops-engine.js');
+    process.exit(1);
+  }
+  // On deplace `partsForReason = next;` juste AVANT le `slice`, comme avant.
+  const ouvre = '    let next = parts.filter((minutes) => minutes !== start);' + eol;
+  const sansLigne = source.slice(0, fin) + source.slice(fin + ligne.length);
+  const mute = sansLigne.replace(ouvre, ouvre + ligne);
+  if (mute === source) { console.error('mutation sans effet'); process.exit(1); }
+  fs.writeFileSync(ENGINE, mute);
+  const { spawnSync } = require('child_process');
+  const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
+  fs.writeFileSync(ENGINE, source);
+  const sortie = String(run.stdout || '');
+  const tombes = sortie.split('\n').filter((l) => /^FAIL/.test(l) && /(BOWLING|elle-meme)/.test(l));
+  console.log(tombes.join('\n'));
+  if (run.status === 0 || tombes.length === 0) {
+    console.error('CONTRE-EPREUVE RATEE : la raison accuse de nouveau la partie remplacee, et F reste verte.');
+    process.exit(1);
+  }
+  console.log(`contre-epreuve OK : ${tombes.length} verdict(s) de F tombe(s) ; moteur restaure a l identique.`);
+  process.exit(0);
 }
 
 // Contre-epreuve : `node scripts/anchor-hours-truth-check.js --mutate` fait

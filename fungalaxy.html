@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260923b">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260923c">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -30,6 +30,7 @@
     <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
     <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 14.4c2.9.2 5 2.4 5 5.6"/></symbol>
     <symbol id="i-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/></symbol>
+    <symbol id="i-cash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.8"/><path d="M6 9.5v.01M18 14.5v.01"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
     <!-- Les activites -->
@@ -62,7 +63,7 @@
   <p class="fg-alert" id="fgAlert" role="alert" hidden></p>
   <div class="fg-stage" id="fgStage">
 
-    <!-- 1. CHOISISSEZ VOTRE JOUR -->
+    <!-- 1. RESERVEZ VOTRE SORTIE -->
     <section class="fg-scene fg-scene--split is-active" data-scene="date" aria-labelledby="t-date">
       <!-- Les photos : deux largeurs (800, 1600) et des `sizes` qui plafonnent ce
      que le navigateur demande. Sur un telephone, le bandeau photo fait 200 px
@@ -71,7 +72,7 @@
 <div class="fg-art"><img src="/assets/fungalaxy/duckpin-800.webp" srcset="/assets/fungalaxy/duckpin-800.webp 800w, /assets/fungalaxy/duckpin-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1066" decoding="async" fetchpriority="high"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h1 class="fg-title" id="t-date" data-words>Choisissez<br><em>votre jour</em></h1>
+        <h1 class="fg-title" id="t-date" data-words>Réservez<br><em>votre sortie</em></h1>
         <div class="fg-fields fg-fields--2">
           <div class="fg-field fg-rise" style="--i:1">
             <span class="fg-field__label" id="l-day">Quel jour ?</span>
@@ -116,12 +117,12 @@
       </div>
     </section>
 
-    <!-- 2. COMPOSEZ VOTRE VISITE -->
+    <!-- 2. AU PROGRAMME : les activites ou une formule -->
     <section class="fg-scene fg-scene--full" data-scene="activites" aria-labelledby="t-act">
       <div class="fg-art"><img data-src="/assets/fungalaxy/salle-bowling-800.webp" data-srcset="/assets/fungalaxy/salle-bowling-800.webp 800w, /assets/fungalaxy/salle-bowling-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-act" data-words>Composez<br><em>votre visite</em></h2>
+        <h2 class="fg-title" id="t-act" data-words>Au <em>programme</em></h2>
         <div class="fg-tabs fg-rise" style="--i:1" role="tablist" aria-label="Activités ou formules">
           <button type="button" class="fg-tab" role="tab" id="tabAct" aria-selected="true" aria-controls="panelAct">Activités</button>
           <button type="button" class="fg-tab" role="tab" id="tabFor" aria-selected="false" aria-controls="panelFor">Formules</button>
@@ -143,12 +144,12 @@
       </div>
     </section>
 
-    <!-- 3. PLACEZ VOS HORAIRES -->
+    <!-- 3. TOP DEPART : les heures de chaque activite -->
     <section class="fg-scene fg-scene--full fg-scene--center" data-scene="heures" aria-labelledby="t-hour">
       <div class="fg-art"><img data-src="/assets/fungalaxy/laser-couloir-800.webp" data-srcset="/assets/fungalaxy/laser-couloir-800.webp 800w, /assets/fungalaxy/laser-couloir-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-hour" data-words>Placez<br><em>vos horaires</em></h2>
+        <h2 class="fg-title" id="t-hour" data-words>Top <em>départ</em></h2>
         <p class="fg-sub" id="hourSub"></p>
         <div id="hourZone" aria-live="polite">
           <p class="fg-loading">On regarde ce qui est libre…</p>
@@ -160,17 +161,19 @@
       </div>
     </section>
 
-    <!-- 4. VOS COORDONNEES -->
+    <!-- 4. QUI RESERVE ? Les coordonnees, a cote du recapitulatif entier -->
     <section class="fg-scene fg-scene--split" data-scene="contact" aria-labelledby="t-who">
       <div class="fg-art"><img data-src="/assets/fungalaxy/pistes-neon-800.webp" data-srcset="/assets/fungalaxy/pistes-neon-800.webp 800w, /assets/fungalaxy/pistes-neon-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async"></div>
-      <aside class="fg-recall" aria-label="Votre réservation">
-        <span class="fg-kicker">Votre réservation</span>
+      <aside class="fg-recall" id="recall" aria-labelledby="recallKicker">
+        <span class="fg-kicker" id="recallKicker">Votre réservation</span>
         <p class="fg-recall__line" id="recallLine"></p>
+        <button type="button" class="fg-recall__toggle" id="recallToggle" aria-expanded="false" aria-controls="recallBody"><span>Voir le détail</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
         <div class="fg-recall__bar"></div>
+        <div class="fg-recap fg-recall__body" id="recallBody"></div>
       </aside>
       <form class="fg-scene__body" id="contactForm" novalidate>
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-who" data-words>Vos<br><em>coordonnées</em></h2>
+        <h2 class="fg-title" id="t-who" data-words>Qui <em>réserve&nbsp;?</em></h2>
         <div class="fg-fields" style="max-width:520px">
           <div class="fg-field fg-rise" style="--i:1">
             <label class="fg-field__label" for="cPrenom">Prénom</label>
@@ -205,12 +208,12 @@
       </form>
     </section>
 
-    <!-- 5. DERNIERE VERIFICATION -->
+    <!-- 5. DERNIER COUP D OEIL : le recapitulatif, puis la confirmation -->
     <section class="fg-scene fg-scene--split fg-scene--art-left" data-scene="recap" aria-labelledby="t-ok">
       <div class="fg-art"><img data-src="/assets/fungalaxy/fun-run-800.webp" data-srcset="/assets/fungalaxy/fun-run-800.webp 800w, /assets/fungalaxy/fun-run-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-ok"><span data-words>Dernière<br><em>vérification</em></span></h2>
+        <h2 class="fg-title" id="t-ok"><span data-words>Dernier <em>coup d’œil</em></span></h2>
         <div class="fg-recap" id="recap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:520px">
           <button type="button" class="fg-btn fg-btn--shine" id="confirmBtn">Confirmer la réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
@@ -219,14 +222,14 @@
       </div>
     </section>
 
-    <!-- 6. C'EST ENREGISTRE -->
+    <!-- 6. RESERVATION CONFIRMEE / DEMANDE ENVOYEE -->
     <section class="fg-scene fg-scene--full fg-scene--center" data-scene="fin" aria-labelledby="t-fin">
       <div class="fg-art"><img data-src="/assets/fungalaxy/simulateurs-800.webp" data-srcset="/assets/fungalaxy/simulateurs-800.webp 800w, /assets/fungalaxy/simulateurs-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <div class="fg-done">
           <div class="fg-done__ring" aria-hidden="true"><span class="fg-burst" id="finBurst"></span><svg><use href="#i-check"/></svg></div>
-          <h2 class="fg-title" id="t-fin" data-words>C’est<br><em>enregistré</em></h2>
+          <h2 class="fg-title" id="t-fin" data-words>Demande<br><em>envoyée</em></h2>
           <div id="finBody"></div>
         </div>
       </div>
@@ -235,6 +238,6 @@
   </div>
 </main>
 
-<script src="/assets/fungalaxy-booking.js?v=20260923b" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260923c" defer></script>
 </body>
 </html>

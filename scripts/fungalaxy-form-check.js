@@ -12,7 +12,8 @@
 //
 // LES PROPRIETES (v3.2, 2026-09-22) :
 //   [A] MONTAGE : la page se charge, le catalogue est lu (le jour propose est le
-//       premier jour ouvert), le fil des 5 etapes est rendu, la photo est
+//       premier jour ouvert, et son indice dit « Aujourd hui » ou « Demain »
+//       quand c est le cas), le fil des 5 etapes est rendu, la photo est
 //       decodee, le poids SERVI (apres tools/build-public.js, qui retire les
 //       commentaires) reste celui d un poste faible (< 125 Ko pour JS + CSS +
 //       HTML), aucune photo 1600 demandee sur un ecran de 1440, le « ? » du
@@ -21,9 +22,11 @@
 //       de reservation (un an), est le calendrier servi jour par jour (ferme
 //       grise, horaires ou motif dans le titre, point ferie/conge) ; les mois
 //       au-dela des 45 premiers jours se chargent a la demande (calendarFrom) ;
-//       la fleche « suivant » s arrete a l horizon ; le clavier se deplace de
+//       la fleche « suivant » s arrete a l horizon, et chaque mois glisse dans
+//       son sens (jamais a la reouverture) ; le clavier se deplace de
 //       jour ouvert en jour ouvert et Entree choisit ; un lundi de conge
-//       scolaire est ouvert ; le nombre de personnes se TAPE (borne a 240).
+//       scolaire est ouvert ; le nombre de personnes se TAPE (borne a 240,
+//       dite sous le compteur avec le numero du centre).
 //   [A3] EMPILEMENT : le calendrier ouvert passe DEVANT le compteur et le
 //       bouton ; dans une colonne etroite, seul le libelle de l etape en cours.
 //   [B] ACTIVITES : une carte par activite, prix « des X » = minimum de la
@@ -105,7 +108,12 @@
 //       va jusqu a l ecran final ;
 //       formulaire eteint par l equipe (interrupteur d embed.js), la page
 //       renvoie au parcours classique du centre au lieu de rester vide.
-//   [I] FORMULES A L ECRAN + FUN RUN QUI TOURNE (2026-09-22).
+//   [I] FORMULES A L ECRAN + FUN RUN QUI TOURNE (2026-09-22) ; a zero, la
+//       barre dit quoi faire ; les onglets obeissent aux fleches (motif APG,
+//       un seul arret de tabulation) et la pastille couvre l onglet choisi ;
+//       une reponse des heures ne sert qu a la demande qui l a produite (le
+//       mode, la formule, le programme), meme arrivee apres un changement
+//       d onglet.
 //   [J] LES TOURS DU 2026-09-23 : aucune photo de l ANCIEN centre nulle part
 //       (ni citee, ni dans le depot) ; le compteur
 //       de personnes prend la largeur de son nombre et son encre tombe au
@@ -137,7 +145,12 @@
 //       visite, ceux de la reponse, et suit une heure posee ; embarquee, elle
 //       s efface pendant que la page hote defile et revient au repos, mais
 //       reste quand le cadre ne fait que grandir ; au clavier, ce qui prend le
-//       focus n est jamais cache par elle (WCAG 2.4.11).
+//       focus n est jamais cache par elle (WCAG 2.4.11) ; embarquee, une carte
+//       focalisee sous l ecran de l hote y remonte avec son anneau entier.
+//       Le bouton qui avance
+//       s eveille une fois quand il devient cliquable (« Continuer » au premier
+//       choix, « Garder » a l arrivee sur les heures), et rend sa classe ;
+//       cocher une carte fait claquer sa case et rouler son prix, une fois.
 //   [O] ON DESCEND PARTOUT, LE CALENDRIER SE VOIT EN ENTIER (2026-09-23,
 //       retour de Movsar : « le calendrier on sait pas tout voir, trop gros,
 //       on sait pas descendre, plein d endroits ou on est bloque sur mobile,
@@ -226,6 +239,23 @@
 // cassee), dansflux (sur telephone le calendrier recouvre de nouveau le
 // nombre de personnes : feuille cassee), voir (embed.js ignore la demande du
 // cadre de montrer une bande : SCRIPT HOTE servi casse).
+//
+// CONTRE-PREUVES DU MODE DES HEURES : mode (Continuer reprend les heures de
+// l autre onglet), modevol (une reponse en vol prend le mode de son arrivee).
+// JS servi casse.
+//
+// CONTRE-PREUVES DES ECRANS DE LA DATE ET DES ACTIVITES (2026-09-23) : azero
+// (a zero formule, la barre ne rappelle plus l activite gardee), plafond (au
+// plafond, la phrase et le numero du centre ne s affichent plus), relatif (le
+// jour propose ne dit plus « Aujourd hui »), sensmois (« mois suivant » glisse
+// a l envers), rejouemois (la reouverture rejoue le glissement du mois), coche
+// (cocher ne fait plus claquer la case), eveilreste (le bouton qui avance
+// garde sa classe de reveil), eveilinactif (« Continuer » s eveille a chaque
+// choix), eveilgarde (« Garder » s eveille a chaque heure posee), onglets (les
+// fleches ne changent plus d onglet) : JS servi casse ; pastille (la pastille
+// reste sous « Activites »), margefocus (sans marge de defilement, la carte
+// focalisee dans le cadre embarque remonte au ras de l ecran de l hote, son
+// anneau dehors) : FEUILLE servie cassee.
 //
 // CONTRE-PREUVES (le gate mord) : FG_QA_CASSE=prix (prix de carte faux d un
 // euro), total (total du recap faux d un euro), raison (les heures perdent leur
@@ -380,6 +410,18 @@ const MUTATIONS = {
   montee: ['if (!h || h === derniereHauteur || (h < derniereHauteur && derniereHauteur - h < 8)) return;', 'if (!h || Math.abs(h - derniereHauteur) < 8) return;'],
   finscene: ['        posterHauteur();\n        apresAnimations(vers, posterHauteur);\n', ''],
   montrer: ['      if (o && !dayPop.hidden) montrer(dayPop, dayBtn);', '      void 0;'],
+  azero: ["(nA ? ', ou revenez à ' + (nA > 1 ? 'vos ' + nA + ' activités' : 'votre activité') : '')", "''"],
+  mode: ['if (state.dispo && state.dispoCle !== cleDemande()) invaliderDispo();', 'void 0;'],
+  modevol: ['state.dispoCle = cle;', 'state.dispoCle = cleDemande();'],
+  plafond: ['var auMax = state.pax >= PAX_MAX;', 'var auMax = false;'],
+  coche: ["if (on) rejouer(card, 'is-coche'); else card.classList.remove('is-coche');", 'void 0;'],
+  eveilreste: ["btn._eveil = setTimeout(function () { btn.classList.remove('is-wake'); }, 600);", 'void 0;'],
+  eveilinactif: ['if (bump && etaitInactif && !goHours.disabled) eveiller(goHours);', 'if (bump && !goHours.disabled) eveiller(goHours);'],
+  eveilgarde: ['if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }', 'if (slot && reveilGarder) { eveiller(goContact); }'],
+  relatif: ['if (rel) morceaux.push(rel);', 'void rel;'],
+  sensmois: ["rejouer(calGrid, sens > 0 ? 'is-next' : 'is-prev');", "rejouer(calGrid, 'is-prev');"],
+  rejouemois: ["if (o) { moisVu = null; calGrid.classList.remove('is-next', 'is-prev'); ", 'if (o) { '],
+  onglets: ['    if (!vers) return;\n    e.preventDefault();\n', '    return;\n'],
 };
 // Les contre-preuves de la FEUILLE : une regle servie cassee expres. La feuille
 // est relue en LF, quelle que soit la fin de ligne du depot.
@@ -398,6 +440,8 @@ const MUTATIONS_CSS = {
   vuebas: ['  bottom: calc(var(--tunnel-vue-bas, 0px) + 10px + env(safe-area-inset-bottom, 0px));\n', '  bottom: calc(10px + env(safe-area-inset-bottom, 0px));\n'],
   verrou: ['html.fg-pilote { overflow: hidden; }\n', ''],
   dansflux: ['  .fg-cal { position: static; min-width: 0;', '  .fg-cal { min-width: 0;'],
+  pastille: ['.fg-tabs.is-for .fg-tabs__bar { transform: translateX(calc(100% + 4px)); }\n', ''],
+  margefocus: ['.fg-card, .fg-pill, .fg-tab { scroll-margin: 8px; }\n', ''],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -1222,6 +1266,11 @@ async function main() {
     const jour = await page.evaluate(() => document.querySelector('#dayLabel').textContent.trim());
     const premierOuvert = calendrier.find((d) => d.open);
     ok(Boolean(premierOuvert) && jour === jourLong(premierOuvert.date), '[A] le jour propose est le PREMIER jour ouvert du calendrier servi', `${jour} / ${premierOuvert && premierOuvert.date}`);
+    // Le jour pre-choisi peut etre aujourd hui : l indice le dit, en toutes
+    // lettres, avant l horaire (meta.today est la date du centre).
+    const indice0 = await page.evaluate(() => document.querySelector('#dayHint').textContent.replace(/\s+/g, ' ').trim());
+    const rel0 = premierOuvert.date === TODAY ? 'Aujourd’hui · ' : premierOuvert.date === plusJours(TODAY, 1) ? 'Demain · ' : '';
+    ok(plat(indice0).indexOf(plat(`${rel0}Ouvert ${horaire(premierOuvert.schedule)}`)) === 0, '[A] sous le jour propose : « Aujourd’hui » ou « Demain » quand c est le cas, puis l horaire', `${premierOuvert.date} « ${indice0} »`);
     const montage = await page.evaluate(() => {
       const scene = document.querySelector('.fg-scene.is-active');
       const img = scene.querySelector('.fg-art img');
@@ -1273,6 +1322,10 @@ async function main() {
     await page.click('#dayBtn');
     ok(await attendre(page, () => !document.querySelector('#dayPop').hidden && document.querySelectorAll('#calGrid .fg-cal__day').length >= 28 && !document.querySelector('#calGrid .fg-cal__day.is-loading'), 5000), '[A2] le calendrier s ouvre sur le mois en cours, charge');
     ok(await page.evaluate(() => document.querySelector('#dayBtn').getAttribute('aria-expanded') === 'true' && document.querySelector('#dayBtn').closest('.fg-field').classList.contains('is-open')), '[A2] le champ se dit ouvert (aria-expanded) et monte au-dessus de ses voisins');
+    // Le sens du glissement de chaque mois, releve a la pose de la classe (un
+    // observateur, pas une mesure dans le temps : aucun faux rouge si la
+    // machine est chargee).
+    await page.evaluate(() => { window.__sens = []; const g = document.querySelector('#calGrid'); new MutationObserver(() => { const m = /is-(next|prev)/.exec(g.className); if (m) window.__sens.push(m[0]); }).observe(g, { attributes: true, attributeFilter: ['class'] }); });
     const [ty, tm] = TODAY.split('-').map(Number);
     const [hy, hm] = HORIZON.split('-').map(Number);
     const moisAttendus = (hy - ty) * 12 + (hm - tm) + 1;
@@ -1310,6 +1363,8 @@ async function main() {
       await attendre(page, (t) => document.querySelector('#calTitle').textContent.trim() !== t, 3000, m.titre);
     }
     ok(ecartsCal.length === 0, '[A2] CHAQUE jour de CHAQUE mois = le calendrier servi (ferme grise, horaires ou motif, ferie/conge marque, passe et au-dela de l horizon grises)', ecartsCal.slice(0, 4).join(' ; ') || `${vus.length} mois, ${vus.reduce((s, v) => s + v.jours, 0)} jours conformes`);
+    const sensMois = await page.evaluate(() => window.__sens);
+    ok(sensMois.length > 0 && sensMois.every((s) => s === 'is-next'), '[A2] « mois suivant » fait glisser la grille vers la gauche, jamais a l envers', sensMois.join(','));
     ok(fleches.prevAuDebut === true, '[A2] la fleche « precedent » est inactive sur le mois en cours');
     ok(vus.length === moisAttendus && fleches.nextALaFin === true && vus[vus.length - 1].titre === `${cap(MOIS[hm - 1])} ${hy}`, '[A2] la fleche « suivant » mene jusqu a l horizon de reservation, pas plus loin', `${vus.length} mois de ${vus[0] && vus[0].titre} a ${vus[vus.length - 1] && vus[vus.length - 1].titre}`);
     const tranches = reponsesMeta.filter((r) => /calendarFrom=/.test(r.url));
@@ -1329,8 +1384,13 @@ async function main() {
     // la fleche droite passe au jour OUVERT suivant, Entree le choisit.
     await page.keyboard.press('Escape');
     ok(await attendre(page, () => document.querySelector('#dayPop').hidden && document.activeElement === document.querySelector('#dayBtn'), 2000), '[A2] Echap referme le calendrier et rend le focus au champ');
+    const sensAvantReouverture = await page.evaluate(() => window.__sens.length);
     await page.click('#dayBtn');
     await attendre(page, () => !document.querySelector('#dayPop').hidden && !document.querySelector('#calGrid .fg-cal__day.is-loading'), 5000);
+    // Rouvert sur le mois du jour choisi, loin du dernier mois vu : la grille
+    // ne glisse pas (aucune classe posee, relevee par l observateur).
+    const reouverture = await page.evaluate((n) => ({ poses: window.__sens.slice(n), classe: document.querySelector('#calGrid').className }), sensAvantReouverture);
+    ok(reouverture.poses.length === 0 && !/is-(next|prev)/.test(reouverture.classe), '[A2] a la reouverture, la grille ne rejoue pas le glissement du mois', JSON.stringify(reouverture));
     const choisi0 = premierOuvert.date;
     ok(await page.evaluate((d) => document.activeElement && document.activeElement.dataset && document.activeElement.dataset.date === d, choisi0), '[A2] a la reouverture, le jour choisi porte le focus', choisi0);
     const suivant = Object.keys(oracleJours).sort().find((d) => d > choisi0 && d <= HORIZON && oracleJours[d].open);
@@ -1345,7 +1405,7 @@ async function main() {
       ok(await allerAuMois(page, lundiConge.date), '[A2] le mois du lundi de conge s affiche', lundiConge.date);
       await page.click(`#calGrid .fg-cal__day[data-date="${lundiConge.date}"]`);
       const indice = await page.evaluate(() => document.querySelector('#dayHint').textContent.replace(/\s+/g, ' ').trim());
-      ok(plat(indice) === plat(`Ouvert ${horaire(lundiConge.schedule)} · ${lundiConge.holiday.label}`), '[A2] un LUNDI de conge scolaire est ouvert ; sous le champ, l horaire et la periode du jour', `${lundiConge.date} « ${indice} »`);
+      ok(plat(indice) === plat(`${lundiConge.date === TODAY ? 'Aujourd’hui · ' : lundiConge.date === plusJours(TODAY, 1) ? 'Demain · ' : ''}Ouvert ${horaire(lundiConge.schedule)} · ${lundiConge.holiday.label}`), '[A2] un LUNDI de conge scolaire est ouvert ; sous le champ, l horaire et la periode du jour', `${lundiConge.date} « ${indice} »`);
     } else {
       ok(false, '[A2] un lundi de conge scolaire existe dans l annee (sinon la propriete n est pas exercee)');
     }
@@ -1358,9 +1418,13 @@ async function main() {
     await page.fill('#paxInput', '999');
     await page.press('#paxInput', 'Enter');
     ok(await attendre(page, () => document.querySelector('#paxInput').value === '240' && document.querySelector('#paxOut').textContent.trim() === '240 personnes' && document.querySelector('#paxPlus').disabled, 3000), '[A2] un nombre tape au-dela de 240 est ramene a 240, le « + » se desactive');
+    const plafond = await page.evaluate(() => { const h = document.querySelector('#paxHint'); const a = h.querySelector('a[href^="tel:"]'); return { texte: h.textContent.replace(/\s+/g, ' ').trim(), tel: a ? a.getAttribute('href') : '', live: h.getAttribute('aria-live'), vu: getComputedStyle(h).display !== 'none' }; });
+    ok(plafond.vu && plafond.live === 'polite' && plat(plafond.texte).startsWith('Grand groupe') && plat(plafond.texte).includes('En ligne, 240 personnes au maximum.') && /^tel:\+?\d{8,}$/.test(plafond.tel),
+      '[A2] au plafond, sous le compteur : le grand groupe reste dit, puis « En ligne, 240 personnes au maximum. » et le numero du centre a toucher', `« ${plafond.texte} » ${plafond.tel}`);
     await page.fill('#paxInput', '6');
     await page.press('#paxInput', 'Enter');
     ok(await attendre(page, () => document.querySelector('#paxInput').value === '6' && document.querySelector('#paxOut').textContent.trim() === '6 personnes', 3000), '[A2] taper 6 donne 6 personnes');
+    ok(await attendre(page, () => { const h = document.querySelector('#paxHint'); return !/240/.test(h.textContent) && !h.classList.contains('is-warn'); }, 3000), '[A2] redescendu a 6, la phrase du plafond s efface');
     await page.click('#paxMinus');
     ok(await attendre(page, () => document.querySelector('#paxInput').value === '5' && document.querySelector('#paxOut').textContent.trim() === '5 personnes', 3000), '[A2] le « - » suit le nombre tape : 5');
     await page.click('#paxPlus');
@@ -1866,6 +1930,10 @@ async function main() {
     // =====================================================================
     const vitrine = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const pageV = await vitrine.newPage();
+    const demandesV = []; pageV.on('request', (r) => { if (r.url().indexOf('/api/public-availability?') >= 0) demandesV.push(r.url()); });
+    const demandeApres = async (n, test, ms) => { for (let k = 0; k * 100 < ms; k += 1) { if (demandesV.slice(n).some((u) => test(new URL(u).searchParams))) return true; await dormir(100); } return false; };
+    const surEcran2 = () => attendre(pageV, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
+    const surHeures = () => attendre(pageV, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
     await pageV.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
     ok(await attendre(pageV, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), '[I] le catalogue est lu');
     await pageV.click('#dayBtn');
@@ -1908,6 +1976,22 @@ async function main() {
     // cinq formules d un autre jour se refusent pour le JOUR, pas pour le
     // groupe. Le champ du nombre de personnes vit a l ecran 1 : on ne
     // remonte pas le chercher pour rien.
+    // Les onglets au clavier (motif APG) et la pastille sous l onglet choisi.
+    await pageV.focus('#tabAct');
+    await pageV.keyboard.press('ArrowRight');
+    await attendre(pageV, () => document.querySelector('#tabBar').getAnimations().length === 0, 2000);
+    const ongletsClavier = await pageV.evaluate(() => {
+      const a = document.querySelector('#tabAct'), f = document.querySelector('#tabFor');
+      const b = document.querySelector('#tabBar').getBoundingClientRect(), r = f.getBoundingClientRect();
+      return { choisi: f.getAttribute('aria-selected'), focus: document.activeElement === f, panneau: !document.querySelector('#panelFor').hidden,
+        tabulation: [a.tabIndex, f.tabIndex].join(), ecart: [Math.round(b.left - r.left), Math.round(b.width - r.width)] };
+    });
+    ok(ongletsClavier.choisi === 'true' && ongletsClavier.focus && ongletsClavier.panneau && ongletsClavier.tabulation === '-1,0'
+      && Math.abs(ongletsClavier.ecart[0]) <= 1 && Math.abs(ongletsClavier.ecart[1]) <= 1,
+      '[I] au clavier, la fleche droite ouvre les formules, le focus suit, un seul onglet tabulable, la pastille couvre l onglet choisi', JSON.stringify(ongletsClavier));
+    await pageV.keyboard.press('Home');
+    ok(await attendre(pageV, () => document.querySelector('#tabAct').getAttribute('aria-selected') === 'true' && !document.querySelector('#panelAct').hidden && document.activeElement.id === 'tabAct', 2000),
+      '[I] la touche Debut revient aux activites, le focus suit');
     await pageV.click('#tabFor');
     ok(await attendre(pageV, () => document.querySelectorAll('#gridFor .fg-fam').length > 0, 4000), '[I] l onglet Formules affiche des familles');
     const vue = await pageV.evaluate(() => ({
@@ -1953,8 +2037,10 @@ async function main() {
       const c = document.querySelector('#gridFor .fg-card--formule[data-formule="ffm"]');
       return { coche: c.getAttribute('aria-checked'), pulse: Boolean(c.querySelector('.fg-for__off.is-pulse')), compteur: (document.querySelector('#actCount') || {}).textContent.trim() };
     });
-    ok(apresRefus.coche === 'false' && apresRefus.pulse && /^0/.test(apresRefus.compteur),
-      '[I] cliquer une formule refusee ne la coche pas et fait battre sa raison', JSON.stringify(apresRefus));
+    // Seul le Fun Run est coche, dans l onglet des activites : a zero formule,
+    // la barre dit quoi faire et rappelle l activite gardee.
+    ok(apresRefus.coche === 'false' && apresRefus.pulse && /^Choisissez une formule, ou revenez à votre activité\.$/.test(apresRefus.compteur),
+      '[I] cliquer une formule refusee ne la coche pas, fait battre sa raison, et la barre dit quoi faire', JSON.stringify(apresRefus));
     // Une formule valable se choisit et mene aux heures.
     await pageV.click('#gridFor .fg-card--formule[data-formule="f1"]');
     ok(await attendre(pageV, () => document.querySelector('#gridFor .fg-card--formule[data-formule="f1"]').getAttribute('aria-checked') === 'true' && !document.querySelector('#goHours').disabled, 3000),
@@ -1962,6 +2048,44 @@ async function main() {
     await pageV.click('#goHours');
     ok(await attendre(pageV, () => document.querySelectorAll('#hourZone .fg-chip').length > 0 && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000),
       '[I] et la FORMULE 1 trouve des heures ce samedi');
+    // UNE REPONSE NE SERT QU A LA DEMANDE QUI L A PRODUITE. Changer d onglet ne
+    // vide rien : Continuer doit redemander les heures du mode choisi, et une
+    // reponse des activites arrivee apres le passage aux formules ne sert
+    // jamais la formule (sinon le plan, le prix et le libelle du Fun Run
+    // partaient sous le nom de la FORMULE 1).
+    await surHeures();
+    await pageV.click('.fg-scene.is-active [data-back]'); await surEcran2();
+    await pageV.click('#tabAct'); await attendre(pageV, () => !document.querySelector('#panelAct').hidden, 3000);
+    let nV = demandesV.length;
+    await pageV.click('#goHours');
+    ok(await demandeApres(nV, (q) => q.get('type') === 'visite', 10000), '[I] formule chargee, onglet Activites : Continuer redemande les heures des ACTIVITES');
+    ok(await attendre(pageV, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[I] et la visite du Fun Run s affiche');
+    await surHeures();
+    await pageV.click('.fg-scene.is-active [data-back]'); await surEcran2();
+    await pageV.click('#tabFor'); await attendre(pageV, () => !document.querySelector('#panelFor').hidden, 3000);
+    nV = demandesV.length;
+    await pageV.click('#goHours');
+    ok(await demandeApres(nV, (q) => q.get('type') === 'formule' && q.get('formuleId') === 'f1', 10000), '[I] retour a la FORMULE 1 : Continuer redemande ses heures, le plan et le prix du Fun Run ne passent jamais sous son nom');
+    await attendre(pageV, () => document.querySelectorAll('#hourZone .fg-chip').length > 0 && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000);
+    // La reponse des activites retenue en vol pendant le passage aux formules.
+    let lacher = null;
+    const retenue = (u) => u.pathname === '/api/public-availability' && u.searchParams.get('type') === 'visite';
+    await pageV.route(retenue, async (route) => { await new Promise((r) => { lacher = r; setTimeout(r, 15000); }); await route.continue(); });
+    await surHeures();
+    await pageV.click('.fg-scene.is-active [data-back]'); await surEcran2();
+    await pageV.click('#tabAct'); await attendre(pageV, () => !document.querySelector('#panelAct').hidden, 3000);
+    await pageV.click('#goHours');
+    for (let k = 0; k < 50 && !lacher; k += 1) await dormir(100);
+    const retenueVue = Boolean(lacher) && await surHeures();
+    await pageV.click('.fg-scene.is-active [data-back]'); await surEcran2();
+    await pageV.click('#tabFor'); await attendre(pageV, () => !document.querySelector('#panelFor').hidden, 3000);
+    if (lacher) lacher();
+    const atterrie = await attendre(pageV, () => !document.querySelector('#hourZone').classList.contains('is-busy'), 10000);
+    await pageV.unroute(retenue);
+    ok(retenueVue && atterrie, 'MONTAGE [I] la reponse des activites est retenue pendant le passage a l onglet Formules, puis atterrit');
+    nV = demandesV.length;
+    await pageV.click('#goHours');
+    ok(await demandeApres(nV, (q) => q.get('type') === 'formule' && q.get('formuleId') === 'f1', 10000), '[I] une reponse des activites arrivee apres le passage aux formules ne sert jamais la FORMULE 1');
     await vitrine.close();
 
 
@@ -2890,6 +3014,14 @@ async function main() {
     ok(await attendre(pn, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000)
       && await pn.evaluate(() => document.querySelectorAll('.fg-dock').length === 2 && Boolean(document.querySelector('.fg-scene.is-active .fg-dock'))),
       'MONTAGE [N] telephone : l ecran des activites est atteint ; une barre qui suit sur les activites, une sur les heures');
+    // Les gestes comptes a leur depart (animationstart) : le reveil des deux
+    // boutons qui avancent, la case qui claque et le prix qui roule.
+    await pn.evaluate(() => {
+      window.__qaEveil = { hours: 0, contact: 0 };
+      [['#goHours', 'hours'], ['#goContact', 'contact']].forEach(([s, k]) => document.querySelector(s).addEventListener('animationstart', (e) => { if (e.animationName === 'fg-wake') window.__qaEveil[k] += 1; }));
+      window.__qaGeste = { tick: 0, prix: 0 };
+      document.querySelector('#gridAct').addEventListener('animationstart', (e) => { if (e.animationName === 'fg-tick') window.__qaGeste.tick += 1; if (e.animationName === 'fg-maj') window.__qaGeste.prix += 1; });
+    });
     await pn.tap('#gridAct .fg-card[data-activity="bowling"]');
     await pn.tap('#gridAct .fg-card[data-activity="laser_game"]');
     await pn.evaluate(() => window.scrollTo(0, 0));
@@ -2899,6 +3031,8 @@ async function main() {
     let bn = await lireBarre(pn);
     ok(Boolean(bn) && bn.sy === 0 && bn.colle && bn.haut >= 0 && bn.bas <= bn.vh && bn.touche && alphaDe(bn.panneau) > 0.9 && bn.texte === '2 activités sélectionnées',
       '[N] telephone, activites, en haut de page : « Continuer » est DANS l ecran et se touche, sur son panneau, avec le compteur', JSON.stringify(bn));
+    ok(await pn.evaluate(() => window.__qaEveil.hours === 1 && !document.querySelector('#goHours').classList.contains('is-wake')), '[N] « Continuer » s eveille une fois, au premier choix (pas au second), et rend sa classe (sinon il rejouerait a chaque retour sur l ecran)', await pn.evaluate(() => JSON.stringify(window.__qaEveil)));
+    ok(await pn.evaluate(() => window.__qaGeste.tick === 2 && window.__qaGeste.prix === 2 && !document.querySelector('#gridAct .is-coche, #gridAct .is-maj')), '[N] cocher deux cartes : chaque case claque une fois, chaque prix qui change roule, et au repos aucune classe de geste ne reste posee', await pn.evaluate(() => JSON.stringify(window.__qaGeste)));
     const reponseN1 = pn.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
     if (bn) await pn.touchscreen.tap(bn.x, bn.y);
     ok(await attendre(pn, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 6000), '[N] telephone : un toucher a cet endroit de l ecran mene aux heures, sans avoir defile');
@@ -2926,6 +3060,7 @@ async function main() {
     const texteN2 = await pn.evaluate(() => document.querySelector('#hourSum').textContent.replace(/\s+/g, ' ').trim());
     ok(Boolean(autreN) && Boolean(attenduN2) && attenduN2 !== attenduN1, 'MONTAGE [N] poser une autre heure de bowling change la visite : la mesure du resume porte sur un vrai changement', `${autreN} : ${attenduN1} / ${attenduN2}`);
     ok(texteN2 === attenduN2, '[N] une heure posee : la barre suit, heures et prix de la NOUVELLE reponse', JSON.stringify({ barre: texteN2, attendu: attenduN2 }));
+    ok(await pn.evaluate(() => window.__qaEveil.contact === 1 && !document.querySelector('#goContact').classList.contains('is-wake')), '[N] « Garder » s eveille une fois a l arrivee sur les heures, pas a chaque heure posee', await pn.evaluate(() => JSON.stringify(window.__qaEveil)));
     // En bas de page : la barre a sa place, sans panneau, ne couvre rien.
     await pn.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await attendre(pn, () => Math.abs(window.scrollY + window.innerHeight - document.documentElement.scrollHeight) <= 2, 3000);
@@ -3065,6 +3200,30 @@ async function main() {
       }
       ok(focusE.vus >= 8 && focusE.ecarts > 0, 'MONTAGE [N] embarque, au clavier : le parcours passe sous la barre (elle a du s ecarter au moins une fois)', JSON.stringify(focusE));
       ok(focusE.fautes.length === 0, '[N] embarque, au clavier : ce qui prend le focus est dans l ecran de l hote, jamais sous la barre (WCAG 2.4.11)', JSON.stringify(focusE));
+      // L ANNEAU ENTIER. La page hote defile juste assez pour montrer la carte
+      // qui prend le focus, a un ou deux pixels pres (arrondis entre le cadre
+      // et l hote) : chaque carte sous l ecran de l hote, focalisee depuis le
+      // haut de la page, doit y remonter avec son anneau (2 px + 3 px d ecart).
+      await ph.evaluate(() => window.scrollTo(0, 0));
+      await dormir(900);
+      const sousEcran = await fe.evaluate(() => Array.from(document.querySelectorAll('#gridAct .fg-card')).map((c) => ({ id: c.dataset.activity, bas: c.getBoundingClientRect().bottom })));
+      const hautCadreE = await ph.evaluate(() => ({ top: document.querySelector('.bloc iframe').getBoundingClientRect().top, vh: window.innerHeight }));
+      const cibles = sousEcran.filter((c) => hautCadreE.top + c.bas > hautCadreE.vh).map((c) => c.id);
+      const anneaux = [];
+      for (const id of cibles) {
+        await ph.evaluate(() => window.scrollTo(0, 0));
+        await dormir(600);
+        await fe.focus(`#gridAct .fg-card[data-activity="${id}"]`);
+        await dormir(450);
+        const c = await ph.evaluate(() => ({ top: document.querySelector('.bloc iframe').getBoundingClientRect().top, vh: window.innerHeight }));
+        const r = await fe.evaluate((s) => { const b = document.querySelector(s).getBoundingClientRect(); return { haut: b.top, bas: b.bottom }; }, `#gridAct .fg-card[data-activity="${id}"]`);
+        anneaux.push({ id, haut: Math.round((c.top + r.haut - 5) * 100) / 100, bas: Math.round((c.top + r.bas + 5) * 100) / 100, vh: c.vh });
+      }
+      ok(cibles.length > 0, 'MONTAGE [N] embarque : des cartes commencent sous l ecran de l hote (la mesure de l anneau porte sur un vrai defilement)', cibles.join(', '));
+      ok(anneaux.every((a) => a.haut >= 0 && a.bas <= a.vh), '[N] embarque, au clavier : une carte qui prend le focus sous l ecran de l hote y remonte avec son anneau entier', JSON.stringify(anneaux));
+      // Le focus revient ou la boucle l a laisse (dans la barre) : une carte
+      // focalisee sous la barre l ecarterait, et le toucher qui suit la vise.
+      await fe.focus('.fg-scene.is-active .fg-dock [data-back]');
       // Un toucher, dans l ecran de l hote, la ou la barre montre le bouton.
       await ph.evaluate(() => window.scrollTo(0, 0));
       await dormir(900);

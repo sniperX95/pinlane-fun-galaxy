@@ -112,6 +112,7 @@
     laserParts: [],            // heures des parties de laser posees (si plusieurs parties)
     heure: '',                 // debut de visite du creneau retenu
     dispo: null,               // la derniere reponse de public-availability
+    dispoCle: '',              // la demande qui a produit state.dispo, prise au depart de la requete
     creneau: null,             // le slot retenu (avec opsPlan)
     contact: { prenom: '', nom: '', email: '', telephone: '' },
     reservation: null,
@@ -140,6 +141,23 @@
   function euros(n) { n = Number(n); if (!isFinite(n)) return ''; return (Math.round(n * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'; }
   function personnes(n) { return n + ' personne' + (n > 1 ? 's' : ''); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // Rejoue une animation CSS une fois : retire la classe, force un recalcul,
+  // la repose. Elle repart d elle-meme ensuite : restee posee, elle rejouerait
+  // chaque fois que l element repasse de display:none a affiche.
+  var minuteursRejoue = new WeakMap();
+  function rejouer(el, cls) {
+    if (!el || reduced) return;
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    clearTimeout(minuteursRejoue.get(el));
+    minuteursRejoue.set(el, setTimeout(function () { el.classList.remove(cls); }, 700));
+  }
+  // Le telephone public du centre (public-booking-meta, publicInfo) : une
+  // piste quand rien ne se reserve en ligne. Un point de contact, jamais une
+  // promesse de reservation par telephone.
+  function ligneCentre() {
+    var c = meta && meta.center && meta.center.contact;
+    return c && c.phone ? ' Pour en savoir plus, appelez le centre au ' + lienContact({ phone: c.phone }) + '.' : '';
+  }
   // « 3 sessions de 15 min » quand le groupe tourne sur une installation qui
   // ne le prend pas d un coup (Fun Run). `sessions` est calcule par le
   // SERVEUR (lib/visit-program) et voyage dans la ligne de programme.
@@ -257,7 +275,7 @@
     var n = sessionsPour(a);
     if (n < 2) return '';
     var places = Math.trunc(Number(a.capacityPerUnit) || 0) * Math.max(1, Math.trunc(Number(a.units) || 1));
-    return 'Le groupe tourne : ' + n + ' sessions, ' + places + ' joueurs à la fois.';
+    return 'Votre groupe joue en ' + n + ' sessions, ' + places + ' joueurs à la fois.';
   }
   function prixCarte(a) {
     if (!meta) return '';
@@ -608,6 +626,20 @@
   var moisVu = null;           // { y, m } du mois affiche
   var jourFocus = '';          // le jour porte par le clavier dans la grille
   function aujourdhui() { return meta && meta.today ? String(meta.today) : iso(new Date()); }
+  function demain() { var t = deIso(aujourdhui()); return iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1)); }
+  // Le glissement du mois et la pose du jour choisi (rejouer) : la classe part
+  // a la fin, ou a l interruption (calendrier referme, ecran quitte) ; restee
+  // posee, l element la rejouerait en repassant de display:none a affiche.
+  // Deux clics rapides : l interruption du premier glissement arrive quand le
+  // second a deja demarre, elle ne doit pas le couper.
+  [calGrid, dayLabel, dayHint].forEach(function (el) {
+    ['animationend', 'animationcancel'].forEach(function (t) {
+      el.addEventListener(t, function (e) {
+        if (e.target !== el || (el.getAnimations && el.getAnimations().length)) return;
+        el.classList.remove('is-next', 'is-prev', 'is-maj');
+      });
+    });
+  });
   function horizon() {
     var n = Number(meta && meta.bookingHorizonDays) || 365;
     var t = deIso(aujourdhui());
@@ -686,9 +718,13 @@
   function montrerMois(y, m, focusAu) {
     if (m < 0) { m = 11; y -= 1; }
     if (m > 11) { m = 0; y += 1; }
+    // Le mois glisse dans le sens de la fleche ; l ouverture (moisVu vide) ne
+    // glisse pas.
+    var sens = moisVu ? (y * 12 + m) - (moisVu.y * 12 + moisVu.m) : 0;
     moisVu = { y: y, m: m };
     if (focusAu) jourFocus = focusAu;
     rendreCalendrier();
+    if (sens) { calGrid.classList.remove('is-next', 'is-prev'); rejouer(calGrid, sens > 0 ? 'is-next' : 'is-prev'); }
     // Un mois deja complet ne se redessine pas une seconde fois.
     if (moisCharges[cleMois(y, m)] === true) return;
     chargerMois(y, m).then(function () { if (moisVu && moisVu.y === y && moisVu.m === m) rendreCalendrier(); });
@@ -698,18 +734,26 @@
     dayLabel.textContent = jourLong(dateStr);
     var j = jourInfo(dateStr);
     var morceaux = [];
+    // Le jour pre-choisi au depart peut etre aujourd hui : le dire evite de
+    // reserver pour ce soir par megarde. meta.today est la date du centre.
+    var rel = dateStr === aujourdhui() ? 'Aujourd’hui' : dateStr === demain() ? 'Demain' : '';
+    if (rel) morceaux.push(rel);
     if (j) {
       morceaux.push(j.ouvert ? 'Ouvert ' + j.horaire : j.horaire);
       if (j.periode) morceaux.push(j.periode.type === 'public' ? 'Férié : ' + j.periode.label : j.periode.label);
       if (j.coupures && j.coupures.length) morceaux.push('Fermé ' + j.coupures.map(function (c) { return c.start + '-' + c.end; }).join(', '));
     }
-    dayHint.textContent = morceaux.join(' · ');
+    // L espace insecable colle le « · » au mot d avant : il ne commence jamais
+    // une ligne quand l indice passe sur deux lignes.
+    dayHint.textContent = morceaux.join('\u00a0· ');
     dayBtn.setAttribute('title', dayHint.textContent);
     invaliderDispo();
   }
   function ouvrirJours(ouvrir) {
     var o = typeof ouvrir === 'boolean' ? ouvrir : dayPop.hidden;
-    if (o) { var d = deIso(state.date || aujourdhui()); montrerMois(d.getFullYear(), d.getMonth(), state.date); }
+    // L ouverture ne garde que son apparition (fg-pop) : le mois montre ne
+    // glisse pas depuis celui qu on avait quitte.
+    if (o) { moisVu = null; calGrid.classList.remove('is-next', 'is-prev'); var d = deIso(state.date || aujourdhui()); montrerMois(d.getFullYear(), d.getMonth(), state.date); }
     dayPop.hidden = !o;
     dayBtn.setAttribute('aria-expanded', String(o));
     // Le champ passe au-dessus de ses voisins tant que le calendrier est
@@ -731,6 +775,8 @@
     var b = e.target.closest('.fg-cal__day');
     if (!b || b.disabled) return;
     choisirJour(b.dataset.date);
+    // Le jour choisi se pose ; au demarrage (choisirJour seul), rien ne bouge.
+    rejouer(dayLabel, 'is-maj'); rejouer(dayHint, 'is-maj');
     ouvrirJours(false);
     dayBtn.focus();
   });
@@ -767,6 +813,9 @@
   var paxOut = $('#paxOut'), paxInput = $('#paxInput'), paxHint = $('#paxHint');
   var paxBox = paxInput.closest('.fg-stepper');
   var PAX_MIN = 1, PAX_MAX = 240;
+  // Le dernier message ecrit sous le compteur : la region live ne se reecrit
+  // que s il change, sinon chaque clic relirait la meme phrase.
+  var indicePax = '';
   // LA LARGEUR DU CHAMP SUIT SON NOMBRE. Avec une largeur fixe et un texte
   // cale a droite, les deux em de vide restaient A GAUCHE du chiffre : l encre
   // « 4 personnes » sortait du centre de la case (Movsar, 2026-09-23).
@@ -797,14 +846,24 @@
     $('#paxMinus').disabled = state.pax <= PAX_MIN;
     $('#paxPlus').disabled = state.pax >= PAX_MAX;
     var lanes = meta && meta.center && meta.center.booking;
+    var indice = '';
     if (lanes && lanes.laneCount && lanes.normalCapacityPerLane) {
       var confort = lanes.laneCount * lanes.normalCapacityPerLane;
       // Une phrase, pas trois : le detail (combien de groupes, dans quel ordre)
       // se lit desormais sur la piste concernee, a l etape des horaires.
-      paxHint.textContent = state.pax > confort
-        ? 'Grand groupe : au-delà de ' + confort + ' personnes, certaines activités se jouent en plusieurs passages.'
-        : '';
+      if (state.pax > confort) indice = esc('Grand groupe : au-delà de ' + confort + ' personnes, certaines activités se jouent en plusieurs passages.');
     }
+    // AU PLAFOND, LE FORMULAIRE DIT POURQUOI : le « + » s eteint a 240 (borne
+    // du serveur et de la base) et un nombre tape au-dela y est ramene. Le
+    // numero vient de la meta du centre ; sans lui, la phrase s arrete a la borne.
+    var auMax = state.pax >= PAX_MAX;
+    if (auMax) {
+      var contact = meta && meta.center && meta.center.contact;
+      indice += (indice ? ' ' : '') + 'En ligne, ' + PAX_MAX + ' personnes au maximum.'
+        + (contact && contact.phone ? ' Pour un groupe plus grand, appelez le centre au ' + lienContact({ phone: contact.phone }) : '');
+    }
+    paxHint.classList.toggle('is-warn', auMax);
+    if (indice !== indicePax) { indicePax = indice; paxHint.innerHTML = indice; }
     invaliderDispo();
   }
   function poserPax(n) {
@@ -876,7 +935,7 @@
     state.options[a.id] = {};
     state.options[a.id][o.cle] = o.valeur;
     $$('.fg-pill', item).forEach(function (x) { var on = x === pill; x.classList.toggle('is-on', on); x.setAttribute('aria-checked', String(on)); x.tabIndex = on ? 0 : -1; });
-    majPrixCarte(item, a);
+    majPrixCarte(item, a, true);
     invaliderDispo();
   }
   function rendreActivites() {
@@ -894,7 +953,7 @@
         + '</div>'
         + rendreOption(a)
         + '</li>';
-    }).join('') || '<li class="fg-empty">Aucune activité réservable en ligne pour le moment.</li>';
+    }).join('') || ('<li class="fg-empty">Aucune activité ne se réserve en ligne pour le moment.' + ligneCentre() + '</li>');
     // Une carte deja cochee (retour a cet ecran) montre sa photo tout de suite.
     $$('.fg-card.is-on', gridAct).forEach(chargerPhotoCarte);
   }
@@ -927,7 +986,7 @@
     var j = jourInfo(state.date) || {};
     if (f.offerOff) return { ok: false, court: 'Indisponible', pourquoi: 'Cette offre est momentanément suspendue.' };
     if ((j.unavailableFormulaIds || []).indexOf(f.id) >= 0) return { ok: false, court: 'Indisponible ce jour', pourquoi: 'Une des activités de cette formule n’est pas disponible ce jour-là.' };
-    if (f.minPax && state.pax < f.minPax) return { ok: false, court: 'Dès ' + f.minPax + ' personnes', pourquoi: 'Vous êtes ' + state.pax + ' : cette formule part de ' + f.minPax + ' personnes.' };
+    if (f.minPax && state.pax < f.minPax) return { ok: false, court: 'Dès ' + f.minPax + ' personnes', pourquoi: 'Vous êtes ' + state.pax + ' : cette formule demande au moins ' + f.minPax + ' personnes.' };
     if (f.noHolidays && j.formulaHolidayOff) return { ok: false, court: 'Pas pendant les vacances', pourquoi: 'Non valable pendant les vacances scolaires et les jours fériés.' };
     if (f.validDays && f.validDays.length && f.validDays.indexOf(jourSemaine(state.date)) < 0) return { ok: false, court: joursLisibles(f.validDays), pourquoi: 'Cette formule se réserve ' + joursLisibles(f.validDays) + ', pas ' + (JOURS_SEM[jourSemaine(state.date)] ? 'le ' + JOURS_SEM[jourSemaine(state.date)] : 'ce jour-là') + '.' };
     return { ok: true, court: '', pourquoi: '' };
@@ -961,7 +1020,7 @@
   }
   function rendreFormules() {
     var liste = (meta && meta.formules) || [];
-    if (!liste.length) { gridFor.innerHTML = '<p class="fg-empty">Aucune formule proposée en ligne pour le moment.</p>'; return; }
+    if (!liste.length) { gridFor.innerHTML = '<p class="fg-empty">Aucune formule ne se réserve en ligne pour le moment.' + ligneCentre() + '</p>'; return; }
     // Une famille par section (anniversaires, offres speciales) : quatorze
     // cartes a la suite ne se lisaient pas. L ordre des familles est celui du
     // catalogue, jamais une liste ecrite ici.
@@ -982,7 +1041,7 @@
           + '<div class="fg-card fg-card--formule fg-rise' + (on ? ' is-on' : '') + (v.ok ? '' : ' is-refus') + '" style="--i:' + (n % 8) + '" data-formule="' + esc(f.id) + '" role="radio" tabindex="0" aria-checked="' + on + '">'
           + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
           + '<span class="fg-for__head"><span class="fg-card__name">' + esc(f.name) + '</span>'
-          + (f.best ? '<span class="fg-for__best">Le plus pris</span>' : '') + '</span>'
+          + (f.best ? '<span class="fg-for__best">Bon plan</span>' : '') + '</span>'
           + '<span class="fg-for__price"><b>' + esc(euros(f.price)) + '</b><small>' + (f.type === 'per_lane' ? 'la piste' : 'par personne') + '</small>'
           + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
           + '<ul class="fg-for__list">' + (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>'
@@ -994,12 +1053,29 @@
         + '<ul class="fg-grid fg-grid--for">' + cartes + '</ul></section>';
     }).join('');
   }
+  // Reveil du bouton qui avance. La classe se RETIRE apres l animation :
+  // laissee en place, elle rejouerait a chaque retour sur l ecran (une scene
+  // cachee est en display:none, et son retour redemarre toute animation CSS).
+  function eveiller(btn) {
+    clearTimeout(btn._eveil);
+    btn.classList.remove('is-wake'); void btn.offsetWidth; btn.classList.add('is-wake');
+    btn._eveil = setTimeout(function () { btn.classList.remove('is-wake'); }, 600);
+  }
+  // A zero, la barre dit quoi faire, et rappelle ce qui reste choisi dans
+  // l autre onglet (changer d onglet ne vide ni la selection ni la formule).
   function rendreCompteur(bump) {
-    var n = state.onglet === 'formules' ? (state.formuleId ? 1 : 0) : state.selection.length;
-    var mot = state.onglet === 'formules' ? 'formule' : 'activité';
-    actCount.innerHTML = '<b>' + n + '</b> ' + esc(mot + (n > 1 ? 's' : '') + ' sélectionnée' + (n > 1 ? 's' : ''));
-    if (bump) { var b = $('b', actCount); b.classList.remove('is-bump'); void b.offsetWidth; b.classList.add('is-bump'); }
+    var formules = state.onglet === 'formules';
+    var nA = state.selection.length, nF = state.formuleId ? 1 : 0;
+    var n = formules ? nF : nA;
+    if (n) actCount.innerHTML = '<b>' + n + '</b> ' + esc((formules ? 'formule' : 'activité') + (n > 1 ? 's' : '') + ' sélectionnée' + (n > 1 ? 's' : ''));
+    else actCount.textContent = formules
+      ? 'Choisissez une formule' + (nA ? ', ou revenez à ' + (nA > 1 ? 'vos ' + nA + ' activités' : 'votre activité') : '') + '.'
+      : (nF ? 'Cochez des activités, ou revenez à votre formule.' : 'Cochez une ou plusieurs activités.');
+    var b = $('b', actCount);
+    if (bump && b) { b.classList.remove('is-bump'); void b.offsetWidth; b.classList.add('is-bump'); }
+    var etaitInactif = goHours.disabled;
     goHours.disabled = n === 0;
+    if (bump && etaitInactif && !goHours.disabled) eveiller(goHours);
   }
   // La photo d une carte ne se telecharge que quand elle peut se voir : au
   // survol, au focus clavier, ou quand la carte est cochee. Huit photos
@@ -1012,9 +1088,14 @@
   }
   gridAct.addEventListener('pointerenter', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); }, true);
   gridAct.addEventListener('focusin', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); });
-  function majPrixCarte(item, a) {
+  // Le prix ne roule que sur un geste qui le change (pastille choisie, carte
+  // cochee) : decocher le rend a « Des X » sans rien jouer.
+  function majPrixCarte(item, a, anime) {
     var prix = $('.fg-card__price', item);
-    if (prix && a) prix.textContent = prixCarte(a) + (a.note ? ' · ' + a.note : '');
+    if (!prix || !a) return;
+    var avant = prix.textContent;
+    prix.textContent = prixCarte(a) + (a.note ? ' · ' + a.note : '');
+    if (anime && prix.textContent !== avant) rejouer(prix, 'is-maj');
   }
   function basculerActivite(card) {
     if (!card || card.classList.contains('is-off')) return;
@@ -1025,9 +1106,10 @@
     if (i >= 0) state.selection.splice(i, 1); else state.selection.push(id);
     var on = i < 0;
     card.classList.toggle('is-on', on);
+    if (on) rejouer(card, 'is-coche'); else card.classList.remove('is-coche');
     item.classList.toggle('is-on', on);
     card.setAttribute('aria-checked', String(on));
-    majPrixCarte(item, activite(id));
+    majPrixCarte(item, activite(id), on);
     rendreCompteur(true);
     invaliderDispo();
     setTimeout(posterHauteur, 320);
@@ -1061,7 +1143,8 @@
     if (!card || card.classList.contains('is-off')) return;
     var id = card.dataset.formule;
     state.formuleId = state.formuleId === id ? '' : id;
-    $$('.fg-card', gridFor).forEach(function (c) { var on = c.dataset.formule === state.formuleId; c.classList.toggle('is-on', on); c.closest('.fg-grid__item').classList.toggle('is-on', on); c.setAttribute('aria-checked', String(on)); });
+    $$('.fg-card', gridFor).forEach(function (c) { var on = c.dataset.formule === state.formuleId; c.classList.toggle('is-on', on); c.closest('.fg-grid__item').classList.toggle('is-on', on); c.setAttribute('aria-checked', String(on)); if (!on) c.classList.remove('is-coche'); });
+    if (state.formuleId === id) rejouer(card, 'is-coche');
     rendreCompteur(true);
     invaliderDispo();
   }
@@ -1069,20 +1152,23 @@
   gridFor.addEventListener('keydown', function (e) {
     if ((e.key === ' ' || e.key === 'Enter') && e.target.classList && e.target.classList.contains('fg-card')) { e.preventDefault(); choisirFormule(e.target); }
   });
-  // Le soulignement glisse sous l onglet courant : mesure une fois par
-  // changement, quand la scene est visible (cachee, tout mesure zero).
-  function placerBarre() {
-    var barre = $('#tabBar');
-    var onglet = state.onglet === 'activites' ? $('#tabAct') : $('#tabFor');
-    if (!barre || !onglet || !onglet.offsetWidth) return;
-    barre.style.transform = 'translateX(' + onglet.offsetLeft + 'px) scaleX(' + (onglet.offsetWidth / 100) + ')';
+  // Un geste se joue une fois : la classe part a la fin, sinon il rejouerait
+  // chaque fois que l onglet ou l ecran se re-affiche (display none -> block).
+  function finGeste(e) {
+    if (e.animationName === 'fg-tick') { var c = e.target.closest('.fg-card'); if (c) c.classList.remove('is-coche'); }
+    else if (e.animationName === 'fg-maj') e.target.classList.remove('is-maj');
   }
-  window.addEventListener('resize', placerBarre);
+  gridAct.addEventListener('animationend', finGeste);
+  gridFor.addEventListener('animationend', finGeste);
+  // La pastille suit l onglet courant : une classe, rien a mesurer.
+  function placerBarre() { $('.fg-tabs').classList.toggle('is-for', state.onglet === 'formules'); }
   function choisirOnglet(quel) {
     state.onglet = quel;
     var act = quel === 'activites';
     $('#tabAct').setAttribute('aria-selected', String(act));
     $('#tabFor').setAttribute('aria-selected', String(!act));
+    $('#tabAct').tabIndex = act ? 0 : -1;
+    $('#tabFor').tabIndex = act ? -1 : 0;
     $('#panelAct').hidden = !act;
     $('#panelFor').hidden = act;
     placerBarre();
@@ -1091,12 +1177,24 @@
   }
   $('#tabAct').addEventListener('click', function () { choisirOnglet('activites'); });
   $('#tabFor').addEventListener('click', function () { choisirOnglet('formules'); });
+  // Clavier (motif onglets de l APG) : fleche gauche ou droite = l autre
+  // onglet, Debut/Fin = le premier/le dernier ; la selection suit le focus.
+  $('.fg-tabs').addEventListener('keydown', function (e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    var vers = e.key === 'Home' ? 'activites' : e.key === 'End' ? 'formules'
+      : (e.key === 'ArrowLeft' || e.key === 'ArrowRight') ? (state.onglet === 'activites' ? 'formules' : 'activites') : '';
+    if (!vers) return;
+    e.preventDefault();
+    if (vers !== state.onglet) choisirOnglet(vers);
+    (vers === 'activites' ? $('#tabAct') : $('#tabFor')).focus({ preventScroll: true });
+  });
   goHours.addEventListener('click', function () { if (!goHours.disabled) { aller('heures'); chargerHeures(); } });
 
   /* --- Etape 3 : les heures ---------------------------------------------------- */
 
   var hourZone = $('#hourZone'), hourSub = $('#hourSub'), goContact = $('#goContact'), keepLabel = $('#keepLabel'), hourSum = $('#hourSum');
   var requeteEnCours = 0;
+  var reveilGarder = false;    // « Garder » s eveille a la premiere reponse apres l arrivee sur les heures, pas a chaque heure posee
   var signaturePistes = '';    // les pistes rendues (activites + heures) : sinon, on met a jour sur place
   var adaptation = null;       // { deplace, pour, t } : l activite deplacee pour l heure posee
   function invaliderDispo() { state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; goContact.disabled = true; }
@@ -1131,33 +1229,41 @@
     if (Object.keys(pins).length) q.set('preferredTimes', JSON.stringify(pins));
     return '/api/public-availability?' + q.toString();
   }
+  // UNE REPONSE NE SERT QU A LA DEMANDE QUI L A PRODUITE : le jour, le groupe,
+  // le mode (activites ou formule) et ce qui est choisi. Changer d onglet ne
+  // vide rien, et une reponse peut arriver apres un changement : sans cette
+  // cle, une formule reprenait le plan et le prix calcules pour des activites.
+  function cleDemande() { return state.date + '|' + state.pax + '|' + (state.onglet === 'formules' ? 'f:' + state.formuleId : 'v:' + JSON.stringify(programme())); }
   function chargerHeures() {
+    if (state.dispo && state.dispoCle !== cleDemande()) invaliderDispo();
     var j = jourInfo(state.date);
     hourSub.innerHTML = '<b>' + esc(jourCourt(state.date)) + '</b> · ' + esc(personnes(state.pax)) + ' · ' + esc(nomsChoisis())
       + (j && j.ouvert ? '<span class="fg-sub__open">Ouvert ' + esc(j.horaire) + (j.periode ? ' · ' + esc(j.periode.label) : '') + '</span>' : '');
     if (state.dispo) { rendreHeures(); return; }
     hourZone.innerHTML = '<p class="fg-loading">On regarde ce qui est libre…</p>';
     hourSum.textContent = '';
+    reveilGarder = true;
     chargerPlan();
   }
   // Une seule route pour tout : sans heure posee, le serveur compose la
   // premiere combinaison possible et rend la grille ; avec des heures posees,
   // il recalcule la grille autour d elles et le plan qui en decoule.
   function chargerPlan() {
-    var id = ++requeteEnCours;
+    var id = ++requeteEnCours, cle = cleDemande();
     goContact.disabled = true;
     hourZone.classList.add('is-busy');
     fetch(urlDispo(), { credentials: 'omit' }).then(function (r) { return r.json(); })
       .then(function (j) {
         if (id !== requeteEnCours) return;
         if (!j || j.ok === false) throw new Error((j && j.message) || 'Disponibilités indisponibles.');
-        state.dispo = j;
+        state.dispo = j; state.dispoCle = cle;
         var slot = (j.slots || [])[0] || null;
         state.creneau = slot ? { slot: slot, reponse: j } : null;
         state.heure = slot ? slot.time : '';
         hourZone.classList.remove('is-busy');
         rendreHeures();
         goContact.disabled = !slot;
+        if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }
       })
       .catch(function (err) {
         if (id !== requeteEnCours) return;

@@ -388,7 +388,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-steps__item.is-done button:hover .fg-steps__seg::after { background: #fff; }
 /* COLONNE ETROITE : cinq libelles ne tiennent plus. Il reste les cinq
    segments, et SOUS la barre, cale a gauche, l etape en cours avec son rang :
-   « 03/05 CRENEAUX ». */
+   « 03/05 HORAIRES ». */
 @container (max-width: 519px) {
   .fg-steps__item { position: static; padding-bottom: 22px; }
   .fg-steps__item:not(.is-active) .fg-steps__txt,
@@ -1056,8 +1056,11 @@ html.fg-pilote .fg { overflow: visible; }
    sont sur un element interieur : le tiroir ferme fait exactement 0. */
 .fg-card__opt { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s var(--fg-ease); }
 .fg-grid__item.is-on .fg-card__opt { grid-template-rows: 1fr; }
-.fg-card__optin { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-6px); transition: opacity 0.3s, transform 0.35s var(--fg-ease-out); }
-.fg-grid__item.is-on .fg-card__optin { opacity: 1; transform: none; }
+/* Ferme, le tiroir sort aussi du parcours clavier et du lecteur d ecran
+   (visibility), une fois son repli de 0,4 s fini ; ouvert, il y entre tout
+   de suite. */
+.fg-card__optin { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-6px); visibility: hidden; transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), visibility 0s linear 0.4s; }
+.fg-grid__item.is-on .fg-card__optin { opacity: 1; transform: none; visibility: visible; transition-delay: 0s; }
 .fg-card__optbox {
   padding: 10px 12px 12px;
   border: 1.5px solid var(--fg-purple-2);
@@ -1163,6 +1166,12 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-dock__place { height: 0; }
 .fg-bar__sum b { color: var(--fg-text); font-weight: 700; }
 #hourZone.is-busy ~ .fg-dock .fg-bar__sum { opacity: 0.55; transition: opacity 0.2s 0.15s; }
+/* Quand l heure de fin ou le prix change, seul le chiffre qui a bouge monte a
+   sa place, une fois (classe posee par le script sur un noeud neuf). */
+@media (prefers-reduced-motion: no-preference) {
+  .fg .is-maj { animation: fg-maj 0.34s var(--fg-ease-out) both; }
+}
+@keyframes fg-maj { from { opacity: 0; transform: translateY(0.45em); } to { opacity: 1; transform: none; } }
 /* EMBARQUE : quand la page hote defile, la barre collee suivrait le cadre
    avec une ou deux images de retard (la bande visible arrive par message) et
    flotterait. Elle s efface donc pendant le defilement et revient quand il
@@ -1232,7 +1241,7 @@ html.fg-pilote .fg { overflow: visible; }
    Seule la COULEUR les separe, violet pour un choix, sarcelle pour sa
    consequence. Ecrire la forme une seule fois, c est aussi la garantie
    qu elles ne divergeront pas au prochain tour. */
-.fg-track, .fg-visit {
+.fg-track, .fg-visit, .fg-skel__card {
   position: relative;
   max-width: 940px;
   margin: 0 auto 22px;
@@ -1242,10 +1251,10 @@ html.fg-pilote .fg { overflow: visible; }
   overflow: hidden;
   text-align: left;
 }
-.fg-track { background: linear-gradient(180deg, rgba(24, 13, 24, 0.9) 0%, rgba(8, 8, 8, 0.72) 44%); border: 1px solid rgba(176, 79, 176, 0.3); }
+.fg-track, .fg-skel__card { background: linear-gradient(180deg, rgba(24, 13, 24, 0.9) 0%, rgba(8, 8, 8, 0.72) 44%); border: 1px solid rgba(176, 79, 176, 0.3); }
 /* Le filet de couleur sur la tranche : c est lui qui fait qu une section se
    voit comme une section, meme sur un fond noir et de loin. */
-.fg-track::before, .fg-visit::before {
+.fg-track::before, .fg-visit::before, .fg-skel__card::before {
   content: "";
   position: absolute;
   left: 0;
@@ -1253,7 +1262,7 @@ html.fg-pilote .fg { overflow: visible; }
   bottom: 0;
   width: 4px;
 }
-.fg-track::before { background: linear-gradient(180deg, var(--fg-purple-2), var(--fg-teal)); }
+.fg-track::before, .fg-skel__card::before { background: linear-gradient(180deg, var(--fg-purple-2), var(--fg-teal)); }
 .fg-track__head, .fg-visit__head {
   display: flex;
   flex-wrap: wrap;
@@ -1322,6 +1331,7 @@ html.fg-pilote .fg { overflow: visible; }
   list-style: none;
 }
 .fg-chip {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1377,6 +1387,18 @@ html.fg-pilote .fg { overflow: visible; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-chips.is-fresh .fg-chip { animation: fg-rise 0.45s var(--fg-ease-out) backwards; animation-delay: calc(18ms * var(--i, 0)); }
 }
+/* L heure touchee s entoure des le toucher ; une onde part d elle quand le plan
+   du serveur la retient. Seul le pseudo-element bouge, jamais la case. inset se
+   compte depuis la boite de rembourrage (bordure 1,5 px) : -3.5px pose l anneau
+   2 px hors de la case, rayon concentrique a --fg-radius. */
+.fg-chip.is-pending::after, .fg-chip.is-pose::after { content: ""; position: absolute; inset: -3.5px; border: 2px solid var(--fg-purple-2); border-radius: calc(var(--fg-radius) + 2px); pointer-events: none; }
+.fg-chip.is-pose::after { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-chip.is-pending::after { animation: fg-pending 0.18s var(--fg-ease-out) both; }
+  .fg-chip.is-pose::after { animation: fg-ripple 0.5s var(--fg-ease-out) both; }
+}
+@keyframes fg-pending { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes fg-ripple { from { opacity: 0.9; transform: none; } to { opacity: 0; transform: scale(1.06); } }
 /* Les periodes (matin, apres-midi, soiree) : un menu depliant chacune, avec
    son resume (heure choisie ou proposee, nombre de creneaux). Le corps se
    deploie en grid-template-rows 0fr -> 1fr : aucune mesure, aucun saut. */
@@ -1413,7 +1435,11 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-period.is-open .fg-period__chev { transform: rotate(180deg); }
 .fg-period__body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s var(--fg-ease); }
 .fg-period.is-open .fg-period__body { grid-template-rows: 1fr; }
-.fg-period__inner { min-height: 0; overflow: hidden; }
+/* Replie, un menu sort du parcours clavier et du lecteur d ecran quand son
+   repli (0,4 s) est fini : plus d arret sur une heure invisible. Ouvert, il y
+   entre tout de suite. */
+.fg-period__inner { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear 0.4s; }
+.fg-period.is-open .fg-period__inner { visibility: visible; transition-delay: 0s; }
 .fg-period__inner > .fg-chips { margin: 0; padding: 0 14px; opacity: 0; transform: translateY(-4px); transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), padding 0.4s var(--fg-ease); }
 .fg-period.is-open .fg-period__inner > .fg-chips { padding: 4px 14px 14px; opacity: 1; transform: none; }
 /* LES RAISONS D UNE PLAGE, sous ses heures : une ligne par raison, la cle au
@@ -1536,7 +1562,12 @@ html.fg-pilote .fg { overflow: visible; }
 
 /* Les combinaisons proches quand celle du client ne tient pas. */
 .fg-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+/* 44 px de haut : ce sont les sorties d un jour sans place, un pouce doit
+   les attraper du premier coup. */
 .fg-suggest__btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 8px 14px;
   border-radius: var(--fg-radius);
   border: 1.5px solid var(--fg-teal);
@@ -1548,6 +1579,19 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-suggest__btn:hover { background: var(--fg-teal); color: var(--fg-bg); }
 .fg-loading { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--fg-muted); font-size: 14px; padding: 30px 0; }
 .fg-loading::before { content: ""; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); border-top-color: var(--fg-purple-2); animation: fg-spin 0.8s linear infinite; }
+/* L attente du premier calcul des heures : la forme d une piste, jamais un nombre de pistes devine. Elle n apparait qu apres 150 ms (une reponse rapide ne fait rien clignoter). Seules les barres respirent ; le texte, blanc comme la legende, ne bouge pas. */
+.fg-skel { max-width: 940px; margin: 0 auto; text-align: left; }
+.fg-skel__txt { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--fg-text); }
+.fg-skel__card { display: grid; gap: 10px; padding: 16px 22px 18px 26px; }
+.fg-skel__card i { display: block; height: 46px; border-radius: 10px; background: rgba(255, 255, 255, 0.06); }
+.fg-skel__card i:first-child { width: 42%; height: 22px; border-radius: 6px; background: rgba(148, 66, 146, 0.3); }
+@media (max-width: 560px) { .fg-skel__card { padding: 14px 15px 12px 19px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-skel { animation: fg-skel-in 0.3s var(--fg-ease-out) 0.15s both; }
+  .fg-skel__card i { animation: fg-skel 0.6s ease-in-out calc(90ms * var(--i, 0)) infinite alternate both; }
+}
+@keyframes fg-skel-in { from { opacity: 0; } }
+@keyframes fg-skel { from { opacity: 1; } to { opacity: 0.4; } }
 
 /* --- Etape 4 : le contact, et le recapitulatif pose sur la photo ------------ */
 
@@ -1848,5 +1892,8 @@ html.fg-pilote .fg { overflow: visible; }
 
 @media (prefers-reduced-motion: reduce) {
   .fg *, .fg *::before, .fg *::after { animation: none !important; transition-duration: 0.01ms !important; }
+  /* Le delai du repli survivrait a la duree coupee : un tiroir deja ferme
+     resterait 0,4 s dans le parcours clavier. */
+  .fg .fg-card__optin, .fg .fg-period__inner { transition-delay: 0s !important; }
   .fg.has-pointer .fg-art img { translate: none; }
 }

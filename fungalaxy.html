@@ -65,11 +65,13 @@
 
     <!-- 1. RESERVEZ VOTRE SORTIE -->
     <section class="fg-scene fg-scene--split is-active" data-scene="date" aria-labelledby="t-date">
-      <!-- Les photos : deux largeurs (800, 1600) et des `sizes` qui plafonnent ce
-     que le navigateur demande. Sur un telephone, le bandeau photo fait 200 px
-     de haut derriere un voile sombre : la version 800 suffit, meme en ecran
-     retina, d ou le « 260px » declare sous 560 px. -->
-<div class="fg-art"><img src="/assets/fungalaxy/duckpin-800.webp" srcset="/assets/fungalaxy/duckpin-800.webp 800w, /assets/fungalaxy/duckpin-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1066" decoding="async" fetchpriority="high"></div>
+      <!-- Les photos : celles du CENTRE de l adresse, tirees dans un ordre a
+     chaque visite par le script (poserPhotos), qui pose aussi leur cadre.
+     Deux largeurs (800, 1600) et des `sizes` qui plafonnent ce que le
+     navigateur demande. Sur un telephone, le bandeau photo fait 200 px de haut
+     derriere un voile sombre : la version 800 suffit, meme en ecran retina,
+     d ou le « 260px » declare sous 560 px. -->
+<div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" decoding="async" fetchpriority="high"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <h1 class="fg-title" id="t-date" data-words>Réservez<br><em>votre sortie</em></h1>
@@ -119,7 +121,7 @@
 
     <!-- 2. AU PROGRAMME : les activites ou une formule -->
     <section class="fg-scene fg-scene--full" data-scene="activites" aria-labelledby="t-act">
-      <div class="fg-art"><img data-src="/assets/fungalaxy/salle-bowling-800.webp" data-srcset="/assets/fungalaxy/salle-bowling-800.webp 800w, /assets/fungalaxy/salle-bowling-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
+      <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <h2 class="fg-title" id="t-act" data-words>Au <em>programme</em></h2>
@@ -146,7 +148,7 @@
 
     <!-- 3. TOP DEPART : les heures de chaque activite -->
     <section class="fg-scene fg-scene--full fg-scene--center" data-scene="heures" aria-labelledby="t-hour">
-      <div class="fg-art"><img data-src="/assets/fungalaxy/laser-couloir-800.webp" data-srcset="/assets/fungalaxy/laser-couloir-800.webp 800w, /assets/fungalaxy/laser-couloir-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
+      <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <h2 class="fg-title" id="t-hour" data-words>Top <em>départ</em></h2>
@@ -163,7 +165,7 @@
 
     <!-- 4. QUI RESERVE ? Les coordonnees, a cote du recapitulatif entier -->
     <section class="fg-scene fg-scene--split" data-scene="contact" aria-labelledby="t-who">
-      <div class="fg-art"><img data-src="/assets/fungalaxy/pistes-neon-800.webp" data-srcset="/assets/fungalaxy/pistes-neon-800.webp 800w, /assets/fungalaxy/pistes-neon-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async"></div>
+      <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" decoding="async"></div>
       <aside class="fg-recall" id="recall" aria-labelledby="recallKicker">
         <span class="fg-kicker" id="recallKicker">Votre réservation</span>
         <p class="fg-recall__line" id="recallLine"></p>
@@ -210,7 +212,7 @@
 
     <!-- 5. DERNIER COUP D OEIL : le recapitulatif, puis la confirmation -->
     <section class="fg-scene fg-scene--split fg-scene--art-left" data-scene="recap" aria-labelledby="t-ok">
-      <div class="fg-art"><img data-src="/assets/fungalaxy/fun-run-800.webp" data-srcset="/assets/fungalaxy/fun-run-800.webp 800w, /assets/fungalaxy/fun-run-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async"></div>
+      <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <h2 class="fg-title" id="t-ok"><span data-words>Dernier <em>coup d’œil</em></span></h2>
@@ -224,7 +226,7 @@
 
     <!-- 6. RESERVATION CONFIRMEE / DEMANDE ENVOYEE -->
     <section class="fg-scene fg-scene--full fg-scene--center" data-scene="fin" aria-labelledby="t-fin">
-      <div class="fg-art"><img data-src="/assets/fungalaxy/simulateurs-800.webp" data-srcset="/assets/fungalaxy/simulateurs-800.webp 800w, /assets/fungalaxy/simulateurs-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
+      <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <div class="fg-done">

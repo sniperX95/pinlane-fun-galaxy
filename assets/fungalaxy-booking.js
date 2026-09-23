@@ -341,6 +341,64 @@
     img.src = img.dataset.src;
     delete img.dataset.src; delete img.dataset.srcset;
   }
+  // LES PHOTOS DE CHAQUE CENTRE (Movsar, 2026-09-23 : « que des images de Fun
+  // Galaxy Libramont pour le formulaire de Libramont et de Gembloux pour celui
+  // de Gembloux ; sur internet il y a aussi des images de l ancienne enseigne,
+  // fais gaffe »). Un centre ne montre QUE ses photos, prises apres le
+  // changement d enseigne ; la preuve de chacune (image d origine, page du site
+  // qui dit le centre, mois d envoi) est tenue par le gate du formulaire, qui
+  // refuse toute photo sans preuve. Un centre sans photo prouvee n en montre
+  // aucune, jamais celles d un autre. Le choix des activites garde ses
+  // vignettes. `h` : la hauteur de la version 1600, pour que le cadre annonce
+  // soit la forme du fichier.
+  var PHOTOS = {
+    libramont: [
+      { f: 'duckpin', h: 1066 },
+      { f: 'fun-run', h: 1067 },
+      { f: 'laser-couloir', h: 1066 },
+      { f: 'minigolf', h: 1066 },
+      { f: 'pistes-neon', h: 1066 },
+      { f: 'salle-bowling', h: 1066 },
+      { f: 'simulateurs', h: 1067 },
+      { f: 'billards-libramont', h: 1066 },
+    ],
+    gembloux: [
+      { f: 'gembloux-golf-salle', h: 1066 },
+      { f: 'gembloux-golf-ecrans', h: 1066 },
+      { f: 'gembloux-golf-quilles', h: 1066 },
+      { f: 'gembloux-golf-rampe', h: 1066 },
+      { f: 'gembloux-golf-balle', h: 1066 },
+      { f: 'gembloux-golf-obstacle', h: 1066 },
+      { f: 'gembloux-golf-cible', h: 1066 },
+      { f: 'gembloux-golf-seaux', h: 1066 },
+    ],
+  };
+  // ELLES TOURNENT : chaque visite tire un ordre (Fisher-Yates), qui ne change
+  // plus jusqu a la fin de la reservation (« pour chaque nouvelle reservation,
+  // pas que ca change pendant la resa »). Moins de photos que d ecrans : la
+  // suite recommence, et deux ecrans voisins ne montrent jamais la meme des
+  // que le centre en a deux. La premiere part tout de suite, en priorite.
+  function poserPhotos() {
+    // Propre a la table seulement : « /fungalaxy/constructor » lirait une
+    // propriete heritee de l objet, et la page tomberait.
+    var pool = (Object.prototype.hasOwnProperty.call(PHOTOS, CENTER) ? PHOTOS[CENTER] : []).slice();
+    for (var i = pool.length - 1; i > 0; i -= 1) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var x = pool[i]; pool[i] = pool[j]; pool[j] = x;
+    }
+    if (!pool.length) return;
+    $$('.fg-scene').forEach(function (scene, k) {
+      var img = $('.fg-art img', scene);
+      if (!img) return;
+      var p = pool[k % pool.length];
+      var base = '/assets/fungalaxy/' + p.f;
+      img.width = 1600;
+      img.height = p.h;
+      img.dataset.src = base + '-800.webp';
+      img.dataset.srcset = base + '-800.webp 800w, ' + base + '-1600.webp 1600w';
+    });
+    chargerPhoto($('.fg-scene.is-active'));
+  }
   function aller(cible, retour) {
     if (cible === sceneCourante || enTransition) return;
     var de = $('.fg-scene[data-scene="' + sceneCourante + '"]');
@@ -1813,6 +1871,7 @@
   /* --- Le demarrage ----------------------------------------------------------------- */
 
   function demarrer() {
+    poserPhotos();
     decouperTitres();
     rendreEtapes();
     rendrePax();

@@ -73,9 +73,24 @@
 //       fait rien sauter ; a l ecran des coordonnees, le recapitulatif se
 //       replie sous sa ligne de resume et un bouton de 44 px le deplie.
 //   [H] MOUVEMENT REDUIT : plus aucune animation, rideau et halos compris.
+//   [K] LES PHOTOS DU CENTRE, QUI TOURNENT (2026-09-23) : le script ne cite
+//       que des photos dont la provenance est prouvee (image d origine sur le
+//       site du client, page qui dit le centre, envoi apres le changement
+//       d enseigne), en paysage, en 800 et en 1600, cadre declare exact ;
+//       chaque centre montre SES photos sur ses six ecrans, jamais deux fois
+//       la meme d un ecran au voisin, la premiere chargee en priorite ; l ordre
+//       depend du tirage de la visite ; un centre sans photo prouvee n en
+//       montre aucune ; et les six photos tirees au chargement restent celles
+//       du parcours jusqu au bout (verifie en [E]).
+//   [L] LISIBLE SUR N IMPORTE QUELLE PHOTO (2026-09-23) : sur les sept
+//       ecrans du parcours (les formules comprises), a 1440, 1920, 1024 et
+//       375 px, chaque texte visible garde 4,5:1 (3:1 en grand) sur la photo
+//       LA PLUS CLAIRE POSSIBLE (chaque photo remplacee par un blanc pur, celle
+//       des cartes montree comme au survol), et hors photo sous le coeur des
+//       halos. Un controle inactif en est ecarte (WCAG 1.4.3).
 //   [I] FORMULES A L ECRAN + FUN RUN QUI TOURNE (2026-09-22).
 //   [J] LES TOURS DU 2026-09-23 : aucune photo de l ANCIEN centre nulle part
-//       et le cadre declare de chaque photo est sa vraie forme ; le compteur
+//       (ni citee, ni dans le depot) ; le compteur
 //       de personnes prend la largeur de son nombre et son encre tombe au
 //       milieu de la case SUR LES DEUX AXES ; la barre des etapes remplit un
 //       segment par etape atteinte, dit « 01/05 » la ou les libelles tombent,
@@ -92,8 +107,8 @@
 //       cette partie, et le bowling qui chevaucherait dit l activite ET la
 //       plage reelle qu elle occupe ; chaque heure expliquee pointe sa ligne
 //       (aria-describedby) ; la barre, la legende et les raisons gardent
-//       4,5:1 au PIRE moment (pixels peints, photo comprise, et halos au plus
-//       clair) ; la duree totale annoncee est l ecart entre l arrivee et la
+//       4,5:1 au PIRE moment (pixels peints sur la photo la plus claire
+//       possible, et halos au plus clair) ; la duree totale annoncee est l ecart entre l arrivee et la
 //       fin, recalcule en Node, dans le bloc de visite comme au
 //       recapitulatif ; la legende des heures perd ses gloses sur telephone.
 //
@@ -127,6 +142,17 @@
 // cassee), especes (le logo des especes disparait), recapcontact (l ecran des
 // coordonnees n a plus son recapitulatif), flotte (la carte ne flotte plus a
 // cote du formulaire : feuille cassee).
+//
+// CONTRE-PREUVES DES PHOTOS : photocentre (un autre centre recoit les photos
+// de Libramont), tourne (le tirage ne change plus l ordre), fige (les photos
+// se retirent a chaque ecran, donc changent pendant la reservation), proto (la
+// table se relit sans garde : « /fungalaxy/constructor » fait tomber la page).
+//
+// CONTRE-PREUVES DE LA LISIBILITE : emclair (le mot en couleur des titres
+// reprend le violet de la marque), colonne (le second voile des ecrans centres
+// disparait), fantome (le bouton discret redevient transparent), voilecarte (la
+// photo de carte reprend son voile lineaire), compteur (le nombre de formules
+// repart au bout du filet, en gris discret). Toutes : FEUILLE servie cassee.
 //
 // CONTRE-PREUVES (le gate mord) : FG_QA_CASSE=prix (prix de carte faux d un
 // euro), total (total du recap faux d un euro), raison (les heures perdent leur
@@ -265,6 +291,10 @@ const MUTATIONS = {
   suit: ['if (j >= 0) state.laserParts[j] = t;', 'if (false) state.laserParts[j] = t;'],
   especes: ['<svg><use href="#i-cash"/></svg>', ''],
   recapcontact: ["$('#recallBody').innerHTML = htmlRecap(false);", 'void 0;'],
+  photocentre: ['var pool = (Object.prototype.hasOwnProperty.call(PHOTOS, CENTER) ? PHOTOS[CENTER] : []).slice();', 'var pool = PHOTOS.libramont.slice();'],
+  tourne: ['var j = Math.floor(Math.random() * (i + 1));', 'var j = i;'],
+  fige: ['    rendreEtapes();\n    chargerPhoto(vers);', '    rendreEtapes();\n    poserPhotos();\n    chargerPhoto(vers);'],
+  proto: ['var pool = (Object.prototype.hasOwnProperty.call(PHOTOS, CENTER) ? PHOTOS[CENTER] : []).slice();', 'var pool = (PHOTOS[CENTER] || []).slice();'],
 };
 // Les contre-preuves de la FEUILLE : une regle servie cassee expres. La feuille
 // est relue en LF, quelle que soit la fin de ligne du depot.
@@ -274,6 +304,11 @@ const MUTATIONS_CSS = {
   contraste: ['meme au coeur du halo le plus clair. */\n  color: #a0a0a0;\n', 'meme au coeur du halo le plus clair. */\n  color: var(--fg-faint);\n'],
   legendegris: ['sur un pixel blanc de la photo. */\n  color: var(--fg-text);\n', 'sur un pixel blanc de la photo. */\n  color: var(--fg-muted);\n'],
   flotte: ['  float: right;\n  width: min(400px, calc(52% - var(--fg-gutter) - 24px));\n', '  width: min(400px, calc(52% - var(--fg-gutter) - 24px));\n'],
+  emclair: ['.fg-title em { font-style: normal; color: var(--fg-purple-em); }\n', '.fg-title em { font-style: normal; color: var(--fg-purple-2); }\n'],
+  colonne: ['    linear-gradient(90deg, rgba(5, 5, 5, 0) calc(50% - 490px), rgba(5, 5, 5, 0.55) calc(50% - 350px), rgba(5, 5, 5, 0.55) calc(50% + 350px), rgba(5, 5, 5, 0) calc(50% + 490px)),\n', ''],
+  fantome: ['.fg-btn--ghost {\n  background: rgba(8, 8, 8, 0.86);\n', '.fg-btn--ghost {\n  background: transparent;\n'],
+  voilecarte: ['rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%)', 'rgba(5, 5, 5, 0.25) 0%, rgba(5, 5, 5, 0.9) 100%)'],
+  compteur: ['.fg-fam__title span { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-muted); }', '.fg-fam__title span { order: 3; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-faint); }'],
 };
 // Les contre-preuves de la PAGE : des lignes de fungalaxy.html servies
 // cassees (plusieurs remplacements, chacun sur une ancre unique).
@@ -419,6 +454,63 @@ function tailleWebp(chemin) {
   if (fmt === 'VP8 ') return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
   if (fmt === 'VP8L') { const bits = b.readUInt32LE(21); return { w: (bits & 0x3fff) + 1, h: ((bits >> 14) & 0x3fff) + 1 }; }
   return null;
+}
+
+// LA PROVENANCE DE CHAQUE PHOTO D ECRAN, CENTRE PAR CENTRE (Movsar,
+// 2026-09-23 : « que des images de Fun Galaxy Libramont pour Libramont et de
+// Gembloux pour Gembloux ; sur internet il y a aussi des images de mi12, fais
+// gaffe »). Pour chacune : l image d origine sur le site du client (son
+// dossier d envoi dit le mois) et la page qui dit le centre (« Disponible a :
+// Libramont » ou « ... : Gembloux » ; l image n apparait sur aucune page de
+// l autre centre, releve du 2026-09-23). Le changement d enseigne a ete annonce
+// par la page Facebook de Fun Galaxy Gembloux le 27 juillet 2025 (« MI12
+// devient officiellement Fun Galaxy ») : toutes ces photos ont ete envoyees
+// apres. Celles d octobre 2024 du site (fichiers « mi12-... », minigolf
+// « Z-DSCF... », bornes d arcade au logo mi12) sont d avant et n entrent pas
+// ici. Une photo absente de cette table n a pas de preuve : le gate la refuse.
+const UPLOADS = 'https://fungalaxy.be/wp-content/uploads/';
+const PAGE_FG = 'https://fungalaxy.be/activites/';
+const PROVENANCE = {
+  libramont: {
+    duckpin: { origine: `${UPLOADS}2026/04/C_est-Capte-134.jpg`, page: `${PAGE_FG}duckpin-bowling/` },
+    'fun-run': { origine: `${UPLOADS}2025/11/fun-run-2.jpg`, page: `${PAGE_FG}fun-run-by-pixel/` },
+    'laser-couloir': { origine: `${UPLOADS}2026/04/C_est-Capte-106.jpg`, page: `${PAGE_FG}laser-game/` },
+    minigolf: { origine: `${UPLOADS}2026/04/C_est-Capte-80.jpg`, page: `${PAGE_FG}minigolf-blacklight/` },
+    'pistes-neon': { origine: `${UPLOADS}2026/04/C_est-Capte-120.jpg`, page: `${PAGE_FG}bowling/` },
+    'salle-bowling': { origine: `${UPLOADS}2026/04/C_est-Capte-25.jpg`, page: `${PAGE_FG}bowling/` },
+    simulateurs: { origine: `${UPLOADS}2026/04/C_est-Capte-6.jpg`, page: `${PAGE_FG}arcades/` },
+    'billards-libramont': { origine: `${UPLOADS}2026/04/C_est-Capte-111.jpg`, page: `${PAGE_FG}billards/` },
+  },
+  gembloux: {
+    'gembloux-golf-salle': { origine: `${UPLOADS}2025/08/Cest-Capte-41.jpg`, page: `${PAGE_FG}golf-oclock/` },
+    'gembloux-golf-ecrans': { origine: `${UPLOADS}2025/08/Cest-Capte-2.jpg`, page: `${PAGE_FG}golf-oclock/` },
+    'gembloux-golf-quilles': { origine: `${UPLOADS}2025/08/Cest-Capte-14.jpg`, page: `${PAGE_FG}golf-oclock/` },
+    'gembloux-golf-rampe': { origine: `${UPLOADS}2025/08/Cest-Capte-33.jpg`, page: `${PAGE_FG}golf-oclock/` },
+    'gembloux-golf-balle': { origine: `${UPLOADS}2025/08/Cest-Capte-37.jpg`, page: `${PAGE_FG}golf-oclock/` },
+    'gembloux-golf-obstacle': { origine: `${UPLOADS}2025/08/Cest-Capte-11.jpg`, page: `${PAGE_FG}golf-oclock/` },
+    'gembloux-golf-cible': { origine: `${UPLOADS}2025/08/Cest-Capte-15.jpg`, page: `${PAGE_FG}golf-oclock/` },
+    'gembloux-golf-seaux': { origine: `${UPLOADS}2025/08/Cest-Capte-10.jpg`, page: `${PAGE_FG}golf-oclock/` },
+  },
+};
+// La table des photos du script, relue dans sa source : { centre: [{ f, h }] }.
+function photosDuScript(js) {
+  const bloc = /var PHOTOS = \{([\s\S]*?)\n  \};/.exec(String(js).replace(/\r\n/g, '\n'));
+  const out = {};
+  if (!bloc) return out;
+  for (const m of bloc[1].matchAll(/([a-z0-9-]+): \[([\s\S]*?)\]/g)) {
+    out[m[1]] = Array.from(m[2].matchAll(/\{ f: '([a-z0-9-]+)', h: (\d+) \}/g)).map((x) => ({ f: x[1], h: Number(x[2]) }));
+  }
+  return out;
+}
+// Les photos des six ecrans telles que la page les a posees : la photo (le nom
+// avant le suffixe de largeur), le cadre declare, et si elle est chargee.
+async function lirePhotosEcrans(page) {
+  return page.evaluate(() => Array.from(document.querySelectorAll('.fg-scene')).map((sc) => {
+    const img = sc.querySelector('.fg-art img');
+    const url = img ? (img.getAttribute('src') || img.dataset.src || '') : '';
+    const m = /\/assets\/fungalaxy\/([a-z0-9-]+?)-(?:800|1600)\.webp/.exec(url);
+    return { scene: sc.dataset.scene, photo: m ? m[1] : '', w: img ? Number(img.getAttribute('width')) : 0, h: img ? Number(img.getAttribute('height')) : 0, charge: Boolean(img && img.getAttribute('src')) };
+  }));
 }
 
 function ecartsPlan(ecran, o) {
@@ -804,9 +896,19 @@ function decoderPng(buf) {
 }
 function linQa(v) { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }
 function lumQa(p) { return 0.2126 * linQa(p[0]) + 0.7152 * linQa(p[1]) + 0.0722 * linQa(p[2]); }
+// LA PHOTO LA PLUS CLAIRE POSSIBLE. Les photos tournent a chaque visite et
+// derivent a l ecran : mesure sur la photo du moment, un texte passait ou
+// cassait selon le tirage (« 23:30 » vert a un passage, 4,48:1 au suivant,
+// sur le meme code).
+// Pendant la mesure, chaque photo devient donc un BLANC PUR, le pire qu une
+// photo puisse faire sous son voile, et la photo d une carte d activite est
+// montree comme au survol : un texte qui tient ici tient sur n importe quelle
+// photo, celles d aujourd hui comme celles qui viendront.
+const PHOTOS_BLANCHES = ' .fg-art, .fg-card__photo { background: #fff !important; } .fg-art img, .fg-card__photo img { visibility: hidden !important; } .fg-card:not(.is-on) .fg-card__photo { opacity: 1 !important; }';
 // LE CONTRASTE D UN TEXTE, AU PIRE (WCAG 1.4.3 : 4,5:1, et 3:1 pour un grand
 // texte). Deux mesures, la plus severe gagne :
-//   - LES PIXELS : tout le texte de la page est rendu transparent, la vue est
+//   - LES PIXELS : tout le texte de la page est rendu transparent, chaque
+//     photo devient la plus claire possible (PHOTOS_BLANCHES), la vue est
 //     capturee (animations figees), et chaque ligne du texte mesure est
 //     comparee au pixel le plus defavorable de sa boite : photo, voile, cartes
 //     et halos compris, tels qu ils sont peints ;
@@ -842,7 +944,7 @@ async function contrastesPires(page, selecteur) {
     await page.evaluate((i) => document.querySelector(`[data-qa-contraste="${i}"]`).scrollIntoView({ block: 'center' }), k);
     // Le texte est masque AVANT de lire les lignes : rien ne bouge plus entre
     // la lecture et la capture.
-    await page.addStyleTag({ content: '*, *::before, *::after { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; } [data-qa-masque] {}' });
+    await page.addStyleTag({ content: '*, *::before, *::after { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; } [data-qa-masque] {}' + PHOTOS_BLANCHES });
     const vus = await page.evaluate((total) => {
       const couleur = (s) => { const m = /rgba?\(([^)]+)\)/.exec(String(s || '')); if (!m) return null; const p = m[1].split(/[\s,/]+/).filter(Boolean).map(parseFloat); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
       const arrets = (img) => (String(img || '').match(/rgba?\([^)]+\)/g) || []).map(couleur).filter(Boolean);
@@ -997,6 +1099,9 @@ async function main() {
     });
     ok(montage.scene === 'date' && montage.etapes === 5 && montage.active === 'Date & groupe', '[A] le fil des 5 etapes est rendu, etape 1 active', JSON.stringify({ scene: montage.scene, etapes: montage.etapes, active: montage.active }));
     ok(montage.photo, '[A] la photo de l ecran est decodee');
+    // Les six photos tirees au chargement : le parcours doit montrer
+    // exactement celles-ci (verifie a l ecran final).
+    const photosDepart = await lirePhotosEcrans(page);
     ok(montage.pax === '4 personnes' && montage.saisie === '4', '[A] le groupe demarre a 4 personnes, le nombre est dans le champ', `${montage.pax} / « ${montage.saisie} »`);
     const dernierMot = String(montage.mots[montage.mots.length - 1] || '').trim();
     const titrePonctue = /[?!]$/.test(dernierMot);
@@ -1449,6 +1554,14 @@ async function main() {
     const fin = await page.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim());
     ok(new RegExp(`Réservation n° ${corps.__id || '\\d+'}`).test(fin) && fin.indexOf('qa@example.com') >= 0, '[E] l ecran final cite le numero rendu et l adresse', fin.slice(0, 120));
     ok(await page.evaluate(() => document.querySelectorAll('#finBurst i').length === 14), '[E] la gerbe d etincelles est posee (14 points)');
+    // LES PHOTOS NE CHANGENT PAS PENDANT LA RESERVATION (« pour chaque
+    // nouvelle reservation, pas que ca change pendant la resa ») : chaque
+    // ecran traverse a montre la photo tiree pour lui au chargement.
+    const photosFin = await lirePhotosEcrans(page);
+    const bougees = photosFin.filter((x, k) => !x.charge || x.photo !== (photosDepart[k] || {}).photo);
+    ok(photosDepart.length === 6 && photosDepart.every((x) => x.photo) && bougees.length === 0,
+      '[E] les six photos tirees au chargement sont celles que le parcours a montrees, sans changer en route',
+      bougees.map((x) => `${x.scene} : ${x.photo || 'rien'}${x.charge ? '' : ' (jamais chargee)'} au lieu de ${(photosDepart.find((y) => y.scene === x.scene) || {}).photo}`).join(', ') || photosFin.map((x) => x.photo).join(' > '));
     ok(/Montant estimé/.test(fin) && /à régler sur place, par carte ou en espèces\./.test(fin), '[E] l ecran final dit le montant et les deux moyens de paiement', (fin.match(/Montant estimé[^.]*\./) || [''])[0]);
     // LE TITRE DIT CE QUI S EST PASSE, lu dans la reponse du serveur : une
     // reservation confirmee d office, ou une demande que l equipe verifiera.
@@ -1741,22 +1854,7 @@ async function main() {
       .flatMap((nom) => ['800', '1600'].map((w) => `assets/fungalaxy/${nom}-${w}.webp`))
       .filter((rel) => fs.existsSync(path.join(ROOT, rel)));
     ok(survivantes.length === 0, '[J] et ses fichiers ne sont plus dans le depot', survivantes.join(', ') || 'aucun');
-    // Chaque photo declaree existe, et le cadre annonce est SA forme.
-    // Le nom d une photo est ce qui precede son suffixe de largeur :
-    // « duckpin-800.webp » est la photo « duckpin », servie en 800.
-    const declarees = Array.from(sourceHtml.matchAll(/<img[^>]*?(?:data-)?src="\/assets\/fungalaxy\/([a-z0-9-]+?)-(?:800|1600)\.webp"[^>]*?width="(\d+)"[^>]*?height="(\d+)"/g))
-      .map((m) => ({ nom: m[1], w: Number(m[2]), h: Number(m[3]) }));
-    ok(declarees.length === 6, '[J] les six ecrans portent chacun leur photo', `${declarees.length} : ${declarees.map((d) => d.nom).join(', ')}`);
-    const manquantes = declarees.filter((d) => !fs.existsSync(path.join(ROOT, 'assets', 'fungalaxy', `${d.nom}-1600.webp`)) || !fs.existsSync(path.join(ROOT, 'assets', 'fungalaxy', `${d.nom}-800.webp`)));
-    ok(manquantes.length === 0, '[J] chaque photo citee existe en 800 et en 1600', manquantes.map((d) => d.nom).join(', ') || 'toutes');
-    const cadresFaux = declarees.filter((d) => {
-      const vraie = tailleWebp(path.join(ROOT, 'assets', 'fungalaxy', `${d.nom}-1600.webp`));
-      return !vraie || Math.abs((d.w / d.h) - (vraie.w / vraie.h)) > 0.01;
-    }).map((d) => {
-      const vraie = tailleWebp(path.join(ROOT, 'assets', 'fungalaxy', `${d.nom}-1600.webp`)) || { w: 0, h: 0 };
-      return `${d.nom} declare ${d.w}x${d.h}, vraie forme ${vraie.w}x${vraie.h}`;
-    });
-    ok(cadresFaux.length === 0, '[J] et le cadre declare a la forme du fichier (aucun saut au chargement)', cadresFaux.join(' | ') || 'les six');
+    // Les photos de chaque centre, leur preuve et leur cadre : section [K].
 
     // --- Le compteur, le fil, les etiquettes ------------------------------
     const tour = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -2143,8 +2241,176 @@ async function main() {
     const dTardive = await lireJson(`${BASE_URL}/api/public-availability?${new URLSearchParams(Object.assign({}, paramsJ, { preferredTimes: JSON.stringify({ laser_game: partsTardive[0] }), laserGameTimes: JSON.stringify(partsTardive) }))}`);
     await verifierPistes(dTardive, { laser_game: partsTardive[0] }, partsTardive, '[J] PARTIE TARDIVE DEPLACEE : les pistes = la route', pageJ);
     await lisibles('.fg-legend__tip, .fg-legend__key i, .fg-legend__key em, #hourZone .fg-period.is-open .fg-why-list__item > span, #hourZone .fg-period.is-open .fg-why-list__item b, #hourZone .fg-period.is-open .fg-key, #hourZone .fg-period.is-open .fg-chip b, #hourZone .fg-period.is-open .fg-chip small',
-      '[J] la legende, les heures ouvertes et leurs raisons gardent 4,5:1 au pire moment (sur la photo du fond, voile compris)');
+      '[J] la legende, les heures ouvertes et leurs raisons gardent 4,5:1 au pire moment (sur la photo la plus claire possible, voile compris)');
     await tour.close();
+
+    // =====================================================================
+    console.log('');
+    console.log('[K] LES PHOTOS DU CENTRE, QUI TOURNENT');
+    // Movsar, 2026-09-23 : « toutes les images que ca montre, hormis le choix
+    // des activites, faut que ce soit des images de Fun Galaxy, des images
+    // tournantes, pas tout le temps les memes : pour chaque nouvelle
+    // reservation, pas que ca change pendant la resa ; que des images de
+    // Libramont pour Libramont et de Gembloux pour Gembloux ; pour Gembloux il
+    // y a aussi sur internet des images de mi12, fais gaffe de fou ».
+    // =====================================================================
+    // --- Sur pieces : la table du script ne cite que des photos PROUVEES ---
+    const table = photosDuScript(sourceJs);
+    const centresTable = Object.keys(table);
+    ok(centresTable.join(',') === Object.keys(PROVENANCE).join(','), '[K] le script tient une table de photos pour les centres dont la provenance est prouvee, et pour eux seuls', centresTable.join(', ') || 'aucune table');
+    const sansPreuve = centresTable.flatMap((c) => table[c].filter((x) => !(PROVENANCE[c] || {})[x.f]).map((x) => `${c}/${x.f}`));
+    ok(sansPreuve.length === 0 && centresTable.every((c) => table[c].length === Object.keys(PROVENANCE[c] || {}).length),
+      '[K] chaque photo de chaque centre a sa preuve (image d origine, page du site qui dit le centre), et chaque photo prouvee est servie',
+      sansPreuve.join(', ') || centresTable.map((c) => `${c} ${table[c].length}`).join(', '));
+    const origines = Object.values(PROVENANCE).flatMap((c) => Object.values(c));
+    const avant = origines.filter((d) => { const m = /\/uploads\/(\d{4})\/(\d{2})\//.exec(d.origine); return !m || `${m[1]}-${m[2]}` < '2025-08' || /mi12/i.test(d.origine); });
+    ok(avant.length === 0, '[K] chaque photo a ete envoyee apres l annonce du changement d enseigne (27 juillet 2025), aucune ne vient d un fichier mi12', avant.map((d) => d.origine).join(', ') || `${origines.length} photos, envoyees de 2025-08 a 2026-04`);
+    const croisees = Object.keys(PROVENANCE.libramont).filter((f) => PROVENANCE.gembloux[f]);
+    ok(croisees.length === 0, '[K] aucune photo n est commune a deux centres', croisees.join(', ') || 'aucune');
+    const fautives = centresTable.flatMap((c) => table[c].map((x) => {
+      const f800 = path.join(ROOT, 'assets', 'fungalaxy', `${x.f}-800.webp`);
+      const f1600 = path.join(ROOT, 'assets', 'fungalaxy', `${x.f}-1600.webp`);
+      const v = fs.existsSync(f1600) ? tailleWebp(f1600) : null;
+      const v8 = fs.existsSync(f800) ? tailleWebp(f800) : null;
+      if (!v || !v8) return `${x.f} absente en ${v ? '800' : '1600'}`;
+      if (v.w !== 1600 || v.h !== x.h) return `${x.f} declaree 1600x${x.h}, fichier ${v.w}x${v.h}`;
+      if (v.w <= v.h) return `${x.f} n est pas en paysage (${v.w}x${v.h})`;
+      if (v8.w !== 800 || Math.abs(v8.w / v8.h - v.w / v.h) > 0.01) return `${x.f} en 800 : ${v8.w}x${v8.h}`;
+      return '';
+    })).filter(Boolean);
+    ok(fautives.length === 0, '[K] chaque photo existe en 800 et en 1600, en paysage, et le cadre declare est la forme du fichier', fautives.join(' | ') || 'toutes');
+    const nomsMi12 = fs.readdirSync(path.join(ROOT, 'assets', 'fungalaxy')).filter((n) => /mi12|strike/i.test(n));
+    ok(nomsMi12.length === 0, '[K] aucun fichier de l ancienne enseigne parmi les photos servies', nomsMi12.join(', ') || 'aucun');
+
+    // --- A l ecran : chaque centre ses photos, dans un ordre tire a chaque visite.
+    // Le tirage est FORCE (Math.random constant) : deux visites, deux tirages
+    // opposes, deux ordres qui doivent differer.
+    for (const centre of ['libramont', 'gembloux']) {
+      const ordres = [];
+      for (const tirage of [0.01, 0.99]) {
+        const ctxK = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        await ctxK.addInitScript((r) => { Math.random = () => r; }, tirage);
+        const pk = await ctxK.newPage();
+        await pk.goto(`${BASE_URL}/fungalaxy/${centre}`, { waitUntil: 'networkidle', timeout: 45000 });
+        await attendre(pk, () => { const i = document.querySelector('.fg-scene.is-active .fg-art img'); return i && i.complete && i.naturalWidth > 0; }, 8000);
+        const vus = await lirePhotosEcrans(pk);
+        const premiere = await pk.evaluate(() => { const i = document.querySelector('.fg-scene.is-active .fg-art img'); return { charge: Boolean(i && i.complete && i.naturalWidth > 0), priorite: i ? i.getAttribute('fetchpriority') : '' }; });
+        await ctxK.close();
+        const ecartsK = [];
+        if (vus.length !== 6) ecartsK.push(`${vus.length} ecrans`);
+        vus.forEach((v, k) => {
+          if (!(PROVENANCE[centre] || {})[v.photo]) ecartsK.push(`${v.scene} montre « ${v.photo || 'rien'} », sans preuve pour ${centre}`);
+          const t = (table[centre] || []).find((x) => x.f === v.photo);
+          if (t && (v.w !== 1600 || v.h !== t.h)) ecartsK.push(`${v.scene} declare ${v.w}x${v.h}`);
+          if (k > 0 && vus[k - 1].photo === v.photo) ecartsK.push(`${vus[k - 1].scene} et ${v.scene} montrent la meme photo`);
+        });
+        const distinctes = new Set(vus.map((v) => v.photo)).size;
+        if (distinctes !== Math.min(6, (table[centre] || []).length)) ecartsK.push(`${distinctes} photos distinctes sur 6 ecrans`);
+        if (!premiere.charge || premiere.priorite !== 'high') ecartsK.push(`premiere photo ${premiere.charge ? 'chargee' : 'non chargee'}, priorite ${premiere.priorite}`);
+        ok(ecartsK.length === 0, `[K] ${centre}, tirage ${tirage} : six ecrans, six photos PROUVEES de ${centre}, jamais la meme d un ecran au voisin, la premiere chargee en priorite`, ecartsK.slice(0, 3).join(' ; ') || vus.map((v) => v.photo).join(' > '));
+        ordres.push(vus.map((v) => v.photo).join(' > '));
+      }
+      ok(ordres.length === 2 && ordres[0] !== ordres[1], `[K] ${centre} : l ordre des photos depend du tirage de la visite (elles tournent)`, ordres.join('  |  '));
+    }
+    // Un centre sans photo prouvee n en montre aucune, pas meme celles d un autre.
+    const ctxC = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const pc = await ctxC.newPage();
+    const webpCiney = [];
+    pc.on('request', (r) => { if (/\.webp/.test(r.url())) webpCiney.push(r.url()); });
+    await pc.goto(`${BASE_URL}/fungalaxy/ciney`, { waitUntil: 'networkidle', timeout: 45000 });
+    const vusCiney = await lirePhotosEcrans(pc);
+    await ctxC.close();
+    ok(vusCiney.length === 6 && vusCiney.every((v) => !v.photo) && webpCiney.length === 0, '[K] ciney, sans photo prouvee : aucune photo, ni la sienne ni celle d un autre centre', webpCiney.map((u) => u.split('/').pop()).join(', ') || 'aucune demandee');
+    // Une adresse au nom d une propriete que porte tout objet ne fait pas
+    // tomber la page, et ne montre aucune photo.
+    const ctxP = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const pp = await ctxP.newPage();
+    const erreursP = [];
+    pp.on('pageerror', (err) => erreursP.push(String(err && err.message || err)));
+    await pp.goto(`${BASE_URL}/fungalaxy/constructor`, { waitUntil: 'networkidle', timeout: 45000 });
+    const vusP = await lirePhotosEcrans(pp);
+    await ctxP.close();
+    ok(erreursP.length === 0 && vusP.length === 6 && vusP.every((v) => !v.photo), '[K] « /fungalaxy/constructor » (une propriete de tout objet) ne fait pas tomber la page et ne montre aucune photo', erreursP.slice(0, 2).join(' | ') || 'aucune erreur, aucune photo');
+
+    // =====================================================================
+    console.log('');
+    console.log('[L] LISIBLE SUR N IMPORTE QUELLE PHOTO');
+    // Les photos tournent et derivent : un texte pose dessus doit tenir sur la
+    // plus claire qui puisse tomber. Mesure du 2026-09-23 avant correction :
+    // « départ » a 1,3:1 et « confirmée » a 1,7:1 sur une photo blanche, le
+    // bouton Retour a 2,8:1, le prix d une carte survolee a 3,3:1, « 8
+    // formules » a 1,1:1. Chaque ecran est mesure en entier a quatre largeurs ;
+    // un ecran pleine photo doit avoir des textes SUR la photo, sinon la
+    // mesure ne prouve rien.
+    // =====================================================================
+    const LARGEURS_L = [[1440, 900], [1920, 1080], [1024, 768], [375, 812]];
+    const ctxL = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const pl = await ctxL.newPage();
+    await pl.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    ok(await attendre(pl, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), '[L] la page se monte, le jour propose est lu');
+    const lisibleEcran = async (nom, plein) => {
+      const faibles = [];
+      const vus = [];
+      let prerequis = true;
+      for (const [w, h] of LARGEURS_L) {
+        await pl.setViewportSize({ width: w, height: h });
+        await dormir(300);
+        // AU REPOS : les entrees en fondu (fg-rise, 0,55 s, echelonnees jusqu a
+        // 0,6 s) finies. Mesure pendant le fondu, un texte a moitie
+        // transparent se lisait trop pale (un prix de formule a 4,1:1, la
+        // ligne de l e-mail a 4,2:1). Seules restent les animations sans fin
+        // (derive de la photo, halos), qui ne touchent pas l opacite d un texte.
+        if (!(await attendre(pl, () => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity), 8000))) prerequis = false;
+        const n = await pl.evaluate(() => {
+          document.querySelectorAll('[data-qa-lisible]').forEach((el) => el.removeAttribute('data-qa-lisible'));
+          let k = 0;
+          document.querySelectorAll('.fg-scene.is-active .fg-scene__body *').forEach((el) => {
+            let o = 1;
+            for (let p = el; p && p.nodeType === 1; p = p.parentElement) o *= Number(getComputedStyle(p).opacity);
+            // Invisible (opacite nulle) ou controle inactif : hors mesure.
+            if (o < 0.1 || el.closest('button:disabled, [aria-disabled="true"]')) return;
+            el.setAttribute('data-qa-lisible', '');
+            k += 1;
+          });
+          return k;
+        });
+        const m = n ? await contrastesPires(pl, '[data-qa-lisible]') : [];
+        const surPhoto = m.filter((x) => x.halo === null).length;
+        if (!m.length || (plein && !surPhoto)) prerequis = false;
+        vus.push(`${w} px ${m.length} textes, ${surPhoto} sur la photo`);
+        m.filter((x) => x.ratio < x.seuil).forEach((x) => faibles.push(`${w} px « ${x.texte} » ${x.ratio}:1 < ${x.seuil}${x.halo === null ? ' sur photo' : ` (halo ${x.halo})`}`));
+      }
+      await pl.setViewportSize({ width: 1440, height: 900 });
+      await dormir(500);
+      ok(prerequis && faibles.length === 0, `[L] ${nom} : chaque texte garde son seuil sur la photo la plus claire, a 1440, 1920, 1024 et 375 px`,
+        faibles.slice(0, 4).join(' ; ') || (prerequis ? vus.join(' | ') : `MESURE A VIDE OU PAS AU REPOS : ${vus.join(' | ')}`));
+    };
+    await lisibleEcran('date et groupe', false);
+    await pl.click('#goActivities');
+    await attendre(pl, () => document.querySelector('.fg-scene[data-scene="activites"].is-active'), 8000);
+    await pl.click('#gridAct .fg-card[data-activity="bowling"]');
+    await pl.click('#gridAct .fg-card[data-activity="laser_game"]');
+    await lisibleEcran('activites (cartes survolees)', true);
+    await pl.click('#tabFor');
+    ok(await attendre(pl, () => !document.querySelector('#panelFor').hidden && document.querySelectorAll('#gridFor .fg-fam').length > 0, 8000), '[L] l onglet des formules s ouvre sur ses familles');
+    await lisibleEcran('formules', true);
+    await pl.click('#tabAct');
+    await attendre(pl, () => !document.querySelector('#panelAct').hidden, 8000);
+    await pl.click('#goHours');
+    ok(await attendre(pl, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[L] l ecran des heures se calcule');
+    await lisibleEcran('heures', true);
+    await pl.click('#goContact');
+    await attendre(pl, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 8000);
+    await pl.fill('#cPrenom', 'Lisible'); await pl.fill('#cNom', 'Photo'); await pl.fill('#cEmail', 'qa@example.com'); await pl.fill('#cTel', '0471234567');
+    await pl.check('#cConsent');
+    await lisibleEcran('coordonnees', false);
+    await pl.click('#goRecap');
+    await attendre(pl, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 8000);
+    await lisibleEcran('recapitulatif', false);
+    await pl.click('#confirmBtn');
+    ok(await attendre(pl, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000), '[L] la reservation part, l ecran final s ouvre');
+    await lisibleEcran('fin', true);
+    await ctxL.close();
 
     // =====================================================================
     console.log('');

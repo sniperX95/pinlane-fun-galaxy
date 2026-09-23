@@ -5,8 +5,9 @@
    transform et opacity : un poste faible tient 60 images par seconde sans
    recalculer la mise en page. En continu, trois calques seulement : la photo
    qui derive et les deux halos. Le reste ne s anime qu une fois, a l arrivee.
-   Les photos sont celles du site fungalaxy.be, servies en WebP a deux
-   largeurs, une seule par ecran.
+   Les photos sont celles du centre de l adresse (site du client, apres le
+   changement d enseigne), tirees dans un ordre a chaque visite, servies en
+   WebP a deux largeurs, une seule par ecran.
 
    Palette = la marque du client, relevee dans le theme WordPress :
    violet #944292, sarcelle #67baac, sur noir. Les maquettes validees par
@@ -25,6 +26,7 @@
   --fg-purple: #944292;
   --fg-purple-2: #b04fb0;
   --fg-purple-ink: #d98ad4;
+  --fg-purple-em: #c25ec2;
   --fg-purple-glow: rgba(176, 79, 176, 0.45);
   --fg-teal: #67baac;
   --fg-teal-ink: #8fd6c9;
@@ -262,8 +264,16 @@
 .fg-scene--full .fg-art::after {
   background: linear-gradient(90deg, rgba(5, 5, 5, 0.94) 0%, rgba(5, 5, 5, 0.86) 40%, rgba(5, 5, 5, 0.55) 75%, rgba(5, 5, 5, 0.4) 100%);
 }
+/* Contenu centre (heures, fin) : le voile descend de 0,55 a 0,94, et un
+   second voile de 0,55 couvre une COLONNE de 700 px au milieu, la ou passent
+   le fil, le titre, sa ligne de resume et le texte de fin. Les photos
+   tournent : un texte doit tenir sur la plus claire. Avant la colonne,
+   « départ » tombait a 1,3:1 sur une photo blanche. Hors de la colonne, sur
+   les cotes, la photo reste aussi visible qu avant. */
 .fg-scene--full.fg-scene--center .fg-art::after {
-  background: linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.78) 45%, rgba(5, 5, 5, 0.94) 100%);
+  background:
+    linear-gradient(90deg, rgba(5, 5, 5, 0) calc(50% - 490px), rgba(5, 5, 5, 0.55) calc(50% - 350px), rgba(5, 5, 5, 0.55) calc(50% + 350px), rgba(5, 5, 5, 0) calc(50% + 490px)),
+    linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.78) 45%, rgba(5, 5, 5, 0.94) 100%);
 }
 
 .fg-scene__body {
@@ -405,7 +415,11 @@
   margin: 0 0 22px;
   text-wrap: balance;
 }
-.fg-title em { font-style: normal; color: var(--fg-purple-2); }
+/* Le mot en couleur du titre : le violet de la marque, un cran plus clair.
+   Mesure au pire (2026-09-23) : #b04fb0 tombait a 2,6:1 sous le coeur du
+   halo sarcelle, et jusqu a 1,3:1 sur une photo claire des ecrans pleine
+   photo, quand un grand texte doit tenir 3:1 (WCAG 1.4.3). */
+.fg-title em { font-style: normal; color: var(--fg-purple-em); }
 /* Chaque mot monte dans son masque, comme le tunnel actuel (q-word). */
 /* Le masque de chaque mot laisse de la place aux accents (« À ») au-dessus des
    capitales et aux jambages en dessous : le rembourrage est repris en marge
@@ -750,8 +764,12 @@
   .fg-scene.is-active .fg-btn--shine::before { animation: fg-shine 1.2s var(--fg-ease) 0.9s both; }
 }
 @keyframes fg-shine { from { left: -60%; } to { left: 130%; } }
+/* Le bouton discret a un fond sombre, pas transparent : sur l ecran des
+   activites, il se pose sur la photo, la ou le voile ne fait plus que 0,55,
+   et son gris y tombait a 2,8:1 sur une photo claire. Sur le fond de la
+   page, ce fond ne se voit pas. */
 .fg-btn--ghost {
-  background: transparent;
+  background: rgba(8, 8, 8, 0.86);
   box-shadow: none;
   border: 1.5px solid var(--fg-line-2);
   color: var(--fg-muted);
@@ -759,7 +777,7 @@
   padding: 0 20px;
   letter-spacing: 0.06em;
 }
-.fg-btn--ghost:hover { background: rgba(255, 255, 255, 0.06); color: var(--fg-text); transform: none; box-shadow: none; border-color: #555; }
+.fg-btn--ghost:hover { background: #161616; color: var(--fg-text); transform: none; box-shadow: none; border-color: #555; }
 .fg-btn--ghost:hover svg { transform: translateX(-3px); }
 .fg-btn--ghost:active { transform: none; box-shadow: none; }
 .fg-link {
@@ -867,7 +885,12 @@
   transition: opacity 0.45s var(--fg-ease);
 }
 .fg-card__photo img { width: 100%; height: 100%; object-fit: cover; }
-.fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.25) 0%, rgba(5, 5, 5, 0.9) 100%); }
+/* Le voile de la photo de carte s epaissit des le premier tiers : le nom et
+   le prix s y posent (sur deux ou trois lignes, ils remontent jusque-la), la
+   photo reste vive derriere l icone. Avec l ancien degrade lineaire, un prix
+   sur deux lignes tombait a 3,3:1 sur une photo claire, et sur telephone le
+   nom lui-meme passait sous 4,5:1. */
+.fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%); }
 .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }
 .fg-card:hover .fg-card__photo { opacity: 1; }
 .fg-card.is-on { border-color: var(--fg-purple-2); box-shadow: 0 12px 30px rgba(148, 66, 146, 0.22); }
@@ -919,7 +942,10 @@
   color: var(--fg-text);
 }
 .fg-fam__title::after { content: ""; flex: 1 1 auto; height: 1px; background: rgba(255, 255, 255, 0.14); }
-.fg-fam__title span { order: 3; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-faint); }
+/* Le nombre de formules suit le nom de la famille, le filet vient apres. Cale
+   au bout du filet, il tombait sur la partie claire de la photo (a 1,1:1 sur
+   une photo blanche, en gris discret). */
+.fg-fam__title span { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-muted); }
 /* Une carte de formule porte une liste et des contraintes : trois colonnes,
    pas quatre, et une seule sur telephone. */
 .fg-grid--for { grid-template-columns: repeat(3, minmax(0, 1fr)); }

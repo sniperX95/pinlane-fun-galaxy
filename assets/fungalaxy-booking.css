@@ -518,7 +518,10 @@ html.fg-pilote .fg { overflow: visible; }
 
 /* Le choix du jour : un bouton qui ouvre le calendrier du mois. */
 .fg-day { position: relative; }
+/* Le chevron se place sur le BOUTON : sur telephone le calendrier ouvert est
+   dans .fg-day, et un chevron place sur .fg-day flottait au milieu du mois. */
 .fg-day__btn {
+  position: relative;
   width: 100%;
   height: 54px;
   white-space: nowrap;

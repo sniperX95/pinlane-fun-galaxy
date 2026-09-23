@@ -225,7 +225,9 @@
 // amene dans l ecran), verrou (le cadre redevient defilable : FEUILLE servie
 // cassee), dansflux (sur telephone le calendrier recouvre de nouveau le
 // nombre de personnes : feuille cassee), voir (embed.js ignore la demande du
-// cadre de montrer une bande : SCRIPT HOTE servi casse).
+// cadre de montrer une bande : SCRIPT HOTE servi casse), chevron (le chevron
+// du bouton du jour se place de nouveau sur le conteneur que le calendrier
+// agrandit, et flotte au milieu du mois : feuille cassee).
 //
 // CONTRE-PREUVES (le gate mord) : FG_QA_CASSE=prix (prix de carte faux d un
 // euro), total (total du recap faux d un euro), raison (les heures perdent leur
@@ -398,6 +400,7 @@ const MUTATIONS_CSS = {
   vuebas: ['  bottom: calc(var(--tunnel-vue-bas, 0px) + 10px + env(safe-area-inset-bottom, 0px));\n', '  bottom: calc(10px + env(safe-area-inset-bottom, 0px));\n'],
   verrou: ['html.fg-pilote { overflow: hidden; }\n', ''],
   dansflux: ['  .fg-cal { position: static; min-width: 0;', '  .fg-cal { min-width: 0;'],
+  chevron: ['.fg-day__btn {\n  position: relative;\n  width: 100%;\n', '.fg-day__btn {\n  width: 100%;\n'],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -3144,6 +3147,10 @@ async function main() {
       ok(co.bas + syO > co.vh, 'MONTAGE [O] embarque, telephone : ouvert en haut de page, le bas du mois tombait sous l ecran de l hote', JSON.stringify(Object.assign({ defile: syO }, co)));
       ok(co.bouton >= 0 && co.bas <= co.vh, '[O] embarque, telephone : a l ouverture, la page amene le bouton ET le mois entier dans l ecran de l hote', JSON.stringify(co));
       ok(co.paxSous && co.mois <= 380, '[O] telephone : le calendrier s ouvre dans la page (il pousse le nombre de personnes au lieu de le couvrir), en cases basses (mois de 380 px au plus)', JSON.stringify(co));
+      // Vu en production le 2026-09-23 : le chevron du bouton, place sur le
+      // conteneur que le calendrier agrandit, flottait au milieu du mois.
+      const icones = await fo.evaluate(() => { const b = document.querySelector('#dayBtn').getBoundingClientRect(); return Array.from(document.querySelectorAll('#dayBtn svg')).map((s) => { const r = s.getBoundingClientRect(); return { dedans: r.top >= b.top - 1 && r.bottom <= b.bottom + 1 && r.left >= b.left - 1 && r.right <= b.right + 1, haut: Math.round(r.top - b.top) }; }); });
+      ok(icones.length === 2 && icones.every((x) => x.dedans), '[O] telephone, calendrier ouvert : les deux icones du bouton du jour restent DANS le bouton', JSON.stringify(icones));
       const s1 = await suitLeContenu(po, fo);
       ok(s1.ok, '[O] embarque : calendrier ouvert, le cadre a la hauteur du formulaire et ne defile pas lui-meme', JSON.stringify(s1));
       await allerAuMois(fo, mock.DATE);

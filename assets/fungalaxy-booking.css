@@ -497,6 +497,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-field__hint { font-size: 12px; color: var(--fg-faint); }
 .fg-field__hint:empty { display: none; }
 .fg-field__hint--day { color: var(--fg-teal-ink); font-weight: 600; }
+.fg-field__hint.is-warn { color: var(--fg-amber-ink); font-size: 13px; }
 .fg-input {
   width: 100%;
   height: 54px;
@@ -603,6 +604,15 @@ html.fg-pilote .fg { overflow: visible; }
 }
 @keyframes fg-pop-milieu { from { opacity: 0; transform: translate(-50%, -46%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -50%); } }
 @keyframes fg-voile { from { opacity: 0; } to { opacity: 1; } }
+/* Le mois change dans le sens de la fleche (12 px = le padding du panneau :
+   la grille ne sort jamais du cadre) ; le jour choisi se pose. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-cal__grid.is-next { animation: fg-cal-next 0.24s var(--fg-ease-out); }
+  .fg-cal__grid.is-prev { animation: fg-cal-prev 0.24s var(--fg-ease-out); }
+  #dayLabel.is-maj, #dayHint.is-maj { animation: fg-step-in 0.3s var(--fg-ease-out); }
+}
+@keyframes fg-cal-next { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+@keyframes fg-cal-prev { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
 .fg-cal__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .fg-cal__title { font-size: 14px; font-weight: 700; text-transform: capitalize; }
 .fg-cal__nav {
@@ -790,6 +800,13 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-btn:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--fg-teal); }
 .fg-btn[disabled], .fg-btn.is-busy { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: 6px 6px 0 var(--fg-teal-dim); }
 .fg-btn[disabled] svg { transform: none; }
+/* Le bouton qui fait avancer s eveille quand il devient cliquable, une fois,
+   au geste du client. Depart et arrivee implicites : la valeur sous-jacente
+   (none, ou le translate du survol), jamais un saut. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-btn.is-wake { animation: fg-wake 0.45s var(--fg-ease-out); }
+}
+@keyframes fg-wake { 45% { transform: scale(1.04); } }
 .fg-btn.is-busy { position: relative; color: transparent; }
 .fg-btn.is-busy::after {
   content: "";
@@ -854,35 +871,49 @@ html.fg-pilote .fg { overflow: visible; }
 
 .fg-tabs {
   position: relative;
-  display: flex;
-  gap: 28px;
-  margin: 4px 0 22px;
-  border-bottom: 1px solid var(--fg-line);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: max-content;
+  max-width: 100%;
+  padding: 4px;
+  margin: 4px 0 24px;
+  border: 1px solid var(--fg-line-2);
+  border-radius: 10px;
+  background: rgba(10, 10, 10, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .fg-tab {
   position: relative;
-  padding: 4px 2px 12px;
-  font-size: 15px;
-  font-weight: 600;
+  z-index: 1;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--fg-muted);
   transition: color 0.2s;
 }
 .fg-tab[aria-selected="true"] { color: var(--fg-text); }
 .fg-tab:hover { color: var(--fg-text); }
-/* Le soulignement glisse d un onglet a l autre : une barre de 100 px, placee
-   et etiree en transform par le script (translateX, scaleX). */
+/* La pastille violette glisse d un onglet a l autre. Les deux onglets ont la
+   meme largeur (grille 1fr 1fr) : elle en prend une et passe a la seconde en
+   translateX, sans mesure ni etirement (un scaleX ovalisait ses coins). */
 .fg-tabs__bar {
   position: absolute;
-  left: 0;
-  bottom: -1px;
-  width: 100px;
-  height: 2px;
-  background: var(--fg-purple-2);
-  transform-origin: left center;
-  transform: scaleX(0);
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 6px);
+  border-radius: 7px;
+  background: var(--fg-purple);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
   transition: transform 0.35s var(--fg-ease);
-  will-change: transform;
 }
+.fg-tabs.is-for .fg-tabs__bar { transform: translateX(calc(100% + 4px)); }
+@media (max-width: 560px) { .fg-tabs { width: auto; } }
 .fg-panel[hidden] { display: none; }
 
 .fg-grid {
@@ -975,6 +1006,24 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-card.is-off { opacity: 0.45; cursor: not-allowed; }
 .fg-card.is-off:hover { transform: none; border-color: var(--fg-line); }
 .fg-card.is-off .fg-card__photo { display: none; }
+/* Cocher une carte : la case claque et l icone saute, une fois. scale et
+   translate (proprietes individuelles) se composent avec le transform de
+   l etat coche et du survol au lieu de lutter contre leur transition. Pas de
+   pression sur la carte : son entree fg-rise (fill both) fige son transform.
+   Le prix qui change sur un geste monte a sa place. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-card.is-coche .fg-card__box { animation: fg-tick 0.4s var(--fg-ease-out); }
+  .fg-card.is-coche .fg-card__icon { animation: fg-hop 0.4s var(--fg-ease-out); }
+  .fg-card__price.is-maj { animation: fg-maj 0.32s var(--fg-ease-out); }
+}
+@keyframes fg-tick { 0% { scale: 0.65; } 55% { scale: 1.13; } 100% { scale: 1; } }
+@keyframes fg-hop { 0%, 100% { translate: 0 0; scale: 1; } 40% { translate: 0 -6px; scale: 1.1; } }
+@keyframes fg-maj { 0% { opacity: 0; translate: 0 6px; } 100% { opacity: 1; translate: 0 0; } }
+/* Au clavier, dans le cadre embarque, la page hote defile juste assez pour
+   montrer ce qui prend le focus, a un ou deux pixels pres (arrondis entre le
+   cadre et l hote) : l anneau (2 px + 3 px d ecart) sortait de l ecran. La
+   marge le fait tenir entier. */
+.fg-card, .fg-pill, .fg-tab { scroll-margin: 8px; }
 
 /* --- Les formules ---------------------------------------------------------- */
 
@@ -1133,13 +1182,16 @@ html.fg-pilote .fg { overflow: visible; }
   background: rgba(255, 255, 255, 0.03);
   color: var(--fg-text);
   line-height: 1.1;
-  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s var(--fg-ease-out);
 }
 .fg-pill b { font-size: 12px; font-weight: 700; white-space: nowrap; }
 .fg-pill small { font-size: 11px; color: var(--fg-muted); white-space: nowrap; }
 .fg-pill:hover { border-color: var(--fg-purple-2); }
 .fg-pill.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal); }
 .fg-pill.is-on small { color: rgba(255, 255, 255, 0.85); }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-pill:active { transform: scale(0.96); }
+}
 
 /* La barre du bas : compteur a gauche, bouton a droite (maquette 2). */
 .fg-bar {

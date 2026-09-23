@@ -110,7 +110,7 @@
               </div>
               <button type="button" class="fg-stepper__btn" id="paxPlus" aria-label="Une personne de plus">+</button>
             </div>
-            <span class="fg-field__hint" id="paxHint"></span>
+            <span class="fg-field__hint" id="paxHint" aria-live="polite"></span>
           </div>
         </div>
         <div class="fg-actions fg-rise" style="--i:3">
@@ -127,7 +127,7 @@
         <h2 class="fg-title" id="t-act" data-words>Au <em>programme</em></h2>
         <div class="fg-tabs fg-rise" style="--i:1" role="tablist" aria-label="Activités ou formules">
           <button type="button" class="fg-tab" role="tab" id="tabAct" aria-selected="true" aria-controls="panelAct">Activités</button>
-          <button type="button" class="fg-tab" role="tab" id="tabFor" aria-selected="false" aria-controls="panelFor">Formules</button>
+          <button type="button" class="fg-tab" role="tab" id="tabFor" aria-selected="false" aria-controls="panelFor" tabindex="-1">Formules</button>
           <span class="fg-tabs__bar" id="tabBar" aria-hidden="true"></span>
         </div>
         <div class="fg-panel fg-rise" style="--i:2" id="panelAct" role="tabpanel" aria-labelledby="tabAct">
@@ -140,7 +140,7 @@
              place est plus bas (majDock). La marque vide qui la suit dit ou
              est cette place. -->
         <div class="fg-bar fg-dock fg-rise" style="--i:3">
-          <p class="fg-bar__count" id="actCount" aria-live="polite"><b>0</b> activité sélectionnée</p>
+          <p class="fg-bar__count" id="actCount" aria-live="polite">Cochez une ou plusieurs activités.</p>
           <div class="fg-actions" style="margin:0">
             <button type="button" class="fg-btn fg-btn--ghost" data-back><svg aria-hidden="true"><use href="#i-back"/></svg><span class="fg-btn__txt">Retour</span></button>
             <button type="button" class="fg-btn" id="goHours" disabled>Continuer<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>

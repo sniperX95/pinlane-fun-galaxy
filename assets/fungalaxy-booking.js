@@ -336,7 +336,11 @@
   // haut, de ce qu il faut : les autres titres gardent leur interligne serre.
   // Relu a chaque ecran, a chaque changement de largeur et quand la police
   // arrive : la coupure des lignes en depend.
-  var ACCENT_HAUT = /[ÀÂÄÉÈÊËÎÏÔÖÙÛÜŸ]/;
+  // Une lettre porte son accent AU-DESSUS quand sa forme decomposee (NFD)
+  // contient un signe du haut (U+0300 a U+030A : grave, aigu, circonflexe,
+  // tilde, trema...). Aucune lettre accentuee n est ecrite ici : le controle
+  // de qualite prend certaines d entre elles pour du texte mal encode.
+  var ACCENT_HAUT = /[\u0300-\u030A]/;
   function espacerAccents(titre) {
     if (!titre) return;
     var mots = $$('.w', titre);
@@ -344,7 +348,7 @@
     if (mots.length < 2 || !titre.getClientRects().length) return;
     var haut = mots[0].offsetTop;
     mots.forEach(function (w) {
-      if (w.offsetTop > haut + 2 && ACCENT_HAUT.test(w.textContent.toUpperCase())) w.classList.add('w--accent');
+      if (w.offsetTop > haut + 2 && ACCENT_HAUT.test(w.textContent.toUpperCase().normalize('NFD'))) w.classList.add('w--accent');
     });
   }
   function espacerTitreActif() { espacerAccents($('.fg-scene.is-active .fg-title')); }

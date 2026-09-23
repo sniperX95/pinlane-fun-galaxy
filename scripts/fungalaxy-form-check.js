@@ -318,7 +318,7 @@ const MUTATIONS = {
   decrit: ["groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.setAttribute('aria-describedby', racine + '-why-' + k); }); });", 'void 0;'],
   titrefin: ["poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');", "poserTitre($('#t-fin'), 'Demande<br><em>envoyée</em>');"],
   choisir: ["chip.dataset.ok = e.etat === 'hard' || e.sous === 'hard' ? 'false' : 'true';", "chip.dataset.ok = e.etat === 'hard' || e.etat === 'wave' ? 'false' : 'true';"],
-  accents: ["if (w.offsetTop > haut + 2 && ACCENT_HAUT.test(w.textContent.toUpperCase())) w.classList.add('w--accent');", 'void haut;'],
+  accents: ["if (w.offsetTop > haut + 2 && ACCENT_HAUT.test(w.textContent.toUpperCase().normalize('NFD'))) w.classList.add('w--accent');", 'void haut;'],
   liens: ["Une question ? ' + lienContact(contact) + '</p>'", "Une question ? ' + esc(contact.phone) + '</p>'"],
   groupesrecap: ['        if (groupes.length > 1) {', '        if (false) {'],
   plagerepliee: ["      else if (vagues.length) sum = vagues.join(', ') + ' · ' + sum;", '      else if (false) sum = vagues.join();'],
@@ -2500,7 +2500,7 @@ async function main() {
           const fautes = [];
           let cas = 0;
           for (let i = 1; i < lignes.length; i += 1) {
-            if (!lignes[i].mots.some((x) => /[ÀÂÄÉÈÊËÎÏÔÖÙÛÜŸ]/.test(x))) continue;
+            if (!lignes[i].mots.some((x) => /[\u0300-\u030A]/.test(x.normalize('NFD')))) continue;
             cas += 1;
             const ecart = (lignes[i].bas - lignes[i - 1].bas) / fs;
             if (ecart < accent + 0.03) fautes.push(`« ${lignes[i].mots.join(' ')} » a ${ecart.toFixed(2)} em de la ligne du dessus, son accent monte a ${accent.toFixed(2)} em`);
@@ -2520,6 +2520,13 @@ async function main() {
         fautesTitre.slice(0, 3).join(' ; ') || (policeTitre ? `${casTitre} ligne(s) accentuee(s) sous une autre` : 'POLICE DU TITRE NON CHARGEE : mesure sans objet'));
     };
     await lisibleEcran('date et groupe', false);
+    // Le samedi du mock, jamais « aujourd hui » : le soir, les heures du jour
+    // sont passees, l ecran des heures n a plus de plan et « Garder » reste
+    // gris (rouge vu vers 20 h 45 le 2026-09-23, sur le code vert l apres-midi).
+    await pl.click('#dayBtn');
+    ok(await allerAuMois(pl, mock.DATE), '[L] le mois du samedi du mock s affiche');
+    await pl.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+    ok(await attendre(pl, (l) => document.querySelector('#dayPop').hidden && document.querySelector('#dayLabel').textContent.trim() === l, 3000, jourLong(mock.DATE)), '[L] le samedi du mock est retenu', mock.DATE);
     await pl.click('#goActivities');
     await attendre(pl, () => document.querySelector('.fg-scene[data-scene="activites"].is-active'), 8000);
     await pl.click('#gridAct .fg-card[data-activity="bowling"]');

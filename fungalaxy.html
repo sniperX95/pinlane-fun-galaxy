@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260923a">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260923b">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -62,16 +62,16 @@
   <p class="fg-alert" id="fgAlert" role="alert" hidden></p>
   <div class="fg-stage" id="fgStage">
 
-    <!-- 1. QUAND VENEZ-VOUS ? -->
+    <!-- 1. CHOISISSEZ VOTRE JOUR -->
     <section class="fg-scene fg-scene--split is-active" data-scene="date" aria-labelledby="t-date">
       <!-- Les photos : deux largeurs (800, 1600) et des `sizes` qui plafonnent ce
      que le navigateur demande. Sur un telephone, le bandeau photo fait 200 px
      de haut derriere un voile sombre : la version 800 suffit, meme en ecran
      retina, d ou le « 260px » declare sous 560 px. -->
-<div class="fg-art"><img src="/assets/fungalaxy/pistes-strike-800.webp" srcset="/assets/fungalaxy/pistes-strike-800.webp 800w, /assets/fungalaxy/pistes-strike-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async" fetchpriority="high"></div>
+<div class="fg-art"><img src="/assets/fungalaxy/duckpin-800.webp" srcset="/assets/fungalaxy/duckpin-800.webp 800w, /assets/fungalaxy/duckpin-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1066" decoding="async" fetchpriority="high"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h1 class="fg-title" id="t-date" data-words>Quand venez-vous&nbsp;?</h1>
+        <h1 class="fg-title" id="t-date" data-words>Choisissez<br><em>votre jour</em></h1>
         <div class="fg-fields fg-fields--2">
           <div class="fg-field fg-rise" style="--i:1">
             <span class="fg-field__label" id="l-day">Quel jour ?</span>
@@ -116,12 +116,12 @@
       </div>
     </section>
 
-    <!-- 2. QU'EST-CE QUI VOUS TENTE ? -->
+    <!-- 2. COMPOSEZ VOTRE VISITE -->
     <section class="fg-scene fg-scene--full" data-scene="activites" aria-labelledby="t-act">
       <div class="fg-art"><img data-src="/assets/fungalaxy/salle-bowling-800.webp" data-srcset="/assets/fungalaxy/salle-bowling-800.webp 800w, /assets/fungalaxy/salle-bowling-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-act" data-words>Qu’est-ce qui<br><em>vous tente&nbsp;?</em></h2>
+        <h2 class="fg-title" id="t-act" data-words>Composez<br><em>votre visite</em></h2>
         <div class="fg-tabs fg-rise" style="--i:1" role="tablist" aria-label="Activités ou formules">
           <button type="button" class="fg-tab" role="tab" id="tabAct" aria-selected="true" aria-controls="panelAct">Activités</button>
           <button type="button" class="fg-tab" role="tab" id="tabFor" aria-selected="false" aria-controls="panelFor">Formules</button>
@@ -143,12 +143,12 @@
       </div>
     </section>
 
-    <!-- 3. À QUELLE HEURE ? -->
+    <!-- 3. PLACEZ VOS HORAIRES -->
     <section class="fg-scene fg-scene--full fg-scene--center" data-scene="heures" aria-labelledby="t-hour">
       <div class="fg-art"><img data-src="/assets/fungalaxy/laser-couloir-800.webp" data-srcset="/assets/fungalaxy/laser-couloir-800.webp 800w, /assets/fungalaxy/laser-couloir-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-hour" data-words>À quelle heure&nbsp;?</h2>
+        <h2 class="fg-title" id="t-hour" data-words>Placez<br><em>vos horaires</em></h2>
         <p class="fg-sub" id="hourSub"></p>
         <div id="hourZone" aria-live="polite">
           <p class="fg-loading">On regarde ce qui est libre…</p>
@@ -160,7 +160,7 @@
       </div>
     </section>
 
-    <!-- 4. À QUI RÉSERVE-T-ON ? -->
+    <!-- 4. VOS COORDONNEES -->
     <section class="fg-scene fg-scene--split" data-scene="contact" aria-labelledby="t-who">
       <div class="fg-art"><img data-src="/assets/fungalaxy/pistes-neon-800.webp" data-srcset="/assets/fungalaxy/pistes-neon-800.webp 800w, /assets/fungalaxy/pistes-neon-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async"></div>
       <aside class="fg-recall" aria-label="Votre réservation">
@@ -170,7 +170,7 @@
       </aside>
       <form class="fg-scene__body" id="contactForm" novalidate>
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-who" data-words>À qui<br><em>réserve-t-on&nbsp;?</em></h2>
+        <h2 class="fg-title" id="t-who" data-words>Vos<br><em>coordonnées</em></h2>
         <div class="fg-fields" style="max-width:520px">
           <div class="fg-field fg-rise" style="--i:1">
             <label class="fg-field__label" for="cPrenom">Prénom</label>
@@ -205,12 +205,12 @@
       </form>
     </section>
 
-    <!-- 5. TOUT EST BON ? -->
+    <!-- 5. DERNIERE VERIFICATION -->
     <section class="fg-scene fg-scene--split fg-scene--art-left" data-scene="recap" aria-labelledby="t-ok">
       <div class="fg-art"><img data-src="/assets/fungalaxy/fun-run-800.webp" data-srcset="/assets/fungalaxy/fun-run-800.webp 800w, /assets/fungalaxy/fun-run-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-ok"><span data-words>Tout est bon&nbsp;?</span></h2>
+        <h2 class="fg-title" id="t-ok"><span data-words>Dernière<br><em>vérification</em></span></h2>
         <div class="fg-recap" id="recap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:520px">
           <button type="button" class="fg-btn fg-btn--shine" id="confirmBtn">Confirmer la réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
@@ -219,14 +219,14 @@
       </div>
     </section>
 
-    <!-- 6. C'EST NOTÉ -->
+    <!-- 6. C'EST ENREGISTRE -->
     <section class="fg-scene fg-scene--full fg-scene--center" data-scene="fin" aria-labelledby="t-fin">
-      <div class="fg-art"><img data-src="/assets/fungalaxy/pistes-strike-800.webp" data-srcset="/assets/fungalaxy/pistes-strike-800.webp 800w, /assets/fungalaxy/pistes-strike-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
+      <div class="fg-art"><img data-src="/assets/fungalaxy/simulateurs-800.webp" data-srcset="/assets/fungalaxy/simulateurs-800.webp 800w, /assets/fungalaxy/simulateurs-1600.webp 1600w" sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" width="1600" height="1067" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
         <div class="fg-done">
           <div class="fg-done__ring" aria-hidden="true"><span class="fg-burst" id="finBurst"></span><svg><use href="#i-check"/></svg></div>
-          <h2 class="fg-title" id="t-fin" data-words>C’est noté&nbsp;!</h2>
+          <h2 class="fg-title" id="t-fin" data-words>C’est<br><em>enregistré</em></h2>
           <div id="finBody"></div>
         </div>
       </div>
@@ -235,6 +235,6 @@
   </div>
 </main>
 
-<script src="/assets/fungalaxy-booking.js?v=20260923a" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260923b" defer></script>
 </body>
 </html>

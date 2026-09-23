@@ -299,12 +299,30 @@
   container-type: inline-size;
 }
 .fg-scene--center .fg-steps { margin-left: auto; margin-right: auto; }
-.fg-steps__item .lbl { white-space: nowrap; }
+.fg-steps__item .lbl { white-space: nowrap; position: relative; padding-bottom: 6px; }
+/* Le trait sous le libelle de l etape en cours : il s ouvre depuis le centre. */
+.fg-steps__item .lbl::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 20px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--fg-purple-2);
+  transform: translateX(-50%) scaleX(0);
+  transition: transform 0.45s var(--fg-ease) 0.12s;
+}
+.fg-steps__item.is-active .lbl::after { transform: translateX(-50%) scaleX(1); }
+/* Le rang de l etape (« 3/5 ») ne sert que la ou les quatre autres libelles
+   ont disparu : sans lui, le client ne sait plus ou il en est. */
+.fg-steps__of { display: none; margin-top: -5px; font-size: 9px; font-weight: 700; letter-spacing: 0.16em; color: var(--fg-faint); font-variant-numeric: tabular-nums; }
 /* Dans une colonne etroite (a cote d une photo, ou dans un cadre serre), seul
    le libelle de l etape en cours reste : cinq libelles en capitales ne
    tiennent pas sur moins de 500 px sans se chevaucher. */
 @container (max-width: 500px) {
   .fg-steps__item:not(.is-active) .lbl { display: none; }
+  .fg-steps__of { display: block; }
 }
 .fg-steps__item {
   position: relative;
@@ -323,11 +341,12 @@
 .fg-steps__item::before {
   content: "";
   position: absolute;
-  top: 13px;
+  top: 15px;
   left: -50%;
   width: 100%;
-  height: 2px;
-  background: var(--fg-line-2);
+  height: 4px;
+  border-radius: 2px;
+  background: var(--fg-line);
   z-index: 0;
 }
 .fg-steps__item:first-child::before { display: none; }
@@ -336,14 +355,18 @@
 .fg-steps__item::after {
   content: "";
   position: absolute;
-  top: 13px;
+  top: 15px;
   left: -50%;
   width: 100%;
-  height: 2px;
-  background: var(--fg-purple);
+  height: 4px;
+  border-radius: 2px;
+  /* Le trait parcouru va du violet de la marque au sarcelle : il dit d un coup
+     d oeil le chemin fait, et il finit sur la couleur du « c est bon ». */
+  background: linear-gradient(90deg, var(--fg-purple) 0%, var(--fg-purple-2) 55%, var(--fg-teal) 100%);
+  box-shadow: 0 0 14px rgba(176, 79, 176, 0.4);
   transform-origin: left center;
   transform: scaleX(0);
-  transition: transform 0.45s var(--fg-ease);
+  transition: transform 0.55s var(--fg-ease);
   z-index: 0;
 }
 .fg-steps__item:first-child::after { display: none; }
@@ -351,35 +374,60 @@
 .fg-steps__dot {
   position: relative;
   z-index: 1;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 2px solid var(--fg-line-2);
   background: var(--fg-bg);
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--fg-muted);
-  transition: background-color 0.3s, border-color 0.3s, color 0.3s, transform 0.3s var(--fg-ease);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.35s var(--fg-ease);
 }
-.fg-steps__dot svg { width: 12px; height: 12px; display: none; }
+.fg-steps__dot svg { width: 15px; height: 15px; display: none; }
 .fg-steps__item.is-active .fg-steps__dot {
-  background: var(--fg-purple);
-  border-color: var(--fg-purple);
-  color: var(--fg-text);
-  box-shadow: 0 0 0 4px rgba(148, 66, 146, 0.25);
+  background: linear-gradient(145deg, var(--fg-purple-2), var(--fg-purple));
+  border-color: var(--fg-purple-2);
+  color: #fff;
+  transform: scale(1.1);
+  box-shadow: 0 0 0 5px rgba(148, 66, 146, 0.22), 0 8px 20px rgba(176, 79, 176, 0.38);
 }
 .fg-steps__item.is-active { color: var(--fg-text); }
-.fg-steps__item.is-done .fg-steps__dot { background: var(--fg-purple); border-color: var(--fg-purple); color: var(--fg-text); }
+.fg-steps__item.is-done .fg-steps__dot {
+  background: linear-gradient(145deg, var(--fg-teal), var(--fg-teal-dim));
+  border-color: var(--fg-teal);
+  color: var(--fg-bg);
+  box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.16);
+}
 .fg-steps__item.is-done .fg-steps__dot span { display: none; }
 .fg-steps__item.is-done .fg-steps__dot svg { display: block; }
 .fg-steps__item.is-done { color: var(--fg-muted); }
-/* L anneau qui s ouvre a l arrivee sur une etape. */
+/* Une etape faite se reprend : la pastille le montre au survol. */
+.fg-steps__item.is-done button { cursor: pointer; }
+.fg-steps__item.is-done button:hover .fg-steps__dot { transform: scale(1.12); box-shadow: 0 0 0 5px rgba(103, 186, 172, 0.26); }
+.fg-steps__item.is-done button:hover { color: var(--fg-teal-ink); }
+/* Ce qui bouge, et rien d autre : la pastille arrivee rebondit, son halo
+   s ouvre DEUX fois puis se tait (aucune animation en continu sur la page),
+   et la coche de l etape franchie se pose d un quart de tour. */
 @media (prefers-reduced-motion: no-preference) {
-  .fg-steps__item.is-active .fg-steps__dot { animation: fg-dot-pop 0.5s var(--fg-ease-out); }
+  .fg-steps__item.is-active .fg-steps__dot { animation: fg-dot-pop 0.55s var(--fg-ease-out); }
+  .fg-steps__item.is-active .fg-steps__dot::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid var(--fg-purple-2);
+    pointer-events: none;
+    animation: fg-dot-halo 1.5s var(--fg-ease-out) 2 both;
+  }
+  .fg-steps__item.is-done .fg-steps__dot svg { animation: fg-check-pop 0.45s var(--fg-ease-out) both; }
 }
-@keyframes fg-dot-pop { 0% { transform: scale(0.85); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes fg-dot-pop { 0% { transform: scale(0.82); } 55% { transform: scale(1.24); } 100% { transform: scale(1.1); } }
+@keyframes fg-dot-halo { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.95); opacity: 0; } }
+@keyframes fg-check-pop { 0% { transform: scale(0.2) rotate(-28deg); opacity: 0; } 60% { transform: scale(1.22) rotate(8deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
 .fg-steps__item button { color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; display: contents; }
 
 /* --- Titres ----------------------------------------------------------------- */
@@ -415,17 +463,17 @@
 .fg-sub__open {
   display: inline-flex;
   align-items: center;
-  margin-left: 12px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(103, 186, 172, 0.45);
-  background: rgba(103, 186, 172, 0.1);
+  gap: 8px;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--fg-line-2);
   color: var(--fg-teal-ink);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   vertical-align: middle;
 }
+.fg-sub__open::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--fg-teal); flex: none; }
 .fg-kicker {
   display: block;
   font-size: 11px;
@@ -574,25 +622,26 @@
 /* L etiquette d un jour particulier dans le recapitulatif : ferie (violet) ou
    conge scolaire (sarcelle). Le texte vient du calendrier servi. */
 .fg-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-style: normal;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   line-height: 1.5;
   white-space: nowrap;
 }
-.fg-tag--vacances { background: rgba(103, 186, 172, 0.14); border: 1px solid rgba(103, 186, 172, 0.5); color: var(--fg-teal-ink); }
-.fg-tag--ferie { background: rgba(176, 79, 176, 0.16); border: 1px solid rgba(176, 79, 176, 0.55); color: var(--fg-purple-ink); }
+.fg-tag::before { content: ""; width: 3px; height: 13px; border-radius: 1px; background: currentColor; flex: none; }
+.fg-tag--vacances { color: var(--fg-teal-ink); }
+.fg-tag--ferie { color: var(--fg-purple-ink); }
 
 /* Le compteur de personnes : moins, le nombre (qui se tape), plus. */
 .fg-stepper {
   display: grid;
-  grid-template-columns: 54px 1fr 54px;
-  height: 54px;
+  grid-template-columns: 56px 1fr 56px;
+  height: 56px;
   border-radius: var(--fg-radius);
   border: 1.5px solid var(--fg-line-2);
   background: var(--fg-bg-2);
@@ -600,41 +649,55 @@
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .fg-stepper:focus-within { border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.25); }
+/* Un pas donne un accuse : le cadre passe au sarcelle une demi-seconde. */
+.fg-stepper.is-bump { border-color: var(--fg-teal); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.22); }
 .fg-stepper__btn {
   display: grid;
   place-items: center;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 500;
+  line-height: 1;
   color: var(--fg-text);
   border-right: 1.5px solid var(--fg-line-2);
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color 0.15s, color 0.15s, transform 0.14s var(--fg-ease);
 }
 .fg-stepper__btn:last-child { border-right: 0; border-left: 1.5px solid var(--fg-line-2); }
 .fg-stepper__btn:hover { background: rgba(148, 66, 146, 0.25); }
-.fg-stepper__btn:active { background: var(--fg-purple); }
+.fg-stepper__btn:active:not([disabled]) { background: var(--fg-purple); transform: scale(0.9); }
 .fg-stepper__btn[disabled] { color: var(--fg-faint); cursor: not-allowed; background: none; }
 .fg-stepper__value {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 8px;
   white-space: nowrap;
+  overflow: hidden;
 }
 .fg-stepper__input {
-  width: 3.2em;
+  /* La largeur est posee par le script, au nombre de chiffres : c est ce qui
+     met l encre au MILIEU de la case au lieu de la pousser a droite. */
+  width: 1.2ch;
   min-width: 0;
-  height: 100%;
+  padding: 0;
   background: none;
   border: 0;
-  text-align: right;
-  font-size: 16px;
+  text-align: center;
+  font-size: 20px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
   color: var(--fg-text);
   appearance: textfield;
   -moz-appearance: textfield;
 }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-stepper__input.is-up { animation: fg-pax-up 0.34s var(--fg-ease-out); }
+  .fg-stepper__input.is-down { animation: fg-pax-down 0.34s var(--fg-ease-out); }
+}
+@keyframes fg-pax-up { 0% { transform: translateY(80%); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes fg-pax-down { 0% { transform: translateY(-80%); opacity: 0; } 100% { transform: none; opacity: 1; } }
 .fg-stepper__input::-webkit-outer-spin-button, .fg-stepper__input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .fg-stepper__input:focus { outline: none; }
 .fg-stepper__unit { font-size: 15px; font-weight: 600; color: var(--fg-muted); }
@@ -903,17 +966,17 @@
 }
 .fg-for__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 34px; }
 .fg-for__best {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(103, 186, 172, 0.16);
-  border: 1px solid rgba(103, 186, 172, 0.5);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--fg-teal-ink);
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   white-space: nowrap;
 }
+.fg-for__best::before { content: ""; width: 3px; height: 12px; border-radius: 1px; background: currentColor; flex: none; }
 /* Le prix se lit d un coup : le montant en gros, son unite et l ancien prix
    barre a cote, sur la meme ligne de base. */
 .fg-for__price { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
@@ -929,8 +992,8 @@
    horaire, vacances. Elles n etaient nulle part avant. */
 .fg-for__rules { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; padding-top: 4px; }
 .fg-for__rules i {
-  padding: 3px 8px;
-  border-radius: 999px;
+  padding: 3px 9px;
+  border-radius: var(--fg-radius);
   border: 1px solid var(--fg-line-2);
   background: rgba(255, 255, 255, 0.03);
   color: var(--fg-muted);
@@ -1060,41 +1123,129 @@
 #hourZone.is-busy .fg-period.is-open .fg-chips, #hourZone.is-busy .fg-visit { opacity: 0.55; transition: opacity 0.2s 0.15s; }
 .fg-legend {
   max-width: 940px;
-  margin: 0 auto 16px;
+  margin: 0 auto 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px 20px;
   font-size: 13px;
   color: var(--fg-muted);
   text-align: left;
 }
 .fg-legend b { color: var(--fg-text); font-weight: 700; }
+.fg-legend__tip { flex-basis: 100%; }
+/* Chaque cle PORTE l apparence de la puce qu elle decrit : le client n a pas
+   a faire le lien de tete entre un mot et un contour. */
+.fg-legend__key { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; }
+.fg-legend__key i {
+  font-style: normal;
+  padding: 3px 10px;
+  border-radius: var(--fg-radius);
+  border: 1.5px solid var(--fg-line-2);
+  background: rgba(10, 10, 10, 0.8);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.fg-legend__key em { font-style: normal; }
+.fg-legend__key--soft i { border-style: dotted; border-color: rgba(227, 179, 65, 0.7); color: var(--fg-amber-ink); }
+.fg-legend__key--shift i { border-style: dashed; border-color: rgba(176, 79, 176, 0.75); color: var(--fg-purple-ink); }
+.fg-legend__key--off i { border-style: dashed; color: var(--fg-faint); }
+/* Sur telephone, les trois contours parlent seuls : la glose disparait. Le
+   detail reste a une touche de distance, sur la puce elle-meme. */
+@media (max-width: 680px) {
+  .fg-legend { gap: 8px 14px; }
+  .fg-legend__key em { display: none; }
+}
 /* Une piste par activite planifiee : son en-tete, puis TOUTES les heures du
    jour. Celles qui posent probleme restent visibles, avec leur raison. */
-.fg-track {
+/* LA FORME DES DEUX CARTES DE L ECRAN DES CRENEAUX. Une piste (une activite
+   a placer) et le bloc de visite (ce que les heures posees donnent) sont deux
+   sections de meme rang : meme carte, meme filet sur la tranche, meme bandeau.
+   Seule la COULEUR les separe, violet pour un choix, sarcelle pour sa
+   consequence. Ecrire la forme une seule fois, c est aussi la garantie
+   qu elles ne divergeront pas au prochain tour. */
+.fg-track, .fg-visit {
+  position: relative;
   max-width: 940px;
-  margin: 0 auto 18px;
-  padding: 18px 22px 8px;
-  border-radius: 12px;
-  background: rgba(8, 8, 8, 0.66);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  margin: 0 auto 22px;
+  padding: 0;
+  border-radius: 14px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
   text-align: left;
 }
-.fg-track__head {
+.fg-track { background: linear-gradient(180deg, rgba(24, 13, 24, 0.9) 0%, rgba(8, 8, 8, 0.72) 44%); border: 1px solid rgba(176, 79, 176, 0.3); }
+/* Le filet de couleur sur la tranche : c est lui qui fait qu une section se
+   voit comme une section, meme sur un fond noir et de loin. */
+.fg-track::before, .fg-visit::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+.fg-track::before { background: linear-gradient(180deg, var(--fg-purple-2), var(--fg-teal)); }
+.fg-track__head, .fg-visit__head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  margin-bottom: 14px;
+  margin: 0;
+  padding: 16px 22px 14px 26px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
+.fg-track__head { background: rgba(148, 66, 146, 0.14); }
 .fg-track__head b { font-size: 17px; font-weight: 700; }
+/* Le rang de la section, quand il y en a plusieurs : « 1 », « 2 ». */
+.fg-track__num {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 6px;
+  background: var(--fg-purple);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.fg-track > .fg-periods { margin: 0; padding: 14px 22px 12px 26px; }
+.fg-track > .fg-why { margin: 0 22px 16px 26px; }
+/* Le groupe qui ne tient pas en une fois : dit en toutes lettres, sous le nom
+   de l activite, la ou le client choisit son heure. */
+.fg-track__waves {
+  margin: 0;
+  padding: 14px 22px 0 26px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.fg-track__waves::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--fg-teal); margin-right: 9px; vertical-align: 1px; }
+.fg-track__waves[hidden] { display: none; }
+.fg-track__waves b { color: var(--fg-teal-ink); font-weight: 700; }
 .fg-track__icon { width: 30px; height: 30px; color: var(--fg-purple-ink); flex: none; }
 .fg-track__icon svg { width: 100%; height: 100%; }
 .fg-track__detail { font-size: 13px; color: var(--fg-muted); }
+/* Le pied de section : la note « serre a toute heure » et le retour a
+   l equipe. Sans fond : c est la que le lien cache reserve sa place, et une
+   reservation ne doit pas peindre un aplat. */
+.fg-track__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 0 22px 14px 26px;
+}
 .fg-track__reset { margin-left: auto; font-size: 13px; }
 /* Cache, le lien garde sa place : quand il apparait a la premiere heure posee,
    rien ne se decale sous lui (sur telephone, il occupe sa propre ligne). */
 .fg-track__reset[hidden] { display: inline-block; visibility: hidden; }
 /* Une seule note quand toute la piste est serree : les puces restent
    normales, la cause (une autre heure posee tard) se lit ici. */
-.fg-track__note { flex-basis: 100%; font-size: 13px; color: var(--fg-amber-ink); }
+.fg-track__note { font-size: 13px; color: var(--fg-amber-ink); }
 .fg-track__note[hidden] { display: none; }
 .fg-chips {
   display: flex;
@@ -1201,31 +1352,23 @@
 
 /* Le bloc « votre visite » : l en-tete (arrivee, fin, prix) et la liste des
    etapes, activites reservees a leur heure puis activites libres. */
+/* Ce bloc-ci est la CONSEQUENCE des heures choisies au-dessus, pas un choix
+   de plus : sa carte, son filet et son bandeau partent au sarcelle. Le filet
+   descend dans l autre sens, c est ce qui le distingue d une piste. */
 .fg-visit {
-  max-width: 940px;
-  margin: 4px auto 22px;
-  padding: 18px 22px;
-  border-radius: 12px;
-  background: rgba(10, 10, 10, 0.78);
-  border: 1px solid rgba(103, 186, 172, 0.35);
-  text-align: left;
+  margin-top: 6px;
+  background: linear-gradient(180deg, rgba(10, 26, 24, 0.92) 0%, rgba(10, 10, 10, 0.82) 44%);
+  border: 1px solid rgba(103, 186, 172, 0.42);
 }
-.fg-visit__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 18px;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
+.fg-visit::before { background: linear-gradient(180deg, var(--fg-teal), var(--fg-purple-2)); }
+.fg-visit__head { gap: 8px 18px; background: rgba(103, 186, 172, 0.1); }
 .fg-visit__title { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; }
 .fg-visit__title svg { width: 18px; height: 18px; color: var(--fg-teal); }
 .fg-visit__span { font-size: 14px; color: var(--fg-muted); }
 .fg-visit__span b { color: var(--fg-text); font-weight: 700; }
 .fg-visit__price { margin-left: auto; display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; color: var(--fg-teal); font-weight: 700; font-size: 18px; }
 .fg-visit__price small { font-size: 11px; font-weight: 600; color: var(--fg-muted); letter-spacing: 0.02em; }
-.fg-visit__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fg-visit__list { list-style: none; margin: 0; padding: 14px 22px 16px 26px; display: grid; gap: 6px; }
 .fg-visit__step {
   display: grid;
   grid-template-columns: 58px 1fr;
@@ -1243,7 +1386,7 @@
 .fg-visit__step--free b { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-faint); align-self: center; }
 .fg-visit__step.is-moved small { color: var(--fg-purple-ink); }
 .fg-visit__warn {
-  margin: 12px 0 0;
+  margin: 0 22px 16px 26px;
   padding: 10px 14px;
   border-radius: 8px;
   background: rgba(227, 179, 65, 0.1);
@@ -1264,11 +1407,21 @@
 }
 .fg-notice--warn { background: rgba(255, 107, 107, 0.1); border-color: rgba(255, 107, 107, 0.4); }
 .fg-notice b { font-weight: 700; }
+@media (max-width: 560px) {
+  .fg-track__head, .fg-visit__head { padding: 14px 15px 12px 19px; }
+  .fg-track > .fg-periods { padding: 12px 15px 10px 19px; }
+  .fg-track__waves { padding: 12px 15px 0 19px; }
+  .fg-track__foot { padding: 0 15px 12px 19px; }
+  .fg-track > .fg-why { margin: 0 15px 14px 19px; }
+  .fg-visit__list { padding: 12px 15px 14px 19px; }
+  .fg-visit__warn { margin: 0 15px 14px 19px; }
+}
+
 /* Les combinaisons proches quand celle du client ne tient pas. */
 .fg-suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .fg-suggest__btn {
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--fg-radius);
   border: 1.5px solid var(--fg-teal);
   color: var(--fg-teal-ink);
   font-size: 13px;
@@ -1409,7 +1562,18 @@
   18% { opacity: 1; }
   100% { opacity: 0; transform: rotate(var(--a, 0deg)) translateY(calc(var(--d, 60px) * -1)) scale(1); }
 }
-.fg-done__ref { display: inline-block; margin: 6px 0 18px; padding: 8px 16px; border-radius: 999px; background: rgba(103, 186, 172, 0.12); border: 1px solid rgba(103, 186, 172, 0.45); color: var(--fg-teal); font-weight: 700; font-size: 14px; letter-spacing: 0.06em; }
+.fg-done__ref {
+  display: inline-block;
+  margin: 4px 0 20px;
+  padding: 0 2px 10px;
+  border-bottom: 2px solid rgba(103, 186, 172, 0.5);
+  color: var(--fg-teal-ink);
+  font-family: var(--fg-display);
+  font-weight: 400;
+  font-size: clamp(20px, 3.4vw, 26px);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .fg-done p { color: var(--fg-muted); font-size: 15px; margin: 0 0 10px; }
 .fg-done p b { color: var(--fg-text); }
 
@@ -1473,8 +1637,6 @@
   @supports (grid-template-rows: subgrid) { .fg-grid { row-gap: 0; } .fg-grid > li { margin-bottom: 12px; } }
   .fg-fields--2 { grid-template-columns: 1fr; }
   .fg-stage, .fg-scene { min-height: 0; }
-  .fg-track { padding: 14px 14px 4px; }
-  .fg-visit { padding: 14px; }
 }
 /* Telephone en paysage : 200 px de photo sur une fenetre de 390 px laissent
    le titre sous le pli. La bande descend a 120 px. */
@@ -1492,7 +1654,9 @@
   .fg-bar .fg-btn { width: 100%; }
   .fg-actions .fg-btn { width: 100%; }
   .fg-cal { min-width: 0; width: 100%; max-width: none; }
-  .fg-sub__open { display: flex; width: fit-content; margin: 8px auto 0; }
+  /* Passe a la ligne et se centre : le filet vertical n a plus de sens, la
+     pastille sarcelle suffit a rattacher l horaire au jour. */
+  .fg-sub__open { display: flex; width: fit-content; margin: 8px auto 0; padding-left: 0; border-left: 0; }
   .fg-track__reset { margin-left: 0; width: 100%; text-align: left; }
   /* Sur telephone, le resume passe sous le nom de la periode : toujours deux
      lignes, la hauteur ne change pas quand le resume change. */

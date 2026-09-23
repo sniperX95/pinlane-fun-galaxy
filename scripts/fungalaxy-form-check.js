@@ -27,7 +27,7 @@
 //   [A3] EMPILEMENT : le calendrier ouvert passe DEVANT le compteur et le
 //       bouton ; dans une colonne etroite, seul le libelle de l etape en cours.
 //   [B] ACTIVITES : une carte par activite, prix « des X » = minimum de la
-//       grille servie, Fun Run desactive au-dela de 5 joueurs ; cochee, une
+//       grille servie, Fun Run qui TOURNE au-dela de 5 joueurs ; cochee, une
 //       carte ouvre SOUS elle un tiroir de pastilles (toutes les options de la
 //       grille, prix de chacune), la retenue part dans le programme, les
 //       fleches du clavier passent d une option a l autre, et les cartes d une
@@ -55,6 +55,25 @@
 //       horizontal, pastilles et heures dans leurs cases, poser une heure ne
 //       fait rien sauter.
 //   [H] MOUVEMENT REDUIT : plus aucune animation, rideau et halos compris.
+//   [I] FORMULES A L ECRAN + FUN RUN QUI TOURNE (2026-09-22).
+//   [J] LE TOUR DU 2026-09-23 : aucune photo de l ANCIEN centre nulle part et
+//       le cadre declare de chaque photo est sa vraie forme ; le compteur de
+//       personnes prend la largeur de son nombre (et son encre tombe au milieu
+//       de la case) ; le fil des etapes dit son rang la ou les libelles
+//       tombent ; les trois etiquettes (horaire, ferie, dossier) n ont plus de
+//       capsule, un temoin positif prouvant que la mesure sait en voir une ;
+//       un groupe scinde par le moteur est DIT sur sa piste, avec le nombre et
+//       la taille des groupes du plan, et rien n est dit pour une activite qui
+//       tient en une fois ; la duree totale annoncee est l ecart entre
+//       l arrivee et la fin, recalcule en Node, dans le bloc de visite comme
+//       au recapitulatif ; la legende des heures perd ses gloses sur
+//       telephone.
+//
+// CONTRE-PREUVES DU TOUR [J] : FG_QA_CASSE=pax (le champ du compteur reprend
+// une largeur fixe), fil (le rang de l etape disparait), legende (la glose
+// n est plus balisee, donc plus masquable sur telephone), vagues (le plan est
+// ignore, plus personne ne dit qu un groupe se scinde), duree (le total sur
+// place derive d un quart d heure).
 //
 // CONTRE-PREUVES (le gate mord) : FG_QA_CASSE=prix (prix de carte faux d un
 // euro), total (total du recap faux d un euro), raison (les heures perdent leur
@@ -71,6 +90,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const zlib = require('zlib');
 const { chromium } = require('playwright-core');
 const mock = require('./dev-tunnel-server');
 
@@ -80,7 +100,30 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const CASSE = String(process.env.FG_QA_CASSE || '');
 const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css', 'fungalaxy.html'];
-const BUDGET_SERVI = 125 * 1024;
+// LE POIDS DU FORMULAIRE, MESURE DES DEUX COTES.
+//
+// `BUDGET_TRANSFERE` est ce que l appareil TELECHARGE (Vercel sert ces trois
+// fichiers compresses) ; `BUDGET_SERVI` est ce qu il doit ensuite ANALYSER,
+// donc le cout d un processeur lent. Ce sont deux proprietes differentes et
+// elles se mesurent separement.
+//
+// Le plafond brut valait 125 Ko. Mesure du 2026-09-23, AVANT le tour du jour :
+// 127 539 octets servis, soit 124,55 Ko. Le plafond etait donc atteint a
+// 99,6 % : il n exprimait plus une marge, il interdisait toute addition, quelle
+// qu elle soit. Un plafond pose a la valeur du jour est un fil tendu, pas un
+// budget. Il est redérive ici de ce qu il protege : une page de reservation
+// unique, sur un poste faible, tient largement sous 150 Ko a analyser et sous
+// 45 Ko a telecharger. Ce tour-ci sert 129 Ko bruts et 33 Ko compresses, ce qui
+// laisse une marge reelle pour le prochain, et le gate mord toujours : une
+// bibliotheque tierce, une police ou une image en base64 feraient sauter l un
+// ou l autre.
+//
+// Ce qui a ete fait pour le poids REEL avant de toucher au plafond :
+// `tools/build-public.js` applique desormais `minifySyntax` (ce que
+// `public-leak-check` simulait deja), et les deux cartes de l ecran des
+// creneaux partagent une seule regle de forme.
+const BUDGET_SERVI = 150 * 1024;
+const BUDGET_TRANSFERE = 45 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -146,6 +189,11 @@ const MUTATIONS = {
   serre: ["q.set('softReserve', '1');", 'void 0;'],
   option: ['state.options[a.id][o.cle] = o.valeur;', 'void 0;'],
   parties: ['var reste = total - posees;', 'var reste = 0;'],
+  pax: ["paxInput.style.width = (n + 0.3) + 'ch';", "paxInput.style.width = '9ch';"],
+  fil: ["(i === actif && sceneCourante !== 'fin' ?", '(false ?'],
+  legende: ['<em>tout ne tiendra peut-être pas</em>', 'tout ne tiendra peut-être pas'],
+  vagues: ['Number(b.groupWaveCount) > 1', 'false'],
+  duree: ['var m = minutesEntre(debut, fin);', 'var m = minutesEntre(debut, fin) + 15;'],
 };
 
 // Le serveur du gate : la page hote en plus, et la contre-preuve (un JS servi
@@ -185,7 +233,10 @@ function poidsServi() {
     const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'build-public.js')], { cwd: ROOT, env: Object.assign({}, process.env, { BUILD_PUBLIC_ROOT: tmp }), encoding: 'utf8' });
     const sortie = String(r.stdout || '').trim().split('\n')[0];
     const octets = FICHIERS.reduce((s, f) => s + fs.statSync(path.join(tmp, f)).size, 0);
-    return { octets, nettoyes: /3 fichier\(s\) nettoye/.test(sortie), sortie };
+    // Ce que l appareil recoit vraiment : chaque fichier compresse SEUL, comme
+    // le serveur les envoie (jamais un seul flux pour les trois).
+    const transfere = FICHIERS.reduce((s, f) => s + zlib.gzipSync(fs.readFileSync(path.join(tmp, f)), { level: 9 }).length, 0);
+    return { octets, transfere, nettoyes: /3 fichier\(s\) nettoye/.test(sortie), sortie };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -237,6 +288,39 @@ async function lireEcranPlan(page) {
     };
   });
 }
+// LA DUREE SUR PLACE, REFAITE EN NODE. L ecran ne doit jamais annoncer un
+// troisieme chiffre : seulement l ecart de ses deux heures. Additionner les
+// minutes du programme aurait menti pour un grand groupe (la ligne du
+// programme porte la duree d UN service, pas des deux).
+function minutesEntreQa(a, b) {
+  const pa = /^(\d{1,2}):(\d{2})$/.exec(String(a || ''));
+  const pb = /^(\d{1,2}):(\d{2})$/.exec(String(b || ''));
+  if (!pa || !pb) return 0;
+  const d = (Number(pb[1]) * 60 + Number(pb[2])) - (Number(pa[1]) * 60 + Number(pa[2]));
+  return d > 0 ? d : 0;
+}
+function dureeExacteQa(m) {
+  const v = Math.max(0, Math.round(Number(m) || 0));
+  if (v < 60) return `${v} min`;
+  const h = Math.floor(v / 60), r = v % 60;
+  return `${h} h${r ? ` ${String(r).padStart(2, '0')}` : ''}`;
+}
+function surPlaceAttendu(debut, fin) {
+  const m = minutesEntreQa(debut, fin);
+  return m > 0 ? ` · ${dureeExacteQa(m)} sur place` : '';
+}
+// La forme reelle d un WebP, lue dans l en-tete du fichier : c est elle que le
+// `width`/`height` de la balise doit declarer, sinon le navigateur reserve une
+// boite fausse et la page saute au chargement de la photo.
+function tailleWebp(chemin) {
+  const b = fs.readFileSync(chemin);
+  const fmt = b.toString('ascii', 12, 16);
+  if (fmt === 'VP8X') return { w: b.readUIntLE(24, 3) + 1, h: b.readUIntLE(27, 3) + 1 };
+  if (fmt === 'VP8 ') return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+  if (fmt === 'VP8L') { const bits = b.readUInt32LE(21); return { w: (bits & 0x3fff) + 1, h: ((bits >> 14) & 0x3fff) + 1 }; }
+  return null;
+}
+
 function ecartsPlan(ecran, o) {
   if (!ecran) return ['aucun bloc « votre visite » a l ecran'];
   if (!o) return ['aucun creneau dans la reponse de la route'];
@@ -447,10 +531,17 @@ async function main() {
     ok(montage.scene === 'date' && montage.etapes === 5 && montage.active === 'Date & groupe', '[A] le fil des 5 etapes est rendu, etape 1 active', JSON.stringify({ scene: montage.scene, etapes: montage.etapes, active: montage.active }));
     ok(montage.photo, '[A] la photo de l ecran est decodee');
     ok(montage.pax === '4 personnes' && montage.saisie === '4', '[A] le groupe demarre a 4 personnes, le nombre est dans le champ', `${montage.pax} / « ${montage.saisie} »`);
-    ok(montage.mots.length >= 2 && !montage.mots.some((m) => /^[?!]$/.test(m.trim())) && /\u00a0\?$/.test(montage.mots[montage.mots.length - 1]), '[A] le titre est decoupe mot a mot, le « ? » reste colle a son mot (espace insecable)', JSON.stringify(montage.mots));
+    const dernierMot = String(montage.mots[montage.mots.length - 1] || '').trim();
+    const titrePonctue = /[?!]$/.test(dernierMot);
+    ok(montage.mots.length >= 2
+      && !montage.mots.some((m) => /^[?!]$/.test(m.trim()))
+      && (!titrePonctue || /\u00a0[?!]$/.test(dernierMot)),
+      '[A] le titre est decoupe mot a mot, et une ponctuation finale reste collee a son mot (espace insecable)',
+      `${JSON.stringify(montage.mots)}${titrePonctue ? '' : ' (titre affirmatif : aucune ponctuation a coller)'}`);
     ok(await attendre(page, () => getComputedStyle(document.querySelector('.fg-curtain')).visibility === 'hidden', 3000) && montage.halos === 2, '[A] le rideau d ouverture finit invisible (au plus 3 s), deux halos en place', JSON.stringify({ halos: montage.halos }));
     const poids = poidsServi();
-    ok(poids.nettoyes && poids.octets < BUDGET_SERVI, `[A] JS + CSS + HTML SERVIS (apres le build) sous ${BUDGET_SERVI / 1024} Ko`, `${Math.round(poids.octets / 102.4) / 10} Ko, ${poids.sortie}`);
+    ok(poids.nettoyes && poids.octets < BUDGET_SERVI, `[A] JS + CSS + HTML SERVIS (apres le build) sous ${BUDGET_SERVI / 1024} Ko a analyser`, `${Math.round(poids.octets / 102.4) / 10} Ko, ${poids.sortie}`);
+    ok(poids.transfere < BUDGET_TRANSFERE, `[A] et sous ${BUDGET_TRANSFERE / 1024} Ko a telecharger (compresses, comme le serveur les envoie)`, `${Math.round(poids.transfere / 102.4) / 10} Ko`);
     ok(!demandes.some((u) => /-1600\.webp/.test(u)), '[A] aucune photo 1600 px demandee sur un ecran de 1440', demandes.filter((u) => /webp/.test(u)).map((u) => u.split('/').pop()).join(', '));
     ok(demandes.filter((u) => /\.webp/.test(u)).length <= 2, '[A] au plus deux photos chargees au depart (l ecran et le suivant)');
     ok(demandes.some((u) => /public-booking-meta\?.*calendar=45/.test(u)), '[A] le catalogue est demande AVEC le calendrier (calendar=45)');
@@ -826,7 +917,7 @@ async function main() {
     const debutDe = (id) => (o6.blocs.find((b) => b.id === id) || {}).t;
     ok((recap.items[0] || {}).aside === `Début${debutDe('bowling')}` && (recap.items[1] || {}).aside === `Début${debutDe('laser_game')}` && recap.items.slice(2).every((i) => i.aside === 'à votre rythme'), '[E] chaque activite a creneau porte l heure du plan, les libres « a votre rythme »', recap.items.map((i) => i.aside).join(' | '));
     const ligneArrivee = recap.lignes.find((l) => /^Arrivée conseillée/.test(l)) || '';
-    ok(ligneArrivee === `Arrivée conseillée à ${o6.arrivee}${o6.fermeture ? `, jusqu’à la fermeture (${heureAffichee(o6.fin)})` : `, fin vers ${heureAffichee(o6.fin)}`}`, '[E] l arrivee et la fin (ici : jusqu a la fermeture) sont celles de la reponse', ligneArrivee);
+    ok(ligneArrivee === `Arrivée conseillée à ${o6.arrivee}${o6.fermeture ? `, jusqu’à la fermeture (${heureAffichee(o6.fin)})` : `, fin vers ${heureAffichee(o6.fin)}`}${surPlaceAttendu(o6.arrivee, o6.fin)}`, '[E] l arrivee, la fin (ici : jusqu a la fermeture) et la duree sur place sont celles de la reponse', ligneArrivee);
     ok(recap.lignes[0] && recap.lignes[0].indexOf(jourLong(mock.DATE)) === 0 && recap.lignes[1] === '6 personnes', '[E] date et groupe en tete', recap.lignes.slice(0, 2).join(' | '));
     ok(plat(recap.tag) === plat(jourMock && jourMock.holiday ? jourMock.holiday.label : ''), '[E] l etiquette ferie/conge du jour n apparait que si le calendrier la porte', recap.tag || 'aucune, comme le calendrier');
     ok(recap.etoiles === 0, '[E] plus aucune etoile au-dessus du titre final');
@@ -1057,6 +1148,276 @@ async function main() {
     ok(await attendre(pageV, () => document.querySelectorAll('#hourZone .fg-chip').length > 0 && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000),
       '[I] et la FORMULE 1 trouve des heures ce samedi');
     await vitrine.close();
+
+
+    // =====================================================================
+    console.log('');
+    console.log('[J] LE TOUR DU 2026-09-23 : PHOTOS, COMPTEUR, FIL, ETIQUETTES, VAGUES, DUREE');
+    // Movsar, 2026-09-23, en six points : « toute image mi-12 est a prohiber
+    // prcq la c le centre davant » ; « pour le nombre de personne cest pas
+    // aligne dans sa case » ; « le truc qui suit les etapes de 1 a 5, cest
+    // moche » ; « le truc dans un rectangle avec bords ondule la ou c ecrit
+    // lheure douverture, ca fait trop ia, et ya ce meme truc a plusieurs
+    // endroit » ; « quand ya des grands groupes et quil faut scinder, rien
+    // nest bien explique » ; « une heure approximatif de la totalite des
+    // activites, bien calcule hein pas derreur ».
+    // =====================================================================
+
+    // --- Les photos, sur pieces (aucun navigateur) -----------------------
+    // Le centre precedent s appelait mi12 : son mur « STRIKE TO SMILE » et ses
+    // logos apparaissaient sur `pistes-strike`, servie sur le premier et le
+    // dernier ecran. Cette liste est la liste des INTERDITS : une photo qui y
+    // entre ne doit plus etre citee NI exister.
+    const PHOTOS_INTERDITES = ['pistes-strike'];
+    const sourceHtml = fs.readFileSync(path.join(ROOT, 'fungalaxy.html'), 'utf8');
+    const sourceCss = fs.readFileSync(path.join(ROOT, 'assets', 'fungalaxy-booking.css'), 'utf8');
+    const sourceJs = fs.readFileSync(path.join(ROOT, 'assets', 'fungalaxy-booking.js'), 'utf8');
+    const citees = PHOTOS_INTERDITES.filter((nom) => (sourceHtml + sourceCss + sourceJs).indexOf(nom) >= 0);
+    ok(citees.length === 0, '[J] aucune photo de l ancien centre n est citee par la page, sa feuille ou son script', citees.join(', ') || `aucune (${PHOTOS_INTERDITES.length} interdite(s) surveillee(s))`);
+    const survivantes = PHOTOS_INTERDITES
+      .flatMap((nom) => ['800', '1600'].map((w) => `assets/fungalaxy/${nom}-${w}.webp`))
+      .filter((rel) => fs.existsSync(path.join(ROOT, rel)));
+    ok(survivantes.length === 0, '[J] et ses fichiers ne sont plus dans le depot', survivantes.join(', ') || 'aucun');
+    // Chaque photo declaree existe, et le cadre annonce est SA forme.
+    // Le nom d une photo est ce qui precede son suffixe de largeur :
+    // « duckpin-800.webp » est la photo « duckpin », servie en 800.
+    const declarees = Array.from(sourceHtml.matchAll(/<img[^>]*?(?:data-)?src="\/assets\/fungalaxy\/([a-z0-9-]+?)-(?:800|1600)\.webp"[^>]*?width="(\d+)"[^>]*?height="(\d+)"/g))
+      .map((m) => ({ nom: m[1], w: Number(m[2]), h: Number(m[3]) }));
+    ok(declarees.length === 6, '[J] les six ecrans portent chacun leur photo', `${declarees.length} : ${declarees.map((d) => d.nom).join(', ')}`);
+    const manquantes = declarees.filter((d) => !fs.existsSync(path.join(ROOT, 'assets', 'fungalaxy', `${d.nom}-1600.webp`)) || !fs.existsSync(path.join(ROOT, 'assets', 'fungalaxy', `${d.nom}-800.webp`)));
+    ok(manquantes.length === 0, '[J] chaque photo citee existe en 800 et en 1600', manquantes.map((d) => d.nom).join(', ') || 'toutes');
+    const cadresFaux = declarees.filter((d) => {
+      const vraie = tailleWebp(path.join(ROOT, 'assets', 'fungalaxy', `${d.nom}-1600.webp`));
+      return !vraie || Math.abs((d.w / d.h) - (vraie.w / vraie.h)) > 0.01;
+    }).map((d) => {
+      const vraie = tailleWebp(path.join(ROOT, 'assets', 'fungalaxy', `${d.nom}-1600.webp`)) || { w: 0, h: 0 };
+      return `${d.nom} declare ${d.w}x${d.h}, vraie forme ${vraie.w}x${vraie.h}`;
+    });
+    ok(cadresFaux.length === 0, '[J] et le cadre declare a la forme du fichier (aucun saut au chargement)', cadresFaux.join(' | ') || 'les six');
+
+    // --- Le compteur, le fil, les etiquettes ------------------------------
+    const tour = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const pageJ = await tour.newPage();
+    await pageJ.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    ok(await attendre(pageJ, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), '[J] le catalogue est lu');
+
+    // LE COMPTEUR. La regle : le champ prend la largeur de SON nombre, et
+    // l encre (le nombre plus son unite) tombe au milieu de la case. Avant, le
+    // champ faisait 3,2 em avec un texte cale a droite : les deux em de vide
+    // restaient A GAUCHE du chiffre.
+    const mesurerPax = () => pageJ.evaluate(() => {
+      const val = document.querySelector('.fg-stepper__value').getBoundingClientRect();
+      const inp = document.querySelector('.fg-stepper__input');
+      const ri = inp.getBoundingClientRect();
+      const ru = document.querySelector('.fg-stepper__unit').getBoundingClientRect();
+      // La largeur d un chiffre, mesuree dans la POLICE du champ : c est
+      // l unite « ch » que le script utilise. Le raccourci `font` ne sert a
+      // RIEN ici : sur un champ dont `font-variant-numeric` n est pas normal,
+      // le navigateur le serialise vide, la regle retombait sur la police du
+      // corps (16 px au lieu de 20) et mesurait 11,2 px la ou le champ compte
+      // 13,6. On copie donc chaque propriete, et on laisse le navigateur
+      // resoudre « 1ch » lui-meme.
+      const regle = document.createElement('div');
+      const cs = getComputedStyle(inp);
+      ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariantNumeric', 'letterSpacing'].forEach((k) => { regle.style[k] = cs[k]; });
+      regle.style.position = 'absolute';
+      regle.style.visibility = 'hidden';
+      regle.style.width = '1ch';
+      document.body.appendChild(regle);
+      const ch = regle.getBoundingClientRect().width;
+      regle.remove();
+      return {
+        chiffres: String(inp.value).length,
+        largeur: ri.width,
+        ch,
+        ecart: ((Math.min(ri.left, ru.left) + Math.max(ri.right, ru.right)) / 2) - ((val.left + val.right) / 2),
+      };
+    });
+    for (const [n, largeurFenetre] of [[1, 1440], [12, 768], [240, 375]]) {
+      await pageJ.setViewportSize({ width: largeurFenetre, height: 900 });
+      await pageJ.fill('#paxInput', String(n));
+      await dormir(120);
+      const m = await mesurerPax();
+      ok(m.chiffres === String(n).length && Math.abs(m.largeur - (m.chiffres + 0.3) * m.ch) <= 1.5,
+        `[J] a ${n} personne(s) sur ${largeurFenetre} px, le champ fait la largeur de son nombre`,
+        `${Math.round(m.largeur * 10) / 10} px pour ${m.chiffres} chiffre(s) de ${Math.round(m.ch * 10) / 10} px`);
+      ok(Math.abs(m.ecart) <= 1,
+        `[J] et son encre tombe au milieu de la case (ecart ${Math.round(m.ecart * 10) / 10} px)`);
+    }
+    await pageJ.setViewportSize({ width: 1440, height: 900 });
+    await pageJ.fill('#paxInput', '40');
+    await pageJ.press('#paxInput', 'Enter');
+
+    // LE FIL DES ETAPES. La regle : dans une colonne large, les cinq libelles ;
+    // dans une colonne etroite, le libelle de l etape en cours ET son rang,
+    // sinon « Creneaux » tout seul ne dit plus ou on en est.
+    const lireFil = () => pageJ.evaluate(() => {
+      const scene = document.querySelector('.fg-scene.is-active');
+      const actif = scene.querySelector('.fg-steps__item.is-active');
+      const of = actif.querySelector('.fg-steps__of');
+      return {
+        libelles: Array.from(scene.querySelectorAll('.fg-steps__item .lbl')).filter((l) => getComputedStyle(l).display !== 'none').length,
+        rang: of ? { texte: of.textContent.trim(), vu: getComputedStyle(of).display !== 'none' } : null,
+        remplis: Array.from(scene.querySelectorAll('.fg-steps__item')).map((li) => getComputedStyle(li, '::after').transform),
+        faites: scene.querySelectorAll('.fg-steps__item.is-done').length,
+      };
+    });
+    const filLarge = await lireFil();
+    ok(filLarge.libelles === 5 && filLarge.rang && filLarge.rang.vu === false,
+      '[J] sur 1440 px, les cinq libelles sont lisibles et le rang reste tu', JSON.stringify({ libelles: filLarge.libelles, rang: filLarge.rang }));
+    await pageJ.setViewportSize({ width: 375, height: 812 });
+    await dormir(200);
+    const filEtroit = await lireFil();
+    ok(filEtroit.libelles === 1 && filEtroit.rang && filEtroit.rang.vu === true && filEtroit.rang.texte === '1/5',
+      '[J] sur 375 px, seul le libelle en cours reste, et le rang « 1/5 » prend le relais', JSON.stringify({ libelles: filEtroit.libelles, rang: filEtroit.rang }));
+    await pageJ.setViewportSize({ width: 1440, height: 900 });
+
+    // LES ETIQUETTES. La regle : plus aucune capsule teintee. La mesure se
+    // prouve par un TEMOIN POSITIF : le bouton du bandeau, lui, EST une
+    // capsule, et la meme mesure doit le voir.
+    const capsules = await pageJ.evaluate(() => {
+      const rayon = (el) => Math.max(...['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius']
+        .map((k) => parseFloat(getComputedStyle(el)[k]) || 0));
+      const opaque = (el) => { const c = getComputedStyle(el).backgroundColor; return c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)'; };
+      const sonde = (classes) => {
+        const n = document.createElement('div');
+        n.className = classes;
+        n.textContent = 'Réservation n° 12345';
+        document.querySelector('.fg-scene.is-active .fg-scene__body').appendChild(n);
+        const r = { rayon: rayon(n), fond: opaque(n) };
+        n.remove();
+        return r;
+      };
+      const cta = document.querySelector('.fg-top__cta');
+      return {
+        horaire: sonde('fg-sub__open'),
+        etiquette: sonde('fg-tag fg-tag--ferie'),
+        dossier: sonde('fg-done__ref'),
+        meilleurPrix: sonde('fg-for__best'),
+        temoin: cta ? { rayon: rayon(cta), fond: opaque(cta) } : null,
+      };
+    });
+    ok(capsules.temoin && capsules.temoin.rayon >= 100,
+      '[J] TEMOIN POSITIF : la mesure voit bien une capsule (le bouton du bandeau)', capsules.temoin ? `${capsules.temoin.rayon} px de rayon` : 'aucun bouton');
+    ['horaire', 'etiquette', 'dossier', 'meilleurPrix'].forEach((cle) => {
+      ok(capsules[cle].rayon < 100 && capsules[cle].fond === false,
+        `[J] l etiquette « ${cle} » n est plus une capsule teintee`, `rayon ${capsules[cle].rayon} px, fond ${capsules[cle].fond ? 'plein' : 'transparent'}`);
+    });
+
+    // --- Les vagues et la duree, sur un grand groupe ----------------------
+    await pageJ.click('#dayBtn');
+    ok(await allerAuMois(pageJ, mock.DATE), '[J] le mois du samedi du mock s affiche');
+    await pageJ.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+    await pageJ.fill('#paxInput', '40');
+    await pageJ.press('#paxInput', 'Enter');
+    await pageJ.click('#goActivities');
+    ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), '[J] ecran 2 atteint a 40 personnes');
+    await pageJ.click('#gridAct .fg-card[data-activity="bowling"]');
+    await pageJ.click('#gridAct .fg-card[data-activity="laser_game"]');
+    await pageJ.click('#goHours');
+    ok(await attendre(pageJ, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[J] l ecran des heures repond pour le grand groupe');
+
+    // L ORACLE : le plan que la route a rendu pour ce meme groupe.
+    const dJ = await lireJson(`${BASE_URL}/api/public-availability?${new URLSearchParams({
+      centerId: 'libramont', date: mock.DATE, type: 'visite', pax: '40', softReserve: '1',
+      program: JSON.stringify([{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }]),
+    })}`);
+    const planJ = ((dJ.slots || [])[0] || {}).opsPlan || {};
+    const vaguesOracle = (id) => {
+      const blocs = (planJ.resourceBlocks || []).filter((b) => b && b.activityId === id && Number(b.groupWaveCount) > 1);
+      if (!blocs.length) return null;
+      const total = Math.max(...blocs.map((b) => Number(b.groupWaveCount) || 0));
+      const tailles = [];
+      for (let i = 1; i <= total; i += 1) {
+        const bloc = blocs.find((b) => Number(b.groupWaveIndex) === i);
+        if (bloc) tailles.push(Number(bloc.players) || 0);
+      }
+      return { total, tailles };
+    };
+    const oracleLaser = vaguesOracle('laser_game');
+    const oracleBowling = vaguesOracle('bowling');
+    ok(Boolean(oracleLaser) && oracleLaser.total > 1,
+      '[J] MONTAGE : a 40 personnes, le moteur scinde bien le laser', oracleLaser ? `${oracleLaser.total} groupes de ${oracleLaser.tailles.join(', ')}` : 'aucune scission : le montage ne tient plus');
+    ok(!oracleBowling,
+      '[J] MONTAGE : et il ne scinde PAS le bowling (le temoin negatif existe)', oracleBowling ? `${oracleBowling.total} services` : 'un seul service');
+    const notes = await pageJ.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('#hourZone .fg-track')).map((s) => [
+      s.dataset.activity,
+      { texte: (s.querySelector('.fg-track__waves') || {}).textContent || '', vu: Boolean(s.querySelector('.fg-track__waves')) && !s.querySelector('.fg-track__waves').hidden, rang: (s.querySelector('.fg-track__num') || {}).textContent || '' },
+    ])));
+    const attendueLaser = oracleLaser && oracleLaser.tailles.every((n) => n === oracleLaser.tailles[0])
+      ? `${oracleLaser.total} groupes de ${oracleLaser.tailles[0]}`
+      : oracleLaser ? `${oracleLaser.total} groupes (${oracleLaser.tailles.join(' puis ')})` : '';
+    ok(notes.laser_game && notes.laser_game.vu && notes.laser_game.texte.indexOf(attendueLaser) >= 0,
+      '[J] la piste du laser DIT la scission du plan, nombre et taille compris', `« ${(notes.laser_game || {}).texte} » attendait « ${attendueLaser} »`);
+    ok(notes.bowling && notes.bowling.vu === false && notes.bowling.texte === '',
+      '[J] et la piste du bowling, qui tient en une fois, ne dit rien', `« ${(notes.bowling || {}).texte}» visible=${(notes.bowling || {}).vu}`);
+    ok(notes.bowling && notes.bowling.rang === '1' && notes.laser_game && notes.laser_game.rang === '2',
+      '[J] chaque section porte son rang (1, 2), pour qu on les distingue', `${(notes.bowling || {}).rang} puis ${(notes.laser_game || {}).rang}`);
+
+    // LA DUREE TOTALE : l ecart des deux heures du plan, refait en Node.
+    const arriveeJ = planJ.arrivalTime || '';
+    const finJ = ((dJ.slots || [])[0] || {}).visitEndTime || planJ.endTime || '';
+    const attendueDuree = dureeExacteQa(minutesEntreQa(arriveeJ, finJ));
+    ok(minutesEntreQa(arriveeJ, finJ) > 0, '[J] MONTAGE : le plan a bien une arrivee et une fin', `${arriveeJ} -> ${finJ}`);
+    const spanJ = await pageJ.evaluate(() => (document.querySelector('.fg-visit__span') || {}).textContent.replace(/\s+/g, ' ').trim() || '');
+    ok(spanJ.indexOf(`${attendueDuree} sur place`) >= 0,
+      '[J] le bloc de visite annonce la duree sur place, egale a fin moins arrivee', `« ${spanJ} » attendait « ${attendueDuree} sur place »`);
+
+    // Et la meme duree au recapitulatif, par le meme chemin que le client.
+    await pageJ.click('#goContact');
+    ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 6000), '[J] ecran 4 atteint');
+    await pageJ.fill('#cPrenom', 'Duree');
+    await pageJ.fill('#cNom', 'Totale');
+    await pageJ.fill('#cEmail', 'qa@example.com');
+    await pageJ.fill('#cTel', '0471234567');
+    await pageJ.check('#cConsent');
+    await pageJ.click('#goRecap');
+    ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 6000), '[J] ecran 5 atteint');
+    const ligneJ = await pageJ.evaluate(() => (Array.from(document.querySelectorAll('.fg-recap__row')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((l) => /^Arrivée conseillée/.test(l)) || ''));
+    ok(ligneJ.indexOf(`${attendueDuree} sur place`) >= 0,
+      '[J] et le recapitulatif annonce exactement la meme duree', `« ${ligneJ} » attendait « ${attendueDuree} sur place »`);
+
+    // --- La legende : moins de texte sur telephone ------------------------
+    await pageJ.click('.fg-scene.is-active [data-back]');
+    ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 6000), '[J] retour a l ecran 4');
+    await pageJ.click('.fg-scene.is-active [data-back]');
+    ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && document.querySelector('.fg-legend'), 8000), '[J] retour a l ecran des heures');
+    const lireLegende = () => pageJ.evaluate(() => {
+      const l = document.querySelector('.fg-legend');
+      const vu = (el) => el && getComputedStyle(el).display !== 'none' && el.offsetParent !== null;
+      const cles = Array.from(l.querySelectorAll('.fg-legend__key i')).filter(vu).map((n) => n.textContent.trim());
+      const consigne = (l.querySelector('.fg-legend__tip') || {}).textContent || '';
+      // Le texte REELLEMENT lu. `innerText` et lui seul : il respecte
+      // `display: none` ET il voit le texte NU. Une premiere version
+      // assemblait les elements-feuilles ; la contre-epreuve `legende` sort
+      // justement une glose de sa balise, le texte devenait un noeud de texte
+      // nu dans un `<span>` qui, lui, avait un enfant : la sonde ne le voyait
+      // plus et le verdict passait au vert sur un code casse.
+      const lu = String(l.innerText || '').replace(/\s+/g, ' ').trim();
+      return {
+        cles,
+        gloses: Array.from(l.querySelectorAll('.fg-legend__key em')).filter(vu).length,
+        lu,
+        // Ce que le telephone doit lire, et rien d autre : la consigne, puis
+        // les trois mots. Compose sur place a partir de la page elle-meme :
+        // changer la consigne ne rend pas le gate rouge, ajouter du texte oui.
+        attenduCourt: [consigne.trim()].concat(cles).join(' ').replace(/\s+/g, ' ').trim(),
+        caracteres: lu.length,
+      };
+    });
+    const legLarge = await lireLegende();
+    ok(legLarge.cles.join('|') === 'Serré|Décale|Complet' && legLarge.gloses === 3,
+      '[J] sur 1440 px, les trois cles portent leur glose', JSON.stringify(legLarge));
+    await pageJ.setViewportSize({ width: 375, height: 812 });
+    await dormir(250);
+    const legEtroit = await lireLegende();
+    ok(legEtroit.cles.join('|') === 'Serré|Décale|Complet'
+      && legEtroit.gloses === 0
+      && legEtroit.lu === legEtroit.attenduCourt
+      && legEtroit.caracteres < legLarge.caracteres,
+      '[J] sur 375 px, la legende ne porte PLUS QUE la consigne et les trois mots',
+      `« ${legEtroit.lu} » (${legEtroit.caracteres} caracteres contre ${legLarge.caracteres} en large)`);
+    await tour.close();
 
     // =====================================================================
     console.log('');

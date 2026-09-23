@@ -135,6 +135,19 @@
   }
   function minutesLabel(m) { m = Number(m) || 0; if (m >= 60) { var h = Math.floor(m / 60), r = m % 60; return r ? h + 'h' + String(r).padStart(2, '0') : h + ' heure' + (h > 1 ? 's' : ''); } return m + ' min'; }
   function dureeApprox(m) { m = Number(m) || 0; if (m < 60) return m + ' min'; var h = Math.floor(m / 60), r = m % 60; return 'environ ' + h + ' h' + (r >= 30 ? '30' : ''); }
+  function minutesEntre(a, b) {
+    var pa = /^(\d{1,2}):(\d{2})$/.exec(String(a || ''));
+    var pb = /^(\d{1,2}):(\d{2})$/.exec(String(b || ''));
+    if (!pa || !pb) return 0;
+    var d = (Number(pb[1]) * 60 + Number(pb[2])) - (Number(pa[1]) * 60 + Number(pa[2]));
+    return d > 0 ? d : 0;
+  }
+  function dureeExacte(m) {
+    m = Math.max(0, Math.round(Number(m) || 0));
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60), r = m % 60;
+    return h + ' h' + (r ? ' ' + String(r).padStart(2, '0') : '');
+  }
   function heuresLabel(v) { v = Number(v) || 0; if (v === 0.5) return '30 min'; if (v === 1) return '1 heure'; if (v === 1.5) return '1h30'; if (v === 2) return '2 heures'; return minutesLabel(Math.round(v * 60)); }
   function heureAffichee(t) { return t === '24:00' ? 'minuit' : t; }
   // Les libelles du serveur sont sans accent (une table partagee avec les
@@ -256,7 +269,11 @@
     var html = ETAPES.map(function (e, i) {
       var cls = i < actif || sceneCourante === 'fin' ? 'is-done' : (i === actif ? 'is-active' : '');
       var cliquable = i < actif && sceneCourante !== 'fin';
-      var inner = '<span class="fg-steps__dot"><span>' + (i + 1) + '</span><svg aria-hidden="true"><use href="#i-check"/></svg></span><span class="lbl">' + esc(e.label) + '</span>';
+      // Le rang ne s affiche que dans une colonne etroite (regle CSS), la ou
+      // les quatre autres libelles ont disparu : sans lui, « Créneaux » tout
+      // seul ne dit plus ou on en est.
+      var inner = '<span class="fg-steps__dot"><span>' + (i + 1) + '</span><svg aria-hidden="true"><use href="#i-check"/></svg></span><span class="lbl">' + esc(e.label) + '</span>'
+        + (i === actif && sceneCourante !== 'fin' ? '<span class="fg-steps__of" aria-hidden="true">' + (i + 1) + '/' + ETAPES.length + '</span>' : '');
       return '<li class="fg-steps__item ' + cls + '" ' + (i === actif ? 'aria-current="step"' : '') + '>'
         + (cliquable ? '<button type="button" data-goto="' + e.id + '" aria-label="Revenir à l’étape ' + esc(e.label) + '">' + inner + '</button>' : inner)
         + '</li>';
@@ -526,17 +543,41 @@
   /* --- Etape 1 : le groupe ------------------------------------------------------- */
 
   var paxOut = $('#paxOut'), paxInput = $('#paxInput'), paxHint = $('#paxHint');
+  var paxBox = paxInput.closest('.fg-stepper');
   var PAX_MIN = 1, PAX_MAX = 240;
+  // LA LARGEUR DU CHAMP SUIT SON NOMBRE. Avec une largeur fixe et un texte
+  // cale a droite, les deux em de vide restaient A GAUCHE du chiffre : l encre
+  // « 4 personnes » sortait du centre de la case (Movsar, 2026-09-23).
+  function ajusterLargeurPax() {
+    var n = Math.max(1, String(paxInput.value || state.pax).length);
+    paxInput.style.width = (n + 0.3) + 'ch';
+  }
+  var minuteurBump = 0;
+  function battrePax(sens) {
+    if (reduced) return;
+    paxInput.classList.remove('is-up', 'is-down');
+    void paxInput.offsetWidth;
+    paxInput.classList.add(sens > 0 ? 'is-up' : 'is-down');
+    if (paxBox) {
+      paxBox.classList.add('is-bump');
+      clearTimeout(minuteurBump);
+      minuteurBump = setTimeout(function () { paxBox.classList.remove('is-bump'); }, 420);
+    }
+  }
+  paxInput.addEventListener('animationend', function () { paxInput.classList.remove('is-up', 'is-down'); });
   function rendrePax() {
     paxOut.textContent = personnes(state.pax);
     if (String(paxInput.value) !== String(state.pax) && doc.activeElement !== paxInput) paxInput.value = String(state.pax);
+    ajusterLargeurPax();
     $('#paxMinus').disabled = state.pax <= PAX_MIN;
     $('#paxPlus').disabled = state.pax >= PAX_MAX;
     var lanes = meta && meta.center && meta.center.booking;
     if (lanes && lanes.laneCount && lanes.normalCapacityPerLane) {
       var confort = lanes.laneCount * lanes.normalCapacityPerLane;
+      // Une phrase, pas trois : le detail (combien de groupes, dans quel ordre)
+      // se lit desormais sur la piste concernee, a l etape des horaires.
       paxHint.textContent = state.pax > confort
-        ? 'Grand groupe : au-delà de ' + confort + ' personnes, certaines activités se jouent en plusieurs groupes. On vous le montre à l’étape des horaires.'
+        ? 'Grand groupe : au-delà de ' + confort + ' personnes, certaines activités se jouent en plusieurs passages.'
         : '';
     }
     invaliderDispo();
@@ -547,12 +588,12 @@
     state.pax = n;
     rendrePax();
   }
-  $('#paxMinus').addEventListener('click', function () { poserPax(state.pax - 1); paxInput.value = String(state.pax); });
-  $('#paxPlus').addEventListener('click', function () { poserPax(state.pax + 1); paxInput.value = String(state.pax); });
+  $('#paxMinus').addEventListener('click', function () { poserPax(state.pax - 1); paxInput.value = String(state.pax); ajusterLargeurPax(); battrePax(-1); });
+  $('#paxPlus').addEventListener('click', function () { poserPax(state.pax + 1); paxInput.value = String(state.pax); ajusterLargeurPax(); battrePax(1); });
   // Le nombre se tape aussi : la valeur se prend des qu elle est lisible, et
   // se remet au propre quand le champ est quitte (vide ou hors bornes).
-  paxInput.addEventListener('input', function () { var v = parseInt(paxInput.value, 10); if (isFinite(v) && v >= PAX_MIN) poserPax(v); });
-  paxInput.addEventListener('blur', function () { paxInput.value = String(state.pax); });
+  paxInput.addEventListener('input', function () { ajusterLargeurPax(); var v = parseInt(paxInput.value, 10); if (isFinite(v) && v >= PAX_MIN) poserPax(v); });
+  paxInput.addEventListener('blur', function () { paxInput.value = String(state.pax); ajusterLargeurPax(); });
   paxInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); paxInput.blur(); } });
 
   $('#goActivities').addEventListener('click', function () {
@@ -1004,6 +1045,29 @@
     chip.setAttribute('title', e.etat === 'ok' ? (prop ? 'Heure proposée par l’équipe' : e.raison) : e.raison);
     $('small', chip).textContent = on ? 'choisi' : (prop ? 'proposé' : e.mot);
   }
+  function vaguesPour(cr, id) {
+    var blocs = ((cr && cr.slot && cr.slot.opsPlan && cr.slot.opsPlan.resourceBlocks) || [])
+      .filter(function (b) { return b && b.activityId === id && Number(b.groupWaveCount) > 1; });
+    if (!blocs.length) return null;
+    var total = 0, tailles = {};
+    blocs.forEach(function (b) {
+      total = Math.max(total, Number(b.groupWaveCount) || 0);
+      var i = Number(b.groupWaveIndex) || 1;
+      if (!tailles[i]) tailles[i] = Number(b.players) || 0;
+    });
+    var liste = [];
+    for (var i = 1; i <= total; i += 1) if (tailles[i]) liste.push(tailles[i]);
+    return { total: total, tailles: liste };
+  }
+  function noteVagues(v) {
+    if (!v || !(v.total > 1)) return '';
+    var memes = v.tailles.length === v.total && v.tailles.every(function (n) { return n === v.tailles[0]; });
+    var quoi = memes
+      ? '<b>' + v.total + ' groupes de ' + v.tailles[0] + '</b>'
+      : '<b>' + v.total + ' groupes</b>' + (v.tailles.length ? ' (' + v.tailles.join(' puis ') + ')' : '');
+    return 'Votre groupe ne tient pas en une fois : ' + quoi + ', l’un après l’autre. '
+      + 'L’heure choisie ici est celle du premier, le suivant enchaîne.';
+  }
   function actifsDe(a) {
     var laser = a.activityId === 'laser_game';
     return laser && state.laserParts.length ? state.laserParts : (state.pins[a.activityId] ? [state.pins[a.activityId]] : []);
@@ -1031,6 +1095,12 @@
           : 'Serré à toute heure : tout ne tiendra pas avant la fermeture ce jour-là.';
         note.hidden = !toutSerre;
       }
+      var vagues = $('.fg-track__waves', track);
+      if (vagues) {
+        var v = vaguesPour(state.creneau, a.activityId);
+        vagues.innerHTML = v ? noteVagues(v) : '';
+        vagues.hidden = !v;
+      }
       var reset = $('[data-reset]', track);
       if (reset) reset.hidden = !actifs.length;
       var why = $('.fg-why', track);
@@ -1055,17 +1125,35 @@
     }
     var html = '';
     if (ancres.length) {
-      html += '<p class="fg-legend fg-rise" style="--i:0">Touchez une heure en pointillés pour lire ce qui coince. <b>Serré</b> : possible, mais tout ne tiendra peut-être pas avant la fermeture. <b>Décale</b> : possible, l’autre activité se déplace. <b>Complet</b>, <b>fermé</b>, <b>trop tard</b> : impossible ce jour-là.</p>';
+      // Quarante-huit mots de legende sur un telephone, c etait un mur
+      // (Movsar, 2026-09-23 : « ya trop de texte c est abusé surtout sur
+      // mobile »). Chaque cle PORTE le contour de la puce qu elle decrit :
+      // sous 680 px, les trois contours parlent seuls et la glose disparait.
+      html += '<p class="fg-legend fg-rise" style="--i:0">'
+        + '<span class="fg-legend__tip">Touchez une heure en pointillés pour lire ce qui coince.</span>'
+        + '<span class="fg-legend__key fg-legend__key--soft"><i>Serré</i><em>tout ne tiendra peut-être pas</em></span>'
+        + '<span class="fg-legend__key fg-legend__key--shift"><i>Décale</i><em>l’autre activité se déplace</em></span>'
+        + '<span class="fg-legend__key fg-legend__key--off"><i>Complet</i><em>impossible ce jour-là</em></span>'
+        + '</p>';
       ancres.forEach(function (a, i) {
         var laser = a.activityId === 'laser_game';
         var count = Math.max(1, Number(a.count) || 1);
         var multi = laser && count > 1;
         var detail = (laser ? count + ' partie' + (count > 1 ? 's' : '') + ' · ' : '') + minutesLabel(a.durationMinutes) + (count > 1 ? ' chacune' : '') + (multi ? ' · choisissez jusqu’à ' + count + ' heures' : '');
         html += '<section class="fg-track fg-rise" style="--i:' + (i + 1) + '" data-activity="' + esc(a.activityId) + '" data-count="' + count + '">'
-          + '<div class="fg-track__head"><span class="fg-track__icon"><svg aria-hidden="true"><use href="#' + icone(a.activityId) + '"/></svg></span><b>' + esc(a.label || a.activityId) + '</b><span class="fg-track__detail">' + esc(detail) + '</span>'
-          + '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '" hidden>Laisser l’équipe placer</button>'
-          + '<span class="fg-track__note" role="status" hidden></span></div>'
+          + '<div class="fg-track__head">'
+          + (ancres.length > 1 ? '<span class="fg-track__num" aria-hidden="true">' + (i + 1) + '</span>' : '')
+          + '<span class="fg-track__icon"><svg aria-hidden="true"><use href="#' + icone(a.activityId) + '"/></svg></span><b>' + esc(a.label || a.activityId) + '</b><span class="fg-track__detail">' + esc(detail) + '</span>'
+          + '</div>'
+          // Ce qui EXPLIQUE les heures se lit avant elles ; ce qui AGIT sur
+          // elles se pose apres. Ni l un ni l autre dans le bandeau : lui ne
+          // porte que le rang, l icone, le nom et la duree.
+          + '<p class="fg-track__waves" hidden></p>'
           + rendreChips(a.times || [], multi, a.activityId)
+          + '<div class="fg-track__foot">'
+          + '<span class="fg-track__note" role="status" hidden></span>'
+          + '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '" hidden>Laisser l’équipe placer</button>'
+          + '</div>'
           + '<p class="fg-why" role="status" hidden></p>'
           + '</section>';
       });
@@ -1183,6 +1271,15 @@
       if (vus[cle]) return false; vus[cle] = 1; return true;
     }).sort(function (a, b) { return String(a.startTime).localeCompare(String(b.startTime)); });
   }
+  // LE TEMPS SUR PLACE, de l arrivee conseillee a la fin annoncee. Les deux
+  // heures viennent du plan du serveur : la duree n est donc jamais un
+  // troisieme chiffre a cote de deux autres, c est leur ecart. Additionner les
+  // minutes des activites aurait menti pour un grand groupe (la ligne du
+  // programme porte la duree d UN service, pas des deux).
+  function surPlace(debut, fin) {
+    var m = minutesEntre(debut, fin);
+    return m > 0 ? ' · <b>' + esc(dureeExacte(m)) + '</b> sur place' : '';
+  }
   // Le bloc « votre visite » : l arrivee, chaque activite reservee a son heure,
   // les activites libres a votre rythme, la fin, le prix. Toutes les activites
   // de la visite y sont, jamais seulement celles a creneau.
@@ -1239,7 +1336,7 @@
     }
     if (!lignes) lignes = '<li class="fg-visit__step"><b>' + esc(slot.time) + '</b><span>Début</span><small></small></li>';
     var html2 = '<div class="fg-visit"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
-      + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + '</span>' : '')
+      + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(plan.arrivalTime, fin) + '</span>' : '')
       + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>le reste se règle sur place</small>') + '</span>' : '')
       + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
@@ -1333,7 +1430,7 @@
         + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : '<small>à votre rythme</small>') + '</span></div>';
     });
     html += '<div class="fg-recap__sep"></div>'
-      + (plan.arrivalTime ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>Arrivée conseillée à <b>' + esc(plan.arrivalTime) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + '</span></div>' : '')
+      + (plan.arrivalTime ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>Arrivée conseillée à <b>' + esc(plan.arrivalTime) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(plan.arrivalTime, fin) + '</span></div>' : '')
       + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + (complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place') + '</div>'
       + '<div class="fg-total__amount" id="totalAmount" data-total="' + prix + '">' + (prix > 0 ? esc(euros(prix)) : 'Sur place') + '</div></div>'
       + '<div class="fg-total__pay"><svg aria-hidden="true"><use href="#i-card"/></svg><span>Paiement <br class="fg-total__br">sur place</span></div></div>'

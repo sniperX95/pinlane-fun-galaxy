@@ -127,15 +127,29 @@ function construire(racine) {
 // dans le TEXTE d entree. Retirer les commentaires change cette frequence, donc
 // les lettres choisies, sans changer le programme d une virgule. Les comparer
 // ferait rougir ce gate sur une difference qui n existe pas.
+// UNE FORME CANONIQUE EST UN POINT FIXE. `minifySyntax` n est pas idempotent
+// en une passe : la seconde inline une constante utilisee une seule fois
+// (mesure du 2026-09-23 sur assets/app-main.js, 915 782 puis 915 610 octets,
+// stable ensuite). Depuis que `tools/build-public.js` applique lui aussi
+// `minifySyntax`, la copie preparee arrivait ici DEJA reduite une fois : la
+// comparer a une source reduite une seule fois faisait rougir quatre fichiers
+// sur une difference qui n existe pas. On reduit donc des deux cotes jusqu a
+// ce que le texte ne bouge plus.
 function formeCanonique(eb, texte, loader) {
-  return eb.transformSync(texte, {
-    loader,
-    target: 'esnext',
-    legalComments: 'none',
-    minifyWhitespace: true,
-    minifySyntax: true,
-    minifyIdentifiers: false,
-  }).code;
+  let courant = texte;
+  for (let passe = 0; passe < 4; passe += 1) {
+    const suivant = eb.transformSync(courant, {
+      loader,
+      target: 'esnext',
+      legalComments: 'none',
+      minifyWhitespace: true,
+      minifySyntax: true,
+      minifyIdentifiers: false,
+    }).code;
+    if (suivant === courant) return courant;
+    courant = suivant;
+  }
+  return courant;
 }
 
 function main() {

@@ -67,8 +67,17 @@
 //       masque ne fait jamais tomber le focus sur la page.
 //   [D] CONTACT : le recapitulatif ENTIER est a cote du formulaire (ouvert,
 //       pose sur la photo, a cote de la colonne, contenu par la scene) ; un
-//       envoi vide marque les 4 champs et la case ; rempli, il passe au
-//       recapitulatif.
+//       envoi vide marque les 4 champs et la case, chaque erreur liee a son
+//       champ (aria-invalid, aria-describedby), celle de la case dite en
+//       mots ; le premier champ a corriger prend le focus et fait seul son
+//       petit « non », une fois, et chaque erreur glisse en place ; Entree
+//       fait avancer d un champ sans envoyer (du telephone a la case si elle
+//       n est pas cochee) ; Entree sur un numero faux garde le champ, qui
+//       reprend le focus pour que son erreur soit lue ; « +32 (0) » passe ;
+//       une faute de frappe dans le domaine de l e-mail fait proposer
+//       l adresse probable, en question, que le clavier atteint et qu un
+//       toucher accepte, jamais pour le domaine d un vrai pays different ;
+//       rempli, il passe au recapitulatif.
 //   [E] RECAP + ENVOI : le total est LE prix de la reponse ; le paiement sur
 //       place dit ses deux moyens (carte, especes) avec leurs deux logos ; le
 //       recapitulatif de l ecran des coordonnees est EXACTEMENT celui-ci ; le
@@ -77,16 +86,30 @@
 //       rien d autre sur la personne ; plus d etoiles au-dessus du titre ; le
 //       titre final dit ce que le serveur a repondu (reservation confirmee, ou
 //       demande envoyee) ; la barre des etapes finit pleine, balayee une fois.
+//       Le recapitulatif relit les coordonnees qui partiront, sans heure
+//       redite ; « Valider ma reservation » dit qu aucun paiement ne se fait
+//       en ligne, sans promettre d e-mail ; chaque etape se modifie d un toucher
+//       sans perdre les coordonnees ; le telephone part sans son « (0) » et
+//       notes vide sans mot pour l equipe. L ecran final est un recu :
+//       l arrivee du plan rendu, chaque activite, l e-mail annonce seulement
+//       parce que la reponse le met en file, ce que couvre le montant ;
+//       l anneau suit le verdict (coche et confettis : confirmee).
 //   [F] EMBARQUE : embed.js monte /fungalaxy/<centre>?embed=1 ; dans le cadre,
 //       notre bandeau et nos halos disparaissent, le fond de reference est
 //       celui du site (les bords de la photo s y fondent), la hauteur suit le
 //       corps, chaque etape previent l hote, la reservation pousse
-//       pinlane_booking dans le dataLayer sans donnee personnelle.
+//       pinlane_booking dans le dataLayer sans donnee personnelle ; le mot
+//       pour l equipe est repris au recapitulatif et part dans notes.
 //   [G] TELEPHONE (390 px) : calendrier dans l ecran, aucun defilement
 //       horizontal, pastilles et heures dans leurs cases, poser une heure ne
 //       fait rien sauter ; a l ecran des coordonnees, le recapitulatif se
-//       replie sous sa ligne de resume et un bouton de 44 px le deplie.
-//   [H] MOUVEMENT REDUIT : plus aucune animation, rideau et halos compris.
+//       replie sous sa ligne de resume et un bouton de 44 px le deplie, les
+//       champs ecrivent en 16 px, une adresse proposee tres longue se coupe
+//       dans la colonne ; au recapitulatif, une erreur d envoi s affiche sous le
+//       bouton et dans l ecran, un 409 ramene aux heures recalculees, une
+//       coupure ne pousse pas a renvoyer.
+//   [H] MOUVEMENT REDUIT : plus aucune animation, rideau et halos compris ;
+//       la coche de l ecran final est dessinee d office.
 //   [K] LES PHOTOS DU CENTRE, QUI TOURNENT (2026-09-23) : le script ne cite
 //       que des photos dont la provenance est prouvee (image d origine sur le
 //       site du client, page qui dit le centre, envoi apres le changement
@@ -116,7 +139,8 @@
 //       plus, centre, 32 px au-dessus, 72 en dessous) ; le cadre prend la
 //       hauteur du formulaire, a 1440 px comme sur telephone (ou il grandit
 //       avec lui) ; sur telephone, un menu, rien ne deborde ; une reservation
-//       va jusqu a l ecran final ;
+//       va jusqu a l ecran final (une demande que l equipe doit verifier ne
+//       s y fete pas : enveloppe, aucun confetti, accuse de reception) ;
 //       formulaire eteint par l equipe (interrupteur d embed.js), la page
 //       renvoie au parcours classique du centre au lieu de rester vide.
 //   [I] FORMULES A L ECRAN + FUN RUN QUI TOURNE (2026-09-22) ; a zero, la
@@ -125,11 +149,11 @@
 //       une reponse des heures ne sert qu a la demande qui l a produite (le
 //       mode, la formule, le programme), meme arrivee apres un changement
 //       d onglet. Toucher une formule refusee dit sa raison a la voix. Un
-//       jour sans horaire n est
-//       plus une impasse : un seul avis (dit aussi a la voix), et deux
-//       sorties de 44 px dans la zone des heures (jour ou groupe, formule),
-//       qui menent ou elles disent ; une panne des disponibilites se dit a
-//       la voix avec le texte de son avis.
+//       jour sans horaire n est plus une impasse : un seul avis (dit aussi a
+//       la voix), et deux sorties de 44 px dans la zone des heures (jour ou
+//       groupe, formule), qui menent ou elles disent ; une panne des
+//       disponibilites se dit a la voix avec le texte de son avis. Une
+//       formule garde au recapitulatif l heure de debut envoyee.
 //   [J] LES TOURS DU 2026-09-23 : aucune photo de l ANCIEN centre nulle part
 //       (ni citee, ni dans le depot) ; le compteur
 //       de personnes prend la largeur de son nombre et son encre tombe au
@@ -244,6 +268,29 @@
 // liens (le telephone du centre redevient du texte), groupesrecap (le recap
 // retaise le 2e groupe), plagerepliee (le menu d une plage repliee ne dit
 // plus l heure du 2e groupe qui y tombe). Toutes : JS servi casse.
+//
+// CONTRE-PREUVES DES COORDONNEES, DU RECAPITULATIF ET DE L ECRAN FINAL
+// (2026-09-23) : entree (Entree envoie de nouveau le formulaire), lie (un
+// champ en erreur ne se dit plus invalide), relu (un champ qui a deja le
+// focus ne le reprend pas : son erreur n est pas lue), zero (le « (0) » part
+// au serveur), fautemail (plus aucune adresse proposee), pays (l adresse d un
+// vrai pays est « corrigee »), garde (la proposition se redessine sous le
+// geste, le clavier la perd), note (le mot pour l equipe ne part pas),
+// mailcoupe (une adresse proposee longue deborde du telephone : FEUILLE
+// servie cassee), zoom (les champs repassent a 15 px : feuille cassee), nudge
+// (le premier champ a corriger ne bouge plus), nudgereste (sa classe reste
+// posee), errglisse (les erreurs apparaissent d un coup : feuille cassee),
+// quirecap (le recapitulatif tait le telephone), modifier (« le jour ou le
+// groupe » ne ramene plus a l ecran 1 : PAGE servie cassee), debutformule
+// (une formule perd son heure de debut au recapitulatif), rechoisir
+// (« Choisir d autres horaires » ne redemande rien au serveur), alertefraiche
+// (l erreur perimee survit a « Modifier »), sousledoigt (l erreur nait hors
+// de l ecran), mailfin (l ecran final tait l e-mail mis en file), accuse (une
+// demande annonce une confirmation), arriveefin (l arrivee quitte l ecran
+// final), couvre (le montant se dit complet quand il ne l est pas), fete (une
+// demande a verifier a ses confettis), anneau (elle a sa coche), cochecalme
+// (en mouvement reduit, la coche attend un trace qui ne vient pas : feuille
+// cassee). Sauf mention : JS servi casse.
 //
 // CONTRE-PREUVES DE LA BARRE QUI SUIT : collee (la barre ne colle plus :
 // FEUILLE servie cassee), toujours (elle se dit collee meme a sa place),
@@ -442,7 +489,7 @@ const MUTATIONS = {
   titrefin: ["poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');", "poserTitre($('#t-fin'), 'Demande<br><em>envoyée</em>');"],
   choisir: ["chip.dataset.ok = e.etat === 'hard' || e.sous === 'hard' ? 'false' : 'true';", "chip.dataset.ok = e.etat === 'hard' || e.etat === 'wave' ? 'false' : 'true';"],
   accents: ["if (w.offsetTop > haut + 2 && ACCENT_HAUT.test(w.textContent.toUpperCase().normalize('NFD'))) w.classList.add('w--accent');", 'void haut;'],
-  liens: ["Une question ? ' + lienContact(contact) + '</p>'", "Une question ? ' + esc(contact.phone) + '</p>'"],
+  liens: ["Une question ? ' + lienContact(contact) + '</span></p>'", "Une question ? ' + esc(contact.phone) + '</span></p>'"],
   groupesrecap: ['        if (groupes.length > 1) {', '        if (false) {'],
   plagerepliee: ["      else if (vagues.length) sum = vagues.join(', ') + ' · ' + sum;", '      else if (false) sum = vagues.join();'],
   toujours: ['colle = place.getBoundingClientRect().top > bas + 0.5;', 'colle = true;'],
@@ -488,6 +535,27 @@ const MUTATIONS = {
   voixpanne: ["if (sceneCourante === 'heures') dire(err.message", "if (false) dire(err.message"],
   voixrefus: ['dire(pourquoi.textContent.trim());', 'void 0;'],
   focusperdu: ['cible.focus({ preventScroll: true });', 'void cible;'],
+  entree: ["if (e.key !== 'Enter' || e.isComposing) return;", 'return;'],
+  lie: ["if (msg) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');", 'void 0;'],
+  relu: ['if (premier === doc.activeElement) premier.blur(); ', ''],
+  zero: ["telephone: champ('cTel').value.replace(", "telephone: champ('cTel').value.trim(), brut: champ('cTel').value.replace("],
+  fautemail: ['(d === 1 || (d === 2 && best.length >= 9))', 'false'],
+  pays: ["if (tld !== best.split('.').pop() && PAYS.indexOf(tld) >= 0) return '';", ''],
+  garde: ["if ((boiteMail.dataset.s || '') === s) return;", ''],
+  note: ["notes: state.contact.note || '',", "notes: '',"],
+  nudge: ["secouer(premier.closest('.fg-field, .fg-check'));", 'void 0;'],
+  nudgereste: ["if (w) w.classList.remove('is-nudge');", 'void w;'],
+  quirecap: ["esc(state.contact.email) + '&nbsp;· ' + esc(state.contact.telephone) + '</p>'", "esc(state.contact.email) + '</p>'"],
+  debutformule: ['var sansDebut = state.heure && !lignes.some(', 'var sansDebut = false && !lignes.some('],
+  rechoisir: ["state.dispo = null; signaturePistes = ''; goContact.disabled = true;", 'void 0;'],
+  alertefraiche: ["erreurEnvoi(''); rendreRecap();", 'rendreRecap();'],
+  sousledoigt: ['if (html) { posterHauteur(); montrer(confirmErr); }', 'if (html) { posterHauteur(); }'],
+  mailfin: ["return c && c.channel === 'email' && c.status !== 'draft' && (", 'return false && ('],
+  accuse: ["(mailQ.templateId === 'confirmation' ? 'La confirmation part à ' :", "(true ? 'La confirmation part à ' :"],
+  arriveefin: ["(arrivee ? '. Arrivée conseillée à <b>'", "(false ? '. Arrivée conseillée à <b>'"],
+  couvre: ["(prixComplet ? ', à régler'", "(true ? ', à régler'"],
+  fete: ['if (confirme && !reduced) for', 'if (!reduced) for'],
+  anneau: ["confirme ? '#i-check' : '#i-mail'", "'#i-check'"],
 };
 // Les contre-preuves de la FEUILLE : une regle servie cassee expres. La feuille
 // est relue en LF, quelle que soit la fin de ligne du depot.
@@ -510,6 +578,10 @@ const MUTATIONS_CSS = {
   margefocus: ['.fg-card, .fg-pill, .fg-tab { scroll-margin: 8px; }\n', ''],
   tiroirfocus: ['transform: translateY(-6px); visibility: hidden; ', 'transform: translateY(-6px); '],
   menufocus: ['.fg-period__inner { min-height: 0; overflow: hidden; visibility: hidden; ', '.fg-period__inner { min-height: 0; overflow: hidden; '],
+  mailcoupe: ['min-height: 44px; max-width: 100%; padding: 0 4px; overflow-wrap: anywhere; ', 'min-height: 44px; padding: 0 4px; '],
+  zoom: ['zoome sur le champ touche. */\n  font-size: 16px;', 'zoome sur le champ touche. */\n  font-size: 15px;'],
+  errglisse: ['  .fg-field.is-invalid .fg-field__error, #consentWrap.is-invalid + .fg-field__error { animation: fg-err 0.24s var(--fg-ease-out) both; }\n', ''],
+  cochecalme: ['@media (prefers-reduced-motion: no-preference) {\n  .fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n', '.fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n@media (prefers-reduced-motion: no-preference) {\n'],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -524,6 +596,9 @@ const MUTATIONS_HTML = {
   ],
   unevoix: [
     ['<div id="hourZone">', '<div id="hourZone" aria-live="polite">'],
+  ],
+  modifier: [
+    ['data-goto="date">le jour ou le groupe</button>', 'data-goto="recap">le jour ou le groupe</button>'],
   ],
 };
 // Les contre-preuves de la page /reserver/libramont (fungalaxy-site.html).
@@ -1830,11 +1905,67 @@ async function main() {
       recapContact ? `${recapContact.items.map((i) => i.nom).join(' + ')} · ${recapContact.montant} · ${recapContact.paiement}` : 'absent');
     ok(geo.ouvert && geo.bouton === 'none' && geo.ligne === 'none' && geo.gauche >= geo.colonneFin && geo.gauche >= geo.artGauche && geo.droite <= geo.artDroite && geo.bas <= geo.sceneBas,
       '[D] sur ordinateur, il est ouvert, pose sur la photo a cote de la colonne du formulaire, et la scene le contient entier', JSON.stringify(geo));
+    // ENTREE FAIT AVANCER D UN CHAMP (le clavier du telephone dit « suivant ») :
+    // jamais un envoi a moitie rempli, ni l erreur de la case avant qu on ait
+    // pu la cocher.
+    await page.focus('#cPrenom'); await page.keyboard.press('Enter');
+    ok(await page.evaluate(() => document.activeElement.id === 'cNom' && Boolean(document.querySelector('.fg-scene[data-scene="contact"].is-active')) && !document.querySelector('#contactForm .is-invalid')),
+      '[D] Entree dans le prenom passe au nom, sans envoyer', await page.evaluate(() => document.activeElement.id || document.activeElement.tagName));
+    await page.focus('#cTel'); await page.keyboard.press('Enter');
+    ok(await page.evaluate(() => document.activeElement.id === 'cConsent' && !document.querySelector('#contactForm .is-invalid')),
+      '[D] Entree dans le telephone, case non cochee, passe a la case sans afficher d erreur', await page.evaluate(() => document.activeElement.id || document.activeElement.tagName));
+    // Chaque animation qui demarre dans le formulaire, notee : l envoi vide
+    // doit faire glisser chaque erreur et secouer le SEUL premier champ.
+    await page.evaluate(() => { window.__qaAnims = []; document.querySelector('#contactForm').addEventListener('animationstart', (e) => window.__qaAnims.push(`${e.animationName}:${e.target.id || e.target.className}`)); });
     await page.click('#goRecap');
     ok(await attendre(page, () => document.querySelectorAll('.fg-field.is-invalid').length === 4 && document.querySelector('#consentWrap').classList.contains('is-invalid'), 3000), '[D] un envoi vide marque les 4 champs et la case');
     ok(await page.evaluate(() => Boolean(document.querySelector('.fg-scene[data-scene="contact"].is-active'))), '[D] et reste sur l ecran du contact');
-    await page.fill('#cPrenom', 'Test'); await page.fill('#cNom', 'Pinlane'); await page.fill('#cEmail', 'qa@example.com'); await page.fill('#cTel', '0491 30 16 67');
+    const liees = await page.evaluate(() => ({
+      champs: ['cPrenom', 'cNom', 'cEmail', 'cTel'].map((id) => { const i = document.getElementById(id); const d = document.getElementById(i.getAttribute('aria-describedby') || ''); return { id, invalide: i.getAttribute('aria-invalid'), message: d ? d.textContent.trim() : '' }; }),
+      caseInvalide: document.querySelector('#cConsent').getAttribute('aria-invalid'),
+      caseMessage: document.querySelector('#eConsent').textContent,
+      focus: document.activeElement.id,
+    }));
+    ok(liees.champs.every((c) => c.invalide === 'true' && c.message.length > 0) && liees.caseInvalide === 'true' && liees.caseMessage === 'Cochez cette case pour continuer.' && liees.focus === 'cPrenom',
+      '[D] chaque erreur est liee a son champ, la case dit quoi faire, le focus va au premier champ', JSON.stringify(liees));
+    ok(await attendre(page, () => { const a = window.__qaAnims || []; return a.filter((x) => x.indexOf('fg-err:') === 0).length === 5 && a.filter((x) => x.indexOf('fg-nudge:') === 0).join() === 'fg-nudge:cPrenom'; }, 2000),
+      '[D] a l envoi, chaque erreur (la case comprise) glisse en place, et seul le premier champ a corriger fait son petit « non »', JSON.stringify(await page.evaluate(() => window.__qaAnims)));
+    ok(await attendre(page, () => !document.querySelector('.is-nudge') && document.activeElement && document.activeElement.id === 'cPrenom', 2000), '[D] le premier champ a corriger prend le focus et son petit « non » ne reste pas pose');
+    // UNE FAUTE DE FRAPPE DANS LE DOMAINE : une question, que le clavier
+    // atteint (la proposition ne se redessine pas sous le geste) et qu un
+    // toucher accepte ; jamais pour l adresse d un vrai pays different.
+    const suggestion = () => page.evaluate(() => { const s = document.querySelector('#emailSuggest'); const b = s.querySelector('[data-mail]'); return { texte: s.textContent.replace(/\s+/g, ' ').trim(), mail: b ? b.dataset.mail : '' }; });
+    await page.fill('#cEmail', 'camille@gmial.com'); await page.focus('#cTel');
+    ok(await attendre(page, () => { const b = document.querySelector('#emailSuggest [data-mail]'); return b && b.dataset.mail === 'camille@gmail.com' && document.querySelector('#emailSuggest').textContent.replace(/\s+/g, ' ').trim() === 'Vouliez-vous dire camille@gmail.com ?'; }, 3000),
+      '[D] « camille@gmial.com » : l adresse probable est proposee, en question', JSON.stringify(await suggestion()));
+    await page.focus('#cEmail'); await page.keyboard.press('Tab');
+    ok(await page.evaluate(() => document.activeElement.dataset.mail === 'camille@gmail.com'), '[D] au clavier, Tab atteint la proposition (elle ne se redessine pas sous le geste)', await page.evaluate(() => document.activeElement.id || document.activeElement.tagName));
+    await page.keyboard.press('Enter');
+    ok(await page.evaluate(() => document.querySelector('#cEmail').value === 'camille@gmail.com' && document.activeElement.id === 'cTel' && document.querySelector('#emailSuggest').innerHTML === ''),
+      '[D] l accepter remplace l adresse, passe au telephone et efface la question', await page.evaluate(() => `${document.querySelector('#cEmail').value} / ${document.activeElement.id}`));
+    await page.fill('#cEmail', 'luca@hotmail.it'); await page.focus('#cTel');
+    const italie = await suggestion();
+    await page.fill('#cEmail', 'anna@ymail.com'); await page.focus('#cTel');
+    const ymail = await suggestion();
+    ok(italie.texte === '' && ymail.texte === '', '[D] une adresse correcte d un autre pays (hotmail.it) ou d un domaine connu (ymail.com) ne recoit aucune proposition', JSON.stringify({ italie, ymail }));
+    // UN NUMERO FAUX, ENTREE DANS LE CHAMP (case cochee, donc envoi) : on reste
+    // sur le champ, qui REPREND le focus pour que son erreur soit lue.
+    await page.fill('#cPrenom', 'Test'); await page.fill('#cNom', 'Pinlane'); await page.fill('#cEmail', 'qa@example.com'); await page.fill('#cTel', '12');
+    ok(await page.evaluate(() => document.querySelector('#emailSuggest').innerHTML === ''), '[D] une adresse loin de la liste (qa@example.com) ne recoit aucune proposition');
     await page.check('#cConsent');
+    ok(await page.evaluate(() => document.querySelector('#eConsent').textContent === '' && !document.querySelector('#cConsent').hasAttribute('aria-invalid')), '[D] cocher la case efface son erreur');
+    await page.focus('#cTel');
+    await page.evaluate(() => { window.__focusTel = 0; document.querySelector('#cTel').addEventListener('focus', () => { window.__focusTel += 1; }); });
+    await page.keyboard.press('Enter');
+    const numeroFaux = await page.evaluate(() => ({
+      contact: Boolean(document.querySelector('.fg-scene[data-scene="contact"].is-active')), focus: document.activeElement.id,
+      invalide: document.querySelector('#cTel').getAttribute('aria-invalid'), message: document.querySelector('#eTel').textContent,
+      repris: window.__focusTel, autres: document.querySelectorAll('.fg-field.is-invalid').length,
+    }));
+    ok(numeroFaux.contact && numeroFaux.focus === 'cTel' && numeroFaux.invalide === 'true' && numeroFaux.message === 'Vérifiez ce numéro (exemple : 0471 23 45 67).' && numeroFaux.repris >= 1 && numeroFaux.autres === 1,
+      '[D] Entree sur un numero faux : on reste sur le champ, qui reprend le focus pour que l erreur soit lue', JSON.stringify(numeroFaux));
+    await page.fill('#cTel', '+32 (0)491 30 16 67');
+    ok(await page.evaluate(() => !document.querySelector('#contactForm [aria-invalid="true"]')), '[D] la notation +32 (0) est acceptee');
     await page.click('#goRecap');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000), '[D] rempli, il passe au recapitulatif');
 
@@ -1869,13 +2000,39 @@ async function main() {
     ok(recap.lignes[0] && recap.lignes[0].indexOf(jourLong(mock.DATE)) === 0 && recap.lignes[1] === '6 personnes', '[E] date et groupe en tete', recap.lignes.slice(0, 2).join(' | '));
     ok(plat(recap.tag) === plat(jourMock && jourMock.holiday ? jourMock.holiday.label : ''), '[E] l etiquette ferie/conge du jour n apparait que si le calendrier la porte', recap.tag || 'aucune, comme le calendrier');
     ok(recap.etoiles === 0, '[E] plus aucune etoile au-dessus du titre final');
-    const reponsePose = page.waitForResponse((r) => r.url().indexOf('/api/public-reservations') >= 0 && r.request().method() === 'POST', { timeout: 15000 }).catch(() => null);
+    // LES COORDONNEES RELUES telles qu elles partiront (le « (0) » retire), et
+    // aucune heure redite : chaque activite porte deja la sienne.
+    const qui = await page.evaluate(() => (Array.from(document.querySelectorAll('#recap p.fg-recap__detail')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((t) => /Au nom de/.test(t)) || ''));
+    ok(qui === 'Au nom de Test Pinlane · qa@example.com · +32 491 30 16 67', '[E] le recapitulatif relit les coordonnees qui partiront, sans heure redite (chaque activite porte la sienne)', qui);
+    const fermeture = await page.evaluate(() => ({ bouton: document.querySelector('#confirmBtn').textContent.trim(), note: document.querySelector('.fg-scene.is-active .fg-confirm__note').textContent.replace(/\s+/g, ' ').trim(), partira: /confirmation partira/.test(document.querySelector('#recap').textContent) }));
+    ok(fermeture.bouton === 'Valider ma réservation' && fermeture.note === 'Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.' && !fermeture.partira, '[E] le bouton valide, aucun paiement en ligne, aucun envoi promis', JSON.stringify(fermeture));
+    // CHAQUE ETAPE SE MODIFIE D UN TOUCHER, et l aller-retour ne perd rien.
+    await page.click('.fg-scene.is-active .fg-edit [data-goto="date"]');
+    ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="date"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000), '[E] Modifier le jour ou le groupe ramene a l ecran 1');
+    await page.click('#goActivities');
+    await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000);
+    await page.click('#goHours');
+    await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#goContact').disabled, 8000);
+    await page.click('#goContact');
+    await attendre(page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000);
+    const garde = await page.evaluate(() => [document.querySelector('#cPrenom').value, document.querySelector('#cEmail').value, document.querySelector('#cConsent').checked]);
+    ok(JSON.stringify(garde) === JSON.stringify(['Test', 'qa@example.com', true]), '[E] revenir modifier ne vide pas les coordonnees', JSON.stringify(garde));
+    await page.click('#goRecap');
+    ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000) && ((await lireRecap(page, '#recap')) || {}).total === o6.prix, '[E] et le recapitulatif revient identique (meme total)');
+    const reponsePose =page.waitForResponse((r) => r.url().indexOf('/api/public-reservations') >= 0 && r.request().method() === 'POST', { timeout: 15000 }).catch(() => null);
     await page.click('#confirmBtn');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 10000), '[E] la confirmation mene a l ecran final');
     const corps = mock.dernierePose.body || {};
     const fin = await page.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim());
     ok(new RegExp(`Réservation n° ${corps.__id || '\\d+'}`).test(fin) && fin.indexOf('qa@example.com') >= 0, '[E] l ecran final cite le numero rendu et l adresse', fin.slice(0, 120));
-    ok(await page.evaluate(() => document.querySelectorAll('#finBurst i').length === 14), '[E] la gerbe d etincelles est posee (14 points)');
+    // L ECRAN FINAL EST UN RECU : l e-mail n est annonce que parce que la
+    // reponse l a mis en file ; l arrivee est celle du plan rendu ; le
+    // programme nomme chaque activite choisie.
+    ok(/La confirmation part à qa@example\.com\./.test(fin), '[E] l ecran final ne promet l e-mail que parce que la reponse le met en file', fin.slice(0, 200));
+    const arriveeFin = (corps.opsPlan || {}).arrivalTime;
+    ok(Boolean(arriveeFin) && fin.indexOf(`Arrivée conseillée à ${arriveeFin}.`) >= 0, '[E] l ecran final donne l heure d arrivee du plan rendu', arriveeFin || 'plan sans arrivee');
+    const iProg = fin.indexOf('Au programme : ');
+    ok(iProg >= 0 && PROGRAMME.every((p) => fin.indexOf(nomDe(p.activityId), iProg) > iProg), '[E] l ecran final nomme chaque activite choisie', fin.slice(iProg, iProg + 120));
     // LES PHOTOS NE CHANGENT PAS PENDANT LA RESERVATION (« pour chaque
     // nouvelle reservation, pas que ca change pendant la resa ») : chaque
     // ecran traverse a montre la photo tiree pour lui au chargement.
@@ -1885,6 +2042,8 @@ async function main() {
       '[E] les six photos tirees au chargement sont celles que le parcours a montrees, sans changer en route',
       bougees.map((x) => `${x.scene} : ${x.photo || 'rien'}${x.charge ? '' : ' (jamais chargee)'} au lieu de ${(photosDepart.find((y) => y.scene === x.scene) || {}).photo}`).join(', ') || photosFin.map((x) => x.photo).join(' > '));
     ok(/Montant estimé/.test(fin) && /à régler sur place, par carte ou en espèces\./.test(fin), '[E] l ecran final dit le montant et les deux moyens de paiement', (fin.match(/Montant estimé[^.]*\./) || [''])[0]);
+    ok(!o6.complet, 'MONTAGE [E] le prix du parcours est incomplet (les arcades se reglent sur place) : ce que couvre le montant est prouve sur un vrai cas');
+    ok((fin.indexOf('hors activités réglées sur place') >= 0) === !o6.complet, '[E] l ecran final dit ce que le montant couvre, comme le recapitulatif', (fin.match(/Montant estimé[^.]*\./) || [''])[0]);
     // LE TITRE DIT CE QUI S EST PASSE, lu dans la reponse du serveur : une
     // reservation confirmee d office, ou une demande que l equipe verifiera.
     const rp = await reponsePose;
@@ -1895,6 +2054,8 @@ async function main() {
     // innerText suit la mise en capitales de la feuille : on compare les MOTS.
     ok(Boolean(rp) && titreFin.toLowerCase() === (confirmeQa ? 'réservation confirmée' : 'demande envoyée'),
       `[E] le titre final dit ce que le serveur a repondu (ici : ${confirmeQa ? 'reservation confirmee' : 'demande a verifier'})`, `« ${titreFin} »`);
+    const anneauE = await page.evaluate(() => ({ confettis: document.querySelectorAll('#finBurst i').length, icone: (document.querySelector('.fg-done__ring svg use') || { getAttribute: () => 'aucune' }).getAttribute('href') }));
+    ok(anneauE.confettis === (confirmeQa ? 14 : 0) && anneauE.icone === (confirmeQa ? '#i-check' : '#i-mail'), `[E] l anneau suit le verdict du serveur (ici : ${confirmeQa ? 'coche et 14 confettis' : 'enveloppe, aucun confetti'})`, JSON.stringify(anneauE));
     ok(await barreEst(page, '11111') && await page.evaluate(() => {
       const items = Array.from(document.querySelectorAll('.fg-scene.is-active .fg-steps__item'));
       return items.length === 5
@@ -1906,8 +2067,9 @@ async function main() {
     const pt = (corps.preference && corps.preference.preferredTimes) || {};
     ok(corps.startTime === o6.time && pt.bowling === S && pt.laser_game === LT && JSON.stringify(corps.preference.laserGameTimes) === JSON.stringify([LT]), '[E] l heure du creneau, les heures posees (dont la serree) et la partie de laser voyagent avec la demande', `${corps.startTime} / ${JSON.stringify(pt)} / parties ${JSON.stringify(corps.preference && corps.preference.laserGameTimes)}`);
     ok(corps.opsPlan && JSON.stringify(corps.opsPlan.resourceBlocks) === JSON.stringify(o6.opsPlan.resourceBlocks), '[E] le plan envoye est celui de la reponse retenue');
-    ok(corps.name === 'Test Pinlane' && corps.email === 'qa@example.com' && corps.phone === '0491 30 16 67', '[E] le contact part tel que saisi');
+    ok(corps.name === 'Test Pinlane' && corps.email === 'qa@example.com' && corps.phone === '+32 491 30 16 67', '[E] le contact part tel que saisi, sans le (0) qui fausserait le numero', JSON.stringify(corps.phone));
     ok(!('consent' in corps) && !('cConsent' in corps), '[E] la case « j accepte » ne cree aucun champ d API inexistant');
+    ok(corps.notes === '', '[E] sans mot pour l equipe, notes part vide', JSON.stringify(corps.notes));
     ok(erreursPage.length === 0, '[E] aucune erreur JavaScript de tout le parcours', erreursPage.slice(0, 3).join(' | '));
     await ctx.close();
 
@@ -1962,11 +2124,15 @@ async function main() {
     ok(await attendre(f, () => !document.querySelector('#goContact').disabled, 25000), '[F] le plan par defaut du serveur active « Garder » sans rien poser');
     await f.click('#goContact');
     await f.fill('#cPrenom', 'Test'); await f.fill('#cNom', 'Cadre'); await f.fill('#cEmail', 'cadre@example.com'); await f.fill('#cTel', '0491301667');
+    await f.fill('#cNote', 'Anniversaire');
     await f.check('#cConsent');
     await f.click('#goRecap');
     ok(await attendre(f, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000), '[F] recap atteint dans le cadre');
+    const motRecap = await f.evaluate(() => ((document.querySelector('#recap .fg-recap__note') || {}).textContent || '').replace(/\s+/g, ' ').trim());
+    ok(motRecap === 'Votre mot pour l’équipe : « Anniversaire »', '[F] le recapitulatif reprend le mot pour l equipe, tel qu il partira', `« ${motRecap} »`);
     await f.click('#confirmBtn');
     ok(await attendre(pageHote, () => Array.isArray(window.dataLayer) && window.dataLayer.some((e) => e.event === 'pinlane_booking'), 10000), '[F] la reservation pousse pinlane_booking dans le dataLayer de l hote');
+    ok((mock.dernierePose.body || {}).notes === 'Anniversaire', '[F] le mot pour l equipe part au serveur dans notes', JSON.stringify((mock.dernierePose.body || {}).notes));
     const signal = await pageHote.evaluate(() => (window.dataLayer.find((e) => e.event === 'pinlane_booking') || {}).pinlane || {});
     ok(Number(signal.reservationId) > 0 && signal.center === 'libramont' && signal.currency === 'EUR' && signal.status === 'confirmed', '[F] le signal porte numero, centre, devise, statut', JSON.stringify(signal));
     ok(!('email' in signal) && !('name' in signal) && !('phone' in signal) && JSON.stringify(signal).indexOf('example.com') < 0, '[F] et aucune donnee personnelle');
@@ -1978,6 +2144,7 @@ async function main() {
     // =====================================================================
     const tel = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const pageTel = await tel.newPage();
+    const erreursTel = []; pageTel.on('pageerror', (e) => erreursTel.push(e.message));
     await pageTel.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
     ok(await attendre(pageTel, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), '[G] le catalogue est lu');
     const mesure = () => pageTel.evaluate(() => {
@@ -2035,6 +2202,76 @@ async function main() {
     const deplie = await lireRappelTel();
     ok(deplie.etendu === 'true' && deplie.corps && deplie.items === 2 && deplie.dedans && deplie.deborde <= 1,
       '[G] toucher le bouton deplie le recapitulatif entier (les deux activites), dans l ecran', JSON.stringify(deplie));
+    // 16 PX : sous cette taille, Safari sur iPhone zoome sur le champ touche.
+    const tailles = await pageTel.evaluate(() => ['cPrenom', 'cNom', 'cEmail', 'cTel', 'cNote'].map((id) => parseFloat(getComputedStyle(document.getElementById(id)).fontSize)));
+    ok(tailles.every((t) => t >= 16), '[G] ecran 4 : chaque champ ecrit en 16 px au moins (pas de zoom sur iPhone)', JSON.stringify(tailles));
+    // UNE ADRESSE PROPOSEE TRES LONGUE se coupe dans la colonne du champ (le
+    // corps de la page masque ce qui deborde : rien ne defilerait, le bout
+    // de l adresse serait coupe), et reste une cible de 44 px.
+    await pageTel.fill('#cEmail', 'marieclaire.vandenberghedupont.famille@hotmial.com'); await pageTel.focus('#cTel');
+    await attendre(pageTel, () => { const s = document.querySelector('#emailSuggest'); return s.querySelector('[data-mail]') && s.getAnimations().every((a) => a.playState === 'finished'); }, 3000);
+    const propTel = await pageTel.evaluate(() => {
+      const b = document.querySelector('#emailSuggest [data-mail]');
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      const champ = b.closest('.fg-field').getBoundingClientRect();
+      // La largeur de l adresse sur UNE ligne, mesuree sur une copie : le
+      // cas n est un vrai cas que si elle depasse la colonne.
+      const copie = b.cloneNode(true);
+      copie.style.cssText = 'position:absolute;left:0;top:0;visibility:hidden;white-space:nowrap;max-width:none';
+      b.parentNode.appendChild(copie);
+      const uneLigne = Math.round(copie.getBoundingClientRect().width);
+      copie.remove();
+      return { mail: b.dataset.mail, vu: r.width > 0 && r.height > 0 && getComputedStyle(b).visibility !== 'hidden', h: Math.round(r.height), droite: Math.round(r.right), colonne: Math.round(champ.right), largeurColonne: Math.round(champ.width), uneLigne, sw: b.scrollWidth, cw: b.clientWidth, deborde: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    });
+    ok(Boolean(propTel) && propTel.uneLigne > propTel.largeurColonne, 'MONTAGE [G] l adresse proposee est plus longue que la colonne sur une ligne : la mesure porte sur un vrai cas', JSON.stringify(propTel && { uneLigne: propTel.uneLigne, colonne: propTel.largeurColonne }));
+    ok(Boolean(propTel) && propTel.mail === 'marieclaire.vandenberghedupont.famille@hotmail.com' && propTel.vu && propTel.h >= 44 && propTel.droite <= propTel.colonne && propTel.sw <= propTel.cw + 1 && propTel.deborde <= 1,
+      '[G] ecran 4 : une adresse proposee tres longue se coupe dans la colonne, et sa cible fait 44 px', JSON.stringify(propTel));
+    // L ERREUR D ENVOI SOUS LE DOIGT : sur telephone, le doigt est sur le
+    // bouton, en bas ; l alerte du haut serait hors de l ecran.
+    await pageTel.fill('#cPrenom', 'Test'); await pageTel.fill('#cNom', 'Pinlane'); await pageTel.fill('#cEmail', 'qa@example.com'); await pageTel.fill('#cTel', '0491 30 16 67');
+    await pageTel.check('#cConsent');
+    await pageTel.tap('#goRecap');
+    const recapPose = () => attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering') && document.querySelector('.fg-scene[data-scene="recap"]').getAnimations({ subtree: true }).every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity), 6000);
+    ok(await recapPose(), '[G] ecran 5 atteint');
+    const autreJour = plusJours(mock.DATE, 7);
+    let modeEnvoi = '409';
+    await pageTel.route('**/api/public-reservations', (r) => (modeEnvoi === 'coupure' ? r.abort() : r.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, message: 'x', alternatives: [{ date: autreJour, startTime: '18:00' }] }) })));
+    const ras = await pageTel.evaluate(() => { const btn = document.querySelector('#confirmBtn'); window.scrollTo(0, btn.getBoundingClientRect().bottom + scrollY - innerHeight + 4); return Math.round(innerHeight - btn.getBoundingClientRect().bottom); });
+    ok(ras >= 0 && ras < 40, '[G] (prerequis) le bouton de confirmation est au ras du bas de l ecran', `${ras} px sous lui`);
+    await pageTel.tap('#confirmBtn');
+    ok(await attendre(pageTel, () => {
+      const e = document.querySelector('#confirmErr');
+      if (!e || e.hidden) return false;
+      const r = e.getBoundingClientRect();
+      return r.height > 0 && r.top >= document.querySelector('#confirmBtn').getBoundingClientRect().bottom && r.top >= 0 && r.bottom <= innerHeight && e.getAnimations().every((a) => a.playState === 'finished');
+    }, 4000), '[G] 409 : l erreur apparait SOUS le bouton, dans l ecran', JSON.stringify(await pageTel.evaluate(() => { const r = document.querySelector('#confirmErr').getBoundingClientRect(); return { haut: Math.round(r.top), bas: Math.round(r.bottom), ecran: innerHeight }; })));
+    const err409 = await pageTel.evaluate(() => ({ texte: document.querySelector('#confirmErr').textContent.replace(/\s+/g, ' ').trim(), alerte: document.querySelector('#fgAlert').hidden, recap: Boolean(document.querySelector('.fg-scene[data-scene="recap"].is-active')) }));
+    ok(err409.texte.indexOf('Ce créneau ne peut plus être réservé en ligne.') === 0 && err409.texte.indexOf('à 18:00') >= 0 && err409.alerte && err409.recap,
+      '[G] 409 : le creneau refuse est dit avec l autre possibilite du serveur ; l alerte du haut reste cachee, on reste au recapitulatif', JSON.stringify(err409));
+    await pageTel.tap('.fg-scene[data-scene="recap"] [data-back]');
+    ok(await attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), '[G] « vos coordonnees » ramene a l ecran 4');
+    await pageTel.tap('#goRecap');
+    ok(await recapPose() && await pageTel.evaluate(() => document.querySelector('#confirmErr').hidden), '[G] revenu par « Modifier », l ancienne erreur a disparu');
+    await pageTel.tap('#confirmBtn');
+    ok(await attendre(pageTel, () => !document.querySelector('#confirmErr').hidden && document.querySelector('#confirmErr [data-rechoisir]'), 4000), '[G] (prerequis) le 409 revient, avec « Choisir d autres horaires »');
+    const redemande = pageTel.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
+    await pageTel.tap('#confirmErr [data-rechoisir]');
+    ok(Boolean(await redemande) && await attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#goContact').disabled && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000),
+      '[G] « Choisir d autres horaires » ramene aux heures et les redemande au serveur');
+    await pageTel.tap('#goContact');
+    await attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
+    await pageTel.tap('#goRecap');
+    await recapPose();
+    modeEnvoi = 'coupure';
+    await pageTel.tap('#confirmBtn');
+    const telCentre = ((meta.center || {}).contact || {}).phone;
+    ok(await attendre(pageTel, (avecTel) => {
+      const e = document.querySelector('#confirmErr');
+      return !e.hidden && /^Impossible de savoir si votre demande est partie\. Avant de la renvoyer, /.test(e.textContent.replace(/\s+/g, ' ').trim()) && (!avecTel || Boolean(e.querySelector('a[href^="tel:"]')));
+    }, 4000, Boolean(telCentre)), '[G] une coupure ne pousse pas a renvoyer : on ne sait pas si la demande est partie, le centre se joint d un toucher', await pageTel.evaluate(() => document.querySelector('#confirmErr').textContent.replace(/\s+/g, ' ').trim()));
+    await pageTel.unroute('**/api/public-reservations');
+    ok(erreursTel.length === 0, '[G] aucune erreur JavaScript sur telephone', erreursTel.slice(0, 3).join(' | '));
     await tel.close();
 
     // =====================================================================
@@ -2223,9 +2460,29 @@ async function main() {
     await pageV.click('#gridFor .fg-card--formule[data-formule="f1"]');
     ok(await attendre(pageV, () => document.querySelector('#gridFor .fg-card--formule[data-formule="f1"]').getAttribute('aria-checked') === 'true' && !document.querySelector('#goHours').disabled, 3000),
       '[I] une formule valable se coche et ouvre la suite');
+    const reponseF = pageV.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
     await pageV.click('#goHours');
     ok(await attendre(pageV, () => document.querySelectorAll('#hourZone .fg-chip').length > 0 && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000),
       '[I] et la FORMULE 1 trouve des heures ce samedi');
+    // UNE FORMULE N A PAS D HEURE PAR LIGNE (« a votre rythme ») : le
+    // recapitulatif garde l heure de debut envoyee, sinon aucune heure de
+    // debut n y serait plus dite.
+    const rF = await reponseF;
+    let dF = {};
+    try { dF = rF ? await rF.json() : {}; } catch (error) { dF = {}; }
+    const heureF = ((dF.slots || [])[0] || {}).time || '';
+    ok(Boolean(heureF) && await attendre(pageV, () => !document.querySelector('#goContact').disabled, 25000), '[I] (prerequis) la formule a un creneau retenu', heureF || 'aucun');
+    await pageV.click('#goContact');
+    await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
+    await pageV.fill('#cPrenom', 'Formule'); await pageV.fill('#cNom', 'Debut'); await pageV.fill('#cEmail', 'qa@example.com'); await pageV.fill('#cTel', '0471234567');
+    await pageV.check('#cConsent');
+    await pageV.click('#goRecap');
+    ok(await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 6000), '[I] la formule va jusqu au recapitulatif');
+    const quiF = await pageV.evaluate(() => (Array.from(document.querySelectorAll('#recap p.fg-recap__detail')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((t) => /Au nom de/.test(t)) || ''));
+    ok(Boolean(heureF) && quiF.indexOf(`Début de la visite à ${heureF}Au nom de Formule Debut`) === 0, '[I] une formule garde au recapitulatif l heure de debut envoyee', `« ${quiF} » attendait le debut a ${heureF}`);
+    // Retour aux heures de la FORMULE 1 par le lien du recapitulatif : la
+    // suite part de cet ecran.
+    await pageV.click('.fg-scene.is-active .fg-edit [data-goto="heures"]');
     // UNE REPONSE NE SERT QU A LA DEMANDE QUI L A PRODUITE. Changer d onglet ne
     // vide rien : Continuer doit redemander les heures du mode choisi, et une
     // reponse des activites arrivee apres le passage aux formules ne sert
@@ -2983,6 +3240,7 @@ async function main() {
     await pl.click('#goContact');
     await attendre(pl, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 8000);
     await pl.fill('#cPrenom', 'Lisible'); await pl.fill('#cNom', 'Photo'); await pl.fill('#cEmail', 'qa@example.com'); await pl.fill('#cTel', '0471234567');
+    await pl.fill('#cNote', 'Gâteau à mettre au frais');
     await pl.check('#cConsent');
     await lisibleEcran('coordonnees', false);
     await pl.click('#goRecap');
@@ -3118,9 +3376,33 @@ async function main() {
       await fm.check('#cConsent');
       await fm.click('#goRecap');
       await attendre(fm, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000);
+      // UNE DEMANDE A VERIFIER : la reponse est forcee sur ce que le vrai
+      // handler rend quand l equipe doit valider (api/public-reservations.js :
+      // validationStatus staff_review, human_review_required), avec l accuse
+      // de reception qu il met alors en file au lieu de la confirmation
+      // (lib/ops-communications.js). Le mock, lui, confirme toujours.
+      await ctxM.route((u) => u.pathname === '/api/public-reservations', async (route) => {
+        if (route.request().method() !== 'POST') { await route.continue(); return; }
+        const r = await route.fetch();
+        const j = await r.json();
+        j.reservation = Object.assign({}, j.reservation, { validationStatus: 'staff_review' });
+        j.ops = Object.assign({}, j.ops, { validationStatus: 'staff_review', autoDecision: 'human_review_required' });
+        j.communications = (j.communications || []).map((c) => Object.assign({}, c, { templateId: c.templateId === 'confirmation' ? 'request_received' : c.templateId }));
+        await route.fulfill({ response: r, json: j });
+      });
       await fm.click('#confirmBtn');
       ok(await attendre(fm, () => document.querySelector('.fg-scene[data-scene="fin"].is-active') && /n°\s*\d+/.test((document.querySelector('#finBody .fg-done__ref') || {}).textContent || ''), 10000),
         '[M] la reservation va jusqu a l ecran final, avec son numero');
+      const finM = await fm.evaluate(() => ({
+        titre: document.querySelector('#t-fin').innerText.replace(/\s+/g, ' ').trim().toLowerCase(),
+        confettis: document.querySelectorAll('#finBurst i').length,
+        icone: (document.querySelector('.fg-done__ring svg use') || { getAttribute: () => 'aucune' }).getAttribute('href'),
+        texte: document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim(),
+      }));
+      ok(finM.titre === 'demande envoyée', 'MONTAGE [M] la reponse forcee « a verifier » arrive jusqu a l ecran final', JSON.stringify(finM.titre));
+      ok(finM.confettis === 0 && finM.icone === '#i-mail', '[M] une demande que l equipe doit verifier ne se fete pas : enveloppe dans l anneau, aucun confetti', JSON.stringify({ confettis: finM.confettis, icone: finM.icone }));
+      ok(/Un accusé de réception part à site@example\.com\./.test(finM.texte) && finM.texte.indexOf('La confirmation part') < 0 && /vous répond sous 24 heures ouvrables\./.test(finM.texte),
+        '[M] une demande a verifier annonce l accuse de reception que la reponse met en file, et le delai ecrit dans cet accuse', finM.texte.slice(0, 240));
     }
     // A 1920 px : le formulaire garde les 1440 px qu il aurait dans leur page.
     await pm.setViewportSize({ width: 1920, height: 1080 });
@@ -3717,6 +3999,10 @@ async function main() {
     const anims = await pageCalme.evaluate(() => Array.from(document.querySelectorAll('.fg-scene.is-active .fg-title .w > span, .fg-scene.is-active .fg-art img, .fg-scene.is-active .fg-rise, .fg-curtain, .fg-glow i')).map((el) => getComputedStyle(el).animationName).filter((n) => n && n !== 'none'));
     ok(anims.length === 0, '[H] avec prefers-reduced-motion, plus aucune animation (rideau et halos compris)', anims.join(', ') || 'aucune');
     ok(await pageCalme.evaluate(() => getComputedStyle(document.querySelector('.fg-curtain')).visibility === 'hidden'), '[H] sans animation, le rideau n existe pas (invisible par defaut)');
+    // L anneau de l ecran final est dans la page des le chargement : son style
+    // se lit sans refaire le parcours.
+    const cocheCalme = await pageCalme.evaluate(() => { const s = document.querySelector('.fg-done__ring svg'); if (!s) return null; const cs = getComputedStyle(s); return { tirets: cs.strokeDasharray, decalage: cs.strokeDashoffset }; });
+    ok(Boolean(cocheCalme) && (cocheCalme.tirets === 'none' || parseFloat(cocheCalme.decalage) === 0), '[H] sans animation, la coche de l ecran final est dessinee d office (plus de trait en attente d un trace qui ne vient pas)', JSON.stringify(cocheCalme));
     await calme.close();
   } finally {
     await browser.close();

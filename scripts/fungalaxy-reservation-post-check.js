@@ -19,7 +19,8 @@
 //     n4-reservation-post-check, recopie : ce gate ne doit pas casser l autre).
 // La reservation doit aboutir : le handler l insere, l ecran final dit SON
 // numero, et la ligne inseree porte ce que l ecran a montre (centre, jour,
-// heure, groupe, prix, contact).
+// heure, groupe, prix, contact, mot pour l equipe) ; une formule garde au
+// recapitulatif l heure de debut envoyee.
 //
 // AUCUNE ECRITURE EN PRODUCTION, AUCUN ENVOI. Du fichier .env, seule l adresse
 // de la base est lue (jamais une cle d envoi) ; la connexion est refermee
@@ -305,10 +306,14 @@ async function unParcours(page, pool, cas) {
   await f.click('#goContact');
   await attendre(f, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 8000);
   await f.fill('#cPrenom', 'Verification'); await f.fill('#cNom', cas.nom); await f.fill('#cEmail', 'verification@example.com'); await f.fill('#cTel', '0470000000');
+  // Le mot facultatif pour l equipe (jamais commence par « [ » : le double
+  // en memoire relit en JSON une valeur qui commence ainsi).
+  await f.fill('#cNote', 'Gâteau au frais');
   await f.check('#cConsent');
   await f.click('#goRecap');
   await attendre(f, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && document.querySelector('#totalAmount'), 8000);
   const vu = await f.evaluate(() => ({ total: Number(document.querySelector('#totalAmount').dataset.total), texte: document.querySelector('#recap').textContent.replace(/\s+/g, ' ').trim() }));
+  if (cas.formuleId) ok(/Début de la visite à \d{2}:\d{2}/.test(vu.texte), `[${cas.nom}] formule : le recapitulatif garde l heure de debut envoyee`, vu.texte.slice(-160));
   const avant = pool.inserted.length;
   await f.click('#confirmBtn');
   const fini = await attendre(f, () => document.querySelector('.fg-scene[data-scene="fin"].is-active') && document.querySelector('#finBody .fg-done__ref'), 20000);
@@ -325,6 +330,7 @@ async function unParcours(page, pool, cas) {
   const prix = Number(ligne.price != null ? ligne.price : ligne.total_price);
   ok(Number.isFinite(prix) && Math.abs(prix - vu.total) < 0.01, `[${cas.nom}] le prix insere = le total affiche au recapitulatif`, `insere ${prix}, affiche ${vu.total}`);
   ok(ligne.email === 'verification@example.com' && /Verification/.test(String(ligne.name || ligne.customer_name || '')), `[${cas.nom}] le contact insere = celui saisi`, JSON.stringify({ nom: ligne.name || ligne.customer_name, email: ligne.email }));
+  ok(ligne.notes === 'Gâteau au frais', `[${cas.nom}] le mot pour l equipe est enregistre par le vrai handler (colonne notes)`, JSON.stringify(ligne.notes));
   if (cas.formuleId) ok(String(ligne.formule_id || ligne.formula_id || (ligne.program && ligne.program.formuleId) || '') === String(cas.formuleId) || JSON.stringify(ligne).indexOf(`"${cas.formuleId}"`) >= 0, `[${cas.nom}] la formule inseree = celle choisie`, cas.formuleId);
   console.log(`      ligne inseree : ${Object.keys(ligne).sort().join(', ')}`);
   page.off('response', ecoute);

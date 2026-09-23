@@ -124,9 +124,9 @@
   var ETAPES = [
     { id: 'date', label: 'Date & groupe' },
     { id: 'activites', label: 'Activités' },
-    { id: 'heures', label: 'Créneaux' },
-    { id: 'contact', label: 'Contact' },
-    { id: 'recap', label: 'Confirmation' },
+    { id: 'heures', label: 'Horaires' },
+    { id: 'contact', label: 'Coordonnées' },
+    { id: 'recap', label: 'Validation' },
   ];
   var sceneCourante = 'date';
 
@@ -614,6 +614,16 @@
 
   var alerte = $('#fgAlert');
   function direErreur(msg) { alerte.textContent = msg; alerte.hidden = !msg; if (msg) posterHauteur(); }
+  // UNE SEULE VOIX pour les gestes : une phrase courte, deja ecrite a
+  // l ecran. Videe puis reposee 80 ms plus tard : la meme phrase deux fois
+  // de suite se relit.
+  var vocal = $('#fgLive'), vocalMinuteur = 0;
+  function dire(t) {
+    if (!vocal) return;
+    clearTimeout(vocalMinuteur);
+    vocal.textContent = '';
+    if (t) vocalMinuteur = setTimeout(function () { vocal.textContent = t; }, 80);
+  }
 
   /* --- Etape 1 : le jour (calendrier par mois) ----------------------------------- */
 
@@ -1099,7 +1109,7 @@
           + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
           + '<ul class="fg-for__list">' + (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>'
           + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '')
-          + (v.ok ? '' : '<span class="fg-for__off" role="status"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(v.pourquoi) + '</span>')
+          + (v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(v.pourquoi) + '</span>')
           + '</div></li>';
       }).join('');
       return '<section class="fg-fam"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '<span>' + parFamille[cle].length + ' formule' + (parFamille[cle].length > 1 ? 's' : '') + '</span></h3>'
@@ -1190,7 +1200,9 @@
     // rendrait muette pour un lecteur d ecran comme pour un doigt.
     if (card && card.classList.contains('is-refus')) {
       var pourquoi = card.querySelector('.fg-for__off');
-      if (pourquoi) { pourquoi.classList.remove('is-pulse'); void pourquoi.offsetWidth; pourquoi.classList.add('is-pulse'); }
+      // La raison se dit aussi : dans une carte role="radio", les enfants sont
+      // presentationnels, une region vivante posee dedans ne parlait pas.
+      if (pourquoi) { pourquoi.classList.remove('is-pulse'); void pourquoi.offsetWidth; pourquoi.classList.add('is-pulse'); dire(pourquoi.textContent.trim()); }
       return;
     }
     if (!card || card.classList.contains('is-off')) return;
@@ -1246,6 +1258,10 @@
   /* --- Etape 3 : les heures ---------------------------------------------------- */
 
   var hourZone = $('#hourZone'), hourSub = $('#hourSub'), goContact = $('#goContact'), keepLabel = $('#keepLabel'), hourSum = $('#hourSum');
+  // L attente du premier calcul : la forme d une piste, jamais un nombre de
+  // pistes devine. Ni piste, ni bloc de visite, ni heure dedans : rien ne
+  // doit passer pour une reponse.
+  var SQUELETTE = '<div class="fg-skel"><p class="fg-skel__txt">On regarde ce qui est libre…</p><div class="fg-skel__card" aria-hidden="true"><i></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i></div></div>';
   var requeteEnCours = 0;
   var reveilGarder = false;    // « Garder » s eveille a la premiere reponse apres l arrivee sur les heures, pas a chaque heure posee
   var signaturePistes = '';    // les pistes rendues (activites + heures) : sinon, on met a jour sur place
@@ -1293,16 +1309,46 @@
     hourSub.innerHTML = '<b>' + esc(jourCourt(state.date)) + '</b> · ' + esc(personnes(state.pax)) + ' · ' + esc(nomsChoisis())
       + (j && j.ouvert ? '<span class="fg-sub__open">Ouvert ' + esc(j.horaire) + (j.periode ? ' · ' + esc(j.periode.label) : '') + '</span>' : '');
     if (state.dispo) { rendreHeures(); return; }
-    hourZone.innerHTML = '<p class="fg-loading">On regarde ce qui est libre…</p>';
+    hourZone.innerHTML = SQUELETTE;
     hourSum.textContent = '';
     reveilGarder = true;
     chargerPlan();
+  }
+  // LE FOCUS NE TOMBE JAMAIS SUR LA PAGE. Un recalcul qui cache ou remplace
+  // ce qui avait le focus (« Revenir a l heure proposee » masque, proposition
+  // reecrite, zone reecrite en erreur, pistes reconstruites) le rend au plus
+  // proche : l heure retenue de la meme piste, sinon son menu ouvert ; depuis
+  // le bloc de la visite, son premier bouton ; sinon le premier menu ouvert,
+  // sinon le titre (tabindex -1 pose par aller). Au clavier, la cible est
+  // amenee dans ce qui se voit (montrer, cadre compris).
+  function repereFocus() {
+    var f = doc.activeElement;
+    if (!f || !hourZone.contains(f)) return null;
+    var t = f.closest('.fg-track');
+    return { piste: t ? t.dataset.activity : null, plan: Boolean(f.closest('#planZone')), clavier: focusClavier(f) };
+  }
+  function rendreFocus(r) {
+    if (!r) return;
+    var f = doc.activeElement;
+    if (f && f !== body && f.isConnected && getComputedStyle(f).visibility !== 'hidden') return;
+    var piste = r.piste !== null ? $('.fg-track[data-activity="' + r.piste + '"]', hourZone) : null;
+    var cible = (piste && ($('.fg-period.is-open .fg-chip[aria-selected="true"]', piste) || $('.fg-period.is-open .fg-period__btn', piste)))
+      || (r.plan && $('#planZone button'))
+      || $('.fg-period.is-open .fg-period__btn', hourZone) || $('#t-hour');
+    if (!cible) return;
+    cible.focus({ preventScroll: true });
+    if (r.clavier) montrer(cible);
   }
   // Une seule route pour tout : sans heure posee, le serveur compose la
   // premiere combinaison possible et rend la grille ; avec des heures posees,
   // il recalcule la grille autour d elles et le plan qui en decoule.
   function chargerPlan() {
     var id = ++requeteEnCours, cle = cleDemande();
+    var repere = repereFocus();
+    // La case touchee qui attend cette reponse : l onde partira d elle si le
+    // plan du serveur la retient.
+    var attente = $('.fg-chip.is-pending', hourZone), pisteAttente = attente ? attente.closest('.fg-track') : null;
+    var idAttente = pisteAttente ? pisteAttente.dataset.activity : '', heureAttente = attente ? attente.dataset.time : '';
     goContact.disabled = true;
     hourZone.classList.add('is-busy');
     fetch(urlDispo(), { credentials: 'omit' }).then(function (r) { return r.json(); })
@@ -1315,8 +1361,12 @@
         state.heure = slot ? slot.time : '';
         hourZone.classList.remove('is-busy');
         rendreHeures();
+        $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); });
+        var posee = idAttente ? $('.fg-track[data-activity="' + idAttente + '"] .fg-chip[data-time="' + heureAttente + '"]', hourZone) : null;
+        if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) rejouer(posee, 'is-pose');
         goContact.disabled = !slot;
         if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }
+        rendreFocus(repere);
       })
       .catch(function (err) {
         if (id !== requeteEnCours) return;
@@ -1325,6 +1375,8 @@
         hourSum.textContent = '';
         signaturePistes = '';
         posterHauteur();
+        if (sceneCourante === 'heures') dire(err.message || 'Impossible de charger les disponibilités.');
+        rendreFocus(repere);
       });
   }
   // Les etats d une heure, lus dans la reponse :
@@ -1512,7 +1564,7 @@
       // le 2026-09-23 : 11:30 retenue au laser, le 2e groupe a 12:00 dans
       // l apres-midi, invisible).
       var vagues = chips.filter(function (c) { return c.classList.contains('is-wave') && c.dataset.wave; }).map(function (c) { return 'groupe ' + JSON.parse(c.dataset.wave).rang + ' à ' + c.dataset.time; });
-      var sum = n ? n + ' créneau' + (n > 1 ? 'x' : '') : 'rien de possible';
+      var sum = n > 1 ? n + ' au choix' : n === 1 ? 'une seule possible' : 'rien de possible';
       if (choisis.length) sum = 'choisi ' + choisis.join(' et ') + ' · ' + sum;
       else if (vagues.length) sum = vagues.join(', ') + ' · ' + sum;
       else if (propose) sum = 'proposé ' + propose + ' · ' + sum;
@@ -1570,7 +1622,7 @@
     chip.classList.toggle('is-off', e.etat === 'hard');
     chip.classList.toggle('is-wave', e.etat === 'wave');
     chip.setAttribute('aria-selected', String(on));
-    chip.setAttribute('title', e.etat === 'ok' ? (prop ? 'Heure proposée par l’équipe' : e.raison) : e.raison);
+    chip.setAttribute('title', e.etat === 'ok' ? (prop ? 'Heure proposée pour votre visite' : e.raison) : e.raison);
     $('small', chip).textContent = on ? 'choisi' : (prop ? 'proposé' : e.mot);
   }
   // LES RAISONS D UNE PLAGE, SOUS SES HEURES. Une ligne par raison, avec toutes
@@ -1730,22 +1782,20 @@
           + rendreChips(a.times || [], multi, a.activityId)
           + '<div class="fg-track__foot">'
           + '<span class="fg-track__note" role="status" hidden></span>'
-          + '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '" hidden>Laisser l’équipe placer</button>'
+          + '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '" hidden>Revenir à l’heure proposée</button>'
           + '</div>'
           + '</section>';
       });
     } else {
       var slots = (d.slots || []).map(function (s) { return { time: s.time, ok: true }; });
-      if (!slots.length) {
-        html += '<div class="fg-notice fg-notice--warn"><b>' + esc(d.message || 'Aucun créneau ce jour-là.') + '</b></div>';
-      } else {
-        html += '<section class="fg-track fg-rise" style="--i:1" data-activity="">' + rendreChips(slots, false, 'slot') + '</section>';
-      }
+      // Sans heure a proposer, l avis unique est celui du bloc de la visite
+      // (rendreVisite) : un second avis ici disait deux fois la meme chose.
+      if (slots.length) html += '<section class="fg-track fg-rise" style="--i:1" data-activity="">' + rendreChips(slots, false, 'slot') + '</section>';
     }
     html += '<div id="planZone" class="fg-rise" style="--i:' + (ancres.length + 2) + '"></div>';
     hourZone.innerHTML = html;
     signaturePistes = signature;
-    keepLabel.textContent = ancres.length ? 'Garder ces horaires' : 'Garder ce créneau';
+    keepLabel.textContent = ancres.length ? 'Ces horaires me vont' : 'Cette heure me va';
     if (ancres.length) majPistes(d);
     else { $$('.fg-chip', hourZone).forEach(function (chip) { majChip(chip, { time: chip.dataset.time, ok: true }, state.heure ? [state.heure] : [], ''); }); $$('.fg-track', hourZone).forEach(majPeriodes); }
     rendreVisite();
@@ -1801,6 +1851,8 @@
       state.heure = t;
       state.creneau = { slot: direct, reponse: state.dispo };
       $$('.fg-chip', track).forEach(function (c) { majChip(c, { time: c.dataset.time, ok: true }, [t], ''); });
+      // Le creneau vient des slots du serveur : il est retenu tel quel.
+      rejouer(chip, 'is-pose');
       rendreVisite();
       goContact.disabled = false;
       return;
@@ -1833,6 +1885,9 @@
     } else {
       state.pins[idA] = t;
     }
+    // L heure touchee s entoure tout de suite, avant la reponse : le toucher
+    // est entendu. chargerPlan relit cette case a la reponse.
+    $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); }); chip.classList.add('is-pending');
     chargerPlan();
   });
   // Les parties POSEES d une activite (une partie peut compter plusieurs
@@ -1857,6 +1912,9 @@
       if (vus[cle]) return false; vus[cle] = 1; return true;
     }).sort(function (a, b) { return String(a.startTime).localeCompare(String(b.startTime)); });
   }
+  // La case « choisie » vient de state.pins : elle le reste meme quand le serveur
+  // ne rend aucun plan. L onde ne confirme que ce que le plan place vraiment.
+  function planRetient(id, t) { return blocsDuPlan(state.creneau).some(function (b) { return b.activityId === id && b.startTime === t; }); }
   // LE TEMPS SUR PLACE, de l arrivee conseillee a la fin annoncee. Les deux
   // heures viennent du plan du serveur : la duree n est donc jamais un
   // troisieme chiffre a cote de deux autres, c est leur ecart. Additionner les
@@ -1875,16 +1933,28 @@
     var d = state.dispo || {};
     var cr = state.creneau;
     if (!cr) {
-      var html = '<div class="fg-notice fg-notice--warn"><b>' + esc(d.message || 'Cette combinaison d’heures ne tient pas.') + '</b>';
+      // UN JOUR SANS ISSUE N EST PLUS UNE IMPASSE. Avec des heures posees,
+      // ce sont elles qui coincent : une seule sortie, rendre la main a
+      // l equipe. Sans heure posee, c est le jour, le groupe ou le programme :
+      // on y retourne d un toucher (le fil des etapes, lui, est loin en haut).
+      var aPose = Object.keys(state.pins).length > 0 || state.laserParts.length > 0;
+      var msgNotice = d.message || (aPose ? 'Avec les heures choisies, la visite ne tient pas.' : 'Aucun horaire possible ce jour-là pour votre visite.');
+      var html = '<div class="fg-notice fg-notice--warn"><b>' + esc(msgNotice) + '</b>';
       var sugg = Array.isArray(d.suggestions) ? d.suggestions.slice(0, 4) : [];
+      var propos = [];
       if (sugg.length) {
         html += '<span class="fg-suggest">' + sugg.map(function (s, i) {
           var times = s.times || {};
           var texte = s.label || Object.keys(times).map(function (k) { return nomActivite(k) + ' ' + times[k]; }).join(' · ');
+          propos.push(texte);
           return '<button type="button" class="fg-suggest__btn" data-suggest="' + esc(JSON.stringify(times)) + '" style="--i:' + i + '">' + esc(texte) + '</button>';
         }).join('') + '</span>';
       }
+      html += '<span class="fg-suggest">' + (aPose
+        ? '<button type="button" class="fg-suggest__btn" data-reset-tout>Laisser l’équipe tout placer</button>'
+        : '<button type="button" class="fg-suggest__btn" data-goto="date">Changer de jour ou de groupe</button><button type="button" class="fg-suggest__btn" data-goto="activites">' + (state.onglet === 'formules' ? 'Changer de formule' : 'Changer d’activités') + '</button>') + '</span>';
       zone.innerHTML = html + '</div>';
+      if (sceneCourante === 'heures') dire(msgNotice + (propos.length ? ' Autres horaires proposés : ' + propos.join(' ; ') + '.' : ''));
       hourSum.textContent = '';
       posterHauteur();
       return;
@@ -1903,12 +1973,20 @@
     // « Votre visite », lus aux memes endroits de la meme reponse.
     var depart = plan.arrivalTime || slot.time || '';
     var span = depart && fin ? '<b>' + esc(depart) + ' → ' + esc(heureAffichee(fin)) + '</b>' + (slot.visitEndsAtClose ? ' (fermeture)' : ' environ') : '';
+    var sumAvant = $$('b', hourSum).map(function (b) { return b.textContent; });
     hourSum.innerHTML = span + (prix > 0 ? (span ? ' · ' : '') + '<b>' + esc(euros(prix)) + '</b>' + (complet ? '' : ' + sur place') : '');
+    // Ce qui a change dans le resume monte a sa place, une fois. Les <b> sont
+    // neufs a chaque appel (innerHTML) : la classe sur un noeud neuf suffit.
+    // Resume vide avant (arrivee, erreur, combinaison refusee) : rien ne roule.
+    var sumApres = $$('b', hourSum);
+    sumApres.forEach(function (b, k) { if (k < sumAvant.length && b.textContent !== sumAvant[k]) b.classList.add('is-maj'); });
+    var prixBouge = prix > 0 && sumApres.length > 0 && sumApres[sumApres.length - 1].classList.contains('is-maj');
     var lignes = '';
     if (plan.arrivalTime) lignes += '<li class="fg-visit__step fg-visit__step--in"><b>' + esc(plan.arrivalTime) + '</b><span>Arrivée</span><small>on vous accueille</small></li>';
     // Le dernier bloc de chaque activite porte ce qui reste a placer.
     var dernierBloc = {};
     blocs.forEach(function (b) { dernierBloc[b.activityId] = b; });
+    var dits = [];
     blocs.forEach(function (b) {
       var it = items.filter(function (x) { return x.activityId === b.activityId; })[0] || {};
       var nom = it.name || nomActivite(b.activityId);
@@ -1921,6 +1999,7 @@
       if (b.groupWaveCount > 1) detail += (detail ? ' · ' : '') + 'groupe ' + b.groupWaveIndex + '/' + b.groupWaveCount;
       if (dernierBloc[b.activityId] === b && resteSurPlace(total, posees)) detail += ' · ' + resteSurPlace(total, posees);
       var bouge = adaptation && adaptation.deplace === b.activityId;
+      dits.push(nom + ' à ' + b.startTime + (b.groupWaveCount > 1 ? ', groupe ' + b.groupWaveIndex + ' sur ' + b.groupWaveCount : '') + (bouge ? ', déplacé' : ''));
       lignes += '<li class="fg-visit__step' + (bouge ? ' is-moved' : '') + '"><b>' + esc(b.startTime) + '</b><span><svg aria-hidden="true"><use href="#' + icone(b.activityId) + '"/></svg>' + esc(nom) + '</span><small>' + esc(detail) + (bouge ? ' · déplacé pour votre ' + esc(nomActivite(adaptation.pour)) + ' à ' + esc(adaptation.t) : '') + '</small></li>';
     });
     if (libres.length) {
@@ -1934,10 +2013,24 @@
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
     if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) avis.unshift('À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.');
     if (avis.length) html2 += '<p class="fg-visit__warn">' + avis.map(esc).join('<br>') + '</p>';
+    // Ce que dit la voix est ce qui est ecrit dans le bloc : l arrivee, chaque
+    // activite a son heure, la fin, le prix (et ce qui se regle sur place),
+    // les avertissements. « groupe 1 sur 2 », jamais « 1/2 » (lu « un demi »).
+    if (sceneCourante === 'heures') dire(('Votre visite. '
+      + (plan.arrivalTime ? 'Arrivée conseillée à ' + plan.arrivalTime + '. ' : '')
+      + (dits.length ? dits.join('. ') + '. ' : (plan.arrivalTime ? '' : 'Début à ' + slot.time + '. '))
+      + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : '')
+      + (prix > 0 ? euros(prix) + (complet ? '' : ', le reste se règle sur place') + '. ' : '')
+      + avis.join(' ')).trim());
     zone.innerHTML = html2 + '</div>';
+    if (prixBouge) $('.fg-visit__price', zone).classList.add('is-maj');
     posterHauteur();
   }
   hourZone.addEventListener('click', function (e) {
+    // Toutes les poses levees d un coup : le meme geste que « revenir a
+    // l heure proposee » d une piste, etendu a toutes. Sans heure posee, le
+    // serveur compose sa combinaison par defaut, ou dit qu il n y en a pas.
+    if (e.target.closest('[data-reset-tout]')) { state.pins = {}; state.laserParts = []; adaptation = null; $$('.fg-track', hourZone).forEach(function (t) { delete t.dataset.touched; }); chargerPlan(); return; }
     var s = e.target.closest('[data-suggest]');
     if (!s) return;
     try {
@@ -2023,7 +2116,7 @@
         var bloc = blocsDuPlan(cr).filter(function (b) { return b.activityId === it.activityId; })[0];
         var detail = it.games ? it.games + ' partie' + (it.games > 1 ? 's' : '') : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) : ''));
         if (bloc && resteSurPlace(Number(it.games) || 0, partiesPosees(cr, it.activityId))) detail += ' · ' + resteSurPlace(Number(it.games) || 0, partiesPosees(cr, it.activityId));
-        if (it.services && it.services.length > 1) detail += ' · ' + it.services.length + ' services';
+        if (detail && it.services && it.services.length > 1) detail += ' par groupe';
         // UN GRAND GROUPE SCINDE (vu en prod le 2026-09-23) : le recapitulatif
         // disait « Debut 11:00 » et taisait le 2e groupe de 11:30. Chaque
         // depart est lu dans le plan, jamais recalcule ici.
@@ -2033,7 +2126,7 @@
           groupes.forEach(function (b) { if (departs.indexOf(b.startTime) < 0) departs.push(b.startTime); parties[Number(b.countIndex) || 1] = 1; });
           departs.sort();
           detail += (detail ? ' · ' : '') + Number(groupes[0].groupWaveCount) + ' groupes' + (Object.keys(parties).length > 1 ? ' par partie' : '') + ' : ' + departs.join(', ');
-        }
+        } else if (it.services && it.services.length > 1) detail += (detail ? ' · ' : '') + it.services.length + ' groupes l’un après l’autre';
         lignes.push({ icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: detail, aside: bloc && bloc.startTime ? bloc.startTime : '' });
       });
     } else {

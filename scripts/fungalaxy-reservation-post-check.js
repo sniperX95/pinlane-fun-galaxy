@@ -300,7 +300,7 @@ async function unParcours(page, pool, cas) {
   }
   await f.click('#goHours');
   const heures = await attendre(f, () => !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('#goContact').disabled, 40000);
-  ok(heures, `[${cas.nom}] le vrai moteur rend les heures, et le plan par defaut active « Garder »`);
+  ok(heures, `[${cas.nom}] le vrai moteur rend les heures, et le plan par defaut active « Ces horaires me vont »`);
   if (!heures) return;
   await f.click('#goContact');
   await attendre(f, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 8000);

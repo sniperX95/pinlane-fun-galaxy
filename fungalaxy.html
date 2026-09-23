@@ -61,6 +61,10 @@
        rectangle). Deux degrades, un transform chacun, rien d autre. -->
   <div class="fg-glow" aria-hidden="true"><i></i><i></i></div>
   <p class="fg-alert" id="fgAlert" role="alert" hidden></p>
+  <!-- UNE SEULE VOIX pour les lecteurs d ecran : une phrase courte apres
+       chaque geste (fgLive), hors des scenes pour qu un changement d ecran ne
+       l emporte pas. La zone des heures, elle, ne se relit plus en entier. -->
+  <p class="sr-only" id="fgLive" role="status"></p>
   <div class="fg-stage" id="fgStage">
 
     <!-- 1. RESERVEZ VOTRE SORTIE -->
@@ -157,7 +161,7 @@
         <ol class="fg-steps" data-steps></ol>
         <h2 class="fg-title" id="t-hour" data-words>Top <em>départ</em></h2>
         <p class="fg-sub" id="hourSub"></p>
-        <div id="hourZone" aria-live="polite">
+        <div id="hourZone">
           <p class="fg-loading">On regarde ce qui est libre…</p>
         </div>
         <!-- La barre qui suit, avec le resume de la visite (heures, prix). -->
@@ -165,7 +169,7 @@
           <p class="fg-bar__count fg-bar__sum" id="hourSum"></p>
           <div class="fg-actions" style="margin:0">
             <button type="button" class="fg-btn fg-btn--ghost" data-back><svg aria-hidden="true"><use href="#i-back"/></svg><span class="fg-btn__txt">Retour</span></button>
-            <button type="button" class="fg-btn" id="goContact" disabled><span id="keepLabel">Garder ces horaires</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+            <button type="button" class="fg-btn" id="goContact" disabled><span id="keepLabel">Ces horaires me vont</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
           </div>
         </div>
         <div class="fg-dock__place" aria-hidden="true"></div>

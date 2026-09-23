@@ -332,8 +332,17 @@ if (process.argv.includes('--mutate-raison')) {
 // et attend un ECHEC, puis restaure.
 if (process.argv.includes('--mutate')) {
   const source = fs.readFileSync(ENGINE, 'utf8');
-  const marqueur = '        entry = verdict.ok ? { time, ok: true, ...meta } : ko(verdict.code, verdict.reason);';
-  if (!source.includes(marqueur)) {
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  // Le verdict tel que le moteur l ecrit depuis 638d47c (2026-09-17), qui y a
+  // ajoute l avertissement et le conflit. L ancienne ligne unique n existait
+  // plus : la contre-epreuve s arretait sur « mutation impossible » sans que
+  // personne ne la relance.
+  const marqueur = [
+    '        entry = verdict.ok',
+    '          ? { time, ok: true, ...meta, ...(verdict.warning ? { warning: verdict.warning } : {}) }',
+    '          : ko(verdict.code, verdict.reason, verdict.conflict ? { conflict: verdict.conflict } : null);',
+  ].join(eol);
+  if (source.split(marqueur).length !== 2) {
     console.error('mutation impossible : la ligne de verdict attendue est introuvable dans lib/ops-engine.js');
     process.exit(1);
   }

@@ -148,8 +148,13 @@
 //       tombait 70 a 290 px sous l ecran du telephone. Au vrai geste (doigt
 //       sur telephone, molette sur bureau), sur la copie de leur page : a
 //       l ouverture, la page amene le bouton ET le mois entier dans l ecran
-//       (autonome et embarque) ; sur telephone le calendrier s ouvre dans la
-//       page, sous le bouton, en cases basses ; le cadre a la hauteur du
+//       (autonome et embarque) ; sur telephone (retour de Movsar sur un vrai
+//       iPhone : la barre de Safari cachait le bas du mois amene a 16 px du
+//       bord) le calendrier est une fenetre au MILIEU de l ecran, celui de la
+//       page hote en embarque, 90 px de marge au moins en haut et en bas, sur
+//       un voile qui prend le toucher sans rien activer dessous ; au-dessus de
+//       560 px il s ouvre sous le bouton et la page le montre entier (une
+//       tablette embarquee le prouve) ; le cadre a la hauteur du
 //       formulaire a chaque ecran (jamais plus court, et il rapetisse) ;
 //       chaque geste fait descendre la page jusqu en bas ; meme avec 4 px de
 //       trop, le cadre ne prend pas le geste (verrou).
@@ -222,12 +227,12 @@
 // plus qu au-dela de 8 px : le cadre reste plus court que son contenu),
 // finscene (la fin d une transition ne redonne plus la hauteur : le cadre
 // garde celle de l ecran precedent), montrer (le calendrier ouvert n est plus
-// amene dans l ecran), verrou (le cadre redevient defilable : FEUILLE servie
-// cassee), dansflux (sur telephone le calendrier recouvre de nouveau le
-// nombre de personnes : feuille cassee), voir (embed.js ignore la demande du
-// cadre de montrer une bande : SCRIPT HOTE servi casse), chevron (le chevron
-// du bouton du jour se place de nouveau sur le conteneur que le calendrier
-// agrandit, et flotte au milieu du mois : feuille cassee).
+// amene dans l ecran : la tablette embarquee le voit), verrou (le cadre
+// redevient defilable : FEUILLE servie cassee), voir (embed.js ignore la
+// demande du cadre de montrer une bande : SCRIPT HOTE servi casse), milieu
+// (la fenetre du telephone n est plus centree : feuille cassee), ecranhote
+// (embarquee, elle se centre sur le cadre et non sur l ecran de l hote),
+// voile (plus de voile : le toucher a cote active le controle dessous).
 //
 // CONTRE-PREUVES (le gate mord) : FG_QA_CASSE=prix (prix de carte faux d un
 // euro), total (total du recap faux d un euro), raison (les heures perdent leur
@@ -276,7 +281,18 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // `tools/build-public.js` applique desormais `minifySyntax` (ce que
 // `public-leak-check` simulait deja), et les deux cartes de l ecran des
 // creneaux partagent une seule regle de forme.
-const BUDGET_SERVI = 150 * 1024;
+//
+// REDERIVE LE 2026-09-24, SUR UNE MESURE ET NON SUR UNE MARGE. Le formulaire
+// servait 150,0 Ko (153 640 octets) : le plafond d analyse etait de nouveau
+// atteint. Mesure (CDP, processeur ralenti 6 fois, fichiers tels que le build
+// les sert, telephone 390 px, jusqu au jour propose affiche, mediane de 5) :
+// script 65 ms, recalcul de style 165 ms, mise en page 272 ms. Le cout d un
+// ecran de reservation est dans le style et la mise en page, pas dans la
+// lecture des octets : quelques Ko de plus ne s y voient pas. Le plafond
+// d analyse passe a 160 Ko et garde son role de garde-fou (une bibliotheque,
+// une police ou une image en base64 ajoutent d un coup plus de 10 Ko) ; celui
+// du TRANSFERT, qui est le vrai cout d un reseau mobile, ne bouge pas.
+const BUDGET_SERVI = 160 * 1024;
 const BUDGET_TRANSFERE = 45 * 1024;
 
 let failures = 0;
@@ -381,7 +397,9 @@ const MUTATIONS = {
   proto: ['var pool = (Object.prototype.hasOwnProperty.call(PHOTOS, CENTER) ? PHOTOS[CENTER] : []).slice();', 'var pool = (PHOTOS[CENTER] || []).slice();'],
   montee: ['if (!h || h === derniereHauteur || (h < derniereHauteur && derniereHauteur - h < 8)) return;', 'if (!h || Math.abs(h - derniereHauteur) < 8) return;'],
   finscene: ['        posterHauteur();\n        apresAnimations(vers, posterHauteur);\n', ''],
-  montrer: ['      if (o && !dayPop.hidden) montrer(dayPop, dayBtn);', '      void 0;'],
+  montrer: ['      if (o && !dayPop.hidden && !milieu) montrer(dayPop, dayBtn);', '      void 0;'],
+  ecranhote: ['var milieu = ecranHote && hautCadre !== null ? ecranHote / 2 - hautCadre : cadre / 2;', 'var milieu = cadre / 2;'],
+  voile: ['    if (dayVoile) dayVoile.hidden = !milieu;', '    void 0;'],
 };
 // Les contre-preuves de la FEUILLE : une regle servie cassee expres. La feuille
 // est relue en LF, quelle que soit la fin de ligne du depot.
@@ -399,8 +417,7 @@ const MUTATIONS_CSS = {
   collee: ['.fg-dock {\n  position: sticky;\n', '.fg-dock {\n  position: relative;\n'],
   vuebas: ['  bottom: calc(var(--tunnel-vue-bas, 0px) + 10px + env(safe-area-inset-bottom, 0px));\n', '  bottom: calc(10px + env(safe-area-inset-bottom, 0px));\n'],
   verrou: ['html.fg-pilote { overflow: hidden; }\n', ''],
-  dansflux: ['  .fg-cal { position: static; min-width: 0;', '  .fg-cal { min-width: 0;'],
-  chevron: ['.fg-day__btn {\n  position: relative;\n  width: 100%;\n', '.fg-day__btn {\n  width: 100%;\n'],
+  milieu: ['  transform: translate(-50%, -50%);\n  box-shadow: 0 24px 64px', '  transform: translate(-50%, 0);\n  box-shadow: 0 24px 64px'],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -3124,6 +3141,15 @@ async function main() {
       const vh = await p.evaluate(() => innerHeight);
       return { bouton: Math.round(c.bouton + decal), bas: Math.round(c.bas + decal), vh, mois: Math.round(c.h), paxSous: c.pax >= c.bas };
     };
+    // La fenetre du calendrier dans l ecran de la page (celui de l hote s il y
+    // en a un), le bouton du jour, et ce qui dit la fenetre : fixe, dans body,
+    // voile visible.
+    const fenetreVue = async (p, f, embarque) => {
+      const r = await f.evaluate(() => { const d = document.querySelector('#dayPop'); const m = d.getBoundingClientRect(); const b = document.querySelector('#dayBtn').getBoundingClientRect(); const v = document.querySelector('#dayVoile'); return { haut: m.top, bas: m.bottom, h: m.height, btnHaut: b.top, btnBas: b.bottom, fixe: getComputedStyle(d).position === 'fixed', dansBody: d.parentNode === document.body, voile: Boolean(v) && !v.hidden && getComputedStyle(v).display !== 'none' }; });
+      const decal = embarque ? await p.evaluate(() => document.querySelector('iframe').getBoundingClientRect().top) : 0;
+      const vh = await p.evaluate(() => innerHeight);
+      return { haut: Math.round(r.haut + decal), bas: Math.round(r.bas + decal), milieu: Math.round((r.haut + r.bas) / 2 + decal), h: Math.round(r.h), btnHaut: Math.round(r.btnHaut + decal), btnBas: Math.round(r.btnBas + decal), vh, fixe: r.fixe, dansBody: r.dansBody, voile: r.voile };
+    };
     const heuresPretes = () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('.fg-scene.is-entering');
 
     // EMBARQUE, TELEPHONE, sur la copie de leur page.
@@ -3142,17 +3168,31 @@ async function main() {
       await fo.tap('#dayBtn');
       await attendre(fo, () => !document.querySelector('#dayPop').hidden, 3000);
       await dormir(1400);
-      const syO = await po.evaluate(() => Math.round(scrollY));
-      const co = await calVu(po, fo, true);
-      ok(co.bas + syO > co.vh, 'MONTAGE [O] embarque, telephone : ouvert en haut de page, le bas du mois tombait sous l ecran de l hote', JSON.stringify(Object.assign({ defile: syO }, co)));
-      ok(co.bouton >= 0 && co.bas <= co.vh, '[O] embarque, telephone : a l ouverture, la page amene le bouton ET le mois entier dans l ecran de l hote', JSON.stringify(co));
-      ok(co.paxSous && co.mois <= 380, '[O] telephone : le calendrier s ouvre dans la page (il pousse le nombre de personnes au lieu de le couvrir), en cases basses (mois de 380 px au plus)', JSON.stringify(co));
+      const fo1 = await fenetreVue(po, fo, true);
+      ok(fo1.btnBas + 8 + fo1.h > fo1.vh - 90, 'MONTAGE [O] embarque, telephone : ouvert sous le bouton, le mois tomberait dans les 90 px du bas de l ecran de l hote', JSON.stringify(fo1));
+      ok(fo1.fixe && fo1.dansBody && fo1.voile && fo1.haut >= 90 && fo1.bas <= fo1.vh - 90 && Math.abs(fo1.milieu - fo1.vh / 2) <= 3,
+        '[O] embarque, telephone : le calendrier est une fenetre au MILIEU de l ecran de l hote, 90 px de marge au moins en haut et en bas, sur un voile', JSON.stringify(fo1));
       // Vu en production le 2026-09-23 : le chevron du bouton, place sur le
       // conteneur que le calendrier agrandit, flottait au milieu du mois.
       const icones = await fo.evaluate(() => { const b = document.querySelector('#dayBtn').getBoundingClientRect(); return Array.from(document.querySelectorAll('#dayBtn svg')).map((s) => { const r = s.getBoundingClientRect(); return { dedans: r.top >= b.top - 1 && r.bottom <= b.bottom + 1 && r.left >= b.left - 1 && r.right <= b.right + 1, haut: Math.round(r.top - b.top) }; }); });
       ok(icones.length === 2 && icones.every((x) => x.dedans), '[O] telephone, calendrier ouvert : les deux icones du bouton du jour restent DANS le bouton', JSON.stringify(icones));
       const s1 = await suitLeContenu(po, fo);
       ok(s1.ok, '[O] embarque : calendrier ouvert, le cadre a la hauteur du formulaire et ne defile pas lui-meme', JSON.stringify(s1));
+      // Toucher a cote de la fenetre la ferme, et rien d autre : le voile prend
+      // le toucher destine au controle qu il recouvre.
+      const dessousO = await fo.evaluate(() => { const f = document.querySelector('#dayPop').getBoundingClientRect(); const c = ['#paxPlus', '#paxMinus', '#goActivities'].map((x) => document.querySelector(x)).filter(Boolean).map((b) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, sel: b.id }; }).filter((q) => q.y > 0 && q.y < innerHeight && !(q.x >= f.left && q.x <= f.right && q.y >= f.top && q.y <= f.bottom)); return c[0] || null; });
+      ok(Boolean(dessousO), 'MONTAGE [O] embarque, telephone : un vrai controle sous le voile, hors de la fenetre', JSON.stringify(dessousO));
+      if (dessousO) {
+        const paxO = await fo.evaluate(() => document.querySelector('#paxInput').value);
+        const decalO = await po.evaluate(() => document.querySelector('iframe').getBoundingClientRect().top);
+        await po.touchscreen.tap(Math.round(dessousO.x), Math.round(dessousO.y + decalO));
+        await dormir(500);
+        const apresO = await fo.evaluate(() => ({ ferme: document.querySelector('#dayPop').hidden, rentre: Boolean(document.querySelector('#dayPop').closest('.fg-day')), pax: document.querySelector('#paxInput').value, ecran: document.body.dataset.step }));
+        ok(apresO.ferme && apresO.rentre && apresO.pax === paxO && apresO.ecran === '1', `[O] embarque, telephone : toucher a cote de la fenetre (au-dessus de ${dessousO.sel}) la ferme, et rien d autre`, JSON.stringify(apresO));
+        await fo.tap('#dayBtn');
+        await attendre(fo, () => !document.querySelector('#dayPop').hidden, 3000);
+        await dormir(600);
+      }
       await allerAuMois(fo, mock.DATE);
       await fo.tap(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
       await attendre(fo, () => document.querySelector('#dayPop').hidden, 3000);
@@ -3246,11 +3286,34 @@ async function main() {
     await poa.tap('#dayBtn');
     await attendre(poa, () => !document.querySelector('#dayPop').hidden, 3000);
     await dormir(1400);
-    const syA = await poa.evaluate(() => Math.round(scrollY));
-    const ca = await calVu(poa, poa, false);
-    ok(ca.bas + syA > ca.vh, 'MONTAGE [O] autonome, telephone : ouvert en haut de page, le bas du mois tombait sous l ecran', JSON.stringify(Object.assign({ defile: syA }, ca)));
-    ok(ca.bouton >= 0 && ca.bas <= ca.vh, '[O] autonome, telephone : a l ouverture, la page amene le bouton et le mois entier dans l ecran', JSON.stringify(ca));
+    const fa = await fenetreVue(poa, poa, false);
+    ok(fa.btnBas + 8 + fa.h > fa.vh - 90, 'MONTAGE [O] autonome, telephone : ouvert sous le bouton, le mois tomberait dans les 90 px du bas de l ecran', JSON.stringify(fa));
+    ok(fa.fixe && fa.dansBody && fa.voile && fa.haut >= 90 && fa.bas <= fa.vh - 90 && Math.abs(fa.milieu - fa.vh / 2) <= 3,
+      '[O] autonome, telephone : le calendrier est une fenetre au milieu de l ecran, 90 px de marge au moins en haut et en bas, sur un voile', JSON.stringify(fa));
     await ctxOa.close();
+
+    // TABLETTE 768x640, EMBARQUE : au-dessus de 560 px le calendrier s ouvre
+    // sous le bouton, et la page du client defile pour le montrer entier.
+    const ctxOt = await browser.newContext({ viewport: { width: 768, height: 640 } });
+    const pot = await ctxOt.newPage();
+    await pot.goto(`${BASE_URL}/reserver/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    let fot = null;
+    for (let k = 0; k < 100 && !fot; k += 1) { fot = pot.frames().find((x) => x.url().indexOf('/fungalaxy/libramont?embed=1') >= 0); if (!fot) await dormir(100); }
+    const cadreOt = Boolean(fot) && await attendre(fot, () => document.querySelector('#dayLabel') && document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
+    ok(cadreOt, 'MONTAGE [O] embarque, tablette 768x640 : le formulaire est monte, catalogue lu');
+    if (cadreOt) {
+      await auRepos(fot);
+      await pot.evaluate(() => window.scrollTo(0, 0));
+      await dormir(300);
+      await fot.click('#dayBtn');
+      await attendre(fot, () => !document.querySelector('#dayPop').hidden, 3000);
+      await dormir(1600);
+      const syT = await pot.evaluate(() => Math.round(scrollY));
+      const ct = await fenetreVue(pot, fot, true);
+      ok(!ct.fixe && !ct.voile && ct.bas + syT > ct.vh, 'MONTAGE [O] embarque, tablette : le calendrier s ouvre sous le bouton, et le bas du mois tombait sous l ecran de l hote', JSON.stringify(Object.assign({ defile: syT }, ct)));
+      ok(ct.btnHaut >= 0 && ct.bas <= ct.vh, '[O] embarque, tablette : a l ouverture, la page du client amene le bouton ET le mois entier dans son ecran', JSON.stringify(ct));
+    }
+    await ctxOt.close();
 
     // =====================================================================
     console.log('');

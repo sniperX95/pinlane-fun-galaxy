@@ -566,6 +566,43 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-cal { animation: fg-pop 0.22s var(--fg-ease-out); }
 }
 @keyframes fg-pop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
+/* Sur telephone (moins de 560 px de large) et sur un ecran court (moins de
+   500 px de haut, paysage), le calendrier est une fenetre AU MILIEU de
+   l ecran, sur un voile (classe .is-fenetre, posee par ouvrirJours). Sur un
+   vrai iPhone, la barre de Safari couvre le bas de l ecran : un mois ouvert
+   sous le bouton, meme amene a 16 px du bord, y cachait sa fin. Au milieu, il
+   garde plus de 100 px en haut et en bas, sans rien faire defiler. Ouverte,
+   la fenetre vit dans <body> : aucun parent anime ne la decale ni ne la
+   coupe. Embarquee, sa hauteur se calcule sur l ecran de la page hote
+   (placerFenetre). Plus haute que l ecran (cas extreme), elle defile en
+   elle-meme. Des cases moins hautes que larges. */
+.fg-cal.is-fenetre {
+  position: fixed;
+  z-index: 1001;
+  left: 50%;
+  top: 50%;
+  width: min(calc(100vw - 32px), 400px);
+  min-width: 0;
+  max-width: none;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+.fg-cal.is-fenetre .fg-cal__day { aspect-ratio: auto; height: 40px; min-height: 0; }
+.fg-cal.is-fenetre.is-court .fg-cal__day { height: 32px; }
+.fg-cal__voile { display: none; }
+.fg-cal__voile:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.66); cursor: pointer; }
+/* Son apparition garde le centrage (translate) dans chaque image. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-cal.is-fenetre { animation: fg-pop-milieu 0.24s var(--fg-ease-out); }
+  .fg-cal__voile:not([hidden]) { animation: fg-voile 0.24s ease-out; }
+}
+@keyframes fg-pop-milieu { from { opacity: 0; transform: translate(-50%, -46%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@keyframes fg-voile { from { opacity: 0; } to { opacity: 1; } }
 .fg-cal__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .fg-cal__title { font-size: 14px; font-weight: 700; text-transform: capitalize; }
 .fg-cal__nav {
@@ -1810,12 +1847,6 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-dock .fg-btn--ghost { flex: 0 0 52px; width: 52px; padding: 0; }
   .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .fg-dock .fg-btn:not(.fg-btn--ghost) { flex: 1 1 auto; width: auto; min-width: 0; }
-  /* Le calendrier s ouvre DANS la page, sous le bouton : il pousse ce qui
-     suit au lieu de le recouvrir, et la page (ou le cadre du client) grandit
-     avec lui. Des cases moins hautes que larges : le mois entier tient dans
-     l ecran avec le bouton au-dessus. */
-  .fg-cal { position: static; min-width: 0; width: 100%; max-width: none; margin-top: 8px; box-shadow: none; }
-  .fg-cal__day { aspect-ratio: auto; height: 40px; min-height: 0; }
   /* Passe a la ligne et se centre : le filet vertical n a plus de sens, la
      pastille sarcelle suffit a rattacher l horaire au jour. */
   .fg-sub__open { display: flex; width: fit-content; margin: 8px auto 0; padding-left: 0; border-left: 0; }

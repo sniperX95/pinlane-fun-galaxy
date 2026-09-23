@@ -94,7 +94,10 @@
         if (hautCadre !== null && Math.abs(haut - hautCadre) > 1) hoteDefile();
         hautCadre = haut;
       }
+      ecranHote = Number(d.hauteurEcran) || 0;
       majDock();
+      // La fenetre du calendrier (telephone) suit le milieu de l ecran hote.
+      placerFenetre(false);
     });
   }
 
@@ -546,7 +549,7 @@
   // sticky (qui porte, en embarque, la part du cadre cachee sous l ecran de
   // l hote). La position de la barre elle-meme n est jamais lue : son entree
   // en cascade la decale, la mesure ne doit pas bouger avec.
-  var hautCadre = null, hoteMinuteur = null, dockEnAttente = false;
+  var hautCadre = null, hoteMinuteur = null, dockEnAttente = false, ecranHote = 0;
   function planifierDock() {
     if (dockEnAttente) return;
     dockEnAttente = true;
@@ -599,6 +602,16 @@
   var dayBtn = $('#dayBtn'), dayPop = $('#dayPop'), dayLabel = $('#dayLabel'), dayHint = $('#dayHint');
   var calTitle = $('#calTitle'), calGrid = $('#calGrid'), calInfo = $('#calInfo'), calPrev = $('#calPrev'), calNext = $('#calNext');
   var dayField = dayBtn.closest('.fg-field');
+  // Sous 560 px de large, ou sur un ecran de moins de 500 px de haut
+  // (telephone en paysage), le calendrier s ouvre au milieu de l ecran, sur un
+  // voile ; ailleurs, sous le bouton. dayMaison : sa place sous le bouton.
+  // Embarque, la hauteur qui compte est celle de l ecran de l HOTE : celle du
+  // cadre est celle de son contenu.
+  var dayVoile = $('#dayVoile'), dayMaison = dayPop.parentNode;
+  var auMilieu = window.matchMedia ? window.matchMedia('(max-width: 560px)') : null;
+  var MARGE_FENETRE = 96;
+  function ecranCourt() { return EMBED ? ecranHote > 0 && ecranHote <= 500 : window.innerHeight <= 500; }
+  function fenetreAuMilieu() { return Boolean(auMilieu && auMilieu.matches) || ecranCourt(); }
   // Le calendrier vient du serveur (center.calendar, a cote de center.day) :
   // ouverture, horaires, fermeture, ferie ou conge scolaire, jour par jour.
   // Les 45 premiers jours arrivent avec le catalogue ; les mois suivants se
@@ -709,20 +722,58 @@
   }
   function ouvrirJours(ouvrir) {
     var o = typeof ouvrir === 'boolean' ? ouvrir : dayPop.hidden;
+    var milieu = o && fenetreAuMilieu();
     if (o) { var d = deIso(state.date || aujourdhui()); montrerMois(d.getFullYear(), d.getMonth(), state.date); }
+    // Au milieu de l ecran (telephone), la fenetre vit dans <body> le temps
+    // d etre ouverte : les champs animent leur transform (entree en cascade),
+    // et un parent qui anime son transform decale et coupe un enfant en
+    // position fixe. Refermee, elle retrouve sa place sous le bouton.
+    if (milieu && dayPop.parentNode !== body) body.appendChild(dayPop);
+    dayPop.classList.toggle('is-fenetre', milieu);
+    dayPop.classList.toggle('is-court', milieu && ecranCourt());
     dayPop.hidden = !o;
+    if (dayVoile) dayVoile.hidden = !milieu;
+    if (milieu) dayPop.setAttribute('aria-modal', 'true'); else dayPop.removeAttribute('aria-modal');
+    if (!milieu && dayPop.parentNode !== dayMaison) dayMaison.appendChild(dayPop);
+    dayPop.style.top = '';
+    dayPop.style.maxHeight = '';
+    if (milieu) placerFenetre(true);
     dayBtn.setAttribute('aria-expanded', String(o));
     // Le champ passe au-dessus de ses voisins tant que le calendrier est
     // ouvert : chaque champ anime porte son propre contexte d empilement.
     if (dayField) dayField.classList.toggle('is-open', o);
     if (o) { var b = $('.fg-cal__day[tabindex="0"]', calGrid); if (b) b.focus({ preventScroll: true }); }
     // Une fois le calendrier pose (fin de son apparition) : la hauteur suit,
-    // puis la page amene le bouton ET le mois entier dans l ecran. Sans ce
-    // geste, sur telephone, le bas du mois tombait sous l ecran.
+    // puis, sous le bouton (tablette, bureau), la page amene le bouton ET le
+    // mois entier dans l ecran. Au milieu de l ecran, rien a defiler.
     apresAnimations(dayPop, function () {
       posterHauteur();
-      if (o && !dayPop.hidden) montrer(dayPop, dayBtn);
+      if (o && !dayPop.hidden && !milieu) montrer(dayPop, dayBtn);
     });
+  }
+  // Embarquee, la fenetre du milieu se centre sur l ECRAN de la page du
+  // client (ce que pinlane:vue dit de sa vue), pas sur le cadre, souvent bien
+  // plus haut que l ecran ; elle reste dans le cadre. Quand le cadre ne couvre
+  // pas le milieu de l ecran, elle se pose au plus pres, et la page du client
+  // defile pour la montrer entiere, avec ses marges (pinlane:voir).
+  function placerFenetre(demander) {
+    if (!EMBED || dayPop.hidden || !fenetreAuMilieu()) return;
+    if (ecranHote) dayPop.style.maxHeight = Math.max(200, ecranHote - 24) + 'px';
+    var h = dayPop.offsetHeight, cadre = window.innerHeight;
+    var milieu = ecranHote && hautCadre !== null ? ecranHote / 2 - hautCadre : cadre / 2;
+    var y = Math.max(h / 2 + 8, Math.min(cadre - h / 2 - 8, milieu));
+    dayPop.style.top = Math.round(y) + 'px';
+    if (demander && Math.abs(y - milieu) > 2) {
+      poster({ type: 'pinlane:voir', haut: Math.round(Math.max(0, y - h / 2 - MARGE_FENETRE)), bas: Math.round(Math.min(cadre, y + h / 2 + MARGE_FENETRE)) });
+    }
+  }
+  if (dayVoile) dayVoile.addEventListener('click', function () { ouvrirJours(false); dayBtn.focus(); });
+  // Un telephone qu on tourne en paysage (ou l inverse) change de calendrier :
+  // la fenetre ouverte se referme plutot que de rester a la mauvaise place.
+  if (auMilieu) {
+    var auMilieuChange = function () { if (!dayPop.hidden) ouvrirJours(false); };
+    if (auMilieu.addEventListener) auMilieu.addEventListener('change', auMilieuChange);
+    else if (auMilieu.addListener) auMilieu.addListener(auMilieuChange);
   }
   dayBtn.addEventListener('click', function () { ouvrirJours(); });
   calPrev.addEventListener('click', function () { if (moisVu) montrerMois(moisVu.y, moisVu.m - 1, ''); });
@@ -760,7 +811,9 @@
     var pas = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
     if (pas) { e.preventDefault(); deplacerFocus(pas); }
   });
-  doc.addEventListener('click', function (e) { if (!dayPop.hidden && !e.target.closest('.fg-day')) ouvrirJours(false); });
+  // Sur telephone la fenetre ouverte n est plus dans .fg-day : un toucher
+  // dedans (mois suivant) ne doit pas la fermer.
+  doc.addEventListener('click', function (e) { if (!dayPop.hidden && !e.target.closest('.fg-day') && !dayPop.contains(e.target)) ouvrirJours(false); });
 
   /* --- Etape 1 : le groupe ------------------------------------------------------- */
 

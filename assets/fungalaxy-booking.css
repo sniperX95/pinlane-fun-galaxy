@@ -426,6 +426,10 @@
    negative, la ligne ne bouge pas. */
 .fg-title .w { display: inline-block; overflow: hidden; vertical-align: bottom; padding: 0.18em 0.03em 0.06em; margin: -0.18em -0.03em -0.06em; }
 .fg-title .w > span { display: inline-block; }
+/* Un mot accentue sous la premiere ligne (espacerAccents) : sa ligne grandit
+   vers le haut de ce que l accent demande (1,11 em chez Anton, pour un
+   interligne de 0,94 em), avec 0,09 em d air. */
+.fg-title .w.w--accent { padding-top: 0.26em; margin-top: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-scene.is-active .fg-title .w > span { animation: fg-word 0.6s var(--fg-ease-out) both; animation-delay: calc(60ms * var(--i, 0) + 80ms); }
 }
@@ -1099,6 +1103,10 @@
   border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 .fg-bar__count { font-size: 15px; font-weight: 500; color: var(--fg-muted); }
+/* Le telephone et l e-mail du centre, au dernier ecran : des liens, soulignes
+   pour se reconnaitre, et une zone de toucher plus haute que la ligne. */
+.fg-done__lien { color: var(--fg-text); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; padding: 8px 0; }
+.fg-done__lien:hover { color: var(--fg-teal-ink); }
 .fg-bar__count b { color: var(--fg-purple-ink); font-weight: 700; font-size: 20px; margin-right: 6px; display: inline-block; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-bar__count b.is-bump { animation: fg-bump 0.35s var(--fg-ease-out); }

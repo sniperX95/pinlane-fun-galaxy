@@ -87,7 +87,10 @@
 //       375 px, chaque texte visible garde 4,5:1 (3:1 en grand) sur la photo
 //       LA PLUS CLAIRE POSSIBLE (chaque photo remplacee par un blanc pur, celle
 //       des cartes montree comme au survol), et hors photo sous le coeur des
-//       halos. Un controle inactif en est ecarte (WCAG 1.4.3).
+//       halos. Un controle inactif en est ecarte (WCAG 1.4.3). Et l accent
+//       d une capitale ne mord jamais la ligne du dessus d un titre
+//       (interligne reel contre hauteur de l accent lue dans la police) ; au
+//       dernier ecran, le telephone et l e-mail du centre sont des liens.
 //   [M] /reserver/libramont (2026-09-23) : vercel.json sert cette adresse
 //       par fungalaxy-site.html AVANT la regle generique du tunnel ; la page
 //       est dans les listes du build public et du gate de fuite ; elle porte
@@ -175,6 +178,12 @@
 // formulaire eteint par l equipe laisse la page vide), cadrefige (le cadre
 // garde ses 720 px quoi que dise le formulaire), menutaille (le menu de
 // l en-tete a 23 px : ses mots ne tombent plus sur les leurs).
+//
+// CONTRE-PREUVES DE LA PASSE « PLUS USER FRIENDLY » (2026-09-23) : accents
+// (plus aucun mot accentue ne descend sa ligne : « CONFIRMEE » remord le O),
+// liens (le telephone du centre redevient du texte), groupesrecap (le recap
+// retaise le 2e groupe), plagerepliee (le menu d une plage repliee ne dit
+// plus l heure du 2e groupe qui y tombe). Toutes : JS servi casse.
 //
 // CONTRE-PREUVES (le gate mord) : FG_QA_CASSE=prix (prix de carte faux d un
 // euro), total (total du recap faux d un euro), raison (les heures perdent leur
@@ -309,6 +318,10 @@ const MUTATIONS = {
   decrit: ["groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.setAttribute('aria-describedby', racine + '-why-' + k); }); });", 'void 0;'],
   titrefin: ["poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');", "poserTitre($('#t-fin'), 'Demande<br><em>envoyée</em>');"],
   choisir: ["chip.dataset.ok = e.etat === 'hard' || e.sous === 'hard' ? 'false' : 'true';", "chip.dataset.ok = e.etat === 'hard' || e.etat === 'wave' ? 'false' : 'true';"],
+  accents: ["if (w.offsetTop > haut + 2 && ACCENT_HAUT.test(w.textContent.toUpperCase())) w.classList.add('w--accent');", 'void haut;'],
+  liens: ["Une question ? ' + lienContact(contact) + '</p>'", "Une question ? ' + esc(contact.phone) + '</p>'"],
+  groupesrecap: ['        if (groupes.length > 1) {', '        if (false) {'],
+  plagerepliee: ["      else if (vagues.length) sum = vagues.join(', ') + ' · ' + sum;", '      else if (false) sum = vagues.join();'],
   juge: ['return state.laserParts.length >= compte && state.laserParts[0] === depuis;', 'return true;'],
   suit: ['if (j >= 0) state.laserParts[j] = t;', 'if (false) state.laserParts[j] = t;'],
   especes: ['<svg><use href="#i-cash"/></svg>', ''],
@@ -743,8 +756,12 @@ function ecartsPiste(p, a, actifs, propose, d) {
     const n = liste.filter(prenableDe).length;
     const choisis = liste.filter((t) => actifs.indexOf(t.time) >= 0).map((t) => t.time);
     const prop = actifs.length ? null : liste.find((t) => t.time === propose);
+    // L heure d un groupe suivant qui tombe dans cette plage, quand aucune
+    // heure n y est choisie : le menu la dit, meme replie.
+    const vaguesIci = liste.filter((t) => etatDe(t) === 'wave').map((t) => `groupe ${emportees[t.time].rang} à ${t.time}`);
     let resume = n ? `${n} créneau${n > 1 ? 'x' : ''}` : 'rien de possible';
     if (choisis.length) resume = `choisi ${choisis.join(' et ')} · ${resume}`;
+    else if (vaguesIci.length) resume = `${vaguesIci.join(', ')} · ${resume}`;
     else if (prop) resume = `proposé ${prop.time} · ${resume}`;
     const x = p.periodes.find((y) => y.nom === nom) || {};
     if (x.resume !== resume) e.push(`${a.activityId} ${nom}: resume « ${x.resume} » vs « ${resume} »`);
@@ -1981,11 +1998,16 @@ async function main() {
     });
     // Le contraste au pire moment, controle par ensemble de textes.
     const lisibles = async (sel, label) => {
+      // AU REPOS, comme en [L] : mesuree pendant une cascade d entree, une
+      // heure a moitie arrivee se lit transparente (un menu qui venait de
+      // s ouvrir : « 12:00 » a 1,34:1, puis chaque puce plus pale jusqu a
+      // 1:1). Seules restent les animations sans fin (photo, halos).
+      const repos = await attendre(pageJ, () => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity), 8000);
       const m = await contrastesPires(pageJ, sel);
       const faibles = m.filter((x) => x.ratio < x.seuil);
-      ok(m.length > 0 && faibles.length === 0, label,
-        faibles.map((x) => `« ${x.texte} » ${x.ratio}:1 < ${x.seuil} (pixels ${x.pixels}${x.halo === null ? ', sur photo' : `, halo ${x.halo}`})`).join(' ; ')
-        || `${m.length} textes, le plus faible a ${Math.min(...m.map((x) => x.ratio)).toFixed(2)}:1 (${m.filter((x) => x.halo !== null).length} hors photo, pris aussi sous le coeur des halos)`);
+      ok(repos && m.length > 0 && faibles.length === 0, label,
+        (repos ? '' : 'PAS AU REPOS : ') + (faibles.map((x) => `« ${x.texte} » ${x.ratio}:1 < ${x.seuil} (pixels ${x.pixels}${x.halo === null ? ', sur photo' : `, halo ${x.halo}`})`).join(' ; ')
+        || `${m.length} textes, le plus faible a ${Math.min(...m.map((x) => x.ratio)).toFixed(2)}:1 (${m.filter((x) => x.halo !== null).length} hors photo, pris aussi sous le coeur des halos)`));
       return m;
     };
     const filLarge = await lireFil();
@@ -2141,6 +2163,16 @@ async function main() {
     const ligneJ = await pageJ.evaluate(() => (Array.from(document.querySelectorAll('#recap .fg-recap__row')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((l) => /^Arrivée conseillée/.test(l)) || ''));
     ok(ligneJ.indexOf(`${attendueDuree} sur place`) >= 0,
       '[J] et le recapitulatif annonce exactement la meme duree', `« ${ligneJ} » attendait « ${attendueDuree} sur place »`);
+    // LES GROUPES AU RECAPITULATIF (vu en prod le 2026-09-23 : « Debut 11:00 »,
+    // et le 2e groupe tu) : le laser du grand groupe dit le depart de CHAQUE
+    // groupe, lus dans le plan de la route.
+    const blocsGroupesJ = (planJ.resourceBlocks || []).filter((b) => b && b.activityId === 'laser_game' && Number(b.groupWaveCount) > 1 && b.startTime);
+    const departsGroupesJ = [...new Set(blocsGroupesJ.map((b) => b.startTime))].sort();
+    const partiesGroupesJ = new Set(blocsGroupesJ.map((b) => Number(b.countIndex) || 1)).size;
+    const attenduGroupesJ = `${blocsGroupesJ.length ? Number(blocsGroupesJ[0].groupWaveCount) : 0} groupes${partiesGroupesJ > 1 ? ' par partie' : ''} : ${departsGroupesJ.join(', ')}`;
+    const laserRecapJ = (((await lireRecap(pageJ, '#recap')) || {}).items || []).find((i) => i.nom === nomDe('laser_game')) || { detail: '' };
+    ok(departsGroupesJ.length > 1 && laserRecapJ.detail.indexOf(attenduGroupesJ) >= 0,
+      '[J] au recapitulatif, le laser du grand groupe dit le depart de CHAQUE groupe, pas seulement du premier', `« ${laserRecapJ.detail} » attendait « ${attenduGroupesJ} »`);
 
     // --- La legende : moins de texte sur telephone ------------------------
     await pageJ.click('.fg-scene.is-active [data-back]');
@@ -2278,6 +2310,29 @@ async function main() {
     ok(qTardive.get('laserGameTimes') === JSON.stringify(partsTardive), '[J] seule la partie tardive suit son groupe, la plus tot reste', `${qTardive.get('laserGameTimes')} attendu ${JSON.stringify(partsTardive)}`);
     const dTardive = await lireJson(`${BASE_URL}/api/public-availability?${new URLSearchParams(Object.assign({}, paramsJ, { preferredTimes: JSON.stringify({ laser_game: partsTardive[0] }), laserGameTimes: JSON.stringify(partsTardive) }))}`);
     await verifierPistes(dTardive, { laser_game: partsTardive[0] }, partsTardive, '[J] PARTIE TARDIVE DEPLACEE : les pistes = la route', pageJ);
+    // LE 2e GROUPE DANS LA PLAGE SUIVANTE (vu en prod le 2026-09-23 : 11:30
+    // retenue au laser, le 2e groupe a 12:00 dans l apres-midi repliee,
+    // invisible). Retenue a la derniere demi-heure d une plage, la partie
+    // emporte la premiere de la suivante : le menu de celle-ci le dit.
+    const plus30 = (h) => { const [a, b] = h.split(':').map(Number); const m = a * 60 + b + 30; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+    const bordJ = libresJ.find((h) => periodeDe(h) !== periodeDe(plus30(h)));
+    await pageJ.click('#hourZone [data-reset="laser_game"]');
+    await attendre(pageJ, () => !document.querySelector('#hourZone').classList.contains('is-busy'), 25000);
+    ok(Boolean(bordJ) && await poserEtAttendre(pageJ, 'laser_game', bordJ), '[J] MONTAGE : une partie de laser retenue a la derniere demi-heure d une plage', bordJ || `aucune heure libre en bord de plage (${libresJ.join(' ')})`);
+    if (bordJ) {
+      const dBord = await lireJson(`${BASE_URL}/api/public-availability?${new URLSearchParams(Object.assign({}, paramsJ, { preferredTimes: JSON.stringify({ laser_game: bordJ }), laserGameTimes: JSON.stringify([bordJ]) }))}`);
+      const laserBord = ancresDe(dBord).find((a) => a.activityId === 'laser_game') || { times: [] };
+      const empBord = emporteesQa(dBord, laserBord, [bordJ]);
+      const hBord = Object.keys(empBord).find((h) => periodeDe(h) !== periodeDe(bordJ));
+      ok(Boolean(hBord), '[J] MONTAGE : son 2e groupe tombe dans la plage suivante', `${bordJ} emporte ${Object.keys(empBord).join(', ') || 'rien'}`);
+      await verifierPistes(dBord, { laser_game: bordJ }, [bordJ], '[J] 2e GROUPE DANS LA PLAGE SUIVANTE : les pistes = la route, menus compris', pageJ);
+      const menuBord = await pageJ.evaluate((nom) => {
+        const sec = Array.from(document.querySelectorAll('#hourZone .fg-track[data-activity="laser_game"] .fg-period')).find((x) => (x.querySelector('.fg-period__name') || { textContent: '' }).textContent.trim().toLowerCase() === nom.toLowerCase());
+        return sec ? { resume: sec.querySelector('.fg-period__sum').textContent.trim(), ouvert: sec.classList.contains('is-open') } : null;
+      }, periodeDe(hBord || bordJ));
+      ok(Boolean(hBord) && Boolean(menuBord) && menuBord.resume.indexOf(`groupe ${(empBord[hBord] || {}).rang} à ${hBord}`) === 0,
+        '[J] le menu de cette plage, replie ou non, dit l heure du 2e groupe', JSON.stringify(menuBord));
+    }
     await lisibles('.fg-legend__tip, .fg-legend__key i, .fg-legend__key em, #hourZone .fg-period.is-open .fg-why-list__item > span, #hourZone .fg-period.is-open .fg-why-list__item b, #hourZone .fg-period.is-open .fg-key, #hourZone .fg-period.is-open .fg-chip b, #hourZone .fg-period.is-open .fg-chip small',
       '[J] la legende, les heures ouvertes et leurs raisons gardent 4,5:1 au pire moment (sur la photo la plus claire possible, voile compris)');
     await tour.close();
@@ -2386,10 +2441,14 @@ async function main() {
     const pl = await ctxL.newPage();
     await pl.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
     ok(await attendre(pl, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), '[L] la page se monte, le jour propose est lu');
+    let casTitreTotal = 0;
     const lisibleEcran = async (nom, plein) => {
       const faibles = [];
       const vus = [];
       let prerequis = true;
+      const fautesTitre = [];
+      let casTitre = 0;
+      let policeTitre = true;
       for (const [w, h] of LARGEURS_L) {
         await pl.setViewportSize({ width: w, height: h });
         await dormir(300);
@@ -2417,11 +2476,48 @@ async function main() {
         if (!m.length || (plein && !surPhoto)) prerequis = false;
         vus.push(`${w} px ${m.length} textes, ${surPhoto} sur la photo`);
         m.filter((x) => x.ratio < x.seuil).forEach((x) => faibles.push(`${w} px « ${x.texte} » ${x.ratio}:1 < ${x.seuil}${x.halo === null ? ' sur photo' : ` (halo ${x.halo})`}`));
+        // LES ACCENTS DU TITRE (2026-09-23, « CONFIRMEE » plantait son accent
+        // dans le O de « RESERVATION ») : sous la premiere ligne, une ligne
+        // qui porte une capitale accentuee se tient assez bas pour que
+        // l accent, mesure dans la police meme, passe sous la ligne du dessus.
+        const tq = await pl.evaluate(() => {
+          const t = document.querySelector('.fg-scene.is-active .fg-title');
+          if (!t) return { cas: 0, fautes: [], police: false };
+          const cs = getComputedStyle(t);
+          const fs = parseFloat(cs.fontSize);
+          const police = Array.from(document.fonts).some((f) => /anton/i.test(f.family) && f.status === 'loaded');
+          const cv = document.createElement('canvas').getContext('2d');
+          cv.font = `${cs.fontWeight} 100px ${cs.fontFamily}`;
+          const accent = cv.measureText('É').actualBoundingBoxAscent / 100;
+          const lignes = [];
+          t.querySelectorAll('.w').forEach((w) => {
+            const bas = Math.round(w.getBoundingClientRect().bottom);
+            let l = lignes.find((x) => Math.abs(x.bas - bas) <= 3);
+            if (!l) { l = { bas, mots: [] }; lignes.push(l); }
+            l.mots.push(w.textContent.toUpperCase());
+          });
+          lignes.sort((a, b) => a.bas - b.bas);
+          const fautes = [];
+          let cas = 0;
+          for (let i = 1; i < lignes.length; i += 1) {
+            if (!lignes[i].mots.some((x) => /[ÀÂÄÉÈÊËÎÏÔÖÙÛÜŸ]/.test(x))) continue;
+            cas += 1;
+            const ecart = (lignes[i].bas - lignes[i - 1].bas) / fs;
+            if (ecart < accent + 0.03) fautes.push(`« ${lignes[i].mots.join(' ')} » a ${ecart.toFixed(2)} em de la ligne du dessus, son accent monte a ${accent.toFixed(2)} em`);
+          }
+          return { cas, fautes, police };
+        });
+        if (!tq.police) policeTitre = false;
+        casTitre += tq.cas;
+        tq.fautes.forEach((f) => fautesTitre.push(`${w} px ${f}`));
       }
       await pl.setViewportSize({ width: 1440, height: 900 });
       await dormir(500);
       ok(prerequis && faibles.length === 0, `[L] ${nom} : chaque texte garde son seuil sur la photo la plus claire, a 1440, 1920, 1024 et 375 px`,
         faibles.slice(0, 4).join(' ; ') || (prerequis ? vus.join(' | ') : `MESURE A VIDE OU PAS AU REPOS : ${vus.join(' | ')}`));
+      casTitreTotal += casTitre;
+      ok(policeTitre && fautesTitre.length === 0, `[L] ${nom} : l accent d une capitale ne mord jamais la ligne du dessus du titre, a quatre largeurs`,
+        fautesTitre.slice(0, 3).join(' ; ') || (policeTitre ? `${casTitre} ligne(s) accentuee(s) sous une autre` : 'POLICE DU TITRE NON CHARGEE : mesure sans objet'));
     };
     await lisibleEcran('date et groupe', false);
     await pl.click('#goActivities');
@@ -2448,6 +2544,14 @@ async function main() {
     await pl.click('#confirmBtn');
     ok(await attendre(pl, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000), '[L] la reservation part, l ecran final s ouvre');
     await lisibleEcran('fin', true);
+    ok(casTitreTotal > 0, 'MONTAGE [L] au moins un titre porte une capitale accentuee sous sa premiere ligne : la mesure des accents porte sur un vrai cas', `${casTitreTotal} cas`);
+    // Le telephone et l e-mail du centre se TOUCHENT (tel:, mailto:), tires
+    // du catalogue servi.
+    const metaL = await lireJson(`${BASE_URL}/api/public-booking-meta?centerId=libramont`);
+    const contactL = (metaL.center && metaL.center.contact) || {};
+    const liensFin = await pl.evaluate(() => Array.from(document.querySelectorAll('#finBody a.fg-done__lien')).map((a) => [a.textContent.trim(), a.getAttribute('href')]));
+    ok(Boolean(contactL.phone && contactL.email) && JSON.stringify(liensFin) === JSON.stringify([[contactL.phone, `tel:${String(contactL.phone).replace(/[^\d+]/g, '')}`], [contactL.email, `mailto:${contactL.email}`]]),
+      '[L] ecran final : le telephone et l e-mail du centre se touchent (tel:, mailto:)', JSON.stringify({ liens: liensFin, contact: [contactL.phone, contactL.email] }));
     await ctxL.close();
 
     // =====================================================================

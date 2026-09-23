@@ -328,6 +328,33 @@
       walk(el);
     });
   }
+  // LES ACCENTS DES TITRES NE MORDENT PAS LA LIGNE DU DESSUS. Chez Anton,
+  // l accent d une capitale monte a 1,11 em de la ligne de base, et
+  // l interligne des titres est de 0,94 em : en 2e ligne, « CONFIRMEE »
+  // plantait son accent dans le O de « RESERVATION » (mesure le 2026-09-23).
+  // Seul un mot accentue SOUS la premiere ligne agrandit sa ligne vers le
+  // haut, de ce qu il faut : les autres titres gardent leur interligne serre.
+  // Relu a chaque ecran, a chaque changement de largeur et quand la police
+  // arrive : la coupure des lignes en depend.
+  var ACCENT_HAUT = /[ÀÂÄÉÈÊËÎÏÔÖÙÛÜŸ]/;
+  function espacerAccents(titre) {
+    if (!titre) return;
+    var mots = $$('.w', titre);
+    mots.forEach(function (w) { w.classList.remove('w--accent'); });
+    if (mots.length < 2 || !titre.getClientRects().length) return;
+    var haut = mots[0].offsetTop;
+    mots.forEach(function (w) {
+      if (w.offsetTop > haut + 2 && ACCENT_HAUT.test(w.textContent.toUpperCase())) w.classList.add('w--accent');
+    });
+  }
+  function espacerTitreActif() { espacerAccents($('.fg-scene.is-active .fg-title')); }
+  var accentsEnAttente = false;
+  window.addEventListener('resize', function () {
+    if (accentsEnAttente) return;
+    accentsEnAttente = true;
+    requestAnimationFrame(function () { accentsEnAttente = false; espacerTitreActif(); });
+  });
+  if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(espacerTitreActif);
 
   /* --- Les scenes ----------------------------------------------------------------- */
 
@@ -435,6 +462,7 @@
       vers.addEventListener('animationend', surScene);
       setTimeout(function () { vers.removeEventListener('animationend', surScene); fini(); }, 600);
     }
+    espacerAccents($('.fg-title', vers));
     poster({ type: 'pinlane:screen' });
     if (!EMBED) window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
     var focus = $('.fg-title', vers);
@@ -1202,8 +1230,14 @@
       var n = chips.filter(function (c) { return c.dataset.ok !== 'false'; }).length;
       var choisis = chips.filter(function (c) { return c.classList.contains('is-on'); }).map(function (c) { return c.dataset.time; });
       var propose = chips.filter(function (c) { return c.classList.contains('is-proposed'); }).map(function (c) { return c.dataset.time; })[0];
+      // L heure d un groupe suivant qui tombe dans une AUTRE plage que celle
+      // de son depart : la plage reste repliee, son menu le dit (vu en prod
+      // le 2026-09-23 : 11:30 retenue au laser, le 2e groupe a 12:00 dans
+      // l apres-midi, invisible).
+      var vagues = chips.filter(function (c) { return c.classList.contains('is-wave') && c.dataset.wave; }).map(function (c) { return 'groupe ' + JSON.parse(c.dataset.wave).rang + ' à ' + c.dataset.time; });
       var sum = n ? n + ' créneau' + (n > 1 ? 'x' : '') : 'rien de possible';
       if (choisis.length) sum = 'choisi ' + choisis.join(' et ') + ' · ' + sum;
+      else if (vagues.length) sum = vagues.join(', ') + ' · ' + sum;
       else if (propose) sum = 'proposé ' + propose + ' · ' + sum;
       $('.fg-period__sum', sec).textContent = sum;
       sec.classList.toggle('is-picked', choisis.length > 0);
@@ -1707,6 +1741,16 @@
         var detail = it.games ? it.games + ' partie' + (it.games > 1 ? 's' : '') : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) : ''));
         if (bloc && resteSurPlace(Number(it.games) || 0, partiesPosees(cr, it.activityId))) detail += ' · ' + resteSurPlace(Number(it.games) || 0, partiesPosees(cr, it.activityId));
         if (it.services && it.services.length > 1) detail += ' · ' + it.services.length + ' services';
+        // UN GRAND GROUPE SCINDE (vu en prod le 2026-09-23) : le recapitulatif
+        // disait « Debut 11:00 » et taisait le 2e groupe de 11:30. Chaque
+        // depart est lu dans le plan, jamais recalcule ici.
+        var groupes = blocsDuPlan(cr).filter(function (b) { return b.activityId === it.activityId && Number(b.groupWaveCount) > 1 && b.startTime; });
+        if (groupes.length > 1) {
+          var departs = [], parties = {};
+          groupes.forEach(function (b) { if (departs.indexOf(b.startTime) < 0) departs.push(b.startTime); parties[Number(b.countIndex) || 1] = 1; });
+          departs.sort();
+          detail += (detail ? ' · ' : '') + Number(groupes[0].groupWaveCount) + ' groupes' + (Object.keys(parties).length > 1 ? ' par partie' : '') + ' : ' + departs.join(', ');
+        }
         lignes.push({ icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: detail, aside: bloc && bloc.startTime ? bloc.startTime : '' });
       });
     } else {
@@ -1812,11 +1856,21 @@
       });
   });
   // Un titre change de texte : il se redecoupe mot a mot, comme au depart.
+  // Le telephone et l e-mail du centre se TOUCHENT : sur telephone, un doigt
+  // appelle ou ecrit au lieu de recopier. Le lien ne porte que des chiffres
+  // (et un « + »), ou une adresse bien formee ; sinon le texte reste du texte.
+  function lienContact(c) {
+    var chiffres = String(c.phone || '').replace(/[^\d+]/g, '');
+    var tel = chiffres.replace(/\+/g, '').length >= 8 ? '<a class="fg-done__lien" href="tel:' + esc(chiffres) + '">' + esc(c.phone) + '</a>' : esc(c.phone);
+    var mail = !c.email ? '' : /^[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}$/i.test(c.email) ? '<a class="fg-done__lien" href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : esc(c.email);
+    return tel + (mail ? ' · ' + mail : '');
+  }
   function poserTitre(el, html) {
     if (!el) return;
     el.innerHTML = html;
     delete el.dataset.cut;
     decouperTitres();
+    espacerAccents(el);
   }
   function reussite(reponse) {
     var r = reponse.reservation || {};
@@ -1839,7 +1893,7 @@
         : '<b>' + esc(jourLong(dateRes)) + ' à ' + esc(heureRes) + '</b>, ' + esc(personnes(paxRes)) + '. L’équipe vérifie votre demande et revient vers vous rapidement.') + '</p>'
       + '<p class="fg-rise" style="--i:3"><svg style="width:18px;height:18px;vertical-align:-3px;margin-right:6px" aria-hidden="true"><use href="#i-mail"/></svg>' + (confirme ? 'La confirmation part' : 'Un accusé de réception part') + ' à <b>' + esc(mailRes) + '</b>.</p>'
       + (Number(r.price) > 0 ? '<p class="fg-rise" style="--i:4">Montant estimé <b>' + esc(euros(r.price)) + '</b>, à régler sur place, par carte ou en espèces.</p>' : '')
-      + (contact && contact.phone ? '<p class="fg-rise" style="--i:5">Une question ? ' + esc(contact.phone) + (contact.email ? ' · ' + esc(contact.email) : '') + '</p>' : '')
+      + (contact && contact.phone ? '<p class="fg-rise" style="--i:5">Une question ? ' + lienContact(contact) + '</p>' : '')
       + (!EMBED && meta && meta.center && meta.center.identity && meta.center.identity.siteUrl ? '<div class="fg-actions fg-actions--center fg-rise" style="--i:6"><a class="fg-btn fg-btn--ghost" href="' + esc(meta.center.identity.siteUrl) + '">Retour au site</a></div>' : '');
     var burst = $('#finBurst');
     if (burst && !reduced) { burst.innerHTML = ''; for (var i = 0; i < 14; i += 1) { var s = doc.createElement('i'); s.style.setProperty('--a', (i * 360 / 14) + 'deg'); s.style.setProperty('--d', (60 + (i % 3) * 30) + 'px'); s.style.setProperty('--t', (i % 2 ? 0.05 : 0) + 's'); burst.appendChild(s); } }
@@ -1873,6 +1927,7 @@
   function demarrer() {
     poserPhotos();
     decouperTitres();
+    espacerTitreActif();
     rendreEtapes();
     rendrePax();
     var q = new URLSearchParams(); q.set('centerId', CENTER); q.set('calendar', '45');

@@ -35,7 +35,7 @@ const ROOT = process.env.BUILD_PUBLIC_ROOT ? path.resolve(process.env.BUILD_PUBL
 
 // Les chemins ouverts par le middleware, et eux seuls.
 const DOSSIERS = ['assets', 'demo', 'menu'];
-const PAGES = ['index.html', 'pro.html', 'public-form.html', 'fungalaxy.html'];
+const PAGES = ['index.html', 'pro.html', 'public-form.html', 'fungalaxy.html', 'fungalaxy-site.html'];
 const EXCLUS = new Set(['embed.js']);
 
 function chargerEsbuild() {

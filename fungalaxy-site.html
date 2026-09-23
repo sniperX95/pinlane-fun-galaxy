@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Réserver chez Fun Galaxy Libramont</title>
+<meta name="description" content="Réservation en ligne chez Fun Galaxy Libramont : bowling, laser game, minigolf et les autres activités du centre.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Montserrat:wght@600;700&display=swap">
+<link rel="icon" href="/assets/brand/pinlane-mark.svg">
+<!-- /reserver/libramont (Movsar, 2026-09-23 : « que les dimensions soient
+     exactement comme si on devait le mettre sur le site de Fun Galaxy, comme
+     c etait en local avec leur page »). Le formulaire est monte ICI par
+     embed.js, la balise meme que l agence du client posera sur fungalaxy.be :
+     meme cadre, meme mode embarque, meme hauteur qui suit le contenu. Le bloc
+     qui l accueille a les dimensions de la copie locale de leur page
+     (scripts/dev-tunnel-server.js : 1440 px au plus, 32 px au-dessus, 72 px
+     en dessous). Au-dessus, leur en-tete, refait aux mesures de leur page
+     (capture de la copie locale, 1440 px) : logo, centre, les quatre liens de
+     leur menu vers leur vrai site, « Réserver ». Leur page tire ses polices
+     d un kit Adobe Fonts, qui ne se sert que sur leur domaine : ici, la
+     police libre la plus proche, mesuree sur la capture (Barlow Semi
+     Condensed : meme capitale de 15 px, chacun des quatre mots du menu a
+     1 px de leur encre). -->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #000; }
+  body { font-family: "Montserrat", "Segoe UI", system-ui, sans-serif; color: #fff; -webkit-font-smoothing: antialiased; }
+  /* Mesures de leur en-tete sur la capture a 1440 px : bande de 162 px,
+     45 px de marge de chaque cote, logo de 196 px, centre a 22 px du logo
+     (103 x 39), mots du menu a 27 px l un de l autre (encre a encre), bouton
+     a 43 px du dernier mot (148 x 38, blanc, cercle noir puis halo
+     sarcelle). */
+  .fgs-top {
+    display: flex;
+    align-items: center;
+    min-height: 162px;
+    padding: 0 45px;
+    box-sizing: border-box;
+    background: #000;
+  }
+  .fgs-logo { display: block; flex: none; }
+  .fgs-logo img { display: block; width: 196px; height: auto; }
+  .fgs-centre {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 39px;
+    min-width: 103px;
+    margin-left: 22px;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 20px;
+    /* Chez eux, un menu deroulant de centre (13,33 px, la taille d un menu
+       deroulant, dans la police de leur menu). Ici la page est celle de
+       Libramont : le nom seul, sans faux menu. */
+    font-family: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+    font-size: 13.33px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  /* Leur menu se tient 3 px au-dessus du milieu de la bande. */
+  .fgs-nav { display: flex; align-items: center; gap: 25px; margin-left: auto; margin-bottom: 6px; }
+  /* 21,14 px et 0,55 px d interlettrage : la capitale et les largeurs de
+     leurs mots (ACTIVITES 92, EVENEMENTS 119, FORMULES 94, CONTACT 81 px). */
+  .fgs-nav a, .fgs-menu__panel a {
+    font-family: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+    font-weight: 700;
+    font-size: 21.14px;
+    letter-spacing: 0.55px;
+    line-height: 1;
+    text-transform: uppercase;
+    color: #fff;
+    text-decoration: none;
+  }
+  .fgs-nav a:hover, .fgs-menu__panel a:hover { color: #d98ad4; }
+  .fgs-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    height: 38px;
+    padding: 0 34px;
+    margin-left: 42px;
+    border-radius: 19px;
+    background: #fff;
+    color: #000;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    text-decoration: none;
+    box-shadow: 0 0 0 2px #000, -1px 2px 5px 1px rgba(103, 186, 172, 0.8);
+  }
+  .fgs-cta:hover { background: #f1e3f0; }
+  .fgs-top a:focus-visible, .fgs-menu summary:focus-visible { outline: 2px solid #b04fb0; outline-offset: 4px; border-radius: 4px; }
+  /* Le menu repliable n existe que sur petit ecran. */
+  .fgs-menu { display: none; position: relative; }
+  .fgs-menu summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    list-style: none;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 22px;
+  }
+  .fgs-menu summary::-webkit-details-marker { display: none; }
+  .fgs-menu summary svg { width: 20px; height: 20px; }
+  .fgs-menu__panel {
+    position: absolute;
+    right: 0;
+    top: 54px;
+    z-index: 5;
+    display: grid;
+    gap: 18px;
+    min-width: 220px;
+    padding: 22px 24px;
+    border: 1px solid #262626;
+    border-radius: 12px;
+    background: #0a0a0a;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+  }
+  .fgs-menu__centre { font-size: 13px; font-weight: 700; color: #b3b3b3; }
+  .fgs-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* Le bloc du formulaire : celui de la copie locale de leur page. */
+  #booking { padding: 32px 0 72px; }
+  #booking > .container { width: min(1440px, 100%); margin: 0 auto; }
+  .pinlane-slot { width: 100%; }
+  .pinlane-slot iframe { background: #050505; display: block; width: 100%; border: 0; }
+  /* Le repli : visible seulement si le formulaire n est pas monte (script
+     coupe, ou interrupteur du centre eteint par l equipe). */
+  .fgs-repli { max-width: 640px; margin: 24px auto; padding: 0 20px; font-size: 16px; line-height: 1.6; text-align: center; color: #fff; }
+  .fgs-repli a { color: #8fd6c9; font-weight: 700; }
+  @media (max-width: 1180px) {
+    .fgs-top { padding: 0 28px; }
+    .fgs-logo img { width: 150px; }
+    .fgs-centre { margin-left: 16px; }
+    .fgs-nav { gap: 18px; }
+    .fgs-nav a { font-size: 19px; }
+    .fgs-cta { padding: 0 24px; margin-left: 24px; }
+  }
+  @media (max-width: 900px) {
+    .fgs-top { min-height: 96px; padding: 0 20px; gap: 12px; }
+    .fgs-centre { margin-left: 0; }
+    .fgs-logo img { width: 104px; }
+    .fgs-top > .fgs-centre, .fgs-nav { display: none; }
+    .fgs-cta { margin-left: auto; height: 40px; padding: 0 18px; font-size: 13px; }
+    .fgs-menu { display: block; }
+  }
+</style>
+</head>
+<body>
+
+<header class="fgs-top">
+  <a class="fgs-logo" href="https://fungalaxy.be" title="Retourner à la page d’accueil"><img src="/assets/brand/logo-fun-galaxy.svg" alt="Logo Fun Galaxy" width="196" height="133"></a>
+  <span class="fgs-centre">Libramont</span>
+  <nav class="fgs-nav" aria-label="Fun Galaxy">
+    <a href="https://fungalaxy.be/activites/">Activités</a>
+    <a href="https://fungalaxy.be/evenements/">Événements</a>
+    <a href="https://fungalaxy.be/formules/">Formules</a>
+    <a href="https://fungalaxy.be/contact/">Contact</a>
+  </nav>
+  <a class="fgs-cta" href="#booking">Réserver</a>
+  <details class="fgs-menu">
+    <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="fgs-sr">Menu</span></summary>
+    <nav class="fgs-menu__panel" aria-label="Fun Galaxy">
+      <span class="fgs-menu__centre">Centre : Libramont</span>
+      <a href="https://fungalaxy.be/activites/">Activités</a>
+      <a href="https://fungalaxy.be/evenements/">Événements</a>
+      <a href="https://fungalaxy.be/formules/">Formules</a>
+      <a href="https://fungalaxy.be/contact/">Contact</a>
+    </nav>
+  </details>
+</header>
+
+<main>
+  <section id="booking" aria-label="Réservation en ligne">
+    <div class="container"><div class="pinlane-slot"></div>
+      <p class="fgs-repli" id="reservationRepli" hidden>Le formulaire de réservation ne s’est pas chargé. <a href="/reserver?center=libramont">Réserver en ligne chez Fun Galaxy Libramont</a></p>
+    </div>
+  </section>
+</main>
+
+<script src="/embed.js" data-center="libramont" data-design="fungalaxy" data-target=".pinlane-slot" data-height="720" data-scroll-margin="32" data-track="datalayer"></script>
+<!-- embed.js retire son cadre quand l equipe eteint le formulaire du centre
+     (l interrupteur prevu pour LEUR site, qui garde alors son ancien
+     formulaire). Ici, il n y a pas d ancien formulaire : sans ce repli, la
+     page resterait vide sous l en-tete. Le parcours classique du centre
+     prend le relais. -->
+<script>
+  (function () {
+    var slot = document.querySelector('.pinlane-slot');
+    var repli = document.getElementById('reservationRepli');
+    if (!slot || !repli) return;
+    function verifier() { if (!slot.querySelector('iframe')) repli.hidden = false; }
+    if (window.MutationObserver) new MutationObserver(verifier).observe(slot, { childList: true });
+    window.addEventListener('load', verifier);
+  })();
+</script>
+<noscript><style>#reservationRepli[hidden] { display: block; }</style></noscript>
+</body>
+</html>

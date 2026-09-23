@@ -88,6 +88,20 @@
 //       LA PLUS CLAIRE POSSIBLE (chaque photo remplacee par un blanc pur, celle
 //       des cartes montree comme au survol), et hors photo sous le coeur des
 //       halos. Un controle inactif en est ecarte (WCAG 1.4.3).
+//   [M] /reserver/libramont (2026-09-23) : vercel.json sert cette adresse
+//       par fungalaxy-site.html AVANT la regle generique du tunnel ; la page
+//       est dans les listes du build public et du gate de fuite ; elle porte
+//       leur en-tete a leurs mesures (162 px, logo de 196 px, « Libramont »,
+//       leurs quatre liens vers leur vrai site, « Réserver »), compare AU
+//       PIXEL a la capture de leur page (encre des mots du menu, capitales,
+//       bouton, centre), et monte le formulaire par embed.js, en mode
+//       embarque, dans le bloc de la copie locale de leur page (1440 px au
+//       plus, centre, 32 px au-dessus, 72 en dessous) ; le cadre prend la
+//       hauteur du formulaire, a 1440 px comme sur telephone (ou il grandit
+//       avec lui) ; sur telephone, un menu, rien ne deborde ; une reservation
+//       va jusqu a l ecran final ;
+//       formulaire eteint par l equipe (interrupteur d embed.js), la page
+//       renvoie au parcours classique du centre au lieu de rester vide.
 //   [I] FORMULES A L ECRAN + FUN RUN QUI TOURNE (2026-09-22).
 //   [J] LES TOURS DU 2026-09-23 : aucune photo de l ANCIEN centre nulle part
 //       (ni citee, ni dans le depot) ; le compteur
@@ -153,6 +167,14 @@
 // disparait), fantome (le bouton discret redevient transparent), voilecarte (la
 // photo de carte reprend son voile lineaire), compteur (le nombre de formules
 // repart au bout du filet, en gris discret). Toutes : FEUILLE servie cassee.
+//
+// CONTRE-PREUVES DE /reserver/libramont : hotelarge (le bloc prend toute la
+// largeur de l ecran : PAGE servie cassee), embedbrut (la balise perd
+// data-design : c est l ancien tunnel qui se monte), ordre (la regle du
+// centre passe APRES la regle generique : lu dans vercel.json), repli (le
+// formulaire eteint par l equipe laisse la page vide), cadrefige (le cadre
+// garde ses 720 px quoi que dise le formulaire), menutaille (le menu de
+// l en-tete a 23 px : ses mots ne tombent plus sur les leurs).
 //
 // CONTRE-PREUVES (le gate mord) : FG_QA_CASSE=prix (prix de carte faux d un
 // euro), total (total du recap faux d un euro), raison (les heures perdent leur
@@ -318,6 +340,14 @@ const MUTATIONS_HTML = {
     ['data-words>Top <em>départ</em></h2>', 'data-words>Vos <em>horaires</em></h2>'],
   ],
 };
+// Les contre-preuves de la page /reserver/libramont (fungalaxy-site.html).
+const MUTATIONS_SITE = {
+  hotelarge: ['#booking > .container { width: min(1440px, 100%); margin: 0 auto; }', '#booking > .container { width: 100%; margin: 0 auto; }'],
+  embedbrut: [' data-design="fungalaxy"', ''],
+  repli: ["    function verifier() { if (!slot.querySelector('iframe')) repli.hidden = false; }", '    function verifier() {}'],
+  cadrefige: ['.pinlane-slot iframe { background: #050505; display: block; width: 100%; border: 0; }', '.pinlane-slot iframe { background: #050505; display: block; width: 100%; border: 0; height: 720px !important; }'],
+  menutaille: ['    font-size: 21.14px;', '    font-size: 23px;'],
+};
 
 // Le serveur du gate : la page hote en plus, et la contre-preuve (un JS servi
 // casse expres) quand FG_QA_CASSE le demande. Tout le reste est le mock partage.
@@ -326,6 +356,14 @@ function serveur() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, BASE_URL);
     if (url.pathname === '/host.html') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(HOST_HTML); return; }
+    if (CASSE && MUTATIONS_SITE[CASSE] && /^\/reserver\/libramont\/?$/.test(url.pathname)) {
+      const [a, b] = MUTATIONS_SITE[CASSE];
+      const page = fs.readFileSync(path.join(ROOT, 'fungalaxy-site.html'), 'utf8').replace(/\r\n/g, '\n');
+      if (page.split(a).length !== 2) { console.error(`fungalaxy-form-check: la mutation ${CASSE} ne trouve pas son ancre une seule fois (la page a change ?)`); process.exit(2); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(page.replace(a, b));
+      return;
+    }
     if (CASSE && MUTATIONS_HTML[CASSE] && /^\/fungalaxy\/[a-z0-9-]+\/?$/.test(url.pathname)) {
       let page = fs.readFileSync(path.join(ROOT, 'fungalaxy.html'), 'utf8').replace(/\r\n/g, '\n');
       for (const [a, b] of MUTATIONS_HTML[CASSE]) {
@@ -338,7 +376,7 @@ function serveur() {
     }
     const feuille = url.pathname === '/assets/fungalaxy-booking.css';
     if (CASSE && (url.pathname === '/assets/fungalaxy-booking.js' || feuille)) {
-      if (!MUTATIONS[CASSE] && !MUTATIONS_CSS[CASSE] && !MUTATIONS_HTML[CASSE]) { console.error(`fungalaxy-form-check: mutation inconnue ${CASSE}`); process.exit(2); }
+      if (!MUTATIONS[CASSE] && !MUTATIONS_CSS[CASSE] && !MUTATIONS_HTML[CASSE] && !MUTATIONS_SITE[CASSE] && CASSE !== 'ordre') { console.error(`fungalaxy-form-check: mutation inconnue ${CASSE}`); process.exit(2); }
       const mutation = (feuille ? MUTATIONS_CSS : MUTATIONS)[CASSE];
       if (mutation) {
         const avant = fs.readFileSync(path.join(ROOT, 'assets', feuille ? 'fungalaxy-booking.css' : 'fungalaxy-booking.js'), 'utf8').replace(/\r\n/g, '\n');
@@ -2411,6 +2449,202 @@ async function main() {
     ok(await attendre(pl, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000), '[L] la reservation part, l ecran final s ouvre');
     await lisibleEcran('fin', true);
     await ctxL.close();
+
+    // =====================================================================
+    console.log('');
+    console.log('[M] /reserver/libramont : LE FORMULAIRE TEL QU IL SERAIT POSE SUR LE SITE DE FUN GALAXY');
+    // Movsar, 2026-09-23 : « je veux que tu le push sur /reserver/libramont
+    // aussi, et que les dimensions soient exactement comme si on devait le
+    // mettre sur le site de Fun Galaxy, comme c etait en local avec leur
+    // page ». La page (fungalaxy-site.html) monte le formulaire par embed.js,
+    // la balise meme que l agence posera, dans le bloc de la copie locale de
+    // leur page, sous leur en-tete refait a leurs mesures (capture de la
+    // copie locale a 1440 px).
+    // =====================================================================
+    // La route telle que Vercel la lira : la premiere regle qui correspond
+    // gagne, celle du centre doit donc passer AVANT la regle generique.
+    const configM = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+    if (CASSE === 'ordre') {
+      const iA = configM.rewrites.findIndex((r) => r.source === '/reserver/libramont');
+      const iB = configM.rewrites.findIndex((r) => r.source === '/reserver/:center');
+      if (iA >= 0 && iB >= 0) { const t = configM.rewrites[iA]; configM.rewrites[iA] = configM.rewrites[iB]; configM.rewrites[iB] = t; }
+    }
+    const reglesM = (configM.rewrites || []).map((r) => r.source);
+    const iSite = reglesM.indexOf('/reserver/libramont');
+    const iGen = reglesM.indexOf('/reserver/:center');
+    ok(iSite >= 0 && configM.rewrites[iSite].destination === '/fungalaxy-site.html' && iGen > iSite,
+      '[M] vercel.json sert /reserver/libramont par fungalaxy-site.html, AVANT la regle generique /reserver/:center', `regle du centre en ${iSite}, regle generique en ${iGen}`);
+    const listeBuild = /const PAGES = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(ROOT, 'tools', 'build-public.js'), 'utf8'));
+    const listeFuite = /const PAGES = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(ROOT, 'scripts', 'public-leak-check.js'), 'utf8'));
+    ok(Boolean(listeBuild && /'fungalaxy-site\.html'/.test(listeBuild[1]) && listeFuite && /'fungalaxy-site\.html'/.test(listeFuite[1])),
+      '[M] la page est dans les listes du build public et du gate de fuite : ses commentaires ne partent pas en ligne');
+    const LIENS_FG = [['Activités', 'https://fungalaxy.be/activites/'], ['Événements', 'https://fungalaxy.be/evenements/'], ['Formules', 'https://fungalaxy.be/formules/'], ['Contact', 'https://fungalaxy.be/contact/']];
+    const lireSite = (p) => p.evaluate(() => {
+      const r = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { x: Math.round(b.left), y: Math.round(b.top + scrollY), w: Math.round(b.width), h: Math.round(b.height) }; };
+      const vu = (el) => Boolean(el) && getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0;
+      const cadre = document.querySelector('#booking .pinlane-slot iframe');
+      const centre = document.querySelector('.fgs-top > .fgs-centre');
+      const cta = document.querySelector('.fgs-cta');
+      const sec = getComputedStyle(document.querySelector('#booking'));
+      return {
+        entete: r(document.querySelector('.fgs-top')),
+        logo: r(document.querySelector('.fgs-logo img')),
+        centre: vu(centre) ? centre.textContent.trim() : '',
+        liens: Array.from(document.querySelectorAll('.fgs-nav a')).filter(vu).map((a) => [a.textContent.trim(), a.getAttribute('href')]),
+        cta: vu(cta) ? [cta.textContent.trim(), cta.getAttribute('href')] : null,
+        menu: vu(document.querySelector('.fgs-menu')),
+        bloc: r(document.querySelector('#booking > .container')),
+        section: [sec.paddingTop, sec.paddingBottom],
+        cadre: r(cadre),
+        src: cadre ? cadre.getAttribute('src') : '',
+        largeur: document.documentElement.clientWidth,
+        deborde: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    const ctxM = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const pm = await ctxM.newPage();
+    const erreursM = [];
+    pm.on('pageerror', (err) => erreursM.push(String(err && err.message || err)));
+    await pm.goto(`${BASE_URL}/reserver/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    let sm = await lireSite(pm);
+    ok(Boolean(sm.entete && Math.abs(sm.entete.h - 162) <= 1 && sm.logo && Math.abs(sm.logo.w - 196) <= 1 && sm.centre === 'Libramont' && JSON.stringify(sm.liens) === JSON.stringify(LIENS_FG) && sm.cta && sm.cta[1] === '#booking' && !sm.menu),
+      '[M] 1440 px : leur en-tete a leurs mesures (162 px, logo de 196 px, « Libramont », leurs quatre liens vers leur vrai site, « Réserver » vers le formulaire)',
+      JSON.stringify({ entete: sm.entete, logo: sm.logo, centre: sm.centre, liens: sm.liens.map((l) => l[0]), cta: sm.cta }));
+    // LEUR EN-TETE AU PIXEL. Releve sur la capture de leur page (copie locale
+    // de fungalaxy.be, 1440 px, 2026-09-23) : l encre des quatre mots du menu,
+    // la hauteur de leurs capitales, le blanc du bouton, le contour du centre.
+    // Leur police vient d un kit Adobe servi a leur seul domaine ; la notre est
+    // la plus proche mesuree (Barlow Semi Condensed), et doit etre chargee pour
+    // que la mesure dise quelque chose.
+    const LEUR_ENTETE = { mots: [[737, 828], [856, 974], [1002, 1095], [1123, 1203]], capitales: [71, 85], bouton: [1247, 1394, 62, 99], centre: [263, 365, 62, 100] };
+    const policeM = await pm.evaluate(async () => { await document.fonts.ready; return Array.from(document.fonts).some((f) => f.family.replace(/"/g, '') === 'Barlow Semi Condensed' && f.status === 'loaded'); });
+    ok(policeM, 'MONTAGE [M] la police du menu de l en-tete est chargee');
+    const imgM = decoderPng(await pm.screenshot({ clip: { x: 0, y: 0, width: 1440, height: 162 } }));
+    const clairM = (x, y, s) => { const p = imgM.pixel(x, y); return (p[0] + p[1] + p[2]) / 3 > s; };
+    const colonnesM = (x0, x1, y0, y1, s) => { const c = []; for (let x = x0; x < x1; x += 1) for (let y = y0; y < y1; y += 1) if (clairM(x, y, s)) { c.push(x); break; } return c; };
+    const lignesM = (x0, x1, y0, y1, s) => { const l = []; for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) if (clairM(x, y, s)) { l.push(y); break; } return l; };
+    const bornes = (t) => (t.length ? [t[0], t[t.length - 1]] : []);
+    const cm = colonnesM(700, 1225, 60, 95, 140);
+    const motsM = [];
+    cm.forEach((x, i) => { if (!i || x - cm[i - 1] > 8) motsM.push([x, x]); else motsM[motsM.length - 1][1] = x; });
+    const capM = motsM[2] ? bornes(lignesM(motsM[2][0], motsM[2][1] + 1, 40, 120, 140)) : [];
+    const boutonM = bornes(colonnesM(1225, 1430, 45, 120, 200)).concat(bornes(lignesM(1225, 1430, 45, 120, 200)));
+    const centreM = bornes(colonnesM(250, 390, 45, 120, 60)).concat(bornes(lignesM(250, 390, 45, 120, 60)));
+    const aPres = (a, b, t) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= t);
+    ok(policeM && motsM.length === 4 && motsM.every((m, i) => aPres(m, LEUR_ENTETE.mots[i], 2)) && aPres(capM, LEUR_ENTETE.capitales, 1) && aPres(boutonM, LEUR_ENTETE.bouton, 1) && aPres(centreM, LEUR_ENTETE.centre, 1),
+      '[M] 1440 px : leur en-tete au pixel (encre des quatre mots du menu a 2 px de leur capture, capitales, bouton et centre a 1 px)',
+      JSON.stringify({ mots: motsM, capitales: capM, bouton: boutonM, centre: centreM }));
+    ok(Boolean(sm.bloc && sm.bloc.w === Math.min(1440, sm.largeur) && sm.section[0] === '32px' && sm.section[1] === '72px' && /^\/fungalaxy\/libramont\?embed=1&fond=/.test(String(sm.src).replace(/^https?:\/\/[^/]+/, '')) && sm.deborde <= 0),
+      '[M] 1440 px : le bloc de la copie locale de leur page (1440 px au plus, 32 px au-dessus, 72 en dessous), le formulaire monte par embed.js en mode embarque, rien ne deborde',
+      JSON.stringify({ bloc: sm.bloc, section: sm.section, src: sm.src, deborde: sm.deborde }));
+    let fm = null;
+    for (let k = 0; k < 100 && !fm; k += 1) { fm = pm.frames().find((x) => /\/fungalaxy\/libramont\?embed=1/.test(x.url())); if (!fm) await dormir(100); }
+    ok(Boolean(fm) && await attendre(fm, () => document.body.classList.contains('is-embed') && getComputedStyle(document.querySelector('.fg-top')).display === 'none' && getComputedStyle(document.querySelector('.fg-glow')).display === 'none' && document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000),
+      '[M] dans le cadre, le formulaire en mode embarque : sans notre bandeau ni nos halos, catalogue lu');
+    if (fm) {
+      const fondM = await fm.evaluate(() => ({ fond: new URLSearchParams(location.search).get('fond') || '', ref: getComputedStyle(document.documentElement).getPropertyValue('--fg-bg').trim() }));
+      ok(fondM.fond === 'rgb(0, 0, 0)' && fondM.ref === fondM.fond, '[M] le formulaire prend le noir de la page comme fond de reference (les bords de la photo s y fondent)', JSON.stringify(fondM));
+      const accordM = async () => {
+        const dedans = await fm.evaluate(() => Math.max(document.body.scrollHeight, document.body.offsetHeight));
+        const dehors = await pm.evaluate(() => Math.round(document.querySelector('#booking iframe').getBoundingClientRect().height));
+        return { dedans, dehors, ecart: Math.abs(dedans - dehors) };
+      };
+      let am = await accordM();
+      for (let k = 0; k < 30 && am.ecart > 8; k += 1) { await dormir(150); am = await accordM(); }
+      ok(am.ecart <= 8, '[M] le cadre prend la hauteur du formulaire : la page defile d un seul tenant', JSON.stringify(am));
+      // Une reservation jusqu a l ecran final, dans le cadre de la page.
+      await fm.click('#dayBtn');
+      ok(await allerAuMois(fm, mock.DATE), '[M] le mois du samedi du mock s affiche dans le cadre');
+      await fm.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+      await attendre(fm, () => document.querySelector('#dayPop').hidden, 3000);
+      await fm.click('#goActivities');
+      await attendre(fm, () => document.querySelector('.fg-scene[data-scene="activites"].is-active'), 8000);
+      await fm.click('#gridAct .fg-card[data-activity="bowling"]');
+      await fm.click('#goHours');
+      ok(await attendre(fm, () => !document.querySelector('#goContact').disabled, 25000), '[M] les heures se calculent dans le cadre');
+      await fm.click('#goContact');
+      await fm.fill('#cPrenom', 'Test'); await fm.fill('#cNom', 'Site'); await fm.fill('#cEmail', 'site@example.com'); await fm.fill('#cTel', '0491301667');
+      await fm.check('#cConsent');
+      await fm.click('#goRecap');
+      await attendre(fm, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000);
+      await fm.click('#confirmBtn');
+      ok(await attendre(fm, () => document.querySelector('.fg-scene[data-scene="fin"].is-active') && /n°\s*\d+/.test((document.querySelector('#finBody .fg-done__ref') || {}).textContent || ''), 10000),
+        '[M] la reservation va jusqu a l ecran final, avec son numero');
+    }
+    // A 1920 px : le formulaire garde les 1440 px qu il aurait dans leur page.
+    await pm.setViewportSize({ width: 1920, height: 1080 });
+    await dormir(500);
+    sm = await lireSite(pm);
+    ok(Boolean(sm.bloc && sm.bloc.w === 1440 && Math.abs(sm.bloc.x - 240) <= 1 && sm.cadre && sm.cadre.w === 1440 && sm.deborde <= 0),
+      '[M] 1920 px : le formulaire garde ses 1440 px, centre, comme dans leur page (pas la pleine largeur de l ecran)', JSON.stringify({ bloc: sm.bloc, cadre: sm.cadre }));
+    await pm.setViewportSize({ width: 1024, height: 768 });
+    await dormir(500);
+    sm = await lireSite(pm);
+    ok(Boolean(sm.bloc && sm.bloc.w === sm.largeur && sm.liens.length === 4 && sm.centre === 'Libramont' && sm.deborde <= 0),
+      '[M] 1024 px : pleine largeur, l en-tete garde son centre et ses quatre liens, rien ne deborde', JSON.stringify({ bloc: sm.bloc, liens: sm.liens.length, deborde: sm.deborde }));
+    const lisEntete = await contrastesPires(pm, '.fgs-top a, .fgs-top .fgs-centre');
+    ok(lisEntete.length >= 6 && lisEntete.every((x) => x.ratio >= x.seuil), '[M] chaque texte de l en-tete garde son seuil', lisEntete.filter((x) => x.ratio < x.seuil).map((x) => `« ${x.texte} » ${x.ratio}:1`).join(' ; ') || `${lisEntete.length} textes`);
+    ok(erreursM.length === 0 && await pm.evaluate(() => document.querySelector('#reservationRepli').hidden), '[M] aucune erreur de script dans la page, et le repli reste cache tant que le formulaire est monte', erreursM.slice(0, 2).join(' | '));
+    await ctxM.close();
+    // L interrupteur du centre eteint (reponse d embed-state forcee) : embed.js
+    // retire son cadre ; la page ne reste pas vide sous l en-tete.
+    const ctxR = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctxR.route((u) => u.pathname === '/api/public-booking-meta' && u.searchParams.get('embedState') === '1',
+      (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, center: 'libramont', actif: false }) }));
+    const pr = await ctxR.newPage();
+    await pr.goto(`${BASE_URL}/reserver/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    const repliVu = await attendre(pr, () => !document.querySelector('.pinlane-slot iframe') && !document.querySelector('#reservationRepli').hidden, 8000);
+    const lienRepli = await pr.evaluate(() => { const a = document.querySelector('#reservationRepli a'); return a ? a.getAttribute('href') : ''; });
+    ok(repliVu && lienRepli === '/reserver?center=libramont', '[M] formulaire eteint par l equipe : la page ne reste pas vide, elle renvoie au parcours classique du centre', lienRepli || 'aucun lien');
+    // Le lien MENE au tunnel de Libramont : le tunnel qui s ouvre demande le
+    // catalogue de CE centre (sans centre, /reserver sert la demonstration).
+    let tunnelCentre = '';
+    if (repliVu) {
+      const [req] = await Promise.all([
+        pr.waitForRequest((r) => { const u = new URL(r.url()); return u.pathname === '/api/public-booking-meta' && !u.searchParams.get('embedState'); }, { timeout: 20000 }).catch(() => null),
+        pr.click('#reservationRepli a'),
+      ]);
+      if (req) { const u = new URL(req.url()); tunnelCentre = u.searchParams.get('centerId') || u.searchParams.get('center') || ''; }
+    }
+    ok(tunnelCentre === 'libramont', '[M] le lien du repli ouvre le tunnel classique de Libramont', tunnelCentre || 'aucun catalogue demande');
+    await ctxR.close();
+    // Sur telephone : un menu, le formulaire sur toute la largeur.
+    const ctxMt = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
+    const pmt = await ctxMt.newPage();
+    await pmt.goto(`${BASE_URL}/reserver/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    await dormir(400);
+    const st = await lireSite(pmt);
+    ok(Boolean(st.entete && st.entete.h <= 100 && st.menu && st.liens.length === 0 && st.cta && st.cadre && st.cadre.w === st.largeur && st.deborde <= 0),
+      '[M] 375 px : un menu a la place des liens, « Réserver » garde, le formulaire sur toute la largeur, rien ne deborde', JSON.stringify({ entete: st.entete, menu: st.menu, cta: st.cta, cadre: st.cadre, deborde: st.deborde }));
+    // Sur telephone aussi, le cadre suit la hauteur du formulaire : sinon le
+    // bas serait coupe, ou defilerait dans un cadre dans la page. Mesure sur
+    // l ecran des activites, BIEN plus haut que les 720 px par defaut du
+    // cadre : au premier ecran, le contenu fait justement 720 px a cette
+    // largeur, et un cadre qui ne suivrait plus rien y passerait.
+    let fmt = null;
+    for (let k = 0; k < 100 && !fmt; k += 1) { fmt = pmt.frames().find((x) => /\/fungalaxy\/libramont\?embed=1/.test(x.url())); if (!fmt) await dormir(100); }
+    let amt = { dedans: 0, dehors: 0, ecart: Infinity };
+    if (fmt && await attendre(fmt, () => document.querySelector('#dayLabel') && document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000)) {
+      await fmt.tap('#dayBtn');
+      if (await allerAuMois(fmt, mock.DATE)) {
+        await fmt.tap(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+        await attendre(fmt, () => document.querySelector('#dayPop').hidden, 3000);
+        await fmt.tap('#goActivities');
+        await attendre(fmt, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+      }
+      const accordT = async () => {
+        const dedans = await fmt.evaluate(() => Math.max(document.body.scrollHeight, document.body.offsetHeight));
+        const dehors = await pmt.evaluate(() => Math.round(document.querySelector('#booking iframe').getBoundingClientRect().height));
+        return { dedans, dehors, ecart: Math.abs(dedans - dehors) };
+      };
+      amt = await accordT();
+      for (let k = 0; k < 30 && amt.ecart > 8; k += 1) { await dormir(150); amt = await accordT(); }
+    }
+    ok(amt.dedans > 900 && amt.ecart <= 8, '[M] 375 px : le cadre grandit avec le formulaire (ecran des activites), la page defile d un seul tenant', JSON.stringify(amt));
+    await pmt.tap('.fgs-menu summary');
+    const menuM = await pmt.evaluate(() => ({ ouvert: document.querySelector('.fgs-menu').open, centre: (document.querySelector('.fgs-menu__centre') || {}).textContent || '', liens: Array.from(document.querySelectorAll('.fgs-menu__panel a')).filter((a) => a.getClientRects().length).map((a) => [a.textContent.trim(), a.getAttribute('href')]), deborde: document.documentElement.scrollWidth - document.documentElement.clientWidth }));
+    ok(menuM.ouvert && /Libramont/.test(menuM.centre) && JSON.stringify(menuM.liens) === JSON.stringify(LIENS_FG) && menuM.deborde <= 0, '[M] 375 px : le menu ouvert dit le centre et donne leurs quatre liens, dans l ecran', JSON.stringify(menuM));
+    await ctxMt.close();
 
     // =====================================================================
     console.log('');

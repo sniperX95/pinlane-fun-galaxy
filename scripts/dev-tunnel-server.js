@@ -8,6 +8,8 @@
 //
 //   http://127.0.0.1:4230/reserver                 le tunnel actuel
 //   http://127.0.0.1:4230/fungalaxy/libramont      le formulaire Fun Galaxy (v3)
+//   http://127.0.0.1:4230/reserver/libramont       le meme, tel qu il serait
+//       pose sur le site de Fun Galaxy (fungalaxy-site.html, comme en prod)
 //   http://127.0.0.1:4230/fungalaxy-local#booking  la page /contact/ de
 //       fungalaxy.be, telechargee a chaque requete, avec le formulaire Fun
 //       Galaxy monte a la place du Gravity Form, par embed.js. Rien n est
@@ -224,6 +226,9 @@ function createServer(options = {}) {
     let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
     if (url.pathname === '/' || url.pathname === '/reserver' || /^\/reserver\/[a-z0-9-]+\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'index.html');
     if (url.pathname === '/fungalaxy' || /^\/fungalaxy\/[a-z0-9-]+\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'fungalaxy.html');
+    // Comme en production (vercel.json) : /reserver/libramont sert le
+    // formulaire Fun Galaxy tel qu il serait pose sur leur site.
+    if (/^\/reserver\/libramont\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'fungalaxy-site.html');
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
     fs.readFile(filePath, (err, content) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }

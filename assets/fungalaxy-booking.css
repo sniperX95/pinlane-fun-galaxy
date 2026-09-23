@@ -152,6 +152,15 @@
 /* Dans le cadre du client, la hauteur suit le contenu : un plancher a 100vh
    vaudrait la hauteur du cadre, et le cadre ne saurait alors que grandir. */
 .fg.is-embed { min-height: 0; }
+/* Un cadre dont l hote suit la hauteur (embed.js, classe posee au premier
+   message de zone visible) ne defile jamais lui-meme : c est la page du client
+   qui defile. Sans ce verrou, quelques pixels de trop rendaient le cadre
+   defilable, et il avalait le premier geste (molette, doigt) au lieu de le
+   rendre a la page. Le corps garde son debordement visible : avec la racine
+   en hidden, un overflow-x: hidden sur lui en ferait une zone defilante, et
+   la barre collee ne collerait plus. */
+html.fg-pilote { overflow: hidden; }
+html.fg-pilote .fg { overflow: visible; }
 
 /* --- Coquille et scenes ---------------------------------------------------- */
 
@@ -1113,6 +1122,59 @@
 }
 @keyframes fg-bump { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
 
+/* --- La barre qui suit (activites, heures) ------------------------------------- */
+
+/* Le bouton qui fait avancer vivait sous la ligne de flottaison : le
+   « Continuer » des activites des 1440x900, a 500 px sous le bas de l ecran
+   sur telephone ; sur l ecran des heures, le prix de la visite aussi. La
+   barre colle au bas de ce qui se voit : l ecran en page autonome, la bande
+   que la page hote montre du cadre en embarque (--tunnel-vue-bas, voir
+   embed.js). A sa place, en fin de page, elle redevient la barre d avant ;
+   collee (.is-stuck, pose par le script), elle se pose sur un panneau. Le
+   panneau est un pseudo-element : rien ne bouge dans la mise en page quand
+   elle colle ou decolle. */
+.fg-dock {
+  position: sticky;
+  bottom: calc(var(--tunnel-vue-bas, 0px) + 10px + env(safe-area-inset-bottom, 0px));
+  z-index: 4;
+  padding: 14px 0 16px;
+  transition: border-color 0.2s, filter 0.2s;
+}
+.fg-dock::before {
+  content: "";
+  position: absolute;
+  inset: 0 calc(-1 * min(16px, var(--fg-gutter) - 8px));
+  z-index: -1;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background-color: rgba(12, 12, 12, 0);
+  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0);
+  pointer-events: none;
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.fg-dock.is-stuck { border-top-color: transparent; }
+.fg-dock.is-stuck::before {
+  background-color: rgba(12, 12, 12, 0.97);
+  border-color: var(--fg-line-2);
+  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.55);
+}
+/* Sur l ecran des heures, la barre a la largeur des pistes. */
+.fg-scene--center .fg-dock { max-width: 940px; margin-left: auto; margin-right: auto; text-align: left; }
+.fg-dock__place { height: 0; }
+.fg-bar__sum b { color: var(--fg-text); font-weight: 700; }
+#hourZone.is-busy ~ .fg-dock .fg-bar__sum { opacity: 0.55; transition: opacity 0.2s 0.15s; }
+/* EMBARQUE : quand la page hote defile, la barre collee suivrait le cadre
+   avec une ou deux images de retard (la bande visible arrive par message) et
+   flotterait. Elle s efface donc pendant le defilement et revient quand il
+   s arrete. Meme geste quand le focus clavier passe sous elle : ce qui a le
+   focus ne se cache jamais derriere (WCAG 2.4.11). Un fondu, pas un
+   glissement : deplacee vers le bas, la barre agrandirait la page, donc le
+   cadre de l hote avec elle. */
+.fg.is-hote-defile .fg-dock.is-stuck, .fg-dock.is-stuck.is-aside { filter: opacity(0); pointer-events: none; }
+/* En page autonome, le navigateur fait lui-meme defiler ce qui prend le focus
+   au-dessus de la barre. */
+.fg-page.has-dock { scroll-padding-bottom: 150px; }
+
 /* --- Etape 3 : les heures ----------------------------------------------------- */
 
 /* Pendant qu une pose se recalcule, rien ne se reconstruit : les puces et le
@@ -1735,7 +1797,22 @@
   .fg-bar { flex-direction: column; align-items: stretch; }
   .fg-bar .fg-btn { width: 100%; }
   .fg-actions .fg-btn { width: 100%; }
-  .fg-cal { min-width: 0; width: 100%; max-width: none; }
+  /* La barre qui suit : le resume sur sa ligne, puis le retour en carre (son
+     mot reste pour les lecteurs d ecran) et le bouton qui avance sur toute la
+     largeur restante. */
+  .fg-dock { gap: 8px; padding: 10px 0 12px; }
+  .fg-dock .fg-bar__count { font-size: 14px; }
+  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }
+  .fg-dock .fg-btn { min-height: 50px; }
+  .fg-dock .fg-btn--ghost { flex: 0 0 52px; width: 52px; padding: 0; }
+  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .fg-dock .fg-btn:not(.fg-btn--ghost) { flex: 1 1 auto; width: auto; min-width: 0; }
+  /* Le calendrier s ouvre DANS la page, sous le bouton : il pousse ce qui
+     suit au lieu de le recouvrir, et la page (ou le cadre du client) grandit
+     avec lui. Des cases moins hautes que larges : le mois entier tient dans
+     l ecran avec le bouton au-dessus. */
+  .fg-cal { position: static; min-width: 0; width: 100%; max-width: none; margin-top: 8px; box-shadow: none; }
+  .fg-cal__day { aspect-ratio: auto; height: 40px; min-height: 0; }
   /* Passe a la ligne et se centre : le filet vertical n a plus de sens, la
      pastille sarcelle suffit a rattacher l horaire au jour. */
   .fg-sub__open { display: flex; width: fit-content; margin: 8px auto 0; padding-left: 0; border-left: 0; }

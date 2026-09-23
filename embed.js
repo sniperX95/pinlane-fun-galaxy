@@ -198,6 +198,10 @@
       cacheEnHaut: Math.max(0, Math.round(-boite.top)),
       cacheEnBas: Math.max(0, Math.round(boite.bottom - hauteurEcran)),
       hauteurEcran: Math.round(hauteurEcran),
+      // Le haut du cadre dans l'écran, non borné : il ne bouge que si la page
+      // défile (un cadre qui grandit par le bas garde son haut). Le cadre s'en
+      // sert pour ranger ses barres collées pendant le défilement.
+      hautCadre: Math.round(boite.top),
     };
     try { frame.contentWindow.postMessage(message, origin); } catch (error) { /* cadre retire */ }
   }
@@ -314,6 +318,24 @@
       try { window.dataLayer = window.dataLayer || []; window.dataLayer.push({ event: 'pinlane_booking', pinlane: detail }); } catch (error) { /* dataLayer inaccessible */ }
       try { window.dispatchEvent(new CustomEvent('pinlane:booking', { detail: detail })); } catch (error) { /* CustomEvent indisponible */ }
       declencherLesOutilsDuSite(detail);
+      return;
+    }
+    if (data.type === 'pinlane:voir') {
+      // Le cadre demande à montrer une bande de lui-même (un calendrier qui
+      // s'ouvre, par exemple) : la page défile du minimum pour qu'elle tienne
+      // dans l'écran, et son haut prime si elle ne tient pas. Le haut garde la
+      // même marge que pinlane:screen (en-tête collé du site).
+      var hautBande = Number(data.haut);
+      var basBande = Number(data.bas);
+      if (!Number.isFinite(hautBande) || !Number.isFinite(basBande) || basBande <= hautBande) return;
+      var boiteCadre = frame.getBoundingClientRect();
+      var ecran = window.innerHeight || document.documentElement.clientHeight || 0;
+      var margeHaut = parseFloat(frame.style.scrollMarginTop);
+      if (!Number.isFinite(margeHaut) || margeHaut < 0) margeHaut = 16;
+      var decalage = 0;
+      if (boiteCadre.top + basBande > ecran - 16) decalage = boiteCadre.top + basBande - (ecran - 16);
+      if (boiteCadre.top + hautBande - decalage < margeHaut) decalage = boiteCadre.top + hautBande - margeHaut;
+      if (Math.abs(decalage) >= 1) window.scrollBy({ top: decalage, behavior: 'smooth' });
       return;
     }
     if (data.type !== 'pinlane:height') return;

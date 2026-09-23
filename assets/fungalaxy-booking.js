@@ -63,8 +63,13 @@
     if (!EMBED || !parentOrigin) return;
     // body.scrollHeight, jamais documentElement : le second vaut au moins la
     // hauteur du cadre et le cadre ne saurait alors que grandir (cliquet).
+    // La hauteur MONTE au pixel pres : un contenu plus haut que le cadre, meme
+    // de 3 px, rendait le cadre defilable, et il avalait le geste (molette,
+    // doigt) au lieu de le rendre a la page du client. Elle ne REDESCEND
+    // qu au-dela de 8 px : quelques pixels vides en bas ne genent personne,
+    // un arrondi qui tremble si.
     var h = Math.max(body.scrollHeight, body.offsetHeight);
-    if (!h || Math.abs(h - derniereHauteur) < 8) return;
+    if (!h || h === derniereHauteur || (h < derniereHauteur && derniereHauteur - h < 8)) return;
     derniereHauteur = h;
     poster({ type: 'pinlane:height', height: h });
   }
@@ -76,9 +81,20 @@
       if (!parentOrigin || event.origin !== parentOrigin) return;
       var d = event.data || {};
       if (d.type !== 'pinlane:vue') return;
+      // Seul embed.js envoie la zone visible : l hote suit donc la hauteur, et
+      // le cadre peut se verrouiller (voir html.fg-pilote dans la feuille).
+      if (!root.classList.contains('fg-pilote')) root.classList.add('fg-pilote');
       root.style.setProperty('--tunnel-vue-haut', (Number(d.cacheEnHaut) || 0) + 'px');
       root.style.setProperty('--tunnel-vue-bas', (Number(d.cacheEnBas) || 0) + 'px');
       root.style.setProperty('--tunnel-vue-ecran', (Number(d.hauteurEcran) || 0) + 'px');
+      // La page hote a DEFILE quand le haut du cadre a bouge dans son ecran :
+      // un cadre qui grandit par le bas garde son haut.
+      var haut = Number(d.hautCadre);
+      if (isFinite(haut)) {
+        if (hautCadre !== null && Math.abs(haut - hautCadre) > 1) hoteDefile();
+        hautCadre = haut;
+      }
+      majDock();
     });
   }
 
@@ -457,6 +473,13 @@
         if (jeton !== transitionId) return;
         de.classList.remove('is-leaving'); vers.classList.remove('is-entering');
         enTransition = false;
+        planifierDock();
+        // La scene sortante, posee en absolu, portait encore sa hauteur : le
+        // corps n a pas change de taille en la retirant, l observateur ne dit
+        // rien. Sans cet appel, le cadre restait a la hauteur de l ecran
+        // precedent (un vide noir sous un ecran plus court).
+        posterHauteur();
+        apresAnimations(vers, posterHauteur);
       };
       var surScene = function (e) {
         if (e.target !== vers) return;
@@ -472,11 +495,94 @@
     var focus = $('.fg-title', vers);
     if (focus) { focus.setAttribute('tabindex', '-1'); focus.focus({ preventScroll: true }); }
     setTimeout(posterHauteur, 50);
+    planifierDock();
   }
+  // Rappelle fn quand les animations finies de racine et de son contenu sont
+  // terminees : une entree qui monte de 16 px compte encore dans la hauteur
+  // tant qu elle joue. Les animations sans fin (reflets) ne comptent pas.
+  function apresAnimations(racine, fn) {
+    var liste = [];
+    try {
+      liste = (racine && racine.getAnimations ? racine.getAnimations({ subtree: true }) : []).filter(function (a) {
+        var t = a.effect && a.effect.getComputedTiming ? a.effect.getComputedTiming() : null;
+        return a.playState === 'running' && t && t.iterations !== Infinity;
+      });
+    } catch (e) { liste = []; }
+    if (!liste.length || !window.Promise) { fn(); return; }
+    Promise.all(liste.map(function (a) { return a.finished.catch(function () {}); })).then(function () { fn(); });
+  }
+
+  // Amene la bande qui va du haut de `depuis` au bas de `el` dans ce qui se
+  // voit, en defilant le moins possible ; le haut prime si elle ne tient pas.
+  // En embarque c est la page du client qui defile : on lui dit quelle bande
+  // montrer (embed.js, pinlane:voir), le cadre ne defile jamais lui-meme.
+  function montrer(el, depuis) {
+    if (!el || !el.getClientRects().length) return;
+    var haut = (depuis || el).getBoundingClientRect().top;
+    var bas = el.getBoundingClientRect().bottom;
+    if (EMBED) {
+      var y = window.pageYOffset || 0;
+      poster({ type: 'pinlane:voir', haut: Math.round(haut + y), bas: Math.round(bas + y) });
+      return;
+    }
+    var marge = 16, ecran = window.innerHeight, delta = 0;
+    if (bas > ecran - marge) delta = bas - (ecran - marge);
+    if (haut - delta < marge) delta = haut - marge;
+    if (Math.abs(delta) >= 1) window.scrollBy({ top: delta, behavior: reduced ? 'auto' : 'smooth' });
+  }
+
   function precedent() {
     var i = SCENES.indexOf(sceneCourante);
     if (i > 0) aller(SCENES[i - 1], true);
   }
+
+  /* --- La barre qui suit ------------------------------------------------------------ */
+
+  // Sur les activites et les heures, la barre (compteur ou resume de la
+  // visite, Retour, le bouton qui avance) colle au bas de ce qui se voit tant
+  // que sa place est plus bas : collee, elle se pose sur un panneau
+  // (.is-stuck). La place est la marque vide posee juste apres elle ; le bas
+  // de ce qui se voit est celui de la fenetre, moins le decalage de la regle
+  // sticky (qui porte, en embarque, la part du cadre cachee sous l ecran de
+  // l hote). La position de la barre elle-meme n est jamais lue : son entree
+  // en cascade la decale, la mesure ne doit pas bouger avec.
+  var hautCadre = null, hoteMinuteur = null, dockEnAttente = false;
+  function planifierDock() {
+    if (dockEnAttente) return;
+    dockEnAttente = true;
+    requestAnimationFrame(function () { dockEnAttente = false; majDock(); });
+  }
+  function hoteDefile() {
+    body.classList.add('is-hote-defile');
+    clearTimeout(hoteMinuteur);
+    hoteMinuteur = setTimeout(function () { body.classList.remove('is-hote-defile'); }, 180);
+  }
+  function focusClavier(el) { try { return el.matches(':focus-visible'); } catch (e) { return false; } }
+  function majDock() {
+    var active = $('.fg-scene.is-active .fg-dock');
+    root.classList.toggle('has-dock', Boolean(active));
+    $$('.fg-dock').forEach(function (bar) {
+      var place = bar.nextElementSibling;
+      var colle = false, range = false;
+      if (bar === active && place) {
+        var bas = window.innerHeight - (parseFloat(getComputedStyle(bar).bottom) || 0);
+        colle = place.getBoundingClientRect().top > bas + 0.5;
+        // Ce qui a le focus clavier ne se cache jamais derriere la barre.
+        var f = doc.activeElement;
+        if (colle && f && f !== body && !bar.contains(f) && focusClavier(f)) {
+          var r = f.getBoundingClientRect();
+          range = r.bottom > bas - bar.offsetHeight && r.top < bas;
+        }
+      }
+      bar.classList.toggle('is-stuck', colle);
+      bar.classList.toggle('is-aside', range);
+    });
+  }
+  if (!EMBED) window.addEventListener('scroll', planifierDock, { passive: true });
+  window.addEventListener('resize', planifierDock);
+  doc.addEventListener('focusin', planifierDock);
+  doc.addEventListener('focusout', planifierDock);
+  if ('ResizeObserver' in window) new ResizeObserver(planifierDock).observe(body);
   $$('[data-back]').forEach(function (b) { b.addEventListener('click', precedent); });
   doc.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('[data-goto]');
@@ -610,7 +716,13 @@
     // ouvert : chaque champ anime porte son propre contexte d empilement.
     if (dayField) dayField.classList.toggle('is-open', o);
     if (o) { var b = $('.fg-cal__day[tabindex="0"]', calGrid); if (b) b.focus({ preventScroll: true }); }
-    setTimeout(posterHauteur, 260);
+    // Une fois le calendrier pose (fin de son apparition) : la hauteur suit,
+    // puis la page amene le bouton ET le mois entier dans l ecran. Sans ce
+    // geste, sur telephone, le bas du mois tombait sous l ecran.
+    apresAnimations(dayPop, function () {
+      posterHauteur();
+      if (o && !dayPop.hidden) montrer(dayPop, dayBtn);
+    });
   }
   dayBtn.addEventListener('click', function () { ouvrirJours(); });
   calPrev.addEventListener('click', function () { if (moisVu) montrerMois(moisVu.y, moisVu.m - 1, ''); });
@@ -983,7 +1095,7 @@
 
   /* --- Etape 3 : les heures ---------------------------------------------------- */
 
-  var hourZone = $('#hourZone'), hourSub = $('#hourSub'), goContact = $('#goContact'), keepLabel = $('#keepLabel');
+  var hourZone = $('#hourZone'), hourSub = $('#hourSub'), goContact = $('#goContact'), keepLabel = $('#keepLabel'), hourSum = $('#hourSum');
   var requeteEnCours = 0;
   var signaturePistes = '';    // les pistes rendues (activites + heures) : sinon, on met a jour sur place
   var adaptation = null;       // { deplace, pour, t } : l activite deplacee pour l heure posee
@@ -1025,6 +1137,7 @@
       + (j && j.ouvert ? '<span class="fg-sub__open">Ouvert ' + esc(j.horaire) + (j.periode ? ' · ' + esc(j.periode.label) : '') + '</span>' : '');
     if (state.dispo) { rendreHeures(); return; }
     hourZone.innerHTML = '<p class="fg-loading">On regarde ce qui est libre…</p>';
+    hourSum.textContent = '';
     chargerPlan();
   }
   // Une seule route pour tout : sans heure posee, le serveur compose la
@@ -1050,6 +1163,7 @@
         if (id !== requeteEnCours) return;
         hourZone.classList.remove('is-busy');
         hourZone.innerHTML = '<div class="fg-notice fg-notice--warn">' + esc(err.message || 'Impossible de charger les disponibilités.') + '</div>';
+        hourSum.textContent = '';
         signaturePistes = '';
         posterHauteur();
       });
@@ -1612,6 +1726,7 @@
         }).join('') + '</span>';
       }
       zone.innerHTML = html + '</div>';
+      hourSum.textContent = '';
       posterHauteur();
       return;
     }
@@ -1625,6 +1740,11 @@
     var prix = Number(rep.price);
     var complet = !rep.program || rep.program.priceComplete !== false;
     var fin = slot.visitEndTime || plan.endTime || '';
+    // Le resume de la barre qui suit : les heures et le prix de l en-tete de
+    // « Votre visite », lus aux memes endroits de la meme reponse.
+    var depart = plan.arrivalTime || slot.time || '';
+    var span = depart && fin ? '<b>' + esc(depart) + ' → ' + esc(heureAffichee(fin)) + '</b>' + (slot.visitEndsAtClose ? ' (fermeture)' : ' environ') : '';
+    hourSum.innerHTML = span + (prix > 0 ? (span ? ' · ' : '') + '<b>' + esc(euros(prix)) + '</b>' + (complet ? '' : ' + sur place') : '');
     var lignes = '';
     if (plan.arrivalTime) lignes += '<li class="fg-visit__step fg-visit__step--in"><b>' + esc(plan.arrivalTime) + '</b><span>Arrivée</span><small>on vous accueille</small></li>';
     // Le dernier bloc de chaque activite porte ce qui reste a placer.

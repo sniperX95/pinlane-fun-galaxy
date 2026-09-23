@@ -113,7 +113,7 @@
     heure: '',                 // debut de visite du creneau retenu
     dispo: null,               // la derniere reponse de public-availability
     creneau: null,             // le slot retenu (avec opsPlan)
-    contact: { prenom: '', nom: '', email: '', telephone: '' },
+    contact: { prenom: '', nom: '', email: '', telephone: '', note: '' },
     reservation: null,
   };
   var SCENES = ['date', 'activites', 'heures', 'contact', 'recap', 'fin'];
@@ -1818,30 +1818,98 @@
     if (!wrap) return;
     wrap.classList.toggle('is-invalid', Boolean(msg));
     $('.fg-field__error', wrap).textContent = msg || '';
+    // Le champ se dit invalide lui-meme : son message (aria-describedby) est
+    // lu quand il prend le focus, au lieu d une annonce detachee du champ.
+    if (msg) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
   }
+  // UNE FAUTE DE FRAPPE DANS LE DOMAINE (« gmial.com ») : l e-mail porte la
+  // confirmation ou l accuse de reception, une adresse fausse le perd. Une
+  // QUESTION seulement : rien n est corrige sans toucher la proposition, et
+  // l envoi n est jamais bloque. Un domaine d un vrai pays different de celui
+  // propose (hotmail.it, live.de) est une adresse correcte : on n y touche pas.
+  var DOMAINES = ['gmail.com', 'hotmail.com', 'hotmail.be', 'hotmail.fr', 'hotmail.nl', 'hotmail.de', 'outlook.com', 'outlook.be', 'outlook.fr', 'outlook.nl', 'live.be', 'live.fr', 'live.com', 'live.nl', 'msn.com', 'yahoo.fr', 'yahoo.com', 'icloud.com', 'me.com', 'skynet.be', 'telenet.be', 'proximus.be', 'scarlet.be', 'voo.be', 'orange.be', 'orange.fr', 'free.fr', 'laposte.net', 'gmx.com', 'gmx.be', 'gmx.fr', 'gmx.de', 'gmx.net', 'mail.com', 'web.de', 'proton.me', 'protonmail.com', 'ymail.com', 'email.com'];
+  var PAYS = ['be', 'fr', 'nl', 'lu', 'de', 'it', 'es', 'pt', 'ch', 'at', 'uk', 'ie', 'se', 'pl', 'ca', 'eu'];
+  function ecart(a, b) { var p = [], i, j, prec, t; for (j = 0; j <= b.length; j += 1) p[j] = j; for (i = 1; i <= a.length; i += 1) { prec = p[0]; p[0] = i; for (j = 1; j <= b.length; j += 1) { t = p[j]; p[j] = Math.min(p[j] + 1, p[j - 1] + 1, prec + (a[i - 1] === b[j - 1] ? 0 : 1)); prec = t; } } return p[b.length]; }
+  function adresseProbable(v) {
+    var m = /^([^\s@]+)@([^\s@]+\.[^\s@]+)$/.exec(String(v || '').trim());
+    if (!m) return '';
+    var dom = m[2].toLowerCase();
+    if (dom.length > 40 || DOMAINES.indexOf(dom) >= 0) return '';
+    var best = '', d = 9;
+    DOMAINES.forEach(function (x) { var k = ecart(dom, x); if (k < d) { d = k; best = x; } });
+    var tld = dom.split('.').pop();
+    if (tld !== best.split('.').pop() && PAYS.indexOf(tld) >= 0) return '';
+    return (d === 1 || (d === 2 && best.length >= 9)) ? m[1] + '@' + best : '';
+  }
+  var boiteMail = $('#emailSuggest');
+  function viderSuggestion() { boiteMail.innerHTML = ''; boiteMail.dataset.s = ''; }
+  // La meme proposition ne se redessine pas : un blur qui remplacerait le
+  // bouton pendant qu on le touche (ou qu on y tabule) perdrait le geste.
+  function proposerEmail() {
+    var s = adresseProbable(champ('cEmail').value);
+    if ((boiteMail.dataset.s || '') === s) return;
+    boiteMail.dataset.s = s;
+    boiteMail.innerHTML = s ? 'Vouliez-vous dire <button type="button" data-mail="' + esc(s) + '">' + esc(s) + '</button>&nbsp;?' : '';
+  }
+  champ('cEmail').addEventListener('blur', proposerEmail);
+  boiteMail.addEventListener('click', function (e) { var b = e.target.closest('[data-mail]'); if (!b) return; champ('cEmail').value = b.dataset.mail; viderSuggestion(); poserErreur(champ('cEmail'), ''); champ('cTel').focus(); });
   function validerContact() {
     var ok = true;
     var prenom = champ('cPrenom'), nom = champ('cNom'), email = champ('cEmail'), tel = champ('cTel'), consent = champ('cConsent');
-    [prenom, nom].forEach(function (i) { var v = i.value.trim(); poserErreur(i, v ? '' : 'Ce champ est nécessaire.'); if (!v) ok = false; });
+    [[prenom, 'Indiquez votre prénom.'], [nom, 'Indiquez votre nom.']].forEach(function (p) { var v = p[0].value.trim(); poserErreur(p[0], v ? '' : p[1]); if (!v) ok = false; });
     var ev = email.value.trim();
     var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(ev);
-    poserErreur(email, ev ? (emailOk ? '' : 'Cette adresse ne semble pas complète.') : 'Votre e-mail sert à vous envoyer la confirmation.');
+    poserErreur(email, ev ? (emailOk ? '' : 'Vérifiez cette adresse (exemple : prenom@email.be).') : 'Indiquez votre adresse e-mail.');
     if (!emailOk) ok = false;
-    var tv = tel.value.replace(/[\s.\-\/]/g, '');
+    var tv = tel.value.replace(/\(0\)/g, '').replace(/[\s.\-\/()]/g, '');
     var telOk = /^\+?\d{8,15}$/.test(tv);
-    poserErreur(tel, tv ? (telOk ? '' : 'Un numéro à 8 chiffres minimum, s’il vous plaît.') : 'Votre téléphone permet à l’équipe de vous joindre.');
+    poserErreur(tel, tv ? (telOk ? '' : 'Vérifiez ce numéro (exemple : 0471 23 45 67).') : 'Indiquez un numéro où l’équipe peut vous joindre.');
     if (!telOk) ok = false;
-    $('#consentWrap').classList.toggle('is-invalid', !consent.checked);
+    $('#consentWrap').classList.toggle('is-invalid', !consent.checked); $('#eConsent').textContent = consent.checked ? '' : 'Cochez cette case pour continuer.'; if (consent.checked) consent.removeAttribute('aria-invalid'); else consent.setAttribute('aria-invalid', 'true');
     if (!consent.checked) ok = false;
+    if (!ok) proposerEmail();
     return ok;
   }
-  ['cPrenom', 'cNom', 'cEmail', 'cTel'].forEach(function (id) { champ(id).addEventListener('input', function () { poserErreur(champ(id), ''); }); });
-  champ('cConsent').addEventListener('change', function () { $('#consentWrap').classList.remove('is-invalid'); });
+  ['cPrenom', 'cNom', 'cEmail', 'cTel'].forEach(function (id) { champ(id).addEventListener('input', function () { poserErreur(champ(id), ''); if (id === 'cEmail') viderSuggestion(); }); });
+  champ('cConsent').addEventListener('change', function () { $('#consentWrap').classList.remove('is-invalid'); $('#eConsent').textContent = ''; champ('cConsent').removeAttribute('aria-invalid'); });
+  // ENTREE FAIT AVANCER D UN CHAMP : le clavier du telephone affiche « suivant »
+  // et n envoie pas un formulaire a moitie rempli. Depuis le telephone, Entree
+  // va a la case si elle n est pas cochee (sinon son erreur s afficherait avant
+  // qu on ait pu la cocher) ; cochee, Entree envoie, comme avant.
+  var ordreContact = ['cPrenom', 'cNom', 'cEmail', 'cTel'];
+  ordreContact.forEach(function (id, k) {
+    champ(id).addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      var suivant = ordreContact[k + 1] ? champ(ordreContact[k + 1]) : (champ('cConsent').checked ? null : champ('cConsent'));
+      if (!suivant) return;
+      e.preventDefault();
+      suivant.focus();
+    });
+  });
+  // Le petit « non » : seul le premier champ a corriger bouge, une fois.
+  // La classe part a la fin de SA secousse, filtree sur la cible : le message
+  // d erreur (fg-err, plus court) remonte aussi jusqu au champ et la couperait.
+  // Restee posee, elle rejouerait a chaque retour sur l ecran (display: none).
+  // Pas d ecoute de animationcancel : sur un double envoi, l evenement arrive
+  // apres le redemarrage et tuerait la nouvelle secousse.
+  function secouer(wrap) {
+    if (!wrap || reduced) return;
+    wrap.classList.remove('is-nudge'); void wrap.offsetWidth; wrap.classList.add('is-nudge');
+  }
+  form.addEventListener('animationend', function (e) {
+    if (!e.target.matches('.fg-input, .fg-check__box')) return;
+    var w = e.target.closest('.is-nudge');
+    if (w) w.classList.remove('is-nudge');
+  });
   form.addEventListener('submit', function (e) {
     e.preventDefault();
-    if (!validerContact()) { var premier = $('.is-invalid .fg-input, .fg-check.is-invalid input', form); if (premier) premier.focus(); posterHauteur(); return; }
-    state.contact = { prenom: champ('cPrenom').value.trim(), nom: champ('cNom').value.trim(), email: champ('cEmail').value.trim(), telephone: champ('cTel').value.trim() };
-    rendreRecap();
+    // Un champ qui a DEJA le focus ne le reprend pas (aucun evenement) : son
+    // erreur ne serait pas lue. Il le rend, puis le reprend.
+    if (!validerContact()) { var premier = $('.is-invalid .fg-input, .fg-check.is-invalid input', form); if (premier) { secouer(premier.closest('.fg-field, .fg-check')); if (premier === doc.activeElement) premier.blur(); premier.focus(); } posterHauteur(); return; }
+    // « +32 (0)471 » : le serveur ne garde que les chiffres et le « + », le
+    // « (0) » donnerait un numero qui n existe pas.
+    state.contact = { prenom: champ('cPrenom').value.trim(), nom: champ('cNom').value.trim(), email: champ('cEmail').value.trim(), telephone: champ('cTel').value.replace(/\(0\)/g, '').replace(/\s+/g, ' ').trim(), note: champ('cNote').value.trim().slice(0, 500) };
+    erreurEnvoi(''); rendreRecap();
     aller('recap');
   });
 
@@ -1850,7 +1918,7 @@
   // LE RECAPITULATIF, UNE SEULE SOURCE. L ecran des coordonnees le montre en
   // entier a cote du formulaire (Movsar, 2026-09-23 : « pourquoi y a pas le
   // recap ici, y a juste un mini recap ») ; le dernier ecran le reprend, avec
-  // l adresse ou partira la confirmation. Une seule fonction pour les deux :
+  // les coordonnees qui partiront. Une seule fonction pour les deux :
   // deux rendus finiraient par se contredire.
   function htmlRecap(final) {
     var cr = state.creneau, rep = cr ? cr.reponse : {}, plan = cr ? (cr.slot.opsPlan || {}) : {};
@@ -1899,7 +1967,20 @@
       // Les deux moyens acceptes sur place (Movsar, 2026-09-23 : « on accepte
       // le liquide ») : la carte et le billet, puis les mots.
       + '<div class="fg-total__pay"><span class="fg-total__icons" aria-hidden="true"><svg><use href="#i-card"/></svg><svg><use href="#i-cash"/></svg></span><span class="fg-total__how"><b>Paiement sur place</b> <small>Carte ou espèces</small></span></div></div>';
-    if (final) html += '<p class="fg-recap__detail fg-rise" style="--i:' + (5 + lignes.length) + '; margin-top:14px">La confirmation partira à <b style="color:var(--fg-text)">' + esc(state.contact.email) + '</b>' + (state.heure ? ' · début à ' + esc(state.heure) : '') + '</p>';
+    // LES COORDONNEES RELUES, telles qu elles partiront (state.contact est
+    // exactement ce que porte l envoi). Aucun e-mail n est promis ici : il ne
+    // part pas si le centre a coupe l envoi, et une demande a verifier recoit
+    // un accuse, pas une confirmation.
+    if (final) {
+      // L heure de debut n est redite ici que si aucune ligne ne la porte (formule, repli sans programme).
+      var sansDebut = state.heure && !lignes.some(function (l) { return l.aside; });
+      html += '<p class="fg-recap__detail fg-recap__who fg-rise" style="--i:' + (5 + lignes.length) + '; margin-top:14px">'
+        + (sansDebut ? 'Début de la visite à <b style="color:var(--fg-text)">' + esc(state.heure) + '</b><br>' : '')
+        + 'Au nom de <b style="color:var(--fg-text)">' + esc((state.contact.prenom + ' ' + state.contact.nom).trim()) + '</b>&nbsp;· ' + esc(state.contact.email) + '&nbsp;· ' + esc(state.contact.telephone) + '</p>';
+    }
+    // Le mot pour l equipe, repris tel qu il part (notes) : jamais comme une
+    // demande acceptee, l aide sous le champ dit deja « sans garantie ».
+    if (final && state.contact.note) html += '<p class="fg-recap__detail fg-recap__note fg-rise" style="--i:' + (6 + lignes.length) + '">Votre mot pour l’équipe&nbsp;: «&nbsp;' + esc(state.contact.note) + '&nbsp;»</p>';
     return html;
   }
   function rendreRecap() {
@@ -1938,7 +2019,9 @@
       startTime: state.heure || (cr && cr.slot.time) || '',
       pax: state.pax,
       channel: 'public',
-      notes: '',
+      // Le mot facultatif pour l equipe : le serveur le garde (colonne notes)
+      // et la console du centre l affiche.
+      notes: state.contact.note || '',
       // Les heures posees par le client et celles composees par le serveur
       // repartent ensemble : le serveur revalide exactement ce qui a ete montre.
       preference: { preferredTimes: preferredTimes, laserGameTimes: state.laserParts.slice(), laserPlacement: plan && plan.anchorPlan && plan.anchorPlan.laserPlacement === 'onsite' ? 'onsite' : 'scheduled', arrivalConfidence: 'normal' },
@@ -1958,25 +2041,66 @@
     if (plan) base.opsPlan = plan;
     return base;
   }
+  // L ERREUR D ENVOI SE LIT SOUS LE BOUTON QUI L A CAUSEE : sur telephone le
+  // doigt est en bas, l alerte du haut (#fgAlert) est hors de l ecran. Elle
+  // est amenee dans ce qui se voit par montrer() : en embarque, c est la page
+  // du client qui defile, le cadre ne defile jamais lui-meme.
+  var confirmErr = $('#confirmErr');
+  function erreurEnvoi(html) {
+    confirmErr.innerHTML = html || '';
+    confirmErr.hidden = !html;
+    if (html) { posterHauteur(); montrer(confirmErr); }
+  }
+  function appelCentre() {
+    var c = meta && meta.center && meta.center.contact;
+    return c && c.phone ? 'appelez le ' + lienContact({ phone: c.phone }) : '';
+  }
+  // « Choisir d autres horaires » : le serveur a refuse CES heures, elles
+  // sont redemandees (state.dispo vide), jamais reprises du dernier rendu.
+  confirmErr.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-rechoisir]')) return;
+    aller('heures', true);
+    if (sceneCourante !== 'heures') return;
+    erreurEnvoi('');
+    chargerHeures();
+  });
   confirmBtn.addEventListener('click', function () {
     if (confirmBtn.classList.contains('is-busy')) return;
-    direErreur('');
+    erreurEnvoi('');
     confirmBtn.classList.add('is-busy'); confirmBtn.setAttribute('aria-busy', 'true');
     fetch('/api/public-reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload()), credentials: 'omit' })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j || {} }; }); })
       .then(function (res) {
         confirmBtn.classList.remove('is-busy'); confirmBtn.removeAttribute('aria-busy');
         if (res.status === 201 && res.json.ok !== false && res.json.reservation) { reussite(res.json); return; }
-        if (res.status === 409 && Array.isArray(res.json.alternatives) && res.json.alternatives.length) {
-          var alt = res.json.alternatives.map(function (a) { return jourCourt(a.date) + ' à ' + a.startTime; }).slice(0, 4).join(', ');
-          direErreur((res.json.message || 'Ce créneau vient de changer.') + ' Alternatives : ' + alt + '. Revenez à l’étape des horaires pour choisir.');
+        // 409 : le serveur refuse de confirmer en ligne ce creneau. Ses
+        // alternatives sont dites, sans le creneau refuse ni les doublons.
+        // Les heures seront redemandees (dispo vide) ; le creneau refuse reste
+        // celui du recapitulatif tant qu aucun autre n est rendu : vide, le
+        // recapitulatif rouvert par « vos coordonnees » perdait son plan et
+        // son prix (« Sur place »).
+        if (res.status === 409) {
+          var depart = state.heure || (state.creneau && state.creneau.slot.time) || '';
+          state.dispo = null; signaturePistes = ''; goContact.disabled = true;
+          var alts = (Array.isArray(res.json.alternatives) ? res.json.alternatives : [])
+            .filter(function (a) { return a && a.date && a.startTime && !(a.date === state.date && a.startTime === depart); })
+            .map(function (a) { return jourCourt(a.date) + ' à ' + a.startTime; })
+            .filter(function (s, i, t) { return t.indexOf(s) === i; })
+            .slice(0, 3);
+          erreurEnvoi('<b>Ce créneau ne peut plus être réservé en ligne.</b>'
+            + (alts.length ? ' ' + (alts.length > 1 ? 'Autres possibilités' : 'Autre possibilité') + '&nbsp;: ' + esc(alts.join(', ')) + '.' : '')
+            + '<button type="button" class="fg-alert__btn" data-rechoisir>Choisir d’autres horaires</button>');
           return;
         }
-        direErreur(res.json.message || 'La réservation n’a pas pu être enregistrée. Réessayez dans un instant.');
+        erreurEnvoi('<b>' + esc(res.json.message || 'La réservation n’a pas pu être enregistrée. Réessayez dans un instant.') + '</b>');
       })
+      // Une coupure OU une reponse illisible : le dossier a pu etre ecrit
+      // avant la reponse, et rien n empeche un doublon. On ne pousse donc pas
+      // a renvoyer.
       .catch(function () {
         confirmBtn.classList.remove('is-busy'); confirmBtn.removeAttribute('aria-busy');
-        direErreur('Le réseau n’a pas répondu. Vérifiez votre connexion et réessayez.');
+        var appel = appelCentre();
+        erreurEnvoi('<b>Impossible de savoir si votre demande est partie.</b> Avant de la renvoyer, ' + (appel ? appel + ' ou regardez vos e-mails.' : 'regardez vos e-mails.'));
       });
   });
   // Un titre change de texte : il se redecoupe mot a mot, comme au depart.
@@ -2007,20 +2131,58 @@
     var mailRes = r.email || state.contact.email;
     var confirme = r.validationStatus === 'confirmed' || (reponse.ops && reponse.ops.autoDecision === 'auto_confirmed');
     var contact = meta && meta.center && meta.center.contact;
+    // L ECRAN FINAL EST UN RECU : chaque ligne vient du dossier rendu ou de
+    // ce que la reponse a vraiment fait. L arrivee est celle du plan rendu
+    // (repli sur le plan affiche seulement si l heure de depart n a pas
+    // bouge) ; le programme, les noms seuls (les heures, groupes scindes
+    // compris, sont au recapitulatif : un troisieme rendu du plan finirait par
+    // le contredire) ; l e-mail n est annonce que si la reponse l a mis en
+    // file (le centre peut couper l envoi) ; le montant dit ce qu il couvre,
+    // comme le total du recapitulatif.
+    var planFin = r.opsPlan && typeof r.opsPlan === 'object' ? r.opsPlan : (heureRes === state.heure && state.creneau ? (state.creneau.slot.opsPlan || {}) : {});
+    var arrivee = planFin.arrivalTime ? String(planFin.arrivalTime) : '';
+    var quoi = nomsChoisis();
+    var repFin = (state.creneau || {}).reponse || {};
+    var prixComplet = !repFin.program || repFin.program.priceComplete !== false;
+    var comms = Array.isArray(reponse.communications) ? reponse.communications : [];
+    var mailQ = comms.filter(function (c) { return c && c.channel === 'email' && c.status !== 'draft' && (c.templateId === 'confirmation' || c.templateId === 'request_received'); })[0];
+    var nomRes = String(r.name || (state.contact.prenom + ' ' + state.contact.nom)).trim();
+    var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. Arrivée conseillée à <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
+    var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>.' : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '. Gardez bien votre numéro de réservation.';
+    var ligneMontant = Number(r.price) > 0 ? 'Montant estimé <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', hors activités réglées sur place. Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
+    function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
     // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que
     // l equipe va verifier. « C est enregistre » etait vrai dans les deux cas,
     // et ne disait rien.
     poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');
     $('#finBody').innerHTML = '<div class="fg-done__ref fg-rise" style="--i:1">Réservation n° ' + esc(r.id) + '</div>'
-      + '<p class="fg-rise" style="--i:2">' + (confirme
-        ? '<b>' + esc(jourLong(dateRes)) + ' à ' + esc(heureRes) + '</b>, ' + esc(personnes(paxRes)) + '. Votre place est réservée.'
-        : '<b>' + esc(jourLong(dateRes)) + ' à ' + esc(heureRes) + '</b>, ' + esc(personnes(paxRes)) + '. L’équipe vérifie votre demande et revient vers vous rapidement.') + '</p>'
-      + '<p class="fg-rise" style="--i:3"><svg style="width:18px;height:18px;vertical-align:-3px;margin-right:6px" aria-hidden="true"><use href="#i-mail"/></svg>' + (confirme ? 'La confirmation part' : 'Un accusé de réception part') + ' à <b>' + esc(mailRes) + '</b>.</p>'
-      + (Number(r.price) > 0 ? '<p class="fg-rise" style="--i:4">Montant estimé <b>' + esc(euros(r.price)) + '</b>, à régler sur place, par carte ou en espèces.</p>' : '')
-      + (contact && contact.phone ? '<p class="fg-rise" style="--i:5">Une question ? ' + lienContact(contact) + '</p>' : '')
-      + (!EMBED && meta && meta.center && meta.center.identity && meta.center.identity.siteUrl ? '<div class="fg-actions fg-actions--center fg-rise" style="--i:6"><a class="fg-btn fg-btn--ghost" href="' + esc(meta.center.identity.siteUrl) + '">Retour au site</a></div>' : '');
+      + '<div class="fg-done__ticket fg-rise" style="--i:2">'
+      + rangee('i-calendar', quand)
+      + (quoi ? rangee('a-formule', 'Au programme&nbsp;: ' + esc(quoi)) : '')
+      + rangee('i-mail', ligneMail)
+      + rangee('i-card', ligneMontant)
+      + (contact && contact.phone ? '<p class="fg-done__row"><svg aria-hidden="true"><use href="#i-info"/></svg><span>Une question ? ' + lienContact(contact) + '</span></p>' : '')
+      + '</div>'
+      + (!EMBED && meta && meta.center && meta.center.identity && meta.center.identity.siteUrl ? '<div class="fg-actions fg-actions--center fg-rise" style="--i:3"><a class="fg-btn fg-btn--ghost" href="' + esc(meta.center.identity.siteUrl) + '">Retour au site</a></div>' : '');
+    // L ANNEAU SUIT LE MEME VERDICT QUE LE TITRE : la coche et les confettis
+    // pour une reservation confirmee, l enveloppe pour une demande que
+    // l equipe va verifier (aucune fete, rien n est encore acquis).
+    var anneau = $('.fg-done__ring');
+    var icone = anneau && $('svg use', anneau);
+    if (anneau) anneau.classList.toggle('is-mail', !confirme);
+    if (icone) icone.setAttribute('href', confirme ? '#i-check' : '#i-mail');
     var burst = $('#finBurst');
-    if (burst && !reduced) { burst.innerHTML = ''; for (var i = 0; i < 14; i += 1) { var s = doc.createElement('i'); s.style.setProperty('--a', (i * 360 / 14) + 'deg'); s.style.setProperty('--d', (60 + (i % 3) * 30) + 'px'); s.style.setProperty('--t', (i % 2 ? 0.05 : 0) + 's'); burst.appendChild(s); } }
+    if (burst) {
+      burst.innerHTML = '';
+      if (confirme && !reduced) for (var i = 0; i < 14; i += 1) {
+        var a = (-165 + i * 150 / 13) * Math.PI / 180, d = 70 + (i % 4) * 16, s = doc.createElement('i');
+        s.style.setProperty('--x', Math.round(Math.cos(a) * d) + 'px');
+        s.style.setProperty('--y', Math.round(Math.sin(a) * d) + 'px');
+        s.style.setProperty('--r', (i % 2 ? 1 : -1) * (150 + i * 15) + 'deg');
+        s.style.setProperty('--t', (i % 3) * 40 + 'ms');
+        burst.appendChild(s);
+      }
+    }
     aller('fin');
     // La mesure de conversion pour le site hote : relue dans le dossier cree,
     // sans aucune donnee personnelle.

@@ -176,7 +176,7 @@
     <section class="fg-scene fg-scene--split" data-scene="contact" aria-labelledby="t-who">
       <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" decoding="async"></div>
       <aside class="fg-recall" id="recall" aria-labelledby="recallKicker">
-        <span class="fg-kicker" id="recallKicker">Votre réservation</span>
+        <span class="fg-kicker" id="recallKicker">Votre visite</span>
         <p class="fg-recall__line" id="recallLine"></p>
         <button type="button" class="fg-recall__toggle" id="recallToggle" aria-expanded="false" aria-controls="recallBody"><span>Voir le détail</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
         <div class="fg-recall__bar"></div>
@@ -188,31 +188,38 @@
         <div class="fg-fields" style="max-width:520px">
           <div class="fg-field fg-rise" style="--i:1">
             <label class="fg-field__label" for="cPrenom">Prénom</label>
-            <input class="fg-input" id="cPrenom" name="prenom" autocomplete="given-name" placeholder="Votre prénom" required>
-            <span class="fg-field__error" aria-live="polite"></span>
+            <input class="fg-input" id="cPrenom" name="prenom" autocomplete="given-name" placeholder="Votre prénom" required aria-describedby="ePrenom" enterkeyhint="next" autocapitalize="words">
+            <span class="fg-field__error" id="ePrenom"></span>
           </div>
           <div class="fg-field fg-rise" style="--i:2">
             <label class="fg-field__label" for="cNom">Nom</label>
-            <input class="fg-input" id="cNom" name="nom" autocomplete="family-name" placeholder="Votre nom" required>
-            <span class="fg-field__error" aria-live="polite"></span>
+            <input class="fg-input" id="cNom" name="nom" autocomplete="family-name" placeholder="Votre nom" required aria-describedby="eNom" enterkeyhint="next" autocapitalize="words">
+            <span class="fg-field__error" id="eNom"></span>
           </div>
           <div class="fg-field fg-rise" style="--i:3">
             <label class="fg-field__label" for="cEmail">E-mail</label>
-            <input class="fg-input" id="cEmail" name="email" type="email" autocomplete="email" inputmode="email" placeholder="votre@email.be" required>
-            <span class="fg-field__error" aria-live="polite"></span>
+            <input class="fg-input" id="cEmail" name="email" type="email" autocomplete="email" inputmode="email" placeholder="votre@email.be" required aria-describedby="eEmail" enterkeyhint="next" autocapitalize="off" spellcheck="false">
+            <span class="fg-field__error" id="eEmail"></span>
+            <span class="fg-field__hint fg-field__hint--mail" id="emailSuggest" aria-live="polite"></span>
           </div>
           <div class="fg-field fg-rise" style="--i:4">
             <label class="fg-field__label" for="cTel">Téléphone</label>
-            <input class="fg-input" id="cTel" name="telephone" type="tel" autocomplete="tel" inputmode="tel" placeholder="04 71 23 45 67" required>
-            <span class="fg-field__error" aria-live="polite"></span>
+            <input class="fg-input" id="cTel" name="telephone" type="tel" autocomplete="tel" inputmode="tel" placeholder="04 71 23 45 67" required aria-describedby="eTel" enterkeyhint="next">
+            <span class="fg-field__error" id="eTel"></span>
           </div>
-          <label class="fg-check fg-rise" style="--i:5" id="consentWrap">
-            <input type="checkbox" id="cConsent" required>
+          <div class="fg-field fg-rise" style="--i:5">
+            <label class="fg-field__label" for="cNote">Un mot pour l’équipe <span class="fg-field__opt">(facultatif)</span></label>
+            <textarea class="fg-input fg-input--area" id="cNote" name="notes" rows="2" maxlength="500" placeholder="Ex.&nbsp;: gâteau à mettre au frais&nbsp;?" aria-describedby="noteHint"></textarea>
+            <span class="fg-field__hint fg-field__hint--note" id="noteHint">L’équipe fait au mieux selon ses possibilités, sans garantie.</span>
+          </div>
+          <label class="fg-check fg-rise" style="--i:6" id="consentWrap">
+            <input type="checkbox" id="cConsent" required aria-describedby="eConsent">
             <span class="fg-check__box"><svg aria-hidden="true"><use href="#i-check"/></svg></span>
-            <span>J’accepte d’être contacté au sujet de cette réservation.</span>
+            <span>J’accepte que l’équipe me contacte au sujet de cette réservation.</span>
           </label>
+          <span class="fg-field__error" id="eConsent"></span>
         </div>
-        <div class="fg-actions fg-rise" style="--i:6">
+        <div class="fg-actions fg-rise" style="--i:7">
           <button type="button" class="fg-btn fg-btn--ghost" data-back><svg aria-hidden="true"><use href="#i-back"/></svg>Retour</button>
           <button type="submit" class="fg-btn" id="goRecap">Voir le récapitulatif<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
         </div>
@@ -227,8 +234,10 @@
         <h2 class="fg-title" id="t-ok"><span data-words>Dernier <em>coup d’œil</em></span></h2>
         <div class="fg-recap" id="recap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:520px">
-          <button type="button" class="fg-btn fg-btn--shine" id="confirmBtn">Confirmer la réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
-          <button type="button" class="fg-link" data-back>Modifier</button>
+          <button type="button" class="fg-btn fg-btn--shine" id="confirmBtn">Valider ma réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+          <p class="fg-alert fg-alert--inline" id="confirmErr" role="alert" hidden></p>
+          <p class="fg-confirm__note">Aucun paiement en ligne&nbsp;: vous réglez sur place, par carte ou en espèces.</p>
+          <div class="fg-edit" role="group" aria-labelledby="editLbl"><span id="editLbl">Modifier&nbsp;:</span> <button type="button" class="fg-edit__btn" data-goto="date">le jour ou le groupe</button> <button type="button" class="fg-edit__btn" data-goto="activites">le programme</button> <button type="button" class="fg-edit__btn" data-goto="heures">les horaires</button> <button type="button" class="fg-edit__btn" data-back>vos coordonnées</button></div>
         </div>
       </div>
     </section>

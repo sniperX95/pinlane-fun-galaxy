@@ -63,7 +63,7 @@
 .fg *, .fg *::before, .fg *::after { box-sizing: border-box; }
 /* Les remises a zero passent par :where() : specificite d une seule classe,
    pour que .fg-btn, .fg-chip ou .fg-card, ecrits plus bas, gardent la main. */
-.fg :where(button, input) { font: inherit; color: inherit; }
+.fg :where(button, input, textarea) { font: inherit; color: inherit; }
 .fg :where(button) { cursor: pointer; background: none; border: 0; padding: 0; }
 .fg img { display: block; max-width: 100%; }
 .fg a { color: inherit; }
@@ -505,7 +505,8 @@ html.fg-pilote .fg { overflow: visible; }
   border: 1.5px solid var(--fg-line-2);
   background: var(--fg-bg-2);
   color: var(--fg-text);
-  font-size: 15px;
+  /* 16 px : en dessous, Safari sur iPhone zoome sur le champ touche. */
+  font-size: 16px;
   font-weight: 500;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -515,6 +516,32 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-field.is-invalid .fg-input { border-color: var(--fg-danger); }
 .fg-field__error { font-size: 12px; color: var(--fg-danger); min-height: 0; }
 .fg-field__error:empty { display: none; }
+/* La case n est pas un champ : son erreur se pose sous elle, alignee sur son
+   texte (case de 22 px + 12 px d ecart), a l ecart d un champ (24 px de
+   grille moins 14 = 10 px). Vide, elle reste cachee et n ajoute rien. */
+.fg-check + .fg-field__error { margin-top: -14px; padding-left: 34px; }
+/* « Vouliez-vous dire ... ? » : la proposition se touche (44 px) et se coupe
+   n importe ou plutot que de deborder d un telephone. Soulignee et en gras :
+   jamais la couleur seule. */
+.fg-field__hint--mail { font-size: 13px; color: var(--fg-text); }
+.fg-field__hint--mail button { display: inline-flex; align-items: center; min-height: 44px; max-width: 100%; padding: 0 4px; overflow-wrap: anywhere; text-align: left; color: var(--fg-teal-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-field__hint--mail:not(:empty) { animation: fg-rise 0.3s var(--fg-ease-out) both; }
+}
+/* Le mot pour l equipe, sur plusieurs lignes. « (facultatif) » et l aide en
+   gris moyen : le gris des aides (--fg-faint) tombe a 3,4:1 sous le halo. */
+.fg-input--area { height: auto; min-height: 88px; padding: 14px 16px; line-height: 1.45; resize: vertical; }
+.fg-field__opt { font-weight: 500; color: var(--fg-muted); }
+.fg-field__hint--note { color: var(--fg-muted); }
+.fg-recap__note { overflow-wrap: anywhere; }
+/* Les erreurs glissent en place ; le premier champ a corriger fait un petit
+   « non », une fois (la classe est posee puis retiree par le script). */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-field.is-invalid .fg-field__error, #consentWrap.is-invalid + .fg-field__error { animation: fg-err 0.24s var(--fg-ease-out) both; }
+  .fg-field.is-nudge .fg-input, .fg-check.is-nudge .fg-check__box { animation: fg-nudge 0.32s var(--fg-ease); }
+}
+@keyframes fg-err { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes fg-nudge { 0%, 100% { transform: none; } 30% { transform: translateX(-5px); } 65% { transform: translateX(4px); } }
 
 /* Le choix du jour : un bouton qui ouvre le calendrier du mois. */
 .fg-day { position: relative; }
@@ -809,6 +836,15 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-actions--column { flex-direction: column; align-items: stretch; }
 .fg-actions--column .fg-btn { width: 100%; }
 .fg-actions--column .fg-link { align-self: center; }
+
+/* Sous le bouton qui valide : aucun paiement en ligne, puis une rangee
+   « Modifier » qui ramene a chaque etape d un toucher (sur telephone, les
+   segments faits de la barre des etapes sont trop fins pour un doigt). */
+.fg-confirm__note { margin: 0; text-align: center; font-size: 13px; font-weight: 500; color: var(--fg-text); }
+.fg-edit { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 6px; font-size: 14px; color: var(--fg-muted); }
+.fg-edit__btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; color: var(--fg-text); text-decoration: underline; text-underline-offset: 3px; transition: color 0.2s; }
+.fg-edit__btn:hover { color: var(--fg-teal-ink); }
+.fg-recap__who { overflow-wrap: anywhere; }
 
 /* --- Etape 2 : les activites ------------------------------------------------ */
 
@@ -1668,37 +1704,33 @@ html.fg-pilote .fg { overflow: visible; }
   position: relative;
   color: var(--fg-teal);
 }
-.fg-done__ring svg { width: 44px; height: 44px; stroke-dasharray: 60; stroke-dashoffset: 60; }
+.fg-done__ring svg { width: 44px; height: 44px; }
 .fg-done__ring::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid var(--fg-teal); opacity: 0; }
+/* Le trace de la coche (ou de l enveloppe d une demande) ne vit qu en
+   mouvement libre. En mouvement reduit, aucun jeu de tirets : le trait est la
+   d office (avant, le decalage de 60 restait sans animation, anneau vide). */
 @media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-done__ring svg { animation: fg-draw 0.7s var(--fg-ease-out) 0.35s both; }
-  .fg-scene.is-active .fg-done__ring::after { animation: fg-ring 1.4s var(--fg-ease-out) 0.5s both; }
+  .fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }
+  .fg-done__ring.is-mail svg { stroke-dasharray: 64; stroke-dashoffset: 64; }
+  .fg-scene.is-active .fg-done__ring svg { animation: fg-draw 0.45s var(--fg-ease-out) 0.35s both; }
+  .fg-scene.is-active .fg-done__ring::after { animation: fg-ring 0.6s var(--fg-ease-out) 0.5s both; }
+  .fg-scene.is-active .fg-burst i { animation: fg-confetti 0.6s var(--fg-ease-out) calc(0.55s + var(--t, 0ms)) backwards; }
 }
 @keyframes fg-draw { to { stroke-dashoffset: 0; } }
 @keyframes fg-ring { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.9); opacity: 0; } }
-/* La gerbe d etincelles : quatorze points qui partent de l anneau, chacun sur
-   son angle (--a) et sa distance (--d), une seule fois. */
+/* Les confettis : quatorze pieces posees par le script pour une reservation
+   CONFIRMEE seulement (une demande a verifier ne se fete pas), en eventail
+   vers le haut, une seule fois. Sans remplissage apres la fin : les pieces
+   reviennent invisibles et sans decalage (rien dans scrollWidth). */
 .fg-burst { position: absolute; inset: 0; pointer-events: none; }
-.fg-burst i {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 -3px;
-  border-radius: 50%;
-  background: var(--fg-teal);
-  opacity: 0;
-  transform: rotate(var(--a, 0deg)) translateY(0) scale(0.4);
-}
-.fg-burst i:nth-child(odd) { background: var(--fg-purple-ink); }
-@media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-burst i { animation: fg-burst 1s var(--fg-ease-out) calc(0.55s + var(--t, 0s)) both; }
-}
-@keyframes fg-burst {
-  0% { opacity: 0; transform: rotate(var(--a, 0deg)) translateY(0) scale(0.4); }
-  18% { opacity: 1; }
-  100% { opacity: 0; transform: rotate(var(--a, 0deg)) translateY(calc(var(--d, 60px) * -1)) scale(1); }
+.fg-burst i { position: absolute; left: 50%; top: 50%; width: 5px; height: 11px; margin: -5.5px 0 0 -2.5px; border-radius: 1.5px; background: var(--fg-purple-em); opacity: 0; }
+.fg-burst i:nth-child(3n+2) { background: var(--fg-teal); }
+.fg-burst i:nth-child(3n) { background: var(--fg-text); }
+@keyframes fg-confetti {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.4); }
+  15% { opacity: 1; }
+  60% { opacity: 1; transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--x), calc(var(--y) + 34px)) rotate(calc(var(--r) * 1.4)) scale(0.9); }
 }
 .fg-done__ref {
   display: inline-block;
@@ -1714,6 +1746,13 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-done p { color: var(--fg-muted); font-size: 15px; margin: 0 0 10px; }
 .fg-done p b { color: var(--fg-text); }
+/* Le recu : une carte opaque, une rangee par fait (quand, quoi, e-mail,
+   paiement, contact). Une adresse longue se coupe au lieu de deborder. */
+.fg-done__ticket { max-width: 520px; margin: 6px auto 0; padding: 4px 20px; text-align: left; background: var(--fg-card); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.fg-done .fg-done__row { display: flex; align-items: flex-start; gap: 14px; margin: 0; padding: 13px 0; font-size: 15px; line-height: 1.45; }
+.fg-done__row + .fg-done__row { border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.fg-done__row svg { width: 20px; height: 20px; flex: none; margin-top: 1px; color: var(--fg-teal-ink); }
+.fg-done__row > span { min-width: 0; overflow-wrap: anywhere; }
 
 /* --- Erreur globale --------------------------------------------------------- */
 
@@ -1729,6 +1768,14 @@ html.fg-pilote .fg { overflow: visible; }
   font-size: 14px;
 }
 .fg-alert[hidden] { display: none; }
+/* L erreur d envoi, sous le bouton de confirmation (#confirmErr). Son bouton
+   prend sa propre ligne, a la taille d un doigt. */
+.fg-alert--inline { margin: 0; }
+.fg-alert__btn { display: flex; align-items: center; width: fit-content; min-height: 44px; margin-top: 10px; padding: 0 16px; border: 1.5px solid var(--fg-teal); border-radius: var(--fg-radius); color: var(--fg-teal-ink); font-size: 14px; font-weight: 700; transition: background-color 0.2s; }
+.fg-alert__btn:hover { background: rgba(103, 186, 172, 0.12); }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-alert:not([hidden]) { animation: fg-rise 0.3s var(--fg-ease-out) both; }
+}
 
 /* --- Grands ecrans ------------------------------------------------------------- */
 
@@ -1832,6 +1879,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-visit__step { grid-template-columns: 48px 1fr; }
   .fg-total { grid-template-columns: 1fr; }
   .fg-total__pay { border-left: 0; padding-left: 0; }
+  .fg-done__ticket { padding: 4px 16px; }
   .fg-btn { padding: 0 22px; font-size: 13px; }
   .fg-glow i { width: 120vw; height: 120vw; }
   .fg-grid--for { grid-template-columns: 1fr; }

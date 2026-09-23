@@ -117,8 +117,10 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
 // Le POST est un FAUX : rien n est ecrit nulle part. Il renvoie un dossier
 // qui reprend la demande (date, heure, groupe, contact, montant affiche) avec
 // les cles que le vrai serveur rend (validationStatus, ops.autoDecision), pour
-// que l ecran final se lise comme en prod. Le corps recu est garde en memoire
-// pour les gates (dernierePose).
+// que l ecran final se lise comme en prod. Comme le vrai serveur pour un
+// dossier confirme (lib/ops-communications.js), la confirmation n est mise en
+// file que si un e-mail est fourni. Le corps recu est garde en memoire pour
+// les gates (dernierePose).
 let compteur = 0;
 const dernierePose = { body: null };
 function fauxDossier(body) {
@@ -133,7 +135,7 @@ function fauxDossier(body) {
       label: b.label || '', price: Number(b.price) || 0, opsPlan: b.opsPlan || null, lanes: Array.isArray(b.lanes) ? b.lanes : [],
     },
     ops: { validationStatus: 'confirmed', autoDecision: 'auto_confirmed', riskLevel: 'low', riskScore: 0, planWarning: '' },
-    communications: [], warnings: [],
+    communications: b.email ? [{ channel: 'email', templateId: 'confirmation', recipient: b.email, status: 'queued' }] : [], warnings: [],
   };
 }
 

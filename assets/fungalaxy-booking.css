@@ -1704,7 +1704,10 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__title svg { width: 18px; height: 18px; color: var(--fg-teal); }
 .fg-visit__span { font-size: 14px; color: var(--fg-muted); }
 .fg-visit__span b { color: var(--fg-text); font-weight: 700; }
-.fg-visit__price { margin-left: auto; display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; color: var(--fg-teal); font-weight: 700; font-size: 18px; }
+/* Chiffres tabulaires, comme le total du detail : en chiffres proportionnels,
+   l espace fine des milliers disparaissait (« 1273 € » en tete, « 1 273 € »
+   au total, sur la capture de prod du lot visite). */
+.fg-visit__price { margin-left: auto; display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; color: var(--fg-teal); font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
 .fg-visit__price small { font-size: 11px; font-weight: 600; color: var(--fg-muted); letter-spacing: 0.02em; }
 .fg-visit__list { list-style: none; margin: 0; padding: 14px 22px 16px 26px; display: grid; gap: 6px; }
 .fg-visit__step {

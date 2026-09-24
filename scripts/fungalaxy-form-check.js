@@ -742,6 +742,7 @@ const MUTATIONS_CSS = {
   barretablette: ['  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }\n  .fg-dock .fg-bar__count { min-width: 0; }\n  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }\n  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }\n', ''],
   barreetroite: ['  .fg-dock { flex-direction: column; align-items: stretch; gap: 8px; }\n', ''],
   retourcarre: ['  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }\n', '  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; padding: 0; }\n'],
+  prixtabulaire: ['.fg-visit__price { margin-left: auto; display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; color: var(--fg-teal); font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }', '.fg-visit__price { margin-left: auto; display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; color: var(--fg-teal); font-weight: 700; font-size: 18px; }'],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -2127,6 +2128,17 @@ async function main() {
     let pistes = await verifierPistes(d0, {}, [], '[C] SANS POSE : une piste par activite, TOUTES les heures dans l etat du moteur (raison, mot, titre), rangees en menus matin/apres-midi/soiree, le menu de l heure proposee ouvert');
     ok(ancresDe(d0).some((a) => a.times.some((t) => t.ok === false && t.code !== 'anchor_overlap')), '[C] (la propriete est exercee) une heure impossible existe ce jour-la');
     await verifierPlan(d0, '[C] SANS POSE : « votre visite » = la reponse (arrivee et son avance, chaque partie a son heure, minigolf et arcades en libre, fin, prix et son detail, paiement) et « Garder » est actif');
+    // LE PRIX SE LIT PAREIL EN TETE ET AU TOTAL (capture de prod du lot visite) :
+    // en chiffres proportionnels, l espace fine des milliers disparaissait
+    // (« 1273 € » en tete, « 1 273 € » au total).
+    const chiffres0 = await page.evaluate(() => {
+      const v = document.querySelector('#planZone .fg-visit');
+      const a = v && v.querySelector('.fg-visit__price');
+      const b = v && v.querySelector('.fg-visit__total dd');
+      return { entete: a ? getComputedStyle(a).fontVariantNumeric : '', total: b ? getComputedStyle(b).fontVariantNumeric : '' };
+    });
+    ok(/tabular-nums/.test(chiffres0.entete) && chiffres0.entete === chiffres0.total,
+      '[C] le prix d en-tete et le total se lisent pareil, en chiffres tabulaires (« 1 273 € », jamais « 1273 € »)', JSON.stringify(chiffres0));
     const o0 = lignePlan(d0);
     const va0 = o0 ? visiteAttendue(o0) : null;
     ok(Boolean(va0 && va0.prix), 'MONTAGE [C] sans pose, la somme des montants connus EST le prix : le detail du prix est exerce sur un vrai plan', va0 ? `${va0.connus} connus pour ${o0.prix}` : 'aucun plan');

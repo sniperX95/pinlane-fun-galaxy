@@ -1903,8 +1903,8 @@ async function mutationCounterProof() {
   // sont stockees » doit tomber.
   await withSourceMutation({
     file: path.join(ROOT, 'lib', 'reservation-request.js'),
-    anchor: "const OCCASION_VALUES = new Set(['anniversaire', 'amis', 'entreprise', 'ecole', 'evg', 'autre']);",
-    replacement: "const OCCASION_VALUES = new Set(['anniversaire', 'amis', 'entreprise', 'ecole', 'autre']);",
+    anchor: "const OCCASION_VALUES = new Set(['anniversaire', 'amis', 'famille', 'entreprise', 'ecole', 'evg', 'autre']);",
+    replacement: "const OCCASION_VALUES = new Set(['anniversaire', 'amis', 'famille', 'entreprise', 'ecole', 'autre']);",
     label: 'occasion EVG de nouveau jetee a la normalisation',
     probe: async (mutated) => mutated.normalizeOccasion('evg') === 'evg',
   });

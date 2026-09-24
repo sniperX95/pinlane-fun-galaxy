@@ -4377,6 +4377,14 @@
   // vers la section L agent pour le reste ; `options.toujours` : la section
   // L agent affiche le bloc meme quand il n y a rien, pour dire que l agent a
   // su repondre a tout (un bloc absent y serait une page trouee).
+  // La longueur qu un fait appris peut avoir : celle que le serveur accepte
+  // (APPRIS_LIMITS.reponse, lib/email-agent.js). Au-dela il refuse ; l ecran
+  // le dit AVANT l envoi, en comptant.
+  const PV2_SAVOIR_MAX = 600;
+  function pv2CompteSavoir(texte) {
+    const n = String(texte || '').trim().length;
+    return n > PV2_SAVOIR_MAX ? `${n} / ${PV2_SAVOIR_MAX} : trop long, gardez l’essentiel` : `${n} / ${PV2_SAVOIR_MAX}`;
+  }
   function pv2SectionApprentissage(options = {}) {
     const questions = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.questions) || [];
     const appris = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.appris) || [];
@@ -4390,15 +4398,17 @@
       const cle = String(q.communicationId);
       const brouillon = pv2Mail.reponsesApprises[cle] || '';
       const enCours = busy === cle;
+      const trop = brouillon.trim().length > PV2_SAVOIR_MAX;
       return `
         <article class="pv2-savoir-carte">
           <p class="pv2-savoir-question">${esc(q.question)}</p>
           <p class="pv2-savoir-origine">Demandé par ${esc(q.mailDe || 'un client')}, à propos de « ${esc(String(q.mailSujet || '').slice(0, 70))} »</p>
           <textarea class="pv2-savoir-reponse" rows="2" placeholder="Répondez une fois : l'agent le saura pour tous les prochains messages."
-            aria-label="Ce que l'agent doit retenir" data-pl-focus="emails.savoir.${esc(cle)}"
-            oninput="pv2SavoirBrouillon('${escJs(cle)}', this.value)">${esc(brouillon)}</textarea>
+            aria-label="Ce que l'agent doit retenir" aria-describedby="pv2-savoir-compte-${esc(cle)}" data-pl-focus="emails.savoir.${esc(cle)}"
+            oninput="pv2SavoirBrouillon('${escJs(cle)}', this.value, this)">${esc(brouillon)}</textarea>
           <div class="pv2-savoir-actions">
-            <button type="button" class="pv2-btn sm primary" ${enCours || !brouillon.trim() ? 'disabled' : ''}
+            <span class="pv2-savoir-compteur${trop ? ' is-trop' : ''}" id="pv2-savoir-compte-${esc(cle)}">${esc(pv2CompteSavoir(brouillon))}</span>
+            <button type="button" class="pv2-btn sm primary pv2-savoir-apprendre" ${enCours || !brouillon.trim() || trop ? 'disabled' : ''}
               onclick="pv2ApprendreLaReponse('${escJs(cle)}')">${enCours ? 'Apprentissage…' : 'Apprendre'}</button>
           </div>
         </article>`;
@@ -4433,10 +4443,20 @@
       </section>`;
   }
 
-  window.pv2SavoirBrouillon = function (cle, valeur) {
+  window.pv2SavoirBrouillon = function (cle, valeur, champ) {
     pv2Mail.reponsesApprises[cle] = valeur;
-    // Pas de re-rendu a chaque touche : il ferait perdre le curseur. Le bouton
-    // se debloque au rendu suivant, et l envoi relit le brouillon.
+    // Pas de re-rendu a chaque touche (il ferait perdre le curseur) : le bouton
+    // et le compteur de SA carte se mettent a jour sur place. Avant ce
+    // correctif (2026-09-24), le bouton ne se debloquait qu au rendu suivant :
+    // Movsar tapait sa reponse, touchait « Apprendre », et rien ne partait.
+    const carte = champ && champ.closest ? champ.closest('.pv2-savoir-carte') : null;
+    if (!carte) return;
+    const texte = String(valeur || '').trim();
+    const trop = texte.length > PV2_SAVOIR_MAX;
+    const bouton = carte.querySelector('.pv2-savoir-apprendre');
+    if (bouton && pv2Mail.apprentissageBusy !== cle) bouton.disabled = !texte || trop;
+    const compteur = carte.querySelector('.pv2-savoir-compteur');
+    if (compteur) { compteur.textContent = pv2CompteSavoir(valeur); compteur.classList.toggle('is-trop', trop); }
   };
 
   window.pv2BasculerMemoire = function () {

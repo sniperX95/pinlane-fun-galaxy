@@ -614,6 +614,11 @@
 
   var alerte = $('#fgAlert');
   function direErreur(msg) { alerte.textContent = msg; alerte.hidden = !msg; if (msg) posterHauteur(); }
+  // UNE PANNE SE DIT EN FRANCAIS : le message du serveur s il en donne un,
+  // sinon le seul fait constate. Jamais le texte brut du navigateur
+  // (« Failed to fetch », « Load failed », « Unexpected token »).
+  function erreurLisible(j, repli) { var e = new Error(j && j.message ? String(j.message) : repli); e.lisible = true; return e; }
+  var panneMeta = '';          // la panne du catalogue, redite par Continuer
   // UNE SEULE VOIX pour les gestes : une phrase courte, deja ecrite a
   // l ecran. Videe puis reposee 80 ms plus tard : la meme phrase deux fois
   // de suite se relit.
@@ -944,6 +949,7 @@
   paxInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); paxInput.blur(); } });
 
   $('#goActivities').addEventListener('click', function () {
+    if (!meta) { direErreur(panneMeta || 'Le formulaire se charge encore. Réessayez dans un instant.'); return; }
     if (!state.date) { direErreur('Choisissez d’abord un jour.'); dayBtn.focus(); return; }
     direErreur('');
     // Le groupe a pu changer depuis le dernier rendu : une activite bornee
@@ -1354,7 +1360,7 @@
     fetch(urlDispo(), { credentials: 'omit' }).then(function (r) { return r.json(); })
       .then(function (j) {
         if (id !== requeteEnCours) return;
-        if (!j || j.ok === false) throw new Error((j && j.message) || 'Disponibilités indisponibles.');
+        if (!j || j.ok === false) throw erreurLisible(j, 'Les horaires ne se sont pas chargés. Réessayez dans un instant.');
         state.dispo = j; state.dispoCle = cle;
         var slot = (j.slots || [])[0] || null;
         state.creneau = slot ? { slot: slot, reponse: j } : null;
@@ -1371,11 +1377,13 @@
       .catch(function (err) {
         if (id !== requeteEnCours) return;
         hourZone.classList.remove('is-busy');
-        hourZone.innerHTML = '<div class="fg-notice fg-notice--warn">' + esc(err.message || 'Impossible de charger les disponibilités.') + '</div>';
+        var msgErr = err && err.lisible ? err.message : 'Les horaires ne se sont pas chargés. Réessayez dans un instant.';
+        hourZone.innerHTML = '<div class="fg-notice fg-notice--warn"><b>' + esc(msgErr) + '</b><span class="fg-suggest"><button type="button" class="fg-suggest__btn" data-retry>Réessayer</button></span></div>';
+        state.dispo = null;
         hourSum.textContent = '';
         signaturePistes = '';
         posterHauteur();
-        if (sceneCourante === 'heures') dire(err.message || 'Impossible de charger les disponibilités.');
+        if (sceneCourante === 'heures') dire(msgErr);
         rendreFocus(repere);
       });
   }
@@ -2027,6 +2035,9 @@
     posterHauteur();
   }
   hourZone.addEventListener('click', function (e) {
+    // « Reessayer » apres une panne : le meme calcul, avec le meme etat. Le
+    // focus passe au titre avant que le bouton ne disparaisse.
+    if (e.target.closest('[data-retry]')) { $('#t-hour').focus({ preventScroll: true }); chargerHeures(); return; }
     // Toutes les poses levees d un coup : le meme geste que « revenir a
     // l heure proposee » d une piste, etendu a toutes. Sans heure posee, le
     // serveur compose sa combinaison par defaut, ou dit qu il n y en a pas.
@@ -2472,8 +2483,8 @@
     fetch('/api/public-booking-meta?' + q.toString(), { credentials: 'omit' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        if (!j || j.ok === false) throw new Error((j && j.message) || 'Catalogue indisponible.');
-        meta = j;
+        if (!j || j.ok === false) throw erreurLisible(j, 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.');
+        meta = j; direErreur('');
         if (meta.center && meta.center.status && meta.center.status !== 'active') {
           direErreur('Ce centre n’ouvre pas encore ses réservations en ligne.');
         }
@@ -2493,7 +2504,7 @@
         body.classList.add('is-ready');
         posterHauteur();
       })
-      .catch(function (err) { direErreur(err.message || 'Le catalogue ne répond pas. Réessayez dans un instant.'); body.classList.add('is-ready'); });
+      .catch(function (err) { panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.add('is-ready'); });
     posterHauteur();
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', demarrer); else demarrer();

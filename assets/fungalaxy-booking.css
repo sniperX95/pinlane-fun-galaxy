@@ -1894,7 +1894,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-alert {
   position: relative;
   z-index: 3;
-  margin: 0 0 20px;
+  margin: 12px var(--fg-gutter) 20px;
   padding: 14px 18px;
   border-radius: 8px;
   background: rgba(255, 107, 107, 0.1);

@@ -212,6 +212,14 @@
 //       formulaire a chaque ecran (jamais plus court, et il rapetisse) ;
 //       chaque geste fait descendre la page jusqu en bas ; meme avec 4 px de
 //       trop, le cadre ne prend pas le geste (verrou).
+//   [R] UNE PANNE SE DIT EN FRANCAIS ET SE RATTRAPE (2026-09-24) : reseau
+//       coupe, 504 en HTML, 429 avec son message : l ecran des heures dit
+//       le fait constate (ou le message du serveur), jamais l anglais du
+//       navigateur, avec « Reessayer » (44 px) qui relance le meme calcul
+//       et rend le focus au titre ; catalogue coupe : l alerte le dit en
+//       francais, hors des bords, et Continuer le redit ; catalogue en
+//       route : Continuer dit qu il charge, et l alerte s efface a
+//       l arrivee.
 //
 // CONTRE-PREUVES DU TOUR [J] : FG_QA_CASSE=pax (le champ du compteur reprend
 // une largeur fixe), centrage (la case du compteur ne centre plus sa ligne en
@@ -344,6 +352,13 @@
 // cassee ; unevoix (la zone des heures se relit de nouveau en entier) : PAGE
 // servie cassee.
 //
+// CONTRE-PREUVES DES PANNES [R] : lisible (l ecran des heures montre de
+// nouveau le texte du navigateur), relance (« Reessayer » ne relance
+// plus), lisiblemeta (le catalogue coupe montre le texte du navigateur),
+// panneredite (Continuer sans catalogue repart sur « Choisissez d abord un
+// jour ») : JS servi casse ; alertebord (l alerte retouche les bords de
+// l ecran) : FEUILLE servie cassee.
+//
 // CONTRE-PREUVES (le gate mord) : FG_QA_CASSE=prix (prix de carte faux d un
 // euro), total (total du recap faux d un euro), raison (les heures perdent leur
 // raison), calendrier (les jours fermes restent cliquables), serre (le
@@ -465,6 +480,8 @@ function periodeDe(h) { const n = Number(String(h).split(':')[0]); return n < 12
 // « complet » (le moteur lui-meme ecrit « Complet »), schedule_free est un
 // « trop tard », et anchor_overlap, quand il reste un refus (sa propre
 // partie), se dit « pris ».
+// Le texte d une panne ne doit jamais etre celui du navigateur.
+const ANGLAIS = /fetch|network|load failed|unexpected|json|token|error|timeout|abort/i;
 const MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', schedule_free: 'trop tard', resource_conflict: 'complet', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo', anchor_overlap: 'pris' };
 
 const HOST_HTML = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
@@ -548,7 +565,7 @@ const MUTATIONS = {
   squelette: ['hourZone.innerHTML = SQUELETTE;', "hourZone.innerHTML = '<p class=\"fg-loading\">On regarde ce qui est libre…</p>';"],
   voix: ["(complet ? '' : ', le reste se règle sur place')", "''"],
   voixavis: ["if (sceneCourante === 'heures') dire(msgNotice", "if (false) dire(msgNotice"],
-  voixpanne: ["if (sceneCourante === 'heures') dire(err.message", "if (false) dire(err.message"],
+  voixpanne: ["if (sceneCourante === 'heures') dire(msgErr", "if (false) dire(msgErr"],
   voixrefus: ['dire(pourquoi.textContent.trim());', 'void 0;'],
   focusperdu: ['cible.focus({ preventScroll: true });', 'void cible;'],
   entree: ["if (e.key !== 'Enter' || e.isComposing) return;", 'return;'],
@@ -572,6 +589,10 @@ const MUTATIONS = {
   couvre: ["(prixComplet ? ', à régler'", "(true ? ', à régler'"],
   fete: ['if (confirme && !reduced) for', 'if (!reduced) for'],
   anneau: ["confirme ? '#i-check' : '#i-mail'", "'#i-check'"],
+  lisible: ['var msgErr = err && err.lisible ? err.message : ', 'var msgErr = err.message || '],
+  relance: ["if (e.target.closest('[data-retry]')) {", 'if (false) {'],
+  lisiblemeta: ['panneMeta = err && err.lisible ? err.message : ', 'panneMeta = err.message || '],
+  panneredite: ['    if (!meta) { direErreur(panneMeta ||', '    if (false) { direErreur(panneMeta ||'],
 };
 // Les contre-preuves de la FEUILLE : une regle servie cassee expres. La feuille
 // est relue en LF, quelle que soit la fin de ligne du depot.
@@ -598,6 +619,7 @@ const MUTATIONS_CSS = {
   zoom: ['zoome sur le champ touche. */\n  font-size: 16px;', 'zoome sur le champ touche. */\n  font-size: 15px;'],
   errglisse: ['  .fg-field.is-invalid .fg-field__error, #consentWrap.is-invalid + .fg-field__error { animation: fg-err 0.24s var(--fg-ease-out) both; }\n', ''],
   cochecalme: ['@media (prefers-reduced-motion: no-preference) {\n  .fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n', '.fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n@media (prefers-reduced-motion: no-preference) {\n'],
+  alertebord: ['  z-index: 3;\n  margin: 12px var(--fg-gutter) 20px;\n', '  z-index: 3;\n  margin: 0 0 20px;\n'],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -607,8 +629,8 @@ const MUTATIONS_EMBED = {
 // cassees (plusieurs remplacements, chacun sur une ancre unique).
 const MUTATIONS_HTML = {
   titres: [
-    ['data-words>Au <em>programme</em></h2>', 'data-words>Vos <em>activités</em></h2>'],
-    ['data-words>Top <em>départ</em></h2>', 'data-words>Vos <em>horaires</em></h2>'],
+    ['data-words>Vous jouez<br><em>à quoi&nbsp;?</em></h2>', 'data-words>Vos <em>activités</em></h2>'],
+    ['data-words>Quelle heure<br><em>vous arrange&nbsp;?</em></h2>', 'data-words>Vos <em>horaires</em></h2>'],
   ],
   unevoix: [
     ['<div id="hourZone">', '<div id="hourZone" aria-live="polite">'],
@@ -2025,7 +2047,9 @@ async function main() {
     const fermeture = await page.evaluate(() => ({ bouton: document.querySelector('#confirmBtn').textContent.trim(), note: document.querySelector('.fg-scene.is-active .fg-confirm__note').textContent.replace(/\s+/g, ' ').trim(), partira: /confirmation partira/.test(document.querySelector('#recap').textContent) }));
     ok(fermeture.bouton === 'Valider ma réservation' && fermeture.note === 'Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.' && !fermeture.partira, '[E] le bouton valide, aucun paiement en ligne, aucun envoi promis', JSON.stringify(fermeture));
     // CHAQUE ETAPE SE MODIFIE D UN TOUCHER, et l aller-retour ne perd rien.
-    await page.click('.fg-scene.is-active .fg-edit [data-goto="date"]');
+    // Le bouton se touche par son TEXTE : une cible cassee (FG_QA_CASSE=modifier)
+    // rougit ce controle au lieu d un clic qui attend un bouton introuvable.
+    await page.click('.fg-scene.is-active .fg-edit__btn:has-text("le jour ou le groupe")');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="date"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000), '[E] Modifier le jour ou le groupe ramene a l ecran 1');
     await page.click('#goActivities');
     await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000);
@@ -3252,8 +3276,36 @@ async function main() {
     await lisibleEcran('formules', true);
     await pl.click('#tabAct');
     await attendre(pl, () => !document.querySelector('#panelAct').hidden, 8000);
+    // [R] UNE PANNE DES HORAIRES SE DIT EN FRANCAIS ET SE RATTRAPE : reseau
+    // coupe, puis 504 en HTML (le corps n est pas du JSON), puis 429 avec le
+    // message du serveur ; « Reessayer » relance le calcul avec le meme etat.
+    const dispoR = (u) => u.pathname === '/api/public-availability';
+    const REPLI_H = 'Les horaires ne se sont pas chargés. Réessayez dans un instant.';
+    const panneR = () => pl.evaluate(() => { const b = document.querySelector('#hourZone .fg-notice b'); const r = document.querySelector('#hourZone [data-retry]'); return { texte: b ? b.textContent : '', haut: r ? Math.round(r.getBoundingClientRect().height) : 0, garder: document.querySelector('#goContact').disabled }; });
+    const panneVue = () => attendre(pl, () => !document.querySelector('#hourZone').classList.contains('is-busy') && document.querySelector('#hourZone [data-retry]'), 15000);
+    await ctxL.route(dispoR, (r) => r.abort());
     await pl.click('#goHours');
+    ok(await panneVue(), '[R] reseau coupe : l ecran des heures dit la panne et propose Reessayer');
+    let vuR = await panneR();
+    ok(plat(vuR.texte) === plat(REPLI_H) && !ANGLAIS.test(vuR.texte) && vuR.haut >= 44 && vuR.garder, '[R] reseau coupe : le fait constate en francais, bouton de 44 px, Garder inactif', JSON.stringify(vuR));
+    await lisibleEcran('heures (panne)', true);
+    await ctxL.unroute(dispoR);
+    await ctxL.route(dispoR, (r) => r.fulfill({ status: 504, contentType: 'text/html', body: '<html><body>504</body></html>' }));
+    await pl.click('#hourZone [data-retry]');
+    ok(await pl.evaluate(() => document.activeElement && document.activeElement.id === 't-hour'), '[R] Reessayer rend le focus au titre de l ecran');
+    ok(await panneVue(), '[R] 504 en HTML : la panne se redit');
+    vuR = await panneR();
+    ok(plat(vuR.texte) === plat(REPLI_H) && !ANGLAIS.test(vuR.texte), '[R] 504 en HTML : meme texte francais', vuR.texte);
+    await ctxL.unroute(dispoR);
+    await ctxL.route(dispoR, (r) => r.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ ok: false, message: 'Trop de requêtes. Merci de réessayer dans un instant.' }) }));
+    await pl.click('#hourZone [data-retry]');
+    ok(await panneVue(), '[R] 429 : la panne se redit');
+    vuR = await panneR();
+    ok(plat(vuR.texte) === plat('Trop de requêtes. Merci de réessayer dans un instant.'), '[R] 429 : le message du serveur passe tel quel', vuR.texte);
+    await ctxL.unroute(dispoR);
+    await pl.click('#hourZone [data-retry]');
     ok(await attendre(pl, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[L] l ecran des heures se calcule');
+    ok(await attendre(pl, () => !document.querySelector('#goContact').disabled, 5000), '[R] apres Reessayer, le plan revient et Garder redevient actif');
     await lisibleEcran('heures', true);
     await pl.click('#goContact');
     await attendre(pl, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 8000);
@@ -4006,6 +4058,35 @@ async function main() {
       ok(ct.btnHaut >= 0 && ct.bas <= ct.vh, '[O] embarque, tablette : a l ouverture, la page du client amene le bouton ET le mois entier dans son ecran', JSON.stringify(ct));
     }
     await ctxOt.close();
+
+    // =====================================================================
+    console.log('');
+    console.log('[R] PANNES : CATALOGUE COUPE OU EN ROUTE');
+    // =====================================================================
+    const REPLI_F = 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.';
+    const alerteR = (p) => p.evaluate(() => { const a = document.querySelector('#fgAlert'); const r = a.getBoundingClientRect(); return { vue: !a.hidden, texte: a.textContent, gauche: Math.round(r.left), droite: Math.round(window.innerWidth - r.right), ecran: document.querySelector('.fg-scene.is-active').dataset.scene }; });
+    const ctxR2 = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await ctxR2.route((u) => u.pathname === '/api/public-booking-meta', (r) => r.abort());
+    const pR2 = await ctxR2.newPage();
+    await pR2.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'domcontentloaded' });
+    ok(await attendre(pR2, () => document.body.classList.contains('is-ready') && !document.querySelector('#fgAlert').hidden, 10000), '[R] catalogue coupe : l alerte s affiche');
+    let aR = await alerteR(pR2);
+    ok(plat(aR.texte) === plat(REPLI_F) && !ANGLAIS.test(aR.texte) && aR.gauche >= 20 && aR.droite >= 20, '[R] catalogue coupe : fait constate en francais, alerte hors des bords', JSON.stringify(aR));
+    await pR2.click('#goActivities');
+    aR = await alerteR(pR2);
+    ok(plat(aR.texte) === plat(REPLI_F) && aR.ecran === 'date', '[R] Continuer sans catalogue redit la panne, jamais Choisissez d abord un jour', JSON.stringify(aR));
+    await ctxR2.close();
+    let lacherMeta = null; const tenu = new Promise((r) => { lacherMeta = r; });
+    const ctxR3 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctxR3.route((u) => u.pathname === '/api/public-booking-meta' && u.searchParams.get('calendar') === '45' && !u.searchParams.get('calendarFrom'), async (r) => { await tenu; await r.continue(); });
+    const pR3 = await ctxR3.newPage();
+    await pR3.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'domcontentloaded' });
+    await pR3.click('#goActivities');
+    aR = await alerteR(pR3);
+    ok(aR.vue && plat(aR.texte) === plat('Le formulaire se charge encore. Réessayez dans un instant.'), '[R] catalogue en route : Continuer dit qu il charge, pas qu il a echoue', JSON.stringify(aR));
+    lacherMeta();
+    ok(await attendre(pR3, () => document.body.classList.contains('is-ready') && document.querySelector('#fgAlert').hidden, 10000), '[R] catalogue arrive : l alerte d attente s efface');
+    await ctxR3.close();
 
     // =====================================================================
     console.log('');

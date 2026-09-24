@@ -137,7 +137,7 @@ async function installMock(page, perms) {
     // Ce que chaque action repond : reponse proposee avant/apres, questions
     // proches, relecture, delais.
     window.__QA_REPONSES__ = { avant: null, apres: null, proches: [], resultats: [], delai: 0, delaiRelecture: 0 };
-    window.__QA_APPELS__ = { apprendre: [], relire: [], enseigner: [], corriger: [], oublier: [] };
+    window.__QA_APPELS__ = { apprendre: [], relire: [], enseigner: [], corriger: [], oublier: [], cerveau: [] };
     const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const nf = window.fetch.bind(window);
@@ -198,6 +198,11 @@ async function installMock(page, perms) {
         });
       }
       const action = u.searchParams.get('action');
+      if (u.pathname === '/api/ops' && action === 'emailBrain') {
+        window.__QA_APPELS__.cerveau.push(Date.now());
+        if (R.cerveauEnPanne) return new Response(JSON.stringify({ ok: false, message: 'Base indisponible.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        return J({ ok: true, overrides: { faq: {}, signature: '', extra: '' }, defaults: { intents: { autre: 'Autre' }, faq: {}, signature: 'L equipe' } });
+      }
       if (u.pathname === '/api/ops' && action === 'agentQuestions') return J({ ok: true, questions: S.questions, appris: S.appris, suivi: suivi() });
       if (u.pathname === '/api/ops' && action === 'pulse') return J({ ok: true, empreinte: 'stable' });
       if (u.pathname === '/api/ops' && action === 'emailClaims') return J({ ok: true, claims: [] });
@@ -269,7 +274,9 @@ async function lire(page) {
       relit: t('.pv2-savoir-resultat .pv2-savoir-relit'),
       proches: [...s.querySelectorAll('.pv2-savoir-proches li')].map((li) => ({ resolue: li.classList.contains('is-resolue'), texte: li.textContent.replace(/\s+/g, ' ').trim() })),
       suivante: (() => { const b = s.querySelector('.pv2-savoir-fin .pv2-btn'); return b ? { texte: b.textContent.trim(), actif: !b.disabled } : null; })(),
-      faits: [...s.querySelectorAll('.pv2-savoir-fait')].map((li) => ({ visible: !li.hidden && li.offsetParent !== null, texte: li.textContent.replace(/\s+/g, ' ').trim() })),
+      // VISIBLE = rendu a l ecran (une boite), pas « porte l attribut hidden » :
+      // une regle `display: flex` sans exception pour [hidden] l afficherait.
+      faits: [...s.querySelectorAll('.pv2-savoir-fait')].map((li) => ({ visible: li.getClientRects().length > 0, texte: li.textContent.replace(/\s+/g, ' ').trim() })),
       aucun: (() => { const p = s.querySelector('.pv2-savoir-aucun'); return p && !p.hidden ? p.textContent.trim() : ''; })(),
       nouveau: Boolean(s.querySelector('.pv2-savoir-nouveau')),
       boutonsMemoire: s.querySelectorAll('.pv2-savoir-fait-actions .pv2-btn').length,
@@ -305,6 +312,8 @@ async function contrastes(page) {
     const rgb = (c) => { const m = String(c).match(/[\d.]+/g) || []; return { r: +m[0], g: +m[1], b: +m[2], a: m[3] === undefined ? 1 : +m[3] }; };
     const lum = ({ r, g, b }) => [r, g, b].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
     const fond = (el) => { for (let e = el; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.a >= 0.99) return c; } return { r: 255, g: 255, b: 255, a: 1 }; };
+    // L opacite des ancetres attenue le texte comme l alpha de sa couleur.
+    const opacite = (el) => { let o = 1; for (let e = el; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity); return o; };
     const pire = { ratio: 99, texte: '' };
     const w = document.createTreeWalker(s, NodeFilter.SHOW_TEXT);
     let n;
@@ -316,8 +325,9 @@ async function contrastes(page) {
       if (st.visibility === 'hidden' || el.closest('[hidden]') || !el.getClientRects().length) continue;
       if (el.closest('.pv2-btn.primary')) continue;
       const c = rgb(st.color);
+      const a = c.a * opacite(el);
       const f = fond(el);
-      const col = { r: c.r * c.a + f.r * (1 - c.a), g: c.g * c.a + f.g * (1 - c.a), b: c.b * c.a + f.b * (1 - c.a) };
+      const col = { r: c.r * a + f.r * (1 - a), g: c.g * a + f.g * (1 - a), b: c.b * a + f.b * (1 - a) };
       const L1 = lum(col); const L2 = lum(f);
       const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
       mesures += 1;
@@ -335,7 +345,24 @@ async function main() {
     const { context, page, errs } = await ouvrirConsole(browser, TOUTES);
 
     // =====================================================================
-    console.log('[A] l apercu se tait quand il n y a rien ; L agent dit qu il a tout su');
+    console.log('[A0] une lecture qui echoue ne se relance pas en boucle');
+    // =====================================================================
+    // Mesure du 2026-09-24 : les textes de l agent en echec, l onglet relancait
+    // leur lecture a chaque rendu, et chaque echec relancait un rendu (369
+    // rendus en 3 s). Le serveur en panne se faisait marteler.
+    await page.evaluate(() => { window.__QA_REPONSES__.cerveauEnPanne = true; window.__QA_APPELS__.cerveau = []; });
+    await aller(page, 'agent');
+    await page.waitForTimeout(2500);
+    const panne = await page.evaluate(() => ({ appels: window.__QA_APPELS__.cerveau.length, texte: ((document.querySelector('#staffEmailsPage .pv2-agent-grid') || {}).innerText || '').replace(/\s+/g, ' ') }));
+    ok(panne.appels >= 1 && panne.appels <= 2 && /Textes indisponibles/.test(panne.texte),
+      '[A0] les textes en echec : l ecran le dit, et la lecture n est pas relancee en boucle', JSON.stringify({ appels: panne.appels, texte: panne.texte.slice(0, 80) }));
+    await page.evaluate(() => { window.__QA_REPONSES__.cerveauEnPanne = false; });
+    await page.click('#staffEmailsPage .pv2-agent-grid .pv2-btn >> text=Réessayer');
+    ok(await page.waitForFunction(() => document.querySelector('[data-pl-focus="emails.agent.signature"]'), null, { timeout: 5000 }).then(() => true, () => false),
+      '[A0] « Reessayer » relit, et le formulaire revient');
+
+    // =====================================================================
+    console.log('\n[A] l apercu se tait quand il n y a rien ; L agent dit qu il a tout su');
     // =====================================================================
     await aller(page, 'apercu');
     await poserEtat(page, {});

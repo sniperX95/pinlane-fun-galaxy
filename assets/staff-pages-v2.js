@@ -2974,6 +2974,7 @@
     const brain = pv2Settings.brain;
     if (brain.loading || (brain.loaded && !force)) return;
     brain.loading = true;
+    brain.error = '';
     try {
       const payload = await apiRequest(`/api/ops?action=emailBrain&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       brain.overrides = payload.overrides || { faq: {}, signature: '', extra: '' };
@@ -2984,11 +2985,20 @@
         faq: Object.fromEntries(Object.keys(brain.defaults.intents || PV2_INTENT_LABELS).map((intent) => [intent, brain.overrides.faq[intent] ? String(brain.overrides.faq[intent].body || '') : ''])),
       };
       brain.loaded = true;
-    } catch (error) { /* rôle sans accès */ } finally {
+    } catch (error) {
+      // UN ECHEC EST UNE REPONSE (2026-09-24). Avant, `loaded` restait faux :
+      // le rendu d apres relancait la lecture, qui rechouait, qui relancait le
+      // rendu, des centaines de requetes par seconde tant que l onglet restait
+      // ouvert (mesure : 369 rendus en 3 s sur une reponse inattendue). Comme
+      // l apparence (loadPv2Design) : l erreur se dit, et « Reessayer » relit.
+      brain.error = error.message || 'Les textes de l’agent sont indisponibles.';
+      brain.loaded = true;
+    } finally {
       brain.loading = false;
       renderStaffEmailsPage();
     }
   }
+  window.pv2BrainRelire = function () { loadPv2Brain(true); };
 
   window.pv2BrainField = function (field, intent, value) {
     const draft = pv2Settings.brain.draft;
@@ -3343,6 +3353,8 @@
     const brain = pv2Settings.brain;
     const form = !brain.loaded
       ? `<div class="pv2-empty" aria-live="polite" aria-busy="true">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
+      : brain.error || !brain.draft
+        ? `<div class="pv2-empty" role="status"><strong>Textes indisponibles</strong>${esc(brain.error || 'Réponse incomplète du serveur.')}<button type="button" class="pv2-btn sm" onclick="pv2BrainRelire()">Réessayer</button></div>`
       : `<div class="pv2-composer-grid">
         <p class="pv2-panel-sub pv2-composer-wide">L'agent répond aux mails reçus avec CES textes. Modifiez-les librement : ce que vous écrivez ici gagne toujours sur le modèle d'origine. Champ vidé = retour au modèle.</p>
         <label class="pv2-composer-field"><span>Signature</span>

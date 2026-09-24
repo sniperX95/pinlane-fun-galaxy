@@ -63,6 +63,7 @@ async function loadOpsAdmin(force = false) {
       claims: (claimsPayload && claimsPayload.claims) || [],
       questions: (savoirPayload && savoirPayload.questions) || [],
       appris: (savoirPayload && savoirPayload.appris) || [],
+      suivi: (savoirPayload && savoirPayload.suivi) || null,
       loaded: true,
       loading: false,
       lastLoadedAt: new Date().toISOString()

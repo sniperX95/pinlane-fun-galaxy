@@ -21,6 +21,8 @@ const {
   releaseEmailThread,
   listActiveEmailClaims,
   listAgentQuestions,
+  compterQuestionsOuvertes,
+  rafraichirAnalyse,
   marquerQuestionRepondue,
   getInboundCommunication,
   listAgentSuggestions,
@@ -369,12 +371,27 @@ async function handleGet(req, res, options = {}) {
   // la memoire deja constituee, sinon on ne peut ni verifier ce qu il a retenu,
   // ni corriger un fait devenu faux.
   if (action === 'agentQuestions') {
-    const { getFaitsAppris } = require('../lib/email-agent');
-    const [questions, appris] = await Promise.all([
+    const { getFaitsAppris, compterLecons } = require('../lib/email-agent');
+    const [questions, appris, ouvertes, corrections] = await Promise.all([
       listAgentQuestions({ centerId, limit: Number(url.searchParams.get('limit') || 50) }),
       getFaitsAppris(centerId),
+      compterQuestionsOuvertes({ centerId }),
+      compterLecons(centerId),
     ]);
-    sendJson(res, 200, { ok: true, centerId, questions, appris });
+    // LE SUIVI (Movsar, 2026-09-24 : « on voit un suivi, on voit vraiment
+    // qu il apprend ») : ce que l agent sait, ce qui l attend (le VRAI compte,
+    // la liste est bornee), les questions de clients que ses faits ont
+    // resolues, ce qu il a appris cette semaine, et les reponses que l equipe
+    // a corrigees avant de les envoyer (l autre facon dont il apprend).
+    const depuis = Date.now() - 7 * 86400000;
+    const suivi = {
+      faits: appris.length,
+      questions: ouvertes,
+      resolues: appris.reduce((s, f) => s + (Number(f.resolues) || 0), 0),
+      semaine: appris.filter((f) => Date.parse(f.le || '') >= depuis).length,
+      corrections,
+    };
+    sendJson(res, 200, { ok: true, centerId, questions, appris, suivi });
     return;
   }
 
@@ -1081,6 +1098,36 @@ function membreDeSession(session) {
     role: String(role.name || role.id || ''),
     contact: String(membre.contact || ''),
   };
+}
+
+// La reponse proposee d une analyse de mail (objet, corps), ou rien.
+function reponseProposee(analyse) {
+  const r = analyse && analyse.reply;
+  return r ? { subject: String(r.subject || ''), body: String(r.body || '') } : null;
+}
+
+// Relire un mail recu avec ce que l agent sait MAINTENANT. Fail-soft : un
+// modele indisponible rend null, jamais une exception qui perdrait le reste.
+// L agent relit ce qu il a lu a la reception (lib/email-agent.js, ingestion) :
+// le message SANS la citation recopiee par le logiciel du client, sinon il
+// resume l echange precedent et repond a cote ; et le prenom qu il avait
+// trouve reste le sien.
+async function reanalyserLeMail(mail, centre, analyzeEmail) {
+  try {
+    const { separerCitation } = require('../assets/email-thread.js');
+    const texte = String((mail.payload && mail.payload.textBody) || mail.body || '');
+    const analyse = await analyzeEmail({
+      from: String((mail.payload && mail.payload.from) || mail.recipient || ''),
+      subject: mail.subject,
+      body: separerCitation(texte).message || texte,
+      centerId: centre,
+    });
+    const avant = (mail.payload && mail.payload.analysis) || {};
+    if (analyse && !analyse.clientName && avant.clientName) analyse.clientName = avant.clientName;
+    return analyse;
+  } catch (error) {
+    return null;
+  }
 }
 
 async function handlePost(req, res, providedBody = null, options = {}) {
@@ -2713,32 +2760,82 @@ ${draftBody}`,
     const question = String((mail.payload && mail.payload.analysis && mail.payload.analysis.question) || '').trim();
     if (!question) throw createHttpError('Ce message ne porte aucune question ouverte.', 400);
     const membre = (options.session && options.session.member) || {};
-    const { apprendreUnFait, analyzeEmail } = require('../lib/email-agent');
-    const appris = await apprendreUnFait(centreApprentissage, {
-      question,
-      reponse: body.reponse,
-      par: String(membre.name || membre.id || ''),
-    });
+    const par = String(membre.name || membre.id || '');
+    const { apprendreUnFait, analyzeEmail, getFaitsAppris, compterResolutions, questionsProches } = require('../lib/email-agent');
+    const fait = await apprendreUnFait(centreApprentissage, { question, reponse: body.reponse, par, communicationId: mail.id });
+    // La reponse proposee AVANT : l ecran montre ce que le fait a change.
+    const avant = reponseProposee(mail.payload && mail.payload.analysis);
     // La re-analyse est FAIL-SOFT : si elle echoue, le fait est quand meme
     // appris. Perdre l apprentissage parce que le modele est indisponible
     // serait le pire des deux mondes.
-    let analyse = null;
-    try {
-      analyse = await analyzeEmail({
-        from: String((mail.payload && mail.payload.from) || mail.recipient || ''),
-        subject: mail.subject,
-        body: String((mail.payload && mail.payload.textBody) || mail.body || ''),
-        centerId: centreApprentissage,
-      });
-    } catch (error) {
-      analyse = null;
-    }
-    const communication = await marquerQuestionRepondue({
-      communicationId: mail.id,
-      analyse,
-      par: String(membre.name || membre.id || ''),
-    });
-    sendJson(res, 200, { ok: true, action, appris, communication, reanalyse: Boolean(analyse) });
+    const analyse = await reanalyserLeMail(mail, centreApprentissage, analyzeEmail);
+    const communication = await marquerQuestionRepondue({ communicationId: mail.id, analyse, par });
+    if (fait) await compterResolutions(centreApprentissage, fait.id, 1).catch(() => {});
+    // LES AUTRES QUESTIONS QUE CE FAIT PEUT RESOUDRE : les plus proches, que
+    // l ecran fait relire a l agent juste apres (agentApplyFact).
+    const ouvertes = await listAgentQuestions({ centerId: centreApprentissage, limit: 200 }).catch(() => []);
+    const proches = fait ? questionsProches(fait, ouvertes.filter((q) => q.communicationId !== mail.id), 3) : [];
+    const appris = await getFaitsAppris(centreApprentissage);
+    sendJson(res, 200, { ok: true, action, fait, appris, communication, reanalyse: Boolean(analyse), avant, apres: reponseProposee(analyse), proches });
+    return;
+  }
+
+  // CE FAIT RESOUT-IL AUSSI D AUTRES QUESTIONS ? L agent relit chacune des
+  // questions proches (trois au plus, en parallele) avec ce qu il sait
+  // maintenant. Celle qu il n a plus besoin de poser est resolue ; les autres
+  // restent ouvertes, leur reponse proposee refaite quand meme.
+  if (action === 'agentApplyFact') {
+    const centre = requireConcreteCenter('apprentissage de l agent');
+    const membre = (options.session && options.session.member) || {};
+    const par = String(membre.name || membre.id || '');
+    const { analyzeEmail, compterResolutions } = require('../lib/email-agent');
+    const ids = (Array.isArray(body.communicationIds) ? body.communicationIds : [])
+      .map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 3);
+    const resultats = await Promise.all(ids.map(async (id) => {
+      const mail = await getInboundCommunication(id);
+      if (!mail || mail.centerId !== centre) return { communicationId: id, relu: false };
+      const avantAnalyse = (mail.payload && mail.payload.analysis) || {};
+      const question = String(avantAnalyse.question || '').trim();
+      if (!question || avantAnalyse.questionRepondue) return { communicationId: id, relu: false };
+      const analyse = await reanalyserLeMail(mail, centre, analyzeEmail);
+      if (!analyse) return { communicationId: id, relu: false, question };
+      const resolue = !String(analyse.question || '').trim();
+      if (resolue) await marquerQuestionRepondue({ communicationId: id, analyse, par: `${par} (fait appris)`.trim() });
+      else await rafraichirAnalyse({ communicationId: id, analyse });
+      return {
+        communicationId: id, relu: true, resolue, question,
+        encore: resolue ? '' : String(analyse.question || ''),
+        mailDe: String((mail.payload && mail.payload.from) || mail.recipient || ''),
+        avant: reponseProposee(avantAnalyse), apres: reponseProposee(analyse),
+      };
+    }));
+    const resolues = resultats.filter((r) => r.resolue).length;
+    if (resolues && Number(body.factId) > 0) await compterResolutions(centre, Number(body.factId), resolues).catch(() => {});
+    sendJson(res, 200, { ok: true, action, resultats, resolues });
+    return;
+  }
+
+  // APPRENDRE D OFFICE, sans attendre qu un client pose la question (Movsar :
+  // « jusqu a ce qu il connaisse tout absolument ») : un sujet, ce qu il faut
+  // savoir. Les questions ouvertes proches sont rendues pour etre relues.
+  if (action === 'teachAgentFact') {
+    const centre = requireConcreteCenter('apprentissage de l agent');
+    const membre = (options.session && options.session.member) || {};
+    const { apprendreUnFait, getFaitsAppris, questionsProches } = require('../lib/email-agent');
+    const fait = await apprendreUnFait(centre, { question: body.question, reponse: body.reponse, par: String(membre.name || membre.id || '') });
+    const ouvertes = await listAgentQuestions({ centerId: centre, limit: 200 }).catch(() => []);
+    sendJson(res, 200, { ok: true, action, fait, appris: await getFaitsAppris(centre), proches: fait ? questionsProches(fait, ouvertes, 3) : [] });
+    return;
+  }
+
+  // CORRIGER UN FAIT : sa reponse change, l ancienne reste dans son historique.
+  if (action === 'editAgentFact') {
+    const centre = requireConcreteCenter('correction d un fait');
+    const membre = (options.session && options.session.member) || {};
+    const { modifierUnFait, getFaitsAppris } = require('../lib/email-agent');
+    const fait = await modifierUnFait(centre, { id: body.id, reponse: body.reponse, par: String(membre.name || membre.id || '') });
+    if (!fait) throw createHttpError('Ce fait n’est plus dans la mémoire de l’agent.', 404);
+    sendJson(res, 200, { ok: true, action, fait, appris: await getFaitsAppris(centre) });
     return;
   }
 
@@ -2747,30 +2844,14 @@ ${draftBody}`,
   // retirer, sinon l apprentissage devient un risque au lieu d un progres.
   if (action === 'forgetAgentFact') {
     const centreOubli = requireConcreteCenter('oubli d un fait');
-    const { getFaitsAppris } = require('../lib/email-agent');
-    const cible = String(body.question || '').trim().toLowerCase();
-    if (!cible) throw createHttpError('Quelle question faut-il oublier ?', 400);
-    const actuels = await getFaitsAppris(centreOubli);
-    const restants = actuels.filter((f) => String((f && f.question) || '').toLowerCase() !== cible);
-    if (restants.length === actuels.length) throw createHttpError('Ce fait n’est plus dans la mémoire de l’agent.', 404);
-    // Meme fusion a deux niveaux que pour l apprentissage : jsonb_set ne cree
-    // pas le niveau `email_brain` s il manque, et l oubli echouerait en silence
-    // sur un centre qui n a jamais rien appris (le cas ou l on vient justement
-    // de retirer son seul fait).
-    await getPool().query(
-      `update center_automation_settings
-         set settings =
-           coalesce(settings, '{}'::jsonb)
-           || jsonb_build_object(
-                'email_brain',
-                coalesce(settings->'email_brain', '{}'::jsonb)
-                || jsonb_build_object('appris', $2::jsonb)
-              ),
-             updated_at = now()
-       where center_id = $1;`,
-      [centreOubli, JSON.stringify(restants)],
-    );
-    sendJson(res, 200, { ok: true, action, appris: restants });
+    if (!(Number(body.id) > 0) && !String(body.question || '').trim()) throw createHttpError('Quel fait faut-il oublier ?', 400);
+    const membre = (options.session && options.session.member) || {};
+    const { oublierUnFait, getFaitsAppris } = require('../lib/email-agent');
+    // L oubli retire le fait de la memoire ACTIVE ; la ligne reste (qui a
+    // oublie, quand), rien n est efface.
+    const oublies = await oublierUnFait(centreOubli, { id: body.id, question: body.question, par: String(membre.name || membre.id || '') });
+    if (!oublies) throw createHttpError('Ce fait n’est plus dans la mémoire de l’agent.', 404);
+    sendJson(res, 200, { ok: true, action, appris: await getFaitsAppris(centreOubli) });
     return;
   }
 
@@ -3306,7 +3387,7 @@ function getRequiredOpsPermission(method, action) {
   // Apprendre un fait au nom du centre engage TOUTES les reponses suivantes :
   // c est un reglage du produit, pas un geste de traitement de mail. Meme droit
   // que la configuration des textes de l agent.
-  if (['answerAgentQuestion', 'forgetAgentFact'].includes(action)) return ['emails.send', 'direction.view'];
+  if (['answerAgentQuestion', 'forgetAgentFact', 'agentApplyFact', 'teachAgentFact', 'editAgentFact'].includes(action)) return ['emails.send', 'direction.view'];
   // Couper le formulaire du site d un client est un geste de DIRECTION : il
   // change ce que voient les visiteurs du centre, hors de Pinlane. Meme droit
   // que le reste de la configuration du centre.

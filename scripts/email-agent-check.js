@@ -215,7 +215,19 @@ const anthropicOk = (object) => ({
     deps: depsMemoryDiff,
   });
   ok(diff.recorded === true && depsMemoryDiff.state.memoryInserts.length === 1, 'texte substantiellement modifié → leçon enregistrée');
-  ok(depsMemoryDiff.state.memoryDeletes === 1, 'cap mémoire appliqué (purge des plus vieilles)');
+  // TOUT EST GARDE (2026-09-24, Movsar : « un gros systeme ou il apprend, ou
+  // tout est stocke »). Avant, chaque lecon purgeait les plus vieilles au-dela
+  // de 200 ; c est le prompt qui choisit, plus la table.
+  ok(depsMemoryDiff.state.memoryDeletes === 0, 'LE POINT : la lecon s ajoute et aucune ancienne n est effacee');
+  const { choisirLecons, LECONS_DANS_LE_PROMPT } = require('../lib/email-agent').__test;
+  const trenteLecons = Array.from({ length: 30 }, (_, i) => ({ intent: 'prix', question_excerpt: `Combien pour ${i + 2} personnes au bowling ?`, learned_reply: 'Devis precis envoye.' }));
+  trenteLecons.push({ intent: 'autre', question_excerpt: 'Peut-on apporter un gateau d anniversaire ?', learned_reply: 'Oui, le gateau d anniversaire est autorise.' });
+  const leconsChoisies = choisirLecons(trenteLecons, 'Bonjour, on voudrait apporter notre gateau d anniversaire samedi.');
+  ok(leconsChoisies.length === LECONS_DANS_LE_PROMPT && leconsChoisies.some((l) => /gateau/.test(l.question_excerpt)),
+    'LE POINT : la plus ancienne lecon entre dans le prompt quand elle parle du sujet du mail');
+  const leconsSansTexte = choisirLecons(trenteLecons, '');
+  ok(leconsSansTexte.length === LECONS_DANS_LE_PROMPT && leconsSansTexte[0] === trenteLecons[0] && !leconsSansTexte.some((l) => /gateau/.test(l.question_excerpt)),
+    'CONTRE-PREUVE : sans texte, les plus recentes, comme avant');
 
   console.log('\n[AUTOMATIONS] défauts C1 + validation C2');
   const defaults = getAutomationDefaults();

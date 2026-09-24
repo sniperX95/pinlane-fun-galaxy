@@ -1724,6 +1724,16 @@
     reponsesApprises: {},
     apprentissageBusy: '',
     memoireOuverte: false,
+    // La question du moment, ce que le dernier apprentissage a change, la
+    // recherche dans la memoire, le fait en cours de correction, le fait
+    // appris d office.
+    savoirCle: '',
+    dernierApprentissage: null,
+    memoireFiltre: '',
+    faitEnEdition: '',
+    nouveauFait: { question: '' },
+    nouveauOuvert: false,
+    listeOuverte: false,
   };
   window.pv2Mail = pv2Mail;
 
@@ -4358,7 +4368,7 @@
     renderStaffEmailsPage();
   };
 
-  /* ── CE QUE L AGENT NE SAIT PAS ──────────────────────────────────────────
+  /* ── L APPRENTISSAGE DE L AGENT ─────────────────────────────────────────────
      « L IA ne sait pas, donc il doit y avoir une section apprentissage : quand
      elle ne sait pas, elle pose la question, on y repond, et l agent le sait
      pour toutes les prochaines fois. »
@@ -4366,148 +4376,425 @@
      Le declencheur est un aveu, pas une erreur : quand un message ne rentre
      dans aucun sujet connu, la reponse proposee devient une pirouette du genre
      « appelez-nous ». Mesure du 2026-09-06 sur un vrai mail : « est-ce que je
-     peux amener mon propre gateau ? » a produit exactement ca, parce que
-     personne n avait jamais dit a l agent si le centre l autorise.
+     peux amener mon propre gateau ? » a produit exactement ca.
 
-     La section montre les deux moities du systeme : les questions ouvertes ET
-     la memoire deja constituee. Sans la seconde, on ne pourrait ni verifier ce
-     que l agent a retenu, ni corriger un fait devenu faux, et l apprentissage
-     deviendrait un risque au lieu d un progres. ────────────────────────────── */
-  // `options.max` : l Apercu ne montre que les premieres questions et renvoie
-  // vers la section L agent pour le reste ; `options.toujours` : la section
-  // L agent affiche le bloc meme quand il n y a rien, pour dire que l agent a
-  // su repondre a tout (un bloc absent y serait une page trouee).
+     REFAIT LE 2026-09-24 (Movsar : « une meilleure interface, question
+     reponse, on voit un suivi, on voit vraiment qu il apprend, et il change
+     direct la reponse client qu il avait proposee »). Une question a la fois,
+     avec le message du client sous les yeux ; apprendre montre la reponse
+     proposee AVANT et APRES, puis l agent relit les questions proches que ce
+     fait peut resoudre ; le suivi compte ce qu il sait et ce qu il a resolu ;
+     sa memoire se relit, se cherche, se corrige et s oublie ; et on peut lui
+     apprendre quelque chose sans attendre qu un client le demande. ────────── */
   // La longueur qu un fait appris peut avoir : celle que le serveur accepte
   // (APPRIS_LIMITS.reponse, lib/email-agent.js). Au-dela il refuse ; l ecran
   // le dit AVANT l envoi, en comptant.
-  const PV2_SAVOIR_MAX = 600;
+  const PV2_SAVOIR_MAX = 2000;
   function pv2CompteSavoir(texte) {
     const n = String(texte || '').trim().length;
     return n > PV2_SAVOIR_MAX ? `${n} / ${PV2_SAVOIR_MAX} : trop long, gardez l’essentiel` : `${n} / ${PV2_SAVOIR_MAX}`;
   }
-  function pv2SectionApprentissage(options = {}) {
-    const questions = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.questions) || [];
-    const appris = (typeof opsAdminCache === 'object' && opsAdminCache && opsAdminCache.appris) || [];
-    if (!questions.length && !appris.length && !options.toujours) return '';
-    const busy = pv2Mail.apprentissageBusy;
-    const max = Number(options.max) > 0 ? Number(options.max) : questions.length;
-    const visibles = questions.slice(0, max);
-    const reste = questions.length - visibles.length;
-
-    const cartes = visibles.map((q) => {
-      const cle = String(q.communicationId);
-      const brouillon = pv2Mail.reponsesApprises[cle] || '';
-      const enCours = busy === cle;
-      const trop = brouillon.trim().length > PV2_SAVOIR_MAX;
-      return `
-        <article class="pv2-savoir-carte">
-          <p class="pv2-savoir-question">${esc(q.question)}</p>
-          <p class="pv2-savoir-origine">Demandé par ${esc(q.mailDe || 'un client')}, à propos de « ${esc(String(q.mailSujet || '').slice(0, 70))} »</p>
-          <textarea class="pv2-savoir-reponse" rows="2" placeholder="Répondez une fois : l'agent le saura pour tous les prochains messages."
-            aria-label="Ce que l'agent doit retenir" aria-describedby="pv2-savoir-compte-${esc(cle)}" data-pl-focus="emails.savoir.${esc(cle)}"
-            oninput="pv2SavoirBrouillon('${escJs(cle)}', this.value, this)">${esc(brouillon)}</textarea>
+  function pv2SavoirDonnees() {
+    const c = (typeof opsAdminCache === 'object' && opsAdminCache) || {};
+    const questions = c.questions || [];
+    const appris = c.appris || [];
+    const suivi = c.suivi || { faits: appris.length, questions: questions.length, resolues: 0, semaine: 0 };
+    return { questions, appris, suivi };
+  }
+  // Le suivi suit l ecran sans attendre la relecture complete : recompte sur la
+  // memoire que le serveur vient de renvoyer (meme calcul que lui, api/ops.js
+  // agentQuestions), les questions resolues en moins.
+  function pv2SavoirRecompte(appris, resoluesIci) {
+    if (typeof opsAdminCache !== 'object' || !opsAdminCache) return;
+    const s = opsAdminCache.suivi || {};
+    const depuis = Date.now() - 7 * 86400000;
+    opsAdminCache.appris = appris;
+    opsAdminCache.suivi = {
+      faits: appris.length,
+      questions: Math.max(0, (Number(s.questions) || (opsAdminCache.questions || []).length) - resoluesIci),
+      resolues: appris.reduce((n, f) => n + (Number(f.resolues) || 0), 0),
+      semaine: appris.filter((f) => Date.parse(f.le || '') >= depuis).length,
+      corrections: Number(s.corrections) || 0,
+    };
+  }
+  function pv2DateCourte(iso) {
+    const d = iso ? new Date(iso) : null;
+    return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' }) : '';
+  }
+  const pv2Pluriel = (n, mot, mots) => `${n} ${n > 1 ? mots : mot}`;
+  // Le droit d apprendre est celui que le serveur exige (api/ops.js, l une ou
+  // l autre permission) : sans lui, les cases et les boutons n existent pas
+  // (DESIGN.md regle 9), la memoire reste lisible.
+  const pv2PeutApprendre = () => typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['emails.send', 'direction.view']);
+  // LE SUIVI : les questions de clients resolues sur toutes celles posees (la
+  // jauge), et les quatre chiffres qui disent que l agent apprend.
+  function pv2SavoirSuivi(suivi) {
+    const resolues = Number(suivi.resolues) || 0;
+    const total = resolues + (Number(suivi.questions) || 0);
+    const part = total ? Math.round((resolues / total) * 100) : 100;
+    const libelle = total
+      ? `${pv2Pluriel(resolues, 'question résolue', 'questions résolues')} sur ${total} posées par des clients`
+      : 'Aucune question de client pour l’instant';
+    return `<div class="pv2-savoir-suivi">
+        <div class="pv2-savoir-jauge" role="img" aria-label="${esc(libelle)}"><span style="width:${part}%"></span></div>
+        <p class="pv2-savoir-jauge-texte">${esc(libelle)}</p>
+        ${Number(suivi.corrections) > 0 ? `<p class="pv2-savoir-jauge-texte pv2-savoir-corrections">Il retient aussi vos corrections : ${pv2Pluriel(Number(suivi.corrections), 'réponse corrigée avant envoi', 'réponses corrigées avant envoi')}.</p>` : ''}
+        <dl class="pv2-savoir-chiffres">
+          <div><dt>Faits appris</dt><dd>${Number(suivi.faits) || 0}</dd></div>
+          <div><dt>En attente</dt><dd>${Number(suivi.questions) || 0}</dd></div>
+          <div><dt>Résolues</dt><dd>${resolues}</dd></div>
+          <div><dt>Cette semaine</dt><dd>+${Number(suivi.semaine) || 0}</dd></div>
+        </dl>
+      </div>`;
+  }
+  // LA CASE OU L ON REPOND, son compteur et son bouton. `libelle` : Apprendre
+  // (une question, un fait nouveau) ou Enregistrer (une correction).
+  function pv2SavoirChamp(cle, brouillon, etiquette, placeholder, libelle = 'Apprendre') {
+    const texte = String(brouillon || '').trim();
+    const trop = texte.length > PV2_SAVOIR_MAX;
+    const sujetManquant = cle === 'nouveau' && !String((pv2Mail.nouveauFait || {}).question || '').trim();
+    const occupe = pv2Mail.apprentissageBusy === cle;
+    return `<textarea class="pv2-savoir-reponse" rows="3" placeholder="${esc(placeholder)}"
+            aria-label="${esc(etiquette)}" aria-describedby="pv2-savoir-compte-${esc(cle)}" data-pl-focus="emails.savoir.${esc(cle)}"
+            oninput="pv2SavoirBrouillon('${escJs(cle)}', this.value, this)" onkeydown="pv2SavoirClavier(event)">${esc(brouillon)}</textarea>
           <div class="pv2-savoir-actions">
             <span class="pv2-savoir-compteur${trop ? ' is-trop' : ''}" id="pv2-savoir-compte-${esc(cle)}">${esc(pv2CompteSavoir(brouillon))}</span>
-            <button type="button" class="pv2-btn sm primary pv2-savoir-apprendre" ${enCours || !brouillon.trim() || trop ? 'disabled' : ''}
-              onclick="pv2ApprendreLaReponse('${escJs(cle)}')">${enCours ? 'Apprentissage…' : 'Apprendre'}</button>
-          </div>
-        </article>`;
-    }).join('');
-
-    const memoire = appris.map((f) => `
-      <li class="pv2-savoir-fait">
-        <div>
-          <strong>${esc(f.question || '')}</strong>
-          <span>${esc(f.reponse || '')}</span>
-          ${f.par ? `<small>appris par ${esc(f.par)}</small>` : ''}
-        </div>
-        <button type="button" class="pv2-btn sm ghost" title="L'agent oublie ce fait"
-          onclick="pv2OublierLeFait('${escJs(String(f.question || ''))}')">Oublier</button>
-      </li>`).join('');
-
+            <span class="pv2-savoir-astuce" aria-hidden="true">Ctrl + Entrée</span>
+            <button type="button" class="pv2-btn sm primary pv2-savoir-apprendre" aria-keyshortcuts="Control+Enter" ${occupe || !texte || trop || sujetManquant ? 'disabled' : ''}
+              onclick="pv2ApprendreLaReponse('${escJs(cle)}')">${occupe ? (libelle === 'Enregistrer' ? 'Enregistrement…' : 'Apprentissage…') : libelle}</button>
+          </div>`;
+  }
+  // UNE QUESTION A LA FOIS : la question, qui l a posee et a propos de quoi,
+  // le debut du message du client (on repond mieux en le lisant), la case.
+  function pv2SavoirCarte(q, rang, total) {
+    const cle = String(q.communicationId);
+    const quand = pv2DateCourte(q.recuLe);
+    const extrait = String(q.extrait || '').trim();
     return `
-      <section class="pv2-savoir" aria-label="Ce que l'agent ne sait pas">
-        <div class="pv2-savoir-head">
-          <h2>Ce que l'agent ne sait pas</h2>
-          <span class="pv2-savoir-compte">${questions.length ? `${questions.length} question${questions.length > 1 ? 's' : ''} en attente` : 'Aucune question en attente'}</span>
+      <article class="pv2-savoir-carte" data-savoir="${esc(cle)}">
+        <div class="pv2-savoir-rang"><span>Question ${rang} sur ${total}</span>
+          ${total > 1 ? '<button type="button" class="pv2-link-btn pv2-savoir-passer" onclick="pv2SavoirPasser()">Passer</button>' : ''}
         </div>
-        ${questions.length
-          ? `<div class="pv2-savoir-liste">${cartes}</div>`
-          : '<p class="pv2-savoir-vide">L\'agent a su répondre à tous les messages reçus.</p>'}
-        ${reste > 0 ? `<button type="button" class="pv2-link-btn" onclick="pv2EmailsGo('agent')">${reste} autre${reste > 1 ? 's' : ''} question${reste > 1 ? 's' : ''} dans L'agent</button>` : ''}
-        ${appris.length ? `
-          <button type="button" class="pv2-savoir-bascule" aria-expanded="${pv2Mail.memoireOuverte}"
-            onclick="pv2BasculerMemoire()">${pv2Mail.memoireOuverte ? 'Masquer' : 'Voir'} ce qu'il a appris (${appris.length})</button>
-          ${pv2Mail.memoireOuverte ? `<ul class="pv2-savoir-memoire">${memoire}</ul>` : ''}
-        ` : ''}
+        <p class="pv2-savoir-question">${esc(q.question)}</p>
+        <p class="pv2-savoir-origine">Demandé par ${esc(q.mailDe || 'un client')}${q.mailSujet ? `, à propos de « ${esc(String(q.mailSujet).slice(0, 70))} »` : ''}${quand ? `, le ${esc(quand)}` : ''}</p>
+        ${extrait ? `<blockquote class="pv2-savoir-extrait">${esc(extrait)}${extrait.length >= 300 ? '…' : ''}</blockquote>` : ''}
+        ${pv2PeutApprendre()
+          ? pv2SavoirChamp(cle, pv2Mail.reponsesApprises[cle] || '', 'Ce que l’agent doit retenir', 'Répondez une fois : l’agent le saura pour tous les prochains messages.')
+          : '<p class="pv2-savoir-vide">Lui répondre engage tous les messages suivants : c’est réservé à qui envoie les e-mails ou à la direction.</p>'}
+        ${pv2Mail.apprentissageBusy === cle ? '<p class="pv2-savoir-relit" role="status">L’agent retient votre réponse et refait la sienne…</p>' : ''}
+      </article>`;
+  }
+  // CE QUE L APPRENTISSAGE A CHANGE : le fait retenu, la reponse proposee au
+  // client avant et apres, puis les questions proches que l agent relit avec
+  // ce fait. Chaque ligne dit ce qui s est reellement passe. `is-neuf` ne se
+  // pose qu au premier rendu : le bloc est redessine a chaque etape, son
+  // entree ne se rejoue pas.
+  function pv2SavoirResultat(r) {
+    const neuf = !r.vu;
+    r.vu = true;
+    let avantApres = '';
+    if (r.question) {
+      const apres = r.apres
+        ? `<div class="pv2-savoir-apres"><span class="pv2-savoir-etiquette">Après</span><p>${esc(r.apres.body)}</p></div>`
+        : '<div class="pv2-savoir-apres is-attente"><span class="pv2-savoir-etiquette">Après</span><p>L’agent n’a pas pu refaire sa réponse cette fois : celle d’avant reste proposée. Le fait, lui, est appris et sert dès le prochain message.</p></div>';
+      avantApres = `
+        <p class="pv2-savoir-sous">La réponse proposée à ${esc(r.mailDe || 'ce client')}</p>
+        <div class="pv2-savoir-avap">
+          ${r.avant ? `<div class="pv2-savoir-avant"><span class="pv2-savoir-etiquette">Avant</span><p>${esc(r.avant.body)}</p></div>` : ''}
+          ${apres}
+        </div>`;
+    }
+    let proches = '';
+    const a = r.application;
+    if (a && a.enCours) {
+      proches = `<p class="pv2-savoir-relit" role="status">L’agent relit ${pv2Pluriel(r.proches.length, 'question proche', 'questions proches')} avec ce fait…</p>`;
+    } else if (a && a.resultats) {
+      const lus = a.resultats.filter((x) => x.relu);
+      const nouveaux = !a.vu;
+      a.vu = true;
+      proches = `<div class="pv2-savoir-proches${nouveaux ? ' is-neuf' : ''}" role="status">
+          <p class="pv2-savoir-sous">${lus.length ? `Questions proches relues avec ce fait : ${pv2Pluriel(a.resolues, 'résolue', 'résolues')} sur ${lus.length}` : 'Les questions proches n’ont pas pu être relues cette fois : elles restent en attente.'}</p>
+          ${lus.length ? `<ul>${lus.map((x) => `<li class="${x.resolue ? 'is-resolue' : ''}"><b>${x.resolue ? 'Résolue' : 'Encore ouverte'}</b><span>${esc(x.resolue ? x.question : (x.encore || x.question))}</span></li>`).join('')}</ul>` : ''}
+        </div>`;
+    }
+    return `
+      <article class="pv2-savoir-resultat${neuf ? ' is-neuf' : ''}">
+        <p class="pv2-savoir-appris"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Appris</p>
+        <div class="pv2-savoir-fait-retenu"><strong>${esc(r.fait ? r.fait.question : '')}</strong><span>${esc(r.fait ? r.fait.reponse : '')}</span></div>
+        ${avantApres}
+        ${proches}
+        <div class="pv2-savoir-actions pv2-savoir-fin">
+          <button type="button" class="pv2-btn sm primary" onclick="pv2SavoirSuivante()" ${a && a.enCours ? 'disabled' : ''}>${pv2SavoirDonnees().questions.length ? 'Question suivante' : 'Terminer'}</button>
+        </div>
+      </article>`;
+  }
+  // SA MEMOIRE : chaque fait, qui l a appris et quand, ce qu il a resolu ; il
+  // se cherche, se corrige (l ancienne reponse reste dans son historique) et
+  // s oublie.
+  function pv2SavoirMemoire(appris) {
+    if (!appris.length) return '<p class="pv2-savoir-vide">Rien encore : chaque réponse apprise vient s’ajouter ici.</p>';
+    const busy = pv2Mail.apprentissageBusy;
+    const cherche = String(pv2Mail.memoireFiltre || '').trim().toLowerCase();
+    return `<input type="search" class="pv2-savoir-recherche" placeholder="Chercher dans sa mémoire" aria-label="Chercher dans sa mémoire"
+        data-pl-focus="emails.savoir.recherche" value="${esc(pv2Mail.memoireFiltre || '')}" oninput="pv2SavoirFiltre(this.value)">
+      <ul class="pv2-savoir-memoire">${appris.map((f) => {
+        const id = String(f.id || '');
+        const edition = id && pv2Mail.faitEnEdition === id;
+        const texte = `${f.question || ''} ${f.reponse || ''}`.toLowerCase();
+        const infos = [f.par ? `appris par ${f.par}` : '', pv2DateCourte(f.le) ? `le ${pv2DateCourte(f.le)}` : '',
+          Number(f.resolues) > 0 ? pv2Pluriel(Number(f.resolues), 'question résolue', 'questions résolues') : '',
+          Number(f.versions) > 0 ? `corrigé ${Number(f.versions)} fois` : ''].filter(Boolean).join(' · ');
+        return `
+        <li class="pv2-savoir-fait" data-texte="${esc(texte)}" ${cherche && texte.indexOf(cherche) < 0 ? 'hidden' : ''}>
+          <div>
+            <strong>${esc(f.question || '')}</strong>
+            ${edition ? pv2SavoirChamp(`fait-${id}`, pv2Mail.reponsesApprises[`fait-${id}`] ?? String(f.reponse || ''), 'Corriger ce fait', '', 'Enregistrer') : `<span>${esc(f.reponse || '')}</span>`}
+            ${infos ? `<small>${esc(infos)}</small>` : ''}
+          </div>
+          ${pv2PeutApprendre() ? `<div class="pv2-savoir-fait-actions">
+            ${edition
+              ? '<button type="button" class="pv2-btn sm ghost" onclick="pv2SavoirAnnulerCorrection()">Annuler</button>'
+              : `${id ? `<button type="button" class="pv2-btn sm ghost" ${busy ? 'disabled' : ''} onclick="pv2SavoirCorriger('${escJs(id)}')">Corriger</button>` : ''}
+                 <button type="button" class="pv2-btn sm ghost" title="L’agent oublie ce fait" ${busy ? 'disabled' : ''} onclick="pv2OublierLeFait('${escJs(id)}', '${escJs(String(f.question || ''))}')">Oublier</button>`}
+          </div>` : ''}
+        </li>`;
+      }).join('')}</ul>
+      <p class="pv2-savoir-vide pv2-savoir-aucun" ${cherche && !appris.some((f) => `${f.question || ''} ${f.reponse || ''}`.toLowerCase().indexOf(cherche) >= 0) ? '' : 'hidden'}>Aucun fait ne contient « ${esc(pv2Mail.memoireFiltre || '')} ».</p>`;
+  }
+  function pv2SavoirNouveau() {
+    const n = pv2Mail.nouveauFait || { question: '' };
+    return `<details class="pv2-savoir-bloc pv2-savoir-nouveau" ${pv2Mail.nouveauOuvert ? 'open' : ''} ontoggle="pv2Mail.nouveauOuvert = this.open">
+        <summary>Lui apprendre autre chose</summary>
+        <p class="pv2-savoir-sous">Sans attendre qu’un client le demande : un sujet, et ce qu’il doit savoir.</p>
+        <label class="pv2-savoir-sujet"><span>Sujet</span>
+          <input maxlength="300" data-pl-focus="emails.savoir.nouveau.sujet" placeholder="Ex. Tarifs des arcades" value="${esc(n.question || '')}" oninput="pv2SavoirNouveauSujet(this.value, this)">
+        </label>
+        ${pv2SavoirChamp('nouveau', pv2Mail.reponsesApprises.nouveau || '', 'Ce que l’agent doit savoir', 'Ex. Une carte par personne : 15 € les 30 minutes, 25 € l’heure.')}
+      </details>`;
+  }
+  // `options.apercu` : l Apercu ne montre que le suivi et la question du
+  // moment, et renvoie vers L agent ; `options.toujours` : L agent affiche la
+  // section meme quand il n y a rien, pour dire que l agent a su repondre a
+  // tout (un bloc absent y serait une page trouee).
+  function pv2SectionApprentissage(options = {}) {
+    const { questions, appris, suivi } = pv2SavoirDonnees();
+    if (!questions.length && !appris.length && !options.toujours) return '';
+    const total = Math.max(Number(suivi.questions) || 0, questions.length);
+    const rang = Math.max(0, questions.findIndex((q) => String(q.communicationId) === String(pv2Mail.savoirCle)));
+    const q = questions[rang];
+    const attente = total ? `${pv2Pluriel(total, 'question', 'questions')} en attente` : 'Aucune question en attente';
+    if (options.apercu) {
+      return `<section class="pv2-panel pv2-savoir is-apercu" aria-label="Ce que l’agent ne sait pas">
+        <div class="pv2-panel-head pv2-list-head">
+          <h2>Ce que l’agent ne sait pas</h2>
+          <button type="button" class="pv2-btn sm ghost" onclick="pv2EmailsGo('agent')">${q && pv2PeutApprendre() ? 'Lui répondre' : 'Voir dans L’agent'}</button>
+        </div>
+        <div class="pv2-panel-body">
+          ${pv2SavoirSuivi(suivi)}
+          ${q ? `<p class="pv2-savoir-question">${esc(q.question)}</p><p class="pv2-savoir-origine">${esc(attente)}</p>` : ''}
+        </div>
+      </section>`;
+    }
+    const resultat = pv2Mail.dernierApprentissage;
+    const liste = !resultat && questions.length > 1 ? `
+        <details class="pv2-savoir-bloc" ${pv2Mail.listeOuverte ? 'open' : ''} ontoggle="pv2Mail.listeOuverte = this.open">
+          <summary>Toutes les questions (${total})</summary>
+          <ol class="pv2-savoir-toutes">${questions.map((x) => `<li><button type="button" class="pv2-link-btn${x === q ? ' is-courante' : ''}" ${x === q ? 'aria-current="true"' : ''} onclick="pv2SavoirChoisir('${escJs(String(x.communicationId))}')">${esc(x.question)}</button></li>`).join('')}</ol>
+        </details>` : '';
+    return `
+      <section class="pv2-panel pv2-savoir" aria-label="Apprentissage de l’agent">
+        <div class="pv2-panel-head has-sub">
+          <div><h2>Apprentissage de l’agent</h2><p class="pv2-panel-sub">Ce qu’il ne sait pas, il le demande. Ce que vous répondez, il le retient pour tous les messages suivants.</p></div>
+          <span class="pv2-savoir-compte">${esc(attente)}</span>
+        </div>
+        <div class="pv2-panel-body pv2-savoir-corps">
+          ${pv2SavoirSuivi(suivi)}
+          ${resultat ? pv2SavoirResultat(resultat) : (q ? pv2SavoirCarte(q, rang + 1, total) : '<p class="pv2-savoir-vide pv2-savoir-tout-su">L’agent a su répondre à tous les messages reçus.</p>')}
+          ${liste}
+          ${pv2PeutApprendre() ? pv2SavoirNouveau() : ''}
+          <details class="pv2-savoir-bloc" ${pv2Mail.memoireOuverte ? 'open' : ''} ontoggle="pv2Mail.memoireOuverte = this.open">
+            <summary>Sa mémoire (${pv2Pluriel(appris.length, 'fait', 'faits')})</summary>
+            ${pv2SavoirMemoire(appris)}
+          </details>
+        </div>
       </section>`;
   }
 
   window.pv2SavoirBrouillon = function (cle, valeur, champ) {
     pv2Mail.reponsesApprises[cle] = valeur;
     // Pas de re-rendu a chaque touche (il ferait perdre le curseur) : le bouton
-    // et le compteur de SA carte se mettent a jour sur place. Avant ce
-    // correctif (2026-09-24), le bouton ne se debloquait qu au rendu suivant :
-    // Movsar tapait sa reponse, touchait « Apprendre », et rien ne partait.
-    const carte = champ && champ.closest ? champ.closest('.pv2-savoir-carte') : null;
-    if (!carte) return;
+    // et le compteur de SA case se mettent a jour sur place. Avant (jusqu au
+    // 2026-09-24), le bouton ne se debloquait qu au rendu suivant : Movsar
+    // tapait sa reponse, touchait « Apprendre », et rien ne partait.
+    const bloc = champ && champ.parentElement ? champ.parentElement : null;
+    if (!bloc) return;
     const texte = String(valeur || '').trim();
     const trop = texte.length > PV2_SAVOIR_MAX;
-    const bouton = carte.querySelector('.pv2-savoir-apprendre');
-    if (bouton && pv2Mail.apprentissageBusy !== cle) bouton.disabled = !texte || trop;
-    const compteur = carte.querySelector('.pv2-savoir-compteur');
+    const sujetManquant = cle === 'nouveau' && !String((pv2Mail.nouveauFait || {}).question || '').trim();
+    const bouton = bloc.querySelector('.pv2-savoir-apprendre');
+    if (bouton && pv2Mail.apprentissageBusy !== cle) bouton.disabled = !texte || trop || sujetManquant;
+    const compteur = bloc.querySelector('.pv2-savoir-compteur');
     if (compteur) { compteur.textContent = pv2CompteSavoir(valeur); compteur.classList.toggle('is-trop', trop); }
   };
-
-  window.pv2BasculerMemoire = function () {
-    pv2Mail.memoireOuverte = !pv2Mail.memoireOuverte;
+  // Ctrl + Entree (Cmd + Entree sur Mac) fait ce que fait le bouton de la case,
+  // et rien quand il est inactif.
+  window.pv2SavoirClavier = function (event) {
+    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey) || event.isComposing) return;
+    event.preventDefault();
+    const bouton = event.target.parentElement && event.target.parentElement.querySelector('.pv2-savoir-apprendre');
+    if (bouton && !bouton.disabled) bouton.click();
+  };
+  window.pv2SavoirNouveauSujet = function (valeur, champ) {
+    pv2Mail.nouveauFait = { question: valeur };
+    const details = champ && champ.closest ? champ.closest('.pv2-savoir-nouveau') : null;
+    const zone = details ? details.querySelector('.pv2-savoir-reponse') : null;
+    if (zone) window.pv2SavoirBrouillon('nouveau', zone.value, zone);
+  };
+  window.pv2SavoirPasser = function () {
+    const { questions } = pv2SavoirDonnees();
+    if (!questions.length) return;
+    const i = Math.max(0, questions.findIndex((q) => String(q.communicationId) === String(pv2Mail.savoirCle)));
+    pv2Mail.savoirCle = String(questions[(i + 1) % questions.length].communicationId);
+    renderStaffEmailsPage();
+  };
+  window.pv2SavoirChoisir = function (cle) {
+    pv2Mail.savoirCle = String(cle);
+    pv2Mail.dernierApprentissage = null;
+    renderStaffEmailsPage();
+  };
+  window.pv2SavoirSuivante = function () {
+    pv2Mail.dernierApprentissage = null;
+    renderStaffEmailsPage();
+    const zone = document.querySelector('#staffEmailsPage .pv2-savoir-carte .pv2-savoir-reponse');
+    if (zone) zone.focus();
+  };
+  // La recherche filtre sur place : un re-rendu a chaque lettre ferait perdre
+  // la saisie en cours ailleurs, et le curseur.
+  window.pv2SavoirFiltre = function (valeur) {
+    pv2Mail.memoireFiltre = valeur;
+    const cherche = String(valeur || '').trim().toLowerCase();
+    let visibles = 0;
+    document.querySelectorAll('#staffEmailsPage .pv2-savoir-memoire .pv2-savoir-fait').forEach((li) => {
+      li.hidden = Boolean(cherche) && String(li.dataset.texte || '').indexOf(cherche) < 0;
+      if (!li.hidden) visibles += 1;
+    });
+    const aucun = document.querySelector('#staffEmailsPage .pv2-savoir-aucun');
+    if (aucun) { aucun.hidden = !cherche || visibles > 0; aucun.textContent = `Aucun fait ne contient « ${String(valeur || '').trim()} ».`; }
+  };
+  window.pv2SavoirCorriger = function (id) {
+    pv2Mail.faitEnEdition = String(id);
+    renderStaffEmailsPage();
+    const zone = document.querySelector(`#staffEmailsPage [data-pl-focus="emails.savoir.fait-${String(id)}"]`);
+    if (zone) zone.focus();
+  };
+  window.pv2SavoirAnnulerCorrection = function () {
+    delete pv2Mail.reponsesApprises[`fait-${pv2Mail.faitEnEdition}`];
+    pv2Mail.faitEnEdition = '';
     renderStaffEmailsPage();
   };
 
-  window.pv2ApprendreLaReponse = async function (cle) {
-    if (pv2Mail.apprentissageBusy) return;
-    const reponse = String(pv2Mail.reponsesApprises[cle] || '').trim();
-    if (!reponse) { toast('Écrivez d\'abord la réponse à retenir.'); return; }
-    pv2Mail.apprentissageBusy = cle;
+  // L AGENT RELIT LES QUESTIONS PROCHES avec le fait qu il vient d apprendre :
+  // une seconde requete, pour que la premiere reste courte et que l ecran
+  // montre la relecture pendant qu elle se fait.
+  async function pv2SavoirAppliquer(r) {
+    if (!r || !r.fait || !Array.isArray(r.proches) || !r.proches.length) return;
+    r.application = { enCours: true };
     renderStaffEmailsPage();
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
         body: JSON.stringify({
-          action: 'answerAgentQuestion',
+          action: 'agentApplyFact',
           centerId: state.adminCenterId || 'libramont',
-          communicationId: Number(cle),
-          reponse,
+          factId: r.fait.id,
+          communicationIds: r.proches.map((x) => x.communicationId),
         }),
       });
+      const resultats = (payload && payload.resultats) || [];
+      const resolues = Number(payload && payload.resolues) || 0;
+      r.application = { enCours: false, resultats, resolues };
+      if (resolues && typeof opsAdminCache === 'object' && opsAdminCache) {
+        const faites = new Set(resultats.filter((x) => x.resolue).map((x) => String(x.communicationId)));
+        pv2SavoirRecompte((opsAdminCache.appris || []).map((f) => (Number(f.id) === Number(r.fait.id) ? Object.assign({}, f, { resolues: (Number(f.resolues) || 0) + resolues }) : f)), resolues);
+        opsAdminCache.questions = (opsAdminCache.questions || []).filter((x) => !faites.has(String(x.communicationId)));
+      }
+    } catch (error) {
+      r.application = { enCours: false, resultats: [], resolues: 0 };
+    }
+    if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
+    renderStaffEmailsPage();
+  }
+
+  window.pv2ApprendreLaReponse = async function (cle) {
+    if (pv2Mail.apprentissageBusy) return;
+    const reponse = String(pv2Mail.reponsesApprises[cle] || '').trim();
+    if (!reponse) { toast('Écrivez d\'abord la réponse à retenir.'); return; }
+    if (reponse.length > PV2_SAVOIR_MAX) { toast(`Trop long : ${PV2_SAVOIR_MAX} caractères au plus.`); return; }
+    const { questions } = pv2SavoirDonnees();
+    const correction = cle.indexOf('fait-') === 0;
+    const nouveau = cle === 'nouveau';
+    const i = questions.findIndex((q) => String(q.communicationId) === cle);
+    const question = i >= 0 ? questions[i] : null;
+    // La question d apres, pour y revenir une fois celle-ci apprise.
+    const suivante = question && questions.length > 1 ? questions[(i + 1) % questions.length] : null;
+    const corps = correction
+      ? { action: 'editAgentFact', id: Number(cle.slice(5)), reponse }
+      : nouveau
+        ? { action: 'teachAgentFact', question: String((pv2Mail.nouveauFait || {}).question || '').trim(), reponse }
+        : { action: 'answerAgentQuestion', communicationId: Number(cle), reponse };
+    pv2Mail.apprentissageBusy = cle;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify(Object.assign({ centerId: state.adminCenterId || 'libramont' }, corps)),
+      });
       delete pv2Mail.reponsesApprises[cle];
-      // On dit ce qui s est reellement passe : si la re-analyse n a pas pu
-      // tourner, le fait est appris mais la reponse proposee n a pas bouge, et
-      // le staff doit le savoir plutot que de croire l ecran a jour.
-      toast(payload && payload.reanalyse
-        ? 'Appris. La réponse proposée a été refaite avec ce fait.'
-        : 'Appris. La réponse proposée sera refaite au prochain passage.');
-      if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
+      if (payload && Array.isArray(payload.appris)) pv2SavoirRecompte(payload.appris, question ? 1 : 0);
+      if (question && typeof opsAdminCache === 'object' && opsAdminCache) opsAdminCache.questions = questions.filter((x) => x !== question);
+      if (correction) {
+        pv2Mail.faitEnEdition = '';
+        toast('Corrigé. L’agent utilise la nouvelle réponse dès le prochain message.');
+      } else {
+        if (nouveau) { pv2Mail.nouveauFait = { question: '' }; pv2Mail.nouveauOuvert = false; }
+        if (suivante) pv2Mail.savoirCle = String(suivante.communicationId);
+        // L ecran montre ce qui s est REELLEMENT passe : le fait, l avant et
+        // l apres de la reponse proposee (ou qu elle n a pas pu etre refaite),
+        // puis les questions proches relues.
+        pv2Mail.dernierApprentissage = {
+          fait: (payload && payload.fait) || { question: nouveau ? corps.question : (question ? question.question : ''), reponse },
+          question: question ? question.question : '',
+          mailDe: question ? question.mailDe : '',
+          avant: question ? ((payload && payload.avant) || null) : null,
+          apres: question ? ((payload && payload.apres) || null) : null,
+          proches: (payload && Array.isArray(payload.proches)) ? payload.proches : [],
+          application: null,
+        };
+      }
     } catch (error) {
       toast(error.message || 'Apprentissage impossible.');
     } finally {
       pv2Mail.apprentissageBusy = '';
       renderStaffEmailsPage();
     }
+    const r = pv2Mail.dernierApprentissage;
+    if (r && r.proches.length && !r.application) await pv2SavoirAppliquer(r);
+    else if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
   };
 
-  window.pv2OublierLeFait = async function (question) {
+  window.pv2OublierLeFait = async function (id, question) {
     if (pv2Mail.apprentissageBusy) return;
     const sur = typeof confirm !== 'function' || confirm('L\'agent oubliera ce fait. Continuer ?');
     if (!sur) return;
     pv2Mail.apprentissageBusy = 'oubli';
     renderStaffEmailsPage();
     try {
-      await apiRequest('/api/ops', {
+      const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'forgetAgentFact', centerId: state.adminCenterId || 'libramont', question }),
+        body: JSON.stringify(Object.assign({ action: 'forgetAgentFact', centerId: state.adminCenterId || 'libramont' }, Number(id) > 0 ? { id: Number(id) } : { question })),
       });
-      toast('Oublié.');
+      if (payload && Array.isArray(payload.appris)) pv2SavoirRecompte(payload.appris, 0);
+      toast('Oublié. L’agent ne s’en servira plus.');
       if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
     } catch (error) {
       toast(error.message || 'Oubli impossible.');
@@ -5583,7 +5870,7 @@
                   : '<div class="pv2-empty"><strong>Rien à répondre</strong>Chaque conversation reçue a sa réponse.</div>'}
             </div>
           </section>
-          ${pv2SectionApprentissage({ max: 4 })}
+          ${pv2SectionApprentissage({ apercu: true })}
         </div>
         <div class="pv2-overview-col">
           <section class="pv2-panel" aria-label="Suivi des envois">

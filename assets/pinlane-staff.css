@@ -12946,28 +12946,132 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
    c est un reglage du produit qui vaut pour tous les mails suivants. Sobre a
    dessein : elle doit se voir quand elle a quelque chose a dire, et
    s effacer quand elle n en a pas. */
-.pv2-savoir { margin: 0 0 16px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); }
-.pv2-savoir-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.pv2-savoir-head h2 { margin: 0; font-size: 14px; font-weight: 650; color: var(--text); }
-.pv2-savoir-compte { font-size: 12px; color: var(--muted); }
-.pv2-savoir-vide { margin: 0; font-size: 13px; color: var(--muted); }
-.pv2-savoir-liste { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-.pv2-savoir-carte { padding: 12px; background: var(--subtle); border: 1px solid var(--line); border-radius: var(--radius-md); }
-.pv2-savoir-question { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; line-height: 1.45; color: var(--text); }
-.pv2-savoir-origine { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
-.pv2-savoir-reponse { width: 100%; font-family: inherit; font-size: 13px; line-height: 1.5; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 8px 10px; resize: vertical; }
-.pv2-savoir-reponse:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.pv2-savoir-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
-.pv2-savoir-compteur { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.pv2-savoir-compteur.is-trop { color: var(--danger); font-weight: 600; }
-.pv2-savoir-bascule { margin-top: 10px; padding: 0; font-size: 12px; color: var(--muted); background: none; border: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
-.pv2-savoir-bascule:hover { color: var(--text); }
-.pv2-savoir-memoire { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
-.pv2-savoir-fait { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; background: var(--subtle); border: 1px solid var(--line); border-radius: var(--radius-md); }
-.pv2-savoir-fait > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pv2-savoir-fait strong { font-size: 12.5px; font-weight: 600; color: var(--text); }
-.pv2-savoir-fait span { font-size: 12.5px; line-height: 1.5; color: var(--muted); }
-.pv2-savoir-fait small { font-size: 11px; color: var(--muted); opacity: 0.8; }
+/* L APPRENTISSAGE DE L AGENT (refait le 2026-09-24) : le suivi, une question a
+   la fois avec le message du client, l avant/apres de la reponse proposee, les
+   questions proches relues, la memoire. Portee #staffEmailsPage : la section
+   n existe que sur la page E-mails, et les regles de la page (liens, boutons)
+   y pesent deja un identifiant. */
+#staffEmailsPage .pv2-savoir-compte { flex-shrink: 0; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#staffEmailsPage .pv2-savoir-corps { display: flex; flex-direction: column; gap: 14px; container-type: inline-size; }
+#staffEmailsPage .pv2-savoir-vide { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-sous { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+
+/* Le suivi : la jauge des questions resolues, et quatre chiffres. */
+#staffEmailsPage .pv2-savoir-suivi { display: flex; flex-direction: column; gap: 8px; }
+#staffEmailsPage .pv2-savoir-jauge { height: 6px; border-radius: 3px; background: var(--subtle); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+#staffEmailsPage .pv2-savoir-jauge > span { display: block; height: 100%; border-radius: 3px; background: var(--success); }
+#staffEmailsPage .pv2-savoir-jauge-texte { margin: 0; font-size: 12px; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-chiffres { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+#staffEmailsPage .pv2-savoir-chiffres > div { display: flex; flex-direction: column; justify-content: space-between; gap: 2px; padding: 8px 10px; background: var(--surface); }
+#staffEmailsPage .pv2-savoir-chiffres dt { font-size: 11.5px; line-height: 1.3; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-chiffres dd { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* La question du moment. */
+#staffEmailsPage .pv2-savoir-carte { display: flex; flex-direction: column; gap: 8px; padding: 14px; background: var(--subtle); border: 1px solid var(--line); border-radius: var(--radius-md); }
+#staffEmailsPage .pv2-savoir-rang { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#staffEmailsPage .pv2-savoir-question { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--text); text-wrap: pretty; overflow-wrap: anywhere; }
+#staffEmailsPage .pv2-savoir.is-apercu .pv2-savoir-question { font-size: 13.5px; }
+#staffEmailsPage .pv2-savoir-origine { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+#staffEmailsPage .pv2-savoir-extrait { margin: 0; padding: 8px 12px; border-left: 2px solid var(--line-strong); background: var(--surface); font-size: 12.5px; line-height: 1.55; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+#staffEmailsPage .pv2-savoir-reponse { display: block; width: 100%; min-height: 76px; font-family: inherit; font-size: 13px; line-height: 1.5; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 8px 10px; resize: vertical; }
+#staffEmailsPage .pv2-savoir-reponse:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#staffEmailsPage .pv2-savoir-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+#staffEmailsPage .pv2-savoir-carte > .pv2-savoir-actions { margin-top: 0; }
+#staffEmailsPage .pv2-savoir-compteur { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#staffEmailsPage .pv2-savoir-compteur.is-trop { color: var(--danger); font-weight: 600; }
+#staffEmailsPage .pv2-savoir-astuce { margin-left: auto; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+#staffEmailsPage .pv2-savoir-actions .pv2-btn { flex-shrink: 0; }
+#staffEmailsPage .pv2-savoir-fin { justify-content: flex-end; margin-top: 2px; }
+#staffEmailsPage .pv2-savoir-relit { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12.5px; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-relit::before { content: ''; flex-shrink: 0; width: 12px; height: 12px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: pv2-savoir-tourne 0.8s linear infinite; }
+@keyframes pv2-savoir-tourne { to { transform: rotate(360deg); } }
+
+/* Ce que l apprentissage a change. */
+#staffEmailsPage .pv2-savoir-resultat { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); }
+#staffEmailsPage .pv2-savoir-appris { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 600; color: var(--success); }
+#staffEmailsPage .pv2-savoir-appris svg { width: 18px; height: 18px; padding: 3px; border-radius: 50%; background: var(--success-soft); }
+#staffEmailsPage .pv2-savoir-fait-retenu { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; background: var(--success-soft); border-radius: var(--radius-md); }
+#staffEmailsPage .pv2-savoir-fait-retenu strong { font-size: 13px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+#staffEmailsPage .pv2-savoir-fait-retenu span { font-size: 13px; line-height: 1.5; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+#staffEmailsPage .pv2-savoir-avap { display: flex; flex-direction: column; gap: 8px; }
+#staffEmailsPage .pv2-savoir-avant,
+#staffEmailsPage .pv2-savoir-apres { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+#staffEmailsPage .pv2-savoir-avant { background: var(--subtle); }
+#staffEmailsPage .pv2-savoir-apres { background: var(--surface); border-color: var(--success); }
+#staffEmailsPage .pv2-savoir-apres.is-attente { border-color: var(--line-strong); border-style: dashed; }
+#staffEmailsPage .pv2-savoir-avap p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+#staffEmailsPage .pv2-savoir-avant p { color: var(--muted); }
+#staffEmailsPage .pv2-savoir-etiquette { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-apres .pv2-savoir-etiquette { color: var(--success); }
+#staffEmailsPage .pv2-savoir-apres.is-attente .pv2-savoir-etiquette { color: var(--muted); }
+#staffEmailsPage .pv2-savoir-proches { display: flex; flex-direction: column; gap: 6px; }
+#staffEmailsPage .pv2-savoir-proches ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+#staffEmailsPage .pv2-savoir-proches li { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+#staffEmailsPage .pv2-savoir-proches li b { flex-shrink: 0; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--subtle); font-size: 11px; font-weight: 600; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-proches li.is-resolue b { background: var(--success-soft); color: var(--success); }
+#staffEmailsPage .pv2-savoir-proches li span { min-width: 0; overflow-wrap: anywhere; }
+
+/* Les blocs repliables : toutes les questions, apprendre d office, la memoire. */
+#staffEmailsPage .pv2-savoir-bloc { padding-top: 12px; border-top: 1px solid var(--line); }
+#staffEmailsPage .pv2-savoir-bloc > summary { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; list-style: none; }
+#staffEmailsPage .pv2-savoir-bloc > summary::-webkit-details-marker { display: none; }
+#staffEmailsPage .pv2-savoir-bloc > summary::before { content: ''; flex-shrink: 0; width: 6px; height: 6px; margin: 0 3px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease); }
+#staffEmailsPage .pv2-savoir-bloc[open] > summary::before { transform: rotate(45deg); }
+#staffEmailsPage .pv2-savoir-bloc > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+#staffEmailsPage .pv2-savoir-bloc[open] > summary { margin-bottom: 10px; }
+#staffEmailsPage .pv2-savoir-toutes { display: flex; flex-direction: column; gap: 6px; margin: 0; padding-left: 20px; font-size: 12.5px; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-toutes .pv2-link-btn { font-weight: 400; line-height: 1.45; text-align: left; color: var(--text); text-decoration: none; }
+#staffEmailsPage .pv2-savoir-toutes .pv2-link-btn:hover { text-decoration: underline; }
+#staffEmailsPage .pv2-savoir-toutes .pv2-link-btn.is-courante { font-weight: 600; }
+#staffEmailsPage .pv2-savoir-nouveau .pv2-savoir-sous { margin-bottom: 8px; }
+#staffEmailsPage .pv2-savoir-sujet { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-sujet input,
+#staffEmailsPage .pv2-savoir-recherche { width: 100%; height: 34px; padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+#staffEmailsPage .pv2-savoir-sujet input:focus-visible,
+#staffEmailsPage .pv2-savoir-recherche:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#staffEmailsPage .pv2-savoir-recherche { margin-bottom: 8px; }
+#staffEmailsPage .pv2-savoir-memoire { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+#staffEmailsPage .pv2-savoir-fait { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: var(--subtle); border: 1px solid var(--line); border-radius: var(--radius-md); }
+#staffEmailsPage .pv2-savoir-fait[hidden] { display: none; }
+#staffEmailsPage .pv2-savoir-fait > div:first-child { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+#staffEmailsPage .pv2-savoir-fait strong { font-size: 12.5px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+#staffEmailsPage .pv2-savoir-fait span { font-size: 12.5px; line-height: 1.5; color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
+#staffEmailsPage .pv2-savoir-fait small { font-size: 11px; color: var(--muted); }
+#staffEmailsPage .pv2-savoir-fait-actions { display: flex; flex-shrink: 0; gap: 4px; }
+
+/* L entree de ce qui vient de changer, une fois : `is-neuf` ne se pose qu au
+   premier rendu du bloc (le bloc est redessine a chaque etape). */
+@keyframes pv2-savoir-entre { from { opacity: 0; transform: translateY(4px); } }
+@keyframes pv2-savoir-trace { from { stroke-dashoffset: 24; } }
+#staffEmailsPage .pv2-savoir-resultat.is-neuf { animation: pv2-savoir-entre 240ms var(--ease) backwards; }
+#staffEmailsPage .pv2-savoir-resultat.is-neuf .pv2-savoir-apres { animation: pv2-savoir-entre 280ms var(--ease) 180ms backwards; }
+#staffEmailsPage .pv2-savoir-resultat.is-neuf .pv2-savoir-appris path { stroke-dasharray: 24; animation: pv2-savoir-trace 360ms var(--ease) 120ms backwards; }
+#staffEmailsPage .pv2-savoir-proches.is-neuf li { animation: pv2-savoir-entre 240ms var(--ease) backwards; }
+#staffEmailsPage .pv2-savoir-proches.is-neuf li:nth-child(2) { animation-delay: 80ms; }
+#staffEmailsPage .pv2-savoir-proches.is-neuf li:nth-child(3) { animation-delay: 160ms; }
+
+@container (max-width: 440px) {
+  #staffEmailsPage .pv2-savoir-chiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #staffEmailsPage .pv2-savoir-fait { flex-direction: column; }
+  #staffEmailsPage .pv2-savoir-fait-actions { align-self: flex-end; }
+}
+@media (hover: none) {
+  #staffEmailsPage .pv2-savoir-astuce { display: none; }
+  #staffEmailsPage .pv2-savoir-apprendre { margin-left: auto; }
+}
+/* Sous 16 px, iOS agrandit la page au toucher d un champ. */
+@media (max-width: 640px) {
+  #staffEmailsPage .pv2-savoir-reponse,
+  #staffEmailsPage .pv2-savoir-sujet input,
+  #staffEmailsPage .pv2-savoir-recherche { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #staffEmailsPage .pv2-savoir-relit::before,
+  #staffEmailsPage .pv2-savoir-resultat.is-neuf,
+  #staffEmailsPage .pv2-savoir-resultat.is-neuf .pv2-savoir-apres,
+  #staffEmailsPage .pv2-savoir-resultat.is-neuf .pv2-savoir-appris path,
+  #staffEmailsPage .pv2-savoir-proches.is-neuf li { animation: none; }
+}
 
 /* « Untel repond a ce message » : le seul endroit de la page qui parle des
    AUTRES personnes. Un liseré chaud plutot qu un bandeau plein : il doit se

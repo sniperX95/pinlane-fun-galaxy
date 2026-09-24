@@ -258,7 +258,9 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
     events: {},     // communicationId -> [evenement]
     claims: {},     // communicationId -> prise
     questions: [],
-    appris: [{ question: 'Le parking est-il gratuit ?', reponse: 'Oui, gratuit derrière le bâtiment, entrée par la rue latérale.', par: 'Sophie Martin', le: ilYA(20 * J) }],
+    // La memoire de l agent, au format du serveur (lib/email-agent.js ligneFait).
+    appris: [{ id: 1, question: 'Le parking est-il gratuit ?', reponse: 'Oui, gratuit derrière le bâtiment, entrée par la rue latérale.', par: 'Sophie Martin', le: ilYA(20 * J), resolues: 1, versions: 0 }],
+    prochainFait: 2,
     settings: {
       request_received: { enabled: true }, confirmation: { enabled: true }, reminder_48h: { enabled: true, offsetDays: 2 },
       post_visit: { enabled: true, reviewUrl: 'https://g.page/r/fun-galaxy-libramont/review' }, birthday_j30: { enabled: true, subject: 'Un anniversaire à fêter chez nous, {{prenom}} ?' }, reactivation: { enabled: false },
@@ -493,6 +495,16 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
       suivi: { evenementsRecus30j: tousEvenements.length > 0, ouverturesObservees: tousEvenements.some((e) => e.type === 'opened'), clicsObserves: tousEvenements.some((e) => e.type === 'clicked') },
     };
   }
+  function suiviAgent() {
+    const depuis = Date.now() - 7 * J;
+    return {
+      faits: etat.appris.length,
+      questions: etat.questions.length,
+      resolues: etat.appris.reduce((n, f) => n + (Number(f.resolues) || 0), 0),
+      semaine: etat.appris.filter((f) => new Date(f.le).getTime() >= depuis).length,
+      corrections: 0,
+    };
+  }
   function vueGlobale() {
     const statParTemplate = (ids) => {
       const lignes = etat.comms.filter((c) => c.direction !== 'inbound' && ids.includes(c.templateId));
@@ -539,7 +551,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
       case 'agentStack': return { agentStack: null, activations: [], orchestration: {} };
       case 'emailClaims': return { claims: prisesVivantes() };
       case 'pulse': return { empreinte: `fixtures-${etat.comms.length}-${etat.threads.length}` };
-      case 'agentQuestions': return { questions: clone(etat.questions), appris: clone(etat.appris) };
+      case 'agentQuestions': return { questions: clone(etat.questions), appris: clone(etat.appris), suivi: suiviAgent() };
       case 'emailStudio': return { templates: clone(etat.templates), identities: clone(etat.identities), channel: { resendConfigured: true, aiConfigured: false } };
       case 'automationSettings': return { settings: clone(etat.settings), defaults: clone(AUTOMATION_DEFAULTS), stats: clone(AUTOMATION_STATS) };
       case 'customSequences': return { sequences: clone(etat.sequences), limits: { maxSequences: 10, cap: [1, 100], triggers: { after_visit: { label: 'X jours après une visite', days: [1, 90], variables: ['prenom', 'centre'] }, before_visit: { label: 'X jours avant une venue prévue', days: [1, 60], variables: ['prenom', 'centre', 'date', 'heure', 'formule', 'pax'] }, inactive: { label: 'Clients plus vus depuis X jours', days: [30, 365], variables: ['prenom', 'centre'] }, weekly: { label: 'Chaque semaine, un jour fixe', variables: ['prenom', 'centre'] }, monthly: { label: 'Chaque mois, un jour fixe', variables: ['prenom', 'centre'] } }, segments: { all: 'Tous les clients avec email', dormant: 'Dormants (+90 jours)', loyal: 'Fidèles', birthdays: 'Clients anniversaire' } } };
@@ -708,15 +720,31 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
       }
       case 'suppressionAdd': etat.suppressions.unshift({ email: String(body.email || '').toLowerCase(), source: 'staff', reason: String(body.reason || ''), createdAt: new Date().toISOString() }); return { added: true };
       case 'suppressionRemove': etat.suppressions = etat.suppressions.filter((e) => e.email !== String(body.email || '').toLowerCase()); return { removed: true };
+      // L apprentissage, au contrat du serveur (api/ops.js) : le fait, la
+      // reponse proposee avant et apres, les questions proches a relire.
       case 'answerAgentQuestion': {
         const q = etat.questions.find((x) => Number(x.communicationId) === Number(body.communicationId));
         etat.questions = etat.questions.filter((x) => Number(x.communicationId) !== Number(body.communicationId));
-        etat.appris.unshift({ question: q ? q.question : 'Question', reponse: String(body.reponse || ''), par: MOI.name, le: new Date().toISOString() });
+        const fait = { id: etat.prochainFait++, question: q ? q.question : 'Question', reponse: String(body.reponse || ''), par: MOI.name, le: new Date().toISOString(), resolues: 1, versions: 0 };
+        etat.appris.unshift(fait);
         const comm = etat.comms.find((c) => Number(c.id) === Number(body.communicationId));
-        if (comm && comm.payload && comm.payload.analysis) comm.payload.analysis.questionRepondue = true;
-        return { reanalyse: true, appris: clone(etat.appris) };
+        const avant = comm && comm.payload && comm.payload.analysis && comm.payload.analysis.reply ? clone(comm.payload.analysis.reply) : null;
+        const apres = avant ? { subject: avant.subject, body: `${avant.body.split('\n')[0]}\n\n${fait.reponse}` } : null;
+        if (comm && comm.payload && comm.payload.analysis) { comm.payload.analysis.questionRepondue = true; if (apres) comm.payload.analysis.reply = apres; }
+        return { fait, appris: clone(etat.appris), reanalyse: Boolean(apres), avant, apres, proches: [] };
       }
-      case 'forgetAgentFact': etat.appris = etat.appris.filter((f) => f.question !== body.question); return { appris: clone(etat.appris) };
+      case 'agentApplyFact': return { resultats: [], resolues: 0 };
+      case 'teachAgentFact': {
+        const fait = { id: etat.prochainFait++, question: String(body.question || ''), reponse: String(body.reponse || ''), par: MOI.name, le: new Date().toISOString(), resolues: 0, versions: 0 };
+        etat.appris.unshift(fait);
+        return { fait, appris: clone(etat.appris), proches: [] };
+      }
+      case 'editAgentFact': {
+        const f = etat.appris.find((x) => Number(x.id) === Number(body.id));
+        if (f) { f.reponse = String(body.reponse || ''); f.versions += 1; }
+        return { fait: clone(f || null), appris: clone(etat.appris) };
+      }
+      case 'forgetAgentFact': etat.appris = etat.appris.filter((f) => (Number(body.id) > 0 ? Number(f.id) !== Number(body.id) : f.question !== body.question)); return { appris: clone(etat.appris) };
       case 'improveEmailWithAi': return { mode: 'regles', tips: ['Objet un peu court : visez 30 à 60 caractères.', 'Terminez par une question : elle appelle une réponse.'], subject: body.subject, body: body.body };
       case 'createCampaign': {
         const c = { id: etat.prochaineCampagne++, name: body.name, objective: body.objective || '', segment: body.segment, subject: body.subject, body: body.body, status: body.mode === 'draft' ? 'draft' : body.mode === 'schedule' ? 'scheduled' : 'sending', scheduledAt: body.scheduledAt || null, recipientCount: 34, sent: 0, failed: 0, queued: body.mode === 'draft' ? 0 : 34, opens: 0, clicks: 0, createdAt: new Date().toISOString() };

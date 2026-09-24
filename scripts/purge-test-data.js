@@ -7,7 +7,8 @@
 //   GARDE : centers, clients, staff_roles, staff_members (dont le code
 //           founder), staff_sessions (ne pas deconnecter une session en cours),
 //           activities, formule_overrides, email_templates, email_identities,
-//           center_automation_settings, availability_blocks, lane_statuses,
+//           center_automation_settings, agent_facts (ce que l'equipe a
+//           appris a l'agent), availability_blocks, lane_statuses,
 //           weather_daily_forecast (cache), audit_log (journal de securite :
 //           l'effacer supprimerait la trace des acces, ce n'est pas une donnee
 //           visible du client).

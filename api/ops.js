@@ -1112,7 +1112,7 @@ function reponseProposee(analyse) {
 // le message SANS la citation recopiee par le logiciel du client, sinon il
 // resume l echange precedent et repond a cote ; et le prenom qu il avait
 // trouve reste le sien.
-async function reanalyserLeMail(mail, centre, analyzeEmail) {
+async function reanalyserLeMail(mail, centre, analyzeEmail, faitDuMail = null) {
   try {
     const { separerCitation } = require('../assets/email-thread.js');
     const texte = String((mail.payload && mail.payload.textBody) || mail.body || '');
@@ -1121,6 +1121,7 @@ async function reanalyserLeMail(mail, centre, analyzeEmail) {
       subject: mail.subject,
       body: separerCitation(texte).message || texte,
       centerId: centre,
+      faitDuMail,
     });
     const avant = (mail.payload && mail.payload.analysis) || {};
     if (analyse && !analyse.clientName && avant.clientName) analyse.clientName = avant.clientName;
@@ -2768,7 +2769,8 @@ ${draftBody}`,
     // La re-analyse est FAIL-SOFT : si elle echoue, le fait est quand meme
     // appris. Perdre l apprentissage parce que le modele est indisponible
     // serait le pire des deux mondes.
-    const analyse = await reanalyserLeMail(mail, centreApprentissage, analyzeEmail);
+    // Le fait va avec CE mail : c est sa question que l equipe vient de lever.
+    const analyse = await reanalyserLeMail(mail, centreApprentissage, analyzeEmail, fait);
     const communication = await marquerQuestionRepondue({ communicationId: mail.id, analyse, par });
     if (fait) await compterResolutions(centreApprentissage, fait.id, 1).catch(() => {});
     // LES AUTRES QUESTIONS QUE CE FAIT PEUT RESOUDRE : les plus proches, que
@@ -2776,7 +2778,11 @@ ${draftBody}`,
     const ouvertes = await listAgentQuestions({ centerId: centreApprentissage, limit: 200 }).catch(() => []);
     const proches = fait ? questionsProches(fait, ouvertes.filter((q) => q.communicationId !== mail.id), 3) : [];
     const appris = await getFaitsAppris(centreApprentissage);
-    sendJson(res, 200, { ok: true, action, fait, appris, communication, reanalyse: Boolean(analyse), avant, apres: reponseProposee(analyse), proches });
+    // LA REPONSE REFAITE SE SERT-ELLE DU FAIT ? L ecran le dit, pour qu on ne
+    // croie pas l agent instruit sur une reponse qui l ignore (null : pas de
+    // reponse refaite).
+    const utilise = analyse ? Boolean(fait && Array.isArray(analyse.faitsUtilises) && analyse.faitsUtilises.includes(`F${fait.id}`)) : null;
+    sendJson(res, 200, { ok: true, action, fait, appris, communication, reanalyse: Boolean(analyse), avant, apres: reponseProposee(analyse), utilise, proches });
     return;
   }
 
@@ -2788,7 +2794,7 @@ ${draftBody}`,
     const centre = requireConcreteCenter('apprentissage de l agent');
     const membre = (options.session && options.session.member) || {};
     const par = String(membre.name || membre.id || '');
-    const { analyzeEmail, compterResolutions } = require('../lib/email-agent');
+    const { analyzeEmail, compterResolutions, resoluParLeFait } = require('../lib/email-agent');
     const ids = (Array.isArray(body.communicationIds) ? body.communicationIds : [])
       .map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 3);
     const resultats = await Promise.all(ids.map(async (id) => {
@@ -2799,12 +2805,15 @@ ${draftBody}`,
       if (!question || avantAnalyse.questionRepondue) return { communicationId: id, relu: false };
       const analyse = await reanalyserLeMail(mail, centre, analyzeEmail);
       if (!analyse) return { communicationId: id, relu: false, question };
-      const resolue = !String(analyse.question || '').trim();
+      // Resolue seulement si la reponse refaite SE SERT du fait ; sinon la
+      // question reste ouverte (la reponse, elle, est refaite quand meme).
+      const resolue = resoluParLeFait(analyse, body.factId);
+      const encore = resolue ? '' : (String(analyse.question || '').trim() || question);
       if (resolue) await marquerQuestionRepondue({ communicationId: id, analyse, par: `${par} (fait appris)`.trim() });
-      else await rafraichirAnalyse({ communicationId: id, analyse });
+      else await rafraichirAnalyse({ communicationId: id, analyse: { ...analyse, question: encore } });
       return {
         communicationId: id, relu: true, resolue, question,
-        encore: resolue ? '' : String(analyse.question || ''),
+        encore,
         mailDe: String((mail.payload && mail.payload.from) || mail.recipient || ''),
         avant: reponseProposee(avantAnalyse), apres: reponseProposee(analyse),
       };

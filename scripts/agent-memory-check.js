@@ -255,6 +255,63 @@ function baseSimulee({ reglages = {}, tablePanne = false } = {}) {
   ok(pareil('cartes', 'carte') && pareil('arcades', 'arcade') && pareil('tarifs', 'tarif') && pareil('gateaux', 'gateau') && pareil('Réservation', 'reservations'),
     '[H] le pluriel, la casse et les accents ne separent pas deux mots', JSON.stringify(['cartes', 'carte', 'Réservation'].map((m) => [...motsCles(m)])));
 
+  // =====================================================================
+  console.log('\n[I] ce que l equipe a appris prime sur ce que le systeme ne sait pas');
+  // =====================================================================
+  // Mesure du 2026-09-25 : Movsar apprend les tarifs des arcades, la reponse
+  // refaite dit encore « il n existe pas de tarif a l unite ». Le fait etait
+  // dans le prompt ; une phrase ecrite par nous disait plus bas « ne les
+  // chiffre jamais », et le modele l a suivie.
+  const iDeps = baseSimulee();
+  const faitArcades = await apprendreUnFait('libramont', { question: 'Le tarif des arcades a l unite n existe pas dans le systeme : faut-il confirmer par retour ?', reponse: 'Une carte par personne : 15 euros les 30 minutes, 25 euros l heure.', par: 'Movsar' }, iDeps);
+  const cerveauI = await buildEmailBrain('libramont', iDeps, Date.parse('2026-09-24T22:41:00Z'), { texte: 'Arcades pour 6 personnes dimanche 14:00' });
+  const { BLOC_APPRIS } = agent.__test;
+  const blocI = cerveauI.stable.slice(cerveauI.stable.indexOf(`--- ${BLOC_APPRIS} ---`));
+  ok(/priment sur tout « aucun prix », « non renseigné » ou « confirme par retour »/.test(blocI) && /Seul un tarif validé par le moteur de réservation les bat/.test(blocI),
+    '[I] le bloc appris dit qu il prime sur tout « on ne sait pas », et que seul un tarif du moteur le bat', blocI.slice(0, 160));
+  ok(blocI.includes(`[F${faitArcades.id}] Question posée : `) && blocI.includes('Réponse de l équipe : Une carte par personne'),
+    '[I] chaque fait porte son identifiant, et la reponse de l equipe est nommee comme ce qui est vrai');
+  const absenceI = cerveauI.context.split('\n').find((l) => /Aucun prix a l unite n existe dans le systeme pour :.*arcades/.test(l)) || '';
+  ok(/si l equipe t a appris leur prix \(bloc « CE QUE L'ÉQUIPE M'A APPRIS »\), donne celui-la/.test(absenceI) && !/Ne les chiffre jamais, propose de confirmer par retour\./.test(cerveauI.context),
+    '[I] « aucun prix a l unite » ne l interdit plus sans exception : le fait appris passe', absenceI.slice(0, 200));
+  const regleI = cerveauI.stable.split('\n').find((l) => /Jamais inventer un prix/.test(l)) || '';
+  ok(/ce que l'équipe t'a appris/.test(regleI), '[I] la regle des prix compte ce que l equipe a appris parmi les faits fournis', regleI.slice(0, 160));
+
+  // =====================================================================
+  console.log('\n[J] une question n est resolue par un fait que si la reponse s en sert');
+  // =====================================================================
+  // Mesure du 2026-09-25 : un mail sur la plaine de jeux est passe « resolu »
+  // par le fait des arcades, avec une reponse generique qui ne s en servait pas.
+  ok(agent.resoluParLeFait({ question: '', faitsUtilises: [`F${faitArcades.id}`] }, faitArcades.id) === true, '[J] plus de question, et le fait cite : resolue');
+  ok(agent.resoluParLeFait({ question: '', faitsUtilises: [] }, faitArcades.id) === false, '[J] plus de question mais le fait non cite (le cas de la plaine de jeux) : PAS resolue');
+  ok(agent.resoluParLeFait({ question: 'Et pour 12 ?', faitsUtilises: [`F${faitArcades.id}`] }, faitArcades.id) === false, '[J] le fait cite mais une question reste : pas resolue');
+  ok(JSON.stringify(agent.__test.idsFaitsUtilises([`F${faitArcades.id}`, `[f${faitArcades.id}]`, 'F999', 'rien'], [faitArcades])) === JSON.stringify([`F${faitArcades.id}`]),
+    '[J] seuls les identifiants de faits que l agent a vraiment recus comptent');
+  // DE BOUT EN BOUT : un modele simule rend sa reponse, le fait qu il cite
+  // et un identifiant invente ; l analyse garde le vrai, perd l invente, et le
+  // fait appris POUR CE mail part bien dans la demande.
+  const envGarde = {};
+  for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'KIMI_API_KEY', 'MOONSHOT_API_KEY', 'LLM_PROVIDER', 'OPENROUTER_API_KEY']) { envGarde[k] = process.env[k]; delete process.env[k]; }
+  process.env.ANTHROPIC_API_KEY = 'cle-de-test';
+  const demandes = [];
+  const modele = async (url, init) => {
+    demandes.push(String(init && init.body || ''));
+    const sortie = { intent: 'prix', summary: 'Tarif des arcades', urgency: 'normale', question: '', faitsUtilises: [`F${faitArcades.id}`, 'F999'],
+      reply: { subject: 'Vos arcades', body: 'Bonjour,\n\nPour les arcades, une carte par personne : 15 euros les 30 minutes, 25 euros l heure.\n\nA bientot,' } };
+    return { ok: true, json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(sortie) }] }) };
+  };
+  try {
+    const analyse = await agent.analyzeEmail({ from: 'test@exemple.invalid', subject: 'Arcades', body: 'Bonjour, les arcades pour 6 personnes dimanche a 14:00, combien ?', centerId: 'libramont', deps: iDeps, fetchImpl: modele, faitDuMail: faitArcades });
+    ok(analyse.provider === 'anthropic' && /15 euros/.test(analyse.reply.body), 'MONTAGE [J] la reponse du modele est gardee (ses chiffres viennent du fait appris)', `${analyse.provider} / ${analyse.reply.body.slice(0, 60)}`);
+    ok(JSON.stringify(analyse.faitsUtilises) === JSON.stringify([`F${faitArcades.id}`]), '[J] l analyse garde le fait cite, pas l identifiant invente', JSON.stringify(analyse.faitsUtilises));
+    ok(agent.resoluParLeFait(analyse, faitArcades.id), '[J] et cette analyse resout bien la question par ce fait');
+    const envoye = demandes.join('\n');
+    ok(envoye.includes('faitQueLEquipeVientDApprendre') && envoye.includes(`F${faitArcades.id}`) && envoye.includes('15 euros les 30 minutes'),
+      '[J] le fait appris pour CE mail part avec sa relecture, en toutes lettres');
+  } finally {
+    for (const [k, v] of Object.entries(envGarde)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+
   console.log(failures ? `\n${failures} controle(s) en echec.` : '\nagent-memory-check: ALL OK');
   process.exit(failures ? 1 : 0);
 })().catch((error) => {

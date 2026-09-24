@@ -4534,6 +4534,8 @@
         <p class="pv2-savoir-appris"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Appris</p>
         <div class="pv2-savoir-fait-retenu"><strong>${esc(r.fait ? r.fait.question : '')}</strong><span>${esc(r.fait ? r.fait.reponse : '')}</span></div>
         ${avantApres}
+        ${r.question && r.apres && r.utilise === true ? '<p class="pv2-savoir-utilise is-oui">Réponse refaite avec ce fait.</p>' : ''}
+        ${r.question && r.apres && r.utilise === false ? '<p class="pv2-savoir-utilise is-non" role="status">L’agent n’a pas repris ce fait dans cette réponse : relisez-la avant de l’envoyer.</p>' : ''}
         ${proches}
         <div class="pv2-savoir-actions pv2-savoir-fin">
           <button type="button" class="pv2-btn sm primary" onclick="pv2SavoirSuivante()" ${a && a.enCours ? 'disabled' : ''}>${pv2SavoirDonnees().questions.length ? 'Question suivante' : 'Terminer'}</button>
@@ -4779,6 +4781,9 @@
           mailDe: question ? question.mailDe : '',
           avant: question ? ((payload && payload.avant) || null) : null,
           apres: question ? ((payload && payload.apres) || null) : null,
+          // La reponse refaite se sert-elle du fait ? Le serveur le dit (null :
+          // il ne le sait pas, rien ne s affiche).
+          utilise: question && payload && typeof payload.utilise === 'boolean' ? payload.utilise : null,
           proches: (payload && Array.isArray(payload.proches)) ? payload.proches : [],
           application: null,
         };

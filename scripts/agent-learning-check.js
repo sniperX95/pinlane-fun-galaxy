@@ -158,7 +158,7 @@ async function installMock(page, perms) {
           S.questions = S.questions.filter((x) => x !== q);
           const fait = { id: S.prochainId++, question: q ? q.question : '?', reponse: b.reponse, par: 'Moi QA', le: new Date().toISOString(), resolues: 1, versions: 0 };
           S.appris = [fait].concat(S.appris);
-          return J({ ok: true, fait, appris: S.appris, reanalyse: Boolean(R.apres), avant: R.avant, apres: R.apres, proches: R.proches });
+          return J({ ok: true, fait, appris: S.appris, reanalyse: Boolean(R.apres), avant: R.avant, apres: R.apres, utilise: R.utilise, proches: R.proches });
         }
         if (b.action === 'agentApplyFact') {
           window.__QA_APPELS__.relire.push({ factId: b.factId, ids: b.communicationIds });
@@ -227,7 +227,7 @@ async function poserEtat(page, { questions = [], appris = [], ouvertesEnPlus = 0
   await page.evaluate(({ questions, appris, ouvertesEnPlus, reponses }) => {
     const S = window.__QA_SAVOIR__;
     S.questions = questions; S.appris = appris; S.ouvertesEnPlus = ouvertesEnPlus;
-    window.__QA_REPONSES__ = Object.assign({ avant: null, apres: null, proches: [], resultats: [], delai: 0, delaiRelecture: 0 }, reponses);
+    window.__QA_REPONSES__ = Object.assign({ avant: null, apres: null, utilise: null, proches: [], resultats: [], delai: 0, delaiRelecture: 0 }, reponses);
     Object.keys(window.__QA_APPELS__).forEach((k) => { window.__QA_APPELS__[k] = []; });
     Object.assign(pv2Mail, { savoirCle: '', dernierApprentissage: null, memoireFiltre: '', faitEnEdition: '', nouveauFait: { question: '' }, nouveauOuvert: false, listeOuverte: false, memoireOuverte: false, reponsesApprises: {}, apprentissageBusy: '' });
     requestOpsAdminLoad(true);
@@ -271,6 +271,8 @@ async function lire(page) {
       avant: t('.pv2-savoir-avant p'),
       apres: t('.pv2-savoir-apres p'),
       apresEnAttente: Boolean(s.querySelector('.pv2-savoir-apres.is-attente')),
+      utilise: t('.pv2-savoir-utilise'),
+      utiliseNon: Boolean(s.querySelector('.pv2-savoir-utilise.is-non')),
       relit: t('.pv2-savoir-resultat .pv2-savoir-relit'),
       proches: [...s.querySelectorAll('.pv2-savoir-proches li')].map((li) => ({ resolue: li.classList.contains('is-resolue'), texte: li.textContent.replace(/\s+/g, ' ').trim() })),
       suivante: (() => { const b = s.querySelector('.pv2-savoir-fin .pv2-btn'); return b ? { texte: b.textContent.trim(), actif: !b.disabled } : null; })(),
@@ -420,7 +422,7 @@ async function main() {
     console.log('\n[D] repondre envoie le fait au serveur, au vrai geste');
     // =====================================================================
     await page.evaluate((r) => { Object.assign(window.__QA_REPONSES__, r); }, {
-      avant: AVANT, apres: APRES, delai: 700, delaiRelecture: 900,
+      avant: AVANT, apres: APRES, utilise: true, delai: 700, delaiRelecture: 900,
       // La question PROCHAINE dans la liste (Q2) est celle que la relecture
       // resout : la suite ne doit pas la reproposer.
       proches: [Q2, Q3].map((q) => ({ communicationId: q.communicationId, question: q.question })),
@@ -452,6 +454,8 @@ async function main() {
       '[E] « Appris », avec la question et ce que l agent a retenu', e1.fait.slice(0, 90));
     ok(e1.avant === AVANT.body.replace(/\s+/g, ' ') && e1.apres === APRES.body.replace(/\s+/g, ' '),
       '[E] la reponse proposee au client AVANT et APRES, telles que le serveur les a rendues', JSON.stringify({ avant: e1.avant.slice(0, 40), apres: e1.apres.slice(0, 40) }));
+    ok(e1.utilise === 'Réponse refaite avec ce fait.' && !e1.utiliseNon,
+      '[E] le serveur dit que la reponse refaite se sert du fait : l ecran le dit', e1.utilise);
     ok(/L’agent relit 2 questions proches avec ce fait/.test(e1.relit) && e1.suivante && e1.suivante.actif === false,
       '[E] l agent relit les questions proches, et on attend la fin de la relecture pour passer a la suite', JSON.stringify({ relit: e1.relit, suivante: e1.suivante }));
     const relus = await page.evaluate(() => window.__QA_APPELS__.relire);
@@ -489,6 +493,19 @@ async function main() {
     ok(f1.relit === '' && f1.proches.length === 0 && (await page.evaluate(() => window.__QA_APPELS__.relire.length)) === 0,
       '[F] sans question proche, aucune relecture inventee');
     ok(f1.suivante && f1.suivante.texte === 'Terminer', '[F] la derniere question apprise, le bouton dit « Terminer »', JSON.stringify(f1.suivante));
+    ok(f1.utilise === '', '[F] sans reponse refaite, rien ne dit qu elle se sert du fait', f1.utilise);
+    // [F2] Mesure du 2026-09-25 : les tarifs des arcades appris, la reponse
+    // refaite disait encore « pas de tarif a l unite ». Quand la reponse refaite
+    // ne se sert pas du fait, l ecran le dit au lieu de laisser croire l agent
+    // instruit.
+    await poserEtat(page, { questions: [Q1] }, { avant: AVANT, apres: APRES, utilise: false });
+    await page.click('#staffEmailsPage .pv2-savoir-carte .pv2-savoir-reponse');
+    await page.keyboard.type('Oui, le gateau seulement.');
+    await page.click('#staffEmailsPage .pv2-savoir-carte .pv2-savoir-apprendre');
+    await page.waitForFunction(() => document.querySelector('#staffEmailsPage .pv2-savoir-resultat'), null, { timeout: 5000 });
+    const f2 = await lire(page);
+    ok(f2.utiliseNon && /n’a pas repris ce fait dans cette réponse : relisez-la avant de l’envoyer/.test(f2.utilise),
+      '[F2] la reponse refaite ne se sert pas du fait : l ecran previent de la relire', f2.utilise);
 
     // =====================================================================
     console.log('\n[G] le suivi est celui du serveur');

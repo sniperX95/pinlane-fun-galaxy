@@ -13004,6 +13004,9 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 #staffEmailsPage .pv2-savoir-etiquette { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted); }
 #staffEmailsPage .pv2-savoir-apres .pv2-savoir-etiquette { color: var(--success); }
 #staffEmailsPage .pv2-savoir-apres.is-attente .pv2-savoir-etiquette { color: var(--muted); }
+#staffEmailsPage .pv2-savoir-utilise { margin: 0; font-size: 12.5px; font-weight: 500; }
+#staffEmailsPage .pv2-savoir-utilise.is-oui { color: var(--success); }
+#staffEmailsPage .pv2-savoir-utilise.is-non { color: var(--warning); }
 #staffEmailsPage .pv2-savoir-proches { display: flex; flex-direction: column; gap: 6px; }
 #staffEmailsPage .pv2-savoir-proches ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 #staffEmailsPage .pv2-savoir-proches li { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; line-height: 1.45; color: var(--text); }

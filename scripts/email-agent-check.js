@@ -800,8 +800,9 @@ const anthropicOk = (object) => ({
         `LE POINT : ${sansGrille} annonce ses prix a l unite au lieu d un refus`);
     } else {
       ok(/Aucun tarif n est disponible pour ce centre/.test(cerveauSansPrix.context)
-        && /ne donne jamais un prix/.test(cerveauSansPrix.context),
-        `LE POINT : ${sansGrille}, qui n a RIEN a dire, garde le refus mot pour mot`);
+        && /ne donne jamais un prix de toi-meme/.test(cerveauSansPrix.context)
+        && /si l equipe t a appris un prix/.test(cerveauSansPrix.context),
+        `LE POINT : ${sansGrille}, qui n a RIEN a dire, garde son refus, ouvert a ce que l equipe a appris`);
     }
     ok(!nomsPublics.some((nom) => cerveauSansPrix.context.includes(nom)),
       `ISOLATION : aucune formule de Libramont n apparait chez ${sansGrille}`);
@@ -1366,9 +1367,13 @@ const anthropicOk = (object) => ({
     JSON.stringify(paliersLaserManquants.map((o) => o.label)));
 
   // LE POINT : ce que le moteur ne chiffre pas est NOMME, pas taxi.
+  // Et ce que l equipe a appris passe (2026-09-25) : le « jamais » sans
+  // exception faisait repondre « pas de tarif » avec le tarif appris sous les
+  // yeux du modele.
   ok(/Aucun prix a l unite n existe dans le systeme pour :/.test(blocUnitaire)
-    && /Ne les chiffre jamais/.test(blocUnitaire),
-    'LE POINT : les activites sans tarif sont nommees, avec l interdit de les chiffrer');
+    && /Ne les chiffre jamais de toi-meme/.test(blocUnitaire)
+    && /si l equipe t a appris leur prix/.test(blocUnitaire),
+    'LE POINT : les activites sans tarif sont nommees, interdites a l invention, ouvertes a ce que l equipe a appris');
 
   // CONTRE-PREUVE : une activite que le centre ne propose PAS n y figure pas.
   ok(centreTarife('libramont').activityAvailability.golf_oclock !== true

@@ -731,7 +731,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
         const avant = comm && comm.payload && comm.payload.analysis && comm.payload.analysis.reply ? clone(comm.payload.analysis.reply) : null;
         const apres = avant ? { subject: avant.subject, body: `${avant.body.split('\n')[0]}\n\n${fait.reponse}` } : null;
         if (comm && comm.payload && comm.payload.analysis) { comm.payload.analysis.questionRepondue = true; if (apres) comm.payload.analysis.reply = apres; }
-        return { fait, appris: clone(etat.appris), reanalyse: Boolean(apres), avant, apres, proches: [] };
+        return { fait, appris: clone(etat.appris), reanalyse: Boolean(apres), avant, apres, utilise: apres ? true : null, proches: [] };
       }
       case 'agentApplyFact': return { resultats: [], resolues: 0 };
       case 'teachAgentFact': {

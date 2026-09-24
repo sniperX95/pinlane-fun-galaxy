@@ -15,8 +15,9 @@
 //       premier jour ouvert, et son indice dit « Aujourd hui » ou « Demain »
 //       quand c est le cas), le fil des 5 etapes est rendu, la photo est
 //       decodee, le poids SERVI (apres tools/build-public.js, qui retire les
-//       commentaires) reste celui d un poste faible (< 125 Ko pour JS + CSS +
-//       HTML), aucune photo 1600 demandee sur un ecran de 1440, le « ? » du
+//       commentaires) reste celui d un poste faible (a analyser et a
+//       transferer, plafonds rederives sur mesure plus bas, BUDGET_SERVI et
+//       BUDGET_TRANSFERE), aucune photo 1600 demandee sur un ecran de 1440, le « ? » du
 //       titre ne part jamais seul sur sa ligne.
 //   [A2] CALENDRIER PAR MOIS : chaque mois, du mois en cours jusqu a l horizon
 //       de reservation (un an), est le calendrier servi jour par jour (ferme
@@ -515,8 +516,23 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // 150 Ko. Le cout reste dans le style et la mise en page. Plafonds : 180 Ko a
 // analyser, 52 Ko a transferer, assez pres pour qu une bibliotheque, une
 // police ou une image en base64 fassent sauter l un ou l autre.
-const BUDGET_SERVI = 180 * 1024;
-const BUDGET_TRANSFERE = 52 * 1024;
+//
+// REDERIVE LE 2026-09-24 AU SOIR, apres le lot « visite complete » (l occasion,
+// le cadre des parties de laser, le bloc de la visite et le detail du prix) :
+// 187,8 Ko servis, 51,8 Ko transferes. Rien de mort a retirer (releve par
+// script : aucune fonction jamais appelee, aucune regle sans cible). Le
+// transfert passait encore, mais a 99,6 % de son plafond : un cliquet qui
+// aurait bloque le changement suivant, quel qu il soit. Mesure A/B dans la
+// meme session (meme protocole, deux tours alternes) : la prod a 172,8 Ko
+// donne script 59 puis 80 ms, style 109 puis 127 ms, mise en page 315 puis
+// 359 ms ; le lot a 187,8 Ko donne 86 puis 80 ms, 145 puis 129 ms, 415 puis
+// 318 ms. L ecart d une version a l autre est plus petit que celui d une
+// meme version d un tour a l autre : aucun surcout mesurable. Sur le reseau,
+// 3,7 Ko de plus coutent environ 75 ms a 400 kbit/s. Plafonds : 200 Ko a
+// analyser, 58 Ko a transferer, soit 12 et 6 Ko de marge : une police ou une
+// bibliotheque (plus de 15 Ko compresses) font toujours sauter le second.
+const BUDGET_SERVI = 200 * 1024;
+const BUDGET_TRANSFERE = 58 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {

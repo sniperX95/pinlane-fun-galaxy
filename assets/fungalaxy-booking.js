@@ -402,6 +402,10 @@
   var stage = $('#fgStage');
   var enTransition = false;
   var transitionId = 0;
+  // Un geste de navigation fait PENDANT une transition (0,42 s) n est plus
+  // perdu : le dernier demande part des qu elle finit. Avant, « Retour »
+  // touche juste apres l arrivee sur un ecran ne faisait rien.
+  var allerEnAttente = null;
   function chargerPhoto(scene) {
     var img = $('.fg-art img', scene);
     if (!img || !img.dataset.src) return;
@@ -468,7 +472,8 @@
     chargerPhoto($('.fg-scene.is-active'));
   }
   function aller(cible, retour) {
-    if (cible === sceneCourante || enTransition) return;
+    if (enTransition) { allerEnAttente = { cible: cible, retour: retour }; return; }
+    if (cible === sceneCourante) return;
     var de = $('.fg-scene[data-scene="' + sceneCourante + '"]');
     var vers = $('.fg-scene[data-scene="' + cible + '"]');
     if (!vers) return;
@@ -501,6 +506,7 @@
         // precedent (un vide noir sous un ecran plus court).
         posterHauteur();
         apresAnimations(vers, posterHauteur);
+        if (allerEnAttente) { var suite = allerEnAttente; allerEnAttente = null; aller(suite.cible, suite.retour); }
       };
       var surScene = function (e) {
         if (e.target !== vers) return;
@@ -603,6 +609,16 @@
   window.addEventListener('resize', planifierDock);
   doc.addEventListener('focusin', planifierDock);
   doc.addEventListener('focusout', planifierDock);
+  // Au clavier, dans le cadre embarque, la page hote defile pour montrer ce
+  // qui prend le focus, anneau compris. Chromium n applique pas la marge de
+  // defilement (scroll-margin) quand il fait defiler la page PARENTE : une
+  // carte a cheval sur le bas de l ecran y etait alignee au pixel, son anneau
+  // dehors (mesure le 2026-09-24). La bande est demandee a l hote, qui garde
+  // 16 px. Jamais au toucher : une carte touchee ne fait pas defiler la page.
+  if (EMBED) doc.addEventListener('focusin', function (e) {
+    var el = e.target;
+    if (el && el.matches && el.matches('.fg-card, .fg-pill, .fg-tab') && focusClavier(el)) montrer(el);
+  });
   if ('ResizeObserver' in window) new ResizeObserver(planifierDock).observe(body);
   $$('[data-back]').forEach(function (b) { b.addEventListener('click', precedent); });
   doc.addEventListener('click', function (e) {
@@ -1149,13 +1165,18 @@
   // La photo d une carte ne se telecharge que quand elle peut se voir : au
   // survol, au focus clavier, ou quand la carte est cochee. Huit photos
   // chargees d avance pesaient 400 Ko pour un ecran qui n en montre aucune.
+  // Un doigt ne survole pas : le toucher la charge en cochant, et un doigt
+  // qui fait defiler la liste ne telecharge plus chaque carte qu il effleure.
   function chargerPhotoCarte(card) {
     var img = card && card.querySelector('.fg-card__photo img[data-src]');
     if (!img) return;
     img.src = img.dataset.src;
     delete img.dataset.src;
   }
-  gridAct.addEventListener('pointerenter', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); }, true);
+  gridAct.addEventListener('pointerenter', function (e) {
+    if (e.pointerType === 'touch') return;
+    chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card'));
+  }, true);
   gridAct.addEventListener('focusin', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); });
   // Le prix ne roule que sur un geste qui le change (pastille choisie, carte
   // cochee) : decocher le rend a « Des X » sans rien jouer.

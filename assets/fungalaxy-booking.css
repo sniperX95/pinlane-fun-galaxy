@@ -12,6 +12,12 @@
    Palette = la marque du client, relevee dans le theme WordPress :
    violet #944292, sarcelle #67baac, sur noir. Les maquettes validees par
    Movsar echantillonnent les memes teintes (CTA #a349a5, ombre #46828b).
+
+   Le survol n existe qu avec une souris : CHAQUE regle :hover est dans
+   @media (hover: hover). Sur iPhone, un toucher qui devoile quelque chose au
+   survol (la photo d une carte, de 0 a 1) n est compte que comme un survol,
+   et il fallait toucher deux fois pour cocher (retour de Movsar, 2026-09-24).
+   Sur Android, le survol restait colle a la carte touchee.
    ========================================================================== */
 
 :root {
@@ -147,7 +153,7 @@
   text-decoration: none;
   transition: background-color 0.2s, color 0.2s;
 }
-.fg-top__cta:hover { background: var(--fg-text); color: var(--fg-bg); }
+@media (hover: hover) { .fg-top__cta:hover { background: var(--fg-text); color: var(--fg-bg); } }
 .fg.is-embed .fg-top { display: none; }
 /* Dans le cadre du client, la hauteur suit le contenu : un plancher a 100vh
    vaudrait la hauteur du cadre, et le cadre ne saurait alors que grandir. */
@@ -384,8 +390,10 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-steps__item.is-done { color: var(--fg-muted); }
 .fg-steps__item.is-active { color: var(--fg-text); }
 .fg-steps__item.is-active .fg-steps__num { color: var(--fg-purple-ink); }
-.fg-steps__item.is-done button:hover { color: var(--fg-text); }
-.fg-steps__item.is-done button:hover .fg-steps__seg::after { background: #fff; }
+@media (hover: hover) {
+  .fg-steps__item.is-done button:hover { color: var(--fg-text); }
+  .fg-steps__item.is-done button:hover .fg-steps__seg::after { background: #fff; }
+}
 /* COLONNE ETROITE : cinq libelles ne tiennent plus. Il reste les cinq
    segments, et SOUS la barre, cale a gauche, l etape en cours avec son rang :
    « 03/05 HORAIRES ». */
@@ -512,7 +520,7 @@ html.fg-pilote .fg { overflow: visible; }
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .fg-input::placeholder { color: var(--fg-faint); }
-.fg-input:hover { border-color: #555; }
+@media (hover: hover) { .fg-input:hover { border-color: #555; } }
 .fg-input:focus { outline: none; border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.25); }
 .fg-field.is-invalid .fg-input { border-color: var(--fg-danger); }
 .fg-field__error { font-size: 12px; color: var(--fg-danger); min-height: 0; }
@@ -565,7 +573,7 @@ html.fg-pilote .fg { overflow: visible; }
   font-weight: 600;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.fg-day__btn:hover { border-color: #555; }
+@media (hover: hover) { .fg-day__btn:hover { border-color: #555; } }
 .fg-day__btn[aria-expanded="true"], .fg-day__btn:focus-visible { border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(103, 186, 172, 0.25); outline: none; }
 .fg-day__btn svg { width: 18px; height: 18px; flex: none; color: var(--fg-muted); }
 .fg-day__btn .chev { position: absolute; right: 14px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); transition: transform 0.25s var(--fg-ease); }
@@ -653,9 +661,9 @@ html.fg-pilote .fg { overflow: visible; }
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 .fg-cal__nav svg { width: 16px; height: 16px; }
-.fg-cal__nav:hover { background: rgba(148, 66, 146, 0.22); color: var(--fg-text); border-color: var(--fg-purple-2); }
+@media (hover: hover) { .fg-cal__nav:hover { background: rgba(148, 66, 146, 0.22); color: var(--fg-text); border-color: var(--fg-purple-2); } }
 .fg-cal__nav[disabled] { opacity: 0.3; cursor: not-allowed; }
-.fg-cal__nav[disabled]:hover { background: none; color: var(--fg-muted); border-color: var(--fg-line-2); }
+@media (hover: hover) { .fg-cal__nav[disabled]:hover { background: none; color: var(--fg-muted); border-color: var(--fg-line-2); } }
 .fg-cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .fg-cal__wd { text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: var(--fg-faint); padding: 2px 0 6px; }
 .fg-cal__day {
@@ -670,11 +678,12 @@ html.fg-pilote .fg { overflow: visible; }
   place-items: center;
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
-.fg-cal__day:hover, .fg-cal__day:focus-visible { background: rgba(148, 66, 146, 0.22); border-color: var(--fg-purple-2); outline: none; }
+.fg-cal__day:focus-visible { background: rgba(148, 66, 146, 0.22); border-color: var(--fg-purple-2); outline: none; }
+@media (hover: hover) { .fg-cal__day:hover { background: rgba(148, 66, 146, 0.22); border-color: var(--fg-purple-2); outline: none; } }
 .fg-cal__day.is-today { border-color: var(--fg-line-2); }
 .fg-cal__day.is-selected { background: var(--fg-purple); border-color: var(--fg-purple); color: var(--fg-text); }
 .fg-cal__day.is-off { color: var(--fg-faint); cursor: not-allowed; opacity: 0.55; }
-.fg-cal__day.is-off:hover { background: none; border-color: transparent; }
+@media (hover: hover) { .fg-cal__day.is-off:hover { background: none; border-color: transparent; } }
 .fg-cal__day.is-past { opacity: 0.25; }
 .fg-cal__day.is-loading { opacity: 0.4; cursor: progress; }
 /* Le point : sarcelle pour un conge scolaire, violet pour un ferie. */
@@ -729,7 +738,7 @@ html.fg-pilote .fg { overflow: visible; }
   transition: background-color 0.15s, color 0.15s, transform 0.14s var(--fg-ease);
 }
 .fg-stepper__btn:last-child { border-right: 0; border-left: 1.5px solid var(--fg-line-2); }
-.fg-stepper__btn:hover { background: rgba(148, 66, 146, 0.25); }
+@media (hover: hover) { .fg-stepper__btn:hover { background: rgba(148, 66, 146, 0.25); } }
 .fg-stepper__btn:active:not([disabled]) { background: var(--fg-purple); transform: scale(0.9); }
 .fg-stepper__btn[disabled] { color: var(--fg-faint); cursor: not-allowed; background: none; }
 .fg-stepper__value {
@@ -822,8 +831,10 @@ html.fg-pilote .fg { overflow: visible; }
   will-change: transform;
 }
 .fg-btn svg { width: 18px; height: 18px; flex: none; transition: transform 0.25s var(--fg-ease); }
-.fg-btn:hover { background: var(--fg-purple-2); transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--fg-teal); }
-.fg-btn:hover svg { transform: translateX(4px); }
+@media (hover: hover) {
+  .fg-btn:hover { background: var(--fg-purple-2); transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--fg-teal); }
+  .fg-btn:hover svg { transform: translateX(4px); }
+}
 .fg-btn:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--fg-teal); }
 .fg-btn[disabled], .fg-btn.is-busy { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: 6px 6px 0 var(--fg-teal-dim); }
 .fg-btn[disabled] svg { transform: none; }
@@ -874,8 +885,10 @@ html.fg-pilote .fg { overflow: visible; }
   padding: 0 20px;
   letter-spacing: 0.06em;
 }
-.fg-btn--ghost:hover { background: #161616; color: var(--fg-text); transform: none; box-shadow: none; border-color: #555; }
-.fg-btn--ghost:hover svg { transform: translateX(-3px); }
+@media (hover: hover) {
+  .fg-btn--ghost:hover { background: #161616; color: var(--fg-text); transform: none; box-shadow: none; border-color: #555; }
+  .fg-btn--ghost:hover svg { transform: translateX(-3px); }
+}
 .fg-btn--ghost:active { transform: none; box-shadow: none; }
 .fg-link {
   background: none;
@@ -886,7 +899,7 @@ html.fg-pilote .fg { overflow: visible; }
   text-underline-offset: 3px;
   transition: color 0.2s;
 }
-.fg-link:hover { color: var(--fg-text); }
+@media (hover: hover) { .fg-link:hover { color: var(--fg-text); } }
 .fg-link[hidden] { display: none; }
 .fg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 24px; margin-top: 34px; }
 .fg-actions--center { justify-content: center; }
@@ -900,7 +913,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-confirm__note { margin: 0; text-align: center; font-size: 13px; font-weight: 500; color: var(--fg-text); }
 .fg-edit { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 6px; font-size: 14px; color: var(--fg-muted); }
 .fg-edit__btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; color: var(--fg-text); text-decoration: underline; text-underline-offset: 3px; transition: color 0.2s; }
-.fg-edit__btn:hover { color: var(--fg-teal-ink); }
+@media (hover: hover) { .fg-edit__btn:hover { color: var(--fg-teal-ink); } }
 .fg-recap__who { overflow-wrap: anywhere; }
 
 /* --- Etape 2 : les activites ------------------------------------------------ */
@@ -932,7 +945,7 @@ html.fg-pilote .fg { overflow: visible; }
   transition: color 0.2s;
 }
 .fg-tab[aria-selected="true"] { color: var(--fg-text); }
-.fg-tab:hover { color: var(--fg-text); }
+@media (hover: hover) { .fg-tab:hover { color: var(--fg-text); } }
 /* La pastille violette glisse d un onglet a l autre. Les deux onglets ont la
    meme largeur (grille 1fr 1fr) : elle en prend une et passe a la seconde en
    translateX, sans mesure ni etirement (un scaleX ovalisait ses coins). */
@@ -996,7 +1009,8 @@ html.fg-pilote .fg { overflow: visible; }
   will-change: transform;
 }
 .fg-card > * { position: relative; z-index: 1; }
-/* La photo de l activite se devoile derriere la carte au survol. */
+/* La photo de l activite se devoile derriere la carte au survol de la
+   souris (jamais au toucher : voir l en-tete), et reste voilee cochee. */
 .fg-card__photo {
   position: absolute;
   inset: 0;
@@ -1011,15 +1025,17 @@ html.fg-pilote .fg { overflow: visible; }
    sur deux lignes tombait a 3,3:1 sur une photo claire, et sur telephone le
    nom lui-meme passait sous 4,5:1. */
 .fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%); }
-.fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }
-.fg-card:hover .fg-card__photo { opacity: 1; }
+@media (hover: hover) {
+  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }
+  .fg-card:hover .fg-card__photo { opacity: 1; }
+}
 .fg-card.is-on { border-color: var(--fg-purple-2); box-shadow: 0 12px 30px rgba(148, 66, 146, 0.22); }
 /* Cochee et suivie de son tiroir, la carte s y raccorde : angles du bas droits. */
 .fg-grid__item.is-on .fg-card:not(:only-child) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .fg-card.is-on .fg-card__photo { opacity: 0.55; }
 .fg-card__icon { width: 40px; height: 40px; color: var(--fg-text); margin-bottom: 8px; transition: transform 0.3s var(--fg-ease-out); }
 .fg-card__icon svg { width: 100%; height: 100%; }
-.fg-card:hover .fg-card__icon { transform: translateY(-2px) scale(1.06); }
+@media (hover: hover) { .fg-card:hover .fg-card__icon { transform: translateY(-2px) scale(1.06); } }
 .fg-card__name { font-size: 16px; font-weight: 700; line-height: 1.2; }
 .fg-card__price { font-size: 13px; color: var(--fg-muted); font-weight: 500; min-height: 20px; }
 .fg-card.is-on .fg-card__price { color: var(--fg-teal-ink); }
@@ -1040,7 +1056,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-card.is-on .fg-card__box { background: var(--fg-purple); border-color: var(--fg-purple); transform: scale(1.08); }
 .fg-card.is-on .fg-card__box svg { stroke-dashoffset: 0; }
 .fg-card.is-off { opacity: 0.45; cursor: not-allowed; }
-.fg-card.is-off:hover { transform: none; border-color: var(--fg-line); }
+@media (hover: hover) { .fg-card.is-off:hover { transform: none; border-color: var(--fg-line); } }
 .fg-card.is-off .fg-card__photo { display: none; }
 /* Cocher une carte : la case claque et l icone saute, une fois. scale et
    translate (proprietes individuelles) se composent avec le transform de
@@ -1136,7 +1152,7 @@ html.fg-pilote .fg { overflow: visible; }
    Elle n est pas `aria-disabled` : une raison qu on ne peut pas atteindre ne
    sert a personne. */
 .fg-card--formule.is-refus { opacity: 0.66; border-style: dashed; }
-.fg-card--formule.is-refus:hover { opacity: 1; border-color: var(--fg-amber); transform: none; }
+@media (hover: hover) { .fg-card--formule.is-refus:hover { opacity: 1; border-color: var(--fg-amber); transform: none; } }
 .fg-card--formule.is-refus .fg-card__box { display: none; }
 .fg-for__off {
   display: flex;
@@ -1225,7 +1241,7 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-pill b { font-size: 12px; font-weight: 700; white-space: nowrap; }
 .fg-pill small { font-size: 11px; color: var(--fg-muted); white-space: nowrap; }
-.fg-pill:hover { border-color: var(--fg-purple-2); }
+@media (hover: hover) { .fg-pill:hover { border-color: var(--fg-purple-2); } }
 .fg-pill.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal); }
 .fg-pill.is-on small { color: rgba(255, 255, 255, 0.85); }
 @media (prefers-reduced-motion: no-preference) {
@@ -1246,7 +1262,7 @@ html.fg-pilote .fg { overflow: visible; }
 /* Le telephone et l e-mail du centre, au dernier ecran : des liens, soulignes
    pour se reconnaitre, et une zone de toucher plus haute que la ligne. */
 .fg-done__lien { color: var(--fg-text); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; padding: 8px 0; }
-.fg-done__lien:hover { color: var(--fg-teal-ink); }
+@media (hover: hover) { .fg-done__lien:hover { color: var(--fg-teal-ink); } }
 .fg-bar__count b { color: var(--fg-purple-ink); font-weight: 700; font-size: 20px; margin-right: 6px; display: inline-block; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-bar__count b.is-bump { animation: fg-bump 0.35s var(--fg-ease-out); }
@@ -1476,7 +1492,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-chip small { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-muted); margin-top: 3px; }
 /* Sans mot dessous, le mot n occupe rien : l heure se centre seule. */
 .fg-chip small:empty { display: none; }
-.fg-chip:hover { border-color: var(--fg-purple-2); }
+@media (hover: hover) { .fg-chip:hover { border-color: var(--fg-purple-2); } }
 /* Choisie : pleine, sans aucun deplacement (un saut de 2 px a chaque pose se
    lisait comme un tremblement). */
 .fg-chip.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 4px 4px 0 var(--fg-teal); }
@@ -1488,7 +1504,7 @@ html.fg-pilote .fg { overflow: visible; }
 /* Serre : possible, mais la visite finira a la fermeture. Ambre, pointilles. */
 .fg-chip.is-soft { border-style: dotted; border-color: rgba(227, 179, 65, 0.7); }
 .fg-chip.is-soft small { color: var(--fg-amber-ink); }
-.fg-chip.is-soft:hover { border-color: var(--fg-amber); }
+@media (hover: hover) { .fg-chip.is-soft:hover { border-color: var(--fg-amber); } }
 /* Decale : chevauche l autre activite posee ; la prendre deplace cette autre
    activite. Violet, pointilles. */
 .fg-chip.is-shift { border-style: dashed; border-color: rgba(176, 79, 176, 0.75); }
@@ -1497,7 +1513,7 @@ html.fg-pilote .fg { overflow: visible; }
    reste cliquable pour lire la raison entiere. */
 .fg-chip.is-off { color: var(--fg-faint); border-style: dashed; border-color: var(--fg-line-2); background: rgba(10, 10, 10, 0.45); cursor: help; }
 .fg-chip.is-off small { color: var(--fg-faint); }
-.fg-chip.is-off:hover { border-color: var(--fg-faint); }
+@media (hover: hover) { .fg-chip.is-off:hover { border-color: var(--fg-faint); } }
 /* Groupe suivant : l heure ou joue la suite du groupe, hachuree. Elle se
    choisit (le 1er groupe y part). Quand le moteur refuse ce depart, elle ne
    se prend pas : tirets et curseur d aide, comme une heure complete. */
@@ -1507,7 +1523,7 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-chip.is-wave[data-ok="false"] { border-style: dashed; cursor: help; }
 .fg-chip.is-wave small { color: var(--fg-purple-ink); }
-.fg-chip.is-wave:hover { border-color: var(--fg-purple-2); }
+@media (hover: hover) { .fg-chip.is-wave:hover { border-color: var(--fg-purple-2); } }
 .fg-chip.is-wave.is-asked { border-color: var(--fg-purple-2); box-shadow: 0 0 0 3px rgba(176, 79, 176, 0.3); }
 .fg-chip.is-off.is-asked { border-color: var(--fg-danger); color: var(--fg-muted); }
 .fg-chip.is-off.is-asked small { color: var(--fg-danger); }
@@ -1551,7 +1567,7 @@ html.fg-pilote .fg { overflow: visible; }
   color: var(--fg-text);
   transition: background-color 0.2s;
 }
-.fg-period__btn:hover { background: rgba(255, 255, 255, 0.04); }
+@media (hover: hover) { .fg-period__btn:hover { background: rgba(255, 255, 255, 0.04); } }
 .fg-period__btn:focus-visible { outline-offset: -3px; }
 .fg-period__icon { width: 20px; height: 20px; color: var(--fg-purple-ink); transition: transform 0.4s var(--fg-ease-out); }
 .fg-period.is-open .fg-period__icon { transform: rotate(-15deg) scale(1.1); }
@@ -1703,7 +1719,7 @@ html.fg-pilote .fg { overflow: visible; }
   font-weight: 700;
   transition: background-color 0.2s, color 0.2s;
 }
-.fg-suggest__btn:hover { background: var(--fg-teal); color: var(--fg-bg); }
+@media (hover: hover) { .fg-suggest__btn:hover { background: var(--fg-teal); color: var(--fg-bg); } }
 .fg-loading { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--fg-muted); font-size: 14px; padding: 30px 0; }
 .fg-loading::before { content: ""; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); border-top-color: var(--fg-purple-2); animation: fg-spin 0.8s linear infinite; }
 /* L attente du premier calcul des heures : la forme d une piste, jamais un nombre de pistes devine. Elle n apparait qu apres 150 ms (une reponse rapide ne fait rien clignoter). Seules les barres respirent ; le texte, blanc comme la legende, ne bouge pas. */
@@ -1907,7 +1923,7 @@ html.fg-pilote .fg { overflow: visible; }
    prend sa propre ligne, a la taille d un doigt. */
 .fg-alert--inline { margin: 0; }
 .fg-alert__btn { display: flex; align-items: center; width: fit-content; min-height: 44px; margin-top: 10px; padding: 0 16px; border: 1.5px solid var(--fg-teal); border-radius: var(--fg-radius); color: var(--fg-teal-ink); font-size: 14px; font-weight: 700; transition: background-color 0.2s; }
-.fg-alert__btn:hover { background: rgba(103, 186, 172, 0.12); }
+@media (hover: hover) { .fg-alert__btn:hover { background: rgba(103, 186, 172, 0.12); } }
 @media (prefers-reduced-motion: no-preference) {
   .fg-alert:not([hidden]) { animation: fg-rise 0.3s var(--fg-ease-out) both; }
 }
@@ -1958,16 +1974,48 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-recall.is-open .fg-recall__toggle svg { transform: rotate(180deg); }
   .fg-recall:not(.is-open) .fg-recall__body { display: none; }
   .fg-scene--split.fg-scene--art-left .fg-recall { display: none; }
+  /* L ecran des coordonnees pose d abord SA question, comme les quatre
+     autres : la bande photo, le fil des etapes, « C est a quel nom ? », puis
+     la carte de la visite repliee, puis les champs (retour de Movsar,
+     2026-09-24 : la carte passait avant le titre). Dans la page, la carte
+     precede le formulaire, pour flotter a cote de lui sur un grand ecran :
+     ici le formulaire s efface en tant que boite, et ses enfants se rangent
+     avec elle dans une seule colonne. Ses marges passent a ses enfants. */
+  .fg-scene[data-scene="contact"]:is(.is-active, .is-leaving) { display: flex; flex-direction: column; }
+  .fg-scene[data-scene="contact"] .fg-scene__body { display: contents; }
+  .fg-scene[data-scene="contact"] .fg-scene__body > * { position: relative; z-index: 2; margin-left: var(--fg-gutter); margin-right: var(--fg-gutter); }
+  .fg-scene[data-scene="contact"] .fg-steps { order: 1; margin-top: 10px; }
+  .fg-scene[data-scene="contact"] .fg-title { order: 2; }
+  .fg-scene[data-scene="contact"] .fg-recall { order: 3; }
+  .fg-scene[data-scene="contact"] .fg-fields { order: 4; }
+  .fg-scene[data-scene="contact"] .fg-actions { order: 5; margin-bottom: 44px; }
   .fg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .fg-grid--for { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   @supports (grid-template-rows: subgrid) { .fg-grid { row-gap: 0; } .fg-grid > li { margin-bottom: 12px; } }
   .fg-fields--2 { grid-template-columns: 1fr; }
   .fg-stage, .fg-scene { min-height: 0; }
+  /* La barre qui suit, sur tablette : le retour devient le carre du
+     telephone (son mot reste pour les lecteurs d ecran), les deux boutons
+     restent sur une rangee et le resume prend la place qui reste. A 768 px,
+     « Retour » passait au-dessus de « Ces horaires me vont » et le resume
+     coupait son prix sur deux lignes. */
+  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }
+  .fg-dock .fg-bar__count { min-width: 0; }
+  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; padding: 0; }
+  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 /* Telephone en paysage : 200 px de photo sur une fenetre de 390 px laissent
    le titre sous le pli. La bande descend a 120 px. */
 @media (max-width: 900px) and (max-height: 520px) {
   .fg-scene--split .fg-art, .fg-scene--split.fg-scene--art-left .fg-art { height: 120px; }
+}
+/* Sous 700 px (petite tablette, ecran partage), la rangee ne laissait plus au
+   resume des heures que 216 px : il tombait sur trois lignes. La barre s y
+   range comme sur telephone : le resume sur sa ligne, puis le retour en
+   carre et le bouton qui avance sur la largeur qui reste. */
+@media (max-width: 700px) {
+  .fg-dock { flex-direction: column; align-items: stretch; gap: 8px; }
+  .fg-dock .fg-btn:not(.fg-btn--ghost) { flex: 1 1 auto; width: auto; min-width: 0; }
 }
 @media (max-width: 560px) {
   .fg-steps { max-width: none; margin-bottom: 26px; }
@@ -1989,6 +2037,11 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-dock .fg-btn--ghost { flex: 0 0 52px; width: 52px; padding: 0; }
   .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .fg-dock .fg-btn:not(.fg-btn--ghost) { flex: 1 1 auto; width: auto; min-width: 0; }
+  /* « Ces horaires me vont » mesure 190 px : a 360 px il restait 184 px
+     entre les marges du bouton, et il passait sur deux lignes. Des marges et
+     un espacement de lettres plus courts lui laissent 200 px ; il ne coupe
+     plus. */
+  .fg-dock .fg-btn:not(.fg-btn--ghost) { padding: 0 14px; gap: 8px; letter-spacing: 0.04em; white-space: nowrap; }
   /* Passe a la ligne et se centre : le filet vertical n a plus de sens, la
      pastille sarcelle suffit a rattacher l horaire au jour. */
   .fg-sub__open { display: flex; width: fit-content; margin: 8px auto 0; padding-left: 0; border-left: 0; }
@@ -2014,11 +2067,43 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-grid--for { grid-template-columns: 1fr; }
   .fg-fams { gap: 24px; }
 }
-/* Sous 360 px (iPhone SE de premiere generation, petits Android), deux
-   cartes par rangee laissent 49 px a une pastille : « 2 heures » n y tient
-   pas. Une carte par rangee, et les pastilles respirent. */
-@media (max-width: 359px) {
-  .fg-grid { grid-template-columns: 1fr; }
+/* LE TELEPHONE EN LISTE (retour de Movsar, 2026-09-24 : « trop serre »).
+   Deux colonnes de 150 a 170 px coupaient les noms sur deux lignes, le prix
+   sur trois, et serraient les pastilles du tiroir a deux par rangee. Une
+   activite par rangee, a plat : l icone, le nom et son prix dessous, la case
+   a droite. Le tiroir prend toute la largeur, ses options tiennent sur une
+   seule rangee (requetes de conteneur des pastilles, plus haut). Les
+   formules gardent leur carte : elles portent une liste et des contraintes. */
+@media (max-width: 560px) {
+  .fg-grid:not(.fg-grid--for) { grid-template-columns: minmax(0, 1fr); }
+  @supports (grid-template-rows: subgrid) { .fg-grid:not(.fg-grid--for) > li { margin-bottom: 10px; } }
+  .fg-grid:not(.fg-grid--for) .fg-card {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    grid-template-areas: "icone nom" "icone prix";
+    align-content: center;
+    column-gap: 14px;
+    row-gap: 2px;
+    min-height: 68px;
+    padding: 12px 52px 12px 16px;
+  }
+  .fg-grid:not(.fg-grid--for) .fg-card__icon { grid-area: icone; align-self: center; margin: 0; }
+  .fg-grid:not(.fg-grid--for) .fg-card__name { grid-area: nom; align-self: end; }
+  .fg-grid:not(.fg-grid--for) .fg-card__price { grid-area: prix; align-self: start; min-height: 0; }
+  .fg-grid:not(.fg-grid--for) .fg-card__box { top: calc(50% - 11px); right: 16px; }
+  /* La rangee est basse et large, et son prix peut courir jusqu a la case :
+     le voile la couvre de bout en bout, un peu plus clair a droite. Sur une
+     photo blanche montree en plein, le prix garde 5,7:1 a son bout (a 0,55
+     vers la droite, il y tombait a 3,6:1). */
+  .fg-grid:not(.fg-grid--for) .fg-card__photo::after { background: linear-gradient(90deg, rgba(5, 5, 5, 0.92) 0%, rgba(5, 5, 5, 0.8) 100%); }
+}
+/* Sous 340 px, meme resserre, le libelle ne tient qu en laissant la fleche.
+   Sous 320 px, il repasse a la ligne plutot que de sortir du bouton. */
+@media (max-width: 339px) {
+  .fg-dock .fg-btn:not(.fg-btn--ghost) svg { display: none; }
+}
+@media (max-width: 319px) {
+  .fg-dock .fg-btn:not(.fg-btn--ghost) { white-space: normal; }
 }
 
 /* --- Moins de mouvement -------------------------------------------------------- */

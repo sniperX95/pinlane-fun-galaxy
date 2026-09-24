@@ -187,7 +187,10 @@
 //       s efface pendant que la page hote defile et revient au repos, mais
 //       reste quand le cadre ne fait que grandir ; au clavier, ce qui prend le
 //       focus n est jamais cache par elle (WCAG 2.4.11) ; embarquee, une carte
-//       focalisee sous l ecran de l hote y remonte avec son anneau entier.
+//       focalisee sous l ecran de l hote y remonte avec son anneau entier,
+//       meme posee a cheval sur le bas de cet ecran (2026-09-24 : Chromium y
+//       ignore la marge de defilement en faisant defiler la page parente ;
+//       le cadre demande la bande a l hote).
 //       Le bouton qui avance
 //       s eveille une fois quand il devient cliquable (« Continuer » au premier
 //       choix, « Garder » a l arrivee sur les heures), et rend sa classe ;
@@ -220,6 +223,43 @@
 //       francais, hors des bords, et Continuer le redit ; catalogue en
 //       route : Continuer dit qu il charge, et l alerte s efface a
 //       l arrivee.
+//   [S] UN TOUCHER N EST PAS UN SURVOL (2026-09-24, retour de Movsar : sur
+//       iPhone, il fallait toucher deux fois une carte pour la cocher ; Safari
+//       prend le premier toucher pour un survol des qu il devoile quelque
+//       chose). Chaque regle :hover de la feuille servie est sous
+//       @media (hover: hover) ; sur un telephone emule (hover: none), UN
+//       toucher coche, la photo prend le voile de la carte cochee et repart a
+//       0 une fois decochee (le survol ne reste plus colle) ; un doigt qui
+//       fait defiler sur une carte, au vrai geste, ne la coche pas et ne
+//       telecharge pas sa photo ; a la souris, le survol la devoile toujours.
+//   [T] LE TELEPHONE EN LISTE (2026-09-24) : a 390, 360 et 320 px, une
+//       activite par rangee sur toute la largeur, a plat (icone a gauche,
+//       case a droite et centree, 96 px au plus, chaque nom sur une ligne des
+//       360 px) ; le tiroir prend la largeur de sa rangee, colle a sa carte,
+//       options sur UNE rangee des 360 px ; « Ces horaires me vont » tient
+//       sur une ligne dans son bouton, sans police sous 11,5 px ; l ecran des
+//       coordonnees s ouvre sur sa question (photo, fil, titre) puis la carte
+//       de la visite, puis les champs ; a 768 px, deux cartes par rangee ;
+//       a 768 et 600 px, la barre qui suit tient ses deux boutons sur une
+//       rangee et son resume sur une ligne, aux activites comme aux heures.
+//   [U] UN GESTE PENDANT UNE TRANSITION N EST PLUS PERDU (2026-09-24) :
+//       « Retour » touche pendant l arrivee d un ecran part des que la
+//       transition finit (aller() le jetait : le client touchait dans le
+//       vide, et le gate aussi, sur une machine rapide).
+//
+// CONTRE-PREUVES [S] ET [T] : survol (la regle du survol des cartes sort de
+// (hover: hover)), liste (le telephone repasse a deux colonnes), bouton (la
+// barre reprend les marges du bouton : il recoupe a 360 px), question (la
+// carte de la visite repasse avant le titre), barretablette (a 768 px,
+// « Retour » repasse au-dessus du bouton qui avance), barreetroite (a
+// 600 px, le resume des heures retombe sur trois lignes) : FEUILLE servie
+// cassee ;
+// survoldoigt (le doigt qui passe telecharge de nouveau la photo), anneauhote
+// (au clavier, le cadre ne demande plus la bande a l hote : la carte a cheval
+// sur le bas de l ecran y reste alignee au pixel, son anneau dehors ; mord la
+// ou Chromium ignore la marge de defilement, mesure sur Chromium 1194),
+// perdu (un geste pendant une transition est de nouveau jete) : JS servi
+// casse.
 //
 // CONTRE-PREUVES DU TOUR [J] : FG_QA_CASSE=pax (le champ du compteur reprend
 // une largeur fixe), centrage (la case du compteur ne centre plus sa ligne en
@@ -593,6 +633,9 @@ const MUTATIONS = {
   relance: ["if (e.target.closest('[data-retry]')) {", 'if (false) {'],
   lisiblemeta: ['panneMeta = err && err.lisible ? err.message : ', 'panneMeta = err.message || '],
   panneredite: ['    if (!meta) { direErreur(panneMeta ||', '    if (false) { direErreur(panneMeta ||'],
+  survoldoigt: ["    if (e.pointerType === 'touch') return;\n", ''],
+  anneauhote: ["    if (el && el.matches && el.matches('.fg-card, .fg-pill, .fg-tab') && focusClavier(el)) montrer(el);\n", ''],
+  perdu: ['    if (enTransition) { allerEnAttente = { cible: cible, retour: retour }; return; }\n', '    if (enTransition) return;\n'],
 };
 // Les contre-preuves de la FEUILLE : une regle servie cassee expres. La feuille
 // est relue en LF, quelle que soit la fin de ligne du depot.
@@ -620,6 +663,12 @@ const MUTATIONS_CSS = {
   errglisse: ['  .fg-field.is-invalid .fg-field__error, #consentWrap.is-invalid + .fg-field__error { animation: fg-err 0.24s var(--fg-ease-out) both; }\n', ''],
   cochecalme: ['@media (prefers-reduced-motion: no-preference) {\n  .fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n', '.fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n@media (prefers-reduced-motion: no-preference) {\n'],
   alertebord: ['  z-index: 3;\n  margin: 12px var(--fg-gutter) 20px;\n', '  z-index: 3;\n  margin: 0 0 20px;\n'],
+  survol: ['@media (hover: hover) {\n  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }\n  .fg-card:hover .fg-card__photo { opacity: 1; }\n}\n', '.fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }\n.fg-card:hover .fg-card__photo { opacity: 1; }\n'],
+  liste: ['  .fg-grid:not(.fg-grid--for) { grid-template-columns: minmax(0, 1fr); }\n', ''],
+  bouton: ['  .fg-dock .fg-btn:not(.fg-btn--ghost) { padding: 0 14px; gap: 8px; letter-spacing: 0.04em; white-space: nowrap; }\n', ''],
+  question: ['  .fg-scene[data-scene="contact"] .fg-recall { order: 3; }\n', ''],
+  barretablette: ['  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }\n  .fg-dock .fg-bar__count { min-width: 0; }\n  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; padding: 0; }\n  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }\n', ''],
+  barreetroite: ['  .fg-dock { flex-direction: column; align-items: stretch; gap: 8px; }\n', ''],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -1504,6 +1553,29 @@ async function main() {
 
     // =====================================================================
     console.log('');
+    console.log('[U] UN GESTE PENDANT UNE TRANSITION N EST PLUS PERDU');
+    // =====================================================================
+    // Vu en validant la passe du 2026-09-24 : un geste de navigation fait
+    // pendant les 0,42 s de l arrivee d un ecran etait jete par aller(). Un
+    // client qui se ravisait aussitot touchait dans le vide ; le gate aussi,
+    // sur une machine rapide (« retour a l ecran 4 », « #tabAct »). Joue ici,
+    // tot : sans le correctif, les sections suivantes peuvent tomber avant.
+    const ctxU = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const pU = await ctxU.newPage();
+    await pU.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    ok(await attendre(pU, () => document.body.classList.contains('is-ready') && document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), 'MONTAGE [U] le catalogue est lu');
+    const gesteU = await pU.evaluate(() => {
+      document.querySelector('#goActivities').click();
+      const pendant = Boolean(document.querySelector('.fg-scene[data-scene="activites"].is-active.is-entering'));
+      document.querySelector('.fg-scene[data-scene="activites"] .fg-dock [data-back]').click();
+      return { pendant };
+    });
+    gesteU.revenu = await attendre(pU, () => document.querySelector('.fg-scene[data-scene="date"].is-active') && !document.querySelector('.fg-scene.is-entering') && document.body.dataset.step === '1', 4000);
+    ok(gesteU.pendant && gesteU.revenu, '[U] « Retour » touche pendant l arrivee des activites ramene a l ecran du jour, une fois la transition finie', JSON.stringify(gesteU));
+    await ctxU.close();
+
+    // =====================================================================
+    console.log('');
     console.log('[A2] CALENDRIER PAR MOIS, JUSQU A L HORIZON ; GROUPE TAPE');
     // =====================================================================
     ok(calendrier.every((j) => JSON.stringify(j) === JSON.stringify(oracleJours[j.date])), '[A2] (oracle) les 45 jours du catalogue et les tranches calendarFrom disent la meme chose', `${Object.keys(oracleJours).length} jours relus`);
@@ -2020,6 +2092,11 @@ async function main() {
       etoiles: document.querySelectorAll('#t-ok .spark, #i-spark, .fg-title--spark').length,
     })));
     ok(recap.total === o6.prix, '[E] le total du recap EST le prix de la reponse de disponibilite', `${recap.total} vs ${o6.prix}`);
+    // Le compteur part a l image qui SUIT le rendu : d ici la, le texte dit
+    // deja le montant, puis repart de 0 pour y remonter en 700 ms. Lu trop
+    // tot, le montant final passait pour atteint, et la lecture suivante
+    // trouvait « 0 € » (vu le 2026-09-24 sur une machine rapide).
+    await dormir(900);
     ok(await attendre(page, (attendu) => document.querySelector('#totalAmount').textContent.trim() === attendu, 3000, euros(o6.prix)), '[E] le compteur finit exactement sur le montant', euros(o6.prix));
     ok(recap.libelle === (o6.complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place'), '[E] le total dit ce qu il couvre (les arcades se reglent sur place)', recap.libelle);
     ok(/Paiement sur place/.test(recap.paiement) && /Carte ou espèces/.test(recap.paiement) && recap.logos.join(',') === '#i-card,#i-cash',
@@ -2568,6 +2645,9 @@ async function main() {
     // La route rend « aucun horaire » (forcee) : c est l ECRAN qui est mesure.
     // Avant : deux avis identiques (celui des pistes, celui du plan) et aucune
     // sortie hors du fil des etapes, loin en haut.
+    // L ecran des heures d abord arrive : pendant sa transition (0,42 s),
+    // aller() ignore un retour, et le clic se perdait sur une machine rapide.
+    await surHeures();
     await pageV.click('.fg-scene.is-active [data-back]');
     ok(await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), '[I] retour aux formules');
     const routeDispo = (u) => u.pathname === '/api/public-availability';
@@ -3765,6 +3845,14 @@ async function main() {
       await fe.tap('#gridAct .fg-card[data-activity="bowling"]');
       await fe.tap('#gridAct .fg-card[data-activity="laser_game"]');
       await dormir(1000);
+      // Le toucher mesure ne doit rien faire defiler (Playwright amene sa
+      // cible dans l ecran avant de toucher) : la carte est posee au milieu
+      // de l ecran de l hote, et la page se repose. En liste sur telephone,
+      // decocher le laser, une rangee plus bas, laissait le bowling a moitie
+      // au-dessus de l ecran, et c est le toucher qui faisait defiler.
+      await fe.evaluate(() => document.querySelector('#gridAct .fg-card[data-activity="bowling"]').scrollIntoView({ block: 'center' }));
+      await auRepos(fe);
+      await dormir(900);
       await fe.evaluate(() => { window.__qaEfface = 0; new MutationObserver(() => { if (document.body.classList.contains('is-hote-defile')) window.__qaEfface += 1; }).observe(document.body, { attributes: true, attributeFilter: ['class'] }); });
       const croitN = { avant: await ph.evaluate(() => Math.round(document.querySelector('.bloc iframe').getBoundingClientRect().height)), sy: await ph.evaluate(() => Math.round(window.scrollY)) };
       await fe.tap('#gridAct .fg-card[data-activity="bowling"]');
@@ -3826,6 +3914,22 @@ async function main() {
       }
       ok(cibles.length > 0, 'MONTAGE [N] embarque : des cartes commencent sous l ecran de l hote (la mesure de l anneau porte sur un vrai defilement)', cibles.join(', '));
       ok(anneaux.every((a) => a.haut >= 0 && a.bas <= a.vh), '[N] embarque, au clavier : une carte qui prend le focus sous l ecran de l hote y remonte avec son anneau entier', JSON.stringify(anneaux));
+      // Le cas qui trompait la marge : une carte A CHEVAL sur le bas de
+      // l ecran de l hote. Chromium l y alignait au pixel, sans sa marge de
+      // defilement, l anneau dehors. La page hote est posee pour que le bas
+      // de la carte tombe 20 px sous l ecran, puis la carte prend le focus.
+      const idCheval = await fe.evaluate(() => { const c = document.querySelectorAll('#gridAct .fg-card'); return c[Math.min(3, c.length - 1)].dataset.activity; });
+      const cheval = await fe.evaluate((i) => document.querySelector(`#gridAct .fg-card[data-activity="${i}"]`).getBoundingClientRect().bottom, idCheval);
+      await ph.evaluate((b) => { const t = document.querySelector('.bloc iframe').getBoundingClientRect().top + window.scrollY; window.scrollTo(0, Math.max(0, Math.round(t + b - window.innerHeight - 20))); }, cheval);
+      await dormir(700);
+      const avantCheval = await ph.evaluate((b) => Math.round(document.querySelector('.bloc iframe').getBoundingClientRect().top + b - window.innerHeight), cheval);
+      await fe.focus(`#gridAct .fg-card[data-activity="${idCheval}"]`);
+      await dormir(450);
+      const cC = await ph.evaluate(() => ({ top: document.querySelector('.bloc iframe').getBoundingClientRect().top, vh: window.innerHeight }));
+      const rC = await fe.evaluate((s) => { const b = document.querySelector(s).getBoundingClientRect(); return { haut: b.top, bas: b.bottom }; }, `#gridAct .fg-card[data-activity="${idCheval}"]`);
+      const anneauCheval = { id: idCheval, depasseAvant: avantCheval, haut: Math.round((cC.top + rC.haut - 5) * 100) / 100, bas: Math.round((cC.top + rC.bas + 5) * 100) / 100, vh: cC.vh };
+      ok(anneauCheval.depasseAvant > 0 && anneauCheval.depasseAvant < 40 && anneauCheval.haut >= 0 && anneauCheval.bas <= anneauCheval.vh,
+        '[N] embarque, au clavier : une carte a cheval sur le bas de l ecran de l hote y remonte avec son anneau entier', JSON.stringify(anneauCheval));
       // Le focus revient ou la boucle l a laisse (dans la barre) : une carte
       // focalisee sous la barre l ecarterait, et le toucher qui suit la vise.
       await fe.focus('.fg-scene.is-active .fg-dock [data-back]');
@@ -4087,6 +4191,188 @@ async function main() {
     lacherMeta();
     ok(await attendre(pR3, () => document.body.classList.contains('is-ready') && document.querySelector('#fgAlert').hidden, 10000), '[R] catalogue arrive : l alerte d attente s efface');
     await ctxR3.close();
+
+    // =====================================================================
+    console.log('');
+    console.log('[S] UN TOUCHER N EST PAS UN SURVOL (le double toucher de l iPhone)');
+    // =====================================================================
+    // Retour de Movsar (2026-09-24) : sur iPhone il fallait toucher DEUX fois
+    // une carte d activite pour la cocher. Safari compte un premier toucher
+    // comme un survol des qu il devoile quelque chose (la photo, de 0 a 1).
+    // Chromium ne rejoue pas cette heuristique : ce qui se prouve ici, c est
+    // sa cause. Sur un ecran tactile aucun style de survol ne s applique, et
+    // le doigt ne telecharge plus rien en passant.
+    const ctxS = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const pS = await ctxS.newPage();
+    const photosS = []; pS.on('request', (r) => { if (r.url().indexOf('/assets/fungalaxy/') >= 0) photosS.push(r.url()); });
+    await pS.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    ok(await attendre(pS, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), 'MONTAGE [S] telephone : le catalogue est lu');
+    const feuilleS = await pS.evaluate(() => {
+      const dedans = []; const hors = [];
+      const parcourir = (regles, sousSurvol) => {
+        Array.from(regles).forEach((r) => {
+          if (r.type === CSSRule.MEDIA_RULE) { parcourir(r.cssRules, sousSurvol || /\(\s*hover\s*:\s*hover\s*\)/.test(r.media.mediaText)); return; }
+          if (r.type === CSSRule.STYLE_RULE) { if (/:hover/.test(r.selectorText)) (sousSurvol ? dedans : hors).push(r.selectorText); return; }
+          if (r.cssRules) parcourir(r.cssRules, sousSurvol);
+        });
+      };
+      const feuille = Array.from(document.styleSheets).find((s) => (s.href || '').indexOf('/assets/fungalaxy-booking.css') >= 0);
+      if (feuille) parcourir(feuille.cssRules, false);
+      return { lue: Boolean(feuille), dedans, hors, sansSurvol: matchMedia('(hover: none)').matches && !matchMedia('(hover: hover)').matches };
+    });
+    ok(feuilleS.lue && feuilleS.dedans.indexOf('.fg-card:hover .fg-card__photo') >= 0 && feuilleS.hors.length === 0,
+      '[S] feuille servie : chaque regle :hover est sous @media (hover: hover), celle de la photo des cartes comprise', JSON.stringify({ sous: feuilleS.dedans.length, hors: feuilleS.hors }));
+    ok(feuilleS.sansSurvol, 'MONTAGE [S] le telephone emule ne survole pas : (hover: none)');
+    await pS.tap('#goActivities');
+    ok(await attendre(pS, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), 'MONTAGE [S] telephone : ecran des activites');
+    // Deux cartes avec photo : l une se touche, l autre se fait seulement
+    // effleurer par un doigt qui fait defiler.
+    const [idTouche, idEffleure] = await pS.evaluate(() => Array.from(document.querySelectorAll('#gridAct .fg-card:not(.is-off)')).filter((c) => c.querySelector('.fg-card__photo img[data-src]')).map((c) => c.dataset.activity));
+    const lireCarteS = (id) => pS.evaluate((i) => {
+      const c = document.querySelector(`#gridAct .fg-card[data-activity="${i}"]`);
+      const ph = c.querySelector('.fg-card__photo');
+      const img = ph && ph.querySelector('img');
+      return { coche: c.getAttribute('aria-checked'), survolee: c.matches(':hover'), opacite: ph ? getComputedStyle(ph).opacity : null, enAttente: Boolean(img && img.dataset.src) };
+    }, id);
+    await pS.tap(`#gridAct .fg-card[data-activity="${idTouche}"]`);
+    await dormir(700);
+    const touche1 = await lireCarteS(idTouche);
+    ok(touche1.coche === 'true' && touche1.opacite === '0.55', '[S] telephone : UN toucher coche la carte, et sa photo prend le voile de la carte cochee (0,55), jamais le plein du survol', JSON.stringify(Object.assign({ id: idTouche }, touche1)));
+    await pS.tap(`#gridAct .fg-card[data-activity="${idTouche}"]`);
+    await dormir(700);
+    const touche2 = await lireCarteS(idTouche);
+    ok(touche2.coche === 'false' && touche2.opacite === '0', '[S] telephone : decochee au toucher suivant, la photo repart a 0 (le survol ne reste plus colle a la carte touchee)', JSON.stringify(touche2));
+    // Un doigt se pose sur une carte et fait defiler, au vrai geste.
+    await pS.locator(`#gridAct .fg-card[data-activity="${idEffleure}"]`).scrollIntoViewIfNeeded();
+    const boiteS = await pS.locator(`#gridAct .fg-card[data-activity="${idEffleure}"]`).boundingBox();
+    const cdpS = await ctxS.newCDPSession(pS);
+    const xS = Math.round(boiteS.x + boiteS.width / 2); const yS = Math.round(boiteS.y + boiteS.height / 2);
+    const avantEffleure = photosS.length;
+    await cdpS.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: xS, y: yS }] });
+    for (let k = 1; k <= 6; k += 1) { await cdpS.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: xS, y: yS - k * 12 }] }); await dormir(16); }
+    await cdpS.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await dormir(600);
+    const effleure = await lireCarteS(idEffleure);
+    ok(effleure.coche === 'false' && effleure.enAttente && photosS.length === avantEffleure, '[S] telephone : un doigt qui fait defiler sur une carte ne la coche pas et ne telecharge pas sa photo', JSON.stringify({ id: idEffleure, coche: effleure.coche, enAttente: effleure.enAttente, demandees: photosS.slice(avantEffleure) }));
+    await ctxS.close();
+    // Bureau, souris : le survol devoile toujours la photo.
+    const ctxSb = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const pSb = await ctxSb.newPage();
+    await pSb.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+    await attendre(pSb, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
+    await pSb.click('#goActivities');
+    await attendre(pSb, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
+    const idSb = await pSb.evaluate(() => { const c = Array.from(document.querySelectorAll('#gridAct .fg-card:not(.is-off)')).find((x) => x.querySelector('.fg-card__photo img[data-src]')); return c && c.dataset.activity; });
+    await pSb.hover(`#gridAct .fg-card[data-activity="${idSb}"]`);
+    const survolSb = await attendre(pSb, (i) => { const ph = document.querySelector(`#gridAct .fg-card[data-activity="${i}"] .fg-card__photo`); const img = ph.querySelector('img'); return getComputedStyle(ph).opacity === '1' && !img.dataset.src && img.complete && img.naturalWidth > 0; }, 3000, idSb);
+    ok(survolSb && await pSb.evaluate(() => matchMedia('(hover: hover)').matches), '[S] bureau : la souris survole toujours, la photo se telecharge et se devoile en plein', idSb);
+    await ctxSb.close();
+
+    // =====================================================================
+    console.log('');
+    console.log('[T] LE TELEPHONE EN LISTE, LE BOUTON DE LA BARRE SUR UNE LIGNE, LA QUESTION D ABORD');
+    // =====================================================================
+    // Retour de Movsar (2026-09-24), revue des ecrans sur telephone : les
+    // cartes d activites trop serrees sur deux colonnes, « Ces horaires me
+    // vont » coupe en deux lignes a 360 px, et la carte de la visite posee
+    // avant le titre de l ecran des coordonnees.
+    for (const [lT, hT] of [[390, 844], [360, 740], [320, 660]]) {
+      const ctxT = await browser.newContext({ viewport: { width: lT, height: hT }, isMobile: true, hasTouch: true });
+      const pT = await ctxT.newPage();
+      await pT.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+      ok(await attendre(pT, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), `MONTAGE [T] ${lT} px : le catalogue est lu`);
+      await pT.tap('#goActivities');
+      await attendre(pT, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
+      await attendre(pT, () => Array.from(document.querySelectorAll('#gridAct .fg-card')).every((c) => c.getAnimations().length === 0), 4000);
+      const listeT = await pT.evaluate(() => {
+        const grille = document.querySelector('#gridAct').getBoundingClientRect();
+        return Array.from(document.querySelectorAll('#gridAct .fg-card')).map((c) => {
+          const r = c.getBoundingClientRect();
+          const nom = c.querySelector('.fg-card__name');
+          const ln = parseFloat(getComputedStyle(nom).lineHeight) || parseFloat(getComputedStyle(nom).fontSize) * 1.2;
+          const rn = nom.getBoundingClientRect();
+          const box = c.querySelector('.fg-card__box').getBoundingClientRect();
+          const icone = c.querySelector('.fg-card__icon').getBoundingClientRect();
+          return { id: c.dataset.activity, gauche: Math.round(r.left - grille.left), largeur: Math.round(r.width), grille: Math.round(grille.width), haut: Math.round(r.height),
+            nomLignes: Math.round(rn.height / ln), caseCentre: Math.round(Math.abs((box.top + box.bottom) / 2 - (r.top + r.bottom) / 2) * 10) / 10,
+            iconeAGauche: icone.right <= rn.left, caseADroite: box.left >= rn.right };
+        });
+      });
+      const fautesT = listeT.filter((c) => c.gauche !== 0 || Math.abs(c.largeur - c.grille) > 1 || c.haut > 96 || c.caseCentre > 1 || !c.iconeAGauche || !c.caseADroite || (lT >= 360 && c.nomLignes > 1));
+      ok(listeT.length >= 6 && fautesT.length === 0,
+        `[T] ${lT} px : une activite par rangee, toute la largeur, a plat (icone a gauche, case a droite et centree), au plus 96 px de haut${lT >= 360 ? ', chaque nom sur une ligne' : ''}`,
+        JSON.stringify({ cartes: listeT.length, fautes: fautesT.slice(0, 3), exemple: listeT[0] }));
+      await pT.tap('#gridAct .fg-card[data-activity="bowling"]');
+      await pT.tap('#gridAct .fg-card[data-activity="laser_game"]');
+      await attendre(pT, () => ['bowling', 'laser_game'].every((id) => document.querySelector(`#gridAct li[data-activity="${id}"] .fg-card__optin`).getBoundingClientRect().height > 40), 3000);
+      await dormir(450);
+      const tiroirsT = await pT.evaluate(() => ['bowling', 'laser_game'].map((id) => {
+        const li = document.querySelector(`#gridAct li[data-activity="${id}"]`);
+        const carte = li.querySelector('.fg-card').getBoundingClientRect();
+        const boite = li.querySelector('.fg-card__optbox').getBoundingClientRect();
+        const hauts = Array.from(li.querySelectorAll('.fg-pill')).map((p) => Math.round(p.getBoundingClientRect().top));
+        return { id, pastilles: hauts.length, rangees: new Set(hauts).size, largeur: Math.round(boite.width), carte: Math.round(carte.width), colle: Math.round(boite.top - carte.bottom) };
+      }));
+      ok(tiroirsT.every((t) => Math.abs(t.largeur - t.carte) <= 1 && Math.abs(t.colle) <= 1 && (lT < 360 || t.rangees === 1)),
+        `[T] ${lT} px : le tiroir prend la largeur de sa rangee, colle a sa carte${lT >= 360 ? ', et ses options tiennent sur UNE rangee' : ''}`, JSON.stringify(tiroirsT));
+      await pT.tap('#goHours');
+      ok(await attendre(pT, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('#goContact').disabled, 25000), `MONTAGE [T] ${lT} px : ecran des heures, bouton actif`);
+      const boutonT = await pT.evaluate(() => {
+        const b = document.querySelector('#goContact');
+        const l = document.querySelector('#keepLabel');
+        const cs = getComputedStyle(b);
+        const rb = b.getBoundingClientRect(); const rl = l.getBoundingClientRect();
+        const ln = parseFloat(getComputedStyle(l).lineHeight) || parseFloat(cs.fontSize) * 1.25;
+        return { texte: l.textContent, lignes: Math.round(rl.height / ln), dedans: rl.left >= rb.left + parseFloat(cs.paddingLeft) - 1 && rl.right <= rb.right - parseFloat(cs.paddingRight) + 1, police: parseFloat(cs.fontSize), bouton: Math.round(rb.width) };
+      });
+      ok(boutonT.lignes === 1 && boutonT.dedans && boutonT.police >= 11.5, `[T] ${lT} px : « ${boutonT.texte} » tient sur UNE ligne, dans le bouton, sans police sous 11,5 px`, JSON.stringify(boutonT));
+      await pT.tap('#goContact');
+      ok(await attendre(pT, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), `MONTAGE [T] ${lT} px : ecran des coordonnees`);
+      const ordreT = await pT.evaluate(() => {
+        const s = document.querySelector('.fg-scene[data-scene="contact"]');
+        const h = (sel) => { const r = s.querySelector(sel).getBoundingClientRect(); return { haut: Math.round(r.top), bas: Math.round(r.bottom), gauche: Math.round(r.left), droite: Math.round(r.right) }; };
+        return { photo: h('.fg-art'), fil: h('.fg-steps'), titre: h('.fg-title'), carte: h('#recall'), champ: h('#cPrenom'), bouton: h('#goRecap'), largeur: document.documentElement.clientWidth };
+      });
+      const rangeT = ordreT.photo.bas <= ordreT.fil.haut && ordreT.fil.bas <= ordreT.titre.haut && ordreT.titre.bas <= ordreT.carte.haut && ordreT.carte.bas <= ordreT.champ.haut && ordreT.champ.bas <= ordreT.bouton.haut;
+      const margesT = [ordreT.fil, ordreT.titre, ordreT.carte, ordreT.champ].every((b) => b.gauche >= 16 && b.droite <= ordreT.largeur - 16);
+      ok(rangeT && margesT, `[T] ${lT} px : l ecran des coordonnees s ouvre sur sa question (photo, fil, titre), puis la carte de la visite, puis les champs, dans les marges`, JSON.stringify(ordreT));
+      await ctxT.close();
+    }
+    // Au-dessus du telephone : les activites restent des cartes (deux par
+    // rangee a 768), et la barre qui suit tient ses deux boutons sur une
+    // rangee et son resume sur une ligne, a 768 comme a 600 px. Avant : a
+    // 768, « Retour » passait au-dessus de « Ces horaires me vont » ; a 600,
+    // le resume des heures tombait sur trois lignes.
+    for (const [lTt, hTt] of [[768, 1024], [600, 900]]) {
+      const ctxTt = await browser.newContext({ viewport: { width: lTt, height: hTt }, hasTouch: true });
+      const pTt = await ctxTt.newPage();
+      await pTt.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
+      await attendre(pTt, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
+      await pTt.tap('#goActivities');
+      await attendre(pTt, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
+      if (lTt === 768) {
+        const colonnesTt = await pTt.evaluate(() => new Set(Array.from(document.querySelectorAll('#gridAct .fg-card')).map((c) => Math.round(c.getBoundingClientRect().left))).size);
+        ok(colonnesTt === 2, '[T] tablette 768 : les activites restent des cartes, deux par rangee', `${colonnesTt} colonne(s)`);
+      }
+      await pTt.tap('#gridAct .fg-card[data-activity="bowling"]');
+      await pTt.tap('#gridAct .fg-card[data-activity="laser_game"]');
+      await dormir(500);
+      const lireBarreT = () => pTt.evaluate(() => {
+        const d = document.querySelector('.fg-scene.is-active .fg-dock');
+        const c = d.querySelector('.fg-bar__count');
+        const bs = Array.from(d.querySelectorAll('.fg-btn')).map((x) => x.getBoundingClientRect());
+        const ln = parseFloat(getComputedStyle(c).lineHeight) || parseFloat(getComputedStyle(c).fontSize) * 1.3;
+        return { resume: c.textContent.trim(), lignes: Math.round(c.getBoundingClientRect().height / ln), rangee: bs.length === 2 && Math.abs((bs[0].top + bs[0].bottom) - (bs[1].top + bs[1].bottom)) < 2, dedans: bs.every((r) => r.left >= 0 && r.right <= document.documentElement.clientWidth) };
+      });
+      const barreActT = await lireBarreT();
+      await pTt.tap('#goHours');
+      await attendre(pTt, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('#goContact').disabled, 25000);
+      await dormir(400);
+      const barreHeuT = await lireBarreT();
+      ok([barreActT, barreHeuT].every((x) => x.lignes === 1 && x.rangee && x.dedans),
+        `[T] tablette ${lTt} px : la barre qui suit tient ses deux boutons sur une rangee et son resume sur une ligne (activites et heures)`, JSON.stringify({ activites: barreActT, heures: barreHeuT }));
+      await ctxTt.close();
+    }
 
     // =====================================================================
     console.log('');

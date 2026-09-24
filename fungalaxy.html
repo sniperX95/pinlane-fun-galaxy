@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260924a">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260924b">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -123,12 +123,12 @@
       </div>
     </section>
 
-    <!-- 2. VOUS JOUEZ A QUOI ? Les activites ou une formule -->
+    <!-- 2. CHOISISSEZ VOS ACTIVITES : les activites ou une formule -->
     <section class="fg-scene fg-scene--full" data-scene="activites" aria-labelledby="t-act">
       <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 1440px) 100vw, 800px" alt="" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-act" data-words>Vous jouez<br><em>à quoi&nbsp;?</em></h2>
+        <h2 class="fg-title" id="t-act" data-words>Choisissez<br><em>vos activités</em></h2>
         <div class="fg-tabs fg-rise" style="--i:1" role="tablist" aria-label="Activités ou formules">
           <button type="button" class="fg-tab" role="tab" id="tabAct" aria-selected="true" aria-controls="panelAct">Activités</button>
           <button type="button" class="fg-tab" role="tab" id="tabFor" aria-selected="false" aria-controls="panelFor" tabindex="-1">Formules</button>
@@ -176,19 +176,19 @@
       </div>
     </section>
 
-    <!-- 4. C EST A QUEL NOM ? Les coordonnees, a cote du recapitulatif entier -->
+    <!-- 4. VOS COORDONNEES, a cote du recapitulatif entier -->
     <section class="fg-scene fg-scene--split" data-scene="contact" aria-labelledby="t-who">
       <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" decoding="async"></div>
       <aside class="fg-recall" id="recall" aria-labelledby="recallKicker">
         <span class="fg-kicker" id="recallKicker">Votre visite</span>
+        <div class="fg-recall__bar"></div>
         <p class="fg-recall__line" id="recallLine"></p>
         <button type="button" class="fg-recall__toggle" id="recallToggle" aria-expanded="false" aria-controls="recallBody"><span>Voir le détail</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
-        <div class="fg-recall__bar"></div>
         <div class="fg-recap fg-recall__body" id="recallBody"></div>
       </aside>
       <form class="fg-scene__body" id="contactForm" novalidate>
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-who" data-words>C’est<br><em>à quel nom&nbsp;?</em></h2>
+        <h2 class="fg-title" id="t-who" data-words>Vos<br><em>coordonnées</em></h2>
         <div class="fg-fields" style="max-width:520px">
           <div class="fg-field fg-rise" style="--i:1">
             <label class="fg-field__label" for="cPrenom">Prénom</label>
@@ -230,12 +230,12 @@
       </form>
     </section>
 
-    <!-- 5. TOUT EST BON ? Le recapitulatif, puis la confirmation -->
+    <!-- 5. DERNIERE VERIFICATION : le recapitulatif, puis la confirmation -->
     <section class="fg-scene fg-scene--split fg-scene--art-left" data-scene="recap" aria-labelledby="t-ok">
       <div class="fg-art"><img sizes="(max-width: 560px) 260px, (min-width: 900px) 52vw, 100vw" alt="" decoding="async"></div>
       <div class="fg-scene__body">
         <ol class="fg-steps" data-steps></ol>
-        <h2 class="fg-title" id="t-ok"><span data-words>Tout est<br><em>bon&nbsp;?</em></span></h2>
+        <h2 class="fg-title" id="t-ok"><span data-words>Dernière<br><em>vérification</em></span></h2>
         <div class="fg-recap" id="recap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:520px">
           <button type="button" class="fg-btn fg-btn--shine" id="confirmBtn">Valider ma réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
@@ -265,6 +265,6 @@
      .fg-cal__voile). Le toucher referme le calendrier. -->
 <div class="fg-cal__voile" id="dayVoile" aria-hidden="true" hidden></div>
 
-<script src="/assets/fungalaxy-booking.js?v=20260924a" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260924b" defer></script>
 </body>
 </html>

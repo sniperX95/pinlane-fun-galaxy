@@ -100,7 +100,10 @@
 //       corps, chaque etape previent l hote, la reservation pousse
 //       pinlane_booking dans le dataLayer sans donnee personnelle ; le mot
 //       pour l equipe est repris au recapitulatif et part dans notes.
-//   [G] TELEPHONE (390 px) : calendrier dans l ecran, aucun defilement
+//   [G] TELEPHONE (390 px) : le sous-titre des heures ne commence jamais une
+//       ligne par « · » ou « + » et ne laisse aucun mot seul (« Game ») ; les
+//       fleches du mois font 44 px et une etape faite se touche au-dessus de
+//       son segment ; calendrier dans l ecran, aucun defilement
 //       horizontal, pastilles et heures dans leurs cases, poser une heure ne
 //       fait rien sauter ; a l ecran des coordonnees, le recapitulatif se
 //       replie sous sa ligne de resume et un bouton de 44 px le deplie, les
@@ -241,7 +244,8 @@
 //       coordonnees s ouvre sur sa question (photo, fil, titre) puis la carte
 //       de la visite, puis les champs ; a 768 px, deux cartes par rangee ;
 //       a 768 et 600 px, la barre qui suit tient ses deux boutons sur une
-//       rangee et son resume sur une ligne, aux activites comme aux heures.
+//       rangee et son resume sur une ligne, aux activites comme aux heures,
+//       et son retour est un carre de la hauteur du bouton qui avance.
 //   [U] UN GESTE PENDANT UNE TRANSITION N EST PLUS PERDU (2026-09-24) :
 //       « Retour » touche pendant l arrivee d un ecran part des que la
 //       transition finit (aller() le jetait : le client touchait dans le
@@ -252,8 +256,9 @@
 // barre reprend les marges du bouton : il recoupe a 360 px), question (la
 // carte de la visite repasse avant le titre), barretablette (a 768 px,
 // « Retour » repasse au-dessus du bouton qui avance), barreetroite (a
-// 600 px, le resume des heures retombe sur trois lignes) : FEUILLE servie
-// cassee ;
+// 600 px, le resume des heures retombe sur trois lignes), retourcarre (en
+// tablette, le retour retombe a 46 px de haut a cote d un bouton de 54) :
+// FEUILLE servie cassee ;
 // survoldoigt (le doigt qui passe telecharge de nouveau la photo), anneauhote
 // (au clavier, le cadre ne demande plus la bande a l hote : la carte a cheval
 // sur le bas de l ecran y reste alignee au pixel, son anneau dehors ; mord la
@@ -267,8 +272,9 @@
 // (le segment de l etape en cours ne se remplit plus : feuille cassee),
 // mouvement (avancer ne remplit plus le segment atteint), contraste (les
 // etapes a venir reprennent le gris qui tombait a 3,7:1 sous le halo :
-// feuille cassee), legendegris (la legende reprend son gris, qui tombait a
-// 3,2:1 sur les neons de la photo : feuille cassee), legende (la glose
+// feuille cassee), legendegris (la legende passe au gris pale : feuille
+// cassee ; centree depuis le 2026-09-24, elle passe sous le voile le plus
+// sombre, ou son ancien gris tiendrait 4,5:1), legende (la glose
 // n est plus balisee, donc plus masquable sur telephone), vagues (le plan est
 // ignore, plus personne ne dit qu un groupe se scinde), duree (le total sur
 // place derive d un quart d heure).
@@ -391,6 +397,16 @@
 // clavier), menufocus (les heures d un menu replie y restent) : FEUILLE servie
 // cassee ; unevoix (la zone des heures se relit de nouveau en entier) : PAGE
 // servie cassee.
+//
+// CONTRE-PREUVES DES COUPURES, DES CIBLES ET DE L ECRAN FINAL : separateur
+// (le « · » du sous-titre des heures redevient secable), orphelin (le
+// dernier mot d un nom se separe de nouveau), flechefocus (la fleche
+// eteinte garde le focus), sortieclavier (Tab hors du calendrier le laisse
+// ouvert), numero (l ecran final remontre un numero de reservation, dont le
+// SaaS ne se sert pas) : JS servi casse ; fleches44 (les fleches du mois
+// reviennent a 34 px), cibleetape (la cible d une etape faite se reduit a
+// son segment), anneaustepper (l anneau du « - » repart dehors, coupe) :
+// FEUILLE servie cassee.
 //
 // CONTRE-PREUVES DES PANNES [R] : lisible (l ecran des heures montre de
 // nouveau le texte du navigateur), relance (« Reessayer » ne relance
@@ -630,6 +646,11 @@ const MUTATIONS = {
   fete: ['if (confirme && !reduced) for', 'if (!reduced) for'],
   anneau: ["confirme ? '#i-check' : '#i-mail'", "'#i-check'"],
   lisible: ['var msgErr = err && err.lisible ? err.message : ', 'var msgErr = err.message || '],
+  separateur: ["hourSub.innerHTML = '<b>' + esc(insecable(jourCourt(state.date))) + '</b>\\u00a0· '", "hourSub.innerHTML = '<b>' + esc(insecable(jourCourt(state.date))) + '</b> · '"],
+  orphelin: ["function finInsecable(s) { return String(s == null ? '' : s).replace(/ ([^ ]+)$/, '\\u00a0$1'); }", "function finInsecable(s) { return String(s == null ? '' : s); }"],
+  flechefocus: ['    if (navFocus && navFocus.disabled) (navFocus', '    if (false) (navFocus'],
+  sortieclavier: ['  dayWrap.addEventListener(\'focusout\', sortieClavier);\n  dayPop.addEventListener(\'focusout\', sortieClavier);\n', ''],
+  numero: ["    $('#finBody').innerHTML = '<div class=\"fg-done__ticket", "    $('#finBody').innerHTML = '<div>Réservation n° ' + esc(r.id) + '</div><div class=\"fg-done__ticket"],
   relance: ["if (e.target.closest('[data-retry]')) {", 'if (false) {'],
   lisiblemeta: ['panneMeta = err && err.lisible ? err.message : ', 'panneMeta = err.message || '],
   panneredite: ['    if (!meta) { direErreur(panneMeta ||', '    if (false) { direErreur(panneMeta ||'],
@@ -643,7 +664,7 @@ const MUTATIONS_CSS = {
   centrage: ['  flex-wrap: wrap;\n  align-content: center;\n', '  flex-wrap: wrap;\n'],
   jauge: ['.fg-steps__item.is-active .fg-steps__seg::after { transform: scaleX(1); }\n', ''],
   contraste: ['meme au coeur du halo le plus clair. */\n  color: #a0a0a0;\n', 'meme au coeur du halo le plus clair. */\n  color: var(--fg-faint);\n'],
-  legendegris: ['sur un pixel blanc de la photo. */\n  color: var(--fg-text);\n', 'sur un pixel blanc de la photo. */\n  color: var(--fg-muted);\n'],
+  legendegris: ['sur un pixel blanc de la photo. */\n  color: var(--fg-text);\n', 'sur un pixel blanc de la photo. */\n  color: var(--fg-faint);\n'],
   flotte: ['  float: right;\n  width: min(400px, calc(52% - var(--fg-gutter) - 24px));\n', '  width: min(400px, calc(52% - var(--fg-gutter) - 24px));\n'],
   emclair: ['.fg-title em { font-style: normal; color: var(--fg-purple-em); }\n', '.fg-title em { font-style: normal; color: var(--fg-purple-2); }\n'],
   colonne: ['    linear-gradient(90deg, rgba(5, 5, 5, 0) calc(50% - 490px), rgba(5, 5, 5, 0.55) calc(50% - 350px), rgba(5, 5, 5, 0.55) calc(50% + 350px), rgba(5, 5, 5, 0) calc(50% + 490px)),\n', ''],
@@ -662,13 +683,17 @@ const MUTATIONS_CSS = {
   zoom: ['zoome sur le champ touche. */\n  font-size: 16px;', 'zoome sur le champ touche. */\n  font-size: 15px;'],
   errglisse: ['  .fg-field.is-invalid .fg-field__error, #consentWrap.is-invalid + .fg-field__error { animation: fg-err 0.24s var(--fg-ease-out) both; }\n', ''],
   cochecalme: ['@media (prefers-reduced-motion: no-preference) {\n  .fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n', '.fg-done__ring svg { stroke-dasharray: 60; stroke-dashoffset: 60; }\n@media (prefers-reduced-motion: no-preference) {\n'],
+  fleches44: ['.fg-cal__nav {\n  width: 44px;\n  height: 44px;\n', '.fg-cal__nav {\n  width: 34px;\n  height: 34px;\n'],
+  cibleetape: ['.fg-steps__item button::after { content: ""; position: absolute; left: 0; right: 0; top: -16px; bottom: -6px; }\n', ''],
+  anneaustepper: ['.fg-stepper__btn:focus-visible { outline-offset: -4px; }\n', ''],
   alertebord: ['  z-index: 3;\n  margin: 12px var(--fg-gutter) 20px;\n', '  z-index: 3;\n  margin: 0 0 20px;\n'],
-  survol: ['@media (hover: hover) {\n  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }\n  .fg-card:hover .fg-card__photo { opacity: 1; }\n}\n', '.fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }\n.fg-card:hover .fg-card__photo { opacity: 1; }\n'],
+  survol: ['@media (hover: hover) {\n  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }\n  .fg-card:hover .fg-card__photo { opacity: 1; }\n}\n', '.fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }\n.fg-card:hover .fg-card__photo { opacity: 1; }\n'],
   liste: ['  .fg-grid:not(.fg-grid--for) { grid-template-columns: minmax(0, 1fr); }\n', ''],
   bouton: ['  .fg-dock .fg-btn:not(.fg-btn--ghost) { padding: 0 14px; gap: 8px; letter-spacing: 0.04em; white-space: nowrap; }\n', ''],
   question: ['  .fg-scene[data-scene="contact"] .fg-recall { order: 3; }\n', ''],
-  barretablette: ['  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }\n  .fg-dock .fg-bar__count { min-width: 0; }\n  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; padding: 0; }\n  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }\n', ''],
+  barretablette: ['  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }\n  .fg-dock .fg-bar__count { min-width: 0; }\n  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }\n  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }\n', ''],
   barreetroite: ['  .fg-dock { flex-direction: column; align-items: stretch; gap: 8px; }\n', ''],
+  retourcarre: ['  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }\n', '  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; padding: 0; }\n'],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -678,7 +703,7 @@ const MUTATIONS_EMBED = {
 // cassees (plusieurs remplacements, chacun sur une ancre unique).
 const MUTATIONS_HTML = {
   titres: [
-    ['data-words>Vous jouez<br><em>à quoi&nbsp;?</em></h2>', 'data-words>Vos <em>activités</em></h2>'],
+    ['data-words>Choisissez<br><em>vos activités</em></h2>', 'data-words>Vos <em>activités</em></h2>'],
     ['data-words>Quelle heure<br><em>vous arrange&nbsp;?</em></h2>', 'data-words>Vos <em>horaires</em></h2>'],
   ],
   unevoix: [
@@ -1623,6 +1648,7 @@ async function main() {
       await attendre(page, (t) => document.querySelector('#calTitle').textContent.trim() !== t, 3000, m.titre);
     }
     ok(ecartsCal.length === 0, '[A2] CHAQUE jour de CHAQUE mois = le calendrier servi (ferme grise, horaires ou motif, ferie/conge marque, passe et au-dela de l horizon grises)', ecartsCal.slice(0, 4).join(' ; ') || `${vus.length} mois, ${vus.reduce((s, v) => s + v.jours, 0)} jours conformes`);
+    ok(await page.evaluate(() => document.activeElement === document.querySelector('#calPrev')), '[A2] au dernier mois, « suivant » s eteint et le focus passe a « precedent » (il ne tombe pas sur la page)', await page.evaluate(() => (document.activeElement || {}).id || String(document.activeElement && document.activeElement.tagName)));
     const sensMois = await page.evaluate(() => window.__sens);
     ok(sensMois.length > 0 && sensMois.every((s) => s === 'is-next'), '[A2] « mois suivant » fait glisser la grille vers la gauche, jamais a l envers', sensMois.join(','));
     ok(fleches.prevAuDebut === true, '[A2] la fleche « precedent » est inactive sur le mois en cours');
@@ -1722,6 +1748,22 @@ async function main() {
       return { surPax: au(document.querySelector('#paxValue').getBoundingClientRect()), surBouton: au(document.querySelector('#goActivities').getBoundingClientRect()) };
     });
     ok(dessus.surPax === 'calendrier' && (dessus.surBouton === 'calendrier' || dessus.surBouton === 'pas de recouvrement'), '[A3] le calendrier ouvert est DEVANT le compteur et le bouton', JSON.stringify(dessus));
+    // Le clavier qui sort du calendrier le referme : ouvert, il couvrait le
+    // compteur, et le focus y tombait sous lui.
+    ok(await pageEtroite.evaluate(() => Boolean(document.activeElement && document.activeElement.closest('#dayPop'))), 'MONTAGE [A3] a l ouverture, le focus est dans le calendrier');
+    await pageEtroite.keyboard.press('Tab');
+    await dormir(300);
+    const sortie = await pageEtroite.evaluate(() => { const f = document.activeElement; const r = f.getBoundingClientRect(); const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); const cs = getComputedStyle(f); return { ferme: document.querySelector('#dayPop').hidden, focus: f.id, touche: Boolean(el) && (el === f || f.contains(el)), anneau: cs.outlineStyle === 'solid' && cs.outlineOffset === '-4px' }; });
+    ok(sortie.ferme && sortie.focus === 'paxMinus' && sortie.touche, '[A3] Tab depuis le calendrier le referme : le focus arrive sur le « - », devant', JSON.stringify(sortie));
+    ok(sortie.anneau, '[A3] et l anneau du « - » est entier, dedans (le compteur coupait celui du dehors)', JSON.stringify(sortie));
+    // Rouvert seulement s il est ferme : sous la contre-preuve sortieclavier,
+    // Tab l a laisse ouvert, un clic le refermerait et Maj+Tab passerait par
+    // hasard.
+    if (await pageEtroite.evaluate(() => document.querySelector('#dayPop').hidden)) await pageEtroite.click('#dayBtn');
+    ok(await attendre(pageEtroite, () => !document.querySelector('#dayPop').hidden, 2000), 'MONTAGE [A3] le calendrier est ouvert avant Maj+Tab');
+    await pageEtroite.focus('#dayBtn');
+    await pageEtroite.keyboard.press('Shift+Tab');
+    ok(await attendre(pageEtroite, () => document.querySelector('#dayPop').hidden && !document.querySelector('.fg-day').contains(document.activeElement), 2000), '[A3] Maj+Tab depuis le champ du jour, calendrier ouvert, le referme aussi');
     await etroit.close();
 
     // =====================================================================
@@ -2143,7 +2185,7 @@ async function main() {
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 10000), '[E] la confirmation mene a l ecran final');
     const corps = mock.dernierePose.body || {};
     const fin = await page.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim());
-    ok(new RegExp(`Réservation n° ${corps.__id || '\\d+'}`).test(fin) && fin.indexOf('qa@example.com') >= 0, '[E] l ecran final cite le numero rendu et l adresse', fin.slice(0, 120));
+    ok(!/n°\s*\d+/.test(fin) && !/numéro de réservation/i.test(fin) && fin.indexOf('qa@example.com') >= 0, '[E] l ecran final cite l adresse, et aucun numero de reservation (le SaaS ne s en sert pas)', fin.slice(0, 120));
     // L ECRAN FINAL EST UN RECU : l e-mail n est annonce que parce que la
     // reponse l a mis en file ; l arrivee est celle du plan rendu ; le
     // programme nomme chaque activite choisie.
@@ -2278,9 +2320,15 @@ async function main() {
     await pageTel.click('#dayBtn');
     ok(await attendre(pageTel, () => { const p = document.querySelector('#dayPop'); const r = p.getBoundingClientRect(); return !p.hidden && r.left >= 0 && r.right <= document.documentElement.clientWidth; }, 3000), '[G] ecran 1 : le calendrier tient dans l ecran');
     ok(await allerAuMois(pageTel, mock.DATE), '[G] le mois du samedi du mock s affiche');
+    // Taille de mise en page (offsetWidth) : la fenetre du milieu s ouvre en
+    // passant de l echelle 0,96 a 1, une mesure a l ecran pendant l ouverture
+    // rendait 42 pour 44.
+    ok(await pageTel.evaluate(() => ['#calPrev', '#calNext'].every((s) => { const b = document.querySelector(s); return b.offsetWidth >= 44 && b.offsetHeight >= 44; })), '[G] les fleches du mois font 44 px', await pageTel.evaluate(() => JSON.stringify(['#calPrev', '#calNext'].map((s) => document.querySelector(s).offsetWidth))));
     await pageTel.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
     await pageTel.click('#goActivities');
     ok(await attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000), '[G] ecran 2 atteint');
+    const filTouche = await pageTel.evaluate(() => { const b = document.querySelector('.fg-scene.is-active .fg-steps__item.is-done button'); if (!b) return null; const s = b.querySelector('.fg-steps__seg').getBoundingClientRect(); const el = document.elementFromPoint(s.left + s.width / 2, s.top - 10); return { touche: Boolean(el) && (el === b || b.contains(el)), sur: el ? (el.className || el.tagName) : 'rien' }; });
+    ok(Boolean(filTouche) && filTouche.touche, '[G] ecran 2 : l etape faite se touche 10 px au-dessus de son segment', JSON.stringify(filTouche));
     await pageTel.click('#gridAct .fg-card[data-activity="bowling"]');
     await pageTel.click('#gridAct .fg-card[data-activity="laser_game"]');
     await attendre(pageTel, () => ['bowling', 'laser_game'].every((id) => document.querySelector(`#gridAct li[data-activity="${id}"] .fg-card__optin`).getBoundingClientRect().height > 40), 3000);
@@ -2289,6 +2337,52 @@ async function main() {
     await pageTel.click('#goHours');
     ok(await attendre(pageTel, () => document.querySelectorAll('#hourZone .fg-track').length === 2 && document.querySelector('#planZone .fg-visit') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[G] ecran 3 : les deux pistes et le plan se chargent, transition finie');
     await attendre(pageTel, () => Array.from(document.querySelectorAll('#hourZone .fg-chip')).every((c) => c.getAnimations().length === 0), 4000);
+    // LE SOUS-TITRE DES HEURES SE COUPE AUX BONS ENDROITS (390 et 360 px) :
+    // chaque « · » et « + » reste avec le mot d avant, le dernier mot d un
+    // nom avec le precedent (« Laser Game ») ; aucune ligne ne commence par
+    // un separateur, aucun mot seul. Lu caractere par caractere, au noeud de
+    // texte (une ligne = un meme haut de rectangle).
+    const sub390 = await pageTel.evaluate(() => {
+      const el = document.querySelector('#hourSub');
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest('.fg-sub__open') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+      let texte = ''; const lignes = []; let cur = null;
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        texte += n.data;
+        for (let i = 0; i < n.length; i += 1) {
+          const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1);
+          const b = r.getClientRects()[0]; if (!b || !b.width) continue;
+          if (!cur || Math.abs(b.top - cur.top) > 4) { cur = { top: b.top, t: '' }; lignes.push(cur); }
+          cur.t += n.data[i];
+        }
+      }
+      const l = lignes.map((x) => x.t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      return { colles: !/[^\u00a0][\u00b7+]/.test(texte.replace(/^[\u00b7+]/, '')), nom: texte.indexOf('Laser\u00a0Game') >= 0, lignes: l,
+        tete: l.some((x) => /^[\u00b7+]/.test(x)), seul: l.some((x) => x.split(' ').length < 2) };
+    });
+    ok(sub390.colles && sub390.nom, '[G] le sous-titre des heures colle chaque « · » et « + » au mot d avant, et le dernier mot d un nom au precedent (« Laser Game »)', JSON.stringify(sub390));
+    ok(!sub390.tete && !sub390.seul, '[G] a 390 px, aucune ligne du sous-titre ne commence par « · » ou « + », aucun mot seul', JSON.stringify(sub390.lignes));
+    await pageTel.setViewportSize({ width: 360, height: 740 });
+    await dormir(500);
+    const sub360 = await pageTel.evaluate(() => {
+      const el = document.querySelector('#hourSub');
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest('.fg-sub__open') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+      let texte = ''; const lignes = []; let cur = null;
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        texte += n.data;
+        for (let i = 0; i < n.length; i += 1) {
+          const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1);
+          const b = r.getClientRects()[0]; if (!b || !b.width) continue;
+          if (!cur || Math.abs(b.top - cur.top) > 4) { cur = { top: b.top, t: '' }; lignes.push(cur); }
+          cur.t += n.data[i];
+        }
+      }
+      const l = lignes.map((x) => x.t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      return { colles: !/[^\u00a0][\u00b7+]/.test(texte.replace(/^[\u00b7+]/, '')), nom: texte.indexOf('Laser\u00a0Game') >= 0, lignes: l,
+        tete: l.some((x) => /^[\u00b7+]/.test(x)), seul: l.some((x) => x.split(' ').length < 2) };
+    });
+    ok(!sub360.tete && !sub360.seul, '[G] a 360 px, aucune ligne du sous-titre ne commence par « · » ou « + », aucun mot seul', JSON.stringify(sub360.lignes));
+    await pageTel.setViewportSize({ width: 390, height: 844 });
+    await dormir(500);
     m = await mesure();
     ok(m.deborde <= 1 && m.btnDedans && m.cases.length === 0, '[G] ecran 3 : aucun defilement horizontal, chaque heure et chaque menu tient dans sa case', JSON.stringify({ deborde: m.deborde, cases: m.cases.slice(0, 3) }));
     const telB = await pageTel.evaluate(() => { const c = document.querySelector('#hourZone .fg-track[data-activity="bowling"] .fg-period.is-open .fg-chip:not(.is-proposed):not(.is-off)'); if (!c) return ''; window.__qaHaut = c.getBoundingClientRect().top + window.scrollY; window.__qaCase = c; return c.dataset.time; });
@@ -2863,14 +2957,13 @@ async function main() {
       return {
         horaire: sonde('fg-sub__open'),
         etiquette: sonde('fg-tag fg-tag--ferie'),
-        dossier: sonde('fg-done__ref'),
         meilleurPrix: sonde('fg-for__best'),
         temoin: cta ? { rayon: rayon(cta), fond: opaque(cta) } : null,
       };
     });
     ok(capsules.temoin && capsules.temoin.rayon >= 100,
       '[J] TEMOIN POSITIF : la mesure voit bien une capsule (le bouton du bandeau)', capsules.temoin ? `${capsules.temoin.rayon} px de rayon` : 'aucun bouton');
-    ['horaire', 'etiquette', 'dossier', 'meilleurPrix'].forEach((cle) => {
+    ['horaire', 'etiquette', 'meilleurPrix'].forEach((cle) => {
       ok(capsules[cle].rayon < 100 && capsules[cle].fond === false,
         `[J] l etiquette « ${cle} » n est plus une capsule teintee`, `rayon ${capsules[cle].rayon} px, fond ${capsules[cle].fond ? 'plein' : 'transparent'}`);
     });
@@ -3541,8 +3634,8 @@ async function main() {
         await route.fulfill({ response: r, json: j });
       });
       await fm.click('#confirmBtn');
-      ok(await attendre(fm, () => document.querySelector('.fg-scene[data-scene="fin"].is-active') && /n°\s*\d+/.test((document.querySelector('#finBody .fg-done__ref') || {}).textContent || ''), 10000),
-        '[M] la reservation va jusqu a l ecran final, avec son numero');
+      ok(await attendre(fm, () => document.querySelector('.fg-scene[data-scene="fin"].is-active') && document.querySelector('#finBody .fg-done__ticket'), 10000),
+        '[M] la reservation va jusqu a l ecran final, avec son recu');
       const finM = await fm.evaluate(() => ({
         titre: document.querySelector('#t-fin').innerText.replace(/\s+/g, ' ').trim().toLowerCase(),
         confettis: document.querySelectorAll('#finBurst i').length,
@@ -4362,7 +4455,9 @@ async function main() {
         const c = d.querySelector('.fg-bar__count');
         const bs = Array.from(d.querySelectorAll('.fg-btn')).map((x) => x.getBoundingClientRect());
         const ln = parseFloat(getComputedStyle(c).lineHeight) || parseFloat(getComputedStyle(c).fontSize) * 1.3;
-        return { resume: c.textContent.trim(), lignes: Math.round(c.getBoundingClientRect().height / ln), rangee: bs.length === 2 && Math.abs((bs[0].top + bs[0].bottom) - (bs[1].top + bs[1].bottom)) < 2, dedans: bs.every((r) => r.left >= 0 && r.right <= document.documentElement.clientWidth) };
+        const g = d.querySelector('.fg-btn--ghost'), p = d.querySelector('.fg-btn:not(.fg-btn--ghost)');
+        return { resume: c.textContent.trim(), lignes: Math.round(c.getBoundingClientRect().height / ln), rangee: bs.length === 2 && Math.abs((bs[0].top + bs[0].bottom) - (bs[1].top + bs[1].bottom)) < 2, dedans: bs.every((r) => r.left >= 0 && r.right <= document.documentElement.clientWidth),
+          tailles: [g.offsetWidth, g.offsetHeight, p.offsetHeight], carre: Math.abs(g.offsetHeight - p.offsetHeight) <= 1 && Math.abs(g.offsetWidth - g.offsetHeight) <= 1 };
       });
       const barreActT = await lireBarreT();
       await pTt.tap('#goHours');
@@ -4371,6 +4466,8 @@ async function main() {
       const barreHeuT = await lireBarreT();
       ok([barreActT, barreHeuT].every((x) => x.lignes === 1 && x.rangee && x.dedans),
         `[T] tablette ${lTt} px : la barre qui suit tient ses deux boutons sur une rangee et son resume sur une ligne (activites et heures)`, JSON.stringify({ activites: barreActT, heures: barreHeuT }));
+      ok([barreActT, barreHeuT].every((x) => x.carre),
+        `[T] tablette ${lTt} px : le retour de la barre est un carre, de la hauteur du bouton qui avance (largeur, hauteur du retour, hauteur du bouton)`, JSON.stringify({ activites: barreActT.tailles, heures: barreHeuT.tailles }));
       await ctxTt.close();
     }
 

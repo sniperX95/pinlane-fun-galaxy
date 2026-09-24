@@ -144,6 +144,12 @@
   function euros(n) { n = Number(n); if (!isFinite(n)) return ''; return (Math.round(n * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'; }
   function personnes(n) { return n + ' personne' + (n > 1 ? 's' : ''); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // Ce qui ne se coupe pas en fin de ligne : « 4 personnes », « 1 h 40 »,
+  // « Sam. 26 sept. » ; un separateur (· ou +) reste avec le mot d avant, et
+  // le dernier mot d un nom avec le precedent (« Laser Game »), sans souder
+  // un long nom entier.
+  function insecable(s) { return String(s == null ? '' : s).replace(/ /g, '\u00a0'); }
+  function finInsecable(s) { return String(s == null ? '' : s).replace(/ ([^ ]+)$/, '\u00a0$1'); }
   // Rejoue une animation CSS une fois : retire la classe, force un recalcul,
   // la repose. Elle repart d elle-meme ensuite : restee posee, elle rejouerait
   // chaque fois que l element repasse de display:none a affiche.
@@ -402,7 +408,7 @@
   var stage = $('#fgStage');
   var enTransition = false;
   var transitionId = 0;
-  // Un geste de navigation fait PENDANT une transition (0,42 s) n est plus
+  // Un geste de navigation fait PENDANT une transition (0,48 s) n est plus
   // perdu : le dernier demande part des qu elle finit. Avant, « Retour »
   // touche juste apres l arrivee sur un ecran ne faisait rien.
   var allerEnAttente = null;
@@ -729,6 +735,7 @@
   }
   function rendreCalendrier() {
     if (!moisVu) return;
+    var navFocus = doc.activeElement === calPrev ? calPrev : (doc.activeElement === calNext ? calNext : null);
     // Un jour qui avait le focus le retrouve apres le rendu : sans cela, le
     // second rendu (fin du chargement du mois) jetait le focus du clavier.
     var avaitFocus = calGrid.contains(doc.activeElement);
@@ -756,6 +763,9 @@
     if (b) { b.setAttribute('tabindex', '0'); jourFocus = cible; if (avaitFocus && !b.disabled) b.focus({ preventScroll: true }); }
     calPrev.disabled = cleMois(y, m) <= today.slice(0, 7);
     calNext.disabled = cleMois(y, m + 1) > fin.slice(0, 7);
+    // Une fleche qui s eteint sous le focus le passe a l autre, active par
+    // construction (le mois affiche reste entre aujourd hui et l horizon).
+    if (navFocus && navFocus.disabled) (navFocus === calNext ? calPrev : calNext).focus({ preventScroll: true });
     calInfo.textContent = infoTexte(jours[state.date]) || 'Choisissez un jour.';
     setTimeout(posterHauteur, 50);
   }
@@ -891,6 +901,18 @@
   // Sur telephone la fenetre ouverte n est plus dans .fg-day : un toucher
   // dedans (mois suivant) ne doit pas la fermer.
   doc.addEventListener('click', function (e) { if (!dayPop.hidden && !e.target.closest('.fg-day') && !dayPop.contains(e.target)) ouvrirJours(false); });
+  // Le clavier qui quitte le calendrier (Tab depuis la grille, Maj+Tab depuis
+  // le champ) le referme : ouvert, il couvre le compteur et le bouton. La
+  // fenetre du milieu (telephone) vit dans <body> : on ecoute le champ ET
+  // la fenetre. Sans destination (fenetre quittee, jour re-rendu), il reste
+  // ouvert.
+  var dayWrap = dayBtn.closest('.fg-day');
+  function sortieClavier(e) {
+    var vers = e.relatedTarget;
+    if (!dayPop.hidden && vers && !dayWrap.contains(vers) && !dayPop.contains(vers)) ouvrirJours(false);
+  }
+  dayWrap.addEventListener('focusout', sortieClavier);
+  dayPop.addEventListener('focusout', sortieClavier);
 
   /* --- Etape 1 : le groupe ------------------------------------------------------- */
 
@@ -1333,7 +1355,7 @@
   function chargerHeures() {
     if (state.dispo && state.dispoCle !== cleDemande()) invaliderDispo();
     var j = jourInfo(state.date);
-    hourSub.innerHTML = '<b>' + esc(jourCourt(state.date)) + '</b> · ' + esc(personnes(state.pax)) + ' · ' + esc(nomsChoisis())
+    hourSub.innerHTML = '<b>' + esc(insecable(jourCourt(state.date))) + '</b>\u00a0· ' + esc(insecable(personnes(state.pax))) + '\u00a0· ' + nomsChoisis().split(' + ').map(function (n) { return esc(finInsecable(n)); }).join('\u00a0+ ')
       + (j && j.ouvert ? '<span class="fg-sub__open">Ouvert ' + esc(j.horaire) + (j.periode ? ' · ' + esc(j.periode.label) : '') + '</span>' : '');
     if (state.dispo) { rendreHeures(); return; }
     hourZone.innerHTML = SQUELETTE;
@@ -1951,7 +1973,7 @@
   // programme porte la duree d UN service, pas des deux).
   function surPlace(debut, fin) {
     var m = minutesEntre(debut, fin);
-    return m > 0 ? ' · <b>' + esc(dureeExacte(m)) + '</b> sur place' : '';
+    return m > 0 ? '\u00a0· <b>' + esc(insecable(dureeExacte(m))) + '</b> sur place' : '';
   }
   // Le bloc « votre visite » : l arrivee, chaque activite reservee a son heure,
   // les activites libres a votre rythme, la fin, le prix. Toutes les activites
@@ -2003,7 +2025,7 @@
     var depart = plan.arrivalTime || slot.time || '';
     var span = depart && fin ? '<b>' + esc(depart) + ' → ' + esc(heureAffichee(fin)) + '</b>' + (slot.visitEndsAtClose ? ' (fermeture)' : ' environ') : '';
     var sumAvant = $$('b', hourSum).map(function (b) { return b.textContent; });
-    hourSum.innerHTML = span + (prix > 0 ? (span ? ' · ' : '') + '<b>' + esc(euros(prix)) + '</b>' + (complet ? '' : ' + sur place') : '');
+    hourSum.innerHTML = span + (prix > 0 ? (span ? '\u00a0· ' : '') + '<b>' + esc(euros(prix)) + '</b>' + (complet ? '' : ' + sur place') : '');
     // Ce qui a change dans le resume monte a sa place, une fois. Les <b> sont
     // neufs a chaque appel (innerHTML) : la classe sur un noeud neuf suffit.
     // Resume vide avant (arrivee, erreur, combinaison refusee) : rien ne roule.
@@ -2087,7 +2109,7 @@
   });
   goContact.addEventListener('click', function () {
     if (goContact.disabled || !state.creneau) return;
-    $('#recallLine').textContent = jourCourt(state.date) + ' · ' + personnes(state.pax) + ' · ' + (state.creneau.slot.opsPlan && state.creneau.slot.opsPlan.arrivalTime ? 'arrivée ' + state.creneau.slot.opsPlan.arrivalTime : state.heure);
+    $('#recallLine').textContent = insecable(jourCourt(state.date)) + '\u00a0· ' + insecable(personnes(state.pax)) + '\u00a0· ' + (state.creneau.slot.opsPlan && state.creneau.slot.opsPlan.arrivalTime ? 'arrivée ' + state.creneau.slot.opsPlan.arrivalTime : state.heure);
     $('#recallBody').innerHTML = htmlRecap(false);
     basculerRappel(false);
     aller('contact');
@@ -2395,7 +2417,7 @@
     var chiffres = String(c.phone || '').replace(/[^\d+]/g, '');
     var tel = chiffres.replace(/\+/g, '').length >= 8 ? '<a class="fg-done__lien" href="tel:' + esc(chiffres) + '">' + esc(c.phone) + '</a>' : esc(c.phone);
     var mail = !c.email ? '' : /^[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}$/i.test(c.email) ? '<a class="fg-done__lien" href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : esc(c.email);
-    return tel + (mail ? ' · ' + mail : '');
+    return tel + (mail ? '\u00a0· ' + mail : '');
   }
   function poserTitre(el, html) {
     if (!el) return;
@@ -2432,15 +2454,16 @@
     var mailQ = comms.filter(function (c) { return c && c.channel === 'email' && c.status !== 'draft' && (c.templateId === 'confirmation' || c.templateId === 'request_received'); })[0];
     var nomRes = String(r.name || (state.contact.prenom + ' ' + state.contact.nom)).trim();
     var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. Arrivée conseillée à <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
-    var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>.' : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '. Gardez bien votre numéro de réservation.';
+    var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>.' : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
     var ligneMontant = Number(r.price) > 0 ? 'Montant estimé <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', hors activités réglées sur place. Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
     function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
     // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que
     // l equipe va verifier. « C est enregistre » etait vrai dans les deux cas,
     // et ne disait rien.
     poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');
-    $('#finBody').innerHTML = '<div class="fg-done__ref fg-rise" style="--i:1">Réservation n° ' + esc(r.id) + '</div>'
-      + '<div class="fg-done__ticket fg-rise" style="--i:2">'
+    // Aucun numero de reservation : le SaaS ne s en sert nulle part, le
+    // client n aurait rien a en faire (Movsar, 2026-09-24).
+    $('#finBody').innerHTML = '<div class="fg-done__ticket fg-rise" style="--i:2">'
       + rangee('i-calendar', quand)
       + (quoi ? rangee('a-formule', 'Au programme&nbsp;: ' + esc(quoi)) : '')
       + rangee('i-mail', ligneMail)

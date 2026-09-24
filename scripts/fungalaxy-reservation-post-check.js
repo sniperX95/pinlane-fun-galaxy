@@ -17,8 +17,9 @@
 //     centre, pistes, reservations du jour), lues en SELECT puis refermees ;
 //   - dans un double en memoire qui obeit au SQL (celui de
 //     n4-reservation-post-check, recopie : ce gate ne doit pas casser l autre).
-// La reservation doit aboutir : le handler l insere, l ecran final dit SON
-// numero, et la ligne inseree porte ce que l ecran a montre (centre, jour,
+// La reservation doit aboutir : le handler l insere, la reponse porte SON
+// numero (l ecran final ne le montre plus : le SaaS ne s en sert pas), et la
+// ligne inseree porte ce que l ecran a montre (centre, jour,
 // heure, groupe, prix, contact, mot pour l equipe) ; une formule garde au
 // recapitulatif l heure de debut envoyee.
 //
@@ -316,15 +317,17 @@ async function unParcours(page, pool, cas) {
   if (cas.formuleId) ok(/Début de la visite à \d{2}:\d{2}/.test(vu.texte), `[${cas.nom}] formule : le recapitulatif garde l heure de debut envoyee`, vu.texte.slice(-160));
   const avant = pool.inserted.length;
   await f.click('#confirmBtn');
-  const fini = await attendre(f, () => document.querySelector('.fg-scene[data-scene="fin"].is-active') && document.querySelector('#finBody .fg-done__ref'), 20000);
+  const fini = await attendre(f, () => document.querySelector('.fg-scene[data-scene="fin"].is-active') && document.querySelector('#finBody .fg-done__ticket'), 20000);
   const rep = reponses[reponses.length - 1];
   const corps = rep ? await rep.json().catch(() => null) : null;
   ok(fini && rep && rep.status() >= 200 && rep.status() < 300 && corps && corps.ok !== false, `[${cas.nom}] le VRAI handler accepte la reservation`, rep ? `HTTP ${rep.status()} ${JSON.stringify(corps).slice(0, 160)}` : 'aucune reponse');
   const ligne = pool.inserted.length === avant + 1 ? pool.inserted[pool.inserted.length - 1] : null;
   ok(Boolean(ligne), `[${cas.nom}] une ligne, une seule, est inseree`, `${pool.inserted.length - avant} ligne(s)`);
   if (!ligne) return;
-  const numero = await f.evaluate(() => (document.querySelector('#finBody .fg-done__ref') || {}).textContent || '');
-  ok(new RegExp(`n°\\s*${ligne.id}\\b`).test(numero), `[${cas.nom}] l ecran final dit le numero de la ligne inseree`, `${numero.trim()} / ${ligne.id}`);
+  const idRendu = corps && corps.reservation ? String(corps.reservation.id) : '';
+  ok(idRendu === String(ligne.id), `[${cas.nom}] la reponse porte le numero de la ligne inseree`, `${idRendu} / ${ligne.id}`);
+  const finTexte = await f.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim());
+  ok(!/n°\s*\d+/.test(finTexte) && !/numéro de réservation/i.test(finTexte), `[${cas.nom}] l ecran final ne montre aucun numero de reservation`, finTexte.slice(0, 140));
   const jour = ligne.date instanceof Date ? ligne.date.toISOString().slice(0, 10) : String(ligne.date).slice(0, 10);
   ok(ligne.center_id === CENTER && jour === cas.date && Number(ligne.pax) === cas.pax, `[${cas.nom}] centre, jour et groupe inseres = ceux choisis`, JSON.stringify({ centre: ligne.center_id, jour, pax: ligne.pax }));
   const prix = Number(ligne.price != null ? ligne.price : ligne.total_price);

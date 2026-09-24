@@ -181,23 +181,33 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-scene.is-leaving {
   display: block;
   position: absolute;
-  inset: 0;
+  /* Sa PROPRE hauteur, pas celle du stage (qui vaut deja celle de la scene
+     entrante) : sa photo en object-fit: cover ne se recadre pas d un coup
+     au debut du fondu. */
+  inset: 0 0 auto;
   pointer-events: none;
   z-index: 1;
 }
 
-/* Le glissement de scene : la sortante part a gauche, l entrante arrive de
-   droite. Le retour arriere inverse le sens (classe .fg-stage.is-back). */
+/* Le changement d ecran : la scene entiere (photo comprise) fond, seul son
+   texte glisse. La sortante s efface en 0,2 s en reculant de 24 px ;
+   l entrante apparait 0,08 s plus tard et son texte arrive de 36 px. Sens
+   de la marche : vers la gauche en avancant, vers la droite au retour
+   (--fg-dx, pose par .fg-stage.is-back). La fin de l animation de la SCENE
+   (0,48 s) clot la transition dans aller(), sous son filet de 600 ms. Le
+   recapitulatif pose sur la photo du contact (.fg-recall) garde sa propre
+   entree (fg-rise). */
 @media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-entering { animation: fg-enter 0.42s var(--fg-ease-out) both; }
-  .fg-scene.is-leaving { animation: fg-leave 0.32s var(--fg-ease) both; }
-  .fg-stage.is-back .fg-scene.is-entering { animation-name: fg-enter-back; }
-  .fg-stage.is-back .fg-scene.is-leaving { animation-name: fg-leave-back; }
+  .fg-scene.is-entering { animation: fg-fade-in 0.4s var(--fg-ease-out) 0.08s both; }
+  .fg-scene.is-leaving { animation: fg-fade-out 0.2s var(--fg-ease) both; }
+  .fg-scene.is-entering > .fg-scene__body { animation: fg-slide-in 0.4s var(--fg-ease-out) 0.08s both; }
+  .fg-scene.is-leaving > .fg-scene__body { animation: fg-slide-out 0.2s var(--fg-ease) both; }
+  .fg-stage.is-back { --fg-dx: -1; }
 }
-@keyframes fg-enter { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: none; } }
-@keyframes fg-leave { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-40px); } }
-@keyframes fg-enter-back { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
-@keyframes fg-leave-back { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(40px); } }
+@keyframes fg-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fg-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fg-slide-in { from { transform: translateX(calc(var(--fg-dx, 1) * 36px)); } to { transform: none; } }
+@keyframes fg-slide-out { from { transform: none; } to { transform: translateX(calc(var(--fg-dx, 1) * -24px)); } }
 
 /* --- La photo de chaque scene ---------------------------------------------- */
 
@@ -217,9 +227,11 @@ html.fg-pilote .fg { overflow: visible; }
 }
 /* A l arrivee d une scene, la photo se pose (zoom arriere de 0,9 s), puis
    derive lentement pendant 14 s. Deux animations sur transform, enchainees
-   par le delai de la seconde : jamais les deux en meme temps. */
+   par le delai de la seconde : jamais les deux en meme temps. La scene qui
+   part les garde (meme liste d animations : le navigateur les poursuit au
+   lieu de les couper), sa photo ne repasse pas d un coup a l echelle 1. */
 @media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-art img { animation: fg-settle 0.9s var(--fg-ease-out) both, fg-drift 14s ease-in-out 0.9s infinite alternate; }
+  .fg-scene.is-active .fg-art img, .fg-scene.is-leaving .fg-art img { animation: fg-settle 0.9s var(--fg-ease-out) both, fg-drift 14s ease-in-out 0.9s infinite alternate; }
 }
 @keyframes fg-settle { from { transform: scale(1.18) translate3d(0, 0, 0); } to { transform: scale(1.04) translate3d(0, 0, 0); } }
 @keyframes fg-drift { from { transform: scale(1.04) translate3d(0, 0, 0); } to { transform: scale(1.1) translate3d(-1.5%, -1%, 0); } }
@@ -349,6 +361,7 @@ html.fg-pilote .fg { overflow: visible; }
 /* Une etape faite se reprend : le bouton est une vraie boite (le focus clavier
    se VOIT, ce que `display: contents` interdisait). */
 .fg-steps__item button {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -361,6 +374,10 @@ html.fg-pilote .fg { overflow: visible; }
   cursor: pointer;
 }
 .fg-steps__item button:focus-visible { outline: 2px solid var(--fg-purple-2); outline-offset: 5px; border-radius: 2px; }
+/* La cible d une etape faite deborde de son segment de 4 px : 16 px au-dessus,
+   6 px dessous. Le libelle de l etape en cours commence environ 9 px sous le
+   segment : 3 px d air, le toucher ne renvoie pas en arriere. */
+.fg-steps__item button::after { content: ""; position: absolute; left: 0; right: 0; top: -16px; bottom: -6px; }
 .fg-steps__seg {
   position: relative;
   display: block;
@@ -437,6 +454,9 @@ html.fg-pilote .fg { overflow: visible; }
    halo sarcelle, et jusqu a 1,3:1 sur une photo claire des ecrans pleine
    photo, quand un grand texte doit tenir 3:1 (WCAG 1.4.3). */
 .fg-title em { font-style: normal; color: var(--fg-purple-em); }
+/* Le titre recoit le focus au changement d ecran pour etre lu (aller) : ce
+   n est pas une commande, pas d anneau. */
+.fg-title:focus { outline: none; }
 /* Chaque mot monte dans son masque, comme le tunnel actuel (q-word). */
 /* Le masque de chaque mot laisse de la place aux accents (« À ») au-dessus des
    capitales et aux jambages en dessous : le rembourrage est repris en marge
@@ -452,6 +472,7 @@ html.fg-pilote .fg { overflow: visible; }
 }
 @keyframes fg-word { from { transform: translateY(110%); } to { transform: none; } }
 .fg-sub {
+  text-wrap: balance;
   margin: -6px 0 26px;
   color: var(--fg-muted);
   font-size: 15px;
@@ -651,8 +672,8 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-cal__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .fg-cal__title { font-size: 14px; font-weight: 700; text-transform: capitalize; }
 .fg-cal__nav {
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   border: 1px solid var(--fg-line-2);
   display: grid;
@@ -741,6 +762,9 @@ html.fg-pilote .fg { overflow: visible; }
 @media (hover: hover) { .fg-stepper__btn:hover { background: rgba(148, 66, 146, 0.25); } }
 .fg-stepper__btn:active:not([disabled]) { background: var(--fg-purple); transform: scale(0.9); }
 .fg-stepper__btn[disabled] { color: var(--fg-faint); cursor: not-allowed; background: none; }
+/* Le compteur coupe ce qui depasse : l anneau pose 3 px dehors ne se voyait
+   que d un cote. Il passe dedans. */
+.fg-stepper__btn:focus-visible { outline-offset: -4px; }
 .fg-stepper__value {
   display: flex;
   flex-wrap: wrap;
@@ -819,23 +843,26 @@ html.fg-pilote .fg { overflow: visible; }
   min-height: 54px;
   padding: 0 34px;
   border-radius: var(--fg-radius);
-  background: var(--fg-purple);
+  /* De la matiere : le corps s assombrit vers le bas (jamais de blanc : le
+     contraste du texte ne peut que monter), une lumiere venue du haut. */
+  background-color: var(--fg-purple);
+  background-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.16) 100%);
   color: var(--fg-text);
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   text-decoration: none;
-  box-shadow: 6px 6px 0 var(--fg-teal);
+  box-shadow: 6px 6px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -2px 0 rgba(0, 0, 0, 0.18);
   transition: transform 0.18s var(--fg-ease), box-shadow 0.18s var(--fg-ease), background-color 0.2s, opacity 0.2s;
   will-change: transform;
 }
 .fg-btn svg { width: 18px; height: 18px; flex: none; transition: transform 0.25s var(--fg-ease); }
 @media (hover: hover) {
-  .fg-btn:hover { background: var(--fg-purple-2); transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--fg-teal); }
+  .fg-btn:hover { background-color: var(--fg-purple-2); transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -2px 0 rgba(0, 0, 0, 0.18); }
   .fg-btn:hover svg { transform: translateX(4px); }
 }
-.fg-btn:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--fg-teal); }
+.fg-btn:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--fg-teal), inset 0 2px 3px rgba(0, 0, 0, 0.3); }
 .fg-btn[disabled], .fg-btn.is-busy { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: 6px 6px 0 var(--fg-teal-dim); }
 .fg-btn[disabled] svg { transform: none; }
 /* Le bouton qui fait avancer s eveille quand il devient cliquable, une fois,
@@ -862,23 +889,22 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-btn--shine::before {
   content: "";
   position: absolute;
-  top: 0; bottom: 0;
+  top: 0; bottom: 0; left: 0;
   width: 40%;
-  left: -60%;
   background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
-  transform: skewX(-18deg);
+  transform: translateX(-150%) skewX(-18deg);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-btn--shine::before { animation: fg-shine 1.2s var(--fg-ease) 0.9s both; }
+  .fg-scene.is-active .fg-btn--shine::before { animation: fg-shine 0.6s var(--fg-ease) 0.9s both; }
 }
-@keyframes fg-shine { from { left: -60%; } to { left: 130%; } }
+@keyframes fg-shine { from { transform: translateX(-150%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
 /* Le bouton discret a un fond sombre, pas transparent : sur l ecran des
    activites, il se pose sur la photo, la ou le voile ne fait plus que 0,55,
    et son gris y tombait a 2,8:1 sur une photo claire. Sur le fond de la
    page, ce fond ne se voit pas. */
 .fg-btn--ghost {
   background: rgba(8, 8, 8, 0.86);
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   border: 1.5px solid var(--fg-line-2);
   color: var(--fg-muted);
   min-height: 46px;
@@ -886,11 +912,12 @@ html.fg-pilote .fg { overflow: visible; }
   letter-spacing: 0.06em;
 }
 @media (hover: hover) {
-  .fg-btn--ghost:hover { background: #161616; color: var(--fg-text); transform: none; box-shadow: none; border-color: #555; }
+  .fg-btn--ghost:hover { background: #161616; color: var(--fg-text); transform: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08); border-color: #555; }
   .fg-btn--ghost:hover svg { transform: translateX(-3px); }
 }
 .fg-btn--ghost:active { transform: none; box-shadow: none; }
 .fg-link {
+  position: relative;
   background: none;
   border: 0;
   color: var(--fg-muted);
@@ -901,6 +928,10 @@ html.fg-pilote .fg { overflow: visible; }
 }
 @media (hover: hover) { .fg-link:hover { color: var(--fg-text); } }
 .fg-link[hidden] { display: none; }
+/* 21 px de haut : la cible deborde de 12 px dessus et dessous, 8 px sur les
+   cotes (45 px). Un lien cache garde visibility: hidden, que le ::after
+   herite : il ne capte rien. */
+.fg-link::after { content: ""; position: absolute; inset: -12px -8px; }
 .fg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 24px; margin-top: 34px; }
 .fg-actions--center { justify-content: center; }
 .fg-actions--column { flex-direction: column; align-items: stretch; }
@@ -1001,6 +1032,7 @@ html.fg-pilote .fg { overflow: visible; }
   border-radius: 8px;
   border: 1.5px solid var(--fg-line);
   background: rgba(8, 8, 8, 0.93);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.4);
   text-align: left;
   overflow: hidden;
   cursor: pointer;
@@ -1026,15 +1058,18 @@ html.fg-pilote .fg { overflow: visible; }
    nom lui-meme passait sous 4,5:1. */
 .fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%); }
 @media (hover: hover) {
-  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); }
+  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }
   .fg-card:hover .fg-card__photo { opacity: 1; }
 }
-.fg-card.is-on { border-color: var(--fg-purple-2); box-shadow: 0 12px 30px rgba(148, 66, 146, 0.22); }
+.fg-card.is-on { border-color: var(--fg-purple-2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 12px 30px rgba(148, 66, 146, 0.22), inset 0 0 0 1px rgba(194, 94, 194, 0.3); }
 /* Cochee et suivie de son tiroir, la carte s y raccorde : angles du bas droits. */
 .fg-grid__item.is-on .fg-card:not(:only-child) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .fg-card.is-on .fg-card__photo { opacity: 0.55; }
-.fg-card__icon { width: 40px; height: 40px; color: var(--fg-text); margin-bottom: 8px; transition: transform 0.3s var(--fg-ease-out); }
+/* Les icones d une rangee se calent en haut (a la hauteur de la case), le nom
+   et le prix restent en bas : une rangee se lit alignee. */
+.fg-card__icon { width: 40px; height: 40px; color: var(--fg-text); margin-bottom: auto; transition: transform 0.3s var(--fg-ease-out); }
 .fg-card__icon svg { width: 100%; height: 100%; }
+.fg-card__icon + .fg-card__name { margin-top: 8px; }
 @media (hover: hover) { .fg-card:hover .fg-card__icon { transform: translateY(-2px) scale(1.06); } }
 .fg-card__name { font-size: 16px; font-weight: 700; line-height: 1.2; }
 .fg-card__price { font-size: 13px; color: var(--fg-muted); font-weight: 500; min-height: 20px; }
@@ -1122,7 +1157,7 @@ html.fg-pilote .fg { overflow: visible; }
   text-transform: uppercase;
   white-space: nowrap;
 }
-.fg-for__best::before { content: ""; width: 3px; height: 12px; border-radius: 1px; background: currentColor; flex: none; }
+.fg-for__best::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 /* Le prix se lit d un coup : le montant en gros, son unite et l ancien prix
    barre a cote, sur la meme ligne de base. */
 .fg-for__price { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
@@ -1154,6 +1189,8 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-card--formule.is-refus { opacity: 0.66; border-style: dashed; }
 @media (hover: hover) { .fg-card--formule.is-refus:hover { opacity: 1; border-color: var(--fg-amber); transform: none; } }
 .fg-card--formule.is-refus .fg-card__box { display: none; }
+/* Une formule est un choix UNIQUE (role="radio") : sa case est ronde. */
+.fg-card--formule .fg-card__box { border-radius: 50%; }
 .fg-for__off {
   display: flex;
   align-items: flex-start;
@@ -1242,7 +1279,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-pill b { font-size: 12px; font-weight: 700; white-space: nowrap; }
 .fg-pill small { font-size: 11px; color: var(--fg-muted); white-space: nowrap; }
 @media (hover: hover) { .fg-pill:hover { border-color: var(--fg-purple-2); } }
-.fg-pill.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal); }
+.fg-pill.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
 .fg-pill.is-on small { color: rgba(255, 255, 255, 0.85); }
 @media (prefers-reduced-motion: no-preference) {
   .fg-pill:active { transform: scale(0.96); }
@@ -1303,7 +1340,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-dock.is-stuck::before {
   background-color: rgba(12, 12, 12, 0.97);
   border-color: var(--fg-line-2);
-  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 /* Sur l ecran des heures, la barre a la largeur des pistes. */
 .fg-scene--center .fg-dock { max-width: 940px; margin-left: auto; margin-right: auto; text-align: left; }
@@ -1347,7 +1384,8 @@ html.fg-pilote .fg { overflow: visible; }
      ne fait que 0,55 en haut de l ecran. Le gris clair y tombait a 3,2:1 sur
      les neons ; le blanc garde 4,5:1 meme sur un pixel blanc de la photo. */
   color: var(--fg-text);
-  text-align: left;
+  text-align: center;
+  justify-content: center;
 }
 .fg-legend b { color: var(--fg-text); font-weight: 700; }
 .fg-legend__tip { flex-basis: 100%; }
@@ -1493,9 +1531,14 @@ html.fg-pilote .fg { overflow: visible; }
 /* Sans mot dessous, le mot n occupe rien : l heure se centre seule. */
 .fg-chip small:empty { display: none; }
 @media (hover: hover) { .fg-chip:hover { border-color: var(--fg-purple-2); } }
+/* Les controles : un filet de lumiere en haut. L ombre exterieure
+   transparente, en PREMIER, garde interpolables les transitions vers les
+   etats qui commencent tous par une ombre exterieure (anneau de focus,
+   choix, vague). */
+.fg-input, .fg-day__btn, .fg-stepper, .fg-chip, .fg-pill, .fg-cal__nav { box-shadow: 0 0 0 transparent, inset 0 1px 0 rgba(255, 255, 255, 0.05); }
 /* Choisie : pleine, sans aucun deplacement (un saut de 2 px a chaque pose se
    lisait comme un tremblement). */
-.fg-chip.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 4px 4px 0 var(--fg-teal); }
+.fg-chip.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 4px 4px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
 .fg-chip.is-on small { color: rgba(255, 255, 255, 0.85); }
 /* L heure que l equipe propose quand le client n en a pas pose : un lisere
    sarcelle. */
@@ -1757,7 +1800,7 @@ html.fg-pilote .fg { overflow: visible; }
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
 }
 .fg-scene.is-active[data-scene="contact"] { display: flow-root; }
-.fg-recall__line { font-size: 18px; font-weight: 700; margin: 6px 0 0; }
+.fg-recall__line { font-size: 18px; font-weight: 700; margin: 14px 0 0; }
 .fg-recall__toggle { display: none; }
 .fg-recall .fg-recap { margin-top: 14px; }
 /* Dans la carte, le total et le paiement s empilent : cote a cote, un montant
@@ -1789,7 +1832,7 @@ html.fg-pilote .fg { overflow: visible; }
   font-weight: 600;
 }
 .fg-recap__row svg { width: 20px; height: 20px; color: var(--fg-muted); flex: none; }
-.fg-recap__row > span { min-width: 0; }
+.fg-recap__row > span { min-width: 0; text-wrap: pretty; }
 .fg-recap__sep { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 12px 0; }
 .fg-recap__item {
   display: grid;
@@ -1883,18 +1926,6 @@ html.fg-pilote .fg { overflow: visible; }
   60% { opacity: 1; transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1); }
   100% { opacity: 0; transform: translate(var(--x), calc(var(--y) + 34px)) rotate(calc(var(--r) * 1.4)) scale(0.9); }
 }
-.fg-done__ref {
-  display: inline-block;
-  margin: 4px 0 20px;
-  padding: 0 2px 10px;
-  border-bottom: 2px solid rgba(103, 186, 172, 0.5);
-  color: var(--fg-teal-ink);
-  font-family: var(--fg-display);
-  font-weight: 400;
-  font-size: clamp(20px, 3.4vw, 26px);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
 .fg-done p { color: var(--fg-muted); font-size: 15px; margin: 0 0 10px; }
 .fg-done p b { color: var(--fg-text); }
 /* Le recu : une carte opaque, une rangee par fait (quand, quoi, e-mail,
@@ -1975,7 +2006,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-recall:not(.is-open) .fg-recall__body { display: none; }
   .fg-scene--split.fg-scene--art-left .fg-recall { display: none; }
   /* L ecran des coordonnees pose d abord SA question, comme les quatre
-     autres : la bande photo, le fil des etapes, « C est a quel nom ? », puis
+     autres : la bande photo, le fil des etapes, « Vos coordonnees », puis
      la carte de la visite repliee, puis les champs (retour de Movsar,
      2026-09-24 : la carte passait avant le titre). Dans la page, la carte
      precede le formulaire, pour flotter a cote de lui sur un grand ecran :
@@ -1995,13 +2026,14 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-fields--2 { grid-template-columns: 1fr; }
   .fg-stage, .fg-scene { min-height: 0; }
   /* La barre qui suit, sur tablette : le retour devient le carre du
-     telephone (son mot reste pour les lecteurs d ecran), les deux boutons
-     restent sur une rangee et le resume prend la place qui reste. A 768 px,
-     « Retour » passait au-dessus de « Ces horaires me vont » et le resume
-     coupait son prix sur deux lignes. */
+     telephone, 54 px de cote comme le bouton qui avance (son mot reste pour
+     les lecteurs d ecran) ; les deux boutons restent sur une rangee et le
+     resume prend la place qui reste. A 768 px, « Retour » passait au-dessus
+     de « Ces horaires me vont » et le resume coupait son prix sur deux
+     lignes. */
   .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }
   .fg-dock .fg-bar__count { min-width: 0; }
-  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; padding: 0; }
+  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }
   .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 /* Telephone en paysage : 200 px de photo sur une fenetre de 390 px laissent
@@ -2089,6 +2121,7 @@ html.fg-pilote .fg { overflow: visible; }
   }
   .fg-grid:not(.fg-grid--for) .fg-card__icon { grid-area: icone; align-self: center; margin: 0; }
   .fg-grid:not(.fg-grid--for) .fg-card__name { grid-area: nom; align-self: end; }
+  .fg-grid:not(.fg-grid--for) .fg-card__icon + .fg-card__name { margin-top: 0; }
   .fg-grid:not(.fg-grid--for) .fg-card__price { grid-area: prix; align-self: start; min-height: 0; }
   .fg-grid:not(.fg-grid--for) .fg-card__box { top: calc(50% - 11px); right: 16px; }
   /* La rangee est basse et large, et son prix peut courir jusqu a la case :

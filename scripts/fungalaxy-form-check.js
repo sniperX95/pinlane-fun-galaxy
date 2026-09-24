@@ -232,15 +232,15 @@
 //       0 une fois decochee (le survol ne reste plus colle) ; un doigt qui
 //       fait defiler sur une carte, au vrai geste, ne la coche pas et ne
 //       telecharge pas sa photo ; a la souris, le survol la devoile toujours.
-//   [T] LE TELEPHONE EN LISTE (2026-09-24) : a 390, 360 et 320 px, une
-//       activite par rangee sur toute la largeur, a plat (icone a gauche,
-//       case a droite et centree, 96 px au plus, chaque nom sur une ligne des
-//       360 px) ; le tiroir prend la largeur de sa rangee, colle a sa carte,
-//       options sur UNE rangee des 360 px ; « Ces horaires me vont » tient
+//   [T] LE TELEPHONE EN DEUX COLONNES (2026-09-24, la liste d une carte par
+//       rangee essayee le matin, jugee moche par Movsar) : a 390 et 360 px,
+//       deux cartes d activites par rangee, a 320 px une seule (sous 360 px,
+//       une pastille n aurait que 49 px), rien hors de la grille ; le tiroir
+//       prend la largeur de sa carte, sous elle ; « Ces horaires me vont » tient
 //       sur une ligne dans son bouton, sans police sous 11,5 px ; l ecran des
 //       coordonnees s ouvre sur sa question (photo, fil, titre) puis la carte
 //       de la visite, puis les champs ; a 768 px, deux cartes par rangee ;
-//       a 768 et 600 px, la barre qui suit tient ses deux boutons sur une
+//       a 768 et 600 px, la barre du bas tient ses deux boutons sur une
 //       rangee et son resume sur une ligne, aux activites comme aux heures,
 //       et son retour est un carre de la hauteur du bouton qui avance.
 //   [U] UN GESTE PENDANT UNE TRANSITION N EST PLUS PERDU (2026-09-24) :
@@ -249,7 +249,8 @@
 //       vide, et le gate aussi, sur une machine rapide).
 //
 // CONTRE-PREUVES [S] ET [T] : survol (la regle du survol des cartes sort de
-// (hover: hover)), liste (le telephone repasse a deux colonnes), bouton (la
+// (hover: hover)), listetel (le telephone repasse a une carte par rangee des
+// 560 px), bouton (la
 // barre reprend les marges du bouton : il recoupe a 360 px), question (la
 // carte de la visite repasse avant le titre), barretablette (a 768 px,
 // « Retour » repasse au-dessus du bouton qui avance), barreetroite (a
@@ -676,7 +677,7 @@ const MUTATIONS_CSS = {
   anneaustepper: ['.fg-stepper__btn:focus-visible { outline-offset: -4px; }\n', ''],
   alertebord: ['  z-index: 3;\n  margin: 12px var(--fg-gutter) 20px;\n', '  z-index: 3;\n  margin: 0 0 20px;\n'],
   survol: ['@media (hover: hover) {\n  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }\n  .fg-card:hover .fg-card__photo { opacity: 1; }\n}\n', '.fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }\n.fg-card:hover .fg-card__photo { opacity: 1; }\n'],
-  liste: ['  .fg-grid:not(.fg-grid--for) { grid-template-columns: minmax(0, 1fr); }\n', ''],
+  listetel: ['@media (max-width: 359px) {\n  .fg-grid { grid-template-columns: 1fr; }\n}\n', '@media (max-width: 560px) {\n  .fg-grid { grid-template-columns: 1fr; }\n}\n'],
   bouton: ['  .fg-dock .fg-btn:not(.fg-btn--ghost) { padding: 0 14px; gap: 8px; letter-spacing: 0.04em; white-space: nowrap; }\n', ''],
   question: ['  .fg-scene[data-scene="contact"] .fg-recall { order: 3; }\n', ''],
   barretablette: ['  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }\n  .fg-dock .fg-bar__count { min-width: 0; }\n  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }\n  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }\n', ''],
@@ -4285,38 +4286,46 @@ async function main() {
 
     // =====================================================================
     console.log('');
-    console.log('[T] LE TELEPHONE EN LISTE, LE BOUTON DE LA BARRE SUR UNE LIGNE, LA QUESTION D ABORD');
+    console.log('[T] LE TELEPHONE EN DEUX COLONNES, LE BOUTON DE LA BARRE SUR UNE LIGNE, LA QUESTION D ABORD');
     // =====================================================================
-    // Retour de Movsar (2026-09-24), revue des ecrans sur telephone : les
-    // cartes d activites trop serrees sur deux colonnes, « Ces horaires me
-    // vont » coupe en deux lignes a 360 px, et la carte de la visite posee
-    // avant le titre de l ecran des coordonnees.
+    // Retours de Movsar (2026-09-24) sur telephone : « Ces horaires me vont »
+    // coupe en deux lignes a 360 px, la carte de la visite posee avant le
+    // titre de l ecran des coordonnees ; et les activites, passees en liste
+    // d une carte par rangee le matin, reviennent a deux par rangee le soir
+    // (« c est moche, c etait bien avant, range de deux »).
     for (const [lT, hT] of [[390, 844], [360, 740], [320, 660]]) {
       const ctxT = await browser.newContext({ viewport: { width: lT, height: hT }, isMobile: true, hasTouch: true });
       const pT = await ctxT.newPage();
       await pT.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
       ok(await attendre(pT, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), `MONTAGE [T] ${lT} px : le catalogue est lu`);
+      // UN JOUR FUTUR EXPLICITE : le jour propose est aujourd hui, et le soir
+      // plus rien n y tient avant la fermeture (vu le 2026-09-24 a 20:30 :
+      // « Aucune combinaison disponible ce jour-la », le gate rougissait selon
+      // l heure). Le samedi du mock, comme [N].
+      await pT.tap('#dayBtn');
+      await allerAuMois(pT, mock.DATE);
+      await pT.tap(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+      await attendre(pT, () => document.querySelector('#dayPop').hidden, 3000);
       await pT.tap('#goActivities');
       await attendre(pT, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
       await attendre(pT, () => Array.from(document.querySelectorAll('#gridAct .fg-card')).every((c) => c.getAnimations().length === 0), 4000);
-      const listeT = await pT.evaluate(() => {
+      const grilleT = await pT.evaluate(() => {
         const grille = document.querySelector('#gridAct').getBoundingClientRect();
         return Array.from(document.querySelectorAll('#gridAct .fg-card')).map((c) => {
           const r = c.getBoundingClientRect();
-          const nom = c.querySelector('.fg-card__name');
-          const ln = parseFloat(getComputedStyle(nom).lineHeight) || parseFloat(getComputedStyle(nom).fontSize) * 1.2;
-          const rn = nom.getBoundingClientRect();
-          const box = c.querySelector('.fg-card__box').getBoundingClientRect();
-          const icone = c.querySelector('.fg-card__icon').getBoundingClientRect();
-          return { id: c.dataset.activity, gauche: Math.round(r.left - grille.left), largeur: Math.round(r.width), grille: Math.round(grille.width), haut: Math.round(r.height),
-            nomLignes: Math.round(rn.height / ln), caseCentre: Math.round(Math.abs((box.top + box.bottom) / 2 - (r.top + r.bottom) / 2) * 10) / 10,
-            iconeAGauche: icone.right <= rn.left, caseADroite: box.left >= rn.right };
+          return { id: c.dataset.activity, gauche: Math.round(r.left - grille.left), droite: Math.round(grille.right - r.right), haut: Math.round(r.top), largeur: Math.round(r.width) };
         });
       });
-      const fautesT = listeT.filter((c) => c.gauche !== 0 || Math.abs(c.largeur - c.grille) > 1 || c.haut > 96 || c.caseCentre > 1 || !c.iconeAGauche || !c.caseADroite || (lT >= 360 && c.nomLignes > 1));
-      ok(listeT.length >= 6 && fautesT.length === 0,
-        `[T] ${lT} px : une activite par rangee, toute la largeur, a plat (icone a gauche, case a droite et centree), au plus 96 px de haut${lT >= 360 ? ', chaque nom sur une ligne' : ''}`,
-        JSON.stringify({ cartes: listeT.length, fautes: fautesT.slice(0, 3), exemple: listeT[0] }));
+      // Deux cartes par rangee des 360 px, une seule en dessous : les colonnes
+      // (bords gauches distincts), et aucune rangee qui en porte plus.
+      const colonnesT = new Set(grilleT.map((c) => c.gauche)).size;
+      const attenduesT = lT >= 360 ? 2 : 1;
+      const rangeesT = new Map();
+      grilleT.forEach((c) => { rangeesT.set(c.haut, (rangeesT.get(c.haut) || 0) + 1); });
+      const fautesT = grilleT.filter((c) => c.gauche < 0 || c.droite < 0);
+      ok(grilleT.length >= 6 && colonnesT === attenduesT && fautesT.length === 0 && [...rangeesT.values()].every((n) => n <= attenduesT),
+        `[T] ${lT} px : ${attenduesT === 2 ? 'deux cartes d activites par rangee' : 'une carte par rangee (sous 360 px, les pastilles respirent)'}, rien hors de la grille`,
+        JSON.stringify({ cartes: grilleT.length, colonnes: colonnesT, rangees: [...rangeesT.values()], fautes: fautesT.slice(0, 3), exemple: grilleT.slice(0, 2) }));
       await pT.tap('#gridAct .fg-card[data-activity="bowling"]');
       await pT.tap('#gridAct .fg-card[data-activity="laser_game"]');
       await attendre(pT, () => ['bowling', 'laser_game'].every((id) => document.querySelector(`#gridAct li[data-activity="${id}"] .fg-card__optin`).getBoundingClientRect().height > 40), 3000);
@@ -4328,8 +4337,8 @@ async function main() {
         const hauts = Array.from(li.querySelectorAll('.fg-pill')).map((p) => Math.round(p.getBoundingClientRect().top));
         return { id, pastilles: hauts.length, rangees: new Set(hauts).size, largeur: Math.round(boite.width), carte: Math.round(carte.width), colle: Math.round(boite.top - carte.bottom) };
       }));
-      ok(tiroirsT.every((t) => Math.abs(t.largeur - t.carte) <= 1 && Math.abs(t.colle) <= 1 && (lT < 360 || t.rangees === 1)),
-        `[T] ${lT} px : le tiroir prend la largeur de sa rangee, colle a sa carte${lT >= 360 ? ', et ses options tiennent sur UNE rangee' : ''}`, JSON.stringify(tiroirsT));
+      ok(tiroirsT.every((t) => Math.abs(t.largeur - t.carte) <= 1 && t.colle >= -1),
+        `[T] ${lT} px : le tiroir prend la largeur de sa carte, sous elle`, JSON.stringify(tiroirsT));
       await pT.tap('#goHours');
       ok(await attendre(pT, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('#goContact').disabled, 25000), `MONTAGE [T] ${lT} px : ecran des heures, bouton actif`);
       const boutonT = await pT.evaluate(() => {
@@ -4354,7 +4363,7 @@ async function main() {
       await ctxT.close();
     }
     // Au-dessus du telephone : les activites restent des cartes (deux par
-    // rangee a 768), et la barre qui suit tient ses deux boutons sur une
+    // rangee a 768), et la barre du bas tient ses deux boutons sur une
     // rangee et son resume sur une ligne, a 768 comme a 600 px. Avant : a
     // 768, « Retour » passait au-dessus de « Ces horaires me vont » ; a 600,
     // le resume des heures tombait sur trois lignes.
@@ -4363,6 +4372,10 @@ async function main() {
       const pTt = await ctxTt.newPage();
       await pTt.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
       await attendre(pTt, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
+      await pTt.tap('#dayBtn');
+      await allerAuMois(pTt, mock.DATE);
+      await pTt.tap(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+      await attendre(pTt, () => document.querySelector('#dayPop').hidden, 3000);
       await pTt.tap('#goActivities');
       await attendre(pTt, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
       if (lTt === 768) {
@@ -4388,7 +4401,7 @@ async function main() {
       await dormir(400);
       const barreHeuT = await lireBarreT();
       ok([barreActT, barreHeuT].every((x) => x.lignes === 1 && x.rangee && x.dedans),
-        `[T] tablette ${lTt} px : la barre qui suit tient ses deux boutons sur une rangee et son resume sur une ligne (activites et heures)`, JSON.stringify({ activites: barreActT, heures: barreHeuT }));
+        `[T] tablette ${lTt} px : la barre du bas tient ses deux boutons sur une rangee et son resume sur une ligne (activites et heures)`, JSON.stringify({ activites: barreActT, heures: barreHeuT }));
       ok([barreActT, barreHeuT].every((x) => !x.suit),
         `[T] tablette ${lTt} px : la barre du bas ne suit pas l ecran, elle reste a sa place (activites et heures)`, JSON.stringify({ activites: barreActT.suit, heures: barreHeuT.suit }));
       ok([barreActT, barreHeuT].every((x) => x.carre),

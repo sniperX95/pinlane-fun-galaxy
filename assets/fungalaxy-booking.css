@@ -2058,36 +2058,14 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-grid--for { grid-template-columns: 1fr; }
   .fg-fams { gap: 24px; }
 }
-/* LE TELEPHONE EN LISTE (retour de Movsar, 2026-09-24 : « trop serre »).
-   Deux colonnes de 150 a 170 px coupaient les noms sur deux lignes, le prix
-   sur trois, et serraient les pastilles du tiroir a deux par rangee. Une
-   activite par rangee, a plat : l icone, le nom et son prix dessous, la case
-   a droite. Le tiroir prend toute la largeur, ses options tiennent sur une
-   seule rangee (requetes de conteneur des pastilles, plus haut). Les
-   formules gardent leur carte : elles portent une liste et des contraintes. */
-@media (max-width: 560px) {
-  .fg-grid:not(.fg-grid--for) { grid-template-columns: minmax(0, 1fr); }
-  @supports (grid-template-rows: subgrid) { .fg-grid:not(.fg-grid--for) > li { margin-bottom: 10px; } }
-  .fg-grid:not(.fg-grid--for) .fg-card {
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr);
-    grid-template-areas: "icone nom" "icone prix";
-    align-content: center;
-    column-gap: 14px;
-    row-gap: 2px;
-    min-height: 68px;
-    padding: 12px 52px 12px 16px;
-  }
-  .fg-grid:not(.fg-grid--for) .fg-card__icon { grid-area: icone; align-self: center; margin: 0; }
-  .fg-grid:not(.fg-grid--for) .fg-card__name { grid-area: nom; align-self: end; }
-  .fg-grid:not(.fg-grid--for) .fg-card__icon + .fg-card__name { margin-top: 0; }
-  .fg-grid:not(.fg-grid--for) .fg-card__price { grid-area: prix; align-self: start; min-height: 0; }
-  .fg-grid:not(.fg-grid--for) .fg-card__box { top: calc(50% - 11px); right: 16px; }
-  /* La rangee est basse et large, et son prix peut courir jusqu a la case :
-     le voile la couvre de bout en bout, un peu plus clair a droite. Sur une
-     photo blanche montree en plein, le prix garde 5,7:1 a son bout (a 0,55
-     vers la droite, il y tombait a 3,6:1). */
-  .fg-grid:not(.fg-grid--for) .fg-card__photo::after { background: linear-gradient(90deg, rgba(5, 5, 5, 0.92) 0%, rgba(5, 5, 5, 0.8) 100%); }
+/* DEUX CARTES PAR RANGEE SUR TELEPHONE (Movsar, 2026-09-24, apres une liste
+   d une carte par rangee essayee le matin : « c est moche, c etait bien
+   avant, range de deux »). Sous 360 px (iPhone SE de premiere generation,
+   petits Android), deux cartes par rangee laissent 49 px a une pastille :
+   « 2 heures » n y tient pas. Une carte par rangee, et les pastilles
+   respirent. */
+@media (max-width: 359px) {
+  .fg-grid { grid-template-columns: 1fr; }
 }
 /* Sous 340 px, meme resserre, le libelle ne tient qu en laissant la fleche.
    Sous 320 px, il repasse a la ligne plutot que de sortir du bouton. */

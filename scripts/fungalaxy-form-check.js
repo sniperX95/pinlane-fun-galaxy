@@ -402,8 +402,24 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // d analyse passe a 160 Ko et garde son role de garde-fou (une bibliotheque,
 // une police ou une image en base64 ajoutent d un coup plus de 10 Ko) ; celui
 // du TRANSFERT, qui est le vrai cout d un reseau mobile, ne bouge pas.
-const BUDGET_SERVI = 160 * 1024;
-const BUDGET_TRANSFERE = 45 * 1024;
+//
+// LE TRANSFERT MESURAIT UNE COMPRESSION QUE LA PROD N ENVOIE PAS (2026-09-24).
+// Il etait calcule en gzip 9 ; la prod repond `Content-Encoding: br`, et ses
+// octets compresses sont ceux du brotli de QUALITE 3, a l octet pres (page
+// 4 606, feuille 12 329, script 26 360 pour 26 359 : fichiers de `0ff8eae`
+// passes par le build, identiques decompresses a ceux de la prod). Le brotli 3
+// pese 7,4 % de plus que le gzip 9 : la prod envoyait deja 42,3 Ko quand ce
+// gate en annoncait 39,4, et l ancien plafond de 45 Ko gzip valait 48,3 Ko
+// reels. Le calcul est corrige a la source (brotli 3), puis les deux plafonds
+// sont rederives apres les lots 1 a 3 de la passe UX (date et activites,
+// ecran des heures, coordonnees et ecran final), sur une MESURE : 170,5 Ko
+// servis, 48,1 Ko reellement transferes ; analyse (meme protocole que plus
+// haut) : script 63 ms, style 112 ms, mise en page 261 ms, pas plus qu a
+// 150 Ko. Le cout reste dans le style et la mise en page. Plafonds : 180 Ko a
+// analyser, 52 Ko a transferer, assez pres pour qu une bibliotheque, une
+// police ou une image en base64 fassent sauter l un ou l autre.
+const BUDGET_SERVI = 180 * 1024;
+const BUDGET_TRANSFERE = 52 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -676,8 +692,10 @@ function poidsServi() {
     const sortie = String(r.stdout || '').trim().split('\n')[0];
     const octets = FICHIERS.reduce((s, f) => s + fs.statSync(path.join(tmp, f)).size, 0);
     // Ce que l appareil recoit vraiment : chaque fichier compresse SEUL, comme
-    // le serveur les envoie (jamais un seul flux pour les trois).
-    const transfere = FICHIERS.reduce((s, f) => s + zlib.gzipSync(fs.readFileSync(path.join(tmp, f)), { level: 9 }).length, 0);
+    // le serveur les envoie (jamais un seul flux pour les trois). La prod sert
+    // du brotli de qualite 3 (etalonne le 2026-09-24, voir BUDGET_TRANSFERE),
+    // plus lourd que le gzip 9 mesure jusque-la.
+    const transfere = FICHIERS.reduce((s, f) => s + zlib.brotliCompressSync(fs.readFileSync(path.join(tmp, f)), { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 3 } }).length, 0);
     return { octets, transfere, nettoyes: /3 fichier\(s\) nettoye/.test(sortie), sortie };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

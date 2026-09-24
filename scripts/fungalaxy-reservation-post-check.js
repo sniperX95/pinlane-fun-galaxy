@@ -310,6 +310,10 @@ async function unParcours(page, pool, cas) {
   // Le mot facultatif pour l equipe (jamais commence par « [ » : le double
   // en memoire relit en JSON une valeur qui commence ainsi).
   await f.fill('#cNote', 'Gâteau au frais');
+  // L occasion (requise) : la cle part, et la precision d « Autre » rejoint
+  // le mot pour l equipe.
+  await f.click(`#occasions .fg-occasion[data-occasion="${cas.occasion}"]`);
+  if (cas.precision) await f.fill('#cOccasionAutre', cas.precision);
   await f.check('#cConsent');
   await f.click('#goRecap');
   await attendre(f, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && document.querySelector('#totalAmount'), 8000);
@@ -333,7 +337,9 @@ async function unParcours(page, pool, cas) {
   const prix = Number(ligne.price != null ? ligne.price : ligne.total_price);
   ok(Number.isFinite(prix) && Math.abs(prix - vu.total) < 0.01, `[${cas.nom}] le prix insere = le total affiche au recapitulatif`, `insere ${prix}, affiche ${vu.total}`);
   ok(ligne.email === 'verification@example.com' && /Verification/.test(String(ligne.name || ligne.customer_name || '')), `[${cas.nom}] le contact insere = celui saisi`, JSON.stringify({ nom: ligne.name || ligne.customer_name, email: ligne.email }));
-  ok(ligne.notes === 'Gâteau au frais', `[${cas.nom}] le mot pour l equipe est enregistre par le vrai handler (colonne notes)`, JSON.stringify(ligne.notes));
+  const notesAttendues = cas.precision ? `Occasion : ${cas.precision}. Gâteau au frais` : 'Gâteau au frais';
+  ok(ligne.notes === notesAttendues, `[${cas.nom}] le mot pour l equipe est enregistre par le vrai handler (colonne notes)${cas.precision ? ', precision de l occasion comprise' : ''}`, JSON.stringify(ligne.notes));
+  ok(ligne.occasion === cas.occasion, `[${cas.nom}] l occasion est enregistree par le vrai handler (colonne occasion)`, JSON.stringify(ligne.occasion));
   if (cas.formuleId) ok(String(ligne.formule_id || ligne.formula_id || (ligne.program && ligne.program.formuleId) || '') === String(cas.formuleId) || JSON.stringify(ligne).indexOf(`"${cas.formuleId}"`) >= 0, `[${cas.nom}] la formule inseree = celle choisie`, cas.formuleId);
   console.log(`      ligne inseree : ${Object.keys(ligne).sort().join(', ')}`);
   page.off('response', ecoute);
@@ -383,9 +389,9 @@ async function unParcours(page, pool, cas) {
   const browser = await chromium.launch({ executablePath: EDGE, headless: true });
   try {
     const cas = [
-      { nom: 'Bowling et laser', ip: '10.0.0.11', date, pax: 4, activites: ['bowling', 'laser_game'] },
-      { nom: 'Formule', ip: '10.0.0.12', date, pax: 6, formule: true },
-      { nom: 'Grand groupe', ip: '10.0.0.13', date, pax: 40, activites: ['bowling', 'laser_game'] },
+      { nom: 'Bowling et laser', ip: '10.0.0.11', date, pax: 4, activites: ['bowling', 'laser_game'], occasion: 'famille' },
+      { nom: 'Formule', ip: '10.0.0.12', date, pax: 6, formule: true, occasion: 'anniversaire' },
+      { nom: 'Grand groupe', ip: '10.0.0.13', date, pax: 40, activites: ['bowling', 'laser_game'], occasion: 'autre', precision: 'Départ à la retraite' },
     ];
     for (const c of cas) {
       console.log(`\n[${c.nom}] ${c.pax} personnes, ${c.date}`);

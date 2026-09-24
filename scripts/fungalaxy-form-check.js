@@ -15,8 +15,9 @@
 //       premier jour ouvert, et son indice dit « Aujourd hui » ou « Demain »
 //       quand c est le cas), le fil des 5 etapes est rendu, la photo est
 //       decodee, le poids SERVI (apres tools/build-public.js, qui retire les
-//       commentaires) reste celui d un poste faible (< 125 Ko pour JS + CSS +
-//       HTML), aucune photo 1600 demandee sur un ecran de 1440, le « ? » du
+//       commentaires) reste celui d un poste faible (a analyser et a
+//       transferer, plafonds rederives sur mesure plus bas, BUDGET_SERVI et
+//       BUDGET_TRANSFERE), aucune photo 1600 demandee sur un ecran de 1440, le « ? » du
 //       titre ne part jamais seul sur sa ligne.
 //   [A2] CALENDRIER PAR MOIS : chaque mois, du mois en cours jusqu a l horizon
 //       de reservation (un an), est le calendrier servi jour par jour (ferme
@@ -40,11 +41,13 @@
 //       rangees en trois menus (matin, apres-midi, soiree), chacune dans l etat
 //       du moteur : possible, SERREE (choisissable, la visite finira a la
 //       fermeture), A DECALER (une AUTRE activite posee se deplace ; un
-//       chevauchement avec sa propre partie n est pas un decalage, c est un
-//       refus « pris »), IMPOSSIBLE, ou A VOTRE 2e GROUPE (l heure que joue le
-//       groupe suivant d une heure RETENUE, lue dans le plan ; l heure
-//       proposee n emporte rien ; elle reste marquee mais SE CHOISIT : le 1er
-//       groupe y part, sauf quand le moteur, qui a juge ce depart, le refuse) ;
+//       chevauchement avec sa propre partie n est pas un decalage : le moteur
+//       juge a cote le DEPLACEMENT de cette partie, `move`, et l heure en prend
+//       le verdict, jamais un « pris » qui ne se prend pas), IMPOSSIBLE, ou A
+//       VOTRE PARTIE (l heure que joue le groupe suivant d une heure RETENUE,
+//       lue dans le plan ; l heure proposee n emporte rien ; elle reste
+//       marquee « partie N » ou « 2e groupe » mais SE CHOISIT : la partie y
+//       part, sauf quand le moteur refuse ce depart) ;
 //       SOUS CHAQUE PLAGE, chaque heure qui n est
 //       ni libre, ni choisie, ni proposee est expliquee une fois et une seule,
 //       avec la raison du moteur mot pour mot, l activite et la plage reelle
@@ -53,8 +56,13 @@
 //       menu ouvert suit l heure choisie ou proposee ; l heure se centre dans
 //       sa case ; poser une heure met a jour les cases SUR PLACE (meme noeud,
 //       aucun deplacement : plus de tremblement) ; le bloc « votre visite »
-//       est la reponse de la route (arrivee, activites a leur heure, activites
-//       libres, fin, prix, ce qui manque). Tour de l ecran des heures
+//       est la reponse de la route (arrivee et son avance sur la premiere
+//       activite, chaque PARTIE a son heure jusqu a la fin de son dernier
+//       groupe, ses groupes et ses pistes, les parties laissees a l equipe,
+//       activites libres, fin, prix, son detail seulement quand la somme des
+//       lignes EST le prix, paiement, ce qui manque) ; plusieurs parties de
+//       laser se comptent (« 1 heure choisie sur 2 », une ligne par partie).
+//       Tour de l ecran des heures
 //       (lot 2) : le menu d une plage dit ce qui reste « au choix » (ou « une
 //       seule possible »), sans mot de planning ; l heure touchee s entoure
 //       des le toucher et une onde part d elle quand le plan du serveur la
@@ -67,12 +75,18 @@
 //       masque ne fait jamais tomber le focus sur la page.
 //   [D] CONTACT : le recapitulatif ENTIER est a cote du formulaire (ouvert,
 //       pose sur la photo, a cote de la colonne, contenu par la scene) ; un
-//       envoi vide marque les 4 champs et la case, chaque erreur liee a son
-//       champ (aria-invalid, aria-describedby), celle de la case dite en
-//       mots ; le premier champ a corriger prend le focus et fait seul son
-//       petit « non », une fois, et chaque erreur glisse en place ; Entree
-//       fait avancer d un champ sans envoyer (du telephone a la case si elle
-//       n est pas cochee) ; Entree sur un numero faux garde le champ, qui
+//       envoi vide marque les 4 champs, l occasion et la case, chaque erreur
+//       liee a son champ (aria-invalid, aria-describedby), celle de la case
+//       dite en mots ; le premier champ a corriger prend le focus et fait
+//       seul son petit « non », une fois, et chaque erreur glisse en place ;
+//       L OCCASION (2026-09-24, « pour avoir les stats de qui vient et
+//       pourquoi ») : un groupe radio nomme et requis, EXACTEMENT les valeurs
+//       que le serveur garde (OCCASION_VALUES), les fleches d une a l autre
+//       (un seul arret de tabulation), « Autre » ouvre sa precision
+//       facultative ; tout rempli sauf elle, on reste et le focus y va ;
+//       Entree fait avancer d un champ sans envoyer (du telephone a
+//       l occasion si aucune n est choisie, sinon a la case si elle n est pas
+//       cochee) ; Entree sur un numero faux garde le champ, qui
 //       reprend le focus pour que son erreur soit lue ; « +32 (0) » passe ;
 //       une faute de frappe dans le domaine de l e-mail fait proposer
 //       l adresse probable, en question, que le clavier atteint et qu un
@@ -82,8 +96,9 @@
 //       place dit ses deux moyens (carte, especes) avec leurs deux logos ; le
 //       recapitulatif de l ecran des coordonnees est EXACTEMENT celui-ci ; le
 //       POST porte
-//       centre, date, heure, groupe, programme, heures posees, plan et contact,
-//       rien d autre sur la personne ; plus d etoiles au-dessus du titre ; le
+//       centre, date, heure, groupe, programme, heures posees, plan, contact et
+//       occasion (la cle que le serveur garde), rien d autre sur la personne ;
+//       le recapitulatif relit l occasion ; plus d etoiles au-dessus du titre ; le
 //       titre final dit ce que le serveur a repondu (reservation confirmee, ou
 //       demande envoyee) ; la barre des etapes finit pleine, balayee une fois.
 //       Le recapitulatif relit les coordonnees qui partiront, sans heure
@@ -165,14 +180,18 @@
 //       et bouge a chaque changement d ecran (remplir, blanchir, vider),
 //       jamais en boucle ; les trois etiquettes (horaire, ferie, dossier) n ont
 //       plus de capsule, un temoin positif prouvant que la mesure sait en voir
-//       une ; un groupe scinde par le moteur est DIT sur sa piste, chaque
-//       groupe avec sa taille et son heure de depart, et rien n est dit pour
-//       une activite qui tient en une fois ; a 40 personnes, l heure proposee
-//       n emporte rien, l heure retenue emporte celle de son 2e groupe, qui
-//       reste marquee et se CHOISIT (la partie suit son 1er groupe ; quand le
-//       moteur a juge ce depart et le refuse, elle se lit sans se prendre), le
-//       chevauchement avec sa propre partie est « pris » et dit quand joue
-//       cette partie, et le bowling qui chevaucherait dit l activite ET la
+//       une ; un groupe scinde par le moteur est DIT sur sa piste en une
+//       phrase (combien de groupes, de quelle taille, lus dans le plan), et
+//       rien n est dit pour une activite qui tient en une fois ; le bloc de la
+//       visite dit chaque partie avec ses groupes ; a 40 personnes, l heure
+//       proposee n emporte rien, l heure retenue emporte celle de son 2e
+//       groupe, qui reste marquee « partie 1 » et se CHOISIT (la partie suit
+//       son 1er groupe ; quand le moteur refuse ce depart, elle se lit sans se
+//       prendre et la toucher eclaire sa partie) ; plus aucun « pris » :
+//       l heure qui chevaucherait sa propre partie la DEPLACE, avec le verdict
+//       du moteur sur ce deplacement ; le cadre des parties dit « n heures
+//       choisies sur N », une ligne par partie ; et le bowling qui
+//       chevaucherait dit l activite ET la
 //       plage reelle qu elle occupe ; chaque heure expliquee pointe sa ligne
 //       (aria-describedby) ; la barre, la legende et les raisons gardent
 //       4,5:1 au PIRE moment (pixels peints sur la photo la plus claire
@@ -278,17 +297,31 @@
 // place derive d un quart d heure).
 //
 // CONTRE-PREUVES DE L ECRAN DES HEURES (tour du 2026-09-23, « tout doit etre
-// explique ») : soi (un chevauchement avec sa propre partie redevient un
-// « decale »), emportees (l heure du 2e groupe n est plus marquee), proposee
-// (l heure proposee emporte aussi celle de son 2e groupe), explication (les
-// heures du 2e groupe ne s expliquent plus sous leur plage), plage (la phrase
-// du decalage ne dit plus la plage reelle), eclaire (toucher une heure qui ne
-// se prend pas n eclaire plus sa ligne), decrit (les heures expliquees ne
+// explique », revu le 2026-09-24) : soi (un chevauchement avec sa propre
+// partie redevient un « decale »), emportees (l heure du 2e groupe n est plus
+// marquee), proposee (l heure proposee emporte aussi celle de son 2e groupe),
+// explication (l heure d une de ses parties s explique de nouveau sous sa
+// plage, en plus de son nom sur la case), plage (la phrase du decalage ne
+// dit plus la plage reelle), eclaire (toucher une heure qui ne se prend pas
+// n eclaire plus sa ligne, ni sa partie), decrit (les heures expliquees ne
 // pointent plus leur ligne), titrefin (le titre final dit « demande
 // envoyee » meme quand le serveur confirme), choisir (l heure du 2e groupe
-// redevient impossible a prendre), juge (le verdict du moteur est cru meme
-// quand il ne porte pas sur ce depart), suit (toucher l heure du 2e groupe
+// redevient impossible a prendre), suit (toucher l heure du 2e groupe
 // ajoute une partie au lieu de deplacer celle qui l emporte).
+//
+// CONTRE-PREUVES DU TOUR DU 2026-09-24 (l occasion, les parties, la visite) :
+// pris (le verdict du deplacement est ignore : l heure qui chevauche sa
+// propre partie redevient un refus), deplacement (toucher une telle heure
+// ajoute une partie au lieu de deplacer celle qu elle chevauche), comptex (le
+// cadre compte les heures choisies sur elles-memes), partiesproposees (sans
+// heure choisie, le cadre ne montre plus les parties que l equipe propose),
+// detailprix (le detail du prix disparait meme quand la somme des lignes est
+// le prix), finvisite (la fin de la visite quitte le bloc), avance
+// (l arrivee ne dit plus son avance sur la premiere activite),
+// occasionlibre (l occasion ne bloque plus l envoi), occasionperdue
+// (l occasion ne part plus au serveur), occasionrecap (le recapitulatif ne
+// la relit plus), occasionfleches (les fleches ne passent plus d une
+// occasion a l autre). Toutes : JS servi casse.
 //
 // CONTRE-PREUVES DU TOUR DES TITRES, DU PAIEMENT ET DU RECAPITULATIF
 // (2026-09-23) : titres (deux titres rouvrent sur « Vos » : PAGE servie
@@ -483,8 +516,23 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // 150 Ko. Le cout reste dans le style et la mise en page. Plafonds : 180 Ko a
 // analyser, 52 Ko a transferer, assez pres pour qu une bibliotheque, une
 // police ou une image en base64 fassent sauter l un ou l autre.
-const BUDGET_SERVI = 180 * 1024;
-const BUDGET_TRANSFERE = 52 * 1024;
+//
+// REDERIVE LE 2026-09-24 AU SOIR, apres le lot « visite complete » (l occasion,
+// le cadre des parties de laser, le bloc de la visite et le detail du prix) :
+// 187,8 Ko servis, 51,8 Ko transferes. Rien de mort a retirer (releve par
+// script : aucune fonction jamais appelee, aucune regle sans cible). Le
+// transfert passait encore, mais a 99,6 % de son plafond : un cliquet qui
+// aurait bloque le changement suivant, quel qu il soit. Mesure A/B dans la
+// meme session (meme protocole, deux tours alternes) : la prod a 172,8 Ko
+// donne script 59 puis 80 ms, style 109 puis 127 ms, mise en page 315 puis
+// 359 ms ; le lot a 187,8 Ko donne 86 puis 80 ms, 145 puis 129 ms, 415 puis
+// 318 ms. L ecart d une version a l autre est plus petit que celui d une
+// meme version d un tour a l autre : aucun surcout mesurable. Sur le reseau,
+// 3,7 Ko de plus coutent environ 75 ms a 400 kbit/s. Plafonds : 200 Ko a
+// analyser, 58 Ko a transferer, soit 12 et 6 Ko de marge : une police ou une
+// bibliotheque (plus de 15 Ko compresses) font toujours sauter le second.
+const BUDGET_SERVI = 200 * 1024;
+const BUDGET_TRANSFERE = 58 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -528,11 +576,12 @@ function heureAffichee(t) { return t === '24:00' ? 'minuit' : t; }
 function periodeDe(h) { const n = Number(String(h).split(':')[0]); return n < 12 ? 'Matin' : n < 18 ? 'Après-midi' : 'Soirée'; }
 // Le mot d une heure refusee suit le CODE du moteur. resource_conflict se dit
 // « complet » (le moteur lui-meme ecrit « Complet »), schedule_free est un
-// « trop tard », et anchor_overlap, quand il reste un refus (sa propre
-// partie), se dit « pris ».
+// « trop tard ». anchor_overlap ne se dit plus « pris » (2026-09-24) : un
+// chevauchement avec une autre de ses parties de laser se dit par le NOM de
+// cette partie (« partie 2 »), le reste « occupé ».
 // Le texte d une panne ne doit jamais etre celui du navigateur.
 const ANGLAIS = /fetch|network|load failed|unexpected|json|token|error|timeout|abort/i;
-const MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', schedule_free: 'trop tard', resource_conflict: 'complet', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo', anchor_overlap: 'pris' };
+const MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', schedule_free: 'trop tard', resource_conflict: 'complet', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo', anchor_overlap: 'occupé' };
 
 const HOST_HTML = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -555,7 +604,7 @@ const MUTATIONS = {
   calendrier: ["(off ? 'disabled' : '')", "''"],
   serre: ["q.set('softReserve', '1');", 'void 0;'],
   option: ['state.options[a.id][o.cle] = o.valeur;', 'void 0;'],
-  parties: ['var reste = total - posees;', 'var reste = 0;'],
+  parties: ['      if (!(total > 1) || !posees || posees >= total) return;', '      return;'],
   pax: ["paxInput.style.width = (n + 0.3) + 'ch';", "paxInput.style.width = '9ch';"],
   fil: ["(i === actif && !fin ? '<span class=\"fg-steps__of\"", "(false ? '<span class=\"fg-steps__of\""],
   mouvement: ["if (sens === 'avance' && i === actif) geste = ' is-filling';", ''],
@@ -565,18 +614,17 @@ const MUTATIONS = {
   soi: [' && t.conflict.activityId !== idPiste;', ';'],
   emportees: ['if ((Number(b.countIndex) || 1) !== partie || !(Number(b.groupWaveIndex) > 1)) return;', 'return;'],
   proposee: ['heuresEmportees(state.creneau, a.activityId, actifs)', 'heuresEmportees(state.creneau, a.activityId, actifs.concat(propose ? [propose] : []))'],
-  explication: ["if (!etat || etat === 'ok' || c.classList.contains('is-on')", "if (!etat || etat === 'ok' || etat === 'wave' || c.classList.contains('is-on')"],
-  plage: ["(plage ? ' (' + plage + ')' : ' de ' + g.conflit.time)", "(' de ' + g.conflit.time)"],
-  eclaire: ["if (ligne) { void ligne.offsetWidth; ligne.classList.add('is-lit'); }", 'void 0;'],
+  explication: ["if (!etat || etat === 'ok' || etat === 'wave' || c.classList.contains('is-on')", "if (!etat || etat === 'ok' || c.classList.contains('is-on')"],
+  plage: ["var quand = plage ? ' (' + plage + ')' : ' de ' + g.conflit.time;", "var quand = ' de ' + g.conflit.time;"],
+  eclaire: ["if (cible) { void cible.offsetWidth; cible.classList.add('is-lit'); }", 'void cible;'],
   decrit: ["groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.setAttribute('aria-describedby', racine + '-why-' + k); }); });", 'void 0;'],
   titrefin: ["poserTitre($('#t-fin'), confirme ? 'Réservation<br><em>confirmée</em>' : 'Demande<br><em>envoyée</em>');", "poserTitre($('#t-fin'), 'Demande<br><em>envoyée</em>');"],
   choisir: ["chip.dataset.ok = e.etat === 'hard' || e.sous === 'hard' ? 'false' : 'true';", "chip.dataset.ok = e.etat === 'hard' || e.etat === 'wave' ? 'false' : 'true';"],
   accents: ["if (w.offsetTop > haut + 2 && ACCENT_HAUT.test(w.textContent.toUpperCase().normalize('NFD'))) w.classList.add('w--accent');", 'void haut;'],
   liens: ["Une question ? ' + lienContact(contact) + '</span></p>'", "Une question ? ' + esc(contact.phone) + '</span></p>'"],
-  groupesrecap: ['        if (groupes.length > 1) {', '        if (false) {'],
+  groupesrecap: ['        if (grand) morceaux.push(', '        if (false) morceaux.push('],
   plagerepliee: ["      else if (vagues.length) sum = vagues.join(', ') + ' · ' + sum;", '      else if (false) sum = vagues.join();'],
   resume: ['    hourSum.innerHTML = span + ', '    if (!hourSum.innerHTML) hourSum.innerHTML = span + '],
-  juge: ['return state.laserParts.length >= compte && state.laserParts[0] === depuis;', 'return true;'],
   suit: ['if (j >= 0) state.laserParts[j] = t;', 'if (false) state.laserParts[j] = t;'],
   especes: ['<svg><use href="#i-cash"/></svg>', ''],
   recapcontact: ["$('#recallBody').innerHTML = htmlRecap(false);", 'void 0;'],
@@ -621,7 +669,7 @@ const MUTATIONS = {
   fautemail: ['(d === 1 || (d === 2 && best.length >= 9))', 'false'],
   pays: ["if (tld !== best.split('.').pop() && PAYS.indexOf(tld) >= 0) return '';", ''],
   garde: ["if ((boiteMail.dataset.s || '') === s) return;", ''],
-  note: ["notes: state.contact.note || '',", "notes: '',"],
+  note: ["notes: [state.contact.occasion === 'autre' && state.contact.occasionAutre ? 'Occasion : ' + state.contact.occasionAutre : '', state.contact.note || ''].filter(Boolean).join('. '),", "notes: '',"],
   nudge: ["secouer(premier.closest('.fg-field, .fg-check'));", 'void 0;'],
   nudgereste: ["if (w) w.classList.remove('is-nudge');", 'void w;'],
   quirecap: ["esc(state.contact.email) + '&nbsp;· ' + esc(state.contact.telephone) + '</p>'", "esc(state.contact.email) + '</p>'"],
@@ -647,6 +695,17 @@ const MUTATIONS = {
   survoldoigt: ["    if (e.pointerType === 'touch') return;\n", ''],
   anneauhote: ["    if (el && el.matches && el.matches('.fg-card, .fg-pill, .fg-tab') && focusClavier(el)) montrer(el);\n", ''],
   perdu: ['    if (enTransition) { allerEnAttente = { cible: cible, retour: retour }; return; }\n', '    if (enTransition) return;\n'],
+  pris: ['function verdictDu(t) { return t && t.ok === false && t.move ? t.move : t; }', 'function verdictDu(t) { return t; }'],
+  deplacement: ["var remplacee = chip.dataset.replaces || (vague ? vague.depuis : '');", "var remplacee = vague ? vague.depuis : '';"],
+  comptex: ["' choisie' + (n > 1 ? 's' : '') + ' sur ' + total", "' choisie' + (n > 1 ? 's' : '') + ' sur ' + n"],
+  partiesproposees: ['var heures = n ? state.laserParts.slice() : debutsDesParties(state.creneau, a.activityId);', 'var heures = state.laserParts.slice();'],
+  detailprix: ['      if (Math.abs(connus - prix) < 0.01) {', '      if (false) {'],
+  finvisite: ["    if (fin) lignes += etapeVisite({ genre: 'out'", "    if (false) lignes += etapeVisite({ genre: 'out'"],
+  avance: ["detail: avance > 0 ? avance + ' min avant votre ' + nomBas(premiere) : 'on vous accueille'", "detail: 'on vous accueille'"],
+  occasionlibre: ['    if (!occ) ok = false;\n', ''],
+  occasionperdue: ["occasion: state.contact.occasion || '',", "occasion: '',"],
+  occasionrecap: ['if (final && state.contact.occasion) html +=', 'if (false) html +='],
+  occasionfleches: ["    if (!pas || !e.target.classList || !e.target.classList.contains('fg-occasion')) return;", '    return;'],
 };
 // Les contre-preuves de la FEUILLE : une regle servie cassee expres. La feuille
 // est relue en LF, quelle que soit la fin de ligne du depot.
@@ -787,6 +846,28 @@ function poidsServi() {
   }
 }
 
+// LES PARTIES DU PLAN, comme le bloc de la visite les ecrit : une par
+// activite et par partie (countIndex), ses groupes dans l ordre, la fin du
+// dernier, les pistes. Tout vient des blocs du plan rendu par le serveur.
+function partiesQa(plan) {
+  const index = new Map();
+  const liste = [];
+  ((plan && plan.resourceBlocks) || []).forEach((b) => {
+    if (!b || !(b.type === 'activity' || b.activityId) || !b.activityId || !b.startTime) return;
+    const cle = `${b.activityId}#${Number(b.countIndex) || 1}`;
+    if (!index.has(cle)) { const p = { id: b.activityId, partie: Number(b.countIndex) || 1, groupes: [], pistes: 0 }; index.set(cle, p); liste.push(p); }
+    const p = index.get(cle);
+    if (p.groupes.some((g) => g.debut === String(b.startTime))) return;
+    p.groupes.push({ joueurs: Number(b.players) || 0, debut: String(b.startTime), fin: String(b.endTime || '') });
+    p.pistes = Math.max(p.pistes, Number(b.requiredLanes) || 0);
+  });
+  liste.forEach((p) => {
+    p.groupes.sort((x, y) => x.debut.localeCompare(y.debut));
+    p.debut = p.groupes[0].debut;
+    p.fin = p.groupes.map((g) => g.fin).sort().pop() || '';
+  });
+  return liste.sort((x, y) => x.debut.localeCompare(y.debut));
+}
 // Le plan tel que l ecran doit l ecrire, relu sur la reponse.
 function lignePlan(reponse) {
   const slot = (reponse.slots || [])[0];
@@ -799,12 +880,20 @@ function lignePlan(reponse) {
     .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)))
     .map((b) => ({ id: b.activityId, t: b.startTime, partie: Number(b.countIndex) || 1 }));
   const items = (reponse.program && reponse.program.items) || [];
-  const planifies = new Set(blocs.map((b) => b.id));
+  const parties = partiesQa(plan);
+  const planifies = new Set(parties.map((x) => x.id));
   return {
     arrivee: plan.arrivalTime || '',
     blocs,
+    parties,
     noms: Object.fromEntries(items.map((i) => [i.activityId, i.name])),
-    jeux: Object.fromEntries(items.filter((i) => Number(i.games) > 1).map((i) => [i.activityId, Number(i.games)])),
+    // Chaque ligne du programme telle que le serveur la chiffre : un montant
+    // connu, ou regle sur place.
+    items: items.map((i) => ({
+      id: i.activityId, nom: i.name || i.activityId, games: Number(i.games) || 0, minutes: Number(i.minutes) || 0,
+      sessions: i.sessions, services: Array.isArray(i.services) ? i.services.length : 0,
+      prix: Number(i.price) || 0, sait: i.priceKnown === true || (i.priceKnown !== false && Number(i.price) > 0),
+    })),
     libres: items.filter((i) => !planifies.has(i.activityId)).map((i) => i.name),
     fin: slot.visitEndTime || plan.endTime || '',
     fermeture: Boolean(slot.visitEndsAtClose),
@@ -820,15 +909,24 @@ async function lireEcranPlan(page) {
     const p = document.querySelector('#planZone .fg-visit');
     if (!p) return null;
     const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+    const etape = (li) => ({ t: txt(li.querySelector(':scope > b')), nom: txt(li.querySelector(':scope > span')), detail: txt(li.querySelector(':scope > small')) });
     const prixEl = p.querySelector('.fg-visit__price');
+    const fin = p.querySelector('.fg-visit__step--out');
+    const total = p.querySelector('.fg-visit__total');
     return {
       arrivee: txt(p.querySelector('.fg-visit__step--in > b')),
-      etapes: Array.from(p.querySelectorAll('.fg-visit__step:not(.fg-visit__step--in):not(.fg-visit__step--free)')).map((li) => ({ t: txt(li.querySelector(':scope > b')), nom: txt(li.querySelector(':scope > span')), detail: txt(li.querySelector(':scope > small')), bouge: li.classList.contains('is-moved') })),
+      arriveeDetail: txt(p.querySelector('.fg-visit__step--in > small')),
+      etapes: Array.from(p.querySelectorAll('.fg-visit__step:not(.fg-visit__step--in):not(.fg-visit__step--free):not(.fg-visit__step--onsite):not(.fg-visit__step--out)')).map((li) => Object.assign(etape(li), { bouge: li.classList.contains('is-moved') })),
       libres: Array.from(p.querySelectorAll('.fg-visit__step--free i')).map((i) => txt(i)),
+      surplace: Array.from(p.querySelectorAll('.fg-visit__step--onsite')).map(etape),
+      finEtape: fin ? etape(fin) : null,
       span: txt(p.querySelector('.fg-visit__span')),
       prix: prixEl && prixEl.firstChild ? prixEl.firstChild.textContent.trim() : '',
       reste: txt(prixEl && prixEl.querySelector('small')),
       avis: txt(p.querySelector('.fg-visit__warn')),
+      prixLignes: Array.from(p.querySelectorAll('.fg-visit__prices > div:not(.fg-visit__total)')).map((l) => ({ dt: txt(l.querySelector('dt')), dd: txt(l.querySelector('dd')) })),
+      prixTotal: total ? { dt: txt(total.querySelector('dt')), dd: txt(total.querySelector('dd')) } : null,
+      paiement: txt(p.querySelector('.fg-visit__pay')),
       garder: !document.querySelector('#goContact').disabled,
     };
   });
@@ -923,31 +1021,96 @@ async function lirePhotosEcrans(page) {
   }));
 }
 
+// Les mots du client pour une duree, des groupes, une liste (memes regles que
+// minutesLabel, taillesGroupes, texteGroupes, joindreListe cote client).
+function minutesLabelQa(m) { m = Number(m) || 0; if (m >= 60) { const h = Math.floor(m / 60), r = m % 60; return r ? `${h}h${String(r).padStart(2, '0')}` : `${h} heure${h > 1 ? 's' : ''}`; } return `${m} min`; }
+function sessionsQa(it) { const n = Math.trunc(Number(it.sessions) || 1); const mn = Number(it.minutes) || 0; return n < 2 || !mn ? '' : `${n} sessions de ${minutesLabelQa(Math.round(mn / n))}`; }
+function detailLigneQa(it) {
+  if (it.games > 0) return `${it.games} partie${it.games > 1 ? 's' : ''}`;
+  return sessionsQa(it) || (it.minutes ? `${minutesLabelQa(it.minutes)}${it.services > 1 ? ' par groupe' : ''}` : '');
+}
+function taillesQa(tailles) { return tailles.every((x) => x === tailles[0]) ? `de ${tailles[0]}` : `(${tailles.join(' + ')})`; }
+function joindreQa(liste, et) { return liste.length < 2 ? (liste[0] || '') : liste.slice(0, -1).join(', ') + et + liste[liste.length - 1]; }
+function texteGroupesQa(p, avecHeures) {
+  if (!p || !(p.groupes.length > 1)) return '';
+  return `${p.groupes.length} groupes ${taillesQa(p.groupes.map((g) => g.joueurs))}${avecHeures ? `, à ${joindreQa(p.groupes.map((g) => g.debut), ' puis ')}` : ''}`;
+}
+const blancs = (x) => String(x).replace(/\s+/g, ' ').trim();
+// CE QUE LE BLOC « VOTRE VISITE » DOIT ECRIRE, refait en Node sur la reponse
+// (Movsar, 2026-09-24 : « plus complet et serieux, un truc super complet ») :
+// l avance de l arrivee sur la premiere activite, une etape par PARTIE (son
+// nom, « partie k sur N », la fin de son dernier groupe, ses groupes, ses
+// pistes), les parties que le plan ne pose pas, la fin, le detail du prix
+// quand la somme des montants connus EST le prix, et ce que la voix en dit.
+function visiteAttendue(o) {
+  const item = (id) => o.items.find((x) => x.id === id) || { id, nom: o.noms[id] || id, games: 0, minutes: 0, sessions: 1, services: 0 };
+  const nom = (id) => item(id).nom || o.noms[id] || id;
+  const etapes = o.parties.map((p) => {
+    const it = item(p.id);
+    const quoi = it.games > 1 ? `partie ${p.partie} sur ${it.games}` : it.games === 1 ? '1 partie'
+      : (sessionsQa(it) || (it.minutes ? `${minutesLabelQa(it.minutes)}${p.groupes.length > 1 ? ' par groupe' : ''}` : ''));
+    return {
+      t: p.debut,
+      nom: nom(p.id) + (quoi ? ` · ${quoi}` : ''),
+      detail: [p.fin ? `jusqu’à ${heureAffichee(p.fin)}` : '', texteGroupesQa(p, true), p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
+      voix: `${nom(p.id)}${quoi ? `, ${quoi}` : ''}, de ${p.debut}${p.fin ? ` à ${heureAffichee(p.fin)}` : ''}${p.groupes.length > 1 ? `, en ${p.groupes.length} groupes` : ''}`,
+    };
+  });
+  if (!o.parties.length && !o.libres.length && !o.arrivee) etapes.push({ t: o.time, nom: 'Début', detail: '', voix: '' });
+  const surPlace = [];
+  o.items.forEach((it) => {
+    const posees = o.parties.filter((x) => x.id === it.id).length;
+    if (!(it.games > 1) || !posees || posees >= it.games) return;
+    const reste = [];
+    for (let k = posees + 1; k <= it.games; k += 1) reste.push(String(k));
+    const quelles = `partie${reste.length > 1 ? 's' : ''} ${joindreQa(reste, ' et ')} sur ${it.games}`;
+    surPlace.push({ t: 'sur place', nom: `${nom(it.id)} · ${quelles}`, detail: 'à placer sur place avec l’équipe', voix: `${nom(it.id)}, ${quelles}, à placer sur place avec l’équipe` });
+  });
+  const premiere = o.parties[0];
+  const avance = premiere && o.arrivee ? minutesEntreQa(o.arrivee, premiere.debut) : 0;
+  const connus = o.items.filter((it) => it.sait).reduce((x, it) => x + it.prix, 0);
+  const detaille = o.items.length > 1 && o.prix > 0 && Math.abs(connus - o.prix) < 0.01;
+  return {
+    arriveeDetail: o.arrivee ? (avance > 0 ? `${avance} min avant votre ${nom(premiere.id).toLowerCase()}` : 'on vous accueille') : '',
+    etapes,
+    surPlace,
+    fin: o.fin ? { t: heureAffichee(o.fin), nom: 'Fin de la visite', detail: o.fermeture ? 'fermeture du centre' : 'heure estimée' } : null,
+    prix: detaille ? {
+      lignes: o.items.map((it) => ({ dt: blancs(`${it.nom}${detailLigneQa(it) ? ` · ${detailLigneQa(it)}` : ''}`), dd: blancs(it.sait ? euros(it.prix) : 'sur place') })),
+      total: { dt: o.complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place', dd: blancs(euros(o.prix)) },
+      paiement: 'Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.',
+    } : null,
+    connus,
+  };
+}
 function ecartsPlan(ecran, o) {
   if (!ecran) return ['aucun bloc « votre visite » a l ecran'];
   if (!o) return ['aucun creneau dans la reponse de la route'];
   const e = [];
+  const v = visiteAttendue(o);
   if (o.arrivee && ecran.arrivee !== o.arrivee) e.push(`arrivee ${ecran.arrivee} vs ${o.arrivee}`);
-  const t1 = ecran.etapes.map((x) => x.t).join(',');
-  const t2 = o.blocs.map((b) => b.t).join(',');
-  if (t1 !== t2) e.push(`heures ${t1} vs ${t2}`);
-  o.blocs.forEach((b, i) => { const x = ecran.etapes[i]; if (x && x.nom !== (o.noms[b.id] || b.id)) e.push(`activite ${x.nom} vs ${o.noms[b.id]}`); });
-  if (ecran.libres.join(',') !== o.libres.join(',')) e.push(`libres ${ecran.libres.join(',')} vs ${o.libres.join(',')}`);
-  // Les parties : numerotees par PARTIE (jamais par vague), et celles que le
-  // plan ne pose pas se disent « sur place avec l equipe ».
-  Object.keys(o.jeux).forEach((id) => {
-    const total = o.jeux[id];
-    const etapes = o.blocs.map((b, i) => ({ b, x: ecran.etapes[i] })).filter((p) => p.b.id === id && p.x);
-    if (!etapes.length) return;
-    const posees = new Set(etapes.map((p) => p.b.partie)).size;
-    const note = /sur place avec l’équipe/.test(etapes[etapes.length - 1].x.detail);
-    if (note !== (posees < total)) e.push(`${id}: ${posees}/${total} partie(s) posee(s), mention « sur place avec l equipe » ${note ? 'presente' : 'absente'}`);
-    if (posees > 1 && etapes.some((p) => p.x.detail.indexOf(`partie ${p.b.partie}/${total}`) !== 0)) e.push(`${id}: numerotation ${etapes.map((p) => p.x.detail).join(' | ')}`);
+  if (o.arrivee && ecran.arriveeDetail !== v.arriveeDetail) e.push(`arrivee « ${ecran.arriveeDetail} » vs « ${v.arriveeDetail} »`);
+  if (ecran.etapes.length !== v.etapes.length) e.push(`${ecran.etapes.length} etape(s) pour ${v.etapes.length} : ${ecran.etapes.map((x) => `${x.t} ${x.nom}`).join(' | ')}`);
+  v.etapes.forEach((a, i) => {
+    const x = ecran.etapes[i];
+    if (!x) return;
+    if (x.t !== a.t || x.nom !== a.nom) e.push(`etape ${i + 1} « ${x.t} ${x.nom} » vs « ${a.t} ${a.nom} »`);
+    // « deplace pour votre X a T » s ajoute a l etape que le toucher a fait
+    // bouger ([C] le verifie a part).
+    const detail = x.bouge ? x.detail.replace(/(?:^| · )déplacé pour votre .+ à \d{2}:\d{2}$/, '') : x.detail;
+    if (detail !== a.detail) e.push(`etape ${a.t} « ${x.detail} » vs « ${a.detail} »`);
   });
+  if (ecran.libres.join(',') !== o.libres.join(',')) e.push(`libres ${ecran.libres.join(',')} vs ${o.libres.join(',')}`);
+  const sp = v.surPlace.map(({ t, nom, detail }) => ({ t, nom, detail }));
+  if (JSON.stringify(ecran.surplace) !== JSON.stringify(sp)) e.push(`sur place ${JSON.stringify(ecran.surplace)} vs ${JSON.stringify(sp)}`);
+  if (JSON.stringify(ecran.finEtape) !== JSON.stringify(v.fin)) e.push(`fin ${JSON.stringify(ecran.finEtape)} vs ${JSON.stringify(v.fin)}`);
   const fin = o.fermeture ? `jusqu’à la fermeture (${heureAffichee(o.fin)})` : `à ${heureAffichee(o.fin)} environ`;
   if (o.fin && ecran.span.indexOf(fin) < 0) e.push(`fin « ${ecran.span} » sans « ${fin} »`);
   if (ecran.prix !== euros(o.prix)) e.push(`prix ${ecran.prix} vs ${euros(o.prix)}`);
   if ((ecran.reste === 'le reste se règle sur place') !== !o.complet) e.push(`mention « le reste se regle sur place » : « ${ecran.reste} » pour complet=${o.complet}`);
+  const prixVu = { lignes: ecran.prixLignes, total: ecran.prixTotal, paiement: ecran.paiement };
+  const prixAttendu = v.prix || { lignes: [], total: null, paiement: '' };
+  if (JSON.stringify(prixVu) !== JSON.stringify(prixAttendu)) e.push(`detail du prix ${JSON.stringify(prixVu)} vs ${JSON.stringify(prixAttendu)} (montants connus ${v.connus}, prix ${o.prix})`);
   const manque = o.fermeture && o.manque > 0;
   const phrase = `il manque ${dureeApprox(o.manque)}`;
   if (manque && ecran.avis.indexOf(phrase) < 0) e.push(`avis « ${ecran.avis} » sans « ${phrase} »`);
@@ -960,8 +1123,10 @@ async function lirePistes(page) {
     id: t.dataset.activity,
     count: Number(t.dataset.count) || 1,
     touchee: Boolean(t.dataset.touched),
+    detail: ((t.querySelector('.fg-track__detail') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
     chips: Array.from(t.querySelectorAll('.fg-chip')).map((c) => ({
       t: c.dataset.time, etat: c.dataset.state, ok: c.dataset.ok === 'true', reason: c.dataset.reason || '', conflit: c.dataset.conflict || '', sous: c.dataset.sous || '',
+      replaces: c.dataset.replaces || '', partie: c.dataset.partie || '',
       mot: (c.querySelector('small') || {}).textContent || '', on: c.classList.contains('is-on'), proposed: c.classList.contains('is-proposed'),
       titre: c.getAttribute('title') || '', periode: c.closest('.fg-period') ? c.closest('.fg-period').dataset.period : '',
       // La ligne que l heure POINTE (aria-describedby), lue par ses heures.
@@ -983,21 +1148,47 @@ async function lirePistes(page) {
     })),
     reset: !t.querySelector('[data-reset]').hidden,
     note: t.querySelector('.fg-track__note') && !t.querySelector('.fg-track__note').hidden ? t.querySelector('.fg-track__note').textContent : '',
+    vagues: t.querySelector('.fg-track__waves') && !t.querySelector('.fg-track__waves').hidden ? t.querySelector('.fg-track__waves').textContent.replace(/\s+/g, ' ').trim() : '',
+    // Le cadre des parties (plusieurs parties de laser).
+    parts: (() => {
+      const b = t.querySelector('.fg-parts');
+      if (!b) return null;
+      const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
+      return {
+        tete: txt(b.querySelector('.fg-parts__head > span')),
+        compte: txt(b.querySelector('.fg-parts__head > b')),
+        items: Array.from(b.querySelectorAll('.fg-parts__item')).map((li) => ({ texte: txt(li.querySelector(':scope > span')), classe: ['is-set', 'is-proposed', 'is-free'].find((k) => li.classList.contains(k)) || '' })),
+      };
+    })(),
   })));
 }
 // L ETAT D UNE HEURE, redit en Node a partir de la reponse :
 //   wave  : l heure que joue le groupe suivant d une heure RETENUE (le plan) ;
 //   shift : chevauche une AUTRE activite posee, qui se deplacera ;
-//   hard  : impossible, y compris un chevauchement avec SA PROPRE partie (le
-//           tunnel le sait depuis le 2026-09-18 : on ne se replace pas soi-meme) ;
+//   hard  : impossible ;
 //   soft  : possible, avec l avertissement du moteur (sauf si TOUT est serre) ;
 //   ok    : rien a dire.
+// PLUS AUCUN « PRIS » QUI NE SE PREND PAS (Movsar, 2026-09-24 : « c est con,
+// c est mal fait »). Une heure qui chevauche l une de SES parties de laser,
+// jugee comme une partie en plus, est refusee ; le moteur juge a cote le
+// DEPLACEMENT de cette partie-la (`move`, lib/ops-engine.js
+// visitFeasibilityAt), par la meme porte que la reservation. Le toucher fait
+// ce deplacement : l heure en prend le verdict.
+function verdictQa(t) { return t && t.ok === false && t.move ? t.move : t; }
 function etatAttendu(t, toutSerre, id, emportees, on) {
   if (!on && emportees && emportees[t.time]) return 'wave';
-  if (t.ok === false) return t.code === 'anchor_overlap' && t.conflict && t.conflict.activityId && t.conflict.activityId !== id ? 'shift' : 'hard';
-  if (t.warning && !toutSerre) return 'soft';
+  const v = verdictQa(t);
+  if (v.ok === false) return v.code === 'anchor_overlap' && v.conflict && v.conflict.activityId && v.conflict.activityId !== id ? 'shift' : 'hard';
+  if (v.warning && !toutSerre) return 'soft';
   return 'ok';
 }
+// La raison qu une case porte, lue dans le verdict de ce que le toucher fait.
+function raisonQa(v, id) {
+  if (v.ok === false) return v.code === 'anchor_overlap' && v.conflict && v.conflict.activityId && v.conflict.activityId !== id ? (v.reason || 'Chevauche une autre activité') : (v.reason || 'Indisponible');
+  return v.warning ? (v.warning.reason || 'Peu de temps pour le reste de la visite') : '';
+}
+// Le rang d une partie de laser posee : l ordre de ses heures.
+function rangQa(parts, h) { return (parts || []).indexOf(h) + 1; }
 function minutesQa(h) { const p = /^(\d{1,2}):(\d{2})$/.exec(String(h || '')); return p ? Number(p[1]) * 60 + Number(p[2]) : NaN; }
 function blocsDu(d, id) { return ((((d.slots || [])[0] || {}).opsPlan || {}).resourceBlocks || []).filter((b) => b && b.activityId === id); }
 // LES HEURES DU GROUPE SUIVANT, relues sur le plan, pour les SEULES heures que
@@ -1020,20 +1211,11 @@ function emporteesQa(d, a, retenues) {
   });
   return out;
 }
-// L HEURE D UN GROUPE SUIVANT SE CHOISIT : la toucher y fait partir le 1er
-// groupe de sa partie. Le verdict du moteur sur cette heure vaut pour ce
-// depart quand il juge exactement ce deplacement : une activite d une seule
-// partie, ou la plus tot des parties de laser quand toutes sont posees (le
-// moteur remplace la plus tot, visitFeasibilityAt). Sinon il n a rien juge de
-// ce depart : l heure se prend.
-function jugeQa(a, depuis, actifs) {
-  const compte = Math.max(1, Number(a.count) || 1);
-  if (a.activityId !== 'laser_game' || compte <= 1) return true;
-  const parts = actifs.slice().sort();
-  return parts.length >= compte && parts[0] === depuis;
-}
-function sousQa(t, toutSerre, a, v, actifs) {
-  return jugeQa(a, v.depuis, actifs) ? etatAttendu(t, toutSerre, a.activityId, null, false) : 'ok';
+// Le depart de chaque partie que le plan pose, dans l ordre des heures.
+function debutsQa(d, id) {
+  const par = {};
+  blocsDu(d, id).forEach((b) => { if (!b.startTime) return; const k = Number(b.countIndex) || 1; if (!par[k] || String(b.startTime) < par[k]) par[k] = String(b.startTime); });
+  return Object.values(par).sort();
 }
 function minusculeQa(s) { s = String(s || ''); return s.charAt(0).toLowerCase() + s.slice(1); }
 // La plage reelle qu occupe une activite du plan a partir de son depart : de
@@ -1046,78 +1228,104 @@ function plageQa(d, id, debut) {
   }
   return '';
 }
-function motAttendu(etat, t, v) {
-  if (etat === 'hard') return MOTS_DURS[t.code] || 'indispo';
+// Le mot d une heure. L heure d une de SES parties porte le nom de cette
+// partie (« partie 1 » quand le laser en a plusieurs, « 2e groupe » sinon) ;
+// un refus qui chevaucherait une autre de ses parties dit laquelle.
+function motAttendu(etat, t, w, multi, parts, id) {
+  const v = verdictQa(t);
+  if (etat === 'hard') {
+    if (multi && v.code === 'anchor_overlap' && v.conflict && v.conflict.activityId === id && rangQa(parts, v.conflict.time)) return `partie ${rangQa(parts, v.conflict.time)}`;
+    return MOTS_DURS[v.code] || 'indispo';
+  }
   if (etat === 'soft') return 'serré';
   if (etat === 'shift') return 'décale';
-  if (etat === 'wave') return `groupe ${v.rang}`;
+  if (etat === 'wave') return multi ? `partie ${rangQa(parts, w.depuis)}` : `${w.rang}e groupe`;
   return '';
 }
 // Une piste de l ecran contre l ancre de la route : etat, raison, mot, titre,
-// periode de chaque heure, le resume de chaque menu, puis les raisons ecrites
-// sous chaque plage.
-function ecartsPiste(p, a, actifs, propose, d) {
+// periode de chaque heure, la partie qu une heure deplace, le resume de chaque
+// menu, les raisons ecrites sous chaque plage, puis le cadre des parties.
+function ecartsPiste(p, a, actifs, propose, d, laserParts) {
   const e = [];
   if (!p) return [`${a.activityId}: piste absente`];
-  const possibles = a.times.filter((t) => t.ok !== false);
-  const toutSerre = possibles.length > 0 && possibles.every((t) => t.warning);
+  const id = a.activityId;
+  const multi = id === 'laser_game' && Math.max(1, Number(a.count) || 1) > 1;
+  const parts = laserParts || [];
+  const possibles = a.times.map(verdictQa).filter((v) => v.ok !== false);
+  const toutSerre = possibles.length > 0 && possibles.every((v) => v.warning);
   const emportees = emporteesQa(d, a, actifs);
-  const etatDe = (t) => etatAttendu(t, toutSerre, a.activityId, emportees, actifs.indexOf(t.time) >= 0);
-  // Le verdict du moteur sur le depart du 1er groupe a l heure d un groupe
-  // suivant (vide ailleurs), et ce qui se PREND.
-  const sousDe = (t) => (etatDe(t) === 'wave' ? sousQa(t, toutSerre, a, emportees[t.time], actifs) : '');
+  const etatDe = (t) => etatAttendu(t, toutSerre, id, emportees, actifs.indexOf(t.time) >= 0);
+  // Le verdict de ce que le toucher fait a l heure d un groupe suivant (vide
+  // ailleurs), et ce qui se PREND.
+  const sousDe = (t) => (etatDe(t) === 'wave' ? etatAttendu(t, toutSerre, id, null, false) : '');
   const prenableDe = (t) => etatDe(t) !== 'hard' && sousDe(t) !== 'hard';
-  if (p.chips.length !== a.times.length) e.push(`${a.activityId}: ${p.chips.length} cases pour ${a.times.length} heures`);
+  if (p.chips.length !== a.times.length) e.push(`${id}: ${p.chips.length} cases pour ${a.times.length} heures`);
   a.times.forEach((t, k) => {
     const c = p.chips[k] || {};
-    if (c.t !== t.time) { e.push(`${a.activityId} ${t.time}: case ${c.t}`); return; }
+    if (c.t !== t.time) { e.push(`${id} ${t.time}: case ${c.t}`); return; }
     const on = actifs.indexOf(t.time) >= 0;
     const prop = !on && propose === t.time;
     const etat = etatDe(t);
-    const v = etat === 'wave' ? emportees[t.time] : null;
-    if (c.etat !== etat) e.push(`${a.activityId} ${t.time}: etat ${c.etat} attendu ${etat}`);
-    if (c.ok !== prenableDe(t)) e.push(`${a.activityId} ${t.time}: data-ok ${c.ok} attendu ${prenableDe(t)}${v ? ` (depart du 1er groupe ici : ${sousDe(t)})` : ''}`);
-    if (v) {
-      // L heure du 2e groupe dit le groupe, sa taille et son jeu, tires du
-      // plan, puis ce que la toucher fait : y faire partir le 1er groupe, ou
-      // pourquoi le moteur refuse ce depart (sa raison).
+    const w = etat === 'wave' ? emportees[t.time] : null;
+    const v = verdictQa(t);
+    const raison = raisonQa(v, id);
+    // La partie que le toucher DEPLACE (verdict `move`), s il en deplace une.
+    const deplace = t.ok === false && t.move ? String(t.move.replaces || '') : '';
+    if (c.etat !== etat) e.push(`${id} ${t.time}: etat ${c.etat} attendu ${etat}`);
+    if (c.ok !== prenableDe(t)) e.push(`${id} ${t.time}: data-ok ${c.ok} attendu ${prenableDe(t)}${w ? ` (depart de la partie ici : ${sousDe(t)})` : ''}`);
+    if (c.replaces !== deplace) e.push(`${id} ${t.time}: deplace « ${c.replaces} » attendu « ${deplace} »`);
+    if (w) {
+      // L heure d un groupe suivant dit a qui elle est (sa partie, son
+      // groupe), quand joue cette partie, puis ce que la toucher fait : y
+      // faire partir la partie, ou pourquoi le moteur refuse ce depart.
       const sous = sousDe(t);
-      const fin = sous === 'hard' ? `Y faire partir le 1er groupe est impossible : ${minusculeQa(t.reason || 'Indisponible')}.` : 'La choisir y fait partir votre 1er groupe.';
-      const faits = [`${v.rang}e groupe`, `${v.joueurs} joueurs`, v.debut, v.fin];
-      if (faits.some((x) => c.reason.indexOf(x) < 0) || !c.reason.endsWith(fin)) e.push(`${a.activityId} ${t.time}: raison « ${c.reason} » sans ${faits.join(' / ')} ou sans « ${fin} »`);
-      if (c.sous !== sous) e.push(`${a.activityId} ${t.time}: verdict du depart « ${c.sous} » attendu « ${sous} »`);
-      if (sous === 'shift' && c.conflit !== ((t.conflict && t.conflict.activityId) || '')) e.push(`${a.activityId} ${t.time}: conflit ${c.conflit} pour un depart qui decale`);
-      if (c.titre !== c.reason) e.push(`${a.activityId} ${t.time}: titre « ${c.titre} » vs « ${c.reason} »`);
+      const soi = v.ok === false && v.code === 'anchor_overlap' && v.conflict && v.conflict.activityId === id && rangQa(parts, v.conflict.time) > 0;
+      const motif = sous === 'ok' ? '' : (soi ? `elle chevaucherait votre partie ${rangQa(parts, v.conflict.time)} (${v.conflict.time})` : minusculeQa(raison));
+      const plage = plageQa(d, id, w.depuis);
+      const titre = multi
+        ? `Votre partie ${rangQa(parts, w.depuis)} joue ${plage ? `de ${plage}` : `à ${w.depuis}`} (${w.rang}e groupe à ${t.time}).`
+          + (sous === 'hard' ? ` La faire partir à ${t.time} est impossible : ${motif}.` : ` La toucher la fait partir à ${t.time}${sous === 'ok' ? '.' : ` : ${motif}.`}`)
+        : `Votre ${w.rang}e groupe (${w.joueurs} joueurs) joue de ${w.debut} à ${w.fin}, juste après le premier.`
+          + (sous === 'hard' ? ` Y faire partir le 1er groupe est impossible : ${motif}.` : ` La choisir y fait partir votre 1er groupe${sous === 'ok' ? '.' : ` : ${motif}.`}`);
+      if (c.reason !== titre) e.push(`${id} ${t.time}: raison « ${c.reason} » vs « ${titre} »`);
+      if (c.titre !== titre) e.push(`${id} ${t.time}: titre « ${c.titre} » vs « ${titre} »`);
+      if (c.sous !== sous) e.push(`${id} ${t.time}: verdict du depart « ${c.sous} » attendu « ${sous} »`);
+      if (sous === 'shift' && c.conflit !== ((v.conflict && v.conflict.activityId) || '')) e.push(`${id} ${t.time}: conflit ${c.conflit} pour un depart qui decale`);
+      if (c.partie !== (multi ? String(rangQa(parts, w.depuis)) : '')) e.push(`${id} ${t.time}: partie « ${c.partie} »`);
     } else {
-      if (c.sous) e.push(`${a.activityId} ${t.time}: verdict de depart « ${c.sous} » hors d une heure de groupe suivant`);
-      const raison = t.ok === false
-        ? (etat === 'shift' ? (t.reason || 'Chevauche une autre activité') : (t.reason || 'Indisponible'))
-        : (t.warning ? (t.warning.reason || 'Peu de temps pour le reste de la visite') : '');
-      if (c.reason !== raison) e.push(`${a.activityId} ${t.time}: raison « ${c.reason} » vs « ${raison} »`);
-      const titre = etat === 'ok' ? (prop ? 'Heure proposée pour votre visite' : raison) : raison;
-      if (c.titre !== titre) e.push(`${a.activityId} ${t.time}: titre « ${c.titre} » vs « ${titre} »`);
+      if (c.sous) e.push(`${id} ${t.time}: verdict de depart « ${c.sous} » hors d une heure de groupe suivant`);
+      if (c.partie) e.push(`${id} ${t.time}: partie « ${c.partie} » hors d une heure de groupe suivant`);
+      if (c.reason !== raison) e.push(`${id} ${t.time}: raison « ${c.reason} » vs « ${raison} »`);
+      // Deplacer une partie : laquelle (son rang, son heure) et vers ou.
+      let titre = raison;
+      if (deplace) {
+        const qui = `votre partie${rangQa(parts, deplace) ? ` ${rangQa(parts, deplace)}` : ''} (${deplace})`;
+        titre = etat === 'hard' ? `Déplacer ${qui} à ${t.time} est impossible : ${minusculeQa(raison)}.` : `Déplace ${qui} à ${t.time}${etat === 'ok' ? '.' : ` : ${minusculeQa(raison)}.`}`;
+      }
+      const attendu = etat === 'ok' && prop ? 'Heure proposée pour votre visite' : titre;
+      if (c.titre !== attendu) e.push(`${id} ${t.time}: titre « ${c.titre} » vs « ${attendu} »`);
     }
-    if (c.on !== on || c.proposed !== prop) e.push(`${a.activityId} ${t.time}: choisi=${c.on}/${on} propose=${c.proposed}/${prop}`);
-    const mot = on ? 'choisi' : prop ? 'proposé' : motAttendu(etat, t, v);
-    if (c.mot !== mot) e.push(`${a.activityId} ${t.time}: mot « ${c.mot} » vs « ${mot} »`);
-    if (etat === 'shift' && c.conflit !== ((t.conflict && t.conflict.activityId) || '')) e.push(`${a.activityId} ${t.time}: conflit ${c.conflit}`);
-    if (c.periode !== periodeDe(t.time)) e.push(`${a.activityId} ${t.time}: rangee en ${c.periode}`);
+    if (c.on !== on || c.proposed !== prop) e.push(`${id} ${t.time}: choisi=${c.on}/${on} propose=${c.proposed}/${prop}`);
+    const mot = on ? (multi ? `partie ${rangQa(parts, t.time)}` : 'choisi') : prop ? 'proposé' : motAttendu(etat, t, w, multi, parts, id);
+    if (c.mot !== mot) e.push(`${id} ${t.time}: mot « ${c.mot} » vs « ${mot} »`);
+    if (etat === 'shift' && c.conflit !== ((v.conflict && v.conflict.activityId) || '')) e.push(`${id} ${t.time}: conflit ${c.conflit}`);
+    if (c.periode !== periodeDe(t.time)) e.push(`${id} ${t.time}: rangee en ${c.periode}`);
   });
   const parPeriode = new Map();
   a.times.forEach((t) => { const nom = periodeDe(t.time); if (!parPeriode.has(nom)) parPeriode.set(nom, []); parPeriode.get(nom).push(t); });
   const noms = [...parPeriode.keys()];
-  if (p.periodes.map((x) => x.nom).join(',') !== noms.join(',')) e.push(`${a.activityId}: menus ${p.periodes.map((x) => x.nom).join(',')} vs ${noms.join(',')}`);
+  if (p.periodes.map((x) => x.nom).join(',') !== noms.join(',')) e.push(`${id}: menus ${p.periodes.map((x) => x.nom).join(',')} vs ${noms.join(',')}`);
   noms.forEach((nom) => {
     const liste = parPeriode.get(nom);
-    // Le compte d une plage : ce qui se PREND. Ni un refus, ni un depart du
-    // 1er groupe que le moteur refuse ; l heure d un groupe suivant, elle, se
-    // prend (le 1er groupe y part).
+    // Le compte d une plage : ce qui se PREND. Ni un refus, ni un depart que
+    // le moteur refuse ; l heure d un groupe suivant, elle, se prend (la
+    // partie y part).
     const n = liste.filter(prenableDe).length;
     const choisis = liste.filter((t) => actifs.indexOf(t.time) >= 0).map((t) => t.time);
     const prop = actifs.length ? null : liste.find((t) => t.time === propose);
     // L heure d un groupe suivant qui tombe dans cette plage, quand aucune
-    // heure n y est choisie : le menu la dit, meme replie.
-    const vaguesIci = liste.filter((t) => etatDe(t) === 'wave').map((t) => `groupe ${emportees[t.time].rang} à ${t.time}`);
+    // heure n y est choisie : le menu la dit, meme replie, par son nom.
+    const vaguesIci = liste.filter((t) => etatDe(t) === 'wave').map((t) => `${motAttendu('wave', t, emportees[t.time], multi, parts, id)} à ${t.time}`);
     // Le vocabulaire du client, pas celui du planning : « 3 au choix », « une
     // seule possible ».
     let resume = n > 1 ? `${n} au choix` : n === 1 ? 'une seule possible' : 'rien de possible';
@@ -1125,23 +1333,61 @@ function ecartsPiste(p, a, actifs, propose, d) {
     else if (vaguesIci.length) resume = `${vaguesIci.join(', ')} · ${resume}`;
     else if (prop) resume = `proposé ${prop.time} · ${resume}`;
     const x = p.periodes.find((y) => y.nom === nom) || {};
-    if (x.resume !== resume) e.push(`${a.activityId} ${nom}: resume « ${x.resume} » vs « ${resume} »`);
-    if (String(x.ouverte) !== x.expanded) e.push(`${a.activityId} ${nom}: aria-expanded ${x.expanded} pour ouvert=${x.ouverte}`);
+    if (x.resume !== resume) e.push(`${id} ${nom}: resume « ${x.resume} » vs « ${resume} »`);
+    if (String(x.ouverte) !== x.expanded) e.push(`${id} ${nom}: aria-expanded ${x.expanded} pour ouvert=${x.ouverte}`);
   });
-  e.push(...ecartsRaisons(p, a, actifs, propose, d, etatDe, emportees, parPeriode, sousDe));
+  e.push(...ecartsRaisons(p, a, actifs, propose, d, etatDe, parPeriode, multi, parts));
   const note = toutSerre;
-  if (Boolean(p.note) !== note) e.push(`${a.activityId}: note « serre a toute heure » ${p.note ? 'affichee' : 'absente'}, attendue ${note}`);
+  if (Boolean(p.note) !== note) e.push(`${id}: note « serre a toute heure » ${p.note ? 'affichee' : 'absente'}, attendue ${note}`);
+  // La note des groupes : la piste la montre SSI le plan scinde son activite.
+  const scinde = blocsDu(d, id).some((b) => Number(b.groupWaveCount) > 1);
+  if (Boolean(p.vagues) !== scinde) e.push(`${id}: note des groupes ${p.vagues ? `« ${p.vagues} »` : 'absente'} pour un plan ${scinde ? '' : 'non '}scinde`);
+  e.push(...ecartsParties(p, a, d, parts));
+  return e;
+}
+// LE CADRE DES PARTIES (Movsar, 2026-09-24 : « faut que ca montre qu ils ont
+// selectionne x heures sur x parties ») : sur la piste d un laser de
+// plusieurs parties, « Vos N parties », le compte des heures choisies sur N,
+// puis une ligne par partie : son heure et la fin de son dernier groupe (le
+// plan), « proposee » tant qu aucune heure n est choisie, ou « sur place avec
+// l equipe » quand rien ne la pose. Le bandeau dit « N parties de X · une
+// heure par partie ».
+function ecartsParties(p, a, d, laserParts) {
+  const id = a.activityId;
+  const total = Math.max(1, Number(a.count) || 1);
+  if (!(id === 'laser_game' && total > 1)) return p.parts ? [`${id}: cadre des parties pour ${total} partie`] : [];
+  if (!p.parts) return [`${id}: cadre des parties absent pour ${total} parties`];
+  const e = [];
+  const bandeau = `${total} parties de ${minutesLabelQa(a.durationMinutes)} · une heure par partie`;
+  if (p.detail !== bandeau) e.push(`${id}: bandeau « ${p.detail} » vs « ${bandeau} »`);
+  const n = laserParts.length;
+  // Le plan ne pose que les parties choisies : une partie sans heure passe
+  // bien sur place (sinon « sur place avec l equipe » serait faux).
+  const posees = debutsQa(d, id);
+  if (n && JSON.stringify(posees) !== JSON.stringify(laserParts.slice().sort())) e.push(`${id}: le plan pose ${posees.join(', ') || 'rien'} pour les parties choisies ${laserParts.join(', ')}`);
+  const heures = n ? laserParts.slice() : posees;
+  const compte = n ? `${n} heure${n > 1 ? 's' : ''} choisie${n > 1 ? 's' : ''} sur ${total}` : 'aucune heure choisie';
+  if (p.parts.tete !== `Vos ${total} parties` || p.parts.compte !== compte) e.push(`${id}: cadre « ${p.parts.tete} / ${p.parts.compte} » vs « Vos ${total} parties / ${compte} »`);
+  const attendus = [];
+  for (let k = 0; k < total; k += 1) {
+    const h = heures[k] || '';
+    const plage = h ? plageQa(d, id, h) : '';
+    const fin = plage ? plage.split(' à ').pop() : '';
+    attendus.push({ texte: `Partie ${k + 1} : ${h ? `${h}${fin ? ` → ${heureAffichee(fin)}` : ''}${n ? '' : ' proposée'}` : 'sur place avec l’équipe'}`, classe: h ? (n ? 'is-set' : 'is-proposed') : 'is-free' });
+  }
+  if (JSON.stringify(p.parts.items) !== JSON.stringify(attendus)) e.push(`${id}: parties ${JSON.stringify(p.parts.items)} vs ${JSON.stringify(attendus)}`);
   return e;
 }
 // LES RAISONS SOUS CHAQUE PLAGE (Movsar, 2026-09-23 : « pour les choix des
 // heures faut tout expliquer, quand ya des decale faut expliquer pq, quand c
-// complet aussi, quand ya des groupes a scinder »). Les regles : chaque heure
-// qui n est ni libre, ni choisie, ni proposee s explique UNE fois, et aucune
-// autre ; chaque ligne dit la VERITE de la reponse : la raison du moteur mot
-// pour mot (refus, avertissement), l activite et la plage reelle qui se
-// deplaceraient (decalage), le groupe, sa taille et son jeu (2e groupe) ; sa
-// cle porte le mot de la puce, ses heures sont en gras.
-function ecartsRaisons(p, a, actifs, propose, d, etatDe, emportees, parPeriode, sousDe) {
+// complet aussi » ; 2026-09-24 : « trop long, mal explique »). Les regles :
+// chaque heure qui n est ni libre, ni choisie, ni proposee, ni l heure d une
+// de SES parties (nommee sur la case) s explique UNE fois, et aucune autre ;
+// chaque ligne dit la VERITE de la reponse : la raison du moteur mot pour mot
+// (refus, avertissement), l activite, la plage reelle et le sort de ce qui se
+// deplacerait (decalage) ; sa cle porte le mot de la case, ses heures sont en
+// gras.
+function ecartsRaisons(p, a, actifs, propose, d, etatDe, parPeriode, multi, parts) {
   const e = [];
   const id = a.activityId;
   const ancres = (d.anchors && d.anchors.activities) || [];
@@ -1149,7 +1395,7 @@ function ecartsRaisons(p, a, actifs, propose, d, etatDe, emportees, parPeriode, 
     const x = p.periodes.find((y) => y.nom === nom);
     if (!x) return;
     const attendues = liste
-      .filter((t) => actifs.indexOf(t.time) < 0 && propose !== t.time && etatDe(t) !== 'ok')
+      .filter((t) => actifs.indexOf(t.time) < 0 && propose !== t.time && etatDe(t) !== 'ok' && etatDe(t) !== 'wave')
       .map((t) => t.time);
     const vues = x.raisons.reduce((acc, r) => acc.concat(r.heures), []);
     attendues.forEach((h) => { const n = vues.filter((v) => v === h).length; if (n !== 1) e.push(`${id} ${h}: expliquee ${n} fois sous « ${nom} »`); });
@@ -1172,40 +1418,31 @@ function ecartsRaisons(p, a, actifs, propose, d, etatDe, emportees, parPeriode, 
         const t = liste.find((y) => y.time === h);
         if (!t) return;
         const etat = etatDe(t);
-        const v = etat === 'wave' ? emportees[h] : null;
+        const v = verdictQa(t);
         if (r.etat !== etat) e.push(`${id} ${h}: ligne « ${r.etat} » pour une heure « ${etat} »`);
-        if (etat === 'ok') return;
-        if (r.cle !== motAttendu(etat, t, v)) e.push(`${id} ${h}: cle « ${r.cle} » vs « ${motAttendu(etat, t, v)} »`);
-        if (etat === 'hard' && t.code === 'anchor_overlap' && t.conflict && t.conflict.time) {
-          // SA PROPRE PARTIE : la ligne dit laquelle (son nom) et quand elle
+        if (etat === 'ok' || etat === 'wave') return;
+        if (r.cle !== motAttendu(etat, t, null, multi, parts, id)) e.push(`${id} ${h}: cle « ${r.cle} » vs « ${motAttendu(etat, t, null, multi, parts, id)} »`);
+        if (etat === 'hard' && v.code === 'anchor_overlap' && v.conflict && v.conflict.time) {
+          // UNE AUTRE DE SES PARTIES : la ligne dit laquelle et quand elle
           // joue (la plage du plan, groupes compris).
-          const plage = plageQa(d, t.conflict.activityId, t.conflict.time);
-          const quand = plage ? `de ${plage}` : `à ${t.conflict.time}`;
-          if (basse.indexOf(String(a.label || id).toLowerCase()) < 0 || r.texte.indexOf(quand) < 0) e.push(`${id} ${h}: « ${r.texte} » ne dit pas « ${String(a.label || id).toLowerCase()} » et « ${quand} »`);
+          const k = rangQa(parts, v.conflict.time);
+          const plage = plageQa(d, v.conflict.activityId, v.conflict.time);
+          const phrase = `Votre partie${k ? ` ${k}` : ''} de ${String(a.label || id).toLowerCase()} joue ${plage ? `de ${plage}` : `à ${v.conflict.time}`}.`;
+          if (r.texte.indexOf(phrase) < 0) e.push(`${id} ${h}: « ${r.texte} » sans « ${phrase} »`);
         } else if (etat === 'hard' || etat === 'soft') {
-          const raison = etat === 'soft' ? (t.warning.reason || 'Peu de temps pour le reste de la visite') : (t.reason || 'Indisponible');
+          const raison = etat === 'soft' ? (v.warning.reason || 'Peu de temps pour le reste de la visite') : (v.reason || 'Indisponible');
           if (basse.indexOf(String(raison).toLowerCase()) < 0) e.push(`${id} ${h}: « ${r.texte} » sans la raison du moteur « ${raison} »`);
         }
         if (etat === 'shift') {
-          const autre = ancres.find((y) => y.activityId === t.conflict.activityId);
-          const nomAutre = String((autre && autre.label) || t.conflict.activityId).toLowerCase();
-          const plage = plageQa(d, t.conflict.activityId, t.conflict.time);
-          const quand = plage ? `(${plage})` : `de ${t.conflict.time}`;
-          if (basse.indexOf(nomAutre) < 0 || r.texte.indexOf(quand) < 0) e.push(`${id} ${h}: « ${r.texte} » ne dit pas « ${nomAutre} » et « ${quand} »`);
-        }
-        if (v) {
-          const faits = [`${v.rang}e groupe`, `(${v.joueurs} joueurs)`, `de ${v.debut} à ${v.fin}`];
-          // Ce que la toucher fait, et ce que le moteur dit de ce depart.
-          const sous = sousDe(t);
-          if (sous === 'hard') faits.push('impossible', minusculeQa(t.reason || 'Indisponible'));
-          else faits.push('y fait partir votre 1er groupe');
-          if (sous === 'shift') {
-            const autre = ancres.find((y) => y.activityId === t.conflict.activityId);
-            faits.push(`replace votre ${String((autre && autre.label) || t.conflict.activityId).toLowerCase()}`);
-          }
-          if (sous === 'soft') faits.push(minusculeQa(t.warning.reason || 'Peu de temps pour le reste de la visite'));
-          const manque = faits.filter((f) => r.texte.indexOf(f) < 0);
-          if (manque.length) e.push(`${id} ${h}: « ${r.texte} » sans ${manque.join(' / ')}`);
+          // L activite qui bougerait, sa plage reelle, et son SORT : une
+          // partie de laser parmi d autres posees passe sur place avec
+          // l equipe, le reste se decale avant ou apres.
+          const autre = ancres.find((y) => y.activityId === v.conflict.activityId);
+          const nomAutre = String((autre && autre.label) || v.conflict.activityId).toLowerCase();
+          const plage = plageQa(d, v.conflict.activityId, v.conflict.time);
+          const quand = plage ? `(${plage})` : `de ${v.conflict.time}`;
+          const sort = v.conflict.activityId === 'laser_game' && parts.length > 1 && rangQa(parts, v.conflict.time) ? 'qui passe sur place avec l’équipe.' : 'qui se décale avant ou après.';
+          if (basse.indexOf(nomAutre) < 0 || r.texte.indexOf(quand) < 0 || !r.texte.endsWith(sort)) e.push(`${id} ${h}: « ${r.texte} » ne dit pas « ${nomAutre} », « ${quand} » et « ${sort} »`);
         }
       });
     });
@@ -1855,7 +2092,7 @@ async function main() {
       ancresDe(d).forEach((a) => {
         const actifs = a.activityId === 'laser_game' && laserParts.length ? laserParts : (pins[a.activityId] ? [pins[a.activityId]] : []);
         const propose = actifs.length ? '' : (defauts[a.activityId] || '');
-        e.push(...ecartsPiste(pistes.find((p) => p.id === a.activityId), a, actifs, propose, d));
+        e.push(...ecartsPiste(pistes.find((p) => p.id === a.activityId), a, actifs, propose, d, laserParts));
         const p = pistes.find((x) => x.id === a.activityId);
         if (p && p.reset !== actifs.length > 0) e.push(`${a.activityId}: « laisser l equipe placer » ${p.reset ? 'visible' : 'cache'} avec ${actifs.length} heure(s) posee(s)`);
         if (p && !p.touchee) e.push(...ecartsMenus(p, a, actifs, propose));
@@ -1863,6 +2100,9 @@ async function main() {
       ok(e.length === 0, label, e.slice(0, 4).join(' ; ') || ancresDe(d).map((a) => `${a.activityId} ${a.times.length} h`).join(', '));
       return pistes;
     };
+    // Combien de plans verifies laissaient une partie a l equipe (l etape
+    // « sur place ») : la propriete doit etre exercee sur un vrai plan.
+    let vuSurPlace = 0;
     const verifierPlan = async (d, label) => {
       const ecran = await lireEcranPlan(page);
       const o = lignePlan(d);
@@ -1875,7 +2115,9 @@ async function main() {
       if (o) {
         await attendre(page, () => ((document.querySelector('#fgLive') || {}).textContent || '').indexOf('Votre visite') === 0, 5000);
         const voix = await page.evaluate(() => document.querySelector('#fgLive').textContent);
-        const absents = [o.arrivee, ...o.blocs.map((b) => `${o.noms[b.id] || b.id} à ${b.t}`), o.fin ? (o.fermeture ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(o.fin) : '', o.prix > 0 ? euros(o.prix) : '', o.fermeture && o.manque > 0 ? `il manque ${dureeApprox(o.manque)}` : ''].filter((x) => x && voix.indexOf(x) < 0);
+        const va = visiteAttendue(o);
+        if (va.surPlace.length) vuSurPlace += 1;
+        const absents = [o.arrivee, ...va.etapes.map((x) => x.voix), ...va.surPlace.map((x) => x.voix), o.fin ? (o.fermeture ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(o.fin) : '', o.prix > 0 ? euros(o.prix) : '', o.fermeture && o.manque > 0 ? `il manque ${dureeApprox(o.manque)}` : ''].filter((x) => x && voix.indexOf(x) < 0);
         ok(absents.length === 0 && (voix.indexOf('le reste se règle sur place') >= 0) === (o.prix > 0 && !o.complet), `${label} : la voix (#fgLive) dit la meme visite`, absents.join(' | ') || voix);
       }
       return { ecran, o };
@@ -1884,7 +2126,10 @@ async function main() {
     const d0 = await route();
     let pistes = await verifierPistes(d0, {}, [], '[C] SANS POSE : une piste par activite, TOUTES les heures dans l etat du moteur (raison, mot, titre), rangees en menus matin/apres-midi/soiree, le menu de l heure proposee ouvert');
     ok(ancresDe(d0).some((a) => a.times.some((t) => t.ok === false && t.code !== 'anchor_overlap')), '[C] (la propriete est exercee) une heure impossible existe ce jour-la');
-    await verifierPlan(d0, '[C] SANS POSE : « votre visite » = la reponse (arrivee, activites a leur heure, minigolf et arcades en libre, fin, prix) et « Garder » est actif');
+    await verifierPlan(d0, '[C] SANS POSE : « votre visite » = la reponse (arrivee et son avance, chaque partie a son heure, minigolf et arcades en libre, fin, prix et son detail, paiement) et « Garder » est actif');
+    const o0 = lignePlan(d0);
+    const va0 = o0 ? visiteAttendue(o0) : null;
+    ok(Boolean(va0 && va0.prix), 'MONTAGE [C] sans pose, la somme des montants connus EST le prix : le detail du prix est exerce sur un vrai plan', va0 ? `${va0.connus} connus pour ${o0.prix}` : 'aucun plan');
     // LES MENUS REPLIES SORTENT DU PARCOURS CLAVIER : plus d arret sur une
     // heure invisible (le repli dure 0,4 s, on le laisse finir).
     await dormir(500);
@@ -1951,7 +2196,7 @@ async function main() {
     await verifierPistes(d2, { laser_game: L0 }, [L0], '[C] APRES LE DECALAGE : la pose du bowling est levee, les pistes = la route preferredTimes={laser} + laserGameTimes');
     const v2 = await verifierPlan(d2, '[C] APRES LE DECALAGE : « votre visite » = la route (le bowling replace par le moteur)');
     const deplace = v2.ecran ? v2.ecran.etapes.find((x) => x.bouge) : null;
-    ok(Boolean(deplace) && deplace.nom === nomDe('bowling') && deplace.detail.indexOf(`déplacé pour votre ${nomDe('laser_game')} à ${L0}`) >= 0, '[C] le bloc dit que le bowling a ete deplace, pour quoi et a quelle heure', deplace ? `${deplace.t} ${deplace.nom} « ${deplace.detail} »` : 'aucune etape marquee');
+    ok(Boolean(deplace) && deplace.nom.indexOf(`${nomDe('bowling')} · `) === 0 && deplace.detail.indexOf(`déplacé pour votre ${nomDe('laser_game')} à ${L0}`) >= 0, '[C] le bloc dit que le bowling a ete deplace, pour quoi et a quelle heure', deplace ? `${deplace.t} ${deplace.nom} « ${deplace.detail} »` : 'aucune etape marquee');
     // 4. DEUX PARTIES DE LASER SUR DEUX HEURES.
     const laser2 = ancresDe(d2).find((a) => a.activityId === 'laser_game');
     const candidats = laser2.times.filter((t) => t.ok !== false && !t.warning && t.time > L0).map((t) => t.time);
@@ -2004,6 +2249,7 @@ async function main() {
     }
     ok(Boolean(refusPlan) && refusPlan.vu && refusPlan.on && refusPlan.notice && !refusPlan.garder && refusPlan.attente && !refusPlan.onde, '[C] plan refuse par le serveur : la case s entoure et reste choisie, l ecran dit que ca ne tient pas, AUCUNE onde', JSON.stringify(Object.assign({ R }, refusPlan)));
     ok(await poserEtAttendre(page, 'bowling', S) && await page.evaluate(() => Boolean(document.querySelector('#planZone .fg-visit')) && !document.querySelector('#goContact').disabled), '[C] reposer l heure serree rend le plan d avant (etat d6 pour [D])', S);
+    ok(vuSurPlace > 0, 'MONTAGE [C] au moins un plan verifie laisse une partie de laser a l equipe : l etape « sur place » est exercee', `${vuSurPlace} plan(s)`);
 
     // =====================================================================
     console.log('');
@@ -2047,23 +2293,25 @@ async function main() {
     ok(await page.evaluate(() => document.activeElement.id === 'cNom' && Boolean(document.querySelector('.fg-scene[data-scene="contact"].is-active')) && !document.querySelector('#contactForm .is-invalid')),
       '[D] Entree dans le prenom passe au nom, sans envoyer', await page.evaluate(() => document.activeElement.id || document.activeElement.tagName));
     await page.focus('#cTel'); await page.keyboard.press('Enter');
-    ok(await page.evaluate(() => document.activeElement.id === 'cConsent' && !document.querySelector('#contactForm .is-invalid')),
-      '[D] Entree dans le telephone, case non cochee, passe a la case sans afficher d erreur', await page.evaluate(() => document.activeElement.id || document.activeElement.tagName));
+    ok(await page.evaluate(() => document.activeElement.dataset.occasion === 'anniversaire' && !document.querySelector('#contactForm .is-invalid')),
+      '[D] Entree dans le telephone, aucune occasion choisie, passe a l occasion sans afficher d erreur', await page.evaluate(() => document.activeElement.dataset.occasion || document.activeElement.id || document.activeElement.tagName));
     // Chaque animation qui demarre dans le formulaire, notee : l envoi vide
     // doit faire glisser chaque erreur et secouer le SEUL premier champ.
     await page.evaluate(() => { window.__qaAnims = []; document.querySelector('#contactForm').addEventListener('animationstart', (e) => window.__qaAnims.push(`${e.animationName}:${e.target.id || e.target.className}`)); });
     await page.click('#goRecap');
-    ok(await attendre(page, () => document.querySelectorAll('.fg-field.is-invalid').length === 4 && document.querySelector('#consentWrap').classList.contains('is-invalid'), 3000), '[D] un envoi vide marque les 4 champs et la case');
+    ok(await attendre(page, () => document.querySelectorAll('.fg-field.is-invalid').length === 5 && document.querySelector('#occasionWrap').classList.contains('is-invalid') && document.querySelector('#consentWrap').classList.contains('is-invalid'), 3000), '[D] un envoi vide marque les 4 champs, l occasion et la case');
     ok(await page.evaluate(() => Boolean(document.querySelector('.fg-scene[data-scene="contact"].is-active'))), '[D] et reste sur l ecran du contact');
     const liees = await page.evaluate(() => ({
       champs: ['cPrenom', 'cNom', 'cEmail', 'cTel'].map((id) => { const i = document.getElementById(id); const d = document.getElementById(i.getAttribute('aria-describedby') || ''); return { id, invalide: i.getAttribute('aria-invalid'), message: d ? d.textContent.trim() : '' }; }),
       caseInvalide: document.querySelector('#cConsent').getAttribute('aria-invalid'),
       caseMessage: document.querySelector('#eConsent').textContent,
+      occasion: (() => { const g = document.querySelector('#occasions'); const d = document.getElementById(g.getAttribute('aria-describedby') || ''); return { invalide: g.getAttribute('aria-invalid'), message: d ? d.textContent.trim() : '' }; })(),
       focus: document.activeElement.id,
     }));
-    ok(liees.champs.every((c) => c.invalide === 'true' && c.message.length > 0) && liees.caseInvalide === 'true' && liees.caseMessage === 'Cochez cette case pour continuer.' && liees.focus === 'cPrenom',
+    ok(liees.champs.every((c) => c.invalide === 'true' && c.message.length > 0) && liees.caseInvalide === 'true' && liees.caseMessage === 'Cochez cette case pour continuer.'
+      && liees.occasion.invalide === 'true' && liees.occasion.message === 'Choisissez l’occasion de votre visite.' && liees.focus === 'cPrenom',
       '[D] chaque erreur est liee a son champ, la case dit quoi faire, le focus va au premier champ', JSON.stringify(liees));
-    ok(await attendre(page, () => { const a = window.__qaAnims || []; return a.filter((x) => x.indexOf('fg-err:') === 0).length === 5 && a.filter((x) => x.indexOf('fg-nudge:') === 0).join() === 'fg-nudge:cPrenom'; }, 2000),
+    ok(await attendre(page, () => { const a = window.__qaAnims || []; return a.filter((x) => x.indexOf('fg-err:') === 0).length === 6 && a.filter((x) => x.indexOf('fg-nudge:') === 0).join() === 'fg-nudge:cPrenom'; }, 2000),
       '[D] a l envoi, chaque erreur (la case comprise) glisse en place, et seul le premier champ a corriger fait son petit « non »', JSON.stringify(await page.evaluate(() => window.__qaAnims)));
     ok(await attendre(page, () => !document.querySelector('.is-nudge') && document.activeElement && document.activeElement.id === 'cPrenom', 2000), '[D] le premier champ a corriger prend le focus et son petit « non » ne reste pas pose');
     // UNE FAUTE DE FRAPPE DANS LE DOMAINE : une question, que le clavier
@@ -2089,6 +2337,49 @@ async function main() {
     ok(await page.evaluate(() => document.querySelector('#emailSuggest').innerHTML === ''), '[D] une adresse loin de la liste (qa@example.com) ne recoit aucune proposition');
     await page.check('#cConsent');
     ok(await page.evaluate(() => document.querySelector('#eConsent').textContent === '' && !document.querySelector('#cConsent').hasAttribute('aria-invalid')), '[D] cocher la case efface son erreur');
+    // L OCCASION (Movsar, 2026-09-24 : « faut remettre l occasion de leur
+    // venue, pour avoir les stats de qui vient et pourquoi »). Ses valeurs sont
+    // celles que le serveur GARDE, relues dans sa source : une valeur qu il ne
+    // connait pas partirait en « non precise ».
+    const srcOccasions = fs.readFileSync(path.join(ROOT, 'lib', 'reservation-request.js'), 'utf8');
+    const valeursServeur = ((/const OCCASION_VALUES = new Set\(\[([^\]]*)\]\)/.exec(srcOccasions) || [])[1] || '').match(/'([a-z]+)'/g) || [];
+    const radios = await page.evaluate(() => {
+      const g = document.querySelector('#occasions');
+      const b = Array.from(g.querySelectorAll('.fg-occasion'));
+      return { role: g.getAttribute('role'), requis: g.getAttribute('aria-required'), nom: ((document.getElementById(g.getAttribute('aria-labelledby') || '') || {}).textContent || '').trim(), valeurs: b.map((x) => x.dataset.occasion), roles: b.map((x) => x.getAttribute('role')), arrets: b.filter((x) => x.tabIndex === 0).length };
+    });
+    ok(radios.role === 'radiogroup' && radios.requis === 'true' && radios.nom === 'L’occasion de votre visite' && valeursServeur.length === 7
+      && JSON.stringify(radios.valeurs) === JSON.stringify(valeursServeur.map((x) => x.slice(1, -1))) && radios.roles.every((r) => r === 'radio') && radios.arrets === 1,
+      '[D] l occasion est un groupe radio nomme et requis, avec EXACTEMENT les valeurs que le serveur garde (OCCASION_VALUES), un seul arret de tabulation', JSON.stringify({ radios, serveur: valeursServeur }));
+    // Tout rempli sauf elle : on reste, elle seule est a corriger, le focus y va.
+    await page.fill('#cTel', '0491301667');
+    await page.click('#goRecap');
+    const sansOccasion = await page.evaluate(() => ({
+      contact: Boolean(document.querySelector('.fg-scene[data-scene="contact"].is-active')), invalides: document.querySelectorAll('.fg-field.is-invalid').length,
+      occasion: document.querySelector('#occasionWrap').classList.contains('is-invalid'), focus: document.activeElement.dataset.occasion || document.activeElement.id, message: document.querySelector('#eOccasion').textContent,
+    }));
+    ok(sansOccasion.contact && sansOccasion.invalides === 1 && sansOccasion.occasion && sansOccasion.focus === 'anniversaire' && sansOccasion.message === 'Choisissez l’occasion de votre visite.',
+      '[D] tout rempli sauf l occasion : on reste, elle seule est a corriger, et le focus y va', JSON.stringify(sansOccasion));
+    // Les fleches passent d une occasion a l autre et la choisissent (motif
+    // APG) ; l erreur s efface ; « Autre » ouvre sa precision.
+    await page.keyboard.press('ArrowRight');
+    const fleche = await page.evaluate(() => ({
+      focus: document.activeElement.dataset.occasion || document.activeElement.id,
+      coche: Array.from(document.querySelectorAll('#occasions .fg-occasion[aria-checked="true"]')).map((b) => b.dataset.occasion).join(),
+      arrets: Array.from(document.querySelectorAll('#occasions .fg-occasion')).filter((b) => b.tabIndex === 0).map((b) => b.dataset.occasion).join(),
+      erreur: document.querySelector('#eOccasion').textContent, invalide: document.querySelector('#occasions').getAttribute('aria-invalid'), wrap: document.querySelector('#occasionWrap').classList.contains('is-invalid'),
+    }));
+    ok(fleche.focus === 'amis' && fleche.coche === 'amis' && fleche.arrets === 'amis' && fleche.erreur === '' && fleche.invalide === null && !fleche.wrap,
+      '[D] la fleche passe a l occasion suivante et la choisit, et son erreur s efface', JSON.stringify(fleche));
+    await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowLeft');
+    ok(await page.evaluate(() => document.activeElement.dataset.occasion === 'autre' && document.querySelector('#occasions .fg-occasion[aria-checked="true"]').dataset.occasion === 'autre'),
+      '[D] depuis la premiere, la fleche arriere boucle sur la derniere (« Autre »)', await page.evaluate(() => document.activeElement.dataset.occasion || document.activeElement.id));
+    ok(await attendre(page, () => { const w = document.querySelector('#occasionAutreWrap'); return !w.hidden && w.getBoundingClientRect().height > 0; }, 2000), '[D] « Autre » ouvre sa precision facultative');
+    await page.click('#occasions .fg-occasion[data-occasion="famille"]');
+    ok(await page.evaluate(() => document.querySelector('#occasionAutreWrap').hidden && Array.from(document.querySelectorAll('#occasions .fg-occasion[aria-checked="true"]')).map((b) => b.dataset.occasion).join() === 'famille'),
+      '[D] un toucher choisit « En famille », et la precision d « Autre » se referme');
+    // Le numero faux d avant revient : c est lui que la suite verifie.
+    await page.fill('#cTel', '12');
     await page.focus('#cTel');
     await page.evaluate(() => { window.__focusTel = 0; document.querySelector('#cTel').addEventListener('focus', () => { window.__focusTel += 1; }); });
     await page.keyboard.press('Enter');
@@ -2144,6 +2435,8 @@ async function main() {
     // aucune heure redite : chaque activite porte deja la sienne.
     const qui = await page.evaluate(() => (Array.from(document.querySelectorAll('#recap p.fg-recap__detail')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((t) => /Au nom de/.test(t)) || ''));
     ok(qui === 'Au nom de Test Pinlane · qa@example.com · +32 491 30 16 67', '[E] le recapitulatif relit les coordonnees qui partiront, sans heure redite (chaque activite porte la sienne)', qui);
+    const occasionRecap = await page.evaluate(() => ((document.querySelector('#recap .fg-recap__occasion') || {}).textContent || '').replace(/\s+/g, ' ').trim());
+    ok(occasionRecap === 'Occasion : En famille', '[E] le recapitulatif relit l occasion choisie', occasionRecap || 'absente');
     const fermeture = await page.evaluate(() => ({ bouton: document.querySelector('#confirmBtn').textContent.trim(), note: document.querySelector('.fg-scene.is-active .fg-confirm__note').textContent.replace(/\s+/g, ' ').trim(), partira: /confirmation partira/.test(document.querySelector('#recap').textContent) }));
     ok(fermeture.bouton === 'Valider ma réservation' && fermeture.note === 'Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.' && !fermeture.partira, '[E] le bouton valide, aucun paiement en ligne, aucun envoi promis', JSON.stringify(fermeture));
     // CHAQUE ETAPE SE MODIFIE D UN TOUCHER, et l aller-retour ne perd rien.
@@ -2212,6 +2505,7 @@ async function main() {
     ok(corps.name === 'Test Pinlane' && corps.email === 'qa@example.com' && corps.phone === '+32 491 30 16 67', '[E] le contact part tel que saisi, sans le (0) qui fausserait le numero', JSON.stringify(corps.phone));
     ok(!('consent' in corps) && !('cConsent' in corps), '[E] la case « j accepte » ne cree aucun champ d API inexistant');
     ok(corps.notes === '', '[E] sans mot pour l equipe, notes part vide', JSON.stringify(corps.notes));
+    ok(corps.occasion === 'famille', '[E] l occasion part au serveur, la cle qu il garde', JSON.stringify(corps.occasion));
     ok(erreursPage.length === 0, '[E] aucune erreur JavaScript de tout le parcours', erreursPage.slice(0, 3).join(' | '));
     await ctx.close();
 
@@ -2267,6 +2561,7 @@ async function main() {
     await f.click('#goContact');
     await f.fill('#cPrenom', 'Test'); await f.fill('#cNom', 'Cadre'); await f.fill('#cEmail', 'cadre@example.com'); await f.fill('#cTel', '0491301667');
     await f.fill('#cNote', 'Anniversaire');
+    await f.click('#occasions .fg-occasion[data-occasion="anniversaire"]');
     await f.check('#cConsent');
     await f.click('#goRecap');
     ok(await attendre(f, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000), '[F] recap atteint dans le cadre');
@@ -2274,7 +2569,7 @@ async function main() {
     ok(motRecap === 'Votre mot pour l’équipe : « Anniversaire »', '[F] le recapitulatif reprend le mot pour l equipe, tel qu il partira', `« ${motRecap} »`);
     await f.click('#confirmBtn');
     ok(await attendre(pageHote, () => Array.isArray(window.dataLayer) && window.dataLayer.some((e) => e.event === 'pinlane_booking'), 10000), '[F] la reservation pousse pinlane_booking dans le dataLayer de l hote');
-    ok((mock.dernierePose.body || {}).notes === 'Anniversaire', '[F] le mot pour l equipe part au serveur dans notes', JSON.stringify((mock.dernierePose.body || {}).notes));
+    ok((mock.dernierePose.body || {}).notes === 'Anniversaire' && (mock.dernierePose.body || {}).occasion === 'anniversaire', '[F] le mot pour l equipe part au serveur dans notes, l occasion dans occasion', JSON.stringify({ notes: (mock.dernierePose.body || {}).notes, occasion: (mock.dernierePose.body || {}).occasion }));
     const signal = await pageHote.evaluate(() => (window.dataLayer.find((e) => e.event === 'pinlane_booking') || {}).pinlane || {});
     ok(Number(signal.reservationId) > 0 && signal.center === 'libramont' && signal.currency === 'EUR' && signal.status === 'confirmed', '[F] le signal porte numero, centre, devise, statut', JSON.stringify(signal));
     ok(!('email' in signal) && !('name' in signal) && !('phone' in signal) && JSON.stringify(signal).indexOf('example.com') < 0, '[F] et aucune donnee personnelle');
@@ -2424,6 +2719,7 @@ async function main() {
     // L ERREUR D ENVOI SOUS LE DOIGT : sur telephone, le doigt est sur le
     // bouton, en bas ; l alerte du haut serait hors de l ecran.
     await pageTel.fill('#cPrenom', 'Test'); await pageTel.fill('#cNom', 'Pinlane'); await pageTel.fill('#cEmail', 'qa@example.com'); await pageTel.fill('#cTel', '0491 30 16 67');
+    await pageTel.tap('#occasions .fg-occasion[data-occasion="amis"]');
     await pageTel.check('#cConsent');
     await pageTel.tap('#goRecap');
     const recapPose = () => attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering') && document.querySelector('.fg-scene[data-scene="recap"]').getAnimations({ subtree: true }).every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity), 6000);
@@ -2567,7 +2863,7 @@ async function main() {
     ok(await attendre(pageV, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[I] l ecran des heures repond pour le Fun Run');
     const visite = await pageV.evaluate(() => {
       const v = document.querySelector('#planZone .fg-visit');
-      return { prix: (v.querySelector('.fg-visit__price') || {}).textContent || '', detail: Array.from(v.querySelectorAll('.fg-visit__step small')).map((n) => n.textContent.trim()).join(' | ') };
+      return { prix: (v.querySelector('.fg-visit__price') || {}).textContent || '', detail: Array.from(v.querySelectorAll('.fg-visit__step')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).join(' | ') };
     });
     // 3 sessions de 15 min a 30 EUR : le montant vient du SERVEUR, jamais du
     // navigateur. 90 EUR est le prix que le comptoir encaisserait.
@@ -2669,6 +2965,7 @@ async function main() {
     await pageV.click('#goContact');
     await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
     await pageV.fill('#cPrenom', 'Formule'); await pageV.fill('#cNom', 'Debut'); await pageV.fill('#cEmail', 'qa@example.com'); await pageV.fill('#cTel', '0471234567');
+    await pageV.click('#occasions .fg-occasion[data-occasion="entreprise"]');
     await pageV.check('#cConsent');
     await pageV.click('#goRecap');
     ok(await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 6000), '[I] la formule va jusqu au recapitulatif');
@@ -3009,30 +3306,28 @@ async function main() {
       s.dataset.activity,
       { texte: (s.querySelector('.fg-track__waves') || {}).textContent || '', vu: Boolean(s.querySelector('.fg-track__waves')) && !s.querySelector('.fg-track__waves').hidden, rang: (s.querySelector('.fg-track__num') || {}).textContent || '' },
     ])));
-    // Chaque groupe du plan (1re partie), sa taille et son heure de depart,
-    // dans l ordre des groupes : c est ce que la note doit dire.
-    const departsJ = [];
-    (planJ.resourceBlocks || [])
-      .filter((b) => b && b.activityId === 'laser_game' && Number(b.groupWaveCount) > 1 && (Number(b.countIndex) || 1) === 1)
-      .sort((x, y) => (Number(x.groupWaveIndex) || 1) - (Number(y.groupWaveIndex) || 1))
-      .forEach((b) => { if (!departsJ.some((dp) => dp.rang === Number(b.groupWaveIndex))) departsJ.push({ rang: Number(b.groupWaveIndex), joueurs: Number(b.players) || 0, debut: b.startTime }); });
-    const texteNote = (notes.laser_game || {}).texte || '';
-    let curseurNote = 0;
-    const dansLOrdre = departsJ.every((dp) => {
-      const i = texteNote.indexOf(`(${dp.joueurs})`, curseurNote);
-      const j = i < 0 ? -1 : texteNote.indexOf(dp.debut, i);
-      if (j < 0) return false;
-      curseurNote = j + dp.debut.length;
-      return true;
-    });
-    ok(notes.laser_game && notes.laser_game.vu && departsJ.length > 1 && dansLOrdre
-      && (texteNote.match(/\(\d+\)/g) || []).length === departsJ.length && texteNote.indexOf('40 personnes') >= 0,
-      '[J] la piste du laser DIT la scission du plan : le groupe entier, puis chaque groupe avec sa taille et son heure de depart, dans l ordre',
-      `« ${texteNote} » attendait ${departsJ.map((dp) => `(${dp.joueurs}) ${dp.debut}`).join(' puis ')}`);
+    // LA SCISSION EN UNE PHRASE (Movsar, 2026-09-24 : les groupes, « trop
+    // long, mal explique ») : le groupe entier, combien de groupes et leur
+    // taille, lus dans le plan. L heure de chacun se lit sur les heures et
+    // dans le bloc de la visite.
+    const texteNote = ((notes.laser_game || {}).texte || '').replace(/\s+/g, ' ').trim();
+    const taillesJ = oracleLaser && oracleLaser.tailles.length === oracleLaser.total ? ` ${taillesQa(oracleLaser.tailles)}` : '';
+    const noteAttendueJ = `40 personnes, trop pour jouer tous ensemble : chaque partie se joue en ${oracleLaser ? oracleLaser.total : 0} groupes${taillesJ}, l’un après l’autre.`;
+    ok(notes.laser_game && notes.laser_game.vu && Boolean(oracleLaser) && oracleLaser.total > 1 && texteNote === noteAttendueJ,
+      '[J] la piste du laser DIT la scission du plan en une phrase : le groupe entier, combien de groupes et leur taille',
+      `« ${texteNote} » attendait « ${noteAttendueJ} »`);
     ok(notes.bowling && notes.bowling.vu === false && notes.bowling.texte === '',
       '[J] et la piste du bowling, qui tient en une fois, ne dit rien', `« ${(notes.bowling || {}).texte}» visible=${(notes.bowling || {}).vu}`);
     ok(notes.bowling && notes.bowling.rang === '1' && notes.laser_game && notes.laser_game.rang === '2',
       '[J] chaque section porte son rang (1, 2), pour qu on les distingue', `${(notes.bowling || {}).rang} puis ${(notes.laser_game || {}).rang}`);
+    // LE BLOC DE LA VISITE A 40 PERSONNES : chaque partie avec ses groupes
+    // (combien, de quelle taille, a quelle heure part chacun), lus dans le plan.
+    const oJ = lignePlan(dJ);
+    const ecranJ = await lireEcranPlan(pageJ);
+    const eJ = ecartsPlan(ecranJ, oJ);
+    ok(eJ.length === 0 && Boolean(oJ) && oJ.parties.some((x) => x.groupes.length > 1),
+      '[J] 40 PERSONNES : « votre visite » = la route, chaque partie avec ses groupes, leur taille et le depart de chacun',
+      eJ.slice(0, 3).join(' ; ') || (ecranJ ? ecranJ.etapes.map((x) => `${x.t} ${x.nom} « ${x.detail} »`).join(' | ') : 'aucun bloc'));
 
     // LA DUREE TOTALE : l ecart des deux heures du plan, refait en Node.
     const arriveeJ = planJ.arrivalTime || '';
@@ -3050,6 +3345,7 @@ async function main() {
     await pageJ.fill('#cNom', 'Totale');
     await pageJ.fill('#cEmail', 'qa@example.com');
     await pageJ.fill('#cTel', '0471234567');
+    await pageJ.click('#occasions .fg-occasion[data-occasion="ecole"]');
     await pageJ.check('#cConsent');
     await pageJ.click('#goRecap');
     ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 6000), '[J] ecran 5 atteint');
@@ -3057,15 +3353,13 @@ async function main() {
     ok(ligneJ.indexOf(`${attendueDuree} sur place`) >= 0,
       '[J] et le recapitulatif annonce exactement la meme duree', `« ${ligneJ} » attendait « ${attendueDuree} sur place »`);
     // LES GROUPES AU RECAPITULATIF (vu en prod le 2026-09-23 : « Debut 11:00 »,
-    // et le 2e groupe tu) : le laser du grand groupe dit le depart de CHAQUE
-    // groupe, lus dans le plan de la route.
-    const blocsGroupesJ = (planJ.resourceBlocks || []).filter((b) => b && b.activityId === 'laser_game' && Number(b.groupWaveCount) > 1 && b.startTime);
-    const departsGroupesJ = [...new Set(blocsGroupesJ.map((b) => b.startTime))].sort();
-    const partiesGroupesJ = new Set(blocsGroupesJ.map((b) => Number(b.countIndex) || 1)).size;
-    const attenduGroupesJ = `${blocsGroupesJ.length ? Number(blocsGroupesJ[0].groupWaveCount) : 0} groupes${partiesGroupesJ > 1 ? ' par partie' : ''} : ${departsGroupesJ.join(', ')}`;
+    // et le 2e groupe tu) : le laser du grand groupe dit combien de groupes et
+    // leur taille, par partie, lus dans le plan de la route.
+    const grandJ = partiesQa(planJ).find((x) => x.id === 'laser_game' && x.groupes.length > 1);
+    const attenduGroupesJ = grandJ ? `${texteGroupesQa(grandJ, false)} par partie` : '';
     const laserRecapJ = (((await lireRecap(pageJ, '#recap')) || {}).items || []).find((i) => i.nom === nomDe('laser_game')) || { detail: '' };
-    ok(departsGroupesJ.length > 1 && laserRecapJ.detail.indexOf(attenduGroupesJ) >= 0,
-      '[J] au recapitulatif, le laser du grand groupe dit le depart de CHAQUE groupe, pas seulement du premier', `« ${laserRecapJ.detail} » attendait « ${attenduGroupesJ} »`);
+    ok(Boolean(grandJ) && laserRecapJ.detail.indexOf(attenduGroupesJ) >= 0,
+      '[J] au recapitulatif, le laser du grand groupe dit combien de groupes et leur taille, par partie', `« ${laserRecapJ.detail} » attendait « ${attenduGroupesJ} »`);
 
     // --- La legende : moins de texte sur telephone ------------------------
     await pageJ.click('.fg-scene.is-active [data-back]');
@@ -3129,18 +3423,22 @@ async function main() {
     const bowlingLJ = ancresDe(dLJ).find((a) => a.activityId === 'bowling') || { times: [] };
     const empLJ = emporteesQa(dLJ, laserLJ, [LJ]);
     const soiLJ = laserLJ.times.filter((t) => t.ok === false && t.code === 'anchor_overlap' && t.conflict && t.conflict.activityId === 'laser_game' && !empLJ[t.time]).map((t) => t.time);
+    const soiPrenables = soiLJ.filter((h) => { const t = laserLJ.times.find((x) => x.time === h); return t && t.move && t.move.ok; });
     const decLJ = bowlingLJ.times.filter((t) => t.ok === false && t.code === 'anchor_overlap' && t.conflict && t.conflict.activityId === 'laser_game').map((t) => t.time);
     const plageLJ = plageQa(dLJ, 'laser_game', LJ);
-    ok(Object.keys(empLJ).length > 0 && soiLJ.length > 0 && decLJ.length > 0 && Boolean(plageLJ),
-      '[J] MONTAGE : la route rend une heure de 2e groupe, un chevauchement du laser avec sa propre partie, et des heures de bowling qui le croisent',
-      JSON.stringify({ laser: LJ, groupe2: Object.keys(empLJ), soi: soiLJ, decale: decLJ, plage: plageLJ }));
+    ok(Object.keys(empLJ).length > 0 && soiLJ.length > 0 && soiPrenables.length > 0 && decLJ.length > 0 && Boolean(plageLJ),
+      '[J] MONTAGE : la route rend une heure de 2e groupe, un chevauchement du laser avec sa propre partie dont le moteur accepte le DEPLACEMENT (`move`), et des heures de bowling qui le croisent',
+      JSON.stringify({ laser: LJ, groupe2: Object.keys(empLJ), soi: soiLJ, deplacables: soiPrenables, decale: decLJ, plage: plageLJ }));
     const pistesLJ = await verifierPistes(dLJ, { laser_game: LJ }, [LJ],
-      '[J] LASER RETENU : les pistes = la route ; l heure du 2e groupe est a vous, le chevauchement avec sa propre partie est « pris », le bowling qui croise « decale », et chaque heure qui coince s explique sous sa plage', pageJ);
-    // Sa propre partie : la ligne dit quand elle joue, groupes compris.
-    const lignesSoi = (pistesLJ.find((p) => p.id === 'laser_game') || { periodes: [] }).periodes.reduce((acc, x) => acc.concat(x.raisons), [])
-      .filter((r) => r.etat === 'hard' && soiLJ.some((h) => r.heures.indexOf(h) >= 0));
-    ok(lignesSoi.length > 0 && lignesSoi.every((r) => r.cle === 'pris' && r.texte.indexOf(`de ${plageLJ}`) >= 0),
-      '[J] l heure qui chevaucherait sa propre partie est « pris », et sa ligne dit quand joue cette partie, 2e groupe compris', lignesSoi.map((r) => `« ${r.texte} »`).join(' '));
+      '[J] LASER RETENU : les pistes = la route ; l heure du 2e groupe est a vous, le chevauchement avec sa propre partie la DEPLACE (verdict du moteur), le bowling qui croise « decale », et chaque heure qui coince s explique sous sa plage', pageJ);
+    // PLUS AUCUN « PRIS » QUI NE SE PREND PAS (Movsar, 2026-09-24 : « le truc
+    // qui dit pris et qui est impossible a prendre, c est con, c est mal
+    // fait ») : la case dit quelle partie elle deplace et vers ou, porte le
+    // verdict du moteur sur ce deplacement, et se prend quand il le permet.
+    const casesSoi = ((pistesLJ.find((p) => p.id === 'laser_game') || { chips: [] }).chips).filter((c) => soiLJ.indexOf(c.t) >= 0);
+    ok(casesSoi.length === soiLJ.length && casesSoi.every((c) => c.mot !== 'pris' && c.replaces === LJ && c.titre.indexOf(`votre partie 1 (${LJ}) à ${c.t}`) >= 0)
+      && casesSoi.filter((c) => soiPrenables.indexOf(c.t) >= 0).every((c) => c.ok),
+      '[J] l heure qui chevaucherait sa propre partie la DEPLACE : la case le dit, porte le verdict du moteur et se prend', casesSoi.map((c) => `${c.t} « ${c.mot} » ${c.ok ? 'prenable' : 'refusee'} « ${c.titre} »`).join(' | '));
     const lignesDecale = (pistesLJ.find((p) => p.id === 'bowling') || { periodes: [] }).periodes.reduce((acc, x) => acc.concat(x.raisons), []).filter((r) => r.etat === 'shift');
     const nomLaser = String(laserLJ.label || 'Laser Game').toLowerCase();
     ok(lignesDecale.length > 0 && lignesDecale.every((r) => r.texte.indexOf(`(${plageLJ})`) >= 0 && r.texte.toLowerCase().indexOf(nomLaser) >= 0),
@@ -3152,9 +3450,26 @@ async function main() {
     // ce depart (il AJOUTERAIT une partie), l heure se prend.
     const hGroupe2 = Object.keys(empLJ)[0];
     const groupe2 = empLJ[hGroupe2] || {};
-    const ligneGroupe2 = (pistesLJ.find((p) => p.id === 'laser_game') || { periodes: [] }).periodes.reduce((acc, x) => acc.concat(x.raisons), []).find((r) => r.heures.indexOf(hGroupe2) >= 0) || { texte: '', cle: '' };
-    ok(ligneGroupe2.cle === `groupe ${groupe2.rang}` && ligneGroupe2.texte.indexOf(`${groupe2.rang}e groupe (${groupe2.joueurs} joueurs)`) >= 0 && ligneGroupe2.texte.indexOf('La choisir y fait partir votre 1er groupe.') >= 0,
-      '[J] l heure du 2e groupe reste marquee, et sa ligne dit que la choisir y fait partir le 1er groupe', `${hGroupe2} « ${ligneGroupe2.texte} »`);
+    // L heure du 2e groupe porte le nom de SA partie, sans ligne en plus sous
+    // la plage (son nom et sa plage suffisent), et se prend.
+    const caseGroupe2 = ((pistesLJ.find((p) => p.id === 'laser_game') || { chips: [] }).chips).find((c) => c.t === hGroupe2) || {};
+    ok(caseGroupe2.etat === 'wave' && caseGroupe2.mot === 'partie 1' && caseGroupe2.ok && caseGroupe2.decrit === ''
+      && caseGroupe2.titre.indexOf(`Votre partie 1 joue de ${plageLJ} (${groupe2.rang}e groupe à ${hGroupe2}).`) === 0 && caseGroupe2.titre.indexOf(`La toucher la fait partir à ${hGroupe2}`) >= 0,
+      '[J] l heure du 2e groupe porte le nom de sa partie (« partie 1 »), dit quand elle joue et que la toucher l y fait partir', `${hGroupe2} « ${caseGroupe2.mot} » « ${caseGroupe2.titre} »`);
+    // TOUCHER L HEURE QUI CHEVAUCHAIT SA PARTIE LA DEPLACE : la partie part a
+    // l heure touchee, rien ne s ajoute.
+    const hSoi = soiPrenables[0];
+    const avantSoi = demandesJ.length;
+    ok(Boolean(hSoi) && await poserEtAttendre(pageJ, 'laser_game', hSoi), '[J] toucher une heure qui chevauchait sa propre partie recalcule', hSoi);
+    const qSoi = new URL(demandesJ.slice(avantSoi).filter((u) => u.indexOf('/api/public-availability?') >= 0).pop() || `${BASE_URL}/`).searchParams;
+    ok(qSoi.get('laserGameTimes') === JSON.stringify([hSoi]) && JSON.parse(qSoi.get('preferredTimes') || '{}').laser_game === hSoi,
+      '[J] la partie PART a l heure touchee : elle se deplace, rien ne s ajoute', `${qSoi.get('laserGameTimes')} / ${qSoi.get('preferredTimes')}`);
+    // Retour a l etat d avant : la main rendue a l equipe, puis la partie
+    // reposee a son heure.
+    const rendueLJ = pageJ.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
+    await pageJ.click('#hourZone [data-reset="laser_game"]');
+    ok(Boolean(await rendueLJ) && await attendre(pageJ, () => !document.querySelector('#hourZone').classList.contains('is-busy'), 25000) && await poserEtAttendre(pageJ, 'laser_game', LJ),
+      '[J] la partie est reposee a son heure d avant', LJ);
     const avantGroupe2 = demandesJ.length;
     ok(await poserEtAttendre(pageJ, 'laser_game', hGroupe2), '[J] toucher l heure du 2e groupe recalcule', hGroupe2);
     const qG2 = new URL(demandesJ.slice(avantGroupe2).filter((u) => u.indexOf('/api/public-availability?') >= 0).pop() || `${BASE_URL}/`).searchParams;
@@ -3162,10 +3477,10 @@ async function main() {
       '[J] la partie SUIT son 1er groupe : elle part a l heure touchee, rien ne s ajoute', `${qG2.get('laserGameTimes')} / ${qG2.get('preferredTimes')}`);
     const dG2 = await lireJson(`${BASE_URL}/api/public-availability?${new URLSearchParams(Object.assign({}, paramsJ, { preferredTimes: JSON.stringify({ laser_game: hGroupe2 }), laserGameTimes: JSON.stringify([hGroupe2]) }))}`);
     await verifierPistes(dG2, { laser_game: hGroupe2 }, [hGroupe2], '[J] 1er GROUPE DEPLACE : les pistes = la route ; l heure touchee est choisie, son 2e groupe se marque a la demi-heure suivante', pageJ);
-    // DEUX PARTIES POSEES, la seconde juste apres la premiere. L heure du 2e
-    // groupe de la plus tot, le moteur l a jugee (il remplace la plus tot :
-    // c est ce depart-la), et la refuse : ce 1er groupe chevaucherait la
-    // seconde partie. Celle de la plus tardive, il ne l a pas jugee.
+    // DEUX PARTIES POSEES, la seconde juste apres la premiere. Toucher l heure
+    // du 2e groupe de la plus tot la DEPLACERAIT : le moteur juge ce
+    // deplacement et le refuse (elle chevaucherait la seconde partie). Celui
+    // de la plus tardive, il l accepte.
     const laserG2 = ancresDe(dG2).find((a) => a.activityId === 'laser_game') || { times: [] };
     const P2 = (laserG2.times.find((t) => t.ok !== false && !t.warning && t.time > hGroupe2) || {}).time;
     ok(Boolean(P2) && await poserEtAttendre(pageJ, 'laser_game', P2), '[J] une seconde partie de laser est posee apres la premiere', P2);
@@ -3175,27 +3490,31 @@ async function main() {
     const empP2 = emporteesQa(dP2, laserP2, partsJ);
     const jugees = Object.keys(empP2).filter((h) => empP2[h].depuis === partsJ[0]);
     const tardives = Object.keys(empP2).filter((h) => empP2[h].depuis === partsJ[1]);
-    const refusee = jugees.find((h) => { const t = laserP2.times.find((x) => x.time === h); return t && t.ok === false; });
-    ok(Boolean(refusee) && tardives.length > 0,
-      '[J] MONTAGE : deux parties posees, une heure de 2e groupe dont le moteur REFUSE le depart (la plus tot) et une qu il n a pas jugee (la plus tardive)', JSON.stringify({ parties: partsJ, jugees, tardives, refusee }));
-    await verifierPistes(dP2, { laser_game: partsJ[0] }, partsJ, '[J] DEUX PARTIES : les pistes = la route ; l heure du 2e groupe de la plus tot suit le verdict du moteur, celle de la plus tardive se prend', pageJ);
-    // Le depart refuse : la toucher ne demande rien ; sa ligne s eclaire et
-    // dit pourquoi, avec la raison du moteur.
+    const verdictP2 = (h) => verdictQa(laserP2.times.find((x) => x.time === h) || {});
+    const refusee = jugees.find((h) => verdictP2(h).ok === false);
+    const tardivesOk = tardives.filter((h) => verdictP2(h).ok !== false);
+    ok(Boolean(refusee) && tardivesOk.length > 0,
+      '[J] MONTAGE : deux parties posees ; le moteur REFUSE de deplacer la plus tot a l heure de son 2e groupe et ACCEPTE de deplacer la plus tardive a la sienne', JSON.stringify({ parties: partsJ, jugees, tardives, refusee, tardivesOk }));
+    await verifierPistes(dP2, { laser_game: partsJ[0] }, partsJ, '[J] DEUX PARTIES : les pistes = la route ; chaque heure de 2e groupe porte le verdict du deplacement de SA partie, le cadre dit « 2 heures choisies sur 2 »', pageJ);
+    // Le depart refuse : la toucher ne demande rien ; elle eclaire SA partie
+    // dans le cadre des parties, et la voix le dit.
     const avantRefus = demandesJ.length;
     await toucherHeure(pageJ, 'laser_game', refusee);
-    await dormir(300);
+    const voixRefus = `${refusee} : votre partie 1 joue à cette heure.`;
+    await attendre(pageJ, (v) => document.querySelector('#fgLive').textContent === v, 2000, voixRefus);
     const luRefus = await pageJ.evaluate((h) => {
-      const l = document.querySelector('#hourZone .fg-why-list__item.is-lit');
       const c = document.querySelector(`#hourZone .fg-track[data-activity="laser_game"] .fg-chip[data-time="${h}"]`);
-      return { texte: l ? l.textContent.replace(/\s+/g, ' ').trim() : '', heures: l ? String(l.dataset.heures || '').split(' ') : [], mot: c ? c.querySelector('small').textContent : '', ok: c ? c.dataset.ok : '' };
+      return {
+        eclaires: Array.from(document.querySelectorAll('#hourZone .is-lit')).map((l) => `${l.className.split(' ')[0]}#${l.dataset.partie || ''}`),
+        mot: c ? c.querySelector('small').textContent : '', ok: c ? c.dataset.ok : '', titre: c ? c.getAttribute('title') || '' : '', voix: document.querySelector('#fgLive').textContent,
+      };
     }, refusee);
-    const raisonRefus = (laserP2.times.find((x) => x.time === refusee) || {}).reason || 'Indisponible';
-    ok(demandesJ.slice(avantRefus).every((u) => u.indexOf('/api/public-availability?') < 0) && luRefus.ok === 'false' && luRefus.mot === `groupe ${(empP2[refusee] || {}).rang}`
-      && luRefus.heures.indexOf(refusee) >= 0 && luRefus.texte.indexOf('impossible') >= 0 && luRefus.texte.indexOf(minusculeQa(raisonRefus)) >= 0,
-      '[J] l heure du 2e groupe dont le moteur refuse le depart reste marquee, ne se prend pas, et sa ligne s eclaire avec la raison', `${refusee} « ${luRefus.texte} »`);
-    // Celle que le moteur n a pas jugee : la toucher fait partir la partie
-    // tardive a cette heure ; la plus tot ne bouge pas.
-    const hTardive = tardives[0];
+    ok(demandesJ.slice(avantRefus).every((u) => u.indexOf('/api/public-availability?') < 0) && luRefus.ok === 'false' && luRefus.mot === 'partie 1'
+      && luRefus.eclaires.join() === 'fg-parts__item#1' && luRefus.voix === voixRefus && luRefus.titre.indexOf(`La faire partir à ${refusee} est impossible`) >= 0,
+      '[J] l heure du 2e groupe que le moteur refuse de deplacer reste marquee « partie 1 », ne se prend pas ; la toucher eclaire SA partie et le dit', JSON.stringify(luRefus));
+    // Celle qu il accepte : la toucher fait partir la partie tardive a cette
+    // heure ; la plus tot ne bouge pas.
+    const hTardive = tardivesOk[0];
     const avantTardive = demandesJ.length;
     ok(await poserEtAttendre(pageJ, 'laser_game', hTardive), '[J] toucher l heure du 2e groupe de la partie tardive recalcule', hTardive);
     const qTardive = new URL(demandesJ.slice(avantTardive).filter((u) => u.indexOf('/api/public-availability?') >= 0).pop() || `${BASE_URL}/`).searchParams;
@@ -3223,11 +3542,11 @@ async function main() {
         const sec = Array.from(document.querySelectorAll('#hourZone .fg-track[data-activity="laser_game"] .fg-period')).find((x) => (x.querySelector('.fg-period__name') || { textContent: '' }).textContent.trim().toLowerCase() === nom.toLowerCase());
         return sec ? { resume: sec.querySelector('.fg-period__sum').textContent.trim(), ouvert: sec.classList.contains('is-open') } : null;
       }, periodeDe(hBord || bordJ));
-      ok(Boolean(hBord) && Boolean(menuBord) && menuBord.resume.indexOf(`groupe ${(empBord[hBord] || {}).rang} à ${hBord}`) === 0,
-        '[J] le menu de cette plage, replie ou non, dit l heure du 2e groupe', JSON.stringify(menuBord));
+      ok(Boolean(hBord) && Boolean(menuBord) && menuBord.resume.indexOf(`partie 1 à ${hBord}`) === 0,
+        '[J] le menu de cette plage, replie ou non, dit l heure de la partie (son 2e groupe)', JSON.stringify(menuBord));
     }
-    await lisibles('.fg-legend__tip, .fg-legend__key i, .fg-legend__key em, #hourZone .fg-period.is-open .fg-why-list__item > span, #hourZone .fg-period.is-open .fg-why-list__item b, #hourZone .fg-period.is-open .fg-key, #hourZone .fg-period.is-open .fg-chip b, #hourZone .fg-period.is-open .fg-chip small',
-      '[J] la legende, les heures ouvertes et leurs raisons gardent 4,5:1 au pire moment (sur la photo la plus claire possible, voile compris)');
+    await lisibles('.fg-legend__tip, .fg-legend__key i, .fg-legend__key em, #hourZone .fg-period.is-open .fg-why-list__item > span, #hourZone .fg-period.is-open .fg-why-list__item b, #hourZone .fg-period.is-open .fg-key, #hourZone .fg-period.is-open .fg-chip b, #hourZone .fg-period.is-open .fg-chip small, #hourZone .fg-parts__head span, #hourZone .fg-parts__head b, #hourZone .fg-parts__item > span, #hourZone .fg-parts__item > i, #hourZone .fg-track__waves',
+      '[J] la legende, les heures ouvertes, leurs raisons, le cadre des parties et la note des groupes gardent 4,5:1 au pire moment (sur la photo la plus claire possible, voile compris)');
     await tour.close();
 
     // =====================================================================
@@ -3465,6 +3784,10 @@ async function main() {
     await attendre(pl, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 8000);
     await pl.fill('#cPrenom', 'Lisible'); await pl.fill('#cNom', 'Photo'); await pl.fill('#cEmail', 'qa@example.com'); await pl.fill('#cTel', '0471234567');
     await pl.fill('#cNote', 'Gâteau à mettre au frais');
+    // « Autre », avec sa precision : les deux voyagent (la cle, et la
+    // precision jointe au mot pour l equipe).
+    await pl.click('#occasions .fg-occasion[data-occasion="autre"]');
+    await pl.fill('#cOccasionAutre', 'Départ à la retraite');
     await pl.check('#cConsent');
     await lisibleEcran('coordonnees', false);
     await pl.click('#goRecap');
@@ -3472,6 +3795,9 @@ async function main() {
     await lisibleEcran('recapitulatif', false);
     await pl.click('#confirmBtn');
     ok(await attendre(pl, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000), '[L] la reservation part, l ecran final s ouvre');
+    const corpsL = mock.dernierePose.body || {};
+    ok(corpsL.occasion === 'autre' && corpsL.notes === 'Occasion : Départ à la retraite. Gâteau à mettre au frais',
+      '[L] « Autre » part en cle, sa precision rejoint le mot pour l equipe (notes)', JSON.stringify({ occasion: corpsL.occasion, notes: corpsL.notes }));
     await lisibleEcran('fin', true);
     ok(casTitreTotal > 0, 'MONTAGE [L] au moins un titre porte une capitale accentuee sous sa premiere ligne : la mesure des accents porte sur un vrai cas', `${casTitreTotal} cas`);
     // Le telephone et l e-mail du centre se TOUCHENT (tel:, mailto:), tires
@@ -3597,6 +3923,7 @@ async function main() {
       ok(await attendre(fm, () => !document.querySelector('#goContact').disabled, 25000), '[M] les heures se calculent dans le cadre');
       await fm.click('#goContact');
       await fm.fill('#cPrenom', 'Test'); await fm.fill('#cNom', 'Site'); await fm.fill('#cEmail', 'site@example.com'); await fm.fill('#cTel', '0491301667');
+      await fm.click('#occasions .fg-occasion[data-occasion="evg"]');
       await fm.check('#cConsent');
       await fm.click('#goRecap');
       await attendre(fm, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000);

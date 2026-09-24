@@ -23,11 +23,17 @@
 //   [B] UNE QUESTION S AFFICHE AVEC SON ORIGINE. La question seule ne suffit
 //       pas : sans le mail d ou elle vient, on ne sait pas quoi repondre.
 //
-//   [C] ON NE PEUT PAS APPRENDRE DU VIDE. Le bouton reste inactif tant que rien
-//       n est ecrit : un fait vide appris serait pire qu aucun fait.
+//   [C] ON NE PEUT PAS APPRENDRE DU VIDE, NI TROP LONG. Le bouton reste
+//       inactif tant que rien n est ecrit (un fait vide appris serait pire
+//       qu aucun fait) ; au-dela de ce que le serveur accepte, le compteur le
+//       dit AVANT l envoi et le bouton reste inactif.
 //
 //   [D] REPONDRE ENVOIE LE FAIT AU SERVEUR. C est le geste central : sans lui,
-//       toute la section est un formulaire decoratif.
+//       toute la section est un formulaire decoratif. Il se joue au VRAI
+//       geste : taper, puis toucher le bouton, sans aucun rendu entre les
+//       deux (2026-09-24 : le gate redessinait la page lui-meme apres la
+//       frappe ; en vrai, le bouton restait gris et la reponse de Movsar ne
+//       partait pas).
 //
 //   [E] LA MEMOIRE SE CONSULTE ET SE CORRIGE. Un fait faux appris une fois
 //       empoisonnerait toutes les reponses suivantes sans que rien ne le
@@ -180,6 +186,8 @@ async function etatSection(page) {
       texte: s.innerText.replace(/\s+/g, ' ').trim(),
       cartes: s.querySelectorAll('.pv2-savoir-carte').length,
       boutonActif: bouton ? !bouton.disabled : null,
+      compteur: ((s.querySelector('.pv2-savoir-carte .pv2-savoir-compteur') || {}).textContent || '').trim(),
+      compteurTrop: Boolean(s.querySelector('.pv2-savoir-carte .pv2-savoir-compteur.is-trop')),
       memoireVisible: Boolean(s.querySelector('.pv2-savoir-memoire')),
       faits: s.querySelectorAll('.pv2-savoir-fait').length,
     };
@@ -256,17 +264,26 @@ async function main() {
     // =====================================================================
     ok(avecQuestion.boutonActif === false,
       '[C] le bouton Apprendre est inactif tant que rien n est ecrit', String(avecQuestion.boutonActif));
+    // TROP LONG : la limite est celle que le serveur applique, relue dans sa
+    // source (APPRIS_LIMITS, lib/email-agent.js), jamais recopiee ici.
+    const limite = Number((/APPRIS_LIMITS = \{ question: \d+, reponse: (\d+) \}/.exec(fs.readFileSync(path.join(ROOT, 'lib', 'email-agent.js'), 'utf8')) || [])[1]);
+    await page.fill('#staffEmailsPage .pv2-savoir-reponse', 'x'.repeat(limite + 1));
+    const tropLong = await etatSection(page);
+    ok(limite > 0 && tropLong.boutonActif === false && tropLong.compteurTrop && tropLong.compteur.indexOf(`${limite + 1} / ${limite}`) === 0,
+      '[C] au-dela de ce que le serveur accepte, le compteur le dit avant l envoi et le bouton reste inactif', JSON.stringify({ limite, compteur: tropLong.compteur, actif: tropLong.boutonActif }));
+    await page.fill('#staffEmailsPage .pv2-savoir-reponse', '');
+    const vide = await etatSection(page);
+    ok(vide.boutonActif === false && !vide.compteurTrop && vide.compteur === `0 / ${limite}`,
+      '[C] videe, la case redevient « 0 », et le bouton inactif', JSON.stringify(vide));
 
     // =====================================================================
     console.log('\n[D] repondre envoie le fait au serveur');
     // =====================================================================
     await page.click('#staffEmailsPage .pv2-savoir-reponse');
     await page.keyboard.type('Oui, uniquement le gateau d anniversaire.');
-    await page.waitForTimeout(200);
-    await page.evaluate(() => renderStaffEmailsPage());
-    await page.waitForTimeout(200);
-    ok((await etatSection(page)).boutonActif === true,
-      '[D] le bouton s active une fois la reponse ecrite');
+    const frappe = await etatSection(page);
+    ok(frappe.boutonActif === true && frappe.compteur.indexOf('41 / ') === 0,
+      '[D] le bouton s active pendant la frappe, sans attendre un autre rendu, et le compteur suit', JSON.stringify({ actif: frappe.boutonActif, compteur: frappe.compteur }));
     await page.click('#staffEmailsPage .pv2-savoir-carte .pv2-btn');
     await page.waitForTimeout(900);
     const envoyes = await page.evaluate(() => window.__QA_APPELS__.apprendre);

@@ -85,17 +85,10 @@
       // le cadre peut se verrouiller (voir html.fg-pilote dans la feuille).
       if (!root.classList.contains('fg-pilote')) root.classList.add('fg-pilote');
       root.style.setProperty('--tunnel-vue-haut', (Number(d.cacheEnHaut) || 0) + 'px');
-      root.style.setProperty('--tunnel-vue-bas', (Number(d.cacheEnBas) || 0) + 'px');
       root.style.setProperty('--tunnel-vue-ecran', (Number(d.hauteurEcran) || 0) + 'px');
-      // La page hote a DEFILE quand le haut du cadre a bouge dans son ecran :
-      // un cadre qui grandit par le bas garde son haut.
       var haut = Number(d.hautCadre);
-      if (isFinite(haut)) {
-        if (hautCadre !== null && Math.abs(haut - hautCadre) > 1) hoteDefile();
-        hautCadre = haut;
-      }
+      if (isFinite(haut)) hautCadre = haut;
       ecranHote = Number(d.hauteurEcran) || 0;
-      majDock();
       // La fenetre du calendrier (telephone) suit le milieu de l ecran hote.
       placerFenetre(false);
     });
@@ -505,7 +498,6 @@
         if (jeton !== transitionId) return;
         de.classList.remove('is-leaving'); vers.classList.remove('is-entering');
         enTransition = false;
-        planifierDock();
         // La scene sortante, posee en absolu, portait encore sa hauteur : le
         // corps n a pas change de taille en la retirant, l observateur ne dit
         // rien. Sans cet appel, le cadre restait a la hauteur de l ecran
@@ -528,7 +520,6 @@
     var focus = $('.fg-title', vers);
     if (focus) { focus.setAttribute('tabindex', '-1'); focus.focus({ preventScroll: true }); }
     setTimeout(posterHauteur, 50);
-    planifierDock();
   }
   // Rappelle fn quand les animations finies de racine et de son contenu sont
   // terminees : une entree qui monte de 16 px compte encore dans la hauteur
@@ -569,59 +560,15 @@
     if (i > 0) aller(SCENES[i - 1], true);
   }
 
-  /* --- La barre du bas ------------------------------------------------------------- */
+  /* --- Le cadre dans la page hote ---------------------------------------------- */
 
-  // Sur les activites et les heures, la barre (compteur ou resume de la
-  // visite, Retour, le bouton qui avance) reste a sa place, en fin d ecran.
-  // Sur telephone seulement, et seulement quand le bouton qui avance est
-  // actif, elle colle au bas de ce qui se voit tant que sa place est plus
-  // bas (.is-stuck : une rangee fine sur son panneau, voir la feuille). Sur
-  // ordinateur et tablette, elle ne suit plus (Movsar, 2026-09-24 : « elle
-  // derange quand elle nous suit partout »). La place est la marque vide
-  // posee juste apres elle ; le bas
-  // de ce qui se voit est celui de la fenetre, moins le decalage de la regle
-  // sticky (qui porte, en embarque, la part du cadre cachee sous l ecran de
-  // l hote). La position de la barre elle-meme n est jamais lue : son entree
-  // en cascade la decale, la mesure ne doit pas bouger avec.
-  var hautCadre = null, hoteMinuteur = null, dockEnAttente = false, ecranHote = 0;
-  var dockTelephone = window.matchMedia ? window.matchMedia('(max-width: 560px)') : null;
-  function planifierDock() {
-    if (dockEnAttente) return;
-    dockEnAttente = true;
-    requestAnimationFrame(function () { dockEnAttente = false; majDock(); });
-  }
-  function hoteDefile() {
-    body.classList.add('is-hote-defile');
-    clearTimeout(hoteMinuteur);
-    hoteMinuteur = setTimeout(function () { body.classList.remove('is-hote-defile'); }, 180);
-  }
+  // La barre du bas (compteur ou resume, Retour, le bouton qui avance) reste
+  // a sa place, en fin d ecran : elle ne suit l ecran sur aucun format
+  // (Movsar, 2026-09-24 : « en vrai pas besoin de suivre, c inutile »).
+  // Embarque, la page hote dit ou est le cadre dans son ecran (pinlane:vue) :
+  // la fenetre du calendrier du telephone s y centre.
+  var hautCadre = null, ecranHote = 0;
   function focusClavier(el) { try { return el.matches(':focus-visible'); } catch (e) { return false; } }
-  function majDock() {
-    var active = $('.fg-scene.is-active .fg-dock');
-    var suit = Boolean(dockTelephone && dockTelephone.matches);
-    root.classList.toggle('has-dock', Boolean(active) && suit);
-    $$('.fg-dock').forEach(function (bar) {
-      var place = bar.nextElementSibling;
-      var avance = bar.querySelector('.fg-btn:not(.fg-btn--ghost)');
-      var colle = false, range = false;
-      if (bar === active && place && suit && avance && !avance.disabled) {
-        var bas = window.innerHeight - (parseFloat(getComputedStyle(bar).bottom) || 0);
-        colle = place.getBoundingClientRect().top > bas + 0.5;
-        // Ce qui a le focus clavier ne se cache jamais derriere la barre.
-        var f = doc.activeElement;
-        if (colle && f && f !== body && !bar.contains(f) && focusClavier(f)) {
-          var r = f.getBoundingClientRect();
-          range = r.bottom > bas - bar.offsetHeight && r.top < bas;
-        }
-      }
-      bar.classList.toggle('is-stuck', colle);
-      bar.classList.toggle('is-aside', range);
-    });
-  }
-  if (!EMBED) window.addEventListener('scroll', planifierDock, { passive: true });
-  window.addEventListener('resize', planifierDock);
-  doc.addEventListener('focusin', planifierDock);
-  doc.addEventListener('focusout', planifierDock);
   // Au clavier, dans le cadre embarque, la page hote defile pour montrer ce
   // qui prend le focus, anneau compris. Chromium n applique pas la marge de
   // defilement (scroll-margin) quand il fait defiler la page PARENTE : une
@@ -632,13 +579,6 @@
     var el = e.target;
     if (el && el.matches && el.matches('.fg-card, .fg-pill, .fg-tab') && focusClavier(el)) montrer(el);
   });
-  if ('ResizeObserver' in window) new ResizeObserver(planifierDock).observe(body);
-  // Le bouton qui avance s allume (une carte cochee, une heure posee) : sur
-  // telephone, la barre peut se mettre a suivre sans que rien ne defile.
-  if ('MutationObserver' in window) {
-    var surBouton = new MutationObserver(planifierDock);
-    $$('.fg-dock .fg-btn:not(.fg-btn--ghost)').forEach(function (b) { surBouton.observe(b, { attributes: true, attributeFilter: ['disabled'] }); });
-  }
   $$('[data-back]').forEach(function (b) { b.addEventListener('click', precedent); });
   doc.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('[data-goto]');

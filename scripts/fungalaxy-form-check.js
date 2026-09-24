@@ -179,21 +179,18 @@
 //       possible, et halos au plus clair) ; la duree totale annoncee est l ecart entre l arrivee et la
 //       fin, recalcule en Node, dans le bloc de visite comme au
 //       recapitulatif ; la legende des heures perd ses gloses sur telephone.
-//   [N] LA BARRE QUI SUIT (2026-09-23) : sur les activites et les heures, le
-//       bouton qui avance est dans l ecran sans defiler (telephone 390 et
-//       1440x900 ; embarque, dans l ECRAN DE L HOTE, au bas de la bande qu il
-//       montre du cadre) et se touche a cet endroit ; collee, la barre est sur
-//       son panneau ; a sa place, en fin de page, elle n en a plus et ne couvre
-//       rien ; sur l ecran des heures elle dit les heures et le prix de la
+//   [N] LA BARRE DU BAS (2026-09-23, revue le 2026-09-24) : sur les
+//       activites et les heures, elle reste a sa place, en fin d ecran, et ne
+//       suit jamais l ecran (telephone 390, 1440x900, embarquee), bouton
+//       inactif ou actif ; en bas de page elle montre son resume sans rien
+//       couvrir ; sur l ecran des heures elle dit les heures et le prix de la
 //       visite, ceux de la reponse, et suit une heure posee (seul le chiffre
-//       qui a change y roule) ; embarquee, elle
-//       s efface pendant que la page hote defile et revient au repos, mais
-//       reste quand le cadre ne fait que grandir ; au clavier, ce qui prend le
-//       focus n est jamais cache par elle (WCAG 2.4.11) ; embarquee, une carte
-//       focalisee sous l ecran de l hote y remonte avec son anneau entier,
-//       meme posee a cheval sur le bas de cet ecran (2026-09-24 : Chromium y
-//       ignore la marge de defilement en faisant defiler la page parente ;
-//       le cadre demande la bande a l hote).
+//       qui a change y roule) ; au clavier, ce qui prend le focus est dans
+//       l ecran et visible (WCAG 2.4.11) ; embarquee, une carte focalisee
+//       sous l ecran de l hote y remonte avec son anneau entier, meme posee a
+//       cheval sur le bas de cet ecran (2026-09-24 : Chromium y ignore la
+//       marge de defilement en faisant defiler la page parente ; le cadre
+//       demande la bande a l hote).
 //       Le bouton qui avance
 //       s eveille une fois quand il devient cliquable (« Continuer » au premier
 //       choix, « Garder » a l arrivee sur les heures), et rend sa classe ;
@@ -346,18 +343,9 @@
 // (en mouvement reduit, la coche attend un trace qui ne vient pas : feuille
 // cassee). Sauf mention : JS servi casse.
 //
-// CONTRE-PREUVES DE LA BARRE DU BAS : collee (sur telephone, la barre ne
-// colle plus : FEUILLE servie cassee), resumevu (collee, elle remontre son
-// resume au-dessus de la rangee), traverse (son haut invisible arrete le
-// toucher) : FEUILLE servie cassee ; suitpartout (elle suit de nouveau sur
-// ordinateur et tablette), suitvide (elle suit meme quand le bouton qui
-// avance est inactif) : JS servi casse ; toujours (elle se dit collee meme
-// a sa place),
-// resume (le resume des heures ne suit plus une heure posee), vuebas (elle
-// ignore la bande que l hote montre du cadre : feuille cassee), suitlhote
-// (elle ne s efface plus quand la page hote defile), grandit (elle s efface
-// aussi quand le cadre ne fait que grandir), masque (elle ne s ecarte plus
-// quand le focus clavier passe dessous).
+// CONTRE-PREUVES DE LA BARRE DU BAS : suitencore (la barre colle de nouveau
+// au bas de l ecran : FEUILLE servie cassee), resume (le resume des heures
+// ne suit plus une heure posee : JS servi casse).
 //
 // CONTRE-PREUVES DU DEFILEMENT ET DU CALENDRIER : montee (la hauteur ne monte
 // plus qu au-dela de 8 px : le cadre reste plus court que son contenu),
@@ -586,13 +574,7 @@ const MUTATIONS = {
   liens: ["Une question ? ' + lienContact(contact) + '</span></p>'", "Une question ? ' + esc(contact.phone) + '</span></p>'"],
   groupesrecap: ['        if (groupes.length > 1) {', '        if (false) {'],
   plagerepliee: ["      else if (vagues.length) sum = vagues.join(', ') + ' · ' + sum;", '      else if (false) sum = vagues.join();'],
-  toujours: ['colle = place.getBoundingClientRect().top > bas + 0.5;', 'colle = true;'],
   resume: ['    hourSum.innerHTML = span + ', '    if (!hourSum.innerHTML) hourSum.innerHTML = span + '],
-  suitlhote: ["    body.classList.add('is-hote-defile');", '    void 0;'],
-  grandit: ['if (hautCadre !== null && Math.abs(haut - hautCadre) > 1) hoteDefile();', 'hoteDefile();'],
-  masque: ['range = r.bottom > bas - bar.offsetHeight && r.top < bas;', 'range = false;'],
-  suitpartout: ['var suit = Boolean(dockTelephone && dockTelephone.matches);', 'var suit = true;'],
-  suitvide: ['if (bar === active && place && suit && avance && !avance.disabled) {', 'if (bar === active && place && suit) {'],
   juge: ['return state.laserParts.length >= compte && state.laserParts[0] === depuis;', 'return true;'],
   suit: ['if (j >= 0) state.laserParts[j] = t;', 'if (false) state.laserParts[j] = t;'],
   especes: ['<svg><use href="#i-cash"/></svg>', ''],
@@ -678,10 +660,7 @@ const MUTATIONS_CSS = {
   fantome: ['.fg-btn--ghost {\n  background: rgba(8, 8, 8, 0.86);\n', '.fg-btn--ghost {\n  background: transparent;\n'],
   voilecarte: ['rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%)', 'rgba(5, 5, 5, 0.25) 0%, rgba(5, 5, 5, 0.9) 100%)'],
   compteur: ['.fg-fam__title span { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-muted); }', '.fg-fam__title span { order: 3; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-faint); }'],
-  collee: ['.fg-dock.is-stuck {\n  position: sticky;\n', '.fg-dock.is-stuck {\n  position: static;\n'],
-  resumevu: ['.fg-dock.is-stuck .fg-bar__count { opacity: 0; }\n', ''],
-  traverse: ['  border-top-color: transparent;\n  pointer-events: none;\n}', '  border-top-color: transparent;\n}'],
-  vuebas: ['  bottom: calc(var(--tunnel-vue-bas, 0px) + 10px + env(safe-area-inset-bottom, 0px));\n', '  bottom: calc(10px + env(safe-area-inset-bottom, 0px));\n'],
+  suitencore: ['.fg-dock { padding: 14px 0 16px; }\n', '.fg-dock { position: sticky; bottom: 10px; z-index: 4; padding: 14px 0 16px; }\n'],
   verrou: ['html.fg-pilote { overflow: hidden; }\n', ''],
   milieu: ['  transform: translate(-50%, -50%);\n  box-shadow: 0 24px 64px', '  transform: translate(-50%, 0);\n  box-shadow: 0 24px 64px'],
   pastille: ['.fg-tabs.is-for .fg-tabs__bar { transform: translateX(calc(100% + 4px)); }\n', ''],
@@ -1411,9 +1390,6 @@ async function contrastesPires(page, selecteur) {
       const sousHalo = (f) => plusClair([f].concat(pics.map((c) => sur(c, f))));
       const art = document.querySelector('.fg-scene.is-active .fg-art');
       const ra = art && art.getClientRects().length ? art.getBoundingClientRect() : null;
-      // LA BARRE QUI SUIT, collee, couvre ce qui passe dessous : un texte
-      // qu elle couvre ici se mesure quand il est centre a son tour.
-      const barres = Array.from(document.querySelectorAll('.fg-scene.is-active .fg-dock')).filter((d) => d.getClientRects().length);
       const res = [];
       for (let i = 0; i < total; i += 1) {
         const el = document.querySelector(`[data-qa-contraste="${i}"]`);
@@ -1424,12 +1400,7 @@ async function contrastesPires(page, selecteur) {
           Array.from(r.getClientRects()).forEach((x) => { if (x.width > 0.5 && x.height > 0.5) lignes.push({ x: x.left, y: x.top, w: x.width, h: x.height }); });
         });
         const dansLaVue = lignes.length && lignes.every((x) => x.y >= 0 && x.y + x.h <= innerHeight && x.x >= 0 && x.x + x.w <= innerWidth);
-        const sousBarre = barres.some((d) => {
-          if (d.contains(el)) return false;
-          const b = d.getBoundingClientRect();
-          return lignes.some((x) => x.y < b.bottom && x.y + x.h > b.top && x.x < b.right && x.x + x.w > b.left);
-        });
-        if (!dansLaVue || sousBarre) continue;
+        if (!dansLaVue) continue;
         let opacite = 1;
         for (let p = el; p && p.nodeType === 1; p = p.parentElement) opacite *= Number(getComputedStyle(p).opacity);
         const surPhoto = Boolean(ra) && lignes.some((x) => x.x < ra.right && x.x + x.w > ra.left && x.y < ra.bottom && x.y + x.h > ra.top);
@@ -3733,39 +3704,30 @@ async function main() {
 
     // =====================================================================
     console.log('');
-    console.log('[N] LA BARRE DU BAS : A PORTEE SUR TELEPHONE, A SA PLACE AILLEURS');
+    console.log('[N] LA BARRE DU BAS : A SA PLACE, ELLE NE SUIT JAMAIS');
     // Releve de la passe « plus user friendly » (2026-09-23) : le « Continuer »
     // des activites sous la ligne de flottaison des 1440x900, a 500 px sous le
-    // bas de l ecran sur telephone ; sur l ecran des heures, le prix et les
-    // heures de la visite sous les pistes. La barre colle au bas de ce qui se
-    // voit ; embarquee, de ce que la page hote montre du cadre.
-    // Revue du 2026-09-24 (Movsar : « meme sur PC il est derangeant quand il
-    // nous suit partout, trop gros ») : elle ne suit plus que sur telephone,
-    // quand le bouton qui avance est actif, en une rangee fine.
+    // bas de l ecran sur telephone. La barre avait ete collee au bas de ce qui
+    // se voit ; Movsar l a jugee genante (2026-09-24 : « meme sur PC il est
+    // derangeant quand il nous suit partout, trop gros », puis « en vrai pas
+    // besoin de suivre, c inutile »). Elle reste a sa place, en fin d ecran,
+    // sur tous les formats, en page autonome comme embarquee.
     // =====================================================================
     const lireBarre = (p) => p.evaluate(() => {
       const bar = document.querySelector('.fg-scene.is-active .fg-dock');
       if (!bar) return null;
       const b = bar.querySelector('.fg-btn:not(.fg-btn--ghost)').getBoundingClientRect();
-      const x = b.left + b.width / 2;
-      const y = b.top + b.height / 2;
-      const dessus = document.elementFromPoint(x, y);
       return {
         colle: bar.classList.contains('is-stuck'),
-        range: bar.classList.contains('is-aside') || document.body.classList.contains('is-hote-defile'),
-        haut: Math.round(b.top), bas: Math.round(b.bottom), x: Math.round(x), y: Math.round(y),
-        touche: Boolean(dessus && dessus.closest('.fg-dock .fg-btn:not(.fg-btn--ghost)')),
+        position: getComputedStyle(bar).position,
+        haut: Math.round(b.top), bas: Math.round(b.bottom),
         vh: window.innerHeight,
         sy: Math.round(window.scrollY),
         texte: bar.querySelector('.fg-bar__count').textContent.replace(/\s+/g, ' ').trim(),
-        position: getComputedStyle(bar).position,
-        panneau: getComputedStyle(bar.querySelector('.fg-actions'), '::before').backgroundColor,
-        resume: getComputedStyle(bar.querySelector('.fg-bar__count')).opacity,
-        rangee: (() => { const a = bar.querySelector('.fg-actions'); const pa = getComputedStyle(a, '::before'); return pa.content === 'none' ? 0 : Math.round(a.getBoundingClientRect().height - (parseFloat(pa.top) || 0) - (parseFloat(pa.bottom) || 0)); })(),
-        traverse: (() => { const c = bar.querySelector('.fg-bar__count').getBoundingClientRect(); const sous = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2); return Boolean(sous) && !bar.contains(sous); })(),
       };
     });
-    const alphaDe = (c) => { const mm = /rgba?\(([^)]+)\)/.exec(String(c || '')); if (!mm) return 0; const v = mm[1].split(/[\s,/]+/).filter(Boolean).map(parseFloat); return v.length > 3 ? v[3] : 1; };
+    // A sa place : ni collee, ni sticky.
+    const aSaPlace = (x) => Boolean(x) && !x.colle && x.position !== 'sticky';
     const auRepos = (p) => attendre(p, () => document.getAnimations().every((x) => x.playState !== 'running' || x.effect.getComputedTiming().iterations === Infinity), 8000);
     // Le resume attendu, relu sur la reponse (meme regle que rendreVisite).
     const resumeAttendu = (lp) => {
@@ -3786,15 +3748,14 @@ async function main() {
     await pn.tap('#goActivities');
     ok(await attendre(pn, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000)
       && await pn.evaluate(() => document.querySelectorAll('.fg-dock').length === 2 && Boolean(document.querySelector('.fg-scene.is-active .fg-dock'))),
-      'MONTAGE [N] telephone : l ecran des activites est atteint ; une barre qui suit sur les activites, une sur les heures');
-    // Rien de coche : « Continuer » est inactif, rien ne suit ; la barre
-    // attend a sa place, en fin d ecran.
+      'MONTAGE [N] telephone : l ecran des activites est atteint ; une barre du bas sur les activites, une sur les heures');
+    // Rien de coche, en haut de page : la barre attend a sa place.
     await pn.evaluate(() => window.scrollTo(0, 0));
     await attendre(pn, () => window.scrollY === 0, 3000);
     await auRepos(pn);
     const videN = await lireBarre(pn);
-    ok(Boolean(videN) && !videN.colle && videN.position !== 'sticky' && videN.haut > videN.vh,
-      '[N] telephone, activites, rien de coche : la barre ne suit pas (le bouton qui avance est inactif), elle attend a sa place en fin d ecran', JSON.stringify(videN));
+    ok(aSaPlace(videN) && videN.haut > videN.vh,
+      '[N] telephone, activites, rien de coche : la barre ne suit pas, elle attend a sa place en fin d ecran', JSON.stringify(videN));
     // Les gestes comptes a leur depart (animationstart) : le reveil des deux
     // boutons qui avancent, la case qui claque et le prix qui roule.
     await pn.evaluate(() => {
@@ -3810,15 +3771,13 @@ async function main() {
     await auRepos(pn);
     await dormir(300);
     let bn = await lireBarre(pn);
-    ok(Boolean(bn) && bn.sy === 0 && bn.colle && bn.haut >= 0 && bn.bas <= bn.vh && bn.touche && alphaDe(bn.panneau) > 0.9 && bn.texte === '2 activités sélectionnées',
-      '[N] telephone, activites, en haut de page : « Continuer » est DANS l ecran et se touche, sur son panneau ; le compteur reste lu', JSON.stringify(bn));
-    ok(Boolean(bn) && bn.resume === '0' && bn.rangee > 0 && bn.rangee <= 72 && bn.traverse,
-      '[N] telephone : collee, la barre est UNE rangee fine (panneau de 72 px au plus, le compteur efface), et son haut invisible laisse passer le toucher vers la carte dessous', JSON.stringify({ resume: bn && bn.resume, rangee: bn && bn.rangee, traverse: bn && bn.traverse }));
+    ok(aSaPlace(bn) && bn.sy === 0 && bn.haut > bn.vh && bn.texte === '2 activités sélectionnées',
+      '[N] telephone, activites, deux cartes cochees : la barre ne suit toujours pas (« Continuer », actif, attend a sa place), et son compteur dit le choix', JSON.stringify(bn));
     ok(await pn.evaluate(() => window.__qaEveil.hours === 1 && !document.querySelector('#goHours').classList.contains('is-wake')), '[N] « Continuer » s eveille une fois, au premier choix (pas au second), et rend sa classe (sinon il rejouerait a chaque retour sur l ecran)', await pn.evaluate(() => JSON.stringify(window.__qaEveil)));
     ok(await pn.evaluate(() => window.__qaGeste.tick === 2 && window.__qaGeste.prix === 2 && !document.querySelector('#gridAct .is-coche, #gridAct .is-maj')), '[N] cocher deux cartes : chaque case claque une fois, chaque prix qui change roule, et au repos aucune classe de geste ne reste posee', await pn.evaluate(() => JSON.stringify(window.__qaGeste)));
     const reponseN1 = pn.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
-    if (bn) await pn.touchscreen.tap(bn.x, bn.y);
-    ok(await attendre(pn, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 6000), '[N] telephone : un toucher a cet endroit de l ecran mene aux heures, sans avoir defile');
+    await pn.tap('#goHours');
+    ok(await attendre(pn, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 6000), '[N] telephone : « Continuer », atteint en descendant, mene aux heures');
     const rN1 = await reponseN1;
     const lpN1 = rN1 ? lignePlan(await rN1.json()) : null;
     ok(await attendre(pn, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('.fg-scene.is-entering'), 25000), '[N] telephone : les heures et le plan se chargent');
@@ -3828,9 +3787,9 @@ async function main() {
     await dormir(300);
     bn = await lireBarre(pn);
     const attenduN1 = lpN1 ? resumeAttendu(lpN1) : '';
-    ok(Boolean(bn) && bn.colle && bn.haut >= 0 && bn.bas <= bn.vh && bn.touche && Boolean(attenduN1) && bn.texte === attenduN1,
-      '[N] telephone, heures, en haut de page : « Garder » est dans l ecran et se touche, et la barre porte les heures et le prix de la visite, ceux de la reponse (lus, et montres a sa place)',
-      JSON.stringify({ barre: bn && bn.texte, attendu: attenduN1, colle: bn && bn.colle, bas: bn && bn.bas, vh: bn && bn.vh }));
+    ok(aSaPlace(bn) && bn.haut > bn.vh && Boolean(attenduN1) && bn.texte === attenduN1,
+      '[N] telephone, heures : la barre ne suit pas, et son resume dit les heures et le prix de la visite, ceux de la reponse',
+      JSON.stringify({ barre: bn && bn.texte, attendu: attenduN1, position: bn && bn.position, haut: bn && bn.haut, vh: bn && bn.vh }));
     // Une autre heure de bowling : la barre suit la NOUVELLE reponse.
     const autreN = await pn.evaluate(() => { const c = document.querySelector('#hourZone .fg-track[data-activity="bowling"] .fg-period.is-open .fg-chip:not(.is-proposed):not(.is-on):not([data-ok="false"])'); return c ? c.dataset.time : ''; });
     const reponseN2 = pn.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
@@ -3858,7 +3817,7 @@ async function main() {
     }));
     ok(rouleAttendu.some(Boolean) && JSON.stringify(rouleN.barre) === JSON.stringify(rouleAttendu) && rouleN.prix === Boolean(lpN2 && lpN2.prix > 0 && rouleAttendu[rouleAttendu.length - 1]),
       '[N] une heure posee : dans la barre, seul ce qui a change roule (is-maj), le reste ne bouge pas', JSON.stringify({ rouleN, rouleAttendu }));
-    // En bas de page : la barre a sa place, sans panneau, ne couvre rien.
+    // En bas de page : la barre a sa place, son resume montre, ne couvre rien.
     await pn.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await attendre(pn, () => Math.abs(window.scrollY + window.innerHeight - document.documentElement.scrollHeight) <= 2, 3000);
     await dormir(450);
@@ -3866,10 +3825,10 @@ async function main() {
       const bar = document.querySelector('.fg-scene.is-active .fg-dock');
       const r = bar.getBoundingClientRect();
       const v = document.querySelector('#planZone .fg-visit').getBoundingClientRect();
-      return { colle: bar.classList.contains('is-stuck'), panneau: getComputedStyle(bar.querySelector('.fg-actions'), '::before').backgroundColor, resume: getComputedStyle(bar.querySelector('.fg-bar__count')).opacity, visite: Math.round(v.bottom), barre: Math.round(r.top), vh: window.innerHeight };
+      return { colle: bar.classList.contains('is-stuck'), resume: getComputedStyle(bar.querySelector('.fg-bar__count')).opacity, visite: Math.round(v.bottom), barre: Math.round(r.top), vh: window.innerHeight };
     });
-    ok(!finN.colle && alphaDe(finN.panneau) === 0 && finN.resume === '1' && finN.visite <= finN.barre && finN.barre < finN.vh,
-      '[N] en bas de page, la barre est a sa place, sans panneau, son resume montre, sous le bloc de visite qu elle ne couvre pas', JSON.stringify(finN));
+    ok(!finN.colle && finN.resume === '1' && finN.visite <= finN.barre && finN.barre < finN.vh,
+      '[N] en bas de page, la barre est a sa place, son resume montre, sous le bloc de visite qu elle ne couvre pas', JSON.stringify(finN));
     await ctxN.close();
 
     // 1440x900, page autonome : le releve de l audit, et le clavier.
@@ -3887,10 +3846,9 @@ async function main() {
     await dormir(300);
     const bd = await lireBarre(pnd);
     ok(Boolean(bd) && bd.haut > bd.vh, 'MONTAGE [N] 1440x900 : la place de la barre est sous l ecran (suivre changerait quelque chose)', JSON.stringify(bd));
-    ok(Boolean(bd) && !bd.colle && bd.position !== 'sticky' && alphaDe(bd.panneau) === 0,
-      '[N] 1440x900 : la barre ne suit pas l ecran (sur ordinateur, elle derangeait) : « Continuer » attend a sa place, en fin d ecran', JSON.stringify(bd));
+    ok(aSaPlace(bd), '[N] 1440x900 : la barre ne suit pas l ecran : « Continuer » attend a sa place, en fin d ecran', JSON.stringify(bd));
     await pnd.evaluate(() => { window.scrollTo(0, 0); document.querySelector('#t-act').focus(); });
-    const focusD = { vus: 0, ecarts: 0, fautes: [] };
+    const focusD = { vus: 0, fautes: [] };
     for (let k = 0; k < 60; k += 1) {
       await pnd.keyboard.press('Tab');
       await dormir(150);
@@ -3899,11 +3857,7 @@ async function main() {
         const bar = document.querySelector('.fg-scene.is-active .fg-dock');
         if (!f || f === document.body || !bar) return null;
         const r = f.getBoundingClientRect();
-        const b = bar.getBoundingClientRect();
-        const dans = bar.contains(f);
-        const efface = bar.classList.contains('is-aside');
-        return { nom: f.dataset.activity || f.dataset.valeur || f.id || f.className, dans, efface,
-          couvert: !dans && bar.classList.contains('is-stuck') && !efface && r.bottom > b.top + 1 && r.top < b.bottom - 1,
+        return { nom: f.dataset.activity || f.dataset.valeur || f.id || f.className, dans: bar.contains(f),
           vu: r.top >= -1 && r.bottom <= window.innerHeight + 1,
           // Un arret sur un element INVISIBLE (tiroir ou menu replie : opacite
           // nulle, boite de 0 px). visibility ne le dirait pas : un element
@@ -3912,12 +3866,10 @@ async function main() {
       });
       if (!e) break;
       focusD.vus += 1;
-      if (e.efface) focusD.ecarts += 1;
-      if (e.couvert || !e.vu) focusD.fautes.push(e.nom);
-      if (e.invisible) focusD.fautes.push(e.nom);
+      if (!e.vu || e.invisible) focusD.fautes.push(e.nom);
       if (e.dans) break;
     }
-    ok(focusD.vus >= 8 && focusD.fautes.length === 0, '[N] 1440x900, au clavier : ce qui prend le focus est dans l ecran, jamais sous la barre (WCAG 2.4.11)', JSON.stringify(focusD));
+    ok(focusD.vus >= 8 && focusD.fautes.length === 0, '[N] 1440x900, au clavier : ce qui prend le focus est dans l ecran, et visible (WCAG 2.4.11)', JSON.stringify(focusD));
     await ctxNd.close();
 
     // EMBARQUE, telephone : la page hote defile, le cadre ne defile pas.
@@ -3940,54 +3892,13 @@ async function main() {
       await ph.evaluate(() => window.scrollTo(0, 0));
       await auRepos(fe);
       await dormir(900);
-      const lireBarreHote = async () => {
-        const c = await ph.evaluate(() => { const r = document.querySelector('.bloc iframe').getBoundingClientRect(); return { top: r.top, left: r.left, vh: window.innerHeight }; });
-        const b = await lireBarre(fe);
-        return b ? Object.assign(b, { hautHote: Math.round(c.top + b.haut), basHote: Math.round(c.top + b.bas), vhHote: c.vh, xh: Math.round(c.left + b.x), yh: Math.round(c.top + b.y) }) : null;
-      };
-      let be = await lireBarreHote();
-      ok(Boolean(be) && be.colle && !be.range && be.hautHote >= 0 && be.basHote <= be.vhHote && be.touche,
-        '[N] embarque, telephone : « Continuer » est dans l ECRAN de la page hote, au bas de ce qu elle montre du cadre', JSON.stringify(be));
-      // La page hote defile : la barre s efface, puis revient au repos.
-      let vuEfface = false;
-      for (let k = 0; k < 12; k += 1) {
-        await ph.evaluate(() => window.scrollBy(0, 30));
-        await dormir(25);
-        if (await fe.evaluate(() => document.body.classList.contains('is-hote-defile'))) vuEfface = true;
-      }
-      await dormir(900);
-      be = await lireBarreHote();
-      ok(vuEfface && Boolean(be) && !be.range && be.colle && be.hautHote >= 0 && be.basHote <= be.vhHote,
-        '[N] embarque : pendant que la page hote defile, la barre s efface ; au repos, elle revient au bas de l ecran de l hote', JSON.stringify({ vuEfface, be }));
-      // Le cadre GRANDIT sans que la page defile : la barre reste.
-      await ph.evaluate(() => window.scrollTo(0, 0));
-      await dormir(900);
-      await fe.tap('#gridAct .fg-card[data-activity="bowling"]');
-      await fe.tap('#gridAct .fg-card[data-activity="laser_game"]');
-      await dormir(1000);
-      // Le toucher mesure ne doit rien faire defiler (Playwright amene sa
-      // cible dans l ecran avant de toucher) : la carte est posee au milieu
-      // de l ecran de l hote, et la page se repose. En liste sur telephone,
-      // decocher le laser, une rangee plus bas, laissait le bowling a moitie
-      // au-dessus de l ecran, et c est le toucher qui faisait defiler.
-      await fe.evaluate(() => document.querySelector('#gridAct .fg-card[data-activity="bowling"]').scrollIntoView({ block: 'center' }));
-      await auRepos(fe);
-      await dormir(900);
-      await fe.evaluate(() => { window.__qaEfface = 0; new MutationObserver(() => { if (document.body.classList.contains('is-hote-defile')) window.__qaEfface += 1; }).observe(document.body, { attributes: true, attributeFilter: ['class'] }); });
-      const croitN = { avant: await ph.evaluate(() => Math.round(document.querySelector('.bloc iframe').getBoundingClientRect().height)), sy: await ph.evaluate(() => Math.round(window.scrollY)) };
-      await fe.tap('#gridAct .fg-card[data-activity="bowling"]');
-      await dormir(1000);
-      croitN.apres = await ph.evaluate(() => Math.round(document.querySelector('.bloc iframe').getBoundingClientRect().height));
-      croitN.sy2 = await ph.evaluate(() => Math.round(window.scrollY));
-      croitN.effacements = await fe.evaluate(() => window.__qaEfface);
-      ok(croitN.apres > croitN.avant + 20 && croitN.sy === croitN.sy2 && croitN.effacements === 0,
-        '[N] embarque : quand le cadre GRANDIT sans que la page defile (un tiroir s ouvre), la barre ne s efface pas', JSON.stringify(croitN));
-      await fe.tap('#gridAct .fg-card[data-activity="laser_game"]');
-      // Au clavier : ce qui prend le focus n est jamais sous la barre.
+      const be = await lireBarre(fe);
+      ok(aSaPlace(be), '[N] embarque, telephone : la barre ne suit pas non plus, elle attend a sa place dans le cadre', JSON.stringify(be));
+      // Au clavier : ce qui prend le focus est dans l ecran de l hote.
       await ph.evaluate(() => window.scrollTo(0, 0));
       await dormir(900);
       await fe.evaluate(() => document.querySelector('#t-act').focus());
-      const focusE = { vus: 0, ecarts: 0, fautes: [] };
+      const focusE = { vus: 0, fautes: [] };
       for (let k = 0; k < 60; k += 1) {
         await ph.keyboard.press('Tab');
         await dormir(450);
@@ -3997,22 +3908,15 @@ async function main() {
           const bar = document.querySelector('.fg-scene.is-active .fg-dock');
           if (!f || f === document.body || !bar) return null;
           const r = f.getBoundingClientRect();
-          const b = bar.getBoundingClientRect();
-          const dans = bar.contains(f);
-          const efface = bar.classList.contains('is-aside') || document.body.classList.contains('is-hote-defile');
-          return { nom: f.dataset.activity || f.dataset.valeur || f.id || f.className, dans, efface, haut: r.top, bas: r.bottom,
-            couvert: !dans && bar.classList.contains('is-stuck') && !efface && r.bottom > b.top + 1 && r.top < b.bottom - 1,
+          return { nom: f.dataset.activity || f.dataset.valeur || f.id || f.className, dans: bar.contains(f), haut: r.top, bas: r.bottom,
             invisible: (() => { let o = 1; for (let p = f; p && p.nodeType === 1; p = p.parentElement) o *= Number(getComputedStyle(p).opacity); const pli = f.closest('.fg-card__optin, .fg-period__inner'); return o < 0.1 || Boolean(pli && pli.getBoundingClientRect().height < 1); })() };
         });
         if (!e) break;
         focusE.vus += 1;
-        if (e.efface) focusE.ecarts += 1;
-        if (e.couvert || c.top + e.haut < -1 || c.top + e.bas > c.vh + 1) focusE.fautes.push(e.nom);
-        if (e.invisible) focusE.fautes.push(e.nom);
+        if (c.top + e.haut < -1 || c.top + e.bas > c.vh + 1 || e.invisible) focusE.fautes.push(e.nom);
         if (e.dans) break;
       }
-      ok(focusE.vus >= 8 && focusE.ecarts > 0, 'MONTAGE [N] embarque, au clavier : le parcours passe sous la barre (elle a du s ecarter au moins une fois)', JSON.stringify(focusE));
-      ok(focusE.fautes.length === 0, '[N] embarque, au clavier : ce qui prend le focus est dans l ecran de l hote, jamais sous la barre (WCAG 2.4.11)', JSON.stringify(focusE));
+      ok(focusE.vus >= 8 && focusE.fautes.length === 0, '[N] embarque, au clavier : ce qui prend le focus est dans l ecran de l hote, et visible (WCAG 2.4.11)', JSON.stringify(focusE));
       // L ANNEAU ENTIER. La page hote defile juste assez pour montrer la carte
       // qui prend le focus, a un ou deux pixels pres (arrondis entre le cadre
       // et l hote) : chaque carte sous l ecran de l hote, focalisee depuis le
@@ -4050,15 +3954,6 @@ async function main() {
       const anneauCheval = { id: idCheval, depasseAvant: avantCheval, haut: Math.round((cC.top + rC.haut - 5) * 100) / 100, bas: Math.round((cC.top + rC.bas + 5) * 100) / 100, vh: cC.vh };
       ok(anneauCheval.depasseAvant > 0 && anneauCheval.depasseAvant < 40 && anneauCheval.haut >= 0 && anneauCheval.bas <= anneauCheval.vh,
         '[N] embarque, au clavier : une carte a cheval sur le bas de l ecran de l hote y remonte avec son anneau entier', JSON.stringify(anneauCheval));
-      // Le focus revient ou la boucle l a laisse (dans la barre) : une carte
-      // focalisee sous la barre l ecarterait, et le toucher qui suit la vise.
-      await fe.focus('.fg-scene.is-active .fg-dock [data-back]');
-      // Un toucher, dans l ecran de l hote, la ou la barre montre le bouton.
-      await ph.evaluate(() => window.scrollTo(0, 0));
-      await dormir(900);
-      be = await lireBarreHote();
-      if (be) await ph.touchscreen.tap(be.xh, be.yh);
-      ok(await attendre(fe, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 6000), '[N] embarque : un toucher a cet endroit de l ecran de l hote mene aux heures', JSON.stringify(be));
     }
     await ctxNe.close();
 

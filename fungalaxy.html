@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260924c">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260924d">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -140,9 +140,8 @@
         <div class="fg-panel" id="panelFor" role="tabpanel" aria-labelledby="tabFor" hidden>
           <div class="fg-fams" id="gridFor"></div>
         </div>
-        <!-- La barre du bas : a sa place en fin d ecran ; sur telephone, une
-             rangee fine suit le bas de l ecran quand le bouton qui avance est
-             actif (majDock). La marque vide qui la suit dit ou est sa place. -->
+        <!-- La barre du bas, a sa place en fin d ecran : le compteur, le
+             retour, le bouton qui avance. Elle ne suit pas l ecran. -->
         <div class="fg-bar fg-dock fg-rise" style="--i:3">
           <p class="fg-bar__count" id="actCount" aria-live="polite">Cochez une ou plusieurs activités.</p>
           <div class="fg-actions" style="margin:0">
@@ -150,7 +149,6 @@
             <button type="button" class="fg-btn" id="goHours" disabled>Continuer<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
           </div>
         </div>
-        <div class="fg-dock__place" aria-hidden="true"></div>
       </div>
     </section>
 
@@ -172,7 +170,6 @@
             <button type="button" class="fg-btn" id="goContact" disabled><span id="keepLabel">Ces horaires me vont</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
           </div>
         </div>
-        <div class="fg-dock__place" aria-hidden="true"></div>
       </div>
     </section>
 
@@ -265,6 +262,6 @@
      .fg-cal__voile). Le toucher referme le calendrier. -->
 <div class="fg-cal__voile" id="dayVoile" aria-hidden="true" hidden></div>
 
-<script src="/assets/fungalaxy-booking.js?v=20260924c" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260924d" defer></script>
 </body>
 </html>

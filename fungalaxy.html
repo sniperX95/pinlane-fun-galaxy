@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260924b">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260924c">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -140,9 +140,9 @@
         <div class="fg-panel" id="panelFor" role="tabpanel" aria-labelledby="tabFor" hidden>
           <div class="fg-fams" id="gridFor"></div>
         </div>
-        <!-- La barre qui suit : collee au bas de ce qui se voit tant que sa
-             place est plus bas (majDock). La marque vide qui la suit dit ou
-             est cette place. -->
+        <!-- La barre du bas : a sa place en fin d ecran ; sur telephone, une
+             rangee fine suit le bas de l ecran quand le bouton qui avance est
+             actif (majDock). La marque vide qui la suit dit ou est sa place. -->
         <div class="fg-bar fg-dock fg-rise" style="--i:3">
           <p class="fg-bar__count" id="actCount" aria-live="polite">Cochez une ou plusieurs activités.</p>
           <div class="fg-actions" style="margin:0">
@@ -164,7 +164,7 @@
         <div id="hourZone">
           <p class="fg-loading">On regarde ce qui est libre…</p>
         </div>
-        <!-- La barre qui suit, avec le resume de la visite (heures, prix). -->
+        <!-- La barre du bas, avec le resume de la visite (heures, prix). -->
         <div class="fg-bar fg-dock fg-rise" style="--i:2">
           <p class="fg-bar__count fg-bar__sum" id="hourSum"></p>
           <div class="fg-actions" style="margin:0">
@@ -265,6 +265,6 @@
      .fg-cal__voile). Le toucher referme le calendrier. -->
 <div class="fg-cal__voile" id="dayVoile" aria-hidden="true" hidden></div>
 
-<script src="/assets/fungalaxy-booking.js?v=20260924b" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260924c" defer></script>
 </body>
 </html>

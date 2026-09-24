@@ -346,8 +346,13 @@
 // (en mouvement reduit, la coche attend un trace qui ne vient pas : feuille
 // cassee). Sauf mention : JS servi casse.
 //
-// CONTRE-PREUVES DE LA BARRE QUI SUIT : collee (la barre ne colle plus :
-// FEUILLE servie cassee), toujours (elle se dit collee meme a sa place),
+// CONTRE-PREUVES DE LA BARRE DU BAS : collee (sur telephone, la barre ne
+// colle plus : FEUILLE servie cassee), resumevu (collee, elle remontre son
+// resume au-dessus de la rangee), traverse (son haut invisible arrete le
+// toucher) : FEUILLE servie cassee ; suitpartout (elle suit de nouveau sur
+// ordinateur et tablette), suitvide (elle suit meme quand le bouton qui
+// avance est inactif) : JS servi casse ; toujours (elle se dit collee meme
+// a sa place),
 // resume (le resume des heures ne suit plus une heure posee), vuebas (elle
 // ignore la bande que l hote montre du cadre : feuille cassee), suitlhote
 // (elle ne s efface plus quand la page hote defile), grandit (elle s efface
@@ -586,6 +591,8 @@ const MUTATIONS = {
   suitlhote: ["    body.classList.add('is-hote-defile');", '    void 0;'],
   grandit: ['if (hautCadre !== null && Math.abs(haut - hautCadre) > 1) hoteDefile();', 'hoteDefile();'],
   masque: ['range = r.bottom > bas - bar.offsetHeight && r.top < bas;', 'range = false;'],
+  suitpartout: ['var suit = Boolean(dockTelephone && dockTelephone.matches);', 'var suit = true;'],
+  suitvide: ['if (bar === active && place && suit && avance && !avance.disabled) {', 'if (bar === active && place && suit) {'],
   juge: ['return state.laserParts.length >= compte && state.laserParts[0] === depuis;', 'return true;'],
   suit: ['if (j >= 0) state.laserParts[j] = t;', 'if (false) state.laserParts[j] = t;'],
   especes: ['<svg><use href="#i-cash"/></svg>', ''],
@@ -671,7 +678,9 @@ const MUTATIONS_CSS = {
   fantome: ['.fg-btn--ghost {\n  background: rgba(8, 8, 8, 0.86);\n', '.fg-btn--ghost {\n  background: transparent;\n'],
   voilecarte: ['rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%)', 'rgba(5, 5, 5, 0.25) 0%, rgba(5, 5, 5, 0.9) 100%)'],
   compteur: ['.fg-fam__title span { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-muted); }', '.fg-fam__title span { order: 3; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: none; color: var(--fg-faint); }'],
-  collee: ['.fg-dock {\n  position: sticky;\n', '.fg-dock {\n  position: relative;\n'],
+  collee: ['.fg-dock.is-stuck {\n  position: sticky;\n', '.fg-dock.is-stuck {\n  position: static;\n'],
+  resumevu: ['.fg-dock.is-stuck .fg-bar__count { opacity: 0; }\n', ''],
+  traverse: ['  border-top-color: transparent;\n  pointer-events: none;\n}', '  border-top-color: transparent;\n}'],
   vuebas: ['  bottom: calc(var(--tunnel-vue-bas, 0px) + 10px + env(safe-area-inset-bottom, 0px));\n', '  bottom: calc(10px + env(safe-area-inset-bottom, 0px));\n'],
   verrou: ['html.fg-pilote { overflow: hidden; }\n', ''],
   milieu: ['  transform: translate(-50%, -50%);\n  box-shadow: 0 24px 64px', '  transform: translate(-50%, 0);\n  box-shadow: 0 24px 64px'],
@@ -3724,12 +3733,15 @@ async function main() {
 
     // =====================================================================
     console.log('');
-    console.log('[N] LA BARRE QUI SUIT : LE BOUTON QUI AVANCE RESTE A PORTEE');
+    console.log('[N] LA BARRE DU BAS : A PORTEE SUR TELEPHONE, A SA PLACE AILLEURS');
     // Releve de la passe « plus user friendly » (2026-09-23) : le « Continuer »
     // des activites sous la ligne de flottaison des 1440x900, a 500 px sous le
     // bas de l ecran sur telephone ; sur l ecran des heures, le prix et les
     // heures de la visite sous les pistes. La barre colle au bas de ce qui se
     // voit ; embarquee, de ce que la page hote montre du cadre.
+    // Revue du 2026-09-24 (Movsar : « meme sur PC il est derangeant quand il
+    // nous suit partout, trop gros ») : elle ne suit plus que sur telephone,
+    // quand le bouton qui avance est actif, en une rangee fine.
     // =====================================================================
     const lireBarre = (p) => p.evaluate(() => {
       const bar = document.querySelector('.fg-scene.is-active .fg-dock');
@@ -3746,7 +3758,11 @@ async function main() {
         vh: window.innerHeight,
         sy: Math.round(window.scrollY),
         texte: bar.querySelector('.fg-bar__count').textContent.replace(/\s+/g, ' ').trim(),
-        panneau: getComputedStyle(bar, '::before').backgroundColor,
+        position: getComputedStyle(bar).position,
+        panneau: getComputedStyle(bar.querySelector('.fg-actions'), '::before').backgroundColor,
+        resume: getComputedStyle(bar.querySelector('.fg-bar__count')).opacity,
+        rangee: (() => { const a = bar.querySelector('.fg-actions'); const pa = getComputedStyle(a, '::before'); return pa.content === 'none' ? 0 : Math.round(a.getBoundingClientRect().height - (parseFloat(pa.top) || 0) - (parseFloat(pa.bottom) || 0)); })(),
+        traverse: (() => { const c = bar.querySelector('.fg-bar__count').getBoundingClientRect(); const sous = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2); return Boolean(sous) && !bar.contains(sous); })(),
       };
     });
     const alphaDe = (c) => { const mm = /rgba?\(([^)]+)\)/.exec(String(c || '')); if (!mm) return 0; const v = mm[1].split(/[\s,/]+/).filter(Boolean).map(parseFloat); return v.length > 3 ? v[3] : 1; };
@@ -3771,6 +3787,14 @@ async function main() {
     ok(await attendre(pn, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000)
       && await pn.evaluate(() => document.querySelectorAll('.fg-dock').length === 2 && Boolean(document.querySelector('.fg-scene.is-active .fg-dock'))),
       'MONTAGE [N] telephone : l ecran des activites est atteint ; une barre qui suit sur les activites, une sur les heures');
+    // Rien de coche : « Continuer » est inactif, rien ne suit ; la barre
+    // attend a sa place, en fin d ecran.
+    await pn.evaluate(() => window.scrollTo(0, 0));
+    await attendre(pn, () => window.scrollY === 0, 3000);
+    await auRepos(pn);
+    const videN = await lireBarre(pn);
+    ok(Boolean(videN) && !videN.colle && videN.position !== 'sticky' && videN.haut > videN.vh,
+      '[N] telephone, activites, rien de coche : la barre ne suit pas (le bouton qui avance est inactif), elle attend a sa place en fin d ecran', JSON.stringify(videN));
     // Les gestes comptes a leur depart (animationstart) : le reveil des deux
     // boutons qui avancent, la case qui claque et le prix qui roule.
     await pn.evaluate(() => {
@@ -3787,7 +3811,9 @@ async function main() {
     await dormir(300);
     let bn = await lireBarre(pn);
     ok(Boolean(bn) && bn.sy === 0 && bn.colle && bn.haut >= 0 && bn.bas <= bn.vh && bn.touche && alphaDe(bn.panneau) > 0.9 && bn.texte === '2 activités sélectionnées',
-      '[N] telephone, activites, en haut de page : « Continuer » est DANS l ecran et se touche, sur son panneau, avec le compteur', JSON.stringify(bn));
+      '[N] telephone, activites, en haut de page : « Continuer » est DANS l ecran et se touche, sur son panneau ; le compteur reste lu', JSON.stringify(bn));
+    ok(Boolean(bn) && bn.resume === '0' && bn.rangee > 0 && bn.rangee <= 72 && bn.traverse,
+      '[N] telephone : collee, la barre est UNE rangee fine (panneau de 72 px au plus, le compteur efface), et son haut invisible laisse passer le toucher vers la carte dessous', JSON.stringify({ resume: bn && bn.resume, rangee: bn && bn.rangee, traverse: bn && bn.traverse }));
     ok(await pn.evaluate(() => window.__qaEveil.hours === 1 && !document.querySelector('#goHours').classList.contains('is-wake')), '[N] « Continuer » s eveille une fois, au premier choix (pas au second), et rend sa classe (sinon il rejouerait a chaque retour sur l ecran)', await pn.evaluate(() => JSON.stringify(window.__qaEveil)));
     ok(await pn.evaluate(() => window.__qaGeste.tick === 2 && window.__qaGeste.prix === 2 && !document.querySelector('#gridAct .is-coche, #gridAct .is-maj')), '[N] cocher deux cartes : chaque case claque une fois, chaque prix qui change roule, et au repos aucune classe de geste ne reste posee', await pn.evaluate(() => JSON.stringify(window.__qaGeste)));
     const reponseN1 = pn.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
@@ -3803,7 +3829,7 @@ async function main() {
     bn = await lireBarre(pn);
     const attenduN1 = lpN1 ? resumeAttendu(lpN1) : '';
     ok(Boolean(bn) && bn.colle && bn.haut >= 0 && bn.bas <= bn.vh && bn.touche && Boolean(attenduN1) && bn.texte === attenduN1,
-      '[N] telephone, heures, en haut de page : « Garder » est dans l ecran et se touche, et la barre dit les heures et le prix de la visite, ceux de la reponse',
+      '[N] telephone, heures, en haut de page : « Garder » est dans l ecran et se touche, et la barre porte les heures et le prix de la visite, ceux de la reponse (lus, et montres a sa place)',
       JSON.stringify({ barre: bn && bn.texte, attendu: attenduN1, colle: bn && bn.colle, bas: bn && bn.bas, vh: bn && bn.vh }));
     // Une autre heure de bowling : la barre suit la NOUVELLE reponse.
     const autreN = await pn.evaluate(() => { const c = document.querySelector('#hourZone .fg-track[data-activity="bowling"] .fg-period.is-open .fg-chip:not(.is-proposed):not(.is-on):not([data-ok="false"])'); return c ? c.dataset.time : ''; });
@@ -3840,10 +3866,10 @@ async function main() {
       const bar = document.querySelector('.fg-scene.is-active .fg-dock');
       const r = bar.getBoundingClientRect();
       const v = document.querySelector('#planZone .fg-visit').getBoundingClientRect();
-      return { colle: bar.classList.contains('is-stuck'), panneau: getComputedStyle(bar, '::before').backgroundColor, visite: Math.round(v.bottom), barre: Math.round(r.top), vh: window.innerHeight };
+      return { colle: bar.classList.contains('is-stuck'), panneau: getComputedStyle(bar.querySelector('.fg-actions'), '::before').backgroundColor, resume: getComputedStyle(bar.querySelector('.fg-bar__count')).opacity, visite: Math.round(v.bottom), barre: Math.round(r.top), vh: window.innerHeight };
     });
-    ok(!finN.colle && alphaDe(finN.panneau) === 0 && finN.visite <= finN.barre && finN.barre < finN.vh,
-      '[N] en bas de page, la barre est a sa place, sans panneau, sous le bloc de visite qu elle ne couvre pas', JSON.stringify(finN));
+    ok(!finN.colle && alphaDe(finN.panneau) === 0 && finN.resume === '1' && finN.visite <= finN.barre && finN.barre < finN.vh,
+      '[N] en bas de page, la barre est a sa place, sans panneau, son resume montre, sous le bloc de visite qu elle ne couvre pas', JSON.stringify(finN));
     await ctxN.close();
 
     // 1440x900, page autonome : le releve de l audit, et le clavier.
@@ -3860,8 +3886,9 @@ async function main() {
     await auRepos(pnd);
     await dormir(300);
     const bd = await lireBarre(pnd);
-    ok(Boolean(bd) && bd.colle && bd.haut >= 0 && bd.bas <= bd.vh && bd.touche && alphaDe(bd.panneau) > 0.9,
-      '[N] 1440x900 : « Continuer » des activites est dans l ecran sans defiler (il etait sous la ligne de flottaison), sur son panneau', JSON.stringify(bd));
+    ok(Boolean(bd) && bd.haut > bd.vh, 'MONTAGE [N] 1440x900 : la place de la barre est sous l ecran (suivre changerait quelque chose)', JSON.stringify(bd));
+    ok(Boolean(bd) && !bd.colle && bd.position !== 'sticky' && alphaDe(bd.panneau) === 0,
+      '[N] 1440x900 : la barre ne suit pas l ecran (sur ordinateur, elle derangeait) : « Continuer » attend a sa place, en fin d ecran', JSON.stringify(bd));
     await pnd.evaluate(() => { window.scrollTo(0, 0); document.querySelector('#t-act').focus(); });
     const focusD = { vus: 0, ecarts: 0, fautes: [] };
     for (let k = 0; k < 60; k += 1) {
@@ -4457,7 +4484,8 @@ async function main() {
         const ln = parseFloat(getComputedStyle(c).lineHeight) || parseFloat(getComputedStyle(c).fontSize) * 1.3;
         const g = d.querySelector('.fg-btn--ghost'), p = d.querySelector('.fg-btn:not(.fg-btn--ghost)');
         return { resume: c.textContent.trim(), lignes: Math.round(c.getBoundingClientRect().height / ln), rangee: bs.length === 2 && Math.abs((bs[0].top + bs[0].bottom) - (bs[1].top + bs[1].bottom)) < 2, dedans: bs.every((r) => r.left >= 0 && r.right <= document.documentElement.clientWidth),
-          tailles: [g.offsetWidth, g.offsetHeight, p.offsetHeight], carre: Math.abs(g.offsetHeight - p.offsetHeight) <= 1 && Math.abs(g.offsetWidth - g.offsetHeight) <= 1 };
+          tailles: [g.offsetWidth, g.offsetHeight, p.offsetHeight], carre: Math.abs(g.offsetHeight - p.offsetHeight) <= 1 && Math.abs(g.offsetWidth - g.offsetHeight) <= 1,
+          suit: d.classList.contains('is-stuck') || getComputedStyle(d).position === 'sticky' };
       });
       const barreActT = await lireBarreT();
       await pTt.tap('#goHours');
@@ -4466,6 +4494,8 @@ async function main() {
       const barreHeuT = await lireBarreT();
       ok([barreActT, barreHeuT].every((x) => x.lignes === 1 && x.rangee && x.dedans),
         `[T] tablette ${lTt} px : la barre qui suit tient ses deux boutons sur une rangee et son resume sur une ligne (activites et heures)`, JSON.stringify({ activites: barreActT, heures: barreHeuT }));
+      ok([barreActT, barreHeuT].every((x) => !x.suit),
+        `[T] tablette ${lTt} px : la barre du bas ne suit pas l ecran, elle reste a sa place (activites et heures)`, JSON.stringify({ activites: barreActT.suit, heures: barreHeuT.suit }));
       ok([barreActT, barreHeuT].every((x) => x.carre),
         `[T] tablette ${lTt} px : le retour de la barre est un carre, de la hauteur du bouton qui avance (largeur, hauteur du retour, hauteur du bouton)`, JSON.stringify({ activites: barreActT.tailles, heures: barreHeuT.tailles }));
       await ctxTt.close();

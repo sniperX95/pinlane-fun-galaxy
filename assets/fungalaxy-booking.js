@@ -569,17 +569,22 @@
     if (i > 0) aller(SCENES[i - 1], true);
   }
 
-  /* --- La barre qui suit ------------------------------------------------------------ */
+  /* --- La barre du bas ------------------------------------------------------------- */
 
   // Sur les activites et les heures, la barre (compteur ou resume de la
-  // visite, Retour, le bouton qui avance) colle au bas de ce qui se voit tant
-  // que sa place est plus bas : collee, elle se pose sur un panneau
-  // (.is-stuck). La place est la marque vide posee juste apres elle ; le bas
+  // visite, Retour, le bouton qui avance) reste a sa place, en fin d ecran.
+  // Sur telephone seulement, et seulement quand le bouton qui avance est
+  // actif, elle colle au bas de ce qui se voit tant que sa place est plus
+  // bas (.is-stuck : une rangee fine sur son panneau, voir la feuille). Sur
+  // ordinateur et tablette, elle ne suit plus (Movsar, 2026-09-24 : « elle
+  // derange quand elle nous suit partout »). La place est la marque vide
+  // posee juste apres elle ; le bas
   // de ce qui se voit est celui de la fenetre, moins le decalage de la regle
   // sticky (qui porte, en embarque, la part du cadre cachee sous l ecran de
   // l hote). La position de la barre elle-meme n est jamais lue : son entree
   // en cascade la decale, la mesure ne doit pas bouger avec.
   var hautCadre = null, hoteMinuteur = null, dockEnAttente = false, ecranHote = 0;
+  var dockTelephone = window.matchMedia ? window.matchMedia('(max-width: 560px)') : null;
   function planifierDock() {
     if (dockEnAttente) return;
     dockEnAttente = true;
@@ -593,11 +598,13 @@
   function focusClavier(el) { try { return el.matches(':focus-visible'); } catch (e) { return false; } }
   function majDock() {
     var active = $('.fg-scene.is-active .fg-dock');
-    root.classList.toggle('has-dock', Boolean(active));
+    var suit = Boolean(dockTelephone && dockTelephone.matches);
+    root.classList.toggle('has-dock', Boolean(active) && suit);
     $$('.fg-dock').forEach(function (bar) {
       var place = bar.nextElementSibling;
+      var avance = bar.querySelector('.fg-btn:not(.fg-btn--ghost)');
       var colle = false, range = false;
-      if (bar === active && place) {
+      if (bar === active && place && suit && avance && !avance.disabled) {
         var bas = window.innerHeight - (parseFloat(getComputedStyle(bar).bottom) || 0);
         colle = place.getBoundingClientRect().top > bas + 0.5;
         // Ce qui a le focus clavier ne se cache jamais derriere la barre.
@@ -626,6 +633,12 @@
     if (el && el.matches && el.matches('.fg-card, .fg-pill, .fg-tab') && focusClavier(el)) montrer(el);
   });
   if ('ResizeObserver' in window) new ResizeObserver(planifierDock).observe(body);
+  // Le bouton qui avance s allume (une carte cochee, une heure posee) : sur
+  // telephone, la barre peut se mettre a suivre sans que rien ne defile.
+  if ('MutationObserver' in window) {
+    var surBouton = new MutationObserver(planifierDock);
+    $$('.fg-dock .fg-btn:not(.fg-btn--ghost)').forEach(function (b) { surBouton.observe(b, { attributes: true, attributeFilter: ['disabled'] }); });
+  }
   $$('[data-back]').forEach(function (b) { b.addEventListener('click', precedent); });
   doc.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('[data-goto]');

@@ -1306,42 +1306,53 @@ html.fg-pilote .fg { overflow: visible; }
 }
 @keyframes fg-bump { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
 
-/* --- La barre qui suit (activites, heures) ------------------------------------- */
+/* --- La barre du bas (activites, heures) ------------------------------------- */
 
-/* Le bouton qui fait avancer vivait sous la ligne de flottaison : le
-   « Continuer » des activites des 1440x900, a 500 px sous le bas de l ecran
-   sur telephone ; sur l ecran des heures, le prix de la visite aussi. La
-   barre colle au bas de ce qui se voit : l ecran en page autonome, la bande
-   que la page hote montre du cadre en embarque (--tunnel-vue-bas, voir
-   embed.js). A sa place, en fin de page, elle redevient la barre d avant ;
-   collee (.is-stuck, pose par le script), elle se pose sur un panneau. Le
-   panneau est un pseudo-element : rien ne bouge dans la mise en page quand
-   elle colle ou decolle. */
+/* A SA PLACE, en fin d ecran : le resume (compteur, ou heures et prix), le
+   retour et le bouton qui avance. Elle ne suit plus l ecran sur ordinateur
+   ni sur tablette (Movsar, 2026-09-24 : « meme sur PC il est derangeant
+   quand il nous suit partout, trop gros »). Sur telephone seulement, et
+   seulement quand le bouton qui avance est actif, une rangee fine suit le
+   bas de ce qui se voit tant que la place de la barre est plus bas
+   (.is-stuck, pose par le script) : le retour et ce bouton, sur un panneau a
+   leur taille ; le resume s efface (les lecteurs d ecran le lisent toujours)
+   et revient quand la barre retrouve sa place. Le bas de ce qui se voit :
+   l ecran en page autonome, la bande que la page hote montre du cadre en
+   embarque (--tunnel-vue-bas, voir embed.js). Coller ou decoller ne bouge
+   rien dans la mise en page : sticky garde la place de la barre, le resume
+   ne fait que s effacer, le panneau est un pseudo-element. Le haut invisible
+   de la barre collee laisse passer le toucher vers ce qui est dessous. */
 .fg-dock {
-  position: sticky;
   bottom: calc(var(--tunnel-vue-bas, 0px) + 10px + env(safe-area-inset-bottom, 0px));
-  z-index: 4;
   padding: 14px 0 16px;
   transition: border-color 0.2s, filter 0.2s;
 }
-.fg-dock::before {
+.fg-dock.is-stuck {
+  position: sticky;
+  z-index: 4;
+  border-top-color: transparent;
+  pointer-events: none;
+}
+.fg-dock.is-stuck .fg-bar__count { opacity: 0; }
+.fg-dock.is-stuck .fg-actions { position: relative; pointer-events: auto; }
+/* 12 px a droite et en bas : l ombre sarcelle du bouton (6 px) y tient, le
+   groupe bouton et ombre est centre dans son panneau. */
+.fg-dock.is-stuck .fg-actions::before {
   content: "";
   position: absolute;
-  inset: 0 calc(-1 * min(16px, var(--fg-gutter) - 8px));
+  inset: -8px -12px -12px -8px;
   z-index: -1;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background-color: rgba(12, 12, 12, 0);
-  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0);
-  pointer-events: none;
-  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
-}
-.fg-dock.is-stuck { border-top-color: transparent; }
-.fg-dock.is-stuck::before {
+  border: 1px solid var(--fg-line-2);
+  border-radius: 12px;
   background-color: rgba(12, 12, 12, 0.97);
-  border-color: var(--fg-line-2);
-  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  pointer-events: none;
 }
+/* Elle arrive en glissant d un cran, a chaque fois qu elle se met a suivre. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-dock.is-stuck .fg-actions { animation: fg-dock-in 0.28s var(--fg-ease-out) both; }
+}
+@keyframes fg-dock-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 /* Sur l ecran des heures, la barre a la largeur des pistes. */
 .fg-scene--center .fg-dock { max-width: 940px; margin-left: auto; margin-right: auto; text-align: left; }
 .fg-dock__place { height: 0; }
@@ -1360,8 +1371,9 @@ html.fg-pilote .fg { overflow: visible; }
    glissement : deplacee vers le bas, la barre agrandirait la page, donc le
    cadre de l hote avec elle. */
 .fg.is-hote-defile .fg-dock.is-stuck, .fg-dock.is-stuck.is-aside { filter: opacity(0); pointer-events: none; }
+.fg.is-hote-defile .fg-dock.is-stuck .fg-actions, .fg-dock.is-stuck.is-aside .fg-actions { pointer-events: none; }
 /* En page autonome, le navigateur fait lui-meme defiler ce qui prend le focus
-   au-dessus de la barre. */
+   au-dessus de la barre (telephone seulement : ailleurs, elle ne suit pas). */
 .fg-page.has-dock { scroll-padding-bottom: 150px; }
 
 /* --- Etape 3 : les heures ----------------------------------------------------- */
@@ -2025,7 +2037,7 @@ html.fg-pilote .fg { overflow: visible; }
   @supports (grid-template-rows: subgrid) { .fg-grid { row-gap: 0; } .fg-grid > li { margin-bottom: 12px; } }
   .fg-fields--2 { grid-template-columns: 1fr; }
   .fg-stage, .fg-scene { min-height: 0; }
-  /* La barre qui suit, sur tablette : le retour devient le carre du
+  /* La barre du bas, sur tablette : le retour devient le carre du
      telephone, 54 px de cote comme le bouton qui avance (son mot reste pour
      les lecteurs d ecran) ; les deux boutons restent sur une rangee et le
      resume prend la place qui reste. A 768 px, « Retour » passait au-dessus

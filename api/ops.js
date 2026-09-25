@@ -361,7 +361,9 @@ async function handleGet(req, res, options = {}) {
   // pas de connaitre le contenu, et une empreinte ne fuit rien si elle passe
   // par un cache.
   if (action === 'pulse') {
-    const pulse = await getOpsPulse({ centerId });
+    // La journee affichee par l ecran (planning, terrain) voyage avec le pouls :
+    // son empreinte couvre aussi une date hors de la fenetre des reservations.
+    const pulse = await getOpsPulse({ centerId, date: url.searchParams.get('date') || '' });
     sendJson(res, 200, { ok: true, centerId, ...pulse });
     return;
   }

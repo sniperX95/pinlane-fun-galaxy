@@ -5495,6 +5495,39 @@
   // sont relus comme les communications : sans cela, un mail arrive restait
   // invisible dans Recus et dans l Apercu jusqu a un rechargement a la main.
   // Les brouillons de reponse et la selection ne bougent pas.
+  // LE DIRECT, POUR LES CACHES DE CE FICHIER (appele par app-main :
+  // invalidateLiveSyncCaches puis rechargerLaPagePourLeDirect). `familles` : les
+  // domaines qui ont bouge sur un autre poste ; `relire` : vrai quand la page
+  // affichee les montre et que personne n ecrit. Un cache que la page ne montre
+  // pas est oublie : il se relira quand sa page s ouvrira, rien n est demande au
+  // serveur pour un ecran que personne ne regarde.
+  window.pv2Direct = function (familles, page, relire) {
+    const a = (nom) => Boolean(familles && typeof familles.has === 'function' && familles.has(nom));
+    const affiche = (...pages) => pages.includes(page);
+    const section = typeof state !== 'undefined' ? state.staffEmailsSection : '';
+    // Le catalogue tarifaire : page Tarifs, onglet Offres d Etablissement.
+    if (a('catalogue') || a('config')) {
+      if (affiche('prices', 'establishment')) { if (relire) pevReload(); }
+      else window.pevResetCatalogCache();
+    }
+    // La note du client ouvert : sa cle oubliee, le rendu la relit.
+    if (a('notes')) {
+      if (affiche('clients', 'groups')) {
+        if (relire && !crmNotes.loading && !crmNotes.saving) { crmNotes.key = ''; renderStaffClientsPage(); }
+      } else crmNotes.key = '';
+    }
+    // Les sequences automatiques (Emails, section Sequences).
+    if (a('config')) {
+      if (affiche('emails') && section === 'sequences') { if (relire) loadStaffAutomations(true); }
+      else mkAuto.loaded = false;
+    }
+    // Les campagnes (Emails, section Campagnes, et la page Campagnes).
+    if (a('courrier')) {
+      if (affiche('campaigns') || (affiche('emails') && section === 'campagnes')) { if (relire) loadPv2Campaigns(true); }
+      else pv2Camp.loaded = false;
+    }
+  };
+
   window.pv2EmailsSurSynchro = function () {
     const section = typeof state !== 'undefined' ? state.staffEmailsSection : '';
     pv2Overview.loaded = false;
@@ -11353,7 +11386,7 @@
     if (!document.body.classList.contains('staff-mode') && !document.body.classList.contains('admin-mode')) return;
     const node = document.createElement('div');
     node.className = 'pv2-palette-overlay';
-    node.innerHTML = `<div class="pv2-palette" role="dialog" aria-label="Palette de commandes">
+    node.innerHTML = `<div class="pv2-palette" role="dialog" aria-label="Palette de commandes" data-pl-libre>
       <div class="pv2-palette-input">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
         <input type="text" placeholder="Page, action ou client…" aria-label="Rechercher">

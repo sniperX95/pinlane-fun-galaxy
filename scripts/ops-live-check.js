@@ -14,7 +14,7 @@
 // une horloge controlee : aucune attente reelle, aucun reseau, des verdicts
 // deterministes.
 //
-// LES NEUF PROPRIETES :
+// LES QUATORZE PROPRIETES :
 //
 //   [A] LA PREMIERE LECTURE NE RECHARGE PAS. La page vient d etre chargee : la
 //       recharger aussitot serait un aller-retour complet pour rien, a chaque
@@ -62,6 +62,30 @@
 //   [G] JAMAIS DEUX LECTURES EN VOL. Une lecture lente ne doit pas se faire
 //       doubler par la suivante : ce serait le debut d une avalanche, juste
 //       quand le serveur va deja mal.
+//
+//   [J] PAR DOMAINE, SEUL CE QUI A CHANGE EST ANNONCE. Depuis que toute la
+//       console se met a jour (2026-09-25), le pouls rend une empreinte par
+//       domaine (reservations, demandes, catalogue, equipe...). Annoncer tous
+//       les domaines a chaque changement ferait relire chaque page a la moindre
+//       modification ailleurs.
+//
+//   [K] UN DOMAINE QUI APPARAIT EST UNE NOUVELLE BASE. La journee affichee a
+//       son empreinte, nommee avec sa date (`jour:2026-09-25`) : changer de
+//       jour n est pas une modification, sinon chaque clic sur une fleche du
+//       planning declencherait une relecture de plus.
+//
+//   [L] LA PAGE NE RELIT QUE SES DOMAINES. Une demande arrivee ne fait pas
+//       relire le catalogue ; « jour » couvre toutes les journees ; un serveur
+//       d avant les domaines (« * ») touche toutes les pages.
+//
+//   [M] UNE PAGE EN BROUILLON N EST PAS RECONSTRUITE. Un formulaire ouvert
+//       dont la saisie n existe que dans la page serait efface par un
+//       collegue, sans que personne ne s en rende compte.
+//
+//   [N] VIVANT VEUT DIRE : UNE LECTURE QUI PORTE UNE EMPREINTE. Tant que le
+//       pouls vit, le planning espace sa propre lecture a 15 s. Un pouls qui
+//       repond sans empreinte ne voit rien bouger : le croire vivant figerait
+//       le planning 15 s (refresh-invisible-check l a pris en defaut).
 //
 // CONTRE-EPREUVES PAR MUTATION, compilees en memoire (crochet sur
 // Module.prototype._compile, le disque n est jamais touche).
@@ -111,7 +135,7 @@ function chargerModule() {
 // prochain rendez-vous programme », ce qui rend chaque verdict reproductible.
 // ---------------------------------------------------------------------------
 function banc({ empreintes = [], estActive = () => true, centres = null, refuser = null } = {}) {
-  const journal = { lectures: [], rechargements: 0, erreurs: 0, refus: 0 };
+  const journal = { lectures: [], rechargements: 0, erreurs: 0, refus: 0, changes: [] };
   const rendezVous = [];
   let identifiant = 0;
   let index = 0;
@@ -146,12 +170,15 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
       const valeur = empreintes[Math.min(index, empreintes.length - 1)];
       index += 1;
       if (valeur instanceof Error) throw valeur;
-      return { ok: true, empreinte: valeur };
+      // Une chaine : un serveur d avant les domaines (une seule empreinte).
+      // Un objet : le pouls par domaine.
+      return valeur && typeof valeur === 'object' ? { ok: true, domaines: valeur } : { ok: true, empreinte: valeur };
     },
-    recharger: async () => {
+    recharger: async (changes) => {
       // « Pas maintenant » : ce que repond le vrai cablage quand quelqu un ecrit.
       if (refuser && refuser()) { journal.refus += 1; return false; }
       journal.rechargements += 1;
+      journal.changes.push(changes);
       return true;
     },
     surErreur: () => { journal.erreurs += 1; },
@@ -302,36 +329,103 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
   console.log('\n[I] la page affichee decide ce qui se recharge');
   // =====================================================================
   const { pageActive, rechargerLaPageActive } = chargerModule();
-  function monde({ emails = false, utilitaire = false, reservations = false, sansChargeurs = false } = {}) {
+  // La table des pages vit dans app-main (getLiveSyncPages), a cote des
+  // chargeurs qu elle appelle ; le module ne fait qu appliquer la regle.
+  function monde({ page = '', sansTable = false } = {}) {
     const appels = [];
-    const m = {
-      isStaffEmailsActive: () => emails,
-      isStaffUtilityActive: () => utilitaire,
-      isStaffReservationsActive: () => reservations,
-      appels,
-    };
-    if (!sansChargeurs) {
-      m.loadOpsAdmin = (force) => { appels.push(`console:${force}`); };
-      m.loadStaffReservationsData = (force) => { appels.push(`reservations:${force}`); };
+    const m = { appels, getLiveSyncPageName: () => page };
+    if (!sansTable) {
+      m.getLiveSyncPages = () => ({
+        emails: { domaines: ['communications', 'courrier'], recharger: () => { appels.push('console'); } },
+        reservations: { domaines: ['reservations'], recharger: () => { appels.push('reservations'); } },
+      });
     }
     return m;
   }
-  const mEmails = monde({ emails: true });
-  rechargerLaPageActive(mEmails);
-  ok(pageActive(mEmails) === 'emails' && mEmails.appels.join() === 'console:true',
-    '[I] sur Emails, c est la console qui se recharge, et de force', mEmails.appels.join());
-  const mResa = monde({ reservations: true });
-  rechargerLaPageActive(mResa);
-  ok(pageActive(mResa) === 'reservations' && mResa.appels.join() === 'reservations:true',
-    '[I] sur le planning, ce sont les reservations qui se rechargent', mResa.appels.join());
-  const mAilleurs = monde({});
-  rechargerLaPageActive(mAilleurs);
+  const mEmails = monde({ page: 'emails' });
+  rechargerLaPageActive(mEmails, ['*']);
+  ok(pageActive(mEmails) === 'emails' && mEmails.appels.join() === 'console',
+    '[I] sur Emails, c est la console qui se recharge', mEmails.appels.join());
+  const mResa = monde({ page: 'reservations' });
+  rechargerLaPageActive(mResa, ['*']);
+  ok(pageActive(mResa) === 'reservations' && mResa.appels.join() === 'reservations',
+    '[I] sur les Reservations, ce sont les reservations qui se rechargent', mResa.appels.join());
+  const mAilleurs = monde({ page: 'cockpit' });
+  rechargerLaPageActive(mAilleurs, ['*']);
   ok(pageActive(mAilleurs) === '' && mAilleurs.appels.length === 0,
     '[I] sur un ecran qu on ne sait pas recharger, rien n est appele', mAilleurs.appels.join());
-  const mSansChargeur = monde({ emails: true, sansChargeurs: true });
-  rechargerLaPageActive(mSansChargeur);
-  ok(pageActive(mSansChargeur) === '' && mSansChargeur.appels.length === 0,
-    '[I] et si le chargeur n existe pas encore (page pas prete), on n appelle rien');
+  const mSansTable = monde({ page: 'emails', sansTable: true });
+  rechargerLaPageActive(mSansTable, ['*']);
+  ok(pageActive(mSansTable) === '' && mSansTable.appels.length === 0,
+    '[I] et si la table n existe pas encore (page pas prete), on n appelle rien');
+
+  // =====================================================================
+  console.log('\n[J] par domaine, seul ce qui a change est annonce');
+  // =====================================================================
+  const j = banc({ empreintes: [
+    { reservations: 'r1', demandes: 'd1', catalogue: 'k1' },
+    { reservations: 'r1', demandes: 'd2', catalogue: 'k1' },
+    { reservations: 'r1', demandes: 'd2', catalogue: 'k1' },
+  ] });
+  await j.demarrer();
+  ok(j.journal.rechargements === 0, '[J] la premiere lecture pose la base, domaine par domaine', `${j.journal.rechargements}`);
+  await j.tour();
+  ok(j.journal.changes.length === 1 && j.journal.changes[0].join() === 'demandes',
+    '[J] une demande arrive : seul « demandes » est annonce', JSON.stringify(j.journal.changes));
+  await j.tours(2);
+  ok(j.journal.changes.length === 1, '[J] puis plus rien tant que rien ne bouge', JSON.stringify(j.journal.changes));
+  j.arreter();
+
+  // =====================================================================
+  console.log('\n[K] un domaine qui apparait est une nouvelle base');
+  // =====================================================================
+  const k = banc({ empreintes: [
+    { reservations: 'r1' },
+    { reservations: 'r1', 'jour:2026-09-25': 'j1' },
+    { reservations: 'r1', 'jour:2026-09-26': 'j9' },
+    { reservations: 'r1', 'jour:2026-09-26': 'j10' },
+  ] });
+  await k.demarrer();
+  await k.tours(2);
+  ok(k.journal.rechargements === 0, '[K] la journee affichee qui apparait, puis le changement de jour, ne relisent rien',
+    JSON.stringify(k.journal.changes));
+  await k.tour();
+  ok(k.journal.changes.length === 1 && k.journal.changes[0].join() === 'jour:2026-09-26',
+    '[K] mais la journee affichee qui bouge est annoncee, avec sa date', JSON.stringify(k.journal.changes));
+  k.arreter();
+
+  // =====================================================================
+  console.log('\n[L] la page ne relit que ses domaines');
+  // =====================================================================
+  const appelsL = [];
+  const mondeL = {
+    getLiveSyncPageName: () => 'requests',
+    getLiveSyncPages: () => ({ requests: { domaines: ['demandes', 'jour'], recharger: (changes) => { appelsL.push(changes.join('+')); } } }),
+  };
+  rechargerLaPageActive(mondeL, ['catalogue']);
+  ok(appelsL.length === 0, '[L] un prix change ne fait pas relire la page des demandes', appelsL.join());
+  rechargerLaPageActive(mondeL, ['demandes']);
+  ok(appelsL.join() === 'demandes', '[L] une demande arrivee, si', appelsL.join());
+  rechargerLaPageActive(mondeL, ['jour:2026-09-25']);
+  ok(appelsL.length === 2, '[L] « jour » couvre toutes les journees', appelsL.join());
+  rechargerLaPageActive(mondeL, ['*']);
+  ok(appelsL.length === 3, '[L] et un serveur d avant les domaines touche toutes les pages', appelsL.join());
+
+  // =====================================================================
+  console.log('\n[M] une page en brouillon n est pas reconstruite');
+  // =====================================================================
+  let enEdition = true;
+  const appelsM = [];
+  const mondeM = {
+    getLiveSyncPageName: () => 'establishment',
+    getLiveSyncPages: () => ({ establishment: { domaines: ['config'], brouillon: () => enEdition, recharger: () => { appelsM.push('relue'); return true; } } }),
+  };
+  const reponseM = rechargerLaPageActive(mondeM, ['config']);
+  ok(reponseM === false && appelsM.length === 0,
+    '[M] formulaire ouvert : la page n est pas reconstruite, et repond « pas maintenant »', `${reponseM} / ${appelsM.length}`);
+  enEdition = false;
+  rechargerLaPageActive(mondeM, ['config']);
+  ok(appelsM.length === 1, '[M] une fois enregistre ou annule, elle se relit', `${appelsM.length}`);
 
   // =====================================================================
   console.log('\n[H] un rechargement refuse n est pas oublie');
@@ -357,13 +451,31 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
   h.arreter();
 
   // =====================================================================
+  console.log('\n[N] vivant veut dire : une lecture qui porte une empreinte');
+  // =====================================================================
+  // Le planning espace sa propre lecture a 15 s quand le pouls vit
+  // (getRemoteSyncBaseDelay). Un pouls qui repond sans empreinte ne voit rien
+  // bouger : le croire vivant laisserait le planning fige 15 s.
+  const n1 = banc({ empreintes: ['', '', ''] });
+  await n1.demarrer();
+  ok(n1.journal.lectures.length === 1 && !n1.synchro.vivant,
+    '[N] une reponse sans empreinte ne rend pas le pouls vivant',
+    `${n1.journal.lectures.length} lecture(s), vivant ${n1.synchro.vivant}`);
+  n1.arreter();
+  const n2 = banc({ empreintes: ['e1', 'e1', 'e1'] });
+  await n2.demarrer();
+  ok(n2.synchro.vivant, '[N] une empreinte lue : le pouls vit', `vivant ${n2.synchro.vivant}`);
+  n2.arreter();
+  ok(!n2.synchro.vivant, '[N] arrete, il ne vit plus', `vivant ${n2.synchro.vivant}`);
+
+  // =====================================================================
   console.log('\n[MUTATION] le gate sait-il rougir ?');
   // =====================================================================
   const contreEpreuves = [
     {
       nom: 'la comparaison d empreinte est retiree',
-      de: '        } else if (nouvelle !== empreinte) {',
-      vers: '        } else if (true) {',
+      de: '      return Object.prototype.hasOwnProperty.call(avant, nom) && avant[nom] !== apres[nom];',
+      vers: '      return Object.prototype.hasOwnProperty.call(avant, nom);',
       rejouer: async () => {
         const m = banc({ empreintes: ['stable', 'stable', 'stable', 'stable'] });
         await m.demarrer();
@@ -377,22 +489,25 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
     },
     {
       nom: 'la regle de nouvelle base est retiree',
-      de: '        } else if (empreinte === null || centreMemorise !== centre) {',
-      vers: '        } else if (false) {',
+      de: '        } else if (memoire === null || centreMemorise !== centre) {',
+      vers: '        } else if (memoire === null) {',
       rejouer: async () => {
-        const m = banc({ empreintes: ['e1', 'e1'] });
+        let c = 'libramont';
+        const m = banc({ empreintes: ['empreinte-libramont', 'empreinte-gembloux', 'empreinte-gembloux'], centres: () => c });
         await m.demarrer();
+        c = 'gembloux';
+        await m.tour();
         const total = m.journal.rechargements;
         m.arreter();
         return total;
       },
       attendu: (total) => total === 0,
-      libelle: 'chaque ouverture de la page declencherait un rechargement complet immediat',
+      libelle: 'changer de centre rechargerait les donnees du centre qu on vient de quitter',
     },
     {
       nom: 'l empreinte est memorisee malgre le refus',
-      de: '          if (fait !== false) {',
-      vers: '          if (true) {',
+      de: '            if (fait !== false) {',
+      vers: '            if (true) {',
       rejouer: async () => {
         let ecrit = true;
         const m = banc({ empreintes: ['avant', 'APRES', 'APRES', 'APRES'], refuser: () => ecrit });
@@ -408,23 +523,100 @@ function banc({ empreintes = [], estActive = () => true, centres = null, refuser
       libelle: 'la mise a jour serait perdue pour de bon : la page resterait fausse',
     },
     {
-      nom: 'le planning retombe sur le chargeur de la console',
-      de: "    if (page === 'reservations') return m.loadStaffReservationsData(true);",
-      vers: '    if (false) return null;',
+      nom: 'la page affichee n est plus lue',
+      de: "    var nom = typeof m.getLiveSyncPageName === 'function' ? String(m.getLiveSyncPageName() || '') : '';",
+      vers: "    var nom = 'emails';",
       rejouer: async () => {
         const { rechargerLaPageActive: mute } = chargerModule();
         const appels = [];
         mute({
-          isStaffEmailsActive: () => false,
-          isStaffUtilityActive: () => false,
-          isStaffReservationsActive: () => true,
-          loadOpsAdmin: () => { appels.push('console'); },
-          loadStaffReservationsData: () => { appels.push('reservations'); },
-        });
+          getLiveSyncPageName: () => 'reservations',
+          getLiveSyncPages: () => ({
+            emails: { domaines: ['courrier'], recharger: () => { appels.push('console'); } },
+            reservations: { domaines: ['reservations'], recharger: () => { appels.push('reservations'); } },
+          }),
+        }, ['*']);
         return appels.join();
       },
       attendu: (appels) => appels === 'reservations',
-      libelle: 'le planning resterait fige, exactement le defaut qu on corrige',
+      libelle: 'les Reservations resteraient figees pendant que la console se rechargerait',
+    },
+    {
+      nom: 'un domaine qui apparait compte comme un changement',
+      de: '      return Object.prototype.hasOwnProperty.call(avant, nom) && avant[nom] !== apres[nom];',
+      vers: '      return avant[nom] !== apres[nom];',
+      rejouer: async () => {
+        const m = banc({ empreintes: [{ reservations: 'r1' }, { reservations: 'r1', 'jour:2026-09-25': 'j1' }, { reservations: 'r1', 'jour:2026-09-25': 'j1' }] });
+        await m.demarrer();
+        await m.tour();
+        const total = m.journal.rechargements;
+        m.arreter();
+        return total;
+      },
+      attendu: (total) => total === 0,
+      libelle: 'chaque changement de jour sur le planning declencherait une relecture de plus',
+    },
+    {
+      nom: 'la page relit sur n importe quel domaine',
+      de: '    if (!concerne(definition.domaines, liste)) return undefined;',
+      vers: '',
+      rejouer: async () => {
+        const { rechargerLaPageActive: mute } = chargerModule();
+        const appels = [];
+        mute({
+          getLiveSyncPageName: () => 'requests',
+          getLiveSyncPages: () => ({ requests: { domaines: ['demandes'], recharger: () => { appels.push('relue'); } } }),
+        }, ['catalogue']);
+        return appels.length;
+      },
+      attendu: (n) => n === 0,
+      libelle: 'chaque prix change ferait relire toutes les pages, pour rien',
+    },
+    {
+      nom: 'les journees ne se reconnaissent plus a leur famille',
+      de: '      var famille = deuxPoints >= 0 ? nom.slice(0, deuxPoints) : nom;',
+      vers: '      var famille = nom;',
+      rejouer: async () => {
+        const { rechargerLaPageActive: mute } = chargerModule();
+        const appels = [];
+        mute({
+          getLiveSyncPageName: () => 'planning',
+          getLiveSyncPages: () => ({ planning: { domaines: ['jour'], recharger: () => { appels.push('relue'); } } }),
+        }, ['jour:2026-09-25']);
+        return appels.length;
+      },
+      attendu: (n) => n === 1,
+      libelle: 'le planning ne verrait plus une reservation prise sur un autre poste',
+    },
+    {
+      nom: 'le brouillon n est plus protege',
+      de: "    if (typeof definition.brouillon === 'function' && definition.brouillon()) return false;",
+      vers: '',
+      rejouer: async () => {
+        const { rechargerLaPageActive: mute } = chargerModule();
+        const appels = [];
+        mute({
+          getLiveSyncPageName: () => 'establishment',
+          getLiveSyncPages: () => ({ establishment: { domaines: ['config'], brouillon: () => true, recharger: () => { appels.push('relue'); } } }),
+        }, ['config']);
+        return appels.length;
+      },
+      attendu: (n) => n === 0,
+      libelle: 'un formulaire en cours serait efface par la modification d un collegue',
+    },
+    {
+      nom: 'une reponse sans empreinte compte comme un pouls vivant',
+      de: '        if (nouveau) derniereLectureReussie = Date.now();',
+      vers: '        derniereLectureReussie = Date.now();',
+      rejouer: async () => {
+        const m = banc({ empreintes: ['', '', ''] });
+        await m.demarrer();
+        const vivant = m.synchro.vivant;
+        m.arreter();
+        return vivant;
+      },
+      attendu: (vivant) => vivant === false,
+      libelle: 'un pouls aveugle ferait espacer le planning a 15 s sans rien voir bouger',
     },
     {
       nom: 'la garde de l onglet cache est retiree',

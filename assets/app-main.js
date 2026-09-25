@@ -2106,7 +2106,11 @@ function getRemoteSyncBaseDelay() {
   // saturait le quota de transfert Neon. 4 s reste largement temps réel pour un
   // planning (les requêtes conditionnelles renvoient 304 quasi vide si rien n'a
   // changé), tout en divisant la charge par ~3.
-  if (state.view === 'staff') return 4000;
+  // Le pouls (assets/ops-live.js) voit en deux secondes toute modification de
+  // la journee affichee et relit aussitot ce planning : tant qu il vit, cette
+  // lecture-ci n est plus qu un filet, espace a 15 s. S il se tait (erreur
+  // reseau, onglet ouvert avant un deploiement), elle reprend ses 4 s.
+  if (state.view === 'staff') return typeof window.pinlanePoulsVivant === 'function' && window.pinlanePoulsVivant() ? 15000 : 4000;
   if (state.view === 'admin') return 20000;
   return 20000;
 }
@@ -2597,6 +2601,197 @@ async function syncDateReservations(dateStr, opts = {}) {
   }
 }
 
+// ── LE DIRECT : UNE MODIFICATION FAITE AILLEURS EST VUE ICI (2026-09-25) ──────
+//
+// Movsar : « plusieurs ecrans, plusieurs PC, plusieurs personnes : si quelqu un
+// fait une modif, peu importe ce que c est, tout le monde doit le voir en
+// instantane ». assets/ops-live.js lit le pouls toutes les deux secondes (une
+// empreinte par domaine, lib/database.js getOpsPulse) et, pour les domaines
+// qui ont bouge, appelle d abord invalidateLiveSyncCaches, puis, si personne
+// n ecrit, la page affichee (getLiveSyncPages). Ce bloc dit, pour chaque cache
+// de la console, quels domaines il montre et sur quelles pages :
+//   - affiche, il est RELU par la page, qui garde ce qu elle montre pendant la
+//     lecture (pas d ecran vide, pas de squelette qui clignote) ;
+//   - ailleurs, il est OUBLIE et se relira quand sa page s ouvrira : rien
+//     n est demande au serveur pour un ecran que personne ne regarde.
+// Ce que la barre laterale montre sur toutes les pages (demandes en attente,
+// centres, droits de la personne connectee) est relu quelle que soit la page.
+const LIVE_SYNC_DOMAINES = ['communications', 'suggestions', 'evenements', 'prises', 'reservations', 'jour', 'pistes', 'blocages', 'demandes', 'catalogue', 'config', 'equipe', 'notes', 'courrier'];
+// La journee affichee (ses reservations et ses pistes, servies ensemble par
+// staff-state) et les pages qui la montrent.
+const LIVE_SYNC_JOURNEE = ['jour', 'pistes'];
+const LIVE_SYNC_PAGES_JOURNEE = ['dashboard', 'planning', 'arrivals', 'formules', 'lanes', 'laserGame', 'settings'];
+
+// « jour:2026-09-25 » est de la famille « jour » ; « * » (un serveur d avant les
+// domaines) vaut tous les domaines.
+function liveSyncFamilles(changes) {
+  const familles = new Set();
+  (Array.isArray(changes) ? changes : []).forEach((nom) => {
+    const texte = String(nom || '');
+    if (texte === '*') { LIVE_SYNC_DOMAINES.forEach((domaine) => familles.add(domaine)); return; }
+    familles.add(texte.includes(':') ? texte.slice(0, texte.indexOf(':')) : texte);
+  });
+  return familles;
+}
+
+function getLiveSyncPageName() {
+  return state.view === 'staff' && hasSavedAuth() ? getStaffMenuPage() : '';
+}
+
+function getLiveSyncDate() {
+  return state.view === 'staff' ? String(state.currentDate || '') : '';
+}
+
+// Les caches de la console. `enCours` : une lecture partie AVANT le changement
+// rendrait l ancien etat ; la page attend qu elle revienne (le pouls repasse
+// deux secondes plus tard) au lieu de la doubler.
+function getLiveSyncCaches() {
+  return [
+    {
+      domaines: ['reservations', 'jour'], pages: ['reservations'],
+      enCours: () => staffReservationsDataCache.loading,
+      oublier: () => { staffReservationsDataCache = { key: '', loading: false, loaded: false, error: '', reservations: [], syncedAt: '', loadedAt: 0 }; },
+      relire: () => loadStaffReservationsData(true),
+    },
+    {
+      domaines: ['reservations'], pages: ['clients', 'groups', 'contacts', 'prices', 'campaigns'],
+      enCours: () => staffClientDataCache.loading,
+      oublier: () => { staffClientDataCache = { key: '', loading: false, loaded: false, error: '', reservations: [], syncedAt: '', loadedAt: 0 }; },
+      relire: () => loadStaffClientData(true),
+    },
+    {
+      domaines: ['communications'], pages: ['clients', 'groups'],
+      enCours: () => staffClientCommsCache.loading,
+      oublier: () => { staffClientCommsCache = { key: '', loading: false, loaded: false, error: '', items: [], loadedAt: 0 }; },
+      relire: () => loadStaffClientComms(true),
+    },
+    {
+      // Le badge « demandes » de la barre laterale est sur toutes les pages.
+      domaines: ['demandes'], partout: true,
+      enCours: () => staffCustomRequestsCache.loading,
+      relire: () => loadStaffCustomRequests(true),
+    },
+    {
+      domaines: ['blocages'], pages: ['planning', 'laserGame', 'establishment'],
+      enCours: () => availabilityBlocksCache.loading,
+      oublier: () => { availabilityBlocksCache = { loaded: false, loading: false, error: '', blocks: [] }; },
+      relire: () => loadAvailabilityBlocks(true),
+    },
+    {
+      domaines: ['config'], pages: ['dashboard', 'planning', 'arrivals', 'formules', 'lanes', 'laserGame', 'establishment'],
+      enCours: () => staffCenterConfigCache.loading,
+      oublier: () => { staffCenterConfigCache = { loaded: false, loading: false, error: '', centers: [], activities: [] }; },
+      relire: () => loadStaffCenterConfig(true),
+    },
+    {
+      // Les noms et l etat des centres, dans le selecteur de la barre laterale.
+      domaines: ['config'], partout: true,
+      enCours: () => scopedCentersCache.loading,
+      relire: () => loadMenuCenters(true),
+    },
+    {
+      // Le catalogue et les horaires servis au tiroir de reservation rapide,
+      // ouvrable depuis toutes les pages.
+      domaines: ['catalogue', 'config'], partout: true,
+      enCours: () => false,
+      relire: () => loadCenterScheduleConfig(),
+    },
+    {
+      domaines: ['equipe'], partout: true,
+      enCours: () => false,
+      relire: () => refreshStaffAccessForLiveSync(),
+    },
+    {
+      // La boite de l accueil : l heure de lecture seule est remise a zero, ce
+      // qu elle montre reste affiche pendant la relecture.
+      domaines: ['communications', 'courrier'], pages: ['dashboard'],
+      enCours: () => dashInbox.loading,
+      oublier: () => { dashInbox.at = 0; },
+      relire: () => { dashInbox.at = 0; ensureDashInbox(); },
+    },
+    {
+      domaines: ['reservations'], pages: ['dashboard'],
+      enCours: () => false,
+      oublier: () => { staffDaySeriesCache.forEach((entry) => { entry.at = 0; }); },
+      relire: () => {
+        staffDaySeriesCache.forEach((entry) => { entry.at = 0; });
+        ensureStaffDaySeries(addDays(state.currentDate, -Math.max(0, Number(state.dashRevenueOffset) || 0)));
+      },
+    },
+    {
+      domaines: ['communications', 'suggestions', 'evenements', 'prises', 'courrier'], pages: ['emails', 'establishment'],
+      enCours: () => opsAdminCache.loading,
+      oublier: () => { opsAdminLastAutoLoadAt = 0; opsAdminCache.loaded = false; },
+      relire: () => {
+        // La page Emails v4 lit aussi des conversations et une vue globale,
+        // hors de la console : elle les relit elle-meme.
+        if (isStaffEmailsActive() && typeof window.pv2EmailsSurSynchro === 'function') window.pv2EmailsSurSynchro();
+        requestOpsAdminLoad(true);
+      },
+    },
+  ];
+}
+
+function invalidateLiveSyncCaches(changes) {
+  const familles = liveSyncFamilles(changes);
+  const page = getLiveSyncPageName();
+  getLiveSyncCaches().forEach((cache) => {
+    if (cache.partout || !cache.domaines.some((domaine) => familles.has(domaine))) return;
+    // Affiche, il est relu par la page, apres les gardes de saisie.
+    if ((cache.pages || []).includes(page)) return;
+    cache.oublier();
+  });
+  // Une autre date deja visitee n est plus « fraiche » : on la relira en y
+  // allant, au lieu de la croire a jour.
+  if (['jour', 'pistes', 'reservations'].some((domaine) => familles.has(domaine))) staffSyncAtByDate = {};
+  if (typeof window.pv2Direct === 'function') window.pv2Direct(familles, page, false);
+}
+
+function rechargerLaPagePourLeDirect(page, changes) {
+  const familles = liveSyncFamilles(changes);
+  const concerne = (domaines) => domaines.some((domaine) => familles.has(domaine));
+  const caches = getLiveSyncCaches().filter((cache) => concerne(cache.domaines) && (cache.partout || (cache.pages || []).includes(page)));
+  const journee = LIVE_SYNC_PAGES_JOURNEE.includes(page) && concerne(LIVE_SYNC_JOURNEE);
+  if (caches.some((cache) => cache.enCours()) || (journee && remoteSyncBusy)) return false;
+  caches.forEach((cache) => cache.relire());
+  if (journee) syncDateReservations(state.currentDate, { silent: true });
+  if (typeof window.pv2Direct === 'function') window.pv2Direct(familles, page, true);
+  return true;
+}
+
+// Chaque page du centre et ce qu elle montre. Les pages plateforme (cockpit)
+// ne sont pas dans le pouls d un centre.
+function getLiveSyncPages() {
+  const caches = getLiveSyncCaches();
+  const pages = {};
+  STAFF_MENU_PAGES.forEach((page) => {
+    if (page.startsWith('cockpit')) return;
+    const domaines = new Set();
+    caches.forEach((cache) => {
+      if (cache.partout || (cache.pages || []).includes(page)) cache.domaines.forEach((domaine) => domaines.add(domaine));
+    });
+    if (LIVE_SYNC_PAGES_JOURNEE.includes(page)) LIVE_SYNC_JOURNEE.forEach((domaine) => domaines.add(domaine));
+    // Les caches de staff-pages-v2 (catalogue tarifaire, notes, sequences,
+    // campagnes) : pv2Direct les relit ; leurs domaines comptent pour la page.
+    if (['prices', 'establishment'].includes(page)) { domaines.add('catalogue'); domaines.add('config'); }
+    if (['clients', 'groups'].includes(page)) domaines.add('notes');
+    if (['emails', 'campaigns'].includes(page)) { domaines.add('courrier'); domaines.add('config'); }
+    pages[page] = {
+      domaines: [...domaines],
+      // Le formulaire d Etablissement garde sa saisie dans ses champs : on ne
+      // le reconstruit pas tant qu il est ouvert.
+      brouillon: page === 'establishment' ? () => Boolean(state.establishmentEditing) : undefined,
+      recharger: (changes) => rechargerLaPagePourLeDirect(page, changes),
+    };
+  });
+  return pages;
+}
+
+window.getLiveSyncPageName = getLiveSyncPageName;
+window.getLiveSyncDate = getLiveSyncDate;
+window.getLiveSyncPages = getLiveSyncPages;
+window.invalidateLiveSyncCaches = invalidateLiveSyncCaches;
+
 function scheduleRemoteSync() {
   clearTimeout(remoteSyncTimer);
   const delay = getRemoteSyncDelay();
@@ -3066,25 +3261,7 @@ async function loadStaffAuthSession(options = {}) {
       clearStaffAuthSession();
       return false;
     }
-    storeStaffAuthSession(payload.session);
-    // LE CENTRE CHOISI SURVIT AU RECHARGEMENT (2026-08-21).
-    // Movsar : « quand je vais sur Fun Galaxy Libramont et que je reload la
-    // page, je rearrive sur N4 Bowling ». api/staff-auth rend TOUJOURS la
-    // session du centre de CONNEXION : son parametre centerId ne sert qu'a
-    // controler l'acces et a charger le bon accessControl, jamais a deplacer
-    // la session. storeStaffAuthSession ecrasait donc le centre memorise par
-    // celui du code, a chaque demarrage.
-    //
-    // Le serveur a deja tranche l'AUTORISATION : sans le droit centers.switch
-    // sur ce centre il aurait repondu 403, et on serait dans le catch. Arrive
-    // ici, le centre demande est legitime : le choix explicite gagne, comme
-    // sur le chemin de la bascule (assets/staff-menu.js).
-    if (demande && payload.session && demande !== payload.session.centerId) {
-      state.adminCenterId = demande;
-      state.establishmentCenterId = demande;
-    }
-    if (payload.accessControl) state.staffAccessControl = payload.accessControl;
-    save();
+    applyStaffAuthPayload(payload, demande);
     // Charge la liste des centres SCOPEE au tenant des que la session est prete,
     // pour que le switcher n'affiche jamais un centre d'un autre client (meme
     // avant l'ouverture de la Direction). Non bloquant.
@@ -3095,6 +3272,60 @@ async function loadStaffAuthSession(options = {}) {
     clearStaffAuthSession();
     return false;
   }
+}
+
+// La session et l equipe servies par api/staff-auth, posees dans l etat. Une
+// seule ecriture pour la connexion (loadStaffAuthSession) et pour le direct
+// (refreshStaffAccessForLiveSync).
+function applyStaffAuthPayload(payload, demande) {
+  storeStaffAuthSession(payload.session);
+  // LE CENTRE CHOISI SURVIT AU RECHARGEMENT (2026-08-21).
+  // Movsar : « quand je vais sur Fun Galaxy Libramont et que je reload la
+  // page, je rearrive sur N4 Bowling ». api/staff-auth rend TOUJOURS la
+  // session du centre de CONNEXION : son parametre centerId ne sert qu'a
+  // controler l'acces et a charger le bon accessControl, jamais a deplacer
+  // la session. storeStaffAuthSession ecrasait donc le centre memorise par
+  // celui du code, a chaque demarrage.
+  //
+  // Le serveur a deja tranche l'AUTORISATION : sans le droit centers.switch
+  // sur ce centre il aurait repondu 403, et on serait dans le catch. Arrive
+  // ici, le centre demande est legitime : le choix explicite gagne, comme
+  // sur le chemin de la bascule (assets/staff-menu.js).
+  if (demande && payload.session && demande !== payload.session.centerId) {
+    state.adminCenterId = demande;
+    state.establishmentCenterId = demande;
+  }
+  if (payload.accessControl) state.staffAccessControl = payload.accessControl;
+  save();
+}
+
+// L EQUIPE ET LES DROITS, RELUS PAR LE DIRECT. Un membre ajoute, un role
+// modifie ou un acces bloque sur un autre poste est vu ici : la page Equipe
+// suit, et la barre laterale montre les droits du moment. Jamais de
+// deconnexion sur une panne reseau (loadStaffAuthSession efface la session sur
+// toute erreur : juste a la connexion, pas pour une relecture de fond). Seul un
+// serveur qui REPOND que la session n est plus valide ferme l acces.
+async function refreshStaffAccessForLiveSync() {
+  const demande = getCurrentStaffCenterId();
+  let payload = null;
+  try {
+    payload = await apiRequest(`${API_ENDPOINTS.staffAuth}?centerId=${encodeURIComponent(demande)}`, {
+      method: 'GET',
+      headers: staffAuthHeaders()
+    });
+  } catch (error) {
+    return false;
+  }
+  if (payload && payload.authenticated === false) {
+    clearStaffAuthSession();
+    applyAuthState();
+    return false;
+  }
+  if (!payload || !payload.session) return false;
+  applyStaffAuthPayload(payload, demande);
+  applyAuthState();
+  if (state.view === 'staff' && getStaffMenuPage() === 'users') renderStaffUtilityPage();
+  return true;
 }
 
 function applyAuthState() {

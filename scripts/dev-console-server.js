@@ -65,8 +65,15 @@ function accessControlSimule() {
 }
 
 /* ── OUTILS ─────────────────────────────────────────────────────────────── */
-const ilYA = (ms) => new Date(Date.now() - ms).toISOString();
-const dans = (ms) => new Date(Date.now() + ms).toISOString();
+// L HEURE DES FIXTURES. Par defaut l heure reelle ; un gate qui fige
+// l horloge de la page (page.clock.install) donne la sienne a
+// creerRepondeurFixtures, sinon « il y a 3 h » se calcule sur l heure reelle et
+// tombe, le soir, dans le futur de la page (accueil-vivant-check rougissait
+// chaque soir apres 18:30).
+let MAINTENANT_FIXTURES = null;
+const maintenantFixtures = () => (MAINTENANT_FIXTURES === null ? Date.now() : MAINTENANT_FIXTURES);
+const ilYA = (ms) => new Date(maintenantFixtures() - ms).toISOString();
+const dans = (ms) => new Date(maintenantFixtures() + ms).toISOString();
 const H = 3600 * 1000;
 const J = 24 * H;
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -242,8 +249,9 @@ const CLIENT_EXEMPLE = { prenom: 'Marie', nom: 'Marie Dupont', centre: CENTRE.na
 // fixtures sont rendus UNE fois, a la construction, avec des logos en URL
 // absolue : un gate qui monte ce serveur sur un autre port la passe ici,
 // sinon ces mails pointeraient sur le port par defaut.
-function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
+function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null } = {}) {
   ORIGINE_APP = origine;
+  MAINTENANT_FIXTURES = maintenant === null ? null : Number(maintenant);
   const MEMBRES = {
     sophie: { memberId: 'm-sophie', memberName: 'Sophie Martin', memberRole: 'Direction' },
     kevin: { memberId: 'm-kevin', memberName: 'Kevin Dubois', memberRole: 'Manager' },
@@ -407,7 +415,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
   etat.prochainId = 100;
 
   /* Les vues §3.7 : fils, messages, compteurs. */
-  const prisesVivantes = () => Object.values(etat.claims).filter((p) => new Date(p.expiresAt).getTime() > Date.now());
+  const prisesVivantes = () => Object.values(etat.claims).filter((p) => new Date(p.expiresAt).getTime() > maintenantFixtures());
   const priseSur = (id) => prisesVivantes().find((p) => Number(p.communicationId) === Number(id)) || null;
   const messagesDuFil = (fil) => etat.comms.filter((c) => c.threadId === fil.id).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || a.id - b.id);
   const origineDe = (c) => {
@@ -477,7 +485,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
     };
   }
   function compteurs() {
-    const depuis7 = Date.now() - 7 * J;
+    const depuis7 = maintenantFixtures() - 7 * J;
     const sortants = etat.comms.filter((c) => c.direction !== 'inbound');
     const ouverts = etat.threads.filter((f) => f.status === 'open');
     const tousEvenements = Object.values(etat.events).flat();
@@ -490,13 +498,13 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP } = {}) {
       ouverts7j: sortants.filter((c) => c.openedAt && new Date(c.openedAt).getTime() > depuis7).length,
       echecs7j: sortants.filter((c) => c.status === 'failed' && new Date(c.createdAt).getTime() > depuis7).length,
       enAttente: sortants.filter((c) => ['queued', 'processing'].includes(c.status)).length,
-      programmes24h: sortants.filter((c) => c.status === 'queued' && c.scheduledAt && new Date(c.scheduledAt).getTime() > Date.now() && new Date(c.scheduledAt).getTime() <= Date.now() + J).length,
+      programmes24h: sortants.filter((c) => c.status === 'queued' && c.scheduledAt && new Date(c.scheduledAt).getTime() > maintenantFixtures() && new Date(c.scheduledAt).getTime() <= maintenantFixtures() + J).length,
       questions: etat.questions.length,
       suivi: { evenementsRecus30j: tousEvenements.length > 0, ouverturesObservees: tousEvenements.some((e) => e.type === 'opened'), clicsObserves: tousEvenements.some((e) => e.type === 'clicked') },
     };
   }
   function suiviAgent() {
-    const depuis = Date.now() - 7 * J;
+    const depuis = maintenantFixtures() - 7 * J;
     return {
       faits: etat.appris.length,
       questions: etat.questions.length,

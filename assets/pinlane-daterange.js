@@ -197,7 +197,7 @@
 
     // Structure statique de la barre. Les panneaux sont injectes a l'ouverture.
     el.innerHTML = ''
-      + '<div class="pdr-bar" role="group" aria-label="Plage de dates et granularite">'
+      + '<div class="pdr-bar" role="group" aria-label="Plage de dates et granularite" data-pl-libre>'
       + '  <div class="pdr-group pdr-group-range">'
       + '    <button type="button" class="pdr-pill pdr-range-trigger" aria-haspopup="dialog" aria-expanded="false">'
       + '      <span class="pdr-label">Plage de dates</span>'

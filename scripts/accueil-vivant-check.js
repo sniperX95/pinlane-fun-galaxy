@@ -92,7 +92,9 @@ const PISTES = (maintenance) => Array.from({ length: 8 }, (_, i) => i + 1)
   .reduce((acc, lane) => { acc[lane] = maintenance.includes(lane) ? 'maintenance' : 'active'; return acc; }, {});
 
 function serveur() {
-  const interne = dev.creerServeur(dev.creerRepondeurFixtures({ origine: BASE }));
+  // Les fixtures datent leurs mails sur l horloge figee de la page, pas sur
+  // l heure reelle : sinon le gate rougit chaque soir (« moins d une heure »).
+  const interne = dev.creerServeur(dev.creerRepondeurFixtures({ origine: BASE, maintenant: new Date(HEURE).getTime() }));
   const servir = interne.listeners('request')[0];
   return http.createServer((req, res) => {
     const url = new URL(req.url, BASE);

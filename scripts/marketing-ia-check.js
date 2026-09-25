@@ -162,8 +162,8 @@ async function installMock(page) {
           const id = 990 + window.__QA_CREATED__.length;
           const brief = String(b.brief || '').trim();
           const why = b.trigger === 'creux' && b.targetDate
-            ? `Tu m'as demandé de remplir le ${b.targetDate} : voilà ce que je posterais.`
-            : `Tu m'as demandé : « ${brief} », voilà ce que je posterais.`;
+            ? `Vous m'avez demandé de remplir le ${b.targetDate} : voilà ce que je posterais.`
+            : `Vous m'avez demandé : « ${brief} », voilà ce que je posterais.`;
           window.__QA_CREATED__.push({ key: `db:${id}`, id, trigger: b.trigger === 'creux' ? 'creux' : 'demande', why, whyShort: why, dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: `Post prêt : ${brief || b.targetDate}.` } }, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: `qa:${id}` });
           return J({ ok: true, result: { ok: true, id } });
         }
@@ -196,7 +196,7 @@ async function installMock(page) {
             return J({ ok: true, grounded: true, provider: 'kimi', model: 'kimi-k2.6',
               answer: {
                 titre: `Ce que je vois pour le ${day.date.slice(8, 10)}/${day.date.slice(5, 7)}`,
-                reponse: `${day.explanation} Ton panier moyen mesuré est de ${bundle.pulse.avgBasket} €, donc chaque personne ramenée ce jour-là vaut ce montant.`,
+                reponse: `${day.explanation} Votre panier moyen mesuré est de ${bundle.pulse.avgBasket} €, donc chaque personne ramenée ce jour-là vaut ce montant.`,
                 faits: [`${day.resaCount} personnes déjà posées`, `panier moyen mesuré : ${bundle.pulse.avgBasket} €`],
                 jeNeSaisPas: [],
                 action: 'creer_post',
@@ -220,7 +220,7 @@ async function installMock(page) {
           return J({ ok: true, grounded: true, provider: 'kimi', model: 'kimi-k2.6',
             answer: {
               titre: 'Ce n\'est pas mon sujet',
-              reponse: 'Je ne reponds que sur ton centre et son marketing : frequentation, jours a remplir, concurrents, ce que tes messages rapportent.',
+              reponse: 'Je ne reponds que sur votre centre et son marketing : frequentation, jours a remplir, concurrents, ce que vos messages rapportent.',
               faits: [],
               jeNeSaisPas: ['Cette question sort de ce que je connais du centre : je n\'ai aucune donnee la-dessus.'],
               action: 'aucune',
@@ -553,7 +553,7 @@ async function main() {
     ok(dayAsk.briefFirst, 'le brief du matin ouvre le fil (premier message de l\'agent)');
     ok(/calme attendu/.test(dayAsk.answer) && /panier moyen mesuré/.test(dayAsk.answer) && /15/.test(dayAsk.answer), 'la reponse cite l\'explication REELLE du jour + le panier MESURE');
     const fillFromAnswer = await page.evaluate(async () => {
-      const btn = [...document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer button')].find((el) => /Prépare-moi un post/.test(el.textContent));
+      const btn = [...document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer button')].find((el) => /Préparer un post/.test(el.textContent));
       if (!btn) return { found: false };
       btn.click();
       await new Promise((r) => setTimeout(r, 600));
@@ -735,7 +735,7 @@ async function main() {
     // reste pas muet et ne fait pas semblant : il rend sa reponse deterministe
     // et ecrit a l'ecran POURQUOI elle est en mode simple.
     const degraded = await askAndWait(page, 'que penses-tu de la soiree fluo interdit');
-    ok(/mode simple/.test(degraded.source) && /jetée/.test(degraded.source),
+    ok(/mode simple/.test(degraded.source) && /écartée|jetée/.test(degraded.source),
       `reponse du modele REFUSEE -> le filet deterministe reprend, et l'ecran le dit ("${degraded.source.trim().slice(0, 90)}")`);
     ok(degraded.text.length > 40, 'le gerant recoit quand meme une reponse : jamais un ecran vide');
 
@@ -1112,7 +1112,7 @@ async function main() {
       };
     });
     ok(results.eyebrow && /1[\s  ]?240/.test(results.heroNum), 'le heros EUR vit ICI, seul exemplaire');
-    ok(/visites honorées liées à tes messages/.test(results.cap), 'libelle exact : des MESSAGES et des VISITES HONOREES');
+    ok(/visites honorées liées à vos messages/.test(results.cap), 'libelle exact : des MESSAGES et des VISITES HONOREES');
     ok(results.segs.join(',') === '7 j,30 j,90 j', 'toggles de periode 7/30/90');
     ok(results.count === 3 && results.good && results.pending && results.redo, 'recus : bon en vert, verdict a venir, « On le refait ? »');
     ok(results.verdicts >= 4 && /-6%/.test(results.verdictText) && !/\+-/.test(results.verdictText), 'verdicts causaux, signe honnete (-6%, jamais +-6%)');

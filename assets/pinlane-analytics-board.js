@@ -393,7 +393,7 @@
 
       picker.innerHTML = ''
         + '<div class="pab-picker-head"><span class="pab-picker-head-title">Ajouter un widget</span>'
-        + '<span class="pab-picker-head-sub">Choisis une donnee, puis sa forme</span></div>'
+        + '<span class="pab-picker-head-sub">Choisissez une donnée, puis sa forme</span></div>'
         + '<div class="pab-picker-body">'
         + '  <div class="pab-picker-col pab-picker-metrics">' + metricsHtml + '</div>'
         + '  <div class="pab-picker-col pab-picker-forms">'

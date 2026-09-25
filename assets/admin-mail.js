@@ -262,7 +262,7 @@ function msApplyTemplate(ref) {
 async function msImproveWithAi(button) {
   const d = msState.draft;
   if (!d.subject.trim() && !d.body.trim()) {
-    if (typeof toast === 'function') toast('Écris d\'abord un objet ou un message à améliorer.');
+    if (typeof toast === 'function') toast('Écrivez d\'abord un objet ou un message à améliorer.');
     return;
   }
   msState.aiBusy = true;

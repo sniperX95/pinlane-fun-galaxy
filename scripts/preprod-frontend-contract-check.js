@@ -114,7 +114,7 @@ async function ranges() {
       getStaffClientCacheKey: () => 'qa', getStaffReservationsCacheKey: () => 'qa', getActiveOpsCenterId: () => 'libramont',
       getStaffClientRange: () => ({ startDate: '2026-09-01', endDate: '2026-09-30' }), getStaffReservationsRange: () => ({ previousMonthStart: '2026-09-01', gridEnd: '2026-09-30' }),
       todayStr: () => '2026-09-12', addDays: date => date,
-      isStaffClientsActive: () => false, isStaffReservationsActive: () => false, isStaffUtilityActive: () => false,
+      isStaffClientsActive: () => false, isStaffReservationsActive: () => false, isStaffUtilityActive: () => false, isStaffPricingActive: () => false,
       apiRequest: async url => {
         calls.push(url); const second = new URL(url, 'http://127.0.0.1').searchParams.has('cursor');
         if (second && failSecond) throw new Error('413 ROW_TOO_LARGE');

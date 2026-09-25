@@ -354,7 +354,7 @@
       + '<div class="d-mkt-bonjour"><i>' + svg('etincelle', 'd-x') + '</i><h2>Bonjour.</h2></div>'
       + '<p class="d-mkt-brief">' + ech(a.mot) + '</p>'
       + '<p class="d-mkt-rappel">2 propositions vous attendent dans le panneau. Posez une question, ou décrivez ce que je dois préparer.</p>'
-      + '<div class="d-mkt-saisie"><span>Décris le livrable : « un post pour la soirée fluo »</span>'
+      + '<div class="d-mkt-saisie"><span>Décrivez le livrable : « un post pour la soirée fluo »</span>'
       + '<button type="button" class="d-btn d-btn-fort">Préparer</button></div>'
       + '<div class="d-mkt-chips">'
       + '<button type="button" class="d-chip">Remplir lundi prochain</button>'

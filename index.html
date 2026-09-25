@@ -21,7 +21,7 @@
 <link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20260925c">
-<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20260925d">
+<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20260925e">
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20260911a">
@@ -29,7 +29,7 @@
 <script defer src="/assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="/assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="/assets/api-client.js?v=20260912a"></script>
-<script defer src="/assets/booking-core.js?v=20260910a"></script>
+<script defer src="/assets/booking-core.js?v=20260925e"></script>
 <!-- La marque d'un centre a partir d'UNE couleur (derivation + mesure de
      contraste WCAG). Charge avant app-main et founder-clients-platform : les
      deux ecrans de saisie (Etablissement, Nouveau client) l'interrogent. -->
@@ -56,7 +56,7 @@
 <!-- Le glisser au doigt (appui long, glisser, relacher), ecrit une fois pour
      le planning et le tableau d analyse. Charge avant app-main. -->
 <script defer src="/assets/pinlane-touch-drag.js?v=20260911a"></script>
-<script defer src="/assets/app-main.js?v=20260925d"></script>
+<script defer src="/assets/app-main.js?v=20260925e"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260717a"></script>
@@ -72,10 +72,10 @@
 <script type="text/plain" data-staff-console src="/assets/email-thread.js?v=20260906a"></script>
 <script type="text/plain" data-staff-console src="/assets/staff-menu.js?v=20260925d"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-fx.js?v=20260728e"></script>
-<script type="text/plain" data-staff-console src="/assets/staff-pages-v2.js?v=20260917h"></script>
+<script type="text/plain" data-staff-console src="/assets/staff-pages-v2.js?v=20260925e"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-charts.js?v=20260728b"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-daterange.js?v=20260721a"></script>
-<script type="text/plain" data-staff-console src="/assets/pinlane-analytics-board.js?v=20260911a"></script>
+<script type="text/plain" data-staff-console src="/assets/pinlane-analytics-board.js?v=20260925e"></script>
 <script type="text/plain" data-staff-console src="/assets/founder-cockpit.js?v=20260728c"></script>
 <script type="text/plain" data-staff-console src="/assets/founder-clients-platform.js?v=20260723a"></script>
 <script type="text/plain" data-staff-console src="/assets/founder-centres.js?v=20260723a"></script>
@@ -744,7 +744,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <div class="kpi">
           <div class="label">Chiffre d'affaires</div>
           <div class="value" id="kpiRev">0€</div>
-          <div class="tag-ok" id="kpiCollected">0€ validés</div>
+          <div class="tag-ok" id="kpiCollected">0 € encaissés</div>
         </div>
         <div class="kpi accent">
           <div class="label">Taux d'occupation</div>
@@ -797,7 +797,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <div class="planning-title-stack">
             <h2>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-              Planning 8 pistes
+              <span id="planningLaneTitle">Planning 8 pistes</span>
             </h2>
             <div class="planning-sub" id="planningSub"></div>
           </div>

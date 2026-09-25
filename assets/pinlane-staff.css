@@ -8218,7 +8218,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .pv2-price-stats > span { white-space: nowrap; }
 .pv2-price-stats strong { color: var(--text); font-weight: 600; }
-.pv2-price-stats-empty { font-family: var(--font-ui); font-variant-numeric: normal; }
 
 /* -- Editeur tarifaire client (badges sur la carte + modale) --------------- */
 .pev-badges { display: flex; flex-wrap: wrap; gap: 5px; }

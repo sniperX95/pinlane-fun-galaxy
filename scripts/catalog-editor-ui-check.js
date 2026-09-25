@@ -266,11 +266,11 @@ async function runSuite(browser, quiet) {
     // (2026-08-17), cette distinction vit dans la legende du rayon formules,
     // plus dans deux bandeaux separes.
     const scopeText = await page.evaluate(() => document.getElementById('staffPricingPage').textContent || '');
-    // « TOUS TES centres » depuis la migration 0042 : la portee d'une edition de
+    // « TOUS VOS centres » depuis la migration 0042 : la portee d'une edition de
     // catalogue est l'ENTREPRISE, plus la plateforme entiere. L'assertion suit
     // le texte, sinon elle certifierait une phrase devenue fausse.
-    ok(/n'engage que ce centre/i.test(scopeText) && /TOUS TES centres/.test(scopeText), 'scope-distinction',
-      `centre=${/n'engage que ce centre/i.test(scopeText)} entreprise=${/TOUS TES centres/.test(scopeText)}`);
+    ok(/n'engage que ce centre/i.test(scopeText) && /TOUS VOS centres/.test(scopeText), 'scope-distinction',
+      `centre=${/n'engage que ce centre/i.test(scopeText)} entreprise=${/TOUS VOS centres/.test(scopeText)}`);
     // La page a change de forme (2026-08-22) : le bouton du haut cree une
     // CATEGORIE, et chaque section porte son propre « + Formule », pre-rempli
     // de sa categorie. On verifie les deux portes d'entree.

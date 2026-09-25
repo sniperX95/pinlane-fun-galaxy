@@ -1547,7 +1547,7 @@ async function unscheduleLaserPass(reservationId, unitRef) {
     if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, payload.reservation, moveFields);
     save();
     renderStaffData();
-    toast('Partie retirée du planning : à replacer quand tu veux.');
+    toast('Partie retirée du planning : à replacer quand vous voulez.');
   } catch (error) {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });

@@ -646,7 +646,7 @@
     const paint = () => {
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
-        crumb: 'Opérations / Réservations',
+        crumb: 'Journée',
         title: 'Réservations',
         sub: `${esc(sync)}${staffReservationsDataCache.error ? ' · <span style="color:var(--v2-amber)">API indisponible</span>' : ''}`,
         // Les trois boutons de mois forment UN controle : ils sont groupes pour
@@ -691,7 +691,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
               <input data-pl-focus="reservations.recherche" value="${esc(pv2ResSearch.query)}" placeholder="Nom ou téléphone, toutes les dates…" aria-label="Rechercher une réservation par client, toutes dates confondues" oninput="pv2ResSearchInput(this.value)">
             </div>` : `<div><h2>${esc(dayLabel)}</h2>
-            <small>${dayAgg.count} résa · ${dayAgg.pax} joueurs · ${money(dayAgg.revenue)}</small></div>`}
+            <small>${dayAgg.count ? `${formatStaffTerrainCount(dayAgg.count, 'réservation')} · ${formatStaffTerrainCount(dayAgg.pax, 'joueur')} · ${money(dayAgg.revenue)}` : 'Aucune réservation'}</small></div>`}
             <button type="button" class="pv2-search-toggle${pv2ResSearch.open ? ' is-open' : ''}" onclick="pv2ResSearchToggle()" aria-label="${pv2ResSearch.open ? 'Fermer la recherche' : 'Rechercher un client sur toutes les dates'}" title="${pv2ResSearch.open ? 'Fermer la recherche' : 'Rechercher un client, toutes dates confondues'}">
               ${pv2ResSearch.open
                 ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`
@@ -1305,7 +1305,7 @@
       const roi = ctx.segment !== 'relancer' ? '' : `<section class="crm-roi">
         ${crmRelanceStats.loaded && crmRelanceStats.sent > 0
           ? `<span class="crm-roi-figures"><strong>${crmRelanceStats.sent}</strong> relance${crmRelanceStats.sent > 1 ? 's' : ''} sur 90 j<span class="crm-roi-sep"></span><strong>${crmRelanceStats.converted}</strong> réservation${crmRelanceStats.converted > 1 ? 's' : ''} liée${crmRelanceStats.converted > 1 ? 's' : ''}<span class="crm-roi-sep"></span><strong>${money(crmRelanceStats.revenue)}</strong> de réservations liées</span>`
-          : `<span class="crm-roi-figures">Relance ton premier client, je mesure ce que chaque relance rapporte.</span>`}
+          : `<span class="crm-roi-figures">Relancez un premier client : je mesure ce que chaque relance rapporte.</span>`}
         <button type="button" class="pv2-btn" onclick="openStaffCampaignForRelance()">${ci('megaphone')}Campagne pour ce segment</button>
       </section>`;
       body = `${roi}<section class="pv2-split crm-split">
@@ -1329,7 +1329,7 @@
 
     root.innerHTML = `<div class="pv2-shell crm-shell">
       ${bar({
-        crumb: 'Clients & Marketing',
+        crumb: 'Clients & marketing',
         title: 'Clients',
         sub: esc(sync),
         actions: `
@@ -2178,7 +2178,7 @@
   window.pv2ComposerImprove = async function () {
     if (pv2Mail.aiBusy) return;
     const d = pv2Mail.draft;
-    if (!d.subject.trim() && !d.body.trim()) { toast('Écris d\'abord un brouillon à améliorer.'); return; }
+    if (!d.subject.trim() && !d.body.trim()) { toast('Écrivez d\'abord un brouillon à améliorer.'); return; }
     pv2Mail.aiBusy = true;
     pv2RenderComposer();
     try {
@@ -2229,7 +2229,7 @@
     }
     let scheduledAt = null;
     if (d.when === 'later') {
-      if (!d.scheduledAt) { toast('Choisis la date et l\'heure d\'envoi.'); return; }
+      if (!d.scheduledAt) { toast('Choisissez la date et l\'heure d\'envoi.'); return; }
       const requested = new Date(d.scheduledAt);
       if (Number.isNaN(requested.getTime()) || requested.getTime() < Date.now() + 2 * 60000) {
         toast('La date d\'envoi doit être dans le futur.');
@@ -2285,7 +2285,7 @@
     const from = String(pv2Mail.analyzeDraft.from || '').trim();
     const body = String(pv2Mail.analyzeDraft.body || '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)) { toast('Adresse de l\'expéditeur invalide.'); return; }
-    if (!body) { toast('Colle le texte du mail reçu.'); return; }
+    if (!body) { toast('Collez le texte du mail reçu.'); return; }
     pv2Mail.analyzeBusy = true;
     renderStaffEmailsPage();
     try {
@@ -3035,7 +3035,7 @@
         }),
       });
       brain.overrides = payload.overrides || brain.overrides;
-      toast('L\'agent a appris tes réglages ✓');
+      toast('L\'agent a appris vos réglages ✓');
     } catch (error) {
       toast(error.message || 'Enregistrement impossible.');
     } finally {
@@ -3106,7 +3106,7 @@
   window.pv2TplSave = async function () {
     const tpl = pv2Settings.tplEditing;
     if (!tpl || pv2Settings.busy) return;
-    if (!String(tpl.name || '').trim()) { toast('Donne un nom au modèle.'); return; }
+    if (!String(tpl.name || '').trim()) { toast('Donnez un nom au modèle.'); return; }
     pv2Settings.busy = true;
     renderStaffEmailsPage();
     try {
@@ -6663,7 +6663,7 @@
 
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
-        crumb: 'Clients & marketing / Emails & relances',
+        crumb: 'Clients & marketing',
         title: 'Emails & relances',
         sub: `${esc(PV2_SECTION_SUB[section] || '')} <span class="pv2-bar-stamp">· à jour à ${esc(updatedAt)}</span>${errorMessage ? ` · <span style="color:var(--danger)">${esc(errorMessage)}</span>` : ''}`,
         /* Trois niveaux : une seule action primaire (Nouveau message), une
@@ -6700,29 +6700,10 @@
   }
 
   /* ==========================================================================
-     CAMPAGNES : parcours gamifié « agence marketing » (style Duolingo)
-     Consomme le moteur marketing-agents (brand / strategy / missions / drafts /
-     summary / agents) exposé PAR CENTRE via staffMarketingAgentsCache.status.
-     Aucune donnée inventée : tout vient du collecteur backend.
+     ICONES DU MODULE MARKETING. L ancienne page Campagnes « gamifiee »
+     (paliers, jauges, presse-papiers) est partie avec ses constantes : la
+     page Campagnes est un tableau sobre, le Marketing un fil de travail.
      ======================================================================== */
-
-  const CAMPAIGN_TIERS = ['Découverte', 'Éveil', 'En rythme', 'Maîtrise', 'Expert', 'Virtuose', 'Légende'];
-  const CHANNEL_LABELS = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn', email: 'Email' };
-  const GAP_META = {
-    couvert: { label: 'Couvert', tone: 'green' },
-    'a-renforcer': { label: 'À renforcer', tone: 'amber' },
-    opportunite: { label: 'Opportunité', tone: 'blue' },
-  };
-  const AUDIENCE_LABELS = {
-    particulier: 'Familles & particuliers',
-    entreprise: 'Entreprises',
-    ecole: 'Écoles & clubs',
-    public: 'Grand public',
-  };
-  const campaignClipboard = new Map();
-
-  // La voix de marque est un objet {person, energy, ...} : on en tire une chaîne
-  // lisible (jamais « [object Object] »).
 
   function ci(name) {
     const paths = {
@@ -6756,8 +6737,6 @@
     };
     return `<svg class="pv2-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
   }
-
-  const channelLabel = (p) => CHANNEL_LABELS[p] || (p ? p.charAt(0).toUpperCase() + p.slice(1) : 'Canal');
 
   /* ==========================================================================
      MARKETING : le conseiller data (insight-only : il propose, tu appliques,
@@ -6856,7 +6835,7 @@
     return esc(marked).replace(/\uE000/g, '<strong class="br-num">').replace(/\uE001/g, '</strong>');
   }
 
-  const BR_TRIGGER_LABELS = { pluie: 'pluie', chaleur: 'chaleur', creux: 'jour calme', jour_fort: 'jour fort', evenement: 'événement', vacances: 'vacances', concurrent: 'concurrence', demande: 'ta demande', plan: 'mon plan' };
+  const BR_TRIGGER_LABELS = { pluie: 'pluie', chaleur: 'chaleur', creux: 'jour calme', jour_fort: 'jour fort', evenement: 'événement', vacances: 'vacances', concurrent: 'concurrence', demande: 'votre demande', plan: 'mon plan' };
   const BR_TRIGGER_TONE = { creux: 'danger', jour_fort: 'success' };
   const BR_NETWORK_LABELS = { facebook: 'Facebook', instagram: 'Instagram', story: 'Story', email: 'Email' };
 
@@ -7125,7 +7104,7 @@
     try {
       await navigator.clipboard.writeText(entry.text);
     } catch (error) {
-      toast('Copie auto impossible : sélectionne le texte à la main.');
+      toast('Copie automatique impossible : sélectionnez le texte à la main.');
       return;
     }
     mkBrief.publishedAsk = key;
@@ -7240,7 +7219,7 @@
       // La proposition nee de CETTE demande (le serveur cite la phrase) entre
       // dans le chat, ouverte : pas besoin d'aller la chercher dans le panneau.
       const made = brVisiblePropositions().find((p) => p.trigger === 'demande' && String(p.why || '').includes(asked.slice(0, 40)));
-      if (made) window.mkwShowProp(made.key, 'C\'est prêt : tu valides, rien ne part tout seul.');
+      if (made) window.mkwShowProp(made.key, 'C\'est prêt : vous validez, rien ne part tout seul.');
       else toast('C\'est prêt : la carte arrive dans « À valider ».');
       mkwPanelReveal();
     } catch (error) {
@@ -7310,7 +7289,7 @@
     } else if (!pack) {
       body = `<div class="empty-state">
         <div class="empty-state-title">L’atelier est prêt</div>
-        <div class="empty-state-text">Choisis un réseau et je fabrique le pack complet : version longue, version courte, story, idée photo, prompt d’image IA et hashtags, écrits sur l’angle du jour.</div>
+        <div class="empty-state-text">Choisissez un réseau et je fabrique le pack complet : version longue, version courte, story, idée photo, prompt d’image IA et hashtags, écrits sur l’angle du jour.</div>
       </div>`;
     } else {
       const q = pack.quality || {};
@@ -7325,7 +7304,7 @@
         ${block(mkBrief.studioChannel === 'linkedin' ? 'Variante' : 'Story', 'story', pack.story)}
         ${block('Hashtags', 'hashtags', (pack.hashtags || []).join(' '))}
         ${block('Idée photo (à shooter sur place)', 'photoIdea', pack.photoIdea)}
-        ${block('Prompt d’image IA', 'aiImagePrompt', pack.aiImagePrompt, { mono: true, note: 'en anglais, pour ton générateur d’images' })}
+        ${block('Prompt d’image IA', 'aiImagePrompt', pack.aiImagePrompt, { mono: true, note: 'en anglais, pour votre générateur d’images' })}
         <p class="mkw-method">Meilleur moment : ${esc(pack.bestTime || '-')}. Chaque version est notée par le contrôle qualité du centre ; la fabrication ci-dessus montre ce qui s’est réellement passé.</p>`;
     }
     return `<section class="mkw-card">
@@ -7523,7 +7502,7 @@
     if (mkComp.busy) return;
     const name = (document.getElementById('brCompName') || {}).value || '';
     const websiteUrl = (document.getElementById('brCompSite') || {}).value || '';
-    if (!name.trim()) { toast('Donne au moins le nom du concurrent.'); return; }
+    if (!name.trim()) { toast('Indiquez au moins le nom du concurrent.'); return; }
     mkComp.busy = true;
     renderStaffCampaignsPage();
     try {
@@ -7656,7 +7635,7 @@
 
   window.pv2CampImprove = async function (button) {
     if (!pv2Camp.form.subject.trim() && !pv2Camp.form.body.trim()) {
-      if (typeof toast === 'function') toast('Écris d\'abord un objet ou un message.');
+      if (typeof toast === 'function') toast('Écrivez d\'abord un objet ou un message.');
       return;
     }
     if (button) button.disabled = true;
@@ -7694,7 +7673,7 @@
       return;
     }
     if (mode === 'now' && !window.confirm(`Envoyer maintenant à ${plural(count, 'destinataire', 'destinataires')} du segment sélectionné ?`)) return;
-    if (mode === 'schedule' && !form.scheduledAt) { if (typeof toast === 'function') toast('Choisis la date et l\'heure d\'envoi.'); return; }
+    if (mode === 'schedule' && !form.scheduledAt) { if (typeof toast === 'function') toast('Choisissez la date et l\'heure d\'envoi.'); return; }
     pv2Camp.busy = true;
     if (button) button.disabled = true;
     renderStaffEmailsPage();
@@ -7847,7 +7826,7 @@
         ? 'calcul…'
         : audience ? `${plural(audience.count, 'destinataire', 'destinataires')}${audience.sample?.length ? ` · ex : ${audience.sample.slice(0, 3).join(', ')}` : ''}` : '-';
       return `<div class="ms-viewer"><div class="ms-form">
-        ${pv2Camp.editingId ? '<div class="ms-form-note">Édition du brouillon : enregistre tes modifications, ou envoie-le directement.</div>' : ''}
+        ${pv2Camp.editingId ? '<div class="ms-form-note">Édition du brouillon : enregistrez vos modifications, ou envoyez-le directement.</div>' : ''}
         <div class="ms-grid-2">
           <label class="ms-field"><span>Nom de la campagne *</span><input type="text" class="ms-input" value="${esc(f.name)}" oninput="pv2Camp.form.name = this.value"></label>
           <label class="ms-field"><span>Objectif</span><input type="text" class="ms-input" placeholder="Ex : remplir les mardis soirs" value="${esc(f.objective)}" oninput="pv2Camp.form.objective = this.value"></label>
@@ -8204,7 +8183,7 @@
     const b = mkBrief.data;
     const q = question.toLowerCase();
     if (!b) {
-      return { q: question, title: 'Le brief n\'est pas chargé', reco: 'Recharge la page : sans le brief du matin, je n\'ai rien de fiable à te répondre.', facts: [], actions: [], source: 'aucune donnée chargée' };
+      return { q: question, title: 'Le brief n\'est pas chargé', reco: 'Rechargez la page : sans le brief du matin, je n\'ai rien de fiable à vous répondre.', facts: [], actions: [], source: 'aucune donnée chargée' };
     }
     const day = mkwFindRadarDay(question);
     if (day) {
@@ -8219,12 +8198,12 @@
       const linked = day.propositionKey && brVisiblePropositions().some((p) => p.key === day.propositionKey);
       const actions = [];
       if (linked) actions.push({ label: 'Voir la proposition prête', js: `mkBrGoCard('${escJs(day.propositionKey)}')` });
-      else if (isQuiet) actions.push({ label: 'Prépare-moi un post pour ce jour', js: `mkBrRadarFill('${escJs(day.date)}')` });
+      else if (isQuiet) actions.push({ label: 'Préparer un post pour ce jour', js: `mkBrRadarFill('${escJs(day.date)}')` });
       return {
         q: question,
         title: `${cap(brFrDay(day.date))} : ce que je vois`,
         reco: day.explanation,
-        why: isQuiet && basket ? `Chaque visiteur récupéré ce jour-là vaut environ ${money(basket)} (ton panier moyen mesuré sur 30 jours).` : '',
+        why: isQuiet && basket ? `Chaque visiteur récupéré ce jour-là vaut environ ${money(basket)} (votre panier moyen mesuré sur 30 jours).` : '',
         facts,
         actions,
         source: 'assemblé depuis le radar du matin (météo, réservations posées, calendrier)',
@@ -8239,7 +8218,7 @@
       const changed = v.changed || [];
       return {
         q: question,
-        title: changed.length ? 'Du mouvement chez tes concurrents' : 'Rien de neuf chez tes concurrents',
+        title: changed.length ? 'Du mouvement chez vos concurrents' : 'Rien de neuf chez vos concurrents',
         reco: changed.length ? `${changed[0].name} : ${changed[0].diff}` : `${Number(v.count) || 0} concurrent${(Number(v.count) || 0) > 1 ? 's' : ''} sous surveillance, aucun changement détecté ce matin.`,
         facts: changed.slice(1, 4).map((c) => `${c.name} : ${c.diff}`),
         actions: [{ label: 'Ouvrir Marché', js: changed.length ? `mkwGoRival('${escJs(changed[0].name)}')` : "mkwTab('rivals')" }],
@@ -8249,7 +8228,7 @@
     if (/(rapport[eé]|r[eé]sultat|impact|combien|euros?|chiffre)/.test(q)) {
       const p = b.paie || {};
       const reco = p.available === false ? 'Mesure indisponible. Réessayez depuis Impact.' : p.young ? `Encore trop tôt pour un chiffre honnête : premier bilan le ${p.firstVerdictDate || ''}.`
-        : (p.euros > 0 ? `${money(p.euros)} de visites honorées liées à tes messages sur ${p.days} jours.` : `${p.sent || 0} messages partis sur ${p.days} jours : aucune visite honorée ne leur est encore liée.`);
+        : (p.euros > 0 ? `${money(p.euros)} de visites honorées liées à vos messages sur ${p.days} jours.` : `${p.sent || 0} messages partis sur ${p.days} jours : aucune visite honorée ne leur est encore liée.`);
       return {
         q: question,
         title: 'Ce que le marketing a rapporté',
@@ -8265,7 +8244,7 @@
       return {
         q: question,
         title: 'L\'horizon des prochaines semaines',
-        reco: weeks.length ? `${weeks.length} semaines posées, dont ${dated} avec une date certaine à jouer (congés, fériés, événements).` : 'Le plan se construit chaque lundi : ouvre-le, il se génère à la demande si besoin.',
+        reco: weeks.length ? `${weeks.length} semaines posées, dont ${dated} avec une date certaine à jouer (congés, fériés, événements).` : 'Le plan se construit chaque lundi : ouvrez-le, il se génère à la demande si besoin.',
         facts: weeks.slice(0, 3).map((w) => `S${w.index} : ${w.objectif}`),
         actions: [{ label: 'Ouvrir Plan', js: "mkwTab('plan')" }],
         source: weeks.length ? 'assemblé depuis le plan réel (calendrier vérifié, rien d\'inventé)' : 'le plan n\'est pas encore chargé',
@@ -8283,7 +8262,7 @@
         q: question,
         title: 'La météo des 14 prochains jours',
         reco: facts.length ? 'Voilà les jours à jouer côté météo.' : 'Rien de marquant côté météo sur les 14 prochains jours.',
-        why: w && w.rainEffectPct !== null ? `Chez toi, la pluie a un effet mesuré de ${mkwSignedPct(w.rainEffectPct)} sur la fréquentation (${w.sampleDays} jours de recul, confiance ${(MKW_CONF[w.confidence] || MKW_CONF.exploratoire).label}).` : 'Je n\'ai pas encore assez de recul pour chiffrer l\'effet météo chez toi.',
+        why: w && w.rainEffectPct !== null ? `Chez vous, la pluie a un effet mesuré de ${mkwSignedPct(w.rainEffectPct)} sur la fréquentation (${w.sampleDays} jours de recul, confiance ${(MKW_CONF[w.confidence] || MKW_CONF.exploratoire).label}).` : 'Je n\'ai pas encore assez de recul pour chiffrer l\'effet météo chez vous.',
         facts,
         actions: [],
         source: 'assemblé depuis le radar du matin et les effets mesurés du centre',
@@ -8292,18 +8271,18 @@
     if (/(formule|anniversaire|prix|offre|promo|tarif)/.test(q)) {
       const f = b.facts || {};
       const facts = [
-        f.bestDay ? `ton meilleur jour : ${f.bestDay.label} (${f.bestDay.avgVisitors} visiteurs en moyenne)` : '',
-        f.worstDay ? `ton jour le plus creux : ${f.worstDay.label}` : '',
+        f.bestDay ? `votre meilleur jour : ${f.bestDay.label} (${f.bestDay.avgVisitors} visiteurs en moyenne)` : '',
+        f.worstDay ? `votre jour le plus creux : ${f.worstDay.label}` : '',
         (b.patterns || []).length ? `${b.patterns.length} contexte${b.patterns.length > 1 ? 's' : ''} déjà mesuré${b.patterns.length > 1 ? 's' : ''} (dans Impact)` : '',
       ].filter(Boolean);
       return {
         q: question,
         title: 'Changer une formule : ce que je sais, ce que je ne sais pas',
-        reco: 'Je ne devine jamais un prix ni une formule : c\'est ta décision. Ce que je sais faire, c\'est la plus petite expérience pour la tester.',
-        why: `Le chemin honnête : tu décides l'offre, je prépare le post, tu le publies, et je mesure l'effet réel pendant 14 jours (le reçu arrive dans Impact).${(b.dataDays || 0) < 90 ? ` Il me manque encore du recul (${b.dataDays || 0} jours de données) pour des verdicts causaux solides.` : ''}`,
+        reco: 'Je ne devine jamais un prix ni une formule : c\'est votre décision. Ce que je sais faire, c\'est la plus petite expérience pour la tester.',
+        why: `Le chemin honnête : vous décidez l'offre, je prépare le post, vous le publiez, et je mesure l'effet réel pendant 14 jours (le reçu arrive dans Impact).${(b.dataDays || 0) < 90 ? ` Il me faut environ 90 jours de données pour attribuer un effet avec certitude ; j'en ai ${b.dataDays || 0}.` : ''}`,
         facts,
         actions: [{ label: 'Me faire préparer le post de test', js: 'mkwPrefillCreate()' }],
-        source: 'assemblé depuis tes journées mesurées, sans rien promettre',
+        source: 'assemblé depuis vos journées mesurées, sans rien promettre',
       };
     }
     return {
@@ -8312,7 +8291,7 @@
       reco: 'Je réponds sur : un jour précis, la météo, les concurrents, le plan, ce que ça rapporte, ou une formule à tester. Pour un livrable (post, email, offre), passe en mode Créer : je le prépare pour de vrai.',
       facts: [],
       actions: [{ label: 'Passer en mode Créer', js: 'mkwPrefillCreate()' }],
-      source: 'aucune invention : je préfère te dire ce que je ne sais pas',
+      source: 'aucune invention : je préfère vous dire ce que je ne sais pas',
     };
   }
 
@@ -8341,7 +8320,7 @@
   function mkwAskAction(answer) {
     const jour = String((answer && answer.jourVise) || '');
     if (answer && answer.action === 'creer_post' && /^\d{4}-\d{2}-\d{2}$/.test(jour)) {
-      return { label: `Prépare-moi un post pour ${brFrDay(jour)}`, js: `mkBrRadarFill('${escJs(jour)}')` };
+      return { label: `Préparer un post pour ${brFrDay(jour)}`, js: `mkBrRadarFill('${escJs(jour)}')` };
     }
     return MKW_ASK_ACTIONS[answer && answer.action] || null;
   }
@@ -8355,7 +8334,7 @@
     sans_modele: 'mode simple : aucun modèle branché',
     budget: 'mode simple : le budget du mois est atteint',
     echec: 'mode simple : le modèle n\'a pas répondu',
-    bloque: 'mode simple : la réponse du modèle citait une donnée que tu n\'as pas, je l\'ai jetée',
+    bloque: 'mode simple : la réponse du modèle citait une donnée que vous n\'avez pas, je l\'ai écartée',
   };
 
   // La reponse ECRITE PAR LE MODELE, ramenee a la forme d'un tour de chat. Les
@@ -8374,7 +8353,7 @@
       why: unknowns.length ? `Ce que je ne sais pas : ${unknowns.join(' ')}` : '',
       facts: Array.isArray(a.faits) ? a.faits.filter(Boolean) : [],
       actions: action ? [action] : [],
-      source: `lu dans tes données : ${Number(basis.joursMesures) || 0} jours mesurés, ${Number(basis.joursRadar) || 0} jours à venir, ${Number(basis.formules) || 0} formules et leurs prix`,
+      source: `lu dans vos données : ${Number(basis.joursMesures) || 0} jours mesurés, ${Number(basis.joursRadar) || 0} jours à venir, ${Number(basis.formules) || 0} formules et leurs prix`,
     };
   }
 
@@ -8392,7 +8371,7 @@
     if (mkw.stateWord) return;
     const pendingUser = { kind: 'qa', q: question, title: '', pendingAnswer: true };
     mkw.thread.push(pendingUser);
-    mkw.stateWord = 'Je regarde tes données';
+    mkw.stateWord = 'Je regarde vos données';
     mkBrief.tab = 'feed';
     renderStaffCampaignsPage();
     mkwScrollChatEnd();
@@ -8426,7 +8405,7 @@
 
   window.mkwAsk = function () {
     const q = String(mkBrief.askDraft || '').trim();
-    if (q.length < 4) { toast('Pose ta question en quelques mots.'); return; }
+    if (q.length < 4) { toast('Posez votre question en quelques mots.'); return; }
     mkBrief.askDraft = '';
     mkwAskFlow(q);
   };
@@ -8519,7 +8498,7 @@
     // porte deja. C'est le repere que le gerant reconnait dans sa propre phrase.
     const jour = (b.radar || []).find((d) => d && d.date && q.includes(String(brFrDay(d.date)).toLowerCase()));
     if (jour) etapes.push({ state: 'searching', label: `Je regarde ${brFrDay(jour.date)}` });
-    else etapes.push({ state: 'searching', label: 'Je relis tes journées mesurées' });
+    else etapes.push({ state: 'searching', label: 'Je relis vos journées mesurées' });
 
     // Un concurrent nomme : on ne cite QUE ceux que la veille connait vraiment.
     const veille = ((b.veille && b.veille.changed) || []).concat((b.veille && b.veille.all) || []);
@@ -8530,7 +8509,7 @@
       etapes.push({ state: 'listening', label: 'Je vérifie la météo annoncée' });
     }
     if (/(formule|prix|tarif|offre|promo|anniversaire)/.test(q)) {
-      etapes.push({ state: 'weaving', label: 'Je relis tes formules et leurs prix' });
+      etapes.push({ state: 'weaving', label: 'Je relis vos formules et leurs prix' });
     }
     if (/(remplir|creux|calme|vide|monde|affluence)/.test(q)) {
       etapes.push({ state: 'solving', label: 'Je compare aux journées qui se sont remplies' });
@@ -8559,7 +8538,7 @@
           <button type="button" class="mkw-mode ${demander ? '' : 'active'}" aria-pressed="${!demander}" onclick="mkwMode('creer')">Créer</button>
         </div>
         <input id="brAskInput" class="mkw-composer-input" data-pl-focus="marketing.demande" value="${esc(mkBrief.askDraft || '')}"
-          placeholder="${demander ? 'Pose ta question : « comment remplir mardi ? »' : 'Décris le livrable : « un post pour la soirée fluo »'}"
+          placeholder="${demander ? 'Posez votre question : « comment remplir mardi ? »' : 'Décrivez le livrable : « un post pour la soirée fluo »'}"
           aria-label="${demander ? 'Poser une question à l\'agent' : 'Demander une création à l\'agent'}"
           oninput="mkBrief.askDraft = this.value" onkeydown="if (event.key === 'Enter') mkwSend()">
         <button type="button" class="pv2-btn primary mkw-composer-send" onclick="mkwSend()" ${busyAsk ? 'disabled' : ''}>${busyAsk ? 'Préparation…' : (demander ? 'Demander' : 'Préparer')}</button>
@@ -8597,7 +8576,7 @@
     const fresh = mkw.knownKeys ? props.filter((p) => !mkw.knownKeys.has(p.key)) : [];
     return props.map((p) => {
       const tone = BR_TRIGGER_TONE[p.trigger] || 'accent';
-      const due = p.dueDate ? (p.dueDate === (mkBrief.data && mkBrief.data.today) ? 'aujourd\'hui' : `avant ${brFrDay(p.dueDate)}`) : 'quand tu veux';
+      const due = p.dueDate ? (p.dueDate === (mkBrief.data && mkBrief.data.today) ? 'aujourd\'hui' : `avant ${brFrDay(p.dueDate)}`) : 'quand vous voulez';
       const verb = p.kind === 'email' ? 'Valider un email' : (p.kind === 'offre' ? 'Une action sur place' : 'Valider un post');
       const isNew = fresh.some((f) => f.key === p.key);
       return `<button type="button" class="mkw-bcard tone-${tone} ${isNew ? 'is-new' : ''}" onclick="mkBrGoCard('${escJs(p.key)}')">
@@ -8655,7 +8634,7 @@
     });
     if (mkPlan.jobId) running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>Le plan se construit</span><em><button type="button" class="mkw-link" onclick="mkwTab('plan')">voir les étapes réelles</button></em></div>`);
     if (mkBrief.studioBusy) running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>Un pack s'écrit dans Créations</span><em>10 à 20 secondes</em></div>`);
-    if (mkBrief.busy === 'ask') running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>Ta demande se prépare</span><em>quelques secondes</em></div>`);
+    if (mkBrief.busy === 'ask') running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>Votre demande se prépare</span><em>quelques secondes</em></div>`);
 
     // A SURVEILLER : signaux reels, sans action urgente.
     const watch = [];
@@ -8668,7 +8647,7 @@
     });
     const eventDay = (b.radar || []).find((d) => d.event);
     if (eventDay) watch.push(`<div class="mkw-brow"><span class="mkw-brow-dot"></span><span>${esc(eventDay.event.replace(' (à 5 min)', ''))}</span><em>${esc(brFrDay(eventDay.date))} · à 5 min</em></div>`);
-    if ((b.dataDays || 0) < 90) watch.push(`<div class="mkw-brow"><span class="mkw-brow-dot"></span><span>J'apprends encore</span><em>${b.dataDays || 0} j de données, verdicts causaux vers 90 j</em></div>`);
+    if ((b.dataDays || 0) < 90) watch.push(`<div class="mkw-brow"><span class="mkw-brow-dot"></span><span>J'apprends encore</span><em title="Il faut environ 90 jours de données pour attribuer un effet avec certitude.">${b.dataDays || 0} j sur 90</em></div>`);
 
     const group = (title, count, rows, empty) => `<div class="mkw-bgroup">
       <div class="mkw-bgroup-head"><h3>${title}</h3>${count ? `<span class="mkw-bcount">${count}</span>` : ''}</div>
@@ -8835,9 +8814,9 @@
     } else if (p.young) {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">-</span><span class="mkw-hero-cap">Encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.</span></div>`;
     } else if (p.quietWindow) {
-      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">0</span><span class="mkw-hero-cap">message envoyé sur les <strong>${p.days} derniers jours</strong>. Tes mesures passées restent plus bas.</span></div>`;
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">0</span><span class="mkw-hero-cap">message envoyé sur les <strong>${p.days} derniers jours</strong>. Vos mesures passées restent plus bas.</span></div>`;
     } else if (p.euros > 0) {
-      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">de visites honorées liées à tes messages · <strong>${p.days} derniers jours</strong></span></div>`;
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">de visites honorées liées à vos messages · <strong>${p.days} derniers jours</strong></span></div>`;
     } else {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis : aucune visite honorée ne leur est encore liée sur ${p.days} j</span></div>`;
     }
@@ -8871,7 +8850,7 @@
     // en chip du héros comme s'ils étaient du ROI de publication (audit 4.6).
     return `<div class="mkw-src-panel">
       ${rows || (p.available === false ? '' : '<p class="mkw-quiet">Pas encore de visite honorée attribuée sur la période.</p>')}
-      ${p.reviewClicks ? `<p class="mkw-src-extra"><b>${p.reviewClicks}</b> clics vers ta fiche Google (emails de suivi post-visite, hors chiffre ci-dessus)</p>` : ''}
+      ${p.reviewClicks ? `<p class="mkw-src-extra"><b>${p.reviewClicks}</b> clics vers votre fiche Google (emails de suivi post-visite, hors chiffre ci-dessus)</p>` : ''}
       <p class="mkw-method">Ne comptent que les visites <strong>déjà passées et réellement honorées</strong> (client marqué arrivé ou payé) : les réservations annulées, les demandes en attente de validation, les clients qui ne sont jamais venus et les réservations à venir sont tous exclus. Chaque visite est créditée au dernier message reçu dans les 60 jours : c’est un lien, pas une preuve absolue.</p>
     </div>`;
   }
@@ -8900,19 +8879,19 @@
     const verdicts = [];
     if (f && f.bestDay) {
       const vs = f.bestDay.vsMedianPct === null ? '' : `${mkwSignedPct(f.bestDay.vsMedianPct)} de monde qu’un jour normal · `;
-      verdicts.push(mkwVerdict('Ton meilleur jour', `${cap(f.bestDay.label)}`, `${vs}${f.bestDay.avgVisitors} visiteurs en moyenne`, f.bestDay.confidence, 'calendar'));
+      verdicts.push(mkwVerdict('Votre meilleur jour', `${cap(f.bestDay.label)}`, `${vs}${f.bestDay.avgVisitors} visiteurs en moyenne`, f.bestDay.confidence, 'calendar'));
     }
     if (f && f.worstDay) {
       const vs = f.worstDay.vsMedianPct === null ? 'la cible n°1 à remplir' : `${Math.abs(f.worstDay.vsMedianPct)}% de monde en moins qu’un jour normal, la cible n°1 à remplir`;
-      verdicts.push(mkwVerdict('Ton jour le plus creux', `${cap(f.worstDay.label)}`, vs, f.worstDay.confidence, 'target', 'danger'));
+      verdicts.push(mkwVerdict('Votre jour le plus creux', `${cap(f.worstDay.label)}`, vs, f.worstDay.confidence, 'target', 'danger'));
     }
     if (f && f.bestMonth) {
       const why = (f.bestMonth.whyDrivers || []).join(', ');
-      verdicts.push(mkwVerdict('Ton meilleur mois', cap(f.bestMonth.label), `${mkwSignedPct(f.bestMonth.vsAvgPct)} vs la moyenne${why ? `, pourquoi : ${why}` : ''}`, f.bestMonth.confidence || 'signal', 'flame'));
+      verdicts.push(mkwVerdict('Votre meilleur mois', cap(f.bestMonth.label), `${mkwSignedPct(f.bestMonth.vsAvgPct)} vs la moyenne${why ? `, pourquoi : ${why}` : ''}`, f.bestMonth.confidence || 'signal', 'flame'));
     }
     if (f && f.weather) {
       const w = f.weather;
-      verdicts.push(mkwVerdict('Effet de la pluie', mkwSignedPct(w.rainEffectPct) || '-', `sur ta fréquentation, à jours comparables · ${w.sampleDays} j de recul`, w.confidence, 'droplet'));
+      verdicts.push(mkwVerdict('Effet de la pluie', mkwSignedPct(w.rainEffectPct) || '-', `sur votre fréquentation, à jours comparables · ${w.sampleDays} j de recul`, w.confidence, 'droplet'));
     }
     if (f && typeof f.holidayEffectPct === 'number') {
       // Signe honnête + la confiance CALCULÉE (plus jamais « solide » en dur).
@@ -8923,7 +8902,7 @@
       return '<p class="mkw-note">J’apprends encore : mes verdicts « quel jour, quel mois, quelle météo » arrivent dès que j’ai 90 jours de recul.</p>';
     }
     return `<div class="mkw-card">
-      <div class="mkw-block-head"><h3>Ce que je sais de ton centre</h3><span class="mkw-block-sub">calculé sur tes propres journées, météo et congés déduits</span></div>
+      <div class="mkw-block-head"><h3>Ce que je sais de votre centre</h3><span class="mkw-block-sub">calculé sur vos propres journées, météo et congés déduits</span></div>
       <div class="mkw-verdicts">${verdicts.join('')}</div>
     </div>`;
   }
@@ -8941,8 +8920,8 @@
     });
     if (!patterns.length) {
       return `<div class="mkw-card mkw-patterns">
-        <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">appris sur tes propres mesures</span></div>
-        <p class="mkw-quiet">Publie et laisse-moi mesurer : les patterns gagnants s’afficheront ici, avec leur effet net.</p>
+        <div class="mkw-block-head"><h3>Ce qui convertit chez vous</h3><span class="mkw-block-sub">appris sur vos propres mesures</span></div>
+        <p class="mkw-quiet">Publiez et laissez-moi mesurer : les patterns gagnants s’afficheront ici, avec leur effet net.</p>
       </div>`;
     }
     const hasBrut = patterns.some((p) => p.basis === 'brut');
@@ -8967,7 +8946,7 @@
       ? 'effet net mesuré vs. journée comparable · une ligne « brut » n’a pas encore sa journée de comparaison'
       : 'effet net mesuré vs. journée comparable';
     return `<div class="mkw-card mkw-patterns">
-      <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">${sub}</span></div>
+      <div class="mkw-block-head"><h3>Ce qui convertit chez vous</h3><span class="mkw-block-sub">${sub}</span></div>
       <div class="mkw-thead mkw-thead-pat" aria-hidden="true"><span>Action · déclencheur</span><span>Preuve</span><span>Effet</span></div>
       ${rows}
       <p class="mkw-method">Effet net = fréquentation réelle moins ce que j’attendais ce jour-là (météo, jour, vacances déduits). Pas encore un test avec groupe témoin.</p>
@@ -9035,7 +9014,7 @@
     if (rows) listState = `<div class="mkw-riv-grid">${rows}</div>`;
     else if (mkComp.loading) listState = typeof renderThinking === 'function' ? renderThinking('weaving', { label: 'Analyse de la concurrence' }) : '<div class="mkw-skel"></div>';
     else if (mkComp.error) listState = `<p class="mkw-quiet mkw-inline-error">${esc(mkComp.error)} <button type="button" class="mkw-link" onclick="loadCompetitors(true)">Réessayer</button></p>`;
-    else listState = '<p class="mkw-quiet">Ajoute les centres qui te prennent des clients : j’inspecte leurs sites, leurs offres et leur note Google.</p>';
+    else listState = '<p class="mkw-quiet">Ajoutez les centres qui vous prennent des clients : j’inspecte leurs sites, leurs offres et leur note Google.</p>';
     return `<section class="mkw-rivals">
       <div class="mkw-card">
         <div class="mkw-block-head"><h3>Les centres que je surveille</h3><span class="mkw-block-sub">j’inspecte leurs sites chaque matin</span></div>
@@ -9047,12 +9026,12 @@
         </div>
       </div>
       <div class="mkw-card">
-        <div class="mkw-block-head"><h3>Colle-moi un post concurrent</h3><span class="mkw-block-sub">je l’analyse, je te prépare la riposte, et je retiens leurs techniques</span></div>
+        <div class="mkw-block-head"><h3>Collez-moi un post concurrent</h3><span class="mkw-block-sub">je l’analyse, je vous prépare la riposte et je retiens leurs techniques</span></div>
         <label class="mkw-label" for="brCompPost">Le texte du post ou de l’offre</label>
-        <textarea id="brCompPost" class="mkw-textarea" placeholder="Colle ici le texte d’un post ou d’une offre d’un concurrent que tu as vu (Facebook, Instagram, leur site…)" oninput="mkComp.postDraft = this.value">${esc(mkComp.postDraft || '')}</textarea>
+        <textarea id="brCompPost" class="mkw-textarea" placeholder="Collez ici le texte d’un post ou d’une offre d’un concurrent (Facebook, Instagram, son site…)" oninput="mkComp.postDraft = this.value">${esc(mkComp.postDraft || '')}</textarea>
         <div class="mkw-riv-analyze">
           <button type="button" class="pv2-btn primary" onclick="mkCompAnalyze()" ${mkComp.postBusy ? 'disabled' : ''}>${mkComp.postBusy ? 'j’analyse…' : 'Analyser'}</button>
-          <span class="mkw-quiet-inline">Tu colles ce que tu regardes déjà : je le transforme en angle.</span>
+          <span class="mkw-quiet-inline">Vous collez ce que vous regardez déjà : je le transforme en angle.</span>
         </div>
         ${mkCompPostResult()}
         <p class="mkw-method">En automatique aussi : j’extrais leurs offres et prix de leur site chaque matin, et j’affiche leur note Google dès qu’elle est disponible.</p>
@@ -9071,13 +9050,13 @@
       ? `<div class="mkw-analy-learned">${ci('sparkles')}<div>
           <span class="mkw-analy-label">J’ai retenu ${r.dnaLearned} technique${r.dnaLearned > 1 ? 's' : ''} de ce post</span>
           ${(r.adn || []).slice(0, 3).map((a) => `<span class="mkw-analy-val">${esc(a.regle)}</span>`).join('')}
-          <span class="mkw-analy-foot">Elles nourrissent mes prochains posts pour toi.</span>
+          <span class="mkw-analy-foot">Elles nourrissent mes prochains posts pour vous.</span>
         </div></div>`
       : '';
     // La riposte n'est plus un cul-de-sac : elle part au Studio en un clic.
     const counter = r.riposte
       ? `<div class="mkw-analy-counter">${ci('bolt')}<div>
-          <span class="mkw-analy-label">Ta riposte</span><span class="mkw-analy-val">${esc(r.riposte)}</span>
+          <span class="mkw-analy-label">Votre riposte</span><span class="mkw-analy-val">${esc(r.riposte)}</span>
           <button type="button" class="mkw-link" onclick="mkwGoStudio('${escJs(String(r.riposte || '').slice(0, 280))}')">En faire un post</button>
         </div></div>`
       : '';
@@ -9094,7 +9073,7 @@
   window.mkCompAnalyze = async function () {
     if (mkComp.postBusy) return;
     const text = (document.getElementById('brCompPost') || {}).value || mkComp.postDraft || '';
-    if (text.trim().length < 15) { toast('Colle le texte du post : au moins une phrase.'); return; }
+    if (text.trim().length < 15) { toast('Collez le texte du post : au moins une phrase.'); return; }
     mkComp.postDraft = text;
     mkComp.postBusy = true;
     mkComp.postResult = null;
@@ -9137,7 +9116,7 @@
 
   function mkwPlanWeek(week) {
     const conf = MKW_PLAN_CONF[week.confiance] || MKW_PLAN_CONF.routine;
-    const today = (mkBrief.data && mkBrief.data.today) || new Date().toISOString().slice(0, 10);
+    const today = (mkBrief.data && mkBrief.data.today) || todayStr();
     // L'état temporel de la semaine, calculé sur ses vraies dates : passée /
     // cette semaine / à venir (audit §7 : « un etat visible par semaine »).
     const state_ = week.to < today ? 'past' : (week.from <= today ? 'current' : 'coming');
@@ -9227,7 +9206,7 @@
     if (!weeks.length) {
       return `<section class="mkw-card"><div class="empty-state">
         <div class="empty-state-title">Pas encore de plan</div>
-        <div class="empty-state-text">Il se construit tout seul chaque lundi. Tu peux aussi le lancer maintenant et me regarder travailler.</div>
+        <div class="empty-state-text">Il se construit tout seul chaque lundi. Vous pouvez aussi le lancer maintenant et suivre chaque étape.</div>
         <button type="button" class="pv2-btn primary" onclick="mkPlanBuild()">Construire le plan</button>
       </div></section>`;
     }
@@ -9235,8 +9214,8 @@
     // L'honnêteté en tête de surface : tant qu'on n'a rien mesuré, on le dit.
     // C'est ce qui empêche le gérant de croire que le plan sait ce qui marche.
     const evidence = plan.context && plan.context.hasMeasuredEvidence
-      ? `Le plan s’appuie sur ce qu’on a mesuré chez toi.`
-      : `Je n’ai pas encore assez de recul pour dire ce qui marche <strong>chez toi</strong>. Ce plan s’appuie sur les dates certaines : congés scolaires, jours fériés, événements près du centre.`;
+      ? `Le plan s’appuie sur ce qui a été mesuré chez vous.`
+      : `Je n’ai pas encore assez de recul pour dire ce qui marche <strong>chez vous</strong>. Ce plan s’appuie sur les dates certaines : congés scolaires, jours fériés, événements près du centre.`;
     // La fraîcheur est AFFICHÉE (audit 4.2 : generatedAt existait, jamais rendu).
     const freshness = plan.generatedAt
       ? `construit le ${new Date(plan.generatedAt).toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' })} à ${new Date(plan.generatedAt).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}`
@@ -9302,8 +9281,8 @@
       // Le bonjour porte l'etat REEL du matin : pas une phrase decorative.
       const props = brVisiblePropositions().filter((p) => !mkBrief.published[p.key]).length;
       const sub = props
-        ? `${props} proposition${props > 1 ? 's' : ''} t'attend${props > 1 ? 'ent' : ''} dans le panneau. Pose une question, ou décris ce que je dois préparer.`
-        : `Rien d'urgent dans le panneau. Pose une question, ou décris ce que je dois préparer.`;
+        ? `${props} proposition${props > 1 ? 's' : ''} vous attend${props > 1 ? 'ent' : ''} dans le panneau. Posez une question, ou décrivez ce que je dois préparer.`
+        : `Rien d'urgent dans le panneau. Posez une question, ou décrivez ce que je dois préparer.`;
       return `<div class="mkw-chat is-hero" id="mkwChat">
         <div class="mkw-chat-hero">
           <h2 class="mkw-hello">${mkwAgentMark()}Bonjour.</h2>
@@ -9972,7 +9951,7 @@
       <div class="field pev-field">
         <label for="pevName">Nom affiché</label>
         <input id="pevName" type="text" maxlength="${PEV_NAME_MAX}" value="${d.name == null ? '' : esc(d.name)}" data-autofocus oninput="pevSet('name', this.value)">
-        <span class="field-hint">Laisse le nom du catalogue si tu ne veux pas le changer.</span>
+        <span class="field-hint">Laissez le nom du catalogue pour ne pas le changer.</span>
       </div>
       <div class="pev-grid2">
         <div class="field pev-field">
@@ -9986,7 +9965,7 @@
         </div>
       </div>
       <div class="pev-toggle-row">
-        <span class="pev-toggle-label">Disponible à la réservation<small>Coupe l'offre pour ton centre sans la retirer du catalogue.</small></span>
+        <span class="pev-toggle-label">Disponible à la réservation<small>Décochée, l'offre n'est plus réservable dans ce centre mais reste au catalogue.</small></span>
         <button type="button" class="mk-switch ${d.enabled ? 'is-on' : ''}" role="switch" aria-checked="${d.enabled ? 'true' : 'false'}" aria-label="Disponible à la réservation" onclick="pevToggle('enabled', this)"><span></span></button>
       </div>
       <div class="pev-toggle-row">
@@ -10021,7 +10000,7 @@
     overlay.className = 'overlay-backdrop pev-overlay';
     overlay.innerHTML = `<div class="modal-surface pev-modal" role="dialog" aria-modal="true" aria-labelledby="pevModalTitle">
       <div class="pev-modal-head">
-        <div><h3 id="pevModalTitle">${esc(pevModalTitle())}</h3><p>Ajuste le tarif de cette formule pour ton centre. Le prix par personne va de 0 à 1000 EUR.</p></div>
+        <div><h3 id="pevModalTitle">${esc(pevModalTitle())}</h3><p>Ajustez le tarif de cette formule pour ce centre. Le prix par personne va de 0 à 1000 €.</p></div>
         <button type="button" class="pev-close" aria-label="Fermer" ${pricingEditor.saving || pricingEditor.resetting ? 'disabled' : ''} onclick="pevCloseModal()">&times;</button>
       </div>
       <div class="pev-modal-body">${pevModalBody()}</div>
@@ -10129,7 +10108,7 @@
     const patch = pevComputePatch();
     if (!Object.keys(patch).length) { pevToast('Aucun changement à enregistrer.'); return; }
     if ('priceValue' in patch && (patch.priceValue == null || !Number.isFinite(patch.priceValue))) {
-      pricingEditor.modalError = 'Indique un prix par personne entre 0 et 1000 EUR.';
+      pricingEditor.modalError = 'Indiquez un prix par personne entre 0 et 1000 €.';
       pevRefreshBody(); pevRefreshFoot();
       return;
     }
@@ -10151,7 +10130,7 @@
       pevReload();
     }).catch((error) => {
       pricingEditor.saving = false;
-      pricingEditor.modalError = (error && error.message) || 'Enregistrement refusé. Réessaie.';
+      pricingEditor.modalError = (error && error.message) || 'Enregistrement refusé. Réessayez.';
       pevRefreshBody(); pevRefreshFoot();
     });
   };
@@ -10171,7 +10150,7 @@
       pevReload();
     }).catch((error) => {
       pricingEditor.resetting = false;
-      pricingEditor.modalError = (error && error.message) || 'Réinitialisation refusée. Réessaie.';
+      pricingEditor.modalError = (error && error.message) || 'Réinitialisation refusée. Réessayez.';
       pevRefreshBody(); pevRefreshFoot();
     });
   };
@@ -10555,10 +10534,10 @@
 
   function cevSaveCreate() {
     const f = catalogEditor.fields || {};
-    if (!String(f.name || '').trim()) { cevFail('Donne un nom a la formule.'); return; }
-    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indique un prix entre 0 et 1000 EUR.'); return; }
+    if (!String(f.name || '').trim()) { cevFail('Donnez un nom à la formule.'); return; }
+    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indiquez un prix entre 0 et 1000 €.'); return; }
     const createSteps = cevCollectSteps();
-    if (!createSteps.length) { cevFail('Ajoute au moins une activite (selectionne une activite dans la liste).'); return; }
+    if (!createSteps.length) { cevFail('Ajoutez au moins une activité (choisissez-la dans la liste).'); return; }
     const formula = cevFieldsToApi();
     formula.steps = createSteps;
     if (f.priceOld != null) formula.priceOld = f.priceOld;
@@ -10572,7 +10551,7 @@
     const id = catalogEditor.modal && catalogEditor.modal.formuleId;
     if (!id) return;
     const stepList = cevCollectSteps();
-    if (!stepList.length) { cevFail('Ajoute au moins une activite (selectionne une activite dans la liste).'); return; }
+    if (!stepList.length) { cevFail('Ajoutez au moins une activité (choisissez-la dans la liste).'); return; }
     cevSubmit({ action: 'setFormulaSteps', id, steps: stepList }, 'Activites de la formule mises a jour.');
   }
 
@@ -10581,7 +10560,7 @@
     if (!id) return;
     const f = catalogEditor.fields || {};
     if (!String(f.name || '').trim()) { cevFail('Le nom ne peut pas etre vide.'); return; }
-    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indique un prix entre 0 et 1000 EUR.'); return; }
+    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indiquez un prix entre 0 et 1000 €.'); return; }
     const api = cevFieldsToApi();
     const patch = {
       name: api.name,
@@ -10620,7 +10599,7 @@
       pevReload();
     }).catch((error) => {
       catalogEditor.saving = false;
-      catalogEditor.error = (error && error.message) || 'Enregistrement refuse. Reessaie.';
+      catalogEditor.error = (error && error.message) || 'Enregistrement refusé. Réessayez.';
       cevRefreshBody();
       cevRefreshFoot();
     });
@@ -10636,7 +10615,7 @@
     if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
     const entry = pevEntry(formuleId);
     const name = entry && entry.name ? entry.name : formuleId;
-    if (!window.confirm(`Supprimer la formule "${name}" de ton catalogue ? Elle disparait de tous TES centres. Les autres clients ne sont pas touches.`)) return;
+    if (!window.confirm(`Supprimer la formule « ${name} » de votre catalogue ? Elle disparaît de tous vos centres. Les autres clients ne sont pas concernés.`)) return;
     apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
       method: 'POST',
       body: pevBody({ action: 'deleteFormula', id: String(formuleId) }),
@@ -10644,7 +10623,7 @@
       pevToast('Formule retiree du catalogue.');
       pevReload();
     }).catch((error) => {
-      pevToast((error && error.message) || 'Suppression refusee. Reessaie.');
+      pevToast((error && error.message) || 'Suppression refusée. Réessayez.');
     });
   };
 
@@ -10657,7 +10636,7 @@
     return mode === 'steps' ? `Activites : ${name}` : `Structure : ${name}`;
   }
   function cevModalSub() {
-    return 'Cette modification change l\'offre de TOUS TES centres, pas seulement celui-ci. Aucun autre client ne la voit.';
+    return 'Cette modification change l\'offre de TOUS VOS centres, pas seulement celui-ci. Aucun autre client ne la voit.';
   }
   function cevModalBodyHtml() {
     if (!catalogEditor.modal) return '';
@@ -10669,7 +10648,7 @@
   }
   function cevModalFootHtml() {
     const busy = catalogEditor.saving;
-    return `<span class="pev-foot-note">Catalogue de ton entreprise. Chaque enregistrement est trace au journal.</span>
+    return `<span class="pev-foot-note">Catalogue de votre entreprise. Chaque enregistrement est tracé au journal.</span>
       <button type="button" class="btn btn-ghost" ${busy ? 'disabled' : ''} onclick="cevCloseModal()">Annuler</button>
       <button type="button" class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="cevSave()">${busy ? 'Enregistrement...' : 'Enregistrer'}</button>`;
   }
@@ -10795,14 +10774,16 @@
         : '',
       closedDayWarning ? `<span class="pv2-chip red">${esc(closedDayWarning)}</span>` : '',
     ].filter(Boolean).join('');
+    // Une carte sans reservation sur 30 jours n affiche rien : « Aucune
+    // réservation liée » se repetait sur chaque carte de la page.
     const usage = Number(row.count)
-      ? `<div class="pv2-price-stats">
-          <span><strong>${Number(row.count)}</strong> résa</span>
-          <span><strong>${Number(row.players) || 0}</strong> joueurs</span>
+      ? `<div class="pv2-price-stats" title="Sur les 30 derniers jours, hors annulations">
+          <span><strong>${Number(row.count)}</strong> ${Number(row.count) > 1 ? 'réservations' : 'réservation'}</span>
+          <span><strong>${Number(row.players) || 0}</strong> ${Number(row.players) > 1 ? 'joueurs' : 'joueur'}</span>
           <span><strong>${money(row.revenue)}</strong></span>
-          <span><strong>${money(Number(row.revenue || 0) / Number(row.count))}</strong> panier</span>
+          <span><strong>${money(Number(row.revenue || 0) / Number(row.count))}</strong> panier moyen</span>
         </div>`
-      : '<div class="pv2-price-stats pv2-price-stats-empty">Aucune réservation liée</div>';
+      : '';
     // Pied de carte : l'action du CENTRE en premier (celle de tous les jours),
     // les deux actions de catalogue ensuite, la suppression reduite a une icone.
     // Les trois actions d'edition vivent dans .pev-foot-main : c'est ce groupe
@@ -10812,7 +10793,7 @@
     // enfants a y=11/13/49, corbeille a x=209 y=49).
     const actions = isFormula ? `<div class="pev-card-foot">
         <div class="pev-foot-main">
-        <button type="button" class="pv2-btn primary" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Tarif du centre</button>
+        <button type="button" class="pv2-btn sm" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Tarif du centre</button>
         ${canManage ? `
         <button type="button" class="pv2-btn sm" data-cev-steps="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
         <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>` : ''}
@@ -10917,7 +10898,7 @@
       const estActivite = ACTIVITY_SECTIONS.includes(group.name);
       const hostId = group === firstFormulaGroup ? ' id="cevCatalogBlock"' : '';
       const legend = group === firstFormulaGroup
-        ? `<span class="pv2-section-legend">« Tarif du centre » n'engage que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS TES centres.</span>`
+        ? `<span class="pv2-section-legend">« Tarif du centre » n'engage que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS VOS centres.</span>`
         : (group.name === ACTIVITY_SECTION_PARTS
           ? `<span class="pv2-section-legend">Ce que vos formules peuvent contenir. Ces activités ne se réservent pas seules.</span>`
           : '');
@@ -11009,7 +10990,7 @@
   window.aevSave = function () {
     if (activityEditor.saving || !activityEditor.modal) return;
     const f = activityEditor.fields || {};
-    if (!String(f.name || '').trim()) { activityEditor.error = 'Donne un nom à l activité.'; aevRefresh(); return; }
+    if (!String(f.name || '').trim()) { activityEditor.error = 'Donnez un nom à l’activité.'; aevRefresh(); return; }
     // « Réglé sur place » est le seul type qui s'assume SANS montant : partout
     // ailleurs un prix vide afficherait « réglé sur place » au client sans que
     // personne ne l'ait décidé.
@@ -11034,7 +11015,7 @@
       })
       .catch((error) => {
         activityEditor.saving = false;
-        activityEditor.error = (error && error.message) || 'Enregistrement refusé. Réessaie.';
+        activityEditor.error = (error && error.message) || 'Enregistrement refusé. Réessayez.';
         aevRefresh();
       });
   };
@@ -11045,7 +11026,7 @@
     if (!window.confirm(`Retirer « ${name} » du catalogue ? Les formules qui l utilisent garderont leur étape.`)) return;
     apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: pevBody({ action: 'deleteActivity', id: String(id) }) })
       .then(() => { pevToast('Activité retirée du catalogue.'); pevReload(); })
-      .catch((error) => pevToast((error && error.message) || 'Suppression refusée. Réessaie.'));
+      .catch((error) => pevToast((error && error.message) || 'Suppression refusée. Réessayez.'));
   };
 
   function aevModalBodyHtml() {
@@ -11083,7 +11064,7 @@
 
   function aevModalFootHtml() {
     const mode = activityEditor.modal && activityEditor.modal.mode;
-    return `<span class="pev-foot-note">Cette activité existe pour tous TES centres, et pour eux seuls.</span>
+    return `<span class="pev-foot-note">Cette activité existe pour tous vos centres, et pour eux seuls.</span>
       <button type="button" class="pv2-btn" ${activityEditor.saving ? 'disabled' : ''} onclick="aevCloseModal()">Annuler</button>
       <button type="button" class="pv2-btn primary" id="aevSaveBtn" ${activityEditor.saving ? 'disabled' : ''} onclick="aevSave()">${activityEditor.saving ? 'Enregistrement…' : (mode === 'create' ? 'Ajouter' : 'Enregistrer')}</button>`;
   }
@@ -11164,11 +11145,18 @@
     const root = document.getElementById('staffPricingPage');
     if (!root) return;
     pevEnsureLoaded();
+    // La fenetre de 30 jours vient de /api/admin-range (direction.view,
+    // reservations.view ou clients.view) : sans ce droit, on ne l appelle
+    // pas, et les tuiles le disent au lieu d afficher des zeros.
+    const voitHistorique = typeof canReadStaffReservationHistory !== 'function' || canReadStaffReservationHistory();
+    if (voitHistorique && typeof ensureStaffClientData === 'function') ensureStaffClientData();
     const allRows = getPricingRows();
     const rows = getPricingRowsFiltered();
     const selected = getSelectedPricingRow(rows);
     if (selected && state.staffPricingSelectedId !== selected.id) state.staffPricingSelectedId = selected.id;
     const metrics = getPricingMetrics(allRows);
+    // « Plus demandé » ne designe une offre que si elle a ete demandee.
+    const top = metrics.topRow && Number(metrics.topRow.count) > 0 ? metrics.topRow : null;
     const filter = state.staffPricingFilter || 'all';
     const countByType = (type) => allRows.filter((row) => row.type === type).length;
     // « Speciales » ne compte QUE la categorie speciale du socle : les autres
@@ -11189,22 +11177,26 @@
 
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
-        crumb: 'Administration / Catalogue',
-        title: 'Activités & tarifs',
+        crumb: 'Activités & tarifs',
+        title: 'Tarifs & formules',
         sub: '',
         actions: `
           <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffPricingQuery || '')}" placeholder="Formule, activité, condition…" oninput="setStaffPricingQuery(this.value)"></label>
           <button type="button" class="pv2-btn" onclick="copyStaffPricingSummary()">Copier</button>
           <button type="button" class="pv2-btn" onclick="exportStaffPricingCsv()">Exporter</button>
-          ${canManage ? '<button type="button" class="pv2-btn" id="cevAddCategory" title="Creer une categorie : donne-lui un nom, elle apparait partout" onclick="cevOpenCreate()">+ Categorie</button>' : ''}
+          ${canManage ? '<button type="button" class="pv2-btn" id="cevAddCategory" title="Créer une catégorie : donnez-lui un nom, elle apparaît partout" onclick="cevOpenCreate()">+ Catégorie</button>' : ''}
           <button type="button" class="pv2-btn primary" onclick="openStaffPricingBooking('${escJs(selected?.id || '')}')">+ Réservation</button>`,
       })}
 
       <section class="pv2-stats">
-        ${stat({ label: 'Offres actives', count: metrics.activeOffers, foot: `${metrics.formulaRows} formules au catalogue` })}
-        ${stat({ label: 'Réservations liées', count: metrics.reservations, foot: 'sur les données locales' })}
-        ${stat({ label: 'Chiffre associé', value: money(metrics.revenue), foot: 'réservations non annulées' })}
-        ${stat({ label: 'Plus demandé', value: metrics.topRow?.title || 'Aucun', foot: `${metrics.topRow?.count || 0} réservation(s)` })}
+        ${stat({ label: 'Offres actives', count: metrics.activeOffers, foot: `dont ${metrics.formulaRows} formules` })}
+        ${voitHistorique ? `
+        ${stat({ label: 'Réservations', count: metrics.reservations, foot: 'sur 30 jours, hors annulations' })}
+        ${stat({ label: 'Chiffre réservé', value: money(metrics.revenue), foot: 'sur 30 jours' })}
+        ${stat({ label: 'Plus demandé', value: top ? top.title : '-', foot: top ? `${formatStaffTerrainCount(Number(top.count), 'réservation')} sur 30 jours` : 'aucune réservation sur 30 jours' })}` : `
+        ${stat({ label: 'Réservations', value: '-', foot: 'historique non accessible avec votre rôle' })}
+        ${stat({ label: 'Chiffre réservé', value: '-' })}
+        ${stat({ label: 'Plus demandé', value: '-' })}`}
       </section>
 
       ${seg([

@@ -134,7 +134,7 @@ async function copyAdminSummary() {
     }
     toast('Résumé copié.');
   } catch (error) {
-    toast("Copie impossible. Réessaie depuis un navigateur autorisé.");
+    toast("Copie impossible. Réessayez depuis un navigateur autorisé.");
   }
 }
 
@@ -3046,7 +3046,7 @@ function mountDirFocusChart(entry) {
     && !Number(totals.revenue) && !Number(totals.cancelled);
   if (noActivity) {
     host.innerHTML = '<div class="dir-focus-empty"><strong>Aucune activité sur cette période.</strong>'
-      + '<span>Change la plage de dates, ou reviens quand les premières réservations seront enregistrées.</span></div>';
+      + '<span>Changez la plage de dates, ou revenez quand les premières réservations seront enregistrées.</span></div>';
     return;
   }
   // Le grand graphe focus est SEUL dans la vue Synthese : viewBox large et plat

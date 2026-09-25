@@ -3297,10 +3297,10 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260917a';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260925e';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20260912a';
-const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260912a';
+const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
 // Les declarations inertes de l'index gardent l'ordre et les versions en un
 // seul endroit. Aucun de ces modules n'est demande pour la vue publique.
 const STAFF_CONSOLE_SOURCES = Array.from(document.querySelectorAll('script[data-staff-console]'), script => script.getAttribute('src'));
@@ -12806,9 +12806,10 @@ function renderStaffFormulesBoard(rows = []) {
     // Pas de bouton ici : « Nouvelle formule » est deja l action principale
     // de l en-tete. La liste d activites citee avant (arcades, minigolf...)
     // n etait pas celle du centre : on decrit sans inventer.
+    // Le sous-titre de la page dit deja a quoi elle sert : l etat vide ne le
+    // paraphrase pas.
     return `<div class="events-empty-state">
       <strong>Aucune formule sur cette date.</strong>
-      <span>Chaque formule réservée apparaît ici avec ses activités, à cocher au fil du service.</span>
     </div>`;
   }
   // Regroupement par CATÉGORIE de formule (anniversaires / spéciales / autres),
@@ -12841,16 +12842,19 @@ function renderStaffFormulesBoard(rows = []) {
 // utile »). La fenetre = les 30 jours REVOLUS (hier inclus, jamais
 // aujourd hui : la journee en cours fausserait les moyennes). Source :
 // le cache fusionne du CRM (deja memoise), donc zero cout reseau.
+// La borne est une date LOCALE : toISOString() la rendait en UTC, soit la
+// veille a Bruxelles (minuit local = 22 h ou 23 h UTC), et la fenetre
+// comptait 31 jours.
 function getStaffResourceHistoryRows() {
   const end = todayStr();
-  const from = (() => { const d = parseLocalDate(end); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
+  const from = (() => { const d = parseLocalDate(end); d.setDate(d.getDate() - 30); return toLocalDateStr(d); })();
   const source = typeof getStaffClientSourceReservations === 'function' ? getStaffClientSourceReservations() : (state.reservations || []);
   return source.filter((r) => r && r.status !== 'cancelled' && String(r.date || '') >= from && String(r.date || '') < end);
 }
 
 function computeStaffLaneStats30() {
   const rows = getStaffResourceHistoryRows();
-  const lanes = Array.from({ length: TOTAL_LANES }, (_, index) => ({ lane: index + 1, hours: 0, resas: 0 }));
+  const lanes = Array.from({ length: getAvailabilityLaneCount() }, (_, index) => ({ lane: index + 1, hours: 0, resas: 0 }));
   rows.forEach((reservation) => {
     getBowlingWindowsFromReservation(reservation).forEach((window) => {
       (window.lanes || []).forEach((lane) => {
@@ -12864,7 +12868,7 @@ function computeStaffLaneStats30() {
   let openHours = 0;
   for (let i = 1; i <= 30; i += 1) {
     const d = parseLocalDate(todayStr()); d.setDate(d.getDate() - i);
-    const win = getPlanningWindow(d.toISOString().slice(0, 10));
+    const win = getPlanningWindow(toLocalDateStr(d));
     if (!win.closed) openHours += Math.max(0, Number(win.close) - Number(win.open));
   }
   const totalHours = lanes.reduce((sum, item) => sum + item.hours, 0);
@@ -12913,7 +12917,10 @@ function buildStaffLaneBoardModel() {
   const now = isToday && !win.closed ? currentTimeDecimal() : null;
   const stats30 = computeStaffLaneStats30();
   const lanes = [];
-  for (let lane = 1; lane <= TOTAL_LANES; lane += 1) {
+  // Autant de rangees que de pistes REELLES du centre, comme la grille du
+  // planning : un centre a 6 pistes n a pas de « Piste 7 » a louer.
+  const laneCount = getAvailabilityLaneCount();
+  for (let lane = 1; lane <= laneCount; lane += 1) {
     const laneWindows = allWindows.filter((w) => (w.lanes || []).includes(lane)).sort((a, b) => a.start - b.start);
     const maintenance = state.laneStatuses?.[lane] === 'maintenance';
     const maintInfo = maintenance ? (state.laneMaintenance?.[lane] || {}) : null;
@@ -13132,7 +13139,7 @@ async function loadStaffCenterConfig(force = false) {
     staffCenterConfigCache.loaded = true;
     staffCenterConfigCache.error = error?.message || 'Lecture configuration impossible.';
   }
-  if (state.view === 'staff' && getStaffMenuPage() === 'establishment') renderStaffUtilityPage();
+  if (state.view === 'staff' && ['establishment', 'lanes'].includes(getStaffMenuPage())) renderStaffUtilityPage();
 }
 
 // Page Etablissement : 5 categories au lieu d'un mur. Chaque onglet repond a UNE
@@ -13312,7 +13319,7 @@ function establishmentSlugify(value) {
 
 function renderEstablishmentCustomActivities() {
   if (!establishmentCustomActivitiesDraft.length) {
-    return '<p class="estab-overrides-empty">Aucune activité personnalisée. Ajoute-en une (ex : Réalité Virtuelle, Karaoké, Escape Game).</p>';
+    return '<p class="estab-overrides-empty">Aucune activité personnalisée. Ajoutez-en une (ex : Réalité Virtuelle, Karaoké, Escape Game).</p>';
   }
   return establishmentCustomActivitiesDraft.map(item => `<div class="estab-custom-activity">
     <span>${escapeHtml(item.label)}</span>
@@ -13330,7 +13337,7 @@ function refreshEstablishmentCustomActivitiesList() {
 function addEstablishmentCustomActivity() {
   const input = document.getElementById('estab-new-activity');
   const label = String(input?.value || '').trim().slice(0, 60);
-  if (!label) { toast('Donne un nom à l\'activité.'); return; }
+  if (!label) { toast('Donnez un nom à l\'activité.'); return; }
   const id = establishmentSlugify(label);
   if (!id) { toast('Nom d\'activité invalide.'); return; }
   if (establishmentCustomActivitiesDraft.some(item => item.id === id)) { toast('Cette activité existe déjà.'); return; }
@@ -13351,7 +13358,7 @@ const ESTABLISHMENT_RESERVED_RESOURCE_IDS = ['bowling_lane', 'laser_arena', 'par
 
 function renderEstablishmentDeclaredResources() {
   if (!establishmentDeclaredResourcesDraft.length) {
-    return '<p class="estab-overrides-empty">Aucune installation déclarée. Ajoute ce que le moteur doit compter (ex : Court de padel, Terrain paintball, Salle).</p>';
+    return '<p class="estab-overrides-empty">Aucune installation déclarée. Ajoutez ce que le moteur doit compter (ex : Court de padel, Terrain paintball, Salle).</p>';
   }
   return establishmentDeclaredResourcesDraft.map(item => `<div class="estab-custom-activity">
     <span>${escapeHtml(item.name)} · ${Number(item.units)} instal. × ${Number(item.capacityPerUnit)} pers. · remise ${Number(item.cleanupMinutes)} min · ${item.allowGroupMixing ? 'mixage groupes' : 'sans mixage'}</span>
@@ -13369,10 +13376,10 @@ function refreshEstablishmentDeclaredResourcesList() {
 function addEstablishmentDeclaredResource() {
   const nameInput = document.getElementById('estab-res-name');
   const name = String(nameInput?.value || '').trim().slice(0, 60);
-  if (!name) { toast('Donne un nom à l\'installation.'); return; }
+  if (!name) { toast('Donnez un nom à l\'installation.'); return; }
   const id = establishmentSlugify(name).replace(/-/g, '_');
   if (!id) { toast('Nom d\'installation invalide.'); return; }
-  if (ESTABLISHMENT_RESERVED_RESOURCE_IDS.includes(id)) { toast('Ce nom est réservé au moteur, choisis-en un autre.'); return; }
+  if (ESTABLISHMENT_RESERVED_RESOURCE_IDS.includes(id)) { toast('Ce nom est réservé au moteur, choisissez-en un autre.'); return; }
   if (establishmentDeclaredResourcesDraft.some(item => item.id === id)) { toast('Cette installation existe déjà.'); return; }
   if (establishmentDeclaredResourcesDraft.length >= 20) { toast('Maximum 20 installations déclarées.'); return; }
   const units = Number(document.getElementById('estab-res-units')?.value);
@@ -14188,7 +14195,7 @@ function renderEstablishmentEditPanels(center, active) {
 
     <fieldset class="establishment-card establishment-activities">
       <legend>Activités disponibles</legend>
-      <p class="estab-card-hint">Coche les activités du catalogue proposées sur ce centre.</p>
+      <p class="estab-card-hint">Cochez les activités du catalogue proposées dans ce centre.</p>
       <div class="establishment-activity-grid">
         ${(staffCenterConfigCache.activities || []).map(activity => `<label class="establishment-activity ${center.activityAvailability?.[activity.id] ? 'on' : ''}">
           <input type="checkbox" id="estab-act-${escapeHtml(activity.id)}" ${center.activityAvailability?.[activity.id] ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
@@ -14197,7 +14204,7 @@ function renderEstablishmentEditPanels(center, active) {
       </div>
       <div class="estab-subsection">
         <h4>Activités personnalisées de ce centre</h4>
-        <p class="estab-card-hint">Ajoute une activité propre au centre (au-delà du catalogue). Retire-la avec la croix.</p>
+        <p class="estab-card-hint">Ajoutez une activité propre au centre (au-delà du catalogue). Retirez-la avec la croix.</p>
         <div class="estab-override-form">
           <input type="text" id="estab-new-activity" placeholder="Nom (ex : Réalité Virtuelle)" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentCustomActivity();}">
           <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentCustomActivity()">Ajouter</button>
@@ -15617,7 +15624,7 @@ function resetAvailabilityForm() {
 }
 
 async function submitAvailabilityBlock() {
-  if (!canUseStaffPermission('settings.manage')) { toast('Reserve a la direction.'); return; }
+  if (!canUseStaffPermission('settings.manage')) { toast('Réservé à la direction.'); return; }
   const value = id => (document.getElementById(id)?.value || '').trim();
   const scopeType = value('avb-scope') || 'center';
   const recurrence = value('avb-recurrence') || 'once';
@@ -15673,7 +15680,7 @@ async function submitAvailabilityBlock() {
 }
 
 async function deleteAvailabilityBlockUi(id) {
-  if (!canUseStaffPermission('settings.manage')) { toast('Reserve a la direction.'); return; }
+  if (!canUseStaffPermission('settings.manage')) { toast('Réservé à la direction.'); return; }
   const block = (availabilityBlocksCache.blocks || []).find(item => Number(item.id) === Number(id));
   const label = block ? describeAvailabilityBlock(block) : `blocage numero ${id}`;
   if (!window.confirm(`Supprimer ce blocage ?\n${label}`)) return;
@@ -15852,7 +15859,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       // « 0/8 activités faite » : le pluriel de « faites » suivait le nombre de
       // coches, pas le nombre d activites qu il qualifie. Les deux accords
       // s indexent sur le meme mot.
-      panelSubtitle: `${formuleRows.length} formule${formuleRows.length > 1 ? 's' : ''} sur la date · ${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} faite${totals.total > 1 ? 's' : ''}`,
+      panelSubtitle: formuleRows.length ? `${formuleRows.length} formule${formuleRows.length > 1 ? 's' : ''} sur la date · ${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} faite${totals.total > 1 ? 's' : ''}` : '',
       primaryLabel: 'Nouvelle formule',
       primaryAction: "openQuickBook({ date: state.currentDate, type: 'formule' })",
       kpis: [
@@ -15957,6 +15964,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     // La fenetre 30 j vit dans le cache CRM : on le remplit des l arrivee
     // sur la page (le rechargement repeint via loadStaffClientData).
     if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
+    ensureStaffCenterConfigForPlanning();
     const laneBoard = buildStaffLaneBoardModel();
     return {
       ...base,
@@ -16155,8 +16163,21 @@ function getPricingTone(type) {
   return 'amber';
 }
 
+// LES CHIFFRES DE LA PAGE TARIFS PORTENT SUR 30 JOURS. Ils comptaient
+// « les données locales » : ce que la console avait charge, une fenetre que
+// personne ne connait (le jour affiche et ses voisins). Meme fenetre que
+// Pistes et Laser Game : les 30 jours revolus, annulations exclues.
+// L historique vient de /api/admin-range : sans le droit de le lire, la page
+// ne compte RIEN (jamais les seules reservations en memoire).
+function canReadStaffReservationHistory() {
+  return typeof canUseStaffPermission !== 'function'
+    || ['direction.view', 'reservations.view', 'clients.view'].some(permission => canUseStaffPermission(permission));
+}
+if (typeof window !== 'undefined') window.canReadStaffReservationHistory = canReadStaffReservationHistory;
+
 function getPricingReservations() {
-  return (state.reservations || []).filter(reservation => reservation.status !== 'cancelled');
+  if (!canReadStaffReservationHistory()) return [];
+  return getStaffResourceHistoryRows();
 }
 
 function getPricingUsageMap() {
@@ -16535,7 +16556,7 @@ function moneyForRole(amount) {
 function exportStaffPricingCsv() {
   if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
   const rows = getPricingRowsFiltered();
-  const header = ['Type', 'Nom', 'Prix', 'Capacite', 'Disponibilite', 'Reservations', 'Joueurs', 'Revenu', 'Details'];
+  const header = ['Type', 'Nom', 'Prix', 'Capacité', 'Disponibilité', 'Réservations (30 j)', 'Joueurs (30 j)', 'Chiffre (30 j)', 'Détails'];
   const body = rows.map(row => [
     getPricingTypeLabel(row.type),
     row.title,
@@ -16834,6 +16855,7 @@ async function loadStaffClientData(force = false) {
   };
   if (isStaffClientsActive()) renderStaffClientsPage();
   else if (isStaffUtilityActive()) renderStaffUtilityPage();
+  else if (isStaffPricingActive() && typeof renderStaffPricingPage === 'function') renderStaffPricingPage();
   try {
     const centerQuery = encodeURIComponent(getActiveOpsCenterId());
     const startDate = encodeURIComponent(range.startDate);
@@ -16859,6 +16881,7 @@ async function loadStaffClientData(force = false) {
   }
   if (isStaffClientsActive()) renderStaffClientsPage();
   else if (isStaffUtilityActive()) renderStaffUtilityPage();
+  else if (isStaffPricingActive() && typeof renderStaffPricingPage === 'function') renderStaffPricingPage();
 }
 
 function ensureStaffClientData() {
@@ -18616,7 +18639,7 @@ function composeStaffClientEmail(email = '', name = '') {
       msState.draft.body = starter ? fillStarter(starter.body, '') : `Bonjour ${name || ''},\n\n`;
       msState.aiTips = [];
       if (typeof setAdminTab === 'function') setAdminTab('mail');
-      toast(`Relance prête pour ${address} : relis et envoie.`);
+      toast(`Relance prête pour ${address} : relisez-la, puis envoyez.`);
     }).catch(() => {});
     return;
   }
@@ -20578,11 +20601,18 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   const prevBtn = document.getElementById('staffPrevDateBtn');
   if (prevBtn) prevBtn.disabled = false;
 
-  const bowlingReservations = dayReservations.filter(r => getBowlingWindowsFromReservation(r).length > 0);
+  // La tete du planning ne redit pas les comptes des tuiles juste au-dessus
+  // (reservations, joueurs) : elle dit ce qu elles ne disent pas, les
+  // horaires du jour. Son titre compte les pistes que la grille dessine
+  // vraiment (getAvailabilityLaneCount), plus un « 8 » ecrit dans la page.
   const planningWindow = getPlanningWindow(state.currentDate);
-  const bowlingPlayers = bowlingReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0);
   const planningSub = document.getElementById('planningSub');
-  if (planningSub) planningSub.textContent = `${bowlingReservations.length} réservation${bowlingReservations.length > 1 ? 's' : ''} bowling • ${bowlingPlayers} joueurs • ${planningWindow.closed ? 'centre fermé' : planningWindow.label}`;
+  if (planningSub) planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;
+  const planningLaneTitle = document.getElementById('planningLaneTitle');
+  if (planningLaneTitle) {
+    const laneCount = getAvailabilityLaneCount();
+    planningLaneTitle.textContent = `Planning ${laneCount} piste${laneCount > 1 ? 's' : ''}`;
+  }
   const planningSearchInput = document.getElementById('planningSearchInput');
   if (planningSearchInput && planningSearchInput !== document.activeElement) planningSearchInput.value = state.searchTerm || '';
   const laserPlanningSearchInput = document.getElementById('laserPlanningSearchInput');
@@ -20625,7 +20655,9 @@ function renderKpis() {
     if (labelEl) labelEl.textContent = label;
     if (hintEl) hintEl.textContent = hint;
   };
-  setKpiCopy(0, "Réservations aujourd'hui", view === 'laser' ? 'sessions laser' : view === 'all' ? 'sessions activité' : 'sessions piste');
+  // « aujourd'hui » seulement quand la date affichee l est : sur un autre
+  // jour, la tuile affirmait un fait faux.
+  setKpiCopy(0, state.currentDate === todayStr() ? "Réservations aujourd'hui" : 'Réservations', view === 'laser' ? 'sessions laser' : view === 'all' ? 'sessions activité' : 'sessions piste');
   setKpiCopy(1, 'Joueurs prévus', 'personnes');
   setKpiCopy(2, "Chiffre d'affaires", '');
   setKpiCopy(3, "Taux d'occupation", view === 'laser' ? 'capacité laser' : view === 'all' ? 'capacité globale' : 'capacité pistes');
@@ -20639,7 +20671,9 @@ function renderKpis() {
   // a cote de tuiles qui, elles, passaient par formatMoney (« 781 € ») : deux
   // typographies pour la meme donnee, sur des ecrans consecutifs.
   document.getElementById('kpiRev').textContent = seesMoney ? formatMoney(revTotal) : '···';
-  document.getElementById('kpiCollected').textContent = seesMoney ? `${formatMoney(revColl)} validés` : '···';
+  // « validés » ne disait pas quoi : c est l argent ENCAISSE (statut payé),
+  // le mot du Terrain (« non encaissés »).
+  document.getElementById('kpiCollected').textContent = seesMoney ? `${formatMoney(revColl)} encaissés` : '···';
   document.getElementById('kpiOcc').textContent = occ + '%';
 }
 

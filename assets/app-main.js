@@ -768,14 +768,19 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   markReservationMutation(requestKey, updated, moveFields);
   applyOptimisticReservation(updated, { preserveEditState: true });
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated, {
-        skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
-        laneCount: requiredCount,
-        requiresLanes: true,
-        allowPastStart: true
-      }))
+    // Le deplacement POSE une heure, des pistes et un placement : rejoue sur
+    // une version plus recente, il garde ce que l autre a change ailleurs.
+    const payload = await envoyerModificationReservation(reservation, (dossier) => ({
+      ...dossier,
+      startTime: movedReservationStartTime,
+      lanes,
+      allowPastStart: true,
+      opsPlan: movedOpsPlan
+    }), {
+      skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
+      laneCount: requiredCount,
+      requiresLanes: true,
+      allowPastStart: true
     });
     if (!isLatestRequest()) return;
     if (!payload?.reservation) throw new Error('Sauvegarde non confirmée par le serveur.');
@@ -801,7 +806,8 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     }
   } catch (error) {
     if (!isLatestRequest()) return;
-    applyOptimisticReservation(previous, { preserveEditState: true });
+    // Un conflit rend la version actuelle : l ecran la montre, pas l ancienne.
+    applyOptimisticReservation(error.reservation || previous, { preserveEditState: true });
     clearReservationMutation(requestKey);
     // LE REFUS DOIT PARLER DE CE QU ON A DEPLACE. Le serveur replanifie une
     // formule ENTIERE depuis son heure de depart : deplacer sa carte de
@@ -1635,7 +1641,7 @@ function hydrateSelectedReservation() {
   }
   state.selectedRes = fresh;
   if (state.activeTab === 'modifier' && state.editState) return;
-  state.editState = { ...fresh, lanesStr: (fresh.lanes || []).join(', ') };
+  state.editState = etatEditionDepuis(fresh);
 }
 
 function buildReservationApiPayload(reservation, overrides = {}) {
@@ -1654,6 +1660,170 @@ function buildReservationApiPayload(reservation, overrides = {}) {
     channel,
     allowPastStart: channel === 'staff' && Boolean(overrides.allowPastStart ?? reservation.allowPastStart)
   };
+}
+
+// ── DEUX POSTES, UNE RESERVATION (2026-09-25) ────────────────────────────────
+//
+// Movsar : « plusieurs ecrans, plusieurs PC, plusieurs personnes ». Chaque
+// ecriture de reservation envoie le dossier ENTIER (buildReservationApiPayload),
+// pris dans la copie de CET ecran : un poste qui avait la fiche ouverte depuis
+// une minute renvoyait le statut, les pistes ou la note d il y a une minute, et
+// effacait en silence ce qu un collegue venait d y changer.
+//
+// Une action est donc une FONCTION (`appliquer` : dossier -> dossier), pas un
+// dossier fige. Elle part avec la version sur laquelle on l a calculee
+// (baseUpdatedAt, controlee par updateReservation dans lib/database.js). Si le
+// serveur repond 409, le dossier a change entre-temps : l action est rejouee
+// sur la version actuelle, qui garde ce que l autre a fait. Un seul cas
+// s arrete : l action IMPOSE une valeur (un statut, une heure, un nombre de
+// joueurs) a un champ que l autre a change autrement. On n ecrase pas : l ecran
+// montre la version actuelle et la personne decide. Une action qui COMPOSE
+// (ajouter un supplement, recalculer un prix) se rejoue simplement.
+const CHAMPS_RESERVATION_ECRITS = ['name', 'phone', 'email', 'date', 'startTime', 'duration', 'totalDuration', 'lanes', 'pax', 'status', 'basePrice', 'price', 'type', 'formuleId', 'label', 'occasion', 'extras', 'paymentMethod', 'notes', 'opsPlan', 'validationStatus', 'activityProgress', 'program', 'centerId'];
+const LIBELLES_CHAMPS_RESERVATION = {
+  name: 'le nom',
+  phone: 'le téléphone',
+  email: 'l’e-mail',
+  date: 'la date',
+  startTime: 'l’heure',
+  duration: 'la durée',
+  totalDuration: 'la durée',
+  lanes: 'les pistes',
+  pax: 'le nombre de joueurs',
+  status: 'le statut',
+  price: 'le prix',
+  type: 'l’activité',
+  formuleId: 'la formule',
+  label: 'la formule',
+  occasion: 'l’occasion',
+  extras: 'les suppléments',
+  paymentMethod: 'le paiement',
+  notes: 'la note',
+  opsPlan: 'le placement au planning',
+  validationStatus: 'la validation',
+  activityProgress: 'le suivi des activités',
+  program: 'le programme',
+  centerId: 'le centre'
+};
+
+// Deux valeurs pareilles pour un humain le sont ici : 8 et « 8 », [3] et
+// ["3"], null et chaine vide, les memes cles dans un autre ordre.
+function valeurReservationComparable(valeur) {
+  if (valeur === null || valeur === undefined || valeur === '') return '';
+  if (typeof valeur === 'number') return Number.isFinite(valeur) ? String(valeur) : '';
+  if (typeof valeur === 'boolean') return String(valeur);
+  if (typeof valeur === 'string') {
+    const texte = valeur.trim();
+    return /^-?\d+(\.\d+)?$/.test(texte) ? String(Number(texte)) : texte;
+  }
+  if (Array.isArray(valeur)) return JSON.stringify(valeur.map(valeurReservationComparable));
+  if (typeof valeur === 'object') {
+    return JSON.stringify(Object.keys(valeur).sort()
+      .map((cle) => [cle, valeurReservationComparable(valeur[cle])])
+      .filter((paire) => paire[1] !== ''));
+  }
+  return String(valeur);
+}
+
+function champsReservationModifies(avant, apres) {
+  return CHAMPS_RESERVATION_ECRITS.filter((champ) => valeurReservationComparable(avant ? avant[champ] : undefined)
+    !== valeurReservationComparable(apres ? apres[champ] : undefined));
+}
+
+function libellesChampsReservation(champs) {
+  return [...new Set((champs || []).map((champ) => LIBELLES_CHAMPS_RESERVATION[champ]).filter(Boolean))].join(', ');
+}
+
+function conflitReservation(courante, champs, message) {
+  const libelles = libellesChampsReservation(champs);
+  const error = new Error(message || `La réservation a changé entre-temps${libelles ? ` (${libelles})` : ''}. L’écran est à jour : refaites l’action si elle tient toujours.`);
+  error.conflit = true;
+  error.reservation = courante;
+  error.champs = champs || [];
+  return error;
+}
+
+// LES ECRITURES D UN POSTE SUR UN MEME DOSSIER PARTENT L UNE APRES L AUTRE.
+// Deux glisser-deposer rapides, ou « Arrivé » puis « Payé » : la seconde
+// s applique a ce que la premiere a produit. Sans cette file, elle partait
+// avec la version d avant la premiere et le serveur la prenait pour une
+// modification venue d ailleurs. (Carte creee a la demande : une fonction est
+// hissee, une constante ne l est pas.)
+function fileEcrituresReservation() {
+  if (!fileEcrituresReservation.carte) fileEcrituresReservation.carte = new Map();
+  return fileEcrituresReservation.carte;
+}
+
+function enchainerEcritureReservation(id, ecrire) {
+  const file = fileEcrituresReservation();
+  const cle = String(id);
+  const precedente = file.get(cle) || Promise.resolve(null);
+  const tache = precedente.then((derniere) => ecrire(derniere));
+  const suite = tache.then((payload) => (payload && payload.reservation) || null, () => null);
+  file.set(cle, suite);
+  suite.then(() => { if (file.get(cle) === suite) file.delete(cle); });
+  return tache;
+}
+
+function envoyerModificationReservation(avant, appliquer, overrides = {}) {
+  return enchainerEcritureReservation(avant.id, async (derniere) => {
+    // Une ecriture de CE poste vient d aboutir sur ce dossier : on part de ce
+    // que le serveur en a fait, pas de l ecran d avant.
+    const base = derniere && String(derniere.id) === String(avant.id) ? derniere : avant;
+    const apres = appliquer(base);
+    // Des options qui dependent du dossier (le nombre de pistes d une partie
+    // laser) se recalculent sur la version envoyee, pas sur celle d avant.
+    const optionsPour = (reservation) => (typeof overrides === 'function' ? overrides(reservation) : overrides);
+    const envoyer = (version, reservation) => apiRequest(API_ENDPOINTS.staffReservations, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        ...buildReservationApiPayload(reservation, optionsPour(reservation)),
+        ...(version ? { baseUpdatedAt: version } : {})
+      })
+    });
+    try {
+      return await envoyer(base.updatedAt, apres);
+    } catch (error) {
+      const courante = error && error.status === 409 && error.payload ? error.payload.reservation : null;
+      if (!courante) throw error;
+      const miens = champsReservationModifies(base, apres);
+      const leurs = champsReservationModifies(base, courante);
+      const rejouee = appliquer(courante);
+      // Dispute : l action pose la MEME valeur quelle que soit la version (elle
+      // l impose), et l autre y avait mis autre chose.
+      const disputes = miens.filter((champ) => leurs.includes(champ)
+        && valeurReservationComparable(rejouee[champ]) === valeurReservationComparable(apres[champ])
+        && valeurReservationComparable(rejouee[champ]) !== valeurReservationComparable(courante[champ]));
+      if (disputes.length) throw conflitReservation(courante, disputes);
+      try {
+        const payload = await envoyer(courante.updatedAt, rejouee);
+        payload.changeEntreTemps = libellesChampsReservation(leurs.filter((champ) => !miens.includes(champ)));
+        return payload;
+      } catch (second) {
+        const encore = second && second.status === 409 && second.payload ? second.payload.reservation : null;
+        if (encore) throw conflitReservation(encore, [], 'La réservation change en ce moment ailleurs. L’écran est à jour : réessayez dans un instant.');
+        throw second;
+      }
+    }
+  });
+}
+
+// L EDITION PART D UNE VERSION CONNUE. Ce que la personne a change se mesure
+// contre le dossier tel qu il etait a l ouverture du formulaire (`origine`),
+// jamais contre l ecran rafraichi pendant qu elle tapait ; `base` est la
+// version que le serveur controlera (l origine, ou la version montree apres un
+// conflit). Rangee a cote de l etat d edition, sans rien ajouter a ce qui est
+// envoye au serveur.
+function departsEdition() {
+  if (!departsEdition.carte) departsEdition.carte = new WeakMap();
+  return departsEdition.carte;
+}
+
+function etatEditionDepuis(reservation) {
+  const etat = { ...reservation };
+  etat.lanesStr = (reservation.lanes || []).join(', ');
+  departsEdition().set(etat, { origine: { ...reservation }, base: { ...reservation } });
+  return etat;
 }
 
 // CE QUI DECIDE D'UN RE-RENDU, C'EST CE QUI SE DESSINE, PAS L'HORODATAGE.
@@ -1821,7 +1991,7 @@ function applyOptimisticReservation(reservation, options = {}) {
   if (state.selectedRes && state.selectedRes.id === reservation.id) {
     state.selectedRes = reservation;
     if (options.preserveEditState) {
-      state.editState = { ...reservation, lanesStr: (reservation.lanes || []).join(', ') };
+      state.editState = etatEditionDepuis(reservation);
     }
   }
   save();
@@ -10910,7 +11080,10 @@ function validateReservationDirect(id, ev) {
   const nextReservation = { ...current, validationStatus: 'confirmed' };
   markReservationMutation(id, nextReservation, ['validationStatus']);
   applyOptimisticReservation(nextReservation, { preserveEditState: true });
-  apiRequest(API_ENDPOINTS.staffReservations, {
+  // PATCH PARTIEL : le serveur complete avec ce qui est en base au moment de
+  // l ecriture (relu sous verrou, updateReservation), pistes comprises. Il
+  // passe dans la file du dossier comme les autres ecritures de ce poste.
+  enchainerEcritureReservation(id, () => apiRequest(API_ENDPOINTS.staffReservations, {
     method: 'PATCH',
     body: JSON.stringify({
       id: Number(id),
@@ -10918,7 +11091,7 @@ function validateReservationDirect(id, ev) {
       validationStatus: 'confirmed',
       skipReplan: true
     })
-  }).then(payload => {
+  })).then(payload => {
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     markReservationMutation(id, payload.reservation, ['validationStatus']);
     toast('Réservation validée');
@@ -18710,7 +18883,7 @@ function openStaffReservationDetail(id) {
   state.currentDate = reservation.date || state.currentDate;
   state.selectedRes = reservation;
   state.activeTab = 'details';
-  state.editState = { ...reservation, lanesStr: (reservation.lanes || []).join(', ') };
+  state.editState = etatEditionDepuis(reservation);
   save();
   renderPos();
 }
@@ -21456,10 +21629,11 @@ function setReservationStatusDirect(id, status, ev) {
   markReservationMutation(id, nextReservation, ['status', 'paymentMethod']);
   setReservationMutationInFlight(id, 'status', status);
   applyOptimisticReservation(nextReservation, { preserveEditState: true });
-  apiRequest(API_ENDPOINTS.staffReservations, {
-    method: 'PATCH',
-    body: JSON.stringify(buildReservationApiPayload(nextReservation))
-  }).then(payload => {
+  envoyerModificationReservation(current, (dossier) => ({
+    ...dossier,
+    status,
+    paymentMethod: status === 'paid' ? (dossier.paymentMethod || 'Comptoir') : dossier.paymentMethod
+  })).then(payload => {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     // Ré-ancre la protection sur la valeur confirmée par le serveur et repousse
@@ -21474,7 +21648,7 @@ function setReservationStatusDirect(id, status, ev) {
     // clic. L'echec, lui, garde son message : il dit quelque chose de neuf.
   }).catch(error => {
     if (!isLatestRequest()) return;
-    applyOptimisticReservation(current, { preserveEditState: true });
+    applyOptimisticReservation(error.reservation || current, { preserveEditState: true });
     clearReservationMutation(id);
     toast(error.message || 'Impossible de mettre à jour le statut.');
   }).finally(() => {
@@ -21538,14 +21712,19 @@ function toggleFormulaActivity(reservationId, key, ev) {
   markReservationMutation(reservationId, nextReservation, ['activityProgress']);
   applyOptimisticReservation(nextReservation, { preserveEditState: true });
   refreshSurfaces();
-  apiRequest(API_ENDPOINTS.staffReservations, {
+  // UNE COCHE, PAS TOUT LE SUIVI (2026-09-25) : le serveur ajoute ou retire
+  // CETTE cle sur ce qui est en base (setReservationActivityDone). Envoyer le
+  // suivi entier effacait la coche qu un autre poste venait de poser sur une
+  // autre activite du meme dossier.
+  const coche = progress[key] || null;
+  enchainerEcritureReservation(reservationId, () => apiRequest(API_ENDPOINTS.staffReservations, {
     method: 'PATCH',
     body: JSON.stringify({
       id: Number(reservationId),
       centerId: current.centerId || (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : 'libramont'),
-      activityProgress: progress,
+      activityToggle: { key, done: !wasDone, doneAt: coche ? coche.doneAt : '', by: coche ? coche.by : '' },
     })
-  }).then(payload => {
+  })).then(payload => {
     if (!isLatestRequest()) return;
     if (payload?.reservation) {
       const empreinteServeur = empreinteProgression(payload.reservation.activityProgress);
@@ -21574,15 +21753,12 @@ async function cancelRes(id, ev) {
   }
   applyOptimisticReservation({ ...current, status: 'cancelled' }, { preserveEditState: true });
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload({ ...current, status: 'cancelled' }))
-    });
+    const payload = await envoyerModificationReservation(current, (dossier) => ({ ...dossier, status: 'cancelled' }));
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     if (state.selectedRes && state.selectedRes.id === id) closePos();
     toast('Réservation annulée');
   } catch (error) {
-    applyOptimisticReservation(current, { preserveEditState: true });
+    applyOptimisticReservation(error.reservation || current, { preserveEditState: true });
     toast(error.message || 'Impossible d’annuler la réservation.');
   }
 }
@@ -21618,7 +21794,7 @@ function editRes(id, ev) {
   state.selectedRes = state.reservations.find(r => r.id === id);
   if (!state.selectedRes) return;
   state.activeTab = 'modifier';
-  state.editState = { ...state.selectedRes, lanesStr: (state.selectedRes.lanes || []).join(', ') };
+  state.editState = etatEditionDepuis(state.selectedRes);
   syncEditLaneAssignment();
   renderPos();
 }
@@ -21633,7 +21809,7 @@ function openPos(id) {
   upsertReservationInState(reservation);
   state.selectedRes = reservation;
   state.activeTab = 'details';
-  state.editState = { ...reservation, lanesStr: (reservation.lanes || []).join(', ') };
+  state.editState = etatEditionDepuis(reservation);
   renderPos();
 }
 
@@ -21653,7 +21829,7 @@ function closePos() {
 function setTab(t) {
   state.activeTab = t === 'caisse' ? 'details' : t;
   if (state.activeTab === 'modifier') {
-    state.editState = { ...state.selectedRes, lanesStr: (state.selectedRes.lanes || []).join(', ') };
+    state.editState = etatEditionDepuis(state.selectedRes);
     syncEditLaneAssignment();
   }
   renderPos();
@@ -22016,7 +22192,7 @@ async function applyDelayPlan() {
       const fresh = (payload.reservations || []).find(item => Number(item.id) === Number(state.selectedRes.id));
       if (fresh) {
         state.selectedRes = fresh;
-        state.editState = { ...fresh, lanesStr: (fresh.lanes || []).join(', ') };
+        state.editState = etatEditionDepuis(fresh);
       }
     }
     save();
@@ -22491,15 +22667,12 @@ async function applyPosPrice() {
   posPriceEditOpen = false;
   applyOptimisticReservation(next, { preserveEditState: true });
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(next))
-    });
+    const payload = await envoyerModificationReservation(current, (dossier) => ({ ...dossier, price: value }));
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     markReservationMutation(next.id, payload.reservation, ['price']);
     toast('Prix mis à jour pour ce dossier.');
   } catch (error) {
-    applyOptimisticReservation(current, { preserveEditState: true });
+    applyOptimisticReservation(error.reservation || current, { preserveEditState: true });
     toast(error.message || 'Impossible de modifier le prix.');
   }
   renderPos();
@@ -23182,6 +23355,14 @@ function failEdit(message) {
 async function saveEdit(e) {
   e.preventDefault();
   const es = state.editState;
+  // DEUX POSTES, UNE RESERVATION : ce que la personne a CHANGE se mesure contre
+  // le dossier a l ouverture du formulaire, pas contre l ecran rafraichi
+  // pendant qu elle tapait (etatEditionDepuis).
+  const edition = departsEdition().get(es);
+  const origine = (edition && edition.origine) || state.selectedRes;
+  // Sans version connue (etat restaure d un ancien onglet), on part de l ecran
+  // le plus frais, comme avant : rien a controler, mais rien de perime envoye.
+  const versionDeBase = [edition && edition.base, origine].find((dossier) => dossier && dossier.updatedAt) || state.selectedRes;
   const requiresLanes = reservationNeedsLanes(state.selectedRes.type, state.selectedRes.formuleId);
   const requiredCount = getRequiredLaneCount(state.selectedRes.type, es.pax, state.selectedRes.formuleId);
   const duration = Number(es.duration);
@@ -23209,28 +23390,22 @@ async function saveEdit(e) {
     if (!laserAvailability.ok) { failEdit(laserAvailability.message); return; }
   }
 
-  const updated = {
-    ...state.selectedRes,
-    name: es.name,
-    phone: es.phone,
-    pax,
-    duration,
-    startTime: es.startTime,
-    status: es.status,
-    allowPastStart: true,
-    lanes: requiresLanes ? lanes : []
-  };
-  // L ecart voulu par le comptoir (prix d ami) est repris tel quel : editer
-  // l heure ou les joueurs d un dossier offert ne doit pas le repasser au
-  // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
-  const ecartPrix = getReservationPriceGap(state.selectedRes);
-  updated.basePrice = getBasePrice(updated.type, updated.duration, updated.lanes.length, updated.pax, updated.formuleId, updated.date);
-  updated.price = updated.basePrice + sumExtras(updated.extras) + ecartPrix;
+  // Les champs du formulaire, et ceux que la personne a VRAIMENT changes :
+  // seuls ceux-la sont poses sur le dossier. Un statut qu elle n a pas touche
+  // reste celui qui est en base, meme si un collegue l a change pendant
+  // qu elle tapait.
+  const champsSaisis = { name: es.name, phone: es.phone, pax, duration, startTime: es.startTime, status: es.status };
+  const touches = Object.keys(champsSaisis)
+    .filter((champ) => valeurReservationComparable(champsSaisis[champ]) !== valeurReservationComparable(origine[champ]));
+  const lanesFinales = requiresLanes ? lanes : [];
+  const pistesTouchees = valeurReservationComparable(lanesFinales) !== valeurReservationComparable(origine.lanes || []);
 
   // FORMULE ADAPTEE A CE DOSSIER : on envoie un PROGRAMME. Le serveur le
   // renormalise et replanifie (program est dans REPLAN_FIELDS) ; le catalogue
   // n est pas touche. Le nom d origine est conserve, suivi de « adaptee ».
   const programmeModifie = peutAdapterFormule() && editProgramAChange();
+  let programme = null;
+  let libelleAdapte = '';
   if (programmeModifie) {
     const items = getEditProgramItems();
     if (!items.length) { failEdit('Gardez au moins une activité dans ce dossier.'); return; }
@@ -23238,9 +23413,9 @@ async function saveEdit(e) {
     // est refuse par l ecriture en base (normalizeReservationProgram teste
     // value.items) : le contenu edite serait ecrit NULL et la modification
     // ne survivrait pas au premier rechargement.
-    updated.program = { items };
+    programme = { items };
     const nomOrigine = (state.selectedRes.formuleId ? resolveDisplayFormule(state.selectedRes.formuleId)?.name : '') || state.selectedRes.label || '';
-    updated.label = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (state.selectedRes.label || 'Sur mesure');
+    libelleAdapte = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (state.selectedRes.label || 'Sur mesure');
   }
   // CE QU ON AFFICHE EST CE QU ON ENVOIE.
   // Sur un PATCH, le serveur ne recalcule PAS le prix : api/staff-reservations
@@ -23250,12 +23425,31 @@ async function saveEdit(e) {
   // caisse et la fiche se contrediraient. Le comptoir est ici la seule
   // autorite : il envoie exactement le montant qu il a sous les yeux, qu il
   // l ait fige a la main ou laisse se calculer.
-  if (peutAdapterFormule()) {
-    const prixEcran = getEditPriceValue();
+  const prixEcran = peutAdapterFormule() ? getEditPriceValue() : null;
+
+  // L ACTION, rejouable sur une version plus recente du dossier : elle pose ce
+  // que la personne a change et recalcule le prix sur ce qui est en base.
+  const appliquer = (dossier) => {
+    const updated = { ...dossier, allowPastStart: true };
+    touches.forEach((champ) => { updated[champ] = champsSaisis[champ]; });
+    if (pistesTouchees) updated.lanes = lanesFinales;
+    // L ecart voulu par le comptoir (prix d ami) est repris tel quel : editer
+    // l heure ou les joueurs d un dossier offert ne doit pas le repasser au
+    // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
+    const ecartPrix = getReservationPriceGap(dossier);
+    updated.basePrice = getBasePrice(updated.type, updated.duration, (updated.lanes || []).length, updated.pax, updated.formuleId, updated.date);
+    updated.price = updated.basePrice + sumExtras(updated.extras) + ecartPrix;
+    if (programme) {
+      updated.program = programme;
+      updated.label = libelleAdapte;
+    }
     if (prixEcran !== null) updated.price = prixEcran;
-  }
+    return updated;
+  };
   const previousReservation = state.selectedRes;
-  applyOptimisticReservation(updated, { preserveEditState: true });
+  // Sans preserveEditState : le formulaire garde la saisie telle quelle, rien
+  // a retaper si le serveur signale un conflit.
+  applyOptimisticReservation(appliquer(state.selectedRes));
 
   try {
     // `laneCount` DIT COMBIEN DE PISTES ON ENVOIE, pas combien il en faudrait
@@ -23269,10 +23463,7 @@ async function saveEdit(e) {
     // client venait de cesser de l'ecraser. Sans override, le calcul par
     // defaut de buildReservationApiPayload fait exactement ce qu'il faut :
     // max(pistes envoyees, minimum requis).
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated, { requiresLanes, allowPastStart: true }))
-    });
+    const payload = await envoyerModificationReservation(versionDeBase, appliquer, { requiresLanes, allowPastStart: true });
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     state.selectedRes = payload.reservation;
     setEditError('');
@@ -23290,12 +23481,30 @@ async function saveEdit(e) {
     // la reservation est bien ecrite mais elle part en « à surveiller » : le
     // dire, sinon le staff repart en croyant son planning a jour.
     const aVerifier = payload.reservation && payload.reservation.validationStatus === 'staff_review';
-    toast(requiresLanes && voulues && voulues !== obtenues
+    // LE DOSSIER AVAIT CHANGE PENDANT LA SAISIE : on dit ce qui a ete garde,
+    // sinon la personne croit relire sa version et lit celle d un collegue.
+    const constat = requiresLanes && voulues && voulues !== obtenues
       ? `Réservation mise à jour, mais pas sur les pistes demandées : ${obtenues || 'aucune'} au lieu de ${voulues}. Le créneau ne les laissait pas libres.`
       : aVerifier
         ? 'Réservation mise à jour, mais le moteur n’a pas pu replacer ce créneau : elle passe en « à surveiller ».'
-        : 'Réservation mise à jour');
+        : 'Réservation mise à jour';
+    toast(payload.changeEntreTemps
+      ? `${constat.endsWith('.') ? constat : `${constat}.`} Modifié entre-temps et conservé : ${payload.changeEntreTemps}.`
+      : constat);
   } catch (error) {
+    if (error.conflit && error.reservation) {
+      // Un collegue a change ce que la personne voulait changer. Rien n est
+      // ecrit ; sa version devient la base de la fiche, la saisie reste a
+      // l ecran, et un second « Enregistrer » l applique en connaissance de
+      // cause.
+      departsEdition().set(es, { origine, base: error.reservation });
+      applyOptimisticReservation(error.reservation);
+      const libelles = libellesChampsReservation(error.champs);
+      failEdit(libelles
+        ? `La réservation a changé entre-temps (${libelles}). Votre saisie est gardée : enregistrez à nouveau pour l’appliquer.`
+        : error.message);
+      return;
+    }
     applyOptimisticReservation(previousReservation, { preserveEditState: true });
     // La saisie est GARDEE a l'ecran (rien a retaper), donc l'ecran montrerait
     // des valeurs que la base n'a pas : le motif doit rester lisible a cote du
@@ -23329,70 +23538,68 @@ function getReservationPriceGap(reservation) {
   return Math.round(getReservationPriceState(reservation, { repliCatalogue: true }).ecart);
 }
 
+// Le prix d un dossier apres un changement de supplements : reference +
+// supplements + l ecart voulu par le comptoir, recalcule sur la version a
+// laquelle on l applique (celle du serveur si un collegue y a touche).
+function avecSupplements(dossier, extras) {
+  const ecart = getReservationPriceGap(dossier);
+  const updated = { ...dossier, extras };
+  updated.price = (updated.basePrice || getBasePriceForReservation(updated)) + sumExtras(updated.extras) + ecart;
+  return updated;
+}
+
 async function addExtra(uid) {
   const u = UPSELL_CATALOG.find(x => x.id === uid);
   const r = state.selectedRes;
   if (!u || !r) return;
-  const ecart = getReservationPriceGap(r);
-  const updated = {
-    ...r,
-    extras: [...(r.extras || []), u]
-  };
-  updated.price = (updated.basePrice || getBasePriceForReservation(updated)) + sumExtras(updated.extras) + ecart;
-  applyOptimisticReservation(updated, { preserveEditState: true });
+  // L action AJOUTE : rejouee sur une version ou un collegue a deja ajoute un
+  // supplement, les deux restent.
+  const appliquer = (dossier) => avecSupplements(dossier, [...(dossier.extras || []), u]);
+  applyOptimisticReservation(appliquer(r), { preserveEditState: true });
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated))
-    });
+    const payload = await envoyerModificationReservation(r, appliquer);
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
   } catch (error) {
-    applyOptimisticReservation(r, { preserveEditState: true });
-    toast(error.message || 'Impossible d ajouter l extra.');
+    applyOptimisticReservation(error.reservation || r, { preserveEditState: true });
+    toast(error.message || 'Impossible d’ajouter le supplément.');
   }
 }
 
 async function removeExtra(i) {
   const r = state.selectedRes;
   if (!r) return;
-  const ecart = getReservationPriceGap(r);
-  const updated = {
-    ...r,
-    extras: (r.extras || []).filter((_, index) => index !== i)
+  const cible = (r.extras || [])[i];
+  if (!cible) return;
+  // L action RETIRE CE supplement : sur une autre version, on le retrouve par
+  // son contenu, pas par sa position (un collegue a pu en ajouter un avant).
+  const appliquer = (dossier) => {
+    const extras = [...(dossier.extras || [])];
+    const position = dossier === r ? i : extras.findIndex((extra) => valeurReservationComparable(extra) === valeurReservationComparable(cible));
+    if (position >= 0) extras.splice(position, 1);
+    return avecSupplements(dossier, extras);
   };
-  updated.price = (updated.basePrice || getBasePriceForReservation(updated)) + sumExtras(updated.extras) + ecart;
-  applyOptimisticReservation(updated, { preserveEditState: true });
+  applyOptimisticReservation(appliquer(r), { preserveEditState: true });
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated))
-    });
+    const payload = await envoyerModificationReservation(r, appliquer);
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
   } catch (error) {
-    applyOptimisticReservation(r, { preserveEditState: true });
-    toast(error.message || 'Impossible de retirer l extra.');
+    applyOptimisticReservation(error.reservation || r, { preserveEditState: true });
+    toast(error.message || 'Impossible de retirer le supplément.');
   }
 }
 
 async function pay(method) {
   const r = state.selectedRes;
   if (!r) return;
-  const updated = {
-    ...r,
-    status: 'paid',
-    paymentMethod: method
-  };
-  applyOptimisticReservation(updated, { preserveEditState: true });
+  const appliquer = (dossier) => ({ ...dossier, status: 'paid', paymentMethod: method });
+  applyOptimisticReservation(appliquer(r), { preserveEditState: true });
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated))
-    });
+    const payload = await envoyerModificationReservation(r, appliquer);
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
-    toast('Paiement encaisse : ' + method);
+    toast('Paiement encaissé : ' + method);
   } catch (error) {
-    applyOptimisticReservation(r, { preserveEditState: true });
-    toast(error.message || 'Impossible d enregistrer le paiement.');
+    applyOptimisticReservation(error.reservation || r, { preserveEditState: true });
+    toast(error.message || 'Impossible d’enregistrer le paiement.');
   }
 }
 

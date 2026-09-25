@@ -1429,14 +1429,24 @@ async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd 
   if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, updated, moveFields);
   applyOptimisticReservation(updated, { preserveEditState: true });
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated, {
-        skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
-        ...laserPassLanePayload(updated),
-        allowPastStart: true
-      }))
-    });
+    const overrides = {
+      skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
+      ...laserPassLanePayload(updated),
+      allowPastStart: true
+    };
+    // Deux postes, une reservation (assets/app-main.js) : le deplacement pose
+    // son placement (et son heure, s il la change) sur la version du serveur.
+    const payload = typeof envoyerModificationReservation === 'function'
+      ? await envoyerModificationReservation(reservation, (dossier) => ({
+        ...dossier,
+        ...(updated.startTime !== reservation.startTime ? { startTime: updated.startTime } : {}),
+        allowPastStart: true,
+        opsPlan: updated.opsPlan
+      }), (dossier) => ({ ...overrides, ...laserPassLanePayload(dossier) }))
+      : await apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'PATCH',
+        body: JSON.stringify(buildReservationApiPayload(updated, overrides))
+      });
     if (!isLatestRequest()) return;
     if (!payload?.reservation) throw new Error('Sauvegarde non confirmée par le serveur.');
     upsertReservationInState(payload.reservation);
@@ -1449,7 +1459,7 @@ async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd 
     toast(`${unitLabel} placée à ${formatClockDisplay(targetStart)}`);
   } catch (error) {
     if (!isLatestRequest()) return;
-    applyOptimisticReservation(previous, { preserveEditState: true });
+    applyOptimisticReservation(error.reservation || previous, { preserveEditState: true });
     if (typeof clearReservationMutation === 'function') clearReservationMutation(requestKey);
     if (typeof showPlanningMoveNotice === 'function') {
       showPlanningMoveNotice('Déplacement Laser annulé', error.message || 'Impossible de placer cette partie Laser Game.', 'warning');
@@ -1533,14 +1543,24 @@ async function unscheduleLaserPass(reservationId, unitRef) {
   if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, updated, moveFields);
   applyOptimisticReservation(updated, { preserveEditState: true });
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated, {
-        skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
-        ...laserPassLanePayload(updated),
-        allowPastStart: true
-      }))
-    });
+    const overrides = {
+      skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
+      ...laserPassLanePayload(updated),
+      allowPastStart: true
+    };
+    // Deux postes, une reservation (assets/app-main.js) : le deplacement pose
+    // son placement (et son heure, s il la change) sur la version du serveur.
+    const payload = typeof envoyerModificationReservation === 'function'
+      ? await envoyerModificationReservation(reservation, (dossier) => ({
+        ...dossier,
+        ...(updated.startTime !== reservation.startTime ? { startTime: updated.startTime } : {}),
+        allowPastStart: true,
+        opsPlan: updated.opsPlan
+      }), (dossier) => ({ ...overrides, ...laserPassLanePayload(dossier) }))
+      : await apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'PATCH',
+        body: JSON.stringify(buildReservationApiPayload(updated, overrides))
+      });
     if (!isLatestRequest()) return;
     if (!payload?.reservation) throw new Error('Sauvegarde non confirmée par le serveur.');
     upsertReservationInState(payload.reservation);
@@ -1550,7 +1570,7 @@ async function unscheduleLaserPass(reservationId, unitRef) {
     toast('Partie retirée du planning : à replacer quand vous voulez.');
   } catch (error) {
     if (!isLatestRequest()) return;
-    applyOptimisticReservation(previous, { preserveEditState: true });
+    applyOptimisticReservation(error.reservation || previous, { preserveEditState: true });
     if (typeof clearReservationMutation === 'function') clearReservationMutation(requestKey);
     if (typeof showPlanningMoveNotice === 'function') {
       showPlanningMoveNotice('Retrait annulé', error.message || 'Impossible de retirer cette partie Laser Game.', 'warning');

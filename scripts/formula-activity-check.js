@@ -82,7 +82,17 @@ async function installMock(page) {
         // Vrai serveur : activityProgress hors REPLAN_FIELDS ⇒ pas de replan ⇒ opsPlan conservé.
         let base = build(new Date().toISOString().slice(0,10)).find(r => Number(r.id) === Number(b.id)) || {};
         try { if (typeof state !== 'undefined' && Array.isArray(state.reservations)) { const f = state.reservations.find(r => Number(r.id) === Number(b.id)); if (f) base = f; } } catch (e) {}
-        const ap = b.activityProgress && typeof b.activityProgress === 'object' ? b.activityProgress : (window.__QA_STORE__[b.id] || {});
+        // Vrai serveur (setReservationActivityDone) : UNE cle ajoutee ou retiree
+        // sur ce qui est EN BASE, jamais le suivi entier du poste qui coche.
+        const enBase = window.__QA_STORE__[b.id] || (build(new Date().toISOString().slice(0,10)).find(r => Number(r.id) === Number(b.id)) || {}).activityProgress || {};
+        let ap;
+        if (b.activityToggle && typeof b.activityToggle === 'object') {
+          ap = { ...enBase };
+          if (b.activityToggle.done) ap[b.activityToggle.key] = { done: true, doneAt: b.activityToggle.doneAt || '', by: b.activityToggle.by || '' };
+          else delete ap[b.activityToggle.key];
+        } else {
+          ap = b.activityProgress && typeof b.activityProgress === 'object' ? b.activityProgress : enBase;
+        }
         window.__QA_STORE__[b.id] = ap;
         const merged = { ...base, activityProgress: ap };
         return J({ ok: true, reservation: merged, automation: { communications: 0, jobs: 0, refreshed: true } });
@@ -210,7 +220,9 @@ async function main() {
     ok(afterClick.by === 'Rachel', `« fait par » = membre courant (obtenu "${afterClick.by}")`);
     ok(afterClick.summaryDone === 1, 'résumé passe à 1/5');
     ok(afterClick.domDone === 1, 'la ligne est grisée (is-done) dans le DOM');
-    ok(JSON.stringify(afterClick.patchKeys) === JSON.stringify(['activityProgress','centerId','id']), `PATCH minimal { id, centerId, activityProgress } (obtenu ${JSON.stringify(afterClick.patchKeys)})`);
+    // UNE COCHE, PAS TOUT LE SUIVI (2026-09-25) : envoyer le suivi entier
+    // effacait la coche qu un autre poste venait de poser sur une autre activite.
+    ok(JSON.stringify(afterClick.patchKeys) === JSON.stringify(['activityToggle','centerId','id']), `PATCH minimal { id, centerId, activityToggle } : une coche, pas tout le suivi (obtenu ${JSON.stringify(afterClick.patchKeys)})`);
     ok(afterClick.patchStored, 'le serveur (mock) a persisté activity_progress');
 
     // [POLL] la coche survit à un rafraîchissement serveur

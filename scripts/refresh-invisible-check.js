@@ -100,7 +100,17 @@ async function installMock(page) {
         const b = JSON.parse(init.body || '{}');
         let base = build().find(r => Number(r.id) === Number(b.id)) || {};
         try { if (typeof state !== 'undefined' && Array.isArray(state.reservations)) { const f = state.reservations.find(r => Number(r.id) === Number(b.id)); if (f) base = f; } } catch (e) {}
-        const ap = b.activityProgress && typeof b.activityProgress === 'object' ? b.activityProgress : (window.__QA_STORE__[b.id] || {});
+        // Vrai serveur (setReservationActivityDone) : UNE cle ajoutee ou retiree
+        // sur ce qui est EN BASE.
+        const enBase = window.__QA_STORE__[b.id] || (build().find(r => Number(r.id) === Number(b.id)) || {}).activityProgress || {};
+        let ap;
+        if (b.activityToggle && typeof b.activityToggle === 'object') {
+          ap = { ...enBase };
+          if (b.activityToggle.done) ap[b.activityToggle.key] = { done: true, doneAt: b.activityToggle.doneAt || '', by: b.activityToggle.by || '' };
+          else delete ap[b.activityToggle.key];
+        } else {
+          ap = b.activityProgress && typeof b.activityProgress === 'object' ? b.activityProgress : enBase;
+        }
         window.__QA_STORE__[b.id] = ap;
         return J({ ok: true, reservation: { ...base, activityProgress: ap }, automation: { communications: 0, jobs: 0, refreshed: true } });
       }

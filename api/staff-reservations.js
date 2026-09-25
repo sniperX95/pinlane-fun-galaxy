@@ -7,6 +7,10 @@ const {
   getReservationById,
   updateReservation,
   setReservationActivityProgress,
+  setReservationActivityDone,
+  lireVersionAttendue,
+  memeVersion,
+  reservationModifieeEntreTemps,
 } = require('../lib/database');
 const { readJson, sendError, sendJson } = require('../lib/http');
 const { enqueueReservationCommunications } = require('../lib/ops-communications');
@@ -138,7 +142,7 @@ function hasAnyField(body = {}, fields = []) {
 
 function patchNeedsOnlyStatus(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
-  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress'].includes(key));
+  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle'].includes(key));
 }
 
 // Un PATCH qui ne touche QUE le suivi d'activités (cocher/décocher) : chemin rapide
@@ -146,6 +150,15 @@ function patchNeedsOnlyStatus(body = {}) {
 function patchIsActivityProgressOnly(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
   return keys.length === 1 && (keys[0] === 'activityProgress' || keys[0] === 'activity_progress');
+}
+
+// La coche d UNE activite (activityToggle : { key, done, doneAt, by }). Le
+// suivi entier (activityProgress) reste accepte pour un onglet ouvert avant le
+// deploiement, mais c est lui qui perd la coche d un autre poste.
+function patchIsActivityToggleOnly(body = {}) {
+  const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
+  return keys.length === 1 && keys[0] === 'activityToggle'
+    && Boolean(body.activityToggle) && typeof body.activityToggle === 'object';
 }
 
 function isFormulaPatch(body = {}) {
@@ -299,6 +312,47 @@ module.exports = async (req, res) => {
         if (!switchSession) return;
       }
 
+      // DEUX POSTES, UNE RESERVATION. La version sur laquelle le client a
+      // travaille ne correspond plus : on le dit tout de suite, avec la
+      // version actuelle, avant de replanifier pour rien. updateReservation
+      // refait ce controle sous verrou : c est lui qui fait foi.
+      const versionAttendue = lireVersionAttendue(body.baseUpdatedAt);
+      if (versionAttendue !== null && !memeVersion(current.updatedAt, versionAttendue)) throw reservationModifieeEntreTemps(current);
+
+      if (patchIsActivityToggleOnly(body)) {
+        const coche = body.activityToggle;
+        const updated = await setReservationActivityDone(
+          current.id,
+          current.centerId || 'libramont',
+          coche.key,
+          coche.done === true,
+          { doneAt: coche.doneAt, by: coche.by },
+        );
+        const auditToggle = await writeAuditLog({
+          centerId: current.centerId || 'libramont',
+          ...actorFromSession(session),
+          surface: 'api/staff-reservations.js',
+          action: 'setReservationActivityProgress',
+          method: 'PATCH',
+          entityType: 'reservation',
+          entityId: current.id,
+          outcome: 'success',
+          changes: buildChanges(
+            { activityProgress: current.activityProgress },
+            { activityProgress: updated.activityProgress },
+            ['activityProgress'],
+          ),
+          requestId: newRequestId(),
+        });
+        sendJson(res, 200, {
+          ok: true,
+          reservation: updated,
+          automation: { communications: 0, jobs: 0, refreshed: false },
+          ...(auditToggle.warning ? { warnings: [auditToggle.warning] } : {}),
+        });
+        return;
+      }
+
       // Chemin rapide : cocher/décocher une activité de formule. On écrit UNIQUEMENT
       // activity_progress, SANS re-valider pistes/laser/créneau (rien du planning ne
       // change) → plus de faux « Ce créneau vient de changer » qui annulait la coche.
@@ -450,6 +504,12 @@ module.exports = async (req, res) => {
       sendError(res, 503, 'Opération réservation impossible pour le moment. Réessayez.');
       return;
     }
-    sendError(res, (error && error.statusCode) || 400, raw);
+    // 409 : la version actuelle voyage avec le refus, le client rejoue son
+    // action dessus. Elle ne part qu apres le controle de permission sur le
+    // centre de la reservation (plus haut) : un refus de droit reste un 403.
+    const extra = error && error.code === 'reservation_modifiee' && error.reservation
+      ? { code: error.code, reservation: error.reservation }
+      : {};
+    sendError(res, (error && error.statusCode) || 400, raw, extra);
   }
 };

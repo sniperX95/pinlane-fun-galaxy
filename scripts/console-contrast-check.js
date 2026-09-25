@@ -423,9 +423,9 @@ const SCREENS = [
   { id: 'planning-all', label: 'Planning > Toutes', page: 'planning', resource: 'all' },
   { id: 'reservations', label: 'Reservations', page: 'reservations' },
   { id: 'formules', label: 'Formules', page: 'formules' },
-  { id: 'field-arrivals', label: 'Terrain > Arrivees', page: 'arrivals' },
-  { id: 'field-sessions', label: 'Terrain > En cours', page: 'sessions' },
-  { id: 'field-events', label: 'Terrain > Evenements', page: 'events' },
+  // Terrain : une page depuis le 2026-09-25 (Arrivees, En cours et
+  // Evenements fondues en trois colonnes).
+  { id: 'terrain', label: 'Terrain', page: 'arrivals' },
   // Clients & marketing
   { id: 'clients-all', label: 'Clients > Tous', page: 'clients', groupTab: 'all' },
   { id: 'clients-birthdays', label: 'Clients > A venir', page: 'clients', groupTab: 'birthdays' },

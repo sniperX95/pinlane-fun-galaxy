@@ -4552,7 +4552,6 @@ button.dash-state:focus-visible { outline: 2px solid var(--accent); outline-offs
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.req-rail-empty { margin: 0; padding: var(--space-4); color: var(--faint); font-size: 13px; text-align: center; }
 
 .req-item {
   position: relative;
@@ -5690,23 +5689,7 @@ body.dashboard-detail-open { overflow: hidden; }
 
 .utility-panel-flat { border: 0; background: transparent; padding: 0; }
 
-.utility-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
-.utility-panel-head h2 { font-size: 16px; }
-.utility-panel-head p { color: var(--muted); font-size: 12px; margin-top: 3px; }
-
-.utility-panel-head button {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.utility-panel-head button:hover { background: var(--subtle); color: var(--text); }
+.utility-panel-note { color: var(--muted); font-size: 12px; }
 
 .utility-kpi {
   display: grid;
@@ -5721,8 +5704,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .utility-kpi strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 600; }
 .utility-kpi small { color: var(--faint); font-size: 11px; }
 
-.utility-empty,
-.utility-mini-empty {
+.utility-empty {
   display: grid;
   gap: 4px;
   justify-items: center;
@@ -5734,125 +5716,138 @@ body.dashboard-detail-open { overflow: hidden; }
   font-size: 13px;
 }
 
-.utility-mini-empty { padding: var(--space-4); font-size: 12px; }
 .utility-empty strong { color: var(--text); font-size: 14px; font-weight: 500; }
 
 
-/* Cartes réservation utilitaires */
-.utility-res-stack { display: grid; gap: var(--space-2); }
+/* Actions des lignes client (carnet, contacts) */
+.utility-res-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.utility-res-actions .utility-action { min-height: 28px; padding: 0 10px; font-size: 12px; }
 
-.utility-res-card {
+/* TERRAIN (2026-09-25) : trois colonnes EXCLUSIVES, dans l ordre du service.
+   Une reservation n est que dans une colonne ; elle passe a la suivante quand
+   le comptoir clique Arrive puis Paye, ou quand l heure avance. La pastille de
+   chaque colonne dit le moment (neutre, en direct, a traiter), la pastille de
+   la carte dit le statut : jamais deux fois la meme information. */
+.terrain-board {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1.7fr) minmax(120px, 0.8fr) auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
-  align-items: center;
+  align-items: start;
+}
+
+.terrain-column {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--page);
+}
+
+.terrain-column-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 2px 4px; }
+.terrain-column-head::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--faint);
+}
+.terrain-column.is-onsite .terrain-column-head::before { background: var(--accent); }
+.terrain-column.is-closing .terrain-column-head::before { background: var(--warning); }
+.terrain-column-head h2 { font-size: 13px; font-weight: 600; }
+.terrain-count {
+  padding: 0 7px;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  line-height: 18px;
+}
+.terrain-column-head small { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.terrain-list { display: grid; gap: var(--space-2); }
+.terrain-empty { padding: var(--space-4) var(--space-2); color: var(--muted); font-size: 12px; text-align: center; }
+
+.terrain-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface);
-  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+  transition: border-color var(--dur) var(--ease);
+}
+.terrain-card:hover { border-color: var(--line-strong); }
+
+.terrain-card-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.terrain-card-time { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; line-height: 20px; }
+.terrain-card-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.terrain-card-name strong { font-size: 13px; font-weight: 600; line-height: 20px; overflow-wrap: anywhere; }
+
+.terrain-status {
+  justify-self: end;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.terrain-status.tone-review { background: var(--info-soft); color: var(--accent-strong); }
+.terrain-status.tone-arrived { background: var(--warning-soft); color: var(--warning); }
+.terrain-status.tone-paid { background: var(--success-soft); color: var(--success); }
+/* Non pointe : l heure dit que le groupe joue, le statut ne le dit pas. Un
+   contour, pas un aplat : c est un ecart a verifier, pas un etat. */
+.terrain-status.tone-unmarked { background: transparent; color: var(--warning); box-shadow: inset 0 0 0 1px currentColor; }
+
+.terrain-card-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.terrain-price { color: var(--text); font-weight: 500; }
+.terrain-card-facts .pl-price-adjusted { padding: 1px 8px; border-radius: var(--radius-full); font-size: 11px; }
+
+.terrain-card-resources { display: flex; flex-wrap: wrap; gap: 4px; }
+.terrain-card-resources span {
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--subtle);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
 }
 
-.utility-res-card:hover { border-color: var(--line-strong); }
-.utility-res-card.pending { border-left: 2px solid var(--info); }
-.utility-res-card.arrived { border-left: 2px solid var(--warning); }
-.utility-res-card.paid { border-left: 2px solid var(--success); opacity: 0.8; }
-/* LA CARTE COMPACTE NE TIENT PAS LES TROIS COLONNES DE LA CARTE LARGE.
-   Elle n'est utilisee que dans les colonnes du tableau « En cours », larges de
-   354px, soit 328px de carte. Sur ces trois colonnes, les boutons prenaient
-   169px (leur contenu, incompressible) et l'heure 66px : il restait 47px au
-   nom, donc 4 a 8 lignes d'un mot chacune, la fin du nom passait sous les
-   boutons et les cinq `<small>` etaient tronques. Balayage de la largeur de
-   colonne : la forme a trois colonnes ne cesse de casser le nom qu'a partir de
-   610px de colonne (302px pour le bloc central), largeur qu'aucun agencement du
-   tableau ne produit. La carte prend donc la forme deja utilisee sur telephone,
-   qui, elle, rend correctement : deux colonnes, et les boutons sur leur propre
-   rangee. Le bloc central recupere alors toute la largeur restante. */
-.utility-res-card.compact { grid-template-columns: 56px minmax(0, 1fr); padding: 8px 10px; row-gap: 4px; }
-/* L EFFECTIF NE SE CACHE PAS. « Combien de personnes arrivent » est la premiere
-   question du comptoir. La carte compacte supprimait le bloc entier
-   (display:none mesure sur 5/5 cartes de « En cours ») : la surface ou la
-   question se pose le plus etait la seule a ne pas y repondre. On REPLIE le
-   bloc sur une ligne sous le nom au lieu de l effacer : meme donnee, une
-   rangee de plus, aucune colonne en moins. */
-.utility-res-card.compact .utility-res-time { grid-column: 1; grid-row: 1 / span 2; }
-.utility-res-card.compact .utility-res-main { grid-column: 2; grid-row: 1; }
-.utility-res-card.compact .utility-res-actions { grid-column: 1 / -1; grid-row: 3; justify-content: flex-end; padding-top: 2px; }
-.utility-res-card.compact .utility-res-meta {
-  grid-column: 2 / -1;
-  grid-row: 2;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 12px;
+.terrain-card .res-special-request { margin-top: 0; }
+
+.terrain-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-top: 2px; }
+.terrain-when { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.terrain-card.is-closing .terrain-when { color: var(--warning); }
+.terrain-card-actions { display: flex; gap: 6px; margin-left: auto; }
+.terrain-card-actions .utility-action { min-height: 28px; padding: 0 10px; font-size: 12px; }
+
+/* Sous 1180 px, trois colonnes laissent moins de 110 px au nom du client :
+   elles s empilent, toujours dans l ordre du service. */
+@media (max-width: 1180px) {
+  .terrain-board { grid-template-columns: 1fr; }
 }
 
-.utility-res-time { display: grid; gap: 2px; text-align: center; }
-.utility-res-time strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
-.utility-res-time span { color: var(--faint); font-size: 11px; }
-
-.utility-res-main { min-width: 0; display: grid; gap: 2px; }
-.utility-res-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.utility-res-title strong { font-size: 13px; font-weight: 600; }
-.utility-res-title span { color: var(--muted); font-size: 11px; padding: 0 8px; border-radius: var(--radius-full); background: var(--subtle); line-height: 1.7; }
-.utility-res-main p { color: var(--muted); font-size: 12px; }
-.utility-res-main small { color: var(--faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.utility-res-meta { display: grid; gap: 3px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.utility-res-meta b { font-weight: 500; }
-.utility-res-meta b.paid { color: var(--success); }
-.utility-res-meta b.arrived { color: var(--warning); }
-.utility-res-meta b.pending { color: var(--info); }
-
-.utility-res-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
-.utility-res-actions .utility-action { min-height: 28px; padding: 0 10px; font-size: 12px; }
-
-/* Rush board + accueil */
-/* UNE COLONNE VIDE NE RECLAME PAS SA PART. Les trois colonnes se partageaient
-   la largeur a parts strictement egales : « Maintenant » gardait 354px pour
-   une seule phrase dans un cadre pointille pendant que la colonne voisine
-   entassait quatre cartes ecrasees. Ce qui decide de la largeur, c'est le
-   contenu : la colonne qui rend son etat vide se replie sur ce que son texte
-   demande (231px mesures) et rend le reste aux colonnes chargees, qui passent
-   de 354 a 416px. C'est le contenu de la colonne qui declenche la regle, pas
-   son rang ni son titre : n'importe laquelle des trois se replie si elle est
-   celle qui est vide. */
-.utility-rush-board { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-start; }
-
-.utility-rush-column {
-  flex: 1 1 320px;
-  min-width: 0;
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--page);
+/* Entree des pages utilitaires : une fois par navigation (classe posee par
+   renderStaffUtilityPage), jamais au poll ni au tic de la minute. `backwards`
+   et pas `both` : une fois jouee, l animation ne laisse aucun transform. */
+@media (prefers-reduced-motion: no-preference) {
+  .utility-enter > * { animation: pl-enter var(--dur-enter) var(--ease-out-strong) backwards; }
+  .utility-enter > *:nth-child(2) { animation-delay: 40ms; }
+  .utility-enter > *:nth-child(n+3) { animation-delay: 80ms; }
+  .utility-enter .terrain-column { animation: pl-enter var(--dur-enter) var(--ease-out-strong) backwards; }
+  .utility-enter .terrain-column:nth-child(2) { animation-delay: 120ms; }
+  .utility-enter .terrain-column:nth-child(3) { animation-delay: 160ms; }
 }
-
-.utility-rush-column:has(.utility-mini-empty) { flex: 0 1 auto; }
-
-.utility-section-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 2px 2px 4px; }
-.utility-section-head strong { font-size: 13px; font-weight: 600; }
-.utility-section-head span { color: var(--faint); font-size: 12px; }
-
-.utility-arrival-desk { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(240px, 0.8fr); gap: var(--space-4); align-items: start; }
-.utility-arrival-main { display: grid; gap: var(--space-2); }
-
-.utility-arrival-side {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--page);
-  font-size: 13px;
-}
-
-.utility-arrival-side > strong { font-size: 13px; font-weight: 600; }
-.utility-arrival-side > span { color: var(--muted); font-size: 12px; }
-.utility-arrival-side ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; display: grid; gap: 4px; }
 
 /* Pistes bowling */
 /* LE MUR DES PISTES et LE TABLEAU LASER (2026-08-25) : postes d action.
@@ -6499,7 +6494,37 @@ body.dashboard-detail-open { overflow: hidden; }
 .utility-resource { color: var(--muted); font-size: 12px; }
 
 .utility-main { min-width: 0; }
-.utility-settings-console, .utility-group-workspace { display: grid; gap: var(--space-4); }
+.utility-group-workspace { display: grid; gap: var(--space-4); }
+
+/* Parametres du poste : une liste de reglages, un par rangee, l action a
+   droite (DESIGN.md §6, listes separees par `line`). */
+.settings-list { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5); }
+.settings-row + .settings-row { border-top: 1px solid var(--line); }
+.settings-copy { min-width: 0; max-width: 640px; }
+.settings-copy h2 { font-size: 14px; font-weight: 600; }
+.settings-copy p { margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.settings-row > .utility-action { flex: 0 0 auto; }
+.settings-row > .utility-action:disabled { opacity: 0.5; cursor: not-allowed; }
+.settings-seg { flex: 0 0 auto; display: inline-flex; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--subtle); }
+.settings-seg button {
+  min-height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.settings-seg button:hover { color: var(--text); }
+.settings-seg button.is-on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+@media (max-width: 640px) {
+  .settings-row { flex-direction: column; align-items: flex-start; }
+}
 
 /* ----------------------------------------------------------------------------
    10. GROUPES & ANNIVERSAIRES (.groups-* / .group-*)
@@ -6968,142 +6993,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .group-empty-steps span { color: var(--muted); }
 
 /* ----------------------------------------------------------------------------
-   11. ÉVÉNEMENTS (.events-* / .event-*)
+   11. ETAT VIDE DES FORMULES (.events-empty-state)
    -------------------------------------------------------------------------- */
-.events-workspace { display: grid; gap: var(--space-4); }
-
-.events-command-bar { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.8fr); gap: var(--space-3); align-items: stretch; }
-
-.events-now-card {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  border-left: 2px solid var(--accent);
-}
-
-.events-kicker { color: var(--muted); font-size: 12px; font-weight: 500; }
-.events-now-card strong { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.events-now-card p { color: var(--muted); font-size: 12px; margin-top: 2px; }
-.events-now-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-
-.events-day-digest {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  font-size: 12px;
-  color: var(--muted);
-  align-content: center;
-}
-
-.events-day-digest b { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 16px; font-weight: 600; color: var(--text); margin-right: 5px; }
-
-.events-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 0.8fr); gap: var(--space-4); align-items: start; }
-
-.events-agenda {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-
-.events-section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
-.events-section-head h3 { font-size: 15px; }
-.events-section-head p { color: var(--muted); font-size: 12px; margin-top: 2px; }
-
-.events-section-head button,
-.events-side section button {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease);
-}
-
-.events-section-head button:hover, .events-side section button:hover { background: var(--subtle); }
-
-.events-timeline { display: grid; gap: var(--space-2); }
-
-.event-row {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1.6fr) minmax(150px, 0.9fr) auto;
-  gap: var(--space-3);
-  align-items: center;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-.event-row.tone-warning { border-left: 2px solid var(--warning); }
-.event-row.tone-info { border-left: 2px solid var(--info); }
-.event-row.tone-success { border-left: 2px solid var(--success); }
-.event-row.tone-neutral { border-left: 2px solid var(--line-strong); }
-
-.event-time { display: grid; gap: 2px; text-align: center; }
-.event-time strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
-.event-time span { color: var(--faint); font-size: 11px; }
-
-.event-main { min-width: 0; display: grid; gap: 3px; }
-.event-title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.event-title-line strong { font-size: 13px; font-weight: 600; }
-.event-title-line span { color: var(--muted); font-size: 11px; padding: 0 8px; border-radius: var(--radius-full); background: var(--subtle); line-height: 1.7; }
-.event-main p { color: var(--muted); font-size: 12px; }
-.event-meta { display: flex; flex-wrap: wrap; gap: 10px; color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
-
-.event-resource { display: grid; gap: 3px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.event-resource span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.event-resource em { font-style: normal; color: var(--faint); }
-.event-actions { display: flex; flex-direction: column; gap: 5px; align-items: stretch; }
-
-.events-side { display: grid; gap: var(--space-3); align-content: start; }
-
-.events-side section {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-
-.events-side h3 { font-size: 14px; }
-.events-side p { color: var(--faint); font-size: 12px; }
-
-.event-watch-line {
-  display: grid;
-  gap: 2px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease);
-}
-
-.event-watch-line:hover { background: var(--subtle); }
-.event-watch-line.tone-warning { border-left: 2px solid var(--warning); }
-.event-watch-line.tone-info { border-left: 2px solid var(--info); }
-.event-watch-line strong { font-weight: 600; }
-.event-watch-line span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-
 .events-empty-state {
   display: grid;
   gap: var(--space-2);
@@ -11107,7 +10998,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .dash-grid-main, .dash-grid-bottom { grid-template-columns: 1fr 1fr; }
   .pv2-stats, .kpi-grid:not(.hidden), .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pv2-pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .groups-main-layout, .events-layout, .utility-arrival-desk { grid-template-columns: 1fr; }
+  .groups-main-layout { grid-template-columns: 1fr; }
   .ops-cockpit-body, .ai-org-layout, .ops-sim-scoreboard { grid-template-columns: 1fr; }
 }
 
@@ -11156,7 +11047,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .fgx-menu-popover { left: calc(100% + 8px); right: auto; width: 272px; }
 
   .pv2-split, .edit-layout, .utility-overview, .laser-pass-queue, .group-command,
-  .events-command-bar, .admin-dashboard-grid { grid-template-columns: 1fr; }
+  .admin-dashboard-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {
@@ -11231,7 +11122,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .admin-shell { padding: 16px 12px 40px; }
 
   .kpi-grid:not(.hidden), .dash-kpis, .dash-grid-main, .dash-grid-bottom,
-  .pv2-pipeline, .events-command-bar, .edit-summary,
+  .pv2-pipeline, .edit-summary,
   .qb-row.three, .qb-snapshot-row, .qb-type-row, .edit-grid-2,
   .dashboard-detail-summary { grid-template-columns: 1fr; }
   /* Meme lecon que .pv2-stats juste dessous, appliquee a l accueil : les
@@ -11263,22 +11154,8 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .res-row-side { display: none; }
   .res-row-actions { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 
-  /* Le tableau « En cours » n'est plus une grille a trois colonnes mais une
-     rangee souple : sur telephone, chaque colonne prend la largeur entiere,
-     colonne vide comprise, qui n'a plus de place a rendre a personne. */
-  .utility-rush-column,
-  .utility-rush-column:has(.utility-mini-empty) { flex: 1 1 100%; }
-
-  .utility-res-card { grid-template-columns: 60px minmax(0, 1fr); row-gap: 4px; }
-  /* Meme regle qu au bureau : sur telephone la ligne se REPLIE sous le nom,
-     elle ne disparait pas. Sans elle, aucune carte d Arrivees ne disait
-     combien de joueurs arrivent. */
-  .utility-res-meta { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 12px; }
+  /* Carnet de contacts : les actions passent sous la ligne. */
   .utility-res-actions { grid-column: 1 / -1; justify-content: flex-start; }
-
-  .event-row { grid-template-columns: 60px minmax(0, 1fr); }
-  .event-resource { display: none; }
-  .event-actions { grid-column: 1 / -1; flex-direction: row; }
 
   .dashboard-detail-row { grid-template-columns: 56px minmax(0, 1fr); }
   .dashboard-detail-amount { display: none; }
@@ -17398,42 +17275,11 @@ button.pv2-cal-cell:focus-visible {
 .bk-price .pl-price-icon { margin-right: 2px; }
 .laser-card-pill.pl-price-adjusted { border-radius: var(--radius-full); }
 .admin-pill.pl-price-adjusted { margin-left: 6px; }
-/* UNE PASTILLE FAIT LA LARGEUR DE SON TEXTE, PAS CELLE DE SA COLONNE.
-   `.utility-res-meta` est une GRILLE a une colonne : un span y devient element
-   de grille, donc bloc, et `justify-self` vaut `stretch` par defaut. Mesure sur
-   les cartes de la page Arrivees : pastille 138,9 px pour un parent de
-   138,9 px, soit une barre ambre pleine largeur avec un long vide a droite du
-   texte, sur une rangee entiere ajoutee a la carte. Elle ne ressemblait a
-   aucune autre pastille du produit et attirait l oeil bien plus que l ecart
-   qu elle signale. Le mode compact et le mobile repassent en flex (voir
-   `.utility-res-card.compact .utility-res-meta`) : ils n etaient pas touches. */
-.utility-res-meta .pl-price-adjusted { justify-self: start; padding: 1px 8px; border-radius: var(--radius-full); font-size: 11px; }
 /* Vue d ensemble : la colonne des montants habille TOUS ses `span` en gris
    discret (`.dashboard-detail-amount span`, 0-1-1). La pastille passe devant
    par `.res-state-pill.custom-price` (0-2-0), mais elle doit aussi rester une
    pastille : elle se pose sous le montant, alignee a droite comme lui. */
 .dashboard-detail-amount .pl-price-adjusted { margin-top: 2px; }
-
-/* LA CONSIGNE SUR LA PAGE EVENEMENTS : une icone, pas une phrase. La ligne
-   d evenement est deja pleine ; le texte complet vit dans l infobulle et dans
-   la fiche, exactement comme sur les cartes du planning.
-   LE SELECTEUR EST QUALIFIE PAR SON PARENT, ET C EST NECESSAIRE : la ligne de
-   titre habille TOUS ses `span` en pastille grise (`.event-title-line span`,
-   0-1-1), qui l emportait sur une classe seule. Mesure au navigateur avant
-   correction : l icone sortait en #a1a1a1 sur fond `--subtle`, avec le
-   remplissage et l arrondi d une pastille - elle ressemblait exactement au
-   signal d etat pose juste a cote, ce qui est le contraire d un marqueur. Elle
-   porte maintenant l ambre des notes, sans fond ni arrondi. */
-.event-title-line .event-note-flag {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  background: none;
-  border-radius: 0;
-  line-height: 1;
-  color: var(--warning);
-}
 
 /* Les marqueurs de la ligne du jour (page Reservations) prennent leur propre
    ligne sous l offre : une consigne de service est une phrase, pas une

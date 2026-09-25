@@ -2755,9 +2755,7 @@ const STAFF_MENU_PAGES = [
   'planning',
   'reservations',
   'formules',
-  'sessions',
   'arrivals',
-  'events',
   'clients',
   'requests',
   'groups',
@@ -2779,8 +2777,13 @@ const STAFF_MENU_PAGES = [
   'cockpit-ia',
   'cockpit-clients'
 ];
+// Pages FONDUES dans une autre : l ancienne adresse (lien garde, onglet
+// memorise, hash) mene a la page qui les remplace. Terrain (cle « arrivals »)
+// reunit depuis le 2026-09-25 Arrivees, En cours et Evenements.
+const STAFF_PAGE_ALIASES = { sessions: 'arrivals', events: 'arrivals' };
 function normalizeStaffMenuPage(page) {
-  const key = String(page || 'planning').trim();
+  const raw = String(page || 'planning').trim();
+  const key = STAFF_PAGE_ALIASES[raw] || raw;
   return STAFF_MENU_PAGES.includes(key) ? key : 'planning';
 }
 // LES SECTIONS DE LA PAGE EMAILS (2026-09-16). Une seule liste pour l'adresse
@@ -2923,9 +2926,7 @@ const STAFF_PAGE_PERMISSION_MAP = {
   planning: ['planning.view'],
   reservations: ['reservations.view'],
   formules: ['reservations.view'],
-  sessions: ['reservations.view'],
   arrivals: ['reservations.status', 'reservations.view'],
-  events: ['reservations.view'],
   clients: ['clients.view'],
   requests: ['clients.view'],
   groups: ['clients.view'],
@@ -9711,9 +9712,7 @@ function isStaffCockpitActive() {
 
 const STAFF_UTILITY_MENU_PAGES = [
   'formules',
-  'sessions',
   'arrivals',
-  'events',
   'requests',
   'contacts',
   'lanes',
@@ -11715,7 +11714,7 @@ function openStaffMenuPage(page, resource = '') {
   // comparaison de fin (cleanPage !== requestedPage) prend le remap pour une
   // page inconnue et affiche « Page indisponible » sur un lien parfaitement
   // valide - c'est exactement le chemin qu'emprunte l'alerte « demandes ».
-  const aliasedPage = requestedPage === 'groups' ? 'clients' : requestedPage;
+  const aliasedPage = requestedPage === 'groups' ? 'clients' : (STAFF_PAGE_ALIASES[requestedPage] || requestedPage);
   const cleanPage = normalizeStaffMenuPage(aliasedPage);
   if (requestedPage === 'groups' && cleanPage === 'clients') {
     state.staffClientSegment = 'avenir';
@@ -11895,14 +11894,6 @@ function getStaffUtilityReservations() {
     .sort((left, right) => getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'));
 }
 
-function isStaffUtilityEventReservation(reservation) {
-  const text = `${reservation.name || ''} ${reservation.label || ''} ${reservation.notes || ''} ${getReservationLabel(reservation)}`.toLowerCase();
-  return reservation.type === 'formule'
-    || reservation.formuleId
-    || Number(reservation.pax || 0) >= 10
-    || /anniversaire|birthday|groupe|ecole|école|team|entreprise|event|evenement|événement/.test(text);
-}
-
 // Sous-titre des pages staff. Il annoncait la PLOMBERIE : « Données API +
 // locales · 12 réservations visibles · lecture locale ». Personne n'a besoin
 // de savoir d'ou sortent les octets - et « lecture locale » laissait croire
@@ -11925,62 +11916,24 @@ function renderStaffUtilityKpi(label, value, detail = '', tone = '') {
   </article>`;
 }
 
-function getStaffUtilityOverviewTitle(model) {
-  const titles = {
-    sessions: 'File terrain',
-    arrivals: 'Accueil du jour',
-    events: 'Dossiers sensibles',
-    groups: 'Portefeuille groupes',
-    contacts: 'Carnet exploitable',
-    lanes: 'Etat des pistes',
-    laserGame: 'Lecture Laser Game',
-    establishment: 'Centre connecte',
-    users: 'Controle des acces',
-    settings: 'Poste staff'
-  };
-  return titles[model.page] || model.title || 'Lecture';
-}
-
-function getStaffUtilityOverviewText(model, kpis) {
-  const first = kpis[0] || [];
-  const second = kpis[1] || [];
-  const third = kpis[2] || [];
-  const fourth = kpis[3] || [];
-  const texts = {
-    sessions: `Priorité aux lignes ouvertes : ${first[1] || 0} en cours, ${second[1] || 0} non clôturées.`,
-    arrivals: `Le staff voit directement qui arrive, qui est déjà sur place et ce qu'il reste à encaisser.`,
-    events: `Anniversaires, écoles, entreprises et formules restent visibles sans transformer la page en mur de cartes.`,
-    groups: `${first[1] || 0} profils actifs, ${second[1] || 0} joueurs cumulés et ${fourth[1] || '0€'} d'historique groupe.`,
-    contacts: `Une lecture propre pour retrouver les fiches, compléter les coordonnées et relancer sans bruit.`,
-    lanes: `Les pistes, la maintenance et les réservations bowling sont regroupées autour de l'action terrain.`,
-    laserGame: `Les lancements, passages et capacités restent séparés du bowling pour éviter les mauvaises lectures.`,
-    establishment: `Configuration centre, ressources et horaires dans une lecture courte pour la direction.`,
-    users: `Rôles, membres et codes d'accès restent contrôlés sans mélanger les permissions avec le planning.`,
-    settings: `Préférences locales, exports et outils de maintenance du poste staff.`,
-  };
-  return texts[model.page] || `${first[0] || 'Signal'}: ${first[1] || 0}. ${third[0] || 'Suivi'}: ${third[1] || 0}.`;
-}
-
+// La synthese chiffree ne s affiche plus que sur Equipe & acces (voir
+// overviewPages dans renderStaffUtilityPage). Sans phrase d accompagnement :
+// les quatre chiffres se lisent seuls, et la phrase d avant (« restent
+// contrôlés sans mélanger les permissions... ») ne disait rien.
 function renderStaffUtilityOverview(model) {
   const kpis = Array.isArray(model.kpis) ? model.kpis.filter(Boolean) : [];
   if (!kpis.length) return '';
   const [primary, ...rest] = kpis;
   const secondary = rest.slice(0, 3);
-  const headline = getStaffUtilityOverviewTitle(model);
-  const narrative = getStaffUtilityOverviewText(model, kpis);
-  const statusLabel = model.page === 'groups' ? 'Suivi groupe'
-    : model.page === 'laserGame' ? 'Laser'
-      : model.page === 'users' ? 'Accès'
-        : model.eyebrow || 'Lecture';
+  const statusLabel = model.page === 'users' ? 'Accès' : (model.eyebrow || 'Lecture');
 
   return `<section class="utility-overview utility-overview-${escapeHtml(model.page || 'default')}">
     <div class="utility-overview-main">
       <div class="utility-overview-kicker">${escapeHtml(statusLabel)}</div>
       <div class="utility-overview-value-row">
         <strong>${escapeHtml(String(primary[1] ?? 0))}</strong>
-        <span>${escapeHtml(primary[0] || headline)}</span>
+        <span>${escapeHtml(primary[0] || model.title || '')}</span>
       </div>
-      <p>${escapeHtml(narrative)}</p>
     </div>
     <div class="utility-overview-signals">
       ${secondary.map(item => `<div class="utility-overview-signal">
@@ -12002,93 +11955,6 @@ function getStaffUtilityStartLabel(reservation) {
   return start ? formatClockDisplay(start) : formatClockDisplay(timeToNum(reservation.startTime || '00:00'));
 }
 
-function getStaffUtilityRiskLabel(reservation) {
-  const pax = Number(reservation.pax || 0);
-  const laserCount = getLaserWindowsFromReservation(reservation).length;
-  const bowlingCount = getBowlingWindowsFromReservation(reservation).length;
-  if (reservation.type === 'formule' || reservation.formuleId) return 'Formule à suivre';
-  if (laserCount > 1) return `${laserCount} passages laser`;
-  if (pax >= 16) return 'Grand groupe';
-  if (bowlingCount > 1) return 'Multi-pistes';
-  return getStaffReservationStatusLabel(reservation.status);
-}
-
-function getStaffUtilityTypeLabel(reservation) {
-  const type = getStaffReservationActivityType(reservation);
-  if (type === 'laser') return 'Laser Game';
-  if (type === 'complete') return 'Complet';
-  if (reservation.type === 'formule' || reservation.formuleId) return 'Formule';
-  return 'Bowling';
-}
-
-function renderStaffUtilityReservationCard(reservation, options = {}) {
-  const id = staffClientJs(reservation.id);
-  const type = getStaffReservationActivityType(reservation);
-  const status = reservation.status || 'pending';
-  const windows = getStaffResourceWindows(reservation, 'all');
-  const firstWindow = windows[0] || null;
-  const windowLabel = firstWindow ? `${formatClockDisplay(firstWindow.start)}-${formatClockDisplay(firstWindow.end)}` : getStaffUtilityStartLabel(reservation);
-  const actionSet = options.actions || ['detail', 'arrived', 'paid'];
-  const actions = actionSet.map(action => {
-    if (action === 'detail') return renderStaffUtilityAction('Détail', `openStaffReservationDetail(${id})`);
-    if (action === 'arrived') return renderStaffUtilityAction('Arrivé', `setReservationStatusDirect(${id}, 'arrived', event)`, status === 'arrived' ? 'is-active' : '');
-    if (action === 'paid') return renderStaffUtilityAction('Payé', `setReservationStatusDirect(${id}, 'paid', event)`, status === 'paid' ? 'is-active success' : '');
-    if (action === 'cancel') return renderStaffUtilityAction('Annuler', `cancelRes(${id}, event)`, 'danger');
-    return '';
-  }).join('');
-  const compact = options.compact ? 'compact' : '';
-
-  return `<article class="utility-res-card ${escapeHtml(type)} ${escapeHtml(status)} ${compact}">
-    <div class="utility-res-time">
-      <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
-      <span>${escapeHtml(getStaffUtilityTypeLabel(reservation))}</span>
-    </div>
-    <div class="utility-res-main">
-      <div class="utility-res-title">
-        <strong>${escapeHtml(reservation.name || 'Client')}</strong>
-        ${getReservationOccasion(reservation) ? `<span class="res-occasion-tag res-occasion-${escapeHtml(getReservationOccasion(reservation))}">${escapeHtml(getReservationOccasionLabel(reservation))}</span>` : ''}
-        <span>${escapeHtml(getStaffUtilityRiskLabel(reservation))}</span>
-      </div>
-      <p>${escapeHtml(getReservationLabel(reservation))}</p>
-      <small>${escapeHtml(getStaffUtilityResourceSummary(reservation))}</small>
-      ${hasReservationNote(reservation) ? `<small class="res-special-request"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M9 13h6M9 17h4"/></svg>${escapeHtml(getReservationNoteText(reservation))}</small>` : ''}
-    </div>
-    <div class="utility-res-meta">
-      <span>${Number(reservation.pax || 0)} pers.</span>
-      <span>${escapeHtml(windowLabel)}</span>
-      ${/* La file d accueil est le dernier ecran avant l encaissement : c est
-           la qu un prix negocie doit deja etre connu, pas decouvert au ticket. */''}
-      ${renderReservationPriceMark(reservation, { forme: 'complet' })}
-      <b class="${escapeHtml(status)}">${escapeHtml(getStaffReservationStatusLabel(status))}</b>
-    </div>
-    <div class="utility-res-actions">${actions}</div>
-  </article>`;
-}
-
-function getStaffUtilityResourceSummary(reservation) {
-  const windows = getStaffResourceWindows(reservation, 'all');
-  if (!windows.length) return getReservationLabel(reservation);
-  return windows.map(window => {
-    if (window.resourceType === 'laser_arena') {
-      return `Laser ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`;
-    }
-    const lanes = (window.lanes || reservation.lanes || []).length ? `piste ${(window.lanes || reservation.lanes || []).join(', ')}` : 'piste auto';
-    return `${lanes} ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`;
-  }).join(' · ');
-}
-
-function renderStaffUtilityReservationList(rows = [], emptyTitle = 'Aucune donnée', emptyDetail = 'Cette catégorie ne contient aucune ligne sur la date affichée.', options = {}) {
-  if (!rows.length) {
-    return `<div class="utility-empty">
-      <strong>${escapeHtml(emptyTitle)}</strong>
-      <span>${escapeHtml(emptyDetail)}</span>
-    </div>`;
-  }
-  return `<div class="utility-res-stack ${escapeHtml(options.variant || '')}">
-    ${rows.map(reservation => renderStaffUtilityReservationCard(reservation, options.card || {})).join('')}
-  </div>`;
-}
-
 function renderStaffUtilityClientList(rows = [], emptyTitle = 'Aucun client', emptyDetail = 'Aucun profil réel ne correspond à cette catégorie.') {
   if (!rows.length) {
     return `<div class="utility-empty"><strong>${escapeHtml(emptyTitle)}</strong><span>${escapeHtml(emptyDetail)}</span></div>`;
@@ -12107,37 +11973,193 @@ function renderStaffUtilityClientList(rows = [], emptyTitle = 'Aucun client', em
   </div>`;
 }
 
-function renderStaffUtilityRushBoard({ activeRows = [], nextRows = [], closingRows = [] }) {
-  const column = (title, detail, rows, empty) => `<section class="utility-rush-column">
-    <div class="utility-section-head"><strong>${escapeHtml(title)}</strong> <span>${escapeHtml(detail)}</span></div>
-    ${rows.length ? rows.map(reservation => renderStaffUtilityReservationCard(reservation, { compact: true })).join('') : `<div class="utility-mini-empty">${escapeHtml(empty)}</div>`}
-  </section>`;
-  return `<div class="utility-rush-board">
-    ${column('Maintenant', 'Ce qui se joue en salle', activeRows, 'Aucune session active.')}
-    ${column('Prochain départ', 'À préparer avant l’arrivée', nextRows, 'Rien à préparer.')}
-    ${column('À clôturer', 'Paiement, statut ou suivi', closingRows, 'Aucune clôture en attente.')}
-  </div>`;
+// LE TERRAIN, UNE SEULE FILE EN TROIS TEMPS (2026-09-25). Arrivees, En cours
+// et Evenements montraient les MEMES reservations sous trois angles : un
+// groupe arrive figurait sur les trois pages, compte trois fois, et rien ne
+// disait laquelle faisait foi. Une page, trois colonnes EXCLUSIVES tirees des
+// vrais horaires et du statut : chaque dossier est a un seul endroit, et il
+// passe d une colonne a l autre quand le comptoir clique Arrive puis Paye.
+//   upcoming : pas commence et pas pointe arrive ;
+//   onsite   : pointe arrive, ou sa fenetre couvre l heure qu il est ;
+//   closing  : fenetre finie et pas paye ;
+//   done     : fenetre finie et paye (compte dans le sous-titre, pas affiche).
+// Une date passee n a plus rien a venir ni en salle ; une date future n a
+// encore rien commence.
+function getStaffTerrainSpan(reservation) {
+  const windows = getStaffResourceWindows(reservation, 'all');
+  if (windows.length) {
+    return {
+      start: Math.min(...windows.map(window => Number(window.start))),
+      end: Math.max(...windows.map(window => Number(window.end)))
+    };
+  }
+  const start = timeToNum(reservation.startTime || '00:00');
+  return { start, end: start + (readDurationHours(reservation.duration) || 1) };
 }
 
-function renderStaffUtilityArrivalDesk(rows = []) {
-  const now = currentTimeDecimal();
-  const sorted = [...rows].sort((left, right) => getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'));
-  const urgent = sorted.filter(row => getReservationFirstResourceStart(row, 'all') <= now + 0.5 && row.status !== 'paid');
-  return `<div class="utility-arrival-desk">
-    <section class="utility-arrival-main">
-      <div class="utility-section-head"><strong>File d’accueil</strong> <span>${sorted.length} réservation${sorted.length > 1 ? 's' : ''} à suivre</span></div>
-      ${sorted.length ? sorted.map(reservation => renderStaffUtilityReservationCard(reservation)).join('') : `<div class="utility-mini-empty">Toutes les arrivées sont traitées.</div>`}
-    </section>
-    <aside class="utility-arrival-side">
-      <strong>Priorité terrain</strong>
-      <span>${urgent.length ? `${urgent.length} groupe${urgent.length > 1 ? 's' : ''} proche${urgent.length > 1 ? 's' : ''} de l’heure` : 'Aucun groupe en urgence'}</span>
-      <ul>
-        <li>Confirmer présence et nombre de joueurs.</li>
-        <li>Prévenir si Laser Game peut être partagé.</li>
-        <li>Encaisser ou marquer payé dès que c’est fait.</li>
-      </ul>
-      ${renderStaffUtilityAction('Créer une arrivée', "openQuickBook({ date: state.currentDate, type: 'bowling' })", 'success')}
-    </aside>
+function getStaffTerrainPhase(reservation, span, context) {
+  const status = reservation.status || 'pending';
+  if (context.when === 'future') return 'upcoming';
+  if (context.when === 'past' || span.end <= context.now) return status === 'paid' ? 'done' : 'closing';
+  if (status === 'arrived' || span.start <= context.now) return 'onsite';
+  return 'upcoming';
+}
+
+function getStaffTerrainBoard(reservations = getStaffUtilityReservations()) {
+  const today = todayStr();
+  const when = state.currentDate < today ? 'past' : state.currentDate > today ? 'future' : 'today';
+  const context = { when, now: currentTimeDecimal() };
+  const board = { when, now: context.now, total: reservations.length, upcoming: [], onsite: [], closing: [], done: [] };
+  reservations.forEach(reservation => {
+    const span = getStaffTerrainSpan(reservation);
+    board[getStaffTerrainPhase(reservation, span, context)].push({ reservation, ...span });
+  });
+  board.upcoming.sort((left, right) => left.start - right.start);
+  // Sur place et a cloturer : celui qui finit (ou a fini) le premier d abord,
+  // c est lui qui se presente le premier a la caisse.
+  board.onsite.sort((left, right) => left.end - right.end);
+  board.closing.sort((left, right) => left.end - right.end);
+  return board;
+}
+
+function formatStaffTerrainDelay(hours) {
+  const minutes = Math.max(1, Math.round(Math.abs(hours) * 60));
+  if (minutes < 60) return `${minutes} min`;
+  const whole = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${whole} h ${String(rest).padStart(2, '0')}` : `${whole} h`;
+}
+
+// Le temps dit par la carte est RELATIF A MAINTENANT, donc seulement le jour
+// meme : un « dans 25 min » sur une autre date serait faux. Le tic d une
+// minute (voir le setInterval du planning) repeint la page pour qu il reste
+// juste.
+function getStaffTerrainTiming(item, phase, board) {
+  if (board.when !== 'today') return '';
+  if (phase === 'upcoming') return `dans ${formatStaffTerrainDelay(item.start - board.now)}`;
+  if (phase === 'onsite') {
+    return item.start > board.now
+      ? `commence dans ${formatStaffTerrainDelay(item.start - board.now)}`
+      : `fin dans ${formatStaffTerrainDelay(item.end - board.now)}`;
+  }
+  if (phase === 'closing') return `fini depuis ${formatStaffTerrainDelay(board.now - item.end)}`;
+  return '';
+}
+
+// UN SEUL STATUT PAR CARTE. L ancienne carte l ecrivait deux fois (son
+// libelle de risque retombait sur le statut). La colonne dit le moment, la
+// pastille dit le statut. « Non pointé » : l heure dit que le groupe joue ou
+// a joue, mais personne n a clique Arrivé. « À vérifier » : une reservation
+// en ligne que le staff doit encore valider (meme regle que l alerte
+// « Réservations à vérifier » de l accueil).
+function getStaffTerrainStatus(reservation, phase) {
+  const status = reservation.status || 'pending';
+  const upcoming = isUpcomingReservationStatus(status);
+  if ((phase === 'onsite' || phase === 'closing') && upcoming) return { label: 'Non pointé', tone: 'unmarked' };
+  if (upcoming && reservation.validationStatus === 'staff_review') return { label: 'À vérifier', tone: 'review' };
+  return { label: getStaffReservationStatusLabel(status), tone: upcoming ? 'confirmed' : status };
+}
+
+function getStaffTerrainResources(reservation) {
+  return getStaffResourceWindows(reservation, 'all').map(window => {
+    const hours = `${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`;
+    if (window.resourceType === 'laser_arena') return `Laser Game · ${hours}`;
+    const lanes = window.lanes || reservation.lanes || [];
+    const laneLabel = lanes.length > 1 ? `Pistes ${lanes.join(', ')}` : lanes.length ? `Piste ${lanes[0]}` : 'Piste à attribuer';
+    return `${laneLabel} · ${hours}`;
+  });
+}
+
+function formatStaffTerrainCount(count, word) {
+  return `${count} ${word}${count > 1 ? 's' : ''}`;
+}
+
+function renderStaffTerrainCard(item, phase, board) {
+  const reservation = item.reservation;
+  const id = staffClientJs(reservation.id);
+  const status = reservation.status || 'pending';
+  const badge = getStaffTerrainStatus(reservation, phase);
+  const timing = getStaffTerrainTiming(item, phase, board);
+  const occasion = getReservationOccasion(reservation);
+  const pax = Number(reservation.pax || 0);
+  const resources = getStaffTerrainResources(reservation);
+  // Un prix decide a la main se voit AVANT l encaissement, pas au ticket :
+  // la pastille remplace le montant nu quand il y a un ecart.
+  const price = renderReservationPriceMark(reservation, { forme: 'complet' })
+    || `<span class="terrain-price">${escapeHtml(formatMoney(Number(reservation.price || 0)))}</span>`;
+  // Un dossier deja paye ne repasse jamais par « Arrivé » : le statut est un
+  // seul champ, pointer l arrivee effacerait le paiement.
+  const actions = [renderStaffUtilityAction('Détail', `openStaffReservationDetail(${id})`)];
+  if (phase !== 'closing' && status !== 'arrived' && status !== 'paid') {
+    actions.push(renderStaffUtilityAction('Arrivé', `setReservationStatusDirect(${id}, 'arrived', event)`, phase === 'upcoming' ? 'primary' : ''));
+  }
+  if (phase !== 'upcoming' && status !== 'paid') {
+    actions.push(renderStaffUtilityAction('Payé', `setReservationStatusDirect(${id}, 'paid', event)`, 'primary'));
+  }
+  return `<article class="terrain-card is-${escapeHtml(phase)}" data-terrain-id="${escapeHtml(String(reservation.id))}">
+    <div class="terrain-card-top">
+      <strong class="terrain-card-time">${escapeHtml(formatClockDisplay(item.start))}</strong>
+      <div class="terrain-card-name">
+        <strong>${escapeHtml(reservation.name || 'Client')}</strong>
+        ${occasion ? `<span class="res-occasion-tag res-occasion-${escapeHtml(occasion)}">${escapeHtml(getReservationOccasionLabel(reservation))}</span>` : ''}
+      </div>
+      <span class="terrain-status tone-${escapeHtml(badge.tone)}">${escapeHtml(badge.label)}</span>
+    </div>
+    <div class="terrain-card-facts">
+      <span>${escapeHtml(getReservationLabel(reservation))}</span>
+      <span>${escapeHtml(formatStaffTerrainCount(pax, 'joueur'))}</span>
+      ${price}
+      ${renderActivityProgressPill(reservation)}
+    </div>
+    ${resources.length ? `<div class="terrain-card-resources">${resources.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</div>` : ''}
+    ${hasReservationNote(reservation) ? `<p class="res-special-request"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M9 13h6M9 17h4"/></svg>${escapeHtml(getReservationNoteText(reservation))}</p>` : ''}
+    <div class="terrain-card-foot">
+      ${timing ? `<span class="terrain-when">${escapeHtml(timing)}</span>` : ''}
+      <div class="terrain-card-actions">${actions.join('')}</div>
+    </div>
+  </article>`;
+}
+
+function renderStaffTerrainBoard(board) {
+  if (!board.total) {
+    return `<div class="utility-empty">
+      <strong>Aucune réservation sur cette date.</strong>
+      <span>Les réservations apparaissent ici dès qu’elles sont prises, en ligne ou au comptoir.</span>
+    </div>`;
+  }
+  const past = board.when === 'past';
+  const future = board.when === 'future';
+  const empty = {
+    upcoming: past ? 'Journée passée.' : 'Plus personne n’est attendu.',
+    onsite: past ? 'Plus personne sur place.' : future ? 'La journée n’a pas commencé.' : 'Personne sur place pour l’instant.',
+    closing: future ? 'Rien à clôturer avant la fin des parties.' : 'Tout est encaissé.'
+  };
+  const players = items => items.reduce((sum, item) => sum + Number(item.reservation.pax || 0), 0);
+  const due = board.closing.reduce((sum, item) => sum + Number(item.reservation.price || 0), 0);
+  const detail = {
+    upcoming: board.upcoming.length ? formatStaffTerrainCount(players(board.upcoming), 'joueur') : '',
+    onsite: board.onsite.length ? formatStaffTerrainCount(players(board.onsite), 'joueur') : '',
+    // « non encaissés » et pas « à encaisser » : un groupe jamais pointé n est
+    // peut-etre pas venu. Le montant dit ce qui n est pas paye, rien de plus.
+    closing: board.closing.length ? `${formatMoney(due)} non encaissés` : ''
+  };
+  const column = (phase, title) => {
+    const items = board[phase];
+    return `<section class="terrain-column is-${phase}" aria-labelledby="terrain-${phase}-title">
+      <div class="terrain-column-head">
+        <h2 id="terrain-${phase}-title">${escapeHtml(title)}</h2>
+        <span class="terrain-count">${items.length}</span>
+        ${detail[phase] ? `<small>${escapeHtml(detail[phase])}</small>` : ''}
+      </div>
+      ${items.length
+        ? `<div class="terrain-list">${items.map(item => renderStaffTerrainCard(item, phase, board)).join('')}</div>`
+        : `<p class="terrain-empty">${escapeHtml(empty[phase])}</p>`}
+    </section>`;
+  };
+  return `<div class="terrain-board">
+    ${column('upcoming', 'À venir')}
+    ${column('onsite', 'Sur place')}
+    ${column('closing', 'À clôturer')}
   </div>`;
 }
 
@@ -12758,43 +12780,6 @@ function renderStaffUtilityContactLedger(rows = []) {
   </div>`;
 }
 
-function getStaffEventKind(reservation) {
-  const text = formulaActivityToken(`${reservation.name || ''} ${getReservationLabel(reservation) || ''}`);
-  if (reservation.type === 'formule' || reservation.formuleId) return 'Formule';
-  if (text.includes('anniversaire')) return 'Anniversaire';
-  if (text.includes('ecole') || text.includes('college') || text.includes('saint')) return 'École';
-  if (text.includes('entreprise') || text.includes('team') || text.includes('afterwork') || text.includes('garage')) return 'Entreprise';
-  if (Number(reservation.pax || 0) >= 16) return 'Grand groupe';
-  return 'Groupe';
-}
-
-function getStaffEventSignal(reservation) {
-  const status = reservation.status || 'confirmed';
-  const pax = Number(reservation.pax || 0);
-  const laserCount = getLaserWindowsFromReservation(reservation).length;
-  const bowlingCount = getBowlingWindowsFromReservation(reservation).length;
-  if (status === 'arrived') return { label: 'Sur place', tone: 'success' };
-  if (status === 'paid') return { label: 'Payé', tone: 'success' };
-  if (pax >= 16 || bowlingCount > 2) return { label: 'À surveiller', tone: 'warning' };
-  if (reservation.type === 'formule' || reservation.formuleId) return { label: 'Timing formule', tone: 'info' };
-  if (laserCount > 1) return { label: 'Multi laser', tone: 'info' };
-  return { label: 'Prévu', tone: 'neutral' };
-}
-
-function getStaffEventResources(reservation) {
-  const windows = getStaffResourceWindows(reservation, 'all');
-  if (!windows.length) return getReservationLabel(reservation);
-  return windows.map(window => {
-    if (window.resourceType === 'laser_arena') {
-      const players = Number(window.players || reservation.pax || 0);
-      return `Laser ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)} (${players}j)`;
-    }
-    const lanes = window.lanes || reservation.lanes || [];
-    const laneLabel = lanes.length > 1 ? `pistes ${lanes.join(', ')}` : lanes.length ? `piste ${lanes[0]}` : 'piste auto';
-    return `Bowling ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)} (${laneLabel})`;
-  }).join(' | ');
-}
-
 function renderFormuleTrackingCard(reservation) {
   const summary = getFormulaActivityProgressSummary(reservation);
   const checklist = renderFormulaActivityChecklist(reservation, { bare: true });
@@ -12818,10 +12803,12 @@ function renderFormuleTrackingCard(reservation) {
 function renderStaffFormulesBoard(rows = []) {
   const formuleRows = [...rows].sort((left, right) => getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'));
   if (!formuleRows.length) {
+    // Pas de bouton ici : « Nouvelle formule » est deja l action principale
+    // de l en-tete. La liste d activites citee avant (arcades, minigolf...)
+    // n etait pas celle du centre : on decrit sans inventer.
     return `<div class="events-empty-state">
       <strong>Aucune formule sur cette date.</strong>
-      <span>Les réservations de type formule apparaissent ici avec leur checklist d'activités (bowling, laser, arcades, minigolf, boissons…) à cocher au fur et à mesure.</span>
-      <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Créer une formule</button>
+      <span>Chaque formule réservée apparaît ici avec ses activités, à cocher au fil du service.</span>
     </div>`;
   }
   // Regroupement par CATÉGORIE de formule (anniversaires / spéciales / autres),
@@ -12849,130 +12836,6 @@ function renderStaffFormulesBoard(rows = []) {
   }).join('');
 }
 
-function renderStaffUtilityEventsBoard(rows = []) {
-  if (!rows.length) {
-    return `<div class="events-empty-state">
-      <strong>Aucun dossier sensible sur cette date.</strong>
-      <span>Les anniversaires, formules, grands groupes, ecoles et entreprises apparaitront ici avec les actions terrain utiles.</span>
-      <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Creer une formule</button>
-    </div>`;
-  }
-
-  const sortedRows = [...rows].sort((left, right) => getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'));
-  const nextReservation = sortedRows[0];
-  const formulaCount = sortedRows.filter(reservation => reservation.type === 'formule' || reservation.formuleId).length;
-  const totalPlayers = sortedRows.reduce((sum, reservation) => sum + Number(reservation.pax || 0), 0);
-  const watchRows = sortedRows
-    .filter(reservation => {
-      const signal = getStaffEventSignal(reservation);
-      return signal.tone === 'warning' || signal.tone === 'info' || Number(reservation.pax || 0) >= 16;
-    })
-    .slice(0, 5);
-
-  return `<div class="events-workspace">
-    <section class="events-command-bar">
-      <article class="events-now-card">
-        <span class="events-kicker">Prochaine action</span>
-        <div>
-          <strong>${escapeHtml(getStaffUtilityStartLabel(nextReservation))} - ${escapeHtml(nextReservation.name || 'Groupe')}</strong>
-          <p>${escapeHtml(getStaffEventKind(nextReservation))} - ${Number(nextReservation.pax || 0)} joueurs - ${escapeHtml(getReservationLabel(nextReservation))}</p>
-        </div>
-        <div class="events-now-actions">
-          ${renderStaffUtilityAction('Ouvrir dossier', `openStaffReservationDetail(${staffClientJs(nextReservation.id)})`)}
-          ${nextReservation.status === 'arrived'
-            ? renderStaffUtilityAction('Encaisser', `setReservationStatusDirect(${staffClientJs(nextReservation.id)}, 'paid', event)`, 'success')
-            : renderStaffUtilityAction('Marquer arrive', `setReservationStatusDirect(${staffClientJs(nextReservation.id)}, 'arrived', event)`, 'success')}
-        </div>
-      </article>
-      <div class="events-day-digest" aria-label="Resume evenements">
-        <span><b>${sortedRows.length}</b> dossiers</span>
-        <span><b>${formulaCount}</b> formules</span>
-        <span><b>${totalPlayers}</b> joueurs</span>
-        <span><b>${watchRows.length}</b> a surveiller</span>
-      </div>
-    </section>
-
-    <div class="events-layout">
-      <section class="events-agenda">
-        <div class="events-section-head">
-          <div>
-            <h3>File du jour</h3>
-            <p>Traiter les dossiers dans cet ordre, avec les ressources deja reservees.</p>
-          </div>
-          <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Ajouter</button>
-        </div>
-        <div class="events-timeline">
-          ${sortedRows.map(reservation => {
-            const id = staffClientJs(reservation.id);
-            const signal = getStaffEventSignal(reservation);
-            const kind = getStaffEventKind(reservation);
-            const activity = getStaffReservationActivityType(reservation);
-            const resources = getStaffEventResources(reservation);
-            const resourceParts = String(resources || '').split(' | ').filter(Boolean);
-            const prixHtml = renderReservationPriceMark(reservation, { forme: 'complet' });
-            return `<article class="event-row event-${escapeHtml(activity)} tone-${escapeHtml(signal.tone)}">
-              <div class="event-time">
-                <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
-                <span>${escapeHtml(kind)}</span>
-              </div>
-              <div class="event-main">
-                <div class="event-title-line">
-                  <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
-                  ${/* EVENEMENTS EST LA PAGE DES DOSSIERS A SURVEILLER : c est
-                       la que la consigne doit se voir, sinon elle se decouvre
-                       trop tard. Icone seule, texte complet dans l infobulle et
-                       dans la fiche : la ligne ne grossit pas. */''}
-                  ${hasReservationNote(reservation) ? `<span class="event-note-flag" role="img" aria-label="Note à lire" title="${escapeHtml(getReservationNoteText(reservation))}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z"/><path d="M8.4 8.6h7.6M8.4 11.8h4.8"/></svg></span>` : ''}
-                  <span>${escapeHtml(signal.label)}</span>
-                </div>
-                <p>${escapeHtml(getReservationLabel(reservation))}</p>
-                <div class="event-meta">
-                  <span>${Number(reservation.pax || 0)} joueurs</span>
-                  <span>${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
-                  ${/* Un montant decide a la main s affichait comme un tarif
-                       catalogue : personne ne le verifiait ni ne l expliquait au
-                       client. La pastille REMPLACE le montant nu quand il y a un
-                       ecart, sinon le montant reste nu. */''}
-                  ${prixHtml || `<span>${formatMoney(Number(reservation.price || 0))}</span>`}
-                  ${renderActivityProgressPill(reservation)}
-                </div>
-              </div>
-              <div class="event-resource" title="${escapeHtml(resources)}">
-                ${resourceParts.slice(0, 2).map(part => `<span>${escapeHtml(part)}</span>`).join('')}
-                ${resourceParts.length > 2 ? `<em>+${resourceParts.length - 2}</em>` : ''}
-              </div>
-              <div class="event-actions">
-                ${renderStaffUtilityAction('Ouvrir', `openStaffReservationDetail(${id})`)}
-                ${reservation.status === 'arrived'
-                  ? renderStaffUtilityAction('Encaisser', `setReservationStatusDirect(${id}, 'paid', event)`, 'success')
-                  : renderStaffUtilityAction('Arrive', `setReservationStatusDirect(${id}, 'arrived', event)`, 'success')}
-              </div>
-            </article>`;
-          }).join('')}
-        </div>
-      </section>
-
-      <aside class="events-side">
-        <section>
-          <h3>A surveiller</h3>
-          ${watchRows.length ? watchRows.map(reservation => {
-            const signal = getStaffEventSignal(reservation);
-            return `<button type="button" class="event-watch-line tone-${escapeHtml(signal.tone)}" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">
-              <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
-              <span>${escapeHtml(getStaffUtilityStartLabel(reservation))} - ${escapeHtml(signal.label)}</span>
-            </button>`;
-          }).join('') : '<p>Aucun point critique detecte.</p>'}
-        </section>
-        <section>
-          <h3>Actions terrain</h3>
-          <button type="button" onclick="openStaffMenuPage('arrivals')">Ouvrir les arrivees</button>
-          <button type="button" onclick="openStaffPlanningResource('all')">Voir toutes les réservations</button>
-          <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Nouvelle formule</button>
-        </section>
-      </aside>
-    </div>
-  </div>`;
-}
 // ── Performance 30 jours des ressources (2026-08-25, Movsar : « pistes
 // bowling et laser game ne servent a rien tels quels, fais un truc vrm
 // utile »). La fenetre = les 30 jours REVOLUS (hier inclus, jamais
@@ -13116,7 +12979,7 @@ function renderStaffLaneBoard(model = buildStaffLaneBoardModel()) {
       const info = item.maintInfo || {};
       statut = `Fermée${info.note ? ` · ${escapeHtml(info.note)}` : ''}${info.until ? ` · jusqu’au ${escapeHtml(info.until)}` : ''}`;
     } else if (item.current) {
-      statut = `Occupée · <b>${escapeHtml(item.current.reservation.name || 'Client')}</b> (${Number(item.current.reservation.pax || 0)} j.) jusqu’à ${numToTime(item.current.end)}${item.next ? `, puis ${numToTime(item.next.start)}` : ''}`;
+      statut = `Occupée · <b>${escapeHtml(item.current.reservation.name || 'Client')}</b> (${formatStaffTerrainCount(Number(item.current.reservation.pax || 0), 'joueur')}) jusqu’à ${numToTime(item.current.end)}${item.next ? `, puis ${numToTime(item.next.start)}` : ''}`;
     } else if (model.now != null) {
       statut = item.next ? `Libre jusqu’à ${numToTime(item.next.start)} · <b>${escapeHtml(item.next.reservation.name || 'Client')}</b> ensuite` : 'Libre jusqu’à la fermeture';
     } else {
@@ -13176,14 +13039,18 @@ function buildStaffLaserBoardModel() {
 
 function renderStaffLaserBoard(model = buildStaffLaserBoardModel()) {
   const cap = LASER_GAME_MAX_PLAYERS;
-  const futureGap = model.now == null ? model.gaps[0] : model.gaps.find((gap) => gap.end > model.now);
-  let bandeau;
+  // LE BANDEAU RESUME, LA CARTE AGIT. Le bandeau portait « Ajouter un groupe »
+  // pour le prochain lancement, et la carte de ce meme lancement, juste
+  // dessous, « Compléter · 22 places » : deux boutons pour la meme session.
+  // Sans aucun lancement, bandeau et etat vide disaient deux fois « rien » :
+  // le bandeau se tait alors, l etat vide parle seul, et reserver reste
+  // l action principale de l en-tete.
+  let bandeau = '';
   if (model.next) {
-    bandeau = `Prochain lancement <strong>${numToTime(model.next.start)}</strong> · ${model.nextPlaces} places restantes
-      ${model.nextPlaces > 0 ? `<button type="button" onclick="openQuickBookForLaserSession(${Number(model.next.start)}, ${model.nextPlaces})">Ajouter un groupe</button>` : '<span>complet</span>'}`;
-  } else if (model.isToday) {
-    bandeau = `Aucun autre lancement aujourd’hui.${futureGap ? ` <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'laser', startTime: numToTime(${Math.max(futureGap.start, model.now == null ? futureGap.start : model.now)}) })">Réserver un créneau</button>` : ''}`;
-  } else {
+    bandeau = `Prochain lancement <strong>${numToTime(model.next.start)}</strong> · ${model.nextPlaces ? `${model.nextPlaces} place${model.nextPlaces > 1 ? 's' : ''} restante${model.nextPlaces > 1 ? 's' : ''}` : 'complet'}`;
+  } else if (model.sessions.length && model.isToday) {
+    bandeau = 'Aucun autre lancement aujourd’hui.';
+  } else if (model.sessions.length) {
     bandeau = `${model.sessions.length} lancement${model.sessions.length > 1 ? 's' : ''} sur la date affichée.`;
   }
   const sessionsHtml = model.sessions.map((session) => {
@@ -13191,7 +13058,7 @@ function renderStaffLaserBoard(model = buildStaffLaserBoardModel()) {
     const fillPct = Math.min(100, Math.round((session.players / cap) * 100));
     const weak = session.players / cap < 0.5;
     const future = model.now == null || session.start > model.now;
-    const groups = session.reservations.map((item) => `<button type="button" onclick="openStaffReservationDetail(${staffClientJs(item.reservation.id)})">${escapeHtml(item.reservation.name || 'Client')} · ${Number(item.window.players || item.reservation.pax || 0)} j.</button>`).join('');
+    const groups = session.reservations.map((item) => `<button type="button" onclick="openStaffReservationDetail(${staffClientJs(item.reservation.id)})">${escapeHtml(item.reservation.name || 'Client')} · ${formatStaffTerrainCount(Number(item.window.players || item.reservation.pax || 0), 'joueur')}</button>`).join('');
     const action = future && remaining > 0
       ? `<div class="laser-session-action"><button type="button" onclick="openQuickBookForLaserSession(${Number(session.start)}, ${remaining})">${weak ? 'Compléter' : 'Ajouter un groupe'} · ${remaining} places</button></div>`
       : (remaining <= 0 ? '<div class="laser-session-action"><span>Session complète.</span></div>' : '');
@@ -13202,12 +13069,12 @@ function renderStaffLaserBoard(model = buildStaffLaserBoardModel()) {
       ${action}
     </article>`;
   }).join('');
-  const top = model.stats30.topHours.map(([hour, players]) => `${String(hour).padStart(2, '0')}h (${players} j.)`).join(', ');
+  const top = model.stats30.topHours.map(([hour, players]) => `${String(hour).padStart(2, '0')}h (${formatStaffTerrainCount(players, 'joueur')})`).join(', ');
   const bilan = model.stats30.sessions
     ? `<div class="laser-30d">30 jours : <b>${model.stats30.fill}%</b> de remplissage moyen · ${model.stats30.sessions} lancements · ${model.stats30.players} joueurs · <b>${model.stats30.emptySeats}</b> places restées vides sur des lancements lancés${top ? ` · heures fortes : ${top}` : ''}</div>`
     : '';
   const vide = model.sessions.length ? '' : `<div class="utility-empty"><strong>Aucun lancement sur la date</strong><span>Réservez un laser : le premier groupe crée la session.</span></div>`;
-  return `<div class="laser-board"><div class="laser-next">${bandeau}</div>${sessionsHtml}${vide}${bilan}</div>`;
+  return `<div class="laser-board">${bandeau ? `<div class="laser-next">${bandeau}</div>` : ''}${sessionsHtml}${vide}${bilan}</div>`;
 }
 function getStaffUtilityLaserSessions(reservations = getStaffUtilityReservations()) {
   const groups = new Map();
@@ -14690,7 +14557,7 @@ const STAFF_ROLE_PRESETS = [
     name: 'Direction',
     code: 'DI',
     summary: 'Contrôle total multi-centres',
-    description: 'Pour Rachel, Seb ou un administrateur responsable du produit.',
+    description: 'Pour la direction du centre, avec tous les droits.',
     tone: 'admin',
     permissions: STAFF_PERMISSION_GROUPS.flatMap(group => group.permissions.map(permission => permission[0]))
   },
@@ -15254,15 +15121,17 @@ async function copyStaffMemberCode(memberId) {
 function getStaffRoleAccessiblePages(roleId) {
   const permissions = getStaffRolePermissionSet(roleId);
   const pages = [
-    ['Dashboard', 'dashboard.view'],
+    // Les noms de la barre laterale : un role « ouvre » des pages que le
+    // gerant retrouve sous le meme nom a gauche.
+    ['Vue d’ensemble', 'dashboard.view'],
     ['Planning', 'planning.view'],
     ['Réservations', 'reservations.view'],
     ['Clients', 'clients.view'],
-    ['Tarifs', 'pricing.manage'],
-    ['Emails', 'emails.view'],
-    ['Campagnes', 'campaigns.manage'],
+    ['Activités & tarifs', 'pricing.manage'],
+    ['Emails & relances', 'emails.view'],
+    ['Marketing', 'campaigns.manage'],
     ['Direction', 'direction.view'],
-    ['Utilisateurs', 'users.manage']
+    ['Équipe & accès', 'users.manage']
   ];
   return pages.map(([label, permission]) => ({ label, permission, allowed: permissions.has(permission) }));
 }
@@ -15907,36 +15776,58 @@ function renderAvailabilityBlocksPanel() {
   </section>`;
 }
 
+// LES PARAMETRES DU POSTE (2026-09-25). La page etait une maquette : trois
+// blocs sans style (« InterfaceThème Clair » colle, boutons bruts du
+// navigateur) et un bloc « Ops » qui chargeait de la plomberie interne. Restent
+// les trois reglages qu un gerant utilise vraiment, chacun dit ce qu il fait.
 function renderStaffUtilitySettings() {
-  const currentTheme = state.staffTheme === 'light' ? 'Clair' : 'Sombre';
-  return `<div class="utility-settings-console">
-    <article><span>Interface</span><strong>Thème ${escapeHtml(currentTheme)}</strong><p>Mode staff persistant sur ce poste.</p><div><button type="button" onclick="setStaffTheme('dark')">Sombre</button><button type="button" onclick="setStaffTheme('light')">Clair</button></div></article>
-    <article><span>Données</span><strong>${state.reservations.length} réservation(s)</strong><p>Actualise planning, mails et état staff.</p><div><button type="button" onclick="refreshStaffPlanning()">Actualiser</button><button type="button" onclick="exportStaffPlanningCsv()">Exporter</button></div></article>
-    <article><span>Ops</span><strong>${opsAdminCache.loaded ? 'Console chargée' : 'Console prête'}</strong><p>Mails, agents et suggestions terrain.</p><div><button type="button" onclick="requestOpsAdminLoad(true)">Charger Ops</button><button type="button" onclick="openStaffMenuPage('emails')">Emails</button></div></article>
+  const light = state.staffTheme === 'light';
+  const count = getStaffUtilityReservations().length;
+  const day = parseLocalDate(state.currentDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+  return `<div class="settings-list">
+    <div class="settings-row">
+      <div class="settings-copy">
+        <h2>Apparence</h2>
+        <p>Le thème de la console sur ce poste. Les autres postes gardent le leur.</p>
+      </div>
+      <div class="settings-seg" role="group" aria-label="Thème de la console">
+        <button type="button" aria-pressed="${light ? 'true' : 'false'}" class="${light ? 'is-on' : ''}" onclick="setStaffTheme('light')">Clair</button>
+        <button type="button" aria-pressed="${light ? 'false' : 'true'}" class="${light ? '' : 'is-on'}" onclick="setStaffTheme('dark')">Sombre</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-copy">
+        <h2>Export du planning</h2>
+        <p>${escapeHtml(formatStaffTerrainCount(count, 'réservation'))} le ${escapeHtml(day)}, dans un fichier tableur (CSV) : heure, client, téléphone, offre, joueurs, pistes, statut et montant.</p>
+      </div>
+      <button type="button" class="utility-action" onclick="exportStaffPlanningCsv('day')"${count ? '' : ' disabled'}>Exporter en CSV</button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-copy">
+        <h2>Données</h2>
+        <p>La console se synchronise toute seule toutes les quelques secondes. Ce bouton force un rechargement immédiat depuis le serveur.</p>
+      </div>
+      <button type="button" class="utility-action" onclick="refreshStaffPlanning()">Actualiser</button>
+    </div>
   </div>`;
 }
 
 function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   const reservations = getStaffUtilityReservations();
-  const now = currentTimeDecimal();
-  const isToday = state.currentDate === todayStr();
-  const activeRows = reservations.filter(reservation => getStaffResourceWindows(reservation, 'all').some(window => window.start <= now && now < window.end));
-  const openRows = reservations.filter(reservation => reservation.status !== 'paid');
-  const arrivedRows = reservations.filter(reservation => reservation.status === 'arrived');
-  const eventRows = reservations.filter(isStaffUtilityEventReservation);
-  const clientRows = getStaffClientRows();
-  const laserSessions = getStaffUtilityLaserSessions(reservations);
-  const maintenanceCount = Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length;
+  // Pas de bouton secondaire par defaut : « Voir planning » s affichait sur
+  // chaque page, doublon de la barre laterale, et ouvrait meme les
+  // Reservations depuis Formules. Une page qui a une vraie deuxieme action
+  // la declare.
   const base = {
     page,
     layout: 'default',
-    eyebrow: 'Staff',
+    eyebrow: 'Journée',
     title: 'Espace staff',
     subtitle: getStaffUtilitySyncLabel(),
     primaryLabel: 'Réservation rapide',
     primaryAction: "openQuickBook({ date: state.currentDate, type: 'bowling' })",
-    secondaryLabel: 'Voir planning',
-    secondaryAction: "openStaffPlanningResource('bowling')",
+    secondaryLabel: '',
+    secondaryAction: '',
     kpis: [],
     body: ''
   };
@@ -15953,14 +15844,17 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'events',
-      eyebrow: 'Terrain',
-      title: 'Formules, suivi des activités',
+      eyebrow: 'Journée',
+      // Le titre est celui de la barre laterale : une entree « Formules » qui
+      // ouvre « Formules, suivi des activités » faisait croire a une autre page.
+      title: 'Formules',
       subtitle: 'Cochez chaque activité au fur et à mesure : vous voyez d\'un coup d\'œil ce qui reste à faire.',
       // « 0/8 activités faite » : le pluriel de « faites » suivait le nombre de
       // coches, pas le nombre d activites qu il qualifie. Les deux accords
       // s indexent sur le meme mot.
       panelSubtitle: `${formuleRows.length} formule${formuleRows.length > 1 ? 's' : ''} sur la date · ${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} faite${totals.total > 1 ? 's' : ''}`,
-      secondaryAction: "openStaffMenuPage('reservations')",
+      primaryLabel: 'Nouvelle formule',
+      primaryAction: "openQuickBook({ date: state.currentDate, type: 'formule' })",
       kpis: [
         ['Formules', formuleRows.length, 'sur la date'],
         ['Joueurs', formuleRows.reduce((sum, r) => sum + Number(r.pax || 0), 0), 'participants'],
@@ -15970,63 +15864,32 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       body: renderStaffFormulesBoard(formuleRows)
     };
   }
-  if (page === 'sessions') {
-    // LES DEUX COLONNES SONT EXCLUSIVES. Un dossier deja arrive tombait a la
-    // fois dans « Prochain depart » (depart a venir, non paye) et dans
-    // « A cloturer » (statut arrive) : la meme carte rendue deux fois, comptee
-    // deux fois, agissable deux fois. Ce qui est arrive n a plus rien a
-    // preparer avant l arrivee.
-    const nextRows = reservations.filter(reservation => getReservationFirstResourceStart(reservation, 'all') > now && reservation.status !== 'paid' && reservation.status !== 'arrived').slice(0, 8);
-    const closingRows = reservations.filter(reservation => reservation.status === 'arrived' || (getStaffResourceWindows(reservation, 'all').some(window => window.end <= now) && reservation.status !== 'paid')).slice(0, 8);
-    const rows = isToday ? activeRows : openRows;
-    return {
-      ...base,
-      layout: 'rush',
-      eyebrow: 'Opérationnel',
-      title: 'Sessions en cours',
-      subtitle: isToday ? 'Ce qui demande une attention maintenant.' : 'Sessions ouvertes sur la date affichée.',
-      secondaryAction: "openStaffMenuPage('reservations')",
-      kpis: [
-        ['En cours', rows.length, isToday ? 'fenêtre active maintenant' : 'sur la date'],
-        ['À gérer', openRows.length, 'non clôturées'],
-        ['Laser', reservations.filter(r => getLaserWindowsFromReservation(r).length).length, 'réservations visibles'],
-        ['Bowling', reservations.filter(r => getBowlingWindowsFromReservation(r).length).length, 'réservations visibles']
-      ],
-      body: renderStaffUtilityRushBoard({ activeRows: rows.slice(0, 8), nextRows, closingRows })
-    };
-  }
+  // Arrivees, En cours et Evenements ne font plus qu une page (voir
+  // getStaffTerrainBoard) ; les anciennes adresses y menent par
+  // STAFF_PAGE_ALIASES.
   if (page === 'arrivals') {
-    const rows = reservations.filter(reservation => reservation.status !== 'paid');
+    const board = getStaffTerrainBoard(reservations);
+    const players = reservations.reduce((sum, reservation) => sum + Number(reservation.pax || 0), 0);
+    const doneCount = board.done.length;
+    const summary = reservations.length ? [
+      formatStaffTerrainCount(reservations.length, 'réservation'),
+      formatStaffTerrainCount(players, 'joueur'),
+      doneCount ? `${doneCount} terminée${doneCount > 1 ? 's' : ''} et payée${doneCount > 1 ? 's' : ''}` : ''
+    ].filter(Boolean).join(' · ') : '';
     return {
       ...base,
-      layout: 'arrival',
-      eyebrow: 'Accueil',
-      title: 'Arrivées',
-      subtitle: 'File de clients à accueillir, confirmer ou encaisser.',
+      layout: 'terrain',
+      eyebrow: 'Journée',
+      title: 'Terrain',
+      subtitle: [getStaffUtilitySyncLabel(), summary].filter(Boolean).join(' · '),
+      hidePanelHead: true,
       kpis: [
-        ['À venir', rows.filter(r => r.status === 'pending').length, 'confirmées'],
-        ['Sur place', arrivedRows.length, 'déjà arrivées'],
-        ['Joueurs', rows.reduce((sum, r) => sum + Number(r.pax || 0), 0), 'à suivre'],
-        ['À encaisser', rows.filter(r => r.status !== 'paid').length, 'réservations ouvertes']
+        ['À venir', board.upcoming.length, 'pas encore arrivés'],
+        ['Sur place', board.onsite.length, 'arrivés ou en jeu'],
+        ['À clôturer', board.closing.length, 'fini, pas payé'],
+        ['Terminées', doneCount, 'fini et payé']
       ],
-      body: renderStaffUtilityArrivalDesk(rows)
-    };
-  }
-  if (page === 'events') {
-    return {
-      ...base,
-      layout: 'events',
-      eyebrow: 'Terrain',
-      title: 'Événements',
-      subtitle: 'Les dossiers qui demandent une attention staff avant ou pendant le passage.',
-      panelSubtitle: `${eventRows.length} dossier${eventRows.length > 1 ? 's' : ''} sensible${eventRows.length > 1 ? 's' : ''} · trié par heure · données réelles`,
-      kpis: [
-        ['Événements', eventRows.length, 'détectés sur la date'],
-        ['Joueurs', eventRows.reduce((sum, r) => sum + Number(r.pax || 0), 0), 'participants'],
-        ['Formules', eventRows.filter(r => r.formuleId || r.type === 'formule').length, 'à suivre'],
-        ['CA prévu', formatMoney(eventRows.reduce((sum, r) => sum + Number(r.price || 0), 0)), 'sur ces lignes']
-      ],
-      body: renderStaffUtilityEventsBoard(eventRows)
+      body: renderStaffTerrainBoard(board)
     };
   }
   // Plus de branche « groups » : la page a disparu le 2026-07-13 (fusion
@@ -16047,7 +15910,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'requests',
-      eyebrow: 'Clients',
+      eyebrow: 'Clients & marketing',
       title: 'Demandes sur mesure',
       // Le bandeau du panneau REPETAIT le titre et le compte deja portes par
       // l'en-tete de page, juste au-dessus. Deux fois « Demandes sur mesure »
@@ -16057,10 +15920,10 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       subtitle: `${newCount + progressCount} active${newCount + progressCount > 1 ? 's' : ''} · ${handledCount} traitée${handledCount > 1 ? 's' : ''} · anniversaires, groupes et entreprises, réponse comprise.`,
       hidePanelHead: true,
       hideDateAction: true,
-      primaryLabel: 'Actualiser',
-      primaryAction: 'loadStaffCustomRequests(true)',
-      secondaryLabel: 'Voir les clients',
-      secondaryAction: "openStaffMenuPage('clients')",
+      primaryLabel: '',
+      primaryAction: '',
+      secondaryLabel: 'Actualiser',
+      secondaryAction: 'loadStaffCustomRequests(true)',
       kpis: [
         ['Nouvelles', newCount, 'jamais ouvertes'],
         ['En cours', progressCount, 'prises en charge'],
@@ -16071,11 +15934,12 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     };
   }
   if (page === 'contacts') {
+    const clientRows = getStaffClientRows();
     const missing = clientRows.filter(row => !row.email || !row.phone).length;
     return {
       ...base,
       layout: 'contacts',
-      eyebrow: 'Clients',
+      eyebrow: 'Clients & marketing',
       title: 'Contacts',
       subtitle: 'Carnet client issu des réservations réelles.',
       primaryLabel: 'Exporter CSV',
@@ -16097,10 +15961,10 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'lanes',
-      eyebrow: 'Bowling',
-      title: 'Pistes',
+      eyebrow: 'Activités & tarifs',
+      title: 'Pistes bowling',
       subtitle: 'Fermer, replacer, vendre un creux : l’état vivant de chaque piste.',
-      primaryLabel: 'Créer bowling',
+      primaryLabel: 'Réserver une piste',
       primaryAction: "openQuickBook({ date: state.currentDate, type: 'bowling' })",
       kpis: laneBoard.kpis,
       body: renderStaffLaneBoard(laneBoard)
@@ -16112,13 +15976,11 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'laser',
-      eyebrow: 'Laser Game',
+      eyebrow: 'Activités & tarifs',
       title: 'Laser Game',
       subtitle: 'Prochain lancement, sessions à compléter, bilan 30 jours.',
-      primaryLabel: 'Réserver Laser',
+      primaryLabel: 'Réserver un laser',
       primaryAction: "openQuickBook({ date: state.currentDate, type: 'laser' })",
-      secondaryLabel: 'Planning Laser',
-      secondaryAction: "openStaffPlanningResource('laser')",
       kpis: laserBoard.kpis,
       body: renderStaffLaserBoard(laserBoard)
     };
@@ -16127,7 +15989,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'establishment',
-      eyebrow: 'Paramètres',
+      eyebrow: 'Administration',
       title: 'Établissement',
       subtitle: 'Configuration des centres lue par le moteur.',
       hidePanelHead: true,
@@ -16151,8 +16013,8 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'users',
-      eyebrow: 'Paramètres',
-      title: 'Utilisateurs',
+      eyebrow: 'Administration',
+      title: 'Équipe & accès',
       subtitle: 'Rôles, codes d’accès et permissions opérationnelles du centre.',
       hidePanelHead: true,
       hideDateAction: true,
@@ -16161,7 +16023,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       secondaryLabel: 'Créer rôle',
       secondaryAction: 'createStaffCustomRole()',
       kpis: [
-        ['Rôles', visibleRoles.length, 'presets + personnalisés'],
+        [visibleRoles.length > 1 ? 'Rôles' : 'Rôle', visibleRoles.length, 'du centre'],
         ['Staff actif', activeMembers, `${pendingMembers} en attente`],
         ['Permissions du rôle', `${selectedPermissionCount}/${permissionTotal}`, selectedRole.name],
         ['Codes actifs', visibleRoles.filter(role => role.accessCode).length + visibleMembers.filter(member => member.code).length, 'rôles et membres']
@@ -16173,21 +16035,13 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'settings',
-      eyebrow: 'Paramètres',
+      eyebrow: 'Compte',
       title: 'Paramètres',
-      subtitle: 'Actions réelles du poste staff, thème, données et console Ops.',
-      primaryLabel: 'Actualiser',
-      primaryAction: 'refreshStaffPlanning()',
-      secondaryLabel: 'Exporter planning',
-      secondaryAction: 'exportStaffPlanningCsv()',
-      kpis: [
-        ['Thème', state.staffTheme === 'light' ? 'Clair' : 'Sombre', 'ce poste'],
-        // « local + API » decrivait la plomberie. Ce qui compte pour le staff :
-        // combien de reservations sont chargees pour la date affichee.
-        ['Réservations', state.reservations.length, 'chargées'],
-        ['Mails Ops', opsAdminCache.communications?.length || 0, 'chargés'],
-        ['Date', state.currentDate, 'contexte staff']
-      ],
+      subtitle: 'Les réglages de ce poste.',
+      hidePanelHead: true,
+      hideDateAction: true,
+      primaryLabel: '',
+      primaryAction: '',
       body: renderStaffUtilitySettings()
     };
   }
@@ -16198,27 +16052,24 @@ function renderStaffUtilityPage() {
   const root = document.getElementById('staffUtilityPage');
   if (!root) return;
   const model = getStaffUtilityPageModel();
-  const dateLabel = parseLocalDate(state.currentDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  // Sans texte de synchro (cas normal), la date reste seule : pas de « · » en
-  // tete de ligne, pas de separateur qui pend.
-  const prettyDate = dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1);
-  const heroSubtitle = model.hidePanelHead
-    ? escapeHtml(model.subtitle)
-    : [model.subtitle, prettyDate].filter(Boolean).map(escapeHtml).join(' · ');
-  const overviewPages = new Set(['users', 'settings']);
+  // La date n est plus recopiee sous le titre : le selecteur de date, a cote,
+  // l affiche deja avec le jour de la semaine.
+  const heroSubtitle = escapeHtml(model.subtitle || '');
+  const overviewPages = new Set(['users']);
   const archivePages = new Set(['groups', 'contacts']);
-  // Le sous-titre du panneau ne s'affiche que s'il DIT quelque chose : sans
-  // texte propre a la page ni alerte de connexion, la ligne disparait au lieu
-  // de rester vide sous le titre.
+  // L en-tete du panneau RECOPIAIT le titre de la page (« Pistes » sous
+  // « Pistes ») et portait un « Rafraîchir » qui ne faisait que redessiner
+  // les memes donnees : les deux partent. Reste une ligne, seulement si elle
+  // dit quelque chose (compte propre a la page, ou connexion perdue).
   const panelSubtitle = model.panelSubtitle || getStaffUtilitySyncLabel();
-  const panelHead = model.hidePanelHead ? '' : `<div class="utility-panel-head">
-        <div>
-          <h2>${escapeHtml(model.title)}</h2>
-          ${panelSubtitle ? `<p>${escapeHtml(panelSubtitle)}</p>` : ''}
-        </div>
-        <button type="button" onclick="renderStaffUtilityPage()">Rafraîchir</button>
-      </div>`;
-  root.className = `staff-utility-page utility-page-${escapeHtml(model.page)} utility-layout-${escapeHtml(model.layout || 'default')}`;
+  const panelHead = model.hidePanelHead || !panelSubtitle ? '' : `<p class="utility-panel-note">${escapeHtml(panelSubtitle)}</p>`;
+  // Entree de page : une fois par navigation, jamais au poll ni au tic de la
+  // minute (meme repere de visite que l accueil et les pages pv2).
+  const pages = window.PinlaneV2;
+  const active = isStaffUtilityActive();
+  const arriving = active && (pages ? pages.lastPage !== model.page : !root.firstElementChild);
+  if (pages && active) pages.lastPage = model.page;
+  root.className = `staff-utility-page utility-page-${escapeHtml(model.page)} utility-layout-${escapeHtml(model.layout || 'default')}${arriving && !prefersReducedMotion() ? ' utility-enter' : ''}`;
   // CE QU ON ETAIT EN TRAIN DE FAIRE SURVIT AU REPAINT (2026-08-20). La page se
   // repeint entierement des qu une reponse reseau arrive (file des demandes,
   // fil de mails, changement de statut). Sans cette sauvegarde, le champ en
@@ -16238,7 +16089,7 @@ function renderStaffUtilityPage() {
       <div>
         <span>${escapeHtml(model.eyebrow)}</span>
         <h1>${escapeHtml(model.title)}</h1>
-        <p>${heroSubtitle}</p>
+        ${heroSubtitle ? `<p>${heroSubtitle}</p>` : ''}
       </div>
       <div class="utility-actions">
         ${model.hideDateAction ? '' : staffDateNavHtml()}
@@ -16270,7 +16121,7 @@ function renderStaffUtilityPage() {
   // Le fil de la demande ouverte se charge tout seul : l'historique existait
   // deja, il fallait cliquer un bouton par carte pour le voir.
   if (model.page === 'requests') ensureStaffRequestThread();
-  if ((model.page === 'emails' || model.page === 'settings' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) requestOpsAdminLoad(false);
+  if ((model.page === 'emails' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) requestOpsAdminLoad(false);
 }
 
 function isStaffClientsActive() {
@@ -17490,9 +17341,14 @@ function renderStaffRequestsBoard() {
 
   const seg = (key, label) => `<button type="button" role="tab" aria-selected="${segment === key ? 'true' : 'false'}" class="req-seg ${segment === key ? 'active' : ''}" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<em>${(buckets[key] || []).length}</em></button>`;
 
-  const emptyList = query
-    ? `<p class="req-rail-empty">Aucune demande ne correspond à « ${escapeHtml(query)} ».</p>`
-    : `<p class="req-rail-empty">${segment === 'actives' ? 'Aucune demande en attente : tout est traité.' : 'Rien dans cette vue.'}</p>`;
+  // UN ETAT VIDE SE DIT UNE FOIS. La file et le panneau de lecture ecrivaient
+  // la meme phrase cote a cote. La file vide se tait (l onglet affiche deja
+  // 0) ; le panneau dit pourquoi elle est vide, recherche comprise.
+  const empty = query
+    ? { title: `Aucune demande ne correspond à « ${query} ».`, text: 'Cherchez un nom, une société ou une adresse email.' }
+    : segment === 'actives'
+      ? { title: 'Aucune demande en attente : tout est traité.', text: 'Les nouvelles demandes du formulaire arrivent ici, réponse comprise.' }
+      : { title: 'Rien dans cette vue.', text: 'Changez d’onglet pour retrouver les demandes traitées ou archivées.' };
 
   return `<div class="req-board" data-segment="${escapeHtml(segment)}">
     <aside class="req-rail" aria-label="File des demandes">
@@ -17505,15 +17361,15 @@ function renderStaffRequestsBoard() {
         </div>
       </div>
       <div class="req-rail-list" id="reqRailList" ${listChanged ? 'data-anim="1"' : ''}>
-        ${rows.length ? rows.map((item, index) => renderStaffRequestRailItem(item, selected && String(selected.id) === String(item.id), index)).join('') : emptyList}
+        ${rows.map((item, index) => renderStaffRequestRailItem(item, selected && String(selected.id) === String(item.id), index)).join('')}
       </div>
     </aside>
     ${selected
       ? renderStaffRequestDetail(selected, changed)
       : `<section class="req-detail req-detail-empty">
           <span class="req-empty-icon" aria-hidden="true">${STAFF_REQUEST_ICONS.inbox}</span>
-          <strong>${segment === 'actives' ? 'Aucune demande en attente : tout est traité.' : 'Rien dans cette vue.'}</strong>
-          <p>${segment === 'actives' ? 'Les nouvelles demandes du formulaire arrivent ici, réponse comprise.' : 'Changez d’onglet pour retrouver les demandes traitées ou archivées.'}</p>
+          <strong>${escapeHtml(empty.title)}</strong>
+          <p>${escapeHtml(empty.text)}</p>
         </section>`}
   </div>`;
 }
@@ -18228,14 +18084,10 @@ function formatStaffClientAgo(dateValue) {
   return `Dans ${Math.abs(diff)} jours`;
 }
 
+// Meme libelle que partout : sans « confirmed », l historique d un client
+// affichait le code brut anglais.
 function formatStaffClientStatus(status = 'pending') {
-  const labels = {
-    pending: 'Confirmé',
-    arrived: 'Arrivé',
-    paid: 'Payé',
-    cancelled: 'Annulé'
-  };
-  return labels[status] || status || 'Confirmé';
+  return getStaffReservationStatusLabel(status);
 }
 
 function buildStaffClientRowsFromReservations(reservations = []) {
@@ -18892,9 +18744,16 @@ function getStaffReservationActivityType(reservation) {
   return 'event';
 }
 
+// « pending » EST LE STATUT D UNE RESERVATION CONFIRMEE PAS ENCORE ARRIVEE.
+// La base ne connait que pending / arrived / paid / cancelled
+// (lib/database.js, VALID_STATUSES) : une reservation normale y est stockee
+// « pending », et les boutons de statut de la liste l affichent « Confirmé ».
+// Ce libelle-ci disait « En attente » : la carte Formules et le Terrain
+// annoncaient en attente des groupes parfaitement confirmes. L attente de
+// validation, elle, vit dans validationStatus (« staff_review »).
 function getStaffReservationStatusLabel(status) {
   const labels = {
-    pending: 'En attente',
+    pending: 'Confirmé',
     confirmed: 'Confirmé',
     arrived: 'Arrivé',
     paid: 'Payé',
@@ -19365,9 +19224,13 @@ function refreshStaffPlanning() {
   renderStaff();
 }
 
-function exportStaffPlanningCsv() {
-  if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
-  const rows = getPlanningVisibleReservations().map(reservation => [
+// scope « day » : toute la journee, hors annulations, quel que soit l onglet
+// ou le filtre laisse sur le planning (l export des Parametres). Sans scope :
+// ce que le planning montre.
+function exportStaffPlanningCsv(scope = '') {
+  if (!requireClientPermission('exports.download', 'Votre rôle ne permet pas de télécharger les exports.')) return;
+  const source = scope === 'day' ? getStaffUtilityReservations() : getPlanningVisibleReservations();
+  const rows = source.map(reservation => [
     reservation.date,
     reservation.startTime,
     reservation.name,
@@ -19377,10 +19240,10 @@ function exportStaffPlanningCsv() {
     getStaffResourceWindows(reservation, 'all').map(window => window.resourceType === 'laser_arena'
       ? `Laser ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`
       : `Pistes ${(window.lanes || []).join(' ')} ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`).join(' / '),
-    reservation.status || 'pending',
+    getStaffReservationStatusLabel(reservation.status || 'pending'),
     reservation.price || 0
   ]);
-  const header = ['Date', 'Heure', 'Client', 'Telephone', 'Offre', 'Joueurs', 'Ressources', 'Statut', 'Montant'];
+  const header = ['Date', 'Heure', 'Client', 'Téléphone', 'Offre', 'Joueurs', 'Ressources', 'Statut', 'Montant'];
   downloadTextFile(`${getCurrentStaffCenterId()}-planning-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...rows.map(row => row.map(csvCell).join(','))].join('\n'), 'text/csv;charset=utf-8');
   closeStaffFloatingMenus();
 }
@@ -20364,7 +20227,7 @@ function renderCardFlags(reservation, options = {}) {
   if (hasReservationNote(reservation)) {
     marques.push({
       cls: 'flag-note',
-      label: 'Note a lire',
+      label: 'Note à lire',
       // UNE BULLE, PAS UN ROND D'ALERTE. Movsar, 2026-08-14 : « le petit badge
       // attention est proche de celui qui montre la piste en retard, donc
       // relou ». Les deux etaient un cercle : a 12px, un cercle avec un point
@@ -20635,11 +20498,22 @@ function renderStaffOpsMini(reservation) {
   return `<div class="res-ops-mini">${lines.join('')}</div>`;
 }
 
+// UNE VISITE COMMENCE QUAND LA PAGE CHANGE, quel que soit le chemin (barre
+// laterale, lien, adresse, retour arriere). Le repere des entrees de page
+// (window.PinlaneV2.lastPage) n etait tenu que par les pages qui s animent :
+// passer par le Planning, qui n en a pas, le laissait sur la page quittee, et
+// y revenir ne rejouait plus son entree. `var` et pas `let` : la coquille peut
+// se dessiner avant que le script ait fini de s evaluer.
+var staffShellVisitPage = '';
 function renderStaffShell(dayReservations = todaysReservations()) {
   const normalizedPage = normalizeStaffMenuPage(state.staffMenuPage);
   if (state.staffMenuPage !== normalizedPage) {
     state.staffMenuPage = normalizedPage;
     save();
+  }
+  if (staffShellVisitPage !== normalizedPage) {
+    staffShellVisitPage = normalizedPage;
+    if (window.PinlaneV2) window.PinlaneV2.lastPage = '';
   }
   const setPageVisibility = (id, active) => {
     const element = document.getElementById(id);
@@ -26683,7 +26557,8 @@ function applyInitialRouteFromHash() {
     lasergame: 'laserGame',
     'laser-game': 'laserGame',
     tariffs: 'prices',
-    tarifs: 'prices'
+    tarifs: 'prices',
+    ...STAFF_PAGE_ALIASES
   };
   const normalizedPage = staffPageAliases[page] || page;
   if (['client', 'staff', 'admin'].includes(view)) state.view = view;
@@ -26763,6 +26638,9 @@ setInterval(() => {
   if (laserBox && !laserBox.classList.contains('hidden')) {
     repaintKeepingScroll(laserBox, () => renderLaserPlanning());
   }
+  // Terrain : « dans 25 min » et le passage d une colonne a l autre suivent
+  // l heure, pas seulement les donnees. Aucune animation d entree au tic.
+  if (isStaffUtilityActive() && getStaffMenuPage() === 'arrivals') renderStaffUtilityPage();
 }, 60000);
 
 // Échap ferme le mode plein écran du planning (bowling ou laser).

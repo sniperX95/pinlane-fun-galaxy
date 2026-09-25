@@ -10,10 +10,9 @@
   // Duree de sortie des popovers : DOIT couvrir l'animation CSS fgx-menu-pop-out
   // (--dur-fast = 120ms) avant le retrait du DOM.
   const POPOVER_EXIT_MS = 140;
-  const DEFAULT_OPEN_GROUPS = { planning: false, field: false, activities: false, emails: false };
+  const DEFAULT_OPEN_GROUPS = { planning: false, activities: false, emails: false };
   const GROUP_DEFAULT_TARGETS = {
     planning: 'planning',
-    field: 'arrivals',
     activities: 'prices',
     emails: 'emails'
   };
@@ -101,16 +100,10 @@
         },
         { key: 'reservations', label: 'Réservations', icon: 'reservations' },
         { key: 'formules', label: 'Formules', icon: 'events' },
-        {
-          key: 'field',
-          label: 'Terrain',
-          icon: 'sessions',
-          children: [
-            { key: 'arrivals', label: 'Arrivées' },
-            { key: 'sessions', label: 'En cours' },
-            { key: 'events', label: 'Événements' }
-          ]
-        }
+        // UNE page, plus trois (2026-09-25) : Arrivees, En cours et Evenements
+        // montraient les memes reservations. Terrain les range en trois
+        // colonnes exclusives (a venir, sur place, a cloturer).
+        { key: 'arrivals', label: 'Terrain', icon: 'sessions' }
       ]
     },
     {
@@ -193,7 +186,7 @@
   // cacher côté UI ce qui est déjà refusé côté serveur.
   function menuKeyToPage(key) {
     if (key === 'bowling' || key === 'laser' || key === 'complete') return 'planning';
-    if (key === 'field' || key === 'activities') return null; // conteneurs : gérés par leurs enfants
+    if (key === 'activities') return null; // conteneur : géré par ses enfants
     // Les sections de la page Emails s'ouvrent avec le droit de la page.
     if (String(key || '').startsWith('emails-')) return 'emails';
     return key;
@@ -1249,10 +1242,6 @@
   }
 
   function navigateMenu(key, options = {}) {
-    if (key === 'field') {
-      navigateMenu('arrivals');
-      return;
-    }
     if (key === 'activities') {
       navigateMenu('prices');
       return;
@@ -1263,7 +1252,6 @@
       syncStaffMenuState();
       return;
     }
-    if (['arrivals', 'sessions', 'events'].includes(key)) setMenuGroupOpen('field', true);
     if (['prices', 'lanes', 'laserGame'].includes(key)) setMenuGroupOpen('activities', true);
     setMenuPage(key);
     if (key === 'dashboard') {
@@ -1291,24 +1279,8 @@
       if (typeof renderStaff === 'function') renderStaff();
       return;
     }
-    if (key === 'sessions') {
-      setMenuPage('sessions');
-      if (typeof setView === 'function') setView('staff');
-      if (typeof renderStaff === 'function') renderStaff();
-      return;
-    }
     if (key === 'arrivals') {
       setMenuPage('arrivals');
-      if (typeof setView === 'function') setView('staff');
-      if (typeof renderStaff === 'function') renderStaff();
-      return;
-    }
-    if (key === 'events') {
-      setMenuPage('events');
-      if (typeof state !== 'undefined') {
-        state.staffReservationActivityFilter = 'event';
-        state.staffReservationsSelectedDate = state.currentDate || state.staffReservationsSelectedDate;
-      }
       if (typeof setView === 'function') setView('staff');
       if (typeof renderStaff === 'function') renderStaff();
       return;
@@ -1416,13 +1388,10 @@
 
     const dashboardActive = view === 'staff' && page === 'dashboard';
     const planningActive = view === 'staff' && page === 'planning' && ['all', 'bowling', 'laser'].includes(resource);
-    const fieldActive = view === 'staff' && ['arrivals', 'sessions', 'events'].includes(page);
     const activitiesActive = view === 'staff' && ['prices', 'lanes', 'laserGame'].includes(page);
     const directStaffPages = [
       'reservations',
-      'sessions',
       'arrivals',
-      'events',
       'clients',
       'groups',
       'contacts',
@@ -1447,10 +1416,8 @@
     // et interceptait la classe active a la place de l'item de nav.
     root.querySelector('.fgx-menu-nav [data-fgx-menu-key="dashboard"]')?.classList.toggle('active', dashboardActive);
     root.querySelector('[data-fgx-menu-toggle="planning"]')?.classList.toggle('active', planningActive);
-    root.querySelector('[data-fgx-menu-toggle="field"]')?.classList.toggle('active', fieldActive);
     root.querySelector('[data-fgx-menu-toggle="activities"]')?.classList.toggle('active', activitiesActive);
     root.querySelector('[data-fgx-group="planning"]')?.classList.toggle('active', planningActive);
-    root.querySelector('[data-fgx-group="field"]')?.classList.toggle('active', fieldActive);
     root.querySelector('[data-fgx-group="activities"]')?.classList.toggle('active', activitiesActive);
     // UN MENU NE MENT PAS SUR L'ENDROIT OU L'ON EST. L'ouverture ne suivait que
     // l'etat memorise : sur Pistes ou Laser Game, le groupe « Activites &

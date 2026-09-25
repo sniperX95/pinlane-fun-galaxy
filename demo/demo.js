@@ -51,7 +51,7 @@
     { cle: 'planning', libelle: 'Planning', ico: 'calendrier', ouvert: true },
     { cle: 'reservations', libelle: 'Réservations', ico: 'liste' },
     { cle: 'formules', libelle: 'Formules', ico: 'liste' },
-    { cle: 'field', libelle: 'Terrain', ico: 'horloge' },
+    { cle: 'arrivals', libelle: 'Terrain', ico: 'horloge' },
     { groupe: 'Clients & marketing' },
     { cle: 'clients', libelle: 'Clients', ico: 'gens', pastille: '2' },
     { cle: 'emails', libelle: 'Emails & relances', ico: 'enveloppe' },
@@ -89,12 +89,12 @@
         'Ce qui reste à préparer avant l’arrivée du groupe'],
       pourquoi: 'Vos formules ne ressemblent pas à celles d’un centre inventé. On les charge avant l’appel.',
     },
-    field: {
+    arrivals: {
       titre: 'Terrain',
-      quoi: ['Arrivées : la file de clients à accueillir, confirmer ou encaisser',
-        'En cours : ce qui se joue en salle maintenant',
-        'Événements : les dossiers qui demandent une attention avant le passage'],
-      pourquoi: 'Trois écrans faits pour le comptoir un samedi. Ils se jugent sur une vraie journée, pas sur la nôtre.',
+      quoi: ['À venir : les groupes attendus, avec l’heure et le nombre de joueurs',
+        'Sur place : qui est arrivé ou joue en ce moment, et quand ça se termine',
+        'À clôturer : les parties finies qui restent à encaisser'],
+      pourquoi: 'Un écran fait pour le comptoir un samedi. Il se juge sur une vraie journée, pas sur la nôtre.',
     },
     clients: {
       titre: 'Clients',

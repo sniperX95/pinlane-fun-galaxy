@@ -88,11 +88,13 @@ const PAGES = [
   // ressemblait a rien une fois l'animation appliquee. Un inventaire des formes
   // du produit a designe les bons elements.
   {
-    // Les lignes de detail qui tombent une par une = la liste des arrivees,
-    // 38 lignes de 1073x84 empilees. Forme quasi identique a l'originale.
+    // Les lignes de detail qui tombent une par une = les cartes du Terrain.
+    // Jusqu'au 2026-09-25 c'etait la liste des arrivees (lignes de 1073x84) ;
+    // Terrain range les memes dossiers en trois colonnes, ses cartes sont
+    // plus etroites et plus hautes : regarder l'image rendue avant de publier.
     nom: 'detail', menu: 'arrivals', hauteurCible: 1172,
-    decoupes: [{ base: 'kpi', sel: '.utility-res-card', max: 4, transparent: true }],
-    boites: [{ cle: 'kpis', sel: '.utility-res-card', tous: true, max: 5 }],
+    decoupes: [{ base: 'kpi', sel: '.terrain-card', max: 4, transparent: true }],
+    boites: [{ cle: 'kpis', sel: '.terrain-card', tous: true, max: 5 }],
   },
   {
     // La pile qui s'empile = les evenements du mois, 24 lignes de 1073x91.
@@ -101,9 +103,11 @@ const PAGES = [
     // REGARDE l'image rendue : la journee de demonstration n'a aucun historique
     // d'emails, les panneaux affichaient « 0 recu · 0 en attente · 0 envoye ».
     // Un plan de pub qui montre des zeros dit que le produit ne fait rien.
-    nom: 'papers', menu: 'events', hauteurCible: 1489,
-    decoupes: [{ base: 'paper', sel: '.event-row', max: 5, attendus: 5, transparent: true }],
-    boites: [{ cle: 'stats', sel: '.event-row', tous: true, max: 5 }],
+    // La page Evenements n'existe plus (fondue dans Terrain le 2026-09-25) :
+    // la pile reprend les cartes du Terrain, meme remarque de forme.
+    nom: 'papers', menu: 'arrivals', hauteurCible: 1489,
+    decoupes: [{ base: 'paper', sel: '.terrain-card', max: 5, attendus: 5, transparent: true }],
+    boites: [{ cle: 'stats', sel: '.terrain-card', tous: true, max: 5 }],
   },
   {
     // Le document qui s'ecrit tout seul = le tableau de bord qui se remplit,

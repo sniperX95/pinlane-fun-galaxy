@@ -136,7 +136,10 @@ async function main() {
   const staffMenuSource = fs.readFileSync(path.join(root, 'assets', 'staff-menu.js'), 'utf8');
   assert(staffMenuSource.includes('GROUP_DEFAULT_TARGETS'), 'staff menu collapsed group targets are missing');
   assert(staffMenuSource.includes("planning: 'planning'"), 'planning group does not have a collapsed fallback target');
-  assert(staffMenuSource.includes("field: 'arrivals'"), 'field group does not have a collapsed fallback target');
+  // Terrain n est plus un groupe (2026-09-25) : une entree simple, et plus
+  // aucune trace des trois anciennes sous-pages dans la barre.
+  assert(staffMenuSource.includes("{ key: 'arrivals', label: 'Terrain', icon: 'sessions' }"), 'Terrain must be a single sidebar entry');
+  assert(!/key: 'field'|key: 'sessions'|key: 'events'/.test(staffMenuSource), 'merged Terrain sub-pages must be gone from the sidebar');
   assert(staffMenuSource.includes("activities: 'prices'"), 'activities group does not have a collapsed fallback target');
   assert(/function\s+navigateMenuGroup/.test(staffMenuSource), 'collapsed parent navigation helper is missing');
   assert(/measureMenuSubnavHeight/.test(staffMenuSource), 'staff menu subnav animation is not height-measured');
@@ -177,7 +180,7 @@ async function main() {
   assert(!limitedSections.some(section => section.title === 'Clients & marketing'), 'a section with no allowed entry must be removed entirely');
   assert(!limitedSections.some(section => section.items.some(item => item.key === 'activities')), 'forbidden "activities" group must be removed when no child is allowed');
 
-  const directionSandbox = buildMenuSandbox(new Set(['dashboard', 'planning', 'reservations', 'clients', 'groups', 'emails', 'campaigns', 'prices', 'lanes', 'laserGame', 'users', 'establishment', 'settings', 'sessions', 'arrivals', 'events']));
+  const directionSandbox = buildMenuSandbox(new Set(['dashboard', 'planning', 'reservations', 'clients', 'groups', 'emails', 'campaigns', 'prices', 'lanes', 'laserGame', 'users', 'establishment', 'settings', 'arrivals']));
   const directionKeys = new Set(directionSandbox.window.FGX_STAFF_VISIBLE_SECTIONS().flatMap(section => section.items.map(item => item.key)));
   assert(directionKeys.has('users') && directionKeys.has('establishment'), 'full-access role must still see the access-management entries');
 

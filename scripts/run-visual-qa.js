@@ -956,10 +956,8 @@ async function collectIssues(page, scopeLabel) {
       '.auth-card',
       '.reservations-calendar',
       '.reservations-day',
-      '.events-workspace',
-      '.event-row',
-      '.events-now-card',
-      '.events-day-digest',
+      '.terrain-board',
+      '.terrain-card',
       '.dash-kpi',
       '.dash-card',
       '.dash-status-strip',
@@ -1586,9 +1584,11 @@ async function main() {
         ? window.__PINLANE_QA_ADMIN_RANGE_CALLS__.length
         : 0
     ));
-    await renderStaffPage(page, 'events');
-    await screenshot(page, 'staff-events-stress');
-    issues.push(...await collectIssues(page, 'staff-events'));
+    // Terrain a remplace Arrivees, En cours et Evenements (2026-09-25) : la
+    // page de stress du jour est maintenant celle-ci.
+    await renderStaffPage(page, 'arrivals');
+    await screenshot(page, 'staff-terrain-stress');
+    issues.push(...await collectIssues(page, 'staff-terrain'));
     const adminRangeAfterEvents = await page.evaluate(() => (
       Array.isArray(window.__PINLANE_QA_ADMIN_RANGE_CALLS__)
         ? window.__PINLANE_QA_ADMIN_RANGE_CALLS__.length
@@ -1596,7 +1596,7 @@ async function main() {
     ));
     assert(
       adminRangeAfterEvents === adminRangeBeforeEvents,
-      'La page Evenements ne doit pas declencher /api/admin-range.'
+      'La page Terrain ne doit pas declencher /api/admin-range.'
     );
 
     // Vue Direction (console CEO) : overview + chaque onglet + sous-onglets ops.

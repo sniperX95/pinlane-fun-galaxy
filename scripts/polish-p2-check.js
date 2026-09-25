@@ -1,5 +1,5 @@
 // Gate Playwright - LOT DE POLISH P2 : LE PRIX AJUSTE ET LA NOTE, DECIDES PAR
-// UNE SEULE REGLE ET LUS PAR HUIT ECRANS.
+// UNE SEULE REGLE ET LUS PAR SEPT ECRANS (huit avant que Terrain ne reunisse Arrivees et Evenements).
 //
 // POURQUOI CE GATE EXISTE. Le lot P2 (2026-09-03) repond a deux demandes de
 // Movsar : « si on affichait le prix modifie de cette facon ca serait plus
@@ -21,7 +21,7 @@
 //       dossier sans reference ecrite etait donc muet dans la liste et bavard
 //       en caisse. La preuve qu il n y a plus de copie ne peut PAS etre une
 //       lecture de code : on change la regle partagee EN MEMOIRE et on exige
-//       que les huit surfaces changent d avis ENSEMBLE, dans les deux sens.
+//       que les sept surfaces changent d avis ENSEMBLE, dans les deux sens.
 //       Une surface qui resterait juste pendant que les autres tombent est une
 //       duplication survivante.
 //
@@ -50,10 +50,13 @@
 //       consigne sortait en rgb(161,161,161) a 12 px (`.pv2-flow-body span`,
 //       0-1-1, l emportait sur `.res-note-line`, 0-1-0), pendant que LA MEME
 //       aide rendait rgb(245,166,35) a 11,5 px dans la liste du planning. Trois
-//       ecrans, deux couleurs, une seule information. Et le marqueur de la page
-//       Evenements n a aucun texte visible : sans `role="img"`, son `aria-label`
-//       est pose sur un noeud `generic`, que la specification ARIA in HTML
-//       interdit de nommer et que les lecteurs d ecran ne restituent pas.
+//       ecrans, deux couleurs, une seule information. Et le marqueur de note
+//       des cartes du planning n a aucun texte visible : sans `role="img"`,
+//       son `aria-label` est pose sur un noeud `generic`, que la
+//       specification ARIA in HTML interdit de nommer et que les lecteurs
+//       d ecran ne restituent pas. (Jusqu au 2026-09-25 la page Evenements
+//       portait le meme marqueur ; elle est fondue dans Terrain, ou la
+//       consigne est ecrite en toutes lettres.)
 //
 //   [D] RIEN NE DEBORDE, ET L ORDRE DE CESSION EST RESPECTE. La pastille de
 //       prix est la derniere arrivee dans le pied de la carte du planning :
@@ -74,13 +77,13 @@
 //       que chaque nombre rendu par le marqueur appartienne a { prix facture,
 //       reference }, que la reference soit toujours atteignable (infobulle et
 //       nom accessible), et que TOUT SUIVE LA DONNEE : on re-sert le meme
-//       dossier a un autre prix et a une autre reference, et les huit surfaces
+//       dossier a un autre prix et a une autre reference, et les sept surfaces
 //       changent de chiffres. Une constante recopiee ne bougerait pas.
 //
 // IL VERIFIE DES COMPORTEMENTS, JAMAIS DES PRESENCES. Aucune assertion ne dit
 // « la chaine X est dans le HTML » : chaque propriete est mesuree sur ce que
 // l ECRAN rend (rectangles, styles calcules, noms accessibles) apres un vrai
-// parcours des huit surfaces, ou sur le document que la Direction EXPORTE.
+// parcours des sept surfaces, ou sur le document que la Direction EXPORTE.
 //
 // LE MONTAGE EST ASSERTE AVANT LA PROPRIETE. Un gate qui n a pas monte la
 // situation qu il pretend tester est vert pour rien : chaque propriete commence
@@ -352,8 +355,7 @@ const LIRE_SURFACE = () => {
     if (el.closest('.res-c-what')) return 'planning-liste';
     if (el.closest('.laser-group-card')) return 'arene-laser';
     if (el.closest('.pv2-flow-marks')) return 'reservations-jour';
-    if (el.closest('.utility-res-meta')) return 'arrivees';
-    if (el.closest('.event-meta')) return 'evenements';
+    if (el.closest('.terrain-card')) return 'terrain';
     if (el.closest('.dashboard-detail-amount')) return 'vue-ensemble';
     if (el.closest('#adminContent')) return 'direction';
     return 'inconnue';
@@ -399,7 +401,7 @@ const LIRE_SURFACE = () => {
     const parent = el.parentElement;
     const rp = parent ? parent.getBoundingClientRect() : null;
     const cs = getComputedStyle(el);
-    const ligne = el.closest('.booking, .res-row, .laser-group-card, .pv2-flow-item, .utility-res-card, .event-row, .dashboard-detail-row, tr') || parent;
+    const ligne = el.closest('.booking, .res-row, .laser-group-card, .pv2-flow-item, .terrain-card, .dashboard-detail-row, tr') || parent;
     const texte = (el.textContent || '').replace(/\s+/g, ' ').trim();
     const aria = el.getAttribute('aria-label') || '';
     const title = el.getAttribute('title') || '';
@@ -426,8 +428,7 @@ const LIRE_SURFACE = () => {
     ['planning-carte', '.booking .bk-flag.flag-note'],
     ['planning-liste', '.res-c-what .res-note-line'],
     ['reservations-jour', '.pv2-flow-marks .res-note-line'],
-    ['arrivees', '.utility-res-card .res-special-request'],
-    ['evenements', '.event-note-flag'],
+    ['terrain', '.terrain-card .res-special-request'],
     ['direction', '#adminContent .guest-chip.note'],
   ];
   const notes = [];
@@ -455,8 +456,7 @@ const LIRE_SURFACE = () => {
     ['planning-liste', '.res-row'],
     ['arene-laser', '.laser-group-card'],
     ['reservations-jour', '.pv2-flow-item'],
-    ['arrivees', '.utility-res-card'],
-    ['evenements', '.event-row'],
+    ['terrain', '.terrain-card'],
     ['vue-ensemble', '.dashboard-detail-row'],
     ['direction', '#adminContent tbody tr'],
   ];
@@ -511,7 +511,7 @@ function fusionner(cible, lot) {
   });
 }
 
-// LE PARCOURS DES HUIT SURFACES, plus le document que la Direction EXPORTE.
+// LE PARCOURS DES SEPT SURFACES, plus le document que la Direction EXPORTE.
 async function tourDesSurfaces(browser, options = {}) {
   const { page, fermer } = await pageNeuve(browser, options.viewport);
   const total = { marques: [], notes: [], presents: {}, eligibles: {}, horsBudget: [], rapport: null, fiches: [] };
@@ -528,9 +528,10 @@ async function tourDesSurfaces(browser, options = {}) {
     await page.waitForTimeout(700);
     fusionner(total, await page.evaluate(LIRE_SURFACE));
 
-    // 4. La file d accueil (Arrivees).
-    await page.evaluate(() => { state.staffResourceView = 'arrivals'; save(); renderStaff(); });
-    await page.waitForTimeout(700);
+    // 4. Le Terrain (a venir, sur place, a cloturer). Le montage posait
+    //    avant staffResourceView = 'arrivals', qui n est pas une ressource du
+    //    planning : la file d accueil n etait jamais ouverte.
+    await renderStaffPage(page, 'arrivals');
     fusionner(total, await page.evaluate(LIRE_SURFACE));
 
     // 5. La page Reservations, ligne du jour.
@@ -547,11 +548,7 @@ async function tourDesSurfaces(browser, options = {}) {
     await renderStaffPage(page, 'reservations');
     fusionner(total, await page.evaluate(LIRE_SURFACE));
 
-    // 6. La page Evenements.
-    await renderStaffPage(page, 'events');
-    fusionner(total, await page.evaluate(LIRE_SURFACE));
-
-    // 7. La Vue d ensemble : les lignes de detail vivent dans le panneau
+    // 6. La Vue d ensemble : les lignes de detail vivent dans le panneau
     //    « par activite », qui liste tous les dossiers du jour.
     await renderStaffPage(page, 'dashboard');
     await page.evaluate(() => { if (typeof openStaffDashboardDetail === 'function') openStaffDashboardDetail('activity'); });
@@ -559,7 +556,7 @@ async function tourDesSurfaces(browser, options = {}) {
     fusionner(total, await page.evaluate(LIRE_SURFACE));
     await page.evaluate(() => { if (typeof closeStaffDashboardDetail === 'function') closeStaffDashboardDetail(); });
 
-    // 8. La Direction : le tableau a l ecran, PUIS le document exporte.
+    // 7. La Direction : le tableau a l ecran, PUIS le document exporte.
     await page.evaluate(() => { state.adminTab = 'reservations'; save(); setView('admin'); });
     await page.waitForFunction(
       () => document.querySelectorAll('#adminContent tbody tr').length > 0,
@@ -568,10 +565,10 @@ async function tourDesSurfaces(browser, options = {}) {
     ).catch(() => {});
     await page.waitForTimeout(600);
     fusionner(total, await page.evaluate(LIRE_SURFACE));
-    // 9. LA FICHE DU DOSSIER. C est l ecran ou le comptoir explique l ecart au
+    // 8. LA FICHE DU DOSSIER. C est l ecran ou le comptoir explique l ecart au
     //    client, et son en-tete portait encore la regle du chemin d ECRITURE :
     //    elle annoncait « 180 € (prix ajusté) » sur un dossier sans reference
-    //    ecrite pendant que les huit autres surfaces se taisaient. On l ouvre
+    //    ecrite pendant que les autres surfaces se taisaient. On l ouvre
     //    pour de vrai, dossier par dossier, et on lit ce qui est ecrit.
     await page.evaluate(() => { state.staffMenuPage = 'planning'; save(); setView('staff'); renderStaff(); });
     await page.waitForTimeout(500);
@@ -733,7 +730,7 @@ function jugerA(m) {
     detail: rapportMuet.length ? `${rapportMuet.length} ligne(s) encore annoncees ajustees` : 'aucune mention',
   });
   // LA NEUVIEME SURFACE : l en-tete de la fiche, ou le comptoir explique
-  // l ecart au client. Elle avait sa propre regle et contredisait les huit
+  // l ecart au client. Elle avait sa propre regle et contredisait les sept
   // autres sur les deux cas bloquants.
   verdicts.push({
     ok: m.normal.fiches.length >= 5,
@@ -1146,9 +1143,9 @@ const PROPRIETES = [
         editions: [{ fichier: 'assets/pinlane-staff.css', de: '.pv2-flow-marks .res-note-line,\n.pv2-flow-marks .res-note-line span { color: var(--warning); font-size: 11.5px; }', vers: '.pv2-flow-marks .res-note-line { color: var(--warning); font-size: 11.5px; }' }],
       },
       {
-        nom: 'le marqueur de la page Evenements perd son role et son nom accessible',
+        nom: 'le marqueur de note des cartes du planning perd son role et son nom accessible',
         vise: /AUTREMENT que par la couleur/,
-        editions: [{ fichier: 'assets/app-main.js', de: '<span class="event-note-flag" role="img" aria-label="Note à lire" title="', vers: '<span class="event-note-flag" title="' }],
+        editions: [{ fichier: 'assets/app-main.js', de: '<span class="bk-flag ${m.cls}" role="img" aria-label="${m.label}" title="${m.label}">', vers: '<span class="bk-flag ${m.cls}" title="${m.label}">' }],
       },
       {
         nom: 'la consigne ne remonte plus dans les pastilles d engagement (le document exporte redevient muet)',

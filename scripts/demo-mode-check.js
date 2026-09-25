@@ -93,7 +93,7 @@ const ENTREES_MENU = [
   { cle: 'planning', ouvert: true },
   { cle: 'reservations', ouvert: false, titre: 'Réservations' },
   { cle: 'formules', ouvert: false, titre: 'Formules' },
-  { cle: 'field', ouvert: false, titre: 'Terrain' },
+  { cle: 'arrivals', ouvert: false, titre: 'Terrain' },
   { cle: 'clients', ouvert: false, titre: 'Clients' },
   { cle: 'emails', ouvert: false, titre: 'Emails et relances' },
   { cle: 'campaigns', ouvert: true },

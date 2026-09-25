@@ -79,7 +79,7 @@ function ok(cond, label, detail) {
 // Trois reservations le jour du test : finie et payee (10 h), en cours et
 // arrivee sans paiement (15 h), a venir non payee (18 h).
 const resa = (id, startTime, lane, status, price, name, pax) => ({
-  id, date: JOUR, startTime, duration: 60, type: 'bowling', lanes: [lane], pax, price, status,
+  id, date: JOUR, startTime, duration: 1, type: 'bowling', lanes: [lane], pax, price, status,
   name, email: `${id}@exemple.be`, phone: '+32470000000', centerId: dev.CENTER_ID, validationStatus: 'confirmed',
 });
 const JOURNEE = [

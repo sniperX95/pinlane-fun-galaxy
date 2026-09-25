@@ -397,6 +397,11 @@ async function probeCockpitClick(browser) {
         arrivals: root.querySelectorAll('.dash-arrivals, .dash-arrival-row').length,
         resRows: root.querySelectorAll('.res-row, .dashboard-detail-reservation, [data-res-row-id]').length,
         titres: [...root.querySelectorAll('h2')].map((h) => h.textContent.replace(/\s+/g, ' ').trim()),
+        // Les COLONNES de la rangee du bas, pas ses cartes : depuis le
+        // 2026-09-25 la colonne de droite empile Revenus et le fil de la
+        // journee (un etat, pas une liste de dossiers). La regle reste la
+        // meme : deux colonnes, jamais une troisieme carte a cote.
+        colonnesBas: root.querySelectorAll('.dash-grid-bottom > *').length,
         cartesBas: root.querySelectorAll('.dash-grid-bottom .dash-card').length,
       };
     });
@@ -409,8 +414,8 @@ async function probeCockpitClick(browser) {
     record('dashboard : aucune ligne de reservation', !dash.absent && dash.resRows === 0, `lignes=${dash.resRows}`);
     record('dashboard : « Prochaines arrivees » n est plus un titre de carte',
       !dash.absent && !(dash.titres || []).some((t) => /prochaines arriv/i.test(t)), (dash.titres || []).join(' · '));
-    record('dashboard : la rangee du bas porte deux cartes, pas trois',
-      dash.cartesBas === 2, `cartes=${dash.cartesBas}`);
+    record('dashboard : la rangee du bas porte deux colonnes, pas trois',
+      dash.colonnesBas === 2 && dash.cartesBas <= 3, `colonnes=${dash.colonnesBas} cartes=${dash.cartesBas}`);
 
     // 3b. establishment -> vue staff (PAS admin).
     await clickNav(page, 'establishment');

@@ -3984,6 +3984,33 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .dash-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
+/* L ACCUEIL QUI SALUE (2026-09-25) : Pino, le bonjour, puis la phrase qui
+   compte ce qui attend (la carte « À faire »). Pas de carte autour : le
+   bonjour est l en-tete de la page, il se lit avant les chiffres. */
+.dash-hello { align-items: center; }
+.dash-hello-main { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+.dash-hello-pino { display: inline-flex; flex: none; margin: -6px 0 -4px; }
+.dash-hello-copy { display: grid; gap: 3px; min-width: 0; }
+.dash-hello h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; }
+.dash-hello .dash-hello-line { margin: 0; color: var(--text-2, var(--muted)); font-size: 14px; }
+.dash-hello .dash-hello-sync { margin: 2px 0 0; }
+@media (max-width: 640px) {
+  .dash-hello-main { gap: var(--space-3); }
+  .dash-hello-pino .pm { --pm-w: 60px; }
+  .dash-hello h1 { font-size: 20px; }
+}
+
+/* Entree de la page : une fois par navigation (classe posee par
+   renderStaffDashboard, retiree au rendu suivant), jamais au poll. `backwards`
+   et pas `both` : une fois jouee, l animation ne laisse aucun transform qui
+   compterait encore dans la boite. */
+@media (prefers-reduced-motion: no-preference) {
+  .dash-enter > * { animation: pl-enter var(--dur-enter) var(--ease-out-strong) backwards; }
+  .dash-enter > *:nth-child(2) { animation-delay: 40ms; }
+  .dash-enter > *:nth-child(3) { animation-delay: 80ms; }
+  .dash-enter > *:nth-child(n+4) { animation-delay: 120ms; }
+}
+
 /* Le Dashboard portait son PROPRE controle de date (boite + icone calendrier,
    bouton « Aujourd'hui » separe), different de celui de toutes les autres pages.
    Il utilise desormais le widget partage staffDateNavHtml : memes fleches, meme
@@ -4334,8 +4361,6 @@ body.staff-mode.laser-dragging * { user-select: none; }
   cursor: pointer;
 }
 .dash-alert-more:hover { color: var(--text); }
-.dash-alert-dot.overdue { background: var(--danger); }
-.dash-alert-dot.noshow { background: var(--warning); }
 
 /* Une DEMANDE sur mesure dans le panneau d'alertes : pas une rangee de
    reservation (pas d'heure, pas de montant), donc sa propre grille : le
@@ -5040,50 +5065,101 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .dash-activity-mix-total span { font-size: 12.5px; color: var(--muted); }
 .dash-activity-chart { min-height: 190px; }
 
+/* LES GRAPHIQUES DE L ACCUEIL PORTENT L ACCENT (2026-09-25). Le moteur dessine
+   en currentColor, la couleur du texte par defaut : a cote des barres de
+   revenus et des courbes des tuiles, deja en couleur, l anneau et la courbe
+   d affluence en noir (blanc en sombre) se lisaient comme des gabarits pas
+   encore habilles. Les libelles gardent la couleur du texte ; la pastille de
+   legende suit le trait qu elle nomme. */
+#staffDashboardPage .dash-range-chart .plc-chart { color: var(--accent); }
+#staffDashboardPage .dash-range-chart .plc-swatch:not([class*='plc-tone-']) { background: var(--accent); }
+
+/* « À FAIRE » (2026-09-25) : une ligne = une icone teintee par la gravite,
+   ce qui attend, et le bouton qui mene la ou ca se regle. La ligne entiere
+   reagit au survol ; seul le bouton agit (une zone cliquable, une action). */
 .dash-alert-row {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: var(--space-3);
   align-items: center;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   font-size: 12px;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
+.dash-alert-row:hover { background: var(--subtle); border-color: var(--line-strong); }
+
+.dash-todo-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+  color: var(--muted);
+}
+.dash-todo-icon svg { width: 17px; height: 17px; }
+.dash-todo-icon.pr-critical { background: var(--danger-soft); color: var(--danger); }
+.dash-todo-icon.pr-important { background: var(--warning-soft); color: var(--warning); }
+/* --accent-strong et pas --info : sur un fond -soft, seul le ton fort tient
+   le contraste (5.06:1 en clair, console-contrast-check). */
+.dash-todo-icon.pr-info { background: var(--accent-soft); color: var(--accent-strong); }
+
+.dash-todo-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 600;
+}
+.dash-todo-card .dash-card-titles { display: flex; align-items: center; gap: var(--space-2); }
+
+.dash-todo-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+.dash-todo-empty.is-clear { border-style: solid; border-color: var(--line); background: var(--subtle); }
 
 .dash-alert-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.dash-alert-copy strong { color: var(--text); font-size: 12px; font-weight: 600; }
-.dash-alert-row p { color: var(--text-2); line-height: 1.35; }
+.dash-alert-copy strong { color: var(--text); font-size: 13px; font-weight: 600; }
+.dash-alert-row p, .dash-todo-empty p { color: var(--muted); line-height: 1.4; }
 
 .dash-alert-row button {
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 30px;
+  padding: 0 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--text);
+  font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
-.dash-alert-row button:hover { background: var(--subtle); color: var(--text); }
+.dash-alert-row button:hover { background: var(--raised); border-color: var(--control-border, var(--line-strong)); }
 
-.dash-alert-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--faint); }
-.dash-alert-dot.payment { background: var(--warning); }
-.dash-alert-dot.warning { background: var(--danger); }
-.dash-alert-dot.maintenance { background: var(--muted); }
-.dash-alert-dot.formula { background: var(--accent); }
-.dash-alert-dot.info { background: var(--line-strong); }
-.dash-alert-dot.review { background: var(--info); }
-/* Distinct de .formula (--accent) : deux pastilles identiques dans la meme
-   liste ne distinguent rien. */
-.dash-alert-dot.lead { background: var(--accent-strong); }
 
-/* Alerte compacte : bouton d'action rapide (CTA) + « Voir » côte à côte. */
+/* Le bouton d une ligne « À faire » est secondaire : dix boutons noirs cote a
+   cote ne hierarchisent plus rien. Seule la premiere ligne de la liste (la
+   plus urgente, l ordre suit la gravite) garde le bouton plein. */
 .dash-alert-actions { display: flex; gap: 6px; align-items: center; }
-.dash-alert-actions .dash-alert-cta { background: var(--text); border-color: var(--text); color: var(--surface); font-weight: 600; }
-.dash-alert-actions .dash-alert-cta:hover { background: var(--text); color: var(--surface); opacity: 0.88; }
+.dash-alerts > .dash-alert-group:first-child > .dash-alert-row:nth-child(2) .dash-alert-cta { background: var(--text); border-color: var(--text); color: var(--surface); font-weight: 600; }
+.dash-alerts > .dash-alert-group:first-child > .dash-alert-row:nth-child(2) .dash-alert-cta:hover { opacity: 0.88; }
 
 /* Boutons d'action « réels » dans la modale détail (Valider, Encaisser, Ouvrir…). */
 .dashboard-detail-row-actions button.primary,
@@ -5200,22 +5276,30 @@ body.staff-mode.laser-dragging * { user-select: none; }
   .dash-revenue-loading { animation: none; }
 }
 
+/* LA COLONNE DE DROITE (2026-09-25) : Revenus puis le fil de la journee, sous
+   lui. Le fil etait un bandeau pleine largeur en pied de page ; a cote d une
+   carte « À faire » qui s allonge, la carte Revenus laissait un trou de la
+   hauteur de la liste. Les deux colonnes partent du haut, aucune ne s etire. */
+.dash-grid-bottom { align-items: start; }
+.dash-side-stack { display: grid; gap: var(--space-3); min-width: 0; }
+.dash-flow-card { min-height: 0; }
+.dash-flow-card .dash-card-head { margin-bottom: var(--space-2); }
+.dash-flow-card .dash-status-strip strong { font-size: 14px; }
+
+/* Le fil de la journee vit dans sa carte (.dash-flow-card) : plus de cadre
+   propre, deux colonnes a toutes les largeurs. */
 .dash-status-strip {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  padding: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-3);
+  padding: var(--space-1) 0;
 }
 
 .dash-status-strip > div { display: grid; grid-template-columns: 30px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
 .dash-status-strip > div > span { grid-row: 1 / 3; width: 30px; height: 30px; display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--subtle); color: var(--muted); }
 .dash-status-strip > div > span svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.dash-status-strip small { color: var(--faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-status-strip small { color: var(--faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dash-status-strip strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
-.dash-status-strip em { grid-column: 2; font-style: normal; color: var(--faint); font-family: var(--font-data); font-size: 11px; }
 
 .dash-empty { padding: var(--space-6); text-align: center; color: var(--muted); font-size: 13px; }
 
@@ -10995,7 +11079,6 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    -------------------------------------------------------------------------- */
 @media (max-width: 1280px) {
   .dash-grid-main, .dash-grid-bottom { grid-template-columns: 1fr 1fr; }
-  .dash-status-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pv2-stats, .kpi-grid:not(.hidden), .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pv2-pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .groups-main-layout, .events-layout, .utility-arrival-desk { grid-template-columns: 1fr; }
@@ -11124,7 +11207,19 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .kpi-grid:not(.hidden), .dash-kpis, .dash-grid-main, .dash-grid-bottom,
   .pv2-pipeline, .events-command-bar, .edit-summary,
   .qb-row.three, .qb-snapshot-row, .qb-type-row, .edit-grid-2,
-  .dash-status-strip, .dashboard-detail-summary { grid-template-columns: 1fr; }
+  .dashboard-detail-summary { grid-template-columns: 1fr; }
+  /* Meme lecon que .pv2-stats juste dessous, appliquee a l accueil : les
+     quatre tuiles empilees faisaient plus d un ecran avant « À faire ». A deux
+     colonnes, la tuile se compacte : le chiffre et sa tendance, sans l icone,
+     la courbe en pied. */
+  .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+  .dash-kpi { grid-template-columns: minmax(0, 1fr); gap: 4px; min-height: 0; padding: var(--space-3); }
+  .dash-kpi .dash-icon { display: none; }
+  .dash-kpi-copy strong { font-size: 20px; margin-top: 4px; }
+  .dash-kpi-copy small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-kpi-trend { text-align: left; }
+  .dash-kpi-trend strong, .dash-kpi-trend span { display: inline; margin: 0 6px 0 0; }
+  .dash-spark { width: 100%; height: 30px; }
   /* Les tuiles d indicateurs restent a DEUX colonnes : empilees, les quatre
      tuiles mesuraient 609 px, soit trois quarts d ecran de chiffres avant la
      premiere reservation. A deux colonnes la bande retombe a deux rangs. */
@@ -11352,6 +11447,18 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
   background: var(--danger-soft);
   color: var(--text);
+}
+/* Le chargement normal de la console : Pino qui reflechit et une ligne, au
+   centre de la zone de contenu. Rien de rouge, ce n est pas une panne. */
+.staff-console-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 60vh;
+  color: var(--muted);
+  font-size: 13px;
 }
 .admin-load-error strong { color: var(--danger); }
 .admin-load-error p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }

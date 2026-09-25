@@ -3450,17 +3450,21 @@ function setView(v) {
     if (!status) {
       status = document.createElement('div');
       status.id = 'staffConsoleLoadStatus';
-      status.className = 'admin-load-error';
       staffRoot.before(status);
     }
+    // UN CHARGEMENT N EST PAS UNE PANNE : il portait la classe d erreur (cadre
+    // et fond rouges) pendant chaque ouverture normale de la console. Il a sa
+    // propre forme, calme ; le rouge ne vient qu avec un vrai echec.
+    status.className = 'staff-console-loading';
     status.setAttribute('role', 'status');
-    status.textContent = 'Chargement de la console...';
+    status.innerHTML = `${window.PinlaneMascot ? window.PinlaneMascot.html({ mood: 'think', size: 'md' }) : ''}<span>Chargement de la console…</span>`;
     applyAuthState();
     ensureStaffConsolesLoaded().then(() => {
       if (request !== consoleViewRequest || state.view !== v) return;
       setView(v);
     }).catch(() => {
       if (request !== consoleViewRequest || state.view !== v) return;
+      status.className = 'admin-load-error';
       status.setAttribute('role', 'alert');
       status.innerHTML = `<div><strong>Console indisponible</strong>
         <p>Le module n'a pas pu être chargé. Réessayez pour ouvrir la console.</p></div>`;
@@ -9759,7 +9763,15 @@ function renderDashboardIcon(name) {
     play: '<path d="M8 5v14l11-7-11-7Z"></path>',
     check: '<path d="M20 6 9 17l-5-5"></path>',
     laser: '<path d="M12 5v14"></path><path d="M5 12h14"></path><path d="m7 7 10 10M17 7 7 17"></path>',
-    wrench: '<path d="M14.5 5.5a4 4 0 0 0 4 4L9 19l-4-4 9.5-9.5Z"></path>'
+    wrench: '<path d="M14.5 5.5a4 4 0 0 0 4 4L9 19l-4-4 9.5-9.5Z"></path>',
+    clock: '<circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2.5"></path>',
+    userCheck: '<path d="M9.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path><path d="M4 19c.7-3.2 2.8-5 5.5-5 1.3 0 2.4.4 3.3 1.1"></path><path d="m15 17 2 2 4-4"></path>',
+    shield: '<path d="M12 3.5 5.5 6v5.5c0 4 2.8 7.2 6.5 8.5 3.7-1.3 6.5-4.5 6.5-8.5V6L12 3.5Z"></path><path d="m9.5 12 1.8 1.8 3.4-3.6"></path>',
+    alert: '<path d="M12 4.5 3.5 19h17L12 4.5Z"></path><path d="M12 10v4M12 16.8v.2"></path>',
+    link: '<path d="M10 14a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7L11.5 6.8"></path><path d="M14 10a4 4 0 0 0-5.7 0l-2.8 2.8a4 4 0 0 0 5.7 5.7l1.3-1.3"></path>',
+    mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"></rect><path d="m4.5 7 7.5 6 7.5-6"></path>',
+    mailOff: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"></rect><path d="m4.5 7 7.5 6 7.5-6"></path><path d="M9.5 16.5h5"></path>',
+    bulb: '<path d="M9 17.5h6M10 20.5h4"></path><path d="M12 3.5a5.5 5.5 0 0 0-3.3 9.9c.7.5 1.1 1.3 1.1 2.1v.5h4.4v-.5c0-.8.4-1.6 1.1-2.1A5.5 5.5 0 0 0 12 3.5Z"></path>'
   };
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.calendar}</svg>`;
 }
@@ -10307,12 +10319,44 @@ function renderDashActivityBody(host, metrics) {
 // suivre) : le comptoir lit l'ordre d'attaque d'un coup d'oeil au lieu d'une
 // liste plate. Chaque ligne s'ouvre sur SA surface de resolution (le detail
 // pre-filtre, ou tout se repare sur place).
-function renderStaffDashboardAlerts(metrics) {
-  const alerts = getStaffDashboardAlertDefinitions(metrics);
+//
+// « À FAIRE » (2026-09-25) : la meme carte recoit aussi ce qui attend dans la
+// boite mail (getDashInboxTodos). Une ligne mail porte sa propre destination
+// (`open`) : la page Emails, a la bonne section, jamais le detail des alertes
+// de la journee qui ne la connait pas. `inboxKnown` faux (lecture en cours,
+// refusee ou en panne) interdit de dire « tout est a jour » : un compte
+// absent n'est pas un zero.
+const DASH_TODO_ICONS = {
+  payment: 'euro', overdue: 'clock', noshow: 'userCheck', review: 'shield', warning: 'alert',
+  maintenance: 'wrench', formula: 'link', lead: 'users', inbox: 'mail', agent: 'bulb', bounce: 'mailOff'
+};
+
+function renderDashTodoRow(alert) {
+  const meta = getStaffAlertPriorityMeta(alert);
+  const action = alert.open
+    ? alert.open
+    : `openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')`;
+  const label = alert.cta || getStaffAlertCtaLabel(alert.kind);
+  return `<div class="dash-alert-row ${escapeHtml(alert.kind)}" data-todo="${escapeHtml(alert.kind)}">
+        <span class="dash-todo-icon pr-${escapeHtml(meta.tone)}" aria-hidden="true">${renderDashboardIcon(DASH_TODO_ICONS[alert.kind] || 'check')}</span>
+        <div class="dash-alert-copy"><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.text)}</p></div>
+        <div class="dash-alert-actions">
+          <button type="button" class="dash-alert-cta" onclick="${escapeHtml(action)}">${escapeHtml(label)}</button>
+        </div>
+      </div>`;
+}
+
+function renderStaffDashboardAlerts(metrics, extra = [], inboxKnown = true) {
+  const alerts = [...extra, ...getStaffDashboardAlertDefinitions(metrics)];
   if (!alerts.length) {
-    return `<div class="dash-alert-row info">
-      <span class="dash-alert-dot info" aria-hidden="true"></span>
-      <div class="dash-alert-copy"><strong>Tout est à jour</strong><p>Aucune alerte : paiements, séances, demandes et pistes sont sous contrôle.</p></div>
+    if (!inboxKnown) {
+      return `<div class="dash-todo-empty">
+        <div class="dash-alert-copy"><strong>Aucune alerte sur la journée</strong><p>Paiements, séances, demandes et pistes sont sous contrôle. La boîte mail n'a pas pu être lue.</p></div>
+      </div>`;
+    }
+    return `<div class="dash-todo-empty is-clear">
+      ${window.PinlaneMascot ? window.PinlaneMascot.html({ mood: 'happy', size: 'sm' }) : ''}
+      <div class="dash-alert-copy"><strong>Tout est à jour</strong><p>Rien ne vous attend : paiements, séances, demandes, pistes et mails sont traités.</p></div>
     </div>`;
   }
   const ordered = [...alerts].sort((left, right) => getStaffAlertPriorityMeta(left).rank - getStaffAlertPriorityMeta(right).rank);
@@ -10323,23 +10367,22 @@ function renderStaffDashboardAlerts(metrics) {
     if (!group) { group = { meta, items: [] }; groups.push(group); }
     group.items.push(alert);
   });
+  // Le plafond ne vise que les alertes de la journee : « Voir toutes » ouvre
+  // leur detail, qui ne connait pas les lignes mail. Ces dernieres (trois au
+  // plus) restent donc toujours visibles, sinon le compteur promettrait de les
+  // montrer ailleurs.
   const shown = { count: 0 };
   const MAX_ROWS = 6;
   const rendered = groups.map(group => {
-    const items = group.items.filter(() => (shown.count += 1) <= MAX_ROWS);
+    const items = group.items.filter(alert => alert.open || (shown.count += 1) <= MAX_ROWS);
     if (!items.length) return '';
     return `<div class="dash-alert-group">
       <div class="dash-alert-group-head pr-${escapeHtml(group.meta.tone)}"><span class="priority-dot" aria-hidden="true"></span>${escapeHtml(group.meta.label)}<em>${group.items.length}</em></div>
-      ${items.map(alert => `<div class="dash-alert-row ${escapeHtml(alert.kind)}">
-        <span class="dash-alert-dot ${escapeHtml(alert.kind)}" aria-hidden="true"></span>
-        <div class="dash-alert-copy"><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.text)}</p></div>
-        <div class="dash-alert-actions">
-          <button type="button" class="dash-alert-cta" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">${escapeHtml(getStaffAlertCtaLabel(alert.kind))}</button>
-        </div>
-      </div>`).join('')}
+      ${items.map(renderDashTodoRow).join('')}
     </div>`;
   }).join('');
-  const hidden = ordered.length - Math.min(ordered.length, MAX_ROWS);
+  const dayAlerts = ordered.filter(alert => !alert.open).length;
+  const hidden = dayAlerts - Math.min(dayAlerts, MAX_ROWS);
   return rendered + (hidden > 0
     ? `<button type="button" class="dash-alert-more" onclick="openStaffDashboardAlerts()">+ ${hidden} autre${hidden > 1 ? 's' : ''} signal${hidden > 1 ? 'aux' : ''} · Voir toutes</button>`
     : '');
@@ -11264,9 +11307,161 @@ function openStaffDashboardRevenue() {
 
 
 
+// L ACCUEIL QUI SALUE (2026-09-25). Movsar, devant l interface d Accountable :
+// « une mascotte ... plus vivant, plus pro, avec que des choses vraiment
+// reelles ». Le haut de la Vue d ensemble dit bonjour a la personne, puis dit
+// en une phrase ce qui l attend : cette phrase est le compte de la carte
+// « À faire », jamais un texte d ambiance.
+
+// LE PRENOM, SEULEMENT S IL EN EST UN. Un compte partage porte souvent le nom
+// du centre (« Fun Galaxy Libramont ») ou d un role (« Proprietaire
+// plateforme ») : « Bonjour Fun » serait pire que « Bonjour ». Le premier mot
+// n est garde que s il ne vient ni du centre, ni du role, ni d un compte de
+// service.
+function getStaffGreetingFirstName() {
+  const session = state.staffAuthSession || {};
+  const member = session.member || {};
+  if (member.emergency || session.emergency) return '';
+  const name = String(member.name || '').trim();
+  if (!name || /[\d@]/.test(name)) return '';
+  const plain = value => String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  const words = value => plain(value).split(/[^a-z]+/).filter(word => word.length > 2);
+  const first = name.split(/\s+/)[0];
+  const centerName = typeof window.staffCenterDisplayName === 'function' ? window.staffCenterDisplayName() : '';
+  const reserved = new Set([
+    ...words(centerName), ...words(session.role && session.role.name),
+    'plateforme', 'proprietaire', 'direction', 'admin', 'administrateur', 'compte', 'accueil',
+    'equipe', 'centre', 'staff', 'comptoir', 'caisse', 'manager', 'reception', 'test', 'demo'
+  ]);
+  if (first.length < 2 || first.length > 24 || reserved.has(plain(first))) return '';
+  return first;
+}
+
+function getStaffGreetingWord(now = new Date()) {
+  const hour = now.getHours();
+  return hour >= 18 || hour < 5 ? 'Bonsoir' : 'Bonjour';
+}
+
+// LA BOITE MAIL SUR L ACCUEIL : les compteurs de la page Emails (emailOverview,
+// la lecture de son Apercu), jamais un chiffre recompose ici. Sans le droit
+// de lire les mails, rien n est demande et rien ne s affiche. Relue au plus
+// toutes les 30 s ; un echec efface l ancienne lecture plutot que de montrer
+// un compte perime comme s il etait frais.
+const dashInbox = { centre: '', loading: false, done: false, data: null, at: 0 };
+
+function canSeeDashInbox() {
+  return typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.view');
+}
+
+function ensureDashInbox() {
+  if (!canSeeDashInbox()) return;
+  const centre = getCurrentStaffCenterId();
+  if (dashInbox.centre !== centre) Object.assign(dashInbox, { centre, loading: false, done: false, data: null, at: 0 });
+  if (dashInbox.loading || (dashInbox.done && Date.now() - dashInbox.at < 30000)) return;
+  dashInbox.loading = true;
+  apiRequest(`${API_ENDPOINTS.ops}?action=emailOverview&centerId=${encodeURIComponent(centre)}`)
+    .then(payload => {
+      if (dashInbox.centre === centre) dashInbox.data = payload && typeof payload === 'object' ? payload : null;
+    })
+    .catch(() => {
+      if (dashInbox.centre === centre) dashInbox.data = null;
+    })
+    .finally(() => {
+      if (dashInbox.centre !== centre) return;
+      dashInbox.loading = false;
+      dashInbox.done = true;
+      dashInbox.at = Date.now();
+      if (isStaffDashboardActive()) renderStaffDashboard();
+    });
+}
+
+function isDashInboxKnown() {
+  return !canSeeDashInbox() || Boolean(dashInbox.done && dashInbox.data && dashInbox.centre === getCurrentStaffCenterId());
+}
+
+function formatDashWaited(ms) {
+  const hours = Math.floor(ms / 3600000);
+  if (hours < 1) return 'moins d’une heure';
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `${days} jour${days > 1 ? 's' : ''}`;
+}
+
+// Ce que la boite mail demande, en lignes « À faire ». Les libelles et les
+// sections sont ceux de la page Emails : on retrouve la meme chose en
+// arrivant. Un fil attendu depuis plus d un jour passe en Prioritaire.
+function getDashInboxTodos() {
+  if (!canSeeDashInbox() || !isDashInboxKnown()) return [];
+  const data = dashInbox.data;
+  const todos = [];
+  const open = Math.max(0, Number(data.aRepondre) || 0);
+  if (open) {
+    const oldest = Date.parse(data.plusAncienneAttenteAt || '');
+    const waited = Number.isFinite(oldest) ? Math.max(0, Date.now() - oldest) : null;
+    todos.push({
+      kind: 'inbox',
+      priority: waited !== null && waited >= 86400000 ? 'critical' : 'important',
+      title: `${open} mail${open > 1 ? 's' : ''} à répondre`,
+      text: waited !== null ? `Le plus ancien attend depuis ${formatDashWaited(waited)}.` : 'Des clients attendent une réponse.',
+      open: "openStaffMenuPage('emails', 'recus')",
+      cta: 'Répondre'
+    });
+  }
+  const questions = Math.max(0, Number(data.questions) || 0);
+  if (questions) {
+    todos.push({
+      kind: 'agent',
+      priority: 'important',
+      title: `${questions} question${questions > 1 ? 's' : ''} de l’agent`,
+      text: 'Ce qu’il ne sait pas encore sur le centre : votre réponse, il la retient.',
+      open: "openStaffMenuPage('emails', 'agent')",
+      cta: 'Lui répondre'
+    });
+  }
+  const failed = Math.max(0, Number(data.echecs7j) || 0);
+  if (failed) {
+    todos.push({
+      kind: 'bounce',
+      priority: 'info',
+      title: `${failed} mail${failed > 1 ? 's' : ''} non parti${failed > 1 ? 's' : ''}`,
+      text: 'Envois en échec ces 7 derniers jours.',
+      open: "openStaffMenuPage('emails', 'envoyes')",
+      cta: 'Voir'
+    });
+  }
+  return todos;
+}
+
+// LE FIL DE LA JOURNEE, SUR L HEURE REELLE. L ancien bandeau comptait « En
+// cours » avec l heure d aujourd hui quelle que soit la date affichee, « En
+// preparation » tout le jour pour une date passee, et appelait « Terminees »
+// les reservations PAYEES (une resa payee en ligne a 9 h n est pas terminee a
+// 9 h). Ici : une date passee est terminee, une date future est a venir, et
+// aujourd hui se lit sur les fenetres planning de chaque resa. Une resa sans
+// fenetre (hors planning) n a pas de fin connue : elle n est comptee nulle part
+// plutot que devinee.
+function getStaffDashDayFlow(rows = []) {
+  const today = todayStr();
+  const timed = rows.filter(reservation => getStaffResourceWindows(reservation, 'all').length);
+  if (state.currentDate < today) return { upcoming: 0, live: 0, done: timed.length };
+  if (state.currentDate > today) return { upcoming: timed.length, live: 0, done: 0 };
+  const now = currentTimeDecimal();
+  const flow = { upcoming: 0, live: 0, done: 0 };
+  timed.forEach(reservation => {
+    const windows = getStaffResourceWindows(reservation, 'all');
+    const start = Math.min(...windows.map(window => Number(window.start)));
+    const end = Math.max(...windows.map(window => Number(window.end)));
+    if (now < start) flow.upcoming += 1;
+    else if (now < end) flow.live += 1;
+    else flow.done += 1;
+  });
+  return flow;
+}
+
 function renderStaffDashboard(dayReservations = todaysReservations()) {
   const root = document.getElementById('staffDashboardPage');
   if (!root) return;
+  ensureDashInbox();
   // La file des demandes sur mesure n'était chargée QUE depuis la page Clients :
   // sans cet appel, l'alerte « demandes sur mesure » resterait invisible pour
   // quelqu'un qui n'ouvre jamais le bon filtre. Sans effet de bord de rendu
@@ -11290,6 +11485,10 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   const playerTrendText = formatDashboardTrend(metrics.players, metrics.previousPlayers);
   const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.previousOccupancy);
   const availableLanes = TOTAL_LANES - Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length;
+  const dayFlow = getStaffDashDayFlow(metrics.activeReservations);
+  const flowMeta = state.currentDate === todayStr()
+    ? 'En direct'
+    : parseLocalDate(state.currentDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
   // La carte Revenus vit sur SA fenetre (fleches par jours) : total et
   // tendance suivent la fenetre affichee, pas forcement la date du dashboard.
   const revenueWindow = getDashRevenueWindow(metrics);
@@ -11301,11 +11500,43 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
     ? `${parseLocalDate(revenueWindow.days[0]).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')} au ${parseLocalDate(revenueWindow.endDate).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')}`
     : '7 derniers jours';
   const syncIndicator = getRemoteSyncIndicator();
+  // Ce qui attend, et ce qu on en sait : la phrase du haut, l humeur de Pino
+  // et la carte « À faire » lisent LA MEME liste.
+  const inboxKnown = isDashInboxKnown();
+  const inboxTodos = getDashInboxTodos();
+  const todoCount = inboxTodos.length + getStaffDashboardAlertDefinitions(metrics).length;
+  const firstName = getStaffGreetingFirstName();
+  const greeting = `${getStaffGreetingWord()}${firstName ? ` ${firstName}` : ''}`;
+  const todoLine = todoCount
+    ? `${todoCount} chose${todoCount > 1 ? 's' : ''} ${todoCount > 1 ? 'vous attendent' : 'vous attend'}.`
+    : (inboxKnown ? 'Tout est à jour, rien ne vous attend.' : 'Aucune alerte sur la journée.');
+  const allClear = !todoCount && inboxKnown;
+  // Pino salue a l arrivee et se rejouit quand tout est fait. Le noeud deja
+  // pose est REPRIS au lieu d etre redessine : le poll re-rend cette page en
+  // boucle et un dessin neuf rejouerait le salut a chaque passage.
+  // Tout est fait un jour de fermeture : Pino dort plutot que de sauter.
+  const pinoMood = allClear ? (metrics.planningWindow && metrics.planningWindow.closed ? 'sleep' : 'happy') : 'wave';
+  const previousPino = root.querySelector('.dash-hello-pino > .pm');
+  // Entree de page : une fois par navigation, jamais au poll (DESIGN.md §5).
+  // Le repere de visite est celui des pages pv2, pour qu aller-retour
+  // Reservations/Accueil compte comme deux navigations.
+  const pages = window.PinlaneV2;
+  const active = isStaffDashboardActive();
+  const arriving = active && (pages ? pages.lastPage !== 'dashboard' : !root.firstElementChild);
+  if (pages && active) pages.lastPage = 'dashboard';
+  root.classList.toggle('dash-enter', arriving && !prefersReducedMotion());
+  // Ordre de lecture : le bonjour, les chiffres, puis « À faire » AVANT les
+  // graphiques. Ce qui attend se lit avant l analyse (au telephone, la carte
+  // arrivait apres quatre tuiles et trois graphiques).
   root.innerHTML = `
-    <section class="dash-hero">
-      <div>
-        <h1>Dashboard</h1>
-        <p>Vue d'ensemble de votre activité <span class="dash-live-dot${syncIndicator.tone === 'live' ? '' : ` ${syncIndicator.tone}`}"></span><span>${escapeHtml(syncIndicator.label)}</span></p>
+    <section class="dash-hero dash-hello">
+      <div class="dash-hello-main">
+        <span class="dash-hello-pino">${window.PinlaneMascot ? window.PinlaneMascot.html({ mood: pinoMood, size: 'lg' }) : ''}</span>
+        <div class="dash-hello-copy">
+          <h1>${escapeHtml(greeting)}</h1>
+          <p class="dash-hello-line" data-todo-count="${todoCount}">${escapeHtml(todoLine)}</p>
+          <p class="dash-hello-sync"><span class="dash-live-dot${syncIndicator.tone === 'live' ? '' : ` ${syncIndicator.tone}`}"></span><span>${escapeHtml(syncIndicator.label)}</span></p>
+        </div>
       </div>
       <div class="dash-actions">
         ${staffDateNavHtml()}
@@ -11340,6 +11571,41 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
     </section>
 
+    <section class="dash-grid-bottom">
+      <article class="dash-card dash-todo-card">
+        <div class="dash-card-head"><div class="dash-card-titles"><h2>À faire</h2>${todoCount ? `<span class="dash-todo-count">${todoCount}</span>` : ''}</div><button type="button" onclick="openStaffDashboardAlerts()">Alertes du jour</button></div>
+        <div class="dash-alerts">${renderStaffDashboardAlerts(metrics, inboxTodos, inboxKnown)}</div>
+      </article>
+      <div class="dash-side-stack">
+      <article class="dash-card dash-revenue-card">
+        <div class="dash-card-head">
+          <h2>Revenus</h2>
+          <div class="dash-revenue-nav">
+            ${revenueWindow.offset ? `<button type="button" class="dash-rev-today" onclick="dashRevenueReset(event)">Aujourd'hui</button>` : ''}
+            <button type="button" class="dash-rev-step" onclick="dashRevenueShift(1, event)" aria-label="Reculer d'un jour">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button type="button" class="dash-rev-period" onclick="openStaffDashboardRevenue()">${escapeHtml(revenueWindowLabel)}</button>
+            <button type="button" class="dash-rev-step" onclick="dashRevenueShift(-1, event)" ${revenueWindow.offset ? '' : 'disabled'} aria-label="Avancer d'un jour">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="dash-revenue-head"><strong id="dashRevenueTotal">${formatMoney(totalPeriodRevenue)}</strong><span>Total</span><small>${escapeHtml(revenueTrendWindowText)} vs période précédente</small></div>
+        ${renderStaffDashboardRevenue(revenueWindow)}
+      </article>
+      <article class="dash-card dash-flow-card">
+        <div class="dash-card-head"><div class="dash-card-titles"><h2>Le fil de la journée</h2><span class="dash-card-meta">${escapeHtml(flowMeta)}</span></div></div>
+        <div class="dash-status-strip" aria-label="Le fil de la journée">
+          <div data-flow="upcoming"><span>${renderDashboardIcon('prep')}</span><small>À venir</small><strong>${dayFlow.upcoming} session${dayFlow.upcoming > 1 ? 's' : ''}</strong></div>
+          <div data-flow="live"><span>${renderDashboardIcon('play')}</span><small>En cours</small><strong>${dayFlow.live} session${dayFlow.live > 1 ? 's' : ''}</strong></div>
+          <div data-flow="done"><span>${renderDashboardIcon('check')}</span><small>Terminées</small><strong>${dayFlow.done} session${dayFlow.done > 1 ? 's' : ''}</strong></div>
+          <div data-flow="maintenance"><span>${renderDashboardIcon('wrench')}</span><small>Pistes en maintenance</small><strong>${TOTAL_LANES - availableLanes} / ${TOTAL_LANES}</strong></div>
+        </div>
+      </article>
+      </div>
+    </section>
+
     <section class="dash-grid-main">
       <article class="dash-card dash-card-wide dash-card-pickable">
         <div class="dash-card-head">
@@ -11361,39 +11627,14 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
     </section>
 
-    <section class="dash-grid-bottom">
-      <article class="dash-card">
-        <div class="dash-card-head"><h2>Alertes & notifications</h2><button type="button" onclick="openStaffDashboardAlerts()">Voir toutes</button></div>
-        <div class="dash-alerts">${renderStaffDashboardAlerts(metrics)}</div>
-      </article>
-      <article class="dash-card dash-revenue-card">
-        <div class="dash-card-head">
-          <h2>Revenus</h2>
-          <div class="dash-revenue-nav">
-            ${revenueWindow.offset ? `<button type="button" class="dash-rev-today" onclick="dashRevenueReset(event)">Aujourd'hui</button>` : ''}
-            <button type="button" class="dash-rev-step" onclick="dashRevenueShift(1, event)" aria-label="Reculer d'un jour">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <button type="button" class="dash-rev-period" onclick="openStaffDashboardRevenue()">${escapeHtml(revenueWindowLabel)}</button>
-            <button type="button" class="dash-rev-step" onclick="dashRevenueShift(-1, event)" ${revenueWindow.offset ? '' : 'disabled'} aria-label="Avancer d'un jour">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="dash-revenue-head"><strong id="dashRevenueTotal">${formatMoney(totalPeriodRevenue)}</strong><span>Total</span><small>${escapeHtml(revenueTrendWindowText)} vs période précédente</small></div>
-        ${renderStaffDashboardRevenue(revenueWindow)}
-      </article>
-    </section>
-
-    <section class="dash-status-strip">
-      <div><span>${renderDashboardIcon('lanes')}</span><small>Pistes disponibles</small><strong>${availableLanes} / ${TOTAL_LANES}</strong><em>${TOTAL_LANES ? Math.round((availableLanes / TOTAL_LANES) * 100) : 0}%</em></div>
-      <div><span>${renderDashboardIcon('prep')}</span><small>En préparation</small><strong>${metrics.upcoming.length} session${metrics.upcoming.length > 1 ? 's' : ''}</strong></div>
-      <div><span>${renderDashboardIcon('play')}</span><small>En cours</small><strong>${metrics.activeNow.length} session${metrics.activeNow.length > 1 ? 's' : ''}</strong></div>
-      <div><span>${renderDashboardIcon('check')}</span><small>Terminées</small><strong>${metrics.activeReservations.filter(r => r.status === 'paid').length} session${metrics.activeReservations.filter(r => r.status === 'paid').length > 1 ? 's' : ''}</strong></div>
-      <div><span>${renderDashboardIcon('laser')}</span><small>Lasers disponibles</small><strong>${LASER_GAME_PARALLEL_LAUNCHES} / ${LASER_GAME_PARALLEL_LAUNCHES}</strong></div>
-      <div><span>${renderDashboardIcon('wrench')}</span><small>Maintenance</small><strong>${Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length}</strong></div>
-    </section>
   `;
+  if (previousPino && window.PinlaneMascot) {
+    const slot = root.querySelector('.dash-hello-pino');
+    if (slot) {
+      slot.replaceChildren(previousPino);
+      window.PinlaneMascot.setMood(previousPino, pinoMood);
+    }
+  }
   setupStaffDashboardCharts(metrics);
 }
 

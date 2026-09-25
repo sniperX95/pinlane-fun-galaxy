@@ -10,21 +10,22 @@
 //     Cette carte reunit les alertes de la journee ET la boite mail reelle
 //     (emailOverview : mails a repondre, questions de l agent, envois en
 //     echec), chaque ligne menant a sa section de la page Emails. Elle passe
-//     sous les chiffres, avant les graphiques. Pino salue ; le noeud est repris
-//     au re-rendu (le salut ne se rejoue pas au poll) ; l entree de page joue
-//     une fois par navigation. Le fil de la journee compte sur l heure reelle,
-//     et la tuile fausse « Lasers disponibles N / N » n existe plus.
-// [B] TOUT EST FAIT : boite vide, journee reglee : « Tout est à jour », Pino
-//     se rejouit.
+//     sous les chiffres, avant les graphiques. La pastille du haut porte la
+//     gravite de la ligne la plus grave et mene a la liste. Aucune mascotte :
+//     « pas gadget gamin, c est du B2B » (Movsar, meme jour). L entree de page
+//     joue une fois par navigation. Le fil de la journee compte sur l heure
+//     reelle, et la tuile fausse « Lasers disponibles N / N » n existe plus.
+// [B] TOUT EST FAIT : boite vide, journee reglee : « Tout est à jour », en
+//     vert, et la carte porte la coche.
 // [C] BOITE ILLISIBLE (500) : l accueil ne dit JAMAIS « Tout est à jour » (un
-//     compte absent n est pas un zero), Pino ne se rejouit pas.
+//     compte absent n est pas un zero), la pastille reste neutre.
 // [D] LES REGLES, lues dans la page : le fil d une date passee est termine,
 //     d une date future a venir ; le prenom ne sort pas d un compte de centre,
 //     de role ou de secours ; « Bonsoir » a partir de 18 h.
 // [E] SANS LE DROIT DE LIRE LES MAILS : aucune lecture de la boite, aucune
 //     ligne mail.
 // [F] LE CHARGEMENT DE LA CONSOLE n est plus habille en erreur : forme calme,
-//     Pino qui reflechit.
+//     un anneau fin, aucun dessin.
 //
 // Serveur : scripts/dev-console-server.js (fixtures, aucun reseau, aucune
 // base, aucun vrai mail). Horloge figee au 2026-09-25 15:30.
@@ -53,15 +54,15 @@ const HEURE = `${JOUR}T15:30:00`;
 // Chaque contre-preuve : [ancre exacte (LF), remplacement, controle qui doit rougir].
 const MUTATIONS = {
   inbox: ['  if (open) {\n    const oldest', '  if (false) {\n    const oldest', '[A] la ligne « mails à répondre »'],
-  compte: ['const todoCount = inboxTodos.length + getStaffDashboardAlertDefinitions(metrics).length;', 'const todoCount = getStaffDashboardAlertDefinitions(metrics).length;', '[A] la phrase du haut compte les lignes'],
+  compte: ['const todos = [...inboxTodos, ...getStaffDashboardAlertDefinitions(metrics)];', 'const todos = getStaffDashboardAlertDefinitions(metrics);', '[A] la pastille du haut compte les lignes'],
   vide: ['    if (!inboxKnown) {\n      return `<div class="dash-todo-empty">', '    if (false) {\n      return `<div class="dash-todo-empty">', '[C] la carte ne dit pas « Tout est à jour »'],
-  ligne: [": (inboxKnown ? 'Tout est à jour, rien ne vous attend.' : 'Aucune alerte sur la journée.');", ": 'Tout est à jour, rien ne vous attend.';", '[C] la phrase du haut'],
-  pino: ['      slot.replaceChildren(previousPino);\n', '', '[A] Pino est repris au re-rendu'],
+  ligne: [": (inboxKnown ? 'Tout est à jour' : 'Aucune alerte sur la journée');", ": 'Tout est à jour';", '[C] la pastille du haut'],
+  ton: ["topRank === null ? (inboxKnown ? 'ok' : 'unknown')", "topRank === null ? 'ok'", '[C] la pastille reste neutre'],
+  gravite: ["(['critical', 'important', 'info'][topRank] || 'info')", "'info'", '[A] la pastille prend la gravite la plus haute'],
   entree: ["root.classList.toggle('dash-enter', arriving && !prefersReducedMotion());", "root.classList.add('dash-enter');", '[A] l entree ne rejoue pas au re-rendu'],
   passe: ['  if (state.currentDate < today) return { upcoming: 0, live: 0, done: timed.length };\n', '', '[D] une date passee est terminee'],
   prenom: ["  if (first.length < 2 || first.length > 24 || reserved.has(plain(first))) return '';", "  if (first.length < 2 || first.length > 24) return '';", '[D] pas de prenom tire du centre'],
   droit: ['  if (!canSeeDashInbox()) return;\n  const centre = getCurrentStaffCenterId();', '  const centre = getCurrentStaffCenterId();', '[E] aucune lecture de la boite'],
-  dodo: ["allClear ? (metrics.planningWindow && metrics.planningWindow.closed ? 'sleep' : 'happy') : 'wave';", "allClear ? 'happy' : 'wave';", '[B] un jour de fermeture ou tout est fait, Pino dort'],
   chargement: ["    status.className = 'staff-console-loading';", "    status.className = 'admin-load-error';", '[F] le chargement a sa forme calme'],
 };
 
@@ -150,13 +151,20 @@ async function lire(page) {
       texte: r.querySelector('p').textContent.trim(),
       bouton: r.querySelector('button').textContent.trim(),
     }));
-    const pino = root.querySelector('.dash-hello-pino > .pm');
+    const etat = root.querySelector('.dash-hello .dash-state');
     const sections = [...root.children].map((n) => n.className);
     return {
       h1: t('.dash-hello h1'),
       ligne: t('.dash-hello-line'),
       pastille: t('.dash-todo-count'),
-      mood: pino ? pino.getAttribute('data-mood') : null,
+      etat: etat ? {
+        texte: etat.textContent.replace(/\s+/g, ' ').trim(),
+        ton: [...etat.classList].find((c) => c.startsWith('tone-')) || null,
+        compte: etat.getAttribute('data-todo-count'),
+        bouton: etat.tagName === 'BUTTON',
+      } : {},
+      mascotte: Boolean(document.querySelector('.pm, .dash-hello-pino')) || typeof window.PinlaneMascot !== 'undefined',
+      videOk: Boolean(root.querySelector('.dash-todo-empty.is-clear .dash-todo-icon.pr-ok')),
       rows,
       vide: t('.dash-todo-empty'),
       videClair: Boolean(root.querySelector('.dash-todo-empty.is-clear')),
@@ -202,28 +210,34 @@ async function main() {
     await attendreAccueil(a.page, () => document.querySelectorAll('#staffDashboardPage [data-todo="inbox"]').length > 0);
     const va = await lire(a.page);
     ok(va.h1 === 'Bonjour Camille', '[A] le bonjour porte le prenom de la session', `« ${va.h1} »`);
-    ok(va.rows.length === 5 && va.ligne === `${va.rows.length} choses vous attendent.` && va.pastille === String(va.rows.length),
-      '[A] la phrase du haut compte les lignes de « À faire »', `« ${va.ligne} », pastille ${va.pastille}, ${va.rows.length} lignes`);
+    ok(va.rows.length === 5 && va.etat.texte === `${va.rows.length} actions en attente` && va.etat.compte === String(va.rows.length) && va.pastille === String(va.rows.length),
+      '[A] la pastille du haut compte les lignes de « À faire »', `« ${va.etat.texte} », carte ${va.pastille}, ${va.rows.length} lignes`);
+    ok(va.etat.ton === 'tone-critical', '[A] la pastille prend la gravite la plus haute (un client sur place qui n a pas paye)', va.etat.ton);
     const mails = va.rows.find((r) => r.kind === 'inbox') || {};
     ok(mails.titre === '2 mails à répondre' && /^Le plus ancien attend depuis \d+ h\.$/.test(mails.texte) && mails.bouton === 'Répondre',
       '[A] la ligne « mails à répondre » vient de la boite reelle', JSON.stringify(mails));
     const agent = va.rows.find((r) => r.kind === 'agent') || {};
-    ok(agent.titre === '1 question de l’agent' && agent.bouton === 'Lui répondre', '[A] la ligne des questions de l agent', JSON.stringify(agent));
+    ok(agent.titre === '1 question de l’agent' && agent.bouton === 'Répondre', '[A] la ligne des questions de l agent', JSON.stringify(agent));
     const echec = va.rows.find((r) => r.kind === 'bounce') || {};
-    ok(echec.titre === '1 mail non parti' && echec.bouton === 'Voir', '[A] la ligne des envois en echec', JSON.stringify(echec));
+    ok(echec.titre === '1 envoi en échec' && echec.bouton === 'Voir', '[A] la ligne des envois en echec', JSON.stringify(echec));
     ok(va.rows[0] && va.rows[0].kind === 'payment', '[A] le client sur place qui n a pas paye passe en tete (Prioritaire)', va.rows.map((r) => r.kind).join(', '));
     ok(va.ordreAfaireAvantGraphiques, '[A] « À faire » passe avant les graphiques');
     ok(va.fil.upcoming === '1 session' && va.fil.live === '1 session' && va.fil.done === '1 session' && va.fil.maintenance === '1 / 8' && va.filMeta === 'En direct',
       '[A] le fil de la journee compte sur l heure reelle (15:30 : une finie, une en cours, une a venir)', JSON.stringify(va.fil) + ` ${va.filMeta}`);
     ok(va.texte.indexOf('Lasers disponibles') < 0, '[A] la tuile fausse « Lasers disponibles » n existe plus');
-    ok(va.mood === 'wave', '[A] Pino salue a l arrivee', va.mood);
-    const reprise = await a.page.evaluate(() => {
-      const avant = document.querySelector('.dash-hello-pino > .pm');
-      renderStaffDashboard();
-      const apres = document.querySelector('.dash-hello-pino > .pm');
-      return { meme: Boolean(avant) && avant === apres, entree: document.getElementById('staffDashboardPage').classList.contains('dash-enter') };
+    ok(!va.mascotte, '[A] aucune mascotte ni dessin sur l accueil');
+    const focus = await a.page.evaluate(() => {
+      const b = document.querySelector('.dash-hello .dash-state');
+      if (!b || b.tagName !== 'BUTTON') return 'pas de bouton';
+      b.click();
+      const f = document.activeElement;
+      return f && f.classList.contains('dash-alert-cta') && f.closest('.dash-alert-row') === document.querySelector('#staffDashboardPage .dash-alert-row') ? 'ok' : (f ? f.className || f.tagName : 'rien');
     });
-    ok(reprise.meme, '[A] Pino est repris au re-rendu (le salut ne se rejoue pas au poll)');
+    ok(focus === 'ok', '[A] la pastille mene a la liste (le premier bouton prend le focus)', focus);
+    const reprise = await a.page.evaluate(() => {
+      renderStaffDashboard();
+      return { entree: document.getElementById('staffDashboardPage').classList.contains('dash-enter') };
+    });
     ok(reprise.entree === false, '[A] l entree ne rejoue pas au re-rendu');
     const arrivee = await a.page.evaluate(() => {
       openStaffMenuPage('reservations');
@@ -237,7 +251,7 @@ async function main() {
     await a.page.evaluate(() => openStaffMenuPage('dashboard'));
     await a.page.evaluate(() => { const b = document.querySelector('[data-todo="agent"] button'); if (b) b.click(); });
     const versAgent = await a.page.evaluate(() => ({ page: state.staffMenuPage, section: state.staffEmailsSection }));
-    ok(versAgent.page === 'emails' && versAgent.section === 'agent', '[A] « Lui répondre » mene a la section de l agent', JSON.stringify(versAgent));
+    ok(versAgent.page === 'emails' && versAgent.section === 'agent', '[A] « Répondre » (questions de l agent) mene a la section de l agent', JSON.stringify(versAgent));
     ok(a.erreurs.length === 0, '[A] aucune erreur JavaScript', a.erreurs.slice(0, 3).join(' | '));
     await a.ctx.close();
 
@@ -254,19 +268,10 @@ async function main() {
     const b = await ouvrir(browser, { journee: REGLEE, maintenance: [], boite: 'vide' });
     await attendreAccueil(b.page, () => /Tout est à jour/.test((document.querySelector('.dash-hello-line') || {}).textContent || ''));
     const vb = await lire(b.page);
-    ok(vb.ligne === 'Tout est à jour, rien ne vous attend.' && vb.rows.length === 0 && vb.pastille === null, '[B] la phrase dit « Tout est à jour » quand la liste est vide et la boite lue', `« ${vb.ligne} »`);
+    ok(vb.etat.texte === 'Tout est à jour' && vb.etat.ton === 'tone-ok' && vb.etat.bouton === false && vb.rows.length === 0 && vb.pastille === null,
+      '[B] la pastille dit « Tout est à jour », en vert, quand la liste est vide et la boite lue', JSON.stringify(vb.etat));
     ok(vb.videClair && /^Tout est à jour/.test(vb.vide || ''), '[B] la carte dit « Tout est à jour »', `« ${vb.vide} »`);
-    ok(vb.mood === 'happy', '[B] Pino se rejouit', vb.mood);
-    const ferme = await b.page.evaluate(() => {
-      const vrai = getPlanningWindow;
-      window.getPlanningWindow = (date) => ({ ...vrai(date), closed: true });
-      renderStaffDashboard();
-      const humeur = document.querySelector('.dash-hello-pino > .pm').getAttribute('data-mood');
-      window.getPlanningWindow = vrai;
-      renderStaffDashboard();
-      return humeur;
-    });
-    ok(ferme === 'sleep', '[B] un jour de fermeture ou tout est fait, Pino dort', ferme);
+    ok(vb.videOk, '[B] la carte vide porte la coche verte');
     ok(b.erreurs.length === 0, '[B] aucune erreur JavaScript', b.erreurs.slice(0, 3).join(' | '));
     await b.ctx.close();
 
@@ -278,9 +283,9 @@ async function main() {
     await attendreAccueil(c.page, () => Boolean(document.querySelector('.dash-todo-empty')));
     await c.page.waitForFunction(() => dashInbox.done === true, null, { timeout: 8000 }).catch(() => {});
     const vc = await lire(c.page);
-    ok(vc.ligne === 'Aucune alerte sur la journée.', '[C] la phrase du haut', `« ${vc.ligne} »`);
+    ok(vc.etat.texte === 'Aucune alerte sur la journée', '[C] la pastille du haut', `« ${vc.etat.texte} »`);
     ok(Boolean(vc.vide) && vc.vide.indexOf('Tout est à jour') < 0 && !vc.videClair && /La boîte mail n'a pas pu être lue/.test(vc.vide), '[C] la carte ne dit pas « Tout est à jour »', `« ${vc.vide} »`);
-    ok(vc.mood !== 'happy', '[C] Pino ne se rejouit pas sur un compte inconnu', vc.mood);
+    ok(vc.etat.ton === 'tone-unknown', '[C] la pastille reste neutre sur un compte inconnu (ni verte, ni rouge)', vc.etat.ton);
     ok(c.erreurs.length === 0, '[C] aucune erreur JavaScript', c.erreurs.slice(0, 3).join(' | '));
 
     // =====================================================================
@@ -349,10 +354,10 @@ async function main() {
       await f.page.waitForSelector('#staffConsoleLoadStatus', { timeout: 10000 });
       charge = await f.page.evaluate(() => {
         const s = document.getElementById('staffConsoleLoadStatus');
-        return { classe: s.className, role: s.getAttribute('role'), pino: Boolean(s.querySelector('.pm--think')), texte: s.textContent.trim() };
+        return { classe: s.className, role: s.getAttribute('role'), anneau: Boolean(s.querySelector('.staff-console-spinner')), dessin: Boolean(s.querySelector('.pm, svg')), texte: s.textContent.trim() };
       });
     } catch (error) { charge = { erreur: error.message }; }
-    ok(Boolean(charge) && charge.classe === 'staff-console-loading' && charge.role === 'status' && charge.pino && charge.texte === 'Chargement de la console…',
+    ok(Boolean(charge) && charge.classe === 'staff-console-loading' && charge.role === 'status' && charge.anneau && !charge.dessin && charge.texte === 'Chargement de la console…',
       '[F] le chargement a sa forme calme', JSON.stringify(charge));
     await f.ctx.close();
   } finally {

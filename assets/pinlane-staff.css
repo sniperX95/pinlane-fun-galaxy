@@ -3984,19 +3984,44 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .dash-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
-/* L ACCUEIL QUI SALUE (2026-09-25) : Pino, le bonjour, puis la phrase qui
-   compte ce qui attend (la carte « À faire »). Pas de carte autour : le
-   bonjour est l en-tete de la page, il se lit avant les chiffres. */
+/* L ACCUEIL QUI SALUE (2026-09-25) : le bonjour, puis une pastille qui compte
+   ce qui attend (la carte « À faire »), a la couleur de sa ligne la plus
+   grave. Pas de carte autour, pas de dessin : le bonjour est l en-tete de la
+   page, il se lit avant les chiffres (DESIGN.md §10). */
 .dash-hello { align-items: center; }
-.dash-hello-main { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
-.dash-hello-pino { display: inline-flex; flex: none; margin: -6px 0 -4px; }
-.dash-hello-copy { display: grid; gap: 3px; min-width: 0; }
+.dash-hello-copy { display: grid; gap: var(--space-2); min-width: 0; }
 .dash-hello h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; }
-.dash-hello .dash-hello-line { margin: 0; color: var(--text-2, var(--muted)); font-size: 14px; }
-.dash-hello .dash-hello-sync { margin: 2px 0 0; }
+.dash-hello .dash-hello-line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); margin: 0; }
+.dash-hello-sync { display: inline-flex; align-items: center; gap: 8px; }
+.dash-hello-sync > .dash-live-dot.warning + span { color: var(--warning); }
+.dash-hello-sync > .dash-live-dot.stale + span { color: var(--danger); }
+
+/* La pastille d etat : un badge de statut (DESIGN.md §6), fond -soft et texte
+   au ton fort. Un bouton quand il y a quelque chose a faire (il mene a la
+   liste), un simple libelle sinon. */
+.dash-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+}
+.dash-state-dot { width: 7px; height: 7px; flex: none; border-radius: var(--radius-full); background: currentColor; }
+.dash-state.tone-critical { background: var(--danger-soft); color: var(--danger); }
+.dash-state.tone-important { background: var(--warning-soft); color: var(--warning); }
+.dash-state.tone-info { background: var(--accent-soft); color: var(--accent-strong); }
+.dash-state.tone-ok { background: var(--success-soft); color: var(--success); }
+button.dash-state { cursor: pointer; transition: box-shadow var(--dur) var(--ease); }
+button.dash-state:hover { box-shadow: inset 0 0 0 1px currentColor; }
+button.dash-state:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 640px) {
-  .dash-hello-main { gap: var(--space-3); }
-  .dash-hello-pino .pm { --pm-w: 60px; }
   .dash-hello h1 { font-size: 20px; }
 }
 
@@ -5102,6 +5127,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .dash-todo-icon svg { width: 17px; height: 17px; }
 .dash-todo-icon.pr-critical { background: var(--danger-soft); color: var(--danger); }
 .dash-todo-icon.pr-important { background: var(--warning-soft); color: var(--warning); }
+.dash-todo-icon.pr-ok { background: var(--success-soft); color: var(--success); }
 /* --accent-strong et pas --info : sur un fond -soft, seul le ton fort tient
    le contraste (5.06:1 en clair, console-contrast-check). */
 .dash-todo-icon.pr-info { background: var(--accent-soft); color: var(--accent-strong); }
@@ -11448,8 +11474,8 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   background: var(--danger-soft);
   color: var(--text);
 }
-/* Le chargement normal de la console : Pino qui reflechit et une ligne, au
-   centre de la zone de contenu. Rien de rouge, ce n est pas une panne. */
+/* Le chargement normal de la console : un anneau fin et une ligne, au centre
+   de la zone de contenu. Rien de rouge, ce n est pas une panne. */
 .staff-console-loading {
   display: flex;
   flex-direction: column;
@@ -11459,6 +11485,16 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   min-height: 60vh;
   color: var(--muted);
   font-size: 13px;
+}
+.staff-console-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-full);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .staff-console-spinner { animation: reqSpin 0.8s linear infinite; }
 }
 .admin-load-error strong { color: var(--danger); }
 .admin-load-error p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }

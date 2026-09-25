@@ -3457,7 +3457,7 @@ function setView(v) {
     // propre forme, calme ; le rouge ne vient qu avec un vrai echec.
     status.className = 'staff-console-loading';
     status.setAttribute('role', 'status');
-    status.innerHTML = `${window.PinlaneMascot ? window.PinlaneMascot.html({ mood: 'think', size: 'md' }) : ''}<span>Chargement de la console…</span>`;
+    status.innerHTML = '<span class="staff-console-spinner" aria-hidden="true"></span><span>Chargement de la console…</span>';
     applyAuthState();
     ensureStaffConsolesLoaded().then(() => {
       if (request !== consoleViewRequest || state.view !== v) return;
@@ -10355,7 +10355,7 @@ function renderStaffDashboardAlerts(metrics, extra = [], inboxKnown = true) {
       </div>`;
     }
     return `<div class="dash-todo-empty is-clear">
-      ${window.PinlaneMascot ? window.PinlaneMascot.html({ mood: 'happy', size: 'sm' }) : ''}
+      <span class="dash-todo-icon pr-ok" aria-hidden="true">${renderDashboardIcon('check')}</span>
       <div class="dash-alert-copy"><strong>Tout est à jour</strong><p>Rien ne vous attend : paiements, séances, demandes, pistes et mails sont traités.</p></div>
     </div>`;
   }
@@ -11308,10 +11308,11 @@ function openStaffDashboardRevenue() {
 
 
 // L ACCUEIL QUI SALUE (2026-09-25). Movsar, devant l interface d Accountable :
-// « une mascotte ... plus vivant, plus pro, avec que des choses vraiment
-// reelles ». Le haut de la Vue d ensemble dit bonjour a la personne, puis dit
-// en une phrase ce qui l attend : cette phrase est le compte de la carte
-// « À faire », jamais un texte d ambiance.
+// « plus vivant, plus pro, avec que des choses vraiment reelles », puis, sur
+// la mascotte de la premiere version : « pas gadget gamin, c est du B2B ». Le
+// haut de la Vue d ensemble dit bonjour a la personne, puis donne en une
+// pastille ce qui l attend : le compte de la carte « À faire », a la couleur
+// de sa ligne la plus grave, jamais un texte d ambiance.
 
 // LE PRENOM, SEULEMENT S IL EN EST UN. Un compte partage porte souvent le nom
 // du centre (« Fun Galaxy Libramont ») ou d un role (« Proprietaire
@@ -11413,9 +11414,9 @@ function getDashInboxTodos() {
       kind: 'agent',
       priority: 'important',
       title: `${questions} question${questions > 1 ? 's' : ''} de l’agent`,
-      text: 'Ce qu’il ne sait pas encore sur le centre : votre réponse, il la retient.',
+      text: 'Informations qui lui manquent pour répondre seul aux clients.',
       open: "openStaffMenuPage('emails', 'agent')",
-      cta: 'Lui répondre'
+      cta: 'Répondre'
     });
   }
   const failed = Math.max(0, Number(data.echecs7j) || 0);
@@ -11423,8 +11424,8 @@ function getDashInboxTodos() {
     todos.push({
       kind: 'bounce',
       priority: 'info',
-      title: `${failed} mail${failed > 1 ? 's' : ''} non parti${failed > 1 ? 's' : ''}`,
-      text: 'Envois en échec ces 7 derniers jours.',
+      title: `${failed} envoi${failed > 1 ? 's' : ''} en échec`,
+      text: 'Mails non distribués ces 7 derniers jours.',
       open: "openStaffMenuPage('emails', 'envoyes')",
       cta: 'Voir'
     });
@@ -11500,23 +11501,25 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
     ? `${parseLocalDate(revenueWindow.days[0]).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')} au ${parseLocalDate(revenueWindow.endDate).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')}`
     : '7 derniers jours';
   const syncIndicator = getRemoteSyncIndicator();
-  // Ce qui attend, et ce qu on en sait : la phrase du haut, l humeur de Pino
-  // et la carte « À faire » lisent LA MEME liste.
+  // Ce qui attend, et ce qu on en sait : la pastille du haut et la carte
+  // « À faire » lisent LA MEME liste.
   const inboxKnown = isDashInboxKnown();
   const inboxTodos = getDashInboxTodos();
-  const todoCount = inboxTodos.length + getStaffDashboardAlertDefinitions(metrics).length;
+  const todos = [...inboxTodos, ...getStaffDashboardAlertDefinitions(metrics)];
+  const todoCount = todos.length;
   const firstName = getStaffGreetingFirstName();
   const greeting = `${getStaffGreetingWord()}${firstName ? ` ${firstName}` : ''}`;
   const todoLine = todoCount
-    ? `${todoCount} chose${todoCount > 1 ? 's' : ''} ${todoCount > 1 ? 'vous attendent' : 'vous attend'}.`
-    : (inboxKnown ? 'Tout est à jour, rien ne vous attend.' : 'Aucune alerte sur la journée.');
-  const allClear = !todoCount && inboxKnown;
-  // Pino salue a l arrivee et se rejouit quand tout est fait. Le noeud deja
-  // pose est REPRIS au lieu d etre redessine : le poll re-rend cette page en
-  // boucle et un dessin neuf rejouerait le salut a chaque passage.
-  // Tout est fait un jour de fermeture : Pino dort plutot que de sauter.
-  const pinoMood = allClear ? (metrics.planningWindow && metrics.planningWindow.closed ? 'sleep' : 'happy') : 'wave';
-  const previousPino = root.querySelector('.dash-hello-pino > .pm');
+    ? `${todoCount} action${todoCount > 1 ? 's' : ''} en attente`
+    : (inboxKnown ? 'Tout est à jour' : 'Aucune alerte sur la journée');
+  // L ETAT SE LIT A LA COULEUR, PAS A UN DESSIN. Movsar, 2026-09-25, devant
+  // la premiere version (une quille de dessin anime qui saluait) : « faut
+  // faire bcp plus pro pas gadget gamin, c est du B2B avec des Sebastien
+  // 45 ans ». La pastille prend la gravite la plus haute de la liste ; verte
+  // seulement quand tout est traite ET que la boite mail a ete lue ; neutre
+  // quand on ne sait pas.
+  const topRank = todoCount ? Math.min(...todos.map(todo => getStaffAlertPriorityMeta(todo).rank)) : null;
+  const todoTone = topRank === null ? (inboxKnown ? 'ok' : 'unknown') : (['critical', 'important', 'info'][topRank] || 'info');
   // Entree de page : une fois par navigation, jamais au poll (DESIGN.md §5).
   // Le repere de visite est celui des pages pv2, pour qu aller-retour
   // Reservations/Accueil compte comme deux navigations.
@@ -11530,13 +11533,14 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   // arrivait apres quatre tuiles et trois graphiques).
   root.innerHTML = `
     <section class="dash-hero dash-hello">
-      <div class="dash-hello-main">
-        <span class="dash-hello-pino">${window.PinlaneMascot ? window.PinlaneMascot.html({ mood: pinoMood, size: 'lg' }) : ''}</span>
-        <div class="dash-hello-copy">
-          <h1>${escapeHtml(greeting)}</h1>
-          <p class="dash-hello-line" data-todo-count="${todoCount}">${escapeHtml(todoLine)}</p>
-          <p class="dash-hello-sync"><span class="dash-live-dot${syncIndicator.tone === 'live' ? '' : ` ${syncIndicator.tone}`}"></span><span>${escapeHtml(syncIndicator.label)}</span></p>
-        </div>
+      <div class="dash-hello-copy">
+        <h1>${escapeHtml(greeting)}</h1>
+        <p class="dash-hello-line">
+          ${todoCount
+            ? `<button type="button" class="dash-state tone-${todoTone}" data-todo-count="${todoCount}" onclick="focusDashTodo()"><span class="dash-state-dot" aria-hidden="true"></span>${escapeHtml(todoLine)}</button>`
+            : `<span class="dash-state tone-${todoTone}" data-todo-count="0"><span class="dash-state-dot" aria-hidden="true"></span>${escapeHtml(todoLine)}</span>`}
+          <span class="dash-hello-sync"><span class="dash-live-dot${syncIndicator.tone === 'live' ? '' : ` ${syncIndicator.tone}`}"></span><span>${escapeHtml(syncIndicator.label)}</span></span>
+        </p>
       </div>
       <div class="dash-actions">
         ${staffDateNavHtml()}
@@ -11628,14 +11632,17 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
     </section>
 
   `;
-  if (previousPino && window.PinlaneMascot) {
-    const slot = root.querySelector('.dash-hello-pino');
-    if (slot) {
-      slot.replaceChildren(previousPino);
-      window.PinlaneMascot.setMood(previousPino, pinoMood);
-    }
-  }
   setupStaffDashboardCharts(metrics);
+}
+
+// La pastille du haut mene a la liste : au telephone la carte est plus bas,
+// au bureau le premier bouton de la liste prend le focus.
+function focusDashTodo() {
+  const card = document.querySelector('#staffDashboardPage .dash-todo-card');
+  if (!card) return;
+  card.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+  const first = card.querySelector('.dash-alert-cta');
+  if (first) first.focus({ preventScroll: true });
 }
 
 function setupStaffDashboardCharts(metrics) {

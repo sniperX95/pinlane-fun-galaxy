@@ -12687,6 +12687,15 @@ async function loadStaffCenterConfig(force = false) {
     staffCenterConfigCache.error = error?.message || 'Lecture configuration impossible.';
   }
   if (state.view === 'staff' && ['establishment', 'lanes'].includes(getStaffMenuPage())) renderStaffUtilityPage();
+  // Le planning ouvert se redessine avec la configuration arrivee (pistes,
+  // horaires, armes laser) : il gardait sinon les valeurs par defaut jusqu a ce
+  // qu une autre donnee le fasse repeindre.
+  if (state.view === 'staff') {
+    const planningBox = document.getElementById('planningBox');
+    if (planningBox && !planningBox.classList.contains('hidden')) repaintKeepingScroll(planningBox, () => renderPlanning());
+    const laserBox = document.getElementById('laserPlanningBox');
+    if (laserBox && !laserBox.classList.contains('hidden')) repaintKeepingScroll(laserBox, () => renderLaserPlanning());
+  }
 }
 
 // Page Etablissement : 5 categories au lieu d'un mur. Chaque onglet repond a UNE
@@ -20139,18 +20148,6 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   const prevBtn = document.getElementById('staffPrevDateBtn');
   if (prevBtn) prevBtn.disabled = false;
 
-  // La tete du planning ne redit pas les comptes des tuiles juste au-dessus
-  // (reservations, joueurs) : elle dit ce qu elles ne disent pas, les
-  // horaires du jour. Son titre compte les pistes que la grille dessine
-  // vraiment (getAvailabilityLaneCount), plus un « 8 » ecrit dans la page.
-  const planningWindow = getPlanningWindow(state.currentDate);
-  const planningSub = document.getElementById('planningSub');
-  if (planningSub) planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;
-  const planningLaneTitle = document.getElementById('planningLaneTitle');
-  if (planningLaneTitle) {
-    const laneCount = getAvailabilityLaneCount();
-    planningLaneTitle.textContent = `Planning ${laneCount} piste${laneCount > 1 ? 's' : ''}`;
-  }
   const planningSearchInput = document.getElementById('planningSearchInput');
   if (planningSearchInput && planningSearchInput !== document.activeElement) planningSearchInput.value = state.searchTerm || '';
   const laserPlanningSearchInput = document.getElementById('laserPlanningSearchInput');
@@ -20215,9 +20212,32 @@ function renderKpis() {
   document.getElementById('kpiOcc').textContent = occ + '%';
 }
 
+// La tete du planning ne redit pas les comptes des tuiles juste au-dessus
+// (reservations, joueurs) : elle dit ce qu elles ne disent pas, les
+// horaires du jour. Son titre compte les pistes que la grille dessine
+// vraiment (getAvailabilityLaneCount), plus un « 8 » ecrit dans la page.
+//
+// ELLE SE DESSINE AVEC SA GRILLE, JAMAIS A PART. Elle etait posee par
+// renderStaffShell et la grille par renderPlanning : quand la configuration du
+// centre arrivait apres le premier rendu, les blocages redessinaient la grille
+// (6 pistes) et le titre gardait la valeur par defaut (« Planning 8 pistes »),
+// vu le 2026-09-25 dans la suite complete. Horaires et pistes viennent de la
+// meme configuration : un seul chemin pour la tete et la grille.
+function renderPlanningHead() {
+  const planningWindow = getPlanningWindow(state.currentDate);
+  const planningSub = document.getElementById('planningSub');
+  if (planningSub) planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;
+  const planningLaneTitle = document.getElementById('planningLaneTitle');
+  if (planningLaneTitle) {
+    const laneCount = getAvailabilityLaneCount();
+    planningLaneTitle.textContent = `Planning ${laneCount} piste${laneCount > 1 ? 's' : ''}`;
+  }
+}
+
 function renderPlanning() {
   ensureAvailabilityBlocksForPlanning();
   ensureStaffCenterConfigForPlanning();
+  renderPlanningHead();
   const wrap = document.getElementById('planningGridWrap');
   const planningBox = document.getElementById('planningBox');
   // Le re-render (polling 4s / 60s) reconstruit innerHTML et remet le scroll à 0.

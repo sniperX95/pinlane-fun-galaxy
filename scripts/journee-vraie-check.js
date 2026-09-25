@@ -6,7 +6,9 @@
 //     quelle date, et l argent paye s appelait « validés » ;
 // [B] la tete du planning redisait les comptes des tuiles juste au-dessus, et
 //     son titre « Planning 8 pistes » etait ecrit en dur dans la page, quelle
-//     que soit la grille dessinee dessous ;
+//     que soit la grille dessinee dessous ; puis, corrige, il restait sur la
+//     valeur par defaut quand la configuration arrivait apres le premier rendu
+//     (la grille, redessinee par les blocages, montrait 6 pistes) ;
 // [C] la page Pistes dessinait 8 rangees pour tout centre ;
 // [D] les chiffres de Tarifs & formules portaient sur « les données locales »
 //     (le jour affiche et ses voisins, une fenetre que personne ne connait),
@@ -46,8 +48,11 @@ const HEURE = `${JOUR}T15:30:00+02:00`;
 const MUTATIONS = {
   aujourdhui: ['app-main.js', `setKpiCopy(0, state.currentDate === todayStr() ? "Réservations aujourd'hui" : 'Réservations',`, `setKpiCopy(0, "Réservations aujourd'hui",`, '[A] la tuile ne dit « aujourd\'hui » que le jour meme'],
   encaisse: ['app-main.js', '${formatMoney(revColl)} encaissés', '${formatMoney(revColl)} validés', '[A] l argent paye est dit « encaissés »'],
-  soustitre: ['app-main.js', "planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;", "planningSub.textContent = `${dayReservations.length} réservations • ${planningWindow.label}`;", '[B] la tete du planning ne redit pas les tuiles'],
+  soustitre: ['app-main.js', "planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;", "planningSub.textContent = `${todaysReservations().length} réservations • ${planningWindow.label}`;", '[B] la tete du planning ne redit pas les tuiles'],
   titrepistes: ['app-main.js', "    planningLaneTitle.textContent = `Planning ${laneCount} piste${laneCount > 1 ? 's' : ''}`;\n", '', '[B] le titre compte les pistes de la grille'],
+  // La configuration arrivee ne redessine plus le planning ouvert : la tete et
+  // la grille gardent les valeurs par defaut (la course du 2026-09-25).
+  configrepeint: ['app-main.js', "    if (planningBox && !planningBox.classList.contains('hidden')) repaintKeepingScroll(planningBox, () => renderPlanning());\n", '', '[B] le titre compte les pistes de la grille'],
   rangees: ['app-main.js', '  const laneCount = getAvailabilityLaneCount();\n  for (let lane = 1; lane <= laneCount; lane += 1) {', '  for (let lane = 1; lane <= TOTAL_LANES; lane += 1) {', '[C] la page Pistes a autant de rangees que de pistes'],
   fenetre: ['app-main.js', 'function getPricingReservations() {\n  if (!canReadStaffReservationHistory()) return [];\n  return getStaffResourceHistoryRows();\n}', "function getPricingReservations() {\n  if (!canReadStaffReservationHistory()) return [];\n  return (state.reservations || []).filter(reservation => reservation.status !== 'cancelled');\n}", '[D] les chiffres de Tarifs portent sur 30 jours'],
   // Le repeint APRES l arrivee de l historique (le premier, au debut du
@@ -146,7 +151,7 @@ async function ouvrir(browser, route, { permissions = null } = {}) {
     await new Promise((resolve) => setTimeout(resolve, 400));
     r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, reservations: [...HISTORIQUE, ...(couvreLeJour ? JOURNEE : [])].map((x) => ({ ...x })), centerId: dev.CENTER_ID }) });
   });
-  await page.route('**/api/ops**', (r) => {
+  await page.route('**/api/ops**', async (r) => {
     const url = new URL(r.request().url());
     // Le serveur de dev ne sert AUCUNE formule : le catalogue du gate en porte
     // trois, dont FORMULE 1, celle de l historique.
@@ -165,6 +170,11 @@ async function ouvrir(browser, route, { permissions = null } = {}) {
       ] }) });
     }
     if (url.searchParams.get('action') !== 'centerConfig') return r.continue();
+    // La configuration arrive APRES le premier rendu du planning : c est
+    // l ordre qui a rougi la suite complete le 2026-09-25 (titre « Planning 8
+    // pistes » au-dessus d une grille de 6). Servie tout de suite, [B] ne
+    // gagnait que la course.
+    await new Promise((resolve) => setTimeout(resolve, 700));
     r.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({ ok: true, activities: [], centers: [{ id: dev.CENTER_ID, name: 'Centre du gate', status: 'active', timezone: 'Europe/Brussels', resources: { bowling: { laneCount: 6, normalCapacityPerLane: 6 }, laser: { weaponCount: 30, parallelLaunches: 1 } } }] }),

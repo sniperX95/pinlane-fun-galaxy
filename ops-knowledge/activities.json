@@ -151,7 +151,8 @@
         "order": 7,
         "priceType": "per_pax",
         "unitLabel": "par enfant",
-        "note": "accès à la journée"
+        "note": "accès à la journée",
+        "access": "day"
       }
     },
     {

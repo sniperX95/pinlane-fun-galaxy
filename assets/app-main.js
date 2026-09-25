@@ -9428,6 +9428,10 @@ function renderVisitRecapItem(item) {
     const units = Math.max(1, Number(item.units) || 1);
     const hours = Math.max(0.5, Number(item.hours) || 1);
     detail = `${units} table${units > 1 ? 's' : ''} · ${formatDurationLabel(hours)}`;
+  } else if (item.dayAccess) {
+    // Une entree a la journee (la plaine de jeux) : ses minutes ne sont qu une
+    // estimation du planning, jamais ce que le client achete (2026-09-25).
+    detail = 'Accès toute la journée';
   } else if (item.minutes) {
     detail = formatDurationLabel(Number(item.minutes) / 60);
   } else {

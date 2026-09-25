@@ -136,9 +136,9 @@
         "playground": {
           "surfaceM2": 165,
           "levels": 3,
-          "ageRange": "3 a 11 ans",
+          "ageRange": "4 à 12 ans",
           "maxChildren": 90,
-          "access": "toute la journee"
+          "access": "toute la journée"
         },
         "bowling": {
           "lanes": 8,

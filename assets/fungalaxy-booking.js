@@ -1009,7 +1009,7 @@
         + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
         + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
         + '<span class="fg-card__name">' + esc(a.name) + '</span>'
-        + '<span class="fg-card__price">' + esc(prixCarte(a)) + (a.note ? ' · ' + esc(a.note) : '') + '</span>'
+        + '<span class="fg-card__price">' + esc(prixCarte(a)) + (precisionsCarte(a) ? ' · ' + esc(precisionsCarte(a)) : '') + '</span>'
         + '</div>'
         + rendreOption(a)
         + '</li>';
@@ -1159,7 +1159,7 @@
     var prix = $('.fg-card__price', item);
     if (!prix || !a) return;
     var avant = prix.textContent;
-    prix.textContent = prixCarte(a) + (a.note ? ' · ' + a.note : '');
+    prix.textContent = prixCarte(a) + (precisionsCarte(a) ? ' · ' + precisionsCarte(a) : '');
     if (anime && prix.textContent !== avant) rejouer(prix, 'is-maj');
   }
   function basculerActivite(card) {
@@ -1970,8 +1970,13 @@
   function partiesDuPlan(cr) {
     var plan = cr && cr.slot ? (cr.slot.opsPlan || {}) : {};
     var index = {}, liste = [];
+    // Une entree a la journee n est pas une partie a heure : le bloc que le
+    // planning lui pose (visite 100 % libre) disait « Playground · 1 heure,
+    // jusqu a 11:00 ». Elle se lit avec les activites libres.
+    var journee = {};
+    (((cr && cr.reponse && cr.reponse.program) || {}).items || []).forEach(function (it) { if (it && it.dayAccess) journee[it.activityId] = 1; });
     (plan.resourceBlocks || []).forEach(function (b) {
-      if (!b || !(b.type === 'activity' || b.activityId) || !b.activityId || !b.startTime) return;
+      if (!b || !(b.type === 'activity' || b.activityId) || !b.activityId || !b.startTime || journee[b.activityId]) return;
       var cle = b.activityId + '#' + (Number(b.countIndex) || 1);
       if (!index[cle]) { index[cle] = { id: b.activityId, partie: Number(b.countIndex) || 1, groupes: [], pistes: 0 }; liste.push(index[cle]); }
       var p = index[cle];
@@ -2020,8 +2025,18 @@
   // d un groupe qui tourne, ou la duree (par groupe quand il en joue deux).
   function detailLigne(it) {
     if (Number(it.games) > 0) return it.games + ' partie' + (it.games > 1 ? 's' : '');
+    if (it.dayAccess) return 'toute la journée';
     return detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (it.services && it.services.length > 1 ? ' par groupe' : '') : '');
   }
+  // UNE ENTREE A LA JOURNEE (la plaine de jeux) se dit comme elle se vend :
+  // « accès toute la journée ». Ses minutes au catalogue ne sont qu une
+  // estimation de temps sur place pour le planning, jamais montree comme ce
+  // que le client achete (Movsar, 2026-09-25 : « ça met 1h dans le recap ...
+  // c est un acces toute la journée et c est entre 4 ans à 12 ans »).
+  // L age est celui que le CENTRE declare (public-booking-meta).
+  function ageActivite(id) { var a = activite(id); return a && a.ageRange ? a.ageRange : ''; }
+  // L age ne se coupe pas en fin de ligne (« · 4 » puis « à 12 ans »).
+  function precisionsCarte(a) { return [a.note, a.ageRange ? a.ageRange.replace(/ /g, '\u00a0') : ''].filter(Boolean).join(' · '); }
   function etapeVisite(o) {
     return '<li class="fg-visit__step' + (o.genre ? ' fg-visit__step--' + o.genre : '') + (o.bouge ? ' is-moved' : '') + '"><b>' + esc(o.heure) + '</b>'
       + '<span>' + (o.icone ? '<svg aria-hidden="true"><use href="#' + o.icone + '"/></svg>' : '') + esc(o.titre) + '</span>'
@@ -2071,14 +2086,21 @@
     parts.forEach(function (p) { planifies[p.id] = 1; });
     var items = (rep.program && rep.program.items) || [];
     var libres = items.filter(function (it) { return !planifies[it.activityId]; });
-    var minutesLibres = libres.reduce(function (s, it) { return s + (Number(it.minutes) || 0); }, 0);
+    // Une entree a la journee ne compte pas dans « environ X » : ce temps-la
+    // n est pas achete, il est libre toute la journee.
+    var minutesLibres = libres.reduce(function (s, it) { return s + (it.dayAccess ? 0 : (Number(it.minutes) || 0)); }, 0);
     var prix = Number(rep.price);
     var complet = !rep.program || rep.program.priceComplete !== false;
-    var fin = slot.visitEndTime || plan.endTime || '';
+    // UNE VISITE FAITE SEULEMENT D ENTREES A LA JOURNEE (la plaine seule) n a
+    // pas de fin a annoncer : celle du planning n est qu une estimation, et
+    // l annoncer disait « 1 h » a un client qui paie la journee.
+    var journee = items.length > 0 && items.every(function (it) { return it.dayAccess; });
+    var fin = journee ? '' : (slot.visitEndTime || plan.endTime || '');
     // Le resume de la barre du bas : les heures et le prix de l en-tete de
     // « Votre visite », lus aux memes endroits de la meme reponse.
     var depart = plan.arrivalTime || slot.time || '';
-    var span = depart && fin ? '<b>' + esc(depart) + ' → ' + esc(heureAffichee(fin)) + '</b>' + (slot.visitEndsAtClose ? ' (fermeture)' : ' environ') : '';
+    var span = depart && fin ? '<b>' + esc(depart) + ' → ' + esc(heureAffichee(fin)) + '</b>' + (slot.visitEndsAtClose ? ' (fermeture)' : ' environ')
+      : (journee && depart ? 'dès <b>' + esc(depart) + '</b>, toute la journée' : '');
     var sumAvant = $$('b', hourSum).map(function (b) { return b.textContent; });
     hourSum.innerHTML = span + (prix > 0 ? (span ? '\u00a0· ' : '') + '<b>' + esc(euros(prix)) + '</b>' + (complet ? '' : ' + sur place') : '');
     // Ce qui a change dans le resume monte a sa place, une fois. Les <b> sont
@@ -2120,7 +2142,7 @@
       dits.push(nomR + ', ' + quelles + ', à placer sur place avec l’équipe');
     });
     if (libres.length) {
-      lignes += '<li class="fg-visit__step fg-visit__step--free"><b>libre</b><span>' + libres.map(function (it) { return '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(it.name || nomActivite(it.activityId)) + (detailSessions(it) ? ' (' + esc(detailSessions(it)) + ')' : '') + '</i>'; }).join('') + '</span><small>à votre rythme' + (minutesLibres ? ' · ' + esc(dureeApprox(minutesLibres)) : '') + '</small></li>';
+      lignes += '<li class="fg-visit__step fg-visit__step--free"><b>libre</b><span>' + libres.map(function (it) { var entre = it.dayAccess ? 'toute la journée' : detailSessions(it); return '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(it.name || nomActivite(it.activityId)) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>'; }).join('') + '</span><small>à votre rythme' + (minutesLibres ? ' · ' + esc(dureeApprox(minutesLibres)) : '') + '</small></li>';
     }
     if (!parts.length && !libres.length && !plan.arrivalTime) lignes = '<li class="fg-visit__step"><b>' + esc(slot.time) + '</b><span>Début</span><small></small></li>' + lignes;
     if (fin) lignes += etapeVisite({ genre: 'out', heure: heureAffichee(fin), titre: 'Fin de la visite', detail: slot.visitEndsAtClose ? 'fermeture du centre' : 'heure estimée' });
@@ -2143,7 +2165,8 @@
       }
     }
     var html2 = '<div class="fg-visit"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
-      + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(plan.arrivalTime, fin) + '</span>' : '')
+      + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(plan.arrivalTime, fin) + '</span>'
+        : (journee && depart ? '<span class="fg-visit__span">dès <b>' + esc(depart) + '</b>, accès toute la journée</span>' : ''))
       + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>le reste se règle sur place</small>') + '</span>' : '')
       + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
@@ -2156,7 +2179,7 @@
     if (sceneCourante === 'heures') dire(('Votre visite. '
       + (plan.arrivalTime ? 'Arrivée conseillée à ' + plan.arrivalTime + '. ' : '')
       + (dits.length ? dits.join('. ') + '. ' : (plan.arrivalTime ? '' : 'Début à ' + slot.time + '. '))
-      + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : '')
+      + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : (journee ? 'Accès toute la journée. ' : ''))
       + (prix > 0 ? euros(prix) + (complet ? '' : ', le reste se règle sur place') + '. ' : '')
       + avis.join(' ')).trim());
     zone.innerHTML = html2 + '</div>';
@@ -2384,6 +2407,8 @@
           var heures = siennes.map(function (p) { return p.debut; });
           var reste = total - heures.length;
           morceaux.push(total + ' parties' + (heures.length ? ' : ' + joindreListe(heures.concat(reste > 0 ? [reste + ' sur place avec l’équipe'] : []), ' et ') : ', sur place avec l’équipe'));
+        } else if (it.dayAccess) {
+          morceaux.push('accès toute la journée', ageActivite(it.activityId));
         } else {
           morceaux.push(total === 1 ? '1 partie' : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (siennes[0] && siennes[0].groupes.length > 1 ? ' par groupe' : '') : '')));
         }

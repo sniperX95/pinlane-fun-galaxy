@@ -530,9 +530,17 @@ module.exports = async (req, res) => {
     // Ce que CE centre vend, planifie ou non, avec son tarif quand il est saisi.
     // Cle ADDITIVE : un centre inconnu ou pas encore configure rend bowling +
     // laser, c'est-a-dire exactement le tunnel d'avant.
+    // L AGE d une activite (« 4 à 12 ans » pour la plaine de jeux) est une
+    // donnee du CENTRE, la meme que lit l agent (activityThemes) : une seule
+    // source, jamais recopiee dans le catalogue partage. Cle ajoutee seulement
+    // quand le centre la declare.
     activities: listSellableActivities({
       centerId,
       availability: center && typeof center.activityAvailability === 'object' ? center.activityAvailability : null,
+    }).map((activity) => {
+      const theme = center && center.activityThemes && center.activityThemes[activity.id];
+      const ageRange = theme && typeof theme.ageRange === 'string' ? theme.ageRange.trim() : '';
+      return ageRange ? { ...activity, ageRange } : activity;
     }),
     center: center
       ? {

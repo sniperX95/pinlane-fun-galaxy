@@ -1081,6 +1081,18 @@ const anthropicOk = (object) => ({
       `LE POINT : ${id} annonce SON univers`, ligne);
   });
 
+  // LA PLAINE DE JEUX (Movsar, 2026-09-25 : « c est un acces toute la journée
+  // et c est entre 4 ans à 12 ans ») : son age et ce que vaut l entree, lus
+  // dans la donnee du centre, pas recopies ici.
+  const plaineLib = themeDe('libramont', 'playground');
+  const lignePlaine = ligneAccesDe('libramont', 'plaine de jeux');
+  ok(plaineLib.ageRange === '4 à 12 ans' && lignePlaine.includes(`de ${plaineLib.ageRange}`),
+    'LE POINT : Libramont annonce l age de SA plaine de jeux (4 à 12 ans)', lignePlaine);
+  ok(Boolean(plaineLib.access) && lignePlaine.includes(`accès ${plaineLib.access}`),
+    'LE POINT : et que l entree vaut toute la journee (sans quoi le modele deduisait une heure du planning)', lignePlaine);
+  ok(ligneAccesDe('gembloux', 'plaine de jeux') === '',
+    'ISOLATION : Gembloux, qui n a pas de plaine, n en annonce aucune condition');
+
   ok(!faitsDAcces('gembloux').includes(themeDe('libramont', 'laser_game').theme),
     'ISOLATION : Gembloux ne porte jamais l univers de Libramont');
   ok(!faitsDAcces('libramont').includes(themeDe('gembloux', 'laser_game').theme),
@@ -1354,9 +1366,12 @@ const anthropicOk = (object) => ({
   ok(blocUnitaire.length > 80,
     'MONTAGE : Libramont a bien un bloc de prix a l unite', String(blocUnitaire.length));
 
-  // LE POINT : chaque palier du moteur est annonce, avec SON montant.
+  // LE POINT : chaque palier du moteur est annonce, avec SON montant, sur la
+  // ligne du BOWLING (le duckpin porte la meme grille par piste : lire tout le
+  // bloc laisserait passer une ligne bowling perdue).
+  const ligneBowling = blocUnitaire.split('\n').find((l) => l.startsWith('Bowling')) || '';
   const paliersBowlingManquants = Object.entries(grilleParPiste)
-    .filter(([, prix]) => !blocUnitaire.includes(`${prix} EUR la piste`));
+    .filter(([, prix]) => !ligneBowling.includes(`${prix} EUR la piste`));
   ok(paliersBowlingManquants.length === 0,
     'LE POINT : chaque palier de la grille bowling est annonce, avec son montant',
     JSON.stringify(paliersBowlingManquants));
@@ -1374,6 +1389,22 @@ const anthropicOk = (object) => ({
     && /Ne les chiffre jamais de toi-meme/.test(blocUnitaire)
     && /si l equipe t a appris leur prix/.test(blocUnitaire),
     'LE POINT : les activites sans tarif sont nommees, interdites a l invention, ouvertes a ce que l equipe a appris');
+
+  // LE POINT (2026-09-25) : ce que le tunnel facture aussi hors bowling et
+  // laser est annonce, par la meme regle : le Fun Run a la session, le
+  // duckpin a la piste. Les tarifs saisis en base (plaine de jeux, minigolf,
+  // billard) passent par le meme chemin (center-facts-check, catalogue
+  // synthetique) : le depot n en porte aucun, ils restent ici « sans tarif ».
+  const { FUN_RUN_OPTIONS: grilleFunRun } = require('../lib/booking-config');
+  const ligneFunRun = blocUnitaire.split('\n').find((l) => l.startsWith('fun run :')) || '';
+  const ligneDuckpin = blocUnitaire.split('\n').find((l) => l.startsWith('duckpin bowling :')) || '';
+  ok(grilleFunRun.every((o) => ligneFunRun.includes(`${o.price} EUR la session de ${o.minutes} min`)) && /5 joueurs par session/.test(ligneFunRun),
+    'LE POINT : le Fun Run est annonce a la session, avec ce que le centre en dit', ligneFunRun);
+  ok(Object.values(grilleParPiste).every((prix) => ligneDuckpin.includes(`${prix} EUR la piste pour`)),
+    'LE POINT : le duckpin est annonce a la piste, sur la grille du moteur', ligneDuckpin);
+  const sansTarifLib = (blocUnitaire.split('\n').find((l) => l.startsWith('Aucun prix a l unite')) || '');
+  ok(!/fun run|duckpin/.test(sansTarifLib),
+    'LE POINT : ce qui est annonce n est plus dit « sans prix »', sansTarifLib);
 
   // CONTRE-PREUVE : une activite que le centre ne propose PAS n y figure pas.
   ok(centreTarife('libramont').activityAvailability.golf_oclock !== true
@@ -1409,8 +1440,11 @@ const anthropicOk = (object) => ({
   ok(siennesManquantes.length === 0,
     'LE POINT : il annonce SA grille, pas celle du moteur',
     JSON.stringify(siennesManquantes.map((o) => o.label)));
-  ok(!Object.values(grilleParPiste).some((prix) => blocAuxParties.includes(`${prix} EUR la piste`)),
-    'ISOLATION : et plus un seul montant de la grille du moteur');
+  // Sur la ligne du BOWLING : le duckpin, lui, se paie toujours a la piste
+  // (visit-program : grille par piste, sans la configuration aux parties).
+  const ligneBowlingAuxParties = blocAuxParties.split('\n').find((l) => l.startsWith('Bowling')) || '';
+  ok(Boolean(ligneBowlingAuxParties) && !Object.values(grilleParPiste).some((prix) => ligneBowlingAuxParties.includes(`${prix} EUR la piste`)),
+    'ISOLATION : et plus un seul montant de la grille du moteur sur la ligne du bowling', ligneBowlingAuxParties);
   ok(/tarif du jour/.test(blocAuxParties),
     'LE POINT : un tarif qui depend du jour est annonce comme tel', blocAuxParties.split('\n')[0]);
   rendreTarifs(new Map());

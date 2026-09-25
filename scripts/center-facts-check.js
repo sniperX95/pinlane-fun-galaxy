@@ -2038,6 +2038,41 @@ ok('ISOLATION : sansTarif ne porte que les activites declarees, jamais bowling n
     && unitairesMuet.sansTarif.length === 0,
   JSON.stringify(unitairesVendeur.sansTarif));
 
+// LE CATALOGUE DU CENTRE PORTE AUSSI DES PRIX (2026-09-25) : la plaine de
+// jeux a 12 EUR par enfant, le billard a la table et a l heure. Ils etaient
+// tous dits « sans tarif », et l agent repondait « je confirme par retour ».
+// Un catalogue SYNTHETIQUE : le prix saisi vit en base, pas dans le depot.
+const centreCatalogue = { activityAvailability: { bowling: true, playground: true, billards: true, arcade_time: true, minigolf_blacklight: true, fun_run: true, duckpin_bowling: true }, resources: {} };
+const catalogueSynthetique = [
+  { id: 'playground', priceType: 'per_pax', priceValue: 12, unitLabel: 'par enfant', note: 'accès à la journée', pricing: null },
+  { id: 'billards', priceType: 'per_unit_hour', priceValue: 10, unitLabel: 'par table et par heure', note: '', pricing: null },
+  { id: 'arcade_time', priceType: 'per_pax', priceValue: null, unitLabel: '', note: '', pricing: null },
+  { id: 'minigolf_blacklight', priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 niveaux', pricing: { mode: 'tiers', tiers: [{ days: [6], price: 12 }] } },
+  { id: 'fun_run', priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs par session', pricing: null },
+  { id: 'duckpin_bowling', priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', note: '', pricing: null },
+];
+const { FUN_RUN_OPTIONS: grilleFunRun } = require('../lib/booking-config');
+const unitairesCatalogue = unitairesDuCentre(centreCatalogue, '2026-09-10', catalogueSynthetique);
+const autreDe = (id) => (unitairesCatalogue.autres || []).find((x) => x.id === id) || null;
+ok('LE POINT : un tarif saisi au catalogue est rendu tel que le tunnel le facture, avec ce que le centre en dit',
+  JSON.stringify(autreDe('playground')) === JSON.stringify({ id: 'playground', options: ['12 EUR par enfant'], note: 'accès à la journée' })
+    && JSON.stringify(autreDe('billards')) === JSON.stringify({ id: 'billards', options: ['10 EUR par table et par heure'], note: '' }),
+  JSON.stringify([autreDe('playground'), autreDe('billards')]));
+ok('LE POINT : les grilles du moteur (Fun Run a la session, duckpin a la piste) sont rendues avec leurs montants',
+  Boolean(autreDe('fun_run')) && grilleFunRun.every((o) => autreDe('fun_run').options.includes(`${o.price} EUR la session de ${o.minutes} min`))
+    && Boolean(autreDe('duckpin_bowling')) && Object.values(grillePiste).every((prix) => autreDe('duckpin_bowling').options.some((o) => o.startsWith(`${prix} EUR la piste pour`))),
+  JSON.stringify([autreDe('fun_run'), autreDe('duckpin_bowling')]));
+ok('LE POINT : sans tarif saisi, ou avec des paliers selon le jour, l activite reste « sans tarif » (rien d invente, rien d un seul mot)',
+  unitairesCatalogue.sansTarif.slice().sort().join(',') === 'arcade_time,minigolf_blacklight',
+  JSON.stringify(unitairesCatalogue.sansTarif));
+ok('CONTRE-PREUVE : le meme centre SANS catalogue ne rend aucun tarif en plus (le comportement d avant)',
+  unitairesDuCentre(centreCatalogue, '2026-09-10').autres.length === 0
+    && unitairesDuCentre(centreCatalogue, '2026-09-10').sansTarif.length === 6,
+  JSON.stringify(unitairesDuCentre(centreCatalogue, '2026-09-10').sansTarif));
+ok('ISOLATION : une activite du catalogue que le centre ne declare pas ne sort pas',
+  !unitairesDuCentre({ activityAvailability: { bowling: true }, resources: {} }, '2026-09-10', catalogueSynthetique).autres.length,
+  'catalogue complet, centre qui ne declare que le bowling');
+
 // LA FICHE POSE LE FAIT, ET SEULEMENT QUAND IL EXISTE.
 const ficheAvecUnitaires = ficheDuRegistre({ aujourdhui: '2026-09-10', unitaires: unitairesVendeur });
 ok('LE POINT : la fiche pose un fait PUBLIC quand le centre a des prix a l unite',

@@ -913,7 +913,7 @@ function renderOpsSimulationProfilePicker() {
         ${profiles.map(profile => {
           const tone = getOpsSimulationProfileTone(profile.id);
           const isActive = profile.id === active;
-          const bookingLimit = profile.bookingLimit === 'max' ? 'max' : `${profile.bookingLimit || '--'} resa`;
+          const bookingLimit = profile.bookingLimit === 'max' ? 'max' : `${profile.bookingLimit || '--'} résas`;
           return `
             <button class="ops-sim-profile ${isActive ? 'active' : ''}" onclick="setOpsSimulationScenario('${escapeHtml(profile.id)}')" aria-pressed="${isActive ? 'true' : 'false'}">
               <span class="ops-sim-profile-index">${escapeHtml(tone.badge)}</span>

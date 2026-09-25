@@ -241,6 +241,7 @@ const SANS_ACCENT = [
   'reouvrir', 'reouverture', 'decochee', 'recapitulatif', 'reponse', 'reponses', 'repondre',
 ];
 const RE_SANS_ACCENT = new RegExp(`(^|[^\\p{L}'’])(${SANS_ACCENT.map((m) => m.replace(/ /g, '\\s+')).join('|')})(?=$|[^\\p{L}'’])`, 'iu');
+const RE_MOT_SEUL = new RegExp(`(^|[\\s(«])(${SANS_ACCENT.map((m) => m.replace(/ /g, '\\s+')).join('|')})(?=$|[\\s().,»])`, 'iu');
 // Un litteral COMPARE a un texte normalise sans accents (includes, ===) est un
 // motif de recherche, pas une phrase lue : booking-core cherche « toutes les
 // activites illimitees » dans une description passee par normalize('NFD').
@@ -256,9 +257,15 @@ function sansAccent(l) {
     .replace(/<[a-z][^>]*$/i, ' ')
     .replace(/&[a-z]+;/g, ' ')
     .replace(/\u0000/g, ' ');
-  // Une cle, un selecteur, un identifiant ne sont pas du texte lu.
-  if (!/\p{L}{2,}\s+\p{L}{2,}/u.test(t)) return null;
-  const m = t.match(RE_SANS_ACCENT);
+  // Une cle, un selecteur, un identifiant ne sont pas du texte lu. Un mot SEUL
+  // entre deux valeurs ou dans une cellule l est pourtant (« ${n} envoye${s} »,
+  // « <th>Apres</th> », 2026-09-25) : dans un gabarit qui interpole ou porte
+  // des balises, un mot du dictionnaire borne par des blancs compte aussi. Colle
+  // a « - », « : » ou « | », il reste une cle (`${base}|resas`, `role:${id}`) :
+  // le deux-points francais est precede d une espace.
+  const phrase = /\p{L}{2,}\s+\p{L}{2,}/u.test(t);
+  if (!phrase && !/\u0000|<[a-z]/i.test(l.texte)) return null;
+  const m = t.match(phrase ? RE_SANS_ACCENT : RE_MOT_SEUL);
   return m ? { mot: m[2], propre: t.replace(/\s+/g, ' ').trim() } : null;
 }
 
@@ -354,6 +361,8 @@ const MUTATIONS = [
   { nom: 'un outil du fondateur perd ses accents', fichier: 'assets/founder-team.js', de: "toast('Rôle créé.')", vers: "toast('Role cree.')" },
   { nom: 'ops-console tutoie de nouveau', fichier: 'assets/ops-console.js', de: "toast('Lancez une simulation avant de valider.')", vers: "toast('Lance une simulation avant de valider.')" },
   { nom: 'ops-console reprend « Validation staff »', fichier: 'assets/ops-console.js', de: '<span class="ops-pill">À vérifier</span>', vers: '<span class="ops-pill">Validation staff</span>' },
+  { nom: 'un mot seul entre deux valeurs perd ses accents', fichier: 'assets/founder-cockpit.js', de: "${sentN} envoyé${sentN > 1 ? 's' : ''}", vers: "${sentN} envoye${sentN > 1 ? 's' : ''}" },
+  { nom: 'un en-tete de colonne perd ses accents', fichier: 'assets/staff-pages-v2.js', de: '<th>Après</th>', vers: '<th>Apres</th>' },
 ];
 let mordent = 0;
 for (const m of MUTATIONS) {

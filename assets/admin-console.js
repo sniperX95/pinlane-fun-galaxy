@@ -2583,7 +2583,7 @@ function dirProvChannelsBlock(data) {
   const has = channels.length > 0;
   const values = channels.map((row) => `<li class="dir-prov-chan">
       <span class="dir-prov-chan-label">${escapeHtml(row.label || row.key || 'Canal')}</span>
-      <span class="dir-prov-chan-value">${Number(row.count) || 0} resas · ${escapeHtml(formatMoney(row.revenue))} · ${escapeHtml(dirProvSharePct(row.share))}</span>
+      <span class="dir-prov-chan-value">${Number(row.count) || 0} résa${Number(row.count) > 1 ? 's' : ''} · ${escapeHtml(formatMoney(row.revenue))} · ${escapeHtml(dirProvSharePct(row.share))}</span>
     </li>`).join('');
   return `<article class="dir-card dir-prov-card" aria-label="Canaux de réservation">
     <h3 class="dir-card-title">Canaux de réservation</h3>

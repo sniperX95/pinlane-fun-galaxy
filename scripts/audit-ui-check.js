@@ -251,7 +251,7 @@ async function main() {
     ok(dirOpen.text.includes('Sophie Direction'), 'l acteur humain est affiche');
     ok(dirOpen.text.includes('saveCenterConfig'), 'l action est affichee');
     ok(dirOpen.text.includes('Cron Vercel'), 'l acteur automatique est affiche et nomme');
-    ok(dirOpen.text.includes('Refuse'), 'un refus est affiche comme tel');
+    ok(dirOpen.text.includes('Refusé'), 'un refus est affiche comme tel');
     ok(dirOpen.text.includes('Autre centre'), 'le motif du refus est traduit en francais lisible');
 
     console.log('\n[3b] la vue « Parcours des equipes » : ou ils vont, ce qu ils touchent');
@@ -300,8 +300,8 @@ async function main() {
       // Le hook pv2AuditRerender doit re-rendre Direction, PAS la page Emails.
       emailsMarker: Boolean(document.querySelector('#staffEmailsPage .pv2-panel[data-qa-marker="1"]')),
     }));
-    ok(afterHeads.includes('Avant') && afterHeads.includes('Apres'),
-      `le detail montre les colonnes Avant et Apres (obtenu ${afterHeads.join(' / ') || 'aucune'})`);
+    ok(afterHeads.includes('Avant') && afterHeads.includes('Après'),
+      `le detail montre les colonnes Avant et Après (obtenu ${afterHeads.join(' / ') || 'aucune'})`);
     ok(/\b20\b/.test(afterDetail.text) && /\b25\b/.test(afterDetail.text),
       'les DEUX valeurs du changement de prix sont lisibles (20 puis 25), pas seulement la nouvelle');
     ok(afterDetail.emailsMarker, 'la page Emails (cachee) n a pas ete reconstruite a sa place (marqueur intact)');

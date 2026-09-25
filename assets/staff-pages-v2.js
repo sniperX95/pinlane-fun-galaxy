@@ -3743,7 +3743,7 @@
       <td>${esc(pv2AuditValue(changes[key] && changes[key].after))}</td>
     </tr>`).join('');
     return `<table class="pv2-table">
-      <thead><tr><th>Champ</th><th>Avant</th><th>Apres</th></tr></thead>
+      <thead><tr><th>Champ</th><th>Avant</th><th>Après</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
   }
@@ -3765,7 +3765,7 @@
          signal le plus interessant en securite, et il doit sauter aux yeux dans
          une liste ou tout le reste est du gris. */
       const outcomeChip = isDenied
-        ? `<span class="pv2-chip red">Refuse${entry.deniedReason ? ` · ${esc(PV2_AUDIT_DENIED[entry.deniedReason] || entry.deniedReason)}` : ''}</span>`
+        ? `<span class="pv2-chip red">Refusé${entry.deniedReason ? ` · ${esc(PV2_AUDIT_DENIED[entry.deniedReason] || entry.deniedReason)}` : ''}</span>`
         : isError
           ? '<span class="pv2-chip">Échec</span>'
           : '<span class="pv2-chip">Fait</span>';
@@ -10640,7 +10640,7 @@
     if (mode === 'create') return 'Ajouter une formule';
     const entry = pevEntry(catalogEditor.modal && catalogEditor.modal.formuleId);
     const name = entry && entry.name ? entry.name : 'Formule';
-    return mode === 'steps' ? `Activites : ${name}` : `Structure : ${name}`;
+    return mode === 'steps' ? `Activités : ${name}` : `Structure : ${name}`;
   }
   function cevModalSub() {
     return 'Cette modification change l\'offre de TOUS VOS centres, pas seulement celui-ci. Aucun autre client ne la voit.';

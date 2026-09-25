@@ -3285,8 +3285,8 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260925f';
-const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260925g';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260925h';
+const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260925h';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20260912a';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
 // Les declarations inertes de l'index gardent l'ordre et les versions en un
@@ -15119,7 +15119,7 @@ function renderAvailabilityBlocksList() {
     return '<div class="availability-empty">Lecture des blocages...</div>';
   }
   if (availabilityBlocksCache.error) {
-    return `<div class="availability-empty availability-error">${escapeHtml(availabilityBlocksCache.error)} <button type="button" class="btn btn-secondary btn-sm" onclick="loadAvailabilityBlocks(true)">Reessayer</button></div>`;
+    return `<div class="availability-empty availability-error">${escapeHtml(availabilityBlocksCache.error)} <button type="button" class="btn btn-secondary btn-sm" onclick="loadAvailabilityBlocks(true)">Réessayer</button></div>`;
   }
   const blocks = availabilityBlocksCache.blocks || [];
   if (!blocks.length) {
@@ -24382,7 +24382,7 @@ function renderQuickBookInner() {
               ? `${item.timeLimit.min}h-${item.timeLimit.max}h`
               : item.timeLimit.max
                 ? `avant ${item.timeLimit.max}h`
-                : `des ${item.timeLimit.min}h`
+                : `dès ${item.timeLimit.min}h`
             : item.validDays
               ? `${item.validDays.length} jour(s)`
               : 'Libre';

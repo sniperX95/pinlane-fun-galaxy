@@ -287,7 +287,7 @@
       return '<div class="pdr-panel pdr-range-panel pdr-anim" role="dialog" aria-label="Choisir la plage de dates">'
         + '<div class="pdr-presets" role="list">' + items + '</div>'
         + '<div class="pdr-custom">'
-        + '<label class="pdr-field"><span>Debut</span>'
+        + '<label class="pdr-field"><span>Début</span>'
         + '<input type="date" class="pdr-date pdr-date-start" value="' + esc(state.start) + '" max="' + esc(maxDate) + '"></label>'
         + '<label class="pdr-field"><span>Fin</span>'
         + '<input type="date" class="pdr-date pdr-date-end" value="' + esc(state.end) + '" max="' + esc(maxDate) + '"></label>'

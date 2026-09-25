@@ -65,7 +65,6 @@ async function main() {
     out.customAnnifF1Birthday = c['Annif F1'].hasBirthday;      // f1 ∉ ['f2'] → false
     out.customAnnifF1Group = c['Annif F1'].isGroup;            // countFormulaAsGroup false, pax 6 ≥4 → true (via pax)
     out.customSoloGroup = c['Solo'].isGroup;                   // 2 < 4 → false
-    out.sizeMedium = getStaffGroupSizeKey({}, { pax: 12 });    // ≥ medium(12)
     return out;
   });
   assert(logic.defaultPetitGroupeIsGroup === false, 'défaut : 5 joueurs sans formule = pas un groupe');
@@ -75,7 +74,6 @@ async function main() {
   assert(logic.customAnnifF1Birthday === false, 'config annif=[f2] : F1 n\'est plus anniversaire');
   assert(logic.customAnnifF1Group === true, 'config : F1 reste groupe par le nombre de joueurs');
   assert(logic.customSoloGroup === false, 'config seuil 4 : 2 joueurs = pas un groupe');
-  assert(logic.sizeMedium === 'medium', 'palier taille moyen appliqué');
 
   // ---- B. L'éditeur Établissement affiche + envoie la classification -------
   const sent = await page.evaluate(async () => {
@@ -88,7 +86,7 @@ async function main() {
       resources: { bowling: { laneCount: 8, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7 }, laser: { weaponCount: 30, parallelLaunches: 1 } },
       defaultSchedule: { regular: {}, holiday: {} },
       activityAvailability: {}, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: ['manual'] }, offerAvailability: {},
-      classification: { groupMinPax: 10, groupMinCumulative: 18, countFormulaAsGroup: true, sizeTiers: { medium: 12, large: 30, xl: 60 }, birthdayFromFormula: true, birthdayFormulaIds: ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'] },
+      classification: { groupMinPax: 10, groupMinCumulative: 18, countFormulaAsGroup: true, sizeTiers: { medium: 9, large: 25, xl: 70 }, birthdayFromFormula: true, birthdayFormulaIds: ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'] },
     }];
     state.establishmentCenterId = 'libramont';
     state.establishmentEditing = true;
@@ -101,6 +99,9 @@ async function main() {
     const groupInput = document.getElementById('estab-groupMinPax');
     const bdayF1 = document.getElementById('estab-bday-f1');
     const present = !!groupInput && !!bdayF1;
+    // Les « paliers de taille » n ont plus d ecran (leur seul lecteur etait la
+    // page Groupes, supprimee) : aucun champ ne doit les proposer.
+    const tierInputs = document.querySelectorAll('[id^="estab-tier-"]').length;
     // Modifie le seuil groupe + décoche f1 comme formule annif.
     if (groupInput) groupInput.value = '6';
     if (bdayF1) { bdayF1.checked = false; }
@@ -116,13 +117,16 @@ async function main() {
     window.loadStaffCenterConfig = async () => {};
     await submitCenterConfig('libramont');
     window.apiRequest = realRequest;
-    return { present, captured };
+    return { present, captured, tierInputs };
   });
   assert(sent.present, 'éditeur : champs de classification présents');
   assert(sent.captured && sent.captured.config && sent.captured.config.classification, 'save envoie une classification');
   assert(sent.captured.config.classification.groupMinPax === 6, `seuil groupe édité envoyé (reçu ${sent.captured.config.classification.groupMinPax})`);
   assert(!sent.captured.config.classification.birthdayFormulaIds.includes('f1'), 'f1 décochée n\'est plus dans les formules annif');
   assert(sent.captured.config.classification.birthdayFormulaIds.includes('f2'), 'f2 reste dans les formules annif');
+  assert(sent.tierInputs === 0, `plus aucun champ « paliers de taille » (${sent.tierInputs} trouve(s))`);
+  assert(JSON.stringify(sent.captured.config.classification.sizeTiers) === JSON.stringify({ medium: 9, large: 25, xl: 70 }),
+    `les paliers deja enregistres repartent tels quels (recu ${JSON.stringify(sent.captured.config.classification.sizeTiers)})`);
 
   const critical = pageErrors.filter((e) => !/ResizeObserver|favicon/i.test(e));
   if (critical.length) { console.log('PAGE ERRORS:', JSON.stringify(critical, null, 1)); throw new Error(`${critical.length} erreur(s) page`); }

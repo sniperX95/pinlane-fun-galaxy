@@ -306,7 +306,7 @@ async function verifierDonneesAffichees(page, attendu) {
   const lu = await page.evaluate(() => {
     const t = document.body.innerText;
     const m = /(\d+)\s+réservations?\s+bowling/i.exec(t);
-    const j = /•\s*(\d+)\s+joueurs/i.exec(t);
+    const j = /[·•]\s*(\d+)\s+joueurs/i.exec(t);
     return { resas: m ? Number(m[1]) : null, joueurs: j ? Number(j[1]) : null };
   });
   if (lu.resas === null) { RATES.push('impossible de lire le compte affiche sur le planning'); return; }

@@ -45,7 +45,7 @@
   // avec des mots, pas une progression simulee.
   function renderOpsJobProgress(job) {
     if (!job || typeof job !== 'object') {
-      return '<div class="job-progress" data-state="error"><p class="job-progress-error">Impossible de lire l\'avancement. <button type="button" class="job-progress-retry" data-action="job-progress-retry">Reessayer</button></p></div>';
+      return '<div class="job-progress" data-state="error"><p class="job-progress-error">Impossible de lire l\'avancement. <button type="button" class="job-progress-retry" data-action="job-progress-retry">Réessayer</button></p></div>';
     }
     const status = String(job.status || 'queued');
     const steps = Array.isArray(job.steps) ? job.steps : [];
@@ -66,14 +66,14 @@
     let footer = '';
     if (status === 'failed') {
       const reason = String(job.lastError || '').trim();
-      footer = `<p class="job-progress-error">La construction a echoue${reason ? ` : ${escapeHtml(reason.slice(0, 160))}` : '.'} <button type="button" class="job-progress-retry" data-action="job-progress-retry">Reessayer</button></p>`;
+      footer = `<p class="job-progress-error">La construction a échoué${reason ? ` : ${escapeHtml(reason.slice(0, 160))}` : '.'} <button type="button" class="job-progress-retry" data-action="job-progress-retry">Réessayer</button></p>`;
     } else if (status === 'cancelled') {
-      footer = '<p class="job-progress-note">Travail annule.</p>';
+      footer = '<p class="job-progress-note">Travail annulé.</p>';
     } else if (status === 'done') {
-      footer = '<p class="job-progress-done">Termine.</p>';
+      footer = '<p class="job-progress-done">Terminé.</p>';
     } else if (!steps.length) {
       footer = status === 'processing'
-        ? '<p class="job-progress-note">Le serveur a pris le travail, premiere etape en cours.</p>'
+        ? '<p class="job-progress-note">Le serveur a pris le travail, première étape en cours.</p>'
         : '<p class="job-progress-note">En file d\'attente sur le serveur.</p>';
     }
 
@@ -132,7 +132,7 @@
       try {
         const payload = await request(`/api/ops?action=job&id=${jobId}&centerId=${encodeURIComponent(centerId)}`);
         const job = payload && payload.job ? payload.job : null;
-        if (!job) throw new Error('Job absent de la reponse.');
+        if (!job) throw new Error('Travail absent de la réponse.');
         lastJob = job;
         consecutiveErrors = 0;
         delay = POLL_MS;

@@ -231,13 +231,13 @@ async function runSuite(browser, quiet) {
 
     // ---- 1. Libelles humains (center/lane/activity/formula, once/weekly, plage/jour) ----
     const t1a = await itemText(page, 1);
-    ok(/Centre ferme/.test(t1a) && /2026-08-15/.test(t1a) && /toute la journee/.test(t1a), 'label-center-once-fullday', JSON.stringify(t1a));
+    ok(/Centre fermé/.test(t1a) && /2026-08-15/.test(t1a) && /toute la journée/.test(t1a), 'label-center-once-fullday', JSON.stringify(t1a));
     const t1b = await itemText(page, 2);
-    ok(/Piste 3 bloquee/.test(t1b) && /tous les mardis/.test(t1b) && /14:00-16:00/.test(t1b), 'label-lane-weekly-range', JSON.stringify(t1b));
+    ok(/Piste 3 bloquée/.test(t1b) && /tous les mardis/.test(t1b) && /14:00-16:00/.test(t1b), 'label-lane-weekly-range', JSON.stringify(t1b));
     const t1c = await itemText(page, 3);
-    ok(/tous les dimanches/.test(t1c) && /FORMULE 1/.test(t1c) && /bloquee/.test(t1c), 'label-formula-weekly', JSON.stringify(t1c));
+    ok(/tous les dimanches/.test(t1c) && /FORMULE 1/.test(t1c) && /bloquée/.test(t1c), 'label-formula-weekly', JSON.stringify(t1c));
     const t1d = await itemText(page, 4);
-    ok(/Laser Game/.test(t1d) && /2026-08-16/.test(t1d) && /bloque/.test(t1d), 'label-activity-once', JSON.stringify(t1d));
+    ok(/Laser Game/.test(t1d) && /2026-08-16/.test(t1d) && /bloqué/.test(t1d), 'label-activity-once', JSON.stringify(t1d));
 
     // ---- 2. Creer "piste 3, mardi, 14:00-16:00" ----------------------------
     await page.selectOption('#avb-scope', 'lane');

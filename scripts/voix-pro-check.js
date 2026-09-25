@@ -18,6 +18,13 @@
 // les CONSIGNES donnees aux modeles (tableaux stableSystem, rappel, regles),
 // qui s adressent au modele et non au gerant, sont ecartees.
 //
+// Meme lecture, deuxieme faute : les mots ecrits SANS leurs accents (« Role
+// supprime. », « Cette annee », « Periode precedente »), 92 phrases le
+// 2026-09-25, a cote de phrases accentuees sur le meme ecran. Le dictionnaire
+// ne garde que des mots qui n existent pas sans accent en francais ; un
+// litteral compare a un texte normalise (includes, ===) et une requete SQL ne
+// sont pas du texte lu.
+//
 // Hors perimetre, a dessein : les outils du fondateur (founder-*.js,
 // ops-console.js), que seul le proprietaire de la plateforme ouvre.
 //
@@ -42,6 +49,16 @@ const SERVEUR = ['lib/marketing-brief.js', 'lib/center-metrics.js', 'lib/marketi
 // Le jargon interne qui n a rien a faire sur l ecran d un gerant.
 const JARGON = [
   { motif: /verdicts?\s+causa/i, nom: '« verdicts causaux »' },
+  // Le vocabulaire du fournisseur d envoi et de l equipe technique (Emails &
+  // relances, 2026-09-25) : le gerant lit « remise confirmée », « À vérifier ».
+  { motif: /accusés?\s+(du\s+fournisseur|de\s+remise)/i, nom: '« accusé du fournisseur »' },
+  { motif: /en\s+attente\s+d['’]\s*événement/i, nom: '« en attente d’événement »' },
+  { motif: /ligne\s+DNS/i, nom: '« ligne DNS »' },
+  { motif: /ciblage\s+réel/i, nom: '« ciblage réel »' },
+  { motif: /Validation\s+staff/i, nom: '« Validation staff »' },
+  // Le separateur de la console est « · » (decision d harmonisation du
+  // 2026-09-02) : « • » en installait une seconde famille dans les memes ecrans.
+  { motif: / • /, nom: 'separateur « • » (la console separe par « · »)' },
 ];
 
 // ── Lecture des litteraux ────────────────────────────────────────────────────
@@ -194,6 +211,57 @@ function estConsigne(l) {
   return CLE_CONSIGNE.test(l.avant.replace(/\s+/g, ' ').trim());
 }
 
+// ── Les accents ──────────────────────────────────────────────────────────────
+// Mesure du 2026-09-25 : 92 phrases lues sans leurs accents (« Role supprime. »,
+// « Cette annee », « Periode precedente », « Donnees clients momentanement
+// indisponibles »), a cote de phrases accentuees sur le meme ecran. Ces mots
+// n existent pas sans accent en francais : ecrits sans, c est une faute.
+const SANS_ACCENT = [
+  'acces', 'activite', 'activites', 'apres', 'categorie', 'categories', 'creer', 'creee', 'creees', 'deja',
+  'donnee', 'donnees', 'ecran', 'ecrans', 'ecrire', 'equipe', 'etat', 'etats', 'etre', 'evenement',
+  'evenements', 'fenetre', 'generer', 'journee', 'journees', 'modele', 'modeles', 'numero', 'numeros', 'parametres',
+  'passee', 'periode', 'periodes', 'premiere', 'reessaie', 'reessayer', 'reessayez', 'regle', 'regles', 'reglage', 'reglages',
+  'reservation', 'reservations', 'role', 'roles', 'systeme', 'telecharger', 'telephone', 'tres', 'verifier', 'deconnexion', 'etape',
+  'etapes', 'annee', 'annees', 'recu', 'recus', 'envoye', 'envoyes', 'envoyee', 'derniere', 'dernieres', 'precedente',
+  'reussi', 'echec', 'echecs', 'echoue', 'resultat', 'resultats', 'desactiver', 'annulee', 'annulees', 'modifiee',
+  'enregistree', 'supprimee', 'refusee', 'validee', 'arrivee', 'payee', 'confirmee', 'confirmees', 'mis a jour',
+  'mise a jour', 'mises a jour', 'a venir', 'a partir', 'aujourd hui', 'reinitialiser', 'caracteres', 'cochee',
+  'frequentation', 'strategie', 'reseau', 'reseaux', 'societe', 'deplacer', 'deplacement', 'debut', 'duree', 'durees',
+  'epuise', 'epuisee', 'generee', 'generees', 'eteint', 'etait', 'etaient', 'fermee', 'fermees', 'disponibilite',
+  'disponibilites', 'capacite', 'capacites', 'priorite', 'securite', 'identite', 'qualite', 'quantite', 'prevu', 'prevus',
+  'prevue', 'prevues', 'deroule', 'reelle', 'reelles', 'terminee', 'terminees', 'illimitee', 'illimitees', 'rafraichir',
+  'rafraichissement', 'momentanement', 'definitive', 'definitif', 'reassignez', 'proprietaire', 'limitee', 'limitees',
+  'prix barre', 'deja venus', 'cumules', 'cumulees', 'selectionnee', 'selectionnees', 'bloquee', 'bloquees', 'debloquer',
+  'reouvrir', 'reouverture', 'decochee', 'recapitulatif', 'reponse', 'reponses', 'repondre',
+];
+const RE_SANS_ACCENT = new RegExp(`(^|[^\\p{L}'’])(${SANS_ACCENT.map((m) => m.replace(/ /g, '\\s+')).join('|')})(?=$|[^\\p{L}'’])`, 'iu');
+// Un litteral COMPARE a un texte normalise sans accents (includes, ===) est un
+// motif de recherche, pas une phrase lue : booking-core cherche « toutes les
+// activites illimitees » dans une description passee par normalize('NFD').
+const COMPARAISON = /(?:includes|indexOf|startsWith|endsWith|test|match|search)\(\s*$|[!=]==?\s*$/;
+function sansAccent(l) {
+  if (COMPARAISON.test(l.avant.replace(/\s+$/, ''))) return null;
+  // Une requete SQL nomme ses tables (« from reservations ») : pas du texte lu.
+  if (/^\s*(select|insert|update|delete|with)\s/i.test(l.texte)) return null;
+  const t = String(l.texte)
+    .replace(/\{\{[^}]*\}\}/g, ' ')
+    .replace(/\b(?!title|placeholder|aria-label|alt)[\w-]+="[^"]*"/g, ' ')
+    .replace(/<[^>]*>/g, ' | ')
+    .replace(/<[a-z][^>]*$/i, ' ')
+    .replace(/&[a-z]+;/g, ' ')
+    .replace(/\u0000/g, ' ');
+  // Une cle, un selecteur, un identifiant ne sont pas du texte lu.
+  if (!/\p{L}{2,}\s+\p{L}{2,}/u.test(t)) return null;
+  const m = t.match(RE_SANS_ACCENT);
+  return m ? { mot: m[2], propre: t.replace(/\s+/g, ' ').trim() } : null;
+}
+
+// Les faits et les motifs de refus de marketing-ask.js vont au modele et aux
+// journaux, jamais a l ecran du gerant, et les gates les lisent tels quels
+// (« regle commerciale », « classement trop serre ») : le tutoiement y est
+// cherche, pas les accents.
+const SANS_RELEVE_ACCENTS = new Set(['lib/marketing-ask.js']);
+
 function scanner(rel, src, { serveur = false } = {}) {
   const propre = src.replace(/\r\n/g, '\n');
   const liste = rel.endsWith('.html') ? texteHtml(propre) : litteraux(propre);
@@ -202,6 +270,8 @@ function scanner(rel, src, { serveur = false } = {}) {
     if (serveur && estConsigne(l)) continue;
     const t = tutoie(l.texte);
     const jargon = JARGON.find((j) => j.motif.test(l.texte));
+    const accent = SANS_RELEVE_ACCENTS.has(rel) ? null : sansAccent(l);
+    if (accent) hits.push(`${rel}:${l.ligne} [sans accent : ${accent.mot}] ${accent.propre.slice(0, 160)}`);
     if (!t && !jargon) continue;
     const affiche = (t ? t.propre : l.texte).replace(/\s+/g, ' ').trim();
     // Une cle ou un selecteur n est pas du texte lu.
@@ -240,13 +310,16 @@ if (!CONTRE) {
     ['assets/staff-pages-v2.js', 'Posez votre question en quelques mots.'],
     ['assets/app-main.js', 'Retirez-la avec la croix.'],
     ['lib/marketing-brief.js', 'je garde un œil sur vos réservations'],
+    ['assets/app-main.js', 'Rôle supprimé.'],
+    ['assets/pinlane-daterange.js', 'Cette année'],
+    ['index.html', 'Changer de planning sans quitter le plein écran'],
   ];
   for (const [rel, phrase] of temoins) {
     const lus = (rel.endsWith('.html') ? texteHtml(sources[rel]) : litteraux(sources[rel].replace(/\r\n/g, '\n'))).map((l) => l.texte);
     ok(lus.some((t) => t.includes(phrase)), `MONTAGE : le lecteur retrouve « ${phrase} » dans ${rel}`);
   }
   const hits = tout(sources);
-  ok(hits.length === 0, `aucune chaine ne tutoie le gerant ni ne parle jargon (${hits.length} trouvee(s))`, hits.slice(0, 25).join('\n       '));
+  ok(hits.length === 0, `aucune chaine ne tutoie le gerant, ne parle jargon ni ne perd ses accents (${hits.length} trouvee(s))`, hits.slice(0, 25).join('\n       '));
   console.log(echecs ? `voix-pro-check : ${echecs} echec(s)` : 'voix-pro-check: ALL OK');
   process.exit(echecs ? 1 : 0);
 }
@@ -262,6 +335,13 @@ const MUTATIONS = [
   { nom: 'une legende client tutoie', fichier: 'lib/marketing-brain.js', de: 'Réservez votre créneau : 30 secondes.', vers: 'Réserve ton créneau : 30 secondes.' },
   { nom: 'le jargon revient', fichier: 'assets/staff-pages-v2.js', de: '${b.dataDays || 0} j sur 90</em>', vers: '${b.dataDays || 0} j de données, verdicts causaux vers 90 j</em>' },
   { nom: 'une page HTML tutoie', fichier: 'index.html', de: 'Réservation rapide', vers: 'Ta réservation rapide', toutes: true },
+  { nom: 'un toast perd ses accents', fichier: 'assets/app-main.js', de: "'Rôle supprimé.'", vers: "'Role supprime.'" },
+  { nom: 'un libelle de periode perd ses accents', fichier: 'assets/pinlane-daterange.js', de: "label: 'Cette année'", vers: "label: 'Cette annee'" },
+  { nom: 'un aria-label de la page perd ses accents', fichier: 'index.html', de: 'sans quitter le plein écran', vers: 'sans quitter le plein ecran', toutes: true },
+  { nom: 'une phrase de silence du brief perd ses accents', fichier: 'lib/marketing-brief.js', de: 'aucune réservation exploitable', vers: 'aucune reservation exploitable' },
+  { nom: 'le vocabulaire du fournisseur revient', fichier: 'assets/staff-pages-v2.js', de: '<strong>Remise confirmée</strong>', vers: '<strong>Remise (accusés du fournisseur)</strong>' },
+  { nom: 'l etiquette technique de validation revient', fichier: 'assets/admin-console.js', de: "    staff_review: 'À vérifier',", vers: "    staff_review: 'Validation staff'," },
+  { nom: 'un separateur « • » revient', fichier: 'assets/booking-core.js', de: '${players} joueurs · ${waveCount} sessions', vers: '${players} joueurs • ${waveCount} sessions' },
 ];
 let mordent = 0;
 for (const m of MUTATIONS) {

@@ -926,7 +926,7 @@ async function main() {
       const b = window.mkBrief.data;
       b.propositions = [];
       b.pistes = [];
-      b.silence = { cause: 'sans_modele', phrase: 'Aucune cle de modele n est disponible pour cet usage.' };
+      b.silence = { cause: 'sans_modele', phrase: 'Le service de rédaction n’est pas encore branché pour ce centre.' };
       window.mkBrief.published = {};
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 250));
@@ -936,7 +936,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, 250));
       return { vides: vides.join(' | ') };
     });
-    ok(/Aucune cle de modele/.test(cause.vides),
+    ok(/service de rédaction/.test(cause.vides),
       `la CAUSE du vide est affichee au gerant, pas une phrase generique (${cause.vides.slice(0, 120)})`);
     ok(!/Rien à valider : la surveillance continue/.test(cause.vides),
       'et elle REMPLACE la phrase generique au lieu de s ajouter a cote');

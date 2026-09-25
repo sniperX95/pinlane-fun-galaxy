@@ -129,7 +129,7 @@ function checkExport() {
   const brutes = cellules.filter((valeur) => /^(low|medium|high|critical|staff_review)$/.test(valeur.trim()));
   ok(brutes.length === 0,
     `export : aucune cellule ne porte une enum interne brute (${brutes.slice(0, 4).join(', ') || 'zero'})`);
-  const attendus = ['Élevé', 'Normal', 'Critique', 'Validation staff', 'Validée'];
+  const attendus = ['Élevé', 'Normal', 'Critique', 'À vérifier', 'Validée'];
   const manquants = attendus.filter((mot) => !cellules.includes(mot));
   ok(manquants.length === 0,
     `export : les colonnes Risque et Validation parlent francais (manquent : ${manquants.join(', ') || 'rien'})`);

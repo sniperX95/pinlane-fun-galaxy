@@ -778,7 +778,7 @@ function getLaserSlotCapacityText(slot, pax = state.booking.pax) {
   const waveCount = Number(slot?.waveCount || getLaserWaveCount(players));
   const remaining = Math.max(Number(slot?.freeCount || 0), 0);
   if (waveCount > 1) {
-    return `${players} joueurs • ${waveCount} sessions`;
+    return `${players} joueurs · ${waveCount} sessions`;
   }
   return `Vous prenez ${players} place${players > 1 ? 's' : ''}`;
 }
@@ -1438,7 +1438,7 @@ async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd 
       }))
     });
     if (!isLatestRequest()) return;
-    if (!payload?.reservation) throw new Error('Sauvegarde non confirmee par le serveur.');
+    if (!payload?.reservation) throw new Error('Sauvegarde non confirmée par le serveur.');
     upsertReservationInState(payload.reservation);
     // Protection maintenue sur la position Laser confirmée le temps que les
     // lectures (staff-state) rattrapent l'écriture committée → pas de flicker.
@@ -1452,7 +1452,7 @@ async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd 
     applyOptimisticReservation(previous, { preserveEditState: true });
     if (typeof clearReservationMutation === 'function') clearReservationMutation(requestKey);
     if (typeof showPlanningMoveNotice === 'function') {
-      showPlanningMoveNotice('Deplacement Laser annule', error.message || 'Impossible de placer cette partie Laser Game.', 'warning');
+      showPlanningMoveNotice('Déplacement Laser annulé', error.message || 'Impossible de placer cette partie Laser Game.', 'warning');
     } else {
       toast(error.message || 'Impossible de placer cette partie Laser Game.');
     }
@@ -1542,7 +1542,7 @@ async function unscheduleLaserPass(reservationId, unitRef) {
       }))
     });
     if (!isLatestRequest()) return;
-    if (!payload?.reservation) throw new Error('Sauvegarde non confirmee par le serveur.');
+    if (!payload?.reservation) throw new Error('Sauvegarde non confirmée par le serveur.');
     upsertReservationInState(payload.reservation);
     if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, payload.reservation, moveFields);
     save();
@@ -1553,7 +1553,7 @@ async function unscheduleLaserPass(reservationId, unitRef) {
     applyOptimisticReservation(previous, { preserveEditState: true });
     if (typeof clearReservationMutation === 'function') clearReservationMutation(requestKey);
     if (typeof showPlanningMoveNotice === 'function') {
-      showPlanningMoveNotice('Retrait annule', error.message || 'Impossible de retirer cette partie Laser Game.', 'warning');
+      showPlanningMoveNotice('Retrait annulé', error.message || 'Impossible de retirer cette partie Laser Game.', 'warning');
     }
     return;
   } finally {

@@ -229,19 +229,22 @@ async function main() {
         const body = document.querySelector('#posOverlay .edit-modal-body');
         const soustitre = (document.querySelector('#posOverlay .edit-modal-head p') || {}).textContent || '';
         const corps = body ? body.innerText : '';
-        const faits = soustitre.split('•').map((s) => s.trim()).filter((s) => s.length > 1);
+        const faits = soustitre.split(/\s[·•]\s/).map((s) => s.trim()).filter((s) => s.length > 1);
         return {
           hauteur: Math.round(modal.getBoundingClientRect().height),
           boutons: [...document.querySelectorAll('#posOverlay button')].filter(visible).length,
+          faits: faits.length,
           redites: faits.filter((f) => corps.includes(f)),
         };
       });
     };
     const infos = await mesureOnglet('details');
+    ok(infos.faits >= 2, `« Infos » : l en-tete se lit en ${infos.faits} faits (sans decoupe, « aucune redite » ne prouverait rien)`);
     ok(infos.hauteur <= 560, `« Infos » : hauteur MESUREE ${infos.hauteur}px (plafond 560, valait 868 avant refonte)`);
     ok(infos.boutons <= 8, `« Infos » : ${infos.boutons} boutons a l ecran (plafond 8, valait 11 avant refonte)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);
     const modif = await mesureOnglet('modifier');
+    ok(modif.faits >= 2, `« Modifier » : l en-tete se lit en ${modif.faits} faits (sans decoupe, « aucune redite » ne prouverait rien)`);
     ok(modif.hauteur <= 560, `« Modifier » : hauteur MESUREE ${modif.hauteur}px (plafond 560, valait 610 avant refonte)`);
     ok(modif.redites.length === 0, `« Modifier » : ${modif.redites.length} fait de l en-tete recopie dans le corps${modif.redites.length ? ' : ' + modif.redites.join(' | ') : ''}`);
 

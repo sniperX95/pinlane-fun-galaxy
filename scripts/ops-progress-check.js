@@ -57,7 +57,7 @@ check('un job en cours rend TOUTES ses etapes reelles, la derniere en live', () 
 check('un job done rend Termine et aucune etape live', () => {
   const done = { ...runningJob, status: 'done' };
   const html = mod.renderOpsJobProgress(done);
-  assert.ok(html.includes('Termine.'), 'mention Termine');
+  assert.ok(html.includes('Terminé.'), 'mention Terminé');
   assert.ok(html.includes(done.steps[1].label), 'les etapes restent visibles');
   assert.ok(!html.includes('is-live'), 'plus de point live une fois fini');
 });
@@ -65,7 +65,7 @@ check('un job done rend Termine et aucune etape live', () => {
 check('un job failed dit l\'echec, montre la cause et propose Reessayer', () => {
   const failed = { ...runningJob, status: 'failed', lastError: 'timeout du modele' };
   const html = mod.renderOpsJobProgress(failed);
-  assert.ok(html.includes('La construction a echoue'), 'echec annonce');
+  assert.ok(html.includes('La construction a échoué'), 'echec annonce');
   assert.ok(html.includes('timeout du modele'), 'cause reelle affichee');
   assert.ok(html.includes('job-progress-retry'), 'bouton reessayer present');
 });
@@ -77,7 +77,7 @@ check('zero etape = etat honnete dit avec des mots, JAMAIS une etape inventee', 
   assert.ok(!htmlQueued.includes('job-progress-step'), 'aucune ligne d\'etape fabriquee');
   const processing = { id: 43, status: 'processing', steps: [] };
   const htmlProcessing = mod.renderOpsJobProgress(processing);
-  assert.ok(htmlProcessing.includes('premiere etape en cours'), 'prise en charge dite');
+  assert.ok(htmlProcessing.includes('première étape en cours'), 'prise en charge dite');
 });
 
 check('les labels d\'etape sont echappes (pas d\'injection HTML)', () => {

@@ -3296,6 +3296,10 @@
     const identity = pv2Settings.idEditing;
     const channel = pv2Mail.channel || {};
     const centre = pv2Design.center || null;
+    // La meme regle que le bandeau d echec de l Apercu : les causes reelles
+    // des mails sortants de la file, jamais la seule presence de la cle.
+    const domaineNonVerifie = getStaffEmailFailureGroups(getStaffEmailRows().filter((r) => !pv2IsInbound(r)))
+      .find((g) => g.label === 'Domaine d\'envoi pas encore vérifié') || null;
     // L adresse que les mails donnent VRAIMENT en Reply-To, dite par le serveur
     // (2026-09-17). L adresse publique de la fiche n est qu un repli.
     const reponseServeur = pv2Design.reponse && typeof pv2Design.reponse === 'object' ? pv2Design.reponse : null;
@@ -3315,7 +3319,7 @@
         ${pv2Mail.identities.length ? pv2Mail.identities.map((i) => `
           <div class="pv2-settings-row">
             <div><strong>${esc(i.label || i.email)}</strong><small>${esc(i.email)}${i.isDefault ? ' · par défaut' : ''}</small></div>
-            ${i.isDefault ? '<span class="pv2-chip">Par défaut</span>' : `<button type="button" class="pv2-btn sm" onclick="pv2IdDefault('${escJs(String(i.id))}')">Par défaut</button>`}
+            ${i.isDefault ? '<span class="pv2-chip">Par défaut</span>' : `<button type="button" class="pv2-btn sm" onclick="pv2IdDefault('${escJs(String(i.id))}')">Mettre par défaut</button>`}
             <button type="button" class="pv2-btn sm ghost" onclick="pv2IdDelete('${escJs(String(i.id))}')">Supprimer</button>
           </div>`).join('') : '<div class="pv2-empty"><strong>Aucune adresse configurée</strong>Ajoutez l\'adresse (ou les adresses) avec lesquelles vos emails partent.</div>'}
       </div>`;
@@ -3340,7 +3344,11 @@
           <div class="pv2-panel-head has-sub"><div><h2>Fournisseur d'envoi</h2><p class="pv2-panel-sub">Ce que Pinlane sait de la chaîne d'envoi.</p></div></div>
           <div class="pv2-panel-body pv2-reply-address">
             ${pv2Mail.metaLoaded
-              ? `<strong>${channel.resendConfigured ? 'Envoi configuré' : 'Envoi non configuré'}</strong><p class="pv2-note">${channel.resendConfigured ? 'Les mails partent par le fournisseur relié à Pinlane.' : 'Aucun fournisseur relié : les mails restent en file sans partir.'}${channel.aiConfigured ? ' L\'agent utilise un modèle de langage pour lire les mails reçus.' : ' L\'agent lit les mails reçus avec ses règles internes.'}</p>`
+              ? (!channel.resendConfigured
+                ? '<strong data-pv2-envoi="absent">Envoi non configuré</strong><p class="pv2-note">Aucun service d\'envoi relié : les mails restent en file sans partir.</p>'
+                : domaineNonVerifie
+                  ? `<strong data-pv2-envoi="domaine">Domaine d'envoi pas encore vérifié</strong><p class="pv2-note">${domaineNonVerifie.count > 1 ? `${domaineNonVerifie.count} mails ne sont pas partis` : 'Un mail n\'est pas parti'} pour cette raison. Tant que le domaine du centre n'est pas vérifié chez le service d'envoi, aucun mail ne peut partir vers un client.</p>`
+                  : '<strong data-pv2-envoi="ok">Envoi configuré</strong><p class="pv2-note">Les mails partent par le service d\'envoi relié à Pinlane.</p>')
               : '<span class="pv2-live-state" aria-live="polite">Chargement…</span>'}
           </div>
         </section>
@@ -3356,7 +3364,7 @@
       : brain.error || !brain.draft
         ? `<div class="pv2-empty" role="status"><strong>Textes indisponibles</strong>${esc(brain.error || 'Réponse incomplète du serveur.')}<button type="button" class="pv2-btn sm" onclick="pv2BrainRelire()">Réessayer</button></div>`
       : `<div class="pv2-composer-grid">
-        <p class="pv2-panel-sub pv2-composer-wide">L'agent répond aux mails reçus avec CES textes. Modifiez-les librement : ce que vous écrivez ici gagne toujours sur le modèle d'origine. Champ vidé = retour au modèle.</p>
+        <p class="pv2-panel-sub pv2-composer-wide">L'agent répond aux mails reçus avec ces textes. Modifiez-les librement : ce que vous écrivez ici gagne toujours sur le modèle d'origine. Champ vidé = retour au modèle.</p>
         <label class="pv2-composer-field"><span>Signature</span>
           <input data-pl-focus="emails.agent.signature" value="${esc(brain.draft.signature)}" placeholder="${esc(brain.defaults.signature || '')}" oninput="pv2BrainField('signature', null, this.value)">
         </label>
@@ -3374,7 +3382,7 @@
     return `<div class="pv2-agent-grid">
       <section class="pv2-panel pv2-settings" data-pv2-mount="settings" aria-label="Réglages de l'agent">
         <div class="pv2-panel-head has-sub">
-          <div><h2>Ce que l'agent écrit</h2><p class="pv2-panel-sub">Sa signature, ses consignes, et sa réponse type par sujet.</p></div>
+          <div><h2>Ce que l'agent écrit</h2><p class="pv2-panel-sub">Sa signature, ses consignes, et sa réponse type par sujet. ${pv2Mail.channel && pv2Mail.channel.aiConfigured ? 'Il lit les mails reçus avec un modèle de langage.' : 'Sans modèle de langage relié, il lit les mails reçus avec ses règles internes.'}</p></div>
         </div>
         <div class="pv2-panel-body">${form}</div>
       </section>
@@ -3728,7 +3736,7 @@
 
   function pv2AuditChangesTable(changes) {
     const keys = Object.keys(changes || {});
-    if (!keys.length) return '<p class="pv2-panel-sub">Aucun detail de modification enregistre pour cette action.</p>';
+    if (!keys.length) return '<p class="pv2-panel-sub">Aucun détail de modification enregistré pour cette action.</p>';
     const rows = keys.map((key) => `<tr>
       <td><strong>${esc(key)}</strong></td>
       <td>${esc(pv2AuditValue(changes[key] && changes[key].before))}</td>
@@ -5810,19 +5818,19 @@
     const ouverts7 = pv2Nombre(o.ouverts7j);
     return `<div class="pv2-suivi">
       <div class="pv2-suivi-ligne">
-        <strong>Remise (accusés du fournisseur)</strong>
-        <span class="pv2-suivi-etat${evenements ? ' is-on' : ''}">${evenements === null ? 'indisponible' : evenements ? `actif${remis7 !== null ? ` · ${remis7} remis sur 7 j` : ''}` : 'aucun événement reçu sur 30 j'}</span>
-        ${evenements === false ? '<small>Le fournisseur n\'a envoyé aucun accusé de remise pour ce centre : les mails se lisent « en attente d\'événement ».</small>' : ''}
+        <strong>Remise confirmée</strong>
+        <span class="pv2-suivi-etat${evenements ? ' is-on' : ''}">${evenements === null ? 'indisponible' : evenements ? (remis7 !== null ? `${remis7} sur 7 j` : 'suivie') : 'aucune sur 30 j'}</span>
+        ${evenements === false ? '<small>Le service d\'envoi n\'a confirmé aucune remise pour ce centre depuis 30 jours.</small>' : ''}
       </div>
       <div class="pv2-suivi-ligne">
         <strong>Ouvertures par le client</strong>
-        <span class="pv2-suivi-etat${ouvertures ? ' is-on' : ''}">${ouvertures === null ? 'indisponible' : ouvertures ? `observées${ouverts7 !== null ? ` · ${ouverts7} sur 7 j` : ''}` : 'jamais observées'}</span>
-        ${ouvertures === false ? '<small>Le suivi d\'ouverture se règle sur le domaine d\'envoi chez le fournisseur (ligne DNS chez l\'hébergeur du client). Tant qu\'il est inactif, aucune ouverture ne remonte.</small>' : ''}
+        <span class="pv2-suivi-etat${ouvertures ? ' is-on' : ''}">${ouvertures === null ? 'indisponible' : ouvertures ? (ouverts7 !== null ? `${ouverts7} sur 7 j` : 'suivies') : 'pas suivies'}</span>
+        ${ouvertures === false ? '<small>Le suivi des ouvertures s\'active sur le domaine d\'envoi du centre. Tant qu\'il est inactif, aucune ouverture ne remonte.</small>' : ''}
       </div>
       <div class="pv2-suivi-ligne">
-        <strong>Lu par l'équipe</strong>
-        <span class="pv2-suivi-etat is-on">toujours actif</span>
-        <small>Suivi dans Pinlane : qui a ouvert chaque mail reçu, et quand.</small>
+        <strong>Lecture par l'équipe</strong>
+        <span class="pv2-suivi-etat is-on">suivie</span>
+        <small>Pinlane note qui a ouvert chaque mail reçu, et quand.</small>
       </div>
     </div>`;
   }
@@ -5868,7 +5876,7 @@
     return `${pv2AlerteEchecsHtml(rows, metrics)}
       <section class="pv2-stats" aria-label="Les chiffres du jour">
         ${pv2TuileHtml({ label: 'À répondre', value: o ? o.aRepondre : null, foot: plusAncienne ? `la plus ancienne attend depuis ${plusAncienne}` : (o && Number(o.aRepondre) === 0 ? 'aucune conversation en attente' : ''), go: "pv2ThreadsFilter('a-repondre'); pv2EmailsGo('recus')" })}
-        ${pv2TuileHtml({ label: 'Envoyés sur 7 jours', value: o ? o.envoyes7j : null, foot: evenements && remis7 !== null ? `remis : ${remis7}` : 'remise : aucun événement reçu', go: "pv2EmailFilter('sent')" })}
+        ${pv2TuileHtml({ label: 'Envoyés sur 7 jours', value: o ? o.envoyes7j : null, foot: evenements && remis7 !== null ? `remis : ${remis7}` : 'remise non confirmée', go: "pv2EmailFilter('sent')" })}
         ${pv2TuileHtml({ label: 'Échecs sur 7 jours', value: o ? o.echecs7j : null, foot: o && Number(o.echecs7j) > 0 ? 'à corriger dans Envoyés' : 'aucun échec récent', go: "pv2EmailFilter('failed')", danger: true })}
         ${pv2TuileHtml({ label: 'Programmés sur 24 h', value: o ? o.programmes24h : null, foot: enAttente !== null ? `${enAttente} en attente au total` : '', go: "pv2EmailFilter('queued')" })}
       </section>
@@ -6014,7 +6022,7 @@
     items.push({ cls: 'is-done', label: 'Envoyé', when: pv2Quand(m.sentAt || m.createdAt) });
     if (s.bouncedAt) items.push({ cls: 'is-fail', label: 'Rebond', when: pv2Quand(s.bouncedAt) });
     else if (s.deliveredAt || statut === 'delivered') items.push({ cls: 'is-done', label: 'Remis', when: s.deliveredAt ? pv2Quand(s.deliveredAt) : '' });
-    else items.push({ cls: 'is-off', label: 'Remise : en attente d\'événement', when: '' });
+    else items.push({ cls: 'is-off', label: 'Remise pas encore confirmée', when: '' });
     const ouvertures = pv2OuverturesObservees();
     if (s.openedAt || Number(s.openCount) > 0) items.push({ cls: 'is-done', label: `Ouvert${Number(s.openCount) > 1 ? ` (${Number(s.openCount)}×)` : ''}`, when: s.openedAt ? pv2Quand(s.openedAt) : '' });
     else if (ouvertures === false) items.push({ cls: 'is-off', label: 'Ouverture : suivi inactif sur ce domaine', when: '' });
@@ -6274,7 +6282,7 @@
     const dot = (etat) => `<span class="pl-journey-dot ${etat}" aria-hidden="true"></span>`;
     const titre = [
       echec ? 'Échec' : envoye ? 'Envoyé' : 'Pas encore envoyé',
-      remis ? 'Remis' : 'Remise : aucun événement',
+      remis ? 'Remis' : 'Remise non confirmée',
       ouvert ? 'Ouvert' : ouvertures === false ? 'Ouverture : suivi inactif' : 'Pas encore ouvert',
       clique ? 'Cliqué' : 'Pas de clic',
     ].join(' · ');
@@ -6418,7 +6426,7 @@
         ${pipe('all', 'Tout', 'Tout', scoped.length, '', { paren: true })}
         ${pipe('queued', 'En attente', 'En attente', metrics.queued, plural(metrics.due || 0, 'prêt à partir', 'prêts à partir'))}
         ${pipe('sent', 'Envoyé', 'Envoyés', metrics.sent, metrics.deliveryRate == null ? '' : `${metrics.deliveryRate} % de réussite`)}
-        ${pipe('delivered', 'Remis', 'Remis', remisCount, remisCount ? '' : 'aucun accusé de remise')}
+        ${pipe('delivered', 'Remis', 'Remis', remisCount, remisCount ? '' : 'aucune remise confirmée')}
         ${pipe('opened', 'Ouvert', 'Ouverts', ouvertsCount, ouvertsCount ? '' : ouvertures === false ? 'suivi inactif' : 'aucune ouverture')}
         ${pipe('failed', 'Échec', 'Échecs', metrics.failed, plural(metrics.attempted || 0, 'tentative d’envoi', 'tentatives d’envoi'))}
         ${pipe('review', 'À valider', 'À valider', metrics.review, '')}
@@ -7817,7 +7825,7 @@
           </td>
         </tr>`;
       }).join('')}</tbody>
-    </table>` : `<div class="pv2-empty"><strong>${pv2Camp.loading ? 'Chargement…' : 'Aucune campagne'}</strong>${pv2Camp.loading ? '' : 'Créez la première : ciblage réel depuis votre base clients.'}</div>`;
+    </table>` : `<div class="pv2-empty"><strong>${pv2Camp.loading ? 'Chargement…' : 'Aucune campagne'}</strong>${pv2Camp.loading ? '' : 'Créez la première : elle cible vos clients depuis votre base.'}</div>`;
 
     const form = pv2Camp.formOpen ? (() => {
       const f = pv2Camp.form;
@@ -7878,10 +7886,9 @@
     }
     return `<section class="pv2-panel">
       <div class="pv2-panel-head">
-        <h2>Campagnes email : ciblage réel</h2>
+        <h2>Campagnes</h2>
         <div style="display:flex;gap:8px;align-items:center">
           ${pv2Camp.channel && pv2Camp.channel.resendConfigured === false ? '<small style="color:var(--warning)">canal d\'envoi à configurer, les envois restent en file</small>' : ''}
-          <button type="button" class="pv2-btn sm ghost" onclick="loadPv2Campaigns(true)">Actualiser</button>
           <button type="button" class="pv2-btn primary" onclick="pv2CampOpenForm()">+ Nouvelle campagne</button>
         </div>
       </div>
@@ -9955,11 +9962,11 @@
       </div>
       <div class="pev-grid2">
         <div class="field pev-field">
-          <label for="pevPrice">Prix par personne (EUR)</label>
+          <label for="pevPrice">Prix par personne (€)</label>
           <input id="pevPrice" type="number" step="1" min="${PEV_PRICE_MIN}" max="${PEV_PRICE_MAX}" value="${d.priceValue == null ? '' : esc(d.priceValue)}" oninput="pevSetNum('priceValue', this.value)">
         </div>
         <div class="field pev-field">
-          <label for="pevOld">Ancien prix barré (EUR)</label>
+          <label for="pevOld">Ancien prix barré (€)</label>
           <input id="pevOld" type="number" step="1" min="${PEV_PRICE_MIN}" max="${PEV_PRICE_MAX}" value="${d.priceOld == null ? '' : esc(d.priceOld)}" oninput="pevSetNum('priceOld', this.value)">
           <span class="field-hint">Affiché barré à côté du prix. Vide = aucun.</span>
         </div>
@@ -10247,13 +10254,13 @@
     return `<div class="cev-step" data-cev-step="${index}">
       <div class="cev-step-order">
         <span class="cev-step-num" aria-hidden="true">${index + 1}</span>
-        <button type="button" class="cev-step-move" data-cev-move-up="${index}" aria-label="Monter l activite" ${index === 0 ? 'disabled' : ''} onclick="cevStepMove(${index}, -1)">&uarr;</button>
-        <button type="button" class="cev-step-move" data-cev-move-down="${index}" aria-label="Descendre l activite" ${index === total - 1 ? 'disabled' : ''} onclick="cevStepMove(${index}, 1)">&darr;</button>
+        <button type="button" class="cev-step-move" data-cev-move-up="${index}" aria-label="Monter l’activité" ${index === 0 ? 'disabled' : ''} onclick="cevStepMove(${index}, -1)">&uarr;</button>
+        <button type="button" class="cev-step-move" data-cev-move-down="${index}" aria-label="Descendre l’activité" ${index === total - 1 ? 'disabled' : ''} onclick="cevStepMove(${index}, 1)">&darr;</button>
       </div>
       <div class="cev-step-grid">
-        <label class="cev-step-field cev-step-activity"><span>Activite</span>
+        <label class="cev-step-field cev-step-activity"><span>Activité</span>
           <select data-cev-field="activityId" data-cev-idx="${index}" onchange="cevStepSetActivity(${index}, this.value)">
-            <option value="">Choisir une activite</option>
+            <option value="">Choisir une activité</option>
             ${options}${extra}
           </select>
         </label>
@@ -10268,7 +10275,7 @@
           <input type="text" maxlength="80" data-cev-field="label" data-cev-idx="${index}" value="${step.label == null ? '' : esc(step.label)}" placeholder="${esc(cevStepAutoLabel(step, activities))}" oninput="cevStepSetLabel(${index}, this.value)">
         </label>
       </div>
-      <button type="button" class="cev-step-remove" data-cev-remove="${index}" aria-label="Retirer l activite" onclick="cevStepRemove(${index})">&times;</button>
+      <button type="button" class="cev-step-remove" data-cev-remove="${index}" aria-label="Retirer l’activité" onclick="cevStepRemove(${index})">&times;</button>
     </div>`;
   }
 
@@ -10277,14 +10284,14 @@
     const activities = pricingEditor.activities || [];
     return steps.length
       ? steps.map((step, index) => cevStepRowHtml(step, index, activities, steps.length)).join('')
-      : '<p class="cev-steps-empty">Aucune activite. Ajoutez-en une.</p>';
+      : '<p class="cev-steps-empty">Aucune activité. Ajoutez-en une.</p>';
   }
 
   function cevStepsEditorHtml() {
     return `<div class="cev-steps">
-      <div class="cev-steps-head"><span>Activites de la formule</span><small>L'ordre est le deroule reel. Au moins une activite.</small></div>
+      <div class="cev-steps-head"><span>Activités de la formule</span><small>L’ordre suit le déroulé réel. Au moins une activité.</small></div>
       <div class="cev-steps-list" id="cevStepsList">${cevStepsListHtml()}</div>
-      <button type="button" class="btn btn-secondary btn-sm" id="cevAddStep" onclick="cevStepAdd()">+ Ajouter une activite</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="cevAddStep" onclick="cevStepAdd()">+ Ajouter une activité</button>
     </div>`;
   }
 
@@ -10391,11 +10398,11 @@
       <p class="cev-form-legend">Tarif</p>
       <div class="pev-grid2">
         <div class="field">
-          <label for="cevPrice">Prix (EUR)</label>
+          <label for="cevPrice">Prix (€)</label>
           <input id="cevPrice" type="number" min="0" max="1000" step="1" value="${f.priceValue == null ? '' : esc(f.priceValue)}" oninput="cevFieldNum('priceValue', this.value)">
         </div>
         <div class="field">
-          <label for="cevOldPrice">Ancien prix barre (EUR)</label>
+          <label for="cevOldPrice">Ancien prix barré (€)</label>
           <input id="cevOldPrice" type="number" min="0" max="1000" step="1" value="${f.priceOld == null ? '' : esc(f.priceOld)}" placeholder="aucun" oninput="cevFieldNum('priceOld', this.value)">
         </div>
       </div>
@@ -10411,7 +10418,7 @@
         </div>
       </div>
       <div class="field">
-        <label>Jours valides <span class="cev-hint-inline">(aucun coche = tous les jours)</span></label>
+        <label>Jours valides <span class="cev-hint-inline">(aucun jour coché = tous les jours)</span></label>
         <div class="cev-days">${dayBoxes}</div>
       </div>
       <div class="pev-grid2">
@@ -10468,7 +10475,7 @@
   // taper un nom qui n'existe pas encore CREE la categorie, il n'y a pas de
   // liste fermee a maintenir quelque part.
   window.cevOpenCreate = function (family) {
-    if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
+    if (!cevCanManage()) { pevToast('Édition du catalogue réservée à la direction.'); return; }
     catalogEditor.fields = { name: '', family: String(family || ''), priceType: 'per_pax', priceValue: null, priceOld: null, minPax: 6, isBirthdayFormula: /anniversaire/i.test(String(family || '')), validDays: [], timeLimitMin: null, timeLimitMax: null };
     catalogEditor.steps = [{ activityId: '', count: 1, durationMinutes: null, label: null, critical: false, resourceType: null }];
     catalogEditor.error = '';
@@ -10482,9 +10489,9 @@
     }
   };
   window.cevOpenSteps = function (formuleId) {
-    if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
+    if (!cevCanManage()) { pevToast('Édition du catalogue réservée à la direction.'); return; }
     const entry = pevEntry(formuleId);
-    if (!entry) { pevToast('Catalogue en cours de chargement, reessaie dans un instant.'); pevEnsureLoaded(); return; }
+    if (!entry) { pevToast('Catalogue en cours de chargement, réessayez dans un instant.'); pevEnsureLoaded(); return; }
     catalogEditor.fields = null;
     catalogEditor.steps = (entry.steps || []).map((s) => ({
       activityId: s.activityId != null ? String(s.activityId) : '',
@@ -10501,9 +10508,9 @@
     cevSyncModal();
   };
   window.cevOpenFields = function (formuleId) {
-    if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
+    if (!cevCanManage()) { pevToast('Édition du catalogue réservée à la direction.'); return; }
     const entry = pevEntry(formuleId);
-    if (!entry) { pevToast('Catalogue en cours de chargement, reessaie dans un instant.'); pevEnsureLoaded(); return; }
+    if (!entry) { pevToast('Catalogue en cours de chargement, réessayez dans un instant.'); pevEnsureLoaded(); return; }
     catalogEditor.fields = {
       name: entry.name != null ? String(entry.name) : '',
       family: entry.family != null ? String(entry.family) : '',
@@ -10552,14 +10559,14 @@
     if (!id) return;
     const stepList = cevCollectSteps();
     if (!stepList.length) { cevFail('Ajoutez au moins une activité (choisissez-la dans la liste).'); return; }
-    cevSubmit({ action: 'setFormulaSteps', id, steps: stepList }, 'Activites de la formule mises a jour.');
+    cevSubmit({ action: 'setFormulaSteps', id, steps: stepList }, 'Activités de la formule mises à jour.');
   }
 
   function cevSaveFields() {
     const id = catalogEditor.modal && catalogEditor.modal.formuleId;
     if (!id) return;
     const f = catalogEditor.fields || {};
-    if (!String(f.name || '').trim()) { cevFail('Le nom ne peut pas etre vide.'); return; }
+    if (!String(f.name || '').trim()) { cevFail('Le nom ne peut pas être vide.'); return; }
     if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indiquez un prix entre 0 et 1000 €.'); return; }
     const api = cevFieldsToApi();
     const patch = {
@@ -10574,7 +10581,7 @@
       timeLimitMinMinutes: f.timeLimitMin != null ? f.timeLimitMin : null,
       timeLimitMaxMinutes: f.timeLimitMax != null ? f.timeLimitMax : null,
     };
-    cevSubmit({ action: 'updateFormula', id, patch }, 'Structure de la formule mise a jour.');
+    cevSubmit({ action: 'updateFormula', id, patch }, 'Structure de la formule mise à jour.');
   }
 
   // LE POINT DE PASSAGE UNIQUE des ecritures catalogue (createFormula,
@@ -10612,7 +10619,7 @@
   }
 
   window.cevDelete = function (formuleId) {
-    if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
+    if (!cevCanManage()) { pevToast('Édition du catalogue réservée à la direction.'); return; }
     const entry = pevEntry(formuleId);
     const name = entry && entry.name ? entry.name : formuleId;
     if (!window.confirm(`Supprimer la formule « ${name} » de votre catalogue ? Elle disparaît de tous vos centres. Les autres clients ne sont pas concernés.`)) return;

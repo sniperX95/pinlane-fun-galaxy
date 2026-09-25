@@ -86,14 +86,14 @@
         const result = await response.json().catch(() => ({}));
         if (response.ok && result.ok) {
           pilotForm.reset();
-          if (formStatus) formStatus.textContent = 'Demande envoyee. L equipe Pinlane revient vers vous rapidement.';
+          if (formStatus) formStatus.textContent = 'Demande envoyée. L’équipe Pinlane revient vers vous rapidement.';
         } else {
           if (formStatus) {
-            formStatus.textContent = result.message || 'Envoi impossible pour le moment, reessayez.';
+            formStatus.textContent = result.message || 'Envoi impossible pour le moment, réessayez.';
           }
         }
       } catch (error) {
-        if (formStatus) formStatus.textContent = 'Envoi impossible pour le moment, reessayez.';
+        if (formStatus) formStatus.textContent = 'Envoi impossible pour le moment, réessayez.';
       } finally {
         if (submitButton) submitButton.disabled = false;
       }

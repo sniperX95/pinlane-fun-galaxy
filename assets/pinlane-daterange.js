@@ -35,8 +35,8 @@
     { id: 'thisMonth', label: 'Ce mois-ci' },
     { id: 'lastMonth', label: 'Mois dernier' },
     { id: 'last90', label: '90 derniers jours' },
-    { id: 'thisYear', label: 'Cette annee' },
-    { id: 'custom', label: 'Personnalise' },
+    { id: 'thisYear', label: 'Cette année' },
+    { id: 'custom', label: 'Personnalisée' },
   ];
   var GRANS = [
     { id: 'day', label: 'Par jour' },
@@ -44,8 +44,8 @@
     { id: 'month', label: 'Par mois' },
   ];
   var COMPARES = [
-    { id: 'previous', label: 'Periode precedente' },
-    { id: 'year', label: 'Annee precedente' },
+    { id: 'previous', label: 'Période précédente' },
+    { id: 'year', label: 'Année précédente' },
   ];
 
   // ---- Helpers dates (fuseau local, ISO 'YYYY-MM-DD') ---------------------

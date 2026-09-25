@@ -778,7 +778,7 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
       }))
     });
     if (!isLatestRequest()) return;
-    if (!payload?.reservation) throw new Error('Sauvegarde non confirmee par le serveur.');
+    if (!payload?.reservation) throw new Error('Sauvegarde non confirmée par le serveur.');
     upsertReservationInState(payload.reservation);
     // Protection maintenue sur la position confirmée : le poll staff-state peut
     // encore renvoyer l'ancienne position (cohérence éventuelle) → pas de flicker.
@@ -1274,7 +1274,7 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     if (playersTotal > postesArene) {
       ok = false;
       const restantes = Math.max(0, postesArene - playersBefore);
-      message = `Lancement de ${heureLancement} : ${playersBefore} joueur(s) déjà inscrit(s), il reste ${restantes} place(s)${situeVague}. Décalez le départ.`;
+      message = `Lancement de ${heureLancement} : ${playersBefore} joueur${playersBefore > 1 ? 's' : ''} déjà inscrit${playersBefore > 1 ? 's' : ''}, il reste ${restantes} place${restantes > 1 ? 's' : ''}${situeVague}. Décalez le départ.`;
       break;
     }
   }
@@ -1342,7 +1342,7 @@ function getSuggestedEditLanes(requiredCount, date, startTime, duration, ignoreI
 function refreshEditPreview() {
   if (!state.selectedRes || !state.editState) return;
   const e = state.editState;
-  const meta = `${getReservationLabel(state.selectedRes)} • ${e.startTime || '--:--'} • ${e.lanesStr ? `pistes ${e.lanesStr}` : 'hors piste'}`;
+  const meta = `${getReservationLabel(state.selectedRes)} · ${e.startTime || '--:--'} · ${e.lanesStr ? `pistes ${e.lanesStr}` : 'hors piste'}`;
   const nameEl = document.getElementById('editSummaryName');
   const metaEl = document.getElementById('editSummaryMeta');
   const paxEl = document.getElementById('editSummaryPax');
@@ -2217,7 +2217,7 @@ function getOpsTemplateLabel(templateId = '') {
     birthday_j30: 'Rappel anniversaire',
     reactivation: 'Réactivation dormants',
     relance_dormant: 'Relance client',
-    staff_review_request: 'Validation staff',
+    staff_review_request: 'Réservation à valider',
     staff_alert: 'Alerte staff',
     delay_staff_attention: 'Retard : décision staff',
     delay_update: 'Ajustement horaire client',
@@ -3164,7 +3164,7 @@ initAuthMotion();
 function getFriendlyLoginErrorMessage(loginError) {
   const message = String(loginError?.message || '').toLowerCase();
   if (message.includes('data transfer quota') || (message.includes('quota') && message.includes('exceeded'))) {
-    return 'Base de donnees temporairement limitee. Reessayez avec le code proprietaire ou relancez apres migration/upgrade.';
+    return 'Base de données temporairement limitée. Réessayez avec le code propriétaire, ou relancez après la migration.';
   }
   return loginError?.message || 'Code incorrect.';
 }
@@ -3285,7 +3285,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260925e';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260925f';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20260912a';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
@@ -6548,8 +6548,8 @@ function describeSlotPlan(plan) {
   if (plan.firstBowlingTime) bits.push(`Bowling ${plan.firstBowlingTime}`);
   if (plan.firstLaserTime) bits.push(`Laser ${plan.firstLaserTime}`);
   if (plan.endTime) bits.push(`fin ${plan.endTime}`);
-  if (!bits.length && plan.staffSummary) return plan.staffSummary.split('|').slice(0, 2).join(' • ');
-  return bits.join(' • ');
+  if (!bits.length && plan.staffSummary) return plan.staffSummary.split('|').slice(0, 2).join(' · ');
+  return bits.join(' · ');
 }
 
 // Heure d'une ancre dans un créneau : jamais les étapes « flexible » (pass
@@ -8451,8 +8451,8 @@ function renderSlots(formule) {
   } else if (isLaser) {
     const option = getLaserOption(state.booking.duration);
     const waveCount = getLaserWaveCount(state.booking.pax);
-    const splitText = waveCount > 1 ? ` • groupe réparti sur ${waveCount} sessions` : '';
-    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><div><b>${option.label} Laser Game</b> • ${option.price}€ / personne${splitText} • session partagée selon l'affluence</div></div>`;
+    const splitText = waveCount > 1 ? ` · groupe réparti sur ${waveCount} sessions` : '';
+    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><div><b>${option.label} Laser Game</b> · ${option.price}€ / personne${splitText} · session partagée selon l'affluence</div></div>`;
   } else tl.innerHTML = '';
 
   const list = document.getElementById('slotList');
@@ -9003,7 +9003,7 @@ function renderRecap() {
     <div class="recap-item"><span class="recap-label">Joueurs</span><span class="recap-value">${b.pax} personne${b.pax > 1 ? 's' : ''}</span></div>
     ${showLanes && pistesAssignees.length ? `<div class="recap-item"><span class="recap-label">Piste${pistesAssignees.length > 1 ? 's' : ''} assignée${pistesAssignees.length > 1 ? 's' : ''}</span><span class="recap-value teal">${escapeHtml(pistesAssignees.join(' & '))}</span></div>` : ''}
     ${visitProgramHtml}
-    ${isLaser ? `<div class="recap-item"><span class="recap-label">Activité</span><span class="recap-value">Laser Game • ${laserOption.label}</span></div>` : ''}
+    ${isLaser ? `<div class="recap-item"><span class="recap-label">Activité</span><span class="recap-value">Laser Game · ${laserOption.label}</span></div>` : ''}
     ${formule ? `<div class="recap-item"><span class="recap-label">Formule</span><span class="recap-value">${formule.name}</span></div>` : ''}
     ${formulaRecap && formulaRecap.appointments.length ? `<div class="recap-item"><span class="recap-label">Vos rendez-vous</span><span class="recap-value">${formulaRecap.appointments.map(escapeHtml).join(' · ')}</span></div>` : ''}
     ${formulaRecap && formulaRecap.hasTable ? `<div class="recap-item"><span class="recap-label">Votre table</span><span class="recap-value">Dès l'arrivée${formulaRecap.arrivalTime ? ` (${escapeHtml(formulaRecap.arrivalTime)})` : ''}</span></div>` : ''}
@@ -9584,7 +9584,7 @@ async function confirmBooking() {
     if (error.payload?.alternatives?.length) {
       showBookingAlternatives(error.message || 'Ce créneau ne tient plus.', error.payload.alternatives);
     } else {
-      showAlert(error.message || 'Impossible d enregistrer la reservation.');
+      showAlert(error.message || 'Impossible d’enregistrer la réservation.');
     }
     releaseBookingSubmit();
     return;
@@ -10535,7 +10535,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
       kind: 'review',
       priority: 'important',
       title: 'Réservations à vérifier',
-      text: `${reviewRows.length} réservation${reviewRows.length > 1 ? 's' : ''} en attente de validation staff`,
+      text: `${reviewRows.length > 1 ? `${reviewRows.length} réservations attendent` : '1 réservation attend'} la validation de l’équipe`,
       rows: reviewRows,
       action: 'Valider, ouvrir la fiche ou contacter le client pour lever le doute sur chaque réservation.'
     });
@@ -14551,7 +14551,7 @@ async function toggleStaffMemberStatus(memberId) {
   // Reflet UI de la garde anti-lockout G2 (le serveur reste l'autorite) : on ne
   // se bloque pas soi-meme.
   if (memberId === getStaffSessionMemberId() && member.status === 'active') {
-    toast('Vous ne pouvez pas bloquer votre propre acces.');
+    toast('Vous ne pouvez pas bloquer votre propre accès.');
     return;
   }
   await runStaffAuthAction('toggleMemberStatus', { memberId }, member.status === 'blocked' ? 'Accès activé.' : 'Accès bloqué.');
@@ -14560,26 +14560,26 @@ async function toggleStaffMemberStatus(memberId) {
 async function renameStaffRole(roleId) {
   const role = getStaffAccessRole(roleId);
   if (!role) return;
-  if (role.locked || isPlatformStaffRole(role)) { toast('Ce role systeme ne peut pas etre renomme.'); return; }
-  const next = window.prompt('Nouveau nom du role', role.name || '');
+  if (role.locked || isPlatformStaffRole(role)) { toast('Ce rôle système ne peut pas être renommé.'); return; }
+  const next = window.prompt('Nouveau nom du rôle', role.name || '');
   if (next === null) return;
   const name = String(next).trim();
   if (!name || name === role.name) return;
-  await runStaffAuthAction('renameRole', { roleId, name }, 'Role renomme.');
+  await runStaffAuthAction('renameRole', { roleId, name }, 'Rôle renommé.');
 }
 
 async function deleteStaffRole(roleId) {
   const role = getStaffAccessRole(roleId);
   if (!role) return;
-  if (role.locked || isPlatformStaffRole(role)) { toast('Ce role systeme ne peut pas etre supprime.'); return; }
+  if (role.locked || isPlatformStaffRole(role)) { toast('Ce rôle système ne peut pas être supprimé.'); return; }
   const access = ensureStaffAccessControl();
   const memberCount = access.members.filter(item => item.roleId === roleId).length;
   if (memberCount > 0) {
-    toast(`Reassignez d'abord les ${memberCount} membre(s) de ce role avant de le supprimer.`);
+    toast(`Réassignez d'abord ${memberCount > 1 ? `les ${memberCount} membres` : 'le membre'} de ce rôle avant de le supprimer.`);
     return;
   }
-  if (!window.confirm(`Supprimer le role "${role.name}" ? Cette action est definitive.`)) return;
-  await runStaffAuthAction('deleteRole', { roleId }, 'Role supprime.');
+  if (!window.confirm(`Supprimer le rôle « ${role.name} » ? Cette action est définitive.`)) return;
+  await runStaffAuthAction('deleteRole', { roleId }, 'Rôle supprimé.');
 }
 
 async function deleteStaffMember(memberId) {
@@ -14594,15 +14594,15 @@ async function deleteStaffMember(memberId) {
   }
   // Reflet UI de la garde G2 : pas d'auto-suppression (le serveur refuse aussi).
   if (memberId === getStaffSessionMemberId()) {
-    toast('Vous ne pouvez pas supprimer votre propre acces.');
+    toast('Vous ne pouvez pas supprimer votre propre accès.');
     return;
   }
   if (!window.confirm(`Supprimer definitivement l'acces de ${member.name} ? Ses sessions seront revoquees.`)) return;
-  await runStaffAuthAction('deleteMember', { memberId }, 'Acces supprime.');
+  await runStaffAuthAction('deleteMember', { memberId }, 'Accès supprimé.');
 }
 
 async function regenerateStaffAccessCode(roleId) {
-  if (!requireClientPermission('security.codes', 'Votre role ne permet pas de generer les codes d acces.')) return;
+  if (!requireClientPermission('security.codes', 'Votre rôle ne permet pas de générer les codes d’accès.')) return;
   const role = getStaffAccessRole(roleId);
   if (!role) return;
   if (isPlatformStaffRole(role)) { toast('Cet accès plateforme ne se gère pas depuis cette page.'); return; }
@@ -14624,7 +14624,7 @@ function copyStaffAccessCode(value, options = {}) {
 // Copie le code d'accès ACTUEL en le révélant via le serveur (déchiffrement),
 // sans le régénérer. Gated à users.manage côté serveur ET côté client.
 async function copyStaffRoleCode(roleId) {
-  if (!requireClientPermission('security.codes', 'Votre role ne permet pas de lire les codes d acces.')) return;
+  if (!requireClientPermission('security.codes', 'Votre rôle ne permet pas de lire les codes d’accès.')) return;
   const role = getStaffAccessRole(roleId);
   if (!role) return;
   if (isPlatformStaffRole(role)) { toast('Cet accès plateforme ne se gère pas depuis cette page.'); return; }
@@ -14644,7 +14644,7 @@ async function copyStaffRoleCode(roleId) {
 }
 
 async function copyStaffMemberCode(memberId) {
-  if (!requireClientPermission('security.codes', 'Votre role ne permet pas de lire les codes d acces.')) return;
+  if (!requireClientPermission('security.codes', 'Votre rôle ne permet pas de lire les codes d’accès.')) return;
   const access = ensureStaffAccessControl();
   const member = access.members.find(item => item.id === memberId);
   if (!member) return;
@@ -14730,7 +14730,7 @@ function renderStaffMemberCard(access, member) {
     </select>
     <footer>
       <button type="button" class="btn btn-secondary btn-sm staff-member-code" onclick='copyStaffMemberCode(${staffClientJs(member.id)})'>${escapeHtml(member.code || 'Copier code')}</button>
-      <button type="button" class="btn btn-ghost btn-sm" ${isSelf ? 'disabled title="Vous ne pouvez pas bloquer votre propre acces"' : ''} onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
+      <button type="button" class="btn btn-ghost btn-sm" ${isSelf ? 'disabled title="Vous ne pouvez pas bloquer votre propre accès"' : ''} onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
       ${isSelf ? '' : `<button type="button" class="btn btn-ghost btn-sm staff-danger-btn" onclick='deleteStaffMember(${staffClientJs(member.id)})'>Supprimer</button>`}
     </footer>
   </article>`;
@@ -14978,10 +14978,10 @@ function availabilityMinutesToHHMM(min) {
 }
 
 function availabilityScopeText(block) {
-  if (block.scopeType === 'center') return 'Centre ferme';
-  if (block.scopeType === 'lane') return `Piste ${block.scopeRef} bloquee`;
-  if (block.scopeType === 'activity') return `${availabilityActivityLabel(block.scopeRef)} bloque`;
-  if (block.scopeType === 'formula') return `${availabilityFormulaLabel(block.scopeRef)} bloquee`;
+  if (block.scopeType === 'center') return 'Centre fermé';
+  if (block.scopeType === 'lane') return `Piste ${block.scopeRef} bloquée`;
+  if (block.scopeType === 'activity') return `${availabilityActivityLabel(block.scopeRef)} bloqué`;
+  if (block.scopeType === 'formula') return `${availabilityFormulaLabel(block.scopeRef)} bloquée`;
   return 'Blocage';
 }
 
@@ -14990,7 +14990,7 @@ function availabilityRecurrenceText(block) {
     const name = AVAILABILITY_DAY_NAMES[Number(block.dayOfWeek)] || 'jour inconnu';
     let text = `tous les ${name}s`;
     if (block.dateFrom && block.dateUntil) text += ` (du ${block.dateFrom} au ${block.dateUntil})`;
-    else if (block.dateFrom) text += ` (a partir du ${block.dateFrom})`;
+    else if (block.dateFrom) text += ` (à partir du ${block.dateFrom})`;
     else if (block.dateUntil) text += ` (jusqu'au ${block.dateUntil})`;
     return text;
   }
@@ -15000,7 +15000,7 @@ function availabilityRecurrenceText(block) {
 function availabilityTimeText(block) {
   const start = availabilityBlockStartMin(block);
   const end = availabilityBlockEndMin(block);
-  if (start === null && end === null) return '(toute la journee)';
+  if (start === null && end === null) return '(toute la journée)';
   if (start === null || end === null) return '';
   return `${availabilityMinutesToHHMM(start)}-${availabilityMinutesToHHMM(end)}`;
 }
@@ -15107,7 +15107,7 @@ function renderLaserBlockBanner(dateStr) {
   if (!blocks.length) return '';
   const items = blocks.map(block => {
     const scope = block.scopeType === 'center' ? 'Centre ferme' : 'Laser Game bloque';
-    const time = availabilityTimeText(block) || '(toute la journee)';
+    const time = availabilityTimeText(block) || '(toute la journée)';
     const reason = block.reason ? ` (${escapeHtml(block.reason)})` : '';
     return `<li data-blocked-laser="1">${escapeHtml(scope)} ${escapeHtml(time)}${reason}</li>`;
   }).join('');
@@ -15174,7 +15174,7 @@ async function submitAvailabilityBlock() {
     body.scopeRef = lane;
   } else if (scopeType === 'activity') {
     const activity = value('avb-activity');
-    if (!activity) { toast('Choisissez une activite.'); return; }
+    if (!activity) { toast('Choisissez une activité.'); return; }
     body.scopeRef = activity;
   } else if (scopeType === 'formula') {
     const formula = value('avb-formula');
@@ -15196,7 +15196,7 @@ async function submitAvailabilityBlock() {
   const end = value('avb-end');
   if ((start && !end) || (!start && end)) { toast('Renseignez les deux heures, ou aucune.'); return; }
   if (start && end) {
-    if (end <= start) { toast("L'heure de fin doit suivre le debut."); return; }
+    if (end <= start) { toast("L'heure de fin doit suivre le début."); return; }
     body.startTime = start;
     body.endTime = end;
   }
@@ -15220,7 +15220,7 @@ async function submitAvailabilityBlock() {
 async function deleteAvailabilityBlockUi(id) {
   if (!canUseStaffPermission('settings.manage')) { toast('Réservé à la direction.'); return; }
   const block = (availabilityBlocksCache.blocks || []).find(item => Number(item.id) === Number(id));
-  const label = block ? describeAvailabilityBlock(block) : `blocage numero ${id}`;
+  const label = block ? describeAvailabilityBlock(block) : `blocage n° ${id}`;
   if (!window.confirm(`Supprimer ce blocage ?\n${label}`)) return;
   try {
     await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'deleteAvailabilityBlock', id: Number(id) }) });
@@ -15277,7 +15277,7 @@ function renderAvailabilityBlocksPanel() {
           <select id="avb-lane">${lanesOptions}</select>
         </div>
         <div class="field avb-cond avb-cond-activity" style="display:none">
-          <label for="avb-activity">Activite</label>
+          <label for="avb-activity">Activité</label>
           <select id="avb-activity">${activitiesOptions}</select>
         </div>
         <div class="field avb-cond avb-cond-formula" style="display:none">
@@ -15301,7 +15301,7 @@ function renderAvailabilityBlocksPanel() {
             <select id="avb-dow">${dowOptions}</select>
           </div>
           <div class="estab-field-row">
-            <div class="field"><label for="avb-from">A partir du (optionnel)</label><input type="date" id="avb-from"></div>
+            <div class="field"><label for="avb-from">À partir du (optionnel)</label><input type="date" id="avb-from"></div>
             <div class="field"><label for="avb-until">Jusqu'au (optionnel)</label><input type="date" id="avb-until"></div>
           </div>
         </div>
@@ -16069,7 +16069,7 @@ function openAdminCenter(centerId) {
 // reste appelable. Le serveur reste la seule autorite, ceci evite le refus.
 function requireClientPermission(permission, message) {
   if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission(permission)) return true;
-  if (typeof toast === 'function') toast(message || 'Votre role ne permet pas cette action.');
+  if (typeof toast === 'function') toast(message || 'Votre rôle ne permet pas cette action.');
   return false;
 }
 
@@ -16080,7 +16080,7 @@ function requireClientPermission(permission, message) {
 function requirePastDatePermission(dateStr) {
   const date = String(dateStr || '').slice(0, 10);
   if (!date || typeof isPastBusinessDate !== 'function' || !isPastBusinessDate(date)) return true;
-  return requireClientPermission('planning.past', 'Votre role ne permet pas de modifier une date passee.');
+  return requireClientPermission('planning.past', 'Votre rôle ne permet pas de modifier une date passée.');
 }
 
 // 'payments.view' nommait « Voir les montants » sans rien masquer. Les surfaces
@@ -16092,7 +16092,7 @@ function moneyForRole(amount) {
 }
 
 function exportStaffPricingCsv() {
-  if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
+  if (!requireClientPermission('exports.download', 'Votre rôle ne permet pas de télécharger les exports.')) return;
   const rows = getPricingRowsFiltered();
   const header = ['Type', 'Nom', 'Prix', 'Capacité', 'Disponibilité', 'Réservations (30 j)', 'Joueurs (30 j)', 'Chiffre (30 j)', 'Détails'];
   const body = rows.map(row => [
@@ -16261,7 +16261,7 @@ function getSelectedStaffEmailRow(rows = getStaffEmailRowsFiltered()) {
 // `rows` optionnel : la section Envoyés exporte exactement la file qu'elle
 // affiche (ses filtres Remis/Ouverts n'existent pas dans le filtre historique).
 function exportStaffEmailsCsv(rowsAffichees = null) {
-  if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
+  if (!requireClientPermission('exports.download', 'Votre rôle ne permet pas de télécharger les exports.')) return;
   const rows = Array.isArray(rowsAffichees) ? rowsAffichees : getStaffEmailRowsFiltered();
   const header = ['Statut', 'Origine', 'Modele', 'Sujet', 'Destinataire', 'Canal', 'Planifie', 'Envoye', 'Tentatives', 'Erreur'];
   const body = rows.map(row => [
@@ -18115,12 +18115,12 @@ function refreshStaffClients() {
 // Export CSV du SEGMENT courant : la liste prête à l'emploi (relance = avec le
 // pourquoi ; marketing = emails). Colonnes réduites à l'utile.
 function exportStaffClientsCsv() {
-  if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
+  if (!requireClientPermission('exports.download', 'Votre rôle ne permet pas de télécharger les exports.')) return;
   if (!staffClientDataCache.loaded) { toast('Clients en cours de chargement : patientez avant d\'exporter.'); return; }
   const segment = getStaffClientSegment();
   const rows = getFilteredStaffClientRows();
   const relance = segment === 'relancer';
-  const header = ['Client', 'Email', 'Telephone', 'Visites', 'Depense', 'Panier moyen', 'Derniere visite', ...(relance ? ['Pourquoi relancer'] : [])];
+  const header = ['Client', 'Email', 'Téléphone', 'Visites', 'Dépense', 'Panier moyen', 'Dernière visite', ...(relance ? ['Pourquoi relancer'] : [])];
   const body = rows.map(row => [
     row.name,
     row.email,
@@ -18282,7 +18282,7 @@ async function loadStaffReservationsData(force = false) {
       key,
       loading: false,
       loaded: false,
-      error: error.message || 'Chargement reservations impossible.'
+      error: error.message || 'Chargement des réservations impossible.'
     };
   }
   if (isStaffReservationsActive()) renderStaffReservationsPage();
@@ -20120,10 +20120,10 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   const activeLabel = view === 'all'
     ? `${scopedReservations.length} réservation${scopedReservations.length > 1 ? 's' : ''} au total`
     : view === 'laser'
-    ? `${activeSessions} lancement${activeSessions > 1 ? 's' : ''} en cours • ${activeLaserPlayers} joueurs laser`
-    : `${activeSessions} session${activeSessions > 1 ? 's' : ''} en cours • ${activeLanes} piste${activeLanes > 1 ? 's' : ''} occupée${activeLanes > 1 ? 's' : ''}`;
+    ? `${activeSessions} lancement${activeSessions > 1 ? 's' : ''} en cours · ${activeLaserPlayers} joueurs laser`
+    : `${activeSessions} session${activeSessions > 1 ? 's' : ''} en cours · ${activeLanes} piste${activeLanes > 1 ? 's' : ''} occupée${activeLanes > 1 ? 's' : ''}`;
   const nextLabel = nextArrival
-    ? ` • prochaine ${view === 'laser' ? 'session' : 'arrivée'} ${formatClockDisplay(getReservationFirstResourceStart(nextArrival, view))}`
+    ? ` · prochaine ${view === 'laser' ? 'session' : 'arrivée'} ${formatClockDisplay(getReservationFirstResourceStart(nextArrival, view))}`
     : '';
   const dateLabel = document.getElementById('staffDateLabel');
   if (dateLabel) {
@@ -20425,7 +20425,7 @@ function renderPlanning() {
     laneWins.forEach(w => {
       const blkTop = (w.startH - startHour) * HH + HEADER_H;
       const blkHeight = Math.max((w.endH - w.startH) * HH, 16);
-      const blkReason = w.reason ? w.reason : (w.full ? 'Bloque toute la journee' : 'Creneau bloque');
+      const blkReason = w.reason ? w.reason : (w.full ? 'Bloqué toute la journée' : 'Créneau bloqué');
       blockHtml += `<div class="planning-blocked${w.full ? ' full' : ''}" data-blocked-lane="${i}" style="top:${blkTop}px;height:${blkHeight}px;" title="${escapeHtml(blkReason)}"><span>${escapeHtml(blkReason)}</span></div>`;
     });
     lanesHtml += `<div class="lane-col ${maint ? 'maint' : ''}${laneWins.length ? ' has-block' : ''}" data-lane="${i}"${laneWins.length ? ' data-blocked="1"' : ''}>
@@ -20540,7 +20540,7 @@ function renderLaserPlanning() {
   // Capacite REELLE (armes) du centre affiche, repli sur la constante si config absente.
   const capacity = getAvailabilityLaserCapacity();
   const pendingPasses = getPendingLaserPasses(state.currentDate);
-  if (sub) sub.textContent = `${sessions.length} lancement${sessions.length > 1 ? 's' : ''} • ${players} passages • ${pendingPasses.length} partie${pendingPasses.length > 1 ? 's' : ''} à placer • capacité ${capacity} armes`;
+  if (sub) sub.textContent = `${sessions.length} lancement${sessions.length > 1 ? 's' : ''} · ${players} passages · ${pendingPasses.length} partie${pendingPasses.length > 1 ? 's' : ''} à placer · capacité ${capacity} armes`;
 
   const startHour = config.open;
   const closeHour = config.close;
@@ -20569,11 +20569,11 @@ function renderLaserPlanning() {
           .sort((a, b) => a.start - b.start)[0];
         const unitKey = pass.unitKey || `${pass.countIndex}.${pass.waveIndex || 1}`;
         const unitLabel = pass.waveCount > 1
-          ? `Vague ${pass.waveIndex}/${pass.waveCount}${pass.totalGames > 1 ? ` • Partie ${pass.countIndex}/${pass.totalGames}` : ''}`
+          ? `Vague ${pass.waveIndex}/${pass.waveCount}${pass.totalGames > 1 ? ` · Partie ${pass.countIndex}/${pass.totalGames}` : ''}`
           : `Partie ${pass.countIndex}/${pass.totalGames}`;
         return `<button type="button" class="laser-pass-card" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette vague">
           <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
-          <span class="laser-pass-meta">${unitLabel} • ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
+          <span class="laser-pass-meta">${unitLabel} · ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
           <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
         </button>`;
       }).join('')
@@ -20581,7 +20581,7 @@ function renderLaserPlanning() {
   const pendingQueueHtml = showPassQueue ? `
     <div class="laser-pass-queue${pendingPasses.length ? '' : ' is-empty'}" aria-label="Parties Laser Game à placer">
       <div class="laser-pass-queue-copy">
-        <strong>Parties à placer${pendingPasses.length ? ` • ${pendingPasses.length}` : ''}</strong>
+        <strong>Parties à placer${pendingPasses.length ? ` · ${pendingPasses.length}` : ''}</strong>
         <span>Glissez une partie <b>ici</b> pour la retirer du planning, ou sur un lancement pour la placer.</span>
       </div>
       <div class="laser-pass-list">
@@ -20638,8 +20638,8 @@ function renderLaserPlanning() {
       const unitKey = window.unitKey || `${passIndex}.${waveIndex}`;
       const passLabel = laserGames > 1 ? `Partie ${passIndex}/${laserGames}` : 'Partie unique';
       const label = isFormulaGroup
-        ? `${getReservationLabel(reservation)}${laserGames > 1 ? ` • ${passLabel}` : ' • Laser'}`
-        : laserGames > 1 ? `Laser • ${passLabel}` : 'Laser direct';
+        ? `${getReservationLabel(reservation)}${laserGames > 1 ? ` · ${passLabel}` : ' · Laser'}`
+        : laserGames > 1 ? `Laser · ${passLabel}` : 'Laser direct';
       const pillHtml = `
         <span class="laser-card-pills">
           ${renderDelayIndicator(reservation)}
@@ -20681,7 +20681,7 @@ function renderLaserPlanning() {
       return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
-          <small>${escapeHtml(label)}${waveLabel ? ` • ${escapeHtml(waveLabel)}` : ''}</small>
+          <small>${escapeHtml(label)}${waveLabel ? ` · ${escapeHtml(waveLabel)}` : ''}</small>
           ${pillHtml}
         </span>
         <span class="booking-stats laser-group-stats">
@@ -20697,9 +20697,9 @@ function renderLaserPlanning() {
       <div class="laser-session-top">
         <div>
           <div class="laser-session-title">${formatClockDisplay(session.start)} - ${formatClockDisplay(session.end)}</div>
-          <div class="laser-session-sub">${session.windows.length} groupe${session.windows.length > 1 ? 's' : ''} • ${sessionPlayers}/${capacity} joueurs</div>
+          <div class="laser-session-sub">${session.windows.length} groupe${session.windows.length > 1 ? 's' : ''} · ${sessionPlayers}/${capacity} joueurs</div>
         </div>
-        <span class="laser-session-kind">${remaining > 0 ? `+ groupe • ${addStart}` : sessionType}</span>
+        <span class="laser-session-kind">${remaining > 0 ? `+ groupe · ${addStart}` : sessionType}</span>
       </div>
       <div class="laser-group-list">${groupChips}</div>
       <div class="laser-capacity-line" aria-label="${sessionPlayers} joueurs sur ${capacity}">
@@ -20857,7 +20857,7 @@ async function toggleMaint(i, ev) {
     save();
     renderPlanning();
     if (isStaffUtilityActive()) renderStaffUtilityPage();
-    toast(error.message || 'Impossible de mettre la piste a jour.');
+    toast(error.message || 'Impossible de mettre la piste à jour.');
   }
 }
 
@@ -21077,7 +21077,7 @@ function renderTable() {
   // annonce le même nombre que l'onglet, quel que soit le filtre de statut actif.
   const offPlanningDay = view === 'all' ? res.filter(isOffPlanningReservation).length : 0;
   const resourceSummary = view === 'all'
-    ? `Toutes activités${offPlanningDay ? ` • ${offPlanningDay} hors planning` : ''}`
+    ? `Toutes activités${offPlanningDay ? ` · ${offPlanningDay} hors planning` : ''}`
     : view === 'laser'
       ? 'Laser Game uniquement'
       : 'Bowling uniquement';
@@ -21118,7 +21118,7 @@ function renderTable() {
         ${(counts.notes || state.staffStatusFilter === 'notes') ? `<button class="status-chip is-cross ${state.staffStatusFilter === 'notes' ? 'active notes' : ''}" onclick="setStaffStatusFilter('notes')"${crossHint('Avec note', notesHint)}>${crossMark}Avec note <span>${counts.notes}</span></button>` : ''}
       </div>
     </div>
-    <div class="table-summary">${resourceSummary} • ${counts.all} réservation${counts.all > 1 ? 's' : ''} = ${counts.arrived} sur place + ${counts.pending} à venir + ${counts.paid} terminée${counts.paid > 1 ? 's' : ''} • « À gérer » réunit les ${counts.open} non terminée${counts.open > 1 ? 's' : ''}</div>
+    <div class="table-summary">${resourceSummary} · ${counts.all} réservation${counts.all > 1 ? 's' : ''} = ${counts.arrived} sur place + ${counts.pending} à venir + ${counts.paid} terminée${counts.paid > 1 ? 's' : ''} · « À gérer » réunit les ${counts.open} non terminée${counts.open > 1 ? 's' : ''}</div>
   </div>`;
   if (!filtered.length) {
     list.innerHTML = `${toolbar}<div class="empty-state">
@@ -21329,10 +21329,10 @@ async function cancelRes(id, ev) {
     });
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     if (state.selectedRes && state.selectedRes.id === id) closePos();
-    toast('Reservation annulee');
+    toast('Réservation annulée');
   } catch (error) {
     applyOptimisticReservation(current, { preserveEditState: true });
-    toast(error.message || 'Impossible d annuler la reservation.');
+    toast(error.message || 'Impossible d’annuler la réservation.');
   }
 }
 
@@ -21355,10 +21355,10 @@ async function deleteRes(id, ev) {
       method: 'DELETE',
       body: JSON.stringify({ id })
     });
-    toast('Reservation supprimee');
+    toast('Réservation supprimée');
   } catch (error) {
     applyOptimisticReservation(current, { preserveEditState: true });
-    toast(error.message || 'Impossible de supprimer la reservation.');
+    toast(error.message || 'Impossible de supprimer la réservation.');
   }
 }
 
@@ -22869,7 +22869,7 @@ function renderPosEdit(r) {
               <div class="pos-field pos-field-wide">
                 <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
                 <p class="field-hint">${isLaserRes
-                  ? `${Number(e.pax) || 0} joueur(s) : ${getLaserWaveCount(Number(e.pax) || 1)} session(s) de laser. Aucune piste de bowling n’est réservée.`
+                  ? `${Number(e.pax) || 0} joueur${(Number(e.pax) || 0) > 1 ? 's' : ''} : ${getLaserWaveCount(Number(e.pax) || 1)} session${getLaserWaveCount(Number(e.pax) || 1) > 1 ? 's' : ''} de laser. Aucune piste de bowling n’est réservée.`
                   : 'Cette réservation ne prend aucune piste de bowling.'}</p>
               </div>`) : `
               <div class="pos-field pos-field-wide">
@@ -23212,7 +23212,7 @@ function createQuickBookState(prefill = {}) {
 let quickBookDialogRelease = null;
 
 function openQuickBook(prefill = {}) {
-  if (!requireClientPermission('reservations.quick', 'Votre role ne permet pas la reservation rapide.')) return;
+  if (!requireClientPermission('reservations.quick', 'Votre rôle ne permet pas la réservation rapide.')) return;
   quickBookState = createQuickBookState(prefill);
   if (!quickBookState.startTime) {
     const schedule = getSchedule(quickBookState.date, state.isHolidayMode);
@@ -23555,7 +23555,7 @@ function patchQuickBookPaxDerived() {
   const desc = overlay.querySelector('.qb-summary .desc');
   const customPriceValue = getQuickBookCustomPrice();
   if (amt) amt.textContent = `${customPriceValue != null ? customPriceValue : summary.total}€`;
-  if (desc) desc.textContent = `${summary.detail} - durée estimée ${formatDurationLabel(quickBookState.totalDuration)}`;
+  if (desc) desc.textContent = `${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}`;
   patchQuickBookStatusLine(overlay);
 }
 
@@ -23576,7 +23576,7 @@ function patchQuickBookStatusLine(overlay) {
   if (quickBookState.type === 'laser') {
     const vagues = getLaserWaveCount(quickBookState.pax);
     const parties = getLaserGameCount(Number(quickBookState.duration) || 0.5);
-    parts.push(`${quickBookState.pax} joueurs • ${parties} partie${parties > 1 ? 's' : ''}`);
+    parts.push(`${quickBookState.pax} joueurs · ${parties} partie${parties > 1 ? 's' : ''}`);
     // Le groupe ne tient pas dans une arene : on DIT le decoupage au lieu
     // de l appeler « session », mot qui designe deja le lancement.
     if (vagues > 1) parts.push(`groupe divisé en ${vagues} passages (${LASER_GAME_MAX_PLAYERS} armes)`);
@@ -23587,7 +23587,8 @@ function patchQuickBookStatusLine(overlay) {
       : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}`);
     if (quickBookState.startTime) {
       const free = getFreeCount(quickBookState.date, quickBookState.startTime, quickBookState.duration);
-      parts.push(`${Math.max(free, 0)} piste(s) libre(s)`);
+      const libres = Math.max(free, 0);
+      parts.push(`${libres} piste${libres > 1 ? 's' : ''} libre${libres > 1 ? 's' : ''}`);
     }
   } else if (quickBookState.type === 'formule') {
     parts.push('Sans piste de bowling');
@@ -24098,25 +24099,25 @@ function getQuickBookSummary() {
       return {
         total: Math.round(total),
         detail: parts.length
-          ? `${parts.join(' · ')} - ${pax} joueur(s), a partir de (certaines activites se reglent sur place)`
+          ? `${parts.join(' · ')} · ${pax} joueur${pax > 1 ? 's' : ''} · hors activités réglées sur place`
           : 'Choisissez les activités'
       };
     }
     return {
       total: Math.round(total),
-      detail: parts.length ? `${parts.join(' · ')} - ${pax} joueur(s), estimation` : 'Choisissez les activités'
+      detail: parts.length ? `${parts.join(' · ')} · ${pax} joueur${pax > 1 ? 's' : ''} · estimation` : 'Choisissez les activités'
     };
   }
   if (quickBookState.type === 'laser') {
     const option = getLaserOption(quickBookState.duration);
     return {
       total: option.price * Number(quickBookState.pax || 0),
-      detail: `${option.label} Laser Game - ${quickBookState.pax} joueur(s)`
+      detail: `${option.label} Laser Game · ${quickBookState.pax} joueur${Number(quickBookState.pax) > 1 ? 's' : ''}`
     };
   }
   const laneCount = quickBookState.autoAssign ? getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId) : quickBookState.lanes.length;
   const total = getBasePrice(quickBookState.type, quickBookState.duration, laneCount, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
-  const detail = laneCount ? `${laneCount} piste(s) prévues` : 'Sans piste';
+  const detail = laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''} prévue${laneCount > 1 ? 's' : ''}` : 'Sans piste';
   return { total, detail };
 }
 
@@ -24170,12 +24171,12 @@ function getQuickBookHeader(formule) {
     return { eyebrow: 'Fiche client', title: `Réserver pour ${s.name || 'ce client'}`, sub: 'Coordonnées reprises de la fiche, choisissez le créneau.' };
   }
   if (src === 'activite') {
-    return { eyebrow: 'Staff Booking', title: s.type === 'laser' ? 'Nouvelle session laser' : 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
+    return { eyebrow: 'Comptoir', title: s.type === 'laser' ? 'Nouvelle session laser' : 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
   }
   if (s.type === 'visite') {
     return { eyebrow: s.surMesure ? 'Sur mesure' : 'Plusieurs activités', title: decrireVisiteRetenue() || 'Visite multi-activités', sub: 'Composez les activités et ajustez le prix si besoin : tout part dans une seule réservation.' };
   }
-  return { eyebrow: 'Staff Booking', title: 'Réservation rapide', sub: '' };
+  return { eyebrow: 'Comptoir', title: 'Réservation rapide', sub: '' };
 }
 
 function renderQuickBook() {
@@ -24229,7 +24230,7 @@ function renderQuickBookInner() {
     ? 'Centre fermé à cette date.'
     : !slotCheck.ok ? slotCheck.message : formule && !formuleAvailability.ok ? formuleAvailability.message : !laserAvailability.ok ? laserAvailability.message : '';
   const activeLanes = quickBookState.autoAssign ? suggestedLanes : quickBookState.lanes;
-  const activeLaneText = activeLanes.length ? activeLanes.join(' - ') : 'A attribuer';
+  const activeLaneText = activeLanes.length ? activeLanes.join(' · ') : 'À attribuer';
   const freeCount = selectedSlot
     ? selectedSlot.freeCount
     : quickBookState.startTime && needsLanes
@@ -24237,38 +24238,38 @@ function renderQuickBookInner() {
       : 0;
   const autoLaneMessage = needsLanes
     ? quickBookState.autoAssign
-      ? `Attribution auto de ${requiredCount} piste(s)${suggestedLanes.length ? ` - suggestion ${suggestedLanes.join(' - ')}` : ''}`
-      : `Sélection actuelle : ${quickBookState.lanes.length}/${requiredCount} piste(s)`
+      ? `Attribution auto de ${requiredCount} piste${requiredCount > 1 ? 's' : ''}${suggestedLanes.length ? ` · suggestion ${suggestedLanes.join(' · ')}` : ''}`
+      : `Sélection actuelle : ${quickBookState.lanes.length}/${requiredCount} piste${requiredCount > 1 ? 's' : ''}`
     : 'Sans piste de bowling';
   const laserOption = quickBookState.type === 'laser' ? getLaserOption(quickBookState.duration) : null;
   const typeLabel = quickBookState.type === 'bowling'
     ? 'Bowling classique'
     : quickBookState.type === 'laser'
-      ? `Laser Game - ${laserOption.label}`
+      ? `Laser Game · ${laserOption.label}`
       : quickBookState.type === 'visite'
         ? (decrireVisiteRetenue() || 'Sur mesure')
         : formule ? formule.name : 'Choisir une formule';
   const selectedSlotLabel = selectedSlot
-    ? `${selectedSlot.time} - ${quickBookState.type === 'laser' ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : needsLanes ? `${selectedSlot.freeCount} piste(s) libre(s)` : 'disponible'}`
+    ? `${selectedSlot.time} · ${quickBookState.type === 'laser' ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : needsLanes ? `${selectedSlot.freeCount} piste${selectedSlot.freeCount > 1 ? 's' : ''} libre${selectedSlot.freeCount > 1 ? 's' : ''}` : 'disponible'}`
     : firstSlot
       ? `Premier créneau ${firstSlot.time}`
       : 'Aucun créneau trouvé';
   const laserVagues = getLaserWaveCount(quickBookState.pax);
   const laserParties = getLaserGameCount(Number(quickBookState.duration) || 0.5);
   const laneNeedLabel = quickBookState.type === 'laser'
-    ? `${quickBookState.pax} joueurs • ${laserParties} partie${laserParties > 1 ? 's' : ''}${laserVagues > 1 ? ` • ${laserVagues} passages` : ''}`
+    ? `${quickBookState.pax} joueurs · ${laserParties} partie${laserParties > 1 ? 's' : ''}${laserVagues > 1 ? ` · ${laserVagues} passages` : ''}`
     : needsLanes ? `${requiredCount} piste${requiredCount > 1 ? 's' : ''} requise${requiredCount > 1 ? 's' : ''}` : 'Sans piste';
   const laneSuggestionLabel = !needsLanes
     ? 'Cette réservation ne prend pas de piste.'
     : suggestedLanes.length
-      ? `Suggestion actuelle : piste${suggestedLanes.length > 1 ? 's' : ''} ${suggestedLanes.join(' - ')}`
+      ? `Suggestion actuelle : piste${suggestedLanes.length > 1 ? 's' : ''} ${suggestedLanes.join(' · ')}`
       : 'Aucune suggestion automatique sur ce créneau.';
   const laneSelectionLabel = !needsLanes
     ? 'Aucune affectation'
     : quickBookState.autoAssign
-      ? `Mode auto${activeLanes.length ? ` - ${activeLaneText}` : ''}`
+      ? `Mode auto${activeLanes.length ? ` · ${activeLaneText}` : ''}`
       : quickBookState.lanes.length
-        ? `Sélection manuelle - ${quickBookState.lanes.join(' - ')}`
+        ? `Sélection manuelle · ${quickBookState.lanes.join(' · ')}`
         : 'Sélection manuelle en attente';
 
   const customPriceValue = getQuickBookCustomPrice();
@@ -24350,7 +24351,7 @@ function renderQuickBookInner() {
     essentialActions.push(`<button class="qb-ghost-btn" onclick="setQuickStartTime('${firstSlot.time}')">Premier créneau ${firstSlot.time}</button>`);
   }
   if (manualLanesShort && suggestedLanes.length) {
-    essentialActions.push(`<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Compléter les pistes (${suggestedLanes.join(' - ')})</button>`);
+    essentialActions.push(`<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Compléter les pistes (${suggestedLanes.join(' · ')})</button>`);
   }
 
   // Ligne d'état compacte : la synthèse dispo/pistes/sessions sans les 3 cartes.
@@ -24363,7 +24364,7 @@ function renderQuickBookInner() {
   } else if (showLanePicker) {
     statusParts.push(laneNeedLabel);
     statusParts.push(quickBookState.autoAssign ? `Attribution auto${suggestedLanes.length ? ` : pistes ${suggestedLanes.join(' · ')}` : ''}` : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}${manualLanesShort ? ` (${quickBookState.lanes.length}/${requiredCount})` : ''}`);
-    if (quickBookState.startTime && selectedSlot) statusParts.push(`${Math.max(freeCount, 0)} piste(s) libre(s)`);
+    if (quickBookState.startTime && selectedSlot) statusParts.push(`${Math.max(freeCount, 0)} piste${freeCount > 1 ? 's' : ''} libre${freeCount > 1 ? 's' : ''}`);
   } else if (quickBookState.type === 'visite') {
     const visit = quickBookState.visit || {};
     statusParts.push(visit.bowling?.on ? 'Pistes attribuées automatiquement à la création' : 'Sans piste de bowling');
@@ -24489,14 +24490,14 @@ function renderQuickBookInner() {
       </div>
       <div class="qb-slot-head" style="margin-top:12px;">
         <label class="qb-mini-label" style="margin-bottom:0;">Créneaux disponibles</label>
-        <div class="qb-section-note">${quickBookState.type === 'laser' ? (selectedSlot ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : `${getLaserWaveCount(quickBookState.pax)} session${getLaserWaveCount(quickBookState.pax) > 1 ? 's' : ''} à planifier`) : needsLanes ? `${Math.max(freeCount, 0)} piste(s) libre(s) sur le créneau choisi` : 'Sélection rapide de l’heure de départ'}</div>
+        <div class="qb-section-note">${quickBookState.type === 'laser' ? (selectedSlot ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : `${getLaserWaveCount(quickBookState.pax)} session${getLaserWaveCount(quickBookState.pax) > 1 ? 's' : ''} à planifier`) : needsLanes ? `${Math.max(freeCount, 0)} piste${freeCount > 1 ? 's' : ''} libre${freeCount > 1 ? 's' : ''} sur le créneau choisi` : 'Sélection rapide de l’heure de départ'}</div>
       </div>
       ${availableSlots.length ? `
         <div class="qb-slot-strip">
           ${availableSlots.slice(0, 8).map(slot => `
             <button class="qb-slot-chip ${slot.selected ? 'active' : ''} ${quickBookState.lockStartTime ? 'locked' : ''}" ${quickBookState.lockStartTime ? 'disabled aria-disabled="true"' : `onclick="setQuickStartTime('${slot.time}')"`}>
               <span class="time">${slot.time}</span>
-              <span class="sub">${quickBookState.type === 'laser' ? getLaserSlotCapacityText(slot, quickBookState.pax) : needsLanes ? `${slot.freeCount} piste(s) libre(s)` : 'disponible'}</span>
+              <span class="sub">${quickBookState.type === 'laser' ? getLaserSlotCapacityText(slot, quickBookState.pax) : needsLanes ? `${slot.freeCount} piste${slot.freeCount > 1 ? 's' : ''} libre${slot.freeCount > 1 ? 's' : ''}` : 'disponible'}</span>
               <span class="lanes">${slot.selected ? (quickBookState.lockStartTime ? 'Lancement verrouillé' : 'Sélectionné') : quickBookState.type === 'laser' && slot.sharedSession ? 'Rejoindre session' : 'Choisir ce départ'}</span>
             </button>
           `).join('')}
@@ -24519,7 +24520,7 @@ function renderQuickBookInner() {
         <div class="qb-lane-focus laser-focus">
           <div>
             <div class="qb-lane-focus-title">Arène Laser Game</div>
-            <div class="qb-lane-focus-sub">${selectedSlot ? `${getLaserSlotAfterText(selectedSlot, quickBookState.pax)}${selectedSlot.sharedSession ? ' • session déjà partagée' : ''}` : 'Choisissez un départ disponible'}</div>
+            <div class="qb-lane-focus-sub">${selectedSlot ? `${getLaserSlotAfterText(selectedSlot, quickBookState.pax)}${selectedSlot.sharedSession ? ' · session déjà partagée' : ''}` : 'Choisissez un départ disponible'}</div>
           </div>
           <div class="qb-action-stack">
             ${firstSlot && !quickBookState.lockStartTime ? `<button class="qb-ghost-btn" onclick="setQuickStartTime('${firstSlot.time}')">Premier départ ${firstSlot.time}</button>` : ''}
@@ -24537,7 +24538,7 @@ function renderQuickBookInner() {
             <div class="qb-lane-focus-sub">${laneSuggestionLabel}</div>
           </div>
           <div class="qb-action-stack">
-            ${quickBookState.startTime && suggestedLanes.length ? `<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Appliquer ${suggestedLanes.join(' - ')}</button>` : ''}
+            ${quickBookState.startTime && suggestedLanes.length ? `<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Appliquer ${suggestedLanes.join(' · ')}</button>` : ''}
             <button class="qb-ghost-btn" onclick="setQuickAutoAssign()">Mode auto</button>
           </div>
         </div>
@@ -24635,7 +24636,7 @@ function renderQuickBookInner() {
         <div class="qb-summary">
           <div>
             <div class="lbl">${customPriceValue != null ? 'Prix ajusté' : 'Total estimé'}</div>
-            <div class="desc">${summary.detail} - durée estimée ${formatDurationLabel(quickBookState.totalDuration)}${customPriceValue != null ? ` - référence ${summary.total}€` : ''}</div>
+            <div class="desc">${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}${customPriceValue != null ? ` · référence ${summary.total} €` : ''}</div>
             ${canAdjustPrice ? (quickBookState.priceOpen ? `
               <div class="qb-price-edit">
                 <input id="qbCustomPrice" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(quickBookState.customPrice ?? ''))}" placeholder="${summary.total}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">
@@ -24736,13 +24737,13 @@ async function saveQuickBook() {
     // rejetait ensuite avec « Aucune piste disponible ».
     const dispo = allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, duration);
     if (!dispo || dispo.length < requiredCount) {
-      failQuickBook(`Il faut ${requiredCount} piste(s) libre(s) à ${quickBookState.startTime} : ce créneau ne les a pas.`);
+      failQuickBook(`Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} libre${requiredCount > 1 ? 's' : ''} à ${quickBookState.startTime} : ce créneau ne les a pas.`);
       return;
     }
   } else if (needsLanes) {
     if (quickBookState.autoAssign) lanes = allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, duration);
     else lanes = [...quickBookState.lanes];
-    if (!lanes || lanes.length < requiredCount) { failQuickBook('Il faut ' + requiredCount + ' piste(s) disponibles.'); return; }
+    if (!lanes || lanes.length < requiredCount) { failQuickBook(`Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} disponible${requiredCount > 1 ? 's' : ''}.`); return; }
     if (lanes.some(l => state.laneStatuses[l] === 'maintenance')) { failQuickBook('Une des pistes choisies est en maintenance.'); return; }
     if (lanesConflict(quickBookState.date, quickBookState.startTime, duration, lanes).length) { failQuickBook('Conflit détecté sur les pistes choisies.'); return; }
   }
@@ -25545,7 +25546,7 @@ function renderPosInner() {
   // l'endroit où on la lit quand on a un client au téléphone. C'est
   // l'identifiant réel de la réservation, celui qui est stocké et qui sort dans
   // l'export, pas un code reconstruit à l'affichage.
-  const subtitle = getPosIdentityParts(r).join(' • ');
+  const subtitle = getPosIdentityParts(r).join(' · ');
   // LA FICHE NE S OUVRE QU UNE FOIS. Son animation d entree (.fade-in) vivait
   // sur un conteneur reconstruit a CHAQUE rendu : cocher une activite, un poll,
   // un changement d etat la faisaient re-apparaitre en fondu sous les yeux du

@@ -85,7 +85,7 @@ function getAdminRiskLabel(reservation = {}) {
   if (risk === 'critical') return 'Critique';
   if (risk === 'high') return 'Élevé';
   if (risk === 'warning') return 'À surveiller';
-  if (reservation.validationStatus === 'staff_review') return 'Validation staff';
+  if (reservation.validationStatus === 'staff_review') return 'À vérifier';
   return 'Normal';
 }
 
@@ -93,7 +93,7 @@ function getAdminValidationLabel(status = '') {
   return {
     draft: 'Brouillon',
     requested: 'Demandée',
-    staff_review: 'Validation staff',
+    staff_review: 'À vérifier',
     confirmed: 'Validée',
     rejected: 'Refusée',
   }[status] || status || '';
@@ -106,7 +106,7 @@ function getAdminResourceText(reservation) {
   if (bowlingWindows.length) {
     const lanes = [...new Set(bowlingWindows.flatMap(window => window.lanes || []))].sort((a, b) => a - b);
     const first = bowlingWindows[0];
-    parts.push(`Bowling ${formatClockDisplay(first.start)}-${formatClockDisplay(first.end)}${lanes.length ? ` • pistes ${lanes.join(', ')}` : ''}`);
+    parts.push(`Bowling ${formatClockDisplay(first.start)}-${formatClockDisplay(first.end)}${lanes.length ? ` · pistes ${lanes.join(', ')}` : ''}`);
   }
   if (laserWindows.length) {
     const launches = laserWindows.map(window => `${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`).join(', ');
@@ -509,7 +509,7 @@ function buildAdminExcelXml(payload) {
 
 function exportAdminExcel() {
   // 'reports.export' etait declaree et ne gardait rien (audit 2026-08-19).
-  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reports.export')) { if (typeof toast === 'function') toast('Votre role ne permet pas d exporter l export comptable.'); return; }
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reports.export')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas de télécharger l’export comptable.'); return; }
   if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement : patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
   const xml = buildAdminExcelXml(payload);
@@ -668,7 +668,7 @@ function buildDirectionReportHtml(payload) {
 }
 
 function exportAdminReport() {
-  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reports.export')) { if (typeof toast === 'function') toast('Votre role ne permet pas d exporter le rapport de direction.'); return; }
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reports.export')) { if (typeof toast === 'function') toast('Votre rôle ne permet pas de télécharger le rapport de direction.'); return; }
   if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement : patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
   const html = buildDirectionReportHtml(payload);
@@ -731,7 +731,7 @@ function buildAdminMetrics(reservations = [], center = getAdminCenter()) {
     sentMails,
     suggestions: (adminDashboardCache.suggestions || []).length,
     events: (adminDashboardCache.events || []).length,
-    openLabel: `${formatAdminPeriodLabel(range)} • ${range.days.length} jour${range.days.length > 1 ? 's' : ''}`,
+    openLabel: `${formatAdminPeriodLabel(range)} · ${range.days.length} jour${range.days.length > 1 ? 's' : ''}`,
   };
 }
 
@@ -741,7 +741,7 @@ function buildAdminInsights(metrics, center) {
     insights.push({ level: 'high', title: 'Centre pas encore actif', text: 'Les réservations peuvent être consultées, mais les ressources opérationnelles doivent être confirmées avant ouverture.' });
   }
   if (metrics.reviewCount > 0) {
-    insights.push({ level: 'high', title: 'Réservations à surveiller', text: `${metrics.reviewCount} réservation(s) avec risque élevé ou validation staff. À traiter avant le rush.` });
+    insights.push({ level: 'high', title: 'Réservations à surveiller', text: `${metrics.reviewCount} réservation(s) à risque élevé ou à vérifier. À traiter avant l’affluence.` });
   }
   if (metrics.failedMails > 0) {
     insights.push({ level: 'high', title: 'Communication à corriger', text: `${metrics.failedMails} mail(s) en échec. La direction doit relancer ou corriger le destinataire.` });
@@ -1292,7 +1292,7 @@ function renderAdminCenterGrid() {
     const statusLabel = status === 'planned' ? 'Prévu' : status === 'active' ? 'Actif' : status;
     const meta = [
       bowling ? `${bowling.laneCount || 0} pistes` : 'bowling à confirmer',
-      laser ? `${laser.weaponCount || 0} armes laser • ${laser.parallelLaunches || 1} lancement(s)` : 'laser à confirmer',
+      laser ? `${laser.weaponCount || 0} armes laser · ${laser.parallelLaunches || 1} lancement(s)` : 'laser à confirmer',
     ].join(' · ');
     return `<button class="admin-center-card ${state.adminCenterId === center.id ? 'active' : ''}" onclick="setAdminCenter('${escapeHtml(center.id)}')">
       <span class="top">
@@ -1339,8 +1339,8 @@ function renderAdminHeader() {
   const heroSub = document.getElementById('adminHeroSub');
   if (heroSub) {
     heroSub.textContent = state.staffMenuPage === 'establishment'
-      ? `${center.name} • configuration, ressources et données opérationnelles du centre.`
-      : `Cockpit du centre • ${formatAdminPeriodLabel(range)} • réservations, mails, activité et exports.`;
+      ? `${center.name} · configuration, ressources et données opérationnelles du centre.`
+      : `Cockpit du centre · ${formatAdminPeriodLabel(range)} · réservations, mails, activité et exports.`;
   }
   ['Day', 'Week', 'Month', 'Year'].forEach(name => {
     const button = document.getElementById(`adminPeriod${name}`);
@@ -1680,7 +1680,7 @@ function renderAdminOverview() {
       <div class="admin-section-title">
         <div>
           <h2>Synthèse exécutive</h2>
-          <p>${escapeHtml(metrics.openLabel)} • ${escapeHtml(center.name)} • actualisé ${escapeHtml(formatOpsTimestamp(adminDashboardCache.lastLoadedAt))}</p>
+          <p>${escapeHtml(metrics.openLabel)} · ${escapeHtml(center.name)} · actualisé ${escapeHtml(formatOpsTimestamp(adminDashboardCache.lastLoadedAt))}</p>
         </div>
       </div>
       <div class="admin-kpi-grid">
@@ -2380,10 +2380,10 @@ function dirCmpRowHtml(center, best, currentId) {
 function dirComparisonInner() {
   const cmp = (directionDecisionCache[dirInsightKey()] || {}).comparison;
   if (!cmp || !cmp.loaded) return '<div class="dir-note dir-note-loading">Chargement de la comparaison des centres...</div>';
-  if (cmp.error) return dirNoteHtml('Comparaison momentanement indisponible. Elle reviendra au prochain rafraichissement.');
+  if (cmp.error) return dirNoteHtml('Comparaison momentanément indisponible. Elle reviendra à la prochaine actualisation.');
   const data = cmp.data || {};
   const centers = Array.isArray(data.centers) ? data.centers.slice() : [];
-  if (!centers.length) return dirNoteHtml('Aucune donnee de centre a comparer sur cette periode.');
+  if (!centers.length) return dirNoteHtml('Aucune donnée de centre à comparer sur cette période.');
   const currentId = data.selfCenterId == null ? null : data.selfCenterId;
   const best = dirCmpBest(centers);
   const head = DIR_CMP_COLS.map((col) => `<th scope="col" class="dir-num">${escapeHtml(col.label)}</th>`).join('');
@@ -2424,8 +2424,8 @@ function dirRetLapsedRowHtml(client) {
 
 function dirRetentionInner() {
   const ret = (directionDecisionCache[dirInsightKey()] || {}).retention;
-  if (!ret || !ret.loaded) return '<div class="dir-note dir-note-loading">Chargement des donnees clients...</div>';
-  if (ret.error) return dirNoteHtml('Donnees clients momentanement indisponibles. Elles reviendront au prochain rafraichissement.');
+  if (!ret || !ret.loaded) return '<div class="dir-note dir-note-loading">Chargement des données clients…</div>';
+  if (ret.error) return dirNoteHtml('Données clients momentanément indisponibles. Elles reviendront à la prochaine actualisation.');
   const data = ret.data || {};
   // UN CHAMP ABSENT N'EST PAS UN ZERO. `Number(seg.new) || 0` transformait une
   // donnee MANQUANTE en un zero presente comme mesure : la vue Clients
@@ -2532,7 +2532,7 @@ function mountDirRetChart() {
   charts.donutChart(host, {
     parts: [
       { label: 'Nouveaux', value: Number(seg.new) || 0 },
-      { label: 'Deja venus', value: Number(seg.returning) || 0 },
+      { label: 'Déjà venus', value: Number(seg.returning) || 0 },
     ],
     format: 'int',
     motionKey: `dir|ret|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|seg`,
@@ -2590,7 +2590,7 @@ function dirProvChannelsBlock(data) {
     ${has
       ? `<div class="dir-chart" id="dirProvChanChart"></div>
          <ul class="dir-prov-chan-list">${values}</ul>`
-      : dirNoteHtml('Aucun canal de reservation sur la periode.')}
+      : dirNoteHtml('Aucun canal de réservation sur la période.')}
   </article>`;
 }
 
@@ -2634,7 +2634,7 @@ function dirProvAudienceBlock(data) {
 function dirProvenanceInner() {
   const aud = (directionDecisionCache[dirInsightKey()] || {}).audience;
   if (!aud || !aud.loaded) return '<div class="dir-note dir-note-loading">Chargement de la provenance...</div>';
-  if (aud.error) return dirNoteHtml('Provenance momentanement indisponible. Elle reviendra au prochain rafraichissement.');
+  if (aud.error) return dirNoteHtml('Provenance momentanément indisponible. Elle reviendra à la prochaine actualisation.');
   const data = aud.data || {};
   return `<div class="dir-prov-grid">
     ${dirProvOccasionsBlock(data)}
@@ -2731,7 +2731,7 @@ async function loadDirectionDecision(centerId, range, key, force) {
     ]);
     directionDecisionCache[key] = {
       comparison: settle(cmpRes, 'Comparaison indisponible.'),
-      retention: settle(retRes, 'Donnees clients indisponibles.'),
+      retention: settle(retRes, 'Données clients indisponibles.'),
       audience: settle(audRes, 'Provenance indisponible.'),
     };
   } finally {
@@ -2992,8 +2992,8 @@ function renderDirectionBody() {
   if (!body) return;
   const entry = directionInsightCache[dirInsightKey()];
   if (!entry) { body.innerHTML = dirLoadingHtml(); return; }
-  if (entry.error) { body.innerHTML = dirNoteHtml('Analytique momentanement indisponible. Elle reviendra au prochain rafraichissement.'); return; }
-  if (!entry.analytics) { body.innerHTML = dirNoteHtml('Pas encore de donnees sur cette periode.'); return; }
+  if (entry.error) { body.innerHTML = dirNoteHtml('Analyses momentanément indisponibles. Elles reviendront à la prochaine actualisation.'); return; }
+  if (!entry.analytics) { body.innerHTML = dirNoteHtml('Pas encore de données sur cette période.'); return; }
   const view = getDirView();
   body.innerHTML = `${dirNavHtml(view)}<div class="dir-view" id="dirViewContent">${dirViewHtml(view, entry)}</div>`;
   syncDirControlsForView();

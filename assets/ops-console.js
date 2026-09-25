@@ -112,7 +112,7 @@ function renderOpsCommunications() {
           </div>
           <div>
             <div class="title">${escapeHtml(item.subject || getOpsTemplateLabel(item.templateId))}</div>
-            <div class="meta">${escapeHtml(getOpsTemplateLabel(item.templateId))} • ${escapeHtml(item.channel || 'email')}</div>
+            <div class="meta">${escapeHtml(getOpsTemplateLabel(item.templateId))} · ${escapeHtml(item.channel || 'email')}</div>
           </div>
           <div class="meta">
             ${escapeHtml(item.recipient || 'Destinataire manquant')}<br>
@@ -341,7 +341,7 @@ function selectOpsAgent(agentId) {
 
 function renderOpsAgentNode(agent, selectedAgent, activity) {
   const selected = selectedAgent?.id === agent.id;
-  const tools = (agent.tools || []).slice(0, 2).join(' • ');
+  const tools = (agent.tools || []).slice(0, 2).join(' · ');
   return `
     <button class="ai-org-node ${escapeHtml(activity.statusClass)}${selected ? ' selected' : ''}" type="button" onclick="selectOpsAgent('${escapeJsString(agent.id)}')">
       <span class="ai-agent-avatar"><span></span></span>
@@ -435,7 +435,7 @@ function renderOpsCompactAgentPyramid(ecosystem, agents = [], selectedAgent, act
     {
       id: 'direction-core',
       title: 'Direction centrale',
-      role: 'Orchestration, reporting, finance et decisions multi-centres.',
+      role: 'Orchestration, reporting, finance et décisions multi-centres.',
       department: 'direction',
       agents: agents.filter(agent => agent.department === 'direction' && agent.id !== topAgent.id)
     },
@@ -522,11 +522,11 @@ function renderOpsAgentDetail(agent, activity, connectors = []) {
         </div>
         <div class="ai-detail-section">
           <span>Outils</span>
-          <p>${escapeHtml((agent.tools || []).join(' • ') || activity.currentTool)}</p>
+          <p>${escapeHtml((agent.tools || []).join(' · ') || activity.currentTool)}</p>
         </div>
         <div class="ai-detail-section">
           <span>Permissions</span>
-          <p>${escapeHtml((agent.permissions || []).join(' • ') || 'Lecture uniquement')}</p>
+          <p>${escapeHtml((agent.permissions || []).join(' · ') || 'Lecture uniquement')}</p>
         </div>
       </div>
       <div class="ai-detail-section">
@@ -579,7 +579,7 @@ function buildOpsLiveProblems(ecosystem, agents, activations, orchestration, con
     problems.push({
       level: first.priority === 'P0' ? 'high' : 'info',
       title: first.title || first.id || 'Amélioration détectée',
-      text: first.reason || (first.steps || []).slice(0, 2).join(' • ') || 'Suggestion agent prête à examiner.',
+      text: first.reason || (first.steps || []).slice(0, 2).join(' · ') || 'Suggestion agent prête à examiner.',
     });
   }
   if (!Number(footprint.reservations || 0) && !Number(footprint.communications || 0) && !Number(footprint.events || 0)) {
@@ -758,7 +758,7 @@ function renderOpsAgentStack() {
           </div>
           <div>
             <div class="title">${escapeHtml(agent.label || agent.id)}</div>
-            <div class="meta">${escapeHtml((agent.skills || []).slice(0, 4).join(' • ') || agent.id)}</div>
+            <div class="meta">${escapeHtml((agent.skills || []).slice(0, 4).join(' · ') || agent.id)}</div>
           </div>
           <div class="meta">${escapeHtml(agent.reason || agent.mission || '')}</div>
           <span class="ops-pill">${escapeHtml(agent.executable ? (agent.useful === false ? 'repos' : 'handler') : 'catalogue')}</span>
@@ -767,7 +767,7 @@ function renderOpsAgentStack() {
       ${backlog.slice(0, 5).map(item => `
         <div class="ops-row template">
           <div><span class="ops-pill ${escapeHtml(item.status || '')}">${escapeHtml(item.priority || 'P')}</span></div>
-          <div><div class="title">${escapeHtml(item.title || item.id)}</div><div class="meta">${escapeHtml(item.reason || (item.steps || []).slice(0, 3).join(' • '))}</div></div>
+          <div><div class="title">${escapeHtml(item.title || item.id)}</div><div class="meta">${escapeHtml(item.reason || (item.steps || []).slice(0, 3).join(' · '))}</div></div>
           <span class="ops-pill">${escapeHtml(item.safeAutomation || item.status || 'ready')}</span>
         </div>
       `).join('')}
@@ -811,7 +811,7 @@ function renderOpsEvents() {
           <div class="title">${escapeHtml(OPS_EVENT_TYPE_LABELS[item.eventType] || String(item.eventType || 'Événement').replace(/_/g, ' '))} · ${escapeHtml(OPS_ACTIVITY_TYPE_LABELS[item.activityType] || 'Opération')}</div>
           <div class="meta">${escapeHtml(OPS_EVENT_REASON_LABELS[item.reasonId] || 'Signal terrain')} · ${escapeHtml(formatOpsTimestamp(item.createdAt))}</div>
         </div>
-        <div class="meta">${escapeHtml(`${item.plannedStart || '--:--'} → ${item.actualEnd || item.actualStart || '--:--'} • ${item.actualMinutes || item.plannedMinutes || 0} min`)}</div>
+        <div class="meta">${escapeHtml(`${item.plannedStart || '--:--'} → ${item.actualEnd || item.actualStart || '--:--'} · ${item.actualMinutes || item.plannedMinutes || 0} min`)}</div>
       </div>
     `).join('')}
   </div>`;
@@ -884,7 +884,7 @@ function getOpsSimulationProfileTone(profileId) {
     rush: {
       badge: 'Niveau 3',
       objective: 'Rush fort, beaucoup de groupes.',
-      proof: 'Teste les retards, alternatives et conflits bowling/laser.'
+      proof: 'Éprouve les retards, alternatives et conflits bowling/laser.'
     },
     max: {
       badge: 'Niveau 4',
@@ -948,9 +948,9 @@ function renderOpsSimulationCommandMap(stats = {}, payload = {}) {
     },
     {
       href: '#ops-sim-staff-reviews',
-      label: 'Validation staff',
+      label: 'À vérifier',
       value: `${pendingReviews} à traiter`,
-      detail: 'OK staff, proposer une alternative ou refuser.'
+      detail: 'Valider, proposer une alternative ou refuser.'
     },
     {
       href: '#ops-sim-run-stats',
@@ -1039,7 +1039,7 @@ function renderOpsSimulationReviews(payload = {}) {
     return `
       <div id="ops-sim-staff-reviews" class="ops-sim-review-board">
         <div class="ops-sim-card">
-          <span class="ops-pill">Validation staff</span>
+          <span class="ops-pill">À vérifier</span>
           <h3>Aucune décision en attente</h3>
           <p>Les demandes risquées, les conflits et les refus sans solution apparaîtront ici avec des actions claires.</p>
         </div>
@@ -1140,7 +1140,7 @@ function renderOpsSimulationCommunications(payload = {}) {
         `).join('') : `
           <div class="ops-sim-empty">
             <strong>Aucun email créé</strong>
-            <span>Lance un niveau puis avance la simulation. Les confirmations, rappels, refus et alternatives apparaîtront ici.</span>
+            <span>Lancez un niveau puis avancez la simulation. Les confirmations, rappels, refus et alternatives apparaîtront ici.</span>
           </div>`}
       </div>
     </section>`;
@@ -1326,7 +1326,7 @@ function renderOpsSimulation() {
         <p>Agents client + staff, réservations bowling/laser/formules, retards, refus limites, mails brouillons et logs de décision. Tout est marqué simulation et ne part pas aux vrais clients.</p>
         ${renderOpsSimulationProfilePicker()}
         <div class="ops-sim-progress"><span style="width:${progress}%"></span></div>
-        <p>${run ? `${Number(run.stepIndex || 0)} / ${Number(run.totalSteps || 0)} actions • ${escapeHtml(profile?.label || run.payload?.scenario || 'scenario')} • vitesse x${Number(run.speedFactor || 0)} • ${escapeHtml(run.simDate || '')}` : `Aucun run actif pour ${escapeHtml(getSimulationDate())}.`}</p>
+        <p>${run ? `${Number(run.stepIndex || 0)} / ${Number(run.totalSteps || 0)} actions · ${escapeHtml(profile?.label || run.payload?.scenario || 'scenario')} · vitesse x${Number(run.speedFactor || 0)} · ${escapeHtml(run.simDate || '')}` : `Aucun run actif pour ${escapeHtml(getSimulationDate())}.`}</p>
         <div class="ops-sim-actions">
           ${primaryAction}
           ${autoAction}
@@ -1354,7 +1354,7 @@ function renderOpsSimulation() {
           ${timeline.length ? timeline.slice(-12).reverse().map(item => `
             <div class="ops-sim-timeline-item">
               <strong>${escapeHtml(item.label || item.kind || 'Action')}</strong>
-              <span>${escapeHtml(`${item.kind || 'event'} • minute ${item.minute ?? '--'} • ${item.detail || ''}`)}</span>
+              <span>${escapeHtml(`${item.kind || 'event'} · minute ${item.minute ?? '--'} · ${item.detail || ''}`)}</span>
             </div>
           `).join('') : `<p>Aucune action jouée pour le moment.</p>`}
         </div>
@@ -1444,7 +1444,7 @@ async function stepOpsSimulation(batchSize = 8, auto = false) {
   const current = getOpsSimulationPayload();
   const run = current?.run;
   if (!run?.id || run.status !== 'running') {
-    if (!auto) toast('Lance une simulation avant de jouer les étapes.');
+    if (!auto) toast('Lancez une simulation avant de jouer les étapes.');
     stopOpsSimulationAuto();
     return;
   }
@@ -1488,7 +1488,7 @@ async function fastForwardOpsSimulation() {
   const current = getOpsSimulationPayload();
   const run = current?.run;
   if (!run?.id) {
-    toast('Lance une simulation avant de jouer tout le test.');
+    toast('Lancez une simulation avant de jouer tout le test.');
     return;
   }
   try {
@@ -1535,7 +1535,7 @@ async function reviewOpsSimulation(reviewId, decision, alternativeIndex = 0) {
   const current = getOpsSimulationPayload();
   const run = current?.run;
   if (!run?.id) {
-    toast('Lance une simulation avant de valider.');
+    toast('Lancez une simulation avant de valider.');
     return;
   }
   try {
@@ -1555,7 +1555,7 @@ async function reviewOpsSimulation(reviewId, decision, alternativeIndex = 0) {
     renderOpsAdmin();
     await loadAdminDashboard(true);
     toast(decision === 'approve'
-      ? 'Validation staff appliquée.'
+      ? 'Réservation validée.'
       : decision === 'send_alternatives'
         ? 'Alternative ajoutée à la file mail.'
         : 'Refus propre ajouté à la file mail.');

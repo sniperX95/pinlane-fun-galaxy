@@ -15005,34 +15005,9 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
    filter), coupes proprement sous prefers-reduced-motion. Scope au panneau
    fondateur (#staffCockpitPage) et aux cartes de la Direction (dir-) : le
    reste de l'app garde sa sobriete. Le "reflet qui bouge" est une bande de
-   lumiere diagonale qui balaie une carte au survol, et un sheen ambiant tres
-   lent sur les barres de titre. ============================================ */
-
-/* --- 26.1 Barre de titre : sheen ambiant lent (la lumiere respire) --------- */
-#staffCockpitPage .pv2-bar {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-#staffCockpitPage .pv2-bar::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: linear-gradient(115deg,
-    transparent 42%,
-    color-mix(in srgb, var(--text) 5%, transparent) 48%,
-    color-mix(in srgb, var(--text) 8%, transparent) 50%,
-    color-mix(in srgb, var(--text) 5%, transparent) 52%,
-    transparent 58%);
-  transform: translateX(-35%);
-  animation: pl-hero-sheen 11s ease-in-out infinite;
-}
-@keyframes pl-hero-sheen {
-  0%, 100% { transform: translateX(-35%); }
-  50% { transform: translateX(35%); }
-}
+   lumiere diagonale qui balaie une carte au survol. La barre de titre ne
+   porte plus de sheen ambiant (2026-09-25) : fige sur une capture ou entre
+   deux passages, il se lisait comme une tache floue pres du titre. ======== */
 
 /* --- 26.2 Cartes : elevation ressort + reflet qui balaie au survol --------- */
 #staffCockpitPage .fck-center-card,
@@ -15187,7 +15162,6 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 
 /* --- 26.7 Respect absolu de prefers-reduced-motion ------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  #staffCockpitPage .pv2-bar::after,
   .fca-panel::before,
   .fte-modal::before,
   .ops-sidebar .fgx-menu-item.is-active::before,

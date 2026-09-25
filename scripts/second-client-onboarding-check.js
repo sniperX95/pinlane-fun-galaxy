@@ -1309,8 +1309,8 @@ async function captureConsoleJourney() {
         type(byLabel('identifiant du centre'), centerId);
         type(byLabel('nom du centre'), centerName);
         type(document.getElementById('fcpAccentText'), accentValue);
-        type(byLabel("nom d'expediteur"), senderLabel);
-        type(byLabel("adresse d'expediteur"), senderEmail);
+        type(byLabel("nom d'expéditeur"), senderLabel);
+        type(byLabel("adresse d'expéditeur"), senderEmail);
       };
       const noteText = () => String((document.getElementById('fcpBrandNote') || {}).textContent || '').trim();
       const errorText = () => {

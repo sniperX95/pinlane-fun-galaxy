@@ -71,7 +71,7 @@
     } catch (error) {
       const status = Number(error && error.status);
       fca.error = (status === 400 || status === 404)
-        ? 'Cette vue n\'est pas encore disponible cote serveur. Elle s\'allumera a la prochaine mise en production.'
+        ? 'Cette vue n\'est pas encore disponible côté serveur. Elle s\'allumera à la prochaine mise en production.'
         : ((error && error.userMessage) || 'Les centres n\'ont pas pu se charger. Rechargez dans un instant.');
     } finally {
       fca.loading = false;
@@ -90,8 +90,8 @@
 
   const STATUS = {
     active: { label: 'actif', tone: 'green', toneClass: 'tone-success' },
-    planned: { label: 'en preparation', tone: 'amber', toneClass: 'tone-warning' },
-    closed: { label: 'ferme', tone: 'red', toneClass: 'tone-danger' },
+    planned: { label: 'en préparation', tone: 'amber', toneClass: 'tone-warning' },
+    closed: { label: 'fermé', tone: 'red', toneClass: 'tone-danger' },
   };
   const STATUS_ORDER = ['active', 'planned', 'closed'];
 
@@ -110,7 +110,7 @@
     partyTables: { softCapacity: 40, hardCapacity: 60 },
     barDesk: { handlesBooking: true, handlesBriefing: false, handlesFoodAndDrink: true, activityEscort: false },
   };
-  const RISK_LABELS = { critical: 'critique', managed: 'maitrise', low: 'faible' };
+  const RISK_LABELS = { critical: 'critique', managed: 'maîtrisé', low: 'faible' };
 
   function money(n) {
     const v = Number(n) || 0;
@@ -196,8 +196,8 @@
 
   function testDataBanner() {
     return `<aside class="fck-testdata" role="note">
-        Donnees de TEST : le SaaS n'est pas lance, tout ce qui suit vient des essais internes.
-        Aucun chiffre de cette page n'est du reel client.
+        Données de TEST : le SaaS n'est pas lancé, tout ce qui suit vient des essais internes.
+        Aucun chiffre de cette page n'est du réel client.
       </aside>`;
   }
 
@@ -213,7 +213,7 @@
   }
 
   function summaryHtml(config) {
-    if (!config || typeof config !== 'object') return '<span class="pv2-quiet">Configuration a definir</span>';
+    if (!config || typeof config !== 'object') return '<span class="pv2-quiet">Configuration à définir</span>';
     const parts = [];
     const res = config.resources || {};
     const b = res.bowling;
@@ -366,10 +366,10 @@
       return `<div class="fck-center-grid fca-center-grid">${centers.map(centerCard).join('')}</div>`;
     }
     if (total) {
-      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun centre ne correspond a la recherche.</p></div></section>`;
+      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun centre ne correspond à la recherche.</p></div></section>`;
     }
     if (fca.loaded && !fca.error) {
-      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun centre enregistre pour le moment. Creez le premier avec "Nouveau centre".</p></div></section>`;
+      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun centre enregistré pour le moment. Créez le premier avec "Nouveau centre".</p></div></section>`;
     }
     return '';
   }
@@ -385,7 +385,7 @@
         <div>
           <div class="pv2-bar-crumb"><span class="pv2-live"></span>Plateforme</div>
           <h1>Centres</h1>
-          <p class="pv2-bar-sub">Chaque centre du SaaS : statut, ressources, horaires, adoption. Tout est modifiable sans code, et chaque ecriture est tracee.</p>
+          <p class="pv2-bar-sub">Chaque centre du SaaS : statut, ressources, horaires, adoption. Tout est modifiable sans code, et chaque écriture est tracée.</p>
         </div>
         <div class="pv2-bar-actions">
           <button type="button" class="pv2-btn ghost" onclick="fcaReload()">Actualiser</button>
@@ -396,7 +396,7 @@
       ${d.testData ? testDataBanner() : ''}
 
       ${fca.error ? `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">${esc(fca.error)}</p>
-        <button type="button" class="pv2-btn" onclick="fcaReload()">Reessayer</button></div></section>` : ''}
+        <button type="button" class="pv2-btn" onclick="fcaReload()">Réessayer</button></div></section>` : ''}
 
       ${fca.loading && !fca.data ? `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Chargement des centres...</p></div></section>` : ''}
 
@@ -440,11 +440,11 @@
 
   function modalTitleSub() {
     if (fca.modal && fca.modal.mode === 'new') {
-      return { title: 'Nouveau centre', sub: 'Cree une fiche centre. Les ressources et horaires se reglent ensuite.' };
+      return { title: 'Nouveau centre', sub: 'Créez une fiche centre. Les ressources et horaires se règlent ensuite.' };
     }
     if (fca.modal && fca.modal.mode === 'delete') {
       const c = findCenter(fca.modal.centerId) || {};
-      return { title: 'Supprimer le centre', sub: `${esc(c.name || fca.modal.centerId || '')} · action definitive.` };
+      return { title: 'Supprimer le centre', sub: `${esc(c.name || fca.modal.centerId || '')} · action définitive.` };
     }
     const c = findCenter(fca.modal && fca.modal.centerId) || {};
     return { title: c.name || (fca.modal && fca.modal.centerId) || 'Centre', sub: `Configuration du centre (${esc(c.id || (fca.modal && fca.modal.centerId) || '')}).` };
@@ -542,10 +542,10 @@
     if (on) {
       inner += `<div class="fca-fields">
         ${fieldNum('Nombre de pistes', 'resources.bowling.laneCount', ['resources', 'bowling', 'laneCount'], 1, 60)}
-        ${fieldNum('Capacite normale / piste', 'resources.bowling.normalCapacityPerLane', ['resources', 'bowling', 'normalCapacityPerLane'], 1, 20)}
-        ${fieldNum('Capacite exceptionnelle / piste', 'resources.bowling.emergencyCapacityPerLane', ['resources', 'bowling', 'emergencyCapacityPerLane'], 1, 30)}
+        ${fieldNum('Capacité normale / piste', 'resources.bowling.normalCapacityPerLane', ['resources', 'bowling', 'normalCapacityPerLane'], 1, 20)}
+        ${fieldNum('Capacité exceptionnelle / piste', 'resources.bowling.emergencyCapacityPerLane', ['resources', 'bowling', 'emergencyCapacityPerLane'], 1, 30)}
       </div>
-      ${toggleRow('Preferer les pistes adjacentes', 'Regroupe un meme groupe sur des pistes cote a cote.', 'resources.bowling.preferAdjacentLanes')}`;
+      ${toggleRow('Préférer les pistes adjacentes', 'Regroupe un même groupe sur des pistes côte à côte.', 'resources.bowling.preferAdjacentLanes')}`;
     }
     return `<div class="fca-section"><div class="fca-section-title">Bowling</div>${inner}</div>`;
   }
@@ -561,13 +561,13 @@
         .map((v) => `<option value="${esc(v)}" ${risk === v ? 'selected' : ''}>${esc(RISK_LABELS[v] || v)}</option>`).join('');
       inner += `<div class="fca-fields">
         ${fieldNum('Nombre d\'armes', 'resources.laser.weaponCount', ['resources', 'laser', 'weaponCount'], 1, 200)}
-        ${fieldNum('Lancements en parallele', 'resources.laser.parallelLaunches', ['resources', 'laser', 'parallelLaunches'], 1, 20)}
+        ${fieldNum('Lancements en parallèle', 'resources.laser.parallelLaunches', ['resources', 'laser', 'parallelLaunches'], 1, 20)}
         <div class="fca-field">
-          <label>Niveau de risque operationnel</label>
+          <label>Niveau de risque opérationnel</label>
           <select onchange="fcaSet('resources.laser.riskLevel', this.value)">${options}</select>
         </div>
       </div>
-      ${toggleRow('Les groupes peuvent etre scindes proprement', '', 'resources.laser.canSplitGroupsCleanly')}
+      ${toggleRow('Les groupes peuvent être scindés proprement', '', 'resources.laser.canSplitGroupsCleanly')}
       ${toggleRow('Groupe complet requis avant de lancer', '', 'resources.laser.requiresCompleteGroupBeforeLaunch')}`;
     }
     return `<div class="fca-section"><div class="fca-section-title">Laser Game</div>${inner}</div>`;
@@ -580,8 +580,8 @@
         aria-label="Tables actives" onclick="fcaResourceToggle('partyTables')"><span></span></button></div>`;
     if (on) {
       inner += `<div class="fca-fields">
-        ${fieldNum('Capacite confortable (pax)', 'resources.partyTables.softCapacity', ['resources', 'partyTables', 'softCapacity'], 1, 500)}
-        ${fieldNum('Capacite maximale (pax)', 'resources.partyTables.hardCapacity', ['resources', 'partyTables', 'hardCapacity'], 1, 500)}
+        ${fieldNum('Capacité confortable (pax)', 'resources.partyTables.softCapacity', ['resources', 'partyTables', 'softCapacity'], 1, 500)}
+        ${fieldNum('Capacité maximale (pax)', 'resources.partyTables.hardCapacity', ['resources', 'partyTables', 'hardCapacity'], 1, 500)}
       </div>`;
     }
     return `<div class="fca-section"><div class="fca-section-title">Tables</div>${inner}</div>`;
@@ -593,10 +593,10 @@
       <button type="button" class="mk-switch ${on ? 'is-on' : ''}" role="switch" aria-checked="${on ? 'true' : 'false'}"
         aria-label="Bar actif" onclick="fcaResourceToggle('barDesk')"><span></span></button></div>`;
     if (on) {
-      inner += toggleRow('Prend les reservations', '', 'resources.barDesk.handlesBooking')
+      inner += toggleRow('Prend les réservations', '', 'resources.barDesk.handlesBooking')
         + toggleRow('Fait le briefing', '', 'resources.barDesk.handlesBriefing')
-        + toggleRow('Gere boissons et petite restauration', '', 'resources.barDesk.handlesFoodAndDrink')
-        + toggleRow('Accompagne les groupes en activite', '', 'resources.barDesk.activityEscort');
+        + toggleRow('Gère boissons et petite restauration', '', 'resources.barDesk.handlesFoodAndDrink')
+        + toggleRow('Accompagne les groupes en activité', '', 'resources.barDesk.activityEscort');
     }
     return `<div class="fca-section"><div class="fca-section-title">Comptoir</div>${inner}</div>`;
   }
@@ -612,7 +612,7 @@
             <span class="fca-dash">-</span>
             <input type="time" value="${esc(slot.close || '')}" aria-label="Fermeture ${esc(DAY_NAMES[day])}" oninput="fcaSet('defaultSchedule.${escJs(scope)}.${day}.close', this.value)">
           </div>`
-        : `<span class="fca-day-closed">Ferme</span>`;
+        : `<span class="fca-day-closed">Fermé</span>`;
       return `<div class="fca-day">
         <span class="fca-day-name">${esc(DAY_NAMES[day])}</span>
         <button type="button" class="mk-switch ${open ? 'is-on' : ''}" role="switch" aria-checked="${open ? 'true' : 'false'}"
@@ -627,16 +627,16 @@
     const sched = getPath(fca.draft, 'defaultSchedule');
     let inner;
     if (sched && typeof sched === 'object' && (sched.regular || sched.holiday)) {
-      inner = `<div class="fca-section-note">Grille par defaut appliquee aux nouvelles semaines. Chaque jour : ouvert/ferme et les heures.</div>
+      inner = `<div class="fca-section-note">Grille par défaut appliquée aux nouvelles semaines. Chaque jour : ouvert/fermé et les heures.</div>
         <div class="fca-section-title" style="text-transform:none;letter-spacing:0;font-size:12.5px;margin:2px 0 4px">Semaine ordinaire</div>
         ${scheduleGrid('regular')}
-        <div class="fca-section-title" style="text-transform:none;letter-spacing:0;font-size:12.5px;margin:12px 0 4px">Jours feries</div>
+        <div class="fca-section-title" style="text-transform:none;letter-spacing:0;font-size:12.5px;margin:12px 0 4px">Jours fériés</div>
         ${scheduleGrid('holiday')}`;
     } else {
-      const label = typeof sched === 'string' ? (SCHEDULE_MARKERS[sched] || sched.replace(/_/g, ' ')) : 'aucune grille definie';
+      const label = typeof sched === 'string' ? (SCHEDULE_MARKERS[sched] || sched.replace(/_/g, ' ')) : 'aucune grille définie';
       inner = `<div class="fca-schedule-marker">
         <span class="pv2-quiet">Horaires : ${esc(label)}.</span>
-        <button type="button" class="pv2-btn" onclick="fcaConvertSchedule()">Definir une grille</button>
+        <button type="button" class="pv2-btn" onclick="fcaConvertSchedule()">Définir une grille</button>
       </div>`;
     }
     return `<div class="fca-section"><div class="fca-section-title">Horaires</div>${inner}</div>`;
@@ -648,7 +648,7 @@
     const keys = Object.keys(av).filter((k) => typeof av[k] === 'boolean');
     if (!keys.length) return '';
     const rows = keys.map((k) => toggleRow(k.replace(/_/g, ' '), '', `activityAvailability.${k}`)).join('');
-    return `<div class="fca-section"><div class="fca-section-title">Activites proposees</div>${rows}</div>`;
+    return `<div class="fca-section"><div class="fca-section-title">Activités proposées</div>${rows}</div>`;
   }
 
   function configBody() {
@@ -657,7 +657,7 @@
     const statusOptions = STATUS_ORDER.map((k) => `<option value="${k}" ${status === k ? 'selected' : ''}>${esc(STATUS[k].label)}</option>`).join('');
     return `${fca.modalError ? `<div class="fca-modal-error">${esc(fca.modalError)}</div>` : ''}
       <div class="fca-section">
-        <div class="fca-section-title">General</div>
+        <div class="fca-section-title">Général</div>
         <div class="fca-fields">
           <div class="fca-field">
             <label>Statut</label>
@@ -683,16 +683,16 @@
     const statusOptions = STATUS_ORDER.map((k) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${esc(STATUS[k].label)}</option>`).join('');
     return `${fca.modalError ? `<div class="fca-modal-error">${esc(fca.modalError)}</div>` : ''}
       <div class="fca-section">
-        <div class="fca-section-title">Identite</div>
+        <div class="fca-section-title">Identité</div>
         <div class="fca-fields">
           <div class="fca-field fca-span2">
             <label>Identifiant (slug)</label>
             <input type="text" value="${esc(d.id || '')}" data-autofocus placeholder="fun-galaxy-namur"
               pattern="[a-z0-9]+(?:-[a-z0-9]+)*" oninput="fcaSet('id', this.value)">
-            <span class="fca-hint">Minuscules, chiffres et tirets simples. Definitif : il identifie le centre partout.</span>
+            <span class="fca-hint">Minuscules, chiffres et tirets simples. Définitif : il identifie le centre partout.</span>
           </div>
           <div class="fca-field fca-span2">
-            <label>Nom affiche</label>
+            <label>Nom affiché</label>
             <input type="text" value="${esc(d.name || '')}" placeholder="Nom public du centre" oninput="fcaSet('name', this.value)">
           </div>
           <div class="fca-field">
@@ -718,12 +718,12 @@
     const owner = c.clientName ? ` (client <strong>${esc(c.clientName)}</strong>)` : '';
     return `${fca.modalError ? `<div class="fca-modal-error">${esc(fca.modalError)}</div>` : ''}
       <div class="fck-confirm-warn" role="alert">
-        Le centre ${label}${owner} sera supprime definitivement de la plateforme,
-        avec ses roles et acces staff${members > 0 ? ` (<strong>${esc(num(members))} membre${members > 1 ? 's' : ''}</strong> perdront leur acces)` : ''}
+        Le centre ${label}${owner} sera supprimé définitivement de la plateforme,
+        avec ses rôles et accès staff${members > 0 ? ` (<strong>${esc(num(members))} membre${members > 1 ? 's' : ''}</strong> perdront leur accès)` : ''}
         et ses journaux techniques.
-        ${resas > 0 ? `Il porte <strong>${esc(num(resas))} reservation(s)</strong> sur 30 jours : le serveur <strong>refusera</strong> tant qu'elles existent.` : `S'il porte des reservations, le serveur <strong>refusera</strong> plutot que de les effacer.`}
+        ${resas > 0 ? `Il porte <strong>${esc(num(resas))} réservation(s)</strong> sur 30 jours : le serveur <strong>refusera</strong> tant qu'elles existent.` : `S'il porte des réservations, le serveur <strong>refusera</strong> plutôt que de les effacer.`}
         Un centre de base du fichier (socle ops-knowledge) n'est pas supprimable ici.
-        <span class="fck-confirm-irrev">Cette action est irreversible.</span>
+        <span class="fck-confirm-irrev">Cette action est irréversible.</span>
       </div>`;
   }
 
@@ -737,13 +737,13 @@
     if (!fca.modal) return '';
     const saving = fca.saving;
     if (fca.modal.mode === 'delete') {
-      return `<span class="fca-foot-note">Suppression tracee au journal d'audit.</span>
+      return `<span class="fca-foot-note">Suppression tracée au journal d'audit.</span>
         <button type="button" class="pv2-btn ghost" ${saving ? 'disabled' : ''} onclick="fcaCloseModal()">Annuler</button>
-        <button type="button" class="pv2-btn fck-confirm-danger" ${saving ? 'disabled' : ''} onclick="fcaConfirmDelete()">${saving ? 'Suppression...' : 'Supprimer definitivement'}</button>`;
+        <button type="button" class="pv2-btn fck-confirm-danger" ${saving ? 'disabled' : ''} onclick="fcaConfirmDelete()">${saving ? 'Suppression...' : 'Supprimer définitivement'}</button>`;
     }
     const isNew = fca.modal.mode === 'new';
-    const primaryLabel = isNew ? (saving ? 'Creation...' : 'Creer le centre') : (saving ? 'Enregistrement...' : 'Enregistrer');
-    return `${!isNew ? '<span class="fca-foot-note">Chaque ecriture est tracee au journal d\'audit.</span>' : ''}
+    const primaryLabel = isNew ? (saving ? 'Création...' : 'Créer le centre') : (saving ? 'Enregistrement...' : 'Enregistrer');
+    return `${!isNew ? '<span class="fca-foot-note">Chaque écriture est tracée au journal d\'audit.</span>' : ''}
       <button type="button" class="pv2-btn ghost" ${saving ? 'disabled' : ''} onclick="fcaCloseModal()">Annuler</button>
       <button type="button" class="pv2-btn primary" ${saving ? 'disabled' : ''} onclick="fcaSave()">${primaryLabel}</button>`;
   }
@@ -798,14 +798,14 @@
         method: 'POST',
         body: JSON.stringify({ action: 'deleteCenter', id: fca.modal.centerId }),
       });
-      toast('Centre supprime.');
+      toast('Centre supprimé.');
       closeModal();
       reload(); // la liste et les totaux plateforme suivent
     } catch (error) {
       // Refus serveur (baseline fichier, reservations presentes...) : le
       // message expose s'affiche DANS la modale, rien n'a ete supprime.
       fca.saving = false;
-      fca.modalError = (error && error.userMessage) || (error && error.message) || 'Suppression refusee. Reessayez.';
+      fca.modalError = (error && error.userMessage) || (error && error.message) || 'Suppression refusée. Réessayez.';
       refreshBody();
       refreshFoot();
     }
@@ -895,12 +895,12 @@
         method: 'POST',
         body: JSON.stringify({ action: 'saveCenterConfig', centerId: fca.modal.centerId, config: patch }),
       });
-      toast('Configuration enregistree.');
+      toast('Configuration enregistrée.');
       closeModal();
       reload();
     } catch (error) {
       fca.saving = false;
-      fca.modalError = (error && error.userMessage) || 'Enregistrement refuse. Reessayez.';
+      fca.modalError = (error && error.userMessage) || 'Enregistrement refusé. Réessayez.';
       refreshBody();
       refreshFoot();
     }
@@ -916,7 +916,7 @@
       return;
     }
     if (!name) { fca.modalError = 'Le nom est requis.'; refreshBody(); return; }
-    if (findCenter(id)) { fca.modalError = 'Cet identifiant existe deja.'; refreshBody(); return; }
+    if (findCenter(id)) { fca.modalError = 'Cet identifiant existe déjà.'; refreshBody(); return; }
     fca.saving = true;
     fca.modalError = '';
     refreshFoot();
@@ -925,12 +925,12 @@
         method: 'POST',
         body: JSON.stringify({ action: 'saveCenter', center: { id, name, status: d.status || 'planned', timezone: d.timezone || 'Europe/Brussels' } }),
       });
-      toast('Centre cree.');
+      toast('Centre créé.');
       closeModal();
       reload();
     } catch (error) {
       fca.saving = false;
-      fca.modalError = (error && error.userMessage) || 'Creation refusee. Reessayez.';
+      fca.modalError = (error && error.userMessage) || 'Création refusée. Réessayez.';
       refreshBody();
       refreshFoot();
     }
@@ -955,9 +955,9 @@
       });
       center.status = status;
       if (center.config && typeof center.config === 'object') center.config.status = status;
-      toast('Statut mis a jour.');
+      toast('Statut mis à jour.');
     } catch (error) {
-      toast((error && error.userMessage) || 'Le statut n\'a pas ete change.');
+      toast((error && error.userMessage) || 'Le statut n\'a pas été changé.');
     } finally {
       fca.statusBusy = '';
       renderList();

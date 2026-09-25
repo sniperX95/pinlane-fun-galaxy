@@ -315,7 +315,7 @@ async function runSuite(browser, quiet) {
         cards: document.querySelectorAll('#staffCockpitPage .fcp-client-card').length,
       };
     });
-    ok(cl.mrrText.includes('490') && !/definir/i.test(cl.mrrText), 'clients-mrr-real', `MRR="${cl.mrrText}"`);
+    ok(cl.mrrText.includes('490') && !/d[ée]finir/i.test(cl.mrrText), 'clients-mrr-real', `MRR="${cl.mrrText}"`);
     ok(cl.cards === 3, 'clients-cards', `cartes=${cl.cards}`);
 
     // 2. Edition du prix : POST setClientBilling { clientId, monthlyPrice }
@@ -350,7 +350,7 @@ async function runSuite(browser, quiet) {
       const hint = document.querySelector('[data-fcp-panel="kpis"] [data-kpi="mrr"] .fcp-kpi-hint');
       return { num: mrr ? mrr.textContent.trim() : '', hint: hint ? hint.textContent.trim() : '' };
     });
-    ok(/definir/i.test(zt.num), 'mrr-adefinir', `MRR="${zt.num}" (doit dire "a definir", jamais un faux 0)`);
+    ok(/à définir/i.test(zt.num), 'mrr-adefinir', `MRR="${zt.num}" (doit dire "à définir", jamais un faux 0)`);
     ok(/0\s*\/\s*3/.test(zt.hint), 'mrr-hint', `indice="${zt.hint}"`);
   } catch (error) {
     ok(false, 'suite-exception', error.message);

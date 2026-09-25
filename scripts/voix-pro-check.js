@@ -25,8 +25,12 @@
 // litteral compare a un texte normalise (includes, ===) et une requete SQL ne
 // sont pas du texte lu.
 //
-// Hors perimetre, a dessein : les outils du fondateur (founder-*.js,
-// ops-console.js), que seul le proprietaire de la plateforme ouvre.
+// Les outils du fondateur (founder-*.js) suivent la meme voix depuis le
+// 2026-09-25 : ils melangeaient « tu » et « vous » (« Réessaye » a cote de
+// « Réessayez ») et 290 lignes avaient perdu des accents. ops-console.js
+// n est pas qu au fondateur : app-main le charge pour la page Emails,
+// l accueil et les reglages, et son onglet Activite s affiche a la Direction
+// d un centre.
 //
 //   node scripts/voix-pro-check.js                 le gate
 //   node scripts/voix-pro-check.js --contre-preuves   chaque mutation doit rougir
@@ -41,6 +45,8 @@ const CLIENT = [
   'assets/admin-data.js', 'assets/email-thread.js', 'assets/pinlane-analytics-board.js', 'assets/booking-core.js',
   'assets/staff-menu.js', 'assets/staff-auth-session.js', 'assets/ops-live.js', 'assets/ops-progress.js',
   'assets/pinlane-daterange.js', 'assets/boot-view.js', 'assets/fungalaxy-booking.js', 'assets/pinlane-landing.js',
+  'assets/ops-console.js', 'assets/founder-cockpit.js', 'assets/founder-centres.js', 'assets/founder-clients-platform.js',
+  'assets/founder-tarifs.js', 'assets/founder-team.js',
   'demo/demo.js',
 ];
 const HTML = ['index.html', 'demo/index.html'];
@@ -313,6 +319,8 @@ if (!CONTRE) {
     ['assets/app-main.js', 'Rôle supprimé.'],
     ['assets/pinlane-daterange.js', 'Cette année'],
     ['index.html', 'Changer de planning sans quitter le plein écran'],
+    ['assets/founder-tarifs.js', 'Indiquez un prix per-pax entre 0 et 1000 EUR.'],
+    ['assets/ops-console.js', 'Lancez une simulation avant de valider.'],
   ];
   for (const [rel, phrase] of temoins) {
     const lus = (rel.endsWith('.html') ? texteHtml(sources[rel]) : litteraux(sources[rel].replace(/\r\n/g, '\n'))).map((l) => l.texte);
@@ -342,6 +350,10 @@ const MUTATIONS = [
   { nom: 'le vocabulaire du fournisseur revient', fichier: 'assets/staff-pages-v2.js', de: '<strong>Remise confirmée</strong>', vers: '<strong>Remise (accusés du fournisseur)</strong>' },
   { nom: 'l etiquette technique de validation revient', fichier: 'assets/admin-console.js', de: "    staff_review: 'À vérifier',", vers: "    staff_review: 'Validation staff'," },
   { nom: 'un separateur « • » revient', fichier: 'assets/booking-core.js', de: '${players} joueurs · ${waveCount} sessions', vers: '${players} joueurs • ${waveCount} sessions' },
+  { nom: 'un outil du fondateur tutoie de nouveau', fichier: 'assets/founder-tarifs.js', de: "'Indiquez un prix per-pax entre 0 et 1000 EUR.'", vers: "'Indique un prix per-pax entre 0 et 1000 EUR.'" },
+  { nom: 'un outil du fondateur perd ses accents', fichier: 'assets/founder-team.js', de: "toast('Rôle créé.')", vers: "toast('Role cree.')" },
+  { nom: 'ops-console tutoie de nouveau', fichier: 'assets/ops-console.js', de: "toast('Lancez une simulation avant de valider.')", vers: "toast('Lance une simulation avant de valider.')" },
+  { nom: 'ops-console reprend « Validation staff »', fichier: 'assets/ops-console.js', de: '<span class="ops-pill">À vérifier</span>', vers: '<span class="ops-pill">Validation staff</span>' },
 ];
 let mordent = 0;
 for (const m of MUTATIONS) {

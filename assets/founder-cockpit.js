@@ -56,19 +56,19 @@
     'cockpit-ia': 'aiLearning',
   };
   const PAGE_META = {
-    'cockpit-agents': { title: 'Agents IA', sub: 'Ce que chaque agent produit reellement, et ce que l\'IA coute.' },
-    'cockpit-incidents': { title: 'Incidents', sub: 'Triage unifie : les erreurs console des ecrans d\'abord, puis mails, jobs, worker et refus.' },
-    'cockpit-clients': { title: 'Clients', sub: 'Comment chaque centre gere son etablissement : configuration, adoption, acteurs.' },
+    'cockpit-agents': { title: 'Agents IA', sub: 'Ce que chaque agent produit réellement, et ce que l\'IA coûte.' },
+    'cockpit-incidents': { title: 'Incidents', sub: 'Triage unifié : les erreurs console des écrans d\'abord, puis mails, jobs, worker et refus.' },
+    'cockpit-clients': { title: 'Clients', sub: 'Comment chaque centre gère son établissement : configuration, adoption, acteurs.' },
     // Journal des modifications : outil PLATEFORME. Il vivait dans la barre de
     // controle de la Direction, cote client, alors qu'il expose les actions des
     // crons, des workers et les tentatives refusees - la vie interne de Pinlane,
     // pas le tableau de bord d'un gerant.
-    'cockpit-journal': { title: 'Journal des modifications', sub: 'Qui a change quoi, quand, et ce qui a change exactement. Les tentatives refusees y figurent aussi.' },
+    'cockpit-journal': { title: 'Journal des modifications', sub: 'Qui a changé quoi, quand, et ce qui a changé exactement. Les tentatives refusées y figurent aussi.' },
     // Apprentissage de l'IA marketing : outil PLATEFORME (demande du
     // 2026-07-28, « cote admin uniquement »). Il montre la mecanique interne du
     // produit : la grille de jugement des agents, leurs notes, l'ADN d'ecriture
     // et ce qui a ete appris des resultats reels.
-    'cockpit-ia': { title: 'Apprentissage de l\'IA', sub: 'Ce que l\'agent marketing a appris, ce qu\'il s\'est mis a surveiller, et ce qu\'il ne sait pas encore.' },
+    'cockpit-ia': { title: 'Apprentissage de l\'IA', sub: 'Ce que l\'agent marketing a appris, ce qu\'il s\'est mis à surveiller, et ce qu\'il ne sait pas encore.' },
   };
   const pageStates = {
     'cockpit-agents': { loaded: false, loading: false, error: '', data: null },
@@ -146,7 +146,7 @@
       // Action pas encore deployee cote serveur (400/404) : etat calme, pas
       // une fausse panne. Le front est livre avant les builders.
       st.error = (status === 400 || status === 404)
-        ? 'Cette vue n\'est pas encore disponible cote serveur. Elle s\'allumera a la prochaine mise en production.'
+        ? 'Cette vue n\'est pas encore disponible côté serveur. Elle s\'allumera à la prochaine mise en production.'
         : ((error && error.userMessage) || 'La page n\'a pas pu se charger. Rechargez dans un instant.');
     } finally {
       st.loading = false;
@@ -185,7 +185,7 @@
       fck.auditRows = (payload && payload.entries) || [];
     } catch (error) {
       fck.auditRows = null;
-      toast('Le journal n\'a pas pu etre filtre. Reessayez.');
+      toast('Le journal n\'a pas pu être filtré. Réessayez.');
     } finally {
       fck.auditLoading = false;
       render();
@@ -257,9 +257,9 @@
       if (fck.data && fck.data.sequences && fck.data.sequences.perCenter && fck.data.sequences.perCenter[center]) {
         fck.data.sequences.perCenter[center][key] = { enabled };
       }
-      toast(enabled ? 'Sequence activee.' : 'Sequence coupee.');
+      toast(enabled ? 'Séquence activée.' : 'Séquence coupée.');
     } catch (error) {
-      toast((error && error.userMessage) || 'La bascule n\'a pas ete enregistree.');
+      toast((error && error.userMessage) || 'La bascule n\'a pas été enregistrée.');
     } finally {
       fck.busy = '';
       render();
@@ -280,7 +280,7 @@
       toast('Job remis en file.');
       reloadActive();
     } catch (error) {
-      toast((error && error.userMessage) || 'Le job n\'a pas pu etre relance.');
+      toast((error && error.userMessage) || 'Le job n\'a pas pu être relancé.');
       fck.busy = '';
       render();
     } finally {
@@ -303,7 +303,7 @@
       toast('Mail remis en file.');
       reloadActive();
     } catch (error) {
-      toast((error && error.userMessage) || 'Le renvoi a echoue.');
+      toast((error && error.userMessage) || 'Le renvoi a échoué.');
       fck.busy = '';
       render();
     } finally {
@@ -329,10 +329,10 @@
         method: 'POST',
         body: JSON.stringify({ action: 'insightStatus', id: numId, status }),
       });
-      toast(status === 'applied' ? 'Idee appliquee.' : 'Idee ignoree.');
+      toast(status === 'applied' ? 'Idée appliquée.' : 'Idée ignorée.');
       reloadActive();
     } catch (error) {
-      toast((error && error.userMessage) || 'L\'action n\'a pas ete enregistree.');
+      toast((error && error.userMessage) || 'L\'action n\'a pas été enregistrée.');
       fck.busy = '';
       render();
     } finally {
@@ -353,10 +353,10 @@
         method: 'POST',
         body: JSON.stringify({ action: 'dismissIncident', stackHash: hash }),
       });
-      toast('Incident ecarte.');
+      toast('Incident écarté.');
       reloadActive();
     } catch (error) {
-      toast((error && error.userMessage) || 'L\'incident n\'a pas pu etre ecarte.');
+      toast((error && error.userMessage) || 'L\'incident n\'a pas pu être écarté.');
       fck.busy = '';
       render();
     } finally {
@@ -372,7 +372,7 @@
     if (Number.isNaN(date.getTime())) return 'jamais';
     const deltaMs = Date.now() - date.getTime();
     const minutes = Math.round(deltaMs / 60000);
-    if (minutes < 1) return 'a l\'instant';
+    if (minutes < 1) return 'à l\'instant';
     if (minutes < 60) return `il y a ${minutes} min`;
     const hours = Math.round(minutes / 60);
     if (hours < 24) return `il y a ${hours} h`;
@@ -415,13 +415,13 @@
     const clientCount = Number(p.clientCount) || 0;
     const honest = withPrice <= 0;
     return {
-      display: honest ? 'a definir' : money(p.mrr),
-      hint: `${withPrice}/${clientCount} prix renseignes`,
+      display: honest ? 'à définir' : money(p.mrr),
+      hint: `${withPrice}/${clientCount} prix renseignés`,
     };
   }
 
   const OUTCOME_CHIP = {
-    success: () => chip('green', 'Succes'),
+    success: () => chip('green', 'Succès'),
     error: () => chip('red', 'Erreur'),
     denied: () => chip('red', 'Refus'),
   };
@@ -469,8 +469,8 @@
 
   function testDataBanner() {
     return `<aside class="fck-testdata" role="note">
-        Donnees de TEST : le SaaS n'est pas lance, tout ce qui suit vient des essais internes.
-        Aucun chiffre de cette page n'est du reel client.
+        Données de TEST : le SaaS n'est pas lancé, tout ce qui suit vient des essais internes.
+        Aucun chiffre de cette page n'est du réel client.
       </aside>`;
   }
 
@@ -483,7 +483,7 @@
 
   // ---- Sections (page 'cockpit', inchangee sur le fond) ---------------------
 
-  function renderBreakage(b, title = 'Ce qui casse', subtitle = 'Mails, jobs, worker, refus d\'acces. Ce qui demande une action passe devant.', attrs = '') {
+  function renderBreakage(b, title = 'Ce qui casse', subtitle = 'Mails, jobs, worker, refus d\'accès. Ce qui demande une action passe devant.', attrs = '') {
     if (!b) return '';
     const mails = b.mails || {};
     const jobs = b.jobs || {};
@@ -497,7 +497,7 @@
       body += sectionError(mails) + sectionError(jobs) + sectionError(worker) + sectionError(denied);
     }
     if (!problems) {
-      body += okLine('Rien ne casse en ce moment. Mails, jobs, worker et acces sont sains.');
+      body += okLine('Rien ne casse en ce moment. Mails, jobs, worker et accès sont sains.');
     }
     if (Number(mails.failed) > 0) {
       const rows = (mails.recent || []).map((m) => `<tr>
@@ -505,7 +505,7 @@
         <td>${chip('red', `${m.attempts} tentative${m.attempts > 1 ? 's' : ''}`)}</td>
         <td class="fck-row-action"><button type="button" class="pv2-btn ghost" ${fck.busy === `mail:${m.id}` ? 'disabled' : ''} onclick="fckRetryMail(${Number(m.id)}, '${escJs(m.centerId)}')">${fck.busy === `mail:${m.id}` ? 'En cours…' : 'Renvoyer'}</button></td>
       </tr>`).join('');
-      body += `<h3 class="fck-sub">${mails.failed} mail${mails.failed > 1 ? 's' : ''} en echec <span class="pv2-quiet">(${esc(mails.window)})</span></h3>
+      body += `<h3 class="fck-sub">${mails.failed} mail${mails.failed > 1 ? 's' : ''} en échec <span class="pv2-quiet">(${esc(mails.window)})</span></h3>
         <table class="pv2-table fck-table"><tbody>${rows}</tbody></table>`;
     }
     if (Number(jobs.failed) > 0) {
@@ -514,15 +514,15 @@
         <td>${chip('red', `${j.attempts}/${j.maxAttempts}`)}</td>
         <td class="fck-row-action"><button type="button" class="pv2-btn ghost" ${fck.busy === `job:${j.id}` ? 'disabled' : ''} onclick="fckRequeueJob(${Number(j.id)})">${fck.busy === `job:${j.id}` ? 'En cours…' : 'Relancer'}</button></td>
       </tr>`).join('');
-      body += `<h3 class="fck-sub">${jobs.failed} job${jobs.failed > 1 ? 's' : ''} en echec <span class="pv2-quiet">(${esc(jobs.window)})</span></h3>
+      body += `<h3 class="fck-sub">${jobs.failed} job${jobs.failed > 1 ? 's' : ''} en échec <span class="pv2-quiet">(${esc(jobs.window)})</span></h3>
         <table class="pv2-table fck-table"><tbody>${rows}</tbody></table>`;
     }
     if (worker.lastRun) {
       const tone = worker.lastRun.status === 'ok' ? 'green' : (worker.lastRun.status === 'failed' ? 'red' : 'amber');
       body += `<p class="fck-line">Worker : dernier passage ${chip(tone, worker.lastRun.status === 'ok' ? 'sain' : worker.lastRun.status)}
-        <span class="pv2-quiet">${esc(worker.lastRun.taskName)} · ${esc(when(worker.lastRun.startedAt))}${Number(worker.failed24h) ? ` · ${worker.failed24h} echec(s) sur 24 h` : ''}</span></p>`;
+        <span class="pv2-quiet">${esc(worker.lastRun.taskName)} · ${esc(when(worker.lastRun.startedAt))}${Number(worker.failed24h) ? ` · ${worker.failed24h} échec${worker.failed24h > 1 ? 's' : ''} sur 24 h` : ''}</span></p>`;
     } else if (!worker.error) {
-      body += `<p class="fck-line">Worker : ${chip('amber', 'aucun passage enregistre')}</p>`;
+      body += `<p class="fck-line">Worker : ${chip('amber', 'aucun passage enregistré')}</p>`;
     }
     if (Number(denied.count) > 0) {
       // AGREGATION. La liste brute affichait huit fois « Direction partage /
@@ -547,7 +547,7 @@
         <td>${chip('red', esc(g.row.deniedReason || 'refus'))}</td>
         <td>${esc(when(g.last))}</td>
       </tr>`).join('');
-      body += `<h3 class="fck-sub">${denied.count} acces refuse${denied.count > 1 ? 's' : ''} <span class="pv2-quiet">(${esc(denied.window)} · ${groups.size} cause${groups.size > 1 ? 's' : ''} distincte${groups.size > 1 ? 's' : ''})</span></h3>
+      body += `<h3 class="fck-sub">${denied.count} accès refusé${denied.count > 1 ? 's' : ''} <span class="pv2-quiet">(${esc(denied.window)} · ${groups.size} cause${groups.size > 1 ? 's' : ''} distincte${groups.size > 1 ? 's' : ''})</span></h3>
         <table class="pv2-table fck-table"><tbody>${rows}</tbody></table>`;
     }
     return panel(title, subtitle, body, '', attrs);
@@ -563,9 +563,9 @@
       return `<article class="fck-center-card">
         <div class="fck-card-head"><strong>${esc(center.name)}</strong>${a.activeSessions ? chip('green', `${a.activeSessions} en ligne`) : ''}</div>
         <dl class="fck-kv">
-          <div><dt>Derniere action staff</dt><dd>${silent ? chip('amber', 'aucune enregistree') : esc(when(a.lastStaffAction))}</dd></div>
+          <div><dt>Dernière action staff</dt><dd>${silent ? chip('amber', 'aucune enregistrée') : esc(when(a.lastStaffAction))}</dd></div>
           <div><dt>Actions 7 j / 30 j</dt><dd class="fck-num">${a.actions7d} / ${a.actions30d}</dd></div>
-          <div><dt>Derniere connexion</dt><dd>${a.lastLogin ? esc(when(a.lastLogin)) : chip('amber', 'jamais')}</dd></div>
+          <div><dt>Dernière connexion</dt><dd>${a.lastLogin ? esc(when(a.lastLogin)) : chip('amber', 'jamais')}</dd></div>
         </dl>
       </article>`;
     }).join('');
@@ -576,9 +576,9 @@
       .map((row) => `<span class="pv2-chip">${esc(row.action)} · ${row.count}</span>`).join(' ');
     return panel(
       'Vos clients s\'en servent-ils ?',
-      `Le proprietaire plateforme est exclu de ces compteurs (${esc(adoption.window)}). ${used.size} action${used.size > 1 ? 's' : ''} distincte${used.size > 1 ? 's' : ''} utilisee${used.size > 1 ? 's' : ''} sur 30 jours.`,
+      `Le propriétaire plateforme est exclu de ces compteurs (${esc(adoption.window)}). ${used.size} action${used.size > 1 ? 's' : ''} distincte${used.size > 1 ? 's' : ''} utilisée${used.size > 1 ? 's' : ''} sur 30 jours.`,
       `<div class="fck-center-grid">${cards}</div>
-       ${top ? `<h3 class="fck-sub">Les plus utilisees</h3><p class="fck-chips">${top}</p>` : emptyLine('Aucune action staff enregistree sur 30 jours.')}`,
+       ${top ? `<h3 class="fck-sub">Les plus utilisées</h3><p class="fck-chips">${top}</p>` : emptyLine('Aucune action staff enregistrée sur 30 jours.')}`,
       '', '', cls,
     );
   }
@@ -590,20 +590,20 @@
     const d = agents.decisions || {};
     const plans = (agents.plans || []).map((p) => `<tr>
       <td>${esc(p.centerId)}<div class="pv2-cell-sub">${esc(p.fromDate)} -> ${esc(p.toDate)} · ${esc(p.mode)}</div></td>
-      <td>${chip(p.status === 'proposed' ? 'amber' : 'green', esc({ proposed: 'propose', applied: 'applique', active: 'actif' }[p.status] || p.status))}</td>
+      <td>${chip(p.status === 'proposed' ? 'amber' : 'green', esc({ proposed: 'proposé', applied: 'appliqué', active: 'actif' }[p.status] || p.status))}</td>
       <td class="pv2-quiet">${esc(when(p.createdAt))}</td>
     </tr>`).join('');
     const insights = (agents.insights && agents.insights.perCenter || []).map((i) => `<tr>
       <td>${esc(i.centerId)}</td>
       <td class="fck-num">${i.count30d} <span class="pv2-quiet">sur 30 j</span></td>
-      <td class="pv2-quiet">derniere ${esc(when(i.lastAt))}</td>
+      <td class="pv2-quiet">dernière ${esc(when(i.lastAt))}</td>
     </tr>`).join('');
     return panel(
       'Vos agents IA',
-      'Ce qu\'ils ont reellement produit, avec les dates. Un agent silencieux depuis des jours est une information.',
+      'Ce qu\'ils ont réellement produit, avec les dates. Un agent silencieux depuis des jours est une information.',
       `<div class="fck-stats">
-         <div class="fck-stat"><span class="fck-stat-num">${s.total || 0}</span><span class="fck-stat-cap">suggestions terrain<br>${s.pending ? `${chip('amber', `${s.pending} en attente`)}` : 'aucune en attente'} · derniere ${esc(when(s.lastAt))}</span></div>
-         <div class="fck-stat"><span class="fck-stat-num">${d.d7 || 0}</span><span class="fck-stat-cap">decisions d\'agents (${esc(d.window || '7 j')})<br>derniere ${esc(when(d.lastAt))}</span></div>
+         <div class="fck-stat"><span class="fck-stat-num">${s.total || 0}</span><span class="fck-stat-cap">suggestions terrain<br>${s.pending ? `${chip('amber', `${s.pending} en attente`)}` : 'aucune en attente'} · dernière ${esc(when(s.lastAt))}</span></div>
+         <div class="fck-stat"><span class="fck-stat-num">${d.d7 || 0}</span><span class="fck-stat-cap">décisions d\'agents (${esc(d.window || '7 j')})<br>dernière ${esc(when(d.lastAt))}</span></div>
        </div>
        ${insights ? `<h3 class="fck-sub">Insights marketing par centre</h3><table class="pv2-table fck-table"><tbody>${insights}</tbody></table>` : ''}
        ${plans ? `<h3 class="fck-sub">Plans marketing actifs</h3><table class="pv2-table fck-table"><tbody>${plans}</tbody></table>` : emptyLine('Aucun plan marketing actif.')}`,
@@ -613,7 +613,7 @@
 
   function renderCost(cost, cls = '') {
     if (!cost) return '';
-    if (cost.error) return panel('Ce que coute l\'IA', '', sectionError(cost));
+    if (cost.error) return panel('Ce que coûte l\'IA', '', sectionError(cost));
     const spent = Number(cost.spentUsd) || 0;
     const budget = Number(cost.budgetUsd) || 0;
     const ratio = budget > 0 ? Math.min(100, Math.round((spent / budget) * 100)) : 0;
@@ -622,13 +622,13 @@
       <td>${esc(m.month)}</td><td class="fck-num">${m.costUsd.toFixed(2)} $</td><td class="pv2-quiet fck-num">${m.calls} appels</td>
     </tr>`).join('');
     return panel(
-      'Ce que coute l\'IA',
+      'Ce que coûte l\'IA',
       `Mois ${esc(cost.month)} : plafond ${budget.toFixed(2)} $ (lib/llm-budget).`,
       `${cost.monthMeasured
-        ? `<p class="fck-line"><span class="fck-stat-num">${spent.toFixed(2)} $</span> depenses ${chip(tone, `${ratio} % du plafond`)}
-             <span class="pv2-quiet">· ${cost.calls} appels · projection lineaire du mois ${Number(cost.projectionUsd).toFixed(2)} $ (projection, pas une mesure)</span></p>`
-        : emptyLine('Aucune depense enregistree ce mois-ci.')}
-       <p class="pv2-quiet">Cout par jour : pas encore mesure (le registre est mensuel).</p>
+        ? `<p class="fck-line"><span class="fck-stat-num">${spent.toFixed(2)} $</span> dépensés ${chip(tone, `${ratio} % du plafond`)}
+             <span class="pv2-quiet">· ${cost.calls} appels · projection linéaire du mois ${Number(cost.projectionUsd).toFixed(2)} $ (projection, pas une mesure)</span></p>`
+        : emptyLine('Aucune dépense enregistrée ce mois-ci.')}
+       <p class="pv2-quiet">Coût par jour : pas encore mesuré (le registre est mensuel).</p>
        ${months ? `<table class="pv2-table fck-table"><tbody>${months}</tbody></table>` : ''}`,
       '', '', cls,
     );
@@ -639,34 +639,34 @@
     const f = fck.auditFilter;
     const centerOptions = [{ id: 'all', name: 'Tous les centres' }].concat(centers || [])
       .map((c) => `<option value="${esc(c.id)}" ${f.centerId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
-    const outcomes = [['', 'Tous les resultats'], ['success', 'Succes'], ['error', 'Erreurs'], ['denied', 'Refus']]
+    const outcomes = [['', 'Tous les résultats'], ['success', 'Succès'], ['error', 'Erreurs'], ['denied', 'Refus']]
       .map(([v, l]) => `<option value="${esc(v)}" ${f.outcome === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
     const list = rows.map((r) => `<tr>
-      <td>${esc(r.actorLabel || r.actorMemberId || r.actorKind || 'systeme')}
+      <td>${esc(r.actorLabel || r.actorMemberId || r.actorKind || 'système')}
         <div class="pv2-cell-sub">${esc(r.action)} · ${esc(r.centerId)} · ${esc(r.surface || '')}</div></td>
       <td>${(OUTCOME_CHIP[r.outcome] || (() => chip('', esc(r.outcome || ''))))()}</td>
       <td class="pv2-quiet">${esc(when(r.occurredAt))}</td>
     </tr>`).join('');
     return panel(
       'Journal d\'audit',
-      'Qui a fait quoi, ou, avec quel resultat. Tout centre confondu : c\'est la vue plateforme.',
+      'Qui a fait quoi, où, avec quel résultat. Tout centre confondu : c\'est la vue plateforme.',
       `<div class="fck-audit-bar">
          <select class="pv2-input" onchange="fckAuditFilter('centerId', this.value)">${centerOptions}</select>
          <select class="pv2-input" onchange="fckAuditFilter('outcome', this.value)">${outcomes}</select>
        </div>
        ${fck.auditLoading ? emptyLine('Chargement du journal…')
         : (list ? `<table class="pv2-table fck-table"><tbody>${list}</tbody></table>`
-          : emptyLine('Aucune entree pour ce filtre.'))}`,
+          : emptyLine('Aucune entrée pour ce filtre.'))}`,
     );
   }
 
   function renderLeads(leads, cls = '') {
     if (!leads) return '';
     if (leads.error) return panel('Vos prospects', '', sectionError(leads), '', '', cls);
-    if (!leads.total) return panel('Vos prospects', "Personne n'a encore laisse ses coordonnees depuis le site.", emptyState('Aucun prospect', "Le formulaire public alimente cette liste des qu'un visiteur le remplit."), '', '', cls);
+    if (!leads.total) return panel('Vos prospects', "Personne n'a encore laissé ses coordonnées depuis le site.", emptyState('Aucun prospect', "Le formulaire public alimente cette liste dès qu'un visiteur le remplit."), '', '', cls);
     const rows = (leads.recent || []).map((l) => `<tr>
       <td>${esc(l.centerName || '(sans nom)')}</td>
-      <td>${chip(l.status === 'new' ? 'amber' : '', esc({ new: 'nouveau', contacted: 'contacte', converted: 'converti', rejected: 'ecarte' }[l.status] || l.status))}</td>
+      <td>${chip(l.status === 'new' ? 'amber' : '', esc({ new: 'nouveau', contacted: 'contacté', converted: 'converti', rejected: 'écarté' }[l.status] || l.status))}</td>
       <td class="pv2-quiet">${esc(when(l.createdAt))}</td>
     </tr>`).join('');
     return panel(
@@ -679,7 +679,7 @@
 
   function renderSequences(sequences, centers) {
     if (!sequences) return '';
-    if (sequences.error) return panel('Commandes : sequences par centre', '', sectionError(sequences));
+    if (sequences.error) return panel('Commandes : séquences par centre', '', sectionError(sequences));
     const keys = sequences.keys || [];
     const head = `<tr><th></th>${(centers || []).map((c) => `<th>${esc(c.name)}</th>`).join('')}</tr>`;
     const rows = keys.map((k) => {
@@ -694,8 +694,8 @@
       return `<tr><td>${esc(k.label)}</td>${cells}</tr>`;
     }).join('');
     return panel(
-      'Commandes : sequences par centre',
-      'Chaque bascule passe par le meme chemin que la console du centre, donc chaque geste est trace au journal.',
+      'Commandes : séquences par centre',
+      'Chaque bascule passe par le même chemin que la console du centre, donc chaque geste est tracé au journal.',
       `<table class="pv2-table fck-table fck-seq-table"><thead>${head}</thead><tbody>${rows}</tbody></table>`,
     );
   }
@@ -709,7 +709,7 @@
     marketing: 'Agent marketing',
     emails: 'Agent emails',
     suggestions: 'Suggestions terrain',
-    decisions: 'Decisions automatiques',
+    decisions: 'Décisions automatiques',
   };
 
   function normalizeAgentList(raw) {
@@ -739,28 +739,28 @@
     const agents = normalizeAgentList(d.agents);
     const cards = agents.map((a) => {
       const silent = a.measured && a.d7 === 0;
-      const statusChip = !a.measured ? chip('amber', 'aucune donnee') : (silent ? chip('amber', 'silencieux 7 j') : '');
+      const statusChip = !a.measured ? chip('amber', 'aucune donnée') : (silent ? chip('amber', 'silencieux 7 j') : '');
       return `<article class="fck-center-card fck-agent-card">
         <div class="fck-card-head"><strong>${esc(a.label)}</strong>${statusChip}</div>
         <dl class="fck-kv">
-          <div><dt>Derniere activite</dt><dd>${a.lastAt ? esc(when(a.lastAt)) : chip('amber', 'jamais')}</dd></div>
-          <div><dt>Volume 7 j / 30 j</dt><dd class="fck-num">${a.measured ? `${a.d7} / ${a.d30}` : 'pas encore mesure'}</dd></div>
-          ${a.detail ? `<div><dt>Derniere production</dt><dd>${esc(a.detail)}</dd></div>` : ''}
+          <div><dt>Dernière activité</dt><dd>${a.lastAt ? esc(when(a.lastAt)) : chip('amber', 'jamais')}</dd></div>
+          <div><dt>Volume 7 j / 30 j</dt><dd class="fck-num">${a.measured ? `${a.d7} / ${a.d30}` : 'pas encore mesuré'}</dd></div>
+          ${a.detail ? `<div><dt>Dernière production</dt><dd>${esc(a.detail)}</dd></div>` : ''}
         </dl>
       </article>`;
     }).join('');
     return panel(
       'Un agent, une carte',
-      'La derniere activite reelle et le volume. Un agent silencieux sur 7 jours est signale en ambre.',
-      cards ? `<div class="fck-center-grid fck-agent-grid">${cards}</div>` : emptyLine('Pas encore de donnees sur la periode.'),
+      'La dernière activité réelle et le volume. Un agent silencieux sur 7 jours est signalé en ambre.',
+      cards ? `<div class="fck-center-grid fck-agent-grid">${cards}</div>` : emptyLine('Pas encore de données sur la période.'),
       '', 'data-fck-panel="agents"',
     );
   }
 
   function renderAgentsCost(cost) {
     const attrs = 'data-fck-panel="agents-cost"';
-    if (!cost) return panel('Ce que coute l\'IA', '', emptyLine('Pas encore de donnees sur la periode.'), '', attrs);
-    if (cost.error) return panel('Ce que coute l\'IA', '', sectionError(cost), '', attrs);
+    if (!cost) return panel('Ce que coûte l\'IA', '', emptyLine('Pas encore de données sur la période.'), '', attrs);
+    if (cost.error) return panel('Ce que coûte l\'IA', '', sectionError(cost), '', attrs);
     const budget = Number(cost.budgetUsd) || 0;
     const months = Array.isArray(cost.months) ? cost.months : [];
     const chartsReady = Boolean(window.PinlaneCharts && typeof window.PinlaneCharts.barChart === 'function');
@@ -768,13 +768,13 @@
       ? `<table class="pv2-table fck-table"><tbody>${months.map((m) => `<tr>
           <td>${esc(m.month)}</td><td class="fck-num">${(Number(m.costUsd) || 0).toFixed(2)} $</td><td class="pv2-quiet fck-num">${Number(m.calls) || 0} appels</td>
         </tr>`).join('')}</tbody></table>`
-      : emptyLine('Aucune depense enregistree pour le moment.');
+      : emptyLine('Aucune dépense enregistrée pour le moment.');
     return panel(
-      'Ce que coute l\'IA',
+      'Ce que coûte l\'IA',
       `${budget > 0 ? `Plafond ${budget.toFixed(2)} $ par mois (lib/llm-budget). ` : ''}Montants en dollars US ; le graphique arrondit, le tableau donne l'exact.`,
       `${chartsReady && months.length ? '<div class="fck-chart" data-fck-chart="agents-cost"></div>' : ''}
        ${table}
-       ${cost.costPerAgentMeasured === true ? '' : '<p class="pv2-quiet fck-cost-note">Cout par agent : non mesure (le registre de depense est global, pas ventile par agent).</p>'}`,
+       ${cost.costPerAgentMeasured === true ? '' : '<p class="pv2-quiet fck-cost-note">Coût par agent : non mesuré (le registre de dépense est global, pas ventilé par agent).</p>'}`,
       '', attrs,
     );
   }
@@ -834,8 +834,8 @@
       </tr>`;
     }).join('');
     return panel(
-      'Idees en attente de decision',
-      'Les idees de l\'agent qui attendent un arbitrage. Appliquer ou ignorer : chaque geste passe par insightStatus et part au journal.',
+      'Idées en attente de décision',
+      'Les idées de l\'agent qui attendent un arbitrage. Appliquer ou ignorer : chaque geste passe par insightStatus et part au journal.',
       `<table class="pv2-table fck-table"><tbody>${rows}</tbody></table>`,
       '', 'data-fck-panel="agents-insights"',
     );
@@ -908,10 +908,10 @@
           <strong class="fck-incident-msg">${esc(g.message)}</strong>
           <div class="fck-incident-head-right">
             ${chip(fresh ? 'red' : '', `${g.count} occurrence${g.count > 1 ? 's' : ''}`)}
-            ${g.stackHash ? `<button type="button" class="pv2-btn ghost sm" ${fck.busy ? 'disabled' : ''} onclick="fckDismissIncident('${escJs(g.stackHash)}')">${dismissing ? 'En cours…' : 'Ecarter'}</button>` : ''}
+            ${g.stackHash ? `<button type="button" class="pv2-btn ghost sm" ${fck.busy ? 'disabled' : ''} onclick="fckDismissIncident('${escJs(g.stackHash)}')">${dismissing ? 'En cours…' : 'Écarter'}</button>` : ''}
           </div>
         </div>
-        <div class="pv2-cell-sub">derniere ${esc(when(g.lastAt))} · centre${g.centers.length > 1 ? 's' : ''} : ${esc(g.centers.join(', ') || 'inconnu')} · page${g.pages.length > 1 ? 's' : ''} : ${esc(g.pages.slice(0, 3).join(', ') || 'inconnue')}</div>
+        <div class="pv2-cell-sub">dernière ${esc(when(g.lastAt))} · centre${g.centers.length > 1 ? 's' : ''} : ${esc(g.centers.join(', ') || 'inconnu')} · page${g.pages.length > 1 ? 's' : ''} : ${esc(g.pages.slice(0, 3).join(', ') || 'inconnue')}</div>
         ${g.stack ? `<details class="fck-stack" ${open ? 'open' : ''} ontoggle="fckToggleSection('${escJs(g.key)}', this.open)">
           <summary>Extrait de stack</summary>
           <pre>${esc(g.stack)}</pre>
@@ -919,9 +919,9 @@
       </div>`;
     }).join('');
     return panel(
-      'Erreurs console des ecrans',
-      `Ce que les navigateurs des centres ont reellement jete comme erreurs${src.window ? ` (${esc(src.window)})` : ''}. Rouge = vu il y a moins de 24 h. Le savoir avant l'appel du client, c'est le but.`,
-      src.error ? sectionError(src) : (rows ? `<div class="fck-incident-list">${rows}</div>` : emptyLine('Aucune erreur console enregistree sur la periode.')),
+      'Erreurs console des écrans',
+      `Ce que les navigateurs des centres ont réellement jeté comme erreurs${src.window ? ` (${esc(src.window)})` : ''}. Rouge = vu il y a moins de 24 h. Le savoir avant l'appel du client, c'est le but.`,
+      src.error ? sectionError(src) : (rows ? `<div class="fck-incident-list">${rows}</div>` : emptyLine('Aucune erreur console enregistrée sur la période.')),
       '', 'data-fck-panel="console"',
     );
   }
@@ -933,7 +933,7 @@
     // (renderBreakage, panneau "Ce qui casse"). On ne le DUPLIQUE plus ici :
     // Incidents ne garde que sa vraie valeur, les erreurs console des ecrans.
     // Un simple renvoi vers l'exploitation, sans bouton menteur (Product Rule).
-    const link = `<p class="fck-incidents-note pv2-quiet" data-fck-panel="ops-link">Mails, jobs, worker et refus d'acces sont regroupes sur le Cockpit fondateur.</p>`;
+    const link = `<p class="fck-incidents-note pv2-quiet" data-fck-panel="ops-link">Mails, jobs, worker et refus d'accès sont regroupés sur le Cockpit fondateur.</p>`;
     return consolePanel + link;
   }
 
@@ -968,39 +968,39 @@
 
   function clientStatusChip(status) {
     if (status === 'active') return chip('green', 'actif');
-    if (status === 'planned') return chip('amber', 'en preparation');
+    if (status === 'planned') return chip('amber', 'en préparation');
     if (status === 'suspended' || status === 'paused') return chip('red', 'suspendu');
     return status ? chip('', status) : '';
   }
 
   function configSummary(config) {
-    if (!config) return 'pas encore mesure';
+    if (!config) return 'pas encore mesuré';
     if (typeof config === 'string') return config;
     if (typeof config.done === 'number' && typeof config.total === 'number') {
-      return `${config.done} / ${config.total} elements poses`;
+      return `${config.done} / ${config.total} éléments posés`;
     }
     if (Array.isArray(config)) {
       const done = config.filter((c) => c && (c.done || c.enabled)).length;
-      return `${done} / ${config.length} elements poses`;
+      return `${done} / ${config.length} éléments posés`;
     }
     const keys = Object.keys(config);
-    if (!keys.length) return 'pas encore mesure';
+    if (!keys.length) return 'pas encore mesuré';
     const done = keys.filter((k) => Boolean(config[k])).length;
-    return `${done} / ${keys.length} elements poses`;
+    return `${done} / ${keys.length} éléments posés`;
   }
 
   function mailVolumeLine(mails) {
-    if (mails == null) return 'pas encore mesure';
+    if (mails == null) return 'pas encore mesuré';
     if (typeof mails === 'number') return `${mails} sur 30 j`;
     const sent = mails.sent30d ?? mails.sent ?? null;
     const failed = mails.failed30d ?? mails.failed ?? null;
-    if (sent == null && failed == null) return 'pas encore mesure';
+    if (sent == null && failed == null) return 'pas encore mesuré';
     const sentN = Number(sent) || 0;
-    return `${sentN} envoye${sentN > 1 ? 's' : ''}${failed != null ? ` · ${Number(failed) || 0} en echec` : ''} (30 j)`;
+    return `${sentN} envoyé${sentN > 1 ? 's' : ''}${failed != null ? ` · ${Number(failed) || 0} en échec` : ''} (30 j)`;
   }
 
   function sequencesLine(seq) {
-    if (!seq) return 'pas encore mesure';
+    if (!seq) return 'pas encore mesuré';
     if (typeof seq.active === 'number') {
       return `${seq.active}${typeof seq.total === 'number' ? ` / ${seq.total}` : ''} active${seq.active > 1 ? 's' : ''}`;
     }
@@ -1010,11 +1010,11 @@
     }
     if (typeof seq === 'object') {
       const keys = Object.keys(seq);
-      if (!keys.length) return 'pas encore mesure';
+      if (!keys.length) return 'pas encore mesuré';
       const on = keys.filter((k) => seq[k] === true || (seq[k] && seq[k].enabled)).length;
       return `${on} / ${keys.length} active${on > 1 ? 's' : ''}`;
     }
-    return 'pas encore mesure';
+    return 'pas encore mesuré';
   }
 
   function renderClientCard(c) {
@@ -1029,15 +1029,15 @@
         ${clientStatusChip(c.status)}
       </div>
       <dl class="fck-kv">
-        <div><dt>Config posee</dt><dd>${esc(configSummary(c.config))}</dd></div>
-        <div><dt>Derniere action staff</dt><dd>${c.lastStaffAction ? esc(when(c.lastStaffAction)) : chip('amber', 'aucune enregistree')}</dd></div>
+        <div><dt>Config posée</dt><dd>${esc(configSummary(c.config))}</dd></div>
+        <div><dt>Dernière action staff</dt><dd>${c.lastStaffAction ? esc(when(c.lastStaffAction)) : chip('amber', 'aucune enregistrée')}</dd></div>
         <div><dt>Actions 7 j / 30 j</dt><dd class="fck-num">${c.actions7d} / ${c.actions30d}</dd></div>
-        <div><dt>Derniere connexion</dt><dd>${c.lastLogin ? esc(when(c.lastLogin)) : chip('amber', 'jamais')}</dd></div>
+        <div><dt>Dernière connexion</dt><dd>${c.lastLogin ? esc(when(c.lastLogin)) : chip('amber', 'jamais')}</dd></div>
         <div><dt>Volume mails</dt><dd class="fck-num">${esc(mailVolumeLine(c.mails))}</dd></div>
-        <div><dt>Sequences</dt><dd class="fck-num">${esc(sequencesLine(c.sequences))}</dd></div>
+        <div><dt>Séquences</dt><dd class="fck-num">${esc(sequencesLine(c.sequences))}</dd></div>
       </dl>
-      <h3 class="fck-sub">Qui gere le centre</h3>
-      ${actorChips ? `<p class="fck-chips">${actorChips}</p>` : emptyLine('Aucun acteur staff sur 30 jours (hors proprietaire plateforme).')}
+      <h3 class="fck-sub">Qui gère le centre</h3>
+      ${actorChips ? `<p class="fck-chips">${actorChips}</p>` : emptyLine('Aucun acteur staff sur 30 jours (hors propriétaire plateforme).')}
     </section>`;
   }
 
@@ -1047,8 +1047,8 @@
     const cards = centers.map(renderClientCard).join('');
     return panel(
       'Vos clients, centre par centre',
-      'Identite, configuration, adoption, acteurs reels. Le proprietaire plateforme est exclu des acteurs : on lit LEUR gestion, pas la votre.',
-      cards ? `<div class="fck-center-grid fck-client-grid">${cards}</div>` : emptyLine('Aucun centre enregistre pour le moment.'),
+      'Identité, configuration, adoption, acteurs réels. Le propriétaire plateforme est exclu des acteurs : on lit LEUR gestion, pas la vôtre.',
+      cards ? `<div class="fck-center-grid fck-client-grid">${cards}</div>` : emptyLine('Aucun centre enregistré pour le moment.'),
       '', 'data-fck-panel="clients"',
     );
   }
@@ -1063,7 +1063,7 @@
     const p = st.data && st.data.platform;
     if (!p) {
       if (!st.loaded) {
-        return panel('Activite plateforme', 'Clients, MRR et CA a l\'echelle du SaaS.',
+        return panel('Activité plateforme', 'Clients, MRR et CA à l\'échelle du SaaS.',
           emptyLine('Chargement des indicateurs plateforme...'), '', 'data-fck-panel="biz-kpis"');
       }
       return ''; // charge mais rien d'exploitable : on n'affiche pas un cadre vide
@@ -1071,10 +1071,10 @@
     const mrr = mrrView(p);
     const cells = [
       { cap: 'Clients facturables', num: intFmt(p.activeClients),
-        foot: Number(p.activeClients) ? 'enregistres dans la facturation' : 'aucun contrat enregistre : les centres tournent hors facturation' },
-      { cap: 'MRR', num: mrr.display, foot: mrr.hint || 'aucun prix pose', kpi: 'mrr' },
+        foot: Number(p.activeClients) ? 'enregistrés dans la facturation' : 'aucun contrat enregistré : les centres tournent hors facturation' },
+      { cap: 'MRR', num: mrr.display, foot: mrr.hint || 'aucun prix posé', kpi: 'mrr' },
       { cap: 'CA des centres · 30 j', num: money(p.revenue30dAll), foot: 'ce que les centres encaissent, pas ce que Pinlane facture' },
-      { cap: 'Centres actifs', num: intFmt(p.activeCenters), foot: 'connectes et servis par la prod' },
+      { cap: 'Centres actifs', num: intFmt(p.activeCenters), foot: 'connectés et servis par la prod' },
     ];
     // Les quatre chiffres de tete sont des CARTES, pas un panneau qui contient
     // des colonnes : un cadre autour d'un cadre coutait 60 px de hauteur pour
@@ -1100,13 +1100,13 @@
     } else if (!st.loaded) {
       body = emptyLine('Chargement du graphique...');
     } else if (!hasSeries) {
-      body = emptyLine('Aucun chiffre d\'affaires sur 30 jours a afficher.');
+      body = emptyLine('Aucun chiffre d\'affaires sur 30 jours à afficher.');
     } else {
       body = '<div class="fck-chart" data-fck-chart="cockpit-ca"></div>';
     }
     return panel(
       'CA 30 j par centre',
-      'Le chiffre d\'affaires reel des 30 derniers jours, centre par centre. Le graphique arrondit, la valeur exacte vit dans la page Centres.',
+      'Le chiffre d\'affaires réel des 30 derniers jours, centre par centre. Le graphique arrondit, la valeur exacte vit dans la page Centres.',
       body, '', 'data-fck-panel="biz-chart"', cls,
     );
   }
@@ -1157,7 +1157,7 @@
         <div>
           <div class="pv2-bar-crumb"><span class="pv2-live"></span>Plateforme</div>
           <h1>Cockpit</h1>
-          <p class="pv2-bar-sub">L'etat du SaaS en une page : ce qui casse, ce que ca rapporte, ce que l'IA produit et ce qu'elle coute.${generated ? ` Actualise ${esc(generated)}.` : ''}</p>
+          <p class="pv2-bar-sub">L'état du SaaS en une page : ce qui casse, ce que ça rapporte, ce que l'IA produit et ce qu'elle coûte.${generated ? ` Actualisé ${esc(generated)}.` : ''}</p>
         </div>
         <div class="pv2-bar-actions">
           <button type="button" class="pv2-btn ghost" onclick="fckReload()">Actualiser</button>
@@ -1169,19 +1169,19 @@
       ${renderBizKpis()}
 
       ${fck.error ? `<section class="pv2-panel"><p class="pv2-quiet">${esc(fck.error)}</p>
-        <button type="button" class="pv2-btn" onclick="fckReload()">Reessayer</button></section>` : ''}
+        <button type="button" class="pv2-btn" onclick="fckReload()">Réessayer</button></section>` : ''}
 
       ${fck.loading && !fck.data ? `<section class="pv2-panel"><p class="pv2-quiet">Chargement du cockpit…</p></section>` : ''}
 
-      ${fck.data ? groupTitle('Ce qui casse', 'Mails, jobs, worker, acces refuses') + renderBreakage(d.breakage, 'Etat des services', 'Ce qui demande une action passe devant.') : ''}
+      ${fck.data ? groupTitle('Ce qui casse', 'Mails, jobs, worker, accès refusés') + renderBreakage(d.breakage, 'État des services', 'Ce qui demande une action passe devant.') : ''}
 
       ${fck.data ? groupTitle('Le business', 'Ce que les centres produisent et comment ils se servent du produit')
         + renderCaChart('is-half') + renderAdoption(d.adoption, d.centers, 'is-half') : ''}
 
-      ${fck.data ? groupTitle('L\'IA', 'Ce qu\'elle propose, ce qu\'elle coute')
+      ${fck.data ? groupTitle('L\'IA', 'Ce qu\'elle propose, ce qu\'elle coûte')
         + renderAgents(d.agents, 'is-half') + renderCost(d.cost, 'is-half') : ''}
 
-      ${fck.data ? groupTitle('Les commandes', 'Ce que tu peux changer d\'ici')
+      ${fck.data ? groupTitle('Les commandes', 'Ce que vous pouvez changer d\'ici')
         + renderSequences(d.sequences, d.centers) + renderLeads(d.leads, 'is-half') : ''}
     </div>`;
 
@@ -1429,7 +1429,7 @@
         <div>
           <div class="pv2-bar-crumb"><span class="pv2-live"></span>Plateforme</div>
           <h1>${esc(meta.title)}</h1>
-          <p class="pv2-bar-sub">${esc(meta.sub)}${generated ? ` · actualise ${esc(generated)}` : ''}</p>
+          <p class="pv2-bar-sub">${esc(meta.sub)}${generated ? ` · actualisé ${esc(generated)}` : ''}</p>
         </div>
         <div class="pv2-bar-actions">
           <button type="button" class="pv2-btn ghost" onclick="fckPageReload('${escJs(pageKey)}')">Actualiser</button>
@@ -1439,7 +1439,7 @@
       ${d.testData ? testDataBanner() : ''}
 
       ${st.error ? `<section class="pv2-panel"><p class="pv2-quiet">${esc(st.error)}</p>
-        <button type="button" class="pv2-btn" onclick="fckPageReload('${escJs(pageKey)}')">Reessayer</button></section>` : ''}
+        <button type="button" class="pv2-btn" onclick="fckPageReload('${escJs(pageKey)}')">Réessayer</button></section>` : ''}
 
       ${st.loading && !st.data ? `<section class="pv2-panel"><p class="pv2-quiet">Chargement de la page…</p></section>` : ''}
 

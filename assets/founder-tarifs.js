@@ -78,7 +78,7 @@
     } catch (error) {
       const status = Number(error && error.status);
       ftr.error = (status === 400 || status === 404)
-        ? "Cette vue n'est pas encore disponible cote serveur. Elle s'allumera a la prochaine mise en production."
+        ? "Cette vue n'est pas encore disponible côté serveur. Elle s'allumera à la prochaine mise en production."
         : ((error && error.userMessage) || "Le catalogue n'a pas pu se charger. Rechargez dans un instant.");
     } finally {
       ftr.loading = false;
@@ -190,16 +190,16 @@
 
   function testDataBanner() {
     return `<aside class="fck-testdata" role="note">
-        Donnees de TEST : le SaaS n'est pas lance, tout ce qui suit vient des essais internes.
-        Aucun tarif de cette page n'est facture a un vrai client.
+        Données de TEST : le SaaS n'est pas lancé, tout ce qui suit vient des essais internes.
+        Aucun tarif de cette page n'est facturé à un vrai client.
       </aside>`;
   }
 
   function honestNote() {
     return `<aside class="ftr-note" role="note">
-        Le catalogue de base vit dans le produit ; ici tu poses des ajustements par-dessus.
-        Un tarif remis a zero revient au prix d'origine.
-        Le SaaS n'est pas lance : rien n'est facture a un vrai client.
+        Le catalogue de base vit dans le produit ; ici vous posez des ajustements par-dessus.
+        Un tarif remis à zéro revient au prix d'origine.
+        Le SaaS n'est pas lancé : rien n'est facturé à un vrai client.
       </aside>`;
   }
 
@@ -208,22 +208,22 @@
       .concat(centers().map((c) => `<option value="${esc(c.id)}" ${ftr.scope === c.id ? 'selected' : ''}>${esc(c.name || c.id)}</option>`))
       .join('');
     return `<div class="ftr-scope">
-      <label for="ftrScope">Portee</label>
+      <label for="ftrScope">Portée</label>
       <select id="ftrScope" class="pv2-input ftr-scope-select" onchange="ftrSetScope(this.value)">${opts}</select>
     </div>`;
   }
 
   function stepsSummary(f) {
     const steps = (f && Array.isArray(f.steps)) ? f.steps : [];
-    if (!steps.length) return '<span class="pv2-quiet">Etapes definies dans le produit</span>';
+    if (!steps.length) return '<span class="pv2-quiet">Étapes définies dans le produit</span>';
     const shown = steps.slice(0, 4).map((s) => {
       if (!s || typeof s !== 'object') return '';
-      const label = s.label ? String(s.label) : String(s.activityId || 'etape');
+      const label = s.label ? String(s.label) : String(s.activityId || 'étape');
       const count = Number(s.count);
       const prefix = Number.isFinite(count) && count > 1 ? `${count}x ` : '';
       const dur = Number(s.durationMinutes);
       const durTxt = Number.isFinite(dur) && dur > 0 ? ` <span class="ftr-step-dur">${esc(dur)} min</span>` : '';
-      const crit = s.critical ? ' <span class="ftr-step-crit" title="etape critique">critique</span>' : '';
+      const crit = s.critical ? ' <span class="ftr-step-crit" title="étape critique">critique</span>' : '';
       return `<span class="ftr-step">${esc(prefix + label)}${durTxt}${crit}</span>`;
     }).filter(Boolean);
     const more = steps.length > 4 ? `<span class="pv2-quiet">+${steps.length - 4}</span>` : '';
@@ -233,7 +233,7 @@
 
   function priceBlock(eff) {
     if (eff.priceValue == null) {
-      return '<div class="ftr-price"><span class="pv2-quiet">prix a definir</span></div>';
+      return '<div class="ftr-price"><span class="pv2-quiet">prix à définir</span></div>';
     }
     const old = (eff.priceOld != null && eff.priceOld > eff.priceValue)
       ? `<span class="ftr-price-old">${esc(money(eff.priceOld))}</span>`
@@ -250,10 +250,10 @@
     const eff = effective(f, ftr.scope);
     const modified = overrideExists(f, ftr.scope);
     const badges = [];
-    if (eff.removed) badges.push(chip('red', 'retiree'));
-    if (modified) badges.push(chip('amber', 'modifie'));
+    if (eff.removed) badges.push(chip('red', 'retirée'));
+    if (modified) badges.push(chip('amber', 'modifiée'));
     const family = f.family ? `<span class="pv2-chip">${esc(f.family)}</span>` : '';
-    const minPax = (f.minPax != null) ? `<span class="ftr-meta">des ${esc(String(f.minPax))} pers.</span>` : '';
+    const minPax = (f.minPax != null) ? `<span class="ftr-meta">dès ${esc(String(f.minPax))} pers.</span>` : '';
     const tags = (family || minPax) ? `<div class="ftr-tags">${family}${minPax}</div>` : '';
     return `<section class="fck-center-card ftr-card${eff.removed ? ' is-removed' : ''}">
       <div class="fck-card-head ftr-card-head">
@@ -283,7 +283,7 @@
         <div>
           <div class="pv2-bar-crumb"><span class="pv2-live"></span>Plateforme</div>
           <h1>Tarifs et formules</h1>
-          <p class="pv2-bar-sub">Ajuste prix, ancien prix, nom et retrait par-dessus le catalogue produit. Portee courante : ${esc(scopeName())}.</p>
+          <p class="pv2-bar-sub">Ajustez prix, ancien prix, nom et retrait par-dessus le catalogue produit. Portée courante : ${esc(scopeName())}.</p>
         </div>
         <div class="pv2-bar-actions">
           ${scopeSelector()}
@@ -295,7 +295,7 @@
       ${(ftr.data && ftr.data.testData) ? testDataBanner() : ''}
 
       ${ftr.error ? `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">${esc(ftr.error)}</p>
-        <button type="button" class="pv2-btn" onclick="ftrReload()">Reessayer</button></div></section>` : ''}
+        <button type="button" class="pv2-btn" onclick="ftrReload()">Réessayer</button></div></section>` : ''}
 
       ${ftr.loading && !ftr.data ? '<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Chargement du catalogue...</p></div></section>' : ''}
 
@@ -328,7 +328,7 @@
     const eff = effective(f, ftr.scope);
     return {
       title: eff.name || (ftr.modal && ftr.modal.formuleId) || 'Formule',
-      sub: `Ajustement pour ${esc(scopeName())}. Le prix per-pax est borne de 0 a 1000 EUR.`,
+      sub: `Ajustement pour ${esc(scopeName())}. Le prix per-pax est borné de 0 à 1000 EUR.`,
     };
   }
 
@@ -357,20 +357,20 @@
     if (!ftr.modal) return '';
     const d = ftr.draft || {};
     const removedSub = d.removed
-      ? '<span class="ftr-toggle-sub">Masquee pour cette portee.</span>'
-      : '<span class="ftr-toggle-sub">La formule reste dans le produit, seulement cachee ici.</span>';
+      ? '<span class="ftr-toggle-sub">Masquée pour cette portée.</span>'
+      : '<span class="ftr-toggle-sub">La formule reste dans le produit, seulement cachée ici.</span>';
     return `${ftr.modalError ? `<div class="ftr-modal-error">${esc(ftr.modalError)}</div>` : ''}
       <div class="ftr-section">
-        <div class="ftr-section-title">Nom affiche</div>
+        <div class="ftr-section-title">Nom affiché</div>
         <div class="ftr-fields">
-          ${fieldText('Nom de la formule', 'name', d.name, 'Laisse le nom du catalogue si tu ne veux pas le changer.', true)}
+          ${fieldText('Nom de la formule', 'name', d.name, 'Laissez le nom du catalogue si vous ne voulez pas le changer.', true)}
         </div>
       </div>
       <div class="ftr-section">
         <div class="ftr-section-title">Prix</div>
         <div class="ftr-fields">
           ${fieldPrice('Prix per-pax', 'priceValue', d.priceValue, 'Ce que paie une personne.')}
-          ${fieldPrice('Ancien prix (barre)', 'priceOld', d.priceOld, 'Affiche barre a cote du prix. Vide = aucun.')}
+          ${fieldPrice('Ancien prix (barré)', 'priceOld', d.priceOld, 'Affiché barré à côté du prix. Vide = aucun.')}
         </div>
       </div>
       <div class="ftr-section">
@@ -387,8 +387,8 @@
     const f = findFormula(ftr.modal.formuleId);
     const hasOverride = f ? overrideExists(f, ftr.scope) : false;
     const busy = ftr.saving || ftr.resetting;
-    return `<span class="ftr-foot-note">Chaque ecriture est tracee au journal d'audit.</span>
-      ${hasOverride ? `<button type="button" class="pv2-btn ghost" ${busy ? 'disabled' : ''} onclick="ftrReset()">${ftr.resetting ? 'Remise a zero...' : 'Revenir au tarif de base'}</button>` : ''}
+    return `<span class="ftr-foot-note">Chaque écriture est tracée au journal d'audit.</span>
+      ${hasOverride ? `<button type="button" class="pv2-btn ghost" ${busy ? 'disabled' : ''} onclick="ftrReset()">${ftr.resetting ? 'Remise à zéro...' : 'Revenir au tarif de base'}</button>` : ''}
       <button type="button" class="pv2-btn ghost" ${busy ? 'disabled' : ''} onclick="ftrCloseModal()">Annuler</button>
       <button type="button" class="pv2-btn primary" ${busy ? 'disabled' : ''} onclick="ftrSave()">${ftr.saving ? 'Enregistrement...' : 'Enregistrer'}</button>`;
   }
@@ -523,13 +523,13 @@
     const patch = computePatch();
     if (!Object.keys(patch).length) { toast('Aucun changement a enregistrer.'); return; }
     if ('priceValue' in patch && (patch.priceValue == null || !Number.isFinite(patch.priceValue))) {
-      ftr.modalError = 'Indique un prix per-pax entre 0 et 1000 EUR.';
+      ftr.modalError = 'Indiquez un prix per-pax entre 0 et 1000 EUR.';
       refreshBody();
       refreshFoot();
       return;
     }
     if ('name' in patch && !patch.name) {
-      ftr.modalError = 'Le nom ne peut pas etre vide. Reviens au tarif de base pour retirer un nom pose.';
+      ftr.modalError = 'Le nom ne peut pas être vide. Revenez au tarif de base pour retirer un nom posé.';
       refreshBody();
       refreshFoot();
       return;
@@ -542,12 +542,12 @@
         method: 'POST',
         body: JSON.stringify({ action: 'saveFormuleOverride', formuleId: ftr.modal.formuleId, centerId: ftr.scope, patch }),
       });
-      toast('Ajustement enregistre.');
+      toast('Ajustement enregistré.');
       closeModal();
       reload();
     } catch (error) {
       ftr.saving = false;
-      ftr.modalError = (error && error.userMessage) || 'Enregistrement refuse. Reessayez.';
+      ftr.modalError = (error && error.userMessage) || 'Enregistrement refusé. Réessayez.';
       refreshBody();
       refreshFoot();
     }
@@ -562,12 +562,12 @@
         method: 'POST',
         body: JSON.stringify({ action: 'resetFormuleOverride', formuleId: ftr.modal.formuleId, centerId: ftr.scope }),
       });
-      toast('Tarif remis a la base.');
+      toast('Tarif remis à la base.');
       closeModal();
       reload();
     } catch (error) {
       ftr.resetting = false;
-      ftr.modalError = (error && error.userMessage) || 'Remise a zero refusee. Reessayez.';
+      ftr.modalError = (error && error.userMessage) || 'Remise à zéro refusée. Réessayez.';
       refreshBody();
       refreshFoot();
     }

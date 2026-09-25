@@ -75,8 +75,8 @@
     } catch (error) {
       const status = Number(error && error.status);
       team.error = (status === 400 || status === 404)
-        ? 'Cette vue n\'est pas encore disponible cote serveur. Elle s\'allumera a la prochaine mise en production.'
-        : userMessage(error, 'L\'equipe n\'a pas pu se charger. Rechargez dans un instant.');
+        ? 'Cette vue n\'est pas encore disponible côté serveur. Elle s\'allumera à la prochaine mise en production.'
+        : userMessage(error, 'L\'équipe n\'a pas pu se charger. Rechargez dans un instant.');
     } finally {
       team.loading = false;
       render();
@@ -138,8 +138,8 @@
 
   function testDataBanner() {
     return `<aside class="fck-testdata" role="note">
-      Donnees de TEST : le SaaS n'est pas lance, tout ce qui suit vient des essais internes.
-      Aucun membre, role ni code de cette page n'est du reel client.
+      Données de TEST : le SaaS n'est pas lancé, tout ce qui suit vient des essais internes.
+      Aucun membre, rôle ni code de cette page n'est du réel client.
     </aside>`;
   }
 
@@ -161,7 +161,7 @@
     return `<section class="pv2-panel"><div class="pv2-panel-body fte-filter">
       <label for="fteCenterFilter">Centre</label>
       <select id="fteCenterFilter" class="pv2-input" onchange="fteSetCenter(this.value)">${options}</select>
-      <span class="pv2-quiet">${members().filter((m) => inFilter(m.centerId)).length} membre(s) - ${roles().filter((r) => inFilter(r.centerId)).length} role(s)</span>
+      <span class="pv2-quiet">${members().filter((m) => inFilter(m.centerId)).length} membre(s) - ${roles().filter((r) => inFilter(r.centerId)).length} rôle(s)</span>
     </div></section>`;
   }
 
@@ -183,7 +183,7 @@
     const assignableRoles = rolesOfCenter(m.centerId).filter((r) => !r.locked);
     const currentLocked = !assignableRoles.some((r) => r.id === m.roleId);
     const currentOption = currentLocked
-      ? `<option value="${esc(m.roleId)}" selected disabled>${esc(m.roleName || 'role verrouille')}</option>`
+      ? `<option value="${esc(m.roleId)}" selected disabled>${esc(m.roleName || 'rôle verrouillé')}</option>`
       : '';
     const roleOptions = currentOption + (assignableRoles.length
       ? assignableRoles.map((r) => `<option value="${esc(r.id)}" ${!currentLocked && r.id === m.roleId ? 'selected' : ''}>${esc(r.name)}</option>`).join('')
@@ -199,8 +199,8 @@
           <code>${esc(revealed.code)}</code>
           <button type="button" onclick="fteHideReveal('${escJs(revealKey)}')">Masquer</button>
         </div>
-        <span class="fte-reveal-warn">Code en clair a l'ecran. Ne le laissez pas affiche.</span>`
-      : `${m.hasCode ? chip('', 'code present') : chip('amber', 'pas de code')}
+        <span class="fte-reveal-warn">Code en clair à l'écran. Ne le laissez pas affiché.</span>`
+      : `${m.hasCode ? chip('', 'code présent') : chip('amber', 'pas de code')}
          <button type="button" class="pv2-btn ghost" ${team.busy === `reveal:${m.id}` ? 'disabled' : ''}
            onclick="fteRevealMember('${escJs(m.id)}','${escJs(m.centerId)}')">${team.busy === `reveal:${m.id}` ? 'En cours...' : 'Reveler'}</button>`;
 
@@ -214,7 +214,7 @@
           aria-checked="${active ? 'true' : 'false'}" ${busyStatus ? 'disabled' : ''}
           aria-label="${active ? 'Desactiver' : 'Activer'} ${esc(m.name)}"
           onclick="fteToggleStatus('${escJs(m.id)}','${escJs(m.centerId)}')"><span></span></button>
-        <span class="fte-status-txt">${active ? 'actif' : 'desactive'}</span>
+        <span class="fte-status-txt">${active ? 'actif' : 'désactivé'}</span>
       </span></td>
       <td class="pv2-quiet">${esc(when(m.lastLoginAt))}</td>
       <td class="fte-col-action">${codeCell}</td>
@@ -226,11 +226,11 @@
     const aside = `<button type="button" class="pv2-btn primary" onclick="fteOpenNewMember()">Nouveau membre</button>`;
     const body = list.length
       ? `<table class="pv2-table fck-table">
-          <thead><tr><th>Membre</th><th>Role</th><th>Statut</th><th>Derniere connexion</th><th class="fte-col-action">Code</th></tr></thead>
+          <thead><tr><th>Membre</th><th>Rôle</th><th>Statut</th><th>Dernière connexion</th><th class="fte-col-action">Code</th></tr></thead>
           <tbody>${list.map(memberRow).join('')}</tbody>
         </table>`
       : emptyLine('Aucun membre pour ce filtre.');
-    return panel('Membres', 'Changez le role, activez ou desactivez, revelez le code a la demande. Chaque geste est trace au journal.', aside, body);
+    return panel('Membres', 'Changez le rôle, activez ou désactivez, révélez le code à la demande. Chaque geste est tracé au journal.', aside, body);
   }
 
   // Change de role : action tracee, centre du membre dans le body.
@@ -242,10 +242,10 @@
     render();
     try {
       await staffWrite({ action: 'updateMemberRole', centerId, memberId, roleId });
-      toast('Role du membre mis a jour.');
+      toast('Rôle du membre mis à jour.');
       reload();
     } catch (error) {
-      toast(userMessage(error, 'Le changement de role n\'a pas ete enregistre.'));
+      toast(userMessage(error, 'Le changement de rôle n\'a pas été enregistré.'));
     } finally {
       team.busy = '';
       render();
@@ -261,7 +261,7 @@
       toast('Statut du membre bascule.');
       reload();
     } catch (error) {
-      toast(userMessage(error, 'La bascule de statut a echoue.'));
+      toast(userMessage(error, 'La bascule de statut a échoué.'));
     } finally {
       team.busy = '';
       render();
@@ -276,7 +276,7 @@
       const payload = await staffWrite({ action: 'revealMemberCode', centerId, memberId });
       team.reveal[`member:${memberId}`] = { code: payload.revealedCode, needsRegenerate: Boolean(payload.needsRegenerate) };
     } catch (error) {
-      toast(userMessage(error, 'Le code n\'a pas pu etre revele.'));
+      toast(userMessage(error, 'Le code n\'a pas pu être révélé.'));
     } finally {
       team.busy = '';
       render();
@@ -299,12 +299,12 @@
           <code>${esc(revealed.code)}</code>
           <button type="button" onclick="fteHideReveal('${escJs(revealKey)}')">Masquer</button>
         </div>
-        <span class="fte-reveal-warn">Code en clair a l'ecran. Ne le laissez pas affiche.</span>`
+        <span class="fte-reveal-warn">Code en clair à l'écran. Ne le laissez pas affiché.</span>`
       : '';
     return `<article class="fte-role-card">
       <div class="fck-card-head">
         <div><strong>${esc(r.name)}</strong><div class="pv2-cell-sub">${esc(centerName(r.centerId))}</div></div>
-        ${r.locked ? chip('', 'verrouille') : ''}
+        ${r.locked ? chip('', 'verrouillé') : ''}
       </div>
       <div class="fte-role-meta">
         ${chip('', `${r.memberCount || 0} membre${(r.memberCount || 0) > 1 ? 's' : ''}`)}
@@ -312,23 +312,23 @@
       </div>
       ${revealBlock}
       <div class="fte-role-actions">
-        <button type="button" class="pv2-btn" ${r.locked ? 'disabled title="Role systeme : permissions non modifiables"' : ''}
+        <button type="button" class="pv2-btn" ${r.locked ? 'disabled title="Rôle système : permissions non modifiables"' : ''}
           onclick="fteOpenRolePerms('${escJs(r.id)}')">Permissions</button>
         <button type="button" class="pv2-btn ghost" ${team.busy === `reveal-role:${r.id}` ? 'disabled' : ''}
-          onclick="fteRevealRole('${escJs(r.id)}','${escJs(r.centerId)}')">${team.busy === `reveal-role:${r.id}` ? 'En cours...' : 'Reveler le code'}</button>
+          onclick="fteRevealRole('${escJs(r.id)}','${escJs(r.centerId)}')">${team.busy === `reveal-role:${r.id}` ? 'En cours...' : 'Révéler le code'}</button>
         <button type="button" class="pv2-btn ghost" ${team.busy === `regen:${r.id}` ? 'disabled' : ''}
-          onclick="fteRegenRole('${escJs(r.id)}','${escJs(r.centerId)}')">${team.busy === `regen:${r.id}` ? 'En cours...' : 'Regenerer'}</button>
+          onclick="fteRegenRole('${escJs(r.id)}','${escJs(r.centerId)}')">${team.busy === `regen:${r.id}` ? 'En cours...' : 'Régénérer'}</button>
       </div>
     </article>`;
   }
 
   function renderRoles() {
     const list = roles().filter((r) => inFilter(r.centerId));
-    const aside = `<button type="button" class="pv2-btn primary" onclick="fteOpenNewRole()">Nouveau role</button>`;
+    const aside = `<button type="button" class="pv2-btn primary" onclick="fteOpenNewRole()">Nouveau rôle</button>`;
     const body = list.length
       ? `<div class="fte-role-grid">${list.map(roleCard).join('')}</div>`
-      : emptyLine('Aucun role pour ce filtre.');
-    return panel('Roles et permissions', 'Un role porte un code d\'acces et un jeu de permissions. platform.admin n\'est jamais attribuable.', aside, body);
+      : emptyLine('Aucun rôle pour ce filtre.');
+    return panel('Rôles et permissions', 'Un rôle porte un code d\'accès et un jeu de permissions. platform.admin n\'est jamais attribuable.', aside, body);
   }
 
   window.fteRevealRole = async function (roleId, centerId) {
@@ -339,7 +339,7 @@
       const payload = await staffWrite({ action: 'revealRoleCode', centerId, roleId });
       team.reveal[`role:${roleId}`] = { code: payload.revealedCode, needsRegenerate: Boolean(payload.needsRegenerate) };
     } catch (error) {
-      toast(userMessage(error, 'Le code du role n\'a pas pu etre revele.'));
+      toast(userMessage(error, 'Le code du rôle n\'a pas pu être révélé.'));
     } finally {
       team.busy = '';
       render();
@@ -355,12 +355,12 @@
       if (payload && payload.newAccessCode) {
         team.reveal[`role:${roleId}`] = { code: payload.newAccessCode, needsRegenerate: false };
       }
-      toast('Nouveau code genere pour le role.');
+      toast('Nouveau code généré pour le rôle.');
       // On garde le code revele, mais on rafraichit le reste (compteurs).
       team.loaded = false;
       await load(true);
     } catch (error) {
-      toast(userMessage(error, 'La regeneration du code a echoue.'));
+      toast(userMessage(error, 'La régénération du code a échoué.'));
     } finally {
       team.busy = '';
       render();
@@ -407,12 +407,12 @@
     render();
     try {
       await staffWrite({ action: 'updateRolePermissions', centerId: modal.centerId, roleId: modal.roleId, permissions });
-      toast('Permissions du role enregistrees.');
+      toast('Permissions du rôle enregistrées.');
       closeModal();
       reload();
     } catch (error) {
       modal.busy = false;
-      toast(userMessage(error, 'Les permissions n\'ont pas ete enregistrees.'));
+      toast(userMessage(error, 'Les permissions n\'ont pas été enregistrées.'));
       render();
     }
   };
@@ -450,7 +450,7 @@
     const busy = modal.busy;
     return modalShell(
       `Permissions - ${esc(modal.name)}`,
-      `Centre : ${esc(centerName(modal.centerId))}. Cochez ce que ce role peut faire. platform.admin est grisee : jamais attribuable.`,
+      `Centre : ${esc(centerName(modal.centerId))}. Cochez ce que ce rôle peut faire. platform.admin est grisée : jamais attribuable.`,
       renderPermGroups(modal.checked, 'fteTogglePerm'),
       `<button type="button" class="pv2-btn ghost" ${busy ? 'disabled' : ''} onclick="fteCloseModal()">Annuler</button>
        <button type="button" class="pv2-btn primary" ${busy ? 'disabled' : ''} onclick="fteSaveRolePerms()">${busy ? 'Enregistrement...' : 'Enregistrer'}</button>`,
@@ -490,17 +490,17 @@
     if (!modal || modal.kind !== 'newMember' || modal.busy) return;
     if (!String(modal.name).trim()) { toast('Le nom du membre est requis.'); return; }
     if (!modal.centerId) { toast('Choisissez un centre.'); return; }
-    if (!modal.roleId) { toast('Choisissez un role.'); return; }
+    if (!modal.roleId) { toast('Choisissez un rôle.'); return; }
     modal.busy = true;
     render();
     try {
       await staffWrite({ action: 'createMember', centerId: modal.centerId, name: modal.name.trim(), contact: modal.contact || '', roleId: modal.roleId });
-      toast('Membre cree.');
+      toast('Membre créé.');
       closeModal();
       reload();
     } catch (error) {
       modal.busy = false;
-      toast(userMessage(error, 'La creation du membre a echoue.'));
+      toast(userMessage(error, 'La création du membre a échoué.'));
       render();
     }
   };
@@ -512,22 +512,22 @@
     const centerRoles = rolesOfCenter(modal.centerId);
     const roleOptions = centerRoles.length
       ? centerRoles.map((r) => `<option value="${esc(r.id)}" ${modal.roleId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')
-      : '<option value="">Aucun role sur ce centre</option>';
+      : '<option value="">Aucun rôle sur ce centre</option>';
     const body = `
       <div class="fte-field"><label for="fteMName">Nom</label>
         <input id="fteMName" class="fte-input" type="text" value="${esc(modal.name)}" oninput="fteModalField('name', this.value)" placeholder="Prenom Nom"></div>
       <div class="fte-field"><label for="fteMContact">Contact (optionnel)</label>
-        <input id="fteMContact" class="fte-input" type="text" value="${esc(modal.contact)}" oninput="fteModalField('contact', this.value)" placeholder="email ou telephone"></div>
+        <input id="fteMContact" class="fte-input" type="text" value="${esc(modal.contact)}" oninput="fteModalField('contact', this.value)" placeholder="email ou téléphone"></div>
       <div class="fte-field"><label for="fteMCenter">Centre</label>
         <select id="fteMCenter" class="pv2-input" onchange="fteModalField('centerId', this.value)">${centerOptions}</select></div>
-      <div class="fte-field"><label for="fteMRole">Role</label>
+      <div class="fte-field"><label for="fteMRole">Rôle</label>
         <select id="fteMRole" class="pv2-input" ${centerRoles.length ? '' : 'disabled'} onchange="fteModalField('roleId', this.value)">${roleOptions}</select></div>`;
     return modalShell(
       'Nouveau membre',
-      'Un code d\'acces sera genere. Le centre cible est trace au journal.',
+      'Un code d\'accès sera généré. Le centre cible est tracé au journal.',
       body,
       `<button type="button" class="pv2-btn ghost" ${busy ? 'disabled' : ''} onclick="fteCloseModal()">Annuler</button>
-       <button type="button" class="pv2-btn primary" ${busy ? 'disabled' : ''} onclick="fteSaveNewMember()">${busy ? 'Creation...' : 'Creer le membre'}</button>`,
+       <button type="button" class="pv2-btn primary" ${busy ? 'disabled' : ''} onclick="fteSaveNewMember()">${busy ? 'Création...' : 'Créer le membre'}</button>`,
     );
   }
 
@@ -550,7 +550,7 @@
   window.fteSaveNewRole = async function () {
     const modal = team.modal;
     if (!modal || modal.kind !== 'newRole' || modal.busy) return;
-    if (!String(modal.name).trim()) { toast('Le nom du role est requis.'); return; }
+    if (!String(modal.name).trim()) { toast('Le nom du rôle est requis.'); return; }
     if (!modal.centerId) { toast('Choisissez un centre.'); return; }
     const assignable = assignablePermKeys();
     const permissions = Array.from(modal.checked).filter((k) => assignable.has(k));
@@ -558,12 +558,12 @@
     render();
     try {
       await staffWrite({ action: 'createRole', centerId: modal.centerId, name: modal.name.trim(), permissions });
-      toast('Role cree.');
+      toast('Rôle créé.');
       closeModal();
       reload();
     } catch (error) {
       modal.busy = false;
-      toast(userMessage(error, 'La creation du role a echoue.'));
+      toast(userMessage(error, 'La création du rôle a échoué.'));
       render();
     }
   };
@@ -573,17 +573,17 @@
     const busy = modal.busy;
     const centerOptions = centers().map((c) => `<option value="${esc(c.id)}" ${modal.centerId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
     const body = `
-      <div class="fte-field"><label for="fteRName">Nom du role</label>
+      <div class="fte-field"><label for="fteRName">Nom du rôle</label>
         <input id="fteRName" class="fte-input" type="text" value="${esc(modal.name)}" oninput="fteModalField('name', this.value)" placeholder="ex : Accueil, Bar, Direction"></div>
       <div class="fte-field"><label for="fteRCenter">Centre</label>
         <select id="fteRCenter" class="pv2-input" onchange="fteModalField('centerId', this.value)">${centerOptions}</select></div>
       <div class="fte-field"><label>Permissions</label>${renderPermGroups(modal.checked, 'fteToggleNewRolePerm')}</div>`;
     return modalShell(
-      'Nouveau role',
-      'platform.admin est grisee : jamais attribuable. Un code d\'acces sera genere.',
+      'Nouveau rôle',
+      'platform.admin est grisée : jamais attribuable. Un code d\'accès sera généré.',
       body,
       `<button type="button" class="pv2-btn ghost" ${busy ? 'disabled' : ''} onclick="fteCloseModal()">Annuler</button>
-       <button type="button" class="pv2-btn primary" ${busy ? 'disabled' : ''} onclick="fteSaveNewRole()">${busy ? 'Creation...' : 'Creer le role'}</button>`,
+       <button type="button" class="pv2-btn primary" ${busy ? 'disabled' : ''} onclick="fteSaveNewRole()">${busy ? 'Création...' : 'Créer le rôle'}</button>`,
     );
   }
 
@@ -636,8 +636,8 @@
       <section class="pv2-bar">
         <div>
           <div class="pv2-bar-crumb"><span class="pv2-live"></span>Plateforme</div>
-          <h1>Equipe et acces</h1>
-          <p class="pv2-bar-sub">Membres, roles, permissions et codes, sur tous les centres.${generated ? ` - actualise ${esc(generated)}` : ''}</p>
+          <h1>Équipe et accès</h1>
+          <p class="pv2-bar-sub">Membres, rôles, permissions et codes, sur tous les centres.${generated ? ` - actualise ${esc(generated)}` : ''}</p>
         </div>
         <div class="pv2-bar-actions">
           <button type="button" class="pv2-btn ghost" onclick="fteReload()">Actualiser</button>
@@ -648,9 +648,9 @@
 
       ${team.error ? `<section class="pv2-panel"><div class="pv2-panel-body">
         <p class="pv2-quiet">${esc(team.error)}</p>
-        <button type="button" class="pv2-btn" onclick="fteReload()">Reessayer</button></div></section>` : ''}
+        <button type="button" class="pv2-btn" onclick="fteReload()">Réessayer</button></div></section>` : ''}
 
-      ${team.loading && !team.data ? `<section class="pv2-panel"><div class="pv2-panel-body"><p class="pv2-quiet">Chargement de l'equipe...</p></div></section>` : ''}
+      ${team.loading && !team.data ? `<section class="pv2-panel"><div class="pv2-panel-body"><p class="pv2-quiet">Chargement de l'équipe...</p></div></section>` : ''}
 
       ${team.data ? [
         renderFilter(),

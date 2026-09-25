@@ -98,8 +98,8 @@
     const clientCount = Number(p.clientCount != null ? p.clientCount : clients) || 0;
     const honest = withPrice <= 0; // aucun prix pose : le MRR n'est pas une mesure
     return {
-      display: honest ? 'a definir' : money(p.mrr),
-      hint: `${withPrice}/${clientCount} prix renseignes`,
+      display: honest ? 'à définir' : money(p.mrr),
+      hint: `${withPrice}/${clientCount} prix renseignés`,
     };
   }
 
@@ -117,7 +117,7 @@
     } catch (error) {
       const status = Number(error && error.status);
       fcp.error = (status === 400 || status === 404)
-        ? 'Cette vue n\'est pas encore disponible cote serveur. Elle s\'allumera a la prochaine mise en production.'
+        ? 'Cette vue n\'est pas encore disponible côté serveur. Elle s\'allumera à la prochaine mise en production.'
         : ((error && error.userMessage) || (error && error.message) || 'Les clients n\'ont pas pu se charger. Rechargez dans un instant.');
     } finally {
       fcp.loading = false;
@@ -145,8 +145,8 @@
   // Les centres portent leur propre statut (actif / en preparation / ferme).
   const CENTER_STATUS = {
     active: { label: 'actif', tone: 'green' },
-    planned: { label: 'en preparation', tone: 'amber' },
-    closed: { label: 'ferme', tone: 'red' },
+    planned: { label: 'en préparation', tone: 'amber' },
+    closed: { label: 'fermé', tone: 'red' },
   };
 
   function chip(tone, label) {
@@ -183,7 +183,7 @@
 
   function testDataBanner() {
     return `<aside class="fck-testdata" role="note">
-        Donnees de TEST : le SaaS n'est pas lance. Ces clients viennent des essais internes,
+        Données de TEST : le SaaS n'est pas lancé. Ces clients viennent des essais internes,
         aucun n'est un vrai client payant.
       </aside>`;
   }
@@ -251,12 +251,12 @@
       <label class="fcp-billing-lab" for="fcp-price-${esc(id)}">Prix mensuel</label>
       <div class="fcp-billing-edit">
         <input type="number" id="fcp-price-${esc(id)}" class="fcp-price-input" min="0" max="100000" step="1"
-          inputmode="numeric" placeholder="a definir" value="${esc(priceVal)}" ${busy ? 'disabled' : ''}
+          inputmode="numeric" placeholder="à définir" value="${esc(priceVal)}" ${busy ? 'disabled' : ''}
           data-client="${esc(id)}" aria-label="Prix mensuel en euros de ${esc(c.name || id)}">
         <span class="fcp-price-unit">EUR/mois</span>
         <button type="button" class="pv2-btn sm fcp-price-save" ${busy ? 'disabled' : ''} onclick="fcpSaveBilling(this, '${escJs(id)}')">${busy ? '...' : 'Enregistrer'}</button>
       </div>
-      ${hasPrice ? '' : '<span class="fcp-hint">Aucun prix pose : ce client ne compte pas dans le MRR.</span>'}
+      ${hasPrice ? '' : '<span class="fcp-hint">Aucun prix posé : ce client ne compte pas dans le MRR.</span>'}
     </div>`;
   }
 
@@ -301,7 +301,7 @@
       <div class="pv2-panel-head has-sub">
         <div>
           <h2>Centres sans client</h2>
-          <p class="pv2-panel-sub">Centres provisionnes mais pas encore rattaches a une entreprise cliente.</p>
+          <p class="pv2-panel-sub">Centres provisionnés mais pas encore rattachés à une entreprise cliente.</p>
         </div>
       </div>
       <div class="pv2-panel-body">
@@ -334,8 +334,8 @@
     return `<section class="pv2-panel" data-fcp-panel="kpis">
       <div class="pv2-panel-head has-sub">
         <div>
-          <h2>Activite plateforme</h2>
-          <p class="pv2-panel-sub">Clients, MRR et CA a l'echelle du SaaS. Le MRR reste "a definir" tant qu'aucun prix n'est pose.</p>
+          <h2>Activité plateforme</h2>
+          <p class="pv2-panel-sub">Clients, MRR et CA à l'échelle du SaaS. Le MRR reste "à définir" tant qu'aucun prix n'est posé.</p>
         </div>
       </div>
       <div class="pv2-panel-body">
@@ -382,10 +382,10 @@
       return `<div class="fck-center-grid fcp-client-grid">${clients.map(clientCard).join('')}</div>`;
     }
     if (total) {
-      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun client ne correspond a la recherche.</p></div></section>`;
+      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun client ne correspond à la recherche.</p></div></section>`;
     }
     if (fcp.loaded && !fcp.error) {
-      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun client enregistre pour le moment. Cree le premier avec "Nouveau client".</p></div></section>`;
+      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun client enregistré pour le moment. Créez le premier avec "Nouveau client".</p></div></section>`;
     }
     return '';
   }
@@ -397,7 +397,7 @@
         <div>
           <div class="pv2-bar-crumb"><span class="pv2-live"></span>Plateforme</div>
           <h1>Clients Pinlane</h1>
-          <p class="pv2-bar-sub">Les entreprises qui achetent Pinlane : provisionnement cle en main, centres, acces, statut.</p>
+          <p class="pv2-bar-sub">Les entreprises qui achètent Pinlane : provisionnement clé en main, centres, accès, statut.</p>
         </div>
         <div class="pv2-bar-actions">
           <button type="button" class="pv2-btn ghost" onclick="fcpReload()">Actualiser</button>
@@ -409,7 +409,7 @@
       ${d.testData ? testDataBanner() : ''}
 
       ${fcp.error ? `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">${esc(fcp.error)}</p>
-        <button type="button" class="pv2-btn" onclick="fcpReload()">Reessayer</button></div></section>` : ''}
+        <button type="button" class="pv2-btn" onclick="fcpReload()">Réessayer</button></div></section>` : ''}
 
       ${fcp.loading && !fcp.data ? `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Chargement des clients...</p></div></section>` : ''}
 
@@ -441,7 +441,7 @@
   async function saveClientBilling(clientId, raw) {
     if (fcp.billingBusy) return;
     const client = findClient(clientId);
-    if (!client) { toast('Client introuvable. Actualise la liste.'); return; }
+    if (!client) { toast('Client introuvable. Actualisez la liste.'); return; }
     const value = String(raw == null ? '' : raw).trim();
     let monthlyPrice;
     if (value === '') {
@@ -461,12 +461,12 @@
         method: 'POST',
         body: JSON.stringify({ action: 'setClientBilling', clientId, monthlyPrice }),
       });
-      toast('Prix mis a jour.');
+      toast('Prix mis à jour.');
       fcp.billingBusy = '';
       reload();
     } catch (error) {
       fcp.billingBusy = '';
-      toast((error && error.userMessage) || (error && error.message) || 'Le prix n\'a pas ete enregistre.');
+      toast((error && error.userMessage) || (error && error.message) || 'Le prix n\'a pas été enregistré.');
       renderGridOnly();
     }
   }
@@ -499,23 +499,23 @@
         if (fcp.modal.mode === 'deleteClient') {
           const cl = findClient(fcp.modal.clientId) || {};
           title = 'Supprimer le client';
-          sub = `${esc(cl.name || fcp.modal.clientId || '')} · action definitive.`;
+          sub = `${esc(cl.name || fcp.modal.clientId || '')} · action définitive.`;
         } else {
           const hit = findAnyCenter(fcp.modal.centerId);
           const name = hit && hit.center ? (hit.center.name || hit.center.id) : fcp.modal.centerId;
           title = 'Retirer le centre';
-          sub = `${esc(name || '')} · action definitive.`;
+          sub = `${esc(name || '')} · action définitive.`;
         }
       } else if (fcp.modal.step === 'codes') {
-        title = 'Acces crees';
-        sub = 'Copie ces codes maintenant. Ils ne seront plus jamais affiches.';
+        title = 'Accès créés';
+        sub = 'Copiez ces codes maintenant. Ils ne seront plus jamais affichés.';
       } else if (fcp.modal.mode === 'new') {
         title = 'Nouveau client';
-        sub = 'Cree l\'entreprise, son premier centre et ses acces (Direction, Staff).';
+        sub = 'Créez l\'entreprise, son premier centre et ses accès (Direction, Staff).';
       } else {
         const cl = findClient(fcp.modal.clientId) || {};
         title = 'Ajouter un centre';
-        sub = `Nouveau centre pour ${esc(cl.name || fcp.modal.clientId || 'ce client')}. Ses codes seront generes.`;
+        sub = `Nouveau centre pour ${esc(cl.name || fcp.modal.clientId || 'ce client')}. Ses codes seront générés.`;
       }
     }
     const lockClose = fcp.saving;
@@ -640,7 +640,7 @@
       return `<span class="fcp-hint">Aucune couleur : le tunnel de ce centre garde l'accent Pinlane.</span>`;
     }
     if (!api || !api.isValidHex(raw)) {
-      return `<span class="fcp-hint fcp-brand-bad">Couleur invalide : attendu un code hexadecimal, par exemple #1f6f43.</span>`;
+      return `<span class="fcp-hint fcp-brand-bad">Couleur invalide : attendu un code hexadécimal, par exemple #1f6f43.</span>`;
     }
     const notice = api.contrastNotice(api.deriveBranding(raw, brandPalette()), brandPalette());
     if (!notice) return '<span class="fcp-hint"></span>';
@@ -652,7 +652,7 @@
     const accent = String(c.accent || '');
     const swatch = (brandApi() && brandApi().isValidHex(accent)) ? brandApi().normalizeHex(accent) : '';
     return `<div class="fcp-section">
-      <div class="fcp-section-title">Marque et expediteur</div>
+      <div class="fcp-section-title">Marque et expéditeur</div>
       <div class="fcp-fields">
         <div class="fcp-field fcp-span2">
           <label for="fcpAccentText">Couleur d'accent du centre</label>
@@ -667,8 +667,8 @@
           </div>
           <span id="fcpBrandNote">${brandNoteHtml(accent)}</span>
         </div>
-        ${field("Nom d'expediteur des emails", 'center.senderLabel', c.senderLabel, { placeholder: 'Nom public du centre' })}
-        ${field("Adresse d'expediteur", 'center.senderEmail', c.senderEmail, { type: 'email', placeholder: 'reservations@fun-galaxy.be', autocomplete: 'off', hint: "Vide : les emails de ce centre partent de l'adresse plateforme." })}
+        ${field("Nom d'expéditeur des emails", 'center.senderLabel', c.senderLabel, { placeholder: 'Nom public du centre' })}
+        ${field("Adresse d'expéditeur", 'center.senderEmail', c.senderEmail, { type: 'email', placeholder: 'reservations@fun-galaxy.be', autocomplete: 'off', hint: "Vide : les emails de ce centre partent de l'adresse plateforme." })}
       </div>
     </div>`;
   }
@@ -713,7 +713,7 @@
       <div class="fcp-section">
         <div class="fcp-section-title">Entreprise cliente</div>
         <div class="fcp-fields">
-          ${field('Identifiant (slug)', 'id', d.id, { placeholder: 'fun-galaxy', pattern: SLUG_RE.source, hint: 'Definitif : il identifie le client partout.', autofocus: true, span2: true })}
+          ${field('Identifiant (slug)', 'id', d.id, { placeholder: 'fun-galaxy', pattern: SLUG_RE.source, hint: 'Définitif : il identifie le client partout.', autofocus: true, span2: true })}
           ${field('Raison sociale', 'name', d.name, { placeholder: 'Raison sociale du client', span2: true })}
           <div class="fcp-field">
             <label>Statut</label>
@@ -721,7 +721,7 @@
           </div>
           ${field('Plan', 'plan', d.plan, { placeholder: 'Standard' })}
           ${field('Email de contact', 'contactEmail', d.contactEmail, { type: 'email', placeholder: 'contact@fun-galaxy.be', autocomplete: 'off' })}
-          ${field('Telephone', 'contactPhone', d.contactPhone, { type: 'tel', placeholder: '+32 ...', autocomplete: 'off' })}
+          ${field('Téléphone', 'contactPhone', d.contactPhone, { type: 'tel', placeholder: '+32 ...', autocomplete: 'off' })}
         </div>
       </div>
       ${centerSection(d.center)}`;
@@ -750,10 +750,10 @@
     const copyBtn = code
       ? `<button type="button" class="pv2-btn fcp-code-copy" data-code="${esc(code)}" onclick="fcpCopyCode(this)">Copier</button>`
       : '';
-    const value = code ? esc(code) : '<span class="fcp-code-missing">code non genere</span>';
+    const value = code ? esc(code) : '<span class="fcp-code-missing">code non généré</span>';
     return `<div class="fcp-code-row ${isDir ? 'is-primary' : ''}">
       <div class="fcp-code-main">
-        <span class="fcp-code-role">${esc(role || 'Acces')}${tag}</span>
+        <span class="fcp-code-role">${esc(role || 'Accès')}${tag}</span>
         <span class="fcp-code-value">${value}</span>
       </div>
       ${copyBtn}
@@ -769,10 +769,10 @@
       const rb = b && String(b.role || '').toLowerCase() === 'direction' ? 0 : 1;
       return ra - rb;
     });
-    const rows = sorted.length ? sorted.map(codeRow).join('') : '<p class="pv2-quiet">Aucun code renvoye par le serveur.</p>';
+    const rows = sorted.length ? sorted.map(codeRow).join('') : '<p class="pv2-quiet">Aucun code renvoyé par le serveur.</p>';
     return `<div class="fcp-codes-warn" role="alert">
-        <strong>Copie ces codes maintenant, ils ne seront plus affiches.</strong>
-        Remets le code Direction au client : il se connecte avec, cote Etablissement.
+        <strong>Copiez ces codes maintenant, ils ne seront plus affichés.</strong>
+        Remettez le code Direction au client : il se connecte avec, côté Établissement.
       </div>
       <div class="fcp-codes">${rows}</div>
       ${brandSummary(res.center)}`;
@@ -785,11 +785,11 @@
     const accent = c.branding && c.branding.accent ? String(c.branding.accent) : '';
     const sender = c.sender && c.sender.email ? String(c.sender.email) : '';
     const brandLine = accent
-      ? `<span class="fcp-brand-dot" style="background:${esc(accent)}" aria-hidden="true"></span> Tunnel a la couleur ${esc(accent)}.`
+      ? `<span class="fcp-brand-dot" style="background:${esc(accent)}" aria-hidden="true"></span> Tunnel à la couleur ${esc(accent)}.`
       : 'Aucune couleur : le tunnel garde l\'accent Pinlane.';
     const senderLine = sender
-      ? `Emails signes ${esc(c.sender.label || sender)} &lt;${esc(sender)}&gt;.`
-      : 'Aucune identite d\'expediteur : les emails partent de l\'adresse plateforme.';
+      ? `Emails signés ${esc(c.sender.label || sender)} &lt;${esc(sender)}&gt;.`
+      : 'Aucune identité d\'expéditeur : les emails partent de l\'adresse plateforme.';
     return `<div class="fcp-brand-summary">
       <div>${brandLine}</div>
       <div>${senderLine}</div>
@@ -812,16 +812,16 @@
       const names = centers.map((x) => x && (x.name || x.id)).filter(Boolean).map((x) => esc(x)).join(', ');
       return `${fcp.modalError ? `<div class="fcp-modal-error" role="alert">${esc(fcp.modalError)}</div>` : ''}
         <div class="fck-confirm-warn" role="alert">
-          ${label} possede encore <strong>${esc(num(n))} centre${n > 1 ? 's' : ''}</strong>${names ? ` (${names})` : ''} :
-          la suppression est <strong>bloquee</strong>. Retire d'abord chacun de ses centres
-          (bouton Retirer sur la carte), puis supprime le client.
+          ${label} possède encore <strong>${esc(num(n))} centre${n > 1 ? 's' : ''}</strong>${names ? ` (${names})` : ''} :
+          la suppression est <strong>bloquée</strong>. Retirez d'abord chacun de ses centres
+          (bouton Retirer sur la carte), puis supprimez le client.
         </div>`;
     }
     return `${fcp.modalError ? `<div class="fcp-modal-error" role="alert">${esc(fcp.modalError)}</div>` : ''}
       <div class="fck-confirm-warn" role="alert">
-        Le client ${label} sera supprime definitivement de la plateforme.
-        Aucun centre ne lui est rattache : seule sa fiche (statut, plan, contact, prix mensuel) disparait.
-        <span class="fck-confirm-irrev">Cette action est irreversible.</span>
+        Le client ${label} sera supprimé définitivement de la plateforme.
+        Aucun centre ne lui est rattaché : seule sa fiche (statut, plan, contact, prix mensuel) disparaît.
+        <span class="fck-confirm-irrev">Cette action est irréversible.</span>
       </div>`;
   }
 
@@ -833,12 +833,12 @@
     const label = `<strong>${esc(c.name || c.id || '')}</strong> <span class="pv2-quiet">· ${esc(c.id || '')}</span>`;
     return `${fcp.modalError ? `<div class="fcp-modal-error" role="alert">${esc(fcp.modalError)}</div>` : ''}
       <div class="fck-confirm-warn" role="alert">
-        Le centre ${label}${owner ? ` (client ${owner})` : ''} sera supprime definitivement,
-        avec ses roles et acces staff${staff > 0 ? ` (<strong>${esc(num(staff))} personne${staff > 1 ? 's' : ''}</strong> perdront leur acces)` : ''}
+        Le centre ${label}${owner ? ` (client ${owner})` : ''} sera supprimé définitivement,
+        avec ses rôles et accès staff${staff > 0 ? ` (<strong>${esc(num(staff))} personne${staff > 1 ? 's' : ''}</strong> perdront leur accès)` : ''}
         et ses journaux techniques.
-        S'il porte des reservations, le serveur <strong>refusera</strong> plutot que de les effacer.
+        S'il porte des réservations, le serveur <strong>refusera</strong> plutôt que de les effacer.
         Un centre de base du fichier (socle ops-knowledge) n'est pas supprimable ici.
-        <span class="fck-confirm-irrev">Cette action est irreversible.</span>
+        <span class="fck-confirm-irrev">Cette action est irréversible.</span>
       </div>`;
   }
 
@@ -864,18 +864,18 @@
           return `<button type="button" class="pv2-btn" onclick="fcpCloseModal()">Fermer</button>`;
         }
       }
-      const label = fcp.modal.mode === 'deleteClient' ? 'Supprimer definitivement' : 'Retirer definitivement';
+      const label = fcp.modal.mode === 'deleteClient' ? 'Supprimer définitivement' : 'Retirer définitivement';
       return `<button type="button" class="pv2-btn ghost" ${saving ? 'disabled' : ''} onclick="fcpCloseModal()">Annuler</button>
         <button type="button" class="pv2-btn fck-confirm-danger" ${saving ? 'disabled' : ''} onclick="fcpConfirmDelete()">${saving ? 'Suppression...' : label}</button>`;
     }
     if (fcp.modal.step === 'codes') {
-      return `<span class="fcp-foot-note">Un centre, ses roles et ses codes ont ete crees.</span>
+      return `<span class="fcp-foot-note">Un centre, ses rôles et ses codes ont été créés.</span>
         <button type="button" class="pv2-btn primary" onclick="fcpCloseModal()">Fermer</button>`;
     }
     const saving = fcp.saving;
     const isNew = fcp.modal.mode === 'new';
     const primaryLabel = isNew
-      ? (saving ? 'Creation...' : 'Enregistrer')
+      ? (saving ? 'Création...' : 'Enregistrer')
       : (saving ? 'Ajout...' : 'Ajouter le centre');
     return `<button type="button" class="pv2-btn ghost" ${saving ? 'disabled' : ''} onclick="fcpCloseModal()">Annuler</button>
       <button type="button" class="pv2-btn primary" ${saving ? 'disabled' : ''} onclick="fcpSave()">${primaryLabel}</button>`;
@@ -895,7 +895,7 @@
 
   window.fcpAddCenter = function (clientId) {
     const client = findClient(clientId);
-    if (!client) { toast('Client introuvable. Actualise la liste.'); return; }
+    if (!client) { toast('Client introuvable. Actualisez la liste.'); return; }
     fcp.draft = { center: { id: '', name: '', accent: '', senderLabel: '', senderEmail: '' } };
     fcp.result = null;
     fcp.needsReload = false;
@@ -909,7 +909,7 @@
 
   window.fcpDeleteClient = function (clientId) {
     const client = findClient(clientId);
-    if (!client) { toast('Client introuvable. Actualise la liste.'); return; }
+    if (!client) { toast('Client introuvable. Actualisez la liste.'); return; }
     fcp.draft = null;
     fcp.result = null;
     fcp.needsReload = false;
@@ -921,7 +921,7 @@
 
   window.fcpDeleteCenter = function (centerId) {
     const hit = findAnyCenter(centerId);
-    if (!hit) { toast('Centre introuvable. Actualise la liste.'); return; }
+    if (!hit) { toast('Centre introuvable. Actualisez la liste.'); return; }
     fcp.draft = null;
     fcp.result = null;
     fcp.needsReload = false;
@@ -944,13 +944,13 @@
       await window.apiRequest('/api/ops', { method: 'POST', body: JSON.stringify(body) });
       fcp.saving = false;
       fcp.needsReload = true; // closeModal recharge la liste (compteurs inclus)
-      toast(isClient ? 'Client supprime.' : 'Centre retire.');
+      toast(isClient ? 'Client supprimé.' : 'Centre retiré.');
       closeModal();
     } catch (error) {
       // Refus serveur (baseline, reservations, centres restants...) : le
       // message expose s'affiche DANS la modale, rien n'a ete supprime.
       fcp.saving = false;
-      fcp.modalError = (error && error.userMessage) || (error && error.message) || 'Suppression refusee. Reessaye.';
+      fcp.modalError = (error && error.userMessage) || (error && error.message) || 'Suppression refusée. Réessayez.';
       refreshBody();
       refreshFoot();
     }
@@ -983,7 +983,7 @@
     const api = brandApi();
     if (accent) {
       if (!api || !api.isValidHex(accent)) {
-        return { error: 'Couleur d\'accent invalide : un code hexadecimal comme #1f6f43 (ou vide pour aucune marque).' };
+        return { error: 'Couleur d\'accent invalide : un code hexadécimal comme #1f6f43 (ou vide pour aucune marque).' };
       }
       // Le jeu complet est DERIVE ici et voyage declare : le rendu ne calcule
       // jamais une couleur (lib/center-config.js jette tout le reste).
@@ -992,10 +992,10 @@
     const senderLabel = trimmed(c.senderLabel);
     const senderEmail = trimmed(c.senderEmail);
     if (senderEmail && !EMAIL_RE.test(senderEmail)) {
-      return { error: 'Adresse d\'expediteur invalide : une adresse email complete, ou vide pour partir de l\'adresse plateforme.' };
+      return { error: 'Adresse d\'expéditeur invalide : une adresse email complète, ou vide pour partir de l\'adresse plateforme.' };
     }
     if (!senderEmail && senderLabel) {
-      return { error: 'Nom d\'expediteur saisi sans adresse : ajoute l\'adresse, ou efface le nom.' };
+      return { error: 'Nom d\'expéditeur saisi sans adresse : ajoutez l\'adresse, ou effacez le nom.' };
     }
     if (senderEmail) {
       patch.sender = { label: senderLabel, email: senderEmail };
@@ -1016,7 +1016,7 @@
       refreshBody(); return;
     }
     if (!name) { fcp.modalError = 'La raison sociale est requise.'; refreshBody(); return; }
-    if (findClient(id)) { fcp.modalError = 'Cet identifiant client existe deja.'; refreshBody(); return; }
+    if (findClient(id)) { fcp.modalError = 'Cet identifiant client existe déjà.'; refreshBody(); return; }
     if (!SLUG_RE.test(centerId)) {
       fcp.modalError = 'Identifiant du centre invalide : minuscules, chiffres et tirets simples (ex. fun-galaxy-namur).';
       refreshBody(); return;
@@ -1050,10 +1050,10 @@
       fcp.saving = false;
       fcp.modal.step = 'codes';
       refreshHead(); refreshBody(); refreshFoot();
-      toast('Client cree.');
+      toast('Client créé.');
     } catch (error) {
       fcp.saving = false;
-      fcp.modalError = (error && error.userMessage) || (error && error.message) || 'Creation refusee. Reessaye.';
+      fcp.modalError = (error && error.userMessage) || (error && error.message) || 'Création refusée. Réessayez.';
       refreshBody(); refreshFoot();
     }
   }
@@ -1088,10 +1088,10 @@
       fcp.saving = false;
       fcp.modal.step = 'codes';
       refreshHead(); refreshBody(); refreshFoot();
-      toast('Centre ajoute.');
+      toast('Centre ajouté.');
     } catch (error) {
       fcp.saving = false;
-      fcp.modalError = (error && error.userMessage) || (error && error.message) || 'Ajout refuse. Reessaye.';
+      fcp.modalError = (error && error.userMessage) || (error && error.message) || 'Ajout refusé. Réessayez.';
       refreshBody(); refreshFoot();
     }
   }
@@ -1115,10 +1115,10 @@
         method: 'POST',
         body: JSON.stringify({ action: 'updateClientStatus', id: clientId, status }),
       });
-      toast('Statut mis a jour.');
+      toast('Statut mis à jour.');
     } catch (error) {
       client.status = previous; // rollback
-      toast((error && error.userMessage) || (error && error.message) || 'Le statut n\'a pas ete change.');
+      toast((error && error.userMessage) || (error && error.message) || 'Le statut n\'a pas été changé.');
     } finally {
       fcp.statusBusy = '';
       renderList();
@@ -1134,7 +1134,7 @@
     const restore = btn.getAttribute('data-restore') || btn.textContent || 'Copier';
     const flash = () => {
       btn.setAttribute('data-restore', restore);
-      btn.textContent = 'Copie';
+      btn.textContent = 'Copié';
       btn.classList.add('is-copied');
       setTimeout(() => { btn.textContent = restore; btn.classList.remove('is-copied'); }, 1200);
     };

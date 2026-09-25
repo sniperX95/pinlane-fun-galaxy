@@ -320,7 +320,10 @@
     </section>`;
   }
 
-  function stat({ label, value, count, suffix = '', delta = '', deltaTone = 'flat', foot = '', series = null }) {
+  // `empty` : la tuile n a pas de chiffre a donner (historique en chargement,
+  // droit absent, rien a classer). Elle le dit en mots, dans un corps plus
+  // petit, au lieu d un tiret seul qui se lisait comme un trou de maquette.
+  function stat({ label, value, count, suffix = '', delta = '', deltaTone = 'flat', foot = '', series = null, empty = false, className = '' }) {
     // `data-pv2-count` ne defile QU'A L'ARRIVEE sur la page (voir
     // animateCounters). `data-pl-num` prend le relais ensuite : c'est lui qui
     // fait bouger le chiffre quand la valeur CHANGE - une recherche, un poll,
@@ -332,9 +335,9 @@
     const valueHtml = count !== undefined
       ? `<span data-pv2-count="${Number(count) || 0}" data-pv2-suffix="${esc(suffix)}" data-pl-num="${cle}">${(Number(count) || 0).toLocaleString('fr-BE')}${esc(suffix)}</span>`
       : `<span data-pl-num="${cle}">${esc(value)}</span>`;
-    return `<article class="pv2-stat">
+    return `<article class="pv2-stat${className ? ` ${className}` : ''}">
       <div class="pv2-stat-label"><span>${esc(label)}</span>${delta ? `<span class="pv2-delta ${deltaTone}">${esc(delta)}</span>` : ''}</div>
-      <div class="pv2-stat-value">${valueHtml}</div>
+      <div class="pv2-stat-value${empty ? ' is-empty' : ''}">${valueHtml}</div>
       ${series ? `<canvas data-pv2-spark='${JSON.stringify(series.map((v) => Math.round(Number(v) || 0)))}'></canvas>` : ''}
       ${foot ? `<div class="pv2-stat-foot">${esc(foot)}</div>` : ''}
     </article>`;
@@ -581,7 +584,10 @@
       // clavier global d app-main sur data-cal-date).
       cells += `<button type="button" class="pv2-cal-cell heat-${heat} ${dateStr === today ? 'today' : ''} ${dateStr === selectedDate ? 'selected' : ''}" data-cal-date="${dateStr}" aria-pressed="${dateStr === selectedDate ? 'true' : 'false'}" aria-label="${day} · ${agg ? `${agg.count} résa, ${agg.pax} joueurs` : 'aucune résa'}" onclick="pv2SelectResDay('${dateStr}')">
         <span class="pv2-cal-day">${day}</span>
-        <span class="pv2-cal-meta">${agg ? `<strong>${agg.count}</strong> résa · ${agg.pax}p` : '-'}</span>
+        ${/* Un jour sans reservation n affiche RIEN : trente tirets sur un mois
+             creux faisaient une grille de trous. Le compte s ecrit en mots
+             (« 56p » ne se lisait pas). */''}
+        ${agg ? `<span class="pv2-cal-meta"><strong>${agg.count}</strong> résa${agg.count > 1 ? 's' : ''}<span class="pv2-cal-pax">${agg.pax} joueur${agg.pax > 1 ? 's' : ''}</span></span>` : ''}
       </button>`;
     }
 
@@ -596,7 +602,7 @@
         const meta = STATUS_META[r.status] || STATUS_META.pending;
         const time = String(r.startTime || '').slice(0, 5);
         return `<div class="pv2-flow-item ${meta.tone}" onclick="openStaffReservationDetail('${escJs(r.id)}')">
-          <div class="pv2-flow-time">${esc(time)}<small>${esc(String(r.duration || 1))}h</small></div>
+          <div class="pv2-flow-time">${esc(time)}<small>${esc(typeof formatDurationLabel === 'function' ? formatDurationLabel(Number(r.duration) || 1) : `${r.duration || 1}h`)}</small></div>
           <div class="pv2-flow-rail"></div>
           <div class="pv2-flow-body">
             <strong>${esc(r.name || 'Sans nom')}</strong>
@@ -11197,6 +11203,13 @@
     const metrics = getPricingMetrics(allRows);
     // « Plus demandé » ne designe une offre que si elle a ete demandee.
     const top = metrics.topRow && Number(metrics.topRow.count) > 0 ? metrics.topRow : null;
+    // TANT QUE L HISTORIQUE N EST PAS ARRIVE, IL N Y A PAS DE CHIFFRE. Avant
+    // la reponse de /api/admin-range, le compte ne voyait que les dates
+    // ouvertes sur ce poste : « 0 réservation sur 30 jours, 0 € » s affichait
+    // comme un fait le temps du chargement, et pour de bon si la lecture
+    // echouait. La page se redessine a l arrivee (loadStaffClientData).
+    const historique = typeof staffClientDataCache === 'undefined' ? { loaded: true } : staffClientDataCache;
+    const histoEtat = historique.loaded ? 'ok' : (historique.error ? 'erreur' : 'charge');
     const filter = state.staffPricingFilter || 'all';
     const countByType = (type) => allRows.filter((row) => row.type === type).length;
     // « Speciales » ne compte QUE la categorie speciale du socle : les autres
@@ -11230,13 +11243,14 @@
 
       <section class="pv2-stats">
         ${stat({ label: 'Offres actives', count: metrics.activeOffers, foot: `dont ${metrics.formulaRows} formules` })}
-        ${voitHistorique ? `
+        ${!voitHistorique
+          ? stat({ label: 'Réservations sur 30 jours', value: 'Non accessible avec votre rôle', empty: true, foot: 'Le chiffre et les offres les plus demandées demandent l’accès aux réservations.', className: 'pv2-stat-wide' })
+          : histoEtat !== 'ok'
+            ? stat({ label: 'Réservations sur 30 jours', value: histoEtat === 'erreur' ? 'Historique indisponible' : 'Chargement de l’historique…', empty: true, foot: histoEtat === 'erreur' ? 'Le serveur n’a pas répondu. Rechargez la page pour réessayer.' : 'Les 30 derniers jours arrivent du serveur.', className: 'pv2-stat-wide' })
+            : `
         ${stat({ label: 'Réservations', count: metrics.reservations, foot: 'sur 30 jours, hors annulations' })}
-        ${stat({ label: 'Chiffre réservé', value: money(metrics.revenue), foot: 'sur 30 jours' })}
-        ${stat({ label: 'Plus demandé', value: top ? top.title : '-', foot: top ? `${formatStaffTerrainCount(Number(top.count), 'réservation')} sur 30 jours` : 'aucune réservation sur 30 jours' })}` : `
-        ${stat({ label: 'Réservations', value: '-', foot: 'historique non accessible avec votre rôle' })}
-        ${stat({ label: 'Chiffre réservé', value: '-' })}
-        ${stat({ label: 'Plus demandé', value: '-' })}`}
+        ${stat({ label: 'Chiffre réservé', value: (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view')) ? '···' : money(metrics.revenue), foot: 'sur 30 jours' })}
+        ${stat({ label: 'Plus demandé', value: top ? top.title : 'Aucune réservation', empty: !top, foot: top ? `${formatStaffTerrainCount(Number(top.count), 'réservation')} sur 30 jours` : 'sur les 30 derniers jours' })}`}
       </section>
 
       ${seg([

@@ -63,7 +63,7 @@ const MUTATIONS = {
   zero: ['staff-pages-v2.js', " : 'Aucune réservation'}</small>", " : `${dayAgg.count} résa · ${dayAgg.pax} joueurs`}</small>", '[E] le jour vide le dit en mots'],
   formulesvide: ['app-main.js', "      panelSubtitle: formuleRows.length ? `", "      panelSubtitle: true ? `", '[F] Formules vide sans compteur a zero'],
   appel: ['staff-pages-v2.js', "    if (voitHistorique && typeof ensureStaffClientData === 'function') ensureStaffClientData();", "    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();", '[H] sans droit sur l historique, Tarifs ne l appelle pas'],
-  tuiles: ['staff-pages-v2.js', '        ${voitHistorique ? `', '        ${true ? `', '[H] et ses tuiles disent que l historique n est pas accessible'],
+  tuiles: ['staff-pages-v2.js', '        ${!voitHistorique\n', '        ${false\n', '[H] et ses tuiles disent que l historique n est pas accessible'],
   utc: ['app-main.js', 'd.setDate(d.getDate() - 30); return toLocalDateStr(d); })();', 'd.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();', '[G] la fenetre compte 30 jours'],
 };
 
@@ -329,8 +329,10 @@ async function run() {
     await h.page.waitForTimeout(1200);
     const restreint = await h.page.evaluate(() => {
       const root = document.getElementById('staffPricingPage');
-      const tuile = (nom) => [...root.querySelectorAll('.pv2-stat')].find((x) => ((x.querySelector('.pv2-stat-label span') || {}).textContent || '') === nom);
-      const resas = tuile('Réservations');
+      // La tuile des reservations, quel que soit son libelle exact
+      // (« Réservations » ou « Réservations sur 30 jours ») : la regle porte
+      // sur ce qu elle affirme, pas sur ses mots.
+      const resas = [...root.querySelectorAll('.pv2-stat')].find((x) => /^Réservations/.test(((x.querySelector('.pv2-stat-label span') || {}).textContent || '').trim()));
       return {
         droits: typeof canReadStaffReservationHistory === 'function' ? canReadStaffReservationHistory() : 'absent',
         valeur: resas ? ((resas.querySelector('.pv2-stat-value') || {}).textContent || '').trim() : '',
@@ -340,7 +342,9 @@ async function run() {
     });
     ok(restreint.droits === false, 'MONTAGE [H] la session servie n a pas le droit de lire l historique', String(restreint.droits));
     ok(h.appelsHistorique.length === 0, '[H] sans droit sur l historique, Tarifs ne l appelle pas', `${h.appelsHistorique.length} appel(s)`);
-    ok(restreint.valeur === '-' && /non accessible/.test(restreint.pied) && restreint.chiffrees === 0, '[H] et ses tuiles disent que l historique n est pas accessible', `« ${restreint.valeur} » · « ${restreint.pied} » · ${restreint.chiffrees} carte(s) chiffree(s)`);
+    // LA REGLE : aucun chiffre (un « 0 » serait un fait faux), la raison
+    // est dite, aucune carte d offre ne porte de chiffres.
+    ok(restreint.valeur !== '' && !/\d/.test(restreint.valeur) && /non accessible/i.test(`${restreint.valeur} ${restreint.pied}`) && restreint.chiffrees === 0, '[H] et ses tuiles disent que l historique n est pas accessible', `« ${restreint.valeur} » · « ${restreint.pied} » · ${restreint.chiffrees} carte(s) chiffree(s)`);
     ok(h.erreurs.length === 0, '[H] aucune erreur JavaScript', h.erreurs.slice(0, 3).join(' | '));
     await h.ctx.close();
   } finally {

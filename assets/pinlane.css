@@ -105,6 +105,9 @@
   /* Typo */
   --font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-data: 'Geist Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  /* Ce qui se recopie caractere par caractere (un code d acces, une variable
+     de modele) : la chasse fixe y aide a lire sans confondre 0 et O. */
+  --font-code: 'Geist Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
   /* Forme */
   --radius-sm: 6px;

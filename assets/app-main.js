@@ -10126,17 +10126,30 @@ function setStaffToday() {
   syncDateReservations(state.currentDate, { silent: true });
 }
 
-function renderDashboardSpark(values = [], className = '') {
+// MINI-COURBE D UNE TUILE : les sept derniers jours, la journee affichee au
+// bout. Elle ne se dessine que sur la serie du SERVEUR (staffDaySeriesCache) :
+// avant sa reponse, le cache du poste ne connait que les dates ouvertes ici et
+// tracerait des zeros qui n ont pas eu lieu. La place reste reservee, rien ne
+// saute a l arrivee. Les sept valeurs se lisent au survol et a la synthese
+// vocale : la courbe resume, elle ne cache rien.
+function renderDashboardSpark(values = [], { shown = false, days = [], format = (value) => String(value) } = {}) {
+  if (!shown || values.length < 2) return '<div class="dash-kpi-spark is-empty" aria-hidden="true"></div>';
   const clean = values.map(value => Number(value) || 0);
   const max = Math.max(...clean, 1);
-  const points = clean.map((value, index) => {
-    const x = clean.length <= 1 ? 100 : (index / (clean.length - 1)) * 100;
-    const y = 38 - ((value / max) * 30);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  return `<svg class="dash-spark ${escapeHtml(className)}" viewBox="0 0 100 42" preserveAspectRatio="none" aria-hidden="true">
-    <polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></polyline>
-  </svg>`;
+  const coords = clean.map((value, index) => [(index / (clean.length - 1)) * 100, 28 - ((value / max) * 24)]);
+  const line = coords.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+  const [lastX, lastY] = coords[coords.length - 1];
+  const detail = clean.map((value, index) => {
+    const day = days[index] ? parseLocalDate(days[index]).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric' }).replace('.', '') : '';
+    return `${day} : ${format(value)}`;
+  }).join(', ');
+  return `<div class="dash-kpi-spark" role="img" aria-label="${escapeHtml(`Sept derniers jours. ${detail}`)}" title="${escapeHtml(detail)}">
+    <svg viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <polygon points="0,32 ${line} 100,32" fill="currentColor" fill-opacity="0.12"></polygon>
+      <polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.75" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"></polyline>
+    </svg>
+    <span class="dash-kpi-spark-dot" style="left:${lastX.toFixed(2)}%;top:${((lastY / 32) * 100).toFixed(2)}%"></span>
+  </div>`;
 }
 
 function renderDashboardIcon(name) {
@@ -10392,24 +10405,16 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
       occupancySeries[index] = capacity ? Math.min(100, Math.round(((Number(day.laneHours) || 0) / capacity) * 100)) : 0;
     });
   }
-  const currentIndex = days.length - 1;
-  // SOMME des jours precedents de la serie (six jours quand la fenetre en
-  // compte sept), pas une moyenne : c est `revenueTrend`, juste en dessous, qui
-  // divise par leur nombre pour comparer la journee affichee a la MOYENNE de la
-  // periode. Ce trend-la sert la carte « Revenus des 7 derniers jours ». Les
-  // quatre tuiles du haut, elles, disent « vs hier » et se comparent donc toutes
-  // a la VEILLE (previousRevenueToday, plus bas).
-  const previousRevenue = revenueSeries.slice(0, currentIndex).reduce((sum, value) => sum + value, 0);
-  const revenueTrend = previousRevenue ? Math.round(((revenue - (previousRevenue / Math.max(currentIndex, 1))) / (previousRevenue / Math.max(currentIndex, 1))) * 100) : 0;
-  const previousDate = addDays(state.currentDate, -1);
-  const previousActiveReservations = state.reservations.filter(reservation => reservation.date === previousDate && reservation.status !== 'cancelled');
-  const previousPlanningWindow = getPlanningWindow(previousDate);
-  const previousOpenHours = previousPlanningWindow.closed ? 0 : Math.max(previousPlanningWindow.close - previousPlanningWindow.open, 0);
-  const previousBowlingWindows = previousActiveReservations.flatMap(reservation => getBowlingWindowsFromReservation(reservation).map(window => ({ ...window, reservation })));
-  const previousRevenueToday = previousActiveReservations.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
-  const previousPlayers = previousActiveReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0);
-  const previousLaneHours = previousBowlingWindows.reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
-  const previousOccupancy = (TOTAL_LANES * previousOpenHours) ? Math.round((previousLaneHours / (TOTAL_LANES * previousOpenHours)) * 100) : 0;
+  // LA VEILLE VIENT DU SERVEUR OU NE VIENT PAS. Elle se lisait dans le cache
+  // du poste (state.reservations) : un poste qui n avait jamais ouvert la
+  // veille lisait « hier : 0 » sur les quatre tuiles d un lendemain de
+  // samedi plein. La serie serveur porte la veille (avant-dernier point) ;
+  // tant qu elle n est pas la, la veille est INCONNUE (null) et les tuiles
+  // ne comparent a rien. Meme regle pour la courbe (seriesFromServer).
+  const seriesFromServer = serverDays.length === days.length
+    && serverDays.slice(0, -1).every((day, index) => day && day.date === days[index]);
+  const previousIndex = days.length - 2;
+  const previousPoint = (series) => (seriesFromServer ? series[previousIndex] : null);
   return {
     activeReservations,
     bowlingWindows,
@@ -10430,11 +10435,12 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     playerSeries,
     collectedSeries,
     occupancySeries,
-    revenueTrend,
-    previousReservationsCount: previousActiveReservations.length,
-    previousRevenueToday,
-    previousPlayers,
-    previousOccupancy,
+    seriesFromServer,
+    seriesDays: days,
+    previousReservationsCount: previousPoint(reservationSeries),
+    previousRevenueToday: previousPoint(revenueSeries),
+    previousPlayers: previousPoint(playerSeries),
+    previousOccupancy: previousPoint(occupancySeries),
     planningWindow
   };
 }
@@ -10452,10 +10458,14 @@ function formatDashboardTrend(current, previous) {
 // tout ce qui bouge : trois tuiles sur quatre affichaient le meme chiffre et la
 // colonne entiere devenait illisible. Sans reference, la tuile dit la
 // reference plutot qu un rapport impossible.
-function renderDashboardKpiTrend(trendText, previousValue) {
-  return Number(previousValue) > 0
-    ? `<strong>${escapeHtml(trendText)}</strong><span>vs hier</span>`
-    : '<span>hier : 0</span>';
+// La veille vient de la serie du serveur, comme la courbe : tant qu elle
+// n est pas arrivee (previousValue null), la tuile ne compare a rien plutot
+// qu a un zero du cache local, qui ne connait pas les jours non visites.
+function renderDashboardKpiTrend(trendText, previousValue, zeroText = 'hier : 0') {
+  if (previousValue === null || previousValue === undefined) return '';
+  if (!(Number(previousValue) > 0)) return `<span class="dash-kpi-ref">${escapeHtml(zeroText)}</span>`;
+  const tone = /^\+/.test(trendText) ? 'up' : /^-/.test(trendText) ? 'down' : 'flat';
+  return `<span class="dash-kpi-delta ${tone}">${escapeHtml(trendText)}</span><span class="dash-kpi-ref">vs hier</span>`;
 }
 
 
@@ -10650,9 +10660,10 @@ function renderDashSideChartBody(host, metrics) {
   rows.forEach(reservation => {
     const isFormule = reservation.type === 'formule' || reservation.formuleId;
     if (!isFormule || !reservation.formuleId) return;
-    const entry = counts.get(reservation.formuleId) || { count: 0, revenue: 0 };
+    const entry = counts.get(reservation.formuleId) || { count: 0, revenue: 0, label: '' };
     entry.count += 1;
     entry.revenue += Number(reservation.price) || 0;
+    if (!entry.label && reservation.label) entry.label = String(reservation.label);
     counts.set(reservation.formuleId, entry);
   });
   const list = [...counts.entries()]
@@ -10661,8 +10672,11 @@ function renderDashSideChartBody(host, metrics) {
       return {
         // JAMAIS L IDENTIFIANT BRUT : quand le catalogue ne connait plus la
         // formule, la carte listait « formule3 » en minuscules entre deux vrais
-        // noms de vente.
-        label: formule ? formule.name : 'Formule non répertoriée',
+        // noms de vente. Le nom enregistre sur la reservation (le libelle
+        // vendu, celui que la page Reservations affiche) passe avant le repli :
+        // la meme formule s appelait « FORMULE 3 » la-bas et « Formule non
+        // répertoriée » ici.
+        label: formule ? formule.name : (entry.label || 'Formule non répertoriée'),
         // LA BARRE MESURE CE QU ELLE JOUXTE : elle portait le NOMBRE de
         // reservations (1 partout un jour ordinaire, donc trois barres pleines)
         // a cote de trois montants tres differents.
@@ -11864,15 +11878,13 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   ensureStaffDaySeries();
   const metrics = getStaffDashboardMetrics(dayReservations);
   const d = parseLocalDate(state.currentDate);
-  // DEUX REFERENCES, DEUX NOMS. `revenueTrendText` compare la journee a la
-  // MOYENNE des jours precedents : il n a de sens que pour la carte « Revenus
-  // des 7 derniers jours », ou il sert de repli. La tuile du haut, elle, ecrit
-  // « vs hier » a cote de trois tuiles jugees sur la veille : elle se juge donc
-  // sur la veille aussi. Sans ca, un centre ferme le lundi lisait le mardi
-  // « hier : 0 » sur trois tuiles et « +1852 % vs hier » sur la quatrieme, pour
-  // une veille ou rien n avait ete vendu (mesure du 2026-09-03).
-  const revenueTrendText = metrics.revenueTrend > 0 ? `+${metrics.revenueTrend}%` : `${metrics.revenueTrend}%`;
+  // Les quatre tuiles se jugent toutes sur la VEILLE : un centre ferme le
+  // lundi lisait le mardi « hier : 0 » sur trois tuiles et « +1852 % vs hier »
+  // sur la quatrieme, jugee sur une moyenne (mesure du 2026-09-03).
   const revenueDayTrendText = formatDashboardTrend(metrics.revenue, metrics.previousRevenueToday);
+  // Sans « Voir les montants », la tuile cache aussi la forme du chiffre :
+  // un « +40 % vs hier » et une courbe disent ce que le « ··· » tait.
+  const seesMoney = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.view');
   const reservationTrendText = formatDashboardTrend(metrics.activeReservations.length, metrics.previousReservationsCount);
   const playerTrendText = formatDashboardTrend(metrics.players, metrics.previousPlayers);
   const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.previousOccupancy);
@@ -11885,9 +11897,14 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   // tendance suivent la fenetre affichee, pas forcement la date du dashboard.
   const revenueWindow = getDashRevenueWindow(metrics);
   const totalPeriodRevenue = revenueWindow.values.reduce((sum, value) => sum + value, 0);
-  const revenueTrendWindowText = revenueWindow.previousTotal !== null && revenueWindow.previousTotal > 0
-    ? `${totalPeriodRevenue >= revenueWindow.previousTotal ? '+' : ''}${Math.round(((totalPeriodRevenue - revenueWindow.previousTotal) / revenueWindow.previousTotal) * 100)}%`
-    : (revenueWindow.previousTotal === 0 && totalPeriodRevenue > 0 ? '+100%' : revenueTrendText);
+  // UN POURCENTAGE CONTRE ZERO N EXISTE PAS. La carte ecrivait « +100 % »
+  // quand la periode precedente valait 0 EUR, et « 0 % » quand elle n etait
+  // pas encore arrivee (repli sur une autre mesure, la journee contre la
+  // moyenne) : deux chiffres faux sous le meme libelle. Sans periode connue,
+  // pas de comparaison ; contre zero, la reference elle-meme.
+  const revenueTrendWindowText = revenueWindow.previousTotal > 0
+    ? `${totalPeriodRevenue >= revenueWindow.previousTotal ? '+' : ''}${Math.round(((totalPeriodRevenue - revenueWindow.previousTotal) / revenueWindow.previousTotal) * 100)}% vs période précédente`
+    : (revenueWindow.previousTotal === 0 ? `période précédente : ${formatMoney(0)}` : '');
   const revenueWindowLabel = revenueWindow.offset
     ? `${parseLocalDate(revenueWindow.days[0]).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')} au ${parseLocalDate(revenueWindow.endDate).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')}`
     : '7 derniers jours';
@@ -11940,29 +11957,29 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
     </section>
 
     <section class="dash-kpis">
-      <article class="dash-kpi purple">
-        <div class="dash-icon">${renderDashboardIcon('calendar')}</div>
-        <div class="dash-kpi-copy"><span>Réservations</span><strong data-pl-num="dash.resa">${metrics.activeReservations.length}</strong><small>sessions piste</small></div>
-        <div class="dash-kpi-trend">${renderDashboardKpiTrend(reservationTrendText, metrics.previousReservationsCount)}</div>
-        ${renderDashboardSpark(metrics.reservationSeries, 'purple')}
+      <article class="dash-kpi">
+        <div class="dash-kpi-head"><span class="dash-kpi-label">Réservations</span><span class="dash-kpi-trend">${renderDashboardKpiTrend(reservationTrendText, metrics.previousReservationsCount)}</span></div>
+        <strong class="dash-kpi-value" data-pl-num="dash.resa">${metrics.activeReservations.length}</strong>
+        <small class="dash-kpi-sub">sur la journée</small>
+        ${renderDashboardSpark(metrics.reservationSeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value} résa${value > 1 ? 's' : ''}` })}
       </article>
-      <article class="dash-kpi blue">
-        <div class="dash-icon">${renderDashboardIcon('users')}</div>
-        <div class="dash-kpi-copy"><span>Joueurs</span><strong data-pl-num="dash.joueurs">${metrics.players}</strong><small>personnes</small></div>
-        <div class="dash-kpi-trend">${renderDashboardKpiTrend(playerTrendText, metrics.previousPlayers)}</div>
-        ${renderDashboardSpark(metrics.playerSeries, 'blue')}
+      <article class="dash-kpi">
+        <div class="dash-kpi-head"><span class="dash-kpi-label">Joueurs</span><span class="dash-kpi-trend">${renderDashboardKpiTrend(playerTrendText, metrics.previousPlayers)}</span></div>
+        <strong class="dash-kpi-value" data-pl-num="dash.joueurs">${metrics.players}</strong>
+        <small class="dash-kpi-sub">personne${metrics.players > 1 ? 's' : ''}</small>
+        ${renderDashboardSpark(metrics.playerSeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value} joueur${value > 1 ? 's' : ''}` })}
       </article>
-      <article class="dash-kpi green">
-        <div class="dash-icon">${renderDashboardIcon('euro')}</div>
-        <div class="dash-kpi-copy"><span>Chiffre d'affaires</span><strong data-pl-num="dash.ca">${moneyForRole(metrics.revenue)}</strong><small>${moneyForRole(metrics.collected)} validés aujourd'hui</small></div>
-        <div class="dash-kpi-trend">${renderDashboardKpiTrend(revenueDayTrendText, metrics.previousRevenueToday)}</div>
-        ${renderDashboardSpark(metrics.revenueSeries, 'green')}
+      <article class="dash-kpi">
+        <div class="dash-kpi-head"><span class="dash-kpi-label">Chiffre d'affaires</span><span class="dash-kpi-trend">${seesMoney ? renderDashboardKpiTrend(revenueDayTrendText, metrics.previousRevenueToday, `hier : ${formatMoney(0)}`) : ''}</span></div>
+        <strong class="dash-kpi-value" data-pl-num="dash.ca">${moneyForRole(metrics.revenue)}</strong>
+        <small class="dash-kpi-sub">${moneyForRole(metrics.collected)} encaissés</small>
+        ${renderDashboardSpark(metrics.revenueSeries, { shown: seesMoney && metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => formatMoney(value) })}
       </article>
-      <article class="dash-kpi orange">
-        <div class="dash-icon">${renderDashboardIcon('activity')}</div>
-        <div class="dash-kpi-copy"><span>Taux d'occupation</span><strong data-pl-num="dash.occupation">${metrics.occupancy}%</strong><small>${availableLanes} pistes disponibles</small></div>
-        <div class="dash-kpi-trend">${renderDashboardKpiTrend(occupancyTrendText, metrics.previousOccupancy)}</div>
-        ${renderDashboardSpark(metrics.occupancySeries, 'orange')}
+      <article class="dash-kpi">
+        <div class="dash-kpi-head"><span class="dash-kpi-label">Taux d'occupation</span><span class="dash-kpi-trend">${renderDashboardKpiTrend(occupancyTrendText, metrics.previousOccupancy, 'hier : 0%')}</span></div>
+        <strong class="dash-kpi-value" data-pl-num="dash.occupation">${metrics.occupancy}%</strong>
+        <small class="dash-kpi-sub">${availableLanes} piste${availableLanes > 1 ? 's' : ''} disponible${availableLanes > 1 ? 's' : ''}</small>
+        ${renderDashboardSpark(metrics.occupancySeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value}%` })}
       </article>
     </section>
 
@@ -11986,7 +12003,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
             </button>
           </div>
         </div>
-        <div class="dash-revenue-head"><strong id="dashRevenueTotal">${formatMoney(totalPeriodRevenue)}</strong><span>Total</span><small>${escapeHtml(revenueTrendWindowText)} vs période précédente</small></div>
+        <div class="dash-revenue-head"><strong id="dashRevenueTotal">${formatMoney(totalPeriodRevenue)}</strong><span>Total</span>${revenueTrendWindowText ? `<small>${escapeHtml(revenueTrendWindowText)}</small>` : ''}</div>
         ${renderStaffDashboardRevenue(revenueWindow)}
       </article>
       <article class="dash-card dash-flow-card">
@@ -12803,6 +12820,19 @@ function getStaffResourceHistoryRows() {
   return source.filter((r) => r && r.status !== 'cancelled' && String(r.date || '') >= from && String(r.date || '') < end);
 }
 
+// CES 30 JOURS NE SONT UN CHIFFRE QU UNE FOIS ARRIVES. Avant la reponse de
+// /api/admin-range, getStaffResourceHistoryRows ne voit que les dates ouvertes
+// sur ce poste : « 30 j · 0% » s affichait comme un fait le temps du
+// chargement, et pour de bon si la lecture echouait. 'ok' | 'charge' | 'erreur'.
+function getStaffHistoryState() {
+  if (staffClientDataCache.loaded) return 'ok';
+  return staffClientDataCache.error ? 'erreur' : 'charge';
+}
+
+function getStaffHistoryPendingLabel() {
+  return getStaffHistoryState() === 'erreur' ? 'indisponible' : 'chargement…';
+}
+
 function computeStaffLaneStats30() {
   const rows = getStaffResourceHistoryRows();
   const lanes = Array.from({ length: getAvailabilityLaneCount() }, (_, index) => ({ lane: index + 1, hours: 0, resas: 0 }));
@@ -12956,7 +12986,9 @@ function renderStaffLaneBoard(model = buildStaffLaneBoardModel()) {
         ${laneMaintFormLane === item.lane ? renderLaneMaintForm(item.lane) : ''}
       </div>
       <div class="lane-row-side">
-        <span class="lane-pct${item.weak ? ' is-weak' : ''}" data-role="lane-pct" data-pct="${item.pct30}" title="${formatDurationLabel(item.hours30)} réservées sur les 30 derniers jours">30 j · ${item.pct30}%${item.weak ? ' · sous-utilisée' : ''}</span>
+        ${getStaffHistoryState() === 'ok'
+          ? `<span class="lane-pct${item.weak ? ' is-weak' : ''}" data-role="lane-pct" data-pct="${item.pct30}" title="${formatDurationLabel(item.hours30)} réservées sur les 30 derniers jours">30 j · ${item.pct30}%${item.weak ? ' · sous-utilisée' : ''}</span>`
+          : `<span class="lane-pct is-pending" data-role="lane-pct" title="Occupation des 30 derniers jours">30 j · ${getStaffHistoryPendingLabel()}</span>`}
         <div class="lane-row-actions">${actions}</div>
       </div>
     </div>`;
@@ -12990,7 +13022,9 @@ function buildStaffLaserBoardModel() {
     ['Prochain lancement', next ? numToTime(next.start) : 'aucun', next ? `${nextPlaces} places restantes` : (isToday ? 'plus rien aujourd’hui' : 'sur la date affichée')],
     ['Sessions du jour', sessions.length, `${playersToday} joueur${playersToday > 1 ? 's' : ''}`],
     ['À compléter', weakUpcoming.length, 'sessions faibles à venir'],
-    ['Remplissage 30 j', `${stats30.fill}%`, `${stats30.sessions} lancements`],
+    getStaffHistoryState() === 'ok'
+      ? ['Remplissage 30 j', `${stats30.fill}%`, `${stats30.sessions} lancement${stats30.sessions > 1 ? 's' : ''}`]
+      : ['Remplissage 30 j', getStaffHistoryPendingLabel(), 'historique du serveur'],
   ];
   return { win, sessions, next, nextPlaces, weakUpcoming, playersToday, stats30, gaps, isToday, now, kpis };
 }
@@ -13028,8 +13062,8 @@ function renderStaffLaserBoard(model = buildStaffLaserBoardModel()) {
     </article>`;
   }).join('');
   const top = model.stats30.topHours.map(([hour, players]) => `${String(hour).padStart(2, '0')}h (${formatStaffTerrainCount(players, 'joueur')})`).join(', ');
-  const bilan = model.stats30.sessions
-    ? `<div class="laser-30d">30 jours : <b>${model.stats30.fill}%</b> de remplissage moyen · ${model.stats30.sessions} lancements · ${model.stats30.players} joueurs · <b>${model.stats30.emptySeats}</b> places restées vides sur des lancements lancés${top ? ` · heures fortes : ${top}` : ''}</div>`
+  const bilan = getStaffHistoryState() === 'ok' && model.stats30.sessions
+    ? `<div class="laser-30d">30 jours : <b>${model.stats30.fill}%</b> de remplissage moyen · ${formatStaffTerrainCount(model.stats30.sessions, 'lancement')} · ${formatStaffTerrainCount(model.stats30.players, 'joueur')} · <b>${model.stats30.emptySeats}</b> place${model.stats30.emptySeats > 1 ? 's' : ''} restée${model.stats30.emptySeats > 1 ? 's' : ''} vide${model.stats30.emptySeats > 1 ? 's' : ''} sur des lancements lancés${top ? ` · heures fortes : ${top}` : ''}</div>`
     : '';
   const vide = model.sessions.length ? '' : `<div class="utility-empty"><strong>Aucun lancement sur la date</strong><span>Réservez un laser : le premier groupe crée la session.</span></div>`;
   return `<div class="laser-board">${bandeau ? `<div class="laser-next">${bandeau}</div>` : ''}${sessionsHtml}${vide}${bilan}</div>`;
@@ -14299,12 +14333,15 @@ function renderEstablishmentReadPanels(center, active) {
   const centrePanel = `<div class="estab-read-stack">
     ${section(ICO.resources, 'Ressources & capacité', 'Ce que le moteur utilise pour allouer pistes, armes et tables.', `
       <div class="estab-stat-grid">
-        ${stat(ICO.pin, 'Pistes bowling', Number(bowling.laneCount || 0), '')}
+        ${/* Chaque tuile dit ce que compte son chiffre : « Lancements // »
+             ne se lisait pas, et deux tuiles sans ligne de pied tombaient
+             plus bas que leurs voisines. */''}
+        ${stat(ICO.pin, 'Pistes bowling', Number(bowling.laneCount || 0), 'sur le planning')}
         ${stat(ICO.users, 'Confort / piste', Number(bowling.normalCapacityPerLane || 0), 'joueurs recommandés')}
         ${stat(ICO.users, 'Max / piste', Number(bowling.emergencyCapacityPerLane || 0), 'capacité secours')}
-        ${stat(ICO.target, 'Armes laser', Number(laser.weaponCount || 0), '')}
-        ${stat(ICO.bolt, 'Lancements //', Number(laser.parallelLaunches || 0), 'simultanés')}
-        ${stat(ICO.cake, 'Tables anniv.', softCap, `capacité max ${hardCap}`)}
+        ${stat(ICO.target, 'Armes laser', Number(laser.weaponCount || 0), 'joueurs en même temps au plus')}
+        ${stat(ICO.bolt, 'Lancements', Number(laser.parallelLaunches || 0), 'en parallèle au plus')}
+        ${stat(ICO.cake, 'Tables', softCap, `anniversaire conseillées, ${hardCap} au plus`)}
       </div>`)}
     ${(Array.isArray(center.resources?.declared) && center.resources.declared.length) ? section(ICO.grid, 'Installations déclarées', 'Les ressources propres au centre : le moteur les compte comme les pistes.', `
       <div class="estab-rules">
@@ -20732,15 +20769,24 @@ function renderPlanning() {
   const curH = currentTimeDecimal();
   const curPos = isToday && curH >= startHour && curH <= closeHour ? (curH - startHour) * HH + HEADER_H : -1;
 
+  // L ETIQUETTE QUE LE BADGE DE L HEURE COURANTE RECOUVRE S EFFACE. Chaque
+  // etiquette est centree dans sa demi-heure ; a 23:56, « 23:30 » depassait a
+  // moitie au-dessus du badge et « 00:00 » en dessous. Mesure : demi-badge
+  // 9 px, demi-etiquette 7 px (8 en plein ecran), plus 2 px d air. Une
+  // etiquette dont le centre tombe a moins de 19 px du badge laisse la place a
+  // l heure exacte, qui la remplace.
+  const sousLeBadge = (centre) => curPos >= HEADER_H && Math.abs(centre - curPos) < 19;
   let hoursHtml = '';
   for (let slot = 0; slot < halfSlots; slot++) {
     const timeValue = startHour + (slot * 0.5);
     const isHalf = slot % 2 === 1;
-    hoursHtml += `<div class="hour-cell ${isHalf ? 'minor' : 'major'}">
+    const cache = sousLeBadge(HEADER_H + ((slot + 0.5) * (HH / 2)));
+    hoursHtml += `<div class="hour-cell ${isHalf ? 'minor' : 'major'}${cache ? ' is-under-now' : ''}">
       <span class="${isHalf ? 'hour-label-half' : 'hour-label-hour'}">${formatClockDisplay(timeValue)}</span>
     </div>`;
   }
-  hoursHtml += `<div class="hour-cell end"><span class="hour-label-end">${formatClockDisplay(closeHour)}</span></div>`;
+  const finCachee = sousLeBadge(HEADER_H + ((halfSlots + 0.5) * (HH / 2)));
+  hoursHtml += `<div class="hour-cell end${finCachee ? ' is-under-now' : ''}"><span class="hour-label-end">${formatClockDisplay(closeHour)}</span></div>`;
 
   const laneBlockWindows = getBowlingBlockWindows(state.currentDate, startHour, closeHour);
   // Nombre de pistes REEL du centre affiche (config staff chargee), avec repli sur
@@ -21853,12 +21899,20 @@ function renderActivityProgressPill(r) {
   // donnee sur une carte qui en manque. Le compte exact reste dans l'infobulle
   // et dans le texte lu par la synthese vocale : rien n'est perdu, seule la
   // forme change.
+  // UN SEGMENT PAR ACTIVITE. A zero, la jauge continue n etait qu un trait
+  // gris sans rien dedans : elle se lisait comme un emplacement vide, pas
+  // comme « 0 sur 4 ». Quatre traits dont aucun n est plein disent le compte
+  // d un coup d oeil. Au-dela de six, les segments deviendraient des points :
+  // la jauge continue reprend.
   const part = Math.max(0, Math.min(1, summary.total ? summary.done / summary.total : 0));
+  const jauge = summary.total <= 6
+    ? `<span class="activity-bar is-seg">${Array.from({ length: summary.total }, (_, index) => `<span class="activity-seg${index < summary.done ? ' on' : ''}"></span>`).join('')}</span>`
+    : `<span class="activity-bar"><span class="activity-bar-fill" style="width:${Math.round(part * 100)}%"></span></span>`;
   return `<span class="activity-pill${summary.allDone ? ' done' : ''}" role="img"`
     + ` title="Activités faites : ${summary.done}/${summary.total}"`
     + ` aria-label="${summary.done} activité${summary.done > 1 ? 's' : ''} faite${summary.done > 1 ? 's' : ''} sur ${summary.total}">`
-    + `<span class="activity-bar"><span class="activity-bar-fill" style="width:${Math.round(part * 100)}%"></span></span>`
     + `<span class="visually-hidden">${summary.done}/${summary.total}</span>`
+    + jauge
     + `</span>`;
 }
 
@@ -21916,9 +21970,15 @@ function renderFormulaActivityChecklist(r, opts = {}) {
       <div class="info-label">Suivi des activités${opts.titleSuffix ? ` ${escapeHtml(opts.titleSuffix)}` : ''}</div>
       <span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>
     </div>`;
+  // Meme langage que la carte du planning : un segment par activite, plein
+  // quand elle est faite. A zero, la jauge continue n etait qu une bande
+  // grise vide au-dessus de la liste. Au-dela de huit, la jauge continue.
+  const jauge = summary.total <= 8
+    ? `<div class="activity-check-bar is-seg" aria-hidden="true">${summary.items.map(item => `<span class="${item.done ? 'on' : ''}"></span>`).join('')}</div>`
+    : `<div class="activity-check-bar" aria-hidden="true"><span style="width:${pct}%"></span></div>`;
   return `<div class="info-block activity-check-block${summary.allDone ? ' all-done' : ''}${opts.bare ? ' is-bare' : ''}">
     ${head}
-    <div class="activity-check-bar" aria-hidden="true"><span style="width:${pct}%"></span></div>
+    ${jauge}
     <div class="activity-check-list">${rows}</div>
   </div>`;
 }

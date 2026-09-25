@@ -82,7 +82,7 @@ const JOURNEE = [
 // L historique CRM : la fenetre des 30 jours revolus va du 2026-08-26 (inclus)
 // au 2026-09-24 (inclus). Trois reservations y tombent ; celle du 2026-08-25
 // est hors fenetre, l annulee ne compte pas, et la journee en cours (les deux
-// de JOURNEE, que la console a en memoire) non plus.
+// de JOURNEE, que le serveur sert aussi quand la plage la couvre) non plus.
 const HISTORIQUE = [
   resa(7311, '2026-09-24'),
   resa(7312, '2026-09-23', { type: 'formule', formuleId: 'f1', pax: 8, price: 208, status: 'paid' }),
@@ -133,11 +133,18 @@ async function ouvrir(browser, route, { permissions = null } = {}) {
     });
   }
   // L historique arrive APRES le premier rendu : la page doit se repeindre.
+  // Comme le vrai serveur, il porte aussi la journee en cours quand la plage
+  // demandee la couvre : la page Reservations lit le mois ENTIER et, une fois
+  // la plage chargee, ce que le serveur ne renvoie pas n existe plus. Sans ca,
+  // le jour passait de « 2 réservations » a « Aucune réservation » 400 ms apres
+  // l ouverture, et [E] ne gagnait que la course.
   const appelsHistorique = [];
   await page.route('**/api/admin-range**', async (r) => {
     appelsHistorique.push(r.request().url());
+    const q = new URL(r.request().url()).searchParams;
+    const couvreLeJour = (q.get('startDate') || '') <= JOUR && JOUR <= (q.get('endDate') || '');
     await new Promise((resolve) => setTimeout(resolve, 400));
-    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, reservations: HISTORIQUE.map((x) => ({ ...x })), centerId: dev.CENTER_ID }) });
+    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, reservations: [...HISTORIQUE, ...(couvreLeJour ? JOURNEE : [])].map((x) => ({ ...x })), centerId: dev.CENTER_ID }) });
   });
   await page.route('**/api/ops**', (r) => {
     const url = new URL(r.request().url());
@@ -220,6 +227,13 @@ async function run() {
       const stat = [...document.querySelectorAll('#staffPricingPage .pv2-stat')].find((s) => /^Réservations$/.test((s.querySelector('.pv2-stat-label span') || {}).textContent || ''));
       return stat && stat.querySelector('[data-pv2-count]') && stat.querySelector('[data-pv2-count]').getAttribute('data-pv2-count') === '3';
     }, null, 6000);
+    // Le chiffre d affaires passe de 0 € (premier rendu, sans historique) a sa
+    // valeur par l animateur de chiffres, qui porte data-pl-anim tant qu il
+    // defile : lu trop tot, le gate voyait un pas de l animation (« 0 € »).
+    await attendre(t.page, () => {
+      const stat = [...document.querySelectorAll('#staffPricingPage .pv2-stat')].find((s) => ((s.querySelector('.pv2-stat-label span') || {}).textContent || '') === 'Chiffre réservé');
+      return Boolean(stat) && !stat.querySelector('[data-pl-anim]');
+    }, null, 4000);
     const tarifs = await t.page.evaluate(() => {
       const root = document.getElementById('staffPricingPage');
       const tuile = (nom) => {

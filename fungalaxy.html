@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260928c">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260929a">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -66,7 +66,6 @@
   <!-- Deux halos de couleur qui derivent lentement derriere les scenes (page
        autonome seulement : dans le cadre du client ils dessineraient un
        rectangle). Deux degrades, un transform chacun, rien d autre. -->
-  <div class="fg-glow" aria-hidden="true"><i></i><i></i></div>
   <p class="fg-alert" id="fgAlert" role="alert" hidden></p>
   <!-- UNE SEULE VOIX pour les lecteurs d ecran : une phrase courte apres
        chaque geste (fgLive), hors des scenes pour qu un changement d ecran ne
@@ -135,7 +134,7 @@
           </div>
         </div>
         <div class="fg-actions fg-rise" style="--i:3">
-          <button type="button" class="fg-btn fg-btn--shine" id="goActivities"><span id="goActivitiesLabel">Choisir mes activités</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+          <button type="button" class="fg-btn" id="goActivities"><span id="goActivitiesLabel">Choisir mes activités</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
         </div>
         <!-- LA PORTE DES GROUPES ORGANISES, quelle que soit leur taille :
              ecoles, entreprises, associations. -->
@@ -278,7 +277,7 @@
         <h2 class="fg-title" id="t-ok"><span data-words>Dernière<br><em>vérification</em></span></h2>
         <div class="fg-recap" id="recap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:520px">
-          <button type="button" class="fg-btn fg-btn--shine" id="confirmBtn">Valider ma réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+          <button type="button" class="fg-btn" id="confirmBtn">Valider ma réservation<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
           <p class="fg-alert fg-alert--inline" id="confirmErr" role="alert" hidden></p>
           <p class="fg-confirm__note">Aucun paiement en ligne&nbsp;: vous réglez sur place, par carte ou en espèces.</p>
           <div class="fg-edit" role="group" aria-labelledby="editLbl"><span id="editLbl">Modifier&nbsp;:</span> <button type="button" class="fg-edit__btn" data-goto="date">le jour ou le groupe</button> <button type="button" class="fg-edit__btn" data-goto="activites">le programme</button> <button type="button" class="fg-edit__btn" data-goto="heures">les horaires</button> <button type="button" class="fg-edit__btn" data-back>vos coordonnées</button></div>
@@ -305,6 +304,6 @@
      .fg-cal__voile). Le toucher referme le calendrier. -->
 <div class="fg-cal__voile" id="dayVoile" aria-hidden="true" hidden></div>
 
-<script src="/assets/fungalaxy-booking.js?v=20260928c" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260929a" defer></script>
 </body>
 </html>

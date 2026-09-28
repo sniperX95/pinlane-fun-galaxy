@@ -267,7 +267,7 @@
         <h2 class="fg-title" id="t-smr"><span data-words>Votre<br><em>demande</em></span></h2>
         <div class="fg-sm-recap" id="smRecap"></div>
         <div class="fg-actions fg-actions--column fg-rise" style="--i:6; max-width:560px">
-          <button type="button" class="fg-btn fg-btn--shine" id="smSend">Envoyer ma demande<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+          <button type="button" class="fg-btn" id="smSend">Envoyer ma demande<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
           <p class="fg-alert fg-alert--inline" id="smSendErr" role="alert" hidden></p>
           <p class="fg-confirm__note" id="smSendNote">Ce n’est pas encore une réservation&nbsp;: l’équipe vérifie ce qui est possible à votre date et vous répond sous 24&nbsp;heures ouvrables, avec le programme et le montant.</p>
         </div>

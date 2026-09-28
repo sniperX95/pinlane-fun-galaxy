@@ -1809,7 +1809,7 @@ async function main() {
     ok(titres.length === 5 && new Set(ouvertures).size === 5
       && titres.every((mots) => mots.length >= 2 && !mots.some((x) => /^[?!]$/.test(x.trim())) && mots.every((x) => !/[?!]$/.test(x) || /\u00a0[?!]$/.test(x))),
       '[A] les cinq titres ouvrent chacun sur un mot different, et une ponctuation finale reste collee a son mot', titres.map((mots) => `« ${mots.join(' ')} »`).join(' '));
-    ok(await attendre(page, () => getComputedStyle(document.querySelector('.fg-curtain')).visibility === 'hidden', 3000) && montage.halos === 2, '[A] le rideau d ouverture finit invisible (au plus 3 s), deux halos en place', JSON.stringify({ halos: montage.halos }));
+    ok(await attendre(page, () => getComputedStyle(document.querySelector('.fg-curtain')).visibility === 'hidden', 3000) && montage.halos === 0, '[A] le rideau d ouverture finit invisible (au plus 3 s), aucun halo (plus de degrade decoratif)', JSON.stringify({ halos: montage.halos }));
     const poids = poidsServi();
     ok(poids.nettoyes && poids.octets < BUDGET_SERVI, `[A] JS + CSS + HTML SERVIS (apres le build) sous ${BUDGET_SERVI / 1024} Ko a analyser`, `${Math.round(poids.octets / 102.4) / 10} Ko, ${poids.sortie}`);
     ok(poids.transfere < BUDGET_TRANSFERE, `[A] et sous ${BUDGET_TRANSFERE / 1024} Ko a telecharger (compresses, comme le serveur les envoie)`, `${Math.round(poids.transfere / 102.4) / 10} Ko`);
@@ -2024,6 +2024,38 @@ async function main() {
     // =====================================================================
     await page.click('#goActivities');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000), '[B] l ecran des activites est actif, transition finie');
+    // PAS DE DEGRADE DECORATIF (Movsar, 2026-09-29 : l encart du grand groupe
+    // en degrade « fait trop IA »). La regle : un degrade n existe que comme
+    // voile d une photo, sur le ::before ou le ::after d un hote qui porte son
+    // <img> (le texte pose dessus reste lisible). Un motif (repeating-, les
+    // hachures du groupe suivant) n est pas un degrade. Lue sur les REGLES de
+    // la feuille, pas sur les seuls elements a l ecran : une piste, un
+    // squelette ou un encart pas encore affiches sont couverts aussi.
+    const degrades = await page.evaluate(() => {
+      const lire = (feuilles) => {
+        const fautes = [], voiles = [];
+        const parcourir = (liste) => Array.from(liste).forEach((r) => {
+          if (r.cssRules && !r.style) { parcourir(r.cssRules); return; }
+          if (!r.style || !r.selectorText) return;
+          if (!/(^|[^-])(linear|radial|conic)-gradient\(/.test(r.style.getPropertyValue('background-image') || '')) return;
+          r.selectorText.split(',').map((s) => s.trim()).forEach((sel) => {
+            const m = /^(.*\S)::?(before|after)$/.exec(sel);
+            const hotes = m ? Array.from(document.querySelectorAll(m[1])) : [];
+            if (m && hotes.length && hotes.every((h) => h.querySelector('img'))) voiles.push(sel); else fautes.push(sel);
+          });
+        });
+        feuilles.forEach((f) => { try { parcourir(f.cssRules); } catch (e) { fautes.push(`feuille illisible ${f.href || ''}`); } });
+        return { fautes, voiles };
+      };
+      const feuilles = Array.from(document.styleSheets).filter((f) => /\/assets\/fungalaxy-booking\.css/.test(f.href || ''));
+      const essai = new CSSStyleSheet();
+      essai.replaceSync('.fg-btn { background-image: linear-gradient(red, blue); } .fg-art::after { background: linear-gradient(90deg, #000, transparent); } .fg-chip { background: repeating-linear-gradient(135deg, red 0 6px, blue 6px 12px); } .fg-sm-seuil::before { background: linear-gradient(red, blue); }');
+      return { feuilles: feuilles.length, ...lire(feuilles), preuve: lire([essai]) };
+    });
+    ok(degrades.preuve.fautes.join(' ') === '.fg-btn .fg-sm-seuil::before' && degrades.preuve.voiles.join(' ') === '.fg-art::after',
+      '[B] contre-preuve : le lecteur refuse un degrade sur un bouton et sur un ::before sans photo, laisse passer le voile d une photo et un motif hachure', JSON.stringify(degrades.preuve));
+    ok(degrades.feuilles === 1 && degrades.voiles.length >= 5 && degrades.fautes.length === 0,
+      '[B] aucun degrade decoratif : chaque degrade de la feuille est le voile d une photo', JSON.stringify({ feuilles: degrades.feuilles, voiles: degrades.voiles.length, fautes: degrades.fautes }));
     const fil = await page.evaluate(() => ({ largeur: Math.round(document.querySelector('.fg-scene.is-active .fg-steps').getBoundingClientRect().width), visibles: Array.from(document.querySelectorAll('.fg-scene.is-active .fg-steps__item .lbl')).filter((l) => getComputedStyle(l).display !== 'none').length }));
     ok(fil.largeur > 500 && fil.visibles === 5, '[B] sur une scene pleine largeur a 1440 px, le fil est large et ses cinq libelles sont visibles', JSON.stringify(fil));
     const lireCartes = () => page.evaluate(() => Array.from(document.querySelectorAll('#gridAct li.fg-grid__item')).map((li) => {
@@ -2582,9 +2614,9 @@ async function main() {
     const fondu = await f.evaluate(() => {
       const fond = new URLSearchParams(location.search).get('fond') || '';
       const art = document.querySelector('.fg-scene.is-active .fg-art');
-      return { fond, ref: getComputedStyle(document.documentElement).getPropertyValue('--fg-bg').trim(), halos: getComputedStyle(document.querySelector('.fg-glow')).display, bords: art ? getComputedStyle(art, '::before').backgroundImage : '' };
+      return { fond, ref: getComputedStyle(document.documentElement).getPropertyValue('--fg-bg').trim(), halos: document.querySelectorAll('.fg-glow i').length, bords: art ? getComputedStyle(art, '::before').backgroundImage : '' };
     });
-    ok(Boolean(fondu.fond) && fondu.ref === fondu.fond && fondu.halos === 'none' && fondu.bords.indexOf(fondu.fond) >= 0, '[F] le cadre se fond dans le site : fond de reference = fond du site, halos absents, bords de la photo fondus vers cette couleur (plus de rectangle)', JSON.stringify({ fond: fondu.fond, ref: fondu.ref, halos: fondu.halos, bords: fondu.bords.slice(0, 60) }));
+    ok(Boolean(fondu.fond) && fondu.ref === fondu.fond && fondu.halos === 0 && fondu.bords.indexOf(fondu.fond) >= 0, '[F] le cadre se fond dans le site : fond de reference = fond du site, halos absents, bords de la photo fondus vers cette couleur (plus de rectangle)', JSON.stringify({ fond: fondu.fond, ref: fondu.ref, halos: fondu.halos, bords: fondu.bords.slice(0, 60) }));
     const accord = async () => {
       const dedans = await f.evaluate(() => Math.max(document.body.scrollHeight, document.body.offsetHeight));
       const dehors = await pageHote.evaluate(() => parseInt(document.querySelector('.bloc iframe').style.height, 10));
@@ -3961,7 +3993,7 @@ async function main() {
       JSON.stringify({ bloc: sm.bloc, section: sm.section, src: sm.src, deborde: sm.deborde }));
     let fm = null;
     for (let k = 0; k < 100 && !fm; k += 1) { fm = pm.frames().find((x) => /\/fungalaxy\/libramont\?embed=1/.test(x.url())); if (!fm) await dormir(100); }
-    ok(Boolean(fm) && await attendre(fm, () => document.body.classList.contains('is-embed') && getComputedStyle(document.querySelector('.fg-top')).display === 'none' && getComputedStyle(document.querySelector('.fg-glow')).display === 'none' && document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000),
+    ok(Boolean(fm) && await attendre(fm, () => document.body.classList.contains('is-embed') && getComputedStyle(document.querySelector('.fg-top')).display === 'none' && !document.querySelector('.fg-glow') && document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000),
       '[M] dans le cadre, le formulaire en mode embarque : sans notre bandeau ni nos halos, catalogue lu');
     if (fm) {
       const fondM = await fm.evaluate(() => ({ fond: new URLSearchParams(location.search).get('fond') || '', ref: getComputedStyle(document.documentElement).getPropertyValue('--fg-bg').trim() }));
@@ -4807,7 +4839,7 @@ async function main() {
     const pageCalme = await calme.newPage();
     await pageCalme.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
     const anims = await pageCalme.evaluate(() => Array.from(document.querySelectorAll('.fg-scene.is-active .fg-title .w > span, .fg-scene.is-active .fg-art img, .fg-scene.is-active .fg-rise, .fg-curtain, .fg-glow i')).map((el) => getComputedStyle(el).animationName).filter((n) => n && n !== 'none'));
-    ok(anims.length === 0, '[H] avec prefers-reduced-motion, plus aucune animation (rideau et halos compris)', anims.join(', ') || 'aucune');
+    ok(anims.length === 0, '[H] avec prefers-reduced-motion, plus aucune animation (rideau compris)', anims.join(', ') || 'aucune');
     ok(await pageCalme.evaluate(() => getComputedStyle(document.querySelector('.fg-curtain')).visibility === 'hidden'), '[H] sans animation, le rideau n existe pas (invisible par defaut)');
     // L anneau de l ecran final est dans la page des le chargement : son style
     // se lit sans refaire le parcours.

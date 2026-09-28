@@ -86,7 +86,7 @@
   z-index: 50;
   pointer-events: none;
   visibility: hidden;
-  background: linear-gradient(100deg, var(--fg-purple) 0%, #6d2f6c 55%, var(--fg-teal-dim) 100%);
+  background: var(--fg-purple);
   transform: translateX(-110%) skewX(-12deg);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -100,32 +100,6 @@
 /* Dans le cadre du client, pas de rideau : le cadre grandit encore, la bande
    passerait sur un trou. */
 .fg.is-embed .fg-curtain { display: none; }
-
-/* --- Les halos ------------------------------------------------------------- */
-
-/* Deux disques de degrade qui derivent sous les scenes (page autonome). L alpha
-   est dans la couleur, jamais en opacity : meme rendu, aucun calque de
-   composition en plus. Chacun anime son seul transform. Dans le cadre du
-   client, ils dessineraient les bords du rectangle : absents. */
-.fg-glow { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
-.fg-glow i {
-  position: absolute;
-  width: 62vw;
-  height: 62vw;
-  max-width: 820px;
-  max-height: 820px;
-  border-radius: 50%;
-  will-change: transform;
-}
-.fg-glow i:first-child { left: -18vw; top: -22vw; background: radial-gradient(circle, rgba(148, 66, 146, 0.42) 0%, rgba(148, 66, 146, 0.12) 38%, rgba(148, 66, 146, 0) 68%); }
-.fg-glow i:last-child { right: -22vw; bottom: -26vw; background: radial-gradient(circle, rgba(103, 186, 172, 0.3) 0%, rgba(103, 186, 172, 0.08) 38%, rgba(103, 186, 172, 0) 68%); }
-@media (prefers-reduced-motion: no-preference) {
-  .fg-glow i:first-child { animation: fg-glow-a 26s ease-in-out infinite alternate; }
-  .fg-glow i:last-child { animation: fg-glow-b 32s ease-in-out infinite alternate; }
-}
-@keyframes fg-glow-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(14vw, 10vw, 0) scale(1.18); } }
-@keyframes fg-glow-b { from { transform: translate3d(0, 0, 0) scale(1.1); } to { transform: translate3d(-12vw, -14vw, 0) scale(0.92); } }
-.fg.is-embed .fg-glow { display: none; }
 
 /* --- Bandeau du haut (page autonome seulement, l hote a le sien) --------- */
 
@@ -873,26 +847,25 @@ html.fg-pilote .fg { overflow: visible; }
   min-height: 54px;
   padding: 0 34px;
   border-radius: var(--fg-radius);
-  /* De la matiere : le corps s assombrit vers le bas (jamais de blanc : le
-     contraste du texte ne peut que monter), une lumiere venue du haut. */
+  /* Un aplat et l ombre franche au sarcelle : ni degrade, ni biseau, ni
+     reflet (Movsar, 2026-09-29 : le degrade « fait trop IA »). */
   background-color: var(--fg-purple);
-  background-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.16) 100%);
   color: var(--fg-text);
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   text-decoration: none;
-  box-shadow: 6px 6px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+  box-shadow: 6px 6px 0 var(--fg-teal);
   transition: transform 0.18s var(--fg-ease), box-shadow 0.18s var(--fg-ease), background-color 0.2s, opacity 0.2s;
   will-change: transform;
 }
 .fg-btn svg { width: 18px; height: 18px; flex: none; transition: transform 0.25s var(--fg-ease); }
 @media (hover: hover) {
-  .fg-btn:hover { background-color: var(--fg-purple-2); transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -2px 0 rgba(0, 0, 0, 0.18); }
+  .fg-btn:hover { background-color: var(--fg-purple-2); transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--fg-teal); }
   .fg-btn:hover svg { transform: translateX(4px); }
 }
-.fg-btn:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--fg-teal), inset 0 2px 3px rgba(0, 0, 0, 0.3); }
+.fg-btn:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--fg-teal); }
 .fg-btn[disabled], .fg-btn.is-busy { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: 6px 6px 0 var(--fg-teal-dim); }
 .fg-btn[disabled] svg { transform: none; }
 /* Le bouton qui fait avancer s eveille quand il devient cliquable, une fois,
@@ -914,20 +887,6 @@ html.fg-pilote .fg { overflow: visible; }
   animation: fg-spin 0.8s linear infinite;
 }
 @keyframes fg-spin { to { transform: rotate(360deg); } }
-/* Un reflet passe une fois sur le bouton quand la scene arrive. */
-.fg-btn--shine { position: relative; overflow: hidden; }
-.fg-btn--shine::before {
-  content: "";
-  position: absolute;
-  top: 0; bottom: 0; left: 0;
-  width: 40%;
-  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
-  transform: translateX(-150%) skewX(-18deg);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-btn--shine::before { animation: fg-shine 0.6s var(--fg-ease) 0.9s both; }
-}
-@keyframes fg-shine { from { transform: translateX(-150%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
 /* Le bouton discret a un fond sombre, pas transparent : sur l ecran des
    activites, il se pose sur la photo, la ou le voile ne fait plus que 0,55,
    et son gris y tombait a 2,8:1 sur une photo claire. Sur le fond de la
@@ -1091,7 +1050,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }
   .fg-card:hover .fg-card__photo { opacity: 1; }
 }
-.fg-card.is-on { border-color: var(--fg-purple-2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 12px 30px rgba(148, 66, 146, 0.22), inset 0 0 0 1px rgba(194, 94, 194, 0.3); }
+.fg-card.is-on { border-color: var(--fg-purple-2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 0 0 1px rgba(194, 94, 194, 0.3); }
 /* Cochee et suivie de son tiroir, la carte s y raccorde : angles du bas droits. */
 .fg-grid__item.is-on .fg-card:not(:only-child) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .fg-card.is-on .fg-card__photo { opacity: 0.55; }
@@ -1277,7 +1236,6 @@ html.fg-pilote .fg { overflow: visible; }
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0 0 8px 8px;
   background: rgba(8, 8, 8, 0.93);
-  box-shadow: 0 12px 30px rgba(148, 66, 146, 0.18);
 }
 .fg-card__optbox { container-type: inline-size; }
 .fg-card__optlabel { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1434,7 +1392,7 @@ html.fg-pilote .fg { overflow: visible; }
   overflow: hidden;
   text-align: left;
 }
-.fg-track, .fg-skel__card { background: linear-gradient(180deg, rgba(24, 13, 24, 0.9) 0%, rgba(8, 8, 8, 0.72) 44%); border: 1px solid rgba(176, 79, 176, 0.3); }
+.fg-track, .fg-skel__card { background: var(--fg-bg-2); border: 1px solid rgba(176, 79, 176, 0.3); }
 /* Le filet de couleur sur la tranche : c est lui qui fait qu une section se
    voit comme une section, meme sur un fond noir et de loin. */
 .fg-track::before, .fg-visit::before, .fg-skel__card::before {
@@ -1445,7 +1403,7 @@ html.fg-pilote .fg { overflow: visible; }
   bottom: 0;
   width: 4px;
 }
-.fg-track::before, .fg-skel__card::before { background: linear-gradient(180deg, var(--fg-purple-2), var(--fg-teal)); }
+.fg-track::before, .fg-skel__card::before { background: var(--fg-purple-2); }
 .fg-track__head, .fg-visit__head {
   display: flex;
   flex-wrap: wrap;
@@ -1716,14 +1674,14 @@ html.fg-pilote .fg { overflow: visible; }
 /* Le bloc « votre visite » : l en-tete (arrivee, fin, prix) et la liste des
    etapes, activites reservees a leur heure puis activites libres. */
 /* Ce bloc-ci est la CONSEQUENCE des heures choisies au-dessus, pas un choix
-   de plus : sa carte, son filet et son bandeau partent au sarcelle. Le filet
-   descend dans l autre sens, c est ce qui le distingue d une piste. */
+   de plus : sa carte, son filet et son bandeau partent au sarcelle, c est
+   ce qui le distingue d une piste. */
 .fg-visit {
   margin-top: 6px;
-  background: linear-gradient(180deg, rgba(10, 26, 24, 0.92) 0%, rgba(10, 10, 10, 0.82) 44%);
+  background: var(--fg-bg-2);
   border: 1px solid rgba(103, 186, 172, 0.42);
 }
-.fg-visit::before { background: linear-gradient(180deg, var(--fg-teal), var(--fg-purple-2)); }
+.fg-visit::before { background: var(--fg-teal); }
 .fg-visit__head { gap: 8px 18px; background: rgba(103, 186, 172, 0.1); }
 .fg-visit__title { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; }
 .fg-visit__title svg { width: 18px; height: 18px; color: var(--fg-teal); }
@@ -1898,22 +1856,13 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-recap__sep { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 12px 0; }
 .fg-recap__item {
   display: grid;
-  grid-template-columns: 44px 1fr auto;
+  grid-template-columns: 20px 1fr auto;
   align-items: center;
   gap: 14px;
   padding: 8px 0;
 }
-.fg-recap__badge {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: rgba(148, 66, 146, 0.18);
-  border: 1px solid rgba(176, 79, 176, 0.5);
-  color: var(--fg-purple-ink);
-}
-.fg-recap__badge svg { width: 22px; height: 22px; }
+.fg-recap__badge { display: block; color: var(--fg-purple-ink); }
+.fg-recap__badge svg { display: block; width: 20px; height: 20px; }
 .fg-recap__name { font-weight: 700; font-size: 16px; }
 .fg-recap__detail { font-size: 13px; color: var(--fg-muted); font-weight: 500; }
 .fg-recap__aside { text-align: right; font-size: 12px; color: var(--fg-muted); }
@@ -2162,7 +2111,6 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-total__pay { border-left: 0; padding-left: 0; }
   .fg-done__ticket { padding: 4px 16px; }
   .fg-btn { padding: 0 22px; font-size: 13px; }
-  .fg-glow i { width: 120vw; height: 120vw; }
   .fg-grid--for { grid-template-columns: 1fr; }
   .fg-fams { gap: 24px; }
 }
@@ -2186,23 +2134,25 @@ html.fg-pilote .fg { overflow: visible; }
 
 /* --- La demande sur mesure ----------------------------------------------------- */
 
-/* L encart du grand groupe, au premier ecran : le sarcelle dit « l equipe
-   prend le relais », le violet reste au bouton qui avance. */
+/* L encart du grand groupe, au premier ecran : la matiere des champs
+   (aplat, filet, angles), l icone nue au sarcelle, « l equipe prend le
+   relais » ; le violet reste au bouton qui avance. Ni degrade ni
+   pastille (Movsar, 2026-09-29 : « fait trop IA »). */
 .fg-sm-seuil {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
   max-width: 680px;
   margin-top: 26px;
   padding: 16px 18px;
-  border: 1.5px solid rgba(103, 186, 172, 0.55);
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(103, 186, 172, 0.13), rgba(148, 66, 146, 0.1));
+  border: 1.5px solid var(--fg-line-2);
+  border-radius: var(--fg-radius);
+  background: var(--fg-bg-2);
 }
 .fg-sm-seuil[hidden] { display: none; }
-.fg-sm-seuil__icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--fg-teal); color: #04110f; }
-.fg-sm-seuil__icon svg { width: 22px; height: 22px; }
+.fg-sm-seuil__icon { display: block; color: var(--fg-teal-ink); }
+.fg-sm-seuil__icon svg { display: block; width: 20px; height: 20px; }
 .fg-sm-seuil__txt b { display: block; font-size: 15px; line-height: 1.3; }
 .fg-sm-seuil__txt p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--fg-muted); }
 @media (prefers-reduced-motion: no-preference) {
@@ -2221,8 +2171,8 @@ html.fg-pilote .fg { overflow: visible; }
   border-top: 1px solid var(--fg-line);
 }
 .fg-sm-door[hidden] { display: none; }
-.fg-sm-door__icon { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--fg-line-2); display: grid; place-items: center; color: var(--fg-teal-ink); }
-.fg-sm-door__icon svg { width: 19px; height: 19px; }
+.fg-sm-door__icon { flex: none; display: block; color: var(--fg-teal-ink); }
+.fg-sm-door__icon svg { display: block; width: 20px; height: 20px; }
 .fg-sm-door__txt { flex: 1 1 250px; min-width: 0; font-size: 14px; line-height: 1.45; color: var(--fg-muted); }
 .fg-sm-door__txt b { color: var(--fg-text); font-weight: 700; }
 .fg-sm-door__btn {
@@ -2247,8 +2197,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-sm-door__btn.is-busy { opacity: 0.6; cursor: progress; }
 
 @media (max-width: 560px) {
-  .fg-sm-seuil { grid-template-columns: 38px minmax(0, 1fr); padding: 14px; }
-  .fg-sm-seuil__icon { width: 38px; height: 38px; }
+  .fg-sm-seuil { padding: 14px; }
   .fg-sm-door__btn { width: 100%; justify-content: center; }
 }
 

@@ -480,6 +480,39 @@ async function poserGroupe(page, n) {
 }
 // LE PREMIER ECRAN, ET LE MODULE CHARGE A LA DEMANDE : a 30 personnes, rien
 // de la demande n est telecharge ; a 31, elle se charge avant le clic.
+// LA SOBRIETE, lue dans la page une fois la demande chargee (Movsar,
+// 2026-09-29 : l encart du grand groupe en degrade « fait trop IA »). Un
+// degrade n existe que comme voile d une photo : sur le ::before ou le ::after
+// d un hote qui porte son <img>. Un motif (repeating-) n est pas un degrade.
+// Lue sur les REGLES des deux feuilles, pas sur les seuls elements a l ecran.
+function sobriete() {
+  const lire = (feuilles) => {
+    const fautes = [], voiles = [];
+    const parcourir = (liste) => Array.from(liste).forEach((r) => {
+      if (r.cssRules && !r.style) { parcourir(r.cssRules); return; }
+      if (!r.style || !r.selectorText) return;
+      if (!/(^|[^-])(linear|radial|conic)-gradient\(/.test(r.style.getPropertyValue('background-image') || '')) return;
+      r.selectorText.split(',').map((s) => s.trim()).forEach((sel) => {
+        const m = /^(.*\S)::?(before|after)$/.exec(sel);
+        const hotes = m ? Array.from(document.querySelectorAll(m[1])) : [];
+        if (m && hotes.length && hotes.every((h) => h.querySelector('img'))) voiles.push(sel); else fautes.push(sel);
+      });
+    });
+    feuilles.forEach((f) => { try { parcourir(f.cssRules); } catch (e) { fautes.push(`feuille illisible ${f.href || ''}`); } });
+    return { fautes, voiles };
+  };
+  const feuilles = Array.from(document.styleSheets).filter((f) => /\/assets\/fungalaxy-(booking|sur-mesure)\.css/.test(f.href || ''));
+  const essai = new CSSStyleSheet();
+  essai.replaceSync('.fg-btn { background-image: linear-gradient(red, blue); } .fg-art::after { background: linear-gradient(90deg, #000, transparent); } .fg-chip { background: repeating-linear-gradient(135deg, red 0 6px, blue 6px 12px); } .fg-sm-seuil::before { background: linear-gradient(red, blue); }');
+  const encart = getComputedStyle(document.getElementById('smSeuil'));
+  const icone = getComputedStyle(document.querySelector('#smSeuil .fg-sm-seuil__icon'));
+  return {
+    feuilles: feuilles.map((f) => f.href.replace(/^.*\/assets\//, '').replace(/\?.*$/, '')).sort(),
+    ...lire(feuilles),
+    preuve: lire([essai]),
+    encart: { image: encart.backgroundImage, fond: encart.backgroundColor, champ: getComputedStyle(document.querySelector('.fg-stepper')).backgroundColor, iconeFond: icone.backgroundColor, iconeImage: icone.backgroundImage, iconeBord: icone.borderTopWidth },
+  };
+}
 async function premierEcran(browser) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
@@ -504,6 +537,7 @@ async function premierEcran(browser) {
     await attendre(page, () => typeof window.FGSurMesure === 'function', 5000);
     const a31 = await lire();
     a31.demandes = demandes.slice();
+    a31.sobre = await page.evaluate(sobriete);
     return { a30, a31 };
   } finally { await ctx.close(); }
 }
@@ -747,6 +781,13 @@ function verifierPremierEcran(p) {
     'A LA DEMANDE : a 30 personnes, rien de la demande n est telecharge (ni script, ni feuille, ni ecran)', JSON.stringify({ d: p.a30.demandes, e: p.a30.ecrans, m: p.a30.module }));
   ok(p.a31.demandes.some((u) => /fungalaxy-sur-mesure\.js\?v=/.test(u)) && p.a31.demandes.some((u) => /fungalaxy-sur-mesure\.css\?v=/.test(u)) && p.a31.module === 'function' && p.a31.ecrans === 5,
     'a 31, la demande se charge avant le clic (script et feuille versionnes), ses cinq ecrans entrent dans la page', JSON.stringify({ d: p.a31.demandes, e: p.a31.ecrans, m: p.a31.module }));
+  const s = p.a31.sobre;
+  ok(s.preuve.fautes.join(' ') === '.fg-btn .fg-sm-seuil::before' && s.preuve.voiles.join(' ') === '.fg-art::after',
+    'contre-preuve : le lecteur refuse un degrade sur un bouton et sur un ::before sans photo, laisse passer le voile d une photo et un motif hachure', JSON.stringify(s.preuve));
+  ok(s.feuilles.join(' ') === 'fungalaxy-booking.css fungalaxy-sur-mesure.css' && s.voiles.length >= 5 && s.fautes.length === 0,
+    'aucun degrade decoratif dans les deux feuilles, demande comprise : chaque degrade est le voile d une photo', JSON.stringify({ feuilles: s.feuilles, voiles: s.voiles.length, fautes: s.fautes }));
+  ok(s.encart.image === 'none' && s.encart.fond === s.encart.champ && s.encart.fond !== 'rgba(0, 0, 0, 0)' && s.encart.iconeFond === 'rgba(0, 0, 0, 0)' && s.encart.iconeImage === 'none' && s.encart.iconeBord === '0px',
+    'l encart du grand groupe est un aplat (le fond des champs), son icone sans pastille', JSON.stringify(s.encart));
 }
 function verifierPanne(r) {
   section('E0. LE MODULE EN PANNE');

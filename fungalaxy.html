@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260928b">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260928c">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -124,8 +124,25 @@
             <span class="fg-field__hint" id="paxHint" aria-live="polite"></span>
           </div>
         </div>
+        <!-- LE GRAND GROUPE (seuil du centre, meta.center.customRequest) : la
+             venue se prepare avec l equipe. Le bouton qui avance change de
+             mot, l encart dit pourquoi et ce qui se passe ensuite. -->
+        <div class="fg-sm-seuil" id="smSeuil" hidden>
+          <span class="fg-sm-seuil__icon" aria-hidden="true"><svg><use href="#i-users"/></svg></span>
+          <div class="fg-sm-seuil__txt">
+            <b id="smSeuilTitre">Grand groupe&nbsp;: votre venue se prépare avec l’équipe</b>
+            <p id="smSeuilTexte"></p>
+          </div>
+        </div>
         <div class="fg-actions fg-rise" style="--i:3">
-          <button type="button" class="fg-btn fg-btn--shine" id="goActivities">Choisir mes activités<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+          <button type="button" class="fg-btn fg-btn--shine" id="goActivities"><span id="goActivitiesLabel">Choisir mes activités</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
+        </div>
+        <!-- LA PORTE DES GROUPES ORGANISES, quelle que soit leur taille :
+             ecoles, entreprises, associations. -->
+        <div class="fg-sm-door fg-rise" style="--i:4" id="smDoor">
+          <span class="fg-sm-door__icon" aria-hidden="true"><svg><use href="#o-ecole"/></svg></span>
+          <span class="fg-sm-door__txt"><b>École, entreprise, association&nbsp;?</b> <span>Une venue préparée avec l’équipe, réponse sous 24&nbsp;heures ouvrables.</span></span>
+          <button type="button" class="fg-sm-door__btn" id="smDoorBtn">Demande sur mesure<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>
         </div>
       </div>
     </section>
@@ -288,6 +305,6 @@
      .fg-cal__voile). Le toucher referme le calendrier. -->
 <div class="fg-cal__voile" id="dayVoile" aria-hidden="true" hidden></div>
 
-<script src="/assets/fungalaxy-booking.js?v=20260928b" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260928c" defer></script>
 </body>
 </html>

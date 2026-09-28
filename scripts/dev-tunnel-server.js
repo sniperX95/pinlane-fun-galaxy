@@ -47,10 +47,30 @@ const DATE = nextSaturday();
 const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont' });
+// LA DEMANDE SUR MESURE PASSE PAR LE VRAI GESTIONNAIRE (validation comprise),
+// mais RIEN n est ecrit et RIEN n est envoye : la ligne est gardee en memoire
+// (dernierePose.demande) et l accuse de reception ne part jamais. Sans base
+// configuree, les relectures du gestionnaire echouent tout de suite et il
+// garde le socle fichier, comme le reste de ce serveur. Ces remplacements
+// sont poses AVANT le premier chargement de l API : elle les lit a son
+// chargement.
+const communications = require('../lib/ops-communications');
+const dernierePose = { body: null, demande: null, accuses: 0 };
+database.createCustomRequest = async (input) => {
+  dernierePose.demande = JSON.parse(JSON.stringify(input));
+  return {
+    id: 900 + Math.floor(Math.random() * 90), centerId: input.centerId, contactName: input.contactName, company: input.company || '',
+    email: input.email, phone: input.phone || '', requestedDate: input.requestedDate || '', pax: Number(input.pax) || 0,
+    occasion: input.occasion || '', message: input.message || '', source: 'client', status: 'new', payload: input.payload || {},
+  };
+};
+communications.sendCustomRequestAck = async () => { dernierePose.accuses += 1; return { skipped: true, reason: 'Serveur de dev : aucun envoi.' }; };
 const availability = require('../api/public-availability.js');
 // Le calendrier des prochains jours, calcule par le VRAI code du serveur (feries,
 // conges scolaires, horaires de vacances du centre reel), sans base : blocages vides.
-const { buildCalendar, calendarFromParam } = require('../api/public-booking-meta.js').__test;
+const bookingMeta = require('../api/public-booking-meta.js');
+const { buildCalendar, calendarFromParam } = bookingMeta.__test;
+const { customRequestFromPax } = require('../lib/center-config');
 
 const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
@@ -69,7 +89,16 @@ const ACTIVITIES = [
   // Duckpin comme le catalogue le sert : 2 pistes de 6 joueurs.
   { id: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 8, defaultMinutes: 60, units: 2, capacityPerUnit: 6 },
   { id: 'fun_run', name: 'Fun Run by PIXEL', planned: false, priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs par session', order: 9, defaultMinutes: 15, units: 1, capacityPerUnit: 5 },
-];
+].map((activity) => {
+  // Les faits d AGE du centre (activityThemes), poses comme le catalogue
+  // public les pose (activitesPubliques) : des 7 ans et 1,30 m au laser.
+  const theme = (FUN_GALAXY_CENTER.activityThemes || {})[activity.id];
+  if (!theme || typeof theme !== 'object') return activity;
+  const extra = {};
+  if (Number(theme.minAge) >= 1) extra.minAge = Math.trunc(Number(theme.minAge));
+  if (Number(theme.minHeightCm) >= 50) extra.minHeightCm = Math.trunc(Number(theme.minHeightCm));
+  return { ...activity, ...extra };
+});
 
 // Le branding se regle a la volee : /?brand=aurora pose un exemple complet
 // (couleur + axes de style), /?brand=none rien. Sert a VOIR la
@@ -104,6 +133,8 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
       city: info.city || '',
       identity: FUN_GALAXY_CENTER.identity,
       contact: { phone: info.phone || '', email: info.email || '' },
+      // Le seuil de la demande sur mesure, lu comme le serveur le lit.
+      customRequest: { fromPax: customRequestFromPax(FUN_GALAXY_CENTER) },
       branding: brandingFor(brandMode) || FUN_GALAXY_CENTER.branding,
       defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: null, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' }, 5: { open: '14:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} },
       holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {},
@@ -130,7 +161,6 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
 // file que si un e-mail est fourni. Le corps recu est garde en memoire pour
 // les gates (dernierePose).
 let compteur = 0;
-const dernierePose = { body: null };
 function fauxDossier(body) {
   compteur += 1;
   const b = body && typeof body === 'object' ? body : {};
@@ -220,6 +250,14 @@ function createServer(options = {}) {
       return;
     }
     if (url.pathname === '/api/public-availability') { try { await availability(req, res); } catch (error) { res.writeHead(500); res.end(JSON.stringify({ ok: false })); } return; }
+    if (url.pathname === '/api/custom-request' && req.method === 'POST') {
+      // Le plafond de requetes du vrai gestionnaire (5 par 10 min) ne sert a
+      // rien ici : on le remet a zero a chaque demande du serveur de dev.
+      const seaux = globalThis.__pinlaneRateBuckets;
+      if (seaux) [...seaux.keys()].filter((k) => k.startsWith('custom-request:')).forEach((k) => seaux.delete(k));
+      try { await bookingMeta(req, res); } catch (error) { res.writeHead(500); res.end(JSON.stringify({ ok: false })); }
+      return;
+    }
     if (url.pathname === '/api/public-reservations') {
       let body = '';
       req.setEncoding('utf8');

@@ -6,6 +6,7 @@ const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { refreshFormuleOverrides, bookingDateOutOfRange, BOOKING_HORIZON_DAYS } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getCenter, refreshCenterOverrides, publicBookingBlockReason } = require('../lib/ops-knowledge');
+const { customRequestFromPax } = require('../lib/center-config');
 const { enforceRateLimit } = require('../lib/rate-limit');
 
 module.exports = async (req, res) => {
@@ -99,6 +100,24 @@ module.exports = async (req, res) => {
     const centerBlock = publicBookingBlockReason(requestedCenterId);
     if (centerBlock) {
       sendError(res, 422, centerBlock);
+      return;
+    }
+    // LES GRANDS GROUPES PASSENT PAR UNE DEMANDE SUR MESURE (2026-09-28).
+    // Movsar : « tout groupe superieur a 30 donc a partir 31 tout groupe sera
+    // redirige vers une demande sur mesure ». Le seuil est une donnee du
+    // centre (customRequest.fromPax, reglee dans Etablissement) ; le groupe
+    // compte TOUT le monde, les accompagnants d une offre pour enfants
+    // compris. Le formulaire oriente deja vers la demande : ce refus ne tombe
+    // que sur une page restee ouverte pendant que le centre changeait son
+    // seuil, ou sur un appel forge. Le code permet a l ecran d ouvrir la demande.
+    const seuilSurMesure = customRequestFromPax(requestedCenter);
+    const effectif = Math.max(0, Math.trunc(Number(body && body.pax) || 0))
+      + Math.max(0, Math.trunc(Number(body && body.companions) || 0));
+    if (seuilSurMesure && effectif >= seuilSurMesure) {
+      sendError(res, 422, `À partir de ${seuilSurMesure} personnes, votre venue se prépare avec l’équipe : faites une demande sur mesure, réponse sous 24 heures ouvrables.`, {
+        code: 'custom_request_required',
+        fromPax: seuilSurMesure,
+      });
       return;
     }
     // Carte d'overrides catalogue chaude AVANT le calcul du prix (sync) : une

@@ -103,6 +103,7 @@
     selection: [],             // ids d activites cochees (onglet Activites)
     options: {},               // id -> { duration | games | minutes } choisis sur la carte
     formuleId: '',             // ou une formule (onglet Formules)
+    enfants: null,             // offre reservee aux enfants : combien le sont (null = tout le groupe)
     onglet: 'activites',
     pins: {},                  // activityId -> 'HH:MM' : les heures que le client a posees
     laserParts: [],            // heures des parties de laser posees (si plusieurs parties)
@@ -121,6 +122,25 @@
     { id: 'contact', label: 'Coordonnées' },
     { id: 'recap', label: 'Validation' },
   ];
+  // LE PARCOURS SUR MESURE : ses ecrans et son fil d etapes, a lui. Le premier
+  // ecran (le jour et le groupe) est la porte commune des deux parcours.
+  var SCENES_SM = ['sm-groupe', 'sm-date', 'sm-envies', 'sm-contact', 'sm-recap', 'fin'];
+  var ETAPES_SM = [
+    { id: 'sm-groupe', label: 'Votre groupe' },
+    { id: 'sm-date', label: 'Date' },
+    { id: 'sm-envies', label: 'Envies' },
+    { id: 'sm-contact', label: 'Coordonnées' },
+    { id: 'sm-recap', label: 'Envoi' },
+  ];
+  // La demande en cours de redaction. `actif` : le parcours montre est celui
+  // de la demande ; les reponses restent quand on revient a la porte.
+  var sm = {
+    actif: false, type: '', organisation: '', participants: 0, paxTouche: false, accompagnants: 0, ages: [],
+    date: '', date2: '', dateTouchee: false, flexible: false, periode: '', moment: '',
+    activites: [], formules: [], conseil: false, budget: '', onglet: 'activites', contact: null,
+  };
+  function parcours() { return sm.actif ? SCENES_SM : SCENES; }
+  function etapes() { return sm.actif ? ETAPES_SM : ETAPES; }
   var sceneCourante = 'date';
 
   /* --- Outils ------------------------------------------------------------------- */
@@ -353,10 +373,13 @@
   function prixBillard(a, tables, heures) {
     return a && Number(a.priceValue) > 0 ? Math.round(Number(a.priceValue) * tables * heures * 100) / 100 : null;
   }
-  function prixCarte(a) {
+  // `libre` : le prix de base, sans la ligne que la reservation a choisie
+  // (la demande sur mesure montre le tarif, l equipe composera les lignes).
+  function prixCarte(a, libre) {
     if (!meta) return '';
+    var choisie = !libre && state.selection.indexOf(a.id) >= 0;
     // Des billards choisis : le montant de SA ligne, et ce qu il paie.
-    if (a.priceType === 'per_unit_hour' && state.selection.indexOf(a.id) >= 0) {
+    if (a.priceType === 'per_unit_hour' && choisie) {
       var r = reglageBillard(a);
       var total = prixBillard(a, r.units, r.hours);
       var motTable = motUnite(a) || 'unité';
@@ -366,7 +389,7 @@
     }
     var opt = optionChoisie(a);
     if (opt) {
-      if (state.selection.indexOf(a.id) >= 0) return euros(opt.prix) + ' ' + opt.unite;
+      if (choisie) return euros(opt.prix) + ' ' + opt.unite;
       var mini = Math.min.apply(null, optionsPour(a).map(function (o) { return o.prix; }).filter(function (p) { return p > 0; }));
       return isFinite(mini) ? 'Dès ' + euros(mini) + ' ' + opt.unite : 'Tarif sur place';
     }
@@ -392,14 +415,15 @@
   // donc chaque animation part exactement quand l ecran apparait.
   var etapePrecedente = -1;
   function rendreEtapes() {
-    var total = ETAPES.length;
+    var liste = etapes();
+    var total = liste.length;
     var fin = sceneCourante === 'fin';
-    var actif = Math.min(SCENES.indexOf(sceneCourante), total - 1);
+    var actif = Math.min(parcours().indexOf(sceneCourante), total - 1);
     var avant = etapePrecedente;
     etapePrecedente = fin ? total : actif;
     var sens = avant < 0 ? 'depart' : fin ? 'fin' : actif > avant ? 'avance' : actif < avant ? 'recule' : 'reste';
     var deux = function (n) { return String(n).padStart(2, '0'); };
-    var html = ETAPES.map(function (e, i) {
+    var html = liste.map(function (e, i) {
       var cls = fin || i < actif ? 'is-done' : (i === actif ? 'is-active' : '');
       var geste = '';
       if (sens === 'avance' && i === actif) geste = ' is-filling';
@@ -540,18 +564,44 @@
       var j = Math.floor(Math.random() * (i + 1));
       var x = pool[i]; pool[i] = pool[j]; pool[j] = x;
     }
+    tirage = pool;
     if (!pool.length) return;
     $$('.fg-scene').forEach(function (scene, k) {
       var img = $('.fg-art img', scene);
-      if (!img) return;
-      var p = pool[k % pool.length];
-      var base = '/assets/fungalaxy/' + p.f;
-      img.width = 1600;
-      img.height = p.h;
-      img.dataset.src = base + '-800.webp';
-      img.dataset.srcset = base + '-800.webp 800w, ' + base + '-1600.webp 1600w';
+      if (img) poserPhoto(img, pool[k % pool.length]);
     });
     chargerPhoto($('.fg-scene.is-active'));
+  }
+  var tirage = [];
+  function poserPhoto(img, p) {
+    var base = '/assets/fungalaxy/' + p.f;
+    img.width = 1600;
+    img.height = p.h;
+    img.dataset.src = base + '-800.webp';
+    img.dataset.srcset = base + '-800.webp 800w, ' + base + '-1600.webp 1600w';
+    img.dataset.photo = p.f;
+  }
+  // Les ecrans de la demande, entres plus tard, prennent leurs photos dans le
+  // MEME tirage : jamais celle de l ecran d avant, ni, pour le dernier, celle
+  // de l ecran qui le suit.
+  function photosDesScenes(scenes, avant, apres) {
+    if (!tirage.length) return;
+    var precedente = avant ? (($('.fg-art img', avant) || {}).dataset || {}).photo || '' : '';
+    var suivante = apres ? (($('.fg-art img', apres) || {}).dataset || {}).photo || '' : '';
+    var curseur = 1;
+    scenes.forEach(function (scene, k) {
+      var img = $('.fg-art img', scene);
+      if (!img) { precedente = ''; return; }
+      var evite = k === scenes.length - 1 ? suivante : '';
+      var p = tirage[curseur % tirage.length];
+      for (var essai = 0; essai < tirage.length; essai += 1) {
+        p = tirage[(curseur + essai) % tirage.length];
+        if (p.f !== precedente && p.f !== evite) { curseur += essai; break; }
+      }
+      curseur += 1;
+      poserPhoto(img, p);
+      precedente = p.f;
+    });
   }
   function aller(cible, retour) {
     if (enTransition) { allerEnAttente = { cible: cible, retour: retour }; return; }
@@ -559,12 +609,17 @@
     var de = $('.fg-scene[data-scene="' + sceneCourante + '"]');
     var vers = $('.fg-scene[data-scene="' + cible + '"]');
     if (!vers) return;
+    // Un ecran de la demande ouvre son parcours, un ecran de la reservation le
+    // sien ; l ecran final garde celui qui y mene.
+    if (/^sm-/.test(cible)) sm.actif = true; else if (cible !== 'fin') sm.actif = false;
+    var chemin = parcours();
     sceneCourante = cible;
-    body.dataset.step = String(SCENES.indexOf(cible) + 1);
+    body.dataset.step = String(chemin.indexOf(cible) + 1);
+    body.dataset.parcours = sm.actif ? 'sur-mesure' : 'reservation';
     rendreEtapes();
     chargerPhoto(vers);
     // La photo de la scene suivante se precharge pendant que celle-ci se lit.
-    var suivante = $('.fg-scene[data-scene="' + SCENES[SCENES.indexOf(cible) + 1] + '"]');
+    var suivante = $('.fg-scene[data-scene="' + chemin[chemin.indexOf(cible) + 1] + '"]');
     if (suivante) chargerPhoto(suivante);
     stage.classList.toggle('is-back', Boolean(retour));
     if (reduced) {
@@ -639,8 +694,11 @@
   }
 
   function precedent() {
-    var i = SCENES.indexOf(sceneCourante);
-    if (i > 0) aller(SCENES[i - 1], true);
+    var chemin = parcours();
+    var i = chemin.indexOf(sceneCourante);
+    if (i > 0) aller(chemin[i - 1], true);
+    // Le premier ecran de la demande ramene a la porte commune.
+    else if (i === 0 && sm.actif) aller('date', true);
   }
 
   /* --- Le cadre dans la page hote ---------------------------------------------- */
@@ -699,6 +757,24 @@
   // Embarque, la hauteur qui compte est celle de l ecran de l HOTE : celle du
   // cadre est celle de son contenu.
   var dayVoile = $('#dayVoile'), dayMaison = dayPop.parentNode;
+  // LE CALENDRIER SERT PLUSIEURS CHAMPS : le jour de la reservation, et les
+  // dates de la demande sur mesure (au plus tot demain). Une seule fenetre,
+  // posee sous le champ qui l ouvre ; la cible dit quelle date elle montre,
+  // la premiere date choisissable et ce que fait un choix.
+  var CIBLE_JOUR = {
+    btn: dayBtn,
+    valeur: function () { return state.date; },
+    min: function () { return aujourdhui(); },
+    poser: function (d) { choisirJour(d); rejouer(dayLabel, 'is-maj'); rejouer(dayHint, 'is-maj'); },
+    avantMin: '',
+  };
+  var calCible = null;
+  function cible() { return calCible || CIBLE_JOUR; }
+  function ouvrirCalendrier(c) {
+    if (!dayPop.hidden && cible() !== c) ouvrirJours(false);
+    calCible = c;
+    ouvrirJours();
+  }
   var auMilieu = window.matchMedia ? window.matchMedia('(max-width: 560px)') : null;
   var MARGE_FENETRE = 96;
   function ecranCourt() { return EMBED ? ecranHote > 0 && ecranHote <= 500 : window.innerHeight <= 500; }
@@ -731,8 +807,23 @@
     var t = deIso(aujourdhui());
     return iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
   }
+  // L ENTREE GARDE LE VERDICT DU JOUR que le serveur a calcule : le jour de
+  // la semaine, les vacances qui bloquent les formules, les formules et les
+  // activites indisponibles ce jour-la, les horaires bruts. Jusqu au
+  // 2026-09-28 elle les jetait : verdictFormule ne voyait ni les vacances ni
+  // les blocages (FORMULE 1 choisissable le 19 octobre, conge d automne, que
+  // le serveur refuse ensuite), alors que son gate lui donnait le calendrier
+  // brut et restait vert.
   function entreeJour(entry) {
-    return { date: entry.date, ouvert: Boolean(entry.open), horaire: entry.open ? horaireLabel(entry.schedule) : (entry.closedLabel || 'Fermé'), periode: entry.holiday ? { type: entry.holiday.type, label: accentuer(entry.holiday.label) } : null, coupures: entry.closedWindows || [] };
+    return {
+      date: entry.date, ouvert: Boolean(entry.open), horaire: entry.open ? horaireLabel(entry.schedule) : (entry.closedLabel || 'Fermé'),
+      periode: entry.holiday ? { type: entry.holiday.type, label: accentuer(entry.holiday.label) } : null, coupures: entry.closedWindows || [],
+      weekday: typeof entry.weekday === 'number' ? entry.weekday : undefined,
+      schedule: entry.schedule && typeof entry.schedule === 'object' ? { open: Number(entry.schedule.open), close: Number(entry.schedule.close) } : null,
+      formulaHolidayOff: Boolean(entry.formulaHolidayOff),
+      unavailableFormulaIds: Array.isArray(entry.unavailableFormulaIds) ? entry.unavailableFormulaIds.slice() : [],
+      unavailableActivityIds: Array.isArray(entry.unavailableActivityIds) ? entry.unavailableActivityIds.slice() : [],
+    };
   }
   function absorberCalendrier(liste) {
     (liste || []).forEach(function (e) { if (e && e.date) jours[e.date] = entreeJour(e); });
@@ -776,7 +867,7 @@
     // second rendu (fin du chargement du mois) jetait le focus du clavier.
     var avaitFocus = calGrid.contains(doc.activeElement);
     var y = moisVu.y, m = moisVu.m;
-    var today = aujourdhui(), fin = horizon();
+    var today = aujourdhui(), fin = horizon(), mini = cible().min(), choisi = cible().valeur();
     calTitle.textContent = cap(MOIS[m]) + ' ' + y;
     var decalage = (new Date(y, m, 1).getDay() + 6) % 7; // lundi en tete
     var n = joursDuMois(y, m);
@@ -786,23 +877,23 @@
     for (var d = 1; d <= n; d += 1) {
       var s = cleMois(y, m) + '-' + String(d).padStart(2, '0');
       var j = jours[s];
-      var passe = s < today, loin = s > fin;
-      var off = passe || loin || !j || !j.ouvert;
-      var cls = 'fg-cal__day' + (off ? ' is-off' : '') + (passe ? ' is-past' : '') + (s === today ? ' is-today' : '') + (s === state.date ? ' is-selected' : '') + (j && j.periode ? (j.periode.type === 'public' ? ' is-ferie' : ' is-vacances') : '') + (!j && !passe && !loin ? ' is-loading' : '');
-      var titre = j ? infoTexte(j) : (passe ? 'Date passée' : (loin ? 'Au-delà de la période de réservation' : 'Chargement…'));
+      var passe = s < today, loin = s > fin, avant = !passe && s < mini;
+      var off = passe || loin || avant || !j || !j.ouvert;
+      var cls = 'fg-cal__day' + (off ? ' is-off' : '') + (passe || avant ? ' is-past' : '') + (s === today ? ' is-today' : '') + (s === choisi ? ' is-selected' : '') + (j && j.periode ? (j.periode.type === 'public' ? ' is-ferie' : ' is-vacances') : '') + (!j && !passe && !loin ? ' is-loading' : '');
+      var titre = avant && cible().avantMin ? cible().avantMin : j ? infoTexte(j) : (passe ? 'Date passée' : (loin ? 'Au-delà de la période de réservation' : 'Chargement…'));
       if (!off && !focusable) focusable = s;
-      html += '<button type="button" class="' + cls + '" data-date="' + s + '" role="gridcell" aria-selected="' + (s === state.date) + '" aria-label="' + esc(titre) + '" title="' + esc(titre) + '" ' + (off ? 'disabled' : '') + ' tabindex="-1">' + d + (j && j.periode ? '<i></i>' : '') + '</button>';
+      html += '<button type="button" class="' + cls + '" data-date="' + s + '" role="gridcell" aria-selected="' + (s === choisi) + '" aria-label="' + esc(titre) + '" title="' + esc(titre) + '" ' + (off ? 'disabled' : '') + ' tabindex="-1">' + d + (j && j.periode ? '<i></i>' : '') + '</button>';
     }
     calGrid.innerHTML = html;
-    var cible = (jourFocus && jourFocus.slice(0, 7) === cleMois(y, m) && $('.fg-cal__day[data-date="' + jourFocus + '"]:not([disabled])', calGrid)) ? jourFocus : (state.date.slice(0, 7) === cleMois(y, m) ? state.date : focusable);
-    var b = cible ? $('.fg-cal__day[data-date="' + cible + '"]', calGrid) : null;
-    if (b) { b.setAttribute('tabindex', '0'); jourFocus = cible; if (avaitFocus && !b.disabled) b.focus({ preventScroll: true }); }
-    calPrev.disabled = cleMois(y, m) <= today.slice(0, 7);
+    var vise = (jourFocus && jourFocus.slice(0, 7) === cleMois(y, m) && $('.fg-cal__day[data-date="' + jourFocus + '"]:not([disabled])', calGrid)) ? jourFocus : (choisi && choisi.slice(0, 7) === cleMois(y, m) ? choisi : focusable);
+    var b = vise ? $('.fg-cal__day[data-date="' + vise + '"]', calGrid) : null;
+    if (b) { b.setAttribute('tabindex', '0'); jourFocus = vise; if (avaitFocus && !b.disabled) b.focus({ preventScroll: true }); }
+    calPrev.disabled = cleMois(y, m) <= mini.slice(0, 7);
     calNext.disabled = cleMois(y, m + 1) > fin.slice(0, 7);
     // Une fleche qui s eteint sous le focus le passe a l autre, active par
     // construction (le mois affiche reste entre aujourd hui et l horizon).
     if (navFocus && navFocus.disabled) (navFocus === calNext ? calPrev : calNext).focus({ preventScroll: true });
-    calInfo.textContent = infoTexte(jours[state.date]) || 'Choisissez un jour.';
+    calInfo.textContent = infoTexte(jours[choisi]) || 'Choisissez un jour.';
     setTimeout(posterHauteur, 50);
   }
   function montrerMois(y, m, focusAu) {
@@ -843,7 +934,8 @@
     var o = typeof ouvrir === 'boolean' ? ouvrir : dayPop.hidden;
     // L ouverture ne garde que son apparition (fg-pop) : le mois montre ne
     // glisse pas depuis celui qu on avait quitte.
-    if (o) { moisVu = null; calGrid.classList.remove('is-next', 'is-prev'); var d = deIso(state.date || aujourdhui()); montrerMois(d.getFullYear(), d.getMonth(), state.date); }
+    var c = cible();
+    if (o) { moisVu = null; calGrid.classList.remove('is-next', 'is-prev'); var d = deIso(c.valeur() || c.min()); montrerMois(d.getFullYear(), d.getMonth(), c.valeur()); }
     var milieu = o && fenetreAuMilieu();
     // Au milieu de l ecran (telephone), la fenetre vit dans <body> le temps
     // d etre ouverte : les champs animent leur transform (entree en cascade),
@@ -855,21 +947,23 @@
     dayPop.hidden = !o;
     if (dayVoile) dayVoile.hidden = !milieu;
     if (milieu) dayPop.setAttribute('aria-modal', 'true'); else dayPop.removeAttribute('aria-modal');
-    if (!milieu && dayPop.parentNode !== dayMaison) dayMaison.appendChild(dayPop);
+    var maison = c.btn.closest('.fg-day') || dayMaison;
+    if (!milieu && dayPop.parentNode !== maison) maison.appendChild(dayPop);
     dayPop.style.top = '';
     dayPop.style.maxHeight = '';
     if (milieu) placerFenetre(true);
-    dayBtn.setAttribute('aria-expanded', String(o));
+    c.btn.setAttribute('aria-expanded', String(o));
     // Le champ passe au-dessus de ses voisins tant que le calendrier est
     // ouvert : chaque champ anime porte son propre contexte d empilement.
-    if (dayField) dayField.classList.toggle('is-open', o);
+    var champDate = c.btn.closest('.fg-field');
+    if (champDate) champDate.classList.toggle('is-open', o);
     if (o) { var b = $('.fg-cal__day[tabindex="0"]', calGrid); if (b) b.focus({ preventScroll: true }); }
     // Une fois le calendrier pose (fin de son apparition) : la hauteur suit,
     // puis, sous le bouton (tablette, bureau), la page amene le bouton ET le
     // mois entier dans l ecran. Au milieu de l ecran, rien a defiler.
     apresAnimations(dayPop, function () {
       posterHauteur();
-      if (o && !dayPop.hidden && !milieu) montrer(dayPop, dayBtn);
+      if (o && !dayPop.hidden && !milieu) montrer(dayPop, c.btn);
     });
   }
   // Embarquee, la fenetre du milieu se centre sur l ECRAN de la page du
@@ -888,7 +982,7 @@
       poster({ type: 'pinlane:voir', haut: Math.round(Math.max(0, y - h / 2 - MARGE_FENETRE)), bas: Math.round(Math.min(cadre, y + h / 2 + MARGE_FENETRE)) });
     }
   }
-  if (dayVoile) dayVoile.addEventListener('click', function () { ouvrirJours(false); dayBtn.focus(); });
+  if (dayVoile) dayVoile.addEventListener('click', function () { var btn = cible().btn; ouvrirJours(false); btn.focus(); });
   // Un telephone qu on tourne en paysage (ou l inverse) change de calendrier :
   // la fenetre ouverte se referme plutot que de rester a la mauvaise place.
   if (auMilieu) {
@@ -896,26 +990,27 @@
     if (auMilieu.addEventListener) auMilieu.addEventListener('change', auMilieuChange);
     else if (auMilieu.addListener) auMilieu.addListener(auMilieuChange);
   }
-  dayBtn.addEventListener('click', function () { ouvrirJours(); });
+  dayBtn.addEventListener('click', function () { ouvrirCalendrier(CIBLE_JOUR); });
   calPrev.addEventListener('click', function () { if (moisVu) montrerMois(moisVu.y, moisVu.m - 1, ''); });
   calNext.addEventListener('click', function () { if (moisVu) montrerMois(moisVu.y, moisVu.m + 1, ''); });
   calGrid.addEventListener('click', function (e) {
     var b = e.target.closest('.fg-cal__day');
     if (!b || b.disabled) return;
-    choisirJour(b.dataset.date);
-    // Le jour choisi se pose ; au demarrage (choisirJour seul), rien ne bouge.
-    rejouer(dayLabel, 'is-maj'); rejouer(dayHint, 'is-maj');
+    // Le jour choisi se pose dans le champ qui a ouvert le calendrier ; au
+    // demarrage (choisirJour seul), rien ne bouge.
+    var c = cible();
+    c.poser(b.dataset.date);
     ouvrirJours(false);
-    dayBtn.focus();
+    c.btn.focus();
   });
   calGrid.addEventListener('mouseover', function (e) { var b = e.target.closest('.fg-cal__day'); if (b && jours[b.dataset.date]) calInfo.textContent = infoTexte(jours[b.dataset.date]); });
-  calGrid.addEventListener('mouseleave', function () { calInfo.textContent = infoTexte(jours[state.date]) || 'Choisissez un jour.'; });
+  calGrid.addEventListener('mouseleave', function () { calInfo.textContent = infoTexte(jours[cible().valeur()]) || 'Choisissez un jour.'; });
   calGrid.addEventListener('focusin', function (e) { var b = e.target.closest('.fg-cal__day'); if (b && jours[b.dataset.date]) calInfo.textContent = infoTexte(jours[b.dataset.date]); });
   // Le clavier : fleches d un jour ou d une semaine, en changeant de mois au
   // bord ; Entree ou Espace choisit ; Echap ferme.
   function deplacerFocus(delta) {
-    var depart = deIso(jourFocus || state.date || aujourdhui());
-    var today = aujourdhui(), fin = horizon();
+    var depart = deIso(jourFocus || cible().valeur() || cible().min());
+    var today = cible().min(), fin = horizon();
     for (var k = 1; k <= 62; k += 1) {
       var d = new Date(depart.getFullYear(), depart.getMonth(), depart.getDate() + delta * k);
       var s = iso(d);
@@ -928,7 +1023,7 @@
   }
   doc.addEventListener('keydown', function (e) {
     if (dayPop.hidden) return;
-    if (e.key === 'Escape') { ouvrirJours(false); dayBtn.focus(); return; }
+    if (e.key === 'Escape') { var btn = cible().btn; ouvrirJours(false); btn.focus(); return; }
     var dans = e.target && e.target.closest && e.target.closest('#dayPop');
     if (!dans) return;
     var pas = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
@@ -945,7 +1040,8 @@
   var dayWrap = dayBtn.closest('.fg-day');
   function sortieClavier(e) {
     var vers = e.relatedTarget;
-    if (!dayPop.hidden && vers && !dayWrap.contains(vers) && !dayPop.contains(vers)) ouvrirJours(false);
+    var wrap = cible().btn.closest('.fg-day');
+    if (!dayPop.hidden && vers && !wrap.contains(vers) && !dayPop.contains(vers)) ouvrirJours(false);
   }
   dayWrap.addEventListener('focusout', sortieClavier);
   dayPop.addEventListener('focusout', sortieClavier);
@@ -989,7 +1085,10 @@
     $('#paxPlus').disabled = state.pax >= PAX_MAX;
     var lanes = meta && meta.center && meta.center.booking;
     var indice = '';
-    if (lanes && lanes.laneCount && lanes.normalCapacityPerLane) {
+    // Un grand groupe passe par la demande sur mesure : l encart le dit, la
+    // phrase des passages ne sert plus.
+    var gros = grandGroupe();
+    if (!gros && lanes && lanes.laneCount && lanes.normalCapacityPerLane) {
       var confort = lanes.laneCount * lanes.normalCapacityPerLane;
       // Une phrase, pas trois : le detail (combien de groupes, dans quel ordre)
       // se lit desormais sur la piste concernee, a l etape des horaires.
@@ -999,20 +1098,27 @@
     // du serveur et de la base) et un nombre tape au-dela y est ramene. Le
     // numero vient de la meta du centre ; sans lui, la phrase s arrete a la borne.
     var auMax = state.pax >= PAX_MAX;
-    if (auMax) {
+    if (auMax && gros) {
+      indice = 'Plus de ' + PAX_MAX + '&nbsp;? Vous préciserez le nombre exact dans la demande.';
+    } else if (auMax) {
       var contact = meta && meta.center && meta.center.contact;
       indice += (indice ? ' ' : '') + 'En ligne, ' + PAX_MAX + ' personnes au maximum.'
         + (contact && contact.phone ? ' Pour un groupe plus grand, appelez le centre au ' + lienContact({ phone: contact.phone }) : '');
     }
-    paxHint.classList.toggle('is-warn', auMax);
+    paxHint.classList.toggle('is-warn', auMax && !gros);
     if (indice !== indicePax) { indicePax = indice; paxHint.innerHTML = indice; }
+    majSeuil();
     invaliderDispo();
   }
   function poserPax(n) {
     n = Math.min(PAX_MAX, Math.max(PAX_MIN, Math.trunc(Number(n) || 0)));
     if (n === state.pax) return;
     state.pax = n;
+    // Le groupe change : la question des enfants se repose, tout le groupe par
+    // defaut, jamais un ancien compte qui ne correspond plus a rien.
+    state.enfants = null;
     rendrePax();
+    majEnfants();
   }
   $('#paxMinus').addEventListener('click', function () { poserPax(state.pax - 1); paxInput.value = String(state.pax); ajusterLargeurPax(); battrePax(-1); });
   $('#paxPlus').addEventListener('click', function () { poserPax(state.pax + 1); paxInput.value = String(state.pax); ajusterLargeurPax(); battrePax(1); });
@@ -1024,13 +1130,14 @@
 
   $('#goActivities').addEventListener('click', function () {
     if (!meta) { direErreur(panneMeta || 'Le formulaire se charge encore. Réessayez dans un instant.'); return; }
+    if (grandGroupe()) { ouvrirSurMesure($('#goActivities')); return; }
     if (!state.date) { direErreur('Choisissez d’abord un jour.'); dayBtn.focus(); return; }
     direErreur('');
     // Le groupe a pu changer depuis le dernier rendu : une activite bornee
     // (Fun Run, 5 joueurs) sort de la selection si le groupe la depasse.
     state.selection = state.selection.filter(function (id) {
       var a = activite(id);
-      return a && !(a.maxPax && state.pax > a.maxPax) && !tropPeu(a);
+      return a && !(a.maxPax && state.pax > a.maxPax) && !tropPeu(a) && !fermeCeJour(a);
     });
     // Le jour ou le groupe a pu changer : une formule qui n est plus valable
     // ce jour-la se decoche, sinon le client part vers un ecran d heures vide.
@@ -1133,14 +1240,16 @@
       // une formule refusee (une raison qu on ne peut pas atteindre ne sert a
       // personne).
       var peu = !trop && tropPeu(a);
+      var ferme = !trop && !peu && fermeCeJour(a);
       return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '" data-activity="' + esc(a.id) + '">'
-        + '<div class="fg-card fg-rise' + (on ? ' is-on' : '') + (trop ? ' is-off' : '') + (peu ? ' is-refus' : '') + '" style="--i:' + (i % 8) + '" data-activity="' + esc(a.id) + '" role="checkbox" tabindex="' + (trop ? '-1' : '0') + '" aria-checked="' + on + '" ' + (trop ? 'aria-disabled="true" title="' + esc(a.name) + ' : ' + a.maxPax + ' personnes maximum"' : '') + '>'
+        + '<div class="fg-card fg-rise' + (on ? ' is-on' : '') + (trop ? ' is-off' : '') + (peu || ferme ? ' is-refus' : '') + '" style="--i:' + (i % 8) + '" data-activity="' + esc(a.id) + '" role="checkbox" tabindex="' + (trop ? '-1' : '0') + '" aria-checked="' + on + '" ' + (trop ? 'aria-disabled="true" title="' + esc(a.name) + ' : ' + a.maxPax + ' personnes maximum"' : '') + '>'
         + (p ? '<span class="fg-card__photo" aria-hidden="true"><img data-src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async"></span>' : '')
         + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
         + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
         + '<span class="fg-card__name">' + esc(a.name) + '</span>'
         + '<span class="fg-card__price">' + esc(prixCarte(a)) + (precisionsCarte(a) ? ' · ' + esc(precisionsCarte(a)) : '') + '</span>'
         + (peu ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Il faut être au moins ' + a.minPax + ' joueurs. Vous êtes ' + state.pax + '.</span>' : '')
+        + (ferme ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Indisponible ' + esc(minuscule(jourLong(state.date))) + '.</span>' : '')
         + '</div>'
         + rendreOption(a)
         + '</li>';
@@ -1212,7 +1321,9 @@
     return LIBELLE_FAMILLE[cle] || nom;
   }
   function rendreFormules() {
-    var liste = (meta && meta.formules) || [];
+    // Une formule dont une activite manque a ce centre (missingActivityIds,
+    // la plaine de jeux de Gembloux) ne peut jamais y etre planifiee.
+    var liste = ((meta && meta.formules) || []).filter(function (f) { return !(Array.isArray(f.missingActivityIds) && f.missingActivityIds.length); });
     if (!liste.length) { gridFor.innerHTML = '<p class="fg-empty">Aucune formule ne se réserve en ligne pour le moment.' + ligneCentre() + '</p>'; return; }
     // Une famille par section (anniversaires, offres speciales) : quatorze
     // cartes a la suite ne se lisaient pas. L ordre des familles est celui du
@@ -1235,16 +1346,71 @@
           + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
           + '<span class="fg-for__head"><span class="fg-card__name">' + esc(f.name) + '</span>'
           + (f.best ? '<span class="fg-for__best">Bon plan</span>' : '') + '</span>'
-          + '<span class="fg-for__price"><b>' + esc(euros(f.price)) + '</b><small>' + (f.type === 'per_lane' ? 'la piste' : 'par personne') + '</small>'
+          + '<span class="fg-for__price"><b>' + esc(euros(f.price)) + '</b><small>' + (f.type === 'per_lane' ? 'la piste' : f.kidsOnly ? 'par enfant' : 'par personne') + '</small>'
           + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
           + '<ul class="fg-for__list">' + (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>'
           + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '')
           + (v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(v.pourquoi) + '</span>')
-          + '</div></li>';
+          + '</div>'
+          + (f.kidsOnly && v.ok ? rendreEnfants(f) : '')
+          + '</li>';
       }).join('');
       return '<section class="fg-fam"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '<span>' + parFamille[cle].length + ' formule' + (parFamille[cle].length > 1 ? 's' : '') + '</span></h3>'
         + '<ul class="fg-grid fg-grid--for">' + cartes + '</ul></section>';
     }).join('');
+  }
+  // LES ENFANTS D UNE OFFRE QUI LEUR EST RESERVEE (Kids Fun Day, « pour les
+  // enfants de 5 a 12 ans », lu dans la description du centre par le
+  // serveur : kidsOnly). Le groupe du premier ecran compte tout le monde ; la
+  // carte demande combien sont des enfants, les autres les accompagnent sans
+  // payer la formule (Movsar, 2026-09-28 : « demander enfants / adultes ;
+  // seuls les enfants paient la formule »). Par defaut, tout le groupe : rien
+  // ne se paie en moins sans que le client l ait dit.
+  function enfantsDuGroupe() {
+    var n = Math.trunc(Number(state.enfants));
+    return Math.min(state.pax, Math.max(1, n > 0 ? n : state.pax));
+  }
+  function joueursDemandes() { var f = formuleChoisie(); return f && f.kidsOnly ? enfantsDuGroupe() : state.pax; }
+  function accompagnantsDemandes() { return state.pax - joueursDemandes(); }
+  // Le groupe tel qu il se dit partout apres le choix : « 6 enfants + 2
+  // adultes » pour une offre reservee aux enfants, « 8 personnes » sinon.
+  function groupeLisible() {
+    var f = formuleChoisie();
+    if (!(f && f.kidsOnly)) return personnes(state.pax);
+    var n = enfantsDuGroupe(), a = state.pax - n;
+    return n + ' enfant' + (n > 1 ? 's' : '') + (a > 0 ? ' + ' + a + ' adulte' + (a > 1 ? 's' : '') : '');
+  }
+  function textesEnfants(f) {
+    var n = enfantsDuGroupe(), a = state.pax - n;
+    return {
+      adultes: a > 0 ? '+ ' + a + ' adulte' + (a > 1 ? 's' : '') + ' qui accompagne' + (a > 1 ? 'nt' : '') + ', sans payer la formule' : 'Aucun adulte accompagnant',
+      prix: f.type === 'per_pax' && Number(f.price) > 0 ? euros(f.price * n) + ' pour ' + n + ' enfant' + (n > 1 ? 's' : '') : '',
+    };
+  }
+  function rendreEnfants(f) {
+    var n = enfantsDuGroupe(), t = textesEnfants(f), id = 'kids-' + String(f.id).replace(/[^a-z0-9_-]/gi, '');
+    return '<div class="fg-card__opt"><div class="fg-card__optin"><div class="fg-card__optbox fg-kids" data-kids-for="' + esc(f.id) + '">'
+      + '<span class="fg-card__optlabel" id="' + id + '">Enfants de ' + f.kidsOnly.ageMin + ' à ' + f.kidsOnly.ageMax + ' ans</span>'
+      + '<div class="fg-kids__row"><div class="fg-stepper fg-kids__stepper" role="group" aria-labelledby="' + id + '">'
+      + '<button type="button" class="fg-stepper__btn" data-kids="-1" aria-label="Un enfant de moins"' + (n <= 1 ? ' disabled' : '') + '>&minus;</button>'
+      + '<output class="fg-kids__n" aria-live="polite">' + n + '</output>'
+      + '<button type="button" class="fg-stepper__btn" data-kids="1" aria-label="Un enfant de plus"' + (n >= state.pax ? ' disabled' : '') + '>+</button>'
+      + '</div><p class="fg-kids__adults">' + esc(t.adultes) + '</p></div>'
+      + (t.prix ? '<p class="fg-card__rot fg-kids__prix">' + esc(t.prix) + '</p>' : '')
+      + '</div></div></div>';
+  }
+  function majEnfants() {
+    $$('.fg-kids', gridFor).forEach(function (box) {
+      var f = ((meta && meta.formules) || []).filter(function (x) { return x.id === box.dataset.kidsFor; })[0];
+      if (!f) return;
+      var n = enfantsDuGroupe(), t = textesEnfants(f);
+      $('.fg-kids__n', box).textContent = String(n);
+      $('[data-kids="-1"]', box).disabled = n <= 1;
+      $('[data-kids="1"]', box).disabled = n >= state.pax;
+      $('.fg-kids__adults', box).textContent = t.adultes;
+      var prix = $('.fg-kids__prix', box);
+      if (prix) prix.textContent = t.prix;
+    });
   }
   // Reveil du bouton qui avance. La classe se RETIRE apres l animation :
   // laissee en place, elle rejouerait a chaque retour sur l ecran (une scene
@@ -1354,7 +1520,19 @@
     rendreCompteur(true);
     invaliderDispo();
   }
-  gridFor.addEventListener('click', function (e) { choisirFormule(e.target.closest('.fg-card')); });
+  gridFor.addEventListener('click', function (e) {
+    var pas = e.target.closest('[data-kids]');
+    if (pas) {
+      if (pas.disabled) return;
+      state.enfants = enfantsDuGroupe() + Number(pas.dataset.kids);
+      majEnfants();
+      invaliderDispo();
+      var n = enfantsDuGroupe(), a = state.pax - n;
+      dire(n + ' enfant' + (n > 1 ? 's' : '') + (a > 0 ? ' et ' + a + ' adulte' + (a > 1 ? 's' : '') + ' accompagnant' + (a > 1 ? 's' : '') : '') + '.');
+      return;
+    }
+    choisirFormule(e.target.closest('.fg-card'));
+  });
   gridFor.addEventListener('keydown', function (e) {
     if ((e.key === ' ' || e.key === 'Enter') && e.target.classList && e.target.classList.contains('fg-card')) { e.preventDefault(); choisirFormule(e.target); }
   });
@@ -1429,7 +1607,7 @@
   }
   function urlDispo() {
     var q = new URLSearchParams();
-    q.set('centerId', CENTER); q.set('date', state.date); q.set('pax', String(state.pax));
+    q.set('centerId', CENTER); q.set('date', state.date); q.set('pax', String(joueursDemandes()));
     if (state.onglet === 'formules') { q.set('type', 'formule'); q.set('formuleId', state.formuleId); }
     else {
       q.set('type', 'visite'); q.set('program', JSON.stringify(programme()));
@@ -1447,11 +1625,11 @@
   // le mode (activites ou formule) et ce qui est choisi. Changer d onglet ne
   // vide rien, et une reponse peut arriver apres un changement : sans cette
   // cle, une formule reprenait le plan et le prix calcules pour des activites.
-  function cleDemande() { return state.date + '|' + state.pax + '|' + (state.onglet === 'formules' ? 'f:' + state.formuleId : 'v:' + JSON.stringify(programme())); }
+  function cleDemande() { return state.date + '|' + state.pax + '|' + joueursDemandes() + '|' + (state.onglet === 'formules' ? 'f:' + state.formuleId : 'v:' + JSON.stringify(programme())); }
   function chargerHeures() {
     if (state.dispo && state.dispoCle !== cleDemande()) invaliderDispo();
     var j = jourInfo(state.date);
-    hourSub.innerHTML = '<b>' + esc(insecable(jourCourt(state.date))) + '</b>\u00a0· ' + esc(insecable(personnes(state.pax))) + '\u00a0· ' + nomsChoisis().split(' + ').map(function (n) { return esc(finInsecable(n)); }).join('\u00a0+ ')
+    hourSub.innerHTML = '<b>' + esc(insecable(jourCourt(state.date))) + '</b>\u00a0· ' + esc(insecable(groupeLisible())) + '\u00a0· ' + nomsChoisis().split(' + ').map(function (n) { return esc(finInsecable(n)); }).join('\u00a0+ ')
       + (j && j.ouvert ? '<span class="fg-sub__open">Ouvert ' + esc(j.horaire) + (j.periode ? ' · ' + esc(j.periode.label) : '') + '</span>' : '');
     if (state.dispo) { rendreHeures(); return; }
     hourZone.innerHTML = SQUELETTE;
@@ -1667,7 +1845,8 @@
         + '<button type="button" class="fg-period__btn" aria-expanded="false" aria-controls="' + id + '">'
         + '<svg class="fg-period__icon" aria-hidden="true"><use href="#' + (ICONES_PERIODE[p] || 'i-clock') + '"/></svg>'
         + '<span class="fg-period__name">' + esc(p) + '</span>'
-        + '<span class="fg-period__sum"></span>'
+        + '<span class="fg-period__keys" aria-hidden="true"></span>'
+        + '<span class="fg-period__sum"></span><span class="sr-only fg-period__dit"></span>'
         + '<svg class="fg-period__chev" aria-hidden="true"><use href="#i-chevron"/></svg>'
         + '</button>'
         + '<div class="fg-period__body" id="' + id + '"><div class="fg-period__inner"><ul class="fg-chips" role="listbox" aria-label="' + esc(p) + '"' + (multi ? ' aria-multiselectable="true"' : '') + '>';
@@ -1714,6 +1893,7 @@
       else if (vagues.length) sum = vagues.join(', ') + ' · ' + sum;
       else if (propose) sum = 'proposé ' + propose + ' · ' + sum;
       $('.fg-period__sum', sec).textContent = sum;
+      rendreCles(sec, chips, n);
       sec.classList.toggle('is-picked', choisis.length > 0);
       sec.classList.toggle('is-empty', n === 0);
       if (!utile && (choisis.length || propose)) utile = sec;
@@ -1721,6 +1901,40 @@
     if (secs.length && !track.dataset.touched) {
       montrerPeriode(track, utile || secs.filter(function (x) { return !x.classList.contains('is-empty'); })[0] || secs[0]);
     }
+  }
+  // CE QUE CACHE UNE PLAGE REPLIEE (Movsar, 2026-09-28 : « quand on est dans
+  // les horaires matin ou apres-midi on a pas les infos genre decale, serre et
+  // tout, y a que sur soiree »). Les mots sont sur les puces, et les puces
+  // d une plage repliee ne se voient pas : son en-tete porte les memes mots,
+  // dans le meme contour que la legende, et « rien ne coince » quand toutes
+  // ses heures se prennent sans rien bousculer. L heure choisie ou proposee
+  // ne compte pas (c est un choix, pas un obstacle), ni celles de ses propres
+  // parties. Le lecteur d ecran entend la phrase entiere, comptes compris.
+  function rendreCles(sec, chips, n) {
+    var zone = $('.fg-period__keys', sec), dit = $('.fg-period__dit', sec);
+    if (!zone || !dit) return;
+    var autres = chips.filter(function (c) { return !c.classList.contains('is-on') && !c.classList.contains('is-proposed') && c.dataset.state !== 'wave'; });
+    var par = function (etat) { return autres.filter(function (c) { return c.dataset.state === etat; }); };
+    var uniques = function (liste) { return liste.filter(function (x, k) { return x && liste.indexOf(x) === k; }); };
+    var decale = par('shift'), serre = par('soft'), dur = par('hard');
+    var cles = [], phrases = [];
+    if (decale.length) {
+      var cibles = uniques(decale.map(function (c) { return c.dataset.conflictLabel || ''; }));
+      cles.push(['shift', 'décale']);
+      phrases.push(decale.length + (decale.length > 1 ? ' décalent ' : ' décale ') + (cibles.length === 1 ? 'votre ' + minuscule(cibles[0]) : 'une autre activité'));
+    }
+    if (serre.length) {
+      cles.push(['soft', 'serré']);
+      phrases.push(serre.length + (serre.length > 1 ? ' serrées' : ' serrée'));
+    }
+    if (dur.length) {
+      var mots = uniques(dur.map(function (c) { return (($('small', c) || {}).textContent || '').trim(); }));
+      cles.push(['hard', mots.length === 1 ? mots[0] : 'indispo']);
+      phrases.push(dur.length + ' impossible' + (dur.length > 1 ? 's' : ''));
+    }
+    if (!cles.length && n > 0) cles.push(['ok', 'rien ne coince']);
+    zone.innerHTML = cles.map(function (k) { return '<i class="fg-key fg-key--' + k[0] + '">' + esc(k[1]) + '</i>'; }).join('');
+    dit.textContent = phrases.length ? ' : ' + joindreListe(phrases, ', ') + '.' : (n > 0 ? ' : rien ne coince.' : '');
   }
   // La mise a jour d une puce SUR PLACE : etat, raison, choix, proposition.
   // Rien n est reconstruit, rien ne saute : c est ce qui evite le tremblement
@@ -1889,7 +2103,21 @@
         + (h ? '<b>' + esc(h) + '</b>' + (fin ? ' → ' + esc(heureAffichee(fin)) : '') + (n ? '' : ' <small>proposée</small>') : 'sur place avec l’équipe')
         + '</span></li>';
     }
-    boite.innerHTML = html + '</ol>';
+    html += '</ol>';
+    // UNE PARTIE SANS HEURE RESTE POSSIBLE, MAIS ELLE SE JOUE AUX PLACES QUI
+    // RESTENT (Movsar, 2026-09-28 : « ils peuvent la placer sur place, mais
+    // c est mieux s ils choisissent ; la premiere est obligatoire »). Le cadre
+    // le dit la ou le client peut agir, juste au-dessus des heures. La
+    // premiere partie a toujours son heure : choisie, ou proposee par l equipe.
+    var sansHeure = [];
+    for (var r = 1; r < total; r += 1) if (!heures[r]) sansHeure.push(String(r + 1));
+    if (sansHeure.length) {
+      var plusieurs = sansHeure.length > 1;
+      html += '<p class="fg-parts__note"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
+        + (plusieurs ? 'Les parties ' : 'La partie ') + esc(joindreListe(sansHeure, ' et ')) + ' se ' + (plusieurs ? 'placeront' : 'placera') + ' sur place avec l’équipe, selon les places libres ce jour-là. '
+        + '<b>Mieux vaut ' + (plusieurs ? 'leur' : 'lui') + ' choisir une heure maintenant</b> : touchez une autre heure ci-dessous.</span></p>';
+    }
+    boite.innerHTML = html;
     // Ce qui a change (une partie posee, deplacee, retiree) monte a sa place.
     $$('.fg-parts__item', boite).forEach(function (li, k) { if (k < avant.length && li.textContent !== avant[k]) li.classList.add('is-maj'); });
   }
@@ -2186,6 +2414,10 @@
   }
   // Pas assez de joueurs pour lancer l activite (minPax du catalogue).
   function tropPeu(a) { return Boolean(a && a.minPax > 1 && state.pax < a.minPax); }
+  // Une activite que le centre a bloquee pour la journee choisie (verdict du
+  // serveur, calendrier servi) : le moteur ne la refuse pas toujours, l ecran
+  // ne la propose donc pas.
+  function fermeCeJour(a) { var j = jourInfo(state.date); return Boolean(a && j && (j.unavailableActivityIds || []).indexOf(a.id) >= 0); }
   function etapeVisite(o) {
     return '<li class="fg-visit__step' + (o.genre ? ' fg-visit__step--' + o.genre : '') + (o.bouge ? ' is-moved' : '') + '"><b>' + esc(o.heure) + '</b>'
       + '<span>' + (o.icone ? '<svg aria-hidden="true"><use href="#' + o.icone + '"/></svg>' : '') + esc(o.titre) + '</span>'
@@ -2197,6 +2429,9 @@
   // dernier groupe, avec ses groupes et ses pistes ; les parties qui se placent
   // sur place ; les activites libres ; la fin ; puis le detail du prix et le
   // paiement. Tout vient de la reponse : le plan, le programme, le prix.
+  function formuleChoisie() {
+    return state.onglet === 'formules' ? (((meta && meta.formules) || []).filter(function (x) { return x.id === state.formuleId; })[0] || null) : null;
+  }
   function rendreVisite() {
     var zone = $('#planZone');
     if (!zone) return;
@@ -2234,6 +2469,17 @@
     var planifies = {};
     parts.forEach(function (p) { planifies[p.id] = 1; });
     var items = (rep.program && rep.program.items) || [];
+    // UNE FORMULE N A PAS DE PROGRAMME : ce qu elle contient se lit dans les
+    // ancres du serveur, ses parties de laser, ses activites libres, ses
+    // boissons. Sans elles, l ecran des heures d une Formule 4 ne montrait que
+    // le bowling et la 1re partie de laser (Movsar, 2026-09-28 : « les
+    // formules, y a pas tous les details des activites quand on est dans le
+    // choix des heures »). Une formule a la periode (Kids Fun Day, Matin
+    // Malin) se joue en illimite jusqu a la fin de sa periode, au meme prix
+    // quelle que soit l heure d arrivee (sa reponse a la question posee).
+    var formule = formuleChoisie();
+    var ancrages = formule ? (d.anchors || {}) : {};
+    var illimite = Boolean(formule && formule.orderPolicy === 'open_window');
     var libres = items.filter(function (it) { return !planifies[it.activityId]; });
     // Une entree a la journee ne compte pas dans « environ X » : ce temps-la
     // n est pas achete, il est libre toute la journee.
@@ -2268,7 +2514,7 @@
     parts.forEach(function (p) {
       var it = items.filter(function (x) { return x.activityId === p.id; })[0] || {};
       var nom = it.name || nomActivite(p.id);
-      var total = Number(it.games) || 0;
+      var total = Number(it.games) || (formule && p.id === 'laser_game' ? Number(ancrages.laserGames) || 0 : 0);
       // « partie 2 sur 3 » compte les PARTIES (countIndex), jamais les groupes
       // d une meme partie : un grand groupe joue chaque partie en plusieurs.
       var quoi = total > 1 ? 'partie ' + p.partie + ' sur ' + total : total === 1 ? '1 partie' : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (p.groupes.length > 1 ? ' par groupe' : '') : ''));
@@ -2279,22 +2525,31 @@
       lignes += etapeVisite({ heure: p.debut, icone: icone(p.id), titre: nom + (quoi ? ' · ' + quoi : ''), detail: detail, bouge: bouge });
     });
     // LES PARTIES SANS HEURE : le moteur les laisse a l equipe, sur place.
-    items.forEach(function (it) {
-      var total = Number(it.games) || 0;
-      var posees = parts.filter(function (p) { return p.id === it.activityId; }).length;
+    function partiesSurPlace(id, nomR, total, posees) {
       if (!(total > 1) || !posees || posees >= total) return;
       var reste = [];
       for (var k = posees + 1; k <= total; k += 1) reste.push(String(k));
-      var nomR = it.name || nomActivite(it.activityId);
       var quelles = 'partie' + (reste.length > 1 ? 's ' : ' ') + joindreListe(reste, ' et ') + ' sur ' + total;
-      lignes += etapeVisite({ genre: 'onsite', heure: 'sur place', icone: icone(it.activityId), titre: nomR + ' · ' + quelles, detail: 'à placer sur place avec l’équipe' });
+      lignes += etapeVisite({ genre: 'onsite', heure: 'sur place', icone: icone(id), titre: nomR + ' · ' + quelles, detail: 'à placer sur place avec l’équipe' });
       dits.push(nomR + ', ' + quelles + ', à placer sur place avec l’équipe');
+    }
+    items.forEach(function (it) {
+      partiesSurPlace(it.activityId, it.name || nomActivite(it.activityId), Number(it.games) || 0, parts.filter(function (p) { return p.id === it.activityId; }).length);
     });
+    if (formule) partiesSurPlace('laser_game', nomActivite('laser_game'), Number(ancrages.laserGames) || 0, parts.filter(function (p) { return p.id === 'laser_game'; }).length);
     if (libres.length) {
       lignes += '<li class="fg-visit__step fg-visit__step--free"><b>libre</b><span>' + libres.map(function (it) { var entre = it.dayAccess ? 'toute la journée' : detailSessions(it); return '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(it.name || nomActivite(it.activityId)) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>'; }).join('') + '</span><small>à votre rythme' + (minutesLibres ? ' · ' + esc(dureeApprox(minutesLibres)) : '') + '</small></li>';
     }
+    // UNE FORMULE ILLIMITEE se joue a volonte jusqu a la fin de sa periode, au
+    // meme prix quelle que soit l heure d arrivee : la ligne dit le temps de
+    // jeu qui reste a cette heure-la (arrive a 16:30 au Kids Fun Day, 30 min).
+    var jeuRestant = illimite && fin ? minutesEntre(slot.time, fin) : 0;
+    if (illimite && jeuRestant > 0) {
+      lignes += etapeVisite({ genre: 'free', heure: 'illimité', icone: 'a-formule', titre: formule.name, detail: 'à volonté jusqu’à ' + heureAffichee(fin) + ' · ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure' });
+      dits.push(formule.name + ', à volonté jusqu’à ' + heureAffichee(fin) + ' : ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure');
+    }
     if (!parts.length && !libres.length && !plan.arrivalTime) lignes = '<li class="fg-visit__step"><b>' + esc(slot.time) + '</b><span>Début</span><small></small></li>' + lignes;
-    if (fin) lignes += etapeVisite({ genre: 'out', heure: heureAffichee(fin), titre: 'Fin de la visite', detail: slot.visitEndsAtClose ? 'fermeture du centre' : 'heure estimée' });
+    if (fin) lignes += etapeVisite({ genre: 'out', heure: heureAffichee(fin), titre: 'Fin de la visite', detail: slot.visitEndsAtClose ? 'fermeture du centre' : illimite ? 'fin de la formule' : 'heure estimée' });
     // LE DETAIL DU PRIX : chaque ligne du programme et son montant, ce qui se
     // regle sur place, le total. Montre seulement quand la somme des montants
     // connus EST le prix annonce : sinon, le total seul, en tete du bloc.
@@ -2314,10 +2569,19 @@
       }
     }
     var html2 = '<div class="fg-visit"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
-      + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(plan.arrivalTime, fin) + '</span>'
+      + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : illimite ? 'à <b>' + esc(heureAffichee(fin)) + '</b>, fin de la formule' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(plan.arrivalTime, fin) + '</span>'
         : (journee && depart ? '<span class="fg-visit__span">dès <b>' + esc(depart) + '</b>, accès toute la journée</span>' : ''))
       + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>le reste se règle sur place</small>') + '</span>' : '')
       + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
+    // CE QUE COMPREND LA FORMULE, dans les mots du centre, ceux de sa carte :
+    // c est ce qu il vend. Le moteur n en planifie qu une partie (le Kids Fun
+    // Day vend « toutes les activites illimitees », le moteur en place deux),
+    // il donne les heures, jamais la liste de ce qui est compris.
+    var compris = formule ? (formule.desc || []).filter(Boolean) : [];
+    if (compris.length) {
+      html2 += '<div class="fg-visit__incl"><p class="fg-visit__incl-title"><svg aria-hidden="true"><use href="#a-formule"/></svg>Compris dans ' + esc(formule.name) + '</p>'
+        + '<ul>' + compris.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
+    }
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
     if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) avis.unshift('À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.');
     if (avis.length) html2 += '<p class="fg-visit__warn">' + avis.map(esc).join('<br>') + '</p>';
@@ -2328,8 +2592,9 @@
     if (sceneCourante === 'heures') dire(('Votre visite. '
       + (plan.arrivalTime ? 'Arrivée conseillée à ' + plan.arrivalTime + '. ' : '')
       + (dits.length ? dits.join('. ') + '. ' : (plan.arrivalTime ? '' : 'Début à ' + slot.time + '. '))
-      + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : (journee ? 'Accès toute la journée. ' : ''))
+      + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : illimite ? 'Fin de la formule à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : (journee ? 'Accès toute la journée. ' : ''))
       + (prix > 0 ? euros(prix) + (complet ? '' : ', le reste se règle sur place') + '. ' : '')
+      + (compris.length ? 'Compris : ' + compris.join(', ') + '. ' : '')
       + avis.join(' ')).trim());
     zone.innerHTML = html2 + '</div>';
     if (prixBouge) $('.fg-visit__price', zone).classList.add('is-maj');
@@ -2372,7 +2637,7 @@
   });
   goContact.addEventListener('click', function () {
     if (goContact.disabled || !state.creneau) return;
-    $('#recallLine').textContent = insecable(jourCourt(state.date)) + '\u00a0· ' + insecable(personnes(state.pax)) + '\u00a0· ' + (state.creneau.slot.opsPlan && state.creneau.slot.opsPlan.arrivalTime ? 'arrivée ' + state.creneau.slot.opsPlan.arrivalTime : state.heure);
+    $('#recallLine').textContent = insecable(jourCourt(state.date)) + '\u00a0· ' + insecable(groupeLisible()) + '\u00a0· ' + (state.creneau.slot.opsPlan && state.creneau.slot.opsPlan.arrivalTime ? 'arrivée ' + state.creneau.slot.opsPlan.arrivalTime : state.heure);
     $('#recallBody').innerHTML = htmlRecap(false);
     basculerRappel(false);
     aller('contact');
@@ -2574,7 +2839,7 @@
     var j = jourInfo(state.date);
     var fin = cr ? (cr.slot.visitEndTime || '') : '';
     var html = '<div class="fg-recap__row fg-rise" style="--i:1"><svg aria-hidden="true"><use href="#i-calendar"/></svg><span>' + esc(jourLong(state.date)) + '</span>' + (j && j.periode ? '<i class="fg-tag ' + (j.periode.type === 'public' ? 'fg-tag--ferie' : 'fg-tag--vacances') + '">' + esc(j.periode.label) + '</i>' : '') + '</div>'
-      + '<div class="fg-recap__row fg-rise" style="--i:2"><svg aria-hidden="true"><use href="#i-users"/></svg><span>' + esc(personnes(state.pax)) + '</span></div>'
+      + '<div class="fg-recap__row fg-rise" style="--i:2"><svg aria-hidden="true"><use href="#i-users"/></svg><span>' + esc(groupeLisible()) + '</span></div>'
       + '<div class="fg-recap__sep"></div>';
     lignes.forEach(function (l, i) {
       html += '<div class="fg-recap__item fg-rise" style="--i:' + (3 + i) + '"><span class="fg-recap__badge"><svg aria-hidden="true"><use href="#' + l.icone + '"/></svg></span>'
@@ -2628,7 +2893,10 @@
       email: state.contact.email,
       date: state.date,
       startTime: state.heure || (cr && cr.slot.time) || '',
-      pax: state.pax,
+      // Les joueurs (les enfants d une offre qui leur est reservee) font le
+      // prix ; les adultes qui les accompagnent viennent en plus, sans payer.
+      pax: joueursDemandes(),
+      companions: accompagnantsDemandes(),
       channel: 'public',
       // L occasion declaree : la console de direction la compte. La precision
       // d « Autre » rejoint le mot facultatif pour l equipe (colonne notes, que
@@ -2672,6 +2940,7 @@
   // « Choisir d autres horaires » : le serveur a refuse CES heures, elles
   // sont redemandees (state.dispo vide), jamais reprises du dernier rendu.
   confirmErr.addEventListener('click', function (e) {
+    if (e.target.closest('[data-surmesure]')) { erreurEnvoi(''); ouvrirSurMesure(e.target.closest('[data-surmesure]')); return; }
     if (!e.target.closest('[data-rechoisir]')) return;
     aller('heures', true);
     if (sceneCourante !== 'heures') return;
@@ -2704,6 +2973,13 @@
           erreurEnvoi('<b>Ce créneau ne peut plus être réservé en ligne.</b>'
             + (alts.length ? ' ' + (alts.length > 1 ? 'Autres possibilités' : 'Autre possibilité') + '&nbsp;: ' + esc(alts.join(', ')) + '.' : '')
             + '<button type="button" class="fg-alert__btn" data-rechoisir>Choisir d’autres horaires</button>');
+          return;
+        }
+        // Le centre a baisse son seuil pendant que la page etait ouverte : la
+        // reservation devient une demande sur mesure, le bouton y mene.
+        if (res.json.code === 'custom_request_required') {
+          if (meta && meta.center && res.json.fromPax) meta.center.customRequest = { fromPax: Number(res.json.fromPax) };
+          erreurEnvoi('<b>' + esc(res.json.message || 'Votre groupe passe par une demande sur mesure.') + '</b><button type="button" class="fg-alert__btn" data-surmesure>Faire une demande sur mesure</button>');
           return;
         }
         erreurEnvoi('<b>' + esc(res.json.message || 'La réservation n’a pas pu être enregistrée. Réessayez dans un instant.') + '</b>');
@@ -2807,6 +3083,118 @@
     } });
   }
 
+  /* --- La demande sur mesure ------------------------------------------------------ */
+
+  // LE PARCOURS SUR MESURE (2026-09-28). Movsar : « tout groupe superieur a 30
+  // donc a partir 31 tout groupe sera redirige vers une demande sur mesure ...
+  // une reponse max 24h ouvrable et ils peuvent pas reserver le jour meme »,
+  // puis « il doit avoir son propre truc avec toutes formules dispo, si non
+  // pourquoi, choix des activites, un truc super complet ». Ses cinq ecrans
+  // vivent dans assets/fungalaxy-sur-mesure.js et sa feuille, CHARGES A LA
+  // DEMANDE : le parcours de reservation, celui de presque tous les visiteurs,
+  // n en telecharge ni n en analyse rien (budget du gate fungalaxy-form-check,
+  // 88 Ko de sources en moins). Restent ici l encart du seuil et la porte du
+  // premier ecran, et le chargement.
+  // LE SEUIL DU CENTRE : a partir de `fromPax` personnes, pas de reservation
+  // en ligne, une demande (reglage Etablissement, relu avec le catalogue).
+  function seuilSurMesure() {
+    var c = meta && meta.center && meta.center.customRequest;
+    var n = c ? Math.trunc(Number(c.fromPax)) : 0;
+    return n >= 2 ? n : 0;
+  }
+  function grandGroupe() { var s = seuilSurMesure(); return Boolean(s && state.pax >= s); }
+  var smSeuil = $('#smSeuil'), smDoor = $('#smDoor');
+  function majSeuil() {
+    var s = seuilSurMesure(), gros = grandGroupe();
+    var avant = smSeuil.hidden;
+    smSeuil.hidden = !gros;
+    if (smDoor) smDoor.hidden = gros;
+    if (gros) $('#smSeuilTexte').textContent = 'À partir de ' + s + ' personnes, l’équipe compose le programme avec vous : faites une demande sur mesure, réponse sous 24 heures ouvrables.';
+    var label = $('#goActivitiesLabel');
+    var mot = gros ? 'Préparer ma demande sur mesure' : 'Choisir mes activités';
+    if (label && label.textContent !== mot) label.textContent = mot;
+    if (avant !== smSeuil.hidden) { if (gros) rejouer(smSeuil, 'is-maj'); posterHauteur(); }
+    // Le groupe atteint le seuil : la demande se charge deja, le clic l ouvrira
+    // sans attendre.
+    if (gros) prechargerSurMesure();
+  }
+
+  // LE CHARGEMENT. Le script et sa feuille partent ensemble ; la demande ne
+  // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
+  // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
+  // arrive ne se recharge pas.
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20260928c';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20260928c';
+  var smModule = null, smFichiers = {};
+  function chargerFichier(cle, balise, attributs) {
+    if (!smFichiers[cle]) {
+      smFichiers[cle] = new Promise(function (resolve, reject) {
+        var el = doc.createElement(balise);
+        Object.keys(attributs).forEach(function (k) { el[k] = attributs[k]; });
+        el.onload = function () { resolve(el); };
+        el.onerror = function () { if (el.parentNode) el.parentNode.removeChild(el); delete smFichiers[cle]; reject(new Error('chargement')); };
+        doc.head.appendChild(el);
+      });
+    }
+    return smFichiers[cle];
+  }
+  function chargerSurMesure() {
+    if (smModule) return Promise.resolve(smModule);
+    return Promise.all([
+      chargerFichier('css', 'link', { rel: 'stylesheet', href: SM_CSS }),
+      chargerFichier('js', 'script', { src: SM_JS, async: true }),
+    ]).then(function () {
+      if (!smModule) {
+        if (typeof window.FGSurMesure !== 'function') throw new Error('module');
+        smModule = window.FGSurMesure(interne());
+      }
+      return smModule;
+    });
+  }
+  function prechargerSurMesure() { chargerSurMesure().catch(function () {}); }
+
+  // L OUVERTURE. Sur un reseau lent, le bouton touche dit qu il travaille ; un
+  // echec se dit en clair, avec le numero du centre.
+  function ouvrirSurMesure(bouton) {
+    if (!meta) { direErreur(panneMeta || 'Le formulaire se charge encore. Réessayez dans un instant.'); return; }
+    direErreur('');
+    if (smModule) { smModule.ouvrir(); return; }
+    var btn = bouton && bouton.classList ? bouton : null;
+    var occupe = function (on) { if (!btn) return; btn.classList.toggle('is-busy', on); if (on) btn.setAttribute('aria-busy', 'true'); else btn.removeAttribute('aria-busy'); };
+    occupe(true);
+    chargerSurMesure().then(function (m) { occupe(false); m.ouvrir(); }).catch(function () {
+      occupe(false);
+      var c = meta && meta.center && meta.center.contact;
+      direErreur('La demande sur mesure ne s’est pas chargée. Vérifiez votre connexion et réessayez' + (c && c.phone ? ', ou appelez le centre au ' + c.phone : '') + '.');
+    });
+  }
+  if (smDoor) {
+    $('#smDoorBtn').addEventListener('click', function (e) { ouvrirSurMesure(e.currentTarget); });
+    // La main qui approche la porte la fait deja charger.
+    smDoor.addEventListener('pointerenter', prechargerSurMesure);
+    smDoor.addEventListener('focusin', prechargerSurMesure);
+  }
+
+  // CE QUE LA DEMANDE EMPRUNTE AU FORMULAIRE : ses outils, son etat, son
+  // calendrier, ses ecrans. `meta` se relit a chaque lecture : le catalogue
+  // se recharge (retour sur l onglet, toutes les 10 s).
+  function interne() {
+    var I = {
+      doc: doc, $: $, $$: $$, CENTER: CENTER, EMBED: EMBED, sm: sm, state: state,
+      activite: activite, activitesVendables: activitesVendables, aller: aller, appelCentre: appelCentre, champ: champ,
+      chargerPhotoCarte: chargerPhotoCarte, decouperTitres: decouperTitres, deIso: deIso, dire: dire, esc: esc, euros: euros,
+      eveiller: eveiller, finGeste: finGeste, heureRonde: heureRonde, icone: icone, iso: iso, jourInfo: jourInfo,
+      jourLong: jourLong, joursLisibles: joursLisibles, libelleFamille: libelleFamille, lienContact: lienContact,
+      ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,
+      photo: photo, photosDesScenes: photosDesScenes, plageLisible: plageLisible, poserErreur: poserErreur, poserTitre: poserTitre,
+      posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
+      secouer: secouer, sortieClavier: sortieClavier,
+      scene: function () { return sceneCourante; },
+    };
+    Object.defineProperty(I, 'meta', { get: function () { return meta; } });
+    return I;
+  }
+
   /* --- La photo qui suit la souris (ordinateur seulement) ---------------------- */
 
   if (finPointer && !reduced) {
@@ -2834,11 +3222,11 @@
   // sinon les cartes se redessinent, la selection et les reglages gardes
   // (ramenes aux nouvelles limites), et les heures se recalculent.
   var empreinteCatalogue = '';
-  function empreinteDuCatalogue(j) { return JSON.stringify([(j && j.activities) || [], (j && j.formules) || []]); }
+  function empreinteDuCatalogue(j) { return JSON.stringify([(j && j.activities) || [], (j && j.formules) || [], (j && j.center && j.center.customRequest) || null]); }
   function rafraichirCatalogue() {
     // Pas pendant les coordonnees ni le recapitulatif : le client relit ce
     // qu il va envoyer, et le serveur revalide tout a l envoi.
-    if (!meta || doc.hidden || ['date', 'activites', 'heures'].indexOf(sceneCourante) < 0) return;
+    if (!meta || doc.hidden || ['date', 'activites', 'heures', 'sm-envies'].indexOf(sceneCourante) < 0) return;
     var q = new URLSearchParams(); q.set('centerId', CENTER);
     fetch('/api/public-booking-meta?' + q.toString(), { credentials: 'omit' })
       .then(function (r) { return r.json(); })
@@ -2849,6 +3237,9 @@
         empreinteCatalogue = neuve;
         meta.activities = j.activities;
         if (Array.isArray(j.formules)) meta.formules = j.formules;
+        if (meta.center && j.center && j.center.customRequest) meta.center.customRequest = j.center.customRequest;
+        rendrePax();
+        if (sceneCourante === 'sm-envies') { if (smModule) smModule.rafraichir(); return; }
         state.selection = state.selection.filter(function (id) {
           var a = activite(id);
           return a && !(a.maxPax && state.pax > a.maxPax) && !tropPeu(a);
@@ -2864,7 +3255,7 @@
       .catch(function () {});
   }
   doc.addEventListener('visibilitychange', function () { if (!doc.hidden) rafraichirCatalogue(); });
-  setInterval(function () { if (sceneCourante === 'activites' || sceneCourante === 'heures') rafraichirCatalogue(); }, 10000);
+  setInterval(function () { if (sceneCourante === 'activites' || sceneCourante === 'heures' || sceneCourante === 'sm-envies') rafraichirCatalogue(); }, 10000);
   $('#goActivities').addEventListener('click', function () { rafraichirCatalogue(); });
 
   /* --- Le demarrage ----------------------------------------------------------------- */

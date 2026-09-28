@@ -13,6 +13,7 @@ const {
   refreshWalloniaSchoolHolidays,
   resolveBowlingCapacity,
   todayStr,
+  currentTimeDecimal,
   BOOKING_HORIZON_DAYS,
 } = require('../lib/booking-config');
 const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
@@ -29,7 +30,8 @@ const {
 } = require('../lib/availability-blocks');
 const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS } = require('../lib/ops-engine');
 const { listSellableActivities } = require('../lib/activity-catalog');
-const { normalizeBranding, normalizeIdentity } = require('../lib/center-config');
+const { normalizeBranding, normalizeIdentity, customRequestFromPax } = require('../lib/center-config');
+const surMesure = require('../lib/custom-request');
 
 // This function serves several public surfaces to stay under the Vercel Hobby
 // 12-function limit:
@@ -81,7 +83,52 @@ async function handleCustomRequest(req, res, body) {
     sendError(res, 400, 'Adresse email invalide.');
     return;
   }
-  if (!message) {
+
+  // LA DEMANDE STRUCTUREE du formulaire Fun Galaxy (`details`) : le groupe,
+  // la date et le moment, les formules et les activites voulues. Elle est
+  // validee avec les REGLES que l ecran applique (lib/custom-request) contre
+  // le catalogue et le calendrier du centre, au moment de l envoi. Sans
+  // `details` (ancienne fenetre de /reserver), rien ne change : le message
+  // libre reste obligatoire.
+  let demande = null;
+  if (body.details && typeof body.details === 'object') {
+    try {
+      await refreshCenterOverrides(getPool());
+      await refreshFormuleOverrides(getPool());
+      await refreshCatalog(getPool());
+    } catch (error) {
+      // Socle fichier.
+    }
+    let center = null;
+    try { center = getCenter(centerId); } catch (error) { center = null; }
+    if (!center) {
+      sendError(res, 404, 'Centre inconnu.');
+      return;
+    }
+    if (center.demonstration === true) {
+      sendError(res, 422, 'Ce formulaire est la démonstration de Pinlane, et rien n’y est enregistré.');
+      return;
+    }
+    let blocks = [];
+    try { blocks = await loadAvailabilityBlocks(getPool(), centerId); } catch (error) { blocks = []; }
+    const verdict = surMesure.normaliserDemande(body.details, {
+      today: todayStr(),
+      nowHour: currentTimeDecimal(),
+      horizonDays: BOOKING_HORIZON_DAYS,
+      formules: formulesPubliques(centerId, center),
+      activites: activitesPubliques(centerId, center),
+      jourDe: (date) => {
+        const statut = buildDayStatus(blocks, date, center, centerId);
+        const [y, m, d] = date.split('-').map(Number);
+        return { ...statut, weekday: new Date(Date.UTC(y, m - 1, d)).getUTCDay() };
+      },
+    });
+    if (!verdict.ok) {
+      sendError(res, verdict.status, verdict.message, { field: verdict.champ });
+      return;
+    }
+    demande = verdict.demande;
+  } else if (!message) {
     sendError(res, 400, 'Merci de décrire votre besoin.');
     return;
   }
@@ -91,15 +138,20 @@ async function handleCustomRequest(req, res, body) {
     lead = await createCustomRequest({
       centerId,
       contactName,
-      company,
+      company: demande ? demande.organisation : company,
       email,
       phone,
-      requestedDate,
-      pax,
-      occasion,
+      // La date lisible (« mercredi 14 octobre 2026, après-midi ») : c est
+      // elle que la liste de la console et l accuse de reception montrent.
+      requestedDate: demande ? surMesure.libelleQuand(demande) : requestedDate,
+      pax: demande ? demande.participants : pax,
+      occasion: demande ? surMesure.GROUP_TYPES[demande.groupType].occasion : occasion,
       message,
       source: 'client',
-      payload: { userAgent: clean(req.headers?.['user-agent'], 400) },
+      payload: {
+        userAgent: clean(req.headers?.['user-agent'], 400),
+        ...(demande ? { demande } : {}),
+      },
     });
   } catch (error) {
     sendError(res, 503, 'Demande non enregistrée, réessayez dans un instant.');
@@ -119,6 +171,7 @@ async function handleCustomRequest(req, res, body) {
     requestedDate: lead.requestedDate,
     pax: lead.pax,
     message: lead.message,
+    demande,
   }).catch((error) => ({ skipped: true, reason: error.message || 'Envoi impossible.' }));
 
   sendJson(res, 201, {
@@ -171,6 +224,60 @@ async function handlePilotLead(req, res, body) {
   } catch (error) {
     sendError(res, 503, 'Demande non enregistrée, réessayez dans un instant.');
   }
+}
+
+// CE QUE LE CENTRE N A PAS. Une formule dont une etape demande une activite
+// que le centre a coupee (activityAvailability a false : la plaine de jeux de
+// Gembloux pour les formules 6 a 8) ne peut jamais y etre planifiee : le
+// moteur rend zero creneau (mesure du 2026-08-22). Le catalogue le dit, le
+// formulaire ne la propose plus. Seule une coupure EXPLICITE compte : une
+// etape sans reglage (boissons, credit d arcade) ne retire rien.
+function activitesManquantes(formuleId, center) {
+  const availability = center && center.activityAvailability && typeof center.activityAvailability === 'object'
+    ? center.activityAvailability
+    : null;
+  if (!availability) return [];
+  let doc = null;
+  try { doc = getFormula(formuleId); } catch (error) { return []; }
+  const ids = new Set((doc && Array.isArray(doc.steps) ? doc.steps : []).map((step) => step && step.activityId).filter(Boolean));
+  return [...ids].filter((id) => availability[id] === false);
+}
+
+// Les formules du centre telles que le public les recoit : overrides du
+// catalogue appliques, l interrupteur du staff (`offerOff`) et les activites
+// manquantes (`missingActivityIds`), deux cles ADDITIVES posees seulement
+// quand elles disent quelque chose. La lecture du catalogue et la demande sur
+// mesure lisent la meme liste.
+function formulesPubliques(centerId, center) {
+  return getEffectiveFormules(centerId).map((formule) => {
+    const publique = isOfferEnabled(formule.id, center) ? formule : { ...formule, offerOff: true };
+    const manque = activitesManquantes(formule.id, center);
+    return manque.length ? { ...publique, missingActivityIds: manque } : publique;
+  });
+}
+
+// Ce que le centre vend, avec les faits d AGE qu il declare (activityThemes :
+// « 4 à 12 ans », des 7 ans, 1,30 m minimum). Une seule source, celle que lit
+// aussi l agent ; chaque cle n est posee que si le centre la declare.
+function activitesPubliques(centerId, center) {
+  return listSellableActivities({
+    centerId,
+    availability: center && typeof center.activityAvailability === 'object' ? center.activityAvailability : null,
+    // Les tables, les pistes de duckpin, les joueurs par piste reglees dans
+    // Etablissement : le formulaire les lit ici, comme le serveur.
+    capacity: center && center.activityCapacity && typeof center.activityCapacity === 'object' ? center.activityCapacity : null,
+  }).map((activity) => {
+    const theme = center && center.activityThemes && center.activityThemes[activity.id];
+    if (!theme || typeof theme !== 'object') return activity;
+    const extra = {};
+    const ageRange = typeof theme.ageRange === 'string' ? theme.ageRange.trim() : '';
+    if (ageRange) extra.ageRange = ageRange;
+    const minAge = Math.trunc(Number(theme.minAge));
+    if (Number.isFinite(minAge) && minAge >= 1 && minAge <= 99) extra.minAge = minAge;
+    const taille = Math.trunc(Number(theme.minHeightCm));
+    if (Number.isFinite(taille) && taille >= 50 && taille <= 250) extra.minHeightCm = taille;
+    return Object.keys(extra).length ? { ...activity, ...extra } : activity;
+  });
 }
 
 // ── VERDICT DU JOUR (cle `day` du payload public) ────────────────────────────
@@ -518,9 +625,7 @@ module.exports = async (req, res) => {
     // .offerAvailability), que seul le serveur connait. Cle ADDITIVE, posee
     // uniquement quand l offre est coupee : un formulaire qui ne la lit pas se
     // comporte comme avant.
-    formules: getEffectiveFormules(centerId).map((formule) => (isOfferEnabled(formule.id, center)
-      ? formule
-      : { ...formule, offerOff: true })),
+    formules: formulesPubliques(centerId, center),
     laserOptions: LASER_GAME_OPTIONS,
     bowlingPrices: BOWLING_PRICES,
     // La grille du Fun Run (sessions de 15 et 30 min), cle ADDITIVE : le
@@ -534,17 +639,7 @@ module.exports = async (req, res) => {
     // donnee du CENTRE, la meme que lit l agent (activityThemes) : une seule
     // source, jamais recopiee dans le catalogue partage. Cle ajoutee seulement
     // quand le centre la declare.
-    activities: listSellableActivities({
-      centerId,
-      availability: center && typeof center.activityAvailability === 'object' ? center.activityAvailability : null,
-      // Les tables, les pistes de duckpin, les joueurs par piste reglees dans
-      // Etablissement : le formulaire les lit ici, comme le serveur.
-      capacity: center && center.activityCapacity && typeof center.activityCapacity === 'object' ? center.activityCapacity : null,
-    }).map((activity) => {
-      const theme = center && center.activityThemes && center.activityThemes[activity.id];
-      const ageRange = theme && typeof theme.ageRange === 'string' ? theme.ageRange.trim() : '';
-      return ageRange ? { ...activity, ageRange } : activity;
-    }),
+    activities: activitesPubliques(centerId, center),
     center: center
       ? {
         id: center.id,
@@ -564,6 +659,11 @@ module.exports = async (req, res) => {
         // ne prenne pas l absence d information pour une reponse.
         demonstration: center.demonstration === true,
         contact: centerContact,
+        // LA DEMANDE SUR MESURE : a partir de `fromPax` personnes, le groupe
+        // ne se reserve plus en ligne, il envoie une demande que l equipe
+        // traite (null = jamais). Reglee dans Etablissement, relue ici a
+        // chaque lecture du catalogue.
+        customRequest: { fromPax: customRequestFromPax(center) },
         // La MARQUE du centre (couleurs du tunnel). Bornee ici, comme partout :
         // quatre jetons hexadecimaux par theme, tout le reste est jete. null =
         // ce centre n'a pas de marque, le tunnel garde l'accent plateforme.
@@ -665,4 +765,4 @@ function buildCalendar(blocks, days, center, centerId, from = '') {
 // Expose pour les gates (scripts/availability-day-check.js,
 // scripts/wallonia-calendar-check.js, le mock du serveur de dev) : le verdict
 // se teste unitairement, sans reseau ni base.
-module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam };
+module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques };

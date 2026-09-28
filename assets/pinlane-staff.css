@@ -3896,6 +3896,9 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .res-lane-chip.laser { border-color: var(--info); color: var(--accent-strong); background: var(--info-soft); }
 .res-lanes-empty { font-size: 12px; color: var(--muted); }
+/* Une partie de laser sans heure : elle attend une action du comptoir, la
+   pastille prend la couleur d attention, pas celle d une erreur. */
+.res-lane-chip.is-to-place { border-color: var(--warning); color: var(--warning); background: var(--warning-soft); font-family: inherit; font-weight: 600; }
 
 /* Les actions passent de DEUX lignes empilées à UNE seule : c'est ce qui fait
    descendre la ligne de 104px à ~68px sans retirer un seul bouton. L'état

@@ -531,8 +531,26 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // 3,7 Ko de plus coutent environ 75 ms a 400 kbit/s. Plafonds : 200 Ko a
 // analyser, 58 Ko a transferer, soit 12 et 6 Ko de marge : une police ou une
 // bibliotheque (plus de 15 Ko compresses) font toujours sauter le second.
-const BUDGET_SERVI = 200 * 1024;
-const BUDGET_TRANSFERE = 58 * 1024;
+//
+// REDERIVE LE 2026-09-29, APRES AVOIR RETIRE LE POIDS REEL. La demande sur
+// mesure (cinq ecrans, 88 Ko de sources) etait entree dans le formulaire : le
+// parcours de reservation servait 271,5 Ko. Elle vit desormais dans
+// assets/fungalaxy-sur-mesure.js et sa feuille, CHARGES A LA DEMANDE (57 et
+// 6 Ko servis, seulement a qui ouvre la demande ; sur-mesure-check prouve que
+// rien n est telecharge a 30 personnes). Reste, pour tous : les lots 3 et 4 de
+// l audit QA (formules a l ecran des heures, Kids Fun Day enfants et adultes,
+// parties de laser a placer : 194,0 -> 202,0 Ko servis, 53,6 -> 55,6 Ko
+// transferes) puis l encart du seuil, la porte des groupes organises et le
+// chargeur de la demande (212,2 Ko, 58,6 Ko). Aucune fonction jamais appelee
+// (releve par script sur les 197 fonctions). Mesure A/B (meme protocole,
+// tirage des photos fige, ordre ABBA, 7 a 9 tours) : memes passes de mise en
+// page (6) et de style (11 a 12) ; script +3 a +8 ms ; mise en page de la prod
+// 174 a 366 ms d un tour a l autre, pour un ecart des medianes de 47 a 88 ms :
+// au pire 15 ms reels, la porte du premier ecran. Plafonds : 225 Ko a
+// analyser, 64 Ko a transferer, soit 12,8 et 5,4 Ko de marge : une police
+// (20 Ko compresses) ou une bibliotheque font toujours sauter l un ou l autre.
+const BUDGET_SERVI = 225 * 1024;
+const BUDGET_TRANSFERE = 64 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -1013,8 +1031,12 @@ function photosDuScript(js) {
 }
 // Les photos des six ecrans telles que la page les a posees : la photo (le nom
 // avant le suffixe de largeur), le cadre declare, et si elle est chargee.
+// Les six ecrans du parcours de reservation. Ceux de la demande sur mesure
+// (data-scene « sm-... ») n entrent dans la page que si elle se charge (un
+// grand groupe tape en route) : ils ont leur propre verification
+// (sur-mesure-check).
 async function lirePhotosEcrans(page) {
-  return page.evaluate(() => Array.from(document.querySelectorAll('.fg-scene')).map((sc) => {
+  return page.evaluate(() => Array.from(document.querySelectorAll('.fg-scene:not([data-scene^="sm-"])')).map((sc) => {
     const img = sc.querySelector('.fg-art img');
     const url = img ? (img.getAttribute('src') || img.dataset.src || '') : '';
     const m = /\/assets\/fungalaxy\/([a-z0-9-]+?)-(?:800|1600)\.webp/.exec(url);
@@ -1923,9 +1945,20 @@ async function main() {
     await page.fill('#paxInput', '999');
     await page.press('#paxInput', 'Enter');
     ok(await attendre(page, () => document.querySelector('#paxInput').value === '240' && document.querySelector('#paxOut').textContent.trim() === '240 personnes' && document.querySelector('#paxPlus').disabled, 3000), '[A2] un nombre tape au-dela de 240 est ramene a 240, le « + » se desactive');
-    const plafond = await page.evaluate(() => { const h = document.querySelector('#paxHint'); const a = h.querySelector('a[href^="tel:"]'); return { texte: h.textContent.replace(/\s+/g, ' ').trim(), tel: a ? a.getAttribute('href') : '', live: h.getAttribute('aria-live'), vu: getComputedStyle(h).display !== 'none' }; });
-    ok(plafond.vu && plafond.live === 'polite' && plat(plafond.texte).startsWith('Grand groupe') && plat(plafond.texte).includes('En ligne, 240 personnes au maximum.') && /^tel:\+?\d{8,}$/.test(plafond.tel),
-      '[A2] au plafond, sous le compteur : le grand groupe reste dit, puis « En ligne, 240 personnes au maximum. » et le numero du centre a toucher', `« ${plafond.texte} » ${plafond.tel}`);
+    const plafond = await page.evaluate(() => { const h = document.querySelector('#paxHint'); const a = h.querySelector('a[href^="tel:"]'); return { texte: h.textContent.replace(/\s+/g, ' ').trim(), tel: a ? a.getAttribute('href') : '', live: h.getAttribute('aria-live'), vu: getComputedStyle(h).display !== 'none', encart: !document.getElementById('smSeuil').hidden, alerte: h.classList.contains('is-warn') }; });
+    // LA DONNEE DU CENTRE DECIDE (2026-09-28). Avec un seuil de demande sur
+    // mesure (Libramont : 31), 240 personnes passent par la demande : l encart
+    // le dit et la phrase du plafond y renvoie. Sans seuil, « En ligne, 240
+    // personnes au maximum » et le numero du centre (verifie par
+    // sur-mesure-check, sur un catalogue sans seuil).
+    const seuilServi = await page.evaluate(async () => { const j = await (await fetch('/api/public-booking-meta?centerId=libramont')).json(); return j.center && j.center.customRequest ? j.center.customRequest.fromPax : null; });
+    if (seuilServi && seuilServi <= 240) {
+      ok(plafond.vu && plafond.live === 'polite' && plafond.encart && !plafond.alerte && plat(plafond.texte) === plat('Plus de 240 ? Vous préciserez le nombre exact dans la demande.'),
+        `[A2] au plafond, un centre qui prepare les groupes des ${seuilServi} : l encart de la demande, et sous le compteur « Plus de 240 ? » renvoie a la demande`, `« ${plafond.texte} » encart=${plafond.encart}`);
+    } else {
+      ok(plafond.vu && plafond.live === 'polite' && plat(plafond.texte).startsWith('Grand groupe') && plat(plafond.texte).includes('En ligne, 240 personnes au maximum.') && /^tel:\+?\d{8,}$/.test(plafond.tel),
+        '[A2] au plafond, sous le compteur : le grand groupe reste dit, puis « En ligne, 240 personnes au maximum. » et le numero du centre a toucher', `« ${plafond.texte} » ${plafond.tel}`);
+    }
     await page.fill('#paxInput', '6');
     await page.press('#paxInput', 'Enter');
     ok(await attendre(page, () => document.querySelector('#paxInput').value === '6' && document.querySelector('#paxOut').textContent.trim() === '6 personnes', 3000), '[A2] taper 6 donne 6 personnes');
@@ -3127,6 +3160,16 @@ async function main() {
     const pageJ = await tour.newPage();
     const demandesJ = [];
     pageJ.on('request', (r) => demandesJ.push(r.url()));
+    // Ce tour reserve EN LIGNE un groupe de 40 (le laser s y scinde) : c est
+    // le cas d un centre SANS seuil de demande sur mesure. Le catalogue servi a
+    // cette page le dit (fromPax null) ; a Libramont, 40 personnes partent vers
+    // la demande (sur-mesure-check).
+    await pageJ.route('**/api/public-booking-meta*', async (route) => {
+      const reponse = await route.fetch();
+      const j = await reponse.json();
+      if (j && j.center) j.center.customRequest = { fromPax: null };
+      await route.fulfill({ response: reponse, json: j });
+    });
     await pageJ.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
     ok(await attendre(pageJ, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), '[J] le catalogue est lu');
 

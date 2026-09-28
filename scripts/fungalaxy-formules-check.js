@@ -19,7 +19,12 @@
 // CE QUE CE GATE PROUVE
 //   [A] le verdict du formulaire = celui de getFormuleAvailability, la fonction
 //       qui accepte ou refuse la VRAIE reservation, sur une grille complete
-//       (chaque formule x chaque jour de la semaine x plusieurs groupes) ;
+//       (chaque formule x chaque jour de la semaine x plusieurs groupes). Le
+//       calendrier passe par la CHAINE du formulaire (absorberCalendrier,
+//       entreeJour, jourInfo), pas brut : jusqu au 2026-09-28 ce gate donnait
+//       le calendrier du serveur a la regle, alors que le formulaire, lui, en
+//       jetait le verdict des vacances et des blocages ; il restait vert
+//       pendant que la FORMULE 1 se proposait en conge d automne ;
 //   [B] les contraintes affichees sont celles du catalogue, ni plus ni moins ;
 //   [C] le calendrier servi porte le verdict des vacances (formulaHolidayOff)
 //       et il vaut isFormulaBlockedDate, jamais une devinette sur le type de
@@ -47,25 +52,34 @@ function section(titre) { console.log(`\n[${titre}]`); }
 function extraire(source, nom) {
   const debut = source.indexOf(`\n  function ${nom}(`);
   if (debut === -1) return '';
+  // Une fonction ecrite sur une ligne s arrete a sa ligne.
+  const finLigne = source.indexOf('\n', debut + 1);
+  const ligne = source.slice(debut + 1, finLigne);
+  if (/\}\s*$/.test(ligne) && (ligne.match(/\{/g) || []).length === (ligne.match(/\}/g) || []).length) return ligne;
   const fin = source.indexOf('\n  }\n', debut + 1);
   return fin === -1 ? '' : source.slice(debut + 1, fin + 4);
 }
 
 function chargerRegleDuFormulaire(jours, state) {
   const source = fs.readFileSync(FORMULAIRE, 'utf8').replace(/\r\n/g, '\n');
-  const noms = ['verdictFormule', 'jourSemaine', 'joursLisibles', 'reglesFormule', 'plageLisible', 'heureRonde'];
+  const noms = ['verdictFormule', 'jourSemaine', 'joursLisibles', 'reglesFormule', 'plageLisible', 'heureRonde', 'entreeJour', 'absorberCalendrier', 'jourInfo'];
   const morceaux = noms.map((nom) => ({ nom, code: extraire(source, nom) }));
   const manquantes = morceaux.filter((m) => !m.code).map((m) => m.nom);
   const ligneJours = (source.match(/^ {2}var JOURS_SEM = .*$/m) || [''])[0];
+  // Le calendrier du formulaire se remplit comme en vrai : les entrees
+  // servies passent par absorberCalendrier et entreeJour ; jourInfo les relit.
   const bac = {
     state,
-    jourInfo: (d) => jours[d] || null,
-    Math, Number, String, Date, JSON,
+    jours: {},
+    accentuer: (s) => s,
+    horaireLabel: () => '',
+    Math, Number, String, Date, JSON, Array,
   };
   bac.globalThis = bac;
   vm.createContext(bac);
   vm.runInContext(ligneJours, bac, { filename: 'fungalaxy-booking.js:JOURS_SEM' });
   morceaux.filter((m) => m.code).forEach((m) => vm.runInContext(m.code, bac, { filename: `fungalaxy-booking.js:${m.nom}` }));
+  if (!manquantes.length) vm.runInContext(`absorberCalendrier(${JSON.stringify(Object.values(jours))})`, bac, { filename: 'gate:calendrier' });
   return { bac, manquantes, joursSem: ligneJours };
 }
 
@@ -199,6 +213,14 @@ function main() {
       ancre: "if (f.noHolidays && j.formulaHolidayOff)",
       mute: "if (false)",
       label: 'sans la regle des vacances, la FORMULE 1 repasse en vacances scolaires',
+      verdict: (b, s) => { s.date = vacances; s.pax = 6; return b.verdictFormule(formules.find((f) => f.id === 'f1')).ok === false; },
+    },
+    {
+      // LE CHARGEUR, PAS SEULEMENT LA REGLE : un calendrier du formulaire qui
+      // perd le verdict des vacances rend la regle muette, meme intacte.
+      ancre: "      formulaHolidayOff: Boolean(entry.formulaHolidayOff),",
+      mute: "      formulaHolidayOff: false,",
+      label: 'si le calendrier du formulaire perd le verdict des vacances, la FORMULE 1 repasse en conge scolaire',
       verdict: (b, s) => { s.date = vacances; s.pax = 6; return b.verdictFormule(formules.find((f) => f.id === 'f1')).ok === false; },
     },
     {

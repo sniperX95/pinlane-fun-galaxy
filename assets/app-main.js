@@ -13780,6 +13780,12 @@ async function submitCenterConfig(centerId) {
     offerAvailability,
     activityAvailability,
     activityCapacity,
+    // Vide = jamais (null, qui prime sur le reglage du fichier socle).
+    customRequest: (() => {
+      const brut = document.getElementById('estab-customRequestFromPax')?.value;
+      const seuil = Math.trunc(Number(brut));
+      return { fromPax: String(brut || '').trim() !== '' && Number.isFinite(seuil) && seuil >= 2 ? Math.min(240, seuil) : null };
+    })(),
     classification,
     customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
@@ -14302,7 +14308,19 @@ function renderEstablishmentEditPanels(center, active) {
     ${renderAvailabilityBlocksPanel()}
   </div>`;
 
+  // LE SEUIL DE LA DEMANDE SUR MESURE (Movsar, 2026-09-28 : « tout groupe
+  // superieur a 30 ... sera redirige vers une demande sur mesure »). Vide :
+  // jamais. Le formulaire en ligne le relit avec le catalogue.
+  const seuilSurMesure = Number(center.customRequest && center.customRequest.fromPax) || '';
   const offresPanel = `<div class="estab-edit-stack">
+    <fieldset class="establishment-card establishment-custom-request">
+      <legend>Grands groupes</legend>
+      <p class="estab-card-hint">À partir de ce nombre de personnes, le formulaire en ligne ne réserve plus : il ouvre une demande sur mesure, que l’équipe traite et à laquelle elle répond sous 24 heures ouvrables. Pas de demande pour le jour même. Laissez vide pour que tous les groupes réservent en ligne.</p>
+      <div class="estab-field-row">
+        <div class="field"><label for="estab-customRequestFromPax">Demande sur mesure dès (personnes)</label><input type="number" id="estab-customRequestFromPax" min="2" max="240" step="1" inputmode="numeric" placeholder="Jamais" value="${escapeHtml(String(seuilSurMesure))}"></div>
+      </div>
+    </fieldset>
+
     <fieldset class="establishment-card establishment-offers">
       <legend>Offres &amp; formules</legend>
       <p class="estab-card-hint">Une offre décochée disparaît de l'espace client et n'est plus réservable (blocage aussi côté serveur).</p>
@@ -18131,15 +18149,51 @@ function renderStaffCustomRequestBadge(status) {
   return `<span class="cr-badge cr-badge-${cls}">${escapeHtml(label)}</span>`;
 }
 
+// LA DEMANDE STRUCTUREE du formulaire en ligne (payload.demande, validee par
+// lib/custom-request) : le groupe, la date et le moment, les envies. Absente
+// pour une demande de l ancienne fenetre (message libre seul).
+const CR_AGE_LABELS = { moins7: 'Moins de 7 ans', '7-12': '7 à 12 ans', '13-17': '13 à 17 ans', adultes: 'Adultes' };
+function crDemande(item) {
+  const d = item && item.payload && item.payload.demande;
+  return d && typeof d === 'object' ? d : null;
+}
+function crNoms(liste) {
+  return (Array.isArray(liste) ? liste : []).map(x => x && x.name).filter(Boolean);
+}
+function crEffectif(d) {
+  const joueurs = Number(d.participants) || 0;
+  const acc = Number(d.companions) || 0;
+  return `${joueurs} joueur${joueurs > 1 ? 's' : ''}${acc ? ` + ${acc} accompagnateur${acc > 1 ? 's' : ''}` : ''}`;
+}
+function crEnviesCourtes(d) {
+  const a = crNoms(d.activities).length;
+  const f = crNoms(d.formulas).length;
+  return [
+    a ? `${a} activité${a > 1 ? 's' : ''}` : '',
+    f ? `${f} formule${f > 1 ? 's' : ''}` : '',
+    d.advice ? 'conseil demandé' : '',
+  ].filter(Boolean).join(', ');
+}
+
 function renderStaffCustomRequestCard(item) {
   const occKey = String(item.occasion || '').toLowerCase();
   const occ = STAFF_OCCASION_LABELS[occKey] || '';
-  const meta = [
+  const d = crDemande(item);
+  const meta = (d ? [
+    d.organisation || '',
+    d.groupTypeLabel || '',
+    crEffectif(d),
+    item.requestedDate ? `Souhait : ${item.requestedDate}` : '',
+    crEnviesCourtes(d),
+  ] : [
     item.company,
     item.phone,
     item.requestedDate ? `Souhait : ${item.requestedDate}` : '',
     Number(item.pax) > 0 ? `${item.pax} pers.` : ''
-  ].filter(Boolean).join(' · ');
+  ]).filter(Boolean).join(' · ');
+  // Sans mot du client, la carte dit ce qu il veut : ses envies, en clair.
+  const envies = d ? [...crNoms(d.activities), ...crNoms(d.formulas)].join(', ') : '';
+  const texte = item.message || (envies ? `Envies : ${envies}` : '');
   const jid = staffClientJs(item.id);
   // La carte entiere ouvre la fiche : c'est la ligne de liste d'un dossier, et
   // une ligne de liste s'ouvre. Les boutons d'action gardent leur propre clic.
@@ -18155,7 +18209,7 @@ function renderStaffCustomRequestCard(item) {
     </div>
     ${meta ? `<div class="cr-meta">${escapeHtml(meta)}</div>` : ''}
     ${item.email ? `<div class="cr-meta cr-email">${escapeHtml(item.email)}</div>` : ''}
-    <p class="cr-message">${escapeHtml(item.message || '')}</p>
+    <p class="cr-message">${escapeHtml(texte)}</p>
     <div class="cr-actions" onclick="event.stopPropagation()">
       ${item.email ? `<button type="button" onclick="composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre</button>` : ''}
       ${item.status !== 'in_progress' && item.status !== 'handled' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Prendre en charge</button>` : ''}
@@ -18185,12 +18239,46 @@ function openStaffCustomRequest(id) {
   const occKey = String(item.occasion || '').toLowerCase();
   const occ = STAFF_OCCASION_LABELS[occKey] || '';
   const jid = staffClientJs(item.id);
-  const faits = [
+  const d = crDemande(item);
+  const faits = d ? [] : [
     item.company ? ['Société', item.company] : null,
     item.requestedDate ? ['Date souhaitée', item.requestedDate] : null,
     Number(item.pax) > 0 ? ['Participants', `${item.pax} personnes`] : null,
     occ ? ['Occasion', occ] : null,
   ].filter(Boolean);
+  // La demande du formulaire en ligne, bloc par bloc : qui, quand, quoi, et
+  // comment facturer. Chaque ligne n apparait que si le client l a remplie.
+  const bloc = (titre, lignes) => {
+    const utiles = lignes.filter(Boolean);
+    return utiles.length ? `<section class="cr-sheet-block">
+        <span class="cr-sheet-label">${escapeHtml(titre)}</span>
+        <dl class="cr-sheet-facts">${utiles.map(([cle, valeur]) => `<div><dt>${escapeHtml(cle)}</dt><dd>${escapeHtml(String(valeur))}</dd></div>`).join('')}</dl>
+      </section>` : '';
+  };
+  const ages = d ? (Array.isArray(d.ages) ? d.ages : []).map(cle => CR_AGE_LABELS[cle] || '').filter(Boolean) : [];
+  const blocsDemande = d ? [
+    bloc('Le groupe', [
+      ['Type', d.groupTypeLabel || occ || ''],
+      d.organisation ? ['Organisation', d.organisation] : null,
+      ['Participants', crEffectif(d)],
+      ages.length ? ['Âges', ages.join(', ')] : null,
+    ]),
+    bloc('Quand', [
+      d.flexible ? ['Date', 'À fixer'] : ['Date souhaitée', item.requestedDate || d.date],
+      d.flexible && d.period ? ['Période envisagée', d.period] : null,
+      d.momentLabel ? ['Moment', d.momentLabel] : null,
+    ]),
+    bloc('Ses envies', [
+      crNoms(d.activities).length ? ['Activités', crNoms(d.activities).join(', ')] : null,
+      crNoms(d.formulas).length ? ['Formules', crNoms(d.formulas).join(', ')] : null,
+      d.advice ? ['Conseil', 'Il demande que l’équipe propose un programme'] : null,
+      Number(d.budgetPerPerson) > 0 ? ['Budget indicatif', `${d.budgetPerPerson} € par personne`] : null,
+    ]),
+    bloc('Facturation', [
+      d.invoice ? ['Facture', `Au nom de ${d.organisation || 'l’organisation'}`] : null,
+      d.invoice && d.vatNumber ? ['TVA', d.vatNumber] : null,
+    ]),
+  ].join('') : '';
   overlay.className = 'cr-sheet-overlay';
   overlay.innerHTML = `<div class="cr-sheet" role="dialog" aria-modal="true" aria-labelledby="crSheetTitle">
     <div class="cr-sheet-head">
@@ -18210,16 +18298,17 @@ function openStaffCustomRequest(id) {
           <button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived'); closeStaffCustomRequest();">Archiver</button>
         </div>
       </section>
-      <section class="cr-sheet-block">
-        <span class="cr-sheet-label">Sa demande</span>
+      ${blocsDemande}
+      ${!d || item.message ? `<section class="cr-sheet-block">
+        <span class="cr-sheet-label">${d ? 'Son mot' : 'Sa demande'}</span>
         <p class="cr-sheet-message">${escapeHtml(item.message || 'Aucun message.')}</p>
-      </section>
+      </section>` : ''}
       ${faits.length ? `<section class="cr-sheet-block">
         <span class="cr-sheet-label">Le besoin</span>
         <dl class="cr-sheet-facts">${faits.map(([cle, valeur]) => `<div><dt>${escapeHtml(cle)}</dt><dd>${escapeHtml(String(valeur))}</dd></div>`).join('')}</dl>
       </section>` : ''}
       <section class="cr-sheet-block">
-        <span class="cr-sheet-label">Le joindre</span>
+        <span class="cr-sheet-label">Le joindre${d && d.contactRole ? ` · ${escapeHtml(d.contactRole)}` : ''}</span>
         <div class="cr-sheet-contact">
           ${item.phone ? `<a href="tel:${escapeHtml(String(item.phone).replace(/\s+/g, ''))}">${escapeHtml(item.phone)}</a>` : ''}
           ${item.email ? `<a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a>` : ''}
@@ -21674,6 +21763,15 @@ function getStaffStatusCounts(reservations) {
   };
 }
 
+// LES JOUEURS D UN DOSSIER, ET CEUX QUI LES ACCOMPAGNENT (migration 0048) :
+// un Kids Fun Day de 6 enfants venus avec 2 adultes se lit « 6 joueurs +
+// 2 accompagnants ». Les adultes ne jouent pas et ne paient pas l offre.
+function joueursDuDossier(r) {
+  const pax = Math.max(0, Number(r && r.pax) || 0);
+  const avec = Math.max(0, Math.trunc(Number(r && r.companions) || 0));
+  return `${pax} joueur${pax > 1 ? 's' : ''}${avec ? ` + ${avec} accompagnant${avec > 1 ? 's' : ''}` : ''}`;
+}
+
 function renderReservationRow(r) {
   const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
   const isFormule = !!formule;
@@ -21686,10 +21784,19 @@ function renderReservationRow(r) {
   const bowlingLanes = [...new Set(bowlingWindows.flatMap(window => window.lanes || r.lanes || []))];
   const bowlingChipHtml = bowlingLanes.length ? bowlingLanes.map(l => `<span class="res-lane-chip">${l}</span>`).join('') : '';
   const laserChipHtml = getLaserWindowsFromReservation(r).map(window => `<span class="res-lane-chip laser">${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}</span>`).join('');
+  // LES PARTIES DE LASER SANS HEURE SE VOIENT SUR LA LIGNE (audit QA du
+  // 2026-09-28 : « une reservation confirmee peut etre incomplete dans le
+  // planning, l equipe peut oublier de placer les parties restantes »). La
+  // meme regle que la file « Parties a placer » du planning laser ; ce sont des
+  // PARTIES qu on compte, pas les groupes d une meme partie.
+  const partiesAPlacer = new Set(getPendingLaserPassesForReservation(r).map(unit => unit.countIndex)).size;
+  const partiesAPlacerHtml = partiesAPlacer && r.status !== 'paid'
+    ? `<span class="res-lane-chip is-to-place" title="Sans heure au planning laser : à placer avec le client, sur place ou avant sa venue">${partiesAPlacer} partie${partiesAPlacer > 1 ? 's' : ''} à placer</span>`
+    : '';
   const lanesHtml = view === 'all'
-    ? `<div class="res-row-lanes">${bowlingChipHtml}${laserChipHtml || ''}${!bowlingChipHtml && !laserChipHtml ? `<span class="res-lanes-empty">${isOffPlanningReservation(r) ? 'Hors planning' : 'À placer'}</span>` : ''}</div>`
+    ? `<div class="res-row-lanes">${bowlingChipHtml}${laserChipHtml || ''}${!bowlingChipHtml && !laserChipHtml ? `<span class="res-lanes-empty">${isOffPlanningReservation(r) ? 'Hors planning' : 'À placer'}</span>` : ''}${partiesAPlacerHtml}</div>`
     : view === 'laser'
-      ? `<div class="res-row-lanes"><span class="res-lane-chip laser">${laserWindow ? `${formatClockDisplay(laserWindow.start)}-${formatClockDisplay(laserWindow.end)}` : 'Laser'}</span></div>`
+      ? `<div class="res-row-lanes"><span class="res-lane-chip laser">${laserWindow ? `${formatClockDisplay(laserWindow.start)}-${formatClockDisplay(laserWindow.end)}` : 'Laser'}</span>${partiesAPlacerHtml}</div>`
       : bowlingLanes.length
         ? `<div class="res-row-lanes">${bowlingChipHtml}</div>`
         : `<span class="res-lanes-empty">Hors piste</span>`;
@@ -21756,7 +21863,7 @@ function renderReservationRow(r) {
     </div>
     <div class="res-c-client">
       <span class="res-row-name">${escapeHtml(r.name)}</span>
-      <span class="res-c-pax">${r.pax} joueur${r.pax > 1 ? 's' : ''}</span>
+      <span class="res-c-pax">${escapeHtml(joueursDuDossier(r))}</span>
     </div>
     <div class="res-c-what">
       <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
@@ -26288,7 +26395,7 @@ function getPosIdentityParts(r) {
     escapeHtml(getReservationLabel(r)),
     escapeHtml(horaire),
     escapeHtml(lieu),
-    `${r.pax} joueur${r.pax > 1 ? 's' : ''}`,
+    escapeHtml(joueursDuDossier(r)),
   ];
   // CE QU IL Y A A ENCAISSER, DES L OUVERTURE DE LA FICHE, et dit comme tel
   // quand le prix a ete ajuste pour ce dossier (review manager 2026-08-26 :

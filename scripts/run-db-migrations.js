@@ -240,6 +240,11 @@ const MIGRATIONS = [
     file: 'database/email-threads-schema.sql',
     description: "Les fils de conversation des mails, le suivi de remise et les lectures par l equipe. Chaque reponse d un client faisait un message a part ; personne ne savait qui avait lu un mail recu ni si un mail envoye etait arrive, ouvert ou revenu en erreur. Table email_threads (bornee par centre), colonnes additives sur communications (thread_id, Message-ID / In-Reply-To / References, remis / ouvert / clique / rebond / plainte), table email_events (une ligne par evenement du fournisseur, cle unique svix-id, jamais d adresse IP), table communication_reads (qui a lu quoi). Rattrapage idempotent des mails existants sans fil, borne par centre. Rollback : database/rollbacks/0047_email_threads.down.sql",
   },
+  {
+    id: '0048_reservation_companions',
+    file: 'database/reservation-companions-schema.sql',
+    description: "Les accompagnants d un dossier : des adultes presents qui ne jouent pas et ne paient pas l offre (Kids Fun Day, reserve aux enfants de 5 a 12 ans : seuls les enfants paient la formule). pax reste le nombre de joueurs, celui du prix et de la capacite. Colonne additive a defaut 0, bornee 0 a 500 : aucune reecriture de table, les dossiers existants gardent 0. Rollback : database/rollbacks/0048_reservation_companions.down.sql",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

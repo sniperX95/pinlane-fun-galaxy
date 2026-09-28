@@ -1281,6 +1281,14 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-card__optbox { container-type: inline-size; }
 .fg-card__optlabel { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Les enfants d une offre qui leur est reservee (Kids Fun Day) : un petit
+   compteur dans le tiroir de la carte, les adultes qui accompagnent a cote,
+   le prix pour les enfants dessous. */
+.fg-kids__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.fg-kids__stepper { flex: none; grid-template-columns: 44px 52px 44px; height: 44px; }
+.fg-kids__stepper .fg-stepper__btn { font-size: 20px; }
+.fg-kids__n { display: grid; place-items: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg-text); }
+.fg-kids__adults { flex: 1 1 140px; min-width: 0; margin: 0; font-size: 12.5px; line-height: 1.35; color: var(--fg-muted); }
 /* Deux reglages dans un tiroir (billards : tables, puis duree) : le second
    titre prend l air d un nouveau groupe. */
 .fg-pills + .fg-card__optlabel { margin-top: 14px; }
@@ -1489,6 +1497,11 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-parts__item.is-set { border-style: solid; border-color: var(--fg-purple); background: rgba(148, 66, 146, 0.28); color: var(--fg-text); }
 .fg-parts__item.is-set i { background: var(--fg-purple); color: #fff; }
 .fg-parts__item.is-proposed { border-style: solid; border-color: var(--fg-teal); color: var(--fg-text); }
+/* Une partie sans heure : ce qu elle devient, et comment l eviter. Sous la
+   liste, dans le cadre, sans alerte : c est un conseil, pas un refus. */
+.fg-parts__note { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--fg-muted); }
+.fg-parts__note svg { width: 16px; height: 16px; flex: none; margin-top: 1px; color: var(--fg-purple-ink); }
+.fg-parts__note b { color: var(--fg-text); font-weight: 600; }
 .fg-parts__item small { margin-left: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-teal-ink); }
 /* Toucher l heure d une de ses parties que rien ne deplace eclaire cette
    partie (ou la note des groupes), une fois. */
@@ -1616,7 +1629,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-period__btn {
   width: 100%;
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  grid-template-columns: auto auto auto 1fr auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -1630,6 +1643,13 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-period.is-open .fg-period__icon { transform: rotate(-15deg) scale(1.1); }
 .fg-period__name { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
 .fg-period__sum { font-size: 12px; color: var(--fg-muted); justify-self: end; text-align: right; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Ce que cache une plage repliee : les mots des puces, dans le contour de la
+   legende, a cote du nom. Une seule ligne, jamais plus : une cle qui ne tient
+   pas passe dessous et se cache (la phrase entiere reste au lecteur d ecran),
+   la hauteur de l en-tete ne bouge donc pas quand les cles changent. */
+.fg-period__keys { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; height: 20px; overflow: hidden; min-width: 0; }
+.fg-period__keys .fg-key { padding: 1px 6px; font-size: 9.5px; letter-spacing: 0.04em; line-height: 1.6; }
+.fg-period__keys .fg-key--ok { padding: 1px 0; border-color: transparent; background: transparent; color: var(--fg-teal-ink); font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .fg-period.is-picked .fg-period__sum { color: var(--fg-teal-ink); font-weight: 600; }
 .fg-period__chev { width: 16px; height: 16px; color: var(--fg-muted); transition: transform 0.4s var(--fg-ease); }
 .fg-period.is-open .fg-period__chev { transform: rotate(180deg); }
@@ -1754,6 +1774,14 @@ html.fg-pilote .fg { overflow: visible; }
   font-size: 13px;
   color: var(--fg-text);
 }
+/* Ce que comprend la formule, dans les mots de sa carte, sous les heures :
+   la meme puce violette que la carte choisie a l ecran d avant. */
+.fg-visit__incl { margin: 0 22px 14px 26px; padding-top: 12px; border-top: 1px dashed rgba(255, 255, 255, 0.14); }
+.fg-visit__incl-title { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-muted); }
+.fg-visit__incl-title svg { width: 16px; height: 16px; flex: none; color: var(--fg-purple-ink); }
+.fg-visit__incl ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px 18px; margin: 0; padding: 0; list-style: none; }
+.fg-visit__incl li { position: relative; padding-left: 14px; font-size: 13.5px; line-height: 1.4; color: var(--fg-text); }
+.fg-visit__incl li::before { content: ""; position: absolute; left: 3px; top: 8px; width: 4px; height: 4px; border-radius: 50%; background: var(--fg-purple-2); }
 .fg-notice {
   max-width: 720px;
   margin: 0 auto 22px;
@@ -1774,6 +1802,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-track__foot { padding: 0 15px 12px 19px; }
   .fg-visit__list { padding: 12px 15px 14px 19px; }
   .fg-visit__warn { margin: 0 15px 14px 19px; }
+  .fg-visit__incl { margin: 0 15px 12px 19px; }
   .fg-parts { margin: 12px 15px 0 19px; }
   .fg-visit__prices { margin: 0 15px 0 19px; }
   .fg-visit__pay { margin: 12px 15px 14px 19px; }
@@ -2114,11 +2143,13 @@ html.fg-pilote .fg { overflow: visible; }
      pastille sarcelle suffit a rattacher l horaire au jour. */
   .fg-sub__open { display: flex; width: fit-content; margin: 8px auto 0; padding-left: 0; border-left: 0; }
   .fg-track__reset { margin-left: 0; width: 100%; text-align: left; }
-  /* Sur telephone, le resume passe sous le nom de la periode : toujours deux
-     lignes, la hauteur ne change pas quand le resume change. */
-  .fg-period__btn { grid-template-columns: auto 1fr auto; grid-template-areas: "icon name chev" "icon sum chev"; row-gap: 3px; }
+  /* Sur telephone, le resume passe sous le nom de la periode, et les cles a
+     cote du nom : toujours deux lignes, la hauteur ne change pas quand le
+     resume ou les cles changent. */
+  .fg-period__btn { grid-template-columns: auto auto 1fr auto; grid-template-areas: "icon name keys chev" "icon sum sum chev"; row-gap: 3px; column-gap: 10px; }
   .fg-period__icon { grid-area: icon; }
   .fg-period__name { grid-area: name; }
+  .fg-period__keys { grid-area: keys; }
   .fg-period__sum { grid-area: sum; justify-self: start; text-align: left; }
   .fg-period__chev { grid-area: chev; }
   .fg-chips { gap: 8px; }
@@ -2152,6 +2183,75 @@ html.fg-pilote .fg { overflow: visible; }
 @media (max-width: 319px) {
   .fg-dock .fg-btn:not(.fg-btn--ghost) { white-space: normal; }
 }
+
+/* --- La demande sur mesure ----------------------------------------------------- */
+
+/* L encart du grand groupe, au premier ecran : le sarcelle dit « l equipe
+   prend le relais », le violet reste au bouton qui avance. */
+.fg-sm-seuil {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  max-width: 680px;
+  margin-top: 26px;
+  padding: 16px 18px;
+  border: 1.5px solid rgba(103, 186, 172, 0.55);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(103, 186, 172, 0.13), rgba(148, 66, 146, 0.1));
+}
+.fg-sm-seuil[hidden] { display: none; }
+.fg-sm-seuil__icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--fg-teal); color: #04110f; }
+.fg-sm-seuil__icon svg { width: 22px; height: 22px; }
+.fg-sm-seuil__txt b { display: block; font-size: 15px; line-height: 1.3; }
+.fg-sm-seuil__txt p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--fg-muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-sm-seuil.is-maj { animation: fg-rise 0.4s var(--fg-ease-out) both; }
+}
+
+/* La porte des groupes organises, sous le bouton qui avance. */
+.fg-sm-door {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  max-width: 680px;
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--fg-line);
+}
+.fg-sm-door[hidden] { display: none; }
+.fg-sm-door__icon { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--fg-line-2); display: grid; place-items: center; color: var(--fg-teal-ink); }
+.fg-sm-door__icon svg { width: 19px; height: 19px; }
+.fg-sm-door__txt { flex: 1 1 250px; min-width: 0; font-size: 14px; line-height: 1.45; color: var(--fg-muted); }
+.fg-sm-door__txt b { color: var(--fg-text); font-weight: 700; }
+.fg-sm-door__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--fg-radius);
+  border: 1.5px solid var(--fg-teal);
+  color: var(--fg-teal-ink);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 0.2s, color 0.2s;
+}
+.fg-sm-door__btn svg { width: 16px; height: 16px; transition: transform 0.25s var(--fg-ease); }
+@media (hover: hover) {
+  .fg-sm-door__btn:hover { background: var(--fg-teal); color: #04110f; }
+  .fg-sm-door__btn:hover svg { transform: translateX(3px); }
+}
+.fg-sm-door__btn.is-busy { opacity: 0.6; cursor: progress; }
+
+@media (max-width: 560px) {
+  .fg-sm-seuil { grid-template-columns: 38px minmax(0, 1fr); padding: 14px; }
+  .fg-sm-seuil__icon { width: 38px; height: 38px; }
+  .fg-sm-door__btn { width: 100%; justify-content: center; }
+}
+
 
 /* --- Moins de mouvement -------------------------------------------------------- */
 

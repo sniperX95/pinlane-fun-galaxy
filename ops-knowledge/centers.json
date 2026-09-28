@@ -106,6 +106,9 @@
         "billards": true,
         "fun_run": true
       },
+      "customRequest": {
+        "fromPax": 31
+      },
       "publicInfo": {
         "address": "L'Alienau, 100, 6800 Libramont",
         "city": "Libramont",
@@ -242,6 +245,9 @@
         "karting_vr": false,
         "billards": true,
         "fun_run": false
+      },
+      "customRequest": {
+        "fromPax": 31
       },
       "publicInfo": {
         "address": "Rue des Orchidées, 19, 5030 Gembloux (quartier Enee, à côté du McDonald's)",

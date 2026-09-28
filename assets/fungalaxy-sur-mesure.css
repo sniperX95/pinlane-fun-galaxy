@@ -1,0 +1,185 @@
+/*
+ * LA DEMANDE SUR MESURE DU FORMULAIRE FUN GALAXY : sa feuille, chargee avec
+ * assets/fungalaxy-sur-mesure.js, seulement par qui ouvre la demande.
+ * L encart du seuil et la porte du premier ecran restent dans
+ * assets/fungalaxy-booking.css.
+ */
+
+/* Un champ que la demande cache (le nom de l organisation, la periode d une
+   date a fixer, le numero de TVA) : `.fg-field` pose display: grid, qui
+   l emportait sur l attribut hidden et laissait ces champs a l ecran. */
+.fg-field[hidden] { display: none; }
+
+/* Le fil de la demande : un mot au-dessus du titre, sur chaque ecran. */
+.fg-sm-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-teal-ink);
+}
+.fg-sm-kicker svg { width: 16px; height: 16px; }
+.fg-sm-fields { max-width: 620px; }
+
+/* Les deux compteurs cote a cote, puis l un sous l autre. */
+.fg-sm-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px 28px; }
+
+/* Les ages : des pastilles a cocher, plusieurs a la fois. */
+.fg-sm-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.fg-sm-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--fg-line-2);
+  background: rgba(10, 10, 10, 0.8);
+  color: var(--fg-text);
+  font-size: 14px;
+  font-weight: 600;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+@media (hover: hover) { .fg-sm-chip:hover { border-color: var(--fg-purple-2); } }
+.fg-sm-chip.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal); }
+
+/* Les dates : la souhaitee et l autre possible, cote a cote. */
+.fg-sm-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px 28px; }
+.fg-sm-dates[hidden] { display: none; }
+.fg-day__btn.is-vide span { color: var(--fg-muted); }
+.fg-day--alt .fg-day__btn { padding-right: 84px; }
+.fg-day__clear {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 38px;
+  width: 40px;
+  height: 40px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--fg-muted);
+  font-size: 22px;
+  line-height: 1;
+  transition: color 0.2s, background-color 0.2s;
+}
+.fg-day__clear[hidden] { display: none; }
+@media (hover: hover) { .fg-day__clear:hover { color: var(--fg-text); background: rgba(255, 255, 255, 0.08); } }
+
+/* Les moments de la journee : une tuile par moment, son heure ou sa raison. */
+.fg-sm-moments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 561px) { .fg-sm-moments { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .fg-sm-moment:last-child { grid-column: 1 / -1; } }
+.fg-sm-moment {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: center;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: var(--fg-radius);
+  border: 1.5px solid var(--fg-line-2);
+  background: rgba(10, 10, 10, 0.8);
+  color: var(--fg-text);
+  text-align: left;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+.fg-sm-moment svg { grid-row: 1 / span 2; width: 20px; height: 20px; color: var(--fg-purple-ink); }
+.fg-sm-moment b { font-size: 14px; font-weight: 700; line-height: 1.2; }
+.fg-sm-moment small { font-size: 12px; line-height: 1.3; color: var(--fg-muted); }
+@media (hover: hover) { .fg-sm-moment:hover { border-color: var(--fg-purple-2); } }
+.fg-sm-moment.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal); }
+.fg-sm-moment.is-on svg, .fg-sm-moment.is-on small { color: #fff; }
+.fg-sm-moment.is-refus { border-style: dashed; background: transparent; }
+.fg-sm-moment.is-refus b { color: var(--fg-muted); }
+.fg-sm-moment.is-refus svg { color: var(--fg-faint); }
+.fg-sm-moment.is-refus small { color: var(--fg-amber-ink); }
+@media (hover: hover) { .fg-sm-moment.is-refus:hover { border-color: var(--fg-amber); } }
+.fg-field.is-invalid .fg-sm-moment:not(.is-refus) { border-color: var(--fg-danger); }
+.fg-sm-why { margin: 0; font-size: 13px; line-height: 1.45; color: var(--fg-amber-ink); }
+.fg-sm-why:empty { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-sm-why.is-maj { animation: fg-maj 0.32s var(--fg-ease-out); }
+}
+
+/* Les onglets de la demande portent leur compte. */
+.fg-tab__n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--fg-teal);
+  color: #04110f;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+.fg-tab__n:empty { display: none; }
+
+/* Sur une carte de la demande : ce que l activite donne pour le groupe, et
+   la precaution d age quand il y en a une. */
+.fg-sm-cap { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 12.5px; line-height: 1.35; color: var(--fg-teal-ink); }
+.fg-sm-cap svg, .fg-sm-note svg { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.fg-sm-note { display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; font-size: 12.5px; line-height: 1.35; color: var(--fg-amber-ink); }
+
+/* Le conseil de l equipe et le budget, sous les cartes. */
+.fg-sm-plus { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px 22px; align-items: stretch; max-width: 920px; margin: 10px 0 8px; }
+.fg-sm-advice {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  min-height: 84px;
+  padding: 16px 54px 16px 16px;
+  border-radius: 8px;
+  border: 1.5px dashed var(--fg-line-2);
+  background: rgba(8, 8, 8, 0.9);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+.fg-sm-advice .fg-card__box { top: 50%; right: 16px; margin-top: -11px; }
+.fg-sm-advice__icon { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: rgba(103, 186, 172, 0.14); color: var(--fg-teal-ink); }
+.fg-sm-advice__icon svg { width: 21px; height: 21px; }
+.fg-sm-advice__txt b { display: block; font-size: 15px; }
+.fg-sm-advice__txt small { display: block; margin-top: 3px; font-size: 13px; line-height: 1.4; color: var(--fg-muted); }
+@media (hover: hover) { .fg-sm-advice:hover { border-color: var(--fg-purple-2); } }
+.fg-sm-advice.is-on { border-style: solid; border-color: var(--fg-purple-2); box-shadow: 0 12px 30px rgba(148, 66, 146, 0.22), inset 0 0 0 1px rgba(194, 94, 194, 0.3); }
+.fg-sm-advice.is-on .fg-card__box { background: var(--fg-purple); border-color: var(--fg-purple); }
+.fg-sm-advice.is-on .fg-card__box svg { stroke-dashoffset: 0; }
+@media (prefers-reduced-motion: no-preference) { .fg-sm-advice.is-coche .fg-card__box { animation: fg-tick 0.4s var(--fg-ease-out); } }
+.fg-sm-budget { align-content: center; }
+.fg-sm-unit { display: flex; align-items: center; gap: 12px; }
+.fg-sm-unit .fg-input { width: 110px; flex: none; }
+.fg-sm-unit span { font-size: 14px; color: var(--fg-muted); }
+
+/* Les coordonnees : deux champs par rangee quand la place le permet. */
+.fg-sm-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px 20px; }
+.fg-sm-invoice { display: grid; gap: 14px; }
+.fg-sm-invoice[hidden] { display: none; }
+
+/* La relecture : un bloc par ecran, chacun avec « Modifier ». */
+.fg-sm-recap { display: grid; gap: 12px; max-width: 560px; margin-top: 6px; }
+.fg-sm-recap__block { padding: 14px 18px 12px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; background: var(--fg-card); }
+.fg-sm-recap__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fg-sm-recap__head h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-teal-ink); }
+.fg-sm-recap__head .fg-edit__btn { min-height: 40px; font-size: 13px; color: var(--fg-muted); }
+@media (hover: hover) { .fg-sm-recap__head .fg-edit__btn:hover { color: var(--fg-text); } }
+.fg-sm-recap__row { display: flex; align-items: flex-start; gap: 12px; margin: 0; padding: 7px 0; font-size: 14.5px; line-height: 1.45; }
+.fg-sm-recap__row svg { width: 18px; height: 18px; flex: none; margin-top: 2px; color: var(--fg-muted); }
+.fg-sm-recap__row > span { min-width: 0; overflow-wrap: anywhere; }
+.fg-sm-recap__row b { font-weight: 700; }
+
+@media (max-width: 560px) {
+  .fg-sm-plus { grid-template-columns: 1fr; }
+  .fg-sm-recap__block { padding: 12px 14px 10px; }
+}

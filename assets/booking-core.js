@@ -1275,8 +1275,17 @@ function getLaserPassScheduledIndexes(reservation) {
 
 function getPendingLaserPasses(dateStr = state.currentDate) {
   return todaysReservations()
-    .filter(reservation =>
-      reservation.date === dateStr
+    .filter(reservation => reservation.date === dateStr)
+    .flatMap(getPendingLaserPassesForReservation);
+}
+
+// LES PARTIES D'UN DOSSIER QUI ATTENDENT LEUR HEURE : la file « Parties à
+// placer » du planning laser les montre toutes, la pastille d'un dossier les
+// compte (audit QA du 2026-09-28 : « une réservation confirmée peut être
+// incomplète dans le planning, l'équipe peut oublier de placer les parties
+// restantes »). Une seule règle pour les deux.
+function getPendingLaserPassesForReservation(reservation) {
+  if (!(reservation
       && reservation.status !== 'cancelled'
       // Une VISITE compte ici comme une formule : ses parties de laser au-delà
       // de la première se placent à la main, exactement pareil. Sans elle dans
@@ -1286,35 +1295,32 @@ function getPendingLaserPasses(dateStr = state.currentDate) {
       // Plusieurs unités laser (vagues et/ou parties à placer) OU laser en gestion
       // manuelle : une unité a été dé-placée vers « à placer », y compris une
       // session laser direct 1-partie.
-      && (getLaserUnitsForReservation(reservation).length > 1 || reservation.opsPlan?.laserManual)
-    )
-    .flatMap(reservation => {
-      const units = getLaserUnitsForReservation(reservation);
-      const scheduled = new Set(getLaserScheduledUnitKeys(reservation));
-      const totalGames = Math.max(1, getLaserGameCountForReservation(reservation));
-      // La 1re unité (jeu 1 · vague 1) reste ancrée automatiquement pour une formule,
-      // SAUF laser en gestion manuelle (elle a pu être dé-placée) → tout devient plaçable.
-      // ET SAUF quand le plan DIT ce qui est posé (`laserPassPlan`) : depuis que
-      // le client choisit l'heure de chaque partie, il peut parfaitement laisser
-      // la 1re sur place et poser la 3e. Le plan fait foi, pas la convention.
-      const anchorFirst = reservation.opsPlan?.laserPassPlan
-        ? false
-        : (!reservation.opsPlan?.laserManual && reservation.type !== 'laser');
-      return units
-        .filter((unit, index) => {
-          if (anchorFirst && index === 0) return false;
-          return !scheduled.has(unit.unitKey);
-        })
-        .map(unit => ({
-          reservation,
-          countIndex: unit.countIndex,
-          waveIndex: unit.waveIndex,
-          waveCount: unit.waveCount,
-          unitKey: unit.unitKey,
-          totalGames,
-          players: Number(unit.players || reservation.pax || 0),
-        }));
-    });
+      && (getLaserUnitsForReservation(reservation).length > 1 || reservation.opsPlan?.laserManual))) return [];
+  const units = getLaserUnitsForReservation(reservation);
+  const scheduled = new Set(getLaserScheduledUnitKeys(reservation));
+  const totalGames = Math.max(1, getLaserGameCountForReservation(reservation));
+  // La 1re unité (jeu 1 · vague 1) reste ancrée automatiquement pour une formule,
+  // SAUF laser en gestion manuelle (elle a pu être dé-placée) → tout devient plaçable.
+  // ET SAUF quand le plan DIT ce qui est posé (`laserPassPlan`) : depuis que
+  // le client choisit l'heure de chaque partie, il peut parfaitement laisser
+  // la 1re sur place et poser la 3e. Le plan fait foi, pas la convention.
+  const anchorFirst = reservation.opsPlan?.laserPassPlan
+    ? false
+    : (!reservation.opsPlan?.laserManual && reservation.type !== 'laser');
+  return units
+    .filter((unit, index) => {
+      if (anchorFirst && index === 0) return false;
+      return !scheduled.has(unit.unitKey);
+    })
+    .map(unit => ({
+      reservation,
+      countIndex: unit.countIndex,
+      waveIndex: unit.waveIndex,
+      waveCount: unit.waveCount,
+      unitKey: unit.unitKey,
+      totalGames,
+      players: Number(unit.players || reservation.pax || 0),
+    }));
 }
 
 // Construit le bloc d'UNE vague (unité) placée manuellement à `targetStart`.
@@ -1891,6 +1897,7 @@ function getFormulaActivityProgressSummary(reservation) {
     getLaserScheduledUnitKeys,
     laserUnitInfo,
     getPendingLaserPasses,
+    getPendingLaserPassesForReservation,
     buildManualLaserPassBlocks,
     getSanitizedLaserResourceBlocks,
     checkManualLaserPassPlacement,

@@ -235,7 +235,9 @@ function decalerHeure(heure, minutes) {
 }
 const HEURE_SUIVANTE = decalerHeure(HEURE, PAS_MINUTES);
 
-function corps(activityId, pax, index, heure = HEURE) {
+// `ligne` : ce que la ligne de l activite demande en plus (les tables choisies
+// des billards). Absente, la ligne est celle d avant, a l identique.
+function corps(activityId, pax, index, heure = HEURE, ligne = null) {
   return {
     name: `Groupe ${index}`,
     phone: '+32470000000',
@@ -246,7 +248,7 @@ function corps(activityId, pax, index, heure = HEURE) {
     totalDuration: 1,
     pax,
     type: 'visite',
-    program: [{ activityId, duration: 1 }],
+    program: [{ activityId, duration: 1, ...(ligne || {}) }],
     centerId: CENTRE,
     channel: 'public',
   };
@@ -266,12 +268,12 @@ function message(reponse) {
 }
 
 // Combien de dossiers le serveur accepte-t-il d affilee sur la meme heure ?
-async function combienPassent(activityId, pax, plafondEssais) {
+async function combienPassent(activityId, pax, plafondEssais, ligne = null) {
   STORE.length = 0;
   let acceptes = 0;
   let premierRefus = '';
   for (let i = 1; i <= plafondEssais; i += 1) {
-    const r = await post(corps(activityId, pax, i));
+    const r = await post(corps(activityId, pax, i, HEURE, ligne));
     if (r.status >= 200 && r.status < 300) acceptes += 1;
     else { premierRefus = `${i}e refuse (${r.status}) ${String((r.body || {}).message || '').slice(0, 60)}`; break; }
   }
@@ -295,13 +297,24 @@ async function main() {
     const finies = catalogue.filter((a) => !a.planned && Number(a.units) > 0);
     ok(finies.length > 0, `au moins une activite libre declare une dotation finie (${finies.map((a) => `${a.id}:${a.units}`).join(', ') || 'aucune'})`);
     for (const activite of finies) {
-      const parUnite = Math.max(1, Number(activite.capacityPerUnit) || 1);
-      const pax = parUnite * Number(activite.units); // un groupe qui prend TOUTE la dotation
-      const essai = await combienPassent(activite.id, pax, 6);
+      // DEUX FACONS DE PRENDRE DES UNITES (2026-09-28). Une activite a capacite
+      // par unite (duckpin : 6 joueurs par piste) prend ses unites selon le
+      // groupe ; une activite dont le client CHOISIT ses unites (billards, sans
+      // regle de joueurs : Movsar, « tu dois permettre de choisir combien de
+      // tables ils veulent ») les demande dans sa ligne, quel que soit le groupe.
+      const capacite = Number(activite.capacityPerUnit) || 0;
+      const prendre = (unites) => (capacite > 0
+        ? { pax: capacite * unites, ligne: null }
+        : { pax: 4, ligne: { units: unites } });
+      const tout = prendre(Number(activite.units)); // un groupe qui prend TOUTE la dotation
+      const une = prendre(1);
+      const pax = tout.pax;
+      const parUnite = une.pax;
+      const essai = await combienPassent(activite.id, tout.pax, 6, tout.ligne);
       ok(essai.acceptes === 1 && Boolean(essai.premierRefus),
-        `${activite.id} (dotation ${activite.units}) : un groupe de ${pax} prend tout, le suivant est refuse (${essai.acceptes} passes, ${essai.premierRefus || 'AUCUN REFUS SUR 6'})`);
-      // Et deux demi-groupes tiennent, eux : la borne compte des UNITES, pas des dossiers.
-      const moitie = await combienPassent(activite.id, parUnite, 6);
+        `${activite.id} (dotation ${activite.units}) : un groupe qui prend les ${activite.units} unites passe, le suivant est refuse (${essai.acceptes} passes, ${essai.premierRefus || 'AUCUN REFUS SUR 6'})`);
+      // Et des groupes d une unite tiennent ensemble : la borne compte des UNITES, pas des dossiers.
+      const moitie = await combienPassent(activite.id, une.pax, 6, une.ligne);
       ok(moitie.acceptes === Number(activite.units),
         `${activite.id} : ${activite.units} groupes d une unite tiennent ensemble (${moitie.acceptes} passes, attendu ${activite.units})`);
 
@@ -311,12 +324,12 @@ async function main() {
       // groupe SUIVI d un petit est le cas qui a survecu a la premiere version
       // du lot - trois pistes vendues pour deux, deux fois HTTP 201.
       STORE.length = 0;
-      const gros = await post(corps(activite.id, pax, 80));
+      const gros = await post(corps(activite.id, pax, 80, HEURE, tout.ligne));
       ok(gros.status >= 200 && gros.status < 300,
-        `montage : un groupe de ${pax} prend les ${activite.units} unites de ${activite.id} (HTTP ${gros.status})`);
-      const petit = await post(corps(activite.id, parUnite, 81));
+        `montage : un groupe prend les ${activite.units} unites de ${activite.id} (HTTP ${gros.status})`);
+      const petit = await post(corps(activite.id, parUnite, 81, HEURE, une.ligne));
       ok(petit.status === 409,
-        `ordre heterogene : apres un groupe de ${pax}, un groupe de ${parUnite} est refuse (HTTP ${petit.status} ${message(petit)})`);
+        `ordre heterogene : apres le groupe qui prend tout, un groupe d une unite est refuse (HTTP ${petit.status} ${message(petit)})`);
     }
 
     // --- C. NON-REGRESSION : sans dotation, le centre absorbe ---------------

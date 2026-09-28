@@ -184,6 +184,24 @@ function getActivitySessionCount(activity, pax) {
   return Math.min(40, Math.max(1, sessions));
 }
 
+// Les unites d une installation comptee pour un groupe : pistes de duckpin
+// deduites des joueurs (6 par piste), avec des tours au-dela des 2 pistes ;
+// tables de billard CHOISIES (une par defaut), dans la limite du centre.
+// MIROIR de activityUnitPlan (lib/activity-catalog) : le serveur fait foi, le
+// gate tours-dotation-check compare les deux pour chaque taille de groupe.
+function getActivityUnitPlan(activity, pax, requested = 0) {
+  const capacite = Math.trunc(Number(activity && activity.capacityPerUnit) || 0);
+  const dotation = Math.trunc(Number(activity && activity.units) || 0);
+  const joueurs = Math.max(1, Math.trunc(Number(pax) || 1));
+  const necessaires = capacite > 0 ? Math.ceil(joueurs / capacite) : 1;
+  const demandees = Math.trunc(Number(requested) || 0);
+  const plafond = dotation > 0 ? Math.max(necessaires, dotation) : 50;
+  const units = Math.min(50, Math.max(1, Math.max(necessaires, Math.min(demandees, plafond))));
+  const atOnce = dotation > 0 ? Math.min(dotation, units) : units;
+  const tours = Math.min(40, Math.max(1, Math.ceil(units / atOnce)));
+  return { units, atOnce, tours, lastTour: units - (tours - 1) * atOnce, perUnit: capacite, needed: Math.min(50, necessaires) };
+}
+
 // Le palier d UNE session d une ligne de programme enregistree. MIROIR de
 // minutesDUneSession de lib/visit-program : `minutes` y est le temps de tout
 // le groupe (3 passages de 30 min = 90), le relire comme un palier faisait
@@ -219,7 +237,9 @@ function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes
   const people = Math.max(1, Number(pax) || 1);
   if (activity.priceType === 'per_pax') return Math.round(unitPrice * people * 100) / 100;
   if (activity.priceType === 'per_unit_hour') {
-    return Math.round(unitPrice * Math.max(1, Number(units) || 1) * Math.max(0.5, Number(hours) || 1) * 100) / 100;
+    // Les tables choisies, bornees comme le serveur les borne.
+    const tables = getActivityUnitPlan(activity, pax, units).units;
+    return Math.round(unitPrice * tables * Math.max(0.5, Number(hours) || 1) * 100) / 100;
   }
   return null;
 }

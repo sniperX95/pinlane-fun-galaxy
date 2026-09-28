@@ -170,10 +170,17 @@ function getFormulaStepCount(formulaDoc, activityId) {
 // l'etape 1 et le recapitulatif final), le repeter creerait une deuxieme
 // verite qui divergera.
 function describeFreeVisitItem(item) {
-  if (item.units && item.hours) {
-    const hours = Number(item.hours);
-    const label = Number.isInteger(hours) ? `${hours} h` : `${Math.floor(hours)} h ${String(Math.round((hours - Math.floor(hours)) * 60)).padStart(2, '0')}`;
-    return `${item.units} table${item.units > 1 ? 's' : ''} · ${label}`;
+  // Une ligne a installations (tables de billard, pistes de duckpin) : leur
+  // nombre, la duree, et les tours d un groupe plus grand que la dotation.
+  // Le mot vient du catalogue (« par table et par heure », « par piste »).
+  const heures = Number(item.hours) || Number(item.duration) || 0;
+  if (item.units && heures) {
+    const label = Number.isInteger(heures) ? `${heures} h` : `${Math.floor(heures)} h ${String(Math.round((heures - Math.floor(heures)) * 60)).padStart(2, '0')}`;
+    const units = Math.trunc(Number(item.units)) || 1;
+    const mot = (/par ([a-zà-ÿ]+)/i.exec(String(item.unitLabel || '')) || [])[1] || 'table';
+    const tours = Math.max(1, Math.trunc(Number(item.sessions) || 1));
+    const nombre = `${units} ${mot}${units > 1 ? 's' : ''}`;
+    return tours > 1 ? `${nombre} · ${tours} tours de ${label}` : `${nombre} · ${label}`;
   }
   if (item.games) return `${item.games} partie${item.games > 1 ? 's' : ''}`;
   return '';
@@ -569,8 +576,36 @@ module.exports = async (req, res) => {
         const trous = intersticesDuGroupe(plan && plan.resourceBlocks);
         return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert - trous);
       };
+      // UNE INSTALLATION COMPTEE SE JUGE A L ECRAN DES HEURES (audit du
+      // 2026-09-28 : le duckpin complet ne se decouvrait qu au clic final, en
+      // 409, le formulaire rempli). La garde de dotation de la validation
+      // (lib/reservation-ops, dotationDepassee) juge ici chaque heure
+      // proposee, sur la fenetre de visite que le client lit : une heure ou
+      // les pistes de duckpin ou les tables de billard sont prises ne
+      // s affiche plus. La MEME fonction que la validation, jamais une copie.
+      // Une garde qui jette laisse l heure : la validation, elle, tranchera.
+      const dureeDuProgramme = Math.max(30, program.items.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0));
+      const dotationDuCreneau = (slot, fin, programme = program) => {
+        if (!slot || !slot.time) return '';
+        const debut = Math.round(timeToNum(slot.time) * 60);
+        const minutes = Number.isFinite(fin) && fin > debut ? fin - debut : dureeDuProgramme;
+        try {
+          return require('../lib/reservation-ops').dotationDepassee(
+            { centerId, program: programme, pax, startTime: slot.time, totalDuration: minutes / 60 },
+            snapshot.reservations || [],
+          );
+        } catch (error) {
+          return '';
+        }
+      };
       const respondVisit = (slots, message, extra = {}) => {
-        const creneaux = (Array.isArray(slots) ? slots : []).map((slot) => {
+        const liste = Array.isArray(slots) ? slots : [];
+        const completes = [];
+        const creneaux = liste.filter((slot) => {
+          const complete = dotationDuCreneau(slot, finDeVisiteMinutes(slot));
+          if (complete) completes.push(complete);
+          return !complete;
+        }).map((slot) => {
           const fin = finDeVisiteMinutes(slot);
           if (fin === null) return slot;
           // EN MODE SOUPLE, la visite peut deborder la fermeture : la fin
@@ -602,6 +637,15 @@ module.exports = async (req, res) => {
           complements: [],
           message,
           ...extra,
+          // Toutes les heures proposees tombaient sur une installation deja
+          // prise : on nomme laquelle, et les complements calcules pour un
+          // creneau qui ne s affiche plus partent avec lui.
+          ...(!creneaux.length && completes.length ? {
+            message: liste.length > 1
+              ? `${completes[0]} : complet ce jour-là. Essayez une autre date.`
+              : `${completes[0]} : complet pendant votre visite. Choisissez une autre heure.`,
+            complements: [],
+          } : {}),
         });
       };
 
@@ -724,6 +768,15 @@ module.exports = async (req, res) => {
                 // que le complement ajoute, elle, ne l a jamais passe.
                 if ((candidat.items || []).some((item) => isActivityFullyBlockedOn(snapshot.blocks || [], date, item.activityId))) {
                   return false;
+                }
+                // Une table ou une piste que d autres dossiers tiennent deja ne se
+                // propose pas en complement : la validation la refuserait. La
+                // fenetre jugee est celle de la visite AGRANDIE du complement.
+                if (retainedSlot && retainedSlot.time) {
+                  const debutRetenu = Math.round(timeToNum(retainedSlot.time) * 60);
+                  const minutesCandidat = (candidat.items || []).reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+                  const finCandidat = Math.max(Number(finDeVisiteMinutes(retainedSlot)) || 0, debutRetenu + minutesCandidat);
+                  if (dotationDuCreneau(retainedSlot, finCandidat, candidat)) return false;
                 }
                 return slotPassesFinalGuards(
                   toFormulaSlot(scenario, snapshot, candidat.plannedItems[0]?.duration || 0),

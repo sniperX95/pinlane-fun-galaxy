@@ -6323,6 +6323,14 @@ body.dashboard-detail-open { overflow: hidden; }
 /* Un champ de 300 px pour saisir « 8 » : le max-width: none datait des colonnes
    etroites. La cellule fait la largeur, pas le nombre. */
 .estab-field-row .field input[type='number'] { max-width: 100%; }
+/* Installations : un bloc par activite, son nom une fois au-dessus de ses
+   champs. Les blocs s'alignent en haut : un message d'erreur allonge son bloc
+   sans deplacer le nom ni les voisins. Au telephone, un bloc par ligne. */
+.estab-cap-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3) var(--space-4); align-items: start; }
+.estab-cap-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px var(--space-3); align-items: start; min-width: 0; }
+.estab-cap-name { grid-column: 1 / -1; color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.estab-cap-row .field input[type='number'] { max-width: 100%; }
+.estab-cap-row .field label { color: var(--muted); font-size: 12px; font-weight: 500; }
 /* Couleur du tunnel : pipette + code hexadécimal + retrait, et le verdict de
    contraste juste dessous. La seule surface teintée ici est la pastille, et sa
    teinte vient de la saisie du gérant, jamais d'une valeur écrite dans ce

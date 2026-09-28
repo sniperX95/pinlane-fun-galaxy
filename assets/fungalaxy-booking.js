@@ -166,6 +166,15 @@
   function detailSessions(it) {
     var n = Math.trunc(Number(it && it.sessions) || 1);
     var mn = Number(it && it.minutes) || 0;
+    // Tables de billard, pistes de duckpin : leur nombre, la duree, et les
+    // tours d un groupe plus grand que ce que le centre possede.
+    var unites = Math.trunc(Number(it && it.units) || 0);
+    var mot = motUnite(it);
+    if (unites > 0 && mot && it.activityId !== 'bowling') {
+      var nombre = unites + ' ' + mot + (unites > 1 ? 's' : '');
+      if (!mn) return nombre;
+      return n > 1 ? nombre + ' · ' + n + ' tours de ' + minutesLabel(Math.round(mn / n)) : nombre + ' · ' + minutesLabel(mn);
+    }
     if (n < 2 || !mn) return '';
     return n + ' sessions de ' + minutesLabel(Math.round(mn / n));
   }
@@ -271,16 +280,90 @@
     var places = capacite * (unites > 0 ? unites : 1);
     return Math.min(40, Math.max(1, Math.ceil(Math.max(1, state.pax) / places)));
   }
-  // « 12 personnes : 3 sessions, 5 joueurs a la fois. » Vide quand le groupe
-  // passe en une fois.
+  // LES PISTES D UN GROUPE, ET SES TOURS (duckpin : 6 joueurs par piste, 2
+  // pistes, reglables dans Etablissement). MIROIR de activityUnitPlan
+  // (lib/activity-catalog) : le serveur fait foi, le gate tours-dotation-check
+  // compare les deux pour chaque taille de groupe.
+  function unitesPour(a) {
+    var capacite = Math.trunc(Number(a && a.capacityPerUnit) || 0);
+    var dotation = Math.trunc(Number(a && a.units) || 0);
+    var joueurs = Math.max(1, Math.trunc(Number(state.pax) || 1));
+    var necessaires = capacite > 0 ? Math.ceil(joueurs / capacite) : 1;
+    var units = Math.min(50, Math.max(1, necessaires));
+    var aLaFois = dotation > 0 ? Math.min(dotation, units) : units;
+    var tours = Math.min(40, Math.max(1, Math.ceil(units / aLaFois)));
+    return { units: units, atOnce: aLaFois, tours: tours, lastTour: units - (tours - 1) * aLaFois, perUnit: capacite };
+  }
+  // Le mot d une unite, lu au catalogue : « par piste » donne piste, « par
+  // table et par heure » donne table.
+  function motUnite(x) {
+    var m = /par ([a-zà-ÿ]+)/i.exec(String((x && x.unitLabel) || ''));
+    return m ? m[1] : '';
+  }
+  // Le Fun Run : « Votre groupe joue en 3 sessions, 5 joueurs a la fois. »
+  // Le duckpin : « Pour 18 joueurs : 3 pistes de 6. Le centre en a 2, vous
+  // jouez donc en 2 tours de 1 h (2 pistes, puis 1). » Vide quand tout le
+  // groupe tient d un coup, et pour les billards, dont les tables se
+  // choisissent.
   function noteRotation(a) {
-    var n = sessionsPour(a);
-    if (n < 2) return '';
-    var places = Math.trunc(Number(a.capacityPerUnit) || 0) * Math.max(1, Math.trunc(Number(a.units) || 1));
-    return 'Votre groupe joue en ' + n + ' sessions, ' + places + ' joueurs à la fois.';
+    if (a.priceType === 'grid_fun_run') {
+      var n = sessionsPour(a);
+      if (n < 2) return '';
+      var places = Math.trunc(Number(a.capacityPerUnit) || 0) * Math.max(1, Math.trunc(Number(a.units) || 1));
+      return 'Votre groupe joue en ' + n + ' sessions, ' + places + ' joueurs à la fois.';
+    }
+    var mot = motUnite(a);
+    if (a.priceType !== 'grid_bowling' || !mot || !(Number(a.capacityPerUnit) > 0)) return '';
+    var p = unitesPour(a);
+    if (p.units < 2) return '';
+    var nb = function (k) { return k + ' ' + mot + (k > 1 ? 's' : ''); };
+    if (p.tours < 2) return 'Pour ' + state.pax + ' joueurs : ' + nb(p.units) + ' (' + p.perUnit + ' joueurs par ' + mot + ').';
+    var suite = '';
+    for (var t = 1; t < p.tours; t += 1) suite += ', puis ' + (t === p.tours - 1 ? p.lastTour : p.atOnce);
+    var opt = optionChoisie(a);
+    var duree = dureeExacte(Math.round((opt ? Number(opt.valeur) : 1) * 60));
+    return 'Pour ' + state.pax + ' joueurs : ' + p.units + ' ' + mot + 's de ' + p.perUnit + '. Le centre en a ' + p.atOnce
+      + ', vous jouez donc en ' + p.tours + ' tours de ' + duree + ' (' + nb(p.atOnce) + suite + ').';
+  }
+  // LES BILLARDS : le client choisit ses tables (une par defaut, jusqu a ce
+  // que le centre en a) et ses heures (le pas du catalogue). Movsar,
+  // 2026-09-28 : « tu dois permettre de choisir combien de tables ils veulent
+  // et c 10 euro par heure et par table ». Le serveur refuse au-dela des
+  // tables du centre : l ecran n en propose jamais plus.
+  function tablesMax(a) {
+    var d = Math.trunc(Number(a && a.units) || 0);
+    return d > 0 ? Math.min(50, d) : 4;
+  }
+  function heuresPossibles(a) {
+    var pas = Math.max(15, Number(a && a.stepMinutes) || 60);
+    var min = Math.max(15, Number(a && a.minMinutes) || 60);
+    var max = Math.max(min, Number(a && a.maxMinutes) || min);
+    var out = [];
+    for (var m = min; m <= max; m += pas) out.push(m / 60);
+    return out.length ? out : [1];
+  }
+  function reglageBillard(a) {
+    var choix = state.options[a.id] || {};
+    var tables = Math.min(tablesMax(a), Math.max(1, Math.trunc(Number(choix.units) || 1)));
+    var heures = heuresPossibles(a);
+    return { units: tables, hours: heures.indexOf(Number(choix.hours)) >= 0 ? Number(choix.hours) : heures[0] };
+  }
+  // Le montant d une ligne de billard : tables x heures x tarif du centre,
+  // null quand le centre n a pas saisi de tarif (« sur place »).
+  function prixBillard(a, tables, heures) {
+    return a && Number(a.priceValue) > 0 ? Math.round(Number(a.priceValue) * tables * heures * 100) / 100 : null;
   }
   function prixCarte(a) {
     if (!meta) return '';
+    // Des billards choisis : le montant de SA ligne, et ce qu il paie.
+    if (a.priceType === 'per_unit_hour' && state.selection.indexOf(a.id) >= 0) {
+      var r = reglageBillard(a);
+      var total = prixBillard(a, r.units, r.hours);
+      var motTable = motUnite(a) || 'unité';
+      // « 3 tables » et « 2 heures » ne se coupent pas en fin de ligne.
+      var quoi = insecable(r.units + ' ' + motTable + (r.units > 1 ? 's' : '')) + ', ' + insecable(heuresLabel(r.hours));
+      return (total == null ? 'Tarif sur place' : euros(total)) + ' · ' + quoi;
+    }
     var opt = optionChoisie(a);
     if (opt) {
       if (state.selection.indexOf(a.id) >= 0) return euros(opt.prix) + ' ' + opt.unite;
@@ -972,31 +1055,74 @@
   // vit a cote de la carte dans le DOM (une case a cocher n a pas d enfants
   // interactifs) et se deploie en CSS, sans mesure.
   var TITRES_OPTION = { duration: 'Durée de piste', games: 'Parties', minutes: 'Durée' };
-  function rendreOption(a) {
+  // Les reglages d une activite, groupe par groupe : UN groupe pour une grille
+  // (duree de piste, parties, session), DEUX pour les billards (combien de
+  // tables, combien d heures). Chaque pastille de duree dit ce que la ligne
+  // couterait avec elle ; une pastille de tables dit un nombre de tables.
+  function groupesOptions(a) {
+    if (!meta || !a) return [];
+    if (a.priceType === 'per_unit_hour') {
+      var r = reglageBillard(a);
+      var mot = motUnite(a) || 'unité';
+      var tables = [];
+      for (var n = 1; n <= tablesMax(a); n += 1) tables.push({ valeur: n, label: String(n), sous: mot + (n > 1 ? 's' : '') });
+      return [
+        { cle: 'units', titre: mot.charAt(0).toUpperCase() + mot.slice(1) + 's', options: tables, choisie: r.units },
+        { cle: 'hours', titre: 'Durée', options: heuresPossibles(a).map(function (h) { return { valeur: h, label: heuresLabel(h), prix: prixBillard(a, r.units, h) }; }), choisie: r.hours },
+      ];
+    }
     var liste = optionsPour(a);
-    if (!liste.length) return '';
+    if (!liste.length) return [];
     var i = indexOption(a);
-    var idTitre = 'opt-' + String(a.id).replace(/[^a-z0-9_-]/gi, '');
+    return [{ cle: liste[0].cle, titre: TITRES_OPTION[liste[0].cle] || 'Option', options: liste, choisie: liste[i < 0 ? 0 : i].valeur }];
+  }
+  function petitDePastille(o) { return o.sous != null ? o.sous : (o.prix == null ? 'sur place' : euros(o.prix)); }
+  function rendreOption(a) {
+    var groupes = groupesOptions(a);
+    if (!groupes.length) return '';
+    var base = 'opt-' + String(a.id).replace(/[^a-z0-9_-]/gi, '');
     return '<div class="fg-card__opt"><div class="fg-card__optin"><div class="fg-card__optbox">'
-      + '<span class="fg-card__optlabel" id="' + idTitre + '">' + esc(TITRES_OPTION[liste[0].cle] || 'Option') + '</span>'
-      + '<div class="fg-pills" role="radiogroup" aria-labelledby="' + idTitre + '" data-n="' + liste.length + '">'
-      + liste.map(function (o, k) {
-        return '<button type="button" class="fg-pill' + (k === i ? ' is-on' : '') + '" role="radio" aria-checked="' + (k === i) + '" tabindex="' + (k === i ? '0' : '-1') + '" data-valeur="' + esc(String(o.valeur)) + '"><b>' + esc(o.label) + '</b><small>' + esc(euros(o.prix)) + '</small></button>';
+      + groupes.map(function (g) {
+        var idTitre = groupes.length > 1 ? base + '-' + g.cle : base;
+        return '<span class="fg-card__optlabel" id="' + idTitre + '">' + esc(g.titre) + '</span>'
+          + '<div class="fg-pills" role="radiogroup" aria-labelledby="' + idTitre + '" data-cle="' + esc(g.cle) + '" data-n="' + g.options.length + '">'
+          + g.options.map(function (o) {
+            var on = o.valeur === g.choisie;
+            return '<button type="button" class="fg-pill' + (on ? ' is-on' : '') + '" role="radio" aria-checked="' + on + '" tabindex="' + (on ? '0' : '-1') + '" data-cle="' + esc(g.cle) + '" data-valeur="' + esc(String(o.valeur)) + '"><b>' + esc(o.label) + '</b><small>' + esc(petitDePastille(o)) + '</small></button>';
+          }).join('')
+          + '</div>';
       }).join('')
-      + '</div>'
       + (noteRotation(a) ? '<p class="fg-card__rot">' + esc(noteRotation(a)) + '</p>' : '')
       + '</div></div></div>';
   }
   function choisirPastille(pill) {
     var item = pill.closest('.fg-grid__item');
     var a = activite(item.dataset.activity);
-    var o = optionsPour(a).filter(function (x) { return String(x.valeur) === pill.dataset.valeur; })[0];
+    var groupe = pill.closest('.fg-pills');
+    var g = groupesOptions(a).filter(function (x) { return x.cle === pill.dataset.cle; })[0];
+    var o = g ? g.options.filter(function (x) { return String(x.valeur) === pill.dataset.valeur; })[0] : null;
     if (!a || !o) return;
-    state.options[a.id] = {};
-    state.options[a.id][o.cle] = o.valeur;
-    $$('.fg-pill', item).forEach(function (x) { var on = x === pill; x.classList.toggle('is-on', on); x.setAttribute('aria-checked', String(on)); x.tabIndex = on ? 0 : -1; });
+    // Les billards gardent leurs DEUX reglages (tables et heures) ; une grille
+    // n en a qu un.
+    state.options[a.id] = a.priceType === 'per_unit_hour' ? Object.assign({}, state.options[a.id] || {}) : {};
+    state.options[a.id][g.cle] = o.valeur;
+    $$('.fg-pill', groupe || item).forEach(function (x) { var on = x === pill; x.classList.toggle('is-on', on); x.setAttribute('aria-checked', String(on)); x.tabIndex = on ? 0 : -1; });
+    majPastilles(item, a);
     majPrixCarte(item, a, true);
     invaliderDispo();
+  }
+  // Les montants des pastilles et la phrase des tours suivent le reglage :
+  // deux heures pour trois tables ne coutent pas ce que coute une table, et
+  // un tour dure la duree choisie.
+  function majPastilles(item, a) {
+    groupesOptions(a).forEach(function (g) {
+      g.options.forEach(function (o) {
+        var petit = item.querySelector('.fg-pill[data-cle="' + g.cle + '"][data-valeur="' + String(o.valeur) + '"] small');
+        if (petit) petit.textContent = petitDePastille(o);
+      });
+    });
+    var rot = $('.fg-card__rot', item);
+    if (rot) rot.textContent = noteRotation(a);
   }
   function rendreActivites() {
     gridAct.innerHTML = activitesVendables().map(function (a, i) {
@@ -1290,6 +1416,10 @@
       if (a.priceType === 'grid_bowling') ligne.duration = opt ? opt.valeur : 1;
       if (a.priceType === 'grid_laser') ligne.games = opt ? opt.valeur : 1;
       if (a.priceType === 'grid_fun_run') ligne.minutes = opt ? opt.valeur : (a.defaultMinutes || 15);
+      // Les billards : les tables et les heures choisies. Sans elles, le
+      // serveur retombait sur une table pendant une heure, quoi qu on ait
+      // choisi (audit du 2026-09-28).
+      if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); ligne.units = billard.units; ligne.hours = billard.hours; }
       return ligne;
     });
   }
@@ -2693,6 +2823,50 @@
     });
   }
 
+  /* --- Le catalogue se relit --------------------------------------------------------- */
+
+  // UN CHANGEMENT DU CENTRE SE VOIT SANS RECHARGER (Movsar, 2026-09-28 :
+  // « que ça corrige à la seconde sur le formulaire »). Le centre change ses
+  // tables, ses pistes ou une formule dans la console : le serveur l applique
+  // aussitot, et le formulaire deja ouvert relit le catalogue en revenant sur
+  // l onglet, en entrant dans les activites, et toutes les 10 s tant qu il
+  // montre les activites ou les heures. Rien ne bouge si rien n a change ;
+  // sinon les cartes se redessinent, la selection et les reglages gardes
+  // (ramenes aux nouvelles limites), et les heures se recalculent.
+  var empreinteCatalogue = '';
+  function empreinteDuCatalogue(j) { return JSON.stringify([(j && j.activities) || [], (j && j.formules) || []]); }
+  function rafraichirCatalogue() {
+    // Pas pendant les coordonnees ni le recapitulatif : le client relit ce
+    // qu il va envoyer, et le serveur revalide tout a l envoi.
+    if (!meta || doc.hidden || ['date', 'activites', 'heures'].indexOf(sceneCourante) < 0) return;
+    var q = new URLSearchParams(); q.set('centerId', CENTER);
+    fetch('/api/public-booking-meta?' + q.toString(), { credentials: 'omit' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || j.ok === false || !Array.isArray(j.activities)) return;
+        var neuve = empreinteDuCatalogue(j);
+        if (neuve === empreinteCatalogue) return;
+        empreinteCatalogue = neuve;
+        meta.activities = j.activities;
+        if (Array.isArray(j.formules)) meta.formules = j.formules;
+        state.selection = state.selection.filter(function (id) {
+          var a = activite(id);
+          return a && !(a.maxPax && state.pax > a.maxPax) && !tropPeu(a);
+        });
+        if (state.formuleId && !((meta.formules || []).filter(function (x) { return x.id === state.formuleId; })[0])) state.formuleId = '';
+        rendreActivites();
+        rendreFormules();
+        rendreCompteur(false);
+        // Les heures deja posees restent : seule la disponibilite se recalcule.
+        state.dispo = null;
+        if (sceneCourante === 'heures') chargerHeures();
+      })
+      .catch(function () {});
+  }
+  doc.addEventListener('visibilitychange', function () { if (!doc.hidden) rafraichirCatalogue(); });
+  setInterval(function () { if (sceneCourante === 'activites' || sceneCourante === 'heures') rafraichirCatalogue(); }, 10000);
+  $('#goActivities').addEventListener('click', function () { rafraichirCatalogue(); });
+
   /* --- Le demarrage ----------------------------------------------------------------- */
 
   function demarrer() {
@@ -2707,6 +2881,7 @@
       .then(function (j) {
         if (!j || j.ok === false) throw erreurLisible(j, 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.');
         meta = j; direErreur('');
+        empreinteCatalogue = empreinteDuCatalogue(j);
         if (meta.center && meta.center.status && meta.center.status !== 'active') {
           direErreur('Ce centre n’ouvre pas encore ses réservations en ligne.');
         }

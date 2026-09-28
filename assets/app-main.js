@@ -4822,14 +4822,14 @@ function renderPaxAlertContent() {
       // La notif comptait les pistes du bowling et ignorait celles-ci.
       const aDuckpin = choisies.find((a) => a.resourceType === 'duckpin_lane');
       if (aDuckpin) {
-        const parPiste = Math.max(1, Math.trunc(Number(aDuckpin.capacityPerUnit) || 6));
-        const voulues = Math.max(1, Math.ceil(pax / parPiste));
-        const plafond = Number(aDuckpin.units) > 0 ? Math.trunc(Number(aDuckpin.units)) : null;
+        // Le calcul du serveur (activityUnitPlan) : les pistes qu il faut, et
+        // des tours au-dela de celles du centre (2026-09-28).
+        const plan = getActivityUnitPlan({ ...aDuckpin, capacityPerUnit: Number(aDuckpin.capacityPerUnit) || 6 }, pax);
         const nomDuckpin = escapeHtml(aDuckpin.name.toLowerCase());
-        if (plafond && voulues > plafond) {
-          consequences.push(`<b>${plafond} piste${plafond > 1 ? 's' : ''}</b> de ${nomDuckpin} (${plafond * parPiste} joueurs à la fois, le groupe joue par rotation)`);
-        } else if (voulues > 1) {
-          consequences.push(`<b>${voulues} pistes</b> de ${nomDuckpin}`);
+        if (plan.tours > 1) {
+          consequences.push(`<b>${plan.units} pistes</b> de ${nomDuckpin} pour ${pax} joueurs : le centre en a ${plan.atOnce}, le groupe joue en <b>${plan.tours} tours</b>`);
+        } else if (plan.units > 1) {
+          consequences.push(`<b>${plan.units} pistes</b> de ${nomDuckpin}`);
         }
       }
       // Une installation avec un plafond de joueurs impose ses passages.
@@ -5374,7 +5374,8 @@ function activityPriceHintCompact(activity, pax) {
 // constante figee au deploiement a la place de la donnee du tenant.
 function activityUnitChoices(activity) {
   const dotation = Math.trunc(Number(activity && activity.units) || 0);
-  const max = dotation > 0 ? Math.min(20, dotation) : 4;
+  // La dotation du centre (reglable dans Etablissement, 50 au plus).
+  const max = dotation > 0 ? Math.min(50, dotation) : 4;
   return Array.from({ length: max }, (_, index) => index + 1);
 }
 
@@ -5602,14 +5603,16 @@ function renderProgramSummary() {
       // (ceil(pax/6), jamais plafonne) : a 13 joueurs il affichait 3 pistes
       // et 117 EUR quand le serveur (lib/visit-program.js) facture 2 pistes
       // et 78 EUR, et la notif du MEME ecran disait deja 2 pistes + rotation.
-      // Meme calcul que le serveur : plafond par la dotation, le groupe tourne.
-      const parPiste = Math.max(1, Math.trunc(Number(activity.capacityPerUnit) || 6));
-      const voulues = Math.max(1, Math.ceil(pax / parPiste));
-      const plafond = Number(activity.units) > 0 ? Math.trunc(Number(activity.units)) : null;
-      const lanes = activity.resourceType === 'duckpin_lane'
-        ? (plafond ? Math.min(plafond, voulues) : voulues)
-        : getRequiredLaneCount('bowling', pax, '');
-      const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') }) : null;
+      // Meme calcul que le serveur (activityUnitPlan) : les pistes de tous
+      // les tours, chacune jouee et payee ; des tours au-dela de la dotation.
+      const planDuckpin = activity.resourceType === 'duckpin_lane'
+        ? getActivityUnitPlan({ ...activity, capacityPerUnit: Number(activity.capacityPerUnit) || 6 }, pax)
+        : null;
+      const lanes = planDuckpin ? planDuckpin.units : getRequiredLaneCount('bowling', pax, '');
+      // Le duckpin se paie A LA PISTE partout, comme le serveur le chiffre
+      // (lib/visit-program : bowlingConfig null) : le mode aux parties d un
+      // centre ne vaut que pour son bowling.
+      const games = !planDuckpin && typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') }) : null;
       if (games) {
         // AUX PARTIES : c'est le nombre de JOUEURS qui paie, pas le nombre de
         // pistes. Les pistes restent dites, parce que le groupe doit savoir
@@ -5626,11 +5629,12 @@ function renderProgramSummary() {
       const option = DURATION_OPTIONS.find(item => Number(item.value) === duration);
       total += (option?.price || 0) * lanes;
       // Le nombre de pistes se DEDUIT du nombre de joueurs : sans l'ecrire,
-      // le total double sans que rien n'explique pourquoi.
+      // le total double sans que rien n'explique pourquoi. Les tours aussi.
+      const tours = planDuckpin && planDuckpin.tours > 1 ? ` en ${planDuckpin.tours} tours` : '';
       return {
         id: activity.id,
         name: activity.name,
-        detail: `${option?.label || ''} · ${lanes} piste${lanes > 1 ? 's' : ''}`,
+        detail: `${option?.label || ''} · ${lanes} piste${lanes > 1 ? 's' : ''}${tours}`,
       };
     }
     if (activity.priceType === 'grid_laser') {
@@ -9845,10 +9849,10 @@ function renderVisitRecapItem(item) {
   } else if (activityId === 'laser_game') {
     const games = Math.max(1, Number(item.games) || 1);
     detail = `${games} partie${games > 1 ? 's' : ''}`;
-  } else if (item.units != null || item.hours != null) {
-    const units = Math.max(1, Number(item.units) || 1);
-    const hours = Math.max(0.5, Number(item.hours) || 1);
-    detail = `${units} table${units > 1 ? 's' : ''} · ${formatDurationLabel(hours)}`;
+  } else if (item.priceType === 'grid_bowling' || item.units != null || item.hours != null) {
+    // Tables de billard, pistes de duckpin : leur nombre, la duree, les tours.
+    // La MEME phrase que la fiche du staff (detailLigneProgramme).
+    detail = detailLigneProgramme(item);
   } else if (item.dayAccess) {
     // Une entree a la journee (la plaine de jeux) : ses minutes ne sont qu une
     // estimation du planning, jamais ce que le client achete (2026-09-25).
@@ -13563,6 +13567,41 @@ function markEstablishmentFieldError(input, message) {
   else input.insertAdjacentElement('afterend', note);
 }
 
+// LES INSTALLATIONS D UNE ACTIVITE (2026-09-28), telles que le centre les a
+// reglees (config activityCapacity), sinon celles du catalogue : tables de
+// billard, pistes de duckpin et leurs joueurs, joueurs par session du Fun Run.
+// null pour une activite qui n en compte aucune (minigolf, arcades).
+function installationsActivite(activity, center) {
+  if (!activity) return null;
+  const socleUnits = Number(activity.units);
+  const socleCapacite = Number(activity.capacityPerUnit);
+  const comptee = Number.isFinite(socleUnits) && socleUnits > 0;
+  if (!comptee && activity.priceType !== 'per_unit_hour') return null;
+  const reglage = (center && center.activityCapacity && center.activityCapacity[activity.id]) || {};
+  const libelle = String(activity.unitLabel || '');
+  const mot = (/par ([a-zà-ÿ]+)/i.exec(libelle) || [])[1] || (/session/i.test(libelle) ? 'session' : 'installation');
+  return {
+    units: Number(reglage.units) > 0 ? Math.trunc(Number(reglage.units)) : (comptee ? Math.trunc(socleUnits) : 1),
+    capacityPerUnit: Number(reglage.capacityPerUnit) > 0
+      ? Math.trunc(Number(reglage.capacityPerUnit))
+      : (Number.isFinite(socleCapacite) && socleCapacite > 0 ? Math.trunc(socleCapacite) : null),
+    mot,
+  };
+}
+
+// « 6 tables », « 2 pistes, 6 joueurs par piste », « 5 joueurs par session ».
+function resumeInstallations(activity, center) {
+  const inst = installationsActivite(activity, center);
+  if (!inst) return '';
+  // Une session se compte en installations : une seule va de soi et ne se dit
+  // pas, deux ou plus se disent.
+  const nombre = inst.mot === 'session'
+    ? (inst.units > 1 ? `${inst.units} installations` : '')
+    : `${inst.units} ${inst.mot}${inst.units > 1 ? 's' : ''}`;
+  const joueurs = inst.capacityPerUnit ? `${inst.capacityPerUnit} joueurs par ${inst.mot}` : '';
+  return [nombre, joueurs].filter(Boolean).join(', ');
+}
+
 function validateEstablishmentForm() {
   clearEstablishmentFieldErrors();
   const invalid = [];
@@ -13572,6 +13611,18 @@ function validateEstablishmentForm() {
     const value = Number(input.value);
     if (!Number.isInteger(value) || value < min || value > max) {
       markEstablishmentFieldError(input, message);
+      invalid.push(input);
+    }
+  });
+  // Les installations des activites : un entier, au moins 1. Une saisie
+  // refusee revient au gerant avec sa raison, jamais jetee en silence.
+  document.querySelectorAll('.establishment-editor .estab-cap-input').forEach((input) => {
+    const max = Number(input.dataset.capMax) || 50;
+    const value = Number(input.value);
+    if (!Number.isInteger(value) || value < 1 || value > max) {
+      const nom = input.dataset.capName || 'Installations';
+      const quoi = input.dataset.capWhat || 'installations';
+      markEstablishmentFieldError(input, `${nom} : entrez un nombre entier de ${quoi}, de 1 à ${max}.`);
       invalid.push(input);
     }
   });
@@ -13636,6 +13687,18 @@ async function submitCenterConfig(centerId) {
   const activityAvailability = {};
   (staffCenterConfigCache.activities || []).forEach(activity => {
     activityAvailability[activity.id] = !!document.getElementById(`estab-act-${activity.id}`)?.checked;
+  });
+  // Les installations de chaque activite (tables, pistes, joueurs par piste) :
+  // le serveur les applique des l enregistrement, le formulaire en ligne les
+  // relit sans rechargement.
+  const activityCapacity = {};
+  (staffCenterConfigCache.activities || []).forEach(activity => {
+    const entree = {};
+    const units = Number(document.getElementById(`estab-cap-units-${activity.id}`)?.value);
+    const joueurs = Number(document.getElementById(`estab-cap-players-${activity.id}`)?.value);
+    if (Number.isInteger(units) && units >= 1) entree.units = Math.min(50, units);
+    if (Number.isInteger(joueurs) && joueurs >= 1) entree.capacityPerUnit = Math.min(500, joueurs);
+    if (Object.keys(entree).length) activityCapacity[activity.id] = entree;
   });
   // Panneau « Offres & formules » : map générique offerId -> booléen,
   // appliquée aussi côté serveur (une formule décochée n'est plus réservable).
@@ -13716,6 +13779,7 @@ async function submitCenterConfig(centerId) {
     },
     offerAvailability,
     activityAvailability,
+    activityCapacity,
     classification,
     customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
@@ -13739,6 +13803,9 @@ async function submitCenterConfig(centerId) {
     state.establishmentEditing = false;
     establishmentHolidayOverridesDraft = [];
     await loadStaffCenterConfig(true);
+    // Le catalogue de la console (tables, pistes, activites proposees) se
+    // relit tout de suite : la prochaine reservation compte avec lui.
+    if (typeof loadCenterScheduleConfig === 'function') loadCenterScheduleConfig();
   } catch (error) {
     toast(error?.message || 'Enregistrement impossible.');
   } finally {
@@ -14275,6 +14342,32 @@ function renderEstablishmentEditPanels(center, active) {
           <span>${escapeHtml(activity.label)}</span>
         </label>`).join('')}
       </div>
+      ${(() => {
+        // LES INSTALLATIONS (2026-09-28) : combien de tables, de pistes et de
+        // joueurs par piste le centre met en jeu, pour les activites qu il
+        // propose. Le socle donne la valeur de depart ; la saisie prime.
+        const lignes = (staffCenterConfigCache.activities || [])
+          .filter(activity => center.activityAvailability?.[activity.id])
+          .map(activity => ({ activity, inst: installationsActivite(activity, center) }))
+          .filter(ligne => ligne.inst);
+        if (!lignes.length) return '';
+        // Une ligne par activite : son nom une fois, puis ses champs aux
+        // libelles courts (Tables, Pistes, Joueurs par piste). Le groupe porte
+        // le nom pour le lecteur d ecran, le message d erreur le redit.
+        const champ = (id, quoi, nom, max, valeur) => `<div class="field"><label for="${id}">${escapeHtml(quoi.charAt(0).toUpperCase() + quoi.slice(1))}</label><input type="number" class="estab-cap-input" id="${id}" data-cap-max="${max}" data-cap-name="${escapeHtml(nom)}" data-cap-what="${escapeHtml(quoi)}" min="1" max="${max}" step="1" inputmode="numeric" value="${valeur}"></div>`;
+        return `<div class="estab-subsection">
+        <h4>Installations</h4>
+        <p class="estab-card-hint">Combien de tables, de pistes et de joueurs par piste vous mettez en jeu. Le formulaire en ligne et la console s’y tiennent dès l’enregistrement.</p>
+        <div class="estab-cap-list">${lignes.map(({ activity, inst }) => {
+          const id = escapeHtml(activity.id);
+          const nomUnites = inst.mot === 'session' ? 'installations' : `${inst.mot}s`;
+          return `<div class="estab-cap-row" role="group" aria-labelledby="estab-cap-name-${id}"><span class="estab-cap-name" id="estab-cap-name-${id}">${escapeHtml(activity.label)}</span>`
+            + champ(`estab-cap-units-${id}`, nomUnites, activity.label, 50, inst.units)
+            + (inst.capacityPerUnit ? champ(`estab-cap-players-${id}`, `joueurs par ${inst.mot}`, activity.label, 500, inst.capacityPerUnit) : '')
+            + '</div>';
+        }).join('')}</div>
+      </div>`;
+      })()}
       <div class="estab-subsection">
         <h4>Activités personnalisées de ce centre</h4>
         <p class="estab-card-hint">Ajoutez une activité propre au centre (au-delà du catalogue). Retirez-la avec la croix.</p>
@@ -14462,7 +14555,7 @@ function renderEstablishmentReadPanels(center, active) {
         : '<p class="estab-empty">Toutes les offres sont actives côté client.</p>'}`)}
     ${section(ICO.grid, 'Activités disponibles', 'Catalogue proposé sur ce centre + activités personnalisées.', `
       ${(enabled.length || customList.length)
-        ? `<div class="estab-chip-row">${enabled.map(activity => `<span class="estab-tag">${escapeHtml(activity.label)}</span>`).join('')}${customList.map(activity => `<span class="estab-tag estab-tag-custom">${escapeHtml(activity.label)}</span>`).join('')}</div>`
+        ? `<div class="estab-chip-row">${enabled.map(activity => { const inst = resumeInstallations(activity, center); return `<span class="estab-tag">${escapeHtml(activity.label)}${inst ? ` · ${escapeHtml(inst)}` : ''}</span>`; }).join('')}${customList.map(activity => `<span class="estab-tag estab-tag-custom">${escapeHtml(activity.label)}</span>`).join('')}</div>`
         : '<p class="estab-empty">Aucune activité activée.</p>'}`)}
   </div>`;
 
@@ -22222,21 +22315,37 @@ function detailLigneProgramme(item, reservation = null) {
     const parties = Math.max(1, Number(item.games) || 1);
     return parties > 1 ? `${parties} parties` : '1 partie';
   }
-  if (item.activityId === 'bowling' || priceType === 'grid_bowling') return formatDurationLabel(Number(item.duration) || 1);
+  if (item.activityId === 'bowling') return formatDurationLabel(Number(item.duration) || 1);
+  // Le duckpin : ses pistes, et ses tours au-dela de celles du centre.
+  if (priceType === 'grid_bowling') return detailUnitesLigne(item, catalogue, reservation, Number(item.duration) || 1);
   if (priceType === 'grid_fun_run') {
     const passages = Math.max(1, Number(item.sessions) || getActivitySessionCount(catalogue, reservation && reservation.pax));
     const palier = funRunSessionMinutes(item, passages);
     return passages > 1 ? `${passages} × ${palier} min` : `${palier} min`;
   }
-  const unites = Number(item.units) || 0;
-  if (unites > 0 && Number(item.hours) > 0) {
-    const duree = formatDurationLabel(Number(item.hours));
-    if (unites === 1) return duree;
-    const mot = (/par (\p{L}+)/u.exec(String(item.unitLabel || (catalogue && catalogue.unitLabel) || '')) || [])[1] || '';
-    return mot ? `${unites} ${mot}s · ${duree}` : `${unites} × ${duree}`;
-  }
+  if (Number(item.units) > 0 && Number(item.hours) > 0) return detailUnitesLigne(item, catalogue, reservation, Number(item.hours));
   const minutes = Number(item.minutes) || 0;
   return minutes > 0 ? formatDurationLabel(minutes / 60) : '';
+}
+
+// « 3 pistes · 2 tours de 1h », « 2 tables · 1h30 », « 1 piste · 1h ». Les
+// unites et les tours viennent de la ligne. Une ligne de duckpin enregistree
+// avant qu elle ne les porte (une seule en prod, lue le 2026-09-28) garde ce
+// qui a ete chiffre alors : les pistes d un seul passage, sans tour.
+function detailUnitesLigne(item, catalogue, reservation, heures) {
+  const libelle = String(item.unitLabel || (catalogue && catalogue.unitLabel) || '');
+  const mot = (/par (\p{L}+)/u.exec(libelle) || [])[1] || '';
+  let unites = Math.trunc(Number(item.units) || 0);
+  let tours = Math.max(1, Math.trunc(Number(item.sessions) || 1));
+  if (unites < 1) {
+    const ancienne = getActivityUnitPlan({ ...(catalogue || {}), capacityPerUnit: Number(catalogue && catalogue.capacityPerUnit) || 6 }, reservation && reservation.pax);
+    unites = ancienne.atOnce;
+    tours = 1;
+  }
+  const duree = formatDurationLabel(heures);
+  const enTours = tours > 1 ? `${tours} tours de ${duree}` : duree;
+  if (mot) return `${unites} ${mot}${unites > 1 ? 's' : ''} · ${enTours}`;
+  return unites > 1 ? `${unites} × ${enTours}` : enTours;
 }
 
 // Le programme d un dossier en une ligne : « Minigolf 45 min · Arcades 30 min ».

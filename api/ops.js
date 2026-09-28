@@ -288,6 +288,24 @@ function withCenter(body = {}, centerId = 'libramont') {
   return next;
 }
 
+// Le socle de chaque activite voyage avec son nom : le nombre d installations
+// (tables, pistes de duckpin) et leur capacite, que la page Etablissement
+// montre par defaut et que le centre peut changer (activityCapacity). Une
+// activite sans installation comptee n a pas de champ a montrer.
+function activitesDuSocle(knowledge) {
+  return ((knowledge && knowledge.activities) || []).map((activity) => {
+    const booking = activity.booking && typeof activity.booking === 'object' ? activity.booking : {};
+    return {
+      id: activity.id,
+      label: activity.label || activity.name || activity.id,
+      units: booking.units == null ? null : Number(booking.units),
+      capacityPerUnit: booking.capacityPerUnit == null ? null : Number(booking.capacityPerUnit),
+      unitLabel: booking.unitLabel || '',
+      priceType: booking.priceType || '',
+    };
+  });
+}
+
 function getAction(req, body = {}) {
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   return body.action || url.searchParams.get('action') || 'knowledge';
@@ -921,11 +939,7 @@ async function handleGet(req, res, options = {}) {
     // proprietaire platform.admin). Remplace listCenterConfigs (qui rendait TOUS
     // les centres, dont ceux d'autres clients) par la liste scopee serveur.
     const centers = await listCentersForSession(pool, session);
-    const knowledge = loadOpsKnowledge();
-    const activities = (knowledge.activities || []).map((activity) => ({
-      id: activity.id,
-      label: activity.label || activity.name || activity.id,
-    }));
+    const activities = activitesDuSocle(loadOpsKnowledge());
     sendJson(res, 200, { ok: true, centers, activities });
     return;
   }
@@ -3600,4 +3614,4 @@ module.exports = async (req, res) => {
 // la lit, il ne la recopie pas. Une regle recopiee dans un test derive du
 // produit au premier changement, et le test finit par prouver une regle morte.
 module.exports.getRequiredOpsPermission = getRequiredOpsPermission;
-module.exports.__test = { priseIgnoreePourCetteSession };
+module.exports.__test = { priseIgnoreePourCetteSession, activitesDuSocle };

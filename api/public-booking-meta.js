@@ -537,6 +537,9 @@ module.exports = async (req, res) => {
     activities: listSellableActivities({
       centerId,
       availability: center && typeof center.activityAvailability === 'object' ? center.activityAvailability : null,
+      // Les tables, les pistes de duckpin, les joueurs par piste reglees dans
+      // Etablissement : le formulaire les lit ici, comme le serveur.
+      capacity: center && center.activityCapacity && typeof center.activityCapacity === 'object' ? center.activityCapacity : null,
     }).map((activity) => {
       const theme = center && center.activityThemes && center.activityThemes[activity.id];
       const ageRange = theme && typeof theme.ageRange === 'string' ? theme.ageRange.trim() : '';

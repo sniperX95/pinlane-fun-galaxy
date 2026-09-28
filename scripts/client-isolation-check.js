@@ -38,6 +38,11 @@ const crypto = require('crypto');
 
 process.env.NODE_ENV = 'test';
 delete process.env.VERCEL;
+// ZERO RESEAU, VRAIMENT : sans cet interrupteur, la synchronisation du
+// calendrier scolaire (lib/booking-config) ouvrait une connexion TLS, et Node
+// sous Windows plantait en sortant sur ce socket (« UV_HANDLE_CLOSING », code
+// 127) apres « GATE VERT 38/38 ». Meme cause que client-tarifs (2026-09-28).
+process.env.PINLANE_CALENDAR_SYNC = 'off';
 process.env.DATABASE_URL = 'postgres://gate/gate';
 process.env.DATABASE_SSL = 'disable';
 process.env.STAFF_AUTH_SECRET = 'gate-client-isolation-secret-2026';

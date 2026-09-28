@@ -319,7 +319,8 @@
         "bookable": true,
         "order": 5,
         "priceType": "per_unit_hour",
-        "unitLabel": "par table et par heure"
+        "unitLabel": "par table et par heure",
+        "units": 6
       }
     },
     {

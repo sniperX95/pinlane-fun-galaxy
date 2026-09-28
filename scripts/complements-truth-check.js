@@ -1112,7 +1112,10 @@ function mesurerI() {
   const muettes = libres.filter((activite) => !tarifConnu(activite));
   const muette = muettes[0] || null;
   const bornee = libres.find((activite) => Number(activite.maxPax) > 0) || null;
-  const comptee = libres.find((activite) => Number(activite.units) > 0) || null;
+  // LA ROTATION suppose une capacite PAR UNITE (des pistes de 6, des sessions
+  // de 5) : c est elle qui fait tourner un groupe. Des tables de billard se
+  // choisissent et ne tournent jamais (2026-09-28) : elles ne sont pas le sujet.
+  const comptee = libres.find((activite) => Number(activite.units) > 0 && Number(activite.capacityPerUnit) > 0) || null;
 
   // NEGATIF : un programme ou TOUTES les activites tarifees sont deja prises.
   // Il ne reste que des muettes : la bonne reponse est ZERO carte d activite.
@@ -1327,14 +1330,20 @@ async function mesurerF() {
   // blanche de normalizeReservationProgram ne conserve pas laneCount, donc un
   // comptage qui retombe sur 1 laisse passer le second groupe et vend trois
   // pistes pour deux.
+  // Depuis le 2026-09-28, les tables de billard se CHOISISSENT (Movsar : « tu
+  // dois permettre de choisir combien de tables ils veulent ») : un groupe
+  // prend toute la dotation en DEMANDANT toutes les tables. Une activite dont
+  // les unites se deduisent du groupe (pistes de 6) la prend par son effectif.
   RESERVATIONS.length = 0;
-  const gros = await postJson(corpsVisite([{ activityId: finie.id, duration: 1 }], parUnite * dotation, 'gros', HEURE));
+  const choisies = !(Number(finie.capacityPerUnit) > 0);
+  const ligneGros = { activityId: finie.id, duration: 1, ...(choisies ? { units: dotation } : {}) };
+  const gros = await postJson(corpsVisite([ligneGros], parUnite * dotation, 'gros', HEURE));
   const rangeSansLaneCount = RESERVATIONS.length
     ? !((RESERVATIONS[RESERVATIONS.length - 1].program || {}).items || []).some((i) => i && i.laneCount != null)
     : false;
   const petit = await postJson(corpsVisite([{ activityId: finie.id, duration: 1 }], parUnite, 'petit', HEURE));
   RESERVATIONS.length = 0;
-  return { finie, absorbable, dotation, parUnite, poses, satureA, satureB, melange, libre, gros, petit, rangeSansLaneCount };
+  return { finie, absorbable, dotation, parUnite, choisies, poses, satureA, satureB, melange, libre, gros, petit, rangeSansLaneCount };
 }
 
 function jugerF(m) {
@@ -1361,7 +1370,9 @@ function jugerF(m) {
   v.push({
     ok: m.petit.statut === 409,
     label: '[F] LA GARDE COMPTE DES UNITES, PAS DES DOSSIERS : apres un groupe qui prend toute la dotation, un groupe d une unite est refuse',
-    detail: `groupe de ${m.parUnite * m.dotation} puis groupe de ${m.parUnite} : HTTP ${m.petit.statut}`,
+    detail: m.choisies
+      ? `${m.dotation} ${m.finie.id} demandees, puis 1 : HTTP ${m.petit.statut}`
+      : `groupe de ${m.parUnite * m.dotation} puis groupe de ${m.parUnite} : HTTP ${m.petit.statut}`,
   });
   return v;
 }

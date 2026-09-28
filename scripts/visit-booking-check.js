@@ -391,10 +391,16 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 250));
       return (document.getElementById('paxAlert') || {}).textContent || '';
     });
-    ok(/2\s*pistes/i.test(notifDuckpinPlafond) && !/3\s*pistes/i.test(notifDuckpinPlafond),
-      `15 joueurs -> jamais une 3e piste duckpin inventee : ${JSON.stringify(notifDuckpinPlafond.trim())}`);
-    ok(/tour de r|rotation|à la fois|a la fois/i.test(notifDuckpinPlafond),
-      'au-dela du plafond, la notif explique le passage par rotation');
+    // AU-DELA DES 2 PISTES, LE GROUPE JOUE EN PLUSIEURS TOURS (Movsar,
+    // 2026-09-28, reponse a la question posee apres l audit QA). 15 joueurs
+    // font 3 pistes de 6 : 2 puis 1, donc 2 tours. La notif dit les pistes du
+    // groupe, la dotation du centre et les tours, comme le serveur les compte
+    // (activityUnitPlan), jamais 3 pistes en meme temps sur 2.
+    const planDuckpin15 = require(path.join(ROOT, 'lib', 'activity-catalog.js')).activityUnitPlan({ units: 2, capacityPerUnit: 6 }, 15);
+    ok(new RegExp(`\\b${planDuckpin15.units}\\s*pistes`, 'i').test(notifDuckpinPlafond) && /en a 2\b|2\s*pistes/i.test(notifDuckpinPlafond),
+      `15 joueurs -> ${planDuckpin15.units} pistes pour le groupe, 2 au centre : ${JSON.stringify(notifDuckpinPlafond.trim())}`);
+    ok(new RegExp(`\\b${planDuckpin15.tours}\\s*tours`, 'i').test(notifDuckpinPlafond),
+      `au-dela des 2 pistes, la notif dit les ${planDuckpin15.tours} tours`);
     const notifLaser = await page.evaluate(async () => {
       state.booking.pax = 7;
       state.booking.activities = {};

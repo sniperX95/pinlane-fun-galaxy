@@ -18,15 +18,27 @@
 // maillon serveur (normalizeReservationRequest hydrate du catalogue fixture,
 // patron de la sonde a7) :
 //   A. MONTAGE : la page boote, le duckpin se resout, le resume se rend, et le
-//      serveur calcule (78 EUR pour 13 joueurs 1 h). Prouve que le gate mesure.
+//      serveur calcule (117 EUR pour 13 joueurs 1 h, 3 pistes en 2 tours).
+//      Prouve que le gate mesure.
 //   B. PARITE duckpin : pour pax 6 / 12 / 13 / 18 et 1 h / 2 h, le total DOM
-//      est EXACTEMENT le prix du serveur, et le detail dit le compte de pistes
-//      plafonne (jamais « 3 pistes » pour 2 de dotation).
+//      est EXACTEMENT le prix du serveur, et le detail dit les pistes du
+//      groupe et ses tours, comme le serveur les compte.
 //   C. NON-REGRESSION bowling : pas de plafond duckpin applique au bowling
 //      (13 joueurs = 3 pistes, parite conservee).
 //
-// Contre-epreuve par mutation : on remet le compte de pistes non plafonne dans
-// renderProgramSummary, le gate doit rougir sur B, restauration a l'identique.
+// LA REGLE A CHANGE LE 2026-09-28, PAS LA PARITE. Movsar, apres l audit QA :
+// « le duckpin super mal gere, nous n avons que 2 pistes avec 6 joueurs max »,
+// et au-dela, PLUSIEURS TOURS (sa reponse a la question posee). Chaque tour
+// paie les pistes qu il occupe : 13 joueurs 1 h = 3 pistes, 2 puis 1, en
+// 2 tours = 117 EUR (78 EUR faisaient jouer 13 personnes sur 2 pistes d une
+// heure, ce qui n existe pas). Ce gate garde la meme question : l ecran dit-il
+// le prix, les pistes et les tours du serveur ? Les attendus viennent du
+// serveur (units = pistes au total, sessions = tours), jamais d un chiffre
+// ecrit ici.
+//
+// Contre-epreuve par mutation : on fait compter au resume les pistes jouees EN
+// MEME TEMPS au lieu des pistes du groupe, le gate doit rougir sur B,
+// restauration a l'identique.
 //
 // Lancement : node scripts/duckpin-summary-parity-check.js
 'use strict';
@@ -85,7 +97,15 @@ function serverPrices() {
       { channel: 'public', requireEmail: true },
     );
     const ligne = (req.program && req.program.items || []).find((item) => item.activityId === activityId) || {};
-    return { price: Number(req.price), laneCount: Number(ligne.laneCount || 0) };
+    // units : les pistes du groupe, tous tours confondus ; laneCount : celles
+    // jouees en meme temps ; sessions : les tours. Le bowling n a ni units ni
+    // tours : ses pistes sont laneCount.
+    return {
+      price: Number(req.price),
+      laneCount: Number(ligne.laneCount || 0),
+      units: Number(ligne.units || ligne.laneCount || 0),
+      sessions: Math.max(1, Number(ligne.sessions) || 1),
+    };
   };
   return price;
 }
@@ -142,8 +162,8 @@ async function main() {
 
   // --- A. MONTAGE serveur ---------------------------------------------------
   const ref = price('duckpin_bowling', 13, 1);
-  ok(ref.price === 78 && ref.laneCount === 2,
-    `montage serveur : 13 joueurs 1 h = ${ref.price} EUR sur ${ref.laneCount} pistes (attendu 78 / 2)`);
+  ok(ref.price === 117 && ref.units === 3 && ref.laneCount === 2 && ref.sessions === 2,
+    `montage serveur : 13 joueurs 1 h = ${ref.price} EUR, ${ref.units} pistes dont ${ref.laneCount} a la fois, ${ref.sessions} tours (attendu 117, 3, 2, 2)`);
 
   const server = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -161,9 +181,12 @@ async function main() {
     for (const [pax, duration] of [[6, 1], [12, 1], [13, 1], [18, 1], [13, 2]]) {
       const attendu = price('duckpin_bowling', pax, duration);
       const vu = await domSummary(page, 'duckpin_bowling', pax, duration);
-      const pistesOk = new RegExp(`\\b${attendu.laneCount} piste`).test(vu.detail || '');
-      ok(vu.total === attendu.price && pistesOk,
-        `duckpin ${pax} joueurs ${duration} h : ecran ${vu.total} EUR « ${vu.detail} » == serveur ${attendu.price} EUR / ${attendu.laneCount} pistes`);
+      const pistesOk = new RegExp(`\\b${attendu.units} piste`).test(vu.detail || '');
+      const toursOk = attendu.sessions > 1
+        ? new RegExp(`\\b${attendu.sessions} tours\\b`).test(vu.detail || '')
+        : !/\btours?\b/.test(vu.detail || '');
+      ok(vu.total === attendu.price && pistesOk && toursOk,
+        `duckpin ${pax} joueurs ${duration} h : ecran ${vu.total} EUR « ${vu.detail} » == serveur ${attendu.price} EUR / ${attendu.units} pistes / ${attendu.sessions} tour(s)`);
     }
 
     // --- C. NON-REGRESSION bowling ------------------------------------------
@@ -188,23 +211,24 @@ async function main() {
 
 if (process.argv.includes('--mutate')) {
   const source = fs.readFileSync(APP, 'utf8');
-  const marqueur = "        ? (plafond ? Math.min(plafond, voulues) : voulues)";
-  if (!source.includes(marqueur)) {
-    console.error('mutation impossible : le plafond duckpin est introuvable dans assets/app-main.js');
+  const marqueur = "const lanes = planDuckpin ? planDuckpin.units : getRequiredLaneCount('bowling', pax, '');";
+  if (source.split(marqueur).length !== 2) {
+    console.error('mutation impossible : le compte des pistes du duckpin est introuvable (ou double) dans assets/app-main.js');
     process.exit(1);
   }
-  // On remet le compte non plafonne : 13 joueurs redeviennent 3 pistes / 117 EUR.
-  const mute = source.replace(marqueur, '        ? voulues');
+  // Le resume compte les pistes jouees en meme temps : 13 joueurs redeviennent
+  // 2 pistes / 78 EUR a l ecran, quand le serveur en facture 3 / 117.
+  const mute = source.replace(marqueur, "const lanes = planDuckpin ? planDuckpin.atOnce : getRequiredLaneCount('bowling', pax, '');");
   fs.writeFileSync(APP, mute);
   const { spawnSync } = require('child_process');
   const run = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
   fs.writeFileSync(APP, source);
   console.log(run.stdout || '');
   if (run.status === 0) {
-    console.error('CONTRE-EPREUVE RATEE : le gate reste vert sans le plafond.');
+    console.error('CONTRE-EPREUVE RATEE : le gate reste vert quand le resume ne compte que les pistes jouees en meme temps.');
     process.exit(1);
   }
-  console.log('contre-epreuve OK : retirer le plafond fait rougir le gate.');
+  console.log('contre-epreuve OK : compter les pistes jouees en meme temps au lieu de celles du groupe fait rougir le gate.');
   process.exit(0);
 } else {
   main();

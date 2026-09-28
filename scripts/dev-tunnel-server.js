@@ -109,6 +109,7 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
         emergencyCapacityPerLane: Number(bowling.emergencyCapacityPerLane) || 7,
         bowlingPrices: BOWLING_PRICES, laserOptions: LASER_GAME_OPTIONS,
         laserArenaCapacity: Number(FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.laser && FUN_GALAXY_CENTER.resources.laser.weaponCount) || null,
+        laserParallelLaunches: Number(FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.laser && FUN_GALAXY_CENTER.resources.laser.parallelLaunches) || null,
       },
       day: { date: DATE, open: true, schedule: { open: 10, close: 24, label: '10h - Minuit' }, closedLabel: '', closedWindows: [], unavailableFormulaIds: [], unavailableActivityIds: [], unavailableFormulaReason: {}, formulaHolidayOff: false },
       ...(calendarDays ? { calendar: buildCalendar([], calendarDays, FUN_GALAXY_CENTER, 'libramont', calendarFrom) } : {}),

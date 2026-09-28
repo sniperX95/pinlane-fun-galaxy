@@ -590,6 +590,11 @@ module.exports = async (req, res) => {
           // deux sessions, le tunnel en annoncait une). Meme regle que
           // `laneCount` juste au-dessus : la capacite est une donnee du centre.
           laserArenaCapacity: Math.max(0, Math.trunc(Number(center?.resources?.laser?.weaponCount) || 0)) || null,
+          // Les lancements qui tournent en meme temps, meme regle : Gembloux en
+          // declare six, la console en supposait un et refusait le deuxieme
+          // groupe d un creneau que le moteur acceptait. Cle lue par tous les
+          // roles, y compris ceux qui n ont pas la configuration staff.
+          laserParallelLaunches: Math.max(0, Math.trunc(Number(center?.resources?.laser?.parallelLaunches) || 0)) || null,
           // Cle ADDITIVE : presente uniquement quand le centre vend le bowling
           // AUX PARTIES, par personne (N4 Bowling). Absente, le tunnel garde la
           // grille par piste et par duree, exactement comme avant.

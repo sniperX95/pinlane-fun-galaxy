@@ -117,6 +117,11 @@ async function applyMode(page, mode, resourceView) {
     // On attend qu il retombe, PUIS on force notre mode de facon deterministe.
     while (staffCenterConfigCache.loading) { await new Promise((r) => setTimeout(r, 30)); }
     await loadStaffCenterConfig(true);
+    // « Aucune config » = aucune des DEUX sources : la configuration staff
+    // (vide ci-dessus) ET celle du tunnel, que le mode configure a poussee dans
+    // booking-core pour ce meme centre et qui y resterait (2e source des
+    // capacites depuis le 2026-09-28).
+    if (mode === 'empty' && typeof setCenterScheduleConfig === 'function') setCenterScheduleConfig(null);
     renderStaff();
   }, { mode, resourceView });
   await page.waitForTimeout(250);

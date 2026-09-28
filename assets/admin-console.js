@@ -372,8 +372,10 @@ function buildAdminExcelXml(payload) {
     excelRow(['Chiffre prévu', metrics.revenue, 'Montant total estimé sur la période'], 'Money'),
     excelRow(['Encaissé', metrics.collected, 'Réservations marquées payées'], 'Money'),
     excelRow(['Ticket moyen', metrics.avgTicket, 'CA / réservations actives'], 'Money'),
-    excelRow(['Occupation bowling', Math.round(metrics.bowlingOccupancy), `${Math.round(metrics.laneHours)}h piste / ${Math.round(metrics.bowlingCapacity)}h capacité`]),
-    excelRow(['Occupation laser', Math.round(metrics.laserOccupancy), `${metrics.laserLaunches} lancement(s) / ${metrics.laserPlayers} passages`]),
+    // Une ressource que le centre n a pas n a pas de ligne : « 0 » y serait
+    // lu comme une arene vide.
+    ...(metrics.hasBowling !== false ? [excelRow(['Occupation bowling', Math.round(metrics.bowlingOccupancy), `${Math.round(metrics.laneHours)}h piste / ${Math.round(metrics.bowlingCapacity)}h capacité`])] : []),
+    ...(metrics.hasLaser !== false ? [excelRow(['Occupation laser', Math.round(metrics.laserOccupancy), `${metrics.laserLaunches} lancement(s) / ${metrics.laserPlayers} passages`])] : []),
     excelRow(['Mails envoyés', metrics.sentMails, `${metrics.queuedMails} en file / ${metrics.failedMails} en échec`]),
     excelRow(['Signaux agents', metrics.suggestions, `${metrics.events} événement(s) terrain`]),
   ];
@@ -600,8 +602,8 @@ function buildDirectionReportHtml(payload) {
       <div class="kpi"><div class="k">CA prévu</div><div class="v">${formatMoney(metrics.revenue)}</div></div>
       <div class="kpi"><div class="k">Encaissé</div><div class="v">${formatMoney(metrics.collected)}</div></div>
       <div class="kpi"><div class="k">Ticket moyen</div><div class="v">${formatMoney(metrics.avgTicket)}</div></div>
-      <div class="kpi"><div class="k">Bowling</div><div class="v">${formatAdminPercent(metrics.bowlingOccupancy)}</div></div>
-      <div class="kpi"><div class="k">Laser</div><div class="v">${formatAdminPercent(metrics.laserOccupancy)}</div></div>
+      ${metrics.hasBowling !== false ? `<div class="kpi"><div class="k">Bowling</div><div class="v">${formatAdminPercent(metrics.bowlingOccupancy)}</div></div>` : ''}
+      ${metrics.hasLaser !== false ? `<div class="kpi"><div class="k">Laser</div><div class="v">${formatAdminPercent(metrics.laserOccupancy)}</div></div>` : ''}
       <div class="kpi"><div class="k">Engagement</div><div class="v">${marketMetrics.guestTracked}</div></div>
     </section>
     <section class="grid">
@@ -684,15 +686,24 @@ function buildAdminMetrics(reservations = [], center = getAdminCenter()) {
   }, 0);
   const bowling = center.resources?.bowling || {};
   const laser = center.resources?.laser || {};
-  const laneCount = Number(bowling.laneCount || TOTAL_LANES || 0);
-  const weaponCount = Number(laser.weaponCount || LASER_GAME_MAX_PLAYERS || 0);
-  const parallelLaunches = Number(laser.parallelLaunches || 1);
+  // La capacite DU CENTRE. Cle absente = on ne sait pas encore : la valeur
+  // par defaut. Presente a zero = la ressource n existe pas : N4 n a pas
+  // d arene, elle ne recoit pas 30 armes fantomes ni un « 0 % » laser.
+  const connait = (kind) => Object.prototype.hasOwnProperty.call(center.resources || {}, kind);
+  const laneCount = connait('bowling') ? Math.max(0, Number(bowling.laneCount) || 0) : TOTAL_LANES;
+  const weaponCount = connait('laser') ? Math.max(0, Number(laser.weaponCount) || 0) : LASER_GAME_MAX_PLAYERS;
   const bowlingWindows = activeReservations.flatMap(reservation => getBowlingWindowsFromReservation(reservation).map(window => ({ ...window, reservation })));
   const laserWindows = activeReservations.flatMap(reservation => getLaserWindowsFromReservation(reservation).map(window => ({ ...window, reservation })));
   const laneHours = bowlingWindows.reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
   const bowlingCapacity = laneCount && openHours ? laneCount * openHours : 0;
   const laserPlayers = laserWindows.reduce((sum, window) => sum + (Number(window.players || window.reservation?.pax) || 0), 0);
-  const laserCapacity = weaponCount && openHours ? weaponCount * parallelLaunches * openHours * 2 : 0;
+  // Les armes se partagent entre les lancements paralleles : le serveur
+  // additionne les joueurs de tout ce qui se chevauche contre le nombre
+  // d armes. Les multiplier par les lancements divisait l occupation de
+  // Gembloux (six lancements, 20 armes) par six.
+  const laserCapacity = weaponCount && openHours ? weaponCount * openHours * 2 : 0;
+  // Un lancement partage par trois groupes reste UN lancement.
+  const laserLaunches = new Set(laserWindows.map(window => `${window.reservation?.date}|${Number(window.start)}|${Number(window.end)}`)).size;
   const revenue = activeReservations.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
   const collected = activeReservations.filter(reservation => reservation.status === 'paid').reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
   const players = activeReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0);
@@ -718,8 +729,10 @@ function buildAdminMetrics(reservations = [], center = getAdminCenter()) {
     directLaser: activeReservations.filter(reservation => reservation.type === 'laser').length,
     avgTicket: activeReservations.length ? Math.round(revenue / activeReservations.length) : 0,
     bowlingWindows: bowlingWindows.length,
-    laserLaunches: laserWindows.length,
+    laserLaunches,
     laserPlayers,
+    hasBowling: laneCount > 0,
+    hasLaser: weaponCount > 0,
     bowlingOccupancy: bowlingCapacity ? (laneHours / bowlingCapacity) * 100 : 0,
     laserOccupancy: laserCapacity ? (laserPlayers / laserCapacity) * 100 : 0,
     laneHours,
@@ -811,9 +824,11 @@ function findAdminBowlingConflicts(reservations = []) {
 
 function findAdminLaserIssues(reservations = [], center = getAdminCenter()) {
   const laser = center.resources?.laser || {};
-  const weaponCount = Number(laser.weaponCount || LASER_GAME_MAX_PLAYERS || 30);
-  const parallelLaunches = Number(laser.parallelLaunches || 1);
-  const capacity = Math.max(1, weaponCount * Math.max(1, parallelLaunches));
+  // Les armes se partagent entre les lancements paralleles : un lancement
+  // deborde quand ses joueurs PLUS ceux de tout lancement qui le chevauche
+  // passent le nombre d armes, la regle du serveur (ops-engine). Multiplier
+  // les armes par les lancements laissait passer 25 joueurs sur 20 armes.
+  const capacity = Math.max(1, Number(laser.weaponCount) || LASER_GAME_MAX_PLAYERS || 30);
   const buckets = new Map();
   const missing = [];
   reservations
@@ -823,14 +838,17 @@ function findAdminLaserIssues(reservations = [], center = getAdminCenter()) {
       const expectedLaser = reservation.type === 'laser' || getLaserGameCountForReservation(reservation) > 0;
       if (expectedLaser && !windows.length) missing.push(reservation);
       windows.forEach(window => {
-        const key = `${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`;
-        if (!buckets.has(key)) buckets.set(key, { key, players: 0, groups: 0 });
+        const key = `${reservation.date}|${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`;
+        if (!buckets.has(key)) buckets.set(key, { key, date: reservation.date, start: Number(window.start), end: Number(window.end), players: 0, groups: 0 });
         const bucket = buckets.get(key);
         bucket.players += Number(window.players || reservation.pax || 0);
         bucket.groups += 1;
       });
     });
-  const overCapacity = [...buckets.values()].filter(bucket => bucket.players > capacity);
+  const list = [...buckets.values()];
+  const overCapacity = list.filter(bucket => list
+    .filter(other => other.date === bucket.date && other.start < bucket.end && other.end > bucket.start)
+    .reduce((sum, other) => sum + other.players, 0) > capacity);
   return { missing, overCapacity, buckets: [...buckets.values()], capacity };
 }
 
@@ -1218,8 +1236,8 @@ function renderAdminCockpit(metrics, center, reservations = [], marketMetrics = 
           <span class="value">${escapeHtml(formatAdminPercent(Math.max(metrics.bowlingOccupancy, metrics.laserOccupancy)))}</span>
           <p>${metrics.players} joueur(s), ${metrics.reservations} réservation(s), ${formatMoney(metrics.revenue)} prévu.</p>
           <div class="ops-cockpit-meter">
-            ${renderAdminCockpitMetricBar('Bowling', metrics.bowlingOccupancy, 'bowling')}
-            ${renderAdminCockpitMetricBar('Laser', metrics.laserOccupancy, 'laser')}
+            ${metrics.hasBowling !== false ? renderAdminCockpitMetricBar('Bowling', metrics.bowlingOccupancy, 'bowling') : ''}
+            ${metrics.hasLaser !== false ? renderAdminCockpitMetricBar('Laser', metrics.laserOccupancy, 'laser') : ''}
           </div>
           ${mailTotal
             /* Le taux d'envoi n'est PAS de la capacite : sorti de la jauge, dit
@@ -1692,8 +1710,8 @@ function renderAdminOverview() {
         <div class="admin-kpi"><div class="k">Joueurs</div><div class="v">${metrics.players}</div><div class="s">sur ${metrics.reservations} réservation${metrics.reservations > 1 ? 's' : ''}</div></div>
         <div class="admin-kpi"><div class="k">Chiffre ${state.adminPeriod === 'day' ? 'du jour' : 'de la période'}</div><div class="v">${formatMoney(metrics.revenue)}</div><div class="s">${formatMoney(metrics.collected)} encaissé</div></div>
         <div class="admin-kpi"><div class="k">Ticket moyen</div><div class="v">${formatMoney(metrics.avgTicket)}</div><div class="s">sur réservations actives</div></div>
-        <div class="admin-kpi"><div class="k">Bowling</div><div class="v">${formatAdminPercent(metrics.bowlingOccupancy)}</div><div class="s">${Math.round(metrics.laneHours)}h piste / ${Math.round(metrics.bowlingCapacity)}h capacité</div></div>
-        <div class="admin-kpi"><div class="k">Laser</div><div class="v">${formatAdminPercent(metrics.laserOccupancy)}</div><div class="s">${metrics.laserLaunches} lancement(s) · ${metrics.laserPlayers} passages</div></div>
+        ${metrics.hasBowling !== false ? `<div class="admin-kpi"><div class="k">Bowling</div><div class="v">${formatAdminPercent(metrics.bowlingOccupancy)}</div><div class="s">${Math.round(metrics.laneHours)}h piste / ${Math.round(metrics.bowlingCapacity)}h capacité</div></div>` : ''}
+        ${metrics.hasLaser !== false ? `<div class="admin-kpi"><div class="k">Laser</div><div class="v">${formatAdminPercent(metrics.laserOccupancy)}</div><div class="s">${metrics.laserLaunches} lancement${metrics.laserLaunches > 1 ? 's' : ''} · ${metrics.laserPlayers} passage${metrics.laserPlayers > 1 ? 's' : ''}</div></div>` : ''}
       </div>
     </div>
     ${renderAdminTrendsPanel()}

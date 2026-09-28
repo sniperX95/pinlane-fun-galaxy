@@ -658,6 +658,19 @@ function getLaserArenaCapacity() {
   return Number.isFinite(declare) && declare > 0 ? Math.trunc(declare) : LASER_GAME_MAX_PLAYERS;
 }
 
+// LES LANCEMENTS QUI TOURNENT EN MEME TEMPS, meme source que les postes :
+// Gembloux en declare six, et la console refusait le deuxieme groupe d un
+// creneau (« un seul lancement à la fois ») au nom d une constante a 1,
+// alors que le moteur l aurait accepte. La constante n est plus que le
+// dernier recours d un centre qui n a rien declare.
+function getLaserParallelLaunches() {
+  const declare = Number(
+    getBookingCatalogConfig()?.laserParallelLaunches
+    ?? centerScheduleConfig?.resources?.laser?.parallelLaunches,
+  );
+  return Number.isFinite(declare) && declare > 0 ? Math.trunc(declare) : LASER_GAME_PARALLEL_LAUNCHES;
+}
+
 function getLaserWaveCount(pax) {
   return Math.max(1, Math.ceil((Number(pax) || 1) / getLaserArenaCapacity()));
 }
@@ -755,8 +768,9 @@ function getQuickBookStartForLaserSession(session, pax = 4) {
   return numToTime(Math.max(0, Number(session?.start || 0) - (arrivalMinutes / 60)));
 }
 
-function openQuickBookForLaserSession(sessionStart, remainingPlaces = LASER_GAME_MAX_PLAYERS) {
-  const safeRemaining = Math.max(1, Math.min(LASER_GAME_MAX_PLAYERS, Number(remainingPlaces || LASER_GAME_MAX_PLAYERS)));
+function openQuickBookForLaserSession(sessionStart, remainingPlaces = getLaserArenaCapacity()) {
+  const postes = getLaserArenaCapacity();
+  const safeRemaining = Math.max(1, Math.min(postes, Number(remainingPlaces || postes)));
   const pax = Math.min(4, safeRemaining);
   const startTime = getQuickBookStartForLaserSession({ start: Number(sessionStart) }, pax);
   openQuickBook({
@@ -1287,7 +1301,7 @@ function buildManualLaserPassBlocks(reservation, unitRef, targetStart, targetEnd
     groupPlayers: Number(reservation.pax || unit.players),
     groupWaveIndex: unit.waveIndex,
     groupWaveCount: unit.waveCount,
-    weaponNeed: Math.min(unit.players, LASER_GAME_MAX_PLAYERS),
+    weaponNeed: Math.min(unit.players, getLaserArenaCapacity()),
   }];
 }
 
@@ -1346,11 +1360,21 @@ function checkManualLaserPassPlacement(reservation, unitRef, targetStart, target
     const joinsExistingSession = sessionKeys.has(key);
     const launchCount = sessionKeys.size + (joinsExistingSession ? 0 : 1);
     const playersTotal = overlapping.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), Number(candidate.players || 0));
-    if (launchCount > LASER_GAME_PARALLEL_LAUNCHES) {
-      return { ok: false, message: 'Ce lancement créerait deux sessions laser en parallèle.' };
+    // Les limites du CENTRE (postes, lancements simultanes), pas les
+    // constantes : a Gembloux (20 postes, 6 lancements) ce glisser refusait un
+    // deuxieme lancement permis et acceptait 30 joueurs sur 20 armes.
+    const lancementsMax = getLaserParallelLaunches();
+    const postes = getLaserArenaCapacity();
+    if (launchCount > lancementsMax) {
+      return {
+        ok: false,
+        message: lancementsMax > 1
+          ? `Ce lancement en ferait ${launchCount} en même temps : l’arène en accepte ${lancementsMax}.`
+          : 'Ce lancement créerait deux sessions laser en parallèle.',
+      };
     }
-    if (playersTotal > LASER_GAME_MAX_PLAYERS) {
-      return { ok: false, message: `Laser complet sur ce lancement (${playersTotal}/${LASER_GAME_MAX_PLAYERS}).` };
+    if (playersTotal > postes) {
+      return { ok: false, message: `Laser complet sur ce lancement (${playersTotal}/${postes}).` };
     }
   }
   return { ok: true, blocks: candidateBlocks };

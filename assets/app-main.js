@@ -579,12 +579,13 @@ function renderBowlingDragPreview(target) {
 
 function getTargetBowlingLanes(requiredCount, targetLane, date, startTime, duration, ignoreId, currentLanes = [], sourceLane = null, splitLane = false) {
   const occupied = getOccupiedLanes(date, startTime, duration, ignoreId);
-  const isAvailable = lane => lane >= 1 && lane <= TOTAL_LANES && state.laneStatuses[lane] !== 'maintenance' && !occupied.has(lane);
+  const laneCount = getAvailabilityLaneCount();
+  const isAvailable = lane => lane >= 1 && lane <= laneCount && state.laneStatuses[lane] !== 'maintenance' && !occupied.has(lane);
   const target = Number(targetLane);
   const count = Math.max(1, Number(requiredCount || 1));
   if (count === 1) return isAvailable(target) ? [target] : null;
 
-  const current = [...new Set((currentLanes || []).map(Number).filter(lane => lane >= 1 && lane <= TOTAL_LANES))].sort((a, b) => a - b);
+  const current = [...new Set((currentLanes || []).map(Number).filter(lane => lane >= 1 && lane <= laneCount))].sort((a, b) => a - b);
   const source = Number(sourceLane);
   if (current.length >= count && Number.isFinite(source) && current.includes(source)) {
     if (splitLane) {
@@ -597,14 +598,14 @@ function getTargetBowlingLanes(requiredCount, targetLane, date, startTime, durat
       if (candidate.length === count && candidate.every(isAvailable)) return candidate;
 
       const sourceIndex = Math.max(0, current.slice(0, count).indexOf(source));
-      const firstLane = Math.max(1, Math.min(TOTAL_LANES - count + 1, target - sourceIndex));
+      const firstLane = Math.max(1, Math.min(laneCount - count + 1, target - sourceIndex));
       const compactCandidate = Array.from({ length: count }, (_, idx) => firstLane + idx);
       if (compactCandidate.includes(target) && compactCandidate.every(isAvailable)) return compactCandidate;
     }
   }
 
   const available = [];
-  for (let lane = 1; lane <= TOTAL_LANES; lane += 1) {
+  for (let lane = 1; lane <= laneCount; lane += 1) {
     if (isAvailable(lane)) available.push(lane);
   }
   if (available.length < count) return null;
@@ -1093,26 +1094,29 @@ function getOccupiedLanes(date, startTime, duration, ignoreId) {
 
 function getFreeCount(date, startTime, duration) {
   const occ = getOccupiedLanes(date, startTime, duration);
+  const laneCount = getAvailabilityLaneCount();
   let count = 0;
-  for (let i = 1; i <= TOTAL_LANES; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') count++;
+  for (let i = 1; i <= laneCount; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') count++;
   return count;
 }
 
 function allocateLanes(n, date, startTime, duration, ignoreId) {
   if (n === 0) return [];
   const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
+  const laneCount = getAvailabilityLaneCount();
+  const pairs = getAvailabilityLanePairs(laneCount);
   const avail = [];
-  for (let i = 1; i <= TOTAL_LANES; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') avail.push(i);
+  for (let i = 1; i <= laneCount; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') avail.push(i);
   if (avail.length < n) return null;
   if (n === 1) {
-    for (const pair of PAIRS) {
+    for (const pair of pairs) {
       if (avail.includes(pair[0]) && !avail.includes(pair[1])) return [pair[0]];
       if (!avail.includes(pair[0]) && avail.includes(pair[1])) return [pair[1]];
     }
     return [avail[0]];
   }
   if (n === 2) {
-    for (const pair of PAIRS) if (avail.includes(pair[0]) && avail.includes(pair[1])) return pair;
+    for (const pair of pairs) if (avail.includes(pair[0]) && avail.includes(pair[1])) return pair;
   }
   avail.sort((a, b) => a - b);
   for (let i = 0; i <= avail.length - n; i++) {
@@ -1134,9 +1138,10 @@ function allocateLanes(n, date, startTime, duration, ignoreId) {
 function allocateLanesIncludingSeed(n, seedLanes, date, startTime, duration, ignoreId) {
   if (n <= 0) return [];
   const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
-  const isFree = (l) => l >= 1 && l <= TOTAL_LANES && !occ.has(l) && state.laneStatuses[l] !== 'maintenance';
+  const laneCount = getAvailabilityLaneCount();
+  const isFree = (l) => l >= 1 && l <= laneCount && !occ.has(l) && state.laneStatuses[l] !== 'maintenance';
   const avail = [];
-  for (let i = 1; i <= TOTAL_LANES; i++) if (isFree(i)) avail.push(i);
+  for (let i = 1; i <= laneCount; i++) if (isFree(i)) avail.push(i);
   if (avail.length < n) return null;
   const result = [...new Set((seedLanes || []).map(Number))].filter(isFree).slice(0, n);
   const chosen = new Set(result);
@@ -1207,8 +1212,10 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
   ).filter(window => Number(window.countIndex || 1) === 1);
   const waveCount = Math.max(...candidateWindows.map(window => Number(window.groupWaveCount || 1)), 1);
   // La capacite du centre affiche, jamais la constante : une arene de 20
-  // postes ne partage pas 30 places.
-  const postesArene = typeof getLaserArenaCapacity === 'function' ? getLaserArenaCapacity() : LASER_GAME_MAX_PLAYERS;
+  // postes ne partage pas 30 places, et Gembloux fait tourner six lancements
+  // la ou Libramont n en fait tourner qu un.
+  const postesArene = getAvailabilityLaserCapacity();
+  const lancementsMax = getAvailabilityLaserParallelLaunches();
   let tightestRemaining = postesArene;
   let maxPlayersTotal = 0;
   let sharedNow = false;
@@ -1272,9 +1279,11 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
     const situeVague = vagueTotal > 1
       ? ` (vague ${vagueIndex}/${vagueTotal}, ${Number(candidate.players || 0)} joueurs)`
       : '';
-    if (launchCount > LASER_GAME_PARALLEL_LAUNCHES) {
+    if (launchCount > lancementsMax) {
       ok = false;
-      message = `L'arène tourne déjà à ${heureLancement} : un seul lancement à la fois. Choisissez un autre départ.`;
+      message = lancementsMax > 1
+        ? `L'arène fait déjà tourner ${lancementsMax} lancements à ${heureLancement}, son maximum. Choisissez un autre départ.`
+        : `L'arène tourne déjà à ${heureLancement} : un seul lancement à la fois. Choisissez un autre départ.`;
       break;
     }
     if (playersTotal > postesArene) {
@@ -1300,7 +1309,8 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
 }
 
 function parseLaneInput(value = '') {
-  return [...new Set(String(value).split(',').map(s => Number(s.trim())).filter(n => n > 0 && n <= TOTAL_LANES))].sort((a, b) => a - b);
+  const laneCount = getAvailabilityLaneCount();
+  return [...new Set(String(value).split(',').map(s => Number(s.trim())).filter(n => n > 0 && n <= laneCount))].sort((a, b) => a - b);
 }
 
 function formatLaneInput(lanes = []) {
@@ -1310,8 +1320,9 @@ function formatLaneInput(lanes = []) {
 function getSuggestedEditLanes(requiredCount, date, startTime, duration, ignoreId, currentValue = '') {
   if (!requiredCount) return [];
   const occupied = getOccupiedLanes(date, startTime, duration, ignoreId);
+  const laneCount = getAvailabilityLaneCount();
   const available = new Set();
-  for (let i = 1; i <= TOTAL_LANES; i++) {
+  for (let i = 1; i <= laneCount; i++) {
     if (!occupied.has(i) && state.laneStatuses[i] !== 'maintenance') available.add(i);
   }
 
@@ -1328,7 +1339,7 @@ function getSuggestedEditLanes(requiredCount, date, startTime, duration, ignoreI
   if (kept.length >= requiredCount) return kept;
 
   if (requiredCount === 2 && kept.length === 1) {
-    const pair = PAIRS.find(group => group.includes(kept[0]));
+    const pair = getAvailabilityLanePairs(laneCount).find(group => group.includes(kept[0]));
     const mate = pair ? pair.find(l => l !== kept[0]) : null;
     if (mate && available.has(mate)) return [kept[0], mate].sort((a, b) => a - b);
   }
@@ -3686,7 +3697,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260925h';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260928a';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260925h';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20260912a';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
@@ -10331,7 +10342,8 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   const collected = activeReservations.filter(reservation => reservation.status === 'paid').reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
   const players = activeReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0);
   const laneHours = bowlingWindows.reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
-  const bowlingCapacity = TOTAL_LANES * openHours;
+  const laneCount = getAvailabilityLaneCount();
+  const bowlingCapacity = laneCount * openHours;
   const occupancy = bowlingCapacity ? Math.round((laneHours / bowlingCapacity) * 100) : 0;
   const upcoming = activeReservations
     .filter(reservation => getReservationFirstResourceStart(reservation, 'all') >= (state.currentDate === todayStr() ? now : 0))
@@ -10365,7 +10377,7 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
       return start + 0.25 <= now && windows.some(window => window.end > now);
     })
     : [];
-  const laneUsage = Array.from({ length: TOTAL_LANES }, (_, index) => ({
+  const laneUsage = Array.from({ length: laneCount }, (_, index) => ({
     lane: index + 1,
     value: bowlingWindows.reduce((sum, window) => sum + ((window.lanes || []).includes(index + 1) ? Number(window.duration || 0) : 0), 0)
   })).sort((left, right) => right.value - left.value);
@@ -10380,7 +10392,7 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   const occupancySeries = days.map((date, index) => {
     const window = getPlanningWindow(date);
     const open = window.closed ? 0 : Math.max(window.close - window.open, 0);
-    const capacity = TOTAL_LANES * open;
+    const capacity = laneCount * open;
     if (!capacity) return 0;
     const usedLaneHours = dayRows[index]
       .flatMap(reservation => getBowlingWindowsFromReservation(reservation))
@@ -10401,7 +10413,7 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
       collectedSeries[index] = Number(day.collected) || 0;
       const window = getPlanningWindow(days[index]);
       const open = window.closed ? 0 : Math.max(window.close - window.open, 0);
-      const capacity = TOTAL_LANES * open;
+      const capacity = laneCount * open;
       occupancySeries[index] = capacity ? Math.min(100, Math.round(((Number(day.laneHours) || 0) / capacity) * 100)) : 0;
     });
   }
@@ -10441,7 +10453,8 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     previousRevenueToday: previousPoint(revenueSeries),
     previousPlayers: previousPoint(playerSeries),
     previousOccupancy: previousPoint(occupancySeries),
-    planningWindow
+    planningWindow,
+    laneCount
   };
 }
 
@@ -11217,7 +11230,7 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
   const baseStats = [
     { label: 'Réservations', value: String(metrics.activeReservations.length), note: `${metrics.players} joueurs` },
     { label: 'À encaisser', value: formatMoney(metrics.revenue - metrics.collected), note: `${unpaidCount} ouvertes` },
-    { label: 'Occupation', value: `${metrics.occupancy}%`, note: `${TOTAL_LANES} pistes` }
+    { label: 'Occupation', value: `${metrics.occupancy}%`, note: `${metrics.laneCount} piste${metrics.laneCount > 1 ? 's' : ''}` }
   ];
   const openPlanning = "closeStaffDashboardDetail(); openStaffDashboardSection('planning');";
   const openReservations = "closeStaffDashboardDetail(); openStaffDashboardSection('reservations');";
@@ -11637,7 +11650,7 @@ function renderStaffDashboardRevenueDetail(metrics) {
         <time>${escapeHtml(parseLocalDate(row.date).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', ''))}</time>
         <span><i style="width:${Math.max(4, Math.round((row.revenue / max) * 100))}%"></i></span>
         <strong>${formatMoney(row.revenue)}</strong>
-        <small>${row.count} rés. · ${formatMoney(row.collected)} validés</small>
+        <small>${row.count} rés. · ${formatMoney(row.collected)} encaissés</small>
       </div>`).join('')}
     </div>
   </div>`;
@@ -11658,7 +11671,7 @@ function renderStaffDashboardOccupationDetail(metrics) {
     <div class="dashboard-detail-hour-grid">
       ${rows.map(row => `<article>
         <time>${escapeHtml(formatClockDisplay(row.hour))}</time>
-        <strong>${row.laneLoad}/${TOTAL_LANES}</strong>
+        <strong>${row.laneLoad}/${metrics.laneCount}</strong>
         <span>${row.windows.length} bloc${row.windows.length > 1 ? 's' : ''}</span>
         <small>${row.windows.slice(0, 3).map(window => escapeHtml(window.reservation.name || 'Client')).join(', ') || 'Disponible'}</small>
       </article>`).join('') || `<div class="dashboard-detail-empty">Centre fermé sur cette date.</div>`}
@@ -11888,7 +11901,8 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   const reservationTrendText = formatDashboardTrend(metrics.activeReservations.length, metrics.previousReservationsCount);
   const playerTrendText = formatDashboardTrend(metrics.players, metrics.previousPlayers);
   const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.previousOccupancy);
-  const availableLanes = TOTAL_LANES - Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length;
+  const lanesInMaintenance = getAvailabilityLanesInMaintenance(metrics.laneCount);
+  const availableLanes = metrics.laneCount - lanesInMaintenance;
   const dayFlow = getStaffDashDayFlow(metrics.activeReservations);
   const flowMeta = state.currentDate === todayStr()
     ? 'En direct'
@@ -12012,7 +12026,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
           <div data-flow="upcoming"><span>${renderDashboardIcon('prep')}</span><small>À venir</small><strong>${dayFlow.upcoming} session${dayFlow.upcoming > 1 ? 's' : ''}</strong></div>
           <div data-flow="live"><span>${renderDashboardIcon('play')}</span><small>En cours</small><strong>${dayFlow.live} session${dayFlow.live > 1 ? 's' : ''}</strong></div>
           <div data-flow="done"><span>${renderDashboardIcon('check')}</span><small>Terminées</small><strong>${dayFlow.done} session${dayFlow.done > 1 ? 's' : ''}</strong></div>
-          <div data-flow="maintenance"><span>${renderDashboardIcon('wrench')}</span><small>Pistes en maintenance</small><strong>${TOTAL_LANES - availableLanes} / ${TOTAL_LANES}</strong></div>
+          <div data-flow="maintenance"><span>${renderDashboardIcon('wrench')}</span><small>Pistes en maintenance</small><strong>${lanesInMaintenance} / ${metrics.laneCount}</strong></div>
         </div>
       </article>
       </div>
@@ -12857,24 +12871,58 @@ function computeStaffLaneStats30() {
   return { lanes, openHours, totalHours, average };
 }
 
+// Joueurs que le serveur compte contre les armes pour un lancement : les
+// siens et ceux de TOUT lancement qui le chevauche (ops-engine additionne
+// les fenetres qui le recouvrent, meme quand elles ne se recouvrent pas entre
+// elles). Les armes se partagent entre lancements paralleles (Gembloux en
+// fait tourner six sur 20 postes) : compter un lancement seul promettait des
+// places que la reservation refuse.
+function getLaserSessionArenaPlayers(session, sessions) {
+  return sessions
+    .filter((other) => other.start < session.end && other.end > session.start)
+    .reduce((sum, other) => sum + other.players, 0);
+}
+
+// Places restees vides : une grappe de lancements qui se chevauchent partage
+// les memes armes, elle laisse vide ce qui reste au plus charge, une fois.
+function getLaserEmptySeats(sessions, capacity) {
+  const sorted = sessions.slice().sort((a, b) => a.start - b.start);
+  let empty = 0;
+  let grappe = [];
+  let finGrappe = -Infinity;
+  const clore = () => {
+    if (!grappe.length) return;
+    empty += Math.max(0, capacity - Math.max(...grappe.map((session) => getLaserSessionArenaPlayers(session, grappe))));
+  };
+  sorted.forEach((session) => {
+    if (session.start >= finGrappe) { clore(); grappe = []; }
+    grappe.push(session);
+    finGrappe = Math.max(finGrappe, session.end);
+  });
+  clore();
+  return empty;
+}
+
 function computeStaffLaserStats30() {
   const rows = getStaffResourceHistoryRows();
   const sessions = new Map();
   rows.forEach((reservation) => {
     getLaserWindowsFromReservation(reservation).forEach((window) => {
       const key = `${reservation.date}|${Number(window.start).toFixed(3)}`;
-      const group = sessions.get(key) || { players: 0, start: Number(window.start) };
+      const group = sessions.get(key) || { players: 0, start: Number(window.start), end: Number(window.end), date: reservation.date };
       group.players += Number(window.players || reservation.pax || 0);
       sessions.set(key, group);
     });
   });
   const list = [...sessions.values()];
   const players = list.reduce((sum, group) => sum + group.players, 0);
-  const capacity = LASER_GAME_MAX_PLAYERS;
-  const fill = list.length ? Math.round((list.reduce((sum, group) => sum + Math.min(1, group.players / capacity), 0) / list.length) * 100) : 0;
+  const capacity = getAvailabilityLaserCapacity();
+  const parJour = new Map();
+  list.forEach((group) => parJour.set(group.date, [...(parJour.get(group.date) || []), group]));
+  const fill = list.length ? Math.round((list.reduce((sum, group) => sum + Math.min(1, getLaserSessionArenaPlayers(group, parJour.get(group.date)) / capacity), 0) / list.length) * 100) : 0;
   // Places restees vides sur des lancements DEJA payes en energie et en
   // staff : le manque a gagner le plus concret du laser.
-  const emptySeats = list.reduce((sum, group) => sum + Math.max(0, capacity - group.players), 0);
+  const emptySeats = [...parJour.values()].reduce((sum, jour) => sum + getLaserEmptySeats(jour, capacity), 0);
   const hourCount = new Map();
   list.forEach((group) => { const h = Math.floor(group.start); hourCount.set(h, (hourCount.get(h) || 0) + group.players); });
   const topHours = [...hourCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
@@ -13003,9 +13051,15 @@ function buildStaffLaserBoardModel() {
   const sessions = getStaffUtilityLaserSessions();
   const isToday = state.currentDate === todayStr();
   const now = isToday && !win.closed ? currentTimeDecimal() : null;
+  const cap = getAvailabilityLaserCapacity();
+  sessions.forEach((session) => {
+    session.arena = getLaserSessionArenaPlayers(session, sessions);
+    session.remaining = Math.max(0, cap - session.arena);
+    session.parallels = sessions.filter((other) => other !== session && other.start < session.end && other.end > session.start).length;
+  });
   const upcoming = now == null ? sessions.slice() : sessions.filter((session) => session.start > now);
   const next = upcoming[0] || null;
-  const weakUpcoming = upcoming.filter((session) => session.players / LASER_GAME_MAX_PLAYERS < 0.5);
+  const weakUpcoming = upcoming.filter((session) => session.arena / cap < 0.5);
   const playersToday = sessions.reduce((sum, session) => sum + session.players, 0);
   const stats30 = computeStaffLaserStats30();
   const gaps = [];
@@ -13017,7 +13071,7 @@ function buildStaffLaserBoardModel() {
     });
     if (win.close - cursor >= 1.5) gaps.push({ start: cursor, end: win.close });
   }
-  const nextPlaces = next ? Math.max(0, LASER_GAME_MAX_PLAYERS - next.players) : 0;
+  const nextPlaces = next ? next.remaining : 0;
   const kpis = [
     ['Prochain lancement', next ? numToTime(next.start) : 'aucun', next ? `${nextPlaces} places restantes` : (isToday ? 'plus rien aujourd’hui' : 'sur la date affichée')],
     ['Sessions du jour', sessions.length, `${playersToday} joueur${playersToday > 1 ? 's' : ''}`],
@@ -13026,11 +13080,11 @@ function buildStaffLaserBoardModel() {
       ? ['Remplissage 30 j', `${stats30.fill}%`, `${stats30.sessions} lancement${stats30.sessions > 1 ? 's' : ''}`]
       : ['Remplissage 30 j', getStaffHistoryPendingLabel(), 'historique du serveur'],
   ];
-  return { win, sessions, next, nextPlaces, weakUpcoming, playersToday, stats30, gaps, isToday, now, kpis };
+  return { win, sessions, next, nextPlaces, weakUpcoming, playersToday, stats30, gaps, isToday, now, kpis, cap };
 }
 
 function renderStaffLaserBoard(model = buildStaffLaserBoardModel()) {
-  const cap = LASER_GAME_MAX_PLAYERS;
+  const { cap } = model;
   // LE BANDEAU RESUME, LA CARTE AGIT. Le bandeau portait « Ajouter un groupe »
   // pour le prochain lancement, et la carte de ce meme lancement, juste
   // dessous, « Compléter · 22 places » : deux boutons pour la meme session.
@@ -13046,18 +13100,25 @@ function renderStaffLaserBoard(model = buildStaffLaserBoardModel()) {
     bandeau = `${model.sessions.length} lancement${model.sessions.length > 1 ? 's' : ''} sur la date affichée.`;
   }
   const sessionsHtml = model.sessions.map((session) => {
-    const remaining = Math.max(0, cap - session.players);
-    const fillPct = Math.min(100, Math.round((session.players / cap) * 100));
-    const weak = session.players / cap < 0.5;
+    // Tete, jauge et places parlent de l ARENE pendant ce lancement : un
+    // lancement parallele occupe les memes armes.
+    const { remaining, arena } = session;
+    const enParallele = arena - session.players;
+    const fillPct = Math.min(100, Math.round((arena / cap) * 100));
+    const weak = arena / cap < 0.5;
     const future = model.now == null || session.start > model.now;
     const groups = session.reservations.map((item) => `<button type="button" onclick="openStaffReservationDetail(${staffClientJs(item.reservation.id)})">${escapeHtml(item.reservation.name || 'Client')} · ${formatStaffTerrainCount(Number(item.window.players || item.reservation.pax || 0), 'joueur')}</button>`).join('');
+    const partage = enParallele > 0
+      ? `<div class="laser-session-shared" data-role="laser-shared">dont ${formatStaffTerrainCount(enParallele, 'joueur')} sur ${session.parallels > 1 ? `${session.parallels} lancements` : 'un lancement'} en parallèle</div>`
+      : '';
     const action = future && remaining > 0
-      ? `<div class="laser-session-action"><button type="button" onclick="openQuickBookForLaserSession(${Number(session.start)}, ${remaining})">${weak ? 'Compléter' : 'Ajouter un groupe'} · ${remaining} places</button></div>`
-      : (remaining <= 0 ? '<div class="laser-session-action"><span>Session complète.</span></div>' : '');
+      ? `<div class="laser-session-action"><button type="button" onclick="openQuickBookForLaserSession(${Number(session.start)}, ${remaining})">${weak ? 'Compléter' : 'Ajouter un groupe'} · ${remaining} place${remaining > 1 ? 's' : ''}</button></div>`
+      : (remaining <= 0 ? `<div class="laser-session-action"><span>${enParallele > 0 ? 'Arène complète.' : 'Session complète.'}</span></div>` : '');
     return `<article class="laser-session">
-      <div class="laser-session-head"><strong>${numToTime(session.start)} - ${numToTime(session.end)}</strong><b>${session.players}/${cap}</b></div>
+      <div class="laser-session-head"><strong>${numToTime(session.start)} - ${numToTime(session.end)}</strong><b data-role="laser-count">${arena}/${cap}</b></div>
       <div class="laser-fill${weak ? ' is-weak' : ''}"><i style="width:${fillPct}%"></i></div>
       <div class="laser-session-groups">${groups}</div>
+      ${partage}
       ${action}
     </article>`;
   }).join('');
@@ -15358,25 +15419,75 @@ function renderStaffUtilityUsers() {
 let availabilityBlocksCache = { loaded: false, loading: false, error: '', blocks: [] };
 const AVAILABILITY_DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
+// LE CENTRE DE LA SESSION, et lui seul : le repli sur le premier centre de la
+// liste donnait a un centre absent du cache les capacites d un AUTRE centre.
+// Absent, on ne sait pas, et les lecteurs ci-dessous passent a la source
+// suivante.
 function getAvailabilitySessionCenter() {
   const centers = staffCenterConfigCache.centers || [];
   const id = getCurrentStaffCenterId();
-  return centers.find(center => center.id === id) || centers[0] || null;
+  return centers.find(center => center.id === id) || null;
+}
+
+// LES CAPACITES DU CENTRE ONT UNE SOURCE, PAS TRENTE-TROIS. La console lisait
+// les constantes (8 pistes, 30 armes, 1 lancement) a l allocation des pistes,
+// dans les selecteurs, la capacite de l accueil, le tableau laser, pendant que
+// la grille lisait la configuration. Ordre : la configuration staff du centre
+// (la plus fraiche apres une modification dans Etablissement), sinon celle que
+// le serveur sert au tunnel pour ce meme centre (public-booking-meta, lisible
+// par TOUS les roles : un role sans reglages ni direction n a pas la
+// premiere, et retombait sur 8 / 30 / 1 quel que soit le centre), sinon la
+// constante, dernier recours d un centre qui n a rien declare.
+function capaciteDeclaree(valeur) {
+  const nombre = Number(valeur);
+  return Number.isFinite(nombre) && nombre > 0 ? Math.min(Math.trunc(nombre), 200) : 0;
+}
+
+// La configuration du tunnel ne vaut que pour SON centre. Apres une bascule
+// de centre, celle du centre precedent reste en memoire jusqu a la reponse
+// suivante : ses nombres seraient ceux d un autre client.
+function capaciteDuTunnel(lire) {
+  const config = typeof getCenterScheduleConfig === 'function' ? getCenterScheduleConfig() : null;
+  const attendu = state.view === 'client' ? getTunnelCenterId() : getCurrentStaffCenterId();
+  if (!config || !config.id || config.id !== attendu || typeof lire !== 'function') return 0;
+  return capaciteDeclaree(lire());
 }
 
 function getAvailabilityLaneCount() {
-  const center = getAvailabilitySessionCenter();
-  const count = Number(center?.resources?.bowling?.laneCount || 0);
-  return Number.isFinite(count) && count > 0 ? Math.min(Math.trunc(count), 200) : TOTAL_LANES;
+  return capaciteDeclaree(getAvailabilitySessionCenter()?.resources?.bowling?.laneCount)
+    || capaciteDuTunnel(typeof getTotalLanes === 'function' ? getTotalLanes : null)
+    || TOTAL_LANES;
 }
 
-// Capacite laser (armes par lancement) du centre affiche, depuis la config staff
-// chargee. Fallback sur la constante historique si la config est absente. Sert au
-// planning laser pour ne plus afficher 30 armes en dur quand le centre en a moins.
+// Postes de l arene (armes) du centre affiche.
 function getAvailabilityLaserCapacity() {
-  const center = getAvailabilitySessionCenter();
-  const count = Number(center?.resources?.laser?.weaponCount || 0);
-  return Number.isFinite(count) && count > 0 ? Math.min(Math.trunc(count), 200) : LASER_GAME_MAX_PLAYERS;
+  return capaciteDeclaree(getAvailabilitySessionCenter()?.resources?.laser?.weaponCount)
+    || capaciteDuTunnel(typeof getLaserArenaCapacity === 'function' ? getLaserArenaCapacity : null)
+    || LASER_GAME_MAX_PLAYERS;
+}
+
+// Lancements laser qui tournent en meme temps (Gembloux : 6, Libramont : 1).
+function getAvailabilityLaserParallelLaunches() {
+  return capaciteDeclaree(getAvailabilitySessionCenter()?.resources?.laser?.parallelLaunches)
+    || capaciteDuTunnel(typeof getLaserParallelLaunches === 'function' ? getLaserParallelLaunches : null)
+    || LASER_GAME_PARALLEL_LAUNCHES;
+}
+
+// Les paires de pistes voisines d un centre a N pistes (1-2, 3-4...), la
+// regle du serveur (pairsForLaneCount) : la constante PAIRS n en connait que
+// quatre, celles d un centre a 8 pistes.
+function getAvailabilityLanePairs(laneCount = getAvailabilityLaneCount()) {
+  const pairs = [];
+  for (let lane = 1; lane + 1 <= laneCount; lane += 2) pairs.push([lane, lane + 1]);
+  return pairs;
+}
+
+// Pistes en maintenance PARMI celles du centre : un drapeau laisse sur une
+// piste retiree (7 ou 8 d un centre passe a 6) ne retire rien a la capacite.
+function getAvailabilityLanesInMaintenance(laneCount = getAvailabilityLaneCount()) {
+  return Object.entries(state.laneStatuses || {})
+    .filter(([lane, status]) => status === 'maintenance' && Number(lane) >= 1 && Number(lane) <= laneCount)
+    .length;
 }
 
 // Declenche (au plus une fois) le chargement de la config centre pour que le
@@ -15533,12 +15644,15 @@ function getBowlingBlockWindows(dateStr, openHour, closeHour) {
     const endH = full ? closeHour : Math.min(closeHour, endMin / 60);
     return { startH, endH, reason: block.reason || '', full };
   };
+  // Un blocage de tout le centre couvre SES pistes : a 12 pistes, les pistes
+  // 9 a 12 restaient ouvertes a la vente sous un « centre fermé ».
+  const laneCount = getAvailabilityLaneCount();
   getAvailabilityBlocksForDate(dateStr).forEach(block => {
     if (block.scopeType === 'center' || (block.scopeType === 'activity' && (block.scopeRef === 'bowling' || block.scopeRef === 'duckpin_bowling'))) {
-      for (let lane = 1; lane <= TOTAL_LANES; lane += 1) push(lane, toWindow(block));
+      for (let lane = 1; lane <= laneCount; lane += 1) push(lane, toWindow(block));
     } else if (block.scopeType === 'lane') {
       const lane = Number(block.scopeRef);
-      if (Number.isFinite(lane) && lane >= 1 && lane <= TOTAL_LANES) push(lane, toWindow(block));
+      if (Number.isFinite(lane) && lane >= 1 && lane <= laneCount) push(lane, toWindow(block));
     }
   });
   Object.keys(perLane).forEach(key => {
@@ -16312,17 +16426,21 @@ function getPricingRows() {
     activities: ['Bowling']
   }));
   const bowling = !sellsBowling ? [] : (bowlingPricing ? bowlingGameCards() : bowlingGridCards());
+  // L arene DU CENTRE : 20 armes et six lancements a Gembloux, 30 et un seul
+  // a Libramont. La constante disait 30 et 1 partout.
+  const armes = getAvailabilityLaserCapacity();
+  const lancements = getAvailabilityLaserParallelLaunches();
   const laser = !sellsLaser ? [] : LASER_GAME_OPTIONS.map(option => decorate({
     id: `laser-${option.games}`,
     type: 'laser',
     title: `${option.label} Laser Game`,
     subtitle: `${option.games} passage${option.games > 1 ? 's' : ''}`,
-    description: `${option.durationMinutes} min estimées, session partageable selon l'affluence, ${LASER_GAME_MAX_PLAYERS} armes disponibles.`,
+    description: `${option.durationMinutes} min estimées, session partageable selon l'affluence, ${armes} armes disponibles.`,
     price: option.price,
     durationLabel: `${option.durationMinutes} min`,
-    capacity: `${LASER_GAME_MAX_PLAYERS} joueurs / lancement`,
-    availability: `${LASER_GAME_PARALLEL_LAUNCHES} lancement${LASER_GAME_PARALLEL_LAUNCHES > 1 ? 's' : ''} simultané${LASER_GAME_PARALLEL_LAUNCHES > 1 ? 's' : ''}`,
-    tags: ['Laser', `${option.games} partie${option.games > 1 ? 's' : ''}`, `${LASER_GAME_MAX_PLAYERS} armes`],
+    capacity: `${armes} joueurs en même temps au plus`,
+    availability: `${lancements} lancement${lancements > 1 ? 's' : ''} simultané${lancements > 1 ? 's' : ''}`,
+    tags: ['Laser', `${option.games} partie${option.games > 1 ? 's' : ''}`, `${armes} armes`],
     activities: ['Laser Game']
   }));
   const formulas = getConsoleFormuleCatalog({ includeRemoved: true }).map(formule => {
@@ -18788,7 +18906,8 @@ function getStaffReservationsDailySeries(days, reservations, metric = 'count') {
 }
 
 function getStaffReservationsOccupancy(days, reservations) {
-  const activeLaneCount = Math.max(1, TOTAL_LANES - Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length);
+  const laneCount = getAvailabilityLaneCount();
+  const activeLaneCount = Math.max(1, laneCount - getAvailabilityLanesInMaintenance(laneCount));
   const capacity = days.reduce((sum, date) => {
     const windowCfg = getPlanningWindow(date);
     if (windowCfg.closed) return sum;
@@ -20599,6 +20718,12 @@ function renderStaffShell(dayReservations = todaysReservations()) {
 function renderKpis() {
   const view = getStaffResourceView();
   const res = scopedStaffReservations(view);
+  // La capacite DU CENTRE. Les armes se partagent entre les lancements
+  // paralleles (le serveur compte les joueurs de tous les lancements qui se
+  // chevauchent contre le nombre d armes) : six lancements a Gembloux ne font
+  // pas six fois 20 places, et les multiplier divisait l occupation par six.
+  const laneCount = getAvailabilityLaneCount();
+  const armes = getAvailabilityLaserCapacity();
   let revTotal = 0, revColl = 0, pax = 0, bookedUnits = 0;
   res.forEach(r => {
     revTotal += Number(r.price) || 0;
@@ -20608,19 +20733,28 @@ function renderKpis() {
       bookedUnits += getLaserWindowsFromReservation(r).reduce((sum, window) => sum + (Number(window.players || r.pax) || 0), 0);
     } else if (view === 'all') {
       bookedUnits += getBowlingWindowsFromReservation(r).reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
-      bookedUnits += getLaserWindowsFromReservation(r).reduce((sum, window) => sum + ((Number(window.players || r.pax) || 0) / Math.max(LASER_GAME_MAX_PLAYERS, 1)), 0);
+      bookedUnits += getLaserWindowsFromReservation(r).reduce((sum, window) => sum + ((Number(window.players || r.pax) || 0) / Math.max(armes, 1)), 0);
     } else {
       bookedUnits += getBowlingWindowsFromReservation(r).reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
     }
   });
   const windowCfg = getPlanningWindow(state.currentDate);
+  // Sur la journee complete, une ressource que le centre n a pas n ajoute pas
+  // de capacite : N4 (aucune arene) voyait son occupation diluee par un laser
+  // fantome. Cle absente = on ne sait pas encore, on garde les deux.
+  const ressources = (typeof getAdminCenter === 'function' ? (getAdminCenter() || {}).resources : null) || {};
+  const connait = (kind) => Object.prototype.hasOwnProperty.call(ressources, kind);
+  const avecPistes = !connait('bowling') || Number(ressources.bowling?.laneCount) > 0;
+  const avecArene = !connait('laser') || Number(ressources.laser?.weaponCount) > 0;
+  const heuresOuvertes = Math.max(windowCfg.close - windowCfg.open, 1);
+  const lancementsDuJour = Math.max((windowCfg.close - windowCfg.open) * 2, 1);
   const totalAvail = windowCfg.closed
     ? 0
     : view === 'all'
-      ? (TOTAL_LANES * Math.max(windowCfg.close - windowCfg.open, 1)) + Math.max((windowCfg.close - windowCfg.open) * 2, 1)
+      ? (avecPistes ? laneCount * heuresOuvertes : 0) + (avecArene ? lancementsDuJour : 0)
       : view === 'laser'
-        ? LASER_GAME_MAX_PLAYERS * LASER_GAME_PARALLEL_LAUNCHES * Math.max((windowCfg.close - windowCfg.open) * 2, 1)
-        : TOTAL_LANES * Math.max(windowCfg.close - windowCfg.open, 1);
+        ? armes * lancementsDuJour
+        : laneCount * heuresOuvertes;
   const occ = totalAvail > 0 ? Math.round((bookedUnits / totalAvail) * 100) : 0;
   const kpiCards = document.querySelectorAll('#staffView .kpi-grid .kpi');
   const setKpiCopy = (index, label, hint) => {
@@ -21006,9 +21140,13 @@ function renderLaserPlanning() {
     sessionGroups.get(key).windows.push(window);
   });
   const sessions = [...sessionGroups.values()].sort((a, b) => a.start - b.start);
+  sessions.forEach(session => {
+    session.players = session.windows.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), 0);
+  });
   const players = windows.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), 0);
   // Capacite REELLE (armes) du centre affiche, repli sur la constante si config absente.
   const capacity = getAvailabilityLaserCapacity();
+  const lancementsMax = getAvailabilityLaserParallelLaunches();
   const pendingPasses = getPendingLaserPasses(state.currentDate);
   if (sub) sub.textContent = `${sessions.length} lancement${sessions.length > 1 ? 's' : ''} · ${players} passages · ${pendingPasses.length} partie${pendingPasses.length > 1 ? 's' : ''} à placer · capacité ${capacity} armes`;
 
@@ -21078,8 +21216,11 @@ function renderLaserPlanning() {
       </button>`;
     }
 
-    const sessionPlayers = session.windows.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), 0);
-    const remaining = Math.max(0, capacity - sessionPlayers);
+    const sessionPlayers = session.players;
+    // Les places d un lancement se comptent sur l arene, comme le serveur :
+    // un lancement parallele (Gembloux) prend les memes armes.
+    const arenaPlayers = getLaserSessionArenaPlayers(session, sessions);
+    const remaining = Math.max(0, capacity - arenaPlayers);
     const hasFormula = session.windows.some(window => window.reservation?.type === 'formule' || window.reservation?.formuleId);
     const hasDirect = session.windows.some(window => window.reservation?.type === 'laser');
     const shared = session.windows.length > 1;
@@ -21167,7 +21308,7 @@ function renderLaserPlanning() {
       <div class="laser-session-top">
         <div>
           <div class="laser-session-title">${formatClockDisplay(session.start)} - ${formatClockDisplay(session.end)}</div>
-          <div class="laser-session-sub">${session.windows.length} groupe${session.windows.length > 1 ? 's' : ''} · ${sessionPlayers}/${capacity} joueurs</div>
+          <div class="laser-session-sub">${session.windows.length} groupe${session.windows.length > 1 ? 's' : ''} · ${arenaPlayers > sessionPlayers ? `${sessionPlayers} joueurs · arène ${arenaPlayers}/${capacity}` : `${sessionPlayers}/${capacity} joueurs`}</div>
         </div>
         <span class="laser-session-kind">${remaining > 0 ? `+ groupe · ${addStart}` : sessionType}</span>
       </div>
@@ -21188,13 +21329,17 @@ function renderLaserPlanning() {
     // Occupation par tranche = pic de joueurs simultanés parmi les sessions qui
     // CHEVAUCHENT la tranche [timeValue, +30 min), pas seulement celles qui y
     // démarrent : sinon une vague qui déborde (ex. 10:55-11:20) laisse la tranche
-    // 11:00 à « 30 armes libres » alors qu'elle est occupée. `max` (pas somme) car
-    // deux vagues séquentielles ne tournent jamais en même temps ; exact tant que
-    // parallelLaunches === 1 (cas Fun Galaxy).
+    // 11:00 à « 30 armes libres » alors qu'elle est occupée. Une seule arene
+    // a la fois : `max` (pas somme), deux vagues séquentielles ne tournent
+    // jamais en même temps. Plusieurs lancements paralleles (Gembloux, six sur
+    // 20 armes) : ils tournent ENSEMBLE sur les memes armes, et le serveur
+    // additionne les joueurs de tout ce qui chevauche.
     const slotStart = timeValue;
     const slotEnd = timeValue + 0.5;
     const activeSessions = sessions.filter(s => s.start < slotEnd && s.end > slotStart);
-    const sessionPlayers = activeSessions.reduce((peak, s) => Math.max(peak, s.windows.reduce((inner, window) => inner + Number(window.players || window.reservation?.pax || 0), 0)), 0);
+    const sessionPlayers = lancementsMax > 1
+      ? activeSessions.reduce((sum, s) => sum + s.players, 0)
+      : activeSessions.reduce((peak, s) => Math.max(peak, s.players), 0);
     const remaining = Math.max(0, capacity - sessionPlayers);
     const sessionHtml = slotSessions.length
       ? `<div class="laser-session-stack">${slotSessions.map(session => renderLaserSession(session, timeValue)).join('')}</div>`
@@ -23359,7 +23504,7 @@ function renderPosEdit(r) {
               <div class="pos-field pos-field-wide">
                 <span class="lbl">Pistes</span>
                 <div class="lane-picker" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
-                  ${Array.from({ length: TOTAL_LANES }, (_, index) => index + 1).map(lane => {
+                  ${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {
                     const choisie = getEditLaneNumbers().includes(lane);
                     const maintenance = state.laneStatuses[lane] === 'maintenance';
                     return `<button type="button" class="lane-chip${choisie ? ' is-on' : ''}${maintenance ? ' is-off' : ''}"
@@ -24097,7 +24242,7 @@ function patchQuickBookStatusLine(overlay) {
     parts.push(`${quickBookState.pax} joueurs · ${parties} partie${parties > 1 ? 's' : ''}`);
     // Le groupe ne tient pas dans une arene : on DIT le decoupage au lieu
     // de l appeler « session », mot qui designe deja le lancement.
-    if (vagues > 1) parts.push(`groupe divisé en ${vagues} passages (${LASER_GAME_MAX_PLAYERS} armes)`);
+    if (vagues > 1) parts.push(`groupe divisé en ${vagues} passages (${getAvailabilityLaserCapacity()} armes)`);
   } else if (needsLanes) {
     parts.push(`${requiredCount} piste${requiredCount > 1 ? 's' : ''} requise${requiredCount > 1 ? 's' : ''}`);
     parts.push(quickBookState.autoAssign
@@ -25062,7 +25207,7 @@ function renderQuickBookInner() {
         </div>
         <div class="qb-lane-grid">
           <button class="qb-lane-btn auto ${quickBookState.autoAssign ? 'active' : ''}" onclick="setQuickAutoAssign()">Auto</button>
-          ${Array.from({ length: TOTAL_LANES }, (_, idx) => idx + 1).map(lane => {
+          ${Array.from({ length: getAvailabilityLaneCount() }, (_, idx) => idx + 1).map(lane => {
             const busy = occupied.has(lane);
             const maint = state.laneStatuses[lane] === 'maintenance';
             const active = !quickBookState.autoAssign && quickBookState.lanes.includes(lane);

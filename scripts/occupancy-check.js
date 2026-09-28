@@ -73,7 +73,11 @@ ok(/end:\s*timeToNum\(reservation\.startTime\)\s*\+\s*heures/.test(repli), "l'he
 
 console.log('\n-- la formule reste piste-heures sur capacite --');
 const app = fs.readFileSync(APP, 'utf8');
-ok(/const bowlingCapacity = TOTAL_LANES \* openHours;/.test(app), 'la capacite = pistes x heures ouvertes');
+// LES PISTES DU CENTRE, plus la constante 8 (2026-09-28) : un centre a 6
+// pistes affichait une occupation calculee sur 8. La regle : la capacite vient
+// du nombre de pistes que le centre declare (getAvailabilityLaneCount).
+ok(/const laneCount = getAvailabilityLaneCount\(\);\s*const bowlingCapacity = laneCount \* openHours;/.test(app), 'la capacite = pistes du centre x heures ouvertes');
+ok(!/const bowlingCapacity = TOTAL_LANES \* openHours;/.test(app), 'la capacite ne suppose plus 8 pistes a tous les centres');
 ok(/const occupancy = bowlingCapacity \? Math\.round\(\(laneHours \/ bowlingCapacity\) \* 100\) : 0;/.test(app),
   "le taux = piste-heures / capacite, et vaut 0 quand le centre est ferme");
 

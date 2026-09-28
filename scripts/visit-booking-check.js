@@ -493,13 +493,19 @@ async function main() {
       return {
         text: host.textContent.replace(/\s+/g, ' ').trim(),
         rows: host.querySelectorAll('div[style*="justify-content:space-between"]').length,
+        lignes: [...host.querySelectorAll('div[style*="justify-content:space-between"]')].map((d) => d.textContent.replace(/\s+/g, ' ').trim()),
         monoEmpty: mono === '',
       };
     });
     ok(staff.rows === 4, `les 4 lignes du programme sont rendues (obtenu ${staff.rows})`);
     ok(staff.text.includes('Minigolf Blacklight') && staff.text.includes('Billards'),
       'les activites libres sont nommees sur la fiche');
-    ok(staff.text.includes('Billards 2 x 1.5h'), 'le detail des billards (2 tables, 1h30) est lisible');
+    // LA REGLE, PAS LA PHRASE : la ligne des billards dit le nombre de tables
+    // et la duree. Le libelle a change le 2026-09-28 (« 2 tables · 1h30 » avec
+    // le catalogue charge, « 2 × 1h30 » sans lui) ; « 2 x 1.5h » ne disait
+    // d ailleurs pas « tables ».
+    const ligneBillards = (staff.lignes || []).find((l) => /^Billards/.test(l)) || '';
+    ok(/\b2\b/.test(ligneBillards) && /1h30/.test(ligneBillards), `le detail des billards (2 tables, 1h30) est lisible (« ${ligneBillards} »)`);
     ok(staff.text.includes('planifié') && staff.text.includes('sur place'),
       'la fiche distingue ce qui est place au planning de ce qui se regle au comptoir');
     // La GARANTIE est qu une mention distincte annonce ce qui n est pas place au

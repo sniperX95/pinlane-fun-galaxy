@@ -361,10 +361,18 @@
     arrived: { label: 'Arrivé', tone: 'amber' },
     paid: { label: 'Payé', tone: 'green' },
     cancelled: { label: 'Annulé', tone: 'red' },
+    // Une demande en ligne que l equipe doit encore valider : jamais
+    // « Confirmé » (isReservationAwaitingReview, app-main).
+    review: { label: 'À vérifier', tone: 'amber' },
   };
 
-  function statusChip(status) {
-    const meta = STATUS_META[status] || STATUS_META.pending;
+  function statusMeta(r) {
+    if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) return STATUS_META.review;
+    return STATUS_META[r && r.status] || STATUS_META.pending;
+  }
+
+  function statusChip(r) {
+    const meta = statusMeta(r);
     return `<span class="pv2-chip ${meta.tone}"><span class="pv2-dot ${meta.tone}" style="margin:0"></span>${meta.label}</span>`;
   }
 
@@ -531,7 +539,7 @@
     const time = String(r.startTime || '').slice(0, 5);
     const offer = typeof getStaffClientOfferLabel === 'function' ? getStaffClientOfferLabel(r) : typeLabel(r);
     const paxN = Number(r.pax) || 0;
-    return `<div class="pv2-flow-item ${(STATUS_META[r.status] || STATUS_META.pending).tone}" onclick="pv2ResSearchOpen('${escJs(r.id)}')">
+    return `<div class="pv2-flow-item ${statusMeta(r).tone}" onclick="pv2ResSearchOpen('${escJs(r.id)}')">
       <div class="pv2-flow-time"><strong>${esc(time || '--:--')}</strong><small>${esc(when)}</small></div>
       <div class="pv2-flow-rail"></div>
       <div class="pv2-flow-body">
@@ -539,7 +547,7 @@
         <span>${esc(offer)} · ${paxN} joueur${paxN > 1 ? 's' : ''}${r.phone ? ` · ${esc(r.phone)}` : ''}</span>
         ${pv2MarqueursDossier(r)}
       </div>
-      ${statusChip(r.status)}
+      ${statusChip(r)}
     </div>`;
   }
 
@@ -599,19 +607,25 @@
 
     const flow = dayRows.length
       ? dayRows.map((r) => {
-        const meta = STATUS_META[r.status] || STATUS_META.pending;
+        const meta = statusMeta(r);
         const time = String(r.startTime || '').slice(0, 5);
+        // Une visite a la carte dit ses activites et leur duree, pas « Bowling ·
+        // 30 min » (audit du 2026-09-28). Avec des pistes, la duree reste celle
+        // du dossier, comme la liste du jour.
+        const programme = typeof resumeProgrammeReservation === 'function' ? resumeProgrammeReservation(r) : '';
+        const sansPiste = !(r.lanes || []).length && !(Number(r.laneCount) > 0);
+        const dureeVisite = sansPiste && typeof dureeProgrammeLabel === 'function' ? dureeProgrammeLabel(r) : '';
         return `<div class="pv2-flow-item ${meta.tone}" onclick="openStaffReservationDetail('${escJs(r.id)}')">
-          <div class="pv2-flow-time">${esc(time)}<small>${esc(typeof formatDurationLabel === 'function' ? formatDurationLabel(Number(r.duration) || 1) : `${r.duration || 1}h`)}</small></div>
+          <div class="pv2-flow-time">${esc(time)}<small>${esc(dureeVisite || (typeof formatDurationLabel === 'function' ? formatDurationLabel(Number(r.duration) || 1) : `${r.duration || 1}h`))}</small></div>
           <div class="pv2-flow-rail"></div>
           <div class="pv2-flow-body">
             <strong>${esc(r.name || 'Sans nom')}</strong>
-            <span>${esc(typeLabel(r))} · ${Number(r.pax) || 0} joueurs${(r.lanes || []).length ? ` · piste ${(r.lanes || []).join(', ')}` : ''} · ${money(r.price)}</span>
+            <span>${esc(programme || typeLabel(r))} · ${Number(r.pax) || 0} joueurs${(r.lanes || []).length ? ` · piste ${(r.lanes || []).join(', ')}` : ''} · ${money(r.price)}</span>
             ${/* La ligne au-dessus finit par le montant : la marque dit donc la
                  REFERENCE, pas une deuxieme fois le montant. */''}
             ${pv2MarqueursDossier(r, { montantDeja: true })}
           </div>
-          ${statusChip(r.status)}
+          ${statusChip(r)}
         </div>`;
       }).join('')
       : `<div class="pv2-empty"><strong>Journée libre</strong>Aucune réservation active sur cette date.</div>`;

@@ -1293,6 +1293,14 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
       break;
     }
   }
+  // Le laser se joue a deux au moins (minPax du laser_game au catalogue du
+  // centre, servi par /api/public-booking-meta) : sous ce minimum, aucun
+  // depart ne vaut, quelle que soit l arene.
+  const minimumLaser = Math.trunc(Number((getCenterActivity('laser_game') || {}).minPax) || 0);
+  if (minimumLaser > 1 && players > 0 && players < minimumLaser) {
+    ok = false;
+    message = `Le laser game se joue à ${minimumLaser} joueurs minimum.`;
+  }
 
   return {
     ok,
@@ -1870,7 +1878,12 @@ function reservationRenderSignature(r) {
     phone: r.phone || '',
     label: r.label || '',
     occasion: r.occasion || '',
-    notes: r.notes || ''
+    notes: r.notes || '',
+    // Se dessinent depuis le 2026-09-28 : l etat « À vérifier » / « Valider »
+    // (isReservationAwaitingReview) et les activites d une visite avec leurs
+    // durees. Absents, valider une demande ne redessinait pas sa ligne.
+    validationStatus: r.validationStatus || '',
+    programKey: JSON.stringify((r.program?.items || []).map(item => [item.activityId, item.minutes, item.games, item.duration, item.sessions, item.sessionMinutes, item.units, item.hours]))
   };
 }
 
@@ -1906,6 +1919,9 @@ function getSelectedReservationSignature() {
     price: state.selectedRes.price,
     lanes: state.selectedRes.lanes || [],
     paymentMethod: state.selectedRes.paymentMethod || '',
+    // La fiche dit « Cette demande attend votre validation » et « Valider »
+    // tant que la demande attend : la valider doit la redessiner.
+    validationStatus: state.selectedRes.validationStatus || '',
     activeTab: state.activeTab,
     editState: state.editState ? {
       name: state.editState.name,
@@ -11331,6 +11347,7 @@ function getStaffDashboardStatusMeta(reservation) {
   if (reservation.status === 'paid') return { label: 'Payé', className: 'paid' };
   if (reservation.status === 'arrived') return { label: 'Arrivé', className: 'arrived' };
   if (reservation.status === 'cancelled') return { label: 'Annulé', className: 'cancelled' };
+  if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', className: 'review' };
   return { label: 'Confirmé', className: 'pending' };
 }
 
@@ -12773,7 +12790,7 @@ function renderFormuleTrackingCard(reservation) {
       </div>
       <div class="formules-card-id">
         <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
-        <span>${escapeHtml(getReservationLabel(reservation))} · ${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
+        <span>${escapeHtml(getReservationLabel(reservation))} · ${escapeHtml(getStaffReservationStateLabel(reservation))}</span>
       </div>
       ${summary.total ? `<span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>` : ''}
       <button type="button" class="formules-card-open" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">Ouvrir</button>
@@ -18421,7 +18438,7 @@ function buildStaffClientRowsFromReservations(reservations = []) {
           id: reservation.id,
           date: formatStaffClientDateText(reservation.date),
           label: getStaffClientOfferLabel(reservation),
-          status: formatStaffClientStatus(reservation.status),
+          status: isReservationAwaitingReview(reservation) ? 'À vérifier' : formatStaffClientStatus(reservation.status),
           amount: Number(reservation.price || 0) * (reservation.status === 'cancelled' ? -1 : 1),
           reservation
         })),
@@ -18889,6 +18906,13 @@ function getStaffReservationStatusLabel(status) {
     cancelled: 'Annulé'
   };
   return labels[status] || status || 'Confirmé';
+}
+
+// Le libelle d etat d UN DOSSIER : le statut, sauf quand la demande attend
+// encore la validation de l equipe (isReservationAwaitingReview).
+function getStaffReservationStateLabel(reservation) {
+  if (isReservationAwaitingReview(reservation)) return 'À vérifier';
+  return getStaffReservationStatusLabel((reservation && reservation.status) || 'pending');
 }
 
 function getStaffReservationsDailySeries(days, reservations, metric = 'count') {
@@ -19370,7 +19394,7 @@ function exportStaffPlanningCsv(scope = '') {
     getStaffResourceWindows(reservation, 'all').map(window => window.resourceType === 'laser_arena'
       ? `Laser ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`
       : `Pistes ${(window.lanes || []).join(' ')} ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`).join(' / '),
-    getStaffReservationStatusLabel(reservation.status || 'pending'),
+    getStaffReservationStateLabel(reservation),
     reservation.price || 0
   ]);
   const header = ['Date', 'Heure', 'Client', 'Téléphone', 'Offre', 'Joueurs', 'Ressources', 'Statut', 'Montant'];
@@ -21512,6 +21536,29 @@ function reservationAlreadyInStatus(reservation, status) {
   return courant === status;
 }
 
+// UNE DEMANDE A VERIFIER NE SE DIT PAS « CONFIRMÉ » (audit du 2026-09-28 : une
+// Formule 4 lisait « demande envoyée, vérifiée sous 24 h » cote client et
+// « Confirmé » dans la liste comme dans la fiche). La base la garde `pending` ;
+// l attente vit dans validationStatus, que le Terrain lisait deja. Une seule
+// definition pour la liste, la fiche, le tableau de bord et les pages v2.
+function isReservationAwaitingReview(reservation) {
+  return Boolean(reservation)
+    && reservation.validationStatus === 'staff_review'
+    && isUpcomingReservationStatus(reservation.status);
+}
+
+// Le premier bouton du selecteur d etat. Tant que la demande attend, il porte
+// l action qui leve le doute, « Valider » ; ensuite, « Confirmé » comme avant.
+function renderReservationFirstStatusButton(r, { fiche = false } = {}) {
+  if (isReservationAwaitingReview(r)) {
+    return `<button type="button" class="res-status-btn review active review" aria-pressed="false" title="Cette demande attend votre validation : Valider la confirme" onclick="validateReservationDirect(${r.id}, event)">Valider</button>`;
+  }
+  const actif = isUpcomingReservationStatus(r.status);
+  return fiche
+    ? `<button type="button" class="res-status-btn pending ${actif ? 'active pending' : ''}" aria-pressed="${actif}" onclick="setReservationStatusDirect(${r.id}, 'pending')">Confirmé</button>`
+    : `<button class="res-status-btn ${actif ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending', event)">Confirmé</button>`;
+}
+
 function filterReservationsForStaff(reservations, filter) {
   if (filter === 'open') return reservations.filter(r => r.status !== 'paid');
   if (filter === 'notes') return reservations.filter(hasReservationNote);
@@ -21569,9 +21616,11 @@ function renderReservationRow(r) {
   // Le mot « bowling » n est accole QUE si la reservation en contient : une
   // formule table + plaine de jeux (section « Hors planning ») affichait
   // « 2h bowling » pour une visite sans la moindre piste.
+  // Sans piste, une visite a la carte dit la duree de SES activites (minigolf
+  // 45 min + arcades 30 min = 1h15), jamais la demi-heure par defaut du dossier.
   const bowlingDurationLabel = totalBowlingHours
     ? `${formatDurationLabel(totalBowlingHours)} bowling`
-    : formatDurationLabel(r.duration);
+    : (dureeProgrammeLabel(r) || formatDurationLabel(r.duration));
   const resourceDurationLabel = view === 'all'
     ? (isFormule ? 'Formule' : r.type === 'laser' ? (parties > 1 ? `Laser x${parties}` : 'Laser') : bowlingDurationLabel)
     : view === 'laser'
@@ -21585,9 +21634,12 @@ function renderReservationRow(r) {
     totalBowlingHours ? `Bowling ${formatDurationLabel(totalBowlingHours)}` : '',
     parties > 0 ? (parties > 1 ? `Laser x${parties}` : 'Laser') : ''
   ].filter(Boolean).join(' · ');
+  // Une visite a la carte dit TOUTES ses activites, chacune avec ce qu elle
+  // achete (« Minigolf 45 min · Fun Run 3 × 30 min ») : la composition bowling
+  // + laser taisait tout le reste.
   const offre = isFormule
     ? [formule.name, composition].filter(Boolean).join(' · ')
-    : composition || typeLabel;
+    : resumeProgrammeReservation(r) || composition || typeLabel;
 
   // PRIX AJUSTE visible de la liste : le comptoir voit combien CE dossier
   // paie sans ouvrir la fiche (prix d ami, offre sur mesure). LE GESTE
@@ -21616,6 +21668,7 @@ function renderReservationRow(r) {
     <div class="res-c-what">
       <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
       ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
+      ${isReservationAwaitingReview(r) ? '<span class="res-state-pill review">À vérifier</span>' : ''}
       ${renderReservationPriceMark(r, { forme: stateText ? 'reference' : 'complet' })}
       ${renderReservationTags(r, { contexteSeul: true })}
       ${renderReservationNoteLine(r)}
@@ -21625,7 +21678,7 @@ function renderReservationRow(r) {
     </div>
     <div class="res-c-state" onclick="event.stopPropagation()">
       <div class="res-status-row compact">
-        <button class="res-status-btn ${isUpcomingReservationStatus(r.status) ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending', event)">Confirmé</button>
+        ${renderReservationFirstStatusButton(r)}
         <button class="res-status-btn ${r.status === 'arrived' ? 'active arrived' : ''}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>
         <button class="res-status-btn ${r.status === 'paid' ? 'active paid' : ''}" onclick="setReservationStatusDirect(${r.id}, 'paid', event)">Payé</button>
       </div>
@@ -22145,19 +22198,73 @@ function nomActivite(item) {
   return (activite && activite.name) || String(id).replace(/_/g, ' ');
 }
 
+// CE QU UNE LIGNE DE PROGRAMME ACHETE, dans les mots du comptoir : la duree de
+// piste, les parties, les sessions, les tables, l entree a la journee. Audit du
+// 2026-09-28 : une visite minigolf + arcades + Fun Run se lisait « 30 min »
+// dans la liste, une seule duree (celle du dossier par defaut) pour trois
+// activites.
+// La base garde le type de tarif, les passages et l entree a la journee depuis
+// le 2026-09-28 ; un dossier plus ancien les retrouve au catalogue du centre
+// (et ses passages, par la taille du groupe).
+function catalogueDeLigne(item) {
+  return item && typeof getCenterActivity === 'function' ? getCenterActivity(item.activityId) : null;
+}
+function ligneALaJournee(item) {
+  const catalogue = catalogueDeLigne(item);
+  return Boolean(item && (item.dayAccess === true || (catalogue && catalogue.dayAccess === true)));
+}
+function detailLigneProgramme(item, reservation = null) {
+  if (!item) return '';
+  if (ligneALaJournee(item)) return 'toute la journée';
+  const catalogue = catalogueDeLigne(item);
+  const priceType = item.priceType || (catalogue && catalogue.priceType) || '';
+  if (item.activityId === 'laser_game' || priceType === 'grid_laser') {
+    const parties = Math.max(1, Number(item.games) || 1);
+    return parties > 1 ? `${parties} parties` : '1 partie';
+  }
+  if (item.activityId === 'bowling' || priceType === 'grid_bowling') return formatDurationLabel(Number(item.duration) || 1);
+  if (priceType === 'grid_fun_run') {
+    const passages = Math.max(1, Number(item.sessions) || getActivitySessionCount(catalogue, reservation && reservation.pax));
+    const palier = funRunSessionMinutes(item, passages);
+    return passages > 1 ? `${passages} × ${palier} min` : `${palier} min`;
+  }
+  const unites = Number(item.units) || 0;
+  if (unites > 0 && Number(item.hours) > 0) {
+    const duree = formatDurationLabel(Number(item.hours));
+    if (unites === 1) return duree;
+    const mot = (/par (\p{L}+)/u.exec(String(item.unitLabel || (catalogue && catalogue.unitLabel) || '')) || [])[1] || '';
+    return mot ? `${unites} ${mot}s · ${duree}` : `${unites} × ${duree}`;
+  }
+  const minutes = Number(item.minutes) || 0;
+  return minutes > 0 ? formatDurationLabel(minutes / 60) : '';
+}
+
+// Le programme d un dossier en une ligne : « Minigolf 45 min · Arcades 30 min ».
+function resumeProgrammeReservation(reservation) {
+  const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
+  return items.map((item) => [nomActivite(item), detailLigneProgramme(item, reservation)].filter(Boolean).join(' ')).join(' · ');
+}
+
+// La duree d une visite a la carte SANS PISTE : celle de ses activites, qui
+// s enchainent, jamais la demi-heure par defaut du dossier. Une visite faite
+// d entrees a la journee dit « Journée ». Vide sans programme.
+function dureeProgrammeLabel(reservation) {
+  const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
+  if (!items.length) return '';
+  if (items.every(ligneALaJournee)) return 'Journée';
+  const minutes = items.filter((item) => !ligneALaJournee(item)).reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+  return minutes > 0 ? formatDurationLabel(minutes / 60) : '';
+}
+
 function renderReservationProgram(reservation) {
   const items = reservation && reservation.program && Array.isArray(reservation.program.items)
     ? reservation.program.items
     : [];
   if (items.length < 2) return '';
   const line = (item) => {
-    const detail = item.activityId === 'bowling'
-      ? `${item.duration}h`
-      : item.games
-        ? `${item.games} partie${item.games > 1 ? 's' : ''}`
-        : item.units
-          ? `${item.units} x ${item.hours}h`
-          : '';
+    // Le meme detail que la liste du jour (detailLigneProgramme) : une seule
+    // facon de dire ce qu une ligne achete, sessions et journee comprises.
+    const detail = detailLigneProgramme(item, reservation);
     const price = item.priceKnown ? `${Math.round(Number(item.price))}€` : 'sur place';
     return `<div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border);">
       <span style="font-weight:700;color:var(--text);">${escapeHtml(nomActivite(item))}${detail ? ` <small style="font-weight:400;color:var(--text-3);">${escapeHtml(detail)}</small>` : ''}</span>
@@ -22226,8 +22333,9 @@ function renderPosDetails(r) {
           ? `Encaissé · ${escapeHtml(method)}`
           : `À encaisser · ${escapeHtml(method)}`}</span>
       </div>
+      ${isReservationAwaitingReview(r) ? '<p class="pos-act-review">Cette demande attend votre validation. Tant que vous ne l’avez pas validée, la réservation du client n’est pas confirmée.</p>' : ''}
       <div class="res-status-row pos-act-row">
-        <button type="button" class="res-status-btn pending ${isUpcomingReservationStatus(r.status) ? 'active pending' : ''}" aria-pressed="${isUpcomingReservationStatus(r.status)}" onclick="setReservationStatusDirect(${r.id}, 'pending')">Confirmé</button>
+        ${renderReservationFirstStatusButton(r, { fiche: true })}
         <button type="button" class="res-status-btn arrived ${r.status === 'arrived' ? 'active arrived' : ''}" aria-pressed="${r.status === 'arrived'}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>
         <button type="button" class="res-status-btn paid ${r.status === 'paid' ? 'active paid' : ''}" aria-pressed="${r.status === 'paid'}" onclick="setReservationStatusDirect(${r.id}, 'paid')">Payé</button>
       </div>
@@ -23060,7 +23168,10 @@ function buildEditProgramFromReservation(r) {
       const reglages = {};
       if (Number(item.units) > 0) reglages.units = Number(item.units);
       if (Number(item.hours) > 0) reglages.hours = Number(item.hours);
-      if (Number(item.minutes) > 0) reglages.minutes = Number(item.minutes);
+      // Le palier d une session, pas le temps du groupe (3 x 30 min = 90). Les
+      // passages de CE groupe servent a un dossier enregistre sans eux.
+      const palier = funRunSessionMinutes(item, getActivitySessionCount(getCenterActivity(id), r && r.pax));
+      if (palier > 0) reglages.minutes = palier;
       if (Number(item.participants) > 0) reglages.participants = Number(item.participants);
       if (Object.keys(reglages).length) etat.othersOptions[id] = reglages;
     });

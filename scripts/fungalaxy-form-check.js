@@ -2013,7 +2013,9 @@ async function main() {
     ok(minPiste === Math.min(...Object.values(meta.bowlingPrices).map(Number)), '[B] la grille des durees et la grille des prix piste disent le meme minimum');
     const carte = (id, liste) => (liste || cartes).find((c) => c.id === id) || {};
     ok(carte('bowling').prix === `Dès ${euros(minPiste)} / piste`, '[B] bowling : « des » = minimum de la grille servie', carte('bowling').prix);
-    ok(carte('laser_game').prix === `Dès ${euros(minLaser)} / personne`, '[B] laser : « des » = minimum des parties servies', carte('laser_game').prix);
+    // Le minimum de joueurs voyage a cote du prix (catalogue : minPax 2), comme
+    // la capacite d une session du Fun Run.
+    ok(carte('laser_game').prix === `Dès ${euros(minLaser)} / personne · 2\u00a0joueurs minimum`, '[B] laser : « des » = minimum des parties servies, et le minimum de joueurs', carte('laser_game').prix);
     ok(carte('fun_run').prix === `Dès ${euros(minFunRun)} / session · 5 joueurs par session`, '[B] fun run : « des » = minimum des sessions servies, et la capacite D UNE session', carte('fun_run').prix);
     ok(carte('minigolf_blacklight').prix === 'Dès 10 € / personne · 12 niveaux', '[B] minigolf : tarif saisi par le centre, avec sa note', carte('minigolf_blacklight').prix);
     ok(carte('arcade_time').prix === 'Tarif sur place', '[B] arcades : sans tarif saisi, « Tarif sur place », jamais un chiffre', carte('arcade_time').prix);
@@ -2054,11 +2056,11 @@ async function main() {
     const deuxParties = meta.laserOptions.find((o) => Number(o.games) === 2);
     const troisParties = meta.laserOptions.find((o) => Number(o.games) === 3);
     await page.click('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]');
-    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true', 3000, `${euros(deuxParties.price)} / personne`), '[B] toucher « 2 parties » la retient et met son prix sur la carte', `${euros(deuxParties.price)} / personne`);
+    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true', 3000, `${euros(deuxParties.price)} / personne · 2\u00a0joueurs minimum`), '[B] toucher « 2 parties » la retient et met son prix sur la carte', `${euros(deuxParties.price)} / personne`);
     await page.keyboard.press('ArrowRight');
-    ok(await attendre(page, (attendu) => { const p = document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="3"]'); return p.getAttribute('aria-checked') === 'true' && document.activeElement === p && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu; }, 3000, `${euros(troisParties.price)} / personne`), '[B] au clavier, la fleche droite passe a « 3 parties » (focus et prix suivent)');
+    ok(await attendre(page, (attendu) => { const p = document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="3"]'); return p.getAttribute('aria-checked') === 'true' && document.activeElement === p && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu; }, 3000, `${euros(troisParties.price)} / personne · 2\u00a0joueurs minimum`), '[B] au clavier, la fleche droite passe a « 3 parties » (focus et prix suivent)');
     await page.keyboard.press('ArrowLeft');
-    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true' && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu, 3000, `${euros(deuxParties.price)} / personne`), '[B] la fleche gauche revient a « 2 parties »');
+    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true' && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu, 3000, `${euros(deuxParties.price)} / personne · 2\u00a0joueurs minimum`), '[B] la fleche gauche revient a « 2 parties »');
     ok(await page.evaluate(() => document.querySelectorAll('#gridAct .fg-card.is-on[aria-checked="true"]').length === 4 && !document.querySelector('#goHours').disabled), '[B] quatre cartes cochees, « Continuer » actif');
 
     // =====================================================================
@@ -2418,12 +2420,18 @@ async function main() {
       etoiles: document.querySelectorAll('#t-ok .spark, #i-spark, .fg-title--spark').length,
     })));
     ok(recap.total === o6.prix, '[E] le total du recap EST le prix de la reponse de disponibilite', `${recap.total} vs ${o6.prix}`);
-    // Le compteur part a l image qui SUIT le rendu : d ici la, le texte dit
-    // deja le montant, puis repart de 0 pour y remonter en 700 ms. Lu trop
-    // tot, le montant final passait pour atteint, et la lecture suivante
-    // trouvait « 0 € » (vu le 2026-09-24 sur une machine rapide).
-    await dormir(900);
-    ok(await attendre(page, (attendu) => document.querySelector('#totalAmount').textContent.trim() === attendu, 3000, euros(o6.prix)), '[E] le compteur finit exactement sur le montant', euros(o6.prix));
+    // LE TOTAL NE PASSE PAR AUCUN AUTRE MONTANT (audit du 2026-09-28 : 25 EUR
+    // lus pour 39, 466 pour 780). Il montait de 0 a sa valeur en 700 ms ; releve
+    // toutes les 50 ms pendant une seconde, il doit dire le montant a chaque
+    // releve, le premier compris.
+    const relevesTotal = [];
+    for (let i = 0; i < 20; i += 1) {
+      relevesTotal.push(await page.evaluate(() => ((document.querySelector('#totalAmount') || {}).textContent || '').trim()));
+      await dormir(50);
+    }
+    const autresMontants = relevesTotal.filter((t) => t !== euros(o6.prix));
+    ok(autresMontants.length === 0, '[E] le total affiche son montant des le premier releve, jamais un autre chiffre (20 releves sur une seconde)',
+      autresMontants.length ? `${autresMontants.length} releve(s) faux : ${autresMontants.slice(0, 4).join(' | ')}` : euros(o6.prix));
     ok(recap.libelle === (o6.complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place'), '[E] le total dit ce qu il couvre (les arcades se reglent sur place)', recap.libelle);
     ok(/Paiement sur place/.test(recap.paiement) && /Carte ou espèces/.test(recap.paiement) && recap.logos.join(',') === '#i-card,#i-cash',
       '[E] le paiement sur place dit ses deux moyens, carte et especes, avec leurs deux logos', `${recap.paiement} ${recap.logos.join(',')}`);

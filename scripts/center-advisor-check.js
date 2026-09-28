@@ -1256,9 +1256,14 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
 
   // Trois lignes en base. Le tunnel, lui, empile le socle FICHIER sous la
   // table : il en vend beaucoup plus. C est tout le defaut du patch 39.
+  // LE MINIMUM TEMOIN (3) N EXISTE NULLE PART AILLEURS AU CATALOGUE : c est ce
+  // qui permet de le voir entrer puis sortir de la comparaison. Il valait 2
+  // jusqu au 2026-09-28 ; depuis, les formules qui lancent une partie de laser
+  // sont servies a 2 joueurs minimum (le laser se joue a deux), et un 2 venu
+  // d elles restait dans la comparaison apres la desactivation, a raison.
   const catalogueCommun = [
     { id: 'f1', name: 'Anniversaire enfant', min_pax: 6, price_type: 'per_pax', price_value: 22, is_birthday_formula: true, active: true },
-    { id: 'f2', name: 'Anniversaire ado', min_pax: 2, price_type: 'per_pax', price_value: 25, is_birthday_formula: true, active: true },
+    { id: 'f2', name: 'Anniversaire ado', min_pax: 3, price_type: 'per_pax', price_value: 25, is_birthday_formula: true, active: true },
     { id: 'f3', name: 'Teambuilding', min_pax: 10, price_type: 'per_pax', price_value: 35, is_birthday_formula: false, active: true },
   ];
   const ventes = Array.from({ length: 30 }, (unused, i) => ({
@@ -1292,8 +1297,8 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
   ok('les lignes de la table sont dans le catalogue lu',
     /Anniversaire ado/.test(String(sansSurcouche.minimums_du_catalogue.valeur)),
     String(sansSurcouche.minimums_du_catalogue.valeur).slice(0, 120));
-  ok('MONTAGE : le minimum 2 de la table entre dans la comparaison',
-    /\b2\b/.test(String(sansSurcouche.comparaison_de_minimums.valeur)),
+  ok('MONTAGE : le minimum 3 de la table entre dans la comparaison',
+    /\b3\b/.test(String(sansSurcouche.comparaison_de_minimums.valeur)),
     String(sansSurcouche.comparaison_de_minimums.valeur));
   const referenceSansSurcouche = Number(sansSurcouche.catalogue_actif.valeur);
 
@@ -1315,7 +1320,7 @@ function serie(nb, over = {}, depart = new Date('2026-01-05T00:00:00Z')) {
     !/Anniversaire ado/.test(String(avecSurcouche.formules_jamais_vendues.valeur)),
     String(avecSurcouche.formules_jamais_vendues.valeur).slice(0, 120));
   ok('et son minimum sort de la comparaison qui fonde un changement de regle',
-    !/\b2\b/.test(String(avecSurcouche.comparaison_de_minimums.valeur)),
+    !/\b3\b/.test(String(avecSurcouche.comparaison_de_minimums.valeur)),
     String(avecSurcouche.comparaison_de_minimums.valeur));
   ok('la liste des minimums ne la porte plus non plus',
     !/Anniversaire ado/.test(String(avecSurcouche.minimums_du_catalogue.valeur)),

@@ -28,6 +28,13 @@
 //
 // Lancement : node scripts/client-tarifs-check.js
 'use strict';
+// ZERO RESEAU, VRAIMENT. La disponibilite relit le calendrier scolaire officiel
+// (lib/booking-config, synchronisation Wallonie) : sans cet interrupteur, le
+// gate ouvrait une connexion TLS vers l exterieur, et Node sous Windows
+// plantait en sortant sur ce socket encore ouvert (« UV_HANDLE_CLOSING »,
+// code 127) apres un ALL OK. Mesure du 2026-09-28 : un TLSSocket actif au
+// process.exit, sur la version en prod comme sur la suivante.
+process.env.PINLANE_CALENDAR_SYNC = 'off';
 const path = require('path');
 const fs = require('fs');
 

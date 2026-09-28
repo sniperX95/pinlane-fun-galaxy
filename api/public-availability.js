@@ -45,6 +45,7 @@ const {
   isFormulaFullyBlockedOn,
 } = require('../lib/availability-blocks');
 const { buildProgramFormula, describeProgram, groupIsSplit, normalizeProgram } = require('../lib/visit-program');
+const { activityMinPax } = require('../lib/activity-catalog');
 const { buildFormulaComplements, buildVisitComplements } = require('../lib/booking-complements');
 // La projection d un scenario en creneau, la garde finale et les compositions
 // par defaut d une formule : le code que l agent lit aussi (proposedArrivals),
@@ -617,6 +618,13 @@ module.exports = async (req, res) => {
         respondVisit([], `${blockedItem.name} n'est pas disponible ce jour.`);
         return;
       }
+      // Une activite sous son minimum de joueurs (le laser se joue a deux) ne
+      // se planifie pas : on le dit au lieu de rendre une liste vide muette.
+      const sousMinimum = program.items.find((item) => Number(item.belowMinPax) > 0);
+      if (sousMinimum) {
+        respondVisit([], `${sousMinimum.name} se joue à ${sousMinimum.belowMinPax} joueurs minimum.`);
+        return;
+      }
 
       const engineContext = {
         reservations: snapshot.reservations,
@@ -1112,12 +1120,14 @@ module.exports = async (req, res) => {
     if (type === 'laser') {
       const slotsByTime = new Map();
       const candidateMinutes = new Set();
+      // Le laser se joue a deux au moins : sous le minimum, aucun depart.
+      const minimumLaser = activityMinPax(centerId, 'laser_game');
 
       // Départs Laser proposés au client : uniquement aux heures pleines ou
       // demies (grille :00/:30), on recale la borne basse si la config l'a
       // désalignée.
       const laserMinTime = Math.ceil(minTime * 2) / 2;
-      for (let value = laserMinTime; value <= maxTime; value += 0.5) {
+      for (let value = laserMinTime; pax >= minimumLaser && value <= maxTime; value += 0.5) {
         candidateMinutes.add(Math.round(value * 60));
       }
 
@@ -1127,6 +1137,7 @@ module.exports = async (req, res) => {
       snapshot.reservations
         .flatMap(laserWindowsFromReservation)
         .forEach((window) => {
+          if (pax < minimumLaser) return;
           const startMinute = Math.round(Number(window.start || 0));
           if (startMinute % PROGRAM_GRID_MINUTES !== 0) return;
           if (startMinute >= Math.round(laserMinTime * 60) && startMinute <= Math.round(maxTime * 60)) {
@@ -1191,7 +1202,9 @@ module.exports = async (req, res) => {
         requiresLanes: false,
         label: `${laserOption.label} Laser Game`,
         laserGames: laserOption.games,
-        message: slots.length ? '' : 'Aucun départ Laser Game disponible pour ces critères.',
+        message: pax < minimumLaser
+          ? `Le laser game se joue à ${minimumLaser} joueurs minimum.`
+          : (slots.length ? '' : 'Aucun départ Laser Game disponible pour ces critères.'),
       });
       return;
     }

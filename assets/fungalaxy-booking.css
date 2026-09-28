@@ -1213,12 +1213,14 @@ html.fg-pilote .fg { overflow: visible; }
   font-weight: 600;
   line-height: 1.4;
 }
-/* Refusee ce jour-la : la carte reste lisible et TOUCHABLE, et dit pourquoi.
-   Elle n est pas `aria-disabled` : une raison qu on ne peut pas atteindre ne
-   sert a personne. */
-.fg-card--formule.is-refus { opacity: 0.66; border-style: dashed; }
-@media (hover: hover) { .fg-card--formule.is-refus:hover { opacity: 1; border-color: var(--fg-amber); transform: none; } }
-.fg-card--formule.is-refus .fg-card__box { display: none; }
+/* Refusee ce jour-la ou pour ce groupe (une formule hors de ses jours, le
+   laser qui se joue a deux) : la carte reste lisible et TOUCHABLE, et dit
+   pourquoi. Elle n est pas `aria-disabled` : une raison qu on ne peut pas
+   atteindre ne sert a personne. */
+.fg-card.is-refus { opacity: 0.66; border-style: dashed; }
+@media (hover: hover) { .fg-card.is-refus:hover { opacity: 1; border-color: var(--fg-amber); transform: none; } }
+.fg-card.is-refus .fg-card__box,
+.fg-card.is-refus .fg-card__photo { display: none; }
 /* Une formule est un choix UNIQUE (role="radio") : sa case est ronde. */
 .fg-card--formule .fg-card__box { border-radius: 50%; }
 .fg-for__off {

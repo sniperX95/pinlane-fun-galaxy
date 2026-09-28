@@ -22,7 +22,9 @@
 //   [C] le navigateur du vieux tunnel annonce le MEME montant que le serveur ;
 //   [D] le formulaire Fun Galaxy compte les MEMES passages que le serveur ;
 //   [E] les temoins (duckpin, minigolf, laser) ne bougent pas d un centime ;
-//   [F] trois contre-epreuves : sans la multiplication, ce gate ROUGIT.
+//   [G] une ligne normalisee se renormalise a l identique (audit 2026-09-28 :
+//       165 EUR annonces, 90 EUR enregistres) ;
+//   [F] quatre contre-epreuves : sans chaque regle, ce gate ROUGIT.
 // =============================================================================
 const fs = require('fs');
 const path = require('path');
@@ -165,6 +167,103 @@ function main() {
   const laser = normalizeProgram([{ activityId: 'laser_game', games: 2 }], { centerId: CENTRE, pax: 12 }).items[0];
   ok(laser.sessions === undefined && Number(laser.games) === 2, 'le laser garde ses parties, aucune session ne s y ajoute', JSON.stringify({ games: laser.games, sessions: laser.sessions }));
 
+  // ---------------------------------------------------------------- [G]
+  section('G. UNE LIGNE NORMALISEE SE RENORMALISE A L IDENTIQUE (audit du 2026-09-28)');
+  // L audit QA : 12 joueurs, sessions de 30 min. Le tunnel annoncait
+  // 3 x 55 = 165 EUR ; la reservation enregistree portait 90 EUR. Le serveur
+  // renormalise le programme une fois le snapshot lu (renormalizeVisitProgram)
+  // et la fiche du comptoir le renvoie tel qu enregistre : les 90 min du
+  // GROUPE etaient relues comme la duree d UNE session, aucun palier ne
+  // valait 90, et le premier (15 min, 30 EUR) reprenait la main.
+  const garde = (l) => ({ sessions: l.sessions, minutes: l.minutes, price: l.price, sessionMinutes: l.sessionMinutes });
+  const une = normalizeProgram([{ activityId: 'fun_run', minutes: 30 }], { centerId: CENTRE, pax: 12 });
+  ok(une.items[0].price === 165 && une.items[0].minutes === 90 && une.items[0].sessionMinutes === 30,
+    'le cas de l audit : 12 joueurs, sessions de 30 min = 3 x 55 = 165 EUR, 90 min, et le palier (30) voyage a part',
+    JSON.stringify(garde(une.items[0])));
+  const ecartsIdem = [];
+  for (let pax = 1; pax <= 26; pax += 1) {
+    for (const minutes of PALIERS) {
+      const a = normalizeProgram([{ activityId: 'fun_run', minutes }], { centerId: CENTRE, pax });
+      const b = normalizeProgram(a.items, { centerId: CENTRE, pax });
+      const c = normalizeProgram(b.items, { centerId: CENTRE, pax });
+      const [ga, gb, gc] = [a, b, c].map((p) => JSON.stringify(garde(p.items[0])));
+      if (ga !== gb || gb !== gc || a.price !== c.price) ecartsIdem.push(`${pax}p/${minutes}min ${ga} -> ${gb}`);
+    }
+  }
+  ok(ecartsIdem.length === 0, `renormaliser deux fois ne change ni le prix ni la duree (${26 * PALIERS.length} cas)`, ecartsIdem.slice(0, 2).join(' ; '));
+  // Une ligne ENREGISTREE avant ce correctif : le temps du groupe et ses
+  // passages, sans palier.
+  const ancienne = normalizeProgram([{ activityId: 'fun_run', minutes: 90, sessions: 3, price: 90 }], { centerId: CENTRE, pax: 12 }).items[0];
+  ok(ancienne.price === 165 && ancienne.sessionMinutes === 30,
+    'une ligne deja enregistree (90 min, 3 passages, sans palier) retrouve son palier de 30 min et son prix', JSON.stringify(garde(ancienne)));
+  // Le chemin du serveur, de bout en bout : la demande du tunnel, puis la
+  // renormalisation de la reservation.
+  const { normalizeReservationRequest, renormalizeVisitProgram } = require('../lib/reservation-request');
+  const { getCenter } = require('../lib/ops-knowledge');
+  const demande = normalizeReservationRequest({
+    centerId: CENTRE, type: 'visite', date: '2026-12-05', startTime: '14:00', pax: 12,
+    program: [{ activityId: 'fun_run', minutes: 30 }],
+  }, { channel: 'public' });
+  const prixDemande = Number(demande.program.items[0].price);
+  renormalizeVisitProgram(demande, getCenter(CENTRE).resources.bowling, { channel: 'public' });
+  const prixRenormalise = Number(demande.program.items[0].price);
+  ok(prixDemande === 165 && prixRenormalise === 165 && Number(demande.programPrice) === 165,
+    'reservation : 165 EUR a la demande, 165 EUR apres la renormalisation du serveur', `${prixDemande} puis ${prixRenormalise} (programme ${demande.programPrice})`);
+  // Le complement de visite reproduit la ligne telle quelle.
+  const { ligneDeProgramme } = require('../lib/booking-complements');
+  const reproduite = ligneDeProgramme(une.items[0]);
+  ok(Number(reproduite.minutes) === 30, 'un complement de visite renvoie le palier d une session, pas le temps du groupe', JSON.stringify(reproduite));
+  // La fiche du comptoir relit une ligne enregistree.
+  ok(typeof nav.funRunSessionMinutes === 'function'
+    && nav.funRunSessionMinutes(une.items[0]) === 30
+    && nav.funRunSessionMinutes({ minutes: 90, sessions: 3 }) === 30
+    && nav.funRunSessionMinutes({ minutes: 45 }) === 45,
+  'la fiche du comptoir relit le palier (30 min), jamais le temps du groupe (90)');
+  const app = fs.readFileSync(path.join(ROOT, 'assets/app-main.js'), 'utf8');
+  const fiche = app.slice(app.indexOf('function buildEditProgramFromReservation('), app.indexOf('function estimerPrixProgramme('));
+  ok(/funRunSessionMinutes\(item, getActivitySessionCount\(/.test(fiche) && !/reglages\.minutes = Number\(item\.minutes\)/.test(fiche),
+    'la fiche du comptoir passe par ce palier (avec les passages du groupe) pour reconstruire le programme d un dossier');
+
+  // LE DOSSIER ENREGISTRE. La base filtrait les champs d une ligne a
+  // l ecriture (lib/database.js, normalizeReservationProgram) et jetait
+  // `sessions` et `sessionMinutes` : un dossier RELU redevenait 3 x 15 min.
+  // On passe par le vrai filtre, puis on renormalise ce qu il a garde.
+  const { normalizeReservationPayload } = require('../lib/database');
+  const ranger = (programme, pax) => normalizeReservationPayload({
+    centerId: CENTRE, type: 'activite', date: '2026-12-05', startTime: '14:00', duration: 0.5, pax, name: 'QA', phone: '+32491000000', email: 'qa@example.com', program: programme,
+  }, {}).program;
+  const ecartsBase = [];
+  for (let pax = 1; pax <= 26; pax += 1) {
+    for (const minutes of PALIERS) {
+      const avant = normalizeProgram([{ activityId: 'fun_run', minutes }], { centerId: CENTRE, pax });
+      const range = ranger(avant, pax);
+      const relu = normalizeProgram(range.items, { centerId: CENTRE, pax });
+      if (JSON.stringify(garde(avant.items[0])) !== JSON.stringify(garde(relu.items[0])) || avant.price !== relu.price) {
+        ecartsBase.push(`${pax}p/${minutes}min ${JSON.stringify(garde(avant.items[0]))} -> range ${JSON.stringify(range.items[0])} -> ${JSON.stringify(garde(relu.items[0]))}`);
+      }
+    }
+  }
+  ok(ecartsBase.length === 0, `un dossier ENREGISTRE puis relu garde son prix et sa duree (${26 * PALIERS.length} cas, par le vrai filtre de la base)`, ecartsBase.slice(0, 2).join(' ; '));
+  const rangeDouze = ranger(une, 12).items[0] || {};
+  ok(rangeDouze.sessions === 3 && rangeDouze.sessionMinutes === 30, 'la base garde les passages et le palier', JSON.stringify(rangeDouze));
+  // Les deux lignes Fun Run enregistrees en prod AVANT ce correctif (lecture
+  // du 2026-09-28) : 64 et 59 joueurs, 195 et 180 minutes, 390 et 360 EUR,
+  // sans passages ni palier. Leur palier est 15 min (13 et 12 passages).
+  const heritage = [
+    { pax: 64, ligne: { activityId: 'fun_run', name: 'Fun Run by PIXEL', planned: false, minutes: 195, price: 390, priceKnown: true } },
+    { pax: 59, ligne: { activityId: 'fun_run', name: 'Fun Run by PIXEL', planned: false, minutes: 180, price: 360, priceKnown: true } },
+  ];
+  const relusHeritage = heritage.map((h) => normalizeProgram([h.ligne], { centerId: CENTRE, pax: h.pax }).items[0]);
+  ok(relusHeritage[0].price === 390 && relusHeritage[0].sessionMinutes === 15 && relusHeritage[1].price === 360 && relusHeritage[1].sessionMinutes === 15,
+    'les deux lignes anciennes de la prod se relisent a leur prix (390 et 360 EUR, palier 15 min)', JSON.stringify(relusHeritage.map(garde)));
+  ok(nav.funRunSessionMinutes(heritage[0].ligne, 13) === 15 && nav.funRunSessionMinutes(heritage[1].ligne, 12) === 15,
+    'la fiche du comptoir les relit pareil (palier 15 min)');
+  // Le tunnel envoie un PALIER sans passages : il reste ce palier, meme pour
+  // un groupe qui tourne (30 min pour 12 personnes n est pas 3 x 10 min).
+  ok(normalizeProgram([{ activityId: 'fun_run', minutes: 30 }], { centerId: CENTRE, pax: 12 }).items[0].sessionMinutes === 30
+    && nav.funRunSessionMinutes({ minutes: 30 }, 3) === 30,
+    'un palier envoye par le tunnel reste ce palier, quel que soit le groupe');
+
   // ---------------------------------------------------------------- [F]
   section('F. CONTRE-EPREUVES PAR MUTATION DU CODE DE PRODUCTION');
   const MUTATIONS = [
@@ -198,15 +297,44 @@ function main() {
         return n([{ activityId: 'fun_run', minutes: 15 }], { centerId: CENTRE, pax: 12 }).items[0].sessions === 3;
       },
     },
+    {
+      fichier: 'lib/visit-program.js',
+      ancre: 'const minutesDemandees = minutesDUneSession(raw, item.sessions);',
+      mute: 'const minutesDemandees = Math.trunc(Number(raw && raw.minutes) || 0);',
+      label: 'en relisant le temps du groupe comme un palier, 165 EUR repartent a 90 EUR a la renormalisation',
+      verdict: () => {
+        const { normalizeProgram: n } = frais('../lib/visit-program');
+        const a = n([{ activityId: 'fun_run', minutes: 30 }], { centerId: CENTRE, pax: 12 });
+        return n(a.items, { centerId: CENTRE, pax: 12 }).items[0].price === 165;
+      },
+    },
+    {
+      // Le seul cas que le stockage tranche seul : 8 personnes en sessions de
+      // 15 min font 30 min de groupe, et 30 est AUSSI un palier. Sans les
+      // passages en base, la relecture le prend pour des sessions de 30 min.
+      fichier: 'lib/database.js',
+      ancre: '    if (item.sessions != null) out.sessions = Math.min(40, Math.max(1, Math.trunc(Number(item.sessions) || 1)));\n    if (item.sessionMinutes != null) out.sessionMinutes = Math.min(600, Math.max(0, Math.trunc(Number(item.sessionMinutes) || 0)));\n',
+      mute: '',
+      label: 'sans les passages en base, 8 personnes en sessions de 15 min (60 EUR) se relisent a 2 x 55 EUR',
+      verdict: () => {
+        const { normalizeProgram: n } = frais('../lib/visit-program');
+        const { normalizeReservationPayload: np } = require('../lib/database');
+        const a = n([{ activityId: 'fun_run', minutes: 15 }], { centerId: CENTRE, pax: 8 });
+        const range = np({ centerId: CENTRE, type: 'activite', date: '2026-12-05', startTime: '14:00', duration: 0.5, pax: 8, name: 'QA', phone: '+32491000000', email: 'qa@example.com', program: a }, {}).program;
+        return a.price === 60 && n(range.items, { centerId: CENTRE, pax: 8 }).items[0].price === 60;
+      },
+    },
   ];
   for (const m of MUTATIONS) {
     const chemin = path.join(ROOT, m.fichier);
     const original = fs.readFileSync(chemin, 'utf8');
-    const compte = original.split(m.ancre).length - 1;
-    if (!ok(compte === 1, `contre-epreuve montable : « ${m.ancre.slice(0, 46)}… » une seule fois dans ${m.fichier}`, `${compte} occurrence(s)`)) continue;
+    // Une ancre de plusieurs lignes suit les fins de ligne du fichier.
+    const ancre = original.indexOf('\r\n') >= 0 ? m.ancre.replace(/\r?\n/g, '\r\n') : m.ancre;
+    const compte = original.split(ancre).length - 1;
+    if (!ok(compte === 1, `contre-epreuve montable : « ${m.ancre.replace(/\s+/g, ' ').slice(0, 46)}… » une seule fois dans ${m.fichier}`, `${compte} occurrence(s)`)) continue;
     let rouge = false;
     try {
-      fs.writeFileSync(chemin, original.split(m.ancre).join(m.mute));
+      fs.writeFileSync(chemin, original.split(ancre).join(m.mute));
       rouge = m.verdict() === false;
     } catch (error) {
       rouge = true; // le code mute jette : c est aussi un rouge

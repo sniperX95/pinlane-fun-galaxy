@@ -51,7 +51,7 @@ const MUTATIONS = {
   libre: ["var entre = it.dayAccess ? 'toute la journée' : detailSessions(it);", 'var entre = detailSessions(it);'],
   environ: ['return s + (it.dayAccess ? 0 : (Number(it.minutes) || 0));', 'return s + (Number(it.minutes) || 0);'],
   journee: ['var journee = items.length > 0 && items.every(function (it) { return it.dayAccess; });', 'var journee = false;'],
-  carte: ["function precisionsCarte(a) { return [a.note, a.ageRange ? a.ageRange.replace(/ /g, '\\u00a0') : ''].filter(Boolean).join(' · '); }", "function precisionsCarte(a) { return a.note || ''; }"],
+  carte: ["    return [a.note, a.ageRange ? a.ageRange.replace(/ /g, '\\u00a0') : '', a.minPax > 1 ? a.minPax + '\\u00a0joueurs minimum' : ''].filter(Boolean).join(' · ');", "    return a.note || '';"],
   parties: ['|| !b.startTime || journee[b.activityId]) return;', '|| !b.startTime) return;'],
   insecable: ["a.ageRange ? a.ageRange.replace(/ /g, '\\u00a0') : ''", "a.ageRange || ''"],
 };

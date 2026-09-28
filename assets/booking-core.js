@@ -184,6 +184,27 @@ function getActivitySessionCount(activity, pax) {
   return Math.min(40, Math.max(1, sessions));
 }
 
+// Le palier d UNE session d une ligne de programme enregistree. MIROIR de
+// minutesDUneSession de lib/visit-program : `minutes` y est le temps de tout
+// le groupe (3 passages de 30 min = 90), le relire comme un palier faisait
+// retomber la ligne sur 15 min a la premiere modification.
+// `sessionsDuGroupe` : les passages de CE groupe (getActivitySessionCount),
+// pour une ligne enregistree avant que la base ne garde ses passages.
+function funRunSessionMinutes(item, sessionsDuGroupe = 1) {
+  if (!item) return 0;
+  const palier = Math.trunc(Number(item.sessionMinutes) || 0);
+  if (palier > 0) return palier;
+  const minutes = Math.trunc(Number(item.minutes) || 0);
+  const passages = Math.trunc(Number(item.sessions) || 0);
+  if (minutes > 0 && passages > 1) return Math.round(minutes / passages);
+  const groupe = Math.trunc(Number(sessionsDuGroupe) || 1);
+  const estUnPalier = (m) => FUN_RUN_OPTIONS.some((option) => Number(option.minutes) === m);
+  if (minutes > 0 && groupe > 1 && !estUnPalier(minutes) && minutes % groupe === 0 && estUnPalier(minutes / groupe)) {
+    return minutes / groupe;
+  }
+  return minutes;
+}
+
 function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes = null, dateStr = '', startTime = '' } = {}) {
   if (!activity) return null;
   // Grille de session : le montant vient de la grille, pas d'un tarif saisi.

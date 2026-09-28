@@ -25,7 +25,9 @@ const database = require('../lib/database');
 // Hors reseau : la table statique des conges scolaires fait foi (c est le
 // serveur de prod qui relit le calendrier officiel, pas le mock).
 process.env.PINLANE_CALENDAR_SYNC = 'off';
-const { BOWLING_PRICES, DURATION_OPTIONS, LASER_GAME_OPTIONS, FUN_RUN_OPTIONS, FORMULES } = require('../lib/booking-config');
+// Les formules comme la prod les sert (getEffectiveFormules) : le minimum qui
+// s applique compris (le laser se joue a deux), jamais la constante brute.
+const { BOWLING_PRICES, DURATION_OPTIONS, LASER_GAME_OPTIONS, FUN_RUN_OPTIONS, getEffectiveFormules } = require('../lib/booking-config');
 const FUN_GALAXY_CENTER = require('../ops-knowledge/centers.json').centers.find((center) => center.id === 'libramont');
 
 const PORT = Number(process.env.PINLANE_DEVTUNNEL_PORT || 4230);
@@ -52,7 +54,7 @@ const { buildCalendar, calendarFromParam } = require('../api/public-booking-meta
 
 const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
-  { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', priceValue: null, unitLabel: 'par personne', order: 2, defaultMinutes: 22 },
+  { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', priceValue: null, unitLabel: 'par personne', order: 2, defaultMinutes: 22, minPax: 2 },
   // Les textes du mock suivent la RICHESSE du catalogue de prod (prix saisi,
   // notes longues) : un mock plus court que la prod cache les cartes qui
   // regonflent (lecon du 2026-08-18, le CTA sous le pli n existait qu en prod).
@@ -91,7 +93,7 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
   const info = FUN_GALAXY_CENTER.publicInfo || {};
   const bowling = FUN_GALAXY_CENTER.resources && FUN_GALAXY_CENTER.resources.bowling ? FUN_GALAXY_CENTER.resources.bowling : {};
   return {
-    ok: true, today: TODAY, bookingHorizonDays: 365, durationOptions: DURATION_OPTIONS, formules: FORMULES, activities: ACTIVITIES,
+    ok: true, today: TODAY, bookingHorizonDays: 365, durationOptions: DURATION_OPTIONS, formules: getEffectiveFormules('libramont'), activities: ACTIVITIES,
     laserOptions: LASER_GAME_OPTIONS, bowlingPrices: BOWLING_PRICES, funRunOptions: FUN_RUN_OPTIONS,
     center: {
       id: 'libramont', status: 'active', demonstration: false,

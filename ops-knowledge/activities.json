@@ -52,7 +52,8 @@
         "bookable": true,
         "order": 2,
         "priceType": "grid_laser",
-        "unitLabel": "par personne"
+        "unitLabel": "par personne",
+        "minPax": 2
       }
     },
     {

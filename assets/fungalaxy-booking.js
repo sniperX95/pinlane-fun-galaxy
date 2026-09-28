@@ -947,7 +947,7 @@
     // (Fun Run, 5 joueurs) sort de la selection si le groupe la depasse.
     state.selection = state.selection.filter(function (id) {
       var a = activite(id);
-      return a && !(a.maxPax && state.pax > a.maxPax);
+      return a && !(a.maxPax && state.pax > a.maxPax) && !tropPeu(a);
     });
     // Le jour ou le groupe a pu changer : une formule qui n est plus valable
     // ce jour-la se decoche, sinon le client part vers un ecran d heures vide.
@@ -1003,13 +1003,18 @@
       var p = photo(a.id);
       var on = state.selection.indexOf(a.id) >= 0;
       var trop = a.maxPax && state.pax > a.maxPax;
+      // Pas assez de joueurs : la carte reste TOUCHABLE et dit pourquoi, comme
+      // une formule refusee (une raison qu on ne peut pas atteindre ne sert a
+      // personne).
+      var peu = !trop && tropPeu(a);
       return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '" data-activity="' + esc(a.id) + '">'
-        + '<div class="fg-card fg-rise' + (on ? ' is-on' : '') + (trop ? ' is-off' : '') + '" style="--i:' + (i % 8) + '" data-activity="' + esc(a.id) + '" role="checkbox" tabindex="' + (trop ? '-1' : '0') + '" aria-checked="' + on + '" ' + (trop ? 'aria-disabled="true" title="' + esc(a.name) + ' : ' + a.maxPax + ' personnes maximum"' : '') + '>'
+        + '<div class="fg-card fg-rise' + (on ? ' is-on' : '') + (trop ? ' is-off' : '') + (peu ? ' is-refus' : '') + '" style="--i:' + (i % 8) + '" data-activity="' + esc(a.id) + '" role="checkbox" tabindex="' + (trop ? '-1' : '0') + '" aria-checked="' + on + '" ' + (trop ? 'aria-disabled="true" title="' + esc(a.name) + ' : ' + a.maxPax + ' personnes maximum"' : '') + '>'
         + (p ? '<span class="fg-card__photo" aria-hidden="true"><img data-src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async"></span>' : '')
         + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
         + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
         + '<span class="fg-card__name">' + esc(a.name) + '</span>'
         + '<span class="fg-card__price">' + esc(prixCarte(a)) + (precisionsCarte(a) ? ' · ' + esc(precisionsCarte(a)) : '') + '</span>'
+        + (peu ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Il faut être au moins ' + a.minPax + ' joueurs. Vous êtes ' + state.pax + '.</span>' : '')
         + '</div>'
         + rendreOption(a)
         + '</li>';
@@ -1046,7 +1051,9 @@
     var j = jourInfo(state.date) || {};
     if (f.offerOff) return { ok: false, court: 'Indisponible', pourquoi: 'Cette offre est momentanément suspendue.' };
     if ((j.unavailableFormulaIds || []).indexOf(f.id) >= 0) return { ok: false, court: 'Indisponible ce jour', pourquoi: 'Une des activités de cette formule n’est pas disponible ce jour-là.' };
-    if (f.minPax && state.pax < f.minPax) return { ok: false, court: 'Dès ' + f.minPax + ' personnes', pourquoi: 'Vous êtes ' + state.pax + ' : cette formule demande au moins ' + f.minPax + ' personnes.' };
+    if (f.minPax && state.pax < f.minPax) return { ok: false, court: 'Dès ' + f.minPax + ' personnes', pourquoi: f.minPaxLaser
+      ? 'Le laser game de cette formule se joue à ' + f.minPax + ' minimum. Vous êtes ' + state.pax + '.'
+      : 'Vous êtes ' + state.pax + ' : cette formule demande au moins ' + f.minPax + ' personnes.' };
     if (f.noHolidays && j.formulaHolidayOff) return { ok: false, court: 'Pas pendant les vacances', pourquoi: 'Non valable pendant les vacances scolaires et les jours fériés.' };
     if (f.validDays && f.validDays.length && f.validDays.indexOf(jourSemaine(state.date)) < 0) return { ok: false, court: joursLisibles(f.validDays), pourquoi: 'Cette formule se réserve ' + joursLisibles(f.validDays) + ', pas ' + (JOURS_SEM[jourSemaine(state.date)] ? 'le ' + JOURS_SEM[jourSemaine(state.date)] : 'ce jour-là') + '.' };
     return { ok: true, court: '', pourquoi: '' };
@@ -1163,6 +1170,12 @@
     if (anime && prix.textContent !== avant) rejouer(prix, 'is-maj');
   }
   function basculerActivite(card) {
+    // Refusee pour ce groupe : on fait lire la raison, on ne coche pas.
+    if (card && card.classList.contains('is-refus')) {
+      var pourquoi = card.querySelector('.fg-for__off');
+      if (pourquoi) { pourquoi.classList.remove('is-pulse'); void pourquoi.offsetWidth; pourquoi.classList.add('is-pulse'); dire(pourquoi.textContent.trim()); }
+      return;
+    }
     if (!card || card.classList.contains('is-off')) return;
     chargerPhotoCarte(card);
     var item = card.closest('.fg-grid__item');
@@ -2036,7 +2049,13 @@
   // L age est celui que le CENTRE declare (public-booking-meta).
   function ageActivite(id) { var a = activite(id); return a && a.ageRange ? a.ageRange : ''; }
   // L age ne se coupe pas en fin de ligne (« · 4 » puis « à 12 ans »).
-  function precisionsCarte(a) { return [a.note, a.ageRange ? a.ageRange.replace(/ /g, '\u00a0') : ''].filter(Boolean).join(' · '); }
+  // Le minimum de joueurs se lit sur la carte avant tout choix (le laser se
+  // joue a deux) : le client ne le decouvre pas en cochant.
+  function precisionsCarte(a) {
+    return [a.note, a.ageRange ? a.ageRange.replace(/ /g, '\u00a0') : '', a.minPax > 1 ? a.minPax + '\u00a0joueurs minimum' : ''].filter(Boolean).join(' · ');
+  }
+  // Pas assez de joueurs pour lancer l activite (minPax du catalogue).
+  function tropPeu(a) { return Boolean(a && a.minPax > 1 && state.pax < a.minPax); }
   function etapeVisite(o) {
     return '<li class="fg-visit__step' + (o.genre ? ' fg-visit__step--' + o.genre : '') + (o.bouge ? ' is-moved' : '') + '"><b>' + esc(o.heure) + '</b>'
       + '<span>' + (o.icone ? '<svg aria-hidden="true"><use href="#' + o.icone + '"/></svg>' : '') + esc(o.titre) + '</span>'
@@ -2456,22 +2475,11 @@
     if (final && state.contact.note) html += '<p class="fg-recap__detail fg-recap__note fg-rise" style="--i:' + (7 + lignes.length) + '">Votre mot pour l’équipe&nbsp;: «&nbsp;' + esc(state.contact.note) + '&nbsp;»</p>';
     return html;
   }
+  // LE TOTAL S AFFICHE A SA VALEUR, D EMBLEE. Il montait de 0 a son montant en
+  // 700 ms : l audit du 2026-09-28 a lu 25 EUR pour 39, 466 pour 780, et un
+  // client qui regarde a ce moment-la voit un prix qui n existe pas.
   function rendreRecap() {
     $('#recap').innerHTML = htmlRecap(true);
-    var prix = Number(((state.creneau || {}).reponse || {}).price) || 0;
-    if (prix > 0 && !reduced) compterJusqua($('#totalAmount'), prix);
-  }
-  // Le total monte jusqu a sa valeur reelle : la valeur finale est toujours exacte.
-  function compterJusqua(el, cible) {
-    var t0 = null, duree = 700;
-    var pas = function (t) {
-      if (t0 === null) t0 = t;
-      var p = Math.min(1, (t - t0) / duree);
-      var doux = 1 - Math.pow(1 - p, 3);
-      el.textContent = euros(Math.round(cible * doux));
-      if (p < 1) requestAnimationFrame(pas); else el.textContent = euros(cible);
-    };
-    requestAnimationFrame(pas);
   }
 
   /* --- L envoi -------------------------------------------------------------------- */

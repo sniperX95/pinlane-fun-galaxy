@@ -19,7 +19,7 @@ const {
 const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
-const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
+const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
 const { sendCustomRequestAck } = require('../lib/ops-communications');
 const {
   loadAvailabilityBlocks,
@@ -231,7 +231,22 @@ async function handlePilotLead(req, res, body) {
 // Gembloux pour les formules 6 a 8) ne peut jamais y etre planifiee : le
 // moteur rend zero creneau (mesure du 2026-08-22). Le catalogue le dit, le
 // formulaire ne la propose plus. Seule une coupure EXPLICITE compte : une
-// etape sans reglage (boissons, credit d arcade) ne retire rien.
+// etape sans reglage ne retire rien.
+//
+// UN SERVICE DU BAR N EST PAS UNE INSTALLATION. Les boissons et le credit
+// d arcade sont des pseudo-types de service du moteur (bar_service*, jamais
+// comptes comme une ressource, lib/declared-resources.js) : leur case dans
+// Etablissement dit s ils se vendent SEULS a la carte, pas s ils se servent
+// dans une formule. Les deux centres de prod les ont a false : toutes les
+// formules se disaient absentes et l onglet Formules etait vide (2026-09-29).
+const TYPES_DE_SERVICE = new Set(['bar_service', 'bar_service_then_autonomous']);
+function estUnService(step) {
+  let type = String((step && step.resourceType) || '');
+  if (!type) {
+    try { type = String((getActivity(step.activityId) || {}).resourceType || ''); } catch (error) { type = ''; }
+  }
+  return TYPES_DE_SERVICE.has(type);
+}
 function activitesManquantes(formuleId, center) {
   const availability = center && center.activityAvailability && typeof center.activityAvailability === 'object'
     ? center.activityAvailability
@@ -239,7 +254,9 @@ function activitesManquantes(formuleId, center) {
   if (!availability) return [];
   let doc = null;
   try { doc = getFormula(formuleId); } catch (error) { return []; }
-  const ids = new Set((doc && Array.isArray(doc.steps) ? doc.steps : []).map((step) => step && step.activityId).filter(Boolean));
+  const ids = new Set((doc && Array.isArray(doc.steps) ? doc.steps : [])
+    .filter((step) => step && step.activityId && !estUnService(step))
+    .map((step) => step.activityId));
   return [...ids].filter((id) => availability[id] === false);
 }
 

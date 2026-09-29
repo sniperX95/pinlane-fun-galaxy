@@ -416,8 +416,20 @@ async function reglesCatalogue(S) {
   S.opsKnowledge.applyCenterRecords([{ id: 'libramont', config: { customRequest: { fromPax: 40 } } }]);
   const regle = await get('libramont');
   S.opsKnowledge.applyCenterRecords([]);
-  return { lib: lib.json, gem: gem.json, regle: regle.json };
+  // LA DONNEE DE PROD, relue le 2026-09-29 (lecture seule) : les deux centres
+  // ont les boissons et le credit d arcade a false dans Etablissement (ils
+  // ne se vendent pas seuls), Gembloux la plaine et les tables de fete aussi.
+  S.opsKnowledge.applyCenterRecords([
+    { id: 'libramont', config: { activityAvailability: PROD_LIBRAMONT } },
+    { id: 'gembloux', config: { activityAvailability: PROD_GEMBLOUX } },
+  ]);
+  const libProd = await get('libramont');
+  const gemProd = await get('gembloux');
+  S.opsKnowledge.applyCenterRecords([]);
+  return { lib: lib.json, gem: gem.json, regle: regle.json, libProd: libProd.json, gemProd: gemProd.json };
 }
+const PROD_LIBRAMONT = { darts: true, bowling: true, fun_run: true, billards: true, karting_vr: false, laser_game: true, playground: true, arcade_time: true, golf_oclock: false, party_table: true, axe_throwing: false, arcade_credit: false, service_drinks: false, duckpin_bowling: true, free_roaming_vr: false, minigolf_blacklight: true };
+const PROD_GEMBLOUX = { darts: false, bowling: true, fun_run: false, billards: true, karting_vr: false, laser_game: true, playground: false, arcade_time: true, golf_oclock: true, party_table: false, axe_throwing: false, arcade_credit: false, service_drinks: false, duckpin_bowling: false, free_roaming_vr: false, minigolf_blacklight: true };
 function verifierCatalogue(r) {
   section('D. LE CATALOGUE PUBLIC');
   ok(r.lib && r.lib.center && r.lib.center.customRequest && r.lib.center.customRequest.fromPax === 31, 'Libramont : demande sur mesure des 31 personnes', JSON.stringify(r.lib && r.lib.center && r.lib.center.customRequest));
@@ -425,6 +437,15 @@ function verifierCatalogue(r) {
   const f = (j, id) => ((j && j.formules) || []).find((x) => x.id === id) || {};
   ok(['f6', 'f7', 'f8'].every((id) => (f(r.gem, id).missingActivityIds || []).includes('playground')), 'Gembloux : les formules 6 a 8 disent la plaine de jeux qui leur manque', ['f6', 'f7', 'f8'].map((id) => `${id}:${JSON.stringify(f(r.gem, id).missingActivityIds || null)}`).join(' '));
   ok(((r.lib && r.lib.formules) || []).every((x) => !x.missingActivityIds), 'Libramont : aucune formule ne manque de rien');
+  const retirees = (j) => ((j && j.formules) || []).filter((x) => x.missingActivityIds);
+  const dire = (l) => l.map((x) => `${x.id}:${x.missingActivityIds.join('+')}`).join(' ') || 'aucune';
+  const libP = retirees(r.libProd), gemP = retirees(r.gemProd);
+  ok(((r.libProd && r.libProd.formules) || []).length >= 8 && libP.length === 0,
+    'DONNEE DE PROD : a Libramont, boissons et credit d arcade coupes a la carte ne retirent aucune formule (ce sont des services du bar)', dire(libP));
+  ok(['f6', 'f7', 'f8'].every((id) => { const x = gemP.find((y) => y.id === id); return x && x.missingActivityIds.includes('playground') && x.missingActivityIds.includes('party_table'); })
+    && gemP.every((x) => x.missingActivityIds.every((id) => PROD_GEMBLOUX[id] === false && id !== 'service_drinks' && id !== 'arcade_credit'))
+    && !gemP.some((x) => ['f1', 'f2', 'f3', 'f4', 'f5'].includes(x.id)),
+    'DONNEE DE PROD : a Gembloux, seules la plaine de jeux et les tables de fete retirent des formules (6 a 8), jamais un service du bar', dire(gemP));
   const laser = ((r.lib && r.lib.activities) || []).find((a) => a.id === 'laser_game') || {};
   const plaine = ((r.lib && r.lib.activities) || []).find((a) => a.id === 'playground') || {};
   ok(laser.minAge === 7 && laser.minHeightCm === 130 && plaine.ageRange === '4 à 12 ans', 'les faits d age du centre sont servis (laser des 7 ans et 1,30 m, plaine 4 a 12 ans)', JSON.stringify({ laser: [laser.minAge, laser.minHeightCm], plaine: plaine.ageRange }));
@@ -1032,6 +1053,13 @@ async function contreEpreuves(browser, mock) {
       mute: '  return [];',
       label: 'sans les activites manquantes, Gembloux propose une plaine de jeux qu il n a pas',
       rouge: async () => { const c = await reglesCatalogue(chargerServeur()); return !((c.gem.formules || []).find((f) => f.id === 'f6') || {}).missingActivityIds; },
+    },
+    {
+      fichier: 'api/public-booking-meta.js',
+      ancre: '    .filter((step) => step && step.activityId && !estUnService(step))',
+      mute: '    .filter((step) => step && step.activityId)',
+      label: 'sans l exception des services du bar, la donnee de prod vide l onglet Formules de Libramont',
+      rouge: async () => { const c = await reglesCatalogue(chargerServeur()); return (c.libProd.formules || []).some((f) => f.missingActivityIds); },
     },
   ];
   for (const m of MUTATIONS) {

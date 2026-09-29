@@ -114,7 +114,7 @@ async function main() {
   const grand = armes + 10;
   record('la regle du groupe scinde dit NON sous la capacite', visitProgram.groupIsSplit({ centerId: CENTER_ID, pax: petit, items: PROGRAMME }) === false, `${petit} personnes`);
   record('et OUI au-dessus', visitProgram.groupIsSplit({ centerId: CENTER_ID, pax: grand, items: PROGRAMME }) === true, `${grand} personnes`);
-  record('sans laser au programme, jamais de groupe scinde', visitProgram.groupIsSplit({ centerId: CENTER_ID, pax: grand, items: [{ activityId: 'bowling', duration: 1 }] }) === false);
+  record('sans laser ni activite qui tourne au programme, jamais de groupe scinde', visitProgram.groupIsSplit({ centerId: CENTER_ID, pax: grand, items: [{ activityId: 'bowling', duration: 1 }] }) === false);
 
   section('[1] Un groupe qui tient dans l arene ne recoit aucune offre');
   const petitGroupe = await appel(availability, requete(petit));

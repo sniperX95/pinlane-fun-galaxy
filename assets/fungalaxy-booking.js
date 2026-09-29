@@ -113,6 +113,7 @@
     creneau: null,             // le slot retenu (avec opsPlan)
     contact: { prenom: '', nom: '', email: '', telephone: '', note: '', occasion: '', occasionAutre: '' },
     reservation: null,
+    attente: null,             // l offre d attente acceptee : { activityId, participants, cle } (cle : la demande sans elle)
   };
   var SCENES = ['date', 'activites', 'heures', 'contact', 'recap', 'fin'];
   var ETAPES = [
@@ -1585,8 +1586,23 @@
   var reveilGarder = false;    // « Garder » s eveille a la premiere reponse apres l arrivee sur les heures, pas a chaque heure posee
   var signaturePistes = '';    // les pistes rendues (activites + heures) : sinon, on met a jour sur place
   var adaptation = null;       // { deplace, pour, t } : l activite deplacee pour l heure posee
-  function invaliderDispo() { state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; goContact.disabled = true; }
+  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; goContact.disabled = true; }
+  // LES LIGNES CHOISIES a l ecran des activites, puis l offre d attente
+  // acceptee, tant que la demande est celle pour laquelle elle a ete
+  // proposee (meme jour, meme groupe, memes activites et options). Changer
+  // l un de ceux-la la fait tomber : elle ne revient jamais toute seule.
   function programme() {
+    var lignes = lignesChoisies();
+    var att = attenteRetenue();
+    if (att) lignes.push({ activityId: att.activityId, waitOffer: true, participants: att.participants });
+    return lignes;
+  }
+  function cleBase() { return state.date + '|' + state.pax + '|' + joueursDemandes() + '|' + JSON.stringify(lignesChoisies()); }
+  function attenteRetenue() {
+    var a = state.attente;
+    return a && state.onglet !== 'formules' && a.cle === cleBase() ? a : null;
+  }
+  function lignesChoisies() {
     return state.selection.map(function (id) {
       var a = activite(id) || {};
       var ligne = { activityId: id };
@@ -1679,6 +1695,7 @@
         if (id !== requeteEnCours) return;
         if (!j || j.ok === false) throw erreurLisible(j, 'Les horaires ne se sont pas chargés. Réessayez dans un instant.');
         state.dispo = j; state.dispoCle = cle;
+        plus.statut = null; plus.annuler = null; plus.refuses = {};
         var slot = (j.slots || [])[0] || null;
         state.creneau = slot ? { slot: slot, reponse: j } : null;
         state.heure = slot ? slot.time : '';
@@ -2395,6 +2412,7 @@
   // Ce qu une ligne de programme achete, en mots : les parties, les sessions
   // d un groupe qui tourne, ou la duree (par groupe quand il en joue deux).
   function detailLigne(it) {
+    if (it.waitOffer === true) return 'pendant l’attente, ' + (Number(it.participants) || 0) + ' personne' + (Number(it.participants) > 1 ? 's' : '');
     if (Number(it.games) > 0) return it.games + ' partie' + (it.games > 1 ? 's' : '');
     if (it.dayAccess) return 'toute la journée';
     return detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (it.services && it.services.length > 1 ? ' par groupe' : '') : '');
@@ -2432,6 +2450,216 @@
   function formuleChoisie() {
     return state.onglet === 'formules' ? (((meta && meta.formules) || []).filter(function (x) { return x.id === state.formuleId; })[0] || null) : null;
   }
+  /* --- Le petit plus : l offre d attente et « Envie d un peu plus ? » ------------ */
+
+  // Les cartes viennent du serveur avec le creneau retenu (public-availability,
+  // `complements`) : il n y met que ce qu il a juge faisable a ces heures-la,
+  // chiffre par le meme calcul que la reservation. Deux besoins, deux places
+  // (Movsar, 2026-09-28 : « place au bon moment, ou ca fait pas chiant »).
+  // L OFFRE D ATTENTE repond a une contrainte du plan (un sous-groupe attend
+  // son tour) : elle se dit la ou le plan se lit, a l ecran des horaires.
+  // « ENVIE D UN PEU PLUS ? » est un supplement : il vient a la fin, au
+  // recapitulatif, juste avant de valider.
+  var plus = { enCours: '', refuses: {}, statut: null, annuler: null };
+  function cartesPlus(genre) {
+    var rep = state.creneau ? state.creneau.reponse : null;
+    return ((rep && rep.complements) || []).filter(function (c) {
+      if (!c || !c.id || plus.refuses[c.id]) return false;
+      if (genre === 'attente') return c.kind === 'attente' && Boolean(c.patch && c.patch.activityId) && state.onglet !== 'formules';
+      if (c.kind === 'attente') return false;
+      return c.kind === 'formule' ? Boolean(c.formuleId) && state.onglet === 'formules' : Boolean(c.patch && c.patch.activityId) && state.onglet !== 'formules';
+    });
+  }
+  function nomDuPlus(c) { return c.kind === 'attente' ? nomActivite(c.patch.activityId) : String(c.name || ''); }
+  // Les phrases du serveur sont partagees avec le tunnel : l apostrophe y est
+  // droite, celle du formulaire est typographique.
+  function motsServeur(s) { return String(s || '').replace(/'/g, '’'); }
+  // Le panier propose par une carte, sur une COPIE : le panier du client ne
+  // change qu apres un aller-retour serveur reussi. Le serveur a derive les
+  // options du catalogue (duree, palier, parties) : rien ne se devine ici.
+  function copiePanier() {
+    return { selection: state.selection.slice(), options: JSON.parse(JSON.stringify(state.options)), attente: state.attente, formuleId: state.formuleId };
+  }
+  function panierDe(carte) {
+    var c = copiePanier();
+    if (carte.kind === 'formule') { c.formuleId = carte.formuleId; return c; }
+    var id = String(carte.patch.activityId), o = carte.patch.options || {};
+    if (carte.kind === 'attente') c.attente = { activityId: id, participants: Math.max(1, Math.trunc(Number(o.participants) || 0)) };
+    else {
+      if (c.selection.indexOf(id) < 0) c.selection.push(id);
+      var reglage = {};
+      ['duration', 'games', 'minutes'].forEach(function (k) { if (o[k] !== undefined) reglage[k] = Number(o[k]); });
+      c.options[id] = Object.assign({}, c.options[id] || {}, reglage);
+    }
+    // L offre d attente suit le panier : sa cle devient la demande du panier
+    // propose, sinon ajouter une activite la ferait tomber.
+    if (c.attente) c.attente = Object.assign({}, c.attente, { cle: avecPanier(c, cleBase) });
+    return c;
+  }
+  function avecPanier(c, fn) {
+    var avant = copiePanier();
+    state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId;
+    try { return fn(); } finally { state.selection = avant.selection; state.options = avant.options; state.attente = avant.attente; state.formuleId = avant.formuleId; }
+  }
+  // LA VISITE NE BOUGE PAS : meme heure de debut, memes pistes, memes heures
+  // posees ; et jamais plus cher que ce que la carte annoncait (un tarif change
+  // dans la console entre-temps). Sinon la carte se retire et dit pourquoi, le
+  // panier reste celui du client. Meme loi que le tunnel.
+  function refusDuPlus(j, cr, carte) {
+    if (!j || j.ok === false) return (j && j.message) || 'Cette option n’est plus disponible.';
+    var slot = (j.slots || [])[0];
+    if (!slot || slot.time !== cr.slot.time) return 'Cette option déplacerait vos horaires.';
+    if (JSON.stringify(slot.lanes || []) !== JSON.stringify(cr.slot.lanes || [])) return 'Cette option déplacerait vos pistes.';
+    var avant = (cr.slot.opsPlan && cr.slot.opsPlan.anchorPlan && cr.slot.opsPlan.anchorPlan.times) || {};
+    var apres = (slot.opsPlan && slot.opsPlan.anchorPlan && slot.opsPlan.anchorPlan.times) || {};
+    if (Object.keys(avant).some(function (k) { return avant[k] && apres[k] !== avant[k]; })) return 'Cette option déplacerait vos horaires.';
+    if (carte) {
+      var ecart = Math.round(((Number(j.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100;
+      if (ecart > (Number(carte.deltaTotal) || 0) + 0.001) return 'Le tarif de cette option vient de changer.';
+    }
+    return '';
+  }
+  function changerPanier(c, carte, ecran, texteOk) {
+    var cr = state.creneau;
+    if (!cr || plus.enCours) return;
+    plus.enCours = carte ? carte.id : 'retour';
+    var cleAvant = cleDemande();
+    var url = avecPanier(c, urlDispo);
+    plus.statut = { ecran: ecran, texte: 'Vérification…', ton: 'busy' };
+    rendrePlus(ecran, false);
+    fetch(url, { credentials: 'omit' }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        plus.enCours = '';
+        // La reponse ne sert que si rien n a bouge pendant l aller-retour.
+        if (state.creneau !== cr || cleDemande() !== cleAvant) return;
+        var refus = refusDuPlus(j, cr, carte);
+        if (refus) {
+          if (carte) plus.refuses[carte.id] = 1;
+          plus.statut = { ecran: ecran, texte: refus, ton: 'ko' };
+        } else {
+          var avant = copiePanier();
+          state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId;
+          var slot = j.slots[0];
+          state.dispo = j; state.dispoCle = cleDemande();
+          state.creneau = { slot: slot, reponse: j };
+          state.heure = slot.time;
+          plus.annuler = carte && carte.kind !== 'attente' ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
+          plus.statut = { ecran: ecran, texte: texteOk, ton: 'ok' };
+        }
+        rendrePlus(ecran, true);
+      })
+      .catch(function () {
+        plus.enCours = '';
+        if (state.creneau !== cr) return;
+        plus.statut = { ecran: ecran, texte: 'La vérification n’a pas abouti. Réessayez dans un instant.', ton: 'ko' };
+        rendrePlus(ecran, true);
+      });
+  }
+  // Pendant l aller-retour, rien ne se redessine : la phrase change sur place
+  // et les boutons se taisent. A la reponse, l ecran se redessine (prix, plan,
+  // recapitulatif), le focus revient sur le bloc et la phrase est dite.
+  function rendrePlus(ecran, fini) {
+    if (!fini) {
+      var zoneS = $('[data-plus-statut="' + ecran + '"]');
+      if (zoneS) { zoneS.textContent = plus.statut ? plus.statut.texte : ''; zoneS.dataset.ton = plus.statut ? plus.statut.ton : ''; }
+      $$('[data-plus], [data-plus-annuler], [data-plus-retirer]').forEach(function (b) { b.disabled = true; });
+      return;
+    }
+    if (sceneCourante === 'recap' && ecran === 'recap') rendreRecap(true);
+    else if (sceneCourante === 'heures' && ecran === 'heures') rendreHeures();
+    else return;
+    var bloc = $('#plus-' + ecran);
+    if (bloc) bloc.focus({ preventScroll: true });
+    if (plus.statut) dire(plus.statut.texte);
+  }
+  // Des tournures sans accord : « Formule 5 » est feminin, « Laser Game »
+  // masculin, la phrase ne choisit pas. Le palier du laser se dit (2 parties
+  // au lieu de 1), une activite nouvelle se dit par son nom seul.
+  function texteAjout(c) {
+    if (c.kind === 'attente') return 'Ajout confirmé : ' + nomDuPlus(c) + ' pour les ' + c.pax + ' personnes qui attendent, +' + euros(c.deltaTotal) + '.';
+    return 'Ajout confirmé : ' + nomDuPlus(c) + (c.kind === 'laser' && c.addsLabel ? ', ' + motsServeur(c.addsLabel) : '') + ', +' + euros(c.deltaTotal) + '.';
+  }
+  function statutPlus(ecran) {
+    var s = plus.statut && plus.statut.ecran === ecran ? plus.statut : null;
+    var annulable = Boolean(s && s.ton === 'ok' && plus.annuler && plus.annuler.ecran === ecran);
+    return '<p class="fg-plus__statut" data-plus-statut="' + ecran + '" data-ton="' + (s ? s.ton : '') + '">' + (s ? esc(s.texte) : '')
+      + (annulable ? ' <button type="button" class="fg-plus__annuler" data-plus-annuler>Annuler</button>' : '') + '</p>';
+  }
+  // Une offre : ce qu elle ajoute, son prix, un bouton. Une rangee de la meme
+  // matiere que le recapitulatif, sans carte ni pastille.
+  function rangeePlus(c) {
+    var ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
+    var detail, montant;
+    if (c.kind === 'attente') {
+      var a = c.attente || {};
+      detail = motsServeur(c.addsLabel) + ', pendant l’attente';
+      var pp = Number(c.prixParPersonne) > 0 ? Number(c.prixParPersonne) : Number(c.deltaPerPax) || 0;
+      montant = '<b>' + esc(euros(pp)) + '</b><small>par personne' + (Number(c.prixCatalogueParPersonne) > pp ? ', au lieu de ' + esc(euros(c.prixCatalogueParPersonne)) : '') + '</small>';
+      if (!(Number(a.dureeOffre) > 0)) detail = motsServeur(c.addsLabel);
+    } else {
+      detail = [c.addsLabel, c.totalLabel, c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
+      montant = '<b>+' + esc(euros(c.deltaTotal)) + '</b>' + (c.pax > 1 ? '<small>soit ' + esc(euros(c.deltaPerPax)) + ' par personne</small>' : '');
+    }
+    return '<li class="fg-plus__item"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>'
+      + '<span class="fg-plus__txt"><b>' + esc(nomDuPlus(c)) + '</b>' + (detail ? '<small>' + esc(detail) + '</small>' : '') + '</span>'
+      + '<span class="fg-plus__amt">' + montant + '</span>'
+      + '<button type="button" class="fg-plus__btn" data-plus="' + esc(c.id) + '" aria-label="Ajouter ' + esc(nomDuPlus(c)) + '">Ajouter</button></li>';
+  }
+  // A L ECRAN DES HORAIRES, dans « Votre visite » : quand le groupe joue en
+  // plusieurs fois, ceux qui attendent et ce qu on leur propose. Acceptee,
+  // l offre devient une ligne de la visite, qui se retire d un toucher.
+  function htmlAttente(items) {
+    var ligne = items.filter(function (it) { return it.waitOffer === true; })[0] || null;
+    var cartes = ligne ? [] : cartesPlus('attente');
+    var s = plus.statut && plus.statut.ecran === 'heures' ? plus.statut : null;
+    if (!ligne && !cartes.length && !s) return '';
+    var html = '<div class="fg-plus fg-plus--visite" id="plus-heures" tabindex="-1">';
+    if (ligne) {
+      var n = Math.max(1, Number(ligne.participants) || 1);
+      html += '<p class="fg-plus__head"><b>Pendant l’attente</b> <small>Pour les ' + n + ' personne' + (n > 1 ? 's' : '') + ' qui attendent leur tour.</small></p>'
+        + '<ul class="fg-plus__list"><li class="fg-plus__item is-pris"><svg aria-hidden="true"><use href="#' + icone(ligne.activityId) + '"/></svg>'
+        + '<span class="fg-plus__txt"><b>' + esc(ligne.name || nomActivite(ligne.activityId)) + '</b><small>' + esc((ligne.minutes ? minutesLabel(ligne.minutes) + ' pour ' : 'Pour ') + n + ' personne' + (n > 1 ? 's' : '') + ', ajouté à votre visite') + '</small></span>'
+        + '<span class="fg-plus__amt"><b>+' + esc(euros(ligne.price)) + '</b>' + (Number(ligne.waitPricePerPax) > 0 ? '<small>' + esc(euros(ligne.waitPricePerPax)) + ' par personne</small>' : '') + '</span>'
+        + '<button type="button" class="fg-plus__btn fg-plus__btn--retirer" data-plus-retirer>Retirer</button></li></ul>';
+    } else if (cartes.length) {
+      var a = cartes[0].attente || {};
+      var p = Math.max(1, Number(a.personnes) || Number(cartes[0].pax) || 1);
+      html += '<p class="fg-plus__head"><b>Pendant l’attente</b> <small>Votre groupe joue en plusieurs fois : ' + p + ' personne' + (p > 1 ? 's attendent' : ' attend')
+        + (Number(a.minutes) > 0 ? ' ' + esc(dureeExacte(a.minutes)) : '') + ' leur tour. De quoi les occuper&nbsp;:</small></p>'
+        + '<ul class="fg-plus__list">' + cartes.map(rangeePlus).join('') + '</ul>';
+    }
+    return html + statutPlus('heures') + '</div>';
+  }
+  // AU RECAPITULATIF, juste avant de valider : un supplement ou deux, jamais
+  // plus (le serveur en sert deux au plus, les moins chers par personne).
+  function htmlPlusRecap() {
+    var cartes = cartesPlus('plus');
+    var s = plus.statut && plus.statut.ecran === 'recap' ? plus.statut : null;
+    if (!cartes.length && !s) return '';
+    return '<div class="fg-plus" id="plus-recap" tabindex="-1">'
+      + (cartes.length ? '<p class="fg-plus__head"><b>Envie d’un peu plus&nbsp;?</b> <small>Vos horaires ne bougent pas.</small></p><ul class="fg-plus__list">' + cartes.map(rangeePlus).join('') + '</ul>' : '')
+      + statutPlus('recap') + '</div>';
+  }
+  function surPlus(e, ecran) {
+    var b = e.target.closest('[data-plus]');
+    if (b) {
+      var carte = cartesPlus(ecran === 'heures' ? 'attente' : 'plus').filter(function (c) { return c.id === b.dataset.plus; })[0];
+      if (carte) changerPanier(panierDe(carte), carte, ecran, texteAjout(carte));
+      return true;
+    }
+    if (e.target.closest('[data-plus-annuler]')) {
+      if (plus.annuler) changerPanier(plus.annuler.panier, null, ecran, 'Annulé : votre visite revient à ce qu’elle était, sans ' + plus.annuler.nom + '.');
+      return true;
+    }
+    if (e.target.closest('[data-plus-retirer]')) {
+      var c = copiePanier();
+      c.attente = null;
+      changerPanier(c, null, ecran, 'Offre retirée : les personnes qui attendent n’ont plus d’activité réservée.');
+      return true;
+    }
+    return false;
+  }
+
   function rendreVisite() {
     var zone = $('#planZone');
     if (!zone) return;
@@ -2480,7 +2708,7 @@
     var formule = formuleChoisie();
     var ancrages = formule ? (d.anchors || {}) : {};
     var illimite = Boolean(formule && formule.orderPolicy === 'open_window');
-    var libres = items.filter(function (it) { return !planifies[it.activityId]; });
+    var libres = items.filter(function (it) { return !planifies[it.activityId] && it.waitOffer !== true; });
     // Une entree a la journee ne compte pas dans « environ X » : ce temps-la
     // n est pas achete, il est libre toute la journee.
     var minutesLibres = libres.reduce(function (s, it) { return s + (it.dayAccess ? 0 : (Number(it.minutes) || 0)); }, 0);
@@ -2573,6 +2801,7 @@
         : (journee && depart ? '<span class="fg-visit__span">dès <b>' + esc(depart) + '</b>, accès toute la journée</span>' : ''))
       + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>le reste se règle sur place</small>') + '</span>' : '')
       + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
+    html2 += htmlAttente(items);
     // CE QUE COMPREND LA FORMULE, dans les mots du centre, ceux de sa carte :
     // c est ce qu il vend. Le moteur n en planifie qu une partie (le Kids Fun
     // Day vend « toutes les activites illimitees », le moteur en place deux),
@@ -2810,6 +3039,12 @@
       lignes.push({ icone: 'a-formule', nom: f.name || rep.label || 'Formule', detail: (f.desc || []).join(' · '), aside: '' });
     } else if (items.length) {
       items.forEach(function (it) {
+        // L offre d attente acceptee : pour qui, et pendant quoi.
+        if (it.waitOffer === true) {
+          var nAtt = Math.max(1, Number(it.participants) || 1);
+          lignes.push({ icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: 'pendant l’attente · ' + nAtt + ' personne' + (nAtt > 1 ? 's' : '') + (it.minutes ? ' · ' + minutesLabel(it.minutes) : ''), aside: '' });
+          return;
+        }
         // Chaque partie a son heure, celles qui n en ont pas se placent sur
         // place avec l equipe ; les groupes d un grand groupe, leur taille et,
         // pour une activite d une seule partie, leurs departs. Lu dans le plan
@@ -2868,14 +3103,22 @@
     // demande acceptee, l aide sous le champ dit deja « sans garantie ».
     if (final && state.contact.occasion) html += '<p class="fg-recap__detail fg-recap__occasion fg-rise" style="--i:' + (6 + lignes.length) + '">Occasion&nbsp;: <b style="color:var(--fg-text)">' + esc(libelleOccasion()) + '</b></p>';
     if (final && state.contact.note) html += '<p class="fg-recap__detail fg-recap__note fg-rise" style="--i:' + (7 + lignes.length) + '">Votre mot pour l’équipe&nbsp;: «&nbsp;' + esc(state.contact.note) + '&nbsp;»</p>';
+    if (final) html += htmlPlusRecap();
     return html;
   }
   // LE TOTAL S AFFICHE A SA VALEUR, D EMBLEE. Il montait de 0 a son montant en
   // 700 ms : l audit du 2026-09-28 a lu 25 EUR pour 39, 466 pour 780, et un
   // client qui regarde a ce moment-la voit un prix qui n existe pas.
-  function rendreRecap() {
-    $('#recap').innerHTML = htmlRecap(true);
+  // `calme` : un ajout redessine sur place, sans rejouer l entree des lignes.
+  // A l arrivee sur l ecran, la phrase d un ajout precedent ne revient pas.
+  function rendreRecap(calme) {
+    var r = $('#recap');
+    if (!calme && plus.statut && plus.statut.ecran === 'recap') { plus.statut = null; plus.annuler = null; }
+    r.classList.toggle('is-calme', Boolean(calme));
+    r.innerHTML = htmlRecap(true);
   }
+  $('#recap').addEventListener('click', function (e) { surPlus(e, 'recap'); });
+  hourZone.addEventListener('click', function (e) { surPlus(e, 'heures'); });
 
   /* --- L envoi -------------------------------------------------------------------- */
 

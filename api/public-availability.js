@@ -44,7 +44,7 @@ const {
   isFormulaBlockedOn,
   isFormulaFullyBlockedOn,
 } = require('../lib/availability-blocks');
-const { buildProgramFormula, describeProgram, groupIsSplit, normalizeProgram } = require('../lib/visit-program');
+const { attenteDesTours, buildProgramFormula, describeProgram, groupIsSplit, normalizeProgram } = require('../lib/visit-program');
 const { activityMinPax } = require('../lib/activity-catalog');
 const { buildFormulaComplements, buildVisitComplements } = require('../lib/booking-complements');
 // La projection d un scenario en creneau, la garde finale et les compositions
@@ -540,7 +540,14 @@ module.exports = async (req, res) => {
       // Le tarif d attente ne s applique que si le groupe est VRAIMENT scinde :
       // une ligne marquee `waitOffer` par un navigateur complaisant est sinon
       // facturee au tarif du catalogue, comme n importe quelle autre.
-      const groupeScinde = groupIsSplit({ centerId, pax, items: Array.isArray(programInput) ? programInput : (programInput && programInput.items) || [] });
+      const lignesDemandees = Array.isArray(programInput) ? programInput : (programInput && programInput.items) || [];
+      const groupeScinde = groupIsSplit({ centerId, pax, items: lignesDemandees });
+      // L ATTENTE D UNE ACTIVITE LIBRE QUI TOURNE (duckpin en tours, Fun Run en
+      // sessions) : la meme pour tous les creneaux, elle ne depend que du
+      // groupe et du programme. Celle des vagues d une activite planifiee se lit
+      // sur le plan de chaque creneau ; la plus longue des deux compte.
+      const attenteTours = attenteDesTours({ centerId, pax, items: lignesDemandees });
+      const laPlusLongue = (a, b) => (!a ? b : !b ? a : (Number(b.minutes) > Number(a.minutes) ? b : a));
       const program = normalizeProgram(programInput, {
         centerId,
         pax,
@@ -566,7 +573,7 @@ module.exports = async (req, res) => {
         const plan = slot.opsPlan || null;
         const marge = Math.max(0, Number(plan && plan.bufferMinutes) || 0);
         const finPlan = plan && plan.endTime ? Math.round(timeToNum(plan.endTime) * 60) - marge : debut;
-        const creux = attenteDuSousGroupe(plan && plan.resourceBlocks);
+        const creux = laPlusLongue(attenteDuSousGroupe(plan && plan.resourceBlocks), attenteTours);
         const couvert = Math.min(
           Math.max(0, Math.round(Number(program.waitMinutes) || 0)),
           Math.max(0, Math.round(Number(creux && creux.minutes) || 0)),
@@ -747,8 +754,9 @@ module.exports = async (req, res) => {
         // Le sous-groupe qui attend, lu sur le plan REELLEMENT pose, avec la
         // regle du moteur : c est la meme que celle qui deduit le temps mort de
         // la reserve, et elle ne doit exister qu une fois.
-        const attenteDuPlan = (retainedSlot) => attenteDuSousGroupe(
-          retainedSlot && retainedSlot.opsPlan ? retainedSlot.opsPlan.resourceBlocks : null,
+        const attenteDuPlan = (retainedSlot) => laPlusLongue(
+          attenteDuSousGroupe(retainedSlot && retainedSlot.opsPlan ? retainedSlot.opsPlan.resourceBlocks : null),
+          attenteTours,
         );
         const complementsDeVisite = (retainedSlot) => {
           try {

@@ -1469,6 +1469,9 @@ const API_ENDPOINTS = window.PinlaneApiClient?.endpoints || {
 };
 let remoteSyncTimer = null;
 let remoteSyncBusy = false;
+// Les journees demandees pendant qu une lecture est en vol, par date, avec
+// ceux qui les attendent (syncDateReservations).
+const remoteSyncEnAttente = new Map();
 let remoteSyncFailureCount = 0;
 let remoteSyncPausedUntil = 0;
 let remoteSyncLastFailure = '';
@@ -2725,7 +2728,24 @@ function getDateRangeDays(startDate, endDate) {
 // Direction/admin console renderers live in ./assets/admin-console.js.
 // Ops communications, agent stack and simulation renderers live in ./assets/ops-console.js.
 async function syncDateReservations(dateStr, opts = {}) {
-  if (!dateStr || remoteSyncBusy) return false;
+  if (!dateStr) return false;
+  // UNE JOURNEE DEMANDEE PENDANT UNE LECTURE EN VOL N EST PLUS PERDUE
+  // (campagne du 2026-09-29). Elle etait abandonnee en silence : deux clics
+  // sur « jour suivant », et le second jour restait sans ses dossiers jusqu au
+  // tour suivant de la boucle (4 s mesurees sur le banc, 15 s quand le pouls
+  // vit) ; un changement de centre gardait le planning de l ancien. Elle part
+  // des que la lecture courante rend la main, et qui l attend recoit sa vraie
+  // reponse. Rendu et toast : il suffit qu un demandeur les veuille.
+  if (remoteSyncBusy) {
+    const deja = remoteSyncEnAttente.get(dateStr);
+    const attente = deja || { opts: { ...opts }, resolveurs: [] };
+    if (deja) {
+      attente.opts.silent = Boolean(deja.opts.silent && opts.silent);
+      attente.opts.skipRender = Boolean(deja.opts.skipRender && opts.skipRender);
+    }
+    remoteSyncEnAttente.set(dateStr, attente);
+    return new Promise((resolve) => attente.resolveurs.push(resolve));
+  }
   // Le parcours public n'a pas de session staff : staff-state repondrait 401
   // (vu en prod au changement de date du tunnel). Meme regle que la boucle de
   // sync (plus bas) : en vue client sans session, on ne demande rien.
@@ -2741,6 +2761,12 @@ async function syncDateReservations(dateStr, opts = {}) {
       cache: 'no-store',
       headers: syncHeaders
     });
+    // Le centre a change pendant la lecture : cette reponse est celle de
+    // l ancien, elle ne remplace pas la journee du nouveau, relue juste apres.
+    if (encodeURIComponent(getCurrentStaffCenterId()) !== centerId) {
+      if (!remoteSyncEnAttente.has(dateStr)) remoteSyncEnAttente.set(dateStr, { opts: { ...opts }, resolveurs: [] });
+      return false;
+    }
     if (response.status === 304) {
       staffSyncAtByDate[revisionKey] = Date.now();
       markRemoteSyncSuccess();
@@ -2795,7 +2821,18 @@ async function syncDateReservations(dateStr, opts = {}) {
     return false;
   } finally {
     remoteSyncBusy = false;
+    relancerLaJourneeEnAttente();
   }
+}
+
+// La journee affichee passe d abord : c est celle que la personne regarde.
+function relancerLaJourneeEnAttente() {
+  if (!remoteSyncEnAttente.size) return;
+  const dates = [...remoteSyncEnAttente.keys()];
+  const suivante = dates.includes(state.currentDate) ? state.currentDate : dates[0];
+  const { opts, resolveurs } = remoteSyncEnAttente.get(suivante);
+  remoteSyncEnAttente.delete(suivante);
+  syncDateReservations(suivante, opts).catch(() => false).then((resultat) => resolveurs.forEach((resolve) => resolve(resultat)));
 }
 
 // ── LE DIRECT : UNE MODIFICATION FAITE AILLEURS EST VUE ICI (2026-09-25) ──────

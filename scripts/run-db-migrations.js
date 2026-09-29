@@ -244,6 +244,10 @@ const MIGRATIONS = [
     id: '0048_reservation_companions',
     file: 'database/reservation-companions-schema.sql',
     description: "Les accompagnants d un dossier : des adultes presents qui ne jouent pas et ne paient pas l offre (Kids Fun Day, reserve aux enfants de 5 a 12 ans : seuls les enfants paient la formule). pax reste le nombre de joueurs, celui du prix et de la capacite. Colonne additive a defaut 0, bornee 0 a 500 : aucune reecriture de table, les dossiers existants gardent 0. Rollback : database/rollbacks/0048_reservation_companions.down.sql",
+  },  {
+    id: '0049_slot_holds',
+    file: 'database/slot-holds-schema.sql',
+    description: "Les horaires choisis bloques 10 minutes pendant que le client finit sa reservation : une reservation provisoire par client (pistes attribuees, sessions de l arene, installations comptees), sans donnee personnelle, avec une echeance. Toute lecture d occupation la compte tant qu elle n est ni liberee ni echue ; la confirmation la convertit dans la meme transaction. Jeton et adresse IP gardes en empreinte seulement. Table additive, aucune table existante modifiee. Rollback : database/rollbacks/0049_slot_holds.down.sql",
   },
 ];
 

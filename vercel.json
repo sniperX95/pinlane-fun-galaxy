@@ -67,6 +67,10 @@
       "destination": "/api/public-booking-meta"
     },
     {
+      "source": "/api/public-holds",
+      "destination": "/api/public-reservations?action=hold"
+    },
+    {
       "source": "/api/cron/dispatch-communications",
       "destination": "/api/cron?action=dispatch-communications"
     },

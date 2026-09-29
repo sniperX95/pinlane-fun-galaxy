@@ -34,6 +34,7 @@ const PUBLIC_FLOW_ENDPOINTS = [
   ['/api/public-booking-meta', 'catalogue, horaires et verdict du jour'],
   ['/api/public-availability', 'creneaux disponibles'],
   ['/api/public-reservations', 'creation de la reservation'],
+  ['/api/public-holds', 'blocage des horaires choisis pendant les coordonnees'],
   ['/api/custom-request', 'demande sur mesure (groupe, entreprise, privatisation)'],
   ['/api/pilot-lead', 'formulaire de la landing pro'],
   ['/api/healthz', 'sonde de sante'],

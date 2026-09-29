@@ -231,10 +231,23 @@ function reecrire(chemin) {
   }
   return chemin;
 }
+// Les reecritures d API de vercel.json, comme en production : le blocage des
+// horaires (/api/public-holds) part vers /api/public-reservations?action=hold.
+// Sans elles, le formulaire parlerait a une adresse que ce serveur ignore.
+function reecrireApi(url) {
+  for (const r of vercel.rewrites || []) {
+    if (!/^\/api\//.test(r.destination) || r.source !== url.pathname) continue;
+    const dest = new URL(r.destination, BASE);
+    url.searchParams.forEach((v, k) => { if (!dest.searchParams.has(k)) dest.searchParams.set(k, v); });
+    return dest;
+  }
+  return url;
+}
 let visiteur = '10.0.0.1';
 function serveur(handlers) {
   return http.createServer(async (req, res) => {
-    const url = new URL(req.url, BASE);
+    const url = reecrireApi(new URL(req.url, BASE));
+    req.url = `${url.pathname}${url.search}`;
     const api = { '/api/public-booking-meta': handlers.meta, '/api/public-availability': handlers.availability, '/api/public-reservations': handlers.reservations }[url.pathname];
     if (api) {
       // Un visiteur = une adresse : le plafond de requetes par minute

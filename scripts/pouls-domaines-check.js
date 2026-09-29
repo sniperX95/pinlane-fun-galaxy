@@ -24,6 +24,9 @@
 //   [F] L EQUIPE SE LIT SUR CE QUE LES ECRANS MONTRENT. `last_seen` bouge a
 //       chaque minute d activite (et `updated_at` avec lui, par trigger) : une
 //       empreinte sur `xmin` ferait relire la page Equipe toute seule, sans fin.
+//   [G] LES HORAIRES RETENUS EN LIGNE (slot_holds, 0049) COMPTENT DANS LA
+//       JOURNEE ; SANS LEUR TABLE, LE POULS SE RELIT SANS EUX au lieu de
+//       tomber en entier. Une autre panne remonte comme avant.
 //
 // CONTRE-EPREUVES PAR MUTATION, compilees en memoire (crochet sur
 // Module.prototype._compile) : le disque n est jamais touche.
@@ -62,9 +65,13 @@ Module.prototype._compile = function (contenu, nom) {
 // Le faux pool : il note chaque requete et rend une ligne dont chaque colonne
 // porte son propre nom, pour qu on voie qui va ou.
 const requetes = [];
+// [G] La table des blocages en ligne peut manquer (migration 0049 pas encore
+// jouee) ; une autre panne peut toucher la meme requete.
+let panneBlocages = null;
 class FakePool {
   async query(texte, params) {
     requetes.push({ texte: String(texte), params: params || [] });
+    if (panneBlocages && String(texte).includes('slot_holds')) throw Object.assign(new Error(panneBlocages.message), { code: panneBlocages.code });
     const ligne = {};
     for (const m of String(texte).matchAll(/\)\)?\s+as\s+([a-z]+)\s*[,;]/g)) ligne[m[1]] = `empreinte-${m[1]}`;
     return { rows: [ligne] };
@@ -146,6 +153,24 @@ async function pouls(db, options) {
     '[F] les membres : ni xmin, ni last_seen, ni updated_at', segmentMembres.replace(/\s+/g, ' ').slice(0, 140));
 
   // =====================================================================
+  console.log('\n[G] les horaires retenus en ligne, et leur table absente');
+  // =====================================================================
+  ok(/from slot_holds h[\s\S]*released_at is null and h\.expires_at > now\(\)/.test(db.SQL_POULS),
+    '[G] la journee compte les blocages en cours (un blocage qui arrive ou echoit fait relire le planning)');
+  const sansTable = await (async () => {
+    panneBlocages = { code: '42P01', message: 'relation "slot_holds" does not exist' };
+    try { return await pouls(db, { centerId: 'libramont', date: '2026-09-25' }); } catch (error) { return { erreur: error.message }; } finally { panneBlocages = null; }
+  })();
+  ok(!sansTable.erreur && sansTable.reponse.domaines['jour:2026-09-25'] === 'empreinte-jour'
+    && Object.keys(sansTable.reponse.domaines).length === 14 && !sansTable.requete.texte.includes('slot_holds'),
+  '[G] table absente : le pouls se relit sans elle, les quatorze domaines sont la', sansTable.erreur || `${Object.keys(sansTable.reponse.domaines).length} domaines`);
+  const autrePanne = await (async () => {
+    panneBlocages = { code: '57014', message: 'canceling statement due to statement timeout' };
+    try { await pouls(db, { centerId: 'libramont', date: '2026-09-25' }); return 'avalee'; } catch (error) { return 'remontee'; } finally { panneBlocages = null; }
+  })();
+  ok(autrePanne === 'remontee', '[G] une autre panne n est pas avalee (elle remonte comme avant)', autrePanne);
+
+  // =====================================================================
   console.log('\n[MUTATION] le gate sait-il rougir ?');
   // =====================================================================
   const contreEpreuves = [
@@ -184,6 +209,17 @@ async function pouls(db, options) {
       },
       attendu: (sale) => sale === false,
       libelle: 'la page Equipe se relirait toute seule chaque minute, sans que rien n ait change',
+    },
+    {
+      nom: 'le pouls ne se relit plus sans la table des blocages',
+      de: '    if (!tableBlocagesAbsente(error)) throw error;\n    result = await getPool().query(SQL_POULS_SANS_BLOCAGES, [safeCenterId, safeDate]);',
+      vers: '    throw error;',
+      rejouer: async () => {
+        panneBlocages = { code: '42P01', message: 'relation "slot_holds" does not exist' };
+        try { await pouls(chargerBase(), { centerId: 'libramont', date: '2026-09-25' }); return 'lu'; } catch (error) { return 'tombe'; } finally { panneBlocages = null; }
+      },
+      attendu: (r) => r === 'lu',
+      libelle: 'avant la migration 0049, tout le direct de la console tomberait',
     },
   ];
   for (const contre of contreEpreuves) {

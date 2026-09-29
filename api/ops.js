@@ -173,7 +173,10 @@ async function buildContext(body) {
   }
 
   try {
-    const snapshot = await readStaffState(body.date, body.centerId || 'libramont');
+    // Les blocages en cours (migration 0049) comptent comme des reservations :
+    // la planification du staff ne propose pas des pistes qu un client en
+    // ligne est en train de prendre.
+    const snapshot = await readStaffState(body.date, body.centerId || 'libramont', { avecBlocages: true });
     return {
       reservations: snapshot.reservations,
       laneStatuses: snapshot.laneStatuses,

@@ -473,7 +473,12 @@ module.exports = async (req, res) => {
       }
     }
 
-    const snapshot = await readAvailabilitySnapshot(date, centerId);
+    // LES HORAIRES RETENUS PAR D AUTRES CLIENTS en train de reserver comptent
+    // comme pris (migration 0049) ; ceux du client qui demande, non : il
+    // revient sur la page des horaires et retrouve son propre choix libre.
+    // Le jeton voyage dans un en-tete, jamais dans l adresse (journaux).
+    const saufJeton = String(req.headers['x-pinlane-hold'] || '').trim();
+    const snapshot = await readAvailabilitySnapshot(date, centerId, { saufJeton });
     const operationalBowlingConfig = getOperationalBowlingConfig(centerDoc, snapshot.laneStatuses || {});
     // Formule bloquee TOUTE la journee (scope 'formula', jour entier) : message
     // clair et aucun creneau, comme un refus de getFormuleAvailability. Un blocage

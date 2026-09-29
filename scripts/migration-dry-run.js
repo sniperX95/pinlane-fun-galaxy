@@ -50,7 +50,7 @@ function tablesMentioned(sql) {
   return [...names];
 }
 
-async function snapshot(client, tables) {
+async function snapshot(client, tables, { enTransaction = false } = {}) {
   const state = {};
   for (const table of tables) {
     const columns = await client.query(
@@ -59,6 +59,11 @@ async function snapshot(client, tables) {
       [table],
     );
     let constraints = { rows: [] };
+    // Dans la transaction, la lecture des contraintes passe sous un savepoint :
+    // pour une table que la migration CREE, `$1::regclass` echoue avant, et
+    // sans savepoint cette erreur abandonnait la transaction entiere (la
+    // migration jetait « current transaction is aborted », constate sur 0049).
+    if (enTransaction) await client.query('savepoint repetition_contraintes');
     try {
       constraints = await client.query(
         `select conname, contype,
@@ -68,8 +73,10 @@ async function snapshot(client, tables) {
            from pg_constraint c where c.conrelid = $1::regclass order by conname;`,
         [table],
       );
+      if (enTransaction) await client.query('release savepoint repetition_contraintes');
     } catch (error) {
       // Table absente avant la migration : rien a comparer.
+      if (enTransaction) await client.query('rollback to savepoint repetition_contraintes');
     }
     state[table] = {
       columns: (columns.rows || []).map((row) => `${row.column_name}:${row.data_type}${row.is_nullable === 'NO' ? ' NOT NULL' : ''}`),
@@ -109,11 +116,11 @@ async function main() {
     await client.query('BEGIN');
     console.log(`\n[MIGRATION] ${migration.id}\n[FICHIER]   ${migration.file}\n[TABLES]    ${tables.join(', ') || '(aucune nommee)'}`);
 
-    const before = await snapshot(client, tables);
+    const before = await snapshot(client, tables, { enTransaction: true });
 
     console.log('\n[JOUE] premiere execution');
     await client.query(sql);
-    const after = await snapshot(client, tables);
+    const after = await snapshot(client, tables, { enTransaction: true });
     ok(true, 'le SQL passe sans erreur');
 
     const changes = diff(before, after, tables);
@@ -122,7 +129,7 @@ async function main() {
 
     console.log('\n[IDEMPOTENCE] seconde execution du meme SQL');
     await client.query(sql);
-    const twice = await snapshot(client, tables);
+    const twice = await snapshot(client, tables, { enTransaction: true });
     ok(JSON.stringify(twice) === JSON.stringify(after), 'le second passage ne change plus rien');
 
     await client.query('ROLLBACK');

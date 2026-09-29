@@ -46,7 +46,43 @@ function nextSaturday() {
 const DATE = nextSaturday();
 const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont' });
+// LES HORAIRES RETENUS, EN MEMOIRE (en prod : table slot_holds, migration
+// 0049). Le meme contrat que le serveur : POST /api/public-holds retient ou
+// libere, la disponibilite compte les blocages des AUTRES (en-tete
+// X-Pinlane-Hold), la reservation convertit celui du client. La verification
+// est la vraie (validateReservationResources) sur l occupation du serveur de
+// dev : les pistes deja prises qu un gate y pose (occupationDev) et les
+// blocages en cours. La duree se regle (PINLANE_DEVTUNNEL_HOLD_SECONDS) : un
+// gate voit l echeance sans attendre dix minutes.
+const blocagesDev = new Map(); // jeton -> { dossier, expiresAt, etat }
+const occupationDev = [];
+function dureeBlocageDev() { return Math.max(1, Number(process.env.PINLANE_DEVTUNNEL_HOLD_SECONDS) || 600) * 1000; }
+function blocagesActifsDev(sauf) {
+  const maintenant = Date.now();
+  let n = 0;
+  return [...blocagesDev.entries()]
+    .filter(([jeton, b]) => jeton !== sauf && b.etat === 'actif' && b.expiresAt > maintenant)
+    .map(([, b]) => { n += 1; return { ...b.dossier, id: -n, blocage: { expiresAt: new Date(b.expiresAt).toISOString() } }; });
+}
+database.readAvailabilitySnapshot = async (date, centerId, options = {}) => ({
+  reservations: occupationDev.concat(blocagesActifsDev(String((options && options.saufJeton) || ''))),
+  laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont',
+});
+// Le controle d un blocage ou d une confirmation : la vraie verification des
+// ressources. Le serveur de dev ne refuse QUE ce que les blocages des autres
+// prennent (rejoue sans eux) : tout autre refus, il le laissait deja passer
+// (sa reservation est un faux), et ses gates ne dependent que de ca.
+function verifierDev(corps, sauf) {
+  const autres = blocagesActifsDev(sauf);
+  const entree = { ...corps, name: database.NOM_BLOCAGE, phone: '-', email: '', channel: 'public' };
+  const essai = (liste) => { try { return database.validateReservationResources(entree, liste, {}, [], corps.date).payload; } catch (error) { return null; } };
+  const sansBlocages = essai(occupationDev);
+  const avec = autres.length ? essai(occupationDev.concat(autres)) : sansBlocages;
+  if (avec) return { ok: true, dossier: avec };
+  if (!sansBlocages) return { ok: true, dossier: entree };
+  const precision = database.precisionBlocage(entree, autres);
+  return { ok: false, message: `Ces horaires ne sont plus libres.${precision || ' Choisissez-en d’autres.'}` };
+}
 // LA DEMANDE SUR MESURE PASSE PAR LE VRAI GESTIONNAIRE (validation comprise),
 // mais RIEN n est ecrit et RIEN n est envoye : la ligne est gardee en memoire
 // (dernierePose.demande) et l accuse de reception ne part jamais. Sans base
@@ -55,7 +91,7 @@ database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuse
 // sont poses AVANT le premier chargement de l API : elle les lit a son
 // chargement.
 const communications = require('../lib/ops-communications');
-const dernierePose = { body: null, demande: null, accuses: 0 };
+const dernierePose = { body: null, demande: null, accuses: 0, blocages: [] };
 database.createCustomRequest = async (input) => {
   dernierePose.demande = JSON.parse(JSON.stringify(input));
   return {
@@ -258,6 +294,39 @@ function createServer(options = {}) {
       try { await bookingMeta(req, res); } catch (error) { res.writeHead(500); res.end(JSON.stringify({ ok: false })); }
       return;
     }
+    if (url.pathname === '/api/public-holds' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        let corps = null;
+        try { corps = JSON.parse(body); } catch (error) { corps = null; }
+        const repondre = (statut, json) => { res.writeHead(statut, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(json)); };
+        if (!corps || typeof corps !== 'object') { repondre(400, { ok: false, message: 'Requete illisible.' }); return; }
+        const recu = String(corps.holdToken || '');
+        if (corps.release === true) {
+          const b = blocagesDev.get(recu);
+          const libere = Boolean(b && b.etat === 'actif');
+          if (libere) b.etat = 'libere';
+          dernierePose.blocages.push({ action: 'release', jeton: recu, libere });
+          repondre(200, { ok: true, released: libere ? 1 : 0 });
+          return;
+        }
+        const jeton = /^[A-Za-z0-9_-]{32,64}$/.test(recu) ? recu : database.nouveauJetonBlocage();
+        const verdict = verifierDev(corps, jeton);
+        if (!verdict.ok) {
+          dernierePose.blocages.push({ action: 'refus', jeton, heure: corps.startTime, message: verdict.message });
+          repondre(409, { ok: false, code: 'slot_taken', message: verdict.message });
+          return;
+        }
+        const duree = dureeBlocageDev();
+        blocagesDev.set(jeton, { dossier: verdict.dossier, expiresAt: Date.now() + duree, etat: 'actif' });
+        dernierePose.blocages.push({ action: 'hold', jeton, heure: corps.startTime, corps });
+        const maintenant = new Date();
+        repondre(201, { ok: true, holdToken: jeton, expiresAt: new Date(maintenant.getTime() + duree).toISOString(), minutes: Math.max(1, Math.round(duree / 60000)), serverNow: maintenant.toISOString() });
+      });
+      return;
+    }
     if (url.pathname === '/api/public-reservations') {
       let body = '';
       req.setEncoding('utf8');
@@ -266,6 +335,17 @@ function createServer(options = {}) {
         let parsed = null;
         try { parsed = JSON.parse(body); } catch (error) { parsed = null; }
         dernierePose.body = parsed;
+        // Comme le serveur : les horaires retenus par un AUTRE client ne se
+        // confirment pas ; ceux du client deviennent sa reservation.
+        const jeton = String((parsed && parsed.holdToken) || '');
+        const verdict = parsed && parsed.date ? verifierDev(parsed, jeton) : { ok: true };
+        if (!verdict.ok) {
+          res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ ok: false, message: 'Ce créneau ne peut pas être planifié automatiquement. Merci de choisir un autre horaire.', alternatives: [] }));
+          return;
+        }
+        const tenu = blocagesDev.get(jeton);
+        if (tenu && tenu.etat === 'actif') tenu.etat = 'converti';
         res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify(fauxDossier(parsed)));
       });
@@ -286,7 +366,7 @@ function createServer(options = {}) {
   });
 }
 
-module.exports = { ACTIVITIES, DATE, TODAY, PORT, createServer, metaPayload, dernierePose };
+module.exports = { ACTIVITIES, DATE, TODAY, PORT, createServer, metaPayload, dernierePose, blocagesDev, occupationDev };
 
 if (require.main === module) {
   createServer({ port: PORT }).listen(PORT, '127.0.0.1', () => {

@@ -371,21 +371,25 @@ function reason(result) {
   ok(legacy.status === 201, `${FILE_CENTER} cree toujours sa reservation (201)`, reason(legacy));
 
   console.log('\n[5] CONTRE-PREUVE : sans la ligne ajoutee, le centre ne dans la console redevient inconnu');
-  const original = fs.readFileSync(HANDLER_PATH, 'utf8');
+  // Le rechauffage vit dans lib/demande-publique.js depuis le 2026-09-29
+  // (les portes d une demande publique, partagees avec le blocage des
+  // horaires) : c est la que la contre-preuve le retire.
+  const PORTE_PATH = path.join(ROOT, 'lib', 'demande-publique.js');
+  const original = fs.readFileSync(PORTE_PATH, 'utf8');
   const eol = original.includes('\r\n') ? '\r\n' : '\n';
   const anchor = 'try { await refreshCenterOverrides(getPool()); }';
   const occurrences = original.split(anchor).length - 1;
   if (occurrences !== 1) {
-    console.error(`center-console-reservation-check: ancre de mutation introuvable ou ambigue (${occurrences}). Le correctif attendu dans api/public-reservations.js n'est pas la.`);
+    console.error(`center-console-reservation-check: ancre de mutation introuvable ou ambigue (${occurrences}). Le correctif attendu dans lib/demande-publique.js n'est pas la.`);
     process.exit(1);
   }
   const mutated = original.replace(anchor, `try { await Promise.resolve(); /* mutation gate */ }`);
-  fs.writeFileSync(HANDLER_PATH, mutated);
+  fs.writeFileSync(PORTE_PATH, mutated);
   let mutatedResult = null;
   try {
     mutatedResult = await postReservation(visitBody(CENTER, [{ activityId: FREE_ACTIVITY }]));
   } finally {
-    fs.writeFileSync(HANDLER_PATH, original); // ECRITURE INVERSE exacte
+    fs.writeFileSync(PORTE_PATH, original); // ECRITURE INVERSE exacte
   }
   // Depuis le 2026-09-14 (public-center-guard-check), le handler refuse un
   // centre inconnu en 404 AVANT de construire la visite. Sans le rechauffage,
@@ -397,7 +401,7 @@ function reason(result) {
     'mutation : le handler refuse de nouveau, en 404 « Centre inconnu » (le gate SAIT rougir)',
     mutatedResult ? reason(mutatedResult) : 'aucune reponse',
   );
-  ok(fs.readFileSync(HANDLER_PATH, 'utf8') === original, `restauration : ${path.basename(HANDLER_PATH)} identique a l'original`);
+  ok(fs.readFileSync(PORTE_PATH, 'utf8') === original, `restauration : ${path.basename(PORTE_PATH)} identique a l'original`);
   ok(eol === '\r\n' || eol === '\n', 'fins de ligne preservees', eol === '\r\n' ? 'CRLF' : 'LF');
   if (!redAgain) {
     console.error('center-console-reservation-check: MUTATION SANS EFFET, ce gate ne prouve rien.');

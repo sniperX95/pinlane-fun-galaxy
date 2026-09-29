@@ -112,6 +112,7 @@
     heure: '',                 // debut de visite du creneau retenu
     dispo: null,               // la derniere reponse de public-availability
     dispoCle: '',              // la demande qui a produit state.dispo, prise au depart de la requete
+    dispoTexte: '',            // state.dispo tel que recu : la relecture des heures compare avec lui
     creneau: null,             // le slot retenu (avec opsPlan)
     contact: { prenom: '', nom: '', email: '', telephone: '', note: '', occasion: '', occasionAutre: '' },
     reservation: null,
@@ -1617,7 +1618,7 @@
   var reveilGarder = false;    // « Garder » s eveille a la premiere reponse apres l arrivee sur les heures, pas a chaque heure posee
   var signaturePistes = '';    // les pistes rendues (activites + heures) : sinon, on met a jour sur place
   var adaptation = null;       // { deplace, pour, t } : l activite deplacee pour l heure posee
-  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; goContact.disabled = true; }
+  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; goContact.disabled = true; libererBlocage(); }
   // LES LIGNES CHOISIES a l ecran des activites, puis l offre d attente
   // acceptee, tant que la demande est celle pour laquelle elle a ete
   // proposee (meme jour, meme groupe, memes activites et options). Changer
@@ -1721,11 +1722,11 @@
     var idAttente = pisteAttente ? pisteAttente.dataset.activity : '', heureAttente = attente ? attente.dataset.time : '';
     goContact.disabled = true;
     hourZone.classList.add('is-busy');
-    fetch(urlDispo(), { credentials: 'omit' }).then(function (r) { return r.json(); })
+    fetch(urlDispo(), { credentials: 'omit', headers: enteteBlocage() }).then(function (r) { return r.json(); })
       .then(function (j) {
         if (id !== requeteEnCours) return;
         if (!j || j.ok === false) throw erreurLisible(j, 'Les horaires ne se sont pas chargés. Réessayez dans un instant.');
-        state.dispo = j; state.dispoCle = cle;
+        state.dispo = j; state.dispoCle = cle; state.dispoTexte = JSON.stringify(j);
         plus.statut = null; plus.annuler = null; plus.refuses = {};
         var slot = (j.slots || [])[0] || null;
         state.creneau = slot ? { slot: slot, reponse: j } : null;
@@ -1737,6 +1738,7 @@
         if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) rejouer(posee, 'is-pose');
         goContact.disabled = !slot;
         if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }
+        majRefusHoraires();
         rendreFocus(repere);
       })
       .catch(function (err) {
@@ -2566,28 +2568,39 @@
     var url = avecPanier(c, urlDispo);
     plus.statut = { ecran: ecran, texte: 'Vérification…', ton: 'busy' };
     rendrePlus(ecran, false);
-    fetch(url, { credentials: 'omit' }).then(function (r) { return r.json(); })
+    fetch(url, { credentials: 'omit', headers: enteteBlocage() }).then(function (r) { return r.json(); })
       .then(function (j) {
         plus.enCours = '';
         // La reponse ne sert que si rien n a bouge pendant l aller-retour.
         if (state.creneau !== cr || cleDemande() !== cleAvant) return;
         var refus = refusDuPlus(j, cr, carte);
+        // LES HORAIRES BLOQUES SUIVENT LE PANIER : au recapitulatif, le
+        // nouveau panier (une partie de laser de plus, une activite) est
+        // retenu AVANT de devenir celui du client. Pris entre-temps, l ajout
+        // est refuse et le panier ne bouge pas ; une panne technique ne
+        // retient rien de plus et laisse faire, la confirmation reverifie.
+        if (!refus && ecran === 'recap' && blocage.etat === 'tenu') {
+          var neuf = avecPanier(c, function () {
+            var cr0 = state.creneau;
+            state.creneau = { slot: j.slots[0], reponse: j };
+            try { return { corps: corpsBlocage(), cle: cleBlocage() }; } finally { state.creneau = cr0; }
+          });
+          plus.enCours = carte ? carte.id : 'retour';
+          retenir(neuf.corps, neuf.cle).then(function (r) {
+            plus.enCours = '';
+            if (state.creneau !== cr || cleDemande() !== cleAvant) return;
+            if (r.pris || r.refus) {
+              if (carte) plus.refuses[carte.id] = 1;
+              plus.statut = { ecran: ecran, texte: carte ? 'Cette option n’est plus disponible sur vos horaires.' : 'Ce changement n’est plus possible sur vos horaires.', ton: 'ko' };
+            } else appliquerPanier(c, carte, ecran, texteOk, j, cr);
+            rendrePlus(ecran, true);
+          });
+          return;
+        }
         if (refus) {
           if (carte) plus.refuses[carte.id] = 1;
           plus.statut = { ecran: ecran, texte: refus, ton: 'ko' };
-        } else {
-          var avant = copiePanier();
-          state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId;
-          var slot = j.slots[0];
-          state.dispo = j; state.dispoCle = cleDemande();
-          state.creneau = { slot: slot, reponse: j };
-          state.heure = slot.time;
-          plus.annuler = carte && carte.kind !== 'attente' ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
-          // Le montant dit est celui que le serveur vient d appliquer, jamais
-          // celui de la carte : les deux ne different que si un tarif a baisse
-          // entre-temps, et la phrase reste vraie.
-          plus.statut = { ecran: ecran, texte: carte ? texteAjout(carte, Math.round(((Number(j.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100) : texteOk, ton: 'ok' };
-        }
+        } else appliquerPanier(c, carte, ecran, texteOk, j, cr);
         rendrePlus(ecran, true);
       })
       .catch(function () {
@@ -2596,6 +2609,21 @@
         plus.statut = { ecran: ecran, texte: 'La vérification n’a pas abouti. Réessayez dans un instant.', ton: 'ko' };
         rendrePlus(ecran, true);
       });
+  }
+  // Le panier propose devient celui du client, avec le creneau que le
+  // serveur vient de rendre.
+  function appliquerPanier(c, carte, ecran, texteOk, j, cr) {
+    var avant = copiePanier();
+    state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId;
+    var slot = j.slots[0];
+    state.dispo = j; state.dispoCle = cleDemande(); state.dispoTexte = JSON.stringify(j);
+    state.creneau = { slot: slot, reponse: j };
+    state.heure = slot.time;
+    plus.annuler = carte && carte.kind !== 'attente' ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
+    // Le montant dit est celui que le serveur vient d appliquer, jamais
+    // celui de la carte : les deux ne different que si un tarif a baisse
+    // entre-temps, et la phrase reste vraie.
+    plus.statut = { ecran: ecran, texte: carte ? texteAjout(carte, Math.round(((Number(j.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100) : texteOk, ton: 'ok' };
   }
   // Pendant l aller-retour, rien ne se redessine : la phrase change sur place
   // et les boutons se taisent. A la reponse, l ecran se redessine (prix, plan,
@@ -2960,13 +2988,244 @@
     basculerRappel(recallToggle.getAttribute('aria-expanded') !== 'true');
     posterHauteur();
   });
-  goContact.addEventListener('click', function () {
-    if (goContact.disabled || !state.creneau) return;
+  function versLeContact() {
     $('#recallLine').textContent = insecable(jourCourt(state.date)) + '\u00a0· ' + insecable(groupeLisible()) + '\u00a0· ' + (state.creneau.slot.opsPlan && state.creneau.slot.opsPlan.arrivalTime ? 'arrivée ' + state.creneau.slot.opsPlan.arrivalTime : state.heure);
     $('#recallBody').innerHTML = htmlRecap(false);
     basculerRappel(false);
+    rendreBlocage();
     aller('contact');
+  }
+  goContact.addEventListener('click', function () {
+    if (goContact.disabled || !state.creneau || goContact.classList.contains('is-busy')) return;
+    var cle = cleBlocage();
+    // Le meme choix, encore bloque (retour arriere, puis Continuer) : le
+    // decompte continue, il ne repart pas. Dix minutes par choix, pas plus.
+    if (blocage.etat === 'tenu' && blocage.cle === cle && blocage.echeance > Date.now()) { versLeContact(); return; }
+    goContact.classList.add('is-busy'); goContact.setAttribute('aria-busy', 'true');
+    retenir(corpsBlocage(), cle).then(function (r) {
+      goContact.classList.remove('is-busy'); goContact.removeAttribute('aria-busy');
+      // Le client a change son choix pendant l aller-retour : ce verdict ne
+      // vaut plus, son prochain « Continuer » demandera le sien.
+      if (sceneCourante !== 'heures' || cle !== cleBlocage()) return;
+      if (r.pris) { horairesPris(r.message); return; }
+      if (r.refus) {
+        if (r.code === 'custom_request_required' && meta && meta.center && r.fromPax) meta.center.customRequest = { fromPax: Number(r.fromPax) };
+        refuserHoraires('<b>' + esc(r.message || 'Ces horaires ne peuvent pas être réservés en ligne.') + '</b>');
+        return;
+      }
+      versLeContact();
+    });
   });
+
+  /* --- Les horaires bloques pendant que le client finit ------------------------- */
+
+  // LES HORAIRES CHOISIS SONT BLOQUES POUR LE CLIENT (Movsar, 2026-09-29 :
+  // « ca montre que les horaires choisis sont bloques pour lui pendant 10
+  // minutes max, et ca bloque vraiment [...] si 3 personnes sont sur la meme
+  // page au meme moment »). « Ces horaires me vont » demande au serveur de les
+  // retenir (POST /api/public-holds) : pistes, arene et installations comptent
+  // alors pour tous les autres clients, et pour l equipe. Un decompte le dit
+  // sur les coordonnees et le recapitulatif ; a zero, rien n est plus garanti
+  // et un bouton les redemande. La confirmation porte le jeton : le blocage
+  // devient la reservation, dans la meme transaction.
+  // Un echec technique (reseau, serveur, plafond de l appareil) ne retient rien
+  // et laisse avancer : la confirmation reverifie tout, comme avant. Tout passe
+  // par une file : jamais deux demandes de cet ecran en meme temps.
+  var blocage = { jeton: '', cle: '', echeance: 0, total: 0, etat: '', message: '', minuteur: 0, prevenu: false, file: Promise.resolve() };
+  var bandeaux = $$('[data-hold]'), hourErr = $('#hourErr');
+  function enteteBlocage() { return blocage.jeton ? { 'X-Pinlane-Hold': blocage.jeton } : {}; }
+  // Ce que le client a choisi : sa demande, puis ses heures.
+  function cleChoix() { return cleDemande() + '|' + JSON.stringify(state.pins) + '|' + JSON.stringify(state.laserParts); }
+  function cleBlocage() { return cleChoix() + '|' + (state.heure || ''); }
+  // Le corps de la reservation, sans les coordonnees : un blocage n a ni nom,
+  // ni telephone, ni e-mail.
+  function corpsBlocage() {
+    var p = payload();
+    ['name', 'phone', 'email', 'notes', 'occasion'].forEach(function (k) { delete p[k]; });
+    return p;
+  }
+  function enFile(fn) {
+    var suite = blocage.file.then(fn, fn);
+    blocage.file = suite.then(function () {}, function () {});
+    return suite;
+  }
+  function heureLocale(ms) { var d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  function decompte(ms) { var s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+  function retenir(corps, cle) {
+    return enFile(function () { return demanderBlocage(corps, cle, 1); });
+  }
+  function demanderBlocage(corps, cle, essais) {
+    if (blocage.jeton) corps.holdToken = blocage.jeton;
+    return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (x) { return { statut: r.status, json: x || {} }; }); })
+      .then(function (res) {
+        var x = res.json;
+        if (res.statut === 201 && x.ok !== false && x.holdToken) { poserBlocage(x, cle); return { ok: true }; }
+        // Deux demandes de cet ecran se sont croisees au serveur : une fois.
+        if (res.statut === 409 && x.code === 'hold_retry' && essais > 0) return demanderBlocage(corps, cle, essais - 1);
+        if (res.statut === 409 && (x.code === 'slot_taken' || x.code === 'slot_unavailable')) return { pris: true, message: x.message || '' };
+        // Un refus du centre (fermé, groupe trop grand) vient de NOTRE API :
+        // JSON ok:false et sa phrase. Un 404 sans elle, c est l adresse du
+        // blocage qui manque (deploiement, reecriture) : le client avance sans
+        // blocage, la confirmation reverifie, rien ne se bloque pour autant.
+        if ((res.statut === 422 || res.statut === 404) && x.ok === false && x.message) return { refus: true, message: x.message, code: x.code || '', fromPax: x.fromPax };
+        arreterDecompte();
+        return { sans: true };
+      })
+      .catch(function () { arreterDecompte(); return { sans: true }; });
+  }
+  // Le decompte part de ce que le SERVEUR a pose (echeance moins son heure) :
+  // l horloge du telephone peut avancer ou retarder, pas la duree.
+  function poserBlocage(x, cle) {
+    var reste = Date.parse(x.expiresAt) - Date.parse(x.serverNow);
+    if (!(reste > 0)) reste = (Number(x.minutes) || 10) * 60000;
+    blocage.jeton = x.holdToken; blocage.cle = cle; blocage.total = reste; blocage.echeance = Date.now() + reste;
+    blocage.etat = 'tenu'; blocage.message = ''; blocage.prevenu = false;
+    clearInterval(blocage.minuteur);
+    blocage.minuteur = setInterval(tic, 1000);
+    rendreBlocage();
+  }
+  function arreterDecompte() {
+    clearInterval(blocage.minuteur); blocage.minuteur = 0;
+    blocage.etat = '';
+    rendreBlocage();
+  }
+  // Rendre la place tout de suite : le client change de jour, de groupe ou
+  // d activites. Le jeton ne sert plus.
+  function libererBlocage() {
+    if (!blocage.jeton) return;
+    var jeton = blocage.jeton;
+    blocage.jeton = ''; blocage.cle = '';
+    arreterDecompte();
+    enFile(function () {
+      return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ release: true, holdToken: jeton }), credentials: 'omit', keepalive: true }).catch(function () {});
+    });
+  }
+  // La reservation est faite : le blocage est devenu elle, le jeton est mort.
+  function finirBlocage() { blocage.jeton = ''; blocage.cle = ''; arreterDecompte(); }
+  function surEcranDuBlocage() { return sceneCourante === 'contact' || sceneCourante === 'recap'; }
+  function tic() {
+    if (blocage.etat !== 'tenu') return;
+    var reste = blocage.echeance - Date.now();
+    if (reste <= 0) {
+      clearInterval(blocage.minuteur); blocage.minuteur = 0;
+      blocage.etat = 'echu';
+      rendreBlocage();
+      if (surEcranDuBlocage()) dire('Vos horaires ne sont plus bloqués. Ils sont peut-être encore libres : bloquez-les à nouveau pour les garder.');
+      return;
+    }
+    if (reste <= 120000 && !blocage.prevenu) {
+      blocage.prevenu = true;
+      if (surEcranDuBlocage()) dire('Plus que 2 minutes pour valider : ensuite, vos horaires sont remis en vente.');
+    }
+    rendreBlocage();
+  }
+  function poserTexte(el, t) { if (el && el.textContent !== t) el.textContent = t; }
+  function rendreBlocage() {
+    var visible = ['tenu', 'echu', 'reprise', 'pris'].indexOf(blocage.etat) >= 0;
+    var reste = Math.max(0, blocage.echeance - Date.now());
+    bandeaux.forEach(function (b) {
+      b.hidden = !visible;
+      if (!visible) return;
+      var tenu = blocage.etat === 'tenu';
+      b.classList.toggle('is-urgent', tenu && reste <= 120000);
+      b.classList.toggle('is-libre', !tenu);
+      var temps = $('[data-hold-temps]', b), btn = $('[data-hold-action]', b), barre = $('[data-hold-barre]', b);
+      poserTexte($('[data-hold-titre]', b), tenu ? 'Vos horaires sont bloqués pour vous' : 'Vos horaires ne sont plus bloqués');
+      poserTexte($('[data-hold-sous]', b), tenu ? 'Jusqu’à ' + heureLocale(blocage.echeance) + '. Sans validation d’ici là, ils sont remis en vente.'
+        : blocage.etat === 'pris' ? (blocage.message || 'Ces horaires ne sont plus libres.') : 'Ils sont peut-être encore libres.');
+      temps.hidden = !tenu;
+      if (tenu) poserTexte(temps, decompte(reste));
+      barre.style.transform = 'scaleX(' + (tenu && blocage.total ? Math.min(1, reste / blocage.total) : 0).toFixed(4) + ')';
+      btn.hidden = tenu;
+      btn.disabled = blocage.etat === 'reprise';
+      if (blocage.etat === 'reprise') btn.setAttribute('aria-busy', 'true'); else btn.removeAttribute('aria-busy');
+      btn.dataset.action = blocage.etat === 'pris' ? 'rechoisir' : 'reprendre';
+      poserTexte(btn, blocage.etat === 'pris' ? 'Choisir d’autres horaires' : blocage.etat === 'reprise' ? 'Vérification…' : 'Les bloquer à nouveau');
+    });
+  }
+  function rechoisirHoraires() {
+    aller('heures', true);
+    if (sceneCourante !== 'heures') return;
+    state.dispo = null; signaturePistes = ''; goContact.disabled = true;
+    chargerHeures();
+  }
+  function reprendreBlocage() {
+    if (!state.creneau || blocage.etat === 'reprise') return;
+    blocage.etat = 'reprise';
+    rendreBlocage();
+    retenir(corpsBlocage(), cleBlocage()).then(function (r) {
+      if (r.ok) { dire('Vos horaires sont de nouveau bloqués pour vous, jusqu’à ' + heureLocale(blocage.echeance) + '.'); return; }
+      if (r.pris || r.refus) {
+        blocage.etat = 'pris'; blocage.message = r.message || '';
+        rendreBlocage();
+        dire(blocage.message || 'Ces horaires ne sont plus libres.');
+        return;
+      }
+      // Panne technique : rien n est garanti, le bouton reste la.
+      blocage.etat = 'echu';
+      rendreBlocage();
+    });
+  }
+  bandeaux.forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-hold-action]');
+      if (!btn || btn.disabled) return;
+      if (btn.dataset.action === 'rechoisir') rechoisirHoraires(); else reprendreBlocage();
+    });
+  });
+  // L ECRAN DES HORAIRES, quand ils ont ete pris au moment de les bloquer :
+  // la phrase du serveur (quand la place se libere, si c est un autre client
+  // qui les retient), et les horaires relus. Elle reste tant que le client
+  // n a pas change son choix.
+  function refuserHoraires(html) {
+    hourErr.innerHTML = html;
+    hourErr.hidden = false;
+    hourErr.dataset.cle = cleChoix();
+    posterHauteur();
+    montrer(hourErr);
+  }
+  function horairesPris(message) {
+    refuserHoraires('<b>' + esc(message || 'Ces horaires ne sont plus libres.') + '</b> Les horaires affichés sont à jour.');
+    dire((message || 'Ces horaires ne sont plus libres.') + ' Les horaires affichés sont à jour.');
+    state.dispo = null; signaturePistes = ''; goContact.disabled = true;
+    chargerHeures();
+  }
+  function majRefusHoraires() {
+    if (hourErr.hidden || hourErr.dataset.cle === cleChoix()) return;
+    hourErr.hidden = true; hourErr.innerHTML = ''; delete hourErr.dataset.cle;
+    posterHauteur();
+  }
+  // LES HEURES SE RELISENT TOUTES LES 15 S sur leur ecran : un creneau retenu
+  // ou reserve par un autre client s y voit sans recharger, et le sien reste
+  // libre pour lui (le jeton voyage dans l en-tete). Rien ne bouge si rien
+  // n a change ; jamais pendant un calcul, un ajout ou un blocage en cours.
+  function relireHeures() {
+    if (sceneCourante !== 'heures' || doc.hidden || !state.dispo || !state.dispoTexte) return;
+    if (hourZone.classList.contains('is-busy') || plus.enCours || goContact.classList.contains('is-busy')) return;
+    var id = requeteEnCours, cle = cleDemande(), avant = state.dispoTexte;
+    fetch(urlDispo(), { credentials: 'omit', headers: enteteBlocage() }).then(function (r) { return r.json(); })
+      .then(function (x) {
+        if (id !== requeteEnCours || cle !== cleDemande() || sceneCourante !== 'heures' || !x || x.ok === false) return;
+        if (JSON.stringify(x) === avant || hourZone.classList.contains('is-busy') || plus.enCours) return;
+        chargerPlan();
+      })
+      .catch(function () {});
+  }
+  setInterval(relireHeures, 15000);
+  // L onglet quitte : le blocage est rendu tout de suite, pas dans dix
+  // minutes. Revenu par le bouton Retour (page restauree), le bandeau dit
+  // qu il n est plus garanti et propose de le reprendre.
+  window.addEventListener('pagehide', function () {
+    if (!blocage.jeton) return;
+    var corps = JSON.stringify({ release: true, holdToken: blocage.jeton });
+    var parti = false;
+    try { parti = navigator.sendBeacon('/api/public-holds', new Blob([corps], { type: 'application/json' })); } catch (e) { parti = false; }
+    if (!parti) { try { fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps, credentials: 'omit', keepalive: true }); } catch (e) { /* rien a faire */ } }
+    if (blocage.etat === 'tenu') { clearInterval(blocage.minuteur); blocage.minuteur = 0; blocage.etat = 'echu'; }
+  });
+  window.addEventListener('pageshow', function (e) { if (e.persisted) rendreBlocage(); });
+  doc.addEventListener('visibilitychange', function () { if (!doc.hidden) tic(); });
 
   /* --- Etape 4 : le contact ------------------------------------------------------ */
 
@@ -3405,11 +3664,19 @@
     annulerVitrine();
     erreurEnvoi('');
     confirmBtn.classList.add('is-busy'); confirmBtn.setAttribute('aria-busy', 'true');
-    fetch('/api/public-reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload()), credentials: 'omit' })
+    // Apres un blocage encore en route (un ajout au recapitulatif), jamais en
+    // meme temps : la file les passe l un apres l autre. Le jeton fait du
+    // blocage la reservation ; une confirmation renvoyee (reponse perdue)
+    // rend la reservation deja faite (200, replay), jamais une deuxieme.
+    enFile(function () {
+      var corps = payload();
+      if (blocage.jeton) corps.holdToken = blocage.jeton;
+      return fetch('/api/public-reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' });
+    })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j || {} }; }); })
       .then(function (res) {
         confirmBtn.classList.remove('is-busy'); confirmBtn.removeAttribute('aria-busy');
-        if (res.status === 201 && res.json.ok !== false && res.json.reservation) { reussite(res.json); return; }
+        if ((res.status === 201 || (res.status === 200 && res.json.replay === true)) && res.json.ok !== false && res.json.reservation) { finirBlocage(); reussite(res.json); return; }
         // 409 : le serveur refuse de confirmer en ligne ce creneau. Ses
         // alternatives sont dites, sans le creneau refuse ni les doublons.
         // Les heures seront redemandees (dispo vide) ; le creneau refuse reste

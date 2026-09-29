@@ -2110,6 +2110,37 @@ button.staff-date-label:focus-visible,
 .planning-blocked-banner strong { display: block; margin-bottom: 4px; }
 .planning-blocked-banner ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 
+/* LES HORAIRES RETENUS PAR UN CLIENT EN LIGNE (2026-09-30). La piste est
+   prise, pas encore reservee : une carte en attente, en pointilles et en
+   hachures, sans nom ni action, qui dit quand la piste se libere sans
+   confirmation. Elle recouvre les cases : aucune reservation ne s y lance. */
+.planning-hold {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  overflow: hidden;
+  padding: 4px 7px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: repeating-linear-gradient(135deg, var(--subtle), var(--subtle) 6px, var(--surface) 6px, var(--surface) 12px);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: default;
+}
+.planning-hold svg { flex: 0 0 auto; width: 12px; height: 12px; margin-top: 1px; }
+/* Deux lignes, jamais une ligne coupee : sur une piste etroite, « En ligne ·
+   libre a 14:32 » perdait justement l heure. Une carte de 30 minutes ne
+   montre que la premiere ; la phrase entiere est dans son titre. */
+.planning-hold__txt { display: flex; flex-direction: column; min-width: 0; }
+.planning-hold__txt b, .planning-hold__txt small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.planning-hold__txt b { font-weight: 600; color: var(--text); }
+.planning-hold__txt small { font-size: 11px; font-variant-numeric: tabular-nums; }
+
 /* Bloc réservation posé sur la grille */
 .booking {
   position: absolute;
@@ -3146,6 +3177,11 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .laser-session-slot.has-session:hover { border-color: var(--line-strong); border-left-color: var(--accent); }
 
+/* Un lancement qui ne porte qu une reservation en ligne en cours : rien n y
+   est encore confirme. Neutre, en pointilles, comme la carte qu il contient. */
+.laser-session-slot.has-session.is-en-ligne { background: var(--surface); border: 1px dashed var(--line-strong); }
+.laser-session-slot.has-session.is-en-ligne:hover { border-color: var(--accent); }
+
 .laser-session-slot.is-drop-target { box-shadow: inset 0 0 0 2px var(--accent); }
 
 .laser-empty-title { font-size: 13px; font-weight: 500; }
@@ -3228,6 +3264,12 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .laser-meter-segment { position: absolute; top: 0; bottom: 0; opacity: 0.55; }
 .laser-meter-segment.formula { background: var(--accent-strong); }
 .laser-meter-segment.direct { background: var(--accent); }
+/* La place retenue par un client en ligne compte dans la jauge comme un
+   groupe, en hachures ; sa carte est en attente, sans action. */
+.laser-meter-segment.hold { background: repeating-linear-gradient(135deg, var(--muted), var(--muted) 3px, transparent 3px, transparent 6px); opacity: 0.7; }
+.laser-group-card.is-hold { border-style: dashed; border-color: var(--line-strong); background: var(--subtle); color: var(--muted); cursor: default; }
+.laser-group-card.is-hold:hover { box-shadow: none; }
+.laser-group-card.is-hold strong { color: var(--text); }
 
 .laser-pill {
   display: inline-flex;

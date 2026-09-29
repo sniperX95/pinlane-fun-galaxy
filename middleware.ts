@@ -153,6 +153,11 @@ export default async function middleware(request: Request) {
     '/',
     '/index.html',
     '/api/public-reservations',
+    // Le blocage des horaires choisis (reecrit vers public-reservations par
+    // vercel.json) : le middleware voit le chemin d ORIGINE, avant la
+    // reecriture. Absent d ici, le client recevait un 401 en passant a ses
+    // coordonnees.
+    '/api/public-holds',
     '/api/public-availability',
     '/api/public-booking-meta',
     '/api/healthz',

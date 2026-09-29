@@ -24,7 +24,10 @@ const { Readable } = require('stream');
 
 const ROOT = path.resolve(__dirname, '..');
 const HANDLER_PATH = path.join(ROOT, 'api', 'public-reservations.js');
-const HANDLER_SRC = fs.readFileSync(HANDLER_PATH, 'utf8');
+// La porte du statut du centre vit dans lib/demande-publique.js (partagee avec
+// le blocage des horaires, 2026-09-29) : c est elle que la contre-epreuve casse.
+const PORTE_PATH = path.join(ROOT, 'lib', 'demande-publique.js');
+const PORTE_SRC = fs.readFileSync(PORTE_PATH, 'utf8');
 
 const checks = [];
 function record(name, ok, detail) {
@@ -130,11 +133,11 @@ function bodyFor(centerId, date) {
 
     section('[3] CONTRE-EPREUVE : sans la garde, le centre en preparation encaisse');
     {
-      const anchor = '    const centerBlock = publicBookingBlockReason(requestedCenterId);';
-      const occurrences = HANDLER_SRC.split(anchor).length - 1;
+      const anchor = '  const centerBlock = publicBookingBlockReason(requestedCenterId);';
+      const occurrences = PORTE_SRC.split(anchor).length - 1;
       if (occurrences !== 1) throw new Error(`ancre de mutation introuvable ou ambigue (${occurrences})`);
       try {
-        fs.writeFileSync(HANDLER_PATH, HANDLER_SRC.replace(anchor, "    const centerBlock = '';"));
+        fs.writeFileSync(PORTE_PATH, PORTE_SRC.replace(anchor, "  const centerBlock = '';"));
         const broken = await postReservation(bodyFor('ciney', soon));
         record(
           'sans la garde : le refus « pas encore ouvert » disparait, ce gate ROUGIRAIT',
@@ -142,10 +145,10 @@ function bodyFor(centerId, date) {
           `status=${broken.status} message=${broken.message || '(vide)'}`,
         );
       } finally {
-        fs.writeFileSync(HANDLER_PATH, HANDLER_SRC); // ECRITURE INVERSE exacte
+        fs.writeFileSync(PORTE_PATH, PORTE_SRC); // ECRITURE INVERSE exacte
         purgeRepoModules();
       }
-      record('api/public-reservations.js est restaure a l identique', fs.readFileSync(HANDLER_PATH, 'utf8') === HANDLER_SRC);
+      record('lib/demande-publique.js est restaure a l identique', fs.readFileSync(PORTE_PATH, 'utf8') === PORTE_SRC);
     }
   } catch (error) {
     console.error('\nERREUR DU GATE:', error && (error.stack || error.message || error));

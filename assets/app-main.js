@@ -1894,6 +1894,33 @@ function getCurrentStaffReservationsForUi() {
   return todaysReservations().map(reservationRenderSignature);
 }
 
+// LES HORAIRES RETENUS PAR UN CLIENT EN TRAIN DE RESERVER EN LIGNE (table
+// slot_holds, 2026-09-30). staff-state les sert A PART (`holds`) : ce ne sont
+// pas des reservations, ils n entrent ni dans les listes, ni dans les
+// chiffres, ni dans le stockage du poste. Ils prennent pourtant vraiment la
+// place (le serveur refuse une reservation qui les chevauche) : le planning
+// les dessine donc en attente, avec l heure a laquelle ils se liberent sans
+// confirmation. Un blocage echu disparait au rendu suivant, sans attendre le
+// serveur ; le pouls (domaine `jour`) fait relire la journee quand un blocage
+// arrive, se convertit ou echoit.
+const blocagesEnLigne = new Map();
+function memoriserBlocagesEnLigne(centerId, dateStr, liste) {
+  blocagesEnLigne.set(`${centerId}:${dateStr}`, Array.isArray(liste) ? liste.filter(b => b && b.blocage) : []);
+}
+function getBlocagesEnLigne(dateStr = state.currentDate) {
+  const maintenant = Date.now();
+  return (blocagesEnLigne.get(`${getCurrentStaffCenterId()}:${dateStr}`) || [])
+    .filter(b => Date.parse(b.blocage.expiresAt) > maintenant);
+}
+function heureLiberationBlocage(blocage) {
+  const t = new Date(blocage.blocage.expiresAt);
+  return Number.isNaN(t.getTime()) ? '' : t.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' });
+}
+function texteBlocageEnLigne(blocage) {
+  const heure = heureLiberationBlocage(blocage);
+  return `Réservation en ligne en cours${heure ? ` : sans confirmation, la place se libère à ${heure}` : ''}.`;
+}
+
 function getStaffDataSignature(dateStr = state.currentDate) {
   const reservations = dateStr === state.currentDate
     ? getCurrentStaffReservationsForUi()
@@ -1904,6 +1931,7 @@ function getStaffDataSignature(dateStr = state.currentDate) {
     date: dateStr,
     staffResourceView: state.staffResourceView || 'all',
     reservations,
+    blocagesEnLigne: getBlocagesEnLigne(dateStr).map(b => `${b.id}@${b.blocage.expiresAt}`),
     laneStatuses: state.laneStatuses,
     searchTerm: state.searchTerm || '',
     staffStatusFilter: state.staffStatusFilter || 'all',
@@ -2787,6 +2815,7 @@ async function syncDateReservations(dateStr, opts = {}) {
     staffRevisionByDate[revisionKey] = nextRevision;
     staffSyncAtByDate[revisionKey] = Date.now();
     replaceReservationsForDate(dateStr, payload.reservations || []);
+    memoriserBlocagesEnLigne(getCurrentStaffCenterId(), dateStr, payload.holds);
     if (payload.laneStatuses) state.laneStatuses = payload.laneStatuses;
     if (payload.laneMaintenance) state.laneMaintenance = payload.laneMaintenance;
     // Classification client/groupe du centre (seuils groupe + formules annif),
@@ -21836,6 +21865,8 @@ function renderPlanning() {
   // planning qui affichait 8 pistes en dur meme pour un centre a 6 pistes. Ne touche
   // QUE le nombre de lignes rendues : l'allocation et le drag-drop restent inchanges.
   const planningLaneCount = getAvailabilityLaneCount();
+  const blocagesDuJour = getBlocagesEnLigne(state.currentDate)
+    .flatMap(b => getBowlingWindowsFromReservation(b).map(window => ({ blocage: b, window })));
   let lanesHtml = '';
   for (let i = 1; i <= planningLaneCount; i++) {
     const maint = state.laneStatuses[i] === 'maintenance';
@@ -21932,6 +21963,24 @@ function renderPlanning() {
         </div>
       </div>`;
     });
+    // LES HORAIRES RETENUS PAR UN CLIENT EN LIGNE : la piste est prise, pas
+    // encore reservee. Une carte en attente, sans nom (le client n en a pas
+    // encore donne) et sans action : elle recouvre les cases de la piste pour
+    // qu aucune reservation n y soit lancee, le serveur la refuserait.
+    let holdHtml = '';
+    blocagesDuJour.forEach(item => {
+      if (!item.window.lanes.includes(i)) return;
+      const st = item.window.start;
+      if (st < startHour || st >= closeHour) return;
+      const top = (st - startHour) * HH + HEADER_H + verticalInset;
+      const height = Math.max((Number(item.window.duration) * HH) - (verticalInset * 2), MIN_CARD_H);
+      const heure = heureLiberationBlocage(item.blocage);
+      const texte = texteBlocageEnLigne(item.blocage);
+      holdHtml += `<div class="planning-hold" data-hold-lane="${i}" data-hold-start="${st}" style="top:${top}px;height:${height}px;" role="note" aria-label="${escapeHtml(`Piste ${i}, ${formatClockDisplay(st)} - ${formatClockDisplay(item.window.end)} : ${texte}`)}" title="${escapeHtml(texte)}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <span class="planning-hold__txt"><b>En ligne</b>${heure ? ` <small>libre à ${escapeHtml(heure)}</small>` : ''}</span>
+      </div>`;
+    });
     const laneWins = laneBlockWindows[i] || [];
     let blockHtml = '';
     laneWins.forEach(w => {
@@ -21950,6 +21999,7 @@ function renderPlanning() {
       </div>
       ${cells}
       ${bkHtml}
+      ${holdHtml}
       ${blockHtml}
     </div>`;
   }
@@ -22039,8 +22089,14 @@ function renderLaserPlanning() {
   const windows = getPlanningVisibleReservations('laser')
     .flatMap(r => getLaserWindowsFromReservation(r).map(window => ({ ...window, reservation: r })))
     .filter(window => window.end > config.open && window.start < config.close);
+  // Les horaires retenus par un client en ligne prennent des armes comme une
+  // reservation (le serveur les compte) : ils entrent dans les lancements et
+  // dans la capacite, avec une carte en attente, sans nom ni action.
+  const fenetresEnLigne = getBlocagesEnLigne(state.currentDate)
+    .flatMap(b => getLaserWindowsFromReservation(b).map(window => ({ ...window, reservation: b, enLigne: true })))
+    .filter(window => window.end > config.open && window.start < config.close);
   const sessionGroups = new Map();
-  windows.forEach(window => {
+  windows.concat(fenetresEnLigne).forEach(window => {
     const key = `${window.start}-${window.end}`;
     if (!sessionGroups.has(key)) {
       sessionGroups.set(key, { start: window.start, end: window.end, windows: [] });
@@ -22056,7 +22112,9 @@ function renderLaserPlanning() {
   const capacity = getAvailabilityLaserCapacity();
   const lancementsMax = getAvailabilityLaserParallelLaunches();
   const pendingPasses = getPendingLaserPasses(state.currentDate);
-  if (sub) sub.textContent = `${sessions.length} lancement${sessions.length > 1 ? 's' : ''} · ${players} passages · ${pendingPasses.length} partie${pendingPasses.length > 1 ? 's' : ''} à placer · capacité ${capacity} armes`;
+  const lancements = sessions.filter(s => s.windows.some(window => !window.enLigne)).length;
+  const enLigne = new Set(fenetresEnLigne.map(window => window.reservation.id)).size;
+  if (sub) sub.textContent = `${lancements} lancement${lancements > 1 ? 's' : ''} · ${players} passages · ${pendingPasses.length} partie${pendingPasses.length > 1 ? 's' : ''} à placer${enLigne ? ` · ${enLigne} réservation${enLigne > 1 ? 's' : ''} en ligne en cours` : ''} · capacité ${capacity} armes`;
 
   const startHour = config.open;
   const closeHour = config.close;
@@ -22105,6 +22163,14 @@ function renderLaserPlanning() {
       </div>
     </div>` : '';
 
+  const groupesDeLaSession = (session) => {
+    const reels = session.windows.filter(window => !window.enLigne).length;
+    const enCours = session.windows.length - reels;
+    return [
+      reels || !enCours ? `${reels} groupe${reels > 1 ? 's' : ''}` : '',
+      enCours ? `${enCours} en ligne` : '',
+    ].filter(Boolean).join(' + ');
+  };
   const renderLaserSession = (session, timeValue, slotRemaining = null) => {
     if (!session) {
       // Les armes LIBRES de la tranche, pas la capacite theorique : une
@@ -22129,8 +22195,13 @@ function renderLaserPlanning() {
     // un lancement parallele (Gembloux) prend les memes armes.
     const arenaPlayers = getLaserSessionArenaPlayers(session, sessions);
     const remaining = Math.max(0, capacity - arenaPlayers);
-    const hasFormula = session.windows.some(window => window.reservation?.type === 'formule' || window.reservation?.formuleId);
-    const hasDirect = session.windows.some(window => window.reservation?.type === 'laser');
+    // Le genre du lancement se lit sur ses VRAIS groupes. Un lancement qui ne
+    // porte qu une reservation en ligne en cours n est encore ni direct ni
+    // formule : il reste neutre, en pointilles.
+    const reelles = session.windows.filter(window => !window.enLigne);
+    const seulementEnLigne = !reelles.length;
+    const hasFormula = reelles.some(window => window.reservation?.type === 'formule' || window.reservation?.formuleId);
+    const hasDirect = reelles.some(window => window.reservation?.type === 'laser');
     const shared = session.windows.length > 1;
     const fill = Math.min(100, Math.max(0, (sessionPlayers / capacity) * 100));
     const addStart = getQuickBookStartForLaserSession(session, Math.min(4, Math.max(1, remaining || 1)));
@@ -22140,12 +22211,24 @@ function renderLaserPlanning() {
       const width = Math.min(100 - cursor, Math.max(4, (players / capacity) * 100));
       const left = cursor;
       cursor = Math.min(100, cursor + width);
-      const typeClass = window.reservation?.type === 'formule' ? 'formula' : 'direct';
+      const typeClass = window.enLigne ? 'hold' : window.reservation?.type === 'formule' ? 'formula' : 'direct';
       return `<span class="laser-meter-segment ${typeClass}" style="left:${left}%;width:${width}%;"></span>`;
     }).join('');
     const groupChips = session.windows.map(window => {
       const reservation = window.reservation;
       const players = Math.max(1, Number(window.players || reservation?.pax || 0));
+      if (window.enLigne) {
+        const heure = heureLiberationBlocage(reservation);
+        return `<div class="laser-group-card is-hold" role="note" title="${escapeHtml(texteBlocageEnLigne(reservation))}" onclick="event.stopPropagation()">
+        <span class="laser-group-main">
+          <strong>Réservation en ligne</strong>
+          <small>En cours${heure ? ` · libre à ${escapeHtml(heure)} sans confirmation` : ''}</small>
+        </span>
+        <span class="booking-stats laser-group-stats">
+          <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}">${players}<span class="u">j</span></span>
+        </span>
+      </div>`;
+      }
       const isFormulaGroup = reservation.type === 'formule' || reservation.formuleId;
       const typeClass = isFormulaGroup ? 'formula' : 'direct';
       const statusClass = reservation.status === 'paid' ? 'paid' : reservation.status === 'arrived' ? 'arrived' : 'confirmed';
@@ -22210,13 +22293,13 @@ function renderLaserPlanning() {
         </span>
       </button>`;
     }).join('');
-    const sessionType = hasFormula && hasDirect ? 'mixte' : hasFormula ? 'formule' : 'direct';
+    const sessionType = seulementEnLigne ? 'en ligne' : hasFormula && hasDirect ? 'mixte' : hasFormula ? 'formule' : 'direct';
 
-    return `<div class="laser-session-slot has-session ${shared ? 'is-shared' : ''} ${hasFormula ? 'has-formula' : 'has-direct'}" data-laser-drop-start="${session.start}" data-laser-drop-end="${session.end}" role="button" tabindex="0" onclick="openQuickBookForLaserSession(${session.start}, ${remaining})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickBookForLaserSession(${session.start}, ${remaining});}" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${session.start}, ${session.end})" title="Ajouter un groupe sur ce lancement">
+    return `<div class="laser-session-slot has-session ${shared ? 'is-shared' : ''} ${seulementEnLigne ? 'is-en-ligne' : hasFormula ? 'has-formula' : 'has-direct'}" data-laser-drop-start="${session.start}" data-laser-drop-end="${session.end}" role="button" tabindex="0" onclick="openQuickBookForLaserSession(${session.start}, ${remaining})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickBookForLaserSession(${session.start}, ${remaining});}" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${session.start}, ${session.end})" title="Ajouter un groupe sur ce lancement">
       <div class="laser-session-top">
         <div>
           <div class="laser-session-title">${formatClockDisplay(session.start)} - ${formatClockDisplay(session.end)}</div>
-          <div class="laser-session-sub">${session.windows.length} groupe${session.windows.length > 1 ? 's' : ''} · ${arenaPlayers > sessionPlayers ? `${sessionPlayers} joueurs · arène ${arenaPlayers}/${capacity}` : `${sessionPlayers}/${capacity} joueurs`}</div>
+          <div class="laser-session-sub">${groupesDeLaSession(session)} · ${arenaPlayers > sessionPlayers ? `${sessionPlayers} joueurs · arène ${arenaPlayers}/${capacity}` : `${sessionPlayers}/${capacity} joueurs`}</div>
         </div>
         <span class="laser-session-kind">${remaining > 0 ? `+ groupe · ${addStart}` : sessionType}</span>
       </div>

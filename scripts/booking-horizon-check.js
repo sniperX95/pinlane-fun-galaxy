@@ -25,7 +25,10 @@ const { Readable } = require('stream');
 
 const ROOT = path.resolve(__dirname, '..');
 const HANDLER_PATH = path.join(ROOT, 'api', 'public-reservations.js');
-const HANDLER_SRC = fs.readFileSync(HANDLER_PATH, 'utf8');
+// La porte de la date vit dans lib/demande-publique.js (partagee avec le
+// blocage des horaires, 2026-09-29) : c est elle que la contre-epreuve casse.
+const PORTE_PATH = path.join(ROOT, 'lib', 'demande-publique.js');
+const PORTE_SRC = fs.readFileSync(PORTE_PATH, 'utf8');
 
 const checks = [];
 function record(name, ok, detail) {
@@ -135,11 +138,11 @@ function body(date) {
 
     section('[3] CONTRE-EPREUVE : sans la garde, la date lointaine passe la porte');
     {
-      const anchor = "    const dateVerdict = bookingDateOutOfRange(body && body.date);";
-      const occurrences = HANDLER_SRC.split(anchor).length - 1;
+      const anchor = "  const dateVerdict = bookingDateOutOfRange(body && body.date);";
+      const occurrences = PORTE_SRC.split(anchor).length - 1;
       if (occurrences !== 1) throw new Error(`ancre de mutation introuvable ou ambigue (${occurrences})`);
       try {
-        fs.writeFileSync(HANDLER_PATH, HANDLER_SRC.replace(anchor, "    const dateVerdict = '';"));
+        fs.writeFileSync(PORTE_PATH, PORTE_SRC.replace(anchor, "  const dateVerdict = '';"));
         const broken = await postReservation(body(shift(today, H + 40)));
         record(
           'sans la garde : la date lointaine n est plus refusee pour cette raison, ce gate ROUGIRAIT',
@@ -147,10 +150,10 @@ function body(date) {
           `status=${broken.status} message=${(broken.json && broken.json.message) || ''}`,
         );
       } finally {
-        fs.writeFileSync(HANDLER_PATH, HANDLER_SRC); // ECRITURE INVERSE exacte
+        fs.writeFileSync(PORTE_PATH, PORTE_SRC); // ECRITURE INVERSE exacte
         purgeRepoModules();
       }
-      record('api/public-reservations.js est restaure a l identique', fs.readFileSync(HANDLER_PATH, 'utf8') === HANDLER_SRC);
+      record('lib/demande-publique.js est restaure a l identique', fs.readFileSync(PORTE_PATH, 'utf8') === PORTE_SRC);
     }
   } catch (error) {
     console.error('\nERREUR DU GATE:', error && (error.stack || error.message || error));

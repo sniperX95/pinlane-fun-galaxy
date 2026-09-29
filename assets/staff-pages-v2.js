@@ -1360,7 +1360,7 @@
 
       <section class="pv2-stats crm-stats">
         ${statBtn('avenir', stat({ label: 'À venir 7 j', count: upcoming7.length, foot: upcoming7Pax ? `${upcoming7Pax} joueur${upcoming7Pax > 1 ? 's' : ''} attendus` : 'réservations à préparer' }))}
-        ${statGo('focusStaffCustomRequests', stat({ label: 'Demandes sur mesure', count: leadsActifs, foot: leadsActifs ? (newLeads ? `dont ${newLeads} nouvelle${newLeads > 1 ? 's' : ''}` : 'en cours de traitement') : 'aucune en attente' }))}
+        ${statGo('focusStaffCustomRequests', stat({ label: 'Demandes sur mesure', count: leadsActifs, foot: leadsActifs ? (newLeads ? `dont ${newLeads} nouvelle${newLeads > 1 ? 's' : ''}` : 'à traiter') : 'aucune à traiter' }))}
         ${statBtn('relancer', stat({ label: 'À relancer', count: relancer, foot: 'clients à récupérer' }))}
         ${statBtn('vip', stat({ label: 'Panier moyen', value: money(pv2AvgBasket(allRows)), foot: 'par réservation' }))}
       </section>

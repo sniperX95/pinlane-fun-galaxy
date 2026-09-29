@@ -46,6 +46,11 @@ async function requestReply() {
     getStaffCustomRequestItems: () => [item], getActiveOpsCenterId: () => 'libramont',
     getCurrentStaffCenterName: () => 'Centre QA', getCurrentStaffCenterId: () => 'libramont', STAFF_OCCASION_LABELS: {},
     renderStaffUtilityPage() {}, loadStaffRequestThread() {}, setStaffCustomRequestStatus() {},
+    // Le bureau des demandes (2026-09-29) : le composeur preremplit la reponse
+    // avec le groupe et la date, l envoi range la reponse dans le suivi puis
+    // suit la demande dans son onglet. Ces fonctions sont compilees pour de
+    // vrai (liste ci-dessous) ; seul l ecran reste simule ici.
+    staffCustomRequestsCache: { items: [item] }, focusStaffRequestComposer() {}, staffRequestSegmentOf: () => 'attente',
     toast: message => toasts.push(message),
     apiRequest: async (url, options) => {
       posts.push(JSON.parse(options.body));
@@ -55,7 +60,7 @@ async function requestReply() {
     },
   });
   vm.runInContext(client, s);
-  for (const name of ['staffRequestSendReply', 'staffRequestReplyDraft', 'toggleStaffRequestReply']) {
+  for (const name of ['staffRequestSendReply', 'staffRequestReplyDraft', 'toggleStaffRequestReply', 'staffRequestPresetContext', 'crDemande', 'replaceStaffCustomRequest', 'followStaffRequest']) {
     vm.runInContext(extract(app, (name === 'staffRequestSendReply' ? 'async ' : '') + 'function ' + name + '(', 0), s);
   }
   await s.staffRequestSendReply(73); await s.staffRequestSendReply(73);
@@ -70,7 +75,11 @@ async function requestReply() {
   await s.staffRequestSendReply(73);
   ok(validId(posts[4]?.attemptId) && posts[4].attemptId !== posts[3].attemptId, 'C2-request-new-send', posts.map(p => p.attemptId));
   const successToasts = toasts.slice(beforeSuccessToasts);
-  ok(successToasts.length === 2 && successToasts.every(message => message === "Réponse enregistrée : consultez son état d'envoi dans l'historique mails."), 'C2-request-toast-not-dispatch-proof', { resendConfigured: [true, false], toasts: successToasts });
+  // La REGLE, pas la phrase : le message dit que la reponse est enregistree
+  // et ou lire son etat d envoi, le meme quel que soit le fournisseur, et ne
+  // dit jamais qu elle est partie (elle peut n etre qu en file). La phrase a
+  // change le 2026-09-29 : les mails de la demande sont dans son dossier.
+  ok(successToasts.length === 2 && successToasts[0] === successToasts[1] && successToasts.every(message => /^Réponse enregistrée/.test(message) && /état d.envoi/.test(message) && !/envoyée|est partie|a été envoy/i.test(message)), 'C2-request-toast-not-dispatch-proof', { resendConfigured: [true, false], toasts: successToasts });
   s.staffRequestReplyState[73] = draft(); fail = true;
   let release; pending = new Promise(resolve => { release = resolve; });
   const sending = s.staffRequestSendReply(73);

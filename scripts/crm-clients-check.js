@@ -227,7 +227,7 @@ async function main() {
     const leadOff = await readLeadSignals();
     ok(leadOff.count === 0, `file vidée : compteur à 0 (obtenu ${leadOff.count})`);
     ok(!leadOff.segBadge, `file vidée : plus de badge de segment (obtenu « ${leadOff.segBadge} »)`);
-    ok(/aucune en attente/.test(leadOff.tile), `file vidée : tuile « aucune en attente » (« ${leadOff.tile} »)`);
+    ok(/aucune à traiter/.test(leadOff.tile), `file vidée : tuile « aucune à traiter » (« ${leadOff.tile} »)`);
     ok(!leadOff.menuBadge && !leadOff.menuDot, 'file vidée : plus de badge ni de point dans la sidebar');
     await page.evaluate(() => { window.__QA_NO_LEADS__ = false; loadStaffCustomRequests(true); });
     await page.waitForTimeout(400);

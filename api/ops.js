@@ -916,7 +916,32 @@ async function handleGet(req, res, options = {}) {
       status: url.searchParams.get('status') || '',
       limit: Number(url.searchParams.get('limit') || 100),
     });
-    sendJson(res, 200, { ok: true, centerId, customRequests: requests });
+    // L ECHEANCE ET LE SUIVI de chaque demande (lib/demande-bureau-centre,
+    // 2026-09-29). Une panne du calendrier rend la liste brute, jamais une
+    // erreur : la file reste lisible.
+    let customRequests = requests;
+    try { customRequests = await require('../lib/demande-bureau-centre').enrichirDemandes(requests); } catch (error) { customRequests = requests; }
+    sendJson(res, 200, { ok: true, centerId, customRequests });
+    return;
+  }
+
+  // L ETUDE D UNE DEMANDE SUR MESURE (console, 2026-09-29) : ce que le moteur
+  // de reservation dit de sa date, de son moment et de son effectif, et le
+  // client connu. L echeance vit dans la file (customRequests), une seule
+  // definition. Lecture seule, bornee au centre.
+  if (action === 'customRequestStudy') {
+    const { getCustomRequest } = require('../lib/database');
+    const item = await getCustomRequest(url.searchParams.get('id'), { centerId: centerScope(centerId) });
+    const { etudeDeLaDemande } = require('../lib/demande-bureau-centre');
+    const { etude, client } = await etudeDeLaDemande(item);
+    sendJson(res, 200, {
+      ok: true,
+      id: item.id,
+      etude,
+      // Ce que la console montre du client : tout sauf la cle CRM, qui vaut son
+      // numero de telephone.
+      client: client ? (({ clientKey, ...reste }) => reste)(client) : null,
+    });
     return;
   }
 
@@ -2240,8 +2265,48 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   if (action === 'customRequestStatus') {
     // Scope centre : un staff ne mute (ni ne relit) que les demandes de SON centre.
     // 'all' (accès plateforme) garde le prédicat neutre, cohérent avec listCustomRequests.
-    const request = await updateCustomRequestStatus(body.id, body.status, { centerId: scopedCenterId });
-    sendJson(res, 200, { ok: true, action, customRequest: request });
+    let request = await updateCustomRequestStatus(body.id, body.status, { centerId: scopedCenterId });
+    // LE SUIVI (2026-09-29) : qui a pris la demande, qui l a classee, quelle
+    // reservation en est nee. Le statut fait foi ; l historique est un plus,
+    // une panne de son ecriture ne defait pas le statut.
+    const { appendCustomRequestSuivi } = require('../lib/database');
+    const par = String(options.session?.member?.name || options.session?.member?.id || '');
+    try {
+      request = await appendCustomRequestSuivi(request.id, body.status === 'in_progress'
+        ? { type: 'prise-en-charge', par }
+        : { type: 'statut', statut: body.status, par }, { centerId: scopedCenterId });
+      if (Number(body.reservationId) > 0) {
+        request = await appendCustomRequestSuivi(request.id, { type: 'reservation', reservationId: Number(body.reservationId), date: String(body.reservationDate || '').slice(0, 10), par }, { centerId: scopedCenterId });
+      }
+    } catch (error) { /* statut deja ecrit */ }
+    const { enrichirDemandes } = require('../lib/demande-bureau-centre');
+    const [customRequest] = await enrichirDemandes([request]).catch(() => [request]);
+    sendJson(res, 200, { ok: true, action, customRequest });
+    return;
+  }
+
+  // LA NOTE D EQUIPE sur une demande : ce qu un collegue doit savoir (« rappele
+  // le directeur mardi », « veut une facture au nom de l ecole »).
+  if (action === 'customRequestNote') {
+    const { appendCustomRequestSuivi } = require('../lib/database');
+    const par = String(options.session?.member?.name || options.session?.member?.id || '');
+    const request = await appendCustomRequestSuivi(body.id, { type: 'note', par, texte: body.texte }, { centerId: scopedCenterId });
+    const { enrichirDemandes } = require('../lib/demande-bureau-centre');
+    const [customRequest] = await enrichirDemandes([request]).catch(() => [request]);
+    sendJson(res, 200, { ok: true, action, customRequest });
+    return;
+  }
+
+  // LE BROUILLON DE REPONSE (2026-09-29) : l etude a jour, puis l IA ancree sur
+  // elle, controlee (chiffres, promesses) ; sinon le brouillon ecrit par le
+  // code a partir des memes faits. RIEN N EST ENVOYE ICI : l equipe relit et
+  // envoie par sendDirectEmail.
+  if (action === 'customRequestDraft') {
+    const { getCustomRequest } = require('../lib/database');
+    const item = await getCustomRequest(body.id, { centerId: scopedCenterId });
+    const { brouillonDeLaDemande } = require('../lib/demande-bureau-centre');
+    const { brouillon, etude } = await brouillonDeLaDemande(item);
+    sendJson(res, 200, { ok: true, id: item.id, brouillon, etude });
     return;
   }
 
@@ -2760,7 +2825,25 @@ ${draftBody}`,
       signatoryRole: String(body.signatoryRole || '').slice(0, 80),
       member: membreDeSession(options.session),
     });
-    sendJson(res, 200, { ok: true, ...result });
+    // UNE REPONSE A UNE DEMANDE SUR MESURE se range dans son suivi : la file
+    // la sait « en attente du client ». Au mieux : le mail est parti ou en
+    // file, c est lui qui fait foi.
+    let customRequest = null;
+    if (Number(body.customRequestId) > 0 && result && result.communication) {
+      try {
+        const { appendCustomRequestSuivi } = require('../lib/database');
+        const request = await appendCustomRequestSuivi(Number(body.customRequestId), {
+          type: 'reponse',
+          par: String(options.session?.member?.name || options.session?.member?.id || ''),
+          objet: body.subject,
+          communicationId: result.communication.id,
+          source: body.draftSource,
+        }, { centerId: studioCenterId });
+        const { enrichirDemandes } = require('../lib/demande-bureau-centre');
+        [customRequest] = await enrichirDemandes([request]).catch(() => [request]);
+      } catch (error) { customRequest = null; }
+    }
+    sendJson(res, 200, { ok: true, ...result, ...(customRequest ? { customRequest } : {}) });
     return;
   }
 
@@ -3345,6 +3428,8 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'emailClaims') return 'emails.view';
     if (action === 'agentQuestions') return 'emails.view';
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
+    // L etude d une demande : la meme lecture que la file.
+    if (action === 'customRequestStudy') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights', 'directionComparison', 'directionRetention', 'directionAudience'].includes(action)) return 'direction.view';
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
     if (action === 'dailyMetrics') return ['dashboard.view', 'direction.view'];
@@ -3422,6 +3507,9 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];
   if (action === 'directEmailPreview') return ['emails.view', 'emails.send'];
   if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
+  if (action === 'customRequestNote') return ['clients.view', 'reservations.edit', 'dashboard.view'];
+  // Rediger le brouillon, c est preparer un envoi : meme droit que l envoi.
+  if (action === 'customRequestDraft') return 'emails.send';
   if (action === 'insightStatus') return ['campaigns.manage', 'marketing.agents'];
   if (['suppressionAdd', 'suppressionRemove'].includes(action)) return ['campaigns.manage', 'emails.send'];
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';

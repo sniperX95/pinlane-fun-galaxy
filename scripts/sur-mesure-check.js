@@ -30,7 +30,7 @@
 //       leurs photos, les raisons des refus, l autre date, l envoi reel
 //       (valide par le vrai gestionnaire, rien ecrit), l ecran final, le
 //       telephone ;
-//   [F] la console : la fiche de la demande dit tout, et Etablissement regle
+//   [F] la console : le dossier de la demande dit tout, et Etablissement regle
 //       le seuil ;
 //   [G] contre-epreuves : chaque regle retiree, ce gate ROUGIT.
 // =============================================================================
@@ -1004,10 +1004,12 @@ async function console_(browser) {
     await page.evaluate(async () => { await loadStaffCustomRequests(true); });
     await page.waitForTimeout(300);
     const carte = await page.evaluate(() => { const d = document.createElement('div'); d.innerHTML = renderStaffCustomRequestCard(getStaffCustomRequestItems()[0]); return d.textContent.replace(/\s+/g, ' ').trim(); });
+    // Une demande s ouvre dans SON dossier, sur la page des demandes (la fiche
+    // en surimpression est retiree le 2026-09-29 : deux rendus, et une reponse
+    // envoyee depuis la fiche ne se rangeait pas dans le suivi).
     await page.evaluate(() => openStaffCustomRequest(77));
-    await page.waitForSelector('#crOverlay .cr-sheet', { timeout: 5000 });
-    const fiche = await page.evaluate(() => document.getElementById('crOverlay').textContent.replace(/\s+/g, ' ').trim());
-    await page.evaluate(() => closeStaffCustomRequest());
+    await page.waitForSelector('.req-detail[data-request-id="77"]', { timeout: 8000 });
+    const fiche = await page.evaluate(() => document.querySelector('.req-detail[data-request-id="77"]').innerText.replace(/\s+/g, ' ').trim());
     // Etablissement : le seuil se lit et se regle.
     await page.evaluate(() => { state.staffMenuPage = 'establishment'; state.establishmentTab = 'offres'; state.establishmentEditing = false; save(); setView('staff'); });
     await page.waitForSelector('.estab-tabs button', { state: 'visible', timeout: 20000 });
@@ -1033,9 +1035,10 @@ function verifierConsole(r) {
   section('F. LA CONSOLE');
   ok(r.erreurs.length === 0, 'MONTAGE la console s ouvre sans erreur', r.erreurs.join(' | '));
   ok(/École communale du gate/.test(r.carte) && /31 joueurs \+ 2 accompagnateurs/.test(r.carte) && /2 activités, 1 formule, conseil demandé/.test(r.carte), 'la carte de la liste dit le groupe et les envies', r.carte);
-  ok(/Le groupe/.test(r.fiche) && /Moins de 7 ans, 7 à 12 ans/.test(r.fiche) && /Soirée/.test(r.fiche) && /Bowling, Laser Game/.test(r.fiche) && /FORMULE 4/.test(r.fiche)
+  ok(/La demande/.test(r.fiche) && /31 joueurs \+ 2 accompagnateurs/.test(r.fiche) && /Moins de 7 ans, 7 à 12 ans/.test(r.fiche) && /Soirée/.test(r.fiche)
+    && /Bowling/.test(r.fiche) && /Laser Game/.test(r.fiche) && /FORMULE 4/.test(r.fiche) && /Conseil demandé/.test(r.fiche)
     && /22 € par personne/.test(r.fiche) && /Au nom de École communale du gate/.test(r.fiche) && /BE 0123\.456\.789/.test(r.fiche) && /Institutrice/.test(r.fiche) && /Pique-nique/.test(r.fiche),
-  'la fiche dit tout : groupe, ages, moment, envies, budget, facture, fonction, le mot du client', r.fiche.slice(0, 260));
+  'le dossier dit tout : groupe, ages, moment, envies, budget, facture, fonction, le mot du client', r.fiche.slice(0, 260));
   ok(r.champ === '31', 'Etablissement montre le seuil du centre (31)', r.champ);
   ok(r.envoye && r.envoye.a && r.envoye.a.fromPax === 25 && r.envoye.b && r.envoye.b.fromPax === null, 'le seuil se regle (25), et se retire (vide = jamais)', JSON.stringify(r.envoye));
   if (r.envoye && r.envoye.b) {

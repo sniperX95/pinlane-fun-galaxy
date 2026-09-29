@@ -107,7 +107,7 @@ async function main() {
     await page.evaluate(() => window.openStaffDashboardDetail('alerts', 'lead'));
     await page.waitForSelector('.alert-lead', { timeout: 8000 });
     const alertText = await page.evaluate(() => (document.querySelector('.alert-lead') || {}).textContent || '');
-    ok(/sur mesure en attente/i.test(alertText), 'l alerte des demandes sur mesure est rendue');
+    ok(/sur mesure à traiter/i.test(alertText), 'l alerte des demandes sur mesure est rendue');
     ok(/Asso Les Lucioles/.test(alertText), 'elle NOMME la demande qui attend (le contexte reste)');
     ok(/page Demandes sur mesure/i.test(alertText), 'sa note renvoie a la page dediee');
 
@@ -142,7 +142,10 @@ async function main() {
     ok(landed.cardVisible, 'la carte de LA demande cliquee est a l ecran');
     ok(landed.called, 'elle est designee (repere is-called) : on ne cherche pas laquelle');
     ok(/Asso Les Lucioles/.test(landed.boardText), 'la page porte bien le contact attendu');
-    ok(/pondre par email/.test(landed.boardText), 'et les actions de traitement, la ou elles vivent');
+    // La REGLE, pas le libelle : la page porte l action de repondre et celle de
+    // reserver (« Repondre par email » est devenu « Rediger la reponse » le
+    // 2026-09-29, quand l IA s est mise a rediger a partir de l etude).
+    ok(/Rédiger la réponse/.test(landed.boardText) && /Créer la réservation/.test(landed.boardText), 'et les actions de traitement, la ou elles vivent');
 
     console.log('\n[Contre-epreuve : une demande DEJA TRAITEE ouvre SON segment]');
     await page.evaluate(() => window.openStaffRequestsPage(502));
@@ -150,7 +153,9 @@ async function main() {
     const handled = await page.evaluate(() => ({
       activeSegment: ((document.querySelector('.req-seg.active') || {}).textContent || '').trim(),
       cardVisible: !!document.querySelector('.req-card[data-request-id="502"]'),
-      emptyShown: /Rien dans cette vue|Aucune demande en attente/.test((document.querySelector('.req-board') || {}).textContent || ''),
+      // L etat vide se lit a son element, pas a une phrase : la sonde sur les
+      // anciennes phrases ne pouvait plus rougir apres la refonte.
+      emptyShown: Boolean(document.querySelector('.req-detail-empty')),
     }));
     ok(/traitées/i.test(handled.activeSegment), 'segment Traitees ouvert pour une demande traitee (' + handled.activeSegment + ')');
     ok(handled.cardVisible && !handled.emptyShown, 'sa carte est visible : la page n est pas vide sur un clic valide');

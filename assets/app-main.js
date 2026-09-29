@@ -2901,9 +2901,26 @@ function getLiveSyncCaches() {
     },
     {
       // Le badge « demandes » de la barre laterale est sur toutes les pages.
-      domaines: ['demandes'], partout: true,
+      // Un mail recu peut remettre une demande a traiter (le client a
+      // repondu) : la file se relit aussi sur « communications ».
+      domaines: ['demandes', 'communications'], partout: true,
       enCours: () => staffCustomRequestsCache.loading,
       relire: () => loadStaffCustomRequests(true),
+    },
+    {
+      // Le fil de la demande ouverte : un mail parti ou recu s y lit aussitot.
+      domaines: ['communications'], pages: ['requests'],
+      enCours: () => { const item = getStaffRequestSelectedItem(); const fil = item ? staffRequestThreads[String(item.id)] : null; return Boolean(fil && fil.loading); },
+      oublier: () => { staffRequestThreads = {}; },
+      relire: () => { const item = getStaffRequestSelectedItem(); if (item) loadStaffRequestThread(item.id, true); },
+    },
+    {
+      // L etude du dossier ouvert suit le planning, les fermetures et la
+      // configuration : elle devient « a relire », et se relit au rendu.
+      domaines: ['reservations', 'blocages', 'config'], pages: ['requests'],
+      enCours: () => { const item = getStaffRequestSelectedItem(); const etude = item ? staffRequestStudies[String(item.id)] : null; return Boolean(etude && etude.loading); },
+      oublier: () => markStaffRequestStudiesStale(),
+      relire: () => { markStaffRequestStudiesStale(); renderStaffRequestsIfOpen(); },
     },
     {
       domaines: ['blocages'], pages: ['planning', 'laserGame', 'establishment'],
@@ -11097,8 +11114,8 @@ function getStaffDashboardAlertDefinitions(metrics) {
     alerts.unshift({
       kind: 'lead',
       priority: 'critical',
-      title: `${activeLeads} demande${activeLeads > 1 ? 's' : ''} sur mesure en attente`,
-      text: 'Anniversaires, groupes et entreprises qui attendent une réponse.',
+      title: `${activeLeads} demande${activeLeads > 1 ? 's' : ''} sur mesure à traiter`,
+      text: 'Anniversaires, groupes et entreprises qui attendent la réponse de l’équipe.',
       rows: [],
       action: 'Tout se traite dans la page Demandes sur mesure : répondre par email, prendre en charge, convertir en réservation.'
     });
@@ -11557,23 +11574,31 @@ function getStaffAlertSubsections(alert) {
 // (repondre par email, appeler, prendre en charge, marquer traitee, ouvrir la
 // fiche complete). Avant, ce signal expediait vers la page Clients sans
 // contexte : la classe d'ecart que Movsar a nommee le 2026-08-18.
+// Ce qui attend l EQUIPE, dans l ordre de l heure promise au client : la meme
+// liste que l onglet « A traiter », sous un titre qui dit le meme chiffre
+// (2026-09-29). La liste montrait aussi les demandes qui attendent le client,
+// sous un titre qui ne les comptait pas.
 function renderStaffAlertLeadRows() {
-  const items = getStaffCustomRequestItems().filter(item => item.status === 'new' || item.status === 'in_progress');
+  const items = getStaffCustomRequestItems().filter(item => staffRequestStage(item) === 'a-traiter').sort(staffRequestCompare('atraiter'));
   if (!items.length) {
-    return '<div class="dashboard-detail-empty">Aucune demande en attente : tout est traité ou archivé.</div>';
+    return '<div class="dashboard-detail-empty">Rien à traiter : chaque demande a sa réponse.</div>';
   }
   return items.map(item => {
     const jid = staffClientJs(item.id);
+    const d = crDemande(item);
     const occKey = String(item.occasion || '').toLowerCase();
+    const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
+    const quand = staffRequestWhenShort(item);
     const metaParts = [
-      STAFF_OCCASION_LABELS[occKey] || '',
-      item.company || '',
-      item.requestedDate ? `Souhait : ${item.requestedDate}` : '',
-      Number(item.pax) > 0 ? `${item.pax} pers.` : ''
+      (d && d.groupTypeLabel) || STAFF_OCCASION_LABELS[occKey] || '',
+      (d && d.organisation) || item.company || '',
+      quand ? `Souhait : ${quand}` : '',
+      joueurs ? `${joueurs} pers.` : ''
     ].filter(Boolean).join(' · ');
-    return `<article class="dashboard-detail-row lead">
+    const due = staffRequestDue(item);
+    return `<article class="dashboard-detail-row lead" data-item-id="${escapeHtml(String(item.id))}">
       <div class="dashboard-detail-main">
-        <strong>${escapeHtml(item.contactName || 'Contact')} ${renderStaffCustomRequestBadge(item.status)}</strong>
+        <strong>${escapeHtml(item.contactName || 'Contact')} ${renderStaffRequestStageBadge(item)}${due ? ` <span class="req-due is-${due.tone}" title="${escapeHtml(due.long)}">${escapeHtml(due.court)}</span>` : ''}</strong>
         ${metaParts ? `<span>${escapeHtml(metaParts)}</span>` : ''}
         <small>${escapeHtml(String(item.message || '').slice(0, 220))}</small>
       </div>
@@ -11596,10 +11621,9 @@ function openStaffRequestsPage(id, ev) {
   if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
   if (typeof closeStaffDashboardDetail === 'function') closeStaffDashboardDetail();
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
-  const segment = item && item.status === 'archived' ? 'archivees'
-    : item && item.status === 'handled' ? 'traitees'
-      : 'actives';
-  state.staffRequestSegment = segment;
+  // L onglet ou vit la demande (son etape) : une demande en attente du client
+  // s ouvrait dans « A traiter », ou elle n est pas.
+  state.staffRequestSegment = item ? staffRequestSegmentOf(item) : 'atraiter';
   // La page est une boite de reception : ouvrir le bon onglet ne suffit plus,
   // il faut DESIGNER la demande, sinon c'est la premiere de la file qui
   // s'affiche a droite et le clic mene a cote.
@@ -16181,40 +16205,32 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   // Clients+Groupes), tous ses chemins d'accès sont aliasés vers Clients /
   // segment « À venir » (openStaffMenuPage, renderStaffData, renderStaffUtilityPage).
   if (page === 'requests') {
-    // LA PAGE DEDIEE AUX DEMANDES SUR MESURE (2026-08-18, Movsar : « c est
-    // super caché et c est con parce que c est un truc important »). Tout se
-    // gère ICI : répondre par email dans la carte (sendDirectEmail, tracé
-    // dans l'historique), prendre en charge, marquer traitée, archiver,
-    // convertir en réservation préremplie. Zéro renvoi vers une autre page.
-    const requestItems = getStaffCustomRequestItems();
-    const newCount = requestItems.filter(item => item.status === 'new').length;
-    const progressCount = requestItems.filter(item => item.status === 'in_progress').length;
-    const handledCount = requestItems.filter(item => item.status === 'handled').length;
-    const totalPax = requestItems.filter(item => item.status === 'new' || item.status === 'in_progress')
-      .reduce((sum, item) => sum + (Number(item.pax) || 0), 0);
+    // LA PAGE DEDIEE AUX DEMANDES SUR MESURE (2026-08-18, refaite le
+    // 2026-09-29). Le sous-titre dit ce qui attend l equipe en une ligne :
+    // combien a traiter, combien ont depasse l heure promise au client,
+    // combien attendent sa reponse. Les onglets de la file portent les memes
+    // comptes : une seule definition (getStaffRequestSegments).
+    const buckets = getStaffRequestSegments();
+    const aTraiter = buckets.atraiter.length;
+    const enRetard = buckets.atraiter.filter((item) => { const due = staffRequestDue(item); return due && due.tone === 'late'; }).length;
+    const enAttente = buckets.attente.length;
+    const resume = [
+      aTraiter ? `${aTraiter} à traiter${enRetard ? `, dont ${enRetard} en retard` : ''}` : 'Rien à traiter',
+      enAttente ? `${enAttente} en attente du client` : '',
+      'réponse promise au client sous 24 heures ouvrables',
+    ].filter(Boolean).join(' · ');
     return {
       ...base,
       layout: 'requests',
       eyebrow: 'Clients & marketing',
       title: 'Demandes sur mesure',
-      // Le bandeau du panneau REPETAIT le titre et le compte deja portes par
-      // l'en-tete de page, juste au-dessus. Deux fois « Demandes sur mesure »
-      // a 40 pixels d'ecart, plus un « Rafraichir » a cote d'un « Actualiser »
-      // qui fait la meme chose : c'est du bruit, il part. Le compte vit
-      // maintenant dans le sous-titre et sur les onglets de la file.
-      subtitle: `${newCount + progressCount} active${newCount + progressCount > 1 ? 's' : ''} · ${handledCount} traitée${handledCount > 1 ? 's' : ''} · anniversaires, groupes et entreprises, réponse comprise.`,
+      subtitle: `${resume}.`,
       hidePanelHead: true,
       hideDateAction: true,
       primaryLabel: '',
       primaryAction: '',
       secondaryLabel: 'Actualiser',
       secondaryAction: 'loadStaffCustomRequests(true)',
-      kpis: [
-        ['Nouvelles', newCount, 'jamais ouvertes'],
-        ['En cours', progressCount, 'prises en charge'],
-        ['Joueurs en jeu', totalPax, 'sur les demandes actives'],
-        ['Traitées', handledCount, 'réponses parties']
-      ],
       body: renderStaffRequestsBoard()
     };
   }
@@ -16407,6 +16423,8 @@ function renderStaffUtilityPage() {
   // Le fil de la demande ouverte se charge tout seul : l'historique existait
   // deja, il fallait cliquer un bouton par carte pour le voir.
   if (model.page === 'requests') ensureStaffRequestThread();
+  // L etude du dossier ouvert : ce que le moteur dit de sa date.
+  if (model.page === 'requests') ensureStaffRequestStudy();
   if ((model.page === 'emails' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) requestOpsAdminLoad(false);
 }
 
@@ -17305,8 +17323,15 @@ window.getStaffNewCustomRequestCount = getStaffNewCustomRequestCount;
 // qu on a commence a traiter disparaissait donc du compteur alors qu elle reste
 // A FAIRE. C est le compte du panneau qui fait foi : tant qu une demande n est
 // ni traitee ni archivee, elle attend quelqu un.
+//
+// CE QUI ATTEND L EQUIPE (2026-09-29). Depuis le bureau des demandes, une
+// demande a laquelle l equipe a repondu attend le CLIENT : elle passe dans
+// l onglet « En attente » et revient a traiter des qu il ecrit. Le badge du
+// menu, l alerte du tableau de bord et la tuile Clients disent donc le meme
+// chiffre que l onglet « A traiter » de la page, une seule definition
+// (staffRequestStage).
 function getStaffActiveCustomRequestCount() {
-  return getStaffCustomRequestItems().filter(item => item.status !== 'archived' && item.status !== 'handled').length;
+  return getStaffCustomRequestItems().filter(item => staffRequestStage(item) === 'a-traiter').length;
 }
 window.getStaffActiveCustomRequestCount = getStaffActiveCustomRequestCount;
 
@@ -17328,18 +17353,27 @@ window.focusStaffCustomRequests = focusStaffCustomRequests;
 // `silencieux` : l appelant affiche SON message (creation depuis une
 // demande). Rend true/false pour qu il puisse dire la verite : sans valeur
 // de retour, un echec du seul classement etait indistinguable d un succes.
+// `reservationId` : la reservation nee de la demande, gardee dans son suivi.
+// `suivre` : la page reste sur la demande, dans l onglet ou elle arrive.
+// La reponse du serveur porte la demande a jour (statut, suivi, echeance) :
+// elle remplace la ligne tout de suite, la relecture complete suit.
 async function setStaffCustomRequestStatus(id, status, options = {}) {
   try {
-    await apiRequest(API_ENDPOINTS.ops, {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
-      body: JSON.stringify({ action: 'customRequestStatus', id, status, centerId: getActiveOpsCenterId() })
+      body: JSON.stringify({
+        action: 'customRequestStatus',
+        id,
+        status,
+        centerId: getActiveOpsCenterId(),
+        ...(Number(options.reservationId) > 0 ? { reservationId: Number(options.reservationId), reservationDate: String(options.reservationDate || '') } : {}),
+      })
     });
-    // Mise à jour optimiste locale puis rechargement serveur (source de vérité).
-    staffCustomRequestsCache.items = (staffCustomRequestsCache.items || []).map(item =>
-      String(item.id) === String(id) ? { ...item, status } : item);
+    replaceStaffCustomRequest(payload && payload.customRequest, { id, status });
+    if (options.suivre) followStaffRequest(id);
     renderStaffGroupHost();
     loadStaffCustomRequests(true);
-    if (!options.silencieux) toast('Demande mise à jour.');
+    if (!options.silencieux) toast(STAFF_REQUEST_STATUS_TOAST[status] || 'Demande mise à jour.');
     return true;
   } catch (error) {
     if (!options.silencieux) toast(error.message || 'Mise à jour impossible.');
@@ -17347,44 +17381,66 @@ async function setStaffCustomRequestStatus(id, status, options = {}) {
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-//  PAGE « DEMANDES SUR MESURE » (2026-08-18). La file etait enterree dans
-//  Clients > segment « A venir » : « c est super caché et c est con parce que
-//  c est un truc important » (Movsar). Ici tout se fait SUR PLACE : repondre
-//  par email dans la carte (sendDirectEmail, trace dans l historique du
-//  studio), changer le statut, appeler, convertir en reservation preremplie.
-// ════════════════════════════════════════════════════════════════════════════
+const STAFF_REQUEST_STATUS_TOAST = {
+  in_progress: 'Demande prise en charge.',
+  handled: 'Demande classée « Traitée ».',
+  archived: 'Demande archivée.',
+};
 
-// Composeur inline par demande : id -> { open, subject, body, busy }.
-let staffRequestReplyState = {};
-
-function setStaffRequestSegment(segment) {
-  state.staffRequestSegment = ['actives', 'traitees', 'archivees'].includes(segment) ? segment : 'actives';
-  save();
-  renderStaffUtilityPage();
+// La ligne a jour, rendue par le serveur, remplace l ancienne dans la file.
+// Sans ligne exploitable (serveur d avant), le statut seul est pose et
+// l etape se relit sur lui jusqu a la relecture.
+function replaceStaffCustomRequest(fresh, fallback = {}) {
+  const key = String((fresh && fresh.id != null ? fresh.id : fallback.id) || '');
+  if (!key) return;
+  staffCustomRequestsCache.items = (staffCustomRequestsCache.items || []).map((item) => {
+    if (String(item.id) !== key) return item;
+    if (fresh && typeof fresh === 'object' && fresh.id != null) return fresh;
+    if (!fallback.status) return item;
+    return { ...item, status: fallback.status, suivi: item.suivi ? { ...item.suivi, etape: '' } : item.suivi };
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  REFONTE COMPLETE (2026-08-20). Movsar, capture a l appui : « c est super
-//  moche comment sont affiches les mails, tout est moche et mal designe et mal
-//  anime sur cette categorie ». Trois fautes, corrigees a la racine :
+//  PAGE « DEMANDES SUR MESURE » (2026-08-18). La file etait enterree dans
+//  Clients > segment « A venir » : « c est super caché et c est con parce que
+//  c est un truc important » (Movsar). Ici tout se fait SUR PLACE.
 //
-//  1. LE MAIL S AFFICHAIT EN CODE. `message.body` contient le gabarit HTML
-//     complet (doctype, <head>, <meta>, styles inline) : echappe puis pose tel
-//     quel dans un <p>, le staff lisait « <meta charset="utf-8"> » au lieu du
-//     message. On lit maintenant `payload.textBody` (le texte que le gabarit a
-//     habille, ecrit par le staff) et, a defaut, on DESHABILLE le HTML
-//     (staffHtmlToPlainText). Le rendu d origine reste consultable dans un
-//     cadre isole, pour verifier ce que le client a recu.
-//  2. LA PAGE N AVAIT PAS DE FORME. Une pile de cartes pleine largeur, chacune
-//     portant sa propre file de mails : trois demandes et l ecran devenait un
-//     rouleau. C est une BOITE DE RECEPTION maintenant : la file a gauche, la
-//     demande ouverte a droite, un seul fil a l ecran.
-//  3. L ANIMATION REJOUAIT A CHAQUE RENDU. La page se repeint entierement a
-//     chaque frappe reseau : toute animation d entree se rejouait, et le
-//     curseur sautait hors du champ en cours de saisie. Les entrees ne jouent
-//     plus que sur un VRAI changement de vue (staffRequestViewKey), et le
-//     focus + le caret + le defilement de la file survivent au repaint.
+//  LE BUREAU DES DEMANDES (refonte 2026-09-29). Movsar, capture de sa propre
+//  demande a l appui : « bcp plus complete, un systeme avec ia qui repond
+//  adapte, toute la page refaite, il doit y avoir toutes les infos, bcp plus
+//  simple a gerer ». La page montrait la date, le nombre et les coordonnees :
+//  tout ce que le client avait rempli dormait en base, et l IA ne faisait que
+//  reformuler. Maintenant :
+//   1. LA FILE dit ce qui attend l equipe : « A traiter », avec l heure
+//      promise au client (24 heures ouvrables), « En attente » du client,
+//      « Traitees ». Un mail du client remet sa demande a traiter.
+//   2. LE DOSSIER dit tout ce que le client a rempli, puis ce que le moteur de
+//      reservation dit de sa date (horaires, departs libres, prix pour son
+//      effectif), avec l action suivante en evidence.
+//   3. LA REPONSE est redigee par l IA a partir de ces faits ; un chiffre, un
+//      avantage ou une promesse absents des faits sont refuses par le
+//      serveur, et le brouillon du code prend la place. Rien ne part sans un
+//      clic de l equipe.
+//   4. LE SUIVI garde qui a pris la demande, ce qui est parti, la reservation
+//      nee de la demande et les notes de l equipe.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Composeur par demande : id -> { open, subject, body, busy, drafting, ... }.
+let staffRequestReplyState = {};
+
+// ════════════════════════════════════════════════════════════════════════════
+//  REFONTE (2026-08-20). Movsar, capture a l appui : « c est super moche
+//  comment sont affiches les mails, tout est moche et mal designe et mal
+//  anime sur cette categorie ». Trois fautes, corrigees a la racine :
+//  1. LE MAIL S AFFICHAIT EN CODE : on lit `payload.textBody`, ou le HTML
+//     deshabille (staffHtmlToPlainText) ; le rendu d origine reste
+//     consultable dans un cadre isole.
+//  2. LA PAGE N AVAIT PAS DE FORME : une boite de reception, la file a
+//     gauche, la demande ouverte a droite, un seul fil a l ecran.
+//  3. L ANIMATION REJOUAIT A CHAQUE RENDU : les entrees ne jouent que sur un
+//     vrai changement de vue (staffRequestViewKey), et le focus, le caret et
+//     le defilement de la file survivent au repaint.
 // ════════════════════════════════════════════════════════════════════════════
 
 // Recherche dans la file : volontairement HORS de `state`, donc non persistee.
@@ -17397,9 +17453,40 @@ let staffRequestMessageView = {};
 // entree doit etre animee. Sans elle, chaque repaint rejoue les animations.
 let staffRequestViewKey = '';
 
+// LES ONGLETS DE LA FILE, dans l ordre ou l equipe les traite. L etape vient
+// du serveur (suivi.etape, lib/demande-bureau) ; les archives restent a part,
+// au pied de la file : ce n est pas du travail.
+const STAFF_REQUEST_SEGMENTS = [
+  { key: 'atraiter', etape: 'a-traiter', label: 'À traiter' },
+  { key: 'attente', etape: 'en-attente', label: 'En attente' },
+  { key: 'traitees', etape: 'traitee', label: 'Traitées' },
+  { key: 'archivees', etape: 'archivee', label: 'Archivées' },
+];
+
+// L etape d une demande. Une liste servie sans suivi (serveur d avant,
+// lecture en panne) se lit sur le statut : la file reste juste, en moins fin.
+function staffRequestStage(item) {
+  const etape = item && item.suivi && item.suivi.etape;
+  if (STAFF_REQUEST_SEGMENTS.some(segment => segment.etape === etape)) return etape;
+  if (item && item.status === 'archived') return 'archivee';
+  if (item && item.status === 'handled') return 'traitee';
+  return 'a-traiter';
+}
+
+function staffRequestSegmentOf(item) {
+  const etape = staffRequestStage(item);
+  return (STAFF_REQUEST_SEGMENTS.find(segment => segment.etape === etape) || STAFF_REQUEST_SEGMENTS[0]).key;
+}
+
+// « actives » : le nom de l onglet avant la refonte, encore dans les postes.
+function getStaffRequestSegment() {
+  const key = state.staffRequestSegment === 'actives' ? 'atraiter' : state.staffRequestSegment;
+  return STAFF_REQUEST_SEGMENTS.some(segment => segment.key === key) ? key : 'atraiter';
+}
+
 function setStaffRequestSegment(segment) {
-  const next = ['actives', 'traitees', 'archivees'].includes(segment) ? segment : 'actives';
-  if (next !== state.staffRequestSegment) {
+  const next = STAFF_REQUEST_SEGMENTS.some(entry => entry.key === segment) ? segment : 'atraiter';
+  if (next !== getStaffRequestSegment()) {
     // Changer d onglet, c est changer de file : la selection de l ancienne
     // n a plus de sens et la premiere ligne de la nouvelle prend la main.
     state.staffRequestSelectedId = null;
@@ -17407,6 +17494,16 @@ function setStaffRequestSegment(segment) {
   state.staffRequestSegment = next;
   save();
   renderStaffUtilityPage();
+}
+
+// La page suit une demande qui change d onglet (reponse envoyee, demande
+// reactivee) : on la voit arriver, au lieu de la perdre de vue.
+function followStaffRequest(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  if (!item) return;
+  state.staffRequestSegment = staffRequestSegmentOf(item);
+  state.staffRequestSelectedId = String(item.id);
+  save();
 }
 
 function selectStaffRequest(id) {
@@ -17432,41 +17529,58 @@ function staffRequestSearchInput(value) {
 }
 window.staffRequestSearchInput = staffRequestSearchInput;
 
-function getStaffRequestSegment() {
-  return ['actives', 'traitees', 'archivees'].includes(state.staffRequestSegment) ? state.staffRequestSegment : 'actives';
-}
-
 function getStaffRequestSegments() {
-  const items = getStaffCustomRequestItems();
-  return {
-    actives: items.filter(item => item.status === 'new' || item.status === 'in_progress'),
-    traitees: items.filter(item => item.status === 'handled'),
-    archivees: items.filter(item => item.status === 'archived'),
-  };
+  const out = Object.fromEntries(STAFF_REQUEST_SEGMENTS.map(segment => [segment.key, []]));
+  getStaffCustomRequestItems().forEach(item => out[staffRequestSegmentOf(item)].push(item));
+  return out;
 }
-
-// Ordre de la file : ce qui n a jamais ete ouvert d abord, puis le plus recent.
-// Une demande jamais lue ne doit pas se retrouver sous une demande deja prise
-// en charge simplement parce qu elle est arrivee la veille.
-const STAFF_REQUEST_WEIGHT = { new: 0, in_progress: 1, handled: 2, archived: 3 };
 
 function staffRequestSearchBlob(item) {
-  return [item.contactName, item.company, item.email, item.phone, item.message, item.requestedDate]
+  const d = crDemande(item);
+  return [item.contactName, item.company, item.email, item.phone, item.message, item.requestedDate, d && d.organisation, d && d.groupTypeLabel]
     .map(value => String(value || '')).join(' ').toLowerCase();
 }
 
+// L ORDRE DE CHAQUE ONGLET, ce que l equipe doit faire d abord :
+//  - a traiter : l heure promise la plus proche en tete, retards compris ;
+//    sans echeance connue, une demande jamais prise passe devant ;
+//  - en attente : le client qui attend depuis le plus longtemps ;
+//  - traitees et archivees : la plus recente.
+const STAFF_REQUEST_WEIGHT = { new: 0, in_progress: 1, handled: 2, archived: 3 };
+function staffRequestTime(value) {
+  const t = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(t) ? t : 0;
+}
+function staffRequestCompare(segment) {
+  return (a, b) => {
+    if (segment === 'atraiter') {
+      const da = staffRequestDue(a);
+      const db = staffRequestDue(b);
+      if (da && db && da.t !== db.t) return da.t - db.t;
+      if (da && !db) return -1;
+      if (!da && db) return 1;
+      const weight = (STAFF_REQUEST_WEIGHT[a.status] ?? 9) - (STAFF_REQUEST_WEIGHT[b.status] ?? 9);
+      if (weight) return weight;
+      return staffRequestTime(b.createdAt) - staffRequestTime(a.createdAt);
+    }
+    if (segment === 'attente') {
+      const repere = (item) => staffRequestTime(item.suivi && item.suivi.derniereReponse ? item.suivi.derniereReponse.le : item.createdAt);
+      return repere(a) - repere(b);
+    }
+    return staffRequestTime(b.updatedAt || b.createdAt) - staffRequestTime(a.updatedAt || a.createdAt);
+  };
+}
+
 // Les lignes VISIBLES de la file, une seule definition partagee par le rendu et
-// par les effets d apres-rendu (chargement du fil). Deux definitions, c est la
-// selection qui designe une demande et le fil qui en charge une autre.
+// par les effets d apres-rendu (chargement du fil, de l etude). Deux
+// definitions, c est la selection qui designe une demande et le fil qui en
+// charge une autre.
 function getStaffRequestRows() {
-  const rows = (getStaffRequestSegments()[getStaffRequestSegment()] || []).slice();
+  const segment = getStaffRequestSegment();
+  const rows = (getStaffRequestSegments()[segment] || []).slice();
   const query = String(staffRequestSearch || '').trim().toLowerCase();
   const filtered = query ? rows.filter(item => staffRequestSearchBlob(item).includes(query)) : rows;
-  return filtered.sort((a, b) => {
-    const weight = (STAFF_REQUEST_WEIGHT[a.status] ?? 9) - (STAFF_REQUEST_WEIGHT[b.status] ?? 9);
-    if (weight) return weight;
-    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
-  });
+  return filtered.sort(staffRequestCompare(segment));
 }
 
 function getStaffRequestSelectedItem() {
@@ -17611,7 +17725,147 @@ const STAFF_REQUEST_ICONS = {
   phone: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 4.5c0 4.4 4.1 8.5 8.5 8.5.8 0 1.5-.7 1.5-1.5v-1L11 9.5l-1.5 1C8.2 9.8 6.2 7.8 5.5 6.5l1-1.5L4.5 3h-1C2.7 3 2 3.7 2 4.5"/></svg>',
   mail: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="m2.5 5 5.5 4 5.5-4"/></svg>',
   inbox: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13h4l1.5 3h7L17 13h4"/><path d="M3 13 5.5 5.5A2 2 0 0 1 7.4 4h9.2a2 2 0 0 1 1.9 1.5L21 13v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  clock: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/></svg>',
+  spark: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5 9.2 6.8 13.5 8 9.2 9.2 8 13.5 6.8 9.2 2.5 8l4.3-1.2z"/></svg>',
+  calendar: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3"/></svg>',
+  check: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7"/></svg>',
+  alert: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.2v.3"/></svg>',
+  note: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 2.5h6l3 3v8h-9z"/><path d="M9.5 2.5v3h3M5.5 8.5h5M5.5 11h3.5"/></svg>',
 };
+
+// ── LES MOTS DE LA PAGE : montants, dates, durees ──────────────────────────
+function staffRequestEuro(value) {
+  const v = Math.round(Number(value) * 100) / 100;
+  if (!Number.isFinite(v)) return '';
+  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v)} €`;
+}
+
+function staffRequestDateOf(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return null;
+  const d = new Date(`${iso}T12:00:00`);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function staffRequestLongDate(iso) {
+  const d = staffRequestDateOf(iso);
+  if (!d) return '';
+  const t = d.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function staffRequestShortDate(iso) {
+  const d = staffRequestDateOf(iso);
+  return d ? d.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+}
+
+function staffRequestClock(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+function staffRequestDuration(ms) {
+  const minutes = Math.max(1, Math.round(ms / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const heures = Math.floor(minutes / 60);
+  if (heures < 24) {
+    const reste = minutes % 60;
+    return reste ? `${heures} h ${String(reste).padStart(2, '0')}` : `${heures} h`;
+  }
+  const jours = Math.floor(heures / 24);
+  return `${jours} j${heures % 24 ? ` ${heures % 24} h` : ''}`;
+}
+
+function staffRequestStamp(value) {
+  const t = value ? new Date(value) : null;
+  if (!t || !Number.isFinite(t.getTime())) return '';
+  return t.toLocaleString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+// ── L HEURE PROMISE AU CLIENT ──────────────────────────────────────────────
+// Le serveur la calcule (24 heures ouvrables, jours fermes exclus, heure de
+// Bruxelles) ; l ecran dit ce qu il en reste, au moment ou il se dessine.
+function staffRequestDueWhen(echeance) {
+  const heure = String(echeance.heure || '');
+  const date = String(echeance.date || '');
+  const aujourdhui = todayStr();
+  if (date === aujourdhui) return heure;
+  if (date === addDays(aujourdhui, 1)) return `demain ${heure}`;
+  const jour = staffRequestDateOf(date);
+  const ref = staffRequestDateOf(aujourdhui);
+  if (!jour || !ref) return heure;
+  const ecart = Math.round((jour.getTime() - ref.getTime()) / 86400000);
+  const libelle = ecart > 0 && ecart < 7
+    ? jour.toLocaleDateString('fr-BE', { weekday: 'long' })
+    : jour.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' });
+  return `${libelle} ${heure}`;
+}
+
+function staffRequestDue(item) {
+  if (staffRequestStage(item) !== 'a-traiter') return null;
+  const echeance = item && item.echeance;
+  const t = echeance && echeance.instant ? new Date(echeance.instant).getTime() : NaN;
+  if (!Number.isFinite(t)) return null;
+  const reste = t - Date.now();
+  const quand = staffRequestDueWhen(echeance);
+  if (reste <= 0) return { tone: 'late', t, court: 'En retard', long: `Réponse promise avant ${quand}, dépassée de ${staffRequestDuration(-reste)}.` };
+  if (reste <= 4 * 3600000) return { tone: 'soon', t, court: `Reste ${staffRequestDuration(reste)}`, long: `Réponse promise avant ${quand}, il reste ${staffRequestDuration(reste)}.` };
+  return { tone: 'ok', t, court: `Avant ${quand}`, long: `Réponse promise avant ${quand}.` };
+}
+
+// L ECHEANCE SUIT L HEURE (2026-09-29). « Reste 40 min » et « En retard » se
+// calculent a l affichage : sans tic, une page laissee ouverte figeait son
+// compte a rebours. Chaque minute, le texte se recalcule SUR PLACE, par la
+// meme fonction que le rendu (staffRequestDue) : repeindre la page chaque
+// minute rechargerait les mails ouverts. Quand une demande CHANGE de ton (a
+// l heure, bientot, en retard), la page entiere se repeint, pour que l ordre
+// de la file et « dont N en retard » suivent la pastille.
+function staffRequestDueToneKey() {
+  return getStaffCustomRequestItems().map(item => { const due = staffRequestDue(item); return due ? `${item.id}:${due.tone}` : ''; }).filter(Boolean).join('|');
+}
+function tickStaffRequestDues() {
+  if (!isStaffUtilityActive() || getStaffMenuPage() !== 'requests') return;
+  const board = document.querySelector('#staffUtilityPage .req-board[data-due-tones]');
+  if (!board) return;
+  if (board.getAttribute('data-due-tones') !== staffRequestDueToneKey()) { renderStaffUtilityPage(); return; }
+  board.querySelectorAll('[data-req-due]').forEach(node => {
+    const item = getStaffCustomRequestItems().find(entry => String(entry.id) === node.getAttribute('data-req-due'));
+    const due = item ? staffRequestDue(item) : null;
+    if (!due) return;
+    const texte = node.hasAttribute('data-req-due-long') ? due.long : due.court;
+    if (node.textContent !== texte) node.textContent = texte;
+    if (node.hasAttribute('title') && node.getAttribute('title') !== due.long) node.setAttribute('title', due.long);
+  });
+}
+
+// Quand et pour combien, en une ligne de file : « mer. 14 oct., après-midi ».
+function staffRequestWhenShort(item) {
+  const d = crDemande(item);
+  if (!d) return String(item.requestedDate || '');
+  if (d.flexible) return 'date à fixer';
+  const moment = d.moment && d.moment !== 'indifferent' ? String(d.momentLabel || '').toLowerCase() : '';
+  return [staffRequestShortDate(d.date), moment].filter(Boolean).join(', ');
+}
+
+// Ce qui a bouge sur la demande, en une ligne de file.
+function staffRequestSignal(item) {
+  const suivi = item.suivi || {};
+  const stage = staffRequestStage(item);
+  if (stage === 'a-traiter' && suivi.messageClient) return { tone: 'accent', text: suivi.reponses ? 'Le client a répondu' : 'Le client a écrit' };
+  if (stage === 'a-traiter' && item.status === 'new') return { tone: 'accent', text: 'Nouvelle, personne ne l’a prise' };
+  if (stage === 'a-traiter' && suivi.priseEnCharge && suivi.priseEnCharge.par) return { tone: '', text: `Prise en charge par ${suivi.priseEnCharge.par}` };
+  if (stage === 'en-attente' && suivi.derniereReponse) return { tone: '', text: `Réponse envoyée ${staffRequestMoment(suivi.derniereReponse.le)}` };
+  if (stage === 'traitee') return { tone: 'ok', text: suivi.reservationId ? 'Réservation créée' : 'Traitée' };
+  const d = crDemande(item);
+  const envies = d ? [...crNoms(d.formulas), ...crNoms(d.activities)].join(', ') : '';
+  return { tone: '', text: envies || String(item.message || '').replace(/\s+/g, ' ').trim() };
+}
+
+// L etat de la demande en un badge, dans les mots de l equipe.
+function renderStaffRequestStageBadge(item) {
+  const stage = staffRequestStage(item);
+  if (stage === 'en-attente') return '<span class="cr-badge cr-badge-wait">Attend le client</span>';
+  return renderStaffCustomRequestBadge(item.status);
+}
 
 // ── LE TABLEAU : file a gauche, demande ouverte a droite ────────────────────
 function renderStaffRequestsBoard() {
@@ -17634,39 +17888,47 @@ function renderStaffRequestsBoard() {
   const query = String(staffRequestSearch || '').trim();
 
   // UNE entree par changement REEL, et chaque partie a son propre declencheur.
-  // Une cle unique pour les deux rejouait la file a chaque lettre tapee dans la
-  // recherche, et le detail avec elle : l animation devenait le bruit qu elle
-  // etait censee remplacer. La file ne bouge donc que si l onglet change, le
-  // detail que si la demande ouverte change.
+  // La file ne bouge que si l onglet change, le detail que si la demande
+  // ouverte change : une frappe dans la recherche ne rejoue rien.
   const [previousSegment = '', previousSelected = ''] = staffRequestViewKey.split('|');
   const selectedId = selected ? String(selected.id) : '';
   const changed = previousSelected !== selectedId;
   const listChanged = previousSegment !== segment;
   staffRequestViewKey = `${segment}|${selectedId}`;
 
-  const seg = (key, label) => `<button type="button" role="tab" aria-selected="${segment === key ? 'true' : 'false'}" class="req-seg ${segment === key ? 'active' : ''}" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<em>${(buckets[key] || []).length}</em></button>`;
+  const enRetard = buckets.atraiter.filter(item => { const due = staffRequestDue(item); return due && due.tone === 'late'; }).length;
+  const seg = ({ key, label }) => `<button type="button" role="tab" aria-selected="${segment === key ? 'true' : 'false'}" class="req-seg ${segment === key ? 'active' : ''}" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<em class="${key === 'atraiter' && enRetard ? 'is-late' : ''}">${(buckets[key] || []).length}</em></button>`;
 
-  // UN ETAT VIDE SE DIT UNE FOIS. La file et le panneau de lecture ecrivaient
-  // la meme phrase cote a cote. La file vide se tait (l onglet affiche deja
-  // 0) ; le panneau dit pourquoi elle est vide, recherche comprise.
+  // UN ETAT VIDE SE DIT UNE FOIS : la file vide se tait (l onglet affiche
+  // deja 0), le panneau de lecture dit pourquoi elle est vide.
   const empty = query
-    ? { title: `Aucune demande ne correspond à « ${query} ».`, text: 'Cherchez un nom, une société ou une adresse email.' }
-    : segment === 'actives'
-      ? { title: 'Aucune demande en attente : tout est traité.', text: 'Les nouvelles demandes du formulaire arrivent ici, réponse comprise.' }
-      : { title: 'Rien dans cette vue.', text: 'Changez d’onglet pour retrouver les demandes traitées ou archivées.' };
+    ? { title: `Aucune demande ne correspond à « ${query} ».`, text: 'Cherchez un nom, une organisation ou une adresse email.' }
+    : ({
+      atraiter: { title: 'Rien à traiter : chaque demande a sa réponse.', text: 'Les nouvelles demandes du formulaire arrivent ici, avec l’heure de réponse promise au client.' },
+      attente: { title: 'Aucune demande n’attend le client.', text: 'Une demande passe ici dès que la réponse est partie, et revient à traiter quand le client écrit.' },
+      traitees: { title: 'Aucune demande traitée pour le moment.', text: 'Une demande traitée a reçu sa réponse ou sa réservation.' },
+      archivees: { title: 'Aucune demande archivée.', text: 'Les demandes sans suite se rangent ici.' },
+    })[segment];
 
-  return `<div class="req-board" data-segment="${escapeHtml(segment)}">
+  const archives = buckets.archivees.length;
+  return `<div class="req-board" data-segment="${escapeHtml(segment)}" data-due-tones="${escapeHtml(staffRequestDueToneKey())}">
     <aside class="req-rail" aria-label="File des demandes">
       <div class="req-rail-head">
-        <div class="req-segments" role="tablist" aria-label="Filtrer les demandes">${seg('actives', 'À traiter')}${seg('traitees', 'Traitées')}${seg('archivees', 'Archivées')}</div>
+        <div class="req-segments" role="tablist" aria-label="Filtrer les demandes">${STAFF_REQUEST_SEGMENTS.filter(entry => entry.key !== 'archivees').map(seg).join('')}</div>
         <div class="req-search">
           <span class="req-search-icon" aria-hidden="true">${STAFF_REQUEST_ICONS.search}</span>
-          <input id="reqSearchField" type="search" class="req-search-field" placeholder="Nom, société, email…" aria-label="Chercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)" />
+          <input id="reqSearchField" type="search" class="req-search-field" placeholder="Nom, organisation, email…" aria-label="Chercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)" />
           ${query ? '<button type="button" class="req-search-clear" aria-label="Effacer la recherche" onclick="staffRequestSearchInput(\'\')">×</button>' : ''}
         </div>
+        ${segment === 'archivees' ? '<p class="req-rail-caption">Archivées</p>' : ''}
       </div>
       <div class="req-rail-list" id="reqRailList" ${listChanged ? 'data-anim="1"' : ''}>
         ${rows.map((item, index) => renderStaffRequestRailItem(item, selected && String(selected.id) === String(item.id), index)).join('')}
+      </div>
+      <div class="req-rail-foot">
+        ${segment === 'archivees'
+          ? '<button type="button" class="req-rail-link" onclick="setStaffRequestSegment(\'atraiter\')">Revenir à la file</button>'
+          : `<button type="button" class="req-rail-link" onclick="setStaffRequestSegment('archivees')" ${archives ? '' : 'disabled'}>Archivées (${archives})</button>`}
       </div>
     </aside>
     ${selected
@@ -17690,88 +17952,298 @@ function renderStaffRequestsSkeleton() {
 
 function renderStaffRequestRailItem(item, active, index) {
   const jid = staffClientJs(item.id);
-  const occKey = String(item.occasion || '').toLowerCase();
-  const occ = STAFF_OCCASION_LABELS[occKey] || '';
-  // Le statut est ECRIT dans la meta, pas seulement porte par la pastille : une
-  // demande jamais ouverte et une demande prise en charge vivent dans le meme
-  // onglet, les distinguer par la couleur seule exclut un lecteur sur douze.
-  const statusWord = item.status === 'new' ? 'Nouvelle' : item.status === 'in_progress' ? 'En cours' : '';
-  const meta = [statusWord, occ, Number(item.pax) > 0 ? `${Number(item.pax)} pers.` : '', item.requestedDate ? String(item.requestedDate) : '']
-    .filter(Boolean).join(' · ');
-  const snippet = String(item.message || '').replace(/\s+/g, ' ').trim();
+  const d = crDemande(item);
+  const titre = (d && d.organisation) || item.company || item.contactName || 'Contact';
+  const type = (d && d.groupTypeLabel) || STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] || '';
+  const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
+  const meta = [type, joueurs ? `${joueurs} pers.` : '', staffRequestWhenShort(item)].filter(Boolean).join(' · ');
+  const signal = staffRequestSignal(item);
+  const due = staffRequestDue(item);
+  const cote = due
+    ? `<span class="req-due is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" title="${escapeHtml(due.long)}">${escapeHtml(due.court)}</span>`
+    : `<time datetime="${escapeHtml(String(item.createdAt || ''))}">${escapeHtml(staffRequestMoment(item.createdAt))}</time>`;
   return `<button type="button" class="req-item req-item-${escapeHtml(item.status)} ${active ? 'is-active' : ''}"
       style="--i:${Math.min(index, 9)}" data-item-id="${escapeHtml(String(item.id))}"
       aria-current="${active ? 'true' : 'false'}" onclick="selectStaffRequest(${jid})">
-    <span class="req-avatar" aria-hidden="true">${escapeHtml(staffRequestInitials(item.contactName))}</span>
+    <span class="req-avatar" aria-hidden="true">${escapeHtml(staffRequestInitials(titre))}</span>
     <span class="req-item-main">
       <span class="req-item-top">
         <span class="req-item-dot" aria-hidden="true"></span>
-        <strong>${escapeHtml(item.contactName || 'Contact')}</strong>
-        <time datetime="${escapeHtml(String(item.createdAt || ''))}">${escapeHtml(staffRequestMoment(item.createdAt))}</time>
+        <strong>${escapeHtml(titre)}</strong>
+        ${cote}
       </span>
       ${meta ? `<span class="req-item-meta">${escapeHtml(meta)}</span>` : ''}
-      ${snippet ? `<span class="req-item-snip">${escapeHtml(snippet)}</span>` : ''}
+      ${signal.text ? `<span class="req-item-snip${signal.tone ? ` is-${signal.tone}` : ''}">${escapeHtml(signal.text)}</span>` : ''}
     </span>
   </button>`;
 }
 
+// ── LE DOSSIER ──────────────────────────────────────────────────────────────
 function renderStaffRequestDetail(item, animate) {
-  const jid = staffClientJs(item.id);
+  const d = crDemande(item);
   const occKey = String(item.occasion || '').toLowerCase();
-  const occ = STAFF_OCCASION_LABELS[occKey] || '';
+  const type = (d && d.groupTypeLabel) || STAFF_OCCASION_LABELS[occKey] || '';
   const reply = staffRequestReplyState[String(item.id)] || {};
-  const fact = (label, value, extra = '') => value
-    ? `<div class="req-fact ${extra}"><dt>${escapeHtml(label)}</dt><dd>${value}</dd></div>` : '';
-  const facts = [
-    fact('Souhait', item.requestedDate ? escapeHtml(String(item.requestedDate)) : ''),
-    fact('Groupe', Number(item.pax) > 0 ? `<span class="req-fact-num">${Number(item.pax)}</span> personnes` : ''),
-    fact('Société', item.company ? escapeHtml(item.company) : ''),
-    fact('Téléphone', item.phone ? `<a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a>` : ''),
-    fact('Email', item.email ? `<a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a>` : ''),
-  ].filter(Boolean).join('');
-
+  const organisation = (d && d.organisation) || item.company || '';
+  const sousTitre = [d && d.contactRole, organisation].filter(Boolean).join(' · ');
+  const tel = String(item.phone || '').replace(/\s+/g, '');
   return `<section class="req-card req-detail req-status-${escapeHtml(item.status)}" data-request-id="${escapeHtml(String(item.id))}" ${animate ? 'data-anim="1"' : ''}>
     <div class="req-detail-head">
       <span class="req-avatar req-avatar-lg" aria-hidden="true">${escapeHtml(staffRequestInitials(item.contactName))}</span>
       <div class="req-detail-ident">
         <h3>${escapeHtml(item.contactName || 'Contact')}</h3>
+        ${sousTitre ? `<p class="req-detail-sub">${escapeHtml(sousTitre)}</p>` : ''}
         <div class="req-detail-tags">
-          ${renderStaffCustomRequestBadge(item.status)}
-          ${occ ? `<span class="res-occasion-tag res-occasion-${escapeHtml(occKey)}">${escapeHtml(occ)}</span>` : ''}
+          ${renderStaffRequestStageBadge(item)}
+          ${type ? `<span class="req-type">${escapeHtml(type)}</span>` : ''}
           ${item.createdAt ? `<span class="req-detail-when" title="${escapeHtml(staffRequestFullMoment(item.createdAt))}">reçue ${escapeHtml(staffRequestMoment(item.createdAt))}</span>` : ''}
         </div>
       </div>
       <div class="req-detail-quick">
-        ${item.phone ? `<a class="req-icon-link" href="tel:${escapeHtml(item.phone)}" title="Appeler ${escapeHtml(item.contactName || '')}" aria-label="Appeler">${STAFF_REQUEST_ICONS.phone}</a>` : ''}
+        ${tel ? `<a class="req-icon-link" href="tel:${escapeHtml(tel)}" title="Appeler ${escapeHtml(item.contactName || '')}" aria-label="Appeler">${STAFF_REQUEST_ICONS.phone}</a>` : ''}
         ${item.email ? `<a class="req-icon-link" href="mailto:${escapeHtml(item.email)}" title="Ouvrir dans le client mail" aria-label="Ouvrir dans le client mail">${STAFF_REQUEST_ICONS.mail}</a>` : ''}
       </div>
     </div>
-
-    ${facts ? `<dl class="req-facts">${facts}</dl>` : ''}
-
-    <div class="req-brief">
-      <span class="req-brief-label">Sa demande</span>
-      <p class="req-message">${escapeHtml(item.message || 'Sans message.')}</p>
-    </div>
-
-    <div class="req-actions">
-      ${item.email ? `<button type="button" class="${reply.open ? '' : 'primary'}" onclick="toggleStaffRequestReply(${jid})">${reply.open ? 'Fermer la réponse' : 'Répondre par email'}</button>` : ''}
-      ${item.status === 'new' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Prendre en charge</button>` : ''}
-      ${item.status !== 'handled' && item.status !== 'archived' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'handled')">Marquer traitée</button>` : ''}
-      <button type="button" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>
-      ${item.status !== 'archived'
-        ? `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived')">Archiver</button>`
-        : `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Réactiver</button>`}
-    </div>
-
+    ${renderStaffRequestBanner(item)}
+    ${renderStaffRequestNextActions(item, reply)}
+    ${renderStaffRequestFacts(item)}
+    ${renderStaffRequestStudy(item)}
     ${reply.open ? renderStaffRequestReplyComposer(item, reply) : ''}
+    ${renderStaffRequestFollowUp(item)}
     ${renderStaffRequestThread(item)}
   </section>`;
 }
 
-// Le composeur DANS la carte : objet + message prerempli, envoi par le meme
-// canal trace que le studio mails (sendDirectEmail). On ne quitte jamais la
-// page : c etait exactement le reproche.
+// Ou en est la demande, en une phrase, et ce que le client attend.
+function renderStaffRequestBanner(item) {
+  const suivi = item.suivi || {};
+  const stage = staffRequestStage(item);
+  // Pas de role="status" : le bandeau se repeint avec la page (et son heure
+  // chaque minute), une region annoncee relirait tout a chaque fois.
+  const bandeau = (tone, icone, titre, texte = '', attrsTitre = '') => `<div class="req-banner is-${tone}">
+      <span class="req-banner-icon" aria-hidden="true">${icone}</span>
+      <p><strong${attrsTitre}>${escapeHtml(titre)}</strong>${texte ? ` <span>${escapeHtml(texte)}</span>` : ''}</p>
+    </div>`;
+  if (stage === 'a-traiter') {
+    const due = staffRequestDue(item);
+    const client = suivi.messageClient ? `Le client a écrit ${staffRequestMoment(suivi.messageClient)} : son mail est dans les échanges, plus bas.` : '';
+    if (due) return bandeau(due.tone, due.tone === 'ok' ? STAFF_REQUEST_ICONS.clock : STAFF_REQUEST_ICONS.alert, due.long, client || 'Le formulaire promet au client une réponse sous 24 heures ouvrables.', ` data-req-due="${escapeHtml(String(item.id))}" data-req-due-long`);
+    return client ? bandeau('ok', STAFF_REQUEST_ICONS.mail, 'Le client attend une réponse.', client) : '';
+  }
+  if (stage === 'en-attente') {
+    const r = suivi.derniereReponse;
+    return bandeau('wait', STAFF_REQUEST_ICONS.clock, 'En attente du client.', r ? `Réponse envoyée ${staffRequestMoment(r.le)}${r.par ? ` par ${r.par}` : ''}. La demande revient à traiter dès qu’il écrit.` : '');
+  }
+  if (stage === 'traitee') return bandeau('done', STAFF_REQUEST_ICONS.check, suivi.reservationId ? 'Traitée : la réservation est créée.' : 'Traitée.');
+  return bandeau('muted', STAFF_REQUEST_ICONS.inbox, 'Archivée.', 'Réactivez-la pour la traiter de nouveau.');
+}
+
+// UNE action principale selon l etape ; le reste a cote, plus discret.
+function renderStaffRequestNextActions(item, reply) {
+  const jid = staffClientJs(item.id);
+  const stage = staffRequestStage(item);
+  const bouton = (label, action, cls = '') => `<button type="button"${cls ? ` class="${cls}"` : ''} onclick="${action}">${escapeHtml(label)}</button>`;
+  const actions = [];
+  if (stage === 'a-traiter') {
+    if (item.email) actions.push(bouton(reply.open ? 'Aller à la réponse' : 'Rédiger la réponse', reply.open ? `focusStaffRequestComposer(${jid})` : `startStaffRequestDraft(${jid})`, 'primary'));
+    if (item.status === 'new') actions.push(bouton('Prendre en charge', `setStaffCustomRequestStatus(${jid}, 'in_progress')`));
+    actions.push(bouton('Créer la réservation', `staffRequestToBooking(${jid})`, item.email ? '' : 'primary'));
+    actions.push(bouton('Marquer traitée', `setStaffCustomRequestStatus(${jid}, 'handled')`));
+    actions.push(bouton('Archiver', `setStaffCustomRequestStatus(${jid}, 'archived')`, 'ghost'));
+  } else if (stage === 'en-attente') {
+    actions.push(bouton('Créer la réservation', `staffRequestToBooking(${jid})`, 'primary'));
+    if (item.email) actions.push(bouton(reply.open ? 'Fermer le message' : 'Écrire au client', `toggleStaffRequestReply(${jid})`));
+    actions.push(bouton('Marquer traitée', `setStaffCustomRequestStatus(${jid}, 'handled')`));
+    actions.push(bouton('Archiver', `setStaffCustomRequestStatus(${jid}, 'archived')`, 'ghost'));
+  } else if (stage === 'traitee') {
+    if (item.suivi && item.suivi.reservationId) actions.push(bouton('Voir la réservation', `openStaffRequestReservation(${jid})`, 'primary'));
+    actions.push(bouton('Rouvrir', `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })`));
+    actions.push(bouton('Archiver', `setStaffCustomRequestStatus(${jid}, 'archived')`, 'ghost'));
+  } else {
+    actions.push(bouton('Réactiver', `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })`, 'primary'));
+  }
+  return `<div class="req-actions">${actions.join('')}</div>`;
+}
+
+// ── LA DEMANDE : tout ce que le client a rempli ─────────────────────────────
+function renderStaffRequestFacts(item) {
+  const d = crDemande(item);
+  const tuile = (label, valeur, detail = '', extra = '') => valeur
+    ? `<div class="req-fact${extra ? ` ${extra}` : ''}"><dt>${escapeHtml(label)}</dt><dd>${valeur}</dd>${detail ? `<dd class="req-fact-more">${detail}</dd>` : ''}</div>`
+    : '';
+  const message = String(item.message || '').trim();
+  const mot = message ? `<div class="req-brief"><span class="req-brief-label">${d ? 'Son message' : 'Sa demande'}</span><p class="req-message">${escapeHtml(message)}</p></div>` : '';
+  const study = staffRequestStudies[String(item.id)];
+  const client = study && study.client;
+  const contact = [
+    item.phone ? `<a href="tel:${escapeHtml(String(item.phone).replace(/\s+/g, ''))}">${escapeHtml(item.phone)}</a>` : '',
+    item.email ? `<a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a>` : '',
+  ].filter(Boolean).join('<br>');
+  const dejaVenu = client ? staffRequestKnownClient(client) : '';
+  const entete = '<div class="req-section-head"><h4>La demande</h4></div>';
+
+  if (!d) {
+    const occ = STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] || '';
+    const tuiles = [
+      tuile('Souhait', item.requestedDate ? escapeHtml(String(item.requestedDate)) : ''),
+      tuile('Groupe', Number(item.pax) > 0 ? `<span class="req-fact-num">${Number(item.pax)}</span> personnes` : '', occ ? escapeHtml(occ) : ''),
+      tuile('Société', item.company ? escapeHtml(item.company) : ''),
+      tuile('Contact', escapeHtml(item.contactName || 'Contact'), [contact, dejaVenu].filter(Boolean).join('<br>')),
+    ].join('');
+    return `<section class="req-section">${entete}<dl class="req-facts">${tuiles}</dl>${mot}</section>`;
+  }
+
+  const joueurs = Number(d.participants) || 0;
+  const accompagnants = Number(d.companions) || 0;
+  const ages = (Array.isArray(d.ages) ? d.ages : []).map(cle => CR_AGE_LABELS[cle] || '').filter(Boolean);
+  const groupe = `<span class="req-fact-num">${joueurs}</span> joueur${joueurs > 1 ? 's' : ''}${accompagnants ? ` + ${accompagnants} accompagnateur${accompagnants > 1 ? 's' : ''}` : ''}`;
+  const groupeDetail = [d.groupTypeLabel, ages.join(', ')].filter(Boolean).map(escapeHtml).join(' · ');
+  const quand = d.flexible ? 'Date à fixer' : escapeHtml(staffRequestLongDate(d.date) || String(item.requestedDate || ''));
+  const quandDetail = d.flexible
+    ? (d.period ? `Période envisagée : ${escapeHtml(d.period)}` : '')
+    : [d.momentLabel ? escapeHtml(d.momentLabel) : '', d.alternativeDate ? `ou ${escapeHtml(staffRequestLongDate(d.alternativeDate).toLowerCase())}` : ''].filter(Boolean).join(' · ');
+  const envies = [
+    ...crNoms(d.formulas).map(nom => `<span class="req-chip is-formula">${escapeHtml(nom)}</span>`),
+    ...crNoms(d.activities).map(nom => `<span class="req-chip">${escapeHtml(nom)}</span>`),
+    ...(d.advice ? ['<span class="req-chip is-advice">Conseil demandé</span>'] : []),
+  ].join('');
+  const budget = Number(d.budgetPerPerson) > 0 ? `${escapeHtml(staffRequestEuro(d.budgetPerPerson))} par personne` : '';
+  const budgetDetail = budget && joueurs ? `${escapeHtml(staffRequestEuro(d.budgetPerPerson * joueurs))} pour ${joueurs} joueurs` : '';
+  const facture = d.invoice ? `Au nom de ${escapeHtml(d.organisation || 'l’organisation')}` : 'Pas de facture demandée';
+  const tuiles = [
+    tuile('Groupe', groupe, groupeDetail),
+    tuile('Quand', quand, quandDetail),
+    tuile('Envies', envies ? `<span class="req-chips">${envies}</span>` : 'À proposer par l’équipe', '', 'req-fact-wide'),
+    tuile('Budget indicatif', budget || 'Non précisé', budgetDetail),
+    tuile('Facturation', facture, d.invoice && d.vatNumber ? `TVA ${escapeHtml(d.vatNumber)}` : ''),
+    tuile('Contact', escapeHtml([item.contactName || 'Contact', d.contactRole].filter(Boolean).join(', ')), [contact, dejaVenu].filter(Boolean).join('<br>')),
+  ].join('');
+  return `<section class="req-section">${entete}<dl class="req-facts">${tuiles}</dl>${mot}</section>`;
+}
+
+// Le client connu du centre (lib/email-agent matchClient). La lecture est
+// bornee a vingt reservations : au-dela, on dit « au moins vingt ».
+function staffRequestKnownClient(client) {
+  const venues = Number(client.visits) || 0;
+  const aVenir = Number(client.reservationsAVenir) || 0;
+  const plafond = venues + aVenir >= 20;
+  const morceaux = [];
+  if (venues) morceaux.push(`${plafond ? 'au moins ' : ''}${venues} venue${venues > 1 ? 's' : ''}${client.lastVisit ? `, la dernière le ${staffRequestShortDate(client.lastVisit)}` : ''}`);
+  if (client.prochaineReservation) morceaux.push(`déjà réservé le ${staffRequestShortDate(client.prochaineReservation.date)}${client.prochaineReservation.heure ? ` à ${client.prochaineReservation.heure}` : ''}`);
+  return morceaux.length ? `<span class="req-known">Client connu : ${escapeHtml(morceaux.join(' ; '))}</span>` : '';
+}
+
+// ── CE JOUR-LA : ce que le moteur de reservation dit de la demande ──────────
+// Les memes heures et les memes prix que le formulaire public, pour cet
+// effectif (lib/demande-bureau, via la disponibilite publique). Rien n est
+// retenu : c est une lecture.
+let staffRequestStudies = {};
+
+function renderStaffRequestStudy(item) {
+  const d = crDemande(item);
+  const jid = staffClientJs(item.id);
+  const study = staffRequestStudies[String(item.id)];
+  const joueurs = d ? Number(d.participants) || 0 : 0;
+  const relancer = study && (study.loaded || study.error) && !study.loading
+    ? `<button type="button" class="req-link" onclick="loadStaffRequestStudy(${jid}, true)">Relancer l’étude</button>` : '';
+  const entete = `<div class="req-section-head"><h4>Ce jour-là</h4>${joueurs ? `<span class="req-section-note">Disponibilités et prix réels pour ${joueurs} joueur${joueurs > 1 ? 's' : ''}</span>` : ''}${relancer}</div>`;
+  if (!d) {
+    return `<section class="req-section req-study">${entete}<p class="req-study-note">Demande envoyée sans le formulaire détaillé : la date et les activités sont à fixer avec le client.</p></section>`;
+  }
+  if (!study || (study.loading && !study.loaded)) {
+    return `<section class="req-section req-study" aria-busy="true">${entete}
+      <div class="req-study-wait"><span class="req-thread-spin" aria-hidden="true"></span><span>Le moteur de réservation étudie la date pour ce groupe…</span></div>
+      <div class="req-skel-detail req-study-skel"><span class="req-skel-line"></span><span class="req-skel-line"></span></div>
+    </section>`;
+  }
+  if (study.error && !study.loaded) {
+    return `<section class="req-section req-study">${entete}<div class="req-study-wait is-error"><span>${escapeHtml(study.error)}</span><button type="button" class="req-link" onclick="loadStaffRequestStudy(${jid}, true)">Réessayer</button></div></section>`;
+  }
+  const etude = study.etude || { dates: [], sansDate: '' };
+  const perime = study.stale ? '<p class="req-study-stale">Le planning a bougé depuis cette étude : relancez-la avant de répondre.</p>' : '';
+  if (etude.sansDate || !etude.dates.length) {
+    return `<section class="req-section req-study">${entete}${perime}<p class="req-study-note">${escapeHtml(etude.sansDate || 'Aucune date à étudier.')}</p></section>`;
+  }
+  return `<section class="req-section req-study">${entete}${perime}
+    <div class="req-days">${etude.dates.map(jour => renderStaffRequestStudyDay(jour, etude, d)).join('')}</div>
+  </section>`;
+}
+
+function renderStaffRequestBudgetTag(parJoueur, d) {
+  const budget = d ? Number(d.budgetPerPerson) || 0 : 0;
+  if (!budget || !Number(parJoueur)) return '';
+  const ecart = Math.round((Number(parJoueur) - budget) * 100) / 100;
+  return ecart <= 0
+    ? '<span class="req-tag is-ok">Dans le budget</span>'
+    : `<span class="req-tag is-warn">${escapeHtml(staffRequestEuro(ecart))} de plus par joueur que le budget</span>`;
+}
+
+function renderStaffRequestTimes(heures) {
+  return (heures || []).map(h => `<span class="req-time">${escapeHtml(h)}</span>`).join('');
+}
+
+function renderStaffRequestStudyDay(jour, etude, d) {
+  const titre = `<strong>${escapeHtml(staffRequestLongDate(jour.date) || jour.libelle)}</strong>${jour.principale ? '' : '<span class="req-day-alt">autre date du client</span>'}`;
+  if (jour.passee) return `<article class="req-daycard is-off"><div class="req-daycard-head">${titre}<span class="req-pill is-muted">Date passée</span></div></article>`;
+  if (!jour.ouvert) return `<article class="req-daycard is-off"><div class="req-daycard-head">${titre}<span class="req-pill is-closed">Fermé</span></div><p class="req-daycard-note">Le centre est fermé ce jour-là.</p></article>`;
+  const f = jour.fenetre;
+  const plage = etude.moment !== 'indifferent' && f
+    ? `${escapeHtml(etude.momentLabel)} : ${staffRequestClock(f.de)} à ${staffRequestClock(f.a)}${f.existe ? '' : ` (${escapeHtml(f.raison || 'hors des horaires ce jour-là')})`}`
+    : '';
+  const offres = [];
+  (jour.formules || []).forEach((fo) => {
+    const nom = `<span class="req-offer-name">${escapeHtml(fo.nom)}</span>`;
+    if (fo.panne || !fo.ok) {
+      offres.push(`<li class="req-offer ${fo.panne ? 'is-wait' : 'is-off'}"><div class="req-offer-main">${nom}<span class="req-offer-why">${escapeHtml(fo.panne ? 'Le moteur n’a pas répondu : relancez l’étude.' : `Impossible ce jour-là. ${fo.raison || ''}`.trim())}</span></div></li>`);
+      return;
+    }
+    const heures = fo.heures.length
+      ? `<span class="req-offer-label">Départs possibles</span>${renderStaffRequestTimes(fo.heures)}`
+      : `<span class="req-offer-label">Aucun départ dans ce moment · possible à</span>${renderStaffRequestTimes(fo.heuresAilleurs)}`;
+    offres.push(`<li class="req-offer"><div class="req-offer-main">${nom}
+        <span class="req-offer-price">${fo.prix ? escapeHtml(staffRequestEuro(fo.prix)) : 'Prix à confirmer'}${fo.parJoueur ? `<small>${escapeHtml(staffRequestEuro(fo.parJoueur))} / joueur</small>` : ''}</span>
+        ${renderStaffRequestBudgetTag(fo.parJoueur, d)}
+      </div><div class="req-offer-times">${heures}</div></li>`);
+  });
+  const v = jour.visite;
+  if (v) {
+    const noms = (v.lignes || []).map(l => l.nom).join(' + ') || 'Les activités choisies';
+    const nom = `<span class="req-offer-name">${escapeHtml(noms)}</span>`;
+    if (v.panne || !v.ok) {
+      offres.push(`<li class="req-offer ${v.panne ? 'is-wait' : 'is-off'}"><div class="req-offer-main">${nom}<span class="req-offer-why">${escapeHtml(v.panne ? 'Le moteur n’a pas répondu : relancez l’étude.' : `Impossible ce jour-là. ${v.raison || ''}`.trim())}</span></div></li>`);
+    } else {
+      const lignes = (v.lignes || []).map(l => `<span>${escapeHtml(l.nom)}${l.detail ? ` · ${escapeHtml(l.detail)}` : ''} · ${l.prix !== null ? escapeHtml(staffRequestEuro(l.prix)) : 'prix à confirmer'}</span>`).join('');
+      const depart = v.proposition
+        ? `<span class="req-offer-label">Départ proposé</span><span class="req-time">${escapeHtml(v.proposition.debut)}</span>${v.proposition.fin ? `<span class="req-offer-label">fin vers ${escapeHtml(v.proposition.fin)}</span>` : ''}`
+        : '';
+      offres.push(`<li class="req-offer${v.depasse ? ' is-warn' : ''}"><div class="req-offer-main">${nom}
+          <span class="req-offer-price">${v.prix ? escapeHtml(staffRequestEuro(v.prix)) : 'Prix à confirmer'}${v.parJoueur ? `<small>${escapeHtml(staffRequestEuro(v.parJoueur))} / joueur</small>` : ''}</span>
+          ${renderStaffRequestBudgetTag(v.parJoueur, d)}
+        </div>
+        <div class="req-offer-lines">${lignes}</div>
+        <div class="req-offer-times">${depart}</div>
+        ${Number(v.depasse) > 0 ? `<p class="req-offer-why is-warn">Ce programme dépasse la fermeture de ${Math.round(Number(v.depasse))} minutes : il ne tient pas en entier ce jour-là.</p>` : ''}
+        ${!v.prixComplet && v.prix ? '<p class="req-offer-why">Une partie du programme a un prix à confirmer sur place.</p>' : ''}
+      </li>`);
+    }
+  }
+  const occupation = jour.occupation
+    ? `Déjà prévu ce jour-là : ${jour.occupation.reservations} réservation${jour.occupation.reservations > 1 ? 's' : ''}, ${jour.occupation.joueurs} joueur${jour.occupation.joueurs > 1 ? 's' : ''}.`
+    : '';
+  return `<article class="req-daycard">
+    <div class="req-daycard-head">${titre}<span class="req-pill is-open">Ouvert ${escapeHtml(jour.horaires.de)} à ${escapeHtml(jour.horaires.a)}</span>${plage ? `<span class="req-daycard-range">${plage}</span>` : ''}</div>
+    ${offres.length ? `<ul class="req-offers">${offres.join('')}</ul>` : '<p class="req-daycard-note">Aucune formule ni activité choisie : le programme est à composer avec le client.</p>'}
+    <div class="req-daycard-foot">
+      ${occupation ? `<span>${escapeHtml(occupation)}</span>` : ''}
+      <button type="button" class="req-link" onclick="openStaffRequestDay('${escapeHtml(jour.date)}')">${STAFF_REQUEST_ICONS.calendar}<span>Voir le planning de ce jour</span></button>
+    </div>
+  </article>`;
+}
+
+// Le composeur DANS le dossier : objet + message, envoi par le meme canal
+// trace que le studio mails (sendDirectEmail). L IA redige a partir de la
+// demande et de l etude ; ce qu elle ne sait pas trancher part en « a
+// verifier ». Rien ne part sans le clic de l equipe.
 function renderStaffRequestReplyComposer(item, reply) {
   const jid = staffClientJs(item.id);
   const sid = escapeHtml(String(item.id));
@@ -17781,27 +18253,77 @@ function renderStaffRequestReplyComposer(item, reply) {
   // applique un modele, qu on lance l IA, qu on recharge le fil. Sans elle, il
   // rejouerait son entree a chacun de ces repaints, sous les doigts du lecteur.
   const justOpened = Number(reply.openedAt) > 0 && (Date.now() - Number(reply.openedAt)) < 250;
-  return `<div class="req-composer" ${justOpened ? 'data-anim="1"' : ''}>
+  const origine = reply.draftSource === 'ia'
+    ? 'Rédigée par l’IA à partir de la demande et des disponibilités réelles. Relisez-la avant d’envoyer.'
+    : reply.draftSource === 'code'
+      ? (reply.draftReason === 'ia-refusee'
+        ? 'Le texte de l’IA citait un élément absent des faits : voici le brouillon écrit à partir de l’étude. Relisez-le avant d’envoyer.'
+        : 'L’IA n’a pas répondu : voici le brouillon écrit à partir de l’étude. Relisez-le avant d’envoyer.')
+      : '';
+  const points = Array.isArray(reply.points) ? reply.points.filter(Boolean) : [];
+  const occupe = reply.busy || reply.improving || reply.drafting;
+  return `<div class="req-composer" id="reqComposer-${sid}" ${justOpened ? 'data-anim="1"' : ''} ${reply.drafting ? 'aria-busy="true"' : ''}>
     <div class="req-composer-head">
-      <strong>Répondre à ${escapeHtml(item.contactName || 'ce contact')}</strong>
+      <strong>Réponse à ${escapeHtml(item.contactName || 'ce contact')}</strong>
       <span class="req-composer-to">${escapeHtml(item.email || '')}</span>
     </div>
+    ${reply.drafting ? `<div class="req-drafting" role="status"><span class="req-thread-spin" aria-hidden="true"></span><span>L’IA rédige la réponse à partir de la demande et des disponibilités du jour…</span></div>` : ''}
+    ${!reply.drafting && origine ? `<p class="req-draft-origin is-${escapeHtml(reply.draftSource)}"><span aria-hidden="true">${STAFF_REQUEST_ICONS.spark}</span><span>${escapeHtml(origine)}</span></p>` : ''}
+    ${!reply.drafting && points.length ? `<div class="req-checks" role="note"><strong>À vérifier avant d’envoyer</strong><ul>${points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>` : ''}
     <div class="req-presets">
       <span class="req-presets-label">Modèles</span>
       ${presets}
     </div>
     <label class="lbl" for="reqSubject-${sid}">Objet</label>
-    <input id="reqSubject-${sid}" class="input" value="${escapeHtml(reply.subject || '')}" oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
+    <input id="reqSubject-${sid}" class="input" value="${escapeHtml(reply.subject || '')}" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
     <label class="lbl" for="reqBody-${sid}">Message</label>
-    <textarea id="reqBody-${sid}" class="input" rows="9" oninput="staffRequestReplyDraft(${jid}, 'body', this.value)" onkeydown="staffRequestComposerKey(event, ${jid})">${escapeHtml(reply.body || '')}</textarea>
+    <textarea id="reqBody-${sid}" class="input" rows="11" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'body', this.value)" onkeydown="staffRequestComposerKey(event, ${jid})">${escapeHtml(reply.body || '')}</textarea>
     <div class="req-composer-actions">
       <span class="req-composer-hint">Ctrl + Entrée pour envoyer</span>
-      ${reply.previous ? `<button type="button" class="req-revert" onclick="revertStaffRequestDraft(${jid})">Revenir à ma version</button>` : ''}
-      <button type="button" class="req-ai" ${reply.improving || reply.busy ? 'disabled' : ''} onclick="improveStaffRequestDraft(${jid})">${reply.improving ? 'Amélioration…' : 'Améliorer avec l IA'}</button>
-      <button type="button" class="primary" ${reply.busy || reply.improving ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : 'Envoyer la réponse'}</button>
+      ${reply.previous ? `<button type="button" class="req-revert" ${occupe ? 'disabled' : ''} onclick="revertStaffRequestDraft(${jid})">Revenir à ma version</button>` : ''}
+      <button type="button" class="req-ai req-draft-btn" ${occupe ? 'disabled' : ''} onclick="startStaffRequestDraft(${jid})">${reply.drafting ? 'Rédaction…' : reply.draftSource ? 'Rédiger à nouveau' : 'Rédiger avec l’IA'}</button>
+      <button type="button" class="req-ai" ${occupe ? 'disabled' : ''} onclick="improveStaffRequestDraft(${jid})">${reply.improving ? 'Amélioration…' : 'Améliorer mon texte'}</button>
+      <button type="button" class="primary" ${occupe ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : 'Envoyer la réponse'}</button>
     </div>
-    <p class="req-ai-note">L IA reformule ce que vous avez écrit. Elle n invente ni prix, ni horaire, ni disponibilité.</p>
+    <p class="req-ai-note">L’IA part de la demande et de l’étude du moteur. Un prix, une heure, une remise ou une promesse absents de ces faits sont refusés. Rien ne part sans votre clic.</p>
   </div>`;
+}
+
+// ── LE SUIVI : ce qui s est passe, et les notes de l equipe ─────────────────
+let staffRequestNotes = {};
+
+const STAFF_REQUEST_STATUS_WORDS = { handled: 'Classée traitée', archived: 'Archivée', new: 'Remise en nouvelle', in_progress: 'Réactivée' };
+
+function renderStaffRequestFollowUp(item) {
+  const jid = staffClientJs(item.id);
+  const suivi = item.suivi || {};
+  const evenements = [
+    { le: item.createdAt, type: 'recue', titre: 'Demande reçue par le formulaire' },
+    ...(Array.isArray(suivi.historique) ? suivi.historique : []).map((e) => {
+      const par = e.par ? ` par ${e.par}` : '';
+      if (e.type === 'prise-en-charge') return { le: e.le, type: 'prise', titre: `Prise en charge${par}` };
+      if (e.type === 'reponse') return { le: e.le, type: 'reponse', titre: `Réponse envoyée${par}`, texte: [e.objet ? `« ${e.objet} »` : '', e.source === 'ia' ? 'rédigée avec l’IA' : ''].filter(Boolean).join(' · ') };
+      if (e.type === 'reservation') return { le: e.le, type: 'resa', titre: `Réservation créée${par}` };
+      if (e.type === 'statut') return { le: e.le, type: 'statut', titre: `${STAFF_REQUEST_STATUS_WORDS[e.statut] || 'Statut changé'}${par}` };
+      return null;
+    }).filter(Boolean),
+    ...(suivi.messageClient ? [{ le: suivi.messageClient, type: 'client', titre: 'Le client a écrit', texte: 'Son mail est dans les échanges, plus bas.' }] : []),
+    ...(Array.isArray(suivi.notes) ? suivi.notes : []).map(n => ({ le: n.le, type: 'note', titre: `Note de ${n.par || 'l’équipe'}`, texte: n.texte })),
+  ].filter(e => e && e.le).sort((a, b) => staffRequestTime(a.le) - staffRequestTime(b.le));
+  const note = staffRequestNotes[String(item.id)] || {};
+  const sid = escapeHtml(String(item.id));
+  return `<section class="req-section req-follow">
+    <div class="req-section-head"><h4>Suivi</h4></div>
+    <ol class="req-timeline">${evenements.map(e => `<li class="is-${escapeHtml(e.type)}">
+        <span class="req-timeline-dot" aria-hidden="true"></span>
+        <div><p><strong>${escapeHtml(e.titre)}</strong> <time datetime="${escapeHtml(String(e.le))}">${escapeHtml(staffRequestStamp(e.le))}</time></p>${e.texte ? `<p class="req-timeline-text">${escapeHtml(e.texte)}</p>` : ''}</div>
+      </li>`).join('')}</ol>
+    <div class="req-note-form">
+      <label class="req-sr" for="reqNote-${sid}">Note pour l’équipe</label>
+      <textarea id="reqNote-${sid}" class="input" rows="2" placeholder="Une note pour l’équipe : rappel, décision, détail donné au téléphone…" oninput="staffRequestNoteDraft(${jid}, this.value)">${escapeHtml(note.texte || '')}</textarea>
+      <button type="button" ${note.busy ? 'disabled' : ''} onclick="addStaffRequestNote(${jid})">${note.busy ? 'Ajout…' : 'Ajouter la note'}</button>
+    </div>
+  </section>`;
 }
 
 function staffRequestComposerKey(event, id) {
@@ -17870,7 +18392,22 @@ const STAFF_MAIL_STATUS = {
   cancelled: ['annulé', 'bad'],
 };
 
-// Les mails de CE contact, envoyes et recus, groupes par jour.
+// LES MAILS DE LA DEMANDE. Le fil lit tous les mails de l adresse ; ceux
+// d avant la demande (confirmations de vieilles reservations, relances
+// automatiques) noyaient l echange en cours : Movsar voyait « 12 envoyes »
+// sur une demande a laquelle personne n avait encore repondu. Le fil montre
+// ce qui date de la demande (deux heures de marge : un mail envoye juste
+// avant le formulaire en fait partie) ; le reste se deplie a la demande.
+let staffRequestShowOlder = {};
+
+function toggleStaffRequestOlder(id) {
+  const key = String(id);
+  if (staffRequestShowOlder[key]) delete staffRequestShowOlder[key];
+  else staffRequestShowOlder[key] = true;
+  renderStaffRequestsIfOpen();
+}
+window.toggleStaffRequestOlder = toggleStaffRequestOlder;
+
 function renderStaffRequestThread(item) {
   const key = String(item.id);
   const jid = staffClientJs(item.id);
@@ -17878,45 +18415,64 @@ function renderStaffRequestThread(item) {
     return `<div class="req-thread req-thread-idle"><span>Cette demande n’a pas d’adresse email : rien à échanger ici.</span></div>`;
   }
   const thread = staffRequestThreads[key];
-  if (!thread || thread.loading) {
+  if (!thread || (thread.loading && !thread.loaded)) {
     return `<div class="req-thread req-thread-idle"><span class="req-thread-spin" aria-hidden="true"></span><span>Chargement des mails…</span></div>`;
   }
-  if (thread.error) {
+  if (thread.error && !thread.loaded) {
     return `<div class="req-thread req-thread-idle"><span>${escapeHtml(thread.error)}</span>
       <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Réessayer</button></div>`;
   }
-  const messages = (thread.messages || []).slice().sort((a, b) =>
-    String(a.sentAt || a.createdAt || '').localeCompare(String(b.sentAt || b.createdAt || '')));
-  const sent = messages.filter(message => (message.direction || 'outbound') !== 'inbound').length;
-  const received = messages.length - sent;
+  const quand = (message) => staffRequestTime(message.sentAt || message.createdAt || message.scheduledAt);
+  const messages = (thread.messages || []).slice().sort((a, b) => quand(a) - quand(b));
+  const debut = staffRequestTime(item.createdAt) ? staffRequestTime(item.createdAt) - 2 * 3600000 : 0;
+  const lies = messages.filter(message => !debut || quand(message) >= debut);
+  const anciens = messages.filter(message => debut && quand(message) < debut);
+  const avecAnciens = Boolean(staffRequestShowOlder[key]) && anciens.length > 0;
+  const visibles = avecAnciens ? messages : lies;
+  const sent = lies.filter(message => (message.direction || 'outbound') !== 'inbound').length;
+  const received = lies.length - sent;
 
   const head = `<div class="req-thread-head">
-    <strong>Mails avec ce contact</strong>
-    <span class="req-thread-count">${messages.length ? `${sent} envoyé${sent > 1 ? 's' : ''} · ${received} reçu${received > 1 ? 's' : ''}` : 'aucun échange'}</span>
+    <strong>Mails de cette demande</strong>
+    <span class="req-thread-count">${lies.length ? `${sent} envoyé${sent > 1 ? 's' : ''} · ${received} reçu${received > 1 ? 's' : ''}` : 'aucun échange'}</span>
     <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Rafraîchir</button>
   </div>`;
+  const plusAnciens = anciens.length
+    ? `<button type="button" class="req-thread-older" onclick="toggleStaffRequestOlder(${jid})">${avecAnciens
+      ? 'Masquer les mails d’avant la demande'
+      : `Voir ${anciens.length > 1 ? `les ${anciens.length} mails` : 'le mail'} d’avant la demande avec ce contact`}</button>`
+    : '';
 
-  if (!messages.length) {
+  if (!visibles.length) {
     return `<div class="req-thread">${head}
-      <p class="req-thread-void">Aucun mail échangé avec ce contact pour l’instant. La réponse envoyée depuis cette page apparaîtra ici.</p>
+      <p class="req-thread-void">Aucun mail échangé sur cette demande pour l’instant. La réponse envoyée depuis cette page apparaîtra ici.</p>
+      ${plusAnciens}
     </div>`;
   }
 
   // Les plus recents en bas, comme une conversation. Au-dela de 12 messages on
   // ne garde que les 12 derniers et on le DIT.
-  const shown = messages.slice(-12);
-  const hidden = messages.length - shown.length;
+  const shown = visibles.slice(-12);
+  const hidden = visibles.length - shown.length;
   let lastDay = '';
+  let franchi = !avecAnciens;
   const rows = shown.map((message) => {
     const when = message.sentAt || message.createdAt || message.scheduledAt || '';
+    let marque = '';
+    if (!franchi && (!debut || quand(message) >= debut)) {
+      franchi = true;
+      lastDay = '';
+      marque = '<div class="req-day req-day-mark"><span>Début de la demande</span></div>';
+    }
     const day = staffRequestDayLabel(when);
     const separator = day !== lastDay ? `<div class="req-day"><span>${escapeHtml(day)}</span></div>` : '';
     lastDay = day;
-    return separator + renderStaffRequestMessage(message, when);
+    return marque + separator + renderStaffRequestMessage(message, when);
   }).join('');
 
   return `<div class="req-thread">
     ${head}
+    ${plusAnciens}
     ${hidden > 0 ? `<span class="req-thread-more">${hidden} message${hidden > 1 ? 's' : ''} plus ancien${hidden > 1 ? 's' : ''} non affiché${hidden > 1 ? 's' : ''}</span>` : ''}
     <div class="req-thread-list">${rows}</div>
   </div>`;
@@ -18006,11 +18562,14 @@ const STAFF_REQUEST_PRESETS = [
 function staffRequestPresetContext(item) {
   const centre = getCurrentStaffCenterName() || getCurrentStaffCenterId();
   const prenom = String(item.contactName || '').trim().split(/\s+/)[0] || '';
+  const d = crDemande(item);
+  const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
+  const date = d && !d.flexible ? staffRequestLongDate(d.date).toLowerCase() : '';
   return {
     centre,
     prenom,
-    groupe: Number(item.pax) > 0 ? ` pour ${item.pax} personnes` : '',
-    quand: item.requestedDate ? ` du ${item.requestedDate}` : '',
+    groupe: joueurs ? ` pour un groupe de ${joueurs} personnes` : '',
+    quand: date ? `, le ${date}` : (!d && item.requestedDate ? ` (${item.requestedDate})` : ''),
   };
 }
 
@@ -18027,9 +18586,74 @@ function applyStaffRequestPreset(id, presetId) {
     openedAt: current && current.open ? current.openedAt : Date.now(),
     subject: preset.subject(ctx),
     body: preset.body(ctx),
+    // Un modele n est pas un texte redige sur l etude : la mention d origine
+    // et les points a verifier du brouillon precedent ne le concernent plus.
+    draftSource: '',
+    draftReason: '',
+    points: [],
   };
   renderStaffUtilityPage();
 }
+
+// Les pages qui montrent une demande se repeignent ; les autres ne bougent pas.
+function renderStaffRequestsIfOpen() {
+  if (isStaffUtilityActive() && getStaffMenuPage() === 'requests') renderStaffUtilityPage();
+}
+
+function focusStaffRequestComposer(id) {
+  window.setTimeout(() => {
+    const zone = document.getElementById(`reqComposer-${String(id)}`);
+    if (zone) zone.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 80);
+}
+window.focusStaffRequestComposer = focusStaffRequestComposer;
+
+// REDIGER LA REPONSE AVEC L IA (serveur : lib/demande-bureau). Le serveur
+// relance l etude, redige a partir d elle et du cerveau du centre, puis
+// controle : un chiffre, un avantage ou une promesse hors des faits font
+// rediger le brouillon du code a la place. Le texte deja ecrit par l equipe
+// est garde : « Revenir a ma version » le rend.
+async function startStaffRequestDraft(id) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  if (!item) return;
+  if (!item.email) { toast('Cette demande n’a pas d’adresse email : répondez par téléphone.'); return; }
+  const current = staffRequestReplyState[key] || {};
+  if (current.drafting || current.busy) return;
+  const avant = { subject: current.subject || '', body: current.body || '', draftSource: current.draftSource || '', draftReason: current.draftReason || '', points: current.points || [] };
+  staffRequestReplyState[key] = { ...current, open: true, openedAt: current.open ? current.openedAt : Date.now(), drafting: true };
+  renderStaffRequestsIfOpen();
+  focusStaffRequestComposer(id);
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'customRequestDraft', id: item.id, centerId: getActiveOpsCenterId() }),
+    });
+    const brouillon = payload && payload.brouillon;
+    if (!brouillon || !String(brouillon.corps || '').trim()) throw new Error('Rédaction impossible pour le moment : votre texte est inchangé.');
+    const after = staffRequestReplyState[key] || {};
+    staffRequestReplyState[key] = {
+      ...after,
+      drafting: false,
+      previous: String(avant.body || '').trim() ? avant : (after.previous || null),
+      subject: String(brouillon.objet || after.subject || ''),
+      body: String(brouillon.corps),
+      draftSource: brouillon.source === 'ia' ? 'ia' : 'code',
+      draftReason: String(brouillon.raison || ''),
+      points: Array.isArray(brouillon.pointsAVerifier) ? brouillon.pointsAVerifier : [],
+    };
+    // Le serveur vient d etudier la date : l etude affichee est la sienne.
+    if (payload.etude) {
+      staffRequestStudies[key] = { ...(staffRequestStudies[key] || {}), loading: false, loaded: true, stale: false, error: '', etude: payload.etude, at: Date.now() };
+    }
+    toast(brouillon.source === 'ia' ? 'Réponse rédigée : relisez-la avant d’envoyer.' : 'Brouillon préparé à partir de l’étude : relisez-le avant d’envoyer.');
+  } catch (error) {
+    staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || {}), drafting: false };
+    toast(error.message || 'Rédaction impossible pour le moment : votre texte est inchangé.');
+  }
+  renderStaffRequestsIfOpen();
+}
+window.startStaffRequestDraft = startStaffRequestDraft;
 
 // AMELIORER LE BROUILLON AVEC L'IA (Kimi, cote serveur). Le modele reecrit la
 // FORME de ce que le staff a ecrit : il n'invente ni prix, ni horaire, ni
@@ -18086,10 +18710,14 @@ function revertStaffRequestDraft(id) {
   const key = String(id);
   const reply = staffRequestReplyState[key];
   if (!reply || !reply.previous) return;
+  // Le texte d avant revient avec ce qui le decrivait : son origine et ses
+  // points a verifier (un brouillon de l IA reste un brouillon de l IA).
+  const avant = reply.previous;
   staffRequestReplyState[key] = {
     ...reply,
-    subject: reply.previous.subject,
-    body: reply.previous.body,
+    subject: avant.subject,
+    body: avant.body,
+    ...('draftSource' in avant ? { draftSource: avant.draftSource, draftReason: avant.draftReason || '', points: avant.points || [] } : {}),
     previous: null,
   };
   renderStaffUtilityPage();
@@ -18103,8 +18731,7 @@ function toggleStaffRequestReply(id) {
   if (current && current.open) {
     staffRequestReplyState[key] = { ...current, open: false };
   } else {
-    const firstName = String(item.contactName || '').trim().split(/\s+/)[0] || '';
-    const centreName = getCurrentStaffCenterName() || getCurrentStaffCenterId();
+    const ctx = staffRequestPresetContext(item);
     const occ = STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] || '';
     staffRequestReplyState[key] = {
       ...current,
@@ -18113,9 +18740,10 @@ function toggleStaffRequestReply(id) {
       // Horodatage de l ouverture : c est lui, et lui seul, qui autorise
       // l animation d entree du composeur (voir renderStaffRequestReplyComposer).
       openedAt: Date.now(),
-      subject: (current && current.subject) || `Votre demande${occ ? ` ${occ.toLowerCase()}` : ''} chez ${centreName}`,
-      body: (current && current.body) || `Bonjour ${firstName || ''},\n\nMerci pour votre demande${Number(item.pax) > 0 ? ` pour ${item.pax} personnes` : ''}${item.requestedDate ? ` (${item.requestedDate})` : ''}.\n\n\n\nBien à vous,\n${centreName}`,
+      subject: (current && current.subject) || `Votre demande${occ ? ` ${occ.toLowerCase()}` : ''} chez ${ctx.centre}`,
+      body: (current && current.body) || `Bonjour${ctx.prenom ? ` ${ctx.prenom}` : ''},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\n\n\nBien à vous,\n${ctx.centre}`,
     };
+    focusStaffRequestComposer(id);
   }
   renderStaffUtilityPage();
 }
@@ -18130,13 +18758,13 @@ async function staffRequestSendReply(id) {
   const key = String(id);
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
   const reply = staffRequestReplyState[key];
-  if (!item || !reply || reply.busy) return;
+  if (!item || !reply || reply.busy || reply.drafting) return;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email || '').trim())) { toast('Adresse email de la demande invalide.'); return; }
   if (!String(reply.subject || '').trim() || !String(reply.body || '').trim()) { toast('Objet et message sont requis.'); return; }
   reply.busy = true;
   renderStaffUtilityPage();
   try {
-    await apiRequest(API_ENDPOINTS.ops, {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
       body: JSON.stringify(window.PinlaneApiClient.withMessageAttempt(reply, {
         action: 'sendDirectEmail',
@@ -18146,15 +18774,23 @@ async function staffRequestSendReply(id) {
         body: reply.body,
         category: 'direct',
         templateRef: 'demande-sur-mesure',
+        // La reponse se range dans le suivi de la demande : la file la sait
+        // « en attente du client » et l historique dit qui l a envoyee.
+        customRequestId: item.id,
+        ...(reply.draftSource ? { draftSource: reply.draftSource } : {}),
       })),
     });
-    toast('Réponse enregistrée : consultez son état d\'envoi dans l\'historique mails.');
+    replaceStaffCustomRequest(payload && payload.customRequest, { id: item.id });
+    toast('Réponse enregistrée : son état d’envoi se lit dans les mails de la demande.');
     // Le fil se recharge : le mail qui vient de partir doit apparaitre ici,
     // sinon le staff doute de l'envoi et le renvoie une seconde fois.
     loadStaffRequestThread(id, true);
     staffRequestReplyState[key] = { open: false, busy: false, subject: '', body: '' };
+    // La page suit la demande dans l onglet ou elle arrive (« En attente ») :
+    // l equipe voit la reponse rangee, au lieu d une autre demande.
+    followStaffRequest(item.id);
     // Une demande a laquelle on vient de repondre n est plus « nouvelle ».
-    if (item.status === 'new') { setStaffCustomRequestStatus(item.id, 'in_progress'); return; }
+    if (item.status === 'new') { setStaffCustomRequestStatus(item.id, 'in_progress', { silencieux: true, suivre: true }); return; }
     renderStaffUtilityPage();
   } catch (error) {
     staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || reply), busy: false };
@@ -18163,26 +18799,134 @@ async function staffRequestSendReply(id) {
   }
 }
 
-// Convertit la demande en reservation rapide preremplie : nom, contact,
-// groupe, et le message en note pour le comptoir. La date reste a choisir
-// (le souhait est du texte libre, il part en note, jamais devine).
+// Convertit la demande en reservation rapide preremplie : le client, ses
+// joueurs (les accompagnateurs ne jouent pas), la date voulue quand elle est
+// fixee et a venir, la formule quand il n en a choisi qu une que ce centre
+// connait. Le reste part en note pour le comptoir ; l heure reste a choisir
+// avec le client.
 function staffRequestToBooking(id) {
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
   if (!item) return;
+  const d = crDemande(item);
+  const date = d && !d.flexible && staffRequestDateOf(d.date) && d.date >= todayStr() ? d.date : '';
+  const formules = d && Array.isArray(d.formulas) ? d.formulas : [];
+  const formule = formules.length === 1 && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(formules[0].id) ? formules[0].id : '';
+  const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
   const noteParts = [
     'Demande sur mesure',
-    item.requestedDate ? `souhait : ${item.requestedDate}` : '',
+    d && d.organisation ? d.organisation : '',
+    d && d.groupTypeLabel ? d.groupTypeLabel : '',
+    d ? [...crNoms(d.formulas), ...crNoms(d.activities)].join(', ') : '',
+    d && d.moment && d.moment !== 'indifferent' ? String(d.momentLabel || '').toLowerCase() : '',
+    d && Number(d.companions) > 0 ? `${d.companions} accompagnateur${d.companions > 1 ? 's' : ''}` : '',
+    !d && item.requestedDate ? `souhait : ${item.requestedDate}` : '',
     item.message ? String(item.message).slice(0, 160) : '',
   ].filter(Boolean);
   openQuickBook({
     name: item.contactName || '',
     email: item.email || '',
     phone: item.phone || '',
-    pax: Number(item.pax) > 0 ? Number(item.pax) : 4,
+    pax: joueurs > 0 ? joueurs : 4,
     notes: noteParts.join(' · '),
+    ...(date ? { date } : {}),
+    ...(formule ? { type: 'formule', formuleId: formule } : {}),
     // D ou vient cette reservation : sert UNIQUEMENT a classer la demande
-    // en « Traitee » une fois la creation reussie.
+    // en « Traitee » une fois la creation reussie, reservation liee.
     sourceRequestId: item.id,
+  });
+}
+
+// La reservation nee de la demande : sa fiche quand ce poste l a chargee,
+// sinon le planning de son jour.
+function openStaffRequestReservation(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  const historique = item && item.suivi && Array.isArray(item.suivi.historique) ? item.suivi.historique : [];
+  const evenement = historique.filter(e => e.type === 'reservation').slice(-1)[0];
+  if (!evenement) return;
+  if (findStaffReservationById(evenement.reservationId)) { openStaffReservationDetail(evenement.reservationId); return; }
+  if (evenement.date) { openStaffRequestDay(evenement.date); return; }
+  toast('Réservation introuvable sur ce poste : ouvrez le planning à sa date.');
+}
+window.openStaffRequestReservation = openStaffRequestReservation;
+
+// Le planning du jour etudie, pour voir ce qui est deja pose.
+function openStaffRequestDay(iso) {
+  if (!staffRequestDateOf(iso)) return;
+  state.currentDate = iso;
+  state.staffStatusFilter = 'all';
+  openStaffPlanningResource('all');
+  syncDateReservations(iso, { silent: true });
+}
+window.openStaffRequestDay = openStaffRequestDay;
+
+// ── LES NOTES DE L EQUIPE ───────────────────────────────────────────────────
+function staffRequestNoteDraft(id, value) {
+  const key = String(id);
+  staffRequestNotes[key] = { ...(staffRequestNotes[key] || {}), texte: String(value || '') };
+}
+window.staffRequestNoteDraft = staffRequestNoteDraft;
+
+async function addStaffRequestNote(id) {
+  const key = String(id);
+  const note = staffRequestNotes[key] || {};
+  const texte = String(note.texte || '').trim();
+  if (note.busy) return;
+  if (!texte) { toast('Écrivez la note avant de l’ajouter.'); return; }
+  staffRequestNotes[key] = { ...note, busy: true };
+  renderStaffRequestsIfOpen();
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'customRequestNote', id, texte, centerId: getActiveOpsCenterId() }),
+    });
+    replaceStaffCustomRequest(payload && payload.customRequest, { id });
+    staffRequestNotes[key] = { texte: '', busy: false };
+    toast('Note ajoutée au suivi.');
+  } catch (error) {
+    staffRequestNotes[key] = { ...(staffRequestNotes[key] || {}), busy: false };
+    toast(error.message || 'Note non enregistrée.');
+  }
+  renderStaffRequestsIfOpen();
+}
+window.addStaffRequestNote = addStaffRequestNote;
+
+// ── L ETUDE : lue a l ouverture du dossier, relue sur demande ──────────────
+async function loadStaffRequestStudy(id, force = false) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  if (!item || !crDemande(item)) return;
+  const current = staffRequestStudies[key];
+  if (current && current.loading) return;
+  if (current && current.loaded && !force && !current.stale) return;
+  staffRequestStudies[key] = { ...(current || {}), loading: true, error: '' };
+  renderStaffRequestsIfOpen();
+  try {
+    const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=customRequestStudy&centerId=${encodeURIComponent(getActiveOpsCenterId())}&id=${encodeURIComponent(key)}`);
+    staffRequestStudies[key] = { loading: false, loaded: true, stale: false, error: '', etude: payload.etude || null, client: payload.client || null, at: Date.now() };
+  } catch (error) {
+    staffRequestStudies[key] = { ...(staffRequestStudies[key] || {}), loading: false, error: error.message || 'Étude indisponible pour le moment.' };
+  }
+  renderStaffRequestsIfOpen();
+}
+window.loadStaffRequestStudy = loadStaffRequestStudy;
+
+// L etude du dossier ouvert se lit a son ouverture, et se relit quand le
+// planning a bouge depuis (au plus toutes les vingt secondes : le moteur
+// compte ses appels). Une erreur attend le clic « Reessayer ».
+function ensureStaffRequestStudy() {
+  const item = getStaffRequestSelectedItem();
+  if (!item || !crDemande(item)) return;
+  const study = staffRequestStudies[String(item.id)];
+  if (study && (study.loading || (study.error && !study.loaded))) return;
+  if (study && study.loaded && (!study.stale || Date.now() - Number(study.at || 0) < 20000)) return;
+  loadStaffRequestStudy(item.id, Boolean(study && study.stale));
+}
+
+// Le planning, les fermetures ou la configuration ont bouge : chaque etude
+// deja lue devient a relire ; celle du dossier ouvert se relit au rendu.
+function markStaffRequestStudiesStale() {
+  Object.keys(staffRequestStudies).forEach((key) => {
+    if (staffRequestStudies[key] && staffRequestStudies[key].loaded) staffRequestStudies[key] = { ...staffRequestStudies[key], stale: true };
   });
 }
 
@@ -18243,23 +18987,24 @@ function renderStaffCustomRequestCard(item) {
   const envies = d ? [...crNoms(d.activities), ...crNoms(d.formulas)].join(', ') : '';
   const texte = item.message || (envies ? `Envies : ${envies}` : '');
   const jid = staffClientJs(item.id);
-  // La carte entiere ouvre la fiche : c'est la ligne de liste d'un dossier, et
-  // une ligne de liste s'ouvre. Les boutons d'action gardent leur propre clic.
+  // La carte entiere ouvre le dossier de la demande, sur SA page : un seul
+  // endroit ou une demande se lit et se traite (la fiche en surimpression qui
+  // doublait la page est retiree, elle disait moins et ne tracait rien).
   return `<article class="cr-card cr-status-${escapeHtml(item.status)}" role="button" tabindex="0"
-      onclick="openStaffCustomRequest(${jid})"
-      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStaffCustomRequest(${jid});}">
+      onclick="openStaffRequestsPage(${jid})"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStaffRequestsPage(${jid});}">
     <div class="cr-card-head">
       <div class="cr-card-ident">
         <strong>${escapeHtml(item.contactName || 'Contact')}</strong>
         ${occ ? `<span class="res-occasion-tag res-occasion-${escapeHtml(occKey)}">${escapeHtml(occ)}</span>` : ''}
       </div>
-      ${renderStaffCustomRequestBadge(item.status)}
+      ${renderStaffRequestStageBadge(item)}
     </div>
     ${meta ? `<div class="cr-meta">${escapeHtml(meta)}</div>` : ''}
     ${item.email ? `<div class="cr-meta cr-email">${escapeHtml(item.email)}</div>` : ''}
     <p class="cr-message">${escapeHtml(texte)}</p>
     <div class="cr-actions" onclick="event.stopPropagation()">
-      ${item.email ? `<button type="button" onclick="composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre</button>` : ''}
+      ${item.email ? `<button type="button" onclick="openStaffRequestReply(${jid})">Répondre</button>` : ''}
       ${item.status !== 'in_progress' && item.status !== 'handled' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Prendre en charge</button>` : ''}
       ${item.status !== 'handled' ? `<button type="button" class="success" onclick="setStaffCustomRequestStatus(${jid}, 'handled')">Marquer traitée</button>` : ''}
       <button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived')">Archiver</button>
@@ -18267,130 +19012,39 @@ function renderStaffCustomRequestCard(item) {
   </article>`;
 }
 
-// UNE DEMANDE SUR MESURE S OUVRE, COMME UNE RESERVATION.
-// Movsar, 2026-08-14 : « les demandes sur mesure, on sait rien faire, on sait
-// pas voir la demande, il n'y a rien qui y est dedie ». Elles ne vivaient que
-// dans une carte d un panneau lateral de la page Clients : le message y est
-// borne par la largeur de la colonne, rien n est cliquable, et un dossier qui
-// ne s ouvre pas ne se traite pas. C est pourtant le SEUL endroit ou arrive une
-// demande d entreprise ou de groupe, c est-a-dire les plus gros paniers.
-// La fiche reprend la forme des fiches de reservation : un en-tete qui dit qui
-// et quand, un corps qui commence par l ACTION, le message en entier, et les
-// coordonnees cliquables (telephone et email s ouvrent vraiment).
-let staffCustomRequestFocusReturn = null;
-
+// UNE DEMANDE S OUVRE SUR SA PAGE. La fiche en surimpression (2026-08-14)
+// montrait la demande a cote de la page qui la traite : deux rendus, et une
+// reponse envoyee depuis la fiche ne se rangeait pas dans le suivi. Tout
+// chemin qui ouvre une demande mene maintenant a son dossier.
 function openStaffCustomRequest(id) {
-  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
-  const overlay = document.getElementById('crOverlay');
-  if (!item || !overlay) return;
-  staffCustomRequestFocusReturn = document.activeElement;
-  const occKey = String(item.occasion || '').toLowerCase();
-  const occ = STAFF_OCCASION_LABELS[occKey] || '';
-  const jid = staffClientJs(item.id);
-  const d = crDemande(item);
-  const faits = d ? [] : [
-    item.company ? ['Société', item.company] : null,
-    item.requestedDate ? ['Date souhaitée', item.requestedDate] : null,
-    Number(item.pax) > 0 ? ['Participants', `${item.pax} personnes`] : null,
-    occ ? ['Occasion', occ] : null,
-  ].filter(Boolean);
-  // La demande du formulaire en ligne, bloc par bloc : qui, quand, quoi, et
-  // comment facturer. Chaque ligne n apparait que si le client l a remplie.
-  const bloc = (titre, lignes) => {
-    const utiles = lignes.filter(Boolean);
-    return utiles.length ? `<section class="cr-sheet-block">
-        <span class="cr-sheet-label">${escapeHtml(titre)}</span>
-        <dl class="cr-sheet-facts">${utiles.map(([cle, valeur]) => `<div><dt>${escapeHtml(cle)}</dt><dd>${escapeHtml(String(valeur))}</dd></div>`).join('')}</dl>
-      </section>` : '';
-  };
-  const ages = d ? (Array.isArray(d.ages) ? d.ages : []).map(cle => CR_AGE_LABELS[cle] || '').filter(Boolean) : [];
-  const blocsDemande = d ? [
-    bloc('Le groupe', [
-      ['Type', d.groupTypeLabel || occ || ''],
-      d.organisation ? ['Organisation', d.organisation] : null,
-      ['Participants', crEffectif(d)],
-      ages.length ? ['Âges', ages.join(', ')] : null,
-    ]),
-    bloc('Quand', [
-      d.flexible ? ['Date', 'À fixer'] : ['Date souhaitée', item.requestedDate || d.date],
-      d.flexible && d.period ? ['Période envisagée', d.period] : null,
-      d.momentLabel ? ['Moment', d.momentLabel] : null,
-    ]),
-    bloc('Ses envies', [
-      crNoms(d.activities).length ? ['Activités', crNoms(d.activities).join(', ')] : null,
-      crNoms(d.formulas).length ? ['Formules', crNoms(d.formulas).join(', ')] : null,
-      d.advice ? ['Conseil', 'Il demande que l’équipe propose un programme'] : null,
-      Number(d.budgetPerPerson) > 0 ? ['Budget indicatif', `${d.budgetPerPerson} € par personne`] : null,
-    ]),
-    bloc('Facturation', [
-      d.invoice ? ['Facture', `Au nom de ${d.organisation || 'l’organisation'}`] : null,
-      d.invoice && d.vatNumber ? ['TVA', d.vatNumber] : null,
-    ]),
-  ].join('') : '';
-  overlay.className = 'cr-sheet-overlay';
-  overlay.innerHTML = `<div class="cr-sheet" role="dialog" aria-modal="true" aria-labelledby="crSheetTitle">
-    <div class="cr-sheet-head">
-      <div>
-        <h2 id="crSheetTitle">${escapeHtml(item.contactName || 'Contact')}</h2>
-        <p>${escapeHtml([item.company, occ, Number(item.pax) > 0 ? `${item.pax} personnes` : '', item.requestedDate ? `souhait ${item.requestedDate}` : ''].filter(Boolean).join(' · ') || 'Demande sur mesure')}</p>
-      </div>
-      <button type="button" class="cr-sheet-close" onclick="closeStaffCustomRequest()" aria-label="Fermer">×</button>
-    </div>
-    <div class="cr-sheet-body">
-      <section class="cr-sheet-action">
-        <span class="cr-sheet-label">Que faire</span>
-        <div class="cr-sheet-buttons">
-          ${item.email ? `<button type="button" class="primary" onclick="composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre par email</button>` : ''}
-          ${item.status !== 'in_progress' && item.status !== 'handled' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress'); closeStaffCustomRequest();">Prendre en charge</button>` : ''}
-          ${item.status !== 'handled' ? `<button type="button" class="success" onclick="setStaffCustomRequestStatus(${jid}, 'handled'); closeStaffCustomRequest();">Marquer traitée</button>` : ''}
-          <button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived'); closeStaffCustomRequest();">Archiver</button>
-        </div>
-      </section>
-      ${blocsDemande}
-      ${!d || item.message ? `<section class="cr-sheet-block">
-        <span class="cr-sheet-label">${d ? 'Son mot' : 'Sa demande'}</span>
-        <p class="cr-sheet-message">${escapeHtml(item.message || 'Aucun message.')}</p>
-      </section>` : ''}
-      ${faits.length ? `<section class="cr-sheet-block">
-        <span class="cr-sheet-label">Le besoin</span>
-        <dl class="cr-sheet-facts">${faits.map(([cle, valeur]) => `<div><dt>${escapeHtml(cle)}</dt><dd>${escapeHtml(String(valeur))}</dd></div>`).join('')}</dl>
-      </section>` : ''}
-      <section class="cr-sheet-block">
-        <span class="cr-sheet-label">Le joindre${d && d.contactRole ? ` · ${escapeHtml(d.contactRole)}` : ''}</span>
-        <div class="cr-sheet-contact">
-          ${item.phone ? `<a href="tel:${escapeHtml(String(item.phone).replace(/\s+/g, ''))}">${escapeHtml(item.phone)}</a>` : ''}
-          ${item.email ? `<a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a>` : ''}
-          ${!item.phone && !item.email ? '<span class="cr-sheet-empty">Aucune coordonnée fournie.</span>' : ''}
-        </div>
-      </section>
-    </div>
-  </div>`;
-  overlay.classList.remove('hidden');
-  const premier = overlay.querySelector('button, a[href]');
-  if (premier) premier.focus();
+  openStaffRequestsPage(id);
 }
 window.openStaffCustomRequest = openStaffCustomRequest;
 
-function closeStaffCustomRequest() {
-  const overlay = document.getElementById('crOverlay');
-  if (!overlay) return;
-  overlay.className = 'hidden';
-  overlay.innerHTML = '';
-  if (staffCustomRequestFocusReturn && typeof staffCustomRequestFocusReturn.focus === 'function') {
-    staffCustomRequestFocusReturn.focus();
-  }
-  staffCustomRequestFocusReturn = null;
+// « Repondre » depuis une autre page : le dossier s ouvre et l IA redige.
+function openStaffRequestReply(id) {
+  openStaffRequestsPage(id);
+  startStaffRequestDraft(id);
 }
-window.closeStaffCustomRequest = closeStaffCustomRequest;
+window.openStaffRequestReply = openStaffRequestReply;
 
+// Le panneau de la page Clients : ce qui attend l equipe, puis ce qui attend
+// le client, dans les memes mots que la page des demandes.
 function renderStaffCustomRequestsPanel() {
   const cache = staffCustomRequestsCache;
-  const items = getStaffCustomRequestItems().filter(item => item.status !== 'archived');
+  const items = getStaffCustomRequestItems().filter(item => ['a-traiter', 'en-attente'].includes(staffRequestStage(item)));
+  const aTraiter = items.filter(item => staffRequestStage(item) === 'a-traiter').length;
+  const enAttente = items.length - aTraiter;
   const newCount = getStaffNewCustomRequestCount();
+  const resume = [
+    `${aTraiter} à traiter`,
+    enAttente ? `${enAttente} en attente du client` : '',
+    newCount ? `${newCount} nouvelle${newCount > 1 ? 's' : ''}` : '',
+  ].filter(Boolean).join(' · ');
   const head = `<div class="cr-panel-head">
     <div>
       <strong>Demandes sur mesure${newCount ? ` <span class="cr-count">${newCount}</span>` : ''}</strong>
-      <span>${cache.loading ? renderThinking('searching', { label: 'Lecture des demandes' }) : `${items.length} demande(s) active(s)${newCount ? ` · ${newCount} nouvelle(s)` : ''}`}</span>
+      <span>${cache.loading ? renderThinking('searching', { label: 'Lecture des demandes' }) : resume}</span>
     </div>
     <button type="button" onclick="loadStaffCustomRequests(true)">Actualiser</button>
   </div>`;
@@ -18400,7 +19054,7 @@ function renderStaffCustomRequestsPanel() {
   } else if (cache.error) {
     body = `<div class="cr-empty cr-error">${escapeHtml(cache.error)}</div>`;
   } else if (!items.length) {
-    body = `<div class="cr-empty">Aucune demande sur mesure en attente. Les demandes entreprises et besoins spéciaux envoyées depuis la page client apparaissent ici, sans occuper le planning.</div>`;
+    body = `<div class="cr-empty">Aucune demande sur mesure à traiter. Les demandes de groupes et d’entreprises envoyées depuis le formulaire apparaissent ici, sans occuper le planning.</div>`;
   } else {
     body = items.map(renderStaffCustomRequestCard).join('');
   }
@@ -25916,7 +26570,13 @@ async function saveQuickBook() {
       // La demande est traitee : la reservation existe. Le classement ne
       // doit jamais voler le message de ce qui compte (la reservation),
       // ni annoncer un echec de reservation s il n a echoue que lui-meme.
-      const classee = await setStaffCustomRequestStatus(demandeOrigine, "done", { silencieux: true });
+      // « handled », le statut de la base : « done » etait refuse (400) et la
+      // demande restait a traiter apres chaque reservation creee depuis elle.
+      const classee = await setStaffCustomRequestStatus(demandeOrigine, 'handled', {
+        silencieux: true,
+        reservationId: payload.reservation && payload.reservation.id,
+        reservationDate: payload.reservation && payload.reservation.date,
+      });
       toast(classee ? 'Réservation créée · demande classée « Traitée »' : 'Réservation créée · la demande reste à traiter');
     } else {
       toast('Réservation créée');
@@ -27277,9 +27937,6 @@ document.getElementById('delayOverlay').addEventListener('click', e => {
 document.getElementById('quickBookOverlay').addEventListener('click', e => {
   if (e.target.id === 'quickBookOverlay') closeQuickBook();
 });
-document.getElementById('crOverlay')?.addEventListener('click', e => {
-  if (e.target.id === 'crOverlay') closeStaffCustomRequest();
-});
 
 setInterval(() => {
   if (state.view !== 'staff') return;
@@ -27295,6 +27952,8 @@ setInterval(() => {
   if (laserBox && !laserBox.classList.contains('hidden')) {
     repaintKeepingScroll(laserBox, () => renderLaserPlanning());
   }
+  // Demandes sur mesure : le compte a rebours de la reponse promise.
+  tickStaffRequestDues();
   // Terrain : « dans 25 min » et le passage d une colonne a l autre suivent
   // l heure, pas seulement les donnees. Aucune animation d entree au tic.
   if (isStaffUtilityActive() && getStaffMenuPage() === 'arrivals') renderStaffUtilityPage();
@@ -27303,12 +27962,6 @@ setInterval(() => {
 // Échap ferme le mode plein écran du planning (bowling ou laser).
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  const crOverlay = document.getElementById('crOverlay');
-  if (crOverlay && !crOverlay.classList.contains('hidden')) {
-    closeStaffCustomRequest();
-    event.preventDefault();
-    return;
-  }
   if (delayFlowState) {
     closeDelayModal();
     event.preventDefault();

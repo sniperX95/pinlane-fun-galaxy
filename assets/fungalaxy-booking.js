@@ -2516,6 +2516,11 @@
     if (carte) {
       var ecart = Math.round(((Number(j.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100;
       if (ecart > (Number(carte.deltaTotal) || 0) + 0.001) return 'Le tarif de cette option vient de changer.';
+      // UNE OFFRE D ATTENTE N EST ACQUISE QUE POSEE PAR LE SERVEUR : sa ligne
+      // revient marquee, au tarif d attente. Sinon (le groupe ne tourne plus,
+      // l offre a quitte le centre), la carte se retire : jamais « Ajout
+      // confirmé » sur une ligne que le serveur n a pas faite.
+      if (carte.kind === 'attente' && !(((j.program && j.program.items) || []).some(function (it) { return it.waitOffer === true && it.activityId === carte.patch.activityId; }))) return 'Cette offre n’est plus disponible.';
     }
     return '';
   }
@@ -2544,7 +2549,10 @@
           state.creneau = { slot: slot, reponse: j };
           state.heure = slot.time;
           plus.annuler = carte && carte.kind !== 'attente' ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
-          plus.statut = { ecran: ecran, texte: texteOk, ton: 'ok' };
+          // Le montant dit est celui que le serveur vient d appliquer, jamais
+          // celui de la carte : les deux ne different que si un tarif a baisse
+          // entre-temps, et la phrase reste vraie.
+          plus.statut = { ecran: ecran, texte: carte ? texteAjout(carte, Math.round(((Number(j.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100) : texteOk, ton: 'ok' };
         }
         rendrePlus(ecran, true);
       })
@@ -2575,9 +2583,9 @@
   // Des tournures sans accord : « Formule 5 » est feminin, « Laser Game »
   // masculin, la phrase ne choisit pas. Le palier du laser se dit (2 parties
   // au lieu de 1), une activite nouvelle se dit par son nom seul.
-  function texteAjout(c) {
-    if (c.kind === 'attente') return 'Ajout confirmé : ' + nomDuPlus(c) + ' pour les ' + c.pax + ' personnes qui attendent, +' + euros(c.deltaTotal) + '.';
-    return 'Ajout confirmé : ' + nomDuPlus(c) + (c.kind === 'laser' && c.addsLabel ? ', ' + motsServeur(c.addsLabel) : '') + ', +' + euros(c.deltaTotal) + '.';
+  function texteAjout(c, montant) {
+    if (c.kind === 'attente') return 'Ajout confirmé : ' + nomDuPlus(c) + ' pour les ' + c.pax + ' personnes qui attendent, +' + euros(montant) + '.';
+    return 'Ajout confirmé : ' + nomDuPlus(c) + (c.kind === 'laser' && c.addsLabel ? ', ' + motsServeur(c.addsLabel) : '') + ', +' + euros(montant) + '.';
   }
   function statutPlus(ecran) {
     var s = plus.statut && plus.statut.ecran === ecran ? plus.statut : null;
@@ -2644,7 +2652,7 @@
     var b = e.target.closest('[data-plus]');
     if (b) {
       var carte = cartesPlus(ecran === 'heures' ? 'attente' : 'plus').filter(function (c) { return c.id === b.dataset.plus; })[0];
-      if (carte) changerPanier(panierDe(carte), carte, ecran, texteAjout(carte));
+      if (carte) changerPanier(panierDe(carte), carte, ecran, '');
       return true;
     }
     if (e.target.closest('[data-plus-annuler]')) {

@@ -107,6 +107,10 @@
 //       duree declaree par le centre ne tombait sur aucun palier. Le catalogue
 //       decide, le code n invente pas un palier.
 //
+//   [L] UNE OFFRE D ATTENTE NE S ACQUIERT QUE POSEE PAR LE SERVEUR. Si la
+//       reponse au clic ne porte pas la ligne marquee au tarif d attente, la
+//       carte se retire, le total et le panier ne bougent pas (2026-09-29).
+//
 // Usage : node scripts/complements-truth-check.js
 'use strict';
 const fs = require('fs');
@@ -1378,6 +1382,58 @@ function jugerF(m) {
 }
 
 // ---------------------------------------------------------------------------
+// [L] UNE OFFRE D ATTENTE NE S ACQUIERT QUE POSEE PAR LE SERVEUR (2026-09-29).
+// Un groupe qui tourne au duckpin (20 personnes, deux pistes de 6) recoit les
+// offres d attente au recapitulatif. Si la reponse au clic ne porte pas la
+// ligne marquee au tarif d attente (le groupe ne tourne plus, l offre a quitte
+// le centre), la carte se retire et le panier ne bouge pas : sans cette loi,
+// le tunnel disait « ajouté » sur une ligne que le serveur n avait pas faite,
+// et le prix, lui, ne montait pas.
+// ---------------------------------------------------------------------------
+const PANIER_TOURS = { bowling: { duration: 1 }, duckpin_bowling: { duration: 1 } };
+async function mesurerL(browser) {
+  RESERVATIONS.length = 0;
+  BLOCAGES.length = 0;
+  const { page, fermer } = await pageNeuve(browser);
+  try {
+    const avant = await allerAuRecapVisite(page, { pax: 20, panier: PANIER_TOURS });
+    // La fenetre d annonce de l offre couvre le recapitulatif : le client la
+    // ferme d abord, puis choisit dans la liste.
+    await page.evaluate(() => { if (typeof fermerOffreAttente === 'function') fermerOffreAttente(); });
+    const carte = avant.cartes.find((c) => /^attente:/.test(c.id)) || null;
+    if (!carte) return { avant, carte: null };
+    const prixAvant = await page.evaluate(() => Number(state.booking.serverPrice) || 0);
+    await page.route('**/api/public-availability*', async (route) => {
+      const reponse = await route.fetch();
+      const j = await reponse.json();
+      ((j.program && j.program.items) || []).forEach((i) => {
+        if (i.waitOffer === true) { delete i.waitOffer; delete i.waitPricePerPax; i.price = null; i.priceKnown = false; }
+      });
+      j.price = prixAvant;
+      if (j.program) j.program.price = prixAvant;
+      await route.fulfill({ response: reponse, json: j });
+    });
+    const apres = await cliquerAjouter(page, carte);
+    const panier = await page.evaluate(() => JSON.stringify(state.booking.activities || {}));
+    return { avant, apres, carte, panier };
+  } finally {
+    await fermer();
+  }
+}
+function jugerL(m) {
+  const v = [];
+  v.push({ ok: Boolean(m.carte), label: '[montage] un groupe qui tourne au duckpin recoit une offre d attente au recapitulatif', detail: m.avant ? m.avant.cartes.map((c) => c.id).join(' ') || 'aucune carte' : '' });
+  if (!m.carte) return v;
+  const retiree = !m.apres.cartes.some((c) => c.id === m.carte.id);
+  v.push({
+    ok: /plus disponible/.test(m.apres.statut || '') && m.apres.total === m.avant.total && retiree && !/waitOffer/.test(m.panier),
+    label: '[L] UNE OFFRE D ATTENTE QUE LE SERVEUR NE POSE PAS SE RETIRE : le total et le panier ne bougent pas',
+    detail: JSON.stringify({ statut: m.apres.statut, total: `${m.avant.total} -> ${m.apres.total}`, retiree, panier: m.panier }),
+  });
+  return v;
+}
+
+// ---------------------------------------------------------------------------
 // [G] LE DERNIER ECRAN RESTE UTILISABLE.
 // ---------------------------------------------------------------------------
 const MESURER_ECRAN = () => {
@@ -1619,6 +1675,16 @@ async function construirePROPRIETES(browser) {
           nom: 'le derivateur invente le premier palier de la grille',
           vise: /\[K\] UNE DUREE HORS GRILLE NE SE PROPOSE PAS/,
           serveur: [{ fichier: COMPLEMENTS, de: '    const palier = DURATION_OPTIONS.find((item) => Math.round(Number(item.value) * 60) === minutes) || null;', vers: '    const palier = DURATION_OPTIONS.find((item) => Math.round(Number(item.value) * 60) === minutes) || DURATION_OPTIONS[0];' }],
+        },
+      ]),
+    propriete('L', 'UNE OFFRE D ATTENTE NE S ACQUIERT QUE POSEE PAR LE SERVEUR',
+      async () => mesurerL(browser),
+      jugerL,
+      [
+        {
+          nom: 'le tunnel adopte une offre d attente que le serveur n a pas posee',
+          vise: /\[L\] UNE OFFRE D ATTENTE QUE LE SERVEUR NE POSE PAS SE RETIRE/,
+          client: [{ fichier: APP, de: "    if (carte.kind === 'attente' && !lignesRendues.some(item => item && item.waitOffer === true && item.activityId === cible)) {", vers: '    if (false) {' }],
         },
       ]),
     propriete('J', 'LA COLONNE DE TEXTE D UNE CARTE GARDE UNE LARGEUR UTILISABLE',

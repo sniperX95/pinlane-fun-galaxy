@@ -9321,7 +9321,9 @@ function texteAttente() {
   const carte = cartesDAttente()[0] || null;
   if (!carte) return '';
   const personnes = Math.max(1, Number(carte.pax) || 1);
-  return `Votre groupe joue en deux fois : ${personnes} personne${personnes > 1 ? 's' : ''} patientent pendant que les autres jouent.`;
+  // « en plusieurs fois » : un Fun Run de 12 joue en trois sessions, et depuis
+  // le 2026-09-29 le duckpin et le Fun Run font eux aussi attendre.
+  return `Votre groupe joue en plusieurs fois : ${personnes} personne${personnes > 1 ? 's' : ''} patientent pendant que les autres jouent.`;
 }
 
 function fermerOffreAttente() {
@@ -9703,6 +9705,15 @@ async function accepterComplementVisite(carte) {
     const ecartServeur = Math.round(((Number(reponse.price) || 0) - (Number(b.serverPrice) || 0)) * 100) / 100;
     if (ecartServeur > (Number(carte.deltaTotal) || 0) + 0.001) {
       renoncer('Le tarif de cette option vient de changer.');
+      return;
+    }
+    // UNE OFFRE D ATTENTE N EST ACQUISE QUE POSEE PAR LE SERVEUR : sa ligne
+    // revient marquee, au tarif d attente. Sinon (le groupe ne tourne plus,
+    // l offre a quitte le centre), la carte se retire : jamais « ajouté » sur
+    // une ligne que le serveur n a pas faite.
+    const lignesRendues = reponse.program && Array.isArray(reponse.program.items) ? reponse.program.items : [];
+    if (carte.kind === 'attente' && !lignesRendues.some(item => item && item.waitOffer === true && item.activityId === cible)) {
+      renoncer('Cette offre n\'est plus disponible.');
       return;
     }
 

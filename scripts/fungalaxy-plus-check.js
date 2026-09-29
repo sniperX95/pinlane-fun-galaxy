@@ -68,10 +68,13 @@ function samediProchain() {
   return c.toISOString().slice(0, 10);
 }
 const DATE = samediProchain();
-function charger() {
+function purger() {
   Object.keys(require.cache)
     .filter((cle) => cle.startsWith(ROOT) && !cle.includes(`${path.sep}node_modules${path.sep}`))
     .forEach((cle) => { delete require.cache[cle]; });
+}
+function charger() {
+  purger();
   const database = require(path.join(ROOT, 'lib/database.js'));
   database.readAvailabilitySnapshot = async () => ({ reservations: [], laneStatuses: {}, blocks: [], date: DATE, centerId: CENTRE });
   return {
@@ -92,16 +95,25 @@ function appel(api, programme, pax) {
 }
 // UNE MUTATION DU DISQUE, restauree quoi qu il arrive (meme motif que
 // wait-offer-check) : seule facon de prouver qu une regle serveur mord.
+// L ancre s ecrit en LF ; une copie Windows (autocrlf) lit le depot en CRLF :
+// l ancre prend les fins de ligne du fichier, sinon la contre-epreuve se
+// desarme sur une machine et pas sur l autre. Et le module mute ne survit pas
+// a sa mutation : le cache est vide a la restauration, sinon la suite du gate
+// (le serveur de dev compris) tournerait sur le code casse.
 async function avecMutation(rel, de, vers, run) {
   const fichier = path.join(ROOT, rel);
   const original = fs.readFileSync(fichier, 'utf8');
-  const n = original.split(de).length - 1;
+  const fin = original.includes('\r\n') ? '\r\n' : '\n';
+  const ancre = de.replace(/\r?\n/g, fin);
+  const remplacement = vers.replace(/\r?\n/g, fin);
+  const n = original.split(ancre).length - 1;
   if (n !== 1) throw new Error(`ancre trouvee ${n} fois dans ${rel}`);
   try {
-    fs.writeFileSync(fichier, original.split(de).join(vers));
+    fs.writeFileSync(fichier, original.split(ancre).join(remplacement));
     return await run();
   } finally {
     fs.writeFileSync(fichier, original);
+    purger();
     if (fs.readFileSync(fichier, 'utf8') !== original) throw new Error(`${rel} non restaure`);
   }
 }
@@ -170,11 +182,22 @@ async function serveurA() {
 
   section('[E] CONTRE-EPREUVES DU SERVEUR');
   try {
+    // La regle du groupe scinde decide du TARIF (les cartes, elles, lisent
+    // l attente elle-meme) : sans l attente des tours, l offre acceptee
+    // repasse au prix du catalogue, la ligne perd son drapeau et le montant
+    // annonce ne tient plus.
     const sansTours = await avecMutation('lib/visit-program.js',
       '  return Boolean(attenteDesTours({ centerId: maison, pax: people, items: lignes }));',
       '  return false;',
-      async () => { const m = charger(); return cartesAttente(await appel(m.availability, DUCK, grand)).length; });
-    ok(sansTours === 0, 'sans l attente des tours dans la regle du groupe scinde, aucune carte : ce gate ROUGIRAIT', `${sansTours} carte(s)`);
+      async () => {
+        const m = charger();
+        const a = await appel(m.availability, DUCK, grand);
+        const b = await appel(m.availability, avec, grand);
+        const drapeau = ((b.program && b.program.items) || []).some((i) => i.waitOffer === true);
+        return { drapeau, ecart: Math.round((Number(b.price) - Number(a.price)) * 100) / 100 };
+      });
+    ok(!sansTours.drapeau && sansTours.ecart !== premiere.deltaTotal,
+      'sans l attente des tours dans la regle du groupe scinde, l offre acceptee n est plus facturee au tarif d attente : ce gate ROUGIRAIT', JSON.stringify(sansTours));
   } catch (error) { ok(false, 'contre-epreuve des tours montable', error.message); }
   try {
     const sansGarde = await avecMutation('lib/booking-complements.js',
@@ -371,6 +394,42 @@ async function attenteB(browser, mock, { grand }) {
   } finally { await s.ctx.close(); }
 }
 
+// UN SERVEUR QUI NE POSE PAS L OFFRE (le groupe ne tourne plus, l offre a
+// quitte le centre) : la ligne revient sans drapeau ni tarif d attente, le
+// prix ne bouge pas. La carte se retire et le dit ; jamais « Ajout confirmé »
+// sur une ligne que le serveur n a pas faite.
+async function attenteNonPosee(browser, mock, { grand, etiquette }) {
+  const s = await jusquAuxHoraires(browser, mock, { pax: grand, activites: ['bowling', 'duckpin_bowling'], etiquette });
+  const { page } = s;
+  try {
+    const rep0 = derniere(s.reponses);
+    const carte = cartesAttente(rep0)[0] || null;
+    if (!s.pret || !carte) return { pret: false };
+    await page.route('**/api/public-availability*', async (route) => {
+      const reponse = await route.fetch();
+      const j = await reponse.json();
+      ((j.program && j.program.items) || []).forEach((i) => {
+        if (i.waitOffer === true) { delete i.waitOffer; delete i.waitPricePerPax; i.price = null; i.priceKnown = false; }
+      });
+      j.price = Number(rep0.price);
+      if (j.program) j.program.price = Number(rep0.price);
+      await route.fulfill({ response: reponse, json: j });
+    });
+    await page.click(`#plus-heures [data-plus="${carte.id}"]`);
+    await attendre(page, () => { const z = document.querySelector('#plus-heures .fg-plus__statut'); return z && (z.dataset.ton === 'ok' || z.dataset.ton === 'ko'); }, 15000);
+    return { pret: true, a: await lireAttente(page), prix0: Number(rep0.price), carte: carte.id };
+  } finally { await s.ctx.close(); }
+}
+function verifierAttenteNonPosee(res, attendu) {
+  const a = res.a || {};
+  const refuse = Boolean(res.pret) && a.ton === 'ko' && a.statut === 'Cette offre n’est plus disponible.' && a.prix === res.prix0 && a.offres.indexOf(res.carte) < 0 && !a.prise;
+  if (attendu) {
+    ok(refuse, 'un serveur qui ne pose pas l offre d attente : la carte se retire et le dit, le prix ne bouge pas, jamais « Ajout confirmé »',
+      JSON.stringify({ pret: res.pret, statut: a.statut, prix: a.prix, avant: res.prix0, offres: a.offres }));
+  }
+  return refuse;
+}
+
 // ---------------------------------------------------------------------------
 // [C] LE RECAPITULATIF : ENVIE D UN PEU PLUS ?
 // ---------------------------------------------------------------------------
@@ -449,16 +508,31 @@ async function main() {
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
     await attenteB(browser, mock, serveurRes);
+    section('[B] UN SERVEUR QUI NE POSE PAS L OFFRE D ATTENTE');
+    verifierAttenteNonPosee(await attenteNonPosee(browser, mock, { grand: serveurRes.grand, etiquette: 'attente-non-posee' }), true);
     verifierRecap(await recapC(browser, mock, {}), 'bureau');
     verifierRecap(await recapC(browser, mock, { largeur: 390, hauteur: 844, etiquette: 'telephone' }), 'telephone 390 px');
     section('[C] LE TARIF QUI A CHANGE');
     verifierRefus(await recapC(browser, mock, { casse: true, etiquette: 'refus' }), true);
-    section('[E] CONTRE-EPREUVE DU FORMULAIRE');
-    formulaireCasse = { de: "      if (ecart > (Number(carte.deltaTotal) || 0) + 0.001) return 'Le tarif de cette option vient de changer.';\n", vers: '' };
+    section('[E] CONTRE-EPREUVES DU FORMULAIRE');
     const src = fs.readFileSync(path.join(ROOT, 'assets/fungalaxy-booking.js'), 'utf8').replace(/\r\n/g, '\n');
-    if (src.split(formulaireCasse.de).length !== 2) ok(false, 'contre-epreuve du prix montable : ancre introuvable');
-    else ok(!verifierRefus(await recapC(browser, mock, { casse: true, etiquette: 'refus-casse' }), false), 'sans la verification du prix, l option plus chere passe : ce gate ROUGIRAIT');
-    formulaireCasse = null;
+    const casses = [
+      {
+        de: "      if (ecart > (Number(carte.deltaTotal) || 0) + 0.001) return 'Le tarif de cette option vient de changer.';\n",
+        jouer: async () => !verifierRefus(await recapC(browser, mock, { casse: true, etiquette: 'refus-casse' }), false),
+        label: 'sans la verification du prix, l option plus chere passe : ce gate ROUGIRAIT',
+      },
+      {
+        de: "      if (carte.kind === 'attente' && !(((j.program && j.program.items) || []).some(function (it) { return it.waitOffer === true && it.activityId === carte.patch.activityId; }))) return 'Cette offre n’est plus disponible.';\n",
+        jouer: async () => !verifierAttenteNonPosee(await attenteNonPosee(browser, mock, { grand: serveurRes.grand, etiquette: 'attente-casse' }), false),
+        label: 'sans la verification de la ligne posee, « Ajout confirmé » sur une offre que le serveur n a pas faite : ce gate ROUGIRAIT',
+      },
+    ];
+    for (const c of casses) {
+      if (src.split(c.de).length !== 2) { ok(false, `contre-epreuve montable : ancre introuvable (${c.de.trim().slice(0, 60)})`); continue; }
+      formulaireCasse = { de: c.de, vers: '' };
+      try { ok(await c.jouer(), c.label); } finally { formulaireCasse = null; }
+    }
   } finally {
     formulaireCasse = null;
     await browser.close();

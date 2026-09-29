@@ -2039,7 +2039,7 @@ async function main() {
           if (!r.style || !r.selectorText) return;
           if (!/(^|[^-])(linear|radial|conic)-gradient\(/.test(r.style.getPropertyValue('background-image') || '')) return;
           r.selectorText.split(',').map((s) => s.trim()).forEach((sel) => {
-            const m = /^(.*\S)::?(before|after)$/.exec(sel);
+            const m = /^(.*[^:])::?(before|after)$/.exec(sel);
             const hotes = m ? Array.from(document.querySelectorAll(m[1])) : [];
             if (m && hotes.length && hotes.every((h) => h.querySelector('img'))) voiles.push(sel); else fautes.push(sel);
           });

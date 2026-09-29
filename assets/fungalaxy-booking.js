@@ -3224,6 +3224,13 @@
           erreurEnvoi('<b>Ce créneau ne peut plus être réservé en ligne.</b>'
             + (alts.length ? ' ' + (alts.length > 1 ? 'Autres possibilités' : 'Autre possibilité') + '&nbsp;: ' + esc(alts.join(', ')) + '.' : '')
             + '<button type="button" class="fg-alert__btn" data-rechoisir>Choisir d’autres horaires</button>');
+          // Les offres « Envie d un peu plus ? » valaient pour le creneau
+          // refuse : elles partent avec lui (« Vos horaires ne bougent pas »
+          // ne serait plus vrai). De nouvelles heures les ramenent.
+          cartesPlus('plus').forEach(function (c) { plus.refuses[c.id] = 1; });
+          plus.statut = null; plus.annuler = null;
+          var blocPlus = $('#plus-recap');
+          if (blocPlus) blocPlus.parentNode.removeChild(blocPlus);
           return;
         }
         // Le centre a baisse son seuil pendant que la page etait ouverte : la

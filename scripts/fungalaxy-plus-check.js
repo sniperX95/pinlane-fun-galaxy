@@ -514,6 +514,35 @@ function verifierRecap(res, etiquette) {
   ok(res.sobre && res.sobre.deborde === 0 && !res.sobre.pageLarge, 'rien ne deborde du bloc ni de la page', JSON.stringify(res.sobre));
   ok(res.erreurs.length === 0, 'aucune erreur dans la page', res.erreurs.join(' | '));
 }
+// LE CRENEAU REFUSE A L ENVOI (409, la derniere piste prise entre-temps) :
+// les offres valaient pour lui, elles partent avec lui. « Vos horaires ne
+// bougent pas » ne serait plus vrai sous « Ce creneau ne peut plus etre
+// reserve en ligne » (campagne du 2026-09-29).
+async function recapRefusEnvoi(browser, mock, { etiquette }) {
+  const s = await jusquAuxHoraires(browser, mock, { pax: 6, activites: ['bowling', 'laser_game'], etiquette });
+  const { page } = s;
+  try {
+    const pret = s.pret && await remplirContact(page);
+    const avant = await lireRecapPlus(page);
+    await page.route('**/api/public-reservations', (route) => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, message: 'Ce créneau ne tient plus.', alternatives: [] }) }));
+    await page.click('#confirmBtn');
+    await attendre(page, () => !document.querySelector('#confirmErr').hidden, 10000);
+    const apres = await page.evaluate(() => ({
+      erreur: !document.querySelector('#confirmErr').hidden,
+      bloc: Boolean(document.querySelector('#plus-recap')),
+      texte: (document.querySelector('#confirmErr').textContent || '').replace(/\s+/g, ' ').trim(),
+    }));
+    return { pret, avant, apres };
+  } finally { await s.ctx.close(); }
+}
+function verifierRefusEnvoi(res, attendu) {
+  const tenu = Boolean(res.pret) && res.avant.bloc && res.avant.offres.length > 0 && res.apres.erreur && !res.apres.bloc;
+  if (attendu) {
+    ok(tenu, 'le creneau refuse a l envoi : « Envie d un peu plus ? » part avec lui, l erreur reste',
+      JSON.stringify({ offresAvant: res.avant.offres, blocApres: res.apres.bloc, erreur: res.apres.texte.slice(0, 60) }));
+  }
+  return tenu;
+}
 function verifierRefus(res, attendu) {
   const r = res.refus || {};
   const refuse = r.ton === 'ko' && r.statut === 'Le tarif de cette option vient de changer.' && r.total === res.r0.total && r.offres.indexOf(res.cartes[0].id) < 0;
@@ -535,6 +564,8 @@ async function main() {
     verifierRecap(await recapC(browser, mock, { largeur: 390, hauteur: 844, etiquette: 'telephone' }), 'telephone 390 px');
     section('[C] LE TARIF QUI A CHANGE');
     verifierRefus(await recapC(browser, mock, { casse: true, etiquette: 'refus' }), true);
+    section('[C] LE CRENEAU REFUSE A L ENVOI');
+    verifierRefusEnvoi(await recapRefusEnvoi(browser, mock, { etiquette: 'refus-envoi' }), true);
     section('[E] CONTRE-EPREUVES DU FORMULAIRE');
     const src = fs.readFileSync(path.join(ROOT, 'assets/fungalaxy-booking.js'), 'utf8').replace(/\r\n/g, '\n');
     const casses = [
@@ -547,6 +578,11 @@ async function main() {
         de: "      if (carte.kind === 'attente' && !(((j.program && j.program.items) || []).some(function (it) { return it.waitOffer === true && it.activityId === carte.patch.activityId; }))) return 'Cette offre n’est plus disponible.';\n",
         jouer: async () => !verifierAttenteNonPosee(await attenteNonPosee(browser, mock, { grand: serveurRes.grand, etiquette: 'attente-casse' }), false),
         label: 'sans la verification de la ligne posee, « Ajout confirmé » sur une offre que le serveur n a pas faite : ce gate ROUGIRAIT',
+      },
+      {
+        de: '          if (blocPlus) blocPlus.parentNode.removeChild(blocPlus);\n',
+        jouer: async () => !verifierRefusEnvoi(await recapRefusEnvoi(browser, mock, { etiquette: 'refus-envoi-casse' }), false),
+        label: 'sans le retrait des offres, « Vos horaires ne bougent pas » reste sous le refus : ce gate ROUGIRAIT',
       },
     ];
     for (const c of casses) {

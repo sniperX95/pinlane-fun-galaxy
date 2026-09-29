@@ -23,6 +23,9 @@
 //   6. les trois boutons se comportent pareil
 //
 // Usage : node scripts/status-toggle-check.js
+// Contre-epreuve sur le vrai code : STATUS_TOGGLE_CASSE=annulation sert une
+// console dont l echec ne remet plus l etat d avant ; le point 5 doit ROUGIR
+// (prouve le 2026-09-29 : rouge 6 tours sur 6, vert 8 sur 8 sans la casse).
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -42,6 +45,21 @@ function serveStatic() {
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
     fs.readFile(filePath, (err, content) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }
+      if (process.env.STATUS_TOGGLE_CASSE === 'annulation' && url.pathname === '/assets/app-main.js') {
+        const src = content.toString('utf8');
+        // L annulation DU STATUT (la meme ligne existe ailleurs) : la derniere
+        // avant le message « Impossible de mettre a jour le statut ».
+        const ligne = 'applyOptimisticReservation(error.reservation || current, { preserveEditState: true });';
+        const message = "toast(error.message || 'Impossible de mettre à jour le statut.');";
+        const iMessage = src.indexOf(message);
+        const iLigne = iMessage >= 0 ? src.lastIndexOf(ligne, iMessage) : -1;
+        const entre = iLigne >= 0 ? src.slice(iLigne + ligne.length, iMessage).replace(/\s+/g, ' ').trim() : '';
+        if (src.split(message).length !== 2 || iLigne < 0 || entre !== 'clearReservationMutation(id);') {
+          console.error('status-toggle-check : la casse « annulation » ne trouve pas son ancre (le code a change ?)');
+          process.exit(2);
+        }
+        content = Buffer.from(src.slice(0, iLigne) + 'void 0;' + src.slice(iLigne + ligne.length), 'utf8');
+      }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
       res.end(content);
     });
@@ -72,25 +90,63 @@ function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); i
 // statut : il repond en ~300 ms (le delai que Movsar voit), et son echo porte
 // un `updatedAt` NEUF a chaque fois. C'est exactement la charge utile qui
 // declenchait le deuxieme rendu. `window.__QA_PATCH__.mode` pilote le scenario.
+//
+// L ECHO EST RETENU PENDANT LA MESURE (2026-09-29). Le gate lisait l etat
+// « avant l echo » 60 ms apres le clic, en pariant que les 300 ms simulees
+// n etaient pas encore ecoulees. Le soir, sur une machine chargee, le clic
+// lui-meme (defilement, attente de stabilite) en prenait davantage : l echo
+// etait deja revenu, la contre-epreuve lisait 2 redessins « avant l echo » et
+// l echec serveur se lisait sur un etat encore en vol. Le meme rouge a 2 tours
+// sur 5 sur le code d avant le bureau des demandes : un pari sur l horloge,
+// pas un defaut du produit. Desormais `retenir` garde la reponse jusqu a ce
+// que le gate la LIBERE, puis le gate attend qu elle soit traitee :
+// l ordre est garanti, quelle que soit la vitesse de la machine.
+//
+// ET LE FAUX SERVEUR GARDE CE QU IL A ACCEPTE. Il renvoyait un echo sans rien
+// retenir : le releve suivant de la console (/api/staff-state) rendait le jeu
+// de depart. Apres un echec, la console lache sa protection et reprend la
+// verite du serveur au releve suivant, ce qui est juste : en prod, le statut
+// ecrit juste avant y est. Ici, ce releve ramenait le statut d AVANT les
+// clics precedents, et « sur echec, le statut revient » lisait « pending ».
+// Un PATCH reussi est donc garde (`persistes`) et chaque releve le rend.
+// Pendant une mesure, les releves sont GELES (`gelerReleves`) : sinon un
+// releve tombe au bon moment remettait le bon statut A LA PLACE de
+// l annulation, et une console sans annulation passait le gate un tour sur
+// deux.
 async function installStatusPatchMock(page) {
   await page.addInitScript(() => {
-    window.__QA_PATCH__ = { mode: 'echo', delayMs: 300, calls: 0 };
+    window.__QA_PATCH__ = { mode: 'echo', delayMs: 300, calls: 0, retenir: false, enAttente: [], repondus: 0, persistes: {}, gelerReleves: false, relevesGeles: [] };
     const upstream = window.fetch.bind(window);
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : input?.url || '';
       const u = new URL(raw, window.location.origin);
       const method = String(init.method || 'GET').toUpperCase();
+      if (u.pathname === '/api/staff-state' && method === 'GET') {
+        if (window.__QA_PATCH__.gelerReleves) await new Promise((r) => { window.__QA_PATCH__.relevesGeles.push(r); });
+        const res = await upstream(input, init);
+        const gardes = window.__QA_PATCH__.persistes;
+        if (!Object.keys(gardes).length) return res;
+        const j = await res.clone().json().catch(() => null);
+        if (!j || !Array.isArray(j.reservations)) return res;
+        j.reservations = j.reservations.map((r) => (gardes[r.id] ? { ...r, ...gardes[r.id] } : r));
+        return new Response(JSON.stringify(j), { status: res.status, headers: res.headers });
+      }
       if (u.pathname === '/api/staff-reservations' && method === 'PATCH') {
         const cfg = window.__QA_PATCH__;
         cfg.calls += 1;
         const body = JSON.parse(init.body || '{}');
-        await new Promise((r) => setTimeout(r, cfg.delayMs));
+        if (cfg.retenir) await new Promise((r) => { cfg.enAttente.push(r); });
+        else await new Promise((r) => setTimeout(r, cfg.delayMs));
+        cfg.repondus += 1;
         if (cfg.mode === 'fail') {
           return new Response(JSON.stringify({ ok: false, error: 'Serveur indisponible.' }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } });
         }
         const reservation = { ...body, updatedAt: new Date().toISOString() };
         // Contre-epreuve : l'echo change une valeur qui SE DESSINE (l'effectif).
         if (cfg.mode === 'echo-changed') reservation.pax = (Number(body.pax) || 0) + 3;
+        if (reservation.id != null) {
+          cfg.persistes[reservation.id] = Object.fromEntries(Object.entries({ status: reservation.status, paymentMethod: reservation.paymentMethod, pax: reservation.pax, updatedAt: reservation.updatedAt }).filter(([, v]) => v !== undefined));
+        }
         return new Response(JSON.stringify({ ok: true, reservation, automation: { communications: 0, jobs: 0, refreshed: false } }), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8' } });
       }
       return upstream(input, init);
@@ -142,6 +198,45 @@ async function armCounters(page) {
   });
 }
 
+async function gelerReleves(page) {
+  await page.evaluate(() => { window.__QA_PATCH__.gelerReleves = true; });
+}
+async function degelerReleves(page) {
+  await page.evaluate(() => { const cfg = window.__QA_PATCH__; cfg.gelerReleves = false; cfg.relevesGeles.splice(0).forEach((r) => r()); });
+  await page.waitForTimeout(150);
+}
+
+async function retenirEcho(page) {
+  await page.evaluate(() => { window.__QA_PATCH__.retenir = true; });
+}
+// Libere les echos retenus (apres avoir vu partir la requete : un clic sans
+// PATCH ne se libere pas, il echoue ici), attend qu ils soient tous rendus a la
+// page, puis laisse la page les traiter (la lecture du JSON, puis le rendu).
+async function libererEcho(page) {
+  await page.waitForFunction(() => window.__QA_PATCH__.enAttente.length > 0, null, { timeout: 5000 });
+  await page.evaluate(() => {
+    const cfg = window.__QA_PATCH__;
+    cfg.retenir = false;
+    cfg.enAttente.splice(0).forEach((r) => r());
+  });
+  await page.waitForFunction(() => window.__QA_PATCH__.repondus >= window.__QA_PATCH__.calls, null, { timeout: 10000 });
+  await page.evaluate(() => new Promise((r) => setTimeout(() => setTimeout(r, 50), 0)));
+  await page.waitForTimeout(150);
+}
+
+// LA LISTE AU REPOS AVANT CHAQUE MESURE. Le chargement de la console (la
+// configuration du centre, le premier releve) peut encore redessiner la liste
+// juste apres le demarrage : compte dans la mesure du premier clic, ce redessin
+// se lisait « 3 redessins au clic ». On attend 800 ms sans aucun redessin.
+async function attendreCalme(page) {
+  for (let k = 0; k < 12; k += 1) {
+    const avant = await page.evaluate(() => window.__QA_COUNT__.domWrites);
+    await page.waitForTimeout(800);
+    if ((await page.evaluate(() => window.__QA_COUNT__.domWrites)) === avant) return true;
+  }
+  return false;
+}
+
 async function resetCounters(page) {
   await page.evaluate(() => { window.__QA_COUNT__.renders = 0; window.__QA_COUNT__.domWrites = 0; window.__QA_COUNT__.toasts = 0; window.__QA_COUNT__.toastTexts = []; });
 }
@@ -170,7 +265,6 @@ async function choisirLigne(page, statutCible) {
 // retrouve par son identifiant, jamais par sa position.
 async function cliqueEtat(page, id, libelle) {
   const bouton = page.locator(`#resList .res-row[onclick="openPos(${id})"] .res-status-btn`, { hasText: libelle }).first();
-  await bouton.scrollIntoViewIfNeeded();
   await bouton.click();
   await page.waitForTimeout(60);
   return page.evaluate(({ resId, lib }) => {
@@ -201,17 +295,21 @@ async function main() {
     for (const [vrai, statut] of [['Arrivé', 'arrived'], ['Payé', 'paid'], ['Confirmé', 'pending']]) {
       const ligne = await choisirLigne(page, statut);
       if (!ok(!!ligne, `« ${vrai} » : une ligne a basculer existe`)) continue;
+      ok(await attendreCalme(page), `« ${vrai} » : la liste est au repos avant le clic`);
+      await gelerReleves(page);
       await resetCounters(page);
+      await retenirEcho(page);
       const immediat = await cliqueEtat(page, ligne.id, vrai);
       ok(immediat.actifImmediat, `« ${vrai} » : la bascule est immediate (dossier ${ligne.id}, « ${ligne.statutAvant} » avant), avant la reponse serveur`);
       const pendant = await counters(page);
       ok(pendant.domWrites === 1, `« ${vrai} » : 1 redessin au clic (mesure ${pendant.domWrites})`);
-      // On laisse l'echo serveur revenir largement (300 ms de latence simulee).
-      await page.waitForTimeout(900);
+      // L echo revient, et la page l a traite.
+      await libererEcho(page);
       const apres = await counters(page);
       ok(apres.domWrites === 1, `« ${vrai} » : TOUJOURS 1 redessin apres l'echo serveur (mesure ${apres.domWrites})`);
       ok(apres.renders === 1, `« ${vrai} » : renderStaffData appele une seule fois (mesure ${apres.renders})`);
       ok(apres.toasts === 0, `« ${vrai} » : aucun message de succes (mesure ${apres.toasts} : ${apres.toastTexts.join(' | ') || 'aucun'})`);
+      await degelerReleves(page);
     }
 
     console.log("\n[2] L'ECHO SERVEUR PORTE BIEN UN updatedAt NEUF (sinon le test [1] ne teste rien)");
@@ -228,15 +326,19 @@ async function main() {
     await page.evaluate(() => { window.__QA_PATCH__.mode = 'echo-changed'; });
     const ligne3 = await choisirLigne(page, 'arrived');
     ok(!!ligne3, 'une ligne a basculer existe pour la contre-epreuve');
+    ok(await attendreCalme(page), 'la liste est au repos avant le clic de la contre-epreuve');
+    await gelerReleves(page);
     await resetCounters(page);
     const paxAvant = await page.evaluate((id) => Number(state.reservations.find((r) => Number(r.id) === id).pax), ligne3.id);
+    await retenirEcho(page);
     await cliqueEtat(page, ligne3.id, 'Arrivé');
     const pendant2 = await counters(page);
     ok(pendant2.domWrites === 1, `avant l'echo : 1 redessin (mesure ${pendant2.domWrites})`);
-    await page.waitForTimeout(900);
+    await libererEcho(page);
     const apres2 = await counters(page);
     ok(apres2.domWrites === 2, `apres un echo qui change l'effectif : 2 redessins (mesure ${apres2.domWrites}) - la garde n'est donc pas un « ne rien redessiner jamais »`);
     ok(paxAvant > 0, `l'effectif de depart etait bien lu (${paxAvant})`);
+    await degelerReleves(page);
 
     console.log('\n[4] ECHEC SERVEUR : L\'ETAT REVIENT EN ARRIERE, AVEC UN MESSAGE');
     await page.evaluate(() => { window.__QA_PATCH__.mode = 'fail'; });
@@ -245,11 +347,14 @@ async function main() {
       const id = Number(row.getAttribute('onclick').match(/openPos\((\d+)\)/)[1]);
       return { id, statut: state.reservations.find((r) => Number(r.id) === id).status };
     });
+    await gelerReleves(page);
     await resetCounters(page);
+    await retenirEcho(page);
     await page.evaluate((id) => { const s = state.reservations.find((r) => Number(r.id) === id).status; window.setReservationStatusDirect(id, s === 'paid' ? 'pending' : 'paid'); }, cible.id);
-    await page.waitForTimeout(1000);
+    await libererEcho(page);
     const apres3 = await counters(page);
     const statutFinal = await page.evaluate((id) => state.reservations.find((r) => Number(r.id) === id).status, cible.id);
+    await degelerReleves(page);
     ok(statutFinal === cible.statut, `sur echec, le statut est revenu a « ${cible.statut} » (mesure « ${statutFinal} »)`);
     ok(apres3.toasts === 1, `sur echec, exactement 1 message (mesure ${apres3.toasts} : ${apres3.toastTexts.join(' | ') || 'aucun'})`);
     ok(/indisponible|impossible/i.test(apres3.toastTexts.join(' ')), 'le message d\'echec dit ce qui s\'est passe');

@@ -1214,7 +1214,6 @@ html.fg-pilote .fg { overflow: visible; }
   color: var(--fg-teal-ink);
   font-weight: 600;
 }
-.fg-card__meta { font-size: 12px; color: var(--fg-faint); }
 .fg-empty { color: var(--fg-muted); font-size: 14px; padding: 22px 0; }
 
 /* L option d une carte cochee (duree de piste, parties, session) : un tiroir
@@ -1709,6 +1708,18 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__step--in b { color: var(--fg-teal-ink); }
 .fg-visit__step--free b, .fg-visit__step--onsite b { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-faint); align-self: center; line-height: 1.15; }
 .fg-visit__step--out b { color: var(--fg-teal-ink); }
+/* CE QUI N A PAS D HEURE, SOUS SON TITRE (Movsar, 2026-09-29 : « dans la
+   foulee, pas une heure imposee ») : une fleche a la place de l heure, le mot
+   en capitales sarcelle, puis une ligne par chose avec un anneau a la place
+   de l heure. */
+.fg-visit__group { display: grid; grid-template-columns: 58px 1fr; column-gap: 14px; align-items: center; padding: 12px 0 2px; }
+.fg-visit__group > svg { justify-self: end; width: 16px; height: 16px; color: var(--fg-teal-ink); transform: rotate(90deg); }
+.fg-visit__group > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.fg-visit__group b { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-teal-ink); }
+.fg-visit__group small { font-size: 12px; color: var(--fg-muted); }
+.fg-visit__step--suite > b { align-self: start; display: flex; align-items: center; justify-content: flex-end; height: 22px; }
+.fg-visit__step--suite > b::after { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--fg-teal); }
+.fg-visit__step small + small { margin-top: 2px; }
 .fg-visit__step.is-moved small { color: var(--fg-purple-ink); }
 /* LE DETAIL DU PRIX, ligne par ligne, puis le total et le paiement : les
    montants du programme de la reponse, montres seulement quand leur somme
@@ -1732,14 +1743,6 @@ html.fg-pilote .fg { overflow: visible; }
   font-size: 13px;
   color: var(--fg-text);
 }
-/* Ce que comprend la formule, dans les mots de sa carte, sous les heures :
-   la meme puce violette que la carte choisie a l ecran d avant. */
-.fg-visit__incl { margin: 0 22px 14px 26px; padding-top: 12px; border-top: 1px dashed rgba(255, 255, 255, 0.14); }
-.fg-visit__incl-title { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-muted); }
-.fg-visit__incl-title svg { width: 16px; height: 16px; flex: none; color: var(--fg-purple-ink); }
-.fg-visit__incl ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px 18px; margin: 0; padding: 0; list-style: none; }
-.fg-visit__incl li { position: relative; padding-left: 14px; font-size: 13.5px; line-height: 1.4; color: var(--fg-text); }
-.fg-visit__incl li::before { content: ""; position: absolute; left: 3px; top: 8px; width: 4px; height: 4px; border-radius: 50%; background: var(--fg-purple-2); }
 .fg-notice {
   max-width: 720px;
   margin: 0 auto 22px;
@@ -1760,7 +1763,6 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-track__foot { padding: 0 15px 12px 19px; }
   .fg-visit__list { padding: 12px 15px 14px 19px; }
   .fg-visit__warn { margin: 0 15px 14px 19px; }
-  .fg-visit__incl { margin: 0 15px 12px 19px; }
   .fg-parts { margin: 12px 15px 0 19px; }
   .fg-visit__prices { margin: 0 15px 0 19px; }
   .fg-visit__pay { margin: 12px 15px 14px 19px; }
@@ -2106,7 +2108,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-chip { min-width: 0; flex: 1 1 calc(25% - 8px); height: 50px; padding: 0 6px; }
   .fg-chip b { font-size: 15px; }
   .fg-visit__price { margin-left: 0; align-items: flex-start; }
-  .fg-visit__step { grid-template-columns: 48px 1fr; }
+  .fg-visit__step, .fg-visit__group { grid-template-columns: 48px 1fr; }
   .fg-total { grid-template-columns: 1fr; }
   .fg-total__pay { border-left: 0; padding-left: 0; }
   .fg-done__ticket { padding: 4px 16px; }
@@ -2248,6 +2250,10 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-plus__statut[data-ton="ok"] { color: var(--fg-teal-ink); }
 .fg-plus__statut[data-ton="ko"] { color: var(--fg-amber-ink); }
 .fg-plus__annuler { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; vertical-align: middle; color: var(--fg-text); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+/* Le rappel des offres au recapitulatif : un lien franc qui rouvre la fenetre. */
+.fg-plus__voir { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 2px; color: var(--fg-teal-ink); font-size: 14px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.fg-plus__voir svg { width: 16px; height: 16px; transition: transform 0.25s var(--fg-ease); }
+@media (hover: hover) { .fg-plus__voir:hover svg { transform: translateX(3px); } }
 /* Un ajout redessine le recapitulatif sur place : ses lignes ne rejouent pas
    leur entree. */
 #recap.is-calme .fg-rise { animation: none; }
@@ -2255,6 +2261,81 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-visit .fg-plus { padding: 14px 16px 16px 20px; }
   .fg-plus__item { grid-template-columns: 20px minmax(0, 1fr) auto; }
   .fg-plus__btn { grid-column: 2 / -1; justify-self: start; }
+}
+
+/* --- Envie d un peu plus ? La fenetre --------------------------------------------- */
+
+/* La fenetre des offres, a l arrivee au recapitulatif (Movsar, 2026-09-29 :
+   « une pop up genre a la McDo, super quali et belle, avec des images, dans
+   la DA du formulaire »). Le voile du calendrier ; un panneau noir au filet
+   fin ; le titre en Anton comme ceux des ecrans ; une carte photo par offre,
+   son prix, le bouton de la marque. Ni degrade ni pastille. Embarquee, le
+   script la pose au milieu de l ecran de la page hote (top en pixels). */
+.fg-vitrine[hidden] { display: none; }
+.fg-vitrine { position: fixed; inset: 0; z-index: 1000; }
+.fg-vitrine__voile { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.74); cursor: pointer; }
+.fg-vitrine__panneau {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: min(calc(100vw - 32px), 680px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 30px 30px 26px;
+  background: #0d0d0d;
+  border: 1px solid var(--fg-line-2);
+  border-radius: 12px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75);
+  transform: translate(-50%, -50%);
+}
+.fg-vitrine__panneau:focus { outline: none; }
+.fg-vitrine__x { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--fg-radius); color: var(--fg-muted); transition: color 0.2s, background-color 0.2s; }
+.fg-vitrine__x svg { width: 20px; height: 20px; }
+@media (hover: hover) { .fg-vitrine__x:hover { color: var(--fg-text); background: #1a1a1a; } }
+.fg-vitrine__eyebrow { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-teal-ink); }
+.fg-vitrine__titre { margin: 0; padding-right: 36px; font-family: var(--fg-display); font-weight: 400; font-size: clamp(30px, 4.6vw, 40px); line-height: 1.04; letter-spacing: 0.01em; text-transform: uppercase; text-wrap: balance; color: var(--fg-text); }
+.fg-vitrine__titre em { font-style: normal; color: var(--fg-purple-em); }
+.fg-vitrine__sous { margin: 10px 0 22px; font-size: 14px; color: var(--fg-muted); }
+.fg-vitrine__cartes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.fg-vitrine__cartes[data-n="1"] { grid-template-columns: minmax(0, 1fr); max-width: 340px; }
+.fg-vitrine__cartes[data-n="0"] { display: none; }
+.fg-vitrine__carte { display: flex; flex-direction: column; min-width: 0; background: var(--fg-card); border: 1px solid var(--fg-line); border-radius: 8px; transition: border-color 0.2s; }
+@media (hover: hover) { .fg-vitrine__carte:hover { border-color: var(--fg-purple-2); } }
+.fg-vitrine__photo { display: grid; place-items: center; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 7px 7px 0 0; background: #141414; color: var(--fg-purple-ink); }
+.fg-vitrine__photo img { width: 100%; height: 100%; object-fit: cover; }
+.fg-vitrine__photo svg { width: 44px; height: 44px; }
+.fg-vitrine__corps { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; padding: 14px 16px 0; }
+.fg-vitrine__nom { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; line-height: 1.25; color: var(--fg-text); }
+.fg-vitrine__nom svg { width: 20px; height: 20px; flex: none; color: var(--fg-purple-ink); }
+.fg-vitrine__quoi { font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--fg-purple-ink); }
+.fg-vitrine__note { font-size: 12.5px; line-height: 1.45; color: var(--fg-muted); }
+.fg-vitrine__achat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 18px; }
+.fg-vitrine__prix { font-size: 22px; font-weight: 700; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fg-vitrine__ajouter { min-height: 46px; padding: 0 22px; }
+.fg-vitrine__statut { margin: 14px 0 0; }
+.fg-vitrine__pied { display: flex; justify-content: center; margin-top: 22px; }
+html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote) body { overflow: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .fg-vitrine:not([hidden]) .fg-vitrine__voile { animation: fg-voile 0.24s ease-out; }
+  .fg-vitrine:not([hidden]) .fg-vitrine__panneau { animation: fg-pop-milieu 0.32s var(--fg-ease-out); }
+  .fg-vitrine:not([hidden]) .fg-vitrine__carte { animation: fg-rise 0.5s var(--fg-ease-out) both; animation-delay: calc(90ms * var(--i, 0) + 140ms); }
+  .fg-vitrine__cartes.is-calme .fg-vitrine__carte { animation: none; }
+}
+/* Sur telephone : une carte par rangee, la photo a gauche, comme une borne. */
+@media (max-width: 560px) {
+  .fg-vitrine__panneau { padding: 24px 18px 20px; }
+  .fg-vitrine__sous { margin-bottom: 18px; }
+  .fg-vitrine__cartes, .fg-vitrine__cartes[data-n="1"] { grid-template-columns: minmax(0, 1fr); max-width: none; gap: 12px; }
+  .fg-vitrine__carte { display: grid; grid-template-columns: 96px minmax(0, 1fr); grid-template-areas: "photo corps" "photo achat"; }
+  .fg-vitrine__photo { grid-area: photo; aspect-ratio: auto; height: 100%; border-radius: 7px 0 0 7px; }
+  .fg-vitrine__corps { grid-area: corps; padding: 12px 14px 0; }
+  .fg-vitrine__achat { grid-area: achat; padding: 10px 14px 14px; }
+  .fg-vitrine__nom { font-size: 16px; }
+  .fg-vitrine__nom svg { display: none; }
+  .fg-vitrine__prix { font-size: 19px; }
+  .fg-vitrine__ajouter { padding: 0 16px; }
 }
 
 /* --- Moins de mouvement -------------------------------------------------------- */

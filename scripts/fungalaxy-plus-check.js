@@ -19,9 +19,14 @@
 //       de temps ; « Ajouter » ne change le panier qu apres le serveur (meme
 //       heure, memes pistes, exactement le montant annonce) ; la ligne vit dans
 //       le detail du prix, le recapitulatif et l envoi ; « Retirer » la retire.
-//   [C] le recapitulatif : « Envie d un peu plus ? », deux offres au plus ;
-//       chacune ajoute exactement son montant, « Annuler » revient au total
-//       d avant ; un tarif change entre-temps est refuse, la carte se retire,
+//   [C] le recapitulatif : « Envie d un peu plus ? » est une FENETRE (Movsar,
+//       2026-09-29 : « une pop up genre a la McDo, super quali et belle,
+//       avec des images », « enleve les prix par personne ») qui s ouvre
+//       seule a l arrivee, une fois ; deux offres au plus, chacune avec sa
+//       photo et son montant, sans prix par personne ; Echap la ferme, le
+//       recapitulatif la rouvre ; chaque offre ajoute exactement son montant
+//       et ferme la fenetre, « Annuler » revient au total d avant ; un tarif
+//       change entre-temps est refuse, la fenetre le dit, la carte se retire,
 //       le total ne bouge pas.
 //   [D] sobriete : aucun degrade, aucune pastille ; a 390 px rien ne deborde.
 //   [E] contre-epreuves : chaque regle retiree, ce gate ROUGIT.
@@ -53,6 +58,19 @@ function ok(cond, label, detail) {
 function section(t) { console.log(`\n--- ${t}`); }
 async function attendre(page, fn, ms, arg) {
   try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch (error) { return false; }
+}
+// LA FENETRE « ENVIE D UN PEU PLUS ? » s ouvre seule a l arrivee au
+// recapitulatif quand le serveur a joint des offres au creneau : un client la
+// ferme (« Non merci ») avant de valider, ce parcours aussi. Tant que le
+// formulaire n a pas decide de l ouvrir, elle porte data-attendue.
+async function passerLaVitrine(f) {
+  await attendre(f, () => { const v = document.querySelector('#vitrine'); return !v || !v.hasAttribute('data-attendue'); }, 5000);
+  const ouverte = await f.evaluate(() => { const v = document.querySelector('#vitrine'); return Boolean(v && !v.hidden); });
+  if (ouverte) {
+    await f.click('#vitrine .fg-vitrine__non');
+    await attendre(f, () => document.querySelector('#vitrine').hidden, 3000);
+  }
+  return ouverte;
 }
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -379,18 +397,29 @@ async function lireRecapPlus(page) {
   return page.evaluate(() => {
     const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
     const b = document.querySelector('#plus-recap');
+    const v = document.querySelector('#vitrine');
+    const zone = document.querySelector('#vitrineStatut');
     const t = document.querySelector('#totalAmount');
     return {
       bloc: Boolean(b),
       tete: txt(b && b.querySelector('.fg-plus__head')),
-      offres: b ? Array.from(b.querySelectorAll('[data-plus]')).map((x) => x.dataset.plus) : [],
-      montants: b ? Array.from(b.querySelectorAll('.fg-plus__amt b')).map(txt) : [],
+      rappel: txt(b && b.querySelector('[data-vitrine-ouvrir]')),
+      fenetre: Boolean(v && !v.hidden),
+      titre: txt(document.querySelector('#vitrineTitre')),
+      offres: v ? Array.from(v.querySelectorAll('[data-plus]')).map((x) => x.dataset.plus) : [],
+      montants: v ? Array.from(v.querySelectorAll('.fg-vitrine__prix')).map(txt) : [],
+      cartes: v ? Array.from(v.querySelectorAll('.fg-vitrine__carte')).map(txt) : [],
+      photos: v ? Array.from(v.querySelectorAll('.fg-vitrine__photo')).map((p) => { const i = p.querySelector('img'); return i ? (i.complete && i.naturalWidth > 0 ? 'photo' : 'photo non chargee') : (p.querySelector('svg') ? 'icone' : 'rien'); }) : [],
       statut: txt(b && b.querySelector('.fg-plus__statut')),
       ton: b && b.querySelector('.fg-plus__statut') ? b.querySelector('.fg-plus__statut').dataset.ton : '',
+      statutFenetre: txt(zone),
+      tonFenetre: zone ? (zone.dataset.ton || '') : '',
       annuler: Boolean(b && b.querySelector('[data-plus-annuler]')),
       total: t ? Number(t.dataset.total) : null,
       items: Array.from(document.querySelectorAll('#recap .fg-recap__item')).map(txt),
       calme: document.querySelector('#recap').classList.contains('is-calme'),
+      focus: document.activeElement ? document.activeElement.id : '',
+      inerte: Boolean(document.querySelector('.fg-shell') && document.querySelector('.fg-shell').inert),
     };
   });
 }
@@ -444,6 +473,7 @@ async function attenteB(browser, mock, { grand }) {
     await page.click(`#plus-heures [data-plus="${cartes[0].id}"]`);
     await attendre(page, () => { const z = document.querySelector('#plus-heures .fg-plus__statut'); return z && z.dataset.ton === 'ok'; }, 15000);
     ok(await remplirContact(page), 'montage : coordonnees remplies, recapitulatif ouvert');
+    await passerLaVitrine(page);
     const r = await lireRecapPlus(page);
     ok(r.items.some((i) => i.indexOf(`pendant l’attente · ${p} personnes`) >= 0) && r.total === rep0.price + cartes[0].deltaTotal,
       'le recapitulatif porte la ligne d attente et le total avec elle', `${r.items.join(' | ')} · ${r.total}`);
@@ -496,14 +526,21 @@ function verifierAttenteNonPosee(res, attendu) {
 // ---------------------------------------------------------------------------
 // [C] LE RECAPITULATIF : ENVIE D UN PEU PLUS ?
 // ---------------------------------------------------------------------------
-async function recapC(browser, mock, { largeur = 1440, hauteur = 900, etiquette = 'bureau', casse = false } = {}) {
+// `arret` : la contre-epreuve s arrete a ce qu elle mesure (« ouverture »,
+// « une-fois »).
+async function recapC(browser, mock, { largeur = 1440, hauteur = 900, etiquette = 'bureau', casse = false, arret = '' } = {}) {
   const s = await jusquAuxHoraires(browser, mock, { pax: 6, activites: ['bowling', 'laser_game'], largeur, hauteur, etiquette: `plus-recap-${etiquette}` });
   const { page } = s;
   const res = { erreurs: s.erreurs };
+  const fenetreFermee = () => attendre(page, () => document.querySelector('#vitrine').hidden, 3000);
   try {
     res.pret = s.pret && await remplirContact(page);
     res.rep0 = derniere(s.reponses);
     res.cartes = ((res.rep0 && res.rep0.complements) || []).filter((c) => c.kind !== 'attente');
+    // La fenetre s ouvre d elle-meme, une fois l ecran entre.
+    res.auto = await attendre(page, () => { const v = document.querySelector('#vitrine'); return v && !v.hidden && !v.hasAttribute('data-attendue'); }, 5000);
+    if (arret === 'ouverture') return res;
+    await page.waitForTimeout(700);
     res.r0 = await lireRecapPlus(page);
     const cible = res.cartes[0];
     if (!cible) return res;
@@ -516,27 +553,46 @@ async function recapC(browser, mock, { largeur = 1440, hauteur = 900, etiquette 
         j.price = Number(j.price) + 5;
         await route.fulfill({ response: reponse, json: j });
       });
-      await page.click(`#plus-recap [data-plus="${cible.id}"]`);
-      await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return z && (z.dataset.ton === 'ko' || z.dataset.ton === 'ok'); }, 15000);
+      await page.click(`#vitrine [data-plus="${cible.id}"]`);
+      await attendre(page, () => { const z = document.querySelector('#vitrineStatut'); const b = document.querySelector('#plus-recap .fg-plus__statut'); return (z && z.dataset.ton === 'ko') || (b && b.dataset.ton === 'ok'); }, 15000);
       res.refus = await lireRecapPlus(page);
       return res;
     }
-    await page.click(`#plus-recap [data-plus="${cible.id}"]`);
-    await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return z && z.dataset.ton === 'ok'; }, 15000);
-    res.r1 = await lireRecapPlus(page);
-    res.focus = await page.evaluate(() => (document.activeElement ? document.activeElement.id : ''));
     res.sobre = await page.evaluate(() => {
-      const bloc = document.querySelector('#plus-recap');
-      const tous = bloc ? [bloc, ...bloc.querySelectorAll('*')] : [];
+      const panneau = document.querySelector('#vitrinePanneau');
+      const tous = panneau ? [panneau, ...panneau.querySelectorAll('*')] : [];
       const degrades = tous.filter((el) => ['', '::before', '::after'].some((p) => /gradient\(/.test(getComputedStyle(el, p || null).backgroundImage))).map((el) => el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className);
       const pastilles = tous.filter((el) => { const c = getComputedStyle(el); return parseFloat(c.borderTopLeftRadius) >= 20 && (c.backgroundColor !== 'rgba(0, 0, 0, 0)' || parseFloat(c.borderTopWidth) > 0); }).length;
-      const r = bloc ? bloc.getBoundingClientRect() : { right: 0 };
-      const deborde = tous.filter((el) => el.getBoundingClientRect().right > r.right + 0.5).length;
-      return { degrades, pastilles, deborde, pageLarge: document.documentElement.scrollWidth > window.innerWidth };
+      const r = panneau ? panneau.getBoundingClientRect() : { left: 0, right: 0, top: 0, bottom: 0 };
+      const deborde = tous.filter((el) => { const b = el.getBoundingClientRect(); return b.width > 0 && (b.right > r.right + 0.5 || b.left < r.left - 0.5); }).length;
+      return { degrades, pastilles, deborde, pageLarge: document.documentElement.scrollWidth > window.innerWidth, dansLEcran: r.top >= 0 && r.bottom <= window.innerHeight };
     });
+    // Echap la ferme, le focus revient au titre de l ecran.
+    await page.keyboard.press('Escape');
+    res.echap = await fenetreFermee() && await page.evaluate(() => Boolean(document.activeElement && document.activeElement.id === 't-ok') && !document.querySelector('.fg-shell').inert);
+    // Une fois : revenu au recapitulatif par « vos coordonnees », elle ne se
+    // rouvre pas d elle-meme pour les memes offres.
+    await page.click('.fg-scene[data-scene="recap"] [data-back]');
+    await attendre(page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+    await page.click('#goRecap');
+    await attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+    await attendre(page, () => !document.querySelector('#vitrine').hasAttribute('data-attendue'), 5000);
+    res.uneFois = await page.evaluate(() => document.querySelector('#vitrine').hidden);
+    if (arret === 'une-fois') return res;
+    // Le recapitulatif la rouvre.
+    await page.click('#plus-recap [data-vitrine-ouvrir]');
+    res.rouverte = await attendre(page, () => !document.querySelector('#vitrine').hidden, 3000);
+    await page.waitForTimeout(500);
+    await page.click(`#vitrine [data-plus="${cible.id}"]`);
+    await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return document.querySelector('#vitrine').hidden && z && z.dataset.ton === 'ok'; }, 15000);
+    res.r1 = await lireRecapPlus(page);
     await page.click('#plus-recap [data-plus-annuler]');
     await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return z && z.dataset.ton === 'ok' && /^Annulé : votre visite revient/.test(z.textContent); }, 15000);
     res.r2 = await lireRecapPlus(page);
+    // Les offres reviennent : la fenetre les remontre.
+    await page.click('#plus-recap [data-vitrine-ouvrir]');
+    await attendre(page, () => !document.querySelector('#vitrine').hidden, 3000);
+    res.r3 = await lireRecapPlus(page);
     return res;
   } finally { await s.ctx.close(); }
 }
@@ -544,16 +600,26 @@ function verifierRecap(res, etiquette) {
   section(`[C] LE RECAPITULATIF : ENVIE D UN PEU PLUS ? (${etiquette})`);
   ok(res.pret, 'montage : horaires, coordonnees, recapitulatif');
   const cartes = res.cartes || [];
-  ok(cartes.length >= 1 && cartes.length <= 2 && res.r0.bloc && res.r0.tete === 'Envie d’un peu plus ? Vos horaires ne bougent pas.' && res.r0.offres.join(' ') === cartes.map((c) => c.id).join(' '),
-    'deux offres au plus, celles du serveur, sous « Envie d un peu plus ? »', `${res.r0.offres.join(' ')} · « ${res.r0.tete} »`);
-  ok(cartes.every((c, i) => res.r0.montants[i] === `+${euros(c.deltaTotal)}`), 'chacune dit son montant exact', res.r0.montants.join(' | '));
+  const r0 = res.r0 || { offres: [], montants: [], cartes: [], photos: [] };
+  ok(res.auto && r0.fenetre && r0.focus === 'vitrinePanneau' && r0.inerte,
+    'a l arrivee au recapitulatif, la fenetre « Envie d un peu plus ? » s ouvre d elle-meme, le focus dedans, la page derriere inerte', JSON.stringify({ auto: res.auto, focus: r0.focus, inerte: r0.inerte }));
+  ok(cartes.length >= 1 && cartes.length <= 2 && r0.titre === 'Envie d’un peu plus ?' && r0.offres.join(' ') === cartes.map((c) => c.id).join(' '),
+    'deux offres au plus, celles du serveur, dans son ordre', `${r0.offres.join(' ')} · « ${r0.titre} »`);
+  ok(cartes.length > 0 && cartes.every((c, i) => r0.montants[i] === `+${euros(c.deltaTotal)}`), 'chacune dit son montant exact', r0.montants.join(' | '));
+  ok(r0.cartes.length === cartes.length && r0.cartes.every((t) => !/par personne/.test(t)), 'aucun prix par personne sur les offres', r0.cartes.join(' | '));
+  ok(r0.photos.length === cartes.length && r0.photos.every((p) => p === 'photo'), 'chaque offre a sa photo, chargee', r0.photos.join(' '));
+  ok(res.sobre && res.sobre.degrades.length === 0 && res.sobre.pastilles === 0, 'sobriete : aucun degrade, aucune pastille dans la fenetre', JSON.stringify(res.sobre));
+  ok(res.sobre && res.sobre.deborde === 0 && !res.sobre.pageLarge && res.sobre.dansLEcran, 'rien ne deborde de la fenetre ni de la page, et elle tient dans l ecran', JSON.stringify(res.sobre));
+  ok(res.echap, 'Echap la ferme : le focus revient au titre de l ecran, la page redevient active');
+  ok(r0.tete === 'Envie d’un peu plus ? Vos horaires ne bougent pas.' && /^Voir (les \d options|l’option)$/.test(r0.rappel), 'le recapitulatif garde de quoi la rouvrir', `« ${r0.tete} » « ${r0.rappel} »`);
+  ok(res.uneFois === true, 'revenu au recapitulatif, elle ne se rouvre pas d elle-meme pour les memes offres');
+  ok(res.rouverte, 'le rappel du recapitulatif la rouvre');
   if (!res.r1) { ok(false, 'aucune offre a accepter'); return; }
-  ok(res.r1.total === res.r0.total + cartes[0].deltaTotal && res.r1.ton === 'ok' && res.r1.annuler,
-    'Ajouter : le total monte EXACTEMENT du montant annonce, « Annuler » est offert', `${res.r0.total} + ${cartes[0].deltaTotal} = ${res.r1.total} « ${res.r1.statut} »`);
-  ok(res.r1.calme && res.focus === 'plus-recap', 'le recapitulatif se redessine sur place (ses lignes ne rejouent pas leur entree), le focus revient sur le bloc', `${res.r1.calme} ${res.focus}`);
-  ok(res.r2.total === res.r0.total && res.r2.offres.join(' ') === res.r0.offres.join(' '), 'Annuler : le total revient, les offres aussi', `${res.r2.total} / ${res.r0.total}`);
-  ok(res.sobre && res.sobre.degrades.length === 0 && res.sobre.pastilles === 0, 'sobriete : aucun degrade, aucune pastille dans le bloc', JSON.stringify(res.sobre));
-  ok(res.sobre && res.sobre.deborde === 0 && !res.sobre.pageLarge, 'rien ne deborde du bloc ni de la page', JSON.stringify(res.sobre));
+  ok(res.r1.total === r0.total + cartes[0].deltaTotal && res.r1.ton === 'ok' && res.r1.annuler && !res.r1.fenetre,
+    'Ajouter : le total monte EXACTEMENT du montant annonce, la fenetre se ferme, le recapitulatif dit l ajout et offre « Annuler »', `${r0.total} + ${cartes[0].deltaTotal} = ${res.r1.total} « ${res.r1.statut} »`);
+  ok(res.r1.calme && res.r1.focus === 'plus-recap' && !res.r1.inerte, 'le recapitulatif se redessine sur place (ses lignes ne rejouent pas leur entree), le focus revient sur le bloc, la page redevient active', `${res.r1.calme} ${res.r1.focus} ${res.r1.inerte}`);
+  ok(res.r2.total === r0.total, 'Annuler : le total revient', `${res.r2.total} / ${r0.total}`);
+  ok(res.r3 && res.r3.fenetre && res.r3.offres.join(' ') === r0.offres.join(' '), 'et les offres aussi : la fenetre les remontre', `${res.r3 && res.r3.offres.join(' ')} / ${r0.offres.join(' ')}`);
   ok(res.erreurs.length === 0, 'aucune erreur dans la page', res.erreurs.join(' | '));
 }
 // LE CRENEAU REFUSE A L ENVOI (409, la derniere piste prise entre-temps) :
@@ -565,7 +631,9 @@ async function recapRefusEnvoi(browser, mock, { etiquette }) {
   const { page } = s;
   try {
     const pret = s.pret && await remplirContact(page);
+    await attendre(page, () => { const v = document.querySelector('#vitrine'); return v && !v.hasAttribute('data-attendue'); }, 5000);
     const avant = await lireRecapPlus(page);
+    await passerLaVitrine(page);
     await page.route('**/api/public-reservations', (route) => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, message: 'Ce créneau ne tient plus.', alternatives: [] }) }));
     await page.click('#confirmBtn');
     await attendre(page, () => !document.querySelector('#confirmErr').hidden, 10000);
@@ -587,8 +655,8 @@ function verifierRefusEnvoi(res, attendu) {
 }
 function verifierRefus(res, attendu) {
   const r = res.refus || {};
-  const refuse = r.ton === 'ko' && r.statut === 'Le tarif de cette option vient de changer.' && r.total === res.r0.total && r.offres.indexOf(res.cartes[0].id) < 0;
-  if (attendu) ok(refuse, 'un tarif qui a monte depuis la carte est refuse : la carte se retire, le total ne bouge pas', JSON.stringify({ statut: r.statut, total: r.total, avant: res.r0.total, offres: r.offres }));
+  const refuse = r.fenetre === true && r.tonFenetre === 'ko' && r.statutFenetre === 'Le tarif de cette option vient de changer.' && r.total === res.r0.total && r.offres.indexOf(res.cartes[0].id) < 0;
+  if (attendu) ok(refuse, 'un tarif qui a monte depuis la carte est refuse : la fenetre reste ouverte et dit pourquoi, la carte se retire, le total ne bouge pas', JSON.stringify({ fenetre: r.fenetre, statut: r.statutFenetre, total: r.total, avant: res.r0.total, offres: r.offres }));
   return refuse;
 }
 
@@ -625,6 +693,16 @@ async function main() {
         de: '          if (blocPlus) blocPlus.parentNode.removeChild(blocPlus);\n',
         jouer: async () => !verifierRefusEnvoi(await recapRefusEnvoi(browser, mock, { etiquette: 'refus-envoi-casse' }), false),
         label: 'sans le retrait des offres, « Vos horaires ne bougent pas » reste sous le refus : ce gate ROUGIRAIT',
+      },
+      {
+        de: '    programmerVitrine();\n',
+        jouer: async () => { const r = await recapC(browser, mock, { etiquette: 'auto-casse', arret: 'ouverture' }); return Boolean(r.pret) && (r.cartes || []).length > 0 && !r.auto; },
+        label: 'sans l ouverture a l arrivee, la fenetre ne s ouvre plus d elle-meme : ce gate ROUGIRAIT',
+      },
+      {
+        de: '    vitrineVues[signatureVitrine()] = 1;\n',
+        jouer: async () => { const r = await recapC(browser, mock, { etiquette: 'une-fois-casse', arret: 'une-fois' }); return Boolean(r.auto) && r.uneFois === false; },
+        label: 'sans la memoire des offres deja montrees, la fenetre revient a chaque passage : ce gate ROUGIRAIT',
       },
     ];
     for (const c of casses) {

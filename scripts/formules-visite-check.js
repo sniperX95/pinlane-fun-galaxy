@@ -56,6 +56,19 @@ function section(titre) { console.log(`\n[${titre}]`); }
 async function attendre(page, fn, ms, arg) {
   try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (error) { return false; }
 }
+// LA FENETRE « ENVIE D UN PEU PLUS ? » s ouvre seule a l arrivee au
+// recapitulatif quand le serveur a joint des offres au creneau : un client la
+// ferme (« Non merci ») avant de valider, ce parcours aussi. Tant que le
+// formulaire n a pas decide de l ouvrir, elle porte data-attendue.
+async function passerLaVitrine(f) {
+  await attendre(f, () => { const v = document.querySelector('#vitrine'); return !v || !v.hasAttribute('data-attendue'); }, 5000);
+  const ouverte = await f.evaluate(() => { const v = document.querySelector('#vitrine'); return Boolean(v && !v.hidden); });
+  if (ouverte) {
+    await f.click('#vitrine .fg-vitrine__non');
+    await attendre(f, () => document.querySelector('#vitrine').hidden, 3000);
+  }
+  return ouverte;
+}
 const txt = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 
 // ---------------------------------------------------------------------------
@@ -132,9 +145,9 @@ function lireVisite(page) {
     const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
     const zone = document.querySelector('#planZone');
     return {
-      etapes: [...zone.querySelectorAll('.fg-visit__step')].map((li) => ({ b: t(li.querySelector('b')), titre: t(li.querySelector('span')), detail: t(li.querySelector('small')), genre: li.className })),
-      compris: [...zone.querySelectorAll('.fg-visit__incl li')].map(t),
-      comprisTitre: t(zone.querySelector('.fg-visit__incl-title')),
+      etapes: [...zone.querySelectorAll('.fg-visit__step')].map((li) => ({ b: t(li.querySelector('b')), titre: t(li.querySelector('span')), detail: t(li.querySelector('small')), detail2: t(li.querySelectorAll('small')[1]), genre: li.className })),
+      groupes: [...zone.querySelectorAll('.fg-visit__group')].map(t),
+      encadre: Boolean(zone.querySelector('.fg-visit__incl')),
       tete: t(zone.querySelector('.fg-visit__span')),
       parties: t(document.querySelector('.fg-track[data-activity="laser_game"] .fg-parts__note')),
       sous: t(document.querySelector('#hourSub')),
@@ -217,13 +230,21 @@ function verifierF4(bureau, tel) {
   const v = bureau.visite || { etapes: [], compris: [] };
   const laser = v.etapes.filter((e) => /Laser Game/.test(e.titre));
   ok(laser.some((e) => /partie 1 sur 2/.test(e.titre)), 'la 1re partie de laser a son heure et se dit « partie 1 sur 2 »', laser.map((e) => `${e.b} ${e.titre}`).join(' | '));
-  ok(laser.some((e) => /partie 2 sur 2/.test(e.titre) && /sur place/.test(e.b) && /à placer sur place/.test(e.detail)), 'la 2e partie se dit « sur place », a placer avec l equipe', laser.map((e) => `${e.b} ${e.titre} ${e.detail}`).join(' | '));
+  // DANS LA FOULEE (Movsar, 2026-09-29 : « met "dans la foulee", pas une
+  // heure imposee ») : la 2e partie, sans heure, sous le titre du groupe.
+  const suite = v.etapes.filter((e) => /fg-visit__step--suite/.test(e.genre));
+  ok((v.groupes || []).some((g) => /^Dans la foulée/.test(g)) && laser.some((e) => /partie 2 sur 2/.test(e.titre) && /fg-visit__step--suite/.test(e.genre) && e.b === '' && /^placée sur place par l’équipe · environ \d/.test(e.detail)),
+    'la 2e partie se joue « dans la foulee », sans heure, placee par l equipe, avec le temps qu elle prend', `${(v.groupes || []).join(' | ')} :: ${laser.map((e) => `[${e.b}] ${e.titre} ${e.detail}`).join(' | ')}`);
   const { getEffectiveFormules } = require('../lib/booking-config');
   const f4 = getEffectiveFormules('libramont').find((f) => f.id === 'f4');
-  ok(JSON.stringify(v.compris) === JSON.stringify(f4.desc) && /FORMULE 4/.test(v.comprisTitre),
-    'ce que comprend la formule se lit dans les mots de sa carte (minigolf, boissons compris)', v.compris.join(' | '));
-  ok(/La partie 2 se placera sur place/.test(v.parties) && /Mieux vaut lui choisir une heure maintenant/.test(v.parties),
-    'le cadre des parties previent : la 2e se placera sur place, mieux vaut lui choisir une heure', `« ${v.parties} »`);
+  // Ce que comprend la carte, DANS la visite : chaque mot de la carte a sa
+  // ligne ; ce qui a deja sa ligne a heure (bowling, laser) n est pas redit.
+  const attenduDansLaFoulee = f4.desc.filter((d) => !/bowling|laser/i.test(d));
+  const compris = suite.filter((e) => /fg-visit__step--incl/.test(e.genre)).map((e) => e.titre);
+  ok(JSON.stringify(compris) === JSON.stringify(attenduDansLaFoulee) && !v.encadre,
+    'ce que comprend la formule se lit DANS la visite, dans les mots de sa carte (minigolf, boissons), sans encadre a part', `${compris.join(' | ')} / attendu ${attenduDansLaFoulee.join(' | ')}`);
+  ok(/La partie 2 se jouera dans la foulée/.test(v.parties) && /Mieux vaut lui choisir une heure maintenant/.test(v.parties),
+    'le cadre des parties previent : la 2e se jouera dans la foulee, mieux vaut lui choisir une heure', `« ${v.parties} »`);
 
   section('C. LES PLAGES REPLIEES DISENT CE QU ELLES CACHENT');
   ok(bureau.pose, 'MONTAGE le bowling se pose a 11:00');
@@ -298,6 +319,7 @@ async function parcoursKfd(browser, mock, date) {
     await page.check('#cConsent');
     await page.click('#goRecap');
     await attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000);
+    await passerLaVitrine(page);
     sortie.recap = await page.evaluate(() => [...document.querySelectorAll('.fg-recap__row')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
     mock.dernierePose.body = null;
     await page.click('#confirmBtn');
@@ -330,7 +352,7 @@ function verifierKfd(r) {
   ok(/fin de la formule/.test((r.visiteTard || {}).tete || ''), 'l en-tete dit « fin de la formule », pas une heure estimee', `« ${(r.visiteTard || {}).tete} »`);
   const { getEffectiveFormules } = require('../lib/booking-config');
   const kfd = getEffectiveFormules('libramont').find((f) => f.id === 'kfd');
-  ok(JSON.stringify(midi.compris) === JSON.stringify(kfd.desc), 'ce qu elle comprend : les mots du centre (« toutes les activites illimitees »), pas la liste du moteur', midi.compris.join(' | '));
+  ok(illimiteMidi.detail2 === kfd.desc.join(' · ') && !midi.encadre, 'ce qu elle comprend : les mots du centre (« toutes les activites illimitees »), sur sa ligne, pas la liste du moteur', `« ${illimiteMidi.detail2} »`);
   ok(/6 enfants \+ 2 adultes/.test(midi.sous || ''), 'le rappel des heures dit « 6 enfants + 2 adultes »', `« ${midi.sous} »`);
   ok((r.recap || []).some((l) => l === '6 enfants + 2 adultes'), 'le recapitulatif aussi', (r.recap || []).join(' | '));
   const e = r.envoi || {};
@@ -422,7 +444,7 @@ function verifierConsole(r) {
 // ---------------------------------------------------------------------------
 const MUTATIONS = {
   cles: ['      rendreCles(sec, chips, n);\n', ''],
-  compris: ["    var compris = formule ? (formule.desc || []).filter(Boolean) : [];\n", "    var compris = [];\n"],
+  compris: ["    var carte = formule ? (formule.desc || []).filter(Boolean).map(function (x) { return { texte: String(x), genre: genreCompris(x) }; }) : [];\n", "    var carte = [];\n"],
   enfants: ['      pax: joueursDemandes(),\n', '      pax: state.pax,\n'],
   aPlacer: ['const partiesAPlacerHtml = partiesAPlacer && r.status', "const partiesAPlacerHtml = false && r.status"],
 };
@@ -461,7 +483,7 @@ async function contreEpreuves(browser, mock, jourKfd, jourConsole) {
     mutation = 'compris';
     const r = await parcoursF4(browser, mock, 1440);
     mutation = '';
-    ok(!((r.visite || {}).compris || []).length, 'sans la liste, le minigolf et les boissons disparaissent de l ecran des heures : ce gate ROUGIRAIT');
+    ok(!((r.visite || {}).etapes || []).some((e) => /fg-visit__step--incl/.test(e.genre)), 'sans les mots de la carte, le minigolf et les boissons disparaissent de l ecran des heures : ce gate ROUGIRAIT');
   }
   if (ok(ancreUnique('fungalaxy-booking.js', MUTATIONS.enfants[0]), 'contre-epreuve montable : les joueurs de la demande se comptent une fois')) {
     mutation = 'enfants';

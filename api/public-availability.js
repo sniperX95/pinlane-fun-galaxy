@@ -630,11 +630,13 @@ module.exports = async (req, res) => {
         }).map((slot) => {
           const fin = finDeVisiteMinutes(slot);
           if (fin === null) return slot;
-          // EN MODE SOUPLE, la visite peut deborder la fermeture : la fin
-          // affichee s arrete a la fermeture, et le manque est dit a part
-          // (`visitShortfallMinutes`), pour que l ecran l explique.
+          // LA VISITE PEUT DEBORDER LA FERMETURE : en mode souple, et quand
+          // les parties de laser jouees a la suite la depassent (elles ne
+          // ferment jamais une heure). La fin affichee s arrete a la
+          // fermeture, et le manque est dit a part (`visitShortfallMinutes`),
+          // pour que l ecran l explique.
           const fermeture = Math.round(Number(schedule.close) * 60);
-          if (reserveSoft && Number.isFinite(fermeture) && fermeture > 0 && fin > fermeture) {
+          if (Number.isFinite(fermeture) && fermeture > 0 && fin > fermeture) {
             return { ...slot, visitEndTime: numToTime(fermeture / 60), visitEndsAtClose: true, visitShortfallMinutes: fin - fermeture };
           }
           return { ...slot, visitEndTime: numToTime(fin / 60) };
@@ -1012,6 +1014,23 @@ module.exports = async (req, res) => {
           return posees && cles.every((cle) => posees[cle] === heures[cle]);
         }) || null;
       };
+      // LA FIN D UNE FORMULE SE DIT COMME CELLE D UNE VISITE (Movsar,
+      // 2026-09-29 : « le truc pour compter l heure est foire ») : sans la
+      // marge de risque de l equipe, que `opsPlan.endTime` contient, et
+      // arretee a la fermeture quand les parties de laser jouees a la suite la
+      // depassent, le manque dit a part. L ecran annoncait la marge comme du
+      // temps de visite.
+      const finDeFormule = (slot) => {
+        const plan = slot && slot.opsPlan;
+        if (!plan || !plan.endTime || !slot.time) return slot;
+        const debut = Math.round(timeToNum(slot.time) * 60);
+        const fin = Math.max(debut, Math.round(timeToNum(plan.endTime) * 60) - Math.max(0, Number(plan.bufferMinutes) || 0));
+        const fermeture = Math.round(Number(schedule && schedule.close) * 60);
+        if (Number.isFinite(fermeture) && fermeture > 0 && fin > fermeture) {
+          return { ...slot, visitEndTime: numToTime(fermeture / 60), visitEndsAtClose: true, visitShortfallMinutes: fin - fermeture };
+        }
+        return { ...slot, visitEndTime: numToTime(fin / 60) };
+      };
       const respondFormula = (slots, message, suggestions = [], retainedSlot = null) => {
         // LES MONTEES DE FORMULE VOYAGENT AVEC LE CRENEAU QUI VIENT D ETRE
         // RETENU (2026-09-04). Elles sont calculees APRES filterSlotsByFinalGuards,
@@ -1062,7 +1081,7 @@ module.exports = async (req, res) => {
           ok: true,
           date,
           ...scheduleMeta,
-          slots,
+          slots: (Array.isArray(slots) ? slots : []).map(finDeFormule),
           laneCount,
           duration,
           totalDuration,
@@ -1082,6 +1101,26 @@ module.exports = async (req, res) => {
           || laserGameTimes.some((time) => time) || laserPlacement === 'onsite';
 
         if (hasAnchorChoice) {
+          // UNE HEURE CHOISIE N EN EXIGE PAS DEUX, EN FORMULE AUSSI (2026-09-29,
+          // meme regle que la visite composee depuis l entretien Seb du
+          // 2026-09-17, plus haut). Toucher une heure de laser dans la FORMULE 4
+          // repondait « Choisissez une heure pour Bowling. » : la visite
+          // disparaissait de l ecran et le bouton se grisait, alors que la
+          // grille venait de dire l heure possible. L ancre restee libre prend
+          // l heure que la grille propose, calculee avec les heures retenues
+          // (anchorMeta.defaultTimes) : celle que l ecran montre deja en
+          // proposition. Un laser place sur place n a pas d heure : il n en
+          // recoit pas.
+          const heuresCompletes = { ...preferredTimes };
+          const defautsDeLaGrille = (anchorMeta && anchorMeta.ok && anchorMeta.defaultTimes) || {};
+          ((anchorMeta && anchorMeta.activities) || []).forEach((activity) => {
+            const id = activity.activityId;
+            if (id === 'laser_game' && laserPlacement === 'onsite') return;
+            if (!heuresCompletes[id] && defautsDeLaGrille[id]) heuresCompletes[id] = defautsDeLaGrille[id];
+          });
+          const partiesCompletes = laserGameTimes.some((time) => time) || laserPlacement === 'onsite'
+            ? laserGameTimes
+            : (heuresCompletes.laser_game ? [heuresCompletes.laser_game] : laserGameTimes);
           // Revalidation serveur de la combinaison choisie (source de vérité) :
           // soit LE créneau composé, soit un refus clair + suggestions proches.
           const plan = planningAgent(
@@ -1093,8 +1132,8 @@ module.exports = async (req, res) => {
               pax,
               duration,
               preference: {
-                preferredTimes,
-                laserGameTimes,
+                preferredTimes: heuresCompletes,
+                laserGameTimes: partiesCompletes,
                 laserPlacement,
                 arrivalConfidence: 'normal',
               },

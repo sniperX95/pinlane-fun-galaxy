@@ -89,8 +89,10 @@
       var haut = Number(d.hautCadre);
       if (isFinite(haut)) hautCadre = haut;
       ecranHote = Number(d.hauteurEcran) || 0;
-      // La fenetre du calendrier (telephone) suit le milieu de l ecran hote.
+      // Les fenetres du calendrier (telephone) et des offres suivent le
+      // milieu de l ecran hote.
       placerFenetre(false);
+      placerVitrine(false);
     });
   }
 
@@ -157,6 +159,7 @@
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   function euros(n) { n = Number(n); if (!isFinite(n)) return ''; return (Math.round(n * 100) / 100).toLocaleString('fr-BE', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'; }
   function personnes(n) { return n + ' personne' + (n > 1 ? 's' : ''); }
+  function joueurs(n) { return n + ' joueur' + (n > 1 ? 's' : ''); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   // Ce qui ne se coupe pas en fin de ligne : « 4 personnes », « 1 h 40 »,
   // « Sam. 26 sept. » ; un separateur (· ou +) reste avec le mot d avant, et
@@ -214,6 +217,9 @@
     var h = Math.floor(m / 60), r = m % 60;
     return h + ' h' + (r ? ' ' + String(r).padStart(2, '0') : '');
   }
+  // « environ 45 min », « environ 1 h 30 » : une duree estimee, jamais promise,
+  // qui ne se coupe pas en fin de ligne.
+  function environ(m) { return insecable('environ ' + dureeExacte(m)); }
   function heuresLabel(v) { v = Number(v) || 0; if (v === 0.5) return '30 min'; if (v === 1) return '1 heure'; if (v === 1.5) return '1h30'; if (v === 2) return '2 heures'; return minutesLabel(Math.round(v * 60)); }
   function heureAffichee(t) { return t === '24:00' ? 'minuit' : t; }
   // Les libelles du serveur sont sans accent (une table partagee avec les
@@ -242,6 +248,8 @@
     if (/arcade/.test(s)) return 'a-arcade';
     if (/playground|plaine/.test(s)) return 'a-plaine';
     if (/fun_run|funrun|fun-run/.test(s)) return 'a-funrun';
+    // La table d une formule anniversaire : le gateau des occasions.
+    if (/table/.test(s)) return 'o-anniversaire';
     return 'a-star';
   }
   function photo(id) {
@@ -256,6 +264,24 @@
     if (/fun_run|funrun|fun-run/.test(s)) return 'fun-run';
     return '';
   }
+  // Ce que nomme un mot de la carte d une formule (« 1 partie Minigolf »,
+  // « 1 table privée pendant 2 heures ») ou un identifiant d activite, par les
+  // memes indices que icone() : l activite, la table, ou rien (des boissons,
+  // une condition).
+  function genreCompris(s) {
+    s = String(s || '').toLowerCase().replace(/_/g, ' ');
+    if (/duck/.test(s)) return 'duckpin';
+    if (/bowling/.test(s)) return 'bowling';
+    if (/laser/.test(s)) return 'laser_game';
+    if (/golf/.test(s)) return 'minigolf';
+    if (/billard/.test(s)) return 'billard';
+    if (/arcade/.test(s)) return 'arcade';
+    if (/playground|plaine/.test(s)) return 'plaine';
+    if (/fun ?run|fun-run/.test(s)) return 'fun_run';
+    if (/\btable\b/.test(s)) return 'table';
+    return '';
+  }
+  function estBoisson(s) { return /boisson|bi[eè]re|cruche|verre/i.test(String(s || '')); }
   function activitesVendables() {
     return (meta && meta.activities ? meta.activities.slice() : []).sort(function (a, b) { return (a.order || 99) - (b.order || 99); });
   }
@@ -607,6 +633,7 @@
   function aller(cible, retour) {
     if (enTransition) { allerEnAttente = { cible: cible, retour: retour }; return; }
     if (cible === sceneCourante) return;
+    if (vitrineOuverte()) fermerVitrine(false);
     var de = $('.fg-scene[data-scene="' + sceneCourante + '"]');
     var vers = $('.fg-scene[data-scene="' + cible + '"]');
     if (!vers) return;
@@ -751,7 +778,6 @@
 
   var dayBtn = $('#dayBtn'), dayPop = $('#dayPop'), dayLabel = $('#dayLabel'), dayHint = $('#dayHint');
   var calTitle = $('#calTitle'), calGrid = $('#calGrid'), calInfo = $('#calInfo'), calPrev = $('#calPrev'), calNext = $('#calNext');
-  var dayField = dayBtn.closest('.fg-field');
   // Sous 560 px de large, ou sur un ecran de moins de 500 px de haut
   // (telephone en paysage), le calendrier s ouvre au milieu de l ecran, sur un
   // voile ; ailleurs, sous le bouton. dayMaison : sa place sous le bouton.
@@ -974,11 +1000,16 @@
   // defile pour la montrer entiere, avec ses marges (pinlane:voir).
   function placerFenetre(demander) {
     if (!EMBED || dayPop.hidden || !fenetreAuMilieu()) return;
-    if (ecranHote) dayPop.style.maxHeight = Math.max(200, ecranHote - 24) + 'px';
-    var h = dayPop.offsetHeight, cadre = window.innerHeight;
+    centrerDansLaVue(dayPop, demander);
+  }
+  // Une fenetre embarquee se pose au milieu de l ecran de la page hote, dans
+  // le cadre : celle du calendrier, celle des offres du recapitulatif.
+  function centrerDansLaVue(el, demander) {
+    if (ecranHote) el.style.maxHeight = Math.max(200, ecranHote - 24) + 'px';
+    var h = el.offsetHeight, cadre = window.innerHeight;
     var milieu = ecranHote && hautCadre !== null ? ecranHote / 2 - hautCadre : cadre / 2;
     var y = Math.max(h / 2 + 8, Math.min(cadre - h / 2 - 8, milieu));
-    dayPop.style.top = Math.round(y) + 'px';
+    el.style.top = Math.round(y) + 'px';
     if (demander && Math.abs(y - milieu) > 2) {
       poster({ type: 'pinlane:voir', haut: Math.round(Math.max(0, y - h / 2 - MARGE_FENETRE)), bas: Math.round(Math.min(cadre, y + h / 2 + MARGE_FENETRE)) });
     }
@@ -1079,7 +1110,7 @@
   // du milieu le donne a taper, nombre deja selectionne (on tape par-dessus).
   $('#paxValue').addEventListener('click', function (e) { if (e.target !== paxInput) { paxInput.focus(); paxInput.select(); } });
   function rendrePax() {
-    paxOut.textContent = personnes(state.pax);
+    paxOut.textContent = joueurs(state.pax);
     if (String(paxInput.value) !== String(state.pax) && doc.activeElement !== paxInput) paxInput.value = String(state.pax);
     ajusterLargeurPax();
     $('#paxMinus').disabled = state.pax <= PAX_MIN;
@@ -1820,7 +1851,7 @@
       // Une partie de laser parmi d autres posees : elle seule se libere et
       // passe sans heure. Seule posee, le moteur la replace, comme le bowling.
       if (g.conflit.id === 'laser_game' && state.laserParts.length > 1 && rangPartie(g.conflit.time)) {
-        return 'Pendant votre partie ' + rangPartie(g.conflit.time) + ' de laser game' + quand + ', qui passe sur place avec l’équipe.';
+        return 'Pendant votre partie ' + rangPartie(g.conflit.time) + ' de laser game' + quand + ', qui passe dans la foulée, sans heure fixe.';
       }
       return 'Pendant votre ' + nomBas(String(g.conflit.label || 'autre activité').replace(/\s*\(partie \d+\)$/, '')) + quand + ', qui se décale avant ou après.';
     }
@@ -2117,7 +2148,7 @@
       var fin = plage ? plage.split(' à ').pop() : '';
       html += '<li class="fg-parts__item ' + (h ? (n ? 'is-set' : 'is-proposed') : 'is-free') + '" data-partie="' + (k + 1) + '">'
         + '<i aria-hidden="true">' + (k + 1) + '</i><span><span class="sr-only">Partie ' + (k + 1) + ' : </span>'
-        + (h ? '<b>' + esc(h) + '</b>' + (fin ? ' → ' + esc(heureAffichee(fin)) : '') + (n ? '' : ' <small>proposée</small>') : 'sur place avec l’équipe')
+        + (h ? '<b>' + esc(h) + '</b>' + (fin ? ' → ' + esc(heureAffichee(fin)) : '') + (n ? '' : ' <small>proposée</small>') : 'dans la foulée')
         + '</span></li>';
     }
     html += '</ol>';
@@ -2131,7 +2162,7 @@
     if (sansHeure.length) {
       var plusieurs = sansHeure.length > 1;
       html += '<p class="fg-parts__note"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
-        + (plusieurs ? 'Les parties ' : 'La partie ') + esc(joindreListe(sansHeure, ' et ')) + ' se ' + (plusieurs ? 'placeront' : 'placera') + ' sur place avec l’équipe, selon les places libres ce jour-là. '
+        + (plusieurs ? 'Les parties ' : 'La partie ') + esc(joindreListe(sansHeure, ' et ')) + ' se ' + (plusieurs ? 'joueront' : 'jouera') + ' dans la foulée, ' + (plusieurs ? 'placées' : 'placée') + ' sur place par l’équipe selon les places libres ce jour-là. '
         + '<b>Mieux vaut ' + (plusieurs ? 'leur' : 'lui') + ' choisir une heure maintenant</b> : touchez une autre heure ci-dessous.</span></p>';
     }
     boite.innerHTML = html;
@@ -2366,7 +2397,7 @@
     (plan.resourceBlocks || []).forEach(function (b) {
       if (!b || !(b.type === 'activity' || b.activityId) || !b.activityId || !b.startTime || journee[b.activityId]) return;
       var cle = b.activityId + '#' + (Number(b.countIndex) || 1);
-      if (!index[cle]) { index[cle] = { id: b.activityId, partie: Number(b.countIndex) || 1, groupes: [], pistes: 0 }; liste.push(index[cle]); }
+      if (!index[cle]) { index[cle] = { id: b.activityId, partie: Number(b.countIndex) || 1, groupes: [], pistes: 0, label: String(b.label || '') }; liste.push(index[cle]); }
       var p = index[cle];
       if (p.groupes.some(function (g) { return g.debut === String(b.startTime); })) return;
       p.groupes.push({ joueurs: Number(b.players) || 0, debut: String(b.startTime), fin: String(b.endTime || '') });
@@ -2436,10 +2467,13 @@
   // serveur, calendrier servi) : le moteur ne la refuse pas toujours, l ecran
   // ne la propose donc pas.
   function fermeCeJour(a) { var j = jourInfo(state.date); return Boolean(a && j && (j.unavailableActivityIds || []).indexOf(a.id) >= 0); }
+  // Une etape : son heure (vide pour ce qui se joue dans la foulee), son
+  // titre, son detail, et au besoin une seconde ligne de detail.
   function etapeVisite(o) {
-    return '<li class="fg-visit__step' + (o.genre ? ' fg-visit__step--' + o.genre : '') + (o.bouge ? ' is-moved' : '') + '"><b>' + esc(o.heure) + '</b>'
-      + '<span>' + (o.icone ? '<svg aria-hidden="true"><use href="#' + o.icone + '"/></svg>' : '') + esc(o.titre) + '</span>'
-      + '<small>' + esc(o.detail || '') + '</small></li>';
+    var genres = [].concat(o.genre || []).map(function (g) { return ' fg-visit__step--' + g; }).join('');
+    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"><b>' + esc(o.heure || '') + '</b>'
+      + '<span>' + (o.titreHtml || ((o.icone ? '<svg aria-hidden="true"><use href="#' + o.icone + '"/></svg>' : '') + esc(o.titre))) + '</span>'
+      + '<small>' + esc(o.detail || '') + '</small>' + (o.detail2 ? '<small>' + esc(o.detail2) + '</small>' : '') + '</li>';
   }
   // LE BLOC « VOTRE VISITE », COMPLET (Movsar, 2026-09-24 : « plus complet et
   // serieux, vraiment un truc super complet »). L arrivee et son avance sur la
@@ -2570,14 +2604,24 @@
     if (!fini) {
       var zoneS = $('[data-plus-statut="' + ecran + '"]');
       if (zoneS) { zoneS.textContent = plus.statut ? plus.statut.texte : ''; zoneS.dataset.ton = plus.statut ? plus.statut.ton : ''; }
+      if (ecran === 'recap' && vitrineOuverte()) { vitrineStatut.textContent = plus.statut ? plus.statut.texte : ''; vitrineStatut.dataset.ton = plus.statut ? plus.statut.ton : ''; }
       $$('[data-plus], [data-plus-annuler], [data-plus-retirer]').forEach(function (b) { b.disabled = true; });
       return;
     }
     if (sceneCourante === 'recap' && ecran === 'recap') rendreRecap(true);
     else if (sceneCourante === 'heures' && ecran === 'heures') rendreHeures();
     else return;
+    // LA FENETRE DES OFFRES : un ajout reussi la ferme, et le recapitulatif
+    // dit ce qui a ete ajoute, avec « Annuler » ; un refus la garde ouverte,
+    // sans la carte refusee, et la phrase dit pourquoi.
+    var montre = false;
+    if (ecran === 'recap' && vitrineOuverte()) {
+      if (!plus.statut || plus.statut.ton !== 'ok') { rendreVitrine(true); vitrinePanneau.focus({ preventScroll: true }); return; }
+      fermerVitrine(false);
+      montre = true;
+    }
     var bloc = $('#plus-' + ecran);
-    if (bloc) bloc.focus({ preventScroll: true });
+    if (bloc) { bloc.focus({ preventScroll: true }); if (montre) montrer(bloc); }
     if (plus.statut) dire(plus.statut.texte);
   }
   // Des tournures sans accord : « Formule 5 » est feminin, « Laser Game »
@@ -2593,22 +2637,15 @@
     return '<p class="fg-plus__statut" data-plus-statut="' + ecran + '" data-ton="' + (s ? s.ton : '') + '">' + (s ? esc(s.texte) : '')
       + (annulable ? ' <button type="button" class="fg-plus__annuler" data-plus-annuler>Annuler</button>' : '') + '</p>';
   }
-  // Une offre : ce qu elle ajoute, son prix, un bouton. Une rangee de la meme
-  // matiere que le recapitulatif, sans carte ni pastille.
+  // Une offre d attente : ce qu elle ajoute, son prix par personne (le tarif
+  // d attente se dit ainsi), un bouton. Une rangee de la meme matiere que le
+  // recapitulatif, sans carte ni pastille.
   function rangeePlus(c) {
-    var ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
-    var detail, montant;
-    if (c.kind === 'attente') {
-      var a = c.attente || {};
-      detail = motsServeur(c.addsLabel) + ', pendant l’attente';
-      var pp = Number(c.prixParPersonne) > 0 ? Number(c.prixParPersonne) : Number(c.deltaPerPax) || 0;
-      montant = '<b>' + esc(euros(pp)) + '</b><small>par personne' + (Number(c.prixCatalogueParPersonne) > pp ? ', au lieu de ' + esc(euros(c.prixCatalogueParPersonne)) : '') + '</small>';
-      if (!(Number(a.dureeOffre) > 0)) detail = motsServeur(c.addsLabel);
-    } else {
-      detail = [c.addsLabel, c.totalLabel, c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
-      montant = '<b>+' + esc(euros(c.deltaTotal)) + '</b>' + (c.pax > 1 ? '<small>soit ' + esc(euros(c.deltaPerPax)) + ' par personne</small>' : '');
-    }
-    return '<li class="fg-plus__item"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>'
+    var a = c.attente || {};
+    var detail = Number(a.dureeOffre) > 0 ? motsServeur(c.addsLabel) + ', pendant l’attente' : motsServeur(c.addsLabel);
+    var pp = Number(c.prixParPersonne) > 0 ? Number(c.prixParPersonne) : Number(c.deltaPerPax) || 0;
+    var montant = '<b>' + esc(euros(pp)) + '</b><small>par personne' + (Number(c.prixCatalogueParPersonne) > pp ? ', au lieu de ' + esc(euros(c.prixCatalogueParPersonne)) : '') + '</small>';
+    return '<li class="fg-plus__item"><svg aria-hidden="true"><use href="#' + icone(c.patch.activityId) + '"/></svg>'
       + '<span class="fg-plus__txt"><b>' + esc(nomDuPlus(c)) + '</b>' + (detail ? '<small>' + esc(detail) + '</small>' : '') + '</span>'
       + '<span class="fg-plus__amt">' + montant + '</span>'
       + '<button type="button" class="fg-plus__btn" data-plus="' + esc(c.id) + '" aria-label="Ajouter ' + esc(nomDuPlus(c)) + '">Ajouter</button></li>';
@@ -2638,14 +2675,16 @@
     }
     return html + statutPlus('heures') + '</div>';
   }
-  // AU RECAPITULATIF, juste avant de valider : un supplement ou deux, jamais
-  // plus (le serveur en sert deux au plus, les moins chers par personne).
+  // AU RECAPITULATIF, juste avant de valider : les offres vivent dans leur
+  // fenetre (plus bas) ; le recapitulatif garde de quoi la rouvrir, et la
+  // phrase d un ajout avec son « Annuler ».
   function htmlPlusRecap() {
     var cartes = cartesPlus('plus');
     var s = plus.statut && plus.statut.ecran === 'recap' ? plus.statut : null;
     if (!cartes.length && !s) return '';
     return '<div class="fg-plus" id="plus-recap" tabindex="-1">'
-      + (cartes.length ? '<p class="fg-plus__head"><b>Envie d’un peu plus&nbsp;?</b> <small>Vos horaires ne bougent pas.</small></p><ul class="fg-plus__list">' + cartes.map(rangeePlus).join('') + '</ul>' : '')
+      + (cartes.length ? '<p class="fg-plus__head"><b>Envie d’un peu plus&nbsp;?</b> <small>Vos horaires ne bougent pas.</small></p>'
+        + '<button type="button" class="fg-plus__voir" data-vitrine-ouvrir>' + (cartes.length > 1 ? 'Voir les ' + cartes.length + ' options' : 'Voir l’option') + '<svg aria-hidden="true"><use href="#i-arrow"/></svg></button>' : '')
       + statutPlus('recap') + '</div>';
   }
   function surPlus(e, ecran) {
@@ -2717,9 +2756,21 @@
     var ancrages = formule ? (d.anchors || {}) : {};
     var illimite = Boolean(formule && formule.orderPolicy === 'open_window');
     var libres = items.filter(function (it) { return !planifies[it.activityId] && it.waitOffer !== true; });
-    // Une entree a la journee ne compte pas dans « environ X » : ce temps-la
-    // n est pas achete, il est libre toute la journee.
-    var minutesLibres = libres.reduce(function (s, it) { return s + (it.dayAccess ? 0 : (Number(it.minutes) || 0)); }, 0);
+    // LES MOTS DE LA CARTE DE LA FORMULE, chacun avec ce qu il nomme : ils
+    // nomment la table d une formule anniversaire et se rangent dans la
+    // visite, plus bas.
+    var carte = formule ? (formule.desc || []).filter(Boolean).map(function (x) { return { texte: String(x), genre: genreCompris(x) }; }) : [];
+    // Le nom d une partie : celui du programme, du catalogue, sinon les mots
+    // de la carte pour ce que le public ne connait pas par son identifiant (la
+    // table d une formule anniversaire s affichait « party_table »), sinon
+    // celui que le plan lui donne.
+    function nomDePartie(p) {
+      var it = items.filter(function (x) { return x.activityId === p.id; })[0] || {};
+      if (it.name) return it.name;
+      if (activite(p.id)) return nomActivite(p.id);
+      var mot = carte.filter(function (c) { return c.genre && c.genre === genreCompris(p.id); })[0];
+      return mot ? mot.texte : (p.label || p.id);
+    }
     var prix = Number(rep.price);
     var complet = !rep.program || rep.program.priceComplete !== false;
     // UNE VISITE FAITE SEULEMENT D ENTREES A LA JOURNEE (la plaine seule) n a
@@ -2744,12 +2795,12 @@
     var dits = [];
     if (plan.arrivalTime) {
       var avance = parts.length ? minutesEntre(plan.arrivalTime, parts[0].debut) : 0;
-      var premiere = parts.length ? ((items.filter(function (x) { return x.activityId === parts[0].id; })[0] || {}).name || nomActivite(parts[0].id)) : '';
+      var premiere = parts.length ? nomDePartie(parts[0]) : '';
       lignes += etapeVisite({ genre: 'in', heure: plan.arrivalTime, titre: 'Arrivée conseillée', detail: avance > 0 ? avance + ' min avant votre ' + nomBas(premiere) : 'on vous accueille' });
     }
     parts.forEach(function (p) {
       var it = items.filter(function (x) { return x.activityId === p.id; })[0] || {};
-      var nom = it.name || nomActivite(p.id);
+      var nom = nomDePartie(p);
       var total = Number(it.games) || (formule && p.id === 'laser_game' ? Number(ancrages.laserGames) || 0 : 0);
       // « partie 2 sur 3 » compte les PARTIES (countIndex), jamais les groupes
       // d une meme partie : un grand groupe joue chaque partie en plusieurs.
@@ -2760,29 +2811,76 @@
       dits.push(nom + (quoi ? ', ' + quoi : '') + ', de ' + p.debut + (p.fin ? ' à ' + heureAffichee(p.fin) : '') + (p.groupes.length > 1 ? ', en ' + p.groupes.length + ' groupes' : '') + (bouge ? ', déplacé' : ''));
       lignes += etapeVisite({ heure: p.debut, icone: icone(p.id), titre: nom + (quoi ? ' · ' + quoi : ''), detail: detail, bouge: bouge });
     });
-    // LES PARTIES SANS HEURE : le moteur les laisse a l equipe, sur place.
+    // CE QUI N A PAS D HEURE SE RANGE SOUS « DANS LA FOULEE » (Movsar,
+    // 2026-09-29 : « met "dans la foulee", pas une heure imposee, comme ca ils
+    // comprennent bien ») : les parties de laser que l equipe place, les
+    // activites libres d une visite, ce que comprend la carte d une formule.
+    // Un titre pour le groupe, une ligne par chose, jamais une heure.
+    var suite = '';
+    var suiteDits = [];
+    function ligneSuite(o, voix) {
+      suite += etapeVisite({ genre: [o.genre, 'suite'], heure: '', icone: o.icone, titre: o.titre, titreHtml: o.titreHtml, detail: o.detail });
+      suiteDits.push(voix);
+    }
+    // LES PARTIES DE LASER SANS HEURE : l equipe les place sur place, et la
+    // fin de la visite compte le temps qu elles prennent a la suite (Movsar,
+    // meme jour : « les 2 parties de laser, ca dure 40 minutes minimum »). Ce
+    // temps est celui du moteur (laserPassPlan.followOnMinutes).
+    var aLaSuite = Math.max(0, Math.round(Number(plan.laserPassPlan && plan.laserPassPlan.followOnMinutes) || 0));
+    var vus = {};
+    parts.forEach(function (p) { vus[genreCompris(p.id)] = 1; });
     function partiesSurPlace(id, nomR, total, posees) {
-      if (!(total > 1) || !posees || posees >= total) return;
+      // Toutes sans heure : seul le laser d une formule a bowling peut l etre.
+      if (!(total >= 1) || posees >= total || (!posees && id !== 'laser_game')) return;
       var reste = [];
       for (var k = posees + 1; k <= total; k += 1) reste.push(String(k));
-      var quelles = 'partie' + (reste.length > 1 ? 's ' : ' ') + joindreListe(reste, ' et ') + ' sur ' + total;
-      lignes += etapeVisite({ genre: 'onsite', heure: 'sur place', icone: icone(id), titre: nomR + ' · ' + quelles, detail: 'à placer sur place avec l’équipe' });
-      dits.push(nomR + ', ' + quelles + ', à placer sur place avec l’équipe');
+      var quelles = total === 1 ? '1 partie' : 'partie' + (reste.length > 1 ? 's ' : ' ') + joindreListe(reste, ' et ') + ' sur ' + total;
+      var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place par l’équipe' + (id === 'laser_game' && aLaSuite ? ' · ' + environ(aLaSuite) : '');
+      ligneSuite({ genre: 'onsite', icone: icone(id), titre: nomR + ' · ' + quelles, detail: detail }, nomR + ', ' + quelles + ', ' + detail);
+      vus[genreCompris(id)] = 1;
     }
     items.forEach(function (it) {
       partiesSurPlace(it.activityId, it.name || nomActivite(it.activityId), Number(it.games) || 0, parts.filter(function (p) { return p.id === it.activityId; }).length);
     });
     if (formule) partiesSurPlace('laser_game', nomActivite('laser_game'), Number(ancrages.laserGames) || 0, parts.filter(function (p) { return p.id === 'laser_game'; }).length);
-    if (libres.length) {
-      lignes += '<li class="fg-visit__step fg-visit__step--free"><b>libre</b><span>' + libres.map(function (it) { var entre = it.dayAccess ? 'toute la journée' : detailSessions(it); return '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(it.name || nomActivite(it.activityId)) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>'; }).join('') + '</span><small>à votre rythme' + (minutesLibres ? ' · ' + esc(dureeApprox(minutesLibres)) : '') + '</small></li>';
+    // Les activites libres d une visite, a votre rythme. Une entree a la
+    // journee ne dit aucune duree : ce temps-la n est pas achete.
+    libres.forEach(function (it) {
+      var nomL = it.name || nomActivite(it.activityId);
+      var entre = it.dayAccess ? 'toute la journée' : detailSessions(it);
+      var duree = !entre && Number(it.minutes) > 0 ? environ(it.minutes) : '';
+      ligneSuite({ genre: 'free', titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomL) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>', detail: 'à votre rythme' + (duree ? ' · ' + duree : '') },
+        nomL + (entre ? ' (' + entre + ')' : '') + ', à votre rythme' + (duree ? ', ' + duree : ''));
+    });
+    // CE QUE COMPREND LA CARTE D UNE FORMULE, dans ses mots, c est ce que le
+    // centre vend : ce qui a deja sa ligne a heure (bowling, laser, table) ne
+    // se redit pas, une activite se joue a votre rythme, le reste (les
+    // boissons) est compris. Une formule a volonte le dit sur sa ligne.
+    if (formule && !illimite) carte.forEach(function (c) {
+      if (c.genre && vus[c.genre]) return;
+      if (c.genre) ligneSuite({ genre: 'incl', icone: icone(c.texte), titre: c.texte, detail: 'compris · à votre rythme' }, c.texte + ', compris');
+      else ligneSuite({ genre: 'incl', icone: estBoisson(c.texte) ? 'a-boisson' : 'a-formule', titre: c.texte, detail: 'compris' }, c.texte + ', compris');
+    });
+    if (suite) {
+      // Pendant la table d une formule anniversaire, les activites se jouent
+      // pendant la table ; sans rien a heure, des l arrivee.
+      var avecTable = parts.some(function (p) { return genreCompris(p.id) === 'table'; });
+      var entete = !parts.length ? 'Dès votre arrivée' : avecTable ? 'Pendant votre table' : 'Dans la foulée';
+      lignes += '<li class="fg-visit__group"><svg aria-hidden="true"><use href="#i-arrow"/></svg><span><b>' + esc(entete) + '</b><small>sans heure fixe</small></span></li>' + suite;
+      dits.push(entete + ', sans heure fixe : ' + suiteDits.join(' ; '));
     }
     // UNE FORMULE ILLIMITEE se joue a volonte jusqu a la fin de sa periode, au
     // meme prix quelle que soit l heure d arrivee : la ligne dit le temps de
-    // jeu qui reste a cette heure-la (arrive a 16:30 au Kids Fun Day, 30 min).
+    // jeu qui reste a cette heure-la (arrive a 16:30 au Kids Fun Day, 30 min),
+    // puis ce que comprend sa carte, dans ses mots.
     var jeuRestant = illimite && fin ? minutesEntre(slot.time, fin) : 0;
+    var motsIllimite = illimite ? carte.map(function (c) { return c.texte; }) : [];
     if (illimite && jeuRestant > 0) {
-      lignes += etapeVisite({ genre: 'free', heure: 'illimité', icone: 'a-formule', titre: formule.name, detail: 'à volonté jusqu’à ' + heureAffichee(fin) + ' · ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure' });
-      dits.push(formule.name + ', à volonté jusqu’à ' + heureAffichee(fin) + ' : ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure');
+      lignes += etapeVisite({ genre: 'free', heure: 'illimité', icone: 'a-formule', titre: formule.name, detail: 'à volonté jusqu’à ' + heureAffichee(fin) + ' · ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure', detail2: motsIllimite.join(' · ') });
+      dits.push(formule.name + ', à volonté jusqu’à ' + heureAffichee(fin) + ' : ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure' + (motsIllimite.length ? '. Compris : ' + motsIllimite.join(', ') : ''));
+    } else if (motsIllimite.length) {
+      lignes += etapeVisite({ genre: 'incl', heure: '', icone: 'a-formule', titre: motsIllimite.join(' · '), detail: 'compris dans ' + formule.name });
+      dits.push('Compris : ' + motsIllimite.join(', '));
     }
     if (!parts.length && !libres.length && !plan.arrivalTime) lignes = '<li class="fg-visit__step"><b>' + esc(slot.time) + '</b><span>Début</span><small></small></li>' + lignes;
     if (fin) lignes += etapeVisite({ genre: 'out', heure: heureAffichee(fin), titre: 'Fin de la visite', detail: slot.visitEndsAtClose ? 'fermeture du centre' : illimite ? 'fin de la formule' : 'heure estimée' });
@@ -2810,28 +2908,18 @@
       + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>le reste se règle sur place</small>') + '</span>' : '')
       + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
     html2 += htmlAttente(items);
-    // CE QUE COMPREND LA FORMULE, dans les mots du centre, ceux de sa carte :
-    // c est ce qu il vend. Le moteur n en planifie qu une partie (le Kids Fun
-    // Day vend « toutes les activites illimitees », le moteur en place deux),
-    // il donne les heures, jamais la liste de ce qui est compris.
-    var compris = formule ? (formule.desc || []).filter(Boolean) : [];
-    if (compris.length) {
-      html2 += '<div class="fg-visit__incl"><p class="fg-visit__incl-title"><svg aria-hidden="true"><use href="#a-formule"/></svg>Compris dans ' + esc(formule.name) + '</p>'
-        + '<ul>' + compris.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
-    }
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
     if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) avis.unshift('À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.');
     if (avis.length) html2 += '<p class="fg-visit__warn">' + avis.map(esc).join('<br>') + '</p>';
     html2 += prixHtml;
     // Ce que dit la voix est ce qui est ecrit dans le bloc : l arrivee, chaque
-    // partie a son heure et sa fin, les parties sur place, la fin, le prix (et
-    // ce qui se regle sur place), les avertissements.
+    // partie a son heure et sa fin, ce qui se joue dans la foulee, la fin, le
+    // prix (et ce qui se regle sur place), les avertissements.
     if (sceneCourante === 'heures') dire(('Votre visite. '
       + (plan.arrivalTime ? 'Arrivée conseillée à ' + plan.arrivalTime + '. ' : '')
       + (dits.length ? dits.join('. ') + '. ' : (plan.arrivalTime ? '' : 'Début à ' + slot.time + '. '))
       + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : illimite ? 'Fin de la formule à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : (journee ? 'Accès toute la journée. ' : ''))
       + (prix > 0 ? euros(prix) + (complet ? '' : ', le reste se règle sur place') + '. ' : '')
-      + (compris.length ? 'Compris : ' + compris.join(', ') + '. ' : '')
       + avis.join(' ')).trim());
     zone.innerHTML = html2 + '</div>';
     if (prixBouge) $('.fg-visit__price', zone).classList.add('is-maj');
@@ -3029,6 +3117,8 @@
       occasion: occasionChoisie(), occasionAutre: occasionChoisie() === 'autre' ? champ('cOccasionAutre').value.replace(/\s+/g, ' ').trim().slice(0, 160) : '' };
     erreurEnvoi(''); rendreRecap();
     aller('recap');
+    // Les offres du creneau retenu, dans leur fenetre, une fois l ecran entre.
+    programmerVitrine();
   });
 
   /* --- Etape 5 : le recapitulatif ------------------------------------------------ */
@@ -3053,8 +3143,8 @@
           lignes.push({ icone: icone(it.activityId), nom: it.name || nomActivite(it.activityId), detail: 'pendant l’attente · ' + nAtt + ' personne' + (nAtt > 1 ? 's' : '') + (it.minutes ? ' · ' + minutesLabel(it.minutes) : ''), aside: '' });
           return;
         }
-        // Chaque partie a son heure, celles qui n en ont pas se placent sur
-        // place avec l equipe ; les groupes d un grand groupe, leur taille et,
+        // Chaque partie a son heure, celles qui n en ont pas se jouent dans la
+        // foulee (l equipe les place) ; les groupes d un grand groupe, leur taille et,
         // pour une activite d une seule partie, leurs departs. Lu dans le plan
         // (vu en prod le 2026-09-23 : « Debut 11:00 », le 2e groupe tu).
         var siennes = partiesDuPlan(cr).filter(function (p) { return p.id === it.activityId; });
@@ -3063,7 +3153,7 @@
         if (total > 1) {
           var heures = siennes.map(function (p) { return p.debut; });
           var reste = total - heures.length;
-          morceaux.push(total + ' parties' + (heures.length ? ' : ' + joindreListe(heures.concat(reste > 0 ? [reste + ' sur place avec l’équipe'] : []), ' et ') : ', sur place avec l’équipe'));
+          morceaux.push(total + ' parties' + (heures.length ? ' : ' + joindreListe(heures.concat(reste > 0 ? [reste + ' dans la foulée'] : []), ' et ') : ', dans la foulée'));
         } else if (it.dayAccess) {
           morceaux.push('accès toute la journée', ageActivite(it.activityId));
         } else {
@@ -3125,8 +3215,120 @@
     r.classList.toggle('is-calme', Boolean(calme));
     r.innerHTML = htmlRecap(true);
   }
-  $('#recap').addEventListener('click', function (e) { surPlus(e, 'recap'); });
+  $('#recap').addEventListener('click', function (e) {
+    if (e.target.closest('[data-vitrine-ouvrir]')) { ouvrirVitrine(); return; }
+    surPlus(e, 'recap');
+  });
   hourZone.addEventListener('click', function (e) { surPlus(e, 'heures'); });
+
+  /* --- Envie d un peu plus ? La fenetre -------------------------------------------- */
+
+  // LA FENETRE DES OFFRES (Movsar, 2026-09-29 : « une pop up genre a la McDo,
+  // mais super quali et belle, avec des images, dans la DA du formulaire »).
+  // Elle s ouvre une fois a l arrivee au recapitulatif quand le serveur a joint
+  // des offres au creneau retenu, et plus jamais pour les memes offres ; le
+  // recapitulatif garde de quoi la rouvrir. « Ajouter » passe par le meme
+  // aller-retour serveur que partout (changerPanier). Embarquee, elle se pose
+  // au milieu de l ecran de la page hote, comme le calendrier.
+  var vitrine = $('#vitrine'), vitrinePanneau = $('#vitrinePanneau'), vitrineCartes = $('#vitrineCartes'), vitrineStatut = $('#vitrineStatut');
+  var vitrineVues = {}, vitrineRetour = null, vitrineMinuteur = 0;
+  function vitrineOuverte() { return Boolean(vitrine && !vitrine.hidden); }
+  function signatureVitrine() { return cleDemande() + '|' + cartesPlus('plus').map(function (c) { return c.id; }).join(','); }
+  // La photo d une offre : celle de l activite ajoutee, ou, pour une formule,
+  // de ce que la formule ajoute (« 30 min d Arcades »).
+  function photoDuPlus(c) { return photo(c.kind === 'formule' ? (c.addsLabel || c.name) : c.patch.activityId); }
+  function carteVitrine(c, i) {
+    var p = photoDuPlus(c);
+    var ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
+    var quoi = motsServeur(c.addsLabel);
+    var note = [c.totalLabel, c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
+    return '<li class="fg-vitrine__carte" style="--i:' + i + '">'
+      + '<span class="fg-vitrine__photo" aria-hidden="true">' + (p ? '<img src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async">' : '<svg><use href="#' + ico + '"/></svg>') + '</span>'
+      + '<span class="fg-vitrine__corps"><b class="fg-vitrine__nom"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>' + esc(nomDuPlus(c)) + '</b>'
+      + (quoi ? '<span class="fg-vitrine__quoi">' + esc(quoi) + '</span>' : '')
+      + (note ? '<small class="fg-vitrine__note">' + esc(note) + '</small>' : '') + '</span>'
+      + '<span class="fg-vitrine__achat"><b class="fg-vitrine__prix">+' + esc(euros(c.deltaTotal)) + '</b>'
+      + '<button type="button" class="fg-btn fg-vitrine__ajouter" data-plus="' + esc(c.id) + '" aria-label="Ajouter ' + esc(nomDuPlus(c)) + ' pour ' + esc(euros(c.deltaTotal)) + ' de plus">Ajouter</button></span></li>';
+  }
+  // `calme` : redessinee apres un refus, ses cartes ne rejouent pas leur entree.
+  function rendreVitrine(calme) {
+    var cartes = cartesPlus('plus');
+    vitrineCartes.innerHTML = cartes.map(carteVitrine).join('');
+    vitrineCartes.dataset.n = String(cartes.length);
+    vitrineCartes.classList.toggle('is-calme', Boolean(calme));
+    var s = plus.statut && plus.statut.ecran === 'recap' && plus.statut.ton !== 'ok' ? plus.statut : null;
+    vitrineStatut.textContent = s ? s.texte : '';
+    vitrineStatut.dataset.ton = s ? s.ton : '';
+    $('.fg-vitrine__non', vitrine).textContent = cartes.length ? 'Non merci' : 'Fermer';
+    placerVitrine(false);
+  }
+  function placerVitrine(demander) {
+    if (!EMBED || !vitrineOuverte()) return;
+    centrerDansLaVue(vitrinePanneau, demander);
+  }
+  // Le reste de la page se tait pendant que la fenetre est ouverte : ni le
+  // clavier ni un lecteur d ecran n y vont.
+  function pageInerte(oui) {
+    $$('.fg-top, .fg-shell').forEach(function (el) { el.inert = oui; });
+  }
+  function ouvrirVitrine() {
+    if (!vitrine || vitrineOuverte() || !cartesPlus('plus').length) return;
+    vitrineVues[signatureVitrine()] = 1;
+    vitrineRetour = doc.activeElement;
+    vitrine.hidden = false;
+    rendreVitrine(false);
+    pageInerte(true);
+    root.classList.add('fg-vitrine-ouverte');
+    placerVitrine(true);
+    vitrinePanneau.focus({ preventScroll: true });
+  }
+  function fermerVitrine(rendreFocus) {
+    if (!vitrineOuverte()) return;
+    vitrine.hidden = true;
+    pageInerte(false);
+    root.classList.remove('fg-vitrine-ouverte');
+    vitrinePanneau.style.top = ''; vitrinePanneau.style.maxHeight = '';
+    if (rendreFocus) {
+      var retour = vitrineRetour && doc.contains(vitrineRetour) && vitrineRetour !== body ? vitrineRetour : $('#t-ok');
+      if (retour) retour.focus({ preventScroll: true });
+    }
+    vitrineRetour = null;
+  }
+  // A l arrivee au recapitulatif, une fois l ecran entre : jamais pendant
+  // l envoi, jamais deux fois pour les memes offres. Tant que la decision
+  // n est pas prise, la fenetre porte data-attendue ; « Valider » l annule.
+  function programmerVitrine() {
+    clearTimeout(vitrineMinuteur);
+    if (vitrine) vitrine.setAttribute('data-attendue', '');
+    vitrineMinuteur = setTimeout(function () {
+      if (vitrine) vitrine.removeAttribute('data-attendue');
+      if (sceneCourante !== 'recap' || confirmBtn.classList.contains('is-busy') || vitrineVues[signatureVitrine()]) return;
+      ouvrirVitrine();
+    }, reduced ? 200 : 750);
+  }
+  function annulerVitrine() {
+    clearTimeout(vitrineMinuteur);
+    if (vitrine) vitrine.removeAttribute('data-attendue');
+  }
+  if (vitrine) {
+    vitrine.addEventListener('click', function (e) {
+      if (e.target.closest('[data-vitrine-fermer]')) { fermerVitrine(true); return; }
+      var b = e.target.closest('[data-plus]');
+      if (!b || b.disabled) return;
+      b.classList.add('is-busy');
+      surPlus(e, 'recap');
+    });
+    // Echap ferme ; Tab tourne dans la fenetre.
+    doc.addEventListener('keydown', function (e) {
+      if (!vitrineOuverte()) return;
+      if (e.key === 'Escape') { e.preventDefault(); fermerVitrine(true); return; }
+      if (e.key !== 'Tab') return;
+      var f = $$('button:not([disabled]), [href]', vitrinePanneau);
+      if (!f.length) { e.preventDefault(); vitrinePanneau.focus(); return; }
+      if (e.shiftKey && (doc.activeElement === f[0] || doc.activeElement === vitrinePanneau)) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && doc.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+    });
+  }
 
   /* --- L envoi -------------------------------------------------------------------- */
 
@@ -3200,6 +3402,7 @@
   });
   confirmBtn.addEventListener('click', function () {
     if (confirmBtn.classList.contains('is-busy')) return;
+    annulerVitrine();
     erreurEnvoi('');
     confirmBtn.classList.add('is-busy'); confirmBtn.setAttribute('aria-busy', 'true');
     fetch('/api/public-reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload()), credentials: 'omit' })

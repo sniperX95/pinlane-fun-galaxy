@@ -28,8 +28,10 @@
 // AVANT que le moindre handler soit charge ; tout appel sortant du processus
 // (e-mail, SMS, IA) est ensuite bloque et compte : il doit y en avoir zero.
 //
-// Trois cas : 4 personnes bowling + laser ; une formule a 6 ; 40 personnes
-// bowling + laser (le moteur scinde le groupe en vagues).
+// Trois cas : 4 personnes bowling + laser ; une formule a 6 ; le plus grand
+// groupe qui reserve encore en ligne, bowling + laser (des le seuil du centre,
+// 31 personnes a Libramont depuis le 2026-09-29, un groupe passe par la
+// demande sur mesure : 40 personnes n arrivaient plus aux activites).
 //
 // Lancement : node scripts/fungalaxy-reservation-post-check.js
 // Contre-preuve (ce script sait-il rougir ?) : FG_POST_CASSE=pax sert un
@@ -70,6 +72,19 @@ function ok(cond, label, detail) {
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 async function attendre(frame, fn, ms, arg) {
   try { await frame.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch (error) { return false; }
+}
+// LA FENETRE « ENVIE D UN PEU PLUS ? » s ouvre seule a l arrivee au
+// recapitulatif quand le serveur a joint des offres au creneau : un client la
+// ferme (« Non merci ») avant de valider, ce parcours aussi. Tant que le
+// formulaire n a pas decide de l ouvrir, elle porte data-attendue.
+async function passerLaVitrine(f) {
+  await attendre(f, () => { const v = document.querySelector('#vitrine'); return !v || !v.hasAttribute('data-attendue'); }, 5000);
+  const ouverte = await f.evaluate(() => { const v = document.querySelector('#vitrine'); return Boolean(v && !v.hidden); });
+  if (ouverte) {
+    await f.click('#vitrine .fg-vitrine__non');
+    await attendre(f, () => document.querySelector('#vitrine').hidden, 3000);
+  }
+  return ouverte;
 }
 
 // Le jour : un samedi a plus de deux semaines (jamais « aujourd hui », dont
@@ -317,6 +332,7 @@ async function unParcours(page, pool, cas) {
   await f.check('#cConsent');
   await f.click('#goRecap');
   await attendre(f, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && document.querySelector('#totalAmount'), 8000);
+  await passerLaVitrine(f);
   const vu = await f.evaluate(() => ({ total: Number(document.querySelector('#totalAmount').dataset.total), texte: document.querySelector('#recap').textContent.replace(/\s+/g, ' ').trim() }));
   if (cas.formuleId) ok(/Début de la visite à \d{2}:\d{2}/.test(vu.texte), `[${cas.nom}] formule : le recapitulatif garde l heure de debut envoyee`, vu.texte.slice(-160));
   const avant = pool.inserted.length;
@@ -388,10 +404,13 @@ async function unParcours(page, pool, cas) {
   const { chromium } = require(path.join(ROOT, 'node_modules', 'playwright-core'));
   const browser = await chromium.launch({ executablePath: EDGE, headless: true });
   try {
+    // Le seuil de la demande sur mesure, tel que le VRAI handler le sert.
+    const seuil = Number(((meta.center || {}).customRequest || {}).fromPax) || 0;
+    const grand = seuil > 1 ? Math.min(40, seuil - 1) : 40;
     const cas = [
       { nom: 'Bowling et laser', ip: '10.0.0.11', date, pax: 4, activites: ['bowling', 'laser_game'], occasion: 'famille' },
       { nom: 'Formule', ip: '10.0.0.12', date, pax: 6, formule: true, occasion: 'anniversaire' },
-      { nom: 'Grand groupe', ip: '10.0.0.13', date, pax: 40, activites: ['bowling', 'laser_game'], occasion: 'autre', precision: 'Départ à la retraite' },
+      { nom: 'Grand groupe', ip: '10.0.0.13', date, pax: grand, activites: ['bowling', 'laser_game'], occasion: 'autre', precision: 'Départ à la retraite' },
     ];
     for (const c of cas) {
       console.log(`\n[${c.nom}] ${c.pax} personnes, ${c.date}`);

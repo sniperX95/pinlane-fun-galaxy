@@ -294,7 +294,8 @@
 // sombre, ou son ancien gris tiendrait 4,5:1), legende (la glose
 // n est plus balisee, donc plus masquable sur telephone), vagues (le plan est
 // ignore, plus personne ne dit qu un groupe se scinde), duree (le total sur
-// place derive d un quart d heure).
+// place derive d un quart d heure), unite (la case du compteur reprend un mot
+// a cote du nombre : page servie cassee).
 //
 // CONTRE-PREUVES DE L ECRAN DES HEURES (tour du 2026-09-23, « tout doit etre
 // explique », revu le 2026-09-24) : soi (un chevauchement avec sa propre
@@ -549,8 +550,29 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // au pire 15 ms reels, la porte du premier ecran. Plafonds : 225 Ko a
 // analyser, 64 Ko a transferer, soit 12,8 et 5,4 Ko de marge : une police
 // (20 Ko compresses) ou une bibliotheque font toujours sauter l un ou l autre.
-const BUDGET_SERVI = 225 * 1024;
-const BUDGET_TRANSFERE = 64 * 1024;
+//
+// REDERIVE LE 2026-09-29 AU SOIR, apres les six retours de Movsar sur le
+// formulaire (la fenetre « Envie d un peu plus ? » a l arrivee au recapitulatif,
+// les parties de laser et les compris de la formule rendus « dans la foulee »
+// dans la visite, le compteur « Nombre de joueurs »). Le depart etait deja a
+// 98,8 % : 222,4 Ko servis et 61,5 Ko transferes au commit 7980f73, un
+// cliquet de nouveau. Poids mort cherche par script avant de toucher au
+// chiffre : les 235 fonctions nommees sont toutes appelees, les 33 symboles
+// SVG tous cites, les 299 classes de la feuille toutes produites sauf une
+// (`.fg-card__meta`, retiree avec une variable jamais relue). Le lot sert
+// 240 324 octets (234,7 Ko) et en transfere 65 905 (64,4 Ko) : +12,3 Ko et
+// +2,9 Ko, du code qui sert. Mesure A/B (meme protocole, 7980f73 contre
+// l arbre, ordre ABBA, 8 tours puis 4) : script +16 a +23 ms au processeur
+// ralenti 6 fois, soit 3 a 4 ms reels ; style et mise en page dans le bruit
+// (mise en page 903 contre 902 ms au premier passage, un meme fichier variant
+// de 535 a 1 117 ms d un tour a l autre) ; les passes de mise en page vont de
+// 6 a 11 pour l une comme pour l autre version, selon l arrivee des polices
+// et des photos. Sur le reseau, 2,9 Ko coutent environ 60 ms a 400 kbit/s.
+// Plafonds : 248 Ko a analyser, 70 Ko a transferer, soit 13,3 et 5,6 Ko de
+// marge : une police (20 Ko compresses) ou une bibliotheque font toujours
+// sauter l un et l autre.
+const BUDGET_SERVI = 248 * 1024;
+const BUDGET_TRANSFERE = 70 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -561,6 +583,19 @@ function ok(cond, label, detail) {
 // Une attente BORNEE qui rend false a l echeance : jamais un vert par defaut.
 async function attendre(page, fn, ms, arg) {
   try { await page.waitForFunction(fn, arg, { timeout: ms, polling: 100 }); return true; } catch (error) { return false; }
+}
+// LA FENETRE « ENVIE D UN PEU PLUS ? » s ouvre seule a l arrivee au
+// recapitulatif quand le serveur a joint des offres au creneau : un client la
+// ferme (« Non merci ») avant de valider, ce parcours aussi. Tant que le
+// formulaire n a pas decide de l ouvrir, elle porte data-attendue.
+async function passerLaVitrine(f) {
+  await attendre(f, () => { const v = document.querySelector('#vitrine'); return !v || !v.hasAttribute('data-attendue'); }, 5000);
+  const ouverte = await f.evaluate(() => { const v = document.querySelector('#vitrine'); return Boolean(v && !v.hidden); });
+  if (ouverte) {
+    await f.click('#vitrine .fg-vitrine__non');
+    await attendre(f, () => document.querySelector('#vitrine').hidden, 3000);
+  }
+  return ouverte;
 }
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 function euros(n) {
@@ -622,7 +657,7 @@ const MUTATIONS = {
   calendrier: ["(off ? 'disabled' : '')", "''"],
   serre: ["q.set('softReserve', '1');", 'void 0;'],
   option: ['state.options[a.id][o.cle] = o.valeur;', 'void 0;'],
-  parties: ['      if (!(total > 1) || !posees || posees >= total) return;', '      return;'],
+  parties: ["      if (!(total >= 1) || posees >= total || (!posees && id !== 'laser_game')) return;", '      return;'],
   pax: ["paxInput.style.width = (n + 0.3) + 'ch';", "paxInput.style.width = '9ch';"],
   fil: ["(i === actif && !fin ? '<span class=\"fg-steps__of\"", "(false ? '<span class=\"fg-steps__of\""],
   mouvement: ["if (sens === 'avance' && i === actif) geste = ' is-filling';", ''],
@@ -779,6 +814,9 @@ const MUTATIONS_HTML = {
   modifier: [
     ['data-goto="date">le jour ou le groupe</button>', 'data-goto="recap">le jour ou le groupe</button>'],
   ],
+  unite: [
+    ['value="4" autocomplete="off">', 'value="4" autocomplete="off"><span class="fg-stepper__unit" aria-hidden="true">joueurs</span>'],
+  ],
 };
 // Les contre-preuves de la page /reserver/libramont (fungalaxy-site.html).
 const MUTATIONS_SITE = {
@@ -914,6 +952,8 @@ function lignePlan(reponse) {
       prix: Number(i.price) || 0, sait: i.priceKnown === true || (i.priceKnown !== false && Number(i.price) > 0),
     })),
     libres: items.filter((i) => !planifies.has(i.activityId)).map((i) => i.name),
+    // Le temps que les parties de laser sans heure prennent a la suite.
+    suite: Math.max(0, Math.round(Number(plan.laserPassPlan && plan.laserPassPlan.followOnMinutes) || 0)),
     fin: slot.visitEndTime || plan.endTime || '',
     fermeture: Boolean(slot.visitEndsAtClose),
     manque: Number(slot.visitShortfallMinutes) || 0,
@@ -935,7 +975,7 @@ async function lireEcranPlan(page) {
     return {
       arrivee: txt(p.querySelector('.fg-visit__step--in > b')),
       arriveeDetail: txt(p.querySelector('.fg-visit__step--in > small')),
-      etapes: Array.from(p.querySelectorAll('.fg-visit__step:not(.fg-visit__step--in):not(.fg-visit__step--free):not(.fg-visit__step--onsite):not(.fg-visit__step--out)')).map((li) => Object.assign(etape(li), { bouge: li.classList.contains('is-moved') })),
+      etapes: Array.from(p.querySelectorAll('.fg-visit__step:not(.fg-visit__step--in):not(.fg-visit__step--free):not(.fg-visit__step--onsite):not(.fg-visit__step--incl):not(.fg-visit__step--out)')).map((li) => Object.assign(etape(li), { bouge: li.classList.contains('is-moved') })),
       libres: Array.from(p.querySelectorAll('.fg-visit__step--free i')).map((i) => txt(i)),
       surplace: Array.from(p.querySelectorAll('.fg-visit__step--onsite')).map(etape),
       finEtape: fin ? etape(fin) : null,
@@ -1081,13 +1121,16 @@ function visiteAttendue(o) {
   });
   if (!o.parties.length && !o.libres.length && !o.arrivee) etapes.push({ t: o.time, nom: 'Début', detail: '', voix: '' });
   const surPlace = [];
+  // LES PARTIES SANS HEURE, DANS LA FOULEE (Movsar, 2026-09-29) : sans heure,
+  // placees par l equipe, avec le temps qu elles prennent a la suite.
   o.items.forEach((it) => {
     const posees = o.parties.filter((x) => x.id === it.id).length;
-    if (!(it.games > 1) || !posees || posees >= it.games) return;
+    if (!(it.games >= 1) || posees >= it.games || (!posees && it.id !== 'laser_game')) return;
     const reste = [];
     for (let k = posees + 1; k <= it.games; k += 1) reste.push(String(k));
-    const quelles = `partie${reste.length > 1 ? 's' : ''} ${joindreQa(reste, ' et ')} sur ${it.games}`;
-    surPlace.push({ t: 'sur place', nom: `${nom(it.id)} · ${quelles}`, detail: 'à placer sur place avec l’équipe', voix: `${nom(it.id)}, ${quelles}, à placer sur place avec l’équipe` });
+    const quelles = it.games === 1 ? '1 partie' : `partie${reste.length > 1 ? 's' : ''} ${joindreQa(reste, ' et ')} sur ${it.games}`;
+    const detail = `${reste.length > 1 ? 'placées' : 'placée'} sur place par l’équipe${it.id === 'laser_game' && o.suite ? ` · environ ${dureeExacteQa(o.suite)}` : ''}`;
+    surPlace.push({ t: '', nom: `${nom(it.id)} · ${quelles}`, detail, voix: `${nom(it.id)}, ${quelles}, ${detail}` });
   });
   const premiere = o.parties[0];
   const avance = premiere && o.arrivee ? minutesEntreQa(o.arrivee, premiere.debut) : 0;
@@ -1396,7 +1439,7 @@ function ecartsParties(p, a, d, laserParts) {
     const h = heures[k] || '';
     const plage = h ? plageQa(d, id, h) : '';
     const fin = plage ? plage.split(' à ').pop() : '';
-    attendus.push({ texte: `Partie ${k + 1} : ${h ? `${h}${fin ? ` → ${heureAffichee(fin)}` : ''}${n ? '' : ' proposée'}` : 'sur place avec l’équipe'}`, classe: h ? (n ? 'is-set' : 'is-proposed') : 'is-free' });
+    attendus.push({ texte: `Partie ${k + 1} : ${h ? `${h}${fin ? ` → ${heureAffichee(fin)}` : ''}${n ? '' : ' proposée'}` : 'dans la foulée'}`, classe: h ? (n ? 'is-set' : 'is-proposed') : 'is-free' });
   }
   if (JSON.stringify(p.parts.items) !== JSON.stringify(attendus)) e.push(`${id}: parties ${JSON.stringify(p.parts.items)} vs ${JSON.stringify(attendus)}`);
   return e;
@@ -1458,13 +1501,13 @@ function ecartsRaisons(p, a, actifs, propose, d, etatDe, parPeriode, multi, part
         }
         if (etat === 'shift') {
           // L activite qui bougerait, sa plage reelle, et son SORT : une
-          // partie de laser parmi d autres posees passe sur place avec
-          // l equipe, le reste se decale avant ou apres.
+          // partie de laser parmi d autres posees passe dans la foulee, sans
+          // heure fixe, le reste se decale avant ou apres.
           const autre = ancres.find((y) => y.activityId === v.conflict.activityId);
           const nomAutre = String((autre && autre.label) || v.conflict.activityId).toLowerCase();
           const plage = plageQa(d, v.conflict.activityId, v.conflict.time);
           const quand = plage ? `(${plage})` : `de ${v.conflict.time}`;
-          const sort = v.conflict.activityId === 'laser_game' && parts.length > 1 && rangQa(parts, v.conflict.time) ? 'qui passe sur place avec l’équipe.' : 'qui se décale avant ou après.';
+          const sort = v.conflict.activityId === 'laser_game' && parts.length > 1 && rangQa(parts, v.conflict.time) ? 'qui passe dans la foulée, sans heure fixe.' : 'qui se décale avant ou après.';
           if (basse.indexOf(nomAutre) < 0 || r.texte.indexOf(quand) < 0 || !r.texte.endsWith(sort)) e.push(`${id} ${h}: « ${r.texte} » ne dit pas « ${nomAutre} », « ${quand} » et « ${sort} »`);
         }
       });
@@ -1793,7 +1836,7 @@ async function main() {
     // Les six photos tirees au chargement : le parcours doit montrer
     // exactement celles-ci (verifie a l ecran final).
     const photosDepart = await lirePhotosEcrans(page);
-    ok(montage.pax === '4 personnes' && montage.saisie === '4', '[A] le groupe demarre a 4 personnes, le nombre est dans le champ', `${montage.pax} / « ${montage.saisie} »`);
+    ok(montage.pax === '4 joueurs' && montage.saisie === '4', '[A] le groupe demarre a 4 joueurs, le nombre est dans le champ', `${montage.pax} / « ${montage.saisie} »`);
     const dernierMot = String(montage.mots[montage.mots.length - 1] || '').trim();
     const titrePonctue = /[?!]$/.test(dernierMot);
     ok(montage.mots.length >= 2
@@ -1944,7 +1987,7 @@ async function main() {
     // LE GROUPE SE TAPE.
     await page.fill('#paxInput', '999');
     await page.press('#paxInput', 'Enter');
-    ok(await attendre(page, () => document.querySelector('#paxInput').value === '240' && document.querySelector('#paxOut').textContent.trim() === '240 personnes' && document.querySelector('#paxPlus').disabled, 3000), '[A2] un nombre tape au-dela de 240 est ramene a 240, le « + » se desactive');
+    ok(await attendre(page, () => document.querySelector('#paxInput').value === '240' && document.querySelector('#paxOut').textContent.trim() === '240 joueurs' && document.querySelector('#paxPlus').disabled, 3000), '[A2] un nombre tape au-dela de 240 est ramene a 240, le « + » se desactive');
     const plafond = await page.evaluate(() => { const h = document.querySelector('#paxHint'); const a = h.querySelector('a[href^="tel:"]'); return { texte: h.textContent.replace(/\s+/g, ' ').trim(), tel: a ? a.getAttribute('href') : '', live: h.getAttribute('aria-live'), vu: getComputedStyle(h).display !== 'none', encart: !document.getElementById('smSeuil').hidden, alerte: h.classList.contains('is-warn') }; });
     // LA DONNEE DU CENTRE DECIDE (2026-09-28). Avec un seuil de demande sur
     // mesure (Libramont : 31), 240 personnes passent par la demande : l encart
@@ -1961,12 +2004,12 @@ async function main() {
     }
     await page.fill('#paxInput', '6');
     await page.press('#paxInput', 'Enter');
-    ok(await attendre(page, () => document.querySelector('#paxInput').value === '6' && document.querySelector('#paxOut').textContent.trim() === '6 personnes', 3000), '[A2] taper 6 donne 6 personnes');
+    ok(await attendre(page, () => document.querySelector('#paxInput').value === '6' && document.querySelector('#paxOut').textContent.trim() === '6 joueurs', 3000), '[A2] taper 6 donne 6 joueurs');
     ok(await attendre(page, () => { const h = document.querySelector('#paxHint'); return !/240/.test(h.textContent) && !h.classList.contains('is-warn'); }, 3000), '[A2] redescendu a 6, la phrase du plafond s efface');
     await page.click('#paxMinus');
-    ok(await attendre(page, () => document.querySelector('#paxInput').value === '5' && document.querySelector('#paxOut').textContent.trim() === '5 personnes', 3000), '[A2] le « - » suit le nombre tape : 5');
+    ok(await attendre(page, () => document.querySelector('#paxInput').value === '5' && document.querySelector('#paxOut').textContent.trim() === '5 joueurs', 3000), '[A2] le « - » suit le nombre tape : 5');
     await page.click('#paxPlus');
-    ok(await attendre(page, () => document.querySelector('#paxInput').value === '6' && document.querySelector('#paxOut').textContent.trim() === '6 personnes', 3000), '[A2] le « + » aussi : 6 personnes');
+    ok(await attendre(page, () => document.querySelector('#paxInput').value === '6' && document.querySelector('#paxOut').textContent.trim() === '6 joueurs', 3000), '[A2] le « + » aussi : 6 joueurs');
 
     // =====================================================================
     console.log('');
@@ -2182,7 +2225,9 @@ async function main() {
       // ici est la phrase de CETTE reponse.
       if (o) {
         await attendre(page, () => ((document.querySelector('#fgLive') || {}).textContent || '').indexOf('Votre visite') === 0, 5000);
-        const voix = await page.evaluate(() => document.querySelector('#fgLive').textContent);
+        // Les durees « environ 30 min » sont insecables a l ecran : la voix
+        // se compare espaces ordinaires.
+        const voix = (await page.evaluate(() => document.querySelector('#fgLive').textContent)).replace(/\u00a0/g, ' ');
         const va = visiteAttendue(o);
         if (va.surPlace.length) vuSurPlace += 1;
         const absents = [o.arrivee, ...va.etapes.map((x) => x.voix), ...va.surPlace.map((x) => x.voix), o.fin ? (o.fermeture ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(o.fin) : '', o.prix > 0 ? euros(o.prix) : '', o.fermeture && o.manque > 0 ? `il manque ${dureeApprox(o.manque)}` : ''].filter((x) => x && voix.indexOf(x) < 0);
@@ -2473,6 +2518,7 @@ async function main() {
     ok(await page.evaluate(() => !document.querySelector('#contactForm [aria-invalid="true"]')), '[D] la notation +32 (0) est acceptee');
     await page.click('#goRecap');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000), '[D] rempli, il passe au recapitulatif');
+    await passerLaVitrine(page);
 
     // =====================================================================
     console.log('');
@@ -2508,7 +2554,7 @@ async function main() {
       ecartsRecap.map((k) => `${k}: ${JSON.stringify((recapContact || {})[k])} vs ${JSON.stringify(recapFinal[k])}`).join(' ; ').slice(0, 300) || `${recapFinal.items.length} activites, ${recapFinal.montant}`);
     ok(recap.items.map((i) => i.nom).join(' + ') === PROGRAMME.map((p) => nomDe(p.activityId)).join(' + ') && /2 parties/.test((recap.items[1] || {}).detail || ''), '[E] les quatre activites sont listees dans l ordre choisi, le laser avec ses 2 parties', recap.items.map((i) => `${i.nom} (${i.detail})`).join(' | '));
     const partiesO6 = new Set(o6.blocs.filter((b) => b.id === 'laser_game').map((b) => b.partie)).size;
-    ok(/sur place avec l’équipe/.test((recap.items[1] || {}).detail || '') === (partiesO6 < 2), '[E] la partie de laser que le plan ne pose pas est annoncee « sur place avec l equipe »', `${partiesO6}/2 posee(s) : « ${(recap.items[1] || {}).detail} »`);
+    ok(/dans la foulée/.test((recap.items[1] || {}).detail || '') === (partiesO6 < 2), '[E] la partie de laser que le plan ne pose pas est annoncee « dans la foulee »', `${partiesO6}/2 posee(s) : « ${(recap.items[1] || {}).detail} »`);
     const debutDe = (id) => (o6.blocs.find((b) => b.id === id) || {}).t;
     ok((recap.items[0] || {}).aside === `Début${debutDe('bowling')}` && (recap.items[1] || {}).aside === `Début${debutDe('laser_game')}` && recap.items.slice(2).every((i) => i.aside === 'à votre rythme'), '[E] chaque activite a creneau porte l heure du plan, les libres « a votre rythme »', recap.items.map((i) => i.aside).join(' | '));
     const ligneArrivee = recap.lignes.find((l) => /^Arrivée conseillée/.test(l)) || '';
@@ -2539,6 +2585,7 @@ async function main() {
     ok(JSON.stringify(garde) === JSON.stringify(['Test', 'qa@example.com', true]), '[E] revenir modifier ne vide pas les coordonnees', JSON.stringify(garde));
     await page.click('#goRecap');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000) && ((await lireRecap(page, '#recap')) || {}).total === o6.prix, '[E] et le recapitulatif revient identique (meme total)');
+    await passerLaVitrine(page);
     const reponsePose =page.waitForResponse((r) => r.url().indexOf('/api/public-reservations') >= 0 && r.request().method() === 'POST', { timeout: 15000 }).catch(() => null);
     await page.click('#confirmBtn');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 10000), '[E] la confirmation mene a l ecran final');
@@ -2650,6 +2697,7 @@ async function main() {
     await f.check('#cConsent');
     await f.click('#goRecap');
     ok(await attendre(f, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000), '[F] recap atteint dans le cadre');
+    await passerLaVitrine(f);
     const motRecap = await f.evaluate(() => ((document.querySelector('#recap .fg-recap__note') || {}).textContent || '').replace(/\s+/g, ' ').trim());
     ok(motRecap === 'Votre mot pour l’équipe : « Anniversaire »', '[F] le recapitulatif reprend le mot pour l equipe, tel qu il partira', `« ${motRecap} »`);
     await f.click('#confirmBtn');
@@ -2809,6 +2857,7 @@ async function main() {
     await pageTel.tap('#goRecap');
     const recapPose = () => attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering') && document.querySelector('.fg-scene[data-scene="recap"]').getAnimations({ subtree: true }).every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity), 6000);
     ok(await recapPose(), '[G] ecran 5 atteint');
+    await passerLaVitrine(pageTel);
     const autreJour = plusJours(mock.DATE, 7);
     let modeEnvoi = '409';
     await pageTel.route('**/api/public-reservations', (r) => (modeEnvoi === 'coupure' ? r.abort() : r.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, message: 'x', alternatives: [{ date: autreJour, startTime: '18:00' }] }) })));
@@ -2828,6 +2877,7 @@ async function main() {
     ok(await attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000), '[G] « vos coordonnees » ramene a l ecran 4');
     await pageTel.tap('#goRecap');
     ok(await recapPose() && await pageTel.evaluate(() => document.querySelector('#confirmErr').hidden), '[G] revenu par « Modifier », l ancienne erreur a disparu');
+    await passerLaVitrine(pageTel);
     await pageTel.tap('#confirmBtn');
     ok(await attendre(pageTel, () => !document.querySelector('#confirmErr').hidden && document.querySelector('#confirmErr [data-rechoisir]'), 4000), '[G] (prerequis) le 409 revient, avec « Choisir d autres horaires »');
     const redemande = pageTel.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
@@ -2838,6 +2888,7 @@ async function main() {
     await attendre(pageTel, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 6000);
     await pageTel.tap('#goRecap');
     await recapPose();
+    await passerLaVitrine(pageTel);
     modeEnvoi = 'coupure';
     await pageTel.tap('#confirmBtn');
     const telCentre = ((meta.center || {}).contact || {}).phone;
@@ -3054,6 +3105,7 @@ async function main() {
     await pageV.check('#cConsent');
     await pageV.click('#goRecap');
     ok(await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 6000), '[I] la formule va jusqu au recapitulatif');
+    await passerLaVitrine(pageV);
     const quiF = await pageV.evaluate(() => (Array.from(document.querySelectorAll('#recap p.fg-recap__detail')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((t) => /Au nom de/.test(t)) || ''));
     ok(Boolean(heureF) && quiF.indexOf(`Début de la visite à ${heureF}Au nom de Formule Debut`) === 0, '[I] une formule garde au recapitulatif l heure de debut envoyee', `« ${quiF} » attendait le debut a ${heureF}`);
     // Retour aux heures de la FORMULE 1 par le lien du recapitulatif : la
@@ -3206,14 +3258,18 @@ async function main() {
     ok(await attendre(pageJ, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000), '[J] le catalogue est lu');
 
     // LE COMPTEUR. La regle : le champ prend la largeur de SON nombre, et
-    // l encre (le nombre plus son unite) tombe au milieu de la case. Avant, le
-    // champ faisait 3,2 em avec un texte cale a droite : les deux em de vide
-    // restaient A GAUCHE du chiffre.
+    // l encre tombe au milieu de la case. Avant, le champ faisait 3,2 em avec
+    // un texte cale a droite : les deux em de vide restaient A GAUCHE du
+    // chiffre. Depuis le 2026-09-29 la case ne porte QUE le nombre (Movsar :
+    // « met pas personne dans la case laisse juste le chiffre modifiable et le
+    // + et - ») : l encre, c est le champ seul, et rien d autre ne s y voit.
     const mesurerPax = () => pageJ.evaluate(() => {
-      const val = document.querySelector('.fg-stepper__value').getBoundingClientRect();
-      const inp = document.querySelector('.fg-stepper__input');
+      const val = document.querySelector('#paxValue').getBoundingClientRect();
+      const inp = document.querySelector('#paxInput');
       const ri = inp.getBoundingClientRect();
-      const ru = document.querySelector('.fg-stepper__unit').getBoundingClientRect();
+      // Tout ce que la case montre en plus du champ (le texte pour lecteur
+      // d ecran reste, il ne se voit pas).
+      const enTrop = Array.from(document.querySelectorAll('#paxValue > *')).filter((e) => e !== inp && !e.classList.contains('sr-only') && e.getBoundingClientRect().width > 0).map((e) => e.className || e.tagName);
       // La largeur d un chiffre, mesuree dans la POLICE du champ : c est
       // l unite « ch » que le script utilise. Le raccourci `font` ne sert a
       // RIEN ici : sur un champ dont `font-variant-numeric` n est pas normal,
@@ -3234,13 +3290,14 @@ async function main() {
         chiffres: String(inp.value).length,
         largeur: ri.width,
         ch,
-        ecart: ((Math.min(ri.left, ru.left) + Math.max(ri.right, ru.right)) / 2) - ((val.left + val.right) / 2),
+        enTrop,
+        etiquette: document.querySelector('label[for="paxInput"]').textContent.trim(),
+        ecart: ((ri.left + ri.right) / 2) - ((val.left + val.right) / 2),
         // LA HAUTEUR AUSSI (Movsar, 2026-09-23, capture a l appui : « le truc
         // pour les personnes c est super mal cadre »). Le tour precedent ne
         // mesurait que la largeur : le nombre etait centre de gauche a droite,
-        // et COLLE EN HAUT de sa case. La ligne « nombre + personnes » est
-        // l union des deux boites ; son milieu doit etre celui de la case.
-        ecartV: ((Math.min(ri.top, ru.top) + Math.max(ri.bottom, ru.bottom)) / 2) - ((val.top + val.bottom) / 2),
+        // et COLLE EN HAUT de sa case. Son milieu doit etre celui de la case.
+        ecartV: ((ri.top + ri.bottom) / 2) - ((val.top + val.bottom) / 2),
       };
     });
     for (const [n, largeurFenetre] of [[1, 1440], [12, 768], [240, 375]]) {
@@ -3255,7 +3312,9 @@ async function main() {
       ok(Math.abs(m.ecart) <= 1,
         `[J] et son encre tombe au milieu de la case en largeur (ecart ${Math.round(m.ecart * 10) / 10} px)`);
       ok(Math.abs(m.ecartV) <= 1.5,
-        `[J] ET en hauteur : la ligne « nombre + personnes » est centree dans sa case (ecart ${Math.round(m.ecartV * 10) / 10} px)`);
+        `[J] ET en hauteur : le nombre est centre dans sa case (ecart ${Math.round(m.ecartV * 10) / 10} px)`);
+      ok(m.enTrop.length === 0 && m.etiquette === 'Nombre de joueurs',
+        `[J] la case ne montre que le nombre, sous « Nombre de joueurs »`, m.enTrop.length ? `en trop : ${m.enTrop.join(', ')}` : m.etiquette);
     }
     await pageJ.setViewportSize({ width: 1440, height: 900 });
     await pageJ.fill('#paxInput', '40');
@@ -3444,6 +3503,7 @@ async function main() {
     await pageJ.check('#cConsent');
     await pageJ.click('#goRecap');
     ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 6000), '[J] ecran 5 atteint');
+    await passerLaVitrine(pageJ);
     const ligneJ = await pageJ.evaluate(() => (Array.from(document.querySelectorAll('#recap .fg-recap__row')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((l) => /^Arrivée conseillée/.test(l)) || ''));
     ok(ligneJ.indexOf(`${attendueDuree} sur place`) >= 0,
       '[J] et le recapitulatif annonce exactement la meme duree', `« ${ligneJ} » attendait « ${attendueDuree} sur place »`);
@@ -3887,6 +3947,7 @@ async function main() {
     await lisibleEcran('coordonnees', false);
     await pl.click('#goRecap');
     await attendre(pl, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 8000);
+    await passerLaVitrine(pl);
     await lisibleEcran('recapitulatif', false);
     await pl.click('#confirmBtn');
     ok(await attendre(pl, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000), '[L] la reservation part, l ecran final s ouvre');
@@ -4022,6 +4083,7 @@ async function main() {
       await fm.check('#cConsent');
       await fm.click('#goRecap');
       await attendre(fm, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 5000);
+      await passerLaVitrine(fm);
       // UNE DEMANDE A VERIFIER : la reponse est forcee sur ce que le vrai
       // handler rend quand l equipe doit valider (api/public-reservations.js :
       // validationStatus staff_review, human_review_required), avec l accuse

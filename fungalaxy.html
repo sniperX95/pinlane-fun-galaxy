@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260929b">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260929c">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -39,6 +39,8 @@
     <symbol id="o-ecole" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></symbol>
     <symbol id="o-evg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 22h8"/><path d="M12 11v11"/><path d="M5 3h14l-1 8a6 6 0 0 1-12 0z"/></symbol>
     <symbol id="o-autre" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="a-boisson" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 9h22l-2.6 31.2A3 3 0 0127.4 43H16.6a3 3 0 01-3-2.8z"/><path d="M33 15h3.5a5 5 0 010 10H32"/><path d="M12.4 19h19.2"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
     <!-- Les activites -->
     <symbol id="i-matin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v3M4.9 7.9l2.1 2.1M2 15h3M19 15h3M17 10l2.1-2.1M7 18a5 5 0 0 1 10 0M3 21h18"/></symbol>
@@ -110,15 +112,14 @@
             <span class="fg-field__hint fg-field__hint--day" id="dayHint" aria-live="polite"></span>
           </div>
           <div class="fg-field fg-rise" style="--i:2">
-            <label class="fg-field__label" for="paxInput">Vous êtes combien ?</label>
-            <div class="fg-stepper" role="group" aria-label="Nombre de personnes">
-              <button type="button" class="fg-stepper__btn" id="paxMinus" aria-label="Une personne de moins">&minus;</button>
+            <label class="fg-field__label" for="paxInput">Nombre de joueurs</label>
+            <div class="fg-stepper" role="group" aria-label="Nombre de joueurs">
+              <button type="button" class="fg-stepper__btn" id="paxMinus" aria-label="Un joueur de moins">&minus;</button>
               <div class="fg-stepper__value" id="paxValue">
                 <input class="fg-stepper__input" id="paxInput" type="number" inputmode="numeric" min="1" max="240" step="1" value="4" autocomplete="off">
-                <span class="fg-stepper__unit" aria-hidden="true">personnes</span>
-                <output id="paxOut" class="sr-only" aria-live="polite" for="paxInput">4 personnes</output>
+                <output id="paxOut" class="sr-only" aria-live="polite" for="paxInput">4 joueurs</output>
               </div>
-              <button type="button" class="fg-stepper__btn" id="paxPlus" aria-label="Une personne de plus">+</button>
+              <button type="button" class="fg-stepper__btn" id="paxPlus" aria-label="Un joueur de plus">+</button>
             </div>
             <span class="fg-field__hint" id="paxHint" aria-live="polite"></span>
           </div>
@@ -303,7 +304,22 @@
 <!-- Le voile derriere la fenetre du calendrier, sur telephone (feuille :
      .fg-cal__voile). Le toucher referme le calendrier. -->
 <div class="fg-cal__voile" id="dayVoile" aria-hidden="true" hidden></div>
+<!-- ENVIE D UN PEU PLUS ? La fenetre des offres, a l arrivee au
+     recapitulatif (feuille : .fg-vitrine, script : ouvrirVitrine). Les offres
+     viennent du serveur, jointes au creneau retenu. -->
+<div class="fg-vitrine" id="vitrine" hidden>
+  <div class="fg-vitrine__voile" data-vitrine-fermer></div>
+  <div class="fg-vitrine__panneau" id="vitrinePanneau" role="dialog" aria-modal="true" aria-labelledby="vitrineTitre" aria-describedby="vitrineSous" tabindex="-1">
+    <button type="button" class="fg-vitrine__x" data-vitrine-fermer aria-label="Fermer"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+    <p class="fg-vitrine__eyebrow">Avant de valider</p>
+    <h2 class="fg-vitrine__titre" id="vitrineTitre">Envie d’un peu <em>plus</em>&nbsp;?</h2>
+    <p class="fg-vitrine__sous" id="vitrineSous">Vos horaires ne bougent pas.</p>
+    <ul class="fg-vitrine__cartes" id="vitrineCartes"></ul>
+    <p class="fg-plus__statut fg-vitrine__statut" id="vitrineStatut" role="status"></p>
+    <div class="fg-vitrine__pied"><button type="button" class="fg-btn fg-btn--ghost fg-vitrine__non" data-vitrine-fermer>Non merci</button></div>
+  </div>
+</div>
 
-<script src="/assets/fungalaxy-booking.js?v=20260929b" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260929c" defer></script>
 </body>
 </html>

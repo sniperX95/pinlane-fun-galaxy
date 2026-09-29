@@ -170,6 +170,37 @@ async function serveurA() {
     'la ligne d attente garde son tarif et ses participants', JSON.stringify(ligne && { id: ligne.activityId, p: ligne.participants, prix: ligne.price }));
   ok(cartesAttente(r1).length === 0, 'une offre acceptee eteint les autres : le groupe qui attend est occupe', JSON.stringify(cartesAttente(r1).map((c) => c.id)));
 
+  // LE TEMPS TOTAL DES AUTRES CARTES (campagne du 2026-09-29) : ce qui se joue
+  // pendant l attente ne compte que pour son debordement, comme la fin de
+  // visite. Le minigolf des 8 qui attendent 1 h faisait dire « au lieu de
+  // 3h45 » a une visite de 3 h 10 sur place.
+  const tempsCourant = (reponse) => {
+    const DUREE = /au lieu de (?:(\d+)h(\d\d)?|(\d+) min)$/;
+    const c = ((reponse && reponse.complements) || []).find((x) => x.kind !== 'attente' && DUREE.test(x.totalLabel || ''));
+    const m = c ? DUREE.exec(c.totalLabel) : null;
+    return m ? { id: c.id, minutes: m[3] ? Number(m[3]) : Number(m[1]) * 60 + Number(m[2] || 0), libelle: c.totalLabel } : null;
+  };
+  const deborde = (carte) => Math.max(0, carte.attente.dureeOffre - carte.attente.minutes);
+  const tempsA = async (api, programme, pax, carte) => ({
+    sans: tempsCourant(await appel(api, programme, pax)),
+    avec: tempsCourant(await appel(api, [...programme, { activityId: carte.patch.activityId, waitOffer: true, participants: carte.patch.options.participants }], pax)),
+    deborde: deborde(carte),
+  });
+  const mesure = (t) => Boolean(t && t.sans && t.avec);
+  const tempsJuste = (t) => mesure(t) && t.avec.minutes === t.sans.minutes + t.deborde;
+  // Le Fun Run a 12 : les derniers attendent 30 min, et le centre offre une
+  // activite qui tient dans ce temps et une qui le depasse. Le duckpin a 20 n a
+  // aucune autre carte tarifee dans le catalogue du harnais : rien a lire.
+  const offresFun = cartesAttente(await appel(availability, FUN, 12));
+  const tient = offresFun.find((c) => deborde(c) === 0) || null;
+  const longue = offresFun.find((c) => deborde(c) > 0) || null;
+  const tTient = tient ? await tempsA(availability, FUN, 12, tient) : null;
+  ok(Boolean(tient) && tempsJuste(tTient),
+    'une offre qui tient dans l attente n allonge pas le temps total des autres cartes', JSON.stringify(tient && { offre: tient.id, ...tient.attente, ...tTient }));
+  const tFun = longue ? await tempsA(availability, FUN, 12, longue) : null;
+  ok(Boolean(longue) && tempsJuste(tFun),
+    'une offre plus longue que l attente allonge le temps total de son seul debordement', JSON.stringify(longue && { offre: longue.id, ...longue.attente, ...tFun }));
+
   const demande = (pax) => reservationRequest.normalizeReservationRequest({
     centerId: CENTRE, date: DATE, startTime: s0.time || '10:00', pax, name: 'Groupe Test', phone: '+32470000000', email: 'groupe@example.org', channel: 'public', type: 'visite',
     program: [...DUCK, { activityId: premiere.patch.activityId, waitOffer: true, participants: Math.min(premiere.pax, pax) }],
@@ -234,6 +265,17 @@ async function serveurA() {
       async () => { charger(); return rangerEtRelire(); });
     ok(!(sansBase.attente && sansBase.apres === sansBase.avant), 'sans le drapeau d attente dans le filtre de la base, la ligne se relit au catalogue : ce gate ROUGIRAIT', JSON.stringify(sansBase));
   } catch (error) { ok(false, 'contre-epreuve du filtre de la base montable', error.message); }
+  const regleDuTemps = '  return joue + Math.max(0, pendantLAttente - creux);\n';
+  try {
+    const enEntier = tient ? await avecMutation('lib/booking-complements.js', regleDuTemps, '  return joue + pendantLAttente;\n',
+      async () => { const m = charger(); return tempsA(m.availability, FUN, 12, tient); }) : null;
+    ok(mesure(enEntier) && !tempsJuste(enEntier), 'compte en entier, l offre d attente gonfle le temps total des autres cartes : ce gate ROUGIRAIT', JSON.stringify(enEntier));
+  } catch (error) { ok(false, 'contre-epreuve du temps compte en entier montable', error.message); }
+  try {
+    const ignoree = longue ? await avecMutation('lib/booking-complements.js', regleDuTemps, '  return joue;\n',
+      async () => { const m = charger(); return tempsA(m.availability, FUN, 12, longue); }) : null;
+    ok(mesure(ignoree) && !tempsJuste(ignoree), 'ignoree, l offre plus longue que l attente n allonge plus rien : ce gate ROUGIRAIT', JSON.stringify(ignoree));
+  } catch (error) { ok(false, 'contre-epreuve du debordement montable', error.message); }
   return { grand, premiere };
 }
 

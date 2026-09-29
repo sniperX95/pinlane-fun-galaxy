@@ -345,9 +345,23 @@ if (/token:\s*session\.token/.test(staffAuthApi)) {
 }
 
 const secretPattern = new RegExp('re_[A-Za-z0-9_]{20,}|Admin' + 'Fun');
-const mojibakePattern = /[\u00C2\u00C3\uFFFD]|\u00E2[\u0080-\u00BF\u20AC]|ï¿½/;
+// UN ACCIDENT D ENCODAGE, PAS UNE LETTRE. Un texte UTF-8 relu en Windows-1252
+// donne « Ã© », « Â· », « â€™ » : un Â ou un Ã suivi d autre chose qu une
+// minuscule (le second octet d un caractere UTF-8 n est jamais de l ASCII), un
+// â suivi d un octet de continuation, un caractere de remplacement. « Âge » et
+// « Âme » (majuscule accentuee du francais, suivie d une minuscule) n en sont
+// pas : l ancienne regle refusait « Âge des participants » (2026-09-29).
+const mojibakePattern = /[\u00C2\u00C3](?![a-z])|\uFFFD|\u00E2[\u0080-\u00BF\u20AC]|ï¿½/;
 const hiddenOpsNoise = /roadmap_only|Prototype actif|A brancher|SMS a brancher|reconnecting/i;
-const mojibakeStrictPattern = /[\u00C2\u00C3\uFFFD]|\u00E2[\u0080-\u00BF\u20AC]|ï¿½|Ã¯Â¿Â½/;
+const mojibakeStrictPattern = /[\u00C2\u00C3](?![a-z])|\uFFFD|\u00E2[\u0080-\u00BF\u20AC]|ï¿½|Ã¯Â¿Â½/;
+// La regle se prouve avant de juger les fichiers : elle mord sur de vrais
+// accidents d encodage et laisse passer les majuscules accentuees.
+const mojibakeAccidents = ['Caf\u00C3\u00A9', '\u00C3\u2030t\u00C3\u00A9', '\u00C3\u00A0 demain', '10\u00C2\u00B712', '10\u00C2\u00A0h', 'l\u00E2\u20AC\u2122\u00C3\u00A9quipe', 'prix\uFFFD'];
+const mojibakeFrancais = ['\u00C2ge des participants', '\u00C2ges', '\u00C2me', '\u00C0 bient\u00F4t', '\u00C7a marche', 'l\u2019\u00E9quipe'];
+if (!mojibakeAccidents.every((s) => mojibakePattern.test(s) && mojibakeStrictPattern.test(s))
+  || mojibakeFrancais.some((s) => mojibakePattern.test(s) || mojibakeStrictPattern.test(s))) {
+  addFail('Mojibake rule self-check failed: it must catch real encoding accidents and accept accented French capitals.');
+}
 for (const file of productionFiles()) {
   const content = read(file);
   if (secretPattern.test(content)) addFail(`Secret-like value leaked in ${file}`);

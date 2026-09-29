@@ -342,8 +342,13 @@ async function reglesDispo(handler) {
   reglageCentre({ activityCapacity: { billards: { units: 8 } } });
   const quatreSurHuit = heures(await appelDispo(handler, visite(billards(4), 4)));
   reglageCentre(null);
+  // LA GRILLE DES HEURES JUGE LES PISTES COMME LA VALIDATION (campagne du
+  // 2026-09-29) : les 2 pistes de duckpin prises de 10:00 a 14:00, une visite
+  // bowling + duckpin ne tient qu a partir de 13:00 (duckpin a 14:00).
+  dossiersDuJour = [dossier(9004, { startTime: '10:00', heures: 4, pax: 12, items: [DUCK_12] })];
+  const grille = await appelDispo(handler, visite([{ activityId: 'bowling', duration: 1 }, ...duckpin6], 6));
   dossiersDuJour = [];
-  return { libre, pris, journee, avecBowling, deuxTables, troisTables, septTables, quatreSurHuit };
+  return { libre, pris, journee, avecBowling, deuxTables, troisTables, septTables, quatreSurHuit, grille };
 }
 
 function verifierDispo(r) {
@@ -355,8 +360,17 @@ function verifierDispo(r) {
   ok(r.pris.includes('14:00') && r.pris.includes('16:00'), 'les heures qui les touchent bout a bout restent (14:00, 16:00)', autour(r.pris));
   ok(Array.isArray(r.journee.slots) && r.journee.slots.length === 0 && r.journee.message === 'Duckpin Bowling : complet ce jour-là. Essayez une autre date.',
     'pistes prises toute la journee : aucune heure, et le message nomme le duckpin', `${(r.journee.slots || []).length} heure(s) « ${r.journee.message} »`);
-  ok(Array.isArray(r.avecBowling.slots) && r.avecBowling.slots.length === 0 && /^Duckpin Bowling : complet pendant votre visite/.test(r.avecBowling.message || ''),
+  ok(Array.isArray(r.avecBowling.slots) && r.avecBowling.slots.length === 0 && /^Duckpin Bowling : complet/.test(r.avecBowling.message || ''),
     'bowling + duckpin le meme jour : plus de creneau vendu pour rien, le message nomme le duckpin', `${(r.avecBowling.slots || []).length} creneau(x) « ${r.avecBowling.message} »`);
+  const grilleBowling = ((r.grille.anchors && r.grille.anchors.activities) || []).find((a) => a.activityId === 'bowling') || { times: [] };
+  const aLHeure = (t) => grilleBowling.times.find((x) => x.time === t) || {};
+  const fermees = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30'].map(aLHeure);
+  ok(fermees.every((x) => x.ok === false && x.reason === 'Duckpin Bowling complet') && aLHeure('13:00').ok !== false,
+    'la grille des heures juge les pistes de duckpin comme la validation : 10:00 a 12:30 se refusent en le disant, 13:00 tient',
+    fermees.map((x) => `${x.time} ${x.ok === false ? x.reason : 'ok'}`).concat([`13:00 ${aLHeure('13:00').ok === false ? aLHeure('13:00').reason : 'ok'}`]).join(' | '));
+  const proposee = (r.grille.slots || [])[0] || null;
+  ok(Boolean(proposee) && proposee.time === '13:00' && !r.grille.message,
+    'l heure proposee d office est la premiere qui tient (13:00), jamais une heure que la validation refuserait', `${proposee ? proposee.time : 'aucune'} « ${r.grille.message || ''} »`);
   ok(r.deuxTables.includes('15:00') && !r.troisTables.includes('15:00') && r.troisTables.includes('16:00'),
     '4 tables prises a 15:00 sur 6 : 2 tables y tiennent, 3 non (16:00 si)', `2 tables : ${autour(r.deuxTables)} | 3 tables : ${autour(r.troisTables)}`);
   // Un refus d option repond sans liste d heures (422), avec sa raison.
@@ -728,6 +742,18 @@ async function contreEpreuves(browser, mock) {
       mute: 'const complete = \'\';',
       label: 'sans le filtre de la disponibilite, 15:00 est propose sur des pistes prises',
       rouge: async () => { const r = await reglesDispo(chargerDispo()); return r.pris.includes('15:00'); },
+    },
+    {
+      fichier: 'api/public-availability.js',
+      ancre: '            gardeDeVisite: gardeDesInstallations,',
+      mute: '',
+      label: 'sans la garde dans la grille des heures, 11:00 se dit libre sur des pistes prises et 10:00 est propose d office',
+      rouge: async () => {
+        const r = await reglesDispo(chargerDispo());
+        const b = ((r.grille.anchors && r.grille.anchors.activities) || []).find((a) => a.activityId === 'bowling') || { times: [] };
+        const onze = b.times.find((x) => x.time === '11:00') || {};
+        return onze.ok !== false || ((r.grille.slots || [])[0] || {}).time !== '13:00';
+      },
     },
   ];
   for (const m of MUTATIONS) {

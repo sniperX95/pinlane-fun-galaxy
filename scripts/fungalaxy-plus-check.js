@@ -179,6 +179,20 @@ async function serveurA() {
   const entier = ligneDe(() => demande(alaFois));
   ok(Boolean(scinde && scinde.waitOffer === true), 'la reservation d un groupe scinde facture le tarif d attente', JSON.stringify(scinde && { prix: scinde.price, attente: scinde.waitOffer }));
   ok(Boolean(entier) && entier.waitOffer !== true, 'celle d un groupe entier le refuse', JSON.stringify(entier && { prix: entier.price, attente: entier.waitOffer || false, erreur: entier.erreur }));
+  // LE DOSSIER ENREGISTRE (campagne du 2026-09-29) : la base jetait le drapeau
+  // d attente et son tarif a l ecriture, la ligne se relisait au catalogue.
+  // On passe par le vrai filtre de la base, puis on relit comme la reservation.
+  const rangerEtRelire = () => {
+    const database = require(path.join(ROOT, 'lib/database.js'));
+    const d = demande(grand);
+    const range = database.normalizeReservationPayload({ centerId: CENTRE, type: d.type, date: DATE, startTime: s0.time || '10:00', duration: 1, pax: grand, name: 'QA', phone: '+32491000000', email: 'qa@example.com', program: d.program }, {}).program;
+    const ligneRangee = ((range && range.items) || []).find((i) => i.activityId === premiere.patch.activityId) || {};
+    const relu = reservationRequest.normalizeReservationRequest({ centerId: CENTRE, date: DATE, startTime: s0.time || '10:00', pax: grand, name: 'Groupe Test', phone: '+32470000000', email: 'groupe@example.org', channel: 'public', type: 'visite', program: range.items });
+    return { attente: ligneRangee.waitOffer === true, tarif: ligneRangee.waitPricePerPax, avant: Number(d.programPrice), apres: Number(relu.programPrice) };
+  };
+  const rr = rangerEtRelire();
+  ok(rr.attente && rr.tarif === premiere.prixParPersonne && rr.apres === rr.avant,
+    'la ligne d attente se range et se relit a l identique (vrai filtre de la base) : meme drapeau, meme tarif, meme prix', JSON.stringify(rr));
 
   section('[E] CONTRE-EPREUVES DU SERVEUR');
   try {
@@ -213,6 +227,13 @@ async function serveurA() {
       async () => { const m = charger(); return cartesAttente(await appel(m.availability, avec, grand)).length; });
     ok(sansDrapeau > 0, 'sans le drapeau d attente dans les programmes candidats, le garde ne voit plus l offre acceptee : ce gate ROUGIRAIT', `${sansDrapeau} carte(s)`);
   } catch (error) { ok(false, 'contre-epreuve du drapeau montable', error.message); }
+  try {
+    const sansBase = await avecMutation('lib/database.js',
+      '    if (item.waitOffer === true) out.waitOffer = true;\n',
+      '',
+      async () => { charger(); return rangerEtRelire(); });
+    ok(!(sansBase.attente && sansBase.apres === sansBase.avant), 'sans le drapeau d attente dans le filtre de la base, la ligne se relit au catalogue : ce gate ROUGIRAIT', JSON.stringify(sansBase));
+  } catch (error) { ok(false, 'contre-epreuve du filtre de la base montable', error.message); }
   return { grand, premiere };
 }
 

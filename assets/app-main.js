@@ -23400,6 +23400,12 @@ function buildEditProgramFromReservation(r) {
       const palier = funRunSessionMinutes(item, getActivitySessionCount(getCenterActivity(id), r && r.pax));
       if (palier > 0) reglages.minutes = palier;
       if (Number(item.participants) > 0) reglages.participants = Number(item.participants);
+      // Le duckpin garde sa duree (ses tours la repetent) ; l offre d attente
+      // garde son drapeau et son tarif : sans eux, la fiche recomptait la
+      // ligne au catalogue et pour tout le groupe (campagne du 2026-09-29).
+      if (Number(item.duration) > 0) reglages.duration = Number(item.duration);
+      if (item.waitOffer === true) reglages.waitOffer = true;
+      if (Number(item.waitPricePerPax) > 0) reglages.waitPricePerPax = Number(item.waitPricePerPax);
       if (Object.keys(reglages).length) etat.othersOptions[id] = reglages;
     });
     return etat;
@@ -23467,12 +23473,34 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     }
     const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
     const nom = (activite && activite.name) || (typeof ACTIVITY_LABELS !== 'undefined' && ACTIVITY_LABELS[id]) || id;
+    // MEME CALCUL QUE LE SERVEUR (lib/visit-program), ligne par ligne. Une
+    // ligne qui declare ses participants se paie pour eux seuls (la plaine par
+    // enfant, ceux qui attendent) ; l offre d attente a son tarif, fixe a la
+    // reservation ; le duckpin se paie a la piste, chaque tour ses pistes.
+    const participants = Number(item.participants) > 0 ? Math.min(joueurs, Math.trunc(Number(item.participants))) : 0;
+    if (item.waitOffer === true && Number(item.waitPricePerPax) > 0) {
+      const attendent = participants || joueurs;
+      const montant = Math.round(Number(item.waitPricePerPax) * attendent * 100) / 100;
+      total += montant;
+      chiffrees += 1;
+      lignes.push({ nom, detail: `pendant l’attente, ${attendent} pers.`, montant });
+      return;
+    }
+    if (activite && activite.priceType === 'grid_bowling' && typeof getActivityUnitPlan === 'function') {
+      const heures = Number(item.duration) || 1;
+      const plan = getActivityUnitPlan(activite, joueurs);
+      const montant = Number(getBasePrice('bowling', heures, plan.units, joueurs, '', dateStr)) || 0;
+      total += montant;
+      chiffrees += 1;
+      lignes.push({ nom: `${nom} ${formatDurationLabel(heures)}`, detail: `${plan.units} piste${plan.units > 1 ? 's' : ''}${plan.tours > 1 ? ` · ${plan.tours} tours` : ''}`, montant });
+      return;
+    }
     // Les reglages de la ligne comptent : une table de billard sur 2 h ne vaut
     // pas une table sur 1 h. Omis, getFreeActivityPrice retombait sur ses
     // defauts (units = 1, hours = 1) et divisait le montant.
     const ligne = activite && typeof getFreeActivityPrice === 'function'
       ? getFreeActivityPrice(activite, {
-        pax: joueurs,
+        pax: participants || joueurs,
         dateStr,
         startTime,
         ...(Number(item.units) > 0 ? { units: Number(item.units) } : {}),
@@ -23524,6 +23552,18 @@ function editProgramAChange() {
   const e = state.editState;
   if (!e || !e.programmeEdite || !e.programmeEditeInitial) return false;
   return JSON.stringify(e.programmeEdite) !== e.programmeEditeInitial;
+}
+
+// LE PRIX NE SUIT L ESTIMATION QUE SI ON A CHANGE CE QUI LE FAIT : le contenu
+// ou le nombre de joueurs. Ouvrir la fiche ou « Adapter pour ce dossier » ne
+// change rien : un prix d ami, un tarif d attente, une ligne que la fiche ne
+// sait pas chiffrer restent ceux du dossier (campagne du 2026-09-29 : un
+// dossier de 376 EUR tombait a 356 a la simple ouverture).
+function editionChangeLePrix() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return false;
+  return editProgramAChange() || Number(e.pax) !== Number(r.pax);
 }
 
 // Le programme au format que le serveur renormalise (lib/visit-program).
@@ -23627,12 +23667,16 @@ function majEditPrixEstime() {
   // prix reel de 252 EUR par un « 0 EUR » incomplet ferait facturer zero au
   // client. Estimation partielle : le montant du dossier reste, et la ligne
   // en dessous dit « a partir de ».
-  if (!e.prixFige && champ && estime.utilisable) {
-    champ.value = String(estime.total);
-    e.price = String(estime.total);
+  // Et seulement si on a change ce qui fait le prix : sinon le champ garde le
+  // montant du dossier (editionChangeLePrix).
+  const suit = estime.utilisable && editionChangeLePrix();
+  if (!e.prixFige && champ) {
+    const valeur = suit ? estime.total : Math.round(Number(state.selectedRes && state.selectedRes.price) || 0);
+    champ.value = String(valeur);
+    e.price = String(valeur);
   }
   if (ligne) {
-    const facture = (e.prixFige || !estime.utilisable)
+    const facture = (e.prixFige || !suit)
       ? (getEditPriceValue() ?? estime.total)
       : estime.total;
     const joueurs = Math.max(1, Number(e.pax) || 1);
@@ -23715,16 +23759,20 @@ function renderEditFormuleBloc(r, formule, lignes) {
   // par personne. C est le chiffre que le comptoir annonce au telephone.
   const estime = getEditPrixEstime();
   const joueursActuels = Math.max(1, Number(state.editState.pax) || 1);
-  const factureAffichee = state.editState.prixFige || !estime || !estime.utilisable
-    ? (prixValeur ?? Math.round(Number(r.price) || 0))
+  // L estimation ne remplace le prix du dossier que si on a change ce qui le
+  // fait (editionChangeLePrix) : ouvrir ce bloc ne change aucun montant.
+  const suitEstimation = Boolean(estime && estime.utilisable && editionChangeLePrix());
+  const factureAffichee = state.editState.prixFige || !suitEstimation
+    ? (state.editState.prixFige ? (prixValeur ?? Math.round(Number(r.price) || 0)) : Math.round(Number(r.price) || 0))
     : estime.total;
   // Ce que porte le CHAMP : le montant fige s il y en a un, sinon l estimation
-  // des qu elle est ferme, sinon le prix actuel du dossier. Sans cette regle,
-  // cocher une activite laissait le champ sur la valeur d avant pendant que la
-  // ligne en dessous annoncait deja le nouveau total.
+  // quand on a change le contenu ou les joueurs, sinon le prix actuel du
+  // dossier. Sans cette regle, cocher une activite laissait le champ sur la
+  // valeur d avant pendant que la ligne en dessous annoncait deja le nouveau
+  // total.
   const valeurChamp = state.editState.prixFige
     ? (state.editState.price ?? Math.round(Number(r.price) || 0))
-    : (estime && estime.utilisable ? estime.total : Math.round(Number(r.price) || 0));
+    : (suitEstimation ? estime.total : Math.round(Number(r.price) || 0));
   if (!state.editState.prixFige) state.editState.price = String(valeurChamp);
   // LE DETAIL, ligne par ligne : c est ce qui rend le total comprehensible.
   // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13

@@ -605,6 +605,21 @@ module.exports = async (req, res) => {
           return '';
         }
       };
+      // LA MEME GARDE, HEURE PAR HEURE (campagne du 2026-09-29). Chaque heure de
+      // la grille se juge sur la visite que SON plan pose (lib/ops-engine,
+      // visitFeasibilityAt), avec la fenetre de finDeVisiteMinutes, comme la
+      // validation : une heure « rien ne coince » ne tombe plus ensuite sur
+      // « Duckpin complet », et l heure proposee d office tient.
+      // Les installations qui ont ferme au moins une heure : quand plus aucune
+      // ne reste, le message les nomme au lieu d un « aucune combinaison ».
+      const installationsPleines = new Set();
+      const gardeDesInstallations = (scenario) => {
+        if (!scenario || !scenario.startTime) return '';
+        const slot = { time: scenario.startTime, opsPlan: { endTime: scenario.endTime, bufferMinutes: scenario.bufferMinutes, resourceBlocks: scenario.resourceBlocks || [] } };
+        const pleine = dotationDuCreneau(slot, finDeVisiteMinutes(slot));
+        if (pleine) installationsPleines.add(pleine);
+        return pleine;
+      };
       const respondVisit = (slots, message, extra = {}) => {
         const liste = Array.isArray(slots) ? slots : [];
         const completes = [];
@@ -698,6 +713,7 @@ module.exports = async (req, res) => {
             reserveLabel: program.freeLabel,
             reserveWaitMinutes: program.waitMinutes,
             reserveSoft,
+            gardeDeVisite: gardeDesInstallations,
           }, engineContext);
         } catch (error) {
           anchorMeta = null;
@@ -852,7 +868,9 @@ module.exports = async (req, res) => {
             : [];
           respondVisit(
             defaultSlots,
-            defaultSlots.length ? '' : 'Aucune combinaison disponible ce jour-là. Essayez une autre date ou un autre groupe.',
+            defaultSlots.length ? '' : (installationsPleines.size
+              ? `${[...installationsPleines][0]} : complet ce jour-là. Essayez une autre date.`
+              : 'Aucune combinaison disponible ce jour-là. Essayez une autre date ou un autre groupe.'),
             { anchors: anchorMeta, complements: complementsDeVisite(defaultSlots[0] || null) },
           );
           return;

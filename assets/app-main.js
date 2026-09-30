@@ -10404,7 +10404,11 @@ async function ensureStaffDaySeries(endDate = state.currentDate) {
 // premier chargement.
 function getDashRevenueWindow(metrics) {
   const offset = Math.max(0, Number(state.dashRevenueOffset) || 0);
-  const endDate = addDays(state.currentDate, -offset);
+  // Les revenus sont ceux des jours ECOULES : depuis une date future, la
+  // fenetre s arrete a aujourd hui (elle comptait des jours pas encore
+  // vecus sous le titre « 7 derniers jours »).
+  const anchor = state.currentDate > todayStr() ? todayStr() : state.currentDate;
+  const endDate = addDays(anchor, -offset);
   const days = Array.from({ length: 7 }, (_, index) => addDays(endDate, index - 6));
   const serverDays = getStaffDaySeries(endDate);
   ensureStaffDaySeries(endDate);
@@ -10419,7 +10423,7 @@ function getDashRevenueWindow(metrics) {
       previousTotal: previous.reduce((sum, day) => sum + (Number(day.revenue) || 0), 0),
     };
   }
-  if (offset === 0) {
+  if (offset === 0 && anchor === state.currentDate) {
     return { offset, endDate, days, loaded: true, values: metrics.revenueSeries, counts: metrics.reservationSeries, collected: metrics.collectedSeries, previousTotal: null };
   }
   return { offset, endDate, days, loaded: false, values: Array(7).fill(0), counts: Array(7).fill(0), collected: Array(7).fill(0), previousTotal: null };
@@ -10473,28 +10477,9 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   // toute activite hors bowling/laser tombait dedans en silence.
   const activityMix = buildStaffActivityMix(activeReservations);
   const activityOccurrences = buildStaffActivityOccurrences(activeReservations);
-  // SEANCE FINIE, DOSSIER OUVERT : la fin est passee, rien n'est encaisse.
-  const overdueRows = state.currentDate === todayStr()
-    ? activeReservations.filter(reservation => {
-      if (reservation.status === 'paid') return false;
-      const windows = getStaffResourceWindows(reservation, 'all');
-      return windows.length > 0 && windows.every(window => window.end <= now);
-    })
-    : [];
-  // DEBUT PASSE, PERSONNE N'EST POINTE : arrivee a pointer ou client a rappeler.
-  const noshowRows = state.currentDate === todayStr()
-    ? activeReservations.filter(reservation => {
-      if (reservation.status === 'paid' || reservation.status === 'arrived') return false;
-      const start = getReservationFirstResourceStart(reservation, 'all');
-      if (!Number.isFinite(start)) return false;
-      const windows = getStaffResourceWindows(reservation, 'all');
-      return start + 0.25 <= now && windows.some(window => window.end > now);
-    })
-    : [];
-  const laneUsage = Array.from({ length: laneCount }, (_, index) => ({
-    lane: index + 1,
-    value: bowlingWindows.reduce((sum, window) => sum + ((window.lanes || []).includes(index + 1) ? Number(window.duration || 0) : 0), 0)
-  })).sort((left, right) => right.value - left.value);
+  // EN CE MOMENT : la regle de la page Terrain, pas une seconde. Un groupe en
+  // retard, sur place ou a cloturer l est ici exactement comme la-bas.
+  const liveNow = getStaffDashNow(activeReservations);
   // Mini-séries 7 jours HONNÊTES : chaque point vient des réservations réelles
   // du jour (state.reservations), jamais d'une interpolation fabriquée.
   const days = Array.from({ length: 7 }, (_, index) => addDays(state.currentDate, index - 6));
@@ -10534,13 +10519,31 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   // LA VEILLE VIENT DU SERVEUR OU NE VIENT PAS. Elle se lisait dans le cache
   // du poste (state.reservations) : un poste qui n avait jamais ouvert la
   // veille lisait « hier : 0 » sur les quatre tuiles d un lendemain de
-  // samedi plein. La serie serveur porte la veille (avant-dernier point) ;
-  // tant qu elle n est pas la, la veille est INCONNUE (null) et les tuiles
-  // ne comparent a rien. Meme regle pour la courbe (seriesFromServer).
+  // samedi plein. Tant que la serie n est pas la, la reference est INCONNUE
+  // (null) et les tuiles ne comparent a rien. Meme regle pour la courbe.
   const seriesFromServer = serverDays.length === days.length
     && serverDays.slice(0, -1).every((day, index) => day && day.date === days[index]);
-  const previousIndex = days.length - 2;
-  const previousPoint = (series) => (seriesFromServer ? series[previousIndex] : null);
+  // LA REFERENCE EST LE MEME JOUR LA SEMAINE D AVANT, PAS LA VEILLE. Un
+  // centre de loisirs vit a la semaine : un samedi contre un vendredi
+  // affichait « +167 % » sur les quatre tuiles, un lundi ferme « hier : 0 ».
+  // Le serveur sert 14 jours ; le point d il y a 7 jours est le 8e depuis la
+  // fin, et il doit porter la bonne date, sinon on ne compare a rien.
+  // Une date FUTURE ne se compare pas : ses reservations sont celles prises a
+  // ce jour, la semaine d avant est finie. « -50 % » en rouge sur un mercredi
+  // a venir disait une baisse qui n existe pas.
+  const weekAgoDate = addDays(state.currentDate, -7);
+  const fullSeries = typeof getStaffDaySeries === 'function' ? getStaffDaySeries() : [];
+  const weekAgo = state.currentDate <= todayStr() && fullSeries.length >= 8 && fullSeries[fullSeries.length - 8] && fullSeries[fullSeries.length - 8].date === weekAgoDate
+    ? fullSeries[fullSeries.length - 8]
+    : null;
+  const weekAgoOccupancy = (() => {
+    if (!weekAgo) return null;
+    const window = getPlanningWindow(weekAgoDate);
+    const open = window.closed ? 0 : Math.max(window.close - window.open, 0);
+    const capacity = laneCount * open;
+    return capacity ? Math.min(100, Math.round(((Number(weekAgo.laneHours) || 0) / capacity) * 100)) : 0;
+  })();
+  const referencePoint = (field) => (weekAgo ? Number(weekAgo[field]) || 0 : null);
   return {
     activeReservations,
     bowlingWindows,
@@ -10553,9 +10556,7 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     activeNow,
     activityMix,
     activityOccurrences,
-    overdueRows,
-    noshowRows,
-    laneUsage,
+    liveNow,
     revenueSeries,
     reservationSeries,
     playerSeries,
@@ -10563,12 +10564,49 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     occupancySeries,
     seriesFromServer,
     seriesDays: days,
-    previousReservationsCount: previousPoint(reservationSeries),
-    previousRevenueToday: previousPoint(revenueSeries),
-    previousPlayers: previousPoint(playerSeries),
-    previousOccupancy: previousPoint(occupancySeries),
+    referenceDate: weekAgoDate,
+    referenceReservations: referencePoint('reservations'),
+    referenceRevenue: referencePoint('revenue'),
+    referencePlayers: referencePoint('players'),
+    referenceOccupancy: weekAgoOccupancy,
     planningWindow,
     laneCount
+  };
+}
+
+// EN CE MOMENT, sur la file de la page Terrain (getStaffTerrainBoard) : le
+// jour meme seulement, une autre date n a pas de « maintenant ». La colonne
+// « Sur place » de Terrain melange deux choses que l accueil separe : les
+// groupes POINTES (ils sont la) et ceux dont l heure est passee sans que
+// personne ne clique Arrivé (ils sont en retard, ou deja la sans pointage).
+//   late    : l heure est passee, pas pointe, la partie n est pas finie ;
+//   onsite  : pointe arrive (ou paye) et pas fini ;
+//   closing : fini et pas paye (pointe ou non, comme Terrain « À clôturer ») ;
+//   next    : attendu dans l heure qui vient.
+function splitStaffTerrainOnsite(board) {
+  const late = [];
+  const present = [];
+  board.onsite.forEach(item => {
+    if (isUpcomingReservationStatus(item.reservation.status || 'pending') && item.start <= board.now) late.push(item);
+    else present.push(item);
+  });
+  late.sort((left, right) => left.start - right.start);
+  return { late, present };
+}
+
+function getStaffDashNow(activeReservations) {
+  const board = getStaffTerrainBoard(activeReservations);
+  if (board.when !== 'today') return null;
+  const { late, present } = splitStaffTerrainOnsite(board);
+  const horizon = board.now + 1;
+  return {
+    now: board.now,
+    horizon,
+    late,
+    onsite: present,
+    closing: board.closing,
+    next: board.upcoming.filter(item => item.start <= horizon),
+    later: board.upcoming.filter(item => item.start > horizon)
   };
 }
 
@@ -10580,269 +10618,144 @@ function formatDashboardTrend(current, previous) {
   return `${delta > 0 ? '+' : ''}${delta}%`;
 }
 
-// UN POURCENTAGE CONTRE ZERO NE DIT RIEN. Quand la veille vaut 0 (centre ferme
-// le lundi, jour creux), la comparaison produit mecaniquement « +100 % » sur
-// tout ce qui bouge : trois tuiles sur quatre affichaient le meme chiffre et la
-// colonne entiere devenait illisible. Sans reference, la tuile dit la
-// reference plutot qu un rapport impossible.
-// La veille vient de la serie du serveur, comme la courbe : tant qu elle
-// n est pas arrivee (previousValue null), la tuile ne compare a rien plutot
-// qu a un zero du cache local, qui ne connait pas les jours non visites.
-function renderDashboardKpiTrend(trendText, previousValue, zeroText = 'hier : 0') {
-  if (previousValue === null || previousValue === undefined) return '';
-  if (!(Number(previousValue) > 0)) return `<span class="dash-kpi-ref">${escapeHtml(zeroText)}</span>`;
+// LA REFERENCE SE DIT UNE FOIS, au-dessus des tuiles : « comparée au samedi
+// 26 septembre ». Quatre « vs sam. dernier » coupaient les libelles des
+// tuiles (« Chiffre d affair... ») pour repeter la meme chose.
+function getDashReferenceLabel(metrics) {
+  return parseLocalDate(metrics.referenceDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+// UN POURCENTAGE CONTRE ZERO NE DIT RIEN. Quand la reference vaut 0 (centre
+// ferme ce jour-la, journee creuse), la comparaison produirait « +100 % » sur
+// tout ce qui bouge : la tuile ne compare pas, la legende dit pourquoi. Tant
+// que la serie du serveur n est pas arrivee (previousValue null), rien non
+// plus. Le survol de la pastille donne la valeur de reference.
+function renderDashboardKpiTrend(trendText, previousValue, referenceTitle) {
+  if (previousValue === null || previousValue === undefined || !(Number(previousValue) > 0)) return '';
   const tone = /^\+/.test(trendText) ? 'up' : /^-/.test(trendText) ? 'down' : 'flat';
-  return `<span class="dash-kpi-delta ${tone}">${escapeHtml(trendText)}</span><span class="dash-kpi-ref">vs hier</span>`;
+  return `<span class="dash-kpi-delta ${tone}" title="${escapeHtml(referenceTitle)}">${escapeHtml(trendText)}</span>`;
 }
 
-
-/* ============================================================================
-   CARTES PERMUTABLES du dashboard (Vue d'ensemble). Deux emplacements, tous les
-   deux scopés à la JOURNÉE courante (state.currentDate) :
-   - carte large (state.dashMainChart) : affluence par heure / réservations par
-     heure / charge par piste, du jour ;
-   - carte latérale (state.dashSideChart) : formules / canal / occasions du jour.
-   Données : getStaffDashboardMetrics (réservations actives d'aujourd'hui, côté
-   client). Aucune valeur fabriquée : journée calme = message vide honnête, jamais
-   une forme inventée. Graphes délégués à window.PinlaneCharts.
-   ========================================================================== */
-const DASH_MAIN_CHART_OPTIONS = [
-  { id: 'affluence', label: 'Affluence par heure' },
-  { id: 'sessions', label: 'Réservations par heure' },
-  { id: 'lanes', label: 'Charge par piste' },
-];
-const DASH_SIDE_CHART_OPTIONS = [
-  { id: 'formules', label: 'Formules du jour' },
-  { id: 'channel', label: 'Canal de réservation' },
-  { id: 'occasions', label: 'Occasions du jour' },
-];
-// Etat d'ouverture du menu ('main' | 'side' | null) : variable de module, pas
-// un noeud : il survit aux re-rendus innerHTML du dashboard (poll de synchro).
-let dashChartMenuOpen = null;
-
-function getDashChartSelection(which) {
-  const options = which === 'side' ? DASH_SIDE_CHART_OPTIONS : DASH_MAIN_CHART_OPTIONS;
-  const stored = which === 'side' ? state.dashSideChart : state.dashMainChart;
-  return options.some(option => option.id === stored) ? stored : options[0].id;
+// LA COMPOSITION DE LA JOURNEE EN UNE LIGNE, sous le nombre de reservations :
+// « 13 bowling · 6 formules · 5 laser game ». Elle remplace l anneau « par
+// activité », qui prenait une carte entiere pour dire trois chiffres.
+function formatDashActivityMix(activityMix = []) {
+  if (!activityMix.length) return 'sur la journée';
+  // « Formules » et « Multi-activités » sont des libelles de groupe, au
+  // pluriel : a l unite, « 1 formule », jamais « 1 formules ».
+  const singulier = { formules: 'formule', 'multi-activités': 'multi-activité' };
+  return activityMix.slice(0, 3).map(bucket => {
+    const label = bucket.label.toLowerCase();
+    return `${bucket.count} ${bucket.count > 1 ? label : (singulier[label] || label)}`;
+  }).join(' · ');
 }
 
-function setDashChart(which, id) {
-  if (which === 'side') state.dashSideChart = id;
-  else state.dashMainChart = id;
-  dashChartMenuOpen = null;
-  save();
-  renderStaffDashboard();
-  document.querySelector(`[data-dash-picker="${which}"] .dash-chart-picker-btn`)?.focus();
-}
-
-function toggleDashChartMenu(which, ev) {
-  if (ev) ev.stopPropagation();
-  dashChartMenuOpen = dashChartMenuOpen === which ? null : which;
-  renderStaffDashboard();
-  if (dashChartMenuOpen === which) {
-    const menu = document.querySelector(`[data-dash-picker="${which}"] .dash-chart-menu`);
-    (menu?.querySelector('button[aria-checked="true"]') || menu?.querySelector('button'))?.focus();
-  }
-}
-
-function closeDashChartMenu(refocus) {
-  if (!dashChartMenuOpen) return;
-  const which = dashChartMenuOpen;
-  dashChartMenuOpen = null;
-  renderStaffDashboard();
-  if (refocus) document.querySelector(`[data-dash-picker="${which}"] .dash-chart-picker-btn`)?.focus();
-}
-
-function dashChartPickerKeydown(ev, which) {
-  if (ev.key === 'Escape') {
-    if (dashChartMenuOpen === which) { ev.stopPropagation(); closeDashChartMenu(true); }
-    return;
-  }
-  const menu = ev.currentTarget.querySelector('.dash-chart-menu');
-  if (!menu) return;
-  const items = Array.from(menu.querySelectorAll('button[role="menuitemradio"]'));
-  if (!items.length) return;
-  const index = items.indexOf(document.activeElement);
-  if (ev.key === 'ArrowDown') { ev.preventDefault(); items[(index + 1) % items.length].focus(); }
-  else if (ev.key === 'ArrowUp') { ev.preventDefault(); items[(index - 1 + items.length) % items.length].focus(); }
-  else if (ev.key === 'Home') { ev.preventDefault(); items[0].focus(); }
-  else if (ev.key === 'End') { ev.preventDefault(); items[items.length - 1].focus(); }
-}
-
-// Fermeture au clic hors du sélecteur.
-document.addEventListener('click', ev => {
-  if (dashChartMenuOpen && !(ev.target && ev.target.closest && ev.target.closest('.dash-chart-picker'))) closeDashChartMenu(false);
-});
-
-function renderDashChartPicker(which, currentId) {
-  const options = which === 'side' ? DASH_SIDE_CHART_OPTIONS : DASH_MAIN_CHART_OPTIONS;
-  const open = dashChartMenuOpen === which;
-  const check = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
-  return `<div class="dash-chart-picker" data-dash-picker="${which}" onkeydown="dashChartPickerKeydown(event, '${which}')">
-    <button type="button" class="dash-chart-picker-btn" aria-haspopup="menu" aria-expanded="${open ? 'true' : 'false'}" onclick="toggleDashChartMenu('${which}', event)">
-      Graphique
-      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6.5 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-    </button>
-    ${open ? `<div class="dash-chart-menu" role="menu" aria-label="Choisir le graphique">
-      ${options.map(option => `<button type="button" role="menuitemradio" aria-checked="${option.id === currentId ? 'true' : 'false'}" onclick="setDashChart('${which}', '${option.id}')">
-        <span>${escapeHtml(option.label)}</span><span class="dash-menu-check" aria-hidden="true">${check}</span>
-      </button>`).join('')}
-    </div>` : ''}
-  </div>`;
-}
-
-// Corps de la carte large : lecture du JOUR courant (state.currentDate). Les
-// trois options (affluence par heure, réservations par heure, charge par piste)
-// sont calculées depuis getStaffDashboardMetrics : aucune donnée de période.
-// host rempli APRÈS le innerHTML du dashboard : PinlaneCharts monte ses SVG dans
-// un noeud vivant. Journée calme = message vide honnête, jamais une forme feinte.
-function renderDashMainChartBody(host, metrics) {
+// ARRIVEES PAR HEURE : chaque groupe compte UNE fois, a l heure ou il arrive
+// (debut de son premier creneau). Un groupe qui enchaine bowling puis laser
+// n apparait pas a chaque heure occupee. Barres et pas courbe : ce sont des
+// comptes par heure, pas une grandeur continue. Le jour meme, les heures
+// passees s effacent et l heure en cours se detache (option pastBefore).
+function renderDashArrivalsChart(host, metrics) {
   if (!host) return;
-  const current = getDashChartSelection('main');
   const charts = window.PinlaneCharts;
   if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
-  const { planningWindow, activeReservations, laneUsage } = metrics;
-  const motion = `dash|main|${current}|${state.currentDate}|${activeReservations.length}`;
-  if (current === 'lanes') {
-    const openHours = planningWindow.closed ? 0 : Math.max(planningWindow.close - planningWindow.open, 0);
-    const booked = laneUsage.filter(row => (Number(row.value) || 0) > 0);
-    if (!openHours || !booked.length) { host.innerHTML = '<div class="dash-empty">Aucune piste réservée aujourd\'hui.</div>'; return; }
-    const series = [...laneUsage]
-      .sort((left, right) => left.lane - right.lane)
-      .map(row => ({ label: `P${row.lane}`, value: Math.min(100, Math.round(((Number(row.value) || 0) / openHours) * 100)) }));
-    charts.barChart(host, { series, format: 'percent', motionKey: motion, height: 230 });
-    return;
-  }
-  if (planningWindow.closed) { host.innerHTML = '<div class="dash-empty">Centre fermé aujourd\'hui.</div>'; return; }
-  if (!activeReservations.length) { host.innerHTML = '<div class="dash-empty">Aucune réservation aujourd\'hui.</div>'; return; }
-  const open = planningWindow.open;
-  const close = planningWindow.close;
-  // Chaque reservation compte UNE fois, a son heure d'ARRIVEE (debut du premier
-  // creneau, tous types confondus). Sans ca, un groupe qui enchaine bowling puis
-  // laser a deux heures differentes apparaissait a CHAQUE heure occupee (un seul
-  // groupe de 16 compte a 18h ET 20h). L'arrivee = une entree par groupe.
+  const { planningWindow, activeReservations } = metrics;
+  if (planningWindow.closed) { host.innerHTML = '<div class="dash-empty">Centre fermé ce jour-là.</div>'; return; }
+  if (!activeReservations.length) { host.innerHTML = '<div class="dash-empty">Aucune réservation sur cette date.</div>'; return; }
+  const open = Math.floor(planningWindow.open);
+  const close = Math.ceil(planningWindow.close);
   const buckets = new Map();
-  for (let hour = open; hour < close; hour += 1) buckets.set(hour, { players: 0, sessions: 0 });
+  for (let hour = open; hour < close; hour += 1) buckets.set(hour, 0);
   activeReservations.forEach(reservation => {
     const windows = getStaffResourceWindows(reservation, 'all');
     if (!windows.length) return;
     const startHour = Math.floor(Math.min(...windows.map(win => Number(win.start))));
     const hour = Math.min(Math.max(startHour, open), close - 1);
-    const bucket = buckets.get(hour);
-    if (bucket) { bucket.players += Number(reservation.pax) || 0; bucket.sessions += 1; }
+    if (buckets.has(hour)) buckets.set(hour, buckets.get(hour) + (Number(reservation.pax) || 0));
   });
-  const series = [];
-  for (let hour = open; hour < close; hour += 1) {
-    const bucket = buckets.get(hour);
-    series.push({ label: formatClockDisplay(hour), value: current === 'sessions' ? bucket.sessions : bucket.players });
-  }
-  if (series.every(point => !point.value)) { host.innerHTML = '<div class="dash-empty">Aucune activité planifiée sur les heures d\'ouverture d\'aujourd\'hui.</div>'; return; }
-  charts.lineChart(host, { series, format: 'int', motionKey: motion, height: 230 });
-}
-
-function dashSplitRowsHtml(rows) {
-  const max = Math.max(...rows.map(row => Number(row.value) || 0), 1);
-  return `<div class="dash-split-rows">${rows.map(row => `
-    <div class="dash-split-row">
-      <strong>${escapeHtml(row.label)}</strong>
-      <span class="dash-split-value">${escapeHtml(row.valueText)}</span>
-      <span class="dash-split-track"><i style="width:${Math.max(4, Math.round(((Number(row.value) || 0) / max) * 100))}%"></i></span>
-    </div>`).join('')}</div>`;
-}
-
-// Corps de la carte latérale : répartition du JOUR courant. Chaque valeur vient
-// des réservations actives d'aujourd'hui (formule / canal / occasion déclarée),
-// jamais d'un agrégat de période.
-function renderDashSideChartBody(host, metrics) {
-  if (!host) return;
-  const current = getDashChartSelection('side');
-  const rows = metrics.activeReservations;
-  if (current === 'channel') {
-    const charts = window.PinlaneCharts;
-    if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
-    let staff = 0;
-    let online = 0;
-    rows.forEach(reservation => { if (reservation.channel === 'staff') staff += 1; else online += 1; });
-    if (!staff && !online) { host.innerHTML = '<div class="dash-empty">Aucune réservation aujourd\'hui.</div>'; return; }
-    const parts = [];
-    if (online) parts.push({ label: 'En ligne', value: online });
-    if (staff) parts.push({ label: 'Staff', value: staff });
-    charts.donutChart(host, { parts, format: 'int', motionKey: `dash|side|channel|${state.currentDate}|${rows.length}` });
-    return;
-  }
-  if (current === 'occasions') {
-    const counts = new Map();
-    rows.forEach(reservation => {
-      const occasion = getReservationOccasion(reservation);
-      if (!occasion) return;
-      counts.set(occasion, (counts.get(occasion) || 0) + 1);
-    });
-    const list = [...counts.entries()]
-      .map(([occasion, count]) => ({ label: STAFF_OCCASION_LABELS[occasion] || occasion, value: count, valueText: `${count}` }))
-      .sort((left, right) => right.value - left.value);
-    host.innerHTML = list.length ? dashSplitRowsHtml(list) : '<div class="dash-empty">Aucune occasion déclarée aujourd\'hui.</div>';
-    return;
-  }
-  const counts = new Map();
-  rows.forEach(reservation => {
-    const isFormule = reservation.type === 'formule' || reservation.formuleId;
-    if (!isFormule || !reservation.formuleId) return;
-    const entry = counts.get(reservation.formuleId) || { count: 0, revenue: 0, label: '' };
-    entry.count += 1;
-    entry.revenue += Number(reservation.price) || 0;
-    if (!entry.label && reservation.label) entry.label = String(reservation.label);
-    counts.set(reservation.formuleId, entry);
-  });
-  const list = [...counts.entries()]
-    .map(([id, entry]) => {
-      const formule = resolveDisplayFormule(id);
-      return {
-        // JAMAIS L IDENTIFIANT BRUT : quand le catalogue ne connait plus la
-        // formule, la carte listait « formule3 » en minuscules entre deux vrais
-        // noms de vente. Le nom enregistre sur la reservation (le libelle
-        // vendu, celui que la page Reservations affiche) passe avant le repli :
-        // la meme formule s appelait « FORMULE 3 » la-bas et « Formule non
-        // répertoriée » ici.
-        label: formule ? formule.name : (entry.label || 'Formule non répertoriée'),
-        // LA BARRE MESURE CE QU ELLE JOUXTE : elle portait le NOMBRE de
-        // reservations (1 partout un jour ordinaire, donc trois barres pleines)
-        // a cote de trois montants tres differents.
-        value: entry.revenue,
-        valueText: `${entry.count} résa${entry.count > 1 ? 's' : ''} · ${formatMoney(entry.revenue)}`,
-      };
-    })
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 6);
-  host.innerHTML = list.length ? dashSplitRowsHtml(list) : '<div class="dash-empty">Aucune formule vendue aujourd\'hui.</div>';
-}
-
-// LE MIX D'ACTIVITES passe par le composant donut partage (PinlaneCharts) :
-// une part par bucket REEL (chaque activite du catalogue vendue aujourd'hui,
-// Formules, Multi-activites), pourcentages calcules par le composant depuis
-// les comptes. L'ancien anneau CSS a trois tranches codees en dur affichait
-// « Complet 43 % » pour 1 dossier : son pourcentage etait le reste des deux
-// autres, et golf / arcades / billards n'existaient pour lui pas.
-function renderStaffDashboardActivity(metrics) {
-  const totalCount = metrics.activeReservations.length;
-  return `<div class="dash-activity-mix">
-    <div class="dash-activity-mix-total"><strong>${totalCount}</strong><span>réservation${totalCount > 1 ? 's' : ''} aujourd'hui</span></div>
-    <div class="dash-range-chart dash-activity-chart" id="dashActivityBody"></div>
-  </div>`;
-}
-
-function renderDashActivityBody(host, metrics) {
-  if (!host) return;
-  const charts = window.PinlaneCharts;
-  if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
-  const parts = metrics.activityMix.map(bucket => ({ label: bucket.label, value: bucket.count }));
-  if (!parts.length) { host.innerHTML = '<div class="dash-empty">Aucune réservation aujourd\'hui.</div>'; return; }
-  charts.donutChart(host, {
-    parts,
+  const series = [...buckets.entries()].map(([hour, players]) => ({ label: formatClockDisplay(hour), value: players }));
+  if (series.every(point => !point.value)) { host.innerHTML = '<div class="dash-empty">Aucune arrivée sur les heures d\'ouverture.</div>'; return; }
+  const pastBefore = metrics.liveNow ? Math.floor(metrics.liveNow.now) - open : -1;
+  charts.barChart(host, {
+    series,
     format: 'int',
-    motionKey: `dash|activity|${state.currentDate}|${metrics.activeReservations.length}|${parts.length}`,
+    height: 190,
+    pastBefore,
+    motionKey: `dash|arrivees|${state.currentDate}|${activeReservations.length}`,
   });
 }
 
+// EN CE MOMENT (le jour meme) : quatre chiffres tires de la file de la page
+// Terrain, dans son ordre (qui arrive, qui manque, qui est la, qui a fini).
+// Aucune liste de dossiers ici (Movsar, 2026-08-14) : chaque case mene a
+// Terrain, et le retard ou l argent a son panneau (Pointer, Encaisser).
+function renderStaffDashNow(live) {
+  const count = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+  const players = items => items.reduce((sum, item) => sum + (Number(item.reservation.pax) || 0), 0);
+  const clock = hours => formatClockDisplay(hours);
+  const toTerrain = "openStaffMenuPage('arrivals')";
+  const closingAmount = live.closing.reduce((sum, item) => sum + (Number(item.reservation.price) || 0), 0);
+  const firstEnd = live.onsite.length ? Math.min(...live.onsite.map(item => item.end)) : null;
+  const cells = [
+    {
+      key: 'next',
+      label: `D'ici ${clock(live.horizon)}`,
+      value: live.next.length ? count(live.next.length, 'groupe', 'groupes') : 'Personne',
+      sub: live.next.length
+        ? `${count(players(live.next), 'joueur', 'joueurs')} · premier à ${clock(live.next[0].start)}`
+        : (live.later.length ? `prochain à ${clock(live.later[0].start)}` : 'plus d’arrivée aujourd’hui'),
+      tone: 'neutral',
+      open: toTerrain,
+      hint: 'Voir les arrivées sur la page Terrain'
+    },
+    {
+      key: 'late',
+      label: 'En retard',
+      value: live.late.length ? count(live.late.length, 'groupe', 'groupes') : 'Aucun',
+      sub: live.late.length
+        ? `pas pointé${live.late.length > 1 ? 's' : ''} · depuis ${formatStaffTerrainDelay(live.now - live.late[0].start)}`
+        : 'les groupes attendus sont pointés',
+      tone: live.late.length ? 'important' : 'ok',
+      open: live.late.length ? "openStaffDashboardDetail('alerts', 'noshow')" : toTerrain,
+      hint: live.late.length ? 'Pointer ou appeler les groupes en retard' : 'Voir la page Terrain'
+    },
+    {
+      key: 'onsite',
+      label: 'Sur place',
+      value: live.onsite.length ? count(live.onsite.length, 'groupe', 'groupes') : 'Personne',
+      sub: live.onsite.length
+        ? `${count(players(live.onsite), 'joueur', 'joueurs')} · prochaine fin ${clock(firstEnd)}`
+        : 'aucun groupe pointé en ce moment',
+      tone: 'neutral',
+      open: toTerrain,
+      hint: 'Voir les groupes sur place sur la page Terrain'
+    },
+    {
+      key: 'closing',
+      label: 'À clôturer',
+      value: live.closing.length ? moneyForRole(closingAmount) : 'Rien',
+      sub: live.closing.length
+        ? `${count(live.closing.length, 'groupe a', 'groupes ont')} fini sans payer`
+        : 'les groupes finis ont payé',
+      tone: live.closing.length ? 'critical' : 'ok',
+      open: live.closing.length ? "openStaffDashboardDetail('alerts', 'overdue')" : toTerrain,
+      hint: live.closing.length ? 'Encaisser les groupes qui ont fini' : 'Voir la page Terrain'
+    }
+  ];
+  return `<section class="dash-now" aria-labelledby="dashNowTitle">
+    <div class="dash-now-head">
+      <div class="dash-card-titles"><h2 id="dashNowTitle">En ce moment</h2><span class="dash-card-meta">${escapeHtml(clock(live.now))}</span></div>
+      <button type="button" class="dash-now-link" onclick="${toTerrain}">Ouvrir le Terrain</button>
+    </div>
+    <div class="dash-now-grid">
+      ${cells.map(cell => `<button type="button" class="dash-now-cell tone-${cell.tone}" data-now="${cell.key}" onclick="${escapeHtml(cell.open)}" title="${escapeHtml(cell.hint)}">
+        <span class="dash-now-label"><span class="dash-now-dot" aria-hidden="true"></span>${escapeHtml(cell.label)}</span>
+        <strong class="dash-now-value">${escapeHtml(cell.value)}</strong>
+        <small class="dash-now-sub">${escapeHtml(cell.sub)}</small>
+      </button>`).join('')}
+    </div>
+  </section>`;
+}
 
 // La carte du dashboard GROUPE par gravite (Prioritaire / A traiter / A
 // suivre) : le comptoir lit l'ordre d'attaque d'un coup d'oeil au lieu d'une
@@ -10857,7 +10770,7 @@ function renderDashActivityBody(host, metrics) {
 // absent n'est pas un zero.
 const DASH_TODO_ICONS = {
   payment: 'euro', overdue: 'clock', noshow: 'userCheck', review: 'shield', warning: 'alert',
-  maintenance: 'wrench', formula: 'link', lead: 'users', inbox: 'mail', agent: 'bulb', bounce: 'mailOff'
+  maintenance: 'wrench', lead: 'users', inbox: 'mail', agent: 'bulb', bounce: 'mailOff'
 };
 
 function renderDashTodoRow(alert) {
@@ -10876,8 +10789,16 @@ function renderDashTodoRow(alert) {
 }
 
 function renderStaffDashboardAlerts(metrics, extra = [], inboxKnown = true) {
-  const alerts = [...extra, ...getStaffDashboardAlertDefinitions(metrics)];
+  const definitions = getStaffDashboardAlertDefinitions(metrics);
+  const alerts = [...extra, ...definitions.filter(alert => !alert.band)];
   if (!alerts.length) {
+    // Le retard et l argent des groupes finis vivent dans « En ce moment » :
+    // une liste vide ne dit « Tout est à jour » que si le bandeau est calme.
+    if (definitions.some(alert => alert.band)) {
+      return `<div class="dash-todo-empty">
+        <div class="dash-alert-copy"><strong>Rien d’autre à traiter</strong><p>Demandes, mails et vérifications sont à jour.</p></div>
+      </div>`;
+    }
     if (!inboxKnown) {
       return `<div class="dash-todo-empty">
         <div class="dash-alert-copy"><strong>Aucune alerte sur la journée</strong><p>Paiements, séances, demandes et pistes sont sous contrôle. La boîte mail n'a pas pu être lue.</p></div>
@@ -10927,7 +10848,6 @@ function getStaffAlertCtaLabel(kind) {
     review: 'Vérifier',
     warning: 'Traiter',
     maintenance: 'Libérer',
-    formula: 'Cadencer',
     lead: 'Traiter les demandes'
   }[kind] || 'Résoudre';
 }
@@ -11022,49 +10942,54 @@ function openStaffDashboardSection(section) {
   }
 }
 
+// CE QUI ATTEND, ET SEULEMENT CE QUI ATTEND. Un groupe de ce soir qui n a pas
+// encore paye n est pas une tache : « 19 réservations non payées » comptait
+// les groupes pas encore venus, et les memes groupes finis revenaient une
+// seconde fois sous « Séances terminées ». Le jour meme, le retard et
+// l argent des groupes finis se lisent dans le bandeau « En ce moment »
+// (band: true, hors de la liste), sur la regle de la page Terrain ; leurs
+// panneaux restent ouverts d un clic. Une date passee garde les dossiers
+// jamais soldes ; une date future n a rien a encaisser.
 function getStaffDashboardAlertDefinitions(metrics) {
   const alerts = [];
-  const unpaidRows = metrics.activeReservations.filter(reservation => reservation.status !== 'paid');
-  if (unpaidRows.length) {
-    const outstanding = unpaidRows.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
-    const onSite = unpaidRows.filter(reservation => reservation.status === 'arrived').length;
-    alerts.push({
-      kind: 'payment',
-      priority: onSite ? 'critical' : 'important',
-      title: 'Paiement à encaisser',
-      text: `${unpaidRows.length} réservation${unpaidRows.length > 1 ? 's' : ''} non payée${unpaidRows.length > 1 ? 's' : ''} · ${formatMoney(outstanding)}${onSite ? ` · ${onSite} déjà sur place` : ''}`,
-      rows: unpaidRows,
-      // « les 1 client déjà sur place » : l article et le nombre etaient ecrits
-      // pour le pluriel, seul le « s » etait accorde.
-      action: onSite
-        ? `Encaisser d'abord ${onSite > 1 ? `les ${onSite} clients déjà sur place` : 'le client déjà sur place'}, puis clôturer les réservations restantes.`
-        : 'Encaisser ou clôturer les réservations restées ouvertes.'
-    });
-  }
-  // SEANCE FINIE, DOSSIER OUVERT : plus urgent que le simple « non paye »,
-  // ces clients sont peut-etre deja partis. A purger avant la fermeture.
-  if (metrics.overdueRows.length) {
-    const overdueAmount = sumStaffRowsAmount(metrics.overdueRows);
-    alerts.push({
-      kind: 'overdue',
-      priority: 'critical',
-      title: 'Séances terminées non encaissées',
-      text: `${metrics.overdueRows.length} séance${metrics.overdueRows.length > 1 ? 's' : ''} finie${metrics.overdueRows.length > 1 ? 's' : ''} sans encaissement · ${formatMoney(overdueAmount)}`,
-      rows: metrics.overdueRows,
-      action: 'Encaisser chaque dossier avant que le groupe ne quitte le centre, ou clôturer si c\'est déjà réglé.'
-    });
-  }
-  // DEBUT PASSE, PERSONNE N'EST POINTE : soit le groupe est la sans pointage,
-  // soit c'est un no-show a rappeler avant de liberer la ressource.
-  if (metrics.noshowRows.length) {
-    alerts.push({
-      kind: 'noshow',
-      priority: 'important',
-      title: 'Arrivées à pointer',
-      text: `${metrics.noshowRows.length} réservation${metrics.noshowRows.length > 1 ? 's' : ''} commencée${metrics.noshowRows.length > 1 ? 's' : ''} sans pointage d'arrivée`,
-      rows: metrics.noshowRows,
-      action: 'Pointer « Arrivé » si le groupe est là ; sinon appeler le client avant de libérer la piste.'
-    });
+  const live = metrics.liveNow;
+  if (live) {
+    if (live.closing.length) {
+      const rows = live.closing.map(item => item.reservation);
+      alerts.push({
+        kind: 'overdue',
+        band: true,
+        priority: 'critical',
+        title: 'À clôturer',
+        text: `${rows.length} groupe${rows.length > 1 ? 's ont' : ' a'} fini sans être encaissé${rows.length > 1 ? 's' : ''} · ${formatMoney(sumStaffRowsAmount(rows))}`,
+        rows,
+        action: 'Encaisser chaque dossier avant que le groupe ne quitte le centre, ou clôturer si c\'est déjà réglé.'
+      });
+    }
+    if (live.late.length) {
+      const rows = live.late.map(item => item.reservation);
+      alerts.push({
+        kind: 'noshow',
+        band: true,
+        priority: 'important',
+        title: 'En retard',
+        text: `${rows.length} groupe${rows.length > 1 ? 's' : ''} attendu${rows.length > 1 ? 's' : ''}, pas encore pointé${rows.length > 1 ? 's' : ''}`,
+        rows,
+        action: 'Pointer « Arrivé » si le groupe est là ; sinon appeler le client avant de libérer la piste.'
+      });
+    }
+  } else if (state.currentDate < todayStr()) {
+    const unpaidRows = metrics.activeReservations.filter(reservation => reservation.status !== 'paid');
+    if (unpaidRows.length) {
+      alerts.push({
+        kind: 'payment',
+        priority: 'important',
+        title: 'Paiements non soldés',
+        text: `${unpaidRows.length} réservation${unpaidRows.length > 1 ? 's' : ''} jamais marquée${unpaidRows.length > 1 ? 's' : ''} payée${unpaidRows.length > 1 ? 's' : ''} · ${formatMoney(sumStaffRowsAmount(unpaidRows))}`,
+        rows: unpaidRows,
+        action: 'Marquer payé ce qui a été encaissé ; le reste se clôture depuis la fiche.'
+      });
+    }
   }
   const reviewRows = metrics.activeReservations.filter(reservation =>
     reservation.status !== 'cancelled'
@@ -11114,21 +11039,9 @@ function getStaffDashboardAlertDefinitions(metrics) {
       action: 'Libérer chaque piste dès que le responsable terrain confirme qu\'elle est de nouveau exploitable.'
     });
   }
-  const comboRows = metrics.activeReservations.filter(reservation =>
-    (reservation.type === 'formule' || reservation.formuleId)
-    && reservation.status !== 'paid'
-    && getBowlingWindowsFromReservation(reservation).length
-    && getLaserWindowsFromReservation(reservation).length);
-  if (comboRows.length) {
-    alerts.push({
-      kind: 'formula',
-      priority: 'important',
-      title: 'Formules à enchaîner',
-      text: `${comboRows.length} formule${comboRows.length > 1 ? 's' : ''} bowling + laser à cadencer aujourd'hui`,
-      rows: comboRows,
-      action: 'Surveiller le passage bowling → laser pour éviter les retards de groupe.'
-    });
-  }
+  // « Formules à enchaîner, à cadencer » est parti le 2026-09-30 : ce n etait
+  // pas une tache (rien a cliquer, rien a finir), et le deroule de chaque
+  // formule se lit sur Terrain et Formules.
   // Un lead sur mesure est de l'argent qui attend une réponse : il passe EN
   // TÊTE. Le compte est celui des demandes ACTIVES (ni traitées ni archivées,
   // regle du 2026-08-14). L'alerte NOMME la demande puis MENE a la page dediee
@@ -11274,10 +11187,16 @@ function dashboardDetailReleaseLane(lane, ev) {
 }
 
 // Actions groupées (footer détail) : encaisse ou libère en un clic.
+// « TOUT ENCAISSER » ENCAISSE CE QUE LE PANNEAU MONTRE, RIEN D AUTRE. Il
+// marquait payees TOUTES les reservations non payees du jour, y compris les
+// groupes de ce soir pas encore venus, depuis un panneau qui n en listait que
+// deux (les seances finies). Les lignes viennent de l alerte ouverte.
 async function dashboardDetailPayAllUnpaid(ev) {
   if (ev) ev.stopPropagation();
   const metrics = getStaffDashboardMetrics(todaysReservations());
-  const rows = metrics.activeReservations.filter(r => r.status !== 'paid');
+  const kind = state.dashboardDetailKind || '';
+  const alert = getStaffDashboardAlertDefinitions(metrics).find(entry => entry.kind === kind);
+  const rows = (alert && alert.rows ? alert.rows : []).filter(r => r.status !== 'paid' && r.status !== 'cancelled');
   if (!rows.length) { toast('Aucune réservation à encaisser.'); return; }
   if (!(await staffConfirm({ title: `Marquer ${rows.length} réservation${rows.length > 1 ? 's' : ''} comme payée${rows.length > 1 ? 's' : ''} ?`, confirmLabel: 'Encaisser' }))) return;
   rows.forEach(r => setReservationStatusDirect(r.id, 'paid'));
@@ -11353,7 +11272,6 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
     const alerts = getStaffDashboardAlertDefinitions(metrics);
     const visibleAlerts = kind ? alerts.filter(alert => alert.kind === kind) : alerts;
     const outstanding = Math.max(0, metrics.revenue - metrics.collected);
-    const onSiteUnpaid = metrics.activeReservations.filter(r => r.status === 'arrived').length;
     return {
       eyebrow: 'Pilotage terrain',
       title: kind ? (visibleAlerts[0]?.title || 'Signal dashboard') : 'Alertes et notifications',
@@ -11376,10 +11294,20 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
         // Le pluriel de « signal » est « signaux », pas « signalaux ».
         return `${visibleAlerts.length} ${visibleAlerts.length > 1 ? 'signaux' : 'signal'} à traiter`;
       })(),
-      stats: [
-        { label: 'Alertes actives', value: String(alerts.length), note: alerts.length ? 'à traiter maintenant' : 'rien à signaler' },
-        { label: 'À encaisser', value: formatMoney(outstanding), note: `${unpaidCount} réservation${unpaidCount > 1 ? 's' : ''} ouverte${unpaidCount > 1 ? 's' : ''}` },
-        { label: 'Sur place', value: String(onSiteUnpaid), note: 'clients à servir' }
+      // Le jour meme, les trois chiffres de tete sont ceux du bandeau « En ce
+      // moment » : le panneau et l accueil ne se contredisent pas (le panneau
+      // « À clôturer » affichait « À encaisser 2 659 € », les groupes de ce
+      // soir compris, au-dessus de deux dossiers a 262 €).
+      stats: metrics.liveNow ? [
+        { label: 'En retard', value: String(metrics.liveNow.late.length), note: metrics.liveNow.late.length ? 'à pointer ou appeler' : 'aucun groupe attendu' },
+        { label: 'Sur place', value: String(metrics.liveNow.onsite.length), note: `groupe${metrics.liveNow.onsite.length > 1 ? 's' : ''} pointé${metrics.liveNow.onsite.length > 1 ? 's' : ''}` },
+        { label: 'À clôturer', value: formatMoney(sumStaffRowsAmount(metrics.liveNow.closing.map(item => item.reservation))), note: `${metrics.liveNow.closing.length} groupe${metrics.liveNow.closing.length > 1 ? 's' : ''} fini${metrics.liveNow.closing.length > 1 ? 's' : ''} sans payer` }
+      ] : [
+        { label: 'Alertes actives', value: String(alerts.length), note: alerts.length ? 'à traiter' : 'rien à signaler' },
+        state.currentDate < todayStr()
+          ? { label: 'Non soldé', value: formatMoney(outstanding), note: `${unpaidCount} réservation${unpaidCount > 1 ? 's' : ''} jamais marquée${unpaidCount > 1 ? 's' : ''} payée${unpaidCount > 1 ? 's' : ''}` }
+          : { label: 'Prévu', value: formatMoney(metrics.revenue), note: `${metrics.activeReservations.length} réservation${metrics.activeReservations.length > 1 ? 's' : ''}` },
+        { label: 'Joueurs', value: String(metrics.players), note: 'sur la journée' }
       ],
       body: renderStaffDashboardAlertsDetail(visibleAlerts),
       actions: getStaffDashboardAlertActions(kind, visibleAlerts, { openReservations, openPlanning })
@@ -11522,7 +11450,6 @@ function renderDashboardRowActions(reservation, kind) {
   if (kind === 'overdue') return `${encaisser}${fiche}${contact}`;
   if (kind === 'noshow') return `${arrivedPrimary}${contact}${fiche}`;
   if (kind === 'warning') return `${open}${contact}`;
-  if (kind === 'formula') return `${open}${arrived}${encaisser}`;
   // Vue par défaut (arrivées, activité…)
   return `${fiche}${arrived}${(canStatus && reservation.status !== 'paid') ? `<button type="button" onclick="dashboardDetailSetStatus(${id}, 'paid', event)">Payé</button>` : ''}`;
 }
@@ -11557,7 +11484,7 @@ const STAFF_ALERT_PRIORITY = {
 
 // Priorité par défaut si l'alerte n'en porte pas (robustesse).
 const STAFF_ALERT_PRIORITY_FALLBACK = {
-  payment: 'important', overdue: 'critical', noshow: 'important', review: 'important', warning: 'critical', maintenance: 'info', formula: 'important'
+  payment: 'important', overdue: 'critical', noshow: 'important', review: 'important', warning: 'critical', maintenance: 'info'
 };
 
 function getStaffAlertPriorityMeta(alert) {
@@ -11576,24 +11503,11 @@ function sumStaffRowsAmount(rows = []) {
   return rows.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
 }
 
-// Découpe une alerte en sous-blocs titrés triés par importance.
-// Paiement : clients SUR PLACE (arrivé) d'abord, puis les confirmés à venir.
+// Les dossiers d une alerte, du plus tot au plus tard. Le paiement ne vit
+// plus que sur une date passee : plus de « sur place » ni d « à venir » a
+// separer.
 function getStaffAlertSubsections(alert) {
   const rows = alert.rows || [];
-  if (alert.kind === 'payment') {
-    const onSite = sortStaffAlertRows(rows.filter(reservation => reservation.status === 'arrived'));
-    const upcoming = sortStaffAlertRows(rows.filter(reservation => reservation.status !== 'arrived'));
-    const subs = [];
-    if (onSite.length) {
-      subs.push({ key: 'onsite', tone: 'critical', icon: '⚡', showTotal: true,
-        label: 'Sur place, à encaisser maintenant', rows: onSite });
-    }
-    if (upcoming.length) {
-      subs.push({ key: 'upcoming', tone: 'info', showTotal: false,
-        label: 'À venir, confirmés', rows: upcoming });
-    }
-    return subs;
-  }
   if (!rows.length) return [];
   return [{ key: 'all', tone: '', showTotal: false, label: '', rows: sortStaffAlertRows(rows) }];
 }
@@ -11973,32 +11887,17 @@ function getDashInboxTodos() {
   return todos;
 }
 
-// LE FIL DE LA JOURNEE, SUR L HEURE REELLE. L ancien bandeau comptait « En
-// cours » avec l heure d aujourd hui quelle que soit la date affichee, « En
-// preparation » tout le jour pour une date passee, et appelait « Terminees »
-// les reservations PAYEES (une resa payee en ligne a 9 h n est pas terminee a
-// 9 h). Ici : une date passee est terminee, une date future est a venir, et
-// aujourd hui se lit sur les fenetres planning de chaque resa. Une resa sans
-// fenetre (hors planning) n a pas de fin connue : elle n est comptee nulle part
-// plutot que devinee.
-function getStaffDashDayFlow(rows = []) {
-  const today = todayStr();
-  const timed = rows.filter(reservation => getStaffResourceWindows(reservation, 'all').length);
-  if (state.currentDate < today) return { upcoming: 0, live: 0, done: timed.length };
-  if (state.currentDate > today) return { upcoming: timed.length, live: 0, done: 0 };
-  const now = currentTimeDecimal();
-  const flow = { upcoming: 0, live: 0, done: 0 };
-  timed.forEach(reservation => {
-    const windows = getStaffResourceWindows(reservation, 'all');
-    const start = Math.min(...windows.map(window => Number(window.start)));
-    const end = Math.max(...windows.map(window => Number(window.end)));
-    if (now < start) flow.upcoming += 1;
-    else if (now < end) flow.live += 1;
-    else flow.done += 1;
-  });
-  return flow;
-}
-
+// LA VUE D ENSEMBLE (refonte du 2026-09-30). Trois questions, dans l ordre ou
+// on se les pose en arrivant :
+//   1. qu est-ce qui se passe maintenant ? « En ce moment », le jour meme :
+//      les groupes de la page Terrain en quatre chiffres ;
+//   2. comment va la journee ? quatre tuiles, comparees au meme jour de la
+//      semaine d avant (un samedi contre un samedi, jamais contre un vendredi) ;
+//   3. qu est-ce qui attend ? « À traiter » (demandes, mails, verifications),
+//      puis la semaine (revenus) et les arrivees heure par heure.
+// Ni anneau par activite ni classement des formules : ils ne decidaient rien
+// pendant la journee (NORTHSTAR, chaque donnee paie sa place). Aucune liste de
+// reservations (Movsar, 2026-08-14).
 function renderStaffDashboard(dayReservations = todaysReservations()) {
   const root = document.getElementById('staffDashboardPage');
   if (!root) return;
@@ -12008,80 +11907,97 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   // quelqu'un qui n'ouvre jamais le bon filtre. Sans effet de bord de rendu
   // ici : loadStaffCustomRequests repasse par renderStaffGroupHost.
   if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
-  // La serie 7 jours vient du serveur (voir staffDaySeriesCache) : declenchee
+  // La serie 14 jours vient du serveur (voir staffDaySeriesCache) : declenchee
   // ici, elle re-rend le dashboard a l'arrivee de la reponse.
   ensureStaffDaySeries();
   const metrics = getStaffDashboardMetrics(dayReservations);
-  const d = parseLocalDate(state.currentDate);
-  // Les quatre tuiles se jugent toutes sur la VEILLE : un centre ferme le
-  // lundi lisait le mardi « hier : 0 » sur trois tuiles et « +1852 % vs hier »
-  // sur la quatrieme, jugee sur une moyenne (mesure du 2026-09-03).
-  const revenueDayTrendText = formatDashboardTrend(metrics.revenue, metrics.previousRevenueToday);
   // Sans « Voir les montants », la tuile cache aussi la forme du chiffre :
-  // un « +40 % vs hier » et une courbe disent ce que le « ··· » tait.
+  // un « +40 % » et une courbe disent ce que le « ··· » tait.
   const seesMoney = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.view');
-  const reservationTrendText = formatDashboardTrend(metrics.activeReservations.length, metrics.previousReservationsCount);
-  const playerTrendText = formatDashboardTrend(metrics.players, metrics.previousPlayers);
-  const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.previousOccupancy);
+  const reference = getDashReferenceLabel(metrics);
+  const reservationTrendText = formatDashboardTrend(metrics.activeReservations.length, metrics.referenceReservations);
+  const playerTrendText = formatDashboardTrend(metrics.players, metrics.referencePlayers);
+  const revenueTrendText = formatDashboardTrend(metrics.revenue, metrics.referenceRevenue);
+  const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.referenceOccupancy);
   const lanesInMaintenance = getAvailabilityLanesInMaintenance(metrics.laneCount);
-  const availableLanes = metrics.laneCount - lanesInMaintenance;
-  const dayFlow = getStaffDashDayFlow(metrics.activeReservations);
-  const flowMeta = state.currentDate === todayStr()
-    ? 'En direct'
-    : parseLocalDate(state.currentDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+  const lanesInService = metrics.laneCount - lanesInMaintenance;
+  const hours = metrics.planningWindow.closed
+    ? 'fermé ce jour-là'
+    : `${formatClockDisplay(metrics.planningWindow.open)}-${metrics.planningWindow.close >= 24 ? 'minuit' : formatClockDisplay(metrics.planningWindow.close)}`;
+  // La legende des tuiles : la journee, et a quoi ses ecarts se comparent.
+  // Une reference sans aucune reservation (centre ferme ce jour-la) ne
+  // compare rien : la legende le dit, les tuiles n ont pas de pastille.
+  // Une date a venir n a que les reservations prises a ce jour : la legende
+  // le dit, et rien n est « encaissé » d avance (le centre encaisse sur place).
+  const future = state.currentDate > todayStr();
+  const referenceKnown = metrics.referenceReservations !== null;
+  const referenceEmpty = referenceKnown && !(metrics.referenceReservations > 0);
+  const referenceTitle = (value) => `${reference} : ${value}`;
+  const dayCaption = future
+    ? 'réservations prises à ce jour'
+    : !referenceKnown
+      ? ''
+      : referenceEmpty
+        ? `${reference} : aucune réservation`
+        : `comparée au ${reference}`;
   // La carte Revenus vit sur SA fenetre (fleches par jours) : total et
   // tendance suivent la fenetre affichee, pas forcement la date du dashboard.
   const revenueWindow = getDashRevenueWindow(metrics);
   const totalPeriodRevenue = revenueWindow.values.reduce((sum, value) => sum + value, 0);
   // UN POURCENTAGE CONTRE ZERO N EXISTE PAS. La carte ecrivait « +100 % »
   // quand la periode precedente valait 0 EUR, et « 0 % » quand elle n etait
-  // pas encore arrivee (repli sur une autre mesure, la journee contre la
-  // moyenne) : deux chiffres faux sous le meme libelle. Sans periode connue,
-  // pas de comparaison ; contre zero, la reference elle-meme.
+  // pas encore arrivee. Sans periode connue, pas de comparaison ; contre zero,
+  // la reference elle-meme.
   const revenueTrendWindowText = revenueWindow.previousTotal > 0
-    ? `${totalPeriodRevenue >= revenueWindow.previousTotal ? '+' : ''}${Math.round(((totalPeriodRevenue - revenueWindow.previousTotal) / revenueWindow.previousTotal) * 100)}% vs période précédente`
-    : (revenueWindow.previousTotal === 0 ? `période précédente : ${formatMoney(0)}` : '');
-  const revenueWindowLabel = revenueWindow.offset
+    ? `${totalPeriodRevenue >= revenueWindow.previousTotal ? '+' : ''}${Math.round(((totalPeriodRevenue - revenueWindow.previousTotal) / revenueWindow.previousTotal) * 100)}% vs 7 jours d’avant`
+    : (revenueWindow.previousTotal === 0 ? `7 jours d’avant : ${formatMoney(0)}` : '');
+  // « 7 derniers jours » seulement quand la fenetre finit aujourd hui ;
+  // sinon ses dates.
+  const revenueWindowLabel = revenueWindow.endDate !== todayStr()
     ? `${parseLocalDate(revenueWindow.days[0]).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')} au ${parseLocalDate(revenueWindow.endDate).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')}`
     : '7 derniers jours';
   const syncIndicator = getRemoteSyncIndicator();
-  // Ce qui attend, et ce qu on en sait : la pastille du haut et la carte
-  // « À faire » lisent LA MEME liste.
+  // CE QUI ATTEND, EN DEUX ENDROITS QUI NE SE RECOUVRENT PAS : le retard et
+  // l argent des groupes finis dans « En ce moment » (band), le reste dans
+  // « À traiter ». La pastille du haut compte les deux, et les nomme.
   const inboxKnown = isDashInboxKnown();
   const inboxTodos = getDashInboxTodos();
-  const todos = [...inboxTodos, ...getStaffDashboardAlertDefinitions(metrics)];
-  const todoCount = todos.length;
+  const dayAlerts = getStaffDashboardAlertDefinitions(metrics);
+  const urgent = dayAlerts.filter(alert => alert.band);
+  const listed = [...inboxTodos, ...dayAlerts.filter(alert => !alert.band)];
+  const pending = [...urgent, ...listed];
   const firstName = getStaffGreetingFirstName();
   const greeting = `${getStaffGreetingWord()}${firstName ? ` ${firstName}` : ''}`;
-  const todoLine = todoCount
-    ? `${todoCount} action${todoCount > 1 ? 's' : ''} en attente`
+  const todoLine = pending.length
+    ? [urgent.length ? `${urgent.length} urgence${urgent.length > 1 ? 's' : ''}` : '', listed.length ? `${listed.length} à traiter` : ''].filter(Boolean).join(' · ')
     : (inboxKnown ? 'Tout est à jour' : 'Aucune alerte sur la journée');
-  // L ETAT SE LIT A LA COULEUR, PAS A UN DESSIN. Movsar, 2026-09-25, devant
-  // la premiere version (une quille de dessin anime qui saluait) : « faut
-  // faire bcp plus pro pas gadget gamin, c est du B2B avec des Sebastien
-  // 45 ans ». La pastille prend la gravite la plus haute de la liste ; verte
-  // seulement quand tout est traite ET que la boite mail a ete lue ; neutre
-  // quand on ne sait pas.
-  const topRank = todoCount ? Math.min(...todos.map(todo => getStaffAlertPriorityMeta(todo).rank)) : null;
+  // L ETAT SE LIT A LA COULEUR, PAS A UN DESSIN (Movsar, 2026-09-25 : « c est
+  // du B2B avec des Sebastien 45 ans »). La pastille prend la gravite la plus
+  // haute ; verte seulement quand tout est traite ET que la boite mail a ete
+  // lue ; neutre quand on ne sait pas.
+  const topRank = pending.length ? Math.min(...pending.map(todo => getStaffAlertPriorityMeta(todo).rank)) : null;
   const todoTone = topRank === null ? (inboxKnown ? 'ok' : 'unknown') : (['critical', 'important', 'info'][topRank] || 'info');
   // Entree de page : une fois par navigation, jamais au poll (DESIGN.md §5).
-  // Le repere de visite est celui des pages pv2, pour qu aller-retour
-  // Reservations/Accueil compte comme deux navigations.
   const pages = window.PinlaneV2;
   const active = isStaffDashboardActive();
   const arriving = active && (pages ? pages.lastPage !== 'dashboard' : !root.firstElementChild);
   if (pages && active) pages.lastPage = 'dashboard';
   root.classList.toggle('dash-enter', arriving && !prefersReducedMotion());
-  // Ordre de lecture : le bonjour, les chiffres, puis « À faire » AVANT les
-  // graphiques. Ce qui attend se lit avant l analyse (au telephone, la carte
-  // arrivait apres quatre tuiles et trois graphiques).
+  const kpiTile = ({ key, label, detail, trend, value, sub, spark }) => `
+      <article class="dash-kpi" data-kpi="${key}">
+        ${detail ? `<button type="button" class="dash-kpi-open" onclick="openStaffDashboardDetail('${detail}')" aria-label="${escapeHtml(`${label} : voir le détail`)}"></button>` : ''}
+        <div class="dash-kpi-head"><span class="dash-kpi-label">${escapeHtml(label)}</span><span class="dash-kpi-trend">${trend}</span></div>
+        <strong class="dash-kpi-value" data-pl-num="dash.${key}">${escapeHtml(String(value))}</strong>
+        <small class="dash-kpi-sub">${escapeHtml(sub)}</small>
+        ${spark}
+      </article>`;
   root.innerHTML = `
     <section class="dash-hero dash-hello">
       <div class="dash-hello-copy">
         <h1>${escapeHtml(greeting)}</h1>
         <p class="dash-hello-line">
-          ${todoCount
-            ? `<button type="button" class="dash-state tone-${todoTone}" data-todo-count="${todoCount}" onclick="focusDashTodo()"><span class="dash-state-dot" aria-hidden="true"></span>${escapeHtml(todoLine)}</button>`
+          ${pending.length
+            ? `<button type="button" class="dash-state tone-${todoTone}" data-todo-count="${pending.length}" onclick="focusDashTodo()"><span class="dash-state-dot" aria-hidden="true"></span>${escapeHtml(todoLine)}</button>`
             : `<span class="dash-state tone-${todoTone}" data-todo-count="0"><span class="dash-state-dot" aria-hidden="true"></span>${escapeHtml(todoLine)}</span>`}
           <span class="dash-hello-sync"><span class="dash-live-dot${syncIndicator.tone === 'live' ? '' : ` ${syncIndicator.tone}`}"></span><span>${escapeHtml(syncIndicator.label)}</span></span>
         </p>
@@ -12092,36 +12008,43 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </div>
     </section>
 
+    ${metrics.liveNow ? renderStaffDashNow(metrics.liveNow) : ''}
+
+    <div class="dash-section-head"><h2>La journée</h2>${dayCaption ? `<span class="dash-card-meta">${escapeHtml(dayCaption)}</span>` : ''}</div>
     <section class="dash-kpis">
-      <article class="dash-kpi">
-        <div class="dash-kpi-head"><span class="dash-kpi-label">Réservations</span><span class="dash-kpi-trend">${renderDashboardKpiTrend(reservationTrendText, metrics.previousReservationsCount)}</span></div>
-        <strong class="dash-kpi-value" data-pl-num="dash.resa">${metrics.activeReservations.length}</strong>
-        <small class="dash-kpi-sub">sur la journée</small>
-        ${renderDashboardSpark(metrics.reservationSeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value} résa${value > 1 ? 's' : ''}` })}
-      </article>
-      <article class="dash-kpi">
-        <div class="dash-kpi-head"><span class="dash-kpi-label">Joueurs</span><span class="dash-kpi-trend">${renderDashboardKpiTrend(playerTrendText, metrics.previousPlayers)}</span></div>
-        <strong class="dash-kpi-value" data-pl-num="dash.joueurs">${metrics.players}</strong>
-        <small class="dash-kpi-sub">personne${metrics.players > 1 ? 's' : ''}</small>
-        ${renderDashboardSpark(metrics.playerSeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value} joueur${value > 1 ? 's' : ''}` })}
-      </article>
-      <article class="dash-kpi">
-        <div class="dash-kpi-head"><span class="dash-kpi-label">Chiffre d'affaires</span><span class="dash-kpi-trend">${seesMoney ? renderDashboardKpiTrend(revenueDayTrendText, metrics.previousRevenueToday, `hier : ${formatMoney(0)}`) : ''}</span></div>
-        <strong class="dash-kpi-value" data-pl-num="dash.ca">${moneyForRole(metrics.revenue)}</strong>
-        <small class="dash-kpi-sub">${moneyForRole(metrics.collected)} encaissés</small>
-        ${renderDashboardSpark(metrics.revenueSeries, { shown: seesMoney && metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => formatMoney(value) })}
-      </article>
-      <article class="dash-kpi">
-        <div class="dash-kpi-head"><span class="dash-kpi-label">Taux d'occupation</span><span class="dash-kpi-trend">${renderDashboardKpiTrend(occupancyTrendText, metrics.previousOccupancy, 'hier : 0%')}</span></div>
-        <strong class="dash-kpi-value" data-pl-num="dash.occupation">${metrics.occupancy}%</strong>
-        <small class="dash-kpi-sub">${availableLanes} piste${availableLanes > 1 ? 's' : ''} disponible${availableLanes > 1 ? 's' : ''}</small>
-        ${renderDashboardSpark(metrics.occupancySeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value}%` })}
-      </article>
+      ${kpiTile({
+        key: 'resa', label: 'Réservations', detail: 'activity',
+        trend: renderDashboardKpiTrend(reservationTrendText, metrics.referenceReservations, referenceTitle(`${metrics.referenceReservations} réservation${metrics.referenceReservations > 1 ? 's' : ''}`)),
+        value: metrics.activeReservations.length,
+        sub: formatDashActivityMix(metrics.activityMix),
+        spark: renderDashboardSpark(metrics.reservationSeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value} résa${value > 1 ? 's' : ''}` })
+      })}
+      ${kpiTile({
+        key: 'joueurs', label: 'Joueurs', detail: '',
+        trend: renderDashboardKpiTrend(playerTrendText, metrics.referencePlayers, referenceTitle(`${metrics.referencePlayers} joueur${metrics.referencePlayers > 1 ? 's' : ''}`)),
+        value: metrics.players,
+        sub: future ? 'attendus' : 'sur la journée',
+        spark: renderDashboardSpark(metrics.playerSeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value} joueur${value > 1 ? 's' : ''}` })
+      })}
+      ${kpiTile({
+        key: 'ca', label: 'Chiffre d’affaires', detail: seesMoney ? 'revenue' : '',
+        trend: seesMoney ? renderDashboardKpiTrend(revenueTrendText, metrics.referenceRevenue, referenceTitle(formatMoney(metrics.referenceRevenue || 0))) : '',
+        value: moneyForRole(metrics.revenue),
+        sub: future ? 'à encaisser sur place' : `${moneyForRole(metrics.collected)} encaissés`,
+        spark: renderDashboardSpark(metrics.revenueSeries, { shown: seesMoney && metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => formatMoney(value) })
+      })}
+      ${kpiTile({
+        key: 'occupation', label: 'Pistes occupées', detail: 'occupation',
+        trend: renderDashboardKpiTrend(occupancyTrendText, metrics.referenceOccupancy, referenceTitle(`${metrics.referenceOccupancy}%`)),
+        value: `${metrics.occupancy}%`,
+        sub: `${lanesInService} piste${lanesInService > 1 ? 's' : ''} en service · ${hours}`,
+        spark: renderDashboardSpark(metrics.occupancySeries, { shown: metrics.seriesFromServer, days: metrics.seriesDays, format: (value) => `${value}%` })
+      })}
     </section>
 
     <section class="dash-grid-bottom">
       <article class="dash-card dash-todo-card">
-        <div class="dash-card-head"><div class="dash-card-titles"><h2>À faire</h2>${todoCount ? `<span class="dash-todo-count">${todoCount}</span>` : ''}</div><button type="button" onclick="openStaffDashboardAlerts()">Alertes du jour</button></div>
+        <div class="dash-card-head"><div class="dash-card-titles"><h2>À traiter</h2>${listed.length ? `<span class="dash-todo-count">${listed.length}</span>` : ''}</div><button type="button" onclick="openStaffDashboardAlerts()">Alertes du jour</button></div>
         <div class="dash-alerts">${renderStaffDashboardAlerts(metrics, inboxTodos, inboxKnown)}</div>
       </article>
       <div class="dash-side-stack">
@@ -12142,59 +12065,33 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         <div class="dash-revenue-head"><strong id="dashRevenueTotal">${formatMoney(totalPeriodRevenue)}</strong><span>Total</span>${revenueTrendWindowText ? `<small>${escapeHtml(revenueTrendWindowText)}</small>` : ''}</div>
         ${renderStaffDashboardRevenue(revenueWindow)}
       </article>
-      <article class="dash-card dash-flow-card">
-        <div class="dash-card-head"><div class="dash-card-titles"><h2>Le fil de la journée</h2><span class="dash-card-meta">${escapeHtml(flowMeta)}</span></div></div>
-        <div class="dash-status-strip" aria-label="Le fil de la journée">
-          <div data-flow="upcoming"><span>${renderDashboardIcon('prep')}</span><small>À venir</small><strong>${dayFlow.upcoming} session${dayFlow.upcoming > 1 ? 's' : ''}</strong></div>
-          <div data-flow="live"><span>${renderDashboardIcon('play')}</span><small>En cours</small><strong>${dayFlow.live} session${dayFlow.live > 1 ? 's' : ''}</strong></div>
-          <div data-flow="done"><span>${renderDashboardIcon('check')}</span><small>Terminées</small><strong>${dayFlow.done} session${dayFlow.done > 1 ? 's' : ''}</strong></div>
-          <div data-flow="maintenance"><span>${renderDashboardIcon('wrench')}</span><small>Pistes en maintenance</small><strong>${lanesInMaintenance} / ${metrics.laneCount}</strong></div>
-        </div>
+      <article class="dash-card dash-hours-card">
+        <div class="dash-card-head"><div class="dash-card-titles"><h2>Arrivées par heure</h2><span class="dash-card-meta">joueurs attendus</span></div></div>
+        <div class="dash-range-chart" id="dashArrivalsChart"></div>
       </article>
       </div>
     </section>
-
-    <section class="dash-grid-main">
-      <article class="dash-card dash-card-wide dash-card-pickable">
-        <div class="dash-card-head">
-          <div class="dash-card-titles"><h2>${escapeHtml((DASH_MAIN_CHART_OPTIONS.find(option => option.id === getDashChartSelection('main')) || DASH_MAIN_CHART_OPTIONS[0]).label)}</h2><span class="dash-card-meta">Aujourd'hui</span></div>
-          ${renderDashChartPicker('main', getDashChartSelection('main'))}
-        </div>
-        <div class="dash-range-chart dash-range-chart-main" id="dashMainChartBody"></div>
-      </article>
-      <article class="dash-card">
-        <div class="dash-card-head"><h2>Réservations par activité</h2><button type="button" onclick="openStaffDashboardDetail('activity')">Détails</button></div>
-        ${renderStaffDashboardActivity(metrics)}
-      </article>
-      <article class="dash-card dash-card-pickable">
-        <div class="dash-card-head">
-          <div class="dash-card-titles"><h2>${escapeHtml((DASH_SIDE_CHART_OPTIONS.find(option => option.id === getDashChartSelection('side')) || DASH_SIDE_CHART_OPTIONS[0]).label)}</h2><span class="dash-card-meta">Aujourd'hui</span></div>
-          ${renderDashChartPicker('side', getDashChartSelection('side'))}
-        </div>
-        <div class="dash-range-chart dash-range-chart-side" id="dashSideChartBody"></div>
-      </article>
-    </section>
-
   `;
   setupStaffDashboardCharts(metrics);
 }
 
-// La pastille du haut mene a la liste : au telephone la carte est plus bas,
-// au bureau le premier bouton de la liste prend le focus.
+// La pastille du haut mene a ce qui attend : la premiere case urgente du
+// bandeau, sinon le premier bouton de « À traiter ».
 function focusDashTodo() {
-  const card = document.querySelector('#staffDashboardPage .dash-todo-card');
-  if (!card) return;
-  card.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
-  const first = card.querySelector('.dash-alert-cta');
-  if (first) first.focus({ preventScroll: true });
+  const root = document.getElementById('staffDashboardPage');
+  if (!root) return;
+  const urgentCell = root.querySelector('.dash-now-cell.tone-critical, .dash-now-cell.tone-important');
+  const card = root.querySelector('.dash-todo-card');
+  const target = urgentCell || (card && card.querySelector('.dash-alert-cta'));
+  const scrollTo = urgentCell ? root.querySelector('.dash-now') : card;
+  if (scrollTo) scrollTo.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+  if (target) target.focus({ preventScroll: true });
 }
 
 function setupStaffDashboardCharts(metrics) {
   const root = document.getElementById('staffDashboardPage');
   if (!root) return;
-  renderDashMainChartBody(document.getElementById('dashMainChartBody'), metrics);
-  renderDashSideChartBody(document.getElementById('dashSideChartBody'), metrics);
-  renderDashActivityBody(document.getElementById('dashActivityBody'), metrics);
+  renderDashArrivalsChart(document.getElementById('dashArrivalsChart'), metrics);
   const revenue = root.querySelector('.dash-revenue-bars[data-revenue-bars]');
   if (revenue) setupRevenueChartInteraction(revenue);
 }
@@ -28040,6 +27937,9 @@ setInterval(() => {
   // Terrain : « dans 25 min » et le passage d une colonne a l autre suivent
   // l heure, pas seulement les donnees. Aucune animation d entree au tic.
   if (isStaffUtilityActive() && getStaffMenuPage() === 'arrivals') renderStaffUtilityPage();
+  // Accueil : « En ce moment » suit l heure (un groupe passe en retard, un
+  // autre finit sa partie) sans attendre qu une donnee change.
+  if (isStaffDashboardActive()) renderStaffDashboard();
 }, 60000);
 
 // Échap ferme le mode plein écran du planning (bowling ou laser).

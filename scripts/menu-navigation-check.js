@@ -397,10 +397,11 @@ async function probeCockpitClick(browser) {
         arrivals: root.querySelectorAll('.dash-arrivals, .dash-arrival-row').length,
         resRows: root.querySelectorAll('.res-row, .dashboard-detail-reservation, [data-res-row-id]').length,
         titres: [...root.querySelectorAll('h2')].map((h) => h.textContent.replace(/\s+/g, ' ').trim()),
-        // Les COLONNES de la rangee du bas, pas ses cartes : depuis le
-        // 2026-09-25 la colonne de droite empile Revenus et le fil de la
-        // journee (un etat, pas une liste de dossiers). La regle reste la
-        // meme : deux colonnes, jamais une troisieme carte a cote.
+        // Les COLONNES de la rangee du bas, pas ses cartes : la colonne de
+        // droite empile Revenus et les arrivees par heure (des chiffres, pas
+        // une liste de dossiers ; le fil de la journee est devenu le bandeau
+        // « En ce moment » le 2026-09-30). La regle reste la meme : deux
+        // colonnes, jamais une troisieme carte a cote.
         colonnesBas: root.querySelectorAll('.dash-grid-bottom > *').length,
         cartesBas: root.querySelectorAll('.dash-grid-bottom .dash-card').length,
       };

@@ -172,16 +172,17 @@
   function buildScale(maxValue, format) {
     if (!(maxValue > 0)) return { top: 1, ticks: [0] };
     if (format === 'percent' && maxValue <= 100) return { top: 100, ticks: [0, 50, 100] };
-    // Vise ~15% de marge au-dessus du pic (rough = max/2.6) : le sommet de la
-    // courbe respire sans coller au plafond, et sans laisser trop de vide.
-    var rough = maxValue / 2.6;
-    var pow = Math.pow(10, Math.floor(Math.log(rough) / Math.LN10));
-    var base = rough / pow;
-    // Paliers entiers uniquement : jamais de graduation a virgule sur des
-    // donnees entieres (0/2/3/5 illisible) -> pas de 1.5 ni 2.5.
-    var stops = [1, 2, 3, 4, 5, 6, 8, 10];
+    // LE PLUS PETIT PAS ROND QUI LOGE LE PIC, avec ~8 % d air, en trois
+    // graduations. L ancienne regle arrondissait max/2,6 au palier superieur :
+    // un pic de 27 donnait un pas de 20 et un plafond a 60, plus de la moitie
+    // du graphique vide (arrivees par heure de l accueil, 2026-09-30).
+    var need = maxValue * 1.08 / 3;
+    var pow = Math.pow(10, Math.floor(Math.log(need) / Math.LN10));
+    // 1,5 et 2,5 seulement quand le pas reste entier (pow >= 10) : jamais de
+    // graduation a virgule sur des donnees entieres.
+    var stops = pow >= 10 ? [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10] : [1, 2, 3, 4, 5, 6, 8, 10];
     var mult = stops[stops.length - 1];
-    for (var si = 0; si < stops.length; si += 1) { if (base <= stops[si]) { mult = stops[si]; break; } }
+    for (var si = 0; si < stops.length; si += 1) { if (stops[si] * pow >= need) { mult = stops[si]; break; } }
     // Le palier n'etait entier que tant que `pow` valait au moins 1 : sous un
     // max de 3, `pow` tombe a 0,1 et le pas avec lui. Max = 2 donnait un pas de
     // 0,8, donc des graduations 0 / 0,8 / 1,6 / 2,4 que formatTick arrondit a
@@ -527,6 +528,7 @@
     var barW = Math.max(3, Math.min(slot * 0.62, 64));
     // Stagger total <= 300ms : 220ms de croissance + au plus 80ms de decalage.
     var stepDelay = n > 1 ? 80 / (n - 1) : 0;
+    var past = typeof o.pastBefore === 'number' && o.pastBefore >= 0 ? Math.floor(o.pastBefore) : -1;
     var bars = [];
     var valueTexts = [];
     var centers = [];
@@ -535,8 +537,13 @@
       var x = PAD.l + slot * i + (slot - barW) / 2;
       var y = baseY - h;
       centers.push({ x: x + barW / 2, label: p.label });
-      bars.push('<rect class="plc-bar" data-i="' + i + '" x="' + round2(x) + '" y="' + round2(y) + '" width="' + round2(barW) + '" height="' + round2(h) + '" rx="2" style="--plc-d:' + Math.round(stepDelay * i) + 'ms"><title>' + esc((p.label ? p.label + ' : ' : '') + formatValue(p.value, format)) + '</title></rect>');
-      if (n <= 8) {
+      // pastBefore : les heures deja passees s effacent, l heure en cours se
+      // detache (accueil, arrivees du jour). -1 ou absent : aucune marque.
+      var when = past < 0 ? '' : i < past ? ' is-past' : i === past ? ' is-now' : '';
+      bars.push('<rect class="plc-bar' + when + '" data-i="' + i + '" x="' + round2(x) + '" y="' + round2(y) + '" width="' + round2(barW) + '" height="' + round2(h) + '" rx="2" style="--plc-d:' + Math.round(stepDelay * i) + 'ms"><title>' + esc((p.label ? p.label + ' : ' : '') + formatValue(p.value, format)) + '</title></rect>');
+      // Un « 0 » imprime au-dessus d une barre absente se lit comme une donnee
+      // de plus : la valeur ne s ecrit que sur une barre qui existe.
+      if (n <= 8 && p.value > 0) {
         valueTexts.push('<text class="plc-bar-value" x="' + round2(x + barW / 2) + '" y="' + round2(Math.max(12, y - 6)) + '" text-anchor="middle">' + esc(formatTick(p.value, format)) + '</text>');
       }
     });

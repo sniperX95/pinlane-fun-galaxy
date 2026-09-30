@@ -301,6 +301,11 @@
 .plc-bar { transition: fill-opacity 120ms cubic-bezier(0.23, 1, 0.32, 1); }
 .plc-bar:hover { fill-opacity: 1; }
 
+/* Le jour meme (option pastBefore) : l heure passee s efface, l heure en
+   cours reste pleine. fill-opacity et pas opacity : aucune couche composee. */
+.plc-bar.is-past { fill-opacity: 0.3; }
+.plc-bar.is-now { fill-opacity: 1; }
+
 /* Segment survole : mis en avant, les autres attenues. */
 .plc-donut-seg { transition: stroke-opacity 120ms cubic-bezier(0.23, 1, 0.32, 1); }
 .plc-donut:hover .plc-donut-seg { stroke-opacity: 0.3; }

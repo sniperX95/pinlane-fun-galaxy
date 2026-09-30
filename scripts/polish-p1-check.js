@@ -112,6 +112,18 @@ function samediSuivant() {
   return cursor.toISOString().slice(0, 10);
 }
 const DATE_TUNNEL = samediSuivant();
+
+// Un samedi PASSE, pour la modale des alertes [E] : depuis le 2026-09-30, le
+// signal qui porte des dossiers de paiement (« Paiements non soldés ») ne vit
+// que sur une date passee. Le jour meme, l argent des groupes finis passe
+// par le bandeau « En ce moment », et un groupe pas encore venu n est pas un
+// paiement a faire : sur AUJOURD HUI, le signal dependait de l heure du run.
+function samediPasse() {
+  const d = new Date();
+  d.setDate(d.getDate() - 7 - ((d.getDay() + 1) % 7));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const DATE_PASSEE = samediPasse();
 const CENTRE = 'libramont';
 
 function metaPublique() {
@@ -755,7 +767,7 @@ async function mesurerE(browser) {
   const { page, fermer } = await pageNeuve(browser, { width: 1440, height: 900 });
   try {
     await installMockStaff(page, JEU_ALERTES, { lanesEnMaintenance: [7, 8] });
-    await ouvrirStaff(page, 'dashboard');
+    await ouvrirStaff(page, 'dashboard', undefined, DATE_PASSEE);
     await page.waitForSelector('.dash-kpi', { timeout: 20000 });
     await page.waitForTimeout(500);
     const lire = async (kind) => {

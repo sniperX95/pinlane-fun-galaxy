@@ -499,8 +499,11 @@ function runCapacityChecks() {
 
   // Verrou de coherence : le planificateur doit toujours prendre readStaffState
   // par defaut. Si cette ligne bouge, le sens 2 ci-dessus ne protege plus rien.
+  // La regle, pas la formulation : le lecteur par defaut EST readStaffState,
+  // appele tel quel ou avec ses options (2026-09-30 : il y ajoute les horaires
+  // retenus en ligne, sans filtre de simulation).
   const opsContent = loadSource('lib/reservation-ops.js');
-  ok(/readState\s*=\s*options\.readState\s*\|\|\s*readStaffState/.test(opsContent),
+  ok(/readState\s*=\s*options\.readState\s*\|\|\s*(?:readStaffState|\(\(\s*[\w\s,]*\)\s*=>\s*readStaffState\()/.test(opsContent),
     'lib/reservation-ops.js : le planificateur lit toujours readStaffState par defaut');
 }
 

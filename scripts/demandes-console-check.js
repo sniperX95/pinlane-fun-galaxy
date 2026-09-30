@@ -55,7 +55,9 @@ const srv = http.createServer((req, res) => {
   fs.readFile(f, (e, c) => {
     if (e) { res.writeHead(404); return res.end(); }
     let corps = c;
-    if (mutation && p.resolve(f) === APP) corps = Buffer.from(c.toString('utf8').split(mutation.de).join(mutation.vers), 'utf8');
+    // Les ancres sont ecrites en LF ; une copie extraite par git sous Windows
+    // est en CRLF : le fichier servi casse est ramene en LF avant la coupure.
+    if (mutation && p.resolve(f) === APP) corps = Buffer.from(c.toString('utf8').replace(/\r\n/g, '\n').split(mutation.de).join(mutation.vers), 'utf8');
     res.writeHead(200, { 'Content-Type': MIME[p.extname(f).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(corps);
   });
@@ -528,7 +530,11 @@ async function main() {
     verifierAlerte(await alerteDuTableau(browser));
 
     section('J. UN STATUT QUE LA BASE ACCEPTE');
-    const source = fs.readFileSync(APP, 'utf8');
+    // Le fichier tel que sur le disque (verifie intact a la fin), et sa forme
+    // en LF, sur laquelle les ancres des coupures se cherchent (une copie
+    // extraite par git sous Windows est en CRLF).
+    const brut = fs.readFileSync(APP, 'utf8');
+    const source = brut.replace(/\r\n/g, '\n');
     const appels = [...source.matchAll(/setStaffCustomRequestStatus\(/g)].length;
     ok(appels >= 8 && statutsInvalides(source).length === 0, `chaque appel pose un statut de la base (${appels} appels lus)`, JSON.stringify(statutsInvalides(source)));
     ok(/setStaffCustomRequestStatus\(demandeOrigine, 'handled', \{[\s\S]{0,80}reservationId: payload\.reservation/.test(source), 'la reservation creee depuis une demande la classe traitee, reservation liee');
@@ -560,7 +566,7 @@ async function main() {
     }
     const casse = source.replace("setStaffCustomRequestStatus(demandeOrigine, 'handled', {", 'setStaffCustomRequestStatus(demandeOrigine, "done", {');
     ok(casse !== source && statutsInvalides(casse).includes('done'), 'avec le « done » d avant, la regle des statuts rougit');
-    ok(fs.readFileSync(APP, 'utf8') === source, 'app-main.js du depot intact : les coupures ne vivaient que dans le serveur du gate');
+    ok(fs.readFileSync(APP, 'utf8') === brut, 'app-main.js du depot intact : les coupures ne vivaient que dans le serveur du gate');
   } finally {
     await browser.close();
     srv.close();

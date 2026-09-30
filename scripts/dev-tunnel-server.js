@@ -114,7 +114,7 @@ const ACTIVITIES = [
   // Les textes du mock suivent la RICHESSE du catalogue de prod (prix saisi,
   // notes longues) : un mock plus court que la prod cache les cartes qui
   // regonflent (lecon du 2026-08-18, le CTA sous le pli n existait qu en prod).
-  { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 niveaux', order: 3, defaultMinutes: 45 },
+  { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 trous', order: 3, defaultMinutes: 45 },
   // Billards comme la prod les sert : 10 EUR par table et par heure (base,
   // lu le 2026-09-28), 6 tables (fungalaxy.be), aucune regle de joueurs.
   { id: 'billards', name: 'Billards', planned: false, priceType: 'per_unit_hour', priceValue: 10, unitLabel: 'par table et par heure', order: 5, defaultMinutes: 60, minMinutes: 60, maxMinutes: 180, stepMinutes: 60, units: 6 },

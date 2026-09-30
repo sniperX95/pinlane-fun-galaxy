@@ -2047,7 +2047,7 @@ const catalogueSynthetique = [
   { id: 'playground', priceType: 'per_pax', priceValue: 12, unitLabel: 'par enfant', note: 'accès à la journée', pricing: null },
   { id: 'billards', priceType: 'per_unit_hour', priceValue: 10, unitLabel: 'par table et par heure', note: '', pricing: null },
   { id: 'arcade_time', priceType: 'per_pax', priceValue: null, unitLabel: '', note: '', pricing: null },
-  { id: 'minigolf_blacklight', priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 niveaux', pricing: { mode: 'tiers', tiers: [{ days: [6], price: 12 }] } },
+  { id: 'minigolf_blacklight', priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 trous', pricing: { mode: 'tiers', tiers: [{ days: [6], price: 12 }] } },
   { id: 'fun_run', priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs par session', pricing: null },
   { id: 'duckpin_bowling', priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', note: '', pricing: null },
 ];

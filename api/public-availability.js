@@ -35,6 +35,7 @@ const {
   getFormulaAnchorAvailability,
   getFormulaAnchorModel,
   getOperationalBowlingConfig,
+  plancherDuJour,
 } = require('../lib/ops-engine');
 const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog, publicBookingBlockReason } = require('../lib/ops-knowledge');
 const {
@@ -457,6 +458,33 @@ module.exports = async (req, res) => {
         label: holidayContext.label,
       },
     };
+
+    // UNE HEURE POSEE DEVENUE PASSEE (2026-09-30). Le client qui hesite au
+    // passage de l heure garde une heure que le moteur refuse (elle commence
+    // avant le plancher du jour : maintenant + delai) ; CHAQUE autre heure
+    // disait alors « Fin après 22:00 », une raison fausse, et le message
+    // parlait de « formule » pour une visite. L heure passee sort de la
+    // demande, le moteur repropose, et la reponse la nomme (`heuresPassees`)
+    // : le formulaire la retire a son tour et le dit sur la piste.
+    const plancher = plancherDuJour(date);
+    if (plancher !== null && preferredTimes && typeof preferredTimes === 'object') {
+      const passee = (t) => typeof t === 'string' && /^\d{1,2}:\d{2}$/.test(t) && Math.round(timeToNum(t) * 60) < plancher;
+      const heuresPassees = [];
+      Object.keys(preferredTimes).forEach((id) => {
+        if (id === 'laser_game' || !passee(preferredTimes[id])) return;
+        heuresPassees.push({ activityId: id, time: preferredTimes[id] });
+        delete preferredTimes[id];
+      });
+      const partiesPassees = new Set(laserGameTimes.filter(passee));
+      if (passee(preferredTimes.laser_game)) partiesPassees.add(preferredTimes.laser_game);
+      if (partiesPassees.size) {
+        [...partiesPassees].sort().forEach((t) => heuresPassees.push({ activityId: 'laser_game', time: t }));
+        laserGameTimes = laserGameTimes.filter((t) => t && !passee(t));
+        if (laserGameTimes.length) preferredTimes.laser_game = laserGameTimes[0];
+        else delete preferredTimes.laser_game;
+      }
+      if (heuresPassees.length) scheduleMeta.heuresPassees = heuresPassees;
+    }
 
     if (date < todayStr()) {
       sendJson(res, 200, {

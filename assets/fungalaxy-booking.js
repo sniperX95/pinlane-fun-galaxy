@@ -256,6 +256,7 @@
     onglet: 'activites',
     pins: {},                  // activityId -> 'HH:MM' : les heures que le client a posees
     laserParts: [],            // heures des parties de laser posees (si plusieurs parties)
+    heuresPassees: {},         // activityId -> ['HH:MM'] : heures posees devenues passees, retirees par le serveur
     heure: '',                 // debut de visite du creneau retenu
     dispo: null,               // la derniere reponse de public-availability
     dispoCle: '',              // la demande qui a produit state.dispo, prise au depart de la requete
@@ -2537,7 +2538,7 @@
   var reveilGarder = false;    // « Garder » s eveille a la premiere reponse apres l arrivee sur les heures, pas a chaque heure posee
   var signaturePistes = '';    // les pistes rendues (activites + heures) : sinon, on met a jour sur place
   var adaptation = null;       // { deplace, pour, t } : l activite deplacee pour l heure posee
-  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; annulerPlan(); libererBlocage(); }
+  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; state.heuresPassees = {}; adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; annulerPlan(); libererBlocage(); }
   // UNE DEMANDE QUI CHANGE COUPE SON CALCUL EN ROUTE (2026-10-12) : le retour
   // aux activites pendant un calcul, puis un geste. La reponse ne servait
   // plus a rien (la cle de la demande la jetait), mais elle se telechargeait
@@ -2710,6 +2711,20 @@
     state.dispo = j; state.dispoCle = cle; state.dispoTexte = texte;
     heuresLues = Date.now();
     plus.statut = null; plus.annuler = null; plus.refuses = {};
+    // UNE HEURE POSEE DEVENUE PASSEE (2026-09-30) : le serveur l a retiree
+    // de la demande (`heuresPassees`) ; elle sort aussi du choix du client,
+    // et sa piste le dit jusqu a ce qu il en choisisse une autre.
+    var passees = Array.isArray(j.heuresPassees) ? j.heuresPassees : [];
+    passees.forEach(function (p) {
+      if (!p || !p.activityId || !p.time) return;
+      if (p.activityId === 'laser_game') {
+        state.laserParts = state.laserParts.filter(function (h) { return h !== p.time; });
+        if (state.laserParts.length) state.pins.laser_game = state.laserParts[0]; else delete state.pins.laser_game;
+      } else if (state.pins[p.activityId] === p.time) delete state.pins[p.activityId];
+      var deja = state.heuresPassees[p.activityId] || [];
+      if (deja.indexOf(p.time) < 0) state.heuresPassees[p.activityId] = deja.concat(p.time).sort();
+    });
+    if (passees.length) dire(passees.length > 1 ? 'Des heures choisies sont passées : choisissez-en d’autres.' : 'L’heure de ' + passees[0].time + ' est passée : choisissez-en une autre.');
     var slot = (j.slots || [])[0] || null;
     state.creneau = slot ? creneauAvecDevis(slot, j) : null;
     state.heure = slot ? slot.time : '';
@@ -3234,10 +3249,17 @@
         var finRetenue = retenu && retenu.visitEndTime;
         var quoi = a.activityId === dernierSerre && sautent.length && finRetenue ? phraseHorsDelai(sautent, finRetenue, false) : null;
         var suiteNote = quoi ? quoi.tete + ' : ' + quoi.noms + '.' : sautent.length ? '' : 'Tout ne tiendra pas avant la fermeture' + (autres.length ? '.' : ' ce jour-là.');
-        note.textContent = !toutSerre ? '' : ((autres.length
+        var serre = !toutSerre ? '' : ((autres.length
           ? 'Serré à toute heure avec votre ' + autres.join(' et votre ') + '.'
           : 'Serré à toute heure.') + (suiteNote ? ' ' + suiteNote : ''));
-        note.hidden = !toutSerre;
+        // L heure posee devenue passee (retiree par le serveur) : dite ici
+        // tant que le client n en a pas choisi une autre.
+        var passees = state.heuresPassees[a.activityId] || [];
+        var passe = !passees.length ? '' : passees.length > 1
+          ? 'Les heures de ' + joindreListe(passees, ' et ') + ' sont passées : choisissez-en d’autres.'
+          : 'L’heure de ' + passees[0] + ' est passée : choisissez-en une autre.';
+        note.textContent = [passe, serre].filter(Boolean).join(' ');
+        note.hidden = !(passe || serre);
       }
       var vagues = $('.fg-track__waves', track);
       if (vagues) {
@@ -3577,6 +3599,7 @@
       if (pisteReset) delete pisteReset.dataset.touched;
       delete state.pins[idr];
       if (idr === 'laser_game') state.laserParts = [];
+      delete state.heuresPassees[idr];
       adaptation = null;
       chargerPlan();
       return;
@@ -3664,6 +3687,8 @@
     } else {
       state.pins[idA] = t;
     }
+    // Une heure choisie pour cette activite : l heure passee n est plus a dire.
+    delete state.heuresPassees[idA];
     // L heure touchee s entoure tout de suite, avant la reponse : le toucher
     // est entendu. chargerPlan relit cette case a la reponse.
     $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); }); chip.classList.add('is-pending');

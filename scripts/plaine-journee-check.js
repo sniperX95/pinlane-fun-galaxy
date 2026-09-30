@@ -18,8 +18,9 @@
 //     visite » dit « dès HH:MM, accès toute la journée », sans fin ni duree ;
 //     la ligne libre dit « Playground (toute la journée) » et « à votre
 //     rythme » ; la barre du bas dit « dès HH:MM, toute la journée » ; le
-//     recapitulatif dit « accès toute la journée · 4 à 12 ans » ; nulle part
-//     « 1 heure », « 1 h » ni « environ ».
+//     recapitulatif dit « 2 enfants · accès toute la journée · 4 à 12 ans »
+//     (les enfants comptes, 2026-09-30 ; par defaut tout le groupe) ; nulle
+//     part « 1 heure », « 1 h » ni « environ ».
 // [C] BOWLING + PLAINE : la ligne libre et le detail du prix disent « toute la
 //     journée », « à votre rythme » sans duree ; la fin estimee reste celle
 //     de la reponse du serveur (la plaine y compte son heure d estimation).
@@ -46,7 +47,7 @@ const CASSE = String(process.env.PJ_CASSE || '');
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
 const MUTATIONS = {
-  recap: ["        } else if (it.dayAccess) {\n          morceaux.push('accès toute la journée', ageActivite(it.activityId));\n        } else {", '        } else {'],
+  recap: ["        } else if (it.dayAccess) {\n          var enfantsLigne = seCompteParEnfant(activite(it.activityId)) ? Math.trunc(Number(it.participants) || 0) : 0;\n          morceaux.push(enfantsLigne > 0 ? enfantsLigne + ' enfant' + (enfantsLigne > 1 ? 's' : '') : '', 'accès toute la journée', ageActivite(it.activityId));\n        } else {", '        } else {'],
   detail: ["    if (it.dayAccess) return 'toute la journée';\n", ''],
   libre: ["var entre = it.dayAccess ? 'toute la journée' : detailSessions(it);", 'var entre = detailSessions(it);'],
   environ: ["var duree = !entre && Number(it.minutes) > 0 ? environ(it.minutes) : '';", "var duree = Number(it.minutes) > 0 ? environ(it.minutes) : '';"],
@@ -247,8 +248,8 @@ async function main() {
     ok(!UNE_HEURE.test(vb.texte), '[B] nulle part dans la visite « 1 heure », « 1 h » ni « environ »', `« ${vb.texte.slice(0, 160)} »`);
     const rb = await lireRecap(page);
     const lignePlaine = rb.items.find((i) => i.nom === 'Playground') || {};
-    ok(lignePlaine.detail === 'accès toute la journée · 4 à 12 ans' && lignePlaine.aside === 'à votre rythme',
-      '[B] le recapitulatif dit « accès toute la journée · 4 à 12 ans », « à votre rythme »', JSON.stringify(lignePlaine));
+    ok(lignePlaine.detail === '2 enfants · accès toute la journée · 4 à 12 ans' && lignePlaine.aside === 'à votre rythme',
+      '[B] le recapitulatif dit « 2 enfants · accès toute la journée · 4 à 12 ans », « à votre rythme » (le groupe de 2, compteur par defaut)', JSON.stringify(lignePlaine));
     ok(!UNE_HEURE.test(rb.texte), '[B] nulle part dans le recapitulatif « 1 heure », « 1 h » ni « environ »', `« ${rb.texte.slice(0, 160)} »`);
     await ctx.close();
 
@@ -275,7 +276,7 @@ async function main() {
     ok(Boolean(retenu) && fins.indexOf(retenu) >= 0, '[C] la fin estimee est celle de la reponse du serveur (la plaine y compte son heure d estimation)', `${retenu} parmi ${fins.slice(0, 4).join(', ')}`);
     const rc = await lireRecap(pageC);
     const plaineC = rc.items.find((i) => i.nom === 'Playground') || {};
-    ok(plaineC.detail === 'accès toute la journée · 4 à 12 ans', '[C] le recapitulatif dit la meme chose pour la plaine', JSON.stringify(plaineC));
+    ok(plaineC.detail === '2 enfants · accès toute la journée · 4 à 12 ans', '[C] le recapitulatif dit la meme chose pour la plaine', JSON.stringify(plaineC));
     ok(erreurs.length === 0, '[B][C] aucune erreur JavaScript', erreurs.slice(0, 3).join(' | '));
     await ctxC.close();
   } finally {

@@ -1317,15 +1317,16 @@ button.staff-date-label:focus-visible,
 #staffView .kpi-grid .kpi .value { font-size: 20px; }
 #staffView .kpi-grid .kpi .hint,
 #staffView .kpi-grid .kpi .tag-ok { margin-top: 0; }
-/* Une case de bande tient en 200 px : les quatre restent sur une ligne
-   jusqu au telephone, ou elles passent en deux sur deux. */
-@media (max-width: 1280px) {
-  #staffView .kpi-grid:not(.hidden) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
+/* Deux ou trois cases selon l onglet et le jour (renderKpis) : elles se
+   partagent la ligne, au telephone aussi (les libelles passent a la ligne,
+   aucune case ne reste seule sur une rangee). Vide avant le premier rendu,
+   la bande ne dessine pas de cadre. */
+#staffView .kpi-grid:not(.hidden) { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+#staffView .kpi-grid:empty { display: none; }
+#staffView .kpi-grid .kpi .hint { color: var(--muted); }
 @media (max-width: 768px) {
-  #staffView .kpi-grid:not(.hidden) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #staffView .kpi-grid .kpi:nth-child(odd) { border-left: 0; }
-  #staffView .kpi-grid .kpi:nth-child(n+3) { border-top: 1px solid var(--line); }
+  #staffView .kpi-grid .kpi { padding: 8px 10px 10px; }
+  #staffView .kpi-grid .kpi .value { font-size: 17px; }
 }
 
 /* Onglets ressource (Bowling / Laser / Complet) */
@@ -2050,6 +2051,17 @@ button.staff-date-label:focus-visible,
 }
 
 .lane-header .settings:hover { color: var(--text); background: var(--subtle); }
+
+/* La roue dentee bascule la piste en maintenance d un clic : une action rare.
+   Seize engrenages permanents chargeaient les en-tetes (lot C, 2026-09-30).
+   Sur un ecran a souris, elle n apparait qu au survol de l en-tete ou au focus
+   clavier ; au doigt rien ne change (il n y a pas de survol). C est la couleur
+   qui passe a transparent, pas l opacite (aucun groupe de composition) : le
+   bouton garde sa place, ses 44 px et sa cible. Une piste EN maintenance garde
+   sa roue visible : c est par elle qu on la remet en service. */
+@media (hover: hover) and (pointer: fine) {
+  :where(.lane-col:not(.maint)) .lane-header:not(:hover) .settings:not(:focus-visible) { color: transparent; }
+}
 
 .slot-cell {
   height: calc(var(--planning-hour-h) / 2);
@@ -3198,6 +3210,36 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .laser-empty-title { font-size: 13px; font-weight: 500; }
 .laser-empty-sub { font-size: 12px; color: var(--faint); }
 
+/* TRANCHES SANS LANCEMENT : DISCRETES, TOUJOURS CIBLES (lot C, 2026-09-30).
+   Vingt-huit cadres pointilles de 72 px « Disponible · 30 armes libres »
+   noyaient les lancements. Une tranche sans lancement devient une ligne basse
+   sans cadre ; le cadre revient au survol, au focus et pendant un depot
+   (.is-drop-target), et la tranche reste un bouton (clic = reservation rapide)
+   et une cible de depot. 44 px : la cible tactile minimale. Le sous-titre de
+   l heure (« départ », « demi-heure ») et le « 0/30 » d une rangee au repos
+   ne disaient rien que la ligne ne dise deja. */
+.laser-agenda-row.is-empty { min-height: 44px; }
+.laser-agenda-row.is-empty .laser-agenda-time,
+.laser-agenda-row.is-empty .laser-agenda-capacity { padding-block: 4px; }
+.laser-agenda-row.is-empty .laser-agenda-time span,
+.laser-agenda-row.is-idle .laser-agenda-capacity strong { display: none; }
+.laser-agenda-row.is-empty .laser-session-slot.is-empty {
+  margin: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border-color: transparent;
+  border-radius: 0;
+}
+.laser-agenda-row.is-empty .laser-session-slot.is-empty:not(.is-busy):hover,
+.laser-agenda-row.is-empty .laser-session-slot.is-empty:focus-visible { border-color: var(--accent); }
+/* Une tranche « Occupé » n est pas cliquable : pas d invitation au survol. */
+.laser-agenda-row.is-empty .laser-session-slot.is-busy:hover { background: transparent; color: var(--faint); }
+.laser-empty-add { display: none; margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent-strong); }
+.laser-session-slot.is-empty:focus-visible .laser-empty-add { display: inline; }
+@media (hover: hover) and (pointer: fine) {
+  .laser-session-slot.is-empty:hover .laser-empty-add { display: inline; }
+}
+
 .laser-session-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .laser-session-title { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
 .laser-session-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
@@ -3439,9 +3481,12 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .status-chip:hover { background: var(--subtle); color: var(--text); }
 .status-chip.active { background: var(--text); border-color: var(--text); color: var(--surface); }
-.status-chip.active.arrived { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
-.status-chip.active.pending { background: var(--info-soft); border-color: var(--info); color: var(--accent-strong); }
-.status-chip.active.paid { background: var(--success-soft); border-color: var(--success); color: var(--success); }
+/* Les puces d etat prennent les couleurs des colonnes du Terrain : a venir
+   neutre (le style actif de base), sur place accent, a cloturer ambre,
+   terminees vert. */
+.status-chip.active.onsite { background: var(--info-soft); border-color: var(--info); color: var(--accent-strong); }
+.status-chip.active.closing { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
+.status-chip.active.done { background: var(--success-soft); border-color: var(--success); color: var(--success); }
 .status-chip.active.notes { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
 
 .status-chip span {
@@ -3925,6 +3970,10 @@ body.staff-mode.laser-dragging * { user-select: none; }
    porte l action, « Valider », en ambre et en pointilles pour ne pas se lire
    comme « Arrivé ». Meme famille que la pastille « À vérifier ». */
 .res-state-pill.review { background: var(--warning-soft); color: var(--warning); font-weight: 600; }
+/* Le moment que la section ne dit pas, avec les regles du Terrain : le retard
+   en aplat, l arrivee jamais pointee d un groupe qui a fini en contour. */
+.res-state-pill.late { background: var(--warning); color: var(--page); font-weight: 600; }
+.res-state-pill.unmarked { background: transparent; color: var(--warning); box-shadow: inset 0 0 0 1px currentColor; }
 .res-status-btn.active.review { background: var(--warning-soft); border-color: var(--warning); border-style: dashed; color: var(--warning); font-weight: 600; }
 .res-status-btn.active.review:hover { border-style: solid; }
 .pos-act-review {

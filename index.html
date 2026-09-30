@@ -730,28 +730,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         </div>
       </div>
 
-      <div class="kpi-grid stagger">
-        <div class="kpi">
-          <div class="label">Réservations aujourd'hui</div>
-          <div class="value" id="kpiRes">0</div>
-          <div class="hint">sessions</div>
-        </div>
-        <div class="kpi">
-          <div class="label">Joueurs prévus</div>
-          <div class="value" id="kpiPax">0</div>
-          <div class="hint">personnes</div>
-        </div>
-        <div class="kpi">
-          <div class="label">Chiffre d'affaires</div>
-          <div class="value" id="kpiRev">0€</div>
-          <div class="tag-ok" id="kpiCollected">0 € encaissés</div>
-        </div>
-        <div class="kpi accent">
-          <div class="label">Taux d'occupation</div>
-          <div class="value" id="kpiOcc">0%</div>
-          <div class="hint">des créneaux</div>
-        </div>
-      </div>
+      <!-- Le bandeau du planning se dessine en JS (renderKpis) : ses cases
+           dependent de l onglet (pistes, arene, journee) et du jour (les
+           pistes libres maintenant n existent que le jour meme). -->
+      <div class="kpi-grid stagger" aria-label="Le planning en chiffres"></div>
 
       <div class="staff-resource-tabs">
         <button class="staff-resource-tab" id="staffTabBowling" onclick="setStaffResourceView('bowling')">

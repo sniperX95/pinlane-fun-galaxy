@@ -280,7 +280,7 @@
       h += '<div class="d-kpi' + (k.fort ? ' is-fort' : '') + '" data-d-casc="' + (i + 1) + '">'
         + '<div class="d-kpi-lib">' + ech(k.libelle) + '</div>'
         + '<div class="d-kpi-val">' + ech(k.valeur) + '</div>'
-        + '<div class="d-kpi-unite' + (k.cle === 'chiffre' ? ' is-ok' : '') + '">' + ech(k.unite) + '</div>'
+        + '<div class="d-kpi-unite">' + ech(k.unite) + '</div>'
         + '</div>';
     });
     h += '</div>';

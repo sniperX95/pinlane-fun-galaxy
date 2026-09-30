@@ -528,13 +528,21 @@ const JEU_STATUTS = [
   { id: 81002, lane: 2, start: '12:00', duration: 1, status: 'confirmed' },
   { id: 81003, lane: 3, start: '13:00', duration: 1, status: 'confirmed' },
   { id: 81004, lane: 4, start: '14:00', duration: 1, status: 'arrived' },
-  { id: 81005, lane: 5, start: '15:00', duration: 1, status: 'paid' },
+  // Fini a 09:30 et paye : « Terminées » a 10:00, l heure figee du scenario.
+  { id: 81005, lane: 5, start: '08:30', duration: 1, status: 'paid' },
 ];
+// La liste lit le MOMENT de chaque groupe depuis le 2026-09-30 (lot C) : le
+// scenario vit a une heure figee, sinon son verdict dependrait de l heure du
+// passage (a 16:00, les cinq dossiers etaient finis).
+// Un samedi PASSE : la session du banc expire 24 h apres l heure reelle, une
+// date future la verrait deja echue.
+const HEURE_C = '2026-09-26T10:00:00';
 const CONFIRME_TEMOIN = 81002;
 
 async function mesurerC(browser) {
   const { page, fermer } = await pageNeuve(browser, { width: 1440, height: 900 });
   try {
+    await page.clock.install({ time: new Date(HEURE_C) });
     await installMockStaff(page, JEU_STATUTS);
     await ouvrirStaff(page, 'planning', 'all');
     await page.waitForSelector('#resList .status-chip', { timeout: 20000 });

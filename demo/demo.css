@@ -242,7 +242,8 @@ a { color: inherit; }
 .d-btn-fort:hover { opacity: .86; border-color: var(--text); }
 
 /* ---- Les indicateurs ----------------------------------------------------- */
-.d-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+/* Autant de colonnes que de cases (deux depuis le 2026-09-30, comme le produit). */
+.d-kpis { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 18px; }
 .d-kpi {
   padding: 15px 17px; border: 1px solid var(--line); border-radius: var(--radius-lg);
   background: var(--surface); box-shadow: var(--ombre-sm);
@@ -254,10 +255,6 @@ a { color: inherit; }
 }
 .d-kpi.is-fort .d-kpi-val { color: var(--accent); }
 .d-kpi-unite { margin-top: 5px; font-size: 12px; color: var(--faint); }
-.d-kpi-unite.is-ok {
-  display: inline-block; padding: 2px 8px; border-radius: var(--radius-full);
-  background: var(--success-soft); color: var(--success); font-weight: 550;
-}
 
 /* ---- Les onglets de ressource -------------------------------------------- */
 .d-onglets { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }

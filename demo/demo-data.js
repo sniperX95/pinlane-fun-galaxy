@@ -119,20 +119,19 @@
   /* LES INDICATEURS SE RECOMPOSENT. Chacun est la somme de ce qui est dessine
      dans la grille juste en dessous : un visiteur qui compte retombe dessus. */
   var joueurs = DEMO.reduce(function (s, r) { return s + r.pax; }, 0);
-  var chiffre = DEMO.reduce(function (s, r) { return s + r.prix; }, 0);
   var heuresPistes = DEMO.reduce(function (s, r) { return s + r.duration * r.lanes.length; }, 0);
   var capacite = PISTES * (FERMETURE - OUVERTURE);
   var occupation = Math.round((heuresPistes / capacite) * 100);
-  var encaisse = DEMO.filter(function (r) { return r.statut === 'paid'; })
-    .reduce(function (s, r) { return s + r.prix; }, 0);
 
+  /* LE BANDEAU DU PRODUIT DEPUIS LE 2026-09-30 : l'occupation des pistes et
+     les reservations bowling avec leurs joueurs, le perimetre dans le
+     libelle. Le chiffre d'affaires en est sorti (il vit sur l'accueil du
+     produit) et aucune case ne dit plus « aujourd'hui ». « Libres
+     maintenant » n'est pas repris : il se lit a l'heure, et la journee de
+     demonstration n'a pas d'heure. */
   var INDICATEURS = [
-    { cle: 'reservations', libelle: 'Réservations aujourd’hui', valeur: String(DEMO.length), unite: 'sessions piste' },
-    { cle: 'joueurs', libelle: 'Joueurs prévus', valeur: String(joueurs), unite: 'personnes' },
-    // « validés » et non « encaissés » : le produit suit un statut, il
-    // n'encaisse pas. Le centre encaisse par ses propres moyens.
-    { cle: 'chiffre', libelle: 'Chiffre d’affaires', valeur: chiffre + '€', unite: encaisse + '€ validés' },
-    { cle: 'occupation', libelle: 'Taux d’occupation', valeur: occupation + '%', unite: 'capacité pistes', fort: true },
+    { cle: 'occupation', libelle: 'Occupation des pistes', valeur: occupation + '%', unite: 'sur la journée', fort: true },
+    { cle: 'reservations', libelle: 'Réservations bowling', valeur: String(DEMO.length), unite: joueurs + ' joueurs' },
   ];
 
   var ONGLETS = [

@@ -13355,8 +13355,11 @@ async function loadStaffCenterConfig(force = false) {
   if (state.view === 'staff' && ['establishment', 'lanes'].includes(getStaffMenuPage())) renderStaffUtilityPage();
   // Le planning ouvert se redessine avec la configuration arrivee (pistes,
   // horaires, armes laser) : il gardait sinon les valeurs par defaut jusqu a ce
-  // qu une autre donnee le fasse repeindre.
+  // qu une autre donnee le fasse repeindre. Son bandeau aussi : il comptait
+  // les pistes libres sur le nombre par defaut (8), les pistes 7 et 8 d un
+  // centre qui en a 6 s y disaient libres (journee-vraie, 2026-09-30).
   if (state.view === 'staff') {
+    if (isStaffPlanningPageActive()) renderKpis();
     const planningBox = document.getElementById('planningBox');
     if (planningBox && !planningBox.classList.contains('hidden')) repaintKeepingScroll(planningBox, () => renderPlanning());
     const laserBox = document.getElementById('laserPlanningBox');
@@ -15885,6 +15888,9 @@ function refreshAvailabilityBlocksUi() {
   if (state.view === 'staff') {
     if (document.getElementById('planningGridWrap')) renderPlanning();
     if (document.getElementById('laserPlanningGridWrap')) renderLaserPlanning();
+    // Les pistes libres maintenant attendaient les blocages : elles se disent
+    // des qu ils arrivent.
+    if (isStaffPlanningPageActive()) renderKpis();
   }
 }
 
@@ -20211,7 +20217,7 @@ function toggleTableExpanded() {
 }
 
 function setStaffStatusFilter(filter) {
-  state.staffStatusFilter = filter;
+  state.staffStatusFilter = ['all', 'open', 'notes', ...STAFF_MOMENT_STATES].includes(filter) ? filter : 'all';
   save();
   repaintKeepingScroll(document.getElementById('staffView'), () => {
     renderPlanning();
@@ -20294,7 +20300,7 @@ function showStaffFloatingMenu(event, html) {
 }
 
 function applyPlanningStatusFilter(filter) {
-  state.staffStatusFilter = ['all', 'open', 'pending', 'arrived', 'paid'].includes(filter) ? filter : 'all';
+  state.staffStatusFilter = ['all', 'open', ...STAFF_MOMENT_STATES].includes(filter) ? filter : 'all';
   save();
   closeStaffFloatingMenus();
   repaintKeepingScroll(document.getElementById('staffView'), () => renderStaff());
@@ -20313,9 +20319,10 @@ function togglePlanningFilterMenu(event) {
   const bouton = ([key, label]) => `<button type="button" class="${active === key ? 'active' : ''}" onclick="applyPlanningStatusFilter('${key}')">${label}</button>`;
   const etats = [
     ['all', 'Toutes'],
-    ['arrived', 'Sur place'],
-    ['pending', 'À venir'],
-    ['paid', 'Terminées']
+    ['upcoming', 'À venir'],
+    ['onsite', 'Sur place'],
+    ['closing', 'À clôturer'],
+    ['done', 'Terminées']
   ];
   showStaffFloatingMenu(event, `
     <div class="staff-action-popover-title">Filtrer le planning</div>
@@ -21701,11 +21708,9 @@ function renderKpis() {
   // pas six fois 20 places, et les multiplier divisait l occupation par six.
   const laneCount = getAvailabilityLaneCount();
   const armes = getAvailabilityLaserCapacity();
-  let revTotal = 0, revColl = 0, pax = 0, bookedUnits = 0;
+  let pax = 0, bookedUnits = 0;
   res.forEach(r => {
-    revTotal += Number(r.price) || 0;
     pax += Number(r.pax) || 0;
-    if (r.status === 'paid') revColl += Number(r.price) || 0;
     if (view === 'laser') {
       bookedUnits += getLaserWindowsFromReservation(r).reduce((sum, window) => sum + (Number(window.players || r.pax) || 0), 0);
     } else if (view === 'all') {
@@ -21733,35 +21738,114 @@ function renderKpis() {
         ? armes * lancementsDuJour
         : laneCount * heuresOuvertes;
   const occ = totalAvail > 0 ? Math.round((bookedUnits / totalAvail) * 100) : 0;
-  const kpiCards = document.querySelectorAll('#staffView .kpi-grid .kpi');
-  const setKpiCopy = (index, label, hint) => {
-    const card = kpiCards[index];
+  // LE BANDEAU DU PLANNING NE RECOPIE PLUS L ACCUEIL (2026-09-30). Ses quatre
+  // cases redisaient reservations, joueurs, chiffre d affaires et occupation a
+  // un autre perimetre que la Vue d ensemble (« 17, 2 057 EUR » sur l onglet
+  // bowling, « 24, 3 437 EUR » sur l accueil) sans dire lequel ; le journal le
+  // notait des le 2026-09-23 (« le planning qui repete les tuiles de
+  // l accueil »). Il garde ce qui sert a planifier, perimetre dans le libelle :
+  // l occupation de la ressource, ses reservations et joueurs, et le jour
+  // meme, les pistes libres maintenant. L argent vit sur l accueil et la page
+  // Reservations. Aucune case ne dit « aujourd hui » : l en-tete dit la date.
+  const grid = document.querySelector('#staffView .kpi-grid');
+  if (!grid) return;
+  const ressource = view === 'laser' ? 'laser' : view === 'all' ? '' : 'bowling';
+  const tiles = [
+    {
+      key: 'occupation',
+      label: view === 'laser' ? 'Occupation de l’arène' : view === 'all' ? 'Occupation' : 'Occupation des pistes',
+      id: 'kpiOcc',
+      value: `${occ}%`,
+      hint: view === 'all' ? 'pistes et arène, sur la journée' : 'sur la journée'
+    },
+    {
+      key: 'reservations',
+      label: ressource ? `Réservations ${ressource}` : 'Réservations',
+      id: 'kpiRes',
+      value: String(res.length),
+      hint: `${pax} joueur${pax > 1 ? 's' : ''}`
+    }
+  ];
+  const libres = view === 'laser' ? null : getStaffBowlingLanesFreeNow();
+  if (libres) tiles.push({ key: 'libres', label: 'Libres maintenant', id: 'kpiFree', ...describeStaffLanesFreeNow(libres) });
+  // Mise a jour EN PLACE quand les cases sont les memes : le bandeau porte
+  // l animation d entree (.stagger), et le reconstruire a chaque sondage la
+  // rejouerait toutes les quelques secondes.
+  const signature = tiles.map(tile => tile.key).join('|');
+  if (grid.dataset.tiles !== signature) {
+    grid.dataset.tiles = signature;
+    grid.innerHTML = tiles.map(tile => `<div class="kpi" data-kpi="${tile.key}"><div class="label"></div><div class="value" id="${tile.id}"></div><div class="hint"></div></div>`).join('');
+  }
+  tiles.forEach(tile => {
+    const card = grid.querySelector(`[data-kpi="${tile.key}"]`);
     if (!card) return;
-    const labelEl = card.querySelector('.label');
-    const hintEl = card.querySelector('.hint');
-    if (labelEl) labelEl.textContent = label;
-    if (hintEl) hintEl.textContent = hint;
+    card.querySelector('.label').textContent = tile.label;
+    card.querySelector('.value').textContent = tile.value;
+    card.querySelector('.hint').textContent = tile.hint;
+    if (tile.title) card.title = tile.title; else card.removeAttribute('title');
+  });
+}
+
+// LES PISTES LIBRES MAINTENANT, lues sur les memes sources que la grille :
+// les reservations du jour (filtres et recherche ignores), les horaires
+// retenus en ligne, les blocages de disponibilite et les pistes en
+// maintenance. Le jour meme seulement, pendant l ouverture, et seulement une
+// fois les blocages charges : avant, une piste fermee se dirait libre.
+function getStaffBowlingLanesFreeNow() {
+  if (state.currentDate !== todayStr()) return null;
+  if (!availabilityBlocksCache.loaded) return null;
+  const config = getPlanningWindow(state.currentDate);
+  const now = currentTimeDecimal();
+  if (config.closed || now < config.open || now >= config.close) return null;
+  const laneCount = getAvailabilityLaneCount();
+  if (!laneCount) return null;
+  const prises = new Map();
+  const prendre = (lane, start, end) => {
+    const cle = Number(lane);
+    if (!prises.has(cle)) prises.set(cle, []);
+    prises.get(cle).push({ start: Number(start), end: Number(end) });
   };
-  // « aujourd'hui » seulement quand la date affichee l est : sur un autre
-  // jour, la tuile affirmait un fait faux.
-  setKpiCopy(0, state.currentDate === todayStr() ? "Réservations aujourd'hui" : 'Réservations', view === 'laser' ? 'sessions laser' : view === 'all' ? 'sessions activité' : 'sessions piste');
-  setKpiCopy(1, 'Joueurs prévus', 'personnes');
-  setKpiCopy(2, "Chiffre d'affaires", '');
-  setKpiCopy(3, "Taux d'occupation", view === 'laser' ? 'capacité laser' : view === 'all' ? 'capacité globale' : 'capacité pistes');
-  document.getElementById('kpiRes').textContent = res.length;
-  document.getElementById('kpiPax').textContent = pax;
-  // Sans 'payments.view', le montant cede la place a un tiret : jamais a un
-  // zero, qui serait un fait, et un fait faux.
-  const seesMoney = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.view');
-  // UN SEUL FORMAT MONETAIRE dans la console : formatMoney pose l espace avant
-  // l euro. Ces deux points l ecrivaient a la main (« 781€ », « 308€ validés »)
-  // a cote de tuiles qui, elles, passaient par formatMoney (« 781 € ») : deux
-  // typographies pour la meme donnee, sur des ecrans consecutifs.
-  document.getElementById('kpiRev').textContent = seesMoney ? formatMoney(revTotal) : '···';
-  // « validés » ne disait pas quoi : c est l argent ENCAISSE (statut payé),
-  // le mot du Terrain (« non encaissés »).
-  document.getElementById('kpiCollected').textContent = seesMoney ? `${formatMoney(revColl)} encaissés` : '···';
-  document.getElementById('kpiOcc').textContent = occ + '%';
+  const poser = source => source.forEach(item => getBowlingWindowsFromReservation(item)
+    .forEach(window => (window.lanes || []).forEach(lane => prendre(lane, window.start, window.end))));
+  poser(todaysReservations());
+  poser(getBlocagesEnLigne(state.currentDate));
+  Object.entries(getBowlingBlockWindows(state.currentDate, config.open, config.close))
+    .forEach(([lane, fenetres]) => fenetres.forEach(fenetre => prendre(lane, fenetre.startH, fenetre.endH)));
+  const libres = [];
+  const occupees = [];
+  for (let lane = 1; lane <= laneCount; lane += 1) {
+    if (state.laneStatuses[lane] === 'maintenance') continue;
+    const fenetres = prises.get(lane) || [];
+    const enCours = fenetres.filter(fenetre => fenetre.start <= now && fenetre.end > now);
+    if (enCours.length) {
+      occupees.push({ lane, until: Math.max(...enCours.map(fenetre => fenetre.end)) });
+      continue;
+    }
+    const suivantes = fenetres.filter(fenetre => fenetre.start > now).map(fenetre => fenetre.start);
+    libres.push({ lane, until: suivantes.length ? Math.min(...suivantes) : config.close });
+  }
+  return { libres, occupees, close: config.close };
+}
+
+function describeStaffLanesFreeNow({ libres, occupees, close }) {
+  const liste = lanes => lanes.length > 1 ? `${lanes.slice(0, -1).join(', ')} et ${lanes[lanes.length - 1]}` : String(lanes[0]);
+  if (!libres.length) {
+    const prochaine = [...occupees].sort((left, right) => left.until - right.until)[0];
+    return {
+      value: 'Aucune',
+      // Aucune piste prise et aucune libre : elles sont toutes en maintenance.
+      hint: prochaine ? `la ${prochaine.lane} se libère à ${formatClockDisplay(prochaine.until)}` : 'toutes en maintenance'
+    };
+  }
+  const bientot = [...libres].filter(item => item.until < close).sort((left, right) => left.until - right.until)[0];
+  const pistes = libres.map(item => item.lane);
+  return {
+    value: `${libres.length} piste${libres.length > 1 ? 's' : ''}`,
+    hint: bientot
+      ? `${liste(pistes)} · la ${bientot.lane} jusqu’à ${formatClockDisplay(bientot.until)}`
+      : `${liste(pistes)} · jusqu’à la fermeture`,
+    title: libres.map(item => `Piste ${item.lane} libre jusqu’à ${item.until < close ? formatClockDisplay(item.until) : 'la fermeture'}`).join('\n')
+  };
 }
 
 // La tete du planning ne redit pas les comptes des tuiles juste au-dessus
@@ -22224,9 +22308,14 @@ function renderLaserPlanning() {
           <span class="laser-empty-sub">un lancement en cours chevauche cette tranche</span>
         </div>`;
       }
-      return `<button type="button" class="laser-session-slot is-empty" data-laser-drop-start="${timeValue}" onclick="openQuickBook({ date: state.currentDate, startTime: '${numToTime(timeValue)}', type: 'laser' })" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${timeValue})">
-        <span class="laser-empty-title">Disponible</span>
-        <span class="laser-empty-sub">${freeGuns} arme${freeGuns > 1 ? 's' : ''} libre${freeGuns > 1 ? 's' : ''}</span>
+      // Une tranche libre est une LIGNE BASSE (lot C, 2026-09-30) : « Libre »,
+      // et le nombre d armes seulement quand un lancement voisin en prend une
+      // partie. Vingt-huit « Disponible · 30 armes libres » repetaient la
+      // colonne Capacite et noyaient les lancements.
+      return `<button type="button" class="laser-session-slot is-empty" data-laser-drop-start="${timeValue}" title="Réserver à ${formatClockDisplay(timeValue)}" onclick="openQuickBook({ date: state.currentDate, startTime: '${numToTime(timeValue)}', type: 'laser' })" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${timeValue})">
+        <span class="laser-empty-title">Libre</span>
+        ${freeGuns < capacity ? `<span class="laser-empty-sub">${freeGuns} arme${freeGuns > 1 ? 's' : ''} libre${freeGuns > 1 ? 's' : ''}</span>` : ''}
+        <span class="laser-empty-add" aria-hidden="true">Réserver</span>
       </button>`;
     }
 
@@ -22375,7 +22464,8 @@ function renderLaserPlanning() {
     const sessionHtml = slotSessions.length
       ? `<div class="laser-session-stack">${slotSessions.map(session => renderLaserSession(session, timeValue)).join('')}</div>`
       : renderLaserSession(null, timeValue, remaining);
-    rowsHtml += `<div class="laser-agenda-row ${slotSessions.length ? 'has-session' : 'is-empty'} ${isHalf ? 'is-half' : 'is-hour'} ${current ? 'is-current' : ''}">
+    const auRepos = !slotSessions.length && sessionPlayers === 0;
+    rowsHtml += `<div class="laser-agenda-row ${slotSessions.length ? 'has-session' : 'is-empty'}${auRepos ? ' is-idle' : ''} ${isHalf ? 'is-half' : 'is-hour'} ${current ? 'is-current' : ''}">
       <div class="laser-agenda-time">
         <strong>${formatClockDisplay(timeValue)}</strong>
         <span>${isHalf ? 'demi-heure' : 'départ'}</span>
@@ -22566,24 +22656,63 @@ function renderReservationFirstStatusButton(r, { fiche = false } = {}) {
     : `<button class="res-status-btn ${actif ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending', event)">Confirmé</button>`;
 }
 
+// LE MOMENT D UN DOSSIER, LE MEME SUR TOUTES LES PAGES (2026-09-30). La liste
+// du planning rangeait par STATUT sous les mots du Terrain : « Sur place »
+// voulait dire « pointe arrive », meme fini depuis une heure, et le groupe en
+// retard restait « À venir » sans le dire, pendant que le Terrain et l accueil
+// disaient « À clôturer » et « En retard ». Liste, puces, compteurs et filtre
+// du planning lisent maintenant le meme partage (getStaffTerrainBoard,
+// splitStaffTerrainOnsite) :
+//   upcoming : pas commence et pas pointe ; le retard en fait partie, marque ;
+//   onsite   : pointe arrive, ou paye, pendant sa fenetre ;
+//   closing  : fini, pas paye ;
+//   done     : fini et paye.
+// Les quatre etats sont exclusifs et se totalisent (decision du 2026-08-14,
+// reservation-filters-check) ; « À gérer » recoupe les trois premiers.
+const STAFF_MOMENT_STATES = ['upcoming', 'onsite', 'closing', 'done'];
+
+function getStaffReservationMoments(reservations) {
+  const board = getStaffTerrainBoard(reservations);
+  const partage = splitStaffTerrainOnsite(board);
+  const moments = new Map();
+  const poser = (items, etat, late = false) => items.forEach(item => {
+    moments.set(String(item.reservation.id), { etat, late, item, now: board.now });
+  });
+  poser(board.upcoming, 'upcoming');
+  poser(partage.late, 'upcoming', true);
+  poser(partage.present, 'onsite');
+  poser(board.closing, 'closing');
+  poser(board.done, 'done');
+  return moments;
+}
+
+function getStaffReservationMomentState(moments, reservation) {
+  const entry = moments.get(String(reservation.id));
+  return entry ? entry.etat : 'upcoming';
+}
+
 function filterReservationsForStaff(reservations, filter) {
-  if (filter === 'open') return reservations.filter(r => r.status !== 'paid');
   if (filter === 'notes') return reservations.filter(hasReservationNote);
-  if (filter === 'all') return reservations;
-  if (filter === 'pending') return reservations.filter(r => isUpcomingReservationStatus(r.status));
-  return reservations.filter(r => r.status === filter);
+  if (filter !== 'open' && !STAFF_MOMENT_STATES.includes(filter)) return reservations;
+  const moments = getStaffReservationMoments(reservations);
+  if (filter === 'open') return reservations.filter(r => getStaffReservationMomentState(moments, r) !== 'done');
+  return reservations.filter(r => getStaffReservationMomentState(moments, r) === filter);
 }
 
 function getStaffStatusCounts(reservations) {
-  const pending = reservations.filter(r => isUpcomingReservationStatus(r.status)).length;
-  const arrived = reservations.filter(r => r.status === 'arrived').length;
-  const paid = reservations.filter(r => r.status === 'paid').length;
+  const moments = getStaffReservationMoments(reservations);
+  const compter = etat => reservations.filter(r => getStaffReservationMomentState(moments, r) === etat).length;
+  const upcoming = compter('upcoming');
+  const onsite = compter('onsite');
+  const closing = compter('closing');
+  const done = compter('done');
   return {
     all: reservations.length,
-    open: pending + arrived,
-    pending,
-    arrived,
-    paid,
+    open: upcoming + onsite + closing,
+    upcoming,
+    onsite,
+    closing,
+    done,
     notes: reservations.filter(hasReservationNote).length
   };
 }
@@ -22597,7 +22726,7 @@ function joueursDuDossier(r) {
   return `${pax} joueur${pax > 1 ? 's' : ''}${avec ? ` + ${avec} accompagnant${avec > 1 ? 's' : ''}` : ''}`;
 }
 
-function renderReservationRow(r) {
+function renderReservationRow(r, moment = null) {
   const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
   const isFormule = !!formule;
   const view = getStaffResourceView();
@@ -22693,6 +22822,8 @@ function renderReservationRow(r) {
     <div class="res-c-what">
       <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
       ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
+      ${moment && moment.late ? `<span class="res-state-pill late">En retard · ${escapeHtml(formatStaffTerrainDelay(moment.now - moment.item.start))}</span>` : ''}
+      ${moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) ? '<span class="res-state-pill unmarked">Non pointé</span>' : ''}
       ${isReservationAwaitingReview(r) ? '<span class="res-state-pill review">À vérifier</span>' : ''}
       ${renderReservationPriceMark(r, { forme: stateText ? 'reference' : 'complet' })}
       ${renderReservationTags(r, { contexteSeul: true })}
@@ -22716,9 +22847,9 @@ function renderReservationRow(r) {
   </div>`;
 }
 
-function renderReservationSection(statusKey, title, subtitle, reservations) {
+function renderReservationSection(statusKey, title, subtitle, reservations, moments = null) {
   const ordered = [...reservations].sort((a, b) => {
-    if (statusKey === 'paid') return timeToNum(b.startTime) - timeToNum(a.startTime);
+    if (statusKey === 'done') return timeToNum(b.startTime) - timeToNum(a.startTime);
     return timeToNum(a.startTime) - timeToNum(b.startTime);
   });
   // UN EN-TETE DE COLONNES, UNE FOIS, AU LIEU D'UN LIBELLE PAR LIGNE.
@@ -22743,7 +22874,7 @@ function renderReservationSection(statusKey, title, subtitle, reservations) {
       <span class="label">${title}</span>
       <span class="count">${ordered.length}</span>
     </div>
-    ${ordered.length ? `<div class="res-dense-list" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(renderReservationRow).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
+    ${ordered.length ? `<div class="res-dense-list" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(r => renderReservationRow(r, moments ? moments.get(String(r.id)) : null)).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
   </div>`;
 }
 
@@ -22752,6 +22883,7 @@ function renderTable() {
   const res = scopedStaffReservations(view);
   releaseDeadNoteFilter();
   const counts = getStaffStatusCounts(res);
+  const moments = getStaffReservationMoments(res);
   let filtered = res;
   if (state.searchTerm) {
     const q = state.searchTerm.toLowerCase();
@@ -22766,14 +22898,6 @@ function renderTable() {
   // toujours : innerHTML la remet a zero, et un poll toutes les quelques
   // secondes renverrait le comptoir en haut de liste au milieu d une lecture.
   const listScrollTop = list ? list.scrollTop : 0;
-  // Hors planning : calculé sur le JOUR (pas sur `filtered`) pour que le résumé
-  // annonce le même nombre que l'onglet, quel que soit le filtre de statut actif.
-  const offPlanningDay = view === 'all' ? res.filter(isOffPlanningReservation).length : 0;
-  const resourceSummary = view === 'all'
-    ? `Toutes activités${offPlanningDay ? ` · ${offPlanningDay} hors planning` : ''}`
-    : view === 'laser'
-      ? 'Laser Game uniquement'
-      : 'Bowling uniquement';
   const resourceName = view === 'all' ? 'pour ce jour' : view === 'laser' ? 'Laser Game pour ce jour' : 'Bowling pour ce jour';
   const planningName = view === 'all' ? 'sur un planning' : view === 'laser' ? 'Laser Game' : 'Bowling';
   // LES ONGLETS NE DISAIENT PAS TOUS LA MÊME CHOSE, ET RIEN NE LE DISAIT.
@@ -22792,26 +22916,31 @@ function renderTable() {
   // classement, et un gérant qui additionne tombe sur 40 pour 24 dossiers.
   // Le recoupement reste : « tout ce qui n'est pas fini », c'est la liste de
   // travail d'un comptoir. Mais il est désormais VISIBLE et NOMMÉ : deux
-  // groupes séparés par un filet, les recoupements marqués d'un repère, et la
-  // ligne de résumé qui recompose les comptes au lieu d'en citer deux au hasard.
+  // groupes séparés par un filet, les recoupements marqués d'un repère et dits
+  // dans leur infobulle.
+  // LA PHRASE-FORMULE EST PARTIE (lot C, 2026-09-30). « 17 réservations =
+  // 4 sur place + 10 à venir + 3 terminées · « À gérer » réunit les 14 non
+  // terminées » expliquait l'écran au lieu de le montrer : les puces portent
+  // déjà leurs comptes, et le groupe séparé dit le recoupement. Le « N hors
+  // planning » qui la précédait est le titre de la première section.
   const crossHint = (label, text) => ` title="${escapeHtml(text)}" aria-label="${escapeHtml(`${label} : ${text}`)}"`;
   const crossMark = `<svg class="chip-cross-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>`;
-  const openHint = 'recoupe les états ci-dessus : les réservations Sur place et À venir réunies';
+  const openHint = 'recoupe les états ci-dessus : les réservations à venir, sur place et à clôturer réunies';
   const notesHint = 'recoupe les états ci-dessus : les réservations qui portent une note, quel que soit leur état';
   const toolbar = `<div class="table-toolbar">
     <div class="status-filters">
-      <div class="status-group" role="group" aria-label="Filtrer par état. Les trois états ne se recoupent pas et se totalisent.">
+      <div class="status-group" role="group" aria-label="Filtrer par moment. Les quatre états ne se recoupent pas et se totalisent.">
         <button class="status-chip ${state.staffStatusFilter === 'all' ? 'active' : ''}" onclick="setStaffStatusFilter('all')">Tout <span>${counts.all}</span></button>
-        <button class="status-chip ${state.staffStatusFilter === 'arrived' ? 'active arrived' : ''}" onclick="setStaffStatusFilter('arrived')">Sur place <span>${counts.arrived}</span></button>
-        <button class="status-chip ${state.staffStatusFilter === 'pending' ? 'active pending' : ''}" onclick="setStaffStatusFilter('pending')">À venir <span>${counts.pending}</span></button>
-        <button class="status-chip ${state.staffStatusFilter === 'paid' ? 'active paid' : ''}" onclick="setStaffStatusFilter('paid')">Terminées <span>${counts.paid}</span></button>
+        <button class="status-chip ${state.staffStatusFilter === 'upcoming' ? 'active upcoming' : ''}" onclick="setStaffStatusFilter('upcoming')">À venir <span>${counts.upcoming}</span></button>
+        <button class="status-chip ${state.staffStatusFilter === 'onsite' ? 'active onsite' : ''}" onclick="setStaffStatusFilter('onsite')">Sur place <span>${counts.onsite}</span></button>
+        <button class="status-chip ${state.staffStatusFilter === 'closing' ? 'active closing' : ''}" onclick="setStaffStatusFilter('closing')">À clôturer <span>${counts.closing}</span></button>
+        <button class="status-chip ${state.staffStatusFilter === 'done' ? 'active done' : ''}" onclick="setStaffStatusFilter('done')">Terminées <span>${counts.done}</span></button>
       </div>
       <div class="status-group status-group-cross" role="group" aria-label="Vues qui recoupent les états ci-dessus">
         <button class="status-chip is-cross ${state.staffStatusFilter === 'open' ? 'active open' : ''}" onclick="setStaffStatusFilter('open')"${crossHint('À gérer', openHint)}>${crossMark}À gérer <span>${counts.open}</span></button>
         ${(counts.notes || state.staffStatusFilter === 'notes') ? `<button class="status-chip is-cross ${state.staffStatusFilter === 'notes' ? 'active notes' : ''}" onclick="setStaffStatusFilter('notes')"${crossHint('Avec note', notesHint)}>${crossMark}Avec note <span>${counts.notes}</span></button>` : ''}
       </div>
     </div>
-    <div class="table-summary">${resourceSummary} · ${counts.all} réservation${counts.all > 1 ? 's' : ''} = ${counts.arrived} sur place + ${counts.pending} à venir + ${counts.paid} terminée${counts.paid > 1 ? 's' : ''} · « À gérer » réunit les ${counts.open} non terminée${counts.open > 1 ? 's' : ''}</div>
   </div>`;
   if (!filtered.length) {
     list.innerHTML = `${toolbar}<div class="empty-state">
@@ -22826,18 +22955,17 @@ function renderTable() {
   // tête : elles n'apparaissent sur aucune grille, donc c'est ICI ou nulle part.
   const offPlanningRows = view === 'all' ? filtered.filter(isOffPlanningReservation) : [];
   const offPlanningIds = new Set(offPlanningRows.map(r => r.id));
-  const inStatus = status => filtered.filter(r => (status === 'pending' ? isUpcomingReservationStatus(r.status) : r.status === status) && !offPlanningIds.has(r.id));
+  const inState = etat => filtered.filter(r => getStaffReservationMomentState(moments, r) === etat && !offPlanningIds.has(r.id));
   const sections = [
     { key: 'offplanning', title: 'Hors planning', subtitle: "Ni piste bowling ni zone laser : visibles nulle part ailleurs", rows: offPlanningRows },
-    { key: 'arrived', title: 'Sur place', subtitle: 'Clients présents, à suivre maintenant', rows: inStatus('arrived') },
-    { key: 'pending', title: 'À venir', subtitle: 'Réservations confirmées, triées par horaire', rows: inStatus('pending') },
-    { key: 'paid', title: 'Terminées', subtitle: 'Clôturées et descendues en bas de liste', rows: inStatus('paid') }
+    { key: 'upcoming', title: 'À venir', subtitle: 'Pas encore arrivés, par horaire ; un retard est marqué', rows: inState('upcoming') },
+    { key: 'onsite', title: 'Sur place', subtitle: 'Arrivés, pendant leur créneau', rows: inState('onsite') },
+    { key: 'closing', title: 'À clôturer', subtitle: 'Créneau fini, pas encore payé', rows: inState('closing') },
+    { key: 'done', title: 'Terminées', subtitle: 'Créneau fini et payé', rows: inState('done') }
   ].filter(section => {
     if (section.key === 'offplanning') return true;
-    if (state.staffStatusFilter === 'arrived') return section.key === 'arrived';
-    if (state.staffStatusFilter === 'pending') return section.key === 'pending';
-    if (state.staffStatusFilter === 'paid') return section.key === 'paid';
-    if (state.staffStatusFilter === 'open') return section.key !== 'paid';
+    if (STAFF_MOMENT_STATES.includes(state.staffStatusFilter)) return section.key === state.staffStatusFilter;
+    if (state.staffStatusFilter === 'open') return section.key !== 'done';
     return true;
   }).filter(section => section.rows.length > 0);
 
@@ -22853,7 +22981,7 @@ function renderTable() {
     <span>Heure</span><span>Client</span><span>Réservation</span><span>${colOu}</span><span>État</span>
   </div>
   <div class="res-sections">
-    ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows)).join('')}
+    ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows, moments)).join('')}
   </div>`;
   if (list) list.scrollTop = listScrollTop;
 }
@@ -28108,6 +28236,13 @@ setInterval(() => {
   const laserBox = document.getElementById('laserPlanningBox');
   if (laserBox && !laserBox.classList.contains('hidden')) {
     repaintKeepingScroll(laserBox, () => renderLaserPlanning());
+  }
+  // Planning : les pistes libres maintenant et la liste du jour (a venir, sur
+  // place, a cloturer) suivent l heure, comme le Terrain.
+  if (state.view === 'staff' && isStaffPlanningPageActive()) {
+    renderKpis();
+    const tableBox = document.getElementById('staffTableBox');
+    if (tableBox && !tableBox.classList.contains('hidden')) repaintKeepingScroll(tableBox, () => renderTable());
   }
   // Demandes sur mesure : le compte a rebours de la reponse promise.
   tickStaffRequestDues();

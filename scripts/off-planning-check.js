@@ -121,6 +121,10 @@ async function main() {
   const errs = [];
   page.on('console', msg => { if (msg.type() === 'error') errs.push('CONSOLE: ' + msg.text()); });
   try {
+    // Midi le jour du jeu : ses quatre groupes (14:00 a 18:00) sont a venir,
+    // sauf celui deja pointe arrive. Avec l horloge reelle, cette date passee
+    // rendait « À venir » vide (la liste lit le moment depuis le 2026-09-30).
+    await page.clock.install({ time: new Date(`${DATE}T12:00:00`) });
     await installMock(page);
     await bootStaff(page, 'base');
 
@@ -199,7 +203,7 @@ async function main() {
 
     // Le filtre de statut ne doit jamais faire disparaitre la zone hors planning
     // quand la resa concernee est elle-meme dans le filtre.
-    await page.evaluate(() => { setStaffStatusFilter('pending'); });
+    await page.evaluate(() => { setStaffStatusFilter('upcoming'); });
     await page.waitForTimeout(250);
     const filtered = await page.evaluate(() => ({
       off: !!document.querySelector('#resList .res-section.offplanning'),

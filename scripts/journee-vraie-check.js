@@ -3,7 +3,11 @@
 // Movsar, 2026-09-25 : « aucune fausse info, tout doit etre vrai prouvable ».
 // Mesure avant correction :
 // [A] la tuile « Réservations aujourd'hui » gardait ce libelle sur n importe
-//     quelle date, et l argent paye s appelait « validés » ;
+//     quelle date, et l argent paye s appelait « validés ». Depuis le lot C
+//     (2026-09-30) le bandeau du planning ne recopie plus l accueil : trois
+//     cases qui servent a planifier, perimetre dans le libelle, aucun montant,
+//     et « Libres maintenant », dont les pistes doivent etre celles que la
+//     grille montre libres a la ligne « maintenant » ;
 // [B] la tete du planning redisait les comptes des tuiles juste au-dessus, et
 //     son titre « Planning 8 pistes » etait ecrit en dur dans la page, quelle
 //     que soit la grille dessinee dessous ; puis, corrige, il restait sur la
@@ -46,8 +50,12 @@ const JOUR = '2026-09-25';
 const HEURE = `${JOUR}T15:30:00+02:00`;
 
 const MUTATIONS = {
-  aujourdhui: ['app-main.js', `setKpiCopy(0, state.currentDate === todayStr() ? "Réservations aujourd'hui" : 'Réservations',`, `setKpiCopy(0, "Réservations aujourd'hui",`, '[A] la tuile ne dit « aujourd\'hui » que le jour meme'],
-  encaisse: ['app-main.js', '${formatMoney(revColl)} encaissés', '${formatMoney(revColl)} validés', '[A] l argent paye est dit « encaissés »'],
+  // [A] Le bandeau du planning. Le calcul oublie les reservations du jour :
+  // la piste 5, prise, se dit libre.
+  libresfaux: ['app-main.js', '  poser(todaysReservations());\n', '', '[A] les pistes libres maintenant sont les vraies'],
+  perimetre: ['app-main.js', "      label: ressource ? `Réservations ${ressource}` : 'Réservations',", "      label: 'Réservations',", '[A] le bandeau dit son perimetre'],
+  demain: ['app-main.js', '  if (state.currentDate !== todayStr()) return null;\n  if (!availabilityBlocksCache.loaded) return null;', '  if (!availabilityBlocksCache.loaded) return null;', '[A] « Libres maintenant » seulement le jour meme'],
+  argent: ['app-main.js', "      hint: `${pax} joueur${pax > 1 ? 's' : ''}`\n", "      hint: `${pax} joueur${pax > 1 ? 's' : ''} · ${formatMoney(99)}`\n", '[A] aucun montant ni « aujourd hui » dans le bandeau'],
   soustitre: ['app-main.js', "planningSub.textContent = planningWindow.closed ? 'Centre fermé ce jour-là' : `Ouvert ${planningWindow.label}`;", "planningSub.textContent = `${todaysReservations().length} réservations • ${planningWindow.label}`;", '[B] la tete du planning ne redit pas les tuiles'],
   titrepistes: ['app-main.js', "    planningLaneTitle.textContent = `Planning ${laneCount} piste${laneCount > 1 ? 's' : ''}`;\n", '', '[B] le titre compte les pistes de la grille'],
   // La configuration arrivee ne redessine plus le planning ouvert : la tete et
@@ -84,6 +92,10 @@ const JOURNEE = [
   resa(7301, JOUR, { startTime: '16:00', lanes: [2], status: 'paid', price: 60 }),
   resa(7302, JOUR, { startTime: '18:00', lanes: [3], pax: 6 }),
 ];
+// Un groupe EN COURS a 15:30 (piste 5, 15:00-16:00), servi au seul scenario du
+// bandeau : sans lui, « Libres maintenant » dirait « toutes » et son
+// recoupement avec la grille ne prouverait rien.
+const EN_COURS = resa(7303, JOUR, { startTime: '15:00', lanes: [5], status: 'arrived', pax: 2, price: 30 });
 // L historique CRM : la fenetre des 30 jours revolus va du 2026-08-26 (inclus)
 // au 2026-09-24 (inclus). Trois reservations y tombent ; celle du 2026-08-25
 // est hors fenetre, l annulee ne compte pas, et la journee en cours (les deux
@@ -114,7 +126,7 @@ function serveur() {
   });
 }
 
-async function ouvrir(browser, route, { permissions = null } = {}) {
+async function ouvrir(browser, route, { permissions = null, journee = JOURNEE } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'Europe/Brussels' });
   const page = await ctx.newPage();
   const erreurs = [];
@@ -125,7 +137,7 @@ async function ouvrir(browser, route, { permissions = null } = {}) {
   }, JOUR);
   await page.route('**/api/staff-state**', (r) => {
     const date = new URL(r.request().url()).searchParams.get('date') || JOUR;
-    const reservations = date === JOUR ? JOURNEE : [];
+    const reservations = date === JOUR ? journee : [];
     r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, revision: `journee-${date}`, reservations: reservations.map((x) => ({ ...x })), laneStatuses: { 1: 'active', 2: 'active', 3: 'active', 4: 'active', 5: 'active', 6: 'active' }, centerId: dev.CENTER_ID }) });
   });
   // Un role restreint : la session servie ne porte que ces droits.
@@ -149,7 +161,7 @@ async function ouvrir(browser, route, { permissions = null } = {}) {
     const q = new URL(r.request().url()).searchParams;
     const couvreLeJour = (q.get('startDate') || '') <= JOUR && JOUR <= (q.get('endDate') || '');
     await new Promise((resolve) => setTimeout(resolve, 400));
-    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, reservations: [...HISTORIQUE, ...(couvreLeJour ? JOURNEE : [])].map((x) => ({ ...x })), centerId: dev.CENTER_ID }) });
+    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, reservations: [...HISTORIQUE, ...(couvreLeJour ? journee : [])].map((x) => ({ ...x })), centerId: dev.CENTER_ID }) });
   });
   await page.route('**/api/ops**', async (r) => {
     const url = new URL(r.request().url());
@@ -195,24 +207,61 @@ async function run() {
     // =====================================================================
     console.log('[A][B] LE PLANNING');
     // =====================================================================
-    const p = await ouvrir(browser, '#/staff/planning');
-    await attendre(p.page, () => document.querySelectorAll('#staffView .kpi-grid .kpi').length >= 4);
+    const p = await ouvrir(browser, '#/staff/planning', { journee: [...JOURNEE, EN_COURS] });
+    await attendre(p.page, () => document.querySelectorAll('#staffView .kpi-grid .kpi').length === 3, null, 8000);
     await attendre(p.page, () => (document.getElementById('planningLaneTitle') || {}).textContent === 'Planning 6 pistes', null, 6000);
+    const lireBandeau = () => p.page.evaluate(() => {
+      const grille = document.querySelector('#staffView .kpi-grid');
+      return {
+        cases: [...(grille ? grille.querySelectorAll('.kpi') : [])].map((k) => ({
+          label: ((k.querySelector('.label') || {}).textContent || '').trim(),
+          value: ((k.querySelector('.value') || {}).textContent || '').trim(),
+          hint: ((k.querySelector('.hint') || {}).textContent || '').trim(),
+          title: k.getAttribute('title') || '',
+        })),
+        texte: grille ? grille.textContent.replace(/\s+/g, ' ').trim() : '',
+      };
+    });
+    const libelles = (b) => b.cases.map((k) => k.label).join(' | ');
+    const bandeau = await lireBandeau();
+    const cas = (label) => bandeau.cases.find((k) => k.label === label) || {};
+    // LA GRILLE, LUE A LA HAUTEUR DE LA LIGNE « MAINTENANT » : une piste est
+    // prise si une carte, un horaire retenu en ligne ou un blocage la couvre,
+    // ou si elle est en maintenance. C est l oracle de « Libres maintenant » :
+    // ce que le gerant voit sous la case, pas le calcul qui la remplit.
+    const libresDeLaGrille = await p.page.evaluate(() => {
+      const ligne = document.querySelector('#planningGridWrap .current-line');
+      const colonnes = [...document.querySelectorAll('#planningGridWrap .lane-col[data-lane]')];
+      if (!ligne || !colonnes.length) return null;
+      const r = ligne.getBoundingClientRect();
+      const y = r.top + r.height / 2;
+      const prise = (col) => col.classList.contains('maint')
+        || [...col.querySelectorAll('.booking, .planning-hold, .planning-blocked')].some((b) => { const x = b.getBoundingClientRect(); return x.top <= y && x.bottom > y; });
+      return colonnes.filter((col) => !prise(col)).map((col) => Number(col.getAttribute('data-lane')));
+    });
+    const libresDeLaCase = ((cas('Libres maintenant').title || '').match(/Piste \d+ libre/g) || []).map((x) => Number(x.match(/\d+/)[0]));
+    ok(libelles(bandeau) === 'Occupation des pistes | Réservations bowling | Libres maintenant', '[A] le bandeau dit son perimetre et ne garde que ce qui sert a planifier', libelles(bandeau));
+    ok(bandeau.texte !== '' && !/€|\bEUR\b/.test(bandeau.texte) && !/aujourd/i.test(bandeau.texte), '[A] aucun montant ni « aujourd hui » dans le bandeau', `« ${bandeau.texte} »`);
+    ok(cas('Réservations bowling').value === '3' && cas('Réservations bowling').hint === '12 joueurs', '[A] les reservations du bowling et leurs joueurs', `${cas('Réservations bowling').value} · ${cas('Réservations bowling').hint}`);
+    ok(cas('Libres maintenant').value === '5 pistes' && cas('Libres maintenant').hint === '1, 2, 3, 4 et 6 · la 2 jusqu’à 16:00', '[A] les pistes libres maintenant sont les vraies', `${cas('Libres maintenant').value} · ${cas('Libres maintenant').hint}`);
+    ok(Array.isArray(libresDeLaGrille) && libresDeLaGrille.join(',') === '1,2,3,4,6' && libresDeLaCase.join(',') === libresDeLaGrille.join(','), '[A] la case dit les pistes que la grille montre libres', `grille ${libresDeLaGrille ? libresDeLaGrille.join(',') : 'illisible'} · case ${libresDeLaCase.join(',')}`);
     const jour = await p.page.evaluate(() => ({
-      label: (document.querySelector('#staffView .kpi-grid .kpi .label') || {}).textContent || '',
-      encaisse: (document.getElementById('kpiCollected') || {}).textContent || '',
       sub: (document.getElementById('planningSub') || {}).textContent || '',
       titre: (document.getElementById('planningLaneTitle') || {}).textContent || '',
       pistes: new Set([...document.querySelectorAll('[data-bowling-drop-lane]')].map((c) => c.getAttribute('data-bowling-drop-lane'))).size,
     }));
-    ok(jour.label === "Réservations aujourd'hui", "[A] la tuile ne dit « aujourd'hui » que le jour meme", `le jour meme : « ${jour.label} »`);
-    ok(/ encaissés$/.test(jour.encaisse), '[A] l argent paye est dit « encaissés »', `« ${jour.encaisse} »`);
     ok(/^Ouvert \S/.test(jour.sub) && !/réservation|joueur/.test(jour.sub), '[B] la tete du planning ne redit pas les tuiles', `« ${jour.sub} »`);
     ok(jour.titre === 'Planning 6 pistes' && jour.pistes === 6, '[B] le titre compte les pistes de la grille', `« ${jour.titre} » · grille ${jour.pistes} piste(s)`);
+    // L onglet laser dit le sien : l arene, ses reservations, pas de pistes.
+    await p.page.evaluate(() => setStaffResourceView('laser'));
+    await attendre(p.page, () => /arène/.test((document.querySelector('#staffView .kpi-grid .kpi .label') || {}).textContent || ''));
+    const laser = await lireBandeau();
+    ok(libelles(laser) === 'Occupation de l’arène | Réservations laser', '[A] le bandeau dit son perimetre, onglet laser compris', libelles(laser));
+    await p.page.evaluate(() => setStaffResourceView('bowling'));
     await p.page.evaluate(() => shiftDate(1));
-    await attendre(p.page, () => (document.querySelector('#staffView .kpi-grid .kpi .label') || {}).textContent === 'Réservations');
-    const demain = await p.page.evaluate(() => (document.querySelector('#staffView .kpi-grid .kpi .label') || {}).textContent || '');
-    ok(demain === 'Réservations', "[A] la tuile ne dit « aujourd'hui » que le jour meme", `le lendemain : « ${demain} »`);
+    await attendre(p.page, () => document.querySelectorAll('#staffView .kpi-grid .kpi').length === 2);
+    const demain = await lireBandeau();
+    ok(libelles(demain) === 'Occupation des pistes | Réservations bowling', '[A] « Libres maintenant » seulement le jour meme', `le lendemain : ${libelles(demain)}`);
     ok(p.erreurs.length === 0, '[A][B] aucune erreur JavaScript', p.erreurs.slice(0, 3).join(' | '));
     await p.ctx.close();
 

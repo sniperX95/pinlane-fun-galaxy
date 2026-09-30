@@ -69,29 +69,15 @@ async function main() {
       authenticated = true;
 
       await page.locator('#staffView .kpi-grid .kpi').first().waitFor({ timeout: 15000 });
-      const kpiMedia = await page.$$eval('#staffView .kpi-grid .kpi', (cards) => cards.slice(0, 4).map((card) => {
-        const before = window.getComputedStyle(card, '::before');
-        const after = window.getComputedStyle(card, '::after');
-        return {
-          beforeVisible:
-            before.display !== 'none' &&
-            before.content !== 'none' &&
-            before.backgroundImage !== 'none' &&
-            (Number.parseFloat(before.width) || 0) >= 32 &&
-            (Number.parseFloat(before.height) || 0) >= 32,
-          afterVisible:
-            after.display !== 'none' &&
-            after.content !== 'none' &&
-            after.backgroundImage !== 'none' &&
-            (Number.parseFloat(after.width) || 0) >= 72 &&
-            (Number.parseFloat(after.height) || 0) >= 28,
-        };
-      }));
-      assert(kpiMedia.length >= 4, 'Les KPI du planning staff ne sont pas rendus.');
-      assert(
-        kpiMedia.every((item) => item.beforeVisible && item.afterVisible),
-        'Les KPI du planning staff ont perdu leurs icones ou mini-graphes.'
-      );
+      // Le bandeau du planning (2026-09-30) : l occupation et les reservations
+      // de la ressource, et le jour meme les pistes libres. Deux cases au
+      // moins, chacune avec son libelle et sa valeur.
+      const cases = await page.$eval('#staffView .kpi-grid .kpi', (cards) => cards.map((card) => ({
+        label: ((card.querySelector('.label') || {}).textContent || '').trim(),
+        value: ((card.querySelector('.value') || {}).textContent || '').trim(),
+      })));
+      assert(cases.length >= 2, 'Le bandeau du planning staff n est pas rendu.');
+      assert(cases.every((c) => c.label && c.value), 'Une case du bandeau du planning n a pas de libelle ou de valeur.');
     }
 
     const blockingConsoleErrors = consoleErrors.filter((entry) => (

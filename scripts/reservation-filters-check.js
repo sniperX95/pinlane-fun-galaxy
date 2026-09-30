@@ -6,42 +6,49 @@
 // dans toutes les categories, ca va pas du tout, ce genre de bug ne doit jamais
 // arriver. »
 //
-// LA REGLE REELLE DE CHAQUE ONGLET, telle qu'elle est aujourd'hui :
+// LA REGLE DEPUIS LE 2026-09-30 (lot C de la refonte de la console) : la liste
+// lit le MOMENT de chaque groupe, la meme definition que le Terrain, la page
+// Formules et la bande « En ce moment » de l'accueil (getStaffTerrainBoard,
+// splitStaffTerrainOnsite), et plus son seul statut.
 //   Tout        aucun filtre
-//   Sur place   status === 'arrived'                  \
-//   A venir     status 'pending' OU 'confirmed'        > TROIS ETATS AFFICHES,
-//   Terminees   status === 'paid'                     /  exclusifs, qui se
-//                                                        totalisent a « Tout »
-//   A gerer     status !== 'paid'            UNION de deux etats
-//   Avec note   porte une note              ATTRIBUT, vrai dans tout etat
+//   A venir     pas commence et pas pointe arrive ; le RETARD      \
+//               (heure passee, arrivee pas pointee) en fait partie,  |
+//               marque « En retard · 40 min »                        |  QUATRE ETATS,
+//   Sur place   pointe arrive, ou dans sa fenetre et deja paye        >  exclusifs, qui
+//   A cloturer  fini, pas paye ; « Non pointé » s'il n'a jamais      |  se totalisent
+//               ete pointe (peut-etre pas venu)                      |  a « Tout »
+//   Terminees   fini et paye                                        /
+//   A gerer     tout sauf Terminees       UNION de trois etats
+//   Avec note   porte une note            ATTRIBUT, vrai dans tout etat
 //
-// « A venir » n'est pas un statut, c'est une IDEE : « le groupe n'est pas
-// encore arrive ». Le produit l'ecrit de DEUX facons ('confirmed' par defaut,
-// 'pending' pour une demande en attente) et la difference est porteuse ailleurs
-// (Clients / Groupes filtre les deux separement). Trois etats AFFICHES pour
-// quatre statuts, donc, et c'est la regle que ce gate protege depuis le
-// 2026-09-03.
+// Pourquoi le moment et plus le statut (etat des lieux du 30/09) : selon le
+// statut, le club fini depuis dix minutes restait « Sur place », le groupe en
+// retard « A venir » sans marque, a l'inverse du Terrain. Deux ecrans du meme
+// comptoir ne peuvent pas se contredire sur qui est la.
 //
-// Rien n'etait casse dans le filtrage : les six puces etaient peintes a
-// l'identique alors qu'elles repondent a trois questions differentes. Un gerant
-// qui additionne tombe sur 40 pour 24 dossiers. Le recoupement reste (c'est la
-// liste de travail d'un comptoir : tout ce qui n'est pas fini) mais il est
-// desormais SEPARE, marque et explique.
+// L'ORACLE EST ECRIT A LA MAIN, dossier par dossier (colonne `moment` du jeu),
+// a une heure FIGEE : samedi 3 octobre 2026, 15:10. Il ne rederive pas la
+// regle avec le code du produit, sinon une regle fausse des deux cotes
+// passerait au vert.
 //
 // CE QUE CE GATE PROUVE, EN CLIQUANT LES PUCES POUR DE VRAI :
-//   1. les trois etats sont EXCLUSIFS DEUX A DEUX : aucune reservation ne sort
-//      dans deux d'entre eux (c'est l'assertion d'EXCLUSION, pas de presence)
-//   2. leur union est EXACTEMENT « Tout » : personne en trop, personne oublie
-//   3. les compteurs affiches se RECOMPOSENT : arrived + pending + paid = all
-//   4. « A gerer » est exactement l'union Sur place + A venir, ni plus ni moins
-//   5. « Avec note » est un attribut : il pioche dans les trois etats
-//   6. dans le DOM, une reservation n'apparait JAMAIS deux fois : une ligne,
-//      une seule section, et la section est celle de son etat
-//   7. le recoupement est VISIBLE : deux groupes separes, un repere sur les
-//      puces qui recoupent, et une ligne de resume qui recompose les comptes
-//   8. contre-epreuve par MUTATION : on casse la regle exprès (un etat qui
-//      deborde sur un autre, un compteur qui ment) et le gate doit rougir.
-//      Sans ca, « 0 defaut » peut vouloir dire « la sonde ne regarde rien ».
+//   0. son prerequis : la page vit bien a 15:10 le 3 octobre, et chaque
+//      dossier occupe bien la fenetre que le jeu lui donne
+//   1. chaque puce rend exactement son ensemble, rien en trop, rien d'oublie
+//   2. les cas qui justifient le lot : le retard reste « A venir » avec sa
+//      pastille, l'arrivee en avance est « Sur place », le paye en cours de
+//      partie aussi, le paye d'avance reste « A venir », le fini jamais pointe
+//      est « A cloturer » avec « Non pointé », y compris a la minute pile
+//   3. les quatre etats sont EXCLUSIFS deux a deux et leur union est « Tout »
+//   4. les compteurs se RECOMPOSENT et annoncent les lignes qu'ils rendent
+//   5. « A gerer » est l'union des trois premiers ; « Avec note » pioche dans
+//      les quatre
+//   6. dans le DOM, une ligne, une seule section, la section de son moment,
+//      dans l'ordre de la journee
+//   7. le recoupement est VISIBLE (deux groupes, un repere, dit en toutes
+//      lettres) et aucune phrase-formule n'explique l'ecran
+//   8. contre-epreuve par MUTATION : chaque regle cassee expres fait rougir la
+//      sonde, et pour la bonne raison.
 //
 // Usage : node scripts/reservation-filters-check.js
 const fs = require('fs');
@@ -54,6 +61,15 @@ const PORT = Number(process.env.PINLANE_FILTERS_PORT || 4213);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+
+// L'heure de la journee jouee. Heure LOCALE des deux cotes (Node et le
+// navigateur tournent sur la meme machine, donc le meme fuseau) : la page vit
+// 15:10 quel que soit le fuseau de la machine. Date FIXE (setFixedTime) et pas
+// seulement installee : le retard se lit a la minute (« 40 min »), une horloge
+// qui avance pendant le gate le ferait tourner a « 41 min ».
+const JOUR = '2026-10-03';
+const HEURE = `${JOUR}T15:10:00`;
+const MAINTENANT = 15 + 10 / 60;
 
 // Le serveur peut servir une VERSION MUTEE d'un fichier : c'est ce qui rend la
 // contre-epreuve possible sans jamais ecrire dans le depot.
@@ -84,63 +100,59 @@ let failures = 0;
 function ok(cond, label, detail = '') { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}${detail ? `  ${detail}` : ''}`); if (!cond) failures += 1; return cond; }
 
 // ---------------------------------------------------------------------------
-// LE JEU DE DONNEES. Il couvre TOUS les etats, et pas seulement ceux qui
-// arrangent : quatre statuts, des notes reparties dans les trois etats
-// AFFICHES (sinon « Avec note » ne prouverait pas qu'il est transversal), et
-// des reservations HORS PLANNING (ni piste ni laser), qui ont leur propre
-// section en tete de liste et qui sont exactement le cas ou une ligne pourrait
-// se dedoubler.
-//
-// QUATRE STATUTS POUR TROIS ETATS AFFICHES, ET C EST LE CORRECTIF DU
-// 2026-09-03. « A venir » n est pas un statut, c est une IDEE : « le groupe
-// n est pas encore arrive ». Le produit l ecrit de deux facons - 'confirmed',
-// sa valeur par defaut, et 'pending', une demande en attente - et la difference
-// est porteuse ailleurs (la page Clients / Groupes filtre les deux
-// separement). Le jeu ne contenait AUCUN dossier 'confirmed' : les assertions
-// restaient vertes sans jamais toucher a la regle, et le jour ou le produit a
-// cesse de trier sur la seule cle 'pending', rien ici n a bouge. Un jeu qui ne
-// contient pas le cas ne teste pas la regle.
+// LE JEU DE DONNEES, A 15:10. Chaque ligne porte le moment ATTENDU, ecrit a la
+// main. Il couvre les cinq statuts utiles (confirme, en attente, arrive, paye)
+// dans les quatre moments, les bords (fini a la minute pile, arrive en avance,
+// paye d'avance, paye pendant la partie), des notes dans les quatre etats, et
+// des dossiers HORS PLANNING (ni piste ni laser) dans les quatre etats aussi :
+// ils ont leur section en tete, c'est la ou une ligne pourrait se dedoubler.
+// Les pistes ne se chevauchent pas : la grille reste une journee possible.
 // ---------------------------------------------------------------------------
 const JEU = [
-  // id, statut, note ?, hors planning ?
-  { id: 70001, status: 'pending', note: '', off: false },
-  { id: 70002, status: 'pending', note: 'Gateau a sortir', off: false },
-  { id: 70003, status: 'pending', note: '', off: true },
-  { id: 70004, status: 'arrived', note: '', off: false },
-  { id: 70005, status: 'arrived', note: 'Table 4 reservee', off: false },
-  { id: 70006, status: 'arrived', note: '', off: true },
-  { id: 70007, status: 'paid', note: '', off: false },
-  { id: 70008, status: 'paid', note: 'Facture a envoyer', off: false },
-  { id: 70009, status: 'paid', note: '', off: true },
-  { id: 70010, status: 'pending', note: '', off: false },
-  { id: 70011, status: 'arrived', note: '', off: false },
-  { id: 70012, status: 'paid', note: '', off: false },
-  // Les trois dossiers CONFIRMES : un ordinaire, un qui porte une note, un hors
-  // planning. Les trois formes sous lesquelles un 'confirmed' peut disparaitre.
-  { id: 70013, status: 'confirmed', note: '', off: false },
-  { id: 70014, status: 'confirmed', note: 'Anniversaire, bougies a prevoir', off: false },
-  { id: 70015, status: 'confirmed', note: '', off: true },
+  // id, statut, debut, duree (h), piste, note, hors planning, moment attendu, retard (min)
+  { id: 71001, status: 'confirmed', start: '16:00', duree: 1, piste: 6, note: '', off: false, moment: 'upcoming' },
+  { id: 71002, status: 'pending', start: '17:00', duree: 1, piste: 7, note: 'Gâteau à sortir', off: false, moment: 'upcoming' },
+  // Paye d'avance (en ligne) : il n'est pas encore la, il reste « À venir ».
+  { id: 71003, status: 'paid', start: '18:00', duree: 1, piste: 8, note: '', off: false, moment: 'upcoming' },
+  // Le RETARD : heure passee, jamais pointe. « À venir », marque, pas « Sur place ».
+  { id: 71004, status: 'confirmed', start: '14:30', duree: 1, piste: 1, note: '', off: false, moment: 'upcoming', retard: 40 },
+  { id: 71005, status: 'pending', start: '15:00', duree: 1, piste: 2, note: '', off: false, moment: 'upcoming', retard: 10 },
+  { id: 71006, status: 'arrived', start: '14:00', duree: 2, piste: 3, note: 'Table 4 réservée', off: false, moment: 'onsite' },
+  // Arrive en AVANCE : pointe, donc sur place avant sa fenetre.
+  { id: 71007, status: 'arrived', start: '16:30', duree: 1, piste: 1, note: '', off: false, moment: 'onsite' },
+  // Paye PENDANT la partie : il joue encore, il est sur place.
+  { id: 71008, status: 'paid', start: '14:45', duree: 1, piste: 4, note: '', off: false, moment: 'onsite' },
+  { id: 71009, status: 'arrived', start: '13:00', duree: 1, piste: 7, note: '', off: false, moment: 'closing' },
+  // Fini et jamais pointe : « Non pointé », peut-etre pas venu.
+  { id: 71010, status: 'confirmed', start: '12:00', duree: 1, piste: 8, note: 'Rappeler le client', off: false, moment: 'closing', nonPointe: true },
+  // Fini a la MINUTE PILE (14:10-15:10) : c'est fini, pas « en cours ».
+  { id: 71013, status: 'pending', start: '14:10', duree: 1, piste: 5, note: '', off: false, moment: 'closing', nonPointe: true },
+  { id: 71011, status: 'paid', start: '11:00', duree: 1, piste: 1, note: '', off: false, moment: 'done' },
+  { id: 71012, status: 'paid', start: '12:30', duree: 2, piste: 2, note: 'Facture à envoyer', off: false, moment: 'done' },
+  // HORS PLANNING, un par moment.
+  { id: 71014, status: 'confirmed', start: '16:00', duree: 1, piste: null, note: '', off: true, moment: 'upcoming' },
+  { id: 71015, status: 'arrived', start: '14:00', duree: 2, piste: null, note: '', off: true, moment: 'onsite' },
+  { id: 71016, status: 'paid', start: '11:00', duree: 1, piste: null, note: '', off: true, moment: 'done' },
+  { id: 71017, status: 'pending', start: '12:00', duree: 1, piste: null, note: '', off: true, moment: 'closing', nonPointe: true },
 ];
-// LES DEUX CLES QUI DISENT « PAS ENCORE ARRIVE ». Ecrite ici une seule fois, la
-// regle sert aux attendus ET a la lecture des sections : si le produit la
-// changeait sans la dire, ce serait le gate qui rougirait, pas l ecran du
-// gerant.
-const A_VENIR = ['pending', 'confirmed'];
-const estAVenir = (statut) => A_VENIR.includes(statut);
-// La SECTION d une ligne dans la liste du jour. Trois sections d etat pour
-// quatre statuts : 'confirmed' descend dans « A venir », comme 'pending'.
-const sectionDeStatut = (statut) => (estAVenir(statut) ? 'pending' : statut);
+const MOMENTS = ['upcoming', 'onsite', 'closing', 'done'];
 const ATTENDU = {
   all: JEU.map((r) => r.id),
-  arrived: JEU.filter((r) => r.status === 'arrived').map((r) => r.id),
-  pending: JEU.filter((r) => estAVenir(r.status)).map((r) => r.id),
-  paid: JEU.filter((r) => r.status === 'paid').map((r) => r.id),
-  open: JEU.filter((r) => r.status !== 'paid').map((r) => r.id),
+  upcoming: JEU.filter((r) => r.moment === 'upcoming').map((r) => r.id),
+  onsite: JEU.filter((r) => r.moment === 'onsite').map((r) => r.id),
+  closing: JEU.filter((r) => r.moment === 'closing').map((r) => r.id),
+  done: JEU.filter((r) => r.moment === 'done').map((r) => r.id),
+  open: JEU.filter((r) => r.moment !== 'done').map((r) => r.id),
   notes: JEU.filter((r) => r.note).map((r) => r.id),
 };
+// Libelle de chaque puce, dans l'ordre de la barre.
+const PUCES = [['all', 'Tout'], ['upcoming', 'À venir'], ['onsite', 'Sur place'], ['closing', 'À clôturer'], ['done', 'Terminées'], ['open', 'À gérer'], ['notes', 'Avec note']];
+const heure = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h + m / 60; };
 
 async function installMock(page, jeu) {
-  const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+  // La session expire 24 h apres l HEURE DE LA PAGE, pas apres l heure
+  // reelle : figee au 3 octobre, la page voyait sinon une session echue.
+  const expiresAt = new Date(new Date(HEURE).getTime() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, jeu }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'reservations.quick', 'clients.view', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'QA', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
@@ -162,11 +174,11 @@ async function installMock(page, jeu) {
       phone: '+3247086' + String(1000 + index),
       email: `qa${index}@x.test`,
       date,
-      startTime: `${String(11 + (index % 8)).padStart(2, '0')}:00`,
-      duration: 1,
+      startTime: row.start,
+      duration: row.duree,
       // Hors planning = AUCUNE piste et AUCUN laser : la reservation n'apparait
       // sur aucune grille, elle remonte dans sa propre section de la liste.
-      lanes: row.off ? [] : [1 + (index % 8)],
+      lanes: row.off ? [] : [row.piste],
       status: row.status,
       pax: 4,
       price: 40,
@@ -176,52 +188,57 @@ async function installMock(page, jeu) {
       notes: row.note || '',
     }));
     const laneStatuses = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {});
-    // UN SERVEUR NE CHANGE PAS D ETAG QUAND RIEN N A BOUGE. La console lit
-    // l ETag avant payload.revision et re-rend des qu il change : un etag
-    // horodate faisait re-rendre la console A CHAQUE SONDAGE, et un re-rendu qui
-    // tombe pendant un geste detruit la carte tiree ou remet le defilement a
-    // zero. Le vrai /api/staff-state pose ETag = snapshot.revision : ici l etag
-    // est l empreinte du contenu servi, meme contenu donc meme etag.
+    // UN SERVEUR NE CHANGE PAS D ETAG QUAND RIEN N A BOUGE : l etag est
+    // l empreinte du contenu servi, meme contenu donc meme etag (sinon la
+    // console re-rend a chaque sondage).
     const J = (p) => {
       const corps = JSON.stringify(p);
       let h = 0;
       for (let i = 0; i < corps.length; i += 1) h = (h * 31 + corps.charCodeAt(i)) | 0;
       return new Response(corps, { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${(h >>> 0).toString(36)}` } });
     };
+    const aujourdhui = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
     const nativeFetch = window.fetch.bind(window);
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : input?.url || '';
       const u = new URL(raw, window.location.origin);
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
-      if (u.pathname === '/api/staff-state') { const d = u.searchParams.get('date') || new Date().toISOString().slice(0, 10); return J({ ok: true, revision: `qa-${d}`, reservations: build(d), laneStatuses: laneStatuses(), centerId: 'libramont' }); }
-      if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: new Date().toISOString().slice(0, 10), durationOptions: [], formules: [], center: null });
+      if (u.pathname === '/api/staff-state') { const d = u.searchParams.get('date') || aujourdhui(); return J({ ok: true, revision: `qa-${d}`, reservations: build(d), laneStatuses: laneStatuses(), centerId: 'libramont' }); }
+      if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: aujourdhui(), durationOptions: [], formules: [], center: null });
       if (u.pathname === '/api/ops') {
         const action = u.searchParams.get('action');
         if (action === 'centerConfig') return J({ ok: true, centers: [centerFor(u.searchParams.get('centerId') || 'libramont')], activities: [] });
         return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
       }
-      if (u.pathname === '/api/admin-range') { const d = u.searchParams.get('startDate') || new Date().toISOString().slice(0, 10); return J({ ok: true, reservations: build(d), emails: [], agentEvents: [], centerId: 'libramont' }); }
+      if (u.pathname === '/api/admin-range') { const d = u.searchParams.get('startDate') || aujourdhui(); return J({ ok: true, reservations: build(d), emails: [], agentEvents: [], centerId: 'libramont' }); }
       return nativeFetch(input, init);
     };
     window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(qaSession));
   }, { expiresAt, jeu });
 }
 
-// Ouvre la console sur l'onglet « Toutes les reservations », filtre remis a zero.
-async function ouvrirListe(page) {
+// Une page neuve, a 15:10 le jour joue, sur l'onglet « Toutes », filtre a zero.
+async function ouvrirListe(browser) {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => { console.log(`FAIL  erreur JS dans la page : ${e.message}`); failures += 1; });
+  await page.clock.setFixedTime(new Date(HEURE));
+  await installMock(page, JEU);
   await page.goto(`${BASE_URL}/?v=filtres-${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForFunction(() => typeof window.setView === 'function' && typeof state !== 'undefined', null, { timeout: 20000 });
-  await page.evaluate(() => {
+  await page.evaluate((jour) => {
     if (typeof hasSavedAuth === 'function') hasSavedAuth();
+    state.currentDate = jour;
     setView('staff');
     state.staffStatusFilter = 'all';
     state.searchTerm = '';
     state.staffPlanningExpanded = false;
     if (typeof openStaffMenuPage === 'function') openStaffMenuPage('planning');
     if (typeof setStaffResourceView === 'function') setStaffResourceView('all');
-  });
-  await page.waitForSelector('#resList .status-chip', { timeout: 20000 });
-  await page.waitForTimeout(400);
+  }, JOUR);
+  await page.waitForFunction((n) => document.querySelectorAll('#resList .res-row[data-res-row-id]').length === n, JEU.length, { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  return { ctx, page };
 }
 
 // Clique la puce dont le LIBELLE correspond, comme un humain, puis lit ce que
@@ -240,7 +257,7 @@ async function cliquerPuce(page, libelle) {
   return page.evaluate(() => {
     const rows = [...document.querySelectorAll('#resList .res-row[data-res-row-id]')];
     const sections = [...document.querySelectorAll('#resList .res-section')].map((s) => ({
-      cle: [...s.classList].find((c) => ['offplanning', 'arrived', 'pending', 'paid'].includes(c)) || '?',
+      cle: [...s.classList].find((c) => ['offplanning', 'upcoming', 'onsite', 'closing', 'done'].includes(c)) || '?',
       ids: [...s.querySelectorAll('.res-row[data-res-row-id]')].map((r) => Number(r.getAttribute('data-res-row-id'))),
     }));
     const chips = {};
@@ -251,205 +268,195 @@ async function cliquerPuce(page, libelle) {
       [].forEach.call(clone.querySelectorAll('span'), (s) => s.remove());
       chips[(clone.textContent || '').replace(/\s+/g, ' ').trim()] = n;
     });
+    const pastilles = {};
+    rows.forEach((r) => {
+      pastilles[r.getAttribute('data-res-row-id')] = {
+        retard: ((r.querySelector('.res-state-pill.late') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+        nonPointe: Boolean(r.querySelector('.res-state-pill.unmarked')),
+      };
+    });
+    return { ids: rows.map((r) => Number(r.getAttribute('data-res-row-id'))), sections, chips, pastilles };
+  });
+}
+
+async function lireForme(page) {
+  return page.evaluate(() => {
+    const groupes = [...document.querySelectorAll('#resList .status-group')];
+    const etatGroup = groupes[0];
+    const crossGroup = groupes.find((g) => g.classList.contains('status-group-cross'));
+    const lire = (g) => (g ? [...g.querySelectorAll('.status-chip')].map((c) => {
+      const clone = c.cloneNode(true);
+      [].forEach.call(clone.querySelectorAll('span'), (s) => s.remove());
+      return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    }) : []);
+    const filet = crossGroup ? getComputedStyle(crossGroup, '::before') : null;
+    const barre = document.querySelector('#resList .table-toolbar');
     return {
-      ids: rows.map((r) => Number(r.getAttribute('data-res-row-id'))),
-      sections,
-      chips,
-      resume: (document.querySelector('#resList .table-summary') || {}).textContent || '',
+      nbGroupes: groupes.length,
+      etats: lire(etatGroup),
+      croisements: lire(crossGroup),
+      reperes: crossGroup ? crossGroup.querySelectorAll('.chip-cross-mark').length : 0,
+      reperesEtat: etatGroup ? etatGroup.querySelectorAll('.chip-cross-mark').length : 0,
+      titres: crossGroup ? [...crossGroup.querySelectorAll('.status-chip')].map((c) => c.getAttribute('title') || '') : [],
+      aria: crossGroup ? [...crossGroup.querySelectorAll('.status-chip')].map((c) => c.getAttribute('aria-label') || '') : [],
+      filetLargeur: filet ? filet.width : '',
+      barre: barre ? barre.textContent.replace(/\s+/g, ' ').trim() : '',
     };
   });
+}
+
+async function mesurer(page) {
+  const vue = {};
+  for (const [cle, libelle] of PUCES) vue[cle] = await cliquerPuce(page, libelle);
+  vue.forme = await lireForme(page);
+  // Le prerequis : l'heure et la date de la page, et la fenetre de chaque
+  // dossier telle que le produit la lit.
+  vue.prerequis = await page.evaluate((ids) => ({
+    jour: typeof todayStr === 'function' ? todayStr() : '',
+    date: state.currentDate,
+    maintenant: typeof currentTimeDecimal === 'function' ? currentTimeDecimal() : null,
+    fenetres: ids.map((id) => {
+      const r = (state.reservations || []).find((x) => Number(x.id) === id);
+      return r ? { id, ...getStaffTerrainSpan(r) } : { id, absent: true };
+    }),
+  }), JEU.map((r) => r.id));
+  return vue;
 }
 
 const trie = (a) => [...a].sort((x, y) => x - y);
 const memeEnsemble = (a, b) => trie(a).join(',') === trie(b).join(',');
 
-async function mesurer(page) {
-  const vue = {};
-  for (const [cle, libelle] of [['all', 'Tout'], ['arrived', 'Sur place'], ['pending', 'À venir'], ['paid', 'Terminées'], ['open', 'À gérer'], ['notes', 'Avec note']]) {
-    vue[cle] = await cliquerPuce(page, libelle);
+// Tous les controles, sous forme de liste : la passe principale les imprime, la
+// contre-epreuve les compte. Une seule definition, donc la contre-epreuve
+// mesure exactement ce que la passe principale affirme.
+function controler(vue) {
+  const out = [];
+  const c = (cond, label, detail = '') => out.push({ cond: Boolean(cond), label, detail });
+
+  // [0] PREREQUIS
+  const p = vue.prerequis || {};
+  c(p.jour === JOUR && p.date === JOUR, '[0] la page vit le jour joue', `aujourd hui ${p.jour}, date affichee ${p.date}`);
+  c(p.maintenant !== null && Math.abs(p.maintenant - MAINTENANT) < 1 / 120, '[0] et il est 15:10 pour elle', `${p.maintenant}`);
+  const fenetresFausses = (p.fenetres || []).filter((f) => {
+    const r = JEU.find((x) => x.id === f.id);
+    return f.absent || Math.abs(f.start - heure(r.start)) > 1e-6 || Math.abs(f.end - (heure(r.start) + r.duree)) > 1e-6;
+  });
+  c(fenetresFausses.length === 0, '[0] chaque dossier occupe la fenetre que le jeu lui donne',
+    fenetresFausses.length ? fenetresFausses.map((f) => `${f.id} ${f.absent ? 'absent' : `${f.start}-${f.end}`}`).join(', ') : `${JEU.length} fenetres`);
+
+  // [1] CHAQUE PUCE REND EXACTEMENT SON ENSEMBLE
+  Object.entries(ATTENDU).forEach(([cle, attendu]) => {
+    const rendu = vue[cle] ? vue[cle].ids : null;
+    if (!rendu) { c(false, `[1] [${cle}] la puce existe et rend une liste`); return; }
+    const enTrop = rendu.filter((id) => !attendu.includes(id));
+    const manquants = attendu.filter((id) => !rendu.includes(id));
+    c(enTrop.length === 0, `[1] [${cle}] AUCUNE reservation en trop`, enTrop.length ? `en trop : ${enTrop.join(', ')}` : `${rendu.length} lignes`);
+    c(manquants.length === 0, `[1] [${cle}] aucune reservation oubliee`, manquants.length ? `manquants : ${manquants.join(', ')}` : `${attendu.length} attendues`);
+  });
+
+  // [2] LES CAS QUI JUSTIFIENT LE LOT
+  const dans = (cle, id) => (vue[cle]?.ids || []).includes(id);
+  const pastilles = vue.all?.pastilles || {};
+  JEU.filter((r) => r.retard).forEach((r) => {
+    c(dans('upcoming', r.id) && !dans('onsite', r.id), `[2] le retard ${r.id} (${r.start}) reste « À venir », pas « Sur place »`);
+    const lu = (pastilles[r.id] || {}).retard || '';
+    c(lu === `En retard · ${r.retard} min`, `[2] et sa pastille dit depuis quand il est attendu`, `« ${lu} » pour « En retard · ${r.retard} min »`);
+  });
+  const sansRetard = JEU.filter((r) => !r.retard && (pastilles[r.id] || {}).retard);
+  c(sansRetard.length === 0, '[2] aucune autre ligne ne porte « En retard »', sansRetard.map((r) => r.id).join(', '));
+  c(dans('onsite', 71007), '[2] l arrivee pointee en AVANCE est « Sur place »');
+  c(dans('onsite', 71008), '[2] le groupe qui a paye PENDANT sa partie est « Sur place »');
+  c(dans('upcoming', 71003), '[2] le groupe paye d AVANCE reste « À venir »');
+  c(dans('closing', 71013), '[2] fini a la minute pile, il est « À clôturer »');
+  JEU.filter((r) => r.nonPointe).forEach((r) => {
+    c(dans('closing', r.id) && (pastilles[r.id] || {}).nonPointe, `[2] le fini jamais pointe ${r.id} est « À clôturer » avec « Non pointé »`);
+  });
+  const nonPointesEnTrop = JEU.filter((r) => !r.nonPointe && (pastilles[r.id] || {}).nonPointe);
+  c(nonPointesEnTrop.length === 0, '[2] « Non pointé » ne se pose sur aucune autre ligne', nonPointesEnTrop.map((r) => r.id).join(', '));
+
+  // [3] L EXCLUSION
+  for (let i = 0; i < MOMENTS.length; i += 1) {
+    for (let j = i + 1; j < MOMENTS.length; j += 1) {
+      const [a, b] = [MOMENTS[i], MOMENTS[j]];
+      const inter = (vue[a]?.ids || []).filter((id) => (vue[b]?.ids || []).includes(id));
+      c(inter.length === 0, `[3] « ${a} » et « ${b} » n ont aucune reservation en commun`, inter.length ? `communes : ${inter.join(', ')}` : '');
+    }
   }
-  return vue;
+  const union = MOMENTS.flatMap((e) => vue[e]?.ids || []);
+  c(union.length === new Set(union).size, '[3] aucune reservation n apparait dans deux etats', `${union.length} lignes pour ${new Set(union).size} dossiers`);
+  c(memeEnsemble(union, vue.all?.ids || []), '[3] l union des quatre etats est EXACTEMENT « Tout »', `${union.length} vs ${(vue.all?.ids || []).length}`);
+
+  // [4] LES COMPTEURS
+  const chips = vue.all?.chips || {};
+  const n = (nom) => (chips[nom] === undefined ? null : chips[nom]);
+  c(['Tout', 'À venir', 'Sur place', 'À clôturer', 'Terminées'].every((nom) => n(nom) !== null), '[4] les cinq puces d etat portent un compte', JSON.stringify(chips));
+  const somme = (n('À venir') || 0) + (n('Sur place') || 0) + (n('À clôturer') || 0) + (n('Terminées') || 0);
+  c(somme === n('Tout'), '[4] À venir + Sur place + À clôturer + Terminées = Tout', `${somme} pour ${n('Tout')}`);
+  c(n('À gérer') === (n('À venir') || 0) + (n('Sur place') || 0) + (n('À clôturer') || 0), '[4] « À gérer » vaut exactement À venir + Sur place + À clôturer', `${n('À gérer')}`);
+  PUCES.forEach(([cle, nom]) => {
+    c(n(nom) === (vue[cle]?.ids || []).length, `[4] « ${nom} » annonce le nombre de lignes qu il rend`, `${n(nom)} annonce / ${(vue[cle]?.ids || []).length} rendues`);
+  });
+
+  // [5] UNION ET ATTRIBUT
+  const openIds = vue.open?.ids || [];
+  c(memeEnsemble(openIds, [...(vue.upcoming?.ids || []), ...(vue.onsite?.ids || []), ...(vue.closing?.ids || [])]),
+    '[5] « À gérer » = À venir + Sur place + À clôturer, ni plus ni moins', `${openIds.length} lignes`);
+  c(openIds.every((id) => !(vue.done?.ids || []).includes(id)), '[5] aucune reservation terminee ne se glisse dans « À gérer »');
+  const notesIds = vue.notes?.ids || [];
+  const notesParEtat = MOMENTS.map((e) => notesIds.filter((id) => (vue[e]?.ids || []).includes(id)).length);
+  c(notesParEtat.every((x) => x > 0), '[5] « Avec note » pioche dans les QUATRE etats', notesParEtat.join(' · '));
+
+  // [6] LE DOM
+  PUCES.forEach(([cle]) => {
+    const v = vue[cle];
+    if (!v) return;
+    const doublons = v.ids.filter((id, i) => v.ids.indexOf(id) !== i);
+    c(doublons.length === 0, `[6] [${cle}] aucune ligne rendue deux fois`, doublons.length ? `doublons : ${doublons.join(', ')}` : '');
+    const appartenance = {};
+    v.sections.forEach((s) => s.ids.forEach((id) => { appartenance[id] = (appartenance[id] || 0) + 1; }));
+    const multi = Object.entries(appartenance).filter(([, x]) => x > 1);
+    c(multi.length === 0, `[6] [${cle}] aucune reservation dans deux sections`, multi.map(([id, x]) => `${id}x${x}`).join(', '));
+  });
+  // La section d une ligne dit son moment (hors planning excepte : c est une
+  // section de PLACEMENT, elle prime, et c est ecrit dans l interface).
+  const fausses = [];
+  (vue.all?.sections || []).forEach((s) => s.ids.forEach((id) => {
+    const r = JEU.find((x) => x.id === id);
+    const attendue = r.off ? 'offplanning' : r.moment;
+    if (s.cle !== attendue) fausses.push(`${id} dans « ${s.cle} » au lieu de « ${attendue} »`);
+  }));
+  c(fausses.length === 0, '[6] chaque ligne est dans la section de son moment', fausses.join(' · '));
+  const ordre = (vue.all?.sections || []).map((s) => s.cle).join(' > ');
+  c(ordre === 'offplanning > upcoming > onsite > closing > done', '[6] les sections se suivent dans l ordre de la journee', ordre);
+
+  // [7] LA FORME
+  const f = vue.forme || {};
+  c(f.nbGroupes === 2, '[7] la barre porte DEUX groupes, pas une rangee unique', `${f.nbGroupes} groupes`);
+  c((f.etats || []).join(' · ') === 'Tout · À venir · Sur place · À clôturer · Terminées', '[7] le premier groupe ne porte QUE les etats, dans l ordre de la journee', (f.etats || []).join(' · '));
+  c((f.croisements || []).length === 2 && f.croisements.includes('À gérer') && f.croisements.includes('Avec note'), '[7] le second groupe porte les deux vues qui recoupent', (f.croisements || []).join(' · '));
+  c(f.reperes === (f.croisements || []).length && f.reperesEtat === 0, '[7] chaque puce qui recoupe porte le repere, aucune puce d etat n en porte', `${f.reperes} / ${f.reperesEtat}`);
+  c((f.titres || []).every((t) => /recoupe les états/i.test(t)) && (f.aria || []).every((a) => /recoupe les états/i.test(a)), '[7] le recoupement est dit en toutes lettres, y compris a la synthese vocale');
+  c(f.filetLargeur === '1px', '[7] un filet separe les deux groupes', f.filetLargeur);
+  c(!/=\s*\d/.test(f.barre || ''), '[7] aucune phrase-formule n explique l ecran sous les filtres', f.barre);
+  return out;
 }
 
 async function main() {
   const server = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    page.on('pageerror', (e) => { console.log(`FAIL  erreur JS dans la page : ${e.message}`); failures += 1; });
-    await installMock(page, JEU);
-    await ouvrirListe(page);
+    const { ctx, page } = await ouvrirListe(browser);
     const vue = await mesurer(page);
-
-    // =====================================================================
-    console.log('\n[1] CHAQUE ONGLET REND EXACTEMENT SON ENSEMBLE, ET RIEN D AUTRE');
-    // =====================================================================
-    Object.entries(ATTENDU).forEach(([cle, attendu]) => {
-      const rendu = vue[cle] ? vue[cle].ids : null;
-      if (!rendu) { ok(false, `[${cle}] la puce existe et rend une liste`); return; }
-      const enTrop = rendu.filter((id) => !attendu.includes(id));
-      const manquants = attendu.filter((id) => !rendu.includes(id));
-      ok(enTrop.length === 0, `[${cle}] AUCUNE reservation en trop`, enTrop.length ? `en trop : ${enTrop.join(', ')}` : `${rendu.length} lignes`);
-      ok(manquants.length === 0, `[${cle}] aucune reservation oubliee`, manquants.length ? `manquants : ${manquants.join(', ')}` : `${attendu.length} attendues`);
+    let rubrique = '';
+    controler(vue).forEach((x) => {
+      const r = x.label.slice(0, 3);
+      if (r !== rubrique) { rubrique = r; console.log(''); }
+      ok(x.cond, x.label, x.detail);
     });
+    await ctx.close();
 
     // =====================================================================
-    console.log('\n[1bis] « À VENIR » COUVRE LES DEUX CLES QUI DISENT « PAS ENCORE ARRIVE »');
-    // =====================================================================
-    // Le produit ecrit 'confirmed' par defaut et 'pending' pour une demande en
-    // attente. Les deux disent la meme chose au comptoir. Trier sur la seule
-    // cle 'pending' les comptait dans « Tout » et ne les rendait dans aucune
-    // section : ils disparaissaient de la liste du jour. Cette section-ci est
-    // celle qui refuse ce retour en arriere.
-    const statutDe = new Map(JEU.map((r) => [r.id, r.status]));
-    const confirmes = JEU.filter((r) => r.status === 'confirmed').map((r) => r.id);
-    const enAttente = JEU.filter((r) => r.status === 'pending').map((r) => r.id);
-    const rendusAVenir = vue.pending?.ids || [];
-    ok(confirmes.length >= 2 && enAttente.length >= 2,
-      '[à venir] le jeu porte VRAIMENT les deux cles (sinon la regle ne serait pas testee)',
-      `${enAttente.length} en attente, ${confirmes.length} confirmes`);
-    const confirmesManquants = confirmes.filter((id) => !rendusAVenir.includes(id));
-    ok(confirmesManquants.length === 0, '[à venir] les dossiers CONFIRMES sont rendus par « À venir »',
-      confirmesManquants.length ? `absents : ${confirmesManquants.join(', ')}` : `${confirmes.length} rendus`);
-    const attenteManquants = enAttente.filter((id) => !rendusAVenir.includes(id));
-    ok(attenteManquants.length === 0, '[à venir] les dossiers EN ATTENTE aussi',
-      attenteManquants.length ? `absents : ${attenteManquants.join(', ')}` : `${enAttente.length} rendus`);
-    const intrus = rendusAVenir.filter((id) => !estAVenir(statutDe.get(id)));
-    ok(intrus.length === 0, '[à venir] et RIEN d autre : aucun arrive, aucun termine',
-      intrus.length ? intrus.map((id) => `${id} (${statutDe.get(id)})`).join(', ') : `${rendusAVenir.length} lignes, toutes a venir`);
-    // Et ils sont dans la SECTION « À venir » de la liste complete, pas
-    // seulement dans le filtre : c est la ou ils s etaient volatilises.
-    const sectionAVenir = (vue.all?.sections || []).find((s) => s.cle === 'pending');
-    const confirmesHorsPlanning = new Set(JEU.filter((r) => r.status === 'confirmed' && r.off).map((r) => r.id));
-    const confirmesAPlacer = confirmes.filter((id) => !confirmesHorsPlanning.has(id));
-    ok(Boolean(sectionAVenir) && confirmesAPlacer.every((id) => sectionAVenir.ids.includes(id)),
-      '[à venir] et ils descendent dans la SECTION « À venir » de la liste complete',
-      sectionAVenir ? `section a ${sectionAVenir.ids.length} lignes` : 'aucune section « À venir »');
-
-    // =====================================================================
-    console.log('\n[2] L EXCLUSION : LES TROIS ETATS NE SE RECOUPENT JAMAIS');
-    // =====================================================================
-    const etats = ['arrived', 'pending', 'paid'];
-    const paires = [['arrived', 'pending'], ['arrived', 'paid'], ['pending', 'paid']];
-    paires.forEach(([a, b]) => {
-      const inter = (vue[a]?.ids || []).filter((id) => (vue[b]?.ids || []).includes(id));
-      ok(inter.length === 0, `[exclusion] « ${a} » et « ${b} » n ont aucune reservation en commun`, inter.length ? `communes : ${inter.join(', ')}` : '0 commune');
-    });
-    const union = etats.flatMap((e) => vue[e]?.ids || []);
-    ok(union.length === new Set(union).size, '[exclusion] aucune reservation n apparait dans deux etats', `${union.length} lignes pour ${new Set(union).size} dossiers`);
-    ok(memeEnsemble(union, vue.all?.ids || []), '[exclusion] l union des trois etats est EXACTEMENT « Tout »', `${union.length} vs ${(vue.all?.ids || []).length}`);
-
-    // =====================================================================
-    console.log('\n[3] LES COMPTEURS SE RECOMPOSENT');
-    // =====================================================================
-    const chips = vue.all?.chips || {};
-    const c = (nom) => (chips[nom] === undefined ? null : chips[nom]);
-    ok(c('Tout') !== null && c('Sur place') !== null && c('À venir') !== null && c('Terminées') !== null,
-      '[compteurs] les quatre puces d etat portent un compte', JSON.stringify(chips));
-    const somme = (c('Sur place') || 0) + (c('À venir') || 0) + (c('Terminées') || 0);
-    ok(somme === c('Tout'), '[compteurs] Sur place + À venir + Terminées = Tout',
-      `${c('Sur place')} + ${c('À venir')} + ${c('Terminées')} = ${somme}, Tout = ${c('Tout')}`);
-    ok(c('À gérer') === (c('Sur place') || 0) + (c('À venir') || 0),
-      '[compteurs] « À gérer » vaut exactement Sur place + À venir', `${c('À gérer')}`);
-    // Et le compte affiche doit egaler le nombre de lignes RENDUES : un compteur
-    // juste sur une liste fausse ne vaut rien, et l inverse non plus.
-    [['Tout', 'all'], ['Sur place', 'arrived'], ['À venir', 'pending'], ['Terminées', 'paid'], ['À gérer', 'open'], ['Avec note', 'notes']].forEach(([nom, cle]) => {
-      ok(c(nom) === (vue[cle]?.ids || []).length,
-        `[compteurs] « ${nom} » annonce le nombre de lignes qu il rend`, `${c(nom)} annonce / ${(vue[cle]?.ids || []).length} rendues`);
-    });
-
-    // =====================================================================
-    console.log('\n[4] « À GÉRER » EST UNE UNION, « AVEC NOTE » UN ATTRIBUT');
-    // =====================================================================
-    const openIds = vue.open?.ids || [];
-    ok(memeEnsemble(openIds, [...(vue.arrived?.ids || []), ...(vue.pending?.ids || [])]),
-      '[union] « À gérer » = Sur place + À venir, ni plus ni moins', `${openIds.length} lignes`);
-    ok(openIds.every((id) => !(vue.paid?.ids || []).includes(id)),
-      '[union] aucune reservation terminee ne se glisse dans « À gérer »');
-    const notesIds = vue.notes?.ids || [];
-    const notesParEtat = etats.map((e) => notesIds.filter((id) => (vue[e]?.ids || []).includes(id)).length);
-    ok(notesParEtat.every((n) => n > 0),
-      '[attribut] « Avec note » pioche dans les TROIS etats (donc il les recoupe vraiment)',
-      `sur place ${notesParEtat[0]} · a venir ${notesParEtat[1]} · terminees ${notesParEtat[2]}`);
-
-    // =====================================================================
-    console.log('\n[5] DANS LE DOM : UNE LIGNE, UNE SEULE SECTION, LA BONNE');
-    // =====================================================================
-    Object.entries(ATTENDU).forEach(([cle]) => {
-      const v = vue[cle];
-      if (!v) return;
-      const doublons = v.ids.filter((id, i) => v.ids.indexOf(id) !== i);
-      ok(doublons.length === 0, `[dom ${cle}] aucune ligne rendue deux fois`, doublons.length ? `doublons : ${doublons.join(', ')}` : `${v.ids.length} lignes`);
-      const appartenance = {};
-      v.sections.forEach((s) => s.ids.forEach((id) => { appartenance[id] = (appartenance[id] || 0) + 1; }));
-      const multi = Object.entries(appartenance).filter(([, n]) => n > 1);
-      ok(multi.length === 0, `[dom ${cle}] aucune reservation dans deux sections`, multi.length ? multi.map(([id, n]) => `${id}x${n}`).join(', ') : `${v.sections.length} sections`);
-    });
-    // La section d une ligne dit son etat (hors planning excepte : c est une
-    // section de PLACEMENT, elle prime, et c est ecrit dans l interface).
-    const horsPlanning = new Set(JEU.filter((r) => r.off).map((r) => r.id));
-    const parId = new Map(JEU.map((r) => [r.id, r.status]));
-    let sectionsJustes = 0;
-    let sectionsFausses = [];
-    (vue.all?.sections || []).forEach((s) => {
-      s.ids.forEach((id) => {
-        // Trois sections d etat pour quatre statuts : un dossier 'confirmed'
-        // descend dans « A venir ». C est exactement ce qui manquait - il etait
-        // compte dans « Tout » et rendu dans AUCUNE section.
-        const attendue = horsPlanning.has(id) ? 'offplanning' : sectionDeStatut(parId.get(id));
-        if (s.cle === attendue) sectionsJustes += 1;
-        else sectionsFausses.push(`${id} dans « ${s.cle} » au lieu de « ${attendue} »`);
-      });
-    });
-    ok(sectionsFausses.length === 0, '[dom] chaque ligne est dans la section de son etat',
-      sectionsFausses.length ? sectionsFausses.join(' · ') : `${sectionsJustes} lignes bien rangees`);
-
-    // =====================================================================
-    console.log('\n[6] LE RECOUPEMENT EST VISIBLE ET EXPLIQUE, PAS SUBI');
-    // =====================================================================
-    const forme = await page.evaluate(() => {
-      const groupes = [...document.querySelectorAll('#resList .status-group')];
-      const etatGroup = groupes[0];
-      const crossGroup = groupes.find((g) => g.classList.contains('status-group-cross'));
-      const lire = (g) => (g ? [...g.querySelectorAll('.status-chip')].map((c) => {
-        const clone = c.cloneNode(true);
-        [].forEach.call(clone.querySelectorAll('span'), (s) => s.remove());
-        return (clone.textContent || '').replace(/\s+/g, ' ').trim();
-      }) : []);
-      const filet = crossGroup ? getComputedStyle(crossGroup, '::before') : null;
-      const rectEtat = etatGroup ? etatGroup.getBoundingClientRect() : null;
-      const rectCross = crossGroup ? crossGroup.getBoundingClientRect() : null;
-      return {
-        nbGroupes: groupes.length,
-        etats: lire(etatGroup),
-        croisements: lire(crossGroup),
-        reperes: crossGroup ? crossGroup.querySelectorAll('.chip-cross-mark').length : 0,
-        reperesEtat: etatGroup ? etatGroup.querySelectorAll('.chip-cross-mark').length : 0,
-        titres: crossGroup ? [...crossGroup.querySelectorAll('.status-chip')].map((c) => c.getAttribute('title') || '') : [],
-        aria: crossGroup ? [...crossGroup.querySelectorAll('.status-chip')].map((c) => c.getAttribute('aria-label') || '') : [],
-        filetLargeur: filet ? filet.width : '',
-        separes: rectEtat && rectCross ? Math.round(rectCross.left - rectEtat.right) : null,
-      };
-    });
-    ok(forme.nbGroupes === 2, '[forme] la barre porte DEUX groupes, pas une rangee unique', `${forme.nbGroupes} groupes`);
-    ok(forme.etats.join(' · ') === 'Tout · Sur place · À venir · Terminées',
-      '[forme] le premier groupe ne porte QUE l etat', forme.etats.join(' · '));
-    ok(forme.croisements.length === 2 && forme.croisements.includes('À gérer') && forme.croisements.includes('Avec note'),
-      '[forme] le second groupe porte les deux vues qui recoupent', forme.croisements.join(' · '));
-    ok(forme.reperes === forme.croisements.length && forme.reperesEtat === 0,
-      '[forme] chaque puce qui recoupe porte le repere, aucune puce d etat n en porte',
-      `${forme.reperes} reperes cote recoupement, ${forme.reperesEtat} cote etat`);
-    ok(forme.titres.every((t) => /recoupe les états/i.test(t)) && forme.aria.every((a) => /recoupe les états/i.test(a)),
-      '[forme] le recoupement est dit en toutes lettres, y compris a la synthese vocale');
-    ok(forme.filetLargeur === '1px', '[forme] un filet separe les deux groupes', forme.filetLargeur);
-    const resume = vue.all?.resume || '';
-    const attenduResume = `${ATTENDU.all.length} réservations = ${ATTENDU.arrived.length} sur place + ${ATTENDU.pending.length} à venir + ${ATTENDU.paid.length} terminées`;
-    ok(resume.includes(attenduResume), '[forme] la ligne de resume RECOMPOSE les comptes', resume.trim());
-    ok(/«\s*À gérer\s*»\s*réunit les\s*\d+\s*non terminées/.test(resume),
-      '[forme] et elle nomme le recoupement au lieu de le laisser deviner');
-
-    // =====================================================================
-    console.log('\n[7] CONTRE-EPREUVE PAR MUTATION - les FAIL qui suivent sont VOULUS');
+    console.log('\n[8] CONTRE-EPREUVE PAR MUTATION - la sonde doit rougir, et pour la bonne raison');
     // =====================================================================
     // Fins de ligne normalisees d'abord : selon `core.autocrlf` le fichier
     // arrive en LF ou en CRLF, et une ancre ecrite en LF ne se trouve alors
@@ -457,82 +464,69 @@ async function main() {
     const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
     const LF = String.fromCharCode(10);
     const source = fs.readFileSync(path.join(ROOT, 'assets/app-main.js'), 'utf8').split(CRLF).join(LF);
-    // L ANCRE PORTE SUR LA DEFINITION PARTAGEE, PAS SUR UN APPELANT. Premiere
-    // version de cette contre-epreuve : l ancre citait le corps de
-    // `filterReservationsForStaff`. Le jour ou une branche y a ete inseree,
-    // l ancre est devenue introuvable et la sonde a cesse d etre injectee -
-    // precisement au moment ou le comportement changeait. Pire encore : muter
-    // ce seul filtre ne prouvait rien, les SECTIONS de la liste refiltrent de
-    // leur cote et auraient efface le debordement avant le DOM. On mute donc
-    // `isUpcomingReservationStatus`, la definition que le filtre, les sections
-    // et les compteurs partagent tous les trois : un seul endroit, trois
-    // consequences visibles.
     const mutations = [
       {
-        nom: 'un etat qui deborde : « À venir » rend aussi les arrivees',
-        de: "function isUpcomingReservationStatus(status) {\n  return status === 'pending' || status === 'confirmed';\n}",
-        vers: "function isUpcomingReservationStatus(status) {\n  return status !== 'paid';\n}",
-        attendu: /exclusion|en trop|compteurs/i,
+        // LE DEFAUT QUE LE LOT CORRIGE, cote retard : le groupe attendu depuis
+        // 40 minutes range « Sur place » alors que personne ne l a vu.
+        nom: 'le retard est range « Sur place »',
+        de: "  poser(partage.late, 'upcoming', true);",
+        vers: "  poser(partage.late, 'onsite', true);",
+        attendu: /^\[(1|2)\]/,
       },
       {
-        // LE RETOUR EN ARRIERE, exactement celui que le lot vient de corriger :
-        // « A venir » retombe sur la seule cle 'pending' et les dossiers
-        // confirmes sortent de la liste du jour sans que « Tout » cesse de les
-        // compter.
-        nom: 'un etat qui retrograde : « À venir » oublie les dossiers confirmes',
-        de: "function isUpcomingReservationStatus(status) {\n  return status === 'pending' || status === 'confirmed';\n}",
-        vers: "function isUpcomingReservationStatus(status) {\n  return status === 'pending';\n}",
-        attendu: /compteurs|oubliee/i,
+        // LE RETOUR EN ARRIERE ENTIER : la liste retombe sur le statut seul
+        // (le club fini reste « Sur place », le retard « À venir » sans marque).
+        nom: 'la liste retombe sur le statut',
+        de: "function getStaffReservationMomentState(moments, reservation) {\n  const entry = moments.get(String(reservation.id));\n  return entry ? entry.etat : 'upcoming';\n}",
+        vers: "function getStaffReservationMomentState(moments, reservation) {\n  return reservation.status === 'paid' ? 'done' : reservation.status === 'arrived' ? 'onsite' : 'upcoming';\n}",
+        attendu: /^\[(1|2)\]/,
       },
       {
-        nom: 'un compteur qui ment : « Terminées » compte tout',
-        de: '  const paid = reservations.filter(r => r.status === \'paid\').length;',
-        vers: '  const paid = reservations.length;',
-        attendu: /compteurs/i,
+        nom: 'un compteur qui ment : « Terminées » compte les payes',
+        de: "  const done = compter('done');",
+        vers: "  const done = reservations.filter(r => r.status === 'paid').length;",
+        attendu: /^\[4\]/,
+      },
+      {
+        nom: 'une section d etat prend les lignes d une autre',
+        de: "rows: inState('closing') }",
+        vers: "rows: inState('done') }",
+        attendu: /^\[(1|4|6)\]/,
+      },
+      {
+        nom: 'le fini jamais pointe perd son « Non pointé »',
+        de: "      ${moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) ? '<span class=\"res-state-pill unmarked\">Non pointé</span>' : ''}",
+        vers: "      ${''}",
+        attendu: /^\[2\]/,
+      },
+      {
+        nom: 'le retard perd sa pastille',
+        de: '      ${moment && moment.late ? `<span class="res-state-pill late">',
+        vers: '      ${false ? `<span class="res-state-pill late">',
+        attendu: /^\[2\]/,
       },
       {
         nom: 'le recoupement redevient une puce d etat comme les autres',
         de: '      <div class="status-group status-group-cross" role="group" aria-label="Vues qui recoupent les états ci-dessus">',
         vers: '      <div class="status-group" role="group" aria-label="Vues qui recoupent les états ci-dessus">',
-        attendu: /forme/i,
+        attendu: /^\[7\]/,
       },
     ];
     for (const mutation of mutations) {
-      // UNE ANCRE INTROUVABLE EST UNE GARDE MORTE, ET ELLE DOIT SE VOIR EN
-      // VERT AUTANT QU EN ROUGE. L assertion est donc ecrite, pas seulement le
-      // FAIL : le journal dit que la sonde peut encore etre injectee.
-      if (!ok(source.includes(mutation.de),
-        `[mutation] l ancre de « ${mutation.nom} » existe dans le source livre`,
-        source.includes(mutation.de) ? '' : 'ANCRE INTROUVABLE : la contre-epreuve est DESARMEE, elle ne protege plus rien')) continue;
+      // UNE ANCRE INTROUVABLE EST UNE GARDE MORTE : l assertion est ecrite en
+      // vert aussi, le journal dit que la sonde peut encore etre injectee.
+      const n = source.split(mutation.de).length - 1;
+      if (!ok(n === 1, `[mutation] l ancre de « ${mutation.nom} » existe une fois dans le source livre`,
+        n === 1 ? '' : `trouvee ${n} fois : la contre-epreuve est DESARMEE`)) continue;
       overrides.set('assets/app-main.js', source.replace(mutation.de, mutation.vers));
-      const mutee = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-      await installMock(mutee, JEU);
-      await ouvrirListe(mutee);
-      const vm = await mesurer(mutee);
-      const chipsM = vm.all?.chips || {};
-      const cm = (n) => (chipsM[n] === undefined ? null : chipsM[n]);
-      // Un dossier compte dans « Tout » mais n est rendu par aucun etat : c est
-      // la disparition silencieuse, celle qui ne se voit sur aucun compteur.
-      const rendusParEtat = new Set(['arrived', 'pending', 'paid'].flatMap((e) => vm[e]?.ids || []));
-      const disparus = (vm.all?.ids || []).filter((id) => !rendusParEtat.has(id));
-      const rompu =
-        // exclusion cassee
-        (vm.pending?.ids || []).some((id) => (vm.arrived?.ids || []).includes(id))
-        // recomposition cassee
-        || ((cm('Sur place') || 0) + (cm('À venir') || 0) + (cm('Terminées') || 0)) !== cm('Tout')
-        // ou compteur qui n annonce pas ce qu il rend
-        || cm('Terminées') !== (vm.paid?.ids || []).length
-        // ou un dossier compte quelque part et rendu nulle part
-        || disparus.length > 0
-        // ou la separation des groupes disparue
-        || (await mutee.evaluate(() => document.querySelectorAll('#resList .status-group-cross').length)) === 0;
-      ok(rompu, `[mutation] « ${mutation.nom} » fait bien rougir la sonde`,
-        rompu ? 'la sonde a vu la regression' : 'LA SONDE EST AVEUGLE : elle ne protege rien');
-      await mutee.close();
+      const { ctx: ctxM, page: mutee } = await ouvrirListe(browser);
+      const rouges = controler(await mesurer(mutee)).filter((x) => !x.cond);
+      const bonneRaison = rouges.filter((x) => mutation.attendu.test(x.label));
+      ok(bonneRaison.length > 0, `[mutation] « ${mutation.nom} » fait rougir la sonde, pour la bonne raison`,
+        rouges.length ? `${rouges.length} controle(s) rouge(s), dont : ${(bonneRaison[0] || rouges[0]).label}` : 'LA SONDE EST AVEUGLE : elle ne protege rien');
+      await ctxM.close();
       overrides.delete('assets/app-main.js');
     }
-
-    await page.close();
   } finally {
     await browser.close();
     server.close();

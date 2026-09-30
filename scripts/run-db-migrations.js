@@ -249,6 +249,11 @@ const MIGRATIONS = [
     file: 'database/slot-holds-schema.sql',
     description: "Les horaires choisis bloques 10 minutes pendant que le client finit sa reservation : une reservation provisoire par client (pistes attribuees, sessions de l arene, installations comptees), sans donnee personnelle, avec une echeance. Toute lecture d occupation la compte tant qu elle n est ni liberee ni echue ; la confirmation la convertit dans la meme transaction. Jeton et adresse IP gardes en empreinte seulement. Table additive, aucune table existante modifiee. Rollback : database/rollbacks/0049_slot_holds.down.sql",
   },
+  {
+    id: '0050_marketing_suppressions_form',
+    file: 'database/marketing-suppressions-form-schema.sql',
+    description: "Une quatrieme origine de retrait marketing, 'form' : la case « Je ne souhaite pas recevoir les offres » cochee a la reservation en ligne (exception « client existant » du droit belge, opposition au moment de la collecte). Contrainte elargie, aucune ligne modifiee. Rollback : database/rollbacks/0050_marketing_suppressions_form.down.sql (les retraits 'form' deviennent 'staff', jamais perdus)",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

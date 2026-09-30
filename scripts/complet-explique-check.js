@@ -19,7 +19,8 @@
 //
 // [A] L API DES HEURES, le vrai handler sur ces deux dossiers :
 //   - aucune heure de bowling ni de laser n est fermee par le billard ou le
-//     duckpin (6 tables demandees quand le 1404 en tient une) ;
+//     duckpin (5 tables demandees, le plafond en ligne, quand le 1404 en
+//     tient deux : 4 libres sur 6) ;
 //   - le duckpin d un groupe de 20 est propose l apres-midi (14:00, 15:00,
 //     17:00), pas a 16:00 ni 16:30 : le 1404 n aurait plus 1 h 30 de duckpin
 //     pendant sa visite ;
@@ -152,7 +153,9 @@ const DOSSIER_1404 = {
   program: { items: [
     { activityId: 'bowling', planned: true, minutes: 60, duration: 1 },
     { activityId: 'laser_game', planned: true, minutes: 60, duration: 1, games: 2 },
-    { activityId: 'billards', planned: false, minutes: 60, units: 1, hours: 1, sessions: 1 },
+    // Deux tables (la capture en tenait une) : avec le plafond de 5 par
+    // reservation en ligne, le billard doit rester plein pour la visite de [A].
+    { activityId: 'billards', planned: false, minutes: 60, units: 2, hours: 1, sessions: 1 },
     { activityId: 'playground', planned: false, minutes: 60, sessions: 1 },
     { activityId: 'duckpin_bowling', planned: false, minutes: 90, duration: 1.5, units: 2, sessions: 1 },
   ] },
@@ -212,7 +215,7 @@ async function verifierApi() {
   const programme = [
     { activityId: 'bowling', duration: 1 },
     { activityId: 'laser_game', games: 2 },
-    { activityId: 'billards', units: 6, hours: 1 },
+    { activityId: 'billards', units: 5, hours: 1 },
     { activityId: 'duckpin_bowling' },
   ];
   const rep = await dispo(programme, 10, { preferredTimes: JSON.stringify({ bowling: '15:30' }) });
@@ -299,7 +302,7 @@ async function verifierFormulaire(browser) {
       '[B] laser 16:00 et 16:30, sur une ligne : « 9 places libres sur 30, il en faut 10 »', ligne(lu.laser, '16:00').texte);
     const parLibre = lu.bowling.concat(lu.laser).filter((l) => /billard|duckpin|fun run/i.test(l.texte));
     ok(parLibre.length === 0, '[B] aucune ligne ne ferme une heure a cause du billard, du duckpin ou du Fun Run', parLibre.map((l) => l.texte).join(' | '));
-    ok(lu.partage === 'Jusqu’à 30 joueurs par partie : d’autres groupes peuvent jouer avec vous.',
+    ok(lu.partage === 'Une partie : 20 min de jeu, plus 5 à 10 min d’explication des règles et de préparation. Jusqu’à 30 joueurs par partie : d’autres groupes peuvent jouer avec vous.',
       '[B] la piste du laser dit que la partie se partage, avec les places du centre', lu.partage);
     ok(!lu.partageBowling, '[B] la phrase du partage ne parle que du laser');
   } finally {

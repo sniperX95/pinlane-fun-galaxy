@@ -1124,6 +1124,15 @@ async function lirePhotosEcrans(page) {
 // Les mots du client pour une duree, des groupes, une liste (memes regles que
 // minutesLabel, taillesGroupes, texteGroupes, joindreListe cote client).
 function minutesLabelQa(m) { m = Number(m) || 0; if (m >= 60) { const h = Math.floor(m / 60), r = m % 60; return r ? `${h}h${String(r).padStart(2, '0')}` : `${h} heure${h > 1 ? 's' : ''}`; } return `${m} min`; }
+// LA PARTIE DE LASER QUE LE CLIENT LIT (Movsar, 2026-09-30 : « une partie dure
+// 20 minutes », plus le temps des regles) : le jeu du centre quand le
+// catalogue le sert sous le creneau de l arene, sinon rien (dureeLaser cote
+// client). La console garde le creneau (25 min).
+function jeuLaserQa() {
+  const a = mock.ACTIVITIES.find((x) => x.id === 'laser_game') || {};
+  const jeu = Number(a.gameMinutes) || 0;
+  return jeu > 0 && Number(a.sessionMinutes) > jeu ? jeu : 0;
+}
 function sessionsQa(it) { const n = Math.trunc(Number(it.sessions) || 1); const mn = Number(it.minutes) || 0; return n < 2 || !mn ? '' : `${n} sessions de ${minutesLabelQa(Math.round(mn / n))}`; }
 function detailLigneQa(it) {
   if (it.games > 0) return `${it.games} partie${it.games > 1 ? 's' : ''}`;
@@ -1149,10 +1158,11 @@ function visiteAttendue(o) {
     const it = item(p.id);
     const quoi = it.games > 1 ? `partie ${p.partie} sur ${it.games}` : it.games === 1 ? '1 partie'
       : (sessionsQa(it) || (it.minutes ? `${minutesLabelQa(it.minutes)}${p.groupes.length > 1 ? ' par groupe' : ''}` : ''));
+    const jeu = p.id === 'laser_game' ? jeuLaserQa() : 0;
     return {
       t: p.debut,
       nom: nom(p.id) + (quoi ? ` · ${quoi}` : ''),
-      detail: [p.fin ? `jusqu’à ${heureAffichee(p.fin)}` : '', texteGroupesQa(p, true), p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
+      detail: [jeu ? `${jeu} min de jeu` : '', p.fin ? `jusqu’à ${heureAffichee(p.fin)}${jeu ? ' avec les règles et la préparation' : ''}` : '', texteGroupesQa(p, true), p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
       voix: `${nom(p.id)}${quoi ? `, ${quoi}` : ''}, de ${p.debut}${p.fin ? ` à ${heureAffichee(p.fin)}` : ''}${p.groupes.length > 1 ? `, en ${p.groupes.length} groupes` : ''}`,
     };
   });
@@ -1166,7 +1176,7 @@ function visiteAttendue(o) {
     const reste = [];
     for (let k = posees + 1; k <= it.games; k += 1) reste.push(String(k));
     const quelles = it.games === 1 ? '1 partie' : `partie${reste.length > 1 ? 's' : ''} ${joindreQa(reste, ' et ')} sur ${it.games}`;
-    const detail = `${reste.length > 1 ? 'placées' : 'placée'} sur place par l’équipe${it.id === 'laser_game' && o.suite ? ` · environ ${dureeExacteQa(o.suite)}` : ''}`;
+    const detail = `${reste.length > 1 ? 'placées' : 'placée'} sur place avec l’équipe${it.id === 'laser_game' && o.suite ? ` · environ ${dureeExacteQa(o.suite)}` : ''}`;
     surPlace.push({ t: '', nom: `${nom(it.id)} · ${quelles}`, detail, voix: `${nom(it.id)}, ${quelles}, ${detail}` });
   });
   const premiere = o.parties[0];
@@ -1461,7 +1471,7 @@ function ecartsParties(p, a, d, laserParts) {
   if (!(id === 'laser_game' && total > 1)) return p.parts ? [`${id}: cadre des parties pour ${total} partie`] : [];
   if (!p.parts) return [`${id}: cadre des parties absent pour ${total} parties`];
   const e = [];
-  const bandeau = `${total} parties de ${minutesLabelQa(a.durationMinutes)} · une heure par partie`;
+  const bandeau = `${total} parties de ${minutesLabelQa(jeuLaserQa() || a.durationMinutes)} · une heure par partie`;
   if (p.detail !== bandeau) e.push(`${id}: bandeau « ${p.detail} » vs « ${bandeau} »`);
   const n = laserParts.length;
   // Le plan ne pose que les parties choisies : une partie sans heure passe
@@ -2631,6 +2641,10 @@ async function main() {
     await page.click('#confirmBtn');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 10000), '[E] la confirmation mene a l ecran final');
     const corps = mock.dernierePose.body || {};
+    // LES OFFRES PAR E-MAIL (2026-09-30) : la case, laissee vide, part avec la
+    // reservation comme un booleen faux, jamais absente (sans elle, le serveur
+    // ne decide rien).
+    ok(corps.sansOffres === false, '[E] la case des offres, laissee vide, part avec la reservation (sansOffres : false)', JSON.stringify(corps.sansOffres));
     const fin = await page.evaluate(() => document.querySelector('#finBody').textContent.replace(/\s+/g, ' ').trim());
     ok(!/n°\s*\d+/.test(fin) && !/numéro de réservation/i.test(fin) && fin.indexOf('qa@example.com') >= 0, '[E] l ecran final cite l adresse, et aucun numero de reservation (le SaaS ne s en sert pas)', fin.slice(0, 120));
     // L ECRAN FINAL EST UN RECU : l e-mail n est annonce que parce que la

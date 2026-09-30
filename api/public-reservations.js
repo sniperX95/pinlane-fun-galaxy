@@ -215,6 +215,9 @@ module.exports = async (req, res) => {
       ...(pistesDuPlan.length ? { lanes: pistesDuPlan } : {}),
       channel: 'public',
       holdToken,
+      // La case « Je ne souhaite pas recevoir les offres » du formulaire :
+      // un booleen, ou rien (une surface sans la case ne decide rien).
+      ...(body && typeof body.sansOffres === 'boolean' ? { choixOffres: { refuse: body.sansOffres } } : {}),
       signatureDemande: signatureDemande(request),
       // Les installations comptees (pistes de duckpin, tables) se reverifient
       // SOUS le verrou de la journee : deux demandes simultanees ne prennent

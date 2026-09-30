@@ -422,9 +422,16 @@ function lireTiroir(page, id) {
     if (!item) return null;
     const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
     const groupe = (cle) => [...item.querySelectorAll(`.fg-pill[data-cle="${cle}"]`)].map((p) => ({ label: txt(p.querySelector('b')), petit: txt(p.querySelector('small')), on: p.classList.contains('is-on') }));
+    const compteur = item.querySelector('[data-compteur="units"]');
     return {
       titres: [...item.querySelectorAll('.fg-card__optlabel')].map(txt),
       tables: groupe('units'),
+      compteur: compteur ? {
+        n: txt(compteur.querySelector('.fg-kids__n')),
+        moinsOff: compteur.querySelector('[data-pas="-1"]').disabled,
+        plusOff: compteur.querySelector('[data-pas="1"]').disabled,
+        texte: txt(item.querySelector('[data-compteur-texte]')),
+      } : null,
       heures: groupe('hours'),
       durees: groupe('duration'),
       note: txt(item.querySelector('.fg-card__rot')),
@@ -472,9 +479,19 @@ async function parcoursFormulaire(browser, mock, pax, { changerLeCentre = false 
   await page.click('#gridAct .fg-card[data-activity="billards"]');
   await page.waitForTimeout(300);
   sortie.billards = await lireTiroir(page, 'billards');
-  await page.click('#gridAct .fg-grid__item[data-activity="billards"] .fg-pill[data-cle="units"][data-valeur="3"]').catch(() => {});
+  // LES TABLES AU COMPTEUR (Movsar, 2026-09-30) : deux « + » font trois tables.
+  const plusTable = '#gridAct .fg-grid__item[data-activity="billards"] [data-compteur="units"] [data-pas="1"]';
+  const moinsTable = '#gridAct .fg-grid__item[data-activity="billards"] [data-compteur="units"] [data-pas="-1"]';
+  for (let k = 0; k < 2; k += 1) await page.click(plusTable).catch(() => {});
   await page.waitForTimeout(150);
   sortie.troisTables = await lireTiroir(page, 'billards');
+  // Le plafond : quatre « + » de plus s arretent a 5 (un bouton desactive ne
+  // fait rien), puis deux « - » ramenent a 3.
+  await page.evaluate((sel) => { for (let k = 0; k < 4; k += 1) document.querySelector(sel).click(); }, plusTable);
+  await page.waitForTimeout(150);
+  sortie.plafond = await lireTiroir(page, 'billards');
+  for (let k = 0; k < 2; k += 1) await page.click(moinsTable).catch(() => {});
+  await page.waitForTimeout(150);
   await page.click('#gridAct .fg-grid__item[data-activity="billards"] .fg-pill[data-cle="hours"][data-valeur="2"]').catch(() => {});
   await page.waitForTimeout(150);
   sortie.deuxHeures = await lireTiroir(page, 'billards');
@@ -482,17 +499,18 @@ async function parcoursFormulaire(browser, mock, pax, { changerLeCentre = false 
   await page.waitForTimeout(300);
   sortie.duckpin = await lireTiroir(page, 'duckpin_bowling');
   if (changerLeCentre) {
-    // Le centre passe a 8 tables dans la console : la meta du mock le sert,
-    // et le formulaire DEJA OUVERT doit le voir sans rechargement.
+    // Le centre passe a 2 tables dans la console (sous le plafond de 5) : la
+    // meta du mock le sert, et le formulaire DEJA OUVERT doit le voir sans
+    // rechargement ; revenu a 6, le plafond de 5 reprend.
     const billards = mock.ACTIVITIES.find((a) => a.id === 'billards');
     const avant = billards.units;
-    billards.units = 8;
+    billards.units = 2;
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-    sortie.huitVu = await attendre(page, () => document.querySelectorAll('#gridAct .fg-grid__item[data-activity="billards"] .fg-pill[data-cle="units"]').length === 8, 5000);
+    sortie.deuxVu = await attendre(page, () => { const t = document.querySelector('#gridAct .fg-grid__item[data-activity="billards"] [data-compteur-texte]'); return Boolean(t) && t.textContent.trim() === '2 tables au plus'; }, 5000);
     sortie.apresChangement = await lireTiroir(page, 'billards');
     billards.units = avant;
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-    sortie.sixRevu = await attendre(page, () => document.querySelectorAll('#gridAct .fg-grid__item[data-activity="billards"] .fg-pill[data-cle="units"]').length === 6, 5000);
+    sortie.cinqRevu = await attendre(page, () => { const t = document.querySelector('#gridAct .fg-grid__item[data-activity="billards"] [data-compteur-texte]'); return Boolean(t) && t.textContent.trim() === '5 tables au plus'; }, 5000);
   }
   await page.click('#goHours');
   await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 6000);
@@ -511,8 +529,11 @@ function verifierFormulaire(p25, p8) {
   ok(p25.arrive && p25.billards, 'MONTAGE le formulaire arrive aux activites, avec la carte des billards');
   const b = p25.billards || { titres: [], tables: [], heures: [] };
   ok(JSON.stringify(b.titres) === JSON.stringify(['Tables', 'Durée']), 'les billards ont deux reglages : les tables, puis la duree', b.titres.join(' | '));
-  ok(JSON.stringify(b.tables.map((x) => x.label)) === JSON.stringify(['1', '2', '3', '4', '5', '6']) && b.tables[0].on,
-    'on choisit de 1 a 6 tables (celles du centre), une par defaut', b.tables.map((x) => `${x.label}${x.on ? '*' : ''}`).join(' '));
+  const c = b.compteur || {};
+  ok(b.tables.length === 0 && c.n === '1' && c.moinsOff === true && c.plusOff === false && c.texte === '5 tables au plus',
+    'les tables se comptent (plus de pastilles) : 1 par defaut, « - » eteint, 5 au plus (le plafond, sous les 6 du centre)', JSON.stringify({ pastilles: b.tables.length, ...c }));
+  const pl = (p25.plafond || {}).compteur || {};
+  ok(pl.n === '5' && pl.plusOff === true && pl.moinsOff === false, 'quatre « + » de plus s arretent a 5 tables, « + » eteint', JSON.stringify(pl));
   ok(JSON.stringify(b.heures.map((x) => x.label)) === JSON.stringify(['1 heure', '2 heures', '3 heures']) && JSON.stringify(b.heures.map((x) => x.petit)) === JSON.stringify(['10 €', '20 €', '30 €']),
     'les heures (le pas du catalogue) disent le prix pour une table : 10, 20, 30 EUR', b.heures.map((x) => `${x.label} ${x.petit}`).join(' | '));
   const t3 = p25.troisTables || { heures: [] };
@@ -525,8 +546,8 @@ function verifierFormulaire(p25, p8) {
   ok((p8.duckpin || {}).note === 'Pour 8 joueurs : 2 pistes (6 joueurs par piste).', 'le duckpin a 8 joueurs : pas de tour, deux pistes', `« ${(p8.duckpin || {}).note} »`);
   const ligne = (p25.programme || []).find((l) => l && l.activityId === 'billards') || null;
   ok(ligne && Number(ligne.units) === 3 && Number(ligne.hours) === 2, 'la demande de disponibilite porte les 3 tables et les 2 heures choisies', JSON.stringify(ligne));
-  ok(p8.huitVu === true && (p8.apresChangement || { tables: [] }).tables.length === 8 && p8.sixRevu === true,
-    'le centre passe a 8 tables : le formulaire deja ouvert en propose 8 sans recharger, puis 6 a nouveau', `8 vu=${p8.huitVu}, 6 revu=${p8.sixRevu}`);
+  ok(p8.deuxVu === true && ((p8.apresChangement || {}).compteur || {}).n === '2' && p8.cinqRevu === true,
+    'le centre passe a 2 tables : le compteur deja ouvert s arrete a 2 sans recharger (le choix de 3 redescend a 2), puis 5 a nouveau', `2 vu=${p8.deuxVu}, compteur ${JSON.stringify((p8.apresChangement || {}).compteur)}, 5 revu=${p8.cinqRevu}`);
   ok(p25.erreurs.length === 0 && p8.erreurs.length === 0, 'aucune erreur JavaScript', p25.erreurs.concat(p8.erreurs).slice(0, 3).join(' | '));
 }
 

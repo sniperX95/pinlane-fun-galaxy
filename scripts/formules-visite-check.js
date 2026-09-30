@@ -233,7 +233,7 @@ function verifierF4(bureau, tel) {
   // DANS LA FOULEE (Movsar, 2026-09-29 : « met "dans la foulee", pas une
   // heure imposee ») : la 2e partie, sans heure, sous le titre du groupe.
   const suite = v.etapes.filter((e) => /fg-visit__step--suite/.test(e.genre));
-  ok((v.groupes || []).some((g) => /^Dans la foulée/.test(g)) && laser.some((e) => /partie 2 sur 2/.test(e.titre) && /fg-visit__step--suite/.test(e.genre) && e.b === '' && /^placée sur place par l’équipe · environ \d/.test(e.detail)),
+  ok((v.groupes || []).some((g) => /^Dans la foulée/.test(g)) && laser.some((e) => /partie 2 sur 2/.test(e.titre) && /fg-visit__step--suite/.test(e.genre) && e.b === '' && /^placée sur place avec l’équipe · environ \d/.test(e.detail)),
     'la 2e partie se joue « dans la foulee », sans heure, placee par l equipe, avec le temps qu elle prend', `${(v.groupes || []).join(' | ')} :: ${laser.map((e) => `[${e.b}] ${e.titre} ${e.detail}`).join(' | ')}`);
   const { getEffectiveFormules } = require('../lib/booking-config');
   const f4 = getEffectiveFormules('libramont').find((f) => f.id === 'f4');

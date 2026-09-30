@@ -288,6 +288,22 @@
   }
   function activite(id) { return activitesVendables().filter(function (x) { return x.id === id; })[0] || null; }
   function nomActivite(id) { var a = activite(id); return a ? a.name : id; }
+  // LA PARTIE DE LASER, cote client : 20 min de jeu, plus 5 a 10 min
+  // d explication des regles et de preparation (Movsar, 2026-09-30). Le jeu
+  // vient de la fiche du centre, les 5 du creneau de l arene (25), les 10 du
+  // pas de ses departs (30), tous servis par le meta ; la console, elle, garde
+  // le creneau entier. Sans ces chiffres, rien n est dit.
+  function dureeLaser() {
+    var a = activite('laser_game');
+    var jeu = Number(a && a.gameMinutes) || 0, creneau = Number(a && a.sessionMinutes) || 0, cycle = Number(a && a.cycleMinutes) || 0;
+    return jeu > 0 && creneau > jeu ? { jeu: jeu, creneau: creneau, cycle: Math.max(creneau, cycle) } : null;
+  }
+  function phraseLaser() {
+    var d = dureeLaser();
+    if (!d) return '';
+    var avant = d.creneau - d.jeu, auPlus = d.cycle - d.jeu;
+    return 'Une partie : ' + d.jeu + ' min de jeu, plus ' + (auPlus > avant ? avant + ' à ' + auPlus : avant) + ' min d’explication des règles et de préparation.';
+  }
 
   /* --- Les options d une activite (duree, parties, session) --------------------- */
 
@@ -353,6 +369,9 @@
   // jouez donc en 2 tours de 1 h (2 pistes, puis 1). » Vide quand tout le
   // groupe tient d un coup, et pour les billards, dont les tables se
   // choisissent.
+  // La phrase sous les pastilles : les tours d une activite qui tourne, ou la
+  // duree d une partie de laser.
+  function noteCarte(a) { return noteRotation(a) || (a && a.id === 'laser_game' ? phraseLaser() : ''); }
   function noteRotation(a) {
     if (a.priceType === 'grid_fun_run') {
       var n = sessionsPour(a);
@@ -380,7 +399,39 @@
   // tables du centre : l ecran n en propose jamais plus.
   function tablesMax(a) {
     var d = Math.trunc(Number(a && a.units) || 0);
-    return d > 0 ? Math.min(50, d) : 4;
+    var max = d > 0 ? Math.min(50, d) : 4;
+    // UNE reservation en prend au plus `maxUnitsPerBooking` (5 tables de
+    // billard, catalogue) ; le serveur refuse au-dela.
+    var plafond = Math.trunc(Number(a && a.maxUnitsPerBooking) || 0);
+    return plafond > 0 ? Math.min(max, plafond) : max;
+  }
+  // Les enfants qui vont a la plaine de jeux : le groupe par defaut (le prix
+  // d avant), jamais plus que le groupe, jamais moins d un.
+  function enfantsPlaine(a) {
+    var v = Math.trunc(Number((state.options[a.id] || {}).participants));
+    return Math.min(state.pax, Math.max(1, v > 0 ? v : state.pax));
+  }
+  function seCompteParEnfant(a) { return Boolean(a) && a.priceType === 'per_pax' && /enfant/i.test(a.unitLabel || ''); }
+  // UN COMPTEUR PLUTOT QUE DES PASTILLES (Movsar, 2026-09-30) : les tables de
+  // billard et les enfants de la plaine de jeux.
+  function compteurDe(a) {
+    if (!a) return null;
+    if (a.priceType === 'per_unit_hour') {
+      var mot = motUnite(a) || 'unité';
+      return { cle: 'units', titre: mot.charAt(0).toUpperCase() + mot.slice(1) + 's', mot: mot, min: 1, max: tablesMax(a), n: reglageBillard(a).units };
+    }
+    if (seCompteParEnfant(a)) {
+      // « Enfants » seul : l age est deja sur la carte, et un titre plus long
+      // se coupait sur un telephone (deux cartes par rangee).
+      return { cle: 'participants', titre: 'Enfants', mot: 'enfant', min: 1, max: state.pax, n: enfantsPlaine(a) };
+    }
+    return null;
+  }
+  function texteCompteur(c) {
+    if (c.cle === 'units') return c.max + ' ' + c.mot + (c.max > 1 ? 's' : '') + ' au plus';
+    var autres = state.pax - c.n;
+    if (autres > 1) return 'Les ' + autres + ' autres ne paient pas l’entrée.';
+    return autres === 1 ? 'L’autre ne paie pas l’entrée.' : 'Tout le groupe y va.';
   }
   function heuresPossibles(a) {
     var pas = Math.max(15, Number(a && a.stepMinutes) || 60);
@@ -414,6 +465,10 @@
       // « 3 tables » et « 2 heures » ne se coupent pas en fin de ligne.
       var quoi = insecable(r.units + ' ' + motTable + (r.units > 1 ? 's' : '')) + ', ' + insecable(heuresLabel(r.hours));
       return (total == null ? 'Tarif sur place' : euros(total)) + ' · ' + quoi;
+    }
+    if (choisie && seCompteParEnfant(a) && Number(a.priceValue) > 0) {
+      var enfants = enfantsPlaine(a);
+      return euros(Math.round(Number(a.priceValue) * enfants * 100) / 100) + ' · ' + insecable(enfants + ' enfant' + (enfants > 1 ? 's' : ''));
     }
     var opt = optionChoisie(a);
     if (opt) {
@@ -1203,11 +1258,8 @@
     if (!meta || !a) return [];
     if (a.priceType === 'per_unit_hour') {
       var r = reglageBillard(a);
-      var mot = motUnite(a) || 'unité';
-      var tables = [];
-      for (var n = 1; n <= tablesMax(a); n += 1) tables.push({ valeur: n, label: String(n), sous: mot + (n > 1 ? 's' : '') });
+      // Les tables se comptent (compteurDe), les heures se choisissent.
       return [
-        { cle: 'units', titre: mot.charAt(0).toUpperCase() + mot.slice(1) + 's', options: tables, choisie: r.units },
         { cle: 'hours', titre: 'Durée', options: heuresPossibles(a).map(function (h) { return { valeur: h, label: heuresLabel(h), prix: prixBillard(a, r.units, h) }; }), choisie: r.hours },
       ];
     }
@@ -1217,11 +1269,24 @@
     return [{ cle: liste[0].cle, titre: TITRES_OPTION[liste[0].cle] || 'Option', options: liste, choisie: liste[i < 0 ? 0 : i].valeur }];
   }
   function petitDePastille(o) { return o.sous != null ? o.sous : (o.prix == null ? 'sur place' : euros(o.prix)); }
+  function htmlCompteur(c, base) {
+    var id = base + '-' + c.cle;
+    var moins = c.cle === 'units' ? 'Une ' + c.mot + ' de moins' : 'Un enfant de moins';
+    var plus = c.cle === 'units' ? 'Une ' + c.mot + ' de plus' : 'Un enfant de plus';
+    return '<span class="fg-card__optlabel" id="' + id + '">' + esc(c.titre) + '</span>'
+      + '<div class="fg-kids__row"><div class="fg-stepper fg-kids__stepper" role="group" aria-labelledby="' + id + '" data-compteur="' + esc(c.cle) + '">'
+      + '<button type="button" class="fg-stepper__btn" data-pas="-1" aria-label="' + esc(moins) + '"' + (c.n <= c.min ? ' disabled' : '') + '>&minus;</button>'
+      + '<output class="fg-kids__n" aria-live="polite">' + c.n + '</output>'
+      + '<button type="button" class="fg-stepper__btn" data-pas="1" aria-label="' + esc(plus) + '"' + (c.n >= c.max ? ' disabled' : '') + '>+</button>'
+      + '</div><p class="fg-kids__adults" data-compteur-texte>' + esc(texteCompteur(c)) + '</p></div>';
+  }
   function rendreOption(a) {
     var groupes = groupesOptions(a);
-    if (!groupes.length) return '';
+    var compteur = compteurDe(a);
+    if (!groupes.length && !compteur) return '';
     var base = 'opt-' + String(a.id).replace(/[^a-z0-9_-]/gi, '');
     return '<div class="fg-card__opt"><div class="fg-card__optin"><div class="fg-card__optbox">'
+      + (compteur ? htmlCompteur(compteur, base) : '')
       + groupes.map(function (g) {
         var idTitre = groupes.length > 1 ? base + '-' + g.cle : base;
         return '<span class="fg-card__optlabel" id="' + idTitre + '">' + esc(g.titre) + '</span>'
@@ -1232,7 +1297,7 @@
           }).join('')
           + '</div>';
       }).join('')
-      + (noteRotation(a) ? '<p class="fg-card__rot">' + esc(noteRotation(a)) + '</p>' : '')
+      + (noteCarte(a) ? '<p class="fg-card__rot">' + esc(noteCarte(a)) + '</p>' : '')
       + '</div></div></div>';
   }
   function choisirPastille(pill) {
@@ -1262,7 +1327,7 @@
       });
     });
     var rot = $('.fg-card__rot', item);
-    if (rot) rot.textContent = noteRotation(a);
+    if (rot) rot.textContent = noteCarte(a);
   }
   function rendreActivites() {
     gridAct.innerHTML = activitesVendables().map(function (a, i) {
@@ -1353,6 +1418,40 @@
     var cle = String(nom == null ? '' : nom).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
     return LIBELLE_FAMILLE[cle] || nom;
   }
+  // LA DUREE DE CHAQUE FORMULE (Movsar, 2026-09-30 : « mettre le temps que ca
+  // dure chaque formule »). Le serveur la mesure pour le jour et le groupe
+  // choisis, comme le recapitulatif (de l arrivee a la fin) ; elle se pose en
+  // place dans chaque carte. Sans reponse, la ligne s efface : rien n est devine.
+  var dureesCache = {}, dureesEnCours = '';
+  function texteDuree(d) {
+    var a = Math.round(Number(d && d.min) / 5) * 5, b = Math.round(Number(d && d.max) / 5) * 5;
+    if (!(a > 0) || !(b > 0)) return '';
+    return a === b ? 'Environ ' + insecable(dureeExacte(a)) + ' sur place' : insecable(dureeExacte(a)) + ' à ' + insecable(dureeExacte(b)) + ' sur place selon l’heure';
+  }
+  function poserDurees(durees) {
+    $$('[data-duree-for]', gridFor).forEach(function (el) {
+      var t = durees && durees[el.dataset.dureeFor] ? texteDuree(durees[el.dataset.dureeFor]) : '';
+      if (!t) { el.remove(); return; }
+      $('span', el).textContent = t;
+      el.classList.remove('is-wait');
+    });
+  }
+  function chargerDurees() {
+    if (!state.date || !(state.pax > 0)) { poserDurees({}); return; }
+    var cle = state.date + '|' + state.pax;
+    if (dureesCache[cle]) { poserDurees(dureesCache[cle]); return; }
+    dureesEnCours = cle;
+    fetch('/api/public-availability?' + new URLSearchParams({ centerId: CENTER, date: state.date, pax: String(state.pax), type: 'durees' }).toString(), { credentials: 'omit' })
+      // Le corps se lit meme en erreur : laisse non lu (404 d un centre
+      // inconnu), il garde la requete ouverte dans le navigateur.
+      .then(function (r) { return r.json().then(function (j) { return r.ok ? j : null; }, function () { return null; }); })
+      .then(function (rep) {
+        var d = rep && rep.ok && rep.durees ? rep.durees : null;
+        if (d) dureesCache[cle] = d;
+        if (dureesEnCours === cle) poserDurees(d || {});
+      })
+      .catch(function () { if (dureesEnCours === cle) poserDurees({}); });
+  }
   function rendreFormules() {
     // Une formule dont une activite manque a ce centre (missingActivityIds,
     // la plaine de jeux de Gembloux) ne peut jamais y etre planifiee.
@@ -1381,6 +1480,7 @@
           + (f.best ? '<span class="fg-for__best">Bon plan</span>' : '') + '</span>'
           + '<span class="fg-for__price"><b>' + esc(euros(f.price)) + '</b><small>' + (f.type === 'per_lane' ? 'la piste' : f.kidsOnly ? 'par enfant' : 'par personne') + '</small>'
           + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
+          + '<span class="fg-for__time is-wait" data-duree-for="' + esc(f.id) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span></span></span>'
           + '<ul class="fg-for__list">' + (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>'
           + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '')
           + (v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(v.pourquoi) + '</span>')
@@ -1391,6 +1491,7 @@
       return '<section class="fg-fam"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '<span>' + parFamille[cle].length + ' formule' + (parFamille[cle].length > 1 ? 's' : '') + '</span></h3>'
         + '<ul class="fg-grid fg-grid--for">' + cartes + '</ul></section>';
     }).join('');
+    chargerDurees();
   }
   // LES ENFANTS D UNE OFFRE QUI LEUR EST RESERVEE (Kids Fun Day, « pour les
   // enfants de 5 a 12 ans », lu dans la description du centre par le
@@ -1517,7 +1618,32 @@
     invaliderDispo();
     setTimeout(posterHauteur, 320);
   }
+  function changerCompteur(btn) {
+    var item = btn.closest('.fg-grid__item');
+    var a = activite(item && item.dataset.activity);
+    var c = compteurDe(a);
+    if (!a || !c) return;
+    var n = Math.min(c.max, Math.max(c.min, c.n + Number(btn.dataset.pas)));
+    if (n === c.n) return;
+    state.options[a.id] = Object.assign({}, state.options[a.id] || {});
+    state.options[a.id][c.cle] = n;
+    var apres = compteurDe(a);
+    var box = item.querySelector('[data-compteur]');
+    if (box) {
+      $('.fg-kids__n', box).textContent = String(apres.n);
+      $('[data-pas="-1"]', box).disabled = apres.n <= apres.min;
+      $('[data-pas="1"]', box).disabled = apres.n >= apres.max;
+    }
+    var txt = item.querySelector('[data-compteur-texte]');
+    if (txt) txt.textContent = texteCompteur(apres);
+    majPastilles(item, a);
+    majPrixCarte(item, a, true);
+    invaliderDispo();
+    dire(apres.n + ' ' + apres.mot + (apres.n > 1 ? 's' : '') + '.');
+  }
   gridAct.addEventListener('click', function (e) {
+    var pas = e.target.closest('[data-pas]');
+    if (pas) { if (!pas.disabled) changerCompteur(pas); return; }
     var pill = e.target.closest('.fg-pill');
     if (pill) { choisirPastille(pill); return; }
     basculerActivite(e.target.closest('.fg-card'));
@@ -1646,6 +1772,8 @@
       // serveur retombait sur une table pendant une heure, quoi qu on ait
       // choisi (audit du 2026-09-28).
       if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); ligne.units = billard.units; ligne.hours = billard.hours; }
+      // La plaine de jeux : les enfants qui y vont, que le serveur facture.
+      if (seCompteParEnfant(a)) ligne.participants = enfantsPlaine(a);
       return ligne;
     });
   }
@@ -2189,7 +2317,7 @@
     if (sansHeure.length) {
       var plusieurs = sansHeure.length > 1;
       html += '<p class="fg-parts__note"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
-        + (plusieurs ? 'Les parties ' : 'La partie ') + esc(joindreListe(sansHeure, ' et ')) + ' se ' + (plusieurs ? 'joueront' : 'jouera') + ' dans la foulée, ' + (plusieurs ? 'placées' : 'placée') + ' sur place par l’équipe selon les places libres ce jour-là. '
+        + (plusieurs ? 'Les parties ' : 'La partie ') + esc(joindreListe(sansHeure, ' et ')) + ' se ' + (plusieurs ? 'joueront' : 'jouera') + ' dans la foulée, ' + (plusieurs ? 'placées' : 'placée') + ' sur place avec l’équipe selon les places libres ce jour-là. '
         + '<b>Mieux vaut ' + (plusieurs ? 'leur' : 'lui') + ' choisir une heure maintenant</b> : touchez une autre heure ci-dessous.</span></p>';
     }
     boite.innerHTML = html;
@@ -2259,9 +2387,12 @@
     // se tait. Le nombre de places est celui que le centre declare.
     function notePartage() {
       var places = Number(meta && meta.center && meta.center.booking && meta.center.booking.laserArenaCapacity) || 0;
-      if (places && joueursDemandes() % places === 0) return '';
+      var partage = !(places && joueursDemandes() % places === 0);
+      var duree = phraseLaser();
+      if (!partage && !duree) return '';
       return '<p class="fg-track__share"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
-        + (places ? '<b>Jusqu’à ' + places + ' joueurs par partie</b> : d’autres groupes peuvent jouer avec vous.' : 'D’autres groupes peuvent jouer la même partie que vous.')
+        + (duree ? esc(duree) + (partage ? ' ' : '') : '')
+        + (!partage ? '' : places ? '<b>Jusqu’à ' + places + ' joueurs par partie</b> : d’autres groupes peuvent jouer avec vous.' : 'D’autres groupes peuvent jouer la même partie que vous.')
         + '</span></p>';
     }
     if (ancres.length) {
@@ -2281,7 +2412,10 @@
         var multi = laser && count > 1;
         // Plusieurs parties : une heure par partie ; le compte « x heures
         // choisies sur x » est dans le cadre des parties, juste dessous.
-        var detail = multi ? count + ' parties de ' + minutesLabel(a.durationMinutes) + ' · une heure par partie' : (laser ? '1 partie · ' : '') + minutesLabel(a.durationMinutes);
+        // Le JEU d une partie de laser (20 min), pas le creneau de l arene
+        // (25 min) : la phrase juste dessous dit les deux.
+        var minutesPartie = laser && dureeLaser() ? dureeLaser().jeu : a.durationMinutes;
+        var detail = multi ? count + ' parties de ' + minutesLabel(minutesPartie) + ' · une heure par partie' : (laser ? '1 partie · ' : '') + minutesLabel(minutesPartie);
         html += '<section class="fg-track fg-rise" style="--i:' + (i + 1) + '" data-activity="' + esc(a.activityId) + '" data-count="' + count + '">'
           + '<div class="fg-track__head">'
           + (ancres.length > 1 ? '<span class="fg-track__num" aria-hidden="true">' + (i + 1) + '</span>' : '')
@@ -2872,7 +3006,8 @@
       // d une meme partie : un grand groupe joue chaque partie en plusieurs.
       var quoi = total > 1 ? 'partie ' + p.partie + ' sur ' + total : total === 1 ? '1 partie' : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (p.groupes.length > 1 ? ' par groupe' : '') : ''));
       var bouge = Boolean(adaptation && adaptation.deplace === p.id);
-      var detail = [p.fin ? 'jusqu’à ' + heureAffichee(p.fin) : '', texteGroupes(p, true), p.pistes > 0 ? p.pistes + ' piste' + (p.pistes > 1 ? 's' : '') : '',
+      var jeuPartie = p.id === 'laser_game' && dureeLaser() ? dureeLaser().jeu : 0;
+      var detail = [jeuPartie ? jeuPartie + ' min de jeu' : '', p.fin ? 'jusqu’à ' + heureAffichee(p.fin) + (jeuPartie ? ' avec les règles et la préparation' : '') : '', texteGroupes(p, true), p.pistes > 0 ? p.pistes + ' piste' + (p.pistes > 1 ? 's' : '') : '',
         bouge ? 'déplacé pour votre ' + nomActivite(adaptation.pour) + ' à ' + adaptation.t : ''].filter(Boolean).join(' · ');
       dits.push(nom + (quoi ? ', ' + quoi : '') + ', de ' + p.debut + (p.fin ? ' à ' + heureAffichee(p.fin) : '') + (p.groupes.length > 1 ? ', en ' + p.groupes.length + ' groupes' : '') + (bouge ? ', déplacé' : ''));
       lignes += etapeVisite({ heure: p.debut, icone: icone(p.id), titre: nom + (quoi ? ' · ' + quoi : ''), detail: detail, bouge: bouge });
@@ -2901,7 +3036,7 @@
       var reste = [];
       for (var k = posees + 1; k <= total; k += 1) reste.push(String(k));
       var quelles = total === 1 ? '1 partie' : 'partie' + (reste.length > 1 ? 's ' : ' ') + joindreListe(reste, ' et ') + ' sur ' + total;
-      var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place par l’équipe' + (id === 'laser_game' && aLaSuite ? ' · ' + environ(aLaSuite) : '');
+      var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place avec l’équipe' + (id === 'laser_game' && aLaSuite ? ' · ' + environ(aLaSuite) : '');
       ligneSuite({ genre: 'onsite', icone: icone(id), titre: nomR + ' · ' + quelles, detail: detail }, nomR + ', ' + quelles + ', ' + detail);
       vus[genreCompris(id)] = 1;
     }
@@ -3452,10 +3587,12 @@
           var reste = total - heures.length;
           morceaux.push(total + ' parties' + (heures.length ? ' : ' + joindreListe(heures.concat(reste > 0 ? [reste + ' dans la foulée'] : []), ' et ') : ', dans la foulée'));
         } else if (it.dayAccess) {
-          morceaux.push('accès toute la journée', ageActivite(it.activityId));
+          var enfantsLigne = seCompteParEnfant(activite(it.activityId)) ? Math.trunc(Number(it.participants) || 0) : 0;
+          morceaux.push(enfantsLigne > 0 ? enfantsLigne + ' enfant' + (enfantsLigne > 1 ? 's' : '') : '', 'accès toute la journée', ageActivite(it.activityId));
         } else {
           morceaux.push(total === 1 ? '1 partie' : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (siennes[0] && siennes[0].groupes.length > 1 ? ' par groupe' : '') : '')));
         }
+        if (it.activityId === 'laser_game' && total >= 1 && dureeLaser()) morceaux.push(dureeLaser().jeu + ' min de jeu par partie');
         var grand = siennes.filter(function (p) { return p.groupes.length > 1; })[0];
         if (grand) morceaux.push(texteGroupes(grand, total <= 1) + (total > 1 ? ' par partie' : ''));
         else if (it.services && it.services.length > 1) morceaux.push(it.services.length + ' groupes l’un après l’autre');
@@ -3653,6 +3790,9 @@
       // la console du centre affiche) : la colonne occasion ne garde que la
       // cle, comme dans le tunnel.
       occasion: state.contact.occasion || '',
+      // La case « Je ne souhaite pas recevoir les offres » : un booleen, que
+      // le serveur applique dans la transaction de la reservation.
+      sansOffres: Boolean(champ('cSansOffres') && champ('cSansOffres').checked),
       notes: [state.contact.occasion === 'autre' && state.contact.occasionAutre ? 'Occasion : ' + state.contact.occasionAutre : '', state.contact.note || ''].filter(Boolean).join('. '),
       // Les heures posees par le client et celles composees par le serveur
       // repartent ensemble : le serveur revalide exactement ce qui a ete montre.
@@ -4039,6 +4179,10 @@
         if (!j || j.ok === false) throw erreurLisible(j, 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.');
         meta = j; direErreur('');
         empreinteCatalogue = empreinteDuCatalogue(j);
+        // La case des offres nomme le centre qui les enverrait : un retrait
+        // vaut pour CE centre (la liste est tenue centre par centre).
+        var nomOffres = meta.center && meta.center.name ? String(meta.center.name) : '';
+        if (nomOffres) $$('[data-centre-nom]').forEach(function (el) { el.textContent = (/^[aeiouyhàâäéèêëîïôöûü]/i.test(nomOffres) ? 'd’' : 'de ') + nomOffres; });
         if (meta.center && meta.center.status && meta.center.status !== 'active') {
           direErreur('Ce centre n’ouvre pas encore ses réservations en ligne.');
         }

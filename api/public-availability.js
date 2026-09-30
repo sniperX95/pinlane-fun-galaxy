@@ -326,6 +326,36 @@ module.exports = async (req, res) => {
     // suivent l annee en cours sans retaper la table. Un echec ou un delai
     // laisse la table statique faire foi.
     try { await refreshWalloniaSchoolHolidays(); } catch (error) { /* table statique */ }
+    // LA DUREE DE CHAQUE FORMULE, pour ses cartes (Movsar, 2026-09-30 : « mettre
+    // le temps que ca dure chaque formule »). Les plans que le tunnel propose
+    // ce jour-la a ce groupe, sur une journee VIDE : la duree d une formule ne
+    // depend pas des reservations des autres. Le meme code que l agent mail
+    // (proposedArrivals). Un groupe sous le minimum d une formule se mesure au
+    // minimum : sa carte dit deja pourquoi elle ne se prend pas, la duree reste
+    // vraie. Une formule a fenetre ouverte (MATIN MALIN, KIDS FUN DAY) n a pas
+    // de duree, elle a une plage, deja ecrite sur sa carte.
+    if (rawType === 'durees') {
+      const { proposedArrivals, dureesSurPlace } = require('../lib/availability-slots');
+      const durees = {};
+      for (const f of getEffectiveFormules(centerId)) {
+        const document = getFormula(f.id);
+        if (!document || String(document.orderPolicy || '') === 'open_window') continue;
+        const groupe = Math.max(pax, Math.trunc(Number(f.minPax) || 1));
+        // Un jour ou la formule ne se prend pas (ses jours, les vacances) : sa
+        // duree se lit au prochain jour ou elle se prend, 14 jours au plus. Ce
+        // qu elle dure tient a ce qu elle contient, pas au jour ; sa carte dit
+        // deja pourquoi elle ne se prend pas ce jour-la.
+        let d = null;
+        for (let decalage = 0; decalage <= 14 && !d; decalage += 1) {
+          const [an, mois, jour] = date.split('-').map(Number);
+          const ce = decalage ? new Date(Date.UTC(an, mois - 1, jour + decalage)).toISOString().slice(0, 10) : date;
+          d = dureesSurPlace(proposedArrivals({ centerId, date: ce, formule: f, pax: groupe, blocks: [], avecPlan: true }));
+        }
+        if (d) durees[f.id] = d;
+      }
+      sendJson(res, 200, { ok: true, date, pax, durees });
+      return;
+    }
     const formuleId = String(url.searchParams.get('formuleId') || '');
     const requestedDuration = Number(url.searchParams.get('duration') || (type === 'laser' ? 0.5 : 1));
     // Le catalogue DU CENTRE d'abord, la constante fichier seulement en repli.
@@ -559,6 +589,7 @@ module.exports = async (req, res) => {
         bowlingConfig: operationalBowlingConfig || centerBowlingConfig,
         dateStr: date,
         waitOffers: groupeScinde,
+        publicBooking: true,
       });
       const visitLabel = 'Votre visite';
       // LA FIN QUE LE CLIENT LIT EST CELLE DE SA VISITE, pas celle du plan du

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260930b">
+<link rel="stylesheet" href="/assets/fungalaxy-booking.css?v=20260930d">
 <link rel="icon" href="/assets/brand/pinlane-mark.svg">
 </head>
 <body class="fg" data-step="1">
@@ -274,6 +274,12 @@
             <span>J’accepte que l’équipe me contacte au sujet de cette réservation.</span>
           </label>
           <span class="fg-field__error" id="eConsent"></span>
+          <label class="fg-check fg-check--offres fg-rise" style="--i:7" id="offresWrap">
+            <input type="checkbox" id="cSansOffres" aria-describedby="offresHint">
+            <span class="fg-check__box"><svg aria-hidden="true"><use href="#i-check"/></svg></span>
+            <span>Je ne souhaite pas recevoir les offres <span data-centre-nom>du centre</span> par e-mail.</span>
+          </label>
+          <span class="fg-field__hint fg-field__hint--offres" id="offresHint">Les e-mails de votre réservation (confirmation, rappel) partent dans tous les cas. Chaque offre contient un lien de désinscription.</span>
         </div>
         <div class="fg-actions fg-rise" style="--i:8">
           <button type="button" class="fg-btn fg-btn--ghost" data-back><svg aria-hidden="true"><use href="#i-back"/></svg>Retour</button>
@@ -341,6 +347,6 @@
   </div>
 </div>
 
-<script src="/assets/fungalaxy-booking.js?v=20260930b" defer></script>
+<script src="/assets/fungalaxy-booking.js?v=20260930d" defer></script>
 </body>
 </html>

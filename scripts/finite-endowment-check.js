@@ -310,8 +310,16 @@ function groupesDe(activite) {
     }
     throw new Error(`montage : aucun groupe ne remplit sa visite sur ${activite.id}`);
   };
+  // LE PLAFOND D UNE RESERVATION EN LIGNE (Movsar, 2026-09-30 : « jusqu a 5
+  // max de table ») : sous la dotation, le plus gros dossier public prend le
+  // plafond, et le reste de la dotation se prend dans un second dossier.
+  const unites = Math.trunc(Number(activite.units));
+  const plafond = Math.trunc(Number(activite.maxUnitsPerBooking) || 0);
+  const parDossier = !(capacite > 0) && plafond > 0 && plafond < unites ? plafond : unites;
   return {
-    tout: prendre(Math.trunc(Number(activite.units))), // toutes les unites, toute la visite
+    tout: prendre(parDossier), // le plus gros dossier en ligne, toute la visite
+    parDossier,
+    reste: parDossier < unites ? prendre(unites - parDossier) : null, // le reste de la dotation
     une: prendre(1), // une unite, toute la visite
     // Le plus petit groupe qui se puisse : une unite, un seul tour.
     petit: capacite > 0 ? { pax: capacite, ligne: null } : { pax: 4, ligne: { units: 1 } },
@@ -353,10 +361,11 @@ async function main() {
       // groupe ; une activite dont le client CHOISIT ses unites (billards, sans
       // regle de joueurs : Movsar, « tu dois permettre de choisir combien de
       // tables ils veulent ») les demande dans sa ligne, quel que soit le groupe.
-      const { tout, une, petit } = groupesDe(activite);
+      const { tout, parDossier, reste, une, petit } = groupesDe(activite);
+      const quoi = reste ? `${parDossier} unites (le plafond en ligne)` : `les ${activite.units} unites`;
       const essai = await combienPassent(activite.id, tout.pax, 6, tout.ligne);
       ok(essai.acceptes === 1 && Boolean(essai.premierRefus),
-        `${activite.id} (dotation ${activite.units}) : un groupe qui prend les ${activite.units} unites pendant toute sa visite passe, le suivant est refuse (${essai.acceptes} passes, ${essai.premierRefus || 'AUCUN REFUS SUR 6'})`);
+        `${activite.id} (dotation ${activite.units}) : un groupe qui prend ${quoi} pendant toute sa visite passe, le suivant est refuse (${essai.acceptes} passes, ${essai.premierRefus || 'AUCUN REFUS SUR 6'})`);
       // Et des groupes d une unite tiennent ensemble : la borne compte des UNITES, pas des dossiers.
       const moitie = await combienPassent(activite.id, une.pax, 6, une.ligne);
       ok(moitie.acceptes === Number(activite.units),
@@ -371,8 +380,11 @@ async function main() {
       // la ou un groupe occupe tout pendant toute la visite, meme lui ne tient.
       STORE.length = 0;
       const gros = await post(corps(activite.id, tout.pax, 80, HEURE, tout.ligne));
-      ok(gros.status >= 200 && gros.status < 300,
-        `montage : un groupe prend les ${activite.units} unites de ${activite.id} (HTTP ${gros.status})`);
+      const complement = reste ? await post(corps(activite.id, reste.pax, 82, HEURE, reste.ligne)) : { status: 201 };
+      ok(gros.status >= 200 && gros.status < 300 && complement.status >= 200 && complement.status < 300,
+        reste
+          ? `montage : deux dossiers prennent les ${activite.units} unites de ${activite.id}, ${parDossier} puis ${activite.units - parDossier} (HTTP ${gros.status} puis ${complement.status} ${message(complement)})`
+          : `montage : un groupe prend les ${activite.units} unites de ${activite.id} (HTTP ${gros.status})`);
       const apres = await post(corps(activite.id, petit.pax, 81, HEURE, petit.ligne));
       ok(apres.status === 409,
         `ordre heterogene : apres le groupe qui prend tout, le plus petit groupe (${petit.pax} joueurs) est refuse (HTTP ${apres.status} ${message(apres)})`);

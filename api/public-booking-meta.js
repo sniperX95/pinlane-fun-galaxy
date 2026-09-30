@@ -15,6 +15,7 @@ const {
   todayStr,
   currentTimeDecimal,
   BOOKING_HORIZON_DAYS,
+  LASER_GAME_ARENA_MINUTES,
 } = require('../lib/booking-config');
 const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
@@ -28,7 +29,7 @@ const {
   isFormulaFullyBlockedOn,
   resolveBlocksForDate,
 } = require('../lib/availability-blocks');
-const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS } = require('../lib/ops-engine');
+const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS, LASER_LAUNCH_GRID_MINUTES } = require('../lib/ops-engine');
 const { listSellableActivities } = require('../lib/activity-catalog');
 const { normalizeBranding, normalizeIdentity, customRequestFromPax } = require('../lib/center-config');
 const surMesure = require('../lib/custom-request');
@@ -293,6 +294,21 @@ function activitesPubliques(centerId, center) {
     if (Number.isFinite(minAge) && minAge >= 1 && minAge <= 99) extra.minAge = minAge;
     const taille = Math.trunc(Number(theme.minHeightCm));
     if (Number.isFinite(taille) && taille >= 50 && taille <= 250) extra.minHeightCm = taille;
+    // LA PARTIE DE LASER : le JEU que la fiche du centre declare, et le
+    // creneau de l arene qui l entoure (explication des regles et encodage des
+    // joueurs compris). Movsar, 2026-09-30 : « une partie dure 20 minutes, on
+    // dit 25 min pour le temps de les enregistrer et expliquer les regles ».
+    // Pose seulement quand le jeu est plus court que le creneau : sinon il n y
+    // a rien a expliquer. `cycleMinutes` est le pas des departs de l arene
+    // (une partie en occupe au plus un) : le client lit « plus 5 a 10 min
+    // d explication des regles et de preparation » (Movsar, meme jour : « 25-30
+    // min cote SaaS, eux doivent savoir que leur partie dure 20 minutes »).
+    const jeu = Math.trunc(Number(theme.gameMinutes));
+    if (activity.id === 'laser_game' && Number.isFinite(jeu) && jeu >= 5 && jeu < LASER_GAME_ARENA_MINUTES) {
+      extra.gameMinutes = jeu;
+      extra.sessionMinutes = LASER_GAME_ARENA_MINUTES;
+      extra.cycleMinutes = Math.max(LASER_GAME_ARENA_MINUTES, LASER_LAUNCH_GRID_MINUTES);
+    }
     return Object.keys(extra).length ? { ...activity, ...extra } : activity;
   });
 }

@@ -117,7 +117,8 @@ const ACTIVITIES = [
   { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 trous', order: 3, defaultMinutes: 45 },
   // Billards comme la prod les sert : 10 EUR par table et par heure (base,
   // lu le 2026-09-28), 6 tables (fungalaxy.be), aucune regle de joueurs.
-  { id: 'billards', name: 'Billards', planned: false, priceType: 'per_unit_hour', priceValue: 10, unitLabel: 'par table et par heure', order: 5, defaultMinutes: 60, minMinutes: 60, maxMinutes: 180, stepMinutes: 60, units: 6 },
+  // 5 tables au plus par reservation (catalogue, maxPerBooking, 2026-09-30).
+  { id: 'billards', name: 'Billards', planned: false, priceType: 'per_unit_hour', priceValue: 10, unitLabel: 'par table et par heure', order: 5, defaultMinutes: 60, minMinutes: 60, maxMinutes: 180, stepMinutes: 60, units: 6, maxUnitsPerBooking: 5 },
   { id: 'arcade_time', name: 'Arcades', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: '', order: 6, defaultMinutes: 30 },
   // dayAccess : le catalogue ; ageRange : la donnee du centre (activityThemes),
   // ajoutee par public-booking-meta. Les deux comme la prod les sert.
@@ -133,6 +134,15 @@ const ACTIVITIES = [
   const extra = {};
   if (Number(theme.minAge) >= 1) extra.minAge = Math.trunc(Number(theme.minAge));
   if (Number(theme.minHeightCm) >= 50) extra.minHeightCm = Math.trunc(Number(theme.minHeightCm));
+  // La partie de laser : le jeu du centre, le creneau de l arene et le pas de
+  // ses departs, comme activitesPubliques les pose (2026-09-30).
+  const { LASER_GAME_ARENA_MINUTES } = require('../lib/booking-config');
+  const { LASER_LAUNCH_GRID_MINUTES } = require('../lib/ops-engine');
+  if (activity.id === 'laser_game' && Number(theme.gameMinutes) >= 5 && Number(theme.gameMinutes) < LASER_GAME_ARENA_MINUTES) {
+    extra.gameMinutes = Math.trunc(Number(theme.gameMinutes));
+    extra.sessionMinutes = LASER_GAME_ARENA_MINUTES;
+    extra.cycleMinutes = Math.max(LASER_GAME_ARENA_MINUTES, LASER_LAUNCH_GRID_MINUTES);
+  }
   return { ...activity, ...extra };
 });
 

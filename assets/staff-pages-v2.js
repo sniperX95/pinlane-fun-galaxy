@@ -3457,7 +3457,7 @@
      (confirmation, rappel) continuent de partir, c'est écrit dans le panneau. */
   const pv2Suppress = { loaded: false, loading: false, error: '', entries: [], total: 0, busy: '', addEmail: '', addReason: '' };
   window.pv2Suppress = pv2Suppress;
-  const PV2_SUPPRESS_SOURCE = { link: 'Lien de retrait', staff: 'Ajout manuel', complaint: 'Plainte' };
+  const PV2_SUPPRESS_SOURCE = { link: 'Lien de retrait', staff: 'Ajout manuel', complaint: 'Plainte', form: 'Refus à la réservation' };
 
   async function loadPv2Suppressions(force = false) {
     if (pv2Suppress.loading || (pv2Suppress.loaded && !force)) return;

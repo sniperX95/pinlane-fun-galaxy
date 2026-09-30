@@ -174,7 +174,9 @@ async function main() {
       'la fin affichee s arrete a 22:00 et le manque est dit a part', `fin ${hhmm(fin)}, affichee ${b.visitEndTime}, fermeture ${b.visitEndsAtClose}, manque ${b.visitShortfallMinutes}`);
   }
   const g = (t) => r.grille.find((x) => x.time === t) || {};
-  const phrase = 'Plus le temps pour les parties de laser restantes avant 22:00';
+  // Seules a pouvoir deborder (la visite n a rien d autre sans heure), les
+  // parties restantes sont NOMMEES, numero par numero (2026-09-30).
+  const phrase = 'Plus le temps pour les parties 2 et 3 de laser avant 22:00';
   ok(['21:00', '21:30'].every((t) => g(t).ok !== false && g(t).warning && g(t).warning.code === 'schedule_free' && g(t).warning.reason === phrase),
     `la grille dit 21:00 et 21:30 possibles, avec « ${phrase} »`, JSON.stringify([g('21:00'), g('21:30')]));
   ok(['20:00', '20:30'].every((t) => g(t).time && g(t).ok !== false && !g(t).warning),
@@ -229,7 +231,7 @@ async function main() {
     {
       nom: 'sans l avertissement des parties restantes a la fermeture',
       fichier: ENGINE,
-      ancre: '  if (!warning && raw.end + reserve > window.close) {',
+      ancre: '  if (!warning && finComplete > window.close) {',
       remplace: '  if (false) {',
       rougit: (m) => ['21:00', '21:30'].some((t) => { const x = m.grille.find((y) => y.time === t) || {}; return !(x.warning && x.warning.reason); }),
     },

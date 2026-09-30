@@ -1340,14 +1340,23 @@ async function mesurerF() {
   // les unites se deduisent du groupe (pistes de 6) la prend par son effectif.
   RESERVATIONS.length = 0;
   const choisies = !(Number(finie.capacityPerUnit) > 0);
-  const ligneGros = { activityId: finie.id, duration: 1, ...(choisies ? { units: dotation } : {}) };
+  // LE PLAFOND D UNE RESERVATION EN LIGNE (Movsar, 2026-09-30 : « jusqu a 5
+  // max de table ») : sous la dotation, le gros groupe prend le plafond et un
+  // second dossier le reste. Un comptage par dossier y verrait 2 unites prises
+  // sur 6 et laisserait passer le petit groupe : l ordre distingue toujours.
+  const plafond = Math.trunc(Number(finie.maxUnitsPerBooking) || 0);
+  const parDossier = choisies && plafond > 0 && plafond < dotation ? plafond : dotation;
+  const ligneGros = { activityId: finie.id, duration: 1, ...(choisies ? { units: parDossier } : {}) };
   const gros = await postJson(corpsVisite([ligneGros], parUnite * dotation, 'gros', HEURE));
   const rangeSansLaneCount = RESERVATIONS.length
     ? !((RESERVATIONS[RESERVATIONS.length - 1].program || {}).items || []).some((i) => i && i.laneCount != null)
     : false;
+  const reste = parDossier < dotation
+    ? await postJson(corpsVisite([{ activityId: finie.id, duration: 1, units: dotation - parDossier }], parUnite, 'reste', HEURE))
+    : null;
   const petit = await postJson(corpsVisite([{ activityId: finie.id, duration: 1 }], parUnite, 'petit', HEURE));
   RESERVATIONS.length = 0;
-  return { finie, absorbable, dotation, parUnite, choisies, poses, satureA, satureB, melange, libre, gros, petit, rangeSansLaneCount };
+  return { finie, absorbable, dotation, parUnite, choisies, parDossier, poses, satureA, satureB, melange, libre, gros, reste, petit, rangeSansLaneCount };
 }
 
 function jugerF(m) {
@@ -1367,15 +1376,15 @@ function jugerF(m) {
     detail: `HTTP ${m.libre.statut}`,
   });
   v.push({
-    ok: m.gros.statut >= 200 && m.gros.statut < 300 && m.rangeSansLaneCount,
+    ok: m.gros.statut >= 200 && m.gros.statut < 300 && m.rangeSansLaneCount && (!m.reste || (m.reste.statut >= 200 && m.reste.statut < 300)),
     label: '[montage] le gros groupe est accepte, et la base range son programme SANS laneCount (la forme de production)',
-    detail: `HTTP ${m.gros.statut} laneCount absent du programme range : ${m.rangeSansLaneCount}`,
+    detail: `HTTP ${m.gros.statut}${m.reste ? ` (${m.parDossier} unites, le plafond en ligne), puis le reste : HTTP ${m.reste.statut}` : ''} ; laneCount absent du programme range : ${m.rangeSansLaneCount}`,
   });
   v.push({
     ok: m.petit.statut === 409,
     label: '[F] LA GARDE COMPTE DES UNITES, PAS DES DOSSIERS : apres un groupe qui prend toute la dotation, un groupe d une unite est refuse',
     detail: m.choisies
-      ? `${m.dotation} ${m.finie.id} demandees, puis 1 : HTTP ${m.petit.statut}`
+      ? `${m.parDossier < m.dotation ? `${m.parDossier} puis ${m.dotation - m.parDossier}` : m.dotation} ${m.finie.id} demandees, puis 1 : HTTP ${m.petit.statut}`
       : `groupe de ${m.parUnite * m.dotation} puis groupe de ${m.parUnite} : HTTP ${m.petit.statut}`,
   });
   return v;

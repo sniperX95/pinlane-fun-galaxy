@@ -603,7 +603,7 @@ module.exports = async (req, res) => {
         const minutes = Number.isFinite(fin) && fin > debut ? fin - debut : dureeDuProgramme;
         try {
           return require('../lib/reservation-ops').dotationDepassee(
-            { centerId, program: programme, pax, startTime: slot.time, totalDuration: minutes / 60 },
+            { centerId, program: programme, pax, startTime: slot.time, totalDuration: minutes / 60, opsPlan: slot.opsPlan || null },
             snapshot.reservations || [],
           );
         } catch (error) {

@@ -331,9 +331,14 @@ async function reglesDispo(handler) {
   const libre = heures(await appelDispo(handler, visite(duckpin6, 6)));
   dossiersDuJour = [dossier(9001, { startTime: '15:00', heures: 1, pax: 12, items: [DUCK_12] })];
   const pris = heures(await appelDispo(handler, visite(duckpin6, 6)));
-  dossiersDuJour = [dossier(9002, { startTime: '10:00', heures: 14, pax: 12, items: [DUCK_12] })];
+  // Des pistes VRAIMENT prises toute la journee : un dossier qui JOUE 14 h de
+  // duckpin. Un dossier de 14 h qui n en joue qu une heure ne les prend pas
+  // (2026-09-30, le temoin `longue` juste apres).
+  dossiersDuJour = [dossier(9002, { startTime: '10:00', heures: 14, pax: 12, items: [{ ...DUCK_12, duration: 14, minutes: 840 }] })];
   const journee = await appelDispo(handler, visite(duckpin6, 6));
   const avecBowling = await appelDispo(handler, visite([{ activityId: 'bowling', duration: 1 }, ...duckpin6], 6));
+  dossiersDuJour = [dossier(9005, { startTime: '10:00', heures: 14, pax: 12, items: [DUCK_12] })];
+  const longue = heures(await appelDispo(handler, visite(duckpin6, 6)));
   dossiersDuJour = [dossier(9003, { startTime: '15:00', heures: 1, pax: 8, items: [BIL_4] })];
   const deuxTables = heures(await appelDispo(handler, visite(billards(2), 4)));
   const troisTables = heures(await appelDispo(handler, visite(billards(3), 4)));
@@ -343,12 +348,12 @@ async function reglesDispo(handler) {
   const quatreSurHuit = heures(await appelDispo(handler, visite(billards(4), 4)));
   reglageCentre(null);
   // LA GRILLE DES HEURES JUGE LES PISTES COMME LA VALIDATION (campagne du
-  // 2026-09-29) : les 2 pistes de duckpin prises de 10:00 a 14:00, une visite
+  // 2026-09-29) : les 2 pistes de duckpin JOUEES de 10:00 a 14:00, une visite
   // bowling + duckpin ne tient qu a partir de 13:00 (duckpin a 14:00).
-  dossiersDuJour = [dossier(9004, { startTime: '10:00', heures: 4, pax: 12, items: [DUCK_12] })];
+  dossiersDuJour = [dossier(9004, { startTime: '10:00', heures: 4, pax: 12, items: [{ ...DUCK_12, duration: 4, minutes: 240 }] })];
   const grille = await appelDispo(handler, visite([{ activityId: 'bowling', duration: 1 }, ...duckpin6], 6));
   dossiersDuJour = [];
-  return { libre, pris, journee, avecBowling, deuxTables, troisTables, septTables, quatreSurHuit, grille };
+  return { libre, pris, journee, avecBowling, longue, deuxTables, troisTables, septTables, quatreSurHuit, grille };
 }
 
 function verifierDispo(r) {
@@ -362,6 +367,11 @@ function verifierDispo(r) {
     'pistes prises toute la journee : aucune heure, et le message nomme le duckpin', `${(r.journee.slots || []).length} heure(s) « ${r.journee.message} »`);
   ok(Array.isArray(r.avecBowling.slots) && r.avecBowling.slots.length === 0 && /^Duckpin Bowling : complet/.test(r.avecBowling.message || ''),
     'bowling + duckpin le meme jour : plus de creneau vendu pour rien, le message nomme le duckpin', `${(r.avecBowling.slots || []).length} creneau(x) « ${r.avecBowling.message} »`);
+  // UN DOSSIER LONG NE TIENT SES PISTES QUE LE TEMPS DE LES JOUER (2026-09-30).
+  // 14 h de visite, 1 h de duckpin : il la joue avant ou apres, les autres
+  // groupes gardent toutes leurs heures. L ancienne regle n en laissait aucune.
+  ok(['10:00', '14:00', '15:00', '18:00'].every((h) => r.longue.includes(h)),
+    'un dossier de 14 h qui joue 1 h de duckpin laisse les heures du jour aux autres groupes', `${r.longue.length} heure(s) : ${r.longue.slice(0, 6).join(' ')}`);
   const grilleBowling = ((r.grille.anchors && r.grille.anchors.activities) || []).find((a) => a.activityId === 'bowling') || { times: [] };
   const aLHeure = (t) => grilleBowling.times.find((x) => x.time === t) || {};
   const fermees = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30'].map(aLHeure);

@@ -571,8 +571,24 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // Plafonds : 248 Ko a analyser, 70 Ko a transferer, soit 13,3 et 5,6 Ko de
 // marge : une police (20 Ko compresses) ou une bibliotheque font toujours
 // sauter l un et l autre.
-const BUDGET_SERVI = 248 * 1024;
-const BUDGET_TRANSFERE = 70 * 1024;
+//
+// REDERIVE LE 2026-09-30, apres les horaires bloques (bandeau, decompte et
+// barre), puis le « Complet » qui dit son calcul (pistes, places de l arene)
+// et la phrase du partage du laser. Le depart etait deja a 99,6 % : 252 950
+// octets servis au commit 413429e, un cliquet de nouveau. Poids mort cherche
+// par script avant de toucher au chiffre : les 263 fonctions nommees sont
+// toutes citees, les 34 symboles SVG tous cites, les 314 classes de la feuille
+// toutes produites. Le lot sert 254 748 octets (248,8 Ko, +1,8 Ko) et en
+// transfere 69 635 (68,0 Ko, +0,6 Ko). Mesure A/B (meme protocole, 413429e
+// contre l arbre, tour de chauffe jete, ordre ABBA, 4 tours, 8 mesures par
+// version) : medianes script 317 contre 261 ms, style 518 contre 453 ms, mise
+// en page 1 641 contre 1 415 ms au processeur ralenti 6 fois, chaque version
+// variant du simple au double d un tour a l autre : aucun surcout mesurable.
+// Sur le reseau, 0,6 Ko coutent environ 12 ms a 400 kbit/s. Plafonds : 262 Ko
+// a analyser, 74 Ko a transferer, soit 13,2 et 6,0 Ko de marge : une police
+// (20 Ko compresses) ou une bibliotheque font toujours sauter l un et l autre.
+const BUDGET_SERVI = 262 * 1024;
+const BUDGET_TRANSFERE = 74 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -2146,7 +2162,7 @@ async function main() {
     // la capacite d une session du Fun Run.
     ok(carte('laser_game').prix === `Dès ${euros(minLaser)} / personne · 2\u00a0joueurs minimum`, '[B] laser : « des » = minimum des parties servies, et le minimum de joueurs', carte('laser_game').prix);
     ok(carte('fun_run').prix === `Dès ${euros(minFunRun)} / session · 5 joueurs par session`, '[B] fun run : « des » = minimum des sessions servies, et la capacite D UNE session', carte('fun_run').prix);
-    ok(carte('minigolf_blacklight').prix === 'Dès 10 € / personne · 12 niveaux', '[B] minigolf : tarif saisi par le centre, avec sa note', carte('minigolf_blacklight').prix);
+    ok(carte('minigolf_blacklight').prix === 'Dès 10 € / personne · 12 trous', '[B] minigolf : tarif saisi par le centre, avec sa note', carte('minigolf_blacklight').prix);
     ok(carte('arcade_time').prix === 'Tarif sur place', '[B] arcades : sans tarif saisi, « Tarif sur place », jamais un chiffre', carte('arcade_time').prix);
     // A SIX JOUEURS, LE FUN RUN NE DISPARAIT PLUS : IL TOURNE (demande de
     // Movsar, 2026-09-23). Le catalogue declare une installation de 5 places,

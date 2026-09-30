@@ -33,6 +33,11 @@
 //      Une visite mixte (bowling + duckpin) passe sous la garde ; mais une
 //      activite libre n a AUCUNE heure imposee, donc elle n est refusee que si
 //      sa dotation est prise pendant TOUTE la fenetre de la visite.
+//   E. UN GROUPE DEJA POSE NE TIENT SES UNITES QUE LE TEMPS DE LES JOUER
+//      (2026-09-30). Le dossier 1404 de la prod (bowling et laser jusqu a
+//      15:25, puis 1 h 30 de duckpin dans une visite comptee jusqu a 19:00)
+//      ne ferme plus le duckpin de 13:30 a 19:00 ; mais le groupe qui lui
+//      prendrait sa derniere heure et demie est refuse.
 //
 // LE STORE RANGE CE QUE LA PRODUCTION RANGE. Le faux createReservation poussait
 // le payload BRUT, qui porte laneCount ; createReservation passe en production
@@ -87,17 +92,32 @@ const MUTATIONS = [
     }],
   },
   {
-    nom: 'la fenetre comparee redevient celle du DOSSIER entier au lieu de celle de la ligne',
-    editions: [
-      {
-        de: '    const dernierDepart = Math.max(visite.debut, visite.fin - minutes);',
-        vers: '    const dernierDepart = visite.debut;',
-      },
-      {
-        de: '      const fin = debut + minutes;',
-        vers: '      const fin = Math.max(debut + minutes, visite.fin);',
-      },
-    ],
+    nom: 'chaque partie redevient la fenetre ENTIERE de son dossier au lieu de sa propre duree',
+    editions: [{
+      de: '  const parTour = Math.max(TRANCHE_MINUTES, Math.ceil(minutes / tours));',
+      vers: '  const parTour = Math.max(TRANCHE_MINUTES, Math.ceil(minutes / tours), fenetre.fin - fenetre.debut);',
+    }],
+  },
+  {
+    nom: 'l ancienne regle decide : un groupe deja pose tient ses unites toute sa visite',
+    editions: [{
+      de: '    if (verdict === \'oui\') continue;',
+      vers: '    if (verdict === \'oui\' && false) continue;',
+    }],
+  },
+  {
+    nom: 'la repartition oublie les groupes deja poses',
+    editions: [{
+      de: '    const verdict = repartitionPossible([...nouvelles, ...liees], dotation);',
+      vers: '    const verdict = repartitionPossible([...nouvelles], dotation);',
+    }],
+  },
+  {
+    nom: 'un groupe au bowling ou au laser peut aussi etre sur une piste de duckpin',
+    editions: [{
+      de: '  const blocs = opsPlan && Array.isArray(opsPlan.resourceBlocks) ? opsPlan.resourceBlocks : [];',
+      vers: '  const blocs = [];',
+    }],
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
@@ -170,6 +190,7 @@ rops.afterReservationCreated = async () => ({ communications: [], warnings: [] }
 const availability = require(path.join(ROOT, 'api/public-availability.js'));
 const reservationsApi = require(path.join(ROOT, 'api/public-reservations.js'));
 const { listCenterActivities } = require(path.join(ROOT, 'lib/activity-catalog'));
+const { normalizeReservationRequest } = require(path.join(ROOT, 'lib/reservation-request'));
 
 let failures = 0;
 function ok(condition, message) {
@@ -267,6 +288,36 @@ function message(reponse) {
   return String(((reponse && reponse.body) || {}).message || '').slice(0, 70);
 }
 
+// QUI PREND QUOI (2026-09-30). La garde repartit les parties dans les visites :
+// un groupe de 5 au Fun Run joue UNE session de 15 min dans une visite que le
+// serveur compte 30 min, un second groupe de 5 joue l autre quart d heure, et
+// l accepter est JUSTE. Un groupe ne « prend » donc des unites que s il les
+// occupe pendant TOUTE sa visite : le plus petit multiple de la capacite dont
+// le programme remplit la fenetre que le serveur lui compte (10 joueurs au Fun
+// Run, 2 sessions en 30 min ; 12 au duckpin, 1 h). La fenetre se lit sur le
+// vrai normalizeReservationRequest, jamais sur une copie de sa regle.
+function groupesDe(activite) {
+  const capacite = Number(activite.capacityPerUnit) || 0;
+  const remplit = (pax) => {
+    const demande = normalizeReservationRequest(corps(activite.id, pax, 0), { channel: 'public' });
+    const ligne = demande.program && demande.program.items && demande.program.items[0];
+    return Number(ligne && ligne.minutes) >= Math.round(Number(demande.totalDuration) * 60);
+  };
+  const prendre = (unites) => {
+    if (!(capacite > 0)) return { pax: 4, ligne: { units: unites } };
+    for (let tours = 1; tours <= 8; tours += 1) {
+      if (remplit(capacite * unites * tours)) return { pax: capacite * unites * tours, ligne: null };
+    }
+    throw new Error(`montage : aucun groupe ne remplit sa visite sur ${activite.id}`);
+  };
+  return {
+    tout: prendre(Math.trunc(Number(activite.units))), // toutes les unites, toute la visite
+    une: prendre(1), // une unite, toute la visite
+    // Le plus petit groupe qui se puisse : une unite, un seul tour.
+    petit: capacite > 0 ? { pax: capacite, ligne: null } : { pax: 4, ligne: { units: 1 } },
+  };
+}
+
 // Combien de dossiers le serveur accepte-t-il d affilee sur la meme heure ?
 async function combienPassent(activityId, pax, plafondEssais, ligne = null) {
   STORE.length = 0;
@@ -302,17 +353,10 @@ async function main() {
       // groupe ; une activite dont le client CHOISIT ses unites (billards, sans
       // regle de joueurs : Movsar, « tu dois permettre de choisir combien de
       // tables ils veulent ») les demande dans sa ligne, quel que soit le groupe.
-      const capacite = Number(activite.capacityPerUnit) || 0;
-      const prendre = (unites) => (capacite > 0
-        ? { pax: capacite * unites, ligne: null }
-        : { pax: 4, ligne: { units: unites } });
-      const tout = prendre(Number(activite.units)); // un groupe qui prend TOUTE la dotation
-      const une = prendre(1);
-      const pax = tout.pax;
-      const parUnite = une.pax;
+      const { tout, une, petit } = groupesDe(activite);
       const essai = await combienPassent(activite.id, tout.pax, 6, tout.ligne);
       ok(essai.acceptes === 1 && Boolean(essai.premierRefus),
-        `${activite.id} (dotation ${activite.units}) : un groupe qui prend les ${activite.units} unites passe, le suivant est refuse (${essai.acceptes} passes, ${essai.premierRefus || 'AUCUN REFUS SUR 6'})`);
+        `${activite.id} (dotation ${activite.units}) : un groupe qui prend les ${activite.units} unites pendant toute sa visite passe, le suivant est refuse (${essai.acceptes} passes, ${essai.premierRefus || 'AUCUN REFUS SUR 6'})`);
       // Et des groupes d une unite tiennent ensemble : la borne compte des UNITES, pas des dossiers.
       const moitie = await combienPassent(activite.id, une.pax, 6, une.ligne);
       ok(moitie.acceptes === Number(activite.units),
@@ -323,13 +367,15 @@ async function main() {
       // juste, parce qu ils comparent des dossiers de meme taille. Un gros
       // groupe SUIVI d un petit est le cas qui a survecu a la premiere version
       // du lot - trois pistes vendues pour deux, deux fois HTTP 201.
+      // Le second est le PLUS PETIT groupe possible (une unite, un seul tour) :
+      // la ou un groupe occupe tout pendant toute la visite, meme lui ne tient.
       STORE.length = 0;
-      const gros = await post(corps(activite.id, pax, 80, HEURE, tout.ligne));
+      const gros = await post(corps(activite.id, tout.pax, 80, HEURE, tout.ligne));
       ok(gros.status >= 200 && gros.status < 300,
         `montage : un groupe prend les ${activite.units} unites de ${activite.id} (HTTP ${gros.status})`);
-      const petit = await post(corps(activite.id, parUnite, 81, HEURE, une.ligne));
-      ok(petit.status === 409,
-        `ordre heterogene : apres le groupe qui prend tout, un groupe d une unite est refuse (HTTP ${petit.status} ${message(petit)})`);
+      const apres = await post(corps(activite.id, petit.pax, 81, HEURE, petit.ligne));
+      ok(apres.status === 409,
+        `ordre heterogene : apres le groupe qui prend tout, le plus petit groupe (${petit.pax} joueurs) est refuse (HTTP ${apres.status} ${message(apres)})`);
     }
 
     // --- C. NON-REGRESSION : sans dotation, le centre absorbe ---------------
@@ -357,7 +403,10 @@ async function main() {
     // pendant la seconde heure. Le montage sature donc TOUTE la fenetre, et le
     // temoin qui suit prouve qu une saturation PARTIELLE laisse passer.
     for (const activite of finies) {
-      const parUnite = Math.max(1, Number(activite.capacityPerUnit) || 1);
+      // Le montage pose des groupes qui occupent une unite pendant TOUTE leur
+      // visite ; les sondes et la visite mixte sont le plus petit groupe.
+      const { une, petit } = groupesDe(activite);
+      const parUnite = petit.pax;
       const dotation = Math.trunc(Number(activite.units));
       const absorbable = absorbables[0];
       const visiteMixte = [
@@ -386,14 +435,14 @@ async function main() {
       let poses = 0;
       for (const heure of departs) {
         for (let i = 1; i <= dotation; i += 1) {
-          const r = await post(corps(activite.id, parUnite, `${heure}-${i}`, heure));
+          const r = await post(corps(activite.id, une.pax, `${heure}-${i}`, heure, une.ligne));
           if (r.status >= 200 && r.status < 300) poses += 1;
         }
       }
       ok(poses >= dotation, `montage : ${poses} dossier(s) poses sur ${activite.id} entre ${departs[0]} et ${departs[departs.length - 1]}`);
       const marquesLibres = [];
       for (const heure of departs) {
-        const sonde = await post(corps(activite.id, parUnite, `sat-${heure}`, heure));
+        const sonde = await post(corps(activite.id, petit.pax, `sat-${heure}`, heure, petit.ligne));
         if (sonde.status !== 409) marquesLibres.push(`${heure} -> HTTP ${sonde.status}`);
       }
       ok(marquesLibres.length === 0,
@@ -414,7 +463,7 @@ async function main() {
       STORE.length = 0;
       let posesPartiels = 0;
       for (let i = 1; i <= dotation; i += 1) {
-        const r = await post(corps(activite.id, parUnite, `partiel-${i}`));
+        const r = await post(corps(activite.id, une.pax, `partiel-${i}`, HEURE, une.ligne));
         if (r.status >= 200 && r.status < 300) posesPartiels += 1;
       }
       ok(posesPartiels === dotation,
@@ -432,6 +481,51 @@ async function main() {
       ok(libre.status >= 200 && libre.status < 300,
         `temoin negatif : bowling + ${absorbable.id} (units null) reste accepte (HTTP ${libre.status} ${message(libre)})`);
     }
+
+    // --- E. UN GROUPE DEJA POSE NE TIENT SES UNITES QUE LE TEMPS DE LES
+    //        JOUER (2026-09-30) ---------------------------------------------
+    // Le dossier 1404 de la prod, recopie sans ses coordonnees : 10 joueurs a
+    // 13:30, bowling pistes 7-8 jusqu a 14:30, laser jusqu a 15:25, puis
+    // billard, plaine et 1 h 30 de duckpin sur les 2 pistes, visite comptee
+    // jusqu a 19:00. L ancienne regle lui laissait les 2 pistes de 13:30 a
+    // 19:00 : un groupe de 12 ne jouait plus au duckpin de l apres-midi.
+    STORE.length = 0;
+    const blocDuGroupe = (resourceType, activityId, startTime, endTime) => ({
+      type: 'activity', resourceType, activityId, startTime, endTime, players: 10, groupPlayers: 10, groupWaveCount: 1,
+    });
+    STORE.push({
+      ...database.normalizeReservationPayload({
+        name: 'Groupe 1404', phone: '+32470000000', email: 'groupe1404@exemple.be',
+        date: DATE, startTime: '13:30', duration: 1, totalDuration: 5.5, pax: 10, type: 'bowling', centerId: CENTRE,
+        program: { items: [
+          { activityId: 'bowling', planned: true, minutes: 60, duration: 1 },
+          { activityId: 'laser_game', planned: true, minutes: 60, duration: 1, games: 2 },
+          { activityId: 'billards', planned: false, minutes: 60, units: 1, hours: 1, sessions: 1 },
+          { activityId: 'playground', planned: false, minutes: 60, sessions: 1 },
+          { activityId: 'duckpin_bowling', planned: false, minutes: 90, duration: 1.5, units: 2, sessions: 1 },
+        ] },
+        opsPlan: { startTime: '13:30', endTime: '15:40', resourceBlocks: [
+          blocDuGroupe('bowling_lane', 'bowling', '13:30', '14:30'),
+          blocDuGroupe('laser_arena', 'laser_game', '14:30', '14:55'),
+          blocDuGroupe('laser_arena', 'laser_game', '15:00', '15:25'),
+        ] },
+      }, {}),
+      id: 1404, date: DATE, centerId: CENTRE, status: 'pending',
+    });
+    // L ORDRE COMPTE : le groupe de 17:30 arrive AVANT celui de 14:00. Le 1404
+    // ne peut jouer son duckpin qu apres son laser (15:25) ; si le moteur
+    // l imaginait sur la piste pendant son bowling, 13:30-15:00 lui suffirait
+    // et le groupe de 17:30 passerait a tort.
+    const douze = (heure, index) => post(corps('duckpin_bowling', 12, index, heure));
+    const suite = [await douze('15:30', 1412), await douze('16:30', 1413)];
+    ok(suite.every((r) => r.status === 201),
+      `deux groupes de 12 a 15:30 et 16:30 passent : le 1404 garde 17:30-19:00 pour son duckpin (${suite.map((r) => r.status).join(', ')})`);
+    const derniere = await douze('17:30', 1414);
+    ok(derniere.status === 409,
+      `un troisieme a 17:30 est refuse : le 1404, au bowling puis au laser jusqu a 15:25, n aurait plus 1 h 30 de duckpin pendant sa visite (HTTP ${derniere.status} ${message(derniere)})`);
+    const quatorze = await douze('14:00', 1411);
+    ok(quatorze.status === 201,
+      `un groupe de 12 joue ses 2 pistes de duckpin a 14:00, pendant que le 1404 est au bowling et au laser (HTTP ${quatorze.status} ${message(quatorze)})`);
   } finally {
     server.close();
   }

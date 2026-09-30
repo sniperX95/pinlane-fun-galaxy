@@ -95,7 +95,7 @@ async function traiterBlocage(req, res) {
       jeton,
       empreinteAppareil: empreinteAppareil(req),
       signatureDemande: signatureDemande(request),
-      verifierProgramme: (reservations) => dotationDepassee(request, reservations),
+      verifierProgramme: (reservations, plan) => dotationDepassee({ ...request, opsPlan: plan || ops.opsPlan || request.opsPlan || null }, reservations),
     });
     sendJson(res, 201, {
       ok: true,
@@ -219,7 +219,7 @@ module.exports = async (req, res) => {
       // Les installations comptees (pistes de duckpin, tables) se reverifient
       // SOUS le verrou de la journee : deux demandes simultanees ne prennent
       // plus toutes deux la derniere unite.
-      verifierProgramme: (reservations) => dotationDepassee(request, reservations),
+      verifierProgramme: (reservations, plan) => dotationDepassee({ ...request, opsPlan: plan || ops.opsPlan || request.opsPlan || null }, reservations),
     });
     const postCreate = await afterReservationCreated(reservation, request);
     sendJson(res, 201, {

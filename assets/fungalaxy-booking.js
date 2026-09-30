@@ -1767,13 +1767,38 @@
   // autre partie du MEME laser ne se replace pas, c est le groupe lui-meme qui
   // occupe l arene. Ce n est plus un refus non plus (voir verdictDu) : la
   // toucher DEPLACE cette partie-la.
+  // LE CALCUL D UN « COMPLET », tel que le moteur l a fait (lib/ops-engine,
+  // getFormulaAnchorAvailability). Movsar, 2026-09-30 : « faut montrer ici que
+  // 6 joueurs max par piste donc vous avez besoin de x pistes ». Les pistes :
+  // joueurs par piste, pistes qu il faut, pistes libres. L arene : ses places
+  // libres et celles qu il faut, ou l autre partie deja lancee. Sans ces
+  // chiffres, la raison du serveur telle quelle.
+  function nombre(n, un, plusieurs) { return n + ' ' + (n > 1 ? plusieurs : un); }
+  function raisonComplet(t) {
+    var quand;
+    if (Number(t.lanesNeeded) > 0) {
+      var libres = Number(t.lanesFree) || 0;
+      quand = t.serviceTime ? ' à ' + t.serviceTime : '';
+      return t.playersPerLane + ' joueurs max par piste, il vous faut ' + nombre(Number(t.lanesNeeded), 'piste', 'pistes')
+        + (Number(t.serviceCount) > 1 ? ' pour chacun de vos ' + t.serviceCount + ' groupes' : '')
+        + ' et ' + (libres === 0 ? 'aucune n’est libre' : libres === 1 ? 'une seule est libre' : libres + ' seulement sont libres') + quand;
+    }
+    quand = t.waveTime ? ' à ' + t.waveTime : '';
+    if (t.arenaBusy) return 'une autre partie de laser est déjà lancée' + (quand || ' à cette heure');
+    if (Number(t.placesNeeded) > 0 && Number(t.arenaPlaces) > 0) {
+      var places = Number(t.placesFree) || 0;
+      return (places === 0 ? 'les ' + t.arenaPlaces + ' places de l’arène sont prises' + quand
+        : nombre(places, 'place libre', 'places libres') + ' sur ' + t.arenaPlaces + quand + ', il en faut ' + t.placesNeeded);
+    }
+    return t.reason || 'Complet';
+  }
   var MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', schedule_free: 'trop tard', resource_conflict: 'complet', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo', anchor_overlap: 'occupé' };
   function etatHeure(t, idPiste) {
     if (t.ok === false) {
       var autre = t.code === 'anchor_overlap' && t.conflict && t.conflict.activityId && t.conflict.activityId !== idPiste;
       if (autre) return { etat: 'shift', mot: 'décale', raison: t.reason || 'Chevauche une autre activité', conflit: t.conflict };
       // Sa propre partie garde son conflit : la phrase dira laquelle, et quand elle joue.
-      return { etat: 'hard', mot: MOTS_DURS[t.code] || 'indispo', raison: t.reason || 'Indisponible', conflit: t.code === 'anchor_overlap' ? (t.conflict || null) : null };
+      return { etat: 'hard', mot: MOTS_DURS[t.code] || 'indispo', raison: t.code === 'capacity' ? raisonComplet(t) : (t.reason || 'Indisponible'), conflit: t.code === 'anchor_overlap' ? (t.conflict || null) : null };
     }
     if (t.warning) return { etat: 'soft', mot: 'serré', raison: t.warning.reason || 'Peu de temps pour le reste de la visite', conflit: null };
     return { etat: 'ok', mot: '', raison: '', conflit: null };
@@ -2227,6 +2252,18 @@
       return;
     }
     var html = '';
+    // LA PARTIE DE LASER SE PARTAGE (Movsar, 2026-09-30 : « preciser pour
+    // lasergame que c est susceptible d avoir d autres gens avec eux »). Vrai
+    // des qu une partie du groupe laisse une place dans l arene ; un groupe qui
+    // remplit exactement ses parties (30, 60...) joue entre lui, et la phrase
+    // se tait. Le nombre de places est celui que le centre declare.
+    function notePartage() {
+      var places = Number(meta && meta.center && meta.center.booking && meta.center.booking.laserArenaCapacity) || 0;
+      if (places && joueursDemandes() % places === 0) return '';
+      return '<p class="fg-track__share"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
+        + (places ? '<b>Jusqu’à ' + places + ' joueurs par partie</b> : d’autres groupes peuvent jouer avec vous.' : 'D’autres groupes peuvent jouer la même partie que vous.')
+        + '</span></p>';
+    }
     if (ancres.length) {
       // Quarante-huit mots de legende sur un telephone, c etait un mur
       // (Movsar, 2026-09-23 : « ya trop de texte c est abusé surtout sur
@@ -2253,6 +2290,7 @@
           // Ce qui EXPLIQUE les heures se lit avant elles ; ce qui AGIT sur
           // elles se pose apres. Ni l un ni l autre dans le bandeau : lui ne
           // porte que le rang, l icone, le nom et la duree.
+          + (laser ? notePartage() : '')
           + (multi ? '<div class="fg-parts"></div>' : '')
           + '<p class="fg-track__waves" hidden></p>'
           + rendreChips(a.times || [], multi, a.activityId)

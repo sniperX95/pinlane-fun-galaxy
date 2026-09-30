@@ -1440,6 +1440,11 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-track__waves::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--fg-teal); margin-right: 9px; vertical-align: 1px; }
 .fg-track__waves[hidden] { display: none; }
+/* La partie de laser se partage : dit sous le nom de l activite, avant ses
+   heures (Movsar, 2026-09-30). */
+.fg-track__share { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 14px 22px 0 26px; font-size: 13px; line-height: 1.5; color: var(--fg-muted); }
+.fg-track__share svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--fg-purple-ink); }
+.fg-track__share b { color: var(--fg-text); font-weight: 600; }
 .fg-track__waves b { color: var(--fg-teal-ink); font-weight: 700; }
 /* LES PARTIES DE LASER, UNE PAR UNE : le compte « x heures choisies sur x »,
    puis chaque partie, son heure et la fin de son dernier groupe, ou « sur
@@ -1760,6 +1765,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-track__head, .fg-visit__head { padding: 14px 15px 12px 19px; }
   .fg-track > .fg-periods { padding: 12px 15px 10px 19px; }
   .fg-track__waves { padding: 12px 15px 0 19px; }
+  .fg-track__share { padding: 12px 15px 0 19px; }
   .fg-track__foot { padding: 0 15px 12px 19px; }
   .fg-visit__list { padding: 12px 15px 14px 19px; }
   .fg-visit__warn { margin: 0 15px 14px 19px; }

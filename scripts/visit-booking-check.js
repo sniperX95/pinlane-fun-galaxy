@@ -73,7 +73,7 @@ function serveStatic() {
 const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
   { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', priceValue: null, unitLabel: 'par personne', order: 2, defaultMinutes: 22 },
-  { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 niveaux', order: 3, defaultMinutes: 45 },
+  { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 trous', order: 3, defaultMinutes: 45 },
   // Les bornes de duree font partie de ce que le catalogue expose (elles
   // decident des durees proposees au client) : une fixture qui les omet
   // ne ressemble plus au reel et teste autre chose. Valeurs du socle :

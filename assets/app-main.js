@@ -10651,8 +10651,10 @@ function formatDashActivityMix(activityMix = []) {
 }
 
 // ARRIVEES PAR HEURE : chaque groupe compte UNE fois, a l heure ou il arrive
-// (debut de son premier creneau). Un groupe qui enchaine bowling puis laser
-// n apparait pas a chaque heure occupee. Barres et pas courbe : ce sont des
+// (debut de son programme, la meme heure que le Terrain). Un groupe qui
+// enchaine bowling puis laser n apparait pas a chaque heure occupee, et une
+// formule sans piste ni arene (table et plaine de jeux) compte aussi : elle
+// etait ignoree tant que l heure venait des seules pistes. Barres et pas courbe : ce sont des
 // comptes par heure, pas une grandeur continue. Le jour meme, les heures
 // passees s effacent et l heure en cours se detache (option pastBefore).
 function renderDashArrivalsChart(host, metrics) {
@@ -10667,9 +10669,7 @@ function renderDashArrivalsChart(host, metrics) {
   const buckets = new Map();
   for (let hour = open; hour < close; hour += 1) buckets.set(hour, 0);
   activeReservations.forEach(reservation => {
-    const windows = getStaffResourceWindows(reservation, 'all');
-    if (!windows.length) return;
-    const startHour = Math.floor(Math.min(...windows.map(win => Number(win.start))));
+    const startHour = Math.floor(getStaffTerrainSpan(reservation).start);
     const hour = Math.min(Math.max(startHour, open), close - 1);
     if (buckets.has(hour)) buckets.set(hour, buckets.get(hour) + (Number(reservation.pax) || 0));
   });
@@ -12427,14 +12427,38 @@ function renderStaffUtilityClientList(rows = [], emptyTitle = 'Aucun client', em
 //   done     : fenetre finie et paye (compte dans le sous-titre, pas affiche).
 // Une date passee n a plus rien a venir ni en salle ; une date future n a
 // encore rien commence.
+// REFAITE LE 2026-09-30 (Movsar : « pas facile a comprendre one shot », « pas
+// toutes les infos importantes », « mais pas trop d info »). Le groupe dont
+// l heure est passee sans arrivee pointee n est pas « sur place » : il est EN
+// RETARD, en tete de « À venir », avec son numero. Les arrivees au-dela de
+// l heure qui vient tiennent sur une ligne. « Sur place » dit ou en est le
+// groupe dans son programme.
+
+// LES ACTIVITES D UNE FORMULE A LEURS HEURES, dans l ordre du programme. Le
+// minigolf, les arcades ou les boissons ne prennent ni piste ni arene : sans
+// elles, une formule quittait « Sur place » a sa derniere piste alors que le
+// groupe etait encore au bar. Un deplacement de formule recalcule ce
+// programme cote serveur (api/staff-reservations.js, isFormulaPatch).
+function getStaffFormulaTimedItems(reservation) {
+  if (typeof reservationHasFormulaActivities !== 'function' || !reservationHasFormulaActivities(reservation)) return [];
+  return getFormulaActivityProgressSummary(reservation).items
+    .filter(item => item.startTime)
+    .map(item => {
+      const start = timeToNum(item.startTime);
+      let end = item.endTime ? timeToNum(item.endTime) : start;
+      // Une activite qui passe minuit (23:40-00:05) finit le lendemain.
+      if (end < start) end += 24;
+      return { ...item, start, end };
+    })
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
 function getStaffTerrainSpan(reservation) {
   const windows = getStaffResourceWindows(reservation, 'all');
-  if (windows.length) {
-    return {
-      start: Math.min(...windows.map(window => Number(window.start))),
-      end: Math.max(...windows.map(window => Number(window.end)))
-    };
-  }
+  const items = getStaffFormulaTimedItems(reservation);
+  const starts = [...windows.map(window => Number(window.start)), ...items.map(item => item.start)];
+  const ends = [...windows.map(window => Number(window.end)), ...items.map(item => item.end)];
+  if (starts.length) return { start: Math.min(...starts), end: Math.max(...ends) };
   const start = timeToNum(reservation.startTime || '00:00');
   return { start, end: start + (readDurationHours(reservation.duration) || 1) };
 }
@@ -12475,7 +12499,8 @@ function formatStaffTerrainDelay(hours) {
 // Le temps dit par la carte est RELATIF A MAINTENANT, donc seulement le jour
 // meme : un « dans 25 min » sur une autre date serait faux. Le tic d une
 // minute (voir le setInterval du planning) repeint la page pour qu il reste
-// juste.
+// juste. Le groupe en retard n a pas de temps dans son pied : sa pastille dit
+// deja depuis quand il est attendu, son pied porte son numero.
 function getStaffTerrainTiming(item, phase, board) {
   if (board.when !== 'today') return '';
   if (phase === 'upcoming') return `dans ${formatStaffTerrainDelay(item.start - board.now)}`;
@@ -12488,18 +12513,24 @@ function getStaffTerrainTiming(item, phase, board) {
   return '';
 }
 
-// UN SEUL STATUT PAR CARTE. L ancienne carte l ecrivait deux fois (son
-// libelle de risque retombait sur le statut). La colonne dit le moment, la
-// pastille dit le statut. « Non pointé » : l heure dit que le groupe joue ou
-// a joue, mais personne n a clique Arrivé. « À vérifier » : une reservation
-// en ligne que le staff doit encore valider (meme regle que l alerte
-// « Réservations à vérifier » de l accueil).
-function getStaffTerrainStatus(reservation, phase) {
-  const status = reservation.status || 'pending';
-  const upcoming = isUpcomingReservationStatus(status);
-  if ((phase === 'onsite' || phase === 'closing') && upcoming) return { label: 'Non pointé', tone: 'unmarked' };
-  if (upcoming && reservation.validationStatus === 'staff_review') return { label: 'À vérifier', tone: 'review' };
-  return { label: getStaffReservationStatusLabel(status), tone: upcoming ? 'confirmed' : status };
+// UNE PASTILLE SEULEMENT QUAND ELLE DIT QUELQUE CHOSE (2026-09-30). La colonne
+// dit deja le moment : « Confirmé » sur treize cartes d « À venir » et
+// « Arrivé » sur chaque carte « Sur place » ne faisaient que la repeter. Reste
+// ce que la colonne ne dit pas : le retard, l arrivee jamais pointee d un
+// groupe qui a fini (« Non pointé » : peut-etre pas venu), la reservation en
+// ligne a valider (meme definition que la liste et la fiche), et le groupe
+// qui a deja paye (rien a encaisser en fin de partie).
+function getStaffTerrainStatus(reservation, phase, item = null, board = null) {
+  const upcoming = isUpcomingReservationStatus(reservation.status || 'pending');
+  if (phase === 'late') return { label: item && board ? `En retard · ${formatStaffTerrainDelay(board.now - item.start)}` : 'En retard', tone: 'late' };
+  if (phase === 'closing' && upcoming) return { label: 'Non pointé', tone: 'unmarked' };
+  if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };
+  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };
+  return null;
+}
+
+function renderStaffTerrainBadge(badge) {
+  return badge ? `<span class="terrain-status tone-${escapeHtml(badge.tone)}">${escapeHtml(badge.label)}</span>` : '';
 }
 
 function getStaffTerrainResources(reservation) {
@@ -12512,15 +12543,80 @@ function getStaffTerrainResources(reservation) {
   });
 }
 
+// Les pistes d une ligne, sans les heures : « Pistes 3, 4 ». Une piste pas
+// encore attribuee se dit, c est justement ce qu il faut preparer.
+function getStaffTerrainLanesShort(reservation) {
+  const bowling = getStaffResourceWindows(reservation, 'all').filter(window => window.resourceType !== 'laser_arena');
+  if (!bowling.length) return '';
+  const lanes = [...new Set(bowling.flatMap(window => window.lanes || reservation.lanes || []))].sort((left, right) => left - right);
+  if (!lanes.length) return 'Piste à attribuer';
+  return lanes.length > 1 ? `Pistes ${lanes.join(', ')}` : `Piste ${lanes[0]}`;
+}
+
 function formatStaffTerrainCount(count, word) {
   return `${count} ${word}${count > 1 ? 's' : ''}`;
+}
+
+const STAFF_TERRAIN_NOTE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M9 13h6M9 17h4"/></svg>';
+const STAFF_TERRAIN_PHONE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+
+function renderStaffTerrainNote(reservation) {
+  return hasReservationNote(reservation)
+    ? `<p class="res-special-request">${STAFF_TERRAIN_NOTE_ICON}${escapeHtml(getReservationNoteText(reservation))}</p>`
+    : '';
+}
+
+// OU EN EST LE GROUPE, d apres son programme : l activite prevue maintenant et
+// la suivante. Seulement pour un programme a plusieurs etapes (une formule, un
+// bowling suivi d un laser) : pour une seule activite, « fin dans 20 min » dit
+// deja tout. Les memes heures que la page Formules et que la fiche.
+function getStaffTerrainSteps(reservation) {
+  const items = getStaffFormulaTimedItems(reservation);
+  const steps = items.length
+    ? items.map(item => ({ label: item.label, start: item.start, end: item.end }))
+    : getStaffResourceWindows(reservation, 'all').map(window => ({
+      label: window.resourceType === 'laser_arena' ? 'Laser Game' : 'Bowling',
+      start: Number(window.start),
+      end: Number(window.end)
+    }));
+  const seen = new Set();
+  return steps
+    .filter(step => {
+      const key = `${step.label}|${step.start}|${step.end}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((left, right) => left.start - right.start);
+}
+
+// Seulement sur place, donc seulement le jour meme : une date passee ou future
+// n a personne en salle.
+function renderStaffTerrainProgram(item, board) {
+  const steps = getStaffTerrainSteps(item.reservation);
+  if (steps.length < 2) return '';
+  // Deux activites peuvent se chevaucher (la table d anniversaire et le
+  // minigolf) : la plus recemment commencee est celle ou se trouve le groupe.
+  const current = steps.filter(step => step.start <= board.now && step.end > board.now)
+    .sort((left, right) => right.start - left.start)[0] || null;
+  const next = steps.find(step => step.start > board.now) || null;
+  if (!current && !next) return '';
+  const line = (caption, step, when, extra = '') => `<div class="terrain-program-step${extra}">
+      <small>${escapeHtml(caption)}</small>
+      <strong>${escapeHtml(step.label)}</strong>
+      <span>${escapeHtml(when)}</span>
+    </div>`;
+  return `<div class="terrain-program">
+    ${current ? line('Maintenant', current, `jusqu’à ${formatClockDisplay(current.end)}`, ' is-now') : ''}
+    ${next ? line(current ? 'Ensuite' : 'Prochaine', next, `à ${formatClockDisplay(next.start)}`) : ''}
+  </div>`;
 }
 
 function renderStaffTerrainCard(item, phase, board) {
   const reservation = item.reservation;
   const id = staffClientJs(reservation.id);
   const status = reservation.status || 'pending';
-  const badge = getStaffTerrainStatus(reservation, phase);
+  const badge = getStaffTerrainStatus(reservation, phase, item, board);
   const timing = getStaffTerrainTiming(item, phase, board);
   const occasion = getReservationOccasion(reservation);
   const pax = Number(reservation.pax || 0);
@@ -12529,15 +12625,23 @@ function renderStaffTerrainCard(item, phase, board) {
   // la pastille remplace le montant nu quand il y a un ecart.
   const price = renderReservationPriceMark(reservation, { forme: 'complet' })
     || `<span class="terrain-price">${escapeHtml(formatMoney(Number(reservation.price || 0)))}</span>`;
-  // Un dossier deja paye ne repasse jamais par « Arrivé » : le statut est un
-  // seul champ, pointer l arrivee effacerait le paiement.
+  // Le groupe en retard se rappelle : son numero est le geste utile, a la
+  // place du temps relatif que sa pastille dit deja.
+  const phone = String(reservation.phone || '').trim();
+  const call = phase === 'late' && phone
+    ? `<a class="terrain-call" href="tel:${escapeHtml(phone.replace(/[^0-9+]/g, ''))}" title="Appeler ${escapeHtml(reservation.name || 'le client')}">${STAFF_TERRAIN_PHONE_ICON}<span>${escapeHtml(phone)}</span></a>`
+    : '';
   const actions = [renderStaffUtilityAction('Détail', `openStaffReservationDetail(${id})`)];
-  if (phase !== 'closing' && status !== 'arrived' && status !== 'paid') {
-    actions.push(renderStaffUtilityAction('Arrivé', `setReservationStatusDirect(${id}, 'arrived', event)`, phase === 'upcoming' ? 'primary' : ''));
+  // Arrivé : jamais sur un dossier deja paye, le statut est un seul champ et
+  // pointer l arrivee effacerait le paiement. Une carte a venir n existe que le
+  // jour meme : une date future n a que des lignes, sans geste.
+  if ((phase === 'upcoming' || phase === 'late') && status !== 'paid') {
+    actions.push(renderStaffUtilityAction('Arrivé', `setReservationStatusDirect(${id}, 'arrived', event)`, 'primary'));
   }
-  if (phase !== 'upcoming' && status !== 'paid') {
+  if ((phase === 'onsite' || phase === 'closing') && status !== 'paid') {
     actions.push(renderStaffUtilityAction('Payé', `setReservationStatusDirect(${id}, 'paid', event)`, 'primary'));
   }
+  const foot = call || (timing ? `<span class="terrain-when">${escapeHtml(timing)}</span>` : '');
   return `<article class="terrain-card is-${escapeHtml(phase)}" data-terrain-id="${escapeHtml(String(reservation.id))}">
     <div class="terrain-card-top">
       <strong class="terrain-card-time">${escapeHtml(formatClockDisplay(item.start))}</strong>
@@ -12545,7 +12649,7 @@ function renderStaffTerrainCard(item, phase, board) {
         <strong>${escapeHtml(reservation.name || 'Client')}</strong>
         ${occasion ? `<span class="res-occasion-tag res-occasion-${escapeHtml(occasion)}">${escapeHtml(getReservationOccasionLabel(reservation))}</span>` : ''}
       </div>
-      <span class="terrain-status tone-${escapeHtml(badge.tone)}">${escapeHtml(badge.label)}</span>
+      ${renderStaffTerrainBadge(badge)}
     </div>
     <div class="terrain-card-facts">
       <span>${escapeHtml(getReservationLabel(reservation))}</span>
@@ -12554,11 +12658,38 @@ function renderStaffTerrainCard(item, phase, board) {
       ${renderActivityProgressPill(reservation)}
     </div>
     ${resources.length ? `<div class="terrain-card-resources">${resources.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</div>` : ''}
-    ${hasReservationNote(reservation) ? `<p class="res-special-request"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M9 13h6M9 17h4"/></svg>${escapeHtml(getReservationNoteText(reservation))}</p>` : ''}
+    ${phase === 'onsite' ? renderStaffTerrainProgram(item, board) : ''}
+    ${renderStaffTerrainNote(reservation)}
     <div class="terrain-card-foot">
-      ${timing ? `<span class="terrain-when">${escapeHtml(timing)}</span>` : ''}
+      ${foot}
       <div class="terrain-card-actions">${actions.join('')}</div>
     </div>
+  </article>`;
+}
+
+// UNE ARRIVEE LOINTAINE TIENT SUR UNE LIGNE. Treize cartes de meme poids
+// rendaient la file illisible : le groupe de 21 h prenait autant de place que
+// celui qui arrive dans dix minutes. Au-dela de l heure qui vient, la ligne
+// garde ce qui prepare l arrivee : l heure, le nom, l activite, les joueurs,
+// les pistes, la consigne, un prix decide a la main, la validation en
+// attente, le deja paye. Le montant et les gestes attendent la carte, qui
+// revient quand le groupe entre dans l heure. Toute la ligne ouvre la fiche.
+function renderStaffTerrainRow(item) {
+  const reservation = item.reservation;
+  const facts = [
+    getReservationLabel(reservation),
+    formatStaffTerrainCount(Number(reservation.pax || 0), 'joueur'),
+    getStaffTerrainLanesShort(reservation)
+  ].filter(Boolean).join(' · ');
+  const marks = `${renderReservationPriceMark(reservation, { forme: 'complet' })}${renderStaffTerrainBadge(getStaffTerrainStatus(reservation, 'upcoming'))}`;
+  return `<article class="terrain-row" data-terrain-id="${escapeHtml(String(reservation.id))}">
+    <strong class="terrain-row-time">${escapeHtml(formatClockDisplay(item.start))}</strong>
+    <button type="button" class="terrain-row-main" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})" title="Ouvrir la réservation">
+      <span class="terrain-row-name">${escapeHtml(reservation.name || 'Client')}</span>
+      <span class="terrain-row-facts">${escapeHtml(facts)}</span>
+    </button>
+    ${marks ? `<div class="terrain-row-marks">${marks}</div>` : ''}
+    ${renderStaffTerrainNote(reservation)}
   </article>`;
 }
 
@@ -12571,37 +12702,35 @@ function renderStaffTerrainBoard(board) {
   }
   const past = board.when === 'past';
   const future = board.when === 'future';
-  const empty = {
-    upcoming: past ? 'Journée passée.' : 'Plus personne n’est attendu.',
-    onsite: past ? 'Plus personne sur place.' : future ? 'La journée n’a pas commencé.' : 'Personne sur place pour l’instant.',
-    closing: future ? 'Rien à clôturer avant la fin des parties.' : 'Tout est encaissé.'
-  };
+  const today = board.when === 'today';
+  // En retard : l heure est passee, personne n a pointe l arrivee. Meme
+  // partage que la bande « En ce moment » de la Vue d ensemble.
+  const onsite = splitStaffTerrainOnsite(board);
+  const horizon = board.now + 1;
+  const soon = today ? board.upcoming.filter(item => item.start <= horizon) : [];
+  const later = today ? board.upcoming.filter(item => item.start > horizon) : board.upcoming;
   const players = items => items.reduce((sum, item) => sum + Number(item.reservation.pax || 0), 0);
+  const expected = [...onsite.late, ...board.upcoming];
+  // « non encaissés » et pas « à encaisser » : un groupe jamais pointe n est
+  // peut-etre pas venu. Le montant dit ce qui n est pas paye, rien de plus.
   const due = board.closing.reduce((sum, item) => sum + Number(item.reservation.price || 0), 0);
-  const detail = {
-    upcoming: board.upcoming.length ? formatStaffTerrainCount(players(board.upcoming), 'joueur') : '',
-    onsite: board.onsite.length ? formatStaffTerrainCount(players(board.onsite), 'joueur') : '',
-    // « non encaissés » et pas « à encaisser » : un groupe jamais pointé n est
-    // peut-etre pas venu. Le montant dit ce qui n est pas paye, rien de plus.
-    closing: board.closing.length ? `${formatMoney(due)} non encaissés` : ''
-  };
-  const column = (phase, title) => {
-    const items = board[phase];
-    return `<section class="terrain-column is-${phase}" aria-labelledby="terrain-${phase}-title">
+  const cards = (items, phase) => items.map(item => renderStaffTerrainCard(item, phase, board)).join('');
+  const column = (phase, title, count, detail, body, emptyText) => `<section class="terrain-column is-${phase}${count ? ' has-items' : ''}" aria-labelledby="terrain-${phase}-title">
       <div class="terrain-column-head">
         <h2 id="terrain-${phase}-title">${escapeHtml(title)}</h2>
-        <span class="terrain-count">${items.length}</span>
-        ${detail[phase] ? `<small>${escapeHtml(detail[phase])}</small>` : ''}
+        <span class="terrain-count">${count}</span>
+        ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
       </div>
-      ${items.length
-        ? `<div class="terrain-list">${items.map(item => renderStaffTerrainCard(item, phase, board)).join('')}</div>`
-        : `<p class="terrain-empty">${escapeHtml(empty[phase])}</p>`}
+      ${count ? body : `<p class="terrain-empty">${escapeHtml(emptyText)}</p>`}
     </section>`;
-  };
+  const upcomingBody = [
+    onsite.late.length || soon.length ? `<div class="terrain-list">${cards(onsite.late, 'late')}${cards(soon, 'upcoming')}</div>` : '',
+    later.length ? `${today ? `<h3 class="terrain-subhead">Après ${escapeHtml(formatClockDisplay(horizon))}</h3>` : ''}<div class="terrain-rows">${later.map(renderStaffTerrainRow).join('')}</div>` : ''
+  ].join('');
   return `<div class="terrain-board">
-    ${column('upcoming', 'À venir')}
-    ${column('onsite', 'Sur place')}
-    ${column('closing', 'À clôturer')}
+    ${column('upcoming', 'À venir', expected.length, expected.length ? formatStaffTerrainCount(players(expected), 'joueur') : '', upcomingBody, past ? 'Journée passée.' : 'Plus personne n’est attendu.')}
+    ${column('onsite', 'Sur place', onsite.present.length, onsite.present.length ? formatStaffTerrainCount(players(onsite.present), 'joueur') : '', `<div class="terrain-list">${cards(onsite.present, 'onsite')}</div>`, past ? 'Plus personne sur place.' : future ? 'La journée n’a pas commencé.' : 'Personne sur place pour l’instant.')}
+    ${column('closing', 'À clôturer', board.closing.length, board.closing.length ? `${formatMoney(due)} non encaissés` : '', `<div class="terrain-list">${cards(board.closing, 'closing')}</div>`, future ? 'Rien à clôturer avant la fin des parties.' : 'Tout est encaissé.')}
   </div>`;
 }
 
@@ -12781,59 +12910,78 @@ function renderStaffUtilityContactLedger(rows = []) {
   </div>`;
 }
 
-function renderFormuleTrackingCard(reservation) {
+// LA PAGE FORMULES DANS L ORDRE DE LA JOURNEE (2026-09-30). Les cartes etaient
+// rangees par famille (« Formules anniversaires » pour presque toutes) : la
+// famille ne dit rien au comptoir, l heure si. Trois temps, comme le Terrain et
+// sur les memes heures (getStaffTerrainSpan) : en cours, a venir, terminees.
+// Une formule terminee n a plus rien a cocher en direct : elle tient sur sa
+// tete de carte, son compte dit si tout a ete coche, sa liste reste dans la
+// fiche (bouton Ouvrir).
+function getStaffFormulaPhase(reservation, context) {
+  if (context.when === 'past') return 'done';
+  if (context.when === 'future') return 'upcoming';
+  const span = getStaffTerrainSpan(reservation);
+  if (span.end <= context.now) return 'done';
+  return span.start <= context.now ? 'live' : 'upcoming';
+}
+
+function renderFormuleTrackingCard(reservation, phase = 'upcoming') {
   const summary = getFormulaActivityProgressSummary(reservation);
-  const checklist = renderFormulaActivityChecklist(reservation, { bare: true });
-  return `<article class="formules-card${summary.allDone ? ' all-done' : ''}">
-    <div class="formules-card-head">
-      <div class="formules-card-time">
-        <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
-        <span>${Number(reservation.pax || 0)} joueurs</span>
+  const span = getStaffTerrainSpan(reservation);
+  const pax = Number(reservation.pax || 0);
+  const count = summary.total
+    ? `<span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>`
+    : '';
+  const head = `<div class="formules-card-head">
+      <div class="formules-card-time" title="De ${escapeHtml(formatClockDisplay(span.start))} à ${escapeHtml(formatClockDisplay(span.end))}">
+        <strong>${escapeHtml(formatClockDisplay(span.start))}</strong>
+        <span>${escapeHtml(formatClockDisplay(span.end))}</span>
       </div>
       <div class="formules-card-id">
         <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
-        <span>${escapeHtml(getReservationLabel(reservation))} · ${escapeHtml(getStaffReservationStateLabel(reservation))}</span>
+        <span>${escapeHtml([getReservationLabel(reservation), formatStaffTerrainCount(pax, 'joueur'), getStaffReservationStateLabel(reservation)].join(' · '))}</span>
       </div>
-      ${summary.total ? `<span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>` : ''}
+      ${count}
       <button type="button" class="formules-card-open" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">Ouvrir</button>
-    </div>
+    </div>`;
+  if (phase === 'done') {
+    return `<article class="formules-card is-compact${summary.allDone ? ' all-done' : ''}" data-formule-id="${escapeHtml(String(reservation.id))}">${head}</article>`;
+  }
+  const checklist = renderFormulaActivityChecklist(reservation, { bare: true });
+  return `<article class="formules-card${summary.allDone ? ' all-done' : ''}" data-formule-id="${escapeHtml(String(reservation.id))}">
+    ${head}
     ${checklist || '<div class="formules-card-empty">Pas de plan d\'activités détaillé pour cette formule.</div>'}
   </article>`;
 }
 
 function renderStaffFormulesBoard(rows = []) {
-  const formuleRows = [...rows].sort((left, right) => getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'));
+  const formuleRows = [...rows].sort((left, right) => getStaffTerrainSpan(left).start - getStaffTerrainSpan(right).start);
   if (!formuleRows.length) {
     // Pas de bouton ici : « Nouvelle formule » est deja l action principale
     // de l en-tete. La liste d activites citee avant (arcades, minigolf...)
     // n etait pas celle du centre : on decrit sans inventer.
-    // Le sous-titre de la page dit deja a quoi elle sert : l etat vide ne le
-    // paraphrase pas.
     return `<div class="events-empty-state">
       <strong>Aucune formule sur cette date.</strong>
     </div>`;
   }
-  // Regroupement par CATÉGORIE de formule (anniversaires / spéciales / autres),
-  // dans un ordre stable. Chaque formule ne montre QUE ses propres activités.
-  const groups = new Map();
-  formuleRows.forEach(reservation => {
-    const family = getFormulaFamilyLabel(reservation.formuleId);
-    if (!groups.has(family)) groups.set(family, []);
-    groups.get(family).push(reservation);
-  });
-  const familyOrder = ['Formules anniversaires', 'Formules spéciales'];
-  const rank = (name) => { const i = familyOrder.indexOf(name); return i === -1 ? familyOrder.length : i; };
-  const families = [...groups.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  return families.map(family => {
-    const cards = groups.get(family);
+  const today = todayStr();
+  const context = {
+    when: state.currentDate < today ? 'past' : state.currentDate > today ? 'future' : 'today',
+    now: currentTimeDecimal()
+  };
+  const groups = { live: [], upcoming: [], done: [] };
+  formuleRows.forEach(reservation => groups[getStaffFormulaPhase(reservation, context)].push(reservation));
+  const titles = { live: 'En cours', upcoming: 'À venir', done: 'Terminées' };
+  return ['live', 'upcoming', 'done'].filter(key => groups[key].length).map(key => {
+    const cards = groups[key];
     const done = cards.reduce((sum, reservation) => sum + getFormulaActivityProgressSummary(reservation).done, 0);
     const total = cards.reduce((sum, reservation) => sum + getFormulaActivityProgressSummary(reservation).total, 0);
-    return `<section class="formules-group">
+    return `<section class="formules-group is-${key}" aria-labelledby="formules-${key}-title">
       <div class="formules-group-head">
-        <h3>${escapeHtml(family)}</h3>
-        <span>${cards.length} formule${cards.length > 1 ? 's' : ''}${total ? ` · ${done}/${total} activité${total > 1 ? 's' : ''}` : ''}</span>
+        <h3 id="formules-${key}-title">${escapeHtml(titles[key])}</h3>
+        <span>${cards.length} formule${cards.length > 1 ? 's' : ''}${total ? ` · ${done}/${total} activité${total > 1 ? 's' : ''} cochée${total > 1 ? 's' : ''}` : ''}</span>
       </div>
-      <div class="formules-board">${cards.map(renderFormuleTrackingCard).join('')}</div>
+      <div class="formules-board${key === 'done' ? ' is-compact' : ''}">${cards.map(reservation => renderFormuleTrackingCard(reservation, key)).join('')}</div>
     </section>`;
   }).join('');
 }
@@ -16068,14 +16216,24 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   };
   if (page === 'formules') {
     const formuleRows = reservations.filter(reservation => reservation.type === 'formule' || reservation.formuleId);
-    const withActivities = formuleRows.filter(reservationHasFormulaActivities);
-    const totals = withActivities.reduce((acc, reservation) => {
+    const totals = formuleRows.filter(reservationHasFormulaActivities).reduce((acc, reservation) => {
       const summary = getFormulaActivityProgressSummary(reservation);
       acc.done += summary.done;
       acc.total += summary.total;
-      if (summary.allDone) acc.complete += 1;
       return acc;
-    }, { done: 0, total: 0, complete: 0 });
+    }, { done: 0, total: 0 });
+    const players = formuleRows.reduce((sum, reservation) => sum + Number(reservation.pax || 0), 0);
+    // Le sous-titre dit la journee en une ligne. Il ne dit plus a quoi sert la
+    // page (« Cochez chaque activité au fur et à mesure... ») : les cases le
+    // disent d elles-memes. « 0/8 activités faite » : le pluriel suivait le
+    // nombre de coches, pas le nombre d activites qu il qualifie ; les deux
+    // accords s indexent sur le meme mot. Le compte n est plus ecrit deux fois
+    // (en-tete de panneau et tete de groupe) : chaque groupe dit le sien.
+    const summary = formuleRows.length ? [
+      formatStaffTerrainCount(formuleRows.length, 'formule'),
+      formatStaffTerrainCount(players, 'joueur'),
+      totals.total ? `${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} cochée${totals.total > 1 ? 's' : ''}` : ''
+    ].filter(Boolean).join(' · ') : '';
     return {
       ...base,
       layout: 'events',
@@ -16083,19 +16241,10 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       // Le titre est celui de la barre laterale : une entree « Formules » qui
       // ouvre « Formules, suivi des activités » faisait croire a une autre page.
       title: 'Formules',
-      subtitle: 'Cochez chaque activité au fur et à mesure : vous voyez d\'un coup d\'œil ce qui reste à faire.',
-      // « 0/8 activités faite » : le pluriel de « faites » suivait le nombre de
-      // coches, pas le nombre d activites qu il qualifie. Les deux accords
-      // s indexent sur le meme mot.
-      panelSubtitle: formuleRows.length ? `${formuleRows.length} formule${formuleRows.length > 1 ? 's' : ''} sur la date · ${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} faite${totals.total > 1 ? 's' : ''}` : '',
+      subtitle: [getStaffUtilitySyncLabel(), summary].filter(Boolean).join(' · '),
+      hidePanelHead: true,
       primaryLabel: 'Nouvelle formule',
       primaryAction: "openQuickBook({ date: state.currentDate, type: 'formule' })",
-      kpis: [
-        ['Formules', formuleRows.length, 'sur la date'],
-        ['Joueurs', formuleRows.reduce((sum, r) => sum + Number(r.pax || 0), 0), 'participants'],
-        ['Activités faites', `${totals.done}/${totals.total}`, 'cochées'],
-        ['Complètes', totals.complete, 'toutes activités faites']
-      ],
       body: renderStaffFormulesBoard(formuleRows)
     };
   }
@@ -16118,12 +16267,6 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       title: 'Terrain',
       subtitle: [getStaffUtilitySyncLabel(), summary].filter(Boolean).join(' · '),
       hidePanelHead: true,
-      kpis: [
-        ['À venir', board.upcoming.length, 'pas encore arrivés'],
-        ['Sur place', board.onsite.length, 'arrivés ou en jeu'],
-        ['À clôturer', board.closing.length, 'fini, pas payé'],
-        ['Terminées', doneCount, 'fini et payé']
-      ],
       body: renderStaffTerrainBoard(board)
     };
   }
@@ -23022,27 +23165,61 @@ function renderActivityIcon(activityId) {
   return `<svg class="activity-check-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 }
 
+// L ETAT D UNE ACTIVITE SE LIT A L HEURE (2026-09-30). « À faire » sur chaque
+// ligne ne distinguait pas le bowling fini depuis deux heures, jamais coche,
+// de celui qui commence ce soir. Une date passee : ce qui n est pas coche est
+// « Non coché » ; une date future : tout est « À venir » ; le jour meme,
+// l heure de l activite tranche. Sans heure au programme, « À faire ».
+function getFormulaActivityPhase(item, reservation) {
+  if (item.done) return 'done';
+  const today = todayStr();
+  const date = (reservation && reservation.date) || state.currentDate;
+  if (date < today) return 'missed';
+  if (date > today) return 'upcoming';
+  if (!item.startTime) return 'todo';
+  const now = currentTimeDecimal();
+  const start = timeToNum(item.startTime);
+  let end = item.endTime ? timeToNum(item.endTime) : start;
+  if (end < start) end += 24;
+  if (now >= end) return 'missed';
+  return now >= start ? 'live' : 'upcoming';
+}
+
+const FORMULA_ACTIVITY_PHASE_LABELS = { missed: 'Non coché', live: 'En cours', upcoming: 'À venir', todo: 'À faire' };
+
+// Les activites dans l ordre ou le groupe les vit : la definition de la
+// formule les liste par type (le minigolf de 15:05 venait avant le bowling de
+// 14:00). Celles sans heure au programme gardent leur ordre, a la fin.
+function sortFormulaActivityItems(items = []) {
+  return items
+    .map((item, index) => ({ item, index, start: item.startTime ? timeToNum(item.startTime) : Infinity }))
+    .sort((left, right) => left.start - right.start || left.index - right.index)
+    .map(entry => entry.item);
+}
+
 // Bloc de suivi des activités d'une formule : une case cochable par activité incluse
 // (bowling, laser ×N, minigolf, arcades, boissons…), grisée + horodatée quand faite.
-// Réutilisé dans le détail réservation, la page Formules et le board Terrain.
+// Réutilisé dans le détail réservation et la page Formules.
 function renderFormulaActivityChecklist(r, opts = {}) {
   if (typeof reservationHasFormulaActivities === 'function' && !reservationHasFormulaActivities(r)) return '';
   const summary = getFormulaActivityProgressSummary(r);
   if (!summary.total) return '';
   const pct = Math.round((summary.done / summary.total) * 100);
-  const rows = summary.items.map(item => {
-    const time = item.startTime ? `${escapeHtml(item.startTime)}${item.endTime ? ' : ' + escapeHtml(item.endTime) : ''}` : '';
+  const items = sortFormulaActivityItems(summary.items);
+  const rows = items.map(item => {
+    const time = item.startTime ? `${escapeHtml(item.startTime)}${item.endTime ? '-' + escapeHtml(item.endTime) : ''}` : '';
+    const phase = getFormulaActivityPhase(item, r);
     const meta = item.done
       ? [item.by ? `par ${escapeHtml(item.by)}` : '', formatActivityDoneTime(item.doneAt)].filter(Boolean).join(' · ')
       : '';
-    return `<button type="button" class="activity-check-row${item.done ? ' is-done' : ''}" data-pl-focus="fiche.activite.${escapeHtml(item.key)}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
+    return `<button type="button" class="activity-check-row is-${phase}" data-pl-focus="fiche.activite.${escapeHtml(item.key)}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
       <span class="activity-check-box" aria-hidden="true">${item.done ? ACTIVITY_CHECK_SVG : ''}</span>
       <span class="activity-check-icon-wrap" aria-hidden="true">${renderActivityIcon(item.activityId)}</span>
       <span class="activity-check-main">
         <span class="activity-check-label">${escapeHtml(item.label)}</span>
         ${time ? `<span class="activity-check-time">${time}</span>` : ''}
       </span>
-      <span class="activity-check-state">${item.done ? (meta || 'Fait') : 'À faire'}</span>
+      <span class="activity-check-state">${item.done ? (meta || 'Fait') : FORMULA_ACTIVITY_PHASE_LABELS[phase]}</span>
     </button>`;
   }).join('');
   // opts.bare : sans en-tête (utilisé dans la carte Formules qui porte déjà nom + count).
@@ -23054,7 +23231,7 @@ function renderFormulaActivityChecklist(r, opts = {}) {
   // quand elle est faite. A zero, la jauge continue n etait qu une bande
   // grise vide au-dessus de la liste. Au-dela de huit, la jauge continue.
   const jauge = summary.total <= 8
-    ? `<div class="activity-check-bar is-seg" aria-hidden="true">${summary.items.map(item => `<span class="${item.done ? 'on' : ''}"></span>`).join('')}</div>`
+    ? `<div class="activity-check-bar is-seg" aria-hidden="true">${items.map(item => `<span class="${item.done ? 'on' : ''}"></span>`).join('')}</div>`
     : `<div class="activity-check-bar" aria-hidden="true"><span style="width:${pct}%"></span></div>`;
   return `<div class="info-block activity-check-block${summary.allDone ? ' all-done' : ''}${opts.bare ? ' is-bare' : ''}">
     ${head}
@@ -27935,8 +28112,10 @@ setInterval(() => {
   // Demandes sur mesure : le compte a rebours de la reponse promise.
   tickStaffRequestDues();
   // Terrain : « dans 25 min » et le passage d une colonne a l autre suivent
-  // l heure, pas seulement les donnees. Aucune animation d entree au tic.
-  if (isStaffUtilityActive() && getStaffMenuPage() === 'arrivals') renderStaffUtilityPage();
+  // l heure, pas seulement les donnees. Formules : une activite passe de
+  // « En cours » a « Non coché » quand son heure finit. Aucune animation
+  // d entree au tic.
+  if (isStaffUtilityActive() && ['arrivals', 'formules'].includes(getStaffMenuPage())) renderStaffUtilityPage();
   // Accueil : « En ce moment » suit l heure (un groupe passe en retard, un
   // autre finit sa partie) sans attendre qu une donnee change.
   if (isStaffDashboardActive()) renderStaffDashboard();

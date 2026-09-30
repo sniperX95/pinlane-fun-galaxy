@@ -1858,15 +1858,26 @@ button.staff-date-label:focus-visible,
 .activity-check-row.is-done .activity-check-box { background: var(--accent); border-color: var(--accent); }
 .activity-check-row.is-done .activity-check-label { text-decoration: line-through; text-decoration-color: var(--line-strong); }
 .activity-check-row.is-done .activity-check-state { color: var(--accent-strong); }
+/* Pas cochee alors que l activite est finie : a verifier. En cours : ou le
+   groupe devrait etre. A venir : discret, l heure suffit. */
+.activity-check-row.is-missed .activity-check-state { color: var(--warning); }
+.activity-check-row.is-live { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.activity-check-row.is-live .activity-check-state { color: var(--accent-strong); }
+.activity-check-row.is-upcoming .activity-check-state { color: var(--faint); font-weight: 600; }
 
 /* Page « Formules » : cartes de suivi */
-.formules-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4); }
+/* align-items: start : une carte de quatre activites ne s etire plus a la
+   hauteur de sa voisine de cinq (un vide en bas de carte, sans raison). */
+.formules-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4); align-items: start; }
 .formules-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); padding: var(--space-4); display: flex; flex-direction: column; gap: 14px; }
 .formules-card.all-done { box-shadow: inset 0 0 0 1px var(--accent); }
 .formules-card-head { display: flex; align-items: center; gap: 12px; }
-.formules-card-time { flex: 0 0 auto; text-align: center; min-width: 56px; }
+.formules-card-time { flex: 0 0 auto; min-width: 48px; font-variant-numeric: tabular-nums; }
 .formules-card-time strong { display: block; font-size: 16px; font-weight: 700; color: var(--text); }
-.formules-card-time span { font-size: 11px; color: var(--muted); }
+.formules-card-time span { display: block; font-size: 12px; color: var(--muted); }
+.formules-card.is-compact { padding: 12px var(--space-4); }
+.formules-card.is-compact.all-done { box-shadow: none; }
+.formules-board.is-compact { gap: var(--space-2); }
 .formules-card-id { flex: 1 1 auto; min-width: 0; }
 /* Le nom du groupe est ce qu on cherche sur la carte : il prend deux lignes
    avant de ceder, au lieu de « Anniversaire L... » sur une carte de 350 px. */
@@ -1877,7 +1888,7 @@ button.staff-date-label:focus-visible,
   border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--subtle); color: var(--text); cursor: pointer;
 }
 .formules-card-open:hover { border-color: var(--accent); background: var(--surface); }
-.formules-card .activity-check-block { padding: 0; border: 0; background: transparent; }
+.formules-card .activity-check-block { padding: 0; border: 0; background: transparent; margin-bottom: 0; }
 .formules-card-empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
 @media (max-width: 640px) { .formules-board { grid-template-columns: 1fr; } }
 .formules-group { margin-bottom: var(--space-6); }
@@ -5693,7 +5704,9 @@ button.dash-state:focus-visible { outline: 2px solid var(--accent); outline-offs
 .dash-now-cell:hover { background: var(--subtle); }
 .dash-now-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .dash-now-label { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; color: var(--muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
-.dash-now-dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--line-strong); }
+/* --faint et pas --line-strong : le point est un repere d etat (3:1 exige
+   pour un objet graphique), --line-strong fait 1,41:1 sur blanc. */
+.dash-now-dot { flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--faint); }
 .dash-now-cell.tone-ok .dash-now-dot { background: var(--success); }
 .dash-now-cell.tone-important .dash-now-dot { background: var(--warning); }
 .dash-now-cell.tone-critical .dash-now-dot { background: var(--danger); }
@@ -6115,11 +6128,12 @@ body.dashboard-detail-open { overflow: hidden; }
 .utility-res-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
 .utility-res-actions .utility-action { min-height: 28px; padding: 0 10px; font-size: 12px; }
 
-/* TERRAIN (2026-09-25) : trois colonnes EXCLUSIVES, dans l ordre du service.
-   Une reservation n est que dans une colonne ; elle passe a la suivante quand
-   le comptoir clique Arrive puis Paye, ou quand l heure avance. La pastille de
-   chaque colonne dit le moment (neutre, en direct, a traiter), la pastille de
-   la carte dit le statut : jamais deux fois la meme information. */
+/* TERRAIN (2026-09-25, refait le 2026-09-30) : trois colonnes EXCLUSIVES,
+   dans l ordre du service. Une reservation n est que dans une colonne ; elle
+   passe a la suivante quand le comptoir clique Arrive puis Paye, ou quand
+   l heure avance. La colonne dit le moment ; la pastille de la carte ne dit
+   que ce que la colonne ne dit pas (retard, non pointe, a verifier, deja
+   paye) : jamais deux fois la meme information. */
 .terrain-board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6194,8 +6208,13 @@ body.dashboard-detail-open { overflow: hidden; }
   white-space: nowrap;
 }
 .terrain-status.tone-review { background: var(--warning-soft); color: var(--warning); }
-.terrain-status.tone-arrived { background: var(--warning-soft); color: var(--warning); }
 .terrain-status.tone-paid { background: var(--success-soft); color: var(--success); }
+/* En retard : l heure est passee et personne n a pointe l arrivee. Un aplat
+   plein, pas un contour : c est la premiere chose a traiter dans la file, et
+   la carte entiere le porte dans son bord. */
+.terrain-status.tone-late { background: var(--warning); color: var(--page); font-weight: 600; }
+.terrain-card.is-late { border-color: color-mix(in srgb, var(--warning) 55%, var(--line)); }
+.terrain-card.is-late:hover { border-color: var(--warning); }
 /* Non pointe : l heure dit que le groupe joue, le statut ne le dit pas. Un
    contour, pas un aplat : c est un ecart a verifier, pas un etat. */
 .terrain-status.tone-unmarked { background: transparent; color: var(--warning); box-shadow: inset 0 0 0 1px currentColor; }
@@ -6223,10 +6242,94 @@ body.dashboard-detail-open { overflow: hidden; }
 .terrain-card-actions { display: flex; gap: 6px; margin-left: auto; }
 .terrain-card-actions .utility-action { min-height: 28px; padding: 0 10px; font-size: 12px; }
 
+.terrain-call {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.terrain-call svg { flex: 0 0 auto; color: var(--warning); }
+.terrain-call:hover span { text-decoration: underline; }
+.terrain-call:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Ou en est le groupe : l activite prevue maintenant et la suivante, deux
+   lignes alignees sur la meme grille (legende, activite, heure). */
+.terrain-program {
+  display: grid;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--subtle);
+  font-size: 12px;
+}
+.terrain-program-step { display: grid; grid-template-columns: 68px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.terrain-program-step small { color: var(--muted); font-size: 11px; }
+/* --accent-strong et pas --accent : 11 px sur --subtle, #0070f3 fait 4,07:1
+   en clair (sous AA), #0761d1 fait 5,16:1. */
+.terrain-program-step.is-now small { color: var(--accent-strong); font-weight: 600; }
+.terrain-program-step strong { font-weight: 500; overflow-wrap: anywhere; }
+.terrain-program-step span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Les arrivees au-dela de l heure qui vient : une liste, pas des cartes. */
+.terrain-subhead {
+  margin: var(--space-2) 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+.terrain-rows {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+.terrain-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  align-items: start;
+  padding: 8px 12px;
+}
+.terrain-row + .terrain-row { border-top: 1px solid var(--line); }
+.terrain-row-time { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; line-height: 18px; }
+.terrain-row-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.terrain-row-name { font-size: 13px; font-weight: 600; line-height: 18px; overflow-wrap: anywhere; }
+.terrain-row-facts { color: var(--muted); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.terrain-row-main:hover .terrain-row-name { text-decoration: underline; }
+.terrain-row-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.terrain-row-marks { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.terrain-row-marks .pl-price-adjusted { padding: 1px 8px; border-radius: var(--radius-full); font-size: 11px; line-height: 16px; }
+.terrain-row .res-special-request { grid-column: 2 / -1; margin-top: 2px; }
+
 /* Sous 1180 px, trois colonnes laissent moins de 110 px au nom du client :
-   elles s empilent, toujours dans l ordre du service. */
+   elles s empilent. « À clôturer » passe alors devant quand il y a de
+   l argent a encaisser : empilee dans l ordre du service, elle attendait sous
+   toutes les arrivees de la journee. */
 @media (max-width: 1180px) {
   .terrain-board { grid-template-columns: 1fr; }
+  .terrain-column.is-closing.has-items { order: -1; }
 }
 
 /* Entree des pages utilitaires : une fois par navigation (classe posee par

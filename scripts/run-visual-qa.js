@@ -958,9 +958,11 @@ async function collectIssues(page, scopeLabel) {
       '.reservations-day',
       '.terrain-board',
       '.terrain-card',
+      '.terrain-row',
+      '.terrain-program',
       '.dash-kpi',
       '.dash-card',
-      '.dash-status-strip',
+      '.dash-now',
       // « À venir » : la liste dense qui a remplacé les cartes dossier le
       // 2026-08-13. `.groups-page` et `.groups-toolbar-card` ne sont plus
       // rendus par aucun chemin, ils sortent de la surveillance.
@@ -1357,11 +1359,17 @@ async function main() {
 
     // ---- Alertes dashboard ACTIONNABLES : chaque alerte mène à une résolution
     // réelle (bouton qui agit) et se résorbe automatiquement après action.
+    // Sur un jour OUVERT PASSE : depuis le 2026-09-30, « Paiements non soldés »
+    // ne vit que sur une date passee (le jour meme, l argent des groupes finis
+    // passe par le bandeau « En ce moment », et un groupe pas encore venu n est
+    // pas un paiement a faire). Sur aujourd hui, le signal dependrait de
+    // l heure du run.
     await page.evaluate(() => {
-      let d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+      const today = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+      let d = today;
       if (typeof getSchedule === 'function' && typeof parseLocalDate === 'function') {
-        for (let offset = 0; offset <= 13; offset += 1) {
-          const probe = parseLocalDate(d.slice(0, 10));
+        for (let offset = -1; offset >= -14; offset -= 1) {
+          const probe = parseLocalDate(today.slice(0, 10));
           probe.setDate(probe.getDate() + offset);
           const iso = `${probe.getFullYear()}-${String(probe.getMonth() + 1).padStart(2, '0')}-${String(probe.getDate()).padStart(2, '0')}`;
           if (getSchedule(iso, state.isHolidayMode)) { d = iso; break; }

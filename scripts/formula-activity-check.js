@@ -135,6 +135,11 @@ async function main() {
   const errs = [];
   page.on('console', msg => { if (msg.type() === 'error') errs.push('CONSOLE: ' + msg.text()); });
   try {
+    // Horloge figee a midi le jour des formules (2026-07-18) : les deux
+    // formules (14:50 et 16:00) sont a venir, donc leurs cases sont sur la
+    // page Formules. Avec l horloge reelle, cette date passee les rendait
+    // « terminées » et compactes.
+    await page.clock.install({ time: new Date('2026-07-18T12:00:00') });
     await installMock(page);
     await page.goto(`${BASE_URL}/?v=formula-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
@@ -194,7 +199,7 @@ async function main() {
     }));
     ok(detail0.rows === 5, `checklist affichée dans le détail (${detail0.rows} lignes)`);
     ok(detail0.done === 0, 'aucune activité cochée au départ');
-    // clic sur la 2e ligne (Bowling ; l'ordre suit la timeline : minigolf, bowling, laser1, laser2, boissons)
+    // clic sur la ligne Bowling (l'ordre suit les heures du programme : minigolf, boissons, bowling, laser1, laser2)
     const clicked = await page.evaluate(async () => {
       const rows = [...document.querySelectorAll('#posOverlay .activity-check-row')];
       const target = rows.find(r => /Bowling/i.test(r.textContent)) || rows[1];

@@ -61,7 +61,7 @@ const MUTATIONS = {
   vide: ['staff-pages-v2.js', "        </div>`\n      : '';", "        </div>`\n      : '<div class=\"pv2-price-stats\">Aucune réservation liée</div>';", '[D] une carte sans reservation reste muette'],
   primaire: ['staff-pages-v2.js', '<button type="button" class="pv2-btn sm" data-pev-edit="${escJs(view.sourceId)}"', '<button type="button" class="pv2-btn primary" data-pev-edit="${escJs(view.sourceId)}"', '[D] un seul bouton principal'],
   zero: ['staff-pages-v2.js', " : 'Aucune réservation'}</small>", " : `${dayAgg.count} résa · ${dayAgg.pax} joueurs`}</small>", '[E] le jour vide le dit en mots'],
-  formulesvide: ['app-main.js', "      panelSubtitle: formuleRows.length ? `", "      panelSubtitle: true ? `", '[F] Formules vide sans compteur a zero'],
+  formulesvide: ['app-main.js', '    const summary = formuleRows.length ? [', '    const summary = true ? [', '[F] Formules vide sans compteur a zero'],
   appel: ['staff-pages-v2.js', "    if (voitHistorique && typeof ensureStaffClientData === 'function') ensureStaffClientData();", "    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();", '[H] sans droit sur l historique, Tarifs ne l appelle pas'],
   tuiles: ['staff-pages-v2.js', '        ${!voitHistorique\n', '        ${false\n', '[H] et ses tuiles disent que l historique n est pas accessible'],
   utc: ['app-main.js', 'd.setDate(d.getDate() - 30); return toLocalDateStr(d); })();', 'd.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();', '[G] la fenetre compte 30 jours'],
@@ -310,7 +310,7 @@ async function run() {
       const root = document.getElementById('staffUtilityPage');
       const vide = root.querySelector('.events-empty-state');
       return {
-        compteur: /0 formule sur la date|0\/0 activité/.test(root.textContent),
+        compteur: /(^|[^\d])0 formule|0\/0 activité|(^|[^\d])0 joueur/.test(root.textContent),
         vide: vide ? vide.textContent.replace(/\s+/g, ' ').trim() : '',
       };
     });

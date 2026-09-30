@@ -355,7 +355,7 @@ const LIRE_SURFACE = () => {
     if (el.closest('.res-c-what')) return 'planning-liste';
     if (el.closest('.laser-group-card')) return 'arene-laser';
     if (el.closest('.pv2-flow-marks')) return 'reservations-jour';
-    if (el.closest('.terrain-card')) return 'terrain';
+    if (el.closest('.terrain-card, .terrain-row')) return 'terrain';
     if (el.closest('.dashboard-detail-amount')) return 'vue-ensemble';
     if (el.closest('#adminContent')) return 'direction';
     return 'inconnue';
@@ -401,7 +401,7 @@ const LIRE_SURFACE = () => {
     const parent = el.parentElement;
     const rp = parent ? parent.getBoundingClientRect() : null;
     const cs = getComputedStyle(el);
-    const ligne = el.closest('.booking, .res-row, .laser-group-card, .pv2-flow-item, .terrain-card, .dashboard-detail-row, tr') || parent;
+    const ligne = el.closest('.booking, .res-row, .laser-group-card, .pv2-flow-item, .terrain-card, .terrain-row, .dashboard-detail-row, tr') || parent;
     const texte = (el.textContent || '').replace(/\s+/g, ' ').trim();
     const aria = el.getAttribute('aria-label') || '';
     const title = el.getAttribute('title') || '';
@@ -428,7 +428,7 @@ const LIRE_SURFACE = () => {
     ['planning-carte', '.booking .bk-flag.flag-note'],
     ['planning-liste', '.res-c-what .res-note-line'],
     ['reservations-jour', '.pv2-flow-marks .res-note-line'],
-    ['terrain', '.terrain-card .res-special-request'],
+    ['terrain', '.terrain-card .res-special-request, .terrain-row .res-special-request'],
     ['direction', '#adminContent .guest-chip.note'],
   ];
   const notes = [];
@@ -456,7 +456,7 @@ const LIRE_SURFACE = () => {
     ['planning-liste', '.res-row'],
     ['arene-laser', '.laser-group-card'],
     ['reservations-jour', '.pv2-flow-item'],
-    ['terrain', '.terrain-card'],
+    ['terrain', '.terrain-card, .terrain-row'],
     ['vue-ensemble', '.dashboard-detail-row'],
     ['direction', '#adminContent tbody tr'],
   ];

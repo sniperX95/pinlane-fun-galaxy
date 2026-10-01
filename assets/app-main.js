@@ -23277,6 +23277,22 @@ function renderGroupeAlerte(r, moment) {
   return '';
 }
 
+// LES ACTIVITES D UNE CARTE PAYEE, EN PUCES (2026-10-02, Movsar : « les
+// cartes deja payees sont moches ») : le nom seul, quatre au plus, puis
+// « +N ». Le detail (durees, pistes, tours) reste dans la fiche.
+function renderActivitesCourtes(r) {
+  const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
+  let noms = items.map(item => (typeof nomActivite === 'function' ? nomActivite(item) : item.activityId)).filter(Boolean);
+  if (!noms.length) {
+    const formule = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
+    noms = [formule ? formule.name : getReservationLabel(r)].filter(Boolean);
+  }
+  noms = [...new Set(noms)];
+  const vus = noms.slice(0, 4);
+  const reste = noms.length - vus.length;
+  return `<span class="gc-acts">${vus.map(n => `<i>${escapeHtml(n)}</i>`).join('')}${reste > 0 ? `<i class="is-plus" title="${escapeHtml(noms.slice(4).join(', '))}">+${reste}</i>` : ''}</span>`;
+}
+
 function renderReservationRow(r, moment = null, options = {}) {
   const span = moment && moment.item ? moment.item : getStaffTerrainSpan(r);
   const termine = (moment && moment.etat === 'done') || Boolean(options.compacte);
@@ -23296,7 +23312,7 @@ function renderReservationRow(r, moment = null, options = {}) {
     return `<article class="${classes}" data-res-row-id="${r.id}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'){openPos(${r.id})}">
       <div class="gc-head">
         <div class="gc-when"><b>${formatClockDisplay(span.start)}</b><small>${formatClockDisplay(span.end)}</small></div>
-        <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${options.encore ? `<b class="gc-tag is-${escapeHtml(options.encore.cle)}">${escapeHtml(options.encore.mot)}</b> · ` : ''}${escapeHtml(joueursDuDossier(r))} · ${escapeHtml(resumeGroupe(r))}${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' }) ? ` · ${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' })}` : ''}</span></div>
+        <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${options.encore ? `<b class="gc-tag is-${escapeHtml(options.encore.cle)}">${escapeHtml(options.encore.mot)}</b> · ` : ''}${escapeHtml(joueursDuDossier(r))}${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' }) ? ` · ${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' })}` : ''}</span>${renderActivitesCourtes(r)}</div>
         ${renderGroupePrix(r, moment)}
       </div>
     </article>`;

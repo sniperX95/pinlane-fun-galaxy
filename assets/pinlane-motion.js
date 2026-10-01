@@ -248,51 +248,129 @@
      change de place, rien ne s anime. Bornes : 40 cartes, et une carte qui
      saute de plus d un ecran ne glisse pas (elle s allume a l arrivee). */
   var places = Object.create(null);
-  var FLIP_MAX = 40;
+  var noeuds = Object.create(null);      // la carte de la passe precedente (pour le fantome)
+  var comptes = Object.create(null);     // le compte de chaque bandeau
+  var FLIP_MAX = 60;
+  var DUREE = 320;
+  var COURBE = 'cubic-bezier(.2,.8,.2,1)';
+  function anime(el, images, options) {
+    if (typeof el.animate !== 'function') return null;
+    try { return el.animate(images, options); } catch (e) { return null; }
+  }
+  function sectionDe(el) { var s = el && el.closest ? el.closest('.gc-section') : null; return s ? s.className.replace(/\s+(pl-\S+)/g, '') : ''; }
+  // La CIBLE d une carte partie : son nouveau bandeau s il est replie (elle y
+  // « rentre »), sinon rien (elle s efface sur place).
+  function cibleDe(liste, cle, base) {
+    var neuve = liste.querySelector('[data-res-row-id="' + cle + '"]');
+    if (!neuve) return null;
+    var section = neuve.closest('.gc-section');
+    var bandeau = section ? section.querySelector('.gc-band') : null;
+    if (!bandeau) return null;
+    var r = bandeau.getBoundingClientRect();
+    return r.width ? { x: r.left - base.left + 40, y: r.top - base.top, bandeau: bandeau } : null;
+  }
   function deplacements(racine) {
     var hote = racine && racine.querySelectorAll ? racine : document;
     var listes = hote.querySelectorAll('.gc-sections');
     for (var l = 0; l < listes.length; l += 1) {
       var liste = listes[l];
       var base = liste.getBoundingClientRect();
+      if (!base.width) continue;
       var cartes = liste.querySelectorAll('[data-res-row-id]');
       var vues = Object.create(null);
+      var vusNoeuds = Object.create(null);
+      var bandeauxTouches = [];
+      var nouvelles = [];
       for (var i = 0; i < cartes.length && i < FLIP_MAX; i += 1) {
         var carte = cartes[i];
         var cle = carte.getAttribute('data-res-row-id');
         var r = carte.getBoundingClientRect();
         if (!r.width) continue;
-        var section = carte.closest('.gc-section');
-        var ici = { x: r.left - base.left, y: r.top - base.top, s: section ? section.className : '' };
+        var ici = { x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height, s: sectionDe(carte) };
         vues[cle] = ici;
+        vusNoeuds[cle] = carte;
         var avant = places[cle];
-        if (!avant || reduit || carte.__plPlace) continue;
-        var dx = avant.x - ici.x;
-        var dy = avant.y - ici.y;
-        if (Math.abs(dx) < 3 && Math.abs(dy) < 3) continue;
+        if (reduit || carte.__plPlace) continue;
         carte.__plPlace = true;
-        var moved = avant.s !== ici.s;
-        if (Math.abs(dy) > window.innerHeight) {
-          // Un grand saut : seule la carte qui a CHANGE de categorie s allume ;
-          // celles que le depart d une autre a seulement poussees restent calmes.
-          if (avant.s === ici.s) continue;
-          carte.classList.remove('pl-arrive');
-          void carte.offsetWidth;
-          carte.classList.add('pl-arrive');
+        if (!avant) {
+          // Une carte qui apparait alors que la liste etait deja la (nouvelle
+          // reservation, carte qui sort d une section repliee) : elle se pose.
+          if (Object.keys(places).length) nouvelles.push(carte);
           continue;
         }
-        carte.style.transition = 'none';
-        carte.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-        void carte.offsetWidth;
-        carte.style.transition = 'transform 220ms cubic-bezier(.2,.8,.2,1)';
-        carte.style.transform = '';
-        (function (c, change) {
-          window.setTimeout(function () { c.style.transition = ''; if (change) c.classList.add('pl-arrive'); }, 230);
-        }(carte, moved));
+        var dx = avant.x - ici.x;
+        var dy = avant.y - ici.y;
+        var change = avant.s !== ici.s;
+        if (Math.abs(dx) < 3 && Math.abs(dy) < 3) continue;
+        if (Math.abs(dy) > window.innerHeight * 1.5) {
+          // Trop loin pour glisser : elle s allume la ou elle arrive.
+          if (change) { carte.classList.remove('pl-arrive'); void carte.offsetWidth; carte.classList.add('pl-arrive'); }
+          continue;
+        }
+        anime(carte, [{ transform: 'translate(' + dx + 'px,' + dy + 'px)' + (change ? ' scale(.97)' : '') }, { transform: 'none' }], { duration: change ? DUREE + 80 : DUREE, easing: COURBE });
+        if (change) {
+          (function (c) { window.setTimeout(function () { c.classList.add('pl-arrive'); }, DUREE + 60); }(carte));
+          var bd = carte.closest('.gc-section') ? carte.closest('.gc-section').querySelector('.gc-band') : null;
+          if (bd) bandeauxTouches.push(bd);
+        }
+      }
+      // LES CARTES PARTIES : un fantome de l ancienne carte part de son
+      // ancienne place vers son nouveau bandeau (s il est replie) et s efface.
+      // UN CHANGEMENT DE CONTEXTE N EST PAS UN MOUVEMENT : changer de jour, de
+      // filtre ou de page remplace beaucoup de cartes d un coup. Au-dela de
+      // trois parties ou arrivees, rien ne s anime (la cascade s en charge).
+      var parties = [];
+      for (var g in places) if (!vues[g]) parties.push(g);
+      var calme = parties.length > 3 || nouvelles.length > 3;
+      if (!reduit && !calme) {
+        nouvelles.forEach(function (c) { anime(c, [{ opacity: 0, transform: 'translateY(8px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: COURBE }); });
+      }
+      if (!reduit && !calme) {
+        for (var k in places) {
+          if (vues[k]) continue;
+          var vieux = noeuds[k];
+          var p = places[k];
+          if (!vieux || !p || !p.w) continue;
+          var cible = cibleDe(liste, k, base);
+          var fantome = vieux.cloneNode(true);
+          fantome.removeAttribute('data-res-row-id');
+          fantome.setAttribute('aria-hidden', 'true');
+          fantome.classList.add('pl-fantome');
+          fantome.style.cssText = 'position:absolute;left:' + p.x + 'px;top:' + p.y + 'px;width:' + p.w + 'px;height:' + p.h + 'px;margin:0;pointer-events:none;z-index:6;';
+          liste.appendChild(fantome);
+          var vers = cible
+            ? 'translate(' + (cible.x - p.x) + 'px,' + (cible.y - p.y) + 'px) scale(.35)'
+            : 'scale(.92)';
+          var a = anime(fantome, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: vers }], { duration: cible ? 460 : 260, easing: 'cubic-bezier(.4,0,.2,1)' });
+          (function (f) {
+            var fin = function () { if (f.parentNode) f.parentNode.removeChild(f); };
+            if (a) a.onfinish = fin; else fin();
+            window.setTimeout(fin, 700);
+          }(fantome));
+          if (cible && cible.bandeau) bandeauxTouches.push(cible.bandeau);
+        }
+      }
+      // LE BANDEAU QUI RECOIT s illumine une fois.
+      var bandeaux = liste.querySelectorAll('.gc-section .gc-band');
+      for (var j = 0; j < bandeaux.length; j += 1) {
+        var bandeau = bandeaux[j];
+        var cleB = sectionDe(bandeau);
+        var n = Number((bandeau.querySelector('.count') || {}).textContent) || 0;
+        if (comptes[cleB] !== undefined && n > comptes[cleB]) bandeauxTouches.push(bandeau);
+        comptes[cleB] = n;
+      }
+      if (!reduit) {
+        var deja = [];
+        bandeauxTouches.forEach(function (bd) {
+          if (deja.indexOf(bd) >= 0) return;
+          deja.push(bd);
+          anime(bd, [{ transform: 'scale(1)', filter: 'brightness(1)' }, { transform: 'scale(1.012)', filter: 'brightness(1.35)' }, { transform: 'scale(1)', filter: 'brightness(1)' }], { duration: 520, delay: 140, easing: 'ease-out' });
+        });
       }
       // Seules les cartes VUES a ce passage gardent une place : une carte
-      // cachee (depliant ferme, autre page) repart de zero, sans glisser.
+      // cachee (depliant ferme, autre page) repart de zero.
       places = vues;
+      noeuds = vusNoeuds;
     }
   }
 

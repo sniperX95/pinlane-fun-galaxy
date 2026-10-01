@@ -12491,12 +12491,47 @@ function getStaffFormulaTimedItems(reservation) {
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
+// LE TEMPS LIBRE QUI DEPASSE LE PLAN (2026-10-02, Movsar : « l heure de
+// sortie affichee sous l heure d arrivee est fausse »). La fin s arretait au
+// dernier bloc a heure : un groupe bowling 16:00-17:00 + minigolf 45 min +
+// billard 2 h + arcades « sortait » a 17:00. C est la regle du moteur, pas une
+// copie inventee (api/public-availability mesureDeVisite) : les activites
+// libres (ni a heure, ni a la journee, ni offertes pendant une attente) se
+// jouent d abord dans les trous entre les blocs, le reste apres le plan.
+function getVisiteLibreApres(reservation, windows) {
+  const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
+  const libres = items.filter(item => item && item.planned === false && !item.waitOffer && !ligneALaJournee(item));
+  const minutes = libres.reduce((total, item) => total + Math.max(0, Math.round(Number(item.minutes) || 0)), 0);
+  if (!minutes) return 0;
+  // Les trous entre les blocs du groupe (intersticesDuGroupe du moteur).
+  const intervalles = (windows || [])
+    .map(w => ({ debut: Math.round(Number(w.start) * 60), fin: Math.round(Number(w.end) * 60) }))
+    .filter(i => Number.isFinite(i.debut) && Number.isFinite(i.fin) && i.fin > i.debut)
+    .sort((a, b) => a.debut - b.debut);
+  let trous = 0;
+  let finCourante = null;
+  intervalles.forEach(i => {
+    if (finCourante !== null && i.debut > finCourante) trous += i.debut - finCourante;
+    finCourante = finCourante === null ? i.fin : Math.max(finCourante, i.fin);
+  });
+  return Math.max(0, minutes - trous) / 60;
+}
+
 function getStaffTerrainSpan(reservation) {
   const windows = getStaffResourceWindows(reservation, 'all');
   const items = getStaffFormulaTimedItems(reservation);
   const starts = [...windows.map(window => Number(window.start)), ...items.map(item => item.start)];
   const ends = [...windows.map(window => Number(window.end)), ...items.map(item => item.end)];
-  if (starts.length) return { start: Math.min(...starts), end: Math.max(...ends) };
+  if (starts.length) {
+    // La fin du PLAN porte aussi les parties de laser encore sans heure, jouees
+    // a la suite (laserPassPlan.followOnMinutes) ; la marge du staff n est pas
+    // du temps de visite.
+    const plan = reservation && reservation.opsPlan;
+    const marge = Math.max(0, Number(plan && plan.bufferMinutes) || 0) / 60;
+    const finPlan = plan && typeof plan.endTime === 'string' && /^\d{1,2}:\d{2}/.test(plan.endTime) ? timeToNum(plan.endTime) - marge : 0;
+    const finBlocs = Math.max(...ends, finPlan > Math.max(...ends) && (plan.laserPassPlan?.pendingPasses || []).length ? finPlan : 0);
+    return { start: Math.min(...starts), end: finBlocs + getVisiteLibreApres(reservation, windows) };
+  }
   const start = timeToNum(reservation.startTime || '00:00');
   // UNE VISITE SANS PISTE DURE LE TEMPS DE SES ACTIVITES (minigolf 45 min +
   // Fun Run 2 × 30 min = 1h45), jamais la demi-heure par defaut du dossier :
@@ -12510,7 +12545,10 @@ function getStaffTerrainPhase(reservation, span, context) {
   const status = reservation.status || 'pending';
   if (context.when === 'future') return 'upcoming';
   if (context.when === 'past' || span.end <= context.now || groupeToutFait(reservation)) return status === 'paid' ? 'done' : 'closing';
-  if (status === 'arrived' || span.start <= context.now) return 'onsite';
+  // PAYE = ARRIVE (2026-10-02, Movsar : « s ils ont paye c est qu ils sont
+  // arrives aussi, le paiement est que sur place ») : un groupe paye n est
+  // jamais « À venir ».
+  if (status === 'arrived' || status === 'paid' || span.start <= context.now) return 'onsite';
   return 'upcoming';
 }
 
@@ -23323,34 +23361,75 @@ function renderReservationSection(statusKey, title, subtitle, reservations, mome
     if (statusKey === 'onsite' || statusKey === 'closing') return span(a).end - span(b).end || span(a).start - span(b).start;
     return span(a).start - span(b).start;
   });
-  // UNE CLE DE CASCADE PAR SECTION, jamais une clé partagée : la cascade
-  // d entree ne rejoue que sur une liste qui a reellement change (2026-08-26,
-  // « on VOIT que ca rafraichit »). Le sous-titre vit dans l infobulle.
+  // LES CATEGORIES SE VOIENT (2026-10-02, Movsar : « categorisation moche »,
+  // « un beau truc pour categoriser par heure, par chose cloturee »). Chaque
+  // section porte un bandeau : son icone et sa couleur, son titre, son compte,
+  // et UNE ligne qui se recompose avec les cartes (joueurs, argent).
+  const joueurs = ordered.reduce((n, r) => n + (Number(r.pax) || 0), 0);
+  const montant = ordered.reduce((n, r) => n + (Number(r.price) || 0), 0);
+  const resume = {
+    late: `${formatStaffTerrainCount(joueurs, 'joueur')} attendu${joueurs > 1 ? 's' : ''}`,
+    upcoming: `${formatStaffTerrainCount(joueurs, 'joueur')}`,
+    onsite: `${formatStaffTerrainCount(joueurs, 'joueur')} sur place`,
+    closing: montant > 0 ? `${formatMoney(montant)} à encaisser` : `${formatStaffTerrainCount(joueurs, 'joueur')}`,
+    done: montant > 0 ? `${formatMoney(montant)} encaissés` : '',
+  }[statusKey] || '';
+  const tete = (balise, extra = '') => `<${balise} class="res-section-head gc-band" title="${escapeHtml(subtitle)}">
+      <span class="gc-band-icon" aria-hidden="true">${GC_BAND_ICONS[statusKey] || ''}</span>
+      <span class="label">${title}</span>
+      <span class="count" data-pl-num="liste.section.${escapeHtml(statusKey)}">${ordered.length}</span>
+      ${resume ? `<span class="gc-band-sum">${escapeHtml(resume)}</span>` : ''}
+      ${extra}
+    </${balise}>`;
+  const carte = (r, opts) => renderReservationRow(r, moments ? moments.get(String(r.id)) : null, opts);
   if (options.repliable) {
     // LES DOSSIERS DEJA PAYES, TOUT EN BAS ET REPLIES (2026-10-01, Movsar :
     // « ceux qui sont payes, encaisses, tu peux les mettre tout en bas pour ne
-    // voir plus que ceux qui restent »). Une ligne par groupe ; l en-tete dit
-    // combien jouent encore (a venir ou sur place : le Terrain les lance).
+    // voir plus que ceux qui restent »). Paye = arrive (le paiement ne se fait
+    // que sur place, 2026-10-02) : un paye joue encore (« Sur place ») ou a fini.
     const encore = ordered.filter(r => { const m = moments ? moments.get(String(r.id)) : null; return m && m.etat !== 'done'; }).length;
-    const motDe = r => { const m = moments ? moments.get(String(r.id)) : null; if (!m || m.etat === 'done') return null; return m.etat === 'onsite' ? { cle: 'onsite', mot: 'Sur place' } : { cle: 'upcoming', mot: 'À venir' }; };
+    const motDe = r => { const m = moments ? moments.get(String(r.id)) : null; if (!m || m.etat === 'done') return null; return { cle: 'onsite', mot: 'Sur place' }; };
     return `<details class="res-section gc-section ${statusKey} is-repliable"${options.ouvert ? ' open' : ''} ontoggle="state.staffPayeesOuvertes = this.open">
-      <summary class="res-section-head" title="${escapeHtml(subtitle)}">
-        <span class="label">${title}</span>
-        <span class="count">${ordered.length}</span>
-        ${encore ? `<span class="gc-section-note">dont ${encore} encore à venir ou sur place</span>` : ''}
-        <span class="gc-section-toggle" aria-hidden="true"></span>
-      </summary>
-      <div class="res-dense-list gc-grid is-compacte" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(r => renderReservationRow(r, moments ? moments.get(String(r.id)) : null, { compacte: true, encore: motDe(r) })).join('')}</div>
+      ${tete('summary', `${encore ? `<span class="gc-section-note">dont ${encore} encore sur place</span>` : ''}<span class="gc-section-toggle" aria-hidden="true"></span>`)}
+      <div class="res-dense-list gc-grid is-compacte" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(r => carte(r, { compacte: true, encore: motDe(r) })).join('')}</div>
     </details>`;
   }
+  // « À VENIR » PAR HEURE, QUAND IL Y A DU MONDE (Movsar : « quand y aura une
+  // trentaine de reservations »). A partir de 7 groupes sur au moins deux
+  // heures, une rangee par heure : l heure a gauche, ses groupes a droite. En
+  // dessous, la grille seule range deja tout par heure sans trous.
+  const heureDe = r => Math.floor(span(r).start);
+  const heures = [...new Set(ordered.map(heureDe))];
+  const parHeure = statusKey === 'upcoming' && ordered.length >= 7 && heures.length > 1;
+  if (parHeure) {
+    const rangees = heures.map(h => {
+      const groupe = ordered.filter(r => heureDe(r) === h);
+      const pax = groupe.reduce((t, r) => t + (Number(r.pax) || 0), 0);
+      return `<div class="gc-hour-row">
+        <div class="gc-hour"><span>${String(h).padStart(2, '0')}h</span><small><span>${formatStaffTerrainCount(groupe.length, 'groupe')}</span><span>${formatStaffTerrainCount(pax, 'joueur')}</span></small></div>
+        <div class="res-dense-list gc-grid" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}.${h}">${groupe.map(r => carte(r)).join('')}</div>
+      </div>`;
+    }).join('');
+    return `<section class="res-section gc-section ${statusKey} is-par-heure">
+    ${tete('div')}
+    <div class="gc-hours">${rangees}</div>
+  </section>`;
+  }
+  const corps = ordered.map(r => carte(r)).join('');
   return `<section class="res-section gc-section ${statusKey}">
-    <div class="res-section-head" title="${escapeHtml(subtitle)}">
-      <span class="label">${title}</span>
-      <span class="count">${ordered.length}</span>
-    </div>
-    ${ordered.length ? `<div class="res-dense-list gc-grid" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(r => renderReservationRow(r, moments ? moments.get(String(r.id)) : null)).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
+    ${tete('div')}
+    ${ordered.length ? `<div class="res-dense-list gc-grid" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${corps}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
   </section>`;
 }
+
+// Les icones des bandeaux : une forme par categorie (jamais la couleur seule).
+const GC_BAND_ICONS = {
+  late: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/></svg>',
+  upcoming: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  onsite: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  closing: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
+  done: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+};
 
 function renderTable() {
   const view = getStaffResourceView();

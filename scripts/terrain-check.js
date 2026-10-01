@@ -80,11 +80,13 @@ const MUTATIONS = {
   pointe: ['app-main.js', "  if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };", '', '[A] « Non pointé »'],
   verifier: ['app-main.js', "  if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };", '', '[A] « À vérifier » et « Payé »'],
   repete: ['app-main.js', "  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };\n  return null;", "  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };\n  return { label: getStaffReservationStatusLabel(reservation.status || 'pending'), tone: 'confirmed' };", '[A] aucune pastille ne repete la colonne'],
-  paye: ['app-main.js', "  if ((phase === 'upcoming' || phase === 'late') && status !== 'paid') {", "  if ((phase === 'upcoming' || phase === 'late')) {", '[A] un dossier deja paye ne propose pas « Arrivé »'],
+  // Paye = arrive (2026-10-02) : sans la regle, le paye avant son heure
+  // retombe dans « À venir ».
+  paye: ['app-main.js', "  if (status === 'arrived' || status === 'paid' || span.start <= context.now) return 'onsite';", "  if (status === 'arrived' || span.start <= context.now) return 'onsite';", '[A] chaque dossier est dans sa colonne'],
   plustard: ['app-main.js', '  const soon = today ? [...onsite.due, ...board.upcoming.filter(item => item.start <= horizon)] : [];', '  const soon = today ? [...onsite.due, ...board.upcoming] : [];', '[A] au-dela de l heure qui vient, une ligne'],
   montant: ['app-main.js', '  const due = board.closing.reduce(', '  const due = [...board.closing, ...onsite.present].reduce(', '[A] chaque colonne compte'],
   mobile: ['pinlane-staff.css', '  .terrain-column.is-closing.has-items { order: -1; }\n', '', '[A] au telephone'],
-  geste: ['app-main.js', "  if (status === 'arrived' || span.start <= context.now) return 'onsite';", "  if (span.start <= context.now) return 'onsite';", '[B] Arrivé fait passer la carte dans Sur place'],
+  geste: ['app-main.js', "  if (status === 'arrived' || status === 'paid' || span.start <= context.now) return 'onsite';", "  if (status === 'paid' || span.start <= context.now) return 'onsite';", '[B] Arrivé fait passer la carte dans Sur place'],
   entree: ['app-main.js', '  const arriving = active && (pages ? pages.lastPage !== model.page : !root.firstElementChild);', '  const arriving = active;', '[B] l entree ne rejoue pas au re-rendu'],
   visite: ['app-main.js', "    if (window.PinlaneV2) window.PinlaneV2.lastPage = '';\n", '', '[B] l entree joue quand on arrive sur la page'],
   tic: ['app-main.js', "  if (isStaffUtilityActive() && ['arrivals', 'formules'].includes(getStaffMenuPage())) renderStaffUtilityPage();\n", '', '[C] l heure fait avancer les cartes'],
@@ -343,7 +345,9 @@ async function main() {
       const [avenir, surPlace, cloturer] = va.colonnes;
       ok(va.page === 'arrivals' && va.h1 === 'Terrain', '[A] MONTAGE : la page Terrain est ouverte', `${va.page} « ${va.h1} »`);
       ok(va.colonnes.map((c) => c.titre).join(' | ') === 'À venir | Sur place | À clôturer', '[A] trois colonnes, dans l ordre du service', va.colonnes.map((c) => c.titre).join(' | '));
-      ok(ids(avenir).join(',') === '7104,7105,7106,7109,7107' && ids(surPlace).join(',') === '7103' && ids(cloturer).join(',') === '7108,7102',
+      // PAYE = ARRIVE (2026-10-02, Movsar : « le paiement est que sur place ») :
+      // 7106, paye avant son heure, est « Sur place », plus « À venir ».
+      ok(ids(avenir).join(',') === '7104,7105,7109,7107' && ids(surPlace).join(',') === '7103,7106' && ids(cloturer).join(',') === '7108,7102',
         '[A] chaque dossier est dans sa colonne, dans l ordre du service', `a venir ${ids(avenir)} | sur place ${ids(surPlace)} | a cloturer ${ids(cloturer)}`);
       const tous = va.colonnes.flatMap(ids);
       ok(tous.length === 8 && new Set(tous).size === 8 && !tous.includes('7101'),
@@ -366,14 +370,14 @@ async function main() {
       ok(gestes(7104) === 'Détail+Arrivé' && gestes(7105) === 'Détail+Arrivé' && gestes(7109) === 'Détail+Arrivé' && gestes(7103) === PAYER && gestes(7102) === PAYER && gestes(7108) === PAYER,
         '[A] les gestes suivent la colonne', ['7104', '7105', '7103', '7102', '7108'].map((id) => `${id} ${gestes(id)}`).join(' | '));
       const quand = (id) => (carte(va, id) || {}).quand;
-      ok(quand(7105) === 'dans 30 min' && quand(7106) === 'dans 45 min' && quand(7109) === 'dans 1 h' && quand(7103) === 'fin dans 30 min' && quand(7102) === 'fini depuis 30 min' && quand(7108) === 'fini depuis 1 h 30',
+      ok(quand(7105) === 'dans 30 min' && quand(7106) === 'commence dans 45 min' && quand(7109) === 'dans 1 h' && quand(7103) === 'fin dans 30 min' && quand(7102) === 'fini depuis 30 min' && quand(7108) === 'fini depuis 1 h 30',
         '[A] le temps est dit relativement a maintenant', ['7105', '7106', '7109', '7103', '7102', '7108'].map(quand).join(' | '));
       const renard = carte(va, 7107) || {};
-      ok(renard.forme === 'ligne' && avenir.sousTitre === 'Après 16:30' && avenir.cartes.filter((k) => k.forme === 'carte').map((k) => k.id).join(',') === '7104,7105,7106,7109',
+      ok(renard.forme === 'ligne' && avenir.sousTitre === 'Après 16:30' && avenir.cartes.filter((k) => k.forme === 'carte').map((k) => k.id).join(',') === '7104,7105,7109',
         '[A] au-dela de l heure qui vient, une ligne sous « Après 16:30 », les autres en cartes', `7107 ${renard.forme} · « ${avenir.sousTitre} »`);
       ok(/^Deux enfants/.test(renard.note || '') && (renard.statuts || []).join() === 'À vérifier' && (renard.gestes || []).length === 0,
         '[A] la ligne garde la consigne et la validation en attente, sans geste', `note « ${renard.note} » · ${(renard.gestes || []).length} geste(s)`);
-      ok(avenir.compte === '5' && avenir.detail === '30 joueurs' && surPlace.compte === '1' && surPlace.detail === '10 joueurs' && cloturer.compte === '2' && /^108\s*€ non encaissés$/.test(cloturer.detail || ''),
+      ok(avenir.compte === '4' && avenir.detail === '23 joueurs' && surPlace.compte === '2' && surPlace.detail === '17 joueurs' && cloturer.compte === '2' && /^108\s*€ non encaissés$/.test(cloturer.detail || ''),
         '[A] chaque colonne compte ses dossiers et ses joueurs, la derniere ce qui n est pas encaisse', `${avenir.compte}/${avenir.detail} | ${surPlace.compte}/${surPlace.detail} | ${cloturer.compte}/${cloturer.detail}`);
       ok(va.sousTitre === '9 réservations · 53 joueurs · 1 terminée et payée', '[A] le sous-titre compte la journee', `« ${va.sousTitre} »`);
       const lucas = carte(va, 7103) || {};

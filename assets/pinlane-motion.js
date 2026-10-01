@@ -237,6 +237,86 @@
     return true;
   }
 
+  /* ---- LES CARTES QUI CHANGENT DE PLACE (2026-10-02) ---------------------
+     Movsar : « aucune animation, mais pas lourd, faut pas que ca nique la
+     fluidite quand on coche, decoche, quand une carte se place ». Une carte
+     cochee « Tout est fait » passe en « À clôturer », une carte payee descend :
+     elle GLISSE de son ancienne place a la nouvelle (FLIP : transform seul,
+     220 ms), au lieu de disparaitre et reapparaitre.
+     Les positions se memorisent par CLE (`data-res-row-id`) et RELATIVEMENT a
+     la liste : faire defiler la page ne fait rien bouger. Au poll, rien n a
+     change de place, rien ne s anime. Bornes : 40 cartes, et une carte qui
+     saute de plus d un ecran ne glisse pas (elle s allume a l arrivee). */
+  var places = Object.create(null);
+  var FLIP_MAX = 40;
+  function deplacements(racine) {
+    var hote = racine && racine.querySelectorAll ? racine : document;
+    var listes = hote.querySelectorAll('.gc-sections');
+    for (var l = 0; l < listes.length; l += 1) {
+      var liste = listes[l];
+      var base = liste.getBoundingClientRect();
+      var cartes = liste.querySelectorAll('[data-res-row-id]');
+      var vues = Object.create(null);
+      for (var i = 0; i < cartes.length && i < FLIP_MAX; i += 1) {
+        var carte = cartes[i];
+        var cle = carte.getAttribute('data-res-row-id');
+        var r = carte.getBoundingClientRect();
+        if (!r.width) continue;
+        var section = carte.closest('.gc-section');
+        var ici = { x: r.left - base.left, y: r.top - base.top, s: section ? section.className : '' };
+        vues[cle] = ici;
+        var avant = places[cle];
+        if (!avant || reduit || carte.__plPlace) continue;
+        var dx = avant.x - ici.x;
+        var dy = avant.y - ici.y;
+        if (Math.abs(dx) < 3 && Math.abs(dy) < 3) continue;
+        carte.__plPlace = true;
+        var moved = avant.s !== ici.s;
+        if (Math.abs(dy) > window.innerHeight) {
+          // Un grand saut : seule la carte qui a CHANGE de categorie s allume ;
+          // celles que le depart d une autre a seulement poussees restent calmes.
+          if (avant.s === ici.s) continue;
+          carte.classList.remove('pl-arrive');
+          void carte.offsetWidth;
+          carte.classList.add('pl-arrive');
+          continue;
+        }
+        carte.style.transition = 'none';
+        carte.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+        void carte.offsetWidth;
+        carte.style.transition = 'transform 220ms cubic-bezier(.2,.8,.2,1)';
+        carte.style.transform = '';
+        (function (c, change) {
+          window.setTimeout(function () { c.style.transition = ''; if (change) c.classList.add('pl-arrive'); }, 230);
+        }(carte, moved));
+      }
+      // Seules les cartes VUES a ce passage gardent une place : une carte
+      // cachee (depliant ferme, autre page) repart de zero, sans glisser.
+      places = vues;
+    }
+  }
+
+  /* ---- LA COCHE QUI REPOND ----------------------------------------------
+     Une case cochee « saute » une fois (220 ms) quand son etat CHANGE, jamais
+     au rafraichissement : l etat se memorise par cle (`data-pl-focus` de la
+     case, qui est stable). */
+  var coches = Object.create(null);
+  function cochesChangees(racine) {
+    var hote = racine && racine.querySelectorAll ? racine : document;
+    var cases = hote.querySelectorAll('.gc-check[data-pl-focus], .gc-libre[data-pl-focus]');
+    for (var i = 0; i < cases.length; i += 1) {
+      var c = cases[i];
+      var cle = c.getAttribute('data-pl-focus');
+      var on = c.classList.contains('is-on') || c.classList.contains('is-fait');
+      var avant = coches[cle];
+      coches[cle] = on;
+      if (avant === undefined || avant === on || reduit) continue;
+      c.classList.remove('pl-pop');
+      void c.offsetWidth;
+      c.classList.add('pl-pop');
+    }
+  }
+
   /* ---- LE DECLENCHEUR ----------------------------------------------------
      `renderStaffData` a une demi-douzaine de sorties selon la page, et le
      fichier est edite par plusieurs sessions : y greffer des appels a la main,
@@ -257,10 +337,12 @@
     new MutationObserver(function () {
       if (arme) return;
       arme = true;
-      window.requestAnimationFrame(function () { arme = false; chiffres(document); cascade(document); });
+      window.requestAnimationFrame(function () { arme = false; chiffres(document); cascade(document); deplacements(document); cochesChangees(document); });
     }).observe(cible, { childList: true, subtree: true });
     chiffres(document);          // pose la valeur de reference sans animer
     cascade(document);
+    deplacements(document);      // pose les places de reference
+    cochesChangees(document);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observer);
   else observer();

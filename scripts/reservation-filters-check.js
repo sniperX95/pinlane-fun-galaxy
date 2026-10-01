@@ -37,7 +37,7 @@
 //   1. chaque puce rend exactement son ensemble, rien en trop, rien d'oublie
 //   2. les cas qui justifient le lot : le retard reste « A venir » avec sa
 //      pastille, l'arrivee en avance est « Sur place », le paye en cours de
-//      partie aussi, le paye d'avance reste « A venir », le fini jamais pointe
+//      partie aussi, le paye avant son heure est « Sur place » (paye = arrive, 02/10), le fini jamais pointe
 //      est « A cloturer » avec « Non pointé », y compris a la minute pile
 //   3. les quatre etats sont EXCLUSIFS deux a deux et leur union est « Tout »
 //   4. les compteurs se RECOMPOSENT et annoncent les lignes qu'ils rendent
@@ -116,7 +116,7 @@ const JEU = [
   { id: 71001, status: 'confirmed', start: '16:00', duree: 1, piste: 6, note: '', off: false, moment: 'upcoming' },
   { id: 71002, status: 'pending', start: '17:00', duree: 1, piste: 7, note: 'Gâteau à sortir', off: false, moment: 'upcoming' },
   // Paye d'avance (en ligne) : il n'est pas encore la, il reste « À venir ».
-  { id: 71003, status: 'paid', start: '18:00', duree: 1, piste: 8, note: '', off: false, moment: 'upcoming' },
+  { id: 71003, status: 'paid', start: '18:00', duree: 1, piste: 8, note: '', off: false, moment: 'onsite' },
   // Le RETARD : heure passee, jamais pointe. « À venir », marque, pas « Sur place ».
   { id: 71004, status: 'confirmed', start: '14:30', duree: 1, piste: 1, note: '', off: false, moment: 'upcoming', retard: 40 },
   { id: 71005, status: 'pending', start: '15:00', duree: 1, piste: 2, note: '', off: false, moment: 'upcoming', retard: 10 },
@@ -369,7 +369,10 @@ function controler(vue) {
   c(sansRetard.length === 0, '[2] aucune autre ligne ne porte « En retard »', sansRetard.map((r) => r.id).join(', '));
   c(dans('onsite', 71007), '[2] l arrivee pointee en AVANCE est « Sur place »');
   c(dans('onsite', 71008), '[2] le groupe qui a paye PENDANT sa partie est « Sur place »');
-  c(dans('upcoming', 71003), '[2] le groupe paye d AVANCE reste « À venir »');
+  // PAYE = ARRIVE (2026-10-02, Movsar : « s ils ont paye c est qu ils sont
+  // arrives, le paiement est que sur place ») : avant son heure, un groupe
+  // paye est « Sur place », jamais « À venir ».
+  c(dans('onsite', 71003), '[2] le groupe qui a paye avant son heure est « Sur place » (paye = arrive)');
   c(dans('closing', 71013), '[2] fini a la minute pile, il est « À clôturer »');
   JEU.filter((r) => r.nonPointe).forEach((r) => {
     c(dans('closing', r.id) && (pastilles[r.id] || {}).nonPointe, `[2] le fini jamais pointe ${r.id} est « À clôturer » avec « Non pointé »`);

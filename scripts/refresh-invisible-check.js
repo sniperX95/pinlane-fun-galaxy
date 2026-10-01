@@ -236,7 +236,15 @@ async function main() {
     });
     ok(coche.cochee, 'la case est bien cochee (le geste sert a quelque chose)');
     ok(coche.renders.pos === 1, `UN SEUL rendu de la fiche pour un clic (${coche.renders.pos}) : l echo serveur ne repeint plus`);
-    ok(coche.anim.length === 0, `aucune animation sur la coche (${coche.anim.length}${coche.anim.length ? ' : ' + detail(coche.anim) : ''})`);
+    // LA COCHE REPOND, UNE FOIS (2026-10-02, Movsar : « aucune animation »,
+    // « quand on coche, decoche »). Seul le petit saut de la case (plPop,
+    // 220 ms) est permis : au plus une fois par case qui a change (la fiche, et
+    // la meme activite sur la carte derriere). Rien d autre ne bouge, et le
+    // repos comme le poll restent a zero animation ([1] et [2]).
+    const sauts = coche.anim.filter((a) => /plPop/.test(JSON.stringify(a)));
+    const autres = coche.anim.filter((a) => !/plPop/.test(JSON.stringify(a)));
+    ok(autres.length === 0, `aucune autre animation sur la coche que le saut de la case (${autres.length}${autres.length ? ' : ' + detail(autres) : ''})`);
+    ok(sauts.length >= 1 && sauts.length <= 2, `la case cochee saute une fois (${sauts.length} saut(s) : la fiche et la carte)`);
     ok(!!avant && coche.scroll === avant.scroll, `le defilement de la fiche est conserve (${avant && avant.scroll} -> ${coche.scroll})`);
     ok(String(coche.focus || '').indexOf('fiche.activite.') === 0, `le focus reste sur la case cliquee (${coche.focus})`);
 

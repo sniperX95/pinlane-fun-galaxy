@@ -18827,3 +18827,80 @@ button.pv2-cal-cell:focus-visible {
   .pv2-cal-legende i.red { background: var(--danger); }
   .pv2-cal-legende i.amber { background: var(--warning); }
 }
+
+/* ── LES CATEGORIES DE LA LISTE (2026-10-02) ────────────────────────────────
+   Movsar : « categorisation moche », « un beau truc pour categoriser par
+   heure, par chose cloturee ». Un bandeau par categorie, sa couleur ET son
+   icone (jamais la couleur seule), le compte en pastille, une ligne de
+   resume ; la carte porte le meme filet de couleur a gauche. « À venir » se
+   coupe par heure. */
+.gc-section { --band: var(--muted); --band-soft: var(--subtle); }
+.gc-section.late { --band: var(--danger); --band-soft: var(--danger-soft); }
+.gc-section.upcoming { --band: var(--accent); --band-soft: var(--accent-soft); }
+.gc-section.onsite { --band: var(--success); --band-soft: var(--success-soft); }
+.gc-section.closing { --band: var(--warning); --band-soft: var(--warning-soft); }
+.gc-section.done { --band: var(--muted); --band-soft: var(--subtle); }
+.gc-section > .res-section-head.gc-band {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 12px; padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--band) 30%, var(--line));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--band-soft) 70%, var(--bg));
+  backdrop-filter: blur(6px);
+}
+.gc-band-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; border-radius: 50%; background: color-mix(in srgb, var(--band) 18%, transparent); color: var(--band); }
+.gc-section > .gc-band .label { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); }
+.gc-section.late > .gc-band .label { color: var(--danger); }
+.gc-section.closing > .gc-band .label { color: var(--text); }
+.gc-section > .gc-band .count { min-width: 24px; height: 22px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--band); color: var(--bg); font-family: var(--font-data); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gc-section.done > .gc-band .count { background: var(--line-strong); color: var(--text); }
+/* Le bleu de base fait 4,36:1 avec le texte clair (console-contrast) : la
+   pastille d « À venir » prend le bleu fonce. */
+.gc-section.upcoming > .gc-band .count { background: var(--accent-strong); }
+.gc-band-sum { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gc-section.closing .gc-band-sum { color: var(--warning); }
+.gc-section.is-repliable > .gc-band { cursor: pointer; }
+.gc-section.is-repliable > .gc-band .gc-section-note { margin-left: 0; }
+.gc-section.is-repliable > .gc-band .gc-band-sum + .gc-section-toggle,
+.gc-section.is-repliable > .gc-band .gc-section-toggle { margin-left: 12px; }
+.gc-section.is-repliable:not([open]) > .gc-band { margin-bottom: 0; }
+
+/* La carte porte le filet de sa categorie. */
+.gc-section .res-row.gc { box-shadow: inset 3px 0 0 var(--band); }
+.gc-section.done .res-row.gc { box-shadow: inset 3px 0 0 var(--line-strong); }
+
+/* « À venir » par heure (7 groupes et plus) : l heure a gauche, ses cartes a
+   droite, un filet entre deux heures. */
+.gc-hours { display: flex; flex-direction: column; }
+.gc-hour-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; padding: 12px 0; border-top: 1px dashed var(--line); }
+.gc-hour-row:first-child { border-top: 0; padding-top: 0; }
+.gc-hour { position: sticky; top: 64px; align-self: start; display: flex; flex-direction: column; gap: 4px; }
+.gc-hour span { font-family: var(--font-data); font-size: 20px; font-weight: 700; line-height: 1; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
+.gc-hour small { display: flex; flex-direction: column; font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+@media (max-width: 760px) {
+  .gc-hour-row { grid-template-columns: 1fr; gap: 8px; }
+  .gc-hour { position: static; flex-direction: row; align-items: baseline; gap: 8px; }
+  .gc-hour small { flex-direction: row; gap: 4px; }
+  .gc-hour small span + span::before { content: "· "; }
+}
+
+@media (max-width: 760px) {
+  .gc-section > .res-section-head.gc-band { padding: 9px 12px; gap: 8px; }
+  .gc-band-sum { font-size: 12px; }
+  .gc-section > .gc-band .label { font-size: 14px; }
+}
+
+/* ── LE MOUVEMENT, LEGER (2026-10-02, Movsar : « aucune animation, mais
+   pas lourd, faut pas que ca nique la fluidite quand on coche, decoche,
+   quand une carte se place »). Transform et opacite seulement, 160 a 240 ms,
+   et UNIQUEMENT quand quelque chose a change (pinlane-motion.js) : jamais au
+   rafraichissement du poll. */
+@keyframes plPop { 0% { transform: scale(1); } 40% { transform: scale(1.22); } 100% { transform: scale(1); } }
+.pl-pop { animation: plPop 220ms cubic-bezier(.2,.9,.3,1.2); }
+@keyframes plFlash { 0% { box-shadow: inset 3px 0 0 var(--band), 0 0 0 0 color-mix(in srgb, var(--band) 55%, transparent); } 100% { box-shadow: inset 3px 0 0 var(--band), 0 0 0 10px transparent; } }
+.res-row.gc.pl-arrive { animation: plFlash 600ms ease-out; }
+.gc-step.is-fait .gc-step-what b { transition: color 180ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .pl-pop, .res-row.gc.pl-arrive { animation: none; }
+}

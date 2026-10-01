@@ -421,10 +421,12 @@ function controler(vue) {
     c(multi.length === 0, `[6] [${cle}] aucune reservation dans deux sections`, multi.map(([id, x]) => `${id}x${x}`).join(', '));
   });
   // La section d une ligne dit son moment ; le retard a la sienne, en tete.
+  // Un dossier deja encaisse descend dans « Déjà payées » (repliee, en bas),
+  // meme s il joue encore : la liste de travail ne garde que ce qui reste.
   const fausses = [];
   (vue.all?.sections || []).forEach((s) => s.ids.forEach((id) => {
     const r = JEU.find((x) => x.id === id);
-    const attendue = r.retard ? 'late' : r.moment;
+    const attendue = r.status === 'paid' ? 'done' : r.retard ? 'late' : r.moment;
     if (s.cle !== attendue) fausses.push(`${id} dans « ${s.cle} » au lieu de « ${attendue} »`);
   }));
   c(fausses.length === 0, '[6] chaque ligne est dans la section de son moment', fausses.join(' · '));

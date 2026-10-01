@@ -14,6 +14,13 @@
   const esc = (value) => (typeof escapeHtml === 'function' ? escapeHtml(value ?? '') : String(value ?? ''));
   const escJs = (value) => (typeof escapeJsString === 'function' ? escapeJsString(String(value ?? '')) : String(value ?? '').replace(/['"\\]/g, ''));
   const money = (value) => (typeof formatMoney === 'function' ? formatMoney(value) : `${Math.round(Number(value) || 0)} €`);
+  // Les notes d un dossier sans leurs marqueurs internes : le mot du client,
+  // puis les notes de l equipe (app-main.js getReservationNotesEquipe).
+  const crmNotesTexte = (r) => {
+    if (typeof getReservationNoteText !== 'function') return String((r && r.notes) || '');
+    const equipe = typeof getReservationNotesEquipe === 'function' ? getReservationNotesEquipe(r).map((n) => `Équipe : ${n.t}`) : [];
+    return [getReservationNoteText(r), ...equipe].filter(Boolean).join(' · ');
+  };
 
   const PV2 = window.PinlaneV2 = { animatedPages: new Set(), lastPage: '' };
 
@@ -950,7 +957,7 @@
           ${r.paymentMethod ? `<div><dt>Paiement</dt><dd>${esc(r.paymentMethod)}</dd></div>` : ''}
           <div><dt>Canal</dt><dd>${r.channel === 'staff' ? 'Comptoir' : 'En ligne'}</dd></div>
           ${Array.isArray(r.extras) && r.extras.length ? `<div><dt>Extras</dt><dd>${esc(r.extras.map((e) => (e && (e.label || e.name)) || e).join(', '))}</dd></div>` : ''}
-          ${r.notes ? `<div class="crm-hist-notes"><dt>Notes</dt><dd>${esc(r.notes)}</dd></div>` : ''}
+          ${crmNotesTexte(r) ? `<div class="crm-hist-notes"><dt>Notes</dt><dd>${esc(crmNotesTexte(r))}</dd></div>` : ''}
         </div>
       </details>`;
   }

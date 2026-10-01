@@ -224,6 +224,8 @@ const lireListe = (page) => page.evaluate(() => {
       alerte: txt(c.querySelector('.gc-alert')),
       appel: c.querySelector('.gc-call') ? c.querySelector('.gc-call').getAttribute('href') : '',
       etapes: [...c.querySelectorAll('.gc-step')].map((s) => ({ heure: txt(s.querySelector('.gc-step-time')), quoi: txt(s.querySelector('.gc-step-what')), aide: txt(s.querySelector('.gc-step-state')), focus: s.classList.contains('is-focus') })),
+      // Les activites libres : une ligne de puces cochables (2026-10-01).
+      libres: [...c.querySelectorAll('.gc-step-libres .gc-libre')].map((b) => ({ nom: txt(b.querySelector('span')), fait: b.classList.contains('is-fait'), cochable: !b.disabled })),
       encadres: [...c.querySelectorAll('.gc-flag')].map((f) => ({ ton: [...f.classList].find((x) => x.startsWith('tone-')), texte: txt(f) })),
       boutons: [...c.querySelectorAll('.gc-actions button')].map((b) => txt(b)),
       termine: c.classList.contains('is-done'),
@@ -275,7 +277,12 @@ async function scenarioBlocs(browser, jour) {
     const lambda = carte(sections, 81008);
     ok(lambda && /pistes 1 à 5/.test(lambda.etapes[0].quoi) && lambda.etapes[0].aide === 'Dans 20 min', '[B] Lambda : « pistes 1 à 5 », dans 20 min', lambda && JSON.stringify(lambda.etapes[0]));
     const ardennes = carte(sections, 81005);
-    ok(ardennes && ardennes.etapes.length === 2 && ardennes.etapes.every((e) => e.heure === 'Libre' && e.aide === 'À leur rythme'), '[B] les activités libres : « Libre », « À leur rythme »', ardennes && JSON.stringify(ardennes.etapes));
+    // UNE LIGNE POUR TOUTES LES ACTIVITES LIBRES (Movsar, 2026-10-01 : « quand
+    // y aura une trentaine de reservations ca va etre super galere ») : « Libre,
+    // a leur rythme », puis une puce cochable par activite.
+    ok(ardennes && ardennes.etapes.length === 1 && ardennes.etapes[0].heure === 'Libre, à leur rythme'
+      && ardennes.libres.map((l) => l.nom).join('|') === 'Minigolf Blacklight|Arcades' && ardennes.libres.every((l) => l.cochable && !l.fait),
+      '[B] les activités libres : une ligne « Libre », une puce cochable par activité', ardennes && JSON.stringify({ etapes: ardennes.etapes, libres: ardennes.libres }));
     ok(ardennes && /Prix sur place/.test(ardennes.prix) && !/0\s*€/.test(ardennes.prix), '[B] sans montant connu : « Prix sur place », jamais « 0 € »', ardennes && ardennes.prix);
     const scouts = carte(sections, 81012);
     ok(scouts && scouts.etapes.filter((e) => /groupe \d\/2 · 20 joueurs/.test(e.quoi)).length === 2, '[B] le laser en deux groupes de 20 se lit sur deux lignes', scouts && scouts.etapes.map((e) => e.quoi).join(' | '));

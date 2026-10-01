@@ -18667,9 +18667,32 @@ button.pv2-cal-cell:focus-visible {
 }
 .gc-check.is-on { background: var(--success); border-color: var(--success); }
 .gc-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Une case vide n a pas de glyphe, mais sa couleur se mesure (console-contrast) :
-   la meme que son contour, jamais celle de son fond. */
-.gc-check:not(.is-on) { color: var(--muted); }
+/* Une case vide n a ni glyphe ni fond : seul son contour la dessine. Un fond
+   de la couleur de la carte se lisait comme un indicateur a 1:1
+   (console-contrast, regle des indicateurs d etat). */
+.gc-check:not(.is-on) { color: var(--muted); background: transparent; }
+/* LES ACTIVITES LIBRES EN UNE LIGNE DE PUCES (2026-10-01) : une rangee au
+   lieu de six, chaque puce cochable. */
+.gc-step.gc-step-libres { grid-template-columns: 52px minmax(0, 1fr); align-items: start; }
+.gc-step-libres > .gc-step-time { padding-top: 6px; }
+.gc-libres { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.gc-libre { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface); color: var(--text); font: 600 12.5px/1 var(--font-ui); cursor: pointer; transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.gc-libre small { font-weight: 400; color: var(--muted); }
+.gc-libre svg { width: 13px; height: 13px; }
+@media (hover: hover) { .gc-libre:hover { border-color: var(--success); } }
+.gc-libre:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gc-libre.is-fait { background: var(--success-soft); border-color: var(--success); color: var(--success); }
+.gc-libre.is-fait span { text-decoration: line-through; }
+.gc-libre:disabled { cursor: default; opacity: 0.7; }
+/* DEJA PAYEES : repliee en bas, une ligne par groupe. */
+.gc-section.is-repliable > summary { cursor: pointer; list-style: none; }
+.gc-section.is-repliable > summary::-webkit-details-marker { display: none; }
+.gc-section-note { font-size: 12px; font-weight: 500; color: var(--muted); }
+.gc-section-toggle { width: 8px; height: 8px; margin-left: auto; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); transition: transform var(--dur-fast) var(--ease); }
+.gc-section.is-repliable[open] .gc-section-toggle { transform: rotate(-135deg); }
+.gc-grid.is-compacte { grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.gc-tag.is-upcoming { color: var(--accent-strong, var(--accent)); }
+.gc-tag.is-onsite { color: var(--success); }
 /* CHAQUE ACTIVITE SE COCHE D UN TOUCHER (2026-10-01) : la ligne entiere, sur
    la carte comme dans la fiche. Fait : la ligne s efface, le mot reste. */
 .gc-step.is-cochable { cursor: pointer; transition: background-color var(--dur-fast) var(--ease); }
@@ -18694,3 +18717,67 @@ button.pv2-cal-cell:focus-visible {
 .gc-bill-total span { font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-full); }
 .gc-bill-total .is-due { background: var(--warning-soft); color: var(--warning); }
 .gc-bill-total .is-paid { background: var(--success-soft); color: var(--success); }
+
+/* ── LES NOTES DE LA FICHE (2026-10-01) ──────────────────────────────────────
+   Le mot du client en grand, les notes de l equipe en dessous (qui, quand),
+   et le champ pour en ajouter une. La note d equipe a son ton (info) : on la
+   distingue du mot du client d un coup d oeil, couleur ET libelle. */
+.gc-flag.tone-note { background: var(--warning-soft); border-left-color: var(--warning); }
+.gc-flag.tone-note b { color: var(--warning); }
+.gc-flag.tone-equipe { background: var(--info-soft); border-left-color: var(--info); }
+.gc-flag.tone-equipe b { color: var(--accent-strong); }
+.gc-notes { display: flex; flex-direction: column; gap: var(--space-2); }
+.gc-note-client { padding: 10px 14px; border-left: 3px solid var(--warning); border-radius: var(--radius-md); background: var(--warning-soft); }
+.gc-note-titre { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--warning); }
+.gc-note-client p { margin: 2px 0 0; font-size: 15px; line-height: 1.5; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+.gc-note-vide { margin: 0; font-size: 13px; color: var(--muted); }
+.gc-notes-equipe { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.gc-note-equipe { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: start; padding: 10px 14px; border-left: 3px solid var(--info); border-radius: var(--radius-md); background: var(--info-soft); }
+.gc-note-equipe p { grid-column: 1; margin: 0; font-size: 14px; line-height: 1.5; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+.gc-note-meta { grid-column: 1; font-size: 12px; color: var(--muted); }
+.gc-note-retirer { grid-column: 2; grid-row: 1 / span 2; align-self: center; min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.gc-note-retirer:hover { color: var(--text); border-color: var(--line-strong); }
+.gc-note-retirer.is-arme { color: var(--danger); border-color: currentColor; font-weight: 600; }
+.gc-note-ajout { display: flex; gap: 8px; align-items: flex-end; }
+.gc-note-champ { flex: 1; min-width: 0; min-height: 44px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; line-height: 1.45; }
+.gc-note-champ:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.gc-note-ok { flex: none; min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--radius-md); background: var(--accent); color: var(--accent-contrast); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.gc-note-ok:hover { filter: brightness(1.08); }
+@media (max-width: 560px) {
+  .gc-note-ajout { flex-direction: column; align-items: stretch; }
+}
+
+/* Le nom de l activite qui mene a son planning : un lien, pas une coche. */
+.gc-step-link { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 32px; margin: -6px 0 -6px -8px; padding: 0 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.gc-step-link b { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.gc-step-link svg { color: var(--accent-strong); flex: none; }
+.gc-step-link:hover { background: var(--subtle); }
+.gc-step-link:hover b { text-decoration-color: currentColor; }
+.gc-step-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Le groupe amene au planning depuis sa fiche : un contour qui pulse puis
+   s eteint, pour que l oeil le trouve dans la grille. */
+.booking.is-called,
+.laser-group-card.is-called,
+.laser-pass-card.is-called {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  z-index: 6;
+  animation: plAppel 0.9s var(--ease) 2;
+}
+@keyframes plAppel {
+  0%, 100% { outline-offset: 2px; }
+  50% { outline-offset: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .booking.is-called, .laser-group-card.is-called, .laser-pass-card.is-called { animation: none; }
+}
+.gc-flag.tone-suivi b { color: var(--muted); }
+.gc-note-suivi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--muted); }
+.gc-note-suivi li::before { content: "Suivi · "; font-weight: 600; }
+.gc-notes.is-vide { padding-top: 6px; padding-bottom: 6px; }
+@media (min-width: 561px) { .gc-notes.is-vide .gc-note-ouvrir { min-height: 32px; } }
+.gc-note-ouvrir { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 36px; padding: 0 14px; border: 1px dashed var(--line-strong); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.gc-note-ouvrir:hover { color: var(--text); border-color: var(--accent); }
+.gc-note-ouvrir:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 560px) { .gc-note-ouvrir { min-height: 44px; } }

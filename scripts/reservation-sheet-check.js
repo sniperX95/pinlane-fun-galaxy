@@ -236,7 +236,13 @@ async function main() {
           // le 2026-10-01 : « cliquer sur les activites pour dire que ca a ete
           // fait ») sont des cases a cocher, pas des actions : elles se
           // comptent a part, le plafond reste celui des actions.
-          boutons: [...document.querySelectorAll('#posOverlay button:not(.gc-check)')].filter(visible).length,
+          // Les LIENS vers le planning (.gc-step-link, le nom Bowling / Laser
+          // Game, demandes le 2026-10-01 : « qu on clique dessus et que ca
+          // nous dirige vers les plannings ») sont le nom de l activite rendu
+          // cliquable, pas une action en plus : comptes a part, un par
+          // activite de bowling ou de laser au plus.
+          boutons: [...document.querySelectorAll('#posOverlay button:not(.gc-check):not(.gc-step-link)')].filter(visible).length,
+          liens: [...document.querySelectorAll('#posOverlay .gc-step .gc-step-link')].filter(visible).length,
           cases: [...document.querySelectorAll('#posOverlay .gc-step .gc-check')].filter(visible).length,
           pas: [...document.querySelectorAll('#posOverlay .gc-step')].filter(visible).length,
           faits: faits.length,
@@ -251,7 +257,12 @@ async function main() {
     // dans la fiche). Elle porte le programme heure par heure et l addition ;
     // le plafond attrape toujours une derive.
     ok(infos.hauteur <= 820, `« Infos » : hauteur MESUREE ${infos.hauteur}px (plafond 820 depuis la fiche « carte en grand », valait 868 avant la refonte d aout)`);
-    ok(infos.boutons <= 8, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 8, valait 11 avant refonte ; les cases des activites a part)`);
+    // PLAFOND 9 DEPUIS LE 2026-10-01 : une action de plus, demandee par
+    // Movsar (« ajouter une note cote staff, une note du staff en interne ») :
+    // le bouton « Note pour l equipe », son champ replie tant qu on ne
+    // l ouvre pas. Les liens vers le planning se comptent a part (ci-dessous).
+    ok(infos.boutons <= 9, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 9, valait 11 avant refonte ; les cases des activites et les liens du planning a part)`);
+    ok(infos.liens <= infos.pas, `« Infos » : ${infos.liens} liens vers le planning, au plus un par activite (${infos.pas})`);
     ok(infos.pas > 0 && infos.cases === infos.pas, `« Infos » : chaque activite du programme a sa case (${infos.cases} cases pour ${infos.pas} activites)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);
     const modif = await mesureOnglet('modifier');

@@ -8,6 +8,7 @@ const {
   updateReservation,
   setReservationActivityProgress,
   setReservationActivityDone,
+  noterReservationEquipe,
   lireVersionAttendue,
   memeVersion,
   reservationModifieeEntreTemps,
@@ -142,7 +143,7 @@ function hasAnyField(body = {}, fields = []) {
 
 function patchNeedsOnlyStatus(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
-  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle'].includes(key));
+  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle', 'noteEquipe'].includes(key));
 }
 
 // Un PATCH qui ne touche QUE le suivi d'activités (cocher/décocher) : chemin rapide
@@ -159,6 +160,14 @@ function patchIsActivityToggleOnly(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
   return keys.length === 1 && keys[0] === 'activityToggle'
     && Boolean(body.activityToggle) && typeof body.activityToggle === 'object';
+}
+
+// Une note de l equipe ajoutee ou retiree (noteEquipe : { ajout } ou
+// { retrait: le }) : comme la coche, elle s applique sur ce qui est en base.
+function patchIsNoteEquipeOnly(body = {}) {
+  const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
+  return keys.length === 1 && keys[0] === 'noteEquipe'
+    && Boolean(body.noteEquipe) && typeof body.noteEquipe === 'object';
 }
 
 function isFormulaPatch(body = {}) {
@@ -318,6 +327,37 @@ module.exports = async (req, res) => {
       // refait ce controle sous verrou : c est lui qui fait foi.
       const versionAttendue = lireVersionAttendue(body.baseUpdatedAt);
       if (versionAttendue !== null && !memeVersion(current.updatedAt, versionAttendue)) throw reservationModifieeEntreTemps(current);
+
+      if (patchIsNoteEquipeOnly(body)) {
+        const geste = body.noteEquipe;
+        const membre = session && session.member ? session.member : null;
+        const updated = await noterReservationEquipe(current.id, current.centerId || 'libramont', {
+          ajout: typeof geste.ajout === 'string' ? geste.ajout : undefined,
+          retrait: typeof geste.retrait === 'string' ? geste.retrait : undefined,
+          // L auteur vient de la session, jamais du corps : une note ne
+          // s ecrit pas au nom d un collegue.
+          par: (membre && (membre.name || membre.displayName)) || 'Équipe',
+        });
+        const auditNote = await writeAuditLog({
+          centerId: current.centerId || 'libramont',
+          ...actorFromSession(session),
+          surface: 'api/staff-reservations.js',
+          action: geste.retrait ? 'retirerNoteEquipe' : 'ajouterNoteEquipe',
+          method: 'PATCH',
+          entityType: 'reservation',
+          entityId: current.id,
+          outcome: 'success',
+          changes: buildReservationAuditChanges(current, updated),
+          requestId: newRequestId(),
+        });
+        sendJson(res, 200, {
+          ok: true,
+          reservation: updated,
+          automation: { communications: 0, jobs: 0, refreshed: false },
+          ...(auditNote.warning ? { warnings: [auditNote.warning] } : {}),
+        });
+        return;
+      }
 
       if (patchIsActivityToggleOnly(body)) {
         const coche = body.activityToggle;

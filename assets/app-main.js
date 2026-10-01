@@ -19388,8 +19388,10 @@ function buildStaffClientRowsFromReservations(reservations = []) {
           const summary = getFormulaActivityProgressSummary(reservation);
           activityDone += summary.done; activityTotal += summary.total;
         }
-        const note = String(reservation.notes || '').trim();
+        // Le mot du client et les notes de l equipe, sans les marqueurs internes.
+        const note = getReservationNoteText(reservation);
         if (note) notesParts.push(note);
+        getReservationNotesEquipe(reservation).forEach(n => notesParts.push(`Équipe : ${n.t}`));
       });
       const favoriteType = Object.keys(typeBreakdown).sort((a, b) => typeBreakdown[b] - typeBreakdown[a]).find(k => typeBreakdown[k] > 0) || '';
       const favoriteFormula = Object.keys(formuleCount).sort((a, b) => formuleCount[b] - formuleCount[a])[0] || '';
@@ -21142,14 +21144,68 @@ function getReservationNoteText(reservation = {}) {
   // `[ops:xxx]` marque les traces posees par le moteur (retard, decalage) pour
   // qu'elles puissent etre RETIREES quand l'operation est annulee. Le marqueur
   // est une mecanique interne : il ne se lit jamais a l'ecran.
+  // Les notes DE L EQUIPE (`[equipe] {...}`) vivent dans la meme colonne mais
+  // se lisent a part (getReservationNotesEquipe) : ce texte-ci est le mot
+  // ecrit avec la reservation, jamais une note interne.
   return String(reservation.notes || '')
+    .split('\n')
+    .filter(ligne => !lireNoteEquipeLigne(ligne))
+    .join('\n')
     .replace(/\[SIM:[^\]]*\]/g, '')
     .replace(/\[ops:[^\]]*\]\s*/g, '')
     .trim();
 }
 
+// LES NOTES DE L EQUIPE (2026-10-01, Movsar : « ajouter une note cote staff,
+// une note du staff en interne, visible en bien »). Une ligne par note dans la
+// colonne `notes`, derriere le marqueur que le serveur pose
+// (lib/database noterReservationEquipe) : le texte, qui l a ecrite, quand.
+const NOTE_EQUIPE_TAG = '[equipe] ';
+function lireNoteEquipeLigne(ligne) {
+  const brute = String(ligne || '').trimStart();
+  if (!brute.startsWith(NOTE_EQUIPE_TAG)) return null;
+  try {
+    const note = JSON.parse(brute.slice(NOTE_EQUIPE_TAG.length));
+    return note && typeof note.t === 'string' ? note : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function getReservationNotesEquipe(reservation = {}) {
+  return String(reservation.notes || '').split('\n').map(lireNoteEquipeLigne).filter(Boolean);
+}
+
+// Le mot ecrit avec la reservation, separe des traces du moteur (retard,
+// decalage : lignes `[ops:...]`) : sous « Mot du client », seul ce que le
+// client a ecrit ; les traces se lisent a part, comme un suivi.
+function getReservationNoteParts(reservation = {}) {
+  const lignes = String(reservation.notes || '').split('\n').filter(ligne => !lireNoteEquipeLigne(ligne));
+  const nettoyer = ligne => ligne.replace(/\[SIM:[^\]]*\]/g, '').replace(/\[ops:[^\]]*\]\s*/g, '').trim();
+  return {
+    mot: lignes.filter(ligne => !/^\s*\[ops:/.test(ligne)).map(nettoyer).filter(Boolean).join('\n'),
+    suivi: lignes.filter(ligne => /^\s*\[ops:/.test(ligne)).map(nettoyer).filter(Boolean),
+  };
+}
+
+// « Avec note » : le mot du client OU une note de l equipe.
 function hasReservationNote(reservation) {
-  return !!getReservationNoteText(reservation);
+  return !!getReservationNoteText(reservation) || getReservationNotesEquipe(reservation).length > 0;
+}
+
+// Le mot ecrit avec la reservation : en ligne, c est le client qui l a ecrit.
+function getReservationNoteTitre(reservation = {}) {
+  return reservation.channel === 'public' ? 'Mot du client' : 'Note';
+}
+
+function formatNoteEquipeQuand(le) {
+  const d = new Date(le);
+  if (Number.isNaN(d.getTime())) return '';
+  const heure = d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' });
+  const jour = d.toLocaleDateString('fr-CA', { timeZone: 'Europe/Brussels' });
+  const aujourdhui = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Brussels' });
+  if (jour === aujourdhui) return heure;
+  return `${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', timeZone: 'Europe/Brussels' })} · ${heure}`;
 }
 
 // ---- LE PRIX AJUSTE : UNE SEULE REGLE, LUE PAR TOUS LES ECRANS ------------
@@ -22330,7 +22386,7 @@ function renderLaserPlanning() {
         const unitLabel = pass.waveCount > 1
           ? `Vague ${pass.waveIndex}/${pass.waveCount}${pass.totalGames > 1 ? ` · Partie ${pass.countIndex}/${pass.totalGames}` : ''}`
           : `Partie ${pass.countIndex}/${pass.totalGames}`;
-        return `<button type="button" class="laser-pass-card" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette vague">
+        return `<button type="button" class="laser-pass-card" data-laser-res-id="${reservation.id}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette vague">
           <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
           <span class="laser-pass-meta">${unitLabel} · ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
           <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
@@ -22470,7 +22526,7 @@ function renderLaserPlanning() {
         ? `Déplacer la vague ${waveIndex}/${waveCount}${laserGames > 1 ? ` (partie ${passIndex})` : ''}`
         : passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
       const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
-      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
+      return `<button type="button" data-laser-res-id="${reservation.id}" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
           <small>${escapeHtml(label)}${waveLabel ? ` · ${escapeHtml(waveLabel)}` : ''}</small>
@@ -23000,7 +23056,40 @@ function renderGroupeEtapes(r, moment, options = {}) {
   const vivantes = ['lancer', 'encours', 'attente', 'bientot', 'prevu'];
   const focus = contexte.aujourdhui ? phases.findIndex(p => vivantes.includes(p.cle)) : -1;
   const prix = options.prix ? getGroupePrixParActivite(r) : null;
+  // LES ACTIVITES LIBRES, EN UNE LIGNE SUR LA CARTE (2026-10-01, Movsar :
+  // « quand y aura une trentaine de reservations ca va etre super galere »).
+  // Six activites sans heure prenaient six rangees ; la carte les range en
+  // puces sur une ligne, chacune cochable d un toucher. La fiche garde une
+  // rangee par activite.
+  const enLigne = !options.coches;
+  const libres = enLigne ? etapes.filter(etape => etape.libre) : [];
+  const ligneLibres = () => {
+    const toutFait = libres.every(etape => etape.fait);
+    const puces = libres.map(etape => {
+      const cochable = Boolean(etape.coche) && r.status !== 'cancelled';
+      const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)` : '';
+      return `<button type="button" class="gc-libre${etape.fait ? ' is-fait' : ''}" ${cochable ? `onclick="${appel}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" data-pl-focus="carte.activite.${Number(r.id)}.${escapeHtml(etape.coche)}"` : 'disabled'}>${etape.fait ? ACTIVITY_CHECK_SVG : ''}<span>${escapeHtml(etape.nom)}</span>${etape.quoi ? `<small>${escapeHtml(etape.quoi)}</small>` : ''}</button>`;
+    }).join('');
+    // « Libre » dit deja « a leur rythme » : la ligne laisse toute la place
+    // aux puces (le mot reste pour les lecteurs d ecran).
+    return `<li class="gc-step gc-step-libres is-${toutFait ? 'fait' : 'libre'}">
+      <span class="gc-step-time is-free">Libre<span class="visually-hidden">, ${toutFait ? 'tout est fait' : 'à leur rythme'}</span></span>
+      <span class="gc-libres">${puces}</span>
+    </li>`;
+  };
+  // BOWLING ET LASER MENENT A LEUR PLANNING (2026-10-01, Movsar : « qu on
+  // puisse cliquer dessus et que ca nous dirige direct vers la reservation
+  // des plannings »). Dans la fiche, le nom de l activite est un lien : il
+  // ferme la fiche, ouvre le planning de la ressource au jour du dossier et
+  // montre le groupe. Le reste de la ligne coche toujours l activite.
+  const lienPlanning = (etape) => {
+    const ressource = etape.activityId === 'bowling' ? 'bowling' : etape.activityId === 'laser_game' ? 'laser' : '';
+    if (!options.coches || !ressource) return `<b>${escapeHtml(etape.nom)}</b>`;
+    const mot = ressource === 'bowling' ? 'le planning bowling' : 'le planning laser';
+    return `<button type="button" class="gc-step-link" data-pl-focus="fiche.planning.${Number(r.id)}.${escapeHtml(etape.coche || etape.cle || ressource)}" aria-label="${escapeHtml(etape.nom)} : voir ${mot}" title="Voir ${mot}" onclick="voirAuPlanning(${Number(r.id)}, '${ressource}', event)"><b>${escapeHtml(etape.nom)}</b><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg></button>`;
+  };
   return `<ol class="gc-steps">${etapes.map((etape, index) => {
+    if (enLigne && etape.libre) return etape === libres[0] ? ligneLibres() : '';
     const phase = phases[index];
     const quand = etape.start !== null && etape.start !== undefined
       ? `<span class="gc-step-time">${formatClockDisplay(etape.start)}<small>${formatClockDisplay(etape.end)}</small></span>`
@@ -23020,7 +23109,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}${cochable ? ' is-cochable' : ''}"${cochable ? ` onclick="${appel}"` : ''}>
       ${quand}
       ${repere}
-      <span class="gc-step-what"><b>${escapeHtml(etape.nom)}</b>${details ? `<small>${escapeHtml(details)}</small>` : ''}</span>
+      <span class="gc-step-what">${lienPlanning(etape)}${details ? `<small>${escapeHtml(details)}</small>` : ''}</span>
       ${phase.mot ? `<span class="gc-step-state">${escapeHtml(phase.mot)}</span>` : ''}
       ${montant}
     </li>`;
@@ -23054,15 +23143,32 @@ function getGroupeEncadres(r) {
     });
   }
   // Une seule regle dit si un dossier porte une note (hasReservationNote) :
-  // la puce « Avec note », le filtre et l encadre la lisent tous.
-  if (hasReservationNote(r)) encadres.push({ ton: 'note', titre: 'Note', texte: getReservationNoteText(r) });
+  // la puce « Avec note », le filtre et ces encadres la lisent tous.
+  const aUneNote = hasReservationNote(r);
+  const parts = aUneNote ? getReservationNoteParts(r) : { mot: '', suivi: [] };
+  if (parts.mot) encadres.push({ ton: 'note', titre: getReservationNoteTitre(r), texte: parts.mot });
+  if (parts.suivi.length) encadres.push({ ton: 'suivi', titre: 'Suivi', texte: parts.suivi.join(' · ') });
+  // La note de l equipe, la plus recente, sur la carte : les autres se lisent
+  // dans la fiche.
+  const notesEquipe = aUneNote ? getReservationNotesEquipe(r) : [];
+  if (notesEquipe.length) {
+    const derniere = notesEquipe[notesEquipe.length - 1];
+    encadres.push({
+      ton: 'equipe',
+      titre: notesEquipe.length > 1 ? `Note équipe · ${notesEquipe.length}` : 'Note équipe',
+      texte: `${derniere.t}${derniere.par ? ` (${derniere.par})` : ''}`,
+    });
+  }
   return encadres;
 }
 
 function renderGroupeEncadres(r, options = {}) {
   // Dans la fiche, « à valider » est deja dit dans le bloc d etat, a cote du
   // bouton qui valide : l encadre le redirait.
-  const encadres = getGroupeEncadres(r).filter(e => !(options.sansValidation && e.ton === 'review'));
+  // Dans la fiche, les notes ont leur bloc (renderGroupeNotes) : l encadre
+  // les redirait.
+  const encadres = getGroupeEncadres(r).filter(e => !(options.sansValidation && e.ton === 'review')
+    && !(options.sansNotes && ['note', 'equipe', 'suivi'].includes(e.ton)));
   if (!encadres.length) return '';
   return `<div class="gc-flags${options.large ? ' is-large' : ''}">${encadres.map(e => `<div class="gc-flag tone-${e.ton}">
     <b>${escapeHtml(e.titre)}</b>${e.html ? e.html : e.texte ? `<span>${escapeHtml(e.texte)}</span>` : ''}
@@ -23133,9 +23239,9 @@ function renderGroupeAlerte(r, moment) {
   return '';
 }
 
-function renderReservationRow(r, moment = null) {
+function renderReservationRow(r, moment = null, options = {}) {
   const span = moment && moment.item ? moment.item : getStaffTerrainSpan(r);
-  const termine = moment && moment.etat === 'done';
+  const termine = (moment && moment.etat === 'done') || Boolean(options.compacte);
   const classes = [
     'res-row', 'gc', r.status,
     moment && moment.late ? 'is-late' : '',
@@ -23152,7 +23258,7 @@ function renderReservationRow(r, moment = null) {
     return `<article class="${classes}" data-res-row-id="${r.id}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'){openPos(${r.id})}">
       <div class="gc-head">
         <div class="gc-when"><b>${formatClockDisplay(span.start)}</b><small>${formatClockDisplay(span.end)}</small></div>
-        <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${escapeHtml(joueursDuDossier(r))} · ${escapeHtml(resumeGroupe(r))}${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' }) ? ` · ${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' })}` : ''}</span></div>
+        <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${options.encore ? `<b class="gc-tag is-${escapeHtml(options.encore.cle)}">${escapeHtml(options.encore.mot)}</b> · ` : ''}${escapeHtml(joueursDuDossier(r))} · ${escapeHtml(resumeGroupe(r))}${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' }) ? ` · ${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' })}` : ''}</span></div>
         ${renderGroupePrix(r, moment)}
       </div>
     </article>`;
@@ -23203,7 +23309,7 @@ function getGroupePrixParActivite(r) {
   return prix;
 }
 
-function renderReservationSection(statusKey, title, subtitle, reservations, moments = null) {
+function renderReservationSection(statusKey, title, subtitle, reservations, moments = null, options = {}) {
   // L ORDRE DU COMPTOIR, lu sur les vraies heures du groupe (premiere et
   // derniere activite), pas sur l heure du dossier : a venir et en retard,
   // celui qui commence le premier ; sur place et a cloturer, celui qui finit
@@ -23213,13 +23319,30 @@ function renderReservationSection(statusKey, title, subtitle, reservations, mome
     return entry && entry.item ? entry.item : getStaffTerrainSpan(r);
   };
   const ordered = [...reservations].sort((a, b) => {
-    if (statusKey === 'done') return span(b).start - span(a).start;
+    if (statusKey === 'done' && !options.repliable) return span(b).start - span(a).start;
     if (statusKey === 'onsite' || statusKey === 'closing') return span(a).end - span(b).end || span(a).start - span(b).start;
     return span(a).start - span(b).start;
   });
   // UNE CLE DE CASCADE PAR SECTION, jamais une clé partagée : la cascade
   // d entree ne rejoue que sur une liste qui a reellement change (2026-08-26,
   // « on VOIT que ca rafraichit »). Le sous-titre vit dans l infobulle.
+  if (options.repliable) {
+    // LES DOSSIERS DEJA PAYES, TOUT EN BAS ET REPLIES (2026-10-01, Movsar :
+    // « ceux qui sont payes, encaisses, tu peux les mettre tout en bas pour ne
+    // voir plus que ceux qui restent »). Une ligne par groupe ; l en-tete dit
+    // combien jouent encore (a venir ou sur place : le Terrain les lance).
+    const encore = ordered.filter(r => { const m = moments ? moments.get(String(r.id)) : null; return m && m.etat !== 'done'; }).length;
+    const motDe = r => { const m = moments ? moments.get(String(r.id)) : null; if (!m || m.etat === 'done') return null; return m.etat === 'onsite' ? { cle: 'onsite', mot: 'Sur place' } : { cle: 'upcoming', mot: 'À venir' }; };
+    return `<details class="res-section gc-section ${statusKey} is-repliable"${options.ouvert ? ' open' : ''} ontoggle="state.staffPayeesOuvertes = this.open">
+      <summary class="res-section-head" title="${escapeHtml(subtitle)}">
+        <span class="label">${title}</span>
+        <span class="count">${ordered.length}</span>
+        ${encore ? `<span class="gc-section-note">dont ${encore} encore à venir ou sur place</span>` : ''}
+        <span class="gc-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="res-dense-list gc-grid is-compacte" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(r => renderReservationRow(r, moments ? moments.get(String(r.id)) : null, { compacte: true, encore: motDe(r) })).join('')}</div>
+    </details>`;
+  }
   return `<section class="res-section gc-section ${statusKey}">
     <div class="res-section-head" title="${escapeHtml(subtitle)}">
       <span class="label">${title}</span>
@@ -23310,22 +23433,36 @@ function renderTable() {
   // les retards, que sa section rouge montre en premier.
   const inState = etat => filtered.filter(r => getStaffReservationMomentState(moments, r) === etat);
   const enRetard = r => Boolean(moments.get(String(r.id)) && moments.get(String(r.id)).late);
+  // CE QUI RESTE EN HAUT, LE PAYE EN BAS (2026-10-01). Un dossier paye quitte
+  // son moment pour la section repliee « Déjà payées » : la liste de travail
+  // ne montre plus que ce qui demande encore quelque chose a la caisse.
+  const payee = r => r.status === 'paid';
   const sections = [
-    { key: 'late', parent: 'upcoming', title: 'En retard', subtitle: 'Heure passée, pas encore pointés arrivés', rows: inState('upcoming').filter(enRetard) },
-    { key: 'upcoming', title: 'À venir', subtitle: 'Pas encore arrivés, par heure', rows: inState('upcoming').filter(r => !enRetard(r)) },
-    { key: 'onsite', title: 'Sur place', subtitle: 'Arrivés, pendant leur visite', rows: inState('onsite') },
+    { key: 'late', parent: 'upcoming', title: 'En retard', subtitle: 'Heure passée, pas encore pointés arrivés', rows: inState('upcoming').filter(r => enRetard(r) && !payee(r)) },
+    { key: 'upcoming', title: 'À venir', subtitle: 'Pas encore arrivés, par heure', rows: inState('upcoming').filter(r => !enRetard(r) && !payee(r)) },
+    { key: 'onsite', title: 'Sur place', subtitle: 'Arrivés, pendant leur visite', rows: inState('onsite').filter(r => !payee(r)) },
     { key: 'closing', title: 'À clôturer', subtitle: 'Visite finie, pas encore payée', rows: inState('closing') },
-    { key: 'done', title: 'Terminées', subtitle: 'Visite finie et payée', rows: inState('done') }
   ].filter(section => {
     const cle = section.parent || section.key;
     if (STAFF_MOMENT_STATES.includes(state.staffStatusFilter)) return cle === state.staffStatusFilter;
-    if (state.staffStatusFilter === 'open') return cle !== 'done';
     return true;
   }).filter(section => section.rows.length > 0);
+  // Les payes du filtre courant : tous (« Tout », « Avec note »), ceux du
+  // moment choisi, ou ceux qui ne sont pas finis (« À gérer »).
+  const payes = filtered.filter(r => {
+    if (!payee(r)) return false;
+    const etat = getStaffReservationMomentState(moments, r);
+    if (STAFF_MOMENT_STATES.includes(state.staffStatusFilter)) return etat === state.staffStatusFilter;
+    if (state.staffStatusFilter === 'open') return etat !== 'done';
+    return true;
+  });
+  // « Terminées » ne montre QUE des payes : la section s ouvre d elle-meme.
+  const payesOuverts = state.staffStatusFilter === 'done' || (!sections.length && payes.length > 0) || Boolean(state.staffPayeesOuvertes);
 
   list.innerHTML = `${toolbar}
   <div class="res-sections gc-sections">
     ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows, moments)).join('')}
+    ${payes.length ? renderReservationSection('done', 'Déjà payées', 'Encaissées : rien à faire à la caisse', payes, moments, { repliable: true, ouvert: payesOuverts }) : ''}
   </div>`;
   if (list) list.scrollTop = listScrollTop;
 }
@@ -23556,6 +23693,51 @@ function openPos(id) {
   state.activeTab = 'details';
   state.editState = etatEditionDepuis(reservation);
   renderPos();
+}
+
+// DE LA FICHE AU PLANNING : la ressource ouverte au jour du dossier, filtres
+// leves (le groupe doit s y voir), et son bloc amene au centre puis souligne.
+function voirAuPlanning(reservationId, ressource, ev) {
+  if (ev) ev.stopPropagation();
+  const r = findStaffReservationById(reservationId);
+  if (!r) { toast('Réservation introuvable.'); return; }
+  const cible = ressource === 'laser' ? 'laser' : 'bowling';
+  if (cible === 'bowling' && !canUseStaffPermission('planning.bowling')) { toast('Planning bowling non autorisé.'); return; }
+  if (cible === 'laser' && !canUseStaffPermission('planning.laser')) { toast('Planning laser non autorisé.'); return; }
+  if (!canUseStaffPage('planning')) { toast('Accès planning non autorisé.'); return; }
+  closePos();
+  state.searchTerm = '';
+  state.staffPlanningExpanded = false;
+  state.staffLaserPlanningExpanded = false;
+  state.staffTableExpanded = false;
+  const autreJour = r.date && r.date !== state.currentDate;
+  if (autreJour) state.currentDate = r.date;
+  openStaffPlanningResource(cible);
+  if (state.staffMenuPage !== 'planning') return;
+  if (autreJour) syncDateReservations(r.date, { silent: true });
+  montrerAuPlanning(r.id, cible, 16);
+}
+
+function montrerAuPlanning(reservationId, ressource, essais) {
+  window.setTimeout(() => {
+    const id = CSS.escape(String(reservationId));
+    const blocs = [...document.querySelectorAll(ressource === 'laser'
+      ? `[data-laser-res-id="${id}"]`
+      : `[data-booking-res-id="${id}"]`)];
+    if (!blocs.length) {
+      if (essais > 1) montrerAuPlanning(reservationId, ressource, essais - 1);
+      else toast(ressource === 'laser' ? 'Ce groupe n’a pas encore de partie placée au planning laser.' : 'Ce groupe n’est pas au planning bowling ce jour-là.');
+      return;
+    }
+    blocs[0].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    blocs.forEach(bloc => {
+      bloc.classList.remove('is-called');
+      void bloc.offsetWidth;
+      bloc.classList.add('is-called');
+      window.setTimeout(() => bloc.classList.remove('is-called'), 2600);
+    });
+    try { blocs[0].focus({ preventScroll: true }); } catch (e) { /* bloc non focalisable */ }
+  }, 150);
 }
 
 function closePos() {
@@ -23866,7 +24048,8 @@ function renderPosDetails(r) {
         }).join('')}
       </div>
     </section>
-    ${renderGroupeEncadres(r, { large: true, sansValidation: true })}
+    ${renderGroupeEncadres(r, { large: true, sansValidation: true, sansNotes: true })}
+    ${renderGroupeNotes(r)}
     <section class="info-block gc-sheet-block">
       <div class="gc-sheet-head"><div class="info-label">Programme</div>${renderGroupeTerminer(r)}</div>
       ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
@@ -23885,7 +24068,7 @@ function renderPosDetails(r) {
         <span class="pos-contact-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(r.email || 'Non renseigné')}</span>
       </div>
     </section>
-    <details class="info-block pos-fold delay-control-block"${lateMinutes > 0 ? ' open' : ''}>
+    <details class="info-block pos-fold delay-control-block"${lateMinutes > 0 ? ' open' : ''} ontoggle="if(this.open && this.isConnected && !this.dataset.vu){this.dataset.vu='1';this.scrollIntoView({block:'nearest'});}">
       <summary class="pos-group-head">
         <span class="info-label">Client en retard</span>
         <svg class="pos-fold-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
@@ -23904,6 +24087,137 @@ function renderPosDetails(r) {
       </div>
     </details>
   </div>`;
+}
+
+// LE BLOC NOTES DE LA FICHE : le mot ecrit avec la reservation, en grand,
+// puis les notes de l equipe (qui, quand), et de quoi en ajouter une. Le
+// client ne voit jamais une note d equipe : elle ne part dans aucun message.
+const notesEquipeBrouillons = new Map();
+// Le champ s ouvre a la demande : une fiche sans note ne porte qu un bouton.
+const notesEquipeOuvertes = new Set();
+function renderGroupeNotes(r) {
+  const id = Number(r.id);
+  const parts = getReservationNoteParts(r);
+  const motClient = parts.mot;
+  const notes = getReservationNotesEquipe(r);
+  const brouillon = notesEquipeBrouillons.get(id) || '';
+  const peutNoter = r.status !== 'cancelled' && (typeof canUseStaffPermission !== 'function'
+    || canUseStaffPermission('reservations.status') || canUseStaffPermission('reservations.edit'));
+  const ouvert = peutNoter && (notesEquipeOuvertes.has(id) || Boolean(brouillon));
+  const contenu = Boolean(motClient || parts.suivi.length || notes.length);
+  if (!contenu && !peutNoter) return '';
+  return `<section class="info-block gc-notes${contenu ? '' : ' is-vide'}" aria-label="Notes">
+    ${contenu ? '<div class="gc-sheet-head"><div class="info-label">Notes</div></div>' : ''}
+    ${motClient ? `<div class="gc-note-client">
+      <span class="gc-note-titre">${escapeHtml(getReservationNoteTitre(r))}</span>
+      <p>${escapeHtml(motClient)}</p>
+    </div>` : ''}
+    ${parts.suivi.length ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
+    ${notes.length ? `<ul class="gc-notes-equipe">${notes.map(n => `<li class="gc-note-equipe">
+      <p>${escapeHtml(n.t)}</p>
+      <span class="gc-note-meta">${escapeHtml([n.par, formatNoteEquipeQuand(n.le)].filter(Boolean).join(' · '))}</span>
+      ${peutNoter ? `<button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeHtml(n.le)}', event)">Retirer</button>` : ''}
+    </li>`).join('')}</ul>` : ''}
+    ${ouvert ? `<div class="gc-note-ajout">
+      <label class="visually-hidden" for="gcNoteEquipe${id}">Note pour l’équipe</label>
+      <textarea id="gcNoteEquipe${id}" class="gc-note-champ" rows="2" maxlength="500" data-pl-focus="fiche.note.champ.${id}" placeholder="Note pour l’équipe : le client ne la voit pas" oninput="notesEquipeBrouillons.set(${id}, this.value)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();ajouterNoteEquipe(${id}, event);}if(event.key==='Escape'){event.stopPropagation();fermerNoteEquipe(${id});}">${escapeHtml(brouillon)}</textarea>
+      <button type="button" class="gc-note-ok" data-pl-focus="fiche.note.ajouter.${id}" onclick="ajouterNoteEquipe(${id}, event)">Ajouter</button>
+    </div>` : peutNoter ? `<button type="button" class="gc-note-ouvrir" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Note pour l’équipe</button>` : ''}
+  </section>`;
+}
+
+function ouvrirNoteEquipe(reservationId, ev) {
+  if (ev) ev.stopPropagation();
+  const id = Number(reservationId);
+  notesEquipeOuvertes.add(id);
+  renderPos();
+  const champ = document.getElementById(`gcNoteEquipe${id}`);
+  if (champ) champ.focus();
+}
+
+function fermerNoteEquipe(reservationId) {
+  const id = Number(reservationId);
+  notesEquipeOuvertes.delete(id);
+  notesEquipeBrouillons.delete(id);
+  renderPos();
+  const bouton = document.querySelector(`[data-pl-focus="fiche.note.ouvrir.${id}"]`);
+  if (bouton) bouton.focus();
+}
+
+function envoyerNoteEquipe(reservationId, geste, avant, apres) {
+  const idKey = String(reservationId);
+  markReservationMutation(reservationId, apres, ['notes']);
+  applyOptimisticReservation(apres, { preserveEditState: true });
+  if (state.selectedRes && String(state.selectedRes.id) === idKey) renderPos();
+  if (state.view === 'staff') { try { renderStaffData(); } catch (e) { /* page demontee */ } }
+  return enchainerEcritureReservation(reservationId, () => apiRequest(API_ENDPOINTS.staffReservations, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      id: Number(reservationId),
+      centerId: avant.centerId || (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : 'libramont'),
+      noteEquipe: geste,
+    })
+  })).then(payload => {
+    if (payload?.reservation) {
+      applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+      markReservationMutation(reservationId, payload.reservation, ['notes']);
+      if (state.selectedRes && String(state.selectedRes.id) === idKey) renderPos();
+    }
+    return true;
+  }).catch(error => {
+    applyOptimisticReservation(avant, { preserveEditState: true });
+    clearReservationMutation(reservationId);
+    if (state.selectedRes && String(state.selectedRes.id) === idKey) renderPos();
+    toast(error?.message ? `Note non enregistrée : ${error.message}` : 'Note non enregistrée. Réessayez.');
+    return false;
+  });
+}
+
+function ajouterNoteEquipe(reservationId, ev) {
+  if (ev) ev.stopPropagation();
+  const id = Number(reservationId);
+  const champ = document.getElementById(`gcNoteEquipe${id}`);
+  const texte = String((champ ? champ.value : notesEquipeBrouillons.get(id)) || '').trim().slice(0, 500);
+  if (!texte) { if (champ) champ.focus(); toast('Écrivez la note avant de l’ajouter.'); return; }
+  const avant = findStaffReservationById(id);
+  if (!avant) { toast('Réservation introuvable.'); return; }
+  const note = { t: texte, par: state.staffAuthSession?.member?.name || '', le: new Date().toISOString() };
+  const apres = { ...avant, notes: [String(avant.notes || '').trim(), NOTE_EQUIPE_TAG + JSON.stringify(note)].filter(Boolean).join('\n') };
+  notesEquipeBrouillons.delete(id);
+  notesEquipeOuvertes.delete(id);
+  envoyerNoteEquipe(id, { ajout: texte }, avant, apres).then(ok => {
+    // Refusee, la note revient dans le champ : rien n est perdu.
+    if (!ok) {
+      notesEquipeBrouillons.set(id, texte);
+      if (state.selectedRes && Number(state.selectedRes.id) === id) renderPos();
+    }
+  });
+}
+
+// Retirer demande deux touchers : le premier arme le bouton, le second retire.
+function retirerNoteEquipe(reservationId, le, ev) {
+  if (ev) ev.stopPropagation();
+  const bouton = ev && ev.currentTarget;
+  if (bouton && bouton.dataset.arme !== '1') {
+    bouton.dataset.arme = '1';
+    bouton.textContent = 'Confirmer';
+    bouton.classList.add('is-arme');
+    window.setTimeout(() => {
+      if (!document.contains(bouton)) return;
+      bouton.dataset.arme = '';
+      bouton.textContent = 'Retirer';
+      bouton.classList.remove('is-arme');
+    }, 4000);
+    return;
+  }
+  const id = Number(reservationId);
+  const avant = findStaffReservationById(id);
+  if (!avant) { toast('Réservation introuvable.'); return; }
+  const apres = { ...avant, notes: String(avant.notes || '').split('\n').filter(ligne => {
+    const note = lireNoteEquipeLigne(ligne);
+    return !(note && note.le === le);
+  }).join('\n') };
+  envoyerNoteEquipe(id, { retrait: String(le) }, avant, apres);
 }
 
 // L ADDITION DU GROUPE : ce qui est achete, ligne par ligne, le prix par

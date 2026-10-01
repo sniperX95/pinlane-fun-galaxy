@@ -373,6 +373,10 @@
   // choisissent.
   // La phrase sous les pastilles : les tours d une activite qui tourne, ou la
   // duree d une partie de laser.
+  // LES MONTANTS SONT INDICATIFS (Movsar, 2026-10-01 : « les montants
+  // affiches a chaque fois sur le formulaire, faut dire que c est a titre
+  // informatif ») : le total de la visite, la barre du bas, le recapitulatif
+  // et l ecran final le disent. Rien n est encaisse en ligne.
   function noteCarte(a) { return noteRotation(a) || (a && a.id === 'bowling' ? phrasePistes(a) : '') || (a && a.id === 'laser_game' ? phraseLaser() : ''); }
   // LES PISTES DE BOWLING DU GROUPE (Movsar, 2026-10-01 : « au-dela de 6
   // joueurs c est une autre piste en plus, payee : prix par temps et par
@@ -3036,7 +3040,7 @@
     var span = depart && fin ? '<b>' + esc(depart) + ' → ' + esc(heureAffichee(fin)) + '</b>' + (slot.visitEndsAtClose ? ' (fermeture)' : ' environ')
       : (journee && depart ? 'dès <b>' + esc(depart) + '</b>, toute la journée' : '');
     var sumAvant = $$('b', hourSum).map(function (b) { return b.textContent; });
-    hourSum.innerHTML = span + (prix > 0 ? (span ? '\u00a0· ' : '') + '<b>' + esc(euros(prix)) + '</b>' + (complet ? '' : ' + sur place') : '');
+    hourSum.innerHTML = span + (prix > 0 ? (span ? '\u00a0· ' : '') + '<b>' + esc(euros(prix)) + '</b>' + '<small class="fg-bar__ind"> indicatif</small>' + (complet ? '' : ' + sur place') : '');
     // Ce qui a change dans le resume monte a sa place, une fois. Les <b> sont
     // neufs a chaque appel (innerHTML) : la classe sur un noeud neuf suffit.
     // Resume vide avant (arrivee, erreur, combinaison refusee) : rien ne roule.
@@ -3151,8 +3155,8 @@
       });
       if (Math.abs(connus - prix) < 0.01) {
         prixHtml = '<dl class="fg-visit__prices">' + lp.join('')
-          + '<div class="fg-visit__total"><dt>' + (complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place') + '</dt><dd>' + esc(euros(prix)) + '</dd></div></dl>'
-          + '<p class="fg-visit__pay"><svg aria-hidden="true"><use href="#i-card"/></svg>Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.</p>';
+          + '<div class="fg-visit__total"><dt>' + (complet ? 'Total indicatif' : 'Total indicatif, hors activités réglées sur place') + '</dt><dd>' + esc(euros(prix)) + '</dd></div></dl>'
+          + '<p class="fg-visit__pay"><svg aria-hidden="true"><use href="#i-card"/></svg>Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.</p>';
       }
     }
     var html2 = '<div class="fg-visit"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
@@ -3667,7 +3671,7 @@
     });
     html += '<div class="fg-recap__sep"></div>'
       + (plan.arrivalTime ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>Arrivée conseillée à <b>' + esc(plan.arrivalTime) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(plan.arrivalTime, fin) + '</span></div>' : '')
-      + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + (complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place') + '</div>'
+      + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + (complet ? 'Total indicatif' : 'Total indicatif, hors activités réglées sur place') + '</div>'
       + '<div class="fg-total__amount"' + (final ? ' id="totalAmount"' : '') + ' data-total="' + prix + '">' + (prix > 0 ? esc(euros(prix)) : 'Sur place') + '</div></div>'
       // Les deux moyens acceptes sur place (Movsar, 2026-09-23 : « on accepte
       // le liquide ») : la carte et le billet, puis les mots.
@@ -3997,7 +4001,7 @@
     var nomRes = String(r.name || (state.contact.prenom + ' ' + state.contact.nom)).trim();
     var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. Arrivée conseillée à <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
     var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>.' : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
-    var ligneMontant = Number(r.price) > 0 ? 'Montant estimé <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', hors activités réglées sur place. Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
+    var ligneMontant = Number(r.price) > 0 ? 'Montant indicatif <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', hors activités réglées sur place. Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
     function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
     // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que
     // l equipe va verifier. « C est enregistre » etait vrai dans les deux cas,

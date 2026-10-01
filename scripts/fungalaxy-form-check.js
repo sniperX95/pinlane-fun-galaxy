@@ -1190,8 +1190,8 @@ function visiteAttendue(o) {
     fin: o.fin ? { t: heureAffichee(o.fin), nom: 'Fin de la visite', detail: o.fermeture ? 'fermeture du centre' : 'heure estimée' } : null,
     prix: detaille ? {
       lignes: o.items.map((it) => ({ dt: blancs(`${it.nom}${detailLigneQa(it) ? ` · ${detailLigneQa(it)}` : ''}`), dd: blancs(it.sait ? euros(it.prix) : 'sur place') })),
-      total: { dt: o.complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place', dd: blancs(euros(o.prix)) },
-      paiement: 'Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.',
+      total: { dt: o.complet ? 'Total indicatif' : 'Total indicatif, hors activités réglées sur place', dd: blancs(euros(o.prix)) },
+      paiement: 'Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.',
     } : null,
     connus,
   };
@@ -2593,7 +2593,7 @@ async function main() {
     const autresMontants = relevesTotal.filter((t) => t !== euros(o6.prix));
     ok(autresMontants.length === 0, '[E] le total affiche son montant des le premier releve, jamais un autre chiffre (20 releves sur une seconde)',
       autresMontants.length ? `${autresMontants.length} releve(s) faux : ${autresMontants.slice(0, 4).join(' | ')}` : euros(o6.prix));
-    ok(recap.libelle === (o6.complet ? 'Total estimé' : 'Total estimé, hors activités réglées sur place'), '[E] le total dit ce qu il couvre (les arcades se reglent sur place)', recap.libelle);
+    ok(recap.libelle === (o6.complet ? 'Total indicatif' : 'Total indicatif, hors activités réglées sur place'), '[E] le total dit ce qu il couvre (les arcades se reglent sur place)', recap.libelle);
     ok(/Paiement sur place/.test(recap.paiement) && /Carte ou espèces/.test(recap.paiement) && recap.logos.join(',') === '#i-card,#i-cash',
       '[E] le paiement sur place dit ses deux moyens, carte et especes, avec leurs deux logos', `${recap.paiement} ${recap.logos.join(',')}`);
     // UNE SEULE SOURCE : la carte de l ecran des coordonnees dit exactement ce
@@ -2662,9 +2662,9 @@ async function main() {
     ok(photosDepart.length === 6 && photosDepart.every((x) => x.photo) && bougees.length === 0,
       '[E] les six photos tirees au chargement sont celles que le parcours a montrees, sans changer en route',
       bougees.map((x) => `${x.scene} : ${x.photo || 'rien'}${x.charge ? '' : ' (jamais chargee)'} au lieu de ${(photosDepart.find((y) => y.scene === x.scene) || {}).photo}`).join(', ') || photosFin.map((x) => x.photo).join(' > '));
-    ok(/Montant estimé/.test(fin) && /à régler sur place, par carte ou en espèces\./.test(fin), '[E] l ecran final dit le montant et les deux moyens de paiement', (fin.match(/Montant estimé[^.]*\./) || [''])[0]);
+    ok(/Montant indicatif/.test(fin) && /à régler sur place, par carte ou en espèces\./.test(fin), '[E] l ecran final dit le montant et les deux moyens de paiement', (fin.match(/Montant indicatif[^.]*\./) || [''])[0]);
     ok(!o6.complet, 'MONTAGE [E] le prix du parcours est incomplet (les arcades se reglent sur place) : ce que couvre le montant est prouve sur un vrai cas');
-    ok((fin.indexOf('hors activités réglées sur place') >= 0) === !o6.complet, '[E] l ecran final dit ce que le montant couvre, comme le recapitulatif', (fin.match(/Montant estimé[^.]*\./) || [''])[0]);
+    ok((fin.indexOf('hors activités réglées sur place') >= 0) === !o6.complet, '[E] l ecran final dit ce que le montant couvre, comme le recapitulatif', (fin.match(/Montant indicatif[^.]*\./) || [''])[0]);
     // LE TITRE DIT CE QUI S EST PASSE, lu dans la reponse du serveur : une
     // reservation confirmee d office, ou une demande que l equipe verifiera.
     const rp = await reponsePose;
@@ -4274,7 +4274,7 @@ async function main() {
     const resumeAttendu = (lp) => {
       const depart = lp.arrivee || lp.time;
       const span = depart && lp.fin ? `${depart} → ${heureAffichee(lp.fin)}${lp.fermeture ? ' (fermeture)' : ' environ'}` : '';
-      return (span + (lp.prix > 0 ? `${span ? ' · ' : ''}${euros(lp.prix)}${lp.complet ? '' : ' + sur place'}` : '')).replace(/\s+/g, ' ');
+      return (span + (lp.prix > 0 ? `${span ? ' · ' : ''}${euros(lp.prix)}${lp.complet ? ' indicatif' : ' indicatif + sur place'}` : '')).replace(/\s+/g, ' ');
     };
 
     // TELEPHONE, page autonome.

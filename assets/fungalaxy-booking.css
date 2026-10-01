@@ -1356,6 +1356,11 @@ html.fg-pilote .fg { overflow: visible; }
 /* Sur telephone, les trois contours parlent seuls : la phrase de la legende
    est la ligne de trop (Movsar, 2026-10-01 : « enormement de texte »). */
 @media (max-width: 680px) { .fg-legend__tip { display: none; } }
+/* « indicatif » dans la barre du bas : en large seulement. Plus etroit, le
+   resume passait sur deux lignes, et la carte « Votre visite » juste au-dessus
+   dit deja « Total indicatif » et « Montants a titre indicatif ». */
+.fg-bar__ind { font-size: inherit; font-weight: 400; }
+@media (max-width: 900px) { .fg-bar__ind { display: none; } }
 /* Chaque cle PORTE l apparence de la puce qu elle decrit : le client n a pas
    a faire le lien de tete entre un mot et un contour. */
 .fg-legend__key { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; }

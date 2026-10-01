@@ -61,7 +61,7 @@ const MUTATIONS = {
   inbox: ['  if (open) {\n    const oldest', '  if (false) {\n    const oldest', '[A] la ligne « mails à répondre »'],
   compte: ['  const pending = [...urgent, ...listed];', '  const pending = listed;', '[A] la pastille du haut nomme les urgences et ce qui est à traiter'],
   bande: ['  const alerts = [...extra, ...definitions.filter(alert => !alert.band)];', '  const alerts = [...extra, ...definitions];', '[A] le retard et l argent des groupes finis ne se repetent pas dans « À traiter »'],
-  retard: ["    if (isUpcomingReservationStatus(item.reservation.status || 'pending') && item.start <= board.now) late.push(item);", '    if (false) late.push(item);', '[A] « En retard » compte le groupe non pointe dont l heure est passee'],
+  retard: ['    else if (board.now - item.start >= seuil - 1e-9) late.push(item);', '    else if (false) late.push(item);', '[A] « En retard » compte le groupe non pointe dont l heure est passee'],
   vide: ['    if (!inboxKnown) {\n      return `<div class="dash-todo-empty">', '    if (false) {\n      return `<div class="dash-todo-empty">', '[C] la carte ne dit pas « Tout est à jour »'],
   ligne: [": (inboxKnown ? 'Tout est à jour' : 'Aucune alerte sur la journée');", ": 'Tout est à jour';", '[C] la pastille du haut'],
   ton: ["topRank === null ? (inboxKnown ? 'ok' : 'unknown')", "topRank === null ? 'ok'", '[C] la pastille reste neutre'],

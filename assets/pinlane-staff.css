@@ -18399,7 +18399,6 @@ button.pv2-cal-cell:focus-visible {
 .gc-who h4.res-row-name { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
 .gc-who span { font-size: 13px; color: var(--muted); }
 .gc-who .gc-tag { font-weight: 600; color: var(--warning); }
-.gc-who .gc-price-mark.is-word { font-weight: 600; color: var(--accent-strong); }
 .gc-price { display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.15; }
 .gc-price b { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 600; color: var(--text); }
 .gc-price small { font-size: 12px; font-weight: 600; }
@@ -18453,7 +18452,11 @@ button.pv2-cal-cell:focus-visible {
 .gc-flag { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-left: 3px solid var(--line-strong); border-radius: var(--radius-md); background: var(--subtle); font-size: 13px; line-height: 1.45; }
 .gc-flag b { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .gc-flag span { color: var(--text); overflow-wrap: anywhere; }
-.gc-flag .gc-price-mark { color: var(--text); font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+/* Dans l encadre « Prix ajusté », le marqueur partage (sa regle, ses
+   chiffres, son nom accessible) prend la tenue de l encadre : le titre porte
+   deja le mot et la couleur, une deuxieme pastille ambre n ajouterait rien. */
+.gc-flag .gc-price-mark.pl-price-adjusted { padding: 0; border: 0; border-radius: 0; background: none; color: var(--text); font-family: var(--font-data); font-weight: 600; font-variant-numeric: tabular-nums; white-space: normal; }
+.gc-who .gc-price-mark.pl-price-adjusted { padding: 0; border: 0; background: none; color: var(--accent-strong); font-weight: 600; }
 .gc-flag.tone-review { background: var(--warning-soft); border-left-color: var(--warning); }
 .gc-flag.tone-review b { color: var(--warning); }
 .gc-flag.tone-price { background: var(--accent-soft); border-left-color: var(--accent); }

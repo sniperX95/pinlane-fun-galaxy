@@ -221,7 +221,7 @@ async function main() {
       return { scroll: corps.scrollTop, scrollable: corps.scrollHeight - corps.clientHeight };
     });
     ok(!!avant && avant.scrollable > 40, `la fiche a de quoi defiler (${avant && avant.scrollable} px)`);
-    const caseAct = await page.$('#posOverlay .activity-check-row');
+    const caseAct = await page.$('#posOverlay .gc-check');
     if (caseAct) await caseAct.click();
     await page.waitForTimeout(1600);
     const coche = await page.evaluate(() => {
@@ -231,7 +231,7 @@ async function main() {
         anim: window.__ANIM__, renders: window.__RENDERS__,
         scroll: corps ? corps.scrollTop : null,
         focus: actif ? (actif.getAttribute('data-pl-focus') || actif.className) : null,
-        cochee: !!document.querySelector('#posOverlay .activity-check-row[aria-pressed="true"]'),
+        cochee: !!document.querySelector('#posOverlay .gc-check[aria-pressed="true"]'),
       };
     });
     ok(coche.cochee, 'la case est bien cochee (le geste sert a quelque chose)');
@@ -313,7 +313,7 @@ async function main() {
     await page.evaluate(() => { openPos(9020); });
     await page.waitForTimeout(900);
     await page.evaluate(() => { window.__ANIM__ = []; });
-    const caseB = await page.$('#posOverlay .activity-check-row');
+    const caseB = await page.$('#posOverlay .gc-check');
     if (caseB) await caseB.click();
     await page.waitForTimeout(1500);
     const mutFiche = await page.evaluate(() => ({ anim: window.__ANIM__ }));

@@ -75,13 +75,13 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
 const MUTATIONS = {
   fini: ['app-main.js', "  if (context.when === 'past' || span.end <= context.now) return status === 'paid' ? 'done' : 'closing';", "  if (context.when === 'past') return status === 'paid' ? 'done' : 'closing';", '[A] chaque dossier est dans sa colonne'],
   double: ['app-main.js', '    board[getStaffTerrainPhase(reservation, span, context)].push({ reservation, ...span });', "    const phase = getStaffTerrainPhase(reservation, span, context); board[phase].push({ reservation, ...span }); if (phase === 'closing') board.onsite.push({ reservation, ...span });", '[A] chaque dossier n apparait qu une fois'],
-  retard: ['app-main.js', "    if (isUpcomingReservationStatus(item.reservation.status || 'pending') && item.start <= board.now) late.push(item);", '    if (false) late.push(item);', '[A] le groupe en retard est en tete de « À venir »'],
+  retard: ['app-main.js', '    else if (board.now - item.start >= seuil - 1e-9) late.push(item);', '    else if (false) late.push(item);', '[A] le groupe en retard est en tete de « À venir »'],
   appeler: ['app-main.js', "  const call = phase === 'late' && phone", '  const call = false && phone', '[A] le groupe en retard porte son numero'],
   pointe: ['app-main.js', "  if (phase === 'closing' && upcoming) return { label: 'Non pointé', tone: 'unmarked' };", '', '[A] « Non pointé »'],
   verifier: ['app-main.js', "  if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };", '', '[A] « À vérifier » et « Payé »'],
   repete: ['app-main.js', "  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };\n  return null;", "  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };\n  return { label: getStaffReservationStatusLabel(reservation.status || 'pending'), tone: 'confirmed' };", '[A] aucune pastille ne repete la colonne'],
   paye: ['app-main.js', "  if ((phase === 'upcoming' || phase === 'late') && status !== 'paid') {", "  if ((phase === 'upcoming' || phase === 'late')) {", '[A] un dossier deja paye ne propose pas « Arrivé »'],
-  plustard: ['app-main.js', '  const soon = today ? board.upcoming.filter(item => item.start <= horizon) : [];', '  const soon = today ? board.upcoming : [];', '[A] au-dela de l heure qui vient, une ligne'],
+  plustard: ['app-main.js', '  const soon = today ? [...onsite.due, ...board.upcoming.filter(item => item.start <= horizon)] : [];', '  const soon = today ? [...onsite.due, ...board.upcoming] : [];', '[A] au-dela de l heure qui vient, une ligne'],
   montant: ['app-main.js', '  const due = board.closing.reduce(', '  const due = [...board.closing, ...onsite.present].reduce(', '[A] chaque colonne compte'],
   mobile: ['pinlane-staff.css', '  .terrain-column.is-closing.has-items { order: -1; }\n', '', '[A] au telephone'],
   geste: ['app-main.js', "  if (status === 'arrived' || span.start <= context.now) return 'onsite';", "  if (span.start <= context.now) return 'onsite';", '[B] Arrivé fait passer la carte dans Sur place'],
@@ -222,7 +222,7 @@ async function ouvrir(browser, { largeur = 1440, route = '#/staff/arrivals', jou
     try { corps = JSON.parse(r.request().postData() || '{}'); } catch (e) { corps = {}; }
     const cible = magasin.find((x) => String(x.id) === String(corps.id));
     if (cible && corps.status) cible.status = corps.status;
-    ecritures.push({ id: corps.id, status: corps.status });
+    ecritures.push({ id: corps.id, status: corps.status, paymentMethod: corps.paymentMethod });
     r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, reservation: cible ? { ...cible, date: corps.date || cible.date } : corps }) });
   });
   await page.goto(`${BASE}/${route}`);
@@ -360,7 +360,10 @@ async function main() {
         '[A] aucune pastille ne repete la colonne (ni « Confirmé » ni « Arrivé »), jamais deux par dossier', ['7105', '7109', '7103', '7102'].map((id) => `${id} « ${statut(id)} »`).join(', '));
       const gestes = (id) => ((carte(va, id) || {}).gestes || []).join('+');
       ok(gestes(7106) === 'Détail', '[A] un dossier deja paye ne propose pas « Arrivé »', gestes(7106));
-      ok(gestes(7104) === 'Détail+Arrivé' && gestes(7105) === 'Détail+Arrivé' && gestes(7109) === 'Détail+Arrivé' && gestes(7103) === 'Détail+Payé' && gestes(7102) === 'Détail+Payé' && gestes(7108) === 'Détail+Payé',
+      // Encaisser note le moyen depuis le 2026-10-01 : « Payé · Carte » et
+      // « Payé · Espèces » remplacent « Payé ».
+      const PAYER = 'Détail+Payé · Carte+Payé · Espèces';
+      ok(gestes(7104) === 'Détail+Arrivé' && gestes(7105) === 'Détail+Arrivé' && gestes(7109) === 'Détail+Arrivé' && gestes(7103) === PAYER && gestes(7102) === PAYER && gestes(7108) === PAYER,
         '[A] les gestes suivent la colonne', ['7104', '7105', '7103', '7102', '7108'].map((id) => `${id} ${gestes(id)}`).join(' | '));
       const quand = (id) => (carte(va, id) || {}).quand;
       ok(quand(7105) === 'dans 30 min' && quand(7106) === 'dans 45 min' && quand(7109) === 'dans 1 h' && quand(7103) === 'fin dans 30 min' && quand(7102) === 'fini depuis 30 min' && quand(7108) === 'fini depuis 1 h 30',
@@ -398,20 +401,20 @@ async function main() {
       await b.page.waitForFunction(() => Boolean(document.querySelector('.terrain-column.is-onsite [data-terrain-id="7105"]')), null, { timeout: 5000 }).catch(() => {});
       const vb1 = await b.page.evaluate(LIRE);
       const dubois = carte(vb1, 7105) || {};
-      ok(dubois.colonne === 'Sur place' && (dubois.statuts || []).length === 0 && (dubois.gestes || []).join('+') === 'Détail+Payé',
+      ok(dubois.colonne === 'Sur place' && (dubois.statuts || []).length === 0 && (dubois.gestes || []).join('+') === 'Détail+Payé · Carte+Payé · Espèces',
         '[B] Arrivé fait passer la carte dans Sur place', JSON.stringify(dubois));
       ok(b.ecritures.some((e) => String(e.id) === '7105' && e.status === 'arrived'), '[B] le geste ecrit au serveur (PATCH arrived)', JSON.stringify(b.ecritures));
       await cliquer(b.page, 7104, 'Arrivé');
       await b.page.waitForFunction(() => Boolean(document.querySelector('.terrain-column.is-onsite [data-terrain-id="7104"]')), null, { timeout: 5000 }).catch(() => {});
       const vb2 = await b.page.evaluate(LIRE);
       const solvay = carte(vb2, 7104) || {};
-      ok(solvay.colonne === 'Sur place' && (solvay.statuts || []).length === 0 && (solvay.gestes || []).join('+') === 'Détail+Payé' && b.ecritures.some((e) => String(e.id) === '7104' && e.status === 'arrived'),
+      ok(solvay.colonne === 'Sur place' && (solvay.statuts || []).length === 0 && (solvay.gestes || []).join('+') === 'Détail+Payé · Carte+Payé · Espèces' && b.ecritures.some((e) => String(e.id) === '7104' && e.status === 'arrived'),
         '[B] pointer le groupe en retard le fait passer Sur place, sans pastille', JSON.stringify(solvay));
-      await cliquer(b.page, 7102, 'Payé');
+      await cliquer(b.page, 7102, 'Payé · Espèces');
       await b.page.waitForFunction(() => !document.querySelector('[data-terrain-id="7102"]'), null, { timeout: 5000 }).catch(() => {});
       const vb3 = await b.page.evaluate(LIRE);
-      ok(!carte(vb3, 7102) && vb3.sousTitre === '9 réservations · 53 joueurs · 2 terminées et payées' && b.ecritures.some((e) => String(e.id) === '7102' && e.status === 'paid'),
-        '[B] Payé clot le dossier : il quitte le tableau et compte parmi les termines', `« ${vb3.sousTitre} »`);
+      ok(!carte(vb3, 7102) && vb3.sousTitre === '9 réservations · 53 joueurs · 2 terminées et payées' && b.ecritures.some((e) => String(e.id) === '7102' && e.status === 'paid' && e.paymentMethod === 'Espèces'),
+        '[B] Payé · Espèces clot le dossier (et ecrit le moyen) : il quitte le tableau et compte parmi les termines', `« ${vb3.sousTitre} » ${JSON.stringify(b.ecritures.filter((e) => String(e.id) === '7102'))}`);
       ok(vb3.entree === false, '[B] l entree ne rejoue pas au re-rendu');
       const retour = await b.page.evaluate(() => {
         openStaffMenuPage('planning');
@@ -429,13 +432,21 @@ async function main() {
       console.log('[C] L HEURE');
       // ===================================================================
       const c = await ouvrir(browser);
+      // 16:01 : Dubois (16:00) est dans la marge de retard du centre (5 min
+      // par defaut, Etablissement, 2026-10-01) : attendu, pas encore en retard.
       await c.page.clock.fastForward(31 * 60 * 1000);
+      await c.page.waitForTimeout(300);
+      const vm = await c.page.evaluate(LIRE);
+      const duboisMarge = carte(vm, 7105) || {};
+      ok(duboisMarge.colonne === 'À venir' && (duboisMarge.statuts || []).length === 0 && duboisMarge.quand === 'attendu maintenant',
+        '[C] 16:01, dans la marge de 5 min : Dubois est « attendu maintenant », sans pastille de retard', `Dubois ${duboisMarge.colonne}/${(duboisMarge.statuts || []).join()}/${duboisMarge.quand}`);
+      await c.page.clock.fastForward(5 * 60 * 1000);
       await c.page.waitForTimeout(300);
       const vc = await c.page.evaluate(LIRE);
       const duboisTic = carte(vc, 7105) || {};
       const lucasTic = carte(vc, 7103) || {};
-      ok(duboisTic.colonne === 'À venir' && (duboisTic.statuts || []).join() === 'En retard · 1 min' && lucasTic.colonne === 'À clôturer' && lucasTic.quand === 'fini depuis 1 min' && vc.colonnes[0].sousTitre === 'Après 17:01',
-        '[C] l heure fait avancer les cartes (16:01 : Dubois en retard, Lucas fini, la limite des lignes suit)', `Dubois ${duboisTic.colonne}/${(duboisTic.statuts || []).join()} · Lucas ${lucasTic.colonne}/${lucasTic.quand} · « ${vc.colonnes[0].sousTitre} »`);
+      ok(duboisTic.colonne === 'À venir' && (duboisTic.statuts || []).join() === 'En retard · 6 min' && lucasTic.colonne === 'À clôturer' && lucasTic.quand === 'fini depuis 6 min' && vc.colonnes[0].sousTitre === 'Après 17:06',
+        '[C] l heure fait avancer les cartes (16:06 : Dubois en retard, Lucas fini, la limite des lignes suit)', `Dubois ${duboisTic.colonne}/${(duboisTic.statuts || []).join()} · Lucas ${lucasTic.colonne}/${lucasTic.quand} · « ${vc.colonnes[0].sousTitre} »`);
       ok(vc.entree === false, '[C] le tic de la minute ne rejoue pas l entree');
       ok(c.erreurs.length === 0, '[C] aucune erreur JavaScript', c.erreurs.slice(0, 3).join(' | '));
       await c.ctx.close();

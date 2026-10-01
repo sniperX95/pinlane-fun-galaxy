@@ -1463,15 +1463,14 @@ function ecartsPiste(p, a, actifs, propose, d, laserParts) {
 // plusieurs parties, « Vos N parties », le compte des heures choisies sur N,
 // puis une ligne par partie : son heure et la fin de son dernier groupe (le
 // plan), « proposee » tant qu aucune heure n est choisie, ou « sur place avec
-// l equipe » quand rien ne la pose. Le bandeau dit « N parties de X · une
-// heure par partie ».
+// l equipe » quand rien ne la pose. Le bandeau dit « N parties de X ».
 function ecartsParties(p, a, d, laserParts) {
   const id = a.activityId;
   const total = Math.max(1, Number(a.count) || 1);
   if (!(id === 'laser_game' && total > 1)) return p.parts ? [`${id}: cadre des parties pour ${total} partie`] : [];
   if (!p.parts) return [`${id}: cadre des parties absent pour ${total} parties`];
   const e = [];
-  const bandeau = `${total} parties de ${minutesLabelQa(jeuLaserQa() || a.durationMinutes)} · une heure par partie`;
+  const bandeau = `${total} parties de ${minutesLabelQa(jeuLaserQa() || a.durationMinutes)}`;
   if (p.detail !== bandeau) e.push(`${id}: bandeau « ${p.detail} » vs « ${bandeau} »`);
   const n = laserParts.length;
   // Le plan ne pose que les parties choisies : une partie sans heure passe
@@ -3598,10 +3597,11 @@ async function main() {
         cles,
         gloses: Array.from(l.querySelectorAll('.fg-legend__key em')).filter(vu).length,
         lu,
-        // Ce que le telephone doit lire, et rien d autre : la consigne, puis
-        // les trois mots. Compose sur place a partir de la page elle-meme :
-        // changer la consigne ne rend pas le gate rouge, ajouter du texte oui.
-        attenduCourt: [consigne.trim()].concat(cles).join(' ').replace(/\s+/g, ' ').trim(),
+        // Ce que le telephone doit lire, et rien d autre : les trois mots
+        // (Movsar, 2026-10-01 : « enormement de texte » ; la consigne ne se
+        // lit plus qu en large). Ajouter du texte rend le gate rouge.
+        attenduCourt: cles.join(' ').replace(/\s+/g, ' ').trim(),
+        consigne: consigne.trim(),
         caracteres: lu.length,
       };
     });
@@ -3615,7 +3615,7 @@ async function main() {
       && legEtroit.gloses === 0
       && legEtroit.lu === legEtroit.attenduCourt
       && legEtroit.caracteres < legLarge.caracteres,
-      '[J] sur 375 px, la legende ne porte PLUS QUE la consigne et les trois mots',
+      '[J] sur 375 px, la legende ne porte PLUS QUE les trois mots',
       `« ${legEtroit.lu} » (${legEtroit.caracteres} caracteres contre ${legLarge.caracteres} en large)`);
 
     // --- L heure RETENUE emporte celle de son 2e groupe -------------------

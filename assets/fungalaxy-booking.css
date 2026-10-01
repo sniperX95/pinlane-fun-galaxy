@@ -1353,6 +1353,9 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-legend b { color: var(--fg-text); font-weight: 700; }
 .fg-legend__tip { flex-basis: 100%; }
+/* Sur telephone, les trois contours parlent seuls : la phrase de la legende
+   est la ligne de trop (Movsar, 2026-10-01 : « enormement de texte »). */
+@media (max-width: 680px) { .fg-legend__tip { display: none; } }
 /* Chaque cle PORTE l apparence de la puce qu elle decrit : le client n a pas
    a faire le lien de tete entre un mot et un contour. */
 .fg-legend__key { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; }
@@ -1447,9 +1450,9 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-track__waves[hidden] { display: none; }
 /* La partie de laser se partage : dit sous le nom de l activite, avant ses
    heures (Movsar, 2026-09-30). */
-.fg-track__share { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 14px 22px 0 26px; font-size: 13px; line-height: 1.5; color: var(--fg-muted); }
-.fg-track__share svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--fg-purple-ink); }
-.fg-track__share b { color: var(--fg-text); font-weight: 600; }
+.fg-track__share, .fg-track__lanes { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 14px 22px 0 26px; font-size: 13px; line-height: 1.5; color: var(--fg-muted); }
+.fg-track__share svg, .fg-track__lanes svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--fg-purple-ink); }
+.fg-track__share b, .fg-track__lanes b { color: var(--fg-text); font-weight: 600; }
 .fg-track__waves b { color: var(--fg-teal-ink); font-weight: 700; }
 /* LES PARTIES DE LASER, UNE PAR UNE : le compte « x heures choisies sur x »,
    puis chaque partie, son heure et la fin de son dernier groupe, ou « sur
@@ -1770,7 +1773,7 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-track__head, .fg-visit__head { padding: 14px 15px 12px 19px; }
   .fg-track > .fg-periods { padding: 12px 15px 10px 19px; }
   .fg-track__waves { padding: 12px 15px 0 19px; }
-  .fg-track__share { padding: 12px 15px 0 19px; }
+  .fg-track__share, .fg-track__lanes { padding: 12px 15px 0 19px; }
   .fg-track__foot { padding: 0 15px 12px 19px; }
   .fg-visit__list { padding: 12px 15px 14px 19px; }
   .fg-visit__warn { margin: 0 15px 14px 19px; }

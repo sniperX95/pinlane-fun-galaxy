@@ -395,7 +395,7 @@ async function navigateur() {
       const t = (id, sel) => { const n = document.querySelector('#gridAct .fg-grid__item[data-activity="' + id + '"] ' + sel); return n ? n.textContent.replace(/\s+/g, ' ').trim() : ''; };
       return { note: t('laser_game', '.fg-card__rot'), enfants: t('playground', '.fg-kids__n'), texte: t('playground', '[data-compteur-texte]'), prix: t('playground', '.fg-card__price') };
     });
-    ok(cartes.note === 'Une partie : 20 min de jeu, plus 5 à 10 min d’explication des règles et de préparation.', 'la carte du laser dit le jeu et le temps des regles', cartes.note);
+    ok(cartes.note === 'Partie de 20 min, + 5 à 10 min de règles.', 'la carte du laser dit le jeu et le temps des regles', cartes.note);
     ok(cartes.enfants === '3' && cartes.texte === 'L’autre ne paie pas l’entrée.' && /^36\s€ · 3\senfants/.test(cartes.prix), 'la plaine : 3 enfants sur 4, le prix des 3', JSON.stringify(cartes));
     await page.click('#goHours');
     const heures = await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('#goContact').disabled, 15000);
@@ -410,7 +410,7 @@ async function navigateur() {
       const t = (sel) => { const x = n && n.querySelector(sel); return x ? x.textContent.replace(/\s+/g, ' ').trim() : ''; };
       return { nom: t('.fg-track__head b'), detail: t('.fg-track__detail'), texte: n ? n.textContent.replace(/\s+/g, ' ').trim() : '' };
     });
-    ok(tete.nom === 'Laser Game' && tete.detail === '1 partie · 20 min' && tete.texte.indexOf('Une partie : 20 min de jeu, plus 5 à 10 min d’explication des règles et de préparation.') >= 0,
+    ok(tete.nom === 'Laser Game' && tete.detail === '1 partie · 20 min' && tete.texte.indexOf('Partie de 20 min, + 5 à 10 min de règles.') >= 0,
       'la piste du laser dit « 1 partie · 20 min » et le temps des regles', JSON.stringify({ nom: tete.nom, detail: tete.detail, texte: tete.texte.slice(0, 140) }));
     await page.click('#goContact');
     await attendre(page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);

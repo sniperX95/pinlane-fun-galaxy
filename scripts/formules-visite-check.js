@@ -243,8 +243,8 @@ function verifierF4(bureau, tel) {
   const compris = suite.filter((e) => /fg-visit__step--incl/.test(e.genre)).map((e) => e.titre);
   ok(JSON.stringify(compris) === JSON.stringify(attenduDansLaFoulee) && !v.encadre,
     'ce que comprend la formule se lit DANS la visite, dans les mots de sa carte (minigolf, boissons), sans encadre a part', `${compris.join(' | ')} / attendu ${attenduDansLaFoulee.join(' | ')}`);
-  ok(/La partie 2 se jouera dans la foulée/.test(v.parties) && /Mieux vaut lui choisir une heure maintenant/.test(v.parties),
-    'le cadre des parties previent : la 2e se jouera dans la foulee, mieux vaut lui choisir une heure', `« ${v.parties} »`);
+  ok(/Partie 2 sans heure : placée sur place avec l’équipe/.test(v.parties) && /Touchez une heure ci-dessous pour la choisir/.test(v.parties),
+    'le cadre des parties previent : la 2e sans heure est placee sur place, toucher une heure la choisit', `« ${v.parties} »`);
 
   section('C. LES PLAGES REPLIEES DISENT CE QU ELLES CACHENT');
   ok(bureau.pose, 'MONTAGE le bowling se pose a 11:00');

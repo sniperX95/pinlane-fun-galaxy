@@ -302,7 +302,7 @@ async function verifierFormulaire(browser) {
       '[B] laser 16:00 et 16:30, sur une ligne : « 9 places libres sur 30, il en faut 10 »', ligne(lu.laser, '16:00').texte);
     const parLibre = lu.bowling.concat(lu.laser).filter((l) => /billard|duckpin|fun run/i.test(l.texte));
     ok(parLibre.length === 0, '[B] aucune ligne ne ferme une heure a cause du billard, du duckpin ou du Fun Run', parLibre.map((l) => l.texte).join(' | '));
-    ok(lu.partage === 'Une partie : 20 min de jeu, plus 5 à 10 min d’explication des règles et de préparation. Jusqu’à 30 joueurs par partie : d’autres groupes peuvent jouer avec vous.',
+    ok(lu.partage === 'Partie de 20 min, + 5 à 10 min de règles. Partie partagée (jusqu’à 30 joueurs) : d’autres groupes peuvent jouer avec vous.',
       '[B] la piste du laser dit que la partie se partage, avec les places du centre', lu.partage);
     ok(!lu.partageBowling, '[B] la phrase du partage ne parle que du laser');
   } finally {

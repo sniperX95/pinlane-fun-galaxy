@@ -302,7 +302,9 @@
     var d = dureeLaser();
     if (!d) return '';
     var avant = d.creneau - d.jeu, auPlus = d.cycle - d.jeu;
-    return 'Une partie : ' + d.jeu + ' min de jeu, plus ' + (auPlus > avant ? avant + ' à ' + auPlus : avant) + ' min d’explication des règles et de préparation.';
+    // Court (Movsar, 2026-10-01 : « enormement de texte a l endroit des
+    // horaires, abuse pour lasergame sur mobile ») : le meme fait, en une ligne.
+    return 'Partie de ' + d.jeu + ' min, + ' + (auPlus > avant ? avant + ' à ' + auPlus : avant) + ' min de règles.';
   }
 
   /* --- Les options d une activite (duree, parties, session) --------------------- */
@@ -371,7 +373,43 @@
   // choisissent.
   // La phrase sous les pastilles : les tours d une activite qui tourne, ou la
   // duree d une partie de laser.
-  function noteCarte(a) { return noteRotation(a) || (a && a.id === 'laser_game' ? phraseLaser() : ''); }
+  function noteCarte(a) { return noteRotation(a) || (a && a.id === 'bowling' ? phrasePistes(a) : '') || (a && a.id === 'laser_game' ? phraseLaser() : ''); }
+  // LES PISTES DE BOWLING DU GROUPE (Movsar, 2026-10-01 : « au-dela de 6
+  // joueurs c est une autre piste en plus, payee : prix par temps et par
+  // piste, 6 joueurs max par piste ; faut que ce soit visible quand ils
+  // choisissent les horaires, pour comprendre pourquoi c est plus cher »).
+  // MIROIR de getBilledLaneCount (lib/booking-config) : services equilibres,
+  // pistes de confort, repli sur la capacite de secours. Le serveur fait foi.
+  // Rien quand le centre vend le bowling a la partie (bowlingPricing, N4).
+  function pistesBowling() {
+    var b = meta && meta.center && meta.center.booking;
+    if (!b || b.bowlingPricing) return null;
+    var parc = Math.max(1, Number(b.laneCount) || 8);
+    var confort = Math.max(1, Number(b.normalCapacityPerLane) || 6);
+    var secours = Math.max(confort, Number(b.emergencyCapacityPerLane) || confort);
+    var joueurs = Math.max(1, Math.trunc(Number(state.pax) || 1));
+    var services = [joueurs];
+    if (joueurs > parc * secours) {
+      var n = Math.ceil(joueurs / (parc * confort)), base = Math.floor(joueurs / n), reste = joueurs % n;
+      services = [];
+      for (var i = 0; i < n; i += 1) services.push(base + (i < reste ? 1 : 0));
+    }
+    var pistes = services.reduce(function (t, j) {
+      var req = Math.ceil(j / confort);
+      return t + (req > parc && j <= parc * secours ? parc : req);
+    }, 0);
+    return { pistes: pistes, parPiste: confort, joueurs: joueurs, services: services.length };
+  }
+  // « 14 joueurs : 3 pistes × 39 € = 117 € » ; seul, « 6 joueurs max par piste ».
+  function phrasePistes(a) {
+    var p = pistesBowling();
+    if (!p) return '';
+    var opt = optionChoisie(a);
+    var prix = opt ? Number(opt.prix) || 0 : 0;
+    if (p.pistes < 2) return p.parPiste + ' joueurs max par piste.';
+    return p.pistes + ' pistes (' + p.parPiste + ' joueurs max par piste)'
+      + (prix ? ' = ' + euros(prix * p.pistes) : '') + (p.services > 1 ? ', en ' + p.services + ' tours' : '') + '.';
+  }
   function noteRotation(a) {
     if (a.priceType === 'grid_fun_run') {
       var n = sessionsPour(a);
@@ -2317,8 +2355,8 @@
     if (sansHeure.length) {
       var plusieurs = sansHeure.length > 1;
       html += '<p class="fg-parts__note"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
-        + (plusieurs ? 'Les parties ' : 'La partie ') + esc(joindreListe(sansHeure, ' et ')) + ' se ' + (plusieurs ? 'joueront' : 'jouera') + ' dans la foulée, ' + (plusieurs ? 'placées' : 'placée') + ' sur place avec l’équipe selon les places libres ce jour-là. '
-        + '<b>Mieux vaut ' + (plusieurs ? 'leur' : 'lui') + ' choisir une heure maintenant</b> : touchez une autre heure ci-dessous.</span></p>';
+        + (plusieurs ? 'Parties ' : 'Partie ') + esc(joindreListe(sansHeure, ' et ')) + ' sans heure : ' + (plusieurs ? 'placées' : 'placée') + ' sur place avec l’équipe. '
+        + '<b>Touchez une heure ci-dessous</b> pour ' + (plusieurs ? 'les' : 'la') + ' choisir.</span></p>';
     }
     boite.innerHTML = html;
     // Ce qui a change (une partie posee, deplacee, retiree) monte a sa place.
@@ -2392,7 +2430,18 @@
       if (!partage && !duree) return '';
       return '<p class="fg-track__share"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
         + (duree ? esc(duree) + (partage ? ' ' : '') : '')
-        + (!partage ? '' : places ? '<b>Jusqu’à ' + places + ' joueurs par partie</b> : d’autres groupes peuvent jouer avec vous.' : 'D’autres groupes peuvent jouer la même partie que vous.')
+        + (!partage ? '' : '<b>Partie partagée</b>' + (places ? ' (jusqu’à ' + places + ' joueurs)' : '') + ' : d’autres groupes peuvent jouer avec vous.')
+        + '</span></p>';
+    }
+    // LES PISTES DU BOWLING, la ou se choisit l heure : combien, pourquoi, et
+    // ce que ca coute (le prix d une piste fois les pistes).
+    function notePistes() {
+      var a = activite('bowling'), p = pistesBowling();
+      if (!a || !p || p.pistes < 2) return '';
+      var opt = optionChoisie(a), prix = opt ? Number(opt.prix) || 0 : 0;
+      return '<p class="fg-track__lanes"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
+        + '<b>' + p.parPiste + ' joueurs max par piste</b> : ' + p.joueurs + ' joueurs = ' + p.pistes + ' pistes'
+        + (prix ? ' × ' + esc(euros(prix)) + ' = <b>' + esc(euros(prix * p.pistes)) + '</b>' : '') + (p.services > 1 ? ', en ' + p.services + ' tours' : '') + '.'
         + '</span></p>';
     }
     if (ancres.length) {
@@ -2415,7 +2464,9 @@
         // Le JEU d une partie de laser (20 min), pas le creneau de l arene
         // (25 min) : la phrase juste dessous dit les deux.
         var minutesPartie = laser && dureeLaser() ? dureeLaser().jeu : a.durationMinutes;
-        var detail = multi ? count + ' parties de ' + minutesLabel(minutesPartie) + ' · une heure par partie' : (laser ? '1 partie · ' : '') + minutesLabel(minutesPartie);
+        var detail = multi ? count + ' parties de ' + minutesLabel(minutesPartie) : (laser ? '1 partie · ' : '') + minutesLabel(minutesPartie);
+        var pistes = a.activityId === 'bowling' ? pistesBowling() : null;
+        if (pistes) detail += ' · ' + pistes.pistes + ' piste' + (pistes.pistes > 1 ? 's' : '');
         html += '<section class="fg-track fg-rise" style="--i:' + (i + 1) + '" data-activity="' + esc(a.activityId) + '" data-count="' + count + '">'
           + '<div class="fg-track__head">'
           + (ancres.length > 1 ? '<span class="fg-track__num" aria-hidden="true">' + (i + 1) + '</span>' : '')
@@ -2425,6 +2476,7 @@
           // elles se pose apres. Ni l un ni l autre dans le bandeau : lui ne
           // porte que le rang, l icone, le nom et la duree.
           + (laser ? notePartage() : '')
+          + (a.activityId === 'bowling' ? notePistes() : '')
           + (multi ? '<div class="fg-parts"></div>' : '')
           + '<p class="fg-track__waves" hidden></p>'
           + rendreChips(a.times || [], multi, a.activityId)

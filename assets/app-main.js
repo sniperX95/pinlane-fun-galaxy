@@ -23104,7 +23104,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     const cochable = Boolean(etape.coche) && r.status !== 'cancelled';
     const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)` : '';
     const repere = cochable
-      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${options.coches ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : ''}</button>`
+      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${options.coches ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : `<span class="gc-check-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`}</button>`
       : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`;
     return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}${cochable ? ' is-cochable' : ''}"${cochable ? ` onclick="${appel}"` : ''}>
       ${quand}
@@ -23147,7 +23147,7 @@ function getGroupeEncadres(r) {
   const aUneNote = hasReservationNote(r);
   const parts = aUneNote ? getReservationNoteParts(r) : { mot: '', suivi: [] };
   if (parts.mot) encadres.push({ ton: 'note', titre: getReservationNoteTitre(r), texte: parts.mot });
-  if (parts.suivi.length) encadres.push({ ton: 'suivi', titre: 'Suivi', texte: parts.suivi.join(' · ') });
+  if (parts.suivi.length) encadres.push({ ton: 'suivi', titre: parts.suivi.some(t => /retard/i.test(t)) ? 'Retard' : 'Suivi', texte: parts.suivi.join(' · ') });
   // La note de l equipe, la plus recente, sur la carte : les autres se lisent
   // dans la fiche.
   const notesEquipe = aUneNote ? getReservationNotesEquipe(r) : [];
@@ -24108,14 +24108,10 @@ function renderGroupeNotes(r) {
   if (!contenu && !peutNoter) return '';
   return `<section class="info-block gc-notes${contenu ? '' : ' is-vide'}" aria-label="Notes">
     ${contenu ? '<div class="gc-sheet-head"><div class="info-label">Notes</div></div>' : ''}
-    ${motClient ? `<div class="gc-note-client">
-      <span class="gc-note-titre">${escapeHtml(getReservationNoteTitre(r))}</span>
-      <p>${escapeHtml(motClient)}</p>
-    </div>` : ''}
+    ${motClient ? `<p class="gc-note-client"><b class="gc-note-titre">${escapeHtml(getReservationNoteTitre(r))}</b> ${escapeHtml(motClient)}</p>` : ''}
     ${parts.suivi.length ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
     ${notes.length ? `<ul class="gc-notes-equipe">${notes.map(n => `<li class="gc-note-equipe">
-      <p>${escapeHtml(n.t)}</p>
-      <span class="gc-note-meta">${escapeHtml([n.par, formatNoteEquipeQuand(n.le)].filter(Boolean).join(' · '))}</span>
+      <p>${escapeHtml(n.t)} <span class="gc-note-meta">${escapeHtml([n.par, formatNoteEquipeQuand(n.le)].filter(Boolean).join(' · '))}</span></p>
       ${peutNoter ? `<button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeHtml(n.le)}', event)">Retirer</button>` : ''}
     </li>`).join('')}</ul>` : ''}
     ${ouvert ? `<div class="gc-note-ajout">

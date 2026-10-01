@@ -18639,7 +18639,7 @@ button.pv2-cal-cell:focus-visible {
   .gc-who h4.res-row-name { font-size: 16px; }
   .gc-price b { font-size: 17px; }
   .gc-step { grid-template-columns: 46px minmax(0, 1fr) auto; gap: 8px; }
-  .gc-step.is-cochable { grid-template-columns: 46px 24px minmax(0, 1fr) auto; }
+  .gc-step.is-cochable { grid-template-columns: 46px 26px minmax(0, 1fr) auto; }
   .gc-step-icon { display: none; }
   .gc-step.is-cochable .gc-step-state { grid-column: 3 / -1; }
   .gc-step.is-cochable .gc-step-price { grid-column: 4; }
@@ -18671,6 +18671,13 @@ button.pv2-cal-cell:focus-visible {
    de la couleur de la carte se lisait comme un indicateur a 1:1
    (console-contrast, regle des indicateurs d etat). */
 .gc-check:not(.is-on) { color: var(--muted); background: transparent; }
+/* LE LOOK D AVANT REVIENT (2026-10-01, Movsar : « avant c etait plus beau ») :
+   pas de case carree, l icone de l activite dans un rond sans contour ; le
+   survol montre le rond, fait il devient la coche verte. */
+.gc-check { width: 26px; height: 26px; border-radius: 50%; border-color: transparent; }
+.gc-check-icon { display: flex; }
+.gc-check-icon svg { width: 18px; height: 18px; }
+@media (hover: hover) { .gc-step.is-cochable:hover .gc-check:not(.is-on) { border-color: var(--success); color: var(--success); } }
 /* LES ACTIVITES LIBRES EN UNE LIGNE DE PUCES (2026-10-01) : une rangee au
    lieu de six, chaque puce cochable. */
 .gc-step.gc-step-libres { grid-template-columns: 52px minmax(0, 1fr); align-items: start; }
@@ -18726,34 +18733,37 @@ button.pv2-cal-cell:focus-visible {
 .gc-flag.tone-note b { color: var(--warning); }
 .gc-flag.tone-equipe { background: var(--info-soft); border-left-color: var(--info); }
 .gc-flag.tone-equipe b { color: var(--accent-strong); }
-.gc-notes { display: flex; flex-direction: column; gap: var(--space-2); }
-.gc-note-client { padding: 10px 14px; border-left: 3px solid var(--warning); border-radius: var(--radius-md); background: var(--warning-soft); }
-.gc-note-titre { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--warning); }
-.gc-note-client p { margin: 2px 0 0; font-size: 15px; line-height: 1.5; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+.gc-notes { display: flex; flex-direction: column; gap: 6px; }
+/* COMPACT (2026-10-01, Movsar : « les notes sont grosses, elles prennent
+   beaucoup de place ») : une ligne par note, le titre et l auteur dans la
+   ligne, un filet de couleur pour les distinguer. */
+.gc-note-client { margin: 0; padding: 6px 10px; border-left: 2px solid var(--warning); border-radius: var(--radius-sm); background: var(--warning-soft); font-size: 13.5px; line-height: 1.45; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+.gc-note-titre { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--warning); margin-right: 4px; }
 .gc-note-vide { margin: 0; font-size: 13px; color: var(--muted); }
-.gc-notes-equipe { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.gc-note-equipe { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: start; padding: 10px 14px; border-left: 3px solid var(--info); border-radius: var(--radius-md); background: var(--info-soft); }
-.gc-note-equipe p { grid-column: 1; margin: 0; font-size: 14px; line-height: 1.5; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
-.gc-note-meta { grid-column: 1; font-size: 12px; color: var(--muted); }
-.gc-note-retirer { grid-column: 2; grid-row: 1 / span 2; align-self: center; min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
-.gc-note-retirer:hover { color: var(--text); border-color: var(--line-strong); }
-.gc-note-retirer.is-arme { color: var(--danger); border-color: currentColor; font-weight: 600; }
+.gc-notes-equipe { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gc-note-equipe { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; border-left: 2px solid var(--info); border-radius: var(--radius-sm); background: var(--info-soft); }
+.gc-note-equipe p { flex: 1; min-width: 0; margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+.gc-note-meta { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.gc-note-retirer { flex: none; min-height: 26px; padding: 0 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.gc-note-retirer:hover { color: var(--text); background: var(--subtle); }
+.gc-note-retirer.is-arme { color: var(--danger); font-weight: 600; }
 .gc-note-ajout { display: flex; gap: 8px; align-items: flex-end; }
-.gc-note-champ { flex: 1; min-width: 0; min-height: 44px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; line-height: 1.45; }
+.gc-note-champ { flex: 1; min-width: 0; min-height: 40px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; line-height: 1.45; }
 .gc-note-champ:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
-.gc-note-ok { flex: none; min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--radius-md); background: var(--accent); color: var(--accent-contrast); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.gc-note-ok { flex: none; min-height: 40px; padding: 0 14px; border: 0; border-radius: var(--radius-md); background: var(--accent); color: var(--accent-contrast); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .gc-note-ok:hover { filter: brightness(1.08); }
 @media (max-width: 560px) {
   .gc-note-ajout { flex-direction: column; align-items: stretch; }
+  .gc-note-retirer, .gc-note-ok { min-height: 44px; }
 }
 
 /* Le nom de l activite qui mene a son planning : un lien, pas une coche. */
-.gc-step-link { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 32px; margin: -6px 0 -6px -8px; padding: 0 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-.gc-step-link b { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
-.gc-step-link svg { color: var(--accent-strong); flex: none; }
-.gc-step-link:hover { background: var(--subtle); }
-.gc-step-link:hover b { text-decoration-color: currentColor; }
+.gc-step-link { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; margin: -2px 0 -2px -6px; padding: 2px 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.gc-step-link svg { color: var(--accent-strong); flex: none; opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+.gc-step-link:hover, .gc-step-link:focus-visible { background: var(--subtle); }
+.gc-step-link:hover svg, .gc-step-link:focus-visible svg { opacity: 1; }
 .gc-step-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (hover: none) { .gc-step-link svg { opacity: 0.6; } }
 
 /* Le groupe amene au planning depuis sa fiche : un contour qui pulse puis
    s eteint, pour que l oeil le trouve dans la grille. */
@@ -18772,12 +18782,18 @@ button.pv2-cal-cell:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .booking.is-called, .laser-group-card.is-called, .laser-pass-card.is-called { animation: none; }
 }
-.gc-flag.tone-suivi b { color: var(--muted); }
-.gc-note-suivi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--muted); }
-.gc-note-suivi li::before { content: "Suivi · "; font-weight: 600; }
-.gc-notes.is-vide { padding-top: 6px; padding-bottom: 6px; }
-@media (min-width: 561px) { .gc-notes.is-vide .gc-note-ouvrir { min-height: 32px; } }
-.gc-note-ouvrir { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 36px; padding: 0 14px; border: 1px dashed var(--line-strong); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.gc-note-ouvrir:hover { color: var(--text); border-color: var(--accent); }
-.gc-note-ouvrir:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gc-flag.tone-suivi { background: var(--danger-soft); border-left-color: var(--danger); }
+.gc-flag.tone-suivi b { color: var(--danger); }
+.gc-flag.tone-suivi span { font-weight: 600; }
+/* LE RETARD SE VOIT (2026-10-01, Movsar : « le retard est pas assez
+   visible ») : les traces du moteur (retard signale, decalage) en bandeau
+   rouge, pas en petite ligne grise. */
+.gc-note-suivi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gc-note-suivi li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-left: 3px solid var(--danger); border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--text); font-size: 14px; font-weight: 600; }
+.gc-note-suivi li::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+/* « + Note pour l equipe » : un lien discret, pas un bouton de plus a l oeil. */
+.gc-notes.is-vide { padding-top: 4px; padding-bottom: 4px; }
+.gc-note-ouvrir { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; min-height: 28px; margin-left: -6px; padding: 0 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.gc-note-ouvrir:hover { color: var(--text); background: var(--subtle); }
+.gc-note-ouvrir:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (max-width: 560px) { .gc-note-ouvrir { min-height: 44px; } }

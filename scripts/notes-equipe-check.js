@@ -126,7 +126,7 @@ function verifier(sources) {
   c(cote.renderGroupeNotes({ id: 9, channel: 'public', status: 'confirmed', notes: '' }).includes('is-vide') && !/Notes<\/div>/.test(cote.renderGroupeNotes({ id: 9, channel: 'public', status: 'confirmed', notes: '' })), '[C] une fiche sans note ne porte ni titre ni texte vide');
   c(!/\[equipe\]|\[ops:/.test(fiche), '[C] aucun marqueur interne ne s affiche');
   const comptoir = cote.renderGroupeNotes({ id: 8, channel: 'staff', status: 'confirmed', notes: 'Paie en deux fois' });
-  c(/Note<\/span>/.test(comptoir) && !/Mot du client/.test(comptoir), '[C] un dossier pris au comptoir ne dit pas « Mot du client »');
+  c(/class="gc-note-titre">Note<\/b>/.test(comptoir) && !/Mot du client/.test(comptoir), '[C] un dossier pris au comptoir ne dit pas « Mot du client »');
   const encadres = cote.getGroupeEncadres(dossier);
   const equipe = encadres.find((e) => e.ton === 'equipe');
   c(equipe && equipe.titre === 'Note équipe · 2' && /Table près de la fenêtre \(Sam\)/.test(equipe.texte), '[C] la carte porte la note la plus recente et le nombre de notes', JSON.stringify(equipe));

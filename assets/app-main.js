@@ -22978,13 +22978,15 @@ function terminerGroupe(reservationId, ev) {
   getGroupeProgramme(r).filter(etape => etape.coche && !etape.fait).forEach(etape => toggleFormulaActivity(reservationId, etape.coche));
 }
 
-// En tete du programme de la fiche : « Tout est fait » tant qu il reste une
-// activite a cocher, « Tout est fait » coche (le mot, sans bouton) ensuite.
+// En tete du programme de la fiche : « Tout est fait » quand il reste au
+// moins deux activites a cocher (une seule : sa case suffit, un bouton de plus
+// serait du bruit), le mot seul une fois tout coche.
 function renderGroupeTerminer(r) {
   const etapes = getGroupeProgramme(r).filter(etape => etape.coche);
   if (!etapes.length || r.status === 'cancelled') return '';
   const reste = etapes.filter(etape => !etape.fait).length;
   if (!reste) return '<span class="gc-done-all">Tout est fait</span>';
+  if (reste < 2) return '';
   return `<button type="button" class="gc-btn gc-finish" data-pl-focus="fiche.terminer.${Number(r.id)}" onclick="terminerGroupe(${Number(r.id)}, event)">Tout est fait${reste < etapes.length ? ` (${reste} restante${reste > 1 ? 's' : ''})` : ''}</button>`;
 }
 
@@ -24298,7 +24300,10 @@ function openCommCenter(reservationId, ev) {
     channel: 'email',
     subject: '',
     body: '',
-    busy: false
+    busy: false,
+    vue: 'ecrire',
+    apercu: { html: '', cle: '', enCours: false, erreur: '' },
+    envoye: null,
   };
   renderCommCenter();
   apiRequest(API_ENDPOINTS.ops, {
@@ -24314,6 +24319,7 @@ function openCommCenter(reservationId, ev) {
     commCenterState.step = 'compose';
     fillCommFromTemplate();
     renderCommCenter();
+    demanderApercuComm(0);
   }).catch(error => {
     closeCommCenter();
     toast(error.message || 'Ouverture du centre de communication impossible.');
@@ -24321,6 +24327,7 @@ function openCommCenter(reservationId, ev) {
 }
 
 function closeCommCenter() {
+  clearTimeout(commApercuMinuteur);
   commCenterState = null;
   const overlay = document.getElementById('commOverlay');
   if (!overlay) return;
@@ -24349,8 +24356,12 @@ function fillCommFromTemplate() {
 function selectCommTemplate(templateId) {
   if (!commCenterState || commCenterState.step !== 'compose') return;
   commCenterState.templateId = templateId;
+  commCenterState.envoye = null;
   fillCommFromTemplate();
   renderCommCenter();
+  demanderApercuComm(0);
+  const champ = document.getElementById('commBodyTextarea');
+  if (champ && templateId === 'custom') champ.focus();
 }
 
 function selectCommChannel(channelId) {
@@ -24360,11 +24371,71 @@ function selectCommChannel(channelId) {
   commCenterState.channel = channelId;
   fillCommFromTemplate();
   renderCommCenter();
+  demanderApercuComm(0);
 }
 
 function setCommSubject(value) {
   if (!commCenterState) return;
   commCenterState.subject = value;
+  const objet = document.getElementById('commInboxSubject');
+  if (objet) objet.textContent = value || '(sans objet)';
+  demanderApercuComm();
+}
+
+// L APERCU EST LE VRAI MAIL (2026-10-01, Movsar : « la ca fait interface des
+// annees 2006 »). Le serveur rend le MEME habillage que l envoi
+// (directEmailPreview : emailShell, design du centre, signature manuelle),
+// sans rien ecrire ; l ecran le pose dans une iframe sandboxee, en propriete
+// apres la peinture. Une frappe attend 400 ms de calme avant de redemander.
+let commApercuMinuteur = 0;
+function demanderApercuComm(delai = 400) {
+  clearTimeout(commApercuMinuteur);
+  const flow = commCenterState;
+  if (!flow || flow.step !== 'compose' || flow.channel !== 'email') return;
+  marquerApercuComm('maj');
+  commApercuMinuteur = setTimeout(() => {
+    if (!commCenterState || commCenterState !== flow) return;
+    const cle = JSON.stringify([flow.subject, flow.body]);
+    flow.apercu.enCours = true;
+    apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'directEmailPreview', centerId: flow.centerId, subject: flow.subject, body: flow.body }),
+    }).then(payload => {
+      if (commCenterState !== flow || JSON.stringify([flow.subject, flow.body]) !== cle) return;
+      flow.apercu = { html: String(payload.html || ''), cle, enCours: false, erreur: '' };
+      poserApercuComm();
+      marquerApercuComm('ok');
+    }).catch(error => {
+      if (commCenterState !== flow) return;
+      flow.apercu.enCours = false;
+      flow.apercu.erreur = error.message || 'Aperçu indisponible.';
+      marquerApercuComm('ko');
+    });
+  }, delai);
+}
+function poserApercuComm() {
+  const frame = document.getElementById('commPreviewFrame');
+  if (!frame || !commCenterState) return;
+  const html = commCenterState.apercu.html;
+  if (frame.__html !== html) { frame.__html = html; frame.srcdoc = html; }
+  frame.classList.toggle('is-vide', !html);
+}
+function marquerApercuComm(etat) {
+  const zone = document.getElementById('commPreviewState');
+  if (!zone) return;
+  zone.dataset.etat = etat;
+  zone.textContent = etat === 'maj' ? 'Mise à jour…' : etat === 'ko' ? ((commCenterState && commCenterState.apercu.erreur) || 'Aperçu indisponible') : 'À jour';
+}
+function setCommVue(vue) {
+  if (!commCenterState) return;
+  commCenterState.vue = vue === 'apercu' ? 'apercu' : 'ecrire';
+  const corps = document.getElementById('commBody');
+  if (corps) corps.dataset.vue = commCenterState.vue;
+  document.querySelectorAll('#commOverlay [data-comm-vue]').forEach(b => {
+    const on = b.dataset.commVue === commCenterState.vue;
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-selected', String(on));
+  });
 }
 
 // Édition du corps SANS re-render (préserve le focus). Met à jour le compteur
@@ -24374,6 +24445,7 @@ function setCommBody(value) {
   commCenterState.body = value;
   const preview = document.getElementById('commPreviewBody');
   if (preview) preview.textContent = value;
+  demanderApercuComm();
   const counter = document.getElementById('commCharCounter');
   if (counter && commCenterState.channel === 'sms') {
     const len = value.length;
@@ -24407,6 +24479,8 @@ async function sendCommMessage() {
       })
     });
     toast(commCenterState.channel === 'sms' ? 'SMS envoyé.' : 'Email envoyé.');
+    const destinataire = commCenterState.channel === 'sms' ? (commCenterState.data.reservation?.phone || '') : (commCenterState.data.reservation?.email || '');
+    commCenterState.envoye = { canal: commCenterState.channel, a: destinataire, heure: new Date().toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }) };
     // Rafraîchit l'historique (trace) sans fermer le centre.
     const reservationId = commCenterState.reservationId;
     const centerId = commCenterState.centerId;
@@ -24446,6 +24520,20 @@ function renderCommHistory(history = []) {
   }).join('');
 }
 
+// LA FENETRE « MESSAGE AU CLIENT » (2026-10-01, Movsar : « ameliore
+// drastiquement le visuel pour envoyer des mails, un truc plus complet et bcp
+// plus beau et userfriendly, la ca fait interface des annees 2006 »).
+// A gauche on ecrit : le modele en un toucher (ranges par moment), le
+// destinataire, l objet, le message. A droite, le mail TEL QUE LE CLIENT LE
+// RECOIT (le vrai habillage du centre), mis a jour en tapant. Sur telephone,
+// deux onglets : Ecrire, Apercu. L envoi dit ou il est parti, dans la fenetre.
+const COMM_ICONES = {
+  email: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  sms: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  envoyer: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>',
+  ok: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+};
+
 function renderCommCenter() {
   const overlay = document.getElementById('commOverlay');
   if (!overlay) return;
@@ -24456,86 +24544,126 @@ function renderCommCenter() {
   }
   overlay.classList.remove('hidden');
   const flow = commCenterState;
-  let body = '';
-  let footer = '';
+  const fermer = '<button type="button" class="close-btn" onclick="closeCommCenter()" aria-label="Fermer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+  const dossier = state.reservations.find(item => Number(item.id) === Number(flow.reservationId))
+    || (state.selectedRes && Number(state.selectedRes.id) === Number(flow.reservationId) ? state.selectedRes : null);
+  const clientName = flow.data?.reservation?.name || (dossier && dossier.name) || '';
+  let identite = '';
+  try { identite = dossier ? getPosIdentityParts(dossier).filter((x, i) => i !== 2).join(' · ') : ''; } catch (e) { identite = ''; }
+  overlay.className = 'delay-overlay comm-overlay';
 
-  if (flow.step === 'loading') {
-    body = '<div class="delay-loading">Chargement des modèles de message...</div>';
-    footer = '<button type="button" class="delay-btn" onclick="closeCommCenter()">Fermer</button>';
-  } else if (flow.step === 'compose' && flow.data) {
-    const channels = flow.data.channels || [];
-    const templates = flow.data.templates || [];
-    const activeChannel = channels.find(c => c.id === flow.channel) || channels[0] || {};
-    const channelBtns = channels.map(channel => {
-      const disabled = !channel.available;
-      const title = disabled ? channel.unavailableReason : (channel.hasRecipient ? '' : 'Aucun destinataire pour ce canal');
-      return `<button type="button" class="comm-channel-btn ${flow.channel === channel.id ? 'is-active' : ''} ${disabled ? 'is-disabled' : ''}" ${disabled ? 'disabled' : ''} title="${escapeHtml(title || '')}" onclick="selectCommChannel('${channel.id}')">
-        ${channel.id === 'sms' ? 'SMS' : 'Email'}${disabled ? ' <span class="comm-channel-tag">à activer</span>' : ''}
-      </button>`;
-    }).join('');
-    const templateOptions = templates.map(template =>
-      `<option value="${template.id}" ${flow.templateId === template.id ? 'selected' : ''}>${escapeHtml(template.category ? `${template.category}, ${template.label}` : template.label)}</option>`
-    ).join('');
-    const activeTemplate = templates.find(t => t.id === flow.templateId) || null;
-    const recipient = flow.channel === 'sms' ? (flow.data.reservation?.phone || '') : (flow.data.reservation?.email || '');
-    const recipientMissing = !activeChannel.hasRecipient;
-    const smsUnavailable = flow.channel === 'sms' && !activeChannel.available;
-    const smsCounter = flow.channel === 'sms'
-      ? `<div class="comm-char-counter" id="commCharCounter">${flow.body.length} caractère${flow.body.length > 1 ? 's' : ''} · ${Math.max(1, Math.ceil(flow.body.length / 160))} SMS</div>`
-      : '';
-
-    body = `
-      <div class="comm-channels">${channelBtns}</div>
-      ${smsUnavailable ? `<div class="comm-warning">${escapeHtml(activeChannel.unavailableReason || 'Ce canal doit être activé.')}</div>` : ''}
-      <div class="comm-field">
-        <label class="comm-label" for="commTemplateSelect">Modèle</label>
-        <select id="commTemplateSelect" class="comm-select" onchange="selectCommTemplate(this.value)">${templateOptions}</select>
-        ${activeTemplate && activeTemplate.description ? `<div class="comm-template-desc">${escapeHtml(activeTemplate.description)}</div>` : ''}
-      </div>
-      <div class="comm-recipient ${recipientMissing ? 'is-missing' : ''}">À : ${recipientMissing ? '<em>aucun destinataire pour ce canal</em>' : escapeHtml(recipient)}</div>
-      ${flow.channel === 'email' ? `
-      <div class="comm-field">
-        <label class="comm-label" for="commSubjectInput">Sujet</label>
-        <input id="commSubjectInput" class="comm-input" value="${escapeHtml(flow.subject)}" oninput="setCommSubject(this.value)">
-      </div>` : ''}
-      <div class="comm-field">
-        <label class="comm-label" for="commBodyTextarea">Message</label>
-        <textarea id="commBodyTextarea" class="comm-textarea" rows="${flow.channel === 'sms' ? 4 : 9}" oninput="setCommBody(this.value)" aria-label="Corps du message">${escapeHtml(flow.body)}</textarea>
-        ${smsCounter}
-      </div>
-      <div class="comm-preview">
-        <div class="comm-preview-label">Aperçu</div>
-        <div class="comm-preview-body" id="commPreviewBody">${escapeHtml(flow.body)}</div>
-      </div>
-      <div class="comm-history">
-        <div class="comm-history-title">Historique par client</div>
-        ${renderCommHistory(flow.data.history || [])}
-      </div>
-    `;
-    const canSend = !flow.busy && activeChannel.available && activeChannel.hasRecipient;
-    footer = `
-      <button type="button" class="delay-btn" ${flow.busy ? 'disabled' : ''} onclick="closeCommCenter()">Fermer</button>
-      <button type="button" class="delay-btn delay-btn-primary" ${canSend ? '' : 'disabled'} onclick="sendCommMessage()">${flow.busy ? 'Envoi...' : (flow.channel === 'sms' ? 'Envoyer le SMS' : 'Envoyer l\'email')}</button>
-    `;
+  if (flow.step !== 'compose' || !flow.data) {
+    overlay.innerHTML = `<div class="delay-modal comm-modal cm" role="dialog" aria-modal="true" aria-label="Message au client">
+      <div class="cm-head"><div class="cm-head-txt"><span class="cm-kicker">Message au client</span><h3>${escapeHtml(clientName || 'Chargement…')}</h3></div>${fermer}</div>
+      <div class="cm-loading"><span class="cm-spin" aria-hidden="true"></span>Chargement des modèles…</div>
+    </div>`;
+    return;
   }
 
-  const clientName = flow.data?.reservation?.name || '';
-  overlay.className = 'delay-overlay comm-overlay';
-  overlay.innerHTML = `
-    <div class="delay-modal comm-modal" role="dialog" aria-modal="true" aria-label="Centre de communication client">
-      <div class="delay-modal-head">
-        <div>
-          <h3>Message au client</h3>
-          <p>${escapeHtml(clientName)}</p>
-        </div>
-        <button type="button" class="close-btn" onclick="closeCommCenter()" aria-label="Fermer">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+  const channels = flow.data.channels || [];
+  const templates = flow.data.templates || [];
+  const activeChannel = channels.find(c => c.id === flow.channel) || channels[0] || {};
+  const email = flow.channel === 'email';
+  const recipient = email ? (flow.data.reservation?.email || '') : (flow.data.reservation?.phone || '');
+  const recipientMissing = !activeChannel.hasRecipient;
+  const canalIndispo = !activeChannel.available;
+  const canSend = !flow.busy && activeChannel.available && activeChannel.hasRecipient;
+
+  const canaux = channels.map(channel => {
+    const off = !channel.available;
+    const on = flow.channel === channel.id;
+    const titre = off ? channel.unavailableReason : (channel.hasRecipient ? '' : 'Aucun destinataire pour ce canal');
+    return `<button type="button" class="comm-channel-btn cm-chan-btn ${on ? 'is-active' : ''} ${off ? 'is-disabled' : ''}" ${off ? 'disabled' : ''} aria-pressed="${on}" title="${escapeHtml(titre || '')}" onclick="selectCommChannel('${channel.id}')">${COMM_ICONES[channel.id === 'sms' ? 'sms' : 'email']}<span>${channel.id === 'sms' ? 'SMS' : 'E-mail'}</span>${off ? '<span class="comm-channel-tag">à activer</span>' : ''}</button>`;
+  }).join('');
+
+  // Les modeles, ranges par moment de la visite, dans l ordre du serveur.
+  const categories = [];
+  templates.forEach(t => { const c = t.category || 'Autres'; if (!categories.includes(c)) categories.push(c); });
+  const modeles = categories.map(cat => `<div class="cm-tpl-group">
+      <span class="cm-tpl-cat">${escapeHtml(cat)}</span>
+      <div class="cm-tpl-row">${templates.filter(t => (t.category || 'Autres') === cat).map(t => {
+        const on = flow.templateId === t.id;
+        const sansSms = !email && !(t.channels || []).includes('sms');
+        return `<button type="button" class="cm-tpl${on ? ' is-on' : ''}" data-comm-template="${escapeHtml(t.id)}" aria-pressed="${on}" ${sansSms ? 'disabled' : ''} onclick="selectCommTemplate('${escapeHtml(t.id)}')">${escapeHtml(t.label)}</button>`;
+      }).join('')}</div>
+    </div>`).join('');
+  const activeTemplate = templates.find(t => t.id === flow.templateId) || null;
+
+  const longueur = flow.body.length;
+  const compteur = email ? '' : `<div class="comm-char-counter" id="commCharCounter">${longueur} caractère${longueur > 1 ? 's' : ''} · ${Math.max(1, Math.ceil(longueur / 160))} SMS</div>`;
+  const historique = flow.data.history || [];
+  const reussite = flow.envoye
+    ? `<div class="cm-sent" role="status">${COMM_ICONES.ok}<span><b>${flow.envoye.canal === 'sms' ? 'SMS envoyé' : 'E-mail envoyé'}</b> à ${escapeHtml(flow.envoye.a)} à ${escapeHtml(flow.envoye.heure)}. Il est dans l’historique ci-dessous.</span></div>`
+    : '';
+
+  const ecrire = `<section class="cm-compose" aria-label="Écrire le message">
+      ${reussite}
+      ${canalIndispo ? `<div class="comm-warning">${escapeHtml(activeChannel.unavailableReason || 'Ce canal doit être activé.')}</div>` : ''}
+      <div class="cm-block">
+        <span class="cm-label">Modèle</span>
+        <div class="cm-tpls">${modeles}</div>
+        ${activeTemplate && activeTemplate.description ? `<p class="cm-tpl-desc">${escapeHtml(activeTemplate.description)}</p>` : ''}
       </div>
-      <div class="delay-modal-body">${body}</div>
-      <div class="delay-modal-foot">${footer}</div>
+      <div class="cm-letter">
+        <div class="cm-line cm-to${recipientMissing ? ' is-missing' : ''}">
+          <span class="cm-line-k">À</span>
+          ${recipientMissing
+            ? `<span class="cm-line-v">${email ? 'Aucun e-mail pour ce client : ajoutez-le dans « Modifier ».' : 'Aucun numéro pour ce client.'}</span>`
+            : `<span class="cm-line-v"><b>${escapeHtml(clientName)}</b><span class="comm-recipient">${escapeHtml(recipient)}</span></span>`}
+        </div>
+        ${email ? `<div class="cm-line"><label class="cm-line-k" for="commSubjectInput">Objet</label><input id="commSubjectInput" class="comm-input cm-subject" value="${escapeHtml(flow.subject)}" oninput="setCommSubject(this.value)" autocomplete="off"></div>` : ''}
+        <textarea id="commBodyTextarea" class="comm-textarea cm-text" rows="${email ? 11 : 5}" oninput="setCommBody(this.value)" aria-label="Message">${escapeHtml(flow.body)}</textarea>
+        ${compteur}
+      </div>
+      <details class="comm-history cm-history"${historique.length ? '' : ' open'}>
+        <summary><span class="comm-history-title">Déjà envoyés à ce client</span><span class="cm-count">${historique.length}</span></summary>
+        <div class="cm-history-list">${renderCommHistory(historique)}</div>
+      </details>
+    </section>`;
+
+  const apercu = email
+    ? `<section class="cm-preview" aria-label="Aperçu de l’e-mail">
+        <div class="cm-preview-head"><span class="cm-label">Ce que le client reçoit</span><span class="cm-preview-state" id="commPreviewState" data-etat="${flow.apercu.html ? 'ok' : 'maj'}">${flow.apercu.html ? 'À jour' : 'Mise à jour…'}</span></div>
+        <div class="cm-inbox">
+          <div class="cm-inbox-meta">
+            <span class="cm-avatar" aria-hidden="true">${escapeHtml((getCurrentStaffCenterName() || 'C').trim().charAt(0).toUpperCase())}</span>
+            <span class="cm-inbox-from"><b>${escapeHtml(getAdminCenter(flow.centerId)?.name || getCurrentStaffCenterName() || 'Le centre')}</b><small>à ${escapeHtml(recipient || 'client')}</small></span>
+          </div>
+          <div class="cm-inbox-subject" id="commInboxSubject">${escapeHtml(flow.subject || '(sans objet)')}</div>
+          <iframe id="commPreviewFrame" class="cm-frame${flow.apercu.html ? '' : ' is-vide'}" sandbox="" title="Aperçu de l’e-mail tel que le client le reçoit"></iframe>
+        </div>
+      </section>`
+    : `<section class="cm-preview" aria-label="Aperçu du SMS">
+        <div class="cm-preview-head"><span class="cm-label">Ce que le client reçoit</span></div>
+        <div class="cm-phone"><div class="cm-bubble comm-preview-body" id="commPreviewBody">${escapeHtml(flow.body)}</div></div>
+      </section>`;
+
+  const envoyer = flow.busy ? 'Envoi…' : `${COMM_ICONES.envoyer}<span>${email ? 'Envoyer l’e-mail' : 'Envoyer le SMS'}</span>`;
+  overlay.innerHTML = `
+    <div class="delay-modal comm-modal cm" role="dialog" aria-modal="true" aria-labelledby="commTitre">
+      <div class="cm-head">
+        <div class="cm-head-txt">
+          <span class="cm-kicker">Message au client</span>
+          <h3 id="commTitre">${escapeHtml(clientName)}</h3>
+          ${identite ? `<p>${identite}</p>` : ''}
+        </div>
+        <div class="cm-chans comm-channels" role="group" aria-label="Canal">${canaux}</div>
+        ${fermer}
+      </div>
+      <div class="cm-tabs" role="tablist">
+        <button type="button" role="tab" class="cm-tab${flow.vue === 'ecrire' ? ' is-on' : ''}" data-comm-vue="ecrire" aria-selected="${flow.vue === 'ecrire'}" onclick="setCommVue('ecrire')">Écrire</button>
+        <button type="button" role="tab" class="cm-tab${flow.vue === 'apercu' ? ' is-on' : ''}" data-comm-vue="apercu" aria-selected="${flow.vue === 'apercu'}" onclick="setCommVue('apercu')">Aperçu</button>
+      </div>
+      <div class="cm-body" id="commBody" data-vue="${flow.vue}">${ecrire}${apercu}</div>
+      <div class="cm-foot">
+        <button type="button" class="delay-btn" ${flow.busy ? 'disabled' : ''} onclick="closeCommCenter()">Fermer</button>
+        <button type="button" class="delay-btn delay-btn-primary cm-send" ${canSend ? '' : 'disabled'} onclick="sendCommMessage()">${envoyer}</button>
+      </div>
     </div>
   `;
+  poserApercuComm();
+  const actif = overlay.querySelector('.cm-tpl.is-on');
+  if (actif && actif.scrollIntoView && window.matchMedia && window.matchMedia('(max-width: 860px)').matches) actif.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
 
 // Vrai a la PREMIERE peinture d une fiche seulement : l animation d entree
@@ -25960,6 +26088,8 @@ function patchQuickBookPaxDerived() {
   const customPriceValue = getQuickBookCustomPrice();
   if (amt) amt.textContent = `${customPriceValue != null ? customPriceValue : summary.total}€`;
   if (desc) desc.textContent = `${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}`;
+  const recapPax = overlay.querySelector('#qbRecapPax');
+  if (recapPax) recapPax.textContent = String(Number(quickBookState.pax) || 1);
   patchQuickBookStatusLine(overlay);
 }
 
@@ -26751,9 +26881,6 @@ function renderQuickBookInner() {
     </div>`);
 
   const essentialActions = [];
-  if (showTime && firstSlot && !quickBookState.lockStartTime && (!selectedSlot || firstSlot.time !== quickBookState.startTime)) {
-    essentialActions.push(`<button class="qb-ghost-btn" onclick="setQuickStartTime('${firstSlot.time}')">Premier créneau ${firstSlot.time}</button>`);
-  }
   if (manualLanesShort && suggestedLanes.length) {
     essentialActions.push(`<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Compléter les pistes (${suggestedLanes.join(' · ')})</button>`);
   }
@@ -26975,10 +27102,27 @@ function renderQuickBookInner() {
     </div>
   ` : '';
 
+  // LE RECAPITULATIF, toujours visible : ce qui va etre cree, le total, le
+  // bouton. A droite sur grand ecran, en bas sur telephone.
+  const visitBowling = quickBookState.type === 'visite' && quickBookState.visit && quickBookState.visit.bowling && quickBookState.visit.bowling.on;
+  const pistesRecap = quickBookState.type === 'visite'
+    ? (visitBowling ? 'Attribuées à la création' : '')
+    : needsLanes ? (activeLanes.length ? `${activeLanes.length > 1 ? 'Pistes' : 'Piste'} ${activeLaneText}` : `${requiredCount} à attribuer`) : '';
+  const recap = [
+    ['Client', quickBookState.name ? escapeHtml(quickBookState.name) : '<span class="qb-recap-vide">À compléter</span>'],
+    ['Activité', escapeHtml(typeLabel)],
+    ['Date', escapeHtml(formatQuickBookDateLabel(quickBookState.date))],
+    ['Départ', quickBookState.startTime ? escapeHtml(quickBookState.startTime) : '<span class="qb-recap-vide">À choisir</span>'],
+    ['Joueurs', `<span id="qbRecapPax">${Number(quickBookState.pax) || 1}</span>`],
+    ['Durée', escapeHtml(formatDurationLabel(quickBookState.totalDuration))],
+    ...(pistesRecap ? [['Pistes', escapeHtml(pistesRecap)]] : []),
+  ];
+  const etape = (n, titre) => `<div class="qb-step-head"><span class="qb-step-n" aria-hidden="true">${n}</span><span class="blk-label">${titre}</span></div>`;
+  let numero = 0;
   overlay.classList.remove('hidden');
   overlay.className = 'qb-overlay';
   overlay.innerHTML = `
-    <div class="qb-modal qb-context-${quickBookState.context.source}" role="dialog" aria-modal="true" aria-labelledby="qbTitle" tabindex="-1">
+    <div class="qb-modal qb-v2 qb-context-${quickBookState.context.source}" role="dialog" aria-modal="true" aria-labelledby="qbTitle" tabindex="-1">
       <div class="qb-head">
         <div>
           <div class="ticket-id">${header.eyebrow}</div>
@@ -26989,79 +27133,91 @@ function renderQuickBookInner() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div class="qb-body">
-        ${contextStripHtml}
-        <div class="qb-block">
-          ${showClient ? `
-          <div class="blk-label">Client</div>
-          <div class="qb-row two">
-            <div>
-              <label class="qb-mini-label" for="qbName">Nom</label>
-              <input id="qbName" class="qb-input" value="${escapeHtml(quickBookState.name)}" oninput="quickBookState.name=this.value" placeholder="Marie Dupont">
-            </div>
-            <div>
-              <label class="qb-mini-label" for="qbPhone">Téléphone</label>
-              <input id="qbPhone" class="qb-input" type="tel" value="${escapeHtml(quickBookState.phone)}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
-            </div>
-          </div>
-          <div class="qb-row" style="margin-top:12px;">
-            ${emailInputHtml}
-          </div>
-          ` : !emailValid ? `
-          <div class="blk-label">Email client (facultatif)</div>
-          <div class="qb-row">
-            ${emailInputHtml}
-          </div>
-          ` : ''}
-          ${showType ? `
-          <div class="blk-label" ${showClient ? 'style="margin-top:12px;"' : ''}>Activité</div>
-          <div class="qb-type-row">${renderQuickBookTypeButtons()}</div>
-          ` : ''}
-          <div class="qb-row auto" ${showClient || showType ? 'style="margin-top:12px;"' : ''}>
-            ${essentialCells.join('')}
-          </div>
-          ${durationEssentialHtml}
-          ${visitComposerHtml}
-          ${activityOptionsHtml}
-          ${formuleGridHtml}
-          ${essentialActions.length ? `<div class="qb-inline-actions" style="margin-top:12px;">${essentialActions.join('')}</div>` : ''}
-          ${statusParts.length ? `<div class="qb-status-line">${statusParts.map(part => `<span>${part}</span>`).join('')}</div>` : ''}
-        </div>
-
-        ${warning ? `<div class="qb-warn">${warning}</div>` : ''}
-        ${quickBookState.error ? `<div class="qb-warn danger">${quickBookState.error}</div>` : ''}
-
-        <button type="button" class="qb-more-toggle" aria-expanded="${quickBookState.moreOpen ? 'true' : 'false'}" onclick="toggleQuickBookMore()">
-          ${quickBookState.moreOpen ? 'Masquer les options avancées' : 'Plus d’options, créneau, pistes, durée, notes'}
-        </button>
-
-        ${advancedHtml}
-
-        <div class="qb-summary">
-          <div>
-            <div class="lbl">${customPriceValue != null ? 'Prix ajusté' : 'Total estimé'}</div>
-            <div class="desc">${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}${customPriceValue != null ? ` · référence ${summary.total} €` : ''}</div>
-            ${canAdjustPrice ? (quickBookState.priceOpen ? `
-              <div class="qb-price-edit">
-                <input id="qbCustomPrice" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(quickBookState.customPrice ?? ''))}" placeholder="${summary.total}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">
-                <span>€</span>
-                <label class="qb-price-sep" for="qbCustomPricePerPerson">ou par personne</label>
-                <input id="qbCustomPricePerPerson" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(Math.round((customPriceValue != null ? customPriceValue : summary.total) / Math.max(1, Number(quickBookState.pax) || 1))))}" aria-label="Prix par personne en euros" oninput="onQuickCustomPricePerPersonInput(this.value)">
-                <span>€ / pers.</span>
-                <button type="button" class="qb-ghost-btn" onclick="clearQuickCustomPrice()">Prix catalogue</button>
+      <div class="qb-layout">
+        <div class="qb-body">
+          ${contextStripHtml}
+          ${showClient || !emailValid ? `
+          <section class="qb-block qb-step">
+            ${etape(++numero, showClient ? 'Client' : 'Email client (facultatif)')}
+            ${showClient ? `
+            <div class="qb-row two">
+              <div>
+                <label class="qb-mini-label" for="qbName">Nom</label>
+                <input id="qbName" class="qb-input" value="${escapeHtml(quickBookState.name)}" oninput="quickBookState.name=this.value; majQuickRecapClient()" placeholder="Marie Dupont" autocomplete="off">
               </div>
-              <div class="qb-field-note">Ne change que cette réservation : la formule et la grille du centre restent intactes.</div>
-            ` : `<button type="button" class="qb-price-toggle" onclick="toggleQuickCustomPrice()">Modifier le prix</button>`) : ''}
-          </div>
-          <div class="amt">${customPriceValue != null ? customPriceValue : summary.total}€</div>
+              <div>
+                <label class="qb-mini-label" for="qbPhone">Téléphone</label>
+                <input id="qbPhone" class="qb-input" type="tel" value="${escapeHtml(quickBookState.phone)}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
+              </div>
+            </div>` : ''}
+            <div class="qb-row" ${showClient ? 'style="margin-top:12px;"' : ''}>
+              ${emailInputHtml}
+            </div>
+          </section>` : ''}
+          ${showType || durationEssentialHtml || visitComposerHtml || activityOptionsHtml || formuleGridHtml ? `
+          <section class="qb-block qb-step">
+            ${etape(++numero, 'Activité')}
+            ${showType ? `<div class="qb-type-row">${renderQuickBookTypeButtons()}</div>` : ''}
+            ${durationEssentialHtml}
+            ${visitComposerHtml}
+            ${activityOptionsHtml}
+            ${formuleGridHtml}
+          </section>` : ''}
+          <section class="qb-block qb-step">
+            ${etape(++numero, 'Quand')}
+            <div class="qb-row auto">
+              ${essentialCells.join('')}
+            </div>
+            ${essentialActions.length ? `<div class="qb-inline-actions" style="margin-top:12px;">${essentialActions.join('')}</div>` : ''}
+            ${statusParts.length ? `<div class="qb-status-line">${statusParts.map(part => `<span>${part}</span>`).join('')}</div>` : ''}
+          </section>
+
+          ${warning ? `<div class="qb-warn">${warning}</div>` : ''}
+          ${quickBookState.error ? `<div class="qb-warn danger">${quickBookState.error}</div>` : ''}
+
+          <button type="button" class="qb-more-toggle" aria-expanded="${quickBookState.moreOpen ? 'true' : 'false'}" onclick="toggleQuickBookMore()">
+            ${quickBookState.moreOpen ? 'Masquer les options avancées' : 'Plus d’options : créneaux, pistes, durée, notes'}
+          </button>
+
+          ${advancedHtml}
         </div>
-      </div>
-      <div class="qb-actions">
-        <button class="qb-btn-cancel" onclick="closeQuickBook()">Annuler</button>
-        <button class="qb-btn-save" onclick="saveQuickBook()">Créer la réservation</button>
+        <aside class="qb-aside" aria-label="Récapitulatif">
+          <div class="qb-recap">
+            <div class="qb-recap-title">Récapitulatif</div>
+            <dl>${recap.map(([k, v]) => `<div><dt>${k}</dt><dd${k === 'Client' ? ' id="qbRecapClient"' : ''}>${v}</dd></div>`).join('')}</dl>
+          </div>
+          <div class="qb-summary">
+            <div>
+              <div class="lbl">${customPriceValue != null ? 'Prix ajusté' : 'Total estimé'}</div>
+              <div class="desc">${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}${customPriceValue != null ? ` · référence ${summary.total} €` : ''}</div>
+              ${canAdjustPrice ? (quickBookState.priceOpen ? `
+                <div class="qb-price-edit">
+                  <input id="qbCustomPrice" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(quickBookState.customPrice ?? ''))}" placeholder="${summary.total}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">
+                  <span>€</span>
+                  <label class="qb-price-sep" for="qbCustomPricePerPerson">ou par personne</label>
+                  <input id="qbCustomPricePerPerson" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(Math.round((customPriceValue != null ? customPriceValue : summary.total) / Math.max(1, Number(quickBookState.pax) || 1))))}" aria-label="Prix par personne en euros" oninput="onQuickCustomPricePerPersonInput(this.value)">
+                  <span>€ / pers.</span>
+                  <button type="button" class="qb-ghost-btn" onclick="clearQuickCustomPrice()">Prix catalogue</button>
+                </div>
+                <div class="qb-field-note">Ne change que cette réservation : la formule et la grille du centre restent intactes.</div>
+              ` : `<button type="button" class="qb-price-toggle" onclick="toggleQuickCustomPrice()">Modifier le prix</button>`) : ''}
+            </div>
+            <div class="amt">${customPriceValue != null ? customPriceValue : summary.total}€</div>
+          </div>
+          <div class="qb-actions">
+            <button class="qb-btn-cancel" onclick="closeQuickBook()">Annuler</button>
+            <button class="qb-btn-save" onclick="saveQuickBook()">Créer la réservation</button>
+          </div>
+        </aside>
       </div>
     </div>
   `;
+}
+
+// Le nom tape se lit dans le recapitulatif, sans redessiner la fenetre.
+function majQuickRecapClient() {
+  const cell = document.getElementById('qbRecapClient');
+  if (cell && quickBookState) cell.innerHTML = quickBookState.name ? escapeHtml(quickBookState.name) : '<span class="qb-recap-vide">À compléter</span>';
 }
 
 async function saveQuickBook() {
@@ -27087,6 +27243,11 @@ async function saveQuickBook() {
     quickBookState.submitting = false;
     quickBookState.error = message;
     renderQuickBook();
+    // LE FOCUS RESTE DANS LA FENETRE. Le bouton desactive pendant l envoi
+    // perdait le focus (Chrome le rend au document) : apres un refus, le
+    // clavier se retrouvait sur la page derriere la fenetre.
+    const bouton = document.querySelector('#quickBookOverlay .qb-btn-save');
+    if (bouton) bouton.focus({ preventScroll: true });
     toast(message);
   };
   const email = quickBookState.email.trim();

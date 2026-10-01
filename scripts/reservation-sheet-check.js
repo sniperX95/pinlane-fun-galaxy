@@ -232,7 +232,13 @@ async function main() {
         const faits = soustitre.split(/\s[·•]\s/).map((s) => s.trim()).filter((s) => s.length > 1);
         return {
           hauteur: Math.round(modal.getBoundingClientRect().height),
-          boutons: [...document.querySelectorAll('#posOverlay button')].filter(visible).length,
+          // Les CASES des activites (.gc-check, une par activite, demandees
+          // le 2026-10-01 : « cliquer sur les activites pour dire que ca a ete
+          // fait ») sont des cases a cocher, pas des actions : elles se
+          // comptent a part, le plafond reste celui des actions.
+          boutons: [...document.querySelectorAll('#posOverlay button:not(.gc-check)')].filter(visible).length,
+          cases: [...document.querySelectorAll('#posOverlay .gc-step .gc-check')].filter(visible).length,
+          pas: [...document.querySelectorAll('#posOverlay .gc-step')].filter(visible).length,
           faits: faits.length,
           redites: faits.filter((f) => corps.includes(f)),
         };
@@ -245,7 +251,8 @@ async function main() {
     // dans la fiche). Elle porte le programme heure par heure et l addition ;
     // le plafond attrape toujours une derive.
     ok(infos.hauteur <= 820, `« Infos » : hauteur MESUREE ${infos.hauteur}px (plafond 820 depuis la fiche « carte en grand », valait 868 avant la refonte d aout)`);
-    ok(infos.boutons <= 8, `« Infos » : ${infos.boutons} boutons a l ecran (plafond 8, valait 11 avant refonte)`);
+    ok(infos.boutons <= 8, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 8, valait 11 avant refonte ; les cases des activites a part)`);
+    ok(infos.pas > 0 && infos.cases === infos.pas, `« Infos » : chaque activite du programme a sa case (${infos.cases} cases pour ${infos.pas} activites)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);
     const modif = await mesureOnglet('modifier');
     ok(modif.faits >= 2, `« Modifier » : l en-tete se lit en ${modif.faits} faits (sans decoupe, « aucune redite » ne prouverait rien)`);

@@ -193,18 +193,21 @@ async function main() {
     console.log('\n[DÉTAIL] clic réel sur une case');
     await page.evaluate(() => { if (typeof openStaffReservationDetail === 'function') openStaffReservationDetail(9020); else openPos(9020); });
     await page.waitForTimeout(300);
+    // LA FICHE EST LA CARTE EN GRAND depuis le 2026-10-01 : la checklist est
+    // le programme lui-meme, chaque pas porte sa case (.gc-check) et se coche
+    // d un toucher. Meme garantie : cinq activites, une coche reelle.
     const detail0 = await page.evaluate(() => ({
-      rows: document.querySelectorAll('#posOverlay .activity-check-row').length,
-      done: document.querySelectorAll('#posOverlay .activity-check-row.is-done').length,
+      rows: document.querySelectorAll('#posOverlay .gc-step .gc-check').length,
+      done: document.querySelectorAll('#posOverlay .gc-step.is-fait').length,
     }));
     ok(detail0.rows === 5, `checklist affichée dans le détail (${detail0.rows} lignes)`);
     ok(detail0.done === 0, 'aucune activité cochée au départ');
     // clic sur la ligne Bowling (l'ordre suit les heures du programme : minigolf, boissons, bowling, laser1, laser2)
     const clicked = await page.evaluate(async () => {
-      const rows = [...document.querySelectorAll('#posOverlay .activity-check-row')];
-      const target = rows.find(r => /Bowling/i.test(r.textContent)) || rows[1];
+      const rows = [...document.querySelectorAll('#posOverlay .gc-step')].filter(r => r.querySelector('.gc-check'));
+      const target = rows.find(r => /Bowling/i.test((r.querySelector('.gc-step-what b') || {}).textContent || ''));
       if (!target) return null;
-      target.click();
+      target.querySelector('.gc-check').click();
       return true;
     });
     ok(clicked, 'ligne « Bowling » cliquée');
@@ -216,7 +219,7 @@ async function main() {
         bowlingDone: !!(r.activityProgress && r.activityProgress['bowling-1'] && r.activityProgress['bowling-1'].done),
         by: r.activityProgress?.['bowling-1']?.by || '',
         summaryDone: getFormulaActivityProgressSummary(r).done,
-        domDone: document.querySelectorAll('#posOverlay .activity-check-row.is-done').length,
+        domDone: document.querySelectorAll('#posOverlay .gc-step.is-fait').length,
         patchKeys: patch ? Object.keys(patch).sort() : [],
         patchStored: !!(window.__QA_STORE__[9020] && window.__QA_STORE__[9020]['bowling-1']),
       };

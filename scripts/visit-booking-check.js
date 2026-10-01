@@ -478,9 +478,16 @@ async function main() {
     // C'est la demande d'origine : « eux peuvent reserver et on doit voir ».
     // Le comptoir doit lire le minigolf et les billards sur la fiche, meme si
     // aucun des deux n'occupe la moindre ressource.
+    // LA FICHE EST LA CARTE EN GRAND depuis le 2026-10-01 (lot D0) : le
+    // programme passe par renderGroupeEtapes (un pas par activite, a son
+    // heure ou « Libre ») et l addition par renderGroupeAddition. La garantie
+    // ne change pas : chaque activite du programme est nommee, celles qui ne
+    // prennent aucune ressource se distinguent de celles posees au planning,
+    // et ce qui se regle au comptoir le dit.
     const staff = await page.evaluate(() => {
       const reservation = {
-        id: 1, name: 'Groupe QA', type: 'bowling', label: 'Bowling 1h · Laser 2 parties · Minigolf Blacklight',
+        id: 1, name: 'Groupe QA', date: state.currentDate, startTime: '14:00', duration: 1, lanes: [1, 2], pax: 8, status: 'confirmed',
+        type: 'bowling', label: 'Bowling 1h · Laser 2 parties · Minigolf Blacklight', price: 222,
         program: {
           items: [
             { activityId: 'bowling', name: 'Bowling', planned: true, duration: 1, price: 78, priceKnown: true },
@@ -492,36 +499,35 @@ async function main() {
           priceComplete: false,
         },
       };
-      const html = renderReservationProgram(reservation);
-      const mono = renderReservationProgram({ id: 2, type: 'bowling', label: 'Bowling Classique', program: null });
       const host = document.createElement('div');
-      host.innerHTML = html;
+      host.innerHTML = renderGroupeEtapes(reservation, null, { coches: true }) + renderGroupeAddition(reservation);
+      const mono = document.createElement('div');
+      mono.innerHTML = renderGroupeEtapes({ id: 2, date: state.currentDate, startTime: '14:00', duration: 1, lanes: [3], pax: 4, type: 'bowling', label: 'Bowling Classique', program: null }, null, { coches: true });
+      const pas = (li) => ({
+        nom: (li.querySelector('.gc-step-what b') || {}).textContent || '',
+        detail: (li.querySelector('.gc-step-what small') || {}).textContent || '',
+        heure: (li.querySelector('.gc-step-time') || {}).textContent.replace(/\s+/g, ' ').trim(),
+        libre: li.querySelector('.gc-step-time.is-free') !== null,
+      });
       return {
-        text: host.textContent.replace(/\s+/g, ' ').trim(),
-        rows: host.querySelectorAll('div[style*="justify-content:space-between"]').length,
-        lignes: [...host.querySelectorAll('div[style*="justify-content:space-between"]')].map((d) => d.textContent.replace(/\s+/g, ' ').trim()),
-        monoEmpty: mono === '',
+        etapes: [...host.querySelectorAll('.gc-step')].map(pas),
+        addition: [...host.querySelectorAll('.gc-bill-lines > div')].map((d) => d.textContent.replace(/\s+/g, ' ').trim()),
+        mono: [...mono.querySelectorAll('.gc-step')].map(pas),
       };
     });
-    ok(staff.rows === 4, `les 4 lignes du programme sont rendues (obtenu ${staff.rows})`);
-    ok(staff.text.includes('Minigolf Blacklight') && staff.text.includes('Billards'),
-      'les activites libres sont nommees sur la fiche');
+    const noms = staff.etapes.map((e) => e.nom);
+    ok(['Bowling', 'Laser Game', 'Minigolf Blacklight', 'Billards'].every((n) => noms.includes(n)) && staff.etapes.length === 5,
+      `les 4 activites du programme sont rendues (bowling, 2 parties de laser, minigolf, billards : ${staff.etapes.length} pas)`, noms.join(' | '));
     // LA REGLE, PAS LA PHRASE : la ligne des billards dit le nombre de tables
-    // et la duree. Le libelle a change le 2026-09-28 (« 2 tables · 1h30 » avec
-    // le catalogue charge, « 2 × 1h30 » sans lui) ; « 2 x 1.5h » ne disait
-    // d ailleurs pas « tables ».
-    const ligneBillards = (staff.lignes || []).find((l) => /^Billards/.test(l)) || '';
-    ok(/\b2\b/.test(ligneBillards) && /1h30/.test(ligneBillards), `le detail des billards (2 tables, 1h30) est lisible (« ${ligneBillards} »)`);
-    ok(staff.text.includes('planifié') && staff.text.includes('sur place'),
-      'la fiche distingue ce qui est place au planning de ce qui se regle au comptoir');
-    // La GARANTIE est qu une mention distincte annonce ce qui n est pas place au
-    // planning ; la formulation, elle, a maigri le 2026-08-26 (Movsar : « evite
-    // les textes comme ca »). « Sans reservation de ressource, a prevoir au
-    // comptoir : » est devenu « Au comptoir », et chaque ligne concernee dit
-    // toujours « sur place » (assertion juste au-dessus). On verifie donc les
-    // DEUX moities de la garantie, pas une phrase.
-    ok(staff.text.includes('Au comptoir'), `le comptoir est prevenu explicitement (${staff.text.slice(0, 160)})`);
-    ok(staff.monoEmpty === true, 'une reservation mono-activite n affiche AUCUN bloc programme (fiche inchangee)');
+    // et la duree.
+    const ligneBillards = staff.etapes.find((e) => e.nom === 'Billards') || { detail: '' };
+    ok(/\b2\b/.test(ligneBillards.detail) && /1h30/.test(ligneBillards.detail), `le detail des billards (2 tables, 1h30) est lisible (« ${ligneBillards.detail} »)`);
+    ok(staff.etapes.filter((e) => ['Bowling', 'Laser Game'].includes(e.nom)).every((e) => !e.libre && /^\d{2}:\d{2}/.test(e.heure))
+      && staff.etapes.filter((e) => ['Minigolf Blacklight', 'Billards'].includes(e.nom)).every((e) => e.libre && e.heure === 'Libre'),
+      'la fiche distingue ce qui est place au planning (son heure) de ce qui se fait sans ressource (« Libre »)', JSON.stringify(staff.etapes.map((e) => `${e.nom} ${e.heure}`)));
+    ok(['Minigolf Blacklight', 'Billards'].every((n) => staff.addition.some((l) => l.indexOf(n) === 0 && /au comptoir$/.test(l))),
+      'l addition dit ce qui se regle au comptoir, ligne par ligne', staff.addition.join(' | '));
+    ok(staff.mono.length === 1 && staff.mono[0].nom === 'Bowling' && !staff.mono[0].libre, 'une reservation mono-activite montre son seul pas, a son heure', JSON.stringify(staff.mono));
 
     // =====================================================================
     console.log('\n[10] Le selecteur reste compact, symetrique et pilotable au clavier');

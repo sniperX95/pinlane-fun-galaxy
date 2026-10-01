@@ -63,6 +63,9 @@ async function installQaApi(page) {
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   await page.addInitScript(({ expiresAt }) => {
+    // Le montage ne vise que la page : un cadre d apercu de mail (iframe
+    // sandboxee, sans meme origine) n a ni stockage ni API a simuler.
+    if (window.top !== window) return;
     const qaSession = {
       token: 'visual-qa-token',
       cookieBacked: false,
@@ -1331,7 +1334,9 @@ async function main() {
     await page.evaluate(() => openCommCenter(9001));
     await page.waitForTimeout(600);
     const commState = await page.evaluate(() => ({
-      templates: document.querySelectorAll('#commOverlay .comm-select option').length,
+      // Les modeles sont des puces (2026-10-01 : la liste deroulante est partie).
+      templates: document.querySelectorAll('#commOverlay [data-comm-template]').length,
+      apercu: Boolean(document.querySelector('#commOverlay iframe#commPreviewFrame[sandbox=""]')),
       channels: document.querySelectorAll('#commOverlay .comm-channel-btn').length,
       smsDisabled: Boolean(document.querySelector('#commOverlay .comm-channel-btn.is-disabled')),
       smsTag: Boolean(document.querySelector('#commOverlay .comm-channel-tag')),
@@ -1342,6 +1347,7 @@ async function main() {
     assert(commState.channels >= 2, 'Comm : les canaux email et SMS sont présents.');
     assert(commState.smsDisabled && commState.smsTag, 'Comm : SMS sans config = désactivé + « à activer ».');
     assert(commState.body.length > 10, 'Comm : le modèle sélectionné remplit le message.');
+    assert(commState.apercu, 'Comm : l’aperçu du vrai mail vit dans une iframe sandboxée.');
     await screenshot(page, 'comm-center');
 
     await page.evaluate(() => selectCommTemplate('thanks'));
@@ -1405,9 +1411,12 @@ async function main() {
       const overlay = document.getElementById('staffDashboardDetailOverlay');
       const alerts = getStaffDashboardAlertDefinitions(getStaffDashboardMetrics(todaysReservations()));
       const pay = alerts.find((a) => a.kind === 'payment');
-      return { hasBtn: /Encaisser/.test(overlay ? overlay.innerHTML : ''), count: pay ? pay.rows.length : 0 };
+      // Encaisser dit le MOYEN depuis le 2026-10-01 (Movsar : « Payé » note
+      // Carte ou Espèces, et la Direction le compte) : deux boutons reels.
+      const html = overlay ? overlay.innerHTML : '';
+      return { hasBtn: /Payé · Carte/.test(html) && /Payé · Espèces/.test(html), count: pay ? pay.rows.length : 0 };
     });
-    assert(payBefore.hasBtn, 'Alerte paiement : bouton « Encaisser » réel présent dans « Voir toutes ».');
+    assert(payBefore.hasBtn, 'Alerte paiement : boutons « Payé · Carte » et « Payé · Espèces » réels présents dans « Voir toutes ».');
     assert(payBefore.count >= 1, 'Alerte paiement : au moins une réservation non payée listée.');
     await screenshot(page, 'alert-payment-actionable');
     await page.evaluate(() => dashboardDetailSetStatus(7101, 'paid'));

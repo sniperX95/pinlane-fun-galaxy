@@ -73,11 +73,11 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
 // Chaque contre-preuve : [fichier servi, ancre exacte (LF), remplacement,
 // controle qui doit rougir].
 const MUTATIONS = {
-  fini: ['app-main.js', "  if (context.when === 'past' || span.end <= context.now) return status === 'paid' ? 'done' : 'closing';", "  if (context.when === 'past') return status === 'paid' ? 'done' : 'closing';", '[A] chaque dossier est dans sa colonne'],
+  fini: ['app-main.js', "  if (context.when === 'past' || span.end <= context.now || groupeToutFait(reservation)) return status === 'paid' ? 'done' : 'closing';", "  if (context.when === 'past' || groupeToutFait(reservation)) return status === 'paid' ? 'done' : 'closing';", '[A] chaque dossier est dans sa colonne'],
   double: ['app-main.js', '    board[getStaffTerrainPhase(reservation, span, context)].push({ reservation, ...span });', "    const phase = getStaffTerrainPhase(reservation, span, context); board[phase].push({ reservation, ...span }); if (phase === 'closing') board.onsite.push({ reservation, ...span });", '[A] chaque dossier n apparait qu une fois'],
   retard: ['app-main.js', '    else if (board.now - item.start >= seuil - 1e-9) late.push(item);', '    else if (false) late.push(item);', '[A] le groupe en retard est en tete de « À venir »'],
   appeler: ['app-main.js', "  const call = phase === 'late' && phone", '  const call = false && phone', '[A] le groupe en retard porte son numero'],
-  pointe: ['app-main.js', "  if (phase === 'closing' && upcoming) return { label: 'Non pointé', tone: 'unmarked' };", '', '[A] « Non pointé »'],
+  pointe: ['app-main.js', "  if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };", '', '[A] « Non pointé »'],
   verifier: ['app-main.js', "  if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };", '', '[A] « À vérifier » et « Payé »'],
   repete: ['app-main.js', "  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };\n  return null;", "  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };\n  return { label: getStaffReservationStatusLabel(reservation.status || 'pending'), tone: 'confirmed' };", '[A] aucune pastille ne repete la colonne'],
   paye: ['app-main.js', "  if ((phase === 'upcoming' || phase === 'late') && status !== 'paid') {", "  if ((phase === 'upcoming' || phase === 'late')) {", '[A] un dossier deja paye ne propose pas « Arrivé »'],
@@ -88,7 +88,7 @@ const MUTATIONS = {
   entree: ['app-main.js', '  const arriving = active && (pages ? pages.lastPage !== model.page : !root.firstElementChild);', '  const arriving = active;', '[B] l entree ne rejoue pas au re-rendu'],
   visite: ['app-main.js', "    if (window.PinlaneV2) window.PinlaneV2.lastPage = '';\n", '', '[B] l entree joue quand on arrive sur la page'],
   tic: ['app-main.js', "  if (isStaffUtilityActive() && ['arrivals', 'formules'].includes(getStaffMenuPage())) renderStaffUtilityPage();\n", '', '[C] l heure fait avancer les cartes'],
-  passe: ['app-main.js', "  if (context.when === 'past' || span.end <= context.now)", '  if (span.end <= context.now)', '[D] une date passee'],
+  passe: ['app-main.js', "  if (context.when === 'past' || span.end <= context.now || groupeToutFait(reservation))", '  if (span.end <= context.now || groupeToutFait(reservation))', '[D] une date passee'],
   relatif: ['app-main.js', "  if (board.when !== 'today') return '';\n", '', '[D] une date passee'],
   alias: ['app-main.js', "const STAFF_PAGE_ALIASES = { sessions: 'arrivals', events: 'arrivals' };", 'const STAFF_PAGE_ALIASES = {};', '[E] les anciennes adresses menent au Terrain'],
   menu: ['staff-menu.js', "        { key: 'arrivals', label: 'Terrain', icon: 'sessions' }", "        { key: 'field', label: 'Terrain', icon: 'sessions', children: [{ key: 'arrivals', label: 'Arrivées' }, { key: 'sessions', label: 'En cours' }, { key: 'events', label: 'Événements' }] }", '[E] une seule entree « Terrain »'],

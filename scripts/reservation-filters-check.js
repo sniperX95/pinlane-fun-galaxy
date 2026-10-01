@@ -497,7 +497,7 @@ async function main() {
       },
       {
         nom: 'le fini jamais pointe perd son « Non pointé »',
-        de: "  if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status)) {\n    return '<div class=\"gc-alert is-unmarked\">",
+        de: "  if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r)) {\n    return '<div class=\"gc-alert is-unmarked\">",
         vers: "  if (false) {\n    return '<div class=\"gc-alert is-unmarked\">",
         attendu: /^\[2\]/,
       },

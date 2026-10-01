@@ -252,7 +252,11 @@ async function main() {
     await page.evaluate(() => { toggleQuickBookMore(); });
     await page.waitForTimeout(500);
     const modale = await page.evaluate(async () => {
-      const boite = document.querySelector('#quickBookOverlay .qb-modal');
+      // CE QUI DEFILE, quel qu il soit : la modale entiere, ou sa colonne de
+      // saisie depuis la refonte du 2026-10-01 (recapitulatif fixe a droite).
+      const candidats = ['.qb-body', '.qb-modal'];
+      const choisi = candidats.find((sel) => { const el = document.querySelector(`#quickBookOverlay ${sel}`); return el && el.scrollHeight - el.clientHeight > 80; }) || '.qb-modal';
+      const boite = document.querySelector(`#quickBookOverlay ${choisi}`);
       if (!boite) return { erreur: 'modale absente' };
       const course = boite.scrollHeight - boite.clientHeight;
       boite.scrollTop = course;
@@ -261,10 +265,10 @@ async function main() {
       const cible = boutons[boutons.length - 1];
       if (cible) cible.click();
       await new Promise((r) => setTimeout(r, 700));
-      const apres = document.querySelector('#quickBookOverlay .qb-modal');
-      return { course, avant, apres: apres ? apres.scrollTop : null };
+      const apres = document.querySelector(`#quickBookOverlay ${choisi}`);
+      return { course, avant, apres: apres ? apres.scrollTop : null, choisi };
     });
-    ok(modale.course > 80, `la modale a de quoi defiler (${modale.course} px)`);
+    ok(modale.course > 80, `la modale a de quoi defiler (${modale.course} px, ${modale.choisi})`);
     ok(modale.avant > 0 && modale.apres === modale.avant,
       `cliquer un bouton EN BAS ne remonte pas la modale (${modale.avant} -> ${modale.apres})`);
     await page.evaluate(() => { closeQuickBook(); });

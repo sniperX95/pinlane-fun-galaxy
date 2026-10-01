@@ -200,8 +200,11 @@
       if (!mn) return nombre;
       return n > 1 ? nombre + ' · ' + n + ' tours de ' + minutesLabel(Math.round(mn / n)) : nombre + ' · ' + minutesLabel(mn);
     }
-    if (n < 2 || !mn) return '';
-    return n + ' sessions de ' + minutesLabel(Math.round(mn / n));
+    // Le Fun Run d une partie du groupe : ses joueurs d abord (le serveur ne
+    // pose `participants` que quand tout le groupe n y va pas).
+    var qui = it && it.priceType === 'grid_fun_run' && Number(it.participants) > 0 ? it.participants + ' joueur' + (it.participants > 1 ? 's' : '') : '';
+    if (n < 2 || !mn) return qui ? qui + (mn ? ' · ' + minutesLabel(mn) : '') : '';
+    return (qui ? qui + ' · ' : '') + n + ' sessions de ' + minutesLabel(Math.round(mn / n));
   }
   function minutesLabel(m) { m = Number(m) || 0; if (m >= 60) { var h = Math.floor(m / 60), r = m % 60; return r ? h + 'h' + String(r).padStart(2, '0') : h + ' heure' + (h > 1 ? 's' : ''); } return m + ' min'; }
   function dureeApprox(m) { m = Number(m) || 0; if (m < 60) return m + ' min'; var h = Math.floor(m / 60), r = m % 60; return 'environ ' + h + ' h' + (r >= 30 ? '30' : ''); }
@@ -344,7 +347,17 @@
     var unites = Math.trunc(Number(a && a.units) || 0);
     if (capacite <= 0) return 1;
     var places = capacite * (unites > 0 ? unites : 1);
-    return Math.min(40, Math.max(1, Math.ceil(Math.max(1, state.pax) / places)));
+    return Math.min(40, Math.max(1, Math.ceil(joueursDe(a) / places)));
+  }
+  // LES JOUEURS DU FUN RUN (Movsar, 2026-10-01 : « ajoute le choix de nombre
+  // de joueurs pour le fun run, imagine que 5 veulent le faire ») : tout le
+  // groupe par defaut, jamais plus, jamais moins d un. Le serveur fait la meme
+  // borne (lib/visit-program) et compte les sessions sur eux.
+  function joueursDe(a) {
+    var tous = Math.max(1, Math.trunc(Number(state.pax) || 1));
+    if (!a || a.priceType !== 'grid_fun_run') return tous;
+    var v = Math.trunc(Number((state.options[a.id] || {}).participants));
+    return Math.min(tous, Math.max(1, v > 0 ? v : tous));
   }
   // LES PISTES D UN GROUPE, ET SES TOURS (duckpin : 6 joueurs par piste, 2
   // pistes, reglables dans Etablissement). MIROIR de activityUnitPlan
@@ -404,35 +417,39 @@
     }, 0);
     return { pistes: pistes, parPiste: confort, joueurs: joueurs, services: services.length };
   }
-  // « 14 joueurs : 3 pistes × 39 € = 117 € » ; seul, « 6 joueurs max par piste ».
+  // LE CALCUL DES PISTES, LE MEME POUR LE BOWLING, LE DUCKPIN ET LE FUN RUN
+  // (Movsar, 2026-10-01 : « ici faut dire joueurs max par piste, explique
+  // bien », puis « t abuses sur la description du duckpin ») : court, le
+  // maximum puis le calcul, « 6 joueurs max par piste : 3 pistes × 39 € =
+  // 117 € ». Une seule piste : « 6 joueurs max par piste ».
+  function calculPistes(parPiste, pistes, prixPiste, mot) {
+    mot = mot || 'piste';
+    var max = parPiste + ' joueurs max par ' + mot;
+    if (pistes < 2) return max;
+    return max + ' : ' + pistes + ' ' + mot + 's' + (prixPiste > 0 ? ' × ' + euros(prixPiste) + ' = ' + euros(prixPiste * pistes) : '');
+  }
   function phrasePistes(a) {
     var p = pistesBowling();
     if (!p) return '';
     var opt = optionChoisie(a);
     var prix = opt ? Number(opt.prix) || 0 : 0;
-    if (p.pistes < 2) return p.parPiste + ' joueurs max par piste.';
-    return p.pistes + ' pistes (' + p.parPiste + ' joueurs max par piste)'
-      + (prix ? ' = ' + euros(prix * p.pistes) : '') + (p.services > 1 ? ', en ' + p.services + ' tours' : '') + '.';
+    return calculPistes(p.parPiste, p.pistes, prix) + (p.pistes > 1 && p.services > 1 ? ', en ' + p.services + ' tours' : '') + '.';
   }
   function noteRotation(a) {
     if (a.priceType === 'grid_fun_run') {
       var n = sessionsPour(a);
-      if (n < 2) return '';
       var places = Math.trunc(Number(a.capacityPerUnit) || 0) * Math.max(1, Math.trunc(Number(a.units) || 1));
-      return 'Votre groupe joue en ' + n + ' sessions, ' + places + ' joueurs à la fois.';
+      if (!(places > 0)) return '';
+      var optF = optionChoisie(a);
+      return calculPistes(places, n, optF ? Number(optF.prix) || 0 : 0, 'session') + '.';
     }
     var mot = motUnite(a);
     if (a.priceType !== 'grid_bowling' || !mot || !(Number(a.capacityPerUnit) > 0)) return '';
     var p = unitesPour(a);
-    if (p.units < 2) return '';
-    var nb = function (k) { return k + ' ' + mot + (k > 1 ? 's' : ''); };
-    if (p.tours < 2) return 'Pour ' + state.pax + ' joueurs : ' + nb(p.units) + ' (' + p.perUnit + ' joueurs par ' + mot + ').';
-    var suite = '';
-    for (var t = 1; t < p.tours; t += 1) suite += ', puis ' + (t === p.tours - 1 ? p.lastTour : p.atOnce);
     var opt = optionChoisie(a);
-    var duree = dureeExacte(Math.round((opt ? Number(opt.valeur) : 1) * 60));
-    return 'Pour ' + state.pax + ' joueurs : ' + p.units + ' ' + mot + 's de ' + p.perUnit + '. Le centre en a ' + p.atOnce
-      + ', vous jouez donc en ' + p.tours + ' tours de ' + duree + ' (' + nb(p.atOnce) + suite + ').';
+    var calcul = calculPistes(p.perUnit, p.units, opt ? Number(opt.prix) || 0 : 0, mot);
+    if (p.tours < 2) return calcul + '.';
+    return calcul + ', en ' + p.tours + ' tours de ' + dureeExacte(Math.round((opt ? Number(opt.valeur) : 1) * 60)) + '.';
   }
   // LES BILLARDS : le client choisit ses tables (une par defaut, jusqu a ce
   // que le centre en a) et ses heures (le pas du catalogue). Movsar,
@@ -467,9 +484,15 @@
       // se coupait sur un telephone (deux cartes par rangee).
       return { cle: 'participants', titre: 'Enfants', mot: 'enfant', min: 1, max: state.pax, n: enfantsPlaine(a) };
     }
+    // Le Fun Run : sous la duree, discret, sans phrase a lui (le calcul de la
+    // carte dit deja les sessions). Inutile pour un joueur seul.
+    if (a.priceType === 'grid_fun_run' && state.pax > 1) {
+      return { cle: 'participants', titre: 'Joueurs', mot: 'joueur', min: 1, max: state.pax, n: joueursDe(a), apres: true, muet: true };
+    }
     return null;
   }
   function texteCompteur(c) {
+    if (c.muet) return '';
     if (c.cle === 'units') return c.max + ' ' + c.mot + (c.max > 1 ? 's' : '') + ' au plus';
     var autres = state.pax - c.n;
     if (autres > 1) return 'Les ' + autres + ' autres ne paient pas l’entrée.';
@@ -489,8 +512,19 @@
     var heures = heuresPossibles(a);
     return { units: tables, hours: heures.indexOf(Number(choix.hours)) >= 0 ? Number(choix.hours) : heures[0] };
   }
+  // UN PRIX QUI N EST PAS EN LIGNE N EST PAS « SUR PLACE » (Movsar,
+  // 2026-10-01 : « pq sur place ici ? tout est a payer sur place »). Tout se
+  // regle a l accueil ; ce qui distingue ces lignes, c est que le centre n a
+  // pas saisi leur tarif : il se donne a l accueil.
+  var PRIX_ACCUEIL = 'prix à l’accueil';
+  function sansPrixEnLigne(items) {
+    return (items || []).filter(function (it) { return !(it.priceKnown === true || (it.priceKnown !== false && Number(it.price) > 0)); })
+      .map(function (it) { return it.name || nomActivite(it.activityId); });
+  }
+  function nomsSansPrix(items) { var n = sansPrixEnLigne(items); return n.length ? joindreListe(n, ' et ') : 'les activités'; }
+  function totalIndicatif(complet, items) { return complet ? 'Total indicatif' : 'Total indicatif, sans ' + nomsSansPrix(items) + ' (' + PRIX_ACCUEIL + ')'; }
   // Le montant d une ligne de billard : tables x heures x tarif du centre,
-  // null quand le centre n a pas saisi de tarif (« sur place »).
+  // null quand le centre n a pas saisi de tarif (prix a l accueil).
   function prixBillard(a, tables, heures) {
     return a && Number(a.priceValue) > 0 ? Math.round(Number(a.priceValue) * tables * heures * 100) / 100 : null;
   }
@@ -506,7 +540,7 @@
       var motTable = motUnite(a) || 'unité';
       // « 3 tables » et « 2 heures » ne se coupent pas en fin de ligne.
       var quoi = insecable(r.units + ' ' + motTable + (r.units > 1 ? 's' : '')) + ', ' + insecable(heuresLabel(r.hours));
-      return (total == null ? 'Tarif sur place' : euros(total)) + ' · ' + quoi;
+      return (total == null ? 'Prix à l’accueil' : euros(total)) + ' · ' + quoi;
     }
     if (choisie && seCompteParEnfant(a) && Number(a.priceValue) > 0) {
       var enfants = enfantsPlaine(a);
@@ -516,15 +550,15 @@
     if (opt) {
       if (choisie) return euros(opt.prix) + ' ' + opt.unite;
       var mini = Math.min.apply(null, optionsPour(a).map(function (o) { return o.prix; }).filter(function (p) { return p > 0; }));
-      return isFinite(mini) ? 'Dès ' + euros(mini) + ' ' + opt.unite : 'Tarif sur place';
+      return isFinite(mini) ? 'Dès ' + euros(mini) + ' ' + opt.unite : 'Prix à l’accueil';
     }
     var unite = a.unitLabel ? ' ' + a.unitLabel.replace(/^par /, '/ ') : '';
     switch (a.priceType) {
       case 'per_pax':
       case 'per_unit_hour':
-        return a.priceValue ? 'Dès ' + euros(a.priceValue) + unite : 'Tarif sur place';
+        return a.priceValue ? 'Dès ' + euros(a.priceValue) + unite : 'Prix à l’accueil';
       default:
-        return a.priceValue ? euros(a.priceValue) + unite : 'Tarif sur place';
+        return a.priceValue ? euros(a.priceValue) + unite : 'Prix à l’accueil';
     }
   }
 
@@ -941,7 +975,7 @@
   // brut et restait vert.
   function entreeJour(entry) {
     return {
-      date: entry.date, ouvert: Boolean(entry.open), horaire: entry.open ? horaireLabel(entry.schedule) : (entry.closedLabel || 'Fermé'),
+      date: entry.date, ouvert: Boolean(entry.open), fini: entry.over === true, horaire: entry.open ? horaireLabel(entry.schedule) : (entry.closedLabel || 'Fermé'),
       periode: entry.holiday ? { type: entry.holiday.type, label: accentuer(entry.holiday.label) } : null, coupures: entry.closedWindows || [],
       weekday: typeof entry.weekday === 'number' ? entry.weekday : undefined,
       schedule: entry.schedule && typeof entry.schedule === 'object' ? { open: Number(entry.schedule.open), close: Number(entry.schedule.close) } : null,
@@ -954,6 +988,28 @@
     (liste || []).forEach(function (e) { if (e && e.date) jours[e.date] = entreeJour(e); });
   }
   function jourInfo(dateStr) { return jours[dateStr] || null; }
+  // LA JOURNEE FINIE (Movsar, 2026-10-01 : « quand un jour est fini, genre la
+  // il est plus de 22 heures, ca doit dire que c est ferme et ils peuvent plus
+  // continuer pour ce jour, mais uniquement quand l heure est passee »). Le
+  // serveur le dit au chargement (`over`) ; une page restee ouverte le voit
+  // ici, a l heure du CENTRE (jamais celle d un telephone a l etranger), a
+  // partir de l heure de fermeture et pas une minute avant.
+  function minutesCentre() {
+    try {
+      var parts = new Intl.DateTimeFormat('en-GB', { timeZone: (meta && meta.center && meta.center.timezone) || 'Europe/Brussels', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+      var h = 0, mn = 0;
+      parts.forEach(function (x) { if (x.type === 'hour') h = Number(x.value) % 24; if (x.type === 'minute') mn = Number(x.value); });
+      return h * 60 + mn;
+    } catch (e) { var d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+  }
+  function journeeFinie(dateStr) {
+    var j = jourInfo(dateStr);
+    if (!j || !dateStr || dateStr !== aujourdhui()) return false;
+    if (j.fini) return true;
+    return Boolean(j.ouvert && j.schedule && isFinite(j.schedule.close) && minutesCentre() >= Math.round(j.schedule.close * 60));
+  }
+  function ouvertCeJour(dateStr) { var j = jourInfo(dateStr); return Boolean(j && j.ouvert && !journeeFinie(dateStr)); }
+  function heureFermeture(j) { return j && j.schedule && isFinite(j.schedule.close) ? (j.schedule.close >= 24 ? 'minuit' : Math.floor(j.schedule.close) + 'h' + (j.schedule.close % 1 ? String(Math.round((j.schedule.close % 1) * 60)).padStart(2, '0') : '')) : ''; }
   function cleMois(y, m) { if (m < 0) { m += 12; y -= 1; } if (m > 11) { m -= 12; y += 1; } return y + '-' + String(m + 1).padStart(2, '0'); }
   function joursDuMois(y, m) { return new Date(y, m + 1, 0).getDate(); }
   // Le mois est complet quand chaque jour entre aujourd hui et l horizon a son
@@ -1003,9 +1059,10 @@
       var s = cleMois(y, m) + '-' + String(d).padStart(2, '0');
       var j = jours[s];
       var passe = s < today, loin = s > fin, avant = !passe && s < mini;
-      var off = passe || loin || avant || !j || !j.ouvert;
+      var fini = journeeFinie(s);
+      var off = passe || loin || avant || !j || !j.ouvert || fini;
       var cls = 'fg-cal__day' + (off ? ' is-off' : '') + (passe || avant ? ' is-past' : '') + (s === today ? ' is-today' : '') + (s === choisi ? ' is-selected' : '') + (j && j.periode ? (j.periode.type === 'public' ? ' is-ferie' : ' is-vacances') : '') + (!j && !passe && !loin ? ' is-loading' : '');
-      var titre = avant && cible().avantMin ? cible().avantMin : j ? infoTexte(j) : (passe ? 'Date passée' : (loin ? 'Au-delà de la période de réservation' : 'Chargement…'));
+      var titre = avant && cible().avantMin ? cible().avantMin : fini ? 'Aujourd’hui : fermé, la journée est finie' : j ? infoTexte(j) : (passe ? 'Date passée' : (loin ? 'Au-delà de la période de réservation' : 'Chargement…'));
       if (!off && !focusable) focusable = s;
       html += '<button type="button" class="' + cls + '" data-date="' + s + '" role="gridcell" aria-selected="' + (s === choisi) + '" aria-label="' + esc(titre) + '" title="' + esc(titre) + '" ' + (off ? 'disabled' : '') + ' tabindex="-1">' + d + (j && j.periode ? '<i></i>' : '') + '</button>';
     }
@@ -1038,8 +1095,21 @@
   function choisirJour(dateStr) {
     state.date = dateStr;
     dayLabel.textContent = jourLong(dateStr);
+    direJour(dateStr);
+    invaliderDispo();
+  }
+  var finVue = false;
+  function direJour(dateStr) {
     var j = jourInfo(dateStr);
     var morceaux = [];
+    finVue = journeeFinie(dateStr);
+    dayHint.classList.toggle('is-warn', finVue);
+    if (finVue) {
+      var heure = heureFermeture(j);
+      dayHint.textContent = 'Aujourd’hui\u00a0· Fermé, la journée est finie' + (heure ? ' (fermeture ' + heure + ')' : '') + '. Choisissez un autre jour.';
+      dayBtn.setAttribute('title', dayHint.textContent);
+      return;
+    }
     // Le jour pre-choisi au depart peut etre aujourd hui : le dire evite de
     // reserver pour ce soir par megarde. meta.today est la date du centre.
     var rel = dateStr === aujourdhui() ? 'Aujourd’hui' : dateStr === demain() ? 'Demain' : '';
@@ -1051,10 +1121,19 @@
     }
     // L espace insecable colle le « · » au mot d avant : il ne commence jamais
     // une ligne quand l indice passe sur deux lignes.
+    // Le jour propose d office est demain PARCE QUE la journee est finie : le
+    // dire, sinon le client qui voulait venir ce soir ne le voit pas.
+    if (dateStr === demain() && journeeFinie(aujourdhui())) morceaux.push('Aujourd’hui\u00a0: fermé');
     dayHint.textContent = morceaux.join('\u00a0· ');
     dayBtn.setAttribute('title', dayHint.textContent);
-    invaliderDispo();
   }
+  // Une page restee ouverte passe la fermeture : l indice et le calendrier le
+  // disent des que l heure est passee, sans rien recharger.
+  setInterval(function () {
+    if (!state.date || journeeFinie(state.date) === finVue) return;
+    direJour(state.date);
+    rendreCalendrier();
+  }, 30000);
   function ouvrirJours(ouvrir) {
     var o = typeof ouvrir === 'boolean' ? ouvrir : dayPop.hidden;
     // L ouverture ne garde que son apparition (fg-pop) : le mois montre ne
@@ -1262,6 +1341,7 @@
     if (!meta) { direErreur(panneMeta || 'Le formulaire se charge encore. Réessayez dans un instant.'); return; }
     if (grandGroupe()) { ouvrirSurMesure($('#goActivities')); return; }
     if (!state.date) { direErreur('Choisissez d’abord un jour.'); dayBtn.focus(); return; }
+    if (journeeFinie(state.date)) { direJour(state.date); rendreCalendrier(); direErreur('Le centre est fermé pour aujourd’hui : la journée est finie. Choisissez un autre jour.'); dayBtn.focus(); return; }
     direErreur('');
     // Le groupe a pu changer depuis le dernier rendu : une activite bornee
     // (Fun Run, 5 joueurs) sort de la selection si le groupe la depasse.
@@ -1310,17 +1390,17 @@
     var i = indexOption(a);
     return [{ cle: liste[0].cle, titre: TITRES_OPTION[liste[0].cle] || 'Option', options: liste, choisie: liste[i < 0 ? 0 : i].valeur }];
   }
-  function petitDePastille(o) { return o.sous != null ? o.sous : (o.prix == null ? 'sur place' : euros(o.prix)); }
+  function petitDePastille(o) { return o.sous != null ? o.sous : (o.prix == null ? PRIX_ACCUEIL : euros(o.prix)); }
   function htmlCompteur(c, base) {
     var id = base + '-' + c.cle;
-    var moins = c.cle === 'units' ? 'Une ' + c.mot + ' de moins' : 'Un enfant de moins';
-    var plus = c.cle === 'units' ? 'Une ' + c.mot + ' de plus' : 'Un enfant de plus';
+    var moins = c.cle === 'units' ? 'Une ' + c.mot + ' de moins' : 'Un ' + c.mot + ' de moins';
+    var plus = c.cle === 'units' ? 'Une ' + c.mot + ' de plus' : 'Un ' + c.mot + ' de plus';
     return '<span class="fg-card__optlabel" id="' + id + '">' + esc(c.titre) + '</span>'
       + '<div class="fg-kids__row"><div class="fg-stepper fg-kids__stepper" role="group" aria-labelledby="' + id + '" data-compteur="' + esc(c.cle) + '">'
       + '<button type="button" class="fg-stepper__btn" data-pas="-1" aria-label="' + esc(moins) + '"' + (c.n <= c.min ? ' disabled' : '') + '>&minus;</button>'
       + '<output class="fg-kids__n" aria-live="polite">' + c.n + '</output>'
       + '<button type="button" class="fg-stepper__btn" data-pas="1" aria-label="' + esc(plus) + '"' + (c.n >= c.max ? ' disabled' : '') + '>+</button>'
-      + '</div><p class="fg-kids__adults" data-compteur-texte>' + esc(texteCompteur(c)) + '</p></div>';
+      + '</div>' + (c.muet ? '' : '<p class="fg-kids__adults" data-compteur-texte>' + esc(texteCompteur(c)) + '</p>') + '</div>';
   }
   function rendreOption(a) {
     var groupes = groupesOptions(a);
@@ -1328,7 +1408,7 @@
     if (!groupes.length && !compteur) return '';
     var base = 'opt-' + String(a.id).replace(/[^a-z0-9_-]/gi, '');
     return '<div class="fg-card__opt"><div class="fg-card__optin"><div class="fg-card__optbox">'
-      + (compteur ? htmlCompteur(compteur, base) : '')
+      + (compteur && !compteur.apres ? htmlCompteur(compteur, base) : '')
       + groupes.map(function (g) {
         var idTitre = groupes.length > 1 ? base + '-' + g.cle : base;
         return '<span class="fg-card__optlabel" id="' + idTitre + '">' + esc(g.titre) + '</span>'
@@ -1339,6 +1419,7 @@
           }).join('')
           + '</div>';
       }).join('')
+      + (compteur && compteur.apres ? htmlCompteur(compteur, base) : '')
       + (noteCarte(a) ? '<p class="fg-card__rot">' + esc(noteCarte(a)) + '</p>' : '')
       + '</div></div></div>';
   }
@@ -1816,6 +1897,8 @@
       if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); ligne.units = billard.units; ligne.hours = billard.hours; }
       // La plaine de jeux : les enfants qui y vont, que le serveur facture.
       if (seCompteParEnfant(a)) ligne.participants = enfantsPlaine(a);
+      // Le Fun Run : les joueurs, seulement quand tout le groupe n y va pas.
+      if (a.priceType === 'grid_fun_run' && joueursDe(a) < state.pax) ligne.participants = joueursDe(a);
       return ligne;
     });
   }
@@ -2369,6 +2452,14 @@
   function majPistes(d) {
     var ancres = (d.anchors && d.anchors.activities) || [];
     var defauts = (d.anchors && d.anchors.defaultTimes) || {};
+    // Ce qui saute ne se nomme qu UNE fois, sous la derniere piste serree (la
+    // plus proche de « Votre visite ») : deux pistes serrees le disaient deux
+    // fois, et l ecran des heures a deja trop de texte sur telephone.
+    var dernierSerre = '';
+    ancres.forEach(function (a) {
+      var p = (a.times || []).map(verdictDu).filter(function (v) { return v.ok !== false; });
+      if (p.length > 0 && p.every(function (v) { return v.warning; })) dernierSerre = a.activityId;
+    });
     ancres.forEach(function (a) {
       var track = $('.fg-track[data-activity="' + a.activityId + '"]', hourZone);
       if (!track) return;
@@ -2389,9 +2480,16 @@
       if (note) {
         var autres = ancres.filter(function (b) { return b.activityId !== a.activityId && actifsDe(b).length; })
           .map(function (b) { return (b.label || b.activityId) + ' à ' + actifsDe(b).join(' et '); });
-        note.textContent = !toutSerre ? '' : autres.length
-          ? 'Serré à toute heure avec votre ' + autres.join(' et votre ') + ' : tout ne tiendra pas avant la fermeture.'
-          : 'Serré à toute heure : tout ne tiendra pas avant la fermeture ce jour-là.';
+        // Ce qui saute avec la combinaison retenue se nomme ici aussi, la ou
+        // le client choisit son heure (sans duree : le detail est plus bas).
+        var retenu = state.creneau && state.creneau.slot;
+        var sautent = horsDelaiDu(retenu);
+        var finRetenue = retenu && retenu.visitEndTime;
+        var quoi = a.activityId === dernierSerre && sautent.length && finRetenue ? phraseHorsDelai(sautent, finRetenue, false) : null;
+        var suiteNote = quoi ? quoi.tete + ' : ' + quoi.noms + '.' : sautent.length ? '' : 'Tout ne tiendra pas avant la fermeture' + (autres.length ? '.' : ' ce jour-là.');
+        note.textContent = !toutSerre ? '' : ((autres.length
+          ? 'Serré à toute heure avec votre ' + autres.join(' et votre ') + '.'
+          : 'Serré à toute heure.') + (suiteNote ? ' ' + suiteNote : ''));
         note.hidden = !toutSerre;
       }
       var vagues = $('.fg-track__waves', track);
@@ -2699,6 +2797,25 @@
   function fermeCeJour(a) { var j = jourInfo(state.date); return Boolean(a && j && (j.unavailableActivityIds || []).indexOf(a.id) >= 0); }
   // Une etape : son heure (vide pour ce qui se joue dans la foulee), son
   // titre, son detail, et au besoin une seconde ligne de detail.
+  // CE QUI NE TIENDRA PAS AVANT LA FERMETURE, NOMME (Movsar, 2026-10-01 :
+  // « faut dire ce qui sera pas possible de jouer [...] quand y plusieurs
+  // comme ça faut dire tout ce qui se jouera pas »). Le serveur le nomme
+  // (visitShortfallItems) avec la mesure qui donne la fin de la visite : les
+  // heures de bowling et de laser restent, ce sont les activites sans heure
+  // qui sautent. L ecran le dit, sans rien recalculer.
+  function horsDelaiDu(slot) {
+    return slot && slot.visitEndsAtClose && Array.isArray(slot.visitShortfallItems) ? slot.visitShortfallItems : [];
+  }
+  function nomHorsDelai(h, avecDuree) {
+    if (h.partie) return h.name + ' (partie ' + h.partie + ')';
+    return h.name + (avecDuree && !h.dayAccess && Number(h.minutes) > 0 ? ' (' + dureeExacte(h.minutes) + ')' : '');
+  }
+  function phraseHorsDelai(liste, fin, avecDuree) {
+    return {
+      tete: (liste.length > 1 ? 'Ne tiendront pas' : 'Ne tiendra pas') + ' avant la fermeture (' + heureAffichee(fin) + ')',
+      noms: joindreListe(liste.map(function (h) { return nomHorsDelai(h, avecDuree); }), ' et '),
+    };
+  }
   function etapeVisite(o) {
     var genres = [].concat(o.genre || []).map(function (g) { return ' fg-visit__step--' + g; }).join('');
     return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"><b>' + esc(o.heure || '') + '</b>'
@@ -2720,20 +2837,31 @@
   // `complements`) : il n y met que ce qu il a juge faisable a ces heures-la,
   // chiffre par le meme calcul que la reservation. Deux besoins, deux places
   // (Movsar, 2026-09-28 : « place au bon moment, ou ca fait pas chiant »).
-  // L OFFRE D ATTENTE repond a une contrainte du plan (un sous-groupe attend
-  // son tour) : elle se dit la ou le plan se lit, a l ecran des horaires.
-  // « ENVIE D UN PEU PLUS ? » est un supplement : il vient a la fin, au
-  // recapitulatif, juste avant de valider.
-  var plus = { enCours: '', refuses: {}, statut: null, annuler: null };
-  function cartesPlus(genre) {
+  // TOUTES LES OFFRES DANS LA FENETRE DE FIN (Movsar, 2026-10-01 : « chepa
+  // si c bien de mettre une add on ici [...] une belle pop up qui est bcp
+  // mieux, c mieux de laisser la belle pop up uniquement, et si jamais ca
+  // donne pour x personnes, ils peuvent choisir pour combien de personnes »).
+  // L offre d attente (un sous-groupe attend son tour) ne s affiche plus a
+  // l ecran des horaires : elle rejoint « Envie d un peu plus ? », avec le
+  // nombre de personnes a choisir. Une seule offre d attente a la fois.
+  var plus = { enCours: '', refuses: {}, statut: null, annuler: null, personnes: {} };
+  function cartesPlus() {
     var rep = state.creneau ? state.creneau.reponse : null;
     return ((rep && rep.complements) || []).filter(function (c) {
       if (!c || !c.id || plus.refuses[c.id]) return false;
-      if (genre === 'attente') return c.kind === 'attente' && Boolean(c.patch && c.patch.activityId) && state.onglet !== 'formules';
-      if (c.kind === 'attente') return false;
+      if (c.kind === 'attente') return Boolean(c.patch && c.patch.activityId) && state.onglet !== 'formules' && !state.attente;
       return c.kind === 'formule' ? Boolean(c.formuleId) && state.onglet === 'formules' : Boolean(c.patch && c.patch.activityId) && state.onglet !== 'formules';
     });
   }
+  // Ceux qui attendent, et combien le client en inscrit : tous par defaut,
+  // jamais plus, jamais moins d un.
+  function attendentDe(c) { return Math.max(1, Math.trunc(Number((c.attente || {}).personnes) || Number(c.pax) || 1)); }
+  function personnesDe(c) {
+    var max = attendentDe(c), v = Math.trunc(Number(plus.personnes[c.id]) || 0);
+    return Math.min(max, Math.max(1, v > 0 ? v : max));
+  }
+  function prixParPersonneDe(c) { return Number(c.prixParPersonne) > 0 ? Number(c.prixParPersonne) : Number(c.deltaPerPax) || 0; }
+  function montantDe(c) { return c.kind === 'attente' ? Math.round(prixParPersonneDe(c) * personnesDe(c) * 100) / 100 : Number(c.deltaTotal) || 0; }
   function nomDuPlus(c) { return c.kind === 'attente' ? nomActivite(c.patch.activityId) : String(c.name || ''); }
   // Les phrases du serveur sont partagees avec le tunnel : l apostrophe y est
   // droite, celle du formulaire est typographique.
@@ -2748,7 +2876,7 @@
     var c = copiePanier();
     if (carte.kind === 'formule') { c.formuleId = carte.formuleId; return c; }
     var id = String(carte.patch.activityId), o = carte.patch.options || {};
-    if (carte.kind === 'attente') c.attente = { activityId: id, participants: Math.max(1, Math.trunc(Number(o.participants) || 0)) };
+    if (carte.kind === 'attente') c.attente = { activityId: id, participants: personnesDe(carte) };
     else {
       if (c.selection.indexOf(id) < 0) c.selection.push(id);
       var reglage = {};
@@ -2847,7 +2975,7 @@
     state.dispo = j; state.dispoCle = cleDemande(); state.dispoTexte = JSON.stringify(j);
     state.creneau = { slot: slot, reponse: j };
     state.heure = slot.time;
-    plus.annuler = carte && carte.kind !== 'attente' ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
+    plus.annuler = carte ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
     // Le montant dit est celui que le serveur vient d appliquer, jamais
     // celui de la carte : les deux ne different que si un tarif a baisse
     // entre-temps, et la phrase reste vraie.
@@ -2884,7 +3012,10 @@
   // masculin, la phrase ne choisit pas. Le palier du laser se dit (2 parties
   // au lieu de 1), une activite nouvelle se dit par son nom seul.
   function texteAjout(c, montant) {
-    if (c.kind === 'attente') return 'Ajout confirmé : ' + nomDuPlus(c) + ' pour les ' + c.pax + ' personnes qui attendent, +' + euros(montant) + '.';
+    if (c.kind === 'attente') {
+      var n = personnesDe(c), tous = attendentDe(c);
+      return 'Ajout confirmé : ' + nomDuPlus(c) + (n === tous ? ' pour les ' + n + ' personnes qui attendent' : ' pour ' + n + ' personne' + (n > 1 ? 's' : '') + ' pendant l’attente') + ', +' + euros(montant) + '.';
+    }
     return 'Ajout confirmé : ' + nomDuPlus(c) + (c.kind === 'laser' && c.addsLabel ? ', ' + motsServeur(c.addsLabel) : '') + ', +' + euros(montant) + '.';
   }
   function statutPlus(ecran) {
@@ -2893,49 +3024,11 @@
     return '<p class="fg-plus__statut" data-plus-statut="' + ecran + '" data-ton="' + (s ? s.ton : '') + '">' + (s ? esc(s.texte) : '')
       + (annulable ? ' <button type="button" class="fg-plus__annuler" data-plus-annuler>Annuler</button>' : '') + '</p>';
   }
-  // Une offre d attente : ce qu elle ajoute, son prix par personne (le tarif
-  // d attente se dit ainsi), un bouton. Une rangee de la meme matiere que le
-  // recapitulatif, sans carte ni pastille.
-  function rangeePlus(c) {
-    var a = c.attente || {};
-    var detail = Number(a.dureeOffre) > 0 ? motsServeur(c.addsLabel) + ', pendant l’attente' : motsServeur(c.addsLabel);
-    var pp = Number(c.prixParPersonne) > 0 ? Number(c.prixParPersonne) : Number(c.deltaPerPax) || 0;
-    var montant = '<b>' + esc(euros(pp)) + '</b><small>par personne' + (Number(c.prixCatalogueParPersonne) > pp ? ', au lieu de ' + esc(euros(c.prixCatalogueParPersonne)) : '') + '</small>';
-    return '<li class="fg-plus__item"><svg aria-hidden="true"><use href="#' + icone(c.patch.activityId) + '"/></svg>'
-      + '<span class="fg-plus__txt"><b>' + esc(nomDuPlus(c)) + '</b>' + (detail ? '<small>' + esc(detail) + '</small>' : '') + '</span>'
-      + '<span class="fg-plus__amt">' + montant + '</span>'
-      + '<button type="button" class="fg-plus__btn" data-plus="' + esc(c.id) + '" aria-label="Ajouter ' + esc(nomDuPlus(c)) + '">Ajouter</button></li>';
-  }
-  // A L ECRAN DES HORAIRES, dans « Votre visite » : quand le groupe joue en
-  // plusieurs fois, ceux qui attendent et ce qu on leur propose. Acceptee,
-  // l offre devient une ligne de la visite, qui se retire d un toucher.
-  function htmlAttente(items) {
-    var ligne = items.filter(function (it) { return it.waitOffer === true; })[0] || null;
-    var cartes = ligne ? [] : cartesPlus('attente');
-    var s = plus.statut && plus.statut.ecran === 'heures' ? plus.statut : null;
-    if (!ligne && !cartes.length && !s) return '';
-    var html = '<div class="fg-plus fg-plus--visite" id="plus-heures" tabindex="-1">';
-    if (ligne) {
-      var n = Math.max(1, Number(ligne.participants) || 1);
-      html += '<p class="fg-plus__head"><b>Pendant l’attente</b> <small>Pour les ' + n + ' personne' + (n > 1 ? 's' : '') + ' qui attendent leur tour.</small></p>'
-        + '<ul class="fg-plus__list"><li class="fg-plus__item is-pris"><svg aria-hidden="true"><use href="#' + icone(ligne.activityId) + '"/></svg>'
-        + '<span class="fg-plus__txt"><b>' + esc(ligne.name || nomActivite(ligne.activityId)) + '</b><small>' + esc((ligne.minutes ? minutesLabel(ligne.minutes) + ' pour ' : 'Pour ') + n + ' personne' + (n > 1 ? 's' : '') + ', ajouté à votre visite') + '</small></span>'
-        + '<span class="fg-plus__amt"><b>+' + esc(euros(ligne.price)) + '</b>' + (Number(ligne.waitPricePerPax) > 0 ? '<small>' + esc(euros(ligne.waitPricePerPax)) + ' par personne</small>' : '') + '</span>'
-        + '<button type="button" class="fg-plus__btn fg-plus__btn--retirer" data-plus-retirer>Retirer</button></li></ul>';
-    } else if (cartes.length) {
-      var a = cartes[0].attente || {};
-      var p = Math.max(1, Number(a.personnes) || Number(cartes[0].pax) || 1);
-      html += '<p class="fg-plus__head"><b>Pendant l’attente</b> <small>Votre groupe joue en plusieurs fois : ' + p + ' personne' + (p > 1 ? 's attendent' : ' attend')
-        + (Number(a.minutes) > 0 ? ' ' + esc(dureeExacte(a.minutes)) : '') + ' leur tour. De quoi les occuper&nbsp;:</small></p>'
-        + '<ul class="fg-plus__list">' + cartes.map(rangeePlus).join('') + '</ul>';
-    }
-    return html + statutPlus('heures') + '</div>';
-  }
   // AU RECAPITULATIF, juste avant de valider : les offres vivent dans leur
   // fenetre (plus bas) ; le recapitulatif garde de quoi la rouvrir, et la
   // phrase d un ajout avec son « Annuler ».
   function htmlPlusRecap() {
-    var cartes = cartesPlus('plus');
+    var cartes = cartesPlus();
     var s = plus.statut && plus.statut.ecran === 'recap' ? plus.statut : null;
     if (!cartes.length && !s) return '';
     return '<div class="fg-plus" id="plus-recap" tabindex="-1">'
@@ -2946,7 +3039,7 @@
   function surPlus(e, ecran) {
     var b = e.target.closest('[data-plus]');
     if (b) {
-      var carte = cartesPlus(ecran === 'heures' ? 'attente' : 'plus').filter(function (c) { return c.id === b.dataset.plus; })[0];
+      var carte = cartesPlus().filter(function (c) { return c.id === b.dataset.plus; })[0];
       if (carte) changerPanier(panierDe(carte), carte, ecran, '');
       return true;
     }
@@ -3034,13 +3127,17 @@
     // l annoncer disait « 1 h » a un client qui paie la journee.
     var journee = items.length > 0 && items.every(function (it) { return it.dayAccess; });
     var fin = journee ? '' : (slot.visitEndTime || plan.endTime || '');
+    var horsDelai = fin ? horsDelaiDu(slot) : [];
+    var horsLibres = {};
+    horsDelai.forEach(function (h) { if (!h.partie) horsLibres[h.activityId] = 1; });
+    var horsParties = horsDelai.filter(function (h) { return h.partie && h.sansHeure; }).map(function (h) { return String(h.partie); });
     // Le resume de la barre du bas : les heures et le prix de l en-tete de
     // « Votre visite », lus aux memes endroits de la meme reponse.
     var depart = plan.arrivalTime || slot.time || '';
     var span = depart && fin ? '<b>' + esc(depart) + ' → ' + esc(heureAffichee(fin)) + '</b>' + (slot.visitEndsAtClose ? ' (fermeture)' : ' environ')
       : (journee && depart ? 'dès <b>' + esc(depart) + '</b>, toute la journée' : '');
     var sumAvant = $$('b', hourSum).map(function (b) { return b.textContent; });
-    hourSum.innerHTML = span + (prix > 0 ? (span ? '\u00a0· ' : '') + '<b>' + esc(euros(prix)) + '</b>' + '<small class="fg-bar__ind"> indicatif</small>' + (complet ? '' : ' + sur place') : '');
+    hourSum.innerHTML = span + (prix > 0 ? (span ? '\u00a0· ' : '') + '<b>' + esc(euros(prix)) + '</b>' + '<small class="fg-bar__ind"> indicatif</small>' + (complet ? '' : ' + ' + insecable(PRIX_ACCUEIL)) : '');
     // Ce qui a change dans le resume monte a sa place, une fois. Les <b> sont
     // neufs a chaque appel (innerHTML) : la classe sur un noeud neuf suffit.
     // Resume vide avant (arrivee, erreur, combinaison refusee) : rien ne roule.
@@ -3076,7 +3173,7 @@
     var suite = '';
     var suiteDits = [];
     function ligneSuite(o, voix) {
-      suite += etapeVisite({ genre: [o.genre, 'suite'], heure: '', icone: o.icone, titre: o.titre, titreHtml: o.titreHtml, detail: o.detail });
+      suite += etapeVisite({ genre: [o.genre, 'suite'].concat(o.hors ? ['hors'] : []), heure: '', icone: o.icone, titre: o.titre, titreHtml: o.titreHtml, detail: o.detail });
       suiteDits.push(voix);
     }
     // LES PARTIES DE LASER SANS HEURE : l equipe les place sur place, et la
@@ -3092,8 +3189,10 @@
       var reste = [];
       for (var k = posees + 1; k <= total; k += 1) reste.push(String(k));
       var quelles = total === 1 ? '1 partie' : 'partie' + (reste.length > 1 ? 's ' : ' ') + joindreListe(reste, ' et ') + ' sur ' + total;
-      var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place avec l’équipe' + (id === 'laser_game' && aLaSuite ? ' · ' + environ(aLaSuite) : '');
-      ligneSuite({ genre: 'onsite', icone: icone(id), titre: nomR + ' · ' + quelles, detail: detail }, nomR + ', ' + quelles + ', ' + detail);
+      var coupees = id === 'laser_game' ? reste.filter(function (k) { return horsParties.indexOf(k) >= 0; }) : [];
+      var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place avec l’équipe' + (id === 'laser_game' && aLaSuite ? ' · ' + environ(aLaSuite) : '')
+        + (coupees.length ? ' · ' + (coupees.length > 1 ? 'parties ' + joindreListe(coupees, ' et ') + ' : ne tiendront pas' : 'partie ' + coupees[0] + ' : ne tiendra pas') + ' avant ' + heureAffichee(fin) : '');
+      ligneSuite({ genre: 'onsite', hors: coupees.length > 0 && coupees.length === reste.length, icone: icone(id), titre: nomR + ' · ' + quelles, detail: detail }, nomR + ', ' + quelles + ', ' + detail);
       vus[genreCompris(id)] = 1;
     }
     items.forEach(function (it) {
@@ -3106,8 +3205,18 @@
       var nomL = it.name || nomActivite(it.activityId);
       var entre = it.dayAccess ? 'toute la journée' : detailSessions(it);
       var duree = !entre && Number(it.minutes) > 0 ? environ(it.minutes) : '';
-      ligneSuite({ genre: 'free', titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomL) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>', detail: 'à votre rythme' + (duree ? ' · ' + duree : '') },
-        nomL + (entre ? ' (' + entre + ')' : '') + ', à votre rythme' + (duree ? ', ' + duree : ''));
+      var tiendra = !horsLibres[it.activityId];
+      var rythme = tiendra ? 'à votre rythme' : 'ne tiendra pas avant ' + heureAffichee(fin);
+      ligneSuite({ genre: 'free', hors: !tiendra, titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomL) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>', detail: rythme + (duree ? ' · ' + duree : '') },
+        nomL + (entre ? ' (' + entre + ')' : '') + ', ' + rythme + (duree ? ', ' + duree : ''));
+    });
+    // L offre d attente prise a la fenetre de fin : une ligne de la visite,
+    // pour qui et pendant quoi (elle se retire a la fin, par « Annuler »).
+    items.filter(function (it) { return it.waitOffer === true; }).forEach(function (it) {
+      var nW = Math.max(1, Number(it.participants) || 1);
+      var nomW = it.name || nomActivite(it.activityId);
+      var detW = 'pendant l’attente · ' + nW + ' personne' + (nW > 1 ? 's' : '') + (Number(it.minutes) > 0 ? ' · ' + environ(it.minutes) : '');
+      ligneSuite({ genre: 'free', titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomW) + '</i>', detail: detW }, nomW + ', ' + detW);
     });
     // CE QUE COMPREND LA CARTE D UNE FORMULE, dans ses mots, c est ce que le
     // centre vend : ce qui a deja sa ligne a heure (bowling, laser, table) ne
@@ -3151,23 +3260,47 @@
         var sait = it.priceKnown === true || (it.priceKnown !== false && Number(it.price) > 0);
         if (sait) connus += Number(it.price) || 0;
         var det = detailLigne(it);
-        return '<div><dt>' + esc(it.name || nomActivite(it.activityId)) + (det ? ' <small>· ' + esc(det) + '</small>' : '') + '</dt><dd>' + (sait ? esc(euros(it.price)) : 'sur place') + '</dd></div>';
+        return '<div><dt>' + esc(it.name || nomActivite(it.activityId)) + (det ? ' <small>· ' + esc(det) + '</small>' : '') + '</dt><dd>' + (sait ? esc(euros(it.price)) : PRIX_ACCUEIL) + '</dd></div>';
       });
       if (Math.abs(connus - prix) < 0.01) {
         prixHtml = '<dl class="fg-visit__prices">' + lp.join('')
-          + '<div class="fg-visit__total"><dt>' + (complet ? 'Total indicatif' : 'Total indicatif, hors activités réglées sur place') + '</dt><dd>' + esc(euros(prix)) + '</dd></div></dl>'
+          // Les lignes juste au-dessus disent lesquelles : le total reste court.
+          + '<div class="fg-visit__total"><dt>' + (complet ? 'Total indicatif' : 'Total indicatif, hors ' + PRIX_ACCUEIL) + '</dt><dd>' + esc(euros(prix)) + '</dd></div></dl>'
           + '<p class="fg-visit__pay"><svg aria-hidden="true"><use href="#i-card"/></svg>Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.</p>';
       }
     }
     var html2 = '<div class="fg-visit"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
       + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : illimite ? 'à <b>' + esc(heureAffichee(fin)) + '</b>, fin de la formule' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(plan.arrivalTime, fin) + '</span>'
         : (journee && depart ? '<span class="fg-visit__span">dès <b>' + esc(depart) + '</b>, accès toute la journée</span>' : ''))
-      + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>le reste se règle sur place</small>') + '</span>' : '')
+      + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>+ ' + esc(nomsSansPrix(items)) + ', ' + PRIX_ACCUEIL + '</small>') + '</span>' : '')
       + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
-    html2 += htmlAttente(items);
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
-    if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) avis.unshift('À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.');
-    if (avis.length) html2 += '<p class="fg-visit__warn">' + avis.map(esc).join('<br>') + '</p>';
+    var horsHtml = '';
+    if (horsDelai.length) {
+      // Les heures posees ne bougent pas : elles se redisent telles quelles.
+      var heuresPosees = {}, nomsPoses = [];
+      parts.forEach(function (p) {
+        var n = nomDePartie(p);
+        if (!heuresPosees[n]) { heuresPosees[n] = []; nomsPoses.push(n); }
+        if (heuresPosees[n].indexOf(p.debut) < 0) heuresPosees[n].push(p.debut);
+      });
+      var fixes = nomsPoses.map(function (n) { return n + ' à ' + joindreListe(heuresPosees[n], ' et '); });
+      var gardees = fixes.length ? (fixes.length > 1 ? 'Vos heures ne bougent pas : ' : 'Votre heure ne bouge pas : ') + joindreListe(fixes, ' et ') + '.' : '';
+      // Un montant connu reste dans le total indicatif : il se dit.
+      var comptees = horsDelai.filter(function (h) { return !h.partie; }).map(function (h) { return items.filter(function (it) { return it.activityId === h.activityId; })[0]; })
+        .filter(function (it) { return it && it.priceKnown === true && Number(it.price) > 0; });
+      var compte = comptees.length ? 'Le total indicatif compte encore ' + joindreListe(comptees.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + euros(it.price) + ')'; }), ' et ') + '.' : '';
+      var phrase = phraseHorsDelai(horsDelai, fin, true);
+      horsHtml = '<p class="fg-visit__warn fg-visit__hors"><b>' + esc(phrase.tete) + ' :</b> ' + esc(phrase.noms) + '.'
+        + (gardees || compte ? '<br>' + esc([gardees, compte].filter(Boolean).join(' ')) : '') + '</p>';
+      avis.unshift([phrase.tete + ' : ' + phrase.noms + '.', gardees, compte].filter(Boolean).join(' '));
+    } else if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) {
+      avis.unshift('À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.');
+    }
+    var avisSimples = horsHtml ? avis.slice(1) : avis;
+    // Ce qui ne tiendra pas se dit juste sous la liste qu il raye.
+    html2 += horsHtml;
+    if (avisSimples.length) html2 += '<p class="fg-visit__warn">' + avisSimples.map(esc).join('<br>') + '</p>';
     html2 += prixHtml;
     // Ce que dit la voix est ce qui est ecrit dans le bloc : l arrivee, chaque
     // partie a son heure et sa fin, ce qui se joue dans la foulee, la fin, le
@@ -3176,7 +3309,7 @@
       + (plan.arrivalTime ? 'Arrivée conseillée à ' + plan.arrivalTime + '. ' : '')
       + (dits.length ? dits.join('. ') + '. ' : (plan.arrivalTime ? '' : 'Début à ' + slot.time + '. '))
       + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : illimite ? 'Fin de la formule à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : (journee ? 'Accès toute la journée. ' : ''))
-      + (prix > 0 ? euros(prix) + (complet ? '' : ', le reste se règle sur place') + '. ' : '')
+      + (prix > 0 ? euros(prix) + (complet ? '' : ', plus ' + nomsSansPrix(items) + ', ' + PRIX_ACCUEIL) + '. ' : '')
       + avis.join(' ')).trim());
     zone.innerHTML = html2 + '</div>';
     if (prixBouge) $('.fg-visit__price', zone).classList.add('is-maj');
@@ -3661,6 +3794,7 @@
     var complet = !rep.program || rep.program.priceComplete !== false;
     var j = jourInfo(state.date);
     var fin = cr ? (cr.slot.visitEndTime || '') : '';
+    var horsFinal = fin ? horsDelaiDu(cr.slot) : [];
     var html = '<div class="fg-recap__row fg-rise" style="--i:1"><svg aria-hidden="true"><use href="#i-calendar"/></svg><span>' + esc(jourLong(state.date)) + '</span>' + (j && j.periode ? '<i class="fg-tag ' + (j.periode.type === 'public' ? 'fg-tag--ferie' : 'fg-tag--vacances') + '">' + esc(j.periode.label) + '</i>' : '') + '</div>'
       + '<div class="fg-recap__row fg-rise" style="--i:2"><svg aria-hidden="true"><use href="#i-users"/></svg><span>' + esc(groupeLisible()) + '</span></div>'
       + '<div class="fg-recap__sep"></div>';
@@ -3671,7 +3805,8 @@
     });
     html += '<div class="fg-recap__sep"></div>'
       + (plan.arrivalTime ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>Arrivée conseillée à <b>' + esc(plan.arrivalTime) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(plan.arrivalTime, fin) + '</span></div>' : '')
-      + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + (complet ? 'Total indicatif' : 'Total indicatif, hors activités réglées sur place') + '</div>'
+      + (horsFinal.length ? '<div class="fg-recap__row fg-recap__hors fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-info"/></svg><span><b>' + esc(phraseHorsDelai(horsFinal, fin, false).tete) + ' :</b> ' + esc(phraseHorsDelai(horsFinal, fin, false).noms) + '</span></div>' : '')
+      + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + esc(totalIndicatif(complet, (rep.program && rep.program.items) || [])) + '</div>'
       + '<div class="fg-total__amount"' + (final ? ' id="totalAmount"' : '') + ' data-total="' + prix + '">' + (prix > 0 ? esc(euros(prix)) : 'Sur place') + '</div></div>'
       // Les deux moyens acceptes sur place (Movsar, 2026-09-23 : « on accepte
       // le liquide ») : la carte et le billet, puis les mots.
@@ -3709,7 +3844,6 @@
     if (e.target.closest('[data-vitrine-ouvrir]')) { ouvrirVitrine(); return; }
     surPlus(e, 'recap');
   });
-  hourZone.addEventListener('click', function (e) { surPlus(e, 'heures'); });
 
   /* --- Envie d un peu plus ? La fenetre -------------------------------------------- */
 
@@ -3723,26 +3857,56 @@
   var vitrine = $('#vitrine'), vitrinePanneau = $('#vitrinePanneau'), vitrineCartes = $('#vitrineCartes'), vitrineStatut = $('#vitrineStatut');
   var vitrineVues = {}, vitrineRetour = null, vitrineMinuteur = 0;
   function vitrineOuverte() { return Boolean(vitrine && !vitrine.hidden); }
-  function signatureVitrine() { return cleDemande() + '|' + cartesPlus('plus').map(function (c) { return c.id; }).join(','); }
+  function signatureVitrine() { return cleDemande() + '|' + cartesPlus().map(function (c) { return c.id; }).join(','); }
   // La photo d une offre : celle de l activite ajoutee, ou, pour une formule,
   // de ce que la formule ajoute (« 30 min d Arcades »).
   function photoDuPlus(c) { return photo(c.kind === 'formule' ? (c.addsLabel || c.name) : c.patch.activityId); }
   function carteVitrine(c, i) {
     var p = photoDuPlus(c);
     var ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
-    var quoi = motsServeur(c.addsLabel);
-    var note = [c.totalLabel, c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
+    var attente = c.kind === 'attente';
+    var duree = attente ? Math.trunc(Number((c.attente || {}).dureeOffre) || 0) : 0;
+    var quoi = attente ? (duree ? dureeExacte(duree) + ' ' : '') + 'pendant l’attente de votre tour' : motsServeur(c.addsLabel);
+    var att = c.attente || {};
+    // Sans prix par personne, comme les autres offres de la fenetre (Movsar,
+    // 2026-09-29) : le compteur et le montant de la carte disent tout.
+    var note = attente
+      ? attendentDe(c) + ' personne' + (attendentDe(c) > 1 ? 's attendent' : ' attend') + ' leur tour' + (Number(att.minutes) > 0 ? ' (' + dureeExacte(att.minutes) + ')' : '')
+      : [c.totalLabel, c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
+    var n = attente ? personnesDe(c) : 0;
+    var qui = attente ? '<span class="fg-vitrine__qui"><span class="fg-vitrine__quimot" id="qui-' + esc(c.id) + '">Personnes</span>'
+      + '<span class="fg-stepper fg-vitrine__stepper" role="group" aria-labelledby="qui-' + esc(c.id) + '">'
+      + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="-1" data-carte="' + esc(c.id) + '" aria-label="Une personne de moins"' + (n <= 1 ? ' disabled' : '') + '>&minus;</button>'
+      + '<output class="fg-vitrine__n" aria-live="polite">' + n + '</output>'
+      + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="1" data-carte="' + esc(c.id) + '" aria-label="Une personne de plus"' + (n >= attendentDe(c) ? ' disabled' : '') + '>+</button>'
+      + '</span></span>' : '';
     return '<li class="fg-vitrine__carte" style="--i:' + i + '">'
       + '<span class="fg-vitrine__photo" aria-hidden="true">' + (p ? '<img src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async">' : '<svg><use href="#' + ico + '"/></svg>') + '</span>'
       + '<span class="fg-vitrine__corps"><b class="fg-vitrine__nom"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>' + esc(nomDuPlus(c)) + '</b>'
       + (quoi ? '<span class="fg-vitrine__quoi">' + esc(quoi) + '</span>' : '')
-      + (note ? '<small class="fg-vitrine__note">' + esc(note) + '</small>' : '') + '</span>'
-      + '<span class="fg-vitrine__achat"><b class="fg-vitrine__prix">+' + esc(euros(c.deltaTotal)) + '</b>'
-      + '<button type="button" class="fg-btn fg-vitrine__ajouter" data-plus="' + esc(c.id) + '" aria-label="Ajouter ' + esc(nomDuPlus(c)) + ' pour ' + esc(euros(c.deltaTotal)) + ' de plus">Ajouter</button></span></li>';
+      + (note ? '<small class="fg-vitrine__note">' + esc(note) + '</small>' : '') + qui + '</span>'
+      + '<span class="fg-vitrine__achat"><b class="fg-vitrine__prix">+' + esc(euros(montantDe(c))) + '</b>'
+      + '<button type="button" class="fg-btn fg-vitrine__ajouter" data-plus="' + esc(c.id) + '" aria-label="Ajouter ' + esc(nomDuPlus(c)) + ' pour ' + esc(euros(montantDe(c))) + ' de plus">Ajouter</button></span></li>';
+  }
+  // Le compteur d une offre d attente : le nombre, le prix et le bouton
+  // suivent sur place, sans redessiner la fenetre (le focus reste).
+  function changerPersonnes(btn) {
+    var c = cartesPlus().filter(function (x) { return x.id === btn.dataset.carte; })[0];
+    if (!c) return;
+    var n = Math.min(attendentDe(c), Math.max(1, personnesDe(c) + Number(btn.dataset.vitrinePas)));
+    plus.personnes[c.id] = n;
+    var carte = btn.closest('.fg-vitrine__carte');
+    $('.fg-vitrine__n', carte).textContent = String(n);
+    $('[data-vitrine-pas="-1"]', carte).disabled = n <= 1;
+    $('[data-vitrine-pas="1"]', carte).disabled = n >= attendentDe(c);
+    $('.fg-vitrine__prix', carte).textContent = '+' + euros(montantDe(c));
+    $('.fg-vitrine__ajouter', carte).setAttribute('aria-label', 'Ajouter ' + nomDuPlus(c) + ' pour ' + euros(montantDe(c)) + ' de plus');
+    if ((btn.disabled) && $('[data-vitrine-pas]:not([disabled])', carte)) $('[data-vitrine-pas]:not([disabled])', carte).focus({ preventScroll: true });
+    dire(n + ' personne' + (n > 1 ? 's' : '') + ', ' + euros(montantDe(c)) + '.');
   }
   // `calme` : redessinee apres un refus, ses cartes ne rejouent pas leur entree.
   function rendreVitrine(calme) {
-    var cartes = cartesPlus('plus');
+    var cartes = cartesPlus();
     vitrineCartes.innerHTML = cartes.map(carteVitrine).join('');
     vitrineCartes.dataset.n = String(cartes.length);
     vitrineCartes.classList.toggle('is-calme', Boolean(calme));
@@ -3762,7 +3926,7 @@
     $$('.fg-top, .fg-shell').forEach(function (el) { el.inert = oui; });
   }
   function ouvrirVitrine() {
-    if (!vitrine || vitrineOuverte() || !cartesPlus('plus').length) return;
+    if (!vitrine || vitrineOuverte() || !cartesPlus().length) return;
     vitrineVues[signatureVitrine()] = 1;
     vitrineRetour = doc.activeElement;
     vitrine.hidden = false;
@@ -3803,6 +3967,8 @@
   if (vitrine) {
     vitrine.addEventListener('click', function (e) {
       if (e.target.closest('[data-vitrine-fermer]')) { fermerVitrine(true); return; }
+      var pas = e.target.closest('[data-vitrine-pas]');
+      if (pas) { if (!pas.disabled) changerPersonnes(pas); return; }
       var b = e.target.closest('[data-plus]');
       if (!b || b.disabled) return;
       b.classList.add('is-busy');
@@ -3931,7 +4097,7 @@
           // Les offres « Envie d un peu plus ? » valaient pour le creneau
           // refuse : elles partent avec lui (« Vos horaires ne bougent pas »
           // ne serait plus vrai). De nouvelles heures les ramenent.
-          cartesPlus('plus').forEach(function (c) { plus.refuses[c.id] = 1; });
+          cartesPlus().forEach(function (c) { plus.refuses[c.id] = 1; });
           plus.statut = null; plus.annuler = null;
           var blocPlus = $('#plus-recap');
           if (blocPlus) blocPlus.parentNode.removeChild(blocPlus);
@@ -4001,7 +4167,7 @@
     var nomRes = String(r.name || (state.contact.prenom + ' ' + state.contact.nom)).trim();
     var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. Arrivée conseillée à <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
     var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>.' : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
-    var ligneMontant = Number(r.price) > 0 ? 'Montant indicatif <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', hors activités réglées sur place. Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
+    var ligneMontant = Number(r.price) > 0 ? 'Montant indicatif <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', sans ' + esc(nomsSansPrix((repFin.program && repFin.program.items) || [])) + ' (' + PRIX_ACCUEIL + '). Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
     function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
     // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que
     // l equipe va verifier. « C est enregistre » etait vrai dans les deux cas,
@@ -4248,7 +4414,7 @@
         absorberCalendrier(meta.center && meta.center.calendar);
         // Le premier jour ouvert : aujourd hui si le centre est ouvert, sinon
         // le prochain.
-        var premier = Object.keys(jours).sort().filter(function (s) { return jours[s].ouvert; })[0];
+        var premier = Object.keys(jours).sort().filter(function (s) { return ouvertCeJour(s); })[0];
         if (premier) choisirJour(premier);
         rendrePax();
         rendreActivites();

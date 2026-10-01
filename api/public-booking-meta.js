@@ -356,11 +356,18 @@ function buildDayStatus(blocks, dayDate, center, centerId) {
     }
   }
   const isPast = dayDate < today;
-  const open = !isPast && !!schedule && openMarks > 0;
+  // LA JOURNEE FINIE (Movsar, 2026-10-01 : « quand un jour est fini, genre
+  // la il est plus de 22 heures, ca doit dire que c est ferme et ils peuvent
+  // plus continuer pour ce jour, mais uniquement quand l heure est passee »).
+  // Aujourd hui, a partir de l heure de fermeture (heure du centre), et pas
+  // une minute avant ; une fermeture a minuit ne finit jamais la journee.
+  const isOver = dayDate === today && !!schedule && currentTimeDecimal() >= Number(schedule.close);
+  const open = !isPast && !isOver && !!schedule && openMarks > 0;
 
   // Table FIGEE de libelles. Jamais le champ `reason` du staff.
   let closedLabel = '';
   if (isPast) closedLabel = 'Date passée';
+  else if (isOver) closedLabel = 'Fermé pour aujourd’hui';
   else if (!schedule) closedLabel = 'Fermé ce jour';
   else if (!open) closedLabel = 'Fermé exceptionnellement ce jour';
 
@@ -433,6 +440,7 @@ function buildDayStatus(blocks, dayDate, center, centerId) {
   return {
     date: dayDate,
     open,
+    over: isOver,
     schedule: schedule ? { open: schedule.open, close: schedule.close, label: schedule.label } : null,
     closedLabel,
     closedWindows,
@@ -785,6 +793,9 @@ function buildCalendar(blocks, days, center, centerId, from = '') {
       open: status.open,
       schedule: status.schedule,
       closedLabel: status.closedLabel,
+      // La journee finie se dit a part : le formulaire la nomme (« la
+      // journee est finie »), pas comme un jour de fermeture.
+      ...(status.over ? { over: true } : {}),
       closedWindows: status.closedWindows,
       holiday: context.active ? { type: context.periodType, label: context.label } : null,
       unavailableActivityIds: status.unavailableActivityIds,

@@ -541,9 +541,12 @@ function verifierFormulaire(p25, p8) {
   const h2 = p25.deuxHeures || {};
   ok(h2.prix === '60 € · 3 tables, 2 heures', 'deux heures : la carte dit le montant de la ligne et ce qu il paie', `« ${h2.prix} »`);
   ok(!(p25.billards || {}).note && !(p8.billards || {}).note, 'aucune phrase de joueurs par table pour les billards (Movsar : pas besoin)');
-  ok((p25.duckpin || {}).note === 'Pour 25 joueurs : 5 pistes de 6. Le centre en a 2, vous jouez donc en 3 tours de 1 h (2 pistes, puis 2, puis 1).',
-    'le duckpin a 25 joueurs : 5 pistes, 3 tours, sans jargon', `« ${(p25.duckpin || {}).note} »`);
-  ok((p8.duckpin || {}).note === 'Pour 8 joueurs : 2 pistes (6 joueurs par piste).', 'le duckpin a 8 joueurs : pas de tour, deux pistes', `« ${(p8.duckpin || {}).note} »`);
+  // COURT, le maximum puis le calcul (Movsar, 2026-10-01 : « faut dire
+  // joueurs max par piste, explique bien », puis « t abuses sur la
+  // description du duckpin »).
+  ok((p25.duckpin || {}).note === '6 joueurs max par piste : 5 pistes × 39 € = 195 €, en 3 tours de 1 h.',
+    'le duckpin a 25 joueurs : le maximum par piste, 5 pistes et leur prix, 3 tours', `« ${(p25.duckpin || {}).note} »`);
+  ok((p8.duckpin || {}).note === '6 joueurs max par piste : 2 pistes × 39 € = 78 €.', 'le duckpin a 8 joueurs : le maximum par piste, deux pistes et leur prix, pas de tour', `« ${(p8.duckpin || {}).note} »`);
   const ligne = (p25.programme || []).find((l) => l && l.activityId === 'billards') || null;
   ok(ligne && Number(ligne.units) === 3 && Number(ligne.hours) === 2, 'la demande de disponibilite porte les 3 tables et les 2 heures choisies', JSON.stringify(ligne));
   ok(p8.deuxVu === true && ((p8.apresChangement || {}).compteur || {}).n === '2' && p8.cinqRevu === true,

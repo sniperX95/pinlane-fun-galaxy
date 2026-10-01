@@ -15,10 +15,14 @@
 //       combien de temps, l offre la plus proche de ce temps passe devant ; une
 //       offre acceptee garde son tarif et eteint les autres ; la reservation
 //       applique la meme regle.
-//   [B] l ecran des horaires : « Pendant l attente » dit qui attend et combien
-//       de temps ; « Ajouter » ne change le panier qu apres le serveur (meme
-//       heure, memes pistes, exactement le montant annonce) ; la ligne vit dans
-//       le detail du prix, le recapitulatif et l envoi ; « Retirer » la retire.
+//   [B] l offre d attente, dans la fenetre de fin seulement (Movsar,
+//       2026-10-01 : « chepa si c bien de mettre une add on ici [...] c mieux
+//       de laisser la belle pop up uniquement, et si ca donne pour x personnes
+//       ils peuvent choisir pour combien de personnes ») : rien a l ecran des
+//       horaires ; dans la fenetre, chaque offre dit qui attend, un compteur
+//       choisit combien de personnes (le montant suit), « Ajouter » monte le
+//       total d exactement ce montant, la demande et l envoi portent ces
+//       personnes, « Annuler » revient.
 //   [C] le recapitulatif : « Envie d un peu plus ? » est une FENETRE (Movsar,
 //       2026-09-29 : « une pop up genre a la McDo, super quali et belle,
 //       avec des images », « enleve les prix par personne ») qui s ouvre
@@ -360,27 +364,6 @@ async function jusquAuxHoraires(browser, mock, { pax, activites, largeur = 1440,
   return { ctx, page, erreurs, reponses, pret };
 }
 const derniere = (reponses) => (reponses.length ? reponses[reponses.length - 1].json : null);
-async function lireAttente(page) {
-  return page.evaluate(() => {
-    const b = document.querySelector('#plus-heures');
-    const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-    const prix = document.querySelector('#planZone .fg-visit__price');
-    return {
-      bloc: Boolean(b),
-      tete: txt(b && b.querySelector('.fg-plus__head')),
-      offres: b ? Array.from(b.querySelectorAll('[data-plus]')).map((x) => x.dataset.plus) : [],
-      rangees: b ? Array.from(b.querySelectorAll('.fg-plus__item')).map(txt) : [],
-      prise: txt(b && b.querySelector('.fg-plus__item.is-pris')),
-      retirer: Boolean(b && b.querySelector('[data-plus-retirer]')),
-      statut: txt(b && b.querySelector('.fg-plus__statut')),
-      ton: b && b.querySelector('.fg-plus__statut') ? b.querySelector('.fg-plus__statut').dataset.ton : '',
-      prix: prix ? parseFloat(prix.firstChild.textContent.replace(/[^\d,]/g, '').replace(',', '.')) : null,
-      detailPrix: Array.from(document.querySelectorAll('#planZone .fg-visit__prices > div')).map(txt),
-      libres: txt(document.querySelector('#planZone .fg-visit__step--free')),
-      focus: document.activeElement ? document.activeElement.id : '',
-    };
-  });
-}
 async function remplirContact(page) {
   await page.click('#goContact');
   await attendre(page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
@@ -425,66 +408,112 @@ async function lireRecapPlus(page) {
 }
 
 // ---------------------------------------------------------------------------
-// [B] L ECRAN DES HORAIRES : PENDANT L ATTENTE
+// [B] L OFFRE D ATTENTE, DANS LA FENETRE DE FIN SEULEMENT
 // ---------------------------------------------------------------------------
-async function attenteB(browser, mock, { grand }) {
-  section('[B] L ECRAN DES HORAIRES : PENDANT L ATTENTE');
-  const s = await jusquAuxHoraires(browser, mock, { pax: grand, activites: ['bowling', 'duckpin_bowling'], etiquette: 'plus-attente' });
+// Les cartes d attente de la fenetre : leur id, leur compteur, leur montant.
+async function lireAttenteFenetre(page) {
+  return page.evaluate(() => Array.from(document.querySelectorAll('#vitrine .fg-vitrine__carte')).map((c) => {
+    const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
+    const moins = c.querySelector('[data-vitrine-pas="-1"]');
+    const plusB = c.querySelector('[data-vitrine-pas="1"]');
+    return {
+      id: (c.querySelector('[data-plus]') || {}).dataset ? c.querySelector('[data-plus]').dataset.plus : '',
+      n: txt(c.querySelector('.fg-vitrine__n')),
+      compteur: Boolean(moins && plusB),
+      moinsOff: Boolean(moins && moins.disabled),
+      plusOff: Boolean(plusB && plusB.disabled),
+      montant: txt(c.querySelector('.fg-vitrine__prix')),
+      texte: txt(c),
+    };
+  }));
+}
+// Le parcours entier, mesure ; `verifierAttente` juge. `retire` : combien de
+// personnes le client enleve au compteur avant d ajouter.
+async function attenteParcours(browser, mock, { grand, etiquette, retire = 3 }) {
+  const s = await jusquAuxHoraires(browser, mock, { pax: grand, activites: ['bowling', 'duckpin_bowling'], etiquette });
   const { page } = s;
+  const res = { erreurs: s.erreurs, pret: s.pret };
   try {
-    ok(s.pret, 'montage : l ecran des horaires a son plan');
-    const rep0 = derniere(s.reponses);
-    const cartes = cartesAttente(rep0);
-    const a0 = await lireAttente(page);
-    const p = cartes[0] ? cartes[0].attente.personnes : 0;
-    ok(a0.bloc && a0.offres.join(' ') === cartes.map((c) => c.id).join(' ') && cartes.length >= 1,
-      'le bloc « Pendant l attente » propose les offres du serveur, dans son ordre', `${a0.offres.join(' ')} / ${cartes.map((c) => c.id).join(' ')}`);
-    ok(new RegExp(`^Pendant l’attente Votre groupe joue en plusieurs fois : ${p} personnes attendent 1 h leur tour\\.`).test(a0.tete),
-      'il dit qui attend et combien de temps', a0.tete);
-    ok(cartes.every((c, i) => a0.rangees[i] && a0.rangees[i].indexOf(euros(c.prixParPersonne)) >= 0 && /par personne/.test(a0.rangees[i]) && a0.rangees[i].indexOf('pendant l’attente') >= 0),
-      'chaque offre dit son prix par personne et pour quoi', a0.rangees.join(' | '));
-    ok(a0.prix === Number(rep0.price), 'le prix de la visite est celui du serveur', `${a0.prix} / ${rep0.price}`);
-
+    res.rep0 = derniere(s.reponses);
+    res.cartes = cartesAttente(res.rep0);
+    res.heures = await page.evaluate(() => ({
+      bloc: Boolean(document.querySelector('#plus-heures, .fg-plus--visite, #hourZone [data-plus]')),
+      texte: /Pendant l’attente/.test((document.querySelector('#planZone') || {}).textContent || ''),
+    }));
     const requetes = [];
     page.on('request', (q) => { if (q.url().indexOf('/api/public-availability?') >= 0) requetes.push(new URL(q.url()).searchParams.get('program')); });
-    await page.click(`#plus-heures [data-plus="${cartes[0].id}"]`);
-    const fini = await attendre(page, () => { const z = document.querySelector('#plus-heures .fg-plus__statut'); return z && z.dataset.ton === 'ok'; }, 15000);
-    const a1 = await lireAttente(page);
-    const rep1 = derniere(s.reponses);
-    const envoye = requetes.length ? JSON.parse(requetes[requetes.length - 1]) : [];
-    const ligne = envoye.find((l) => l.waitOffer === true) || null;
-    ok(fini && a1.prix === rep0.price + cartes[0].deltaTotal && Number(rep1.price) === a1.prix,
-      'Ajouter : le prix monte EXACTEMENT du montant annonce', `${rep0.price} + ${cartes[0].deltaTotal} = ${a1.prix}`);
-    ok(Boolean(ligne) && ligne.activityId === cartes[0].patch.activityId && ligne.participants === p,
-      'la demande porte la ligne d attente, pour les seules personnes qui attendent', JSON.stringify(ligne));
-    ok(a1.prise.indexOf(`pour ${p} personnes, ajouté à votre visite`) >= 0 && a1.retirer && a1.offres.length === 0,
-      'la ligne s affiche acceptee, avec « Retirer », et les autres offres se taisent', a1.prise);
-    const nomLigne = ((((rep1 && rep1.program && rep1.program.items) || []).find((i) => i.waitOffer === true)) || {}).name || '?';
-    ok(a1.detailPrix.some((l) => l.indexOf(`pendant l’attente, ${p} personnes`) >= 0 && l.indexOf(euros(cartes[0].deltaTotal)) >= 0) && a1.libres.indexOf(nomLigne) < 0,
-      'elle a sa ligne dans le detail du prix, pas dans les activites libres', a1.detailPrix.join(' | '));
-    ok(a1.focus === 'plus-heures' && /^Ajout confirmé : .+ pour les \d+ personnes qui attendent, \+/.test(a1.statut), 'le focus revient sur le bloc, la phrase dit ce qui a ete ajoute', `${a1.focus} « ${a1.statut} »`);
-
-    await page.click('#plus-heures [data-plus-retirer]');
-    await attendre(page, () => { const z = document.querySelector('#plus-heures .fg-plus__statut'); return z && z.dataset.ton === 'ok' && /Offre retirée/.test(z.textContent); }, 15000);
-    const a2 = await lireAttente(page);
-    ok(a2.prix === rep0.price && a2.offres.length === cartes.length && !a2.prise, 'Retirer : le prix redescend, les offres reviennent', `${a2.prix} / ${rep0.price}`);
-
-    // Reprise, puis le recapitulatif et l envoi.
-    await page.click(`#plus-heures [data-plus="${cartes[0].id}"]`);
-    await attendre(page, () => { const z = document.querySelector('#plus-heures .fg-plus__statut'); return z && z.dataset.ton === 'ok'; }, 15000);
-    ok(await remplirContact(page), 'montage : coordonnees remplies, recapitulatif ouvert');
-    await passerLaVitrine(page);
-    const r = await lireRecapPlus(page);
-    ok(r.items.some((i) => i.indexOf(`pendant l’attente · ${p} personnes`) >= 0) && r.total === rep0.price + cartes[0].deltaTotal,
-      'le recapitulatif porte la ligne d attente et le total avec elle', `${r.items.join(' | ')} · ${r.total}`);
+    res.recap = await remplirContact(page);
+    res.ouverte = await attendre(page, () => { const v = document.querySelector('#vitrine'); return v && !v.hidden && !v.hasAttribute('data-attendue'); }, 5000);
+    await page.waitForTimeout(700);
+    res.r0 = await lireRecapPlus(page);
+    res.f0 = await lireAttenteFenetre(page);
+    const cible = res.cartes[0];
+    if (!cible) return res;
+    const carte = page.locator(`#vitrine .fg-vitrine__carte:has([data-plus="${cible.id}"])`);
+    // Un bouton eteint (code casse) ne bloque pas le gate : il le mesure.
+    const pas = async (sens) => { for (let k = 0; k < retire; k += 1) await carte.locator(`[data-vitrine-pas="${sens}"]`).click({ timeout: 2000 }).catch(() => {}); };
+    await pas(-1);
+    res.f1 = await lireAttenteFenetre(page);
+    await carte.locator('[data-plus]').click();
+    await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return document.querySelector('#vitrine').hidden && z && z.dataset.ton === 'ok'; }, 15000);
+    res.r1 = await lireRecapPlus(page);
+    res.envoye = requetes.length ? JSON.parse(requetes[requetes.length - 1]) : [];
+    await page.click('#plus-recap [data-plus-annuler]');
+    await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return z && z.dataset.ton === 'ok' && /^Annulé : votre visite revient/.test(z.textContent); }, 15000);
+    res.r2 = await lireRecapPlus(page);
+    // Reprise, toutes les personnes cette fois, puis l envoi.
+    await page.click('#plus-recap [data-vitrine-ouvrir]');
+    await attendre(page, () => !document.querySelector('#vitrine').hidden, 3000);
+    await page.waitForTimeout(500);
+    res.f2 = await lireAttenteFenetre(page);
+    await pas(1);
+    res.f3 = await lireAttenteFenetre(page);
+    await carte.locator('[data-plus]').click();
+    await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return document.querySelector('#vitrine').hidden && z && z.dataset.ton === 'ok'; }, 15000);
+    res.r3 = await lireRecapPlus(page);
     await page.click('#confirmBtn');
     await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000);
-    const pose = mock.dernierePose.body || {};
-    const envoi = (pose.program || []).find((l) => l.waitOffer === true) || null;
-    ok(Boolean(envoi) && envoi.participants === p && Number(pose.price) === rep0.price + cartes[0].deltaTotal,
-      'l envoi porte la ligne d attente et le prix affiche (le serveur de dev la garde en memoire, rien ne part)', JSON.stringify({ envoi, prix: pose.price }));
-    ok(s.erreurs.length === 0, 'aucune erreur dans la page', s.erreurs.join(' | '));
+    res.pose = mock.dernierePose.body || {};
+    return res;
   } finally { await s.ctx.close(); }
+}
+function verifierAttente(res, attendu, retire = 3) {
+  const juger = (cond, label, detail) => (attendu ? ok(cond, label, detail) : Boolean(cond));
+  const cartes = res.cartes || [];
+  const c = cartes[0] || null;
+  const p = c ? c.attente.personnes : 0;
+  const n = p - retire;
+  const pp = c ? Number(c.prixParPersonne) : 0;
+  const f0 = res.f0 || [];
+  const f1 = res.f1 || [];
+  const r0 = res.r0 || {};
+  const r1 = res.r1 || {};
+  const verdicts = [
+    juger(res.pret && res.recap && c && p > retire, 'montage : horaires, coordonnees, recapitulatif, une offre d attente pour plus de personnes que le compteur n en retire', JSON.stringify({ pret: res.pret, recap: res.recap, p })),
+    juger(res.heures && !res.heures.bloc && !res.heures.texte, 'l ecran des horaires ne propose plus rien : ni bloc « Pendant l attente », ni bouton', JSON.stringify(res.heures)),
+    juger(res.ouverte && cartes.length >= 1 && f0.slice(0, cartes.length).map((x) => x.id).join(' ') === cartes.map((x) => x.id).join(' '),
+      'la fenetre s ouvre d elle-meme et porte les offres d attente du serveur, dans son ordre, en tete', f0.map((x) => x.id).join(' ')),
+    juger(f0.slice(0, cartes.length).every((x, i) => x.compteur && x.n === String(cartes[i].attente.personnes) && x.plusOff && !x.moinsOff && x.montant === `+${euros(cartes[i].deltaTotal)}`),
+      'chacune a son compteur, regle par defaut sur ceux qui attendent (« + » eteint), et le montant du serveur pour eux', JSON.stringify(f0.map((x) => ({ id: x.id, n: x.n, montant: x.montant })))),
+    juger(f0.every((x) => !/par personne/.test(x.texte)) && f0.slice(0, cartes.length).every((x, i) => x.texte.indexOf(`${cartes[i].attente.personnes} personnes attendent leur tour`) >= 0),
+      'elle dit qui attend, sans prix par personne', f0.map((x) => x.texte).join(' | ')),
+    juger(f1[0] && f1[0].n === String(n) && f1[0].montant === `+${euros(pp * n)}` && !f1[0].plusOff,
+      `${retire} fois « - » : ${n} personnes, le montant suit (${euros(pp * n)})`, JSON.stringify(f1[0])),
+    juger(r1.total === r0.total + pp * n && r1.ton === 'ok' && r1.annuler && !r1.fenetre,
+      'Ajouter : le total monte EXACTEMENT de ce montant, la fenetre se ferme, « Annuler » est offert', `${r0.total} + ${pp * n} = ${r1.total} « ${r1.statut} »`),
+    juger(new RegExp(`^Ajout confirmé : .+ pour ${n} personnes pendant l’attente, \\+`).test(r1.statut || ''), 'la phrase dit pour combien de personnes', r1.statut),
+    juger((res.envoye || []).some((l) => l.waitOffer === true && l.activityId === c.patch.activityId && l.participants === n),
+      'la demande porte la ligne d attente pour ces personnes', JSON.stringify(res.envoye)),
+    juger((r1.items || []).some((i) => i.indexOf(`pendant l’attente · ${n} personnes`) >= 0), 'le recapitulatif porte la ligne, pour ces personnes', (r1.items || []).join(' | ')),
+    juger(res.r2 && res.r2.total === r0.total, 'Annuler : le total revient', `${res.r2 && res.r2.total} / ${r0.total}`),
+    juger((res.f2 || [])[0] && res.f2[0].n === String(n), 'rouverte, la carte garde le nombre choisi par le client', JSON.stringify((res.f2 || [])[0])),
+    juger((res.f3 || [])[0] && res.f3[0].n === String(p) && res.f3[0].plusOff && res.f3[0].montant === `+${euros(c.deltaTotal)}`, `${retire} fois « + » : tous ceux qui attendent, « + » s eteint, le montant du serveur`, JSON.stringify((res.f3 || [])[0])),
+    juger(res.r3 && res.r3.total === r0.total + c.deltaTotal, 'reprise pour tous : le total du serveur', `${res.r3 && res.r3.total}`),
+    juger(((res.pose && res.pose.program) || []).some((l) => l.waitOffer === true && l.participants === p) && Number(res.pose && res.pose.price) === r0.total + c.deltaTotal,
+      'l envoi porte la ligne d attente et le prix affiche (le serveur de dev la garde en memoire, rien ne part)', JSON.stringify({ program: res.pose && res.pose.program, prix: res.pose && res.pose.price })),
+    juger((res.erreurs || []).length === 0, 'aucune erreur dans la page', (res.erreurs || []).join(' | ')),
+  ];
+  return verdicts.every(Boolean);
 }
 
 // UN SERVEUR QUI NE POSE PAS L OFFRE (le groupe ne tourne plus, l offre a
@@ -497,7 +526,10 @@ async function attenteNonPosee(browser, mock, { grand, etiquette }) {
   try {
     const rep0 = derniere(s.reponses);
     const carte = cartesAttente(rep0)[0] || null;
-    if (!s.pret || !carte) return { pret: false };
+    if (!s.pret || !carte || !(await remplirContact(page))) return { pret: false };
+    await attendre(page, () => { const v = document.querySelector('#vitrine'); return v && !v.hidden && !v.hasAttribute('data-attendue'); }, 5000);
+    await page.waitForTimeout(500);
+    const total0 = (await lireRecapPlus(page)).total;
     await page.route('**/api/public-availability*', async (route) => {
       const reponse = await route.fetch();
       const j = await reponse.json();
@@ -508,17 +540,17 @@ async function attenteNonPosee(browser, mock, { grand, etiquette }) {
       if (j.program) j.program.price = Number(rep0.price);
       await route.fulfill({ response: reponse, json: j });
     });
-    await page.click(`#plus-heures [data-plus="${carte.id}"]`);
-    await attendre(page, () => { const z = document.querySelector('#plus-heures .fg-plus__statut'); return z && (z.dataset.ton === 'ok' || z.dataset.ton === 'ko'); }, 15000);
-    return { pret: true, a: await lireAttente(page), prix0: Number(rep0.price), carte: carte.id };
+    await page.click(`#vitrine [data-plus="${carte.id}"]`);
+    await attendre(page, () => { const z = document.querySelector('#vitrineStatut'); const b = document.querySelector('#plus-recap .fg-plus__statut'); return (z && z.dataset.ton === 'ko') || (b && b.dataset.ton === 'ok'); }, 15000);
+    return { pret: true, a: await lireRecapPlus(page), total0, carte: carte.id };
   } finally { await s.ctx.close(); }
 }
 function verifierAttenteNonPosee(res, attendu) {
   const a = res.a || {};
-  const refuse = Boolean(res.pret) && a.ton === 'ko' && a.statut === 'Cette offre n’est plus disponible.' && a.prix === res.prix0 && a.offres.indexOf(res.carte) < 0 && !a.prise;
+  const refuse = Boolean(res.pret) && a.fenetre === true && a.tonFenetre === 'ko' && a.statutFenetre === 'Cette offre n’est plus disponible.' && a.total === res.total0 && a.offres.indexOf(res.carte) < 0;
   if (attendu) {
-    ok(refuse, 'un serveur qui ne pose pas l offre d attente : la carte se retire et le dit, le prix ne bouge pas, jamais « Ajout confirmé »',
-      JSON.stringify({ pret: res.pret, statut: a.statut, prix: a.prix, avant: res.prix0, offres: a.offres }));
+    ok(refuse, 'un serveur qui ne pose pas l offre d attente : la carte se retire et la fenetre le dit, le total ne bouge pas, jamais « Ajout confirmé »',
+      JSON.stringify({ pret: res.pret, statut: a.statutFenetre, total: a.total, avant: res.total0, offres: a.offres }));
   }
   return refuse;
 }
@@ -667,7 +699,8 @@ async function main() {
   const srv = await serveur(mock);
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
-    await attenteB(browser, mock, serveurRes);
+    section('[B] L OFFRE D ATTENTE, DANS LA FENETRE DE FIN SEULEMENT');
+    verifierAttente(await attenteParcours(browser, mock, { grand: serveurRes.grand, etiquette: 'plus-attente' }), true);
     section('[B] UN SERVEUR QUI NE POSE PAS L OFFRE D ATTENTE');
     verifierAttenteNonPosee(await attenteNonPosee(browser, mock, { grand: serveurRes.grand, etiquette: 'attente-non-posee' }), true);
     verifierRecap(await recapC(browser, mock, {}), 'bureau');
@@ -695,6 +728,12 @@ async function main() {
         label: 'sans le retrait des offres, « Vos horaires ne bougent pas » reste sous le refus : ce gate ROUGIRAIT',
       },
       {
+        de: '    return Math.min(max, Math.max(1, v > 0 ? v : max));\n',
+        vers: '    return max;\n',
+        jouer: async () => !verifierAttente(await attenteParcours(browser, mock, { grand: serveurRes.grand, etiquette: 'attente-compteur-casse' }), false),
+        label: 'sans le nombre choisi, le compteur ne change ni le montant ni la demande : ce gate ROUGIRAIT',
+      },
+      {
         de: '    programmerVitrine();\n',
         jouer: async () => { const r = await recapC(browser, mock, { etiquette: 'auto-casse', arret: 'ouverture' }); return Boolean(r.pret) && (r.cartes || []).length > 0 && !r.auto; },
         label: 'sans l ouverture a l arrivee, la fenetre ne s ouvre plus d elle-meme : ce gate ROUGIRAIT',
@@ -707,7 +746,7 @@ async function main() {
     ];
     for (const c of casses) {
       if (src.split(c.de).length !== 2) { ok(false, `contre-epreuve montable : ancre introuvable (${c.de.trim().slice(0, 60)})`); continue; }
-      formulaireCasse = { de: c.de, vers: '' };
+      formulaireCasse = { de: c.de, vers: c.vers || '' };
       try { ok(await c.jouer(), c.label); } finally { formulaireCasse = null; }
     }
   } finally {

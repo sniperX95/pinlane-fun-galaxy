@@ -70,7 +70,7 @@ async function main() {
         ok(carte === `${parPiste} joueurs max par piste.`, `[A] ${pax} joueur(s), carte : « ${parPiste} joueurs max par piste. »`, carte);
         ok(!heures.note && / · 1 piste$/.test(heures.detail), `[A] ${pax} joueur(s), heures : « 1 piste », sans ligne de calcul`, JSON.stringify(heures));
       } else {
-        ok(carte.indexOf(`${pistes} pistes (${parPiste} joueurs max par piste) = ${total}`) === 0, `[A] ${pax} joueurs, carte : ${pistes} pistes = ${total}`, carte);
+        ok(carte.indexOf(`${parPiste} joueurs max par piste : ${pistes} pistes × ${euros(prixPiste)} = ${total}`) === 0, `[A] ${pax} joueurs, carte : le maximum par piste, puis ${pistes} pistes × ${euros(prixPiste)} = ${total}`, carte);
         ok(heures.detail.endsWith(` · ${pistes} pistes`), `[A] ${pax} joueurs, en-tete des heures : ${pistes} pistes`, heures.detail);
         ok(heures.note.indexOf(`${parPiste} joueurs max par piste : ${pax} joueurs = ${pistes} pistes × ${euros(prixPiste)} = ${total}`) === 0,
           `[A] ${pax} joueurs, ecran des heures : le calcul du prix des pistes`, heures.note);

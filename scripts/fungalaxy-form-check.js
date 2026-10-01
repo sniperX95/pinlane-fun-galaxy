@@ -726,7 +726,7 @@ const MUTATIONS = {
   ondeplan: [' && planRetient(idAttente, heureAttente)) rejouer', ') rejouer'],
   roule: ["if (k < sumAvant.length && b.textContent !== sumAvant[k]) b.classList.add('is-maj');", "b.classList.add('is-maj');"],
   squelette: ['hourZone.innerHTML = SQUELETTE;', "hourZone.innerHTML = '<p class=\"fg-loading\">On regarde ce qui est libre…</p>';"],
-  voix: ["(complet ? '' : ', le reste se règle sur place')", "''"],
+  voix: ["(complet ? '' : ', plus ' + nomsSansPrix(items) + ', ' + PRIX_ACCUEIL)", "''"],
   voixavis: ["if (sceneCourante === 'heures') dire(msgNotice", "if (false) dire(msgNotice"],
   voixpanne: ["if (sceneCourante === 'heures') dire(msgErr", "if (false) dire(msgErr"],
   voixrefus: ['dire(pourquoi.textContent.trim());', 'void 0;'],
@@ -994,6 +994,8 @@ function lignePlan(reponse) {
     fin: slot.visitEndTime || plan.endTime || '',
     fermeture: Boolean(slot.visitEndsAtClose),
     manque: Number(slot.visitShortfallMinutes) || 0,
+    // Ce que le serveur nomme comme ne tenant pas avant la fermeture.
+    hors: Array.isArray(slot.visitShortfallItems) ? slot.visitShortfallItems : [],
     prix: Number(reponse.price),
     complet: !reponse.program || reponse.program.priceComplete !== false,
     time: slot.time,
@@ -1176,7 +1178,9 @@ function visiteAttendue(o) {
     const reste = [];
     for (let k = posees + 1; k <= it.games; k += 1) reste.push(String(k));
     const quelles = it.games === 1 ? '1 partie' : `partie${reste.length > 1 ? 's' : ''} ${joindreQa(reste, ' et ')} sur ${it.games}`;
-    const detail = `${reste.length > 1 ? 'placées' : 'placée'} sur place avec l’équipe${it.id === 'laser_game' && o.suite ? ` · environ ${dureeExacteQa(o.suite)}` : ''}`;
+    const coupees = it.id === 'laser_game' && o.fermeture ? reste.filter((k) => o.hors.some((h) => h.sansHeure && String(h.partie) === k)) : [];
+    const detail = `${reste.length > 1 ? 'placées' : 'placée'} sur place avec l’équipe${it.id === 'laser_game' && o.suite ? ` · environ ${dureeExacteQa(o.suite)}` : ''}`
+      + (coupees.length ? ` · ${coupees.length > 1 ? `parties ${joindreQa(coupees, ' et ')} : ne tiendront pas` : `partie ${coupees[0]} : ne tiendra pas`} avant ${heureAffichee(o.fin)}` : '');
     surPlace.push({ t: '', nom: `${nom(it.id)} · ${quelles}`, detail, voix: `${nom(it.id)}, ${quelles}, ${detail}` });
   });
   const premiere = o.parties[0];
@@ -1189,12 +1193,23 @@ function visiteAttendue(o) {
     surPlace,
     fin: o.fin ? { t: heureAffichee(o.fin), nom: 'Fin de la visite', detail: o.fermeture ? 'fermeture du centre' : 'heure estimée' } : null,
     prix: detaille ? {
-      lignes: o.items.map((it) => ({ dt: blancs(`${it.nom}${detailLigneQa(it) ? ` · ${detailLigneQa(it)}` : ''}`), dd: blancs(it.sait ? euros(it.prix) : 'sur place') })),
-      total: { dt: o.complet ? 'Total indicatif' : 'Total indicatif, hors activités réglées sur place', dd: blancs(euros(o.prix)) },
+      lignes: o.items.map((it) => ({ dt: blancs(`${it.nom}${detailLigneQa(it) ? ` · ${detailLigneQa(it)}` : ''}`), dd: blancs(it.sait ? euros(it.prix) : 'prix à l’accueil') })),
+      total: { dt: o.complet ? 'Total indicatif' : 'Total indicatif, hors prix à l’accueil', dd: blancs(euros(o.prix)) },
       paiement: 'Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.',
     } : null,
     connus,
   };
+}
+// CE QUI N A PAS DE TARIF EN LIGNE SE NOMME (Movsar, 2026-10-01 : « pq sur
+// place ici ? tout est a payer sur place ») : « prix a l accueil ».
+function sansPrixQa(o) { const n = o.items.filter((it) => !it.sait).map((it) => it.nom); return n.length ? joindreQa(n, ' et ') : 'les activités'; }
+function totalQa(o) { return o.complet ? 'Total indicatif' : `Total indicatif, sans ${sansPrixQa(o)} (prix à l’accueil)`; }
+// CE QUI MANQUE SE DIT PAR SON NOM quand le serveur le nomme (Movsar,
+// 2026-10-01 : « faut dire tout ce qui se jouera pas ») ; sinon, la duree.
+function phraseManqueQa(o) {
+  if (!o.hors.length) return `il manque ${dureeApprox(o.manque)}`;
+  const noms = o.hors.map((h) => (h.partie ? `${h.name} (partie ${h.partie})` : `${h.name}${!h.dayAccess && h.minutes > 0 ? ` (${dureeExacteQa(h.minutes)})` : ''}`));
+  return `${o.hors.length > 1 ? 'Ne tiendront pas' : 'Ne tiendra pas'} avant la fermeture (${heureAffichee(o.fin)}) : ${joindreQa(noms, ' et ')}.`;
 }
 function ecartsPlan(ecran, o) {
   if (!ecran) return ['aucun bloc « votre visite » a l ecran'];
@@ -1220,12 +1235,12 @@ function ecartsPlan(ecran, o) {
   const fin = o.fermeture ? `jusqu’à la fermeture (${heureAffichee(o.fin)})` : `à ${heureAffichee(o.fin)} environ`;
   if (o.fin && ecran.span.indexOf(fin) < 0) e.push(`fin « ${ecran.span} » sans « ${fin} »`);
   if (ecran.prix !== euros(o.prix)) e.push(`prix ${ecran.prix} vs ${euros(o.prix)}`);
-  if ((ecran.reste === 'le reste se règle sur place') !== !o.complet) e.push(`mention « le reste se regle sur place » : « ${ecran.reste} » pour complet=${o.complet}`);
+  if ((ecran.reste === `+ ${sansPrixQa(o)}, prix à l’accueil`) !== !o.complet) e.push(`mention « + ${sansPrixQa(o)}, prix a l accueil » : « ${ecran.reste} » pour complet=${o.complet}`);
   const prixVu = { lignes: ecran.prixLignes, total: ecran.prixTotal, paiement: ecran.paiement };
   const prixAttendu = v.prix || { lignes: [], total: null, paiement: '' };
   if (JSON.stringify(prixVu) !== JSON.stringify(prixAttendu)) e.push(`detail du prix ${JSON.stringify(prixVu)} vs ${JSON.stringify(prixAttendu)} (montants connus ${v.connus}, prix ${o.prix})`);
   const manque = o.fermeture && o.manque > 0;
-  const phrase = `il manque ${dureeApprox(o.manque)}`;
+  const phrase = phraseManqueQa(o);
   if (manque && ecran.avis.indexOf(phrase) < 0) e.push(`avis « ${ecran.avis} » sans « ${phrase} »`);
   if (!manque && /tout ne tiendra pas/.test(ecran.avis)) e.push(`manque annonce a tort : ${ecran.avis}`);
   return e;
@@ -2172,7 +2187,7 @@ async function main() {
     ok(carte('laser_game').prix === `Dès ${euros(minLaser)} / personne · 2\u00a0joueurs minimum`, '[B] laser : « des » = minimum des parties servies, et le minimum de joueurs', carte('laser_game').prix);
     ok(carte('fun_run').prix === `Dès ${euros(minFunRun)} / session · 5 joueurs par session`, '[B] fun run : « des » = minimum des sessions servies, et la capacite D UNE session', carte('fun_run').prix);
     ok(carte('minigolf_blacklight').prix === 'Dès 10 € / personne · 12 trous', '[B] minigolf : tarif saisi par le centre, avec sa note', carte('minigolf_blacklight').prix);
-    ok(carte('arcade_time').prix === 'Tarif sur place', '[B] arcades : sans tarif saisi, « Tarif sur place », jamais un chiffre', carte('arcade_time').prix);
+    ok(carte('arcade_time').prix === 'Prix à l’accueil', '[B] arcades : sans tarif saisi, « Prix à l’accueil », jamais un chiffre (tout se regle sur place : « sur place » ne distinguait rien)', carte('arcade_time').prix);
     // A SIX JOUEURS, LE FUN RUN NE DISPARAIT PLUS : IL TOURNE (demande de
     // Movsar, 2026-09-23). Le catalogue declare une installation de 5 places,
     // pas un maximum de groupe : six personnes font deux passages. Cette
@@ -2276,8 +2291,8 @@ async function main() {
         const voix = (await page.evaluate(() => document.querySelector('#fgLive').textContent)).replace(/\u00a0/g, ' ');
         const va = visiteAttendue(o);
         if (va.surPlace.length) vuSurPlace += 1;
-        const absents = [o.arrivee, ...va.etapes.map((x) => x.voix), ...va.surPlace.map((x) => x.voix), o.fin ? (o.fermeture ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(o.fin) : '', o.prix > 0 ? euros(o.prix) : '', o.fermeture && o.manque > 0 ? `il manque ${dureeApprox(o.manque)}` : ''].filter((x) => x && voix.indexOf(x) < 0);
-        ok(absents.length === 0 && (voix.indexOf('le reste se règle sur place') >= 0) === (o.prix > 0 && !o.complet), `${label} : la voix (#fgLive) dit la meme visite`, absents.join(' | ') || voix);
+        const absents = [o.arrivee, ...va.etapes.map((x) => x.voix), ...va.surPlace.map((x) => x.voix), o.fin ? (o.fermeture ? 'Jusqu’à la fermeture à ' : 'Fin vers ') + heureAffichee(o.fin) : '', o.prix > 0 ? euros(o.prix) : '', o.fermeture && o.manque > 0 ? phraseManqueQa(o) : ''].filter((x) => x && voix.indexOf(x) < 0);
+        ok(absents.length === 0 && (voix.indexOf(`, plus ${sansPrixQa(o)}, prix à l’accueil`) >= 0) === (o.prix > 0 && !o.complet), `${label} : la voix (#fgLive) dit la meme visite`, absents.join(' | ') || voix);
       }
       return { ecran, o };
     };
@@ -2593,7 +2608,7 @@ async function main() {
     const autresMontants = relevesTotal.filter((t) => t !== euros(o6.prix));
     ok(autresMontants.length === 0, '[E] le total affiche son montant des le premier releve, jamais un autre chiffre (20 releves sur une seconde)',
       autresMontants.length ? `${autresMontants.length} releve(s) faux : ${autresMontants.slice(0, 4).join(' | ')}` : euros(o6.prix));
-    ok(recap.libelle === (o6.complet ? 'Total indicatif' : 'Total indicatif, hors activités réglées sur place'), '[E] le total dit ce qu il couvre (les arcades se reglent sur place)', recap.libelle);
+    ok(recap.libelle === totalQa(o6), '[E] le total dit ce qu il couvre (les arcades, prix a l accueil)', recap.libelle);
     ok(/Paiement sur place/.test(recap.paiement) && /Carte ou espèces/.test(recap.paiement) && recap.logos.join(',') === '#i-card,#i-cash',
       '[E] le paiement sur place dit ses deux moyens, carte et especes, avec leurs deux logos', `${recap.paiement} ${recap.logos.join(',')}`);
     // UNE SEULE SOURCE : la carte de l ecran des coordonnees dit exactement ce
@@ -2664,7 +2679,7 @@ async function main() {
       bougees.map((x) => `${x.scene} : ${x.photo || 'rien'}${x.charge ? '' : ' (jamais chargee)'} au lieu de ${(photosDepart.find((y) => y.scene === x.scene) || {}).photo}`).join(', ') || photosFin.map((x) => x.photo).join(' > '));
     ok(/Montant indicatif/.test(fin) && /à régler sur place, par carte ou en espèces\./.test(fin), '[E] l ecran final dit le montant et les deux moyens de paiement', (fin.match(/Montant indicatif[^.]*\./) || [''])[0]);
     ok(!o6.complet, 'MONTAGE [E] le prix du parcours est incomplet (les arcades se reglent sur place) : ce que couvre le montant est prouve sur un vrai cas');
-    ok((fin.indexOf('hors activités réglées sur place') >= 0) === !o6.complet, '[E] l ecran final dit ce que le montant couvre, comme le recapitulatif', (fin.match(/Montant indicatif[^.]*\./) || [''])[0]);
+    ok((fin.indexOf(`sans ${sansPrixQa(o6)} (prix à l’accueil)`) >= 0) === !o6.complet, '[E] l ecran final dit ce que le montant couvre, comme le recapitulatif', (fin.match(/Montant indicatif[^.]*\./) || [''])[0]);
     // LE TITRE DIT CE QUI S EST PASSE, lu dans la reponse du serveur : une
     // reservation confirmee d office, ou une demande que l equipe verifiera.
     const rp = await reponsePose;
@@ -4274,7 +4289,7 @@ async function main() {
     const resumeAttendu = (lp) => {
       const depart = lp.arrivee || lp.time;
       const span = depart && lp.fin ? `${depart} → ${heureAffichee(lp.fin)}${lp.fermeture ? ' (fermeture)' : ' environ'}` : '';
-      return (span + (lp.prix > 0 ? `${span ? ' · ' : ''}${euros(lp.prix)}${lp.complet ? ' indicatif' : ' indicatif + sur place'}` : '')).replace(/\s+/g, ' ');
+      return (span + (lp.prix > 0 ? `${span ? ' · ' : ''}${euros(lp.prix)}${lp.complet ? ' indicatif' : ' indicatif + prix à l’accueil'}` : '')).replace(/\s+/g, ' ');
     };
 
     // TELEPHONE, page autonome.

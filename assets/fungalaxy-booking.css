@@ -1738,6 +1738,17 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-visit__step--suite > b { align-self: start; display: flex; align-items: center; justify-content: flex-end; height: 22px; }
 .fg-visit__step--suite > b::after { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--fg-teal); }
 .fg-visit__step small + small { margin-top: 2px; }
+/* CE QUI NE TIENDRA PAS AVANT LA FERMETURE (Movsar, 2026-10-01 : « faut dire
+   tout ce qui se jouera pas ») : la ligne reste dans la visite, estompee, son
+   detail en ambre ; l anneau devient un tiret. */
+.fg-visit__step--hors > span { color: var(--fg-muted); }
+.fg-visit__step--hors > span svg { color: var(--fg-faint); }
+.fg-visit__step--hors small { color: var(--fg-amber-ink); }
+.fg-visit__step--hors.fg-visit__step--suite > b::after { width: 9px; height: 0; border-radius: 0; border: 0; border-top: 1.5px solid var(--fg-amber); }
+.fg-visit__hors b { color: var(--fg-amber-ink); }
+.fg-recap__hors { align-items: flex-start; font-size: 14px; font-weight: 500; color: var(--fg-text); }
+.fg-recap__hors svg { color: var(--fg-amber); margin-top: 1px; }
+.fg-recap__hors b { color: var(--fg-amber-ink); font-weight: 700; }
 .fg-visit__step.is-moved small { color: var(--fg-purple-ink); }
 /* LE DETAIL DU PRIX, ligne par ligne, puis le total et le paiement : les
    montants du programme de la reponse, montres seulement quand leur somme
@@ -2400,6 +2411,14 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-vitrine__nom svg { width: 20px; height: 20px; flex: none; color: var(--fg-purple-ink); }
 .fg-vitrine__quoi { font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--fg-purple-ink); }
 .fg-vitrine__note { font-size: 12.5px; line-height: 1.45; color: var(--fg-muted); }
+/* LE NOMBRE DE PERSONNES D UNE OFFRE D ATTENTE (Movsar, 2026-10-01 : « s il
+   ca donne pour x personnes, ils peuvent choisir pour combien ») : un petit
+   compteur sous la note, le prix de la carte le suit. */
+.fg-vitrine__qui { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.fg-vitrine__quimot { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); }
+.fg-vitrine__stepper { flex: none; grid-template-columns: 38px 42px 38px; height: 38px; }
+.fg-vitrine__stepper .fg-stepper__btn { font-size: 18px; }
+.fg-vitrine__n { display: grid; place-items: center; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg-text); }
 .fg-vitrine__achat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 18px; }
 .fg-vitrine__prix { font-size: 22px; font-weight: 700; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fg-vitrine__ajouter { min-height: 46px; padding: 0 22px; }

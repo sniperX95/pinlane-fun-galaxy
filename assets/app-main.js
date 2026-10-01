@@ -12509,7 +12509,7 @@ function getStaffTerrainSpan(reservation) {
 function getStaffTerrainPhase(reservation, span, context) {
   const status = reservation.status || 'pending';
   if (context.when === 'future') return 'upcoming';
-  if (context.when === 'past' || span.end <= context.now) return status === 'paid' ? 'done' : 'closing';
+  if (context.when === 'past' || span.end <= context.now || groupeToutFait(reservation)) return status === 'paid' ? 'done' : 'closing';
   if (status === 'arrived' || span.start <= context.now) return 'onsite';
   return 'upcoming';
 }
@@ -12554,7 +12554,7 @@ function getStaffTerrainTiming(item, phase, board) {
       ? `commence dans ${formatStaffTerrainDelay(item.start - board.now)}`
       : `fin dans ${formatStaffTerrainDelay(item.end - board.now)}`;
   }
-  if (phase === 'closing') return `fini depuis ${formatStaffTerrainDelay(board.now - item.end)}`;
+  if (phase === 'closing') return board.now >= item.end ? `fini depuis ${formatStaffTerrainDelay(board.now - item.end)}` : 'tout est fait';
   return '';
 }
 
@@ -12568,7 +12568,7 @@ function getStaffTerrainTiming(item, phase, board) {
 function getStaffTerrainStatus(reservation, phase, item = null, board = null) {
   const upcoming = isUpcomingReservationStatus(reservation.status || 'pending');
   if (phase === 'late') return { label: item && board ? `En retard · ${formatStaffTerrainDelay(board.now - item.start)}` : 'En retard', tone: 'late' };
-  if (phase === 'closing' && upcoming) return { label: 'Non pointé', tone: 'unmarked' };
+  if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };
   if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };
   if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };
   return null;
@@ -22834,8 +22834,9 @@ function getGroupeProgramme(r) {
       groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}${f.players ? ` · ${f.players} joueurs` : ''}` : '',
       start: f.start,
       end: f.end,
-      fait: bowling.length === 1 && faite('bowling-1'),
-      coche: formuleSuivie && bowling.length === 1 ? 'bowling-1' : '',
+      fait: faite(bowling.length === 1 ? 'bowling-1' : `bowling-g${index + 1}`),
+      coche: bowling.length === 1 ? 'bowling-1' : `bowling-g${index + 1}`,
+      exige: formuleSuivie && bowling.length === 1,
     });
   });
   laser.forEach(f => {
@@ -22850,8 +22851,9 @@ function getGroupeProgramme(r) {
       groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}${f.players ? ` · ${f.players} joueurs` : ''}` : '',
       start: f.start,
       end: f.end,
-      fait: vagues === 1 && faite(`laser_game-${partie}`),
-      coche: formuleSuivie && vagues === 1 ? `laser_game-${partie}` : '',
+      fait: faite(vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${Number(f.groupWaveIndex) || 1}`),
+      coche: vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${Number(f.groupWaveIndex) || 1}`,
+      exige: formuleSuivie && vagues === 1,
     });
   });
   getStaffFormulaTimedItems(r)
@@ -22867,6 +22869,7 @@ function getGroupeProgramme(r) {
       end: item.end,
       fait: Boolean(item.done),
       coche: item.key,
+      exige: true,
     }));
   // Une activite de formule sans heure au plan reste au programme, cochable.
   if (formuleSuivie) {
@@ -22874,7 +22877,7 @@ function getGroupeProgramme(r) {
       .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game')
       .forEach(item => etapes.push({
         cle: item.key, activityId: item.activityId, nom: item.label, quoi: '', ou: '', groupe: '',
-        start: null, end: null, libre: true, fait: Boolean(item.done), coche: item.key,
+        start: null, end: null, libre: true, fait: Boolean(item.done), coche: item.key, exige: true,
       }));
   }
   [...new Set(getPendingLaserPassesForReservation(r).map(unit => Number(unit.countIndex) || 1))]
@@ -22889,6 +22892,8 @@ function getGroupeProgramme(r) {
       start: null,
       end: null,
       aPlacer: true,
+      fait: faite(`laser_game-${partie}`),
+      coche: `laser_game-${partie}`,
     }));
   const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
   items.filter(item => !item.planned && !item.waitOffer).forEach((item, index) => etapes.push({
@@ -22901,6 +22906,8 @@ function getGroupeProgramme(r) {
     start: null,
     end: null,
     libre: true,
+    fait: faite(`libre-${item.activityId}`),
+    coche: `libre-${item.activityId}`,
   }));
   const rang = e => (e.start !== null && e.start !== undefined ? 0 : e.aPlacer ? 1 : 2);
   return etapes.sort((a, b) => rang(a) - rang(b) || (a.start || 0) - (b.start || 0) || (a.end || 0) - (b.end || 0));
@@ -22927,7 +22934,7 @@ function getGroupeEtapePhase(etape, contexte) {
   const now = contexte.now;
   // Une activite de formule passee sans coche n est pas « finie » : personne
   // n a dit qu elle a eu lieu (meme mot que la page Formules).
-  if (now >= etape.end) return etape.coche ? { cle: 'noncoche', mot: 'Non coché' } : { cle: 'fini', mot: 'Fini' };
+  if (now >= etape.end) return etape.exige ? { cle: 'noncoche', mot: 'Non coché' } : { cle: 'fini', mot: 'Fini' };
   // Le groupe n est pas pointe : son heure est la, rien ne se lance. En
   // retard, le bandeau de la carte le dit deja ; avant, « Attendu ».
   if (now >= etape.start - GROUPE_FENETRE_LANCEMENT_H && !contexte.present) return contexte.late ? { cle: 'prevu', mot: '' } : { cle: 'attente', mot: 'Attendu' };
@@ -22944,9 +22951,41 @@ function getGroupeContexte(r, moment) {
   return {
     aujourdhui,
     now: moment && Number.isFinite(moment.now) ? moment.now : currentTimeDecimal(),
-    present: r.status === 'arrived' || r.status === 'paid',
+    // Une activite cochee prouve que le groupe est venu, pointe ou pas.
+    present: r.status === 'arrived' || r.status === 'paid' || groupeAJoue(r),
     late: Boolean(moment && moment.late),
   };
+}
+
+// TOUT EST FAIT : chaque activite du programme cochee. Le groupe a fini, meme
+// avant l heure prevue : il passe a « À clôturer » (ou « Terminées » s il a
+// paye), comme a la fin de son heure.
+function groupeAJoue(r) {
+  return Boolean(r) && getGroupeProgramme(r).some(etape => etape.coche && etape.fait);
+}
+function groupeToutFait(r) {
+  if (!r || r.status === 'cancelled') return false;
+  const etapes = getGroupeProgramme(r).filter(etape => etape.coche);
+  return etapes.length > 0 && etapes.every(etape => etape.fait);
+}
+
+// « Tout est fait » : coche d un geste ce qui reste. Une coche a la fois vers
+// le serveur (le meme chemin que la case), jamais le suivi entier.
+function terminerGroupe(reservationId, ev) {
+  if (ev) ev.stopPropagation();
+  const r = state.reservations.find(x => String(x.id) === String(reservationId)) || findStaffReservationById(reservationId);
+  if (!r) return;
+  getGroupeProgramme(r).filter(etape => etape.coche && !etape.fait).forEach(etape => toggleFormulaActivity(reservationId, etape.coche));
+}
+
+// En tete du programme de la fiche : « Tout est fait » tant qu il reste une
+// activite a cocher, « Tout est fait » coche (le mot, sans bouton) ensuite.
+function renderGroupeTerminer(r) {
+  const etapes = getGroupeProgramme(r).filter(etape => etape.coche);
+  if (!etapes.length || r.status === 'cancelled') return '';
+  const reste = etapes.filter(etape => !etape.fait).length;
+  if (!reste) return '<span class="gc-done-all">Tout est fait</span>';
+  return `<button type="button" class="gc-btn gc-finish" data-pl-focus="fiche.terminer.${Number(r.id)}" onclick="terminerGroupe(${Number(r.id)}, event)">Tout est fait${reste < etapes.length ? ` (${reste} restante${reste > 1 ? 's' : ''})` : ''}</button>`;
 }
 
 function renderGroupeEtapes(r, moment, options = {}) {
@@ -22966,11 +23005,17 @@ function renderGroupeEtapes(r, moment, options = {}) {
       : `<span class="gc-step-time is-free">${etape.aPlacer ? '--:--' : 'Libre'}</span>`;
     const details = [etape.quoi, etape.ou, etape.groupe].filter(Boolean).join(' · ');
     const montant = prix && prix.has(etape.cle) ? `<span class="gc-step-price">${escapeHtml(prix.get(etape.cle))}</span>` : '';
-    // Dans la fiche, l activite d une formule se coche a la place de son icone.
-    const repere = options.coches && etape.coche
-      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="fiche.activite.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)">${etape.fait ? ACTIVITY_CHECK_SVG : ''}</button>`
+    // CHAQUE ACTIVITE SE COCHE, SUR LA CARTE COMME DANS LA FICHE (Movsar,
+    // 2026-10-01 : « il faut qu on puisse cliquer sur les activites pour dire
+    // que ca a ete fait, et terminer »). La case remplace l icone ; toute la
+    // ligne coche au toucher (la case porte le nom pour le clavier et les
+    // lecteurs d ecran). Sur la carte, la ligne coche au lieu d ouvrir la fiche.
+    const cochable = Boolean(etape.coche) && r.status !== 'cancelled';
+    const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)` : '';
+    const repere = cochable
+      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${options.coches ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : ''}</button>`
       : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`;
-    return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}">
+    return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}${cochable ? ' is-cochable' : ''}"${cochable ? ` onclick="${appel}"` : ''}>
       ${quand}
       ${repere}
       <span class="gc-step-what"><b>${escapeHtml(etape.nom)}</b>${details ? `<small>${escapeHtml(details)}</small>` : ''}</span>
@@ -23080,7 +23125,7 @@ function renderGroupeAlerte(r, moment) {
     const appel = r.phone ? `<a class="gc-call" href="tel:${escapeHtml(String(r.phone).replace(/\s+/g, ''))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>` : '';
     return `<div class="gc-alert is-late"><b>En retard · ${escapeHtml(depuis)}</b><span>Attendu à ${formatClockDisplay(moment.item.start)}, pas encore arrivé</span>${appel}</div>`;
   }
-  if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status)) {
+  if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r)) {
     return '<div class="gc-alert is-unmarked"><b>Non pointé</b><span>Fini sans être pointé arrivé : peut-être pas venu</span></div>';
   }
   return '';
@@ -23716,7 +23761,10 @@ function detailLigneProgramme(item, reservation = null) {
   if (priceType === 'grid_fun_run') {
     const passages = Math.max(1, Number(item.sessions) || getActivitySessionCount(catalogue, reservation && reservation.pax));
     const palier = funRunSessionMinutes(item, passages);
-    return passages > 1 ? `${passages} × ${palier} min` : `${palier} min`;
+    // Une partie du groupe seulement (le formulaire le demande depuis le
+    // 2026-10-01) : la caisse lit combien jouent, jamais tout le groupe.
+    const joueurs = Number(item.participants) > 0 ? `${item.participants} joueur${Number(item.participants) > 1 ? 's' : ''} · ` : '';
+    return joueurs + (passages > 1 ? `${passages} × ${palier} min` : `${palier} min`);
   }
   if (Number(item.units) > 0 && Number(item.hours) > 0) return detailUnitesLigne(item, catalogue, reservation, Number(item.hours));
   const minutes = Number(item.minutes) || 0;
@@ -23818,7 +23866,7 @@ function renderPosDetails(r) {
     </section>
     ${renderGroupeEncadres(r, { large: true, sansValidation: true })}
     <section class="info-block gc-sheet-block">
-      <div class="info-label">Programme</div>
+      <div class="gc-sheet-head"><div class="info-label">Programme</div>${renderGroupeTerminer(r)}</div>
       ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
     </section>
     ${renderGroupeAddition(r)}

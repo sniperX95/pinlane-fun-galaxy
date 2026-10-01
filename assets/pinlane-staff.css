@@ -18489,7 +18489,10 @@ button.pv2-cal-cell:focus-visible {
   .gc-who h4.res-row-name { font-size: 16px; }
   .gc-price b { font-size: 17px; }
   .gc-step { grid-template-columns: 46px minmax(0, 1fr) auto; gap: 8px; }
+  .gc-step.is-cochable { grid-template-columns: 46px 24px minmax(0, 1fr) auto; }
   .gc-step-icon { display: none; }
+  .gc-step.is-cochable .gc-step-state { grid-column: 3 / -1; }
+  .gc-step.is-cochable .gc-step-price { grid-column: 4; }
   .gc-step-state { grid-column: 2 / -1; justify-self: start; }
   .gc-step-price { grid-column: 3; grid-row: 1; }
   .gc-actions, .gc-pay { width: 100%; }
@@ -18514,6 +18517,17 @@ button.pv2-cal-cell:focus-visible {
 }
 .gc-check.is-on { background: var(--success); border-color: var(--success); }
 .gc-check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* CHAQUE ACTIVITE SE COCHE D UN TOUCHER (2026-10-01) : la ligne entiere, sur
+   la carte comme dans la fiche. Fait : la ligne s efface, le mot reste. */
+.gc-step.is-cochable { cursor: pointer; transition: background-color var(--dur-fast) var(--ease); }
+@media (hover: hover) { .gc-step.is-cochable:hover { background: var(--subtle); } .gc-step.is-cochable:hover .gc-check:not(.is-on) { border-color: var(--success); } }
+.gc-step.is-cochable:active { background: var(--success-soft); }
+.gc-step.is-fait .gc-step-what b { text-decoration: line-through; text-decoration-color: var(--muted); }
+.gc-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.gc-sheet-head .info-label { margin: 0; }
+.gc-finish { min-height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; border-color: var(--success); color: var(--success); background: var(--success-soft); }
+.gc-finish:hover { background: var(--success-soft); opacity: 0.85; }
+.gc-done-all { font-size: 13px; font-weight: 600; color: var(--success); }
 .gc-bill-lines { margin: var(--space-2) 0 0; display: flex; flex-direction: column; }
 .gc-bill-lines > div { display: flex; justify-content: space-between; gap: var(--space-3); padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .gc-bill-lines dt { color: var(--text); font-weight: 500; }

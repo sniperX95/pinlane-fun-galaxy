@@ -603,7 +603,7 @@ module.exports = async (req, res) => {
       // CE QUI SE JOUE PENDANT L ATTENTE NE REPOUSSE PAS LA FIN. Le temps mort
       // se mesure sur le plan de CE creneau (les vagues n ont pas le meme ecart
       // partout), avec la regle du moteur, jamais une copie.
-      const finDeVisiteMinutes = (slot) => {
+      const mesureDeVisite = (slot) => {
         if (!slot || !slot.time) return null;
         const debut = Math.round(timeToNum(slot.time) * 60);
         const plan = slot.opsPlan || null;
@@ -617,7 +617,67 @@ module.exports = async (req, res) => {
         // Les trous entre les activites a creneau absorbent le libre : meme
         // mesure que la reserve du moteur.
         const trous = intersticesDuGroupe(plan && plan.resourceBlocks);
-        return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert - trous);
+        return { apresLePlan: Math.max(finPlan, debut), libreApres: Math.max(0, reserveAffichee - couvert - trous) };
+      };
+      const finDeVisiteMinutes = (slot) => {
+        const mesure = mesureDeVisite(slot);
+        return mesure ? mesure.apresLePlan + mesure.libreApres : null;
+      };
+      // CE QUI NE TIENDRA PAS, NOMME (Movsar, 2026-10-01 : « faut dire ce qui
+      // sera pas possible de jouer [...] quand y plusieurs comme ça faut dire
+      // tout ce qui se jouera pas et les heures choisi doivent etre
+      // laisser »). Les heures de bowling et de laser restent celles du plan :
+      // ce qui saute, ce sont les activites sans heure, dans l ordre du
+      // programme, des que le temps qui reste avant la fermeture ne suffit
+      // plus (une plus courte, plus loin, peut encore tenir). Une partie a
+      // heure qui finirait apres la fermeture (le laser joue a la suite ne
+      // ferme jamais une heure) est nommee aussi. Meme mesure que la fin.
+      const ceQuiNeTiendraPas = (slot, fermeture) => {
+        const mesure = mesureDeVisite(slot);
+        if (!mesure) return [];
+        const hors = [];
+        const vues = new Set();
+        const nomPlanifie = (id) => ((program.plannedItems || []).find((item) => item.activityId === id) || {}).name || id;
+        const partiesDe = (id) => Math.max(1, Number(((program.plannedItems || []).find((item) => item.activityId === id) || {}).games) || 1);
+        ((slot.opsPlan && slot.opsPlan.resourceBlocks) || []).forEach((bloc) => {
+          if (!bloc || !bloc.endTime || bloc.resourceType === 'soft_capacity') return;
+          const finBloc = Math.round(timeToNum(bloc.endTime) * 60);
+          const cle = `${bloc.activityId}#${bloc.countIndex || 1}`;
+          if (!(finBloc > fermeture) || vues.has(cle)) return;
+          vues.add(cle);
+          hors.push({
+            activityId: bloc.activityId,
+            name: nomPlanifie(bloc.activityId),
+            ...(partiesDe(bloc.activityId) > 1 ? { partie: Number(bloc.countIndex) || 1 } : {}),
+            heure: bloc.startTime,
+          });
+        });
+        // Les parties de laser sans heure se jouent a la suite, en fin de plan
+        // (laserPassPlan.followOnMinutes, compte dans sa fin) : celles qui
+        // finiraient apres la fermeture ne se joueront pas.
+        const passes = (slot.opsPlan && slot.opsPlan.laserPassPlan) || null;
+        const enAttente = (passes && Array.isArray(passes.pendingPasses)) ? passes.pendingPasses : [];
+        const aLaSuite = Math.max(0, Number(passes && passes.followOnMinutes) || 0);
+        if (enAttente.length && aLaSuite > 0) {
+          const parPartie = aLaSuite / enAttente.length;
+          const depart = mesure.apresLePlan - aLaSuite;
+          enAttente.forEach((partie, rang) => {
+            if (depart + (rang + 1) * parPartie > fermeture) {
+              hors.push({ activityId: 'laser_game', name: nomPlanifie('laser_game'), partie: Number(partie.countIndex) || rang + 2, sansHeure: true });
+            }
+          });
+        }
+        const placeApres = Math.max(0, fermeture - mesure.apresLePlan);
+        let place = Math.max(0, reserveAffichee - Math.max(0, mesure.libreApres - placeApres));
+        (program.freeItems || []).forEach((item) => {
+          const minutes = Math.max(0, Math.round(Number(item.minutes) || 0));
+          if (minutes <= place) {
+            place -= minutes;
+            return;
+          }
+          hors.push({ activityId: item.activityId, name: item.name || item.activityId, minutes, ...(item.dayAccess ? { dayAccess: true } : {}) });
+        });
+        return hors;
       };
       // UNE INSTALLATION COMPTEE SE JUGE A L ECRAN DES HEURES (audit du
       // 2026-09-28 : le duckpin complet ne se decouvrait qu au clic final, en
@@ -673,7 +733,13 @@ module.exports = async (req, res) => {
           // pour que l ecran l explique.
           const fermeture = Math.round(Number(schedule.close) * 60);
           if (Number.isFinite(fermeture) && fermeture > 0 && fin > fermeture) {
-            return { ...slot, visitEndTime: numToTime(fermeture / 60), visitEndsAtClose: true, visitShortfallMinutes: fin - fermeture };
+            return {
+              ...slot,
+              visitEndTime: numToTime(fermeture / 60),
+              visitEndsAtClose: true,
+              visitShortfallMinutes: fin - fermeture,
+              visitShortfallItems: ceQuiNeTiendraPas(slot, fermeture),
+            };
           }
           return { ...slot, visitEndTime: numToTime(fin / 60) };
         });
@@ -893,17 +959,33 @@ module.exports = async (req, res) => {
               reserveMinutes: program.freeMinutes,
               reserveLabel: program.freeLabel,
               reserveWaitMinutes: program.waitMinutes,
+              // LA MEME SOUPLESSE QUE LA GRILLE (Movsar, 2026-10-01 : « ça
+              // montre impossible mais quand on coche une heure ça montre que
+              // c possible »). La grille marquait ces heures « serrees », et la
+              // combinaison proposee d office les refusait faute de ce drapeau.
+              reserveSoft,
               reservations: snapshot.reservations,
               laneStatuses: snapshot.laneStatuses,
               blocks: snapshot.blocks || [],
             })
             : null;
-          const defaultSlots = defaultCombo && defaultCombo.ok
+          const gardes = defaultCombo && defaultCombo.ok
             ? filterSlotsByFinalGuards(
               [toFormulaSlot(defaultCombo.scenario, snapshot, program.plannedItems[0]?.duration || 0)],
               { ...guardContext, laneCount: plannedLaneCount(defaultCombo.scenario, program.laneCount) },
             )
             : [];
+          // LE MODE SOUPLE NE VEND PAS UNE INSTALLATION PLEINE. Une activite
+          // complete toute la journee « tient » apres la fermeture, la ou plus
+          // rien ne la bloque : la combinaison proposee d office ne s appuie
+          // jamais sur ce trou. Elle laisse alors le message qui nomme
+          // l installation pleine (gate tours-dotation-check).
+          const fermetureDuJour = Math.round(Number(schedule.close) * 60);
+          const defaultSlots = gardes.filter((slot) => {
+            const fin = finDeVisiteMinutes(slot);
+            if (!(fin > fermetureDuJour) || !installationsPleines.size) return true;
+            return !ceQuiNeTiendraPas(slot, fermetureDuJour).some((h) => installationsPleines.has(h.name));
+          });
           respondVisit(
             defaultSlots,
             defaultSlots.length ? '' : (installationsPleines.size

@@ -3805,7 +3805,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20260928a';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261001a';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260925h';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20260912a';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';

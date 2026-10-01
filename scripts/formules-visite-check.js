@@ -418,11 +418,17 @@ async function console_(browser, jour) {
       setView('staff');
     }, jour);
     await attendre(page, () => document.querySelectorAll('#resList .res-row').length >= 2, 15000);
-    const lignes = await page.evaluate(() => [...document.querySelectorAll('#resList .res-row')].map((row) => ({
-      nom: (row.querySelector('.res-row-name') || {}).textContent || '',
-      joueurs: ((row.querySelector('.res-c-pax') || {}).textContent || '').trim(),
-      aPlacer: ((row.querySelector('.res-lane-chip.is-to-place') || {}).textContent || '').trim(),
-    })));
+    // Depuis le 2026-10-01 (cartes de groupe a la caisse), une partie sans
+    // heure est une LIGNE du programme de la carte (« Heure à placer ») ; les
+    // joueurs se lisent sous le nom, avant les marques (« · Hors planning »).
+    const lignes = await page.evaluate(() => [...document.querySelectorAll('#resList .res-row')].map((row) => {
+      const n = row.querySelectorAll('.gc-step.is-aplacer').length;
+      return {
+        nom: (row.querySelector('.res-row-name') || {}).textContent || '',
+        joueurs: (((row.querySelector('.gc-who span') || {}).textContent || '').split(' · ')[0] || '').trim(),
+        aPlacer: n ? `${n} partie${n > 1 ? 's' : ''} à placer` : '',
+      };
+    }));
     return { lignes, erreurs };
   } finally {
     await ctx.close();
@@ -446,7 +452,7 @@ const MUTATIONS = {
   cles: ['      rendreCles(sec, chips, n);\n', ''],
   compris: ["    var carte = formule ? (formule.desc || []).filter(Boolean).map(function (x) { return { texte: String(x), genre: genreCompris(x) }; }) : [];\n", "    var carte = [];\n"],
   enfants: ['      pax: joueursDemandes(),\n', '      pax: state.pax,\n'],
-  aPlacer: ['const partiesAPlacerHtml = partiesAPlacer && r.status', "const partiesAPlacerHtml = false && r.status"],
+  aPlacer: ['  [...new Set(getPendingLaserPassesForReservation(r).map(unit => Number(unit.countIndex) || 1))]', '  [...new Set([].map(unit => Number(unit.countIndex) || 1))]'],
 };
 let mutation = '';
 function serveur(mock) {

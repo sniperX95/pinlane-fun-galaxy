@@ -44,7 +44,10 @@
 //   5. « A gerer » est l'union des trois premiers ; « Avec note » pioche dans
 //      les quatre
 //   6. dans le DOM, une ligne, une seule section, la section de son moment,
-//      dans l'ordre de la journee
+//      dans l'ordre de la journee. Depuis le 2026-10-01 (cartes de groupe a
+//      la caisse) : le RETARD a sa section rouge en tete, « En retard », qui
+//      reste un « À venir » pour les puces ; la section « Hors planning »
+//      n existe plus, ces dossiers vivent dans leur moment
 //   7. le recoupement est VISIBLE (deux groupes, un repere, dit en toutes
 //      lettres) et aucune phrase-formule n'explique l'ecran
 //   8. contre-epreuve par MUTATION : chaque regle cassee expres fait rougir la
@@ -257,7 +260,7 @@ async function cliquerPuce(page, libelle) {
   return page.evaluate(() => {
     const rows = [...document.querySelectorAll('#resList .res-row[data-res-row-id]')];
     const sections = [...document.querySelectorAll('#resList .res-section')].map((s) => ({
-      cle: [...s.classList].find((c) => ['offplanning', 'upcoming', 'onsite', 'closing', 'done'].includes(c)) || '?',
+      cle: [...s.classList].find((c) => ['late', 'upcoming', 'onsite', 'closing', 'done'].includes(c)) || '?',
       ids: [...s.querySelectorAll('.res-row[data-res-row-id]')].map((r) => Number(r.getAttribute('data-res-row-id'))),
     }));
     const chips = {};
@@ -271,8 +274,8 @@ async function cliquerPuce(page, libelle) {
     const pastilles = {};
     rows.forEach((r) => {
       pastilles[r.getAttribute('data-res-row-id')] = {
-        retard: ((r.querySelector('.res-state-pill.late') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
-        nonPointe: Boolean(r.querySelector('.res-state-pill.unmarked')),
+        retard: ((r.querySelector('.gc-alert.is-late b') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+        nonPointe: Boolean(r.querySelector('.gc-alert.is-unmarked')),
       };
     });
     return { ids: rows.map((r) => Number(r.getAttribute('data-res-row-id'))), sections, chips, pastilles };
@@ -417,17 +420,16 @@ function controler(vue) {
     const multi = Object.entries(appartenance).filter(([, x]) => x > 1);
     c(multi.length === 0, `[6] [${cle}] aucune reservation dans deux sections`, multi.map(([id, x]) => `${id}x${x}`).join(', '));
   });
-  // La section d une ligne dit son moment (hors planning excepte : c est une
-  // section de PLACEMENT, elle prime, et c est ecrit dans l interface).
+  // La section d une ligne dit son moment ; le retard a la sienne, en tete.
   const fausses = [];
   (vue.all?.sections || []).forEach((s) => s.ids.forEach((id) => {
     const r = JEU.find((x) => x.id === id);
-    const attendue = r.off ? 'offplanning' : r.moment;
+    const attendue = r.retard ? 'late' : r.moment;
     if (s.cle !== attendue) fausses.push(`${id} dans « ${s.cle} » au lieu de « ${attendue} »`);
   }));
   c(fausses.length === 0, '[6] chaque ligne est dans la section de son moment', fausses.join(' · '));
   const ordre = (vue.all?.sections || []).map((s) => s.cle).join(' > ');
-  c(ordre === 'offplanning > upcoming > onsite > closing > done', '[6] les sections se suivent dans l ordre de la journee', ordre);
+  c(ordre === 'late > upcoming > onsite > closing > done', '[6] le retard en tete, puis les sections dans l ordre de la journee', ordre);
 
   // [7] LA FORME
   const f = vue.forme || {};
@@ -495,14 +497,14 @@ async function main() {
       },
       {
         nom: 'le fini jamais pointe perd son « Non pointé »',
-        de: "      ${moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) ? '<span class=\"res-state-pill unmarked\">Non pointé</span>' : ''}",
-        vers: "      ${''}",
+        de: "  if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status)) {\n    return '<div class=\"gc-alert is-unmarked\">",
+        vers: "  if (false) {\n    return '<div class=\"gc-alert is-unmarked\">",
         attendu: /^\[2\]/,
       },
       {
         nom: 'le retard perd sa pastille',
-        de: '      ${moment && moment.late ? `<span class="res-state-pill late">',
-        vers: '      ${false ? `<span class="res-state-pill late">',
+        de: '  if (moment && moment.late) {\n    const depuis',
+        vers: '  if (false) {\n    const depuis',
         attendu: /^\[2\]/,
       },
       {

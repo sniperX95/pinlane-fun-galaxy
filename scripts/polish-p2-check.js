@@ -352,7 +352,7 @@ async function ouvrirConsole(page, options = {}) {
 const LIRE_SURFACE = () => {
   const surfaceDe = (el) => {
     if (el.closest('#planningBox')) return 'planning-carte';
-    if (el.closest('.res-c-what')) return 'planning-liste';
+    if (el.closest('.res-c-what, #resList .gc')) return 'planning-liste';
     if (el.closest('.laser-group-card')) return 'arene-laser';
     if (el.closest('.pv2-flow-marks')) return 'reservations-jour';
     if (el.closest('.terrain-card, .terrain-row')) return 'terrain';
@@ -426,7 +426,7 @@ const LIRE_SURFACE = () => {
 
   const SURFACES_NOTE = [
     ['planning-carte', '.booking .bk-flag.flag-note'],
-    ['planning-liste', '.res-c-what .res-note-line'],
+    ['planning-liste', '.res-c-what .res-note-line, #resList .gc-flag.tone-note'],
     ['reservations-jour', '.pv2-flow-marks .res-note-line'],
     ['terrain', '.terrain-card .res-special-request, .terrain-row .res-special-request'],
     ['direction', '#adminContent .guest-chip.note'],
@@ -577,7 +577,10 @@ async function tourDesSurfaces(browser, options = {}) {
       const lu = await page.evaluate((dossier) => {
         if (typeof openPos !== 'function') return null;
         openPos(dossier);
-        const el = document.querySelector('.edit-modal-ident p');
+        // Depuis le 2026-10-01 (la fiche = la carte en grand), le prix et son
+        // ajustement vivent dans le bloc « Prix » de la fiche, plus dans la
+        // ligne d en-tete.
+        const el = document.querySelector('#posOverlay .gc-bill');
         const texte = el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : null;
         if (typeof closePos === 'function') closePos();
         return texte;
@@ -909,14 +912,24 @@ function jugerC(m) {
     detail: `planning=${planning ? 'oui' : 'NON'} reservations=${reservations ? 'oui' : 'NON'}`,
   });
   if (planning && reservations) {
-    const memeCouleur = planning.couleur === reservations.couleur
-      && planning.couleurInterieur === reservations.couleurInterieur;
-    const memeTaille = planning.taille === reservations.taille
-      && planning.tailleInterieur === reservations.tailleInterieur;
+    // Le DEFAUT GARDE ici : la consigne repassait en gris sur un ecran, son
+    // texte interieur ne suivant plus la couleur de sa ligne. Sur la page
+    // Reservations, le texte garde la couleur et la taille de sa ligne.
+    const memeCouleur = reservations.couleur === reservations.couleurInterieur;
+    const memeTaille = reservations.taille === reservations.tailleInterieur;
     verdicts.push({
       ok: memeCouleur && memeTaille,
-      label: '[C] la consigne garde la MEME couleur et la meme taille d un ecran a l autre, texte interieur compris',
-      detail: `planning ${planning.couleur}/${planning.taille} (span ${planning.couleurInterieur}/${planning.tailleInterieur}) contre reservations ${reservations.couleur}/${reservations.taille} (span ${reservations.couleurInterieur}/${reservations.tailleInterieur})`,
+      label: '[C] la consigne garde la MEME couleur et la meme taille que sa ligne, texte interieur compris',
+      detail: `reservations ${reservations.couleur}/${reservations.taille} (span ${reservations.couleurInterieur}/${reservations.tailleInterieur})`,
+    });
+    // Et dans la liste du planning, a cote de la caisse, elle est devenue un
+    // ENCADRE plus grand (2026-10-01, Movsar : « les infos utiles sont en
+    // tout petit ») : jamais plus petite que sur la page Reservations.
+    const px = (v) => parseFloat(String(v || '0'));
+    verdicts.push({
+      ok: px(planning.tailleInterieur || planning.taille) >= px(reservations.tailleInterieur || reservations.taille),
+      label: '[C] dans la liste du planning, la consigne n est jamais plus petite que sur la page Reservations',
+      detail: `planning ${planning.tailleInterieur || planning.taille} contre reservations ${reservations.tailleInterieur || reservations.taille}`,
     });
   }
 
@@ -1100,8 +1113,8 @@ const PROPRIETES = [
       vise: /une seule regle DECIDE/,
       editions: [{
         fichier: 'assets/app-main.js',
-        de: '      ${renderReservationPriceMark(r, { forme: stateText ? \'reference\' : \'complet\' })}',
-        vers: '      ${(() => { const ref = (Number(r.basePrice) || 0) + (r.extras || []).reduce((s, e) => s + (Number(e.price) || 0), 0); return ref > 0 && Math.abs((Number(r.price) || 0) - ref) > 0.5 ? `<span class="res-state-pill custom-price pl-price-adjusted" role="img" title="Prix ajusté par l\'équipe (référence ${formatMoney(ref)})" aria-label="Prix ajusté, référence ${formatMoney(ref)}">Prix ajusté (référence ${formatMoney(ref)})</span>` : \'\'; })()}',
+        de: "  const marquePrix = renderReservationPriceMark(r, { forme: 'encadre', base: 'gc-price-mark' });",
+        vers: "  const marquePrix = (() => { const ref = (Number(r.basePrice) || 0) + (r.extras || []).reduce((s, e) => s + (Number(e.price) || 0), 0); return ref > 0 && Math.abs((Number(r.price) || 0) - ref) > 0.5 ? `<span class=\"gc-price-mark pl-price-adjusted\" role=\"img\" title=\"Prix ajusté par l'équipe (référence ${formatMoney(ref)})\" aria-label=\"Prix ajusté ${formatMoney(r.price)}, référence ${formatMoney(ref)}\">${formatMoney(r.price)} · référence ${formatMoney(ref)}</span>` : ''; })();",
       }],
     }],
   },
@@ -1127,7 +1140,7 @@ const PROPRIETES = [
       {
         nom: 'l en-tete de la fiche retrouve la regle du chemin d ECRITURE (la neuvieme copie, celle qui annoncait « 180 € (prix ajusté) » sur un dossier sans reference ecrite)',
         vise: /l en-tete de la fiche ne clame rien sur les temoins/,
-        editions: [{ fichier: 'assets/app-main.js', de: '  if (Number(r.price) >= 0 && (Number(r.price) > 0 || prixDossier.ajuste)) {', vers: '  if (Number(r.price) >= 0 && (Number(r.price) > 0 || getReservationPriceGap(r) !== 0)) {\n    prixDossier.ajuste = getReservationPriceGap(r) !== 0;' }],
+        editions: [{ fichier: 'assets/app-main.js', de: '  const etat = getReservationPriceState(r);\n  const extras = Array.isArray(r.extras) ? r.extras : [];', vers: '  const etat = { ...getReservationPriceState(r, { repliCatalogue: true }), ajuste: getReservationPriceGap(r) !== 0 };\n  const extras = Array.isArray(r.extras) ? r.extras : [];' }],
       },
     ],
   },

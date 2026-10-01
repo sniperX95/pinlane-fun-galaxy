@@ -570,25 +570,29 @@ async function mesurerC(browser) {
       if (chip) chip.click();
     });
     await page.waitForTimeout(350);
-    const boutons = await page.evaluate((id) => {
-      const ligne = document.querySelector(`#resList .res-row[data-res-row-id="${id}"]`);
+    // Depuis le 2026-10-01 (cartes de groupe), « Confirmé » vit dans la FICHE :
+    // la carte n offre que le geste du moment. La propriete se juge la.
+    await page.evaluate((id) => { openPos(id); }, CONFIRME_TEMOIN);
+    await page.waitForTimeout(400);
+    const boutons = await page.evaluate(() => {
+      const ligne = document.querySelector('#posOverlay .gc-sheet-states');
       if (!ligne) return null;
       const btns = [...ligne.querySelectorAll('.res-status-btn')];
       return {
         libelles: btns.map((b) => b.textContent.trim()),
         confirmeActif: btns[0] ? btns[0].classList.contains('active') : null,
       };
-    }, CONFIRME_TEMOIN);
+    });
 
     const avantClic = await page.evaluate((id) => {
       window.__PATCHES__ = [];
       return (state.reservations.find((r) => Number(r.id) === id) || {}).status;
     }, CONFIRME_TEMOIN);
-    await page.evaluate((id) => {
-      const ligne = document.querySelector(`#resList .res-row[data-res-row-id="${id}"]`);
+    await page.evaluate(() => {
+      const ligne = document.querySelector('#posOverlay .gc-sheet-states');
       const btn = ligne && ligne.querySelector('.res-status-btn');
       if (btn) btn.click();
-    }, CONFIRME_TEMOIN);
+    });
     await page.waitForTimeout(700);
     const apresConfirme = await page.evaluate((id) => ({
       statut: (state.reservations.find((r) => Number(r.id) === id) || {}).status,
@@ -598,12 +602,12 @@ async function mesurerC(browser) {
     // 3. TEMOIN : le meme chemin de clic, mais vers un etat DIFFERENT, doit
     //    ecrire. Sans lui, « zero ecriture » se lirait aussi bien comme « le
     //    clic n arrive nulle part » - et le gate serait vert sur un ecran mort.
-    await page.evaluate((id) => {
+    await page.evaluate(() => {
       window.__PATCHES__ = [];
-      const ligne = document.querySelector(`#resList .res-row[data-res-row-id="${id}"]`);
+      const ligne = document.querySelector('#posOverlay .gc-sheet-states');
       const btns = ligne ? [...ligne.querySelectorAll('.res-status-btn')] : [];
       if (btns[1]) btns[1].click();
-    }, CONFIRME_TEMOIN);
+    });
     await page.waitForTimeout(700);
     const apresArrive = await page.evaluate((id) => ({
       statut: (state.reservations.find((r) => Number(r.id) === id) || {}).status,
@@ -885,7 +889,7 @@ const PROPRIETES = [
       nom: 'l ecriture de statut redevient aveugle a l etat courant (un bouton deja enfonce ecrit quand meme)',
       vise: /n ecrit RIEN et ne retrograde pas/,
       fichier: 'assets/app-main.js',
-      de: '  // Le dossier est deja dans l etat que le bouton demande : rien a ecrire.\n  if (reservationAlreadyInStatus(current, status)) return;',
+      de: '  // Le dossier est deja dans l etat que le bouton demande : rien a ecrire.\n  if (reservationAlreadyInStatus(current, status) && !corrigeMoyen) return;',
       vers: '  // MUTATION DU GATE : plus aucune garde d idempotence.',
     },
   },

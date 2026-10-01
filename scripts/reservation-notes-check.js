@@ -98,9 +98,11 @@ const READ_LIST = () => {
     const text = row.textContent || '';
     const name = ['Sarah Note', 'Team Vide', 'Client Neutre', 'Resa Simulee'].find((n) => text.includes(n));
     if (!name) return;
+    // Depuis le 2026-10-01 (cartes de groupe a la caisse), la note et
+    // l occasion sont des ENCADRES de la carte, la note ecrite en entier.
     byName[name] = {
-      note: !!row.querySelector('.reservation-tag.note'),
-      occasion: row.querySelector('.reservation-tag.occasion')?.textContent.trim() || '',
+      note: !!row.querySelector('.gc-flag.tone-note'),
+      occasion: row.querySelector('.gc-flag.tone-occasion b')?.textContent.trim() || '',
     };
   });
   const chip = [...document.querySelectorAll('#resList .status-chip')].find((b) => /Avec note/.test(b.textContent));

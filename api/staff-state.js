@@ -1,7 +1,7 @@
 const { getPool, readStaffState, readAdminRangeState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
 const { refreshCenterOverrides, getCenter } = require('../lib/ops-knowledge');
-const { normalizeClassification } = require('../lib/center-config');
+const { normalizeClassification, normalizeAccueil } = require('../lib/center-config');
 const { isStaffAuthStorageError, requireStaffPermission } = require('../lib/staff-auth');
 const { buildStaffDaySeries } = require('../lib/staff-day-series');
 
@@ -76,7 +76,11 @@ module.exports = async (req, res) => {
     // servie à tout le staff via le poll qu'il fait déjà : pas de requête en plus.
     let classification;
     try { classification = normalizeClassification(getCenter(centerId)?.classification); } catch (error) { classification = undefined; }
-    sendJson(res, 200, { ok: true, ...snapshot, classification });
+    // Le seuil de retard du centre (Etablissement > Regles), lu par toute
+    // l equipe, comme la classification.
+    let accueil;
+    try { accueil = normalizeAccueil(getCenter(centerId)?.accueil); } catch (error) { accueil = undefined; }
+    sendJson(res, 200, { ok: true, ...snapshot, classification, accueil });
   } catch (error) {
     if (isStaffAuthStorageError(error)) {
       const requestUrl = new URL(req.url, 'http://localhost');

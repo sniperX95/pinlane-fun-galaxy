@@ -2701,6 +2701,13 @@ function getActiveOpsCenterId() {
 // sur quatre montants du mobile 390, le symbole partait a la ligne suivante et
 // le chiffre le plus regarde de la ligne se relisait deux fois. U+202F est
 // l espace fine INSECABLE : meme typographie francaise, coupure impossible.
+// Un montant au centime (« 9,33 € »), entier quand il l est (« 26 € »).
+function formatMoneyCentimes(value) {
+  const amount = Math.round((Number(value) || 0) * 100) / 100;
+  const entier = Number.isInteger(amount);
+  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: entier ? 0 : 2, maximumFractionDigits: 2 }).format(amount)} €`;
+}
+
 function formatMoney(value) {
   const amount = Math.round(Number(value) || 0);
   return `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(amount)} €`;
@@ -2821,6 +2828,8 @@ async function syncDateReservations(dateStr, opts = {}) {
     // Classification client/groupe du centre (seuils groupe + formules annif),
     // servie par le poll : pilote isGroup/hasBirthday/tiers côté Clients & Groupes.
     if (payload.classification) state.staffClassification = payload.classification;
+    // Le seuil de retard du centre (Etablissement > Regles), meme chemin.
+    if (payload.accueil) state.staffAccueil = payload.accueil;
     hydrateSelectedReservation();
     save();
     if (!opts.skipRender && changed && state.view === 'staff' && state.currentDate === dateStr) {
@@ -10583,21 +10592,47 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
 //   onsite  : pointe arrive (ou paye) et pas fini ;
 //   closing : fini et pas paye (pointe ou non, comme Terrain « À clôturer ») ;
 //   next    : attendu dans l heure qui vient.
+//   due     : l heure est passee depuis MOINS que le seuil de retard du
+//             centre (Etablissement, 5 min par defaut) : attendu, pas encore
+//             en retard, et pas « sur place » non plus.
 function splitStaffTerrainOnsite(board) {
   const late = [];
   const present = [];
+  const due = [];
+  const seuil = getStaffLateThresholdMinutes() / 60;
   board.onsite.forEach(item => {
-    if (isUpcomingReservationStatus(item.reservation.status || 'pending') && item.start <= board.now) late.push(item);
-    else present.push(item);
+    if (!isUpcomingReservationStatus(item.reservation.status || 'pending') || item.start > board.now) present.push(item);
+    else if (board.now - item.start >= seuil - 1e-9) late.push(item);
+    else due.push(item);
   });
   late.sort((left, right) => left.start - right.start);
-  return { late, present };
+  due.sort((left, right) => left.start - right.start);
+  return { late, present, due };
+}
+
+// LE SEUIL DE RETARD, EN MINUTES. La configuration du centre fait foi : celle
+// que l ecran Etablissement vient d enregistrer d abord (le poll de la journee
+// peut repondre 304 tant qu aucune reservation n a bouge), puis celle que le
+// poll sert a toute l equipe, puis 5 min.
+const STAFF_LATE_THRESHOLD_DEFAUT = 5;
+function getStaffLateThresholdMinutes() {
+  const lire = (valeur) => {
+    const n = Number(valeur);
+    return Number.isFinite(n) && n >= 0 ? Math.min(60, Math.trunc(n)) : null;
+  };
+  const centre = typeof staffCenterConfigCache !== 'undefined' && staffCenterConfigCache && Array.isArray(staffCenterConfigCache.centers)
+    ? staffCenterConfigCache.centers.find(center => center.id === getCurrentStaffCenterId())
+    : null;
+  const configure = lire(centre && centre.accueil && centre.accueil.lateThresholdMinutes);
+  if (configure !== null) return configure;
+  const servi = lire(state.staffAccueil && state.staffAccueil.lateThresholdMinutes);
+  return servi !== null ? servi : STAFF_LATE_THRESHOLD_DEFAUT;
 }
 
 function getStaffDashNow(activeReservations) {
   const board = getStaffTerrainBoard(activeReservations);
   if (board.when !== 'today') return null;
-  const { late, present } = splitStaffTerrainOnsite(board);
+  const { late, present, due } = splitStaffTerrainOnsite(board);
   const horizon = board.now + 1;
   return {
     now: board.now,
@@ -10605,7 +10640,7 @@ function getStaffDashNow(activeReservations) {
     late,
     onsite: present,
     closing: board.closing,
-    next: board.upcoming.filter(item => item.start <= horizon),
+    next: [...due, ...board.upcoming.filter(item => item.start <= horizon)],
     later: board.upcoming.filter(item => item.start > horizon)
   };
 }
@@ -11071,9 +11106,9 @@ function closeStaffDashboardDetail() {
   document.body.classList.remove('dashboard-detail-open');
 }
 
-function dashboardDetailSetStatus(id, status, ev) {
+function dashboardDetailSetStatus(id, status, ev, paymentMethod = '') {
   if (ev) ev.stopPropagation();
-  setReservationStatusDirect(id, status, ev);
+  setReservationStatusDirect(id, status, ev, paymentMethod ? { paymentMethod } : {});
   refreshStaffDashboardDetailSoon();
 }
 
@@ -11437,8 +11472,11 @@ function renderDashboardRowActions(reservation, kind) {
   const fiche = `<button type="button" onclick="dashboardDetailOpenReservation(${id})">Fiche</button>`;
   const open = `<button type="button" class="primary" onclick="dashboardDetailOpenReservation(${id})">Ouvrir la réservation</button>`;
   const contact = canContact ? `<button type="button" onclick="dashboardDetailContact(${id})">Contacter</button>` : '';
-  const encaisser = (canStatus && reservation.status !== 'paid')
-    ? `<button type="button" class="primary" onclick="dashboardDetailSetStatus(${id}, 'paid', event)">Encaisser</button>` : '';
+  // Encaisser note le moyen (2026-10-01) : Carte ou Espèces, jamais un « Payé »
+  // muet que la Direction ne saurait pas ranger.
+  const payer = (classe) => (canStatus && reservation.status !== 'paid')
+    ? GROUPE_MOYENS.map(m => `<button type="button"${classe ? ` class="${classe}"` : ''} onclick="dashboardDetailSetStatus(${id}, 'paid', event, '${m.valeur}')">Payé · ${m.mot}</button>`).join('') : '';
+  const encaisser = payer('primary');
   const arrived = (canStatus && reservation.status !== 'arrived' && reservation.status !== 'paid')
     ? `<button type="button" onclick="dashboardDetailSetStatus(${id}, 'arrived', event)">Arrivé</button>` : '';
   const arrivedPrimary = (canStatus && reservation.status !== 'arrived' && reservation.status !== 'paid')
@@ -11451,7 +11489,7 @@ function renderDashboardRowActions(reservation, kind) {
   if (kind === 'noshow') return `${arrivedPrimary}${contact}${fiche}`;
   if (kind === 'warning') return `${open}${contact}`;
   // Vue par défaut (arrivées, activité…)
-  return `${fiche}${arrived}${(canStatus && reservation.status !== 'paid') ? `<button type="button" onclick="dashboardDetailSetStatus(${id}, 'paid', event)">Payé</button>` : ''}`;
+  return `${fiche}${arrived}${payer('')}`;
 }
 
 // Actions du footer de la modale détail, spécialisées par type d'alerte.
@@ -12460,7 +12498,12 @@ function getStaffTerrainSpan(reservation) {
   const ends = [...windows.map(window => Number(window.end)), ...items.map(item => item.end)];
   if (starts.length) return { start: Math.min(...starts), end: Math.max(...ends) };
   const start = timeToNum(reservation.startTime || '00:00');
-  return { start, end: start + (readDurationHours(reservation.duration) || 1) };
+  // UNE VISITE SANS PISTE DURE LE TEMPS DE SES ACTIVITES (minigolf 45 min +
+  // Fun Run 2 × 30 min = 1h45), jamais la demi-heure par defaut du dossier :
+  // la carte de la caisse affichait sinon une fin fausse (2026-10-01). Une
+  // entree a la journee ne compte pas dans cette duree.
+  const programme = dureeProgrammeHeures(reservation);
+  return { start, end: start + (programme || readDurationHours(reservation.duration) || 1) };
 }
 
 function getStaffTerrainPhase(reservation, span, context) {
@@ -12503,7 +12546,9 @@ function formatStaffTerrainDelay(hours) {
 // deja depuis quand il est attendu, son pied porte son numero.
 function getStaffTerrainTiming(item, phase, board) {
   if (board.when !== 'today') return '';
-  if (phase === 'upcoming') return `dans ${formatStaffTerrainDelay(item.start - board.now)}`;
+  // Dans la marge de retard (heure passee de moins que le seuil), le groupe
+  // est attendu maintenant : « dans 2 min » serait faux.
+  if (phase === 'upcoming') return item.start <= board.now ? 'attendu maintenant' : `dans ${formatStaffTerrainDelay(item.start - board.now)}`;
   if (phase === 'onsite') {
     return item.start > board.now
       ? `commence dans ${formatStaffTerrainDelay(item.start - board.now)}`
@@ -12639,7 +12684,7 @@ function renderStaffTerrainCard(item, phase, board) {
     actions.push(renderStaffUtilityAction('Arrivé', `setReservationStatusDirect(${id}, 'arrived', event)`, 'primary'));
   }
   if ((phase === 'onsite' || phase === 'closing') && status !== 'paid') {
-    actions.push(renderStaffUtilityAction('Payé', `setReservationStatusDirect(${id}, 'paid', event)`, 'primary'));
+    GROUPE_MOYENS.forEach(m => actions.push(renderStaffUtilityAction(`Payé · ${m.mot}`, `encaisserReservation(${id}, '${m.valeur}', event)`, 'primary')));
   }
   const foot = call || (timing ? `<span class="terrain-when">${escapeHtml(timing)}</span>` : '');
   return `<article class="terrain-card is-${escapeHtml(phase)}" data-terrain-id="${escapeHtml(String(reservation.id))}">
@@ -12707,10 +12752,10 @@ function renderStaffTerrainBoard(board) {
   // partage que la bande « En ce moment » de la Vue d ensemble.
   const onsite = splitStaffTerrainOnsite(board);
   const horizon = board.now + 1;
-  const soon = today ? board.upcoming.filter(item => item.start <= horizon) : [];
+  const soon = today ? [...onsite.due, ...board.upcoming.filter(item => item.start <= horizon)] : [];
   const later = today ? board.upcoming.filter(item => item.start > horizon) : board.upcoming;
   const players = items => items.reduce((sum, item) => sum + Number(item.reservation.pax || 0), 0);
-  const expected = [...onsite.late, ...board.upcoming];
+  const expected = [...onsite.late, ...onsite.due, ...board.upcoming];
   // « non encaissés » et pas « à encaisser » : un groupe jamais pointe n est
   // peut-etre pas venu. Le montant dit ce qui n est pas paye, rien de plus.
   const due = board.closing.reduce((sum, item) => sum + Number(item.reservation.price || 0), 0);
@@ -13696,7 +13741,8 @@ const ESTABLISHMENT_NUMBER_RULES = [
   ['estab-normalCap', 1, 12, 'Joueurs confort : entier entre 1 et 12 par piste.'],
   ['estab-emergencyCap', 1, 15, 'Joueurs max (secours) : entier entre 1 et 15 par piste.'],
   ['estab-weaponCount', 0, 200, "Nombre d'armes : entier entre 0 et 200."],
-  ['estab-launches', 1, 20, 'Lancements parallèles : entier entre 1 et 20.']
+  ['estab-launches', 1, 20, 'Lancements parallèles : entier entre 1 et 20.'],
+  ['estab-lateThreshold', 0, 60, 'En retard après : entier entre 0 et 60 minutes.']
 ];
 
 function clearEstablishmentFieldErrors() {
@@ -13936,6 +13982,7 @@ async function submitCenterConfig(centerId) {
       return { fromPax: String(brut || '').trim() !== '' && Number.isFinite(seuil) && seuil >= 2 ? Math.min(240, seuil) : null };
     })(),
     classification,
+    accueil: { lateThresholdMinutes: Number(establishmentInputValue('estab-lateThreshold', STAFF_LATE_THRESHOLD_DEFAUT)) },
     customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
   // La marque du centre voyage avec le reste de sa config. `undefined` = champ
@@ -14334,6 +14381,8 @@ function renderEstablishmentEditPanels(center, active) {
   const timezone = center.timezone || 'Europe/Brussels';
   const laserRisk = ['critical', 'managed', 'low'].includes(laser.riskLevel) ? laser.riskLevel : 'managed';
   const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
+  // Le seuil de retard (Etablissement > Regles), 5 min tant qu il n est pas regle.
+  const seuilRetard = Number.isFinite(Number(center.accueil && center.accueil.lateThresholdMinutes)) ? Math.trunc(Number(center.accueil.lateThresholdMinutes)) : STAFF_LATE_THRESHOLD_DEFAUT;
   const birthdayFormulaIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
   const holidaySettings = center.holidaySettings && typeof center.holidaySettings === 'object'
     ? center.holidaySettings
@@ -14595,6 +14644,11 @@ function renderEstablishmentEditPanels(center, active) {
       <label class="establishment-toggle"><input type="checkbox" id="estab-bar-briefing" ${barDesk.handlesBriefing !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Briefing / consignes de jeu</span></label>
       <label class="establishment-toggle"><input type="checkbox" id="estab-bar-food" ${barDesk.handlesFoodAndDrink !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Boissons &amp; restauration</span></label>
       <label class="establishment-toggle"><input type="checkbox" id="estab-bar-escort" ${barDesk.activityEscort === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Accompagnement pendant l'activité</span></label>
+      <div class="estab-subsection">
+        <h4>Retard</h4>
+        <p class="estab-card-hint">Un groupe pas encore pointé « Arrivé » passe « En retard » (en rouge, en tête de liste) après ce délai. 0 = dès l'heure pile.</p>
+        <div class="field"><label for="estab-lateThreshold">En retard après (minutes)</label><input type="number" id="estab-lateThreshold" min="0" max="60" step="1" inputmode="numeric" value="${seuilRetard}"></div>
+      </div>
     </fieldset>
   </div>`;
 
@@ -14633,6 +14687,8 @@ function renderEstablishmentReadPanels(center, active) {
   const disabledOffers = catalogFormuleList.filter(formule => center.offerAvailability?.[formule.id] === false);
   const activeOffers = catalogFormuleList.filter(formule => center.offerAvailability?.[formule.id] !== false);
   const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
+  // Le seuil de retard (Etablissement > Regles), 5 min tant qu il n est pas regle.
+  const seuilRetard = Number.isFinite(Number(center.accueil && center.accueil.lateThresholdMinutes)) ? Math.trunc(Number(center.accueil.lateThresholdMinutes)) : STAFF_LATE_THRESHOLD_DEFAUT;
   const birthdayIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
   const birthdayNames = catalogFormuleList.filter(formule => birthdayIds.includes(formule.id)).map(formule => formule.name);
   const party = center.resources?.partyTables && typeof center.resources.partyTables === 'object' ? center.resources.partyTables : {};
@@ -14750,6 +14806,7 @@ function renderEstablishmentReadPanels(center, active) {
         ${rule('Briefing / consignes', yesNo(barDesk.handlesBriefing !== false))}
         ${rule('Boissons & restauration', yesNo(barDesk.handlesFoodAndDrink !== false))}
         ${rule('Accompagnement activité', yesNo(barDesk.activityEscort === true))}
+        ${rule('En retard après', seuilRetard ? `${seuilRetard} min` : 'dès l’heure pile', 'sans arrivée pointée')}
       </div>`)}
   </div>`;
 
@@ -21183,13 +21240,17 @@ function renderReservationPriceMark(reservation, options = {}) {
   const forme = options.forme || 'complet';
   const base = options.base || 'res-state-pill custom-price';
   const montant = formatMoney(etat.price);
+  // 'encadre' : l encadre « Prix ajusté » des cartes de groupe (2026-10-01),
+  // dont le titre dit deja le mot : « 280 € · référence 495 € ».
   const texte = forme === 'montant'
     ? montant
     : forme === 'mot'
       ? 'Prix ajusté'
       : forme === 'reference'
         ? `Prix ajusté (référence ${formatMoney(etat.reference)})`
-        : `Prix ajusté ${montant}`;
+        : forme === 'encadre'
+          ? `${montant} · référence ${formatMoney(etat.reference)}`
+          : `Prix ajusté ${montant}`;
   // LE VERDICT NE VIT PAS QUE DANS LA TEINTE. En forme « montant » le texte
   // visible est un montant NU : « 40 € » en ambre se lit comme un prix
   // ordinaire des que l ambre ne se distingue plus (plein soleil sur la
@@ -22680,6 +22741,7 @@ function getStaffReservationMoments(reservations) {
   });
   poser(board.upcoming, 'upcoming');
   poser(partage.late, 'upcoming', true);
+  poser(partage.due, 'upcoming');
   poser(partage.present, 'onsite');
   poser(board.closing, 'closing');
   poser(board.done, 'done');
@@ -22726,156 +22788,398 @@ function joueursDuDossier(r) {
   return `${pax} joueur${pax > 1 ? 's' : ''}${avec ? ` + ${avec} accompagnant${avec > 1 ? 's' : ''}` : ''}`;
 }
 
-function renderReservationRow(r, moment = null) {
+// LA CARTE D UN GROUPE, A LA CAISSE (Movsar, 2026-10-01, captures de la liste
+// « Toutes les réservations » et de la fiche) : « c est le truc qui sera
+// affiche a cote de la caisse », « on doit avoir toutes les infos direct
+// visibles instant », « les infos utiles sont en tout petit », « le truc en
+// retard doit etre visible d office », « tout simplifie a mort ». Decisions
+// prises avec lui le meme jour :
+//   - une carte par groupe, rangee par moment, le RETARD en tete, en rouge ;
+//   - la carte dit le prix, les activites dans l ordre avec leur heure, et
+//     une aide par activite (« À lancer maintenant », « En cours · fin
+//     15:30 », « Dans 20 min », « Fini ») ; le prix par personne et le detail
+//     par activite vivent dans la fiche ;
+//   - un ENCADRE pour ce qui change la facon de servir : a valider, prix
+//     ajuste, anniversaire ou formule, note du client ;
+//   - Payé demande Carte ou Espèces.
+// La ligne d avant (colonnes Heure, Client, Réservation, Ressources, État)
+// disait les pistes en pastilles sans dire lesquelles servaient a quoi, et
+// rangeait le prix et le retard en pastilles de 11 px au milieu du texte.
+
+// LE PROGRAMME D UN GROUPE, DANS L ORDRE OU IL LE VIT. Les heures viennent des
+// blocs que le planning dessine (getStaffResourceWindows : le bowling et le
+// laser deplaces a la main y sont), celles des autres activites d une formule
+// du plan du moteur (getStaffFormulaTimedItems), et les activites libres d une
+// visite (minigolf, arcades, billard) n ont pas d heure : elles se font a la
+// guise du groupe. Une partie de laser sans heure au planning est « à placer ».
+function getGroupeProgramme(r) {
+  const etapes = [];
+  const progression = r && r.activityProgress && typeof r.activityProgress === 'object' ? r.activityProgress : {};
+  const faite = (cle) => Boolean(progression[cle] && progression[cle].done);
+  const fenetres = getStaffResourceWindows(r, 'all');
+  const bowling = fenetres.filter(f => f.resourceType === 'bowling_lane');
+  const laser = fenetres.filter(f => f.resourceType === 'laser_arena');
+  const parties = Math.max(1, getLaserGameCountForReservation(r) || 1);
+  // Une formule se suit en cochant ses activites (activityProgress) : chaque
+  // etape porte la cle de sa coche, la meme que le suivi de la page Formules.
+  const formuleSuivie = typeof reservationHasFormulaActivities === 'function' && reservationHasFormulaActivities(r);
+  bowling.forEach((f, index) => {
+    const pistes = (f.lanes || []).filter(Number.isFinite);
+    etapes.push({
+      cle: `bowling-${index + 1}`,
+      activityId: 'bowling',
+      nom: 'Bowling',
+      quoi: formatDurationLabel(f.duration),
+      ou: pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}` : 'pistes à attribuer',
+      groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}${f.players ? ` · ${f.players} joueurs` : ''}` : '',
+      start: f.start,
+      end: f.end,
+      fait: bowling.length === 1 && faite('bowling-1'),
+      coche: formuleSuivie && bowling.length === 1 ? 'bowling-1' : '',
+    });
+  });
+  laser.forEach(f => {
+    const partie = Math.max(1, Number(f.countIndex) || 1);
+    const vagues = Math.max(1, Number(f.groupWaveCount) || 1);
+    etapes.push({
+      cle: `laser-${partie}-${Number(f.groupWaveIndex) || 1}`,
+      activityId: 'laser_game',
+      nom: 'Laser Game',
+      quoi: parties > 1 ? `partie ${partie}/${parties}` : '1 partie',
+      ou: '',
+      groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}${f.players ? ` · ${f.players} joueurs` : ''}` : '',
+      start: f.start,
+      end: f.end,
+      fait: vagues === 1 && faite(`laser_game-${partie}`),
+      coche: formuleSuivie && vagues === 1 ? `laser_game-${partie}` : '',
+    });
+  });
+  getStaffFormulaTimedItems(r)
+    .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game')
+    .forEach(item => etapes.push({
+      cle: item.key,
+      activityId: item.activityId,
+      nom: item.label,
+      quoi: '',
+      ou: '',
+      groupe: '',
+      start: item.start,
+      end: item.end,
+      fait: Boolean(item.done),
+      coche: item.key,
+    }));
+  // Une activite de formule sans heure au plan reste au programme, cochable.
+  if (formuleSuivie) {
+    getFormulaActivityProgressSummary(r).items
+      .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game')
+      .forEach(item => etapes.push({
+        cle: item.key, activityId: item.activityId, nom: item.label, quoi: '', ou: '', groupe: '',
+        start: null, end: null, libre: true, fait: Boolean(item.done), coche: item.key,
+      }));
+  }
+  [...new Set(getPendingLaserPassesForReservation(r).map(unit => Number(unit.countIndex) || 1))]
+    .sort((a, b) => a - b)
+    .forEach(partie => etapes.push({
+      cle: `laser-a-placer-${partie}`,
+      activityId: 'laser_game',
+      nom: 'Laser Game',
+      quoi: parties > 1 ? `partie ${partie}/${parties}` : '1 partie',
+      ou: '',
+      groupe: '',
+      start: null,
+      end: null,
+      aPlacer: true,
+    }));
+  const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
+  items.filter(item => !item.planned && !item.waitOffer).forEach((item, index) => etapes.push({
+    cle: `libre-${index}`,
+    activityId: item.activityId,
+    nom: nomActivite(item),
+    quoi: detailLigneProgramme(item, r),
+    ou: '',
+    groupe: '',
+    start: null,
+    end: null,
+    libre: true,
+  }));
+  const rang = e => (e.start !== null && e.start !== undefined ? 0 : e.aPlacer ? 1 : 2);
+  return etapes.sort((a, b) => rang(a) - rang(b) || (a.start || 0) - (b.start || 0) || (a.end || 0) - (b.end || 0));
+}
+
+// « 1, 2 », « 1 à 4 » : des pistes qui se suivent se lisent en plage.
+function joindrePistes(pistes) {
+  const liste = [...new Set(pistes.map(Number))].sort((a, b) => a - b);
+  const suivies = liste.length > 2 && liste.every((p, i) => i === 0 || p === liste[i - 1] + 1);
+  return suivies ? `${liste[0]} à ${liste[liste.length - 1]}` : liste.join(', ');
+}
+
+// L AIDE D UNE ACTIVITE, LUE A L HEURE, LE JOUR MEME SEULEMENT (une autre date
+// n a pas de « maintenant »). Cinq minutes de part et d autre du depart, c est
+// « À lancer » : l equipe lance la piste ou la partie. Tant que le groupe n est
+// pas pointe arrive, une activite dont l heure est la ne dit pas « en cours »
+// (il n est pas la) mais « Groupe pas arrivé ».
+const GROUPE_FENETRE_LANCEMENT_H = 5 / 60;
+function getGroupeEtapePhase(etape, contexte) {
+  if (etape.fait) return { cle: 'fait', mot: 'Fait' };
+  if (etape.libre) return { cle: 'libre', mot: 'À leur rythme' };
+  if (etape.aPlacer) return { cle: 'aplacer', mot: 'Heure à placer' };
+  if (!contexte.aujourdhui) return { cle: 'prevu', mot: '' };
+  const now = contexte.now;
+  // Une activite de formule passee sans coche n est pas « finie » : personne
+  // n a dit qu elle a eu lieu (meme mot que la page Formules).
+  if (now >= etape.end) return etape.coche ? { cle: 'noncoche', mot: 'Non coché' } : { cle: 'fini', mot: 'Fini' };
+  // Le groupe n est pas pointe : son heure est la, rien ne se lance. En
+  // retard, le bandeau de la carte le dit deja ; avant, « Attendu ».
+  if (now >= etape.start - GROUPE_FENETRE_LANCEMENT_H && !contexte.present) return contexte.late ? { cle: 'prevu', mot: '' } : { cle: 'attente', mot: 'Attendu' };
+  if (now >= etape.start - GROUPE_FENETRE_LANCEMENT_H && now < etape.start + GROUPE_FENETRE_LANCEMENT_H) {
+    return { cle: 'lancer', mot: now < etape.start ? `À lancer à ${formatClockDisplay(etape.start)}` : 'À lancer maintenant' };
+  }
+  if (now >= etape.start) return { cle: 'encours', mot: `En cours · fin ${formatClockDisplay(etape.end)}` };
+  const dans = etape.start - now;
+  return dans <= 1 ? { cle: 'bientot', mot: `Dans ${formatStaffTerrainDelay(dans)}` } : { cle: 'prevu', mot: '' };
+}
+
+function getGroupeContexte(r, moment) {
+  const aujourdhui = (r.date || state.currentDate) === todayStr();
+  return {
+    aujourdhui,
+    now: moment && Number.isFinite(moment.now) ? moment.now : currentTimeDecimal(),
+    present: r.status === 'arrived' || r.status === 'paid',
+    late: Boolean(moment && moment.late),
+  };
+}
+
+function renderGroupeEtapes(r, moment, options = {}) {
+  const etapes = getGroupeProgramme(r);
+  if (!etapes.length) return '';
+  const contexte = getGroupeContexte(r, moment);
+  const phases = etapes.map(etape => getGroupeEtapePhase(etape, contexte));
+  // L etape a regarder : celle qui se lance, qui tourne ou qui vient, la
+  // premiere qui n est pas finie. Elle porte le contour.
+  const vivantes = ['lancer', 'encours', 'attente', 'bientot', 'prevu'];
+  const focus = contexte.aujourdhui ? phases.findIndex(p => vivantes.includes(p.cle)) : -1;
+  const prix = options.prix ? getGroupePrixParActivite(r) : null;
+  return `<ol class="gc-steps">${etapes.map((etape, index) => {
+    const phase = phases[index];
+    const quand = etape.start !== null && etape.start !== undefined
+      ? `<span class="gc-step-time">${formatClockDisplay(etape.start)}<small>${formatClockDisplay(etape.end)}</small></span>`
+      : `<span class="gc-step-time is-free">${etape.aPlacer ? '--:--' : 'Libre'}</span>`;
+    const details = [etape.quoi, etape.ou, etape.groupe].filter(Boolean).join(' · ');
+    const montant = prix && prix.has(etape.cle) ? `<span class="gc-step-price">${escapeHtml(prix.get(etape.cle))}</span>` : '';
+    // Dans la fiche, l activite d une formule se coche a la place de son icone.
+    const repere = options.coches && etape.coche
+      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="fiche.activite.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)">${etape.fait ? ACTIVITY_CHECK_SVG : ''}</button>`
+      : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`;
+    return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}">
+      ${quand}
+      ${repere}
+      <span class="gc-step-what"><b>${escapeHtml(etape.nom)}</b>${details ? `<small>${escapeHtml(details)}</small>` : ''}</span>
+      ${phase.mot ? `<span class="gc-step-state">${escapeHtml(phase.mot)}</span>` : ''}
+      ${montant}
+    </li>`;
+  }).join('')}</ol>`;
+}
+
+// CE QUI CHANGE LA FACON DE SERVIR, EN ENCADRES : chacun sa couleur et son
+// mot, jamais la couleur seule. Rien ne s affiche quand rien ne change.
+function getGroupeEncadres(r) {
+  const encadres = [];
+  if (isReservationAwaitingReview(r)) {
+    // « À vérifier » : le meme mot que le Terrain, le tableau de bord et l export.
+    encadres.push({ ton: 'review', titre: 'À vérifier', texte: 'Pas encore confirmée au client : validez-la ou appelez-le.' });
+  }
+  // Le prix ajuste passe par LE marqueur partage (renderReservationPriceMark,
+  // la regle unique des neuf surfaces) : l encadre n existe que s il parle.
+  const marquePrix = renderReservationPriceMark(r, { forme: 'encadre', base: 'gc-price-mark' });
+  if (marquePrix) encadres.push({ ton: 'price', titre: 'Prix ajusté', html: marquePrix });
   const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
-  const isFormule = !!formule;
-  const view = getStaffResourceView();
-  const isLaser = view === 'laser' || r.type === 'laser';
-  const typeLabel = getReservationLabel(r);
-  const resourceWindows = getStaffResourceWindows(r, view);
-  const laserWindow = getLaserWindowsFromReservation(r)[0] || null;
-  const bowlingWindows = getBowlingWindowsFromReservation(r);
-  const bowlingLanes = [...new Set(bowlingWindows.flatMap(window => window.lanes || r.lanes || []))];
-  const bowlingChipHtml = bowlingLanes.length ? bowlingLanes.map(l => `<span class="res-lane-chip">${l}</span>`).join('') : '';
-  const laserChipHtml = getLaserWindowsFromReservation(r).map(window => `<span class="res-lane-chip laser">${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}</span>`).join('');
-  // LES PARTIES DE LASER SANS HEURE SE VOIENT SUR LA LIGNE (audit QA du
-  // 2026-09-28 : « une reservation confirmee peut etre incomplete dans le
-  // planning, l equipe peut oublier de placer les parties restantes »). La
-  // meme regle que la file « Parties a placer » du planning laser ; ce sont des
-  // PARTIES qu on compte, pas les groupes d une meme partie.
-  const partiesAPlacer = new Set(getPendingLaserPassesForReservation(r).map(unit => unit.countIndex)).size;
-  const partiesAPlacerHtml = partiesAPlacer && r.status !== 'paid'
-    ? `<span class="res-lane-chip is-to-place" title="Sans heure au planning laser : à placer avec le client, sur place ou avant sa venue">${partiesAPlacer} partie${partiesAPlacer > 1 ? 's' : ''} à placer</span>`
-    : '';
-  const lanesHtml = view === 'all'
-    ? `<div class="res-row-lanes">${bowlingChipHtml}${laserChipHtml || ''}${!bowlingChipHtml && !laserChipHtml ? `<span class="res-lanes-empty">${isOffPlanningReservation(r) ? 'Hors planning' : 'À placer'}</span>` : ''}${partiesAPlacerHtml}</div>`
-    : view === 'laser'
-      ? `<div class="res-row-lanes"><span class="res-lane-chip laser">${laserWindow ? `${formatClockDisplay(laserWindow.start)}-${formatClockDisplay(laserWindow.end)}` : 'Laser'}</span>${partiesAPlacerHtml}</div>`
-      : bowlingLanes.length
-        ? `<div class="res-row-lanes">${bowlingChipHtml}</div>`
-        : `<span class="res-lanes-empty">Hors piste</span>`;
-  // La pastille d'état ne se dessine QUE si elle dit quelque chose que le
-  // sélecteur juste à côté ne dit pas déjà. « Arrivé » suivi de trois boutons
-  // dont « Arrivé » est actif, c'est la même information écrite deux fois à
-  // 8px d'écart. Sur une réservation payée, elle porte le MONTANT : là, elle
-  // apporte, et elle reste.
-  const stateText = r.status === 'paid' ? `${formatMoney(r.price)} payé` : '';
-  const timeLabel = resourceWindows.length ? formatClockDisplay(resourceWindows[0].start) : r.startTime;
-  const parties = getLaserGameCountForReservation(r);
-  const totalBowlingHours = getBowlingTotalHoursForReservation(r);
-  // LA DUREE DIT DE QUOI ELLE PARLE. « 1h » tout seul obligeait a deviner,
-  // et une visite a 2h de bowling affichait la duree de sa premiere fenetre
-  // seulement (Movsar 2026-08-25 : « 1 heure de quoi... faut que ca dise
-  // 1 heure bowling... ca met 1 heure alors que ca donne 2 heures »).
-  // Le mot « bowling » n est accole QUE si la reservation en contient : une
-  // formule table + plaine de jeux (section « Hors planning ») affichait
-  // « 2h bowling » pour une visite sans la moindre piste.
-  // Sans piste, une visite a la carte dit la duree de SES activites (minigolf
-  // 45 min + arcades 30 min = 1h15), jamais la demi-heure par defaut du dossier.
-  const bowlingDurationLabel = totalBowlingHours
-    ? `${formatDurationLabel(totalBowlingHours)} bowling`
-    : (dureeProgrammeLabel(r) || formatDurationLabel(r.duration));
-  const resourceDurationLabel = view === 'all'
-    ? (isFormule ? 'Formule' : r.type === 'laser' ? (parties > 1 ? `Laser x${parties}` : 'Laser') : bowlingDurationLabel)
-    : view === 'laser'
-    ? (parties > 1 ? `Laser x${parties}` : 'Laser')
-    : bowlingDurationLabel;
+  // Le nom de la formule vient du catalogue du centre ; s il n est pas encore
+  // charge, le libelle ecrit sur le dossier (« FORMULE 7 ») le dit.
+  const nomFormule = formule ? formule.name : (r.type === 'formule' || r.formuleId ? getReservationLabel(r) : '');
+  const occasion = getReservationOccasion(r);
+  const libelleOccasion = occasion ? (STAFF_OCCASION_LABELS[occasion] || '').split(' / ')[0] : '';
+  if (libelleOccasion || nomFormule) {
+    const accompagnants = Math.max(0, Math.trunc(Number(r.companions) || 0));
+    encadres.push({
+      ton: 'occasion',
+      titre: [libelleOccasion, nomFormule].filter(Boolean).join(' · '),
+      texte: accompagnants ? `${accompagnants} accompagnant${accompagnants > 1 ? 's' : ''} en plus des joueurs` : '',
+    });
+  }
+  // Une seule regle dit si un dossier porte une note (hasReservationNote) :
+  // la puce « Avec note », le filtre et l encadre la lisent tous.
+  if (hasReservationNote(r)) encadres.push({ ton: 'note', titre: 'Note', texte: getReservationNoteText(r) });
+  return encadres;
+}
 
-  // CE QUE LE CLIENT A RESERVE : la COMPOSITION reelle, une seule fois.
-  // « Formule 6 · Bowling 2h · Laser x2 » : ce que le comptoir doit voir
-  // d'un coup d'oeil, sans ouvrir le dossier.
-  const composition = [
-    totalBowlingHours ? `Bowling ${formatDurationLabel(totalBowlingHours)}` : '',
-    parties > 0 ? (parties > 1 ? `Laser x${parties}` : 'Laser') : ''
-  ].filter(Boolean).join(' · ');
-  // Une visite a la carte dit TOUTES ses activites, chacune avec ce qu elle
-  // achete (« Minigolf 45 min · Fun Run 3 × 30 min ») : la composition bowling
-  // + laser taisait tout le reste.
-  const offre = isFormule
-    ? [formule.name, composition].filter(Boolean).join(' · ')
-    : resumeProgrammeReservation(r) || composition || typeLabel;
+function renderGroupeEncadres(r, options = {}) {
+  // Dans la fiche, « à valider » est deja dit dans le bloc d etat, a cote du
+  // bouton qui valide : l encadre le redirait.
+  const encadres = getGroupeEncadres(r).filter(e => !(options.sansValidation && e.ton === 'review'));
+  if (!encadres.length) return '';
+  return `<div class="gc-flags${options.large ? ' is-large' : ''}">${encadres.map(e => `<div class="gc-flag tone-${e.ton}">
+    <b>${escapeHtml(e.titre)}</b>${e.html ? e.html : e.texte ? `<span>${escapeHtml(e.texte)}</span>` : ''}
+  </div>`).join('')}</div>`;
+}
 
-  // PRIX AJUSTE visible de la liste : le comptoir voit combien CE dossier
-  // paie sans ouvrir la fiche (prix d ami, offre sur mesure). LE GESTE
-  // COMMERCIAL RESTE ECRIT UNE FOIS ENCAISSE : la pastille cede seulement le
-  // MONTANT a la pastille d etat quand celle-ci le porte deja (forme
-  // « reference »).
-  // LA REGLE N EST PLUS ECRITE ICI : ces trois lignes etaient le seul endroit
-  // du produit qui savait ce qu est un prix ajuste, ce qui rendait tous les
-  // autres ecrans aveugles. La ligne LIT desormais getReservationPriceState,
-  // comme la carte du planning, l arene, la page Evenements, la file d accueil,
-  // le ticket et le tableau de la Direction.
+// LE MOYEN DE PAIEMENT ECRIT. « Comptoir » est ce que Payé ecrivait avant le
+// 2026-10-01 sans rien demander : il ne dit pas comment le client a paye.
+const GROUPE_MOYENS = [
+  { valeur: 'Carte Bancaire', mot: 'Carte' },
+  { valeur: 'Espèces', mot: 'Espèces' },
+];
+function getMoyenPaiementLabel(valeur) {
+  const v = String(valeur || '').trim();
+  if (/^carte/i.test(v) || v === 'card') return 'Carte';
+  if (/^esp[eè]ces$/i.test(v) || v === 'cash') return 'Espèces';
+  return '';
+}
 
-  // La ligne reste COMPACTE (Movsar 2026-08-25 : « pas des grosses cartes
-  // longues avec plein d informations ») : offre, etat, occasion, note.
-  // Les consignes d exploitation et le suivi d accueil (check-in, consignes
-  // laser, « surveiller le passage... ») vivent dans le dossier.
-  return `<div class="res-row ${r.status} ${getReservationHighlightClasses(r)}" data-res-row-id="${r.id}" onclick="openPos(${r.id})">
-    <div class="res-c-time">
-      <strong>${timeLabel}</strong>
-      <span class="${isSpecialBowlingDuration(totalBowlingHours) ? 'is-special' : ''}">${resourceDurationLabel}</span>
-    </div>
-    <div class="res-c-client">
-      <span class="res-row-name">${escapeHtml(r.name)}</span>
-      <span class="res-c-pax">${escapeHtml(joueursDuDossier(r))}</span>
-    </div>
-    <div class="res-c-what">
-      <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
-      ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
-      ${moment && moment.late ? `<span class="res-state-pill late">En retard · ${escapeHtml(formatStaffTerrainDelay(moment.now - moment.item.start))}</span>` : ''}
-      ${moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) ? '<span class="res-state-pill unmarked">Non pointé</span>' : ''}
-      ${isReservationAwaitingReview(r) ? '<span class="res-state-pill review">À vérifier</span>' : ''}
-      ${renderReservationPriceMark(r, { forme: stateText ? 'reference' : 'complet' })}
-      ${renderReservationTags(r, { contexteSeul: true })}
-      ${renderReservationNoteLine(r)}
-    </div>
-    <div class="res-c-where">
-      ${lanesHtml}
-    </div>
-    <div class="res-c-state" onclick="event.stopPropagation()">
-      <div class="res-status-row compact">
-        ${renderReservationFirstStatusButton(r)}
-        <button class="res-status-btn ${r.status === 'arrived' ? 'active arrived' : ''}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>
-        <button class="res-status-btn ${r.status === 'paid' ? 'active paid' : ''}" onclick="setReservationStatusDirect(${r.id}, 'paid', event)">Payé</button>
+function renderGroupePrix(r, moment) {
+  const paye = r.status === 'paid';
+  const moyen = getMoyenPaiementLabel(r.paymentMethod);
+  const etat = paye
+    ? `<small class="is-paid">Payé${moyen ? ` · ${moyen}` : ''}</small>`
+    : moment && moment.etat === 'closing'
+      ? '<small class="is-due">À encaisser</small>'
+      : '';
+  // Sans montant connu (activites tarifees au comptoir), la carte ne montre
+  // pas « 0 € » : elle dit ou se fait le prix.
+  const montant = Number(r.price) > 0 ? `<b>${formatMoney(r.price)}</b>` : '<b class="is-none">Prix sur place</b>';
+  return `<div class="gc-price${paye ? ' is-paid' : ''}">${montant}${etat}</div>`;
+}
+
+// LES GESTES, UN SEUL A LA FOIS : ce que la carte attend maintenant. Valider
+// une demande, pointer l arrivee, encaisser (Carte ou Espèces). Revenir en
+// arriere, modifier, annuler : dans la fiche.
+function renderGroupeActions(r, moment) {
+  if (r.status === 'paid' || r.status === 'cancelled') return '';
+  const boutons = [];
+  const aValider = isReservationAwaitingReview(r);
+  if (aValider) {
+    boutons.push(`<button type="button" class="gc-btn is-review" onclick="validateReservationDirect(${r.id}, event)">Valider</button>`);
+  }
+  const fini = moment && (moment.etat === 'closing' || moment.etat === 'done');
+  if (isUpcomingReservationStatus(r.status) && !fini) {
+    boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
+  } else {
+    // Le groupe est la, ou il a fini : la carte attend l encaissement.
+    const montant = Number(r.price) > 0 ? ` ${formatMoney(r.price)}` : '';
+    boutons.push(`<span class="gc-pay" role="group" aria-label="Encaisser${escapeHtml(montant)}">
+      <span class="gc-pay-label">Encaisser${escapeHtml(montant)}</span>
+      ${GROUPE_MOYENS.map(m => `<button type="button" class="gc-btn is-primary" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">${m.mot}</button>`).join('')}
+    </span>`);
+  }
+  return `<div class="gc-actions" onclick="event.stopPropagation()">${boutons.join('')}</div>`;
+}
+
+// LE BANDEAU DU MOMENT : ce qui ne va pas, en haut de la carte, en mots.
+function renderGroupeAlerte(r, moment) {
+  if (moment && moment.late) {
+    const depuis = formatStaffTerrainDelay(moment.now - moment.item.start);
+    const appel = r.phone ? `<a class="gc-call" href="tel:${escapeHtml(String(r.phone).replace(/\s+/g, ''))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>` : '';
+    return `<div class="gc-alert is-late"><b>En retard · ${escapeHtml(depuis)}</b><span>Attendu à ${formatClockDisplay(moment.item.start)}, pas encore arrivé</span>${appel}</div>`;
+  }
+  if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status)) {
+    return '<div class="gc-alert is-unmarked"><b>Non pointé</b><span>Fini sans être pointé arrivé : peut-être pas venu</span></div>';
+  }
+  return '';
+}
+
+function renderReservationRow(r, moment = null) {
+  const span = moment && moment.item ? moment.item : getStaffTerrainSpan(r);
+  const termine = moment && moment.etat === 'done';
+  const classes = [
+    'res-row', 'gc', r.status,
+    moment && moment.late ? 'is-late' : '',
+    termine ? 'is-done' : '',
+    isReservationAwaitingReview(r) ? 'is-review' : '',
+    getReservationHighlightClasses(r),
+  ].filter(Boolean).join(' ');
+  // UN GROUPE SUR AUCUNE GRILLE (table et plaine d un anniversaire, Kids Fun
+  // Day) se dit sur sa carte : c est ici ou nulle part qu on le voit (decision
+  // du 2026-07, off-planning-check). L onglet porte aussi « N hors planning ».
+  const horsPlanning = getStaffResourceView() === 'all' && isOffPlanningReservation(r);
+  // Une carte terminee et payee tient sur sa tete : il n y a plus rien a faire.
+  if (termine) {
+    return `<article class="${classes}" data-res-row-id="${r.id}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'){openPos(${r.id})}">
+      <div class="gc-head">
+        <div class="gc-when"><b>${formatClockDisplay(span.start)}</b><small>${formatClockDisplay(span.end)}</small></div>
+        <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${escapeHtml(joueursDuDossier(r))} · ${escapeHtml(resumeGroupe(r))}${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' }) ? ` · ${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' })}` : ''}</span></div>
+        ${renderGroupePrix(r, moment)}
       </div>
-      <div class="res-row-tools">
-        <button class="res-icon-btn" onclick="editRes(${r.id}, event)" title="Editer" aria-label="Editer ${escapeHtml(r.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-        <button class="res-icon-btn warn" onclick="cancelRes(${r.id}, event)" title="Annuler" aria-label="Annuler ${escapeHtml(r.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="8" y1="8" x2="16" y2="16"/></svg></button>
-        <button class="res-icon-btn danger" onclick="deleteRes(${r.id}, event)" title="Supprimer" aria-label="Supprimer ${escapeHtml(r.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-      </div>
+    </article>`;
+  }
+  return `<article class="${classes}" data-res-row-id="${r.id}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'&&event.target===this){openPos(${r.id})}">
+    <div class="gc-head">
+      <div class="gc-when"><b>${formatClockDisplay(span.start)}</b><small>${formatClockDisplay(span.end)}</small></div>
+      <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${escapeHtml(joueursDuDossier(r))}${horsPlanning ? ' · <b class="gc-tag">Hors planning</b>' : ''}</span></div>
+      ${renderGroupePrix(r, moment)}
     </div>
-  </div>`;
+    ${renderGroupeAlerte(r, moment)}
+    ${renderGroupeEtapes(r, moment)}
+    ${renderGroupeEncadres(r)}
+    ${renderGroupeActions(r, moment)}
+  </article>`;
+}
+
+// « Bowling 1h · Laser 2 parties » : le resume d une carte terminee.
+function resumeGroupe(r) {
+  const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
+  if (formule) return formule.name;
+  if (r.type === 'formule' || r.formuleId) return getReservationLabel(r);
+  const programme = resumeProgrammeReservation(r);
+  if (programme) return programme;
+  return getReservationLabel(r);
+}
+
+// Encaisser = payer AVEC le moyen. Le statut et le moyen partent ensemble.
+function encaisserReservation(id, moyen, ev) {
+  setReservationStatusDirect(id, 'paid', ev, { paymentMethod: moyen });
+}
+
+// LE PRIX DE CHAQUE ACTIVITE, pour la fiche : celui que le programme d une
+// visite enregistre (bowling, laser, duckpin...), pose sur la premiere ligne
+// de l activite. Une formule se paie en entier : pas de prix par ligne.
+function getGroupePrixParActivite(r) {
+  const prix = new Map();
+  const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
+  if (!items.length || r.formuleId) return prix;
+  const etapes = getGroupeProgramme(r);
+  items.forEach(item => {
+    const montant = item.priceKnown && Number.isFinite(Number(item.price)) ? formatMoney(item.price) : 'sur place';
+    const cible = item.planned
+      ? etapes.find(e => e.activityId === item.activityId && !prix.has(e.cle))
+      : etapes.find(e => e.cle === `libre-${items.filter(x => !x.planned && !x.waitOffer).indexOf(item)}`);
+    if (cible) prix.set(cible.cle, montant);
+  });
+  return prix;
 }
 
 function renderReservationSection(statusKey, title, subtitle, reservations, moments = null) {
+  // L ORDRE DU COMPTOIR, lu sur les vraies heures du groupe (premiere et
+  // derniere activite), pas sur l heure du dossier : a venir et en retard,
+  // celui qui commence le premier ; sur place et a cloturer, celui qui finit
+  // le premier, c est lui qui arrive a la caisse ; terminees, la plus recente.
+  const span = r => {
+    const entry = moments ? moments.get(String(r.id)) : null;
+    return entry && entry.item ? entry.item : getStaffTerrainSpan(r);
+  };
   const ordered = [...reservations].sort((a, b) => {
-    if (statusKey === 'done') return timeToNum(b.startTime) - timeToNum(a.startTime);
-    return timeToNum(a.startTime) - timeToNum(b.startTime);
+    if (statusKey === 'done') return span(b).start - span(a).start;
+    if (statusKey === 'onsite' || statusKey === 'closing') return span(a).end - span(b).end || span(a).start - span(b).start;
+    return span(a).start - span(b).start;
   });
-  // UN EN-TETE DE COLONNES, UNE FOIS, AU LIEU D'UN LIBELLE PAR LIGNE.
-  // Le mot « Pistes » etait ecrit sur CHAQUE ligne, au-dessus de ses numeros :
-  // sept fois pour sept dossiers. Un libelle qui se repete a chaque ligne n'est
-  // pas une colonne, c'est une fiche recopiee, et c'est ce qui donnait a la
-  // liste son air de formulaire des annees 2000. Ecrit une fois en tete, il
-  // devient une VRAIE colonne : l'oeil descend au lieu de relire.
-  // Le sous-titre explicatif de chaque section a disparu. « Clients presents, a
-  // suivre maintenant » sous « Sur place » explique un titre qui se comprend
-  // seul : c'est du texte d'aide permanent, qui coute une ligne par section et
-  // n'est lu qu'une fois dans une vie de logiciel. Il reste dans l'infobulle.
-  // UNE CLE DE CASCADE PAR SECTION, jamais une clé partagée. Les trois sections
-  // portaient la meme cle « resa.liste » : leurs signatures s ecrasaient l une
-  // l autre a chaque rendu, aucune ne se retrouvait jamais identique, et
-  // l animation d entree des lignes REJOUAIT a chaque re-rendu. C est ce que
-  // Movsar voyait : « ca rafraichit toutes les resa affichees, on VOIT que ca
-  // rafraichit » (2026-08-26). La cascade ne doit se jouer que sur une liste
-  // qui a reellement change.
-  return `<div class="res-section workflow ${statusKey}">
+  // UNE CLE DE CASCADE PAR SECTION, jamais une clé partagée : la cascade
+  // d entree ne rejoue que sur une liste qui a reellement change (2026-08-26,
+  // « on VOIT que ca rafraichit »). Le sous-titre vit dans l infobulle.
+  return `<section class="res-section gc-section ${statusKey}">
     <div class="res-section-head" title="${escapeHtml(subtitle)}">
       <span class="label">${title}</span>
       <span class="count">${ordered.length}</span>
     </div>
-    ${ordered.length ? `<div class="res-dense-list" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(r => renderReservationRow(r, moments ? moments.get(String(r.id)) : null)).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
-  </div>`;
+    ${ordered.length ? `<div class="res-dense-list gc-grid" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(r => renderReservationRow(r, moments ? moments.get(String(r.id)) : null)).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
+  </section>`;
 }
 
 function renderTable() {
@@ -22951,36 +23255,29 @@ function renderTable() {
     if (list) list.scrollTop = listScrollTop;
     return;
   }
-  // Les réservations hors planning sortent des sections de statut et remontent en
-  // tête : elles n'apparaissent sur aucune grille, donc c'est ICI ou nulle part.
-  const offPlanningRows = view === 'all' ? filtered.filter(isOffPlanningReservation) : [];
-  const offPlanningIds = new Set(offPlanningRows.map(r => r.id));
-  const inState = etat => filtered.filter(r => getStaffReservationMomentState(moments, r) === etat && !offPlanningIds.has(r.id));
+  // LES SECTIONS DU COMPTOIR (2026-10-01). Le RETARD sort d « À venir » et
+  // passe en tete, en rouge : c est la premiere chose a voir. Les dossiers
+  // « hors planning » (ni piste ni arene) ne forment plus une section a part :
+  // la carte dit leurs activites, ils vivent dans leur moment comme les autres.
+  // Les puces gardent leurs quatre etats exclusifs : « À venir » compte aussi
+  // les retards, que sa section rouge montre en premier.
+  const inState = etat => filtered.filter(r => getStaffReservationMomentState(moments, r) === etat);
+  const enRetard = r => Boolean(moments.get(String(r.id)) && moments.get(String(r.id)).late);
   const sections = [
-    { key: 'offplanning', title: 'Hors planning', subtitle: "Ni piste bowling ni zone laser : visibles nulle part ailleurs", rows: offPlanningRows },
-    { key: 'upcoming', title: 'À venir', subtitle: 'Pas encore arrivés, par horaire ; un retard est marqué', rows: inState('upcoming') },
-    { key: 'onsite', title: 'Sur place', subtitle: 'Arrivés, pendant leur créneau', rows: inState('onsite') },
-    { key: 'closing', title: 'À clôturer', subtitle: 'Créneau fini, pas encore payé', rows: inState('closing') },
-    { key: 'done', title: 'Terminées', subtitle: 'Créneau fini et payé', rows: inState('done') }
+    { key: 'late', parent: 'upcoming', title: 'En retard', subtitle: 'Heure passée, pas encore pointés arrivés', rows: inState('upcoming').filter(enRetard) },
+    { key: 'upcoming', title: 'À venir', subtitle: 'Pas encore arrivés, par heure', rows: inState('upcoming').filter(r => !enRetard(r)) },
+    { key: 'onsite', title: 'Sur place', subtitle: 'Arrivés, pendant leur visite', rows: inState('onsite') },
+    { key: 'closing', title: 'À clôturer', subtitle: 'Visite finie, pas encore payée', rows: inState('closing') },
+    { key: 'done', title: 'Terminées', subtitle: 'Visite finie et payée', rows: inState('done') }
   ].filter(section => {
-    if (section.key === 'offplanning') return true;
-    if (STAFF_MOMENT_STATES.includes(state.staffStatusFilter)) return section.key === state.staffStatusFilter;
-    if (state.staffStatusFilter === 'open') return section.key !== 'done';
+    const cle = section.parent || section.key;
+    if (STAFF_MOMENT_STATES.includes(state.staffStatusFilter)) return cle === state.staffStatusFilter;
+    if (state.staffStatusFilter === 'open') return cle !== 'done';
     return true;
   }).filter(section => section.rows.length > 0);
 
-  // L'EN-TETE DE COLONNES EST ECRIT UNE SEULE FOIS, POUR TOUTE LA LISTE.
-  // Premiere tentative : un en-tete par section. C'etait reproduire exactement
-  // le defaut qu'on corrigeait, le mot « Pistes » repete a chaque ligne devenant
-  // « HEURE CLIENT RESERVATION PISTES ETAT » repete a chaque section. Les
-  // colonnes sont les MEMES partout puisque la grille est declaree une fois :
-  // l'en-tete l'est aussi, et il reste colle en haut au defilement.
-  const colOu = view === 'all' ? 'Ressources' : view === 'laser' ? 'Laser' : 'Pistes';
   list.innerHTML = `${toolbar}
-  <div class="res-col-head" aria-hidden="true">
-    <span>Heure</span><span>Client</span><span>Réservation</span><span>${colOu}</span><span>État</span>
-  </div>
-  <div class="res-sections">
+  <div class="res-sections gc-sections">
     ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows, moments)).join('')}
   </div>`;
   if (list) list.scrollTop = listScrollTop;
@@ -22990,7 +23287,7 @@ function quickAction(id, status) {
   setReservationStatusDirect(id, status);
 }
 
-function setReservationStatusDirect(id, status, ev) {
+function setReservationStatusDirect(id, status, ev, options = {}) {
   if (ev) ev.stopPropagation();
   const key = String(id);
   let current = state.reservations.find(r => String(r.id) === key);
@@ -23008,15 +23305,19 @@ function setReservationStatusDirect(id, status, ev) {
     toast('Réservation introuvable.');
     return;
   }
+  // LE MOYEN DE PAIEMENT (2026-10-01) : « Payé » demande Carte ou Espèces.
+  // Un dossier deja paye dont on corrige le moyen s ecrit quand meme.
+  const moyenDemande = status === 'paid' ? String(options.paymentMethod || '').trim() : '';
+  const corrigeMoyen = Boolean(moyenDemande) && current.status === 'paid' && moyenDemande !== current.paymentMethod;
   // Le dossier est deja dans l etat que le bouton demande : rien a ecrire.
-  if (reservationAlreadyInStatus(current, status)) return;
+  if (reservationAlreadyInStatus(current, status) && !corrigeMoyen) return;
   // Anti double-envoi : même statut déjà en vol → on ignore. La résa affiche
   // déjà la valeur voulue (optimiste), inutile de re-PATCH.
   if (isReservationMutationInFlight(id, 'status', status)) return;
   const nextReservation = {
     ...current,
     status,
-    paymentMethod: status === 'paid' ? (current.paymentMethod || 'Comptoir') : current.paymentMethod
+    paymentMethod: status === 'paid' ? (moyenDemande || current.paymentMethod || 'Comptoir') : current.paymentMethod
   };
   const requestKey = Number(id);
   const requestSeq = ++statusSaveSeq;
@@ -23029,7 +23330,7 @@ function setReservationStatusDirect(id, status, ev) {
   envoyerModificationReservation(current, (dossier) => ({
     ...dossier,
     status,
-    paymentMethod: status === 'paid' ? (dossier.paymentMethod || 'Comptoir') : dossier.paymentMethod
+    paymentMethod: status === 'paid' ? (moyenDemande || dossier.paymentMethod || 'Comptoir') : dossier.paymentMethod
   })).then(payload => {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
@@ -23455,32 +23756,15 @@ function dureeProgrammeLabel(reservation) {
   const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
   if (!items.length) return '';
   if (items.every(ligneALaJournee)) return 'Journée';
-  const minutes = items.filter((item) => !ligneALaJournee(item)).reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
-  return minutes > 0 ? formatDurationLabel(minutes / 60) : '';
+  const heures = dureeProgrammeHeures(reservation);
+  return heures > 0 ? formatDurationLabel(heures) : '';
 }
 
-function renderReservationProgram(reservation) {
-  const items = reservation && reservation.program && Array.isArray(reservation.program.items)
-    ? reservation.program.items
-    : [];
-  if (items.length < 2) return '';
-  const line = (item) => {
-    // Le meme detail que la liste du jour (detailLigneProgramme) : une seule
-    // facon de dire ce qu une ligne achete, sessions et journee comprises.
-    const detail = detailLigneProgramme(item, reservation);
-    const price = item.priceKnown ? `${Math.round(Number(item.price))}€` : 'sur place';
-    return `<div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border);">
-      <span style="font-weight:700;color:var(--text);">${escapeHtml(nomActivite(item))}${detail ? ` <small style="font-weight:400;color:var(--text-3);">${escapeHtml(detail)}</small>` : ''}</span>
-      <span style="color:var(--text-2);font-weight:700;">${item.planned ? 'planifié' : price}</span>
-    </div>`;
-  };
-  const planned = items.filter((item) => item.planned);
-  const free = items.filter((item) => !item.planned);
-  return `<div class="info-block">
-    <div class="info-label">Programme du groupe</div>
-    ${planned.map(line).join('')}
-    ${free.length ? `<div style="margin-top:10px;color:var(--text-3);font-size:12px;">Au comptoir</div>${free.map(line).join('')}` : ''}
-  </div>`;
+// La meme duree en heures (0 sans programme, ou tout a la journee).
+function dureeProgrammeHeures(reservation) {
+  const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
+  const minutes = items.filter((item) => !ligneALaJournee(item)).reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+  return minutes > 0 ? minutes / 60 : 0;
 }
 
 // LA FICHE « INFOS » : L'EN-TETE DIT QUI EST LA, LE CORPS DIT QUOI FAIRE.
@@ -23508,51 +23792,36 @@ function renderReservationProgram(reservation) {
 // bloc « Resume » absente de l'en-tete, remonte dans le bloc d'action, la ou
 // on s'en sert.
 function renderPosDetails(r) {
-  // Pour une formule : checklist cochable des activités (suivi « fait / à faire »).
-  // Sinon : plan automatique en lecture seule.
-  const activityChecklistHtml = renderFormulaActivityChecklist(r);
-  const opsPlanHtml = (r.opsPlan?.timeline?.length && !activityChecklistHtml) ? `
-    <div class="info-block">
-      <div class="info-label">Plan automatique</div>
-      <div class="pos-plan-list">
-        ${r.opsPlan.timeline.filter(step => step.type === 'activity').map(step => `
-          <div class="pos-plan-row">
-            <span class="pos-plan-label">${step.label}</span>
-            <span class="pos-plan-time">${step.startTime} - ${step.endTime}</span>
-          </div>
-        `).join('')}
-      </div>
-      ${r.opsPlan.staffSummary ? `<p class="pos-note">${r.opsPlan.staffSummary}</p>` : ''}
-    </div>
-  ` : '';
+  const moment = getStaffReservationMoments([r]).get(String(r.id)) || null;
   const paid = r.status === 'paid';
-  const method = r.paymentMethod || (paid ? 'Comptoir' : 'Sur place');
+  const moyen = getMoyenPaiementLabel(r.paymentMethod);
   const lateMinutes = getLateArrivalMinutes(r);
-  return `<div class="${posSheetClass()}">
+  const aEncaisser = Number(r.price) > 0 ? formatMoney(r.price) : 'prix au comptoir';
+  return `<div class="${posSheetClass()} gc-sheet">
+    ${renderGroupeAlerte(r, moment)}
     <section class="pos-act">
       <div class="pos-act-head">
         <span class="pos-eyebrow">État du dossier</span>
         <span class="pos-act-money ${paid ? 'is-paid' : ''}">${paid
-          ? `Encaissé · ${escapeHtml(method)}`
-          : `À encaisser · ${escapeHtml(method)}`}</span>
+          ? `Payé${moyen ? ` · ${escapeHtml(moyen)}` : ''}`
+          : `À encaisser · ${escapeHtml(aEncaisser)}`}</span>
       </div>
       ${isReservationAwaitingReview(r) ? '<p class="pos-act-review">Cette demande attend votre validation. Tant que vous ne l’avez pas validée, la réservation du client n’est pas confirmée.</p>' : ''}
-      <div class="res-status-row pos-act-row">
+      <div class="res-status-row pos-act-row gc-sheet-states">
         ${renderReservationFirstStatusButton(r, { fiche: true })}
         <button type="button" class="res-status-btn arrived ${r.status === 'arrived' ? 'active arrived' : ''}" aria-pressed="${r.status === 'arrived'}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>
-        <button type="button" class="res-status-btn paid ${r.status === 'paid' ? 'active paid' : ''}" aria-pressed="${r.status === 'paid'}" onclick="setReservationStatusDirect(${r.id}, 'paid')">Payé</button>
+        ${GROUPE_MOYENS.map(m => {
+          const actif = paid && getMoyenPaiementLabel(r.paymentMethod) === m.mot;
+          return `<button type="button" class="res-status-btn paid ${actif ? 'active paid' : ''}" aria-pressed="${actif}" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">Payé · ${m.mot}</button>`;
+        }).join('')}
       </div>
     </section>
-    ${renderPosNoteBlock(r)}
-    ${/* LE PROGRAMME NE SE DIT PAS DEUX FOIS. Quand le suivi des activites est
-         la, il porte deja la meme liste, avec les horaires ET les coches : le
-         bloc « Programme du groupe » juste au-dessus repetait les memes lignes
-         en moins utile. Movsar, 2026-08-26 : « pq mettre le programme du groupe
-         quand ya deja suivi de groupe avec coche ». Il reste rendu quand il n y
-         a pas de suivi, ou il est la seule vue du contenu. */''}
-    ${activityChecklistHtml ? '' : renderReservationProgram(r)}
-    ${activityChecklistHtml}
-    ${opsPlanHtml}
+    ${renderGroupeEncadres(r, { large: true, sansValidation: true })}
+    <section class="info-block gc-sheet-block">
+      <div class="info-label">Programme</div>
+      ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
+    </section>
+    ${renderGroupeAddition(r)}
     <section class="info-block">
       <div class="pos-group-head">
         <span class="info-label">Contact</span>
@@ -23587,6 +23856,66 @@ function renderPosDetails(r) {
   </div>`;
 }
 
+// L ADDITION DU GROUPE : ce qui est achete, ligne par ligne, le prix par
+// joueur, le prix ajuste et son ecart, ce qui reste a regler au comptoir.
+// Chaque ligne vient d un montant ENREGISTRE sur le dossier ; ce qui n a pas
+// de montant ne s invente pas (« au comptoir »).
+function renderGroupeAddition(r) {
+  const etat = getReservationPriceState(r);
+  const extras = Array.isArray(r.extras) ? r.extras : [];
+  const totalExtras = extras.reduce((somme, e) => somme + (Number(e.price) || 0), 0);
+  const joueurs = Math.max(0, Math.trunc(Number(r.pax) || 0));
+  const lignes = [];
+  const items = r.program && Array.isArray(r.program.items) ? r.program.items : [];
+  if (r.formuleId || r.type === 'formule') {
+    const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
+    const nom = formule ? formule.name : getReservationLabel(r);
+    const base = Math.max(0, etat.reference - totalExtras);
+    const unitaire = formule && formule.price && typeof formule.price === 'object' ? Number(formule.price.value) : 0;
+    // Le calcul n est ecrit que s il retombe exactement sur le montant du dossier.
+    const calcul = unitaire > 0 && joueurs > 0 && formule.price.type === 'per_pax' && Math.abs(unitaire * joueurs - base) < 0.5
+      ? `${formatMoney(unitaire)} × ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : '';
+    lignes.push({ nom, detail: calcul, montant: base > 0 ? formatMoney(base) : '' });
+  } else if (items.length) {
+    // CE QUI FAIT LE MONTANT, dit a cote : les pistes du bowling fois le prix
+    // d une piste (6 joueurs par piste), le prix par joueur du laser fois les
+    // joueurs. Le calcul n est ecrit que s il retombe sur le montant.
+    const connu = item => item.priceKnown && Number(item.price) > 0;
+    const pistes = (item) => {
+      const n = Number(item.laneCount) || 0;
+      if (item.activityId !== 'bowling' || n < 1) return '';
+      return `${n} piste${n > 1 ? 's' : ''}${connu(item) ? ` × ${formatMoneyCentimes(Number(item.price) / n)}` : ''}`;
+    };
+    const joueursLaser = item => (item.activityId === 'laser_game' && joueurs > 0 && connu(item) ? `${formatMoneyCentimes(Number(item.price) / joueurs)} × ${joueurs}` : '');
+    items.forEach(item => lignes.push({
+      nom: nomActivite(item),
+      detail: [detailLigneProgramme(item, r), pistes(item), joueursLaser(item)].filter(Boolean).join(' · '),
+      montant: item.priceKnown && Number.isFinite(Number(item.price)) ? formatMoney(item.price) : 'au comptoir',
+    }));
+  } else {
+    const base = Math.max(0, etat.reference - totalExtras);
+    lignes.push({ nom: getReservationLabel(r), detail: '', montant: base > 0 ? formatMoney(base) : '' });
+  }
+  extras.forEach(e => lignes.push({ nom: e.name || 'Extra', detail: '', montant: formatMoney(Number(e.price) || 0) }));
+  const total = Number(r.price) || 0;
+  // Au centime : 280 € pour 30 joueurs, c est 9,33 €, pas « 9 € ».
+  const parJoueur = total > 0 && joueurs > 0 ? formatMoneyCentimes(total / joueurs) : '';
+  const incomplet = r.program && r.program.priceComplete === false;
+  const paid = r.status === 'paid';
+  const moyen = getMoyenPaiementLabel(r.paymentMethod);
+  return `<section class="info-block gc-bill">
+    <div class="info-label">Prix</div>
+    <dl class="gc-bill-lines">${lignes.map(l => `<div><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
+      ${etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoney(etat.reference))}</small></dt><dd>${etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoney(Math.abs(etat.ecart)))}</dd></div>` : ''}
+    </dl>
+    <div class="gc-bill-total">
+      <div><b>${total > 0 ? escapeHtml(formatMoney(total)) : 'Prix au comptoir'}</b>${parJoueur ? `<small>soit ${escapeHtml(parJoueur)} par joueur</small>` : ''}</div>
+      <span class="${paid ? 'is-paid' : 'is-due'}">${paid ? `Payé${moyen ? ` · ${escapeHtml(moyen)}` : ''}` : 'À encaisser'}</span>
+    </div>
+    ${incomplet ? '<p class="pos-note">Les activités « au comptoir » se règlent en plus, au tarif du jour.</p>' : ''}
+  </section>`;
+}
+
 // === Gestion des retards (staff) ============================================
 // Flux en 3 temps, jamais automatique :
 // 1. openDelayImpact → le serveur calcule le plan d'impact (preview) ;
@@ -23596,7 +23925,9 @@ function renderPosDetails(r) {
 let delayFlowState = null;
 
 function getLateArrivalMinutes(r) {
-  if (!r || r.date !== todayStr()) return 0;
+  // Un groupe deja pointe arrive (ou paye) n est plus « en retard » : la fiche
+  // lui proposait « Arrivé maintenant (+190 min) » a la fin de sa visite.
+  if (!r || r.date !== todayStr() || !isUpcomingReservationStatus(r.status)) return 0;
   const late = Math.round(currentTimeDecimal() * 60) - Math.round(timeToNum(r.startTime) * 60);
   return late >= 1 && late <= 240 ? late : 0;
 }
@@ -27413,56 +27744,26 @@ function renderFormules() {
 // toutes les cinq, et elle ne change pas d'un onglet à l'autre : basculer sur
 // « Modifier » remplaçait le nom du client par « Modifier la réservation », et
 // on perdait de vue le dossier qu'on est en train de modifier.
+// L EN-TETE DE LA FICHE : le jour, les VRAIES heures du groupe (de sa
+// premiere a sa derniere activite) et les joueurs. Avant le 2026-10-01 il
+// disait « 13:30 - 14:30 (1h) » pour un groupe de 64 qui jouait jusqu a
+// 16:55 (la fenetre de son premier bowling), et tassait offre, pistes et prix
+// sur la meme ligne grise : le programme et le prix ont maintenant leur bloc.
 function getPosIdentityParts(r) {
-  const laserWindow = getLaserWindowsFromReservation(r)[0] || null;
-  const bowlingWindow = getBowlingWindowsFromReservation(r)[0] || null;
-  const window = r.type === 'laser' ? laserWindow : bowlingWindow;
-  // La duree se lit dans la fenetre (11:00 - 12:00), mais pas toujours : sur
-  // une formule, la fenetre affichee est celle du bowling et la duree du
-  // dossier peut differer. Elle est donc ECRITE, collee a l'horaire, pour que
-  // la ligne d'identite reste la seule source de ces faits maintenant que le
-  // premier bloc de la fiche ne les recopie plus.
-  const duree = formatDurationLabel(Number(r.duration) || 0);
-  const horaire = window
-    ? `${formatClockDisplay(window.start)} - ${formatClockDisplay(window.end)}${duree ? ` (${duree})` : ''}`
-    : `${String(r.startTime || '')}${duree ? ` (${duree})` : ''}`;
-  const lieu = r.type === 'laser'
-    ? 'Laser Game'
-    : (r.lanes || []).length ? `Piste${r.lanes.length > 1 ? 's' : ''} ${r.lanes.join(', ')}` : 'Hors piste';
-  const parts = [
-    // Le #id ne parle a personne au comptoir (Movsar 2026-08-25) : la
-    // reference technique vit dans le journal d audit et l export, pas
-    // dans l entete qu on lit au telephone.
-    escapeHtml(getReservationLabel(r)),
-    escapeHtml(horaire),
-    escapeHtml(lieu),
+  const span = getStaffTerrainSpan(r);
+  const jour = r.date ? parseLocalDate(r.date).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+  // OU, en court (une des cinq questions du comptoir) : les pistes, l arene ;
+  // le detail par activite est dans le programme juste dessous.
+  const fenetres = getStaffResourceWindows(r, 'all');
+  const pistes = [...new Set(fenetres.filter(f => f.resourceType === 'bowling_lane').flatMap(f => f.lanes || []))].filter(Number.isFinite);
+  const arene = fenetres.some(f => f.resourceType === 'laser_arena') || getPendingLaserPassesForReservation(r).length > 0;
+  const lieu = [pistes.length ? `Piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}` : '', arene ? 'arène laser' : ''].filter(Boolean).join(' + ');
+  return [
+    escapeHtml(jour),
+    escapeHtml(`${formatClockDisplay(span.start)} → ${formatClockDisplay(span.end)}`),
+    escapeHtml(lieu ? lieu.charAt(0).toUpperCase() + lieu.slice(1) : 'Hors piste'),
     escapeHtml(joueursDuDossier(r)),
-  ];
-  // CE QU IL Y A A ENCAISSER, DES L OUVERTURE DE LA FICHE, et dit comme tel
-  // quand le prix a ete ajuste pour ce dossier (review manager 2026-08-26 :
-  // « quand on clique dessus on voit combien ils doivent payer... comme ca les
-  // etudiants qui bossent au comptoir peuvent le voir directement »). Sans la
-  // mention, un montant plus bas que la formule affichee passe pour une erreur.
-  // LA FICHE LIT LA MEME REGLE QUE LES HUIT AUTRES ECRANS. Elle decidait avec
-  // getReservationPriceGap, qui est le calcul du chemin d ECRITURE : il replie
-  // sur le catalogue du jour quand la reference n est pas ecrite sur le dossier,
-  // et il n a pas de seuil. Mesure : sur la fixture QA 9005 (prix 180, aucune
-  // base ecrite, catalogue du jour 324) la fiche annoncait « 180 € (prix
-  // ajusté) » pendant que la liste, le planning, l arene, la file d accueil, la
-  // page Evenements, la Vue d ensemble, la Direction et le ticket se taisaient ;
-  // et sur un dossier a 200 € dont la base ecrite vaut 0, un cafe a 6 € suffisait
-  // a la faire parler. C etait la derniere copie de la regle d avant le lot, sur
-  // l ecran ou le comptoir explique justement l ecart au client.
-  const prixDossier = getReservationPriceState(r);
-  if (Number(r.price) >= 0 && (Number(r.price) > 0 || prixDossier.ajuste)) {
-    // ET LE MONTANT S ECRIT COMME PARTOUT AILLEURS. Cette ligne composait le
-    // prix a la main : l espace fine insecable etait la, le groupement des
-    // milliers non. Au-dessus de mille euros la fiche ecrivait « 1290 € »
-    // quand les huit autres surfaces ecrivaient « 1 290 € », sur l ecran
-    // justement fait pour annoncer le montant au client.
-    parts.push(`${formatMoney(prixDossier.price)}${prixDossier.ajuste ? ' (prix ajusté)' : ''}`);
-  }
-  return parts;
+  ].filter(Boolean);
 }
 
 // Mémorise l'élément qui avait le focus AVANT l'ouverture, pour le lui rendre à

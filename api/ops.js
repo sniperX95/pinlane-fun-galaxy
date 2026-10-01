@@ -800,6 +800,7 @@ async function handleGet(req, res, options = {}) {
         monthly: analytics.monthly,
         byType: analytics.byType,
         byChannel: analytics.byChannel,
+        byPaymentMethod: analytics.byPaymentMethod,
         byFormule: analytics.byFormule,
         byOccasion: analytics.byOccasion,
         heatmap: analytics.heatmap,

@@ -196,17 +196,24 @@ async function bootStaff(page) {
 
 function lireLigne(page, id) {
   return page.evaluate((resId) => {
+    // Depuis le 2026-10-01 (cartes de groupe a la caisse) : l encadre
+    // « À vérifier », les gestes de la carte (« Valider », puis « Arrivé » ;
+    // « Confirmé » vit dans la fiche), le programme ligne par ligne, et les
+    // heures de la visite (debut, fin).
     const row = document.querySelector(`#resList .res-row[onclick="openPos(${resId})"]`);
     if (!row) return null;
     const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-    const boutons = [...row.querySelectorAll('.res-status-btn')];
+    const boutons = [...row.querySelectorAll('.gc-actions button')];
+    const minutes = (h) => { const m = /^(\d{1,2}):(\d{2})$/.exec(h || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const debut = minutes(txt(row.querySelector('.gc-when b')));
+    const fin = minutes(txt(row.querySelector('.gc-when small')));
     return {
-      pastille: txt(row.querySelector('.res-state-pill.review')),
+      pastille: txt(row.querySelector('.gc-flag.tone-review b')),
       premier: txt(boutons[0]),
       premierClasses: boutons[0] ? boutons[0].className : '',
       confirmeAllume: boutons.some((b) => txt(b) === 'Confirmé' && b.classList.contains('active')),
-      offre: txt(row.querySelector('.res-offer')),
-      duree: txt(row.querySelector('.res-c-time span')),
+      offre: [...row.querySelectorAll('.gc-step-what')].map((w) => [txt(w.querySelector('b')), txt(w.querySelector('small'))].filter(Boolean).join(' ')).join(' · '),
+      dureeMinutes: debut !== null && fin !== null ? fin - debut : null,
     };
   }, id);
 }
@@ -216,6 +223,10 @@ async function parcours(browser, donnees) {
   const errs = [];
   page.on('console', (msg) => { if (msg.type() === 'error') errs.push('CONSOLE: ' + msg.text()); });
   page.on('pageerror', (e) => errs.push(String((e && e.message) || e)));
+  // Le matin du jour joue (matrice : samedi 18 juillet 2026) : ses dossiers
+  // sont « à venir ». Sur une date passee, une carte de la liste n offre plus
+  // « Arrivé » (2026-10-01, cartes de groupe : un groupe fini s encaisse).
+  await page.clock.install({ time: new Date('2026-07-18T09:00:00') });
   await installMock(page);
   await installPatchMock(page, donnees);
   await page.goto(`${BASE_URL}/?v=averifier-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
@@ -245,10 +256,10 @@ async function main() {
     ok(l1.premier === 'Valider' && /\breview\b/.test(l1.premierClasses) && !l1.confirmeAllume,
       'son premier bouton est « Valider », et « Confirmé » n y est allume nulle part', JSON.stringify({ premier: l1.premier, classes: l1.premierClasses }));
     const autre = await lireLigne(page, ids.autre) || {};
-    ok(autre.premier === 'Confirmé' && autre.confirmeAllume && !autre.pastille, 'une autre ligne a venir garde « Confirmé » allume, sans pastille', JSON.stringify({ premier: autre.premier, allume: autre.confirmeAllume }));
+    ok(autre.premier === 'Arrivé' && !autre.pastille, 'une autre carte a venir propose « Arrivé », sans encadré', JSON.stringify({ premier: autre.premier, pastille: autre.pastille }));
 
     console.log('\n[2] VALIDER D UN CLIC');
-    await page.locator(`#resList .res-row[onclick="openPos(${ids.liste})"] .res-status-btn`, { hasText: 'Valider' }).first().click();
+    await page.locator(`#resList .res-row[onclick="openPos(${ids.liste})"] .gc-actions button`, { hasText: 'Valider' }).first().click();
     await page.waitForTimeout(700);
     const patch = await page.evaluate(() => window.__QA_PATCHES__.slice(-1)[0] || null);
     ok(patch && Number(patch.id) === Number(ids.liste) && patch.validationStatus === 'confirmed', 'le clic envoie validationStatus « confirmed » pour CE dossier', JSON.stringify(patch));
@@ -257,7 +268,7 @@ async function main() {
       const r = state.reservations.find((x) => Number(x.id) === Number(id)) || {};
       return { validationStatus: r.validationStatus, status: r.status, toasts: [...document.querySelectorAll('.toast, #toast')].map((t) => t.textContent.trim()).filter(Boolean) };
     }, ids.liste);
-    ok(l2.premier === 'Confirmé' && l2.confirmeAllume && !l2.pastille, 'la ligne redevient « Confirmé », sans pastille', JSON.stringify({ premier: l2.premier, allume: l2.confirmeAllume, pastille: l2.pastille, etat: etat2 }));
+    ok(l2.premier === 'Arrivé' && !l2.pastille, 'la carte validée propose « Arrivé », sans encadré « À vérifier »', JSON.stringify({ premier: l2.premier, pastille: l2.pastille, etat: etat2 }));
 
     console.log('\n[3] LA FICHE');
     await page.evaluate((id) => openPos(id), ids.fiche);
@@ -294,7 +305,7 @@ async function main() {
     const v = await lireLigne(page, 990001) || {};
     ok(v.offre === 'Minigolf Blacklight 45 min · Playground toute la journée · Fun Run by PIXEL 2 × 30 min',
       'la ligne dit chaque activite avec ce qu elle achete (la plaine a la journee, le Fun Run en 2 sessions de 30 min, retrouvees au catalogue)', `« ${v.offre} »`);
-    ok(v.duree === '1h45', 'et la duree de la visite (45 min + 2 × 30 min, la plaine ne compte pas), plus la demi-heure par defaut', `« ${v.duree} »`);
+    ok(v.dureeMinutes === 105, 'et la carte va de son debut a debut + 1h45 (45 min + 2 × 30 min, la plaine ne compte pas), plus la demi-heure par defaut', `« ${v.dureeMinutes} min »`);
 
     ok(errs.length === 0, 'aucune erreur console', errs.slice(0, 3).join(' | '));
     await page.close();
@@ -306,13 +317,13 @@ async function main() {
       const c = await parcours(browser, donnees);
       const lc = await lireLigne(c.page, c.ids.liste) || {};
       casse = '';
-      ok(lc.premier === 'Confirmé' && lc.confirmeAllume && !lc.pastille, 'sans la regle, la demande redit « Confirmé » : ce gate ROUGIRAIT', JSON.stringify({ premier: lc.premier, pastille: lc.pastille }));
+      ok(lc.premier === 'Arrivé' && !lc.pastille, 'sans la regle, la demande se lit comme une carte confirmée : ce gate ROUGIRAIT', JSON.stringify({ premier: lc.premier, pastille: lc.pastille }));
       await c.page.close();
     }
     if (ok(src.split(MUTATIONS.signature[0]).length === 2, 'contre-epreuve montable : validationStatus figure une seule fois dans la signature de re-rendu')) {
       casse = 'signature';
       const c = await parcours(browser, donnees);
-      await c.page.locator(`#resList .res-row[onclick="openPos(${c.ids.liste})"] .res-status-btn`, { hasText: 'Valider' }).first().click();
+      await c.page.locator(`#resList .res-row[onclick="openPos(${c.ids.liste})"] .gc-actions button`, { hasText: 'Valider' }).first().click();
       await c.page.waitForTimeout(700);
       const lc = await lireLigne(c.page, c.ids.liste) || {};
       casse = '';

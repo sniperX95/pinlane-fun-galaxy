@@ -2187,6 +2187,8 @@ function dirActivityMicroBand(analytics) {
   const stats = [
     { label: "Taux d'encaissement", value: totals.paymentRate == null ? 'n/d' : formatAdminPercent(totals.paymentRate) },
     { label: 'Réservations payées', value: dirFormatValue(totals.paid || 0, 'int') },
+    // Le MONTANT encaisse (2026-10-01) : la somme des dossiers payes.
+    { label: 'Encaissé', value: totals.collected == null ? 'n/d' : formatMoney(totals.collected) },
     { label: 'Clients uniques', value: dirFormatValue(clients.unique || 0, 'int') },
     { label: 'Nouveaux clients', value: dirFormatValue(clients.new || 0, 'int') },
     { label: 'Déjà venus', value: dirFormatValue(clients.returning || 0, 'int') },
@@ -2241,7 +2243,8 @@ function dirGridHtml(range = getDirRange()) {
     <article class="dir-card"><h3 class="dir-card-title">Répartition par activité (chiffre d'affaires)</h3><div class="dir-chart" id="dirChartTypes"></div></article>
     <article class="dir-card"><h3 class="dir-card-title">Répartition par activité (volume)</h3><div class="dir-chart" id="dirChartTypesVol"></div></article>
     <article class="dir-card"><h3 class="dir-card-title">Canaux de réservation</h3><div class="dir-chart" id="dirChartChannels"></div></article>
-    <article class="dir-card"><h3 class="dir-card-title">Motifs de visite</h3><div class="dir-chart" id="dirChartOccasions"></div></article>`);
+    <article class="dir-card"><h3 class="dir-card-title">Motifs de visite</h3><div class="dir-chart" id="dirChartOccasions"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Encaissé par moyen de paiement</h3><div class="dir-chart" id="dirChartPayments"></div></article>`);
   const detail = dirActSection('Formules et capacité', `
     <article class="dir-card"><h3 class="dir-card-title">Top formules par chiffre d'affaires</h3><div class="dir-chart" id="dirChartFormules"></div></article>
     <article class="dir-card"><h3 class="dir-card-title">Occupation du bowling</h3><div class="dir-chart" id="dirChartOccupancy"></div></article>`);
@@ -3176,6 +3179,14 @@ function mountDirectionCharts() {
       parts: dirTopParts(analytics.byOccasion, 'occasion', 'count', 6).map((part) => ({ label: dirCapitalize(part.label), value: part.value })),
       format: 'int',
       motionKey: `${motionBase}|occasions`,
+    });
+    // L encaisse par moyen : Carte et Espèces sont notes au clic « Payé »
+    // depuis le 2026-10-01 ; avant, ou sans choix, « Non précisé ».
+    const moyens = Array.isArray(analytics.byPaymentMethod) ? analytics.byPaymentMethod : [];
+    charts.donutChart(document.getElementById('dirChartPayments'), {
+      parts: moyens.filter((m) => Number(m.amount) > 0).map((m) => ({ label: m.label, value: Number(m.amount) || 0 })),
+      format: 'euro',
+      motionKey: `${motionBase}|payments`,
     });
     // Occupation du bowling : piste-heures reservees (succes) vs capacite libre
     // (capacite - reservees). rate=null / capacite 0 -> donut vide calme.

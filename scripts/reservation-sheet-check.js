@@ -240,7 +240,11 @@ async function main() {
     };
     const infos = await mesureOnglet('details');
     ok(infos.faits >= 2, `« Infos » : l en-tete se lit en ${infos.faits} faits (sans decoupe, « aucune redite » ne prouverait rien)`);
-    ok(infos.hauteur <= 560, `« Infos » : hauteur MESUREE ${infos.hauteur}px (plafond 560, valait 868 avant refonte)`);
+    // PLAFOND RELEVE LE 2026-10-01 : la fiche est devenue « la carte en
+    // grand » (Movsar : le prix par personne et le detail par activite vivent
+    // dans la fiche). Elle porte le programme heure par heure et l addition ;
+    // le plafond attrape toujours une derive.
+    ok(infos.hauteur <= 820, `« Infos » : hauteur MESUREE ${infos.hauteur}px (plafond 820 depuis la fiche « carte en grand », valait 868 avant la refonte d aout)`);
     ok(infos.boutons <= 8, `« Infos » : ${infos.boutons} boutons a l ecran (plafond 8, valait 11 avant refonte)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);
     const modif = await mesureOnglet('modifier');
@@ -392,18 +396,21 @@ async function main() {
       // rougit au hasard ne protege plus rien : on cesse de le croire. On attend
       // donc que les etiquettes existent, avec un plafond - si elles n arrivent
       // JAMAIS, la mesure part quand meme et l assertion rougit pour de bon.
+      // Depuis le 2026-10-01, programme et suivi sont UN SEUL bloc
+      // « Programme » : les activites d une formule s y cochent. « Ne
+      // coexistent pas » se lit donc : un seul bloc, qui porte les coches.
       const etiquettes = () => [...document.querySelectorAll('#posOverlay .info-label, .pos-sheet .info-label')]
         .map((n) => n.textContent.trim());
       const limite = Date.now() + 5000;
       while (Date.now() < limite) {
         const vues = etiquettes();
-        if (vues.some((l) => /Suivi des activit|Programme du groupe/i.test(l))) break;
+        if (vues.some((l) => /^Programme$/i.test(l))) break;
         await new Promise((r) => setTimeout(r, 100));
       }
       const labels = etiquettes();
       return {
-        suivi: labels.some((l) => /Suivi des activit/i.test(l)),
-        programme: labels.some((l) => /Programme du groupe/i.test(l)),
+        suivi: document.querySelectorAll('#posOverlay .gc-steps .gc-check').length > 0,
+        programme: labels.filter((l) => /^Programme$|Programme du groupe|Suivi des activit/i.test(l)).length > 1,
         // Aucun identifiant technique ne doit s afficher a la place d un nom.
         idsBruts: [...document.querySelectorAll('#posOverlay, .pos-sheet')]
           .map((n) => n.textContent || '')

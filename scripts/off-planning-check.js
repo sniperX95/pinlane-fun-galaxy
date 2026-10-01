@@ -180,24 +180,23 @@ async function main() {
     ok(boxes.laser.laser === true && boxes.laser.bowling === false, 'onglet Laser : grille laser seule');
 
     // =====================================================================
-    console.log('\n[4] La section « Hors planning » ouvre la liste, sans doublon');
+    // Depuis le 2026-10-01 (cartes de groupe a la caisse), la section a part
+    // est devenue une marque sur la carte : le groupe vit dans son moment
+    // (À venir...), et sa carte dit « Hors planning ».
+    console.log('\n[4] La carte « Hors planning » se voit dans la liste, sans doublon');
     // =====================================================================
     await switchTab(page, 'all');
     const list = await page.evaluate(() => {
-      const sections = [...document.querySelectorAll('#resList .res-section')];
-      const off = document.querySelector('#resList .res-section.offplanning');
-      const rowsOf = (el) => [...(el?.querySelectorAll('.res-row') || [])].map(r => r.textContent);
+      const marquees = [...document.querySelectorAll('#resList .res-row')].filter(r => r.querySelector('.gc-tag') && /Hors planning/.test(r.querySelector('.gc-tag').textContent));
       return {
-        firstIsOff: !!sections.length && sections[0].classList.contains('offplanning'),
-        offRows: rowsOf(off),
-        offCount: off?.querySelector('.count')?.textContent || '',
+        offRows: marquees.map(r => r.textContent),
+        offSection: marquees.length ? [...marquees[0].closest('.res-section').classList].join(' ') : '',
         leaOccurrences: [...document.querySelectorAll('#resList .res-row')].filter(r => r.textContent.includes('Anniversaire Lea')).length,
         totalRows: document.querySelectorAll('#resList .res-row').length,
       };
     });
-    ok(list.firstIsOff === true, 'la section hors planning est la PREMIERE de la liste');
-    ok(list.offRows.length === 1 && list.offRows[0].includes('Anniversaire Lea'), 'elle contient exactement l anniversaire FORMULE 6');
-    ok(list.offCount === '1', `son compteur affiche 1 (obtenu « ${list.offCount} »)`);
+    ok(list.offRows.length === 1 && list.offRows[0].includes('Anniversaire Lea'), 'une seule carte porte « Hors planning » : l anniversaire FORMULE 6');
+    ok(/\bupcoming\b/.test(list.offSection), `elle vit dans son moment, « À venir » (obtenu « ${list.offSection} »)`);
     ok(list.leaOccurrences === 1, `la resa hors planning n est PAS dupliquee dans les sections de statut (${list.leaOccurrences} occurrence(s))`);
     ok(list.totalRows === 4, `les 4 resas du jour restent listees (obtenu ${list.totalRows})`);
 
@@ -206,10 +205,10 @@ async function main() {
     await page.evaluate(() => { setStaffStatusFilter('upcoming'); });
     await page.waitForTimeout(250);
     const filtered = await page.evaluate(() => ({
-      off: !!document.querySelector('#resList .res-section.offplanning'),
+      off: [...document.querySelectorAll('#resList .gc-tag')].some(t => /Hors planning/.test(t.textContent)),
       rows: document.querySelectorAll('#resList .res-row').length,
     }));
-    ok(filtered.off === true, 'filtre « A venir » : la zone hors planning reste presente');
+    ok(filtered.off === true, 'filtre « A venir » : la carte hors planning reste presente');
     ok(filtered.rows === 3, `filtre « A venir » : 3 resas (obtenu ${filtered.rows})`);
     await page.evaluate(() => { setStaffStatusFilter('all'); });
     await page.waitForTimeout(200);
@@ -245,7 +244,7 @@ async function main() {
         await bootStaff(page, 'mutation');
         mutated = await page.evaluate(() => ({
           sub: document.getElementById('staffAllSub')?.textContent || '',
-          off: !!document.querySelector('#resList .res-section.offplanning'),
+          off: [...document.querySelectorAll('#resList .gc-tag')].some(t => /Hors planning/.test(t.textContent)),
         }));
       } finally {
         fs.writeFileSync(APP, original); // restauration par edition inverse
@@ -255,7 +254,7 @@ async function main() {
       await bootStaff(page, 'restore');
       const restored = await page.evaluate(() => ({
         sub: document.getElementById('staffAllSub')?.textContent || '',
-        off: !!document.querySelector('#resList .res-section.offplanning'),
+        off: [...document.querySelectorAll('#resList .gc-tag')].some(t => /Hors planning/.test(t.textContent)),
       }));
       ok(restored.off === true && restored.sub === '1 hors planning', 'restauration inverse : la zone et l alerte reviennent');
     }

@@ -155,8 +155,10 @@ async function main() {
     await page.waitForTimeout(2200);
     const resa = await page.evaluate(() => {
       const text = (document.querySelector('.staff-wrap') || document.body).innerText || '';
-      // Les cases du mois qui portent un compte reel (« N résa »).
-      const filled = (text.match(/\d+\s*résa/g) || []).length;
+      // Les cases du mois qui portent un compte reel (« N réservations » depuis
+      // le lot D du 02/10, « N résa » avant) : lues par la case elle-meme, le
+      // panneau du jour dit aussi « N réservations ».
+      const filled = [...document.querySelectorAll('.pv2-cal-cell .pv2-cal-meta')].filter((m) => /\d+\s*réservation/.test(m.textContent)).length;
       return { filled, apiDown: /API indisponible/i.test(text), waiting: /En attente du serveur/i.test(text) };
     });
     ok(!resa.apiDown, 'aucun bandeau « API indisponible »');

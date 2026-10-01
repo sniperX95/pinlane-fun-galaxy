@@ -380,7 +380,40 @@
 
   function statusChip(r) {
     const meta = statusMeta(r);
-    return `<span class="pv2-chip ${meta.tone}"><span class="pv2-dot ${meta.tone}" style="margin:0"></span>${meta.label}</span>`;
+    // « Payé » dit comment (decision du 01/10 : Carte ou Espèces partout).
+    const moyen = r && r.status === 'paid' && typeof getMoyenPaiementLabel === 'function' ? getMoyenPaiementLabel(r.paymentMethod) : '';
+    return `<span class="pv2-chip ${meta.tone}"><span class="pv2-dot ${meta.tone}" style="margin:0"></span>${meta.label}${moyen ? ` · ${esc(moyen)}` : ''}</span>`;
+  }
+
+  // « pistes 1 à 4 », « piste 3 », « pistes 1, 2, 6 ».
+  function pistesLabel(lanes) {
+    const l = [...new Set((lanes || []).map(Number).filter((n) => n > 0))].sort((a, b) => a - b);
+    if (!l.length) return '';
+    if (l.length === 1) return `piste ${l[0]}`;
+    const suite = l.every((n, i) => i === 0 || n === l[i - 1] + 1);
+    return suite && l.length > 2 ? `pistes ${l[0]} à ${l[l.length - 1]}` : `pistes ${l.join(', ')}`;
+  }
+
+  // La duree REELLE de la venue (de la premiere a la derniere activite), pas
+  // la fenetre du premier bowling : « 1h » pour un groupe la jusqu a 16:55
+  // etait un faux fait (meme correction que la fiche le 01/10).
+  function dureeVenueLabel(r) {
+    const programme = typeof dureeProgrammeLabel === 'function' ? dureeProgrammeLabel(r) : '';
+    if (programme === 'Journée') return programme;
+    if (typeof getStaffTerrainSpan === 'function' && typeof formatDurationLabel === 'function') {
+      const span = getStaffTerrainSpan(r);
+      if (span && span.end > span.start) return formatDurationLabel(span.end - span.start);
+    }
+    return programme || (typeof formatDurationLabel === 'function' ? formatDurationLabel(Number(r.duration) || 1) : `${r.duration || 1}h`);
+  }
+
+  // Une formule dit SON nom (« FORMULE 7 »), pas « Formule ».
+  function nomFormuleOuType(r) {
+    if (r && (r.formuleId || r.type === 'formule')) {
+      const f = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
+      if (f && f.name) return f.name;
+    }
+    return typeLabel(r);
   }
 
   function typeLabel(reservation) {
@@ -576,10 +609,15 @@
     const byDay = new Map();
     source.forEach((r) => {
       if (!r.date || !String(r.date).startsWith(range.monthKey)) return;
-      const agg = byDay.get(r.date) || { count: 0, pax: 0, revenue: 0 };
+      const agg = byDay.get(r.date) || { count: 0, pax: 0, revenue: 0, aCloturer: 0, aVerifier: 0 };
       agg.count += 1;
       agg.pax += Number(r.pax) || 0;
       agg.revenue += Number(r.price) || 0;
+      // L URGENT SE VOIT DANS LE MOIS : un jour passe dont un groupe n a pas
+      // ete encaisse (« À clôturer », l argent), une demande pas encore
+      // validee (« À vérifier »).
+      if (r.date < todayStr() && r.status !== 'paid') agg.aCloturer += 1;
+      if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) agg.aVerifier += 1;
       byDay.set(r.date, agg);
     });
     const maxCount = Math.max(1, ...[...byDay.values()].map((a) => a.count));
@@ -597,12 +635,20 @@
       // De VRAIS boutons (audit UX 2026-08-25) : focusables, nommes, le
       // jour choisi porte aria-pressed, et les fleches naviguent (delegue
       // clavier global d app-main sur data-cal-date).
-      cells += `<button type="button" class="pv2-cal-cell heat-${heat} ${dateStr === today ? 'today' : ''} ${dateStr === selectedDate ? 'selected' : ''}" data-cal-date="${dateStr}" aria-pressed="${dateStr === selectedDate ? 'true' : 'false'}" aria-label="${day} · ${agg ? `${agg.count} résa, ${agg.pax} joueurs` : 'aucune résa'}" onclick="pv2SelectResDay('${dateStr}')">
-        <span class="pv2-cal-day">${day}</span>
+      const urgences = agg ? [
+        agg.aCloturer ? { ton: 'red', mot: `${agg.aCloturer} à clôturer` } : null,
+        agg.aVerifier ? { ton: 'amber', mot: `${agg.aVerifier} à vérifier` } : null,
+      ].filter(Boolean) : [];
+      const dit = agg
+        ? [`${agg.count} réservation${agg.count > 1 ? 's' : ''}`, `${agg.pax} joueur${agg.pax > 1 ? 's' : ''}`, ...urgences.map((u) => u.mot)].join(', ')
+        : 'aucune réservation';
+      cells += `<button type="button" class="pv2-cal-cell heat-${heat} ${dateStr === today ? 'today' : ''} ${dateStr === selectedDate ? 'selected' : ''}${urgences.length ? ` has-${urgences[0].ton}` : ''}" data-cal-date="${dateStr}" aria-pressed="${dateStr === selectedDate ? 'true' : 'false'}" aria-label="${day} · ${dit}" onclick="pv2SelectResDay('${dateStr}')">
+        <span class="pv2-cal-day">${day}${agg ? `<span class="pv2-cal-n" aria-hidden="true">${agg.count}</span>` : ''}</span>
         ${/* Un jour sans reservation n affiche RIEN : trente tirets sur un mois
-             creux faisaient une grille de trous. Le compte s ecrit en mots
-             (« 56p » ne se lisait pas). */''}
-        ${agg ? `<span class="pv2-cal-meta"><strong>${agg.count}</strong> résa${agg.count > 1 ? 's' : ''}<span class="pv2-cal-pax">${agg.pax} joueur${agg.pax > 1 ? 's' : ''}</span></span>` : ''}
+             creux faisaient une grille de trous. Le compte s ecrit en mots,
+             sans abreviation (« 3 résas » le 02/10 encore). */''}
+        ${agg ? `<span class="pv2-cal-meta"><strong>${agg.count}</strong> réservation${agg.count > 1 ? 's' : ''}<span class="pv2-cal-pax">${agg.pax} joueur${agg.pax > 1 ? 's' : ''}</span></span>` : ''}
+        ${urgences.length ? `<span class="pv2-cal-flags" aria-hidden="true">${urgences.map((u) => `<span class="pv2-cal-flag ${u.ton}"><i></i><b>${esc(u.mot)}</b></span>`).join('')}</span>` : ''}
       </button>`;
     }
 
@@ -620,14 +666,12 @@
         // 30 min » (audit du 2026-09-28). Avec des pistes, la duree reste celle
         // du dossier, comme la liste du jour.
         const programme = typeof resumeProgrammeReservation === 'function' ? resumeProgrammeReservation(r) : '';
-        const sansPiste = !(r.lanes || []).length && !(Number(r.laneCount) > 0);
-        const dureeVisite = sansPiste && typeof dureeProgrammeLabel === 'function' ? dureeProgrammeLabel(r) : '';
         return `<div class="pv2-flow-item ${meta.tone}" onclick="openStaffReservationDetail('${escJs(r.id)}')">
-          <div class="pv2-flow-time">${esc(time)}<small>${esc(dureeVisite || (typeof formatDurationLabel === 'function' ? formatDurationLabel(Number(r.duration) || 1) : `${r.duration || 1}h`))}</small></div>
+          <div class="pv2-flow-time">${esc(time)}<small>${esc(dureeVenueLabel(r))}</small></div>
           <div class="pv2-flow-rail"></div>
           <div class="pv2-flow-body">
             <strong>${esc(r.name || 'Sans nom')}</strong>
-            <span>${esc(programme || typeLabel(r))} · ${Number(r.pax) || 0} joueurs${(r.lanes || []).length ? ` · piste ${(r.lanes || []).join(', ')}` : ''} · ${money(r.price)}</span>
+            <span>${esc(programme || nomFormuleOuType(r))} · ${Number(r.pax) || 0} joueurs${pistesLabel(r.lanes) ? ` · ${pistesLabel(r.lanes)}` : ''} · ${Number(r.price) > 0 ? money(r.price) : 'prix au comptoir'}</span>
             ${/* La ligne au-dessus finit par le montant : la marque dit donc la
                  REFERENCE, pas une deuxieme fois le montant. */''}
             ${pv2MarqueursDossier(r, { montantDeja: true })}
@@ -644,7 +688,28 @@
     // absence de pastille : la regle porte sur la periode de reference, pas sur
     // la tuile, donc les quatre suivent la meme.
     const refPeriodeVide = !metrics.previousReservations.length;
-    const varia = (texte) => (refPeriodeVide ? '' : texte);
+    // UNE VARIATION COMPARE DEUX MOIS FINIS (02/10, defaut 1 du chantier
+    // console : « +18 % » comparait octobre, dont les trois quarts sont a
+    // venir, a tout septembre). Le mois en cours ou a venir n a pas de
+    // pastille ; il dit plutot ce qui reste a venir.
+    const moisFini = range.monthEnd < todayStr();
+    const varia = (texte) => (refPeriodeVide || !moisFini ? '' : texte);
+    const nomMoisPrecedent = parseLocalDate(range.previousMonthStart).toLocaleDateString('fr-BE', { month: 'long' });
+    const aVenir = metrics.monthReservations.filter((r) => r.date > todayStr());
+    const piedAVenir = !moisFini && aVenir.length
+      ? `dont ${aVenir.length} à venir`
+      : moisFini && !refPeriodeVide ? `vs ${nomMoisPrecedent}` : '';
+    const piedJoueursAVenir = !moisFini && aVenir.length
+      ? `dont ${aVenir.reduce((n, r) => n + (Number(r.pax) || 0), 0).toLocaleString('fr-BE')} à venir`
+      : moisFini && !refPeriodeVide ? `vs ${nomMoisPrecedent}` : '';
+    // L occupation d un mois en cours se mesure sur ses jours PASSES : les
+    // jours a venir, encore vides, la tiraient vers le bas.
+    const joursPasses = (range.monthDays || []).filter((d) => d <= todayStr());
+    const moisEnCours = !moisFini && range.monthStart <= todayStr();
+    const occupation = moisEnCours && typeof getStaffReservationsOccupancy === 'function' && joursPasses.length
+      ? getStaffReservationsOccupancy(joursPasses, metrics.monthReservations.filter((r) => r.date <= todayStr()))
+      : metrics.occupancy;
+    const piedOccupation = moisFini ? 'pistes, mois entier' : moisEnCours ? 'pistes, jours passés du mois' : 'pistes, réservé à ce jour';
 
     // Une courbe de tendance a besoin d une TENDANCE. Sur une serie ou un seul
     // jour est rempli, le trace est un pic isole sur une ligne plate : il
@@ -668,7 +733,7 @@
     // seul cas ou « < 1% » dit la verite.
     const heuresPistesVendues = (Array.isArray(metrics.series.occupancy) ? metrics.series.occupancy : [])
       .reduce((somme, valeur) => somme + (Number(valeur) || 0), 0);
-    const occupationNulleMaisActive = metrics.occupancy === 0 && heuresPistesVendues > 0;
+    const occupationNulleMaisActive = occupation === 0 && heuresPistesVendues > 0;
 
     const paint = () => {
     root.innerHTML = `<div class="pv2-shell">
@@ -693,23 +758,30 @@
       })}
 
       <section class="pv2-stats">
-        ${stat({ label: 'Réservations ce mois', count: metrics.reservations, delta: varia(metrics.reservationTrend), deltaTone: trendTone(metrics.reservationTrend), series: courbe(metrics.series.reservations) })}
-        ${stat({ label: 'Joueurs ce mois', count: metrics.players, delta: varia(metrics.playersTrend), deltaTone: trendTone(metrics.playersTrend), series: courbe(metrics.series.players) })}
-        ${stat({ label: "Chiffre d'affaires", value: (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view')) ? '···' : money(metrics.revenue), delta: varia(metrics.revenueTrend), deltaTone: trendTone(metrics.revenueTrend), series: courbe(metrics.series.revenue) })}
+        ${/* Le libelle dit le mois affiche : « ce mois » restait ecrit en
+             feuilletant septembre ou novembre. */''}
+        ${stat({ label: 'Réservations', count: metrics.reservations, delta: varia(metrics.reservationTrend), deltaTone: trendTone(metrics.reservationTrend), foot: piedAVenir, series: courbe(metrics.series.reservations) })}
+        ${stat({ label: 'Joueurs', count: metrics.players, delta: varia(metrics.playersTrend), deltaTone: trendTone(metrics.playersTrend), foot: piedJoueursAVenir, series: courbe(metrics.series.players) })}
+        ${stat({ label: "Chiffre d'affaires", value: (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view')) ? '···' : money(metrics.revenue), delta: varia(metrics.revenueTrend), deltaTone: trendTone(metrics.revenueTrend), foot: moisFini && !refPeriodeVide ? `vs ${nomMoisPrecedent}` : moisFini ? '' : 'réservé, à venir compris', series: courbe(metrics.series.revenue) })}
         ${occupationNulleMaisActive
-          ? stat({ label: 'Occupation moyenne', value: '< 1%', delta: varia(metrics.occupancyTrend), deltaTone: trendTone(metrics.occupancyTrend), foot: 'capacité pistes du mois', series: courbe(metrics.series.occupancy) })
-          : stat({ label: 'Occupation moyenne', count: metrics.occupancy, suffix: '%', delta: varia(metrics.occupancyTrend), deltaTone: trendTone(metrics.occupancyTrend), foot: 'capacité pistes du mois', series: courbe(metrics.series.occupancy) })}
+          ? stat({ label: 'Occupation', value: '< 1%', delta: varia(metrics.occupancyTrend), deltaTone: trendTone(metrics.occupancyTrend), foot: piedOccupation, series: courbe(metrics.series.occupancy) })
+          : stat({ label: 'Occupation', count: occupation, suffix: '%', delta: varia(metrics.occupancyTrend), deltaTone: trendTone(metrics.occupancyTrend), foot: piedOccupation, series: courbe(metrics.series.occupancy) })}
       </section>
 
       <section class="pv2-split">
         <article class="pv2-panel">
           <div class="pv2-panel-head">
             <h2>${esc(monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1))}</h2>
-            <small>Intensité = réservations réelles par jour</small>
           </div>
           <div class="pv2-panel-body pv2-cal">
             <div class="pv2-cal-head"><span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span></div>
             <div class="pv2-cal-grid">${cells}</div>
+            ${/* Sur telephone la case n a la place que d un point : la legende
+                 dit ce que veut dire chaque couleur (jamais la couleur seule). */''}
+            ${(() => {
+              const tons = new Set([...byDay.values()].flatMap((a) => [a.aCloturer ? 'red' : '', a.aVerifier ? 'amber' : '']).filter(Boolean));
+              return tons.size ? `<p class="pv2-cal-legende">${tons.has('red') ? '<span><i class="red"></i>à clôturer</span>' : ''}${tons.has('amber') ? '<span><i class="amber"></i>à vérifier</span>' : ''}</p>` : '';
+            })()}
           </div>
         </article>
         <article class="pv2-panel">

@@ -18797,3 +18797,33 @@ button.pv2-cal-cell:focus-visible {
 .gc-note-ouvrir:hover { color: var(--text); background: var(--subtle); }
 .gc-note-ouvrir:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (max-width: 560px) { .gc-note-ouvrir { min-height: 44px; } }
+
+/* LOT D (02/10) : LE MOIS DIT L URGENT. Un jour passe avec un groupe pas
+   encaisse porte « N à clôturer » (rouge), une demande pas validee « N à
+   vérifier » (ambre) : mot ET couleur, jamais la couleur seule. Sur
+   telephone, ou la case n a la place que d un chiffre, le nombre de
+   reservations et un point de couleur restent visibles. */
+.pv2-cal-day { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+.pv2-cal-n { display: none; font-size: 11px; font-weight: 600; color: var(--muted); }
+.pv2-cal-flags { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.pv2-cal-flag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+.pv2-cal-legende { display: none; gap: 12px; margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
+.pv2-cal-legende span { display: inline-flex; align-items: center; gap: 5px; }
+.pv2-cal-legende i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pv2-cal-legende .red { color: var(--danger); }
+.pv2-cal-legende .amber { color: var(--warning); }
+.pv2-cal-flag i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pv2-cal-flag.red { color: var(--danger); }
+.pv2-cal-flag.amber { color: var(--warning); }
+.pv2-cal-cell.has-red { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+.pv2-cal-cell.has-amber { border-color: color-mix(in srgb, var(--warning) 50%, var(--line)); }
+@media (max-width: 768px) {
+  .pv2-cal-n { display: inline; }
+  .pv2-cal-flags { flex-direction: row; margin-top: auto; }
+  .pv2-cal-flag b { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .pv2-cal-flag i { width: 7px; height: 7px; }
+  .pv2-cal-legende { display: flex; }
+  .pv2-cal-legende span { color: var(--muted); }
+  .pv2-cal-legende i.red { background: var(--danger); }
+  .pv2-cal-legende i.amber { background: var(--warning); }
+}

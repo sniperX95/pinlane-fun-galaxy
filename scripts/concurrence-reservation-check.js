@@ -539,8 +539,8 @@ async function scenarioF() {
     {
       nom: 'la coche demande le droit « modifier »',
       fichier: 'api/staff-reservations.js',
-      de: "  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle'].includes(key));",
-      vers: "  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress'].includes(key));",
+      de: "  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle', 'noteEquipe'].includes(key));",
+      vers: "  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'noteEquipe'].includes(key));",
       rejouer: async () => { const r = await scenarioF(); return r.droit; },
       attendu: (v) => v === '["reservations.status","reservations.edit"]',
       libelle: 'le comptoir ne pourrait plus cocher une activite faite',

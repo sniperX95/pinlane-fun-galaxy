@@ -1394,12 +1394,26 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       const existingDelayFlag = isTargetReservation && reservation.opsPlan && typeof reservation.opsPlan === 'object'
         ? reservation.opsPlan.delayFlag
         : null;
+      // Les dossiers pousses par la cascade gardent AUSSI leur creneau
+      // d origine (2026-10-02, Movsar : « quand on retire les minutes de
+      // retard ca laisse toujours ca en rouge ») : retirer le retard de la
+      // source les remet a leur place, note comprise.
+      const avantCascade = isTargetReservation ? null : (context.reservations || []).find((item) => Number(item.id) === Number(change.reservationId));
       const delayOrigin = isTargetReservation
         ? {
           startTime: reservation.startTime,
           opsPlan: reservation.opsPlan || null,
           lanes: Array.isArray(reservation.lanes) ? reservation.lanes : [],
         }
+        : avantCascade
+          ? {
+            startTime: avantCascade.startTime,
+            opsPlan: avantCascade.opsPlan || null,
+            lanes: Array.isArray(avantCascade.lanes) ? avantCascade.lanes : [],
+          }
+          : null;
+      const cascadeExisting = !isTargetReservation && avantCascade && avantCascade.opsPlan && typeof avantCascade.opsPlan === 'object'
+        ? avantCascade.opsPlan.delayFlag
         : null;
       return {
         id: change.reservationId,
@@ -1410,8 +1424,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
             minutes: flagMinutes,
             from: change.previousStartTime,
             to: change.newStartTime,
-            existingFlag: existingDelayFlag,
+            existingFlag: isTargetReservation ? existingDelayFlag : cascadeExisting,
             origin: delayOrigin,
+            sourceId: isTargetReservation ? null : reservationId,
           })
           : change.update.opsPlan,
         // UNE NOTE DIT CE QU IL FAUT FAIRE, PAS QUI A CLIQUE.
@@ -1421,11 +1436,17 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         // faits pour une consigne de comptoir qui en contient un. Qui a fait
         // quoi vit dans le journal d audit, c est sa raison d etre ; la note du
         // dossier sert la personne qui accueille le client.
-        noteAppend: change.kind === 'delayed'
-        ? `${DELAY_NOTE_TAG} Retard +${impact.delayMinutes} min.`
-        : change.kind === 'relocate'
-          ? `${DELAY_NOTE_TAG} Pistes ${change.previousLanes.join(', ')} vers ${change.newLanes.join(', ')}.`
-          : `${DELAY_NOTE_TAG} Décalée de ${change.shiftMinutes} min.`,
+        // UNE LIGNE PAR DOSSIER, LE TOTAL (2026-10-02 : la fiche montrait
+        // « Décalée de 10 min » deux fois apres deux retards). La nouvelle
+        // ligne remplace l ancienne et dit le cumul, comme le badge.
+        noteDropTag: 'retard',
+        noteAppend: (() => {
+          const precedent = isTargetReservation ? existingDelayFlag : cascadeExisting;
+          const cumul = (precedent && !precedent.cleared ? Number(precedent.minutes) || 0 : 0) + (Number(flagMinutes) || 0);
+          if (change.kind === 'delayed') return `${DELAY_NOTE_TAG} Retard +${cumul} min.`;
+          if (change.kind === 'relocate') return `${DELAY_NOTE_TAG} Pistes ${change.previousLanes.join(', ')} vers ${change.newLanes.join(', ')}.`;
+          return `${DELAY_NOTE_TAG} Décalée de ${cumul} min.`;
+        })(),
       };
     });
 
@@ -1631,6 +1652,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         startTime: reservation.startTime,
         lanes: reservation.lanes,
         opsPlan: plan,
+        // Retirer l indicateur retire aussi la trace rouge de la note.
+        noteDropTag: 'retard',
       }],
     });
     await createOpsEvent({
@@ -1669,6 +1692,21 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const staffMember = revertSession.member?.name || revertSession.member?.id || 'staff';
     const origin = flag.origin && typeof flag.origin === 'object' ? flag.origin : null;
 
+    // LES DOSSIERS QUE CE RETARD A POUSSES reviennent aussi a leur place
+    // (2026-10-02) : ceux dont le drapeau porte `sourceId` = ce dossier et un
+    // creneau d origine. Dans la MEME ecriture : le controle de conflit valide
+    // l ensemble restaure, pas une moitie.
+    const jour = await buildContext({ centerId: reservation.centerId || 'libramont', date: reservation.date }).catch(() => ({ reservations: [] }));
+    const pousses = (jour.reservations || []).filter((item) => {
+      const f = item && item.opsPlan && typeof item.opsPlan === 'object' ? item.opsPlan.delayFlag : null;
+      return f && !f.cleared && Number(f.sourceId) === reservationId && f.origin && f.origin.startTime && f.origin.opsPlan && typeof f.origin.opsPlan === 'object';
+    });
+    const remettre = pousses.map((item) => {
+      const o = item.opsPlan.delayFlag.origin;
+      const plan = { ...o.opsPlan };
+      delete plan.delayFlag;
+      return { id: Number(item.id), startTime: o.startTime, lanes: Array.isArray(o.lanes) && o.lanes.length ? o.lanes : item.lanes, opsPlan: plan, noteDropTag: 'retard' };
+    });
     // Sans snapshot d'origine (retard legacy antérieur à cette version, ou résa
     // cascadée) : restaurer start_time seul désynchroniserait la donnée
     // (start_time vs resourceBlocks). On se limite alors au masquage.
@@ -1681,7 +1719,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       const [cleared] = await applyReservationScheduleUpdates({
         centerId: reservation.centerId || 'libramont',
         date: reservation.date,
-        updates: [{ id: reservationId, startTime: reservation.startTime, lanes: reservation.lanes, opsPlan: plan }],
+        updates: [{ id: reservationId, startTime: reservation.startTime, lanes: reservation.lanes, opsPlan: plan, noteDropTag: 'retard' }, ...remettre],
       });
       await createOpsEvent({
         centerId: reservation.centerId || 'libramont',
@@ -1717,7 +1755,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         // creneau d origine restaure… » : deux lignes contradictoires que
         // personne n efface, et une note qui grossit a chaque aller-retour.
         noteDropTag: 'retard',
-      }],
+      }, ...remettre],
     });
     await createOpsEvent({
       centerId: reservation.centerId || 'libramont',

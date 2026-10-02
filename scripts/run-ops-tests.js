@@ -698,8 +698,10 @@ function testDelayImpactRelocatesDownstreamWhenDelayedIsStuck() {
   assert.ok(/heure inchangée/.test(downstreamChange.summary), 'staff summary must say the time is unchanged');
 }
 
-// Préférence n°3 : cascade MINIMALE, chaque résa aval décalée du strict
-// nécessaire, un trou de planning absorbe une partie du retard.
+// Préférence n°3 : cascade. Depuis le 2026-10-02 (Movsar : « 20 minutes de
+// retard sur les pistes du dessus, ca devrait afficher 20 minutes a toutes
+// celles en dessous ») : une resa aval que le retard ATTEINT prend le retard
+// entier ; un trou de planning ne l absorbe plus.
 function testDelayImpactCascadeUsesMinimalShift() {
   const { delayed, downstream } = delayImpactBaseReservations();
   const gapDownstream = { ...downstream, startTime: '15:30' };
@@ -715,8 +717,8 @@ function testDelayImpactCascadeUsesMinimalShift() {
   const delayedChange = cascade.changes.find((change) => change.reservationId === 1);
   const downstreamChange = cascade.changes.find((change) => change.reservationId === 2);
   assert.strictEqual(delayedChange.newStartTime, '14:45');
-  assert.strictEqual(downstreamChange.newStartTime, '15:45', 'the 30 min gap absorbs part of the 45 min delay');
-  assert.strictEqual(downstreamChange.shiftMinutes, 15, 'downstream is shifted by the strict minimum, not the full delay');
+  assert.strictEqual(downstreamChange.newStartTime, '16:15', 'downstream reached by the delay takes the full 45 min delay');
+  assert.strictEqual(downstreamChange.shiftMinutes, 45, 'downstream is shifted by the full delay, not the strict minimum (2026-10-02)');
 }
 
 // Formule : un retard sur l'ancre bowling recale le programme, la table suit

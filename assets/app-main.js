@@ -25612,9 +25612,12 @@ function renderEditFormuleBloc(r, formule, lignes) {
     ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>`
     : '';
   if (!ouvert) {
+    // Une visite sans formule dit ce qu elle contient (les activites en
+    // puces), au lieu d un bouton seul.
+    const puces = !lignes.length && typeof renderActivitesCourtes === 'function' ? renderActivitesCourtes(r) : '';
     return `<div class="pos-field" style="grid-column: 1 / -1;">
       <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'ce dossier')}</span>
-      ${listeHtml}
+      ${listeHtml}${puces}
       <button type="button" class="edit-adapter-btn" onclick="toggleEditProgrammeOuvert()">Adapter pour ce dossier</button>
     </div>`;
   }
@@ -25720,94 +25723,130 @@ function renderPosEdit(r) {
     ? resolveDisplayFormule(r.formuleId)
     : null;
   const editFormuleLignes = editFormule && Array.isArray(editFormule.desc) ? editFormule.desc : [];
-  return `<div class="edit-shell ${posSheetClass()}">
+  // L ONGLET « MODIFIER », REFAIT (2026-10-02, Movsar : « cette page modifier
+  // est moche a mort »). Memes fonctions, plus l e-mail du client (il sert aux
+  // messages et n etait modifiable nulle part) : deux cartes cote a cote (le
+  // client ; quand et combien, avec le statut en trois boutons et les joueurs
+  // en + / −), puis le contenu et les pistes sur toute la largeur. Les gestes
+  // qui detruisent passent en liens discrets a gauche, l enregistrement est le
+  // seul bouton plein.
+  const ico = {
+    client: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>',
+    quand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    contenu: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>',
+  };
+  const statuts = [['pending', 'Confirmé'], ['arrived', 'Arrivé'], ['paid', 'Payé']];
+  const contenuBloc = renderEditFormuleBloc(r, editFormule, editFormuleLignes);
+  const pistesBloc = !editNeedsLanes ? (editFormuleLignes.length ? '' : `
+          <div class="pos-field">
+            <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
+            <p class="field-hint">${isLaserRes
+              ? `${Number(e.pax) || 0} joueur${(Number(e.pax) || 0) > 1 ? 's' : ''} : ${getLaserWaveCount(Number(e.pax) || 1)} session${getLaserWaveCount(Number(e.pax) || 1) > 1 ? 's' : ''} de laser. Aucune piste de bowling n’est réservée.`
+              : 'Cette réservation ne prend aucune piste de bowling.'}</p>
+          </div>`) : `
+          <div class="pos-field">
+            <span class="lbl">Pistes</span>
+            <div class="lane-picker" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
+              ${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {
+                const choisie = getEditLaneNumbers().includes(lane);
+                const maintenance = state.laneStatuses[lane] === 'maintenance';
+                return `<button type="button" class="lane-chip${choisie ? ' is-on' : ''}${maintenance ? ' is-off' : ''}"
+                  ${maintenance ? 'disabled aria-disabled="true" title="Piste en maintenance"' : ''}
+                  aria-pressed="${choisie ? 'true' : 'false'}"
+                  onclick="toggleEditLane(${lane})">${lane}</button>`;
+              }).join('')}
+            </div>
+            <p class="field-hint" id="editLanesHint">${editLaneAdvice(r, e)}</p>
+          </div>`;
+  return `<div class="edit-shell es2 ${posSheetClass()}">
     <form class="edit-form" onsubmit="saveEdit(event)">
-      <div class="edit-layout">
-        <div class="edit-stack">
-          <section class="info-block">
-            <span class="info-label">Le client</span>
-            <div class="field-stack">
-              <div class="pos-field">
-                <label class="lbl" for="editNameInput">Client</label>
-                <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" oninput="setEditField('name', this.value)" required>
-              </div>
-              <div class="pos-field">
-                <label class="lbl" for="editPhoneInput">Téléphone</label>
-                <input id="editPhoneInput" class="input" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" required>
+      <div class="es-grid">
+        <section class="es-card">
+          <div class="es-head"><span class="es-ico">${ico.client}</span><h4>Client</h4></div>
+          <div class="pos-field">
+            <label class="lbl" for="editNameInput">Nom</label>
+            <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" autocomplete="off" oninput="setEditField('name', this.value)" required>
+          </div>
+          <div class="es-pair">
+            <div class="pos-field">
+              <label class="lbl" for="editPhoneInput">Téléphone</label>
+              <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" required>
+            </div>
+            <div class="pos-field">
+              <label class="lbl" for="editEmailInput">E-mail</label>
+              <input id="editEmailInput" class="input" type="email" value="${escapeHtml(e.email || '')}" placeholder="facultatif" oninput="setEditField('email', this.value)">
+            </div>
+          </div>
+        </section>
+        <section class="es-card">
+          <div class="es-head"><span class="es-ico">${ico.quand}</span><h4>Quand et combien</h4></div>
+          <div class="es-trio">
+            <div class="pos-field">
+              <label class="lbl" for="editStartInput">Heure</label>
+              <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
+            </div>
+            <div class="pos-field">
+              <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties' : 'Durée'}</label>
+              <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
+                ${isLaserRes
+                  ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${option.price}€ / joueur)</option>`).join('')
+                  : [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
+                ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
+              </select>
+            </div>
+            <div class="pos-field">
+              <label class="lbl" for="editPaxInput">Joueurs</label>
+              <div class="es-stepper">
+                <button type="button" class="es-step" aria-label="Un joueur de moins" onclick="editPaxPas(-1)">−</button>
+                <input id="editPaxInput" class="input" type="number" min="1" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
+                <button type="button" class="es-step" aria-label="Un joueur de plus" onclick="editPaxPas(1)">+</button>
               </div>
             </div>
-          </section>
-        </div>
-        <div class="edit-stack">
-          <section class="info-block">
-            <span class="info-label">La réservation</span>
-            <div class="edit-grid-2">
-              <div class="pos-field">
-                <label class="lbl" for="editStartInput">Heure</label>
-                <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
-              </div>
-              <div class="pos-field">
-                <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties' : 'Durée'}</label>
-                <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
-                  ${isLaserRes
-                    ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${option.price}€ / joueur)</option>`).join('')
-                    : [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
-                  ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
-                </select>
-              </div>
-              <div class="pos-field">
-                <label class="lbl" for="editPaxInput">Joueurs</label>
-                <input id="editPaxInput" class="input" type="number" min="1" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
-              </div>
-              <div class="pos-field">
-                <label class="lbl" for="editStatusInput">Statut</label>
-                <select id="editStatusInput" class="input" oninput="setEditField('status', this.value)">
-                  <option value="pending" ${e.status === 'pending' ? 'selected' : ''}>Confirmé</option>
-                  <option value="arrived" ${e.status === 'arrived' ? 'selected' : ''}>Arrivé</option>
-                  <option value="paid" ${e.status === 'paid' ? 'selected' : ''}>Payé</option>
-                </select>
-              </div>
-              ${renderEditFormuleBloc(r, editFormule, editFormuleLignes)}
-              ${!editNeedsLanes ? (editFormuleLignes.length ? '' : `
-              <div class="pos-field pos-field-wide">
-                <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
-                <p class="field-hint">${isLaserRes
-                  ? `${Number(e.pax) || 0} joueur${(Number(e.pax) || 0) > 1 ? 's' : ''} : ${getLaserWaveCount(Number(e.pax) || 1)} session${getLaserWaveCount(Number(e.pax) || 1) > 1 ? 's' : ''} de laser. Aucune piste de bowling n’est réservée.`
-                  : 'Cette réservation ne prend aucune piste de bowling.'}</p>
-              </div>`) : `
-              <div class="pos-field pos-field-wide">
-                <span class="lbl">Pistes</span>
-                <div class="lane-picker" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
-                  ${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {
-                    const choisie = getEditLaneNumbers().includes(lane);
-                    const maintenance = state.laneStatuses[lane] === 'maintenance';
-                    return `<button type="button" class="lane-chip${choisie ? ' is-on' : ''}${maintenance ? ' is-off' : ''}"
-                      ${maintenance ? 'disabled aria-disabled="true" title="Piste en maintenance"' : ''}
-                      aria-pressed="${choisie ? 'true' : 'false'}"
-                      onclick="toggleEditLane(${lane})">${lane}</button>`;
-                  }).join('')}
-                </div>
-                <p class="field-hint" id="editLanesHint">${editLaneAdvice(r, e)}</p>
-              </div>`}
+          </div>
+          <div class="pos-field">
+            <span class="lbl" id="editStatusLabel">Statut</span>
+            <div class="es-seg" role="radiogroup" aria-labelledby="editStatusLabel">
+              ${statuts.map(([v, mot]) => `<button type="button" role="radio" class="es-seg-btn is-${v}${e.status === v ? ' is-on' : ''}" aria-checked="${e.status === v}" data-statut="${v}" onclick="setEditStatut('${v}')">${mot}</button>`).join('')}
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
+        ${contenuBloc || pistesBloc ? `<section class="es-card es-wide">
+          <div class="es-head"><span class="es-ico">${ico.contenu}</span><h4>Contenu et pistes</h4></div>
+          <div class="es-contenu">${contenuBloc}${pistesBloc}</div>
+        </section>` : ''}
       </div>
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
-      <div class="edit-actions">
+      <div class="edit-actions es-actions">
         <div class="edit-actions-destructive">
-          <button type="button" class="btn-secondary warn" onclick="cancelRes(${r.id})">Annuler réservation</button>
-          <button type="button" class="btn-secondary danger" onclick="deleteRes(${r.id})">Supprimer</button>
+          <button type="button" class="btn-secondary warn es-lien" onclick="cancelRes(${r.id})">Annuler la réservation</button>
+          <button type="button" class="btn-secondary danger es-lien" onclick="deleteRes(${r.id})">Supprimer</button>
         </div>
         <div class="edit-actions-main">
-        <button type="button" class="btn-secondary" onclick="closePos()">Fermer</button>
-        <button type="submit" class="btn-primary">Enregistrer
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        </button>
+          <button type="button" class="btn-secondary" onclick="closePos()">Fermer</button>
+          <button type="submit" class="btn-primary es-save">Enregistrer</button>
         </div>
       </div>
     </form>
   </div>`;
+}
+
+// Les joueurs en + / − : le meme chemin que la saisie (pistes resynchronisees).
+function editPaxPas(delta) {
+  if (!state.editState) return;
+  const n = Math.max(1, Math.min(240, (Math.trunc(Number(state.editState.pax)) || 1) + delta));
+  const champ = document.getElementById('editPaxInput');
+  if (champ) champ.value = n;
+  setEditField('pax', n, true);
+}
+
+// Le statut en trois boutons : un seul allume, sans re-rendre le formulaire.
+function setEditStatut(valeur) {
+  setEditField('status', valeur);
+  document.querySelectorAll('.es-seg-btn[data-statut]').forEach(bouton => {
+    const on = bouton.getAttribute('data-statut') === valeur;
+    bouton.classList.toggle('is-on', on);
+    bouton.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
 }
 
 // UN ECHEC D'ENREGISTREMENT DOIT RESTER SOUS LES YEUX (2026-08-20).
@@ -25873,7 +25912,7 @@ async function saveEdit(e) {
   // seuls ceux-la sont poses sur le dossier. Un statut qu elle n a pas touche
   // reste celui qui est en base, meme si un collegue l a change pendant
   // qu elle tapait.
-  const champsSaisis = { name: es.name, phone: es.phone, pax, duration, startTime: es.startTime, status: es.status };
+  const champsSaisis = { name: es.name, phone: es.phone, email: String(es.email || '').trim(), pax, duration, startTime: es.startTime, status: es.status };
   const touches = Object.keys(champsSaisis)
     .filter((champ) => valeurReservationComparable(champsSaisis[champ]) !== valeurReservationComparable(origine[champ]));
   const lanesFinales = requiresLanes ? lanes : [];

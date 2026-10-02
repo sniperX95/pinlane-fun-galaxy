@@ -18988,3 +18988,49 @@ button.pv2-cal-cell:focus-visible {
 .es2 .es-seg-btn { min-height: 32px; }
 .es2 .edit-adapter-btn { margin: 2px 0 0 !important; }
 .es2 .gc-acts { margin-bottom: 2px; }
+
+/* ── RESERVATION RAPIDE : UNE SEULE FACON DE CHOISIR (2026-10-02) ─────────────
+   Deux modes en onglets (Activites / Formule), LA liste des activites, et le
+   « sur mesure » en extras (arcades, nourriture, boissons, autre). */
+.qb-mode-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
+.qb-mode-tab { min-height: 36px; border: 0; border-radius: calc(var(--radius-md) - 3px); background: transparent; color: var(--muted); font: 600 13.5px/1 var(--font-ui); cursor: pointer; transition: background-color 160ms ease, color 160ms ease; }
+.qb-mode-tab:hover { color: var(--text); background: var(--subtle); }
+.qb-mode-tab.is-on { background: var(--surface); color: var(--text); box-shadow: 0 1px 0 var(--line-strong), inset 0 0 0 1px var(--line-strong); }
+.qb-mode-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.qb-liste .qb-visit-grid { display: flex; flex-direction: column; gap: 6px; }
+.qb-liste .qb-visit-row { transition: border-color 160ms ease, background-color 160ms ease; }
+.qb-liste .qb-visit-options { flex-wrap: wrap; align-items: center; }
+.qb-opt-legend { font-size: 11.5px; font-weight: 600; color: var(--muted); margin-right: 4px; }
+.qb-extras-open { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; min-height: 38px; padding: 0 14px; border: 1px dashed var(--line-strong); border-radius: 999px; background: transparent; color: var(--accent-strong); font: 600 13px/1 var(--font-ui); cursor: pointer; }
+.qb-extras-open span { font-size: 16px; }
+.qb-extras-open:hover { border-color: var(--accent); background: var(--accent-soft); }
+.qb-extras { margin-top: 14px; padding: 14px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--accent-soft) 35%, var(--surface)); display: flex; flex-direction: column; gap: 14px; }
+.qb-extras-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.qb-extras-head b { font-size: 14px; color: var(--text); }
+.qb-extras-head small { font-size: 12px; color: var(--muted); flex: 1; }
+.qb-x-close { border: 0; background: transparent; color: var(--muted); font: 600 12.5px/1 var(--font-ui); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.qb-x-groupe { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.qb-x-groupe:first-of-type { border-top: 0; padding-top: 0; }
+.qb-x-titre { display: flex; align-items: baseline; gap: 8px; }
+.qb-x-titre b { font-size: 13px; color: var(--text); }
+.qb-x-titre small { font-size: 11.5px; color: var(--muted); }
+.qb-x-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.qb-x-montant { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.qb-x-montant .qb-input { width: 96px; min-height: 36px; }
+.qb-x-ligne { display: grid; grid-template-columns: minmax(0, 1fr) 70px 104px 34px; gap: 6px; align-items: center; }
+.qb-x-ligne .qb-input { min-height: 36px; }
+.qb-x-prix { position: relative; display: flex; }
+.qb-x-prix .qb-input { width: 100%; padding-right: 22px; }
+.qb-x-prix i { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-style: normal; font-size: 12.5px; color: var(--muted); pointer-events: none; }
+.qb-x-rm { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: var(--radius-md); background: transparent; color: var(--muted); font-size: 17px; cursor: pointer; }
+.qb-x-rm:hover { color: var(--danger); border-color: var(--danger); }
+.qb-x-add { align-self: flex-start; border: 0; background: transparent; color: var(--accent-strong); font: 600 12.5px/1 var(--font-ui); padding: 6px 0; cursor: pointer; }
+.qb-x-total { align-self: flex-end; font-size: 13px; color: var(--muted); }
+.qb-x-total b { font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+.qb-step-note .qb-opt { font-weight: 400; color: var(--muted); }
+.qb-step-note .qb-textarea { min-height: 56px; }
+@media (max-width: 640px) {
+  .qb-x-ligne { grid-template-columns: minmax(0, 1fr) 64px 90px 44px; }
+  .qb-x-rm { width: 44px; height: 44px; }
+  .qb-mode-tab, .qb-extras-open { min-height: 44px; }
+}

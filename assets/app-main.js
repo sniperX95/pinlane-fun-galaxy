@@ -26739,27 +26739,210 @@ function quickActiviteRetenue(id) {
   return quickBookState.type === 'activity' && String(quickBookState.activityId || '') === id;
 }
 
+// L ETAPE « ACTIVITE », UNE SEULE FACON DE CHOISIR (2026-10-02, Movsar :
+// « y a deux moyens de cocher, c est con, je prefere celui du bas ou il y a
+// toutes les activites rangees une par une, garde que celle-la et ameliore-la »).
+// Deux modes seulement, en haut : Activites ou Formule. En mode Activites, LA
+// liste : une ligne par activite, ses reglages dessous quand elle est cochee.
+// Derriere, rien ne change pour le serveur : une activite cochee = la
+// reservation classique de cette activite, deux ou plus = une visite.
+// « Sur mesure » devient ce qu il voulait dire : des EXTRAS comme dans une
+// formule (arcades au temps ou en argent, nourriture, boissons...).
 function renderQuickBookTypeButtons() {
-  const choices = getQuickBookActivityChoices();
-  const tuiles = choices.map((choice) => {
-    const active = quickActiviteRetenue(choice.id);
-    const seul = choice.type === 'activity' ? `'activity','${escapeHtml(choice.id)}'` : `'${choice.type}'`;
-    // La tuile CHOISIT, la pastille AJOUTE. Deux gestes, une seule tuile : la
-    // liste ne double pas, et le « + » ne coupe plus le nom en deux.
-    return `<div class="qb-type-tile${active ? ' is-active' : ''}">`
-      + `<button type="button" class="qb-type-btn" onclick="setQuickType(${seul})">${escapeHtml(choice.label)}</button>`
-      + `<button type="button" class="qb-type-add" aria-pressed="${active ? 'true' : 'false'}" title="${active ? 'Retirer' : 'Ajouter'} ${escapeHtml(choice.label)}" aria-label="${active ? 'Retirer' : 'Ajouter'} ${escapeHtml(choice.label)}" onclick="basculerQuickActivite('${escapeHtml(choice.id)}')">+</button>`
-      + `</div>`;
-  }).join('');
-  // LES MODES NE SONT PAS DES ACTIVITES : une formule et une visite sur mesure
-  // sont des facons de composer, pas des choses a cocher. Ils vivent donc sur
-  // leur propre rangee, sous un intitule.
-  const modes = `<div class="qb-mode-row">`
-    + `<span class="qb-mode-label">ou composer</span>`
-    + `<button type="button" class="qb-mode-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>`
-    + `<button type="button" class="qb-mode-btn ${quickBookState.type === 'visite' && quickBookState.surMesure ? 'active' : ''}" onclick="setQuickType('visite')">Sur mesure</button>`
+  const enFormule = quickBookState.type === 'formule';
+  const seg = `<div class="qb-mode-seg" role="tablist" aria-label="Composer la réservation">`
+    + `<button type="button" role="tab" class="qb-mode-tab${enFormule ? '' : ' is-on'}" aria-selected="${!enFormule}" onclick="setQuickModeActivites()">Activités</button>`
+    + `<button type="button" role="tab" class="qb-mode-tab${enFormule ? ' is-on' : ''}" aria-selected="${enFormule}" onclick="setQuickType('formule')">Formule</button>`
     + `</div>`;
-  return `<div class="qb-type-grid">${tuiles}</div>${modes}`;
+  if (enFormule) return seg;
+  return seg + renderQuickActiviteListe() + renderQuickExtras();
+}
+
+function setQuickModeActivites() {
+  if (!quickBookState) return;
+  if (quickBookState.type !== 'formule') return;
+  setQuickType('bowling');
+}
+
+function renderQuickActiviteListe() {
+  const choices = getQuickBookActivityChoices();
+  const enVisite = quickBookState.type === 'visite';
+  const visit = quickBookState.visit || {};
+  const rows = choices.map((choice) => {
+    const on = quickActiviteRetenue(choice.id);
+    let options = '';
+    if (on && choice.id === 'bowling') {
+      const courant = enVisite ? Number(visit.bowling?.duration) : Number(quickBookState.duration);
+      options = `<div class="qb-visit-options"><span class="qb-opt-legend">Durée</span>${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${courant === Number(opt.value) ? 'active' : ''}" onclick="${enVisite ? `setQuickVisitBowlingDuration(${opt.value})` : `setQuickDuration(${opt.value})`}">${opt.label}</button>`).join('')}</div>`;
+    } else if (on && choice.id === 'laser_game') {
+      options = enVisite
+        ? `<div class="qb-visit-options"><span class="qb-opt-legend">Parties</span>${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn ${Number(visit.laser_game?.games) === games ? 'active' : ''}" onclick="setQuickVisitLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`
+        : `<div class="qb-visit-options"><span class="qb-opt-legend">Parties</span>${LASER_GAME_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${Number(quickBookState.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}<small>${opt.price}€/pers</small></button>`).join('')}</div>`;
+    } else if (on) {
+      options = renderQuickVisitOptions(choice);
+    }
+    return `<div class="qb-visit-row ${on ? 'is-on' : ''}">
+      <button type="button" class="qb-visit-toggle" aria-pressed="${on ? 'true' : 'false'}" onclick="toggleQuickListe('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
+      ${options}
+    </div>`;
+  }).join('');
+  const n = choices.filter((c) => quickActiviteRetenue(c.id)).length;
+  return `<div class="qb-liste">
+    <div class="qb-visit-grid">${rows}</div>
+    <div class="qb-field-note">${n > 1 ? `${n} activités dans une seule réservation : le programme s’enchaîne, pistes et lancements sont attribués à la création.` : 'Cochez une ou plusieurs activités : tout part dans une seule réservation.'}</div>
+  </div>`;
+}
+
+// Cocher / decocher dans LA liste. Une activite : la reservation classique de
+// cette activite (pistes au choix pour le bowling). Deux ou plus : une visite.
+function toggleQuickListe(id) {
+  if (!quickBookState) return;
+  const choices = getQuickBookActivityChoices();
+  const avant = new Set(choices.filter((c) => quickActiviteRetenue(c.id)).map((c) => c.id));
+  const dureeBowling = quickBookState.type === 'bowling' ? Number(quickBookState.duration) : Number(quickBookState.visit?.bowling?.duration) || 1;
+  const partiesLaser = quickBookState.type === 'laser' ? Math.max(1, Math.round(Number(quickBookState.duration) * 2)) : Number(quickBookState.visit?.laser_game?.games) || 1;
+  if (avant.has(id)) avant.delete(id); else avant.add(id);
+  const apres = [...avant];
+  // Jamais zero : il faut bien reserver quelque chose (decision du
+  // 2026-08-26, quickbook-catalog-check [7]). La derniere ne se decoche pas.
+  if (apres.length === 0) { toast('Gardez au moins une activité.'); return; }
+  if (apres.length === 1) {
+    const seul = apres[0];
+    if (seul === 'bowling') { setQuickType('bowling'); quickBookState.duration = dureeBowling || 1; }
+    else if (seul === 'laser_game') { setQuickType('laser'); quickBookState.duration = Math.min(1.5, Math.max(0.5, partiesLaser / 2)); }
+    else setQuickType('activity', seul);
+    syncQuickBookDuration();
+    renderQuickBook();
+    return;
+  }
+  const visit = ensureQuickVisit();
+  visit.bowling.on = apres.includes('bowling');
+  if (visit.bowling.on && !visit.bowling.duration) visit.bowling.duration = dureeBowling || 1;
+  visit.laser_game.on = apres.includes('laser_game');
+  if (visit.laser_game.on && !visit.laser_game.games) visit.laser_game.games = partiesLaser || 1;
+  const autres = {};
+  apres.filter((x) => x !== 'bowling' && x !== 'laser_game').forEach((x) => { autres[x] = true; });
+  visit.others = autres;
+  quickBookState.type = 'visite';
+  quickBookState.activityId = '';
+  quickBookState.formuleId = '';
+  quickBookState.lanes = [];
+  quickBookState.autoAssign = false;
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+// ── SUR MESURE : LES EXTRAS, COMME DANS UNE FORMULE ─────────────────────────
+// Movsar : « arcade, choix temps ou argent, montant ; choix de nourriture ;
+// ils ecrivent, cruches boissons etc., en plus combien ; un truc vraiment
+// complet ». Chaque ligne devient un extra du dossier (nom, prix) : la fiche
+// les additionne, la caisse les encaisse. Rien n est envoye au client.
+const QB_EXTRA_SUGGESTIONS = {
+  nourriture: ['Pizza', 'Frites', 'Hot-dog', 'Nuggets', 'Croque-monsieur', 'Gâteau d’anniversaire', 'Bonbons'],
+  boissons: ['Cruche de soda', 'Cruche de jus', 'Cruche d’eau', 'Boisson par enfant', 'Bière', 'Café'],
+};
+function quickExtrasEtat() {
+  if (!quickBookState.extrasSM) quickBookState.extrasSM = { arcades: { mode: '', minutes: 30, prix: '' }, nourriture: [], boissons: [], autres: [] };
+  return quickBookState.extrasSM;
+}
+function quickExtrasLignes() {
+  if (!quickBookState || !quickBookState.surMesure) return [];
+  const e = quickExtrasEtat();
+  const pax = Math.max(1, Number(quickBookState.pax) || 1);
+  const lignes = [];
+  const prix = (v) => Math.max(0, Number(String(v).replace(',', '.')) || 0);
+  if (e.arcades.mode && prix(e.arcades.prix) > 0) {
+    const unitaire = prix(e.arcades.prix);
+    const quoi = e.arcades.mode === 'temps'
+      ? (Number(e.arcades.minutes) >= 999 ? 'à volonté' : `${e.arcades.minutes} min`)
+      : `${unitaire.toLocaleString('fr-BE')} € de crédit`;
+    lignes.push({ id: `arcades-${e.arcades.mode}`, name: `Arcades ${quoi} × ${pax} joueur${pax > 1 ? 's' : ''}`, price: Math.round(unitaire * pax * 100) / 100 });
+  }
+  ['nourriture', 'boissons', 'autres'].forEach((groupe) => {
+    e[groupe].forEach((ligne, i) => {
+      const nom = String(ligne.choix || '').trim();
+      const qte = Math.max(1, Math.trunc(Number(ligne.qte) || 1));
+      if (!nom) return;
+      lignes.push({ id: `${groupe}-${i + 1}`, name: `${nom} × ${qte}`, price: Math.round(prix(ligne.prix) * qte * 100) / 100 });
+    });
+  });
+  return lignes;
+}
+function quickExtrasTotal() { return quickExtrasLignes().reduce((t, l) => t + (Number(l.price) || 0), 0); }
+
+function renderQuickExtras() {
+  const ouvert = Boolean(quickBookState.surMesure);
+  if (!ouvert) {
+    return `<button type="button" class="qb-extras-open" onclick="setQuickSurMesure(true)"><span aria-hidden="true">+</span> Sur mesure : arcades, nourriture, boissons…</button>`;
+  }
+  const e = quickExtrasEtat();
+  const pax = Math.max(1, Number(quickBookState.pax) || 1);
+  const champ = (groupe, i, cle, valeur, attrs) => `<input class="qb-input qb-x-${cle}" ${attrs} value="${escapeHtml(String(valeur ?? ''))}" oninput="setQuickExtra('${groupe}',${i},'${cle}',this.value)">`;
+  const lignes = (groupe, titre, aide) => `<div class="qb-x-groupe">
+      <div class="qb-x-titre"><b>${titre}</b><small>${aide}</small></div>
+      ${e[groupe].map((l, i) => `<div class="qb-x-ligne">
+        ${champ(groupe, i, 'choix', l.choix, `list="qbx-${groupe}" placeholder="${groupe === 'autres' ? 'Libellé' : 'Choix'}" aria-label="${titre} : choix"`)}
+        ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
+        <span class="qb-x-prix">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prix unitaire en euros" placeholder="Prix"')}<i>€</i></span>
+        <button type="button" class="qb-x-rm" aria-label="Retirer la ligne" onclick="retirerQuickExtra('${groupe}',${i})">×</button>
+      </div>`).join('')}
+      <button type="button" class="qb-x-add" onclick="ajouterQuickExtra('${groupe}')">+ ${groupe === 'nourriture' ? 'Ajouter un plat' : groupe === 'boissons' ? 'Ajouter des boissons' : 'Ajouter une ligne'}</button>
+    </div>`;
+  const listes = Object.entries(QB_EXTRA_SUGGESTIONS).map(([g, items]) => `<datalist id="qbx-${g}">${items.map((v) => `<option value="${escapeHtml(v)}">`).join('')}</datalist>`).join('');
+  return `<div class="qb-extras">
+    <div class="qb-extras-head"><b>Sur mesure</b><small>En plus des activités : ajouté au total, jamais montré au client tel quel.</small><button type="button" class="qb-x-close" onclick="setQuickSurMesure(false)">Retirer</button></div>
+    <div class="qb-x-groupe">
+      <div class="qb-x-titre"><b>Arcades</b><small>par joueur (${pax})</small></div>
+      <div class="qb-x-seg">
+        ${[['', 'Aucune'], ['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn ${e.arcades.mode === v ? 'active' : ''}" onclick="setQuickArcades('mode','${v}')">${mot}</button>`).join('')}
+      </div>
+      ${e.arcades.mode === 'temps' ? `<div class="qb-x-seg">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn ${Number(e.arcades.minutes) === m ? 'active' : ''}" onclick="setQuickArcades('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
+      ${e.arcades.mode ? `<label class="qb-x-montant">${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} <input class="qb-input" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="€" oninput="setQuickArcades('prix',this.value,true)"> €</label>` : ''}
+    </div>
+    ${lignes('nourriture', 'Nourriture', 'quantité et prix à l’unité')}
+    ${lignes('boissons', 'Boissons', 'cruches, boissons par enfant…')}
+    ${lignes('autres', 'Autre', 'décoration, cadeau, tout le reste')}
+    <div class="qb-x-total">Extras : <b id="qbExtrasTotal">${formatMoney(quickExtrasTotal())}</b></div>
+    ${listes}
+  </div>`;
+}
+function setQuickSurMesure(on) {
+  if (!quickBookState) return;
+  quickBookState.surMesure = Boolean(on);
+  if (on) quickExtrasEtat();
+  renderQuickBook();
+}
+function setQuickArcades(cle, valeur, sansRendu) {
+  const e = quickExtrasEtat();
+  e.arcades[cle] = valeur;
+  if (sansRendu) { majQuickExtrasTotal(); return; }
+  renderQuickBook();
+}
+function ajouterQuickExtra(groupe) {
+  quickExtrasEtat()[groupe].push({ choix: '', qte: groupe === 'boissons' ? 2 : 1, prix: '' });
+  renderQuickBook();
+  const champs = document.querySelectorAll(`.qb-x-groupe input[list="qbx-${groupe}"], .qb-x-groupe .qb-x-choix`);
+  const dernier = champs[champs.length - 1];
+  if (dernier) dernier.focus();
+}
+function retirerQuickExtra(groupe, i) {
+  quickExtrasEtat()[groupe].splice(i, 1);
+  renderQuickBook();
+}
+// La frappe ne re-rend pas la fenetre (le focus resterait perdu) : seul le
+// total des extras et le total estime se mettent a jour.
+function setQuickExtra(groupe, i, cle, valeur) {
+  const ligne = quickExtrasEtat()[groupe][i];
+  if (!ligne) return;
+  ligne[cle] = valeur;
+  majQuickExtrasTotal();
+}
+function majQuickExtrasTotal() {
+  const zone = document.getElementById('qbExtrasTotal');
+  if (zone) zone.textContent = formatMoney(quickExtrasTotal());
+  // Le total estime et son detail, par le meme chemin que le compteur de
+  // joueurs (aucun re-rendu de la fenetre).
+  if (typeof patchQuickBookPaxDerived === 'function') patchQuickBookPaxDerived();
 }
 
 function setQuickType(type, activityId = '') {
@@ -27040,6 +27223,13 @@ function setQuickAutoAssign() {
 }
 
 function getQuickBookSummary() {
+  const base = getQuickBookSummaryActivites();
+  const extras = quickExtrasTotal();
+  if (!extras) return base;
+  return { ...base, total: Math.round((Number(base.total) || 0) + extras), detail: `${base.detail} · extras ${formatMoney(extras)}` };
+}
+
+function getQuickBookSummaryActivites() {
   if (!quickBookState) return { total: 0, detail: '' };
   if (quickBookState.type === 'visite') {
     const visit = quickBookState.visit || {};
@@ -27362,17 +27552,20 @@ function renderQuickBookInner() {
               ? `${item.validDays.length} jour(s)`
               : 'Libre';
           const isActive = quickBookState.formuleId === item.id;
-          const locked = !item.available && !isActive;
+          // LE STAFF PEUT DONNER UNE FORMULE HORS REGLES (2026-10-02, Movsar :
+          // « c est nous le staff, on peut quand meme donner meme si ca
+          // respecte pas les regles, mais laisse affiche les regles, dis
+          // pourquoi »). La carte reste cliquable, la raison reste ecrite.
           return `
-            <button class="qb-formule-card ${isActive ? 'active' : ''} ${item.available ? '' : 'unavailable'}" onclick="setQuickFormule('${item.id}')" ${locked ? 'disabled' : ''}>
+            <button class="qb-formule-card ${isActive ? 'active' : ''} ${item.available ? '' : 'unavailable'}" onclick="setQuickFormule('${item.id}')">
               <div class="qb-formule-top">
                 <div class="qb-formule-name">${item.name}</div>
                 <div class="qb-formule-price">${item.price}EUR/${item.type === 'per_lane' ? 'piste' : 'pers'}</div>
               </div>
               <div class="qb-formule-sub">${item.family} - ${timeWindow}</div>
               <div class="qb-formule-status">
-                <span class="qb-status-pill ${item.available ? 'ok' : 'no'}">${item.available ? 'Dispo' : 'Bloquée'}</span>
-                <span class="qb-inline-note">${item.available ? item.desc[0] : item.reason}</span>
+                <span class="qb-status-pill ${item.available ? 'ok' : 'no'}">${item.available ? 'Dans les règles' : 'Hors règles'}</span>
+                <span class="qb-inline-note">${item.available ? item.desc[0] : `${item.reason} · possible au comptoir`}</span>
               </div>
             </button>
           `;
@@ -27443,27 +27636,13 @@ function renderQuickBookInner() {
 
   // « Plus d'options » : toutes les capacités avancées restent là, repliées.
   const advancedHtml = quickBookState.moreOpen ? `
+    <div class="qb-block qb-step-note">
+      <label class="qb-mini-label" for="qbNotes">Note pour l’équipe <span class="qb-opt">(facultatif, jamais envoyée au client)</span></label>
+      <textarea id="qbNotes" class="qb-input qb-textarea" rows="2" oninput="quickBookState.notes=this.value" placeholder="Ex. gâteau à prévoir, paiement à l’arrivée…">${escapeHtml(quickBookState.notes || '')}</textarea>
+    </div>
     <div class="qb-block">
-      <div class="blk-label">Créneau &amp; disponibilité</div>
-      <div class="qb-block-help">Horaires du centre, choix du départ et pistes libres en temps réel.</div>
-      <div class="qb-snapshot-row">
-        <div class="qb-snapshot">
-          <div class="k">Ouverture</div>
-          <div class="v">${schedule ? schedule.label : 'Fermé'}</div>
-          <div class="t">${schedule ? 'Lecture directe des horaires du centre' : 'Aucune réservation possible sur cette date'}</div>
-        </div>
-        <div class="qb-snapshot">
-          <div class="k">Créneau</div>
-          <div class="v">${quickBookState.startTime || '--:--'}</div>
-          <div class="t">${selectedSlotLabel}</div>
-        </div>
-        <div class="qb-snapshot">
-          <div class="k">Affectation</div>
-          <div class="v">${laneNeedLabel}</div>
-          <div class="t">${laneSelectionLabel}</div>
-        </div>
-      </div>
-      <div class="qb-slot-head" style="margin-top:12px;">
+      <div class="blk-label">Départ précis</div>
+      <div class="qb-slot-head">
         <label class="qb-mini-label" style="margin-bottom:0;">Créneaux disponibles</label>
         <div class="qb-section-note">${quickBookState.type === 'laser' ? (selectedSlot ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : `${getLaserWaveCount(quickBookState.pax)} session${getLaserWaveCount(quickBookState.pax) > 1 ? 's' : ''} à planifier`) : needsLanes ? `${Math.max(freeCount, 0)} piste${freeCount > 1 ? 's' : ''} libre${freeCount > 1 ? 's' : ''} sur le créneau choisi` : 'Sélection rapide de l’heure de départ'}</div>
       </div>
@@ -27482,16 +27661,11 @@ function renderQuickBookInner() {
       `}
     </div>
 
-    <div class="qb-block">
-      <div class="blk-label">Durée &amp; pistes</div>
-      <div class="qb-block-help">Durée de jeu et affectation des pistes (auto ou sélection manuelle).</div>
+    ${(quickBookState.type === 'formule' && !formule) || quickBookState.type === 'laser' || showLanePicker ? `<div class="qb-block">
+      <div class="blk-label">${quickBookState.type === 'laser' ? 'Arène laser' : 'Pistes'}</div>
       ${quickBookState.type === 'formule' && !formule ? `
         <div class="qb-warn">Sélectionnez d'abord une formule pour voir la logique de durée et de pistes.</div>
       ` : quickBookState.type === 'laser' ? `
-        ${durationEssential ? '' : `
-        <div class="qb-dur-grid laser" style="margin-bottom:12px;">
-          ${LASER_GAME_OPTIONS.map(opt => `<button class="qb-dur-btn ${Number(quickBookState.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}<small>${opt.price}€/pers</small></button>`).join('')}
-        </div>`}
         <div class="qb-lane-focus laser-focus">
           <div>
             <div class="qb-lane-focus-title">Arène Laser Game</div>
@@ -27503,10 +27677,6 @@ function renderQuickBookInner() {
         </div>
         <div class="qb-warn">Prévenir le client : une session Laser Game peut être complétée avec d'autres joueurs selon l'affluence.</div>
       ` : showLanePicker ? `
-        <div class="qb-dur-grid" style="margin-bottom:12px;">
-          ${DURATION_OPTIONS.map(opt => `<button class="qb-dur-btn ${quickBookState.duration === opt.value ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}</button>`).join('')}
-        </div>
-        ${quickBookState.type === 'formule' && formule ? `<div class="qb-warn" style="margin-bottom:12px;">Durée liée à la formule ${formule.name}.</div>` : ''}
         <div class="qb-lane-focus">
           <div>
             <div class="qb-lane-focus-title">${laneNeedLabel}</div>
@@ -27534,16 +27704,9 @@ function renderQuickBookInner() {
           <div class="qb-lane-selection">${laneSelectionLabel}</div>
           <div class="schedule-hint">${quickBookState.autoAssign ? `<span class="open">${autoLaneMessage}</span>` : `<span class="${quickBookState.lanes.length >= requiredCount ? 'open' : 'closed'}">${autoLaneMessage}</span>`}</div>
         </div>
-      ` : `
-        <div class="qb-warn">Cette formule ne nécessite pas de piste de bowling.</div>
-      `}
-    </div>
+      ` : ''}
+    </div>` : ''}
 
-    <div class="qb-block">
-      <label class="blk-label" for="qbNotes">Notes internes</label>
-      <div class="qb-block-help">Visible par le staff uniquement : jamais envoyé au client.</div>
-      <textarea id="qbNotes" class="qb-input qb-textarea" rows="2" oninput="quickBookState.notes=this.value" placeholder="Ex. anniversaire, gâteau à prévoir, paiement à l'arrivée…">${escapeHtml(quickBookState.notes || '')}</textarea>
-    </div>
   ` : '';
 
   // LE RECAPITULATIF, toujours visible : ce qui va etre cree, le total, le
@@ -27560,6 +27723,7 @@ function renderQuickBookInner() {
     ['Joueurs', `<span id="qbRecapPax">${Number(quickBookState.pax) || 1}</span>`],
     ['Durée', escapeHtml(formatDurationLabel(quickBookState.totalDuration))],
     ...(pistesRecap ? [['Pistes', escapeHtml(pistesRecap)]] : []),
+    ...(quickExtrasLignes().length ? [['Extras', escapeHtml(`${quickExtrasLignes().length} ligne${quickExtrasLignes().length > 1 ? 's' : ''} · ${formatMoney(quickExtrasTotal())}`)]] : []),
   ];
   const etape = (n, titre) => `<div class="qb-step-head"><span class="qb-step-n" aria-hidden="true">${n}</span><span class="blk-label">${titre}</span></div>`;
   let numero = 0;
@@ -27602,9 +27766,9 @@ function renderQuickBookInner() {
           <section class="qb-block qb-step">
             ${etape(++numero, 'Activité')}
             ${showType ? `<div class="qb-type-row">${renderQuickBookTypeButtons()}</div>` : ''}
-            ${durationEssentialHtml}
-            ${visitComposerHtml}
-            ${activityOptionsHtml}
+            ${showType ? '' : durationEssentialHtml}
+            ${showType ? '' : visitComposerHtml}
+            ${showType ? '' : activityOptionsHtml}
             ${formuleGridHtml}
           </section>` : ''}
           <section class="qb-block qb-step">
@@ -27620,7 +27784,7 @@ function renderQuickBookInner() {
           ${quickBookState.error ? `<div class="qb-warn danger">${quickBookState.error}</div>` : ''}
 
           <button type="button" class="qb-more-toggle" aria-expanded="${quickBookState.moreOpen ? 'true' : 'false'}" onclick="toggleQuickBookMore()">
-            ${quickBookState.moreOpen ? 'Masquer les options avancées' : 'Plus d’options : créneaux, pistes, durée, notes'}
+            ${quickBookState.moreOpen ? 'Masquer' : (quickBookState.notes || '').trim() ? 'Départ précis, pistes et note (1 note)' : 'Départ précis, pistes et note'}
           </button>
 
           ${advancedHtml}
@@ -27728,9 +27892,12 @@ async function saveQuickBook() {
     allowPastStart: quickBookAllowsPastSelectedTime()
   });
   if (!slotCheck.ok) { failQuickBook(slotCheck.message); return; }
+  // Une formule hors regles part quand meme (choix du comptoir) : la raison
+  // s ecrit dans la note du dossier, pour que la caisse la comprenne.
+  let horsRegles = '';
   if (formule) {
     const availability = getFormuleAvailability(formule, quickBookState.date, quickBookState.pax, quickBookState.startTime);
-    if (!availability.ok) { failQuickBook(availability.message); return; }
+    if (!availability.ok) horsRegles = `${formule.name} hors règles (${availability.message}) : choix du comptoir.`;
   }
   if (quickBookState.type === 'laser') {
     const laserAvailability = getLaserAvailability(quickBookState.date, quickBookState.startTime, duration, quickBookState.pax);
@@ -27771,7 +27938,7 @@ async function saveQuickBook() {
     name,
     phone,
     email,
-    notes: (quickBookState.notes || '').trim(),
+    notes: [horsRegles, (quickBookState.notes || '').trim()].filter(Boolean).join('\n'),
     date: quickBookState.date,
     startTime: quickBookState.startTime,
     duration,
@@ -27813,8 +27980,13 @@ async function saveQuickBook() {
             : 'Bowling Classique',
     laserGames: quickBookState.type === 'laser' ? getLaserGameCount(quickBookState.duration) : 0,
     allowPastStart: quickBookAllowsPastSelectedTime(),
-    extras: []
+    // Le sur mesure : les extras du comptoir. Une visite les fait additionner
+    // par le serveur ; une reservation simple les ajoute ici au montant.
+    extras: quickExtrasLignes()
   };
+  if (!estVisite && customPriceValue == null && reservation.extras.length) {
+    reservation.price = Math.round(((Number(basePrice) || 0) + quickExtrasTotal()) * 100) / 100;
+  }
 
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {

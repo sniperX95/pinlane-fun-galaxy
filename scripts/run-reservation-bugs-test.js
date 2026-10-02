@@ -395,14 +395,19 @@ async function main() {
       const advancedRegion = document.querySelector('#quickBookOverlay .qb-modal').innerHTML.split(toggle2.outerHTML)[1] || '';
       const advancedHasEmail = /type="email"/i.test(advancedRegion);
       const hasNotesTextarea = Boolean(document.querySelector('#quickBookOverlay textarea'));
-      return { emailInEssential, toggleLabel, blockLabels, helps, advancedHasEmail, hasNotesTextarea };
+      const hasNoteLabel = Boolean(document.querySelector('#quickBookOverlay label[for="qbNotes"]'));
+      return { emailInEssential, toggleLabel, blockLabels, helps, advancedHasEmail, hasNotesTextarea, hasNoteLabel };
     }, { date: TEST_DATE });
     assert(options.emailInEssential, 'l\'email reste un champ ESSENTIEL visible/saisissable (hors « Plus d\'options »)');
     assert(!/email/i.test(options.toggleLabel), `le libellé du repli ne mentionne plus « email » ("${options.toggleLabel}")`);
-    assert(options.blockLabels.some((l) => /Créneau & disponibilité/i.test(l)), `section « Créneau & disponibilité » présente (${options.blockLabels.join(' | ')})`);
-    assert(options.blockLabels.some((l) => /Durée & pistes/i.test(l)), 'section « Durée & pistes » présente et étiquetée');
-    assert(options.blockLabels.some((l) => /Notes internes/i.test(l)), 'section « Notes internes » présente et étiquetée');
-    assert(options.helps.length >= 3, `chaque section porte une aide courte (${options.helps.length} aides)`);
+    // LES OPTIONS REMISES EN ORDRE (2026-10-02, Movsar : « les + d options
+    // c est moche et illogique ») : le repli dit ce qu il ouvre, chaque section
+    // porte son titre ; plus de cartes qui repetent la ligne d etat, plus de
+    // durees en double (elles vivent dans la liste des activites).
+    assert(/Départ précis/.test(options.toggleLabel) && /note/.test(options.toggleLabel), `le repli dit ce qu il ouvre ("${options.toggleLabel}")`);
+    assert(options.blockLabels.some((l) => /Départ précis/i.test(l)), `section « Départ précis » présente (${options.blockLabels.join(' | ')})`);
+    assert(options.blockLabels.some((l) => /^Pistes$|Arène laser/i.test(l)), 'section des pistes présente et étiquetée');
+    assert(options.hasNoteLabel, 'la note pour l équipe est présente et étiquetée');
     assert(!options.advancedHasEmail, 'l\'email n\'est plus noyé dans « Plus d\'options »');
     assert(options.hasNotesTextarea, 'les notes internes sont saisissables dans « Plus d\'options »');
 

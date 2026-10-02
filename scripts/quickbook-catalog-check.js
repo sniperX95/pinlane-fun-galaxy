@@ -106,11 +106,13 @@ async function main() {
     // selecteur.
     await page.waitForFunction(() => typeof window.getCenterActivities === 'function' && window.getCenterActivities().length >= 8, null, { timeout: 15000 });
     await page.evaluate(() => window.openQuickBook());
-    await page.waitForSelector('.qb-type-row', { timeout: 8000 });
+    await page.waitForSelector('.qb-type-row .qb-liste', { timeout: 8000 });
     await page.waitForTimeout(700);
 
     console.log('\n[1. Le selecteur suit le CATALOGUE VIVANT]');
-    const buttons = await page.evaluate(() => [...document.querySelectorAll('.qb-type-row .qb-type-btn')].map((b) => b.textContent.trim()));
+    // LA LISTE (2026-10-02, Movsar : « deux moyens de cocher, garde celle du bas,
+    // une par une ») : les activites se lisent sur ses lignes.
+    const buttons = await page.evaluate(() => [...document.querySelectorAll('.qb-type-row .qb-liste .qb-visit-toggle')].map((b) => b.textContent.trim()));
     // Le seuil porte sur les ACTIVITES du catalogue. Il valait 9 quand
     // « Formule » etait melangee a la liste ; depuis le 2026-08-26 les modes
     // sont comptes a part (assertion juste en dessous), donc 8 activites +
@@ -123,8 +125,12 @@ async function main() {
     // presence d un bouton dans la meme liste : depuis le 2026-08-26 les modes
     // (Formule, Sur mesure) vivent dans leur propre rangee, sous « ou
     // composer », parce que ce ne sont pas des activites a cocher.
-    const modes = await page.evaluate(() => [...document.querySelectorAll('.qb-type-row .qb-mode-btn')].map((b) => b.textContent.trim()));
-    ok(modes.includes('Formule'), `les formules restent un mode a part (${modes.join(' | ')})`);
+    // Les modes : deux onglets, Activites et Formule (le « sur mesure » est
+    // devenu des extras, plus un mode).
+    const modes = await page.evaluate(() => [...document.querySelectorAll('.qb-type-row .qb-mode-tab')].map((b) => b.textContent.trim()));
+    ok(modes.includes('Formule') && modes.includes('Activités'), `les formules restent un mode a part (${modes.join(' | ')})`);
+    const doublons = await page.evaluate(() => document.querySelectorAll('#quickBookOverlay .qb-type-tile, #quickBookOverlay .qb-visit-grid').length);
+    ok(doublons === 1, `UNE seule facon de choisir les activites (${doublons} selecteur(s))`);
     ok(!buttons.includes('Formule'), 'les formules ne sont PAS melangees aux activites');
     ok(buttons.length + modes.length >= 10, `le selecteur reste vivant : ${buttons.length} activites + ${modes.length} modes`);
 
@@ -152,7 +158,7 @@ async function main() {
     ok(!/piste requise|pistes requises/.test(freeText), `le minigolf ne reserve aucune piste (${freeText.trim()})`);
     // Mesure par le DOM : le bouton actif porte l'activite choisie (l'etat
     // interne n'est pas expose, et une sonde qui le suppose rend undefined).
-    const activeLabel = await page.evaluate(() => ((document.querySelector('.qb-type-row .qb-type-tile.is-active .qb-type-btn') || document.querySelector('.qb-type-row .qb-type-btn.active') || {}).textContent || '').trim());
+    const activeLabel = await page.evaluate(() => [...document.querySelectorAll('.qb-type-row .qb-liste .qb-visit-row.is-on .qb-visit-toggle')].map((b) => b.textContent.trim()).join(' + '));
     ok(activeLabel === 'Minigolf Blacklight', `le bouton actif est l activite choisie (${activeLabel})`);
 
     console.log('\n[4. Contre-epreuve : ce gate sait-il rougir ?]');
@@ -169,6 +175,8 @@ async function main() {
     ok(/1\s*piste requise/.test(backTo1), `retour a 4 joueurs : la ligne redescend a 1 piste (${backTo1.trim()}) -> la sonde suit vraiment l etat`);
 
     console.log('\n[5. Plusieurs activites, ce n est PAS « sur mesure »]');
+    // Depuis le 2026-10-02, « sur mesure » = des EXTRAS (arcades, nourriture,
+    // boissons) qu on ouvre a la main : cocher deux activites ne les ouvre pas.
     // Movsar, 2026-08-26 : « quand on choisis plusieurs faut pas que ca mette sur
     // mesure hein, c est juste ils ont plusieurs activites et c est normal ».
     // Cocher deux activites fabrique bien une VISITE cote donnees (le serveur ne
@@ -178,13 +186,10 @@ async function main() {
     await page.evaluate(() => window.setQuickType('bowling'));
     await page.waitForTimeout(400);
     const multi = await page.evaluate(async () => {
-      const modeActif = () => {
-        const actif = [...document.querySelectorAll('.qb-mode-btn')].find((b) => b.classList.contains('active'));
-        return actif ? actif.textContent.trim() : '';
-      };
+      const modeActif = () => (document.querySelector('#quickBookOverlay .qb-extras') ? 'Sur mesure' : '');
       const avant = modeActif();
-      const plus = [...document.querySelectorAll('.qb-type-add')];
-      if (plus[1]) plus[1].click();
+      const ligne = [...document.querySelectorAll('.qb-liste .qb-visit-toggle')].find((b) => b.textContent.trim() === 'Laser Game');
+      if (ligne) ligne.click();
       await new Promise((r) => setTimeout(r, 500));
       return {
         avant,
@@ -193,7 +198,7 @@ async function main() {
         // lexical, PAS sur window. `window.quickBookState` rend undefined et la
         // sonde mentirait (le gate l a deja paye plus haut, section 3).
         type: (typeof quickBookState !== 'undefined' && quickBookState) ? quickBookState.type : 'introuvable',
-        tuiles: [...document.querySelectorAll('.qb-type-tile.is-active .qb-type-btn')].map((b) => b.textContent.trim()),
+        tuiles: [...document.querySelectorAll('.qb-liste .qb-visit-row.is-on .qb-visit-toggle')].map((b) => b.textContent.trim()),
       };
     });
     ok(multi.tuiles.length === 2, `deux activites sont retenues (${multi.tuiles.join(' + ')})`);
@@ -202,12 +207,11 @@ async function main() {
     // CONTRE-EPREUVE : cliquer VRAIMENT « Sur mesure » doit, lui, l allumer.
     // Sans elle, l assertion ci-dessus passerait meme si le mode n existait plus.
     const choisi = await page.evaluate(async () => {
-      const btn = [...document.querySelectorAll('.qb-mode-btn')].find((b) => b.textContent.trim() === 'Sur mesure');
+      const btn = document.querySelector('#quickBookOverlay .qb-extras-open');
       if (!btn) return { erreur: 'bouton absent' };
       btn.click();
       await new Promise((r) => setTimeout(r, 500));
-      const actif = [...document.querySelectorAll('.qb-mode-btn')].find((b) => b.classList.contains('active'));
-      return { actif: actif ? actif.textContent.trim() : '' };
+      return { actif: document.querySelector('#quickBookOverlay .qb-extras') && quickBookState.surMesure ? 'Sur mesure' : '' };
     });
     ok(choisi.actif === 'Sur mesure', `choisi explicitement, il s allume (${choisi.actif || 'aucun'})`);
 
@@ -240,7 +244,7 @@ async function main() {
       ok(Number(prix.apresTotal.perso) === 25, `et dans l autre sens : 200 EUR au total = ${prix.apresTotal.perso} EUR par personne`);
     }
 
-    console.log('\n[7. Le « + » decoche autant qu il coche]');
+    console.log('\n[7. Une ligne de la liste decoche autant qu elle coche]');
     // Movsar, 2026-08-26 : « faut qu on puisse decocher un par un et quand on en
     // recoche plusieurs comme on veut ». Le « + » ne savait qu AJOUTER : une
     // activite cochee par erreur restait la pour toujours et il fallait fermer la
@@ -248,9 +252,8 @@ async function main() {
     await page.evaluate(() => window.setQuickType('bowling'));
     await page.waitForTimeout(400);
     const bascule = await page.evaluate(async () => {
-      const retenues = () => [...document.querySelectorAll('.qb-type-tile.is-active .qb-type-btn')].map((x) => x.textContent.trim());
-      const plusDe = (nom) => [...document.querySelectorAll('.qb-type-tile')]
-        .find((t) => t.querySelector('.qb-type-btn').textContent.trim() === nom)?.querySelector('.qb-type-add');
+      const retenues = () => [...document.querySelectorAll('.qb-liste .qb-visit-row.is-on .qb-visit-toggle')].map((x) => x.textContent.trim());
+      const plusDe = (nom) => [...document.querySelectorAll('.qb-liste .qb-visit-toggle')].find((t) => t.textContent.trim() === nom);
       const etapes = [];
       for (const nom of ['Laser Game', 'Billards']) {
         plusDe(nom).click(); await new Promise((r) => setTimeout(r, 350));
@@ -283,9 +286,8 @@ async function main() {
     // La detection passe par la DONNEE du catalogue (priceType, unitLabel), pas
     // par un id : un autre centre au meme modele en herite sans une ligne.
     const reglages = await page.evaluate(async () => {
-      const retenue = (nom) => [...document.querySelectorAll('.qb-type-tile.is-active .qb-type-btn')].some((x) => x.textContent.trim() === nom);
-      const plusDe = (nom) => [...document.querySelectorAll('.qb-type-tile')]
-        .find((t) => t.querySelector('.qb-type-btn').textContent.trim() === nom)?.querySelector('.qb-type-add');
+      const retenue = (nom) => [...document.querySelectorAll('.qb-liste .qb-visit-row.is-on .qb-visit-toggle')].some((x) => x.textContent.trim() === nom);
+      const plusDe = (nom) => [...document.querySelectorAll('.qb-liste .qb-visit-toggle')].find((t) => t.textContent.trim() === nom);
       for (const nom of ['Playground', 'Fun Run by PIXEL']) {
         if (!retenue(nom)) { plusDe(nom).click(); await new Promise((r) => setTimeout(r, 350)); }
       }

@@ -1716,11 +1716,12 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         sendJson(res, 200, { ok: true, reverted: false, reservation });
         return;
       }
-      const [cleared] = await applyReservationScheduleUpdates({
+      const toutesNettoyees = await applyReservationScheduleUpdates({
         centerId: reservation.centerId || 'libramont',
         date: reservation.date,
         updates: [{ id: reservationId, startTime: reservation.startTime, lanes: reservation.lanes, opsPlan: plan, noteDropTag: 'retard' }, ...remettre],
       });
+      const [cleared] = toutesNettoyees;
       await createOpsEvent({
         centerId: reservation.centerId || 'libramont',
         reservationId,
@@ -1733,6 +1734,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         reverted: false,
         cleared: true,
         reservation: cleared || reservation,
+        // Les groupes que ce retard avait pousses, remis a leur place : l ecran
+        // les met a jour tout de suite, sans attendre le prochain poll.
+        reservations: toutesNettoyees,
         message: 'Indicateur retiré. L\'horaire d\'origine n\'a pas pu être restauré automatiquement (retard posé avant cette mise à jour), ajustez à la main si besoin.',
       });
       return;
@@ -1742,7 +1746,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const restoredPlan = { ...origin.opsPlan };
     delete restoredPlan.delayFlag;
     const restoredLanes = Array.isArray(origin.lanes) && origin.lanes.length ? origin.lanes : reservation.lanes;
-    const [updated] = await applyReservationScheduleUpdates({
+    const toutesRestaurees = await applyReservationScheduleUpdates({
       centerId: reservation.centerId || 'libramont',
       date: reservation.date,
       updates: [{
@@ -1764,7 +1768,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       payload: { revertedBy: staffMember, restoredStartTime: origin.startTime },
       runLearning: false,
     }).catch(() => null);
-    sendJson(res, 200, { ok: true, reverted: true, reservation: updated || reservation });
+    const [updated] = toutesRestaurees;
+    sendJson(res, 200, { ok: true, reverted: true, reservation: updated || reservation, reservations: toutesRestaurees, restaurees: remettre.length });
     return;
   }
 

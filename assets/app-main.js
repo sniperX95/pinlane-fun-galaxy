@@ -21621,13 +21621,16 @@ async function revertDelay(ev, id) {
       body: JSON.stringify({ action: 'delayRevert', centerId, reservationId: Number(id) })
     });
     if (payload.reservation) upsertReservationInState(payload.reservation);
+    // Les groupes que ce retard avait pousses reviennent aussi : on les pose
+    // tout de suite a l ecran.
+    (Array.isArray(payload.reservations) ? payload.reservations : []).forEach(item => { if (item && item.id) upsertReservationInState(item); });
     if (state.selectedRes && Number(state.selectedRes.id) === Number(id) && payload.reservation) {
       state.selectedRes = payload.reservation;
     }
     save();
     renderStaffData();
-    renderPos();
-    if (payload.reverted) toast('Retard retiré : créneau d\'origine restauré.');
+    if (state.selectedRes) renderPos();
+    if (payload.reverted) toast(payload.restaurees ? `Retard retiré : ce groupe et ${payload.restaurees} groupe${payload.restaurees > 1 ? 's' : ''} décalé${payload.restaurees > 1 ? 's' : ''} reviennent à leur heure.` : 'Retard retiré : créneau d\'origine restauré.');
     else if (payload.message) toast(payload.message);
     else toast('Aucun retard à retirer.');
   } catch (error) {
@@ -24199,12 +24202,26 @@ function renderGroupeNotes(r) {
   const peutNoter = r.status !== 'cancelled' && (typeof canUseStaffPermission !== 'function'
     || canUseStaffPermission('reservations.status') || canUseStaffPermission('reservations.edit'));
   const ouvert = peutNoter && (notesEquipeOuvertes.has(id) || Boolean(brouillon));
-  const contenu = Boolean(motClient || parts.suivi.length || notes.length);
+  const contenu = Boolean(motClient || parts.suivi.length || notes.length || getReservationDelayFlag(r));
   if (!contenu && !peutNoter) return '';
   return `<section class="info-block gc-notes${contenu ? '' : ' is-vide'}" aria-label="Notes">
     ${contenu ? '<div class="gc-sheet-head"><div class="info-label">Notes</div></div>' : ''}
     ${motClient ? `<p class="gc-note-client"><b class="gc-note-titre">${escapeHtml(getReservationNoteTitre(r))}</b> ${escapeHtml(motClient)}</p>` : ''}
-    ${parts.suivi.length ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
+    ${(() => {
+      // LE RETARD SE RETIRE DEPUIS LA FICHE (2026-10-02, Movsar : « on peut
+      // meme pas lui retirer du retard quand on ouvre le groupe, uniquement
+      // sur le planning en cliquant sur l horloge »). Le bandeau dit le retard
+      // et porte le geste ; les traces du moteur ne le repetent pas.
+      const flag = getReservationDelayFlag(r);
+      if (flag) {
+        const mins = Math.round(Number(flag.minutes) || 0);
+        const pousse = Number(flag.sourceId) > 0 && Number(flag.sourceId) !== id;
+        const mot = pousse ? `Décalé de ${mins} min par un retard` : `En retard de ${mins} min`;
+        return `<div class="gc-retard"><span class="gc-retard-dot" aria-hidden="true"></span><p><b>${escapeHtml(mot)}</b>${flag.from && flag.to ? ` <small>${escapeHtml(flag.from)} → ${escapeHtml(flag.to)}</small>` : ''}</p>`
+          + `<button type="button" class="gc-retard-btn" data-pl-focus="fiche.retard.${id}" onclick="revertDelay(event, ${id})">${pousse ? 'Remettre à son heure' : 'Retirer le retard'}</button></div>`;
+      }
+      return parts.suivi.length ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '';
+    })()}
     ${notes.length ? `<ul class="gc-notes-equipe">${notes.map(n => `<li class="gc-note-equipe">
       <p>${escapeHtml(n.t)} <span class="gc-note-meta">${escapeHtml([n.par, formatNoteEquipeQuand(n.le)].filter(Boolean).join(' · '))}</span></p>
       ${peutNoter ? `<button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeHtml(n.le)}', event)">Retirer</button>` : ''}

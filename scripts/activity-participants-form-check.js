@@ -107,13 +107,14 @@ async function adversarialSourceChecks() {
   const source = fs.readFileSync(path.resolve(__dirname, '../assets/fungalaxy-booking.js'), 'utf8');
   const holdsSource = source.slice(source.indexOf('  function enFile(fn)'), source.indexOf('  // La reservation est faite'));
   const requests = [];
+  const adoptedQuotes = [];
   let resolveOld;
   const context = { blocage: { version: 0, file: Promise.resolve(), jeton: '', cle: '', etat: '' },
     fetch: (url, options) => {
       const body = JSON.parse(options.body); requests.push(body);
       if (body.release) return Promise.resolve({ status: 200 });
       return new Promise(resolve => { resolveOld = resolve; });
-    }, Date, JSON, Number, String, Math, Promise, clearInterval() {}, setInterval() { return 1; }, rendreBlocage() {}, tic() {} };
+    }, Date, JSON, Number, String, Math, Promise, clearInterval() {}, setInterval() { return 1; }, rendreBlocage() {}, cleBlocage() { return 'new-three'; }, actualiserDevis(x) { adoptedQuotes.push(x); }, tic() {} };
   vm.createContext(context); vm.runInContext(holdsSource, context);
   const old = context.retenir({ participants: 8 }, 'old-eight');
   await Promise.resolve();
@@ -129,6 +130,13 @@ async function adversarialSourceChecks() {
     serverNow: new Date().toISOString(), expiresAt: new Date(Date.now() + 600000).toISOString() }) });
   await next;
   check(context.blocage.jeton === 'new-token' && context.blocage.cle === 'new-three', 'new participants hold survives obsolete earlier response');
+  context.libererBlocage(); await context.blocage.file;
+  const obsoleteQuote = context.retenir({ participants: 7 }, 'old-emergency-seven');
+  await new Promise(resolve => setImmediate(resolve));
+  context.libererBlocage();
+  resolveOld({ status: 409, json: async () => ({ ok: false, code: 'price_changed', price: 39, program: { items: [{ activityId: 'bowling', participants: 7 }] } }) });
+  const obsoleteVerdict = await obsoleteQuote;
+  check(obsoleteVerdict.obsolete === true && !adoptedQuotes.some(x => x.price === 39), 'late emergency price_changed cannot replace newer participant quote');
   const priceStart = source.indexOf('  function tarifConnu(');
   const pricing = { meta: {}, state: { selection: ['golf', 'billards', 'playground'] }, Number, Math, isFinite,
     reglageBillard: () => ({ units: 2, hours: 1 }), motUnite: () => 'table', insecable: s => s,

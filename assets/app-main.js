@@ -513,7 +513,7 @@ function getBowlingDragTargetPlan(target) {
   const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
   const startTime = numToTime(targetStart);
   const sourceWindow = getBowlingDragSourceWindow(reservation, bowlingPointerDrag.sourceLane, bowlingPointerDrag.sourceStart);
-  const requiredCount = Math.max(1, getRequiredLaneCount(reservation.type, Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), reservation.formuleId));
+  const requiredCount = getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount;
   const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
@@ -666,6 +666,7 @@ function moveBowlingOpsPlan(reservation, targetStart, targetLanes, duration) {
       endTime: minuteIntToTime(end),
       durationMinutes: minutes,
       lanes: step.resourceType === 'bowling_lane' ? targetLanes : step.lanes,
+      ...(step.resourceType === 'bowling_lane' ? { bowlingCapacity: getBowlingCapacityPlan(Number(step.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, minuteIntToTime(start), minutes / 60, reservation.id), minutes).bowlingCapacity } : {}),
     };
   };
   const timeline = Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline.map(moveStep) : reservation.opsPlan.timeline;
@@ -687,7 +688,7 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   const startTime = numToTime(Number(targetStart));
   const sourceLane = Number(sourceLaneValue);
   const sourceWindow = getBowlingDragSourceWindow(reservation, sourceLaneValue, sourceStartValue);
-  const requiredCount = Math.max(1, getRequiredLaneCount(reservation.type, Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), reservation.formuleId));
+  const requiredCount = getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount;
   const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
@@ -1092,8 +1093,8 @@ function getOccupiedLanes(date, startTime, duration, ignoreId) {
   return occupied;
 }
 
-function getFreeCount(date, startTime, duration) {
-  const occ = getOccupiedLanes(date, startTime, duration);
+function getFreeCount(date, startTime, duration, ignoreId) {
+  const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
   const laneCount = getAvailabilityLaneCount();
   let count = 0;
   for (let i = 1; i <= laneCount; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') count++;
@@ -1403,7 +1404,7 @@ function syncEditLaneAssignment() {
     refreshEditPreview();
     return [];
   }
-  const requiredCount = getRequiredLaneCount(state.selectedRes.type, state.editState.pax, state.selectedRes.formuleId);
+  const requiredCount = getEditBowlingCapacityNeed(state.selectedRes, state.editState).requiredCount;
   const duration = Number(state.editState.duration || state.selectedRes.duration || 0);
   const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, state.editState.startTime, duration, state.selectedRes.id, state.editState.lanesStr);
   if (suggested) state.editState.lanesStr = formatLaneInput(suggested);
@@ -1668,7 +1669,7 @@ function hydrateSelectedReservation() {
 
 function buildReservationApiPayload(reservation, overrides = {}) {
   const requiresLanes = overrides.requiresLanes ?? reservationNeedsLanes(reservation.type, reservation.formuleId);
-  const laneCount = overrides.laneCount ?? (requiresLanes ? Math.max((reservation.lanes || []).length, getRequiredLaneCount(reservation.type, getReservationActivityPlayers(reservation, 'bowling'), reservation.formuleId)) : 0);
+  const laneCount = overrides.laneCount ?? (requiresLanes ? ((reservation.lanes || []).length || getRequiredLaneCount(reservation.type, getReservationActivityPlayers(reservation, 'bowling'), reservation.formuleId)) : 0);
   const channel = overrides.channel || reservation.channel || 'staff';
   return {
     ...reservation,
@@ -6954,6 +6955,7 @@ async function fetchSlots(options = {}) {
   // Un ancien prix ne doit jamais survivre a une nouvelle recherche. La reponse
   // courante remettra le programme normalise si le type est bien une visite.
   state.booking.serverProgram = null;
+  state.booking.bowlingCapacity = null;
   // Meme regle pour les complements de fin de reservation (montee de formule,
   // palier de laser, activite libre) : ils sont chiffres ET juges faisables sur
   // des heures precises. Une carte survivante annoncerait un supplement calcule
@@ -9104,6 +9106,10 @@ function selectSlot(i) {
   state.booking.startTime = slot.time;
   state.booking.allocatedLanes = slot.lanes;
   state.booking.opsPlan = slot.opsPlan || null;
+  state.booking.laneCount = (slot.lanes || []).length;
+  state.booking.bowlingCapacity = slot.bowlingCapacity || slot.opsPlan?.resourceBlocks?.find(block => block.resourceType === 'bowling_lane')?.bowlingCapacity || null;
+  if (slot.program && Array.isArray(slot.program.items)) state.booking.serverProgram = slot.program;
+  if (Number.isFinite(Number(slot.price)) && slot.price != null) state.booking.serverPrice = Number(slot.price);
   const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
   if (formule && slot.opsPlan && formulaHasAnchorUi()) {
     // Fige les ancres du créneau retenu : le serveur revalide exactement
@@ -9479,7 +9485,7 @@ function renderRecap() {
     if (totalNote) totalNote.textContent = complete
       ? 'Tout se règle sur place'
       : (total > 0 ? 'Tout se règle sur place, certaines activités y sont tarifées' : 'Montant confirmé à votre arrivée');
-    if (totalAmount) totalAmount.textContent = total > 0 ? `${Math.round(total)}€` : 'Sur place';
+    if (totalAmount) totalAmount.textContent = complete || total > 0 ? `${total}€` : 'Sur place';
   } else {
     if (totalLabel) totalLabel.textContent = 'Total estimé';
     if (totalNote) totalNote.textContent = 'À régler sur place';
@@ -9530,6 +9536,7 @@ function renderRecap() {
     ${formulaRecap && formulaRecap.hasTable ? `<div class="recap-item"><span class="recap-label">Votre table</span><span class="recap-value">Dès l'arrivée${formulaRecap.arrivalTime ? ` (${escapeHtml(formulaRecap.arrivalTime)})` : ''}</span></div>` : ''}
     ${formulaRecap && formulaRecap.freeLabels.length ? `<div class="recap-item"><span class="recap-label">À votre rythme</span><span class="recap-value">${formulaRecap.freeLabels.map(escapeHtml).join(' · ')}</span></div>` : ''}
     ${formule ? `<div class="recap-item"><span class="recap-label">Temps total estimé</span><span class="recap-value">${formatDurationLabel(totalDuration)}</span></div>` : ''}
+    ${bowlingCapacityMessage(b.bowlingCapacity) ? `<div class="recap-note" role="status">${escapeHtml(bowlingCapacityMessage(b.bowlingCapacity))}</div>` : ''}
     ${isLaser && (laserWaveCount > 1 || planLine) ? `<div class="recap-note"><b>Laser Game :</b> ${laserWaveCount > 1 ? `${laserWaveCount} sessions successives. ` : ''}${planLine ? `Plan retenu : ${planLine}.` : ''}</div>` : ''}
     ${formulaRecap && (formulaRecap.remainingLaser > 0 || formulaRecap.laserOnSite) ? `<div class="recap-note"><b>Laser Game :</b> ${formulaRecap.remainingLaser > 0 ? `${formulaRecap.remainingLaser} partie${formulaRecap.remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe.` : ''} ${formulaRecap.laserOnSite ? 'Vous placez vos parties laser librement pendant la visite.' : ''}</div>` : ''}
     ${formule ? `<div class="recap-note"><b>Pass liberté :</b> aucune heure imposée, à vivre quand vous voulez.</div>` : ''}
@@ -10008,7 +10015,7 @@ async function confirmBooking() {
   const duration = Number(b.duration);
   const totalDuration = getBookingTotalDuration(b);
   const needsLanes = reservationNeedsLanes(b.type, b.formuleId);
-  const laneCount = getRequiredLaneCount(b.type, b.pax, b.formuleId);
+  const laneCount = b.bowlingCapacity?.emergency && Array.isArray(b.allocatedLanes) && b.allocatedLanes.length ? b.allocatedLanes.length : getRequiredLaneCount(b.type, b.pax, b.formuleId);
 
   const releaseBookingSubmit = () => {
     bookingSubmitBusy = false;
@@ -12653,7 +12660,7 @@ function getStaffTerrainSteps(reservation) {
   const steps = items.length
     ? items.map(item => ({ label: `${item.label} · ${getReservationActivityPlayers(reservation, item.activityId)} joueurs`, start: item.start, end: item.end }))
     : getStaffResourceWindows(reservation, 'all').map(window => ({
-      label: `${window.resourceType === 'laser_arena' ? 'Laser Game' : 'Bowling'} · ${Number(window.players) || getReservationActivityPlayers(reservation, window.resourceType === 'laser_arena' ? 'laser_game' : 'bowling')} joueurs`,
+      label: `${window.resourceType === 'laser_arena' ? 'Laser Game' : 'Bowling'} · ${Number(window.players) || getReservationActivityPlayers(reservation, window.resourceType === 'laser_arena' ? 'laser_game' : 'bowling')} joueurs${bowlingCapacityMessage(window.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(window.bowlingCapacity) : ''}`,
       start: Number(window.start),
       end: Number(window.end)
     }));
@@ -14459,7 +14466,7 @@ function renderEstablishmentEditPanels(center, active) {
 
     <fieldset class="establishment-card">
       <legend>Bowling</legend>
-      <p class="estab-card-hint">Ce que le moteur peut allouer. Les comportements (pistes adjacentes…) sont dans « Règles &amp; comptoir ».</p>
+      <p class="estab-card-hint">Le confort est prioritaire. Le secours autorise davantage de joueurs par piste uniquement lorsque les pistes disponibles ne suffisent pas. Les comportements (pistes adjacentes…) sont dans « Règles &amp; comptoir ».</p>
       <div class="estab-field-row">
         <div class="field"><label for="estab-laneCount">Nombre de pistes</label><input type="number" id="estab-laneCount" min="1" max="40" value="${Number(bowling.laneCount || 8)}"></div>
         <div class="field"><label for="estab-normalCap">Joueurs confort / piste</label><input type="number" id="estab-normalCap" min="1" max="12" value="${Number(bowling.normalCapacityPerLane || 6)}"></div>
@@ -14765,7 +14772,7 @@ function renderEstablishmentReadPanels(center, active) {
              plus bas que leurs voisines. */''}
         ${stat(ICO.pin, 'Pistes bowling', Number(bowling.laneCount || 0), 'sur le planning')}
         ${stat(ICO.users, 'Confort / piste', Number(bowling.normalCapacityPerLane || 0), 'joueurs recommandés')}
-        ${stat(ICO.users, 'Max / piste', Number(bowling.emergencyCapacityPerLane || 0), 'capacité secours')}
+        ${stat(ICO.users, 'Secours / piste', Number(bowling.emergencyCapacityPerLane || 0), 'si les pistes disponibles ne suffisent pas')}
         ${stat(ICO.target, 'Armes laser', Number(laser.weaponCount || 0), 'joueurs en même temps au plus')}
         ${stat(ICO.bolt, 'Lancements', Number(laser.parallelLaunches || 0), 'en parallèle au plus')}
         ${stat(ICO.cake, 'Tables', softCap, `anniversaire conseillées, ${hardCap} au plus`)}
@@ -21181,7 +21188,7 @@ function renderCardStats(pax, durationLabel, options = {}) {
   const durClass = special ? 'bk-dur dur-special' : 'bk-dur';
   const durTitle = options.durationTitle || durationLabel;
   return `<span class="booking-stats">`
-    + `<span class="bk-pax ${grp}" title="${paxNum} joueur${paxNum > 1 ? 's' : ''}">${paxNum}<span class="u"><span class="u-short">j</span><span class="u-long">&nbsp;joueurs</span></span></span>`
+    + `<span class="bk-pax ${grp}" title="${escapeHtml(`${paxNum} joueur${paxNum > 1 ? 's' : ''}${bowlingCapacityMessage(options.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(options.bowlingCapacity) : ''}`)}">${paxNum}${options.bowlingCapacity?.emergency ? '<span aria-label="Capacité de secours">⚠</span>' : ''}<span class="u"><span class="u-short">j</span><span class="u-long">&nbsp;joueurs</span></span></span>`
     + `<span class="bk-sep" aria-hidden="true">·</span>`
     + `<span class="${durClass}" title="Durée ${escapeHtml(durTitle)}">${escapeHtml(durationLabel)}</span>`
     + `</span>`;
@@ -22223,7 +22230,7 @@ function renderPlanning() {
       const fullName = String(r.name || 'Client');
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
-      const statsHtml = renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration) });
+      const statsHtml = renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration), bowlingCapacity: item.window.bowlingCapacity });
       // L'OFFRE N'A SA PROPRE LIGNE QUE SI LA CARTE A LA HAUTEUR DE L'OFFRIR.
       // Mesure : une carte d'1h fait 46px, dont 44 utiles ; trois lignes (nom,
       // offre, chiffres) en demandent 56. L'offre partage donc la ligne des
@@ -22972,7 +22979,7 @@ function getGroupeProgramme(r) {
       cle: `bowling-${index + 1}`,
       activityId: 'bowling',
       nom: 'Bowling',
-      quoi: `${Number(f.players) || effectifActivite('bowling')} joueurs · ${formatDurationLabel(f.duration)}`,
+      quoi: `${Number(f.players) || effectifActivite('bowling')} joueurs · ${formatDurationLabel(f.duration)}${bowlingCapacityMessage(f.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(f.bowlingCapacity) : ''}`,
       ou: pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}` : 'pistes à attribuer',
       groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}${f.players ? ` · ${f.players} joueurs` : ''}` : '',
       start: f.start,
@@ -24090,7 +24097,7 @@ function detailLigneProgramme(item, reservation = null) {
   const participants = participantsLigneProgramme(item, reservation && reservation.pax);
   const activite = catalogueDeLigne(item);
   const unite = typeof activityCountsChildren === 'function' && activityCountsChildren(activite) ? 'enfant' : 'joueur';
-  return [`${participants} ${unite}${participants > 1 ? 's' : ''}`, detailLigneProgrammeSansEffectif(item, reservation)].filter(Boolean).join(' · ');
+  return [`${participants} ${unite}${participants > 1 ? 's' : ''}`, detailLigneProgrammeSansEffectif(item, reservation), bowlingCapacityMessage(item.bowlingCapacity)].filter(Boolean).join(' · ');
 }
 
 function participantsLigneProgramme(item, pax) {
@@ -25296,7 +25303,9 @@ function renderPosCaisse(r) {
 // decoche, parce qu'une piste qui disparait sans un mot est une surprise au
 // comptoir.
 function editLaneAdvice(r, e) {
-  const requis = getRequiredLaneCount(r.type, e.pax, r.formuleId);
+  const capacity = getEditBowlingCapacityNeed(r, e);
+  const requis = reservationNeedsLanes(r.type, r.formuleId) ? capacity.requiredCount : 0;
+  if (capacity.bowlingCapacity.emergency && requis) return bowlingCapacityMessage(capacity.bowlingCapacity);
   const choisies = String(e.lanesStr || '').split(',').map(x => Number(String(x).trim())).filter(n => Number.isFinite(n) && n >= 1).length;
   if (!requis) return 'Cette réservation ne demande aucune piste.';
   // Le francais s'accorde. Un texte que le staff lit vingt fois par jour ne
@@ -25427,7 +25436,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       // nombre de joueurs : le prix monte donc PAR PALIERS (un cran tous les
       // 6 joueurs a Libramont), jamais lineairement. Le comptoir doit voir
       // les pistes pour comprendre le montant.
-      const pistes = splitGroupIntoBowlingServices(effectif).reduce((sum, players) => sum + Math.max(1, getRequiredLaneCount('bowling', players)), 0);
+      const pistes = item.bowlingCapacity?.emergency && Number(item.laneCount) > 0 ? Number(item.laneCount) : splitGroupIntoBowlingServices(effectif).reduce((sum, players) => sum + Math.max(1, getRequiredLaneCount('bowling', players)), 0);
       const montant = Number(getBasePrice('bowling', heures, pistes, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
@@ -25551,7 +25560,14 @@ function getEditProgramItems() {
   if (!e || !e.programmeEdite) return [];
   const pax = Math.max(1, Number(e.pax) || 1);
   const items = [];
-  if (e.programmeEdite.bowling?.on) items.push({ activityId: 'bowling', duration: Number(e.programmeEdite.bowling.duration) || 1, pax, participants: participantsLigneProgramme(e.programmeEdite.bowling, pax) });
+  if (e.programmeEdite.bowling?.on) {
+    const item = { activityId: 'bowling', duration: Number(e.programmeEdite.bowling.duration) || 1, pax, participants: participantsLigneProgramme(e.programmeEdite.bowling, pax) };
+    if (state.selectedRes) {
+      const capacity = getEditBowlingCapacityNeed(state.selectedRes, e);
+      if (capacity.bowlingCapacity.emergency) { item.bowlingCapacity = capacity.bowlingCapacity; item.laneCount = capacity.requiredCount; }
+    }
+    items.push(item);
+  }
   if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax, participants: participantsLigneProgramme(e.programmeEdite.laser_game, pax) });
   Object.entries(e.programmeEdite.others || {}).forEach(([id, actif]) => {
     if (!actif) return;
@@ -25973,7 +25989,7 @@ async function saveEdit(e) {
   // le plus frais, comme avant : rien a controler, mais rien de perime envoye.
   const versionDeBase = [edition && edition.base, origine].find((dossier) => dossier && dossier.updatedAt) || state.selectedRes;
   const requiresLanes = reservationNeedsLanes(state.selectedRes.type, state.selectedRes.formuleId);
-  const requiredCount = getRequiredLaneCount(state.selectedRes.type, es.pax, state.selectedRes.formuleId);
+  const requiredCount = requiresLanes ? getEditBowlingCapacityNeed(state.selectedRes, es).requiredCount : 0;
   const duration = Number(es.duration);
   const pax = Number(es.pax);
   const slotCheck = validateSlotWindow(state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
@@ -26364,7 +26380,7 @@ function reconcileQuickLaneSelection() {
   if (quickBookState.type === 'visite') return;
   if (!reservationNeedsLanes(quickBookState.type, quickBookState.formuleId)) return;
   if (!quickBookState.startTime) return;
-  const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const { requiredCount } = getQuickBookLaneNeed();
   const current = quickBookState.lanes || [];
   if (requiredCount <= 1) return;
   if (current.length === 0 || current.length >= requiredCount) return;
@@ -26487,6 +26503,10 @@ function getQuickVisitHours(id) {
 function ligneProgrammeQuick(activityId) {
   const ligne = { activityId, pax: Number(quickBookState.pax) || 1, participants: getQuickVisitParticipants(activityId) };
   const activite = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
+  if (activityId === 'bowling') {
+    const capacity = getQuickBookLaneNeed();
+    if (capacity.bowlingCapacity?.emergency) { ligne.bowlingCapacity = capacity.bowlingCapacity; ligne.laneCount = capacity.requiredCount; }
+  }
   if (!activite) return ligne;
   if (activite.priceType === 'grid_bowling') ligne.duration = Number(getQuickVisitOptions(activityId).duration) || 1;
   // On n envoie un reglage QUE si l activite en a un : une cle inutile sur une
@@ -26729,6 +26749,9 @@ function patchQuickBookStatusLine(overlay) {
   } else if (quickBookState.type === 'formule') {
     parts.push('Sans piste de bowling');
   }
+  const emergencyMessage = bowlingCapacityMessage(getQuickBookLaneNeed().bowlingCapacity);
+  const warning = (overlay || document).querySelector('[data-bowling-capacity-warning]');
+  if (warning) { warning.textContent = emergencyMessage; warning.hidden = !emergencyMessage; }
   host.innerHTML = parts.map(part => `<span>${escapeHtml(part)}</span>`).join('');
 }
 
@@ -27242,12 +27265,15 @@ function getQuickBookSelectedSlotIfValid({ duration, totalDuration, needsLanes, 
       locked: Boolean(quickBookState.lockStartTime)
     };
   }
+  const capacityNeed = needsLanes ? getQuickBookLaneNeed(time) : { requiredCount: 0 };
+  requiredCount = capacityNeed.requiredCount;
   const lanes = needsLanes ? allocateLanes(requiredCount, quickBookState.date, time, duration) : [];
   if (needsLanes && (!lanes || lanes.length < requiredCount)) return null;
   return {
     time,
     lanes: lanes || [],
     freeCount: needsLanes ? getFreeCount(quickBookState.date, time, duration) : 0,
+    bowlingCapacity: capacityNeed.bowlingCapacity,
     selected: true,
     locked: Boolean(quickBookState.lockStartTime)
   };
@@ -27261,19 +27287,30 @@ function getQuickBookSelectedSlotIfValid({ duration, totalDuration, needsLanes, 
 // ce qui desactivait toute la verification de disponibilite : la bande
 // annoncait « disponible » sur des creneaux que le serveur refusait ensuite
 // (« Aucune piste disponible pour 12 piste(s) », capture Movsar 2026-08-26).
-function getQuickBookLaneNeed() {
+function getQuickBookLaneNeed(time = quickBookState && quickBookState.startTime) {
   if (!quickBookState) return { needsLanes: false, requiredCount: 0 };
-  if (quickBookState.type === 'visite') {
-    const avecBowling = Boolean(quickBookState.visit && quickBookState.visit.bowling && quickBookState.visit.bowling.on);
-    return {
-      needsLanes: avecBowling,
-      requiredCount: avecBowling ? getRequiredLaneCount('bowling', getQuickVisitParticipants('bowling'), '') : 0,
-    };
-  }
-  return {
-    needsLanes: reservationNeedsLanes(quickBookState.type, quickBookState.formuleId),
-    requiredCount: getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId),
-  };
+  const needsLanes = quickBookState.type === 'visite'
+    ? Boolean(quickBookState.visit?.bowling?.on)
+    : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
+  if (!needsLanes) return { needsLanes: false, requiredCount: 0 };
+  const players = quickBookState.type === 'visite' ? getQuickVisitParticipants('bowling') : Number(quickBookState.pax) || 1;
+  const duration = quickBookState.type === 'visite' ? Number(quickBookState.visit.bowling.duration) || 1 : Number(quickBookState.duration) || 1;
+  const free = time ? getFreeCount(quickBookState.date, time, duration) : getTotalLanes();
+  const servicePlayers = Math.max(...splitGroupIntoBowlingServices(players));
+  return { needsLanes: true, ...getBowlingCapacityPlan(servicePlayers, free, duration * 60) };
+}
+
+function bowlingCapacityMessage(capacity) {
+  if (!capacity?.emergency) return '';
+  const partition = (capacity.lanePlayers || []).join(' + ');
+  return `Capacité de secours : ${partition} joueurs par piste · environ ${capacity.estimatedMinutes} min à 10 min par joueur.${capacity.speedWarning ? ' Sur la durée choisie, un rythme soutenu est nécessaire ; terminer la partie n’est pas garanti.' : ''}`;
+}
+
+function getEditBowlingCapacityNeed(reservation, edition) {
+  const bowling = edition.programmeEdite?.bowling;
+  const duration = Number(bowling?.on ? bowling.duration : edition.duration || reservation.duration) || 1;
+  const players = bowling?.on ? participantsLigneProgramme(bowling, edition.pax) : Number(edition.pax) || 1;
+  return getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(players)), getFreeCount(reservation.date, edition.startTime || reservation.startTime, duration, reservation.id), duration * 60);
 }
 
 function getQuickBookAvailableSlots() {
@@ -27333,13 +27370,16 @@ function getQuickBookAvailableSlots() {
       });
       continue;
     }
-    const lanes = needsLanes ? allocateLanes(requiredCount, quickBookState.date, time, duration) : [];
-    if (needsLanes && (!lanes || lanes.length < requiredCount)) continue;
+    const capacityNeed = needsLanes ? getQuickBookLaneNeed(time) : { requiredCount: 0 };
+    const slotRequiredCount = capacityNeed.requiredCount;
+    const lanes = needsLanes ? allocateLanes(slotRequiredCount, quickBookState.date, time, duration) : [];
+    if (needsLanes && (!lanes || lanes.length < slotRequiredCount)) continue;
     const freeCount = needsLanes ? getFreeCount(quickBookState.date, time, duration) : 0;
     slots.push({
       time,
       lanes: lanes || [],
       freeCount,
+      bowlingCapacity: capacityNeed.bowlingCapacity,
       selected: quickBookState.startTime === time
     });
   }
@@ -27361,7 +27401,7 @@ function setQuickStartTime(time) {
 
 function applyQuickSuggestedLanes() {
   if (!quickBookState || !quickBookState.startTime) return;
-  const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const { requiredCount } = getQuickBookLaneNeed();
   // Garde la piste déjà choisie (case du planning) et complète jusqu'à N.
   const seed = quickBookState.autoAssign ? [] : (quickBookState.lanes || []);
   const suggested = seed.length
@@ -27418,7 +27458,7 @@ function getQuickBookSummaryActivites() {
       detail: `${option.label} Laser Game · ${quickBookState.pax} joueur${Number(quickBookState.pax) > 1 ? 's' : ''}`
     };
   }
-  const laneCount = quickBookState.autoAssign ? getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId) : quickBookState.lanes.length;
+  const laneCount = quickBookState.autoAssign ? getQuickBookLaneNeed().requiredCount : quickBookState.lanes.length;
   const total = getBasePrice(quickBookState.type, quickBookState.duration, laneCount, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
   const detail = laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''} prévue${laneCount > 1 ? 's' : ''}` : 'Sans piste';
   return { total, detail };
@@ -27913,6 +27953,7 @@ function renderQuickBookInner() {
               ${essentialCells.join('')}
             </div>
             ${essentialActions.length ? `<div class="qb-inline-actions" style="margin-top:12px;">${essentialActions.join('')}</div>` : ''}
+            <div class="qb-field-note danger" role="status" data-bowling-capacity-warning ${bowlingCapacityMessage(getQuickBookLaneNeed().bowlingCapacity) ? '' : 'hidden'}>${escapeHtml(bowlingCapacityMessage(getQuickBookLaneNeed().bowlingCapacity))}</div>
             ${statusParts.length ? `<div class="qb-status-line">${statusParts.map(part => `<span>${part}</span>`).join('')}</div>` : ''}
           </section>
 

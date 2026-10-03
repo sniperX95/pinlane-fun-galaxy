@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const {
   createReservation,
   createSlotHold,
+  readMatchingSlotHold,
   releaseSlotHold,
   reservationDejaConfirmee,
   precisionBlocagesEnCours,
@@ -15,6 +16,15 @@ const { findReservationAlternatives } = require('../lib/reservation-alternatives
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { ouvrirDemandePublique, estErreurInfra, signatureDemande } = require('../lib/demande-publique');
 const { enforceRateLimit, getClientIp } = require('../lib/rate-limit');
+
+function heldOps(held, request) {
+  const first = held.opsPlan?.resourceBlocks?.find((b) => b.resourceType === 'bowling_lane');
+  return { startTime: held.startTime, laneCount: held.laneCount, price: held.price,
+    basePrice: held.basePrice, program: held.program || request.program,
+    programPrice: held.program?.price ?? request.programPrice, opsPlan: held.opsPlan,
+    bowlingCapacity: first?.bowlingCapacity || null, emergencyWarning: first?.emergencyWarning || '',
+    planAvailable: true, blockOnlineConfirmation: false, validationStatus: 'confirmed' };
+}
 
 // La reponse a une confirmation deja faite (le client renvoie la meme) : sa
 // reservation, telle qu elle est en base, sans en creer une deuxieme ni
@@ -70,7 +80,12 @@ async function traiterBlocage(req, res) {
     const recu = String((body && body.holdToken) || '').trim();
     const jeton = empreinteJetonBlocage(recu) ? recu : nouveauJetonBlocage();
     const request = normalizeReservationRequest({ ...body, name: '', phone: '', email: '', notes: '' }, { channel: 'public' });
-    const ops = await prepareReservationOps(request, 'public', { saufJeton: jeton });
+    const held = typeof readMatchingSlotHold === 'function' ? await readMatchingSlotHold(jeton, request, signatureDemande(request)) : null;
+    const ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: jeton });
+    if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
+      sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de retenir ces horaires.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: ops.opsPlan });
+      return;
+    }
     if (ops.blockOnlineConfirmation) {
       // Pris par une reservation, ou retenus par un autre client en train de
       // reserver ? Le moteur rejoue sans les blocages : s il trouve alors,
@@ -103,6 +118,12 @@ async function traiterBlocage(req, res) {
       expiresAt: blocage.expiresAt,
       minutes: blocage.minutes,
       serverNow: new Date().toISOString(),
+      price: ops.price ?? request.price,
+      program: ops.program ?? request.program,
+      laneCount: ops.laneCount ?? request.laneCount,
+      bowlingCapacity: ops.bowlingCapacity,
+      emergencyWarning: ops.emergencyWarning,
+      opsPlan: ops.opsPlan,
     });
   } catch (error) {
     const raw = String((error && error.message) || '');
@@ -187,7 +208,12 @@ module.exports = async (req, res) => {
       reponseRejouee(res, deja);
       return;
     }
-    const ops = await prepareReservationOps(request, 'public', { saufJeton: holdToken });
+    const held = typeof readMatchingSlotHold === 'function' ? await readMatchingSlotHold(holdToken, request, signatureDemande(request)) : null;
+    const ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: holdToken });
+    if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
+      sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de confirmer.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: ops.opsPlan });
+      return;
+    }
     if (ops.blockOnlineConfirmation) {
       const alternatives = await findReservationAlternatives(request, {
         channel: 'public',

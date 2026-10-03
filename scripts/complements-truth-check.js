@@ -1549,7 +1549,12 @@ async function construirePROPRIETES(browser) {
         {
           nom: 'la carte annonce un montant qui n est pas l ecart des deux prix serveur',
           vise: /\[A\] LE MONTANT ANNONCE EST LE MONTANT REEL/,
-          serveur: [{ fichier: COMPLEMENTS, de: '  const deltaTotal = prixFacture(candidatePrice) - prixFacture(currentPrice);', vers: '  const deltaTotal = prixFacture(candidatePrice) - prixFacture(currentPrice) + 1;' }],
+          // Attack the final amount after the actual allocated lanes have
+          // repriced the candidate, so the mutation cannot be overwritten.
+          serveur: [{ fichier: COMPLEMENTS,
+            de: '  if (allocated.billedLaneCount) deltaTotal = prixFacture(getBasePrice(priceType, priceDuration, allocated.billedLaneCount, pax, candidate.id, centerId, priceOptions)) - prixFacture(currentPrice);',
+            vers: '  if (allocated.billedLaneCount) deltaTotal = prixFacture(getBasePrice(priceType, priceDuration, allocated.billedLaneCount, pax, candidate.id, centerId, priceOptions)) - prixFacture(currentPrice);\n  deltaTotal += 1;',
+          }],
         },
         {
           nom: 'accepter une montee touche au programme du dossier',

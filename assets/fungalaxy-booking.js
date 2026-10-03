@@ -412,6 +412,10 @@
     var confort = Math.max(1, Number(b.normalCapacityPerLane) || 6);
     var secours = Math.max(confort, Number(b.emergencyCapacityPerLane) || confort);
     var joueurs = state.onglet === 'formules' ? joueursDemandes() : joueursDe(activite('bowling'));
+    var cr = !state.surMesure && state.creneau;
+    var item = cr && cr.reponse.program && (cr.reponse.program.items || []).filter(function (it) { return it.activityId === 'bowling'; })[0];
+    var capacite = cr && (cr.slot.bowlingCapacity || (item && item.bowlingCapacity));
+    if (capacite && capacite.emergency) return { pistes: Number(item && item.billedLaneCount) || Number(cr.slot.laneCount) || 1, parPiste: capacite.emergencyCapacityPerLane, joueurs: joueurs, services: item && item.services ? item.services.length : 1 };
     var services = [joueurs];
     if (joueurs > parc * secours) {
       var n = Math.ceil(joueurs / (parc * confort)), base = Math.floor(joueurs / n), reste = joueurs % n;
@@ -440,7 +444,10 @@
     if (!p) return '';
     var opt = optionChoisie(a);
     var prix = opt ? Number(opt.prix) || 0 : 0;
-    return calculPistes(p.parPiste, p.pistes, prix) + (p.pistes > 1 && p.services > 1 ? ', en ' + p.services + ' tours' : '') + '.';
+    var b = meta && meta.center && meta.center.booking;
+    var secours = b && Number(b.emergencyCapacityPerLane);
+    return calculPistes(p.parPiste, p.pistes, prix).replace('joueurs max par piste', secours > p.parPiste ? 'joueurs par piste en confort' : 'joueurs max par piste') + (p.pistes > 1 && p.services > 1 ? ', en ' + p.services + ' tours' : '') + '.'
+      + (secours > p.parPiste ? ' Selon les pistes libres, jusqu’à ' + secours + ' joueurs par piste (environ 10 min par joueur pour une partie).' : '');
   }
   function noteRotation(a) {
     if (a.priceType === 'grid_fun_run') {
@@ -2005,7 +2012,7 @@
         state.dispo = j; state.dispoCle = cle; state.dispoTexte = JSON.stringify(j);
         plus.statut = null; plus.annuler = null; plus.refuses = {};
         var slot = (j.slots || [])[0] || null;
-        state.creneau = slot ? { slot: slot, reponse: j } : null;
+        state.creneau = slot ? creneauAvecDevis(slot, j) : null;
         state.heure = slot ? slot.time : '';
         hourZone.classList.remove('is-busy');
         rendreHeures();
@@ -2527,6 +2534,32 @@
       majPeriodes(track);
     });
   }
+  // Le devis du créneau fait foi : la répartition de secours dépend des
+  // pistes réellement disponibles, jamais du seul effectif du groupe.
+  function creneauAvecDevis(slot, rep) {
+    var devis = Object.assign({}, rep);
+    ['price', 'program', 'laneCount', 'duration', 'totalDuration'].forEach(function (cle) { if (slot[cle] != null) devis[cle] = slot[cle]; });
+    return { slot: slot, reponse: devis };
+  }
+  function actualiserDevis(x, conserverBlocage) {
+    if (!state.creneau || x.price == null) return;
+    if (!conserverBlocage) libererBlocage();
+    var cr = state.creneau, slot = Object.assign({}, cr.slot);
+    if (x.program) { delete slot.bowlingCapacity; delete slot.emergencyWarning; }
+    ['price', 'program', 'laneCount', 'bowlingCapacity', 'emergencyWarning', 'opsPlan'].forEach(function (cle) { if (x[cle] != null) slot[cle] = x[cle]; });
+    state.creneau = creneauAvecDevis(slot, cr.reponse);
+  }
+  function avertissementBowling(cr) {
+    var source = cr && cr.slot ? cr.slot : cr || {};
+    if (source.emergencyWarning) return source.emergencyWarning;
+    var items = (source.program && source.program.items) || (cr && cr.reponse && cr.reponse.program && cr.reponse.program.items) || [];
+    var ligne = items.filter(function (it) { return it.activityId === 'bowling'; })[0] || {};
+    var c = source.bowlingCapacity || ligne.bowlingCapacity;
+    if (!c || !c.emergency) return '';
+    return 'Répartition selon les pistes disponibles : ' + (c.lanePlayers || []).join(' + ') + ' joueurs, jusqu’à ' + c.emergencyCapacityPerLane
+      + ' par piste. Comptez environ ' + c.estimatedMinutes + ' min pour une partie complète (environ 10 min par joueur).'
+      + (c.speedWarning ? ' La durée choisie demande un rythme soutenu ; finir la partie n’est pas garanti.' : '');
+  }
   function signatureDe(d) {
     var ancres = (d.anchors && d.anchors.activities) || [];
     if (ancres.length) return ancres.map(function (a) { return a.activityId + ':' + (a.times || []).map(function (t) { return t.time; }).join(','); }).join('|');
@@ -2535,7 +2568,7 @@
   function rendreHeures() {
     var d = state.dispo;
     var ancres = (d.anchors && d.anchors.activities) || [];
-    var signature = signatureDe(d);
+    var signature = signatureDe(d) + '|' + JSON.stringify(state.creneau && [state.creneau.slot.laneCount, state.creneau.slot.bowlingCapacity, state.creneau.reponse.price]);
     if (signature === signaturePistes && $('.fg-track', hourZone)) {
       majPistes(d);
       rendreVisite();
@@ -2563,10 +2596,10 @@
     // ce que ca coute (le prix d une piste fois les pistes).
     function notePistes() {
       var a = activite('bowling'), p = pistesBowling();
-      if (!a || !p || p.pistes < 2) return '';
+      if (!a || !p) return '';
       var opt = optionChoisie(a), prix = opt ? Number(opt.prix) || 0 : 0;
       return '<p class="fg-track__lanes"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
-        + '<b>' + p.parPiste + ' joueurs max par piste</b> : ' + p.joueurs + ' joueurs = ' + p.pistes + ' pistes'
+        + '<b>' + p.parPiste + ' joueurs par piste</b> : ' + p.joueurs + ' joueurs = ' + p.pistes + ' piste' + (p.pistes > 1 ? 's' : '')
         + (prix ? ' × ' + esc(euros(prix)) + ' = <b>' + esc(euros(prix * p.pistes)) + '</b>' : '') + (p.services > 1 ? ', en ' + p.services + ' tours' : '') + '.'
         + '</span></p>';
     }
@@ -2682,7 +2715,7 @@
       var direct = (state.dispo.slots || []).filter(function (s) { return s.time === t; })[0];
       if (!direct) return;
       state.heure = t;
-      state.creneau = { slot: direct, reponse: state.dispo };
+      state.creneau = creneauAvecDevis(direct, state.dispo);
       $$('.fg-chip', track).forEach(function (c) { majChip(c, { time: c.dataset.time, ok: true }, [t], ''); });
       // Le creneau vient des slots du serveur : il est retenu tel quel.
       rejouer(chip, 'is-pose');
@@ -2931,7 +2964,7 @@
     var apres = (slot.opsPlan && slot.opsPlan.anchorPlan && slot.opsPlan.anchorPlan.times) || {};
     if (Object.keys(avant).some(function (k) { return avant[k] && apres[k] !== avant[k]; })) return 'Cette option déplacerait vos horaires.';
     if (carte) {
-      var ecart = Math.round(((Number(j.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100;
+      var ecart = Math.round(((Number(slot.price != null ? slot.price : j.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100;
       if (ecart > (Number(carte.deltaTotal) || 0) + 0.001) return 'Le tarif de cette option vient de changer.';
       // UNE OFFRE D ATTENTE N EST ACQUISE QUE POSEE PAR LE SERVEUR : sa ligne
       // revient marquee, au tarif d attente. Sinon (le groupe ne tourne plus,
@@ -2963,14 +2996,14 @@
         if (!refus && ecran === 'recap' && blocage.etat === 'tenu') {
           var neuf = avecPanier(c, function () {
             var cr0 = state.creneau;
-            state.creneau = { slot: j.slots[0], reponse: j };
+            state.creneau = creneauAvecDevis(j.slots[0], j);
             try { return { corps: corpsBlocage(), cle: cleBlocage() }; } finally { state.creneau = cr0; }
           });
           plus.enCours = carte ? carte.id : 'retour';
           retenir(neuf.corps, neuf.cle).then(function (r) {
             plus.enCours = '';
             if (state.creneau !== cr || cleDemande() !== cleAvant) return;
-            if (r.pris || r.refus) {
+            if (r.pris || r.refus || r.prixChange) {
               if (carte) plus.refuses[carte.id] = 1;
               plus.statut = { ecran: ecran, texte: carte ? 'Cette option n’est plus disponible sur vos horaires.' : 'Ce changement n’est plus possible sur vos horaires.', ton: 'ko' };
             } else appliquerPanier(c, carte, ecran, texteOk, j, cr);
@@ -2998,13 +3031,13 @@
     state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId;
     var slot = j.slots[0];
     state.dispo = j; state.dispoCle = cleDemande(); state.dispoTexte = JSON.stringify(j);
-    state.creneau = { slot: slot, reponse: j };
+    state.creneau = creneauAvecDevis(slot, j);
     state.heure = slot.time;
     plus.annuler = carte ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
     // Le montant dit est celui que le serveur vient d appliquer, jamais
     // celui de la carte : les deux ne different que si un tarif a baisse
     // entre-temps, et la phrase reste vraie.
-    plus.statut = { ecran: ecran, texte: carte ? texteAjout(carte, Math.round(((Number(j.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100) : texteOk, ton: 'ok' };
+    plus.statut = { ecran: ecran, texte: carte ? texteAjout(carte, Math.round(((Number(state.creneau.reponse.price) || 0) - (Number(cr.reponse.price) || 0)) * 100) / 100) : texteOk, ton: 'ok' };
   }
   // Pendant l aller-retour, rien ne se redessine : la phrase change sur place
   // et les boutons se taisent. A la reponse, l ecran se redessine (prix, plan,
@@ -3300,6 +3333,8 @@
       + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>+ ' + esc(nomsSansPrix(items)) + ', ' + PRIX_ACCUEIL + '</small>') + '</span>' : '')
       + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
+    var secoursBowling = avertissementBowling(state.creneau);
+    if (secoursBowling && avis.indexOf(secoursBowling) < 0) avis.push(secoursBowling);
     var horsHtml = '';
     if (horsDelai.length) {
       // Les heures posees ne bougent pas : elles se redisent telles quelles.
@@ -3394,6 +3429,7 @@
       // Le client a change son choix pendant l aller-retour : ce verdict ne
       // vaut plus, son prochain « Continuer » demandera le sien.
       if (sceneCourante !== 'heures' || cle !== cleBlocage()) return;
+      if (r.prixChange) { actualiserDevis(r.devis); signaturePistes = ''; rendreHeures(); refuserHoraires('<b>Le montant a changé selon les pistes disponibles.</b> Vérifiez le nouveau montant, puis continuez à nouveau.'); return; }
       if (r.pris) { horairesPris(r.message); return; }
       if (r.refus) {
         if (r.code === 'custom_request_required' && meta && meta.center && r.fromPax) meta.center.customRequest = { fromPax: Number(r.fromPax) };
@@ -3458,7 +3494,8 @@
           }
           return { obsolete: true };
         }
-        if (res.statut === 201 && x.ok !== false && x.holdToken) { poserBlocage(x, cle); return { ok: true }; }
+        if (res.statut === 201 && x.ok !== false && x.holdToken) { if (cle === cleBlocage()) actualiserDevis(x, true); poserBlocage(x, cle); return { ok: true }; }
+        if (res.statut === 409 && x.code === 'price_changed') return { prixChange: true, devis: x };
         // Deux demandes de cet ecran se sont croisees au serveur : une fois.
         if (res.statut === 409 && x.code === 'hold_retry' && essais > 0) return demanderBlocage(corps, cle, essais - 1, version);
         if (res.statut === 409 && (x.code === 'slot_taken' || x.code === 'slot_unavailable')) return { pris: true, message: x.message || '' };
@@ -3554,6 +3591,7 @@
     blocage.etat = 'reprise';
     rendreBlocage();
     retenir(corpsBlocage(), cleBlocage()).then(function (r) {
+      if (r.prixChange) { actualiserDevis(r.devis); blocage.etat = 'echu'; rendreBlocage(); rendreRecap(); dire('Le montant a changé. Vérifiez-le avant de bloquer à nouveau vos horaires.'); return; }
       if (r.ok) { dire('Vos horaires sont de nouveau bloqués pour vous, jusqu’à ' + heureLocale(blocage.echeance) + '.'); return; }
       if (r.pris || r.refus) {
         blocage.etat = 'pris'; blocage.message = r.message || '';
@@ -3862,6 +3900,8 @@
     // demande acceptee, l aide sous le champ dit deja « sans garantie ».
     if (final && state.contact.occasion) html += '<p class="fg-recap__detail fg-recap__occasion fg-rise" style="--i:' + (6 + lignes.length) + '">Occasion&nbsp;: <b style="color:var(--fg-text)">' + esc(libelleOccasion()) + '</b></p>';
     if (final && state.contact.note) html += '<p class="fg-recap__detail fg-recap__note fg-rise" style="--i:' + (7 + lignes.length) + '">Votre mot pour l’équipe&nbsp;: «&nbsp;' + esc(state.contact.note) + '&nbsp;»</p>';
+    var secoursBowling = avertissementBowling(cr);
+    if (secoursBowling) html += '<p class="fg-recap__detail fg-recap__note">' + esc(secoursBowling) + '</p>';
     if (final) html += htmlPlusRecap();
     return html;
   }
@@ -4058,6 +4098,7 @@
       // Le montant affiche part avec la demande, comme dans le tunnel ; le
       // serveur recalcule tout et c est son montant qui est enregistre.
       price: Number(rep.price) || 0,
+      quotedPrice: Number(rep.price) || 0,
       basePrice: Number(rep.price) || 0,
       duration: Number(rep.duration) || 1,
       totalDuration: Number(rep.totalDuration) || Number(rep.duration) || 1,
@@ -4119,6 +4160,11 @@
         // celui du recapitulatif tant qu aucun autre n est rendu : vide, le
         // recapitulatif rouvert par « vos coordonnees » perdait son plan et
         // son prix (« Sur place »).
+        if (res.status === 409 && res.json.code === 'price_changed') {
+          actualiserDevis(res.json); rendreRecap();
+          erreurEnvoi('<b>Le montant a changé selon les pistes disponibles.</b> Vérifiez le nouveau montant avant de confirmer à nouveau.');
+          return;
+        }
         if (res.status === 409) {
           var depart = state.heure || (state.creneau && state.creneau.slot.time) || '';
           state.dispo = null; signaturePistes = ''; goContact.disabled = true;
@@ -4215,6 +4261,7 @@
     $('#finBody').innerHTML = '<div class="fg-done__ticket fg-rise" style="--i:2">'
       + rangee('i-calendar', quand)
       + (quoi ? rangee('a-formule', 'Au programme&nbsp;: ' + esc(quoi)) : '')
+      + (avertissementBowling(r.program ? r : state.creneau) ? rangee('i-info', esc(avertissementBowling(r.program ? r : state.creneau))) : '')
       + rangee('i-mail', ligneMail)
       + rangee('i-card', ligneMontant)
       + (contact && contact.phone ? '<p class="fg-done__row"><svg aria-hidden="true"><use href="#i-info"/></svg><span>Une question ? ' + lienContact(contact) + '</span></p>' : '')

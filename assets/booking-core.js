@@ -590,6 +590,19 @@ function getRequiredLaneCount(type, pax, formuleId) {
   if (normal > laneCount && players <= laneCount * getEmergencyMaxPerLane()) return laneCount;
   return normal;
 }
+// Le secours ne s'active que lorsque le stock libre ne suffit pas au confort.
+function getBowlingCapacityPlan(pax, availableLanes, durationMinutes = 60) {
+  const players = Math.max(1, Math.trunc(Number(pax) || 1));
+  const normalCapacityPerLane = getMaxPerLane();
+  const emergencyCapacityPerLane = Math.max(normalCapacityPerLane, getEmergencyMaxPerLane());
+  const normalLanesNeeded = Math.ceil(players / normalCapacityPerLane);
+  const available = Math.max(0, Math.trunc(Number(availableLanes) || 0));
+  const emergency = available < normalLanesNeeded && players <= available * emergencyCapacityPerLane;
+  const requiredCount = emergency ? Math.ceil(players / emergencyCapacityPerLane) : normalLanesNeeded;
+  const lanePlayers = Array.from({ length: requiredCount }, (_, index) => Math.floor(players / requiredCount) + (index >= requiredCount - players % requiredCount ? 1 : 0));
+  const estimatedMinutes = Math.max(...lanePlayers) * 10;
+  return { requiredCount, bowlingCapacity: { emergency, normalCapacityPerLane, emergencyCapacityPerLane, normalLanesNeeded, lanePlayers, estimatedMinutes, speedWarning: emergency && Number(durationMinutes) < estimatedMinutes } };
+}
 // Resolution d'une formule pour l'AFFICHAGE prix/nom : si l'app a charge le
 // catalogue effectif du centre (window.__pinlaneDisplayFormules, aligne sur le
 // serveur et le formulaire public via getEffectiveFormules), on lit CE prix la ;

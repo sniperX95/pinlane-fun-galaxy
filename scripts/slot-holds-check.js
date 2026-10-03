@@ -716,7 +716,7 @@ async function main() {
     { label: 'sans l echeance de 10 minutes, la place ne revient pas', de: 'const DUREE_BLOCAGE_MINUTES = 10;', vers: 'const DUREE_BLOCAGE_MINUTES = 100000;', rouge: (r) => r.echeance.apres === 409 },
     { label: 'sans le plafond, un appareil retient tout', de: '      if (Number(autres.rows[0] && autres.rows[0].n) >= BLOCAGES_MAX_PAR_APPAREIL) {', vers: '      if (false) {', rouge: (r) => r.plafond.statuts !== '201,201,201,429' },
     { label: 'sans le rejeu, une confirmation renvoyee cree une deuxieme reservation', de: '    if (deja) throw reservationDejaConfirmeeErreur(deja);', vers: '', rouge: (r) => r.rejeu.ensemble !== '200,201' || r.rejeu.encore !== 409 },
-    { label: 'sans reprendre le plan retenu, la confirmation perd ses pistes', de: '  const garde = await planDuBlocage(client, saufJeton, payload, signatureDemande);', vers: '  const garde = null;', rouge: (r) => !(r.planRetenu.course === 201 && r.planRetenu.courseReservees === '8') },
+    { label: 'sans reprendre le plan retenu, la confirmation perd ses pistes', de: 'async function planDuBlocage(client, jeton, payload, signature) {', vers: 'async function planDuBlocage(client, jeton, payload, signature) { return null;' , rouge: (r) => !(r.planRetenu.course === 201 && r.planRetenu.courseReservees === '8') },
     { label: 'sans verifier la cause, une vraie reservation promettrait une liberation', de: '      try { verifier(sansBlocages); blocagesEnCause = true; } catch (autre) { blocagesEnCause = false; }', vers: '      blocagesEnCause = true;', rouge: (r) => /se libère/.test(r.staff.refusReel) || !LIBERE_A.test(r.staff.refus) },
   ];
   for (const c of CONTRE) {

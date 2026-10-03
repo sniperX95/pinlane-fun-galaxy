@@ -3,6 +3,7 @@ const {
   LASER_GAME_OPTIONS,
   currentTimeDecimal,
   getBasePrice,
+  getBowlingGameOptions,
   getEffectiveFormules,
   getFormuleArrivalWindow,
   getFormuleAvailability,
@@ -747,7 +748,10 @@ module.exports = async (req, res) => {
           ok: true,
           date,
           ...scheduleMeta,
-          slots: creneaux,
+          slots: creneaux.map((slot) => {
+            const quote = require('../lib/bowling-allocation').bowlingPlanQuote(program, slot.opsPlan, { centerId, dateStr: date, bowlingConfig: centerBowlingConfig });
+            return quote.billedLaneCount ? { ...slot, ...quote, price: quote.program.price } : slot;
+          }),
           laneCount: program.laneCount,
           duration: program.plannedItems[0]?.duration || 0,
           totalDuration: Math.round((program.items.reduce((sum, item) => sum + (item.minutes || 0), 0) / 60) * 100) / 100,
@@ -1201,7 +1205,11 @@ module.exports = async (req, res) => {
           ok: true,
           date,
           ...scheduleMeta,
-          slots: (Array.isArray(slots) ? slots : []).map(finDeFormule),
+          slots: (Array.isArray(slots) ? slots : []).map(finDeFormule).map((slot) => {
+            const quote = require('../lib/bowling-allocation').bowlingPlanQuote(null, slot.opsPlan);
+            return quote.billedLaneCount ? { ...slot, ...quote,
+              price: getBasePrice(type, duration, quote.billedLaneCount, pax, formuleId, centerId, { bowlingConfig: centerBowlingConfig, dateStr: date }) } : slot;
+          }),
           laneCount,
           duration,
           totalDuration,
@@ -1468,14 +1476,19 @@ module.exports = async (req, res) => {
         // (liste vide) les predicats rendent false : grille strictement identique.
         if (isCenterClosedDuring(blocks, date, startMin, endMin)) continue;
         if (isActivityBlockedAt(blocks, date, 'bowling', startMin, endMin)) continue;
+        const allocation = requiresLanes ? require('../lib/bowling-allocation').allocateBowlingCapacity({ players: pax, config: centerBowlingConfig,
+          requiredLanes: laneCount, durationMinutes: Math.round(duration * 60),
+          allocate: (count) => allocateLanes(count, snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount, blocks, date) }) : null;
         const lanes = requiresLanes
-          ? allocateLanes(laneCount, snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount, blocks, date)
+          ? allocation?.lanes || null
           : [];
 
         if (!requiresLanes || lanes !== null) {
           slots.push({
             time: startTime,
             lanes: lanes || [],
+            ...(allocation ? { ...allocation, laneCount: allocation.lanes.length,
+              price: getBasePrice(type, duration, type === 'bowling' && getBowlingGameOptions(centerBowlingConfig, date, { pax, laneCount }) !== null ? laneCount : allocation.lanes.length, pax, formuleId, centerId, { bowlingConfig: centerBowlingConfig, dateStr: date }) } : {}),
             freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount, blocks, date),
           });
         }

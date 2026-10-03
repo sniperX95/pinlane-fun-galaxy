@@ -72,9 +72,19 @@ database.readAvailabilitySnapshot = async (date, centerId, options = {}) => ({
 // ressources. Le serveur de dev ne refuse QUE ce que les blocages des autres
 // prennent (rejoue sans eux) : tout autre refus, il le laissait deja passer
 // (sa reservation est un faux), et ses gates ne dependent que de ca.
-function verifierDev(corps, sauf) {
+async function verifierDev(corps, sauf) {
   const autres = blocagesActifsDev(sauf);
   const entree = { ...corps, name: database.NOM_BLOCAGE, phone: '-', email: '', channel: 'public' };
+  let signature = '';
+  try { signature = require('../lib/demande-publique').signatureDemande(require('../lib/reservation-request').normalizeReservationRequest(entree, { channel: 'public' })); } catch (error) { /* Legacy deliberately incomplete mock requests. */ }
+  const retenu = blocagesDev.get(sauf);
+  if (retenu && retenu.etat === 'actif' && retenu.expiresAt > Date.now() && retenu.signature === signature) return { ok: true, dossier: retenu.dossier, signature };
+  let ops = null;
+  try { ops = await require('../lib/reservation-ops').prepareReservationOps(entree, 'public', { readState: async () => ({ reservations: occupationDev.concat(autres), laneStatuses: {}, blocks: [] }) }); } catch (error) { /* Keep the original permissive mock fallback below. */ }
+  if (ops && !ops.blockOnlineConfirmation) {
+    const dossier = { ...entree, ...devisDev(ops), lanes: ops.lanes || entree.lanes };
+    return { ok: true, dossier, signature };
+  }
   const essai = (liste) => { try { return database.validateReservationResources(entree, liste, {}, [], corps.date).payload; } catch (error) { return null; } };
   const sansBlocages = essai(occupationDev);
   const avec = autres.length ? essai(occupationDev.concat(autres)) : sansBlocages;
@@ -82,6 +92,14 @@ function verifierDev(corps, sauf) {
   if (!sansBlocages) return { ok: true, dossier: entree };
   const precision = database.precisionBlocage(entree, autres);
   return { ok: false, message: `Ces horaires ne sont plus libres.${precision || ' Choisissez-en d’autres.'}` };
+}
+function devisDev(dossier) {
+  const devis = {};
+  for (const key of ['price', 'program', 'laneCount', 'bowlingCapacity', 'emergencyWarning', 'opsPlan']) if (dossier && dossier[key] != null) devis[key] = dossier[key];
+  return devis;
+}
+function prixChangeDev(corps, dossier) {
+  return corps.quotedPrice != null && Number.isFinite(Number(dossier && dossier.price)) && Math.abs(Number(corps.quotedPrice) - Number(dossier.price)) > 0.001;
 }
 // LA DEMANDE SUR MESURE PASSE PAR LE VRAI GESTIONNAIRE (validation comprise),
 // mais RIEN n est ecrit et RIEN n est envoye : la ligne est gardee en memoire
@@ -216,7 +234,7 @@ function fauxDossier(body) {
       id: 4200 + compteur, centerId: b.centerId || 'libramont', channel: 'public', status: 'pending',
       validationStatus: 'confirmed', date: b.date || DATE, startTime: b.startTime || '', pax: Number(b.pax) || 0,
       name: b.name || '', email: b.email || '', phone: b.phone || '', type: b.type || 'visite', formuleId: b.formuleId || '',
-      label: b.label || '', price: Number(b.price) || 0, opsPlan: b.opsPlan || null, lanes: Array.isArray(b.lanes) ? b.lanes : [],
+      label: b.label || '', price: Number(b.price) || 0, program: b.program || null, bowlingCapacity: b.bowlingCapacity || null, emergencyWarning: b.emergencyWarning || '', opsPlan: b.opsPlan || null, lanes: Array.isArray(b.lanes) ? b.lanes : [],
     },
     ops: { validationStatus: 'confirmed', autoDecision: 'auto_confirmed', riskLevel: 'low', riskScore: 0, planWarning: '' },
     communications: b.email ? [{ channel: 'email', templateId: 'confirmation', recipient: b.email, status: 'queued' }] : [], warnings: [],
@@ -308,7 +326,7 @@ function createServer(options = {}) {
       let body = '';
       req.setEncoding('utf8');
       req.on('data', (c) => { body += c; });
-      req.on('end', () => {
+      req.on('end', async () => {
         let corps = null;
         try { corps = JSON.parse(body); } catch (error) { corps = null; }
         const repondre = (statut, json) => { res.writeHead(statut, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(json)); };
@@ -323,17 +341,18 @@ function createServer(options = {}) {
           return;
         }
         const jeton = /^[A-Za-z0-9_-]{32,64}$/.test(recu) ? recu : database.nouveauJetonBlocage();
-        const verdict = verifierDev(corps, jeton);
+        const verdict = await verifierDev(corps, jeton);
         if (!verdict.ok) {
           dernierePose.blocages.push({ action: 'refus', jeton, heure: corps.startTime, message: verdict.message });
           repondre(409, { ok: false, code: 'slot_taken', message: verdict.message });
           return;
         }
+        if (prixChangeDev(corps, verdict.dossier)) { repondre(409, { ok: false, code: 'price_changed', ...devisDev(verdict.dossier) }); return; }
         const duree = dureeBlocageDev();
-        blocagesDev.set(jeton, { dossier: verdict.dossier, expiresAt: Date.now() + duree, etat: 'actif' });
+        blocagesDev.set(jeton, { dossier: verdict.dossier, signature: verdict.signature, expiresAt: Date.now() + duree, etat: 'actif' });
         dernierePose.blocages.push({ action: 'hold', jeton, heure: corps.startTime, corps });
         const maintenant = new Date();
-        repondre(201, { ok: true, holdToken: jeton, expiresAt: new Date(maintenant.getTime() + duree).toISOString(), minutes: Math.max(1, Math.round(duree / 60000)), serverNow: maintenant.toISOString() });
+        repondre(201, { ok: true, ...devisDev(verdict.dossier), holdToken: jeton, expiresAt: new Date(maintenant.getTime() + duree).toISOString(), minutes: Math.max(1, Math.round(duree / 60000)), serverNow: maintenant.toISOString() });
       });
       return;
     }
@@ -341,23 +360,27 @@ function createServer(options = {}) {
       let body = '';
       req.setEncoding('utf8');
       req.on('data', (c) => { body += c; });
-      req.on('end', () => {
+      req.on('end', async () => {
         let parsed = null;
         try { parsed = JSON.parse(body); } catch (error) { parsed = null; }
         dernierePose.body = parsed;
         // Comme le serveur : les horaires retenus par un AUTRE client ne se
         // confirment pas ; ceux du client deviennent sa reservation.
         const jeton = String((parsed && parsed.holdToken) || '');
-        const verdict = parsed && parsed.date ? verifierDev(parsed, jeton) : { ok: true };
+        const verdict = parsed && parsed.date ? await verifierDev(parsed, jeton) : { ok: true };
         if (!verdict.ok) {
           res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
           res.end(JSON.stringify({ ok: false, message: 'Ce créneau ne peut pas être planifié automatiquement. Merci de choisir un autre horaire.', alternatives: [] }));
           return;
         }
+        if (prixChangeDev(parsed, verdict.dossier)) {
+          res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ ok: false, code: 'price_changed', ...devisDev(verdict.dossier) })); return;
+        }
         const tenu = blocagesDev.get(jeton);
         if (tenu && tenu.etat === 'actif') tenu.etat = 'converti';
         res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify(fauxDossier(parsed)));
+        res.end(JSON.stringify(fauxDossier({ ...parsed, ...devisDev(verdict.dossier) })));
       });
       return;
     }

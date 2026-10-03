@@ -459,6 +459,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const zlib = require('zlib');
+const { isDeepStrictEqual } = require('util');
 const { chromium } = require('playwright-core');
 const mock = require('./dev-tunnel-server');
 
@@ -588,13 +589,14 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // a analyser, 74 Ko a transferer, soit 13,2 et 6,0 Ko de marge : une police
 // (20 Ko compresses) ou une bibliotheque font toujours sauter l un et l autre.
 // 03/10, joueurs par activite : base a4bf8e4 264,3 Ko (deja au-dessus du
-// vieux plafond), nouveau 269,4 Ko (dont la garde des blocages obsoletes et
-// les choix partages avec le sur mesure) ; brotli3 72,4 -> 73,7 Ko. Comparaison
-// navigateur 6x, deux series de 7 mesures entrelacees : total des taches
-// 1081,28 -> 1087,54 puis 1229,36 -> 1174,15 ms. Derniere serie : script
-// 83,50 -> 91,60 ms, layout 374,80 -> 338,75 ms (mesures sous charge).
-const BUDGET_SERVI = 270 * 1024;
-const BUDGET_TRANSFERE = 74 * 1024;
+// vieux plafond), nouveau 272,9 Ko (dont les blocages obsoletes, les choix
+// partages avec le sur mesure et le secours selon le stock reel) ;
+// brotli3 72,4 -> 74,8 Ko. Comparaison
+// navigateur 6x, 7 mesures entrelacees apres chauffe sur la version finale :
+// total des taches 1031,18 -> 1051,64 ms, script 77,54 -> 83,31 ms,
+// layout 318,30 -> 324,95 ms (mesures locales sous charge).
+const BUDGET_SERVI = 274 * 1024;
+const BUDGET_TRANSFERE = 75 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -2660,6 +2662,11 @@ async function main() {
     await page.click('#goRecap');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000) && ((await lireRecap(page, '#recap')) || {}).total === o6.prix, '[E] et le recapitulatif revient identique (meme total)');
     await passerLaVitrine(page);
+    // Capture avant le POST : le hold peut enrichir le devis de disponibilite
+    // avec les ressources canoniques. L envoi doit conserver ce snapshot entier.
+    const devisRetenusE = new Map([...mock.blocagesDev.entries()]
+      .filter(([, b]) => b.etat === 'actif')
+      .map(([jeton, b]) => [jeton, JSON.parse(JSON.stringify(b.dossier))]));
     const reponsePose =page.waitForResponse((r) => r.url().indexOf('/api/public-reservations') >= 0 && r.request().method() === 'POST', { timeout: 15000 }).catch(() => null);
     await page.click('#confirmBtn');
     ok(await attendre(page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 10000), '[E] la confirmation mene a l ecran final');
@@ -2711,7 +2718,29 @@ async function main() {
     ok(JSON.stringify(corps.program) === JSON.stringify(PROGRAMME), '[E] le programme envoye est celui choisi (bowling 1 h, laser 2 parties, minigolf, arcades)', JSON.stringify(corps.program));
     const pt = (corps.preference && corps.preference.preferredTimes) || {};
     ok(corps.startTime === o6.time && pt.bowling === S && pt.laser_game === LT && JSON.stringify(corps.preference.laserGameTimes) === JSON.stringify([LT]), '[E] l heure du creneau, les heures posees (dont la serree) et la partie de laser voyagent avec la demande', `${corps.startTime} / ${JSON.stringify(pt)} / parties ${JSON.stringify(corps.preference && corps.preference.laserGameTimes)}`);
-    ok(corps.opsPlan && JSON.stringify(corps.opsPlan.resourceBlocks) === JSON.stringify(o6.opsPlan.resourceBlocks), '[E] le plan envoye est celui de la reponse retenue');
+    const devisRetenuE = devisRetenusE.get(corps.holdToken);
+    ok(Boolean(devisRetenuE) && isDeepStrictEqual(corps.opsPlan, devisRetenuE.opsPlan),
+      '[E] le plan envoye est exactement le snapshot canonique retenu par le blocage',
+      devisRetenuE && isDeepStrictEqual(corps.opsPlan, devisRetenuE.opsPlan) ? `${corps.opsPlan.resourceBlocks.length} blocs, plan entier identique` : JSON.stringify({ envoye: corps.opsPlan, retenu: devisRetenuE && devisRetenuE.opsPlan }));
+    // Le hold fixe les pistes deja attribuees comme preferences de relecture.
+    // Cette seule addition est attendue et doit designer EXACTEMENT ces pistes.
+    const ressourcesAttenduesE = o6.opsPlan.resourceBlocks.map((b) => b.activityId === 'bowling' && b.preferredLanes == null
+      ? { ...b, preferredLanes: b.lanes } : b);
+    ok(Boolean(devisRetenuE) && isDeepStrictEqual(devisRetenuE.opsPlan.resourceBlocks, ressourcesAttenduesE),
+      '[E] le blocage conserve toutes les ressources, heures, durees et effectifs de la disponibilite retenue',
+      devisRetenuE && isDeepStrictEqual(devisRetenuE.opsPlan.resourceBlocks, ressourcesAttenduesE) ? 'seule addition : preferredLanes egale les pistes deja retenues' : JSON.stringify({ disponibilite: ressourcesAttenduesE, blocage: devisRetenuE && devisRetenuE.opsPlan.resourceBlocks }));
+    const choixCanoniquesE = (prog) => ((prog && prog.items) || []).map((i) => ({
+      activityId: i.activityId, participants: i.participants, duration: i.duration,
+      games: i.games, minutes: i.minutes, sessions: i.sessions, price: i.price, priceKnown: i.priceKnown,
+    }));
+    ok(Boolean(devisRetenuE) && isDeepStrictEqual(choixCanoniquesE(devisRetenuE.program), choixCanoniquesE(d6.program))
+      && devisRetenuE.price === o6.prix && corps.quotedPrice === o6.prix,
+      '[E] le devis bloque conserve les quatre activites, leurs joueurs, durees, parties et montants',
+      JSON.stringify({ retenu: devisRetenuE && choixCanoniquesE(devisRetenuE.program), attendu: choixCanoniquesE(d6.program), prix: corps.quotedPrice }));
+    ok(Boolean(devisRetenuE) && isDeepStrictEqual((rendu.reservation || {}).program, devisRetenuE.program)
+      && isDeepStrictEqual((rendu.reservation || {}).opsPlan, devisRetenuE.opsPlan)
+      && (rendu.reservation || {}).price === devisRetenuE.price,
+      '[E] la reservation rendue garde le programme canonique complet, le plan et le montant bloques');
     ok(corps.name === 'Test Pinlane' && corps.email === 'qa@example.com' && corps.phone === '+32 491 30 16 67', '[E] le contact part tel que saisi, sans le (0) qui fausserait le numero', JSON.stringify(corps.phone));
     ok(!('consent' in corps) && !('cConsent' in corps), '[E] la case « j accepte » ne cree aucun champ d API inexistant');
     ok(corps.notes === '', '[E] sans mot pour l equipe, notes part vide', JSON.stringify(corps.notes));

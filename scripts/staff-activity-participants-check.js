@@ -18,12 +18,12 @@ const catalog = [
 const ctx = vm.createContext({ console, state: { booking: {}, selectedRes: null, editState: null }, quickBookState: null,
   getCenterActivity: id => catalog.find(item => item.id === id), resolveDisplayFormule: () => null,
   renderQuickBook: () => {}, renderPos: () => {}, escapeHtml: value => String(value),
-  formatDurationLabel: value => `${value}h`, getRuntimeBowlingConfig: () => null,
+  formatDurationLabel: value => `${value}h`, getRuntimeBowlingConfig: () => null, getFreeCount: () => 12,
 });
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), ctx);
 ctx.testCatalog = catalog;
 vm.runInContext('setCenterActivities(testCatalog)', ctx);
-const functions = ['participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
+const functions = ['getQuickBookLaneNeed', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
 for (const name of functions) {
   const from = app.indexOf(`function ${name}(`);
   assert.ok(from >= 0, name);
@@ -222,3 +222,36 @@ assert.doesNotMatch(run('renderStaffRequestStudyDay(manualStudy,{moment:"indiffe
   assert.equal(run('ajusterDureesAvantFermeture()'),false,'old global-player mutation cannot reduce to the fitting30min game');
 }
 console.log('PASS staff participant allocation: prices, all counters, edit roundtrip, formula contract, group reduction, mono conversion, detail semantics.');
+
+ctx.getBookingCatalogConfig=()=>({normalCapacityPerLane:6,emergencyCapacityPerLane:7,laneCount:12});
+assert.equal(run('getBowlingCapacityPlan(7,1).requiredCount'),1);
+assert.deepEqual(Array.from(run('getBowlingCapacityPlan(13,2).bowlingCapacity.lanePlayers')),[6,7]);
+assert.equal(run('getBowlingCapacityPlan(13,3).bowlingCapacity.emergency'),false);
+assert.equal(run('getBowlingCapacityPlan(7,2).requiredCount'),2);
+assert.equal(run('getBowlingCapacityPlan(7,1).bowlingCapacity.speedWarning'),true);
+assert.equal(run('getBowlingCapacityPlan(7,1,90).bowlingCapacity.speedWarning'),false);
+ctx.getFreeCount=()=>1;
+ctx.quickBookState={pax:18,type:'visite',duration:1,date:'2026-10-06',startTime:'14:00',visit:{bowling:{on:true,duration:1},options:{bowling:{participants:7}},others:{}}};
+assert.equal(run('getQuickBookLaneNeed().requiredCount'),1);
+assert.equal(run("ligneProgrammeQuick('bowling').laneCount"),1);
+assert.equal(run("getQuickBookSummaryActivites().total"),39);
+assert.match(run("detailLigneProgramme({...ligneProgrammeQuick('bowling'),duration:1},{pax:18})"),/7 joueurs.*70 min.*pas garanti/);
+console.log('Emergency real stock capacity and own7 of group18 pricing: PASS');
+
+ctx.goStep=()=>{};
+{
+  const from=app.indexOf('function selectSlot(');
+  vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
+}
+ctx.state.booking={type:'visite',pax:18};
+ctx.state.availableSlots=[{time:'14:00',lanes:[1],price:39,program:{items:[{activityId:'bowling',participants:7,laneCount:1}],price:39},bowlingCapacity:run('getBowlingCapacityPlan(7,1).bowlingCapacity')}];
+run('selectSlot(0)');
+assert.equal(ctx.state.booking.laneCount,1);
+assert.equal(ctx.state.booking.serverPrice,39);
+assert.equal(ctx.state.booking.serverProgram.items[0].participants,7);
+assert.equal(ctx.state.booking.bowlingCapacity.speedWarning,true);
+ctx.getBookingCatalogConfig=()=>({normalCapacityPerLane:4,emergencyCapacityPerLane:5,laneCount:12});
+assert.equal(run('getBowlingCapacityPlan(7,1).requiredCount'),2,'configured emergency5 refuses7 on one');
+assert.equal(run('getBowlingCapacityPlan(9,2).requiredCount'),2,'configured emergency5 allows9 on two');
+assert.equal(run('getBowlingCapacityPlan(9,3).requiredCount'),3,'configured normal4 wins when3 available');
+console.log('Generic selectedslot price/program and settings authority: PASS');

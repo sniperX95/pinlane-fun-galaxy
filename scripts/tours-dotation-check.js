@@ -565,7 +565,7 @@ function verifierConsole() {
   const { normalizeProgram } = require('../lib/visit-program');
   const coeur = chargerCoeur();
   coeur.setCenterActivities(listCenterActivities(CENTRE));
-  const noms = ['participantsLigneProgramme', 'activityCountsChildren', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne'];
+  const noms = ['bowlingCapacityMessage', 'participantsLigneProgramme', 'activityCountsChildren', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne'];
   const textes = noms.map((nom) => fonctionDuFichier('assets/app-main.js', nom));
   if (!ok(textes.every(Boolean), 'MONTAGE les fonctions de la fiche se trouvent dans app-main', noms.filter((n, i) => !textes[i]).join(', '))) return;
   vm.runInContext(textes.join('\n'), coeur, { filename: 'app-main.js:fiche' });

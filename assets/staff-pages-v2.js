@@ -319,7 +319,7 @@
   function bar({ crumb, title, sub, actions = '' }) {
     return `<section class="pv2-bar">
       <div>
-        <div class="pv2-bar-crumb"><span class="pv2-live"></span>${esc(crumb)}</div>
+        ${crumb ? `<div class="pv2-bar-crumb"><span class="pv2-live"></span>${esc(crumb)}</div>` : ''}
         <h1>${esc(title)}</h1>
         <div class="pv2-bar-sub">${sub}</div>
       </div>
@@ -643,10 +643,11 @@
         ? [`${agg.count} réservation${agg.count > 1 ? 's' : ''}`, `${agg.pax} joueur${agg.pax > 1 ? 's' : ''}`, ...urgences.map((u) => u.mot)].join(', ')
         : 'aucune réservation';
       cells += `<button type="button" class="pv2-cal-cell heat-${heat} ${dateStr === today ? 'today' : ''} ${dateStr === selectedDate ? 'selected' : ''}${urgences.length ? ` has-${urgences[0].ton}` : ''}" data-cal-date="${dateStr}" aria-pressed="${dateStr === selectedDate ? 'true' : 'false'}" aria-label="${day} · ${dit}" onclick="pv2SelectResDay('${dateStr}')">
-        <span class="pv2-cal-day">${day}${agg ? `<span class="pv2-cal-n" aria-hidden="true">${agg.count}</span>` : ''}</span>
+        <span class="pv2-cal-day">${day}${agg ? `<span class="pv2-cal-n" aria-hidden="true">${agg.count}<span class="pv2-cal-count-label">rés.</span></span>` : ''}</span>
         ${/* Un jour sans reservation n affiche RIEN : trente tirets sur un mois
-             creux faisaient une grille de trous. Le compte s ecrit en mots,
-             sans abreviation (« 3 résas » le 02/10 encore). */''}
+              creux faisaient une grille de trous. Le compte s ecrit en mots
+              sur desktop ; sur mobile, le compteur compact est accompagne
+              de « rés. » et le libelle accessible reste complet. */''}
         ${agg ? `<span class="pv2-cal-meta"><strong>${agg.count}</strong> réservation${agg.count > 1 ? 's' : ''}<span class="pv2-cal-pax">${agg.pax} joueur${agg.pax > 1 ? 's' : ''}</span></span>` : ''}
         ${urgences.length ? `<span class="pv2-cal-flags" aria-hidden="true">${urgences.map((u) => `<span class="pv2-cal-flag ${u.ton}"><i></i><b>${esc(u.mot)}</b></span>`).join('')}</span>` : ''}
       </button>`;
@@ -738,7 +739,7 @@
     const paint = () => {
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
-        crumb: 'Journée',
+        crumb: '',
         title: 'Réservations',
         sub: `${esc(sync)}${staffReservationsDataCache.error ? ' · <span style="color:var(--v2-amber)">API indisponible</span>' : ''}`,
         // Les trois boutons de mois forment UN controle : ils sont groupes pour

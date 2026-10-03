@@ -5604,10 +5604,17 @@ function renderStaffArcadeOptions(activity, options, participants, context) {
   const offers = activity && activity.arcadeOffers;
   if (!offers || offers.enabled === false) { const saved=getArcadeOfferQuote(activity,options,participants); return `<div class="activity-option-note">${escapeHtml(saved ? getArcadeOfferDetail({cards:saved.cards,arcadeOffer:saved.offer}) : 'Tarif à confirmer à l’accueil.')}${saved ? ` · ${formatMoneyCentimes(saved.price)}` : ''}</div>`; }
   const quote = getArcadeOfferQuote(activity, options, participants);
-  const button = (mode, offer) => `<button type="button" class="qb-dur-btn ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeHtml(mode)}','${escapeHtml(offer.id)}')">${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}<small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
-  return `<div class="qb-visit-options"><span class="qb-opt-legend">Au temps</span>${(offers.timeOffers || []).filter(o => o.enabled !== false).map(o => button('time', o)).join('')}</div><div class="qb-visit-options"><span class="qb-opt-legend">En crédits</span>${(offers.creditOffers || []).filter(o => o.enabled !== false).map(o => button('credit', o)).join('')}</div>`
+  // Le formulaire classique partage les offres, pas le langage visuel du SaaS.
+  if (context === 'booking' && !document.body.classList.contains('staff-mode')) {
+    const button = (mode, offer) => `<button type="button" class="qb-dur-btn ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeHtml(mode)}','${escapeHtml(offer.id)}')">${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}<small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
+    return `<div class="qb-visit-options"><span class="qb-opt-legend">Au temps</span>${(offers.timeOffers || []).filter(o => o.enabled !== false).map(o => button('time', o)).join('')}</div><div class="qb-visit-options"><span class="qb-opt-legend">En crédits</span>${(offers.creditOffers || []).filter(o => o.enabled !== false).map(o => button('credit', o)).join('')}</div>`
+      + (options.arcadeMode === 'credit' ? `<label class="field">Cartes<input class="input" type="number" min="1" max="1000" step="1" value="${quote?.cards || participants}" aria-label="Nombre de cartes Arcades" onchange="setStaffArcadeOption('${context}','cards',this.value)"></label>` : '')
+      + `<div class="activity-option-note">${escapeHtml(quote ? getArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div>`;
+  }
+  const button = (mode, offer) => `<button type="button" class="qb-dur-btn dossier-option ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeHtml(mode)}','${escapeHtml(offer.id)}')"><span>${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}</span><small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
+  return `<div class="staff-arcade-options"><div class="qb-visit-options staff-option-group"><span class="qb-opt-legend staff-option-label">Au temps</span>${(offers.timeOffers || []).filter(o => o.enabled !== false).map(o => button('time', o)).join('')}</div><div class="qb-visit-options staff-option-group"><span class="qb-opt-legend staff-option-label">En crédits</span>${(offers.creditOffers || []).filter(o => o.enabled !== false).map(o => button('credit', o)).join('')}</div>`
     + (options.arcadeMode === 'credit' ? `<label class="field">Cartes<input class="input" type="number" min="1" max="1000" step="1" value="${quote?.cards || participants}" aria-label="Nombre de cartes Arcades" onchange="setStaffArcadeOption('${context}','cards',this.value)"></label>` : '')
-    + `<div class="activity-option-note">${escapeHtml(quote ? getArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div>`;
+    + `<div class="activity-option-note">${escapeHtml(quote ? getArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div></div>`;
 }
 
 function setStaffArcadeOption(context, key, value, offerId) {
@@ -25790,7 +25797,7 @@ function toggleEditProgrammeOuvert() {
 function renderEditFormuleBloc(r, formule, lignes) {
   if (!peutAdapterFormule()) {
     if (!lignes.length) return '';
-    return `<div class="pos-field" style="grid-column: 1 / -1;">
+    return `<div class="pos-field dossier-program">
       <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'la formule')}</span>
       <ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>
     </div>`;
@@ -25803,7 +25810,7 @@ function renderEditFormuleBloc(r, formule, lignes) {
     // Une visite sans formule dit ce qu elle contient (les activites en
     // puces), au lieu d un bouton seul.
     const puces = !lignes.length && typeof renderActivitesCourtes === 'function' ? renderActivitesCourtes(r) : '';
-    return `<div class="pos-field" style="grid-column: 1 / -1;">
+    return `<div class="pos-field dossier-program">
       <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'ce dossier')}</span>
       ${listeHtml}${puces}
       <button type="button" class="edit-adapter-btn" onclick="toggleEditProgrammeOuvert()">Adapter pour ce dossier</button>
@@ -25823,15 +25830,15 @@ function renderEditFormuleBloc(r, formule, lignes) {
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
     let options = '';
     if (actif && estBowling) {
-      options = `<div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div>`;
+      options = `<div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div>`;
     }
     if (actif && choice.id === 'arcade_time') options = renderStaffArcadeOptions(getCenterActivity(choice.id),programme.othersOptions[choice.id] || {},participantsLigneProgramme(programme.othersOptions[choice.id] || {},state.editState.pax),'edit');
     if (actif && estLaser) {
-      options = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn ${Number(programme.laser_game.games) === games ? 'active' : ''}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
+      options = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
     }
-    return `<div class="qb-visit-row ${actif ? 'is-on' : ''}">
-      <button type="button" class="qb-visit-toggle" aria-pressed="${actif ? 'true' : 'false'}" onclick="toggleEditActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
-      ${actif ? renderActivityParticipantsControl(choice.id, 'edit') : ''}${options}
+    return `<div class="qb-visit-row dossier-activity ${actif ? 'is-on' : ''}">
+      <button type="button" class="qb-visit-toggle dossier-activity-head" aria-pressed="${actif ? 'true' : 'false'}" onclick="toggleEditActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
+      ${actif ? `<div class="dossier-activity-body">${renderActivityParticipantsControl(choice.id, 'edit')}${options}</div>` : ''}
     </div>`;
   }).join('');
   const prixValeur = getEditPriceValue();
@@ -25872,11 +25879,11 @@ function renderEditFormuleBloc(r, formule, lignes) {
   // qui change, pas le calcul.
   const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
   const modifie = editProgramAChange();
-  return `<div class="pos-field" style="grid-column: 1 / -1;">
+  return `<div class="pos-field dossier-program">
     <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'ce dossier')} <em class="edit-cas-tag">cas par cas</em>
       <button type="button" class="edit-adapter-btn is-open" onclick="toggleEditProgrammeOuvert()">Replier</button></span>
     ${listeHtml ? `<div class="edit-formule-origine">${listeHtml}</div>` : ''}
-    <div class="qb-visit-grid">${rangees}</div>
+    <div class="qb-visit-grid dossier-activities">${rangees}</div>
     <div class="edit-price-row">
       <label for="editPriceInput">Prix facturé</label>
       <input id="editPriceInput" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)">
@@ -25927,15 +25934,15 @@ function renderPosEdit(r) {
   const statuts = [['pending', 'Confirmé'], ['arrived', 'Arrivé'], ['paid', 'Payé']];
   const contenuBloc = renderEditFormuleBloc(r, editFormule, editFormuleLignes);
   const pistesBloc = !editNeedsLanes ? (editFormuleLignes.length ? '' : `
-          <div class="pos-field">
+          <div class="pos-field dossier-field">
             <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
             <p class="field-hint">${isLaserRes
               ? `${Number(e.pax) || 0} joueur${(Number(e.pax) || 0) > 1 ? 's' : ''} : ${getLaserWaveCount(Number(e.pax) || 1)} session${getLaserWaveCount(Number(e.pax) || 1) > 1 ? 's' : ''} de laser. Aucune piste de bowling n’est réservée.`
               : 'Cette réservation ne prend aucune piste de bowling.'}</p>
           </div>`) : `
-          <div class="pos-field">
+          <div class="pos-field dossier-field">
             <span class="lbl">Pistes</span>
-            <div class="lane-picker" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
+            <div class="lane-picker dossier-lanes" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
               ${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {
                 const choisie = getEditLaneNumbers().includes(lane);
                 const maintenance = state.laneStatuses[lane] === 'maintenance';
@@ -25949,32 +25956,32 @@ function renderPosEdit(r) {
           </div>`;
   return `<div class="edit-shell es2 ${posSheetClass()}">
     <form class="edit-form" onsubmit="saveEdit(event)">
-      <div class="es-grid">
-        <section class="es-card">
-          <div class="es-head"><span class="es-ico">${ico.client}</span><h4>Client</h4></div>
-          <div class="pos-field">
+      <div class="es-grid dossier-edit-grid">
+        <section class="es-card dossier-section">
+          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.client}</span><h4>Client</h4></div>
+          <div class="pos-field dossier-field">
             <label class="lbl" for="editNameInput">Nom</label>
             <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" autocomplete="off" oninput="setEditField('name', this.value)" required>
           </div>
-          <div class="es-pair">
-            <div class="pos-field">
+          <div class="es-pair dossier-fields">
+            <div class="pos-field dossier-field">
               <label class="lbl" for="editPhoneInput">Téléphone</label>
               <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" required>
             </div>
-            <div class="pos-field">
+            <div class="pos-field dossier-field">
               <label class="lbl" for="editEmailInput">E-mail</label>
               <input id="editEmailInput" class="input" type="email" value="${escapeHtml(e.email || '')}" placeholder="facultatif" oninput="setEditField('email', this.value)">
             </div>
           </div>
         </section>
-        <section class="es-card">
-          <div class="es-head"><span class="es-ico">${ico.quand}</span><h4>Quand et combien</h4></div>
+        <section class="es-card dossier-section">
+          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.quand}</span><h4>Quand et combien</h4></div>
           <div class="es-trio">
-            <div class="pos-field">
+            <div class="pos-field dossier-field">
               <label class="lbl" for="editStartInput">Heure</label>
               <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
             </div>
-            <div class="pos-field">
+            <div class="pos-field dossier-field">
               <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties' : 'Durée'}</label>
               <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
                 ${isLaserRes
@@ -25983,29 +25990,29 @@ function renderPosEdit(r) {
                 ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
               </select>
             </div>
-            <div class="pos-field">
+            <div class="pos-field dossier-field">
               <label class="lbl" for="editPaxInput">Joueurs</label>
-              <div class="es-stepper">
-                <button type="button" class="es-step" aria-label="Un joueur de moins" onclick="editPaxPas(-1)">−</button>
+              <div class="es-stepper staff-stepper">
+                <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de moins" onclick="editPaxPas(-1)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
                 <input id="editPaxInput" class="input" type="number" min="1" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
-                <button type="button" class="es-step" aria-label="Un joueur de plus" onclick="editPaxPas(1)">+</button>
+                <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de plus" onclick="editPaxPas(1)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
               </div>
             </div>
           </div>
-          <div class="pos-field">
+          <div class="pos-field dossier-field">
             <span class="lbl" id="editStatusLabel">Statut</span>
             <div class="es-seg" role="radiogroup" aria-labelledby="editStatusLabel">
               ${statuts.map(([v, mot]) => `<button type="button" role="radio" class="es-seg-btn is-${v}${e.status === v ? ' is-on' : ''}" aria-checked="${e.status === v}" data-statut="${v}" onclick="setEditStatut('${v}')">${mot}</button>`).join('')}
             </div>
           </div>
         </section>
-        ${contenuBloc || pistesBloc ? `<section class="es-card es-wide">
-          <div class="es-head"><span class="es-ico">${ico.contenu}</span><h4>Contenu et pistes</h4></div>
+        ${contenuBloc || pistesBloc ? `<section class="es-card es-wide dossier-section dossier-section-wide">
+          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.contenu}</span><h4>Contenu et pistes</h4></div>
           <div class="es-contenu">${contenuBloc}${pistesBloc}</div>
         </section>` : ''}
       </div>
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
-      <div class="edit-actions es-actions">
+      <div class="edit-actions es-actions dossier-actions">
         <div class="edit-actions-destructive">
           <button type="button" class="btn-secondary warn es-lien" onclick="cancelRes(${r.id})">Annuler la réservation</button>
           <button type="button" class="btn-secondary danger es-lien" onclick="deleteRes(${r.id})">Supprimer</button>
@@ -26663,11 +26670,11 @@ function renderActivityParticipantsControl(id, mode = 'quick') {
   const courant = mode === 'edit' ? participantsLigneProgramme(options, pax) : getQuickVisitParticipants(id);
   const setter = mode === 'edit' ? 'setEditActivityParticipants' : 'setQuickVisitParticipants';
   const nom = (activite && activite.name) || id;
-  return `<div class="qb-visit-options qb-visit-compteur" role="group" aria-label="${escapeHtml(nom)} : ${unite}s">`
+  return `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(nom)} : ${unite}s">`
     + `<span class="qb-opt-legend">${enfants ? 'Enfants' : 'Joueurs'}</span>`
-    + `<button type="button" class="qb-step-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant - 1})">−</button>`
-    + `<span class="qb-step-valeur">${courant} / ${plafond}</span>`
-    + `<button type="button" class="qb-step-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant + 1})">+</button></div>`;
+    + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant - 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
+    + `<span class="qb-step-valeur staff-stepper-value">${courant} / ${plafond}</span>`
+    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span></div>`;
 }
 
 function setEditActivityParticipants(id, nombre) {
@@ -28983,7 +28990,10 @@ function renderPosInner() {
   // l'endroit où on la lit quand on a un client au téléphone. C'est
   // l'identifiant réel de la réservation, celui qui est stocké et qui sort dans
   // l'export, pas un code reconstruit à l'affichage.
-  const subtitle = getPosIdentityParts(r).join(' · ');
+  const identity = getPosIdentityParts(r);
+  const dossierStatus = getStaffDashboardStatusMeta(r);
+  const identityLabels = r.date ? ['Date', 'Horaires', 'Ressources', 'Groupe'] : ['Horaires', 'Ressources', 'Groupe'];
+  const facts = identity.map((value, index) => `<div class="dossier-fact"><span>${identityLabels[index]}</span><strong>${value}</strong></div>`).join('');
   // LA FICHE NE S OUVRE QU UNE FOIS. Son animation d entree (.fade-in) vivait
   // sur un conteneur reconstruit a CHAQUE rendu : cocher une activite, un poll,
   // un changement d etat la faisaient re-apparaitre en fondu sous les yeux du
@@ -29004,15 +29014,15 @@ function renderPosInner() {
   overlay.classList.add('centered');
   overlay.innerHTML = `
     <div class="edit-modal" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">
-      <div class="edit-modal-head">
-        <div class="edit-modal-ident">
-          <h3 id="posTitle">${escapeHtml(r.name)}</h3>
-          <p>${subtitle}</p>
+      <div class="edit-modal-head dossier-head">
+        <div class="edit-modal-ident dossier-heading">
+          <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
+          <div class="dossier-facts">${facts}</div>
         </div>
         <button type="button" class="close-btn" aria-label="Fermer la fiche" onclick="closePos()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
-        <div class="modal-tabs" role="tablist" aria-label="Vues de la fiche">
+        <div class="modal-tabs dossier-tabs" role="tablist" aria-label="Vues de la fiche">
           <button type="button" role="tab" aria-selected="${!isEdit}" class="tab ${!isEdit ? 'active' : ''}" onclick="setTab('details')">Infos</button>
           <button type="button" role="tab" aria-selected="${isEdit}" class="tab ${isEdit ? 'active' : ''}" onclick="setTab('modifier')">Modifier</button>
         </div>

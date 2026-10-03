@@ -44,6 +44,44 @@ colors:
     danger: "#f75555"
     danger-soft: "#2c1213"
     info: "#3291ff"
+  console-light-page: "#f4f4f4"
+  console-light-surface: "#ffffff"
+  console-light-raised: "#fbfbfb"
+  console-light-subtle: "#efefef"
+  console-light-line: "#e1e1e1"
+  console-light-line-strong: "#cacaca"
+  console-light-control-border: "#888888"
+  console-light-text: "#242424"
+  console-light-muted: "#606060"
+  console-light-faint: "#6b6b6b"
+  console-light-accent: "#315d87"
+  console-light-accent-strong: "#284e73"
+  console-light-accent-soft: "#e8eef4"
+  console-light-accent-contrast: "#ffffff"
+  console-light-console-selected: "#242424"
+  console-light-console-selected-text: "#ffffff"
+  console-light-console-selected-surface: "#f4f4f4"
+  console-light-console-input: "#ffffff"
+  console-light-console-focus: "#315d87"
+  console-dark-page: "#181818"
+  console-dark-surface: "#222222"
+  console-dark-raised: "#2b2b2b"
+  console-dark-subtle: "#353535"
+  console-dark-line: "#3e3e3e"
+  console-dark-line-strong: "#595959"
+  console-dark-control-border: "#878787"
+  console-dark-text: "#f1f1f1"
+  console-dark-muted: "#bcbcbc"
+  console-dark-faint: "#b2b2b2"
+  console-dark-accent: "#8eb7d9"
+  console-dark-accent-strong: "#a5cae7"
+  console-dark-accent-soft: "#293746"
+  console-dark-accent-contrast: "#181818"
+  console-dark-console-selected: "#e9e9e9"
+  console-dark-console-selected-text: "#222222"
+  console-dark-console-selected-surface: "#303030"
+  console-dark-console-input: "#272727"
+  console-dark-console-focus: "#8eb7d9"
 typography:
   family:
     ui: "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
@@ -62,10 +100,33 @@ typography:
     fontWeight: 500
     lineHeight: 1.3
     letterSpacing: "0"
+  console-title:
+    fontFamily: "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    fontSize: "24px"
+    fontWeight: 650
+    lineHeight: 1.25
+    letterSpacing: "-0.025em"
+  console-title-mobile:
+    fontFamily: "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    fontSize: "20px"
+    fontWeight: 650
+    lineHeight: 1.25
+    letterSpacing: "-0.025em"
+  console-control:
+    fontFamily: "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    fontSize: "13px"
+    fontWeight: 600
+  console-section:
+    fontFamily: "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    fontSize: "14px"
+    fontWeight: 650
+    lineHeight: 1.4
+    letterSpacing: "-0.01em"
 rounded:
   sm: "6px"
   md: "8px"
   lg: "12px"
+  console-overlay: "16px"
   full: "9999px"
 spacing:
   unit: "4px"
@@ -98,6 +159,45 @@ components:
     border: "1px solid {colors.line}"
     rounded: "{rounded.lg}"
     padding: "20px"
+  console-button-primary:
+    backgroundColor: "{colors.console-light-console-selected}"
+    textColor: "{colors.console-light-console-selected-text}"
+    rounded: "{rounded.md}"
+    typography: "{typography.console-control}"
+    height: "40px"
+  console-button-primary-dark:
+    backgroundColor: "{colors.console-dark-console-selected}"
+    textColor: "{colors.console-dark-console-selected-text}"
+    rounded: "{rounded.md}"
+    typography: "{typography.console-control}"
+    height: "40px"
+  console-option:
+    backgroundColor: "{colors.console-light-surface}"
+    textColor: "{colors.console-light-text}"
+    rounded: "{rounded.md}"
+    height: "44px"
+    padding: "8px 10px"
+  console-option-selected:
+    backgroundColor: "{colors.console-light-console-selected}"
+    textColor: "{colors.console-light-console-selected-text}"
+    rounded: "{rounded.md}"
+    height: "44px"
+    padding: "8px 10px"
+  console-activity:
+    backgroundColor: "{colors.console-light-raised}"
+    textColor: "{colors.console-light-text}"
+    rounded: "{rounded.lg}"
+    padding: "14px"
+  console-overlay:
+    backgroundColor: "{colors.console-light-surface}"
+    textColor: "{colors.console-light-text}"
+    rounded: "{rounded.console-overlay}"
+    width: "min(960px, calc(100vw - 32px))"
+  console-stepper:
+    backgroundColor: "{colors.console-light-console-input}"
+    textColor: "{colors.console-light-text}"
+    rounded: "{rounded.md}"
+    height: "44px"
 ---
 
 # Design System v2 : Pinlane Platform
@@ -193,3 +293,112 @@ Movsar, devant l'interface d'Accountable : « plus vivant, plus pro, avec que de
 - **Une phrase vraie avant les chiffres** : un en-tête qui s'adresse à quelqu'un (« Bonjour Camille ») donne ce qui l'attend en comptant la liste qu'il annonce, à la couleur de sa ligne la plus grave. Le prénom ne vient que d'une personne (jamais du nom du centre, d'un rôle ou d'une session de secours). Un compte inconnu (lecture en cours, refusée, en panne) ne se dit jamais « à jour ».
 - **La console vouvoie le gérant**, comme les mails, l'agent et la démo : « Posez votre question », « vos concurrents », jamais « ta » ni « tes ». Les faits sur le centre s'écrivent à la troisième personne (« le samedi est le jour le plus fort »), les légendes proposées aux clients suivent la doctrine de marque (vouvoiement par défaut, c'est le parent qui réserve). Pas de jargon de statisticien (« verdicts causaux ») : on dit ce qu'il manque, en jours. Le gate `voix-pro-check` le vérifie.
 - **« À faire » réunit, il ne recopie pas** : une seule liste pour ce qui attend (alertes de la journée, mails à répondre, questions de l'agent, envois en échec), triée par gravité, chaque ligne menant à la page où ça se règle. Une donnée qui existe déjà ailleurs n'est pas redessinée : on y renvoie. Une tuile qui ne mesure rien (une constante affichée comme un état) est supprimée.
+
+
+<!-- Scoped console record, 2026-10-04. Incumbent public tokens and sections retained. -->
+
+## Overview
+
+**Creative North Star: "Precision Tooling"**
+
+Addendum staff/admin, enregistré depuis le bloc « Console 2026-10-03 » de `assets/pinlane-staff.css` et les composants de `assets/app-main.js` et `assets/staff-pages-v2.js`. Le brief SaaS est en mode Operate. La console livrée utilise papier et graphite, faits visibles, compteurs groupés et même finition en clair et sombre.
+
+**Key Characteristics:**
+
+- Neutres mesurés et sélection monochrome.
+- Hiérarchie par texte, espace et filets.
+- Contrôles homogènes et données réelles.
+- Palette publique et tunnel client préservés.
+
+Le frontmatter conserve intégralement les palettes publiques `colors.light` et `colors.dark`. Les clés `console-light-*` / `console-dark-*` sont des overrides supplémentaires, appliqués uniquement sous `body:is(.staff-mode, .admin-mode)`. Cet addendum fait autorité dans ce scope quand une description plus ancienne de la console le contredit.
+
+## Colors
+
+### Primary
+
+L'action et la sélection console utilisent `console-*-console-selected` et `console-*-console-selected-text`. Le bleu mesuré (`console-*-accent`, `console-*-console-focus`) guide les liens et le focus ; les couleurs sémantiques du planning et des statuts restent fonctionnelles.
+
+### Neutral
+
+Les rôles page, surface, raised et subtle donnent les niveaux de structure. Les rôles line et line-strong sont les filets, control-border distingue les contrôles. Text, muted et faint structurent la lecture. Le fond de champ est console-input ; l'activité sélectionnée utilise console-selected-surface.
+
+**The Scoped Palette Rule.** Les overrides staff/admin ne réassignent aucun jeton du tunnel public.
+
+**The Selection Contrast Rule.** La sélection se lit par contraste plein et libellé, dans les deux thèmes.
+
+## Typography
+
+Geist demeure la police UI ; Geist Mono reste la police de données de la base. Le compteur livré est en police UI avec chiffres tabulaires : ne pas déclarer que tous les nombres sont déjà en chasse fixe.
+
+- Titre de dossier : rôle console-title desktop, console-title-mobile sous 760px.
+- Sections d'édition : console-section ; libellés 12px/500.
+- Champs et boutons : texte dense 13px ; action à 600, champ sans renforcement artificiel.
+- Faits du header : valeur 14px/600, interligne 1.4 ; libellé et complément 12px.
+- Statut : 12px/600, casse naturelle, sans chasse décorative.
+
+**The Functional Label Rule.** Le label nomme une donnée ou une action. Le titre de section livré remplace l'ancien kicker décoratif ; ce dernier n'est pas un rôle à transmettre.
+
+## Layout
+
+Le dossier a un maximum de 960px et un retrait viewport de 32px, padding horizontal 28px et vertical 24px. Le header expose identité et statut, puis Date, Horaires, Ressources et Groupe quand ces faits existent, avant les onglets. L'édition et les activités utilisent deux colonnes lorsque la place le permet. Les sections internes partagent la surface du dossier ; des filets séparent les groupes.
+
+Sous 760px, retrait viewport 16px, padding horizontal 16px et vertical 20px, titre mobile et sections/activités à une colonne. Les faits gardent deux colonnes et les options se replient sans tronquer le label. Le calendrier mobile garde des cellules de 68px minimum : nombre et unité sur deux lignes, métadonnées secondaires masquées.
+
+Le rythme partagé de 4px est conservé. Les valeurs locales 6/10/14/28px décrivent la composition livrée ; elles n'inventent pas une nouvelle échelle globale. Les règles publiques de layout et de motion restent celles du document incumbent.
+
+## Elevation & Depth
+
+Cartes posées plates, hiérarchie par fond et filets. Le dossier est la surface élevée : `--shadow-overlay` utilise une ombre adaptée au thème, enregistrée dans le sidecar. Le scrim demeure, le filtre de verre des overlays concernés est neutralisé, ainsi que reflets et translations de survol du cockpit concerné.
+
+**The Flat Resting Surface Rule.** La profondeur distingue une surface flottante. Une carte posée ne gagne pas de glow ou de reflet au hover.
+
+Les contrôles livrés ont des transitions de 150ms ease sur couleur, fond et bordure ; reduced-motion les supprime pour les sélecteurs ciblés. L'entrée de fiche se joue à l'ouverture, pas à chaque poll ou compteur. Le parcours public conserve sa motion liquide existante.
+
+## Shapes
+
+Angles de console : md pour boutons, champs, compteurs et options ; lg pour panneaux et activités ; console-overlay pour le dossier desktop, lg pour son mode mobile ; sm pour le statut et petits segments. Les valeurs se trouvent dans le frontmatter. Les filets sont d'un pixel. Les sections du dossier sont ouvertes ; le contour d'une activité garde sa fonction de choix et de compteur.
+
+## Components
+
+### Buttons
+
+Actions monochromes, secondaires sur surface avec control-border. Minimum 40px desktop pour les contrôles généraux, 44px mobile ; sauvegarde de dossier et fermeture à 44px dès le desktop. Hover secondaire sur subtle, primaire à .9 d'opacité ; pas d'image de fond ou d'ombre décorative. Focus : outline 2px, offset 3px, couleur console-focus. Danger et avertissement gardent leur rôle fonctionnel.
+
+### Inputs / Fields
+
+Fond console-input, bordure control-border, angle md, texte 13px, placeholder opaque, label visible 12px dans l'édition. Champs généraux 40px desktop puis 44px mobile ; champs de la fiche 44px dès le desktop. Pas d'ombre.
+
+### Cards / Containers
+
+Panneaux console à angle lg. Sections ouvertes dans le dossier, notes et retards nommés sans bandes latérales décoratives. Panneau d'activité : padding 14px, gap 12px, frontière renforcée et fond calme quand sélectionné.
+
+### Options
+
+Options bowling, arcade et formule : hauteur 44px minimum, angle md, padding 8px 10px, label explicite et complément à 12px. Les listes se replient avec écart 6px. La sélection suit le même contraste plein que l'action principale ; les pistes gardent une cible 44px et montrent une disponibilité réelle.
+
+### Compteur groupé
+
+Moins, valeur et plus dans un seul groupe de 44px, angle md. Colonnes 44px / minmax(48px, 1fr) / 44px ; boutons internes 42px entre bordures. Valeur 14px/600 en chiffres tabulaires, unité 12px. Les bornes réelles désactivent le geste concerné ; les boutons ont un label accessible. Le focus du groupe montre la relation. Même composant en création et édition.
+
+### Navigation et dossier
+
+Navigation active sur subtle, texte et marqueur monochromes. Infos/Modifier ont des cibles de 44px ; l'actif est renforcé avec un filet 2px, sans capsule. Identité et statut précèdent les faits. La fermeture utilise un SVG explicite et une cible 44px.
+
+## Do's and Don'ts
+
+### Do:
+
+- **Do** préserver la Scoped Palette Rule et offrir la même hiérarchie en clair et sombre.
+- **Do** afficher les faits avant le détail et garder le compteur proche du choix modifié.
+- **Do** garder labels, limites réelles, focus visible et reduced-motion.
+- **Do** conserver le moteur comme source d'état et les contraintes produit confirmées du document incumbent.
+
+### Don't:
+
+- **Don't** ajouter dégradé décoratif, glow, verre ou reflet dans la console concernée.
+- **Don't** reprendre kicker, bande décorative ou boîte imbriquée comme nouvelle règle de surface.
+- **Don't** propager la couche SaaS au formulaire public.
+
+**Contradictions incumbent laissées hors scope :** les sections anciennes affirment encore une suppression totale des couches CSS, une source de couleur exclusivement centrale et des tokens de console noirs purs. Le code de cette branche contient des couches historiques et le bloc final scoped ; cet addendum documente la console effective sans migrer le système public ni réparer toute la documentation globale. Le sidecar est créé : aucun `.impeccable/design.json` n'existait dans ce checkout.
+
+**Not canonized:** avertissements legacy du chantier, glyphes ou kickers résiduels hors du lot relu et effets historiques neutralisés ; ce sont des dettes ou vestiges, pas des tokens à hériter. Les 13px de texte dense, 20px de titre mobile et angles 8/12/16px sont des valeurs cohérentes et délibérément livrées.

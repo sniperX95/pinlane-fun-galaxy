@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T23:19:53.103118+00:00",
+  "title": "Design System: Pinlane Platform",
+  "extensions": {
+    "colorMeta": {
+      "console-light-page": {
+        "role": "neutral",
+        "displayName": "console light page"
+      },
+      "console-light-surface": {
+        "role": "neutral",
+        "displayName": "console light surface"
+      },
+      "console-light-control-border": {
+        "role": "neutral",
+        "displayName": "console light control border"
+      },
+      "console-light-text": {
+        "role": "neutral",
+        "displayName": "console light text"
+      },
+      "console-light-accent": {
+        "role": "primary",
+        "displayName": "console light accent"
+      },
+      "console-light-console-selected-text": {
+        "role": "neutral",
+        "displayName": "console light console selected text"
+      },
+      "console-light-console-selected-surface": {
+        "role": "neutral",
+        "displayName": "console light console selected surface"
+      },
+      "console-dark-page": {
+        "role": "neutral",
+        "displayName": "console dark page"
+      },
+      "console-dark-surface": {
+        "role": "neutral",
+        "displayName": "console dark surface"
+      },
+      "console-dark-control-border": {
+        "role": "neutral",
+        "displayName": "console dark control border"
+      },
+      "console-dark-text": {
+        "role": "neutral",
+        "displayName": "console dark text"
+      },
+      "console-dark-accent": {
+        "role": "primary",
+        "displayName": "console dark accent"
+      },
+      "console-dark-console-selected-text": {
+        "role": "neutral",
+        "displayName": "console dark console selected text"
+      },
+      "console-dark-console-selected-surface": {
+        "role": "neutral",
+        "displayName": "console dark console selected surface"
+      }
+    },
+    "typographyMeta": {
+      "console-title": {
+        "displayName": "Titre de console",
+        "purpose": "IdentitÃ© du dossier et titre de page ; variante mobile distincte."
+      },
+      "console-control": {
+        "displayName": "Action dense",
+        "purpose": "Boutons console ; les champs gardent leur propre poids."
+      }
+    },
+    "shadows": [
+      {
+        "name": "console-overlay-light",
+        "value": "0 16px 56px rgb(0 0 0 / 0.18)",
+        "purpose": "Dossier flottant staff/admin clair."
+      },
+      {
+        "name": "console-overlay-dark",
+        "value": "0 16px 56px rgb(0 0 0 / 0.42)",
+        "purpose": "Dossier flottant staff/admin sombre."
+      }
+    ],
+    "motion": [
+      {
+        "name": "console-state",
+        "value": "150ms ease",
+        "purpose": "Fond, bordure et couleur des contrÃ´les ciblÃ©s ; supprimÃ© sous reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "console-mobile",
+        "value": "760px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Console primary action",
+      "kind": "button",
+      "refersTo": "console-button-primary",
+      "description": "Action principale monochrome en staff/admin ; suit les variables du thÃ¨me.",
+      "html": "<button class=\"ds-console-primary\">Enregistrer</button>",
+      "css": ".ds-console-primary { min-height:40px; padding:0 14px; border:1px solid var(--console-selected, var(--text)); border-radius:8px; background:var(--console-selected, var(--text)); color:var(--console-selected-text, var(--surface)); font:600 13px var(--font-ui); box-shadow:none; transition:background-color 150ms ease,border-color 150ms ease,color 150ms ease; cursor:pointer; } .ds-console-primary:hover:not(:disabled){opacity:.9;} .ds-console-primary:focus-visible{outline:2px solid var(--console-focus, var(--accent)); outline-offset:3px;} .ds-console-primary:disabled{cursor:not-allowed;} @media(max-width:760px){.ds-console-primary{min-height:44px;}} @media(prefers-reduced-motion:reduce){.ds-console-primary{transition:none;}}"
+    },
+    {
+      "name": "Console option",
+      "kind": "button",
+      "refersTo": "console-option",
+      "description": "Option Ã  label explicite ; classe selected liÃ©e au vrai Ã©tat.",
+      "html": "<button class=\"ds-console-option selected\" aria-pressed=\"true\">2 parties<small>Bowling</small></button>",
+      "css": ".ds-console-option{min-height:44px;padding:8px 10px;border:1px solid var(--control-border);border-radius:8px;background:var(--surface);color:var(--text);font:500 12px/1.35 var(--font-ui);cursor:pointer;} .ds-console-option small{display:block;font-size:12px;font-weight:400;opacity:.85;margin-top:2px;} .ds-console-option:hover:not(:disabled){background:var(--subtle);} .ds-console-option.selected{background:var(--console-selected,var(--text));border-color:var(--console-selected,var(--text));color:var(--console-selected-text,var(--surface));} .ds-console-option:focus-visible{outline:2px solid var(--console-focus,var(--accent));outline-offset:3px;}"
+    },
+    {
+      "name": "Console input",
+      "kind": "input",
+      "description": "Champ de console avec frontiÃ¨re interactive et label visible.",
+      "html": "<label class=\"ds-console-field\">Nom<input class=\"ds-console-input\" value=\"Groupe Martin\"></label>",
+      "css": ".ds-console-field{display:grid;gap:6px;font:500 12px var(--font-ui);color:var(--muted);} .ds-console-input{min-height:40px;padding:0 12px;border:1px solid var(--control-border);border-radius:8px;background:var(--console-input,var(--surface));color:var(--text);font:400 13px var(--font-ui);box-shadow:none;transition:border-color 150ms ease,background-color 150ms ease;} .ds-console-input:hover{border-color:var(--control-border);} .ds-console-input:focus-visible{outline:2px solid var(--console-focus,var(--accent));outline-offset:3px;} .ds-console-input::placeholder{color:var(--faint);opacity:1;} @media(max-width:760px){.ds-console-input{min-height:44px;}} @media(prefers-reduced-motion:reduce){.ds-console-input{transition:none;}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Precision Tooling",
+    "overview": "Papier et graphite, Geist et filets fins : les faits opÃ©rationnels se lisent avant le dÃ©tail. Base publique prÃ©servÃ©e ; overrides limitÃ©s au staff/admin. Deux thÃ¨mes de mÃªme qualitÃ©.",
+    "keyCharacteristics": [
+      "SÃ©lection monochrome",
+      "Faits visibles",
+      "Compteur groupÃ©",
+      "Surfaces posÃ©es plates",
+      "Public prÃ©servÃ©"
+    ],
+    "rules": [
+      {
+        "name": "The Scoped Palette Rule",
+        "body": "Les overrides console ne vivent que dans staff/admin.",
+        "section": "colors"
+      },
+      {
+        "name": "The Selection Contrast Rule",
+        "body": "Choix actif par contraste plein et libellÃ© explicite.",
+        "section": "colors"
+      },
+      {
+        "name": "The Functional Label Rule",
+        "body": "Un label nomme une donnÃ©e ou une action ; aucun kicker dÃ©coratif Ã  hÃ©riter.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Resting Surface Rule",
+        "body": "La profondeur distingue un overlay ; aucune dÃ©coration au hover d'une carte posÃ©e.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do prÃ©server le public et ses jetons tenant.",
+      "Do garder faits, labels, limites rÃ©elles et focus visibles."
+    ],
+    "donts": [
+      "Don't ajouter glow, verre ou dÃ©gradÃ© dÃ©coratif Ã  la console.",
+      "Don't transformer les avertissements legacy en style Ã  hÃ©riter."
+    ]
+  }
+}

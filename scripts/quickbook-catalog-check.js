@@ -297,12 +297,18 @@ async function main() {
       const play = rangee('Playground');
       const fun = rangee('Fun Run by PIXEL');
       const compteurAvant = play ? (play.querySelector('.qb-step-valeur') || {}).textContent.trim() : '';
+      const libelleEnfants = play ? (play.querySelector('.qb-visit-compteur .qb-opt-legend') || {}).textContent.trim() : '';
+      const joueursAvant=quickBookState.pax;
+      const autresAvant=Object.fromEntries(Object.keys(ensureQuickVisit().options).filter(id=>id!=='playground').map(id=>[id,getQuickVisitParticipants(id)]));
       const moins = play && play.querySelector('.qb-step-btn');
       if (moins) { moins.click(); await new Promise((r) => setTimeout(r, 350)); }
       const playApres = rangee('Playground');
       return {
         sessions: fun ? [...fun.querySelectorAll('.qb-dur-btn')].map((b) => b.textContent.trim()) : [],
         compteurAvant,
+        libelleEnfants, joueursAvant, joueursApres:quickBookState.pax,
+        enfantsApres:getQuickVisitParticipants('playground'),
+        autresInchanges:JSON.stringify(autresAvant)===JSON.stringify(Object.fromEntries(Object.keys(autresAvant).map(id=>[id,getQuickVisitParticipants(id)]))),
         compteurApres: playApres ? (playApres.querySelector('.qb-step-valeur') || {}).textContent.trim() : '',
         // Une activite sans reglage n en affiche pas : pas de bloc vide.
         billardsRegle: !!(rangee('Billards') && rangee('Billards').querySelector('.qb-visit-options')),
@@ -310,9 +316,10 @@ async function main() {
     });
     ok(reglages.sessions.length >= 2 && /15 min/.test(reglages.sessions.join(' ')) && /30 min/.test(reglages.sessions.join(' ')),
       `le Fun Run propose ses sessions (${reglages.sessions.join(' | ') || 'aucune'})`);
-    ok(/enfant/.test(reglages.compteurAvant), `la plaine de jeux se compte en enfants (${reglages.compteurAvant})`);
-    ok(reglages.compteurApres !== reglages.compteurAvant,
+    ok(/enfant/i.test(reglages.libelleEnfants), `la plaine de jeux se compte en enfants (${reglages.libelleEnfants} : ${reglages.compteurAvant})`);
+    ok(reglages.compteurApres !== reglages.compteurAvant && reglages.enfantsApres===7,
       `et le compteur descend vraiment (${reglages.compteurAvant} -> ${reglages.compteurApres})`);
+    ok(reglages.joueursAvant===8 && reglages.joueursApres===8 && reglages.autresInchanges,'7 enfants sur8 visiteurs sans changer les autres activites');
 
     if (process.env.QB_SHOT) {
       await page.evaluate(() => { const i = [...document.querySelectorAll('#quickBookOverlay input[type="number"]')].pop(); i.value = '9'; i.dispatchEvent(new Event('input', { bubbles: true })); });

@@ -179,7 +179,7 @@ async function main() {
       const primary = document.querySelector('#posOverlay .edit-actions .btn-primary');
       return {
         titre: (document.getElementById('posTitle') || {}).textContent || '',
-        ident: (document.querySelector('#posOverlay .edit-modal-head p') || {}).textContent || '',
+        ident: [...document.querySelectorAll('#posOverlay .dossier-fact strong')].map(el => el.textContent).join(' · '),
         labels: labels.length,
         associes: labels.filter((l) => l.htmlFor && document.getElementById(l.htmlFor)).length,
         dangerGroupe: !!document.querySelector('#posOverlay .edit-actions-destructive .btn-secondary.danger'),
@@ -227,11 +227,12 @@ async function main() {
         };
         const modal = document.querySelector('#posOverlay .edit-modal');
         const body = document.querySelector('#posOverlay .edit-modal-body');
-        const soustitre = (document.querySelector('#posOverlay .edit-modal-head p') || {}).textContent || '';
         const corps = body ? body.innerText : '';
-        const faits = soustitre.split(/\s[·•]\s/).map((s) => s.trim()).filter((s) => s.length > 1);
+        const faits = [...document.querySelectorAll('#posOverlay .dossier-fact strong')].map(el => el.textContent.trim()).filter(Boolean);
         return {
           hauteur: Math.round(modal.getBoundingClientRect().height),
+          plafond: window.innerHeight - 32,
+          corpsDefilable: !!body && ['auto', 'scroll'].includes(getComputedStyle(body).overflowY),
           // Les CASES des activites (.gc-check, une par activite, demandees
           // le 2026-10-01 : « cliquer sur les activites pour dire que ca a ete
           // fait ») sont des cases a cocher, pas des actions : elles se
@@ -261,11 +262,11 @@ async function main() {
     };
     const infos = await mesureOnglet('details');
     ok(infos.faits >= 2, `« Infos » : l en-tete se lit en ${infos.faits} faits (sans decoupe, « aucune redite » ne prouverait rien)`);
-    // PLAFOND RELEVE LE 2026-10-01 : la fiche est devenue « la carte en
-    // grand » (Movsar : le prix par personne et le detail par activite vivent
-    // dans la fiche). Elle porte le programme heure par heure et l addition ;
-    // le plafond attrape toujours une derive.
-    ok(infos.hauteur <= 820, `« Infos » : hauteur MESUREE ${infos.hauteur}px (plafond 820 depuis la fiche « carte en grand », valait 868 avant la refonte d aout)`);
+    // Depuis la refonte mixte du 04/10, les faits sont structures et la fiche
+    // porte le programme et l'addition. Sa limite utile est le viewport avec
+    // sa marge, son corps doit defiler : un ancien plafond fixe comprimerait
+    // les controles ou cacherait les informations au lieu de les proteger.
+    ok(infos.hauteur <= infos.plafond && infos.corpsDefilable, `« Infos » : ${infos.hauteur}px dans le plafond du viewport ${infos.plafond}px, corps defilable`);
     // PLAFOND 9 DEPUIS LE 2026-10-01 : une action de plus, demandee par
     // Movsar (« ajouter une note cote staff, une note du staff en interne ») :
     // le bouton « Note pour l equipe », son champ replie tant qu on ne
@@ -277,43 +278,41 @@ async function main() {
     ok(infos.effectifsActivites.length>0&&infos.effectifsActivites.every(n=>Number(n)===11),'« Infos » : les activites indiquent leurs11 joueurs, independamment de l effectif global');
     const modif = await mesureOnglet('modifier');
     ok(modif.faits >= 2, `« Modifier » : l en-tete se lit en ${modif.faits} faits (sans decoupe, « aucune redite » ne prouverait rien)`);
-    ok(modif.hauteur <= 560, `« Modifier » : hauteur MESUREE ${modif.hauteur}px (plafond 560, valait 610 avant refonte)`);
+    ok(modif.hauteur <= modif.plafond && modif.corpsDefilable, `« Modifier » : ${modif.hauteur}px dans le plafond du viewport ${modif.plafond}px, corps defilable`);
     ok(modif.redites.length === 0, `« Modifier » : ${modif.redites.length} fait de l en-tete recopie dans le corps${modif.redites.length ? ' : ' + modif.redites.join(' | ') : ''}`);
 
-    // UNE SEULE SURFACE SE SOULEVE. C'est toute la hierarchie de la fiche : si
-    // les groupes reprennent un fond, on retombe sur cinq blocs au meme poids.
+    // La composition neutre conserve les actions et les groupes plats.
+    // Les separators gardent la hierarchie sans imposer un fond decoratif.
     const relief = await page.evaluate(() => {
       openPos(state.reservations[0].id); setTab('details');
       const transparent = (v) => !v || v === 'transparent' || /rgba\([^)]*,\s*0\)/.test(v);
       const act = document.querySelector('#posOverlay .pos-act');
       const groupes = [...document.querySelectorAll('#posOverlay .pos-sheet > .info-block')];
       return {
-        actAFond: !!act && !transparent(getComputedStyle(act).backgroundColor),
+        actPresent: !!act && act.checkVisibility() && act.getBoundingClientRect().width > 0,
         groupes: groupes.length,
         groupesAvecFond: groupes.filter((g) => !transparent(getComputedStyle(g).backgroundColor)).length,
         groupesAvecFilet: groupes.filter((g) => parseFloat(getComputedStyle(g).borderTopWidth) > 0).length,
       };
     });
     await page.waitForTimeout(160);
-    ok(relief.actAFond, 'le bloc d action est la surface qui se souleve');
+    ok(relief.actPresent, 'le bloc d action reste present et visible dans la composition neutre');
     ok(relief.groupes > 0 && relief.groupesAvecFond === 0, `les ${relief.groupes} groupes du corps sont plats (${relief.groupesAvecFond} avec fond)`);
     ok(relief.groupes === relief.groupesAvecFilet, `les ${relief.groupes} groupes se separent par un filet`);
 
-    // LE DEPLIANT NE SUPPRIME RIEN, IL RANGE. On le prouve par la HAUTEUR de la
-    // fenetre, pas en demandant au depliant s'il est ouvert : `getBoundingClientRect`
-    // rend un rectangle meme sous un `details` ferme, et « est-il dans un
-    // details ferme » serait une question circulaire. Si les quatre controles
-    // etaient a l'ecran au repos, la fiche serait plus haute. Elle grandit
-    // quand on l'ouvre : ils etaient bien ranges, et ils reviennent tous.
+    // LE DEPLIANT RANGE SANS SUPPRIMER. Sa hauteur propre grandit a l'ouverture,
+    // meme lorsque le modal a atteint son plafond. Les quatre controles sont
+    // ensuite verifies cliquables au point milieu : aucune action n'a disparu.
     const fold = await page.evaluate(async () => {
       const d = document.querySelector('#posOverlay details.pos-fold');
       if (!d) return null;
       const h = () => Math.round(document.querySelector('#posOverlay .edit-modal').getBoundingClientRect().height);
       const chips = [...d.querySelectorAll('.delay-chip')];
-      const avant = { ouvert: d.open, hauteur: h() };
+      const contenu = d.getBoundingClientRect().height;
+      const avant = { ouvert: d.open, hauteur: h(), contenu };
       d.querySelector('summary').click();
       await new Promise((r) => setTimeout(r, 200));
-      const apres = { ouvert: d.open, hauteur: h() };
+      const apres = { ouvert: d.open, hauteur: h(), contenu: d.getBoundingClientRect().height };
       const surEcran = chips.filter((c) => {
         const r = c.getBoundingClientRect();
         return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === c;
@@ -321,7 +320,7 @@ async function main() {
       return { avant, apres, total: chips.length, surEcran };
     });
     ok(fold && !fold.avant.ouvert, 'le depliant « Client en retard » est ferme au repos');
-    ok(fold && fold.apres.hauteur > fold.avant.hauteur + 40, `ouvrir le depliant fait grandir la fiche de ${fold ? fold.avant.hauteur : '?'} a ${fold ? fold.apres.hauteur : '?'}px : ses controles n etaient pas a l ecran`);
+    ok(fold && fold.apres.contenu > fold.avant.contenu + 40, `ouvrir le depliant revele son contenu (${fold ? fold.avant.contenu : '?'} a ${fold ? fold.apres.contenu : '?'}px), meme si la fenetre est plafonnee`);
     ok(fold && fold.apres.ouvert && fold.surEcran === fold.total && fold.total >= 4, `ouvert : les ${fold ? fold.total : '?'} controles de retard sont cliquables (${fold ? fold.surEcran : '?'} atteints au point milieu) - rien n a ete supprime`);
     // La suite attend la fiche OUVERTE : on la remet a plat plutot que de la fermer.
     await page.evaluate(() => { closePos(); openPos(state.reservations[0].id); });

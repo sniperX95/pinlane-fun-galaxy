@@ -19192,13 +19192,13 @@ body:is(.staff-mode, .admin-mode) .es2 .gc-acts { gap: 6px; }
 body:is(.staff-mode, .admin-mode) .es2 .gc-acts i { border-radius: 6px; font-size: 12px; padding: 4px 8px; background: var(--raised); }
 
 /* Compteur unique : les deux gestes restent proches du chiffre qu'ils changent. */
-body:is(.staff-mode, .admin-mode) :is(.staff-stepper, .es2 .es-stepper) { display: inline-grid; grid-template-columns: 44px minmax(48px, 1fr) 44px; align-items: stretch; height: 44px; border: 1px solid var(--control-border); border-radius: 8px; overflow: hidden; background: var(--console-input); flex-shrink: 0; }
+body:is(.staff-mode, .admin-mode) :is(.staff-stepper, .es2 .es-stepper) { display: inline-grid; grid-template-columns: 44px minmax(48px, 1fr) 44px; align-items: stretch; height: 46px; border: 1px solid var(--control-border); border-radius: 8px; overflow: hidden; background: var(--console-input); flex-shrink: 0; }
 body:is(.staff-mode, .admin-mode) .es2 .es-stepper { display: grid; }
-body:is(.staff-mode, .admin-mode) :is(.staff-stepper-btn, .es2 .es-step) { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 42px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text); cursor: pointer; }
+body:is(.staff-mode, .admin-mode) :is(.staff-stepper-btn, .es2 .es-step) { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text); cursor: pointer; }
 body:is(.staff-mode, .admin-mode) :is(.staff-stepper-btn, .es2 .es-step):hover:not(:disabled) { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) :is(.staff-stepper-btn, .es2 .es-step):disabled { color: var(--faint); opacity: .45; background: var(--raised); }
 body:is(.staff-mode, .admin-mode) .staff-stepper-btn svg { width: 16px; height: 16px; stroke-width: 1.7; }
-body:is(.staff-mode, .admin-mode) :is(.staff-stepper-value, .es2 .es-stepper .input) { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 42px; margin: 0; padding: 0 6px; border: 0; border-inline: 1px solid var(--line); border-radius: 0; background: transparent; font-size: 14px; line-height: 1.4; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) :is(.staff-stepper-value, .es2 .es-stepper .input) { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 44px; margin: 0; padding: 0 6px; border: 0; border-inline: 1px solid var(--line); border-radius: 0; background: transparent; font-size: 14px; line-height: 1.4; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .staff-stepper-value small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 3px; }
 body:is(.staff-mode, .admin-mode) .staff-stepper:focus-within { outline: 2px solid var(--console-focus); outline-offset: 3px; }
 body:is(.staff-mode, .admin-mode) .staff-stepper :focus-visible { outline-offset: -3px; }

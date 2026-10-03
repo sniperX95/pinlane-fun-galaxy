@@ -197,7 +197,7 @@ components:
     backgroundColor: "{colors.console-light-console-input}"
     textColor: "{colors.console-light-text}"
     rounded: "{rounded.md}"
-    height: "44px"
+    height: "46px"
 ---
 
 # Design System v2 : Pinlane Platform
@@ -378,7 +378,7 @@ Options bowling, arcade et formule : hauteur 44px minimum, angle md, padding 8px
 
 ### Compteur groupé
 
-Moins, valeur et plus dans un seul groupe de 44px, angle md. Colonnes 44px / minmax(48px, 1fr) / 44px ; boutons internes 42px entre bordures. Valeur 14px/600 en chiffres tabulaires, unité 12px. Les bornes réelles désactivent le geste concerné ; les boutons ont un label accessible. Le focus du groupe montre la relation. Même composant en création et édition.
+Moins, valeur et plus dans un seul groupe de 46px, angle md. Colonnes 44px / minmax(48px, 1fr) / 44px ; boutons internes de 44px, auxquels s'ajoutent les deux bordures du groupe. Valeur de hauteur minimale 44px, à 14px/600 en chiffres tabulaires, unité 12px. Les bornes réelles désactivent le geste concerné ; les boutons ont un label accessible. Le focus du groupe montre la relation. Même composant en création et édition.
 
 ### Navigation et dossier
 

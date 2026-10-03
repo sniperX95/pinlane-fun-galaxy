@@ -3,6 +3,7 @@ node_modules
 .vercel
 .vercel-cli
 .agents
+.impeccable
 .firecrawl
 .github
 .playwright-cli

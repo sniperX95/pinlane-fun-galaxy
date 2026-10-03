@@ -1,6 +1,6 @@
 const assert = require('assert');
 const { communicationAgent, delayAgent, learningAgent, planningAgent } = require('../lib/ops-agents');
-const { getRequiredLaneCount, timeToMinutes } = require('../lib/ops-engine');
+const { allocateLanes, getRequiredLaneCount, timeToMinutes } = require('../lib/ops-engine');
 const {
   buildEmailSamples,
   buildMessage,
@@ -152,7 +152,7 @@ function validatePlanResult(result, input, context, knowledge) {
   if ((input.type || 'bowling') === 'bowling') {
     const expected = getRequiredLaneCount(center, input.pax);
     assert.strictEqual(result.plan.requiredLanes, expected, 'bowling lane count mismatch');
-    assert.ok(result.plan.recommended.assignedLanes.length >= expected, 'bowling recommendation lacks lanes');
+    validateBowlingAllocation(result.plan.recommended, center, input, context, expected);
   }
   if (result.plan.validationMode === 'required') {
     assert.strictEqual(result.decision, 'staff_review_required', 'required validation mode must not auto-confirm');
@@ -184,6 +184,86 @@ function validatePlanResult(result, input, context, knowledge) {
   }, context);
   assert.strictEqual(delay.agent, 'delay-agent');
   assert.ok(delay.impact.actions.length >= 1, 'delay agent must return at least one action');
+}
+
+// Confort remains the default. A seventh player is allowed only when actual
+// stock cannot fit the normal allocation, with a complete, warned allocation.
+function validateBowlingAllocation(scenario, center, input, context, expected) {
+  const assigned = scenario.assignedLanes;
+  assert.ok(Array.isArray(assigned) && assigned.length > 0, 'bowling assigned lanes missing');
+  assert.strictEqual(new Set(assigned).size, assigned.length, 'bowling duplicate lanes');
+  const normal = Number(center.resources.bowling.normalCapacityPerLane);
+  const emergency = Number(center.resources.bowling.emergencyCapacityPerLane) || normal;
+  const blocks = scenario.resourceBlocks.filter(block => block.resourceType === 'bowling_lane');
+  assert.ok(blocks.length > 0, 'bowling resource allocation missing');
+  for (const block of blocks) {
+    const capacity = block.bowlingCapacity;
+    assert.ok(capacity && Array.isArray(capacity.lanePlayers), 'bowling player distribution missing');
+    assert.strictEqual(capacity.normalCapacityPerLane, normal, 'normal capacity metadata differs from configured maximum');
+    assert.strictEqual(capacity.emergencyCapacityPerLane, emergency, 'emergency capacity metadata differs from configured maximum');
+    assert.deepStrictEqual(block.lanes, assigned, 'assigned lanes differ from resource block');
+    assert.strictEqual(Number(block.requiredLanes), assigned.length, 'resource lane count differs from actual allocation');
+    assert.strictEqual(capacity.lanePlayers.length, assigned.length, 'player distribution has wrong lane count');
+    assert.strictEqual(capacity.lanePlayers.reduce((sum, players) => sum + players, 0), Number(input.pax), 'bowling players lost in allocation');
+    assert.ok(capacity.lanePlayers.every(players => Number.isInteger(players) && players > 0 && players <= emergency), 'bowling emergency configured maximum exceeded');
+    for (const lane of assigned) {
+      const onlyThisLane = {...(context.laneStatuses || {})};
+      for (let other = 1; other <= center.resources.bowling.laneCount; other++) if (other !== lane) onlyThisLane[other] = 'maintenance';
+      assert.deepStrictEqual(allocateLanes(center, onlyThisLane, context.reservations || [], block.start, block.end,
+        1, context.blocks || [], input.date), [lane], 'bowling assigned lane is not free');
+    }
+    const timeline = scenario.timeline.find(step => step.resourceType === 'bowling_lane' && step.start === block.start && step.end === block.end);
+    assert.ok(timeline, 'bowling allocation has no matching timeline');
+    assert.deepStrictEqual(timeline.lanes, block.lanes, 'timeline lanes differ from resource block');
+    assert.strictEqual(timeline.requiredLanes, block.requiredLanes, 'timeline lane count differs from resource block');
+    assert.strictEqual(timeline.players, block.players, 'timeline players differ from resource block');
+    assert.deepStrictEqual(timeline.bowlingCapacity, capacity, 'timeline player distribution differs from resource block');
+    const exceptional = capacity.lanePlayers.some(players => players > normal);
+    assert.strictEqual(capacity.emergency, exceptional, 'emergency metadata contradicts players');
+    if (assigned.length < expected || exceptional) {
+      assert.strictEqual(allocateLanes(center, context.laneStatuses || {}, context.reservations || [], block.start, block.end,
+        Math.max(expected, Math.ceil(Number(input.pax) / normal)), context.blocks || [], input.date), null, 'emergency used while comfort lanes are available');
+      assert.ok(exceptional, 'short allocation is not explained by emergency capacity');
+      assert.ok(block.emergencyWarning && timeline.emergencyWarning && scenario.emergencyWarning, 'emergency allocation lost its warning');
+      assert.strictEqual(timeline.emergencyWarning, block.emergencyWarning, 'timeline emergency warning differs');
+      const estimated = Math.max(...capacity.lanePlayers) * 10 * (Number(block.games) || 1);
+      assert.strictEqual(capacity.estimatedMinutes, estimated, 'emergency duration estimation mismatch');
+      assert.ok(block.emergencyWarning.includes(String(estimated)) && /10 min/.test(block.emergencyWarning), 'emergency warning omits player duration estimate');
+    } else {
+      assert.ok(assigned.length >= expected, 'bowling recommendation lacks comfort lanes');
+      assert.ok(capacity.lanePlayers.every(players => players <= normal), 'normal allocation exceeds comfort maximum');
+    }
+  }
+}
+
+function runEmergencyAllocationRegression(knowledge) {
+  const input = {centerId: 'libramont', date: '2027-01-26', type: 'bowling', pax: 14, startTime: '14:00', duration: 1.5, channel: 'staff', allowPastStart: true};
+  const context = {reservations: [], laneStatuses: Object.fromEntries([2, 3, 4, 5, 6, 7].map(lane => [lane, 'maintenance']))};
+  const result = planningAgent(input, context);
+  assert.strictEqual(result.ok, true, '14 players with two lanes must use permitted emergency');
+  assert.strictEqual(result.plan.requiredLanes, 3, 'comfort requirement remains three lanes');
+  assert.deepStrictEqual(result.plan.recommended.assignedLanes, [1, 8], 'emergency uses both actual free lanes');
+  assert.deepStrictEqual(result.plan.recommended.resourceBlocks[0].bowlingCapacity.lanePlayers, [7, 7], 'fourteen players distributed seven plus seven');
+  validatePlanResult(result, input, context, knowledge);
+  const comfort = planningAgent(input, {reservations: [], laneStatuses: {}});
+  assert.strictEqual(comfort.ok, true);
+  assert.strictEqual(comfort.plan.recommended.assignedLanes.length, 3, 'enough stock must retain three comfort lanes');
+  validatePlanResult(comfort, input, {reservations: [], laneStatuses: {}}, knowledge);
+  for (const mutation of ['missing-lane', 'over-capacity', 'missing-warning']) {
+    const broken = structuredClone(result);
+    const scenario = broken.plan.recommended;
+    if (mutation === 'missing-lane') scenario.assignedLanes.pop();
+    if (mutation === 'over-capacity') {
+      for (const step of [...scenario.resourceBlocks, ...scenario.timeline]) step.bowlingCapacity.lanePlayers = [8, 6];
+    }
+    if (mutation === 'missing-warning') {
+      scenario.emergencyWarning = '';
+      for (const step of [...scenario.resourceBlocks, ...scenario.timeline]) step.emergencyWarning = '';
+    }
+    const failure = {'missing-lane': /not enough bowling lanes assigned|assigned lanes differ/, 'over-capacity': /configured maximum exceeded/, 'missing-warning': /lost its warning/}[mutation];
+    assert.throws(() => validatePlanResult(broken, input, context, knowledge), {name: 'AssertionError', message: failure}, `${mutation} must be rejected for its own fault`);
+  }
+  console.log('ops-emergency-regression-ok 14 players / 2 free lanes + comfort allocation + 3 in-memory counterexamples');
 }
 
 function runFixedGuardrailTests(knowledge) {
@@ -402,6 +482,7 @@ function runStress() {
   };
 
   runFixedGuardrailTests(knowledge);
+  runEmergencyAllocationRegression(knowledge);
 
   for (let index = 0; index < ITERATIONS; index += 1) {
     const centerId = pick(random, centerIds);

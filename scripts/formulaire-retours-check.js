@@ -257,8 +257,9 @@ async function main() {
   section('E. PLAINE DE JEUX : LES ENFANTS COMPTES');
   const plaine = normalizeProgram([{ activityId: 'playground', participants: 2 }], { centerId: 'libramont', pax: 4 }).items[0];
   ok(plaine.participants === 2, 'deux enfants sur un groupe de 4 : la ligne porte 2 participants', String(plaine.participants));
-  const trop = normalizeProgram([{ activityId: 'playground', participants: 9 }], { centerId: 'libramont', pax: 4 }).items[0];
-  ok(trop.participants === 4, 'jamais plus d enfants que le groupe', String(trop.participants));
+  let trop = null;
+  try { normalizeProgram([{ activityId: 'playground', participants: 9 }], { centerId: 'libramont', pax: 4 }); } catch (error) { trop = error; }
+  ok(trop && trop.statusCode === 422 && /entre 1 et 4 participants/.test(trop.message), 'plus d enfants que le groupe : refus en 422, jamais raboté en silence', trop && trop.message);
 
   section('F. LA DUREE DES FORMULES EST CELLE DU RECAPITULATIF');
   const durees = await heures({ type: 'durees', pax: '6' });
@@ -392,11 +393,11 @@ async function navigateur() {
     await page.click('#gridAct .fg-grid__item[data-activity="playground"] [data-compteur="participants"] [data-pas="-1"]');
     await page.waitForTimeout(300);
     const cartes = await page.evaluate(() => {
-      const t = (id, sel) => { const n = document.querySelector('#gridAct .fg-grid__item[data-activity="' + id + '"] ' + sel); return n ? n.textContent.replace(/\s+/g, ' ').trim() : ''; };
-      return { note: t('laser_game', '.fg-card__rot'), enfants: t('playground', '.fg-kids__n'), texte: t('playground', '[data-compteur-texte]'), prix: t('playground', '.fg-card__price') };
+      const t = (id, sel) => { const n = document.querySelector('#gridAct .fg-grid__item[data-activity="' + id + '"] ' + sel); return n ? String(n.value ?? n.textContent).replace(/\s+/g, ' ').trim() : ''; };
+      return { note: t('laser_game', '.fg-card__rot'), enfants: t('playground', '.fg-kids__n'), texte: t('playground', '.fg-count__label'), prix: t('playground', '.fg-card__price') };
     });
     ok(cartes.note === 'Partie de 20 min, + 5 à 10 min de règles.', 'la carte du laser dit le jeu et le temps des regles', cartes.note);
-    ok(cartes.enfants === '3' && cartes.texte === 'L’autre ne paie pas l’entrée.' && /^36\s€ · 3\senfants/.test(cartes.prix), 'la plaine : 3 enfants sur 4, le prix des 3', JSON.stringify(cartes));
+    ok(cartes.enfants === '3' && /Enfants\s*sur 4/.test(cartes.texte) && /^36\s€ · 3\senfants/.test(cartes.prix), 'la plaine : 3 enfants sur 4, le prix des 3', JSON.stringify(cartes));
     await page.click('#goHours');
     const heures = await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('#goContact').disabled, 15000);
     ok(heures, 'MONTAGE l ecran des heures se charge');
@@ -410,8 +411,8 @@ async function navigateur() {
       const t = (sel) => { const x = n && n.querySelector(sel); return x ? x.textContent.replace(/\s+/g, ' ').trim() : ''; };
       return { nom: t('.fg-track__head b'), detail: t('.fg-track__detail'), texte: n ? n.textContent.replace(/\s+/g, ' ').trim() : '' };
     });
-    ok(tete.nom === 'Laser Game' && tete.detail === '1 partie · 20 min' && tete.texte.indexOf('Partie de 20 min, + 5 à 10 min de règles.') >= 0,
-      'la piste du laser dit « 1 partie · 20 min » et le temps des regles', JSON.stringify({ nom: tete.nom, detail: tete.detail, texte: tete.texte.slice(0, 140) }));
+    ok(tete.nom === 'Laser Game' && tete.detail === '4 joueurs · 1 partie · 20 min' && tete.texte.indexOf('Partie de 20 min, + 5 à 10 min de règles.') >= 0,
+      'la piste du laser dit ses 4 joueurs, la partie de 20 min et le temps des regles', JSON.stringify({ nom: tete.nom, detail: tete.detail, texte: tete.texte.slice(0, 140) }));
     await page.click('#goContact');
     await attendre(page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
     const caseOffres = await page.evaluate(() => ({ texte: ((document.querySelector('#offresWrap') || {}).textContent || '').replace(/\s+/g, ' ').trim(), coche: (document.querySelector('#cSansOffres') || {}).checked }));

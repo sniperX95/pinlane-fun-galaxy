@@ -252,9 +252,9 @@
 //       fait defiler sur une carte, au vrai geste, ne la coche pas et ne
 //       telecharge pas sa photo ; a la souris, le survol la devoile toujours.
 //   [T] LE TELEPHONE EN DEUX COLONNES (2026-09-24, la liste d une carte par
-//       rangee essayee le matin, jugee moche par Movsar) : a 390 et 360 px,
-//       deux cartes d activites par rangee, a 320 px une seule (sous 360 px,
-//       une pastille n aurait que 49 px), rien hors de la grille ; le tiroir
+//       rangee essayee le matin, jugee moche par Movsar) : a 390 px,
+//       deux cartes d activites par rangee ; sous 380 px une seule pour garder
+//       les trois cibles de compteur a 44 px, rien hors de la grille ; le tiroir
 //       prend la largeur de sa carte, sous elle ; « Ces horaires me vont » tient
 //       sur une ligne dans son bouton, sans police sous 11,5 px ; l ecran des
 //       coordonnees s ouvre sur sa question (photo, fil, titre) puis la carte
@@ -587,7 +587,11 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // Sur le reseau, 0,6 Ko coutent environ 12 ms a 400 kbit/s. Plafonds : 262 Ko
 // a analyser, 74 Ko a transferer, soit 13,2 et 6,0 Ko de marge : une police
 // (20 Ko compresses) ou une bibliotheque font toujours sauter l un et l autre.
-const BUDGET_SERVI = 262 * 1024;
+// 03/10, joueurs par activite : base a4bf8e4 264,3 Ko (deja au-dessus du
+// vieux plafond), nouveau 267,7 Ko ; brotli3 72,4 -> 73,2 Ko. Comparaison
+// navigateur 6x, 7 mesures entrelacees : script 73,03 -> 75,83 ms, layout
+// 315,57 -> 309,17 ms, total des taches 1081,28 -> 1087,54 ms.
+const BUDGET_SERVI = 268 * 1024;
 const BUDGET_TRANSFERE = 74 * 1024;
 
 let failures = 0;
@@ -985,6 +989,7 @@ function lignePlan(reponse) {
     // connu, ou regle sur place.
     items: items.map((i) => ({
       id: i.activityId, nom: i.name || i.activityId, games: Number(i.games) || 0, minutes: Number(i.minutes) || 0,
+      participants: Number(i.participants) || 0, enfants: /enfant/i.test(i.unitLabel || ''),
       sessions: i.sessions, services: Array.isArray(i.services) ? i.services.length : 0,
       prix: Number(i.price) || 0, sait: i.priceKnown === true || (i.priceKnown !== false && Number(i.price) > 0),
     })),
@@ -1164,7 +1169,7 @@ function visiteAttendue(o) {
     return {
       t: p.debut,
       nom: nom(p.id) + (quoi ? ` · ${quoi}` : ''),
-      detail: [jeu ? `${jeu} min de jeu` : '', p.fin ? `jusqu’à ${heureAffichee(p.fin)}${jeu ? ' avec les règles et la préparation' : ''}` : '', texteGroupesQa(p, true), p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
+      detail: [it.participants > 0 ? `${it.participants} ${it.enfants ? 'enfant' : 'joueur'}${it.participants > 1 ? 's' : ''}` : '', jeu ? `${jeu} min de jeu` : '', p.fin ? `jusqu’à ${heureAffichee(p.fin)}${jeu ? ' avec les règles et la préparation' : ''}` : '', texteGroupesQa(p, true), p.pistes > 0 ? `${p.pistes} piste${p.pistes > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
       voix: `${nom(p.id)}${quoi ? `, ${quoi}` : ''}, de ${p.debut}${p.fin ? ` à ${heureAffichee(p.fin)}` : ''}${p.groupes.length > 1 ? `, en ${p.groupes.length} groupes` : ''}`,
     };
   });
@@ -1485,7 +1490,7 @@ function ecartsParties(p, a, d, laserParts) {
   if (!(id === 'laser_game' && total > 1)) return p.parts ? [`${id}: cadre des parties pour ${total} partie`] : [];
   if (!p.parts) return [`${id}: cadre des parties absent pour ${total} parties`];
   const e = [];
-  const bandeau = `${total} parties de ${minutesLabelQa(jeuLaserQa() || a.durationMinutes)}`;
+  const bandeau = `${a.participants} joueur${a.participants > 1 ? 's' : ''} · ${total} parties de ${minutesLabelQa(jeuLaserQa() || a.durationMinutes)}`;
   if (p.detail !== bandeau) e.push(`${id}: bandeau « ${p.detail} » vs « ${bandeau} »`);
   const n = laserParts.length;
   // Le plan ne pose que les parties choisies : une partie sans heure passe
@@ -2225,11 +2230,13 @@ async function main() {
     const deuxParties = meta.laserOptions.find((o) => Number(o.games) === 2);
     const troisParties = meta.laserOptions.find((o) => Number(o.games) === 3);
     await page.click('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]');
-    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true', 3000, `${euros(deuxParties.price)} / personne · 2\u00a0joueurs minimum`), '[B] toucher « 2 parties » la retient et met son prix sur la carte', `${euros(deuxParties.price)} / personne`);
+    const participantsLaser = Number(await page.locator('#gridAct li[data-activity="laser_game"] [data-compteur="participants"] input').inputValue());
+    const prixLaserSelection = option => `${euros(Number(option.price) * participantsLaser)} · ${participantsLaser}\u00a0joueurs · 2\u00a0joueurs minimum`;
+    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true', 3000, prixLaserSelection(deuxParties)), '[B] toucher « 2 parties » la retient et met son prix sur la carte', prixLaserSelection(deuxParties));
     await page.keyboard.press('ArrowRight');
-    ok(await attendre(page, (attendu) => { const p = document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="3"]'); return p.getAttribute('aria-checked') === 'true' && document.activeElement === p && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu; }, 3000, `${euros(troisParties.price)} / personne · 2\u00a0joueurs minimum`), '[B] au clavier, la fleche droite passe a « 3 parties » (focus et prix suivent)');
+    ok(await attendre(page, (attendu) => { const p = document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="3"]'); return p.getAttribute('aria-checked') === 'true' && document.activeElement === p && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu; }, 3000, prixLaserSelection(troisParties)), '[B] au clavier, la fleche droite passe a « 3 parties » (focus et prix suivent)');
     await page.keyboard.press('ArrowLeft');
-    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true' && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu, 3000, `${euros(deuxParties.price)} / personne · 2\u00a0joueurs minimum`), '[B] la fleche gauche revient a « 2 parties »');
+    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true' && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu, 3000, prixLaserSelection(deuxParties)), '[B] la fleche gauche revient a « 2 parties »');
     ok(await page.evaluate(() => document.querySelectorAll('#gridAct .fg-card.is-on[aria-checked="true"]').length === 4 && !document.querySelector('#goHours').disabled), '[B] quatre cartes cochees, « Continuer » actif');
 
     // =====================================================================
@@ -4871,15 +4878,15 @@ async function main() {
           return { id: c.dataset.activity, gauche: Math.round(r.left - grille.left), droite: Math.round(grille.right - r.right), haut: Math.round(r.top), largeur: Math.round(r.width) };
         });
       });
-      // Deux cartes par rangee des 360 px, une seule en dessous : les colonnes
-      // (bords gauches distincts), et aucune rangee qui en porte plus.
+      // Deux cartes par rangee des 380 px, une seule en dessous : trois
+      // cibles de compteur de 44 px doivent rester dans chaque carte.
       const colonnesT = new Set(grilleT.map((c) => c.gauche)).size;
-      const attenduesT = lT >= 360 ? 2 : 1;
+      const attenduesT = lT >= 380 ? 2 : 1;
       const rangeesT = new Map();
       grilleT.forEach((c) => { rangeesT.set(c.haut, (rangeesT.get(c.haut) || 0) + 1); });
       const fautesT = grilleT.filter((c) => c.gauche < 0 || c.droite < 0);
       ok(grilleT.length >= 6 && colonnesT === attenduesT && fautesT.length === 0 && [...rangeesT.values()].every((n) => n <= attenduesT),
-        `[T] ${lT} px : ${attenduesT === 2 ? 'deux cartes d activites par rangee' : 'une carte par rangee (sous 360 px, les pastilles respirent)'}, rien hors de la grille`,
+        `[T] ${lT} px : ${attenduesT === 2 ? 'deux cartes d activites par rangee' : 'une carte par rangee (sous 380 px, les cibles restent a 44 px)'}, rien hors de la grille`,
         JSON.stringify({ cartes: grilleT.length, colonnes: colonnesT, rangees: [...rangeesT.values()], fautes: fautesT.slice(0, 3), exemple: grilleT.slice(0, 2) }));
       await pT.tap('#gridAct .fg-card[data-activity="bowling"]');
       await pT.tap('#gridAct .fg-card[data-activity="laser_game"]');

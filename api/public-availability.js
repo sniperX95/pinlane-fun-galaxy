@@ -836,6 +836,7 @@ module.exports = async (req, res) => {
             freePass: program.freeItems.map((item) => ({
               activityId: item.activityId,
               label: item.name,
+              participants: item.participants ?? pax,
               // « regle sur place » est une DONNEE (aucun tarif saisi pour
               // cette activite dans ce centre), jamais une supposition.
               onSitePayment: item.priceKnown !== true,
@@ -1064,13 +1065,14 @@ module.exports = async (req, res) => {
             totalMinutes: Math.round(visitHours * 60),
             staffSummary: `${visitLabel} - ${pax} personne${pax > 1 ? 's' : ''} | ${describeProgram(program)} | Aucune ressource a bloquer`,
             assignedLanes: [],
-            timeline: program.items.map((item) => ({ type: 'activity', activityId: item.activityId, label: item.name })),
+            timeline: program.items.map((item) => ({ type: 'activity', activityId: item.activityId, label: item.name, players: item.participants ?? pax })),
             // Des blocs en capacite SOUPLE : ils disent au staff ce que le
             // groupe vient faire sans jamais occuper piste ni arene. C'est aussi
             // ce qui fait tomber la reservation dans l'onglet hors planning.
             resourceBlocks: program.items.map((item, index) => ({
               resourceType: 'soft_capacity',
               activityId: item.activityId,
+              players: item.participants ?? pax,
               startTime,
               endTime,
               countIndex: index + 1,

@@ -760,5 +760,5 @@ if (require.main === module) {
   // Le banc, pour les gates qui regardent les blocages ailleurs (la console) :
   // la vraie chaine serveur, de la demande publique a la lecture staff-state,
   // sur la base en memoire. Aucune base, aucun envoi.
-  module.exports = { charger, semer, retenir, liberer, visite, BOWLING, LASER, reservationLigne, JOUR, base };
+  module.exports = { charger, semer, retenir, confirmer, avecContact, liberer, visite, BOWLING, LASER, reservationLigne, JOUR, base };
 }

@@ -512,8 +512,8 @@ function getBowlingDragTargetPlan(target) {
   const targetStart = Number(target.dataset.bowlingDropStart);
   const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
   const startTime = numToTime(targetStart);
-  const requiredCount = Math.max(1, getRequiredLaneCount(reservation.type, reservation.pax, reservation.formuleId));
   const sourceWindow = getBowlingDragSourceWindow(reservation, bowlingPointerDrag.sourceLane, bowlingPointerDrag.sourceStart);
+  const requiredCount = Math.max(1, getRequiredLaneCount(reservation.type, Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), reservation.formuleId));
   const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
@@ -685,9 +685,9 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   if (!reservation) return;
   const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
   const startTime = numToTime(Number(targetStart));
-  const requiredCount = Math.max(1, getRequiredLaneCount(reservation.type, reservation.pax, reservation.formuleId));
   const sourceLane = Number(sourceLaneValue);
   const sourceWindow = getBowlingDragSourceWindow(reservation, sourceLaneValue, sourceStartValue);
+  const requiredCount = Math.max(1, getRequiredLaneCount(reservation.type, Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), reservation.formuleId));
   const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
@@ -737,7 +737,7 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
       reservation.date,
       numToTime(laserDepart),
       Number(fenetresLaser[0].duration) || 0.5,
-      Number(reservation.pax) || 1,
+      getReservationActivityPlayers(reservation, 'laser_game'),
       reservation.id,
     );
     if (!dispoLaser.ok) {
@@ -1668,7 +1668,7 @@ function hydrateSelectedReservation() {
 
 function buildReservationApiPayload(reservation, overrides = {}) {
   const requiresLanes = overrides.requiresLanes ?? reservationNeedsLanes(reservation.type, reservation.formuleId);
-  const laneCount = overrides.laneCount ?? (requiresLanes ? Math.max((reservation.lanes || []).length, getRequiredLaneCount(reservation.type, reservation.pax, reservation.formuleId)) : 0);
+  const laneCount = overrides.laneCount ?? (requiresLanes ? Math.max((reservation.lanes || []).length, getRequiredLaneCount(reservation.type, getReservationActivityPlayers(reservation, 'bowling'), reservation.formuleId)) : 0);
   const channel = overrides.channel || reservation.channel || 'staff';
   return {
     ...reservation,
@@ -5017,6 +5017,7 @@ function deriveBookingType() {
   if (normalizeBookingMode(state.booking.mode) === 'formule') return 'formule';
   const chosen = getChosenActivities();
   if (!chosen.length) return 'bowling';
+  if (chosen.some(activity => getBookingActivityParticipants(activity, activity.options) < Number(state.booking.pax))) return 'visite';
   const planned = chosen.filter(item => item.planned);
   if (planned.length === 1 && chosen.length === 1) {
     // PLUSIEURS PARTIES DE LASER = PLUSIEURS RENDEZ-VOUS A PLACER, donc le fil
@@ -5184,20 +5185,8 @@ function activityCountsChildren(activity) {
   return Boolean(activity && activity.priceType === 'per_pax' && /enfant/i.test(activity.unitLabel || ''));
 }
 
-function activityHasConfigurableOptions(activity) {
-  if (activityCountsChildren(activity)) return true;
-  return Boolean(activity && [
-    'grid_bowling',
-    'grid_laser',
-    'grid_fun_run',
-    'per_unit_hour',
-  ].includes(activity.priceType));
-}
+function activityHasConfigurableOptions(activity) { return Boolean(activity); }
 
-// UNE QUESTION, PAS UNE ETIQUETTE (Movsar, 2026-09-18 : « tous ceux a qui jai
-// montrer ils ont du passer 2minutes a comprendre »). « Durée » et « Nombre de
-// parties » nomment un champ ; ils ne disent pas qu il y a quelque chose a
-// faire. La question, elle, se repond sans reflechir.
 function activityConfigHint(activity) {
   if (!activity) return '';
   if (activityCountsChildren(activity)) return 'Combien d’enfants ?';
@@ -5334,6 +5323,7 @@ function syncActivityPickerState(off = []) {
     const activityId = card.getAttribute('data-activity');
     const activity = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
     const chosen = Boolean(selection[activityId]);
+    const linePlayers = activity ? getBookingActivityParticipants(activity, selection[activityId] || {}, pax) : pax;
     const closed = off.includes(activityId);
     card.classList.toggle('is-on', chosen && !closed);
     card.classList.toggle('is-off', closed);
@@ -5347,9 +5337,9 @@ function syncActivityPickerState(off = []) {
       if (label && toggle.getAttribute('aria-label') !== label) toggle.setAttribute('aria-label', label);
     }
     const price = card.querySelector('[data-role="price"]');
-    if (price && activity) price.textContent = closed ? 'Fermé ce jour' : activityPriceHint(activity, pax);
+    if (price && activity) price.textContent = closed ? 'Fermé ce jour' : activityPriceHint(activity, linePlayers);
     const priceCompact = card.querySelector('[data-role="price-compact"]');
-    if (priceCompact && activity) priceCompact.textContent = closed ? 'Fermé ce jour' : activityPriceHintCompact(activity, pax);
+    if (priceCompact && activity) priceCompact.textContent = closed ? 'Fermé ce jour' : activityPriceHintCompact(activity, linePlayers);
     const optionsRow = optionsRows.get(activityId);
     if (!optionsRow) return;
     const showOptions = chosen && !closed;
@@ -5391,23 +5381,23 @@ function syncActivityPickerState(off = []) {
     syncOptionsFermeture(optionsRow, activity, chosenOptions, showOptions);
     // Le stepper d'enfants suit la valeur (sans voler une frappe en cours),
     // les boutons -/+ se desactivent aux bornes, la note de prix recalcule.
-    if (activityCountsChildren(activity)) {
-      const ceiling = Math.min(30, Math.max(1, pax));
-      const current = Math.min(ceiling, Math.max(1, Number(chosenOptions.participants) || ceiling));
+    if (activity) {
+      const bounds = activityParticipantsBounds(activityId, pax);
+      const ceiling = bounds.max;
+      const current = getBookingActivityParticipants(activity, chosenOptions, pax);
       const field = optionsRow.querySelector('[data-role="participants-input"]');
       if (field) {
         field.max = String(ceiling);
+        field.min = String(bounds.min);
         if (document.activeElement !== field) field.value = String(current);
       }
       const minus = optionsRow.querySelector('[data-role="participants-minus"]');
       const plus = optionsRow.querySelector('[data-role="participants-plus"]');
-      if (minus) minus.disabled = current <= 1;
+      if (minus) minus.disabled = current <= bounds.min;
       if (plus) plus.disabled = current >= ceiling;
       const note = optionsRow.querySelector('[data-role="participants-note"]');
-      const price = Number(activity && activity.priceValue);
-      if (note && Number.isFinite(price) && price > 0) {
-        note.textContent = `${price}€ ${(activity.unitLabel || 'par enfant')} · ${current} enfant${current > 1 ? 's' : ''} = ${Math.round(price * current * 100) / 100}€.`;
-      }
+      const noun = activityCountsChildren(activity) ? 'enfant' : 'joueur';
+      if (note) note.textContent = `${current} ${noun}${current > 1 ? 's' : ''} sur ${pax} personnes présentes`;
     }
   });
   const configurator = host.querySelector('[data-role="activity-configurator"]');
@@ -5585,7 +5575,29 @@ function ajusterDureesAvantFermeture() {
   return change;
 }
 
-function renderActivityOptions(activity, options, pax) {
+function getBookingActivityParticipants(activity, options = {}, pax = state.booking.pax) {
+  const bounds = activityParticipantsBounds(activity.id, pax);
+  const requested = options.participants == null ? bounds.max : Number(options.participants);
+  return Math.min(bounds.max, Math.max(bounds.min, Number.isFinite(requested) ? Math.trunc(requested) : bounds.max));
+}
+
+function renderActivityOptions(activity, options = {}, pax = state.booking.pax) {
+  if (!activity) return '';
+  const id = escapeHtml(activity.id);
+  const bounds = activityParticipantsBounds(activity.id, pax);
+  const current = getBookingActivityParticipants(activity, options, pax);
+  const children = activityCountsChildren(activity);
+  const noun = children ? 'enfant' : 'joueur';
+  const counter = `<div class="activity-option-group"><span class="activity-option-legend">${children ? 'Enfants' : 'Joueurs'}</span>
+    <div class="child-stepper">
+      <button type="button" class="child-step-btn" data-role="participants-minus" aria-label="${escapeHtml(activity.name)} : retirer un ${noun}" ${current <= bounds.min ? 'disabled' : ''} onclick="stepBookingChildren('${id}',-1)">−</button>
+      <input type="number" class="input participants-input" data-role="participants-input" min="${bounds.min}" max="${bounds.max}" inputmode="numeric" value="${current}" aria-label="${escapeHtml(activity.name)} : nombre de ${noun}s" oninput="setBookingActivityOption('${id}','participants',this.value)">
+      <button type="button" class="child-step-btn" data-role="participants-plus" aria-label="${escapeHtml(activity.name)} : ajouter un ${noun}" ${current >= bounds.max ? 'disabled' : ''} onclick="stepBookingChildren('${id}',1)">+</button>
+    </div><div class="activity-option-note" data-role="participants-note">${current} ${noun}${current > 1 ? 's' : ''} sur ${pax} personnes présentes</div></div>`;
+  return counter + renderActivityOptionsWithoutParticipants(activity, options, current);
+}
+
+function renderActivityOptionsWithoutParticipants(activity, options, pax) {
   if (!activity) return '';
   const id = escapeHtml(activity.id);
   // Grille de pistes : le duckpin la partage avec le bowling (meme tarif, meme
@@ -5596,7 +5608,7 @@ function renderActivityOptions(activity, options, pax) {
     // Ce centre vend-il AUX PARTIES ? Alors la liste change de NATURE : des
     // parties, un prix par personne, et une duree qui en decoule. Sans cette
     // donnee, tout se passe exactement comme avant (durees, prix par piste).
-    const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') }) : null;
+    const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax, laneCount: getRequiredLaneCount('bowling', pax, '') }) : null;
     if (games) {
       if (!games.length) return '<div class="activity-option-row"><span class="activity-option-empty">Aucun tarif publié pour ce jour.</span></div>';
       const rangee = `<div class="activity-option-row">${games.map(option => `
@@ -5630,28 +5642,6 @@ function renderActivityOptions(activity, options, pax) {
         ${option.label}<span class="price">${option.price}€ / session</span>
       </button>`).join('')}</div>`;
     return rangee;
-  }
-  if (activityCountsChildren(activity)) {
-    // Le compte d'enfants se regle au MEME stepper -/+ que le compte de
-    // joueurs de la venue : un seul vocabulaire de reglage dans le tunnel.
-    // (Les pastilles 1-5 + champ « 6+ » faisaient deux composants pour un
-    // seul chiffre : refusees par Movsar le 2026-08-17.)
-    const ceiling = Math.min(30, Math.max(1, pax));
-    const current = Math.min(ceiling, Math.max(1, Number(options.participants) || ceiling));
-    const price = Number(activity.priceValue);
-    const detail = Number.isFinite(price) && price > 0
-      ? `<div class="activity-option-note" data-role="participants-note">${price}€ ${escapeHtml(activity.unitLabel || 'par enfant')} · ${current} enfant${current > 1 ? 's' : ''} = ${Math.round(price * current * 100) / 100}€.</div>`
-      : '';
-    return `<div class="activity-option-stack"><div class="activity-option-group"><span class="activity-option-legend">Enfants</span>
-      <div class="child-stepper">
-        <button type="button" class="child-step-btn" data-role="participants-minus" aria-label="Retirer un enfant" ${current <= 1 ? 'disabled' : ''}
-          onclick="stepBookingChildren('${id}',-1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-        <input type="number" class="input participants-input" data-role="participants-input"
-          min="1" max="${ceiling}" inputmode="numeric" value="${current}" aria-label="Nombre d'enfants"
-          oninput="setBookingActivityOption('${id}','participants', Math.min(${ceiling}, Math.max(1, Number(this.value) || 1)))">
-        <button type="button" class="child-step-btn" data-role="participants-plus" aria-label="Ajouter un enfant" ${current >= ceiling ? 'disabled' : ''}
-          onclick="stepBookingChildren('${id}',1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-      </div></div>${detail}</div>`;
   }
   if (activity.priceType === 'per_unit_hour') {
     const choix = activityHourChoices(activity);
@@ -5688,6 +5678,7 @@ function renderProgramSummary() {
   let complete = true;
   const items = chosen.map(activity => {
     const options = activity.options || {};
+    const pax = getBookingActivityParticipants(activity, options);
     if (activity.priceType === 'grid_bowling') {
       const duration = Number(options.duration) || 1;
       // DUCKPIN : il a SES pistes (units du catalogue, 2 a Libramont) et sa
@@ -5700,11 +5691,11 @@ function renderProgramSummary() {
       const planDuckpin = activity.resourceType === 'duckpin_lane'
         ? getActivityUnitPlan({ ...activity, capacityPerUnit: Number(activity.capacityPerUnit) || 6 }, pax)
         : null;
-      const lanes = planDuckpin ? planDuckpin.units : getRequiredLaneCount('bowling', pax, '');
+      const lanes = planDuckpin ? planDuckpin.units : splitGroupIntoBowlingServices(pax).reduce((sum, players) => sum + getRequiredLaneCount('bowling', players, ''), 0);
       // Le duckpin se paie A LA PISTE partout, comme le serveur le chiffre
       // (lib/visit-program : bowlingConfig null) : le mode aux parties d un
       // centre ne vaut que pour son bowling.
-      const games = !planDuckpin && typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') }) : null;
+      const games = !planDuckpin && typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: pax, laneCount: getRequiredLaneCount('bowling', pax, '') }) : null;
       if (games) {
         // AUX PARTIES : c'est le nombre de JOUEURS qui paie, pas le nombre de
         // pistes. Les pistes restent dites, parce que le groupe doit savoir
@@ -5714,7 +5705,7 @@ function renderProgramSummary() {
         if (!option) complete = false;
         return {
           id: activity.id,
-          name: activity.name,
+          name: `${activity.name} · ${pax} ${activityCountsChildren(activity) ? 'enfants' : 'joueurs'}`,
           detail: `${option?.label || ''} · ${pax} joueur${pax > 1 ? 's' : ''} · ${lanes} piste${lanes > 1 ? 's' : ''}`,
         };
       }
@@ -5805,7 +5796,7 @@ function renderProgramSummary() {
   const totalLabel = box.querySelector('.program-total-label');
   const totalEl = box.querySelector('.program-total');
   const totalNote = box.querySelector('.program-total-note');
-  const roundedTotal = Math.round(total);
+  const roundedTotal = Math.round(total * 100) / 100;
   const nextTotal = complete || roundedTotal > 0 ? `${roundedTotal}€` : 'Sur place';
   const nextValue = `${complete ? '' : 'à partir de '}${nextTotal}`;
   // Cocher une activite doit se VOIR dans le programme : la ligne qui arrive se
@@ -5963,7 +5954,7 @@ function toggleBookingActivity(activityId) {
 function setBookingActivityOption(activityId, key, value) {
   const selection = state.booking.activities || (state.booking.activities = {});
   if (!selection[activityId]) selection[activityId] = {};
-  selection[activityId][key] = Number(value);
+  selection[activityId][key] = key === 'participants' ? getBookingActivityParticipants(getCenterActivity(activityId) || { id: activityId }, { participants: value }) : Number(value);
   clearCurrentBookingChoice();
   applyChosenActivitiesToBooking();
   syncBookingTypeUi();
@@ -5974,17 +5965,11 @@ function setBookingActivityOption(activityId, key, value) {
 // meme regle que le serveur), applique le pas et borne au groupe : le bouton
 // n'a pas a connaitre la valeur courante au moment du rendu.
 function stepBookingChildren(activityId, delta) {
-  const selection = state.booking.activities || {};
-  const options = selection[activityId] || {};
-  const pax = Math.max(1, Number(state.booking.pax) || 1);
-  const ceiling = Math.min(30, pax);
-  const current = Math.min(ceiling, Math.max(1, Number(options.participants) || ceiling));
-  setBookingActivityOption(activityId, 'participants', Math.min(ceiling, Math.max(1, current + Number(delta))));
+  const activity = getCenterActivity(activityId) || { id: activityId };
+  const options = (state.booking.activities || {})[activityId] || {};
+  setBookingActivityOption(activityId, 'participants', getBookingActivityParticipants(activity, options) + Number(delta));
 }
 
-// Les champs historiques (duration, laneCount, totalDuration) restent remplis :
-// tout le reste du tunnel les lit encore, et une visite mono-activite doit
-// produire exactement la meme requete qu'avant.
 function applyChosenActivitiesToBooking() {
   const chosen = getChosenActivities();
   const pax = Math.max(1, Number(state.booking.pax) || 1);
@@ -5992,13 +5977,22 @@ function applyChosenActivitiesToBooking() {
   const laser = chosen.find(activity => activity.id === 'laser_game');
   if (bowling) {
     state.booking.duration = Number(bowling.options.duration) || 1;
-    state.booking.laneCount = getRequiredLaneCount('bowling', pax, '');
+    state.booking.laneCount = getRequiredLaneCount('bowling', getBookingActivityParticipants(bowling, bowling.options), '');
   } else if (laser) {
     state.booking.duration = Number(LASER_GAME_OPTIONS.find(option => Number(option.games) === (Number(laser.options.games) || 1))?.value) || 0.5;
     state.booking.laneCount = 0;
     state.booking.allocatedLanes = [];
   }
-  state.booking.totalDuration = state.booking.duration;
+  state.booking.totalDuration = Math.max(0.5, chosen.reduce((hours, activity) => {
+    const options = activity.options || {};
+    const players = getBookingActivityParticipants(activity, options);
+    if (activity.id === 'bowling') return hours + (Number(options.duration) || 1) * splitGroupIntoBowlingServices(players).length;
+    if (activity.priceType === 'grid_bowling') return hours + (Number(options.duration) || 1) * getActivityUnitPlan(activity, players).tours;
+    if (activity.priceType === 'grid_laser') return hours + (Number(options.games) || 1) * 0.5 * getLaserWaveCount(players);
+    if (activity.priceType === 'grid_fun_run') return hours + (Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes) / 60 * getActivitySessionCount(activity, players);
+    if (activity.priceType === 'per_unit_hour') return hours + (Number(options.hours) || activityHourChoices(activity)[0].hours);
+    return hours + (Number(activity.defaultMinutes) || 30) / 60;
+  }, 0));
   state.booking.preference = createDefaultFormulaPreference();
   state.booking.pauseMinutes = 0;
 }
@@ -6013,7 +6007,7 @@ function applyChosenActivitiesToBooking() {
 function buildBookingProgramPayload(panierPropose = null) {
   return getChosenActivities(panierPropose).map(activity => {
     const options = activity.options || {};
-    const item = { activityId: activity.id };
+    const item = { activityId: activity.id, participants: getBookingActivityParticipants(activity, options) };
     // LES OPTIONS PARTENT SELON LE TYPE TARIFAIRE, PAS SELON UNE LISTE D IDS.
     // Seuls 'bowling' et 'laser_game' etaient nommes ici. Or le DUCKPIN partage
     // le meme type que le bowling (grid_bowling, option `duration`) sans porter
@@ -6036,7 +6030,7 @@ function buildBookingProgramPayload(panierPropose = null) {
     if (options.hours) item.hours = Number(options.hours);
     // Le compte d'enfants declare part au serveur, qui le borne au groupe et
     // recalcule le prix (le navigateur n'est jamais cru sur un montant).
-    if (options.participants) item.participants = Number(options.participants);
+
     // L OFFRE D ATTENTE voyage avec la ligne. Le navigateur ne fixe aucun
     // prix : il DEMANDE le tarif d attente, et le serveur ne l applique que
     // si le groupe est vraiment scinde (groupIsSplit, lib/visit-program).
@@ -12656,9 +12650,9 @@ function renderStaffTerrainNote(reservation) {
 function getStaffTerrainSteps(reservation) {
   const items = getStaffFormulaTimedItems(reservation);
   const steps = items.length
-    ? items.map(item => ({ label: item.label, start: item.start, end: item.end }))
+    ? items.map(item => ({ label: `${item.label} · ${getReservationActivityPlayers(reservation, item.activityId)} joueurs`, start: item.start, end: item.end }))
     : getStaffResourceWindows(reservation, 'all').map(window => ({
-      label: window.resourceType === 'laser_arena' ? 'Laser Game' : 'Bowling',
+      label: `${window.resourceType === 'laser_arena' ? 'Laser Game' : 'Bowling'} · ${Number(window.players) || getReservationActivityPlayers(reservation, window.resourceType === 'laser_arena' ? 'laser_game' : 'bowling')} joueurs`,
       start: Number(window.start),
       end: Number(window.end)
     }));
@@ -13265,7 +13259,7 @@ function renderStaffLaneBoard(model = buildStaffLaneBoardModel()) {
       const info = item.maintInfo || {};
       statut = `Fermée${info.note ? ` · ${escapeHtml(info.note)}` : ''}${info.until ? ` · jusqu’au ${escapeHtml(info.until)}` : ''}`;
     } else if (item.current) {
-      statut = `Occupée · <b>${escapeHtml(item.current.reservation.name || 'Client')}</b> (${formatStaffTerrainCount(Number(item.current.reservation.pax || 0), 'joueur')}) jusqu’à ${numToTime(item.current.end)}${item.next ? `, puis ${numToTime(item.next.start)}` : ''}`;
+      statut = `Occupée · <b>${escapeHtml(item.current.reservation.name || 'Client')}</b> (${formatStaffTerrainCount(Number(item.current.players) || getReservationActivityPlayers(item.current.reservation, 'bowling'), 'joueur')}) jusqu’à ${numToTime(item.current.end)}${item.next ? `, puis ${numToTime(item.next.start)}` : ''}`;
     } else if (model.now != null) {
       statut = item.next ? `Libre jusqu’à ${numToTime(item.next.start)} · <b>${escapeHtml(item.next.reservation.name || 'Client')}</b> ensuite` : 'Libre jusqu’à la fermeture';
     } else {
@@ -22051,7 +22045,7 @@ function renderPlanning() {
         }).join(' · ');
         return `<button type="button" class="closed-planning-row" onclick="openPos(${staffClientJs(reservation.id)})">
           <span><strong>${escapeHtml(getPlanningBookingDisplayName(reservation))}</strong><small>${escapeHtml(getReservationLabel(reservation))}</small></span>
-          <span>${Number(reservation.pax || 0)}j</span>
+          <span>${getReservationActivityPlayers(reservation, 'bowling')}j</span>
           <span>${escapeHtml(resources)}</span>
         </button>`;
       }).join('');
@@ -22184,7 +22178,7 @@ function renderPlanning() {
       const fullName = String(r.name || 'Client');
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
-      const statsHtml = renderCardStats(r.pax, formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration) });
+      const statsHtml = renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration) });
       // L'OFFRE N'A SA PROPRE LIGNE QUE SI LA CARTE A LA HAUTEUR DE L'OFFRIR.
       // Mesure : une carte d'1h fait 46px, dont 44 utiles ; trois lignes (nom,
       // offre, chiffres) en demandent 56. L'offre partage donc la ligne des
@@ -22911,6 +22905,7 @@ function joueursDuDossier(r) {
 // guise du groupe. Une partie de laser sans heure au planning est « à placer ».
 function getGroupeProgramme(r) {
   const etapes = [];
+  const effectifActivite = id => participantsLigneProgramme(((r.program && r.program.items) || []).find(item => item.activityId === id), r.pax);
   const progression = r && r.activityProgress && typeof r.activityProgress === 'object' ? r.activityProgress : {};
   const faite = (cle) => Boolean(progression[cle] && progression[cle].done);
   const fenetres = getStaffResourceWindows(r, 'all');
@@ -22926,7 +22921,7 @@ function getGroupeProgramme(r) {
       cle: `bowling-${index + 1}`,
       activityId: 'bowling',
       nom: 'Bowling',
-      quoi: formatDurationLabel(f.duration),
+      quoi: `${Number(f.players) || effectifActivite('bowling')} joueurs · ${formatDurationLabel(f.duration)}`,
       ou: pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}` : 'pistes à attribuer',
       groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}${f.players ? ` · ${f.players} joueurs` : ''}` : '',
       start: f.start,
@@ -22943,7 +22938,7 @@ function getGroupeProgramme(r) {
       cle: `laser-${partie}-${Number(f.groupWaveIndex) || 1}`,
       activityId: 'laser_game',
       nom: 'Laser Game',
-      quoi: parties > 1 ? `partie ${partie}/${parties}` : '1 partie',
+      quoi: `${Number(f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
       ou: '',
       groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}${f.players ? ` · ${f.players} joueurs` : ''}` : '',
       start: f.start,
@@ -22983,7 +22978,7 @@ function getGroupeProgramme(r) {
       cle: `laser-a-placer-${partie}`,
       activityId: 'laser_game',
       nom: 'Laser Game',
-      quoi: parties > 1 ? `partie ${partie}/${parties}` : '1 partie',
+      quoi: `${effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
       ou: '',
       groupe: '',
       start: null,
@@ -23285,7 +23280,7 @@ function renderGroupeAlerte(r, moment) {
 // « +N ». Le detail (durees, pistes, tours) reste dans la fiche.
 function renderActivitesCourtes(r) {
   const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
-  let noms = items.map(item => (typeof nomActivite === 'function' ? nomActivite(item) : item.activityId)).filter(Boolean);
+  let noms = items.map(item => `${typeof nomActivite === 'function' ? nomActivite(item) : item.activityId} · ${participantsLigneProgramme(item, r.pax)}`).filter(Boolean);
   if (!noms.length) {
     const formule = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
     noms = [formule ? formule.name : getReservationLabel(r)].filter(Boolean);
@@ -24030,6 +24025,19 @@ function ligneALaJournee(item) {
 }
 function detailLigneProgramme(item, reservation = null) {
   if (!item) return '';
+  const participants = participantsLigneProgramme(item, reservation && reservation.pax);
+  const activite = catalogueDeLigne(item);
+  const unite = typeof activityCountsChildren === 'function' && activityCountsChildren(activite) ? 'enfant' : 'joueur';
+  return [`${participants} ${unite}${participants > 1 ? 's' : ''}`, detailLigneProgrammeSansEffectif(item, reservation)].filter(Boolean).join(' · ');
+}
+
+function participantsLigneProgramme(item, pax) {
+  const groupe = Math.max(1, Math.trunc(Number(pax) || Number(item && item.participants) || 1));
+  return Math.min(groupe, Math.max(1, Math.trunc(Number(item && item.participants) || groupe)));
+}
+
+function detailLigneProgrammeSansEffectif(item, reservation = null) {
+  if (!item) return '';
   if (ligneALaJournee(item)) return 'toute la journée';
   const catalogue = catalogueDeLigne(item);
   const priceType = item.priceType || (catalogue && catalogue.priceType) || '';
@@ -24041,12 +24049,11 @@ function detailLigneProgramme(item, reservation = null) {
   // Le duckpin : ses pistes, et ses tours au-dela de celles du centre.
   if (priceType === 'grid_bowling') return detailUnitesLigne(item, catalogue, reservation, Number(item.duration) || 1);
   if (priceType === 'grid_fun_run') {
-    const passages = Math.max(1, Number(item.sessions) || getActivitySessionCount(catalogue, reservation && reservation.pax));
+    const passages = Math.max(1, Number(item.sessions) || getActivitySessionCount(catalogue, participantsLigneProgramme(item, reservation && reservation.pax)));
     const palier = funRunSessionMinutes(item, passages);
     // Une partie du groupe seulement (le formulaire le demande depuis le
     // 2026-10-01) : la caisse lit combien jouent, jamais tout le groupe.
-    const joueurs = Number(item.participants) > 0 ? `${item.participants} joueur${Number(item.participants) > 1 ? 's' : ''} · ` : '';
-    return joueurs + (passages > 1 ? `${passages} × ${palier} min` : `${palier} min`);
+    return passages > 1 ? `${passages} × ${palier} min` : `${palier} min`;
   }
   if (Number(item.units) > 0 && Number(item.hours) > 0) return detailUnitesLigne(item, catalogue, reservation, Number(item.hours));
   const minutes = Number(item.minutes) || 0;
@@ -24063,7 +24070,7 @@ function detailUnitesLigne(item, catalogue, reservation, heures) {
   let unites = Math.trunc(Number(item.units) || 0);
   let tours = Math.max(1, Math.trunc(Number(item.sessions) || 1));
   if (unites < 1) {
-    const ancienne = getActivityUnitPlan({ ...(catalogue || {}), capacityPerUnit: Number(catalogue && catalogue.capacityPerUnit) || 6 }, reservation && reservation.pax);
+    const ancienne = getActivityUnitPlan({ ...(catalogue || {}), capacityPerUnit: Number(catalogue && catalogue.capacityPerUnit) || 6 }, participantsLigneProgramme(item, reservation && reservation.pax));
     unites = ancienne.atOnce;
     tours = 1;
   }
@@ -24358,7 +24365,7 @@ function renderGroupeAddition(r) {
       if (item.activityId !== 'bowling' || n < 1) return '';
       return `${n} piste${n > 1 ? 's' : ''}${connu(item) ? ` × ${formatMoneyCentimes(Number(item.price) / n)}` : ''}`;
     };
-    const joueursLaser = item => (item.activityId === 'laser_game' && joueurs > 0 && connu(item) ? `${formatMoneyCentimes(Number(item.price) / joueurs)} × ${joueurs}` : '');
+    const joueursLaser = item => (item.activityId === 'laser_game' && connu(item) ? `${formatMoneyCentimes(Number(item.price) / participantsLigneProgramme(item, joueurs))} × ${participantsLigneProgramme(item, joueurs)}` : '');
     items.forEach(item => lignes.push({
       nom: nomActivite(item),
       detail: [detailLigneProgramme(item, r), pistes(item), joueursLaser(item)].filter(Boolean).join(' · '),
@@ -25293,8 +25300,8 @@ function buildEditProgramFromReservation(r) {
   if (items && items.length) {
     items.forEach((item) => {
       const id = String(item.activityId || '');
-      if (id === 'bowling') { etat.bowling.on = true; etat.bowling.duration = Number(item.duration) || 1; return; }
-      if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, Number(item.games) || 1); return; }
+      if (id === 'bowling') { etat.bowling.on = true; etat.bowling.duration = Number(item.duration) || 1; if (Number(item.participants) > 0) etat.bowling.participants = Number(item.participants); return; }
+      if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, Number(item.games) || 1); if (Number(item.participants) > 0) etat.laser_game.participants = Number(item.participants); return; }
       if (!id) return;
       etat.others[id] = true;
       const reglages = {};
@@ -25302,7 +25309,7 @@ function buildEditProgramFromReservation(r) {
       if (Number(item.hours) > 0) reglages.hours = Number(item.hours);
       // Le palier d une session, pas le temps du groupe (3 x 30 min = 90). Les
       // passages de CE groupe servent a un dossier enregistre sans eux.
-      const palier = funRunSessionMinutes(item, getActivitySessionCount(getCenterActivity(id), r && r.pax));
+      const palier = funRunSessionMinutes(item, getActivitySessionCount(getCenterActivity(id), participantsLigneProgramme(item, r && r.pax)));
       if (palier > 0) reglages.minutes = palier;
       if (Number(item.participants) > 0) reglages.participants = Number(item.participants);
       // Le duckpin garde sa duree (ses tours la repetent) ; l offre d attente
@@ -25351,14 +25358,15 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
   const lignes = [];
   (items || []).forEach((item) => {
     const id = String(item.activityId || '');
+    const effectif = participantsLigneProgramme(item, joueurs);
     if (id === 'bowling') {
       const heures = Number(item.duration) || 1;
       // LE BOWLING SE FACTURE A LA PISTE, et le nombre de pistes vient du
       // nombre de joueurs : le prix monte donc PAR PALIERS (un cran tous les
       // 6 joueurs a Libramont), jamais lineairement. Le comptoir doit voir
       // les pistes pour comprendre le montant.
-      const pistes = Math.max(1, getRequiredLaneCount('bowling', joueurs));
-      const montant = Number(getBasePrice('bowling', heures, pistes, joueurs, '', dateStr)) || 0;
+      const pistes = splitGroupIntoBowlingServices(effectif).reduce((sum, players) => sum + Math.max(1, getRequiredLaneCount('bowling', players)), 0);
+      const montant = Number(getBasePrice('bowling', heures, pistes, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
       lignes.push({ nom: `Bowling ${formatDurationLabel(heures)}`, detail: `${pistes} piste${pistes > 1 ? 's' : ''}`, montant });
@@ -25370,10 +25378,10 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const parties = Math.max(1, Number(item.games) || 1);
       const option = getLaserOption(parties * 0.5);
       const unitaire = Number(option?.price) || 0;
-      const montant = unitaire * joueurs;
+      const montant = unitaire * effectif;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${unitaire} €/pers × ${joueurs}`, montant });
+      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${unitaire} €/pers × ${effectif}`, montant });
       return;
     }
     const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
@@ -25393,8 +25401,8 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     }
     if (activite && activite.priceType === 'grid_bowling' && typeof getActivityUnitPlan === 'function') {
       const heures = Number(item.duration) || 1;
-      const plan = getActivityUnitPlan(activite, joueurs);
-      const montant = Number(getBasePrice('bowling', heures, plan.units, joueurs, '', dateStr)) || 0;
+      const plan = getActivityUnitPlan(activite, effectif);
+      const montant = Number(getBasePrice('bowling', heures, plan.units, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
       lignes.push({ nom: `${nom} ${formatDurationLabel(heures)}`, detail: `${plan.units} piste${plan.units > 1 ? 's' : ''}${plan.tours > 1 ? ` · ${plan.tours} tours` : ''}`, montant });
@@ -25424,7 +25432,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     lignes.push({ nom, detail: '', montant: Number(ligne) || 0 });
   });
   return {
-    total: Math.round(total),
+    total: Math.round(total * 100) / 100,
     complet,
     // Au moins une ligne chiffree : le total veut dire quelque chose, meme
     // partiel. Aucune : on ne remplace surtout pas le prix du dossier.
@@ -25468,6 +25476,10 @@ function editionChangeLePrix() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return false;
+  if (r.formuleId && editProgramAChange() && Number(e.pax) === Number(r.pax)) {
+    const sansEffectif = value => JSON.stringify(JSON.parse(value), (key, entry) => key === 'participants' ? undefined : entry);
+    if (sansEffectif(JSON.stringify(e.programmeEdite)) === sansEffectif(e.programmeEditeInitial)) return false;
+  }
   return editProgramAChange() || Number(e.pax) !== Number(r.pax);
 }
 
@@ -25477,14 +25489,14 @@ function getEditProgramItems() {
   if (!e || !e.programmeEdite) return [];
   const pax = Math.max(1, Number(e.pax) || 1);
   const items = [];
-  if (e.programmeEdite.bowling?.on) items.push({ activityId: 'bowling', duration: Number(e.programmeEdite.bowling.duration) || 1, pax });
-  if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax });
+  if (e.programmeEdite.bowling?.on) items.push({ activityId: 'bowling', duration: Number(e.programmeEdite.bowling.duration) || 1, pax, participants: participantsLigneProgramme(e.programmeEdite.bowling, pax) });
+  if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax, participants: participantsLigneProgramme(e.programmeEdite.laser_game, pax) });
   Object.entries(e.programmeEdite.others || {}).forEach(([id, actif]) => {
     if (!actif) return;
     // Les reglages du dossier, pas les defauts : sans eux le prix repart a
     // une unite et une heure.
     const reglages = (e.programmeEdite.othersOptions || {})[id] || {};
-    items.push({ activityId: id, pax, ...reglages });
+    items.push({ activityId: id, pax, ...reglages, participants: participantsLigneProgramme(reglages, pax) });
   });
   return items;
 }
@@ -25542,7 +25554,7 @@ function setEditPricePerPerson(valeur) {
   const parPersonne = Number(brut);
   if (!Number.isFinite(parPersonne) || parPersonne < 0) return;
   const joueurs = Math.max(1, Number(state.editState.pax) || 1);
-  state.editState.price = String(Math.round(parPersonne * joueurs));
+  state.editState.price = String(Math.round((parPersonne * joueurs) * 100) / 100);
   state.editState.prixFige = true;
   const champTotal = document.getElementById('editPriceInput');
   if (champTotal) champTotal.value = state.editState.price;
@@ -25576,7 +25588,7 @@ function majEditPrixEstime() {
   // montant du dossier (editionChangeLePrix).
   const suit = estime.utilisable && editionChangeLePrix();
   if (!e.prixFige && champ) {
-    const valeur = suit ? estime.total : Math.round(Number(state.selectedRes && state.selectedRes.price) || 0);
+    const valeur = suit ? estime.total : Math.round((Number(state.selectedRes && state.selectedRes.price) || 0) * 100) / 100;
     champ.value = String(valeur);
     e.price = String(valeur);
   }
@@ -25585,7 +25597,7 @@ function majEditPrixEstime() {
       ? (getEditPriceValue() ?? estime.total)
       : estime.total;
     const joueurs = Math.max(1, Number(e.pax) || 1);
-    const parPersonne = Math.round(facture / joueurs);
+    const parPersonne = Math.round((facture / joueurs) * 100) / 100;
     // Les deux champs se repondent, mais JAMAIS celui qu on est en train de
     // taper : reecrire sous les doigts transforme un « 1 » en cours de frappe
     // en « 17 » et rend le champ inutilisable.
@@ -25601,7 +25613,7 @@ function getEditPriceValue() {
   if (brut === '') return null;
   const valeur = Number(brut);
   if (!Number.isFinite(valeur) || valeur < 0) return null;
-  return Math.round(valeur);
+  return Math.round((valeur) * 100) / 100;
 }
 
 // Le bloc « contenu » de l onglet Modifier : lecture seule pour le comptoir,
@@ -25659,7 +25671,7 @@ function renderEditFormuleBloc(r, formule, lignes) {
     }
     return `<div class="qb-visit-row ${actif ? 'is-on' : ''}">
       <button type="button" class="qb-visit-toggle" aria-pressed="${actif ? 'true' : 'false'}" onclick="toggleEditActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
-      ${options}
+      ${actif ? renderActivityParticipantsControl(choice.id, 'edit') : ''}${options}
     </div>`;
   }).join('');
   const prixValeur = getEditPriceValue();
@@ -25671,7 +25683,7 @@ function renderEditFormuleBloc(r, formule, lignes) {
   // fait (editionChangeLePrix) : ouvrir ce bloc ne change aucun montant.
   const suitEstimation = Boolean(estime && estime.utilisable && editionChangeLePrix());
   const factureAffichee = state.editState.prixFige || !suitEstimation
-    ? (state.editState.prixFige ? (prixValeur ?? Math.round(Number(r.price) || 0)) : Math.round(Number(r.price) || 0))
+    ? (state.editState.prixFige ? (prixValeur ?? Math.round((Number(r.price) || 0) * 100) / 100) : Math.round((Number(r.price) || 0) * 100) / 100)
     : estime.total;
   // Ce que porte le CHAMP : le montant fige s il y en a un, sinon l estimation
   // quand on a change le contenu ou les joueurs, sinon le prix actuel du
@@ -25679,17 +25691,17 @@ function renderEditFormuleBloc(r, formule, lignes) {
   // valeur d avant pendant que la ligne en dessous annoncait deja le nouveau
   // total.
   const valeurChamp = state.editState.prixFige
-    ? (state.editState.price ?? Math.round(Number(r.price) || 0))
-    : (suitEstimation ? estime.total : Math.round(Number(r.price) || 0));
+    ? (state.editState.price ?? Math.round((Number(r.price) || 0) * 100) / 100)
+    : (suitEstimation ? estime.total : Math.round((Number(r.price) || 0) * 100) / 100);
   if (!state.editState.prixFige) state.editState.price = String(valeurChamp);
   // LE DETAIL, ligne par ligne : c est ce qui rend le total comprehensible.
   // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
   // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
   const detailHtml = estime && estime.lignes.length
-    ? `<ul class="edit-prix-detail">${estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round(l.montant)} €`}</b></li>`).join('')}</ul>`
+    ? `<ul class="edit-prix-detail">${estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} €`}</b></li>`).join('')}</ul>`
     : '';
   const prixLigne = estime
-    ? `${estime.complet ? '' : 'À partir de '}${factureAffichee} € · ${Math.round(factureAffichee / joueursActuels)} €/personne (${joueursActuels} joueur${joueursActuels > 1 ? 's' : ''})${estime.complet ? '' : ' · certaines activités se règlent sur place'}`
+    ? `${estime.complet ? '' : 'À partir de '}${factureAffichee} € · ${Math.round((factureAffichee / joueursActuels) * 100) / 100} €/personne (${joueursActuels} joueur${joueursActuels > 1 ? 's' : ''})${estime.complet ? '' : ' · certaines activités se règlent sur place'}`
     : '';
   // LE MOT « REFERENCE » NE DESIGNE PLUS DEUX CHIFFRES. Cette ligne annonce la
   // base des ACTIVITES sans les extras, pendant que la pastille du meme dossier
@@ -25707,16 +25719,16 @@ function renderEditFormuleBloc(r, formule, lignes) {
     <div class="qb-visit-grid">${rangees}</div>
     <div class="edit-price-row">
       <label for="editPriceInput">Prix facturé</label>
-      <input id="editPriceInput" class="input" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)">
+      <input id="editPriceInput" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)">
       <span>€</span>
       <label for="editPricePerPerson">ou par personne</label>
-      <input id="editPricePerPerson" class="input" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(Math.round(valeurChamp / joueursActuels)))}" oninput="setEditPricePerPerson(this.value)">
+      <input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((valeurChamp / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)">
       <span>€ / pers.</span>
       ${state.editState.prixFige ? `<button type="button" class="edit-adapter-btn" onclick="recalculerEditPrix()">Recalculer</button>` : '<small class="edit-prix-auto">calculé automatiquement</small>'}
     </div>
     <div class="edit-prix-estime" id="editPrixEstime">${escapeHtml(prixLigne)}</div>
     ${detailHtml}
-    ${reference > 0 ? `<div class="qb-field-note">Tarif catalogue des activités : ${Math.round(reference)} €</div>` : ''}
+    ${reference > 0 ? `<div class="qb-field-note">Tarif catalogue des activités : ${Math.round((reference) * 100) / 100} €</div>` : ''}
     <div class="qb-field-note">${modifie ? 'Les activités seront replanifiées à l\'enregistrement. ' : ''}Ne change QUE ce dossier : la formule du centre et le formulaire de réservation en ligne ne bougent pas.</div>
   </div>`;
 }
@@ -26255,12 +26267,25 @@ function syncQuickBookDuration() {
       quickBookState.duration = LASER_GAME_OPTIONS[0].value;
     }
     quickBookState.totalDuration = Number(quickBookState.duration) * getLaserWaveCount(quickBookState.pax);
-  } else if (quickBookState.type === 'visite') {
+  } else if (quickBookState.type === 'visite' || quickBookState.type === 'activity') {
     const visit = quickBookState.visit || {};
-    const bowlingDur = visit.bowling?.on ? Number(visit.bowling.duration || 1) : 0;
-    const laserGames = visit.laser_game?.on ? Math.max(1, Number(visit.laser_game.games || 1)) : 0;
+    const bowlingDur = quickBookState.type === 'visite' && visit.bowling?.on ? Number(visit.bowling.duration || 1) : 0;
+    const laserGames = quickBookState.type === 'visite' && visit.laser_game?.on ? Math.max(1, Number(visit.laser_game.games || 1)) : 0;
+    const bowlingTours = bowlingDur ? splitGroupIntoBowlingServices(getQuickVisitParticipants('bowling')).length : 0;
+    let autresMinutes = 0;
+    const ids = quickBookState.type === 'activity' ? [quickBookState.activityId] : Object.keys(visit.others || {}).filter(id => visit.others[id]);
+    ids.forEach(id => {
+      const activity = getCenterActivity(id);
+      if (!activity) return;
+      const options = getQuickVisitOptions(id);
+      const participants = getQuickVisitParticipants(id);
+      if (activity.priceType === 'grid_fun_run') autresMinutes += getQuickVisitMinutes(id) * getActivitySessionCount(activity, participants);
+      else if (activity.priceType === 'grid_bowling') autresMinutes += (Number(options.duration) || 1) * 60 * getActivityUnitPlan(activity, participants).tours;
+      else if (activity.priceType === 'per_unit_hour') autresMinutes += getQuickVisitHours(id) * 60;
+      else autresMinutes += Number(activity.defaultMinutes) || 30;
+    });
     quickBookState.duration = bowlingDur || 0.5;
-    quickBookState.totalDuration = Math.max(0.5, bowlingDur + laserGames * 0.5);
+    quickBookState.totalDuration = Math.max(0.5, bowlingDur * bowlingTours + laserGames * 0.5 * getLaserWaveCount(getQuickVisitParticipants('laser_game')) + autresMinutes / 60);
   } else {
     quickBookState.totalDuration = quickBookState.duration;
   }
@@ -26316,8 +26341,17 @@ function setQuickVisitMinutes(id, minutes) {
 
 function setQuickVisitParticipants(id, nombre) {
   if (!quickBookState) return;
-  const plafond = Math.max(1, Number(quickBookState.pax) || 1);
-  getQuickVisitOptions(id).participants = Math.min(plafond, Math.max(1, Math.trunc(Number(nombre) || 1)));
+  const bornes = activityParticipantsBounds(id, quickBookState.pax);
+  getQuickVisitOptions(id).participants = Math.min(bornes.max, Math.max(bornes.min, Math.trunc(Number(nombre) || bornes.min)));
+  // A subset remains a visit, even with a single planned activity: group pax
+  // continues to count visitors while its program allocates the players.
+  if (quickBookState.type === 'bowling' || quickBookState.type === 'laser') {
+    const visit = ensureQuickVisit();
+    if (quickBookState.type === 'bowling') visit.bowling = { on: true, duration: quickBookState.duration };
+    else visit.laser_game = { on: true, games: getLaserGameCount(quickBookState.duration) };
+    quickBookState.type = 'visite';
+  }
+  syncQuickBookDuration();
   renderQuickBook();
 }
 
@@ -26327,8 +26361,17 @@ function setQuickVisitParticipants(id, nombre) {
 function getQuickVisitParticipants(id) {
   const visit = quickBookState && quickBookState.visit;
   const declare = visit && visit.options && visit.options[id] ? Number(visit.options[id].participants) : 0;
-  const plafond = Math.max(1, Number(quickBookState && quickBookState.pax) || 1);
-  return declare >= 1 ? Math.min(plafond, Math.trunc(declare)) : plafond;
+  const bornes = activityParticipantsBounds(id, quickBookState && quickBookState.pax);
+  return declare >= 1 ? Math.min(bornes.max, Math.max(bornes.min, Math.trunc(declare))) : bornes.max;
+}
+
+function activityParticipantsBounds(id, pax) {
+  const activity = getCenterActivity(id) || {};
+  const groupe = Math.max(1, Math.trunc(Number(pax) || 1));
+  // Units and arenas rotate; only a real activity maxPax caps the players.
+  const max = !(Number(activity.capacityPerUnit) > 0) && Number(activity.maxPax) > 0 ? Math.min(groupe, Math.trunc(Number(activity.maxPax))) : groupe;
+  const minimum = Number(activity.minPax) || (id === 'laser_game' ? 2 : 1);
+  return { min: Math.min(max, Math.max(1, Math.trunc(minimum))), max };
 }
 
 function getQuickVisitMinutes(id) {
@@ -26347,12 +26390,14 @@ function setQuickVisitUnits(id, nombre) {
   const choix = activityUnitChoices(activite);
   const plafond = choix[choix.length - 1] || 1;
   getQuickVisitOptions(id).units = Math.min(plafond, Math.max(1, Math.trunc(Number(nombre) || 1)));
+  syncQuickBookDuration();
   renderQuickBook();
 }
 
 function setQuickVisitHours(id, heures) {
   if (!quickBookState) return;
   getQuickVisitOptions(id).hours = Math.max(0.5, Number(heures) || 1);
+  syncQuickBookDuration();
   renderQuickBook();
 }
 
@@ -26378,7 +26423,7 @@ function getQuickVisitHours(id) {
 // lisait rien du tout. Deux ecritures d une meme intention finissent toujours
 // par diverger, et c est le comptoir qui paie la difference.
 function ligneProgrammeQuick(activityId) {
-  const ligne = { activityId, pax: Number(quickBookState.pax) || 1 };
+  const ligne = { activityId, pax: Number(quickBookState.pax) || 1, participants: getQuickVisitParticipants(activityId) };
   const activite = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
   if (!activite) return ligne;
   // On n envoie un reglage QUE si l activite en a un : une cle inutile sur une
@@ -26417,17 +26462,36 @@ function renderQuickVisitOptions(choice) {
       + heures.map((option) => pastille('hours', option.hours, option.label, heureCourante, 'setQuickVisitHours')).join('')
       + `</div>`;
   }
-  if (typeof activityCountsChildren === 'function' && activityCountsChildren(activite)) {
-    const courant = getQuickVisitParticipants(choice.id);
-    const plafond = Math.max(1, Number(quickBookState.pax) || 1);
-    const unite = /enfant/i.test(activite.unitLabel || '') ? 'enfant' : 'personne';
-    return `<div class="qb-visit-options qb-visit-compteur">`
-      + `<button type="button" class="qb-step-btn" aria-label="Retirer un ${unite}" ${courant <= 1 ? 'disabled' : ''} onclick="setQuickVisitParticipants('${escapeHtml(choice.id)}',${courant - 1})">-</button>`
-      + `<span class="qb-step-valeur">${courant} ${unite}${courant > 1 ? 's' : ''}</span>`
-      + `<button type="button" class="qb-step-btn" aria-label="Ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="setQuickVisitParticipants('${escapeHtml(choice.id)}',${courant + 1})">+</button>`
-      + `</div>`;
-  }
   return '';
+}
+
+function renderActivityParticipantsControl(id, mode = 'quick') {
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  const enfants = activite && typeof activityCountsChildren === 'function' && activityCountsChildren(activite);
+  const unite = enfants ? 'enfant' : 'joueur';
+  const pax = mode === 'edit' ? state.editState.pax : quickBookState.pax;
+  const bornes = activityParticipantsBounds(id, pax);
+  const plafond = bornes.max;
+  const programme = mode === 'edit' ? state.editState.programmeEdite : null;
+  const options = programme ? (id === 'bowling' || id === 'laser_game' ? programme[id] : (programme.othersOptions || {})[id]) : null;
+  const courant = mode === 'edit' ? participantsLigneProgramme(options, pax) : getQuickVisitParticipants(id);
+  const setter = mode === 'edit' ? 'setEditActivityParticipants' : 'setQuickVisitParticipants';
+  const nom = (activite && activite.name) || id;
+  return `<div class="qb-visit-options qb-visit-compteur" role="group" aria-label="${escapeHtml(nom)} : ${unite}s">`
+    + `<span class="qb-opt-legend">${enfants ? 'Enfants' : 'Joueurs'}</span>`
+    + `<button type="button" class="qb-step-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant - 1})">−</button>`
+    + `<span class="qb-step-valeur">${courant} / ${plafond}</span>`
+    + `<button type="button" class="qb-step-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant + 1})">+</button></div>`;
+}
+
+function setEditActivityParticipants(id, nombre) {
+  const e = state.editState;
+  if (!e || !e.programmeEdite) return;
+  const p = e.programmeEdite;
+  const options = id === 'bowling' || id === 'laser_game' ? p[id] : (p.othersOptions[id] ||= {});
+  const bornes = activityParticipantsBounds(id, e.pax);
+  options.participants = Math.min(bornes.max, Math.max(bornes.min, Math.trunc(Number(nombre) || bornes.min)));
+  renderPos();
 }
 
 function toggleQuickVisitActivity(id) {
@@ -26468,7 +26532,7 @@ function getQuickBookCustomPrice() {
   if (raw === '') return null;
   const value = Number(raw);
   if (!Number.isFinite(value) || value < 0) return null;
-  return Math.round(value);
+  return Math.round(value * 100) / 100;
 }
 
 function toggleQuickCustomPrice() {
@@ -26507,7 +26571,7 @@ function majQuickPrixAffiche() {
   const champTotal = document.getElementById('qbCustomPrice');
   const champPersonne = document.getElementById('qbCustomPricePerPerson');
   if (champTotal && document.activeElement !== champTotal && custom != null) champTotal.value = String(custom);
-  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round(total / joueurs));
+  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((total / joueurs) * 100) / 100);
 }
 
 // MEME REGLE QUE DANS LA FICHE : le total reste la valeur qui part au serveur,
@@ -26520,7 +26584,7 @@ function onQuickCustomPricePerPersonInput(value) {
   const parPersonne = Number(brut);
   if (!Number.isFinite(parPersonne) || parPersonne < 0) return;
   const joueurs = Math.max(1, Number(quickBookState.pax) || 1);
-  quickBookState.customPrice = String(Math.round(parPersonne * joueurs));
+  quickBookState.customPrice = String(Math.round((parPersonne * joueurs) * 100) / 100);
   majQuickPrixAffiche();
 }
 
@@ -26551,6 +26615,8 @@ function patchQuickBookPaxDerived() {
   if (desc) desc.textContent = `${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}`;
   const recapPax = overlay.querySelector('#qbRecapPax');
   if (recapPax) recapPax.textContent = String(Number(quickBookState.pax) || 1);
+  const liste = overlay.querySelector('.qb-liste');
+  if (liste && quickBookState.type !== 'formule') liste.outerHTML = renderQuickActiviteListe();
   patchQuickBookStatusLine(overlay);
 }
 
@@ -26800,7 +26866,7 @@ function renderQuickActiviteListe() {
     }
     return `<div class="qb-visit-row ${on ? 'is-on' : ''}">
       <button type="button" class="qb-visit-toggle" aria-pressed="${on ? 'true' : 'false'}" onclick="toggleQuickListe('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
-      ${options}
+      ${on ? renderActivityParticipantsControl(choice.id) : ''}${options}
     </div>`;
   }).join('');
   const n = choices.filter((c) => quickActiviteRetenue(c.id)).length;
@@ -26828,6 +26894,15 @@ function toggleQuickListe(id) {
     if (seul === 'bowling') { setQuickType('bowling'); quickBookState.duration = dureeBowling || 1; }
     else if (seul === 'laser_game') { setQuickType('laser'); quickBookState.duration = Math.min(1.5, Math.max(0.5, partiesLaser / 2)); }
     else setQuickType('activity', seul);
+    if ((seul === 'bowling' || seul === 'laser_game') && getQuickVisitParticipants(seul) < Number(quickBookState.pax)) {
+      const visit = ensureQuickVisit();
+      visit.bowling.on = seul === 'bowling';
+      visit.bowling.duration = dureeBowling || 1;
+      visit.laser_game.on = seul === 'laser_game';
+      visit.laser_game.games = partiesLaser || 1;
+      visit.others = {};
+      quickBookState.type = 'visite';
+    }
     syncQuickBookDuration();
     renderQuickBook();
     return;
@@ -27117,7 +27192,7 @@ function getQuickBookLaneNeed() {
     const avecBowling = Boolean(quickBookState.visit && quickBookState.visit.bowling && quickBookState.visit.bowling.on);
     return {
       needsLanes: avecBowling,
-      requiredCount: avecBowling ? getRequiredLaneCount('bowling', quickBookState.pax, '') : 0,
+      requiredCount: avecBowling ? getRequiredLaneCount('bowling', getQuickVisitParticipants('bowling'), '') : 0,
     };
   }
   return {
@@ -27243,55 +27318,23 @@ function getQuickBookSummary() {
   const base = getQuickBookSummaryActivites();
   const extras = quickExtrasTotal();
   if (!extras) return base;
-  return { ...base, total: Math.round((Number(base.total) || 0) + extras), detail: `${base.detail} · extras ${formatMoney(extras)}` };
+  return { ...base, total: Math.round(((Number(base.total) || 0) + extras) * 100) / 100, detail: `${base.detail} · extras ${formatMoney(extras)}` };
 }
 
 function getQuickBookSummaryActivites() {
   if (!quickBookState) return { total: 0, detail: '' };
-  if (quickBookState.type === 'visite') {
+  if (quickBookState.type === 'visite' || quickBookState.type === 'activity') {
     const visit = quickBookState.visit || {};
-    const pax = Number(quickBookState.pax) || 1;
-    const parts = [];
-    let total = 0;
-    if (visit.bowling?.on) {
-      const dur = Number(visit.bowling.duration || 1);
-      const laneCount = getRequiredLaneCount('bowling', pax);
-      total += Number(getBasePrice('bowling', dur, laneCount, pax, '', quickBookState.date)) || 0;
-      parts.push(`Bowling ${formatDurationLabel(dur)}`);
+    const items = [];
+    if (quickBookState.type === 'activity') items.push(ligneProgrammeQuick(quickBookState.activityId));
+    else {
+      if (visit.bowling?.on) items.push({ ...ligneProgrammeQuick('bowling'), duration: Number(visit.bowling.duration) || 1 });
+      if (visit.laser_game?.on) items.push({ ...ligneProgrammeQuick('laser_game'), games: Number(visit.laser_game.games) || 1 });
+      Object.entries(visit.others || {}).forEach(([id, on]) => { if (on) items.push(ligneProgrammeQuick(id)); });
     }
-    if (visit.laser_game?.on) {
-      const games = Math.max(1, Number(visit.laser_game.games || 1));
-      const option = getLaserOption(games * 0.5);
-      total += (Number(option?.price) || 0) * pax;
-      parts.push(`Laser x${games}`);
-    }
-    // Les activites libres SONT facturees par le serveur : les compter ici,
-    // avec le meme calcul que le tunnel public. Une activite dont le centre
-    // n a pas encore saisi le tarif ne vaut pas zero : elle rend le total
-    // incomplet, et le resume le dit au lieu d annoncer un « Total » faux.
-    let incomplet = false;
-    Object.entries(visit.others || {}).forEach(([id, on]) => {
-      if (!on) return;
-      const activity = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
-      const ligne = activity && typeof getFreeActivityPrice === 'function'
-        ? getFreeActivityPrice(activity, { pax, dateStr: quickBookState.date, startTime: quickBookState.startTime })
-        : null;
-      if (ligne == null) incomplet = true;
-      else total += Number(ligne) || 0;
-      parts.push(activity?.name || id);
-    });
-    if (incomplet) {
-      return {
-        total: Math.round(total),
-        detail: parts.length
-          ? `${parts.join(' · ')} · ${pax} joueur${pax > 1 ? 's' : ''} · hors activités réglées sur place`
-          : 'Choisissez les activités'
-      };
-    }
-    return {
-      total: Math.round(total),
-      detail: parts.length ? `${parts.join(' · ')} · ${pax} joueur${pax > 1 ? 's' : ''} · estimation` : 'Choisissez les activités'
-    };
+    const estime = estimerPrixProgramme(items, quickBookState.pax, quickBookState.date, quickBookState.startTime);
+    const detail = items.map(item => `${nomActivite(item)} : ${item.participants} joueur${item.participants > 1 ? 's' : ''}`).join(' · ');
+    return { total: estime.total, detail: detail + (estime.complet ? ' · estimation' : ' · hors activités réglées sur place') };
   }
   if (quickBookState.type === 'laser') {
     const option = getLaserOption(quickBookState.duration);
@@ -27737,7 +27780,7 @@ function renderQuickBookInner() {
     ['Activité', escapeHtml(typeLabel)],
     ['Date', escapeHtml(formatQuickBookDateLabel(quickBookState.date))],
     ['Départ', quickBookState.startTime ? escapeHtml(quickBookState.startTime) : '<span class="qb-recap-vide">À choisir</span>'],
-    ['Joueurs', `<span id="qbRecapPax">${Number(quickBookState.pax) || 1}</span>`],
+    ['Personnes présentes', `<span id="qbRecapPax">${Number(quickBookState.pax) || 1}</span>`],
     ['Durée', escapeHtml(formatDurationLabel(quickBookState.totalDuration))],
     ...(pistesRecap ? [['Pistes', escapeHtml(pistesRecap)]] : []),
     ...(quickExtrasLignes().length ? [['Extras', escapeHtml(`${quickExtrasLignes().length} ligne${quickExtrasLignes().length > 1 ? 's' : ''} · ${formatMoney(quickExtrasTotal())}`)]] : []),
@@ -27817,10 +27860,10 @@ function renderQuickBookInner() {
               <div class="desc">${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}${customPriceValue != null ? ` · référence ${summary.total} €` : ''}</div>
               ${canAdjustPrice ? (quickBookState.priceOpen ? `
                 <div class="qb-price-edit">
-                  <input id="qbCustomPrice" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(quickBookState.customPrice ?? ''))}" placeholder="${summary.total}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">
+                  <input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(quickBookState.customPrice ?? ''))}" placeholder="${summary.total}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">
                   <span>€</span>
                   <label class="qb-price-sep" for="qbCustomPricePerPerson">ou par personne</label>
-                  <input id="qbCustomPricePerPerson" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(Math.round((customPriceValue != null ? customPriceValue : summary.total) / Math.max(1, Number(quickBookState.pax) || 1))))}" aria-label="Prix par personne en euros" oninput="onQuickCustomPricePerPersonInput(this.value)">
+                  <input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((customPriceValue != null ? customPriceValue : summary.total) / Math.max(1, Number(quickBookState.pax) || 1) * 100) / 100))}" aria-label="Prix par personne en euros" oninput="onQuickCustomPricePerPersonInput(this.value)">
                   <span>€ / pers.</span>
                   <button type="button" class="qb-ghost-btn" onclick="clearQuickCustomPrice()">Prix catalogue</button>
                 </div>
@@ -27887,8 +27930,8 @@ async function saveQuickBook() {
   if (quickBookState.type === 'visite') {
     const visit = quickBookState.visit || {};
     visitProgram = [];
-    if (visit.bowling?.on) visitProgram.push({ activityId: 'bowling', duration: Number(visit.bowling.duration || 1), pax: Number(quickBookState.pax) || 1 });
-    if (visit.laser_game?.on) visitProgram.push({ activityId: 'laser_game', games: Math.max(1, Math.trunc(Number(visit.laser_game.games || 1))), pax: Number(quickBookState.pax) || 1 });
+    if (visit.bowling?.on) visitProgram.push({ ...ligneProgrammeQuick('bowling'), duration: Number(visit.bowling.duration || 1) });
+    if (visit.laser_game?.on) visitProgram.push({ ...ligneProgrammeQuick('laser_game'), games: Math.max(1, Math.trunc(Number(visit.laser_game.games || 1))) });
     Object.entries(visit.others || {}).forEach(([activityId, on]) => {
       if (!on) return;
       visitProgram.push(ligneProgrammeQuick(activityId));

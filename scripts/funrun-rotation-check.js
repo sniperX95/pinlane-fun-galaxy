@@ -139,9 +139,9 @@ function main() {
   ok(source.length > 0, 'assets/fungalaxy-booking.js porte bien sessionsPour (sinon ce gate ne prouve rien)');
   const ecartsForm = [];
   if (source) {
-    const bac = { state: { pax: 1 }, Math, Number };
+    const bac = { state: { pax: 1, options: {} }, Math, Number };
     vm.createContext(bac);
-    vm.runInContext(source, bac, { filename: 'fungalaxy-booking.js:sessionsPour' });
+    vm.runInContext(fonctionDuFormulaire('bornesJoueurs') + '\n' + fonctionDuFormulaire('joueursDe') + '\n' + source, bac, { filename: 'fungalaxy-booking.js:sessionsPour' });
     for (let pax = 1; pax <= 26; pax += 1) {
       bac.state.pax = pax;
       const formulaire = bac.sessionsPour(funRun);

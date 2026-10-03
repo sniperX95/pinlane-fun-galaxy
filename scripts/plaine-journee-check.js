@@ -47,7 +47,7 @@ const CASSE = String(process.env.PJ_CASSE || '');
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
 const MUTATIONS = {
-  recap: ["        } else if (it.dayAccess) {\n          var enfantsLigne = seCompteParEnfant(activite(it.activityId)) ? Math.trunc(Number(it.participants) || 0) : 0;\n          morceaux.push(enfantsLigne > 0 ? enfantsLigne + ' enfant' + (enfantsLigne > 1 ? 's' : '') : '', 'accès toute la journée', ageActivite(it.activityId));\n        } else {", '        } else {'],
+  recap: ["        } else if (it.dayAccess) {\n          morceaux.push('accès toute la journée', ageActivite(it.activityId));\n        } else {", '        } else {'],
   detail: ["    if (it.dayAccess) return 'toute la journée';\n", ''],
   libre: ["var entre = it.dayAccess ? 'toute la journée' : detailSessions(it);", 'var entre = detailSessions(it);'],
   environ: ["var duree = !entre && Number(it.minutes) > 0 ? environ(it.minutes) : '';", "var duree = Number(it.minutes) > 0 ? environ(it.minutes) : '';"],
@@ -242,7 +242,7 @@ async function main() {
     const vb = await lireVisite(page) || { texte: '', entete: '', etapes: [], prix: [], barre: '' };
     ok(/^dès \d{2}:\d{2}, accès toute la journée$/.test(vb.entete), '[B] l en-tete dit « dès HH:MM, accès toute la journée », sans heure de fin', `« ${vb.entete} »`);
     const libreB = vb.etapes.find((e) => e.libre) || {};
-    ok(libreB.titre === 'Playground (toute la journée)' && libreB.detail === 'à votre rythme', '[B] la ligne libre dit « Playground (toute la journée) », « à votre rythme »', JSON.stringify(libreB));
+    ok(libreB.titre === 'Playground (toute la journée)' && libreB.detail === '2 enfants · à votre rythme', '[B] la ligne libre dit la journee, ses deux enfants et « à votre rythme »', JSON.stringify(libreB));
     ok(!vb.etapes.some((e) => /Fin de la visite/.test(e.titre)), '[B] aucune « Fin de la visite » : une entree a la journee n a pas de fin a annoncer', vb.etapes.map((e) => e.titre).join(' | '));
     ok(/^dès \d{2}:\d{2}, toute la journée( · .+)?$/.test(vb.barre), '[B] la barre du bas dit « dès HH:MM, toute la journée », sans heure de fin', `« ${vb.barre} »`);
     ok(!UNE_HEURE.test(vb.texte), '[B] nulle part dans la visite « 1 heure », « 1 h » ni « environ »', `« ${vb.texte.slice(0, 160)} »`);
@@ -267,7 +267,7 @@ async function main() {
     ok(c.vu, '[C] le bloc « Votre visite » est rendu pour bowling + plaine');
     const vc = await lireVisite(pageC) || { texte: '', entete: '', etapes: [], prix: [], barre: '' };
     const libreC = vc.etapes.find((e) => e.libre) || {};
-    ok(libreC.titre === 'Playground (toute la journée)' && libreC.detail === 'à votre rythme', '[C] la ligne libre dit « Playground (toute la journée) », « à votre rythme », sans duree', JSON.stringify(libreC));
+    ok(libreC.titre === 'Playground (toute la journée)' && libreC.detail === '2 enfants · à votre rythme', '[C] la ligne libre dit la journee, ses deux enfants et « à votre rythme », sans duree', JSON.stringify(libreC));
     const prixPlaine = vc.prix.find((p) => /^Playground/.test(p.dt)) || {};
     ok(prixPlaine.dt === 'Playground · toute la journée', '[C] le detail du prix dit « Playground · toute la journée »', JSON.stringify(prixPlaine));
     const derniere = reponses.filter((r) => r && Array.isArray(r.slots) && r.slots.length).pop() || {};

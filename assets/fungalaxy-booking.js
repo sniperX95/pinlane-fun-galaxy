@@ -200,11 +200,13 @@
       if (!mn) return nombre;
       return n > 1 ? nombre + ' · ' + n + ' tours de ' + minutesLabel(Math.round(mn / n)) : nombre + ' · ' + minutesLabel(mn);
     }
-    // Le Fun Run d une partie du groupe : ses joueurs d abord (le serveur ne
-    // pose `participants` que quand tout le groupe n y va pas).
-    var qui = it && it.priceType === 'grid_fun_run' && Number(it.participants) > 0 ? it.participants + ' joueur' + (it.participants > 1 ? 's' : '') : '';
-    if (n < 2 || !mn) return qui ? qui + (mn ? ' · ' + minutesLabel(mn) : '') : '';
-    return (qui ? qui + ' · ' : '') + n + ' sessions de ' + minutesLabel(Math.round(mn / n));
+    if (n < 2 || !mn) return '';
+    return n + ' sessions de ' + minutesLabel(Math.round(mn / n));
+  }
+  function participantsLigne(it) {
+    if (!it || !it.activityId) return '';
+    var n = Number(it.participants) || joueursDe(activite(it.activityId));
+    return seCompteParEnfant(activite(it.activityId)) ? n + ' enfant' + (n > 1 ? 's' : '') : joueurs(n);
   }
   function minutesLabel(m) { m = Number(m) || 0; if (m >= 60) { var h = Math.floor(m / 60), r = m % 60; return r ? h + 'h' + String(r).padStart(2, '0') : h + ' heure' + (h > 1 ? 's' : ''); } return m + ' min'; }
   function dureeApprox(m) { m = Number(m) || 0; if (m < 60) return m + ' min'; var h = Math.floor(m / 60), r = m % 60; return 'environ ' + h + ' h' + (r >= 30 ? '30' : ''); }
@@ -349,15 +351,20 @@
     var places = capacite * (unites > 0 ? unites : 1);
     return Math.min(40, Math.max(1, Math.ceil(joueursDe(a) / places)));
   }
-  // LES JOUEURS DU FUN RUN (Movsar, 2026-10-01 : « ajoute le choix de nombre
-  // de joueurs pour le fun run, imagine que 5 veulent le faire ») : tout le
-  // groupe par defaut, jamais plus, jamais moins d un. Le serveur fait la meme
-  // borne (lib/visit-program) et compte les sessions sur eux.
+  // Le groupe reste le nombre de visiteurs. Chaque activite compte ceux qui
+  // y jouent : le serveur recalcule prix, ressources et passages sur eux.
+  function bornesJoueurs(a) {
+    var tous = Math.max(1, Math.trunc(Number(state.pax) || 1));
+    var plafond = Number(a && a.maxPax) || tous;
+    var max = Number(a && a.capacityPerUnit) > 0 ? tous : Math.min(tous, plafond);
+    return { min: Math.min(max, Math.max(1, Math.trunc(Number(a && a.minPax) || 1))), max: max };
+  }
   function joueursDe(a) {
     var tous = Math.max(1, Math.trunc(Number(state.pax) || 1));
-    if (!a || a.priceType !== 'grid_fun_run') return tous;
+    if (!a) return tous;
+    var bornes = bornesJoueurs(a);
     var v = Math.trunc(Number((state.options[a.id] || {}).participants));
-    return Math.min(tous, Math.max(1, v > 0 ? v : tous));
+    return Math.min(bornes.max, Math.max(bornes.min, v > 0 ? v : tous));
   }
   // LES PISTES D UN GROUPE, ET SES TOURS (duckpin : 6 joueurs par piste, 2
   // pistes, reglables dans Etablissement). MIROIR de activityUnitPlan
@@ -366,7 +373,7 @@
   function unitesPour(a) {
     var capacite = Math.trunc(Number(a && a.capacityPerUnit) || 0);
     var dotation = Math.trunc(Number(a && a.units) || 0);
-    var joueurs = Math.max(1, Math.trunc(Number(state.pax) || 1));
+    var joueurs = joueursDe(a);
     var necessaires = capacite > 0 ? Math.ceil(joueurs / capacite) : 1;
     var units = Math.min(50, Math.max(1, necessaires));
     var aLaFois = dotation > 0 ? Math.min(dotation, units) : units;
@@ -404,7 +411,7 @@
     var parc = Math.max(1, Number(b.laneCount) || 8);
     var confort = Math.max(1, Number(b.normalCapacityPerLane) || 6);
     var secours = Math.max(confort, Number(b.emergencyCapacityPerLane) || confort);
-    var joueurs = Math.max(1, Math.trunc(Number(state.pax) || 1));
+    var joueurs = state.onglet === 'formules' ? joueursDemandes() : joueursDe(activite('bowling'));
     var services = [joueurs];
     if (joueurs > parc * secours) {
       var n = Math.ceil(joueurs / (parc * confort)), base = Math.floor(joueurs / n), reste = joueurs % n;
@@ -467,29 +474,19 @@
   // Les enfants qui vont a la plaine de jeux : le groupe par defaut (le prix
   // d avant), jamais plus que le groupe, jamais moins d un.
   function enfantsPlaine(a) {
-    var v = Math.trunc(Number((state.options[a.id] || {}).participants));
-    return Math.min(state.pax, Math.max(1, v > 0 ? v : state.pax));
+    return joueursDe(a);
   }
   function seCompteParEnfant(a) { return Boolean(a) && a.priceType === 'per_pax' && /enfant/i.test(a.unitLabel || ''); }
   // UN COMPTEUR PLUTOT QUE DES PASTILLES (Movsar, 2026-09-30) : les tables de
   // billard et les enfants de la plaine de jeux.
-  function compteurDe(a) {
+  function compteurDe(a, cle) {
     if (!a) return null;
-    if (a.priceType === 'per_unit_hour') {
+    if (cle === 'units' && a.priceType === 'per_unit_hour') {
       var mot = motUnite(a) || 'unité';
       return { cle: 'units', titre: mot.charAt(0).toUpperCase() + mot.slice(1) + 's', mot: mot, min: 1, max: tablesMax(a), n: reglageBillard(a).units };
     }
-    if (seCompteParEnfant(a)) {
-      // « Enfants » seul : l age est deja sur la carte, et un titre plus long
-      // se coupait sur un telephone (deux cartes par rangee).
-      return { cle: 'participants', titre: 'Enfants', mot: 'enfant', min: 1, max: state.pax, n: enfantsPlaine(a) };
-    }
-    // Le Fun Run : sous la duree, discret, sans phrase a lui (le calcul de la
-    // carte dit deja les sessions). Inutile pour un joueur seul.
-    if (a.priceType === 'grid_fun_run' && state.pax > 1) {
-      return { cle: 'participants', titre: 'Joueurs', mot: 'joueur', min: 1, max: state.pax, n: joueursDe(a), apres: true, muet: true };
-    }
-    return null;
+    var bornes = bornesJoueurs(a), enfant = seCompteParEnfant(a);
+    return { cle: 'participants', titre: enfant ? 'Enfants' : 'Joueurs', mot: enfant ? 'enfant' : 'joueur', min: bornes.min, max: bornes.max, n: joueursDe(a), muet: true };
   }
   function texteCompteur(c) {
     if (c.muet) return '';
@@ -548,6 +545,7 @@
     }
     var opt = optionChoisie(a);
     if (opt) {
+      if (choisie && a.priceType === 'grid_laser') return euros(Math.round(opt.prix * joueursDe(a) * 100) / 100) + ' · ' + insecable(joueurs(joueursDe(a)));
       if (choisie) return euros(opt.prix) + ' ' + opt.unite;
       var mini = Math.min.apply(null, optionsPour(a).map(function (o) { return o.prix; }).filter(function (p) { return p > 0; }));
       return isFinite(mini) ? 'Dès ' + euros(mini) + ' ' + opt.unite : 'Prix à l’accueil';
@@ -555,6 +553,7 @@
     var unite = a.unitLabel ? ' ' + a.unitLabel.replace(/^par /, '/ ') : '';
     switch (a.priceType) {
       case 'per_pax':
+        if (choisie && Number(a.priceValue) > 0) return euros(Math.round(Number(a.priceValue) * joueursDe(a) * 100) / 100) + ' · ' + insecable(joueurs(joueursDe(a)));
       case 'per_unit_hour':
         return a.priceValue ? 'Dès ' + euros(a.priceValue) + unite : 'Prix à l’accueil';
       default:
@@ -1323,10 +1322,18 @@
     n = Math.min(PAX_MAX, Math.max(PAX_MIN, Math.trunc(Number(n) || 0)));
     if (n === state.pax) return;
     state.pax = n;
+    // Les choix explicites suivent leur plafond ; un choix reste un sous-
+    // groupe quand on augmente la visite. Sans choix, toute la visite joue.
+    Object.keys(state.options).forEach(function (id) {
+      var opt = state.options[id], a = activite(id);
+      if (a && opt && opt.participants != null) opt.participants = joueursDe(a);
+    });
+    state.selection = state.selection.filter(function (id) { return !tropPeu(activite(id)); });
     // Le groupe change : la question des enfants se repose, tout le groupe par
     // defaut, jamais un ancien compte qui ne correspond plus a rien.
     state.enfants = null;
     rendrePax();
+    rendreActivites();
     majEnfants();
   }
   $('#paxMinus').addEventListener('click', function () { poserPax(state.pax - 1); paxInput.value = String(state.pax); ajusterLargeurPax(); battrePax(-1); });
@@ -1395,20 +1402,21 @@
     var id = base + '-' + c.cle;
     var moins = c.cle === 'units' ? 'Une ' + c.mot + ' de moins' : 'Un ' + c.mot + ' de moins';
     var plus = c.cle === 'units' ? 'Une ' + c.mot + ' de plus' : 'Un ' + c.mot + ' de plus';
-    return '<span class="fg-card__optlabel" id="' + id + '">' + esc(c.titre) + '</span>'
-      + '<div class="fg-kids__row"><div class="fg-stepper fg-kids__stepper" role="group" aria-labelledby="' + id + '" data-compteur="' + esc(c.cle) + '">'
+    return '<div class="fg-count"><label class="fg-count__label" id="' + id + '"' + (c.cle === 'participants' ? ' for="' + id + '-value"' : '') + '>' + esc(c.titre)
+      + (c.cle === 'participants' ? '<small>sur ' + state.pax + '</small>' : '<small>' + c.max + ' au plus</small>') + '</label>'
+      + '<div class="fg-stepper fg-kids__stepper" role="group" aria-labelledby="' + id + '" data-compteur="' + esc(c.cle) + '">'
       + '<button type="button" class="fg-stepper__btn" data-pas="-1" aria-label="' + esc(moins) + '"' + (c.n <= c.min ? ' disabled' : '') + '>&minus;</button>'
-      + '<output class="fg-kids__n" aria-live="polite">' + c.n + '</output>'
+      + (c.cle === 'participants' ? '<input class="fg-kids__n fg-count__input" id="' + id + '-value" type="number" inputmode="numeric" min="' + c.min + '" max="' + c.max + '" step="1" value="' + c.n + '" aria-labelledby="' + id + '">' : '<output class="fg-kids__n" aria-live="polite">' + c.n + '</output>')
       + '<button type="button" class="fg-stepper__btn" data-pas="1" aria-label="' + esc(plus) + '"' + (c.n >= c.max ? ' disabled' : '') + '>+</button>'
-      + '</div>' + (c.muet ? '' : '<p class="fg-kids__adults" data-compteur-texte>' + esc(texteCompteur(c)) + '</p>') + '</div>';
+      + '</div></div>';
   }
   function rendreOption(a) {
     var groupes = groupesOptions(a);
     var compteur = compteurDe(a);
-    if (!groupes.length && !compteur) return '';
     var base = 'opt-' + String(a.id).replace(/[^a-z0-9_-]/gi, '');
     return '<div class="fg-card__opt"><div class="fg-card__optin"><div class="fg-card__optbox">'
-      + (compteur && !compteur.apres ? htmlCompteur(compteur, base) : '')
+      + htmlCompteur(compteur, base)
+      + (a.priceType === 'per_unit_hour' ? htmlCompteur(compteurDe(a, 'units'), base) : '')
       + groupes.map(function (g) {
         var idTitre = groupes.length > 1 ? base + '-' + g.cle : base;
         return '<span class="fg-card__optlabel" id="' + idTitre + '">' + esc(g.titre) + '</span>'
@@ -1419,7 +1427,6 @@
           }).join('')
           + '</div>';
       }).join('')
-      + (compteur && compteur.apres ? htmlCompteur(compteur, base) : '')
       + (noteCarte(a) ? '<p class="fg-card__rot">' + esc(noteCarte(a)) + '</p>' : '')
       + '</div></div></div>';
   }
@@ -1432,7 +1439,7 @@
     if (!a || !o) return;
     // Les billards gardent leurs DEUX reglages (tables et heures) ; une grille
     // n en a qu un.
-    state.options[a.id] = a.priceType === 'per_unit_hour' ? Object.assign({}, state.options[a.id] || {}) : {};
+    state.options[a.id] = Object.assign({}, state.options[a.id] || {});
     state.options[a.id][g.cle] = o.valeur;
     $$('.fg-pill', groupe || item).forEach(function (x) { var on = x === pill; x.classList.toggle('is-on', on); x.setAttribute('aria-checked', String(on)); x.tabIndex = on ? 0 : -1; });
     majPastilles(item, a);
@@ -1456,7 +1463,7 @@
     gridAct.innerHTML = activitesVendables().map(function (a, i) {
       var p = photo(a.id);
       var on = state.selection.indexOf(a.id) >= 0;
-      var trop = a.maxPax && state.pax > a.maxPax;
+      var trop = false;
       // Pas assez de joueurs : la carte reste TOUCHABLE et dit pourquoi, comme
       // une formule refusee (une raison qu on ne peut pas atteindre ne sert a
       // personne).
@@ -1741,19 +1748,21 @@
     invaliderDispo();
     setTimeout(posterHauteur, 320);
   }
-  function changerCompteur(btn) {
+  function changerCompteur(btn, valeur) {
     var item = btn.closest('.fg-grid__item');
     var a = activite(item && item.dataset.activity);
-    var c = compteurDe(a);
+    var box = btn.closest('[data-compteur]');
+    var c = compteurDe(a, box && box.dataset.compteur);
     if (!a || !c) return;
-    var n = Math.min(c.max, Math.max(c.min, c.n + Number(btn.dataset.pas)));
-    if (n === c.n) return;
+    var n = Math.min(c.max, Math.max(c.min, Math.trunc(valeur == null ? c.n + Number(btn.dataset.pas) : valeur)));
+    if (!isFinite(n)) return;
     state.options[a.id] = Object.assign({}, state.options[a.id] || {});
     state.options[a.id][c.cle] = n;
-    var apres = compteurDe(a);
-    var box = item.querySelector('[data-compteur]');
+    var apres = compteurDe(a, c.cle);
     if (box) {
-      $('.fg-kids__n', box).textContent = String(apres.n);
+      var chiffre = $('.fg-kids__n', box);
+      if (chiffre.tagName === 'INPUT') { if (doc.activeElement !== chiffre || valeur == null) chiffre.value = String(apres.n); }
+      else chiffre.textContent = String(apres.n);
       $('[data-pas="-1"]', box).disabled = apres.n <= apres.min;
       $('[data-pas="1"]', box).disabled = apres.n >= apres.max;
     }
@@ -1764,6 +1773,18 @@
     invaliderDispo();
     dire(apres.n + ' ' + apres.mot + (apres.n > 1 ? 's' : '') + '.');
   }
+  gridAct.addEventListener('input', function (e) {
+    if (!e.target.matches('.fg-count__input')) return;
+    var n = Number(e.target.value);
+    if (e.target.value !== '' && Number.isInteger(n) && n >= Number(e.target.min) && n <= Number(e.target.max)) changerCompteur(e.target, n);
+  });
+  gridAct.addEventListener('change', function (e) {
+    if (!e.target.matches('.fg-count__input')) return;
+    var c = compteurDe(activite(e.target.closest('.fg-grid__item').dataset.activity));
+    var n = e.target.value.trim() ? Number(e.target.value) : c.n;
+    changerCompteur(e.target, isFinite(n) ? n : c.n);
+    e.target.value = String(compteurDe(activite(e.target.closest('.fg-grid__item').dataset.activity)).n);
+  });
   gridAct.addEventListener('click', function (e) {
     var pas = e.target.closest('[data-pas]');
     if (pas) { if (!pas.disabled) changerCompteur(pas); return; }
@@ -1895,10 +1916,9 @@
       // serveur retombait sur une table pendant une heure, quoi qu on ait
       // choisi (audit du 2026-09-28).
       if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); ligne.units = billard.units; ligne.hours = billard.hours; }
-      // La plaine de jeux : les enfants qui y vont, que le serveur facture.
-      if (seCompteParEnfant(a)) ligne.participants = enfantsPlaine(a);
-      // Le Fun Run : les joueurs, seulement quand tout le groupe n y va pas.
-      if (a.priceType === 'grid_fun_run' && joueursDe(a) < state.pax) ligne.participants = joueursDe(a);
+      // Le serveur compte CE sous-groupe pour le prix et la capacite. Sans
+      // champ, tout le groupe participe (contrat historique).
+      if (seCompteParEnfant(a) || joueursDe(a) < state.pax) ligne.participants = joueursDe(a);
       return ligne;
     });
   }
@@ -2527,7 +2547,8 @@
     // se tait. Le nombre de places est celui que le centre declare.
     function notePartage() {
       var places = Number(meta && meta.center && meta.center.booking && meta.center.booking.laserArenaCapacity) || 0;
-      var partage = !(places && joueursDemandes() % places === 0);
+      var n = state.onglet === 'formules' ? joueursDemandes() : joueursDe(activite('laser_game'));
+      var partage = !(places && n % places === 0);
       var duree = phraseLaser();
       if (!partage && !duree) return '';
       return '<p class="fg-track__share"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
@@ -2567,6 +2588,7 @@
         // (25 min) : la phrase juste dessous dit les deux.
         var minutesPartie = laser && dureeLaser() ? dureeLaser().jeu : a.durationMinutes;
         var detail = multi ? count + ' parties de ' + minutesLabel(minutesPartie) : (laser ? '1 partie · ' : '') + minutesLabel(minutesPartie);
+        if (state.onglet !== 'formules') detail = joueurs(joueursDe(activite(a.activityId))) + ' · ' + detail;
         var pistes = a.activityId === 'bowling' ? pistesBowling() : null;
         if (pistes) detail += ' · ' + pistes.pistes + ' piste' + (pistes.pistes > 1 ? 's' : '');
         html += '<section class="fg-track fg-rise" style="--i:' + (i + 1) + '" data-activity="' + esc(a.activityId) + '" data-count="' + count + '">'
@@ -3160,7 +3182,7 @@
       var quoi = total > 1 ? 'partie ' + p.partie + ' sur ' + total : total === 1 ? '1 partie' : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (p.groupes.length > 1 ? ' par groupe' : '') : ''));
       var bouge = Boolean(adaptation && adaptation.deplace === p.id);
       var jeuPartie = p.id === 'laser_game' && dureeLaser() ? dureeLaser().jeu : 0;
-      var detail = [jeuPartie ? jeuPartie + ' min de jeu' : '', p.fin ? 'jusqu’à ' + heureAffichee(p.fin) + (jeuPartie ? ' avec les règles et la préparation' : '') : '', texteGroupes(p, true), p.pistes > 0 ? p.pistes + ' piste' + (p.pistes > 1 ? 's' : '') : '',
+      var detail = [participantsLigne(it), jeuPartie ? jeuPartie + ' min de jeu' : '', p.fin ? 'jusqu’à ' + heureAffichee(p.fin) + (jeuPartie ? ' avec les règles et la préparation' : '') : '', texteGroupes(p, true), p.pistes > 0 ? p.pistes + ' piste' + (p.pistes > 1 ? 's' : '') : '',
         bouge ? 'déplacé pour votre ' + nomActivite(adaptation.pour) + ' à ' + adaptation.t : ''].filter(Boolean).join(' · ');
       dits.push(nom + (quoi ? ', ' + quoi : '') + ', de ' + p.debut + (p.fin ? ' à ' + heureAffichee(p.fin) : '') + (p.groupes.length > 1 ? ', en ' + p.groupes.length + ' groupes' : '') + (bouge ? ', déplacé' : ''));
       lignes += etapeVisite({ heure: p.debut, icone: icone(p.id), titre: nom + (quoi ? ' · ' + quoi : ''), detail: detail, bouge: bouge });
@@ -3207,7 +3229,7 @@
       var duree = !entre && Number(it.minutes) > 0 ? environ(it.minutes) : '';
       var tiendra = !horsLibres[it.activityId];
       var rythme = tiendra ? 'à votre rythme' : 'ne tiendra pas avant ' + heureAffichee(fin);
-      ligneSuite({ genre: 'free', hors: !tiendra, titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomL) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>', detail: rythme + (duree ? ' · ' + duree : '') },
+      ligneSuite({ genre: 'free', hors: !tiendra, titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomL) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>', detail: participantsLigne(it) + ' · ' + rythme + (duree ? ' · ' + duree : '') },
         nomL + (entre ? ' (' + entre + ')' : '') + ', ' + rythme + (duree ? ', ' + duree : ''));
     });
     // L offre d attente prise a la fenetre de fin : une ligne de la visite,
@@ -3770,14 +3792,13 @@
         // (vu en prod le 2026-09-23 : « Debut 11:00 », le 2e groupe tu).
         var siennes = partiesDuPlan(cr).filter(function (p) { return p.id === it.activityId; });
         var total = Number(it.games) || 0;
-        var morceaux = [];
+        var morceaux = [participantsLigne(it)];
         if (total > 1) {
           var heures = siennes.map(function (p) { return p.debut; });
           var reste = total - heures.length;
           morceaux.push(total + ' parties' + (heures.length ? ' : ' + joindreListe(heures.concat(reste > 0 ? [reste + ' dans la foulée'] : []), ' et ') : ', dans la foulée'));
         } else if (it.dayAccess) {
-          var enfantsLigne = seCompteParEnfant(activite(it.activityId)) ? Math.trunc(Number(it.participants) || 0) : 0;
-          morceaux.push(enfantsLigne > 0 ? enfantsLigne + ' enfant' + (enfantsLigne > 1 ? 's' : '') : '', 'accès toute la journée', ageActivite(it.activityId));
+          morceaux.push('accès toute la journée', ageActivite(it.activityId));
         } else {
           morceaux.push(total === 1 ? '1 partie' : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (siennes[0] && siennes[0].groupes.length > 1 ? ' par groupe' : '') : '')));
         }
@@ -4152,15 +4173,16 @@
     // L ECRAN FINAL EST UN RECU : chaque ligne vient du dossier rendu ou de
     // ce que la reponse a vraiment fait. L arrivee est celle du plan rendu
     // (repli sur le plan affiche seulement si l heure de depart n a pas
-    // bouge) ; le programme, les noms seuls (les heures, groupes scindes
-    // compris, sont au recapitulatif : un troisieme rendu du plan finirait par
-    // le contredire) ; l e-mail n est annonce que si la reponse l a mis en
+    // bouge) ; le programme et les joueurs de chaque activite ; l e-mail n
+    // est annonce que si la reponse l a mis en
     // file (le centre peut couper l envoi) ; le montant dit ce qu il couvre,
     // comme le total du recapitulatif.
     var planFin = r.opsPlan && typeof r.opsPlan === 'object' ? r.opsPlan : (heureRes === state.heure && state.creneau ? (state.creneau.slot.opsPlan || {}) : {});
     var arrivee = planFin.arrivalTime ? String(planFin.arrivalTime) : '';
     var quoi = nomsChoisis();
     var repFin = (state.creneau || {}).reponse || {};
+    var itemsFin = r.program && r.program.items ? r.program.items : (repFin.program && repFin.program.items) || [];
+    if (state.onglet !== 'formules' && itemsFin.length) quoi = itemsFin.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + participantsLigne(it) + ')'; }).join(' + ');
     var prixComplet = !repFin.program || repFin.program.priceComplete !== false;
     var comms = Array.isArray(reponse.communications) ? reponse.communications : [];
     var mailQ = comms.filter(function (c) { return c && c.channel === 'email' && c.status !== 'draft' && (c.templateId === 'confirmation' || c.templateId === 'request_received'); })[0];
@@ -4370,7 +4392,7 @@
         if (sceneCourante === 'sm-envies') { if (smModule) smModule.rafraichir(); return; }
         state.selection = state.selection.filter(function (id) {
           var a = activite(id);
-          return a && !(a.maxPax && state.pax > a.maxPax) && !tropPeu(a);
+          return a && !tropPeu(a);
         });
         if (state.formuleId && !((meta.formules || []).filter(function (x) { return x.id === state.formuleId; })[0])) state.formuleId = '';
         rendreActivites();

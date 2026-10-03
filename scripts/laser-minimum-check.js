@@ -309,7 +309,7 @@ async function main() {
     },
     {
       fichier: 'lib/visit-program.js',
-      ancre: 'if (minimum > people) item.belowMinPax = minimum;',
+      ancre: 'if (players < minimumParticipants) item.belowMinPax = minimumParticipants;',
       mute: '',
       label: 'sans la marque sur la ligne, bowling + laser pour 1 personne passe la porte',
       rouge: (r) => r.seul.belowMinPax === undefined && r.porteMixte1.refuse === false,

@@ -17908,10 +17908,12 @@ button.pv2-cal-cell:focus-visible {
 /* Compteur d une activite qui se compte en tetes (plaine de jeux) : deux
    boutons et un chiffre, pas un champ libre. Un champ oblige a re-rendre a
    chaque frappe et fait perdre le focus ; ici chaque clic est un pas net. */
-.qb-visit-compteur { align-items: center; gap: 8px; }
+.qb-visit-compteur { align-items: center; gap: 8px; flex-wrap: nowrap; }
+.qb-visit-compteur .qb-opt-legend { margin-right: auto; }
 .qb-step-btn {
-  width: 26px;
-  height: 26px;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -17927,7 +17929,10 @@ button.pv2-cal-cell:focus-visible {
 }
 .qb-step-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .qb-step-btn:disabled { opacity: 0.4; cursor: default; }
-.qb-step-valeur { font-size: 12px; font-weight: 700; color: var(--text); min-width: 84px; text-align: center; }
+.qb-step-valeur { font-size: 12px; font-weight: 700; color: var(--text); min-width: 60px; text-align: center; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .qb-visit-compteur .qb-step-btn { width: 44px; height: 44px; }
+}
 
 /* PRIX AJUSTE : quick book + fiche caisse + liste. */
 .qb-price-toggle { margin-top: 6px; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }

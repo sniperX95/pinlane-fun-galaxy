@@ -36,6 +36,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const APP = path.join(ROOT, 'assets', 'app-main.js');
+let appServed = null;
 const { chromium } = require('playwright-core');
 const PORT = Number(process.env.PINLANE_DATE_RECONCILE_PORT || 4311);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -61,6 +62,11 @@ function serveStatic() {
     let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
     if (url.pathname === '/' || url.pathname === '') filePath = path.join(ROOT, 'index.html');
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
+    if (filePath === APP && appServed != null) {
+      res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' });
+      res.end(appServed);
+      return;
+    }
     fs.readFile(filePath, (err, content) => {
       if (err) { res.writeHead(404); res.end(); return; }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
@@ -188,8 +194,8 @@ async function readDates(page) {
 const strip = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function monthStem(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
-  const long = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('fr-FR', { month: 'long', timeZone: 'UTC' });
-  return strip(long).slice(0, 4);
+  const short = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('fr-FR', { month: 'short', timeZone: 'UTC' });
+  return strip(short).replace(/\.$/, '');
 }
 function shiftDays(dateStr, delta) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -280,7 +286,7 @@ function shiftDays(dateStr, delta) {
       const occurrences = appOriginal.split(anchor).length - 1;
       if (occurrences !== 1) throw new Error(`ancre de mutation introuvable ou ambigue (${occurrences} occurrence(s))`);
       try {
-        fs.writeFileSync(APP, appOriginal.replace(anchor, '/* mutation gate */'));
+        appServed = appOriginal.replace(anchor, '/* mutation gate */');
         const context = await browser.newContext();
         const page = await context.newPage();
         await installMock(page);
@@ -305,7 +311,7 @@ function shiftDays(dateStr, delta) {
         }
         await context.close();
       } finally {
-        fs.writeFileSync(APP, appOriginal); // ECRITURE INVERSE exacte
+        appServed = null; // Mutation served in memory; production source untouched.
       }
       record('app-main.js est restaure a l identique', fs.readFileSync(APP, 'utf8') === appOriginal);
     }

@@ -281,9 +281,10 @@ function verifierMiroirs() {
   const ecartsForm = [];
   if (texte) {
     for (let pax = 1; pax <= 80; pax += 1) {
-      const bac = { state: { pax }, a: duck };
+      const bac = { state: { pax, options: {} }, a: duck };
       vm.createContext(bac);
-      vm.runInContext(`${texte}\nvar resultat = unitesPour(a);`, bac, { filename: 'fungalaxy-booking.js:unitesPour' });
+      const joueurs = fonctionDuFichier('assets/fungalaxy-booking.js', 'bornesJoueurs', '  ') + '\n' + fonctionDuFichier('assets/fungalaxy-booking.js', 'joueursDe', '  ');
+      vm.runInContext(`${joueurs}\n${texte}\nvar resultat = unitesPour(a);`, bac, { filename: 'fungalaxy-booking.js:unitesPour' });
       const serveur = activityUnitPlan(duck, pax);
       if (cle(serveur) !== cle(bac.resultat || {})) ecartsForm.push(`${pax}p : ${cle(serveur)} contre ${cle(bac.resultat || {})}`);
     }
@@ -424,13 +425,13 @@ function lireTiroir(page, id) {
     const groupe = (cle) => [...item.querySelectorAll(`.fg-pill[data-cle="${cle}"]`)].map((p) => ({ label: txt(p.querySelector('b')), petit: txt(p.querySelector('small')), on: p.classList.contains('is-on') }));
     const compteur = item.querySelector('[data-compteur="units"]');
     return {
-      titres: [...item.querySelectorAll('.fg-card__optlabel')].map(txt),
+      titres: [txt(item.querySelector('[data-compteur="units"]') && item.querySelector('[data-compteur="units"]').previousElementSibling).replace(/\d+ au plus$/, '').trim(), ...[...item.querySelectorAll('.fg-card__optlabel')].map(txt)].filter(Boolean),
       tables: groupe('units'),
       compteur: compteur ? {
         n: txt(compteur.querySelector('.fg-kids__n')),
         moinsOff: compteur.querySelector('[data-pas="-1"]').disabled,
         plusOff: compteur.querySelector('[data-pas="1"]').disabled,
-        texte: txt(item.querySelector('[data-compteur-texte]')),
+        texte: txt(compteur.previousElementSibling.querySelector('small')),
       } : null,
       heures: groupe('hours'),
       durees: groupe('duration'),
@@ -506,11 +507,11 @@ async function parcoursFormulaire(browser, mock, pax, { changerLeCentre = false 
     const avant = billards.units;
     billards.units = 2;
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-    sortie.deuxVu = await attendre(page, () => { const t = document.querySelector('#gridAct .fg-grid__item[data-activity="billards"] [data-compteur-texte]'); return Boolean(t) && t.textContent.trim() === '2 tables au plus'; }, 5000);
+    sortie.deuxVu = await attendre(page, () => { const c = document.querySelector('#gridAct .fg-grid__item[data-activity="billards"] [data-compteur="units"]'); const t = c && c.previousElementSibling.querySelector('small'); return Boolean(t) && t.textContent.trim() === '2 au plus'; }, 5000);
     sortie.apresChangement = await lireTiroir(page, 'billards');
     billards.units = avant;
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-    sortie.cinqRevu = await attendre(page, () => { const t = document.querySelector('#gridAct .fg-grid__item[data-activity="billards"] [data-compteur-texte]'); return Boolean(t) && t.textContent.trim() === '5 tables au plus'; }, 5000);
+    sortie.cinqRevu = await attendre(page, () => { const c = document.querySelector('#gridAct .fg-grid__item[data-activity="billards"] [data-compteur="units"]'); const t = c && c.previousElementSibling.querySelector('small'); return Boolean(t) && t.textContent.trim() === '5 au plus'; }, 5000);
   }
   await page.click('#goHours');
   await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 6000);
@@ -530,7 +531,7 @@ function verifierFormulaire(p25, p8) {
   const b = p25.billards || { titres: [], tables: [], heures: [] };
   ok(JSON.stringify(b.titres) === JSON.stringify(['Tables', 'Durée']), 'les billards ont deux reglages : les tables, puis la duree', b.titres.join(' | '));
   const c = b.compteur || {};
-  ok(b.tables.length === 0 && c.n === '1' && c.moinsOff === true && c.plusOff === false && c.texte === '5 tables au plus',
+  ok(b.tables.length === 0 && c.n === '1' && c.moinsOff === true && c.plusOff === false && c.texte === '5 au plus',
     'les tables se comptent (plus de pastilles) : 1 par defaut, « - » eteint, 5 au plus (le plafond, sous les 6 du centre)', JSON.stringify({ pastilles: b.tables.length, ...c }));
   const pl = (p25.plafond || {}).compteur || {};
   ok(pl.n === '5' && pl.plusOff === true && pl.moinsOff === false, 'quatre « + » de plus s arretent a 5 tables, « + » eteint', JSON.stringify(pl));
@@ -564,7 +565,7 @@ function verifierConsole() {
   const { normalizeProgram } = require('../lib/visit-program');
   const coeur = chargerCoeur();
   coeur.setCenterActivities(listCenterActivities(CENTRE));
-  const noms = ['catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailUnitesLigne'];
+  const noms = ['participantsLigneProgramme', 'activityCountsChildren', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne'];
   const textes = noms.map((nom) => fonctionDuFichier('assets/app-main.js', nom));
   if (!ok(textes.every(Boolean), 'MONTAGE les fonctions de la fiche se trouvent dans app-main', noms.filter((n, i) => !textes[i]).join(', '))) return;
   vm.runInContext(textes.join('\n'), coeur, { filename: 'app-main.js:fiche' });
@@ -573,11 +574,12 @@ function verifierConsole() {
     return coeur.detailLigneProgramme(it, { pax, program: { items: [it] } });
   };
   const cas = [
-    [{ activityId: 'duckpin_bowling', duration: 1 }, 6, '1 piste · 1h'],
-    [{ activityId: 'duckpin_bowling', duration: 1 }, 12, '2 pistes · 1h'],
-    [{ activityId: 'duckpin_bowling', duration: 1 }, 18, '3 pistes · 2 tours de 1h'],
-    [{ activityId: 'billards', hours: 1 }, 4, '1 table · 1h'],
-    [{ activityId: 'billards', hours: 2, units: 3 }, 8, '3 tables · 2h'],
+    [{ activityId: 'duckpin_bowling', duration: 1 }, 6, '6 joueurs · 1 piste · 1h'],
+    [{ activityId: 'duckpin_bowling', duration: 1 }, 12, '12 joueurs · 2 pistes · 1h'],
+    [{ activityId: 'duckpin_bowling', duration: 1 }, 18, '18 joueurs · 3 pistes · 2 tours de 1h'],
+    [{ activityId: 'duckpin_bowling', duration: 1, participants: 6 }, 18, '6 joueurs · 1 piste · 1h'],
+    [{ activityId: 'billards', hours: 1 }, 4, '4 joueurs · 1 table · 1h'],
+    [{ activityId: 'billards', hours: 2, units: 3 }, 8, '8 joueurs · 3 tables · 2h'],
   ];
   const ecarts = cas.map(([p, pax, attendu]) => [ligne(p, pax), attendu, pax, p.activityId]).filter(([lu, attendu]) => lu !== attendu);
   ok(ecarts.length === 0, 'la fiche dit les pistes, les tables et les tours (duckpin 18 : « 3 pistes · 2 tours de 1h »)', ecarts.map(([lu, a, pax, id]) => `${id} ${pax}p « ${lu} » au lieu de « ${a} »`).join(' ; '));
@@ -585,7 +587,7 @@ function verifierConsole() {
   // (dossier 1380 en prod, 79 joueurs, 60 min, 78 EUR) : elle dit ce qui a ete
   // chiffre, 2 pistes d un passage.
   const ancienne = coeur.detailLigneProgramme({ activityId: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, duration: 1, minutes: 60, price: 78, priceKnown: true }, { pax: 79 });
-  ok(ancienne === '2 pistes · 1h', 'une ligne de duckpin d avant ce lot dit ce qui a ete chiffre (2 pistes, 78 EUR), pas 14 pistes', `« ${ancienne} »`);
+  ok(ancienne === '79 joueurs · 2 pistes · 1h', 'une ligne de duckpin d avant ce lot dit ce qui a ete chiffre (2 pistes, 78 EUR), pas 14 pistes', `« ${ancienne} »`);
 
   // La page Etablissement : ce qu elle envoie, le serveur le garde et le relit.
   const { normalizeCenterConfig } = require('../lib/center-config');

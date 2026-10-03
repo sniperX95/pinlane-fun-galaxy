@@ -137,11 +137,16 @@ async function adversarialSourceChecks() {
   resolveOld({ status: 409, json: async () => ({ ok: false, code: 'price_changed', price: 39, program: { items: [{ activityId: 'bowling', participants: 7 }] } }) });
   const obsoleteVerdict = await obsoleteQuote;
   check(obsoleteVerdict.obsolete === true && !adoptedQuotes.some(x => x.price === 39), 'late emergency price_changed cannot replace newer participant quote');
+  const obsoleteArcade = context.retenir({ participants: 3, arcadeMode: 'credit', arcadeOfferId: 'credit-25', cards: 2 }, 'old-credit-cards');
+  await new Promise(resolve => setImmediate(resolve)); context.libererBlocage();
+  resolveOld({ status: 409, json: async () => ({ ok: false, code: 'price_changed', price: 52.7, program: { items: [{ activityId: 'arcade_time', participants: 3, cards: 2, arcadeMode: 'credit', arcadeOfferId: 'credit-25', arcadeOffer: { mode: 'credit', id: 'credit-25', price: 26.35, bonusCredits: 12 } }] } }) });
+  const oldArcadeVerdict = await obsoleteArcade;
+  check(oldArcadeVerdict.obsolete === true && !adoptedQuotes.some(x => x.price === 52.7), 'late credit offer price_changed cannot replace a newer timed-card choice');
   const priceStart = source.indexOf('  function tarifConnu(');
   const pricing = { meta: {}, state: { selection: ['golf', 'billards', 'playground'] }, Number, Math, isFinite,
     reglageBillard: () => ({ units: 2, hours: 1 }), motUnite: () => 'table', insecable: s => s,
     heuresLabel: n => n + 'h', euros: n => n + ' €', seCompteParEnfant: a => a.id === 'playground',
-    enfantsPlaine: () => 3, optionChoisie: () => null, joueursDe: () => 3, joueurs: n => n + ' joueurs' };
+    enfantsPlaine: () => 3, optionChoisie: () => null, joueursDe: () => 3, joueurs: n => n + ' joueurs', reglageArcade: () => null };
   vm.createContext(pricing); vm.runInContext(source.slice(priceStart, source.indexOf('  /* --- Le fil', priceStart)), pricing);
   for (const [id, priceType] of [['golf', 'per_pax'], ['billards', 'per_unit_hour'], ['playground', 'per_pax']]) {
     const free = { id, priceType, priceValue: 0, unitLabel: 'par personne' };

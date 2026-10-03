@@ -417,8 +417,11 @@ async function versActivites(page, mock, pax) {
   await page.click('#goActivities');
   return attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000);
 }
-function lireTiroir(page, id) {
-  return page.evaluate((activityId) => {
+async function lireTiroir(page, id) {
+  await page.click('#gridAct li[data-activity="' + id + '"] [data-activity-info]');
+  const information = await page.locator('.fg-info-text').textContent();
+  await page.keyboard.press('Escape');
+  const result = await page.evaluate((activityId) => {
     const item = document.querySelector(`#gridAct .fg-grid__item[data-activity="${activityId}"]`);
     if (!item) return null;
     const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
@@ -439,6 +442,8 @@ function lireTiroir(page, id) {
       prix: txt(item.querySelector('.fg-card__price')),
     };
   }, id);
+  result.note = information.split('\n\n').find(text => /joueurs max par/.test(text)) || result.note;
+  return result;
 }
 
 const MUTATION_TUNNEL = ["      if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); ligne.units = billard.units; ligne.hours = billard.hours; }", ''];

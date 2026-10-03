@@ -3806,9 +3806,9 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261001a';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261003b';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260925h';
-const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20260912a';
+const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261003b';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
 // Les declarations inertes de l'index gardent l'ordre et les versions en un
 // seul endroit. Aucun de ces modules n'est demande pour la vue publique.
@@ -5416,6 +5416,7 @@ function syncActivityPickerState(off = []) {
 // honnete "réglé sur place" sinon. Jamais 0 EUR pour "on ne sait pas".
 function activityPriceHint(activity, pax) {
   if (!activity) return '';
+  if (activity.id === 'arcade_time' && activity.arcadeOffers?.enabled !== false) { const prices=[...(activity.arcadeOffers?.timeOffers||[]),...(activity.arcadeOffers?.creditOffers||[])].filter(o=>o.enabled!==false).map(o=>Number(o.price)).filter(Number.isFinite); if(prices.length) return `dès ${formatMoneyCentimes(Math.min(...prices))} par carte`; }
   if (activity.priceType === 'grid_bowling') {
     // Un centre qui vend AUX PARTIES annonce un prix PAR PERSONNE : « des 6 EUR
     // par personne », jamais « des 20 EUR la piste », qui serait le tarif d un
@@ -5599,9 +5600,34 @@ function renderActivityOptions(activity, options = {}, pax = state.booking.pax) 
   return counter + renderActivityOptionsWithoutParticipants(activity, options, current);
 }
 
+function renderStaffArcadeOptions(activity, options, participants, context) {
+  const offers = activity && activity.arcadeOffers;
+  if (!offers || offers.enabled === false) { const saved=getArcadeOfferQuote(activity,options,participants); return `<div class="activity-option-note">${escapeHtml(saved ? getArcadeOfferDetail({cards:saved.cards,arcadeOffer:saved.offer}) : 'Tarif à confirmer à l’accueil.')}${saved ? ` · ${formatMoneyCentimes(saved.price)}` : ''}</div>`; }
+  const quote = getArcadeOfferQuote(activity, options, participants);
+  const button = (mode, offer) => `<button type="button" class="qb-dur-btn ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeHtml(mode)}','${escapeHtml(offer.id)}')">${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}<small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
+  return `<div class="qb-visit-options"><span class="qb-opt-legend">Au temps</span>${(offers.timeOffers || []).filter(o => o.enabled !== false).map(o => button('time', o)).join('')}</div><div class="qb-visit-options"><span class="qb-opt-legend">En crédits</span>${(offers.creditOffers || []).filter(o => o.enabled !== false).map(o => button('credit', o)).join('')}</div>`
+    + (options.arcadeMode === 'credit' ? `<label class="field">Cartes<input class="input" type="number" min="1" max="1000" step="1" value="${quote?.cards || participants}" aria-label="Nombre de cartes Arcades" onchange="setStaffArcadeOption('${context}','cards',this.value)"></label>` : '')
+    + `<div class="activity-option-note">${escapeHtml(quote ? getArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div>`;
+}
+
+function setStaffArcadeOption(context, key, value, offerId) {
+  let options;
+  if (context === 'booking') options = state.booking.activities.arcade_time;
+  else if (context === 'edit') options = state.editState.programmeEdite.othersOptions.arcade_time ||= {};
+  else options = getQuickVisitOptions('arcade_time');
+  if (!options) return;
+  delete options.arcadeOffer;
+  if (key === 'cards') options.cards = Math.min(1000, Math.max(1, Math.trunc(Number(value) || 1)));
+  else { options.arcadeMode = value; options.arcadeOfferId = offerId; if (value === 'time') delete options.cards; }
+  if (context === 'booking') { clearCurrentBookingChoice(); applyChosenActivitiesToBooking(); syncBookingTypeUi(); save(); }
+  else if (context === 'edit') renderPos();
+  else { syncQuickBookDuration(); renderQuickBook(); }
+}
+
 function renderActivityOptionsWithoutParticipants(activity, options, pax) {
   if (!activity) return '';
   const id = escapeHtml(activity.id);
+  if (activity.id === 'arcade_time') return renderStaffArcadeOptions(activity, options, pax, 'booking');
   // Grille de pistes : le duckpin la partage avec le bowling (meme tarif, meme
   // regle de joueurs). Piloter par le TYPE et non par l'id, c'est ce qui rend
   // ce partage gratuit.
@@ -5739,16 +5765,15 @@ function renderProgramSummary() {
     }
     // Le compte d'enfants declare remplace le groupe entier dans le calcul
     // (meme regle que le serveur : borne au groupe, absent = tout le monde).
-    const linePax = activityCountsChildren(activity)
-      ? Math.min(pax, Math.max(1, Number(options.participants) || pax))
-      : pax;
+    const linePax = getBookingActivityParticipants(activity, options, pax);
     const price = typeof getFreeActivityPrice === 'function'
       // La date et le CRENEAU voyagent avec le prix : un palier borne par
       // l'heure (migration 0043) ne s'applique qu'une fois le creneau choisi,
       // donc le total affiche ne peut que baisser, jamais monter.
-      ? getFreeActivityPrice(activity, { pax: linePax, units: options.units, hours: options.hours, minutes: options.minutes, dateStr: state.booking.date, startTime: state.booking.startTime })
+      ? getFreeActivityPrice(activity, { ...options, pax: linePax, units: options.units, hours: options.hours, minutes: options.minutes, dateStr: state.booking.date, startTime: state.booking.startTime })
       : null;
     if (price == null) complete = false; else total += price;
+    if (activity.id === 'arcade_time') { const q=getArcadeOfferQuote(activity,options,linePax); return {id:activity.id,name:activity.name,detail:q ? getArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : 'Tarif à confirmer à l’accueil'}; }
     if (activity.priceType === 'per_unit_hour') {
       const units = Math.max(1, Number(options.units) || 1);
       const hourChoices = activityHourChoices(activity);
@@ -5941,7 +5966,7 @@ function toggleBookingActivity(activityId) {
     selection[activityId] = type === 'grid_bowling' ? { duration: 1 }
       : type === 'grid_laser' ? { games: 1 }
       : type === 'grid_fun_run' ? { minutes: FUN_RUN_OPTIONS[0].minutes }
-      : {};
+      : activityId === 'arcade_time' ? defaultArcadeOptions(getCenterActivity(activityId)) : {};
   }
   state.booking.mode = 'carte';
   state.booking.formuleId = '';
@@ -5992,6 +6017,7 @@ function applyChosenActivitiesToBooking() {
     if (activity.priceType === 'grid_bowling') return hours + (Number(options.duration) || 1) * getActivityUnitPlan(activity, players).tours;
     if (activity.priceType === 'grid_laser') return hours + (Number(options.games) || 1) * 0.5 * getLaserWaveCount(players);
     if (activity.priceType === 'grid_fun_run') return hours + (Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes) / 60 * getActivitySessionCount(activity, players);
+    if (activity.id === 'arcade_time') { const q=getArcadeOfferQuote(activity,options,players); return hours+(q?.offer.mode==='time' ? Number(q.offer.minutes) : Number(activity.defaultMinutes)||30)/60; }
     if (activity.priceType === 'per_unit_hour') return hours + (Number(options.hours) || activityHourChoices(activity)[0].hours);
     return hours + (Number(activity.defaultMinutes) || 30) / 60;
   }, 0));
@@ -6028,6 +6054,7 @@ function buildBookingProgramPayload(panierPropose = null) {
       const parDefaut = (typeof FUN_RUN_OPTIONS !== 'undefined' && FUN_RUN_OPTIONS[0]) ? Number(FUN_RUN_OPTIONS[0].minutes) : 15;
       item.minutes = Number(options.minutes) || parDefaut;
     }
+    if (activity.id === 'arcade_time' && options.arcadeMode && options.arcadeOfferId) { item.arcadeMode = options.arcadeMode; item.arcadeOfferId = options.arcadeOfferId; item.cards = options.arcadeMode === 'time' ? item.participants : Math.min(1000, Math.max(1, Math.trunc(Number(options.cards) || item.participants))); }
     if (options.units) item.units = Number(options.units);
     if (options.hours) item.hours = Number(options.hours);
     // Le compte d'enfants declare part au serveur, qui le borne au groupe et
@@ -11446,7 +11473,7 @@ function renderStaffDashboardReservationRows(rows = [], emptyText = 'Aucune donn
         <small>${escapeHtml(getStaffDashboardReservationResources(reservation))}</small>
       </div>
       <div class="dashboard-detail-amount">
-        <strong>${formatMoney(reservation.price || 0)}</strong>
+        <strong>${formatMoneyCentimes(reservation.price || 0)}</strong>
         ${/* LE PREMIER ECRAN DE LA CONSOLE LISAIT LA REGLE NULLE PART. Ces
              lignes imprimaient le montant nu, donc un geste commercial y
              passait pour un tarif catalogue - sur l ecran d ouverture, et sur
@@ -12709,7 +12736,7 @@ function renderStaffTerrainCard(item, phase, board) {
   // Un prix decide a la main se voit AVANT l encaissement, pas au ticket :
   // la pastille remplace le montant nu quand il y a un ecart.
   const price = renderReservationPriceMark(reservation, { forme: 'complet' })
-    || `<span class="terrain-price">${escapeHtml(formatMoney(Number(reservation.price || 0)))}</span>`;
+    || `<span class="terrain-price">${escapeHtml(formatMoneyCentimes(Number(reservation.price || 0)))}</span>`;
   // Le groupe en retard se rappelle : son numero est le geste utile, a la
   // place du temps relatif que sa pastille dit deja.
   const phone = String(reservation.phone || '').trim();
@@ -13759,6 +13786,23 @@ function establishmentInputValue(id, fallback = '') {
   return el ? el.value : fallback;
 }
 
+function renderEstablishmentArcadeOffers(center) {
+  const offers = center.activityOffers?.arcade_time;
+  if (!offers) return '';
+  const input = (id,label,value,attrs='') => `<label class="field">${label}<input class="input" id="${id}" ${attrs} value="${escapeHtml(String(value ?? ''))}"></label>`;
+  const rows = (mode, list) => (list || []).map((o,i) => `<div class="estab-cap-row" data-arcade-offer="${mode}" data-arcade-id="${escapeHtml(o.id)}" data-arcade-index="${i}"><label class="estab-arcade-toggle"><input type="checkbox" id="estab-arc-${mode}-${i}-enabled" ${o.enabled !== false ? 'checked' : ''}> Active</label><span>${escapeHtml(mode === 'time' ? `Carte ${o.minutes} min` : `Carte ${o.credits} crédits`)}</span>${input(`estab-arc-${mode}-${i}-price`,'Prix / carte (€)',o.price,'type="number" min="0" max="10000" step="0.01"')}${mode === 'time' ? input(`estab-arc-${mode}-${i}-minutes`,'Minutes à volonté',o.minutes,'type="number" min="1" max="1440" step="1"') : input(`estab-arc-${mode}-${i}-credits`,'Crédits',o.credits,'type="number" min="0" max="100000" step="0.01"') + input(`estab-arc-${mode}-${i}-bonusCredits`,'Crédits offerts',o.bonusCredits,'type="number" min="0" max="100000" step="0.01"')}</div>`).join('');
+  return `<div class="estab-subsection estab-arcade-offers"><h4>Cartes Arcades</h4><label class="estab-arcade-toggle"><input id="estab-arc-enabled" type="checkbox" ${offers.enabled !== false ? 'checked' : ''}> Proposer les cartes dans ce centre</label><h5>Au temps · une carte par joueur</h5>${rows('time',offers.timeOffers)}<h5>En crédits · nombre de cartes choisi séparément</h5>${rows('credit',offers.creditOffers)}${input('estab-arc-gameMin','Coût minimum d’un jeu en crédits',offers.creditGameCostMin,'type="number" min="0.01" step="0.01"')}${input('estab-arc-gameMax','Coût maximum d’un jeu en crédits',offers.creditGameCostMax,'type="number" min="0.01" step="0.01"')}${input('estab-arc-timeDescription','Description des cartes au temps',offers.timedDescription,'maxlength="1000"')}${input('estab-arc-creditDescription','Description des cartes en crédits',offers.creditDescription,'maxlength="1000"')}</div>`;
+}
+
+function collectEstablishmentArcadeOffers(center) {
+  const previous = center.activityOffers || {};
+  if (!document.getElementById('estab-arc-enabled')) return previous;
+  const read = (id) => document.getElementById(id)?.value;
+  const offers = previous.arcade_time || {};
+  const rows = (mode,list) => (list || []).map((o,i) => { const result={...o,enabled:!!document.getElementById(`estab-arc-${mode}-${i}-enabled`)?.checked}; ['price',...(mode === 'time' ? ['minutes'] : ['credits','bonusCredits'])].forEach(k => result[k]=Number(read(`estab-arc-${mode}-${i}-${k}`))); return result; });
+  return {...previous,arcade_time:{...offers,enabled:!!document.getElementById('estab-arc-enabled').checked,timeOffers:rows('time',offers.timeOffers),creditOffers:rows('credit',offers.creditOffers),creditGameCostMin:Number(read('estab-arc-gameMin')),creditGameCostMax:Number(read('estab-arc-gameMax')),timedDescription:read('estab-arc-timeDescription') || '',creditDescription:read('estab-arc-creditDescription') || ''}};
+}
+
 function collectEstablishmentScheduleBlock(prefix) {
   const block = {};
   ESTABLISHMENT_DAYS.forEach(([key]) => {
@@ -13840,6 +13884,17 @@ function resumeInstallations(activity, center) {
 function validateEstablishmentForm() {
   clearEstablishmentFieldErrors();
   const invalid = [];
+  document.querySelectorAll('[id^="estab-arc-"][type="number"]').forEach(input => {
+    const value=Number(input.value), min=Number(input.min), max=input.max ? Number(input.max) : 100000;
+    if (input.value.trim() === '' || !Number.isFinite(value) || value<min || value>max || (input.step === '1' && !Number.isInteger(value))) { markEstablishmentFieldError(input,'Valeur Arcades hors limites.'); invalid.push(input); }
+  });
+  document.querySelectorAll('[data-arcade-offer="credit"]').forEach(row => {
+    const index=row.dataset.arcadeIndex;
+    const credits=document.getElementById(`estab-arc-credit-${index}-credits`),bonus=document.getElementById(`estab-arc-credit-${index}-bonusCredits`);
+    if (credits && bonus && Number(credits.value)+Number(bonus.value)<=0) { markEstablishmentFieldError(credits,'La carte doit contenir des crédits.'); invalid.push(credits); }
+  });
+  const gameMin=document.getElementById('estab-arc-gameMin'), gameMax=document.getElementById('estab-arc-gameMax');
+  if (gameMin && gameMax && Number(gameMax.value)<Number(gameMin.value)) { markEstablishmentFieldError(gameMax,'Le coût maximal doit être au moins égal au coût minimal.'); invalid.push(gameMax); }
   ESTABLISHMENT_NUMBER_RULES.forEach(([id, min, max, message]) => {
     const input = document.getElementById(id);
     if (!input) return;
@@ -14015,6 +14070,7 @@ async function submitCenterConfig(centerId) {
     offerAvailability,
     activityAvailability,
     activityCapacity,
+    activityOffers: collectEstablishmentArcadeOffers(storedCenter),
     // Vide = jamais (null, qui prime sur le reglage du fichier socle).
     customRequest: (() => {
       const brut = document.getElementById('estab-customRequestFromPax')?.value;
@@ -14591,6 +14647,7 @@ function renderEstablishmentEditPanels(center, active) {
 
     <fieldset class="establishment-card establishment-activities">
       <legend>Activités disponibles</legend>
+      ${renderEstablishmentArcadeOffers(center)}
       <p class="estab-card-hint">Cochez les activités du catalogue proposées dans ce centre.</p>
       <div class="establishment-activity-grid">
         ${(staffCenterConfigCache.activities || []).map(activity => `<label class="establishment-activity ${center.activityAvailability?.[activity.id] ? 'on' : ''}">
@@ -14820,7 +14877,7 @@ function renderEstablishmentReadPanels(center, active) {
       ${(enabled.length || customList.length)
         ? `<div class="estab-chip-row">${enabled.map(activity => { const inst = resumeInstallations(activity, center); return `<span class="estab-tag">${escapeHtml(activity.label)}${inst ? ` · ${escapeHtml(inst)}` : ''}</span>`; }).join('')}${customList.map(activity => `<span class="estab-tag estab-tag-custom">${escapeHtml(activity.label)}</span>`).join('')}</div>`
         : '<p class="estab-empty">Aucune activité activée.</p>'}`)}
-  </div>`;
+  ${center.activityOffers?.arcade_time ? `<section class="estab-section"><h3>Cartes Arcades</h3><p>${center.activityOffers.arcade_time.enabled === false ? 'Cartes désactivées' : 'Cartes proposées dans ce centre'}</p><div class="estab-chip-row">${[...(center.activityOffers.arcade_time.timeOffers || []).map(o => ({...o,mode:'time'})),...(center.activityOffers.arcade_time.creditOffers || []).map(o=>({...o,mode:'credit'}))].map(o=>`<span class="estab-tag ${o.enabled === false ? 'estab-tag-off' : ''}">${escapeHtml(o.mode === 'time' ? `${o.minutes} min à volonté` : `${o.credits} + ${o.bonusCredits} crédits`)} · ${formatMoneyCentimes(o.price)} / carte${o.enabled === false ? ' · désactivée' : ''}</span>`).join('')}</div></section>` : ''}</div>`;
 
   const clientsPanel = `<div class="estab-read-stack">
     ${section(ICO.users, 'Classification clients & groupes', 'Seuils groupe et formules « anniversaire ».', `
@@ -19139,7 +19196,7 @@ function crNoms(liste) {
 function crActivites(d) {
   return (Array.isArray(d && d.activities) ? d.activities : []).filter(a => a && a.name).map(a => {
     const participants = Number(a.participants) || Number(d.participants) || 1;
-    const options = ['duration', 'games', 'units', 'hours', 'minutes'].some(key => a[key] != null);
+    const options = ['duration', 'games', 'units', 'hours', 'minutes', 'arcadeMode', 'arcadeOfferId', 'cards'].some(key => a[key] != null);
     const detail = options
       ? detailLigneProgramme({ ...a, activityId: a.id, participants }, { pax: Number(d.participants) || participants })
       : `${participants} joueur${participants > 1 ? 's' : ''}`;
@@ -19157,6 +19214,7 @@ function applyStaffRequestActivitiesToQuickBook(d) {
   const visit = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {}, options: {} };
   activites.forEach(a => {
     const options = { participants: Number(a.participants) || Number(d.participants) || Number(quickBookState.pax) || 1 };
+    ['arcadeMode', 'arcadeOfferId', 'cards', 'arcadeOffer'].forEach(key => { if (a[key] != null) options[key]=a[key]; });
     ['duration', 'games', 'units', 'hours', 'minutes'].forEach(key => { if (a[key] != null && Number.isFinite(Number(a[key]))) options[key] = Number(a[key]); });
     visit.options[a.id] = options;
     if (a.id === 'bowling') visit.bowling = { on: true, duration: Number(a.duration) || 1 };
@@ -21363,7 +21421,7 @@ function getReservationPriceState(reservation, options = {}) {
 function getReservationPriceAdjustmentTitle(reservation) {
   const etat = getReservationPriceState(reservation);
   if (!etat.ajuste) return '';
-  return `Prix ajusté par l'équipe (référence ${formatMoney(etat.reference)})`;
+  return `Prix ajusté par l'équipe (référence ${formatMoneyCentimes(etat.reference)})`;
 }
 
 // UNE SEULE PASTILLE, QUATRE LONGUEURS. La forme suit la place de l ecran,
@@ -21379,7 +21437,7 @@ function renderReservationPriceMark(reservation, options = {}) {
   if (!etat.ajuste) return '';
   const forme = options.forme || 'complet';
   const base = options.base || 'res-state-pill custom-price';
-  const montant = formatMoney(etat.price);
+  const montant = formatMoneyCentimes(etat.price);
   // 'encadre' : l encadre « Prix ajusté » des cartes de groupe (2026-10-01),
   // dont le titre dit deja le mot : « 280 € · référence 495 € ».
   const texte = forme === 'montant'
@@ -21387,9 +21445,9 @@ function renderReservationPriceMark(reservation, options = {}) {
     : forme === 'mot'
       ? 'Prix ajusté'
       : forme === 'reference'
-        ? `Prix ajusté (référence ${formatMoney(etat.reference)})`
+        ? `Prix ajusté (référence ${formatMoneyCentimes(etat.reference)})`
         : forme === 'encadre'
-          ? `${montant} · référence ${formatMoney(etat.reference)}`
+          ? `${montant} · référence ${formatMoneyCentimes(etat.reference)}`
           : `Prix ajusté ${montant}`;
   // LE VERDICT NE VIT PAS QUE DANS LA TEINTE. En forme « montant » le texte
   // visible est un montant NU : « 40 € » en ambre se lit comme un prix
@@ -21406,8 +21464,8 @@ function renderReservationPriceMark(reservation, options = {}) {
   // ajusté 40 €, référence 60 € » a chaque ligne du tableau de la Direction.
   // Le montant n est annonce que la ou l ecran ne le dit pas deja.
   const vocal = (forme === 'mot' || forme === 'reference')
-    ? `Prix ajusté, référence ${formatMoney(etat.reference)}`
-    : `Prix ajusté ${montant}, référence ${formatMoney(etat.reference)}`;
+    ? `Prix ajusté, référence ${formatMoneyCentimes(etat.reference)}`
+    : `Prix ajusté ${montant}, référence ${formatMoneyCentimes(etat.reference)}`;
   // `role="img"` : un `<span>` a le role implicite `generic`, sur lequel un nom
   // d auteur est INTERDIT par ARIA in HTML et n est pas expose. Mesure de
   // l arbre AX avant correction : la carte du planning s annoncait
@@ -23303,7 +23361,7 @@ function renderGroupePrix(r, moment) {
       : '';
   // Sans montant connu (activites tarifees au comptoir), la carte ne montre
   // pas « 0 € » : elle dit ou se fait le prix.
-  const montant = prixDossierConnu(r) ? `<b>${formatMoney(r.price)}</b>` : '<b class="is-none">Prix sur place</b>';
+  const montant = prixDossierConnu(r) ? `<b>${formatMoneyCentimes(r.price)}</b>` : '<b class="is-none">Prix sur place</b>';
   return `<div class="gc-price${paye ? ' is-paid' : ''}">${montant}${etat}</div>`;
 }
 
@@ -23322,7 +23380,7 @@ function renderGroupeActions(r, moment) {
     boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
   } else {
     // Le groupe est la, ou il a fini : la carte attend l encaissement.
-    const montant = prixDossierConnu(r) ? ` ${formatMoney(r.price)}` : '';
+    const montant = prixDossierConnu(r) ? ` ${formatMoneyCentimes(r.price)}` : '';
     boutons.push(`<span class="gc-pay" role="group" aria-label="Encaisser${escapeHtml(montant)}">
       <span class="gc-pay-label">Encaisser${escapeHtml(montant)}</span>
       ${GROUPE_MOYENS.map(m => `<button type="button" class="gc-btn is-primary" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">${m.mot}</button>`).join('')}
@@ -23421,7 +23479,7 @@ function getGroupePrixParActivite(r) {
   if (!items.length || r.formuleId) return prix;
   const etapes = getGroupeProgramme(r);
   items.forEach(item => {
-    const montant = item.priceKnown && Number.isFinite(Number(item.price)) ? formatMoney(item.price) : 'sur place';
+    const montant = item.priceKnown && Number.isFinite(Number(item.price)) ? formatMoneyCentimes(item.price) : 'sur place';
     const cible = item.planned
       ? etapes.find(e => e.activityId === item.activityId && !prix.has(e.cle))
       : etapes.find(e => e.cle === `libre-${items.filter(x => !x.planned && !x.waitOffer).indexOf(item)}`);
@@ -24107,6 +24165,9 @@ function participantsLigneProgramme(item, pax) {
 
 function detailLigneProgrammeSansEffectif(item, reservation = null) {
   if (!item) return '';
+  if (item.arcadeOffer) return getArcadeOfferDetail(item);
+  if (item.activityId === 'arcade_time' && item.arcadeMode) { const q=getArcadeOfferQuote(catalogueDeLigne(item),item,participantsLigneProgramme(item,reservation && reservation.pax)); return q ? getArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : 'Offre Arcades à confirmer'; }
+  if (item.durationEstimated === true && item.activityId === 'arcade_time') return 'Crédits Arcades · durée libre';
   if (ligneALaJournee(item)) return 'toute la journée';
   const catalogue = catalogueDeLigne(item);
   const priceType = item.priceType || (catalogue && catalogue.priceType) || '';
@@ -24202,7 +24263,7 @@ function renderPosDetails(r) {
   const paid = r.status === 'paid';
   const moyen = getMoyenPaiementLabel(r.paymentMethod);
   const lateMinutes = getLateArrivalMinutes(r);
-  const aEncaisser = prixDossierConnu(r) ? formatMoney(r.price) : 'prix au comptoir';
+  const aEncaisser = prixDossierConnu(r) ? formatMoneyCentimes(r.price) : 'prix au comptoir';
   return `<div class="${posSheetClass()} gc-sheet">
     ${renderGroupeAlerte(r, moment)}
     <section class="pos-act">
@@ -24422,8 +24483,8 @@ function renderGroupeAddition(r) {
     const unitaire = formule && formule.price && typeof formule.price === 'object' ? Number(formule.price.value) : 0;
     // Le calcul n est ecrit que s il retombe exactement sur le montant du dossier.
     const calcul = unitaire > 0 && joueurs > 0 && formule.price.type === 'per_pax' && Math.abs(unitaire * joueurs - base) < 0.5
-      ? `${formatMoney(unitaire)} × ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : '';
-    lignes.push({ nom, detail: calcul, montant: base > 0 ? formatMoney(base) : '' });
+      ? `${formatMoneyCentimes(unitaire)} × ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : '';
+    lignes.push({ nom, detail: calcul, montant: base > 0 ? formatMoneyCentimes(base) : '' });
   } else if (items.length) {
     // CE QUI FAIT LE MONTANT, dit a cote : les pistes du bowling fois le prix
     // d une piste (6 joueurs par piste), le prix par joueur du laser fois les
@@ -24438,13 +24499,13 @@ function renderGroupeAddition(r) {
     items.forEach(item => lignes.push({
       nom: nomActivite(item),
       detail: [detailLigneProgramme(item, r), pistes(item), joueursLaser(item)].filter(Boolean).join(' · '),
-      montant: item.priceKnown && Number.isFinite(Number(item.price)) ? formatMoney(item.price) : 'au comptoir',
+      montant: item.priceKnown && Number.isFinite(Number(item.price)) ? formatMoneyCentimes(item.price) : 'au comptoir',
     }));
   } else {
     const base = Math.max(0, etat.reference - totalExtras);
-    lignes.push({ nom: getReservationLabel(r), detail: '', montant: base > 0 ? formatMoney(base) : '' });
+    lignes.push({ nom: getReservationLabel(r), detail: '', montant: base > 0 ? formatMoneyCentimes(base) : '' });
   }
-  extras.forEach(e => lignes.push({ nom: e.name || 'Extra', detail: '', montant: formatMoney(Number(e.price) || 0) }));
+  extras.forEach(e => lignes.push({ nom: e.name || 'Extra', detail: '', montant: formatMoneyCentimes(Number(e.price) || 0) }));
   const total = Number(r.price) || 0;
   // Au centime : 280 € pour 30 joueurs, c est 9,33 €, pas « 9 € ».
   const parJoueur = total > 0 && joueurs > 0 ? formatMoneyCentimes(total / joueurs) : '';
@@ -24454,10 +24515,10 @@ function renderGroupeAddition(r) {
   return `<section class="info-block gc-bill">
     <div class="info-label">Prix</div>
     <dl class="gc-bill-lines">${lignes.map(l => `<div><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
-      ${etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoney(etat.reference))}</small></dt><dd>${etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoney(Math.abs(etat.ecart)))}</dd></div>` : ''}
+      ${etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoneyCentimes(etat.reference))}</small></dt><dd>${etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoneyCentimes(Math.abs(etat.ecart)))}</dd></div>` : ''}
     </dl>
     <div class="gc-bill-total">
-      <div><b>${prixDossierConnu(r) ? escapeHtml(formatMoney(total)) : 'Prix au comptoir'}</b>${parJoueur ? `<small>soit ${escapeHtml(parJoueur)} par ${dossierAvecEffectifsDistincts(r) ? 'personne présente' : 'joueur'}</small>` : ''}</div>
+      <div><b>${prixDossierConnu(r) ? escapeHtml(formatMoneyCentimes(total)) : 'Prix au comptoir'}</b>${parJoueur ? `<small>soit ${escapeHtml(parJoueur)} par ${dossierAvecEffectifsDistincts(r) ? 'personne présente' : 'joueur'}</small>` : ''}</div>
       <span class="${paid ? 'is-paid' : 'is-due'}">${paid ? `Payé${moyen ? ` · ${escapeHtml(moyen)}` : ''}` : 'À encaisser'}</span>
     </div>
     ${incomplet ? '<p class="pos-note">Les activités « au comptoir » se règlent en plus, au tarif du jour.</p>' : ''}
@@ -25376,6 +25437,7 @@ function buildEditProgramFromReservation(r) {
       if (!id) return;
       etat.others[id] = true;
       const reglages = {};
+      ['arcadeMode', 'arcadeOfferId', 'cards', 'arcadeOffer', 'durationEstimated'].forEach(key => { if (item[key] != null) reglages[key] = item[key]; });
       if (Number(item.units) > 0) reglages.units = Number(item.units);
       if (Number(item.hours) > 0) reglages.hours = Number(item.hours);
       // Le palier d une session, pas le temps du groupe (3 x 30 min = 90). Les
@@ -25484,6 +25546,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     // defauts (units = 1, hours = 1) et divisait le montant.
     const ligne = activite && typeof getFreeActivityPrice === 'function'
       ? getFreeActivityPrice(activite, {
+        ...item,
         pax: participants || joueurs,
         dateStr,
         startTime,
@@ -25500,7 +25563,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     }
     total += Number(ligne) || 0;
     chiffrees += 1;
-    lignes.push({ nom, detail: '', montant: Number(ligne) || 0 });
+    lignes.push({ nom, detail: activite?.id === 'arcade_time' ? (() => { const q = getArcadeOfferQuote(activite,item,effectif); return q ? getArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : ''; })() : '', montant: Number(ligne) || 0 });
   });
   return {
     total: Math.round(total * 100) / 100,
@@ -25543,6 +25606,13 @@ function editProgramAChange() {
 // change rien : un prix d ami, un tarif d attente, une ligne que la fiche ne
 // sait pas chiffrer restent ceux du dossier (campagne du 2026-09-29 : un
 // dossier de 376 EUR tombait a 356 a la simple ouverture).
+function editArcadeTimingChanged() {
+  const e=state.editState,r=state.selectedRes;
+  if (!e || !r) return false;
+  const paid=(r.program?.items || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId);
+  return paid && ((e.startTime != null && e.startTime !== r.startTime) || (e.duration != null && Number(e.duration) !== Number(r.duration)) || (e.date != null && e.date !== r.date));
+}
+
 function editionChangeLePrix() {
   const e = state.editState;
   const r = state.selectedRes;
@@ -25551,7 +25621,7 @@ function editionChangeLePrix() {
     const sansEffectif = value => JSON.stringify(JSON.parse(value), (key, entry) => key === 'participants' ? undefined : entry);
     if (sansEffectif(JSON.stringify(e.programmeEdite)) === sansEffectif(e.programmeEditeInitial)) return false;
   }
-  return editProgramAChange() || Number(e.pax) !== Number(r.pax);
+  return editProgramAChange() || Number(e.pax) !== Number(r.pax) || editArcadeTimingChanged();
 }
 
 // Le programme au format que le serveur renormalise (lib/visit-program).
@@ -25574,7 +25644,13 @@ function getEditProgramItems() {
     // Les reglages du dossier, pas les defauts : sans eux le prix repart a
     // une unite et une heure.
     const reglages = (e.programmeEdite.othersOptions || {})[id] || {};
-    items.push({ activityId: id, pax, ...reglages, participants: participantsLigneProgramme(reglages, pax) });
+    const item={ activityId: id, pax, ...reglages, participants: participantsLigneProgramme(reglages, pax) };
+    if (id === 'arcade_time') {
+      const saved=(state.selectedRes?.program?.items || []).find(line=>line.activityId===id);
+      if (editArcadeTimingChanged() || (saved && item.participants !== Number(saved.participants || state.selectedRes.pax))) delete item.arcadeOffer;
+      if (item.arcadeMode === 'time') item.cards=item.participants;
+    }
+    items.push(item);
   });
   return items;
 }
@@ -25584,7 +25660,7 @@ function toggleEditActivity(id) {
   if (!programme) return;
   if (id === 'bowling') programme.bowling.on = !programme.bowling.on;
   else if (id === 'laser_game') programme.laser_game.on = !programme.laser_game.on;
-  else programme.others[id] = !programme.others[id];
+  else { programme.others[id] = !programme.others[id]; if (id === 'arcade_time' && programme.others[id] && !programme.othersOptions[id]) programme.othersOptions[id] = defaultArcadeOptions(getCenterActivity(id)); }
   renderPos();
 }
 
@@ -25687,6 +25763,11 @@ function majEditPrixEstime() {
 }
 
 function getEditPriceValue() {
+  const e=state.editState;
+  if (e && !e.prixFige && editionChangeLePrix() && (getEditProgramItems() || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId)) {
+    const quote=getEditPrixEstime();
+    if (quote?.utilisable && quote.complet) return quote.total;
+  }
   const brut = String((state.editState && state.editState.price) ?? '').trim().replace(',', '.');
   if (brut === '') return null;
   const valeur = Number(brut);
@@ -25744,6 +25825,7 @@ function renderEditFormuleBloc(r, formule, lignes) {
     if (actif && estBowling) {
       options = `<div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div>`;
     }
+    if (actif && choice.id === 'arcade_time') options = renderStaffArcadeOptions(getCenterActivity(choice.id),programme.othersOptions[choice.id] || {},participantsLigneProgramme(programme.othersOptions[choice.id] || {},state.editState.pax),'edit');
     if (actif && estLaser) {
       options = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn ${Number(programme.laser_game.games) === games ? 'active' : ''}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
     }
@@ -26062,8 +26144,14 @@ async function saveEdit(e) {
     // l heure ou les joueurs d un dossier offert ne doit pas le repasser au
     // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
     const ecartPrix = getReservationPriceGap(dossier);
-    updated.basePrice = getBasePrice(updated.type, updated.duration, (updated.lanes || []).length, updated.pax, updated.formuleId, updated.date);
-    updated.price = updated.basePrice + sumExtras(updated.extras) + ecartPrix;
+    const programmeArcades=(dossier.program?.items || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId);
+    const changementOperationnel=Boolean(programme) || touches.some(champ=>['pax','duration','startTime'].includes(champ)) || pistesTouchees;
+    if (programmeArcades && !changementOperationnel) { updated.basePrice=dossier.basePrice; updated.price=dossier.price; }
+    else {
+      const quote=programmeArcades ? getEditPrixEstime() : null;
+      updated.basePrice=quote?.complet ? quote.total : getBasePrice(updated.type, updated.duration, (updated.lanes || []).length, updated.pax, updated.formuleId, updated.date);
+      updated.price = updated.basePrice + sumExtras(updated.extras) + ecartPrix;
+    }
     if (programme) {
       updated.program = programme;
       updated.label = libelleAdapte;
@@ -26360,6 +26448,7 @@ function syncQuickBookDuration() {
       if (activity.priceType === 'grid_fun_run') autresMinutes += getQuickVisitMinutes(id) * getActivitySessionCount(activity, participants);
       else if (activity.priceType === 'grid_bowling') autresMinutes += (Number(options.duration) || 1) * 60 * getActivityUnitPlan(activity, participants).tours;
       else if (activity.priceType === 'per_unit_hour') autresMinutes += getQuickVisitHours(id) * 60;
+      else if (id === 'arcade_time') { const q=getArcadeOfferQuote(activity,options,participants); autresMinutes += q?.offer.mode === 'time' ? Number(q.offer.minutes) : Number(activity.defaultMinutes)||30; }
       else autresMinutes += Number(activity.defaultMinutes) || 30;
     });
     quickBookState.duration = bowlingDur || 0.5;
@@ -26508,6 +26597,7 @@ function ligneProgrammeQuick(activityId) {
     if (capacity.bowlingCapacity?.emergency) { ligne.bowlingCapacity = capacity.bowlingCapacity; ligne.laneCount = capacity.requiredCount; }
   }
   if (!activite) return ligne;
+  if (activityId === 'arcade_time') { const o = getQuickVisitOptions(activityId); if (o.arcadeMode && o.arcadeOfferId) { ligne.arcadeMode=o.arcadeMode; ligne.arcadeOfferId=o.arcadeOfferId; ligne.cards=o.arcadeMode==='time' ? ligne.participants : Math.min(1000,Math.max(1,Math.trunc(Number(o.cards)||ligne.participants))); } }
   if (activite.priceType === 'grid_bowling') ligne.duration = Number(getQuickVisitOptions(activityId).duration) || 1;
   // On n envoie un reglage QUE si l activite en a un : une cle inutile sur une
   // ligne qui ne la comprend pas est du bruit que le serveur devra ignorer, et
@@ -26528,6 +26618,7 @@ function ligneProgrammeQuick(activityId) {
 function renderQuickVisitOptions(choice) {
   const activite = typeof getCenterActivity === 'function' ? getCenterActivity(choice.id) : null;
   if (!activite) return '';
+  if (choice.id === 'arcade_time') return renderStaffArcadeOptions(activite,getQuickVisitOptions(choice.id),getQuickVisitParticipants(choice.id),'quick');
   if (activite.priceType === 'grid_bowling') {
     const courant = Number(getQuickVisitOptions(choice.id).duration) || 1;
     return `<div class="qb-visit-options"><span class="qb-opt-legend">Durée</span>${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${courant === Number(opt.value) ? 'active' : ''}" onclick="setQuickVisitActivityDuration('${escapeHtml(choice.id)}',${opt.value})">${opt.label}</button>`).join('')}</div>`;
@@ -26585,7 +26676,9 @@ function setEditActivityParticipants(id, nombre) {
   const p = e.programmeEdite;
   const options = id === 'bowling' || id === 'laser_game' ? p[id] : (p.othersOptions[id] ||= {});
   const bornes = activityParticipantsBounds(id, e.pax);
-  options.participants = Math.min(bornes.max, Math.max(bornes.min, Math.trunc(Number(nombre) || bornes.min)));
+  const participants = Math.min(bornes.max, Math.max(bornes.min, Math.trunc(Number(nombre) || bornes.min)));
+  if (id === 'arcade_time' && participants !== participantsLigneProgramme(options,e.pax)) { delete options.arcadeOffer; if (options.arcadeMode === 'time') options.cards=participants; }
+  options.participants = participants;
   renderPos();
 }
 
@@ -26595,6 +26688,7 @@ function toggleQuickVisitActivity(id) {
   if (id === 'bowling') visit.bowling.on = !visit.bowling.on;
   else if (id === 'laser_game') visit.laser_game.on = !visit.laser_game.on;
   else visit.others[id] = !visit.others[id];
+  if (id === 'arcade_time' && visit.others[id] && !getQuickVisitOptions(id).arcadeMode) Object.assign(getQuickVisitOptions(id),defaultArcadeOptions(getCenterActivity(id)));
   syncQuickBookDuration();
   renderQuickBook();
 }
@@ -26984,6 +27078,7 @@ function toggleQuickListe(id) {
   const partiesLaser = quickBookState.type === 'laser' ? Math.max(1, Math.round(Number(quickBookState.duration) * 2)) : Number(quickBookState.visit?.laser_game?.games) || 1;
   if (avant.has(id)) avant.delete(id); else avant.add(id);
   const apres = [...avant];
+  if (id === 'arcade_time' && avant.has(id)) Object.assign(getQuickVisitOptions(id), defaultArcadeOptions(getCenterActivity(id)), {...getQuickVisitOptions(id)});
   // Jamais zero : il faut bien reserver quelque chose (decision du
   // 2026-08-26, quickbook-catalog-check [7]). La derniere ne se decoche pas.
   if (apres.length === 0) { toast('Gardez au moins une activité.'); return; }
@@ -27035,13 +27130,18 @@ function quickExtrasEtat() {
   if (!quickBookState.extrasSM) quickBookState.extrasSM = { arcades: { mode: '', minutes: 30, prix: '' }, nourriture: [], boissons: [], autres: [] };
   return quickBookState.extrasSM;
 }
+function quickHasPaidArcades() {
+  if (!quickBookState || !quickActiviteRetenue('arcade_time')) return false;
+  const o=getQuickVisitOptions('arcade_time');
+  return Boolean(o.arcadeMode && o.arcadeOfferId);
+}
 function quickExtrasLignes() {
   if (!quickBookState || !quickBookState.surMesure) return [];
   const e = quickExtrasEtat();
   const pax = Math.max(1, Number(quickBookState.pax) || 1);
   const lignes = [];
   const prix = (v) => Math.max(0, Number(String(v).replace(',', '.')) || 0);
-  if (e.arcades.mode && prix(e.arcades.prix) > 0) {
+  if (!quickHasPaidArcades() && e.arcades.mode && prix(e.arcades.prix) > 0) {
     const unitaire = prix(e.arcades.prix);
     const quoi = e.arcades.mode === 'temps'
       ? (Number(e.arcades.minutes) >= 999 ? 'à volonté' : `${e.arcades.minutes} min`)
@@ -27081,7 +27181,7 @@ function renderQuickExtras() {
   const listes = Object.entries(QB_EXTRA_SUGGESTIONS).map(([g, items]) => `<datalist id="qbx-${g}">${items.map((v) => `<option value="${escapeHtml(v)}">`).join('')}</datalist>`).join('');
   return `<div class="qb-extras">
     <div class="qb-extras-head"><b>Sur mesure</b><small>En plus des activités : ajouté au total, jamais montré au client tel quel.</small><button type="button" class="qb-x-close" onclick="setQuickSurMesure(false)">Retirer</button></div>
-    <div class="qb-x-groupe">
+    ${quickHasPaidArcades() ? `<div class="activity-option-note">Les cartes Arcades sont déjà comprises dans les activités choisies.</div>` : `<div class="qb-x-groupe">
       <div class="qb-x-titre"><b>Arcades</b><small>par joueur (${pax})</small></div>
       <div class="qb-x-seg">
         ${[['', 'Aucune'], ['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn ${e.arcades.mode === v ? 'active' : ''}" onclick="setQuickArcades('mode','${v}')">${mot}</button>`).join('')}
@@ -27089,6 +27189,7 @@ function renderQuickExtras() {
       ${e.arcades.mode === 'temps' ? `<div class="qb-x-seg">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn ${Number(e.arcades.minutes) === m ? 'active' : ''}" onclick="setQuickArcades('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
       ${e.arcades.mode ? `<label class="qb-x-montant">${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} <input class="qb-input" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="€" oninput="setQuickArcades('prix',this.value,true)"> €</label>` : ''}
     </div>
+    `}
     ${lignes('nourriture', 'Nourriture', 'quantité et prix à l’unité')}
     ${lignes('boissons', 'Boissons', 'cruches, boissons par enfant…')}
     ${lignes('autres', 'Autre', 'décoration, cadeau, tout le reste')}
@@ -27144,6 +27245,7 @@ function setQuickType(type, activityId = '') {
     quickBookState.autoAssign = type === 'bowling';
   }
   if (type === 'activity') {
+    if (activityId === 'arcade_time' && !getQuickVisitOptions(activityId).arcadeMode) Object.assign(getQuickVisitOptions(activityId),defaultArcadeOptions(getCenterActivity(activityId)));
     // Une activite libre ne prend ni piste ni arene : la selection de pistes
     // n'a plus de sens, et le moteur ne planifie pas de ressource pour elle.
     quickBookState.formuleId = '';
@@ -27448,7 +27550,7 @@ function getQuickBookSummaryActivites() {
       Object.entries(visit.others || {}).forEach(([id, on]) => { if (on) items.push(ligneProgrammeQuick(id)); });
     }
     const estime = estimerPrixProgramme(items, quickBookState.pax, quickBookState.date, quickBookState.startTime);
-    const detail = items.map(item => `${nomActivite(item)} : ${item.participants} joueur${item.participants > 1 ? 's' : ''}`).join(' · ');
+    const detail = items.map(item => `${nomActivite(item)} : ${item.participants} joueur${item.participants > 1 ? 's' : ''}${item.activityId === 'arcade_time' ? ` · ${detailLigneProgrammeSansEffectif(item,{pax:quickBookState.pax})}` : ''}`).join(' · ');
     return { total: estime.total, detail: detail + (estime.complet ? ' · estimation' : ' · hors activités réglées sur place') };
   }
   if (quickBookState.type === 'laser') {
@@ -27897,9 +27999,9 @@ function renderQuickBookInner() {
     ['Date', escapeHtml(formatQuickBookDateLabel(quickBookState.date))],
     ['Départ', quickBookState.startTime ? escapeHtml(quickBookState.startTime) : '<span class="qb-recap-vide">À choisir</span>'],
     ['Personnes présentes', `<span id="qbRecapPax">${Number(quickBookState.pax) || 1}</span>`],
-    ['Durée', escapeHtml(formatDurationLabel(quickBookState.totalDuration))],
+    ['Durée estimée', escapeHtml(formatDurationLabel(quickBookState.totalDuration))],
     ...(pistesRecap ? [['Pistes', escapeHtml(pistesRecap)]] : []),
-    ...(quickExtrasLignes().length ? [['Extras', escapeHtml(`${quickExtrasLignes().length} ligne${quickExtrasLignes().length > 1 ? 's' : ''} · ${formatMoney(quickExtrasTotal())}`)]] : []),
+    ...(quickExtrasLignes().length ? [['Extras', escapeHtml(`${quickExtrasLignes().length} ligne${quickExtrasLignes().length > 1 ? 's' : ''} · ${formatMoneyCentimes(quickExtrasTotal())}`)]] : []),
   ];
   const etape = (n, titre) => `<div class="qb-step-head"><span class="qb-step-n" aria-hidden="true">${n}</span><span class="blk-label">${titre}</span></div>`;
   let numero = 0;

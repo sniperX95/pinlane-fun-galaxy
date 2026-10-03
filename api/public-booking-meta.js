@@ -280,6 +280,7 @@ function formulesPubliques(centerId, center) {
 function activitesPubliques(centerId, center) {
   return listSellableActivities({
     centerId,
+    activityOffers: center?.activityOffers,
     availability: center && typeof center.activityAvailability === 'object' ? center.activityAvailability : null,
     // Les tables, les pistes de duckpin, les joueurs par piste reglees dans
     // Etablissement : le formulaire les lit ici, comme le serveur.

@@ -333,6 +333,28 @@ function objectRows(object, headers = ['Clé', 'Valeur']) {
   return [headers, ...Object.entries(object).map(([key, value]) => [key, value])];
 }
 
+function getAdminProgramExportText(reservation) {
+  const items = reservation?.program?.items || [];
+  return items.map(item => {
+    const players = Number(item.participants ?? reservation.pax) || 0;
+    const details = [];
+    if (item.arcadeOffer) {
+      const offer = item.arcadeOffer;
+      details.push(`${item.cards || players} cartes`);
+      if (offer.mode === 'time') details.push(`${offer.minutes} min par carte, jeux sans cadeaux illimités`);
+      else details.push(`${offer.credits} crédits + ${offer.bonusCredits || 0} bonus par carte (${offer.totalCredits ?? (Number(offer.credits) + Number(offer.bonusCredits || 0))} crédits), tous les jeux, durée variable`);
+      details.push(`${offer.price} EUR par carte`);
+    } else {
+      if (item.games) details.push(`${item.games} parties`);
+      if (item.units) details.push(`${item.units} ${item.unitLabel || 'unités'}`);
+      if (item.dayAccess) details.push('accès à la journée');
+      else if (item.hours || item.duration) details.push(`${item.hours || item.duration} h${item.durationEstimated ? ' estimées' : ''}`);
+    }
+    details.push(item.priceKnown === true ? `${item.price} EUR` : 'Tarif à l’accueil');
+    return [`${item.name || item.activityId} : ${players} joueurs`, ...details].join(' · ');
+  }).join(' | ');
+}
+
 function buildAdminExcelXml(payload) {
   const reservations = (payload.reservations || []).filter(reservation => reservation.status !== 'cancelled');
   const metrics = payload.metrics;
@@ -349,7 +371,7 @@ function buildAdminExcelXml(payload) {
     formatClockDisplay(window.start),
     formatClockDisplay(window.end),
     (window.lanes || []).join(', '),
-    reservation.pax || 0,
+    Number(window.players || reservation.program?.items?.find(item => item.activityId === 'bowling')?.participants || reservation.pax || 0),
     getReservationLabel(reservation),
     getAdminStatusLabel(reservation.status),
   ]));
@@ -383,7 +405,7 @@ function buildAdminExcelXml(payload) {
     // « Réf. » = l'identifiant réel de la réservation, le seul que la console et
     // la base savent résoudre. Il remplace le code « FG-… » qui sortait ici et
     // que rien ne permettait de retrouver.
-    excelRow(['Réf.', 'Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Offre', 'Type', 'Joueurs', 'Statut', 'Paiement', 'Montant', 'Ressources', 'Consignes', 'Check-in', 'Risque', 'Validation'], 'Header'),
+    excelRow(['Réf.', 'Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Offre', 'Type', 'Joueurs', 'Statut', 'Paiement', 'Montant', 'Ressources', 'Consignes', 'Check-in', 'Risque', 'Validation', 'Détail des activités'], 'Header'),
     ...reservations.map(reservation => {
       const guest = getReservationGuestOps(reservation);
       return excelRow([
@@ -404,6 +426,7 @@ function buildAdminExcelXml(payload) {
       guest.checkInDone ? 'OK' : 'A faire',
       getAdminRiskLabel(reservation),
       getAdminValidationLabel(reservation.validationStatus),
+      getAdminProgramExportText(reservation),
     ]);
     })
   ];

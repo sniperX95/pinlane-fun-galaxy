@@ -715,8 +715,17 @@ async function parcours(browser, mock, { largeur = 1440, hauteur = 900 } = {}) {
     await deborde('envies');
     r.sousTitre = await page.textContent('#smEnviesSub');
     r.cartes = await page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('#smGridAct .fg-card')).map((c) => [c.dataset.sm, {
-      cap: (c.querySelector('.fg-sm-cap') || {}).textContent || '', note: (c.querySelector('.fg-sm-note') || {}).textContent || '', refus: c.classList.contains('is-refus'),
+      cap: '', note: '', refus: c.classList.contains('is-refus'),
     }])));
+    for (const id of Object.keys(r.cartes)) {
+      if (r.cartes[id].refus) continue;
+      await page.click('#smGridAct .fg-card[data-sm="' + id + '"]');
+      await page.click('#smGridAct [data-sm-activity="' + id + '"] [data-activity-info]');
+      const info = await page.locator('.fg-info-text').textContent();
+      r.cartes[id].cap = info; r.cartes[id].note = info;
+      await page.keyboard.press('Escape');
+      await page.click('#smGridAct .fg-card[data-sm="' + id + '"]');
+    }
     r.continuerAvant = await page.evaluate(() => document.getElementById('smGoContact').disabled);
     await page.click('#smGridAct .fg-card[data-sm="bowling"]');
     await page.click('#smGridAct .fg-card[data-sm="laser_game"]');

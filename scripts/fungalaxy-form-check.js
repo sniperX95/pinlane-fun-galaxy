@@ -595,8 +595,17 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // navigateur 6x, 7 mesures entrelacees apres chauffe sur la version finale :
 // total des taches 1031,18 -> 1051,64 ms, script 77,54 -> 83,31 ms,
 // layout 318,30 -> 324,95 ms (mesures locales sous charge).
-const BUDGET_SERVI = 274 * 1024;
-const BUDGET_TRANSFERE = 75 * 1024;
+// 03/10, cartes Arcades : comparaison avec le premier chantier deploye
+// 892872d, memes trois fichiers et meme build, brotli qualite 3 :
+// 279151 -> 291493 octets servis ; 76552 -> 79903 octets telecharges.
+// Les six cartes, leur compteur distinct, les bonus et le contrat repris
+// apres blocage et les fenetres info avec photo chargee au clic ajoutent
+// 3351 octets transferes (environ 67 ms a 400 kbit/s).
+// Aucun fichier initial n est cache ou exclu du calcul pour tenir le plafond.
+// Le plafond conserve moins de 1 Ko de marge de transfert ; une police ou
+// une bibliotheque reste refusee. Comparaison CPU 6x dans les preuves Arcades.
+const BUDGET_SERVI = 286 * 1024;
+const BUDGET_TRANSFERE = 79 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -2194,8 +2203,8 @@ async function main() {
     // Le minimum de joueurs voyage a cote du prix (catalogue : minPax 2), comme
     // la capacite d une session du Fun Run.
     ok(carte('laser_game').prix === `Dès ${euros(minLaser)} / personne · 2\u00a0joueurs minimum`, '[B] laser : « des » = minimum des parties servies, et le minimum de joueurs', carte('laser_game').prix);
-    ok(carte('fun_run').prix === `Dès ${euros(minFunRun)} / session · 5 joueurs par session`, '[B] fun run : « des » = minimum des sessions servies, et la capacite D UNE session', carte('fun_run').prix);
-    ok(carte('minigolf_blacklight').prix === 'Dès 10 € / personne · 12 trous', '[B] minigolf : tarif saisi par le centre, avec sa note', carte('minigolf_blacklight').prix);
+    ok(carte('fun_run').prix === `Dès ${euros(minFunRun)} / session`, '[B] fun run : « des » = minimum des sessions servies, prix court sur la carte', carte('fun_run').prix);
+    ok(carte('minigolf_blacklight').prix === 'Dès 10 € / personne', '[B] minigolf : tarif exact du centre, prix court sur la carte', carte('minigolf_blacklight').prix);
     ok(carte('arcade_time').prix === 'Prix à l’accueil', '[B] arcades : sans tarif saisi, « Prix à l’accueil », jamais un chiffre (tout se regle sur place : « sur place » ne distinguait rien)', carte('arcade_time').prix);
     // A SIX JOUEURS, LE FUN RUN NE DISPARAIT PLUS : IL TOURNE (demande de
     // Movsar, 2026-09-23). Le catalogue declare une installation de 5 places,
@@ -2210,6 +2219,14 @@ async function main() {
     ok(carte('bowling').titre === 'Durée de piste' && carte('laser_game').titre === 'Parties', '[B] chaque tiroir dit ce qu on choisit (duree, parties)', `${carte('bowling').titre} / ${carte('laser_game').titre}`);
     ok(cartes.every((c) => c.tiroir === null || c.tiroir === 0), '[B] les tiroirs restent fermes tant que la carte n est pas cochee', cartes.map((c) => `${c.id}:${c.tiroir}`).join(' '));
     ok(await page.evaluate(() => document.querySelector('#goHours').disabled), '[B] sans selection, « Continuer » est inactif');
+    for (const id of ['fun_run', 'minigolf_blacklight']) {
+      await page.click('#gridAct .fg-card[data-activity="' + id + '"]');
+      await page.click('#gridAct li[data-activity="' + id + '"] [data-activity-info]');
+      const info = await page.locator('.fg-info-text').textContent();
+      ok(info.includes(id === 'fun_run' ? '5 joueurs par session' : '12 trous'), '[B] le popup conserve la note précise saisie par le centre : ' + id, info);
+      await page.keyboard.press('Escape');
+      await page.click('#gridAct .fg-card[data-activity="' + id + '"]');
+    }
     const hauteurAvant = await page.evaluate(() => Math.round(document.querySelector('#gridAct .fg-card[data-activity="bowling"]').getBoundingClientRect().height));
     for (const id of ['bowling', 'laser_game', 'minigolf_blacklight', 'arcade_time']) await page.click(`#gridAct .fg-card[data-activity="${id}"]`);
     ok(await attendre(page, () => document.querySelector('#actCount').textContent.replace(/\s+/g, ' ').trim() === '4 activités sélectionnées', 3000), '[B] le compteur dit « 4 activites selectionnees »');
@@ -3096,12 +3113,15 @@ async function main() {
     });
     ok(Boolean(funCarte) && funCarte.off === false && !funCarte.aria && funCarte.tab === '0',
       '[I] a 12 personnes, le Fun Run se choisit (avant, la carte etait eteinte)', JSON.stringify(funCarte));
-    ok(Boolean(funCarte) && /5 joueurs par session/.test(funCarte.prix), '[I] et la carte dit la capacite d une session', funCarte && funCarte.prix);
+    ok(Boolean(funCarte) && funCarte.prix === `Dès ${euros(minFunRun)} / session`, '[I] et la carte garde le prix court d une session', funCarte && funCarte.prix);
     await pageV.click('#gridAct .fg-card[data-activity="fun_run"]');
     ok(await attendre(pageV, () => { const n = document.querySelector('#gridAct li[data-activity="fun_run"] .fg-card__rot'); return n && n.getBoundingClientRect().height > 0; }, 3000),
       '[I] cochee, la carte annonce la rotation sous ses pastilles');
-    const rot = await pageV.evaluate(() => (document.querySelector('#gridAct li[data-activity="fun_run"] .fg-card__rot') || {}).textContent || '');
+    await pageV.click('#gridAct li[data-activity="fun_run"] [data-activity-info]');
+    const rot = await pageV.locator('.fg-info-text').textContent();
+    ok(rot.includes('5 joueurs par session'), '[I] le popup dit la capacite exacte d une session', rot);
     ok(/3 sessions/.test(rot) && /5 joueurs/.test(rot), '[I] « 3 sessions, 5 joueurs a la fois » pour 12 personnes', rot.trim());
+    await pageV.keyboard.press('Escape');
     await pageV.click('#goHours');
     ok(await attendre(pageV, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000), '[I] l ecran des heures repond pour le Fun Run');
     const visite = await pageV.evaluate(() => {

@@ -668,18 +668,30 @@
     function bornerEffectifsSm() {
       Object.keys(sm.options).forEach(function (id) { var a = activite(id); if (a && sm.options[id].participants != null) sm.options[id].participants = effectifSm(a); });
     }
-    function reglagesSm(a) { return I.reglagesSurMesure(a, sm.options[a.id] || {}, sm.participants, sm.flexible ? '' : sm.date); }
+    function reglagesSm(a) {
+      var r = I.reglagesSurMesure(a, sm.options[a.id] || {}, sm.participants, sm.flexible ? '' : sm.date);
+      var extra = [capaciteGroupe(a), verdictActiviteSurMesure(a, contexteSm()).note].filter(Boolean).join('\n\n');
+      if (extra) r.html = r.html.replace('data-info-text="', 'data-info-text="' + esc(extra + '\n\n'));
+      return r;
+    }
     function compteurSm(a) { return reglagesSm(a).html; }
     function changerReglageSm(target, cle, valeur, normaliser) {
       var item = target.closest('[data-sm-activity]'), a = activite(item && item.dataset.smActivity);
       if (!a) return;
       var r = reglagesSm(a), c = r.compteurs.filter(function (x) { return x.cle === cle; })[0];
       var g = r.groupes.filter(function (x) { return x.cle === cle; })[0];
-      var n = Number(valeur);
+      var n = c ? Number(valeur) : valeur;
       if (c) n = Math.min(c.max, Math.max(c.min, Math.trunc(isFinite(n) ? n : c.n)));
-      else if (!g || !g.options.some(function (o) { return o.valeur === n; })) return;
-      sm.options[a.id] = Object.assign({}, sm.options[a.id] || {}); sm.options[a.id][cle] = n;
+      else { var option = g && g.options.filter(function (o) { return String(o.valeur) === String(n); })[0]; if (!option) return; n = option.valeur; }
+      sm.options[a.id] = Object.assign({}, sm.options[a.id] || {});
+      if (r.arcade && (cle === 'arcadeMode' || cle === 'arcadeOfferId')) sm.options[a.id] = I.choixArcade(a, sm.options[a.id], cle, n, { mode: r.arcade.arcadeMode, offer: r.arcade.arcadeOffer });
+      else sm.options[a.id][cle] = n;
       r = reglagesSm(a);
+      if (r.arcade && (cle === 'arcadeMode' || cle === 'arcadeOfferId')) {
+        $('.fg-card__opt', item).outerHTML = r.html;
+        var focus = $('[data-cle="' + cle + '"][data-valeur="' + n + '"]', item) || $('select[data-cle="' + cle + '"]', item);
+        if (focus) focus.focus({ preventScroll: true });
+      }
       r.compteurs.forEach(function (count) {
         var box = $('[data-compteur="' + count.cle + '"]', item), value = $('.fg-kids__n', box);
         if (value.tagName !== 'INPUT') value.textContent = count.n;
@@ -689,8 +701,8 @@
       });
       r.groupes.forEach(function (group) {
         $$('.fg-pill[data-cle="' + group.cle + '"]', item).forEach(function (pill) {
-          var option = group.options.filter(function (o) { return o.valeur === Number(pill.dataset.valeur); })[0];
-          var on = Number(pill.dataset.valeur) === group.choisie;
+          var option = group.options.filter(function (o) { return String(o.valeur) === pill.dataset.valeur; })[0];
+          var on = pill.dataset.valeur === String(group.choisie);
           pill.classList.toggle('is-on', on); pill.setAttribute('aria-checked', String(on)); pill.tabIndex = on ? 0 : -1;
           $('small', pill).textContent = option.sous != null ? option.sous : option.prix == null ? 'prix à l’accueil' : euros(option.prix);
         });
@@ -701,6 +713,8 @@
       if (note && nouvelle) note.textContent = nouvelle.textContent;
       else if (note) note.remove();
       else if (nouvelle) $('.fg-card__optbox', item).appendChild(nouvelle);
+      var info = $('[data-activity-info]', item), nextInfo = $('[data-activity-info]', tmp);
+      if (info && nextInfo) info.dataset.infoText = nextInfo.dataset.infoText;
       var cap = $('.fg-sm-cap', item);
       if (cap) cap.innerHTML = '<svg aria-hidden="true"><use href="#i-users"/></svg>' + esc(capaciteGroupe(a));
       rendreSmCompteur(false);
@@ -736,7 +750,7 @@
         + '<div class="fg-card' + (o.formule ? ' fg-card--formule' : '') + ' fg-rise' + (o.on ? ' is-on' : '') + (o.v.ok ? '' : ' is-refus') + '" style="--i:' + (o.i % 8) + '" data-sm="' + esc(o.id) + '" data-kind="' + (o.formule ? 'formule' : 'activite') + '" role="checkbox" tabindex="0" aria-checked="' + o.on + '">'
         + o.corps
         + (o.v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.raison) + '</span>')
-        + (o.v.ok && o.v.note ? '<span class="fg-sm-note"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.note) + '</span>' : '')
+        + (o.formule && o.v.ok && o.v.note ? '<span class="fg-sm-note"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.note) + '</span>' : '')
         + '</div>' + (o.formule ? '' : compteurSm(activite(o.id))) + '</li>';
     }
     function rendreSmActivites() {
@@ -749,7 +763,7 @@
           + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
           + '<span class="fg-card__name">' + esc(a.name) + '</span>'
           + '<span class="fg-card__price">' + esc(on ? reglagesSm(a).prix : prixCarte(a, true)) + (age ? ' · ' + esc(age.replace(/ /g, ' ')) : '') + '</span>'
-          + (cap ? '<span class="fg-sm-cap"><svg aria-hidden="true"><use href="#i-users"/></svg>' + esc(cap) + '</span>' : '') });
+          });
       }).join('') || '<li class="fg-empty">Aucune activité n’est proposée pour le moment.' + ligneCentre() + '</li>';
       $$('.fg-card.is-on', smGridAct).forEach(chargerPhotoCarte);
     }
@@ -787,7 +801,7 @@
       sm.activites = sm.activites.filter(function (id) { return verdictActiviteSurMesure(activite(id), ctx).ok; });
       sm.formules = sm.formules.filter(function (id) { var f = formulesSm().filter(function (x) { return x.id === id; })[0]; return f && verdictFormuleSurMesure(f, ctx).ok; });
     }
-    function activitesRecapSm() { return sm.activites.map(function (id) { var a = activite(id); if (!a) return ''; var r = reglagesSm(a), detail = [effectifSm(a) + (/enfant/i.test(a.unitLabel || '') ? ' enfant' : ' joueur') + (effectifSm(a) > 1 ? 's' : '')]; r.compteurs.filter(function (c) { return c.cle === 'units'; }).forEach(function (c) { detail.push(c.n + ' ' + c.mot + (c.n > 1 ? 's' : '')); }); r.groupes.forEach(function (g) { var o = g.options.filter(function (o) { return o.valeur === g.choisie; })[0]; if (o) detail.push(o.label); }); return a.name + ' (' + detail.join(' · ') + ') : ' + (r.montant == null ? 'prix à l’accueil' : euros(r.montant)); }).filter(Boolean); }
+    function activitesRecapSm() { return sm.activites.map(function (id) { var a = activite(id); if (!a) return ''; var r = reglagesSm(a), detail = [effectifSm(a) + (/enfant/i.test(a.unitLabel || '') ? ' enfant' : ' joueur') + (effectifSm(a) > 1 ? 's' : '')]; if (r.arcade) detail.push(r.detail); else { r.compteurs.filter(function (c) { return c.cle === 'units'; }).forEach(function (c) { detail.push(c.n + ' ' + c.mot + (c.n > 1 ? 's' : '')); }); r.groupes.forEach(function (g) { var o = g.options.filter(function (o) { return o.valeur === g.choisie; })[0]; if (o) detail.push(o.label); }); } return a.name + ' (' + detail.join(' · ') + ') : ' + (r.montant == null ? 'prix à l’accueil' : euros(r.montant)); }).filter(Boolean); }
     function estimationSm() {
       if (!sm.activites.length) return '';
       var total = 0, connues = 0, inconnues = [];
@@ -866,12 +880,15 @@
     smGridAct.addEventListener('input', function (e) {
       if (!e.target.matches('.fg-count__input')) return;
       var n = Number(e.target.value);
-      if (e.target.value !== '' && Number.isInteger(n) && n >= Number(e.target.min) && n <= Number(e.target.max)) changerReglageSm(e.target, 'participants', n, false);
+      if (e.target.value !== '' && Number.isInteger(n) && n >= Number(e.target.min) && n <= Number(e.target.max)) changerReglageSm(e.target, e.target.closest('[data-compteur]').dataset.compteur, n, false);
     });
     smGridAct.addEventListener('change', function (e) {
+      if (e.target.matches('.fg-arcade-select')) { changerReglageSm(e.target, e.target.dataset.cle, e.target.value, true); return; }
       if (!e.target.matches('.fg-count__input')) return;
       var a = activite(e.target.closest('[data-sm-activity]').dataset.smActivity);
-      changerReglageSm(e.target, 'participants', e.target.value.trim() ? Number(e.target.value) : effectifSm(a), true);
+      var cle = e.target.closest('[data-compteur]').dataset.compteur;
+      var count = reglagesSm(a).compteurs.filter(function (c) { return c.cle === cle; })[0];
+      changerReglageSm(e.target, cle, e.target.value.trim() ? Number(e.target.value) : count.n, true);
     });
     smGridAct.addEventListener('keydown', function (e) {
       if (!e.target.matches('.fg-pill') || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
@@ -1066,7 +1083,7 @@
           alternativeDate: sm.flexible ? '' : sm.date2,
           period: sm.flexible ? sm.periode : '',
           moment: sm.moment,
-          activities: sm.activites.map(function (id) { var a = activite(id), r = reglagesSm(a), o = { id: id, participants: effectifSm(a) }; r.compteurs.forEach(function (c) { o[c.cle] = c.n; }); r.groupes.forEach(function (g) { o[g.cle] = g.choisie; }); return o; }),
+          activities: sm.activites.map(function (id) { var a = activite(id), r = reglagesSm(a), o = { id: id, participants: effectifSm(a) }; r.compteurs.forEach(function (c) { o[c.cle] = c.n; }); r.groupes.forEach(function (g) { o[g.cle] = g.choisie; }); if (r.arcade) o.cards = r.arcade.cards; return o; }),
           formulas: sm.formules.slice(),
           advice: sm.conseil,
           budgetPerPerson: sm.budget ? Number(sm.budget) : 0,

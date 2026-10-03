@@ -49,6 +49,9 @@ async function main() {
       await page.click('#goActivities');
       for (const id of ['bowling', 'laser_game']) await page.click(`#gridAct .fg-card[data-activity="${id}"]`);
       const carte = await page.evaluate(() => ((document.querySelector('#gridAct li[data-activity="bowling"] .fg-card__rot') || {}).textContent || '').trim());
+      await page.click('#gridAct li[data-activity="bowling"] [data-activity-info]');
+      const information = await page.locator('.fg-info-text').textContent();
+      await page.keyboard.press('Escape');
       await page.click('#goHours');
       await page.waitForSelector('.fg-track[data-activity="bowling"]', { timeout: 20000 });
       await page.waitForTimeout(800);
@@ -67,12 +70,12 @@ async function main() {
       const total = euros(prixPiste * pistes);
       const parPiste = bowling.maxPlayersPerLane || 6;
       if (pistes < 2) {
-        ok(carte === `${parPiste} joueurs max par piste.`, `[A] ${pax} joueur(s), carte : « ${parPiste} joueurs max par piste. »`, carte);
-        ok(!heures.note && / · 1 piste$/.test(heures.detail), `[A] ${pax} joueur(s), heures : « 1 piste », sans ligne de calcul`, JSON.stringify(heures));
+        ok(carte === `1 piste × ${euros(prixPiste)} = ${total}` && information.includes(`${parPiste} joueurs par piste en confort`) && information.includes('jusqu’à 7 joueurs par piste'), `[A] ${pax} joueur(s), carte : calcul court, confort et secours dans le popup`, carte);
+        ok(heures.note === `${parPiste} joueurs par piste : ${pax} joueurs = 1 piste × ${euros(prixPiste)} = ${total}.` && / · 1 piste$/.test(heures.detail), `[A] ${pax} joueur(s), heures : « 1 piste », calcul exact`, JSON.stringify(heures));
       } else {
-        ok(carte.indexOf(`${parPiste} joueurs max par piste : ${pistes} pistes × ${euros(prixPiste)} = ${total}`) === 0, `[A] ${pax} joueurs, carte : le maximum par piste, puis ${pistes} pistes × ${euros(prixPiste)} = ${total}`, carte);
+        ok(carte === `${pistes} pistes × ${euros(prixPiste)} = ${total}` && information.includes(`${parPiste} joueurs par piste en confort : ${pistes} pistes × ${euros(prixPiste)} = ${total}`) && information.includes('jusqu’à 7 joueurs par piste'), `[A] ${pax} joueurs, carte : calcul court, confort, secours et calcul dans le popup`, carte);
         ok(heures.detail.endsWith(` · ${pistes} pistes`), `[A] ${pax} joueurs, en-tete des heures : ${pistes} pistes`, heures.detail);
-        ok(heures.note.indexOf(`${parPiste} joueurs max par piste : ${pax} joueurs = ${pistes} pistes × ${euros(prixPiste)} = ${total}`) === 0,
+        ok(heures.note.indexOf(`${parPiste} joueurs par piste : ${pax} joueurs = ${pistes} pistes × ${euros(prixPiste)} = ${total}`) === 0,
           `[A] ${pax} joueurs, ecran des heures : le calcul du prix des pistes`, heures.note);
         ok(heures.prixBowling.indexOf(total) >= 0, `[A] ${pax} joueurs, le recapitulatif facture le meme total (${total})`, heures.prixBowling);
       }

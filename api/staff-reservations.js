@@ -141,6 +141,50 @@ function hasAnyField(body = {}, fields = []) {
   return fields.some((field) => Object.prototype.hasOwnProperty.call(body || {}, field));
 }
 
+// Le comptoir renvoie souvent le dossier entier pour modifier un contact.
+// Seuls les choix réellement changés justifient une nouvelle cotation/placement.
+function operationalProgram(program, pax) {
+  const items = Array.isArray(program) ? program : program?.items;
+  if (!Array.isArray(items) || !items.length) return null;
+  return items.map((item) => {
+    const activityId = String(item.activityId || item.id || '');
+    const choice = { activityId, participants: Number(item.participants ?? pax) };
+    if (activityId === 'arcade_time' && item.arcadeOfferId) {
+      choice.arcadeMode = String(item.arcadeMode || '');
+      choice.arcadeOfferId = String(item.arcadeOfferId);
+      choice.cards = Number(item.cards ?? choice.participants);
+    } else {
+      for (const key of ['duration', 'games', 'units', 'hours', 'minutes', 'sessionMinutes', 'waitOffer', 'dayAccess']) {
+        if (item[key] != null) choice[key] = typeof item[key] === 'boolean' ? item[key] : Number(item[key]);
+      }
+    }
+    return choice;
+  });
+}
+
+function patchChangesOperations(patch, current) {
+  const nextProgram = Object.prototype.hasOwnProperty.call(patch, 'program') ? patch.program : current.program;
+  if (JSON.stringify(operationalProgram(nextProgram, patch.pax ?? current.pax))
+    !== JSON.stringify(operationalProgram(current.program, current.pax))) return true;
+  const items = Array.isArray(nextProgram) ? nextProgram : nextProgram?.items;
+  const ownParticipants = Array.isArray(items) && items.length > 0
+    && items.every((item) => Number.isInteger(Number(item.participants)) && Number(item.participants) > 0);
+  const comparable = (value) => value == null || value === '' ? ''
+    : /^-?\d+(\.\d+)?$/.test(String(value)) ? String(Number(value)) : String(value);
+  for (const key of REPLAN_FIELDS.filter((field) => !['program', 'pax', 'formulaId', 'laneCount', 'requiresLanes'].includes(field))) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    if (key === 'lanes') {
+      if (JSON.stringify((patch.lanes || []).map(Number)) !== JSON.stringify((current.lanes || []).map(Number))) return true;
+    } else if (comparable(patch[key]) !== comparable(current[key])) return true;
+  }
+  if (patch.formulaId != null && comparable(patch.formulaId) !== comparable(current.formuleId)) return true;
+  if (!ownParticipants && patch.pax != null && Number(patch.pax) !== Number(current.pax)) return true;
+  const lanes = current.lanes || [];
+  if (patch.laneCount != null && Number(patch.laneCount) !== Number(current.laneCount ?? lanes.length)) return true;
+  if (patch.requiresLanes != null && Boolean(patch.requiresLanes) !== Boolean(current.requiresLanes ?? lanes.length > 0)) return true;
+  return comparable(patch.centerId) !== comparable(current.centerId || 'libramont');
+}
+
 function patchNeedsOnlyStatus(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
   return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle', 'noteEquipe'].includes(key));
@@ -436,10 +480,35 @@ module.exports = async (req, res) => {
         ...body,
         centerId: requestedCenterId,
       };
-      const shouldReplan = (!patch.skipReplan || isFormulaPatch(patch)) && hasAnyField(patch, REPLAN_FIELDS);
+      const proposedProgram = patch.program ?? current.program;
+      const proposedItems = Array.isArray(proposedProgram) ? proposedProgram
+        : Array.isArray(proposedProgram?.items) ? proposedProgram.items : [];
+      if (proposedItems.some((item) => Number(item.participants) > Number(patch.pax ?? current.pax))) {
+        throw createHttpError('Le nombre de joueurs d’une activité dépasse le nombre de personnes du groupe.', 422);
+      }
+      const operationsChanged = patchChangesOperations(patch, current);
+      const shouldReplan = operationsChanged;
+      if (!operationsChanged) {
+        // Ne jamais adopter les métadonnées/prix/snapshots renvoyés par le client.
+        // Le contrat serveur sauvegardé fait foi lors d'une édition administrative.
+        patch.program = current.program;
+        patch.opsPlan = current.opsPlan;
+        // Ces deux projections UI ne sont pas stockées sur la ligne SQL.
+        // Laisser la DB reprendre ses valeurs normalisées du dossier courant.
+        delete patch.laneCount;
+        delete patch.requiresLanes;
+      }
+      const operationalRequest = { ...current, ...patch };
+      if (!Object.prototype.hasOwnProperty.call(patch, 'price')) delete operationalRequest.price;
       const ops = shouldReplan
-        ? await prepareReservationOps(patch, 'staff', { ignoreReservationId: Number(patch.id) })
+        ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id) })
         : {};
+      if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
+        === JSON.stringify((current.lanes || []).map(Number))) {
+        const allocated = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane')
+          .flatMap((block) => block.lanes || []);
+        if (allocated.length) patch.lanes = [...new Set(allocated.map(Number))];
+      }
       const reservation = await updateReservation({
         ...patch,
         ...ops,

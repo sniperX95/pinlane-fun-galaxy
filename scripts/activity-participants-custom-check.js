@@ -100,8 +100,10 @@ async function main() {
         const bowlingNote = await page.locator(`${card('bowling')} .fg-card__rot`).textContent();
         check(/168 pistes/.test(bowlingNote) && /6[\s\u00a0\u202f]?552/.test(bowlingNote), '1000 bowling players use balanced168 lanes for6552EUR');
         check(/200 sessions/.test(await page.locator(`${card('fun_run')} .fg-card__rot`).textContent()), '1000 players require200 real Fun Run sessions');
-        const duckpin = await page.locator(`${card('duckpin_bowling')} .fg-card__rot`).textContent();
+        await page.click(`${card('duckpin_bowling')} [data-activity-info]`);
+        const duckpin = await page.locator('.fg-info-text').textContent();
         check(/167 pistes/.test(duckpin) && /84 tours/.test(duckpin), '1000 duckpin players require167 paid lanes across84 real tours');
+        await page.keyboard.press('Escape');
         await page.click('.fg-scene[data-scene="sm-envies"] [data-back]'); await page.click('.fg-scene[data-scene="sm-date"] [data-back]');
         await page.fill('#smPax', '31'); await page.press('#smPax', 'Tab'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
         for (const id of ['bowling', 'fun_run', 'duckpin_bowling']) { await page.locator(input(id)).fill(String(COUNTS[id])); await page.locator(input(id)).press('Tab'); }

@@ -23,14 +23,14 @@ const ctx = vm.createContext({ console, state: { booking: {}, selectedRes: null,
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), ctx);
 ctx.testCatalog = catalog;
 vm.runInContext('setCenterActivities(testCatalog)', ctx);
-const functions = ['getQuickBookLaneNeed', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
+const functions = ['getQuickBookLaneNeed', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'editArcadeTimingChanged', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
 for (const name of functions) {
   const from = app.indexOf(`function ${name}(`);
   assert.ok(from >= 0, name);
   const to = app.indexOf('\nfunction ', from + 1);
   vm.runInContext(app.slice(from, to < 0 ? undefined : to), ctx);
 }
-for (const name of ['activityParticipantsBounds', 'getQuickBookCustomPrice', 'getEditPriceValue', 'getLaserGameCountForReservation', 'getBookingActivityParticipants', 'getChosenActivities', 'normalizeBookingMode', 'deriveBookingType', 'buildBookingProgramPayload', 'applyChosenActivitiesToBooking', 'activityHourChoices', 'activityUnitChoices', 'renderActivityOptions', 'renderActivityOptionsWithoutParticipants', 'renderProgramSummary', 'renderActivitesCourtes', 'resumeProgrammeReservation']) {
+for (const name of ['activityParticipantsBounds', 'getQuickBookCustomPrice', 'getEditPriceValue', 'getLaserGameCountForReservation', 'getBookingActivityParticipants', 'getChosenActivities', 'normalizeBookingMode', 'deriveBookingType', 'buildBookingProgramPayload', 'applyChosenActivitiesToBooking', 'activityHourChoices', 'activityUnitChoices', 'renderActivityOptions', 'renderStaffArcadeOptions', 'renderActivityOptionsWithoutParticipants', 'renderProgramSummary', 'renderActivitesCourtes', 'resumeProgrammeReservation']) {
   const from = app.indexOf(`function ${name}(`);
   vm.runInContext(app.slice(from, app.indexOf('\nfunction ', from + 1)), ctx);
 }
@@ -130,7 +130,7 @@ for(const name of ['prixDossierConnu','getMoyenPaiementLabel','renderGroupePrix'
   const from=app.indexOf('function '+name+'(');
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
 }
-ctx.formatMoney=value=>value+'€';ctx.isReservationAwaitingReview=()=>false;
+ctx.formatMoney=value=>value+'€';ctx.formatMoneyCentimes=value=>value+'€';ctx.isReservationAwaitingReview=()=>false;
 ctx.GROUPE_MOYENS=[{valeur:'cash',mot:'Espèces'}];
 ctx.freePrice={id:1,pax:18,status:'arrived',price:0,program:{priceComplete:true,items:[{activityId:'minigolf_blacklight',participants:3,price:0,priceKnown:true}]}};
 ctx.unknownPrice={id:2,pax:18,status:'arrived',price:0,program:{priceComplete:false,items:[{activityId:'arcade_time',participants:5,price:0,priceKnown:false}]}};
@@ -143,11 +143,18 @@ assert.equal(run('prixDossierConnu({price:0,basePrice:39})'),true,'waived positi
 assert.equal(run('prixDossierConnu({price:0,program:[{price:0,priceKnown:true}]})'),true);
 assert.match(run('activityPriceHint({priceType:"per_pax",priceValue:0},3)'),/0€/);
 assert.equal(run('activityPriceHint({priceType:"per_pax",priceValue:null},3)'),'réglé sur place');
-catalog.find(item=>item.id==='arcade_time').priceValue=0;
-assert.equal(run("estimerPrixProgramme([{activityId:'arcade_time',participants:5}],18,'2026-10-06','14:00').complet"),true);
-assert.equal(run("estimerPrixProgramme([{activityId:'arcade_time',participants:5}],18,'2026-10-06','14:00').total"),0);
+// An unconfigured historical Arcade line has no purchased card contract.
+// Exercise known zero on the per-person minigolf tariff; configured free
+// Arcade cards are covered independently by arcade-offers-staff-check.
+const golfPriceBefore = catalog.find(item=>item.id==='minigolf_blacklight').priceValue;
+catalog.find(item=>item.id==='minigolf_blacklight').priceValue=0;
+assert.equal(run("estimerPrixProgramme([{activityId:'minigolf_blacklight',participants:5}],18,'2026-10-06','14:00').complet"),true);
+assert.equal(run("estimerPrixProgramme([{activityId:'minigolf_blacklight',participants:5}],18,'2026-10-06','14:00').total"),0);
+ctx.quickBookState.visit.others.arcade_time = false;
 assert.doesNotMatch(run('getQuickBookSummaryActivites().detail'),/réglées sur place/);
-catalog.find(item=>item.id==='arcade_time').priceValue=null;
+assert.equal(run('getQuickBookSummaryActivites().total'),0);
+ctx.quickBookState.visit.others.arcade_time = true;
+catalog.find(item=>item.id==='minigolf_blacklight').priceValue=golfPriceBefore;
 assert.equal(run("estimerPrixProgramme([{activityId:'arcade_time',participants:5}],18,'2026-10-06','14:00').complet"),false);
 // Real game pricing: 80 visitors accompany only6 bowlers. With10 players
 assert.equal(run("getActivitySessionCount(getCenterActivity('fun_run'),240)"),48);

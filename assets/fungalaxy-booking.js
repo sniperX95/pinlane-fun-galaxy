@@ -397,7 +397,98 @@
   // affiches a chaque fois sur le formulaire, faut dire que c est a titre
   // informatif ») : le total de la visite, la barre du bas, le recapitulatif
   // et l ecran final le disent. Rien n est encaisse en ligne.
-  function noteCarte(a) { return noteRotation(a) || (a && a.id === 'bowling' ? phrasePistes(a) : '') || (a && a.id === 'laser_game' ? phraseLaser() : ''); }
+  function noteCarte(a) { var ar = reglageArcade(a); return ar ? (ar.mode === 'time' ? '1 carte par personne. Jeux sans cadeaux en illimité pendant la durée choisie.' : 'Tous les jeux, cadeaux inclus. ' + credits(ar.offer.gameCostMin == null ? ar.config.creditGameCostMin : ar.offer.gameCostMin) + ' à ' + credits(ar.offer.gameCostMax == null ? ar.config.creditGameCostMax : ar.offer.gameCostMax) + ' crédits par jeu. Durée variable.') : noteRotation(a) || (a && a.id === 'bowling' ? phrasePistes(a) : '') || (a && a.id === 'laser_game' ? phraseLaser() : ''); }
+  function credits(n) { return Number(n).toLocaleString('fr-BE', { maximumFractionDigits: 2 }); }
+  function noteCourte(a) {
+    var ar = reglageArcade(a), opt = optionChoisie(a), n;
+    if (ar) return ar.mode === 'time' ? '1 carte par personne' : 'Tous les jeux · durée variable';
+    if (a.id === 'bowling') { var p = pistesBowling(); n = p && p.pistes; }
+    else if (a.priceType === 'grid_bowling') n = unitesPour(a).units;
+    else if (a.priceType === 'grid_fun_run') n = sessionsPour(a);
+    return n && opt ? n + ' ' + (a.priceType === 'grid_fun_run' ? 'session' : 'piste') + (n > 1 ? 's' : '') + ' × ' + euros(opt.prix) + ' = ' + euros(n * opt.prix) : '';
+  }
+  function texteInfo(a) {
+    var ar = reglageArcade(a), lines = [joueursDe(a) + ' joueurs · ' + prixCarte(a), noteCarte(a), a.note];
+    if (ar) lines.push(detailArcade(snapshotArcade(a)));
+    else {
+      if (a.description) lines.push(a.description);
+      var option = optionChoisie(a), unitaire = option ? Number(option.prix) : tarifConnu(a) ? Number(a.priceValue) : null;
+      if ((a.priceType === 'per_pax' || a.priceType === 'grid_laser') && unitaire != null && isFinite(unitaire)) lines.push(euros(unitaire) + ' / ' + (seCompteParEnfant(a) ? 'enfant' : 'personne') + ' × ' + joueursDe(a) + ' = ' + euros(Math.round(unitaire * joueursDe(a) * 100) / 100));
+      if (a.minAge || a.maxAge) lines.push('Âge : ' + (a.minAge ? 'dès ' + a.minAge + ' ans' : '') + (a.maxAge ? ', jusqu’à ' + a.maxAge + ' ans' : '') + '.');
+      if (a.minPax) lines.push('Au moins ' + a.minPax + ' joueurs.');
+      if (a.priceType === 'per_unit_hour') { var r = reglageBillard(a); lines.push(r.units + ' table' + (r.units > 1 ? 's' : '') + ' · ' + heuresLabel(r.hours) + '. Le prix dépend du nombre de tables et de la durée choisie. ' + tablesMax(a) + ' tables au plus.'); }
+      if (seCompteParEnfant(a)) lines.push(texteCompteur(compteurDe(a)));
+      if (!lines.filter(Boolean).length) lines.push(a.unitLabel || PRIX_ACCUEIL);
+    }
+    return lines.filter(Boolean).join('\n\n');
+  }
+  function htmlInfo(a) {
+    return '<div class="fg-card__info"><p class="fg-card__rot">' + esc(noteCourte(a)) + '</p><button type="button" class="fg-info-btn" data-activity-info="' + esc(a.id) + '" data-info-title="' + esc(a.name) + '" data-info-text="' + esc(texteInfo(a)) + '" aria-label="Informations sur ' + esc(a.name) + '" aria-haspopup="dialog">i</button></div>';
+  }
+  var activityDialog, infoOpener;
+  doc.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-activity-info]');
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation();
+    if (!activityDialog) {
+      activityDialog = doc.createElement('dialog'); activityDialog.className = 'fg-info-dialog';
+      activityDialog.setAttribute('aria-labelledby', 'fgInfoTitle');
+      activityDialog.innerHTML = '<button type="button" class="fg-info-close" aria-label="Fermer les informations">×</button><img class="fg-info-photo" alt=""><div class="fg-info-body"><h2 id="fgInfoTitle"></h2><p class="fg-info-text"></p></div>';
+      doc.body.appendChild(activityDialog);
+      $('.fg-info-close', activityDialog).addEventListener('click', function () { activityDialog.close(); });
+      activityDialog.addEventListener('click', function (ev) { var r = activityDialog.getBoundingClientRect(); if (ev.target === activityDialog && (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom)) activityDialog.close(); });
+      activityDialog.addEventListener('close', function () { doc.body.style.overflow = activityDialog._overflow; var focus = infoOpener && (infoOpener.isConnected ? infoOpener : $('[data-activity-info="' + infoOpener.dataset.activityInfo + '"]', $('.fg-scene.is-active') || doc)); if (focus) focus.focus({ preventScroll: true }); });
+    }
+    infoOpener = btn;
+    $('#fgInfoTitle', activityDialog).textContent = btn.dataset.infoTitle;
+    $('.fg-info-text', activityDialog).textContent = btn.dataset.infoText;
+    var image = $('.fg-info-photo', activityDialog), centre = meta && meta.center && meta.center.id || CENTER;
+    var p = centre === 'libramont' ? photo(btn.dataset.activityInfo) : centre === 'gembloux' && btn.dataset.activityInfo === 'golf_oclock' ? 'gembloux-golf-salle' : '';
+    image.hidden = !p; if (p) { image.src = '/assets/fungalaxy/' + p + '-800.webp'; image.alt = btn.dataset.infoTitle; } else { image.removeAttribute('src'); image.alt = ''; }
+    activityDialog._overflow = doc.body.style.overflow; doc.body.style.overflow = 'hidden';
+    activityDialog.showModal(); $('.fg-info-close', activityDialog).focus();
+  }, true);
+  function reglageArcade(a) {
+    var c = a && a.id === 'arcade_time' && a.arcadeOffers;
+    if (!c || c.enabled === false) return null;
+    function valide(o) { return o.enabled !== false && /^[a-z0-9][a-z0-9-]{0,59}$/.test(String(o.id)) && o.price != null && isFinite(Number(o.price)) && Number(o.price) >= 0; }
+    var time = (c.timeOffers || []).filter(function (o) { return valide(o) && Number(o.minutes) > 0; });
+    var credit = (c.creditOffers || []).filter(function (o) { return valide(o) && Number(o.credits) >= 0 && Number(o.bonusCredits || 0) >= 0; });
+    if (!time.length && !credit.length) return null;
+    var opt = state.options[a.id] || {}, mode = opt.arcadeMode === 'credit' ? 'credit' : 'time';
+    if (!(mode === 'time' ? time : credit).length) mode = time.length ? 'time' : 'credit';
+    var list = mode === 'time' ? time : credit;
+    var id = opt.arcadeOfferId || (mode === 'time' ? opt.arcadeTimeOfferId : opt.arcadeCreditOfferId);
+    var offer = list.filter(function (o) { return o.id === id; })[0] || list[0];
+    if (opt.arcadeSnapshot && opt.arcadeSnapshot.mode === mode && opt.arcadeSnapshot.id === offer.id) offer = opt.arcadeSnapshot;
+    var cards = mode === 'time' ? joueursDe(a) : Math.min(1000, Math.max(1, Math.trunc(opt.cards == null ? joueursDe(a) : Number(opt.cards) || 1)));
+    return { mode: mode, offer: offer, offers: list, time: time, credit: credit, cards: cards, config: c, price: Math.round(Number(offer.price) * 100) * cards / 100 };
+  }
+  function choixArcade(a, opt, cle, valeur, avant) {
+    avant = avant || reglageArcade(a); opt = Object.assign({}, opt || {}); delete opt.arcadeSnapshot;
+    if (cle === 'arcadeMode') {
+      if (avant) opt[avant.mode === 'time' ? 'arcadeTimeOfferId' : 'arcadeCreditOfferId'] = avant.offer.id;
+      opt.arcadeMode = valeur; opt.arcadeOfferId = opt[valeur === 'time' ? 'arcadeTimeOfferId' : 'arcadeCreditOfferId'] || '';
+    } else { opt[cle] = valeur; if (cle === 'arcadeOfferId') opt[avant.mode === 'time' ? 'arcadeTimeOfferId' : 'arcadeCreditOfferId'] = valeur; }
+    return opt;
+  }
+  function snapshotArcade(a) {
+    var ar = reglageArcade(a); if (!ar) return null;
+    var o = ar.offer;
+    return { activityId: a.id, participants: joueursDe(a), cards: ar.cards, arcadeMode: ar.mode,
+      arcadeOfferId: o.id, price: ar.price, arcadeOffer: Object.assign({}, o, { mode: ar.mode,
+        totalCredits: Number(o.credits || 0) + Number(o.bonusCredits || 0), gameCostMin: o.gameCostMin == null ? ar.config.creditGameCostMin : o.gameCostMin,
+        gameCostMax: o.gameCostMax == null ? ar.config.creditGameCostMax : o.gameCostMax,
+        description: o.description || (ar.mode === 'time' ? ar.config.timedDescription : ar.config.creditDescription) || '' }) };
+  }
+  function detailArcade(it) {
+    var o = it && it.arcadeOffer; if (!o) return '';
+    var n = Number(it.cards) || Number(it.participants) || 1;
+    var text = n + ' carte' + (n > 1 ? 's' : '') + ' · ';
+    text += o.mode === 'time' ? minutesLabel(o.minutes) + ' par carte · 1 carte par personne · jeux sans cadeaux en illimité'
+      : credits(o.credits || 0) + ' crédits + ' + credits(o.bonusCredits || 0) + ' bonus = ' + credits(o.totalCredits == null ? Number(o.credits || 0) + Number(o.bonusCredits || 0) : o.totalCredits) + ' crédits par carte · tous les jeux, cadeaux inclus · ' + credits(o.gameCostMin) + ' à ' + credits(o.gameCostMax) + ' crédits/jeu';
+    return text + ' · ' + euros(o.price) + ' × ' + n + ' = ' + euros(it.price) + (o.description ? ' · ' + o.description : '');
+  }
   // LES PISTES DE BOWLING DU GROUPE (Movsar, 2026-10-01 : « au-dela de 6
   // joueurs c est une autre piste en plus, payee : prix par temps et par
   // piste, 6 joueurs max par piste ; faut que ce soit visible quand ils
@@ -488,6 +579,8 @@
   // billard et les enfants de la plaine de jeux.
   function compteurDe(a, cle) {
     if (!a) return null;
+    var ar = reglageArcade(a);
+    if (cle === 'cards' && ar && ar.mode === 'credit') return { cle: 'cards', titre: 'Cartes', mot: 'carte', min: 1, max: 1000, n: ar.cards, muet: true };
     if (cle === 'units' && a.priceType === 'per_unit_hour') {
       var mot = motUnite(a) || 'unité';
       return { cle: 'units', titre: mot.charAt(0).toUpperCase() + mot.slice(1) + 's', mot: mot, min: 1, max: tablesMax(a), n: reglageBillard(a).units };
@@ -540,6 +633,8 @@
   function prixCarte(a, libre) {
     if (!meta) return '';
     var choisie = !libre && state.selection.indexOf(a.id) >= 0;
+    var ar = reglageArcade(a);
+    if (ar) return choisie ? euros(ar.price) + ' · ' + ar.cards + ' carte' + (ar.cards > 1 ? 's' : '') : 'Dès ' + euros(Math.min.apply(null, ar.time.concat(ar.credit).map(function (o) { return Number(o.price); }))) + ' / carte';
     // Des billards choisis : le montant de SA ligne, et ce qu il paie.
     if (a.priceType === 'per_unit_hour' && choisie) {
       var r = reglageBillard(a);
@@ -1395,6 +1490,11 @@
   // couterait avec elle ; une pastille de tables dit un nombre de tables.
   function groupesOptions(a) {
     if (!meta || !a) return [];
+    var ar = reglageArcade(a);
+    if (ar) return [
+      { cle: 'arcadeMode', titre: 'Carte Fun Galaxy', choisie: ar.mode, options: [{ valeur: 'time', label: 'Temps', sous: 'Sans cadeaux', disabled: !ar.time.length }, { valeur: 'credit', label: 'Crédits', sous: 'Tous les jeux', disabled: !ar.credit.length }].filter(function (o) { return !o.disabled; }) },
+      { cle: 'arcadeOfferId', titre: ar.mode === 'time' ? 'Durée par carte' : 'Crédits par carte', choisie: ar.offer.id, select: ar.mode === 'credit', options: ar.offers.map(function (o) { if (o.id === ar.offer.id) o = ar.offer; return { valeur: o.id, label: ar.mode === 'time' ? minutesLabel(o.minutes) : credits(o.credits) + ' + ' + credits(o.bonusCredits || 0) + ' bonus', prix: Number(o.price) }; }) },
+    ];
     if (a.priceType === 'per_unit_hour') {
       var r = reglageBillard(a);
       // Les tables se comptent (compteurDe), les heures se choisissent.
@@ -1410,25 +1510,29 @@
   function petitDePastille(o) { return o.sous != null ? o.sous : (o.prix == null ? PRIX_ACCUEIL : euros(o.prix)); }
   function htmlCompteur(c, base) {
     var id = base + '-' + c.cle;
+    var saisie = c.cle === 'participants' || c.cle === 'cards';
     var moins = c.cle === 'units' ? 'Une ' + c.mot + ' de moins' : 'Un ' + c.mot + ' de moins';
     var plus = c.cle === 'units' ? 'Une ' + c.mot + ' de plus' : 'Un ' + c.mot + ' de plus';
-    return '<div class="fg-count"><label class="fg-count__label" id="' + id + '"' + (c.cle === 'participants' ? ' for="' + id + '-value"' : '') + '>' + esc(c.titre)
-      + (c.cle === 'participants' ? '<small>sur ' + state.pax + '</small>' : '<small>' + c.max + ' au plus</small>') + '</label>'
+    return '<div class="fg-count"><label class="fg-count__label" id="' + id + '"' + (saisie ? ' for="' + id + '-value"' : '') + '>' + esc(c.titre)
+      + (c.cle === 'participants' ? '<small>sur ' + state.pax + '</small>' : c.cle === 'cards' ? '' : '<small>' + c.max + ' au plus</small>') + '</label>'
       + '<div class="fg-stepper fg-kids__stepper" role="group" aria-labelledby="' + id + '" data-compteur="' + esc(c.cle) + '">'
       + '<button type="button" class="fg-stepper__btn" data-pas="-1" aria-label="' + esc(moins) + '"' + (c.n <= c.min ? ' disabled' : '') + '>&minus;</button>'
-      + (c.cle === 'participants' ? '<input class="fg-kids__n fg-count__input" id="' + id + '-value" type="number" inputmode="numeric" min="' + c.min + '" max="' + c.max + '" step="1" value="' + c.n + '" aria-labelledby="' + id + '">' : '<output class="fg-kids__n" aria-live="polite">' + c.n + '</output>')
+      + (saisie ? '<input class="fg-kids__n fg-count__input" id="' + id + '-value" type="number" inputmode="numeric" min="' + c.min + '" max="' + c.max + '" step="1" value="' + c.n + '" aria-labelledby="' + id + '">' : '<output class="fg-kids__n" aria-live="polite">' + c.n + '</output>')
       + '<button type="button" class="fg-stepper__btn" data-pas="1" aria-label="' + esc(plus) + '"' + (c.n >= c.max ? ' disabled' : '') + '>+</button>'
       + '</div></div>';
   }
   function rendreOption(a) {
     var groupes = groupesOptions(a);
+    var ar = reglageArcade(a);
     var compteur = compteurDe(a);
     var base = 'opt-' + String(a.id).replace(/[^a-z0-9_-]/gi, '');
     return '<div class="fg-card__opt"><div class="fg-card__optin"><div class="fg-card__optbox">'
       + htmlCompteur(compteur, base)
       + (a.priceType === 'per_unit_hour' ? htmlCompteur(compteurDe(a, 'units'), base) : '')
+      + (ar && ar.mode === 'credit' ? htmlCompteur(compteurDe(a, 'cards'), base) : '')
       + groupes.map(function (g) {
         var idTitre = groupes.length > 1 ? base + '-' + g.cle : base;
+        if (g.select) return '<label class="fg-card__optlabel" for="' + idTitre + '">' + esc(g.titre) + '</label><select class="fg-arcade-select" id="' + idTitre + '" data-cle="' + esc(g.cle) + '">' + g.options.map(function (o) { return '<option value="' + esc(o.valeur) + '"' + (o.valeur === g.choisie ? ' selected' : '') + '>' + esc(euros(o.prix) + ' · ' + o.label) + '</option>'; }).join('') + '</select>';
         return '<span class="fg-card__optlabel" id="' + idTitre + '">' + esc(g.titre) + '</span>'
           + '<div class="fg-pills" role="radiogroup" aria-labelledby="' + idTitre + '" data-cle="' + esc(g.cle) + '" data-n="' + g.options.length + '">'
           + g.options.map(function (o) {
@@ -1437,7 +1541,7 @@
           }).join('')
           + '</div>';
       }).join('')
-      + (noteCarte(a) ? '<p class="fg-card__rot">' + esc(noteCarte(a)) + '</p>' : '')
+      + htmlInfo(a)
       + '</div></div></div>';
   }
   function choisirPastille(pill) {
@@ -1450,7 +1554,9 @@
     // Les billards gardent leurs DEUX reglages (tables et heures) ; une grille
     // n en a qu un.
     state.options[a.id] = Object.assign({}, state.options[a.id] || {});
-    state.options[a.id][g.cle] = o.valeur;
+    if (reglageArcade(a)) state.options[a.id] = choixArcade(a, state.options[a.id], g.cle, o.valeur);
+    else state.options[a.id][g.cle] = o.valeur;
+    if (reglageArcade(a)) { $('.fg-card__opt', item).outerHTML = rendreOption(a); var choisi = $('.fg-pill[data-cle="' + g.cle + '"][data-valeur="' + o.valeur + '"]', item); if (choisi) choisi.focus({ preventScroll: true }); }
     $$('.fg-pill', groupe || item).forEach(function (x) { var on = x === pill; x.classList.toggle('is-on', on); x.setAttribute('aria-checked', String(on)); x.tabIndex = on ? 0 : -1; });
     majPastilles(item, a);
     majPrixCarte(item, a, true);
@@ -1467,7 +1573,8 @@
       });
     });
     var rot = $('.fg-card__rot', item);
-    if (rot) rot.textContent = noteCarte(a);
+    if (rot) rot.textContent = noteCourte(a);
+    var info = $('[data-activity-info]', item); if (info) info.dataset.infoText = texteInfo(a);
   }
   function rendreActivites() {
     gridAct.innerHTML = activitesVendables().map(function (a, i) {
@@ -1779,6 +1886,8 @@
     var txt = item.querySelector('[data-compteur-texte]');
     if (txt) txt.textContent = texteCompteur(apres);
     majPastilles(item, a);
+    var cartes = reglageArcade(a) && $('[data-compteur="cards"] input', item);
+    if (cartes && c.cle === 'participants' && state.options[a.id].cards == null) cartes.value = String(reglageArcade(a).cards);
     majPrixCarte(item, a, true);
     invaliderDispo();
     dire(apres.n + ' ' + apres.mot + (apres.n > 1 ? 's' : '') + '.');
@@ -1789,11 +1898,17 @@
     if (e.target.value !== '' && Number.isInteger(n) && n >= Number(e.target.min) && n <= Number(e.target.max)) changerCompteur(e.target, n);
   });
   gridAct.addEventListener('change', function (e) {
+    if (e.target.matches('.fg-arcade-select')) {
+      var item = e.target.closest('.fg-grid__item'), a = activite(item.dataset.activity), ar = reglageArcade(a);
+      if (!ar || !ar.offers.some(function (o) { return o.id === e.target.value; })) return;
+      state.options[a.id] = choixArcade(a, state.options[a.id], 'arcadeOfferId', e.target.value); majPastilles(item, a); majPrixCarte(item, a, true); invaliderDispo(); return;
+    }
     if (!e.target.matches('.fg-count__input')) return;
-    var c = compteurDe(activite(e.target.closest('.fg-grid__item').dataset.activity));
+    var cle = e.target.closest('[data-compteur]').dataset.compteur;
+    var c = compteurDe(activite(e.target.closest('.fg-grid__item').dataset.activity), cle);
     var n = e.target.value.trim() ? Number(e.target.value) : c.n;
     changerCompteur(e.target, isFinite(n) ? n : c.n);
-    e.target.value = String(compteurDe(activite(e.target.closest('.fg-grid__item').dataset.activity)).n);
+    e.target.value = String(compteurDe(activite(e.target.closest('.fg-grid__item').dataset.activity), cle).n);
   });
   gridAct.addEventListener('click', function (e) {
     var pas = e.target.closest('[data-pas]');
@@ -1926,6 +2041,8 @@
       // serveur retombait sur une table pendant une heure, quoi qu on ait
       // choisi (audit du 2026-09-28).
       if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); ligne.units = billard.units; ligne.hours = billard.hours; }
+      var arcade = reglageArcade(a);
+      if (arcade) { ligne.arcadeMode = arcade.mode; ligne.arcadeOfferId = arcade.offer.id; ligne.cards = arcade.cards; }
       // Le serveur compte CE sous-groupe pour le prix et la capacite. Sans
       // champ, tout le groupe participe (contrat historique).
       if (seCompteParEnfant(a) || joueursDe(a) < state.pax) ligne.participants = joueursDe(a);
@@ -2548,6 +2665,14 @@
     if (x.program) { delete slot.bowlingCapacity; delete slot.emergencyWarning; }
     ['price', 'program', 'laneCount', 'bowlingCapacity', 'emergencyWarning', 'opsPlan'].forEach(function (cle) { if (x[cle] != null) slot[cle] = x[cle]; });
     state.creneau = creneauAvecDevis(slot, cr.reponse);
+    ((x.program && x.program.items) || []).forEach(function (it) {
+      if (!it.arcadeOffer || it.activityId !== 'arcade_time') return;
+      var opt = state.options[it.activityId] || {}, ar = reglageArcade(activite(it.activityId));
+      if (ar && ar.mode === it.arcadeOffer.mode && ar.offer.id === it.arcadeOffer.id) opt.arcadeSnapshot = Object.assign({}, it.arcadeOffer);
+      state.options[it.activityId] = opt;
+      var item = $('[data-activity="arcade_time"].fg-grid__item', gridAct), a = activite(it.activityId);
+      if (item) { $('.fg-card__opt', item).outerHTML = rendreOption(a); majPrixCarte(item, a, false); }
+    });
   }
   function avertissementBowling(cr) {
     var source = cr && cr.slot ? cr.slot : cr || {};
@@ -2829,6 +2954,7 @@
   // Ce qu une ligne de programme achete, en mots : les parties, les sessions
   // d un groupe qui tourne, ou la duree (par groupe quand il en joue deux).
   function detailLigne(it) {
+    if (it.arcadeOffer) return detailArcade(it);
     if (it.waitOffer === true) return 'pendant l’attente, ' + (Number(it.participants) || 0) + ' personne' + (Number(it.participants) > 1 ? 's' : '');
     if (Number(it.games) > 0) return it.games + ' partie' + (it.games > 1 ? 's' : '');
     if (it.dayAccess) return 'toute la journée';
@@ -2845,7 +2971,7 @@
   // Le minimum de joueurs se lit sur la carte avant tout choix (le laser se
   // joue a deux) : le client ne le decouvre pas en cochant.
   function precisionsCarte(a) {
-    return [a.note, a.ageRange ? a.ageRange.replace(/ /g, '\u00a0') : '', a.minPax > 1 ? a.minPax + '\u00a0joueurs minimum' : ''].filter(Boolean).join(' · ');
+    return [a.ageRange ? a.ageRange.replace(/ /g, '\u00a0') : '', a.minPax > 1 ? a.minPax + '\u00a0joueurs minimum' : ''].filter(Boolean).join(' · ');
   }
   // Pas assez de joueurs pour lancer l activite (minPax du catalogue).
   function tropPeu(a) { return Boolean(a && a.minPax > 1 && state.pax < a.minPax); }
@@ -2866,7 +2992,8 @@
   }
   function nomHorsDelai(h, avecDuree) {
     if (h.partie) return h.name + ' (partie ' + h.partie + ')';
-    return h.name + (avecDuree && !h.dayAccess && Number(h.minutes) > 0 ? ' (' + dureeExacte(h.minutes) + ')' : '');
+    var ar = reglageArcade(activite(h.activityId));
+    return h.name + (avecDuree && !h.durationEstimated && !(ar && ar.mode === 'credit') && !h.dayAccess && Number(h.minutes) > 0 ? ' (' + dureeExacte(h.minutes) + ')' : '');
   }
   function phraseHorsDelai(liste, fin, avecDuree) {
     return {
@@ -3180,6 +3307,7 @@
     }
     var prix = Number(rep.price);
     var complet = !rep.program || rep.program.priceComplete !== false;
+    var prixVisible = prix > 0 || (complet && items.some(function (it) { return it.priceKnown === true; }));
     // UNE VISITE FAITE SEULEMENT D ENTREES A LA JOURNEE (la plaine seule) n a
     // pas de fin a annoncer : celle du planning n est qu une estimation, et
     // l annoncer disait « 1 h » a un client qui paie la journee.
@@ -3195,7 +3323,7 @@
     var span = depart && fin ? '<b>' + esc(depart) + ' → ' + esc(heureAffichee(fin)) + '</b>' + (slot.visitEndsAtClose ? ' (fermeture)' : ' environ')
       : (journee && depart ? 'dès <b>' + esc(depart) + '</b>, toute la journée' : '');
     var sumAvant = $$('b', hourSum).map(function (b) { return b.textContent; });
-    hourSum.innerHTML = span + (prix > 0 ? (span ? '\u00a0· ' : '') + '<b>' + esc(euros(prix)) + '</b>' + '<small class="fg-bar__ind"> indicatif</small>' + (complet ? '' : ' + ' + insecable(PRIX_ACCUEIL)) : '');
+    hourSum.innerHTML = span + (prixVisible ? (span ? '\u00a0· ' : '') + '<b>' + esc(euros(prix)) + '</b>' + '<small class="fg-bar__ind"> indicatif</small>' + (complet ? '' : ' + ' + insecable(PRIX_ACCUEIL)) : '');
     // Ce qui a change dans le resume monte a sa place, une fois. Les <b> sont
     // neufs a chaque appel (innerHTML) : la classe sur un noeud neuf suffit.
     // Resume vide avant (arrivee, erreur, combinaison refusee) : rien ne roule.
@@ -3261,8 +3389,8 @@
     // journee ne dit aucune duree : ce temps-la n est pas achete.
     libres.forEach(function (it) {
       var nomL = it.name || nomActivite(it.activityId);
-      var entre = it.dayAccess ? 'toute la journée' : detailSessions(it);
-      var duree = !entre && Number(it.minutes) > 0 ? environ(it.minutes) : '';
+      var entre = it.arcadeOffer ? detailArcade(it) : it.dayAccess ? 'toute la journée' : detailSessions(it);
+      var duree = !entre && !it.durationEstimated && Number(it.minutes) > 0 ? environ(it.minutes) : '';
       var tiendra = !horsLibres[it.activityId];
       var rythme = tiendra ? 'à votre rythme' : 'ne tiendra pas avant ' + heureAffichee(fin);
       ligneSuite({ genre: 'free', hors: !tiendra, titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomL) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>', detail: participantsLigne(it) + ' · ' + rythme + (duree ? ' · ' + duree : '') },
@@ -3330,7 +3458,7 @@
     var html2 = '<div class="fg-visit"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
       + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : illimite ? 'à <b>' + esc(heureAffichee(fin)) + '</b>, fin de la formule' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(plan.arrivalTime, fin) + '</span>'
         : (journee && depart ? '<span class="fg-visit__span">dès <b>' + esc(depart) + '</b>, accès toute la journée</span>' : ''))
-      + (prix > 0 ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>+ ' + esc(nomsSansPrix(items)) + ', ' + PRIX_ACCUEIL + '</small>') + '</span>' : '')
+      + (prixVisible ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>+ ' + esc(nomsSansPrix(items)) + ', ' + PRIX_ACCUEIL + '</small>') + '</span>' : '')
       + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
     var secoursBowling = avertissementBowling(state.creneau);
@@ -3369,7 +3497,7 @@
       + (plan.arrivalTime ? 'Arrivée conseillée à ' + plan.arrivalTime + '. ' : '')
       + (dits.length ? dits.join('. ') + '. ' : (plan.arrivalTime ? '' : 'Début à ' + slot.time + '. '))
       + (fin ? (slot.visitEndsAtClose ? 'Jusqu’à la fermeture à ' : illimite ? 'Fin de la formule à ' : 'Fin vers ') + heureAffichee(fin) + '. ' : (journee ? 'Accès toute la journée. ' : ''))
-      + (prix > 0 ? euros(prix) + (complet ? '' : ', plus ' + nomsSansPrix(items) + ', ' + PRIX_ACCUEIL) + '. ' : '')
+      + (prixVisible ? euros(prix) + (complet ? '' : ', plus ' + nomsSansPrix(items) + ', ' + PRIX_ACCUEIL) + '. ' : '')
       + avis.join(' ')).trim());
     zone.innerHTML = html2 + '</div>';
     if (prixBouge) $('.fg-visit__price', zone).classList.add('is-maj');
@@ -3429,7 +3557,7 @@
       // Le client a change son choix pendant l aller-retour : ce verdict ne
       // vaut plus, son prochain « Continuer » demandera le sien.
       if (sceneCourante !== 'heures' || cle !== cleBlocage()) return;
-      if (r.prixChange) { actualiserDevis(r.devis); signaturePistes = ''; rendreHeures(); refuserHoraires('<b>Le montant a changé selon les pistes disponibles.</b> Vérifiez le nouveau montant, puis continuez à nouveau.'); return; }
+      if (r.prixChange) { actualiserDevis(r.devis); signaturePistes = ''; rendreHeures(); refuserHoraires('<b>Le montant a changé.</b> Vérifiez le nouveau montant, puis continuez à nouveau.'); return; }
       if (r.pris) { horairesPris(r.message); return; }
       if (r.refus) {
         if (r.code === 'custom_request_required' && meta && meta.center && r.fromPax) meta.center.customRequest = { fromPax: Number(r.fromPax) };
@@ -3850,6 +3978,8 @@
           var heures = siennes.map(function (p) { return p.debut; });
           var reste = total - heures.length;
           morceaux.push(total + ' parties' + (heures.length ? ' : ' + joindreListe(heures.concat(reste > 0 ? [reste + ' dans la foulée'] : []), ' et ') : ', dans la foulée'));
+        } else if (it.arcadeOffer) {
+          morceaux.push(detailArcade(it));
         } else if (it.dayAccess) {
           morceaux.push('accès toute la journée', ageActivite(it.activityId));
         } else {
@@ -3881,7 +4011,7 @@
       + (plan.arrivalTime ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>Arrivée conseillée à <b>' + esc(plan.arrivalTime) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(plan.arrivalTime, fin) + '</span></div>' : '')
       + (horsFinal.length ? '<div class="fg-recap__row fg-recap__hors fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-info"/></svg><span><b>' + esc(phraseHorsDelai(horsFinal, fin, false).tete) + ' :</b> ' + esc(phraseHorsDelai(horsFinal, fin, false).noms) + '</span></div>' : '')
       + '<div class="fg-total fg-rise" style="--i:' + (4 + lignes.length) + '"><div><div class="fg-total__label">' + esc(totalIndicatif(complet, (rep.program && rep.program.items) || [])) + '</div>'
-      + '<div class="fg-total__amount"' + (final ? ' id="totalAmount"' : '') + ' data-total="' + prix + '">' + (prix > 0 ? esc(euros(prix)) : 'Sur place') + '</div></div>'
+      + '<div class="fg-total__amount"' + (final ? ' id="totalAmount"' : '') + ' data-total="' + prix + '">' + (prix > 0 || (complet && items.some(function (it) { return it.priceKnown === true; })) ? esc(euros(prix)) : 'Sur place') + '</div></div>'
       // Les deux moyens acceptes sur place (Movsar, 2026-09-23 : « on accepte
       // le liquide ») : la carte et le billet, puis les mots.
       + '<div class="fg-total__pay"><span class="fg-total__icons" aria-hidden="true"><svg><use href="#i-card"/></svg><svg><use href="#i-cash"/></svg></span><span class="fg-total__how"><b>Paiement sur place</b> <small>Carte ou espèces</small></span></div></div>';
@@ -4162,7 +4292,7 @@
         // son prix (« Sur place »).
         if (res.status === 409 && res.json.code === 'price_changed') {
           actualiserDevis(res.json); rendreRecap();
-          erreurEnvoi('<b>Le montant a changé selon les pistes disponibles.</b> Vérifiez le nouveau montant avant de confirmer à nouveau.');
+          erreurEnvoi('<b>Le montant a changé.</b> Vérifiez le nouveau montant avant de confirmer à nouveau.');
           return;
         }
         if (res.status === 409) {
@@ -4243,14 +4373,14 @@
     var quoi = nomsChoisis();
     var repFin = (state.creneau || {}).reponse || {};
     var itemsFin = r.program && r.program.items ? r.program.items : (repFin.program && repFin.program.items) || [];
-    if (state.onglet !== 'formules' && itemsFin.length) quoi = itemsFin.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + participantsLigne(it) + ')'; }).join(' + ');
+    if (state.onglet !== 'formules' && itemsFin.length) quoi = itemsFin.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + participantsLigne(it) + (it.arcadeOffer ? ' · ' + detailArcade(it) : '') + ')'; }).join(' + ');
     var prixComplet = !repFin.program || repFin.program.priceComplete !== false;
     var comms = Array.isArray(reponse.communications) ? reponse.communications : [];
     var mailQ = comms.filter(function (c) { return c && c.channel === 'email' && c.status !== 'draft' && (c.templateId === 'confirmation' || c.templateId === 'request_received'); })[0];
     var nomRes = String(r.name || (state.contact.prenom + ' ' + state.contact.nom)).trim();
     var quand = '<b>' + esc(jourLong(dateRes)) + '</b>, ' + esc(personnes(paxRes)) + (arrivee ? '. Arrivée conseillée à <b>' + esc(arrivee) + '</b>.' : ', à <b>' + esc(heureRes) + '</b>.') + (confirme ? ' C’est réservé&nbsp;: on vous attend&nbsp;!' : ' L’équipe vérifie votre demande et vous répond sous 24 heures ouvrables.');
     var ligneMail = mailQ ? (mailQ.templateId === 'confirmation' ? 'La confirmation part à ' : 'Un accusé de réception part à ') + '<b>' + esc(mailRes) + '</b>.' : 'Au nom de <b>' + esc(nomRes) + '</b>, ' + esc(mailRes) + '.';
-    var ligneMontant = Number(r.price) > 0 ? 'Montant indicatif <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', sans ' + esc(nomsSansPrix((repFin.program && repFin.program.items) || [])) + ' (' + PRIX_ACCUEIL + '). Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
+    var ligneMontant = Number(r.price) > 0 || (prixComplet && itemsFin.some(function (it) { return it.priceKnown === true; })) ? 'Montant indicatif <b>' + esc(euros(r.price)) + '</b>' + (prixComplet ? ', à régler' : ', sans ' + esc(nomsSansPrix((repFin.program && repFin.program.items) || [])) + ' (' + PRIX_ACCUEIL + '). Tout est à régler') + ' sur place, par carte ou en espèces.' : 'Tout se règle sur place, par carte ou en espèces.';
     function rangee(ico, html) { return '<p class="fg-done__row"><svg aria-hidden="true"><use href="#' + ico + '"/></svg><span>' + html + '</span></p>'; }
     // LE TITRE DIT CE QUI S EST PASSE : confirmee d office, ou demande que
     // l equipe va verifier. « C est enregistre » etait vrai dans les deux cas,
@@ -4335,8 +4465,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261003participants';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003participants';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261003info';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003info';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {
@@ -4398,15 +4528,17 @@
     state.pax = pax; state.date = date || avant.date; state.selection = [a.id];
     try {
       var opt = optionChoisie(a), billard = reglageBillard(a), montant = null;
-      if (opt) {
+      var arcade = reglageArcade(a);
+      if (arcade) montant = arcade.price;
+      else if (opt) {
         var q = a.priceType === 'grid_laser' ? joueursDe(a) : a.priceType === 'grid_fun_run' ? sessionsPour(a)
           : a.id === 'bowling' && pistesBowling() ? pistesBowling().pistes : unitesPour(a).units;
         montant = Math.round(opt.prix * q * 100) / 100;
       } else if (a.priceType === 'per_unit_hour') montant = prixBillard(a, billard.units, billard.hours);
       else if (tarifConnu(a)) montant = Math.round(Number(a.priceValue) * (a.priceType === 'per_pax' ? joueursDe(a) : 1) * 100) / 100;
       return { montant: montant, html: rendreOption(a).replace(/opt-/g, 'sm-opt-'), prix: prixCarte(a),
-        compteurs: [compteurDe(a)].concat(a.priceType === 'per_unit_hour' ? [compteurDe(a, 'units')] : []),
-        groupes: groupesOptions(a) };
+        compteurs: [compteurDe(a)].concat(a.priceType === 'per_unit_hour' ? [compteurDe(a, 'units')] : arcade && arcade.mode === 'credit' ? [compteurDe(a, 'cards')] : []),
+        arcade: arcade ? snapshotArcade(a) : null, detail: arcade ? detailArcade(snapshotArcade(a)) : '', groupes: groupesOptions(a) };
     } finally {
       state.options = avant.options; state.pax = avant.pax; state.date = avant.date; state.selection = avant.selection; state.onglet = avant.onglet; state.surMesure = avant.sm;
     }
@@ -4421,7 +4553,7 @@
       ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,
       photo: photo, photosDesScenes: photosDesScenes, plageLisible: plageLisible, poserErreur: poserErreur, poserTitre: poserTitre,
       posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
-      secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure,
+      secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure, choixArcade: choixArcade,
       scene: function () { return sceneCourante; },
     };
     Object.defineProperty(I, 'meta', { get: function () { return meta; } });

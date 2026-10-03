@@ -277,7 +277,7 @@ function juger(m) {
 const MUTATIONS = [
   {
     nom: 'le prix suit l estimation sans qu on ait rien change',
-    de: '  return editProgramAChange() || Number(e.pax) !== Number(r.pax);',
+    de: '  return editProgramAChange() || Number(e.pax) !== Number(r.pax) || editArcadeTimingChanged();',
     vers: '  return true;',
     vise: /^\[A\] prix d ami/,
   },

@@ -396,7 +396,11 @@ async function navigateur() {
       const t = (id, sel) => { const n = document.querySelector('#gridAct .fg-grid__item[data-activity="' + id + '"] ' + sel); return n ? String(n.value ?? n.textContent).replace(/\s+/g, ' ').trim() : ''; };
       return { note: t('laser_game', '.fg-card__rot'), enfants: t('playground', '.fg-kids__n'), texte: t('playground', '.fg-count__label'), prix: t('playground', '.fg-card__price') };
     });
-    ok(cartes.note === 'Partie de 20 min, + 5 à 10 min de règles.', 'la carte du laser dit le jeu et le temps des regles', cartes.note);
+    ok(!cartes.note.includes('min de règles'), 'les règles du laser quittent la carte compacte', cartes.note);
+    await page.click('#gridAct li[data-activity="laser_game"] [data-activity-info]');
+    cartes.note = await page.locator('.fg-info-text').textContent();
+    ok(cartes.note.includes('Partie de 20 min, + 5 à 10 min de règles.'), 'le popup du laser dit le jeu et le temps des regles', cartes.note);
+    await page.keyboard.press('Escape');
     ok(cartes.enfants === '3' && /Enfants\s*sur 4/.test(cartes.texte) && /^36\s€ · 3\senfants/.test(cartes.prix), 'la plaine : 3 enfants sur 4, le prix des 3', JSON.stringify(cartes));
     await page.click('#goHours');
     const heures = await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('#goContact').disabled, 15000);

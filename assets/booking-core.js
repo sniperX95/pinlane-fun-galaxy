@@ -223,8 +223,39 @@ function funRunSessionMinutes(item, sessionsDuGroupe = 1) {
   return minutes;
 }
 
-function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes = null, dateStr = '', startTime = '' } = {}) {
+function defaultArcadeOptions(activity) {
+  const offers = activity && activity.arcadeOffers;
+  if (!offers || offers.enabled === false) return {};
+  const time = (offers.timeOffers || []).find(o => o.enabled !== false);
+  const credit = (offers.creditOffers || []).find(o => o.enabled !== false);
+  return time ? { arcadeMode: 'time', arcadeOfferId: time.id } : credit ? { arcadeMode: 'credit', arcadeOfferId: credit.id } : {};
+}
+
+function getArcadeOfferQuote(activity, options = {}, participants = 1) {
+  const mode = options.arcadeMode || options.arcadeOffer?.mode;
+  const id = options.arcadeOfferId || options.arcadeOffer?.id;
+  if (!mode || !id) return null;
+  const offers = activity && activity.arcadeOffers;
+  const offer = options.arcadeOffer || (offers && offers.enabled !== false && ((mode === 'time' ? offers.timeOffers : mode === 'credit' ? offers.creditOffers : []) || []).find(o => o.id === id && o.enabled !== false));
+  if (!offer || !Number.isFinite(Number(offer.price)) || Number(offer.price) < 0) return null;
+  const cards = mode === 'time' ? Math.max(1, Math.trunc(Number(participants) || 1)) : Math.min(1000, Math.max(1, Math.trunc(Number(options.cards) || Number(participants) || 1)));
+  const snapshot = { ...offer, mode, id, description: offer.description || (mode === 'time' ? offers?.timedDescription : offers?.creditDescription) || '', gameCostMin: offer.gameCostMin ?? offers?.creditGameCostMin, gameCostMax: offer.gameCostMax ?? offers?.creditGameCostMax };
+  return { cards, price: Math.round(Number(offer.price) * cards * 100) / 100, offer: snapshot };
+}
+
+function getArcadeOfferDetail(item) {
+  const offer = item && item.arcadeOffer;
+  if (!offer) return '';
+  const cards = Math.max(1, Math.trunc(Number(item.cards) || Number(item.participants) || 1));
+  const number = n => Number(n).toLocaleString('fr-BE');
+  const amount = offer.mode === 'time' ? `${number(offer.minutes)} min par carte · jeux sans cadeaux illimités · jeux à lots exclus` : `${number(offer.credits)} crédits + ${number(offer.bonusCredits || 0)} offerts = ${number(offer.totalCredits ?? (Number(offer.credits) + Number(offer.bonusCredits || 0)))} crédits par carte`;
+  const games = offer.mode === 'credit' && Number(offer.gameCostMin) > 0 ? `jeux de ${number(offer.gameCostMin)} à ${number(offer.gameCostMax)} crédits · jeux à lots inclus` : '';
+  return [`${cards} carte${cards > 1 ? 's' : ''}`, amount, games, offer.description].filter(Boolean).join(' · ');
+}
+
+function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes = null, dateStr = '', startTime = '', arcadeMode, arcadeOfferId, cards, arcadeOffer } = {}) {
   if (!activity) return null;
+  if (activity.id === 'arcade_time') return getArcadeOfferQuote(activity, { arcadeMode, arcadeOfferId, cards, arcadeOffer }, pax)?.price ?? null;
   // Grille de session : le montant vient de la grille, pas d'un tarif saisi.
   // Un groupe plus grand que l'installation TOURNE : autant de sessions, donc
   // autant de fois le prix de la grille.

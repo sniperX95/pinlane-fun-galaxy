@@ -592,9 +592,9 @@ async function dhExportCsv(kind) {
         `/api/admin-range?startDate=${a.startDate}&endDate=${a.endDate}&centerId=${encodeURIComponent(dhCenterId())}`,
         apiRequest,
       );
-      rows.push(['Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Type', 'Formule', 'Joueurs', 'Pistes', 'Durée (h)', 'Prix (EUR)', 'Statut', 'Canal', 'Occasion']);
+      rows.push(['Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Type', 'Formule', 'Joueurs', 'Pistes', 'Durée (h)', 'Prix (EUR)', 'Statut', 'Canal', 'Occasion', 'Détail des activités']);
       for (const r of payload.reservations || []) {
-        rows.push([r.date, r.startTime, r.name, r.phone, r.email, r.type, r.label, r.pax, (r.lanes || []).join(' '), r.totalDuration || r.duration, r.price, r.status, r.channel, r.occasion]);
+        rows.push([r.date, r.startTime, r.name, r.phone, r.email, r.type, r.label, r.pax, (r.lanes || []).join(' '), r.totalDuration || r.duration, r.price, r.status, r.channel, r.occasion, getAdminProgramExportText(r)]);
       }
     } catch (error) {
       if (typeof toast === 'function') toast(error.message || 'Export impossible pour le moment.');

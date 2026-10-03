@@ -125,4 +125,28 @@ assert.equal(run("estimerPrixProgramme(arcadeVisit.program.items,18,'2026-10-06'
 ctx.quickBookState = {pax:18,type:'visite',date:'2026-10-06',visit:{bowling:{on:false},laser_game:{on:false},others:{minigolf_blacklight:true,arcade_time:true},options:{minigolf_blacklight:{participants:3},arcade_time:{participants:5}}}};
 assert.match(run('getQuickBookSummaryActivites().detail'),/Arcades : 5 joueurs/);
 assert.match(run('getQuickBookSummaryActivites().detail'),/hors activités réglées sur place/);
+// Real game pricing: 80 visitors accompany only6 bowlers. With10 players
+// per lane, group80 incorrectly produces60min for one game; the6 bowlers
+// need30min, which fits the45min left before closing.
+{
+  const from=app.indexOf('function ajusterDureesAvantFermeture(');
+  vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
+  ctx.getBookingCatalogConfig=()=>({normalCapacityPerLane:10,emergencyCapacityPerLane:10,laneCount:8,bowlingPricing:{mode:'per_game_per_person',minutesPerPlayerPerGame:4,tiers:[{days:[0,1,2,3,4,5,6],prices:[8,14]}]}});
+  ctx.heuresJusquALaFermeture=()=>0.75;
+  ctx.save=()=>{};
+  run('let dureesRamenees=[]');
+  ctx.state.booking={mode:'carte',pax:80,date:'2026-10-06',activities:{bowling:{duration:1,participants:6}}};
+  assert.equal(run("getBowlingGameOptions(state.booking.date,{pax:80,laneCount:getRequiredLaneCount('bowling',80,'')})[0].value"),1,'counterexample global visitors do not fit remaining45min');
+  assert.equal(run("getBowlingGameOptions(state.booking.date,{pax:6,laneCount:getRequiredLaneCount('bowling',6,'')})[0].value"),0.5,'own bowlers fit remaining45min');
+  assert.equal(run('ajusterDureesAvantFermeture()'),true);
+  assert.equal(ctx.state.booking.activities.bowling.duration,0.5);
+  assert.equal(ctx.state.booking.activities.bowling.participants,6);
+  assert.equal(ctx.state.booking.pax,80);
+  assert.equal(run('ajusterDureesAvantFermeture()'),false,'already fitting selection stays stable');
+  const changed=app.replace('pax: participants, laneCount: getRequiredLaneCount(\'bowling\', participants, \'\')','pax: state.booking.pax, laneCount: getRequiredLaneCount(\'bowling\', state.booking.pax, \'\')');
+  const start=changed.indexOf('function ajusterDureesAvantFermeture(');
+  vm.runInContext(changed.slice(start,changed.indexOf('\nfunction ',start+1)),ctx);
+  ctx.state.booking.activities.bowling.duration=1;
+  assert.equal(run('ajusterDureesAvantFermeture()'),false,'old global-player mutation cannot reduce to the fitting30min game');
+}
 console.log('PASS staff participant allocation: prices, all counters, edit roundtrip, formula contract, group reduction, mono conversion, detail semantics.');

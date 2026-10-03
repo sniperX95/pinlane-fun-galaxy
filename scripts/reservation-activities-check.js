@@ -49,5 +49,34 @@ ok(clientB && clientB.favoriteLabel === 'Minigolf Blacklight', `le favori d un c
 ok(!Object.keys(byActivity).some((k) => k === 'complet' || (byActivity[k].label || '').includes('Complet')),
   'contre-epreuve : aucun bucket « Complet » ne peut renaitre de ce calcul');
 
-if (failures) { console.error(`\nreservation-activities-check: ${failures} echec(s).`); process.exit(1); }
-console.log('\nreservation-activities-check: ALL OK - une seule grammaire d activites, du dashboard au bilan Direction.');
+// Participants par activité : les KPI visiteurs et les paniers multi restent
+// au niveau du dossier, les activités seules/exportées portent leur effectif.
+const subsetHistory = [
+  { name: 'Golf', status: 'paid', price: 30, pax: 20, date: END, type: 'visite', program: { items: [{ activityId: 'minigolf_blacklight', name: 'Minigolf Blacklight', participants: 3 }] } },
+  { name: 'Arcades', status: 'paid', price: 0, pax: 20, date: END, type: 'visite', program: { items: [{ activityId: 'arcades', name: 'Arcades', participants: 4 }] } },
+  { name: 'Multi', status: 'paid', price: 109, pax: 20, date: END, type: 'visite', program: { items: [{ activityId: 'bowling', participants: 6 }, { activityId: 'laser_game', participants: 7 }] } },
+  { name: 'Formule', status: 'paid', price: 200, pax: 20, date: END, type: 'formule', formuleId: 'f1', program: { items: [{ activityId: 'bowling', participants: 6 }] } },
+];
+const subsetAnalytics = buildDirectionAnalytics({ history: subsetHistory, startDate: END, endDate: END, center: { id: 'libramont' } });
+ok(subsetAnalytics.byActivity.minigolf_blacklight.pax === 3, 'golf seul : 3 participants parmi 20 visiteurs');
+ok(subsetAnalytics.byActivity.arcades.pax === 4, 'arcades seules : 4 participants parmi 20 visiteurs');
+ok(subsetAnalytics.byActivity.multi.pax === 20 && subsetAnalytics.byActivity.multi.revenue === 109, 'panier multi : visiteurs et chiffre une seule fois');
+ok(subsetAnalytics.byActivity.formule.pax === 20, 'formule : le contrat global de participants est conservé');
+ok(subsetAnalytics.totals.pax === 80 && subsetAnalytics.daily[0].pax === 80 && subsetAnalytics.byType.visite.pax === 60, 'KPI globaux, quotidien et types conservent les visiteurs');
+ok(byActivity.minigolf_blacklight.pax === 5, 'historique sans participants : repli sur les visiteurs');
+ok(Object.values(subsetAnalytics.byActivity).reduce((sum, row) => sum + row.revenue, 0) === subsetAnalytics.totals.revenue, 'chiffre par activité sans double comptage');
+
+// Exécute le vrai export CSV sans DOM ni téléchargement externe.
+(async () => {
+  const fs = require('fs');
+  const path = require('path');
+  const vm = require('vm');
+  const context = vm.createContext({ document: { getElementById: () => null }, analyticsFixture: subsetAnalytics });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'assets', 'admin-data.js'), 'utf8'), context);
+  vm.runInContext('dhState.analytics = analyticsFixture; dhDownload = (name, content) => { globalThis.exportedCsv = content; };', context);
+  await vm.runInContext("dhExportCsv('formules')", context);
+  ok(context.exportedCsv.includes('"Activité";"Minigolf Blacklight";"1";"3";"30"'), 'CSV activités : golf 3 participants et 30 EUR');
+  ok(context.exportedCsv.includes('"Activité";"Arcades";"1";"4";"0"'), 'CSV activités : arcades 4 participants au tarif accueil');
+  if (failures) { console.error(`\nreservation-activities-check: ${failures} echec(s).`); process.exitCode = 1; return; }
+  console.log('\nreservation-activities-check: ALL OK - une seule grammaire d activites, du dashboard au bilan Direction.');
+})().catch((error) => { console.error(error); process.exitCode = 1; });

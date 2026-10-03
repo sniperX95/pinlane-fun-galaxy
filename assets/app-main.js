@@ -5546,8 +5546,9 @@ function ajusterDureesAvantFermeture() {
     let paliers = [];
     let champ = '';
     if (activity.priceType === 'grid_bowling') {
+      const participants = getBookingActivityParticipants(activity, options);
       const parties = typeof getBowlingGameOptions === 'function'
-        ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') })
+        ? getBowlingGameOptions(state.booking.date, { pax: participants, laneCount: getRequiredLaneCount('bowling', participants, '') })
         : null;
       paliers = (parties && parties.length ? parties : DURATION_OPTIONS).map((option) => ({ valeur: Number(option.value), heures: Number(option.value), label: option.label }));
       champ = 'duration';

@@ -588,12 +588,12 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // a analyser, 74 Ko a transferer, soit 13,2 et 6,0 Ko de marge : une police
 // (20 Ko compresses) ou une bibliotheque font toujours sauter l un et l autre.
 // 03/10, joueurs par activite : base a4bf8e4 264,3 Ko (deja au-dessus du
-// vieux plafond), nouveau 268,2 Ko (dont la garde des blocages obsoletes) ;
-// brotli3 72,4 -> 73,4 Ko. Comparaison
+// vieux plafond), nouveau 269,4 Ko (dont la garde des blocages obsoletes et
+// les choix partages avec le sur mesure) ; brotli3 72,4 -> 73,7 Ko. Comparaison
 // navigateur 6x, deux series de 7 mesures entrelacees : total des taches
 // 1081,28 -> 1087,54 puis 1229,36 -> 1174,15 ms. Derniere serie : script
 // 83,50 -> 91,60 ms, layout 374,80 -> 338,75 ms (mesures sous charge).
-const BUDGET_SERVI = 269 * 1024;
+const BUDGET_SERVI = 270 * 1024;
 const BUDGET_TRANSFERE = 74 * 1024;
 
 let failures = 0;

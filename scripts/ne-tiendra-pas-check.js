@@ -283,7 +283,7 @@ async function ecran() {
         ok(v.encadre.indexOf('Vos heures ne bougent pas : Bowling à 20:00 et Laser Game à 21:00.') >= 0, `[E] ${largeur} ${etiquette} : l encadre dit que les heures restent`, v.encadre);
         ok(v.encadre.indexOf('Le total indicatif compte encore Duckpin Bowling (78 €).') >= 0, `[E] ${largeur} ${etiquette} : le montant encore compte est dit (seul le duckpin a un tarif connu)`, v.encadre);
         ok(v.sousLaListe, `[E] ${largeur} ${etiquette} : l encadre suit la liste qu il raye ; aucune offre a l ecran des horaires (elles vivent dans la fenetre de fin)`);
-        ok(JSON.stringify(v.rayees.map((r) => r.nom.replace(/ \(.*$/, ''))) === JSON.stringify(ATTENDUS) && v.rayees.every((r) => r.detail.indexOf('ne tiendra pas avant 22:00') === 0),
+        ok(JSON.stringify(v.rayees.map((r) => r.nom.replace(/ \(.*$/, ''))) === JSON.stringify(ATTENDUS) && v.rayees.every((r) => r.detail.includes('ne tiendra pas avant 22:00') && /8 (joueurs|enfants)/.test(r.detail)),
           `[E] ${largeur} ${etiquette} : les trois lignes rayees, « ne tiendra pas avant 22:00 »`, JSON.stringify(v.rayees));
         ok(v.tient.length === 1 && v.tient[0].indexOf('Fun Run') === 0, `[E] ${largeur} ${etiquette} : le Fun Run reste « a votre rythme »`, JSON.stringify(v.tient));
         ok(v.voix.indexOf(phrase) >= 0, `[E] ${largeur} ${etiquette} : la voix dit la meme liste`, v.voix.slice(0, 160));

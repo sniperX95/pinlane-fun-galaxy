@@ -18021,7 +18021,7 @@ function staffRequestSignal(item) {
   if (stage === 'en-attente' && suivi.derniereReponse) return { tone: '', text: `Réponse envoyée ${staffRequestMoment(suivi.derniereReponse.le)}` };
   if (stage === 'traitee') return { tone: 'ok', text: suivi.reservationId ? 'Réservation créée' : 'Traitée' };
   const d = crDemande(item);
-  const envies = d ? [...crNoms(d.formulas), ...crNoms(d.activities)].join(', ') : '';
+  const envies = d ? [...crNoms(d.formulas), ...crActivites(d)].join(', ') : '';
   return { tone: '', text: envies || String(item.message || '').replace(/\s+/g, ' ').trim() };
 }
 
@@ -18269,7 +18269,7 @@ function renderStaffRequestFacts(item) {
     : [d.momentLabel ? escapeHtml(d.momentLabel) : '', d.alternativeDate ? `ou ${escapeHtml(staffRequestLongDate(d.alternativeDate).toLowerCase())}` : ''].filter(Boolean).join(' · ');
   const envies = [
     ...crNoms(d.formulas).map(nom => `<span class="req-chip is-formula">${escapeHtml(nom)}</span>`),
-    ...crNoms(d.activities).map(nom => `<span class="req-chip">${escapeHtml(nom)}</span>`),
+    ...crActivites(d).map(nom => `<span class="req-chip">${escapeHtml(nom)}</span>`),
     ...(d.advice ? ['<span class="req-chip is-advice">Conseil demandé</span>'] : []),
   ].join('');
   const budget = Number(d.budgetPerPerson) > 0 ? `${escapeHtml(staffRequestEuro(d.budgetPerPerson))} par personne` : '';
@@ -18347,6 +18347,17 @@ function renderStaffRequestTimes(heures) {
   return (heures || []).map(h => `<span class="req-time">${escapeHtml(h)}</span>`).join('');
 }
 
+function renderStaffRequestStudyLines(visite) {
+  return (visite.lignes || []).map(ligne => {
+    const players = Number(ligne.participants) || 0;
+    const detail = String(ligne.detail || '');
+    const hasCount = detail.startsWith(players + ' joueur') || detail.startsWith(players + ' enfant');
+    const count = players > 0 && !hasCount ? `${players} joueur${players > 1 ? 's' : ''}` : '';
+    const description = [count, detail].filter(Boolean).join(' · ');
+    return `<span>${escapeHtml(ligne.nom)}${description ? ` · ${escapeHtml(description)}` : ''} · ${ligne.prix != null ? escapeHtml(staffRequestEuro(ligne.prix)) : 'prix à confirmer'}</span>`;
+  }).join('');
+}
+
 function renderStaffRequestStudyDay(jour, etude, d) {
   const titre = `<strong>${escapeHtml(staffRequestLongDate(jour.date) || jour.libelle)}</strong>${jour.principale ? '' : '<span class="req-day-alt">autre date du client</span>'}`;
   if (jour.passee) return `<article class="req-daycard is-off"><div class="req-daycard-head">${titre}<span class="req-pill is-muted">Date passée</span></div></article>`;
@@ -18366,7 +18377,7 @@ function renderStaffRequestStudyDay(jour, etude, d) {
       ? `<span class="req-offer-label">Départs possibles</span>${renderStaffRequestTimes(fo.heures)}`
       : `<span class="req-offer-label">Aucun départ dans ce moment · possible à</span>${renderStaffRequestTimes(fo.heuresAilleurs)}`;
     offres.push(`<li class="req-offer"><div class="req-offer-main">${nom}
-        <span class="req-offer-price">${fo.prix ? escapeHtml(staffRequestEuro(fo.prix)) : 'Prix à confirmer'}${fo.parJoueur ? `<small>${escapeHtml(staffRequestEuro(fo.parJoueur))} / joueur</small>` : ''}</span>
+        <span class="req-offer-price">${fo.prix != null ? escapeHtml(staffRequestEuro(fo.prix)) : 'Prix à confirmer'}${fo.parJoueur != null ? `<small>${escapeHtml(staffRequestEuro(fo.parJoueur))} / joueur</small>` : ''}</span>
         ${renderStaffRequestBudgetTag(fo.parJoueur, d)}
       </div><div class="req-offer-times">${heures}</div></li>`);
   });
@@ -18374,15 +18385,15 @@ function renderStaffRequestStudyDay(jour, etude, d) {
   if (v) {
     const noms = (v.lignes || []).map(l => l.nom).join(' + ') || 'Les activités choisies';
     const nom = `<span class="req-offer-name">${escapeHtml(noms)}</span>`;
+    const lignes = renderStaffRequestStudyLines(v);
     if (v.panne || !v.ok) {
-      offres.push(`<li class="req-offer ${v.panne ? 'is-wait' : 'is-off'}"><div class="req-offer-main">${nom}<span class="req-offer-why">${escapeHtml(v.panne ? 'Le moteur n’a pas répondu : relancez l’étude.' : `Impossible ce jour-là. ${v.raison || ''}`.trim())}</span></div></li>`);
+      offres.push(`<li class="req-offer ${v.panne ? 'is-wait' : 'is-off'}"><div class="req-offer-main">${nom}${v.prix != null ? `<span class="req-offer-price">${escapeHtml(staffRequestEuro(v.prix))}</span>` : ''}<span class="req-offer-why">${escapeHtml(v.panne ? 'Le moteur n’a pas répondu : relancez l’étude.' : (v.raison || 'Aucun départ possible ce jour-là.'))}</span></div>${lignes ? `<div class="req-offer-lines">${lignes}</div>` : ''}</li>`);
     } else {
-      const lignes = (v.lignes || []).map(l => `<span>${escapeHtml(l.nom)}${l.detail ? ` · ${escapeHtml(l.detail)}` : ''} · ${l.prix !== null ? escapeHtml(staffRequestEuro(l.prix)) : 'prix à confirmer'}</span>`).join('');
       const depart = v.proposition
         ? `<span class="req-offer-label">Départ proposé</span><span class="req-time">${escapeHtml(v.proposition.debut)}</span>${v.proposition.fin ? `<span class="req-offer-label">fin vers ${escapeHtml(v.proposition.fin)}</span>` : ''}`
         : '';
       offres.push(`<li class="req-offer${v.depasse ? ' is-warn' : ''}"><div class="req-offer-main">${nom}
-          <span class="req-offer-price">${v.prix ? escapeHtml(staffRequestEuro(v.prix)) : 'Prix à confirmer'}${v.parJoueur ? `<small>${escapeHtml(staffRequestEuro(v.parJoueur))} / joueur</small>` : ''}</span>
+          <span class="req-offer-price">${v.prix != null ? escapeHtml(staffRequestEuro(v.prix)) : 'Prix à confirmer'}${v.parJoueur != null ? `<small>${escapeHtml(staffRequestEuro(v.parJoueur))} / joueur</small>` : ''}</span>
           ${renderStaffRequestBudgetTag(v.parJoueur, d)}
         </div>
         <div class="req-offer-lines">${lignes}</div>
@@ -18981,7 +18992,7 @@ function staffRequestToBooking(id) {
     'Demande sur mesure',
     d && d.organisation ? d.organisation : '',
     d && d.groupTypeLabel ? d.groupTypeLabel : '',
-    d ? [...crNoms(d.formulas), ...crNoms(d.activities)].join(', ') : '',
+    d ? [...crNoms(d.formulas), ...crActivites(d)].join(', ') : '',
     d && d.moment && d.moment !== 'indifferent' ? String(d.momentLabel || '').toLowerCase() : '',
     d && Number(d.companions) > 0 ? `${d.companions} accompagnateur${d.companions > 1 ? 's' : ''}` : '',
     !d && item.requestedDate ? `souhait : ${item.requestedDate}` : '',
@@ -18999,6 +19010,7 @@ function staffRequestToBooking(id) {
     // en « Traitee » une fois la creation reussie, reservation liee.
     sourceRequestId: item.id,
   });
+  if (!formule && d) applyStaffRequestActivitiesToQuickBook(d);
 }
 
 // La reservation nee de la demande : sa fiche quand ce poste l a chargee,
@@ -19117,6 +19129,38 @@ function crDemande(item) {
 function crNoms(liste) {
   return (Array.isArray(liste) ? liste : []).map(x => x && x.name).filter(Boolean);
 }
+function crActivites(d) {
+  return (Array.isArray(d && d.activities) ? d.activities : []).filter(a => a && a.name).map(a => {
+    const participants = Number(a.participants) || Number(d.participants) || 1;
+    const options = ['duration', 'games', 'units', 'hours', 'minutes'].some(key => a[key] != null);
+    const detail = options
+      ? detailLigneProgramme({ ...a, activityId: a.id, participants }, { pax: Number(d.participants) || participants })
+      : `${participants} joueur${participants > 1 ? 's' : ''}`;
+    return `${a.name} : ${detail}`;
+  });
+}
+
+function applyStaffRequestActivitiesToQuickBook(d) {
+  if (!quickBookState) return false;
+  const activites = (Array.isArray(d && d.activities) ? d.activities : []).filter(a => a && getCenterActivity(a.id));
+  if (!activites.length) return false;
+  quickBookState.type = 'visite';
+  quickBookState.activityId = '';
+  quickBookState.formuleId = '';
+  const visit = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {}, options: {} };
+  activites.forEach(a => {
+    const options = { participants: Number(a.participants) || Number(d.participants) || Number(quickBookState.pax) || 1 };
+    ['duration', 'games', 'units', 'hours', 'minutes'].forEach(key => { if (a[key] != null && Number.isFinite(Number(a[key]))) options[key] = Number(a[key]); });
+    visit.options[a.id] = options;
+    if (a.id === 'bowling') visit.bowling = { on: true, duration: Number(a.duration) || 1 };
+    else if (a.id === 'laser_game') visit.laser_game = { on: true, games: Number(a.games) || 1 };
+    else visit.others[a.id] = true;
+  });
+  quickBookState.visit = visit;
+  syncQuickBookDuration();
+  renderQuickBook();
+  return true;
+}
 function crEffectif(d) {
   const joueurs = Number(d.participants) || 0;
   const acc = Number(d.companions) || 0;
@@ -19149,7 +19193,7 @@ function renderStaffCustomRequestCard(item) {
     Number(item.pax) > 0 ? `${item.pax} pers.` : ''
   ]).filter(Boolean).join(' · ');
   // Sans mot du client, la carte dit ce qu il veut : ses envies, en clair.
-  const envies = d ? [...crNoms(d.activities), ...crNoms(d.formulas)].join(', ') : '';
+  const envies = d ? [...crActivites(d), ...crNoms(d.formulas)].join(', ') : '';
   const texte = item.message || (envies ? `Envies : ${envies}` : '');
   const jid = staffClientJs(item.id);
   // La carte entiere ouvre le dossier de la demande, sur SA page : un seul
@@ -22874,10 +22918,16 @@ function getStaffStatusCounts(reservations) {
 // LES JOUEURS D UN DOSSIER, ET CEUX QUI LES ACCOMPAGNENT (migration 0048) :
 // un Kids Fun Day de 6 enfants venus avec 2 adultes se lit « 6 joueurs +
 // 2 accompagnants ». Les adultes ne jouent pas et ne paient pas l offre.
+function dossierAvecEffectifsDistincts(r) {
+  const items = Array.isArray(r && r.program) ? r.program : r && r.program && r.program.items;
+  return Array.isArray(items) && items.some(item => Number(item.participants) > 0 && Number(item.participants) !== Number(r.pax));
+}
+
 function joueursDuDossier(r) {
   const pax = Math.max(0, Number(r && r.pax) || 0);
   const avec = Math.max(0, Math.trunc(Number(r && r.companions) || 0));
-  return `${pax} joueur${pax > 1 ? 's' : ''}${avec ? ` + ${avec} accompagnant${avec > 1 ? 's' : ''}` : ''}`;
+  const effectif = dossierAvecEffectifsDistincts(r) ? `${pax} personne${pax > 1 ? 's' : ''} présente${pax > 1 ? 's' : ''}` : `${pax} joueur${pax > 1 ? 's' : ''}`;
+  return `${effectif}${avec ? ` + ${avec} accompagnant${avec > 1 ? 's' : ''}` : ''}`;
 }
 
 // LA CARTE D UN GROUPE, A LA CAISSE (Movsar, 2026-10-01, captures de la liste
@@ -23225,6 +23275,17 @@ function getMoyenPaiementLabel(valeur) {
   return '';
 }
 
+function prixDossierConnu(r) {
+  if (!r || r.price == null || String(r.price).trim() === '') return false;
+  const montant = Number(r.price);
+  if (!Number.isFinite(montant) || montant < 0) return false;
+  if (montant > 0 || Number(r.basePrice) > 0) return true;
+  const programme = r.program;
+  const items = Array.isArray(programme) ? programme : programme && programme.items;
+  return Boolean(programme && programme.priceComplete === true)
+    || (Array.isArray(items) && items.length > 0 && items.every(item => item.priceKnown === true && item.price != null && Number.isFinite(Number(item.price))));
+}
+
 function renderGroupePrix(r, moment) {
   const paye = r.status === 'paid';
   const moyen = getMoyenPaiementLabel(r.paymentMethod);
@@ -23235,7 +23296,7 @@ function renderGroupePrix(r, moment) {
       : '';
   // Sans montant connu (activites tarifees au comptoir), la carte ne montre
   // pas « 0 € » : elle dit ou se fait le prix.
-  const montant = Number(r.price) > 0 ? `<b>${formatMoney(r.price)}</b>` : '<b class="is-none">Prix sur place</b>';
+  const montant = prixDossierConnu(r) ? `<b>${formatMoney(r.price)}</b>` : '<b class="is-none">Prix sur place</b>';
   return `<div class="gc-price${paye ? ' is-paid' : ''}">${montant}${etat}</div>`;
 }
 
@@ -23254,7 +23315,7 @@ function renderGroupeActions(r, moment) {
     boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
   } else {
     // Le groupe est la, ou il a fini : la carte attend l encaissement.
-    const montant = Number(r.price) > 0 ? ` ${formatMoney(r.price)}` : '';
+    const montant = prixDossierConnu(r) ? ` ${formatMoney(r.price)}` : '';
     boutons.push(`<span class="gc-pay" role="group" aria-label="Encaisser${escapeHtml(montant)}">
       <span class="gc-pay-label">Encaisser${escapeHtml(montant)}</span>
       ${GROUPE_MOYENS.map(m => `<button type="button" class="gc-btn is-primary" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">${m.mot}</button>`).join('')}
@@ -24134,7 +24195,7 @@ function renderPosDetails(r) {
   const paid = r.status === 'paid';
   const moyen = getMoyenPaiementLabel(r.paymentMethod);
   const lateMinutes = getLateArrivalMinutes(r);
-  const aEncaisser = Number(r.price) > 0 ? formatMoney(r.price) : 'prix au comptoir';
+  const aEncaisser = prixDossierConnu(r) ? formatMoney(r.price) : 'prix au comptoir';
   return `<div class="${posSheetClass()} gc-sheet">
     ${renderGroupeAlerte(r, moment)}
     <section class="pos-act">
@@ -24389,7 +24450,7 @@ function renderGroupeAddition(r) {
       ${etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoney(etat.reference))}</small></dt><dd>${etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoney(Math.abs(etat.ecart)))}</dd></div>` : ''}
     </dl>
     <div class="gc-bill-total">
-      <div><b>${total > 0 ? escapeHtml(formatMoney(total)) : 'Prix au comptoir'}</b>${parJoueur ? `<small>soit ${escapeHtml(parJoueur)} par joueur</small>` : ''}</div>
+      <div><b>${prixDossierConnu(r) ? escapeHtml(formatMoney(total)) : 'Prix au comptoir'}</b>${parJoueur ? `<small>soit ${escapeHtml(parJoueur)} par ${dossierAvecEffectifsDistincts(r) ? 'personne présente' : 'joueur'}</small>` : ''}</div>
       <span class="${paid ? 'is-paid' : 'is-due'}">${paid ? `Payé${moyen ? ` · ${escapeHtml(moyen)}` : ''}` : 'À encaisser'}</span>
     </div>
     ${incomplet ? '<p class="pos-note">Les activités « au comptoir » se règlent en plus, au tarif du jour.</p>' : ''}
@@ -26427,6 +26488,7 @@ function ligneProgrammeQuick(activityId) {
   const ligne = { activityId, pax: Number(quickBookState.pax) || 1, participants: getQuickVisitParticipants(activityId) };
   const activite = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
   if (!activite) return ligne;
+  if (activite.priceType === 'grid_bowling') ligne.duration = Number(getQuickVisitOptions(activityId).duration) || 1;
   // On n envoie un reglage QUE si l activite en a un : une cle inutile sur une
   // ligne qui ne la comprend pas est du bruit que le serveur devra ignorer, et
   // un jour ne plus ignorer.
@@ -26446,6 +26508,10 @@ function ligneProgrammeQuick(activityId) {
 function renderQuickVisitOptions(choice) {
   const activite = typeof getCenterActivity === 'function' ? getCenterActivity(choice.id) : null;
   if (!activite) return '';
+  if (activite.priceType === 'grid_bowling') {
+    const courant = Number(getQuickVisitOptions(choice.id).duration) || 1;
+    return `<div class="qb-visit-options"><span class="qb-opt-legend">Durée</span>${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${courant === Number(opt.value) ? 'active' : ''}" onclick="setQuickVisitActivityDuration('${escapeHtml(choice.id)}',${opt.value})">${opt.label}</button>`).join('')}</div>`;
+  }
   if (activite.priceType === 'grid_fun_run') {
     const courant = getQuickVisitMinutes(choice.id);
     return `<div class="qb-visit-options">${FUN_RUN_OPTIONS.map((opt) => `<button type="button" class="qb-dur-btn ${courant === Number(opt.minutes) ? 'active' : ''}" onclick="setQuickVisitMinutes('${escapeHtml(choice.id)}',${opt.minutes})">${escapeHtml(opt.label)}<small>${opt.price}€</small></button>`).join('')}</div>`;
@@ -26464,6 +26530,14 @@ function renderQuickVisitOptions(choice) {
       + `</div>`;
   }
   return '';
+}
+
+function setQuickVisitActivityDuration(id, value) {
+  if (!quickBookState) return;
+  if (!DURATION_OPTIONS.some(option => Number(option.value) === Number(value))) return;
+  getQuickVisitOptions(id).duration = Number(value);
+  syncQuickBookDuration();
+  renderQuickBook();
 }
 
 function renderActivityParticipantsControl(id, mode = 'quick') {
@@ -27572,7 +27646,8 @@ function renderQuickBookInner() {
   essentialCells.push(`
     <div>
       <label class="qb-mini-label" for="qbPax">Joueurs</label>
-      <input id="qbPax" class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="onQuickPaxInput(this.value)" onblur="onQuickPaxBlur(this, event)">
+      <input id="qbPax" class="qb-input" type="number" min="1" max="240" value="${quickBookState.pax}" oninput="onQuickPaxInput(this.value)" onblur="onQuickPaxBlur(this, event)">
+      ${Number(quickBookState.pax) > 240 ? '<small class="qb-section-note">Ce groupe dépasse 240 personnes : conservez le devis et planifiez la demande manuellement avec l’équipe.</small>' : ''}
     </div>`);
 
   const essentialActions = [];
@@ -27921,6 +27996,7 @@ async function saveQuickBook() {
   };
   const email = quickBookState.email.trim();
   quickBookState.email = email;
+  if (Number(quickBookState.pax) > 240) { failQuickBook('Ce groupe dépasse 240 personnes : la réservation doit être planifiée manuellement avec l’équipe. Le devis et les effectifs de chaque activité sont conservés.'); return; }
   // Seul garde-fou email : un format invalide SI le staff a saisi quelque chose
   // (on évite d'enregistrer une adresse cassée). Un email vide reste accepté.
   if (email && !isValidEmail(email)) { failQuickBook('Adresse email invalide. Format attendu : nom@domaine.com'); return; }

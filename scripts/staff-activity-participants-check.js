@@ -125,7 +125,79 @@ assert.equal(run("estimerPrixProgramme(arcadeVisit.program.items,18,'2026-10-06'
 ctx.quickBookState = {pax:18,type:'visite',date:'2026-10-06',visit:{bowling:{on:false},laser_game:{on:false},others:{minigolf_blacklight:true,arcade_time:true},options:{minigolf_blacklight:{participants:3},arcade_time:{participants:5}}}};
 assert.match(run('getQuickBookSummaryActivites().detail'),/Arcades : 5 joueurs/);
 assert.match(run('getQuickBookSummaryActivites().detail'),/hors activités réglées sur place/);
+// Explicit free prices remain known; legacy totals0 carry no such promise.
+for(const name of ['prixDossierConnu','getMoyenPaiementLabel','renderGroupePrix','renderGroupeActions','activityPriceHint','isUpcomingReservationStatus']) {
+  const from=app.indexOf('function '+name+'(');
+  vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
+}
+ctx.formatMoney=value=>value+'€';ctx.isReservationAwaitingReview=()=>false;
+ctx.GROUPE_MOYENS=[{valeur:'cash',mot:'Espèces'}];
+ctx.freePrice={id:1,pax:18,status:'arrived',price:0,program:{priceComplete:true,items:[{activityId:'minigolf_blacklight',participants:3,price:0,priceKnown:true}]}};
+ctx.unknownPrice={id:2,pax:18,status:'arrived',price:0,program:{priceComplete:false,items:[{activityId:'arcade_time',participants:5,price:0,priceKnown:false}]}};
+assert.match(run('renderGroupePrix(freePrice)'),/<b>0€/);
+assert.match(run('renderGroupeActions(freePrice,{etat:"closing"})'),/Encaisser 0€/);
+assert.match(run('renderGroupePrix(unknownPrice)'),/Prix sur place/);
+assert.equal(run('prixDossierConnu({price:0})'),false);
+assert.equal(run('prixDossierConnu({price:null,program:{priceComplete:true}})'),false);
+assert.equal(run('prixDossierConnu({price:0,basePrice:39})'),true,'waived positive reference is known0');
+assert.equal(run('prixDossierConnu({price:0,program:[{price:0,priceKnown:true}]})'),true);
+assert.match(run('activityPriceHint({priceType:"per_pax",priceValue:0},3)'),/0€/);
+assert.equal(run('activityPriceHint({priceType:"per_pax",priceValue:null},3)'),'réglé sur place');
+catalog.find(item=>item.id==='arcade_time').priceValue=0;
+assert.equal(run("estimerPrixProgramme([{activityId:'arcade_time',participants:5}],18,'2026-10-06','14:00').complet"),true);
+assert.equal(run("estimerPrixProgramme([{activityId:'arcade_time',participants:5}],18,'2026-10-06','14:00').total"),0);
+assert.doesNotMatch(run('getQuickBookSummaryActivites().detail'),/réglées sur place/);
+catalog.find(item=>item.id==='arcade_time').priceValue=null;
+assert.equal(run("estimerPrixProgramme([{activityId:'arcade_time',participants:5}],18,'2026-10-06','14:00').complet"),false);
 // Real game pricing: 80 visitors accompany only6 bowlers. With10 players
+assert.equal(run("getActivitySessionCount(getCenterActivity('fun_run'),240)"),48);
+assert.equal(run("getActivitySessionCount(getCenterActivity('fun_run'),1000)"),200);
+assert.equal(run("getActivityUnitPlan(getCenterActivity('duckpin_bowling'),1000).units"),167);
+assert.equal(run("getActivityUnitPlan(getCenterActivity('duckpin_bowling'),1000).tours"),84);
+assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:240,minutes:30})"),2640);
+assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:1000,minutes:30})"),11000);
+assert.equal(run("estimerPrixProgramme([{activityId:'duckpin_bowling',participants:1000,duration:1}],1000,'2026-10-06','14:00').total"),167*39);
+assert.equal(run("getActivityUnitPlan(getCenterActivity('billards'),1000,999).units"),5,'physical table selection still bounded by catalog installation');
+for(const name of ['crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','renderQuickVisitOptions','renderStaffRequestStudyLines','renderStaffRequestStudyDay','renderStaffRequestTimes','renderStaffRequestBudgetTag']) {
+  const from=app.indexOf('function '+name+'(');assert.ok(from>=0,name);
+  vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
+}
+ctx.customChoice={participants:18,activities:[{id:'bowling',name:'Bowling',participants:6,duration:1.5},{id:'laser_game',name:'Laser Game',participants:4,games:3},{id:'minigolf_blacklight',name:'Minigolf',participants:3},{id:'billards',name:'Billard',participants:8,units:2,hours:2},{id:'duckpin_bowling',name:'Duckpin',participants:6,duration:0.5},{id:'fun_run',name:'Fun Run',participants:6,minutes:30},{id:'arcade_time',name:'Arcades',participants:5}]};
+ctx.quickBookState={pax:18,type:'bowling',date:'2026-10-06',startTime:'14:00',sourceRequestId:55};
+assert.equal(run('applyStaffRequestActivitiesToQuickBook(customChoice)'),true);
+assert.equal(ctx.quickBookState.pax,18);assert.equal(ctx.quickBookState.sourceRequestId,55);
+assert.equal(ctx.quickBookState.visit.bowling.duration,1.5);
+{
+  const from=app.indexOf('async function saveQuickBook(');
+  vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
+  ctx.document={querySelector:()=>null};ctx.toast=()=>{};
+  ctx.quickBookState.pax=1000;ctx.quickBookState.name='Groupe';ctx.quickBookState.phone='';ctx.quickBookState.email='';ctx.quickBookState.submitting=false;
+  run('saveQuickBook()');
+  assert.match(ctx.quickBookState.error,/240 personnes.*planifiée manuellement/);
+  assert.equal(ctx.quickBookState.pax,1000,'manual group is refused without silently reducing its size');
+  assert.equal(ctx.quickBookState.visit.options.bowling.participants,6);
+  assert.equal(ctx.quickBookState.submitting,false);
+  ctx.quickBookState.pax=18;
+}
+assert.equal(ctx.quickBookState.visit.laser_game.games,3);
+assert.equal(run("ligneProgrammeQuick('duckpin_bowling').duration"),0.5);
+assert.equal(run("ligneProgrammeQuick('billards').units"),2);
+assert.equal(run("ligneProgrammeQuick('billards').hours"),2);
+assert.equal(run("ligneProgrammeQuick('fun_run').minutes"),30);
+assert.equal(run("ligneProgrammeQuick('fun_run').participants"),6);
+assert.match(run('crActivites(customChoice).join(" | ")'),/Billard : 8 joueurs.*2 tables.*2h/);
+assert.match(run("renderQuickVisitOptions({id:'duckpin_bowling'})"),/setQuickVisitActivityDuration/);
+assert.equal(run('getQuickBookSummaryActivites().total'),359.75);
+run("setQuickVisitActivityDuration('duckpin_bowling',2)");
+assert.equal(run("ligneProgrammeQuick('duckpin_bowling').duration"),2);
+assert.equal(ctx.quickBookState.visit.bowling.duration,1.5);
+ctx.staffRequestEuro=n=>n+' €';ctx.staffRequestLongDate=()=>'';ctx.staffRequestClock=()=>'';ctx.STAFF_REQUEST_ICONS={calendar:''};
+ctx.manualStudy={date:'2026-10-06',ouvert:true,horaires:{de:'10:00',a:'22:00'},formules:[],visite:{ok:false,raison:'Horaires à étudier manuellement',prix:1170,lignes:[{nom:'Bowling',participants:300,detail:'3 services de1h',prix:1170}]}};
+assert.match(run('renderStaffRequestStudyDay(manualStudy,{moment:"indifferent"},customChoice)'),/300 joueurs.*3 services de1h.*1170 €/);
+assert.match(run('renderStaffRequestStudyDay(manualStudy,{moment:"indifferent"},customChoice)'),/Horaires à étudier manuellement/);
+ctx.manualStudy.visite.ok=true;ctx.manualStudy.visite.prix=0;ctx.manualStudy.visite.parJoueur=0;ctx.manualStudy.visite.lignes=[{nom:'Minigolf',participants:3,prix:0}];
+assert.match(run('renderStaffRequestStudyDay(manualStudy,{moment:"indifferent"},customChoice)'),/3 joueurs.*0 €/);
+assert.doesNotMatch(run('renderStaffRequestStudyDay(manualStudy,{moment:"indifferent"},customChoice)'),/Prix à confirmer/);
 // per lane, group80 incorrectly produces60min for one game; the6 bowlers
 // need30min, which fits the45min left before closing.
 {

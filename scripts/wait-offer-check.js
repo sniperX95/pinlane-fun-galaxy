@@ -45,7 +45,7 @@ function record(label, cond, detail = '') {
 function section(title) { console.log(`\n--- ${title}`); }
 
 // Chargement NEUF de tout le repo, base neutralisee : la contre-epreuve mute
-// des fichiers sur le disque, il faut les relire.
+// le chargement des modules en mémoire, il faut les relire.
 function charger() {
   Object.keys(require.cache)
     .filter((cle) => cle.startsWith(ROOT) && !cle.includes(`${path.sep}node_modules${path.sep}`))
@@ -90,12 +90,21 @@ async function withSourceMutation(file, from, to, run, attendu = 1) {
   const original = fs.readFileSync(file, 'utf8');
   const count = original.split(from).length - 1;
   if (count !== attendu) throw new Error(`ancre trouvee ${count} fois dans ${path.basename(file)} (attendu ${attendu})`);
+  // Compiler la contre-preuve en mémoire : les autres gates et le produit
+  // continuent à lire les fichiers intacts sur disque.
+  const extension = path.extname(file);
+  const loader = require.extensions[extension];
+  const mutated = original.split(from).join(to);
+  require.extensions[extension] = (module, filename) => {
+    if (filename !== file) return loader(module, filename);
+    if (extension === '.json') module.exports = JSON.parse(mutated);
+    else module._compile(mutated, filename);
+  };
   try {
-    fs.writeFileSync(file, original.split(from).join(to));
     return await run();
   } finally {
-    fs.writeFileSync(file, original);
-    if (fs.readFileSync(file, 'utf8') !== original) throw new Error(`${path.basename(file)} non restaure`);
+    require.extensions[extension] = loader;
+    if (fs.readFileSync(file, 'utf8') !== original) throw new Error(`${path.basename(file)} modifie pendant le gate`);
   }
 }
 
@@ -275,8 +284,8 @@ async function main() {
     const dureeLongue = dureeDe(plusLongue.activityId);
     const sansDeduction = await withSourceMutation(
       path.join(ROOT, 'api/public-availability.js'),
-      'return Math.max(finPlan, debut) + Math.max(0, reserveAffichee - couvert - trous);',
-      'return Math.max(finPlan, debut) + reserveAffichee;',
+      'return { apresLePlan: Math.max(finPlan, debut), libreApres: Math.max(0, reserveAffichee - couvert - trous) };',
+      'return { apresLePlan: Math.max(finPlan, debut), libreApres: reserveAffichee };',
       async () => {
         const neuf = charger();
         const enMinutes = (t) => (t ? Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5)) : null);

@@ -11,6 +11,8 @@ node_modules
 docs
 scripts
 tmp
+graft
+tests/artifacts
 database
 workers
 /*.png

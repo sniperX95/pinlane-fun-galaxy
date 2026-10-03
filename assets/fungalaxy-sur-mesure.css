@@ -183,3 +183,8 @@
   .fg-sm-plus { grid-template-columns: 1fr; }
   .fg-sm-recap__block { padding: 12px 14px 10px; }
 }
+
+/* Trois cibles de 44 px restent visibles sans débordement sur petit écran. */
+@media (max-width: 380px) { #smGridAct { grid-template-columns: 1fr; } }
+
+.fg-sm-estimation { display: block; margin-top: 4px; font-size: 12px; line-height: 1.4; font-weight: 400; color: var(--fg-muted); max-width: 42em; }

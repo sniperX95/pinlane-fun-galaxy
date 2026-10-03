@@ -352,7 +352,7 @@ async function scenarioBlocs(browser, jour) {
     });
     ok(/14:00 → 16:25/.test(fiche.sous) && /10 joueurs/.test(fiche.sous), '[F] l en-tête dit les vraies heures du groupe (14:00 → 16:25)', fiche.sous);
     ok(fiche.etapes === 3, '[F] le programme : trois lignes', String(fiche.etapes));
-    ok(/^Bowling 1h · 2 pistes × 39\s*€ 78\s*€$/.test(fiche.lignes[0] || '') && /^Laser Game 2 parties · 18\s*€ × 10 180\s*€$/.test(fiche.lignes[1] || ''), '[F] l addition ligne par ligne, avec le calcul (2 pistes × 39 €, 18 € × 10)', fiche.lignes.join(' | '));
+    ok(/^Bowling 10 joueurs · 1h · 2 pistes × 39\s*€ 78\s*€$/.test(fiche.lignes[0] || '') && /^Laser Game 10 joueurs · 2 parties · 18\s*€ × 10 180\s*€$/.test(fiche.lignes[1] || ''), '[F] l addition ligne par ligne, avec leurs10 joueurs et le calcul (2 pistes × 39 €, 18 € × 10)', fiche.lignes.join(' | '));
     ok(/Pistes 1, 2 \+ arène laser/.test(fiche.sous), '[F] l en-tête dit où : « Pistes 1, 2 + arène laser »', fiche.sous);
     ok(/258\s*€/.test(fiche.total) && /25,80\s*€ par joueur/.test(fiche.total) && /À encaisser/.test(fiche.total), '[F] le total, le prix par joueur au centime, à encaisser', fiche.total);
     ok(fiche.etats.join('|') === 'Confirmé|Arrivé|Payé · Carte|Payé · Espèces', '[F] les états : Confirmé, Arrivé, Payé · Carte, Payé · Espèces', fiche.etats.join('|'));

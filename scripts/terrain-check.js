@@ -565,13 +565,13 @@ async function main() {
       const g = await ouvrir(browser, { journee: JOURNEE_FORMULES });
       const vg = await g.page.evaluate(LIRE);
       const emma = carte(vg, 7201) || {};
-      ok(emma.colonne === 'Sur place' && (emma.programme || []).join(' / ') === 'Maintenant | Minigolf Blacklight | jusqu’à 16:05 / Ensuite | Laser Game (1/2) | à 16:15',
+      ok(emma.colonne === 'Sur place' && (emma.programme || []).join(' / ') === 'Maintenant | Minigolf Blacklight · 12 joueurs | jusqu’à 16:05 / Ensuite | Laser Game (1/2) · 12 joueurs | à 16:15',
         '[G] Sur place dit ou en est le groupe : l activite prevue maintenant et la suivante', `${emma.colonne} · ${(emma.programme || []).join(' / ')}`);
       await g.page.clock.fastForward(102 * 60 * 1000);
       await g.page.waitForTimeout(300);
       const vg2 = await g.page.evaluate(LIRE);
       const emmaTard = carte(vg2, 7201) || {};
-      ok(emmaTard.colonne === 'Sur place' && (emmaTard.programme || []).join(' / ') === 'Maintenant | 2 cruches boissons | jusqu’à 17:15',
+      ok(emmaTard.colonne === 'Sur place' && (emmaTard.programme || []).join(' / ') === 'Maintenant | 2 cruches boissons · 12 joueurs | jusqu’à 17:15',
         '[G] une formule reste sur place jusqu a sa derniere activite, meme sans piste ni arene (17:12, cruches jusqu a 17:15)', `${emmaTard.colonne} · ${(emmaTard.programme || []).join(' / ')}`);
       ok(g.erreurs.length === 0, '[G] aucune erreur JavaScript (Terrain)', g.erreurs.slice(0, 3).join(' | '));
       await g.ctx.close();

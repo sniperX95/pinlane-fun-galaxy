@@ -246,7 +246,16 @@ async function main() {
           cases: [...document.querySelectorAll('#posOverlay .gc-step .gc-check')].filter(visible).length,
           pas: [...document.querySelectorAll('#posOverlay .gc-step')].filter(visible).length,
           faits: faits.length,
-          redites: faits.filter((f) => corps.includes(f)),
+          // An activity's own participant count is required even when equal
+          // to the visitors in the header. All other header facts, and any
+          // duplicate visitor count outside activity details, remain banned.
+          redites: faits.filter((f) => {
+            if (!/^\d+\s+(joueurs?|enfants?)$/.test(f)) return corps.includes(f);
+            const copie=body.cloneNode(true);
+            copie.querySelectorAll('.gc-step-what > small, .gc-bill-lines dt small').forEach(el=>{el.textContent=el.textContent.split(f).join('');});
+            return copie.textContent.includes(f);
+          }),
+          effectifsActivites:[...body.querySelectorAll('.gc-step-what > small')].map(el=>(el.textContent.match(/^(\d+) joueurs?/)||[])[1]).filter(Boolean),
         };
       });
     };
@@ -265,6 +274,7 @@ async function main() {
     ok(infos.liens <= infos.pas, `« Infos » : ${infos.liens} liens vers le planning, au plus un par activite (${infos.pas})`);
     ok(infos.pas > 0 && infos.cases === infos.pas, `« Infos » : chaque activite du programme a sa case (${infos.cases} cases pour ${infos.pas} activites)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);
+    ok(infos.effectifsActivites.length>0&&infos.effectifsActivites.every(n=>Number(n)===11),'« Infos » : les activites indiquent leurs11 joueurs, independamment de l effectif global');
     const modif = await mesureOnglet('modifier');
     ok(modif.faits >= 2, `« Modifier » : l en-tete se lit en ${modif.faits} faits (sans decoupe, « aucune redite » ne prouverait rien)`);
     ok(modif.hauteur <= 560, `« Modifier » : hauteur MESUREE ${modif.hauteur}px (plafond 560, valait 610 avant refonte)`);

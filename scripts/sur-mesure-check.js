@@ -838,11 +838,17 @@ function verifierParcours(r, etiquette) {
   ok(Boolean(r.formuleChoisie) && /2 activités et 1 formule/.test(r.compteur) && r.badges.join() === '2,1', 'le compteur et les onglets disent ce qui est choisi', `${r.compteur} / ${r.badges.join()}`);
   ok(r.contact && r.facture.visible && /École communale du gate/.test(r.facture.label), 'une ecole peut demander une facture a son nom', JSON.stringify(r.facture));
   ok(r.erreursContact === 5, 'les coordonnees vides sont refusees champ par champ', `${r.erreursContact} erreurs`);
-  ok(r.recap && r.blocs === 4 && /École communale du gate/.test(r.recapTexte) && /Bowling, Laser Game/.test(r.recapTexte) && /Institutrice/.test(r.recapTexte), 'la relecture reprend le groupe, la date, les envies et les coordonnees', r.recapTexte.slice(0, 200));
+  const recapLisible = r.recapTexte.replace(/\s+/g, ' ');
+  ok(r.recap && r.blocs === 4 && /École communale du gate/.test(recapLisible)
+    && recapLisible.includes('Bowling (31 joueurs · 1 heure) : 234 €')
+    && recapLisible.includes('Laser Game (31 joueurs · 1 partie) : 310 €')
+    && recapLisible.includes('Estimation des activités : 544 €') && /Institutrice/.test(recapLisible),
+    'la relecture reprend le groupe, la date, les envies avec leurs effectifs, options et montants et les coordonnees', recapLisible.slice(0, 300));
   ok(r.fin && /Demande\s*envoyée/.test(r.finTitre) && /24 heures ouvrables/.test(r.finTexte) && /Rien n’est encore réservé/.test(r.finTexte), 'l ecran final dit le delai de reponse et que rien n est reserve', r.finTexte.slice(0, 200));
   const d = r.envoyee && r.envoyee.payload && r.envoyee.payload.demande;
   ok(Boolean(d) && d.participants === 31 && d.companions === 2 && d.date === r.cible.date && d.moment === 'soiree' && d.organisation === 'École communale du gate'
-    && d.activities.map((a) => a.id).join() === 'bowling,laser_game' && d.formulas.length === 1 && d.advice === true && d.budgetPerPerson === 22 && d.invoice === true && d.contactRole === 'Institutrice',
+    && d.activities.map((a) => a.id).join() === 'bowling,laser_game'
+    && d.activities.every(a => a.participants === 31) && d.activities[0].duration === 1 && d.activities[1].games === 1 && d.formulas.length === 1 && d.advice === true && d.budgetPerPerson === 22 && d.invoice === true && d.contactRole === 'Institutrice',
   'le VRAI gestionnaire a valide et garde ce que l ecran a montre (rien d ecrit, rien d envoye)', d ? JSON.stringify(d).slice(0, 240) : 'aucune demande recue');
   ok(r.debordements.length === 0, 'aucun ecran de la demande ne deborde en largeur', r.debordements.join(' '));
 }
@@ -1113,14 +1119,21 @@ async function contreEpreuves(browser, mock) {
     const compte = original.split(ancre).length - 1;
     if (!ok(compte === 1, `contre-epreuve montable : « ${ancre.trim().slice(0, 60)}… » une seule fois dans ${m.fichier}`, `${compte} occurrence(s)`)) continue;
     let rouge = false;
+    const extension = path.extname(chemin), loader = require.extensions[extension];
+    const mutated = original.split(ancre).join(m.mute);
+    // La contre-preuve compile uniquement dans ce processus, sans mutation disque.
+    require.extensions[extension] = (module, filename) => {
+      if (filename !== chemin) return loader(module, filename);
+      if (extension === '.json') module.exports = JSON.parse(mutated);
+      else module._compile(mutated, filename);
+    };
     try {
-      fs.writeFileSync(chemin, original.split(ancre).join(m.mute));
       viderCache();
       rouge = await m.rouge();
     } catch (error) {
       rouge = true;
     } finally {
-      fs.writeFileSync(chemin, original);
+      require.extensions[extension] = loader;
       viderCache();
     }
     ok(rouge, `${m.label} : ce gate ROUGIRAIT`);

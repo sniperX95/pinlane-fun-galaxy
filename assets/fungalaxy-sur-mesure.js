@@ -276,6 +276,7 @@
 
   window.FGSurMesure = function (I) {
     var doc = I.doc, $ = I.$, $$ = I.$$, CENTER = I.CENTER, EMBED = I.EMBED, sm = I.sm, state = I.state;
+    sm.options = sm.options || {};
     var activite = I.activite, activitesVendables = I.activitesVendables, aller = I.aller, appelCentre = I.appelCentre;
     var champ = I.champ, chargerPhotoCarte = I.chargerPhotoCarte, deIso = I.deIso, dire = I.dire, esc = I.esc;
     var euros = I.euros, eveiller = I.eveiller, finGeste = I.finGeste, heureRonde = I.heureRonde, icone = I.icone;
@@ -461,7 +462,7 @@
       input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
       return poser;
     }
-    var poserSmPax = brancherCompteur({ input: 'smPax', moins: 'smPaxMinus', plus: 'smPaxPlus', min: 1, max: 1000, lire: function () { return sm.participants; }, poser: function (n) { if (n !== sm.participants) sm.paxTouche = true; sm.participants = n; } });
+    var poserSmPax = brancherCompteur({ input: 'smPax', moins: 'smPaxMinus', plus: 'smPaxPlus', min: 1, max: 1000, lire: function () { return sm.participants; }, poser: function (n) { if (n !== sm.participants) sm.paxTouche = true; sm.participants = n; bornerEffectifsSm(); } });
     var poserSmComp = brancherCompteur({ input: 'smComp', moins: 'smCompMinus', plus: 'smCompPlus', min: 0, max: 1000, lire: function () { return sm.accompagnants; }, poser: function (n) { sm.accompagnants = n; } });
     var smAges = $('#smAges');
     smAges.addEventListener('click', function (e) {
@@ -655,8 +656,57 @@
     // (les installations declarees par le centre) et, au-dela, en combien de
     // groupes le leur se relaie. Aucune capacite devinee : sans installation
     // declaree, rien n est dit.
+    function bornesEffectifSm(a) {
+      var total = Math.max(1, Math.trunc(Number(sm.participants) || 1));
+      var max = Number(a.capacityPerUnit) > 0 ? total : Math.min(total, Number(a.maxPax) || total);
+      return { min: Math.min(max, Math.max(1, Number(a.minPax) || 1)), max: max };
+    }
+    function effectifSm(a) {
+      var b = bornesEffectifSm(a), n = (sm.options[a.id] || {}).participants;
+      return Math.min(b.max, Math.max(b.min, n == null ? b.max : Math.trunc(Number(n) || b.min)));
+    }
+    function bornerEffectifsSm() {
+      Object.keys(sm.options).forEach(function (id) { var a = activite(id); if (a && sm.options[id].participants != null) sm.options[id].participants = effectifSm(a); });
+    }
+    function reglagesSm(a) { return I.reglagesSurMesure(a, sm.options[a.id] || {}, sm.participants, sm.flexible ? '' : sm.date); }
+    function compteurSm(a) { return reglagesSm(a).html; }
+    function changerReglageSm(target, cle, valeur, normaliser) {
+      var item = target.closest('[data-sm-activity]'), a = activite(item && item.dataset.smActivity);
+      if (!a) return;
+      var r = reglagesSm(a), c = r.compteurs.filter(function (x) { return x.cle === cle; })[0];
+      var g = r.groupes.filter(function (x) { return x.cle === cle; })[0];
+      var n = Number(valeur);
+      if (c) n = Math.min(c.max, Math.max(c.min, Math.trunc(isFinite(n) ? n : c.n)));
+      else if (!g || !g.options.some(function (o) { return o.valeur === n; })) return;
+      sm.options[a.id] = Object.assign({}, sm.options[a.id] || {}); sm.options[a.id][cle] = n;
+      r = reglagesSm(a);
+      r.compteurs.forEach(function (count) {
+        var box = $('[data-compteur="' + count.cle + '"]', item), value = $('.fg-kids__n', box);
+        if (value.tagName !== 'INPUT') value.textContent = count.n;
+        else if (normaliser || doc.activeElement !== value) value.value = String(count.n);
+        $('[data-pas="-1"]', box).disabled = count.n <= count.min;
+        $('[data-pas="1"]', box).disabled = count.n >= count.max;
+      });
+      r.groupes.forEach(function (group) {
+        $$('.fg-pill[data-cle="' + group.cle + '"]', item).forEach(function (pill) {
+          var option = group.options.filter(function (o) { return o.valeur === Number(pill.dataset.valeur); })[0];
+          var on = Number(pill.dataset.valeur) === group.choisie;
+          pill.classList.toggle('is-on', on); pill.setAttribute('aria-checked', String(on)); pill.tabIndex = on ? 0 : -1;
+          $('small', pill).textContent = option.sous != null ? option.sous : option.prix == null ? 'prix à l’accueil' : euros(option.prix);
+        });
+      });
+      $('.fg-card__price', item).textContent = r.prix + (faitsAge(a) ? ' · ' + faitsAge(a) : '');
+      var tmp = doc.createElement('div'); tmp.innerHTML = r.html;
+      var note = $('.fg-card__rot', item), nouvelle = $('.fg-card__rot', tmp);
+      if (note && nouvelle) note.textContent = nouvelle.textContent;
+      else if (note) note.remove();
+      else if (nouvelle) $('.fg-card__optbox', item).appendChild(nouvelle);
+      var cap = $('.fg-sm-cap', item);
+      if (cap) cap.innerHTML = '<svg aria-hidden="true"><use href="#i-users"/></svg>' + esc(capaciteGroupe(a));
+      rendreSmCompteur(false);
+    }
     function capaciteGroupe(a) {
-      var n = sm.participants, simul = 0, quoi = '';
+      var n = effectifSm(a), simul = 0, quoi = '';
       var b = (I.meta && I.meta.center && I.meta.center.booking) || {};
       if (a.id === 'bowling' && b.laneCount && b.normalCapacityPerLane) {
         simul = b.laneCount * b.normalCapacityPerLane;
@@ -682,12 +732,12 @@
       return a.ageRange || '';
     }
     function carteSm(o) {
-      return '<li class="fg-grid__item' + (o.on ? ' is-on' : '') + '">'
+      return '<li class="fg-grid__item' + (o.on ? ' is-on' : '') + '"' + (o.formule ? '' : ' data-sm-activity="' + esc(o.id) + '"') + '>'
         + '<div class="fg-card' + (o.formule ? ' fg-card--formule' : '') + ' fg-rise' + (o.on ? ' is-on' : '') + (o.v.ok ? '' : ' is-refus') + '" style="--i:' + (o.i % 8) + '" data-sm="' + esc(o.id) + '" data-kind="' + (o.formule ? 'formule' : 'activite') + '" role="checkbox" tabindex="0" aria-checked="' + o.on + '">'
         + o.corps
         + (o.v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.raison) + '</span>')
         + (o.v.ok && o.v.note ? '<span class="fg-sm-note"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.note) + '</span>' : '')
-        + '</div></li>';
+        + '</div>' + (o.formule ? '' : compteurSm(activite(o.id))) + '</li>';
     }
     function rendreSmActivites() {
       var ctx = contexteSm();
@@ -698,7 +748,7 @@
           + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
           + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
           + '<span class="fg-card__name">' + esc(a.name) + '</span>'
-          + '<span class="fg-card__price">' + esc(prixCarte(a, true)) + (age ? ' · ' + esc(age.replace(/ /g, ' ')) : '') + '</span>'
+          + '<span class="fg-card__price">' + esc(on ? reglagesSm(a).prix : prixCarte(a, true)) + (age ? ' · ' + esc(age.replace(/ /g, ' ')) : '') + '</span>'
           + (cap ? '<span class="fg-sm-cap"><svg aria-hidden="true"><use href="#i-users"/></svg>' + esc(cap) + '</span>' : '') });
       }).join('') || '<li class="fg-empty">Aucune activité n’est proposée pour le moment.' + ligneCentre() + '</li>';
       $$('.fg-card.is-on', smGridAct).forEach(chargerPhotoCarte);
@@ -728,8 +778,22 @@
     // sort de la selection : jamais une envie refusee ne part a l equipe.
     function nettoyerEnvies() {
       var ctx = contexteSm();
+      Object.keys(sm.options).forEach(function (id) {
+        var a = activite(id); if (!a) return;
+        var r = reglagesSm(a);
+        r.compteurs.forEach(function (c) { if (sm.options[id][c.cle] != null) sm.options[id][c.cle] = c.n; });
+        r.groupes.forEach(function (g) { if (sm.options[id][g.cle] != null) sm.options[id][g.cle] = g.choisie; });
+      });
       sm.activites = sm.activites.filter(function (id) { return verdictActiviteSurMesure(activite(id), ctx).ok; });
       sm.formules = sm.formules.filter(function (id) { var f = formulesSm().filter(function (x) { return x.id === id; })[0]; return f && verdictFormuleSurMesure(f, ctx).ok; });
+    }
+    function activitesRecapSm() { return sm.activites.map(function (id) { var a = activite(id); if (!a) return ''; var r = reglagesSm(a), detail = [effectifSm(a) + (/enfant/i.test(a.unitLabel || '') ? ' enfant' : ' joueur') + (effectifSm(a) > 1 ? 's' : '')]; r.compteurs.filter(function (c) { return c.cle === 'units'; }).forEach(function (c) { detail.push(c.n + ' ' + c.mot + (c.n > 1 ? 's' : '')); }); r.groupes.forEach(function (g) { var o = g.options.filter(function (o) { return o.valeur === g.choisie; })[0]; if (o) detail.push(o.label); }); return a.name + ' (' + detail.join(' · ') + ') : ' + (r.montant == null ? 'prix à l’accueil' : euros(r.montant)); }).filter(Boolean); }
+    function estimationSm() {
+      if (!sm.activites.length) return '';
+      var total = 0, connues = 0, inconnues = [];
+      sm.activites.forEach(function (id) { var a = activite(id), r = reglagesSm(a); if (r.montant == null) inconnues.push(a.name); else { total += Math.round(r.montant * 100); connues += 1; } });
+      return (connues ? 'Estimation des activités : ' + euros(total / 100) + (inconnues.length ? ', sans ' + inconnues.join(', ') + ' (prix à l’accueil)' : '') : 'Prix des activités à l’accueil : ' + inconnues.join(', '))
+        + '. Programme et montant à confirmer par l’équipe' + (sm.formules.length ? ' ; formules à composer avec elle' : '') + '.';
     }
     function rendreSmCompteur(bump) {
       var nA = sm.activites.length, nF = sm.formules.length, n = nA + nF + (sm.conseil ? 1 : 0);
@@ -741,6 +805,7 @@
       if (sm.conseil) morceaux.push('le conseil de l’équipe');
       if (n) smCount.innerHTML = '<b>' + esc(morceaux.join(', ').replace(/, ([^,]*)$/, ' et $1')) + '</b>';
       else smCount.textContent = 'Cochez ce qui vous tente, ou demandez conseil à l’équipe.';
+      if (nA) smCount.innerHTML += '<small class="fg-sm-estimation">' + esc(estimationSm()) + '</small>';
       var b = $('b', smCount);
       if (bump && b) { b.classList.remove('is-bump'); void b.offsetWidth; b.classList.add('is-bump'); }
       var etaitInactif = smGoContact.disabled;
@@ -778,6 +843,7 @@
       if (on) rejouer(card, 'is-coche'); else card.classList.remove('is-coche');
       card.closest('.fg-grid__item').classList.toggle('is-on', on);
       card.setAttribute('aria-checked', String(on));
+      if (card.dataset.kind === 'activite') { var a = activite(id); $('.fg-card__price', card).textContent = (on ? reglagesSm(a).prix : prixCarte(a, true)) + (faitsAge(a) ? ' · ' + faitsAge(a) : ''); }
       rendreSmCompteur(true);
       setTimeout(posterHauteur, 320);
     }
@@ -788,7 +854,32 @@
       });
       grille.addEventListener('animationend', finGeste);
     });
-    smGridAct.addEventListener('pointerenter', function (e) { if (e.pointerType !== 'touch') chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); }, true);
+    smGridAct.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-pas]'), pill = e.target.closest('.fg-pill');
+      if (btn && !btn.disabled) {
+        var a = activite(btn.closest('[data-sm-activity]').dataset.smActivity);
+        var cle = btn.closest('[data-compteur]').dataset.compteur;
+        var c = reglagesSm(a).compteurs.filter(function (x) { return x.cle === cle; })[0];
+        changerReglageSm(btn, cle, c.n + Number(btn.dataset.pas), true);
+      } else if (pill) changerReglageSm(pill, pill.dataset.cle, pill.dataset.valeur, true);
+    });
+    smGridAct.addEventListener('input', function (e) {
+      if (!e.target.matches('.fg-count__input')) return;
+      var n = Number(e.target.value);
+      if (e.target.value !== '' && Number.isInteger(n) && n >= Number(e.target.min) && n <= Number(e.target.max)) changerReglageSm(e.target, 'participants', n, false);
+    });
+    smGridAct.addEventListener('change', function (e) {
+      if (!e.target.matches('.fg-count__input')) return;
+      var a = activite(e.target.closest('[data-sm-activity]').dataset.smActivity);
+      changerReglageSm(e.target, 'participants', e.target.value.trim() ? Number(e.target.value) : effectifSm(a), true);
+    });
+    smGridAct.addEventListener('keydown', function (e) {
+      if (!e.target.matches('.fg-pill') || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      var pills = $$('.fg-pill', e.target.closest('.fg-pills')), i = pills.indexOf(e.target) + (e.key === 'ArrowRight' ? 1 : -1);
+      if (i < 0 || i >= pills.length) return;
+      e.preventDefault(); changerReglageSm(pills[i], pills[i].dataset.cle, pills[i].dataset.valeur, true); pills[i].focus();
+    });
+    smGridAct.addEventListener('pointerenter' , function (e) { if (e.pointerType !== 'touch') chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); }, true);
     smGridAct.addEventListener('focusin', function (e) { chargerPhotoCarte(e.target.closest && e.target.closest('.fg-card')); });
     function choisirOngletSm(quel) {
       sm.onglet = quel;
@@ -908,7 +999,7 @@
       var groupe = '<b>' + esc(def.label) + '</b>' + (sm.organisation ? ', ' + esc(sm.organisation) : '');
       var effectif = esc(sm.participants + ' joueur' + (sm.participants > 1 ? 's' : '')) + (sm.accompagnants ? ' + ' + esc(sm.accompagnants + ' accompagnateur' + (sm.accompagnants > 1 ? 's' : '')) : '');
       var ages = sm.ages.map(function (a) { return SM_AGES[a] ? SM_AGES[a].label : ''; }).filter(Boolean);
-      var acts = nomsDe(sm.activites, activitesVendables()), fors = nomsDe(sm.formules, formulesSm());
+      var acts = activitesRecapSm(), fors = nomsDe(sm.formules, formulesSm());
       var contact = I.meta && I.meta.center && I.meta.center.contact;
       var proche = !sm.flexible && sm.date && joursEntre(horlogeCentre().jour, sm.date) <= 2;
       var c = sm.contact || {};
@@ -925,6 +1016,7 @@
           acts.length ? ['a-star', '<b>Activités</b>&nbsp;: ' + esc(acts.join(', '))] : null,
           fors.length ? ['a-formule', '<b>Formules</b>&nbsp;: ' + esc(fors.join(', '))] : null,
           sm.conseil ? ['i-bulb', 'L’équipe vous propose un programme'] : null,
+          sm.activites.length ? ['i-card', esc(estimationSm())] : null,
           sm.budget ? ['i-card', 'Budget indicatif&nbsp;: ' + esc(euros(Number(sm.budget))) + ' par personne'] : null,
         ], 3)
         + blocRecap('Vos coordonnées', 'sm-contact', [
@@ -974,7 +1066,7 @@
           alternativeDate: sm.flexible ? '' : sm.date2,
           period: sm.flexible ? sm.periode : '',
           moment: sm.moment,
-          activities: sm.activites.slice(),
+          activities: sm.activites.map(function (id) { var a = activite(id), r = reglagesSm(a), o = { id: id, participants: effectifSm(a) }; r.compteurs.forEach(function (c) { o[c.cle] = c.n; }); r.groupes.forEach(function (g) { o[g.cle] = g.choisie; }); return o; }),
           formulas: sm.formules.slice(),
           advice: sm.conseil,
           budgetPerPerson: sm.budget ? Number(sm.budget) : 0,
@@ -1012,6 +1104,8 @@
       $('#finBody').innerHTML = '<div class="fg-done__ticket fg-rise" style="--i:2">'
         + rangee('i-users', '<b>' + esc(sm.organisation || def.label) + '</b>, ' + esc(sm.participants + ' joueur' + (sm.participants > 1 ? 's' : '')) + (sm.accompagnants ? ' + ' + esc(sm.accompagnants + ' accompagnateur' + (sm.accompagnants > 1 ? 's' : '')) : '') + '.')
         + rangee('i-calendar', esc(libelleQuandSm()) + '.')
+        + (sm.activites.length ? rangee('a-star', esc(activitesRecapSm().join(' ; '))) + rangee('i-card', esc(estimationSm())) : '')
+        + (sm.formules.length ? rangee('a-formule', esc(nomsDe(sm.formules, formulesSm()).join(', ')) + ' : à composer avec l’équipe.') : '')
         + rangee('i-clock', 'L’équipe ' + (nomCentre === 'du centre' ? 'du centre' : 'de ' + esc(nomCentre)) + ' étudie votre demande et vous répond sous <b>24 heures ouvrables</b>, avec ce qui est possible à votre date et le montant.')
         + rangee('i-mail', reponse.acknowledgementSent ? 'Un accusé de réception part à <b>' + esc(c.email) + '</b>.' : 'Au nom de <b>' + esc((c.prenom + ' ' + c.nom).trim()) + '</b>, ' + esc(c.email) + '.')
         + rangee('i-info', 'Rien n’est encore réservé à votre nom.' + (contact && contact.phone ? ' Une question&nbsp;? ' + lienContact(contact) : ''))
@@ -1030,6 +1124,20 @@
     // tant que le client ne les y a pas changes lui-meme ; le jour seulement
     // s il tombe au plus tot demain (pas le jour meme).
     function ouvrir() {
+      var panierNormal = JSON.stringify([state.onglet, state.selection, state.formuleId, state.options, state.pax, state.date]);
+      if (sm.panierImporte !== panierNormal) {
+        if (sm.groupeImporte !== state.pax) { sm.paxTouche = false; sm.participants = Math.max(1, state.pax); }
+        if (sm.jourImporte !== state.date) { sm.dateTouchee = false; sm.flexible = false; sm.date = ''; }
+        sm.groupeImporte = state.pax; sm.jourImporte = state.date;
+        if (state.onglet === 'formules') {
+          sm.formules = state.formuleId ? [state.formuleId] : []; sm.activites = [];
+        } else {
+          sm.activites = state.selection.slice(); sm.formules = [];
+          sm.options = {};
+          sm.activites.forEach(function (id) { sm.options[id] = Object.assign({}, state.options[id] || {}); });
+        }
+        sm.panierImporte = panierNormal;
+      }
       if (!sm.paxTouche) sm.participants = Math.max(1, state.pax);
       if (!sm.dateTouchee && !sm.flexible) {
         var j = jourInfo(state.date);

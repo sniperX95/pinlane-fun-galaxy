@@ -114,8 +114,8 @@ function main() {
     'cinq personnes tiennent en une session : rien ne change pour elles',
     JSON.stringify({ sessions: cinq.sessions, minutes: cinq.minutes, price: cinq.price }));
   const enorme = normalizeProgram([{ activityId: 'fun_run', minutes: 30 }], { centerId: CENTRE, pax: 240 }).items[0];
-  ok(enorme.sessions === 40 && enorme.minutes === 40 * 30,
-    'un groupe demesure est borne a 40 passages (jamais une visite calculee sur mille heures)',
+  ok(enorme.sessions === 48 && enorme.minutes === 48 * 30 && enorme.price === 2640,
+    '240 joueurs font exactement 48 passages de 30 min et 2640 EUR, sans tronquer les rotations',
     JSON.stringify({ sessions: enorme.sessions, minutes: enorme.minutes }));
 
   // ---------------------------------------------------------------- [C]
@@ -313,7 +313,7 @@ function main() {
       // 15 min font 30 min de groupe, et 30 est AUSSI un palier. Sans les
       // passages en base, la relecture le prend pour des sessions de 30 min.
       fichier: 'lib/database.js',
-      ancre: '    if (item.sessions != null) out.sessions = Math.min(40, Math.max(1, Math.trunc(Number(item.sessions) || 1)));\n    if (item.sessionMinutes != null) out.sessionMinutes = Math.min(600, Math.max(0, Math.trunc(Number(item.sessionMinutes) || 0)));\n',
+      ancre: '    if (item.sessions != null) out.sessions = Math.min(1000, Math.max(1, Math.trunc(Number(item.sessions) || 1)));\n    if (item.sessionMinutes != null) out.sessionMinutes = Math.min(600, Math.max(0, Math.trunc(Number(item.sessionMinutes) || 0)));\n',
       mute: '',
       label: 'sans les passages en base, 8 personnes en sessions de 15 min (60 EUR) se relisent a 2 x 55 EUR',
       verdict: () => {
@@ -329,7 +329,9 @@ function main() {
     const chemin = path.join(ROOT, m.fichier);
     const original = fs.readFileSync(chemin, 'utf8');
     // Une ancre de plusieurs lignes suit les fins de ligne du fichier.
-    const ancre = original.indexOf('\r\n') >= 0 ? m.ancre.replace(/\r?\n/g, '\r\n') : m.ancre;
+    const motif = m.ancre.split(/\r?\n/).map((ligne) => ligne.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\r?\\n');
+    const trouve = original.match(new RegExp(motif));
+    const ancre = trouve ? trouve[0] : m.ancre;
     const compte = original.split(ancre).length - 1;
     if (!ok(compte === 1, `contre-epreuve montable : « ${m.ancre.replace(/\s+/g, ' ').slice(0, 46)}… » une seule fois dans ${m.fichier}`, `${compte} occurrence(s)`)) continue;
     let rouge = false;

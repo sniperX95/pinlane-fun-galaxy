@@ -212,7 +212,7 @@ function lireLigne(page, id) {
       premier: txt(boutons[0]),
       premierClasses: boutons[0] ? boutons[0].className : '',
       confirmeAllume: boutons.some((b) => txt(b) === 'Confirmé' && b.classList.contains('active')),
-      offre: [...row.querySelectorAll('.gc-step-what')].map((w) => [txt(w.querySelector('b')), txt(w.querySelector('small'))].filter(Boolean).join(' ')).join(' · '),
+      offre: [...row.querySelectorAll('.gc-step-what, .gc-libre')].map((w) => [txt(w.querySelector('b, span')), txt(w.querySelector('small'))].filter(Boolean).join(' ')).join(' · '),
       dureeMinutes: debut !== null && fin !== null ? fin - debut : null,
     };
   }, id);
@@ -303,7 +303,7 @@ async function main() {
 
     console.log('\n[5] LA VISITE SANS PISTE');
     const v = await lireLigne(page, 990001) || {};
-    ok(v.offre === 'Minigolf Blacklight 45 min · Playground toute la journée · Fun Run by PIXEL 2 × 30 min',
+    ok(v.offre === 'Minigolf Blacklight 8 joueurs · 45 min · Playground 2 enfants · toute la journée · Fun Run by PIXEL 8 joueurs · 2 × 30 min',
       'la ligne dit chaque activite avec ce qu elle achete (la plaine a la journee, le Fun Run en 2 sessions de 30 min, retrouvees au catalogue)', `« ${v.offre} »`);
     ok(v.dureeMinutes === 105, 'et la carte va de son debut a debut + 1h45 (45 min + 2 × 30 min, la plaine ne compte pas), plus la demi-heure par defaut', `« ${v.dureeMinutes} min »`);
 

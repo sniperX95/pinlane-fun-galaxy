@@ -181,7 +181,7 @@ function getActivitySessionCount(activity, pax) {
   if (capacity <= 0) return 1;
   const places = capacity * (units > 0 ? units : 1);
   const sessions = Math.ceil(Math.max(1, Math.trunc(Number(pax) || 1)) / places);
-  return Math.min(40, Math.max(1, sessions));
+  return Math.max(1, sessions);
 }
 
 // Les unites d une installation comptee pour un groupe : pistes de duckpin
@@ -196,10 +196,10 @@ function getActivityUnitPlan(activity, pax, requested = 0) {
   const necessaires = capacite > 0 ? Math.ceil(joueurs / capacite) : 1;
   const demandees = Math.trunc(Number(requested) || 0);
   const plafond = dotation > 0 ? Math.max(necessaires, dotation) : 50;
-  const units = Math.min(50, Math.max(1, Math.max(necessaires, Math.min(demandees, plafond))));
+  const units = Math.max(1, necessaires, Math.min(demandees, plafond, 50));
   const atOnce = dotation > 0 ? Math.min(dotation, units) : units;
-  const tours = Math.min(40, Math.max(1, Math.ceil(units / atOnce)));
-  return { units, atOnce, tours, lastTour: units - (tours - 1) * atOnce, perUnit: capacite, needed: Math.min(50, necessaires) };
+  const tours = Math.max(1, Math.ceil(units / atOnce));
+  return { units, atOnce, tours, lastTour: units - (tours - 1) * atOnce, perUnit: capacite, needed: necessaires };
 }
 
 // Le palier d UNE session d une ligne de programme enregistree. MIROIR de

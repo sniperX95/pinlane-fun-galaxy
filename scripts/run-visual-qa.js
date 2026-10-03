@@ -2170,6 +2170,7 @@ async function main() {
         title: modal.querySelector('h3')?.textContent.trim() || '',
         eyebrow: modal.querySelector('.ticket-id')?.textContent.trim() || '',
         interactive: Array.from(modal.querySelectorAll('button, input, select, textarea')).filter(visible).length,
+        participantButtons: Array.from(modal.querySelectorAll('.qb-visit-compteur .qb-step-btn')).filter(visible).length,
         interactiveListe: Array.from(modal.querySelectorAll('button, input, select, textarea')).filter(visible).map((el) => (el.textContent || el.placeholder || el.type || el.tagName).trim().slice(0, 18)).join(' | '),
         chips: Array.from(modal.querySelectorAll('.qb-context-chip .k')).map((el) => el.textContent.trim()),
         chipValues: Array.from(modal.querySelectorAll('.qb-context-chip .v')).map((el) => el.textContent.trim()),
@@ -2205,7 +2206,8 @@ async function main() {
     const qbGeneric = await readQuickBook();
     assert(qbGeneric, 'Réservation rapide générique : la modale doit s ouvrir.');
     assert(qbGeneric.title === 'Réservation rapide', `Générique : titre attendu « Réservation rapide » (reçu ${qbGeneric.title}).`);
-    assert(qbGeneric.interactive <= 20, `Générique : max 20 éléments interactifs visibles à l ouverture, proche de la moitié de l ancienne modale (reçu ${qbGeneric.interactive} : ${qbGeneric.interactiveListe}).`);
+    assert(qbGeneric.participantButtons === 2, 'Générique : un compteur propre à l activité avec deux boutons est visible.');
+    assert(qbGeneric.interactive - qbGeneric.participantButtons <= 20, `Générique : max 20 éléments interactifs hors compteur d activité requis (reçu ${qbGeneric.interactive} dont ${qbGeneric.participantButtons} boutons du compteur : ${qbGeneric.interactiveListe}).`);
     assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput && qbGeneric.hasEmailInput, 'Générique : les essentiels (activité, date, heure, joueurs, nom, téléphone, email) doivent être visibles, email visible/saisissable (non obligatoire côté staff).');
     assert(!qbGeneric.hasSlotStrip && !qbGeneric.hasLaneGrid && !qbGeneric.hasNotesTextarea, 'Générique : créneaux, pistes et notes internes doivent être repliés à l ouverture (email reste essentiel, visible).');
     assert(qbGeneric.moreToggle, 'Générique : le bouton « Plus d options » est requis.');
@@ -2229,7 +2231,7 @@ async function main() {
     assert(qbCell.chips.includes('Piste') && qbCell.chips.includes('Départ') && qbCell.chips.includes('Date'), 'Case planning : les acquis doivent être rappelés en chips.');
     assert(qbCell.state.lanes.length === 1 && qbCell.state.lanes[0] === 7 && qbCell.state.startTime === '15:00' && qbCell.state.autoAssign === false, 'Case planning : piste 7 et 15:00 doivent être préremplies.');
     assert(qbCell.durBtns >= 4 && qbCell.hasNameInput && qbCell.hasEmailInput && qbCell.hasPaxInput, 'Case planning : l essentiel restant = client (nom, téléphone, email visible), joueurs, durée.');
-    assert(qbCell.interactive <= 20, `Case planning : la variante doit rester compacte (reçu ${qbCell.interactive}).`);
+    assert(qbCell.interactive - qbCell.participantButtons <= 20, `Case planning : la variante doit rester compacte hors compteur d activité (reçu ${qbCell.interactive}, dont ${qbCell.participantButtons} boutons du compteur).`);
     await screenshot(page, 'quickbook-bowling-cell');
     issues.push(...await collectIssues(page, 'quickbook-bowling-cell'));
     // « Modifier » sur un acquis rouvre le contrôle (capacité préservée).

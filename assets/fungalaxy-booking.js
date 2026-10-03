@@ -349,7 +349,7 @@
     var unites = Math.trunc(Number(a && a.units) || 0);
     if (capacite <= 0) return 1;
     var places = capacite * (unites > 0 ? unites : 1);
-    return Math.min(40, Math.max(1, Math.ceil(joueursDe(a) / places)));
+    return Math.min(1000, Math.max(1, Math.ceil(joueursDe(a) / places)));
   }
   // Le groupe reste le nombre de visiteurs. Chaque activite compte ceux qui
   // y jouent : le serveur recalcule prix, ressources et passages sur eux.
@@ -375,9 +375,9 @@
     var dotation = Math.trunc(Number(a && a.units) || 0);
     var joueurs = joueursDe(a);
     var necessaires = capacite > 0 ? Math.ceil(joueurs / capacite) : 1;
-    var units = Math.min(50, Math.max(1, necessaires));
+    var units = Math.min(state.surMesure ? 1000 : 50, Math.max(1, necessaires));
     var aLaFois = dotation > 0 ? Math.min(dotation, units) : units;
-    var tours = Math.min(40, Math.max(1, Math.ceil(units / aLaFois)));
+    var tours = Math.min(state.surMesure ? 1000 : 40, Math.max(1, Math.ceil(units / aLaFois)));
     return { units: units, atOnce: aLaFois, tours: tours, lastTour: units - (tours - 1) * aLaFois, perUnit: capacite };
   }
   // Le mot d une unite, lu au catalogue : « par piste » donne piste, « par
@@ -4288,8 +4288,8 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20260929a';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20260929a';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261003participants';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003participants';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {
@@ -4343,6 +4343,27 @@
   // CE QUE LA DEMANDE EMPRUNTE AU FORMULAIRE : ses outils, son etat, son
   // calendrier, ses ecrans. `meta` se relit a chaque lecture : le catalogue
   // se recharge (retour sur l onglet, toutes les 10 s).
+  // Le sur-mesure utilise le même catalogue, les mêmes options et calculs.
+  // Ce contexte ne dure qu'un rendu synchrone ; le panier standard est préservé.
+  function reglagesSurMesure(a, options, pax, date) {
+    var avant = { options: state.options, pax: state.pax, date: state.date, selection: state.selection, onglet: state.onglet, sm: state.surMesure };
+    state.surMesure = true; state.onglet = 'activites'; state.options = {}; state.options[a.id] = options || {};
+    state.pax = pax; state.date = date || avant.date; state.selection = [a.id];
+    try {
+      var opt = optionChoisie(a), billard = reglageBillard(a), montant = null;
+      if (opt) {
+        var q = a.priceType === 'grid_laser' ? joueursDe(a) : a.priceType === 'grid_fun_run' ? sessionsPour(a)
+          : a.id === 'bowling' && pistesBowling() ? pistesBowling().pistes : unitesPour(a).units;
+        montant = Math.round(opt.prix * q * 100) / 100;
+      } else if (a.priceType === 'per_unit_hour') montant = prixBillard(a, billard.units, billard.hours);
+      else if (tarifConnu(a)) montant = Math.round(Number(a.priceValue) * (a.priceType === 'per_pax' ? joueursDe(a) : 1) * 100) / 100;
+      return { montant: montant, html: rendreOption(a).replace(/opt-/g, 'sm-opt-'), prix: prixCarte(a),
+        compteurs: [compteurDe(a)].concat(a.priceType === 'per_unit_hour' ? [compteurDe(a, 'units')] : []),
+        groupes: groupesOptions(a) };
+    } finally {
+      state.options = avant.options; state.pax = avant.pax; state.date = avant.date; state.selection = avant.selection; state.onglet = avant.onglet; state.surMesure = avant.sm;
+    }
+  }
   function interne() {
     var I = {
       doc: doc, $: $, $$: $$, CENTER: CENTER, EMBED: EMBED, sm: sm, state: state,
@@ -4353,7 +4374,7 @@
       ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,
       photo: photo, photosDesScenes: photosDesScenes, plageLisible: plageLisible, poserErreur: poserErreur, poserTitre: poserTitre,
       posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
-      secouer: secouer, sortieClavier: sortieClavier,
+      secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure,
       scene: function () { return sceneCourante; },
     };
     Object.defineProperty(I, 'meta', { get: function () { return meta; } });

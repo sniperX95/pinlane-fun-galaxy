@@ -31,6 +31,8 @@ const SOURCES = {
   db: fs.readFileSync(path.join(ROOT, 'lib', 'database.js'), 'utf8'),
   api: fs.readFileSync(path.join(ROOT, 'api', 'staff-reservations.js'), 'utf8'),
 };
+// Les sources Windows et leurs contre-épreuves gardent la même forme logique.
+Object.keys(SOURCES).forEach((key) => { SOURCES[key] = SOURCES[key].replace(/\r\n/g, '\n'); });
 
 // Une fonction du source, accolades comptees (les gabarits ${...} sont
 // equilibres).

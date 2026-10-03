@@ -28,8 +28,14 @@ const checks = `
     const bowling=[...document.querySelectorAll('.booking[data-booking-res-id="9900"] .bk-pax')].map(el=>el.title);
     const laser=[...document.querySelectorAll('.laser-group-card[data-laser-res-id="9900"] .laser-group-count')].map(el=>el.title);
     const terrain=getStaffTerrainSteps(row).map(step=>step.label||step.nom||'').join(' | ');
+    const free={...row,price:0,basePrice:0,program:{priceComplete:true,items:[{activityId:'minigolf_blacklight',participants:3,price:0,priceKnown:true}]}};
+    const unknown={...free,program:{priceComplete:false,items:[{activityId:'arcade_time',participants:5,price:0,priceKnown:false}]}};
+    const freeHolder=document.createElement('div');document.body.append(freeHolder);freeHolder.innerHTML=renderGroupePrix(free)+renderPosDetails(free);
+    const freeText=freeHolder.textContent;const freeCard=freeHolder.querySelector('.gc-price b').textContent;freeHolder.remove();
+    const unknownHolder=document.createElement('div');document.body.append(unknownHolder);unknownHolder.innerHTML=renderGroupePrix(unknown)+renderPosDetails(unknown);
+    const unknownText=unknownHolder.textContent;unknownHolder.remove();
     window.openStaffReservationDetail(9900);
-    return {summary,timeline,bowling,laser,terrain};
+    return {summary,timeline,bowling,laser,terrain,freeText,freeCard,unknownText};
   });
   ok(/Minigolf Blacklight\s*3 joueurs/.test(data.summary)&&/Arcades\s*5 joueurs/.test(data.summary),'actual all activities card says Minigolf3 and Arcades5, total visitors18');
   ok(/Bowling 6 joueurs/.test(data.timeline)&&/Laser Game 4 joueurs/.test(data.timeline)&&/Arcades 5 joueurs/.test(data.timeline),'timeline says own bowling6 laser4 arcade5');
@@ -41,6 +47,9 @@ const checks = `
     ok(compact.includes(name.split(' ').join('')+count+'joueurs')||compact.includes(name.split(' ').join('')+count+'enfants'),'all activities reservation card '+name+' count'+count);
   }
   ok(data.terrain.includes('Bowling · 6 joueurs')&&data.terrain.includes('Laser Game · 4 joueurs'),'terrain program own bowling6 laser4');
+  ok(data.summary.includes('18 personnes présentes'),'mixed participants group header describes18 visitors');
+  ok(data.freeCard.startsWith('0')&&data.freeCard.includes('€')&&data.freeText.includes('À encaisser · 0')&&!data.freeText.toLowerCase().includes('prix sur place')&&!data.freeText.toLowerCase().includes('prix au comptoir'),'actual card+detail known free price stays0');
+  ok(data.unknownText.includes('Prix sur place')&&data.unknownText.includes('prix au comptoir'),'actual card+detail unknown price stays payable onsite');
   const info=await pg.locator('#posOverlay').innerText();
   ok(/Minigolf Blacklight/.test(info)&&/3 joueurs/.test(info)&&/Arcades/.test(info)&&/5 joueurs/.test(info),'live staff detail shows activity counts');
   await pg.evaluate(()=>{closePos();openQuickBook({pax:18,date:state.currentDate,startTime:'14:00'});quickBookState.type='visite';quickBookState.visit={bowling:{on:true,duration:1},laser_game:{on:true,games:2},others:{minigolf_blacklight:true,billards:true,arcade_time:true,playground:true,duckpin_bowling:true,fun_run:true},options:{bowling:{participants:6},laser_game:{participants:4},minigolf_blacklight:{participants:3},billards:{participants:8,units:2,hours:2},arcade_time:{participants:5},playground:{participants:2},duckpin_bowling:{participants:6},fun_run:{participants:4,minutes:30}}};syncQuickBookDuration();renderQuickBook();});
@@ -63,6 +72,25 @@ const checks = `
   await pg.evaluate(()=>{const button=[...document.querySelectorAll('.edit-adapter-btn')].find(b=>/Adapter pour ce dossier/.test(b.textContent));if(button)button.click();});
   const edit=await pg.locator('#posOverlay .qb-visit-compteur .qb-step-valeur').allTextContents();
   ok(JSON.stringify(edit)===JSON.stringify(['4 / 18','3 / 18','8 / 18','5 / 18','2 / 18','6 / 18','4 / 18','6 / 18']),'live edit all8 counters roundtrip unchanged');
+  const transfer=await pg.evaluate(()=>{
+    closePos();
+    const demande={date:state.currentDate,participants:18,formulas:[],activities:[{id:'bowling',name:'Bowling',participants:6,duration:1.5},{id:'laser_game',name:'Laser Game',participants:4,games:3},{id:'minigolf_blacklight',name:'Minigolf Blacklight',participants:3},{id:'billards',name:'Billard',participants:8,units:2,hours:2},{id:'arcade_time',name:'Arcades',participants:5},{id:'playground',name:'Playground',participants:2},{id:'duckpin_bowling',name:'Duckpin Bowling',participants:6,duration:0.5},{id:'fun_run',name:'Fun Run',participants:6,minutes:30}]};
+    const item={id:'sm-all8',contactName:'Demande test',email:'',phone:'',payload:{demande}};
+    staffCustomRequestsCache.key=String(getActiveOpsCenterId());staffCustomRequestsCache.items=[item];
+    staffRequestToBooking(item.id);
+    return {type:quickBookState.type,pax:quickBookState.pax,source:quickBookState.sourceRequestId,bowling:quickBookState.visit.bowling,laser:quickBookState.visit.laser_game,duckpin:ligneProgrammeQuick('duckpin_bowling'),billard:ligneProgrammeQuick('billards'),fun:ligneProgrammeQuick('fun_run'),labels:crActivites(demande).join(' | '),display:document.querySelector('#quickBookOverlay').textContent};
+  });
+  ok(transfer.type==='visite'&&transfer.pax===18&&transfer.source==='sm-all8','actual custom request becomes visit preserving source and18 visitors');
+  ok(transfer.bowling.duration===1.5&&transfer.laser.games===3&&transfer.duckpin.duration===0.5&&transfer.billard.units===2&&transfer.billard.hours===2&&transfer.fun.minutes===30&&transfer.fun.participants===6,'actual custom transfer retains all durations/parts/tables/sessions/counts');
+  const smCounters=await pg.locator('.qb-liste .qb-visit-compteur .qb-step-valeur').allTextContents();
+  ok(JSON.stringify(smCounters)===JSON.stringify(['4 / 18','3 / 18','8 / 18','5 / 18','2 / 18','6 / 18','6 / 18','6 / 18']),'actual custom request all8 visible counters retain distinct counts');
+  ok(transfer.labels.includes('Billard : 8 joueurs · 2 tables · 2h')&&transfer.labels.includes('Laser Game : 4 joueurs · 3 parties'),'actual request labels show players+full choices');
+  const refused=await pg.evaluate(async()=>{
+    let posts=0;const previous=window.fetch;window.fetch=async(input,init)=>{if(String(init?.method||'').toUpperCase()==='POST')posts++;return previous(input,init);};
+    try {quickBookState.pax=1000;renderQuickBook();await saveQuickBook();return {pax:quickBookState.pax,options:quickBookState.visit.options,posts,error:quickBookState.error,visible:document.querySelector('#quickBookOverlay').textContent};}finally{window.fetch=previous;}
+  });
+  ok(refused.pax===1000&&refused.options.bowling.participants===6&&refused.options.billards.units===2&&refused.posts===0,'group1000 refusal preserves count/options and sends no POST');
+  ok(refused.error.includes('240 personnes')&&refused.visible.includes('planifiée manuellement'),'group1000 real dialog clearly explains manual planning');
   ok(erreurs.length===0,'no browser JS errors: '+erreurs.join(' | '));
   await pg.close();
 }

@@ -522,8 +522,11 @@
   function totalIndicatif(complet, items) { return complet ? 'Total indicatif' : 'Total indicatif, sans ' + nomsSansPrix(items) + ' (' + PRIX_ACCUEIL + ')'; }
   // Le montant d une ligne de billard : tables x heures x tarif du centre,
   // null quand le centre n a pas saisi de tarif (prix a l accueil).
+  function tarifConnu(a) {
+    return a && a.priceValue != null && isFinite(Number(a.priceValue)) && Number(a.priceValue) >= 0;
+  }
   function prixBillard(a, tables, heures) {
-    return a && Number(a.priceValue) > 0 ? Math.round(Number(a.priceValue) * tables * heures * 100) / 100 : null;
+    return tarifConnu(a) ? Math.round(Number(a.priceValue) * tables * heures * 100) / 100 : null;
   }
   // `libre` : le prix de base, sans la ligne que la reservation a choisie
   // (la demande sur mesure montre le tarif, l equipe composera les lignes).
@@ -539,7 +542,7 @@
       var quoi = insecable(r.units + ' ' + motTable + (r.units > 1 ? 's' : '')) + ', ' + insecable(heuresLabel(r.hours));
       return (total == null ? 'Prix à l’accueil' : euros(total)) + ' · ' + quoi;
     }
-    if (choisie && seCompteParEnfant(a) && Number(a.priceValue) > 0) {
+    if (choisie && seCompteParEnfant(a) && tarifConnu(a)) {
       var enfants = enfantsPlaine(a);
       return euros(Math.round(Number(a.priceValue) * enfants * 100) / 100) + ' · ' + insecable(enfants + ' enfant' + (enfants > 1 ? 's' : ''));
     }
@@ -547,17 +550,17 @@
     if (opt) {
       if (choisie && a.priceType === 'grid_laser') return euros(Math.round(opt.prix * joueursDe(a) * 100) / 100) + ' · ' + insecable(joueurs(joueursDe(a)));
       if (choisie) return euros(opt.prix) + ' ' + opt.unite;
-      var mini = Math.min.apply(null, optionsPour(a).map(function (o) { return o.prix; }).filter(function (p) { return p > 0; }));
+      var mini = Math.min.apply(null, optionsPour(a).map(function (o) { return o.prix; }).filter(function (p) { return p >= 0; }));
       return isFinite(mini) ? 'Dès ' + euros(mini) + ' ' + opt.unite : 'Prix à l’accueil';
     }
     var unite = a.unitLabel ? ' ' + a.unitLabel.replace(/^par /, '/ ') : '';
     switch (a.priceType) {
       case 'per_pax':
-        if (choisie && Number(a.priceValue) > 0) return euros(Math.round(Number(a.priceValue) * joueursDe(a) * 100) / 100) + ' · ' + insecable(joueurs(joueursDe(a)));
+        if (choisie && tarifConnu(a)) return euros(Math.round(Number(a.priceValue) * joueursDe(a) * 100) / 100) + ' · ' + insecable(joueurs(joueursDe(a)));
       case 'per_unit_hour':
-        return a.priceValue ? 'Dès ' + euros(a.priceValue) + unite : 'Prix à l’accueil';
+        return tarifConnu(a) ? 'Dès ' + euros(a.priceValue) + unite : 'Prix à l’accueil';
       default:
-        return a.priceValue ? euros(a.priceValue) + unite : 'Prix à l’accueil';
+        return tarifConnu(a) ? euros(a.priceValue) + unite : 'Prix à l’accueil';
     }
   }
 
@@ -3415,7 +3418,7 @@
   // Un echec technique (reseau, serveur, plafond de l appareil) ne retient rien
   // et laisse avancer : la confirmation reverifie tout, comme avant. Tout passe
   // par une file : jamais deux demandes de cet ecran en meme temps.
-  var blocage = { jeton: '', cle: '', echeance: 0, total: 0, etat: '', message: '', minuteur: 0, prevenu: false, file: Promise.resolve() };
+  var blocage = { version: 0, jeton: '', cle: '', echeance: 0, total: 0, etat: '', message: '', minuteur: 0, prevenu: false, file: Promise.resolve() };
   var bandeaux = $$('[data-hold]'), hourErr = $('#hourErr');
   function enteteBlocage() { return blocage.jeton ? { 'X-Pinlane-Hold': blocage.jeton } : {}; }
   // Ce que le client a choisi : sa demande, puis ses heures.
@@ -3436,17 +3439,28 @@
   function heureLocale(ms) { var d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function decompte(ms) { var s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   function retenir(corps, cle) {
-    return enFile(function () { return demanderBlocage(corps, cle, 1); });
+    var version = blocage.version;
+    return enFile(function () { return demanderBlocage(corps, cle, 1, version); });
   }
-  function demanderBlocage(corps, cle, essais) {
+  function demanderBlocage(corps, cle, essais, version) {
+    if (version !== blocage.version) return Promise.resolve({ obsolete: true });
     if (blocage.jeton) corps.holdToken = blocage.jeton;
     return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (x) { return { statut: r.status, json: x || {} }; }); })
       .then(function (res) {
         var x = res.json;
+        // Le groupe ou le panier a changé pendant le réseau : rendre la place
+        // obtenue pour l'ancien choix, sans remplacer le blocage courant.
+        if (version !== blocage.version) {
+          if (res.statut === 201 && x.holdToken) {
+            return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ release: true, holdToken: x.holdToken }), credentials: 'omit', keepalive: true })
+              .catch(function () {}).then(function () { return { obsolete: true }; });
+          }
+          return { obsolete: true };
+        }
         if (res.statut === 201 && x.ok !== false && x.holdToken) { poserBlocage(x, cle); return { ok: true }; }
         // Deux demandes de cet ecran se sont croisees au serveur : une fois.
-        if (res.statut === 409 && x.code === 'hold_retry' && essais > 0) return demanderBlocage(corps, cle, essais - 1);
+        if (res.statut === 409 && x.code === 'hold_retry' && essais > 0) return demanderBlocage(corps, cle, essais - 1, version);
         if (res.statut === 409 && (x.code === 'slot_taken' || x.code === 'slot_unavailable')) return { pris: true, message: x.message || '' };
         // Un refus du centre (fermé, groupe trop grand) vient de NOTRE API :
         // JSON ok:false et sa phrase. Un 404 sans elle, c est l adresse du
@@ -3456,7 +3470,7 @@
         arreterDecompte();
         return { sans: true };
       })
-      .catch(function () { arreterDecompte(); return { sans: true }; });
+      .catch(function () { if (version !== blocage.version) return { obsolete: true }; arreterDecompte(); return { sans: true }; });
   }
   // Le decompte part de ce que le SERVEUR a pose (echeance moins son heure) :
   // l horloge du telephone peut avancer ou retarder, pas la duree.
@@ -3477,6 +3491,7 @@
   // Rendre la place tout de suite : le client change de jour, de groupe ou
   // d activites. Le jeton ne sert plus.
   function libererBlocage() {
+    blocage.version += 1;
     if (!blocage.jeton) return;
     var jeton = blocage.jeton;
     blocage.jeton = ''; blocage.cle = '';

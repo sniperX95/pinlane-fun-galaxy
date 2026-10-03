@@ -5,6 +5,7 @@
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const { chromium } = require('playwright-core');
 // The local server displays explicit mock tariffs; hydrate the engine with
 // those same synthetic centre tariffs before it captures catalog references.
@@ -102,6 +103,45 @@ async function verifyReceipt(page, container, width) {
   const text = (await page.locator(container).textContent()).replace(/\s+/g, ' ');
   check(text.includes('18 personnes') && text.includes('461 €') && /sans Arcades.*prix à l’accueil/.test(text), `[${width}] ${container} group, known total and missing tariff clearly stated`, text);
 }
+async function adversarialSourceChecks() {
+  const source = fs.readFileSync(path.resolve(__dirname, '../assets/fungalaxy-booking.js'), 'utf8');
+  const holdsSource = source.slice(source.indexOf('  function enFile(fn)'), source.indexOf('  // La reservation est faite'));
+  const requests = [];
+  let resolveOld;
+  const context = { blocage: { version: 0, file: Promise.resolve(), jeton: '', cle: '', etat: '' },
+    fetch: (url, options) => {
+      const body = JSON.parse(options.body); requests.push(body);
+      if (body.release) return Promise.resolve({ status: 200 });
+      return new Promise(resolve => { resolveOld = resolve; });
+    }, Date, JSON, Number, String, Math, Promise, clearInterval() {}, setInterval() { return 1; }, rendreBlocage() {}, tic() {} };
+  vm.createContext(context); vm.runInContext(holdsSource, context);
+  const old = context.retenir({ participants: 8 }, 'old-eight');
+  await Promise.resolve();
+  context.libererBlocage();
+  resolveOld({ status: 201, json: async () => ({ ok: true, holdToken: 'old-token',
+    serverNow: new Date().toISOString(), expiresAt: new Date(Date.now() + 600000).toISOString() }) });
+  const verdict = await old;
+  check(verdict.obsolete === true && context.blocage.jeton === '' && context.blocage.etat === '', 'delayed hold after count change is discarded');
+  check(requests.some(body => body.release === true && body.holdToken === 'old-token'), 'delayed stale hold token released immediately');
+  const next = context.retenir({ participants: 3 }, 'new-three');
+  await new Promise(resolve => setImmediate(resolve));
+  resolveOld({ status: 201, json: async () => ({ ok: true, holdToken: 'new-token',
+    serverNow: new Date().toISOString(), expiresAt: new Date(Date.now() + 600000).toISOString() }) });
+  await next;
+  check(context.blocage.jeton === 'new-token' && context.blocage.cle === 'new-three', 'new participants hold survives obsolete earlier response');
+  const priceStart = source.indexOf('  function tarifConnu(');
+  const pricing = { meta: {}, state: { selection: ['golf', 'billards', 'playground'] }, Number, Math, isFinite,
+    reglageBillard: () => ({ units: 2, hours: 1 }), motUnite: () => 'table', insecable: s => s,
+    heuresLabel: n => n + 'h', euros: n => n + ' €', seCompteParEnfant: a => a.id === 'playground',
+    enfantsPlaine: () => 3, optionChoisie: () => null, joueursDe: () => 3, joueurs: n => n + ' joueurs' };
+  vm.createContext(pricing); vm.runInContext(source.slice(priceStart, source.indexOf('  /* --- Le fil', priceStart)), pricing);
+  for (const [id, priceType] of [['golf', 'per_pax'], ['billards', 'per_unit_hour'], ['playground', 'per_pax']]) {
+    const free = { id, priceType, priceValue: 0, unitLabel: 'par personne' };
+    check(pricing.prixCarte(free, false).startsWith('0 €'), `explicit zero ${id} shown as known zero price`);
+    check(/Prix à l’accueil/.test(pricing.prixCarte({ ...free, priceValue: null }, false)), `unknown ${id} remains price at reception`);
+    check(catalog.activityLinePrice(free, { pax: 3, units: 2, hours: 1 }) === 0, `server ${id} agrees explicit zero is known`);
+  }
+}
 async function main() {
   fs.mkdirSync(OUTPUT, { recursive: true });
   const server = mock.createServer({ port: PORT });
@@ -110,6 +150,7 @@ async function main() {
   const errors = [];
   const layoutFailures = [];
   try {
+    await adversarialSourceChecks();
     const normalized = normalizeProgram(LINES, { centerId: 'libramont', pax: 18,
       bowlingConfig: getCenter('libramont').resources.bowling, dateStr: mock.DATE });
     verifyProgram(normalized, 'server');
@@ -144,6 +185,11 @@ async function main() {
       page.on('request', r => { if (r.url().includes('/api/public-availability?') && new URL(r.url()).searchParams.get('type') === 'visite') availability.push(r.url()); });
       await mounted(page);
       await selectAll(page);
+      for (const [typed, expected] of [['', '7'], ['8.7', '8'], ['999', '18'], ['-4', '1'], ['7', '7']]) {
+        await page.locator(input('bowling')).fill(typed);
+        await page.locator(input('bowling')).press('Tab');
+        check(await page.locator(input('bowling')).inputValue() === expected, `[${width}] typed ${JSON.stringify(typed)} settles to ${expected} on blur`);
+      }
       for (const [id, n] of Object.entries(COUNTS)) check(await page.locator(input(id)).inputValue() === String(n), `[${width}] ${id} retains independent count`);
       // Changing price options and toggling cards must preserve all counts.
       await page.locator(`${card('bowling')} .fg-pill[data-valeur="2"]`).click();

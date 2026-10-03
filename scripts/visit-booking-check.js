@@ -16,7 +16,7 @@
 //      c'est ce qui garantit qu'on n'a pas deplace le sol sous les reservations
 //      d'aujourd'hui.
 // Puis une contre-preuve par MUTATION (le gate sait-il rougir ?) avec
-// restauration par edition inverse, jamais git checkout.
+// mutation de la reponse HTTP en memoire : aucun fichier produit modifie.
 //
 // Lancement : node scripts/visit-booking-check.js
 const fs = require('fs');
@@ -25,6 +25,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const { chromium } = require('playwright-core');
 const APP = path.join(ROOT, 'assets/app-main.js');
+let appResponseOverride = null; // Contre-preuve isolee, sans mutation disque.
 const PORT = Number(process.env.PINLANE_VISIT_PORT || 4207);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -59,6 +60,11 @@ function serveStatic() {
     let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
     if (url.pathname === '/' || url.pathname === '') filePath = path.join(ROOT, 'index.html');
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
+    if (filePath === APP && appResponseOverride !== null) {
+      res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' });
+      res.end(appResponseOverride);
+      return;
+    }
     fs.readFile(filePath, (err, content) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
@@ -572,6 +578,14 @@ async function main() {
         dy: Math.round(dy * 100) / 100,
         configuratorVisible: Boolean(configurator && getComputedStyle(configurator).display !== 'none'),
         settingsRows: settingsRows.length,
+        settingsIds: settingsRows.map(row => row.dataset.activityOptions).sort(),
+        participantCounters: settingsRows.map(row => ({
+          id: row.dataset.activityOptions,
+          count: row.querySelectorAll('[data-role="participants-input"]').length,
+          type: row.querySelector('[data-role="participants-input"]')?.type,
+          legend: row.querySelector('.activity-option-legend')?.textContent.trim(),
+        })),
+        selectedSettings: settingsRows.filter(row => row.classList.contains('is-visible')).map(row => row.dataset.activityOptions).sort(),
         laserSettingsVisible: Boolean(laserSettings && getComputedStyle(laserSettings).display !== 'none'),
         hiddenSettingsHidden: Boolean(hiddenSettings && getComputedStyle(hiddenSettings).display === 'none'),
         noOptionsInsideCards: document.querySelectorAll('.activity-card [data-opt]').length === 0,
@@ -590,14 +604,17 @@ async function main() {
       'la carte survit au clic : la grille ne se reconstruit pas');
     ok(polish.dx <= 1 && polish.dy <= 1,
       `la coche est centree dans son anneau a ${polish.dx} / ${polish.dy} px pres`);
-    // 6 depuis le 2026-08-18 : la plaine de jeux se regle en nombre d'enfants.
-    // Depuis le 2026-08-26 le configurateur n est plus VISIBLE avec la grille
-    // (il a son ecran) : on verifie donc qu il porte toujours les 6 lignes
-    // parametrables et qu il ne montre pas les autres, sans exiger qu il soit a
-    // l ecran a ce moment-la. Sa visibilite sur SON ecran est prouvee par la
-    // matrice de largeurs plus bas et par les gates tactile et one-screen.
-    ok(polish.settingsRows === 6 && polish.laserSettingsVisible && polish.hiddenSettingsHidden,
-      `le panneau commun ne porte que les reglages selectionnes (${polish.settingsRows} lignes parametrables)`);
+    // Chaque activité a désormais son effectif propre, y compris celles
+    // sans durée réglable. Le configurateur conserve son écran dédié.
+    const expectedActivityIds = ACTIVITIES.map(activity => activity.id).sort();
+    ok(polish.settingsRows === 8 && JSON.stringify(polish.settingsIds) === JSON.stringify(expectedActivityIds)
+      && polish.laserSettingsVisible && polish.hiddenSettingsHidden,
+      `le panneau commun contient les huit activites et masque les reglages non selectionnes (${polish.settingsRows} lignes)`);
+    ok(JSON.stringify(polish.selectedSettings) === JSON.stringify(['bowling', 'laser_game', 'minigolf_blacklight']),
+      'seules les trois activites selectionnees ont une ligne active');
+    ok(polish.participantCounters.every(counter => counter.count === 1 && counter.type === 'number'
+      && counter.legend === (counter.id === 'playground' ? 'Enfants' : 'Joueurs')),
+      'chacune des huit activites possede son unique compteur numerique de joueurs ou enfants');
     ok(polish.noOptionsInsideCards,
       'aucun reglage ne gonfle une carte : la selection et la configuration sont separees');
     ok(polish.hiddenButtonsFocusable === false,
@@ -704,7 +721,13 @@ async function main() {
           visibleSettings: document.querySelectorAll('.activity-config-row.is-visible').length,
           summaryItems: document.querySelectorAll('.program-item').length,
           summaryColumns,
-          billardsGroups: document.querySelectorAll('[data-activity-options="billards"] .activity-option-group').length,
+          participantCounters: [...document.querySelectorAll('.activity-config-row.is-visible')]
+            .map(row => ({ id: row.dataset.activityOptions, count: row.querySelectorAll('[data-role="participants-input"]').length })),
+          billardsGroups: [...document.querySelectorAll('[data-activity-options="billards"] .activity-option-group')]
+            .map(group => ({ legend: group.querySelector('.activity-option-legend')?.textContent.trim(),
+              participants: group.querySelectorAll('[data-role="participants-input"]').length,
+              tables: group.querySelectorAll('[data-opt="units"]').length,
+              durations: group.querySelectorAll('[data-opt="hours"]').length })),
         };
       });
       layouts.push({ ...target, ...measured });
@@ -736,12 +759,20 @@ async function main() {
         ok(layout.settingsGap >= 8 && layout.settingsGap <= 16,
           `${layout.width}px : ${layout.settingsGap.toFixed(1)}px entre la grille et les reglages`);
       }
-      ok(layout.visibleSettings === 6,
-        `${layout.width}px : les 6 activites parametrables ont une ligne de reglages`);
+      ok(layout.visibleSettings === 8 && layout.participantCounters.length === 8
+        && JSON.stringify(layout.participantCounters.map(counter => counter.id).sort()) === JSON.stringify(expectedActivityIds)
+        && layout.participantCounters.every(counter => counter.count === 1),
+        `${layout.width}px : les huit activites selectionnees ont chacune leur compteur de participants`);
       ok(layout.summaryItems === 8 && layout.summaryColumns === layout.expectedSummaryColumns,
         `${layout.width}px : recap structure en ${layout.summaryItems} lignes et ${layout.summaryColumns} colonne(s)`);
-      ok(layout.billardsGroups === 2,
-        `${layout.width}px : tables et duree des billards restent deux groupes distincts`);
+      ok(layout.billardsGroups.length === 3
+        && layout.billardsGroups[0].legend === 'Joueurs' && layout.billardsGroups[0].participants === 1
+        && layout.billardsGroups[0].tables === 0 && layout.billardsGroups[0].durations === 0
+        && layout.billardsGroups[1].legend === 'Tables' && layout.billardsGroups[1].tables > 0
+        && layout.billardsGroups[1].participants === 0 && layout.billardsGroups[1].durations === 0
+        && layout.billardsGroups[2].legend === 'Durée' && layout.billardsGroups[2].durations > 0
+        && layout.billardsGroups[2].participants === 0 && layout.billardsGroups[2].tables === 0,
+        `${layout.width}px : joueurs, tables et duree des billards restent trois groupes independants`);
     });
     await page.setViewportSize({ width: 1280, height: 1000 });
     if (process.env.PINLANE_VISUAL_CAPTURE) {
@@ -794,7 +825,7 @@ async function main() {
     if (occurrences !== 1) {
       ok(false, `ancre de mutation introuvable ou ambigue (${occurrences})`);
     } else {
-      fs.writeFileSync(APP, original.replace(anchor, toFileEol("      params.set('program', '[]');")));
+      appResponseOverride = original.replace(anchor, toFileEol("      params.set('program', '[]');"));
       let mutatedProgram = null;
       try {
         await bootClient(page, 'mutation');
@@ -807,7 +838,7 @@ async function main() {
           return JSON.parse(params.get('program') || 'null');
         });
       } finally {
-        fs.writeFileSync(APP, original); // restauration par edition inverse
+        appResponseOverride = null; // Le serveur ressert le fichier original intact.
       }
       ok(Array.isArray(mutatedProgram) && mutatedProgram.length === 0,
         'envoi du panier neutralise : la requete part vide -> le check 3 ROUGIRAIT');
@@ -821,7 +852,7 @@ async function main() {
         const params = new URLSearchParams(window.__QA_CALLS__.availability[0] || '');
         return JSON.parse(params.get('program') || 'null');
       });
-      ok(Array.isArray(restored) && restored.length === 3, 'restauration inverse : le panier repart complet');
+      ok(Array.isArray(restored) && restored.length === 3, 'reponse originale restauree : le panier repart complet');
     }
 
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' : ' + errs.slice(0, 3).join(' | ') : ''}`);

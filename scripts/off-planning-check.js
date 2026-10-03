@@ -21,6 +21,7 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 const DATE = '2026-07-18'; // samedi ouvert : deterministe, jamais un jour ferme
+let appOverride = null;
 
 function serveStatic() {
   const server = http.createServer((req, res) => {
@@ -28,7 +29,11 @@ function serveStatic() {
     let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
     if (url.pathname === '/' || url.pathname === '') filePath = path.join(ROOT, 'index.html');
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
-    // no-store : la contre-preuve MUTE app-main.js sur disque et rechargent la page.
+    // La contre-preuve sert une mutation en memoire, sans toucher au chantier.
+    if (filePath === APP && appOverride !== null) {
+      res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' });
+      res.end(appOverride); return;
+    }
     fs.readFile(filePath, (err, content) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
@@ -206,10 +211,13 @@ async function main() {
     await page.waitForTimeout(250);
     const filtered = await page.evaluate(() => ({
       off: [...document.querySelectorAll('#resList .gc-tag')].some(t => /Hors planning/.test(t.textContent)),
-      rows: document.querySelectorAll('#resList .res-row').length,
+      // Departure animation clones retain .res-row for460ms, but deliberately
+      // lose their live row id and become aria-hidden. Count real dossiers.
+      rows: document.querySelectorAll('#resList [data-res-row-id]').length,
+      ids:[...document.querySelectorAll('#resList [data-res-row-id]')].map(el=>el.getAttribute('data-res-row-id')),
     }));
     ok(filtered.off === true, 'filtre « A venir » : la carte hors planning reste presente');
-    ok(filtered.rows === 3, `filtre « A venir » : 3 resas (obtenu ${filtered.rows})`);
+    ok(filtered.rows === 3 && filtered.ids.join(',') === '9101,9102,9103', `filtre « A venir » : 3 resas, Karim arrive exclu (obtenu ${filtered.rows}; ids ${filtered.ids})`);
     await page.evaluate(() => { setStaffStatusFilter('all'); });
     await page.waitForTimeout(200);
 
@@ -238,7 +246,7 @@ async function main() {
     if (occurrences !== 1) {
       ok(false, `ancre de mutation introuvable ou ambigue (${occurrences})`);
     } else {
-      fs.writeFileSync(APP, original.replace(anchor, toFileEol('  return false;')));
+      appOverride = original.replace(anchor, toFileEol('  return false;'));
       let mutated = { sub: '', off: true };
       try {
         await bootStaff(page, 'mutation');
@@ -247,7 +255,7 @@ async function main() {
           off: [...document.querySelectorAll('#resList .gc-tag')].some(t => /Hors planning/.test(t.textContent)),
         }));
       } finally {
-        fs.writeFileSync(APP, original); // restauration par edition inverse
+        appOverride = null;
       }
       ok(mutated.off === false && mutated.sub === 'Le jour au complet',
         `regle neutralisee : plus de zone hors planning, sous-titre « ${mutated.sub} » -> le gate ROUGIRAIT`);

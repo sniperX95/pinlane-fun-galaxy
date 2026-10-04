@@ -21477,6 +21477,7 @@ function getReservationPriceAdjustmentTitle(reservation) {
 //   'complet'   « Prix ajusté 40 € »               listes, cartes d accueil
 //   'reference' « Prix ajusté (référence 60 €) »   quand le montant est deja dit
 //   'montant'   « 40 € »                            cartes du planning
+//   'signal'    une etiquette SVG, montant en infobulle et nom accessible
 //   'mot'       « Prix ajusté »                     tableaux a colonne Montant
 // RIEN NE S AFFICHE QUAND LE PRIX EGALE LA REFERENCE : un marqueur toujours
 // present ne signale plus rien.
@@ -21488,8 +21489,10 @@ function renderReservationPriceMark(reservation, options = {}) {
   const montant = formatMoneyCentimes(etat.price);
   // 'encadre' : l encadre « Prix ajusté » des cartes de groupe (2026-10-01),
   // dont le titre dit deja le mot : « 280 € · référence 495 € ».
-  const texte = forme === 'montant'
-    ? montant
+  const texte = forme === 'signal'
+    ? ''
+    : forme === 'montant'
+      ? montant
     : forme === 'mot'
       ? 'Prix ajusté'
       : forme === 'reference'
@@ -21504,7 +21507,7 @@ function renderReservationPriceMark(reservation, options = {}) {
   // planning c est le SEUL montant affiche. L etiquette de prix donne a la
   // pastille une silhouette qu on reconnait sans lire la couleur ; elle est
   // decorative, c est le libelle qui porte l information.
-  const icone = forme === 'montant'
+  const icone = forme === 'montant' || forme === 'signal'
     ? '<svg class="pl-price-icon" viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.2 12.8 21a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1-.6-1.4V4.6a2 2 0 0 1 2-2h8a2 2 0 0 1 1.4.6l6.8 6.8a2 2 0 0 1 0 2.8z"/><path d="M7.3 7.3h.01"/></svg>'
     : '';
   // LE LIBELLE VOCAL SUIT LA FORME. En « mot » et en « reference », l ecran
@@ -21520,7 +21523,7 @@ function renderReservationPriceMark(reservation, options = {}) {
   // « Entreprise Ardenne · 15:00 - 16:30 : ... 290 € », sans le mot « ajusté ».
   // La marque de note de la page Evenements porte deja `role="img"` : meme
   // geste, meme fichier.
-  return `<span class="${base} pl-price-adjusted" role="img" title="${escapeHtml(getReservationPriceAdjustmentTitle(reservation))}" aria-label="${escapeHtml(vocal)}">${icone}${escapeHtml(texte)}</span>`;
+  return `<span class="${base} pl-price-adjusted"${forme === 'signal' ? ' style="color:var(--warning);background:none;border:0"' : ''} role="img" title="${escapeHtml(forme === 'signal' ? vocal : getReservationPriceAdjustmentTitle(reservation))}" aria-label="${escapeHtml(vocal)}">${forme === 'signal' ? icone.replace('class="pl-price-icon"', 'class="pl-price-icon" style="margin-right:0"') : icone}${escapeHtml(texte)}</span>`;
 }
 
 // UNE NOTE QU ON NE PEUT PAS LIRE N EST PAS UNE NOTE, C EST UN RAPPEL D OUBLI.
@@ -22683,6 +22686,7 @@ function renderLaserPlanning() {
         : laserGames > 1 ? `Laser · ${passLabel}` : 'Laser direct';
       const pillHtml = `<span class="laser-card-pills">
         ${renderCardFlags(reservation, { partiesEcrites: true })}
+        ${renderReservationPriceMark(reservation, { forme: 'signal', base: 'bk-flag flag-price' })}
         ${window.formulaFallback ? '<span class="laser-plan-estimate" role="img" aria-label="Plan estimé : ouvrir la fiche pour les détails" title="Plan estimé : vérifier les horaires dans la fiche">i</span>' : ''}
       </span>`;
       const dragTitle = waveCount > 1
@@ -22698,7 +22702,7 @@ function renderLaserPlanning() {
         <span class="booking-stats laser-group-stats">
           ${renderActivityProgressPill(reservation)}
           <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}">${players}<span class="u">j</span></span>
-
+          <span class="bk-dur laser-dur" title="Durée ${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}">${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}</span>
         </span>
       </button>${renderDelayIndicator(reservation)}</div>`;
     }).join('');

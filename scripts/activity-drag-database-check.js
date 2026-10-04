@@ -103,6 +103,10 @@ async function main() {
   const formulaBefore=await db.getReservationById(777);const formulaMoved=await move({activityId:'bowling',startTime:'20:00',lanes:[3,4]});
   equal(formulaMoved.opsPlan.resourceBlocks.filter(b=>b.resourceType!=='bowling_lane'),formulaBefore.opsPlan.resourceBlocks.filter(b=>b.resourceType!=='bowling_lane'),'actual planning-engine formula keeps all other resource blocks');
   equal(formulaMoved.opsPlan.timeline.filter(b=>b.activityId!=='bowling'),formulaBefore.opsPlan.timeline.filter(b=>b.activityId!=='bowling'),'actual planning-engine formula keeps unrelated timeline');
+  const legacyService=fixture();legacyService.lanes=[4,6];legacyService.pax=4;legacyService.program.items[0].participants=4;legacyService.program.items[1].participants=4;
+  const l1={activityId:'bowling',resourceType:'bowling_lane',startTime:'14:00',endTime:'15:00',players:4,lanes:[4]};const l2={...l1,startTime:'15:00',endTime:'16:00',lanes:[6]};const keptLaser=laser(1110,1,4);legacyService.ops_plan.resourceBlocks=[l1,l2,keptLaser];legacyService.ops_plan.timeline=[l1,l2,keptLaser];bench.semer([legacyService]);
+  const reversed=await move({activityId:'bowling',startTime:'14:00',lanes:[1,4],laneMapping:{4:4,6:1}});
+  equal(reversed.opsPlan.resourceBlocks.filter(b=>b.resourceType==='bowling_lane').map(b=>[b.startTime,b.lanes]),[['14:00',[4]],['15:00',[1]]],'legacy multiservice missing metadata gets exact explicit lane mapping');
   console.log(JSON.stringify({ok:true,checks,writes,realDatabaseTransaction:true,fixtureOnly:true}));
 }
 main().catch(error=>{console.error(error.stack);process.exitCode=1;});

@@ -19218,6 +19218,18 @@ body:is(.staff-mode, .admin-mode) .es2 :is(.input, .es-seg-btn, .edit-adapter-bt
 body:is(.staff-mode, .admin-mode) .es2 :is(.es-pair, .es-trio) { gap: 12px; }
 body:is(.staff-mode, .admin-mode) .es2 .es-contenu { grid-template-columns: minmax(0, 1.3fr) minmax(0, .85fr); gap: 24px; }
 body:is(.staff-mode, .admin-mode) .es2 .dossier-program { grid-column: 1 / -1; }
+body:is(.staff-mode, .admin-mode) .dossier-edit-lock { border: 0; padding: 0; margin: 0; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .dossier-laser-program { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; }
+body:is(.staff-mode, .admin-mode) .dossier-laser-program > small { flex-basis: 100%; }
+body:is(.staff-mode, .admin-mode) .dossier-laser-unit { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+body:is(.staff-mode, .admin-mode) .dossier-laser-unit-title { display: grid; gap: 4px; font-size: 13px; }
+body:is(.staff-mode, .admin-mode) .dossier-laser-unit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+body:is(.staff-mode, .admin-mode) .dossier-laser-unit-actions .input { width: 84px; min-width: 0; text-align: center; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .dossier-laser-unit-actions .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 640px) {
+  body:is(.staff-mode, .admin-mode) .dossier-laser-unit { align-items: flex-start; flex-direction: column; gap: 10px; }
+  body:is(.staff-mode, .admin-mode) .dossier-laser-unit-actions { width: 100%; }
+}
 body:is(.staff-mode, .admin-mode) .dossier-activity-body { display: grid; gap: 12px; min-width: 0; }
 body:is(.staff-mode, .admin-mode) .es2 .es-seg { border: 1px solid var(--control-border); background: var(--raised); gap: 2px; padding: 3px; }
 body:is(.staff-mode, .admin-mode) .es2 .es-seg-btn { font-size: 12px; font-weight: 600; border-radius: 6px; }

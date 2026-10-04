@@ -22536,7 +22536,7 @@ function renderLaserPlanning() {
         const unitLabel = pass.waveCount > 1
           ? `Vague ${pass.waveIndex}/${pass.waveCount}${pass.totalGames > 1 ? ` · Partie ${pass.countIndex}/${pass.totalGames}` : ''}`
           : `Partie ${pass.countIndex}/${pass.totalGames}`;
-        return `<button type="button" class="laser-pass-card" data-laser-res-id="${reservation.id}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette vague">
+        return `<button type="button" class="laser-pass-card" data-laser-res-id="${reservation.id}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation(); openPos(${reservation.id})" title="Glisser pour placer cette vague">
           <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
           <span class="laser-pass-meta">${unitLabel} · ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
           <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
@@ -22647,7 +22647,7 @@ function renderLaserPlanning() {
         ? `Déplacer la vague ${waveIndex}/${waveCount}${laserGames > 1 ? ` (partie ${passIndex})` : ''}`
         : passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
       const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
-      return `<div class="laser-group-item"><button type="button" data-laser-res-id="${reservation.id}" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
+      return `<div class="laser-group-item"><button type="button" data-laser-res-id="${reservation.id}" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();openPos(${reservation.id})" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
           <small>${escapeHtml(label)}${waveLabel ? ` · ${escapeHtml(waveLabel)}` : ''}</small>
@@ -22662,7 +22662,7 @@ function renderLaserPlanning() {
     }).join('');
     const sessionType = seulementEnLigne ? 'en ligne' : hasFormula && hasDirect ? 'mixte' : hasFormula ? 'formule' : 'direct';
 
-    return `<div class="laser-session-slot has-session ${shared ? 'is-shared' : ''} ${seulementEnLigne ? 'is-en-ligne' : hasFormula ? 'has-formula' : 'has-direct'}" data-laser-drop-start="${session.start}" data-laser-drop-end="${session.end}" role="button" tabindex="0" onclick="openQuickBookForLaserSession(${session.start}, ${remaining})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickBookForLaserSession(${session.start}, ${remaining});}" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${session.start}, ${session.end})" title="Ajouter un groupe sur ce lancement">
+    return `<div class="laser-session-slot has-session ${shared ? 'is-shared' : ''} ${seulementEnLigne ? 'is-en-ligne' : hasFormula ? 'has-formula' : 'has-direct'}" data-laser-drop-start="${session.start}" data-laser-drop-end="${session.end}" role="button" tabindex="0" onclick="openQuickBookForLaserSession(${session.start}, ${remaining})" onkeydown="if(event.target!==event.currentTarget)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickBookForLaserSession(${session.start}, ${remaining});}" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${session.start}, ${session.end})" title="Ajouter un groupe sur ce lancement">
       <div class="laser-session-top">
         <div>
           <div class="laser-session-title">${formatClockDisplay(session.start)} - ${formatClockDisplay(session.end)}</div>
@@ -25881,6 +25881,80 @@ function renderEditFormuleBloc(r, formule, lignes) {
   </div>`;
 }
 
+let dossierLaserSaving = false;
+
+function dossierHasUnsavedChanges() {
+  const e = state.editState;
+  const original = e && departsEdition().get(e)?.origine;
+  if (!original) return true;
+  return editProgramAChange() || e.prixFige || ['name', 'phone', 'email', 'startTime', 'duration', 'pax', 'status', 'date'].some(key => String(e[key] ?? '') !== String(original[key] ?? ''))
+    || JSON.stringify(parseLaneInput(e.lanesStr)) !== JSON.stringify(parseLaneInput(e.laserScheduleInitialLanes ?? (original.lanes || []).join(',')));
+}
+
+function renderDossierLaserEditor(r) {
+  if (!getLaserGameCountForReservation(r)) return '';
+  if (state.editState.laserScheduleInitialLanes == null) state.editState.laserScheduleInitialLanes = state.editState.lanesStr || '';
+  const programme = ensureEditProgram(r);
+  const laser = programme?.laser_game;
+  const canAdapt = peutAdapterFormule();
+  const windows = getLaserWindowsFromReservation(r);
+  const units = getLaserUnitsForReservation(r);
+  const unitName = units.some(unit => unit.waveCount > 1) ? 'vague' : 'partie';
+  const estimate = editProgramAChange() ? getEditPrixEstime() : null;
+  const rows = units.map(unit => {
+    const placed = windows.find(window => laserBlockUnitKey(window) === unit.unitKey);
+    const players = placed?.players || unit.players;
+    const label = `Partie ${unit.countIndex}${unit.waveCount > 1 ? ` · vague ${unit.waveIndex}/${unit.waveCount}` : ''}`;
+    const field = `dossierLaserTime-${unit.unitKey.replace('.', '-')}`;
+    return `<div class="dossier-laser-unit" data-laser-unit="${unit.unitKey}">
+      <div class="dossier-laser-unit-title"><strong>${label}</strong><span class="muted">${players} joueur${players > 1 ? 's' : ''} · ${placed ? `${escapeHtml(formatClockDisplay(placed.start))}–${escapeHtml(formatClockDisplay(placed.end))}` : 'À placer'}</span></div>
+      <div class="dossier-laser-unit-actions"><label class="sr-only" for="${field}">Heure de ${label}</label><input id="${field}" class="input" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" aria-label="Heure de ${label}" value="${placed ? escapeHtml(numToTime(placed.start)) : ''}" ${dossierLaserSaving ? 'disabled' : ''}>
+      <button type="button" class="btn-secondary" onclick="saveDossierLaserUnit('${unit.unitKey}')" ${dossierLaserSaving ? 'disabled' : ''}>${placed ? 'Déplacer' : 'Placer'}</button>${placed ? `<button type="button" class="edit-adapter-btn" onclick="saveDossierLaserUnit('${unit.unitKey}',true)" ${dossierLaserSaving ? 'disabled' : ''}>Retirer du planning</button>` : ''}</div>
+    </div>`;
+  }).join('');
+  return `<section class="es-card es-wide dossier-section dossier-section-wide dossier-laser-editor" aria-labelledby="dossierLaserHeading">
+    <div class="es-head dossier-section-heading"><h4 id="dossierLaserHeading">Laser Game</h4><span class="muted">${units.filter(unit => windows.some(window => laserBlockUnitKey(window) === unit.unitKey)).length}/${units.length} ${unitName}${units.length > 1 ? 's' : ''} placée${units.length > 1 ? 's' : ''}</span></div>
+    ${canAdapt && laser?.on ? `<div class="dossier-laser-program">${renderActivityParticipantsControl('laser_game', 'edit')}<div class="dossier-options" role="group" aria-label="Nombre de parties Laser Game">${[1,2,3].map(games => `<button type="button" class="dossier-option ${Number(laser.games) === games ? 'active' : ''}" aria-pressed="${Number(laser.games) === games}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>${laser.extraLaser ? `<small class="muted">Partie supplémentaire : ${laser.extraLaser.participants} joueurs.</small>` : ''}<small class="muted">Effectif et parties : validez avec Enregistrer. Les horaires seront replanifiés si le programme change.</small></div>` : `<p class="muted">${getReservationActivityPlayers(r, 'laser_game')} joueurs · ${getLaserGameCountForReservation(r)} partie${getLaserGameCountForReservation(r)>1?'s':''}</p>`}
+    ${estimate?.utilisable ? `<p class="field-hint">Activités après modification : ${escapeHtml(String(estimate.total))} €${state.editState.prixFige ? ' · prix facturé fixé manuellement' : ''}. ${estimate.complet ? '' : 'Certaines activités se règlent sur place.'}</p>` : ''}
+    <div class="dossier-laser-units">${rows}</div><p class="field-hint">Déplacer ou retirer ${unitName === 'partie' ? 'une partie' : 'une vague'} s’enregistre immédiatement. Les autres activités et le prix restent inchangés.</p>
+  </section>`;
+}
+
+async function saveDossierLaserUnit(unitKey, unplace = false) {
+  const r = state.selectedRes;
+  if (!r || dossierLaserSaving) return;
+  if (dossierHasUnsavedChanges()) { setEditError('Enregistrez d’abord vos modifications du dossier, puis ajustez les horaires Laser Game.'); return; }
+  const value = document.getElementById(`dossierLaserTime-${unitKey.replace('.', '-')}`)?.value.trim();
+  if (!unplace && (!/^(?:[0-3]\d|4[0-7]):[0-5]\d$/.test(value || ''))) { setEditError('Saisissez une heure au format HH:MM, par exemple 16:30.'); return; }
+  dossierLaserSaving = true;
+  setEditError('');
+  renderPos();
+  try {
+    const payload = await envoyerDeplacementActivite(r, { activityId: 'laser_game', unitKey, ...(unplace ? { unplace: true } : { startTime: value }) });
+    const savedUnit = getLaserWindowsFromReservation(payload.reservation).find(window => laserBlockUnitKey(window) === unitKey);
+    const [hour, minutes] = (value || '00:00').split(':').map(Number);
+    if (unplace ? Boolean(savedUnit) : !savedUnit || Math.abs(savedUnit.start * 60 - (hour * 60 + minutes)) > 1) throw new Error('Le serveur n’a pas confirmé cet horaire Laser Game. Actualisez le planning.');
+    upsertReservationInState(payload.reservation);
+    markReservationMutation(r.id, payload.reservation, ['opsPlan']);
+    save();
+    if (state.selectedRes?.id === r.id) {
+      state.selectedRes = payload.reservation;
+      state.editState = etatEditionDepuis(payload.reservation);
+    }
+    renderStaffData();
+    toast(unplace ? 'Vague Laser remise dans les parties à placer.' : `Vague Laser placée à ${value}.`);
+  } catch (error) {
+    if (error.reservation) {
+      upsertReservationInState(error.reservation);
+      if (state.selectedRes?.id === r.id) { state.selectedRes = error.reservation; state.editState = etatEditionDepuis(error.reservation); }
+    }
+    state.editError = error.message || 'Cet horaire Laser Game n’a pas été enregistré.';
+  } finally {
+    dossierLaserSaving = false;
+    if (state.selectedRes) renderPos();
+  }
+}
+
 function renderPosEdit(r) {
   const e = state.editState;
   // Ce que CETTE reservation a reellement : une session laser n'occupe aucune
@@ -25937,6 +26011,7 @@ function renderPosEdit(r) {
           </div>`;
   return `<div class="edit-shell es2 ${posSheetClass()}">
     <form class="edit-form" onsubmit="saveEdit(event)">
+      <fieldset class="dossier-edit-lock" ${dossierLaserSaving ? 'disabled' : ''}>
       <div class="es-grid dossier-edit-grid">
         <section class="es-card dossier-section">
           <div class="es-head dossier-section-heading"><span class="es-ico">${ico.client}</span><h4>Client</h4></div>
@@ -25987,6 +26062,7 @@ function renderPosEdit(r) {
             </div>
           </div>
         </section>
+        ${renderDossierLaserEditor(r)}
         ${contenuBloc || pistesBloc ? `<section class="es-card es-wide dossier-section dossier-section-wide">
           <div class="es-head dossier-section-heading"><span class="es-ico">${ico.contenu}</span><h4>Contenu et pistes</h4></div>
           <div class="es-contenu">${contenuBloc}${pistesBloc}</div>
@@ -26003,6 +26079,7 @@ function renderPosEdit(r) {
           <button type="submit" class="btn-primary es-save">Enregistrer</button>
         </div>
       </div>
+      </fieldset>
     </form>
   </div>`;
 }
@@ -26049,6 +26126,7 @@ function failEdit(message) {
 
 async function saveEdit(e) {
   e.preventDefault();
+  if (dossierLaserSaving) return;
   const es = state.editState;
   // DEUX POSTES, UNE RESERVATION : ce que la personne a CHANGE se mesure contre
   // le dossier a l ouverture du formulaire, pas contre l ecran rafraichi

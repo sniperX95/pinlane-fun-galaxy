@@ -69,6 +69,13 @@ function verifyProgram(program, label) {
 async function mounted(page, pax = 18) {
   await page.goto(`${BASE}/fungalaxy/libramont?embed=1`, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour');
+  // Availability must use the same future business day as the synthetic engine.
+  // Today's auto-selected date can have no remaining slots when this gate runs late.
+  await page.click('#dayBtn');
+  await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).click();
+  await page.click('#dayBtn');
+  check(await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).getAttribute('aria-selected') === 'true', 'participant fixture selects its future Saturday');
+  await page.press('#dayBtn', 'Escape');
   await page.fill('#paxInput', String(pax));
   await page.press('#paxInput', 'Enter');
   await page.click('#goActivities');
@@ -247,6 +254,7 @@ async function main() {
       await page.click('#goHours');
       await page.waitForFunction(() => !document.querySelector('#goContact').disabled, null, { timeout: 60000 });
       const query = new URL(availability[availability.length - 1]).searchParams;
+      check(query.get('date') === mock.DATE, `[${width}] availability uses the chosen future fixture date`);
       check(Number(query.get('pax')) === 18, `[${width}] availability keeps total visitors`);
       const sent = JSON.parse(query.get('program'));
       for (const [id, n] of Object.entries(COUNTS)) check(sent.find(x => x.activityId === id).participants === n, `[${width}] availability sends ${id} count`);

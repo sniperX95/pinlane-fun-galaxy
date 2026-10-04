@@ -28,7 +28,10 @@ async function finish(page, expected) {
   await page.click('#goHours');
   const availability = await (await response).json();
   await page.waitForFunction(() => !document.querySelector('#goContact').disabled);
+  const timeline=await page.locator('.fg-scene[data-scene="heures"]').textContent();
+  check(!/cadeaux inclus|sans cadeaux|crédits\/jeu|Durée variable/.test(timeline),'timeline keeps arcade choice compact and leaves access details in information popup');
   const item = availability.program.items.find(i => i.activityId === 'arcade_time');
+  check(!item.arcadeOffer.description || !timeline.includes(item.arcadeOffer.description),'timeline omits the centre long arcade description');
   check(item.price === expected.price && item.participants === 3 && item.cards === expected.cards, 'server quote uses own players and independent cards');
   check(item.arcadeOffer.id === expected.id && item.arcadeOffer.mode === expected.mode, 'server snapshot preserves chosen offer');
   if (expected.mode === 'credit') check(item.durationEstimated === true && item.arcadeOffer.totalCredits === expected.credits, 'credit duration is only estimate and bonus is credits');
@@ -38,7 +41,9 @@ async function finish(page, expected) {
   await page.waitForSelector('.fg-scene[data-scene="recap"].is-active');
   const recap = await page.locator('#recap').textContent();
   check(recap.includes(`${expected.cards} cartes`) && recap.includes('3 joueurs'), 'recap says both card quantity and player subset');
-  if (expected.mode === 'credit') check(!/30 min|30 minutes/.test(recap) && /bonus/.test(recap) && /cadeaux inclus/.test(recap), 'credit recap never sells estimated minutes and explains bonus/prize games');
+  check(!/cadeaux inclus|sans cadeaux|crédits\/jeu|Durée variable/.test(recap),'recap does not repeat detailed arcade explanations');
+  check(!item.arcadeOffer.description || !recap.includes(item.arcadeOffer.description),'price recap omits the centre long arcade description');
+  if (expected.mode === 'credit') check(!/30 min|30 minutes/.test(recap) && /bonus/.test(recap) && !/cadeaux inclus|crédits\/jeu|Durée variable/.test(recap), 'credit recap keeps credits and bonus without detailed access explanations');
   await page.locator('#confirmBtn').evaluate(b => b.click());
   await page.waitForSelector('.fg-scene[data-scene="fin"].is-active');
   const post = mock.dernierePose.body, sent = (post.program.items || post.program).find(i => i.activityId === 'arcade_time');
@@ -46,6 +51,7 @@ async function finish(page, expected) {
   check(post.quotedPrice === expected.price, 'POST guards exactly displayed total');
   const receipt = await page.locator('#finBody').textContent();
   check(receipt.includes(`${expected.cards} cartes`) && receipt.includes('3 joueurs'), 'receipt preserves players and card count');
+  check(!/cadeaux inclus|sans cadeaux|crédits\/jeu|Durée variable/.test(receipt)&&(!item.arcadeOffer.description||!receipt.includes(item.arcadeOffer.description)),'receipt keeps purchased offer compact without centre access description');
   if (expected.mode === 'credit') check(!/30 min|30 minutes/.test(receipt) && receipt.includes(String(expected.credits)), 'credit receipt preserves total credits and promises no duration');
 }
 async function informationMatrix(browser, errors) {
@@ -208,6 +214,7 @@ async function gemblouxInformation(browser,errors) {
       await page.check('#smConsent');await page.click('#smGoRecap');await page.waitForSelector('.fg-scene[data-scene="sm-recap"].is-active');
       const customRecap=await page.locator('.fg-scene[data-scene="sm-recap"]').textContent();
       check(customRecap.includes('4 cartes') && customRecap.includes('25 bonus') && !/30 min/.test(customRecap),'custom recap states bought cards and credits without estimated duration');
+      check(!/cadeaux inclus|sans cadeaux|crédits\/jeu|Durée variable|Le temps de jeu dépend des machines/.test(customRecap),'custom recap leaves detailed arcade access rules in the information popup');
       await page.click('#smSend');await page.waitForSelector('.fg-scene[data-scene="fin"].is-active');
       const saved=mock.dernierePose.demande.payload.demande.activities.find(i=>i.id==='arcade_time');
       check(saved.arcadeMode==='credit' && saved.arcadeOfferId==='credit-50' && saved.cards===4 && saved.participants===2,'actual custom API preserves string choice, card count and subset');

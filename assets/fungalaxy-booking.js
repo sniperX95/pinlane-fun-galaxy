@@ -424,7 +424,7 @@
     var ar = reglageArcade(a), option = optionChoisie(a), sections = [];
     var choix = [joueursDe(a) + (seCompteParEnfant(a) ? ' enfants' : ' joueurs'), option && option.label].filter(Boolean).join(' · ');
     var tarif = [], fonctionnement = [noteCarte(a), a.note, a.description].filter(Boolean);
-    if (ar) tarif.push(detailArcade(snapshotArcade(a)));
+    if (ar) tarif.push(detailArcade(snapshotArcade(a), true));
     if (!ar) {
       var unitaire = option ? Number(option.prix) : tarifConnu(a) ? Number(a.priceValue) : null;
       if ((a.priceType === 'per_pax' || a.priceType === 'grid_laser') && unitaire != null && isFinite(unitaire)) tarif.push(euros(unitaire) + ' / ' + (seCompteParEnfant(a) ? 'enfant' : 'personne') + ' × ' + joueursDe(a) + ' = ' + euros(Math.round(unitaire * joueursDe(a) * 100) / 100));
@@ -584,13 +584,13 @@
         gameCostMax: o.gameCostMax == null ? ar.config.creditGameCostMax : o.gameCostMax,
         description: o.description || (ar.mode === 'time' ? ar.config.timedDescription : ar.config.creditDescription) || '' }) };
   }
-  function detailArcade(it) {
+  function detailArcade(it, complet) {
     var o = it && it.arcadeOffer; if (!o) return '';
     var n = Number(it.cards) || Number(it.participants) || 1;
     var text = n + ' carte' + (n > 1 ? 's' : '') + ' · ';
-    text += o.mode === 'time' ? minutesLabel(o.minutes) + ' par carte · 1 carte par personne · jeux sans cadeaux en illimité'
-      : credits(o.credits || 0) + ' crédits + ' + credits(o.bonusCredits || 0) + ' bonus = ' + credits(o.totalCredits == null ? Number(o.credits || 0) + Number(o.bonusCredits || 0) : o.totalCredits) + ' crédits par carte · tous les jeux, cadeaux inclus · ' + credits(o.gameCostMin) + ' à ' + credits(o.gameCostMax) + ' crédits/jeu';
-    return text + ' · ' + euros(o.price) + ' × ' + n + ' = ' + euros(it.price) + (o.description ? ' · ' + o.description : '');
+    text += o.mode === 'time' ? minutesLabel(o.minutes) + ' par carte' + (complet ? ' · 1 carte par personne · jeux sans cadeaux en illimité' : '')
+      : credits(o.credits || 0) + ' crédits + ' + credits(o.bonusCredits || 0) + ' bonus = ' + credits(o.totalCredits == null ? Number(o.credits || 0) + Number(o.bonusCredits || 0) : o.totalCredits) + ' crédits par carte' + (complet ? ' · tous les jeux, cadeaux inclus · ' + credits(o.gameCostMin) + ' à ' + credits(o.gameCostMax) + ' crédits/jeu' : '');
+    return text + ' · ' + euros(o.price) + ' × ' + n + ' = ' + euros(it.price) + (complet && o.description ? ' · ' + o.description : '');
   }
   // LES PISTES DE BOWLING DU GROUPE (Movsar, 2026-10-01 : « au-dela de 6
   // joueurs c est une autre piste en plus, payee : prix par temps et par

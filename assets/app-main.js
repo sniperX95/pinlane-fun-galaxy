@@ -5600,21 +5600,32 @@ function renderActivityOptions(activity, options = {}, pax = state.booking.pax) 
   return counter + renderActivityOptionsWithoutParticipants(activity, options, current);
 }
 
+function getStaffArcadeOfferDetail(item) {
+  const offer = item && item.arcadeOffer;
+  if (!offer) return '';
+  const cards = Math.max(1, Math.trunc(Number(item.cards) || Number(item.participants) || 1));
+  const number = n => Number(n).toLocaleString('fr-BE');
+  const amount = offer.mode === 'time'
+    ? `${number(offer.minutes)} min par carte`
+    : `${number(offer.credits)} crédits + ${number(offer.bonusCredits || 0)} offerts = ${number(offer.totalCredits ?? (Number(offer.credits) + Number(offer.bonusCredits || 0)))} crédits par carte`;
+  return `${cards} carte${cards > 1 ? 's' : ''} · ${amount}`;
+}
+
 function renderStaffArcadeOptions(activity, options, participants, context) {
   const offers = activity && activity.arcadeOffers;
-  if (!offers || offers.enabled === false) { const saved=getArcadeOfferQuote(activity,options,participants); return `<div class="activity-option-note">${escapeHtml(saved ? getArcadeOfferDetail({cards:saved.cards,arcadeOffer:saved.offer}) : 'Tarif à confirmer à l’accueil.')}${saved ? ` · ${formatMoneyCentimes(saved.price)}` : ''}</div>`; }
+  if (!offers || offers.enabled === false) { const saved=getArcadeOfferQuote(activity,options,participants); return `<div class="activity-option-note">${escapeHtml(saved ? getStaffArcadeOfferDetail({cards:saved.cards,arcadeOffer:saved.offer}) : 'Tarif à confirmer à l’accueil.')}${saved ? ` · ${formatMoneyCentimes(saved.price)}` : ''}</div>`; }
   const quote = getArcadeOfferQuote(activity, options, participants);
   // Le formulaire classique partage les offres, pas le langage visuel du SaaS.
   if (context === 'booking' && !document.body.classList.contains('staff-mode')) {
     const button = (mode, offer) => `<button type="button" class="qb-dur-btn ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeHtml(mode)}','${escapeHtml(offer.id)}')">${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}<small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
     return `<div class="qb-visit-options"><span class="qb-opt-legend">Au temps</span>${(offers.timeOffers || []).filter(o => o.enabled !== false).map(o => button('time', o)).join('')}</div><div class="qb-visit-options"><span class="qb-opt-legend">En crédits</span>${(offers.creditOffers || []).filter(o => o.enabled !== false).map(o => button('credit', o)).join('')}</div>`
       + (options.arcadeMode === 'credit' ? `<label class="field">Cartes<input class="input" type="number" min="1" max="1000" step="1" value="${quote?.cards || participants}" aria-label="Nombre de cartes Arcades" onchange="setStaffArcadeOption('${context}','cards',this.value)"></label>` : '')
-      + `<div class="activity-option-note">${escapeHtml(quote ? getArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div>`;
+      + `<div class="activity-option-note">${escapeHtml(quote ? getStaffArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div>`;
   }
   const button = (mode, offer) => `<button type="button" class="qb-dur-btn dossier-option ${options.arcadeMode === mode && options.arcadeOfferId === offer.id ? 'active' : ''}" onclick="setStaffArcadeOption('${context}','arcadeMode','${escapeHtml(mode)}','${escapeHtml(offer.id)}')"><span>${mode === 'time' ? `${offer.minutes} min à volonté` : `${offer.credits} + ${offer.bonusCredits || 0} crédits`}</span><small>${formatMoneyCentimes(offer.price)} / carte</small></button>`;
   return `<div class="staff-arcade-options"><div class="qb-visit-options staff-option-group"><span class="qb-opt-legend staff-option-label">Au temps</span>${(offers.timeOffers || []).filter(o => o.enabled !== false).map(o => button('time', o)).join('')}</div><div class="qb-visit-options staff-option-group"><span class="qb-opt-legend staff-option-label">En crédits</span>${(offers.creditOffers || []).filter(o => o.enabled !== false).map(o => button('credit', o)).join('')}</div>`
     + (options.arcadeMode === 'credit' ? `<label class="field">Cartes<input class="input" type="number" min="1" max="1000" step="1" value="${quote?.cards || participants}" aria-label="Nombre de cartes Arcades" onchange="setStaffArcadeOption('${context}','cards',this.value)"></label>` : '')
-    + `<div class="activity-option-note">${escapeHtml(quote ? getArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div></div>`;
+    + `<div class="activity-option-note">${escapeHtml(quote ? getStaffArcadeOfferDetail({cards:quote.cards, arcadeOffer:quote.offer}) : 'Choisissez une offre.')}${quote ? ` · ${formatMoneyCentimes(quote.price)}` : ''}</div></div>`;
 }
 
 function setStaffArcadeOption(context, key, value, offerId) {
@@ -5780,7 +5791,7 @@ function renderProgramSummary() {
       ? getFreeActivityPrice(activity, { ...options, pax: linePax, units: options.units, hours: options.hours, minutes: options.minutes, dateStr: state.booking.date, startTime: state.booking.startTime })
       : null;
     if (price == null) complete = false; else total += price;
-    if (activity.id === 'arcade_time') { const q=getArcadeOfferQuote(activity,options,linePax); return {id:activity.id,name:activity.name,detail:q ? getArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : 'Tarif à confirmer à l’accueil'}; }
+    if (activity.id === 'arcade_time') { const q=getArcadeOfferQuote(activity,options,linePax); return {id:activity.id,name:activity.name,detail:q ? getStaffArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : 'Tarif à confirmer à l’accueil'}; }
     if (activity.priceType === 'per_unit_hour') {
       const units = Math.max(1, Number(options.units) || 1);
       const hourChoices = activityHourChoices(activity);
@@ -24172,8 +24183,8 @@ function participantsLigneProgramme(item, pax) {
 
 function detailLigneProgrammeSansEffectif(item, reservation = null) {
   if (!item) return '';
-  if (item.arcadeOffer) return getArcadeOfferDetail(item);
-  if (item.activityId === 'arcade_time' && item.arcadeMode) { const q=getArcadeOfferQuote(catalogueDeLigne(item),item,participantsLigneProgramme(item,reservation && reservation.pax)); return q ? getArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : 'Offre Arcades à confirmer'; }
+  if (item.arcadeOffer) return getStaffArcadeOfferDetail(item);
+  if (item.activityId === 'arcade_time' && item.arcadeMode) { const q=getArcadeOfferQuote(catalogueDeLigne(item),item,participantsLigneProgramme(item,reservation && reservation.pax)); return q ? getStaffArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : 'Offre Arcades à confirmer'; }
   if (item.durationEstimated === true && item.activityId === 'arcade_time') return 'Crédits Arcades · durée libre';
   if (ligneALaJournee(item)) return 'toute la journée';
   const catalogue = catalogueDeLigne(item);
@@ -25570,7 +25581,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     }
     total += Number(ligne) || 0;
     chiffrees += 1;
-    lignes.push({ nom, detail: activite?.id === 'arcade_time' ? (() => { const q = getArcadeOfferQuote(activite,item,effectif); return q ? getArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : ''; })() : '', montant: Number(ligne) || 0 });
+    lignes.push({ nom, detail: activite?.id === 'arcade_time' ? (() => { const q = getArcadeOfferQuote(activite,item,effectif); return q ? getStaffArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : ''; })() : '', montant: Number(ligne) || 0 });
   });
   return {
     total: Math.round(total * 100) / 100,

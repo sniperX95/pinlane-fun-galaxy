@@ -404,12 +404,20 @@ async function main() {
       capture: (filename, csv) => exports.push({ filename, csv }),
     };
     vm.createContext(context);
+    // The raw export now includes the activity detail supplied by the shared
+    // admin-console helper. Load that real dependency, as the browser does.
+    const adminSource = fs.readFileSync(path.join(root, 'assets/admin-console.js'), 'utf8');
+    const programExportStart = adminSource.indexOf('function getAdminProgramExportText(');
+    const programExportEnd = adminSource.indexOf('function buildAdminExcelXml(', programExportStart);
+    assert(programExportStart >= 0 && programExportEnd > programExportStart, 'Real program export helper is present');
+    vm.runInContext(adminSource.slice(programExportStart, programExportEnd), context);
     vm.runInContext(fs.readFileSync(path.join(root, 'assets/admin-data.js'), 'utf8'), context);
     vm.runInContext("dhState.analytics = { startDate: '2023-01-01', endDate: '2026-12-31' }; dhDownload = capture;", context);
     await vm.runInContext("dhExportCsv('reservations-brutes')", context);
     assert.equal(exports.length, 1);
     assert.equal(exports[0].csv.split('\r\n').length, 10022);
     assert(exports[0].csv.includes('"2023-01-01"'));
+    assert(exports[0].csv.includes('Détail des activités'));
     let calls = 0;
     context.apiRequest = async url => {
       if (++calls === 2) throw new Error('second-page-failed');

@@ -19092,6 +19092,7 @@ body:is(.staff-mode, .admin-mode) {
   --console-focus: #8eb7d9;
 }
 body:is(.staff-mode, .admin-mode) ::selection { background: var(--accent-soft); color: var(--text); }
+body:is(.staff-mode, .admin-mode) .lane-header .num { color: var(--text); }
 body:is(.staff-mode, .admin-mode) :is(button, a, input, select, textarea):focus-visible {
   outline: 2px solid var(--console-focus);
   outline-offset: 3px;

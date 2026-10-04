@@ -724,6 +724,7 @@ async function personnalisationPlus(browser, mock) {
     await page.evaluate(c => window.__plusTest.setCards([c]), card);
     const quantities = [];
     let mode = 'per-person';
+    const stalled=[];
     await page.route('**/api/public-availability*', async route => {
       const raw = JSON.parse(new URL(route.request().url()).searchParams.get('program'));
       const added = raw.find(i => i.upsell);
@@ -738,7 +739,7 @@ async function personnalisationPlus(browser, mock) {
       j.program.items.push({ ...added, upsell: snapshot, price, priceKnown: true });
       if (mode === 'missing') delete j.program.items[j.program.items.length - 1].upsell;
       if (mode === 'fail') return route.fulfill({ status: 503, body: '{}' });
-      if (mode === 'stale') await new Promise(resolve => setTimeout(resolve, n === 5 ? 300 : 30));
+      if (mode === 'stale') { await new Promise(resolve=>stalled.push(resolve)); await new Promise(resolve => setTimeout(resolve, n === 5 ? 300 : 30)); }
       try { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(j) }); } catch (_) { /* Old request aborted by the real form. */ }
     });
     const tile = page.locator('#vitrine .fg-vitrine__carte').first();
@@ -751,6 +752,7 @@ async function personnalisationPlus(browser, mock) {
     await tile.locator('[data-vitrine-pas="-1"]').click();
     await tile.locator('[data-vitrine-pas="-1"]').click();
     ok(await tile.locator('[data-plus]').isDisabled(), 'Ajouter est desactive pendant le devis courant');
+    await page.waitForTimeout(100);stalled.splice(0).forEach(resolve=>resolve());
     await attendre(page, () => document.querySelector('#vitrine .fg-vitrine__prix').textContent === '+36 €', 4000);
     await page.waitForTimeout(450);
     ok((await tile.locator('.fg-vitrine__prix').innerText()) === '+36 €' && (await tile.locator('.fg-vitrine__n').innerText()) === '4', 'la reponse tardive pour cinq ne remplace pas le devis pour quatre');

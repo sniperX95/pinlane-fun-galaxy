@@ -62,7 +62,7 @@ function extraire(source, nom) {
 
 function chargerRegleDuFormulaire(jours, state) {
   const source = fs.readFileSync(FORMULAIRE, 'utf8').replace(/\r\n/g, '\n');
-  const noms = ['verdictFormule', 'jourSemaine', 'joursLisibles', 'reglesFormule', 'plageLisible', 'heureRonde', 'entreeJour', 'absorberCalendrier', 'jourInfo'];
+  const noms = ['verdictFormule', 'cleDisponibilitesFormules', 'jourSemaine', 'joursLisibles', 'reglesFormule', 'plageLisible', 'heureRonde', 'entreeJour', 'absorberCalendrier', 'jourInfo'];
   const morceaux = noms.map((nom) => ({ nom, code: extraire(source, nom) }));
   const manquantes = morceaux.filter((m) => !m.code).map((m) => m.nom);
   const ligneJours = (source.match(/^ {2}var JOURS_SEM = .*$/m) || [''])[0];
@@ -70,6 +70,7 @@ function chargerRegleDuFormulaire(jours, state) {
   // servies passent par absorberCalendrier et entreeJour ; jourInfo les relit.
   const bac = {
     state,
+    CENTER:'libramont', disponibilitesFormules:{},
     jours: {},
     accentuer: (s) => s,
     horaireLabel: () => '',

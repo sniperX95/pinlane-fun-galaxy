@@ -22,10 +22,10 @@ try{
  await page.waitForFunction(()=>document.querySelector('[data-formule="mm"] .fg-for__off')?.textContent.includes('terminée'));
  ok(true,'elapsed morning is stated without guessed client clock');
  available=true;reason='';await page.evaluate(date=>window.__formulaLive.set(date,20),mock.DATE);
- await page.waitForFunction(()=>document.querySelector('[data-formule="mm"]').getAttribute('aria-disabled')==='false');ok(true,'a valid real arrival restores the formula card');
+ await page.waitForFunction(()=>!document.querySelector('[data-formule="mm"]').hasAttribute('aria-disabled'));ok(true,'a valid real arrival restores the formula card');
  delays=true;available=false;reason='Ancienne réponse';await page.evaluate(date=>window.__formulaLive.set(date,18),mock.DATE);
  available=true;await page.evaluate(date=>window.__formulaLive.set(date,21),mock.DATE);await page.waitForTimeout(350);
- ok(await page.locator('[data-formule="mm"]').getAttribute('aria-disabled')==='false','late response for old participant count cannot disable current card');
+ ok(await page.locator('[data-formule="mm"]').getAttribute('aria-disabled')===null,'late response for old participant count cannot disable current card');
  ok(requests<=7,'one shared durations request per actual choice, no fourteen formula probes');
  ok(errors.length===0&&writes===0,'no JavaScript error or API write');console.log('PASS '+checks+' formula live card assertions');
 }finally{await browser.close();server.close();}}

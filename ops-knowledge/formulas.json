@@ -92,7 +92,7 @@
       "steps": [
         { "activityId": "party_table", "count": 1, "durationMinutes": 120 },
         { "activityId": "playground", "count": 1 },
-        { "activityId": "arcade_credit", "count": 1, "label": "8 EUR arcade par enfant", "resourceType": "bar_service_then_autonomous", "durationMinutes": 3 },
+        { "activityId": "arcade_credit", "count": 1, "label": "8 crédits arcade (8 EUR) par enfant", "resourceType": "bar_service_then_autonomous", "durationMinutes": 3 },
         { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
       ]
     },
@@ -109,7 +109,7 @@
         { "activityId": "party_table", "count": 1, "durationMinutes": 120 },
         { "activityId": "playground", "count": 1 },
         { "activityId": "minigolf_blacklight", "count": 1 },
-        { "activityId": "arcade_credit", "count": 1, "label": "8 EUR arcade par enfant", "resourceType": "bar_service_then_autonomous", "durationMinutes": 3 },
+        { "activityId": "arcade_credit", "count": 1, "label": "8 crédits arcade (8 EUR) par enfant", "resourceType": "bar_service_then_autonomous", "durationMinutes": 3 },
         { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
       ]
     },

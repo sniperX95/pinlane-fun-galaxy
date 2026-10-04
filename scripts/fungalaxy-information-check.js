@@ -186,6 +186,9 @@ async function run() {
     const text=await popup(page,frame,button,embedded,label+'/formula/'+id,expected);
     if(formula.noHolidays)check(/hors vacances|pas.{0,20}vacances|vacances.{0,30}(?:non|exclu|indispon)/i.test(text),label+'/'+id+' exposes known holiday exclusion');
     if(formula.kidsOnly)check(/enfants?/i.test(text),label+'/'+id+' exposes children-only audience');
+    if(id==='f6'||id==='f7')check(text.includes("8 crédits d'arcade (8€) par enfant"),label+'/'+id+' explicitly includes eight arcade credits per child');
+    if(id==='mm')check(text.includes('terminées à 12h')&&text.includes('cadeaux ne sont pas inclus'),label+'/'+id+' requires completion at noon and excludes prize games');
+    if(id==='kfd')check((await button.locator('..').textContent()).includes('Toutes les activités illimitées'),label+'/'+id+' exposes unlimited activities before selection');
     if(Array.isArray(formula.validDays)&&formula.validDays.length===1)check(text.toLowerCase().includes(['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][Number(formula.validDays[0])]),label+'/'+id+' exposes known valid weekday');
    }
    const availableKids=metadata.formules.find(formula=>formula.kidsOnly && formula.type==='per_pax' && formula.minPax<=16);
@@ -221,7 +224,13 @@ async function run() {
    if(await customFormulaTab.count())await customFormulaTab.click();
    const customFormulas=frame.locator('.fg-scene.is-active [data-formula-info]');
    check(await customFormulas.count()>0,label+' custom formulas expose information');
-   for(let index=0;index<await customFormulas.count();index++)await popup(page,frame,customFormulas.nth(index),embedded,label+'/custom-formula/'+index);
+   for(let index=0;index<await customFormulas.count();index++) {
+    const button=customFormulas.nth(index),id=await button.getAttribute('data-formula-info');
+    const text=await popup(page,frame,button,embedded,label+'/custom-formula/'+index);
+    if(id==='f6'||id==='f7')check(text.includes("8 crédits d'arcade (8€) par enfant"),label+'/custom/'+id+' explicitly includes eight arcade credits per child');
+    if(id==='mm')check(text.includes('terminées à 12h')&&text.includes('cadeaux ne sont pas inclus'),label+'/custom/'+id+' requires completion at noon and excludes prize games');
+    if(id==='kfd')check((await button.locator('..').textContent()).includes('Toutes les activités illimitées'),label+'/custom/'+id+' exposes unlimited activities before selection');
+   }
    await page.screenshot({path:path.join(out,'information-'+width+'-'+(embedded?'embed':'standalone')+'.png'),fullPage:false});
    await context.close();
   }

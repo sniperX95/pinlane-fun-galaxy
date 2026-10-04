@@ -480,6 +480,8 @@
     if (duree) sections.push({ titre: 'Votre temps sur place', lignes: [texteDuree(duree)] });
     sections.push({ titre: 'À savoir', lignes: [surMesure ? 'Le programme et le montant sont à confirmer avec l’équipe pour votre groupe.' : 'Les montants sont indicatifs. Aucun paiement en ligne ; règlement à l’accueil.'] });
     var bref = (f.minPax > 1 ? 'Dès ' + f.minPax + (f.kidsOnly ? ' enfants' : ' personnes') : f.kidsOnly ? f.kidsOnly.ageMin + ' à ' + f.kidsOnly.ageMax + ' ans' : [f.validDays && f.validDays.length && f.validDays.length < 7 ? joursLisibles(f.validDays) : '', plageLisible(f.timeLimit)].filter(Boolean).join(' · ') || 'Voir les conditions');
+    var illimite = (f.desc || []).filter(function (d) { return /^toutes les activit[eé]s illimit[eé]es$/i.test(String(d).trim()); })[0];
+    if (illimite) bref = illimite + ' · ' + bref;
     var image = (f.desc || []).filter(function (d) { return photo(d); })[0] || '';
     if (!image && (f.desc || []).some(function (d) { return /toutes les activit[eé]s/i.test(d); })) {
       var illimitee = activitesVendables().filter(function (a) { return photo(a.id); })[0];

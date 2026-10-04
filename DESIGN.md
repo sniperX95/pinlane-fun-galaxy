@@ -402,3 +402,13 @@ Navigation active sur subtle, texte et marqueur monochromes. Infos/Modifier ont 
 **Contradictions incumbent laissées hors scope :** les sections anciennes affirment encore une suppression totale des couches CSS, une source de couleur exclusivement centrale et des tokens de console noirs purs. Le code de cette branche contient des couches historiques et le bloc final scoped ; cet addendum documente la console effective sans migrer le système public ni réparer toute la documentation globale. Le sidecar est créé : aucun `.impeccable/design.json` n'existait dans ce checkout.
 
 **Not canonized:** avertissements legacy du chantier, glyphes ou kickers résiduels hors du lot relu et effets historiques neutralisés ; ce sont des dettes ou vestiges, pas des tokens à hériter. Les 13px de texte dense, 20px de titre mobile et angles 8/12/16px sont des valeurs cohérentes et délibérément livrées.
+
+## Informations publiques : activités et formules (2026-10-04)
+
+Cette extension concerne le formulaire Fun Galaxy, standard et sur mesure. Elle conserve sa palette et ses calculs propres.
+
+- Le symbole « i » mesure 22 px dans une cible tactile de 44 px. Le résumé et le bouton restent visibles avant et après sélection. Les trois rangées de la carte sont distinctes : présentation, information, réglages.
+- Le dialogue natif mesure au plus 560 px, avec 16 px de marge latérale. Photo de 184 px sur desktop, 132 px sur petit écran et 88 px quand la hauteur disponible est courte. La fermeture reste accessible ; seul le corps du contenu défile.
+- Les détails sont regroupés par sélection/tarif, fonctionnement, offres et conditions connues. Les minima des formules enfants sont exprimés en enfants. Les conditions métier inconnues ne sont pas déduites d'un titre commercial.
+- Dans le site intégré, le dialogue reprend le pont existant `pinlane:height` / `pinlane:vue` et actualise la position visible à chaque ouverture. Il suit le défilement du parent ; le centrage ne dépend pas de la hauteur totale de l'iframe.
+- À la fermeture, le focus revient au bouton d'origine. Le corps défilant reste accessible au clavier. Les détails de formule standard relisent les effectifs courants ; le sur mesure garde son contexte distinct.

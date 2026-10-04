@@ -1186,7 +1186,9 @@ const PROPRIETES = [
     mutations: [{
       nom: 'le marqueur annonce la reference a la place du prix facture',
       vise: /LE MONTANT ANNONCE EST CELUI DU DOSSIER/,
-      editions: [{ fichier: 'assets/app-main.js', de: '  const montant = formatMoney(etat.price);', vers: '  const montant = formatMoney(etat.reference);' }],
+      // Le montant reel est desormais rendu au centime : la contre-epreuve
+      // casse toujours la source price -> reference, sans regresser l'arrondi.
+      editions: [{ fichier: 'assets/app-main.js', de: '  const montant = formatMoneyCentimes(etat.price);', vers: '  const montant = formatMoneyCentimes(etat.reference);' }],
     }],
   },
 ];

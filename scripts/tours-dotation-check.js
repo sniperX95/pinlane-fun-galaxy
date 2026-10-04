@@ -442,7 +442,11 @@ async function lireTiroir(page, id) {
       prix: txt(item.querySelector('.fg-card__price')),
     };
   }, id);
-  result.note = information.split('\n\n').find(text => /joueurs max par/.test(text)) || result.note;
+  // Le bref de la carte dit les tables/durees. La capacite detaillee vit dans
+  // la popup, sous un titre : lire la ligne seule conserve l'oracle exact.
+  result.brief = result.note;
+  result.information = information;
+  result.note = information.split('\n').find(text => /joueurs max par/.test(text)) || '';
   return result;
 }
 
@@ -546,7 +550,8 @@ function verifierFormulaire(p25, p8) {
   ok(JSON.stringify(t3.heures.map((x) => x.petit)) === JSON.stringify(['30 €', '60 €', '90 €']), 'trois tables choisies : chaque duree dit ce que la ligne coute (30, 60, 90 EUR)', t3.heures.map((x) => x.petit).join(' | '));
   const h2 = p25.deuxHeures || {};
   ok(h2.prix === '60 € · 3 tables, 2 heures', 'deux heures : la carte dit le montant de la ligne et ce qu il paie', `« ${h2.prix} »`);
-  ok(!(p25.billards || {}).note && !(p8.billards || {}).note, 'aucune phrase de joueurs par table pour les billards (Movsar : pas besoin)');
+  ok([p25.billards, p8.billards].every(item => item && !/(?:joueurs?|personnes?)\s+(?:max\s+)?par\s+table/i.test(`${item.information}\n${item.brief}`)),
+    'aucune phrase de joueurs par table pour les billards (Movsar : pas besoin)');
   // COURT, le maximum puis le calcul (Movsar, 2026-10-01 : « faut dire
   // joueurs max par piste, explique bien », puis « t abuses sur la
   // description du duckpin »).

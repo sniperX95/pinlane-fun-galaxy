@@ -340,13 +340,19 @@ async function run() {
     const aujourd = await r.page.evaluate(() => ({
       jour: ((document.querySelector('#staffReservationsPage .pv2-day-head small') || {}).textContent || '').replace(/\u202f/g, ' ').trim(),
       crumb: ((document.querySelector('#staffReservationsPage .pv2-bar-crumb') || {}).textContent || '').trim(),
+      titre: ((document.querySelector('#staffReservationsPage .pv2-bar h1') || {}).textContent || '').trim(),
+      titreVisible: (() => { const el = document.querySelector('#staffReservationsPage .pv2-bar h1'); if (!el) return false; const rect = el.getBoundingClientRect(), style = getComputedStyle(el); return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility === 'visible'; })(),
+      menuActif: Boolean(document.querySelector('[data-staff-menu-root] .fgx-menu-nav [data-fgx-menu-key="reservations"].active')),
     }));
     await r.page.evaluate(() => { const b = document.querySelector('#staffReservationsPage [data-cal-date="2026-09-28"]'); if (b) b.click(); });
     await attendre(r.page, () => /Aucune réservation|résa/.test((document.querySelector('#staffReservationsPage .pv2-day-head small') || {}).textContent || ''));
     const vide = await r.page.evaluate(() => ((document.querySelector('#staffReservationsPage .pv2-day-head small') || {}).textContent || '').trim());
     ok(/^2 réservations · 10 joueurs · 99 €$/.test(aujourd.jour), '[E] le jour rempli, pluriels justes', `« ${aujourd.jour} »`);
     ok(vide === 'Aucune réservation', '[E] le jour vide le dit en mots', `« ${vide} »`);
-    ok(aujourd.crumb === 'Journée', '[E] le surtitre est le groupe du menu', `« ${aujourd.crumb} »`);
+    // Le titre porte seul l'identite dans la nouvelle direction du SaaS : le
+    // surtitre redondant Journee est retire, le vrai menu reste synchronise.
+    ok(aujourd.titre === 'Réservations' && aujourd.titreVisible && aujourd.menuActif,
+      '[E] le titre Reservations est visible et le menu de la page est actif', JSON.stringify(aujourd));
     await r.ctx.close();
 
     // =====================================================================

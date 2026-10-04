@@ -124,16 +124,27 @@ async function jusquAuxHeures(page, pax, ids) {
   await attendre(page, (n) => document.querySelector('#paxInput').value === String(n), 3000, pax);
   await page.click('#goActivities');
   await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 5000);
+  const lireBriefPlaine = () => page.evaluate(() => {
+    const item = document.querySelector('#gridAct .fg-grid__item[data-activity="playground"]')
+      || document.querySelector('#gridAct .fg-card[data-activity="playground"]').closest('.fg-grid__item');
+    const brief = item && item.querySelector('.fg-card__info .fg-card__rot');
+    if (!brief) return { texte: '', visible: false, entier: false };
+    const style = getComputedStyle(brief), rect = brief.getBoundingClientRect(), parent = item.getBoundingClientRect();
+    return { texte: blancsDom(brief), visible: style.visibility === 'visible' && style.display !== 'none' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0,
+      entier: rect.left >= parent.left - 1 && rect.right <= parent.right + 1 && rect.top >= parent.top - 1 && rect.bottom <= parent.bottom + 1 && brief.scrollWidth <= brief.clientWidth + 1 && brief.scrollHeight <= brief.clientHeight + 1 };
+  });
+  const briefAvant = await lireBriefPlaine();
   for (const id of ids) {
     await page.click(`#gridAct .fg-card[data-activity="${id}"]`);
     await attendre(page, (x) => document.querySelector(`#gridAct .fg-card[data-activity="${x}"]`).getAttribute('aria-checked') === 'true', 3000, id);
   }
   const carte = await page.evaluate(() => blancsDom(document.querySelector('#gridAct .fg-card[data-activity="playground"] .fg-card__price')));
   const carteBrute = await page.evaluate(() => document.querySelector('#gridAct .fg-card[data-activity="playground"] .fg-card__price').textContent);
+  const briefApres = await lireBriefPlaine();
   await page.click('#goHours');
   const vu = await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering')
     && document.querySelector('#planZone .fg-visit') && !document.querySelector('#goContact').disabled, 15000);
-  return { carte, carteBrute, vu };
+  return { carte, carteBrute, vu, briefAvant, briefApres };
 }
 
 async function lireVisite(page) {
@@ -236,7 +247,8 @@ async function main() {
     const page = await ctx.newPage();
     page.on('pageerror', (e) => erreurs.push(String((e && e.message) || e)));
     const b = await jusquAuxHeures(page, 2, ['playground']);
-    ok(/accès à la journée · 4 à 12 ans$/.test(b.carte), '[B] la carte dit l entree a la journee et l age du centre', `« ${b.carte} »`);
+    ok(/4 à 12 ans$/.test(b.carte) && [b.briefAvant, b.briefApres].every(brief => brief.visible && brief.entier && /accès à la journée/i.test(brief.texte)),
+      '[B] la carte dit l entree a la journee dans son bref visible avant et apres selection, et l age du centre', JSON.stringify({ carte: b.carte, avant: b.briefAvant, apres: b.briefApres }));
     ok(b.carteBrute.indexOf('4\u00a0à\u00a012\u00a0ans') >= 0, '[B] l age ne se coupe pas en fin de ligne (espaces insecables)', JSON.stringify(b.carteBrute.slice(-14)));
     ok(b.vu, '[B] le bloc « Votre visite » est rendu pour la plaine seule');
     const vb = await lireVisite(page) || { texte: '', entete: '', etapes: [], prix: [], barre: '' };

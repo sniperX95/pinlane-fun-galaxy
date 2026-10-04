@@ -579,10 +579,20 @@ async function recapC(browser, mock, { largeur = 1440, hauteur = 900, etiquette 
     // Le refus d abord, sur une page a part : le serveur annonce un tarif qui
     // a monte depuis la carte (5 EUR de plus que promis).
     if (casse) {
+      const chosenTime = res.rep0 && res.rep0.slots && res.rep0.slots[0] && res.rep0.slots[0].time;
+      res.priceMutation = null;
       await page.route('**/api/public-availability*', async (route) => {
         const reponse = await route.fetch();
         const j = await reponse.json();
+        const chosenSlot = j.slots && j.slots[0];
+        if (!chosenTime || !chosenSlot || chosenSlot.time !== chosenTime || !Number.isFinite(Number(chosenSlot.price))) {
+          throw new Error('Price mutant must target the selected slot with its authoritative price');
+        }
+        const before = Number(chosenSlot.price);
+        chosenSlot.price = Math.round((before + 5) * 100) / 100;
         j.price = Number(j.price) + 5;
+        res.priceMutation = { chosenTime, returnedTime: chosenSlot.time, before, after: chosenSlot.price, delta: chosenSlot.price - before };
+        console.log(JSON.stringify({ priceMutation: res.priceMutation }));
         await route.fulfill({ response: reponse, json: j });
       });
       await page.click(`#vitrine [data-plus="${cible.id}"]`);
@@ -689,6 +699,8 @@ function verifierRefus(res, attendu) {
   const r = res.refus || {};
   const refuse = r.fenetre === true && r.tonFenetre === 'ko' && r.statutFenetre === 'Le tarif de cette option vient de changer.' && r.total === res.r0.total && r.offres.indexOf(res.cartes[0].id) < 0;
   if (attendu) ok(refuse, 'un tarif qui a monte depuis la carte est refuse : la fenetre reste ouverte et dit pourquoi, la carte se retire, le total ne bouge pas', JSON.stringify({ fenetre: r.fenetre, statut: r.statutFenetre, total: r.total, avant: res.r0.total, offres: r.offres }));
+  if (attendu) ok(res.priceMutation && res.priceMutation.delta === 5 && res.priceMutation.chosenTime === res.priceMutation.returnedTime,
+    'le mutant augmente exactement de 5 EUR le tarif autoritaire du creneau choisi', JSON.stringify(res.priceMutation));
   return refuse;
 }
 

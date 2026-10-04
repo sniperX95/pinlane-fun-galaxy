@@ -93,6 +93,7 @@
       // milieu de l ecran hote.
       placerFenetre(false);
       placerVitrine(false);
+      placerInfoFenetre(infoCentreDemande); infoCentreDemande = false;
     });
   }
 
@@ -405,48 +406,148 @@
     if (a.id === 'bowling') { var p = pistesBowling(); n = p && p.pistes; }
     else if (a.priceType === 'grid_bowling') n = unitesPour(a).units;
     else if (a.priceType === 'grid_fun_run') n = sessionsPour(a);
-    return n && opt ? n + ' ' + (a.priceType === 'grid_fun_run' ? 'session' : 'piste') + (n > 1 ? 's' : '') + ' × ' + euros(opt.prix) + ' = ' + euros(n * opt.prix) : '';
+    if (n && opt) return n + ' ' + (a.priceType === 'grid_fun_run' ? 'session' : 'piste') + (n > 1 ? 's' : '') + ' × ' + euros(opt.prix) + ' = ' + euros(n * opt.prix);
+    if (a.id === 'laser_game' && dureeLaser()) return dureeLaser().jeu + ' min de jeu par partie';
+    if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); return billard.units + ' table' + (billard.units > 1 ? 's' : '') + ' · ' + heuresLabel(billard.hours); }
+    var journee = a.dayAccess || a.id === 'playground';
+    return [journee ? 'Accès à la journée' : '', journee && /journ[eé]e/i.test(a.note || '') ? '' : a.note, a.ageRange ? a.ageRange : a.minAge ? 'Dès ' + a.minAge + ' ans' : ''].filter(Boolean).join(' · ');
   }
-  function texteInfo(a) {
-    var ar = reglageArcade(a), lines = [joueursDe(a) + ' joueurs · ' + prixCarte(a), noteCarte(a), a.note];
-    if (ar) lines.push(detailArcade(snapshotArcade(a)));
-    else {
-      if (a.description) lines.push(a.description);
-      var option = optionChoisie(a), unitaire = option ? Number(option.prix) : tarifConnu(a) ? Number(a.priceValue) : null;
-      if ((a.priceType === 'per_pax' || a.priceType === 'grid_laser') && unitaire != null && isFinite(unitaire)) lines.push(euros(unitaire) + ' / ' + (seCompteParEnfant(a) ? 'enfant' : 'personne') + ' × ' + joueursDe(a) + ' = ' + euros(Math.round(unitaire * joueursDe(a) * 100) / 100));
-      if (a.minAge || a.maxAge) lines.push('Âge : ' + (a.minAge ? 'dès ' + a.minAge + ' ans' : '') + (a.maxAge ? ', jusqu’à ' + a.maxAge + ' ans' : '') + '.');
-      if (a.minPax) lines.push('Au moins ' + a.minPax + ' joueurs.');
-      if (a.priceType === 'per_unit_hour') { var r = reglageBillard(a); lines.push(r.units + ' table' + (r.units > 1 ? 's' : '') + ' · ' + heuresLabel(r.hours) + '. Le prix dépend du nombre de tables et de la durée choisie. ' + tablesMax(a) + ' tables au plus.'); }
-      if (seCompteParEnfant(a)) lines.push(texteCompteur(compteurDe(a)));
-      if (!lines.filter(Boolean).length) lines.push(a.unitLabel || PRIX_ACCUEIL);
+  function conditionsActivite(a) {
+    var lignes = [];
+    if (a.ageRange) lignes.push('Âge : ' + a.ageRange + '.');
+    else if (a.minAge || a.maxAge) lignes.push('Âge : ' + (a.minAge ? 'dès ' + a.minAge + ' ans' : '') + (a.maxAge ? ', jusqu’à ' + a.maxAge + ' ans' : '') + '.');
+    if (a.minHeightCm) lignes.push('Taille minimum : ' + a.minHeightCm + ' cm.');
+    if (a.minPax > 1) lignes.push('Au moins ' + a.minPax + ' joueurs.');
+    return lignes;
+  }
+  function sectionsInfoActivite(a) {
+    var ar = reglageArcade(a), option = optionChoisie(a), sections = [];
+    var choix = [joueursDe(a) + (seCompteParEnfant(a) ? ' enfants' : ' joueurs'), option && option.label].filter(Boolean).join(' · ');
+    var tarif = [], fonctionnement = [noteCarte(a), a.note, a.description].filter(Boolean);
+    if (ar) tarif.push(detailArcade(snapshotArcade(a)));
+    if (!ar) {
+      var unitaire = option ? Number(option.prix) : tarifConnu(a) ? Number(a.priceValue) : null;
+      if ((a.priceType === 'per_pax' || a.priceType === 'grid_laser') && unitaire != null && isFinite(unitaire)) tarif.push(euros(unitaire) + ' / ' + (seCompteParEnfant(a) ? 'enfant' : 'personne') + ' × ' + joueursDe(a) + ' = ' + euros(Math.round(unitaire * joueursDe(a) * 100) / 100));
+      else if (a.priceType === 'per_unit_hour') {
+        var r = reglageBillard(a), total = prixBillard(a, r.units, r.hours);
+        tarif.push(r.units + ' table' + (r.units > 1 ? 's' : '') + ' · ' + heuresLabel(r.hours) + (total == null ? ' · Prix à l’accueil.' : ' · ' + euros(a.priceValue) + ' / table / heure = ' + euros(total) + '.'));
+        fonctionnement.push(tablesMax(a) + ' tables au plus. Le nombre de tables et la durée déterminent le prix.');
+      } else if (option) tarif.push(noteCourte(a));
+      else tarif.push(prixCarte(a));
+      if (seCompteParEnfant(a)) fonctionnement.push(texteCompteur(compteurDe(a)));
     }
-    return lines.filter(Boolean).join('\n\n');
+    sections.push({ titre: 'Votre sélection', lignes: [choix].concat(tarif).filter(Boolean) });
+    if (fonctionnement.length) sections.push({ titre: 'Comment ça se passe', lignes: fonctionnement });
+    var conditions = conditionsActivite(a);
+    if (conditions.length) sections.push({ titre: 'Accès et participants', lignes: conditions });
+    var tarifs = optionsPour(a).map(function (o) { return o.label + ' : ' + euros(o.prix) + ' ' + o.unite; });
+    if (ar) {
+      tarifs = ar.time.map(function (o) { if (ar.mode === 'time' && o.id === ar.offer.id) o = ar.offer; return o.minutes + ' min à volonté : ' + euros(o.price) + ' / carte, une carte par personne.'; })
+        .concat(ar.credit.map(function (o) { if (ar.mode === 'credit' && o.id === ar.offer.id) o = ar.offer; return euros(o.price) + ' / carte : ' + credits(o.credits) + ' crédits + ' + credits(o.bonusCredits || 0) + ' bonus = ' + credits(Number(o.credits) + Number(o.bonusCredits || 0)) + ' crédits.'; }));
+      fonctionnement.push(ar.config.timedDescription, ar.config.creditDescription);
+    }
+    if (tarifs.length) sections.push({ titre: 'Les offres disponibles', lignes: tarifs });
+    sections.push({ titre: 'À savoir', lignes: ['Les montants sont indicatifs. Aucun paiement en ligne ; règlement à l’accueil.'] });
+    return sections;
+  }
+  function texteSectionsInfo(sections) {
+    return sections.map(function (s) { return s.titre + '\n' + s.lignes.filter(Boolean).join('\n\n'); }).join('\n\n');
+  }
+  function boutonInfo(attribut, id, titre, sections, image) {
+    return '<button type="button" class="fg-info-btn" ' + attribut + '="' + esc(id) + '" data-info-title="' + esc(titre) + '" data-info-text="' + esc(texteSectionsInfo(sections)) + '" data-info-sections="' + esc(JSON.stringify(sections)) + '" data-info-image="' + esc(image || '') + '" aria-label="Informations sur ' + esc(titre) + '" aria-haspopup="dialog"><span class="fg-info-icon" aria-hidden="true">i</span></button>';
   }
   function htmlInfo(a) {
-    return '<div class="fg-card__info"><p class="fg-card__rot">' + esc(noteCourte(a)) + '</p><button type="button" class="fg-info-btn" data-activity-info="' + esc(a.id) + '" data-info-title="' + esc(a.name) + '" data-info-text="' + esc(texteInfo(a)) + '" aria-label="Informations sur ' + esc(a.name) + '" aria-haspopup="dialog">i</button></div>';
+    return '<div class="fg-card__info"><p class="fg-card__rot">' + esc(noteCourte(a)) + '</p>' + boutonInfo('data-activity-info', a.id, a.name, sectionsInfoActivite(a), a.id) + '</div>';
   }
-  var activityDialog, infoOpener;
+  function htmlInfoFormule(f, contexte) {
+    contexte = contexte || {};
+    var surMesure = !!contexte.surMesure, n = Number(contexte.pax) || state.pax;
+    var unite = f.type === 'per_lane' ? 'la piste' : f.kidsOnly ? 'par enfant' : 'par personne';
+    var sections = [{ titre: 'Le tarif', lignes: [euros(f.price) + ' ' + unite] }, { titre: 'Ce qui est inclus', lignes: (f.desc || []).slice() }];
+    if (!surMesure && f.type === 'per_pax' && !f.kidsOnly) sections[0].lignes.push(euros(f.price) + ' / personne × ' + n + ' = ' + euros(Math.round(Number(f.price) * n * 100) / 100));
+    if (!surMesure && f.kidsOnly && state.formuleId === f.id) sections[0].lignes.push(textesEnfants(f).prix, textesEnfants(f).adultes);
+    var regles = reglesFormule(f).map(function (r) { return f.kidsOnly && f.minPax > 1 && r === 'dès ' + f.minPax + ' personnes' ? 'dès ' + f.minPax + ' enfants' : r; }).concat(f.notes || []).filter(Boolean);
+    if (f.kidsOnly) regles.push('Pour les enfants de ' + f.kidsOnly.ageMin + ' à ' + f.kidsOnly.ageMax + ' ans.', 'Les adultes qui accompagnent ne paient pas la formule.');
+    if (regles.length) sections.push({ titre: 'Conditions de cette formule', lignes: regles.filter(function (s, i, all) { return all.indexOf(s) === i; }) });
+    var acces = [];
+    (f.desc || []).forEach(function (d) {
+      var genre = genreCompris(d), ids = { bowling: 'bowling', duckpin: 'duckpin_bowling', laser_game: 'laser_game', minigolf: 'minigolf_blacklight', billard: 'billards', arcade: 'arcade_time', plaine: 'playground', fun_run: 'fun_run' };
+      var a = activite(ids[genre]);
+      if (a) { var conditions = conditionsActivite(a); if (a.id === 'laser_game' && phraseLaser()) conditions.push(phraseLaser()); if (conditions.length) acces.push(a.name + ' : ' + conditions.join(' ')); }
+    });
+    if (acces.length) sections.push({ titre: 'L’accès aux activités incluses', lignes: acces });
+    var duree = !surMesure && dureesCache[state.date + '|' + state.pax] && dureesCache[state.date + '|' + state.pax][f.id];
+    if (duree) sections.push({ titre: 'Votre temps sur place', lignes: [texteDuree(duree)] });
+    sections.push({ titre: 'À savoir', lignes: [surMesure ? 'Le programme et le montant sont à confirmer avec l’équipe pour votre groupe.' : 'Les montants sont indicatifs. Aucun paiement en ligne ; règlement à l’accueil.'] });
+    var bref = (f.minPax > 1 ? 'Dès ' + f.minPax + (f.kidsOnly ? ' enfants' : ' personnes') : f.kidsOnly ? f.kidsOnly.ageMin + ' à ' + f.kidsOnly.ageMax + ' ans' : [f.validDays && f.validDays.length && f.validDays.length < 7 ? joursLisibles(f.validDays) : '', plageLisible(f.timeLimit)].filter(Boolean).join(' · ') || 'Voir les conditions');
+    var image = (f.desc || []).filter(function (d) { return photo(d); })[0] || '';
+    if (!image && (f.desc || []).some(function (d) { return /toutes les activit[eé]s/i.test(d); })) {
+      var illimitee = activitesVendables().filter(function (a) { return photo(a.id); })[0];
+      image = illimitee ? illimitee.id : '';
+    }
+    return '<div class="fg-card__info fg-for__info"><p class="fg-card__rot">' + esc(bref) + '</p>' + boutonInfo('data-formula-info', f.id, f.name, sections, image) + '</div>';
+  }
+  function placerInfoFenetre(demander) {
+    if (!activityDialog || !activityDialog.open || !EMBED) return;
+    activityDialog.classList.toggle('is-short', ecranHote > 0 && ecranHote <= 500);
+    centrerDansLaVue(activityDialog, demander);
+    if (ecranHote && hautCadre !== null) {
+      var debutVisible = Math.max(0, -hautCadre), finVisible = Math.min(window.innerHeight, ecranHote - hautCadre);
+      if (finVisible > debutVisible) {
+        var hauteurMax = Math.max(80, Math.min(ecranHote - 24, finVisible - debutVisible - 16));
+        activityDialog.style.maxHeight = hauteurMax + 'px';
+        var demiHauteur = Math.min(activityDialog.offsetHeight, hauteurMax) / 2;
+        activityDialog.style.top = Math.round(Math.max(debutVisible + demiHauteur + 8, Math.min(finVisible - demiHauteur - 8, ecranHote / 2 - hautCadre))) + 'px';
+      }
+    }
+  }
+  var activityDialog, infoOpener, infoResizeObserver, infoCentreDemande = false;
   doc.addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-activity-info]');
+    var btn = e.target.closest('[data-activity-info], [data-formula-info]');
     if (!btn) return;
     e.preventDefault(); e.stopPropagation();
+    if (btn.dataset.formulaInfo && gridFor.contains(btn)) {
+      var formuleInfo = ((meta && meta.formules) || []).filter(function (f) { return f.id === btn.dataset.formulaInfo; })[0];
+      if (formuleInfo) {
+        var actualisationInfo = doc.createElement('div'); actualisationInfo.innerHTML = htmlInfoFormule(formuleInfo);
+        var boutonActualise = $('[data-formula-info]', actualisationInfo);
+        btn.dataset.infoText = boutonActualise.dataset.infoText; btn.dataset.infoSections = boutonActualise.dataset.infoSections;
+      }
+    }
     if (!activityDialog) {
       activityDialog = doc.createElement('dialog'); activityDialog.className = 'fg-info-dialog';
       activityDialog.setAttribute('aria-labelledby', 'fgInfoTitle');
-      activityDialog.innerHTML = '<button type="button" class="fg-info-close" aria-label="Fermer les informations">×</button><img class="fg-info-photo" alt=""><div class="fg-info-body"><h2 id="fgInfoTitle"></h2><p class="fg-info-text"></p></div>';
+      activityDialog.innerHTML = '<div class="fg-info-hero"><img class="fg-info-photo" alt=""><button type="button" class="fg-info-close" aria-label="Fermer les informations">×</button></div><div class="fg-info-body" tabindex="0" role="region" aria-labelledby="fgInfoTitle"><h2 id="fgInfoTitle"></h2><div class="fg-info-text"></div></div>';
       doc.body.appendChild(activityDialog);
+      if ('ResizeObserver' in window) infoResizeObserver = new ResizeObserver(function () { placerInfoFenetre(false); });
+      $('.fg-info-photo', activityDialog).addEventListener('load', function () { placerInfoFenetre(false); });
       $('.fg-info-close', activityDialog).addEventListener('click', function () { activityDialog.close(); });
+      activityDialog.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'Tab' || !activityDialog.open) return;
+        var accessibles = $$('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])', activityDialog).filter(function (el) { return el.getClientRects().length && !el.hidden; });
+        if (!accessibles.length) return;
+        var i = accessibles.indexOf(doc.activeElement), prochain = i < 0 ? (ev.shiftKey ? accessibles.length - 1 : 0) : (i + (ev.shiftKey ? -1 : 1) + accessibles.length) % accessibles.length;
+        ev.preventDefault(); accessibles[prochain].focus({ preventScroll: true });
+      });
       activityDialog.addEventListener('click', function (ev) { var r = activityDialog.getBoundingClientRect(); if (ev.target === activityDialog && (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom)) activityDialog.close(); });
-      activityDialog.addEventListener('close', function () { doc.body.style.overflow = activityDialog._overflow; var focus = infoOpener && (infoOpener.isConnected ? infoOpener : $('[data-activity-info="' + infoOpener.dataset.activityInfo + '"]', $('.fg-scene.is-active') || doc)); if (focus) focus.focus({ preventScroll: true }); });
+      activityDialog.addEventListener('close', function () { if (infoResizeObserver) infoResizeObserver.disconnect(); infoCentreDemande = false; doc.body.style.overflow = activityDialog._overflow; activityDialog.style.top = ''; activityDialog.style.maxHeight = ''; var type = infoOpener && infoOpener.dataset.formulaInfo ? 'formula' : 'activity'; var id = infoOpener && infoOpener.dataset[type + 'Info']; var focus = infoOpener && (infoOpener.isConnected ? infoOpener : $('[data-' + type + '-info="' + id + '"]', $('.fg-scene.is-active') || doc)); if (focus) focus.focus({ preventScroll: true }); });
     }
     infoOpener = btn;
     $('#fgInfoTitle', activityDialog).textContent = btn.dataset.infoTitle;
-    $('.fg-info-text', activityDialog).textContent = btn.dataset.infoText;
+    var contenu = $('.fg-info-text', activityDialog), sections;
+    try { sections = JSON.parse(btn.dataset.infoSections || 'null'); } catch (_) { sections = null; }
+    if (sections) contenu.innerHTML = sections.map(function (s) { return '<section class="fg-info-section"><h3>' + esc(s.titre) + '</h3>\n' + s.lignes.filter(Boolean).map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('\n\n') + '</section>'; }).join('\n\n');
+    else contenu.textContent = btn.dataset.infoText;
     var image = $('.fg-info-photo', activityDialog), centre = meta && meta.center && meta.center.id || CENTER;
-    var p = centre === 'libramont' ? photo(btn.dataset.activityInfo) : centre === 'gembloux' && btn.dataset.activityInfo === 'golf_oclock' ? 'gembloux-golf-salle' : '';
-    image.hidden = !p; if (p) { image.src = '/assets/fungalaxy/' + p + '-800.webp'; image.alt = btn.dataset.infoTitle; } else { image.removeAttribute('src'); image.alt = ''; }
+    var sujet = btn.dataset.infoImage || btn.dataset.activityInfo;
+    var p = centre === 'libramont' ? photo(sujet) : centre === 'gembloux' && sujet === 'golf_oclock' ? 'gembloux-golf-salle' : '';
+    image.hidden = !p; $('.fg-info-hero', activityDialog).classList.toggle('has-photo', !!p); if (p) { image.src = '/assets/fungalaxy/' + p + '-800.webp'; image.alt = btn.dataset.infoTitle; } else { image.removeAttribute('src'); image.alt = ''; }
     activityDialog._overflow = doc.body.style.overflow; doc.body.style.overflow = 'hidden';
-    activityDialog.showModal(); $('.fg-info-close', activityDialog).focus();
+    activityDialog.showModal(); $('.fg-info-body', activityDialog).scrollTop = 0; placerInfoFenetre(false); $('.fg-info-close', activityDialog).focus({ preventScroll: true });
+    if (infoResizeObserver) infoResizeObserver.observe(activityDialog);
+    // Le pont existant renvoie pinlane:vue meme si la hauteur ne change pas.
+    // Redemander la vue apres le focus evite de reutiliser le scroll precedent.
+    if (EMBED) { infoCentreDemande = true; poster({ type: 'pinlane:height', height: derniereHauteur || Math.max(body.scrollHeight, body.offsetHeight) }); }
   }, true);
   function reglageArcade(a) {
     var c = a && a.id === 'arcade_time' && a.arcadeOffers;
@@ -1541,7 +1642,6 @@
           }).join('')
           + '</div>';
       }).join('')
-      + htmlInfo(a)
       + '</div></div></div>';
   }
   function choisirPastille(pill) {
@@ -1574,7 +1674,7 @@
     });
     var rot = $('.fg-card__rot', item);
     if (rot) rot.textContent = noteCourte(a);
-    var info = $('[data-activity-info]', item); if (info) info.dataset.infoText = texteInfo(a);
+    var info = $('[data-activity-info]', item); if (info) { var sections = sectionsInfoActivite(a); info.dataset.infoText = texteSectionsInfo(sections); info.dataset.infoSections = JSON.stringify(sections); }
   }
   function rendreActivites() {
     gridAct.innerHTML = activitesVendables().map(function (a, i) {
@@ -1596,6 +1696,7 @@
         + (peu ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Il faut être au moins ' + a.minPax + ' joueurs. Vous êtes ' + state.pax + '.</span>' : '')
         + (ferme ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Indisponible ' + esc(minuscule(jourLong(state.date))) + '.</span>' : '')
         + '</div>'
+        + htmlInfo(a)
         + rendreOption(a)
         + '</li>';
     }).join('') || ('<li class="fg-empty">Aucune activité ne se réserve en ligne pour le moment.' + ligneCentre() + '</li>');
@@ -1732,6 +1833,7 @@
           + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '')
           + (v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(v.pourquoi) + '</span>')
           + '</div>'
+          + htmlInfoFormule(f)
           + (f.kidsOnly && v.ok ? rendreEnfants(f) : '')
           + '</li>';
       }).join('');
@@ -2671,7 +2773,7 @@
       if (ar && ar.mode === it.arcadeOffer.mode && ar.offer.id === it.arcadeOffer.id) opt.arcadeSnapshot = Object.assign({}, it.arcadeOffer);
       state.options[it.activityId] = opt;
       var item = $('[data-activity="arcade_time"].fg-grid__item', gridAct), a = activite(it.activityId);
-      if (item) { $('.fg-card__opt', item).outerHTML = rendreOption(a); majPrixCarte(item, a, false); }
+      if (item) { $('.fg-card__opt', item).outerHTML = rendreOption(a); majPastilles(item, a); majPrixCarte(item, a, false); }
     });
   }
   function avertissementBowling(cr) {
@@ -4465,7 +4567,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261003info';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261004info';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003info';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
@@ -4536,7 +4638,7 @@
         montant = Math.round(opt.prix * q * 100) / 100;
       } else if (a.priceType === 'per_unit_hour') montant = prixBillard(a, billard.units, billard.hours);
       else if (tarifConnu(a)) montant = Math.round(Number(a.priceValue) * (a.priceType === 'per_pax' ? joueursDe(a) : 1) * 100) / 100;
-      return { montant: montant, html: rendreOption(a).replace(/opt-/g, 'sm-opt-'), prix: prixCarte(a),
+      return { montant: montant, html: rendreOption(a).replace(/opt-/g, 'sm-opt-'), info: htmlInfo(a), prix: prixCarte(a),
         compteurs: [compteurDe(a)].concat(a.priceType === 'per_unit_hour' ? [compteurDe(a, 'units')] : arcade && arcade.mode === 'credit' ? [compteurDe(a, 'cards')] : []),
         arcade: arcade ? snapshotArcade(a) : null, detail: arcade ? detailArcade(snapshotArcade(a)) : '', groupes: groupesOptions(a) };
     } finally {
@@ -4553,6 +4655,7 @@
       ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,
       photo: photo, photosDesScenes: photosDesScenes, plageLisible: plageLisible, poserErreur: poserErreur, poserTitre: poserTitre,
       posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
+      htmlInfoFormule: htmlInfoFormule,
       secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure, choixArcade: choixArcade,
       scene: function () { return sceneCourante; },
     };

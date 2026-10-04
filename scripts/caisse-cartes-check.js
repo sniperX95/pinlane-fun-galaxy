@@ -52,6 +52,15 @@ const PORT = Number(process.env.PINLANE_CAISSE_PORT || 4331);
 const BASE = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const JOUR = '2026-10-03';
+// Le serveur prepare les plans avant le navigateur : sa garde de date doit
+// voir la meme journee de fixture. Figer seulement page.clock faisait expirer
+// les 11 plans fixes des le lendemain, avant toute mesure de l'interface.
+const NativeDate = Date;
+const FIXTURE_NOW = NativeDate.parse(`${JOUR}T08:00:00+02:00`);
+global.Date = class FixtureDate extends NativeDate {
+  constructor(...args) { super(...(args.length ? args : [FIXTURE_NOW])); }
+  static now() { return FIXTURE_NOW; }
+};
 const MUTATE = process.argv.includes('--mutate');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff' };
 
@@ -342,7 +351,7 @@ async function scenarioBlocs(browser, jour) {
       const m = document.querySelector('#posOverlay .edit-modal');
       if (!m) return { sous: '', corps: '', lignes: [], total: '', etats: [], etapes: 0 };
       return {
-        sous: txt(m.querySelector('.edit-modal-ident p')),
+        facts: Object.fromEntries([...m.querySelectorAll('.dossier-fact')].map((fact) => [txt(fact.querySelector('span')), txt(fact.querySelector('strong'))])),
         corps: txt(m.querySelector('.edit-modal-body')),
         lignes: [...m.querySelectorAll('.gc-bill-lines > div')].map((d) => `${txt(d.querySelector('dt'))} ${txt(d.querySelector('dd'))}`),
         total: txt(m.querySelector('.gc-bill-total')),
@@ -350,10 +359,10 @@ async function scenarioBlocs(browser, jour) {
         etapes: m.querySelectorAll('.gc-steps .gc-step').length,
       };
     });
-    ok(/14:00 → 16:25/.test(fiche.sous) && /10 joueurs/.test(fiche.sous), '[F] l en-tête dit les vraies heures du groupe (14:00 → 16:25)', fiche.sous);
+    ok(fiche.facts && fiche.facts.Horaires === '14:00 → 16:25' && /^(10 joueurs|10 personnes présentes)$/.test(fiche.facts.Groupe), '[F] l en-tête dit les vraies heures du groupe (14:00 → 16:25)', JSON.stringify(fiche.facts));
     ok(fiche.etapes === 3, '[F] le programme : trois lignes', String(fiche.etapes));
     ok(/^Bowling 10 joueurs · 1h · 2 pistes × 39\s*€ 78\s*€$/.test(fiche.lignes[0] || '') && /^Laser Game 10 joueurs · 2 parties · 18\s*€ × 10 180\s*€$/.test(fiche.lignes[1] || ''), '[F] l addition ligne par ligne, avec leurs10 joueurs et le calcul (2 pistes × 39 €, 18 € × 10)', fiche.lignes.join(' | '));
-    ok(/Pistes 1, 2 \+ arène laser/.test(fiche.sous), '[F] l en-tête dit où : « Pistes 1, 2 + arène laser »', fiche.sous);
+    ok(fiche.facts && fiche.facts.Ressources === 'Pistes 1, 2 + arène laser', '[F] l en-tête dit où : « Pistes 1, 2 + arène laser »', JSON.stringify(fiche.facts));
     ok(/258\s*€/.test(fiche.total) && /25,80\s*€ par joueur/.test(fiche.total) && /À encaisser/.test(fiche.total), '[F] le total, le prix par joueur au centime, à encaisser', fiche.total);
     ok(fiche.etats.join('|') === 'Confirmé|Arrivé|Payé · Carte|Payé · Espèces', '[F] les états : Confirmé, Arrivé, Payé · Carte, Payé · Espèces', fiche.etats.join('|'));
     ok(!/Plan automatique|Risque|Consigne:|Point marche/.test(fiche.corps), '[F] plus de « Plan automatique » ni de texte interne du moteur', (fiche.corps.match(/Plan automatique|Risque[^|]*|Consigne:[^|]*/) || [''])[0]);

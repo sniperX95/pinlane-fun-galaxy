@@ -604,8 +604,17 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // Aucun fichier initial n est cache ou exclu du calcul pour tenir le plafond.
 // Le plafond conserve moins de 1 Ko de marge de transfert ; une police ou
 // une bibliotheque reste refusee. Comparaison CPU 6x dans les preuves Arcades.
-const BUDGET_SERVI = 286 * 1024;
-const BUDGET_TRANSFERE = 79 * 1024;
+// 04/10, informations activites : mesure ABBA de 8 passes, base production
+// 7c6d1ac contre gel final, memes trois fichiers JS + CSS + HTML apres build,
+// brotli qualite 3, CPU ralenti 6 fois. Octets servis : 292031 -> 302817
+// (+10786) ; transferes : 80132 -> 82958 (+2826), soit 56,52 ms a 400 kbit/s.
+// Delta script : +20,75 ms sous CPU 6x (environ +3,46 ms sans ralentissement) ;
+// style +5,48 ms et layout +4,48 ms, sensibles au bruit des huit passes.
+// Plafonds stricts 303104 / 83968 octets : marges 287 / 1010 octets.
+// Aucun fichier exclu, aucune dependance ajoutee ; les contrepreuves police
+// et bibliotheque et la mesure du vrai build/brotli restent obligatoires.
+const BUDGET_SERVI = 296 * 1024;
+const BUDGET_TRANSFERE = 82 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -2242,11 +2251,21 @@ async function main() {
       const li = document.querySelector('#gridAct li[data-activity="bowling"]');
       const c = li.querySelector('.fg-card').getBoundingClientRect();
       const t = li.querySelector('.fg-card__optbox').getBoundingClientRect();
+      const footer = li.querySelector(':scope > .fg-card__info');
+      const f = footer && footer.getBoundingClientRect();
+      const info = footer && footer.querySelector('[data-activity-info]');
+      const ir = info && info.getBoundingClientRect();
+      const hit = ir && document.elementFromPoint(ir.left + ir.width / 2, ir.top + ir.height / 2);
+      const controls = [...li.querySelectorAll('.fg-card__optbox button,.fg-card__optbox input')].filter(el => el.getBoundingClientRect().width > 0);
+      const drawerContained = controls.every(el => { const r = el.getBoundingClientRect(); return r.left >= t.left - 1 && r.right <= t.right + 1 && r.top >= t.top - 1 && r.bottom <= t.bottom + 1; });
       const parRangee = {};
       document.querySelectorAll('#gridAct .fg-card').forEach((x) => { const r = x.getBoundingClientRect(); const k = Math.round(r.top); (parRangee[k] = parRangee[k] || []).push(Math.round(r.height)); });
-      return { colle: Math.abs(t.top - c.bottom), parRangee, hauteur: Math.round(c.height) };
+      return { colle: f ? Math.abs(t.top - f.bottom) : Infinity, footerColle: f ? Math.abs(f.top - c.bottom) : Infinity,
+        footerVisible: Boolean(footer && f.height > 0 && getComputedStyle(footer).visibility === 'visible'),
+        infoReceivesPointer: Boolean(info && hit && info.contains(hit)), drawerContained, parRangee, hauteur: Math.round(c.height) };
     });
-    ok(geometrie.colle <= 2, '[B] le tiroir s ouvre juste SOUS la carte', `${Math.round(geometrie.colle)} px`);
+    ok(geometrie.colle <= 2 && geometrie.footerColle <= 2 && geometrie.footerVisible && geometrie.infoReceivesPointer && geometrie.drawerContained,
+      '[B] carte, bref et tiroir restent contigus, visibles et sans chevaucher les commandes', JSON.stringify(geometrie));
     ok(Object.values(geometrie.parRangee).every((h) => Math.max(...h) - Math.min(...h) <= 1) && Math.abs(geometrie.hauteur - hauteurAvant) <= 1, '[B] un tiroir ouvert n etire aucune carte : chaque rangee garde des cartes de meme hauteur', JSON.stringify(geometrie.parRangee));
     const deuxParties = meta.laserOptions.find((o) => Number(o.games) === 2);
     const troisParties = meta.laserOptions.find((o) => Number(o.games) === 3);

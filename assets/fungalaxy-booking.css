@@ -998,16 +998,19 @@ html.fg-pilote .fg { overflow: visible; }
    nom long. */
 .fg-grid > li { min-width: 0; display: flex; flex-direction: column; }
 .fg-grid .fg-card { width: 100%; flex: 1 1 auto; }
-/* Avec la sous-grille, chaque item occupe DEUX rangees de la grille : la
+/* Avec la sous-grille, chaque item occupe TROIS rangees de la grille : la
    rangee des cartes (toutes de la meme hauteur, celle de la plus haute) et
-   la rangee des tiroirs (la hauteur du plus haut tiroir ouvert). Ouvrir un
+   la rangee des informations, puis celle des tiroirs. Ouvrir un
    tiroir n etire plus les cartes voisines : les cartes restent alignees, les
    tiroirs partent tous de la meme ligne. L espace entre deux rangees de
    cartes passe dans la marge du bas de chaque item. Sans sous-grille
    (navigateur ancien), la colonne flex ci-dessus reste. */
 @supports (grid-template-rows: subgrid) {
   .fg-grid { row-gap: 0; }
-  .fg-grid > li { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0; margin-bottom: 14px; align-content: start; }
+  .fg-grid > li { display: grid; grid-row: span 3; grid-template-rows: subgrid; row-gap: 0; margin-bottom: 14px; align-content: start; }
+  .fg-grid > li > .fg-card { grid-row: 1; }
+  .fg-grid > li > .fg-card__info { grid-row: 2; }
+  .fg-grid > li > .fg-card__opt { grid-row: 3; }
   .fg-grid > li.fg-empty { grid-column: 1 / -1; }
 }
 .fg-card {
@@ -1227,8 +1230,8 @@ html.fg-pilote .fg { overflow: visible; }
    d enfants interactifs) et se deploie en grid-template-rows 0fr -> 1fr :
    aucune mesure, la rangee grandit en douceur. Le rembourrage et la bordure
    sont sur un element interieur : le tiroir ferme fait exactement 0. */
-.fg-card__opt { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s var(--fg-ease); }
-.fg-grid__item.is-on .fg-card__opt { grid-template-rows: 1fr; }
+.fg-card__opt { display: grid; grid-template-rows: 0fr; visibility: hidden; pointer-events: none; transition: grid-template-rows 0.4s var(--fg-ease); }
+.fg-grid__item.is-on .fg-card__opt { grid-template-rows: 1fr; visibility: visible; pointer-events: auto; }
 /* Ferme, le tiroir sort aussi du parcours clavier et du lecteur d ecran
    (visibility), une fois son repli de 0,4 s fini ; ouvert, il y entre tout
    de suite. */
@@ -2486,16 +2489,35 @@ html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote)
   font-size: 12px;
 }
 .fg-arcade-select:focus-visible { outline: 2px solid var(--fg-teal, #8dd5ce); outline-offset: 2px; }
-.fg-card__info { display:flex; align-items:center; gap:8px; margin-top:12px; }
-.fg-card__info .fg-card__rot { flex:1; margin:0; font-size:12px; }
-.fg-info-btn,.fg-info-close { flex:none; width:44px; height:44px; min-width:44px; border:1px solid #654066; border-radius:50%; color:#fff; background:#241b25; font-family:inherit; font-size:18px; font-weight:600; cursor:pointer; }
-.fg-info-btn:focus-visible,.fg-info-close:focus-visible { outline:2px solid #88d5cf; outline-offset:3px; }
-.fg-info-dialog { position:fixed; inset:0; box-sizing:border-box; width:min(520px,calc(100% - 24px)); max-height:calc(100dvh - 32px); margin:auto; padding:0; overflow:auto; border:1px solid #914393; border-radius:18px; color:#f8f5f8; background:#171318; box-shadow:0 24px 80px #0009; }
-.fg-info-dialog::backdrop { background:#080609d9; backdrop-filter:blur(5px); }
-.fg-info-close { position:sticky; top:12px; float:right; margin:12px 12px -56px 0; background:#171318e8; z-index:1; }
-.fg-info-photo { display:block; width:100%; height:190px; object-fit:cover; }
+.fg-card__info { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.fg-card__info .fg-card__rot { flex:1; min-width:0; margin:0; font-size:12px; line-height:1.45; }
+.fg-info-btn { display:inline-flex; align-items:center; justify-content:center; flex:none; width:44px; height:44px; min-width:44px; padding:0; border:0; color:var(--fg-muted); background:transparent; font:inherit; cursor:pointer; }
+.fg-info-icon { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border:1px solid currentColor; border-radius:50%; font-family:inherit; font-size:13px; font-weight:600; line-height:1; }
+@media (hover:hover) { .fg-info-btn:hover .fg-info-icon { color:var(--fg-text); } }
+.fg-info-btn:focus-visible,.fg-info-close:focus-visible { outline:2px solid #88d5cf; outline-offset:2px; border-radius:6px; }
+.fg-info-dialog { position:fixed; inset:0; box-sizing:border-box; width:min(560px,calc(100% - 32px)); max-height:calc(100dvh - 32px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)); margin:auto; padding:0; overflow:hidden; border:1px solid #654066; border-radius:16px; color:#f8f5f8; background:#171318; box-shadow:0 16px 64px #0008; }
+.fg-info-dialog[open] { display:flex; flex-direction:column; }
+body.is-embed .fg-info-dialog { inset:auto; top:50%; left:50%; margin:0; transform:translate(-50%,-50%); }
+.fg-info-dialog::backdrop { background:#080609cc; backdrop-filter:blur(3px); }
+.fg-info-hero { position:relative; flex:none; min-height:56px; }
+.fg-info-close { position:absolute; top:8px; right:8px; display:flex; align-items:center; justify-content:center; width:44px; height:44px; padding:0; border:1px solid #ffffff50; border-radius:50%; color:#fff; background:#171318eb; font-family:inherit; font-size:25px; font-weight:400; line-height:1; cursor:pointer; }
+.fg-info-photo { display:block; width:100%; height:184px; object-fit:cover; }
 .fg-info-photo[hidden] { display:none; }
-.fg-info-body { padding:24px; }
-.fg-info-body h2 { margin:0 0 16px; font-size:22px; }
-.fg-info-text { margin:0; white-space:pre-line; font-size:14px; line-height:1.65; overflow-wrap:anywhere; }
-@media (max-width:390px) { .fg-info-photo { height:150px; } .fg-info-body { padding:20px; } }
+.fg-info-body { min-height:0; padding:24px; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#654066 transparent; }
+.fg-info-body:focus-visible { outline:2px solid #88d5cf; outline-offset:-3px; }
+.fg-info-body h2 { margin:0 0 20px; padding-right:8px; font-family:inherit; font-size:25px; font-weight:650; line-height:1.15; letter-spacing:-.02em; }
+.fg-info-text { margin:0; font-size:14px; line-height:1.6; overflow-wrap:anywhere; }
+.fg-info-section + .fg-info-section { margin-top:20px; padding-top:18px; border-top:1px solid #ffffff18; }
+.fg-info-section h3 { margin:0 0 10px; font-family:inherit; font-size:13px; font-weight:650; color:#bde5e0; }
+.fg-info-section p { margin:0; }
+.fg-info-section p + p { margin-top:9px; }
+.fg-info-section:first-child p:first-of-type { font-size:15px; font-weight:600; }
+.fg-grid--for .fg-card--formule { border-bottom-left-radius:0; border-bottom-right-radius:0; }
+.fg-grid__item > .fg-card__info { margin-top:0; padding:2px 14px; border:1px solid var(--fg-line-2); border-top:0; border-radius:0 0 9px 9px; background:#111; }
+.fg-grid__item > .fg-card { border-bottom-left-radius:0; border-bottom-right-radius:0; }
+.fg-grid__item.is-on > .fg-card__info { border-color:var(--fg-purple); border-radius:0; }
+.fg-grid--for .fg-grid__item.is-on > .fg-card__info { border-radius:0 0 9px 9px; }
+@media (max-width:560px) { .fg-info-photo { height:132px; } .fg-info-body { padding:20px; } .fg-info-body h2 { font-size:23px; } }
+@media (max-height:500px) { .fg-info-photo { height:88px; } .fg-info-body { padding:16px 20px; } }
+.fg-info-dialog.is-short .fg-info-photo { height:88px; }
+.fg-info-dialog.is-short .fg-info-body { padding:16px 20px; }

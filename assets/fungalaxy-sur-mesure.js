@@ -670,11 +670,18 @@
     }
     function reglagesSm(a) {
       var r = I.reglagesSurMesure(a, sm.options[a.id] || {}, sm.participants, sm.flexible ? '' : sm.date);
-      var extra = [capaciteGroupe(a), verdictActiviteSurMesure(a, contexteSm()).note].filter(Boolean).join('\n\n');
-      if (extra) r.html = r.html.replace('data-info-text="', 'data-info-text="' + esc(extra + '\n\n'));
+      var extra = [capaciteGroupe(a), verdictActiviteSurMesure(a, contexteSm()).note].filter(Boolean);
+      if (extra.length) {
+        var bloc = doc.createElement('div'); bloc.innerHTML = r.info;
+        var bouton = $('[data-activity-info]', bloc), sections = JSON.parse(bouton.dataset.infoSections);
+        sections.unshift({ titre: 'Votre groupe', lignes: extra });
+        bouton.dataset.infoSections = JSON.stringify(sections);
+        bouton.dataset.infoText = sections.map(function (s) { return s.titre + '\n' + s.lignes.filter(Boolean).join('\n\n'); }).join('\n\n');
+        r.info = bloc.innerHTML;
+      }
       return r;
     }
-    function compteurSm(a) { return reglagesSm(a).html; }
+    function compteurSm(a) { var r = reglagesSm(a); return r.info + r.html; }
     function changerReglageSm(target, cle, valeur, normaliser) {
       var item = target.closest('[data-sm-activity]'), a = activite(item && item.dataset.smActivity);
       if (!a) return;
@@ -708,13 +715,13 @@
         });
       });
       $('.fg-card__price', item).textContent = r.prix + (faitsAge(a) ? ' · ' + faitsAge(a) : '');
-      var tmp = doc.createElement('div'); tmp.innerHTML = r.html;
+      var tmp = doc.createElement('div'); tmp.innerHTML = r.info;
       var note = $('.fg-card__rot', item), nouvelle = $('.fg-card__rot', tmp);
       if (note && nouvelle) note.textContent = nouvelle.textContent;
       else if (note) note.remove();
       else if (nouvelle) $('.fg-card__optbox', item).appendChild(nouvelle);
       var info = $('[data-activity-info]', item), nextInfo = $('[data-activity-info]', tmp);
-      if (info && nextInfo) info.dataset.infoText = nextInfo.dataset.infoText;
+      if (info && nextInfo) { info.dataset.infoText = nextInfo.dataset.infoText; info.dataset.infoSections = nextInfo.dataset.infoSections; }
       var cap = $('.fg-sm-cap', item);
       if (cap) cap.innerHTML = '<svg aria-hidden="true"><use href="#i-users"/></svg>' + esc(capaciteGroupe(a));
       rendreSmCompteur(false);
@@ -751,7 +758,7 @@
         + o.corps
         + (o.v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.raison) + '</span>')
         + (o.formule && o.v.ok && o.v.note ? '<span class="fg-sm-note"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.note) + '</span>' : '')
-        + '</div>' + (o.formule ? '' : compteurSm(activite(o.id))) + '</li>';
+        + '</div>' + (o.formule ? o.info || '' : compteurSm(activite(o.id))) + '</li>';
     }
     function rendreSmActivites() {
       var ctx = contexteSm();
@@ -782,7 +789,8 @@
             + '<span class="fg-for__head"><span class="fg-card__name">' + esc(f.name) + '</span>' + (f.best ? '<span class="fg-for__best">Bon plan</span>' : '') + '</span>'
             + '<span class="fg-for__price"><b>' + esc(euros(f.price)) + '</b><small>' + (f.type === 'per_lane' ? 'la piste' : f.kidsOnly ? 'par enfant' : 'par personne') + '</small>' + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
             + '<ul class="fg-for__list">' + (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>'
-            + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '') });
+            + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : ''),
+            info: I.htmlInfoFormule(f, { surMesure: true, pax: sm.pax }) });
         }).join('');
         return '<section class="fg-fam"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '<span>' + possibles + ' sur ' + parFamille[cle].length + ' possible' + (possibles > 1 ? 's' : '') + (ctx.jour ? ' ce jour-là' : '') + '</span></h3>'
           + '<ul class="fg-grid fg-grid--for">' + cartes + '</ul></section>';

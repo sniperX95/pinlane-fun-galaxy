@@ -69,7 +69,7 @@ async function informationMatrix(browser, errors) {
         check(await btn.evaluate(b=>{const r=b.getBoundingClientRect();return r.width>=44&&r.height>=44;}),'information control is at least 44px');
         if(id==='bowling') check(/confort/.test(expected)&&/10 min par joueur/.test(expected),'bowling comfort and emergency pace preserved in popup');
         if(id==='laser_game') check(/min de règles/.test(expected),'laser preparation details preserved in popup');
-        if(id==='minigolf_blacklight') check(await page.locator('.fg-info-dialog').evaluate(d=>d.scrollHeight>d.clientHeight),'long configured description scrolls inside the viewport');
+        if(id==='minigolf_blacklight') check(await page.locator('.fg-info-body').evaluate(body=>{body.scrollTop=body.scrollHeight;const rect=body.getBoundingClientRect(),last=body.lastElementChild.getBoundingClientRect();return body.scrollHeight>body.clientHeight&&body.scrollTop>0&&last.bottom<=rect.bottom+2&&last.bottom>=rect.top;}),'long configured description scrolls and its final text stays reachable inside the viewport');
         await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
         check(await page.evaluate(()=>document.querySelector('.fg-info-dialog').contains(document.activeElement)),'keyboard focus stays inside modal');
         if(id==='bowling') await page.screenshot({path:path.join(OUT,`activity-info-${custom?'custom':'standard'}-${width}.png`)});
@@ -240,7 +240,17 @@ async function gemblouxInformation(browser,errors) {
     await page.click('.fg-scene[data-scene="heures"] [data-back]');await page.waitForSelector('.fg-scene[data-scene="activites"].is-active');
     check((await page.locator(selector+' .fg-card__price').textContent()).includes('52,7'),'return to activity shows canonical total despite stale meta');
     await page.click(selector+' [data-activity-info]');
-    check((await page.locator(selector+' select option:checked').textContent()).includes('26,35') && (await page.locator(selector+' select option:checked').textContent()).includes('12 bonus') && (await page.locator('.fg-info-text').textContent()).includes('1,5 à 2,5'),'canonical unit price, bonus and machine costs replace stale card details');
+    const canonicalOption = await page.locator(selector+' select option:checked').textContent();
+    const canonicalPopup = await page.locator('.fg-info-text').textContent();
+    const canonicalDataset = await page.locator(selector+' [data-activity-info]').evaluate(button => ({ text: button.dataset.infoText, sections: JSON.parse(button.dataset.infoSections || 'null') }));
+    console.log(JSON.stringify({ canonicalOption, canonicalPopup, canonicalDataset }));
+    check(canonicalOption.includes('26,35'),'canonical unit price 26,35 replaces the stale selected card price');
+    check(canonicalOption.includes('12 bonus'),'canonical bonus 12 replaces the stale selected card bonus');
+    check(canonicalPopup.includes('1,5 à 2,5'),'canonical machine costs 1,5 to 2,5 replace stale popup details');
+    check(canonicalPopup.includes('Description corrigée par le centre'),'canonical centre description replaces stale popup details');
+    check(canonicalDataset.text.includes('1,5 à 2,5') && canonicalDataset.text.includes('Description corrigée par le centre')
+      && Array.isArray(canonicalDataset.sections) && JSON.stringify(canonicalDataset.sections).includes('Description corrigée par le centre'),
+      'canonical footer text and structured sections stay connected to the popup snapshot');
     await page.keyboard.press('Escape');
     await number(page,selector,'cards',3);
     check((await page.locator(selector+' .fg-card__price').textContent()).includes('79,05'),'card quantity recalculates canonical cents without stale price');

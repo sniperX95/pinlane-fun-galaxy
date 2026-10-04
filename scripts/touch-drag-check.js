@@ -209,7 +209,11 @@ function doigt(page, cdp) {
 
 // Attend une CONDITION, bornee : rend false au lieu de jeter si elle n arrive pas.
 async function attendre(page, fn, arg, ms = 3000) {
-  try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (e) { return false; }
+  try { await page.waitForFunction(fn, arg, { timeout: ms });
+    // A targeted move is drawn only after its server receipt. Sending a PATCH
+    // is not yet a successful gesture, and the next fixture must not reset it.
+    await page.waitForFunction(() => typeof fileEcrituresReservation !== 'function' || (Object.keys(bowlingDragLatestSeqByReservation).length === 0 && Object.keys(laserPassLatestSeqByReservation).length === 0 && fileEcrituresReservation().size === 0), null, { timeout: ms });
+    return true; } catch (e) { return false; }
 }
 
 // Tous les defilements qui peuvent bouger sous un doigt : la page et chaque

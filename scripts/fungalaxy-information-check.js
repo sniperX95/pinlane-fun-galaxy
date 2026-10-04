@@ -84,7 +84,7 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
   const text=await frame.locator('.fg-info-text').textContent();
   const title=await frame.locator('#fgInfoTitle').textContent();
   check(title.trim().length>0&&text.trim().length>0,label+' meaningful named details');
-  for(const fragment of expectedFragments)check(text.includes(fragment),label+' preserves known rule '+fragment+(text.includes(fragment)?'':' in '+JSON.stringify(text)));
+  for(const fragment of expectedFragments) { const present=fragment==='sans cadeaux' ? /(?:sans|hors).{0,60}cadeaux/i.test(text) : text.includes(fragment); check(present,label+' preserves known rule '+fragment+(present?'':' in '+JSON.stringify(text))); }
   if(text.includes('Information longue pour vérifier le défilement')) {
     await frame.locator('.fg-info-body').evaluate(body=>{body.scrollTop=0;body.focus();});await page.keyboard.press('PageDown');await page.waitForTimeout(100);
     check(await frame.locator('.fg-info-body').evaluate(body=>body.scrollTop>0),label+' long details are scrollable with the keyboard');
@@ -102,7 +102,7 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
     await page.evaluate(()=>scrollBy(0,65));await page.waitForTimeout(100);
     await geometry(page,frame,true,label+' parent-scroll');
   }
-  if(label.endsWith('/activity/0')||label.includes('/formula/f1')) await page.screenshot({path:path.join(out,label.replace(/[^a-z0-9_-]/gi,'-')+'.png')});
+  if(label.endsWith('/activity/0')||label.endsWith('/unselected-activity/0')||label.includes('/formula/f1')||label.includes('/formula/mm')||label.includes('/arcade/time-30')) await page.screenshot({path:path.join(out,label.replace(/[^a-z0-9_-]/gi,'-')+'.png')});
   await page.keyboard.press('Escape');
   // Native close events are queued separately from the open property update.
   // Await the exact previous scroll state before checking or reopening.
@@ -154,14 +154,24 @@ async function run() {
    const activities=frame.locator('#gridAct [data-activity-info]');
    check(await frame.locator('#gridAct .fg-card.is-on').count()===0,label+' unselected activity fixture is really empty');
    check(await activities.count()===8,label+' all eight unselected activities expose information');
+   for (const id of ['bowling','duckpin_bowling','fun_run']) {
+    const item=frame.locator('#gridAct li[data-activity="'+id+'"]');
+    const brief=await item.locator('.fg-card__rot').innerText();
+    const details=JSON.parse(await item.locator('[data-activity-info]').getAttribute('data-info-sections'));
+    check(!/[×=]/.test(brief)&&(id==='fun_run' ? brief.includes('au choix') : brief.includes('joueurs / piste')),label+'/'+id+' before selection has no invented total');
+    check(details[0].titre==='Le tarif'&&!details[0].lignes.some(line=>/[×=]/.test(line)),label+'/'+id+' before selection modal has catalogue tariff, no presumed selection');
+   }
+   await page.screenshot({path:path.join(out,label.replace('/','-')+'-unselected-cards.png')});
    for(let index=0;index<8;index++)await popup(page,frame,activities.nth(index),embedded,label+'/unselected-activity/'+index);
    await frame.locator('#gridAct .fg-card:not(.is-on)').evaluateAll(cards=>cards.forEach(card=>card.click()));
    check(!(await frame.locator('#gridAct').textContent()).includes('Information longue pour vérifier le défilement'),label+' long explanations do not expand activity cards');
    check(await activities.count()===8,label+' all eight activities expose information');
+   const selectedBowling=frame.locator('#gridAct li[data-activity="bowling"]');
+   check((await selectedBowling.locator('.fg-card__rot').innerText()).includes('× 39 € ='),label+' selected bowling preserves exact default 1-hour calculation');
    for(let index=0;index<8;index++) {
     const button=activities.nth(index),id=await button.getAttribute('data-activity-info'),activity=metadata.activities.find(value=>value.id===id),expected=[];
     if(activity.minAge)expected.push(String(activity.minAge));if(activity.maxAge)expected.push(String(activity.maxAge));if(activity.minPax)expected.push(String(activity.minPax));
-    if(id==='arcade_time')expected.push('1 carte par personne');
+    if(id==='arcade_time')expected.push('carte par personne');
     if(id==='bowling')expected.push('10 min');
     if(id==='minigolf_blacklight')expected.push('Information longue pour vérifier le défilement');
     await popup(page,frame,button,embedded,label+'/activity/'+index,expected);
@@ -186,12 +196,12 @@ async function run() {
    check(await formulas.count()>0,label+' formulas expose information');
    for(let index=0;index<await formulas.count();index++) {
     const button=formulas.nth(index),id=await button.getAttribute('data-formula-info'),formula=metadata.formules.find(value=>value.id===id);
-    const expected=[...(formula.notes||[]),...(formula.desc||[])];if(formula.minPax)expected.push(String(formula.minPax));
+    const expected=[...(formula.notes||[]).filter(note=>!(/cadeaux/i.test(note)&&(formula.desc||[]).some(d=>/cadeaux/i.test(d)))),...(formula.desc||[])];if(formula.minPax)expected.push(String(formula.minPax));
     const text=await popup(page,frame,button,embedded,label+'/formula/'+id,expected);
-    if(formula.noHolidays)check(/hors vacances|pas.{0,20}vacances|vacances.{0,30}(?:non|exclu|indispon)/i.test(text),label+'/'+id+' exposes known holiday exclusion');
+    if(formula.noHolidays)check(/hors vacances|(?:pas|non valable).{0,30}vacances|vacances.{0,30}(?:non|exclu|indispon)/i.test(text),label+'/'+id+' exposes known holiday exclusion');
     if(formula.kidsOnly)check(/enfants?/i.test(text),label+'/'+id+' exposes children-only audience');
     if(id==='f6'||id==='f7')check(text.includes("8 crédits d'arcade (8€) par enfant"),label+'/'+id+' explicitly includes eight arcade credits per child');
-    if(id==='mm')check(text.includes('terminées à 12h')&&text.includes('cadeaux ne sont pas inclus'),label+'/'+id+' requires completion at noon and excludes prize games');
+    if(id==='mm')check(text.includes('terminées à 12h')&&/hors jeux à cadeaux|cadeaux ne sont pas inclus/.test(text),label+'/'+id+' requires completion at noon and excludes prize games');
     if(id==='kfd')check((await button.locator('..').textContent()).includes('Toutes les activités illimitées'),label+'/'+id+' exposes unlimited activities before selection');
     if(Array.isArray(formula.validDays)&&formula.validDays.length===1)check(text.toLowerCase().includes(['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][Number(formula.validDays[0])]),label+'/'+id+' exposes known valid weekday');
    }
@@ -232,7 +242,7 @@ async function run() {
     const button=customFormulas.nth(index),id=await button.getAttribute('data-formula-info');
     const text=await popup(page,frame,button,embedded,label+'/custom-formula/'+index);
     if(id==='f6'||id==='f7')check(text.includes("8 crédits d'arcade (8€) par enfant"),label+'/custom/'+id+' explicitly includes eight arcade credits per child');
-    if(id==='mm')check(text.includes('terminées à 12h')&&text.includes('cadeaux ne sont pas inclus'),label+'/custom/'+id+' requires completion at noon and excludes prize games');
+    if(id==='mm')check(text.includes('terminées à 12h')&&/hors jeux à cadeaux|cadeaux ne sont pas inclus/.test(text),label+'/custom/'+id+' requires completion at noon and excludes prize games');
     if(id==='kfd')check((await button.locator('..').textContent()).includes('Toutes les activités illimitées'),label+'/custom/'+id+' exposes unlimited activities before selection');
    }
    await page.screenshot({path:path.join(out,'information-'+width+'-'+(embedded?'embed':'standalone')+'.png'),fullPage:false});

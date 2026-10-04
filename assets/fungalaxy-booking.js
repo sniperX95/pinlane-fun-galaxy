@@ -402,11 +402,18 @@
   function credits(n) { return Number(n).toLocaleString('fr-BE', { maximumFractionDigits: 2 }); }
   function noteCourte(a) {
     var ar = reglageArcade(a), opt = optionChoisie(a), n;
+    if (state.selection.indexOf(a.id) < 0) {
+      if (ar) return 'Au temps ou en crédits · offre au choix';
+      if (a.priceType === 'grid_bowling') { var durees = optionsPour(a), capacite = a.id === 'bowling' ? Number(meta && meta.center && meta.center.booking && meta.center.booking.normalCapacityPerLane) : Number(a.capacityPerUnit); return (durees.length ? durees[0].label + ' à ' + durees[durees.length - 1].label : 'Durée au choix') + (capacite > 0 ? ' · ' + capacite + ' joueurs / piste' : ''); }
+      if (a.priceType === 'grid_fun_run') return 'Durée au choix · sessions selon votre groupe';
+      if (a.priceType === 'grid_laser') return 'Nombre de parties au choix';
+      if (a.priceType === 'per_unit_hour') return 'Tables et durée au choix';
+    }
     if (ar) return ar.mode === 'time' ? '1 carte par personne' : 'Tous les jeux · durée variable';
     if (a.id === 'bowling') { var p = pistesBowling(); n = p && p.pistes; }
     else if (a.priceType === 'grid_bowling') n = unitesPour(a).units;
     else if (a.priceType === 'grid_fun_run') n = sessionsPour(a);
-    if (n && opt) return n + ' ' + (a.priceType === 'grid_fun_run' ? 'session' : 'piste') + (n > 1 ? 's' : '') + ' × ' + euros(opt.prix) + ' = ' + euros(n * opt.prix);
+    if (n && opt) return opt.label + ' · ' + n + ' ' + (a.priceType === 'grid_fun_run' ? 'session' : 'piste') + (n > 1 ? 's' : '') + ' × ' + euros(opt.prix) + ' = ' + euros(n * opt.prix);
     if (a.id === 'laser_game' && dureeLaser()) return dureeLaser().jeu + ' min de jeu par partie';
     if (a.priceType === 'per_unit_hour') { var billard = reglageBillard(a); return billard.units + ' table' + (billard.units > 1 ? 's' : '') + ' · ' + heuresLabel(billard.hours); }
     var journee = a.dayAccess || a.id === 'playground';
@@ -421,11 +428,24 @@
     return lignes;
   }
   function sectionsInfoActivite(a) {
-    var ar = reglageArcade(a), option = optionChoisie(a), sections = [];
-    var choix = [joueursDe(a) + (seCompteParEnfant(a) ? ' enfants' : ' joueurs'), option && option.label].filter(Boolean).join(' · ');
-    var tarif = [], fonctionnement = [noteCarte(a), a.note, a.description].filter(Boolean);
-    if (ar) tarif.push(detailArcade(snapshotArcade(a), true));
-    if (!ar) {
+    var selectionnee = state.selection.indexOf(a.id) >= 0;
+    var ar = reglageArcade(a), option = selectionnee ? optionChoisie(a) : null, sections = [];
+    var choix = selectionnee ? [joueursDe(a) + (seCompteParEnfant(a) ? ' enfants' : ' joueurs'), option && option.label].filter(Boolean).join(' · ') : '';
+    var tarif = [], capaciteInfo = [], fonctionnement = ar ? [] : [selectionnee ? noteCarte(a) : '', a.note, a.description].filter(Boolean);
+    if (ar && selectionnee) tarif.push(ar.cards + ' carte' + (ar.cards > 1 ? 's' : '') + ' · ' + (ar.mode === 'time' ? ar.offer.minutes + ' min / carte' : credits(Number(ar.offer.credits) + Number(ar.offer.bonusCredits || 0)) + ' crédits / carte'), euros(ar.offer.price) + ' / carte', 'Total indicatif : ' + euros(ar.price));
+    if (!selectionnee) tarif.push(prixCarte(a, true));
+    if (!selectionnee) {
+      var booking = meta && meta.center && meta.center.booking;
+      if (a.priceType === 'grid_bowling') fonctionnement.push('Choisissez la durée puis le nombre de joueurs. Le nombre de pistes est calculé pour votre groupe.');
+      if (a.id === 'bowling' && booking && Number(booking.normalCapacityPerLane) > 0) capaciteInfo.push('Jusqu’à ' + booking.normalCapacityPerLane + ' joueurs par piste.' + (Number(booking.emergencyCapacityPerLane) > Number(booking.normalCapacityPerLane) ? ' Jusqu’à ' + booking.emergencyCapacityPerLane + ' joueurs par piste peuvent être proposés si les pistes manquent. Comptez environ 10 min par joueur pour une partie : une piste plus remplie demande un rythme plus soutenu.' : ''));
+      else if (a.capacityPerUnit > 0 && a.priceType === 'grid_bowling') capaciteInfo.push('Jusqu’à ' + a.capacityPerUnit + ' joueurs par piste. Les grands groupes peuvent jouer en plusieurs tours, selon les pistes disponibles.');
+      else if (a.capacityPerUnit > 0 && a.priceType === 'grid_fun_run') fonctionnement.push('Choisissez la durée et les participants. Jusqu’à ' + a.capacityPerUnit + ' joueurs jouent par session ; les autres passent à leur tour.');
+      if (a.id === 'laser_game') fonctionnement.push('Choisissez le nombre de parties et les joueurs qui participent.', phraseLaser());
+      if (a.priceType === 'per_unit_hour') fonctionnement.push('Choisissez vos tables, la durée et les participants. ' + tablesMax(a) + ' tables au plus ; le tarif dépend des tables et des heures choisies.');
+      if (ar) fonctionnement.push('Choisissez le temps de jeu ou une carte en crédits, puis les participants.');
+      if (a.priceType === 'per_pax') fonctionnement.push(seCompteParEnfant(a) ? 'Indiquez les enfants qui jouent : le tarif est calculé sur eux.' : 'Indiquez les joueurs qui participent : chacun paie son entrée.');
+    }
+    if (!ar && selectionnee) {
       var unitaire = option ? Number(option.prix) : tarifConnu(a) ? Number(a.priceValue) : null;
       if ((a.priceType === 'per_pax' || a.priceType === 'grid_laser') && unitaire != null && isFinite(unitaire)) tarif.push(euros(unitaire) + ' / ' + (seCompteParEnfant(a) ? 'enfant' : 'personne') + ' × ' + joueursDe(a) + ' = ' + euros(Math.round(unitaire * joueursDe(a) * 100) / 100));
       else if (a.priceType === 'per_unit_hour') {
@@ -436,25 +456,29 @@
       else tarif.push(prixCarte(a));
       if (seCompteParEnfant(a)) fonctionnement.push(texteCompteur(compteurDe(a)));
     }
-    sections.push({ titre: 'Votre sélection', lignes: [choix].concat(tarif).filter(Boolean) });
+    sections.push({ titre: selectionnee ? 'Votre sélection' : 'Le tarif', lignes: [choix].concat(tarif).filter(Boolean) });
     if (fonctionnement.length) sections.push({ titre: 'Comment ça se passe', lignes: fonctionnement });
+    if (capaciteInfo.length) sections.push({ titre: 'Les pistes et votre groupe', lignes: capaciteInfo });
     var conditions = conditionsActivite(a);
     if (conditions.length) sections.push({ titre: 'Accès et participants', lignes: conditions });
     var tarifs = optionsPour(a).map(function (o) { return o.label + ' : ' + euros(o.prix) + ' ' + o.unite; });
     if (ar) {
       tarifs = ar.time.map(function (o) { if (ar.mode === 'time' && o.id === ar.offer.id) o = ar.offer; return o.minutes + ' min à volonté : ' + euros(o.price) + ' / carte, une carte par personne.'; })
         .concat(ar.credit.map(function (o) { if (ar.mode === 'credit' && o.id === ar.offer.id) o = ar.offer; return euros(o.price) + ' / carte : ' + credits(o.credits) + ' crédits + ' + credits(o.bonusCredits || 0) + ' bonus = ' + credits(Number(o.credits) + Number(o.bonusCredits || 0)) + ' crédits.'; }));
-      fonctionnement.push(ar.config.timedDescription, ar.config.creditDescription);
+      var mode = ar.mode === 'time' ? 'Au temps' : 'En crédits';
+      var tempsInfo = ar.config.timedDescription === 'Une carte par personne. Jeux sans cadeaux en illimité pendant la durée choisie ; jeux permettant de gagner des cadeaux exclus.' ? 'Une carte par personne. Accès illimité pendant la durée choisie, hors jeux permettant de gagner des cadeaux.' : ar.config.timedDescription;
+      sections.push({ titre: selectionnee ? mode : 'Deux façons de jouer', lignes: selectionnee ? [ar.mode === 'time' ? tempsInfo : ar.config.creditDescription].concat(ar.mode === 'credit' ? ['Tous les jeux, cadeaux inclus · ' + credits(ar.offer.gameCostMin == null ? ar.config.creditGameCostMin : ar.offer.gameCostMin) + ' à ' + credits(ar.offer.gameCostMax == null ? ar.config.creditGameCostMax : ar.offer.gameCostMax) + ' crédits par jeu.'] : []) : [tempsInfo, ar.config.creditDescription] });
     }
     if (tarifs.length) sections.push({ titre: 'Les offres disponibles', lignes: tarifs });
-    sections.push({ titre: 'À savoir', lignes: ['Les montants sont indicatifs. Aucun paiement en ligne ; règlement à l’accueil.'] });
+    sections.push({ titre: 'À savoir', lignes: ['Montants indicatifs, recalculés selon vos choix avant confirmation. Aucun paiement en ligne ; règlement à l’accueil.'] });
+    sections.forEach(function (section) { section.lignes = section.lignes.filter(function (line, i, all) { return line && all.indexOf(line) === i; }); });
     return sections;
   }
   function texteSectionsInfo(sections) {
     return sections.map(function (s) { return s.titre + '\n' + s.lignes.filter(Boolean).join('\n\n'); }).join('\n\n');
   }
   function boutonInfo(attribut, id, titre, sections, image) {
-    return '<button type="button" class="fg-info-btn" ' + attribut + '="' + esc(id) + '" data-info-title="' + esc(titre) + '" data-info-text="' + esc(texteSectionsInfo(sections)) + '" data-info-sections="' + esc(JSON.stringify(sections)) + '" data-info-image="' + esc(image || '') + '" aria-label="Informations sur ' + esc(titre) + '" aria-haspopup="dialog"><span class="fg-info-icon" aria-hidden="true">i</span></button>';
+    return '<button type="button" class="fg-info-btn" ' + attribut + '="' + esc(id) + '" data-info-title="' + esc(titre) + '" data-info-text="' + esc(texteSectionsInfo(sections)) + '" data-info-sections="' + esc(JSON.stringify(sections)) + '" data-info-image="' + esc(image || '') + '" aria-label="Informations sur ' + esc(titre) + '" aria-haspopup="dialog"><svg class="fg-info-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle class="fg-info-dot" cx="12" cy="7.5" r=".8"/></svg></button>';
   }
   function htmlInfo(a) {
     return '<div class="fg-card__info"><p class="fg-card__rot">' + esc(noteCourte(a)) + '</p>' + boutonInfo('data-activity-info', a.id, a.name, sectionsInfoActivite(a), a.id) + '</div>';
@@ -464,9 +488,10 @@
     var surMesure = !!contexte.surMesure, n = Number(contexte.pax) || state.pax;
     var unite = f.type === 'per_lane' ? 'la piste' : f.kidsOnly ? 'par enfant' : 'par personne';
     var sections = [{ titre: 'Le tarif', lignes: [euros(f.price) + ' ' + unite] }, { titre: 'Ce qui est inclus', lignes: (f.desc || []).slice() }];
-    if (!surMesure && f.type === 'per_pax' && !f.kidsOnly) sections[0].lignes.push(euros(f.price) + ' / personne × ' + n + ' = ' + euros(Math.round(Number(f.price) * n * 100) / 100));
+    if (!surMesure && state.formuleId === f.id && f.type === 'per_pax' && !f.kidsOnly) sections[0].lignes.push(euros(f.price) + ' / personne × ' + n + ' = ' + euros(Math.round(Number(f.price) * n * 100) / 100));
     if (!surMesure && f.kidsOnly && state.formuleId === f.id) sections[0].lignes.push(textesEnfants(f).prix, textesEnfants(f).adultes);
-    var regles = reglesFormule(f).map(function (r) { return f.kidsOnly && f.minPax > 1 && r === 'dès ' + f.minPax + ' personnes' ? 'dès ' + f.minPax + ' enfants' : r; }).concat(f.notes || []).filter(Boolean);
+    var notes = (f.notes || []).filter(function (note) { return !(/cadeaux/i.test(note) && (f.desc || []).some(function (d) { return /cadeaux/i.test(d); })); });
+    var regles = reglesFormule(f).map(function (r) { return f.kidsOnly && f.minPax > 1 && r === 'dès ' + f.minPax + ' personnes' ? 'dès ' + f.minPax + ' enfants' : r; }).filter(function (r) { return !notes.some(function (note) { return /vacances/i.test(r) && /vacances/i.test(note) || /personnes|enfants/i.test(r) && /minimum/i.test(note) || /avant|de [0-9]|à partir/i.test(r) && /[0-9]h/i.test(note); }); }).concat(notes).filter(Boolean);
     if (f.kidsOnly) regles.push('Pour les enfants de ' + f.kidsOnly.ageMin + ' à ' + f.kidsOnly.ageMax + ' ans.', 'Les adultes qui accompagnent ne paient pas la formule.');
     if (regles.length) sections.push({ titre: 'Conditions de cette formule', lignes: regles.filter(function (s, i, all) { return all.indexOf(s) === i; }) });
     var acces = [];
@@ -478,7 +503,7 @@
     if (acces.length) sections.push({ titre: 'L’accès aux activités incluses', lignes: acces });
     var duree = !surMesure && dureesCache[state.date + '|' + state.pax] && dureesCache[state.date + '|' + state.pax][f.id];
     if (duree) sections.push({ titre: 'Votre temps sur place', lignes: [texteDuree(duree)] });
-    sections.push({ titre: 'À savoir', lignes: [surMesure ? 'Le programme et le montant sont à confirmer avec l’équipe pour votre groupe.' : 'Les montants sont indicatifs. Aucun paiement en ligne ; règlement à l’accueil.'] });
+    sections.push({ titre: 'À savoir', lignes: [surMesure ? 'Le programme et le montant sont à confirmer avec l’équipe pour votre groupe.' : 'Montants indicatifs, recalculés selon vos choix avant confirmation. Aucun paiement en ligne ; règlement à l’accueil.'] });
     var bref = (f.minPax > 1 ? 'Dès ' + f.minPax + (f.kidsOnly ? ' enfants' : ' personnes') : f.kidsOnly ? f.kidsOnly.ageMin + ' à ' + f.kidsOnly.ageMax + ' ans' : [f.validDays && f.validDays.length && f.validDays.length < 7 ? joursLisibles(f.validDays) : '', plageLisible(f.timeLimit)].filter(Boolean).join(' · ') || 'Voir les conditions');
     var illimite = (f.desc || []).filter(function (d) { return /^toutes les activit[eé]s illimit[eé]es$/i.test(String(d).trim()); })[0];
     if (illimite) bref = illimite + ' · ' + bref;
@@ -538,7 +563,7 @@
     $('#fgInfoTitle', activityDialog).textContent = btn.dataset.infoTitle;
     var contenu = $('.fg-info-text', activityDialog), sections;
     try { sections = JSON.parse(btn.dataset.infoSections || 'null'); } catch (_) { sections = null; }
-    if (sections) contenu.innerHTML = sections.map(function (s) { return '<section class="fg-info-section"><h3>' + esc(s.titre) + '</h3>\n' + s.lignes.filter(Boolean).map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('\n\n') + '</section>'; }).join('\n\n');
+    if (sections) contenu.innerHTML = sections.map(function (s) { return '<section class="fg-info-section' + (s.titre === 'Les offres disponibles' ? ' fg-info-section--offers' : s.titre === 'À savoir' ? ' fg-info-section--note' : '') + '"><h3>' + esc(s.titre) + '</h3>\n' + s.lignes.filter(Boolean).map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('\n\n') + '</section>'; }).join('\n\n');
     else contenu.textContent = btn.dataset.infoText;
     var image = $('.fg-info-photo', activityDialog), centre = meta && meta.center && meta.center.id || CENTER;
     var sujet = btn.dataset.infoImage || btn.dataset.activityInfo;
@@ -1992,6 +2017,7 @@
     item.classList.toggle('is-on', on);
     card.setAttribute('aria-checked', String(on));
     majPrixCarte(item, activite(id), on);
+    majPastilles(item, activite(id));
     rendreCompteur(true);
     invaliderDispo();
     setTimeout(posterHauteur, 320);
@@ -4695,7 +4721,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261004info';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261004cards';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003info';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
@@ -4752,7 +4778,7 @@
   // se recharge (retour sur l onglet, toutes les 10 s).
   // Le sur-mesure utilise le même catalogue, les mêmes options et calculs.
   // Ce contexte ne dure qu'un rendu synchrone ; le panier standard est préservé.
-  function reglagesSurMesure(a, options, pax, date) {
+  function reglagesSurMesure(a, options, pax, date, selectionnee) {
     var avant = { options: state.options, pax: state.pax, date: state.date, selection: state.selection, onglet: state.onglet, sm: state.surMesure };
     state.surMesure = true; state.onglet = 'activites'; state.options = {}; state.options[a.id] = options || {};
     state.pax = pax; state.date = date || avant.date; state.selection = [a.id];
@@ -4766,6 +4792,7 @@
         montant = Math.round(opt.prix * q * 100) / 100;
       } else if (a.priceType === 'per_unit_hour') montant = prixBillard(a, billard.units, billard.hours);
       else if (tarifConnu(a)) montant = Math.round(Number(a.priceValue) * (a.priceType === 'per_pax' ? joueursDe(a) : 1) * 100) / 100;
+      if (selectionnee === false) state.selection = [];
       return { montant: montant, html: rendreOption(a).replace(/opt-/g, 'sm-opt-'), info: htmlInfo(a), prix: prixCarte(a),
         compteurs: [compteurDe(a)].concat(a.priceType === 'per_unit_hour' ? [compteurDe(a, 'units')] : arcade && arcade.mode === 'credit' ? [compteurDe(a, 'cards')] : []),
         arcade: arcade ? snapshotArcade(a) : null, detail: arcade ? detailArcade(snapshotArcade(a)) : '', groupes: groupesOptions(a) };

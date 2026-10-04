@@ -669,7 +669,7 @@
       Object.keys(sm.options).forEach(function (id) { var a = activite(id); if (a && sm.options[id].participants != null) sm.options[id].participants = effectifSm(a); });
     }
     function reglagesSm(a) {
-      var r = I.reglagesSurMesure(a, sm.options[a.id] || {}, sm.participants, sm.flexible ? '' : sm.date);
+      var r = I.reglagesSurMesure(a, sm.options[a.id] || {}, sm.participants, sm.flexible ? '' : sm.date, sm.activites.indexOf(a.id) >= 0);
       var extra = [capaciteGroupe(a), verdictActiviteSurMesure(a, contexteSm()).note].filter(Boolean);
       if (extra.length) {
         var bloc = doc.createElement('div'); bloc.innerHTML = r.info;
@@ -865,7 +865,7 @@
       if (on) rejouer(card, 'is-coche'); else card.classList.remove('is-coche');
       card.closest('.fg-grid__item').classList.toggle('is-on', on);
       card.setAttribute('aria-checked', String(on));
-      if (card.dataset.kind === 'activite') { var a = activite(id); $('.fg-card__price', card).textContent = (on ? reglagesSm(a).prix : prixCarte(a, true)) + (faitsAge(a) ? ' · ' + faitsAge(a) : ''); }
+      if (card.dataset.kind === 'activite') { var a = activite(id), item = card.closest('.fg-grid__item'); $('.fg-card__price', card).textContent = (on ? reglagesSm(a).prix : prixCarte(a, true)) + (faitsAge(a) ? ' · ' + faitsAge(a) : ''); var info = $('.fg-card__info', item); if (info) info.outerHTML = reglagesSm(a).info; }
       rendreSmCompteur(true);
       setTimeout(posterHauteur, 320);
     }

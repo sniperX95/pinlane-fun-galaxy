@@ -121,6 +121,7 @@ function serveStatic() {
 
 // Le meme faux serveur que laser-drag-check : session, planning, PATCH enregistres.
 async function installMock(page) {
+  await require('./activity-drag-ui-fixture').installActivityMoveFixture(page);
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view','planning.view','planning.bowling','planning.laser','planning.drag','reservations.view','reservations.create','reservations.edit','reservations.status','reservations.quick','clients.view','settings.manage','direction.view'];
@@ -156,6 +157,13 @@ async function installMock(page) {
       if (u.pathname === '/api/staff-reservations' && m === 'PATCH') {
         const b = JSON.parse(init.body || '{}');
         window.__QA_PATCHES__.push(b);
+        if (b.activityMove) {
+          const current = { ...state.reservations.find(r => Number(r.id) === Number(b.id)), centerId: 'libramont' };
+          const result = await window.__qaActivityMove({ current, body: b });
+          if (!result.ok) return new Response(JSON.stringify(result), { status: result.status, headers: { 'content-type': 'application/json' } });
+          window.__QA_STORE__[b.id] = result.reservation;
+          return J(result);
+        }
         let merged = { ...b };
         try { if (typeof state !== 'undefined' && Array.isArray(state.reservations)) { const f = state.reservations.find(r => Number(r.id) === Number(b.id)); if (f) merged = { ...f, ...b }; } } catch (e) {}
         window.__QA_STORE__[b.id] = { startTime: merged.startTime, opsPlan: merged.opsPlan, lanes: merged.lanes };
@@ -337,7 +345,7 @@ async function main() {
       await touche.lever();
       ok(fantomeA && fantomeA.ecart >= 4 && fantomeA.haut >= 0 && Math.abs(fantomeA.decentre) <= 2, `l appui long leve la carte, et son fantome s affiche au-dessus du doigt, centre (${JSON.stringify(fantomeA)})`);
       const envoye = await attendre(page, (n) => window.__QA_PATCHES__.length > n, patchsA);
-      const resA = await page.evaluate(() => { const r = state.reservations.find((x) => x.id === 9002) || {}; return { start: r.startTime, lanes: r.lanes }; });
+      const resA = await page.evaluate(() => { const r = state.reservations.find((x) => x.id === 9002) || {}; return { start: numToTime(getBowlingWindowsFromReservation(r)[0]?.start), lanes: r.lanes }; });
       const apresA = await releverDefilements(page, '.booking[data-booking-res-id="9002"]');
       ok(envoye, 'le depot au doigt envoie la modification au serveur');
       ok(resA.start === '16:00' && JSON.stringify(resA.lanes) === '[5]', `la reservation 9002 passe a 16:00 piste 5 (${resA.start}, pistes ${JSON.stringify(resA.lanes)})`);
@@ -440,7 +448,7 @@ async function main() {
       await touche.aller(mi, tgtN, 8);
       await touche.lever();
       const envoyeN = await attendre(page, (n) => window.__QA_PATCHES__.length > n, nN);
-      const resN = await page.evaluate(() => { const r = state.reservations.find((x) => x.id === 9002) || {}; return { start: r.startTime, lanes: r.lanes, fantome: !!document.querySelector('.bowling-drag-ghost-card') }; });
+      const resN = await page.evaluate(() => { const r = state.reservations.find((x) => x.id === 9002) || {}; return { start: numToTime(getBowlingWindowsFromReservation(r)[0]?.start), lanes: r.lanes, fantome: !!document.querySelector('.bowling-drag-ghost-card') }; });
       ok(redessine, 'MONTAGE : la carte tenue a quitte la page pendant le glisser, une nouvelle l a remplacee');
       ok(envoyeN && resN.start === '16:00' && JSON.stringify(resN.lanes) === '[5]' && !resN.fantome, `le depot arrive quand meme : 9002 a 16:00 piste 5, sans fantome oublie (${resN.start}, pistes ${JSON.stringify(resN.lanes)})`);
     }
@@ -472,7 +480,7 @@ async function main() {
       const resD = await page.evaluate(() => {
         const r = state.reservations.find((x) => x.id === 9010);
         const patch = (window.__QA_PATCHES__ || []).slice(-1)[0] || null;
-        return { fenetres: getLaserWindowsFromReservation(r).length, attente: getPendingLaserPasses(state.currentDate).map((p) => p.reservation.id), manuel: !!(patch && patch.opsPlan && patch.opsPlan.laserManual) };
+        return { fenetres: getLaserWindowsFromReservation(r).length, attente: getPendingLaserPasses(state.currentDate).map((p) => p.reservation.id), manuel: !!(patch && patch.activityMove && patch.activityMove.unplace) };
       });
       ok(resD.fenetres === 0 && resD.attente.includes(9010), `la partie quitte le planning et attend dans la file (${resD.fenetres} fenetre(s))`);
       ok(resD.manuel, 'la modification envoyee porte le marqueur laserManual');

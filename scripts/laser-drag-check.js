@@ -37,6 +37,7 @@ function serveStatic() {
 }
 
 async function installMock(page) {
+  await require('./activity-drag-ui-fixture').installActivityMoveFixture(page);
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view','planning.view','planning.bowling','planning.laser','planning.drag','reservations.view','reservations.create','reservations.edit','reservations.status','reservations.quick','clients.view','settings.manage','direction.view'];
@@ -76,6 +77,13 @@ async function installMock(page) {
       if (u.pathname === '/api/staff-reservations' && m === 'PATCH') {
         const b = JSON.parse(init.body || '{}');
         window.__QA_PATCHES__.push(b);
+        if (b.activityMove) {
+          const current = { ...state.reservations.find(r => Number(r.id) === Number(b.id)), centerId: 'libramont' };
+          const result = await window.__qaActivityMove({ current, body: b });
+          if (!result.ok) return new Response(JSON.stringify(result), { status: result.status, headers: { 'content-type': 'application/json' } });
+          window.__QA_STORE__[b.id] = result.reservation;
+          return J(result);
+        }
         let merged = { ...b };
         try { if (typeof state !== 'undefined' && Array.isArray(state.reservations)) { const f = state.reservations.find(r => Number(r.id) === Number(b.id)); if (f) merged = { ...f, ...b }; } } catch (e) {}
         window.__QA_STORE__[b.id] = { startTime: merged.startTime, opsPlan: merged.opsPlan, lanes: merged.lanes };
@@ -175,7 +183,7 @@ async function main() {
         libres: cellules.length,
         visible: dedans(bs) && dedans(bt),
         mesure: `cadre ${rc ? Math.round(rc.top) : '?'}-${rc ? Math.round(rc.bottom) : '?'}, carte ${bs ? Math.round(bs.top + bs.height / 2) : '?'}, cible ${bt ? Math.round(bt.top + bt.height / 2) : '?'}`,
-        before: (state.reservations.find(x=>x.id===9002)||{}).startTime,
+        before: numToTime(getBowlingWindowsFromReservation(state.reservations.find(x=>x.id===9002)||{})[0]?.start),
       };
     });
     ok(Boolean(posA.src) && Boolean(posA.tgt) && posA.visible,
@@ -188,7 +196,7 @@ async function main() {
     await page.mouse.move(posA.tgt.x, posA.tgt.y, { steps: 8 });
     await page.mouse.up(); await page.waitForTimeout(350);
     const afterA = await pageTop();
-    const movedA = await page.evaluate(() => (state.reservations.find(x=>x.id===9002)||{}).startTime);
+    const movedA = await page.evaluate(() => numToTime(getBowlingWindowsFromReservation(state.reservations.find(x=>x.id===9002)||{})[0]?.start));
     ok(Math.abs(afterA - beforeA) <= 20, `page immobile pendant le drop (${beforeA} -> ${afterA})`);
     ok(movedA !== posA.before, `la résa 9002 a bien été déplacée (${posA.before} -> ${movedA})`);
 
@@ -292,7 +300,7 @@ async function main() {
           cestLeToast: !!(dessous && (dessous.id === 'toast' || (dessous.closest && dessous.closest('#toast')))),
           point,
           cible: cb ? { x: cb.x + cb.width / 2, y: cb.y + cb.height / 2 } : null,
-          avant: (state.reservations.find((x) => x.id === 9020) || {}).startTime,
+          avant: numToTime(getBowlingWindowsFromReservation(state.reservations.find((x) => x.id === 9020) || {})[0]?.start),
         };
       }, pisteF);
       if (ok(posF && !posF.erreur && posF.cible, `situation construite (carte ${posF && posF.hauteurCarte}px, toast ${posF && posF.hauteurToast}px)`)) {
@@ -312,7 +320,7 @@ async function main() {
           const parId = state.reservations.find((x) => x.id === 9020);
           const parNom = state.reservations.find((x) => String(x.name || "").includes("#9020"));
           const r = parId || parNom || null;
-          return { heure: r ? r.startTime : null, total: state.reservations.length, parNom: Boolean(parNom && !parId) };
+          return { heure: r ? numToTime(getBowlingWindowsFromReservation(r)[0]?.start) : null, total: state.reservations.length, parNom: Boolean(parNom && !parId) };
         });
         const apresF = apresBrut.heure;
         // ELLE DOIT EXISTER ENCORE. Sans cette moitie, une reservation disparue
@@ -333,7 +341,7 @@ async function main() {
           await page.mouse.move(posG.src.x + 8, posG.src.y - 8, { steps: 2 });
           await page.mouse.move(posG.tgt.x, posG.tgt.y, { steps: 8 });
           await page.mouse.up(); await page.waitForTimeout(400);
-          const apresG = await page.evaluate(() => (state.reservations.find((x) => x.id === 9020) || {}).startTime);
+          const apresG = await page.evaluate(() => numToTime(getBowlingWindowsFromReservation(state.reservations.find((x) => x.id === 9020) || {})[0]?.start));
           ok(apresG !== posG.avant, `sans toast, le meme geste deplace bien la carte (${posG.avant} -> ${apresG})`);
         }
       }
@@ -395,7 +403,7 @@ async function main() {
       const afterD = await page.evaluate(() => {
         const r = state.reservations.find(x => x.id === 9010);
         const patch = (window.__QA_PATCHES__ || []).slice(-1)[0] || null;
-        return { windows: getLaserWindowsFromReservation(r).length, laserManual: !!r.opsPlan?.laserManual, pending: getPendingLaserPasses(state.currentDate).map(p => p.reservation.id), inQueue: !!document.querySelector('.laser-pass-card[onmousedown*="9010"]'), onGrid: !!document.querySelector('.laser-group-card[onmousedown*="9010"]'), skipReplan: patch ? patch.skipReplan : null, patchManual: patch ? !!patch.opsPlan?.laserManual : null };
+        return { windows: getLaserWindowsFromReservation(r).length, laserManual: !!r.opsPlan?.laserManual, pending: getPendingLaserPasses(state.currentDate).map(p => p.reservation.id), inQueue: !!document.querySelector('.laser-pass-card[onmousedown*="9010"]'), onGrid: !!document.querySelector('.laser-group-card[onmousedown*="9010"]'), skipReplan: patch ? !!patch.activityMove : null, patchManual: patch ? !!patch.activityMove?.unplace : null };
       });
       ok(afterD.windows === 0, 'la partie quitte le planning');
       ok(afterD.laserManual === true, 'opsPlan.laserManual = true');

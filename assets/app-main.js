@@ -513,8 +513,8 @@ function getBowlingDragTargetPlan(target) {
   const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
   const startTime = numToTime(targetStart);
   const sourceWindow = getBowlingDragSourceWindow(reservation, bowlingPointerDrag.sourceLane, bowlingPointerDrag.sourceStart);
-  const requiredCount = getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount;
-  const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
+  const currentLanes = [...new Set(getBowlingWindowsFromReservation(reservation).flatMap(window => window.lanes || []))].map(Number).sort((a,b) => a-b);
+  const requiredCount = Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
     return { reservation, targetLane, targetStart, duration, lanes: [targetLane], valid: false, message: slotCheck.message };
@@ -533,7 +533,9 @@ function getBowlingDragTargetPlan(target) {
   if (!lanes || lanes.length < requiredCount) {
     return { reservation, targetLane, targetStart, duration, lanes: [targetLane], valid: false, message: `${requiredCount} piste${requiredCount > 1 ? 's' : ''} indisponible${requiredCount > 1 ? 's' : ''}` };
   }
-  const movedOpsPlan = moveBowlingOpsPlan(reservation, targetStart, lanes, duration);
+  const firstStart = Math.min(...getBowlingWindowsFromReservation(reservation).map(window => Number(window.start)));
+  const groupStart = Number(targetStart) - (Number(sourceWindow?.start ?? firstStart) - firstStart);
+  const movedOpsPlan = moveBowlingOpsPlan(reservation, groupStart, lanes, duration);
   const conflicts = lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, movedOpsPlan);
   return {
     reservation,
@@ -688,8 +690,8 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   const startTime = numToTime(Number(targetStart));
   const sourceLane = Number(sourceLaneValue);
   const sourceWindow = getBowlingDragSourceWindow(reservation, sourceLaneValue, sourceStartValue);
-  const requiredCount = getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount;
-  const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
+  const currentLanes = [...new Set(getBowlingWindowsFromReservation(reservation).flatMap(window => window.lanes || []))].map(Number).sort((a,b) => a-b);
+  const requiredCount = Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
     showPlanningMoveNotice('Déplacement impossible', slotCheck.message || 'Ce créneau ne peut pas être utilisé.', 'warning');
@@ -704,132 +706,47 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     );
     return;
   }
-  const movedOpsPlan = moveBowlingOpsPlan(reservation, targetStart, lanes, duration);
-  if (lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, movedOpsPlan).length) {
-    showPlanningMoveNotice('Conflit détecté', 'Une autre réservation occupe déjà cette piste ou cet horaire.', 'warning');
+  const bowlingBlocks = (reservation.opsPlan?.resourceBlocks || []).filter(block => block.resourceType === 'bowling_lane');
+  const firstStart = bowlingBlocks.length ? Math.min(...bowlingBlocks.map(block => getBowlingBlockMinutes(block, 'start'))) / 60 : timeToNum(reservation.startTime);
+  const sourceStart = sourceWindow ? Number(sourceWindow.start) : firstStart;
+  const groupStart = Number(targetStart) - (sourceStart - firstStart);
+  const movedOpsPlan = moveBowlingOpsPlan(reservation, groupStart, lanes, duration);
+  if (lanesConflict(reservation.date, numToTime(groupStart), duration, lanes, reservation.id, movedOpsPlan).length) {
+    showPlanningMoveNotice('Conflit détecté', 'Une autre réservation occupe déjà une piste ou un horaire de bowling.', 'warning');
     return;
   }
-  // On déplace la résa ENTIÈRE du même delta que le bloc bowling attrapé, pour
-  // que le bowling atterrisse au créneau déposé. Indispensable pour les FORMULES :
-  // le serveur RE-PLANIFIE toujours une formule (isFormulaPatch) depuis startTime.
-  // L'ancien comportement gardait startTime inchangé → la formule était
-  // re-planifiée à l'ancienne heure et « revenait en place » malgré le toast.
-  const reservationStartMin = hourToMinuteInt(timeToNum(reservation.startTime));
-  const bowlingBlocksNow = Array.isArray(reservation.opsPlan?.resourceBlocks)
-    ? reservation.opsPlan.resourceBlocks.filter(block => block.resourceType === 'bowling_lane')
-    : [];
-  const firstBowlingStartMin = bowlingBlocksNow.length
-    ? Math.min(...bowlingBlocksNow.map(block => getBowlingBlockMinutes(block, 'start')))
-    : reservationStartMin;
-  const dragDeltaMin = hourToMinuteInt(Number(targetStart)) - firstBowlingStartMin;
-  const movedReservationStartTime = minuteIntToTime(reservationStartMin + dragDeltaMin);
-  // DEPLACER LE BOWLING D UNE FORMULE DEPLACE AUSSI SON LASER, et le message
-  // doit le DIRE. Le serveur replanifie une formule entiere depuis startTime
-  // (isFormulaPatch) : la partie laser suit donc le meme decalage, et peut
-  // tomber sur un lancement deja pris. Le refus arrivait alors sous la forme
-  // « Laser Game complet sur ce creneau (17/30 joueurs, 2/1 lancement) » : exact,
-  // mais incomprehensible pour quelqu un qui vient de deplacer une carte de
-  // BOWLING (Movsar 2026-08-26 : « ce message qui est clairement un bug »).
-  // On verifie donc AVANT d envoyer, et on nomme l activite qui coince.
-  const fenetresLaser = getLaserWindowsFromReservation(reservation);
-  if (fenetresLaser.length) {
-    const laserDepart = Number(fenetresLaser[0].start) + (dragDeltaMin / 60);
-    const dispoLaser = getLaserAvailability(
-      reservation.date,
-      numToTime(laserDepart),
-      Number(fenetresLaser[0].duration) || 0.5,
-      getReservationActivityPlayers(reservation, 'laser_game'),
-      reservation.id,
-    );
-    if (!dispoLaser.ok) {
-      const heureLaser = formatClockDisplay(laserDepart);
-      showPlanningMoveNotice(
-        'Le Laser Game suit le déplacement',
-        `Cette réservation contient un Laser Game : en déplaçant le bowling, sa partie passerait à ${heureLaser}, et l'arène n'est pas libre à ce moment (${dispoLaser.message || 'créneau complet'}). Choisissez un autre horaire de bowling, ou déplacez d'abord la partie laser.`,
-        'warning'
-      );
-      return;
-    }
-  }
-  const updated = {
-    ...reservation,
-    startTime: movedReservationStartTime,
-    lanes,
-    allowPastStart: true,
-    opsPlan: movedOpsPlan
-  };
-  const previous = { ...reservation, opsPlan: reservation.opsPlan ? { ...reservation.opsPlan } : null };
   const requestKey = Number(reservation.id);
   const requestSeq = ++bowlingDragSaveSeq;
   bowlingDragLatestSeqByReservation[requestKey] = requestSeq;
   const isLatestRequest = () => bowlingDragLatestSeqByReservation[requestKey] === requestSeq;
-  const clearLatestRequest = () => {
-    if (isLatestRequest()) delete bowlingDragLatestSeqByReservation[requestKey];
-  };
-  const moveFields = ['startTime', 'lanes', 'opsPlan'];
-  markReservationMutation(requestKey, updated, moveFields);
-  applyOptimisticReservation(updated, { preserveEditState: true });
   try {
-    // Le deplacement POSE une heure, des pistes et un placement : rejoue sur
-    // une version plus recente, il garde ce que l autre a change ailleurs.
-    const payload = await envoyerModificationReservation(reservation, (dossier) => ({
-      ...dossier,
-      startTime: movedReservationStartTime,
-      lanes,
-      allowPastStart: true,
-      opsPlan: movedOpsPlan
-    }), {
-      skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
-      laneCount: requiredCount,
-      requiresLanes: true,
-      allowPastStart: true
-    });
+    const laneMapping = splitLane ? Object.fromEntries(currentLanes.map(lane => [lane, lane === sourceLane ? Number(targetLane) : lane])) : null;
+    if (laneMapping && valeurReservationComparable(Object.values(laneMapping).sort((a,b) => a-b)) !== valeurReservationComparable([...lanes].sort((a,b) => a-b))) {
+      showPlanningMoveNotice('Piste non déplacée', 'Cette piste ne peut pas être déplacée seule ici. Choisissez une piste libre ou déplacez le groupe entier.', 'warning');
+      return;
+    }
+    const payload = await envoyerDeplacementActivite(reservation, { activityId: 'bowling', startTime: numToTime(groupStart), lanes, ...(laneMapping ? { laneMapping } : {}) });
     if (!isLatestRequest()) return;
-    if (!payload?.reservation) throw new Error('Sauvegarde non confirmée par le serveur.');
+    const savedBlocks = (payload.reservation.opsPlan?.resourceBlocks || []).filter(block => block.resourceType === 'bowling_lane');
+    const savedStart = savedBlocks.length ? Math.min(...savedBlocks.map(block => getBowlingBlockMinutes(block, 'start'))) : NaN;
+    const savedLanes = [...new Set(savedBlocks.flatMap(block => block.lanes || []))].map(Number).sort((a,b) => a-b);
+    if (Math.abs(savedStart - hourToMinuteInt(groupStart)) > 1 || !Number.isFinite(savedStart)
+      || valeurReservationComparable(savedLanes) !== valeurReservationComparable([...lanes].sort((a,b) => a-b))) {
+      throw new Error('Le placement de bowling sauvegardé ne correspond pas au déplacement. Actualisez le planning.');
+    }
     upsertReservationInState(payload.reservation);
-    // Protection maintenue sur la position confirmée : le poll staff-state peut
-    // encore renvoyer l'ancienne position (cohérence éventuelle) → pas de flicker.
-    markReservationMutation(requestKey, payload.reservation, moveFields);
+    markReservationMutation(requestKey, payload.reservation, ['lanes', 'opsPlan']);
     save();
     renderStaffData();
-    // Toast HONNÊTE : on vérifie où le serveur a RÉELLEMENT placé le bowling
-    // (une formule peut être re-planifiée / ajustée). Plus de faux « déplacé ».
-    const savedBowlingBlocks = Array.isArray(payload.reservation.opsPlan?.resourceBlocks)
-      ? payload.reservation.opsPlan.resourceBlocks.filter(block => block.resourceType === 'bowling_lane')
-      : [];
-    const savedStartMin = savedBowlingBlocks.length
-      ? Math.min(...savedBowlingBlocks.map(block => getBowlingBlockMinutes(block, 'start')))
-      : hourToMinuteInt(timeToNum(payload.reservation.startTime));
-    const targetMin = hourToMinuteInt(Number(targetStart));
-    if (Math.abs(savedStartMin - targetMin) <= 1) {
-      toast(`Bowling déplacé à ${formatClockDisplay(Number(targetStart))} piste${lanes.length > 1 ? 's' : ''} ${lanes.join(', ')}`);
-    } else {
-      showPlanningMoveNotice('Replanifié', `La réservation a été placée à ${formatClockDisplay(savedStartMin / 60)} (ajustement serveur).`, 'info');
-    }
+    toast(`Bowling déplacé à ${formatClockDisplay(Number(targetStart))} piste${lanes.length > 1 ? 's' : ''} ${lanes.join(', ')}`);
   } catch (error) {
     if (!isLatestRequest()) return;
-    // Un conflit rend la version actuelle : l ecran la montre, pas l ancienne.
-    applyOptimisticReservation(error.reservation || previous, { preserveEditState: true });
+    if (error.reservation) upsertReservationInState(error.reservation);
     clearReservationMutation(requestKey);
-    // LE REFUS DOIT PARLER DE CE QU ON A DEPLACE. Le serveur replanifie une
-    // formule ENTIERE depuis son heure de depart : deplacer sa carte de
-    // BOWLING deplace donc aussi sa partie laser, qui peut tomber sur un
-    // lancement deja pris. Son message (« Laser Game complet sur ce
-    // creneau ») est exact, mais incomprehensible pour quelqu un qui vient
-    // de faire glisser une piste de bowling : on le traduit en disant quelle
-    // activite a suivi et quoi faire (Movsar 2026-08-26).
-    const brut = error.message || 'Le serveur a refusé ce placement.';
-    const surLaser = /laser/i.test(brut) && getLaserWindowsFromReservation(reservation).length > 0;
-    showPlanningMoveNotice(
-      surLaser ? 'Le Laser Game suit le déplacement' : 'Déplacement annulé',
-      surLaser
-        ? `Cette réservation contient un Laser Game : en déplaçant le bowling, sa partie change d'heure elle aussi, et l'arène n'est plus libre (${brut}). Choisissez un autre horaire de bowling, ou déplacez d'abord la partie laser depuis le planning Laser Game.`
-        : brut,
-      'warning'
-    );
-    return;
+    renderStaffData();
+    showPlanningMoveNotice('Bowling non déplacé', error.message || 'Le serveur a refusé ce placement. Les autres activités restent à leur horaire.', 'warning');
   } finally {
-    clearLatestRequest();
+    if (isLatestRequest()) delete bowlingDragLatestSeqByReservation[requestKey];
   }
 }
 
@@ -1791,6 +1708,43 @@ function enchainerEcritureReservation(id, ecrire) {
   file.set(cle, suite);
   suite.then(() => { if (file.get(cle) === suite) file.delete(cle); });
   return tache;
+}
+
+// Un déplacement d'activité est une intention ciblée, jamais une copie du dossier.
+// Le serveur conserve les autres activités et refuse une version devenue ancienne.
+function envoyerDeplacementActivite(avant, activityMove) {
+  return enchainerEcritureReservation(avant.id, async (derniere) => {
+    const base = derniere && String(derniere.id) === String(avant.id) ? derniere : avant;
+    let payload;
+    try {
+      payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'PATCH',
+        body: JSON.stringify({ id: base.id, centerId: base.centerId || base.center_id || getCurrentStaffCenterId(), baseUpdatedAt: base.updatedAt, activityMove })
+      });
+    } catch (error) {
+      if (error.status === 409 && error.payload?.reservation) {
+        throw conflitReservation(error.payload.reservation, ['opsPlan'], 'Le planning a changé sur un autre poste. Vérifiez sa position actuelle puis refaites le déplacement.');
+      }
+      throw error;
+    }
+    const saved = payload?.reservation;
+    const receipt = payload?.activityMove;
+    const cible = block => activityMove.activityId === 'bowling'
+      ? block.resourceType === 'bowling_lane' || block.activityId === 'bowling'
+      : (block.resourceType === 'laser_arena' || block.activityId === 'laser_game') && laserBlockUnitKey(block) === activityMove.unitKey;
+    const autres = plan => (plan?.resourceBlocks || []).filter(block => !cible(block));
+    const invariants = ['date', 'startTime', 'duration', 'totalDuration', 'pax', 'price', 'basePrice', 'extras', 'program', 'status', 'activityProgress'];
+    const ancienPlanExplicite = Boolean(base.opsPlan?.resourceBlocks?.length);
+    const conforme = saved && String(saved.id) === String(base.id)
+      && String(saved.centerId || saved.center_id) === String(base.centerId || base.center_id || getCurrentStaffCenterId())
+      && receipt?.activityId === activityMove.activityId && receipt.unchangedActivities === true
+      && (activityMove.activityId !== 'laser_game' || receipt.unitKey === activityMove.unitKey)
+      && invariants.every(key => valeurReservationComparable(saved[key]) === valeurReservationComparable(base[key]))
+      && (!ancienPlanExplicite || valeurReservationComparable(autres(saved.opsPlan)) === valeurReservationComparable(autres(base.opsPlan)))
+      && (!Array.isArray(base.opsPlan?.timeline) || valeurReservationComparable((saved.opsPlan?.timeline || []).filter(block => !cible(block))) === valeurReservationComparable(base.opsPlan.timeline.filter(block => !cible(block))));
+    if (!conforme) throw new Error('Le serveur n’a pas confirmé un déplacement limité à cette activité. Actualisez le planning avant de réessayer.');
+    return payload;
+  });
 }
 
 function envoyerModificationReservation(avant, appliquer, overrides = {}) {
@@ -26194,6 +26148,13 @@ async function saveEdit(e) {
     return updated;
   };
   const previousReservation = state.selectedRes;
+  if (touches.includes('startTime') && origine?.opsPlan?.resourceBlocks?.length) {
+    const delta = timeToNum(es.startTime) - timeToNum(origine.startTime);
+    const horaires = [...new Map(origine.opsPlan.resourceBlocks.filter(block => block.startTime)
+      .map(block => [`${block.activityId || block.resourceType}:${block.startTime}`, block])).values()];
+    const lignes = horaires.map(block => `${block.label || (typeof getCenterActivity === 'function' && getCenterActivity(block.activityId)?.name) || ACTIVITY_LABELS[block.activityId] || block.activityId || 'Activité'} : ${block.startTime} → ${numToTime(timeToNum(block.startTime) + delta)}`).join('\n');
+    if (!window.confirm(`Déplacer l’heure de tout le dossier de ${origine.startTime} à ${es.startTime} ?\n\n${lignes}\n\nCes horaires sont une prévision : le serveur vérifie les disponibilités. Pour ne déplacer qu’une activité, faites glisser sa carte dans le planning.`)) return;
+  }
   // Sans preserveEditState : le formulaire garde la saisie telle quelle, rien
   // a retaper si le serveur signale un conflit.
   applyOptimisticReservation(appliquer(state.selectedRes));

@@ -70,7 +70,8 @@ const checks = `
   await pg.evaluate(()=>{const button=[...document.querySelectorAll('#posOverlay button')].find(b=>b.textContent.trim()==='Modifier');if(button)button.click();});
   await pg.waitForTimeout(250);
   await pg.evaluate(()=>{const button=[...document.querySelectorAll('.edit-adapter-btn')].find(b=>/Adapter pour ce dossier/.test(b.textContent));if(button)button.click();});
-  const edit=await pg.locator('#posOverlay .qb-visit-compteur .qb-step-valeur').allTextContents();
+  // The direct Laser editor is a separate control above the eight-activity list.
+  const edit=await pg.locator('#posOverlay .qb-visit-compteur .qb-step-valeur:not(.dossier-laser-editor .qb-step-valeur)').allTextContents();
   ok(JSON.stringify(edit)===JSON.stringify(['4 / 18','3 / 18','8 / 18','5 / 18','2 / 18','6 / 18','4 / 18','6 / 18']),'live edit all8 counters roundtrip unchanged');
   const transfer=await pg.evaluate(()=>{
     closePos();

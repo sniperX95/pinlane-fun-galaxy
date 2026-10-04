@@ -18,9 +18,9 @@ async function choose(page, players, duration = 1) {
   await page.waitForFunction(() => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour');
   await page.fill('#paxInput', '18'); await page.press('#paxInput','Enter'); await page.click('#goActivities');
   await page.click('#gridAct li[data-activity="bowling"] .fg-card');
-  const input = page.locator('#gridAct li[data-activity="bowling"] input[type="number"]');
+  const input = page.locator('#gridAct .fg-activity-editor input[type="number"]');
   await input.fill(String(players)); await input.press('Enter');
-  if(duration!==1) await page.click(`#gridAct li[data-activity="bowling"] .fg-pill[data-valeur="${duration}"]`);
+  if(duration!==1) await page.click(`#gridAct .fg-activity-editor .fg-pill[data-valeur="${duration}"]`);
   const initial = await page.locator('#gridAct li[data-activity="bowling"]').textContent();
   check(initial.includes(`${Math.ceil(players/6)*(duration===2?78:39)} €`), `${players} initially priced with comfort capacity`);
   await page.click('#goHours'); await page.waitForFunction(() => !document.querySelector('#goContact').disabled, null, {timeout:60000});

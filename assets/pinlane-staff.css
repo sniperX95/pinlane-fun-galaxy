@@ -19096,6 +19096,19 @@ body:is(.staff-mode, .admin-mode) :is(button, a, input, select, textarea):focus-
   outline: 2px solid var(--console-focus);
   outline-offset: 3px;
 }
+/* Composite marketing composer: the shell carries the keyboard focus once;
+   its bare text field must not add a second ring inside the same control. */
+body:is(.staff-mode, .admin-mode) .mkw-composer-box:focus-within {
+  border-color: var(--console-focus);
+  outline: 2px solid var(--console-focus);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+body:is(.staff-mode, .admin-mode) .mkw-composer-box #brAskInput:focus,
+body:is(.staff-mode, .admin-mode) .mkw-composer-box #brAskInput:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
 body:is(.staff-mode, .admin-mode) :is(.input, .qb-input, .qb-select, .pv2-input, .pv2-select) {
   min-height: 40px;
   border-color: var(--control-border);

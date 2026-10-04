@@ -19341,6 +19341,7 @@ body:is(.staff-mode, .admin-mode) .pv2-cal-count-label { display: none; }
   #staffTableBox .gc-libre { min-height:44px; }
 }
 .planning-expanded-controls { display:none; }
+#staffTableBox .gc-btn { min-height:44px; min-width:44px; }
 :is(.planning-box,.table-box).expanded:not(.hidden) :is(.planning-head,.table-head) > .planning-expanded-controls {
   display:flex; grid-column:1 / -1; grid-row:2; justify-self:stretch;
   align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px;

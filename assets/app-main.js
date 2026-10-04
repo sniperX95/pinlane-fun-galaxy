@@ -20305,6 +20305,7 @@ function renderStaff() {
   if (laserPlanningBox) laserPlanningBox.classList.toggle('expanded', !!state.staffLaserPlanningExpanded);
   const staffTableBox = document.getElementById('staffTableBox');
   if (staffTableBox) staffTableBox.classList.toggle('expanded', !!state.staffTableExpanded);
+  syncExpandedPlanningControls();
   const planningToggle = document.getElementById('planningToggle');
   if (planningToggle) planningToggle.textContent = state.staffPlanningExpanded ? 'Réduire' : 'Agrandir';
   const laserPlanningToggle = document.getElementById('laserPlanningToggle');
@@ -20361,6 +20362,31 @@ function togglePlanningExpanded() {
   else detachPlanningFullscreenResize();
   save();
   renderStaff();
+}
+
+function syncExpandedPlanningControls() {
+  for (const id of ['planningBox', 'laserPlanningBox', 'staffTableBox']) {
+    const box = document.getElementById(id);
+    const head = box?.querySelector('.planning-head, .table-head');
+    if (!head) continue;
+    let controls = head.querySelector('.planning-expanded-controls');
+    if (!controls) { controls = document.createElement('div'); controls.className = 'planning-expanded-controls'; head.appendChild(controls); }
+    controls.innerHTML = `${staffDateNavHtml()}${canUseStaffPermission('reservations.quick') ? `<button type="button" class="btn-primary planning-expanded-create" onclick="openQuickBook({date:state.currentDate,type:getStaffResourceView()==='laser'?'laser':'bowling'})">+ Réservation rapide</button>` : ''}`;
+  }
+}
+
+// La fermeture ne supprime pas des dossiers déjà enregistrés. Cette plage
+// sert uniquement à les dessiner ; la disponibilité publique reste fermée.
+function planningDisplayWindow(view) {
+  const config = getPlanningWindow(state.currentDate);
+  if (!config.closed) return config;
+  const windows = todaysReservations().flatMap(r => view === 'laser' ? getLaserWindowsFromReservation(r) : getBowlingWindowsFromReservation(r));
+  if (!windows.length) return config;
+  return { ...config, open: Math.max(0, Math.floor(Math.min(...windows.map(w=>w.start)) * 2) / 2 - .5), close: Math.ceil(Math.max(...windows.map(w=>w.end)) * 2) / 2 + .5, closed: true, showExisting: true };
+}
+
+function planningClosedNotice(config) {
+  return config.closed && config.showExisting ? '<div class="planning-closed-notice" role="status">Centre fermé ce jour · réservations existantes à contrôler. Aucun nouveau créneau disponible.</div>' : '';
 }
 
 function toggleLaserPlanningExpanded() {
@@ -22147,33 +22173,10 @@ function renderPlanning() {
   // On mémorise la position pour ne pas faire sauter la vue en mode plein écran.
   const prevScrollTop = wrap ? wrap.scrollTop : 0;
   const prevScrollLeft = wrap ? wrap.scrollLeft : 0;
-  const config = getPlanningWindow(state.currentDate);
-  if (config.closed) {
-    const closedReservations = getPlanningVisibleReservations('bowling')
-      .filter(r => getBowlingWindowsFromReservation(r).length > 0);
-    if (closedReservations.length) {
-      const rows = closedReservations.slice(0, 8).map(reservation => {
-        const windows = getBowlingWindowsFromReservation(reservation);
-        const resources = windows.map(window => {
-          const lanes = window.lanes?.length ? `piste${window.lanes.length > 1 ? 's' : ''} ${window.lanes.join(', ')}` : 'piste auto';
-          return `${lanes} ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`;
-        }).join(' · ');
-        return `<button type="button" class="closed-planning-row" onclick="openPos(${staffClientJs(reservation.id)})">
-          <span><strong>${escapeHtml(getPlanningBookingDisplayName(reservation))}</strong><small>${escapeHtml(getReservationLabel(reservation))}</small></span>
-          <span>${getReservationActivityPlayers(reservation, 'bowling')}j</span>
-          <span>${escapeHtml(resources)}</span>
-        </button>`;
-      }).join('');
-      wrap.innerHTML = `<div class="planning-closed-exception">
-        <div>
-          <strong>Centre fermé, réservations existantes</strong>
-          <span>À contrôler par le staff.</span>
-        </div>
-        <div class="closed-planning-list">${rows}</div>
-      </div>`;
-      return;
-    }
-    wrap.innerHTML = `<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 15h8"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Le planning reprend automatiquement aux prochaines heures d'ouverture.</div></div>`;
+  const config = planningDisplayWindow('bowling');
+  if (config.closed && !config.showExisting) {
+    wrap.innerHTML = '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>';
+
     return;
   }
 
@@ -22268,7 +22271,7 @@ function renderPlanning() {
     for (let slot = 0; slot < halfSlots; slot++) {
       const cellTime = startHour + (slot * 0.5);
       const halfClass = slot % 2 === 1 ? ' half' : '';
-      cells += maint
+      cells += maint || config.closed
         ? `<div class="slot-cell${halfClass}"></div>`
         : `<div class="slot-cell clickable${halfClass}" role="button" tabindex="0" aria-label="Réserver la piste ${i} à ${formatClockDisplay(cellTime)}" data-bowling-drop-lane="${i}" data-bowling-drop-start="${cellTime}" onclick="quickFromCell(${i},${cellTime})" title="Nouvelle réservation"></div>`;
     }
@@ -22404,6 +22407,7 @@ function renderPlanning() {
     ? `<div class="current-badge" style="top:${curPos}px" aria-hidden="true">${formatClockDisplay(curH)}</div>`
     : '';
   wrap.innerHTML = `
+    ${planningClosedNotice(config)}
     <div class="planning-grid">
       ${curPos >= HEADER_H ? `<div class="current-line" style="top:${curPos}px"></div>` : ''}
       <div class="hour-col">
@@ -22470,9 +22474,9 @@ function renderLaserPlanning() {
   const prevAgendaLeft = prevAgenda ? prevAgenda.scrollLeft : 0;
   const prevQueue = wrap.querySelector('.laser-pass-queue');
   const prevQueueTop = prevQueue ? prevQueue.scrollTop : 0;
-  const config = getPlanningWindow(state.currentDate);
-  if (config.closed) {
-    wrap.innerHTML = `<div class="empty-state"><div class="e-title">Laser fermé ce jour</div><div class="e-sub">Aucun lancement possible sur cette date.</div></div>`;
+  const config = planningDisplayWindow('laser');
+  if (config.closed && !config.showExisting) {
+    wrap.innerHTML = '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>';
     if (sub) sub.textContent = 'Centre fermé';
     return;
   }
@@ -22564,6 +22568,7 @@ function renderLaserPlanning() {
   };
   const renderLaserSession = (session, timeValue, slotRemaining = null) => {
     if (!session) {
+      if (config.closed) return `<div class="laser-session-slot is-empty is-closed"><span class="laser-empty-title">Fermé</span></div>`;
       // Les armes LIBRES de la tranche, pas la capacite theorique : une
       // session qui chevauche la tranche (vieux plan a l heure fine) les
       // consomme. « 17 pistes libres » puis « impossible » a l ajout, c est
@@ -22662,7 +22667,7 @@ function renderLaserPlanning() {
     }).join('');
     const sessionType = seulementEnLigne ? 'en ligne' : hasFormula && hasDirect ? 'mixte' : hasFormula ? 'formule' : 'direct';
 
-    return `<div class="laser-session-slot has-session ${shared ? 'is-shared' : ''} ${seulementEnLigne ? 'is-en-ligne' : hasFormula ? 'has-formula' : 'has-direct'}" data-laser-drop-start="${session.start}" data-laser-drop-end="${session.end}" role="button" tabindex="0" onclick="openQuickBookForLaserSession(${session.start}, ${remaining})" onkeydown="if(event.target!==event.currentTarget)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();openQuickBookForLaserSession(${session.start}, ${remaining});}" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${session.start}, ${session.end})" title="Ajouter un groupe sur ce lancement">
+    return `<div class="laser-session-slot has-session ${shared ? 'is-shared' : ''} ${seulementEnLigne ? 'is-en-ligne' : hasFormula ? 'has-formula' : 'has-direct'}" data-laser-drop-start="${session.start}" data-laser-drop-end="${session.end}" role="button" tabindex="0" onclick="if(!getPlanningWindow(state.currentDate).closed)openQuickBookForLaserSession(${session.start}, ${remaining})" onkeydown="if(event.target!==event.currentTarget)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();if(!getPlanningWindow(state.currentDate).closed)openQuickBookForLaserSession(${session.start}, ${remaining});}" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${session.start}, ${session.end})" title="Ajouter un groupe sur ce lancement">
       <div class="laser-session-top">
         <div>
           <div class="laser-session-title">${formatClockDisplay(session.start)} - ${formatClockDisplay(session.end)}</div>
@@ -22718,6 +22723,7 @@ function renderLaserPlanning() {
 
   const laserBlockBanner = renderLaserBlockBanner(state.currentDate);
   wrap.innerHTML = `
+    ${planningClosedNotice(config)}
     ${pendingQueueHtml}
     ${laserBlockBanner}
     <div class="laser-agenda">
@@ -23667,7 +23673,7 @@ function quickAction(id, status) {
   setReservationStatusDirect(id, status);
 }
 
-function setReservationStatusDirect(id, status, ev, options = {}) {
+async function setReservationStatusDirect(id, status, ev, options = {}) {
   if (ev) ev.stopPropagation();
   const key = String(id);
   let current = state.reservations.find(r => String(r.id) === key);
@@ -23694,24 +23700,20 @@ function setReservationStatusDirect(id, status, ev, options = {}) {
   // Anti double-envoi : même statut déjà en vol → on ignore. La résa affiche
   // déjà la valeur voulue (optimiste), inutile de re-PATCH.
   if (isReservationMutationInFlight(id, 'status', status)) return;
-  const nextReservation = {
-    ...current,
-    status,
-    paymentMethod: status === 'paid' ? (moyenDemande || current.paymentMethod || 'Comptoir') : current.paymentMethod
-  };
   const requestKey = Number(id);
   const requestSeq = ++statusSaveSeq;
   statusSaveLatestSeqByReservation[requestKey] = requestSeq;
   const isLatestRequest = () => statusSaveLatestSeqByReservation[requestKey] === requestSeq;
-  // Protège le statut optimiste contre l'écrasement par un poll serveur en retard.
-  markReservationMutation(id, nextReservation, ['status', 'paymentMethod']);
   setReservationMutationInFlight(id, 'status', status);
-  applyOptimisticReservation(nextReservation, { preserveEditState: true });
-  envoyerModificationReservation(current, (dossier) => ({
-    ...dossier,
-    status,
-    paymentMethod: status === 'paid' ? (moyenDemande || dossier.paymentMethod || 'Comptoir') : dossier.paymentMethod
-  })).then(payload => {
+  const clicked = ev?.target?.closest?.('button') || ev?.currentTarget;
+  const previousLabel = clicked?.textContent;
+  if (clicked?.tagName === 'BUTTON') { clicked.disabled = true; clicked.setAttribute('aria-busy','true'); clicked.textContent = 'Enregistrement…'; }
+  return enchainerEcritureReservation(id, async derniere => {
+    const base = derniere && String(derniere.id) === key ? derniere : current;
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: base.id, centerId: base.centerId || base.center_id || getCurrentStaffCenterId(), baseUpdatedAt: base.updatedAt, status, ...(moyenDemande ? { paymentMethod: moyenDemande } : {}) }) });
+    if (!payload?.ok || !payload.reservation || String(payload.reservation.id) !== key || String(payload.reservation.centerId || payload.reservation.center_id) !== String(base.centerId || base.center_id || getCurrentStaffCenterId()) || payload.reservation.status !== status || (moyenDemande && payload.reservation.paymentMethod !== moyenDemande)) throw new Error('Le serveur n’a pas confirmé ce statut. Actualisez le dossier.');
+    return payload;
+  }).then(payload => {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     // Ré-ancre la protection sur la valeur confirmée par le serveur et repousse
@@ -23726,11 +23728,15 @@ function setReservationStatusDirect(id, status, ev, options = {}) {
     // clic. L'echec, lui, garde son message : il dit quelque chose de neuf.
   }).catch(error => {
     if (!isLatestRequest()) return;
-    applyOptimisticReservation(error.reservation || current, { preserveEditState: true });
-    clearReservationMutation(id);
-    toast(error.message || 'Impossible de mettre à jour le statut.');
+    const fresh = error.reservation || (error.status === 409 && error.payload?.reservation);
+    if (fresh) applyOptimisticReservation(fresh, { preserveEditState: true });
+    const message = error.message || 'Impossible de mettre à jour le statut.';
+    if (state.selectedRes && String(state.selectedRes.id) === key) setEditError(message);
+    if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Statut non enregistré', message, 'warning');
+    toast(message);
   }).finally(() => {
     clearReservationMutationInFlight(id, 'status');
+    if (clicked?.isConnected) { clicked.disabled = false; clicked.removeAttribute('aria-busy'); clicked.textContent = previousLabel; }
     if (isLatestRequest()) delete statusSaveLatestSeqByReservation[requestKey];
   });
 }

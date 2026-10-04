@@ -6,6 +6,7 @@ const {
   deleteReservation,
   getReservationById,
   updateReservation,
+  setReservationStatus,
   setReservationActivityProgress,
   setReservationActivityDone,
   noterReservationEquipe,
@@ -188,7 +189,7 @@ function patchChangesOperations(patch, current) {
 }
 
 function patchNeedsOnlyStatus(body = {}) {
-  const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
+  const keys = Object.keys(body || {}).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
   return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress', 'activityToggle', 'noteEquipe'].includes(key));
 }
 
@@ -373,6 +374,19 @@ module.exports = async (req, res) => {
       // refait ce controle sous verrou : c est lui qui fait foi.
       const versionAttendue = lireVersionAttendue(body.baseUpdatedAt);
       if (versionAttendue !== null && !memeVersion(current.updatedAt, versionAttendue)) throw reservationModifieeEntreTemps(current);
+
+      const statusKeys = Object.keys(body).filter(key => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
+      if (statusKeys.includes('status') && statusKeys.every(key => ['status', 'paymentMethod', 'payment_method'].includes(key))) {
+        if (body.status === 'paid' || statusKeys.includes('paymentMethod') || statusKeys.includes('payment_method')) {
+          const paymentSession = await requireStaffPermission(req, res, 'payments.markPaid', { centerId: requestedCenterId });
+          if (!paymentSession) return;
+        }
+        const reservation = await setReservationStatus({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, status: body.status, ...(Object.prototype.hasOwnProperty.call(body, 'paymentMethod') || Object.prototype.hasOwnProperty.call(body, 'payment_method') ? { paymentMethod: body.paymentMethod ?? body.payment_method } : {}) });
+        const automation = await refreshReservationAutomation(current, reservation, { reason: 'reservation_status_updated' });
+        await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'setReservationStatus', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildChanges(current, reservation, ['status', 'paymentMethod']), requestId: newRequestId() });
+        sendJson(res, 200, { ok: true, reservation, automation });
+        return;
+      }
 
       if (patchIsNoteEquipeOnly(body)) {
         const geste = body.noteEquipe;

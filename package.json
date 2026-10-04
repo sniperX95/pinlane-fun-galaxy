@@ -308,7 +308,9 @@
     "test:preprod-marketing-job": "node scripts/preprod-marketing-job-check.js",
     "test:preprod-frontend-header": "node scripts/preprod-frontend-header-check.js",
     "test:activity-card-layout": "node scripts/activity-card-layout-check.js",
-    "test:laser-reservation-editor": "node scripts/laser-reservation-editor-check.js"
+    "test:laser-reservation-editor": "node scripts/laser-reservation-editor-check.js",
+    "test:planning-status": "node scripts/planning-status-contract-check.js",
+    "test:planning-tablet": "node scripts/planning-tablet-controls-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

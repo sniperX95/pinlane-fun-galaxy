@@ -773,8 +773,11 @@ async function main() {
     // du fond DE CE THEME : degrader vers le clair sur un fond noir ne prouve
     // rien, et c'est le piege dans lequel la premiere version est tombee.
     const MUTATIONS = {
-      light: ':root{--muted:#cfcfcf !important;--faint:#d6d6d6 !important;--text:#b4b4b4 !important;}',
-      dark: '[data-theme="dark"]{--muted:#242424 !important;--faint:#202020 !important;--text:#2a2a2a !important;}',
+      // The console now declares these tokens on its body. Mutating :root
+      // only changes an inherited fallback and leaves the rendered staff
+      // palette intact, yielding a false counterexample (zero -> zero).
+      light: 'body:is(.staff-mode,.admin-mode){--muted:#cfcfcf !important;--faint:#d6d6d6 !important;--text:#b4b4b4 !important;}',
+      dark: 'body:is(.staff-mode,.admin-mode){--muted:#242424 !important;--faint:#202020 !important;--text:#2a2a2a !important;}',
     };
     for (const theme of ['light', 'dark']) {
       await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
@@ -784,11 +787,20 @@ async function main() {
       await gotoScreen(page, SCREENS[1]);
       await setTheme(page, theme);
       const before = (await sweep(page, `mutation-avant-${theme}`)).filter((r) => r.ratio < r.required).length;
-      await page.addStyleTag({ content: MUTATIONS[theme] });
+      const originalTokens = await page.evaluate(() => ['--text', '--muted', '--faint'].map(token => getComputedStyle(document.body).getPropertyValue(token).trim()));
+      const mutationStyle = await page.addStyleTag({ content: MUTATIONS[theme] });
       await page.waitForTimeout(150);
+      const mutatedTokens = await page.evaluate(() => ['--text', '--muted', '--faint'].map(token => getComputedStyle(document.body).getPropertyValue(token).trim()));
+      const expectedTokens = theme === 'light' ? ['#b4b4b4', '#cfcfcf', '#d6d6d6'] : ['#2a2a2a', '#242424', '#202020'];
+      ok(mutatedTokens.every((token, index) => token === expectedTokens[index] && token !== originalTokens[index]), `${theme} : la mutation atteint les trois jetons effectivement resolus sur la console`);
       const after = (await sweep(page, `mutation-apres-${theme}`)).filter((r) => r.ratio < r.required).length;
       console.log(`     FAIL attendu : ${theme}, jetons degrades, echecs ${before} -> ${after}`);
       ok(after >= before + 10, `${theme} : la mutation des jetons fait rougir le balayage (${before} -> ${after})`);
+      await mutationStyle.evaluate(style => style.remove());
+      // Let color transitions finish before comparing the restored palette.
+      await page.waitForTimeout(300);
+      const restored = (await sweep(page, `mutation-restauree-${theme}`)).filter((r) => r.ratio < r.required).length;
+      ok(restored === before, `${theme} : retirer la mutation restaure exactement le resultat AA (${restored} == ${before})`);
     }
     await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
 

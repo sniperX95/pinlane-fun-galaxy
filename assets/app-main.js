@@ -24322,7 +24322,7 @@ function renderPosDetails(r) {
         <span class="pos-contact-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(r.email || 'Non renseigné')}</span>
       </div>
     </section>
-    <details class="info-block pos-fold delay-control-block"${lateMinutes > 0 ? ' open' : ''} ontoggle="if(this.open && this.isConnected && !this.dataset.vu){this.dataset.vu='1';this.scrollIntoView({block:'nearest'});}">
+    <details class="info-block pos-fold delay-control-block"${lateMinutes > 0 ? ' open data-vu="1"' : ''} ontoggle="if(this.open && this.isConnected && !this.dataset.vu){this.dataset.vu='1';this.scrollIntoView({block:'nearest'});}">
       <summary class="pos-group-head">
         <span class="info-label">Client en retard</span>
         <svg class="pos-fold-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>

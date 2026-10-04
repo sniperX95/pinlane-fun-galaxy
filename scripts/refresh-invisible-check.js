@@ -214,14 +214,16 @@ async function main() {
     await page.evaluate(() => { openPos(9020); });
     await page.waitForTimeout(900);
     await page.evaluate(() => { window.__ANIM__ = []; window.__RENDERS__ = { staffData: 0, table: 0, pos: 0, planning: 0 }; });
+    // Mettre la cible réellement sous les yeux avant de mesurer : le clic
+    // navigateur peut sinon défiler pour focaliser une case hors du cadre.
+    const caseAct = await page.$('#posOverlay .gc-check');
+    if (caseAct) await caseAct.scrollIntoViewIfNeeded();
     const avant = await page.evaluate(() => {
       const corps = document.querySelector('#posOverlay .edit-modal-body');
       if (!corps) return null;
-      corps.scrollTop = Math.max(0, Math.min(200, corps.scrollHeight - corps.clientHeight));
       return { scroll: corps.scrollTop, scrollable: corps.scrollHeight - corps.clientHeight };
     });
     ok(!!avant && avant.scrollable > 40, `la fiche a de quoi defiler (${avant && avant.scrollable} px)`);
-    const caseAct = await page.$('#posOverlay .gc-check');
     if (caseAct) await caseAct.click();
     await page.waitForTimeout(1600);
     const coche = await page.evaluate(() => {
@@ -247,6 +249,58 @@ async function main() {
     ok(sauts.length >= 1 && sauts.length <= 2, `la case cochee saute une fois (${sauts.length} saut(s) : la fiche et la carte)`);
     ok(!!avant && coche.scroll === avant.scroll, `le defilement de la fiche est conserve (${avant && avant.scroll} -> ${coche.scroll})`);
     ok(String(coche.focus || '').indexOf('fiche.activite.') === 0, `le focus reste sur la case cliquee (${coche.focus})`);
+
+    // Contre-preuve : retirer uniquement la restauration, garder le vrai
+    // clic et le focus. Le même oracle doit détecter la perte de position.
+    await page.evaluate(() => {
+      window.__ORIG_REPAINT__ = window.repaintKeepingScroll;
+      window.repaintKeepingScroll = function (root, render) { render(); };
+    });
+    try {
+      const caseSansRestauration = await page.$('#posOverlay .gc-check');
+      if (caseSansRestauration) await caseSansRestauration.scrollIntoViewIfNeeded();
+      const positionMutation = await page.evaluate(() => document.querySelector('#posOverlay .edit-modal-body')?.scrollTop);
+      ok(positionMutation > 40, `contre-preuve située dans la fiche défilée (${positionMutation} px)`);
+      if (caseSansRestauration) await caseSansRestauration.click();
+      await page.waitForTimeout(600);
+      const positionSansRestauration = await page.evaluate(() => document.querySelector('#posOverlay .edit-modal-body')?.scrollTop);
+      ok(positionSansRestauration !== positionMutation,
+        `restauration retirée : la perte de défilement est détectée (${positionMutation} -> ${positionSansRestauration})`);
+    } finally {
+      await page.evaluate(() => { window.repaintKeepingScroll = window.__ORIG_REPAINT__; });
+    }
+
+    const ouvertureManuelle = await page.evaluate(async () => {
+      const origineRetard = window.getLateArrivalMinutes;
+      const origineScroll = Element.prototype.scrollIntoView;
+      let demandesDefilement = 0;
+      Element.prototype.scrollIntoView = function () {
+        if (this.matches('.delay-control-block')) demandesDefilement += 1;
+        return origineScroll.apply(this, arguments);
+      };
+      try {
+        window.getLateArrivalMinutes = () => 15;
+        renderPos();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const dejaOuvert = document.querySelector('#posOverlay .delay-control-block');
+        const automatiqueMarque = dejaOuvert?.open && dejaOuvert.dataset.vu === '1' && demandesDefilement === 0;
+        window.getLateArrivalMinutes = () => 0;
+        renderPos();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const ferme = document.querySelector('#posOverlay .delay-control-block');
+        const fermeAuDepart = !!ferme && !ferme.open;
+        demandesDefilement = 0;
+        ferme.querySelector('summary').click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return { automatiqueMarque, fermeAuDepart, ouvert: ferme.open, demandesDefilement };
+      } finally {
+        window.getLateArrivalMinutes = origineRetard;
+        Element.prototype.scrollIntoView = origineScroll;
+      }
+    });
+    ok(ouvertureManuelle.automatiqueMarque, 'bloc retard déjà ouvert automatiquement : aucun défilement demandé au montage');
+    ok(ouvertureManuelle.fermeAuDepart && ouvertureManuelle.ouvert && ouvertureManuelle.demandesDefilement === 1,
+      `ouverture manuelle du bloc fermé : défilement conservé une fois (${ouvertureManuelle.demandesDefilement})`);
 
     console.log('\n[3 bis] UNE MODALE NE REMONTE PAS EN HAUT QUAND ON CLIQUE EN BAS');
     // Movsar 2026-08-26 : « quand on clique sur un bouton en bas ca nous

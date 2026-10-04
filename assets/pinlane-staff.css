@@ -18730,7 +18730,7 @@ button.pv2-cal-cell:focus-visible {
 .gc-tag.is-onsite { color: var(--success); }
 /* CHAQUE ACTIVITE SE COCHE D UN TOUCHER (2026-10-01) : la ligne entiere, sur
    la carte comme dans la fiche. Fait : la ligne s efface, le mot reste. */
-.gc-step.is-cochable { cursor: pointer; transition: background-color var(--dur-fast) var(--ease); }
+.gc-step.is-cochable { cursor: pointer; }
 @media (hover: hover) { .gc-step.is-cochable:hover { background: var(--subtle); } .gc-step.is-cochable:hover .gc-check:not(.is-on) { border-color: var(--success); } }
 .gc-step.is-cochable:active { background: var(--success-soft); }
 .gc-step.is-fait .gc-step-what b { text-decoration: line-through; text-decoration-color: var(--muted); }

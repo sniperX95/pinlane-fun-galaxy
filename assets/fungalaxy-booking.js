@@ -1671,6 +1671,45 @@
       }).join('')
       + '</div></div></div>';
   }
+  function tuileActivite(item) { return item && item._fgTuile || item; }
+  function tiroirActivite(item) { return item && (item._fgEditeur || item); }
+  function caseActivite(id, nom, on) {
+    return '<button type="button" class="fg-card-select' + (on ? ' is-on' : '') + '" data-activity-toggle="' + esc(id) + '" role="checkbox" aria-checked="' + on + '" aria-label="' + esc(nom) + '"><svg aria-hidden="true"><use href="#i-check"/></svg></button>';
+  }
+  // Move the actual controls, never copies: switching activities preserves
+  // input values, names and the existing delegated price/participant handlers.
+  function rendreEditeurActivites(grille, id, retirer, montrer) {
+    if (retirer) grille._fgRetirer = retirer;
+    var panel = $('.fg-activity-editor', grille);
+    if (panel && panel._fgTuile) {
+      var ancien = $('.fg-card__opt', panel);
+      if (ancien) panel._fgTuile.appendChild(ancien);
+      panel._fgTuile._fgEditeur = null;
+    }
+    var tuiles = Array.from(grille.children).filter(function (x) { return x.classList.contains('fg-grid__item'); });
+    var selection = tuiles.filter(function (x) { return x.classList.contains('is-on'); });
+    var cle = function (x) { return x.dataset.activity || x.dataset.smActivity; };
+    tuiles.forEach(function (x) { var card = $('.fg-card', x), ax = activite(cle(x)); card.setAttribute('role', 'button'); card.removeAttribute('aria-checked'); card.setAttribute('aria-label', (x.classList.contains('is-on') ? 'Modifier ' : 'Choisir ') + ax.name); card.setAttribute('aria-controls', grille.id + '-editor'); });
+    var actif = selection.filter(function (x) { return cle(x) === (id || grille.dataset.editActivity); })[0] || selection[0];
+    if (!actif) { if (panel) panel.remove(); delete grille.dataset.editActivity; return; }
+    if (!panel) { panel = doc.createElement('li'); panel.className = 'fg-activity-editor'; panel.id = grille.id + '-editor'; panel.setAttribute('role', 'presentation'); grille.appendChild(panel); }
+    var a = activite(cle(actif));
+    grille.dataset.editActivity = a.id;
+    panel.innerHTML = '<div class="fg-editor-head"><h3 tabindex="-1">Réglez ' + esc(a.name) + '</h3><button type="button" class="fg-editor-back">Retour aux activités</button></div>'
+      + '<div class="fg-editor-tabs" aria-label="Activités sélectionnées">' + selection.map(function (x) { var ax = activite(cle(x)); return '<button type="button" class="fg-editor-tab' + (x === actif ? ' is-on' : '') + '" data-editor-activity="' + esc(ax.id) + '" aria-pressed="' + (x === actif) + '">' + esc(ax.name) + '</button>'; }).join('') + '</div>'
+      + '<div class="fg-grid__item fg-editor-entry is-on" data-activity="' + esc(a.id) + '" data-sm-activity="' + esc(a.id) + '"></div><button type="button" class="fg-editor-remove">Retirer cette activité</button>';
+    var entree = $('.fg-editor-entry', panel);
+    entree._fgTuile = actif; actif._fgEditeur = entree; panel._fgTuile = actif;
+    var drawer = $('.fg-card__opt', actif); if (drawer) entree.appendChild(drawer);
+    panel.onclick = function (e) {
+      var tab = e.target.closest('[data-editor-activity]');
+      if (tab) { rendreEditeurActivites(grille, tab.dataset.editorActivity); var suivant = $('[data-editor-activity="' + tab.dataset.editorActivity + '"]', grille); if (suivant) suivant.focus({ preventScroll:true }); }
+      else if (e.target.closest('.fg-editor-remove')) { grille._fgRetirer(a.id); }
+      else if (e.target.closest('.fg-editor-back')) { $('.fg-card', actif).focus({ preventScroll:true }); actif.scrollIntoView({ block:'center', behavior:'auto' }); }
+    };
+    if (montrer) { $('h3', panel).focus({ preventScroll:true }); panel.scrollIntoView({ block:'nearest', behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }
+    posterHauteur();
+  }
   function choisirPastille(pill) {
     var item = pill.closest('.fg-grid__item');
     var a = activite(item.dataset.activity);
@@ -1693,15 +1732,17 @@
   // deux heures pour trois tables ne coutent pas ce que coute une table, et
   // un tour dure la duree choisie.
   function majPastilles(item, a) {
+    var tile = tuileActivite(item);
+    item = tiroirActivite(item);
     groupesOptions(a).forEach(function (g) {
       g.options.forEach(function (o) {
         var petit = item.querySelector('.fg-pill[data-cle="' + g.cle + '"][data-valeur="' + String(o.valeur) + '"] small');
         if (petit) petit.textContent = petitDePastille(o);
       });
     });
-    var rot = $('.fg-card__rot', item);
+    var rot = $('.fg-card__rot', tile);
     if (rot) rot.textContent = noteCourte(a);
-    var info = $('[data-activity-info]', item); if (info) { var sections = sectionsInfoActivite(a); info.dataset.infoText = texteSectionsInfo(sections); info.dataset.infoSections = JSON.stringify(sections); }
+    var info = $('[data-activity-info]', tile); if (info) { var sections = sectionsInfoActivite(a); info.dataset.infoText = texteSectionsInfo(sections); info.dataset.infoSections = JSON.stringify(sections); }
   }
   function rendreActivites() {
     gridAct.innerHTML = activitesVendables().map(function (a, i) {
@@ -1716,19 +1757,19 @@
       return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '" data-activity="' + esc(a.id) + '">'
         + '<div class="fg-card fg-rise' + (on ? ' is-on' : '') + (trop ? ' is-off' : '') + (peu || ferme ? ' is-refus' : '') + '" style="--i:' + (i % 8) + '" data-activity="' + esc(a.id) + '" role="checkbox" tabindex="' + (trop ? '-1' : '0') + '" aria-checked="' + on + '" ' + (trop ? 'aria-disabled="true" title="' + esc(a.name) + ' : ' + a.maxPax + ' personnes maximum"' : '') + '>'
         + (p ? '<span class="fg-card__photo" aria-hidden="true"><img data-src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async"></span>' : '')
-        + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
         + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
         + '<span class="fg-card__name">' + esc(a.name) + '</span>'
         + '<span class="fg-card__price">' + esc(prixCarte(a)) + (precisionsCarte(a) ? ' · ' + esc(precisionsCarte(a)) : '') + '</span>'
         + (peu ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Il faut être au moins ' + a.minPax + ' joueurs. Vous êtes ' + state.pax + '.</span>' : '')
         + (ferme ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Indisponible ' + esc(minuscule(jourLong(state.date))) + '.</span>' : '')
-        + '</div>'
+        + '</div>' + caseActivite(a.id, a.name, on)
         + htmlInfo(a)
         + rendreOption(a)
         + '</li>';
     }).join('') || ('<li class="fg-empty">Aucune activité ne se réserve en ligne pour le moment.' + ligneCentre() + '</li>');
     // Une carte deja cochee (retour a cet ecran) montre sa photo tout de suite.
     $$('.fg-card.is-on', gridAct).forEach(chargerPhotoCarte);
+    rendreEditeurActivites(gridAct, '', retirerActivite);
   }
   var JOURS_SEM = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   // Les jours dans l ordre de la semaine, lundi d abord : « mardi, mercredi,
@@ -1992,13 +2033,15 @@
   // Le prix ne roule que sur un geste qui le change (pastille choisie, carte
   // cochee) : decocher le rend a « Des X » sans rien jouer.
   function majPrixCarte(item, a, anime) {
+    item = tuileActivite(item);
     var prix = $('.fg-card__price', item);
     if (!prix || !a) return;
     var avant = prix.textContent;
     prix.textContent = prixCarte(a) + (precisionsCarte(a) ? ' · ' + precisionsCarte(a) : '');
     if (anime && prix.textContent !== avant) rejouer(prix, 'is-maj');
   }
-  function basculerActivite(card) {
+  function retirerActivite(id) { var card = $('.fg-card[data-activity="' + id + '"]', gridAct); basculerActivite(card, true); $('.fg-card-select', card.closest('.fg-grid__item')).focus({ preventScroll:true }); }
+  function basculerActivite(card, cocher) {
     // Refusee pour ce groupe : on fait lire la raison, on ne coche pas.
     if (card && card.classList.contains('is-refus')) {
       var pourquoi = card.querySelector('.fg-for__off');
@@ -2010,16 +2053,19 @@
     var item = card.closest('.fg-grid__item');
     var id = item.dataset.activity;
     var i = state.selection.indexOf(id);
+    if (i >= 0 && !cocher) { rendreEditeurActivites(gridAct, id, retirerActivite, true); return; }
     if (i >= 0) state.selection.splice(i, 1); else state.selection.push(id);
     var on = i < 0;
     card.classList.toggle('is-on', on);
     if (on) rejouer(card, 'is-coche'); else card.classList.remove('is-coche');
     item.classList.toggle('is-on', on);
     card.setAttribute('aria-checked', String(on));
+    var caseChoix = $('.fg-card-select', item); caseChoix.classList.toggle('is-on', on); caseChoix.setAttribute('aria-checked', String(on));
     majPrixCarte(item, activite(id), on);
     majPastilles(item, activite(id));
     rendreCompteur(true);
     invaliderDispo();
+    rendreEditeurActivites(gridAct, on ? id : '', retirerActivite, on);
     setTimeout(posterHauteur, 320);
   }
   function changerCompteur(btn, valeur) {
@@ -2068,6 +2114,8 @@
     e.target.value = String(compteurDe(activite(e.target.closest('.fg-grid__item').dataset.activity), cle).n);
   });
   gridAct.addEventListener('click', function (e) {
+    var choix = e.target.closest('[data-activity-toggle]');
+    if (choix) { basculerActivite($('.fg-card', choix.closest('.fg-grid__item')), true); return; }
     var pas = e.target.closest('[data-pas]');
     if (pas) { if (!pas.disabled) changerCompteur(pas); return; }
     var pill = e.target.closest('.fg-pill');
@@ -2831,7 +2879,7 @@
       if (ar && ar.mode === it.arcadeOffer.mode && ar.offer.id === it.arcadeOffer.id) opt.arcadeSnapshot = Object.assign({}, it.arcadeOffer);
       state.options[it.activityId] = opt;
       var item = $('[data-activity="arcade_time"].fg-grid__item', gridAct), a = activite(it.activityId);
-      if (item) { $('.fg-card__opt', item).outerHTML = rendreOption(a); majPastilles(item, a); majPrixCarte(item, a, false); }
+      if (item) { $('.fg-card__opt', tiroirActivite(item)).outerHTML = rendreOption(a); majPastilles(item, a); majPrixCarte(item, a, false); }
     });
   }
   function avertissementBowling(cr) {
@@ -4812,6 +4860,7 @@
       posterHauteur: posterHauteur, precedent: precedent, prixCarte: prixCarte, reglesFormule: reglesFormule, rejouer: rejouer,
       htmlInfoFormule: htmlInfoFormule,
       secouer: secouer, sortieClavier: sortieClavier, reglagesSurMesure: reglagesSurMesure, choixArcade: choixArcade,
+      rendreEditeurActivites: rendreEditeurActivites, caseActivite: caseActivite, tuileActivite: tuileActivite, tiroirActivite: tiroirActivite,
       scene: function () { return sceneCourante; },
     };
     Object.defineProperty(I, 'meta', { get: function () { return meta; } });

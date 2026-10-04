@@ -684,6 +684,8 @@
     function compteurSm(a) { var r = reglagesSm(a); return r.info + r.html; }
     function changerReglageSm(target, cle, valeur, normaliser) {
       var item = target.closest('[data-sm-activity]'), a = activite(item && item.dataset.smActivity);
+      var tile = I.tuileActivite(item);
+      item = I.tiroirActivite(item);
       if (!a) return;
       var r = reglagesSm(a), c = r.compteurs.filter(function (x) { return x.cle === cle; })[0];
       var g = r.groupes.filter(function (x) { return x.cle === cle; })[0];
@@ -714,13 +716,13 @@
           $('small', pill).textContent = option.sous != null ? option.sous : option.prix == null ? 'prix à l’accueil' : euros(option.prix);
         });
       });
-      $('.fg-card__price', item).textContent = r.prix + (faitsAge(a) ? ' · ' + faitsAge(a) : '');
+      $('.fg-card__price', tile).textContent = r.prix + (faitsAge(a) ? ' · ' + faitsAge(a) : '');
       var tmp = doc.createElement('div'); tmp.innerHTML = r.info;
-      var note = $('.fg-card__rot', item), nouvelle = $('.fg-card__rot', tmp);
+      var note = $('.fg-card__rot', tile), nouvelle = $('.fg-card__rot', tmp);
       if (note && nouvelle) note.textContent = nouvelle.textContent;
       else if (note) note.remove();
       else if (nouvelle) $('.fg-card__optbox', item).appendChild(nouvelle);
-      var info = $('[data-activity-info]', item), nextInfo = $('[data-activity-info]', tmp);
+      var info = $('[data-activity-info]', tile), nextInfo = $('[data-activity-info]', tmp);
       if (info && nextInfo) { info.dataset.infoText = nextInfo.dataset.infoText; info.dataset.infoSections = nextInfo.dataset.infoSections; }
       var cap = $('.fg-sm-cap', item);
       if (cap) cap.innerHTML = '<svg aria-hidden="true"><use href="#i-users"/></svg>' + esc(capaciteGroupe(a));
@@ -758,7 +760,7 @@
         + o.corps
         + (o.v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.raison) + '</span>')
         + (o.formule && o.v.ok && o.v.note ? '<span class="fg-sm-note"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(o.v.note) + '</span>' : '')
-        + '</div>' + (o.formule ? o.info || '' : compteurSm(activite(o.id))) + '</li>';
+        + '</div>' + (o.formule ? o.info || '' : I.caseActivite(o.id, activite(o.id).name, o.on) + compteurSm(activite(o.id))) + '</li>';
     }
     function rendreSmActivites() {
       var ctx = contexteSm();
@@ -766,13 +768,13 @@
         var v = verdictActiviteSurMesure(a, ctx), p = photo(a.id), cap = capaciteGroupe(a), age = faitsAge(a);
         var on = sm.activites.indexOf(a.id) >= 0;
         return carteSm({ id: a.id, i: i, on: on, v: v, formule: false, corps: (p ? '<span class="fg-card__photo" aria-hidden="true"><img data-src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async"></span>' : '')
-          + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
           + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
           + '<span class="fg-card__name">' + esc(a.name) + '</span>'
           + '<span class="fg-card__price">' + esc(on ? reglagesSm(a).prix : prixCarte(a, true)) + (age ? ' · ' + esc(age.replace(/ /g, ' ')) : '') + '</span>'
           });
       }).join('') || '<li class="fg-empty">Aucune activité n’est proposée pour le moment.' + ligneCentre() + '</li>';
       $$('.fg-card.is-on', smGridAct).forEach(chargerPhotoCarte);
+      I.rendreEditeurActivites(smGridAct, '', retirerSmActivite);
     }
     function rendreSmFormules() {
       var liste = formulesSm(), ctx = contexteSm();
@@ -849,7 +851,8 @@
       rendreSmCompteur(false);
       $('#smEnviesErr').hidden = true;
     }
-    function basculerSm(card) {
+    function retirerSmActivite(id) { var card = $('.fg-card[data-sm="' + id + '"]', smGridAct); basculerSm(card, true); $('.fg-card-select', card.closest('.fg-grid__item')).focus({ preventScroll:true }); }
+    function basculerSm(card, cocher) {
       if (!card) return;
       if (card.classList.contains('is-refus')) {
         var pourquoi = card.querySelector('.fg-for__off');
@@ -858,6 +861,7 @@
       }
       var liste = card.dataset.kind === 'formule' ? sm.formules : sm.activites;
       var id = card.dataset.sm, i = liste.indexOf(id);
+      if (card.dataset.kind === 'activite' && i >= 0 && !cocher) { I.rendreEditeurActivites(smGridAct, id, retirerSmActivite, true); return; }
       if (i >= 0) liste.splice(i, 1); else liste.push(id);
       var on = i < 0;
       chargerPhotoCarte(card);
@@ -866,6 +870,7 @@
       card.closest('.fg-grid__item').classList.toggle('is-on', on);
       card.setAttribute('aria-checked', String(on));
       if (card.dataset.kind === 'activite') { var a = activite(id), item = card.closest('.fg-grid__item'); $('.fg-card__price', card).textContent = (on ? reglagesSm(a).prix : prixCarte(a, true)) + (faitsAge(a) ? ' · ' + faitsAge(a) : ''); var info = $('.fg-card__info', item); if (info) info.outerHTML = reglagesSm(a).info; }
+      if (card.dataset.kind === 'activite') { var choix = $('.fg-card-select', card.closest('.fg-grid__item')); choix.classList.toggle('is-on', on); choix.setAttribute('aria-checked', String(on)); I.rendreEditeurActivites(smGridAct, on ? id : '', retirerSmActivite, on); }
       rendreSmCompteur(true);
       setTimeout(posterHauteur, 320);
     }
@@ -877,6 +882,8 @@
       grille.addEventListener('animationend', finGeste);
     });
     smGridAct.addEventListener('click', function (e) {
+      var choix = e.target.closest('[data-activity-toggle]');
+      if (choix) { basculerSm($('.fg-card', choix.closest('.fg-grid__item')), true); return; }
       var btn = e.target.closest('[data-pas]'), pill = e.target.closest('.fg-pill');
       if (btn && !btn.disabled) {
         var a = activite(btn.closest('[data-sm-activity]').dataset.smActivity);

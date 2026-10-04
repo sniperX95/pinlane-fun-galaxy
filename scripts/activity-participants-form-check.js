@@ -81,9 +81,10 @@ async function mounted(page, pax = 18) {
   await page.click('#goActivities');
   await page.waitForSelector('.fg-scene[data-scene="activites"].is-active');
 }
-const card = id => `#gridAct li[data-activity="${id}"]`;
+const card = id => `#gridAct .fg-grid__item[data-activity="${id}"]`;
 const input = id => `${card(id)} [data-compteur="participants"] input[type="number"]`;
 async function setCount(page, id, n) {
+  await page.locator(`${card(id)} .fg-card`).click();
   await page.locator(input(id)).fill(String(n));
   await page.locator(input(id)).press('Enter');
 }
@@ -94,7 +95,9 @@ async function selectAll(page) {
     check(await page.locator(input(id)).inputValue() === '18', `${id} initially follows whole group`);
     await setCount(page, id, COUNTS[id]);
   }
+  await page.locator(`${card('laser_game')} .fg-card`).click();
   await page.locator(`${card('laser_game')} .fg-pill[data-valeur="2"]`).click();
+  await page.locator(`${card('billards')} .fg-card`).click();
   await page.locator(`${card('billards')} [data-compteur="units"] [data-pas="1"]`).click();
   await page.locator(`${card('billards')} .fg-pill[data-valeur="2"]`).click();
 }
@@ -205,6 +208,7 @@ async function main() {
       page.on('request', r => { if (r.url().includes('/api/public-availability?') && new URL(r.url()).searchParams.get('type') === 'visite') availability.push(r.url()); });
       await mounted(page);
       await selectAll(page);
+      await page.locator(`${card('bowling')} .fg-card`).click();
       for (const [typed, expected] of [['', '7'], ['8.7', '8'], ['999', '18'], ['-4', '1'], ['7', '7']]) {
         await page.locator(input('bowling')).fill(typed);
         await page.locator(input('bowling')).press('Tab');
@@ -215,8 +219,8 @@ async function main() {
       await page.locator(`${card('bowling')} .fg-pill[data-valeur="2"]`).click();
       check(await page.locator(input('bowling')).inputValue() === '7', `[${width}] duration change preserves bowling players`);
       await page.locator(`${card('bowling')} .fg-pill[data-valeur="1"]`).click();
-      await page.locator(`${card('minigolf_blacklight')} .fg-card`).click();
-      await page.locator(`${card('minigolf_blacklight')} .fg-card`).click();
+      await page.locator(`${card('minigolf_blacklight')} .fg-card-select`).click();
+      await page.locator(`${card('minigolf_blacklight')} .fg-card-select`).click();
       check(await page.locator(input('minigolf_blacklight')).inputValue() === '4', `[${width}] deselect/reselect preserves subset`);
       // UI lower bound is two for laser. Group remains eighteen.
       await setCount(page, 'laser_game', 1);
@@ -238,14 +242,19 @@ async function main() {
       await page.click('#goActivities');
       for (const [id, n] of Object.entries(COUNTS)) check(await page.locator(input(id)).inputValue() === String(Math.min(n, 4)), `[${width}] increasing group again retains explicit ${id} subset`);
       for (const [id, n] of Object.entries(COUNTS)) await setCount(page, id, n);
-      const layout = await page.evaluate(() => {
-        const boxes = [...document.querySelectorAll('#gridAct [data-compteur="participants"]')];
+      const layouts = [];
+      for (const id of Object.keys(COUNTS)) {
+        await page.locator(`${card(id)} .fg-card`).click();
+        layouts.push(await page.evaluate(() => {
+        const boxes = [...document.querySelectorAll('#gridAct .fg-activity-editor [data-compteur="participants"]')];
         return { overflow: document.documentElement.scrollWidth > innerWidth + 1,
           counters: boxes.map(b => { const r = b.getBoundingClientRect(); const p = b.closest('li').getBoundingClientRect();
             const f = b.querySelector('input'); return { fits: r.left >= p.left - 1 && r.right <= p.right + 1,
               font: parseFloat(getComputedStyle(f).fontSize), label: !!(f.getAttribute('aria-label') || f.getAttribute('aria-labelledby') || f.labels.length),
               targets: [...b.querySelectorAll('button,input')].map(x => { const q = x.getBoundingClientRect(); return { w: q.width, h: q.height }; }) }; }) };
-      });
+        }));
+      }
+      const layout = { overflow: layouts.some(x => x.overflow), counters: layouts.flatMap(x => x.counters) };
       check(!layout.overflow && layout.counters.length === 8 && layout.counters.every(x => x.fits && x.font >= 11.5 && x.label), `[${width}] counters fit cards, readable, named`, layout);
       const usable = layout.counters.every(x => x.targets.every(t => t.h >= 44 && t.w >= 44));
       if (!usable) layoutFailures.push({ width, counters: layout.counters });

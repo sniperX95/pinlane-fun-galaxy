@@ -176,7 +176,8 @@ async function run() {
     if(id==='minigolf_blacklight')expected.push('Information longue pour vérifier le défilement');
     await popup(page,frame,button,embedded,label+'/activity/'+index,expected);
    }
-   const arcade=frame.locator('#gridAct li[data-activity="arcade_time"]');
+   await frame.locator('#gridAct li[data-activity="arcade_time"] .fg-card').click();
+   const arcade=frame.locator('#gridAct .fg-grid__item[data-activity="arcade_time"]');
    await arcade.locator('[data-compteur="participants"] input').fill('3');await arcade.locator('[data-compteur="participants"] input').press('Enter');
    for(const [id,total] of [['time-30',45],['time-60',90]]) {
     await arcade.locator('.fg-pill[data-cle="arcadeOfferId"][data-valeur="'+id+'"]').click();

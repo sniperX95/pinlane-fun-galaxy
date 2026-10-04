@@ -2539,35 +2539,38 @@ body.is-embed .fg-info-dialog { inset:auto; top:50%; left:50%; margin:0; transfo
 .fg-info-section--note p { color:#b6aeb8; font-size:12px; }
 @media(max-width:560px) { .fg-info-section--offers { grid-template-columns:1fr; } }
 
-/* Activity choices follow one reading order. Each drawer takes only its own
-   height, rather than reserving the tallest drawer across a shared grid row. */
-:is(#gridAct,#smGridAct) { grid-template-columns:minmax(0,1fr); gap:10px; }
-:is(#gridAct,#smGridAct) > .fg-grid__item { display:flex; grid-row:auto; margin:0; overflow:hidden; border:1.5px solid var(--fg-line); border-radius:10px; background:#101010; }
-:is(#gridAct,#smGridAct) > .fg-grid__item.is-on { border-color:var(--fg-purple-2); }
-:is(#gridAct,#smGridAct) .fg-card { display:grid; grid-template-columns:36px minmax(0,1fr); column-gap:12px; row-gap:4px; align-content:center; min-height:76px; padding:14px 52px 12px 16px; flex:none; border:0; border-radius:0; box-shadow:none; }
-:is(#gridAct,#smGridAct) .fg-card__icon { grid-column:1; grid-row:1 / span 2; align-self:center; width:32px; height:32px; margin:0; }
-:is(#gridAct,#smGridAct) .fg-card__name { grid-column:2; margin:0; }
-:is(#gridAct,#smGridAct) .fg-card__price { grid-column:2; min-height:0; line-height:1.4; }
-:is(#gridAct,#smGridAct) .fg-for__off { grid-column:2; margin-top:4px; }
-:is(#gridAct,#smGridAct) .fg-card__box { top:22px; right:16px; }
-:is(#gridAct,#smGridAct) .fg-card:focus-visible { outline-offset:-4px; }
-:is(#gridAct,#smGridAct) .fg-card__info { margin:0; padding:0 8px 2px 16px; border:0; border-radius:0; background:#101010; }
-:is(#gridAct,#smGridAct) .fg-card__info .fg-card__rot { color:#c6c2c8; }
-:is(#gridAct,#smGridAct) .fg-info-btn { color:#d5cbd7; }
-:is(#gridAct,#smGridAct) .fg-card__optbox { padding:14px 16px 16px; border:0; border-top:1px solid #ffffff17; border-radius:0; background:#101010; }
-.fg-option-group { min-width:0; }
+/* Compact choice tiles; only one real configuration panel occupies a full row. */
+:is(#gridAct,#smGridAct) { gap:14px; }
+:is(#gridAct,#smGridAct) > .fg-grid__item { position:relative; display:flex; grid-row:auto; margin:0; }
+:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card { flex:none; min-height:150px; padding-right:48px; }
+:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__opt { display:none; }
+:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { flex:1; border-radius:0 0 8px 8px; }
+.fg-card-select { position:absolute; z-index:2; right:6px; top:4px; display:grid; place-items:center; width:44px; height:44px; padding:11px; border:0; background:transparent; color:var(--fg-text); cursor:pointer; }
+.fg-card-select svg { width:22px; height:22px; padding:4px; border:1px solid var(--fg-line-2); border-radius:5px; stroke-dasharray:22; stroke-dashoffset:22; }
+.fg-card-select.is-on svg { background:var(--fg-purple); border-color:var(--fg-purple); stroke-dashoffset:0; }
+.fg-activity-editor { grid-column:1/-1; min-width:0; margin:8px 0 0; padding:18px; border:1px solid var(--fg-purple-2); border-radius:12px; background:#101010; scroll-margin-block:24px; }
+:is(#gridAct,#smGridAct) > .fg-activity-editor { display:block; grid-row:auto; grid-template-rows:none; margin-bottom:0; }
+.fg-editor-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+.fg-editor-head h3 { margin:0; font-size:18px; font-weight:650; }
+.fg-editor-back,.fg-editor-remove { min-height:44px; padding:0 8px; border:0; background:none; color:var(--fg-muted); font:inherit; font-size:12px; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+.fg-editor-tabs { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 16px; }
+.fg-editor-tab { min-height:44px; padding:8px 12px; border:1px solid var(--fg-line-2); border-radius:6px; background:#181818; color:var(--fg-text); font-family:inherit; font-size:13px; font-weight:600; line-height:1.3; cursor:pointer; }
+.fg-editor-tab.is-on { background:var(--fg-purple); border-color:var(--fg-purple-2); }
+.fg-activity-editor .fg-card__optbox { padding:0; border:0; border-radius:0; background:transparent; }
+.fg-activity-editor .fg-editor-entry { display:block; }
+.fg-editor-remove { margin-top:8px; }
 .fg-option-group + .fg-option-group { margin-top:14px; }
-@media (hover:hover) { :is(#gridAct,#smGridAct) .fg-card:hover { transform:none; box-shadow:none; background:#181518; } }
 @media (min-width:761px) {
-  :is(#gridAct,#smGridAct) > .fg-grid__item { display:grid; grid-template-columns:minmax(280px,1fr) minmax(0,1fr); grid-template-rows:auto auto; }
-  :is(#gridAct,#smGridAct) .fg-card { grid-column:1; grid-row:1; }
-  :is(#gridAct,#smGridAct) .fg-card__info { grid-column:2; grid-row:1; align-self:stretch; padding:8px 12px 8px 20px; }
-  :is(#gridAct,#smGridAct) .fg-card__opt { grid-column:1 / -1; grid-row:2; }
-  :is(#gridAct,#smGridAct) .fg-card__optbox { display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px 24px; }
-  :is(#gridAct,#smGridAct) .fg-count { flex:0 1 210px; min-width:180px; margin:0; align-self:center; }
-  :is(#gridAct,#smGridAct) .fg-option-group { flex:1 1 260px; margin:0; }
-  :is(#gridAct,#smGridAct) .fg-pills { grid-template-columns:repeat(var(--fg-option-count,2),minmax(0,1fr)); }
-  :is(#gridAct,#smGridAct) .fg-pills[data-n="3"] { --fg-option-count:3; }
-  :is(#gridAct,#smGridAct) .fg-pills[data-n="4"] { --fg-option-count:4; }
-  :is(#gridAct,#smGridAct) .fg-pill:last-child:nth-child(odd) { grid-column:auto; }
+  .fg-activity-editor .fg-card__optbox { display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px 24px; }
+  .fg-activity-editor .fg-count { flex:0 1 210px; margin:0; align-self:center; }
+  .fg-activity-editor .fg-option-group { min-width:0; flex:1 1 260px; margin:0; }
+}
+@media (max-width:560px) {
+  :is(#gridAct,#smGridAct) { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card { min-height:142px; padding:12px 40px 12px 12px; }
+  :is(#gridAct,#smGridAct) .fg-card__name { font-size:14px; }
+  :is(#gridAct,#smGridAct) .fg-card__price { font-size:12px; }
+  :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { padding:3px 4px 3px 10px; gap:2px; }
+  :is(#gridAct,#smGridAct) .fg-card__info .fg-card__rot { font-size:11.5px; }
+  .fg-activity-editor { padding:14px; }
 }

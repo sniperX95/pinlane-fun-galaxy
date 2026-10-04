@@ -239,6 +239,14 @@ function main() {
 }
 
 function contreEpreuves(eb) {
+  const optimize = require('../tools/build-public').minifierJavascript;
+  const sample = '(function(){var longPrivateName=3;window.publicContract={longPublicProperty:longPrivateName};})();';
+  const first = optimize(sample,'assets/fungalaxy-booking.js',eb);
+  const second = optimize(first,'assets/fungalaxy-booking.js',eb);
+  const third = optimize(second,'assets/fungalaxy-booking.js',eb);
+  ok(first===second && second===third && first.startsWith('"use pinlane-minified";'),'trois preparations gardent le meme code renomme, marqueur neutre stable');
+  ok(first.includes('longPublicProperty') && first.includes('publicContract') && !first.includes('longPrivateName'),'seuls les identifiants internes se raccourcissent, les proprietes publiques restent intactes');
+  ok(optimize(sample.replace('=3','=4'),'assets/fungalaxy-booking.js',eb)!==first,'un changement de valeur diverge aussi apres optimisation des noms');
   // (1) Une trace ajoutee dans un commentaire de la copie doit disparaitre a la
   //     preparation : c est ce qui prouve que [A] mesure la preparation et non
   //     un hasard. On mute donc dans l autre sens : une trace posee dans une

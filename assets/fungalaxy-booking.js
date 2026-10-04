@@ -1783,7 +1783,9 @@
       var f=((meta && meta.formules)||[]).filter(function(x){return x.id===card.dataset.formule;})[0];
       if(!f)return;
       var v=verdictFormule(f),off=$('.fg-for__off',card);
-      card.classList.toggle('is-refus',!v.ok);card.setAttribute('aria-disabled',String(!v.ok));
+      card.classList.toggle('is-refus',!v.ok);
+      if(disponibilites && disponibilites[f.id] && disponibilites[f.id].available===false && disponibilites[f.id].code!=='calendar')card.setAttribute('aria-disabled','true');
+      else card.removeAttribute('aria-disabled');
       if(!v.ok){if(!off){off=doc.createElement('span');off.className='fg-for__off';card.appendChild(off);}off.textContent=v.pourquoi;}
       else if(off)off.remove();
       if(!v.ok && state.formuleId===f.id){state.formuleId='';card.classList.remove('is-on');card.setAttribute('aria-checked','false');card.closest('.fg-grid__item').classList.remove('is-on');}
@@ -4252,7 +4254,7 @@
     var carte = $$('[data-plus]').filter(function (b) { return b.dataset.plus === c.id; })[0];
     if (!carte) return;
     var li = carte.closest('.fg-vitrine__carte'), d = devisDuPlus(c);
-    $('.fg-vitrine__prix', li).textContent = d && d.pending ? '…' : d && d.error ? '—' : '+' + euros(montantDe(c));
+    $('.fg-vitrine__prix', li).textContent = d && d.pending ? '…' : d && d.error ? 'À recalculer' : '+' + euros(montantDe(c));
     $('.fg-vitrine__economie', li).innerHTML = economieDuPlus(c);
     carte.disabled = Boolean(plus.enCours) || !plusPret(c);
     carte.setAttribute('aria-label', 'Ajouter ' + nomDuPlus(c) + ' pour ' + euros(montantDe(c)) + ' de plus');

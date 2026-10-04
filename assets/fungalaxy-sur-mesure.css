@@ -185,6 +185,8 @@
 }
 
 /* Trois cibles de 44 px restent visibles sans débordement sur petit écran. */
-@media (max-width: 380px) { #smGridAct { grid-template-columns: 1fr; } }
+/* Activity tiles share the two-column mobile layout of the standard form;
+   the selected configuration still spans both columns in its own panel. */
+@media (max-width: 380px) { #smGridAct { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 .fg-sm-estimation { display: block; margin-top: 4px; font-size: 12px; line-height: 1.4; font-weight: 400; color: var(--fg-muted); max-width: 42em; }

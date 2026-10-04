@@ -96,6 +96,15 @@ function shift(todayStr, days) {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
+async function getAvailability(date, type = 'durees') {
+  purgeRepoModules();
+  const handler = require(path.join(ROOT, 'api', 'public-availability.js'));
+  const req = { method: 'GET', url: `/api/public-availability?centerId=libramont&pax=4&type=${type}&formuleId=mm&date=${encodeURIComponent(date)}`, headers: { host: 'gate.local', 'x-forwarded-for': `10.9.1.${++ipCounter}` }, socket: {} };
+  const res = fakeRes();
+  await handler(req, res);
+  return { status: res.out.statusCode, json: JSON.parse(res.out.body) };
+}
+
 function body(date) {
   return {
     centerId: 'libramont', type: 'bowling', date, startTime: '14:00', pax: 4, duration: 1,
@@ -117,6 +126,21 @@ function body(date) {
     record('la derniere date de l horizon est acceptee', cfg.bookingDateOutOfRange(shift(today, H)) === '', cfg.bookingDateOutOfRange(shift(today, H)) || 'ok');
     record('le lendemain de l horizon est refuse', cfg.bookingDateOutOfRange(shift(today, H + 1)) === 'far', cfg.bookingDateOutOfRange(shift(today, H + 1)));
     record('une date illisible est refusee', cfg.bookingDateOutOfRange('pas-une-date') === 'invalid', cfg.bookingDateOutOfRange('pas-une-date'));
+    for (const date of ['2027-02-31', '2027-02-29', '1900-02-29', '2026-04-31', '2026-00-01', '2026-13-01', '2026-10-00']) {
+      record(`jour ISO impossible refuse : ${date}`, cfg.bookingDateOutOfRange(date) === 'invalid', cfg.bookingDateOutOfRange(date));
+      const submitted = await postReservation(body(date));
+      record(`confirmation refuse le jour impossible avant la base : ${date}`, submitted.status === 422 && /Date invalide/.test(submitted.json?.message || ''), `status=${submitted.status}`);
+      purgeRepoModules();
+      const gate = await require(path.join(ROOT, 'lib', 'demande-publique.js')).ouvrirDemandePublique(body(date));
+      record(`porte partagee du hold refuse : ${date}`, gate.status === 422 && /Date invalide/.test(gate.message || ''), `status=${gate.status}`);
+      for (const type of ['durees', 'formule']) {
+        const availability = await getAvailability(date, type);
+        record(`disponibilite ${type} refuse : ${date}`, availability.status === 400 && availability.json.ok === false && /Date invalide/.test(availability.json.message), `status=${availability.status}`);
+      }
+    }
+    for (const date of ['2000-02-29', '2028-02-29', '1900-02-28', '2026-12-31', today]) {
+      record(`vrai jour ISO conserve : ${date}`, cfg.bookingDateOutOfRange(date) !== 'invalid', cfg.bookingDateOutOfRange(date) || 'ok');
+    }
 
     section('[2] Le VRAI handler refuse, sans toucher la base');
     {

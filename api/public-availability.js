@@ -248,6 +248,10 @@ module.exports = async (req, res) => {
   try {
     const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
     const date = String(url.searchParams.get('date') || '');
+    if (bookingDateOutOfRange(date) === 'invalid') {
+      sendJson(res, 400, { ok: false, message: 'Date invalide. Choisissez une date du calendrier.' });
+      return;
+    }
     // Meme horizon que l'ecriture : sans cette borne, l'ecran servait de vrais
     // creneaux pour 2028, une date que le calendrier des conges ne couvre pas.
     // Le passe n'est pas refuse ici : d'autres surfaces relisent des journees

@@ -63,4 +63,5 @@ async function main(){
  check(replans===0,'activity gesture never replans whole visit');
  console.log(JSON.stringify({ok:true,checks,writes,replans,fixtureOnly:true}));
 }
-main().catch(e=>{console.error(e.stack);process.exitCode=1;});
+module.exports={handler,fixture,call,db,setStored:value=>{stored=clone(value);},getStored:()=>clone(stored),setOther:value=>{other=clone(value);}};
+if(require.main===module)main().catch(e=>{console.error(e.stack);process.exitCode=1;});

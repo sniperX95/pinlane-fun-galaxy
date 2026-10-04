@@ -24,6 +24,7 @@
     "test:center-config": "node scripts/run-center-config-tests.js",
     "test:visual": "node scripts/run-visual-qa.js",
     "test:laser-drag": "node scripts/laser-drag-check.js",
+    "test:laser-compact": "node scripts/laser-compact-ui-check.js",
     "test:touch-drag": "node scripts/touch-drag-check.js",
     "test:bowling-scission": "node scripts/bowling-scission-check.js",
     "test:laser-waves": "node scripts/laser-waves-check.js",

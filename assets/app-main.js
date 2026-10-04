@@ -22553,7 +22553,7 @@ function renderLaserPlanning() {
           <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
           <span class="laser-pass-meta">${unitLabel} · ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
           <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
-        </button>`;
+        </button>${renderDelayIndicator(reservation)}</div>`;
       }).join('')
     : `<div class="laser-pass-empty">Aucune partie en attente. Toutes les parties sont placées.</div>`;
   const pendingQueueHtml = showPassQueue ? `
@@ -22651,45 +22651,15 @@ function renderLaserPlanning() {
       const label = isFormulaGroup
         ? `${getReservationLabel(reservation)}${laserGames > 1 ? ` · ${passLabel}` : ' · Laser'}`
         : laserGames > 1 ? `Laser · ${passLabel}` : 'Laser direct';
-      const pillHtml = `
-        <span class="laser-card-pills">
-          ${renderDelayIndicator(reservation)}
-          ${/* LA CONSIGNE EXISTE AUSSI SUR LE PLANNING LASER. La carte laser ne
-               fabriquait aucun marqueur : une note (« gateau a 18h », « un
-               joueur sourd ») et une occasion n apparaissaient que sur le
-               planning bowling, alors que l arene est le seul ecran que
-               l equipe regarde pendant un lancement. Meme fonction, memes
-               12px titres, meme lecture vocale ; seul le nombre de parties est
-               retire, la carte l ecrit deja sous le nom. */''}
-          ${renderCardFlags(reservation, { partiesEcrites: true })}
-          ${/* Le prix negocie se lit AUSSI dans l arene : c est le seul ecran
-               regarde pendant un lancement, et rien n y disait qu un dossier
-               avait ete arrange. Meme regle, meme pastille, montant seul :
-               rien ne s affiche quand le prix suit le catalogue.
-               UN MONTANT PAR DOSSIER, PAS UN PAR CARTE. Ce bloc est rendu par
-               PASSE et par VAGUE, alors que le montant est celui du dossier
-               ENTIER : mesure, le dossier 9001 sortait deux cartes
-               « Partie 1/2 » et « Partie 2/2 » portant CHACUNE « 40 € », et
-               deux montants ambre cote a cote se lisent comme deux
-               encaissements. Le chiffre n est donc ecrit que sur la premiere
-               carte du dossier ; les suivantes gardent le verdict en forme
-               « mot », qui ne s additionne pas. */''}
-          ${(passIndex === 1 && waveIndex === 1)
-            ? renderReservationPriceMark(reservation, { forme: 'montant', base: 'laser-card-pill' })
-            : renderReservationPriceMark(reservation, { forme: 'mot', base: 'laser-card-pill' })}
-          ${isFormulaGroup ? '<span class="laser-card-pill formula">Formule</span>' : '<span class="laser-card-pill direct">Direct</span>'}
-          ${/* PAS DE PASTILLE « P1/2 » : le libelle de la carte dit deja
-               « Partie 1/2 » juste au-dessus. Movsar, 2026-08-27 : « la ya trop
-               d info inutile ». La vague, elle, reste : elle n est ecrite nulle
-               part ailleurs. */''}
-          ${waveCount > 1 ? `<span class="laser-card-pill wave">V${waveIndex}/${waveCount}</span>` : ''}
-          ${window.formulaFallback ? '<span class="laser-card-pill fallback">Plan estimé</span>' : ''}
-        </span>`;
+      const pillHtml = `<span class="laser-card-pills">
+        ${renderCardFlags(reservation, { partiesEcrites: true })}
+        ${window.formulaFallback ? '<span class="laser-plan-estimate" role="img" aria-label="Plan estimé : ouvrir la fiche pour les détails" title="Plan estimé : vérifier les horaires dans la fiche">i</span>' : ''}
+      </span>`;
       const dragTitle = waveCount > 1
         ? `Déplacer la vague ${waveIndex}/${waveCount}${laserGames > 1 ? ` (partie ${passIndex})` : ''}`
         : passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
       const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
-      return `<button type="button" data-laser-res-id="${reservation.id}" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
+      return `<div class="laser-group-item"><button type="button" data-laser-res-id="${reservation.id}" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
           <small>${escapeHtml(label)}${waveLabel ? ` · ${escapeHtml(waveLabel)}` : ''}</small>
@@ -22698,9 +22668,9 @@ function renderLaserPlanning() {
         <span class="booking-stats laser-group-stats">
           ${renderActivityProgressPill(reservation)}
           <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}">${players}<span class="u">j</span></span>
-          <span class="bk-dur laser-dur" title="Durée ${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}">${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}</span>
+
         </span>
-      </button>`;
+      </button>${renderDelayIndicator(reservation)}</div>`;
     }).join('');
     const sessionType = seulementEnLigne ? 'en ligne' : hasFormula && hasDirect ? 'mixte' : hasFormula ? 'formule' : 'direct';
 

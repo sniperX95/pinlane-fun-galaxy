@@ -3324,6 +3324,23 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .laser-group-card.is-hold:hover { box-shadow: none; }
 .laser-group-card.is-hold strong { color: var(--text); }
 
+/* A delay action is a sibling of the card: nested buttons caused the browser
+   to split every following badge outside its group. Keep operational notes
+   visible, with the dossier details available through the card. */
+body:is(.staff-mode, .admin-mode) .laser-group-list { gap: 8px; align-items: stretch; }
+body:is(.staff-mode, .admin-mode) .laser-group-item { display: flex; align-items: center; gap: 4px; max-width: 320px; min-width: 180px; }
+body:is(.staff-mode, .admin-mode) .laser-group-item .laser-group-card { flex: 1; min-width: 0; min-height: 56px; padding: 8px 10px; }
+body:is(.staff-mode, .admin-mode) .laser-group-item .delay-indicator { flex: 0 0 44px; width: 44px; height: 44px; margin: 0; border-radius: 8px; font-size: 11px; }
+body:is(.staff-mode, .admin-mode) .laser-card-pills:empty { display: none; }
+body:is(.staff-mode, .admin-mode) .laser-plan-estimate { display: inline-grid; place-items: center; width: 14px; height: 14px; border: 1px solid var(--muted); border-radius: 50%; color: var(--muted); font-size: 10px; line-height: 1; }
+body:is(.staff-mode, .admin-mode) .laser-session-slot.has-session { background: var(--surface); border-color: var(--line); border-left-color: var(--line-strong); }
+body:is(.staff-mode, .admin-mode) .laser-group-main small { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body:is(.staff-mode, .admin-mode) .laser-group-stats { gap: 4px; }
+body:is(.staff-mode, .admin-mode) .laser-capacity-line { height: 3px; }
+@media (max-width: 640px) {
+  body:is(.staff-mode, .admin-mode) .laser-group-item { max-width: 100%; flex: 1 1 180px; }
+}
+
 .laser-pill {
   display: inline-flex;
   align-items: center;
@@ -19070,25 +19087,25 @@ body:is(.staff-mode, .admin-mode) {
   scrollbar-color: var(--line-strong) var(--page);
 }
 [data-theme='dark'] body:is(.staff-mode, .admin-mode) {
-  --page: #0b0e13;
-  --surface: #141920;
-  --raised: #1c232d;
-  --subtle: #252e3a;
-  --line: #303b49;
-  --line-strong: #566578;
+  --page: #050505;
+  --surface: #0c0c0c;
+  --raised: #141414;
+  --subtle: #1e1e1e;
+  --line: #292929;
+  --line-strong: #515151;
   --control-border: #878787;
   --text: #f1f1f1;
   --muted: #bcbcbc;
   --faint: #b2b2b2;
   --accent: #74b6ff;
   --accent-strong: #a0cdff;
-  --accent-soft: #172d46;
+  --accent-soft: #111d2a;
   --accent-contrast: #0b1727;
   --shadow-overlay: 0 16px 56px rgb(0 0 0 / 0.42);
   --console-selected: #74b6ff;
   --console-selected-text: #0b1727;
-  --console-selected-surface: #172d46;
-  --console-input: #10151c;
+  --console-selected-surface: #111d2a;
+  --console-input: #090909;
   --console-focus: #74b6ff;
   --success: #52dda0;
   --success-soft: #102c22;

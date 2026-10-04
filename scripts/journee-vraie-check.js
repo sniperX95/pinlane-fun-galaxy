@@ -252,6 +252,42 @@ async function run() {
     }));
     ok(/^Ouvert \S/.test(jour.sub) && !/réservation|joueur/.test(jour.sub), '[B] la tete du planning ne redit pas les tuiles', `« ${jour.sub} »`);
     ok(jour.titre === 'Planning 6 pistes' && jour.pistes === 6, '[B] le titre compte les pistes de la grille', `« ${jour.titre} » · grille ${jour.pistes} piste(s)`);
+    // Isoler l'arrivée de configuration APRÈS le montage : attendre plusieurs
+    // secondes pouvait laisser le poll, les blocages ou le bootstrap réparer
+    // le mutant qui retirait le repaint immédiat. Réponse synthétique en
+    // microtask, aucun délai ni autre requête entre sa livraison et la mesure.
+    await attendre(p.page, () => staffCenterConfigCache.loaded && !staffCenterConfigCache.loading && availabilityBlocksCache.loaded && staffConsolesReady);
+    const configImmediate = await p.page.evaluate(async () => {
+      const center = staffCenterConfigCache.centers.find(c => c.id === getCurrentStaffCenterId());
+      const ancienne = { ...center, resources: { ...center.resources, bowling: { ...center.resources.bowling, laneCount: 8 } } };
+      const lire = () => ({ titre: document.getElementById('planningLaneTitle')?.textContent, pistes: new Set([...document.querySelectorAll('[data-bowling-drop-lane]')].map(c => c.getAttribute('data-bowling-drop-lane'))).size });
+      setCenterScheduleConfig(ancienne);
+      staffCenterConfigCache.centers = staffCenterConfigCache.centers.map(c => c.id === center.id ? ancienne : c);
+      renderPlanning();
+      const avant = lire(), trace = [];
+      const fetchOrigine = window.fetch, renderOrigine = window.renderPlanning;
+      window.fetch = (input, init) => {
+        const url = new URL(typeof input === 'string' ? input : input.url, location.origin);
+        if (url.pathname === '/api/ops' && url.searchParams.get('action') === 'centerConfig') {
+          trace.push({ evenement: 'réponse configuration', pistes: 6 });
+          return Promise.resolve(new Response(JSON.stringify({ok:true, activities:[], centers:[center]}), {status:200,headers:{'content-type':'application/json'}}));
+        }
+        return fetchOrigine(input, init);
+      };
+      window.renderPlanning = function () { trace.push({ evenement: 'renderPlanning', appel: new Error().stack }); return renderOrigine.apply(this, arguments); };
+      try {
+        await loadStaffCenterConfig(true);
+        return { avant, apres: lire(), trace };
+      } finally {
+        window.fetch = fetchOrigine;
+        window.renderPlanning = renderOrigine;
+      }
+    });
+    ok(configImmediate.avant.titre === 'Planning 8 pistes' && configImmediate.avant.pistes === 8,
+      'MONTAGE [B] la scène stable commence avec huit pistes', JSON.stringify(configImmediate.avant));
+    ok(configImmediate.apres.titre === 'Planning 6 pistes' && configImmediate.apres.pistes === 6
+      && configImmediate.trace.some(e => e.evenement === 'renderPlanning' && /loadStaffCenterConfig/.test(e.appel)),
+      '[B] le titre compte les pistes de la grille dès la réponse configuration', JSON.stringify(configImmediate));
     // L onglet laser dit le sien : l arene, ses reservations, pas de pistes.
     await p.page.evaluate(() => setStaffResourceView('laser'));
     await attendre(p.page, () => /arène/.test((document.querySelector('#staffView .kpi-grid .kpi .label') || {}).textContent || ''));

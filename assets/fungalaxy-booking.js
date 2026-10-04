@@ -1739,6 +1739,9 @@
       : 'Vous êtes ' + state.pax + ' : cette formule demande au moins ' + f.minPax + ' personnes.' };
     if (f.noHolidays && j.formulaHolidayOff) return { ok: false, court: 'Pas pendant les vacances', pourquoi: 'Non valable pendant les vacances scolaires et les jours fériés.' };
     if (f.validDays && f.validDays.length && f.validDays.indexOf(jourSemaine(state.date)) < 0) return { ok: false, court: joursLisibles(f.validDays), pourquoi: 'Cette formule se réserve ' + joursLisibles(f.validDays) + ', pas ' + (JOURS_SEM[jourSemaine(state.date)] ? 'le ' + JOURS_SEM[jourSemaine(state.date)] : 'ce jour-là') + '.' };
+    var reel = disponibilitesFormules[cleDisponibilitesFormules()];
+    var verdict = reel && reel[f.id];
+    if (verdict && verdict.available === false) return { ok:false, court:'Indisponible ce jour', pourquoi:verdict.reason || 'Aucun horaire disponible pour cette formule ce jour-là.' };
     return { ok: true, court: '', pourquoi: '' };
   }
   function jourSemaine(dateStr) {
@@ -1773,6 +1776,20 @@
   // choisis, comme le recapitulatif (de l arrivee a la fin) ; elle se pose en
   // place dans chaque carte. Sans reponse, la ligne s efface : rien n est devine.
   var dureesCache = {}, dureesEnCours = '';
+  var disponibilitesFormules = {}, disponibilitesFormulesTemps = {}, dureesChargement = null;
+  function cleDisponibilitesFormules() { return CENTER + '|' + state.date + '|' + state.pax; }
+  function poserDisponibilitesFormules(disponibilites) {
+    $$('[data-formule]',gridFor).forEach(function(card) {
+      var f=((meta && meta.formules)||[]).filter(function(x){return x.id===card.dataset.formule;})[0];
+      if(!f)return;
+      var v=verdictFormule(f),off=$('.fg-for__off',card);
+      card.classList.toggle('is-refus',!v.ok);card.setAttribute('aria-disabled',String(!v.ok));
+      if(!v.ok){if(!off){off=doc.createElement('span');off.className='fg-for__off';card.appendChild(off);}off.textContent=v.pourquoi;}
+      else if(off)off.remove();
+      if(!v.ok && state.formuleId===f.id){state.formuleId='';card.classList.remove('is-on');card.setAttribute('aria-checked','false');card.closest('.fg-grid__item').classList.remove('is-on');}
+    });
+    rendreCompteur(false);
+  }
   function texteDuree(d) {
     var a = Math.round(Number(d && d.min) / 5) * 5, b = Math.round(Number(d && d.max) / 5) * 5;
     if (!(a > 0) || !(b > 0)) return '';
@@ -1788,19 +1805,27 @@
   }
   function chargerDurees() {
     if (!state.date || !(state.pax > 0)) { poserDurees({}); return; }
-    var cle = state.date + '|' + state.pax;
-    if (dureesCache[cle]) { poserDurees(dureesCache[cle]); return; }
-    dureesEnCours = cle;
-    fetch('/api/public-availability?' + new URLSearchParams({ centerId: CENTER, date: state.date, pax: String(state.pax), type: 'durees' }).toString(), { credentials: 'omit' })
+    var cle = state.date + '|' + state.pax,realKey=cleDisponibilitesFormules();
+    if (dureesCache[cle]) poserDurees(dureesCache[cle]);
+    if (Date.now()-(disponibilitesFormulesTemps[realKey]||0)<10000) { poserDisponibilitesFormules(disponibilitesFormules[realKey]); return; }
+    if(dureesChargement && dureesEnCours===realKey)return;
+    if(dureesChargement)dureesChargement.abort();
+    dureesChargement=new AbortController();var controller=dureesChargement;
+    dureesEnCours = realKey;
+    fetch('/api/public-availability?' + new URLSearchParams({ centerId: CENTER, date: state.date, pax: String(state.pax), type: 'durees' }).toString(), { credentials: 'omit', signal:controller.signal })
       // Le corps se lit meme en erreur : laisse non lu (404 d un centre
       // inconnu), il garde la requete ouverte dans le navigateur.
       .then(function (r) { return r.json().then(function (j) { return r.ok ? j : null; }, function () { return null; }); })
       .then(function (rep) {
         var d = rep && rep.ok && rep.durees ? rep.durees : null;
         if (d) dureesCache[cle] = d;
-        if (dureesEnCours === cle) poserDurees(d || {});
+        if (!controller.signal.aborted && dureesEnCours===realKey && cleDisponibilitesFormules()===realKey) {
+          poserDurees(d || {});
+          if(rep && rep.ok && rep.formulaAvailability){disponibilitesFormules[realKey]=rep.formulaAvailability;disponibilitesFormulesTemps[realKey]=Date.now();poserDisponibilitesFormules(rep.formulaAvailability);}
+        }
+        if(dureesChargement===controller)dureesChargement=null;
       })
-      .catch(function () { if (dureesEnCours === cle) poserDurees({}); });
+      .catch(function () { if (!controller.signal.aborted && cleDisponibilitesFormules()===realKey) poserDurees({}); if(dureesChargement===controller)dureesChargement=null; });
   }
   function rendreFormules() {
     // Une formule dont une activite manque a ce centre (missingActivityIds,
@@ -2150,6 +2175,9 @@
       // Le serveur compte CE sous-groupe pour le prix et la capacite. Sans
       // champ, tout le groupe participe (contrat historique).
       if (seCompteParEnfant(a) || joueursDe(a) < state.pax) ligne.participants = joueursDe(a);
+      var extra = state.options[id] || {};
+      if (extra.upsell) ligne.upsell = Object.assign({}, extra.upsell, { participants: joueursDe(a) });
+      if (extra.extraLaser) ligne.extraLaser = Object.assign({}, extra.extraLaser);
       return ligne;
     });
   }
@@ -3057,9 +3085,11 @@
   }
   // Ce qu une ligne de programme achete, en mots : les parties, les sessions
   // d un groupe qui tourne, ou la duree (par groupe quand il en joue deux).
+  function detailSupplementLaser(it) { var games = Math.max(0, Number(it.extraLaser.games) - (Number(it.games) || 1)); return games + ' partie' + (games > 1 ? 's' : '') + ' supplémentaire' + (games > 1 ? 's' : '') + ' pour ' + Number(it.extraLaser.participants) + ' joueurs'; }
   function detailLigne(it) {
     if (it.arcadeOffer) return detailArcade(it);
     if (it.waitOffer === true) return 'pendant l’attente, ' + (Number(it.participants) || 0) + ' personne' + (Number(it.participants) > 1 ? 's' : '');
+    if (it.extraLaser) { var baseGames = Number(it.games) || 1; return baseGames + ' partie' + (baseGames > 1 ? 's' : '') + ' + ' + detailSupplementLaser(it); }
     if (Number(it.games) > 0) return it.games + ' partie' + (it.games > 1 ? 's' : '');
     if (it.dayAccess) return 'toute la journée';
     return detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (it.services && it.services.length > 1 ? ' par groupe' : '') : '');
@@ -3133,11 +3163,12 @@
   // L offre d attente (un sous-groupe attend son tour) ne s affiche plus a
   // l ecran des horaires : elle rejoint « Envie d un peu plus ? », avec le
   // nombre de personnes a choisir. Une seule offre d attente a la fois.
-  var plus = { enCours: '', refuses: {}, statut: null, annuler: null, personnes: {} };
+  var plus = { enCours: '', refuses: {}, statut: null, annuler: null, personnes: {}, devis: {}, demandes: {} };
   function cartesPlus() {
     var rep = state.creneau ? state.creneau.reponse : null;
     return ((rep && rep.complements) || []).filter(function (c) {
       if (!c || !c.id || plus.refuses[c.id]) return false;
+      if (c.kind !== 'formule' && bornesDuPlus(c).max < bornesDuPlus(c).min) return false;
       if (c.kind === 'attente') return Boolean(c.patch && c.patch.activityId) && state.onglet !== 'formules' && !state.attente;
       return c.kind === 'formule' ? Boolean(c.formuleId) && state.onglet === 'formules' : Boolean(c.patch && c.patch.activityId) && state.onglet !== 'formules';
     });
@@ -3146,11 +3177,27 @@
   // jamais plus, jamais moins d un.
   function attendentDe(c) { return Math.max(1, Math.trunc(Number((c.attente || {}).personnes) || Number(c.pax) || 1)); }
   function personnesDe(c) {
-    var max = attendentDe(c), v = Math.trunc(Number(plus.personnes[c.id]) || 0);
-    return Math.min(max, Math.max(1, v > 0 ? v : max));
+    var bornes = bornesDuPlus(c), v = Math.trunc(Number(plus.personnes[c.id]) || Number(c.participants) || 0);
+    return Math.min(bornes.max, Math.max(bornes.min, v > 0 ? v : bornes.max));
+  }
+  function bornesDuPlus(c) {
+    var a = activite(c.patch && c.patch.activityId) || {}, b = c.participantBounds || {};
+    var max = Math.min(state.pax, Number(b.max) || (c.kind === 'attente' ? attendentDe(c) : state.pax));
+    max = Math.min(max, bornesJoueurs(a).max);
+    return { min: Math.max(1, Number(b.min) || Number(a.minPax) || 1), max: Math.max(0, max) };
+  }
+  function devisDuPlus(c) {
+    var d = plus.devis[c.id];
+    return d && d.cle === cleDemande() && d.cr === state.creneau && d.participants === personnesDe(c) ? d : null;
+  }
+  function plusPret(c) {
+    if (c.kind === 'formule') return true;
+    var b = bornesDuPlus(c), d = devisDuPlus(c);
+    var initial = Number(c.participants) || (c.kind === 'attente' ? attendentDe(c) : state.pax);
+    return b.max >= b.min && (d ? !d.pending && !d.error : personnesDe(c) === initial);
   }
   function prixParPersonneDe(c) { return Number(c.prixParPersonne) > 0 ? Number(c.prixParPersonne) : Number(c.deltaPerPax) || 0; }
-  function montantDe(c) { return c.kind === 'attente' ? Math.round(prixParPersonneDe(c) * personnesDe(c) * 100) / 100 : Number(c.deltaTotal) || 0; }
+  function montantDe(c) { var d = devisDuPlus(c); return d && !d.pending && !d.error ? d.deltaTotal : c.kind === 'attente' ? Math.round(prixParPersonneDe(c) * personnesDe(c) * 100) / 100 : Number(c.deltaTotal) || 0; }
   function nomDuPlus(c) { return c.kind === 'attente' ? nomActivite(c.patch.activityId) : String(c.name || ''); }
   // Les phrases du serveur sont partagees avec le tunnel : l apostrophe y est
   // droite, celle du formulaire est typographique.
@@ -3169,7 +3216,13 @@
     else {
       if (c.selection.indexOf(id) < 0) c.selection.push(id);
       var reglage = {};
-      ['duration', 'games', 'minutes'].forEach(function (k) { if (o[k] !== undefined) reglage[k] = Number(o[k]); });
+      ['duration', 'games', 'minutes', 'units', 'hours', 'cards'].forEach(function (k) { if (o[k] !== undefined && !(k === 'games' && o.extraLaser)) reglage[k] = Number(o[k]); });
+      ['arcadeMode', 'arcadeOfferId'].forEach(function (k) { if (o[k] !== undefined) reglage[k] = String(o[k]); });
+      if (o.extraLaser) reglage.extraLaser = Object.assign({}, o.extraLaser, { participants: personnesDe(carte) });
+      else {
+        reglage.participants = personnesDe(carte);
+        if (o.upsell) reglage.upsell = Object.assign({}, o.upsell, { participants: personnesDe(carte) });
+      }
       c.options[id] = Object.assign({}, c.options[id] || {}, reglage);
     }
     // L offre d attente suit le panier : sa cle devient la demande du panier
@@ -3202,6 +3255,11 @@
       // l offre a quitte le centre), la carte se retire : jamais « Ajout
       // confirmé » sur une ligne que le serveur n a pas faite.
       if (carte.kind === 'attente' && !(((j.program && j.program.items) || []).some(function (it) { return it.waitOffer === true && it.activityId === carte.patch.activityId; }))) return 'Cette offre n’est plus disponible.';
+      if (carte.kind === 'configured') {
+        var offert = ((j.program && j.program.items) || []).filter(function (it) { return it.activityId === carte.patch.activityId; })[0];
+        var contrat = offert && (offert.extraLaser || offert.upsell);
+        if (!contrat || contrat.offerId !== carte.offerId || Number(contrat.participants) !== personnesDe(carte)) return 'Cette offre n’est plus disponible.';
+      }
     }
     return '';
   }
@@ -3305,7 +3363,7 @@
       var n = personnesDe(c), tous = attendentDe(c);
       return 'Ajout confirmé : ' + nomDuPlus(c) + (n === tous ? ' pour les ' + n + ' personnes qui attendent' : ' pour ' + n + ' personne' + (n > 1 ? 's' : '') + ' pendant l’attente') + ', +' + euros(montant) + '.';
     }
-    return 'Ajout confirmé : ' + nomDuPlus(c) + (c.kind === 'laser' && c.addsLabel ? ', ' + motsServeur(c.addsLabel) : '') + ', +' + euros(montant) + '.';
+    return 'Ajout confirmé : ' + nomDuPlus(c) + (c.kind !== 'formule' ? ', ' + personnesDe(c) + ' participant' + (personnesDe(c) > 1 ? 's' : '') : '') + ', +' + euros(montant) + '.';
   }
   function statutPlus(ecran) {
     var s = plus.statut && plus.statut.ecran === ecran ? plus.statut : null;
@@ -3326,10 +3384,12 @@
       + statutPlus('recap') + '</div>';
   }
   function surPlus(e, ecran) {
+    var retry = e.target.closest('[data-plus-requote]');
+    if (retry) { var rcarte = cartesPlus().filter(function (c) { return c.id === retry.dataset.plusRequote; })[0]; if (rcarte && !plus.enCours) chiffrerDuPlus(rcarte); return true; }
     var b = e.target.closest('[data-plus]');
     if (b) {
       var carte = cartesPlus().filter(function (c) { return c.id === b.dataset.plus; })[0];
-      if (carte) changerPanier(panierDe(carte), carte, ecran, '');
+      if (carte && plusPret(carte)) changerPanier(panierDe(carte), Object.assign({}, carte, { deltaTotal: montantDe(carte) }), ecran, '');
       return true;
     }
     if (e.target.closest('[data-plus-annuler]')) {
@@ -3473,20 +3533,22 @@
     var aLaSuite = Math.max(0, Math.round(Number(plan.laserPassPlan && plan.laserPassPlan.followOnMinutes) || 0));
     var vus = {};
     parts.forEach(function (p) { vus[genreCompris(p.id)] = 1; });
-    function partiesSurPlace(id, nomR, total, posees) {
+    function partiesSurPlace(id, nomR, total, posees, participants) {
       // Toutes sans heure : seul le laser d une formule a bowling peut l etre.
       if (!(total >= 1) || posees >= total || (!posees && id !== 'laser_game')) return;
       var reste = [];
       for (var k = posees + 1; k <= total; k += 1) reste.push(String(k));
       var quelles = total === 1 ? '1 partie' : 'partie' + (reste.length > 1 ? 's ' : ' ') + joindreListe(reste, ' et ') + ' sur ' + total;
       var coupees = id === 'laser_game' ? reste.filter(function (k) { return horsParties.indexOf(k) >= 0; }) : [];
-      var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place avec l’équipe' + (id === 'laser_game' && aLaSuite ? ' · ' + environ(aLaSuite) : '')
+      var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place avec l’équipe' + (id === 'laser_game' && aLaSuite && !participants ? ' · ' + environ(aLaSuite) : '')
         + (coupees.length ? ' · ' + (coupees.length > 1 ? 'parties ' + joindreListe(coupees, ' et ') + ' : ne tiendront pas' : 'partie ' + coupees[0] + ' : ne tiendra pas') + ' avant ' + heureAffichee(fin) : '');
+      if (participants) detail = participants + ' joueur' + (participants > 1 ? 's' : '') + ' · ' + detail;
       ligneSuite({ genre: 'onsite', hors: coupees.length > 0 && coupees.length === reste.length, icone: icone(id), titre: nomR + ' · ' + quelles, detail: detail }, nomR + ', ' + quelles + ', ' + detail);
       vus[genreCompris(id)] = 1;
     }
     items.forEach(function (it) {
       partiesSurPlace(it.activityId, it.name || nomActivite(it.activityId), Number(it.games) || 0, parts.filter(function (p) { return p.id === it.activityId; }).length);
+      if (it.extraLaser) partiesSurPlace(it.activityId, it.name || nomActivite(it.activityId), Number(it.extraLaser.games), Number(it.games) || 1, Number(it.extraLaser.participants));
     });
     if (formule) partiesSurPlace('laser_game', nomActivite('laser_game'), Number(ancrages.laserGames) || 0, parts.filter(function (p) { return p.id === 'laser_game'; }).length);
     // Les activites libres d une visite, a votre rythme. Une entree a la
@@ -4089,6 +4151,7 @@
         } else {
           morceaux.push(total === 1 ? '1 partie' : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (siennes[0] && siennes[0].groupes.length > 1 ? ' par groupe' : '') : '')));
         }
+        if (it.extraLaser) morceaux.push(detailSupplementLaser(it) + ', dans la foulée');
         if (it.activityId === 'laser_game' && total >= 1 && dureeLaser()) morceaux.push(dureeLaser().jeu + ' min de jeu par partie');
         var grand = siennes.filter(function (p) { return p.groupes.length > 1; })[0];
         if (grand) morceaux.push(texteGroupes(grand, total <= 1) + (total > 1 ? ' par partie' : ''));
@@ -4171,48 +4234,107 @@
   // La photo d une offre : celle de l activite ajoutee, ou, pour une formule,
   // de ce que la formule ajoute (« 30 min d Arcades »).
   function photoDuPlus(c) { return photo(c.kind === 'formule' ? (c.addsLabel || c.name) : c.patch.activityId); }
+  function imageDuPlus(c, p, ico) {
+    var image = c.image, src = image && String(image.src || '');
+    if (src && (/^https:\/\//i.test(src) || /^\/assets\/[a-z0-9_./-]+\.(webp|png|jpe?g)$/i.test(src) || /^data:image\/(jpeg|png|webp);base64,[a-z0-9+/=]+$/i.test(src))) {
+      var x = Math.min(100, Math.max(0, Number(image.positionX) || 0)), y = Math.min(100, Math.max(0, Number(image.positionY) || 0)), z = Math.min(3, Math.max(1, Number(image.zoom) || 1));
+      return '<img src="' + esc(src) + '" alt="" decoding="async" style="object-position:' + x + '% ' + y + '%;transform:scale(' + z + ')">';
+    }
+    return p ? '<img src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async">' : '<svg><use href="#' + ico + '"/></svg>';
+  }
+  function economieDuPlus(c) {
+    var d = devisDuPlus(c), remise = d ? d.discount : c.discount;
+    if (d && d.pending) return 'Vérification du prix…';
+    if (d && d.error) return esc(d.error) + ' <button type="button" class="fg-vitrine__retry" data-plus-requote="' + esc(c.id) + '">Réessayer</button>';
+    return remise && Number(remise.discountAmount) > 0 ? 'Économie de ' + esc(euros(remise.discountAmount)) : '';
+  }
+  function rafraichirPrixDuPlus(c) {
+    var carte = $$('[data-plus]').filter(function (b) { return b.dataset.plus === c.id; })[0];
+    if (!carte) return;
+    var li = carte.closest('.fg-vitrine__carte'), d = devisDuPlus(c);
+    $('.fg-vitrine__prix', li).textContent = d && d.pending ? '…' : d && d.error ? '—' : '+' + euros(montantDe(c));
+    $('.fg-vitrine__economie', li).innerHTML = economieDuPlus(c);
+    carte.disabled = Boolean(plus.enCours) || !plusPret(c);
+    carte.setAttribute('aria-label', 'Ajouter ' + nomDuPlus(c) + ' pour ' + euros(montantDe(c)) + ' de plus');
+  }
+  function chiffrerDuPlus(c) {
+    var ancien = plus.demandes[c.id];
+    if (ancien) ancien.abort();
+    var controller = new AbortController(), cr = state.creneau, cle = cleDemande(), n = personnesDe(c);
+    plus.demandes[c.id] = controller;
+    var devis = { cle: cle, cr: cr, participants: n, pending: true };
+    plus.devis[c.id] = devis;
+    rafraichirPrixDuPlus(c);
+    var panier = panierDe(c), url = avecPanier(panier, urlDispo);
+    fetch(url, { credentials: 'omit', headers: enteteBlocage(), signal: controller.signal }).then(function (r) { if (!r.ok) throw new Error('Cette offre ne peut pas être chiffrée.'); return r.json(); })
+      .then(function (j) {
+        if (controller.signal.aborted || plus.devis[c.id] !== devis || state.creneau !== cr || cleDemande() !== cle) return;
+        var refus = refusDuPlus(j, cr, Object.assign({}, c, { deltaTotal: Number.MAX_VALUE }));
+        devis.pending = false;
+        if (refus) devis.error = refus;
+        else {
+          var price = Number(j.slots[0].price != null ? j.slots[0].price : j.price), original = Number(cr.reponse.price);
+          if (!Number.isFinite(price) || !Number.isFinite(original) || price < original) { devis.error = 'Cette offre ne peut pas être chiffrée.'; rafraichirPrixDuPlus(c); return; }
+          devis.deltaTotal = Math.round((price - original) * 100) / 100;
+          var item = ((j.program && j.program.items) || []).filter(function (it) { return it.activityId === c.patch.activityId; })[0];
+          devis.discount = item && (item.extraLaser || item.upsell);
+        }
+        rafraichirPrixDuPlus(c);
+      }).catch(function (error) {
+        if (controller.signal.aborted || plus.devis[c.id] !== devis || state.creneau !== cr || cleDemande() !== cle) return;
+        devis.pending = false; devis.error = 'Prix indisponible. Réessayez avec le compteur.';
+        rafraichirPrixDuPlus(c);
+      });
+  }
   function carteVitrine(c, i) {
     var p = photoDuPlus(c);
     var ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
     var attente = c.kind === 'attente';
     var duree = attente ? Math.trunc(Number((c.attente || {}).dureeOffre) || 0) : 0;
     var quoi = attente ? (duree ? dureeExacte(duree) + ' ' : '') + 'pendant l’attente de votre tour' : motsServeur(c.addsLabel);
+    if (c.kind === 'configured') {
+      var option = (c.patch && c.patch.options) || {};
+      quoi = option.extraLaser ? quoi.replace(/ · \d+ joueurs$/, '') : option.duration ? heuresLabel(option.duration) : option.hours ? heuresLabel(option.hours) : option.minutes ? minutesLabel(option.minutes) : '';
+      if (option.arcadeOfferId) { var ar = avecPanier(panierDe(c), function () { return reglageArcade(activite(c.patch.activityId)); }); if (ar) quoi = ar.mode === 'time' ? minutesLabel(ar.offer.minutes) + ' par carte' : credits(Number(ar.offer.credits) + Number(ar.offer.bonusCredits || 0)) + ' crédits par carte'; }
+    }
     var att = c.attente || {};
     // Sans prix par personne, comme les autres offres de la fenetre (Movsar,
     // 2026-09-29) : le compteur et le montant de la carte disent tout.
     var note = attente
       ? attendentDe(c) + ' personne' + (attendentDe(c) > 1 ? 's attendent' : ' attend') + ' leur tour' + (Number(att.minutes) > 0 ? ' (' + dureeExacte(att.minutes) + ')' : '')
-      : [c.totalLabel, c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
-    var n = attente ? personnesDe(c) : 0;
-    var qui = attente ? '<span class="fg-vitrine__qui"><span class="fg-vitrine__quimot" id="qui-' + esc(c.id) + '">Personnes</span>'
+      : [personnesDe(c) === (Number(c.participants) || bornesDuPlus(c).max) ? c.totalLabel : '', c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
+    var bornes = bornesDuPlus(c), n = personnesDe(c), d = devisDuPlus(c);
+    var qui = c.kind !== 'formule' ? '<span class="fg-vitrine__qui"><span class="fg-vitrine__quimot" id="qui-' + esc(c.id) + '">' + (seCompteParEnfant(activite(c.patch.activityId)) ? 'Enfants' : 'Joueurs') + '</span>'
       + '<span class="fg-stepper fg-vitrine__stepper" role="group" aria-labelledby="qui-' + esc(c.id) + '">'
-      + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="-1" data-carte="' + esc(c.id) + '" aria-label="Une personne de moins"' + (n <= 1 ? ' disabled' : '') + '>&minus;</button>'
+      + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="-1" data-carte="' + esc(c.id) + '" aria-label="Une personne de moins"' + (n <= bornes.min ? ' disabled' : '') + '>&minus;</button>'
       + '<output class="fg-vitrine__n" aria-live="polite">' + n + '</output>'
-      + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="1" data-carte="' + esc(c.id) + '" aria-label="Une personne de plus"' + (n >= attendentDe(c) ? ' disabled' : '') + '>+</button>'
-      + '</span></span>' : '';
+      + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="1" data-carte="' + esc(c.id) + '" aria-label="Une personne de plus"' + (n >= bornes.max ? ' disabled' : '') + '>+</button>'
+      + '</span></span><small class="fg-vitrine__validite">' + (bornes.min === bornes.max ? bornes.min + ' participant' + (bornes.min > 1 ? 's' : '') : 'De ' + bornes.min + ' à ' + bornes.max + ' participants') + '</small>' : '';
     return '<li class="fg-vitrine__carte" style="--i:' + i + '">'
-      + '<span class="fg-vitrine__photo" aria-hidden="true">' + (p ? '<img src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async">' : '<svg><use href="#' + ico + '"/></svg>') + '</span>'
+      + '<span class="fg-vitrine__photo" aria-hidden="true">' + imageDuPlus(c, p, ico) + '</span>'
       + '<span class="fg-vitrine__corps"><b class="fg-vitrine__nom"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>' + esc(nomDuPlus(c)) + '</b>'
       + (quoi ? '<span class="fg-vitrine__quoi">' + esc(quoi) + '</span>' : '')
       + (note ? '<small class="fg-vitrine__note">' + esc(note) + '</small>' : '') + qui + '</span>'
-      + '<span class="fg-vitrine__achat"><b class="fg-vitrine__prix">+' + esc(euros(montantDe(c))) + '</b>'
-      + '<button type="button" class="fg-btn fg-vitrine__ajouter" data-plus="' + esc(c.id) + '" aria-label="Ajouter ' + esc(nomDuPlus(c)) + ' pour ' + esc(euros(montantDe(c))) + ' de plus">Ajouter</button></span></li>';
+      + '<span class="fg-vitrine__achat"><span><b class="fg-vitrine__prix">' + (d && d.pending ? '…' : '+' + esc(euros(montantDe(c)))) + '</b><small class="fg-vitrine__economie">' + economieDuPlus(c) + '</small></span>'
+      + '<button type="button" class="fg-btn fg-vitrine__ajouter" data-plus="' + esc(c.id) + '"' + (!plusPret(c) ? ' disabled' : '') + ' aria-label="Ajouter ' + esc(nomDuPlus(c)) + ' pour ' + esc(euros(montantDe(c))) + ' de plus">Ajouter</button></span></li>';
   }
   // Le compteur d une offre d attente : le nombre, le prix et le bouton
   // suivent sur place, sans redessiner la fenetre (le focus reste).
   function changerPersonnes(btn) {
     var c = cartesPlus().filter(function (x) { return x.id === btn.dataset.carte; })[0];
     if (!c) return;
-    var n = Math.min(attendentDe(c), Math.max(1, personnesDe(c) + Number(btn.dataset.vitrinePas)));
+    if (plus.enCours) return;
+    var bornes = bornesDuPlus(c), n = Math.min(bornes.max, Math.max(bornes.min, personnesDe(c) + Number(btn.dataset.vitrinePas)));
     plus.personnes[c.id] = n;
     var carte = btn.closest('.fg-vitrine__carte');
+    var note = $('.fg-vitrine__note', carte);
+    if (note && c.kind !== 'attente') note.textContent = motsServeur(c.noteLabel || '');
     $('.fg-vitrine__n', carte).textContent = String(n);
-    $('[data-vitrine-pas="-1"]', carte).disabled = n <= 1;
-    $('[data-vitrine-pas="1"]', carte).disabled = n >= attendentDe(c);
-    $('.fg-vitrine__prix', carte).textContent = '+' + euros(montantDe(c));
-    $('.fg-vitrine__ajouter', carte).setAttribute('aria-label', 'Ajouter ' + nomDuPlus(c) + ' pour ' + euros(montantDe(c)) + ' de plus');
+    $('[data-vitrine-pas="-1"]', carte).disabled = n <= bornes.min;
+    $('[data-vitrine-pas="1"]', carte).disabled = n >= bornes.max;
+    chiffrerDuPlus(c);
     if ((btn.disabled) && $('[data-vitrine-pas]:not([disabled])', carte)) $('[data-vitrine-pas]:not([disabled])', carte).focus({ preventScroll: true });
-    dire(n + ' personne' + (n > 1 ? 's' : '') + ', ' + euros(montantDe(c)) + '.');
+    dire(n + ' personne' + (n > 1 ? 's' : '') + ', vérification du prix.');
   }
   // `calme` : redessinee apres un refus, ses cartes ne rejouent pas leur entree.
   function rendreVitrine(calme) {
@@ -4225,6 +4347,7 @@
     vitrineStatut.dataset.ton = s ? s.ton : '';
     $('.fg-vitrine__non', vitrine).textContent = cartes.length ? 'Non merci' : 'Fermer';
     placerVitrine(false);
+    cartes.forEach(function (c) { if (c.kind !== 'formule' && !devisDuPlus(c) && !plusPret(c)) chiffrerDuPlus(c); });
   }
   function placerVitrine(demander) {
     if (!EMBED || !vitrineOuverte()) return;
@@ -4279,6 +4402,7 @@
       if (e.target.closest('[data-vitrine-fermer]')) { fermerVitrine(true); return; }
       var pas = e.target.closest('[data-vitrine-pas]');
       if (pas) { if (!pas.disabled) changerPersonnes(pas); return; }
+      if (e.target.closest('[data-plus-requote]')) { surPlus(e, 'recap'); return; }
       var b = e.target.closest('[data-plus]');
       if (!b || b.disabled) return;
       b.classList.add('is-busy');
@@ -4477,7 +4601,7 @@
     var quoi = nomsChoisis();
     var repFin = (state.creneau || {}).reponse || {};
     var itemsFin = r.program && r.program.items ? r.program.items : (repFin.program && repFin.program.items) || [];
-    if (state.onglet !== 'formules' && itemsFin.length) quoi = itemsFin.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + participantsLigne(it) + (it.arcadeOffer ? ' · ' + detailArcade(it) : '') + ')'; }).join(' + ');
+    if (state.onglet !== 'formules' && itemsFin.length) quoi = itemsFin.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + participantsLigne(it) + (it.arcadeOffer || it.extraLaser ? ' · ' + detailLigne(it) : '') + ')'; }).join(' + ');
     var prixComplet = !repFin.program || repFin.program.priceComplete !== false;
     var comms = Array.isArray(reponse.communications) ? reponse.communications : [];
     var mailQ = comms.filter(function (c) { return c && c.channel === 'email' && c.status !== 'draft' && (c.templateId === 'confirmation' || c.templateId === 'request_received'); })[0];
@@ -4725,7 +4849,7 @@
       .catch(function () {});
   }
   doc.addEventListener('visibilitychange', function () { if (!doc.hidden) rafraichirCatalogue(); });
-  setInterval(function () { if (sceneCourante === 'activites' || sceneCourante === 'heures' || sceneCourante === 'sm-envies') rafraichirCatalogue(); }, 10000);
+  setInterval(function () { if (sceneCourante === 'activites' || sceneCourante === 'heures' || sceneCourante === 'sm-envies') rafraichirCatalogue(); if(!doc.hidden && sceneCourante==='activites' && state.onglet==='formules')chargerDurees(); }, 10000);
   $('#goActivities').addEventListener('click', function () { rafraichirCatalogue(); });
 
   /* --- Le demarrage ----------------------------------------------------------------- */

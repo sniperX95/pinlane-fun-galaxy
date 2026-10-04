@@ -125,13 +125,13 @@ function appel(api, programme, pax) {
 async function avecMutation(rel, de, vers, run) {
   const fichier = path.join(ROOT, rel);
   const original = fs.readFileSync(fichier, 'utf8');
-  const fin = original.includes('\r\n') ? '\r\n' : '\n';
-  const ancre = de.replace(/\r?\n/g, fin);
-  const remplacement = vers.replace(/\r?\n/g, fin);
-  const n = original.split(ancre).length - 1;
+  const normalized = original.replace(/\r\n/g, '\n');
+  const ancre = de.replace(/\r\n/g, '\n');
+  const remplacement = vers.replace(/\r\n/g, '\n');
+  const n = normalized.split(ancre).length - 1;
   if (n !== 1) throw new Error(`ancre trouvee ${n} fois dans ${rel}`);
   try {
-    fs.writeFileSync(fichier, original.split(ancre).join(remplacement));
+    fs.writeFileSync(fichier, normalized.split(ancre).join(remplacement));
     return await run();
   } finally {
     fs.writeFileSync(fichier, original);
@@ -307,14 +307,18 @@ async function serveurA() {
 // est servie en memoire a la place du fichier : le disque n est pas touche.
 // ---------------------------------------------------------------------------
 let formulaireCasse = null;
+let instrumenterPlus = false;
 function serveur(mock) {
   const base = mock.createServer({ port: PORT });
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, BASE_URL);
-    if (formulaireCasse && url.pathname === '/assets/fungalaxy-booking.js') {
+    if ((formulaireCasse || instrumenterPlus || process.env.PINLANE_PLUS_BUILT === '1') && url.pathname === '/assets/fungalaxy-booking.js') {
       const src = fs.readFileSync(path.join(ROOT, 'assets/fungalaxy-booking.js'), 'utf8').replace(/\r\n/g, '\n');
       res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(src.split(formulaireCasse.de).join(formulaireCasse.vers));
+      let served = formulaireCasse ? src.split(formulaireCasse.de).join(formulaireCasse.vers) : src;
+      if (instrumenterPlus) served = served.replace('\n})();', '\nwindow.__plusTest = { setCards: function(cards) { state.creneau.reponse.complements = cards; rendreVitrine(true); }, basket: panierDe, cards: cartesPlus, detail: detailLigne };\n})();');
+      if (process.env.PINLANE_PLUS_BUILT === '1') served = require('../tools/build-public').minifierJavascript(served,'assets/fungalaxy-booking.js',require('esbuild'));
+      res.end(served);
       return;
     }
     base.emit('request', req, res);
@@ -645,8 +649,8 @@ function verifierRecap(res, etiquette) {
   const r0 = res.r0 || { offres: [], montants: [], cartes: [], photos: [] };
   ok(res.auto && r0.fenetre && r0.focus === 'vitrinePanneau' && r0.inerte,
     'a l arrivee au recapitulatif, la fenetre « Envie d un peu plus ? » s ouvre d elle-meme, le focus dedans, la page derriere inerte', JSON.stringify({ auto: res.auto, focus: r0.focus, inerte: r0.inerte }));
-  ok(cartes.length >= 1 && cartes.length <= 2 && r0.titre === 'Envie d’un peu plus ?' && r0.offres.join(' ') === cartes.map((c) => c.id).join(' '),
-    'deux offres au plus, celles du serveur, dans son ordre', `${r0.offres.join(' ')} · « ${r0.titre} »`);
+  ok(cartes.length >= 1 && cartes.length <= 6 && r0.titre === 'Envie d’un peu plus ?' && r0.offres.join(' ') === cartes.map((c) => c.id).join(' '),
+    'offres variees, au plus six, celles du serveur dans son ordre', `${r0.offres.join(' ')} · « ${r0.titre} »`);
   ok(cartes.length > 0 && cartes.every((c, i) => r0.montants[i] === `+${euros(c.deltaTotal)}`), 'chacune dit son montant exact', r0.montants.join(' | '));
   ok(r0.cartes.length === cartes.length && r0.cartes.every((t) => !/par personne/.test(t)), 'aucun prix par personne sur les offres', r0.cartes.join(' | '));
   ok(r0.photos.length === cartes.length && r0.photos.every((p) => p === 'photo'), 'chaque offre a sa photo, chargee', r0.photos.join(' '));
@@ -704,8 +708,113 @@ function verifierRefus(res, attendu) {
   return refuse;
 }
 
+async function personnalisationPlus(browser, mock) {
+  section('[F] QUANTITES, DEVIS AUTORITAIRES ET REPONSES TARDIVES');
+  instrumenterPlus = true;
+  let s;
+  try {
+    s = await jusquAuxHoraires(browser, mock, { pax: 6, activites: ['bowling', 'laser_game'], largeur: 390, hauteur: 844, etiquette: 'personnalisation' });
+    const { page } = s;
+    const rep = derniere(s.reponses);
+    ok(s.pret && await remplirContact(page), 'montage personnalisation mobile');
+    await attendre(page, () => !document.querySelector('#vitrine').hidden, 5000);
+    const card = { id: 'offer:mini', offerId: 'mini', kind: 'configured', name: 'Minigolf', participants: 6, deltaTotal: 54,
+      participantBounds: { min: 2, max: 6 }, discount: { discountAmount: 6 }, image: { src: '/assets/fungalaxy/minigolf-800.webp', positionX: 30, positionY: 70, zoom: 1.2 },
+      patch: { activityId: 'minigolf_blacklight', options: { participants: 6, upsell: { offerId: 'mini', participants: 6 } } } };
+    await page.evaluate(c => window.__plusTest.setCards([c]), card);
+    const quantities = [];
+    let mode = 'per-person';
+    await page.route('**/api/public-availability*', async route => {
+      const raw = JSON.parse(new URL(route.request().url()).searchParams.get('program'));
+      const added = raw.find(i => i.upsell);
+      if (!added) return route.continue();
+      const n = added.participants;
+      quantities.push({ n, raw });
+      const j = JSON.parse(JSON.stringify(rep));
+      const price = mode === 'free' ? 0 : mode === 'nonlinear' ? 35.1 : n * 9;
+      const snapshot = { offerId: 'mini', participants: n, discountAmount: mode === 'free' ? n * 10 : mode === 'nonlinear' ? 3.9 : n, referencePrice: mode === 'nonlinear' ? 39 : n * 10, price };
+      j.price = rep.price + price;
+      j.slots[0].price = j.price;
+      j.program.items.push({ ...added, upsell: snapshot, price, priceKnown: true });
+      if (mode === 'missing') delete j.program.items[j.program.items.length - 1].upsell;
+      if (mode === 'fail') return route.fulfill({ status: 503, body: '{}' });
+      if (mode === 'stale') await new Promise(resolve => setTimeout(resolve, n === 5 ? 300 : 30));
+      try { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(j) }); } catch (_) { /* Old request aborted by the real form. */ }
+    });
+    const tile = page.locator('#vitrine .fg-vitrine__carte').first();
+    await tile.locator('[data-vitrine-pas="-1"]').click();
+    await attendre(page, () => document.querySelector('#vitrine .fg-vitrine__prix').textContent === '+45 €', 4000);
+    ok((await tile.locator('.fg-vitrine__economie').innerText()) === 'Économie de 5 €', 'pour cinq, le serveur annonce 45 EUR et 5 EUR economises, meme pourcentage');
+    ok(quantities[0].raw.some(i => i.upsell && i.participants === 5 && i.upsell.participants === 5 && !('discountAmount' in i.upsell)), 'le programme demande cinq participants sans jamais envoyer de remise calculee');
+    mode = 'stale';
+    await tile.locator('[data-vitrine-pas="1"]').click();
+    await tile.locator('[data-vitrine-pas="-1"]').click();
+    await tile.locator('[data-vitrine-pas="-1"]').click();
+    ok(await tile.locator('[data-plus]').isDisabled(), 'Ajouter est desactive pendant le devis courant');
+    await attendre(page, () => document.querySelector('#vitrine .fg-vitrine__prix').textContent === '+36 €', 4000);
+    await page.waitForTimeout(450);
+    ok((await tile.locator('.fg-vitrine__prix').innerText()) === '+36 €' && (await tile.locator('.fg-vitrine__n').innerText()) === '4', 'la reponse tardive pour cinq ne remplace pas le devis pour quatre');
+    mode = 'nonlinear';
+    await tile.locator('[data-vitrine-pas="-1"]').click();
+    await attendre(page, () => document.querySelector('#vitrine .fg-vitrine__prix').textContent === '+35,1 €', 4000);
+    ok((await tile.locator('.fg-vitrine__prix').innerText()) === '+35,1 €', 'une unite indivisible conserve le montant autoritaire, aucun prorata client');
+    mode = 'fail';
+    await tile.locator('[data-vitrine-pas="-1"]').click();
+    await attendre(page, () => Boolean(document.querySelector('[data-plus-requote]')), 4000);
+    ok(await tile.locator('[data-plus]').isDisabled() && await tile.locator('[data-vitrine-pas="-1"]').isDisabled(), 'au minimum refuse, impossible d ajouter, le compteur respecte la borne');
+    mode = 'per-person';
+    await tile.locator('[data-plus-requote]').click();
+    await attendre(page, () => !document.querySelector('#vitrine [data-plus]').disabled, 4000);
+    ok((await tile.locator('.fg-vitrine__prix').innerText()) === '+18 €', 'Reessayer rechiffre au minimum sans changer le nombre');
+    mode = 'missing';
+    await tile.locator('[data-vitrine-pas="1"]').click();
+    await attendre(page, () => Boolean(document.querySelector('[data-plus-requote]')), 4000);
+    ok(await tile.locator('[data-plus]').isDisabled() && (await tile.locator('.fg-vitrine__economie').innerText()).includes('Cette offre n’est plus disponible.'), 'aucun ajout si le serveur ne confirme plus le contrat configure');
+    mode = 'per-person';
+    await tile.locator('[data-vitrine-pas="-1"]').click();
+    await attendre(page, () => !document.querySelector('#vitrine [data-plus]').disabled, 4000);
+    const basket = await page.evaluate(c => window.__plusTest.basket(c), { ...card, patch: { activityId: 'laser_game', options: { extraLaser: { offerId: 'extra', participants: 2, games: 2 } } } });
+    ok(Number(basket.options.laser_game.games || 1) === 1 && basket.options.laser_game.extraLaser.participants === 2 && basket.options.laser_game.extraLaser.games === 2, 'le supplement laser garde la partie de base et ajoute seulement le sous-groupe choisi');
+    const detail = await page.evaluate(() => window.__plusTest.detail({ games: 1, extraLaser: { games: 2, participants: 2 } }));
+    ok(detail === '1 partie + 1 partie supplémentaire pour 2 joueurs', 'le recapitulatif explique exactement la partie originale et les participants au supplement');
+    mode='free';await tile.locator('[data-vitrine-pas="1"]').click();
+    await attendre(page,()=>document.querySelector('#vitrine .fg-vitrine__prix').textContent==='+0 €',4000);
+    ok(!await tile.locator('[data-plus]').isDisabled()&&(await tile.locator('.fg-vitrine__economie').innerText())==='Économie de 30 €','une remise autoritaire de cent pour cent reste ajoutable et affiche son economie entiere');
+    ok(s.erreurs.length === 0, 'aucune erreur JS dans la personnalisation');
+  } finally { instrumenterPlus = false; if (s) await s.ctx.close(); }
+}
+
+async function laserSousGroupe(browser, mock) {
+  section('[G] LASER : SOUS-GROUPE, ENVOI ET RECU');
+  const s = await jusquAuxHoraires(browser, mock, { pax: 6, activites: ['bowling', 'laser_game'], largeur:390, hauteur:844, etiquette:'laser-subgroup-receipt' });
+  try {
+    const {page}=s;
+    const initial=derniere(s.reponses);
+    const card=(initial.complements||[]).find(c=>c.kind==='laser');
+    ok(s.pret&&Boolean(card)&&await remplirContact(page),'montage supplement laser reel');
+    await attendre(page,()=>!document.querySelector('#vitrine').hidden,5000);
+    const tile=page.locator(`#vitrine .fg-vitrine__carte:has([data-plus="${card.id}"])`);
+    for(let k=0;k<4;k++)await tile.locator('[data-vitrine-pas="-1"]').click();
+    await attendre(page,id=>!document.querySelector(`[data-plus="${id}"]`).disabled,6000,card.id);
+    const shown=await tile.locator('.fg-vitrine__prix').innerText();
+    await tile.locator('[data-plus]').click();
+    await attendre(page,()=>document.querySelector('#vitrine').hidden&&document.querySelector('#plus-recap .fg-plus__statut')?.dataset.ton==='ok',15000);
+    const recap=await lireRecapPlus(page);
+    ok(recap.total===Number(initial.price)+16&&shown==='+16 €','seuls les deux joueurs paient le supplement catalogue, total exact');
+    ok(recap.items.join(' ').includes('1 partie supplémentaire pour 2 joueurs'),'le recapitulatif conserve les joueurs originaux et explique le supplement pour deux');
+    await page.click('#confirmBtn');
+    await attendre(page,()=>document.querySelector('.fg-scene[data-scene="fin"].is-active'),15000);
+    const raw=mock.dernierePose.body||{};
+    const laser=(raw.program||[]).find(i=>i.activityId==='laser_game')||{};
+    ok(Number(laser.games||1)===1&&(laser.participants==null||laser.participants===6)&&laser.extraLaser?.participants===2&&laser.extraLaser.games===2,'l envoi preserve les six participants de base et une partie, plus le sous-groupe distinct');
+    const receipt=await page.locator('#finBody').innerText();
+    ok(receipt.includes('1 partie supplémentaire pour 2 joueurs')&&Number(raw.price)===recap.total,'le vrai recu de succes conserve le supplement et le prix affiche');
+    ok(s.erreurs.length===0,'aucune erreur JS dans le parcours laser et recu');
+  }finally{await s.ctx.close();}
+}
+
 async function main() {
-  const serveurRes = await serveurA();
+  const serveurRes = process.env.PINLANE_PLUS_BROWSER_ONLY === '1' ? { grand: 20 } : await serveurA();
   const mock = require('./dev-tunnel-server');
   const { chromium } = require('playwright-core');
   const srv = await serveur(mock);
@@ -717,6 +826,8 @@ async function main() {
     verifierAttenteNonPosee(await attenteNonPosee(browser, mock, { grand: serveurRes.grand, etiquette: 'attente-non-posee' }), true);
     verifierRecap(await recapC(browser, mock, {}), 'bureau');
     verifierRecap(await recapC(browser, mock, { largeur: 390, hauteur: 844, etiquette: 'telephone' }), 'telephone 390 px');
+    await personnalisationPlus(browser, mock);
+    await laserSousGroupe(browser, mock);
     section('[C] LE TARIF QUI A CHANGE');
     verifierRefus(await recapC(browser, mock, { casse: true, etiquette: 'refus' }), true);
     section('[C] LE CRENEAU REFUSE A L ENVOI');
@@ -740,8 +851,8 @@ async function main() {
         label: 'sans le retrait des offres, « Vos horaires ne bougent pas » reste sous le refus : ce gate ROUGIRAIT',
       },
       {
-        de: '    return Math.min(max, Math.max(1, v > 0 ? v : max));\n',
-        vers: '    return max;\n',
+        de: '    return Math.min(bornes.max, Math.max(bornes.min, v > 0 ? v : bornes.max));\n',
+        vers: '    return bornes.max;\n',
         jouer: async () => !verifierAttente(await attenteParcours(browser, mock, { grand: serveurRes.grand, etiquette: 'attente-compteur-casse' }), false),
         label: 'sans le nombre choisi, le compteur ne change ni le montant ni la demande : ce gate ROUGIRAIT',
       },

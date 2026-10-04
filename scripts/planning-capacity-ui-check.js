@@ -178,4 +178,5 @@ async function main() {
   if (failures) { console.error(`\nplanning-capacity-ui-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nplanning-capacity-ui-check: ALL OK');
 }
-main();
+if (require.main === module) main();
+module.exports = { serveStatic, installMock, applyMode };

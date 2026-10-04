@@ -92,6 +92,7 @@ Module.prototype._compile = function (contenu, nom) {
 const base = {
   reservations: new Map(),
   holds: new Map(),
+  centers: [],
   seqRes: 5000,
   seqHold: 0,
   horloge: Date.now(),
@@ -180,11 +181,19 @@ async function sqlBlocages(tx, s, p) {
       .map((h) => ({ id: h.id, payload: clone(h.payload), expires_at: new Date(h.expires_at) }));
     return { rows, rowCount: rows.length };
   }
-  if (/^select payload from slot_holds where token_hash = \$1 and center_id = \$2 and date = \$3 and released_at is null and expires_at > now\(\) order by id desc limit 1;?$/.test(s)) {
+  if (/^select payload from slot_holds where token_hash = \$1 and center_id = \$2 and date = \$3 (?:and ip_hash = \$4 )?and released_at is null and expires_at > now\(\) order by id desc limit 1;?$/.test(s)) {
     const rows = [...vue(tx, 'holds').values()]
-      .filter((h) => h.token_hash === p[0] && h.center_id === p[1] && h.date === p[2] && ACTIF(h))
+      .filter((h) => h.token_hash === p[0] && h.center_id === p[1] && h.date === p[2] && (p.length < 4 || h.ip_hash === p[3]) && ACTIF(h))
       .sort((a, b) => b.id - a.id).slice(0, 1)
       .map((h) => ({ payload: clone(h.payload) }));
+    return { rows, rowCount: rows.length };
+  }
+  if (s.startsWith('select payload from slot_holds where token_hash = $1 and center_id = $2 and date = $3 and ip_hash = $4 and (released_at is null and expires_at > now()')) {
+    const converted = s.includes("release_reason = 'converted'");
+    const reservations = vue(tx, 'reservations');
+    const rows = [...vue(tx, 'holds').values()].filter(h => h.token_hash === p[0] && h.center_id === p[1] && h.date === p[2] && h.ip_hash === p[3]
+      && (ACTIF(h) || (converted && h.release_reason === 'converted' && reservations.has(h.reservation_id) && reservations.get(h.reservation_id).status !== 'cancelled')))
+      .sort((a,b) => b.id-a.id).slice(0,1).map(h => ({ payload: clone(h.payload) }));
     return { rows, rowCount: rows.length };
   }
   if (/^select r\.\* from slot_holds h join reservations r on r\.id = h\.reservation_id where h\.token_hash = \$1 and h\.release_reason = 'converted' and r\.status <> 'cancelled' order by h\.id desc limit 1;?$/.test(s)) {
@@ -279,6 +288,7 @@ class FauxClient {
   async query(sql, params = []) {
     await tick();
     const s = String(sql).replace(/\s+/g, ' ').trim();
+    if (s === 'select id, name, status, timezone, settings from centers;') return { rows: clone(base.centers), rowCount: base.centers.length };
     if (s === 'BEGIN') { this.tx = new Transaction(); return vide(); }
     if (s === 'COMMIT' || s === 'ROLLBACK') {
       const tx = this.tx;

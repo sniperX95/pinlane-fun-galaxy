@@ -338,9 +338,35 @@ module.exports = async (req, res) => {
     if (rawType === 'durees') {
       const { proposedArrivals, dureesSurPlace } = require('../lib/availability-slots');
       const durees = {};
+      const formulaAvailability = {};
+      let liveSnapshot = null;
       for (const f of getEffectiveFormules(centerId)) {
         const document = getFormula(f.id);
-        if (!document || String(document.orderPolicy || '') === 'open_window') continue;
+        const calendar = getFormuleAvailability(f, date, pax, '', centerDoc);
+        if (!calendar.ok) formulaAvailability[f.id] = { available: false, reason: calendar.message, code: 'calendar' };
+        if (!document) continue;
+        if (String(document.orderPolicy || '') === 'open_window') {
+          if (!calendar.ok) continue;
+          const schedule = getSchedule(date, centerDoc);
+          const window = schedule && getFormuleArrivalWindow(f, schedule);
+          let reason = !schedule ? 'Le centre est fermé à cette date.' : '';
+          let slots = [];
+          if (schedule && window) {
+            const minTime = Math.max(window.earliestStart, date === todayStr() ? roundUpHalfHour(currentTimeDecimal()) : window.earliestStart);
+            const maxTime = window.latestStart;
+            if (minTime > maxTime) reason = `${f.name} : plus aucune arrivée disponible avant ${numToTime(Number(f.timeLimit?.max || schedule.close))}.`;
+            else {
+              liveSnapshot ||= await readAvailabilitySnapshot(date, centerId, { saufJeton: String(req.headers['x-pinlane-hold'] || '').trim() });
+              const duration = getFormuleLaneDuration(f);
+              const guardContext = { centerId, date, type: 'formule', formuleId: f.id, pax, duration, totalDuration: formulaOccupiedDuration(f, schedule), laneCount: getRequiredLaneCount('formule', pax, f.id, centerDoc.resources.bowling), requiresLanes: reservationNeedsLanes('formule', f.id), label: f.name, snapshot: liveSnapshot };
+              slots = plannedArrivalSlots({ centerId, date, type: 'formule', formuleId: f.id, pax, duration, minTime, maxTime, preference: { arrivalConfidence: 'normal' }, pauseMinutes: 0, snapshot: liveSnapshot, guardContext });
+              if (isFormulaFullyBlockedOn(liveSnapshot.blocks || [], date, f.id)) slots = [];
+              if (!slots.length) reason = `${f.name} : aucune arrivée disponible pendant la période de cette formule.`;
+            }
+          }
+          formulaAvailability[f.id] = { available: slots.length > 0, reason, code: slots.length ? '' : 'no_slots' };
+          continue;
+        }
         const groupe = Math.max(pax, Math.trunc(Number(f.minPax) || 1));
         // Un jour ou la formule ne se prend pas (ses jours, les vacances) : sa
         // duree se lit au prochain jour ou elle se prend, 14 jours au plus. Ce
@@ -354,7 +380,7 @@ module.exports = async (req, res) => {
         }
         if (d) durees[f.id] = d;
       }
-      sendJson(res, 200, { ok: true, date, pax, durees });
+      sendJson(res, 200, { ok: true, date, pax, durees, formulaAvailability });
       return;
     }
     const formuleId = String(url.searchParams.get('formuleId') || '');
@@ -389,6 +415,8 @@ module.exports = async (req, res) => {
     // Panier de la visite. JSON malforme = panier vide (message clair), jamais
     // une 500 : cet endpoint est public et sa robustesse prime sur le diagnostic.
     let programInput = [];
+    let upsellChoices = {};
+    try { const rawChoices = JSON.parse(String(url.searchParams.get('upsellChoices') || '{}')); if (rawChoices && !Array.isArray(rawChoices) && typeof rawChoices === 'object' && Object.keys(rawChoices).length <= 6) upsellChoices = rawChoices; } catch (_) { /* Invalid optional choices do not alter the requested booking. */ }
     try {
       programInput = JSON.parse(String(url.searchParams.get('program') || '[]')) || [];
     } catch (error) {
@@ -891,6 +919,7 @@ module.exports = async (req, res) => {
               pax,
               program,
               retainedSlot,
+              upsellChoices,
               attente: attenteDuPlan(retainedSlot),
               priceOptions: { bowlingConfig: operationalBowlingConfig || centerBowlingConfig, dateStr: date },
               reservations: snapshot.reservations,
@@ -1345,6 +1374,7 @@ module.exports = async (req, res) => {
           { reservations: snapshot.reservations, laneStatuses: snapshot.laneStatuses, blocks: snapshot.blocks || [] },
         );
         if (probe && probe.plan && probe.plan.reason) emptyMessage = probe.plan.reason;
+        if (date === todayStr() && minTime > maxTime) emptyMessage = `${formule.name} : plus aucune arrivée disponible avant ${numToTime(Number(formule.timeLimit?.max || schedule.close))}.`;
       }
       // UNE FORMULE SANS ANCRE N A PAS DE COMBINAISON PAR DEFAUT : le client
       // choisit une heure d arrivee dans la liste, et rien avant ce clic ne dit

@@ -55,10 +55,17 @@ mockModule('../lib/rate-limit', {
 const bookingConfig = require('../lib/booking-config');
 const realGetSchedule = bookingConfig.getSchedule;
 let scheduleOverride = null;
+let todayOverride = null;
+let clockOverride = null;
+const realToday = bookingConfig.todayStr;
+const realClock = bookingConfig.currentTimeDecimal;
+bookingConfig.todayStr = () => todayOverride || realToday();
+bookingConfig.currentTimeDecimal = () => clockOverride ?? realClock();
 bookingConfig.getSchedule = (date, center) => (scheduleOverride ? scheduleOverride(date, center) : realGetSchedule(date, center));
 
 const database = require('../lib/database');
-database.readAvailabilitySnapshot = async (args) => ({ reservations: [], laneStatuses: {}, blocks: [], date: (args && args.date) || '', centerId: 'libramont' });
+let fixtureBlocks = [];
+database.readAvailabilitySnapshot = async (args) => ({ reservations: [], laneStatuses: {}, blocks: fixtureBlocks, date: (args && args.date) || '', centerId: 'libramont' });
 const availability = require('../api/public-availability.js');
 const { planningAgent } = require('../lib/ops-agents');
 
@@ -173,6 +180,16 @@ async function main() {
     } finally {
       scheduleOverride = null;
     }
+    todayOverride = SAMEDI; clockOverride = 12.01;
+    const elapsed = await get('/api/public-availability?' + params('mm', SAMEDI));
+    ok(heures(elapsed).length === 0 && /plus aucune.*12:00/i.test(elapsed.message || ''), 'MATIN MALIN après midi : aucune arrivée et raison explicite');
+    const elapsedCards = await get('/api/public-availability?' + new URLSearchParams({ date: SAMEDI, type: 'durees', pax: '2', centerId: 'libramont' }));
+    ok(elapsedCards.formulaAvailability?.mm?.available === false && /12:00/.test(elapsedCards.formulaAvailability.mm.reason), 'Carte MATIN MALIN après midi : indisponibilité issue de la même grille');
+    todayOverride = null; clockOverride = null;
+    fixtureBlocks = [{ id: 99, centerId: 'libramont', scopeType: 'formula', scopeRef: 'mm', recurrence: 'once', date: SAMEDI, startMin: null, endMin: null, reason: 'Local fixture' }];
+    const blocked = await get('/api/public-availability?' + new URLSearchParams({ date: SAMEDI, type: 'durees', pax: '2', centerId: 'libramont' }));
+    ok(blocked.formulaAvailability?.mm?.available === false, 'Carte MATIN MALIN bloquée par le centre : indisponible');
+    fixtureBlocks = [];
   } finally {
     server.close();
   }

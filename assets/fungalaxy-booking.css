@@ -2436,11 +2436,12 @@ html.fg-pilote .fg { overflow: visible; }
    compteur sous la note, le prix de la carte le suit. */
 .fg-vitrine__qui { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .fg-vitrine__quimot { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); }
-.fg-vitrine__stepper { flex: none; grid-template-columns: 38px 42px 38px; height: 38px; }
+.fg-vitrine__stepper { flex: none; grid-template-columns: 44px 42px 44px; height: 44px; }
 .fg-vitrine__stepper .fg-stepper__btn { font-size: 18px; }
 .fg-vitrine__n { display: grid; place-items: center; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg-text); }
 .fg-vitrine__achat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 18px; }
 .fg-vitrine__prix { font-size: 22px; font-weight: 700; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fg-vitrine__economie { display: block; max-width: 180px; margin-top: 4px; color: var(--fg-teal-ink); font-size: 12px; line-height: 1.4; }
 .fg-vitrine__ajouter { min-height: 46px; padding: 0 22px; }
 .fg-vitrine__statut { margin: 14px 0 0; }
 .fg-vitrine__pied { display: flex; justify-content: center; margin-top: 22px; }
@@ -2459,7 +2460,8 @@ html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote)
   .fg-vitrine__carte { display: grid; grid-template-columns: 96px minmax(0, 1fr); grid-template-areas: "photo corps" "photo achat"; }
   .fg-vitrine__photo { grid-area: photo; aspect-ratio: auto; height: 100%; border-radius: 7px 0 0 7px; }
   .fg-vitrine__corps { grid-area: corps; padding: 12px 14px 0; }
-  .fg-vitrine__achat { grid-area: achat; padding: 10px 14px 14px; }
+  .fg-vitrine__achat { grid-area: achat; padding: 10px 14px 14px; flex-wrap: wrap; }
+  .fg-vitrine__qui { flex-wrap: wrap; }
   .fg-vitrine__nom { font-size: 16px; }
   .fg-vitrine__nom svg { display: none; }
   .fg-vitrine__prix { font-size: 19px; }
@@ -2521,3 +2523,6 @@ body.is-embed .fg-info-dialog { inset:auto; top:50%; left:50%; margin:0; transfo
 @media (max-height:500px) { .fg-info-photo { height:88px; } .fg-info-body { padding:16px 20px; } }
 .fg-info-dialog.is-short .fg-info-photo { height:88px; }
 .fg-info-dialog.is-short .fg-info-body { padding:16px 20px; }
+.fg-vitrine__validite { display:block; color:var(--fg-muted); font-size:12px; margin-top:6px; }
+.fg-vitrine__retry { display:inline-flex; align-items:center; min-height:44px; padding:0 8px; border:0; background:none; color:var(--fg-teal-ink); text-decoration:underline; font:inherit; cursor:pointer; }
+.fg-vitrine__retry:focus-visible { outline:2px solid var(--fg-teal-ink); outline-offset:2px; }

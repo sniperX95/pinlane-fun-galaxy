@@ -17,6 +17,10 @@ function check(condition, label) { assert.ok(condition, label); checks++; consol
 const base = mock.createServer({port});
 const serveFixture = base.listeners('request')[0];
 const server = http.createServer((req,res) => {
+  if (process.env.PINLANE_INFORMATION_BUILT === '1' && new URL(req.url,origin).pathname === '/assets/fungalaxy-booking.js') {
+    const built=require('../tools/build-public').minifierJavascript(fs.readFileSync(path.join(root,'assets/fungalaxy-booking.js'),'utf8'),'assets/fungalaxy-booking.js',require('esbuild'));
+    res.writeHead(200,{'content-type':'text/javascript; charset=utf-8'});res.end(built);return;
+  }
   if (new URL(req.url,origin).pathname === '/information-host') {
     res.writeHead(200, {'content-type':'text/html; charset=utf-8'});
     res.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#111}#before{height:1200px}#slot{width:100%;max-width:1100px;margin:auto}#after{height:1200px}</style></head><body><div id="before"></div><div id="slot"></div><div id="after"></div><script src="/embed.js" data-center="libramont" data-design="fungalaxy" data-target="#slot" data-height="720" data-scroll-margin="24"></script></body></html>');

@@ -1416,6 +1416,11 @@ function setEditField(field, value, syncLanes = false) {
   if (!state.editState) return;
   if (state.editError) setEditError('');
   state.editState[field] = value;
+  if (field === 'pax' && state.editState.programmeEdite) {
+    const programme = state.editState.programmeEdite;
+    if (programme.laser_game?.extraLaser && Number(value) < programme.laser_game.extraLaser.participants) { delete programme.laser_game.extraLaser; toast('La partie supplémentaire est retirée : son effectif dépassait le nouveau groupe.'); }
+    Object.values(programme.othersOptions || {}).forEach(options => { if (options.upsell && Number(value) < options.upsell.participants) { delete options.upsell; toast('Offre retirée du devis : le nouvel effectif est tarifé au catalogue.'); } });
+  }
   if (syncLanes) syncEditLaneAssignment();
   else refreshEditPreview();
 }
@@ -1887,7 +1892,7 @@ function reservationRenderSignature(r) {
     // (isReservationAwaitingReview) et les activites d une visite avec leurs
     // durees. Absents, valider une demande ne redessinait pas sa ligne.
     validationStatus: r.validationStatus || '',
-    programKey: JSON.stringify((r.program?.items || []).map(item => [item.activityId, item.minutes, item.games, item.duration, item.sessions, item.sessionMinutes, item.units, item.hours]))
+    programKey: JSON.stringify((r.program?.items || []).map(item => [item.activityId, item.minutes, item.games, item.duration, item.sessions, item.sessionMinutes, item.units, item.hours, item.participants, item.upsell, item.extraLaser]))
   };
 }
 
@@ -5635,6 +5640,7 @@ function setStaffArcadeOption(context, key, value, offerId) {
   else options = getQuickVisitOptions('arcade_time');
   if (!options) return;
   delete options.arcadeOffer;
+  if (context === 'edit' && options.upsell) { delete options.upsell; toast('Offre retirée du devis : le nouveau choix est tarifé au catalogue.'); }
   if (key === 'cards') options.cards = Math.min(1000, Math.max(1, Math.trunc(Number(value) || 1)));
   else { options.arcadeMode = value; options.arcadeOfferId = offerId; if (value === 'time') delete options.cards; }
   if (context === 'booking') { clearCurrentBookingChoice(); applyChosenActivitiesToBooking(); syncBookingTypeUi(); save(); }
@@ -6082,6 +6088,8 @@ function buildBookingProgramPayload(panierPropose = null) {
     // prix : il DEMANDE le tarif d attente, et le serveur ne l applique que
     // si le groupe est vraiment scinde (groupIsSplit, lib/visit-program).
     if (options.waitOffer === true) item.waitOffer = true;
+    if (options.upsell) item.upsell = { offerId: options.upsell.offerId, participants: item.participants };
+    if (options.extraLaser) item.extraLaser = { offerId: options.extraLaser.offerId, participants: options.extraLaser.participants, games: options.extraLaser.games };
     return item;
   });
 }
@@ -9998,7 +10006,7 @@ function renderVisitRecapItem(item) {
     detail = `${option?.label || `${Number(item.duration) || 1}h`} · ${lanes} piste${lanes > 1 ? 's' : ''}`;
   } else if (activityId === 'laser_game') {
     const games = Math.max(1, Number(item.games) || 1);
-    detail = `${games} partie${games > 1 ? 's' : ''}`;
+    detail = `${games} partie${games > 1 ? 's' : ''}${item.extraLaser ? ` + ${item.extraLaser.games - games} pour ${item.extraLaser.participants} joueurs` : ''}`;
   } else if (item.priceType === 'grid_bowling' || item.units != null || item.hours != null) {
     // Tables de billard, pistes de duckpin : leur nombre, la duree, les tours.
     // La MEME phrase que la fiche du staff (detailLigneProgramme).
@@ -10012,8 +10020,10 @@ function renderVisitRecapItem(item) {
   } else {
     detail = item.priceKnown === true ? 'Compris dans le total' : 'À régler sur place';
   }
+  const remise = Number((item.extraLaser || item.upsell)?.discountAmount);
+  if (remise > 0) detail += ` · remise ${formatMoneyCentimes(remise)}`;
   const price = item.priceKnown === true && Number.isFinite(Number(item.price))
-    ? `${Math.round(Number(item.price))}€`
+    ? formatMoneyCentimes(item.price)
     : 'Sur place';
   return `<div class="recap-program-item">
     <span class="recap-program-copy">
@@ -13635,9 +13645,21 @@ let establishmentCustomActivitiesDraft = [];
 // activités personnalisées.
 let establishmentDeclaredResourcesDraft = [];
 
+function establishmentUpsellCatalogue() {
+  const selectedCenter = getEstablishmentCenter();
+  return (staffCenterConfigCache.activities || []).map(activity => ({
+    ...activity,
+    ...(typeof getCenterActivity === 'function' ? getCenterActivity(activity.id) || {} : {}),
+    label: activity.label || activity.name || activity.id,
+    ...(activity.id === 'arcade_time' && selectedCenter?.activityOffers?.arcade_time
+      ? { arcadeOffers: selectedCenter.activityOffers.arcade_time } : {})
+  }));
+}
+
 function startEstablishmentEdit() {
   if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
   const center = getEstablishmentCenter();
+  window.PinlaneUpsellSettings?.start(center, establishmentUpsellCatalogue());
   establishmentHolidayOverridesDraft = (center?.holidaySettings?.overrides || [])
     .filter(item => item && item.date && (item.mode === 'holiday' || item.mode === 'normal'))
     .map(item => ({ date: item.date, mode: item.mode }));
@@ -13659,6 +13681,7 @@ function startEstablishmentEdit() {
 }
 
 function cancelEstablishmentEdit() {
+  window.PinlaneUpsellSettings?.cancel();
   state.establishmentEditing = false;
   establishmentHolidayOverridesDraft = [];
   establishmentCustomActivitiesDraft = [];
@@ -14103,6 +14126,11 @@ async function submitCenterConfig(centerId) {
   // absent ou saisie refusée : on ne l'ajoute pas au payload, donc le serveur
   // conserve la couleur existante au lieu de l'effacer.
   const branding = collectEstablishmentBranding();
+  // Validate the local suggestion draft before either centre write starts.
+  if (window.PinlaneUpsellSettings) {
+    try { config.upsellOffers = window.PinlaneUpsellSettings.collect(storedCenter); }
+    catch (error) { toast(error.message || 'Suggestions invalides.'); return; }
+  }
   if (branding !== undefined) config.branding = branding;
   const payment = collectEstablishmentPayment();
   if (payment !== undefined) config.payment = payment;
@@ -14625,6 +14653,7 @@ function renderEstablishmentEditPanels(center, active) {
   // jamais. Le formulaire en ligne le relit avec le catalogue.
   const seuilSurMesure = Number(center.customRequest && center.customRequest.fromPax) || '';
   const offresPanel = `<div class="estab-edit-stack">
+    ${window.PinlaneUpsellSettings?.renderEdit(center, establishmentUpsellCatalogue()) || ''}
     <fieldset class="establishment-card establishment-custom-request">
       <legend>Grands groupes</legend>
       <p class="estab-card-hint">À partir de ce nombre de personnes, le formulaire en ligne ne réserve plus : il ouvre une demande sur mesure, que l’équipe traite et à laquelle elle répond sous 24 heures ouvrables. Pas de demande pour le jour même. Laissez vide pour que tous les groupes réservent en ligne.</p>
@@ -14884,6 +14913,7 @@ function renderEstablishmentReadPanels(center, active) {
   </div>`;
 
   const offresPanel = `<div class="estab-read-stack">
+    ${window.PinlaneUpsellSettings?.renderRead(center, establishmentUpsellCatalogue()) || ''}
     ${section(ICO.tag, 'Offres & formules', 'Formules réservables côté client.', `
       <div class="estab-rules">
         ${rule('Formules réservables', `<span class="num">${activeOffers.length}</span> / ${catalogFormuleList.length}`)}
@@ -21010,9 +21040,9 @@ function getFormulaLaserGameCount(formule) {
 // invisibles pour le comptoir.
 // Le PROGRAMME fait foi (c'est ce qui a ete vendu), puis la formule.
 function getLaserGameCountForReservation(reservation) {
-  if (reservation.type === 'laser') return getLaserGameCount(Number(reservation.duration) || 0.5);
   const programGames = getProgramLaserGameCount(reservation);
   if (programGames) return programGames;
+  if (reservation.type === 'laser') return getLaserGameCount(Number(reservation.duration) || 0.5);
   const formule = reservation.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
   return getFormulaLaserGameCount(formule);
 }
@@ -22553,7 +22583,7 @@ function renderLaserPlanning() {
           <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
           <span class="laser-pass-meta">${unitLabel} · ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
           <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
-        </button>`;
+        </button>${renderDelayIndicator(reservation)}</div>`;
       }).join('')
     : `<div class="laser-pass-empty">Aucune partie en attente. Toutes les parties sont placées.</div>`;
   const pendingQueueHtml = showPassQueue ? `
@@ -22651,45 +22681,15 @@ function renderLaserPlanning() {
       const label = isFormulaGroup
         ? `${getReservationLabel(reservation)}${laserGames > 1 ? ` · ${passLabel}` : ' · Laser'}`
         : laserGames > 1 ? `Laser · ${passLabel}` : 'Laser direct';
-      const pillHtml = `
-        <span class="laser-card-pills">
-          ${renderDelayIndicator(reservation)}
-          ${/* LA CONSIGNE EXISTE AUSSI SUR LE PLANNING LASER. La carte laser ne
-               fabriquait aucun marqueur : une note (« gateau a 18h », « un
-               joueur sourd ») et une occasion n apparaissaient que sur le
-               planning bowling, alors que l arene est le seul ecran que
-               l equipe regarde pendant un lancement. Meme fonction, memes
-               12px titres, meme lecture vocale ; seul le nombre de parties est
-               retire, la carte l ecrit deja sous le nom. */''}
-          ${renderCardFlags(reservation, { partiesEcrites: true })}
-          ${/* Le prix negocie se lit AUSSI dans l arene : c est le seul ecran
-               regarde pendant un lancement, et rien n y disait qu un dossier
-               avait ete arrange. Meme regle, meme pastille, montant seul :
-               rien ne s affiche quand le prix suit le catalogue.
-               UN MONTANT PAR DOSSIER, PAS UN PAR CARTE. Ce bloc est rendu par
-               PASSE et par VAGUE, alors que le montant est celui du dossier
-               ENTIER : mesure, le dossier 9001 sortait deux cartes
-               « Partie 1/2 » et « Partie 2/2 » portant CHACUNE « 40 € », et
-               deux montants ambre cote a cote se lisent comme deux
-               encaissements. Le chiffre n est donc ecrit que sur la premiere
-               carte du dossier ; les suivantes gardent le verdict en forme
-               « mot », qui ne s additionne pas. */''}
-          ${(passIndex === 1 && waveIndex === 1)
-            ? renderReservationPriceMark(reservation, { forme: 'montant', base: 'laser-card-pill' })
-            : renderReservationPriceMark(reservation, { forme: 'mot', base: 'laser-card-pill' })}
-          ${isFormulaGroup ? '<span class="laser-card-pill formula">Formule</span>' : '<span class="laser-card-pill direct">Direct</span>'}
-          ${/* PAS DE PASTILLE « P1/2 » : le libelle de la carte dit deja
-               « Partie 1/2 » juste au-dessus. Movsar, 2026-08-27 : « la ya trop
-               d info inutile ». La vague, elle, reste : elle n est ecrite nulle
-               part ailleurs. */''}
-          ${waveCount > 1 ? `<span class="laser-card-pill wave">V${waveIndex}/${waveCount}</span>` : ''}
-          ${window.formulaFallback ? '<span class="laser-card-pill fallback">Plan estimé</span>' : ''}
-        </span>`;
+      const pillHtml = `<span class="laser-card-pills">
+        ${renderCardFlags(reservation, { partiesEcrites: true })}
+        ${window.formulaFallback ? '<span class="laser-plan-estimate" role="img" aria-label="Plan estimé : ouvrir la fiche pour les détails" title="Plan estimé : vérifier les horaires dans la fiche">i</span>' : ''}
+      </span>`;
       const dragTitle = waveCount > 1
         ? `Déplacer la vague ${waveIndex}/${waveCount}${laserGames > 1 ? ` (partie ${passIndex})` : ''}`
         : passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
       const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
-      return `<button type="button" data-laser-res-id="${reservation.id}" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
+      return `<div class="laser-group-item"><button type="button" data-laser-res-id="${reservation.id}" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
           <small>${escapeHtml(label)}${waveLabel ? ` · ${escapeHtml(waveLabel)}` : ''}</small>
@@ -22698,9 +22698,9 @@ function renderLaserPlanning() {
         <span class="booking-stats laser-group-stats">
           ${renderActivityProgressPill(reservation)}
           <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}">${players}<span class="u">j</span></span>
-          <span class="bk-dur laser-dur" title="Durée ${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}">${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}</span>
+
         </span>
-      </button>`;
+      </button>${renderDelayIndicator(reservation)}</div>`;
     }).join('');
     const sessionType = seulementEnLigne ? 'en ligne' : hasFormula && hasDirect ? 'mixte' : hasFormula ? 'formule' : 'direct';
 
@@ -24173,7 +24173,8 @@ function detailLigneProgramme(item, reservation = null) {
   const participants = participantsLigneProgramme(item, reservation && reservation.pax);
   const activite = catalogueDeLigne(item);
   const unite = typeof activityCountsChildren === 'function' && activityCountsChildren(activite) ? 'enfant' : 'joueur';
-  return [`${participants} ${unite}${participants > 1 ? 's' : ''}`, detailLigneProgrammeSansEffectif(item, reservation), bowlingCapacityMessage(item.bowlingCapacity)].filter(Boolean).join(' · ');
+  const remise = Number((item.extraLaser || item.upsell)?.discountAmount);
+  return [`${participants} ${unite}${participants > 1 ? 's' : ''}`, detailLigneProgrammeSansEffectif(item, reservation), remise > 0 ? `remise ${formatMoneyCentimes(remise)}` : '', bowlingCapacityMessage(item.bowlingCapacity)].filter(Boolean).join(' · ');
 }
 
 function participantsLigneProgramme(item, pax) {
@@ -24191,7 +24192,7 @@ function detailLigneProgrammeSansEffectif(item, reservation = null) {
   const priceType = item.priceType || (catalogue && catalogue.priceType) || '';
   if (item.activityId === 'laser_game' || priceType === 'grid_laser') {
     const parties = Math.max(1, Number(item.games) || 1);
-    return parties > 1 ? `${parties} parties` : '1 partie';
+    return `${parties > 1 ? `${parties} parties` : '1 partie'}${item.extraLaser ? ` + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs` : ''}`;
   }
   if (item.activityId === 'bowling') return formatDurationLabel(Number(item.duration) || 1);
   // Le duckpin : ses pistes, et ses tours au-dela de celles du centre.
@@ -25451,10 +25452,11 @@ function buildEditProgramFromReservation(r) {
     items.forEach((item) => {
       const id = String(item.activityId || '');
       if (id === 'bowling') { etat.bowling.on = true; etat.bowling.duration = Number(item.duration) || 1; if (Number(item.participants) > 0) etat.bowling.participants = Number(item.participants); return; }
-      if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, Number(item.games) || 1); if (Number(item.participants) > 0) etat.laser_game.participants = Number(item.participants); return; }
+      if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, Number(item.games) || 1); if (Number(item.participants) > 0) etat.laser_game.participants = Number(item.participants); if (item.extraLaser) etat.laser_game.extraLaser = { ...item.extraLaser }; return; }
       if (!id) return;
       etat.others[id] = true;
       const reglages = {};
+      if (item.upsell) reglages.upsell = { ...item.upsell };
       ['arcadeMode', 'arcadeOfferId', 'cards', 'arcadeOffer', 'durationEstimated'].forEach(key => { if (item[key] != null) reglages[key] = item[key]; });
       if (Number(item.units) > 0) reglages.units = Number(item.units);
       if (Number(item.hours) > 0) reglages.hours = Number(item.hours);
@@ -25529,14 +25531,21 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const parties = Math.max(1, Number(item.games) || 1);
       const option = getLaserOption(parties * 0.5);
       const unitaire = Number(option?.price) || 0;
-      const montant = unitaire * effectif;
+      const supplement = item.extraLaser && Number(item.extraLaser.baseGames) === parties && Number(item.extraLaser.participants) <= effectif ? Number(item.extraLaser.price) || 0 : 0;
+      const montant = Math.round((unitaire * effectif + supplement) * 100) / 100;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${unitaire} €/pers × ${effectif}`, montant });
+      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${unitaire} €/pers × ${effectif}${item.extraLaser ? ` · + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs${Number(item.extraLaser.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.extraLaser.discountAmount)}` : ''}` : ''}`, montant });
       return;
     }
     const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
     const nom = (activite && activite.name) || (typeof ACTIVITY_LABELS !== 'undefined' && ACTIVITY_LABELS[id]) || id;
+    if (item.upsell && Number(item.upsell.participants) === effectif && Number.isFinite(Number(item.upsell.price))) {
+      const montant = Math.max(0, Number(item.upsell.price));
+      total += montant; chiffrees += 1;
+      lignes.push({ nom, detail: `Offre retenue · ${effectif} joueurs${Number(item.upsell.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.upsell.discountAmount)}` : ''}`, montant });
+      return;
+    }
     // MEME CALCUL QUE LE SERVEUR (lib/visit-program), ligne par ligne. Une
     // ligne qui declare ses participants se paie pour eux seuls (la plaine par
     // enfant, ceux qui attendent) ; l offre d attente a son tarif, fixe a la
@@ -25656,7 +25665,7 @@ function getEditProgramItems() {
     }
     items.push(item);
   }
-  if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax, participants: participantsLigneProgramme(e.programmeEdite.laser_game, pax) });
+  if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax, participants: participantsLigneProgramme(e.programmeEdite.laser_game, pax), ...(e.programmeEdite.laser_game.extraLaser ? { extraLaser: { ...e.programmeEdite.laser_game.extraLaser } } : {}) });
   Object.entries(e.programmeEdite.others || {}).forEach(([id, actif]) => {
     if (!actif) return;
     // Les reglages du dossier, pas les defauts : sans eux le prix repart a
@@ -25694,6 +25703,7 @@ function setEditLaserGames(nombre) {
   const programme = state.editState && state.editState.programmeEdite;
   if (!programme) return;
   programme.laser_game.on = true;
+  if (programme.laser_game.extraLaser && Number(nombre) !== Number(programme.laser_game.games)) { delete programme.laser_game.extraLaser; toast('La partie supplémentaire est retirée : ce nouveau choix concerne tous les joueurs du laser.'); }
   programme.laser_game.games = Math.max(1, Math.min(3, Math.trunc(Number(nombre) || 1)));
   renderPos();
 }
@@ -25846,6 +25856,8 @@ function renderEditFormuleBloc(r, formule, lignes) {
     if (actif && choice.id === 'arcade_time') options = renderStaffArcadeOptions(getCenterActivity(choice.id),programme.othersOptions[choice.id] || {},participantsLigneProgramme(programme.othersOptions[choice.id] || {},state.editState.pax),'edit');
     if (actif && estLaser) {
       options = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
+      const extra = programme.laser_game.extraLaser;
+      if (extra) options += `<small class="muted">+ ${extra.games - programme.laser_game.games} partie pour ${extra.participants} joueurs · ${escapeHtml(formatMoneyCentimes(extra.price))}${Number(extra.discountAmount) > 0 ? ` · remise ${escapeHtml(formatMoneyCentimes(extra.discountAmount))}` : ''}</small>`;
     }
     return `<div class="qb-visit-row dossier-activity ${actif ? 'is-on' : ''}">
       <button type="button" class="qb-visit-toggle dossier-activity-head" aria-pressed="${actif ? 'true' : 'false'}" onclick="toggleEditActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
@@ -26695,6 +26707,8 @@ function setEditActivityParticipants(id, nombre) {
   const options = id === 'bowling' || id === 'laser_game' ? p[id] : (p.othersOptions[id] ||= {});
   const bornes = activityParticipantsBounds(id, e.pax);
   const participants = Math.min(bornes.max, Math.max(bornes.min, Math.trunc(Number(nombre) || bornes.min)));
+  if (participants !== participantsLigneProgramme(options, e.pax) && options.upsell) { delete options.upsell; toast('Offre retirée du devis : le nouvel effectif est tarifé au catalogue.'); }
+  if (options.extraLaser && participants < Number(options.extraLaser.participants)) { delete options.extraLaser; toast('La partie supplémentaire est retirée : son effectif dépassait le nouveau nombre de joueurs du laser.'); }
   if (id === 'arcade_time' && participants !== participantsLigneProgramme(options,e.pax)) { delete options.arcadeOffer; if (options.arcadeMode === 'time') options.cards=participants; }
   options.participants = participants;
   renderPos();

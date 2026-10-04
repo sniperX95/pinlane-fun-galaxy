@@ -37,6 +37,23 @@ const ROOT = process.env.BUILD_PUBLIC_ROOT ? path.resolve(process.env.BUILD_PUBL
 const DOSSIERS = ['assets', 'demo', 'menu'];
 const PAGES = ['index.html', 'pro.html', 'public-form.html', 'fungalaxy.html', 'fungalaxy-site.html'];
 const EXCLUS = new Set(['embed.js']);
+const IDENTIFIER_MARKER = '"use pinlane-minified";';
+
+function minifierJavascript(texte, rel, eb) {
+  const optimized = rel === 'assets/fungalaxy-booking.js';
+  const already = optimized && texte.trimStart().startsWith(IDENTIFIER_MARKER);
+  let result = eb.transformSync(texte, { loader:'js', target:'esnext', legalComments:'none', minifyWhitespace:true, minifySyntax:true, minifyIdentifiers:optimized && !already }).code;
+  if (!optimized) return result;
+  if (!already) result = IDENTIFIER_MARKER + result;
+  // Les noms courts ne sont attribues qu'une fois. Le marqueur est une
+  // directive neutre ; les builds suivants gardent exactement le meme JS.
+  for (let pass = 0; pass < 4; pass++) {
+    const next = eb.transformSync(result, { loader:'js', target:'esnext', legalComments:'none', minifyWhitespace:true, minifySyntax:true, minifyIdentifiers:false }).code;
+    if (next === result) return result;
+    result = next;
+  }
+  return result;
+}
 
 function chargerEsbuild() {
   try { return require('esbuild'); } catch (error) { return null; }
@@ -134,14 +151,11 @@ function main() {
     try {
       apres = estHtml
         ? nettoyerBlocsIntegres(retirerCommentairesHtml(avant), eb, journal)
-        // `minifySyntax` reecrit ce qui est equivalent (couleurs courtes,
-        // raccourcis, declarations doublees) sans jamais toucher un NOM :
-        // c est exactement ce que `public-leak-check` simulait deja de son
-        // cote (minifyIdentifiers: false) pour mesurer ce que le public
-        // recoit. Le build le fait desormais pour de vrai : 2,9 Ko de moins
-        // sur le seul formulaire Fun Galaxy, et le code reste lisible en
-        // production (aucun identifiant mange, aucune sonde aveuglee).
-        : eb.transformSync(avant, { loader, target: 'esnext', legalComments: 'none', minifyWhitespace: true, minifySyntax: true, minifyIdentifiers: false }).code;
+        // Le formulaire est une IIFE sans eval ni lookup de noms locaux.
+        // Ses identifiants internes peuvent etre raccourcis ; les proprietes
+        // publiques (dont le contexte du sur-mesure) restent intactes.
+        // Les globals du staff et les autres fichiers gardent leurs noms.
+        : loader === 'js' ? minifierJavascript(avant, rel, eb) : eb.transformSync(avant, { loader, target: 'esnext', legalComments: 'none', minifyWhitespace: true, minifySyntax: true, minifyIdentifiers: false }).code;
     } catch (error) {
       journal.push('  ' + rel + ' laisse tel quel : ' + String(error.message).split('\n')[0]);
       apres = null;
@@ -169,4 +183,5 @@ function main() {
   return 0;
 }
 
-process.exit(main());
+if (require.main === module) process.exit(main());
+module.exports = { minifierJavascript };

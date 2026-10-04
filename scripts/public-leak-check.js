@@ -213,7 +213,12 @@ function main() {
       let a;
       let b;
       try {
-        a = formeCanonique(eb, fs.readFileSync(f, 'utf8'), loader);
+        let source = fs.readFileSync(f, 'utf8');
+        // Le renommage local s'applique une fois, comme dans le vrai build.
+        // Le rejouer sur une sortie deja renommee change l'ordre des noms
+        // courts ; le canon syntaxique suivant garde ces noms stables.
+        if (rel === 'assets/fungalaxy-booking.js') source = require('../tools/build-public').minifierJavascript(source, rel, eb);
+        a = formeCanonique(eb, source, loader);
         b = formeCanonique(eb, fs.readFileSync(path.join(temp, rel), 'utf8'), loader);
       } catch (error) {
         divergents.push(rel + ' (illisible : ' + String(error.message).split('\n')[0] + ')');

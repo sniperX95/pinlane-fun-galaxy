@@ -962,7 +962,7 @@ function jugerH(m) {
     detail: `annonce=${paye && paye.deltaTotal} attendu=${attendu} (${base} -> ${monte}) palier vise=${paye && paye.patch && paye.patch.options && paye.patch.options.games}`,
   });
   v.push({
-    ok: Boolean(paye && paye.patch && Number(paye.patch.options.games) === Number(suivant && suivant.games)),
+      ok: Boolean(paye && paye.patch && Number(paye.patch.options.extraLaser?.games) === Number(suivant && suivant.games) && Number(paye.patch.options.extraLaser?.participants) === Number(m.pax || PAX)),
     label: '[H] UN SEUL CRAN A LA FOIS : la carte vise le palier immediatement superieur, pas le plafond',
     detail: `visee=${paye && paye.patch && paye.patch.options.games} attendu=${suivant && suivant.games}`,
   });
@@ -1173,7 +1173,7 @@ function mesurerI() {
   // generateurs de cartes (visite et gamme). Sans sujet au catalogue, c est
   // elle qui porte la propriete.
   const gardeMaximum = (fs.readFileSync(path.join(ROOT, COMPLEMENTS), 'utf8')
-    .match(/if \(Number\.isFinite\(maximum\) && maximum > 0 && [a-zA-Z.]+ > maximum\) continue;/g) || []).length;
+    .match(/if \(Number\.isFinite\(maximum\) && maximum > 0 && [a-zA-Z.]+ > maximum\) continue;|const participants = Math\.min\(context\.pax, Number\.isFinite\(maximum\) && maximum > 0/g) || []).length;
   return { muette, muettes, bornee, comptee, sansTarif, baseMuettes, baseTemoin, avecTarif, chezVoisin, attenduTemoin, maxi, sousLeMax, auDessus, capacite, dansLaDotation, horsDotation, TARIF, gardeMaximum };
 }
 
@@ -1240,8 +1240,8 @@ function jugerI(m) {
   const tient = m.dansLaDotation.some((c) => idActivite(c) === m.comptee.id);
   const tourne = m.horsDotation.some((c) => idActivite(c) === m.comptee.id);
   v.push({
-    ok: tient && !tourne,
-    label: '[I] LA DOTATION DECLAREE EST RESPECTEE : proposee tant que le groupe tient, jamais quand il tournerait',
+    ok: tient && tourne && (() => { const card = m.horsDotation.find(c => idActivite(c) === m.comptee.id); const item = normalizeProgram([{ activityId: m.comptee.id, ...card.patch.options }], { centerId: CENTRE, pax: m.capacite + 1 }).items[0]; return item.rotation === true && item.sessions > 1 && item.priceKnown === true; })(),
+    label: '[I] LA DOTATION DECLAREE EST RESPECTEE : le groupe au-delà joue en plusieurs tours tarifés',
     detail: `${m.comptee.id} a ${m.capacite} personnes : ${tient} ; a ${m.capacite + 1} : ${tourne}`,
   });
   return v;
@@ -1676,9 +1676,9 @@ async function construirePROPRIETES(browser) {
           serveur: [{ fichier: COMPLEMENTS, de: '    if (Number.isFinite(maximum) && maximum > 0 && context.pax > maximum) continue;', vers: '    if (false && Number.isFinite(maximum) && maximum > 0 && context.pax > maximum) continue;' }],
         }] : []),
         {
-          nom: 'la dotation declaree est ignoree (le groupe tournerait)',
+            nom: 'la rotation tarifée disparaît des suggestions',
           vise: /\[I\] LA DOTATION DECLAREE EST RESPECTEE/,
-          serveur: [{ fichier: COMPLEMENTS, de: '    if (ligne.rotation === true) continue;', vers: '    if (false && ligne.rotation === true) continue;' }],
+            serveur: [{ fichier: COMPLEMENTS, de: '    if (ligne.priceKnown !== true) continue;', vers: '    if (ligne.priceKnown !== true) continue;\n    if (ligne.rotation === true) continue;' }],
         },
       ]),
     propriete('K', 'UNE DUREE HORS GRILLE NE SE PROPOSE PAS',

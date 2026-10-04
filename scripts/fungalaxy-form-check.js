@@ -910,9 +910,14 @@ function serveur() {
         const avant = fs.readFileSync(path.join(ROOT, 'assets', feuille ? 'fungalaxy-booking.css' : 'fungalaxy-booking.js'), 'utf8').replace(/\r\n/g, '\n');
         if (avant.split(mutation[0]).length !== 2) { console.error(`fungalaxy-form-check: la mutation ${CASSE} ne trouve pas son ancre une seule fois (le code a change ?)`); process.exit(2); }
         res.writeHead(200, { 'Content-Type': `${feuille ? 'text/css' : 'text/javascript'}; charset=utf-8`, 'Cache-Control': 'no-store' });
-        res.end(avant.replace(mutation[0], mutation[1]));
+        const mutated = avant.replace(mutation[0], mutation[1]);
+        res.end(process.env.PINLANE_FORM_BUILT === '1' && !feuille ? require('../tools/build-public').minifierJavascript(mutated,'assets/fungalaxy-booking.js',require('esbuild')) : mutated);
         return;
       }
+    }
+    if (process.env.PINLANE_FORM_BUILT === '1' && url.pathname === '/assets/fungalaxy-booking.js') {
+      res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Cache-Control':'no-store'});
+      res.end(require('../tools/build-public').minifierJavascript(fs.readFileSync(path.join(ROOT,'assets/fungalaxy-booking.js'),'utf8'),'assets/fungalaxy-booking.js',require('esbuild')));return;
     }
     base.emit('request', req, res);
   });

@@ -149,6 +149,8 @@ function operationalProgram(program, pax) {
   return items.map((item) => {
     const activityId = String(item.activityId || item.id || '');
     const choice = { activityId, participants: Number(item.participants ?? pax) };
+    if (item.upsell) choice.upsell = { offerId: String(item.upsell.offerId || ''), participants: Number(item.upsell.participants) };
+    if (item.extraLaser) choice.extraLaser = { offerId: String(item.extraLaser.offerId || ''), participants: Number(item.extraLaser.participants), games: Number(item.extraLaser.games) };
     if (activityId === 'arcade_time' && item.arcadeOfferId) {
       choice.arcadeMode = String(item.arcadeMode || '');
       choice.arcadeOfferId = String(item.arcadeOfferId);

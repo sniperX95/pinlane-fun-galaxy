@@ -3,6 +3,7 @@ const {
   createReservation,
   createSlotHold,
   readMatchingSlotHold,
+  readUpsellSlotHold,
   releaseSlotHold,
   reservationDejaConfirmee,
   precisionBlocagesEnCours,
@@ -14,7 +15,7 @@ const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { afterReservationCreated, dotationDepassee, prepareReservationOps } = require('../lib/reservation-ops');
 const { findReservationAlternatives } = require('../lib/reservation-alternatives');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
-const { ouvrirDemandePublique, estErreurInfra, signatureDemande } = require('../lib/demande-publique');
+const { ouvrirDemandePublique, estErreurInfra, signatureDemande, requestFromHeldUpsell } = require('../lib/demande-publique');
 const { enforceRateLimit, getClientIp } = require('../lib/rate-limit');
 
 function heldOps(held, request) {
@@ -79,7 +80,12 @@ async function traiterBlocage(req, res) {
     }
     const recu = String((body && body.holdToken) || '').trim();
     const jeton = empreinteJetonBlocage(recu) ? recu : nouveauJetonBlocage();
-    const request = normalizeReservationRequest({ ...body, name: '', phone: '', email: '', notes: '' }, { channel: 'public' });
+    const frozen = empreinteJetonBlocage(recu) && typeof readUpsellSlotHold === 'function' ? await readUpsellSlotHold(jeton, body, empreinteAppareil(req)) : null;
+    const choices = Array.isArray(body.program) ? body.program : body.program?.items;
+    if (empreinteJetonBlocage(recu) && choices?.some(item => item.upsell || item.extraLaser) && !frozen) {
+      sendError(res, 409, 'Votre réservation temporaire a expiré. Vérifiez vos horaires et le nouveau montant.'); return;
+    }
+    const request = (frozen && requestFromHeldUpsell({ ...body, name: '', phone: '', email: '', notes: '' }, frozen)) || normalizeReservationRequest({ ...body, name: '', phone: '', email: '', notes: '' }, { channel: 'public' });
     const held = typeof readMatchingSlotHold === 'function' ? await readMatchingSlotHold(jeton, request, signatureDemande(request)) : null;
     const ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: jeton });
     if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
@@ -199,12 +205,20 @@ module.exports = async (req, res) => {
     // qu il remplissait ses coordonnees, ne le bloquent pas lui-meme, et
     // deviennent sa reservation dans la meme transaction.
     holdToken = String((body && body.holdToken) || '').trim();
-    request = normalizeReservationRequest(body, { channel: 'public', requireEmail: true });
+    const frozen = typeof readUpsellSlotHold === 'function' ? await readUpsellSlotHold(holdToken, body, empreinteAppareil(req), { includeConverted: true }) : null;
+    const choices = Array.isArray(body.program) ? body.program : body.program?.items;
+    if (empreinteJetonBlocage(holdToken) && choices?.some(item => item.upsell || item.extraLaser) && !frozen) {
+      sendError(res, 409, 'Votre réservation temporaire a expiré. Vérifiez vos horaires et le nouveau montant.'); return;
+    }
+    request = (frozen && requestFromHeldUpsell(body, frozen, { requireEmail: true })) || normalizeReservationRequest(body, { channel: 'public', requireEmail: true });
     // La meme confirmation, renvoyee apres une reponse perdue : la
     // reservation deja creee, jamais une deuxieme. Avant le moteur, qui
     // verrait la premiere occuper la place et proposerait d autres horaires.
     const deja = holdToken ? await reservationDejaConfirmee(holdToken) : null;
     if (deja) {
+      if (deja.program?.items?.some(item => item.upsell || item.extraLaser) && (!frozen || signatureDemande(request) !== frozen.signatureDemande)) {
+        sendError(res, 409, 'Cette confirmation ne correspond pas à votre réservation temporaire.'); return;
+      }
       reponseRejouee(res, deja);
       return;
     }

@@ -824,7 +824,11 @@ function getFormulaLaserFallbackWindows(reservation) {
   // montrer sa session estimee, comme une formule.
   if (!(reservation?.type === 'formule' || reservation?.formuleId || getProgramLaserGameCount(reservation) > 0)) return [];
   const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
-  const games = getProgramLaserGameCount(reservation) || getFormulaLaserGameCount(formule);
+  const laserItem = (reservation.program?.items || []).find(item => item?.activityId === 'laser_game');
+  // Extra games remain pending: a missing plan must never fabricate their hour
+  // or allocate the whole initial group to the smaller purchased subgroup.
+  const games = laserItem?.extraLaser ? Number(laserItem.games) || 1
+    : getProgramLaserGameCount(reservation) || getFormulaLaserGameCount(formule);
   if (!games) return [];
   const players = Math.max(1, Number(getReservationActivityPlayers(reservation, 'laser_game')) || 1);
   const preferredLaserTime = reservation.preference?.preferredLaserTime || reservation.opsPlan?.laserPassPlan?.scheduledPasses?.[0]?.startTime || '';
@@ -837,7 +841,11 @@ function getFormulaLaserFallbackWindows(reservation) {
     : bowlingWindows.length
       ? snapLaserLaunchHour(Math.max(...bowlingWindows.map(window => Number(window.end || window.start))) + (5 / 60))
       : snapLaserLaunchHour(timeToNum(reservation.startTime));
-  return getLaserCandidateWindows(numToTime(firstLaserStart), games * 0.5, players).map(window => ({
+  const scheduled = reservation.opsPlan?.laserPassPlan?.scheduledPasses;
+  return getLaserCandidateWindows(numToTime(firstLaserStart), games * 0.5, players)
+    .filter(window => !laserItem?.extraLaser || !Array.isArray(scheduled)
+      || scheduled.some(pass => Number(pass.countIndex) === window.countIndex))
+    .map(window => ({
     ...window,
     reservation,
     resourceType: 'laser_arena',
@@ -1172,7 +1180,9 @@ function getResourceWindowsFromReservation(reservation, resourceType) {
         end,
         duration: Math.max(0, end - start),
         lanes: (block.lanes?.length ? block.lanes : reservation.lanes || []).map(Number),
-        players: Number(block.players || getReservationActivityPlayers(reservation, resourceType === 'laser_arena' ? 'laser_game' : 'bowling') || 0),
+        players: Number(block.players || (resourceType === 'laser_arena'
+          ? getReservationLaserPlayersForGame(reservation, block.countIndex)
+          : getReservationActivityPlayers(reservation, 'bowling')) || 0),
         unitKey: resourceType === 'laser_arena' ? laserBlockUnitKey(block) : undefined,
       };
     })
@@ -1261,11 +1271,10 @@ function laserPassLanePayload(reservation) {
 }
 
 function getProgramLaserGameCount(reservation) {
-  const items = reservation && reservation.program && Array.isArray(reservation.program.items)
-    ? reservation.program.items
-    : [];
+  const program = reservation && reservation.program;
+  const items = Array.isArray(program) ? program : Array.isArray(program?.items) ? program.items : [];
   const laser = items.find(item => item && item.activityId === 'laser_game');
-  return laser ? Math.max(0, Math.trunc(Number(laser.games) || 0)) : 0;
+  return laser ? Math.max(0, Math.trunc(Number(laser.games) || 0), Math.trunc(Number(laser.extraLaser?.games) || 0)) : 0;
 }
 
 function getReservationActivityPlayers(reservation, activityId) {
@@ -1276,13 +1285,28 @@ function getReservationActivityPlayers(reservation, activityId) {
   return Math.min(group, Math.max(1, Math.trunc(Number(item && item.participants) || group)));
 }
 
+function getReservationLaserPlayersForGame(reservation, countIndex = 1) {
+  const program = reservation?.program;
+  const items = Array.isArray(program) ? program : program?.items || [];
+  const laser = items.find(item => item?.activityId === 'laser_game');
+  const base = getReservationActivityPlayers(reservation, 'laser_game');
+  if (laser?.extraLaser && Number(countIndex) > Number(laser.games || 1)) {
+    return Math.min(base, Math.max(1, Math.trunc(Number(laser.extraLaser.participants) || base)));
+  }
+  if (laser) return base;
+  const plan = reservation?.opsPlan?.laserPassPlan;
+  const explicit = [...(plan?.scheduledPasses || []), ...(plan?.pendingPasses || [])]
+    .find(pass => Number(pass.countIndex) === Number(countIndex));
+  return explicit?.pax ? Math.min(base, Math.max(1, Math.trunc(Number(explicit.pax) || base))) : base;
+}
+
 // Liste canonique de TOUTES les vagues d'une réservation (indépendante du placement) :
 // pour chaque jeu (countIndex 1..N), les vagues issues du découpage capacité armes.
 function getLaserUnitsForReservation(reservation) {
   const games = Math.max(1, getLaserGameCountForReservation(reservation));
-  const waveSizes = getBalancedLaserWaveSizes(getReservationActivityPlayers(reservation, 'laser_game'));
   const units = [];
   for (let game = 1; game <= games; game += 1) {
+    const waveSizes = getBalancedLaserWaveSizes(getReservationLaserPlayersForGame(reservation, game));
     waveSizes.forEach((players, waveIdx) => {
       units.push({
         countIndex: game,
@@ -1311,14 +1335,14 @@ function laserUnitInfo(reservation, unitRef) {
       countIndex: Number(placed.countIndex || 1),
       waveIndex: Number(placed.groupWaveIndex || 1),
       waveCount: Number(placed.groupWaveCount || 1),
-      players: Math.max(1, Number(placed.players || getReservationActivityPlayers(reservation, 'laser_game') || 1)),
+      players: Math.max(1, Number(placed.players || getReservationLaserPlayersForGame(reservation, placed.countIndex) || 1)),
       unitKey: key,
     };
   }
   const canon = getLaserUnitsForReservation(reservation).find(unit => unit.unitKey === key);
   if (canon) return canon;
   const { countIndex, waveIndex } = parseLaserUnitKey(key);
-  return { countIndex, waveIndex, waveCount: 1, players: Math.max(1, Number(getReservationActivityPlayers(reservation, 'laser_game') || 1)), unitKey: key };
+  return { countIndex, waveIndex, waveCount: 1, players: Math.max(1, Number(getReservationLaserPlayersForGame(reservation, countIndex) || 1)), unitKey: key };
 }
 
 function getLaserPassScheduledIndexes(reservation) {
@@ -1397,7 +1421,7 @@ function buildManualLaserPassBlocks(reservation, unitRef, targetStart, targetEnd
     endTime: minuteIntToTime(end),
     durationMinutes,
     players: unit.players,
-    groupPlayers: Number(getReservationActivityPlayers(reservation, 'laser_game') || unit.players),
+    groupPlayers: Number(getReservationLaserPlayersForGame(reservation, unit.countIndex) || unit.players),
     groupWaveIndex: unit.waveIndex,
     groupWaveCount: unit.waveCount,
     weaponNeed: Math.min(unit.players, getLaserArenaCapacity()),
@@ -1408,7 +1432,7 @@ function getSanitizedLaserResourceBlocks(reservation, replacingUnitRef = null) {
   const planned = Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : [];
   const base = planned.length
     ? planned
-    : getLaserCandidateWindows(reservation.startTime, reservation.duration, getReservationActivityPlayers(reservation, 'laser_game')).map(window => ({
+    : getLaserWindowsFromReservation(reservation).map(window => ({
       ...window,
       start: hourToMinuteInt(window.start),
       end: hourToMinuteInt(window.end),
@@ -1492,7 +1516,7 @@ function updateLaserPassPlan(opsPlan, reservation) {
   // Depuis que le client place les parties qu'il veut (2026-08-20), la PREMIERE
   // peut tres bien etre celle qu'il laisse sur place : la boucle part de 1.
   for (let countIndex = 1; countIndex <= totalGames; countIndex += 1) {
-    if (!scheduled.includes(countIndex)) pendingPasses.push({ countIndex, status: 'pending' });
+    if (!scheduled.includes(countIndex)) pendingPasses.push({ countIndex, status: 'pending', pax: getReservationLaserPlayersForGame(reservation, countIndex) });
   }
   return {
     ...opsPlan,
@@ -1504,6 +1528,7 @@ function updateLaserPassPlan(opsPlan, reservation) {
       scheduledPasses: scheduled.map(countIndex => ({
         countIndex,
         status: 'scheduled',
+        pax: getReservationLaserPlayersForGame(reservation, countIndex),
         startTime: (opsPlan.resourceBlocks || []).find(block => block.resourceType === 'laser_arena' && Number(block.countIndex || 1) === countIndex)?.startTime || '',
       })),
       pendingPasses,
@@ -1618,8 +1643,8 @@ function removeLaserPassFromPlan(reservation, unitRef) {
         startTime: minuteIntToTime(start),
         endTime: minuteIntToTime(end),
         durationMinutes: Math.max(15, end - start),
-        players: Number(window.players || getReservationActivityPlayers(reservation, 'laser_game') || 0),
-        groupPlayers: Number(getReservationActivityPlayers(reservation, 'laser_game') || window.players || 0),
+        players: Number(window.players || getReservationLaserPlayersForGame(reservation, window.countIndex) || 0),
+        groupPlayers: Number(getReservationLaserPlayersForGame(reservation, window.countIndex) || window.players || 0),
         groupWaveIndex: Number(window.groupWaveIndex || 1),
         groupWaveCount: Number(window.groupWaveCount || 1),
       };

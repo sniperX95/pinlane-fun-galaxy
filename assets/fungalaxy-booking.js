@@ -1660,14 +1660,14 @@
       + (ar && ar.mode === 'credit' ? htmlCompteur(compteurDe(a, 'cards'), base) : '')
       + groupes.map(function (g) {
         var idTitre = groupes.length > 1 ? base + '-' + g.cle : base;
-        if (g.select) return '<label class="fg-card__optlabel" for="' + idTitre + '">' + esc(g.titre) + '</label><select class="fg-arcade-select" id="' + idTitre + '" data-cle="' + esc(g.cle) + '">' + g.options.map(function (o) { return '<option value="' + esc(o.valeur) + '"' + (o.valeur === g.choisie ? ' selected' : '') + '>' + esc(euros(o.prix) + ' · ' + o.label) + '</option>'; }).join('') + '</select>';
-        return '<span class="fg-card__optlabel" id="' + idTitre + '">' + esc(g.titre) + '</span>'
+        if (g.select) return '<div class="fg-option-group"><label class="fg-card__optlabel" for="' + idTitre + '">' + esc(g.titre) + '</label><select class="fg-arcade-select" id="' + idTitre + '" data-cle="' + esc(g.cle) + '">' + g.options.map(function (o) { return '<option value="' + esc(o.valeur) + '"' + (o.valeur === g.choisie ? ' selected' : '') + '>' + esc(euros(o.prix) + ' · ' + o.label) + '</option>'; }).join('') + '</select></div>';
+        return '<div class="fg-option-group"><span class="fg-card__optlabel" id="' + idTitre + '">' + esc(g.titre) + '</span>'
           + '<div class="fg-pills" role="radiogroup" aria-labelledby="' + idTitre + '" data-cle="' + esc(g.cle) + '" data-n="' + g.options.length + '">'
           + g.options.map(function (o) {
             var on = o.valeur === g.choisie;
             return '<button type="button" class="fg-pill' + (on ? ' is-on' : '') + '" role="radio" aria-checked="' + on + '" tabindex="' + (on ? '0' : '-1') + '" data-cle="' + esc(g.cle) + '" data-valeur="' + esc(String(o.valeur)) + '"><b>' + esc(o.label) + '</b><small>' + esc(petitDePastille(o)) + '</small></button>';
           }).join('')
-          + '</div>';
+          + '</div></div>';
       }).join('')
       + '</div></div></div>';
   }

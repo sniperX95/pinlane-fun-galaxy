@@ -478,6 +478,26 @@ module.exports = async (req, res) => {
       }
 
       await warmCenterKnowledge();
+      if (Object.prototype.hasOwnProperty.call(body, 'activityMove')) {
+        if (Object.keys(body).some(field => !['id', 'centerId', 'center_id', 'baseUpdatedAt', 'activityMove'].includes(field))) {
+          throw createHttpError('Un déplacement d’activité ne modifie aucun autre choix du dossier.', 422);
+        }
+        if (!body.baseUpdatedAt || !memeVersion(current.updatedAt, lireVersionAttendue(body.baseUpdatedAt))) {
+          throw reservationModifieeEntreTemps(current);
+        }
+        const { buildActivityMove } = require('../lib/reservation-activity-move');
+        const { readStaffState, validateReservationResources } = require('../lib/database');
+        const candidate = buildActivityMove(current, body.activityMove);
+        const snapshot = await readStaffState(current.date, requestedCenterId, { avecBlocages: true });
+        try {
+          validateReservationResources(candidate, snapshot.reservations.filter(row => Number(row.id) !== Number(current.id)), snapshot.laneStatuses, snapshot.blocks || [], current.date);
+        } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
+        const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, activityMove: body.activityMove });
+        const automation = await refreshReservationAutomation(current, reservation, { reason: 'activity_moved' });
+        await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'moveReservationActivity', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildChanges({ opsPlan: current.opsPlan }, { opsPlan: reservation.opsPlan }, ['opsPlan']), requestId: newRequestId() });
+        sendJson(res, 200, { ok: true, reservation, activityMove: { ...body.activityMove, unchangedActivities: true }, automation });
+        return;
+      }
       const patch = {
         ...body,
         centerId: requestedCenterId,

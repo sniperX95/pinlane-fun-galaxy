@@ -652,6 +652,21 @@ async function handleGet(req, res, options = {}) {
   // LA PAGE SECOURS (2026-10-05) : l etat reel de la boite de secours et de la
   // sauvegarde, puis la feuille papier, la feuille vierge ou l Excel d une
   // journee. Le centre est toujours celui de la session (centerScope).
+  // TOUT EXPORTER (2026-10-05) : la base du centre, a la seconde, en Excel.
+  if (action === 'exportComplet') {
+    const scoped = centerScope(centerId);
+    if (!scoped) throw createHttpError('Choisissez un centre precis.', 400);
+    const { exporterTout } = require('../lib/export-complet');
+    const maintenant = new Date();
+    const doc = await exporterTout(getPool(), { centerId: scoped, maintenant });
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="pinlane-export-complet-${scoped}-${maintenant.toISOString().slice(0, 16).replace(/[:T]/g, '-')}.xlsx"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(doc.contenu);
+    return;
+  }
+
   if (action === 'secoursEtat' || action === 'feuilleSecours' || action === 'classeurJour') {
     const scoped = centerScope(centerId);
     if (!scoped) throw createHttpError('Choisissez un centre precis.', 400);
@@ -3621,6 +3636,8 @@ function getRequiredOpsPermission(method, action) {
     // La feuille de secours se lit a l accueil : celui qui voit les reservations
     // la voit, la meme que le planning du jour, en papier.
     if (action === 'secoursEtat' || action === 'feuilleSecours' || action === 'classeurJour') return 'reservations.view';
+    // Tout le centre, contacts compris : la direction ou qui peut deja exporter.
+    if (action === 'exportComplet') return ['exports.download', 'settings.manage', 'direction.view'];
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     // Le switcher de centre doit se peupler pour TOUT role reel (chaque preset

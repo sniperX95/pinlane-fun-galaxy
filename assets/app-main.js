@@ -14643,7 +14643,7 @@ async function telechargerSecours(kind) {
   const champ = document.getElementById('secours-date');
   const date = (champ && champ.value) || state.currentDate || todayStr();
   const centerId = getCurrentStaffCenterId();
-  const action = kind === 'excel' ? 'classeurJour' : 'feuilleSecours';
+  const action = kind === 'tout' ? 'exportComplet' : kind === 'excel' ? 'classeurJour' : 'feuilleSecours';
   const vierge = kind === 'vierge' ? '&vierge=1' : '';
   const bouton = document.querySelector(`[data-secours-dl="${kind}"]`);
   if (bouton) { bouton.disabled = true; bouton.classList.add('is-busy'); }
@@ -14690,6 +14690,7 @@ function renderStaffUtilitySecours() {
           <button type="button" class="btn btn-primary" data-secours-dl="feuille" onclick="telechargerSecours('feuille')">Feuille du jour (PDF)</button>
           <button type="button" class="btn btn-secondary" data-secours-dl="excel" onclick="telechargerSecours('excel')">Excel du jour</button>
           <button type="button" class="btn btn-secondary" data-secours-dl="vierge" onclick="telechargerSecours('vierge')">Feuille vierge</button>
+          ${canUseStaffPermission(['exports.download', 'settings.manage', 'direction.view']) ? '<button type="button" class="btn btn-secondary" data-secours-dl="tout" onclick="telechargerSecours(\'tout\')" title="Toute la base du centre, lue à la seconde">Tout exporter</button>' : ''}
         </div>
       </div>
     </section>

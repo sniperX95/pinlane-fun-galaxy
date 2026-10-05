@@ -56,8 +56,18 @@ function get(url) {
   ok(m.status === 400, '[B] une date mal formee est refusee', `${m.status}`);
   const x = await get(`/api/ops?action=classeurJour&centerId=libramont&date=${jour}`);
   ok(x.status === 200 && x.corps.slice(0, 2).toString() === 'PK' && /\.xlsx"$/.test(x.h['content-disposition'] || ''), '[C] le classeur Excel du jour', x.h['content-disposition']);
+  const t0 = Date.now();
+  const tout = await get('/api/ops?action=exportComplet&centerId=libramont');
+  const duree = Date.now() - t0;
+  ok(tout.status === 200 && tout.corps.slice(0, 2).toString() === 'PK' && /pinlane-export-complet-libramont-/.test(tout.h['content-disposition'] || ''), '[E] tout exporter : un classeur Excel du centre', `${duree} ms`);
+  ok(duree < 2000, '[E] en moins de 2 secondes', `${duree} ms`);
+  const { lireZip } = require(path.join(ROOT, 'lib/xlsx-writer.js'));
+  const fichiers = lireZip(tout.corps);
+  const xmlTout = fichiers.map((e) => Buffer.from(e.donnees).toString('utf8')).join(' ');
+  ok(!/access_code|code_hash|code_enc|token_hash/.test(xmlTout), '[E] aucun code d acces ni jeton dans l export');
   const source = fs.readFileSync(path.join(ROOT, 'api/ops.js'), 'utf8');
   ok(/action === 'secoursEtat' \|\| action === 'feuilleSecours' \|\| action === 'classeurJour'\) return 'reservations\.view';/.test(source), '[D] permission reservations.view');
+  ok(/action === 'exportComplet'\) return \['exports\.download', 'settings\.manage', 'direction\.view'\];/.test(source), '[D] tout exporter : direction ou export seulement');
   await pool.end().catch(() => {});
   console.log('');
   console.log(failures ? `secours-api-check: ${failures} FAIL` : 'secours-api-check: ALL OK (etat reel, feuille, vierge, Excel, permission)');

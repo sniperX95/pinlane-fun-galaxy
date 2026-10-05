@@ -82,6 +82,18 @@ function contexteRegistre(before, after, extra = {}) {
   };
 }
 
+// LA BOITE DE SECOURS SUIT LES VRAIS CHANGEMENTS (2026-10-05) : date, heure,
+// effectif, programme, coordonnees, prix, annulation, suppression. Pas une
+// arrivee ni un paiement : la feuille renvoyee tous les quarts d heure les
+// porte deja, un mail par clic noierait la boite.
+const CHAMPS_COPIE_SECOURS = ['date', 'startTime', 'pax', 'program', 'formuleId', 'formulaId', 'type', 'name', 'phone', 'email', 'price', 'notes', 'duration', 'totalDuration', 'lanes'];
+async function copierAuSecours(reservation, evenement, avant, session) {
+  const { copieSecours } = require('../lib/secours-envoi');
+  const par = (session && session.member && session.member.name) || '';
+  const r = await copieSecours(reservation, { evenement, avant, par });
+  return r && r.erreur ? `secours:${r.erreur}` : '';
+}
+
 const REPLAN_FIELDS = [
   // Changer les ACTIVITES d un dossier (formule adaptee au comptoir) doit
   // replanifier : les horaires et les ressources en dependent. Sans `program`
@@ -370,7 +382,10 @@ module.exports = async (req, res) => {
         const reservation = await setReservationStatus({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, status: body.status, ...(Object.prototype.hasOwnProperty.call(body, 'paymentMethod') || Object.prototype.hasOwnProperty.call(body, 'payment_method') ? { paymentMethod: body.paymentMethod ?? body.payment_method } : {}) });
         const automation = await refreshReservationAutomation(current, reservation, { reason: 'reservation_status_updated' });
         const auditStatus = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'setReservationStatus', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation), requestId: newRequestId() });
-        sendJson(res, 200, { ok: true, reservation, automation, ...(auditStatus.warning ? { warnings: [auditStatus.warning] } : {}) });
+        const changeAnnulation = (body.status === 'cancelled') !== (current.status === 'cancelled');
+        const avertSecours = changeAnnulation ? await copierAuSecours(reservation, body.status === 'cancelled' ? 'annulee' : 'restauree', current, session) : '';
+        const avertissements = [auditStatus.warning, avertSecours].filter(Boolean);
+        sendJson(res, 200, { ok: true, reservation, automation, ...(avertissements.length ? { warnings: avertissements } : {}) });
         return;
       }
 
@@ -572,11 +587,15 @@ module.exports = async (req, res) => {
         requestId: newRequestId(),
       });
 
+      const avertSecours = hasAnyField(patch, CHAMPS_COPIE_SECOURS) || (patch.status && (patch.status === 'cancelled') !== (current.status === 'cancelled'))
+        ? await copierAuSecours(reservation, patch.status === 'cancelled' && current.status !== 'cancelled' ? 'annulee' : 'modifiee', current, session)
+        : '';
+      const avertissementsPatch = [auditPatch.warning, avertSecours].filter(Boolean);
       sendJson(res, 200, {
         ok: true,
         reservation,
         automation,
-        ...(auditPatch.warning ? { warnings: [auditPatch.warning] } : {}),
+        ...(avertissementsPatch.length ? { warnings: avertissementsPatch } : {}),
       });
       return;
     }
@@ -624,11 +643,13 @@ module.exports = async (req, res) => {
         requestId: newRequestId(),
       });
 
+      const avertSecoursSuppression = await copierAuSecours(current, 'archivee', null, session);
+      const avertissementsSuppression = [auditDelete.warning, avertSecoursSuppression].filter(Boolean);
       sendJson(res, 200, {
         ok: true,
         automation,
         archiveId: suppression.archiveId,
-        ...(auditDelete.warning ? { warnings: [auditDelete.warning] } : {}),
+        ...(avertissementsSuppression.length ? { warnings: avertissementsSuppression } : {}),
       });
       return;
     }

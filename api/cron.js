@@ -76,7 +76,8 @@ module.exports = async (req, res) => {
       const pool = getPool();
       const lignes = (await pool.query("select id, name, settings from centers where status in ('active', 'planned')")).rows;
       const centres = lignes.map((l) => ({ id: l.id, name: l.name, secours: normalizeCenterConfig((l.settings && l.settings.config) || {}, l.id).secours }));
-      const result = await lancerSecours({ pool, centres });
+      const { recordWorkerTask } = require('../lib/cron-tasks');
+      const result = await recordWorkerTask('secours', () => lancerSecours({ pool, centres }));
       sendJson(res, result.ok ? 200 : 503, result);
       return;
     }
@@ -85,7 +86,8 @@ module.exports = async (req, res) => {
       const { getPool } = require('../lib/database');
       const { sauvegarderEtEnvoyer } = require('../lib/sauvegarde');
       const { envoyerResend } = require('../lib/secours-envoi');
-      const result = await sauvegarderEtEnvoyer({ pool: getPool(), envoyer: (mail) => envoyerResend(mail) });
+      const { recordWorkerTask } = require('../lib/cron-tasks');
+      const result = await recordWorkerTask('sauvegarde', () => sauvegarderEtEnvoyer({ pool: getPool(), envoyer: (mail) => envoyerResend(mail) }));
       sendJson(res, result.ok || result.ignore ? 200 : 503, result);
       return;
     }

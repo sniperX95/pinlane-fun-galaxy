@@ -37,6 +37,8 @@ async function query(sql, params = []) {
     for (const k of params[1]) if (notes.has(key(params[0], k))) notes.set(key(params[0], k), { body: params[2], version: params[3], updated_by: params[4] });
     return { rows: [] };
   }
+  // Le registre des notes (migration 0053) : une ligne par version enregistree.
+  if (sql.startsWith('insert into client_note_versions')) return { rows: [{ id: ++revision }] };
   throw new Error(`Unhandled synthetic query: ${sql}`);
 }
 const pool = { query, connect: async () => ({ query, release() { released += 1; } }) };

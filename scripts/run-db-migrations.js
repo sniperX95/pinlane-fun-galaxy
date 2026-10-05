@@ -260,6 +260,16 @@ const MIGRATIONS = [
     description: 'Auteur de la note client interne persistante. Colonne additive sur client_notes existant, aucune note modifiee ni effacee.',
   },
   {
+    id: '0052_reservation_archive',
+    file: 'database/reservation-archive-schema.sql',
+    description: "Le registre des suppressions : avant tout DELETE d une reservation, la ligne entiere (to_jsonb, toutes les colonnes) est copiee dans reservation_archive, dans la meme transaction ; sans copie, pas de suppression. Restaurable avec son identifiant d origine (refus clair si l identifiant est repris). Table additive, aucune ligne existante touchee, aucune purge. Rollback : database/rollbacks/0052_reservation_archive.down.sql (la table est renommee, jamais supprimee)",
+  },
+  {
+    id: '0053_client_note_versions',
+    file: 'database/client-note-versions-schema.sql',
+    description: "Chaque version d une note client interne est gardee avec son texte complet (client_note_versions), ecrite dans la transaction de l enregistrement : une note ecrasee par erreur se relit. Table additive, aucune note modifiee, aucune purge. Rollback : database/rollbacks/0053_client_note_versions.down.sql (la table est renommee, jamais supprimee)",
+  },
+  {
     id: '0054_formule_override_validation',
     file: 'database/formule-override-validation-schema.sql',
     description: "Mode de validation d une formule reglable par centre (formule_overrides.human_validation : recommended, required_when_laser_busy, required ; NULL = le catalogue). Colonne additive ; Fun Galaxy F2/F4/F5 passent en « seulement si impossible » dans les 3 centres, sans ecraser un reglage deja pose. Rollback : database/rollbacks/0054_formule_override_validation.down.sql",

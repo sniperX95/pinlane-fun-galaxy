@@ -52,8 +52,10 @@ const MUTATIONS = [
   },
   {
     name: 're-render apres save neutralise',
-    find: "pevToast('Tarif mis à jour.');\n      pevDismissModal();\n      pevReload();",
-    replace: "pevToast('Tarif mis à jour.');\n      pevDismissModal();\n      void 0;",
+    // Le toast dit depuis le 2026-10-05 « Réglage de validation enregistré »
+    // quand seule la validation change : l ancre vise le re-rendu, pas le mot.
+    find: "pevDismissModal();\n      pevReload();\n    }).catch((error) => {\n      pricingEditor.saving = false;",
+    replace: "pevDismissModal();\n      void 0;\n    }).catch((error) => {\n      pricingEditor.saving = false;",
     expect: 'reload-shows-new',
   },
   {

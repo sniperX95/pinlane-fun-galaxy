@@ -9961,7 +9961,11 @@
       sourceId,
       title: eff.name != null ? eff.name : row.title,
       price: eff.priceValue != null ? eff.priceValue : row.price,
-      personnalise: Boolean(entry.centerOverride),
+      // « Tarif personnalisé » ne parle que du TARIF (nom, prix, disponibilite) :
+      // un centre qui n a regle que la validation par l equipe n a pas
+      // touche a son tarif (2026-10-05).
+      personnalise: Boolean(entry.centerOverride && Object.keys(entry.centerOverride).some((k) => k !== 'humanValidation')),
+      validation: entry.effective.humanValidation || 'recommended',
       removed: Boolean(eff.removed),
     };
   }
@@ -10132,6 +10136,7 @@
           <span class="field-hint">Affiché barré à côté du prix. Vide = aucun.</span>
         </div>
       </div>
+      ${pevValidationHtml(d)}
       <div class="pev-toggle-row">
         <span class="pev-toggle-label">Disponible à la réservation<small>Décochée, l'offre n'est plus réservable dans ce centre mais reste au catalogue.</small></span>
         <button type="button" class="mk-switch ${d.enabled ? 'is-on' : ''}" role="switch" aria-checked="${d.enabled ? 'true' : 'false'}" aria-label="Disponible à la réservation" onclick="pevToggle('enabled', this)"><span></span></button>
@@ -10141,6 +10146,37 @@
         <button type="button" class="mk-switch ${d.removed ? 'is-on' : ''}" role="switch" aria-checked="${d.removed ? 'true' : 'false'}" aria-label="Retirer du catalogue" onclick="pevToggle('removed', this)"><span></span></button>
       </div>`;
   }
+
+  // LA VALIDATION PAR L EQUIPE, REGLEE ICI PAR LE CENTRE (2026-10-05). Movsar :
+  // « que lorsque c est quasi vraiment impossible [...] il faut eviter de
+  // deranger le plus possible », puis « parametrable completement cote
+  // produit ». Le serveur applique ce mode au moteur, aux mails et a ce que
+  // l agent promet au client (lib/validation-policy.modeValidationFormule).
+  const PEV_VALIDATION = [
+    { mode: 'recommended', mot: 'Seulement si impossible', dit: 'Confirmée tout de suite au client. L’équipe n’est prévenue que si le planning ne trouve aucune place sûre.' },
+    { mode: 'required_when_laser_busy', mot: 'Si le laser est partagé', dit: 'Confirmée tout de suite, sauf si le groupe devait partager l’arène laser avec un autre : l’équipe valide d’abord et reçoit un mail.' },
+    { mode: 'required', mot: 'Toujours', dit: 'Jamais confirmée tout de suite : chaque réservation attend votre validation, vous recevez un mail et le client un « demande reçue ».' },
+  ];
+  function pevValidationHtml(d) {
+    const actuel = PEV_VALIDATION.find((x) => x.mode === d.humanValidation) || PEV_VALIDATION[0];
+    return `<div class="pev-valid" role="radiogroup" aria-labelledby="pevValidLabel">
+        <span class="pev-valid-label" id="pevValidLabel">Validation par l’équipe</span>
+        <div class="pev-seg">${PEV_VALIDATION.map((x) => `<button type="button" role="radio" aria-checked="${x.mode === actuel.mode ? 'true' : 'false'}" class="pev-seg-btn${x.mode === actuel.mode ? ' is-on' : ''}" onclick="pevSetValidation('${x.mode}')">${esc(x.mot)}</button>`).join('')}</div>
+        <span class="field-hint" id="pevValidHint">${esc(actuel.dit)}</span>
+      </div>`;
+  }
+  window.pevSetValidation = function (mode) {
+    if (!pricingEditor.draft || !PEV_VALIDATION.some((x) => x.mode === mode)) return;
+    pricingEditor.draft.humanValidation = mode;
+    const zone = document.querySelector('#pevOverlay .pev-valid');
+    if (zone) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = pevValidationHtml(pricingEditor.draft);
+      zone.replaceWith(tmp.firstElementChild);
+      const choisi = document.querySelector('#pevOverlay .pev-seg-btn.is-on');
+      if (choisi) choisi.focus();
+    }
+  };
 
   function pevModalFoot() {
     if (!pricingEditor.modal) return '';
@@ -10221,6 +10257,7 @@
       priceOld: eff.priceOld != null ? Number(eff.priceOld) : null,
       enabled: eff.enabled !== false,
       removed: Boolean(eff.removed),
+      humanValidation: eff.humanValidation || 'recommended',
     };
     pricingEditor.original = { ...snapshot };
     pricingEditor.draft = { ...snapshot };
@@ -10268,6 +10305,7 @@
     if (!pevEq(d.priceOld, o.priceOld)) patch.priceOld = d.priceOld;
     if (!pevEq(d.enabled, o.enabled)) patch.enabled = Boolean(d.enabled);
     if (!pevEq(d.removed, o.removed)) patch.removed = Boolean(d.removed);
+    if (!pevEq(d.humanValidation, o.humanValidation)) patch.humanValidation = d.humanValidation;
     return patch;
   }
 
@@ -10293,7 +10331,7 @@
       method: 'POST',
       body: pevBody({ action: 'saveClientFormuleOverride', formuleId, patch }),
     }).then(() => {
-      pevToast('Tarif mis à jour.');
+      pevToast(Object.keys(patch).every((k) => k === 'humanValidation') ? 'Réglage de validation enregistré.' : 'Tarif mis à jour.');
       pevDismissModal();
       pevReload();
     }).catch((error) => {
@@ -10936,6 +10974,9 @@
       row.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
       view.removed ? '<span class="pv2-chip red">Retirée de ce centre</span>' : '',
       view.personnalise && !view.removed ? '<span class="pv2-chip amber">Tarif personnalisé</span>' : '',
+      // Ce que l equipe doit valider se voit sur la carte, sans ouvrir la modale.
+      view.validation === 'required' && !view.removed ? '<span class="pv2-chip">Validée par l’équipe</span>' : '',
+      view.validation === 'required_when_laser_busy' && !view.removed ? '<span class="pv2-chip">Validée si laser partagé</span>' : '',
       row.best ? '<span class="pv2-chip accent">Best deal</span>' : '',
       missingHere.length
         ? `<span class="pv2-chip red">Pas réalisable ici : il manque ${missingHere.map((name) => esc(name)).join(', ')}</span>`
@@ -10961,7 +11002,7 @@
     // enfants a y=11/13/49, corbeille a x=209 y=49).
     const actions = isFormula ? `<div class="pev-card-foot">
         <div class="pev-foot-main">
-        <button type="button" class="pv2-btn sm" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Tarif du centre</button>
+        <button type="button" class="pv2-btn sm" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Réglages du centre</button>
         ${canManage ? `
         <button type="button" class="pv2-btn sm" data-cev-steps="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
         <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>` : ''}
@@ -11066,7 +11107,7 @@
       const estActivite = ACTIVITY_SECTIONS.includes(group.name);
       const hostId = group === firstFormulaGroup ? ' id="cevCatalogBlock"' : '';
       const legend = group === firstFormulaGroup
-        ? `<span class="pv2-section-legend">« Tarif du centre » n'engage que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS VOS centres.</span>`
+        ? `<span class="pv2-section-legend">« Réglages du centre » (prix, disponibilité, validation) n’engagent que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS VOS centres.</span>`
         : (group.name === ACTIVITY_SECTION_PARTS
           ? `<span class="pv2-section-legend">Ce que vos formules peuvent contenir. Ces activités ne se réservent pas seules.</span>`
           : '');

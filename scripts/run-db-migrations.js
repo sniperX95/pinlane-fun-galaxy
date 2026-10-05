@@ -259,6 +259,11 @@ const MIGRATIONS = [
     file: 'database/customer-note-author-schema.sql',
     description: 'Auteur de la note client interne persistante. Colonne additive sur client_notes existant, aucune note modifiee ni effacee.',
   },
+  {
+    id: '0054_formule_override_validation',
+    file: 'database/formule-override-validation-schema.sql',
+    description: "Mode de validation d une formule reglable par centre (formule_overrides.human_validation : recommended, required_when_laser_busy, required ; NULL = le catalogue). Colonne additive ; Fun Galaxy F2/F4/F5 passent en « seulement si impossible » dans les 3 centres, sans ecraser un reglage deja pose. Rollback : database/rollbacks/0054_formule_override_validation.down.sql",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

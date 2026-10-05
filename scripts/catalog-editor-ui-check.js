@@ -269,7 +269,9 @@ async function runSuite(browser, quiet) {
     // « TOUS VOS centres » depuis la migration 0042 : la portee d'une edition de
     // catalogue est l'ENTREPRISE, plus la plateforme entiere. L'assertion suit
     // le texte, sinon elle certifierait une phrase devenue fausse.
-    ok(/n'engage que ce centre/i.test(scopeText) && /TOUS VOS centres/.test(scopeText), 'scope-distinction',
+    // « Réglages du centre » (2026-10-05) : l apostrophe typographique et le
+    // pluriel disent la meme portee ; l invariant ne change pas.
+    ok(/n['’]engagen?t? que ce centre/i.test(scopeText) && /TOUS VOS centres/.test(scopeText), 'scope-distinction',
       `centre=${/n'engage que ce centre/i.test(scopeText)} entreprise=${/TOUS VOS centres/.test(scopeText)}`);
     // La page a change de forme (2026-08-22) : le bouton du haut cree une
     // CATEGORIE, et chaque section porte son propre « + Formule », pre-rempli

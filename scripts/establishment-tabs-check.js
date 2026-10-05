@@ -178,6 +178,12 @@ async function main() {
       document.getElementById('estab-bar-escort').checked = true;    // onglet « Regles & comptoir »
       const offer = document.getElementById('estab-offer-f1');
       offer.checked = false;                                          // onglet « Offres & activites »
+      // Onglet « Regles » : la validation par l equipe (vrais clics : le
+      // niveau re-rend sa carte, l interrupteur se cherche apres) et la boite
+      // de secours.
+      document.querySelector('#estab-validation .estab-seg-btn[onclick*="\'normal\'"]').click();
+      document.querySelector('#estab-validation input[onchange*="\'laser_partage\'"]').click();
+      document.getElementById('estab-secours-emails').value = 'Secours@FunGalaxy.be, direction@fungalaxy.be';
       setEstablishmentTab('horaires');                                // on enregistre depuis AILLEURS
       window.__QA_SAVED__ = [];
       await submitCenterConfig('libramont');
@@ -188,6 +194,8 @@ async function main() {
         escort: config.resources?.barDesk?.activityEscort,
         f1: config.offerAvailability?.f1,
         days: Object.keys(config.defaultSchedule?.regular || {}).length,
+        validation: JSON.stringify(config.validationEquipe || null),
+        secours: JSON.stringify(config.secours || null),
       };
     });
     ok(!!saved, 'un payload saveCenterConfig est bien envoye');
@@ -196,6 +204,30 @@ async function main() {
     ok(saved && saved.escort === true, `onglet Regles : accompagnement active (obtenu ${saved && saved.escort})`);
     ok(saved && saved.f1 === false, `onglet Offres : formule f1 decochee (obtenu ${saved && saved.f1})`);
     ok(saved && saved.days === 7, `onglet Horaires : les 7 jours partent quand meme (obtenu ${saved && saved.days})`);
+    ok(saved && saved.validation === '{"niveau":"normal","situations":{"laser_partage":true}}', `onglet Regles : niveau Normal + laser partage dans le payload (obtenu ${saved && saved.validation})`);
+    ok(saved && saved.secours === '{"emails":["Secours@FunGalaxy.be","direction@fungalaxy.be"]}', `onglet Regles : la boite de secours part (obtenu ${saved && saved.secours})`);
+
+    // =====================================================================
+    console.log('\n[3b] Une adresse de secours mal formee bloque l enregistrement, et le dit');
+    // =====================================================================
+    await openEstablishment(page, 'secours');
+    const bloque = await page.evaluate(async () => {
+      startEstablishmentEdit();
+      document.getElementById('estab-secours-emails').value = 'secours@fungalaxy.be, pas-une-adresse';
+      setEstablishmentTab('horaires');
+      window.__QA_SAVED__ = [];
+      await submitCenterConfig('libramont');
+      const toastEl = document.getElementById('toast') || document.querySelector('.toast');
+      return {
+        posts: window.__QA_SAVED__.filter(body => body.action === 'saveCenterConfig').length,
+        tab: state.establishmentTab,
+        active: document.activeElement ? document.activeElement.id : '',
+        message: toastEl ? toastEl.textContent : '',
+      };
+    });
+    ok(bloque.posts === 0, `rien ne part au serveur (obtenu ${bloque.posts} envoi(s))`);
+    ok(bloque.tab === 'regles' && bloque.active === 'estab-secours-emails', `l onglet Regles s ouvre sur le champ (obtenu ${bloque.tab} / ${bloque.active})`);
+    ok(/pas-une-adresse/.test(bloque.message), `le message nomme l adresse fautive (obtenu "${bloque.message}")`);
 
     // =====================================================================
     console.log('\n[4] Un champ invalide ouvre SON onglet');

@@ -649,6 +649,31 @@ async function handleGet(req, res, options = {}) {
   // Liste des blocages de disponibilite du centre (editeur de blocage, permission
   // settings.manage). Scope au centre de SESSION (jamais un parametre brut) ;
   // 'all'/vide refuse : un blocage appartient toujours a un centre precis.
+  // LA PAGE SECOURS (2026-10-05) : l etat reel de la boite de secours et de la
+  // sauvegarde, puis la feuille papier, la feuille vierge ou l Excel d une
+  // journee. Le centre est toujours celui de la session (centerScope).
+  if (action === 'secoursEtat' || action === 'feuilleSecours' || action === 'classeurJour') {
+    const scoped = centerScope(centerId);
+    if (!scoped) throw createHttpError('Choisissez un centre precis.', 400);
+    const { etatSecours, documentSecours } = require('../lib/secours-api');
+    if (action === 'secoursEtat') {
+      sendJson(res, 200, await etatSecours(getPool(), scoped));
+      return;
+    }
+    const doc = await documentSecours(getPool(), {
+      centerId: scoped,
+      date: String(url.searchParams.get('date') || ''),
+      kind: action === 'classeurJour' ? 'excel' : 'feuille',
+      vierge: url.searchParams.get('vierge') === '1',
+    });
+    res.statusCode = 200;
+    res.setHeader('Content-Type', doc.type);
+    res.setHeader('Content-Disposition', `attachment; filename="${doc.nom}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(doc.contenu);
+    return;
+  }
+
   if (action === 'listAvailabilityBlocks') {
     const scoped = centerScope(centerId);
     if (!scoped) {
@@ -3593,6 +3618,9 @@ function getRequiredOpsPermission(method, action) {
     // et que ses ecritures (saveAvailabilityBlock), la personne qui parametre le
     // centre. Jamais platform.admin : c'est un reglage d'exploitation du centre.
     if (action === 'listAvailabilityBlocks') return 'settings.manage';
+    // La feuille de secours se lit a l accueil : celui qui voit les reservations
+    // la voit, la meme que le planning du jour, en papier.
+    if (action === 'secoursEtat' || action === 'feuilleSecours' || action === 'classeurJour') return 'reservations.view';
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     // Le switcher de centre doit se peupler pour TOUT role reel (chaque preset

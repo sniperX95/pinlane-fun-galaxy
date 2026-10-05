@@ -47,10 +47,14 @@ const { Readable } = require('stream');
 
 const ROOT = path.resolve(__dirname, '..');
 
-if (!process.env.DATABASE_URL) {
-  console.log('registre-check: DATABASE_URL absent, gate saute. Il demande un Postgres LOCAL (ex. postgres://postgres@localhost:55432/pin_registre).');
+// La base de ce gate se donne par sa PROPRE variable : le poste qui porte la
+// DATABASE_URL de production (celui qui lance db:migrate) saute ce gate au
+// lieu de le voir refuser, et test:ops:all reste vert sans base locale.
+if (!process.env.PINLANE_TEST_DATABASE_URL) {
+  console.log('registre-check: PINLANE_TEST_DATABASE_URL absent, gate saute. Il demande un Postgres LOCAL (ex. postgres://postgres@localhost:55432/pin_registre).');
   process.exit(0);
 }
+process.env.DATABASE_URL = process.env.PINLANE_TEST_DATABASE_URL;
 function hoteLocal(url) {
   try {
     const parsed = new URL(url);

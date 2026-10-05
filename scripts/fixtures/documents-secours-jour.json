@@ -1,0 +1,2562 @@
+[
+ {
+  "id": 81001,
+  "name": "Famille Peeters",
+  "phone": "+32 470 001 21 45",
+  "email": "famille.peeters@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "11:00",
+  "duration": 1,
+  "totalDuration": 1,
+  "lanes": [
+   1
+  ],
+  "pax": 6,
+  "status": "paid",
+  "basePrice": 39,
+  "price": 39,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h",
+  "occasion": "",
+  "paymentMethod": "Espèces",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 1,
+     "price": 39,
+     "priceKnown": true
+    }
+   ],
+   "price": 39,
+   "priceComplete": true
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "11:00",
+   "endTime": "12:05",
+   "assignedLanes": [
+    1
+   ],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "10:50",
+     "endTime": "11:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "11:00",
+     "endTime": "12:00",
+     "durationMinutes": 60,
+     "requiredLanes": 1,
+     "players": 6,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81002,
+  "name": "Anniversaire de Léa",
+  "phone": "+32 470 002 21 45",
+  "email": "anniversaire.de.l.a@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "12:00",
+  "duration": 1,
+  "totalDuration": 2.5,
+  "lanes": [],
+  "pax": 10,
+  "status": "arrived",
+  "basePrice": 240,
+  "price": 240,
+  "type": "formule",
+  "formuleId": "f7",
+  "label": "",
+  "occasion": "anniversaire",
+  "paymentMethod": "",
+  "notes": "Gâteau apporté par les parents, à sortir vers 14h.",
+  "program": null,
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "12:00",
+   "endTime": "14:13",
+   "assignedLanes": [],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "11:50",
+     "endTime": "12:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "party_table",
+     "label": "Table anniversaire",
+     "startTime": "11:50",
+     "endTime": "14:08",
+     "durationMinutes": 138,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "playground",
+     "label": "Playground",
+     "startTime": "12:00",
+     "endTime": "13:00",
+     "durationMinutes": 60,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "13:00",
+     "endTime": "13:05"
+    },
+    {
+     "type": "activity",
+     "activityId": "minigolf_blacklight",
+     "label": "Minigolf Blacklight",
+     "startTime": "13:05",
+     "endTime": "13:50",
+     "durationMinutes": 45,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "13:50",
+     "endTime": "13:55"
+    },
+    {
+     "type": "activity",
+     "activityId": "arcade_credit",
+     "label": "Crédit arcade",
+     "startTime": "13:55",
+     "endTime": "13:58",
+     "durationMinutes": 3,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "service_drinks",
+     "label": "Boissons",
+     "startTime": "13:58",
+     "endTime": "14:03",
+     "durationMinutes": 5,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "service_drinks",
+     "label": "Boissons",
+     "startTime": "14:03",
+     "endTime": "14:08",
+     "durationMinutes": 5,
+     "countIndex": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": 81003,
+  "name": "FC Bertrix U15",
+  "phone": "+32 470 003 21 45",
+  "email": "fc.bertrix.u.@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "13:00",
+  "duration": 1,
+  "totalDuration": 2,
+  "lanes": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "pax": 24,
+  "status": "arrived",
+  "basePrice": 396,
+  "price": 396,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 1 partie",
+  "occasion": "club",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 4,
+     "price": 156,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 240,
+     "priceKnown": true
+    }
+   ],
+   "price": 396,
+   "priceComplete": true
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "13:00",
+   "endTime": "15:15",
+   "assignedLanes": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 24,
+    "playersTotal": 24,
+    "remainingPlaces": 6,
+    "waveCount": 1,
+    "launchCount": 1,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "12:50",
+     "endTime": "13:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "13:00",
+     "endTime": "14:00",
+     "durationMinutes": 60,
+     "requiredLanes": 4,
+     "players": 24,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "14:30",
+     "endTime": "14:55",
+     "durationMinutes": 25,
+     "players": 24,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81004,
+  "name": "Dupont",
+  "phone": "+32 470 004 21 45",
+  "email": "dupont@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "14:00",
+  "duration": 1,
+  "totalDuration": 2.5,
+  "lanes": [
+   1,
+   2
+  ],
+  "pax": 10,
+  "status": "arrived",
+  "basePrice": 258,
+  "price": 258,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 2 parties",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 2,
+     "price": 78,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 2,
+     "duration": 1,
+     "minutes": 60,
+     "price": 180,
+     "priceKnown": true
+    }
+   ],
+   "price": 258,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "14:00",
+   "endTime": "16:45",
+   "assignedLanes": [
+    1,
+    2
+   ],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 10,
+    "playersTotal": 10,
+    "remainingPlaces": 20,
+    "waveCount": 1,
+    "launchCount": 2,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "13:50",
+     "endTime": "14:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "14:00",
+     "endTime": "15:00",
+     "durationMinutes": 60,
+     "requiredLanes": 2,
+     "players": 10,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "15:00",
+     "endTime": "15:25",
+     "durationMinutes": 25,
+     "players": 10,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "16:00",
+     "endTime": "16:25",
+     "durationMinutes": 25,
+     "players": 10,
+     "countIndex": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": 81005,
+  "name": "Hôtel des Ardennes",
+  "phone": "+32 470 005 21 45",
+  "email": "h.tel.des.ardennes@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "13:30",
+  "duration": 0.5,
+  "totalDuration": 1.5,
+  "lanes": [],
+  "pax": 4,
+  "status": "arrived",
+  "basePrice": 0,
+  "price": 0,
+  "type": "activite",
+  "formuleId": "",
+  "label": "Minigolf Blacklight · Arcades",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "minigolf_blacklight",
+     "name": "Minigolf Blacklight",
+     "planned": false,
+     "priceType": "per_pax",
+     "unitLabel": "par personne",
+     "participants": 4,
+     "sessions": 1,
+     "minutes": 45,
+     "price": null,
+     "priceKnown": false
+    },
+    {
+     "activityId": "arcade_time",
+     "name": "Arcades",
+     "planned": false,
+     "priceType": "per_pax",
+     "unitLabel": "par personne",
+     "participants": 4,
+     "sessions": 1,
+     "minutes": 30,
+     "price": null,
+     "priceKnown": false
+    }
+   ],
+   "price": 0,
+   "priceComplete": false
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "13:30",
+   "endTime": "14:45",
+   "assignedLanes": [],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "activity",
+     "activityId": "minigolf_blacklight",
+     "label": "Minigolf Blacklight"
+    },
+    {
+     "type": "activity",
+     "activityId": "arcade_time",
+     "label": "Arcades"
+    }
+   ]
+  }
+ },
+ {
+  "id": 81006,
+  "name": "Martin",
+  "phone": "+32 470 006 21 45",
+  "email": "martin@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "14:30",
+  "duration": 1,
+  "totalDuration": 1,
+  "lanes": [
+   3
+  ],
+  "pax": 4,
+  "status": "confirmed",
+  "basePrice": 39,
+  "price": 39,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 1,
+     "price": 39,
+     "priceKnown": true
+    }
+   ],
+   "price": 39,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "14:30",
+   "endTime": "15:35",
+   "assignedLanes": [
+    3
+   ],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "14:20",
+     "endTime": "14:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "14:30",
+     "endTime": "15:30",
+     "durationMinutes": 60,
+     "requiredLanes": 1,
+     "players": 4,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81007,
+  "name": "Nguyen",
+  "phone": "+32 470 007 21 45",
+  "email": "nguyen@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "15:00",
+  "duration": 0.5,
+  "totalDuration": 0.5,
+  "lanes": [],
+  "pax": 6,
+  "status": "confirmed",
+  "basePrice": 60,
+  "price": 60,
+  "type": "laser",
+  "formuleId": "",
+  "label": "Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 60,
+     "priceKnown": true
+    }
+   ],
+   "price": 60,
+   "priceComplete": true
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "15:00",
+   "endTime": "15:35",
+   "assignedLanes": [],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": true,
+    "weaponCount": 30,
+    "requestedPlayers": 6,
+    "playersTotal": 16,
+    "remainingPlaces": 14,
+    "waveCount": 1,
+    "launchCount": 1,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "14:50",
+     "endTime": "15:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "15:00",
+     "endTime": "15:25",
+     "durationMinutes": 25,
+     "players": 6,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81008,
+  "name": "Lambda SA (team building)",
+  "phone": "+32 470 008 21 45",
+  "email": "lambda.sa.team.building.@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "15:30",
+  "duration": 1,
+  "totalDuration": 2,
+  "lanes": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "pax": 30,
+  "status": "pending",
+  "basePrice": 495,
+  "price": 280,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "Facture au nom de Lambda SA, TVA BE0123.456.789. Prix négocié par Seb.",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 5,
+     "price": 195,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 300,
+     "priceKnown": true
+    }
+   ],
+   "price": 495,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "15:30",
+   "endTime": "17:45",
+   "assignedLanes": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "laserSharing": {
+    "mayShare": false,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 30,
+    "playersTotal": 30,
+    "remainingPlaces": 0,
+    "waveCount": 1,
+    "launchCount": 1,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "15:20",
+     "endTime": "15:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "15:30",
+     "endTime": "16:30",
+     "durationMinutes": 60,
+     "requiredLanes": 5,
+     "players": 30,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "17:00",
+     "endTime": "17:25",
+     "durationMinutes": 25,
+     "players": 30,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81009,
+  "name": "Anniversaire de Noah",
+  "phone": "+32 470 009 21 45",
+  "email": "anniversaire.de.noah@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "16:00",
+  "duration": 1,
+  "totalDuration": 3.5,
+  "lanes": [
+   6,
+   7
+  ],
+  "pax": 8,
+  "status": "confirmed",
+  "basePrice": 312,
+  "price": 312,
+  "type": "formule",
+  "formuleId": "f4",
+  "label": "",
+  "occasion": "anniversaire",
+  "paymentMethod": "",
+  "notes": "Allergie arachides (Noah). Bougies : 9 ans.",
+  "program": null,
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "16:00",
+   "endTime": "19:25",
+   "assignedLanes": [
+    6,
+    7
+   ],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 8,
+    "playersTotal": 8,
+    "remainingPlaces": 22,
+    "waveCount": 1,
+    "launchCount": 2,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "15:50",
+     "endTime": "16:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "16:00",
+     "endTime": "17:00",
+     "durationMinutes": 60,
+     "requiredLanes": 2,
+     "players": 8,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "17:00",
+     "endTime": "17:05"
+    },
+    {
+     "type": "activity",
+     "activityId": "minigolf_blacklight",
+     "label": "Minigolf Blacklight",
+     "startTime": "17:05",
+     "endTime": "17:50",
+     "durationMinutes": 45,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "17:50",
+     "endTime": "17:55"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:00",
+     "endTime": "18:25",
+     "durationMinutes": 25,
+     "players": 8,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "18:25",
+     "endTime": "18:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:30",
+     "endTime": "18:55",
+     "durationMinutes": 25,
+     "players": 8,
+     "countIndex": 2
+    },
+    {
+     "type": "activity",
+     "activityId": "service_drinks",
+     "label": "Boissons",
+     "startTime": "18:55",
+     "endTime": "19:00",
+     "durationMinutes": 5,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "service_drinks",
+     "label": "Boissons",
+     "startTime": "19:00",
+     "endTime": "19:05",
+     "durationMinutes": 5,
+     "countIndex": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": 81010,
+  "name": "Famille Janssens",
+  "phone": "+32 470 010 21 45",
+  "email": "famille.janssens@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "17:00",
+  "duration": 1.5,
+  "totalDuration": 2.25,
+  "lanes": [
+   1
+  ],
+  "pax": 5,
+  "status": "confirmed",
+  "basePrice": 59,
+  "price": 59,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h30 · Minigolf Blacklight",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1.5,
+     "minutes": 90,
+     "laneCount": 1,
+     "price": 59,
+     "priceKnown": true
+    },
+    {
+     "activityId": "minigolf_blacklight",
+     "name": "Minigolf Blacklight",
+     "planned": false,
+     "priceType": "per_pax",
+     "unitLabel": "par personne",
+     "participants": 5,
+     "sessions": 1,
+     "minutes": 45,
+     "price": null,
+     "priceKnown": false
+    }
+   ],
+   "price": 59,
+   "priceComplete": false
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "17:00",
+   "endTime": "18:35",
+   "assignedLanes": [
+    1
+   ],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "16:50",
+     "endTime": "17:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "17:00",
+     "endTime": "18:30",
+     "durationMinutes": 90,
+     "requiredLanes": 1,
+     "players": 5,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81011,
+  "name": "EVJF de Sarah",
+  "phone": "+32 470 011 21 45",
+  "email": "evjf.de.sarah@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "18:00",
+  "duration": 1,
+  "totalDuration": 3,
+  "lanes": [
+   1,
+   2
+  ],
+  "pax": 12,
+  "status": "confirmed",
+  "basePrice": 294,
+  "price": 294,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 2 parties",
+  "occasion": "evjf",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 2,
+     "price": 78,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 2,
+     "duration": 1,
+     "minutes": 60,
+     "price": 216,
+     "priceKnown": true
+    }
+   ],
+   "price": 294,
+   "priceComplete": true
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "18:00",
+   "endTime": "21:15",
+   "assignedLanes": [
+    1,
+    2
+   ],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": true,
+    "weaponCount": 30,
+    "requestedPlayers": 12,
+    "playersTotal": 20,
+    "remainingPlaces": 10,
+    "waveCount": 1,
+    "launchCount": 2,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "17:50",
+     "endTime": "18:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "19:00",
+     "endTime": "20:00",
+     "durationMinutes": 60,
+     "requiredLanes": 2,
+     "players": 12,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:00",
+     "endTime": "18:25",
+     "durationMinutes": 25,
+     "players": 12,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "20:30",
+     "endTime": "20:55",
+     "durationMinutes": 25,
+     "players": 12,
+     "countIndex": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": 81012,
+  "name": "Scouts de Neufchâteau",
+  "phone": "+32 470 012 21 45",
+  "email": "scouts.de.neufch.teau@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "19:30",
+  "duration": 1,
+  "totalDuration": 2.5,
+  "lanes": [],
+  "pax": 40,
+  "status": "confirmed",
+  "basePrice": 673,
+  "price": 673,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 7,
+     "price": 273,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 400,
+     "priceKnown": true
+    }
+   ],
+   "price": 673,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "19:30",
+   "endTime": "22:25",
+   "assignedLanes": [],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 40,
+    "playersTotal": 20,
+    "remainingPlaces": 10,
+    "waveCount": 2,
+    "launchCount": 2,
+    "splitGroup": true
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "19:20",
+     "endTime": "19:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "19:30",
+     "endTime": "20:30",
+     "durationMinutes": 60,
+     "requiredLanes": 7,
+     "players": 40,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game - groupe 1/2",
+     "startTime": "21:00",
+     "endTime": "21:25",
+     "durationMinutes": 25,
+     "players": 20,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game - groupe 2/2",
+     "startTime": "21:30",
+     "endTime": "21:55",
+     "durationMinutes": 25,
+     "players": 20,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81106,
+  "name": "Martin 2",
+  "phone": "+32 470 006 21 45",
+  "email": "martin@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "14:30",
+  "duration": 1,
+  "totalDuration": 1,
+  "lanes": [
+   3
+  ],
+  "pax": 4,
+  "status": "confirmed",
+  "basePrice": 39,
+  "price": 39,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 1,
+     "price": 39,
+     "priceKnown": true
+    }
+   ],
+   "price": 39,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "14:30",
+   "endTime": "15:35",
+   "assignedLanes": [
+    3
+   ],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "14:20",
+     "endTime": "14:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "14:30",
+     "endTime": "15:30",
+     "durationMinutes": 60,
+     "requiredLanes": 1,
+     "players": 4,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81107,
+  "name": "Nguyen 2",
+  "phone": "+32 470 007 21 45",
+  "email": "nguyen@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "15:00",
+  "duration": 0.5,
+  "totalDuration": 0.5,
+  "lanes": [],
+  "pax": 6,
+  "status": "confirmed",
+  "basePrice": 60,
+  "price": 60,
+  "type": "laser",
+  "formuleId": "",
+  "label": "Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 60,
+     "priceKnown": true
+    }
+   ],
+   "price": 60,
+   "priceComplete": true
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "15:00",
+   "endTime": "15:35",
+   "assignedLanes": [],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": true,
+    "weaponCount": 30,
+    "requestedPlayers": 6,
+    "playersTotal": 16,
+    "remainingPlaces": 14,
+    "waveCount": 1,
+    "launchCount": 1,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "14:50",
+     "endTime": "15:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "15:00",
+     "endTime": "15:25",
+     "durationMinutes": 25,
+     "players": 6,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81108,
+  "name": "Lambda SA (team building) 2",
+  "phone": "+32 470 008 21 45",
+  "email": "lambda.sa.team.building.@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "15:30",
+  "duration": 1,
+  "totalDuration": 2,
+  "lanes": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "pax": 30,
+  "status": "pending",
+  "basePrice": 495,
+  "price": 280,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "Facture au nom de Lambda SA, TVA BE0123.456.789. Prix négocié par Seb.",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 5,
+     "price": 195,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 300,
+     "priceKnown": true
+    }
+   ],
+   "price": 495,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "15:30",
+   "endTime": "17:45",
+   "assignedLanes": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "laserSharing": {
+    "mayShare": false,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 30,
+    "playersTotal": 30,
+    "remainingPlaces": 0,
+    "waveCount": 1,
+    "launchCount": 1,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "15:20",
+     "endTime": "15:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "15:30",
+     "endTime": "16:30",
+     "durationMinutes": 60,
+     "requiredLanes": 5,
+     "players": 30,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "17:00",
+     "endTime": "17:25",
+     "durationMinutes": 25,
+     "players": 30,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81109,
+  "name": "Anniversaire de Noah 2",
+  "phone": "+32 470 009 21 45",
+  "email": "anniversaire.de.noah@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "16:00",
+  "duration": 1,
+  "totalDuration": 3.5,
+  "lanes": [
+   6,
+   7
+  ],
+  "pax": 8,
+  "status": "confirmed",
+  "basePrice": 312,
+  "price": 312,
+  "type": "formule",
+  "formuleId": "f4",
+  "label": "",
+  "occasion": "anniversaire",
+  "paymentMethod": "",
+  "notes": "Allergie arachides (Noah). Bougies : 9 ans.",
+  "program": null,
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "16:00",
+   "endTime": "19:25",
+   "assignedLanes": [
+    6,
+    7
+   ],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 8,
+    "playersTotal": 8,
+    "remainingPlaces": 22,
+    "waveCount": 1,
+    "launchCount": 2,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "15:50",
+     "endTime": "16:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "16:00",
+     "endTime": "17:00",
+     "durationMinutes": 60,
+     "requiredLanes": 2,
+     "players": 8,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "17:00",
+     "endTime": "17:05"
+    },
+    {
+     "type": "activity",
+     "activityId": "minigolf_blacklight",
+     "label": "Minigolf Blacklight",
+     "startTime": "17:05",
+     "endTime": "17:50",
+     "durationMinutes": 45,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "17:50",
+     "endTime": "17:55"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:00",
+     "endTime": "18:25",
+     "durationMinutes": 25,
+     "players": 8,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "18:25",
+     "endTime": "18:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:30",
+     "endTime": "18:55",
+     "durationMinutes": 25,
+     "players": 8,
+     "countIndex": 2
+    },
+    {
+     "type": "activity",
+     "activityId": "service_drinks",
+     "label": "Boissons",
+     "startTime": "18:55",
+     "endTime": "19:00",
+     "durationMinutes": 5,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "service_drinks",
+     "label": "Boissons",
+     "startTime": "19:00",
+     "endTime": "19:05",
+     "durationMinutes": 5,
+     "countIndex": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": 81110,
+  "name": "Famille Janssens 2",
+  "phone": "+32 470 010 21 45",
+  "email": "famille.janssens@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "17:00",
+  "duration": 1.5,
+  "totalDuration": 2.25,
+  "lanes": [
+   1
+  ],
+  "pax": 5,
+  "status": "confirmed",
+  "basePrice": 59,
+  "price": 59,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h30 · Minigolf Blacklight",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1.5,
+     "minutes": 90,
+     "laneCount": 1,
+     "price": 59,
+     "priceKnown": true
+    },
+    {
+     "activityId": "minigolf_blacklight",
+     "name": "Minigolf Blacklight",
+     "planned": false,
+     "priceType": "per_pax",
+     "unitLabel": "par personne",
+     "participants": 5,
+     "sessions": 1,
+     "minutes": 45,
+     "price": null,
+     "priceKnown": false
+    }
+   ],
+   "price": 59,
+   "priceComplete": false
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "17:00",
+   "endTime": "18:35",
+   "assignedLanes": [
+    1
+   ],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "16:50",
+     "endTime": "17:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "17:00",
+     "endTime": "18:30",
+     "durationMinutes": 90,
+     "requiredLanes": 1,
+     "players": 5,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81111,
+  "name": "EVJF de Sarah 2",
+  "phone": "+32 470 011 21 45",
+  "email": "evjf.de.sarah@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "18:00",
+  "duration": 1,
+  "totalDuration": 3,
+  "lanes": [
+   1,
+   2
+  ],
+  "pax": 12,
+  "status": "confirmed",
+  "basePrice": 294,
+  "price": 294,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 2 parties",
+  "occasion": "evjf",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 2,
+     "price": 78,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 2,
+     "duration": 1,
+     "minutes": 60,
+     "price": 216,
+     "priceKnown": true
+    }
+   ],
+   "price": 294,
+   "priceComplete": true
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "18:00",
+   "endTime": "21:15",
+   "assignedLanes": [
+    1,
+    2
+   ],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": true,
+    "weaponCount": 30,
+    "requestedPlayers": 12,
+    "playersTotal": 20,
+    "remainingPlaces": 10,
+    "waveCount": 1,
+    "launchCount": 2,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "17:50",
+     "endTime": "18:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "19:00",
+     "endTime": "20:00",
+     "durationMinutes": 60,
+     "requiredLanes": 2,
+     "players": 12,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:00",
+     "endTime": "18:25",
+     "durationMinutes": 25,
+     "players": 12,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "20:30",
+     "endTime": "20:55",
+     "durationMinutes": 25,
+     "players": 12,
+     "countIndex": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": 81112,
+  "name": "Scouts de Neufchâteau 2",
+  "phone": "+32 470 012 21 45",
+  "email": "scouts.de.neufch.teau@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "19:30",
+  "duration": 1,
+  "totalDuration": 2.5,
+  "lanes": [],
+  "pax": 40,
+  "status": "confirmed",
+  "basePrice": 673,
+  "price": 673,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 7,
+     "price": 273,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 400,
+     "priceKnown": true
+    }
+   ],
+   "price": 673,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "19:30",
+   "endTime": "22:25",
+   "assignedLanes": [],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 40,
+    "playersTotal": 20,
+    "remainingPlaces": 10,
+    "waveCount": 2,
+    "launchCount": 2,
+    "splitGroup": true
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "19:20",
+     "endTime": "19:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "19:30",
+     "endTime": "20:30",
+     "durationMinutes": 60,
+     "requiredLanes": 7,
+     "players": 40,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game - groupe 1/2",
+     "startTime": "21:00",
+     "endTime": "21:25",
+     "durationMinutes": 25,
+     "players": 20,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game - groupe 2/2",
+     "startTime": "21:30",
+     "endTime": "21:55",
+     "durationMinutes": 25,
+     "players": 20,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81206,
+  "name": "Martin 3",
+  "phone": "+32 470 006 21 45",
+  "email": "martin@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "14:30",
+  "duration": 1,
+  "totalDuration": 1,
+  "lanes": [
+   3
+  ],
+  "pax": 4,
+  "status": "confirmed",
+  "basePrice": 39,
+  "price": 39,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 1,
+     "price": 39,
+     "priceKnown": true
+    }
+   ],
+   "price": 39,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "14:30",
+   "endTime": "15:35",
+   "assignedLanes": [
+    3
+   ],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "14:20",
+     "endTime": "14:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "14:30",
+     "endTime": "15:30",
+     "durationMinutes": 60,
+     "requiredLanes": 1,
+     "players": 4,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81207,
+  "name": "Nguyen 3",
+  "phone": "+32 470 007 21 45",
+  "email": "nguyen@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "15:00",
+  "duration": 0.5,
+  "totalDuration": 0.5,
+  "lanes": [],
+  "pax": 6,
+  "status": "confirmed",
+  "basePrice": 60,
+  "price": 60,
+  "type": "laser",
+  "formuleId": "",
+  "label": "Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 60,
+     "priceKnown": true
+    }
+   ],
+   "price": 60,
+   "priceComplete": true
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "15:00",
+   "endTime": "15:35",
+   "assignedLanes": [],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": true,
+    "weaponCount": 30,
+    "requestedPlayers": 6,
+    "playersTotal": 16,
+    "remainingPlaces": 14,
+    "waveCount": 1,
+    "launchCount": 1,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "14:50",
+     "endTime": "15:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "15:00",
+     "endTime": "15:25",
+     "durationMinutes": 25,
+     "players": 6,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81208,
+  "name": "Lambda SA (team building) 3",
+  "phone": "+32 470 008 21 45",
+  "email": "lambda.sa.team.building.@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "15:30",
+  "duration": 1,
+  "totalDuration": 2,
+  "lanes": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "pax": 30,
+  "status": "pending",
+  "basePrice": 495,
+  "price": 280,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "Facture au nom de Lambda SA, TVA BE0123.456.789. Prix négocié par Seb.",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 5,
+     "price": 195,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 300,
+     "priceKnown": true
+    }
+   ],
+   "price": 495,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "15:30",
+   "endTime": "17:45",
+   "assignedLanes": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "laserSharing": {
+    "mayShare": false,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 30,
+    "playersTotal": 30,
+    "remainingPlaces": 0,
+    "waveCount": 1,
+    "launchCount": 1,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "15:20",
+     "endTime": "15:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "15:30",
+     "endTime": "16:30",
+     "durationMinutes": 60,
+     "requiredLanes": 5,
+     "players": 30,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "17:00",
+     "endTime": "17:25",
+     "durationMinutes": 25,
+     "players": 30,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81209,
+  "name": "Anniversaire de Noah 3",
+  "phone": "+32 470 009 21 45",
+  "email": "anniversaire.de.noah@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "16:00",
+  "duration": 1,
+  "totalDuration": 3.5,
+  "lanes": [
+   6,
+   7
+  ],
+  "pax": 8,
+  "status": "confirmed",
+  "basePrice": 312,
+  "price": 312,
+  "type": "formule",
+  "formuleId": "f4",
+  "label": "",
+  "occasion": "anniversaire",
+  "paymentMethod": "",
+  "notes": "Allergie arachides (Noah). Bougies : 9 ans.",
+  "program": null,
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "16:00",
+   "endTime": "19:25",
+   "assignedLanes": [
+    6,
+    7
+   ],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 8,
+    "playersTotal": 8,
+    "remainingPlaces": 22,
+    "waveCount": 1,
+    "launchCount": 2,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "15:50",
+     "endTime": "16:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "16:00",
+     "endTime": "17:00",
+     "durationMinutes": 60,
+     "requiredLanes": 2,
+     "players": 8,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "17:00",
+     "endTime": "17:05"
+    },
+    {
+     "type": "activity",
+     "activityId": "minigolf_blacklight",
+     "label": "Minigolf Blacklight",
+     "startTime": "17:05",
+     "endTime": "17:50",
+     "durationMinutes": 45,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "17:50",
+     "endTime": "17:55"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:00",
+     "endTime": "18:25",
+     "durationMinutes": 25,
+     "players": 8,
+     "countIndex": 1
+    },
+    {
+     "type": "service",
+     "label": "Transition",
+     "startTime": "18:25",
+     "endTime": "18:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:30",
+     "endTime": "18:55",
+     "durationMinutes": 25,
+     "players": 8,
+     "countIndex": 2
+    },
+    {
+     "type": "activity",
+     "activityId": "service_drinks",
+     "label": "Boissons",
+     "startTime": "18:55",
+     "endTime": "19:00",
+     "durationMinutes": 5,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "service_drinks",
+     "label": "Boissons",
+     "startTime": "19:00",
+     "endTime": "19:05",
+     "durationMinutes": 5,
+     "countIndex": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": 81210,
+  "name": "Famille Janssens 3",
+  "phone": "+32 470 010 21 45",
+  "email": "famille.janssens@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "17:00",
+  "duration": 1.5,
+  "totalDuration": 2.25,
+  "lanes": [
+   1
+  ],
+  "pax": 5,
+  "status": "confirmed",
+  "basePrice": 59,
+  "price": 59,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h30 · Minigolf Blacklight",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1.5,
+     "minutes": 90,
+     "laneCount": 1,
+     "price": 59,
+     "priceKnown": true
+    },
+    {
+     "activityId": "minigolf_blacklight",
+     "name": "Minigolf Blacklight",
+     "planned": false,
+     "priceType": "per_pax",
+     "unitLabel": "par personne",
+     "participants": 5,
+     "sessions": 1,
+     "minutes": 45,
+     "price": null,
+     "priceKnown": false
+    }
+   ],
+   "price": 59,
+   "priceComplete": false
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "17:00",
+   "endTime": "18:35",
+   "assignedLanes": [
+    1
+   ],
+   "laserSharing": null,
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "16:50",
+     "endTime": "17:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "17:00",
+     "endTime": "18:30",
+     "durationMinutes": 90,
+     "requiredLanes": 1,
+     "players": 5,
+     "countIndex": 1
+    }
+   ]
+  }
+ },
+ {
+  "id": 81211,
+  "name": "EVJF de Sarah 3",
+  "phone": "+32 470 011 21 45",
+  "email": "evjf.de.sarah@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "18:00",
+  "duration": 1,
+  "totalDuration": 3,
+  "lanes": [
+   1,
+   2
+  ],
+  "pax": 12,
+  "status": "confirmed",
+  "basePrice": 294,
+  "price": 294,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 2 parties",
+  "occasion": "evjf",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 2,
+     "price": 78,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 2,
+     "duration": 1,
+     "minutes": 60,
+     "price": 216,
+     "priceKnown": true
+    }
+   ],
+   "price": 294,
+   "priceComplete": true
+  },
+  "channel": "public",
+  "centerId": "libramont",
+  "validationStatus": "confirmed",
+  "opsPlan": {
+   "startTime": "18:00",
+   "endTime": "21:15",
+   "assignedLanes": [
+    1,
+    2
+   ],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": true,
+    "weaponCount": 30,
+    "requestedPlayers": 12,
+    "playersTotal": 20,
+    "remainingPlaces": 10,
+    "waveCount": 1,
+    "launchCount": 2,
+    "splitGroup": false
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "17:50",
+     "endTime": "18:00"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "19:00",
+     "endTime": "20:00",
+     "durationMinutes": 60,
+     "requiredLanes": 2,
+     "players": 12,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "18:00",
+     "endTime": "18:25",
+     "durationMinutes": 25,
+     "players": 12,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game",
+     "startTime": "20:30",
+     "endTime": "20:55",
+     "durationMinutes": 25,
+     "players": 12,
+     "countIndex": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": 81212,
+  "name": "Scouts de Neufchâteau 3",
+  "phone": "+32 470 012 21 45",
+  "email": "scouts.de.neufch.teau@exemple.be",
+  "date": "2026-10-03",
+  "startTime": "19:30",
+  "duration": 1,
+  "totalDuration": 2.5,
+  "lanes": [],
+  "pax": 40,
+  "status": "confirmed",
+  "basePrice": 673,
+  "price": 673,
+  "type": "bowling",
+  "formuleId": "",
+  "label": "Bowling 1h · Laser 1 partie",
+  "occasion": "",
+  "paymentMethod": "",
+  "notes": "",
+  "program": {
+   "items": [
+    {
+     "activityId": "bowling",
+     "name": "Bowling",
+     "planned": true,
+     "priceType": "grid_bowling",
+     "unitLabel": "par piste",
+     "duration": 1,
+     "minutes": 60,
+     "laneCount": 7,
+     "price": 273,
+     "priceKnown": true
+    },
+    {
+     "activityId": "laser_game",
+     "name": "Laser Game",
+     "planned": true,
+     "priceType": "grid_laser",
+     "unitLabel": "par personne",
+     "games": 1,
+     "duration": 0.5,
+     "minutes": 30,
+     "price": 400,
+     "priceKnown": true
+    }
+   ],
+   "price": 673,
+   "priceComplete": true
+  },
+  "channel": "staff",
+  "centerId": "libramont",
+  "validationStatus": "staff_review",
+  "opsPlan": {
+   "startTime": "19:30",
+   "endTime": "22:25",
+   "assignedLanes": [],
+   "laserSharing": {
+    "mayShare": true,
+    "sharedNow": false,
+    "weaponCount": 30,
+    "requestedPlayers": 40,
+    "playersTotal": 20,
+    "remainingPlaces": 10,
+    "waveCount": 2,
+    "launchCount": 2,
+    "splitGroup": true
+   },
+   "timeline": [
+    {
+     "type": "service",
+     "label": "Arrivée & accueil",
+     "startTime": "19:20",
+     "endTime": "19:30"
+    },
+    {
+     "type": "activity",
+     "activityId": "bowling",
+     "label": "Bowling",
+     "startTime": "19:30",
+     "endTime": "20:30",
+     "durationMinutes": 60,
+     "requiredLanes": 7,
+     "players": 40,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game - groupe 1/2",
+     "startTime": "21:00",
+     "endTime": "21:25",
+     "durationMinutes": 25,
+     "players": 20,
+     "countIndex": 1
+    },
+    {
+     "type": "activity",
+     "activityId": "laser_game",
+     "label": "Laser Game - groupe 2/2",
+     "startTime": "21:30",
+     "endTime": "21:55",
+     "durationMinutes": 25,
+     "players": 20,
+     "countIndex": 1
+    }
+   ]
+  }
+ }
+]

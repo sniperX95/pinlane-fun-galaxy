@@ -58,6 +58,7 @@ const {
   newRequestId,
   normalizeActivityEvents,
 } = require('../lib/audit-log');
+const { reservationChanges, customRequestChanges, suiviAjoute, libelleMembre } = require('../lib/registre');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
 const { adresseDePlateforme } = require('../lib/sender-domains');
 const { llmProvider, callLlm } = require('../lib/llm-client');
@@ -314,6 +315,36 @@ function getAction(req, body = {}) {
   return body.action || url.searchParams.get('action') || 'knowledge';
 }
 
+// LE REGISTRE DANS LE DISPATCHER (2026-10-05). La ligne d audit generique de
+// PP1 ne portait que les NOMS des champs du corps, un id et un statut : pour
+// un retard applique ou une demande sur mesure classee, aucun avant/apres.
+// Un handler depose ici ce qu il sait (l entite exacte, le diff, un contexte)
+// et le dispatcher l embarque dans SA ligne de succes : une seule ligne par
+// action, avec le contenu. Sans `options.audit` (appel direct de handlePost
+// par un gate), c est un no-op.
+function noterAudit(options, details = {}) {
+  if (!options || !options.audit || typeof options.audit !== 'object') return;
+  if (details.entityType) options.audit.entityType = String(details.entityType);
+  if (details.entityId !== undefined && details.entityId !== null && details.entityId !== '') options.audit.entityId = String(details.entityId);
+  if (details.changes && typeof details.changes === 'object') options.audit.changes = { ...(options.audit.changes || {}), ...details.changes };
+  if (details.context && typeof details.context === 'object') options.audit.context = { ...(options.audit.context || {}), ...details.context };
+}
+
+// L avant/apres de PLUSIEURS reservations touchees par une meme action (un
+// retard et sa cascade), a plat : `<id>.<champ>` -> { before, after }, la forme
+// que l ecran du journal sait montrer. Les instantanes viennent du registre
+// (lib/registre.js) : notes entieres, pistes, resume du plan.
+function diffReservations(avantParId, apres = []) {
+  const changes = {};
+  for (const reservation of apres) {
+    const id = Number(reservation && reservation.id);
+    if (!id) continue;
+    const diff = reservationChanges(avantParId.get(id) || {}, reservation);
+    for (const [field, value] of Object.entries(diff)) changes[`${id}.${field}`] = value;
+  }
+  return changes;
+}
+
 async function handleGet(req, res, options = {}) {
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   const action = getAction(req);
@@ -363,6 +394,26 @@ async function handleGet(req, res, options = {}) {
   if (action === 'events') {
     const events = await listOpsEvents({ centerId, limit: Number(url.searchParams.get('limit') || 200) });
     sendJson(res, 200, { ok: true, centerId, events });
+    return;
+  }
+
+  // LE REGISTRE DES SUPPRESSIONS (migration 0052) : les reservations supprimees
+  // du centre, ligne complete, restaurables. `from` / `to` bornent la date de
+  // visite, `archivedFrom` / `archivedTo` le moment de la suppression. Le
+  // centre est celui de la session (scope 'all' reserve a platform.admin, le
+  // dispatcher l a verifie), en parametre SQL.
+  if (action === 'reservationArchive') {
+    const { listArchivedReservations } = require('../lib/database');
+    const archives = await listArchivedReservations({
+      centerId: centerScope(centerId),
+      from: url.searchParams.get('from') || '',
+      to: url.searchParams.get('to') || '',
+      archivedFrom: url.searchParams.get('archivedFrom') || '',
+      archivedTo: url.searchParams.get('archivedTo') || '',
+      includeRestored: url.searchParams.get('includeRestored') !== '0',
+      limit: Number(url.searchParams.get('limit') || 100),
+    });
+    sendJson(res, 200, { ok: true, centerId, archives });
     return;
   }
 
@@ -1455,6 +1506,19 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       date: reservation.date,
       updates,
     });
+    // LE REGISTRE : l avant/apres de CHAQUE dossier deplace (heure, pistes,
+    // note, resume du plan), dans la ligne d audit de l action. `context`
+    // porte la journee telle qu elle etait avant l application.
+    {
+      const avantParId = new Map((context.reservations || []).map((item) => [Number(item.id), item]));
+      avantParId.set(reservationId, reservation);
+      noterAudit(options, {
+        entityType: 'reservation',
+        entityId: reservationId,
+        changes: diffReservations(avantParId, updatedReservations),
+        context: { strategyId: strategy.id, delayMinutes: impact.delayMinutes, reason: impact.reason, dossiers: updatedReservations.map((item) => Number(item.id)) },
+      });
+    }
 
     const publicChanges = strategy.changes.map(({ update, ...rest }) => rest);
     const incident = await createDelayIncident({
@@ -1656,6 +1720,11 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         noteDropTag: 'retard',
       }],
     });
+    noterAudit(options, {
+      entityType: 'reservation',
+      entityId: reservationId,
+      changes: diffReservations(new Map([[reservationId, reservation]]), updated ? [updated] : []),
+    });
     await createOpsEvent({
       centerId: reservation.centerId || 'libramont',
       reservationId,
@@ -1721,6 +1790,12 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         date: reservation.date,
         updates: [{ id: reservationId, startTime: reservation.startTime, lanes: reservation.lanes, opsPlan: plan, noteDropTag: 'retard' }, ...remettre],
       });
+      noterAudit(options, {
+        entityType: 'reservation',
+        entityId: reservationId,
+        changes: diffReservations(new Map([...(jour.reservations || []).map((item) => [Number(item.id), item]), [reservationId, reservation]]), toutesNettoyees),
+        context: { origine: false, dossiers: toutesNettoyees.map((item) => Number(item.id)) },
+      });
       const [cleared] = toutesNettoyees;
       await createOpsEvent({
         centerId: reservation.centerId || 'libramont',
@@ -1760,6 +1835,12 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         // personne n efface, et une note qui grossit a chaque aller-retour.
         noteDropTag: 'retard',
       }, ...remettre],
+    });
+    noterAudit(options, {
+      entityType: 'reservation',
+      entityId: reservationId,
+      changes: diffReservations(new Map([...(jour.reservations || []).map((item) => [Number(item.id), item]), [reservationId, reservation]]), toutesRestaurees),
+      context: { origine: true, restoredStartTime: origin.startTime, dossiers: toutesRestaurees.map((item) => Number(item.id)) },
     });
     await createOpsEvent({
       centerId: reservation.centerId || 'libramont',
@@ -2312,6 +2393,10 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   if (action === 'customRequestStatus') {
     // Scope centre : un staff ne mute (ni ne relit) que les demandes de SON centre.
     // 'all' (accès plateforme) garde le prédicat neutre, cohérent avec listCustomRequests.
+    // L etat AVANT, pour le registre (meme portee, meme 404 qu une demande
+    // d un autre centre).
+    const { getCustomRequest: lireDemande } = require('../lib/database');
+    const avant = await lireDemande(body.id, { centerId: scopedCenterId });
     let request = await updateCustomRequestStatus(body.id, body.status, { centerId: scopedCenterId });
     // LE SUIVI (2026-09-29) : qui a pris la demande, qui l a classee, quelle
     // reservation en est nee. Le statut fait foi ; l historique est un plus,
@@ -2326,6 +2411,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         request = await appendCustomRequestSuivi(request.id, { type: 'reservation', reservationId: Number(body.reservationId), date: String(body.reservationDate || '').slice(0, 10), par }, { centerId: scopedCenterId });
       }
     } catch (error) { /* statut deja ecrit */ }
+    // LE REGISTRE : le statut avant/apres et ce que le suivi a recu, dans la
+    // ligne d audit de cette action (le dispatcher l ecrit avec l acteur).
+    noterAudit(options, { entityType: 'custom_request', entityId: request.id, changes: customRequestChanges(avant, request) });
     const { enrichirDemandes } = require('../lib/demande-bureau-centre');
     const [customRequest] = await enrichirDemandes([request]).catch(() => [request]);
     sendJson(res, 200, { ok: true, action, customRequest });
@@ -2335,12 +2423,48 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // LA NOTE D EQUIPE sur une demande : ce qu un collegue doit savoir (« rappele
   // le directeur mardi », « veut une facture au nom de l ecole »).
   if (action === 'customRequestNote') {
-    const { appendCustomRequestSuivi } = require('../lib/database');
+    const { appendCustomRequestSuivi, getCustomRequest: lireDemande } = require('../lib/database');
     const par = String(options.session?.member?.name || options.session?.member?.id || '');
+    const avant = await lireDemande(body.id, { centerId: scopedCenterId });
     const request = await appendCustomRequestSuivi(body.id, { type: 'note', par, texte: body.texte }, { centerId: scopedCenterId });
+    noterAudit(options, { entityType: 'custom_request', entityId: request.id, changes: customRequestChanges(avant, request) });
     const { enrichirDemandes } = require('../lib/demande-bureau-centre');
     const [customRequest] = await enrichirDemandes([request]).catch(() => [request]);
     sendJson(res, 200, { ok: true, action, customRequest });
+    return;
+  }
+
+  // RESTAURER UNE RESERVATION SUPPRIMEE (registre, migration 0052). La ligne
+  // revient avec son identifiant d origine et toutes ses colonnes ; refus
+  // clair si l identifiant est repris, si l archive a deja ete restauree ou si
+  // le creneau n est plus libre (`force: true` restaure quand meme et les
+  // conflits sont journalises). Le centre est celui de la session : une
+  // archive d un autre centre est introuvable (404), jamais restauree.
+  if (action === 'restoreReservation') {
+    requireConcreteCenter('restauration');
+    const { restoreArchivedReservation, createOpsEvent: ecrireEvenement } = require('../lib/database');
+    const archiveId = Number(body.archiveId || body.id || 0);
+    if (!archiveId) throw createHttpError('Archive manquante : indiquez archiveId.', 400);
+    const restauree = await restoreArchivedReservation(archiveId, {
+      centerId: scopedCenterId,
+      restoredBy: libelleMembre(options.session),
+      force: body.force === true,
+    });
+    const reservation = restauree.reservation;
+    noterAudit(options, {
+      entityType: 'reservation',
+      entityId: reservation.id,
+      changes: reservationChanges({}, reservation),
+      context: { archiveId, force: body.force === true, conflits: restauree.conflits },
+    });
+    await ecrireEvenement({
+      centerId: reservation.centerId || scopedCenterId,
+      reservationId: reservation.id,
+      eventType: 'reservation_restored',
+      payload: { archiveId, restoredBy: libelleMembre(options.session), conflits: restauree.conflits },
+      runLearning: false,
+    }).catch(() => null);
+    sendJson(res, 200, { ok: true, action, reservation, archiveId, conflits: restauree.conflits });
     return;
   }
 
@@ -2878,7 +3002,8 @@ ${draftBody}`,
     let customRequest = null;
     if (Number(body.customRequestId) > 0 && result && result.communication) {
       try {
-        const { appendCustomRequestSuivi } = require('../lib/database');
+        const { appendCustomRequestSuivi, getCustomRequest: lireDemande } = require('../lib/database');
+        const avant = await lireDemande(Number(body.customRequestId), { centerId: studioCenterId });
         const request = await appendCustomRequestSuivi(Number(body.customRequestId), {
           type: 'reponse',
           par: String(options.session?.member?.name || options.session?.member?.id || ''),
@@ -2886,6 +3011,9 @@ ${draftBody}`,
           communicationId: result.communication.id,
           source: body.draftSource,
         }, { centerId: studioCenterId });
+        // LE REGISTRE : la reponse entree au suivi de la demande, dans la ligne
+        // d audit de l envoi (la demande, son evenement ; jamais le corps du mail).
+        noterAudit(options, { context: { customRequestId: Number(body.customRequestId), suivi: suiviAjoute(avant, request) } });
         const { enrichirDemandes } = require('../lib/demande-bureau-centre');
         [customRequest] = await enrichirDemandes([request]).catch(() => [request]);
       } catch (error) { customRequest = null; }
@@ -3477,6 +3605,9 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     // L etude d une demande : la meme lecture que la file.
     if (action === 'customRequestStudy') return ['clients.view', 'reservations.view', 'dashboard.view'];
+    // Le registre des suppressions (0052) : lire ce qui a ete supprime demande
+    // le droit qui permet de supprimer, le meme que DELETE /api/staff-reservations.
+    if (action === 'reservationArchive') return 'reservations.cancel';
     if (['directionAnalytics', 'directionReports', 'emailInsights', 'directionComparison', 'directionRetention', 'directionAudience'].includes(action)) return 'direction.view';
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
     if (action === 'dailyMetrics') return ['dashboard.view', 'direction.view'];
@@ -3557,6 +3688,10 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'customRequestNote') return ['clients.view', 'reservations.edit', 'dashboard.view'];
   // Rediger le brouillon, c est preparer un envoi : meme droit que l envoi.
   if (action === 'customRequestDraft') return 'emails.send';
+  // Restaurer une reservation supprimee : le droit qui permet de la supprimer
+  // (reservations.cancel, celui de DELETE /api/staff-reservations), sur le
+  // centre de l archive.
+  if (action === 'restoreReservation') return 'reservations.cancel';
   if (action === 'insightStatus') return ['campaigns.manage', 'marketing.agents'];
   if (['suppressionAdd', 'suppressionRemove'].includes(action)) return ['campaigns.manage', 'emails.send'];
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
@@ -3634,6 +3769,8 @@ function auditEntityFor(action, body = {}) {
   if (/EmailTemplate/i.test(action)) return { entityType: 'email_template', entityId: body.id || body.templateId || '' };
   if (/EmailIdentity/i.test(action)) return { entityType: 'email_identity', entityId: body.id || body.identityId || '' };
   if (/^suppression/.test(action)) return { entityType: 'marketing_suppression', entityId: '' };
+  // Demandes sur mesure (custom_requests) : statut, note d equipe, brouillon.
+  if (/^customRequest/.test(action)) return { entityType: 'custom_request', entityId: body.id || body.customRequestId || '' };
   if (/^competitor/.test(action)) return { entityType: 'competitor', entityId: body.id || body.competitorId || '' };
   if (/OpsJob/i.test(action)) return { entityType: 'ops_job', entityId: body.id || '' };
   if (/Reservation|reservation/.test(action)) return { entityType: 'reservation', entityId: body.reservationId || (body.reservation && body.reservation.id) || '' };
@@ -3713,8 +3850,11 @@ module.exports = async (req, res) => {
         await writeAuditLogOrThrow({ ...auditBase, outcome: 'success' });
       }
 
+      // Ce que le handler deposera pour le registre (noterAudit) : l entite
+      // exacte, l avant/apres, un contexte. Lu apres l action.
+      const auditDetails = {};
       try {
-        await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId, session });
+        await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId, session, audit: auditDetails });
       } catch (error) {
         // Une action qui echoue est une information d'audit : elle distingue
         // "personne n'a essaye" de "quelqu'un a essaye et ca a casse".
@@ -3733,7 +3873,14 @@ module.exports = async (req, res) => {
       // par le staff. Un echec ici ne casse pas l'action, mais il crie :
       // console.error a prefixe stable + compteur expose dans l'action health.
       if (audited && !isBlockingAction(action)) {
-        await writeAuditLog({ ...auditBase, outcome: 'success' });
+        await writeAuditLog({
+          ...auditBase,
+          ...(auditDetails.entityType ? { entityType: auditDetails.entityType } : {}),
+          ...(auditDetails.entityId ? { entityId: auditDetails.entityId } : {}),
+          changes: auditDetails.changes || {},
+          context: { ...auditContext, ...(auditDetails.context || {}) },
+          outcome: 'success',
+        });
       }
       return;
     }

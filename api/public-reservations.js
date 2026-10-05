@@ -17,6 +17,8 @@ const { findReservationAlternatives } = require('../lib/reservation-alternatives
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { ouvrirDemandePublique, estErreurInfra, signatureDemande, requestFromHeldUpsell } = require('../lib/demande-publique');
 const { enforceRateLimit, getClientIp } = require('../lib/rate-limit');
+const { writeAuditLog, newRequestId } = require('../lib/audit-log');
+const { reservationChanges, ACTEUR_FORMULAIRE_PUBLIC } = require('../lib/registre');
 
 function heldOps(held, request) {
   const first = held.opsPlan?.resourceBlocks?.find((b) => b.resourceType === 'bowling_lane');
@@ -265,6 +267,31 @@ module.exports = async (req, res) => {
       verifierProgramme: (reservations, plan) => dotationDepassee({ ...request, opsPlan: plan || ops.opsPlan || request.opsPlan || null }, reservations),
     });
     const postCreate = await afterReservationCreated(reservation, request);
+    // LE REGISTRE (2026-10-05) : une reservation en ligne n ecrivait AUCUNE
+    // ligne d audit, seulement un ops_event sans auteur ni contenu. Elle est
+    // journalisee comme une creation au comptoir, avec son auteur « client
+    // (formulaire public) » et l instantane complet (nom, telephone, e-mail,
+    // notes, programme, prix). Apres le COMMIT, hors du verrou de la journee,
+    // non bloquant : un journal indisponible ne refuse jamais un client (la
+    // perte crie, voir lib/audit-log.js).
+    const auditPublic = await writeAuditLog({
+      centerId: reservation.centerId || request.centerId,
+      ...ACTEUR_FORMULAIRE_PUBLIC,
+      surface: 'api/public-reservations.js',
+      action: 'createReservation',
+      method: 'POST',
+      entityType: 'reservation',
+      entityId: reservation.id,
+      outcome: 'success',
+      changes: reservationChanges({}, reservation),
+      context: {
+        canal: 'public',
+        validationStatus: reservation.validationStatus || '',
+        blocage: Boolean(holdToken),
+        sansOffres: body && typeof body.sansOffres === 'boolean' ? body.sansOffres : null,
+      },
+      requestId: newRequestId(),
+    });
     sendJson(res, 201, {
       ok: true,
       reservation,
@@ -276,7 +303,7 @@ module.exports = async (req, res) => {
         autoDecision: ops.requiresHumanReview ? 'human_review_required' : 'auto_confirmed',
       },
       communications: postCreate.communications,
-      warnings: postCreate.warnings,
+      warnings: auditPublic.warning ? [...(postCreate.warnings || []), auditPublic.warning] : postCreate.warnings,
     });
   } catch (error) {
     // Deux envois simultanes de la meme confirmation : le second rend la

@@ -21,6 +21,7 @@ const { afterReservationCreated, prepareReservationOps } = require('../lib/reser
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { requireStaffPermission, getStaffSessionFromRequest } = require('../lib/staff-auth');
 const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
+const { reservationChanges, reservationSnapshot, libelleMembre } = require('../lib/registre');
 const { refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
@@ -48,52 +49,37 @@ async function warmCenterKnowledge() {
 
 // ---- PP4 : le chemin chaud -------------------------------------------------
 //
-// Champs dont la modification doit apparaitre en avant/apres. C'est la question
-// numero 1 du mandat ("qui a modifie ce prix, cette reservation").
+// L avant/apres d une reservation. C'est la question numero 1 du mandat ("qui
+// a modifie ce prix, cette reservation").
 //
 // Le cout de lecture est NUL : `current` est deja charge par getReservationById
 // pour les besoins de la validation (PATCH et DELETE). L'etat AVANT est en
 // memoire, il etait simplement jete.
 //
-// `notes` est volontairement ABSENT de cette liste (regle T2) : c'est du texte
-// libre saisi au comptoir, qui contient regulierement des informations
-// personnelles sur le client. On journalise qu'il a change et sa longueur, pas
-// son contenu. Voir buildReservationAuditChanges plus bas.
-const AUDITED_RESERVATION_FIELDS = [
-  'price',
-  // Ce que le client a REELLEMENT achete : une formule adaptee au comptoir
-  // change le contenu vendu, pas seulement son prix.
-  'program',
-  'basePrice',
-  'date',
-  'startTime',
-  'duration',
-  'totalDuration',
-  'pax',
-  'lanes',
-  'status',
-  'validationStatus',
-  'formuleId',
-  'paymentMethod',
-  'occasion',
-  'extras',
-  'clientName',
-  'email',
-];
-
+// LE REGISTRE (2026-10-05, lib/registre.js) : la liste des champs n est plus
+// recopiee ici. Elle nommait `clientName` alors que l objet porte `name` : le
+// nom du client n a JAMAIS ete journalise, le telephone non plus, et la note
+// ne l etait qu en longueur. L instantane est derive des clefs reelles de
+// mapReservation : nom, telephone, e-mail, notes en texte complet, prix,
+// statut, moyen de paiement, programme, pistes, resume du plan. C est ce qu il
+// faut pour retrouver un dossier abime, et le gate scripts/registre-check.js
+// prouve qu aucune clef de l objet ne manque a l instantane.
+//
+// `registre.avant` / `registre.apres` dans le contexte : l etat COMPLET avant et
+// apres une modification, pas seulement les champs qui ont bouge. Chaque etat
+// par lequel un dossier est passe se relit donc dans le journal.
 function buildReservationAuditChanges(before, after) {
-  const changes = buildChanges(before, after, AUDITED_RESERVATION_FIELDS);
-  const noteAvant = String((before && before.notes) || '');
-  const noteApres = String((after && after.notes) || '');
-  if (noteAvant !== noteApres) {
-    // Le CONTENU ne sort pas. La longueur suffit a prouver qu'une note a ete
-    // videe ou remplacee, ce qui est le seul usage d'audit legitime ici.
-    changes.notes = {
-      before: { modifiee: true, longueur: noteAvant.length },
-      after: { modifiee: true, longueur: noteApres.length },
-    };
-  }
-  return changes;
+  return reservationChanges(before, after);
+}
+
+function contexteRegistre(before, after, extra = {}) {
+  return {
+    ...extra,
+    registre: {
+      avant: reservationSnapshot(before),
+      apres: reservationSnapshot(after),
+    },
+  };
 }
 
 const REPLAN_FIELDS = [
@@ -383,8 +369,8 @@ module.exports = async (req, res) => {
         }
         const reservation = await setReservationStatus({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, status: body.status, ...(Object.prototype.hasOwnProperty.call(body, 'paymentMethod') || Object.prototype.hasOwnProperty.call(body, 'payment_method') ? { paymentMethod: body.paymentMethod ?? body.payment_method } : {}) });
         const automation = await refreshReservationAutomation(current, reservation, { reason: 'reservation_status_updated' });
-        await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'setReservationStatus', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildChanges(current, reservation, ['status', 'paymentMethod']), requestId: newRequestId() });
-        sendJson(res, 200, { ok: true, reservation, automation });
+        const auditStatus = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'setReservationStatus', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation), requestId: newRequestId() });
+        sendJson(res, 200, { ok: true, reservation, automation, ...(auditStatus.warning ? { warnings: [auditStatus.warning] } : {}) });
         return;
       }
 
@@ -509,8 +495,8 @@ module.exports = async (req, res) => {
         } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
         const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, activityMove: body.activityMove });
         const automation = await refreshReservationAutomation(current, reservation, { reason: 'activity_moved' });
-        await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'moveReservationActivity', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildChanges({ opsPlan: current.opsPlan }, { opsPlan: reservation.opsPlan }, ['opsPlan']), requestId: newRequestId() });
-        sendJson(res, 200, { ok: true, reservation, activityMove: { ...body.activityMove, unchangedActivities: true }, automation });
+        const auditMove = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'moveReservationActivity', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { activityMove: body.activityMove }), requestId: newRequestId() });
+        sendJson(res, 200, { ok: true, reservation, activityMove: { ...body.activityMove, unchangedActivities: true }, automation, ...(auditMove.warning ? { warnings: [auditMove.warning] } : {}) });
         return;
       }
       const patch = {
@@ -582,7 +568,7 @@ module.exports = async (req, res) => {
         entityId: reservation.id,
         outcome: 'success',
         changes: buildReservationAuditChanges(current, reservation),
-        context: { champsDemandes: Object.keys(body || {}).slice(0, 40) },
+        context: contexteRegistre(current, reservation, { champsDemandes: Object.keys(body || {}).slice(0, 40) }),
         requestId: newRequestId(),
       });
 
@@ -604,17 +590,26 @@ module.exports = async (req, res) => {
       const session = await requireStaffPermission(req, res, 'reservations.cancel', { centerId: current.centerId || 'libramont' });
       if (!session) return;
       const automation = await cancelPendingAutomation(current, 'reservation_deleted');
-      await deleteReservation(body.id);
+      // LE REGISTRE (migration 0052) : la ligne entiere est copiee dans
+      // reservation_archive AVANT le DELETE, dans la meme transaction. Si la
+      // copie echoue, deleteReservation jette (503, message clair) et rien n est
+      // supprime : la copie est OBLIGATOIRE, contrairement au journal d audit
+      // ci-dessous qui reste non bloquant.
+      const suppression = await deleteReservation(body.id, {
+        archivedBy: libelleMembre(session),
+        reason: String((body && body.reason) || 'suppression depuis la console').slice(0, 500),
+      });
       await createOpsEvent({
         centerId: current.centerId || 'libramont',
-        reservationId: current.id,
+        reservationId: null,
         eventType: 'reservation_deleted',
-        payload: { source: 'staff', automation },
+        payload: { source: 'staff', reservationId: current.id, archiveId: suppression.archiveId, automation },
       }).catch(() => null);
 
       // Une suppression est la modification la plus destructrice du produit :
-      // l'objet n'existe plus, donc le journal est le SEUL endroit ou son etat
-      // final subsiste. On conserve l'etat complet en `before`.
+      // l'objet n'existe plus, donc le journal et l archive sont les seuls
+      // endroits ou son etat final subsiste. L etat complet est en `before`,
+      // et le contexte pointe la copie d archive restaurable.
       const auditDelete = await writeAuditLog({
         centerId: current.centerId || 'libramont',
         ...actorFromSession(session),
@@ -625,13 +620,14 @@ module.exports = async (req, res) => {
         entityId: current.id,
         outcome: 'success',
         changes: buildReservationAuditChanges(current, {}),
-        context: { automation },
+        context: { automation, archiveId: suppression.archiveId, registre: { avant: reservationSnapshot(current), apres: {} } },
         requestId: newRequestId(),
       });
 
       sendJson(res, 200, {
         ok: true,
         automation,
+        archiveId: suppression.archiveId,
         ...(auditDelete.warning ? { warnings: [auditDelete.warning] } : {}),
       });
       return;

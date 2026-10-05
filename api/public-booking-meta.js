@@ -33,6 +33,8 @@ const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS, LASER_LAUNCH_GRID_MINUTES } 
 const { listSellableActivities } = require('../lib/activity-catalog');
 const { normalizeBranding, normalizeIdentity, customRequestFromPax } = require('../lib/center-config');
 const surMesure = require('../lib/custom-request');
+const { writeAuditLog, newRequestId } = require('../lib/audit-log');
+const { customRequestChanges, ACTEUR_FORMULAIRE_PUBLIC } = require('../lib/registre');
 
 // This function serves several public surfaces to stay under the Vercel Hobby
 // 12-function limit:
@@ -158,6 +160,24 @@ async function handleCustomRequest(req, res, body) {
     sendError(res, 503, 'Demande non enregistrée, réessayez dans un instant.');
     return;
   }
+
+  // LE REGISTRE (2026-10-05) : la demande sur mesure est journalisee en
+  // entier (contact, organisation, date voulue, message, demande structuree),
+  // avec son auteur « client (formulaire public) ». Non bloquant : une panne
+  // du journal n efface pas la demande, elle crie (lib/audit-log.js).
+  await writeAuditLog({
+    centerId,
+    ...ACTEUR_FORMULAIRE_PUBLIC,
+    surface: 'api/public-booking-meta.js',
+    action: 'createCustomRequest',
+    method: 'POST',
+    entityType: 'custom_request',
+    entityId: lead.id,
+    outcome: 'success',
+    changes: customRequestChanges({}, { ...lead, centerId }),
+    context: { canal: 'public', structuree: Boolean(demande) },
+    requestId: newRequestId(),
+  });
 
   // Accusé de réception client (best-effort, tracé mais non bloquant).
   const ack = await sendCustomRequestAck({

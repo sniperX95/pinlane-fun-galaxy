@@ -212,7 +212,7 @@ function patchIsActivityToggleOnly(body = {}) {
 // Une note de l equipe ajoutee ou retiree (noteEquipe : { ajout } ou
 // { retrait: le }) : comme la coche, elle s applique sur ce qui est en base.
 function patchIsNoteEquipeOnly(body = {}) {
-  const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
+  const keys = Object.keys(body || {}).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
   return keys.length === 1 && keys[0] === 'noteEquipe'
     && Boolean(body.noteEquipe) && typeof body.noteEquipe === 'object';
 }
@@ -394,6 +394,7 @@ module.exports = async (req, res) => {
         const updated = await noterReservationEquipe(current.id, current.centerId || 'libramont', {
           ajout: typeof geste.ajout === 'string' ? geste.ajout : undefined,
           retrait: typeof geste.retrait === 'string' ? geste.retrait : undefined,
+          modifier: geste.modifier,
           // L auteur vient de la session, jamais du corps : une note ne
           // s ecrit pas au nom d un collegue.
           par: (membre && (membre.name || membre.displayName)) || 'Équipe',
@@ -402,7 +403,7 @@ module.exports = async (req, res) => {
           centerId: current.centerId || 'libramont',
           ...actorFromSession(session),
           surface: 'api/staff-reservations.js',
-          action: geste.retrait ? 'retirerNoteEquipe' : 'ajouterNoteEquipe',
+          action: geste.modifier ? 'modifierNoteEquipe' : geste.retrait ? 'retirerNoteEquipe' : 'ajouterNoteEquipe',
           method: 'PATCH',
           entityType: 'reservation',
           entityId: current.id,

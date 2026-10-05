@@ -75,6 +75,7 @@ async function installMock(page) {
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : input?.url || '';
       const u = new URL(raw, window.location.origin);
+      if (u.pathname === '/api/staff-customer-notes') return J({ ok: true, eligible: true, note: null, notesByReservationId: Object.fromEntries(build().map(r => [String(r.id), { eligible: true, clientKey: r.phone, note: null }])) });
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'Rachel', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
       if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: build(), laneStatuses: lanes(), centerId: 'libramont' });
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: build(), emails: [], agentEvents: [], centerId: 'libramont' });
@@ -190,7 +191,7 @@ async function main() {
     // hasReservationNote neutralise -> plus aucun marqueur, plus aucune puce.
     // Fins de ligne CRLF dans le repo : la mutation se fait par regex tolerante.
     const broken = originalAppMain.replace(
-      /function hasReservationNote\(reservation\) \{\r?\n\s*return !!getReservationNoteText\(reservation\) \|\| getReservationNotesEquipe\(reservation\)\.length > 0;\r?\n\}/,
+      /function hasReservationNote\(reservation\) \{\r?\n\s*return !!getReservationNoteText\(reservation\) \|\| getReservationNotesEquipe\(reservation\)\.length > 0 \|\| !!window\.PinlaneStaffNotes\?\.text\(reservation\);\r?\n\}/,
       'function hasReservationNote(reservation) { return false; }'
     );
     if (broken === originalAppMain) {

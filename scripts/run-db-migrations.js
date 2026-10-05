@@ -254,6 +254,11 @@ const MIGRATIONS = [
     file: 'database/marketing-suppressions-form-schema.sql',
     description: "Une quatrieme origine de retrait marketing, 'form' : la case « Je ne souhaite pas recevoir les offres » cochee a la reservation en ligne (exception « client existant » du droit belge, opposition au moment de la collecte). Contrainte elargie, aucune ligne modifiee. Rollback : database/rollbacks/0050_marketing_suppressions_form.down.sql (les retraits 'form' deviennent 'staff', jamais perdus)",
   },
+  {
+    id: '0051_customer_note_author',
+    file: 'database/customer-note-author-schema.sql',
+    description: 'Auteur de la note client interne persistante. Colonne additive sur client_notes existant, aucune note modifiee ni effacee.',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

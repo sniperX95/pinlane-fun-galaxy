@@ -3,6 +3,7 @@
     publicReservations: '/api/public-reservations',
     publicBookingMeta: '/api/public-booking-meta',
     staffReservations: '/api/staff-reservations',
+    staffCustomerNotes: '/api/staff-customer-notes',
     staffState: '/api/staff-state',
     publicAvailability: '/api/public-availability',
     staffLanes: '/api/staff-lanes',
@@ -16,6 +17,7 @@
   const protectedEndpointKeys = [
     'staffAuth',
     'staffReservations',
+    'staffCustomerNotes',
     'staffState',
     'staffLanes',
     'adminRange',

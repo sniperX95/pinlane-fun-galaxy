@@ -67,6 +67,7 @@ function verifier(sources) {
         'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'renderGroupeNotes', 'getGroupeEncadres'].map((n) => extraire(sources.app, n)),
     ].join('\n');
     const bac = {
+      window: {},
       escapeHtml: (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
       canUseStaffPermission: () => true,
       isReservationAwaitingReview: () => false,
@@ -151,7 +152,7 @@ function verifier(sources) {
   c(/ev\.stopPropagation\(\)/.test(voir), '[E] suivre le lien ne coche pas l activite de la ligne');
   c(/openStaffPlanningResource\(cible\)/.test(voir) && /montrerAuPlanning\(/.test(voir), '[E] le planning s ouvre et le groupe y est montre');
   const montrer = extraire(sources.app, 'montrerAuPlanning');
-  c(/data-laser-res-id/.test(montrer) && /data-booking-res-id/.test(montrer) && /data-laser-res-id="\$\{reservation\.id\}" class="laser-group-card/.test(sources.app), '[E] les blocs des deux plannings portent le numero du dossier');
+  c(/data-laser-res-id/.test(montrer) && /data-booking-res-id/.test(montrer) && /data-laser-res-id="\$\{reservation\.id\}"[^>]*class="laser-group-card/.test(sources.app), '[E] les blocs des deux plannings portent le numero du dossier');
   return resultats;
 }
 
@@ -159,8 +160,8 @@ const MUTATIONS = [
   { nom: 'le mot du client garde les notes d equipe', cible: 'app', de: ".filter(ligne => !lireNoteEquipeLigne(ligne))\n    .join('\\n')", vers: ".join('\\n')" },
   { nom: 'les traces du moteur restent dans le mot du client', cible: 'app', de: "mot: lignes.filter(ligne => !/^\\s*\\[ops:/.test(ligne))", vers: 'mot: lignes.filter(ligne => true)' },
   { nom: 'le serveur prend l auteur dans le corps', cible: 'api', de: "par: (membre && (membre.name || membre.displayName)) || 'Équipe',", vers: "par: geste.par || 'Équipe'," },
-  { nom: 'la note s ecrit sans verrou', cible: 'db', de: "select notes from reservations where id = $1 and center_id = $2 for update;", vers: 'select notes from reservations where id = $1 and center_id = $2;' },
-  { nom: 'la fiche ne montre plus l auteur', cible: 'app', de: '${escapeHtml([n.par, formatNoteEquipeQuand(n.le)].filter(Boolean).join(\' · \'))}', vers: '${escapeHtml(formatNoteEquipeQuand(n.le))}' },
+  { nom: 'la note s ecrit sans verrou', cible: 'db', de: "select * from reservations where id = $1 and center_id = $2 for update;", vers: 'select * from reservations where id = $1 and center_id = $2;' },
+  { nom: 'la fiche ne montre plus l auteur', cible: 'app', de: '[n.par, formatNoteEquipeQuand(n.le), n.modifieLe', vers: "['', formatNoteEquipeQuand(n.le), n.modifieLe" },
   { nom: 'le lien du planning coche aussi la ligne', cible: 'app', de: "function voirAuPlanning(reservationId, ressource, ev) {\n  if (ev) ev.stopPropagation();", vers: 'function voirAuPlanning(reservationId, ressource, ev) {' },
   { nom: 'le serveur change de marqueur', cible: 'db', de: "const NOTE_EQUIPE_TAG = '[equipe] ';", vers: "const NOTE_EQUIPE_TAG = '[staff] ';" },
 ];

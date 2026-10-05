@@ -2694,8 +2694,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const concreteCenterId = requireConcreteCenter('note client');
     const clientKey = String(body.clientKey || '').trim();
     if (!clientKey) throw createHttpError('clientKey requis.', 400);
-    await saveClientNote(concreteCenterId, clientKey, body.body || '');
-    sendJson(res, 200, { ok: true, action });
+    const saved = await saveClientNote(concreteCenterId, clientKey, body.body || '', null, { baseUpdatedAt: body.baseUpdatedAt, updatedBy: options.session?.member?.name || '' });
+    sendJson(res, 200, { ok: true, action, note: saved.note, clientKey: saved.clientKey });
     return;
   }
 

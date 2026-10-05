@@ -1188,46 +1188,73 @@
 
   /* Notes client persistantes (allergies, prénom de l'enfant…), table client_notes. */
   function crmClientKey(row) {
-    return String(row.phone || row.email || '').trim().toLowerCase();
+    return String(row.phone || '').replace(/[^\d+]/g, '') || String(row.email || '').trim().toLowerCase();
   }
+  function crmNoteContext(row) { return (state.adminCenterId || 'libramont') + ':' + crmClientKey(row); }
 
   async function loadCrmClientNote(row) {
     const key = crmClientKey(row);
-    if (!key || crmNotes.key === key) return;
-    crmNotes.key = key;
+    const context = crmNoteContext(row);
+    if (!key || crmNotes.key === context) return;
+    crmNotes.key = context;
+    crmNotes.draft = null;
     crmNotes.body = '';
     crmNotes.loaded = false;
+    crmNotes.error = '';
     crmNotes.loading = true;
     try {
       const payload = await apiRequest(`/api/ops?action=clientNotes&clientKey=${encodeURIComponent(key)}&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
-      if (crmNotes.key !== key) return; // sélection changée entre-temps
+      if (crmNotes.key !== context || crmNoteContext(row) !== context) return;
       crmNotes.body = payload.note ? String(payload.note.body || '') : '';
+      crmNotes.updatedAt = payload.note?.updatedAt || null;
+      crmNotes.clientKey = payload.note?.clientKey || key;
       crmNotes.loaded = true;
-    } catch (error) { /* rôle sans accès : zone masquée */ } finally {
-      if (crmNotes.key === key) { crmNotes.loading = false; renderStaffClientsPage(); }
+    } catch (error) { if (crmNotes.key === context) crmNotes.error = error.message || 'Note client indisponible.'; } finally {
+      if (crmNotes.key === context) { crmNotes.loading = false; renderStaffClientsPage(); }
     }
   }
+
+  window.crmReloadClientNote = function (clientId) {
+    const row = getStaffClientRows().find(r => r.id === clientId);
+    if (!row || crmNotes.loading || crmNotes.saving) return;
+    crmNotes.key = ''; return loadCrmClientNote(row);
+  };
 
   window.crmSaveClientNote = async function (clientId, body) {
     const row = getStaffClientRows().find((r) => r.id === clientId);
     if (!row) return;
     const key = crmClientKey(row);
+    const context = crmNoteContext(row);
     // Garde anti-écrasement : jamais de save tant que la note du client n'est
     // pas CHARGÉE (sinon un blur sur textarea vide effacerait la vraie note).
-    if (!key || crmNotes.saving || crmNotes.key !== key || !crmNotes.loaded || body === crmNotes.body) return;
+    if (!key || crmNotes.key !== context || !crmNotes.loaded) return;
+    crmNotes.draft = body;
+    if (crmNotes.saving || (body === crmNotes.body && !crmNotes.error)) return;
     crmNotes.saving = true;
     try {
-      await apiRequest('/api/ops', {
+      const saved = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'clientNotes', clientKey: key, body, centerId: state.adminCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'clientNotes', clientKey: crmNotes.clientKey || key, baseUpdatedAt: crmNotes.updatedAt || null, body, centerId: state.adminCenterId || 'libramont' }),
       });
+      if (crmNotes.key !== context || crmNoteContext(row) !== context) return;
       crmNotes.body = body;
+      crmNotes.error = '';
+      crmNotes.updatedAt = saved.note?.updatedAt || crmNotes.updatedAt;
+      crmNotes.clientKey = saved.clientKey || crmNotes.clientKey;
+      window.PinlaneStaffNotes?.invalidate();
       toast('Note enregistrée.');
     } catch (error) {
+      if (crmNotes.key !== context) return;
+      crmNotes.error = error.message || 'Note non enregistrée. Votre texte est conservé.';
       toast(error.message || 'Note non enregistrée.');
     } finally {
       crmNotes.saving = false;
+      if (crmNotes.key === context) { renderStaffClientsPage(); if (!crmNotes.error && crmNotes.draft !== crmNotes.body) window.crmSaveClientNote(clientId, crmNotes.draft); }
     }
+  };
+  window.crmClientNoteDraft = function (clientId, body) {
+    const row = getStaffClientRows().find(r => r.id === clientId);
+    if (row && crmNotes.key === crmNoteContext(row)) crmNotes.draft = body;
   };
 
   function crmRelanceComposer(selected) {
@@ -1331,9 +1358,10 @@
 
         <section class="crm-sec crm-note-block">
           <div class="crm-sec-head"><h3>Notes</h3>${crmNotes.saving ? '<span class="crm-muted">Enregistrement…</span>' : ''}</div>
-          <textarea class="crm-note-input" data-pl-focus="clients.note" rows="3" placeholder="${crmNotes.loading ? 'Chargement…' : 'Allergies, prénom de l\'enfant, préférences… (enregistré automatiquement)'}"
-            ${crmNotes.key === crmClientKey(selected) && crmNotes.loaded ? '' : 'disabled'}
-            onblur="crmSaveClientNote('${escJs(selected.id)}', this.value)">${esc(crmNotes.key === crmClientKey(selected) && crmNotes.loaded ? crmNotes.body : '')}</textarea>
+          ${crmNotes.error ? `<p class="staff-note-error" role="alert">${esc(crmNotes.error)}</p><button type="button" class="gc-note-retirer" onclick="crmReloadClientNote('${escJs(selected.id)}')">Réessayer</button>` : ''}
+            <textarea class="crm-note-input" data-pl-focus="clients.note" rows="3" maxlength="4000" placeholder="${crmNotes.loading ? 'Chargement…' : 'Allergies, prénom de l\'enfant, préférences… (enregistré automatiquement)'}"
+              ${crmNotes.key === crmNoteContext(selected) && crmNotes.loaded ? '' : 'disabled'}
+              oninput="crmClientNoteDraft('${escJs(selected.id)}', this.value)" onblur="crmSaveClientNote('${escJs(selected.id)}', this.value)">${esc(crmNotes.key === crmNoteContext(selected) && crmNotes.loaded ? (crmNotes.draft ?? crmNotes.body) : '')}</textarea>
           ${selected.notesConcat ? `<div class="crm-muted crm-note-legacy">Notes des réservations : ${esc(selected.notesConcat)}</div>` : ''}
         </section>
       </div>`;

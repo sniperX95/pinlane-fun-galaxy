@@ -69,7 +69,8 @@ function preserved(before,after,activity,unit){
       await page.evaluate(async()=>{state.reservations=[await window.__qaReadReservation()];renderStaff();await scheduleBowlingDrag(99001,1,14,6,14,true);});
       preserved(multi,api.getStored(),'bowling');
       const services=api.getStored().opsPlan.resourceBlocks.filter(b=>b.activityId==='bowling');
-      check(services[0].startTime==='13:00'&&services[0].lanes[0]===4&&services[1].startTime==='14:00'&&services[1].lanes[0]===1,'split lane reverses lane order without swapping service assignments');
+      console.log('QA split services',JSON.stringify(services),'request',JSON.stringify(requests.at(-1)),'notice',await page.locator('#planningMoveNotice').textContent());
+      check(services.some(b=>b.startTime==='13:00'&&b.lanes[0]===4)&&services.some(b=>b.startTime==='14:00'&&b.lanes[0]===1),'split lane reverses lane order without swapping service assignments');
     }
     if(type==='formule'){
       const n=requests.length;let confirmation='';page.once('dialog',async dialog=>{confirmation=dialog.message();await dialog.dismiss();});

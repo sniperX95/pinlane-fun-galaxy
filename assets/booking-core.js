@@ -1537,6 +1537,9 @@ function updateLaserPassPlan(opsPlan, reservation) {
 }
 
 async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd = null) {
+  const sessionKey = () => JSON.stringify([state.view, state.staffAuthSession?.member?.id, state.staffAuthSession?.expiresAt, state.staffAuthSession?.token]);
+  const contextCenter = getCurrentStaffCenterId(), contextDate = state.currentDate, contextSession = sessionKey();
+  const currentContext = () => getCurrentStaffCenterId() === contextCenter && state.currentDate === contextDate && sessionKey() === contextSession;
   const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId));
   if (!reservation) return;
   const unit = laserUnitInfo(reservation, unitRef);
@@ -1556,7 +1559,7 @@ async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd 
   try {
     if (typeof envoyerDeplacementActivite !== 'function') throw new Error('Le déplacement ciblé est indisponible. Actualisez le planning.');
     const payload = await envoyerDeplacementActivite(reservation, { activityId: 'laser_game', unitKey: unit.unitKey, startTime: numToTime(Number(targetStart)) });
-    if (!isLatestRequest()) return;
+    if (!isLatestRequest() || !currentContext()) return true;
     const savedWindow = getLaserWindowsFromReservation(payload.reservation).find(window => laserBlockUnitKey(window) === unit.unitKey);
     if (!savedWindow || Math.abs(hourToMinuteInt(savedWindow.start) - hourToMinuteInt(Number(targetStart))) > 1) {
       throw new Error('La partie laser sauvegardée ne correspond pas au déplacement. Actualisez le planning.');
@@ -1567,13 +1570,15 @@ async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd 
     renderStaffData();
     const unitLabel = unit.waveCount > 1 ? `Vague ${unit.waveIndex}/${unit.waveCount}` : `Partie ${unit.countIndex}`;
     toast(`${unitLabel} placée à ${formatClockDisplay(targetStart)}`);
+    return true;
   } catch (error) {
-    if (!isLatestRequest()) return;
+    if (!isLatestRequest() || !currentContext()) return false;
     if (error.reservation) upsertReservationInState(error.reservation);
     if (typeof clearReservationMutation === 'function') clearReservationMutation(requestKey);
     renderStaffData();
     if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Déplacement Laser annulé', error.message || 'Impossible de placer cette partie Laser Game.', 'warning');
     else toast(error.message || 'Impossible de placer cette partie Laser Game.');
+    return false;
   } finally {
     if (isLatestRequest()) delete laserPassLatestSeqByReservation[requestKey];
   }

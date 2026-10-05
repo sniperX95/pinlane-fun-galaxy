@@ -26,9 +26,9 @@
 //   D. Laser : appui long, glisser une carte placee vers « Parties a placer ».
 //   E. Laser : appui long, glisser la carte en attente vers un lancement libre.
 //   L. Laser : un geste interrompu ne retire rien du planning.
-//   F. Bowling multi-pistes : un appui long deplace le groupe, un appui tenu
-//      plus longtemps deplace une piste seule, exactement comme la souris sans
-//      puis avec Shift (la souris sert d oracle, rien n est suppose). En
+//   F. Bowling multi-pistes : glisser au doigt deplace le groupe comme la souris;
+//      maintien2s conserve une selection apres relachement. Les pistes explicites
+//      se deplacent seules, les pistes decochees gardent leurs horaires. En
 //      passant, a la souris, le fantome suit le curseur A L ECRAN : il
 //      s affichait sous la page avant ce gate.
 //   M. Bowling : avec deux doigts sur l ecran (le second pose pendant l appui,
@@ -153,6 +153,11 @@ async function installMock(page) {
       const u = new URL(raw, window.location.origin);
       const m = String(init.method || 'GET').toUpperCase();
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
+      if (u.pathname === '/api/staff-customer-notes' && m === 'GET') {
+        const ids=(u.searchParams.get('reservationIds')||u.searchParams.get('reservationId')||'').split(',');
+        const blank={eligible:true,clientKey:'+32470000000',note:null};
+        return J({ok:true,...blank,notesByReservationId:Object.fromEntries(ids.filter(Boolean).map(id=>[id,blank]))});
+      }
       if (u.pathname === '/api/staff-state') { const d = u.searchParams.get('date') || new Date().toISOString().slice(0,10); const base = build(d).map(r => window.__QA_STORE__[r.id] ? { ...r, ...window.__QA_STORE__[r.id] } : r); return J({ ok: true, revision: `qa-${d}-${Object.keys(window.__QA_STORE__).length}`, reservations: base, laneStatuses: lanes(), centerId: 'libramont' }); }
       if (u.pathname === '/api/staff-reservations' && m === 'PATCH') {
         const b = JSON.parse(init.body || '{}');
@@ -239,6 +244,7 @@ function ecartMax(avant, apres) {
 // est purgee aussi, sinon le scenario suivant retrouve la carte deja deplacee.
 async function ouvrirPlanning(page, vue) {
   const poser = (v) => {
+    if(typeof cancelPlanningMove === 'function')cancelPlanningMove(false);
     const d = '2026-07-18';
     state.currentDate = d; state.staffMenuPage = 'planning'; state.staffResourceView = v; state.staffTheme = 'dark';
     state.staffLaserPlanningExpanded = v === 'laser'; state.staffPlanningExpanded = false;
@@ -517,7 +523,7 @@ async function main() {
       const pick = slots[Math.floor(slots.length / 2)] || slots[0];
       if (!card || !pick) return null;
       const c = card.getBoundingClientRect();
-      return { card: { x: c.x + c.width / 2, y: c.y + c.height / 2 }, tgt: { x: pick.b.x + pick.b.width / 2, y: pick.b.y + pick.b.height / 2, t: pick.s.dataset.laserDropStart }, visible: c.top >= 0 && c.bottom <= window.innerHeight };
+      return { card: { x: c.x + c.width / 2, y: c.y + c.height / 2 }, tgt: { x: pick.b.x + pick.b.width / 2, y: pick.b.y + pick.b.height / 2, t: laserTimeFromPoint(pick.s.closest('.laser-agenda-row'), pick.b.y + pick.b.height / 2) }, visible: c.top >= 0 && c.bottom <= window.innerHeight };
     });
     if (ok(posE && posE.visible, 'MONTAGE : carte en attente a l ecran et lancement libre visible')) {
       await touche.glisser(posE.card, posE.tgt, { maintien: 500 });
@@ -560,7 +566,7 @@ async function main() {
     }
 
     // --- F : bowling multi-pistes, groupe ou piste seule --------------------
-    console.log('\n[F] Bowling multi-pistes : appui long = le groupe, appui tenu = une piste seule (oracle : la souris)');
+    console.log('\n[F] Bowling multi-pistes : glisser groupe et maintien2s avec pistes explicites');
     const SRC_F = '.booking[data-booking-res-id="9004"][data-booking-lane="4"]';
     const TGT_F = '.slot-cell[data-bowling-drop-lane="1"][data-bowling-drop-start="18"]';
     const pistesF = () => page.evaluate(() => JSON.stringify((state.reservations.find((x) => x.id === 9004) || {}).lanes));
@@ -586,38 +592,36 @@ async function main() {
       await attendre(page, (k) => window.__QA_PATCHES__.length > k, n);
       oracle[nom] = await pistesF();
     }
-    if (ok(oracle.groupe && oracle.piste && oracle.groupe !== oracle.piste, `MONTAGE : a la souris, groupe et piste seule different (${oracle.groupe} contre ${oracle.piste})`)) {
-      for (const [nom, maintien] of [['groupe', 450], ['piste', 1400]]) {
-        await ouvrirPlanning(page, 'bowling');
-        const s = await centre(page, SRC_F, true);
-        const t = await centre(page, TGT_F);
-        if (!ok(s && t && s.visible && t.visible, `MONTAGE (${nom}) : carte piste 4 et cellule piste 1 / 18:00 a l ecran`)) continue;
-        const n = await page.evaluate(() => window.__QA_PATCHES__.length);
-        await touche.poser(s);
-        await page.waitForTimeout(450);
-        const place1 = await fantome(page, '.bowling-drag-ghost-card', s);
-        if (maintien > 450) await page.waitForTimeout(maintien - 450);
-        const place2 = await fantome(page, '.bowling-drag-ghost-card', s);
-        const etiquettes = await page.evaluate(() => {
-          const g = document.querySelector('.bowling-drag-ghost-card');
-          if (!g) return null;
-          const m = g.querySelector('.bowling-drag-mode');
-          const h = g.querySelector('.bowling-drag-hint');
-          return { mode: m ? m.textContent.trim() : '', indice: h ? h.textContent.trim() : '' };
-        });
-        // Le groupe glisse LENTEMENT, bien au-dela du delai de la piste seule :
-        // un doigt qui bouge n attend plus la piste seule, le groupe reste entier.
-        await touche.aller(s, t, 16, nom === 'groupe' ? 60 : 16);
-        await touche.lever();
-        await attendre(page, (k) => window.__QA_PATCHES__.length > k, n);
-        const obtenu = await pistesF();
-        ok(obtenu === oracle[nom], `au doigt (${nom}), les pistes sont celles de la souris${nom === 'piste' ? ' avec Shift' : ''} (${obtenu} contre ${oracle[nom]})`);
-        if (nom === 'groupe') ok(etiquettes && etiquettes.mode === 'Groupe de pistes' && /maintenez/i.test(etiquettes.indice), `le fantome dit « groupe » et comment obtenir une piste seule (${JSON.stringify(etiquettes)})`);
-        if (nom === 'piste') {
-          ok(etiquettes && etiquettes.mode === 'Piste seule' && !etiquettes.indice, `le fantome annonce la piste seule avant que le doigt bouge (${JSON.stringify(etiquettes)})`);
-          // L indice retire, le fantome raccourcit : il est remesure et replace.
-          ok(place1 && place2 && Math.abs(place2.ecart - place1.ecart) <= 2 && Math.abs(place2.decentre) <= 2, `en piste seule, le fantome reste a la meme distance au-dessus du doigt (${place1 && place1.ecart} puis ${place2 && place2.ecart} px)`);
-        }
+    if (ok(oracle.groupe && oracle.piste && oracle.groupe !== oracle.piste, 'MONTAGE : mouse group/single lane differ')) {
+      await ouvrirPlanning(page, 'bowling');
+      const source = await centre(page, SRC_F, true), target = await centre(page, TGT_F);
+      if (ok(source && target && source.visible && target.visible, 'MONTAGE : touch group source/target visible')) {
+        const n=await page.evaluate(()=>window.__QA_PATCHES__.length);
+        await touche.glisser(source,target,{maintien:450,pas:16,rythme:60});
+        await attendre(page,k=>window.__QA_PATCHES__.length>k,n);
+        ok(await pistesF()===oracle.groupe,'moving finger after450ms still moves whole group like mouse');
+      }
+      await ouvrirPlanning(page,'bowling');
+      const held=await centre(page,SRC_F,true);
+      if(ok(held&&held.visible,'MONTAGE : source for persistent selection visible')) {
+        const before=await page.evaluate(()=>({patches:window.__QA_PATCHES__.length,plan:state.reservations.find(r=>r.id===9004).opsPlan,price:state.reservations.find(r=>r.id===9004).price}));
+        await touche.appui(held,2150);
+        ok(await page.locator('#planningMoveSelection').count()===1,'2second hold remains selected after release');
+        ok(await page.evaluate(n=>window.__QA_PATCHES__.length===n,before.patches),'persistent selection is not a write');
+        await page.locator('#planningMoveSelection input[value="6"]').uncheck();
+        await page.locator('#planningMoveSelection input[value="8"]').uncheck();
+        await page.locator('#planningMoveSelection input[type="time"]').fill('17:00');
+        await page.locator('#planningMoveSelection input[type="time"]').dispatchEvent('change');
+        await page.locator('#planningMoveSelection select').selectOption('1');
+        ok(await page.locator('.booking.is-move-selected').count()===1,'explicitly unchecked lanes are not highlighted');
+        await page.locator('#planningMoveSelection button.primary').click();
+        await attendre(page,k=>window.__QA_PATCHES__.length>k,before.patches);
+        const result=await page.evaluate(()=>{const r=state.reservations.find(r=>r.id===9004);return{price:r.price,windows:getBowlingWindowsFromReservation(r),request:window.__QA_PATCHES__.at(-1)};});
+        ok(JSON.stringify(result.request.activityMove.sourceLanes)==='[4]','explicit selection sends only chosen source lane');
+        ok(result.windows.some(w=>w.lanes.includes(1)&&w.start===17),'chosen lane moved to17:00');
+        ok(result.windows.some(w=>w.lanes.includes(6)&&w.start===18)&&result.windows.some(w=>w.lanes.includes(8)&&w.start===18),'unchecked lanes6/8 stay18:00');
+        ok(result.price===before.price,'splitting lanes preserves total price');
+        ok(await page.locator('#planningMoveSelection').count()===0,'successful explicit save closes selection');
       }
     }
 

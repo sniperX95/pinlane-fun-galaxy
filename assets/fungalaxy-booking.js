@@ -4610,6 +4610,13 @@
           if (blocPlus) blocPlus.parentNode.removeChild(blocPlus);
           return;
         }
+        // Pinlane en panne, mais la demande est partie au centre par mail : on
+        // le dit, et le bouton ne propose plus de la renvoyer.
+        if (res.json.code === 'transmise_au_centre') {
+          confirmBtn.disabled = true;
+          erreurEnvoi('<b>' + esc(res.json.message) + '</b>');
+          return;
+        }
         // Le centre a baisse son seuil pendant que la page etait ouverte : la
         // reservation devient une demande sur mesure, le bouton y mene.
         if (res.json.code === 'custom_request_required') {

@@ -130,6 +130,21 @@ async function journee(module) {
   const c3 = await se.copieSecours(resa(5), { centre: centreCopie, envoyer: async () => { throw new Error('Resend 500'); }, env: {} });
   ok(c3.erreur === 'Resend 500', '[G] un envoi qui echoue ne leve pas : la reservation n echoue jamais pour sa copie');
 
+  console.log('[H] la base tombe pendant que le client confirme');
+  const parti = [];
+  const envoyerPanne = async (m) => { parti.push(m); return { id: 'p1' }; };
+  const demandePanne = { centerId: 'libramont', name: 'Julie', phone: '+32471000222', email: 'julie@exemple.be', date: JOUR, startTime: '15:00', pax: 8, formuleId: 'f4', quotedPrice: 312 };
+  ok(await se.transmettreEnPanne(demandePanne, { envoyer: envoyerPanne, env: { PINLANE_SECOURS_EMAILS: 'secours@fungalaxy.be' } }) === true && /À SAISIR/.test(parti[0].subject), '[H] la demande entiere part, marquee « À SAISIR »', parti[0] && parti[0].subject);
+  ok(await se.transmettreEnPanne({ ...demandePanne, name: '' }, { envoyer: envoyerPanne, env: { PINLANE_SECOURS_EMAILS: 'secours@fungalaxy.be' } }) === false, '[H] sans nom : on ne pretend pas avoir transmis');
+  ok(await se.transmettreEnPanne(demandePanne, { envoyer: envoyerPanne, env: {} }) === false, '[H] sans boite de secours : on ne pretend pas avoir transmis');
+  ok(await se.transmettreEnPanne(demandePanne, { envoyer: async () => ({ skipped: true }), env: { PINLANE_SECOURS_EMAILS: 'secours@fungalaxy.be' } }) === false, '[H] un envoi saute (pas de cle) : on ne pretend pas avoir transmis');
+  const { prepareReservationOps } = require(path.join(ROOT, 'lib/reservation-ops.js'));
+  let leve = null;
+  try { await prepareReservationOps({ centerId: 'libramont', date: JOUR, startTime: '15:00', pax: 8, type: 'formule', formuleId: 'f4', name: 'x', phone: '+32470000000' }, 'public', { readState: async () => { throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' }); } }); } catch (e) { leve = e; }
+  ok(leve && leve.code === 'ECONNREFUSED', '[H] une base injoignable remonte (plus deguisee en « aucun creneau »)');
+  const autre = await prepareReservationOps({ centerId: 'libramont', date: JOUR, startTime: '15:00', pax: 8, type: 'formule', formuleId: 'f4', name: 'x', phone: '+32470000000' }, 'public', { readState: async () => { throw new Error('Plan impossible'); } });
+  ok(autre.blockOnlineConfirmation === true, '[H] une autre erreur reste un creneau impossible (comportement d avant)');
+
   console.log('[contre-épreuve]');
   const source = fs.readFileSync(path.join(ROOT, 'lib/secours-envoi.js'), 'utf8');
   const ancre = 'const ECART_MISE_A_JOUR_MS = 15 * 60 * 1000;';

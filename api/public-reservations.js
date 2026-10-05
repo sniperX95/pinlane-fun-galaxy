@@ -216,9 +216,13 @@ module.exports = async (req, res) => {
 
   let request = null;
   let holdToken = '';
+  // Le corps recu, garde hors du try : si la base tombe avant meme la lecture
+  // de la demande, la boite de secours la recoit quand meme.
+  let corpsRecu = null;
 
   try {
     const body = await readJson(req);
+    corpsRecu = body;
     // Les portes d une demande publique (centre, date, demonstration, statut
     // du centre, grands groupes, catalogue chaud) : les memes que le blocage
     // des horaires, lib/demande-publique.
@@ -342,6 +346,15 @@ module.exports = async (req, res) => {
     const raw = String((error && error.message) || '');
     if (estErreurInfra(error)) {
       console.error('[public-reservations] échec', error && (error.stack || raw || error));
+      // RIEN NE SE PERD (2026-10-05) : la demande entiere part a la boite de
+      // secours du centre, marquee « A SAISIR ». Le client ne l apprend que si
+      // le mail est vraiment parti ; sinon, le message d avant.
+      const { transmettreEnPanne } = require('../lib/secours-envoi');
+      const demande = { ...(corpsRecu || {}), ...(request || {}), name: (request && request.name) || (corpsRecu && corpsRecu.name), phone: (request && request.phone) || (corpsRecu && corpsRecu.phone), email: (request && request.email) || (corpsRecu && corpsRecu.email) };
+      if (await transmettreEnPanne(demande, { erreur: raw })) {
+        sendError(res, 503, 'Le site de réservation a un souci technique, mais votre demande a bien été transmise au centre : l’équipe vous recontacte pour la confirmer. Inutile de la renvoyer.', { code: 'transmise_au_centre' });
+        return;
+      }
       sendError(res, 503, 'Réservation momentanément indisponible. Réessayez dans un instant.');
       return;
     }

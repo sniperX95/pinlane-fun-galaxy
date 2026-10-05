@@ -15120,17 +15120,16 @@ function renderEstablishmentEditPanels(center, active) {
 // de lib/situations-validation (SITUATIONS, NIVEAUX) : le gate
 // situations-validation-check compare les deux, une derive y rougit.
 const VALIDATION_SITUATIONS = [
-  { id: 'impossible', toujours: true, mot: 'Aucune place sûre', explication: 'Le planning ne trouve aucune façon de placer ce groupe sans conflit (pistes, arène laser, tables).', exemple: 'Toutes les pistes sont déjà prises à cette heure-là.' },
-  { id: 'bowling_secours', mot: 'Bowling en capacité de secours', explication: 'Le groupe ne tient qu’à 7 joueurs par piste au lieu de 6 : la partie sera plus longue.', exemple: '13 joueurs sur 2 pistes, répartis 7 + 6.' },
-  { id: 'laser_plein', mot: 'Arène laser presque pleine', explication: 'La session laser est partagée avec un autre groupe et il ne reste que 3 armes ou moins.', exemple: '27 joueurs de deux groupes pour 30 armes.' },
+  { id: 'bowling_secours', mot: 'Bowling en capacité de secours', explication: 'Le groupe ne tient qu’à 7 joueurs par piste au lieu de 6, la partie sera plus longue.', exemple: '13 joueurs sur 2 pistes, répartis 7 + 6.' },
+  { id: 'laser_plein', mot: 'Arène laser presque pleine', explication: 'Le groupe rentre, mais avec lui la session laser partagée est presque complète (3 places libres ou moins).', exemple: 'Deux groupes, 27 joueurs pour 30 places.' },
   { id: 'apres_fermeture', mot: 'Dépasse la fermeture', explication: 'La dernière activité du groupe finit après l’heure de fermeture du centre.', exemple: 'Fin à 0 h 20 pour une fermeture à minuit.' },
   { id: 'laser_partage', mot: 'Laser partagé avec un autre groupe', explication: 'Le groupe jouera dans la même session laser qu’un autre groupe.', exemple: 'Un anniversaire placé avec 10 joueurs déjà inscrits.' },
   { id: 'enchainement_serre', mot: 'Enchaînement serré', explication: 'Moins de 5 minutes entre deux activités, pour un groupe de 12 personnes ou plus.', exemple: 'Bowling jusqu’à 16:00, laser à 16:00 pour 20 joueurs.' },
 ];
 const VALIDATION_NIVEAUX = {
-  minimal: { mot: 'Minimal', dit: 'L’équipe n’est dérangée que si c’est impossible sans elle.', situations: ['impossible'] },
-  normal: { mot: 'Normal', dit: 'Aussi quand la capacité est poussée au bout (bowling à 7, arène pleine) ou que le programme dépasse la fermeture.', situations: ['impossible', 'bowling_secours', 'laser_plein', 'apres_fermeture'] },
-  prudent: { mot: 'Prudent', dit: 'Aussi quand le laser est partagé avec un autre groupe ou que les activités s’enchaînent sans marge.', situations: ['impossible', 'bowling_secours', 'laser_plein', 'apres_fermeture', 'laser_partage', 'enchainement_serre'] },
+  minimal: { mot: 'Minimal', dit: 'Personne n’est dérangé. Ce qui rentre est confirmé, ce qui ne rentre pas est refusé au client avec d’autres horaires.', situations: [] },
+  normal: { mot: 'Normal', dit: 'Vous validez vous-même ce qui rentre de justesse, comme le bowling à 7, l’arène laser presque complète ou une fin après la fermeture.', situations: ['bowling_secours', 'laser_plein', 'apres_fermeture'] },
+  prudent: { mot: 'Prudent', dit: 'Aussi quand le laser est partagé avec un autre groupe ou que les activités s’enchaînent sans marge.', situations: ['bowling_secours', 'laser_plein', 'apres_fermeture', 'laser_partage', 'enchainement_serre'] },
 };
 function validationReglageDe(center) {
   const v = center && center.validationEquipe && typeof center.validationEquipe === 'object' ? center.validationEquipe : {};
@@ -15138,7 +15137,6 @@ function validationReglageDe(center) {
   const situations = v.situations && typeof v.situations === 'object' ? v.situations : {};
   const actives = new Set(VALIDATION_NIVEAUX[niveau].situations);
   Object.entries(situations).forEach(([id, on]) => { if (typeof on === 'boolean') { if (on) actives.add(id); else actives.delete(id); } });
-  actives.add('impossible');
   return { niveau, situations, actives };
 }
 let establishmentValidationDraft = null;
@@ -15147,7 +15145,7 @@ function establishmentValidationHtml(center) {
   establishmentValidationDraft = r;
   return `<fieldset class="establishment-card estab-validation" id="estab-validation">
       <legend>Validation par l’équipe</legend>
-      <p class="estab-card-hint">Avant de vous déranger, le planning essaie tout (autres pistes, autre ordre, autre vague laser, une heure proche proposée au client). Choisissez quand il doit quand même vous demander.</p>
+      <p class="estab-card-hint">Ce qui ne rentre pas dans le planning est refusé au client, avec d’autres horaires, sans vous déranger. Ici, vous choisissez les cas qui rentrent de justesse et que vous voulez valider vous-même.</p>
       <div class="estab-seg" role="radiogroup" aria-label="Niveau de validation">${Object.entries(VALIDATION_NIVEAUX).map(([id, n]) => `<button type="button" role="radio" aria-checked="${r.niveau === id ? 'true' : 'false'}" class="estab-seg-btn${r.niveau === id ? ' is-on' : ''}" onclick="setEstablishmentValidationNiveau('${id}')">${escapeHtml(n.mot)}</button>`).join('')}</div>
       <p class="estab-valid-dit">${escapeHtml(VALIDATION_NIVEAUX[r.niveau].dit)}</p>
       <ul class="estab-situations">${VALIDATION_SITUATIONS.map(s => {
@@ -15162,13 +15160,13 @@ function setEstablishmentValidationNiveau(niveau) {
   if (!VALIDATION_NIVEAUX[niveau]) return;
   // Changer de niveau repart des situations de ce niveau : les interrupteurs
   // poses a la main pour l ancien niveau ne suivent pas.
-  establishmentValidationDraft = { niveau, situations: {}, actives: new Set([...VALIDATION_NIVEAUX[niveau].situations, 'impossible']) };
+  establishmentValidationDraft = { niveau, situations: {}, actives: new Set(VALIDATION_NIVEAUX[niveau].situations) };
   const zone = document.getElementById('estab-validation');
   if (zone) zone.outerHTML = establishmentValidationHtml(null);
 }
 function toggleEstablishmentValidationSituation(id, on) {
   const r = establishmentValidationDraft;
-  if (!r || id === 'impossible' || !VALIDATION_SITUATIONS.some(s => s.id === id)) return;
+  if (!r || !VALIDATION_SITUATIONS.some(s => s.id === id)) return;
   const parDefaut = VALIDATION_NIVEAUX[r.niveau].situations.includes(id);
   if (on === parDefaut) delete r.situations[id]; else r.situations[id] = Boolean(on);
   if (on) r.actives.add(id); else r.actives.delete(id);
@@ -15344,7 +15342,9 @@ function renderEstablishmentReadPanels(center, active) {
       <div class="estab-rules">
         ${rule('Niveau', `<span class="estab-badge ${validation.niveau === 'minimal' ? 'on' : 'warn'}">${escapeHtml(VALIDATION_NIVEAUX[validation.niveau].mot)}</span>`)}
       </div>
-      <div><p class="estab-empty" style="margin-bottom:6px">L’équipe est appelée pour :</p><div class="estab-chip-row">${VALIDATION_SITUATIONS.filter(s => validation.actives.has(s.id)).map(s => `<span class="estab-tag">${escapeHtml(s.mot)}</span>`).join('')}</div></div>`)}
+      ${validation.actives.size
+        ? `<div><p class="estab-empty" style="margin-bottom:6px">Vous validez vous-même</p><div class="estab-chip-row">${VALIDATION_SITUATIONS.filter(s => validation.actives.has(s.id)).map(s => `<span class="estab-tag">${escapeHtml(s.mot)}</span>`).join('')}</div></div>`
+        : ''}`)}
     ${section(ICO.shield, 'Boîte de secours', 'Copie de chaque réservation, des demandes sur mesure et de la feuille du jour.', secoursEmails.length
       ? `<div class="estab-chip-row">${secoursEmails.map(email => `<span class="estab-tag">${escapeHtml(email)}</span>`).join('')}</div>`
       : '<p class="estab-empty">Aucune adresse : rien ne part encore en dehors de Pinlane.</p>')}

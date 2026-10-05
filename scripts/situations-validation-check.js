@@ -10,10 +10,11 @@
 //       fermeture (y compris apres minuit), laser partage, enchainement serre
 //       pour un gros groupe (et pas pour un petit) ;
 //   [B] chaque detection dit OU : l heure et le chiffre ;
-//   [C] les niveaux : minimal ne derange que pour l impossible, normal ajoute
+//   [C] les niveaux : minimal ne derange personne (l impossible est refuse au
+//       client, jamais envoye a l equipe), normal ajoute
 //       la capacite poussee au bout et la fermeture, prudent ajoute le partage
 //       et l enchainement ; un interrupteur allume ou eteint une situation ;
-//       « impossible » ne s eteint jamais ;
+//       « impossible » n est jamais une situation a valider ;
 //   [D] le reglage avance par formule : « toujours » valide meme sans
 //       situation, « si laser partage » n allume le partage que pour elle ;
 //   [E] un reglage illisible retombe sur minimal, sans planter ;
@@ -80,7 +81,7 @@ ok(/Aucune piste libre/.test(vu('impossible', 'impossible')), '[B] l impossible 
 
 console.log('[C] les niveaux et les interrupteurs');
 const dec = (nom, reglage, extra) => sv.decisionValidation({ detectees: d(nom, extra), reglage });
-ok(dec('impossible', { niveau: 'minimal' }).requise, '[C] minimal : l impossible derange');
+ok(!dec('impossible', { niveau: 'prudent' }).requise && dec('impossible', { niveau: 'prudent' }).impossible, '[C] l impossible ne derange personne, meme en prudent : il est refuse (marque impossible)');
 ok(!dec('bowling7', { niveau: 'minimal' }, { pax: 13 }).requise && dec('bowling7', { niveau: 'minimal' }, { pax: 13 }).aSurveiller.length === 1, '[C] minimal : bowling a 7 ne derange pas, mais reste « a surveiller »');
 ok(dec('bowling7', { niveau: 'normal' }, { pax: 13 }).requise, '[C] normal : bowling a 7 derange');
 ok(dec('tard', { niveau: 'normal' }, { pax: 4 }).requise, '[C] normal : depasser la fermeture derange');
@@ -88,7 +89,8 @@ ok(!dec('partage', { niveau: 'normal' }).requise, '[C] normal : un laser partage
 ok(dec('partage', { niveau: 'prudent' }).requise, '[C] prudent : un laser partage derange');
 ok(dec('partage', { niveau: 'minimal', situations: { laser_partage: true } }).requise, '[C] interrupteur allume : le partage derange meme en minimal');
 ok(!dec('bowling7', { niveau: 'prudent', situations: { bowling_secours: false } }, { pax: 13 }).requise, '[C] interrupteur eteint : le bowling a 7 ne derange plus meme en prudent');
-ok(dec('impossible', { niveau: 'minimal', situations: { impossible: false } }).requise, '[C] « impossible » ne s eteint jamais');
+ok(!dec('impossible', { niveau: 'minimal', situations: { impossible: true } }).requise, '[C] « impossible » ne s allume pas comme une situation a valider');
+ok(!dec('bowling7', { niveau: 'minimal' }, { pax: 13 }).requise && !dec('partage', { niveau: 'minimal' }).requise, '[C] minimal : personne n est derange');
 const decision = dec('bowling7', { niveau: 'normal' }, { pax: 13 });
 ok(decision.declencheurs[0] && decision.declencheurs[0].mot === 'Bowling en capacité de secours', '[C] la decision nomme sa raison en mots', JSON.stringify(decision.declencheurs));
 
@@ -201,10 +203,10 @@ ok(parDefaut.validationEquipe.niveau === 'minimal' && JSON.stringify(parDefaut.s
   // L ecran derive d un seul cote, une mutation a la fois : [F] rougit.
   const deriveMot = comparerEcran(appMain.replace("mot: 'Enchaînement serré'", "mot: 'Enchaînement rapide'"));
   ok(!deriveMot.situations, '[contre-épreuve] un mot change cote ecran, [F] rougit');
-  const deriveNiveau = comparerEcran(appMain.replace("situations: ['impossible', 'bowling_secours', 'laser_plein', 'apres_fermeture'] },", "situations: ['impossible', 'bowling_secours', 'apres_fermeture'] },"));
+  const deriveNiveau = comparerEcran(appMain.replace("situations: ['bowling_secours', 'laser_plein', 'apres_fermeture'] },", "situations: ['bowling_secours', 'apres_fermeture'] },"));
   ok(!deriveNiveau.niveaux && !deriveNiveau.lecture, '[contre-épreuve] « normal » sans l arene pleine cote ecran, [F] rougit');
-  const deriveLecture = comparerEcran(appMain.replace("  actives.add('impossible');\n  return { niveau, situations, actives };", "  return { niveau, situations, actives };"));
-  ok(!deriveLecture.lecture, '[contre-épreuve] l ecran qui laisse eteindre « impossible », [F] rougit');
+  const deriveLecture = comparerEcran(appMain.replace("if (on) actives.add(id); else actives.delete(id);", "if (on) actives.add(id);"));
+  ok(!deriveLecture.lecture, '[contre-épreuve] l ecran qui n eteint plus un interrupteur, [F] rougit');
 
   console.log('');
   console.log(failures ? `situations-validation-check: ${failures} FAIL` : 'situations-validation-check: ALL OK (faits detectes et dits, niveaux, interrupteurs, reglage par formule, reglages illisibles, miroir ecran, enregistrement)');

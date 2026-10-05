@@ -246,7 +246,8 @@ async function main() {
       for (const id of Object.keys(COUNTS)) {
         await page.locator(`${card(id)} .fg-card`).click();
         layouts.push(await page.evaluate(() => {
-        const boxes = [...document.querySelectorAll('#gridAct .fg-activity-editor [data-compteur="participants"]')];
+        const id = document.activeElement.closest('[data-activity]')?.dataset.activity;
+        const boxes = [...document.querySelectorAll('#gridAct > li[data-activity="' + id + '"] [data-compteur="participants"]')];
         return { overflow: document.documentElement.scrollWidth > innerWidth + 1,
           counters: boxes.map(b => { const r = b.getBoundingClientRect(); const p = b.closest('li').getBoundingClientRect();
             const f = b.querySelector('input'); return { fits: r.left >= p.left - 1 && r.right <= p.right + 1,

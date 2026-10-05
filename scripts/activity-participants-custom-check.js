@@ -84,7 +84,7 @@ async function main() {
       check(await page.locator(input('bowling')).inputValue() === '7', `[${width}] option keyboard preserves count`);
       await page.locator(`${card('bowling')} .fg-pill[data-valeur="2"]`).click();
       const bounds = [];
-      for (const id of Object.keys(COUNTS)) { await page.locator(`${card(id)} .fg-card`).click(); bounds.push(...await page.locator('#smGridAct .fg-activity-editor .fg-stepper').evaluateAll(nodes => nodes.flatMap(n => [...n.children].map(c => ({ width: c.getBoundingClientRect().width, height: c.getBoundingClientRect().height }))))); }
+      for (const id of Object.keys(COUNTS)) { bounds.push(...await page.locator(`${card(id)} .fg-stepper`).evaluateAll(nodes => nodes.flatMap(n => [...n.children].map(c => ({ width: c.getBoundingClientRect().width, height: c.getBoundingClientRect().height }))))); }
       check(bounds.every(b => b.width >= 44 && b.height >= 44), `[${width}] every counter target at least 44px`);
       check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `[${width}] no horizontal overflow`);
       await page.screenshot({ path: path.join(OUTPUT, `custom-activities-${width}.png`), fullPage: true });

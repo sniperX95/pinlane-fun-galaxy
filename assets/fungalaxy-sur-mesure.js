@@ -861,7 +861,7 @@
       }
       var liste = card.dataset.kind === 'formule' ? sm.formules : sm.activites;
       var id = card.dataset.sm, i = liste.indexOf(id);
-      if (card.dataset.kind === 'activite' && i >= 0 && !cocher) { I.rendreEditeurActivites(smGridAct, id, retirerSmActivite, true); return; }
+      if (card.dataset.kind === 'activite' && i >= 0 && !cocher) return;
       if (i >= 0) liste.splice(i, 1); else liste.push(id);
       var on = i < 0;
       chargerPhotoCarte(card);

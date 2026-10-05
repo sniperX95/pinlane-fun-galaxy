@@ -1676,39 +1676,30 @@
   function caseActivite(id, nom, on) {
     return '<button type="button" class="fg-card-select' + (on ? ' is-on' : '') + '" data-activity-toggle="' + esc(id) + '" role="checkbox" aria-checked="' + on + '" aria-label="' + esc(nom) + '"><svg aria-hidden="true"><use href="#i-check"/></svg></button>';
   }
-  // Move the actual controls, never copies: switching activities preserves
-  // input values, names and the existing delegated price/participant handlers.
+  // Keep the actual controls beside their card and compact each column.
   function rendreEditeurActivites(grille, id, retirer, montrer) {
-    if (retirer) grille._fgRetirer = retirer;
-    var panel = $('.fg-activity-editor', grille);
-    if (panel && panel._fgTuile) {
-      var ancien = $('.fg-card__opt', panel);
-      if (ancien) panel._fgTuile.appendChild(ancien);
-      panel._fgTuile._fgEditeur = null;
-    }
+    // Every card retains its own real controls. Columns compact independently:
+    // a short neighbour never gets an empty drawer's height as padding.
+    if (grille._fgMesure) { cancelAnimationFrame(grille._fgMesure); grille._fgMesure = 0; }
     var tuiles = Array.from(grille.children).filter(function (x) { return x.classList.contains('fg-grid__item'); });
-    var selection = tuiles.filter(function (x) { return x.classList.contains('is-on'); });
-    var cle = function (x) { return x.dataset.activity || x.dataset.smActivity; };
-    tuiles.forEach(function (x) { var card = $('.fg-card', x), ax = activite(cle(x)); card.setAttribute('role', 'button'); card.removeAttribute('aria-checked'); card.setAttribute('aria-label', (x.classList.contains('is-on') ? 'Modifier ' : 'Choisir ') + ax.name); card.setAttribute('aria-controls', grille.id + '-editor'); });
-    var actif = selection.filter(function (x) { return cle(x) === (id || grille.dataset.editActivity); })[0] || selection[0];
-    if (!actif) { if (panel) panel.remove(); delete grille.dataset.editActivity; return; }
-    if (!panel) { panel = doc.createElement('li'); panel.className = 'fg-activity-editor'; panel.id = grille.id + '-editor'; panel.setAttribute('role', 'presentation'); grille.appendChild(panel); }
-    var a = activite(cle(actif));
-    grille.dataset.editActivity = a.id;
-    panel.innerHTML = '<div class="fg-editor-head"><h3 tabindex="-1">Réglez ' + esc(a.name) + '</h3><button type="button" class="fg-editor-back">Retour aux activités</button></div>'
-      + '<div class="fg-editor-tabs" aria-label="Activités sélectionnées">' + selection.map(function (x) { var ax = activite(cle(x)); return '<button type="button" class="fg-editor-tab' + (x === actif ? ' is-on' : '') + '" data-editor-activity="' + esc(ax.id) + '" aria-pressed="' + (x === actif) + '">' + esc(ax.name) + '</button>'; }).join('') + '</div>'
-      + '<div class="fg-grid__item fg-editor-entry is-on" data-activity="' + esc(a.id) + '" data-sm-activity="' + esc(a.id) + '"></div><button type="button" class="fg-editor-remove">Retirer cette activité</button>';
-    var entree = $('.fg-editor-entry', panel);
-    entree._fgTuile = actif; actif._fgEditeur = entree; panel._fgTuile = actif;
-    var drawer = $('.fg-card__opt', actif); if (drawer) entree.appendChild(drawer);
-    panel.onclick = function (e) {
-      var tab = e.target.closest('[data-editor-activity]');
-      if (tab) { rendreEditeurActivites(grille, tab.dataset.editorActivity); var suivant = $('[data-editor-activity="' + tab.dataset.editorActivity + '"]', grille); if (suivant) suivant.focus({ preventScroll:true }); }
-      else if (e.target.closest('.fg-editor-remove')) { grille._fgRetirer(a.id); }
-      else if (e.target.closest('.fg-editor-back')) { $('.fg-card', actif).focus({ preventScroll:true }); actif.scrollIntoView({ block:'center', behavior:'auto' }); }
-    };
-    if (montrer) { $('h3', panel).focus({ preventScroll:true }); panel.scrollIntoView({ block:'nearest', behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }
-    posterHauteur();
+    tuiles.forEach(function (tile) {
+      var card = $('.fg-card', tile), drawer = $('.fg-card__opt', tile), cle = tile.dataset.activity || tile.dataset.smActivity;
+      card.setAttribute('role', 'checkbox'); card.setAttribute('aria-checked', String(tile.classList.contains('is-on')));
+      if (drawer) { drawer.id = grille.id + '-options-' + cle; card.setAttribute('aria-controls', drawer.id); drawer.setAttribute('aria-hidden', String(!tile.classList.contains('is-on'))); }
+    });
+    function mesurer() {
+      grille._fgMesure = 0;
+      if (!grille.getBoundingClientRect().width) return;
+      var colonnes = getComputedStyle(grille).gridTemplateColumns.split(' ').filter(Boolean).length;
+      var espace = window.matchMedia('(max-width:560px)').matches ? 10 : 14;
+      var hauteurs = Array(colonnes).fill(0);
+      tuiles.forEach(function (tile, i) { var col = i % colonnes, h = Math.ceil(tile.getBoundingClientRect().height); tile.style.gridColumn = String(col + 1); tile.style.gridRow = String(hauteurs[col] + 1) + ' / span ' + h; hauteurs[col] += h + espace; });
+      posterHauteur();
+    }
+    function attendreMesure() { if (!grille._fgMesure) grille._fgMesure = requestAnimationFrame(mesurer); }
+    if (grille._fgMasonryObserver) grille._fgMasonryObserver.disconnect();
+    if (window.ResizeObserver) { grille._fgMasonryObserver = new ResizeObserver(attendreMesure); grille._fgMasonryObserver.observe(grille); tuiles.forEach(function (tile) { grille._fgMasonryObserver.observe(tile); }); }
+    attendreMesure();
   }
   function choisirPastille(pill) {
     var item = pill.closest('.fg-grid__item');
@@ -2053,7 +2044,7 @@
     var item = card.closest('.fg-grid__item');
     var id = item.dataset.activity;
     var i = state.selection.indexOf(id);
-    if (i >= 0 && !cocher) { rendreEditeurActivites(gridAct, id, retirerActivite, true); return; }
+    if (i >= 0 && !cocher) return;
     if (i >= 0) state.selection.splice(i, 1); else state.selection.push(id);
     var on = i < 0;
     card.classList.toggle('is-on', on);

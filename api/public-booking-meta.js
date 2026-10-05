@@ -159,6 +159,9 @@ async function handleCustomRequest(req, res, body) {
     return;
   }
 
+  // La copie expliquee part a la boite de secours du centre en meme temps que
+  // l accuse au client (2026-10-05) : aucune demande ne vit seulement dans Pinlane.
+  const copieSecours = require('../lib/secours-envoi').copieDemandeSecours({ ...lead, centerId });
   // Accusé de réception client (best-effort, tracé mais non bloquant).
   const ack = await sendCustomRequestAck({
     // Le centre DE LA REQUETE, pas lead.centerId : mapCustomRequest retombe sur
@@ -174,6 +177,7 @@ async function handleCustomRequest(req, res, body) {
     message: lead.message,
     demande,
   }).catch((error) => ({ skipped: true, reason: error.message || 'Envoi impossible.' }));
+  await copieSecours;
 
   sendJson(res, 201, {
     ok: true,

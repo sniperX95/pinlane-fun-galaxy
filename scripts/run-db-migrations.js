@@ -259,6 +259,16 @@ const MIGRATIONS = [
     file: 'database/customer-note-author-schema.sql',
     description: 'Auteur de la note client interne persistante. Colonne additive sur client_notes existant, aucune note modifiee ni effacee.',
   },
+  {
+    id: '0052_reservation_archive',
+    file: 'database/reservation-archive-schema.sql',
+    description: "Le registre des suppressions : avant tout DELETE d une reservation, la ligne entiere (to_jsonb, toutes les colonnes) est copiee dans reservation_archive, dans la meme transaction ; sans copie, pas de suppression. Restaurable avec son identifiant d origine (refus clair si l identifiant est repris). Table additive, aucune ligne existante touchee, aucune purge. Rollback : database/rollbacks/0052_reservation_archive.down.sql (la table est renommee, jamais supprimee)",
+  },
+  {
+    id: '0053_client_note_versions',
+    file: 'database/client-note-versions-schema.sql',
+    description: "Chaque version d une note client interne est gardee avec son texte complet (client_note_versions), ecrite dans la transaction de l enregistrement : une note ecrasee par erreur se relit. Table additive, aucune note modifiee, aucune purge. Rollback : database/rollbacks/0053_client_note_versions.down.sql (la table est renommee, jamais supprimee)",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

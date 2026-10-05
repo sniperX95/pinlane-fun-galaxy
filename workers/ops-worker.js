@@ -129,6 +129,12 @@ const OPS_LOG_RETENTION_DAYS = envNumber('OPS_WORKER_LOG_RETENTION_DAYS', 7, { m
 // database/audit-log-schema.sql. Si une compression devient necessaire, elle
 // prend la forme d'un archivage froid (export puis suppression elle-meme
 // tracee), jamais d'un DELETE dans cette boucle.
+//
+// Meme interdiction pour le REGISTRE (migrations 0052 et 0053) :
+// reservation_archive (les reservations supprimees, ligne complete) et
+// client_note_versions (chaque version d une note client). Ce sont des
+// sauvegardes, pas des logs : NE JAMAIS AJOUTER reservation_archive ni
+// client_note_versions ici.
 const OPS_LOG_TABLES = [
   ['ops_worker_runs', 'started_at'],
   ['marketing_agent_runs', 'created_at'],

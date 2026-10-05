@@ -45,7 +45,11 @@ declare
     -- plateforme) : la policy ci-dessous ne le laisse passer QUE via
     -- app.center_scope = 'all', ce qui est le comportement voulu (une
     -- directrice ne doit pas lire les lignes de portee plateforme).
-    'audit_log'
+    'audit_log',
+    -- Le registre (0052, 0053) : les reservations supprimees et l historique
+    -- des notes client sont des donnees de centre, cloisonnees comme le reste.
+    'reservation_archive',
+    'client_note_versions'
   ];
 begin
   foreach target in array tenant_tables loop

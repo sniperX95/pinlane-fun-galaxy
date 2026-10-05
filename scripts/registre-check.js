@@ -227,6 +227,7 @@ function normaliserLigne(row) {
     ok(false, 'lib/registre.js et database.mapReservation existent (aucun instantane derive des clefs reelles)');
   } else {
     const clefs = Object.keys(db.mapReservation({})).filter((k) => !registre.RESERVATION_VOLATILE_FIELDS.includes(k));
+    ok(JSON.stringify(registre.RESERVATION_FIELDS_FALLBACK) === JSON.stringify(clefs), 'la copie de secours des clefs est EGALE aux clefs reelles de mapReservation (une colonne ajoutee la fait rougir)');
     const instantane = registre.reservationSnapshot(db.mapReservation({ id: 1, name: 'x', phone: 'y', date: '2026-01-01' }));
     const manquantes = clefs.filter((k) => !Object.prototype.hasOwnProperty.call(instantane, k));
     ok(manquantes.length === 0, `chaque clef de mapReservation est dans l instantane (${clefs.length} clefs)`, `manquantes : ${manquantes.join(', ')}`);

@@ -23345,11 +23345,12 @@ function reservationAlreadyInStatus(reservation, status) {
 // avec les memes mots que l ecran Etablissement et le mail.
 function getReservationValidationTexte(reservation) {
   const v = reservation && reservation.opsPlan && reservation.opsPlan.validation;
-  const phrase = (liste) => (Array.isArray(liste) ? liste : []).map(d => (d.detail ? `${d.mot} (${d.detail})` : d.mot)).join(' ; ');
+  // La phrase ecrite par le moteur ; un ancien dossier sans phrase garde le mot.
+  const phrase = (liste) => (Array.isArray(liste) ? liste : []).map(d => d.phrase || (d.detail ? `${d.mot}, ${d.detail}.` : `${d.mot}.`)).join(' ');
   if (!v || typeof v !== 'object') return { raison: '', surveiller: '' };
   const declencheurs = phrase(v.declencheurs);
   return {
-    raison: declencheurs ? `Pourquoi : ${declencheurs}.` : (v.raison ? `Pourquoi : ${v.raison}` : ''),
+    raison: declencheurs || (v.raison ? 'Cette formule est réglée pour toujours passer par l’équipe.' : ''),
     surveiller: phrase(v.aSurveiller),
   };
 }

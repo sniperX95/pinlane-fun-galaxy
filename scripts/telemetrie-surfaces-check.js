@@ -55,13 +55,14 @@ const RESERVATIONS = [
 function checkEmail() {
   const oc = require(OC);
   const message = oc.buildMessage({ reservation: RESERVATIONS[0], templateId: 'staff_review_request', channel: 'email' });
-  // Depuis le 2026-10-05 la ligne Risque a laisse la place a la Situation :
-  // la raison de la validation, en mots, jamais une note.
-  const risque = (message.details || []).find((detail) => detail.label === 'Situation');
-  ok(Boolean(message && message.subject && risque),
+  // Depuis le 2026-10-05 le mail est ecrit en phrases (plus de ligne Risque
+  // ni Situation) : on verifie qu il se construit et qu AUCUN texte ne porte
+  // le niveau brut du moteur.
+  const tout = [message && message.subject, message && message.body, ...((message && message.details) || []).map((d) => `${d.label} ${d.value}`)].join(' | ');
+  ok(Boolean(message && message.subject && (message.details || []).length),
     `montage : le mail staff_review_request se construit (sujet « ${message && message.subject} »)`);
-  ok(risque && risque.value === 'Placement impossible',
-    `email : la ligne Situation dit la raison en francais, rien d'autre (« ${risque && risque.value} »)`);
+  ok(!/\b(high|critical|medium|low|staff_review)\b/.test(tout),
+    `email : aucun niveau brut du moteur dans le mail (« ${tout.slice(0, 120)} »)`);
   const serialise = JSON.stringify(message);
   ok(!serialise.includes('/100'),
     'email : aucune note /100 nulle part dans le message');
@@ -155,13 +156,13 @@ if (process.argv.includes('--mutate')) {
   const sourceOc = fs.readFileSync(OC, 'utf8');
   // La ligne Risque a laisse la place a la Situation (2026-10-05) : la note
   // /100 se remet sur la ligne vivante.
-  const marqueurOc = "{ label: 'Situation', value: declencheurs.length ? declencheurs.map((d) => d.mot).join(', ') : (decision && decision.raison ? 'Formule « toujours valider »' : 'Placement impossible') },";
+  const marqueurOc = "{ label: 'Personnes', value: `${reservation.pax}` },";
   if (!sourceOc.includes(marqueurOc)) {
-    console.error('mutation 1 impossible : la ligne Situation vivante est introuvable dans lib/ops-communications.js');
+    console.error('mutation 1 impossible : la ligne Personnes vivante est introuvable dans lib/ops-communications.js');
     process.exit(1);
   }
   fs.writeFileSync(OC, sourceOc.replace(marqueurOc,
-    "{ label: 'Situation', value: `Placement impossible${reservation.riskScore !== null && reservation.riskScore !== undefined ? ` (${reservation.riskScore}/100)` : ''}` },"));
+    "{ label: 'Personnes', value: `${reservation.pax}${reservation.riskScore !== null && reservation.riskScore !== undefined ? ` (${reservation.riskScore}/100)` : ''}` },"));
   const run1 = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
   fs.writeFileSync(OC, sourceOc);
   if (run1.status === 0) { console.error('CONTRE-EPREUVE 1 RATEE : le gate reste vert avec la note /100 remise.'); rate += 1; }

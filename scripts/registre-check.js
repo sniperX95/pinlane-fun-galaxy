@@ -161,6 +161,13 @@ function samediDans(jours) {
 const DATE = samediDans(22);
 const CENTRE = 'libramont';
 const TEL_NOTE = '0470 31 41 59';
+const TEL_PATCH = '0470 99 88 77';
+
+// La colonne pg `date` arrive en Date a minuit local : on la compare en jour.
+function jourLocal(value) {
+  if (!(value instanceof Date)) return value;
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
 
 async function tableExiste(nom) {
   const r = await pool.query('select to_regclass($1) as t;', [nom]);
@@ -179,9 +186,11 @@ async function purger() {
   await pool.query("delete from ops_events where center_id = $1 and event_type = 'audit_write_failed';", [CENTRE]).catch(() => null);
   if (await tableExiste('reservation_archive')) await pool.query("delete from reservation_archive where center_id = $1 and payload->>'name' like $2;", [CENTRE, `${PREFIX}%`]);
   await pool.query('delete from custom_requests where center_id = $1 and contact_name like $2;', [CENTRE, `${PREFIX}%`]);
-  const cle = require('../lib/customer-notes').customerKey({ phone: TEL_NOTE });
-  if (await tableExiste('client_note_versions')) await pool.query('delete from client_note_versions where center_id = $1 and client_key = $2;', [CENTRE, cle]);
-  await pool.query('delete from client_notes where center_id = $1 and client_key = $2;', [CENTRE, cle]);
+  // Les deux telephones du dossier (celui de B, celui de C) sous tous leurs formats.
+  const notes = require('../lib/customer-notes');
+  const cles = [TEL_NOTE, TEL_PATCH].flatMap((tel) => notes.phoneAliases(notes.customerKey({ phone: tel })));
+  if (await tableExiste('client_note_versions')) await pool.query('delete from client_note_versions where center_id = $1 and client_key = any($2::text[]);', [CENTRE, cles]);
+  await pool.query('delete from client_notes where center_id = $1 and client_key = any($2::text[]);', [CENTRE, cles]);
 }
 
 async function lignesAudit(where, params) {
@@ -252,7 +261,7 @@ function normaliserLigne(row) {
   section('C. modifier nom, telephone et note : l ancien et le nouveau texte');
   // =========================================================================
   const avantPatch = idStaff ? await ligneSql(idStaff) : null;
-  const patch = { id: idStaff, centerId: CENTRE, name: `${PREFIX} Dupont-Martin`, phone: '0470 99 88 77', notes: 'Allergie arachides. Gateau a 16h. Table pres de la fenetre, poussette.', baseUpdatedAt: avantPatch ? new Date(avantPatch.updated_at).toISOString() : undefined };
+  const patch = { id: idStaff, centerId: CENTRE, name: `${PREFIX} Dupont-Martin`, phone: TEL_PATCH, notes: 'Allergie arachides. Gateau a 16h. Table pres de la fenetre, poussette.', baseUpdatedAt: avantPatch ? new Date(avantPatch.updated_at).toISOString() : undefined };
   const modif = idStaff ? await appeler(staffReservations, 'PATCH', '/api/staff-reservations', patch) : { status: 0, json: {} };
   ok(modif.status === 200, `PATCH staff modifie la reservation (${modif.status})`, JSON.stringify(modif.json).slice(0, 300));
   {
@@ -283,7 +292,8 @@ function normaliserLigne(row) {
     const colonnes = Object.keys(attendu);
     const absentes = colonnes.filter((col) => !Object.prototype.hasOwnProperty.call(payload, col));
     ok(colonnes.length > 0 && absentes.length === 0, `la copie porte TOUTES les colonnes de la ligne (${colonnes.length})`, `absentes : ${absentes.join(', ')}`);
-    const differentes = colonnes.filter((col) => JSON.stringify(payload[col]) !== JSON.stringify(attendu[col]) && !['created_at', 'updated_at'].includes(col) && !(typeof attendu[col] === 'string' && typeof payload[col] === 'number' && Number(attendu[col]) === payload[col]));
+    const differentes = colonnes.filter((col) => JSON.stringify(payload[col]) !== JSON.stringify(col === 'date' ? jourLocal(avantSuppression.date) : attendu[col]) && !['created_at', 'updated_at'].includes(col) && !(typeof attendu[col] === 'string' && typeof payload[col] === 'number' && Number(attendu[col]) === payload[col]));
+    ok(payload.date === DATE, `la copie porte le jour de visite attendu (${payload.date} = ${DATE}) : aucun decalage de fuseau`);
     ok(differentes.length === 0, 'chaque valeur de la copie est celle de la ligne (nom, telephone, note, plan compris)', `differentes : ${differentes.join(', ')}`);
     ok(a && a.archived_by && a.archived_by.includes('m-registre') && a.reason === 'test registre', `qui et pourquoi sont gardes (${a && a.archived_by} / ${a && a.reason})`);
     const ligne = idStaff ? await derniereLigne('deleteReservation', idStaff) : null;
@@ -454,15 +464,21 @@ function normaliserLigne(row) {
   section('K. la copie d archive tombe en panne : la suppression est REFUSEE');
   // =========================================================================
   if (idStaff) {
+    // pg appelle pool.connect avec un rappel depuis pool.query : le remplacant
+    // honore les deux formes, sinon toute requete hors transaction attend sans fin.
     const connectReel = pool.connect.bind(pool);
-    pool.connect = async () => {
-      const client = await connectReel();
+    const habiller = (client) => {
       const q = client.query.bind(client);
       client.query = (text, params, cb) => {
         if (/insert into reservation_archive/i.test(String(text))) return Promise.reject(new Error('reservation_archive indisponible (simule)'));
         return q(text, params, cb);
       };
       return client;
+    };
+    pool.connect = (cb) => {
+      const promesse = connectReel().then(habiller);
+      if (typeof cb === 'function') { promesse.then((client) => cb(null, client, client.release), (error) => cb(error)); return undefined; }
+      return promesse;
     };
     const erreurs = [];
     const consoleError = console.error;

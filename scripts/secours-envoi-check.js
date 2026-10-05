@@ -119,6 +119,17 @@ async function journee(module) {
   const sansCle = await se.envoyerResend({ to: ['a@b.be'], subject: 's', html: 'h', text: 't', fetchImpl: fauxFetch, env: {} });
   ok(sansCle.skipped === true && /RESEND_API_KEY/.test(sansCle.reason), '[F] sans cle : rien ne part, et c est dit');
 
+  console.log('[G] la copie de chaque reservation');
+  const copies = [];
+  const envoyerCopie = async (m) => { copies.push(m); return { id: 'c1' }; };
+  const centreCopie = { id: 'libramont', name: 'Fun Galaxy Libramont', secours: { emails: ['secours@fungalaxy.be'] } };
+  const c1 = await se.copieSecours(resa(5, { name: 'Copie' }), { centre: centreCopie, envoyer: envoyerCopie, env: {} });
+  ok(c1.id === 'c1' && copies[0] && /\[Secours\] Nouvelle réservation/.test(copies[0].subject) && /\+32470000 ?5|\+324700005/.test(copies[0].html), '[G] une copie complete part a la boite de secours', copies[0] && copies[0].subject);
+  const c2 = await se.copieSecours(resa(5), { centre: { ...centreCopie, secours: { emails: [] } }, envoyer: envoyerCopie, env: {} });
+  ok(c2.ignore && copies.length === 1, '[G] sans boite de secours : rien');
+  const c3 = await se.copieSecours(resa(5), { centre: centreCopie, envoyer: async () => { throw new Error('Resend 500'); }, env: {} });
+  ok(c3.erreur === 'Resend 500', '[G] un envoi qui echoue ne leve pas : la reservation n echoue jamais pour sa copie');
+
   console.log('[contre-épreuve]');
   const source = fs.readFileSync(path.join(ROOT, 'lib/secours-envoi.js'), 'utf8');
   const ancre = 'const ECART_MISE_A_JOUR_MS = 15 * 60 * 1000;';

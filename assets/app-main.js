@@ -23583,6 +23583,9 @@ function renderGroupeActions(r, moment) {
       ${GROUPE_MOYENS.map(m => `<button type="button" class="gc-btn is-primary" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">${m.mot}</button>`).join('')}
     </span>`);
   }
+  if (moment && moment.late && r.phone) {
+    boutons.push(`<a class="gc-call" href="tel:${escapeHtml(String(r.phone).replace(/\s+/g, ''))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>`);
+  }
   return `<div class="gc-actions" onclick="event.stopPropagation()">${boutons.join('')}</div>`;
 }
 
@@ -23590,8 +23593,10 @@ function renderGroupeActions(r, moment) {
 function renderGroupeAlerte(r, moment) {
   if (moment && moment.late) {
     const depuis = formatStaffTerrainDelay(moment.now - moment.item.start);
-    const appel = r.phone ? `<a class="gc-call" href="tel:${escapeHtml(String(r.phone).replace(/\s+/g, ''))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>` : '';
-    return `<div class="gc-alert is-late"><b>En retard · ${escapeHtml(depuis)}</b><span>Attendu à ${formatClockDisplay(moment.item.start)}, pas encore arrivé</span>${appel}</div>`;
+    // « Appeler » vit avec les gestes de la carte (renderGroupeActions), sur la
+    // meme ligne qu « Arrivé » : dans le bandeau il passait a la ligne et
+    // allongeait chaque carte en retard (2026-10-05).
+    return `<div class="gc-alert is-late"><b>En retard · ${escapeHtml(depuis)}</b><span>Attendu à ${formatClockDisplay(moment.item.start)}, pas encore arrivé</span></div>`;
   }
   if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r)) {
     return '<div class="gc-alert is-unmarked"><b>Non pointé</b><span>Fini sans être pointé arrivé : peut-être pas venu</span></div>';

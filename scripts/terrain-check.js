@@ -224,6 +224,9 @@ async function ouvrir(browser, { largeur = 1440, route = '#/staff/arrivals', jou
     try { corps = JSON.parse(r.request().postData() || '{}'); } catch (e) { corps = {}; }
     const cible = magasin.find((x) => String(x.id) === String(corps.id));
     if (cible && corps.status) cible.status = corps.status;
+    // Le vrai serveur ecrit aussi le moyen de paiement et le renvoie : le client
+    // refuse depuis le 2026-10-04 une reponse qui ne le confirme pas.
+    if (cible && corps.paymentMethod) cible.paymentMethod = corps.paymentMethod;
     ecritures.push({ id: corps.id, status: corps.status, paymentMethod: corps.paymentMethod });
     r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, reservation: cible ? { ...cible, date: corps.date || cible.date } : corps }) });
   });

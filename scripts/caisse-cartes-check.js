@@ -84,8 +84,12 @@ const MUTATIONS = [
     de: '  const span = getStaffTerrainSpan(r);\n  const jour = r.date', vers: '  const span = { start: timeToNum(r.startTime), end: timeToNum(r.startTime) + (Number(r.duration) || 1) };\n  const jour = r.date' },
   { nom: 'le prix par joueur arrondi a l euro', cible: '[F]', fichier: 'assets/app-main.js',
     de: '  const parJoueur = total > 0 && joueurs > 0 ? formatMoneyCentimes(total / joueurs) : \'\';', vers: '  const parJoueur = total > 0 && joueurs > 0 ? formatMoney(total / joueurs) : \'\';' },
+  // Depuis le 2026-10-04, DEUX regles garantissent les 44 px (celle du
+  // telephone et `#staffTableBox .gc-btn`, posee pour la tablette) : muter la
+  // premiere seule ne pouvait plus rougir [G]. La mutation casse la garantie
+  // generale, en force, pour que la mesure soit bien exercee.
   { nom: 'les boutons des cartes redescendent a 32 px sur telephone', cible: '[G]', fichier: 'assets/pinlane-staff.css',
-    de: '  .gc-btn { min-height: 44px; flex: 1 1 auto; }', vers: '  .gc-btn { min-height: 32px; flex: 1 1 auto; }' },
+    de: '#staffTableBox .gc-btn { min-height:44px; min-width:44px; }', vers: '#staffTableBox .gc-btn { min-height:32px !important; height:32px !important; min-width:44px; }' },
 ];
 
 let failures = 0;
@@ -273,9 +277,12 @@ async function scenarioBlocs(browser, jour) {
     const peeters = carte(sections, 81001);
     ok(peeters && peeters.termine && peeters.etapes.length === 0 && /Payé · Espèces/.test(peeters.prix), '[A] une carte terminée tient sur sa tête, avec « Payé · Espèces »', peeters && JSON.stringify(peeters));
     const titreRetard = await page.evaluate(() => { const el = document.querySelector('.gc-section.late .res-section-head .label'); return el ? getComputedStyle(el).color : ''; });
-    const bordRetard = await page.evaluate(() => { const el = document.querySelector('.gc.is-late'); return el ? getComputedStyle(el).borderTopColor : ''; });
+    // UN RETARD SE DIT UNE FOIS (2026-10-05) : la carte garde un filet neutre et
+    // porte le rouge en liseré a gauche (ombre interne), de la couleur exacte
+    // du titre de section. Le controle lit ce liseré, plus le bord.
+    const bordRetard = await page.evaluate(() => { const el = document.querySelector('.gc.is-late'); return el ? getComputedStyle(el).boxShadow : ''; });
     const rouge = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--danger').trim());
-    ok(Boolean(titreRetard) && titreRetard === bordRetard, '[A] la section et la carte en retard sont rouges (--danger)', `${titreRetard} / ${bordRetard} / ${rouge}`);
+    ok(Boolean(titreRetard) && bordRetard.includes(titreRetard) && /inset/.test(bordRetard), '[A] la section et la carte en retard sont rouges (--danger)', `${titreRetard} / ${bordRetard} / ${rouge}`);
 
     // [B] LE PROGRAMME ET L AIDE
     const dupont = carte(sections, 81004);

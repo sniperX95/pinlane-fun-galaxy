@@ -19061,16 +19061,21 @@ button.pv2-cal-cell:focus-visible {
    themes. Les donnees du planning gardent leurs couleurs semantiques.
    Cette couche est reservee au produit : aucun jeton du tunnel client. */
 body:is(.staff-mode, .admin-mode) {
-  --page: #f4f4f4;
+  /* LISIBILITE (2026-10-05, Movsar : « des fois c est du gris sur du blanc, on
+     capte pas »). Le texte courant passe de #242424 a presque noir, le texte
+     secondaire de #606060 a #45454b (9,4:1 au lieu de 6,2:1) et le tertiaire de
+     #6b6b6b a #57575e. La page fonce d un cran et les filets aussi : une carte
+     blanche se detache enfin de son fond au lieu de s y fondre. */
+  --page: #efeff1;
   --surface: #ffffff;
-  --raised: #fbfbfb;
-  --subtle: #efefef;
-  --line: #e1e1e1;
-  --line-strong: #cacaca;
-  --control-border: #888888;
-  --text: #242424;
-  --muted: #606060;
-  --faint: #6b6b6b;
+  --raised: #ffffff;
+  --subtle: #eaeaec;
+  --line: #dbdbdf;
+  --line-strong: #c2c2c8;
+  --control-border: #7c7c84;
+  --text: #111113;
+  --muted: #45454b;
+  --faint: #57575e;
   --accent: #315d87;
   --accent-strong: #284e73;
   --accent-soft: #e8eef4;
@@ -19087,23 +19092,28 @@ body:is(.staff-mode, .admin-mode) {
   scrollbar-color: var(--line-strong) var(--page);
 }
 [data-theme='dark'] body:is(.staff-mode, .admin-mode) {
+  /* Sombre (2026-10-05) : --faint valait #b2b2b2 contre #bcbcbc pour --muted,
+     deux rangs de texte que l oeil ne separait plus. Le tertiaire redescend
+     (#a0a0a6, 7,6:1), le secondaire monte d un cran, les filets aussi. */
   --page: #050505;
-  --surface: #0c0c0c;
-  --raised: #141414;
-  --subtle: #1e1e1e;
-  --line: #292929;
-  --line-strong: #515151;
-  --control-border: #878787;
-  --text: #f1f1f1;
-  --muted: #bcbcbc;
-  --faint: #b2b2b2;
+  --surface: #0d0d0e;
+  --raised: #151517;
+  --subtle: #1f1f22;
+  --line: #2e2e33;
+  --line-strong: #505057;
+  --control-border: #87878f;
+  --text: #f5f5f6;
+  --muted: #c8c8cd;
+  --faint: #a0a0a6;
   --accent: #74b6ff;
   --accent-strong: #a0cdff;
   --accent-soft: #111d2a;
   --accent-contrast: #0b1727;
   --shadow-overlay: 0 16px 56px rgb(0 0 0 / 0.42);
-  --console-selected: #74b6ff;
-  --console-selected-text: #0b1727;
+  /* Le bouton principal du sombre etait bleu pastel a texte marine : il se
+     lisait comme un etat, pas comme un bouton. Bleu franc, texte blanc (4,9:1). */
+  --console-selected: #2f6fcc;
+  --console-selected-text: #ffffff;
   --console-selected-surface: #111d2a;
   --console-input: #090909;
   --console-focus: #74b6ff;
@@ -19386,4 +19396,194 @@ body:is(.staff-mode, .admin-mode) .pv2-cal-count-label { display: none; }
   #laserPlanningGridWrap .laser-session-stack{padding:6px}
   #laserPlanningGridWrap .laser-session-slot{padding:8px;margin:6px}
   #laserPlanningGridWrap .laser-session-kind{white-space:normal}
+}
+
+/* ==========================================================================
+   LISIBILITE ET BOUTONS (2026-10-05). Movsar : « les boutons sont pas assez
+   professionnels », « c est pas qualitatif », et sur la liste « Toutes les
+   reservations » plusieurs petits bugs graphiques. Une couche, a la fin, qui
+   reprend le vocabulaire au lieu de corriger bouton par bouton.
+   ========================================================================== */
+
+/* UNE FAMILLE DE BOUTONS SECONDAIRES. Six classes historiques (planning-toggle
+   a 32 px et 500, staff-today-btn a 36 px, gc-btn a 40 px, res-status-btn en
+   gris 11 px...) se lisaient comme six produits differents. Meme fond, meme
+   filet, meme graisse, une ombre d un pixel qui donne la matiere d un bouton,
+   et le texte en couleur pleine : un bouton gris sur blanc ne se lit pas. */
+body:is(.staff-mode, .admin-mode) :is(.btn-secondary, .pv2-btn:not(.primary), .qb-btn-cancel, .planning-toggle, .staff-today-btn, .resource-filter-btn, .gc-btn:not(.is-primary):not(.is-review), .res-status-btn) {
+  background-color: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+[data-theme='dark'] body:is(.staff-mode, .admin-mode) :is(.btn-secondary, .pv2-btn:not(.primary), .qb-btn-cancel, .planning-toggle, .staff-today-btn, .resource-filter-btn, .gc-btn:not(.is-primary):not(.is-review), .res-status-btn) {
+  background-color: var(--raised);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.5);
+}
+body:is(.staff-mode, .admin-mode) :is(.btn-secondary, .pv2-btn:not(.primary), .qb-btn-cancel, .planning-toggle, .staff-today-btn, .resource-filter-btn, .gc-btn:not(.is-primary):not(.is-review), .res-status-btn):hover:not(:disabled) {
+  background-color: var(--subtle);
+  border-color: var(--control-border);
+}
+body:is(.staff-mode, .admin-mode) :is(.planning-toggle, .staff-today-btn) { height: 36px; padding: 0 14px; border-radius: 8px; font-size: 13px; }
+body:is(.staff-mode, .admin-mode) .res-status-btn { font-size: 13px; border-radius: 8px; }
+/* Le bouton principal porte une ombre de matiere lui aussi, et jamais d opacite
+   au survol (un bouton qui palit a l air desactive). */
+body:is(.staff-mode, .admin-mode) :is(.btn-primary, .pv2-btn.primary, .qb-btn-save, .btn-new, .gc-btn.is-primary, .planning-expanded-create) {
+  background: var(--console-selected);
+  border-color: var(--console-selected);
+  color: var(--console-selected-text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+body:is(.staff-mode, .admin-mode) :is(.btn-primary, .pv2-btn.primary, .qb-btn-save, .btn-new, .gc-btn.is-primary, .planning-expanded-create):hover:not(:disabled) {
+  opacity: 1;
+  background: color-mix(in srgb, var(--console-selected) 86%, var(--text));
+  border-color: color-mix(in srgb, var(--console-selected) 86%, var(--text));
+}
+[data-theme='dark'] body:is(.staff-mode, .admin-mode) :is(.btn-primary, .pv2-btn.primary, .qb-btn-save, .btn-new, .gc-btn.is-primary, .planning-expanded-create):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--console-selected) 88%, #000);
+  border-color: color-mix(in srgb, var(--console-selected) 88%, #000);
+}
+/* « Valider » : une action, pas un etat. Les pointilles le faisaient passer pour
+   un brouillon. Aplat ambre doux, filet plein. */
+body:is(.staff-mode, .admin-mode) :is(.res-status-btn.active.review, .gc-btn.is-review) {
+  border-style: solid;
+  border-color: var(--warning);
+  background: var(--warning-soft);
+  color: var(--text);
+  font-weight: 650;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+/* La bascule du plein ecran : texte blanc sur l accent pastel du sombre
+   (#74b6ff) ne faisait que 2,1:1. Elle prend le jeton du bouton principal. */
+body:is(.staff-mode, .admin-mode) .fs-switch-btn.is-active {
+  color: var(--console-selected-text);
+  background: var(--console-selected);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+}
+body:is(.staff-mode, .admin-mode) .fs-switch-btn { color: var(--muted); font-weight: 600; }
+
+/* --- TOUTES LES RESERVATIONS ------------------------------------------- */
+
+/* UN RETARD SE DIT UNE FOIS. Bord rouge + aplat rouge + lien rouge souligne :
+   trois cartes en retard suffisaient a rendre l ecran rouge et l alerte ne
+   ressortait plus. Il reste le liseré a gauche et la ligne qui nomme le retard ;
+   « Appeler » devient un vrai bouton. */
+#staffTableBox .res-row.gc.is-late { border-color: var(--line); box-shadow: inset 3px 0 0 var(--danger); }
+#staffTableBox .gc-alert.is-late { background: transparent; padding: 0; border-radius: 0; gap: 4px 10px; }
+#staffTableBox .gc-alert.is-late b { color: var(--danger); }
+#staffTableBox .gc-alert.is-late span { color: var(--muted); }
+#staffTableBox .gc-call {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+#staffTableBox .gc-call:hover { background: var(--subtle); border-color: var(--control-border); }
+[data-theme='dark'] #staffTableBox .gc-call { background: var(--raised); }
+
+/* LA COLONNE DES HEURES. `.gc-hour span` touchait AUSSI les deux mots du
+   resume (« 3 groupes », « 90 joueurs ») : 20 px, gras, en bleu, empiles.
+   L heure seule est grande, et elle est neutre ; le resume reste discret. */
+#staffTableBox .gc-hour > span { font-size: 18px; font-weight: 650; color: var(--text); }
+#staffTableBox .gc-hour small,
+#staffTableBox .gc-hour small span { font-size: 12px; font-weight: 500; line-height: 1.35; color: var(--muted); font-family: var(--font-ui); }
+
+/* EN-TETE DU PLEIN ECRAN, DEUX RANGEES SYMETRIQUES. Depuis que la date et
+   « Reservation rapide » y sont entrees, quatre blocs se disputaient une ligne :
+   la bascule recouvrait « Reduire » (1440 px) ou la recherche (1024 px).
+   Rangee 1 : titre | bascule | Reduire. Rangee 2 : date | recherche | Reservation
+   rapide. La recherche a la largeur de la bascule, au centre. */
+@media (min-width: 1181px) {
+  #staffTableBox.expanded:not(.hidden) .table-head {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    row-gap: 12px;
+  }
+  #staffTableBox.expanded:not(.hidden) .table-head > :is(.table-actions, .planning-expanded-controls) { display: contents; }
+  #staffTableBox.expanded:not(.hidden) .table-head > h2 { grid-column: 1; grid-row: 1; margin-right: 0; }
+  #staffTableBox.expanded:not(.hidden) .table-head > .fs-switch { grid-column: 2; grid-row: 1; }
+  #staffTableBox.expanded:not(.hidden) .table-head #tableToggle { grid-column: 3; grid-row: 1; justify-self: end; }
+  #staffTableBox.expanded:not(.hidden) .table-head .staff-date-widget { grid-column: 1; grid-row: 2; justify-self: start; }
+  #staffTableBox.expanded:not(.hidden) .table-head .search-wrap { grid-column: 2; grid-row: 2; justify-self: stretch; width: auto; margin: 0; }
+  #staffTableBox.expanded:not(.hidden) .table-head .planning-expanded-create { grid-column: 3; grid-row: 2; justify-self: end; }
+}
+@media (min-width: 769px) and (max-width: 1180px) {
+  #staffTableBox.expanded:not(.hidden) .table-head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    row-gap: 10px;
+  }
+  #staffTableBox.expanded:not(.hidden) .table-head > :is(.table-actions, .planning-expanded-controls) { display: contents; }
+  #staffTableBox.expanded:not(.hidden) .table-head > h2 { grid-column: 1 / 3; grid-row: 1; margin-right: 0; }
+  #staffTableBox.expanded:not(.hidden) .table-head #tableToggle { grid-column: 3; grid-row: 1; justify-self: end; }
+  #staffTableBox.expanded:not(.hidden) .table-head > .fs-switch { grid-column: 1 / -1; grid-row: 2; justify-self: center; width: auto; margin: 0; order: 0; }
+  #staffTableBox.expanded:not(.hidden) .table-head .staff-date-widget { grid-column: 1; grid-row: 3; justify-self: start; }
+  #staffTableBox.expanded:not(.hidden) .table-head .search-wrap { grid-column: 2; grid-row: 3; justify-self: stretch; width: auto; margin: 0; }
+  #staffTableBox.expanded:not(.hidden) .table-head .planning-expanded-create { grid-column: 3; grid-row: 3; justify-self: end; }
+}
+
+/* AU TELEPHONE : les filtres sur UNE ligne qui defile, au lieu de trois lignes
+   avec un filet orphelin ; les trois onglets cote a cote, a parts egales. */
+@media (max-width: 768px) {
+  #staffTableBox .status-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: -18px;
+    padding-inline: 18px;
+    scroll-padding-inline: 18px;
+  }
+  #staffTableBox .status-filters::-webkit-scrollbar { display: none; }
+  #staffTableBox .status-group { flex-wrap: nowrap; }
+  #staffTableBox .status-chip { flex: none; }
+}
+@media (max-width: 600px) {
+  body.staff-mode .staff-resource-tabs:not(.hidden) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  body.staff-mode .staff-resource-tab:not(.hidden) {
+    min-width: 0;
+    padding: 8px 10px;
+    gap: 6px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+    text-align: left;
+  }
+  body.staff-mode .staff-resource-tab .main { font-size: 12.5px; line-height: 1.2; white-space: normal; }
+  body.staff-mode .staff-resource-tab .sub:not(.is-alert) { display: none; }
+  body.staff-mode .staff-resource-tabs > .resource-strip-actions { grid-column: 1 / -1; justify-self: end; }
+}
+
+/* La sortie du plein ecran garde son accent, mais avec le jeton du bouton
+   principal : blanc sur #74b6ff ne faisait que 2,1:1 en sombre. */
+body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.hidden) :is(#tableToggle, #planningToggle, #laserPlanningToggle) {
+  background: var(--console-selected);
+  border-color: var(--console-selected);
+  color: var(--console-selected-text);
+}
+@media (max-width: 600px) {
+  /* Le compteur en haut a droite de l onglet, a cote du nom : en bas a gauche
+     il flottait comme un bouton orphelin. */
+  body.staff-mode .staff-resource-tab:not(.hidden) { flex-direction: row; align-items: flex-start; }
+  body.staff-mode .staff-resource-tab > span:first-child { min-width: 0; flex: 1 1 auto; }
+}
+@media (max-width: 768px) {
+  /* « Agrandir » et la recherche sur la meme ligne : seul sur sa ligne, le
+     bouton ajoutait 56 px avant la premiere carte. */
+  #staffTableBox:not(.expanded) .table-head .table-actions { flex-wrap: nowrap; }
+  #staffTableBox:not(.expanded) .table-head .table-actions .search-wrap { flex: 1 1 auto; width: auto; min-width: 0; }
 }

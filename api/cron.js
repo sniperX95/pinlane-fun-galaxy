@@ -80,6 +80,15 @@ module.exports = async (req, res) => {
       sendJson(res, result.ok ? 200 : 503, result);
       return;
     }
+    // LA SAUVEGARDE DE LA NUIT : toute la base, chiffree, vers une boite a part.
+    if (action === 'sauvegarde') {
+      const { getPool } = require('../lib/database');
+      const { sauvegarderEtEnvoyer } = require('../lib/sauvegarde');
+      const { envoyerResend } = require('../lib/secours-envoi');
+      const result = await sauvegarderEtEnvoyer({ pool: getPool(), envoyer: (mail) => envoyerResend(mail) });
+      sendJson(res, result.ok || result.ignore ? 200 : 503, result);
+      return;
+    }
     sendError(res, 400, 'Action cron inconnue.');
   } catch (error) {
     sendError(res, 500, error.message || 'Cron indisponible.');

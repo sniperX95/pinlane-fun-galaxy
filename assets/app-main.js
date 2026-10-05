@@ -3131,6 +3131,14 @@ function getLiveSyncCaches() {
       relire: () => { markStaffRequestStudiesStale(); renderStaffRequestsIfOpen(); },
     },
     {
+      // La page Secours relit ses derniers envois quand la journee ou la
+      // configuration change.
+      domaines: ['reservations', 'config'], pages: ['secours'],
+      enCours: () => secoursEtatCache.loading,
+      oublier: () => { secoursEtatCache = { ...secoursEtatCache, loaded: false }; },
+      relire: () => loadSecoursEtat(true),
+    },
+    {
       domaines: ['blocages'], pages: ['planning', 'laserGame', 'establishment'],
       enCours: () => availabilityBlocksCache.loading,
       oublier: () => { availabilityBlocksCache = { loaded: false, loading: false, error: '', blocks: [] }; },
@@ -3414,6 +3422,7 @@ const STAFF_MENU_PAGES = [
   'emails',
   'campaigns',
   'establishment',
+  'secours',
   'users',
   'settings',
   'cockpit',
@@ -3579,6 +3588,8 @@ const STAFF_PAGE_PERMISSION_MAP = {
   emails: ['emails.view'],
   campaigns: ['campaigns.manage', 'marketing.agents'],
   establishment: ['settings.manage', 'direction.view'],
+  // La feuille de secours se lit a l accueil : celui qui voit les reservations.
+  secours: ['reservations.view'],
   users: ['users.manage'],
   settings: ['settings.manage'],
   cockpit: ['platform.admin'],
@@ -10462,6 +10473,7 @@ const STAFF_UTILITY_MENU_PAGES = [
   'lanes',
   'laserGame',
   'establishment',
+  'secours',
   'users',
   'settings'
 ];
@@ -14598,6 +14610,122 @@ function renderEstablishmentDayRow(center, key, label, block = 'regular', prefix
   </div>`;
 }
 
+// LA PAGE SECOURS (2026-10-05). Movsar : « si Pinlane crash il faut qu on ait
+// acces par mail ou par fichier rempli », « des papiers imprimables exactement
+// comme ca ». La page dit ce qui est VRAI (adresses, derniers envois, derniere
+// sauvegarde, lus sur le serveur), donne la feuille du jour, la feuille vierge
+// et l Excel a imprimer, et la marche a suivre si Pinlane ne repond plus. Rien
+// d invente : un envoi jamais fait se dit « jamais », une sauvegarde non
+// configuree se dit non configuree.
+let secoursEtatCache = { loaded: false, loading: false, error: '', data: null, centerId: '' };
+async function loadSecoursEtat(force = false) {
+  const centerId = getCurrentStaffCenterId();
+  if (secoursEtatCache.loading) return;
+  if (secoursEtatCache.loaded && !force && secoursEtatCache.centerId === centerId) return;
+  secoursEtatCache = { ...secoursEtatCache, loading: true, error: '' };
+  try {
+    const data = await apiRequest(`${API_ENDPOINTS.ops}?action=secoursEtat&centerId=${encodeURIComponent(centerId)}`);
+    secoursEtatCache = { loaded: true, loading: false, error: '', data, centerId };
+  } catch (error) {
+    secoursEtatCache = { loaded: true, loading: false, error: error?.message || 'Lecture impossible.', data: null, centerId };
+  }
+  if (state.view === 'staff' && getStaffMenuPage() === 'secours') renderStaffUtilityPage();
+}
+function secoursQuand(iso) {
+  if (!iso) return 'jamais';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'jamais';
+  return d.toLocaleString('fr-BE', { timeZone: 'Europe/Brussels', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+// Le fichier arrive par la meme session que le reste de la console, puis
+// s enregistre sous son vrai nom.
+async function telechargerSecours(kind) {
+  const champ = document.getElementById('secours-date');
+  const date = (champ && champ.value) || state.currentDate || todayStr();
+  const centerId = getCurrentStaffCenterId();
+  const action = kind === 'excel' ? 'classeurJour' : 'feuilleSecours';
+  const vierge = kind === 'vierge' ? '&vierge=1' : '';
+  const bouton = document.querySelector(`[data-secours-dl="${kind}"]`);
+  if (bouton) { bouton.disabled = true; bouton.classList.add('is-busy'); }
+  try {
+    const response = await fetch(`${API_ENDPOINTS.ops}?action=${action}&centerId=${encodeURIComponent(centerId)}&date=${encodeURIComponent(date)}${vierge}`, { headers: staffAuthHeaders({}), credentials: 'include' });
+    if (!response.ok) {
+      const corps = await response.json().catch(() => ({}));
+      throw new Error(corps.message || corps.error || `Erreur ${response.status}`);
+    }
+    const blob = await response.blob();
+    const nom = (/filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '') || [])[1]
+      || `${kind === 'excel' ? 'reservations' : 'feuille'}-${centerId}-${date}.${kind === 'excel' ? 'xlsx' : 'pdf'}`;
+    const lien = document.createElement('a');
+    lien.href = URL.createObjectURL(blob);
+    lien.download = nom;
+    document.body.appendChild(lien);
+    lien.click();
+    setTimeout(() => { URL.revokeObjectURL(lien.href); lien.remove(); }, 1000);
+  } catch (error) {
+    toast(`Téléchargement impossible : ${error.message || 'erreur'}`);
+  } finally {
+    if (bouton) { bouton.disabled = false; bouton.classList.remove('is-busy'); }
+  }
+}
+function renderStaffUtilitySecours() {
+  if (!secoursEtatCache.loaded || secoursEtatCache.centerId !== getCurrentStaffCenterId()) {
+    if (!secoursEtatCache.loading) setTimeout(() => loadSecoursEtat(true), 0);
+  }
+  const d = secoursEtatCache.data || {};
+  const emails = Array.isArray(d.emails) ? d.emails : [];
+  const envois = d.envois || {};
+  const sauvegarde = d.sauvegarde || {};
+  const jour = state.currentDate || todayStr();
+  const etat = (ok, mot) => `<span class="sec-etat ${ok ? 'is-ok' : 'is-off'}">${escapeHtml(mot)}</span>`;
+  const ligne = (label, valeur, sous = '') => `<div class="sec-ligne"><span>${escapeHtml(label)}${sous ? `<small>${escapeHtml(sous)}</small>` : ''}</span><b>${valeur}</b></div>`;
+  const erreur = secoursEtatCache.error ? `<p class="sec-erreur">${escapeHtml(secoursEtatCache.error)} <button type="button" class="btn btn-secondary btn-sm" onclick="loadSecoursEtat(true)">Réessayer</button></p>` : '';
+  return `<div class="secours-page">
+    ${erreur}
+    <section class="sec-carte sec-imprimer">
+      <div class="sec-tete"><h3>Imprimer</h3><p>La feuille papier de la journée, déjà remplie comme vos feuilles : une croix par piste, une par partie de laser, le détail de chaque réservation en annexe.</p></div>
+      <div class="sec-imprimer-ligne">
+        <label class="sec-date"><span>Journée</span><input type="date" id="secours-date" value="${escapeHtml(jour)}"></label>
+        <div class="sec-boutons">
+          <button type="button" class="btn btn-primary" data-secours-dl="feuille" onclick="telechargerSecours('feuille')">Feuille du jour (PDF)</button>
+          <button type="button" class="btn btn-secondary" data-secours-dl="excel" onclick="telechargerSecours('excel')">Excel du jour</button>
+          <button type="button" class="btn btn-secondary" data-secours-dl="vierge" onclick="telechargerSecours('vierge')">Feuille vierge</button>
+        </div>
+      </div>
+    </section>
+    <div class="sec-grille">
+      <section class="sec-carte">
+        <div class="sec-tete"><h3>Boîte de secours</h3>${etat(emails.length > 0, emails.length ? 'En place' : 'Aucune adresse')}</div>
+        ${emails.length
+          ? `<div class="sec-adresses">${emails.map(e => `<span class="estab-tag">${escapeHtml(e)}</span>`).join('')}</div>`
+          : '<p class="sec-vide">Rien ne part encore en dehors de Pinlane. Ajoutez une adresse dans Établissement &gt; Règles.</p>'}
+        <div class="sec-lignes">
+          ${ligne('Copie de chaque réservation', emails.length ? 'à chaque création' : '—')}
+          ${ligne('Feuille du jour', envois.derniere ? escapeHtml(secoursQuand(envois.derniere)) : 'jamais', '8 h, 13 h, 17 h et à chaque changement')}
+          ${ligne('Classeur du soir', envois.soir ? escapeHtml(secoursQuand(envois.soir)) : 'jamais', 'après 23 h 30, avec la feuille de demain')}
+        </div>
+      </section>
+      <section class="sec-carte">
+        <div class="sec-tete"><h3>Sauvegarde de la nuit</h3>${etat(Boolean(sauvegarde.configuree) && sauvegarde.statut === 'ok', !sauvegarde.configuree ? 'Pas configurée' : sauvegarde.statut === 'ok' ? 'Faite' : sauvegarde.statut === 'failed' ? 'Échouée' : 'Pas encore faite')}</div>
+        <p class="sec-vide">Toute la base, chiffrée, envoyée chaque nuit vers une boîte à part. Elle se relit en Excel ou se remet en place avec le script de restauration.</p>
+        <div class="sec-lignes">
+          ${ligne('Dernier passage', escapeHtml(secoursQuand(sauvegarde.le)))}
+          ${sauvegarde.detail ? ligne('Contenu', escapeHtml(sauvegarde.detail)) : ''}
+        </div>
+      </section>
+    </div>
+    <section class="sec-carte sec-consignes">
+      <div class="sec-tete"><h3>Si Pinlane ne répond plus</h3><p>À afficher à l’accueil.</p></div>
+      <ol>
+        <li><b>Ouvrez le dernier mail « [Secours] Feuille du … »</b><span>Il est dans la boîte de secours. La feuille PDF jointe est la journée telle qu’elle était à l’heure du mail : imprimez-la.</span></li>
+        <li><b>Accueillez sur papier</b><span>Cochez les arrivées, notez chaque nouvelle réservation ou chaque changement sur la feuille, avec l’heure.</span></li>
+        <li><b>Les demandes du site ne se perdent pas</b><span>Chaque réservation et chaque demande sur mesure a aussi sa copie complète dans la boîte de secours.</span></li>
+        <li><b>Au retour de Pinlane</b><span>Saisissez ce qui a été noté sur papier, puis vérifiez la journée dans le planning avant de jeter la feuille.</span></li>
+      </ol>
+    </section>
+  </div>`;
+}
+
 function renderStaffUtilityEstablishment() {
   if (!staffCenterConfigCache.loaded && !staffCenterConfigCache.loading) {
     setTimeout(() => loadStaffCenterConfig(false), 0);
@@ -16829,6 +16957,20 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       primaryAction: "openQuickBook({ date: state.currentDate, type: 'laser' })",
       kpis: laserBoard.kpis,
       body: renderStaffLaserBoard(laserBoard)
+    };
+  }
+  if (page === 'secours') {
+    return {
+      ...base,
+      layout: 'secours',
+      eyebrow: 'Administration',
+      title: 'Secours',
+      subtitle: 'Ce qui permet d’accueillir les groupes si Pinlane ne répond plus.',
+      hidePanelHead: true,
+      hideDateAction: true,
+      primaryAction: '',
+      secondaryAction: '',
+      body: renderStaffUtilitySecours()
     };
   }
   if (page === 'establishment') {

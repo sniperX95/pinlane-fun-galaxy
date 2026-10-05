@@ -69,6 +69,7 @@
     offers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11V5h6l10 10-6 6z"/><circle cx="8" cy="9" r="1.4"/></svg>',
     emails: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="m5 8 7 5 7-5"/></svg>',
     campaigns: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 14h3l8 4V6l-8 4H5z"/><path d="M8 14v5M18 10l3-2M18 14l3 2"/></svg>',
+    secours: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.4 3.4 8.3 8 9 4.6-.7 8-4.6 8-9V6l-8-3Z"/><path d="M12 8v5M12 16h.01"/></svg>',
     establishment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M6 20V8l6-4 6 4v12"/><path d="M10 20v-6h4v6M8 10h2M14 10h2"/></svg>',
     users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3.4 2.7-5.2 5.5-5.2s4.9 1.8 5.5 5.2"/><path d="M16 11h4M18 9v4"/></svg>',
     settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.9-1.1L14.3 3h-4.6l-.3 2.9A7 7 0 0 0 7.5 7L5.1 6 3.1 9.4l2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.1l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 1.9 1.1l.3 2.9h4.6l.3-2.9a7 7 0 0 0 1.9-1.1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1.1Z"/></svg>',
@@ -160,7 +161,8 @@
           ]
         },
         { key: 'users', label: 'Équipe & accès', icon: 'users' },
-        { key: 'establishment', label: 'Établissement', icon: 'establishment' }
+        { key: 'establishment', label: 'Établissement', icon: 'establishment' },
+        { key: 'secours', label: 'Secours', icon: 'secours' }
       ]
     },
     {
@@ -1341,6 +1343,12 @@
       if (typeof renderStaff === 'function') renderStaff();
       return;
     }
+    if (key === 'secours') {
+      setMenuPage('secours');
+      if (typeof setView === 'function') setView('staff');
+      if (typeof renderStaff === 'function') renderStaff();
+      return;
+    }
     if (key === 'lanes') {
       setMenuPage('lanes');
       if (typeof setView === 'function') setView('staff');
@@ -1401,6 +1409,7 @@
       'emails',
       'campaigns',
       'establishment',
+      'secours',
       'users',
       'settings'
     ];

@@ -19,7 +19,7 @@
 // Trois proprietes :
 //   A. MONTAGE : le mail se construit (sujet, details) et l'export rend bien
 //      les reservations fournies. Prouve que le gate mesure.
-//   B. L'EMAIL : la ligne Risque dit le niveau en francais, sans note /100.
+//   B. L'EMAIL : la ligne Situation dit la raison en francais, sans note /100.
 //   C. L'EXPORT : aucune cellule ne porte une enum brute (low, medium, high,
 //      critical, staff_review) ; les colonnes Risque et Validation parlent le
 //      francais de la pastille du tableau du jour.
@@ -55,11 +55,13 @@ const RESERVATIONS = [
 function checkEmail() {
   const oc = require(OC);
   const message = oc.buildMessage({ reservation: RESERVATIONS[0], templateId: 'staff_review_request', channel: 'email' });
-  const risque = (message.details || []).find((detail) => detail.label === 'Risque');
+  // Depuis le 2026-10-05 la ligne Risque a laisse la place a la Situation :
+  // la raison de la validation, en mots, jamais une note.
+  const risque = (message.details || []).find((detail) => detail.label === 'Situation');
   ok(Boolean(message && message.subject && risque),
     `montage : le mail staff_review_request se construit (sujet « ${message && message.subject} »)`);
-  ok(risque && risque.value === 'élevé',
-    `email : la ligne Risque dit le niveau en francais, rien d'autre (« ${risque && risque.value} »)`);
+  ok(risque && risque.value === 'Placement impossible',
+    `email : la ligne Situation dit la raison en francais, rien d'autre (« ${risque && risque.value} »)`);
   const serialise = JSON.stringify(message);
   ok(!serialise.includes('/100'),
     'email : aucune note /100 nulle part dans le message');
@@ -151,13 +153,15 @@ if (process.argv.includes('--mutate')) {
 
   // Mutation 1 : la note /100 revient dans le mail.
   const sourceOc = fs.readFileSync(OC, 'utf8');
-  const marqueurOc = "{ label: 'Risque', value: riskLabelFr(reservation.riskLevel) },";
+  // La ligne Risque a laisse la place a la Situation (2026-10-05) : la note
+  // /100 se remet sur la ligne vivante.
+  const marqueurOc = "{ label: 'Situation', value: declencheurs.length ? declencheurs.map((d) => d.mot).join(', ') : (decision && decision.raison ? 'Formule « toujours valider »' : 'Placement impossible') },";
   if (!sourceOc.includes(marqueurOc)) {
-    console.error('mutation 1 impossible : la ligne Risque vivante est introuvable dans lib/ops-communications.js');
+    console.error('mutation 1 impossible : la ligne Situation vivante est introuvable dans lib/ops-communications.js');
     process.exit(1);
   }
   fs.writeFileSync(OC, sourceOc.replace(marqueurOc,
-    "{ label: 'Risque', value: `${riskLabelFr(reservation.riskLevel)}${reservation.riskScore !== null && reservation.riskScore !== undefined ? ` (${reservation.riskScore}/100)` : ''}` },"));
+    "{ label: 'Situation', value: `Placement impossible${reservation.riskScore !== null && reservation.riskScore !== undefined ? ` (${reservation.riskScore}/100)` : ''}` },"));
   const run1 = spawnSync(process.execPath, [__filename], { encoding: 'utf8' });
   fs.writeFileSync(OC, sourceOc);
   if (run1.status === 0) { console.error('CONTRE-EPREUVE 1 RATEE : le gate reste vert avec la note /100 remise.'); rate += 1; }

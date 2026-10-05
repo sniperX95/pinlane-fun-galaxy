@@ -12,7 +12,13 @@ const {
   empreinteJetonBlocage,
 } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
-const { afterReservationCreated, dotationDepassee, prepareReservationOps } = require('../lib/reservation-ops');
+const { afterReservationCreated, decisionDeValidation, dotationDepassee, prepareReservationOps, resumeValidation, sansValidationInterne } = require('../lib/reservation-ops');
+const { modeValidationFormule } = require('../lib/validation-policy');
+const { getFormula } = require('../lib/ops-knowledge');
+
+// Le plan tel que le public le recoit : sans la decision interne de validation,
+// qui peut nommer la taille d un autre groupe.
+const planPublic = (plan) => sansValidationInterne({ opsPlan: plan }).opsPlan;
 const { findReservationAlternatives } = require('../lib/reservation-alternatives');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { ouvrirDemandePublique, estErreurInfra, signatureDemande, requestFromHeldUpsell } = require('../lib/demande-publique');
@@ -20,11 +26,29 @@ const { enforceRateLimit, getClientIp } = require('../lib/rate-limit');
 
 function heldOps(held, request) {
   const first = held.opsPlan?.resourceBlocks?.find((b) => b.resourceType === 'bowling_lane');
+  const emergencyWarning = first?.emergencyWarning || '';
+  // LES HORAIRES RETENUS PASSENT PAR LA MEME DECISION (2026-10-05). Ce chemin
+  // confirmait tout, quel que soit le reglage de la formule ou du centre :
+  // le chemin normal du formulaire ignorait donc « toujours valider ».
+  const centerId = request.centerId || held.centerId || 'libramont';
+  let formule = null;
+  try { formule = request.formuleId ? getFormula(request.formuleId, centerId) : null; } catch (error) { formule = null; }
+  const decision = decisionDeValidation({
+    recommended: held.opsPlan || null,
+    planResult: { ok: true, plan: { validationMode: formule ? modeValidationFormule(formule, centerId) : '' } },
+    request: { ...request, emergencyWarning },
+    centerId,
+    channel: 'public',
+  });
+  const validation = resumeValidation(decision);
   return { startTime: held.startTime, laneCount: held.laneCount, price: held.price,
     basePrice: held.basePrice, program: held.program || request.program,
-    programPrice: held.program?.price ?? request.programPrice, opsPlan: held.opsPlan,
-    bowlingCapacity: first?.bowlingCapacity || null, emergencyWarning: first?.emergencyWarning || '',
-    planAvailable: true, blockOnlineConfirmation: false, validationStatus: 'confirmed' };
+    programPrice: held.program?.price ?? request.programPrice,
+    opsPlan: held.opsPlan ? { ...held.opsPlan, validation } : held.opsPlan,
+    bowlingCapacity: first?.bowlingCapacity || null, emergencyWarning,
+    planAvailable: true, blockOnlineConfirmation: false,
+    validationStatus: decision.requise ? 'staff_review' : 'confirmed',
+    requiresHumanReview: decision.requise, validation };
 }
 
 // La reponse a une confirmation deja faite (le client renvoie la meme) : sa
@@ -34,7 +58,7 @@ function reponseRejouee(res, reservation) {
   sendJson(res, 200, {
     ok: true,
     replay: true,
-    reservation,
+    reservation: sansValidationInterne(reservation),
     ops: {
       riskLevel: reservation.riskLevel,
       riskScore: reservation.riskScore,
@@ -89,7 +113,7 @@ async function traiterBlocage(req, res) {
     const held = typeof readMatchingSlotHold === 'function' ? await readMatchingSlotHold(jeton, request, signatureDemande(request)) : null;
     const ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: jeton });
     if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
-      sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de retenir ces horaires.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: ops.opsPlan });
+      sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de retenir ces horaires.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: planPublic(ops.opsPlan) });
       return;
     }
     if (ops.blockOnlineConfirmation) {
@@ -129,7 +153,7 @@ async function traiterBlocage(req, res) {
       laneCount: ops.laneCount ?? request.laneCount,
       bowlingCapacity: ops.bowlingCapacity,
       emergencyWarning: ops.emergencyWarning,
-      opsPlan: ops.opsPlan,
+      opsPlan: planPublic(ops.opsPlan),
     });
   } catch (error) {
     const raw = String((error && error.message) || '');
@@ -225,7 +249,7 @@ module.exports = async (req, res) => {
     const held = typeof readMatchingSlotHold === 'function' ? await readMatchingSlotHold(holdToken, request, signatureDemande(request)) : null;
     const ops = held ? heldOps(held, request) : await prepareReservationOps(request, 'public', { saufJeton: holdToken });
     if (body.quotedPrice != null && Math.round(Number(body.quotedPrice) * 100) !== Math.round(Number(ops.price ?? request.price) * 100)) {
-      sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de confirmer.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: ops.opsPlan });
+      sendError(res, 409, 'Le montant a changé avec les pistes disponibles. Vérifiez le nouveau montant avant de confirmer.', { code: 'price_changed', price: ops.price ?? request.price, program: ops.program ?? request.program, bowlingCapacity: ops.bowlingCapacity, laneCount: ops.laneCount, emergencyWarning: ops.emergencyWarning, opsPlan: planPublic(ops.opsPlan) });
       return;
     }
     if (ops.blockOnlineConfirmation) {
@@ -267,7 +291,7 @@ module.exports = async (req, res) => {
     const postCreate = await afterReservationCreated(reservation, request);
     sendJson(res, 201, {
       ok: true,
-      reservation,
+      reservation: sansValidationInterne(reservation),
       ops: {
         riskLevel: reservation.riskLevel,
         riskScore: reservation.riskScore,

@@ -23198,6 +23198,20 @@ function reservationAlreadyInStatus(reservation, status) {
 // « Confirmé » dans la liste comme dans la fiche). La base la garde `pending` ;
 // l attente vit dans validationStatus, que le Terrain lisait deja. Une seule
 // definition pour la liste, la fiche, le tableau de bord et les pages v2.
+// POURQUOI L EQUIPE EST APPELEE, ET CE QUI EST A SURVEILLER (2026-10-05) :
+// la decision que le serveur a posee dans le plan (lib/reservation-ops), dite
+// avec les memes mots que l ecran Etablissement et le mail.
+function getReservationValidationTexte(reservation) {
+  const v = reservation && reservation.opsPlan && reservation.opsPlan.validation;
+  const phrase = (liste) => (Array.isArray(liste) ? liste : []).map(d => (d.detail ? `${d.mot} (${d.detail})` : d.mot)).join(' ; ');
+  if (!v || typeof v !== 'object') return { raison: '', surveiller: '' };
+  const declencheurs = phrase(v.declencheurs);
+  return {
+    raison: declencheurs ? `Pourquoi : ${declencheurs}.` : (v.raison ? `Pourquoi : ${v.raison}` : ''),
+    surveiller: phrase(v.aSurveiller),
+  };
+}
+
 function isReservationAwaitingReview(reservation) {
   return Boolean(reservation)
     && reservation.validationStatus === 'staff_review'
@@ -23570,9 +23584,13 @@ function renderGroupeEtapes(r, moment, options = {}) {
 // mot, jamais la couleur seule. Rien ne s affiche quand rien ne change.
 function getGroupeEncadres(r) {
   const encadres = [];
+  const pourquoi = getReservationValidationTexte(r);
   if (isReservationAwaitingReview(r)) {
     // « À vérifier » : le meme mot que le Terrain, le tableau de bord et l export.
-    encadres.push({ ton: 'review', titre: 'À vérifier', texte: 'Pas encore confirmée au client : validez-la ou appelez-le.' });
+    encadres.push({ ton: 'review', titre: 'À vérifier', texte: `${pourquoi.raison ? `${pourquoi.raison} ` : ''}Pas encore confirmée au client : validez-la ou appelez-le.` });
+  } else if (pourquoi.surveiller && isUpcomingReservationStatus(r.status)) {
+    // Vu par le planning mais sous le niveau du centre : pas de mail, une ligne.
+    encadres.push({ ton: 'suivi', titre: 'À surveiller', texte: pourquoi.surveiller });
   }
   // Le prix ajuste passe par LE marqueur partage (renderReservationPriceMark,
   // la regle unique des neuf surfaces) : l encadre n existe que s il parle.
@@ -24579,7 +24597,7 @@ function renderPosDetails(r) {
           ? `Payé${moyen ? ` · ${escapeHtml(moyen)}` : ''}`
           : `À encaisser · ${escapeHtml(aEncaisser)}`}</span>
       </div>
-      ${isReservationAwaitingReview(r) ? '<p class="pos-act-review">Cette demande attend votre validation. Tant que vous ne l’avez pas validée, la réservation du client n’est pas confirmée.</p>' : ''}
+      ${isReservationAwaitingReview(r) ? `<p class="pos-act-review">${getReservationValidationTexte(r).raison ? `${escapeHtml(getReservationValidationTexte(r).raison)} ` : ''}Cette demande attend votre validation. Tant que vous ne l’avez pas validée, la réservation du client n’est pas confirmée.</p>` : ''}
       <div class="res-status-row pos-act-row gc-sheet-states">
         ${renderReservationFirstStatusButton(r, { fiche: true })}
         <button type="button" class="res-status-btn arrived ${r.status === 'arrived' ? 'active arrived' : ''}" aria-pressed="${r.status === 'arrived'}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>

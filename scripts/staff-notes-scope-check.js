@@ -28,6 +28,8 @@ async function query(sql, params = []) {
   if (sql.startsWith('update client_notes')) { for (const k of params[1]) if (memory.has(params[0] + ':' + k)) memory.set(params[0] + ':' + k, { body: params[2], version: params[3], updated_by: params[4] }); return { rows: [] }; }
   // Le registre des notes (migration 0053) : une ligne par version enregistree.
   if (sql.startsWith('insert into client_note_versions')) return { rows: [{ id: ++revision }] };
+  // Le point de sauvegarde autour de la version (base pas encore migree toleree).
+  if (/^(savepoint|release savepoint|rollback to savepoint) note_version;?$/.test(sql)) return { rows: [] };
   throw new Error('Unknown synthetic notes query: ' + sql);
 }
 const database = require('../lib/database'); database.getPool = () => ({ query, connect: async () => ({ query, release() {} }) });

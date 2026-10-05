@@ -64,7 +64,7 @@ function verifier(sources) {
       'const notesEquipeBrouillons = new Map();',
       'const notesEquipeOuvertes = new Set();',
       ...['lireNoteEquipeLigne', 'getReservationNotesEquipe', 'getReservationNoteText', 'getReservationNoteParts',
-        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'renderGroupeNotes', 'getGroupeEncadres'].map((n) => extraire(sources.app, n)),
+        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'renderGroupeNotes', 'getReservationValidationTexte', 'getGroupeEncadres'].map((n) => extraire(sources.app, n)),
     ].join('\n');
     const bac = {
       window: {},

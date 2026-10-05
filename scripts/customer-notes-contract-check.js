@@ -39,6 +39,8 @@ async function query(sql, params = []) {
   }
   // Le registre des notes (migration 0053) : une ligne par version enregistree.
   if (sql.startsWith('insert into client_note_versions')) return { rows: [{ id: ++revision }] };
+  // Le point de sauvegarde autour de la version (base pas encore migree toleree).
+  if (/^(savepoint|release savepoint|rollback to savepoint) note_version;?$/.test(sql)) return { rows: [] };
   throw new Error(`Unhandled synthetic query: ${sql}`);
 }
 const pool = { query, connect: async () => ({ query, release() { released += 1; } }) };

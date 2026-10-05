@@ -115,7 +115,10 @@ remplacer('lib/ops-communications.js', {
 });
 
 const db = require('../lib/database');
-const registre = require('../lib/registre');
+// Absent sur un code sans registre (contre-preuve sur origin/main) : les
+// sections qui en dependent rougissent au lieu de faire planter le gate.
+let registre = null;
+try { registre = require('../lib/registre'); } catch (error) { registre = null; }
 const audit = require('../lib/audit-log');
 const staffReservations = require('../api/staff-reservations');
 const publicReservations = require('../api/public-reservations');
@@ -220,7 +223,9 @@ function normaliserLigne(row) {
   // =========================================================================
   section('A. l instantane derive des clefs REELLES de l objet reservation');
   // =========================================================================
-  {
+  if (!registre || typeof db.mapReservation !== 'function') {
+    ok(false, 'lib/registre.js et database.mapReservation existent (aucun instantane derive des clefs reelles)');
+  } else {
     const clefs = Object.keys(db.mapReservation({})).filter((k) => !registre.RESERVATION_VOLATILE_FIELDS.includes(k));
     const instantane = registre.reservationSnapshot(db.mapReservation({ id: 1, name: 'x', phone: 'y', date: '2026-01-01' }));
     const manquantes = clefs.filter((k) => !Object.prototype.hasOwnProperty.call(instantane, k));
@@ -404,7 +409,7 @@ function normaliserLigne(row) {
   // =========================================================================
   section('I. un dossier hors norme : l identite n est jamais tronquee');
   // =========================================================================
-  if (idStaff) {
+  if (idStaff && registre && typeof db.mapReservation === 'function') {
     const courant = await ligneSql(idStaff);
     const enorme = `${'Consigne longue. '.repeat(700)}FIN-DE-NOTE`;
     const modifEnorme = await appeler(staffReservations, 'PATCH', '/api/staff-reservations', { id: idStaff, centerId: CENTRE, notes: enorme, baseUpdatedAt: new Date(courant.updated_at).toISOString() });
@@ -428,7 +433,7 @@ function normaliserLigne(row) {
     ok(ch.opsPlan && ch.opsPlan.after && ch.opsPlan.after.nbBlocs === 500 && ch.opsPlan.after.blocs.length === 60, 'le plan est resume (60 blocs gardes, le compte reel est dit)');
     ok(Buffer.byteLength(JSON.stringify(ch), 'utf8') <= audit.MAX_JSON_BYTES + 2048, 'la ligne ecrite tient sous le plafond');
   } else {
-    ok(false, 'section I sautee : pas de reservation staff');
+    ok(false, 'section I sautee : pas de reservation staff ou pas de registre');
   }
 
   // =========================================================================

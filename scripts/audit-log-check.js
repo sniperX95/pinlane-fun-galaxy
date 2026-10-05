@@ -371,8 +371,19 @@ function reset() {
     && /action: 'updateReservation'/.test(reservationsApi)
     && /action: 'deleteReservation'/.test(reservationsApi),
     'PP4 : les trois surfaces du chemin chaud sont tracees');
-  ok(!/AUDITED_RESERVATION_FIELDS[\s\S]{0,400}'notes'/.test(reservationsApi),
-    'PP4 : le contenu des notes client ne figure PAS dans les champs audites (T2)');
+  // LE REGISTRE (2026-10-05) remplace la regle T2 pour les reservations : la
+  // liste figee AUDITED_RESERVATION_FIELDS (qui nommait clientName au lieu de
+  // name, et omettait phone et notes) a disparu ; l instantane est derive des
+  // clefs reelles de mapReservation (lib/registre.js), notes en texte complet.
+  ok(!/AUDITED_RESERVATION_FIELDS/.test(reservationsApi) && /reservationChanges/.test(reservationsApi),
+    'PP4 : plus de liste figee de champs, l avant/apres vient du registre (lib/registre.js)');
+  {
+    const registre = require('../lib/registre');
+    const clefs = Object.keys(require('../lib/database').mapReservation({})).filter((k) => !registre.RESERVATION_VOLATILE_FIELDS.includes(k));
+    const instantane = registre.reservationSnapshot({ id: 1, name: 'x' });
+    ok(['name', 'phone', 'email', 'notes'].every((k) => clefs.includes(k) && k in instantane),
+      'PP4 : nom, telephone, e-mail et notes (texte complet) font partie de l instantane journalise');
+  }
   ok(/auditCreate\.warning/.test(reservationsApi),
     'PP4 : l echec de trace remonte dans les warnings de la reponse (T4 volet c)');
 

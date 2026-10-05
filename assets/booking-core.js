@@ -1621,12 +1621,15 @@ function removeLaserPassFromPlan(reservation, unitRef) {
 // Dé-planifie une vague laser : la carte quitte le planning et repart dans la file
 // « Parties à placer ». Miroir de scheduleLaserPass.
 async function unscheduleLaserPass(reservationId, unitRef) {
+  const sessionKey = () => JSON.stringify([state.view, state.staffAuthSession?.member?.id, state.staffAuthSession?.expiresAt, state.staffAuthSession?.token]);
+  const contextCenter = getCurrentStaffCenterId(), contextDate = state.currentDate, contextSession = sessionKey();
+  const currentContext = () => getCurrentStaffCenterId() === contextCenter && state.currentDate === contextDate && sessionKey() === contextSession;
   const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId));
-  if (!reservation) return;
+  if (!reservation) return false;
   const unit = laserUnitInfo(reservation, unitRef);
   // Déjà dans « à placer » (aucune fenêtre planifiée) → rien à faire.
   const scheduledKeys = new Set(getLaserScheduledUnitKeys(reservation));
-  if (!scheduledKeys.has(unit.unitKey)) return;
+  if (!scheduledKeys.has(unit.unitKey)) return true;
   const requestKey = Number(reservation.id);
   const requestSeq = ++laserPassSaveSeq;
   laserPassLatestSeqByReservation[requestKey] = requestSeq;
@@ -1634,19 +1637,21 @@ async function unscheduleLaserPass(reservationId, unitRef) {
   try {
     if (typeof envoyerDeplacementActivite !== 'function') throw new Error('Le retrait ciblé est indisponible. Actualisez le planning.');
     const payload = await envoyerDeplacementActivite(reservation, { activityId: 'laser_game', unitKey: unit.unitKey, unplace: true });
-    if (!isLatestRequest()) return;
+    if (!isLatestRequest() || !currentContext()) return true;
     if (getLaserScheduledUnitKeys(payload.reservation).includes(unit.unitKey)) throw new Error('Le serveur n’a pas confirmé le retrait de cette partie. Actualisez le planning.');
     upsertReservationInState(payload.reservation);
     if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, payload.reservation, ['opsPlan']);
     save();
     renderStaffData();
     toast('Partie retirée du planning : à replacer quand vous voulez.');
+    return true;
   } catch (error) {
-    if (!isLatestRequest()) return;
+    if (!isLatestRequest() || !currentContext()) return false;
     if (error.reservation) upsertReservationInState(error.reservation);
     if (typeof clearReservationMutation === 'function') clearReservationMutation(requestKey);
     renderStaffData();
     if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Retrait annulé', error.message || 'Impossible de retirer cette partie Laser Game.', 'warning');
+    return false;
   } finally {
     if (isLatestRequest()) delete laserPassLatestSeqByReservation[requestKey];
   }

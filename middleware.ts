@@ -176,6 +176,9 @@ export default async function middleware(request: Request) {
     '/api/custom-request',
     '/api/simulation',
     '/api/staff-auth',
+    // Cette API verifie la session et les permissions staff elle-meme.
+    // Une demande Basic ici ouvrirait le dialogue natif a l'ouverture d'une fiche.
+    '/api/staff-customer-notes',
     '/api/staff-lanes',
     '/api/staff-reservations',
     '/api/staff-state',

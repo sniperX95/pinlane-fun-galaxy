@@ -27,7 +27,7 @@
 //   E. Laser : appui long, glisser la carte en attente vers un lancement libre.
 //   L. Laser : un geste interrompu ne retire rien du planning.
 //   F. Bowling multi-pistes : glisser au doigt deplace le groupe comme la souris;
-//      maintien2s conserve une selection apres relachement. Les pistes explicites
+//      maintien1s conserve une selection apres relachement. Les pistes explicites
 //      se deplacent seules, les pistes decochees gardent leurs horaires. En
 //      passant, a la souris, le fantome suit le curseur A L ECRAN : il
 //      s affichait sous la page avant ce gate.
@@ -566,7 +566,7 @@ async function main() {
     }
 
     // --- F : bowling multi-pistes, groupe ou piste seule --------------------
-    console.log('\n[F] Bowling multi-pistes : glisser groupe et maintien2s avec pistes explicites');
+    console.log('\n[F] Bowling multi-pistes : glisser groupe et maintien1s avec sélection directe des pistes');
     const SRC_F = '.booking[data-booking-res-id="9004"][data-booking-lane="4"]';
     const TGT_F = '.slot-cell[data-bowling-drop-lane="1"][data-bowling-drop-start="18"]';
     const pistesF = () => page.evaluate(() => JSON.stringify((state.reservations.find((x) => x.id === 9004) || {}).lanes));
@@ -605,23 +605,23 @@ async function main() {
       const held=await centre(page,SRC_F,true);
       if(ok(held&&held.visible,'MONTAGE : source for persistent selection visible')) {
         const before=await page.evaluate(()=>({patches:window.__QA_PATCHES__.length,plan:state.reservations.find(r=>r.id===9004).opsPlan,price:state.reservations.find(r=>r.id===9004).price}));
-        await touche.appui(held,2150);
-        ok(await page.locator('#planningMoveSelection').count()===1,'2second hold remains selected after release');
+        await touche.appui(held,1120);
+        ok(await page.evaluate(()=>!!planningMoveSelection),'one second hold remains selected after release');ok(await page.locator('.booking.is-move-selected').count()===3,'all three linked lane cards highlighted');ok(await page.locator('#planningMoveSelection').count()===0,'no movement menu');
         ok(await page.evaluate(n=>window.__QA_PATCHES__.length===n,before.patches),'persistent selection is not a write');
-        await page.locator('#planningMoveSelection input[value="6"]').uncheck();
-        await page.locator('#planningMoveSelection input[value="8"]').uncheck();
-        await page.locator('#planningMoveSelection input[type="time"]').fill('17:00');
-        await page.locator('#planningMoveSelection input[type="time"]').dispatchEvent('change');
-        await page.locator('#planningMoveSelection select').selectOption('1');
-        ok(await page.locator('.booking.is-move-selected').count()===1,'explicitly unchecked lanes are not highlighted');
-        await page.locator('#planningMoveSelection button.primary').click();
+        await page.waitForTimeout(650);
+        await page.locator('.booking[data-booking-res-id="9004"][data-booking-lane="6"]').first().click();
+        await page.locator('.booking[data-booking-res-id="9004"][data-booking-lane="8"]').first().click();
+        ok(await page.locator('.booking.is-move-selected').count()===1,'clicked lane cards are not highlighted');
+        const selected=await centre(page,SRC_F,true),destination=await centre(page,'.slot-cell[data-bowling-drop-lane="1"][data-bowling-drop-start="17"]');
+        ok(selected&&destination&&selected.visible&&destination.visible,'direct touch source/target visible');
+        await touche.glisser(selected,destination,{maintien:100,pas:16,rythme:60});
         await attendre(page,k=>window.__QA_PATCHES__.length>k,before.patches);
         const result=await page.evaluate(()=>{const r=state.reservations.find(r=>r.id===9004);return{price:r.price,windows:getBowlingWindowsFromReservation(r),request:window.__QA_PATCHES__.at(-1)};});
         ok(JSON.stringify(result.request.activityMove.sourceLanes)==='[4]','explicit selection sends only chosen source lane');
         ok(result.windows.some(w=>w.lanes.includes(1)&&w.start===17),'chosen lane moved to17:00');
         ok(result.windows.some(w=>w.lanes.includes(6)&&w.start===18)&&result.windows.some(w=>w.lanes.includes(8)&&w.start===18),'unchecked lanes6/8 stay18:00');
         ok(result.price===before.price,'splitting lanes preserves total price');
-        ok(await page.locator('#planningMoveSelection').count()===0,'successful explicit save closes selection');
+        ok(await page.evaluate(()=>!planningMoveSelection),'successful direct drop clears selection');
       }
     }
 

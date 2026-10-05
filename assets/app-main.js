@@ -19,46 +19,48 @@ const activitySaveLatestSeqByReservation = {};
 const pendingReservationWriteIds = new Set();
 let planningMoveNoticeTimer = null;
 let planningMoveSelection = null;
-const PLANNING_MOVE_HOLD_MS = 2000;
+const PLANNING_MOVE_HOLD_MS = 1000;
+function planningMoveSessionKey(){return JSON.stringify([state.view,state.staffAuthSession?.member?.id,state.staffAuthSession?.expiresAt,state.staffAuthSession?.token]);}
 
-// A held booking stays selected after release. The selection is a draft;
-// nothing is written until the operator confirms the destination.
+// A held booking stays selected after release. Cards toggle the selected lanes;
+// dragging any selected card drops the selected group directly.
 function selectPlanningMove(type, reservationId, sourceLane = null, sourceStart = null, unitKey = null) {
   if(planningMoveSelection?.saving)return;
   const reservation = state.reservations.find(r => Number(r.id) === Number(reservationId));
   if (!reservation || reservation.status === 'cancelled') return;
-  cancelPlanningMove(false);
-  const window = type === 'bowling' ? getBowlingDragSourceWindow(reservation, sourceLane, sourceStart) : null;
-  const sourceLanes = type === 'bowling' ? [...new Set(window?.lanes || reservation.lanes || [])].map(Number).sort((a,b)=>a-b) : [];
-  planningMoveSelection = { type, reservationId: Number(reservationId), sourceLane, sourceStart, unitKey, sourceLanes, allLanes: sourceLanes.slice(), date: state.currentDate, centerId: getCurrentStaffCenterId(), version: reservation.updatedAt, targetLane: null, targetStart: null, saving: false };
+  cancelPlanningMove(false,true);
+  const windowLanes=type==='bowling'?getBowlingWindowsFromReservation(reservation).flatMap(item=>item.lanes||[]):[];
+  const sourceLanes = type === 'bowling' ? [...new Set(windowLanes.length?windowLanes:reservation.lanes||[])].map(Number).sort((a,b)=>a-b) : [];
+  planningMoveSelection = { type, reservationId: Number(reservationId), sourceLane, sourceStart, unitKey, sourceLanes, allLanes: sourceLanes.slice(), date: state.currentDate, centerId: getCurrentStaffCenterId(), sessionKey:planningMoveSessionKey(), version: reservation.updatedAt, targetLane: null, targetStart: null, saving: false };
   bowlingDragSuppressClickUntil = laserDragSuppressClickUntil = Date.now() + 600;
   renderPlanningMoveSelection();
 }
 
 function renderPlanningMoveSelection() {
-  const s = planningMoveSelection;
-  if (!s) return;
-  const reservation = state.reservations.find(r => Number(r.id) === s.reservationId);
-  let panel = document.getElementById('planningMoveSelection');
-  if (!panel) { panel = document.createElement('section'); panel.id = 'planningMoveSelection'; panel.setAttribute('role','region'); panel.setAttribute('aria-label','Déplacer une activité'); document.body.appendChild(panel); }
-  const lanes = s.type === 'bowling' ? `<fieldset class="planning-move-lanes"><legend>Pistes à déplacer</legend>${s.allLanes.map(lane => `<label><input type="checkbox" value="${lane}" ${s.sourceLanes.includes(lane)?'checked':''} ${s.saving?'disabled':''} onchange="togglePlanningMoveLane(${lane},this.checked)"><span>Piste ${lane}</span></label>`).join('')}</fieldset>` : '';
-  panel.innerHTML = `<div class="planning-move-heading"><div><small>${s.type === 'bowling'?'Bowling':'Laser Game'} · déplacement</small><strong>${escapeHtml(reservation?.name || 'Réservation')}</strong></div><button type="button" class="btn" onclick="cancelPlanningMove()" ${s.saving?'disabled':''} aria-label="Annuler le déplacement">×</button></div>${lanes}<div class="planning-move-destination"><label>Nouvel horaire<input type="time" step="${s.type==='laser'?300:1800}" value="${s.targetStart===null?'':numToTime(s.targetStart)}" onchange="setPlanningMoveTime(this.value)" ${s.saving?'disabled':''}></label>${s.type==='bowling'?`<label>À partir de la piste<select onchange="setPlanningMoveTargetLane(this.value)" ${s.saving?'disabled':''}><option value="">Choisir</option>${Array.from({length:getAvailabilityLaneCount()},(_,i)=>`<option value="${i+1}" ${s.targetLane===i+1?'selected':''}>Piste ${i+1}</option>`).join('')}</select></label>`:''}<span class="planning-move-help" role="status">${s.targetStart===null?'Choisis un créneau dans le planning ou saisis l’heure.':`Vers ${formatClockDisplay(s.targetStart)}${s.type==='bowling'&&s.targetLane?` · ${s.sourceLanes.length} piste${s.sourceLanes.length>1?'s':''} à partir de ${s.targetLane}`:''}`}</span></div><div class="planning-move-footer"><span>${s.type==='bowling'&&s.sourceLanes.length<s.allLanes.length?'Les pistes décochées gardent leur horaire.':'Les autres activités gardent leur horaire.'}</span><button type="button" class="btn" onclick="cancelPlanningMove()" ${s.saving?'disabled':''}>Annuler</button><button type="button" class="btn primary" onclick="commitPlanningMoveSelection()" ${s.saving||s.targetStart===null||(s.type==='bowling'&&(!s.sourceLanes.length||!s.targetLane))?'disabled':''}>${s.saving?'Enregistrement…':'Déplacer'}</button></div>`;
+  document.getElementById('planningMoveSelection')?.remove();
   refreshPlanningMoveHighlights();
 }
 
 function refreshPlanningMoveHighlights() {
   const s=planningMoveSelection;if(!s)return;
-  if(!s.saving&&(state.currentDate!==s.date||getCurrentStaffCenterId()!==s.centerId)){cancelPlanningMove(false);return;}
-  document.querySelectorAll('.is-move-selected').forEach(el=>el.classList.remove('is-move-selected'));
-  document.querySelectorAll(s.type==='bowling'?`.booking[data-booking-res-id="${s.reservationId}"]`:`[data-laser-res-id="${s.reservationId}"][data-laser-unit="${s.unitKey}"]`).forEach(el=> { if(s.type==='laser'||s.sourceLanes.includes(Number(el.dataset.bookingLane))) el.classList.add('is-move-selected'); });
+  if(!s.saving&&(state.currentDate!==s.date||getCurrentStaffCenterId()!==s.centerId||planningMoveSessionKey()!==s.sessionKey)){cancelPlanningMove(false);return;}
+  document.querySelectorAll('.is-move-selected,.is-move-deselected').forEach(el=>{el.classList.remove('is-move-selected','is-move-deselected');el.removeAttribute('aria-pressed');});
+  document.querySelectorAll(s.type==='bowling'?`.booking[data-booking-res-id="${s.reservationId}"]`:`[data-laser-res-id="${s.reservationId}"][data-laser-unit="${s.unitKey}"]`).forEach(el=> { const selected=s.type==='laser'||s.sourceLanes.includes(Number(el.dataset.bookingLane)); el.classList.add(selected?'is-move-selected':'is-move-deselected');el.setAttribute('aria-pressed',String(selected)); });
 }
 
-function cancelPlanningMove(restoreFocus = true) {
+function cancelPlanningMove(restoreFocus = true, preserveGesture = false) {
   const s = planningMoveSelection;
   if (s?.saving) return;
+  if(!preserveGesture){
+    clearTimeout(bowlingPointerDrag?.holdTimer);clearTimeout(laserPointerDrag?.holdTimer);
+    cancelBowlingPointerDrag();cancelLaserPointerDrag();
+    document.removeEventListener('mousemove',onBowlingPointerMove,true);document.removeEventListener('mouseup',onBowlingPointerUp,true);
+    document.removeEventListener('mousemove',onLaserPointerMove,true);document.removeEventListener('mouseup',onLaserPointerUp,true);
+    window.PinlaneTouchDrag?.interrompre();
+  }
   planningMoveSelection = null;
   document.getElementById('planningMoveSelection')?.remove();
-  document.querySelectorAll('.is-move-selected').forEach(el=>el.classList.remove('is-move-selected'));
+  document.querySelectorAll('.is-move-selected,.is-move-deselected').forEach(el=>{el.classList.remove('is-move-selected','is-move-deselected');el.removeAttribute('aria-pressed');});
   clearBowlingDragDropTarget(); clearLaserDragDropTarget();
   if(restoreFocus&&s) document.querySelector(s.type==='bowling'?`.booking[data-booking-res-id="${s.reservationId}"]`:`[data-laser-res-id="${s.reservationId}"][data-laser-unit="${s.unitKey}"]`)?.focus({preventScroll:true});
 }
@@ -66,13 +68,17 @@ function togglePlanningMoveLane(lane, checked) { const s=planningMoveSelection;i
 function setPlanningMoveTime(value) { const s=planningMoveSelection;if(!s||s.saving)return;const time=timeToNum(value);if(!/^\d{2}:\d{2}$/.test(value)||!Number.isFinite(time))return;s.targetStart=time;renderPlanningMoveSelection(); }
 function setPlanningMoveTargetLane(value) { const s=planningMoveSelection;if(!s||s.saving)return;s.targetLane=Number(value)||null;renderPlanningMoveSelection(); }
 async function commitPlanningMoveSelection() {
-  const s=planningMoveSelection;if(!s||s.saving||s.targetStart===null)return;
+  const s=planningMoveSelection;if(!s||s.saving||(!s.unplace&&s.targetStart===null))return;
   const reservation=state.reservations.find(r=>Number(r.id)===s.reservationId);
-  if(!reservation||state.currentDate!==s.date||getCurrentStaffCenterId()!==s.centerId||reservation.updatedAt!==s.version) { cancelPlanningMove();showPlanningMoveNotice('Planning actualisé','La réservation ou le jour a changé. Sélectionnez à nouveau l’activité.');return; }
+  if(!reservation||state.currentDate!==s.date||getCurrentStaffCenterId()!==s.centerId||planningMoveSessionKey()!==s.sessionKey||reservation.updatedAt!==s.version) { cancelPlanningMove();showPlanningMoveNotice('Planning actualisé','La réservation ou le jour a changé. Sélectionnez à nouveau l’activité.');return; }
+  if(s.type==='laser'&&!s.unplace){
+    const window=getLaserWindowsFromReservation(reservation).find(item=>laserBlockUnitKey(item)===s.unitKey);
+    if(window&&Math.abs(Number(window.start)-s.targetStart)<.001)return false;
+  }
   s.saving=true;renderPlanningMoveSelection();
   let ok = false;
-  try { ok = s.type==='laser' ? await scheduleLaserPass(s.reservationId,s.unitKey,s.targetStart) : await scheduleBowlingSelection(s); }
-  finally { s.saving=false; if (ok || state.currentDate !== s.date || getCurrentStaffCenterId() !== s.centerId) cancelPlanningMove(); else { const current = state.reservations.find(r=>Number(r.id)===s.reservationId); if(current) s.version=current.updatedAt; renderPlanningMoveSelection(); } }
+  try { ok = s.type==='laser' ? s.unplace ? await unscheduleLaserPass(s.reservationId,s.unitKey) : await scheduleLaserPass(s.reservationId,s.unitKey,s.targetStart) : await scheduleBowlingSelection(s); }
+  finally { s.saving=false;delete s.unplace; if (ok || state.currentDate !== s.date || getCurrentStaffCenterId() !== s.centerId) cancelPlanningMove(); else { const current = state.reservations.find(r=>Number(r.id)===s.reservationId); if(current) s.version=current.updatedAt; renderPlanningMoveSelection(); } }
 }
 async function scheduleBowlingSelection(s) {
   const sessionKey = () => JSON.stringify([state.view, state.staffAuthSession?.member?.id, state.staffAuthSession?.expiresAt, state.staffAuthSession?.token]);
@@ -80,8 +86,8 @@ async function scheduleBowlingSelection(s) {
   const currentContext = () => getCurrentStaffCenterId() === contextCenter && state.currentDate === contextDate && sessionKey() === contextSession;
   const reservation=state.reservations.find(r=>Number(r.id)===s.reservationId);
   if(!reservation||!s.sourceLanes.length||!s.targetLane)return;
-  const lanes=s.sourceLanes.map((_,index)=>s.targetLane+index);
-  if(lanes.some(l=>l>getAvailabilityLaneCount()||state.laneStatuses[l]==='maintenance')) {showPlanningMoveNotice('Pistes indisponibles','Choisissez une autre piste de départ.');return;}
+  const lanes=s.sourceLanes.map((lane,index)=>s.laneMapping ? Number(s.laneMapping[lane]) : s.targetLane+index);
+  if(lanes.some(l=>l<1||l>getAvailabilityLaneCount()||state.laneStatuses[l]==='maintenance')) {showPlanningMoveNotice('Pistes indisponibles','Choisissez une autre piste de départ.');return;}
   const duration=getBowlingDurationForReservation(reservation)||Number(reservation.duration||1);
   const check=validateSlotWindow(reservation.date,numToTime(s.targetStart),duration,{allowPastStart:true});
   if(!check.ok){showPlanningMoveNotice('Déplacement impossible',check.message);return;}
@@ -104,15 +110,19 @@ async function scheduleBowlingSelection(s) {
 }
 document.addEventListener('keydown',event=> {if(event.key==='Escape'&&planningMoveSelection&&!planningMoveSelection.saving){event.preventDefault();event.stopPropagation();cancelPlanningMove();}},true);
 document.addEventListener('click',event=> {
-  const s=planningMoveSelection;if(!s||s.saving||event.target.closest('#planningMoveSelection'))return;
-  const target=s.type==='bowling'?event.target.closest('[data-bowling-drop-lane]'):event.target.closest('.laser-agenda-row');
-  if(!target)return;event.preventDefault();event.stopPropagation();
-  if(s.type==='bowling'){s.targetLane=Number(target.dataset.bowlingDropLane);s.targetStart=Number(target.dataset.bowlingDropStart);setBowlingDragDropTarget(target);}
-  else {s.targetStart=laserTimeFromPoint(target,event.clientY);setLaserDragDropTarget(target);}
-  renderPlanningMoveSelection();
+  const s=planningMoveSelection;if(!s)return;
+  const card=event.target.closest(s.type==='bowling'?'.booking[data-booking-res-id]':'[data-laser-res-id][data-laser-unit]');
+  if(card&&Number(s.type==='bowling'?card.dataset.bookingResId:card.dataset.laserResId)===s.reservationId){
+    event.preventDefault();event.stopPropagation();
+    if(s.saving||Date.now()<(s.type==='bowling'?bowlingDragSuppressClickUntil:laserDragSuppressClickUntil))return;
+    if(s.type==='bowling')togglePlanningMoveLane(Number(card.dataset.bookingLane),!s.sourceLanes.includes(Number(card.dataset.bookingLane)));
+    else cancelPlanningMove(false);
+    return;
+  }
+  if(!s.saving)cancelPlanningMove(false);
 },true);
 function laserTimeFromPoint(row,clientY) {const start=Number(row.dataset.laserTimeStart);const rect=row.getBoundingClientRect();return Math.round((start+Math.min(.499,Math.max(0,(clientY-rect.top)/rect.height*.5)))*12)/12;}
-function planningMoveKey(event,type,id,lane=null,start=null,unit=null) { if(event.key==='m'||event.key==='M'){event.preventDefault();event.stopPropagation();selectPlanningMove(type,id,lane,start,unit);document.querySelector('#planningMoveSelection input[type="time"]')?.focus();} }
+function planningMoveKey(event,type,id,lane=null,start=null,unit=null) { if(event.key==='m'||event.key==='M'){event.preventDefault();event.stopPropagation();selectPlanningMove(type,id,lane,start,unit);} }
 
 function showPlanningMoveNotice(title, message = '', tone = 'warning') {
   if (typeof document === 'undefined') return;
@@ -437,6 +447,12 @@ function onLaserPointerMove(event) {
   startLaserDragAutoScroll(event.clientY);
   const slotTarget = getLaserDropTargetFromPoint(event.clientX, event.clientY);
   setLaserDragDropTarget(slotTarget);
+  if(laserPointerDrag.ghost){
+    let destination=laserPointerDrag.ghost.querySelector('.laser-drag-destination');
+    if(!destination){destination=document.createElement('small');destination.className='laser-drag-destination';laserPointerDrag.ghost.appendChild(destination);}
+    const row=slotTarget?.closest('.laser-agenda-row');
+    destination.textContent=slotTarget?`Vers ${formatClockDisplay(row?laserTimeFromPoint(row,event.clientY):Number(slotTarget.dataset.laserDropStart))}`:'Choisissez un créneau';
+  }
   // Sinon, survole-t-on la file « Parties à placer » ? (dépôt = dé-planifier)
   setLaserUnplaceDropTarget(slotTarget ? null : getLaserUnplaceDropFromPoint(event.clientX, event.clientY));
 }
@@ -455,6 +471,7 @@ function endLaserPointerDragVisuals(drag) {
 function cancelLaserPointerDrag() {
   const drag = laserPointerDrag;
   laserPointerDrag = null;
+  if(drag?.held)laserDragSuppressClickUntil=Date.now()+350;
   if (!drag || !drag.dragging) return;
   endLaserPointerDragVisuals(drag);
   clearLaserDragDropTarget();
@@ -469,7 +486,7 @@ function onLaserPointerUp(event) {
   laserPointerDrag = null;
   document.removeEventListener('mousemove', onLaserPointerMove, true);
   document.removeEventListener('mouseup', onLaserPointerUp, true);
-  if (!wasDragging) return;
+  if (!wasDragging) {if(drag.held)bowlingDragSuppressClickUntil=laserDragSuppressClickUntil=Date.now()+350;return;}
   event.preventDefault();
   event.stopPropagation();
   laserDragSuppressClickUntil = Date.now() + 350;
@@ -480,6 +497,8 @@ function onLaserPointerUp(event) {
   clearLaserUnplaceDropTarget();
   // Dépôt sur la file « Parties à placer » → on retire la partie du planning.
   if (unplaceZone) {
+    const selection=planningMoveSelection;
+    if(selection?.type==='laser'&&selection.reservationId===Number(drag.reservationId)&&selection.unitKey===drag.unitKey){selection.unplace=true;commitPlanningMoveSelection();return;}
     unscheduleLaserPass(drag.reservationId, drag.unitKey);
     return;
   }
@@ -487,9 +506,11 @@ function onLaserPointerUp(event) {
     showPlanningMoveNotice('Aucun lancement choisi', 'Déposez la carte sur une ligne Laser Game disponible, ou sur « Parties à placer » pour la retirer du planning.', 'warning');
     return;
   }
-  const targetStart = Number(target.dataset.laserDropStart);
-  const targetEnd = target.dataset.laserDropEnd ? Number(target.dataset.laserDropEnd) : null;
-  scheduleLaserPass(drag.reservationId, drag.unitKey, targetStart, targetEnd);
+  const row=target.closest('.laser-agenda-row');
+  const targetStart=row?laserTimeFromPoint(row,event.clientY):Number(target.dataset.laserDropStart);
+  const s=planningMoveSelection;
+  if(s?.type==='laser'&&s.reservationId===Number(drag.reservationId)&&s.unitKey===drag.unitKey){s.targetStart=targetStart;commitPlanningMoveSelection();}
+  else scheduleLaserPass(drag.reservationId, drag.unitKey, targetStart);
 }
 
 function createLaserPointerDrag(sourceEl, reservationId, unitKey, point, touch) {
@@ -508,16 +529,16 @@ function createLaserPointerDrag(sourceEl, reservationId, unitKey, point, touch) 
 }
 
 function startLaserPassPointerDrag(event, reservationId, unitKey) {
-  if(planningMoveSelection)return;
+  if(planningMoveSelection?.saving)return;
+  if(planningMoveSelection&&(planningMoveSelection.type!=='laser'||planningMoveSelection.reservationId!==Number(reservationId)||planningMoveSelection.unitKey!==unitKey))cancelPlanningMove(false);
   if (event.button !== 0) return;
   event.stopPropagation();
   laserPointerDrag = createLaserPointerDrag(event.currentTarget, reservationId, unitKey, event, false);
   const drag = laserPointerDrag;
   drag.holdTimer = setTimeout(() => {
     if(laserPointerDrag!==drag||drag.dragging||!drag.sourceEl.isConnected)return;
-    laserPointerDrag=null;
-    document.removeEventListener('mousemove',onLaserPointerMove,true);document.removeEventListener('mouseup',onLaserPointerUp,true);
-    selectPlanningMove('laser',reservationId,null,null,unitKey);
+    if(!planningMoveSelection)selectPlanningMove('laser',reservationId,null,null,unitKey);
+    drag.held=true;
   },PLANNING_MOVE_HOLD_MS);
   document.addEventListener('mousemove', onLaserPointerMove, true);
   document.addEventListener('mouseup', onLaserPointerUp, true);
@@ -527,7 +548,8 @@ function startLaserPassPointerDrag(event, reservationId, unitKey) {
 // relacher la depose (assets/pinlane-touch-drag.js). La suite passe par les
 // memes fonctions que la souris : fantome, cible, defilement du bord, depot.
 function startLaserPassTouchDrag(event, reservationId, unitKey) {
-  if(planningMoveSelection)return;
+  if(planningMoveSelection?.saving)return;
+  if(planningMoveSelection&&(planningMoveSelection.type!=='laser'||planningMoveSelection.reservationId!==Number(reservationId)||planningMoveSelection.unitKey!==unitKey))cancelPlanningMove(false);
   if (!window.PinlaneTouchDrag) return;
   const sourceEl = event.currentTarget;
   window.PinlaneTouchDrag.demarrer(event, {
@@ -537,9 +559,9 @@ function startLaserPassTouchDrag(event, reservationId, unitKey) {
     },
     bouger: onLaserPointerMove,
     deposer: onLaserPointerUp,
-    maintienLong() {cancelLaserPointerDrag();selectPlanningMove('laser',reservationId,null,null,unitKey);},
+    maintienLong() {if(!planningMoveSelection)selectPlanningMove('laser',reservationId,null,null,unitKey);if(laserPointerDrag)laserPointerDrag.held=true;},
     annuler(etaitLeve) { if (etaitLeve) cancelLaserPointerDrag(); }
-  }, { maintienLongMs: PLANNING_MOVE_HOLD_MS - 280 });
+  }, { maintienMs: planningMoveSelection ? 80 : 280, maintienLongMs: PLANNING_MOVE_HOLD_MS - 280 });
 }
 
 // LES GESTIONNAIRES TACTILES D UNE CARTE DU PLANNING. Poses sur la carte
@@ -627,6 +649,29 @@ function getBowlingDragTargetPlan(target) {
   const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
   const startTime = numToTime(targetStart);
   const sourceWindow = getBowlingDragSourceWindow(reservation, bowlingPointerDrag.sourceLane, bowlingPointerDrag.sourceStart);
+  const selection=planningMoveSelection;
+  if(selection?.type==='bowling'&&selection.reservationId===Number(reservation.id)) {
+    const selected=selection.sourceLanes;
+    const windows=getBowlingWindowsFromReservation(reservation);
+    const laneOffset=targetLane-Number(bowlingPointerDrag.sourceLane);
+    const timeOffset=targetStart-Number(sourceWindow?.start??targetStart);
+    const lanes=selected.map(lane=>lane+laneOffset);
+    const moved=windows.flatMap(window=> {
+      const kept=window.lanes.filter(lane=>!selected.includes(Number(lane)));
+      const movedLanes=window.lanes.filter(lane=>selected.includes(Number(lane))).map(lane=>Number(lane)+laneOffset);
+      return [...(kept.length?[{...window,lanes:kept}]:[]),...(movedLanes.length?[{...window,start:window.start+timeOffset,end:window.end+timeOffset,lanes:movedLanes,selectedMove:true}]:[])];
+    });
+    let message='';
+    if(!selected.length||lanes.some(lane=>lane<1||lane>getAvailabilityLaneCount()||state.laneStatuses[lane]==='maintenance'))message='Pistes indisponibles';
+    for(const window of moved) {
+      const check=validateSlotWindow(reservation.date,numToTime(window.start),window.duration,{allowPastStart:true});
+      if(!check.ok){message=check.message;break;}
+      const occupied=getOccupiedLanes(reservation.date,numToTime(window.start),window.duration,reservation.id);
+      if(window.lanes.some(lane=>occupied.has(lane))){message='Conflit avec une réservation';break;}
+    }
+    if(moved.some((window,index)=>moved.slice(index+1).some(other=>window.lanes.some(lane=>other.lanes.includes(lane))&&overlap(window.start,window.duration,other.start,other.duration))))message='Une piste à laisser en place occupe ce créneau';
+    return {reservation,targetLane,targetStart,duration,lanes,valid:!message,message:message||`Pistes ${lanes.join(', ')}`,previewWindows:moved.filter(window=>window.selectedMove)};
+  }
   const currentLanes = [...new Set(getBowlingWindowsFromReservation(reservation).flatMap(window => window.lanes || []))].map(Number).sort((a,b) => a-b);
   const requiredCount = Math.max(currentLanes.length, getBowlingCapacityPlan(Number(sourceWindow && sourceWindow.players) || getReservationActivityPlayers(reservation, 'bowling'), getFreeCount(reservation.date, startTime, duration, reservation.id), duration * 60).requiredCount);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
@@ -674,10 +719,10 @@ function renderBowlingDragPreview(target) {
   const computed = planningBox ? getComputedStyle(planningBox) : null;
   const hourHeight = parseFloat(computed?.getPropertyValue('--planning-hour-h')) || 48;
   const headerHeight = parseFloat(computed?.getPropertyValue('--planning-header-h')) || 46;
-  const top = (plan.targetStart - config.open) * hourHeight + headerHeight + 3;
-  const height = Math.max(28, (Number(plan.duration) * hourHeight) - 6);
-  const previewLanes = plan.lanes?.length ? plan.lanes : [plan.targetLane];
-  previewLanes.forEach(lane => {
+  const previews=plan.previewWindows||[{start:plan.targetStart,duration:plan.duration,lanes:plan.lanes?.length?plan.lanes:[plan.targetLane]}];
+  previews.forEach(window=>window.lanes.forEach(lane => {
+    const top = (window.start - config.open) * hourHeight + headerHeight + 3;
+    const height = Math.max(28, (Number(window.duration) * hourHeight) - 6);
     const laneCol = document.querySelector(`#planningGridWrap .lane-col[data-lane="${Number(lane)}"]`);
     if (!laneCol) return;
     const preview = document.createElement('div');
@@ -685,12 +730,17 @@ function renderBowlingDragPreview(target) {
     preview.style.top = `${top}px`;
     preview.style.height = `${height}px`;
     preview.innerHTML = `
-      <strong>${formatClockDisplay(plan.targetStart)}</strong>
+      <strong>${formatClockDisplay(window.start)}</strong>
       <span>${escapeHtml(plan.valid ? `Piste ${lane}` : plan.message)}</span>
     `;
     laneCol.appendChild(preview);
     bowlingDragPreviewEls.push(preview);
-  });
+  }));
+  if(bowlingPointerDrag?.ghost){
+    let destination=bowlingPointerDrag.ghost.querySelector('.bowling-drag-destination');
+    if(!destination){destination=document.createElement('small');destination.className='bowling-drag-destination';bowlingPointerDrag.ghost.appendChild(destination);}
+    destination.textContent=plan.valid?`${formatClockDisplay(plan.targetStart)} · ${plan.lanes.length} piste${plan.lanes.length>1?'s':''}`:plan.message;
+  }
 }
 
 function getTargetBowlingLanes(requiredCount, targetLane, date, startTime, duration, ignoreId, currentLanes = [], sourceLane = null, splitLane = false) {
@@ -800,10 +850,24 @@ function moveBowlingOpsPlan(reservation, targetStart, targetLanes, duration) {
 async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourceLaneValue = null, sourceStartValue = null, splitLane = false) {
   const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId));
   if (!reservation) return;
+  const s=planningMoveSelection;
+  if(s?.type==='bowling'&&s.reservationId===Number(reservationId)) {
+    if(s.saving||!s.sourceLanes.includes(Number(sourceLaneValue)))return false;
+    const windows=getBowlingWindowsFromReservation(reservation);
+    const first=Math.min(...windows.filter(w=>w.lanes.some(l=>s.sourceLanes.includes(Number(l)))).map(w=>Number(w.start)));
+    const source=getBowlingDragSourceWindow(reservation,sourceLaneValue,sourceStartValue);
+    s.targetStart=Number(targetStart)-(Number(source?.start??first)-first);
+    s.targetLane=Number(targetLane);
+    s.laneMapping=Object.fromEntries(s.sourceLanes.map(l=>[l,l+Number(targetLane)-Number(sourceLaneValue)]));
+    if(Math.abs(s.targetStart-first)<.001&&s.sourceLanes.every(l=>s.laneMapping[l]===l))return false;
+    return commitPlanningMoveSelection();
+  }
   // The modifier gesture and explicit selection share the same subset contract.
   // Moving one lane must never shift the other lanes' service times.
   if(splitLane && Number.isInteger(Number(sourceLaneValue)) && Number(sourceLaneValue)>0) {
-    return scheduleBowlingSelection({ reservationId:Number(reservationId), sourceLanes:[Number(sourceLaneValue)], targetLane:Number(targetLane), targetStart:Number(targetStart) });
+    const windows=getBowlingWindowsFromReservation(reservation),source=getBowlingDragSourceWindow(reservation,sourceLaneValue,sourceStartValue);
+    const first=Math.min(...windows.filter(w=>w.lanes.includes(Number(sourceLaneValue))).map(w=>Number(w.start)));
+    return scheduleBowlingSelection({ reservationId:Number(reservationId), sourceLanes:[Number(sourceLaneValue)], targetLane:Number(targetLane), targetStart:Number(targetStart)-(Number(source?.start??first)-first) });
   }
   const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
   const startTime = numToTime(Number(targetStart));
@@ -871,7 +935,8 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
 
 function setBowlingSourceDragging(reservationId, active) {
   document.querySelectorAll(`.booking[data-booking-res-id="${Number(reservationId)}"]`).forEach(el => {
-    el.classList.toggle('is-dragging', active);
+    const selected=planningMoveSelection?.type==='bowling'&&planningMoveSelection.reservationId===Number(reservationId)?planningMoveSelection.sourceLanes.includes(Number(el.dataset.bookingLane)):true;
+    el.classList.toggle('is-dragging', active&&selected);
   });
 }
 
@@ -881,16 +946,17 @@ function createBowlingDragGhost(sourceEl, event) {
   const ghost = document.createElement('div');
   ghost.className = `bowling-drag-ghost-card ${reservation ? getReservationHighlightClasses(reservation) : ''}`;
   ghost.style.width = `${Math.max(220, Math.min(360, rect.width))}px`;
-  const label = reservation ? getReservationLabel(reservation) : 'Bowling';
-  const lanes = reservation?.lanes?.length ? `Pistes ${reservation.lanes.join(', ')}` : 'Affectation libre';
+  const label = 'Bowling';
+  const selected=planningMoveSelection?.type==='bowling'&&planningMoveSelection.reservationId===Number(reservation?.id)?planningMoveSelection.sourceLanes:null;
+  const lanes = (selected||reservation?.lanes)?.length ? `Pistes ${(selected||reservation.lanes).join(', ')}` : 'Affectation libre';
   const sourceWindow = reservation ? getBowlingDragSourceWindow(reservation, bowlingPointerDrag?.sourceLane, bowlingPointerDrag?.sourceStart) : null;
   const isMultiLane = (sourceWindow?.lanes?.length || reservation?.lanes?.length || 0) > 1;
-  const dragMode = isMultiLane ? (bowlingPointerDrag?.splitLane ? 'Piste seule' : 'Groupe de pistes') : lanes;
+  const dragMode = selected ? lanes : isMultiLane ? (bowlingPointerDrag?.splitLane ? 'Piste seule' : 'Groupe de pistes') : lanes;
   // Sans clavier, la piste seule s obtient en restant immobile une fois la
   // carte levee (setBowlingTouchSplitLane) : le fantome le dit au doigt.
-  const hint = !isMultiLane ? ''
+  const hint = selected || !isMultiLane ? ''
     : !bowlingPointerDrag?.touch ? 'Shift/Ctrl : piste seule'
-      : bowlingPointerDrag.splitLane ? '' : 'Maintenez 2 s : sélectionner les pistes';
+      : bowlingPointerDrag.splitLane ? '' : 'Maintenez 1 s pour sélectionner les pistes';
   ghost.innerHTML = `
     <strong>${escapeHtml(reservation?.name || 'Réservation')}</strong>
     <span>${escapeHtml(label)}</span>
@@ -948,6 +1014,7 @@ function endBowlingPointerDragVisuals(drag) {
 function cancelBowlingPointerDrag() {
   const drag = bowlingPointerDrag;
   bowlingPointerDrag = null;
+  if(drag?.held)bowlingDragSuppressClickUntil=Date.now()+350;
   if (!drag || !drag.dragging) return;
   endBowlingPointerDragVisuals(drag);
   clearBowlingDragDropTarget();
@@ -958,10 +1025,12 @@ function onBowlingPointerUp(event) {
   const drag = bowlingPointerDrag;
   clearTimeout(drag.holdTimer);
   const wasDragging = drag.dragging;
+  const candidateTarget=wasDragging?getBowlingDropTargetFromPoint(event.clientX,event.clientY)||bowlingDragDropTarget:null;
+  const candidatePlan=candidateTarget?getBowlingDragTargetPlan(candidateTarget):null;
   bowlingPointerDrag = null;
   document.removeEventListener('mousemove', onBowlingPointerMove, true);
   document.removeEventListener('mouseup', onBowlingPointerUp, true);
-  if (!wasDragging) return;
+  if (!wasDragging) {if(drag.held)bowlingDragSuppressClickUntil=laserDragSuppressClickUntil=Date.now()+350;return;}
   event.preventDefault();
   event.stopPropagation();
   bowlingDragSuppressClickUntil = Date.now() + 350;
@@ -972,6 +1041,7 @@ function onBowlingPointerUp(event) {
     showPlanningMoveNotice('Aucun créneau choisi', 'Déposez la carte sur une cellule piste/heure disponible.', 'warning');
     return;
   }
+  if(planningMoveSelection?.type==='bowling'&&candidatePlan&&!candidatePlan.valid){showPlanningMoveNotice('Déplacement impossible',candidatePlan.message);return;}
   scheduleBowlingDrag(
     drag.reservationId,
     Number(target.dataset.bowlingDropLane),
@@ -1000,7 +1070,9 @@ function createBowlingPointerDrag(sourceEl, reservationId, sourceLane, sourceSta
 }
 
 function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null, sourceStart = null) {
-  if(planningMoveSelection)return;
+  if(planningMoveSelection?.saving)return;
+  if(planningMoveSelection&&(planningMoveSelection.type!=='bowling'||planningMoveSelection.reservationId!==Number(reservationId)))cancelPlanningMove(false);
+  if(planningMoveSelection&&!planningMoveSelection.sourceLanes.includes(Number(sourceLane)))return;
   if (event.button !== 0) return;
   event.stopPropagation();
   bowlingPointerDrag = createBowlingPointerDrag(
@@ -1010,9 +1082,8 @@ function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null,
   const drag=bowlingPointerDrag;
   drag.holdTimer=setTimeout(()=>{
     if(bowlingPointerDrag!==drag||drag.dragging||!drag.sourceEl.isConnected)return;
-    bowlingPointerDrag=null;
-    document.removeEventListener('mousemove',onBowlingPointerMove,true);document.removeEventListener('mouseup',onBowlingPointerUp,true);
-    selectPlanningMove('bowling',reservationId,sourceLane,sourceStart);
+    if(!planningMoveSelection)selectPlanningMove('bowling',reservationId,sourceLane,sourceStart);
+    drag.held=true;
   },PLANNING_MOVE_HOLD_MS);
   document.addEventListener('mousemove', onBowlingPointerMove, true);
   document.addEventListener('mouseup', onBowlingPointerUp, true);
@@ -1049,7 +1120,9 @@ function setBowlingTouchSplitLane(point) {
 
 // AU DOIGT : voir startLaserPassTouchDrag.
 function startBowlingBookingTouchDrag(event, reservationId, sourceLane = null, sourceStart = null) {
-  if(planningMoveSelection)return;
+  if(planningMoveSelection?.saving)return;
+  if(planningMoveSelection&&(planningMoveSelection.type!=='bowling'||planningMoveSelection.reservationId!==Number(reservationId)))cancelPlanningMove(false);
+  if(planningMoveSelection&&!planningMoveSelection.sourceLanes.includes(Number(sourceLane)))return;
   if (!window.PinlaneTouchDrag) return;
   const sourceEl = event.currentTarget;
   window.PinlaneTouchDrag.demarrer(event, {
@@ -1057,11 +1130,11 @@ function startBowlingBookingTouchDrag(event, reservationId, sourceLane = null, s
       bowlingPointerDrag = createBowlingPointerDrag(sourceEl, reservationId, sourceLane, sourceStart, point, false, true);
       startBowlingPointerDragMode(point);
     },
-    maintienLong() {cancelBowlingPointerDrag();selectPlanningMove('bowling',reservationId,sourceLane,sourceStart);},
+    maintienLong() {if(!planningMoveSelection)selectPlanningMove('bowling',reservationId,sourceLane,sourceStart);if(bowlingPointerDrag)bowlingPointerDrag.held=true;},
     bouger: onBowlingPointerMove,
     deposer: onBowlingPointerUp,
     annuler(etaitLeve) { if (etaitLeve) cancelBowlingPointerDrag(); }
-  }, { maintienLongMs: PLANNING_MOVE_HOLD_MS - 280 });
+  }, { maintienMs: planningMoveSelection ? 80 : 280, maintienLongMs: PLANNING_MOVE_HOLD_MS - 280 });
 }
 
 function shouldIgnoreBowlingDragClick(event) {
@@ -1119,6 +1192,12 @@ function onLaserPassDrop(event, targetStart, targetEnd = null) {
   try {
     const data = JSON.parse(raw);
     if (data.type !== 'laser-pass') return;
+    const selection=planningMoveSelection;
+    if(selection?.type==='laser'&&selection.reservationId===Number(data.reservationId)&&selection.unitKey===(data.unitKey??data.passIndex)){
+      const row=event.currentTarget.closest('.laser-agenda-row');
+      selection.targetStart=row?laserTimeFromPoint(row,event.clientY):Number(targetStart);
+      commitPlanningMoveSelection();return;
+    }
     scheduleLaserPass(data.reservationId, data.unitKey ?? data.passIndex, Number(targetStart), targetEnd === null ? null : Number(targetEnd));
   } catch (error) {
     toast('Déplacement Laser Game impossible.');
@@ -22862,7 +22941,7 @@ function renderLaserPlanning() {
     <div class="laser-agenda">
       <div class="laser-agenda-header">
         <div>Heure</div>
-        <div>Laser Game <span class="planning-move-instruction">Maintenir 2 s pour déplacer · touche M</span></div>
+        <div>Laser Game <span class="planning-move-instruction">Maintenir 1 s pour sélectionner · glisser pour déplacer</span></div>
         <div>Capacité</div>
       </div>
       <div class="laser-agenda-body">${rowsHtml}</div>

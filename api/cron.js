@@ -67,6 +67,19 @@ module.exports = async (req, res) => {
       sendJson(res, result.ok === false ? 503 : 200, result);
       return;
     }
+    // LA BOITE DE SECOURS (2026-10-05) : la feuille du jour, ses mises a jour
+    // et le classeur du soir, pour chaque centre qui a une boite de secours.
+    if (action === 'secours') {
+      const { getPool } = require('../lib/database');
+      const { normalizeCenterConfig } = require('../lib/center-config');
+      const { lancerSecours } = require('../lib/secours-envoi');
+      const pool = getPool();
+      const lignes = (await pool.query("select id, name, settings from centers where status in ('active', 'planned')")).rows;
+      const centres = lignes.map((l) => ({ id: l.id, name: l.name, secours: normalizeCenterConfig((l.settings && l.settings.config) || {}, l.id).secours }));
+      const result = await lancerSecours({ pool, centres });
+      sendJson(res, result.ok ? 200 : 503, result);
+      return;
+    }
     sendError(res, 400, 'Action cron inconnue.');
   } catch (error) {
     sendError(res, 500, error.message || 'Cron indisponible.');

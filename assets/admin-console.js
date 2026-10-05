@@ -1945,6 +1945,9 @@ const directionInsightLoading = {};
 // Meme cle que dirInsightKey (centre + fenetre, sans le mode de comparaison).
 const directionDecisionCache = {};
 const directionDecisionLoading = {};
+// Donnees clients (activite, fidelite, provenance), voir loadDirectionDonnees.
+const directionDonneesCache = {};
+const directionDonneesLoading = {};
 
 // Vidage des caches de la Direction au changement de centre. Leurs cles portent
 // le centre, donc ils ne MELANGENT pas deux centres ; mais une entree gardee
@@ -1953,7 +1956,7 @@ const directionDecisionLoading = {};
 // du moment, pas la derniere qu'on a vue. Appele par resetCenterScopedCaches
 // (assets/app-main.js), seul point d'entree.
 function resetDirectionCaches() {
-  for (const store of [adminTrendCache, directionInsightCache, directionInsightLoading, directionDecisionCache, directionDecisionLoading]) {
+  for (const store of [adminTrendCache, directionInsightCache, directionInsightLoading, directionDecisionCache, directionDecisionLoading, directionDonneesCache, directionDonneesLoading]) {
     for (const key of Object.keys(store)) delete store[key];
   }
 }
@@ -2273,7 +2276,8 @@ function dirGridHtml(range = getDirRange()) {
     <article class="dir-card"><h3 class="dir-card-title">Occupation du bowling</h3><div class="dir-chart" id="dirChartOccupancy"></div></article>`);
   const rhythm = dirActSection('Rythme', `
     <article class="dir-card dir-card-wide"><h3 class="dir-card-title">Affluence par jour et heure</h3><div class="dir-chart dir-chart-heat" id="dirChartHeatmap"></div></article>`);
-  return dirActivityMicroBand(analytics) + trend + split + detail + rhythm;
+  // Les donnees clients (joueurs, enchainements, groupes) suivent la grille.
+  return dirActivityMicroBand(analytics) + trend + split + detail + rhythm + dirDonActiviteHtml();
 }
 
 function dirTablesHtml(entry) {
@@ -2786,6 +2790,168 @@ async function loadDirectionDecision(centerId, range, key, force) {
   }
 }
 
+// ── DONNEES CLIENTS (2026-10-05) ─────────────────────────────────────────────
+// Movsar : « qui paie quoi, combien, combien de fois, quelle activite, quelle
+// suite d activites, combien de joueurs, d ou ils viennent ». Un seul appel
+// (GET action=donneesClients, lib/donnees-clients.js) nourrit trois vues :
+// Activite (joueurs, enchainements, tailles de groupe), Clients (fidelite,
+// fichier client) et Provenance (sources, entonnoir, campagnes, appareils).
+// Le front ne recalcule rien. Chaque bloc a son hote : mis a jour quand la
+// donnee arrive, sans re-rendre la vue.
+
+async function loadDirectionDonnees(centerId, range, key, force) {
+  const existing = directionDonneesCache[key];
+  if (!force && existing && existing.loaded) return;
+  if (directionDonneesLoading[key]) return;
+  directionDonneesLoading[key] = true;
+  try {
+    const data = await apiRequest(`${API_ENDPOINTS.ops}?action=donneesClients&centerId=${encodeURIComponent(centerId)}&startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`);
+    directionDonneesCache[key] = { loaded: true, error: '', data: data || null };
+  } catch (error) {
+    directionDonneesCache[key] = { loaded: true, error: (error && error.message) || 'Données indisponibles.', data: null };
+  } finally {
+    directionDonneesLoading[key] = false;
+  }
+  if (state.view === 'admin' && dirInsightKey() === key) renderDirectionDonnees();
+}
+
+function dirDonEtat() {
+  const e = directionDonneesCache[dirInsightKey()];
+  if (!e || !e.loaded) return { html: '<div class="dir-note dir-note-loading">Chargement des données clients...</div>' };
+  if (e.error || !e.data || !e.data.totaux) return { html: dirNoteHtml('Données clients momentanément indisponibles. Elles reviendront à la prochaine actualisation.') };
+  // Une reponse incomplete (ancien serveur, panne partielle) ne casse jamais
+  // la vue : chaque liste absente est vide.
+  const d = e.data;
+  const liste = (v) => (Array.isArray(v) ? v : []);
+  return { data: {
+    ...d,
+    fidelite: { repartition: [], ...(d.fidelite || {}), repartition: liste((d.fidelite || {}).repartition) },
+    demandes: { recues: 0, converties: 0, tauxConversion: 0, ...(d.demandes || {}) },
+    activites: liste(d.activites), suites: liste(d.suites), tailles: liste(d.tailles), clients: liste(d.clients),
+    sources: liste(d.sources), entonnoir: liste(d.entonnoir), campagnes: liste(d.campagnes), appareils: liste(d.appareils), pages: liste(d.pages),
+  } };
+}
+
+const dirDonNum = (n) => (n == null || n === '' ? '·' : Number(n).toLocaleString('fr-BE'));
+const dirDonEur = (n) => escapeHtml(formatMoney(Number(n) || 0));
+const dirDonPct = (n) => `${Number(n || 0).toLocaleString('fr-BE', { maximumFractionDigits: 1 })} %`;
+
+function dirDonTable(titre, colonnes, lignes, vide, { large = false, note = '' } = {}) {
+  const tete = colonnes.map((c) => `<th${c.num ? ' class="dir-num"' : ''}>${escapeHtml(c.t)}</th>`).join('');
+  const corps = lignes.map((l) => `<tr>${l.map((v, i) => `<td${colonnes[i] && colonnes[i].num ? ' class="dir-num"' : ''}>${v}</td>`).join('')}</tr>`).join('');
+  return `<article class="dir-card dir-don-card${large ? ' dir-card-wide' : ''}">
+    <h3 class="dir-card-title">${escapeHtml(titre)}</h3>
+    ${note ? `<p class="dir-don-note">${escapeHtml(note)}</p>` : ''}
+    ${lignes.length ? `<div class="dir-don-scroll"><table class="dir-table dir-don-table"><thead><tr>${tete}</tr></thead><tbody>${corps}</tbody></table></div>` : dirNoteHtml(vide)}
+  </article>`;
+}
+
+function dirDonTuiles(tuiles) {
+  return `<div class="dir-don-tuiles">${tuiles.map(([mot, valeur, aide]) => `<div class="dir-don-tuile"><span class="dir-don-tuile-mot">${escapeHtml(mot)}</span><strong class="dir-don-tuile-val">${valeur}</strong>${aide ? `<span class="dir-don-tuile-aide">${escapeHtml(aide)}</span>` : ''}</div>`).join('')}</div>`;
+}
+
+function dirDonActiviteInner() {
+  const { html, data } = dirDonEtat();
+  if (html) return html;
+  return `<div class="dir-grid">
+    ${dirDonTable('Activités : demandes et joueurs', [{ t: 'Activité' }, { t: 'Réservations', num: 1 }, { t: 'Parties', num: 1 }, { t: 'Joueurs', num: 1 }, { t: 'Moyenne', num: 1 }, { t: 'Plus petit', num: 1 }, { t: 'Plus grand', num: 1 }],
+      data.activites.map((a) => [escapeHtml(a.activite), dirDonNum(a.reservations), dirDonNum(a.parties), dirDonNum(a.joueurs), dirDonNum(a.joueursMoyen), dirDonNum(a.groupeMin), dirDonNum(a.groupeMax)]),
+      'Aucune activité sur cette période.', { large: true })}
+    ${dirDonTable('Enchaînements les plus réservés', [{ t: 'Dans l’ordre de la visite' }, { t: 'Réservations', num: 1 }, { t: 'Joueurs', num: 1 }, { t: 'Panier moyen', num: 1 }, { t: 'Chiffre', num: 1 }],
+      data.suites.slice(0, 15).map((s) => [escapeHtml(s.suite), dirDonNum(s.reservations), dirDonNum(s.joueurs), dirDonEur(s.panierMoyen), dirDonEur(s.chiffre)]),
+      'Aucune réservation sur cette période.', { large: true })}
+    ${dirDonTable('Taille des groupes', [{ t: 'Personnes' }, { t: 'Réservations', num: 1 }, { t: 'Chiffre', num: 1 }],
+      data.tailles.map((g) => [escapeHtml(g.groupe), dirDonNum(g.reservations), dirDonEur(g.chiffre)]), 'Aucune réservation.')}
+  </div>`;
+}
+
+function dirDonClientsInner() {
+  const { html, data } = dirDonEtat();
+  if (html) return html;
+  const f = data.fidelite;
+  const t = data.totaux;
+  const tuiles = dirDonTuiles([
+    ['Clients venus', dirDonNum(t.clientsPeriode), `${dirDonNum(t.nouveauxClients)} nouveaux, ${dirDonNum(t.clientsRevenus)} déjà venus`],
+    ['Clients connus', dirDonNum(f.clientsConnus), 'depuis le début'],
+    ['Reviennent', dirDonPct(f.tauxRetour), 'au moins deux visites'],
+    ['Entre deux visites', f.joursMoyensEntreVisites == null ? '·' : `${dirDonNum(f.joursMoyensEntreVisites)} j`, 'en moyenne'],
+    ['Dépense par client', dirDonEur(f.depenseMoyenneParClient), 'sur tout l’historique'],
+    ['Chiffre des fidèles', dirDonPct(f.partChiffreFideles), 'fait par ceux qui reviennent'],
+  ]);
+  const repartition = dirDonTable('Combien de fois ils sont venus', [{ t: 'Visites' }, { t: 'Clients', num: 1 }],
+    f.repartition.map((r) => [escapeHtml(r.visites), dirDonNum(r.clients)]), 'Aucun client.');
+  const fichier = dirDonTable('Fichier clients', [{ t: 'Client' }, { t: 'Visites', num: 1 }, { t: 'Dépensé', num: 1 }, { t: 'Panier', num: 1 }, { t: 'Dernière visite' }, { t: 'Revient tous les', num: 1 }, { t: 'Activité favorite' }, { t: 'Venu par' }],
+    data.clients.slice(0, 50).map((c) => [
+      `<span class="dir-client-name">${escapeHtml(c.nom || 'Client')}</span>${c.telephone || c.email ? `<span class="dir-client-contact">${escapeHtml(c.telephone || c.email)}</span>` : ''}`,
+      dirDonNum(c.visites), dirDonEur(c.depense), dirDonEur(c.panierMoyen), escapeHtml(c.derniereVisite ? c.derniereVisite.split('-').reverse().join('/') : ''),
+      c.joursEntreVisites == null ? '·' : `${dirDonNum(c.joursEntreVisites)} j`, escapeHtml(c.activiteFavorite || ''), escapeHtml(c.sourcePremiere || '')]),
+    'Aucun client identifié.', { large: true, note: data.clients.length > 50 ? `Les 50 qui ont le plus dépensé, sur ${dirDonNum(data.clients.length)}. Tout le fichier est dans l’Excel.` : '' });
+  return `${tuiles}<div class="dir-grid">${repartition}${fichier}</div>`;
+}
+
+function dirDonProvenanceInner() {
+  const { html, data } = dirDonEtat();
+  if (html) return html;
+  const t = data.totaux;
+  const suivi = t.reservations ? Math.round((t.reservationsAvecSource / t.reservations) * 100) : 0;
+  return `<div class="dir-grid">
+    ${dirDonTable('Ce que rapporte chaque source', [{ t: 'Source' }, { t: 'Réservations', num: 1 }, { t: 'Nouveaux clients', num: 1 }, { t: 'Joueurs', num: 1 }, { t: 'Chiffre', num: 1 }, { t: 'Panier moyen', num: 1 }],
+      data.sources.map((s) => [escapeHtml(s.source), dirDonNum(s.reservations), dirDonNum(s.nouveauxClients), dirDonNum(s.joueurs), dirDonEur(s.chiffre), dirDonEur(s.panierMoyen)]),
+      'Aucune réservation sur cette période.', { large: true, note: `Provenance connue pour ${suivi} % des réservations de la période. Les réservations prises avant la mise en place du suivi restent « Inconnue ».` })}
+    ${dirDonTable('Entonnoir en ligne', [{ t: 'Source' }, { t: 'Créneaux retenus', num: 1 }, { t: 'Confirmés', num: 1 }, { t: 'Partis sans réserver', num: 1 }, { t: 'Confirmation', num: 1 }],
+      data.entonnoir.map((e) => [escapeHtml(e.source), dirDonNum(e.creneauxRetenus), dirDonNum(e.confirmes), dirDonNum(e.abandons), dirDonPct(e.tauxConfirmation)]),
+      'Aucun créneau retenu en ligne sur cette période.', { large: true })}
+    ${dirDonTable('Campagnes', [{ t: 'Campagne' }, { t: 'Source' }, { t: 'Réservations', num: 1 }, { t: 'Chiffre', num: 1 }],
+      data.campagnes.map((c) => [escapeHtml(c.campagne), escapeHtml(c.source), dirDonNum(c.reservations), dirDonEur(c.chiffre)]),
+      'Aucune réservation venue d’une campagne marquée (utm_campaign).')}
+    ${dirDonTable('Appareils', [{ t: 'Appareil' }, { t: 'Réservations', num: 1 }, { t: 'Chiffre', num: 1 }],
+      data.appareils.map((a) => [escapeHtml(a.appareil), dirDonNum(a.reservations), dirDonEur(a.chiffre)]), 'Aucune réservation en ligne suivie.')}
+    ${dirDonTable('Pages qui font réserver', [{ t: 'Page' }, { t: 'Réservations', num: 1 }, { t: 'Chiffre', num: 1 }],
+      data.pages.slice(0, 12).map((p) => [escapeHtml(p.page), dirDonNum(p.reservations), dirDonEur(p.chiffre)]), 'Aucune page connue.', { large: true })}
+    ${dirDonTable('Demandes sur mesure', [{ t: 'Reçues', num: 1 }, { t: 'Devenues réservation', num: 1 }, { t: 'Conversion', num: 1 }],
+      data.demandes.recues ? [[dirDonNum(data.demandes.recues), dirDonNum(data.demandes.converties), dirDonPct(data.demandes.tauxConversion)]] : [], 'Aucune demande sur mesure sur cette période.')}
+  </div>`;
+}
+
+function dirDonSection(id, titre, sous, inner) {
+  return `<section class="dir-don" aria-label="${escapeHtml(titre)}">
+    <div class="dir-don-head">
+      <div><h2 class="dir-don-title">${escapeHtml(titre)}</h2><p class="dir-don-sub">${escapeHtml(sous)}</p></div>
+      <button type="button" class="dir-don-export" data-don-export onclick="telechargerDonneesClients()">Excel complet</button>
+    </div>
+    <div class="dir-don-body" id="${id}">${inner}</div>
+  </section>`;
+}
+function dirDonActiviteHtml() { return dirDonSection('dirDonActivite', 'Ce que les groupes réservent', 'Joueurs par activité, enchaînements, taille des groupes.', dirDonActiviteInner()); }
+function dirDonClientsHtml() { return dirDonSection('dirDonClients', 'Fidélité et fichier clients', 'Qui revient, combien de fois, combien ils dépensent.', dirDonClientsInner()); }
+function dirDonProvenanceHtml() { return dirDonSection('dirDonProvenance', 'D’où viennent les réservations', 'Sources, campagnes, entonnoir en ligne, appareils.', dirDonProvenanceInner()); }
+
+function renderDirectionDonnees() {
+  const hotes = [['dirDonActivite', dirDonActiviteInner], ['dirDonClients', dirDonClientsInner], ['dirDonProvenance', dirDonProvenanceInner]];
+  hotes.forEach(([id, inner]) => { const el = document.getElementById(id); if (el) el.innerHTML = inner(); });
+}
+
+// L EXCEL « Données clients » : une feuille par question, lu dans la base.
+async function telechargerDonneesClients() {
+  const centerId = state.adminCenterId || 'libramont';
+  const range = getDirRange();
+  const boutons = document.querySelectorAll('[data-don-export]');
+  boutons.forEach((b) => { b.disabled = true; b.classList.add('is-busy'); });
+  try {
+    const response = await fetch(`${API_ENDPOINTS.ops}?action=exportDonnees&centerId=${encodeURIComponent(centerId)}&startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`, { headers: staffAuthHeaders({}), credentials: 'include' });
+    if (!response.ok) {
+      const corps = await response.json().catch(() => ({}));
+      throw new Error(corps.message || corps.error || `Erreur ${response.status}`);
+    }
+    const nom = (/filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '') || [])[1] || `donnees-clients-${centerId}.xlsx`;
+    downloadBlob(nom, await response.blob());
+  } catch (error) {
+    toast(`Téléchargement impossible : ${error.message || 'erreur'}`);
+  } finally {
+    boutons.forEach((b) => { b.disabled = false; b.classList.remove('is-busy'); });
+  }
+}
+
 function renderDirectionShell() {
   const range = getDirRange();
   // Le Journal des modifications a QUITTE cette barre le 2026-07-28 : c'est un
@@ -2898,6 +3064,7 @@ async function loadDirectionInsights(force) {
   // isolee) : lancees sans await, elles ne bloquent ni ne conditionnent le rendu
   // principal. Elles gerent leur cache/court-circuit en interne.
   loadDirectionDecision(centerId, range, key, force);
+  loadDirectionDonnees(centerId, range, key, force);
   if (!force && haveBase && haveYear) {
     renderDirectionBody();
     mountDirectionCharts();
@@ -2960,9 +3127,9 @@ function dirViewHtml(view, entry) {
   // personnalisable (l'ancienne vue 'analyse'). L'hote persistant du board est
   // deplace dans le slot par mountDirAnalyseBoard (jamais re-cree).
   if (view === 'activite') return dirGridHtml() + dirAnalyseHtml();
-  if (view === 'clients') return dirTablesHtml(entry) + dirRetentionHtml();
+  if (view === 'clients') return dirTablesHtml(entry) + dirDonClientsHtml() + dirRetentionHtml();
   if (view === 'centres') return dirComparisonHtml();
-  if (view === 'provenance') return dirProvenanceHtml();
+  if (view === 'provenance') return dirDonProvenanceHtml() + dirProvenanceHtml();
   // synthese (defaut) : la rangee de KPI cliquables + le grand graphe focus.
   return dirKpisHtml(entry) + dirFocusHtml();
 }
@@ -3754,6 +3921,7 @@ function startAdminHealthAutoRefresh() {
     dirNavHtml,
     dirViewHtml,
     setDirView,
+    telechargerDonneesClients,
     dirShiftYear,
     dirFormatValue,
     dirRangeText,
@@ -3836,6 +4004,8 @@ function startAdminHealthAutoRefresh() {
     decisionCache: directionDecisionCache,
     loadDecision: loadDirectionDecision,
     renderDecision: renderDirectionDecision,
+    donneesCache: directionDonneesCache,
+    loadDonnees: loadDirectionDonnees,
   };
   startAdminHealthAutoRefresh();
 })(typeof window !== 'undefined' ? window : globalThis);

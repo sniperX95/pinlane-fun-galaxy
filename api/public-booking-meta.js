@@ -153,6 +153,7 @@ async function handleCustomRequest(req, res, body) {
       source: 'client',
       payload: {
         userAgent: clean(req.headers?.['user-agent'], 400),
+        acquisition: require('../lib/acquisition').normaliserAcquisition(body && body.acquisition, { userAgent: req.headers?.['user-agent'] }),
         ...(demande ? { demande } : {}),
       },
     });

@@ -3986,7 +3986,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261003b';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261005donnees';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260925h';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261003b';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
@@ -14701,7 +14701,7 @@ function renderStaffUtilitySecours() {
           ? `<div class="sec-adresses">${emails.map(e => `<span class="estab-tag">${escapeHtml(e)}</span>`).join('')}</div>`
           : '<p class="sec-vide">Rien ne part encore en dehors de Pinlane. Ajoutez une adresse dans Établissement &gt; Règles.</p>'}
         <div class="sec-lignes">
-          ${ligne('Copie de chaque réservation', emails.length ? 'à chaque création' : '—')}
+          ${ligne('Copie de chaque réservation', emails.length ? 'à chaque création' : 'pas d’adresse')}
           ${ligne('Feuille du jour', envois.derniere ? escapeHtml(secoursQuand(envois.derniere)) : 'jamais', '8 h, 13 h, 17 h et à chaque changement')}
           ${ligne('Classeur du soir', envois.soir ? escapeHtml(secoursQuand(envois.soir)) : 'jamais', 'après 23 h 30, avec la feuille de demain')}
         </div>

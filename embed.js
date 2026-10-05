@@ -130,7 +130,29 @@
   // La couleur voyage dans l'adresse et non dans un message : elle est ainsi
   // connue avant la première peinture.
   var fondHote = fondDuSite(cibleDeMontage());
-  frame.src = target + (fondHote ? '&fond=' + encodeURIComponent(fondHote) : '');
+  // D ou vient le visiteur : la page du site qui embarque le formulaire (avec
+  // ses parametres de campagne : utm, gclid, fbclid) et la page d avant. Le
+  // formulaire en deduit la source de chaque reservation (SEO, SEA, reseaux).
+  // Rien d autre ne part que l adresse de la page et ses parametres de
+  // campagne : un e-mail ou un jeton glisse dans l URL du site reste ici.
+  function pageSansSecret(adresse) {
+    try {
+      var u = new URL(String(adresse || ''));
+      if (!/^https?:$/.test(u.protocol)) return '';
+      var garde = [];
+      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'ttclid'].forEach(function (k) {
+        var v = u.searchParams.get(k);
+        if (v) garde.push(k + '=' + encodeURIComponent(v.slice(0, 120)));
+      });
+      return (u.origin + u.pathname + (garde.length ? '?' + garde.join('&') : '')).slice(0, 600);
+    } catch (e) { return ''; }
+  }
+  var pageHote = '';
+  var refHote = '';
+  try { pageHote = pageSansSecret(window.location.href); refHote = pageSansSecret(document.referrer).split('?')[0]; } catch (e) { pageHote = ''; }
+  frame.src = target + (fondHote ? '&fond=' + encodeURIComponent(fondHote) : '')
+    + (pageHote ? '&hote=' + encodeURIComponent(pageHote) : '')
+    + (refHote ? '&ref=' + encodeURIComponent(refHote) : '');
   frame.title = 'Reservation en ligne';
   frame.loading = 'lazy';
   frame.style.cssText = 'display:block;width:100%;border:0;min-height:' + minHeight + 'px;';

@@ -274,6 +274,11 @@ const MIGRATIONS = [
     file: 'database/formule-override-validation-schema.sql',
     description: "Mode de validation d une formule reglable par centre (formule_overrides.human_validation : recommended, required_when_laser_busy, required ; NULL = le catalogue). Colonne additive ; Fun Galaxy F2/F4/F5 passent en « seulement si impossible » dans les 3 centres, sans ecraser un reglage deja pose. Rollback : database/rollbacks/0054_formule_override_validation.down.sql",
   },
+  {
+    id: '0055_donnees_marketing',
+    file: 'database/donnees-marketing-schema.sql',
+    description: "Donnees pour comprendre les clients : reservations.acquisition (source, campagne, gclid/fbclid, pages, appareil), client_key (un client = une regle, tenue par trigger) et paid_at (date de paiement, tenue par trigger). Colonnes additives, existant rempli. Rollback : database/rollbacks/0055_donnees_marketing.down.sql (garde les colonnes)",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

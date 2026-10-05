@@ -36,6 +36,39 @@
   }
   var CENTER = centreDepuisAdresse();
   var EMBED = params.get('embed') === '1' && window.parent !== window;
+
+  /* --- D ou vient le client (SEO, SEA, reseaux) ------------------------------ */
+  // Les parametres de campagne de CETTE page, ou de la page du site du centre
+  // qui embarque le formulaire (embed.js les passe dans hote et ref). Aucune donnee
+  // personnelle, rien de depose sur l appareil : le serveur
+  // (lib/acquisition) borne et deduit la source.
+  var CLES_CAMPAGNE = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'ttclid'];
+  var ACQUISITION = (function () {
+    function campagne(qs) { var o = {}; CLES_CAMPAGNE.forEach(function (k) { var v = qs && qs.get(k); if (v) o[k] = String(v).slice(0, 150); }); return o; }
+    var hote = EMBED ? String(params.get('hote') || '') : '';
+    var qsHote = null;
+    try { qsHote = hote ? new URL(hote).searchParams : null; } catch (e) { qsHote = null; }
+    // La page sans ses parametres prives : seuls ceux de campagne voyagent.
+    function sansSecret(adresse) {
+      try {
+        var u = new URL(String(adresse || ''));
+        var q = campagne(u.searchParams);
+        var garde = Object.keys(q).map(function (k) { return k + '=' + encodeURIComponent(q[k]); });
+        return u.origin + u.pathname + (garde.length ? '?' + garde.join('&') : '');
+      } catch (e) { return ''; }
+    }
+    var visite = Object.assign({}, campagne(qsHote), campagne(params), {
+      referrer: sansSecret(EMBED ? params.get('ref') : document.referrer).split('?')[0],
+      landing: sansSecret(EMBED ? hote : window.location.href),
+      hote: sansSecret(hote),
+      at: new Date().toISOString()
+    });
+    // Rien n est depose sur l appareil (pas de cookie, pas de stockage) : un
+    // suivi d une visite a l autre demanderait le consentement cookies. On lit
+    // la visite en cours, ce qui suffit a dire d ou vient la reservation.
+    return { dernier: visite };
+  })();
+  window.pinlaneAcquisition = function () { return ACQUISITION; };
   if (EMBED) body.classList.add('is-embed');
   if (finPointer) body.classList.add('has-pointer');
 
@@ -3842,6 +3875,7 @@
   function demanderBlocage(corps, cle, essais, version) {
     if (version !== blocage.version) return Promise.resolve({ obsolete: true });
     if (blocage.jeton) corps.holdToken = blocage.jeton;
+    corps.acquisition = ACQUISITION;
     return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (x) { return { statut: r.status, json: x || {} }; }); })
       .then(function (res) {
@@ -4498,6 +4532,7 @@
     Object.keys(state.pins).forEach(function (k) { if (state.pins[k]) preferredTimes[k] = state.pins[k]; });
     var base = {
       centerId: CENTER,
+      acquisition: ACQUISITION,
       name: (state.contact.prenom + ' ' + state.contact.nom).trim(),
       phone: state.contact.telephone,
       email: state.contact.email,
@@ -4767,7 +4802,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261004cards';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261005source';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003info';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {

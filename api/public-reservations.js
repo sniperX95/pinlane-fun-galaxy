@@ -15,6 +15,7 @@ const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { afterReservationCreated, decisionDeValidation, dotationDepassee, prepareReservationOps, resumeValidation, sansValidationInterne } = require('../lib/reservation-ops');
 const { modeValidationFormule } = require('../lib/validation-policy');
 const { getFormula } = require('../lib/ops-knowledge');
+const { normaliserAcquisition } = require('../lib/acquisition');
 
 // Le plan tel que le public le recoit : sans la decision interne de validation,
 // qui peut nommer la taille d un autre groupe.
@@ -136,6 +137,7 @@ async function traiterBlocage(req, res) {
     const blocage = await createSlotHold({
       ...request,
       ...ops,
+      acquisition: normaliserAcquisition(body && body.acquisition, { userAgent: req.headers && req.headers['user-agent'] }),
       ...(pistesDuPlan.length ? { lanes: pistesDuPlan } : {}),
       channel: 'public',
     }, {
@@ -289,6 +291,8 @@ module.exports = async (req, res) => {
       // un booleen, ou rien (une surface sans la case ne decide rien).
       ...(body && typeof body.sansOffres === 'boolean' ? { choixOffres: { refuse: body.sansOffres } } : {}),
       signatureDemande: signatureDemande(request),
+      // D ou vient le client (UTM, gclid, page d origine, appareil) : 0055.
+      acquisition: normaliserAcquisition(body && body.acquisition, { userAgent: req.headers && req.headers['user-agent'] }),
       // Les installations comptees (pistes de duckpin, tables) se reverifient
       // SOUS le verrou de la journee : deux demandes simultanees ne prennent
       // plus toutes deux la derniere unite.

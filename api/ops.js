@@ -667,6 +667,26 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // DONNEES CLIENTS (2026-10-05) : qui vient, d ou, pour quoi, combien de
+  // fois. Le JSON nourrit la page Direction, l Excel s emporte.
+  if (action === 'donneesClients' || action === 'exportDonnees') {
+    const scoped = centerScope(centerId);
+    if (!scoped) throw createHttpError('Choisissez un centre precis.', 400);
+    const { lireDonnees, classeurDonnees } = require('../lib/donnees-api');
+    const maintenant = new Date();
+    const donnees = await lireDonnees(getPool(), { centerId: scoped, startDate: url.searchParams.get('startDate'), endDate: url.searchParams.get('endDate'), maintenant });
+    if (action === 'donneesClients') {
+      sendJson(res, 200, donnees);
+      return;
+    }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="pinlane-donnees-clients-${scoped}-${donnees.startDate}-${donnees.endDate}.xlsx"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(classeurDonnees(donnees, { centerId: scoped, maintenant }));
+    return;
+  }
+
   if (action === 'secoursEtat' || action === 'feuilleSecours' || action === 'classeurJour') {
     const scoped = centerScope(centerId);
     if (!scoped) throw createHttpError('Choisissez un centre precis.', 400);
@@ -3638,6 +3658,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'secoursEtat' || action === 'feuilleSecours' || action === 'classeurJour') return 'reservations.view';
     // Tout le centre, contacts compris : la direction ou qui peut deja exporter.
     if (action === 'exportComplet') return ['exports.download', 'settings.manage', 'direction.view'];
+    if (action === 'donneesClients' || action === 'exportDonnees') return 'direction.view';
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     // Le switcher de centre doit se peupler pour TOUT role reel (chaque preset

@@ -1112,7 +1112,7 @@
       if (smSend.classList.contains('is-busy')) return;
       smErreur('');
       smSend.classList.add('is-busy'); smSend.setAttribute('aria-busy', 'true');
-      fetch('/api/custom-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpsDemande()), credentials: 'omit' })
+      fetch('/api/custom-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign(corpsDemande(), { acquisition: typeof window.pinlaneAcquisition === 'function' ? window.pinlaneAcquisition() : null })), credentials: 'omit' })
         .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j || {} }; }); })
         .then(function (res) {
           smSend.classList.remove('is-busy'); smSend.removeAttribute('aria-busy');

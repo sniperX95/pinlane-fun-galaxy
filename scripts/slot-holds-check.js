@@ -238,8 +238,8 @@ async function sqlBlocages(tx, s, p) {
     if (tx) { clesEnCours.set(p[3], tx); tx.cles.push(p[3]); }
     return { rows: [{ id: row.id, expires_at: new Date(row.expires_at) }], rowCount: 1 };
   }
-  if (/^delete from slot_holds where coalesce\(released_at, expires_at\) < now\(\) - interval '7 days';?$/.test(s)) {
-    const limite = base.horloge - 7 * 24 * 3600 * 1000;
+  if (/^delete from slot_holds where coalesce\(released_at, expires_at\) < now\(\) - interval '180 days';?$/.test(s)) {
+    const limite = base.horloge - 180 * 24 * 3600 * 1000;
     let n = 0;
     [...base.holds.values()].forEach((h) => { if ((h.released_at || h.expires_at).getTime() < limite) { base.holds.delete(h.id); n += 1; } });
     return { rows: [], rowCount: n };
@@ -276,6 +276,12 @@ async function executer(tx, s, p) {
     };
     ecrire(tx, 'reservations', row.id, row);
     return { rows: [clone(row)], rowCount: 1 };
+  }
+  // La provenance (0055) se pose juste apres l insertion.
+  if (/^update reservations set acquisition = \$2::jsonb where id = \$1;?$/.test(s)) {
+    const row = vue(tx, 'reservations').get(Number(p[0]));
+    if (row) ecrire(tx, 'reservations', row.id, { ...row, acquisition: JSON.parse(p[1]) });
+    return { rows: [], rowCount: row ? 1 : 0 };
   }
   if (/^(select|update|delete|insert)\b/i.test(s) && /\breservations\b/.test(s) && !/\bfrom (ops_events|communications|ops_jobs)\b/.test(s)) {
     throw new Error(`SQL reservations non simulee : ${s.slice(0, 160)}`);

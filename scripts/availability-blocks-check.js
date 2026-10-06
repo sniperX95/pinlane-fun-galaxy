@@ -480,9 +480,13 @@ async function captureError(run) {
     const err = await captureError(() => mod.createReservation(baseReservation({ startTime: '15:30' })));
     return err instanceof Error; // invariant tient si la creation est refusee
   };
+  // Depuis le deplacement d activite (2026-10-05), « const blocks = await
+  // resolveBlocksOnClient(...) » existe aussi dans updateReservation : l ancre
+  // garde deux espaces devant `blocks`, que seule l affectation de
+  // createReservation porte (l autre a « const » devant).
   await withMutation(
-    'blocks = await resolveBlocksOnClient(client, payload.centerId, payload.date);',
-    'blocks = [];',
+    '  blocks = await resolveBlocksOnClient(client, payload.centerId, payload.date);',
+    '  blocks = [];',
     raceProbe,
     'relecture fraiche des blocages retiree de createReservation (fenetre de course rouverte)',
   );

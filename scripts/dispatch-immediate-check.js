@@ -330,7 +330,9 @@ async function passageHook({ dispatcherCasse = false } = {}) {
     ok(false, `contre-epreuve 3 impossible : ${error.message}`);
   } finally { mutations = []; }
   try {
-    mutations = [{ fichier: 'lib/reservation-ops.js', de: 'await dispatchDueCommunications({ limit: 5,', vers: 'await (async () => null)({ limit: 5,' }];
+    // Depuis fa4b739 (2026-10-05) l appel vit dans un Promise.all avec la copie
+    // de secours, sans `await` devant : l ancre suit l appel, toujours unique.
+    mutations = [{ fichier: 'lib/reservation-ops.js', de: 'dispatchDueCommunications({ limit: 5, centerId:', vers: '(async () => null)({ limit: 5, centerId:' }];
     const m = await passageHook();
     ok(m.espion.appels.length === 0, 'contre-epreuve 2 : sans l appel du hook, aucun dispatch (le gate ROUGIRAIT)', `${m.espion.appels.length}`);
   } catch (error) {

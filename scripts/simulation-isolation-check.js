@@ -341,6 +341,11 @@ ok(orphans.length === 0, `chaque appelant importe lib/simulation-filter${orphans
 const UNFILTERED_ALLOWLIST = new Map([
   ['lib/database.js', 'lectures de CAPACITE (readStaffState, readAvailabilitySnapshot, listReservationsForDate), acces par id, et le delete glouton de resetSimulation ; couvert nommement par le SENS 2'],
   ['lib/simulation-filter.js', 'porte le predicat lui-meme'],
+  // 2026-10-06 : les notes client (journal 378) lisent le telephone et l e-mail
+  // d un dossier PAR SON ID pour retrouver la note de son client ; aucun
+  // agregat, aucun euro. Module d une seule nature : l allowlist par fichier
+  // convient (pas un module mixte, donc pas de marqueur sur place).
+  ['lib/customer-notes.js', 'acces par id (contact d un dossier pour sa note client), aucun agregat'],
 ]);
 
 function walkJsFiles(relativeDir) {

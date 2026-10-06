@@ -151,7 +151,9 @@ async function journee(module) {
   if (source.split(ancre).length !== 2) ok(false, '[contre-épreuve] ancre absente');
   else {
     const f = path.join(os.tmpdir(), `secours-envoi-mute-${process.pid}.js`);
-    fs.writeFileSync(f, source.replace(ancre, 'const ECART_MISE_A_JOUR_MS = 0;').split("require('./").join(`require('${ROOT}/lib/`));
+    // Chemin en barres obliques : sous Windows, les « \ » colles dans une
+    // chaine JS deviennent des echappements et le require ne trouve plus rien.
+    fs.writeFileSync(f, source.replace(ancre, 'const ECART_MISE_A_JOUR_MS = 0;').split("require('./").join(`require('${ROOT.split(path.sep).join('/')}/lib/`));
     const mute = require(f);
     fs.unlinkSync(f);
     const rm = await journee(mute);

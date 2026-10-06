@@ -182,7 +182,9 @@ ok(parDefaut.validationEquipe.niveau === 'minimal' && JSON.stringify(parDefaut.s
 
   // CONTRE-EPREUVES : le module servi casse expres, une mutation a la fois.
   console.log('[contre-épreuves]');
-  const racine = path.join(__dirname, '..');
+  // Barres obliques : sous Windows, les « \ » colles dans les require reecrits
+  // deviennent des echappements JS et le module n est plus trouve.
+  const racine = path.join(__dirname, '..').split(path.sep).join('/');
   function muter(fichierSource, de, vers) {
     const source = fs.readFileSync(path.join(racine, 'lib', fichierSource), 'utf8');
     if (source.split(de).length !== 2) { ok(false, `[contre-épreuve] ancre absente ou multiple dans ${fichierSource}`); return null; }

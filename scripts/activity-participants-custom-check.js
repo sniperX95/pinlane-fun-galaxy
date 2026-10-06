@@ -15,6 +15,9 @@ let checks = 0;
 function check(cond, message) { checks++; assert.ok(cond, message); console.log('OK ' + message); }
 const card = id => `#smGridAct [data-sm-activity="${id}"]`;
 const input = id => `${card(id)} [data-compteur="participants"] input`;
+// Toucher une carte cochee la decoche depuis le 2026-10-06 (journal Pinlane,
+// entree 387) : ce gate ne touche une carte que pour la cocher.
+async function cocher(page, carte) { const c = page.locator(carte); if (await c.getAttribute('aria-checked') !== 'true') await c.click(); }
 async function main() {
   const server = mock.createServer({ port: PORT });
   await new Promise(resolve => server.listen(PORT, '127.0.0.1', resolve));
@@ -45,18 +48,18 @@ async function main() {
       await page.waitForSelector('.fg-scene[data-scene="activites"].is-active');
       for (const [id, count] of Object.entries(COUNTS)) {
         const normal = `#gridAct [data-activity="${id}"]`;
-        await page.locator(normal + ' .fg-card').click();
+        await cocher(page, normal + ' .fg-card');
         await page.locator(normal + ' [data-compteur="participants"] input').fill(String(count));
         await page.locator(normal + ' [data-compteur="participants"] input').press('Tab');
       }
-      await page.click('#gridAct [data-activity="bowling"] .fg-card');
+      await cocher(page, '#gridAct [data-activity="bowling"] .fg-card');
       await page.click('#gridAct [data-activity="bowling"] .fg-pill[data-valeur="2"]');
-      await page.click('#gridAct [data-activity="laser_game"] .fg-card');
+      await cocher(page, '#gridAct [data-activity="laser_game"] .fg-card');
       await page.click('#gridAct [data-activity="laser_game"] .fg-pill[data-valeur="2"]');
-      await page.click('#gridAct [data-activity="billards"] .fg-card');
+      await cocher(page, '#gridAct [data-activity="billards"] .fg-card');
       await page.click('#gridAct [data-activity="billards"] [data-compteur="units"] [data-pas="1"]');
       await page.click('#gridAct [data-activity="billards"] .fg-pill[data-valeur="2"]');
-      await page.click('#gridAct [data-activity="fun_run"] .fg-card');
+      await cocher(page, '#gridAct [data-activity="fun_run"] .fg-card');
       await page.click('#gridAct [data-activity="fun_run"] .fg-pill[data-valeur="15"]');
       const normalOptions = await page.locator('#gridAct .fg-pill').evaluateAll(nodes => nodes.map(n => ({ id: n.closest('[data-activity]').dataset.activity, key: n.dataset.cle, val: n.dataset.valeur })));
       await page.click('.fg-scene[data-scene="activites"] [data-back]');
@@ -73,11 +76,11 @@ async function main() {
         check(await page.locator(`${card(id)} .fg-pill[data-cle="${key}"][data-valeur="${value}"]`).getAttribute('aria-checked') === 'true', `[${width}] imported ${id} ${key}`);
       }
       check(await page.locator(`${card('billards')} [data-compteur="units"] output`).textContent() === '2', `[${width}] imported two billard tables`);
-      await page.locator(`${card('fun_run')} .fg-card`).click();
+      await cocher(page, `${card('fun_run')} .fg-card`);
       await page.locator(input('fun_run')).fill('31'); await page.locator(input('fun_run')).press('Tab');
       check(/7 sessions/.test(await page.locator(`${card('fun_run')} .fg-card__rot`).textContent()), `[${width}] 31 Fun Run players rotate seven sessions`);
       await page.locator(input('fun_run')).fill('8'); await page.locator(input('fun_run')).press('Tab');
-      await page.locator(`${card('bowling')} .fg-card`).click();
+      await cocher(page, `${card('bowling')} .fg-card`);
       await page.locator(input('bowling')).fill(''); await page.locator(input('bowling')).press('Tab');
       check(await page.locator(input('bowling')).inputValue() === '7', `[${width}] blank input restores prior subset`);
       await page.locator(`${card('bowling')} .fg-pill[data-valeur="1"]`).focus(); await page.keyboard.press('ArrowRight');
@@ -96,7 +99,7 @@ async function main() {
       await page.fill('#smPax', '31'); await page.press('#smPax', 'Tab'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
       for (const [id, count] of Object.entries(COUNTS)) {
         check(await page.locator(input(id)).inputValue() === String(Math.min(count, 4)), `[${width}] growth preserves explicit subset ${id}`);
-        await page.locator(`${card(id)} .fg-card`).click();
+        await cocher(page, `${card(id)} .fg-card`);
         await page.locator(input(id)).fill(String(count)); await page.locator(input(id)).press('Tab');
       }
       check(await page.locator('#gridAct [data-activity="bowling"] input').inputValue() === '7', `[${width}] custom context preserves normal form options`);
@@ -104,8 +107,8 @@ async function main() {
       if (width === 1440) {
         await page.click('.fg-scene[data-scene="sm-envies"] [data-back]'); await page.click('.fg-scene[data-scene="sm-date"] [data-back]');
         await page.fill('#smPax', '1000'); await page.press('#smPax', 'Tab'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
-        for (const id of ['bowling', 'fun_run', 'duckpin_bowling']) { await page.locator(`${card(id)} .fg-card`).click(); await page.locator(input(id)).fill('1000'); await page.locator(input(id)).press('Tab'); }
-        await page.locator(`${card('bowling')} .fg-card`).click();
+        for (const id of ['bowling', 'fun_run', 'duckpin_bowling']) { await cocher(page, `${card(id)} .fg-card`); await page.locator(input(id)).fill('1000'); await page.locator(input(id)).press('Tab'); }
+        await cocher(page, `${card('bowling')} .fg-card`);
         await page.locator(`${card('bowling')} .fg-pill[data-valeur="1"]`).click();
         const bowlingNote = await page.locator(`${card('bowling')} .fg-card__rot`).textContent();
         check(/168 pistes/.test(bowlingNote) && /6[\s\u00a0\u202f]?552/.test(bowlingNote), '1000 bowling players use balanced168 lanes for6552EUR');
@@ -116,8 +119,8 @@ async function main() {
         await page.keyboard.press('Escape');
         await page.click('.fg-scene[data-scene="sm-envies"] [data-back]'); await page.click('.fg-scene[data-scene="sm-date"] [data-back]');
         await page.fill('#smPax', '31'); await page.press('#smPax', 'Tab'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
-        for (const id of ['bowling', 'fun_run', 'duckpin_bowling']) { await page.locator(`${card(id)} .fg-card`).click(); await page.locator(input(id)).fill(String(COUNTS[id])); await page.locator(input(id)).press('Tab'); }
-        await page.locator(`${card('bowling')} .fg-card`).click();
+        for (const id of ['bowling', 'fun_run', 'duckpin_bowling']) { await cocher(page, `${card(id)} .fg-card`); await page.locator(input(id)).fill(String(COUNTS[id])); await page.locator(input(id)).press('Tab'); }
+        await cocher(page, `${card('bowling')} .fg-card`);
         await page.locator(`${card('bowling')} .fg-pill[data-valeur="2"]`).click();
       }
       await page.click('#smTabFor'); await page.click('#smTabAct');
@@ -151,14 +154,14 @@ async function main() {
     await page.waitForSelector('.fg-scene[data-scene="sm-groupe"].is-active');
     await page.click('.fg-occasion[data-type="amis"]'); await page.click('#smGoDate');
     await page.check('#smFlexible'); await page.fill('#smPeriod', 'Vacances'); await page.click('.fg-sm-moment[data-moment="indifferent"]'); await page.click('#smGoEnvies');
-    await page.locator(`${card('minigolf_blacklight')} .fg-card`).click();
+    await cocher(page, `${card('minigolf_blacklight')} .fg-card`);
     check(await page.locator(input('minigolf_blacklight')).inputValue() === '31', 'untouched custom activity starts with full group');
     await page.click('.fg-scene[data-scene="sm-envies"] [data-back]'); await page.click('.fg-scene[data-scene="sm-date"] [data-back]');
     await page.fill('#smPax', '40'); await page.press('#smPax', 'Tab'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
     check(await page.locator(input('minigolf_blacklight')).inputValue() === '40', 'untouched custom activity follows group increase');
     for (const scene of ['sm-envies', 'sm-date', 'sm-groupe']) await page.click(`.fg-scene[data-scene="${scene}"] [data-back]`);
     await page.fill('#paxInput', '18'); await page.press('#paxInput', 'Enter'); await page.click('#goActivities');
-    await page.locator('#gridAct [data-activity="bowling"] .fg-card').click();
+    await cocher(page, '#gridAct [data-activity="bowling"] .fg-card');
     await page.locator('#gridAct [data-activity="bowling"] input').fill('7'); await page.locator('#gridAct [data-activity="bowling"] input').press('Tab');
     await page.click('#gridAct [data-activity="bowling"] .fg-pill[data-valeur="2"]');
     await page.click('.fg-scene[data-scene="activites"] [data-back]'); await page.fill('#paxInput', '31'); await page.press('#paxInput', 'Enter'); await page.click('#goActivities');
@@ -169,7 +172,7 @@ async function main() {
     for (const scene of ['sm-envies', 'sm-date', 'sm-groupe']) await page.click(`.fg-scene[data-scene="${scene}"] [data-back]`);
     await page.click('#goActivities'); await page.waitForSelector('.fg-scene[data-scene="sm-groupe"].is-active'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
     check(await page.locator(input('bowling')).inputValue() === '6', 'reopening unchanged base basket preserves custom edits');
-    await page.locator(`${card('bowling')} .fg-card-select`).click(); await page.locator(`${card('arcade_time')} .fg-card`).click();
+    await page.locator(`${card('bowling')} .fg-card-select`).click(); await cocher(page, `${card('arcade_time')} .fg-card`);
     const unknownOnly = await page.locator('#smCount').textContent();
     check(/Prix des activités à l’accueil : Arcades/.test(unknownOnly) && !unknownOnly.includes('0 €'), 'unknown-only activity selection never presented as zero/free');
     for (const scene of ['sm-envies', 'sm-date', 'sm-groupe']) await page.click(`.fg-scene[data-scene="${scene}"] [data-back]`);
@@ -190,7 +193,7 @@ async function main() {
     await page.click('.fg-scene[data-scene="activites"] [data-back]'); await page.fill('#paxInput', '31'); await page.press('#paxInput', 'Enter'); await page.click('#goActivities');
     await page.waitForSelector('.fg-scene[data-scene="sm-groupe"].is-active'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
     check(await page.locator(`#smGridFor .fg-card[data-sm="${formulaId}"]`).getAttribute('aria-checked') === 'true', 'normal selected formula imported unchanged');
-    await page.locator(`${card('bowling')} .fg-card`).click(); await page.locator(input('bowling')).fill('7'); await page.locator(input('bowling')).press('Tab');
+    await cocher(page, `${card('bowling')} .fg-card`); await page.locator(input('bowling')).fill('7'); await page.locator(input('bowling')).press('Tab');
     await page.locator(`${card('bowling')} .fg-pill[data-valeur="1"]`).click();
     check(/2 pistes/.test(await page.locator(`${card('bowling')} .fg-card__rot`).textContent()) && (await page.locator('#smCount').textContent()).includes('78 €'), 'custom subset bowling uses seven players even when normal form remains in formula mode');
     await ctx.close();

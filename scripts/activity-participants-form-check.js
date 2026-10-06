@@ -83,21 +83,24 @@ async function mounted(page, pax = 18) {
 }
 const card = id => `#gridAct .fg-grid__item[data-activity="${id}"]`;
 const input = id => `${card(id)} [data-compteur="participants"] input[type="number"]`;
+// Toucher une carte cochee la decoche depuis le 2026-10-06 (journal Pinlane,
+// entree 387) : ce gate ne touche une carte que pour la cocher.
+async function cocher(page, carte) { const c = page.locator(carte); if (await c.getAttribute('aria-checked') !== 'true') await c.click(); }
 async function setCount(page, id, n) {
-  await page.locator(`${card(id)} .fg-card`).click();
+  await cocher(page, `${card(id)} .fg-card`);
   await page.locator(input(id)).fill(String(n));
   await page.locator(input(id)).press('Enter');
 }
 async function selectAll(page) {
   for (const id of Object.keys(COUNTS)) {
-    await page.locator(`${card(id)} .fg-card`).click();
+    await cocher(page, `${card(id)} .fg-card`);
     await page.locator(input(id)).waitFor({ state: 'visible' });
     check(await page.locator(input(id)).inputValue() === '18', `${id} initially follows whole group`);
     await setCount(page, id, COUNTS[id]);
   }
-  await page.locator(`${card('laser_game')} .fg-card`).click();
+  await cocher(page, `${card('laser_game')} .fg-card`);
   await page.locator(`${card('laser_game')} .fg-pill[data-valeur="2"]`).click();
-  await page.locator(`${card('billards')} .fg-card`).click();
+  await cocher(page, `${card('billards')} .fg-card`);
   await page.locator(`${card('billards')} [data-compteur="units"] [data-pas="1"]`).click();
   await page.locator(`${card('billards')} .fg-pill[data-valeur="2"]`).click();
 }
@@ -194,7 +197,7 @@ async function main() {
     const defaultCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
     const defaultPage = await defaultCtx.newPage();
     await mounted(defaultPage, 6);
-    for (const id of ['bowling', 'minigolf_blacklight']) await defaultPage.locator(`${card(id)} .fg-card`).click();
+    for (const id of ['bowling', 'minigolf_blacklight']) await cocher(defaultPage, `${card(id)} .fg-card`);
     await defaultPage.click('.fg-scene[data-scene="activites"] [data-back]');
     await defaultPage.fill('#paxInput', '12'); await defaultPage.press('#paxInput', 'Enter');
     await defaultPage.click('#goActivities');
@@ -209,7 +212,7 @@ async function main() {
       page.on('request', r => { if (r.url().includes('/api/public-availability?') && new URL(r.url()).searchParams.get('type') === 'visite') availability.push(r.url()); });
       await mounted(page);
       await selectAll(page);
-      await page.locator(`${card('bowling')} .fg-card`).click();
+      await cocher(page, `${card('bowling')} .fg-card`);
       for (const [typed, expected] of [['', '7'], ['8.7', '8'], ['999', '18'], ['-4', '1'], ['7', '7']]) {
         await page.locator(input('bowling')).fill(typed);
         await page.locator(input('bowling')).press('Tab');
@@ -245,7 +248,7 @@ async function main() {
       for (const [id, n] of Object.entries(COUNTS)) await setCount(page, id, n);
       const layouts = [];
       for (const id of Object.keys(COUNTS)) {
-        await page.locator(`${card(id)} .fg-card`).click();
+        await cocher(page, `${card(id)} .fg-card`);
         layouts.push(await page.evaluate(() => {
         const id = document.activeElement.closest('[data-activity]')?.dataset.activity;
         const boxes = [...document.querySelectorAll('#gridAct > li[data-activity="' + id + '"] [data-compteur="participants"]')];

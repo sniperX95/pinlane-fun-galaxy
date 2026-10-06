@@ -179,7 +179,9 @@ async function run() {
     if(id==='minigolf_blacklight')expected.push('Information longue pour vérifier le défilement');
     await popup(page,frame,button,embedded,label+'/activity/'+index,expected);
    }
-   await frame.locator('#gridAct li[data-activity="arcade_time"] .fg-card').click();
+   // Cochee par la selection complete plus haut : la retoucher la decocherait
+   // depuis le 2026-10-06 (journal Pinlane, entree 387).
+   check(await frame.locator('#gridAct li[data-activity="arcade_time"] .fg-card').getAttribute('aria-checked')==='true',label+' MONTAGE arcades cochees par la selection complete');
    const arcade=frame.locator('#gridAct .fg-grid__item[data-activity="arcade_time"]');
    await arcade.locator('[data-compteur="participants"] input').fill('3');await arcade.locator('[data-compteur="participants"] input').press('Enter');
    for(const [id,total] of [['time-30',45],['time-60',90]]) {

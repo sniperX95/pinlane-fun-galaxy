@@ -36,7 +36,10 @@
 //       grille, prix de chacune), la retenue part dans le programme, les
 //       fleches du clavier passent d une option a l autre, et les cartes d une
 //       rangee gardent la meme hauteur ; un tiroir ferme sort du parcours
-//       clavier, un tiroir ouvert y entre.
+//       clavier, un tiroir ouvert y entre. Depuis le 2026-10-05 (journal,
+//       entrees 377 et 379) : retoucher une carte cochee la laisse cochee,
+//       ses reglages deplies dans la carte ; sa case explicite
+//       ([data-activity-toggle]) la retire.
 //   [C] HEURES : une piste par activite planifiee, TOUTES les heures du jour
 //       rangees en trois menus (matin, apres-midi, soiree), chacune dans l etat
 //       du moteur : possible, SERREE (choisissable, la visite finira a la
@@ -247,15 +250,20 @@
 //       prend le premier toucher pour un survol des qu il devoile quelque
 //       chose). Chaque regle :hover de la feuille servie est sous
 //       @media (hover: hover) ; sur un telephone emule (hover: none), UN
-//       toucher coche, la photo prend le voile de la carte cochee et repart a
-//       0 une fois decochee (le survol ne reste plus colle) ; un doigt qui
+//       toucher coche, la photo prend le voile de la carte cochee, le garde
+//       quand la carte est retouchee (elle reste cochee depuis l entree 377
+//       du journal) et repart a 0 une fois decochee par sa case explicite (le
+//       survol ne reste plus colle) ; un doigt qui
 //       fait defiler sur une carte, au vrai geste, ne la coche pas et ne
 //       telecharge pas sa photo ; a la souris, le survol la devoile toujours.
 //   [T] LE TELEPHONE EN DEUX COLONNES (2026-09-24, la liste d une carte par
-//       rangee essayee le matin, jugee moche par Movsar) : a 390 px,
-//       deux cartes d activites par rangee ; sous 380 px une seule pour garder
-//       les trois cibles de compteur a 44 px, rien hors de la grille ; le tiroir
-//       prend la largeur de sa carte, sous elle ; « Ces horaires me vont » tient
+//       rangee essayee le matin, jugee moche par Movsar) : a 390, 360 et
+//       320 px, deux cartes d activites par rangee (journal, entree 377 :
+//       « 2 telephone, y compris a 320 px » ; jusqu au 2026-10-05, une seule
+//       sous 380 px), rien hors de la grille ; le tiroir prend la largeur de
+//       sa carte, sous elle, et ses trois cibles du compteur de joueurs (-,
+//       nombre, +) gardent 44 px, entieres et dans la carte (l exigence que
+//       portait la colonne unique) ; « Ces horaires me vont » tient
 //       sur une ligne dans son bouton, sans police sous 11,5 px ; l ecran des
 //       coordonnees s ouvre sur sa question (photo, fil, titre) puis la carte
 //       de la visite, puis les champs ; a 768 px, deux cartes par rangee ;
@@ -269,7 +277,8 @@
 //
 // CONTRE-PREUVES [S] ET [T] : survol (la regle du survol des cartes sort de
 // (hover: hover)), listetel (le telephone repasse a une carte par rangee des
-// 560 px), bouton (la
+// 560 px), listetroite (sous 380 px, la colonne unique d avant l entree 377
+// reprend le dessus), bouton (la
 // barre reprend les marges du bouton : il recoupe a 360 px), question (la
 // carte de la visite repasse avant le titre), barretablette (a 768 px,
 // « Retour » repasse au-dessus du bouton qui avance), barreetroite (a
@@ -402,7 +411,9 @@
 // plafond, la phrase et le numero du centre ne s affichent plus), relatif (le
 // jour propose ne dit plus « Aujourd hui »), sensmois (« mois suivant » glisse
 // a l envers), rejouemois (la reouverture rejoue le glissement du mois), coche
-// (cocher ne fait plus claquer la case), eveilreste (le bouton qui avance
+// (cocher ne fait plus claquer la case), retouche (retoucher une carte cochee
+// la decoche de nouveau), caseexplicite (la case d une carte cochee ne la
+// retire plus), eveilreste (le bouton qui avance
 // garde sa classe de reveil), eveilinactif (« Continuer » s eveille a chaque
 // choix), eveilgarde (« Garder » s eveille a chaque heure posee), onglets (les
 // fleches ne changent plus d onglet) : JS servi casse ; pastille (la pastille
@@ -737,6 +748,10 @@ const MUTATIONS = {
   modevol: ['state.dispoCle = cle;', 'state.dispoCle = cleDemande();'],
   plafond: ['var auMax = state.pax >= PAX_MAX;', 'var auMax = false;'],
   coche: ["if (on) rejouer(card, 'is-coche'); else card.classList.remove('is-coche');", 'void 0;'],
+  // 2026-10-06 (journal, entrees 377 et 379) : retouche (retoucher une carte
+  // cochee la decoche de nouveau), caseexplicite (sa case ne la retire plus).
+  retouche: ['    if (i >= 0 && !cocher) return;\n', ''],
+  caseexplicite: ["if (choix) { basculerActivite($('.fg-card', choix.closest('.fg-grid__item')), true); return; }", 'if (choix) return;'],
   eveilreste: ["btn._eveil = setTimeout(function () { btn.classList.remove('is-wake'); }, 600);", 'void 0;'],
   eveilinactif: ['if (bump && etaitInactif && !goHours.disabled) eveiller(goHours);', 'if (bump && !goHours.disabled) eveiller(goHours);'],
   eveilgarde: ['if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }', 'if (slot && reveilGarder) { eveiller(goContact); }'],
@@ -820,7 +835,10 @@ const MUTATIONS_CSS = {
   milieu: ['  transform: translate(-50%, -50%);\n  box-shadow: 0 24px 64px', '  transform: translate(-50%, 0);\n  box-shadow: 0 24px 64px'],
   pastille: ['.fg-tabs.is-for .fg-tabs__bar { transform: translateX(calc(100% + 4px)); }\n', ''],
   margefocus: ['.fg-card, .fg-pill, .fg-tab { scroll-margin: 8px; }\n', ''],
-  tiroirfocus: ['transform: translateY(-6px); visibility: hidden; ', 'transform: translateY(-6px); '],
+  // 2026-10-06 : le tiroir ferme se cache a DEUX endroits depuis f242370
+  // (.fg-card__opt et .fg-card__optin) ; n en retirer qu un laissait l autre
+  // le cacher, et la contre-preuve ne mordait plus. Elle retire les deux.
+  tiroirfocus: [['transform: translateY(-6px); visibility: hidden; ', 'transform: translateY(-6px); '], ['.fg-card__opt { display: grid; grid-template-rows: 0fr; visibility: hidden; pointer-events: none; ', '.fg-card__opt { display: grid; grid-template-rows: 0fr; pointer-events: none; ']],
   menufocus: ['.fg-period__inner { min-height: 0; overflow: hidden; visibility: hidden; ', '.fg-period__inner { min-height: 0; overflow: hidden; '],
   mailcoupe: ['min-height: 44px; max-width: 100%; padding: 0 4px; overflow-wrap: anywhere; ', 'min-height: 44px; padding: 0 4px; '],
   zoom: ['zoome sur le champ touche. */\n  font-size: 16px;', 'zoome sur le champ touche. */\n  font-size: 15px;'],
@@ -831,7 +849,11 @@ const MUTATIONS_CSS = {
   anneaustepper: ['.fg-stepper__btn:focus-visible { outline-offset: -4px; }\n', ''],
   alertebord: ['  z-index: 3;\n  margin: 12px var(--fg-gutter) 20px;\n', '  z-index: 3;\n  margin: 0 0 20px;\n'],
   survol: ['@media (hover: hover) {\n  .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }\n  .fg-card:hover .fg-card__photo { opacity: 1; }\n}\n', '.fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }\n.fg-card:hover .fg-card__photo { opacity: 1; }\n'],
-  listetel: ['@media (max-width: 359px) {\n  .fg-grid { grid-template-columns: 1fr; }\n}\n', '@media (max-width: 560px) {\n  .fg-grid { grid-template-columns: 1fr; }\n}\n'],
+  // 2026-10-06 : depuis l entree 377 du journal, la grille des activites du
+  // telephone est la regle :is(#gridAct,#smGridAct), qui l emporte sur
+  // .fg-grid ; l ancienne ancre (.fg-grid sous 359 px) ne changeait plus rien.
+  listetel: ['  :is(#gridAct,#smGridAct) { grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 10px; }\n', '  :is(#gridAct,#smGridAct) { grid-template-columns:1fr; gap:0 10px; }\n'],
+  listetroite: ['@media (max-width: 380px) { #gridAct { grid-template-columns: 1fr; } }\n', '@media (max-width: 380px) { #gridAct#gridAct { grid-template-columns: 1fr; } }\n'],
   bouton: ['  .fg-dock .fg-btn:not(.fg-btn--ghost) { padding: 0 14px; gap: 8px; letter-spacing: 0.04em; white-space: nowrap; }\n', ''],
   question: ['  .fg-scene[data-scene="contact"] .fg-recall { order: 3; }\n', ''],
   barretablette: ['  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }\n  .fg-dock .fg-bar__count { min-width: 0; }\n  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }\n  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }\n', ''],
@@ -908,9 +930,14 @@ function serveur() {
       const mutation = (feuille ? MUTATIONS_CSS : MUTATIONS)[CASSE];
       if (mutation) {
         const avant = fs.readFileSync(path.join(ROOT, 'assets', feuille ? 'fungalaxy-booking.css' : 'fungalaxy-booking.js'), 'utf8').replace(/\r\n/g, '\n');
-        if (avant.split(mutation[0]).length !== 2) { console.error(`fungalaxy-form-check: la mutation ${CASSE} ne trouve pas son ancre une seule fois (le code a change ?)`); process.exit(2); }
+        // Une mutation est une paire [ancre, remplacement], ou une liste de
+        // paires quand le defaut se garde a plusieurs endroits.
+        let mutated = avant;
+        for (const [a, b] of (Array.isArray(mutation[0]) ? mutation : [mutation])) {
+          if (mutated.split(a).length !== 2) { console.error(`fungalaxy-form-check: la mutation ${CASSE} ne trouve pas son ancre une seule fois (le code a change ?)`); process.exit(2); }
+          mutated = mutated.replace(a, b);
+        }
         res.writeHead(200, { 'Content-Type': `${feuille ? 'text/css' : 'text/javascript'}; charset=utf-8`, 'Cache-Control': 'no-store' });
-        const mutated = avant.replace(mutation[0], mutation[1]);
         res.end(process.env.PINLANE_FORM_BUILT === '1' && !feuille ? require('../tools/build-public').minifierJavascript(mutated,'assets/fungalaxy-booking.js',require('esbuild')) : mutated);
         return;
       }
@@ -2233,6 +2260,18 @@ async function main() {
     ok(carte('bowling').titre === 'Durée de piste' && carte('laser_game').titre === 'Parties', '[B] chaque tiroir dit ce qu on choisit (duree, parties)', `${carte('bowling').titre} / ${carte('laser_game').titre}`);
     ok(cartes.every((c) => c.tiroir === null || c.tiroir === 0), '[B] les tiroirs restent fermes tant que la carte n est pas cochee', cartes.map((c) => `${c.id}:${c.tiroir}`).join(' '));
     ok(await page.evaluate(() => document.querySelector('#goHours').disabled), '[B] sans selection, « Continuer » est inactif');
+    // RETOUCHER UNE CARTE COCHEE NE LA DECOCHE PLUS (mis a jour le 2026-10-06,
+    // journal Pinlane entrees 377 et 379, demande de Movsar des 2026-10-04/05) :
+    // une carte cochee deplie ses reglages DANS la carte, et la retoucher ne
+    // la retire plus ; on la retire par sa case explicite
+    // ([data-activity-toggle], la .fg-card-select de son .fg-grid__item).
+    // Jusqu ici ce gate decochait en retouchant la carte : le Fun Run et le
+    // minigolf restaient coches, cinq activites partaient au lieu de quatre,
+    // et tout [B] [C] [D] [E] rougissait en cascade.
+    const etatCarte = (id) => page.evaluate((i) => {
+      const li = document.querySelector(`#gridAct li[data-activity="${i}"]`);
+      return { carte: li.querySelector('.fg-card').getAttribute('aria-checked'), caseExplicite: li.querySelector('[data-activity-toggle]').getAttribute('aria-checked'), cochees: document.querySelectorAll('#gridAct .fg-card.is-on').length };
+    }, id);
     for (const id of ['fun_run', 'minigolf_blacklight']) {
       await page.click('#gridAct .fg-card[data-activity="' + id + '"]');
       await page.click('#gridAct li[data-activity="' + id + '"] [data-activity-info]');
@@ -2240,6 +2279,12 @@ async function main() {
       ok(info.includes(id === 'fun_run' ? '5 joueurs par session' : '12 trous'), '[B] le popup conserve la note précise saisie par le centre : ' + id, info);
       await page.keyboard.press('Escape');
       await page.click('#gridAct .fg-card[data-activity="' + id + '"]');
+      await dormir(150);
+      const retouchee = await etatCarte(id);
+      ok(retouchee.carte === 'true' && retouchee.caseExplicite === 'true' && retouchee.cochees === 1, '[B] retoucher une carte cochee la laisse cochee, ses reglages restent deplies (entrees 377 et 379) : ' + id, JSON.stringify(retouchee));
+      await page.click('#gridAct li[data-activity="' + id + '"] [data-activity-toggle]');
+      ok(await attendre(page, (i) => { const li = document.querySelector(`#gridAct li[data-activity="${i}"]`); return li.querySelector('.fg-card').getAttribute('aria-checked') === 'false' && li.querySelector('[data-activity-toggle]').getAttribute('aria-checked') === 'false' && !li.classList.contains('is-on') && document.querySelectorAll('#gridAct .fg-card.is-on').length === 0; }, 3000, id),
+        '[B] sa case explicite la retire (carte et case decochees, plus rien de choisi) : ' + id, JSON.stringify(await etatCarte(id)));
     }
     const hauteurAvant = await page.evaluate(() => Math.round(document.querySelector('#gridAct .fg-card[data-activity="bowling"]').getBoundingClientRect().height));
     for (const id of ['bowling', 'laser_game', 'minigolf_blacklight', 'arcade_time']) await page.click(`#gridAct .fg-card[data-activity="${id}"]`);
@@ -4412,6 +4457,14 @@ async function main() {
     ok(aSaPlace(bn) && bn.sy === 0 && bn.haut > bn.vh && bn.texte === '2 activités sélectionnées',
       '[N] telephone, activites, deux cartes cochees : la barre ne suit toujours pas (« Continuer », actif, attend a sa place), et son compteur dit le choix', JSON.stringify(bn));
     ok(await pn.evaluate(() => window.__qaEveil.hours === 1 && !document.querySelector('#goHours').classList.contains('is-wake')), '[N] « Continuer » s eveille une fois, au premier choix (pas au second), et rend sa classe (sinon il rejouerait a chaque retour sur l ecran)', await pn.evaluate(() => JSON.stringify(window.__qaEveil)));
+    // ROUGE VOULU, DEFAUT REEL DU PRODUIT (releve le 2026-10-06, laisse rouge) :
+    // depuis e6a2226 (journal, entree 377) la case d une carte d activite
+    // n est plus la .fg-card__box DANS la carte, que fg-tick fait claquer,
+    // mais un bouton .fg-card-select a cote, sans aucune animation. Movsar a
+    // demande de retrouver le visuel d avant, rien n a ete decide sur le
+    // claquement : il manque, les cartes de formule claquent encore. Le
+    // compteur ecoute #gridAct entier : une case explicite qui claquerait le
+    // remettrait au vert.
     ok(await pn.evaluate(() => window.__qaGeste.tick === 2 && window.__qaGeste.prix === 2 && !document.querySelector('#gridAct .is-coche, #gridAct .is-maj')), '[N] cocher deux cartes : chaque case claque une fois, chaque prix qui change roule, et au repos aucune classe de geste ne reste posee', await pn.evaluate(() => JSON.stringify(window.__qaGeste)));
     const reponseN1 = pn.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
     await pn.tap('#goHours');
@@ -4891,10 +4944,19 @@ async function main() {
     await dormir(700);
     const touche1 = await lireCarteS(idTouche);
     ok(touche1.coche === 'true' && touche1.opacite === '0.55', '[S] telephone : UN toucher coche la carte, et sa photo prend le voile de la carte cochee (0,55), jamais le plein du survol', JSON.stringify(Object.assign({ id: idTouche }, touche1)));
+    // LE TOUCHER SUIVANT NE DECOCHE PLUS (mis a jour le 2026-10-06, journal
+    // Pinlane entrees 377 et 379) : retouchee, une carte cochee garde ses
+    // reglages deplies ; c est sa case explicite qui la retire. Le survol ne
+    // doit toujours pas coller : retouchee deux fois, sa photo garde le voile
+    // de la carte cochee, puis, decochee par sa case, elle repart a 0.
     await pS.tap(`#gridAct .fg-card[data-activity="${idTouche}"]`);
     await dormir(700);
     const touche2 = await lireCarteS(idTouche);
-    ok(touche2.coche === 'false' && touche2.opacite === '0', '[S] telephone : decochee au toucher suivant, la photo repart a 0 (le survol ne reste plus colle a la carte touchee)', JSON.stringify(touche2));
+    ok(touche2.coche === 'true' && touche2.opacite === '0.55', '[S] telephone : retouchee, la carte reste cochee (entrees 377 et 379) et sa photo garde le voile 0,55, jamais le plein d un survol colle', JSON.stringify(touche2));
+    await pS.tap(`#gridAct li[data-activity="${idTouche}"] [data-activity-toggle]`);
+    await dormir(700);
+    const touche3 = await lireCarteS(idTouche);
+    ok(touche3.coche === 'false' && touche3.opacite === '0', '[S] telephone : decochee par sa case explicite, la photo repart a 0 (le survol ne reste plus colle a la carte touchee)', JSON.stringify(touche3));
     // Un doigt se pose sur une carte et fait defiler, au vrai geste.
     await pS.locator(`#gridAct .fg-card[data-activity="${idEffleure}"]`).scrollIntoViewIfNeeded();
     const boiteS = await pS.locator(`#gridAct .fg-card[data-activity="${idEffleure}"]`).boundingBox();
@@ -4953,15 +5015,20 @@ async function main() {
           return { id: c.dataset.activity, gauche: Math.round(r.left - grille.left), droite: Math.round(grille.right - r.right), haut: Math.round(r.top), largeur: Math.round(r.width) };
         });
       });
-      // Deux cartes par rangee des 380 px, une seule en dessous : trois
-      // cibles de compteur de 44 px doivent rester dans chaque carte.
+      // DEUX CARTES PAR RANGEE SUR TOUT TELEPHONE, 320 px COMPRIS (mis a jour
+      // le 2026-10-06, journal Pinlane entree 377 : « 4 colonnes ordinateur,
+      // 2 telephone, y compris sur mesure a 320 px », livre le 2026-10-05).
+      // Ce gate attendait une seule carte par rangee sous 380 px, pour que
+      // les trois cibles du compteur de 44 px tiennent dans la carte : la
+      // grille a change, l exigence des 44 px reste, verifiee a part plus bas
+      // sur les tiroirs ouverts.
       const colonnesT = new Set(grilleT.map((c) => c.gauche)).size;
-      const attenduesT = lT >= 380 ? 2 : 1;
+      const attenduesT = 2;
       const rangeesT = new Map();
       grilleT.forEach((c) => { rangeesT.set(c.haut, (rangeesT.get(c.haut) || 0) + 1); });
       const fautesT = grilleT.filter((c) => c.gauche < 0 || c.droite < 0);
       ok(grilleT.length >= 6 && colonnesT === attenduesT && fautesT.length === 0 && [...rangeesT.values()].every((n) => n <= attenduesT),
-        `[T] ${lT} px : ${attenduesT === 2 ? 'deux cartes d activites par rangee' : 'une carte par rangee (sous 380 px, les cibles restent a 44 px)'}, rien hors de la grille`,
+        `[T] ${lT} px : deux cartes d activites par rangee (entree 377), rien hors de la grille`,
         JSON.stringify({ cartes: grilleT.length, colonnes: colonnesT, rangees: [...rangeesT.values()], fautes: fautesT.slice(0, 3), exemple: grilleT.slice(0, 2) }));
       await pT.tap('#gridAct .fg-card[data-activity="bowling"]');
       await pT.tap('#gridAct .fg-card[data-activity="laser_game"]');
@@ -4976,6 +5043,36 @@ async function main() {
       }));
       ok(tiroirsT.every((t) => Math.abs(t.largeur - t.carte) <= 1 && t.colle >= -1),
         `[T] ${lT} px : le tiroir prend la largeur de sa carte, sous elle`, JSON.stringify(tiroirsT));
+      // L EXIGENCE QUE PORTAIT LA COLONNE UNIQUE (2026-10-06) : dans chaque
+      // tiroir ouvert, le « - », le nombre et le « + » des joueurs font 44 px
+      // ET se voient en entier. Mesure sur ce qui reste une fois coupe par
+      // chaque ancetre qui rogne (overflow), dans sa boite de remplissage :
+      // un bouton de 44 px dont le cadre masque la moitie n est pas une cible
+      // de 44 px.
+      // ROUGE VOULU, DEFAUT REEL DU PRODUIT (releve le 2026-10-06, vu en prod
+      // sur app.pinlane.be/fungalaxy/libramont) : a 320 px le « + » n a que
+      // 24 px visibles, coupe en deux par sa carte ; a 360 px il en perd 5.
+      // Deux demandes se contredisent : deux colonnes jusqu a 320 px (entree
+      // 377) et trois cibles de 44 px dans une demi-largeur. L arbitrage
+      // revient a Movsar ; ne pas faire passer ce rouge en baissant les 44 px.
+      const ciblesT = await pT.evaluate(() => ['bowling', 'laser_game'].map((id) => {
+        const li = document.querySelector(`#gridAct li[data-activity="${id}"]`);
+        const carte = li.getBoundingClientRect();
+        const cibles = Array.from(li.querySelectorAll('[data-compteur="participants"] > button, [data-compteur="participants"] > input')).map((e) => {
+          const r = e.getBoundingClientRect();
+          let g = r.left; let d = r.right; let h = r.top; let b = r.bottom;
+          for (let a = e.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+            const cs = getComputedStyle(a);
+            const ra = a.getBoundingClientRect();
+            if (cs.overflowX !== 'visible') { g = Math.max(g, ra.left + a.clientLeft); d = Math.min(d, ra.left + a.clientLeft + a.clientWidth); }
+            if (cs.overflowY !== 'visible') { h = Math.max(h, ra.top + a.clientTop); b = Math.min(b, ra.top + a.clientTop + a.clientHeight); }
+          }
+          return { cible: e.dataset.pas === '1' ? '+' : e.dataset.pas === '-1' ? '-' : 'nombre', vue: [Math.round(Math.max(0, d - g)), Math.round(Math.max(0, b - h))], boite: [Math.round(r.width), Math.round(r.height)], dansLaCarte: r.left >= carte.left - 1 && r.right <= carte.right + 1 };
+        });
+        return { id, cibles };
+      }));
+      ok(ciblesT.every((t) => t.cibles.length === 3 && t.cibles.every((c) => c.vue[0] >= 44 && c.vue[1] >= 44 && c.dansLaCarte)),
+        `[T] ${lT} px : dans chaque tiroir ouvert, les trois cibles du compteur de joueurs (-, nombre, +) gardent 44 px, entieres et dans leur carte`, JSON.stringify(ciblesT));
       await pT.tap('#goHours');
       ok(await attendre(pT, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering') && !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('#goContact').disabled, 25000), `MONTAGE [T] ${lT} px : ecran des heures, bouton actif`);
       const boutonT = await pT.evaluate(() => {

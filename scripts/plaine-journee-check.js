@@ -128,9 +128,11 @@ async function jusquAuxHeures(page, pax, ids) {
     const item = document.querySelector('#gridAct .fg-grid__item[data-activity="playground"]')
       || document.querySelector('#gridAct .fg-card[data-activity="playground"]').closest('.fg-grid__item');
     const brief = item && item.querySelector('.fg-card__info .fg-card__rot');
-    if (!brief) return { texte: '', visible: false, entier: false };
+    const bouton = item && item.querySelector('[data-activity-info]');
+    const info = bouton ? String(bouton.dataset.infoText || '') : '';
+    if (!brief) return { texte: '', visible: false, entier: false, info };
     const style = getComputedStyle(brief), rect = brief.getBoundingClientRect(), parent = item.getBoundingClientRect();
-    return { texte: blancsDom(brief), visible: style.visibility === 'visible' && style.display !== 'none' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0,
+    return { info, texte: blancsDom(brief), visible: style.visibility === 'visible' && style.display !== 'none' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0,
       entier: rect.left >= parent.left - 1 && rect.right <= parent.right + 1 && rect.top >= parent.top - 1 && rect.bottom <= parent.bottom + 1 && brief.scrollWidth <= brief.clientWidth + 1 && brief.scrollHeight <= brief.clientHeight + 1 };
   });
   const briefAvant = await lireBriefPlaine();
@@ -247,8 +249,12 @@ async function main() {
     const page = await ctx.newPage();
     page.on('pageerror', (e) => erreurs.push(String((e && e.message) || e)));
     const b = await jusquAuxHeures(page, 2, ['playground']);
-    ok(/4 à 12 ans$/.test(b.carte) && [b.briefAvant, b.briefApres].every(brief => brief.visible && brief.entier && /accès à la journée/i.test(brief.texte)),
-      '[B] la carte dit l entree a la journee dans son bref visible avant et apres selection, et l age du centre', JSON.stringify({ carte: b.carte, avant: b.briefAvant, apres: b.briefApres }));
+    // Non cochee, la carte ne montre plus son bref (2026-10-06, journal
+    // Pinlane entree 387, demande de Movsar : le detail est dans le « i ») ;
+    // cochee, le bref dit l entree a la journee, visible et entier.
+    ok(/4 à 12 ans$/.test(b.carte) && !b.briefAvant.visible && /journée/i.test(b.briefAvant.info)
+      && b.briefApres.visible && b.briefApres.entier && /accès à la journée/i.test(b.briefApres.texte),
+      '[B] la carte dit l entree a la journee : par son « i » avant la selection (bref masque), par son bref visible apres, et l age du centre', JSON.stringify({ carte: b.carte, avant: b.briefAvant, apres: b.briefApres }));
     ok(b.carteBrute.indexOf('4\u00a0à\u00a012\u00a0ans') >= 0, '[B] l age ne se coupe pas en fin de ligne (espaces insecables)', JSON.stringify(b.carteBrute.slice(-14)));
     ok(b.vu, '[B] le bloc « Votre visite » est rendu pour la plaine seule');
     const vb = await lireVisite(page) || { texte: '', entete: '', etapes: [], prix: [], barre: '' };

@@ -672,6 +672,9 @@ function plusJours(s, n) { const d = deIso(s); d.setUTCDate(d.getUTCDate() + n);
 function jourLong(s) { const d = deIso(s); return cap(`${JOURS[d.getUTCDay()]} ${d.getUTCDate()} ${MOIS[d.getUTCMonth()]}`); }
 // Le titre d un jour du calendrier (meme regle que infoTexte cote client).
 function titreJour(j) {
+  // Apres la fermeture, le serveur marque le jour meme « over » et la page le
+  // dit fini : sans ce cas, [A2] rougissait chaque soir sur le jour meme.
+  if (j.over === true) return 'Aujourd’hui : fermé, la journée est finie';
   const morceaux = [jourLong(j.date), j.open ? `ouvert ${horaire(j.schedule)}` : String(j.closedLabel || 'Fermé').toLowerCase()];
   if (j.holiday) morceaux.push(j.holiday.type === 'public' ? `férié : ${j.holiday.label}` : j.holiday.label);
   if (Array.isArray(j.closedWindows) && j.closedWindows.length) morceaux.push(`fermé ${j.closedWindows.map((c) => `${c.start}-${c.end}`).join(', ')}`);

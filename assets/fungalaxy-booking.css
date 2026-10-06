@@ -1092,6 +1092,9 @@ html.fg-pilote .fg { overflow: visible; }
    Le prix qui change sur un geste monte a sa place. */
 @media (prefers-reduced-motion: no-preference) {
   .fg-card.is-coche .fg-card__box { animation: fg-tick 0.4s var(--fg-ease-out); }
+  /* Les cartes d activites montrent leur case a cote de la carte (.fg-card-select),
+     pas dedans : c est elle qui claque. */
+  .fg-grid__item:has(> .fg-card.is-coche) > .fg-card-select svg { animation: fg-tick 0.4s var(--fg-ease-out); }
   .fg-card.is-coche .fg-card__icon { animation: fg-hop 0.4s var(--fg-ease-out); }
   .fg-card__price.is-maj { animation: fg-maj 0.32s var(--fg-ease-out); }
 }
@@ -1269,6 +1272,16 @@ html.fg-pilote .fg { overflow: visible; }
   .fg-count__label { display: flex; align-items: baseline; gap: 6px; width: 100%; }
   .fg-count__label small { margin-top: 0; }
   .fg-count .fg-kids__stepper { width: 100%; grid-template-columns: 44px minmax(44px, 1fr) 44px; }
+}
+/* Sous 134 px de tiroir (telephones de 360 px et moins, ou les cartes restent
+   en deux colonnes), trois cibles de 44 px ne tiennent plus sur une ligne : le
+   « + » etait coupe par la carte. Le nombre passe au-dessus, « - » et « + »
+   dessous, chacun garde ses 44 px. */
+@container (max-width: 133.98px) {
+  .fg-count .fg-kids__stepper { grid-template-columns: 1fr 1fr; grid-template-rows: 44px 44px; height: auto; }
+  .fg-count .fg-kids__stepper > .fg-kids__n { grid-row: 1; grid-column: 1 / -1; border-bottom: 1px solid var(--fg-line-2); }
+  .fg-count .fg-kids__stepper > .fg-stepper__btn:first-child { grid-row: 2; grid-column: 1; }
+  .fg-count .fg-kids__stepper > .fg-stepper__btn:last-child { grid-row: 2; grid-column: 2; border-left: 0; }
 }
 @media (max-width: 380px) { #gridAct { grid-template-columns: 1fr; } }
 /* Deux reglages dans un tiroir (billards : tables, puis duree) : le second

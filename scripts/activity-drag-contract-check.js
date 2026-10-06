@@ -7,7 +7,9 @@ const replace=(file,exports)=>{const id=require.resolve(path.join(root,file));re
 const version='2026-10-05T08:00:00.000Z';
 const realDatabase=require(path.join(root,'lib/database.js')),realValidate=realDatabase.validateReservationResources;
 const conflict=current=>realDatabase.reservationModifieeEntreTemps(clone(current));
-const db={validateReservationResources:realValidate,getPool:()=>null,getReservationById:async()=>clone(stored),readStaffState:async()=>({reservations:[clone(stored),...clone(other)],laneStatuses:{},blocks:[]}),lireVersionAttendue:v=>v??null,memeVersion:(a,b)=>a===b,reservationModifieeEntreTemps:conflict,
+// Depuis le 2026-10-07 le handler ne revalide que le bloc deplace (validateActivityMoveResources,
+// vrai), plus tout le dossier avec le validateur de creation : le double doit l exposer.
+const db={validateReservationResources:realValidate,validateActivityMoveResources:realDatabase.validateActivityMoveResources,getPool:()=>null,getReservationById:async()=>clone(stored),readStaffState:async()=>({reservations:[clone(stored),...clone(other)],laneStatuses:{},blocks:[]}),lireVersionAttendue:v=>v??null,memeVersion:(a,b)=>a===b,reservationModifieeEntreTemps:conflict,
  updateReservation:async patch=>{if(patch.baseUpdatedAt&&patch.baseUpdatedAt!==stored.updatedAt)throw conflict(stored);const candidate=patch.activityMove?require(path.join(root,'lib/reservation-activity-move')).buildActivityMove(stored,patch.activityMove):{...stored,...clone(patch)};writes++;stored={...candidate,updatedAt:'2026-10-05T08:01:00.000Z'};delete stored.activityMove;return clone(stored);},createOpsEvent:async()=>{},cancelReservationCommunications:async()=>[],cancelReservationOpsJobs:async()=>[]};
 replace('lib/database.js',db);
 const session={centerId:'libramont',authorizedCenterId:'libramont',member:{id:'qa',name:'QA'},role:{locked:true},permissions:['reservations.edit']};

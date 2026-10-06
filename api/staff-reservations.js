@@ -522,11 +522,11 @@ module.exports = async (req, res) => {
           throw reservationModifieeEntreTemps(current);
         }
         const { buildActivityMove } = require('../lib/reservation-activity-move');
-        const { readStaffState, validateReservationResources } = require('../lib/database');
+        const { readStaffState, validateActivityMoveResources } = require('../lib/database');
         const candidate = buildActivityMove(current, body.activityMove);
         const snapshot = await readStaffState(current.date, requestedCenterId, { avecBlocages: true });
         try {
-          validateReservationResources(candidate, snapshot.reservations.filter(row => Number(row.id) !== Number(current.id)), snapshot.laneStatuses, snapshot.blocks || [], current.date);
+          validateActivityMoveResources(candidate, body.activityMove, snapshot.reservations.filter(row => Number(row.id) !== Number(current.id)), snapshot.laneStatuses, snapshot.blocks || [], current.date);
         } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
         const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, activityMove: body.activityMove });
         const automation = await refreshReservationAutomation(current, reservation, { reason: 'activity_moved' });

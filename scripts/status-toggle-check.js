@@ -25,13 +25,23 @@
 // DEPUIS LE 2026-10-01 (cartes de groupe a la caisse), la carte n offre que le
 // geste du moment : « Arrivé » tant que le groupe n est pas la, puis
 // « Carte » / « Espèces » pour encaisser (le moyen part avec le statut).
-// « Confirmé » (revenir en arriere) vit dans la fiche. Les regles mesurees
-// sont les memes : un clic, un redessin, aucun message, bascule immediate.
+// « Confirmé » (revenir en arriere) vit dans la fiche.
+//
+// DEPUIS LE 2026-10-04 (journal Pinlane 376 : « cliquer Arrive ne produit
+// rien »), le statut n est plus peint avant le serveur : le bouton passe a
+// « Enregistrement… », desactive, et la carte bascule a la REPONSE, sur la
+// fiche que le serveur renvoie. Les points 1 et 2 ci-dessus deviennent :
+//   1. un clic = UN SEUL redessin (a la reponse), zero message de succes
+//   2. pendant l attente, rien n est peint, le bouton dit qu il enregistre et
+//      ne se reclique pas (un seul PATCH)
+// Le faux serveur renvoie la fiche ENTIERE, comme `returning *` en prod : il
+// renvoyait les seuls champs envoyes, et la console plantait sur une fiche sans
+// nom (localeCompare), ce que la prod ne fait jamais.
 //
 // Usage : node scripts/status-toggle-check.js
-// Contre-epreuve sur le vrai code : STATUS_TOGGLE_CASSE=annulation sert une
-// console dont l echec ne remet plus l etat d avant ; le point 5 doit ROUGIR
-// (prouve le 2026-09-29 : rouge 6 tours sur 6, vert 8 sur 8 sans la casse).
+// Contre-epreuves sur le vrai code servi (chacune doit faire ROUGIR le gate) :
+//   STATUS_TOGGLE_CASSE=message  remet un message de succes apres la reponse
+//   STATUS_TOGGLE_CASSE=double   redessine une deuxieme fois apres la reponse
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -51,20 +61,18 @@ function serveStatic() {
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
     fs.readFile(filePath, (err, content) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }
-      if (process.env.STATUS_TOGGLE_CASSE === 'annulation' && url.pathname === '/assets/app-main.js') {
+      const casse = process.env.STATUS_TOGGLE_CASSE;
+      if (casse && url.pathname === '/assets/app-main.js') {
         const src = content.toString('utf8');
-        // L annulation DU STATUT (la meme ligne existe ailleurs) : la derniere
-        // avant le message « Impossible de mettre a jour le statut ».
-        const ligne = 'applyOptimisticReservation(error.reservation || current, { preserveEditState: true });';
-        const message = "toast(error.message || 'Impossible de mettre à jour le statut.');";
-        const iMessage = src.indexOf(message);
-        const iLigne = iMessage >= 0 ? src.lastIndexOf(ligne, iMessage) : -1;
-        const entre = iLigne >= 0 ? src.slice(iLigne + ligne.length, iMessage).replace(/\s+/g, ' ').trim() : '';
-        if (src.split(message).length !== 2 || iLigne < 0 || entre !== 'clearReservationMutation(id);') {
-          console.error('status-toggle-check : la casse « annulation » ne trouve pas son ancre (le code a change ?)');
+        // L ancre : la ligne qui suit l application de la reponse de STATUT,
+        // unique dans le fichier (sinon on casserait autre chose que le statut).
+        const ancre = "markReservationMutation(id, payload.reservation, ['status', 'paymentMethod']);";
+        const ajout = { message: " toast('Statut enregistré.');", double: ' renderStaffData();' }[casse];
+        if (!ajout || src.split(ancre).length !== 2) {
+          console.error(`status-toggle-check : la casse « ${casse} » ne trouve pas son ancre (le code a change ?)`);
           process.exit(2);
         }
-        content = Buffer.from(src.slice(0, iLigne) + 'void 0;' + src.slice(iLigne + ligne.length), 'utf8');
+        content = Buffer.from(src.replace(ancre, ancre + ajout), 'utf8');
       }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
       res.end(content);
@@ -147,9 +155,16 @@ async function installStatusPatchMock(page) {
         if (cfg.mode === 'fail') {
           return new Response(JSON.stringify({ ok: false, error: 'Serveur indisponible.' }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } });
         }
-        const reservation = { ...body, updatedAt: new Date().toISOString() };
+        // La fiche entiere, comme `returning *` : celle que la console connait,
+        // avec ce que le PATCH change. Jamais le seul corps de la requete.
+        // `state` est une liaison globale de app-main.js, pas une propriete de window.
+        // eslint-disable-next-line no-undef
+        const liste = typeof state !== 'undefined' && Array.isArray(state.reservations) ? state.reservations : [];
+        const connue = liste.find((r) => String(r.id) === String(body.id)) || {};
+        const { baseUpdatedAt, ...change } = body;
+        const reservation = { ...connue, ...change, updatedAt: new Date().toISOString() };
         // Contre-epreuve : l'echo change une valeur qui SE DESSINE (l'effectif).
-        if (cfg.mode === 'echo-changed') reservation.pax = (Number(body.pax) || 0) + 3;
+        if (cfg.mode === 'echo-changed') reservation.pax = (Number(connue.pax) || 0) + 3;
         if (reservation.id != null) {
           cfg.persistes[reservation.id] = Object.fromEntries(Object.entries({ status: reservation.status, paymentMethod: reservation.paymentMethod, pax: reservation.pax, updatedAt: reservation.updatedAt }).filter(([, v]) => v !== undefined));
         }
@@ -269,24 +284,29 @@ async function choisirLigne(page, statutCible) {
   }, { cible: statutCible, libelle: BOUTON[statutCible] });
 }
 
+// Ce que la carte DIT de son etat : arrive, elle propose d encaisser ; payee,
+// son prix porte « Payé ». Et le statut que la console tient pour vrai.
+async function lireCarte(page, id, statut) {
+  return page.evaluate(({ resId, cible }) => {
+    const row = document.querySelector(`#resList .res-row[onclick="openPos(${resId})"]`);
+    const r = state.reservations.find((x) => Number(x.id) === resId);
+    const ditLEtat = !!row && (cible === 'paid'
+      ? !!row.querySelector('.gc-price .is-paid')
+      : [...row.querySelectorAll('.gc-actions button')].some((b) => b.textContent.trim() === 'Carte'));
+    const enCours = !!row && [...row.querySelectorAll('.gc-actions button')].some((b) => b.disabled && b.getAttribute('aria-busy') === 'true' && /Enregistrement/.test(b.textContent));
+    return { statut: r ? r.status : null, ditLEtat, enCours, trouvee: !!row };
+  }, { resId: id, cible: statut });
+}
+
 // Clique le bouton d'etat DE CETTE LIGNE-LA, pour de vrai (souris, pas d'appel
-// de fonction), et rend l'etat mesure juste apres le clic - avant que l'echo
-// serveur ait pu revenir. La ligne change de section au re-rendu : on la
-// retrouve par son identifiant, jamais par sa position.
+// de fonction), et rend l'etat mesure juste apres le clic - l'echo serveur est
+// retenu. La ligne change de section au re-rendu : on la retrouve par son
+// identifiant, jamais par sa position.
 async function cliqueEtat(page, id, libelle, statut) {
   const bouton = page.locator(`#resList .res-row[onclick="openPos(${id})"] .gc-actions button`, { hasText: libelle }).first();
   await bouton.click();
   await page.waitForTimeout(60);
-  return page.evaluate(({ resId, cible }) => {
-    const row = document.querySelector(`#resList .res-row[onclick="openPos(${resId})"]`);
-    const r = state.reservations.find((x) => Number(x.id) === resId);
-    // La carte DIT le nouvel etat : arrive, elle propose d encaisser ; payee,
-    // son prix porte « Payé ».
-    const ditLEtat = !!row && (cible === 'paid'
-      ? !!row.querySelector('.gc-price .is-paid')
-      : [...row.querySelectorAll('.gc-actions button')].some((b) => b.textContent.trim() === 'Carte'));
-    return { actifImmediat: Boolean(r && r.status === cible && ditLEtat), trouvee: !!row };
-  }, { resId: id, cible: statut });
+  return lireCarte(page, id, statut);
 }
 
 async function main() {
@@ -294,7 +314,7 @@ async function main() {
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   const errs = [];
-  page.on('console', (msg) => { if (msg.type() === 'error') errs.push('CONSOLE: ' + msg.text()); });
+  page.on('console', (msg) => { if (msg.type() === 'error') errs.push('CONSOLE: ' + msg.text() + (msg.location()?.url ? ` <${msg.location().url}>` : '')); });
   try {
     // La page vit le jour joue, a 13:00 : des groupes a venir (Arrivé), des
     // groupes la (Carte / Espèces). Sur une date passee, la carte n offre plus
@@ -318,16 +338,24 @@ async function main() {
       await gelerReleves(page);
       await resetCounters(page);
       await retenirEcho(page);
-      const immediat = await cliqueEtat(page, ligne.id, vrai, statut);
-      ok(immediat.actifImmediat, `« ${vrai} » : la bascule est immediate (dossier ${ligne.id}, « ${ligne.statutAvant} » avant), avant la reponse serveur`);
+      const appelsAvant = await page.evaluate(() => window.__QA_PATCH__.calls);
+      const pendantCarte = await cliqueEtat(page, ligne.id, vrai, statut);
+      ok(pendantCarte.enCours && pendantCarte.statut === ligne.statutAvant && !pendantCarte.ditLEtat,
+        `« ${vrai} » : en attente du serveur, le bouton dit « Enregistrement… » et rien n est peint (dossier ${ligne.id}, « ${pendantCarte.statut} »)`);
       const pendant = await counters(page);
-      ok(pendant.domWrites === 1, `« ${vrai} » : 1 redessin au clic (mesure ${pendant.domWrites})`);
+      ok(pendant.domWrites === 0, `« ${vrai} » : aucun redessin avant la reponse (mesure ${pendant.domWrites})`);
+      // Le bouton est desactive : un second clic ne part pas.
+      await page.locator(`#resList .res-row[onclick="openPos(${ligne.id})"] .gc-actions button[aria-busy="true"]`).first().click({ force: true }).catch(() => {});
       // L echo revient, et la page l a traite.
       await libererEcho(page);
+      const apresCarte = await lireCarte(page, ligne.id, statut);
+      ok(apresCarte.statut === statut && apresCarte.ditLEtat, `« ${vrai} » : a la reponse, la carte bascule (« ${apresCarte.statut} »)`);
       const apres = await counters(page);
-      ok(apres.domWrites === 1, `« ${vrai} » : TOUJOURS 1 redessin apres l'echo serveur (mesure ${apres.domWrites})`);
+      ok(apres.domWrites === 1, `« ${vrai} » : 1 seul redessin pour le clic (mesure ${apres.domWrites})`);
       ok(apres.renders === 1, `« ${vrai} » : renderStaffData appele une seule fois (mesure ${apres.renders})`);
       ok(apres.toasts === 0, `« ${vrai} » : aucun message de succes (mesure ${apres.toasts} : ${apres.toastTexts.join(' | ') || 'aucun'})`);
+      const appelsApres = await page.evaluate(() => window.__QA_PATCH__.calls);
+      ok(appelsApres - appelsAvant === 1, `« ${vrai} » : un seul PATCH malgre le second clic (mesure ${appelsApres - appelsAvant})`);
       await degelerReleves(page);
     }
 
@@ -341,25 +369,24 @@ async function main() {
     const appels = await page.evaluate(() => window.__QA_PATCH__.calls);
     ok(appels >= 3, `le PATCH a bien ete emis a chaque clic (${appels} appels)`);
 
-    console.log("\n[3] CONTRE-EPREUVE : UN ECHO QUI CHANGE UNE VALEUR VISIBLE REDESSINE, LUI");
+    console.log("\n[3] LA REPONSE DU SERVEUR FAIT FOI : CE QU'ELLE CHANGE SE VOIT, EN UN SEUL REDESSIN");
     await page.evaluate(() => { window.__QA_PATCH__.mode = 'echo-changed'; });
     const ligne3 = await choisirLigne(page, 'arrived');
-    ok(!!ligne3, 'une ligne a basculer existe pour la contre-epreuve');
-    ok(await attendreCalme(page), 'la liste est au repos avant le clic de la contre-epreuve');
+    ok(!!ligne3, 'une ligne a basculer existe');
+    ok(await attendreCalme(page), 'la liste est au repos avant le clic');
     await gelerReleves(page);
     await resetCounters(page);
     const paxAvant = await page.evaluate((id) => Number(state.reservations.find((r) => Number(r.id) === id).pax), ligne3.id);
     await retenirEcho(page);
     await cliqueEtat(page, ligne3.id, 'Arrivé', 'arrived');
-    const pendant2 = await counters(page);
-    ok(pendant2.domWrites === 1, `avant l'echo : 1 redessin (mesure ${pendant2.domWrites})`);
     await libererEcho(page);
     const apres2 = await counters(page);
-    ok(apres2.domWrites === 2, `apres un echo qui change l'effectif : 2 redessins (mesure ${apres2.domWrites}) - la garde n'est donc pas un « ne rien redessiner jamais »`);
-    ok(paxAvant > 0, `l'effectif de depart etait bien lu (${paxAvant})`);
+    const paxApres = await page.evaluate((id) => Number(state.reservations.find((r) => Number(r.id) === id).pax), ligne3.id);
+    ok(paxAvant > 0 && paxApres === paxAvant + 3, `l effectif renvoye par le serveur remplace celui de l ecran (${paxAvant} -> ${paxApres})`);
+    ok(apres2.domWrites === 1, `et il ne coute qu un redessin (mesure ${apres2.domWrites})`);
     await degelerReleves(page);
 
-    console.log('\n[4] ECHEC SERVEUR : L\'ETAT REVIENT EN ARRIERE, AVEC UN MESSAGE');
+    console.log('\n[4] ECHEC SERVEUR : L\'ETAT RESTE CELUI D AVANT, AVEC UN MESSAGE');
     await page.evaluate(() => { window.__QA_PATCH__.mode = 'fail'; });
     const cible = await page.evaluate(() => {
       const row = document.querySelector('#resList .res-row');

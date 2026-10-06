@@ -175,6 +175,17 @@ async function installMock(page) {
       const u = new URL(raw, window.location.origin);
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
       if (u.pathname === '/api/staff-state') { const d = u.searchParams.get('date') || new Date().toISOString().slice(0, 10); return J({ ok: true, revision: `qa-${d}`, reservations: build(d), laneStatuses: laneStatuses(), centerId: 'libramont' }); }
+      // Les notes client internes (API du 2026-10-05, journal Pinlane 378) : la
+      // console les precharge pour chaque carte. Absente d ici, elle repondait
+      // 404 et tous les gates qui prennent ce mock rougissaient sur « aucune
+      // erreur console ». Meme forme que lib/customer-notes.js : chaque dossier
+      // a un client, aucun n a encore de note.
+      if (u.pathname === '/api/staff-customer-notes' && String(init.method || 'GET').toUpperCase() === 'GET') {
+        const sansNote = (id) => ({ eligible: true, clientKey: `p:qa${id}`, note: null });
+        const lot = u.searchParams.get('reservationIds');
+        if (lot !== null) return J({ ok: true, notesByReservationId: Object.fromEntries(lot.split(',').filter(Boolean).map((id) => [String(Number(id)), sansNote(Number(id))])) });
+        return J({ ok: true, ...sansNote(Number(u.searchParams.get('reservationId'))) });
+      }
       if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: new Date().toISOString().slice(0, 10), durationOptions: [], formules: [], center: null });
       if (u.pathname === '/api/ops') {
         const action = u.searchParams.get('action');

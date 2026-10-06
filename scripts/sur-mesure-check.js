@@ -724,7 +724,9 @@ async function parcours(browser, mock, { largeur = 1440, hauteur = 900 } = {}) {
       const info = await page.locator('.fg-info-text').textContent();
       r.cartes[id].cap = info; r.cartes[id].note = info;
       await page.keyboard.press('Escape');
-      await page.click('#smGridAct .fg-card[data-sm="' + id + '"]');
+      // Depuis le 2026-10-05 (journaux 377 et 379), toucher une carte cochee ouvre
+      // ses reglages ; on la retire par sa case, comme le visiteur.
+      await page.click('#smGridAct [data-sm-activity="' + id + '"] [data-activity-toggle]');
     }
     r.continuerAvant = await page.evaluate(() => document.getElementById('smGoContact').disabled);
     await page.click('#smGridAct .fg-card[data-sm="bowling"]');

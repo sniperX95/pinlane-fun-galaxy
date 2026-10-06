@@ -29,7 +29,7 @@ async function finish(page, expected) {
   const availability = await (await response).json();
   await page.waitForFunction(() => !document.querySelector('#goContact').disabled);
   const timeline=await page.locator('.fg-scene[data-scene="heures"]').textContent();
-  check(!/cadeaux inclus|sans cadeaux|crédits\/jeu|Durée variable/.test(timeline),'timeline keeps arcade choice compact and leaves access details in information popup');
+  check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable/.test(timeline),'timeline keeps arcade choice compact and leaves access details in information popup');
   const item = availability.program.items.find(i => i.activityId === 'arcade_time');
   check(!item.arcadeOffer.description || !timeline.includes(item.arcadeOffer.description),'timeline omits the centre long arcade description');
   check(item.price === expected.price && item.participants === 3 && item.cards === expected.cards, 'server quote uses own players and independent cards');
@@ -41,7 +41,7 @@ async function finish(page, expected) {
   await page.waitForSelector('.fg-scene[data-scene="recap"].is-active');
   const recap = await page.locator('#recap').textContent();
   check(recap.includes(`${expected.cards} cartes`) && recap.includes('3 joueurs'), 'recap says both card quantity and player subset');
-  check(!/cadeaux inclus|sans cadeaux|crédits\/jeu|Durée variable/.test(recap),'recap does not repeat detailed arcade explanations');
+  check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable/.test(recap),'recap does not repeat detailed arcade explanations');
   check(!item.arcadeOffer.description || !recap.includes(item.arcadeOffer.description),'price recap omits the centre long arcade description');
   if (expected.mode === 'credit') check(!/30 min|30 minutes/.test(recap) && /bonus/.test(recap) && !/cadeaux inclus|crédits\/jeu|Durée variable/.test(recap), 'credit recap keeps credits and bonus without detailed access explanations');
   await page.locator('#confirmBtn').evaluate(b => b.click());
@@ -51,7 +51,7 @@ async function finish(page, expected) {
   check(post.quotedPrice === expected.price, 'POST guards exactly displayed total');
   const receipt = await page.locator('#finBody').textContent();
   check(receipt.includes(`${expected.cards} cartes`) && receipt.includes('3 joueurs'), 'receipt preserves players and card count');
-  check(!/cadeaux inclus|sans cadeaux|crédits\/jeu|Durée variable/.test(receipt)&&(!item.arcadeOffer.description||!receipt.includes(item.arcadeOffer.description)),'receipt keeps purchased offer compact without centre access description');
+  check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable/.test(receipt)&&(!item.arcadeOffer.description||!receipt.includes(item.arcadeOffer.description)),'receipt keeps purchased offer compact without centre access description');
   if (expected.mode === 'credit') check(!/30 min|30 minutes/.test(receipt) && receipt.includes(String(expected.credits)), 'credit receipt preserves total credits and promises no duration');
 }
 async function informationMatrix(browser, errors) {
@@ -141,7 +141,7 @@ async function gemblouxInformation(browser,errors) {
       check(await page.locator('.fg-info-photo').evaluate(img=>img.getAttribute('src')==='/assets/fungalaxy/gembloux-golf-salle-800.webp'&&img.complete&&img.naturalWidth>0),'Gembloux Golf O’Clock uses proven Gembloux activity photo');
     } else {
       check(await page.locator('.fg-info-photo').evaluate(img=>img.hidden&&!img.getAttribute('src')),'Gembloux Arcades does not reuse a foreign-centre photo after golf popup');
-      check(text.includes('45 €')&&text.includes('1 carte par personne'),'Gembloux Arcades preserves centre price and per-person card rule');
+      check(text.includes('45 €')&&/(?:une|1) carte par personne/i.test(text),'Gembloux Arcades preserves centre price and per-person card rule');
     }
     await page.keyboard.press('Escape');
   }
@@ -176,7 +176,7 @@ async function gemblouxInformation(browser,errors) {
         check(await page.locator(selector+' [data-compteur="cards"]').count() === (c.mode==='credit'?1:0), `[${width}] ${c.id} timed cards cannot be altered`);
         await page.click(selector+' [data-activity-info]');
         const information=await page.locator('.fg-info-text').textContent();
-        check(information.includes(`${c.cards} cartes`) && information.includes('3 joueurs') && (c.mode==='time'?/sans cadeaux.*illimité/.test(information):information.includes(`${c.credits} crédits`) && /cadeaux inclus/.test(information) && /1,2 à 2,4/.test(information)),`[${width}] ${c.id} popup preserves counts, credits and exact access rights`);
+        check(information.includes(`${c.cards} cartes`) && information.includes('3 joueurs') && (c.mode==='time'?/illimité/.test(information)&&/(?:sans|hors)[^.]{0,60}cadeaux/.test(information):information.includes(`${c.credits} crédits`) && /cadeaux inclus/.test(information) && /1,2 à 2,4/.test(information)),`[${width}] ${c.id} popup preserves counts, credits and exact access rights`);
         await page.keyboard.press('Escape');
         const targets = await page.locator(selector+' .fg-stepper>*,'+selector+' .fg-pill,'+selector+' select').evaluateAll(nodes => nodes.filter(n=>n.getBoundingClientRect().height>0).map(n=>({w:n.getBoundingClientRect().width,h:n.getBoundingClientRect().height,font:parseFloat(getComputedStyle(n).fontSize)})));
         check(targets.every(x=>x.w>=44 && x.h>=44 && x.font>=12), `[${width}] ${c.id} keyboard/touch targets >=44px and text >=12px`);
@@ -214,7 +214,7 @@ async function gemblouxInformation(browser,errors) {
       await page.check('#smConsent');await page.click('#smGoRecap');await page.waitForSelector('.fg-scene[data-scene="sm-recap"].is-active');
       const customRecap=await page.locator('.fg-scene[data-scene="sm-recap"]').textContent();
       check(customRecap.includes('4 cartes') && customRecap.includes('25 bonus') && !/30 min/.test(customRecap),'custom recap states bought cards and credits without estimated duration');
-      check(!/cadeaux inclus|sans cadeaux|crédits\/jeu|Durée variable|Le temps de jeu dépend des machines/.test(customRecap),'custom recap leaves detailed arcade access rules in the information popup');
+      check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable|Le temps de jeu dépend des machines/.test(customRecap),'custom recap leaves detailed arcade access rules in the information popup');
       await page.click('#smSend');await page.waitForSelector('.fg-scene[data-scene="fin"].is-active');
       const saved=mock.dernierePose.demande.payload.demande.activities.find(i=>i.id==='arcade_time');
       check(saved.arcadeMode==='credit' && saved.arcadeOfferId==='credit-50' && saved.cards===4 && saved.participants===2,'actual custom API preserves string choice, card count and subset');

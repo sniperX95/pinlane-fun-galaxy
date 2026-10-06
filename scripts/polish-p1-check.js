@@ -249,7 +249,13 @@ async function installMockStaff(page, jeu, options = {}) {
         let corps = null;
         try { corps = JSON.parse(init.body || 'null'); } catch (e) { corps = null; }
         window.__PATCHES__.push({ methode, chemin: u.pathname, corps });
-        if (/reservation/i.test(u.pathname)) return J({ ok: true, reservation: corps });
+        // Le serveur rend le dossier ENTIER a jour, pas l echo du corps : le
+        // chemin de statut (journal, entree 376) n envoie plus que l id, le
+        // centre, la version et le statut.
+        if (/reservation/i.test(u.pathname)) {
+          const connu = corps && corps.id != null ? (state.reservations || []).find((r) => String(r.id) === String(corps.id)) : null;
+          return J({ ok: true, reservation: connu ? { ...connu, ...corps, updatedAt: new Date().toISOString() } : corps });
+        }
       }
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
       if (u.pathname === '/api/staff-state') { const d = u.searchParams.get('date') || new Date().toISOString().slice(0, 10); return J({ ok: true, revision: `qa-${d}`, reservations: build(d), laneStatuses: laneStatuses(), centerId: 'libramont' }); }

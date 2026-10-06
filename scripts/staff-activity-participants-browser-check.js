@@ -87,11 +87,17 @@ const checks = `
   ok(JSON.stringify(smCounters)===JSON.stringify(['4 / 18','3 / 18','8 / 18','5 / 18','2 / 18','6 / 18','6 / 18','6 / 18']),'actual custom request all8 visible counters retain distinct counts');
   ok(transfer.labels.includes('Billard : 8 joueurs · 2 tables · 2h')&&transfer.labels.includes('Laser Game : 4 joueurs · 3 parties'),'actual request labels show players+full choices');
   const emergency=await pg.evaluate(()=>{
-    const savedReservations=state.reservations;const savedStatuses=state.laneStatuses;const savedQuick=quickBookState;const savedSelected=state.selectedRes;const savedEdit=state.editState;
+    const savedReservations=state.reservations;const savedStatuses=state.laneStatuses;const savedQuick=quickBookState;const savedSelected=state.selectedRes;const savedEdit=state.editState;const savedDate=state.currentDate;
     try {
       state.reservations=[];
+      // Un jour FUTUR ouvert a 14:00 : le jour meme, les heures passees ne
+      // sont plus proposees et le creneau de 14:00 disparaissait le soir.
+      const jour=k=>{const d=new Date(todayStr()+'T12:00:00');d.setDate(d.getDate()+k);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+      const jourOuvert=[...Array(14)].map((_,k)=>jour(k+1)).find(d=>{const s=getSchedule(d,state.isHolidayMode);return s&&s.open<=14&&s.close>=15;});
+      if(!jourOuvert)throw Error('aucun jour ouvert a 14:00 dans les 14 prochains jours');
+      state.currentDate=jourOuvert;
       const configureStock=n=>{state.laneStatuses={};for(let i=n+1;i<=getAvailabilityLaneCount();i++)state.laneStatuses[i]='maintenance';};
-      quickBookState={...savedQuick,pax:18,type:'visite',duration:1,totalDuration:1,visit:{bowling:{on:true,duration:1},laser_game:{on:false},others:{},options:{bowling:{participants:7}}}};
+      quickBookState={...savedQuick,date:jourOuvert,startTime:'14:00',pax:18,type:'visite',duration:1,totalDuration:1,visit:{bowling:{on:true,duration:1},laser_game:{on:false},others:{},options:{bowling:{participants:7}}}};
       configureStock(1);renderQuickBook();
       const one=getQuickBookLaneNeed();const slot=getQuickBookAvailableSlots().find(s=>s.time===quickBookState.startTime);const price=getQuickBookSummaryActivites().total;const visible=document.querySelector('#quickBookOverlay').textContent;
       quickBookState.visit.options.bowling.participants=6;patchQuickBookStatusLine(document.querySelector('#quickBookOverlay'));const warningCleared=document.querySelector('[data-bowling-capacity-warning]').hidden;quickBookState.visit.options.bowling.participants=7;patchQuickBookStatusLine(document.querySelector('#quickBookOverlay'));const warningRestored=!document.querySelector('[data-bowling-capacity-warning]').hidden;
@@ -103,7 +109,7 @@ const checks = `
       state.reservations=[];quickBookState.visit.options.bowling.participants=13;configureStock(2);renderQuickBook();const two=getQuickBookLaneNeed();const twoPrice=getQuickBookSummaryActivites().total;const twoVisible=document.querySelector('#quickBookOverlay').textContent;
       configureStock(3);const normal=getQuickBookLaneNeed();
       return {one,slot,price,visible,detail,card,timeline,two,twoPrice,twoVisible,normal,editNeed,editPrice,advice,warningCleared,warningRestored};
-    } finally {state.reservations=savedReservations;state.laneStatuses=savedStatuses;quickBookState=savedQuick;state.selectedRes=savedSelected;state.editState=savedEdit;renderQuickBook();}
+    } finally {state.reservations=savedReservations;state.laneStatuses=savedStatuses;quickBookState=savedQuick;state.selectedRes=savedSelected;state.editState=savedEdit;state.currentDate=savedDate;renderQuickBook();}
   });
   ok(emergency.one.requiredCount===1&&emergency.slot?.lanes.length===1&&emergency.price===39,'actual stock1 own7 of group18 offers one lane at39');
   ok(emergency.visible.includes('70 min')&&emergency.visible.includes('pas garanti')&&emergency.detail.includes('7 joueurs')&&emergency.detail.includes('70 min'),'actual quick dialog and detail show own7 emergency70min warning');

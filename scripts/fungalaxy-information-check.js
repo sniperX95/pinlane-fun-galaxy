@@ -63,7 +63,10 @@ async function mounted(page,embedded) {
 }
 async function waitRestoredOverflow(frame,previous,label) {
   const start=Date.now(),immediate=await frame.evaluate(()=>document.body.style.overflow);
-  await frame.waitForFunction(value=>document.body.style.overflow===value,previous,{timeout:500});
+  // Borne de l attente, pas une mesure : 352 fermetures relevees le 2026-10-06
+  // font 8 ms en mediane et 435 ms au pire en vert, et une seule au-dela de
+  // 500 ms sur une machine chargee rougissait le gate sans aucun defaut.
+  await frame.waitForFunction(value=>document.body.style.overflow===value,previous,{timeout:3000});
   closeMeasurements.push({label,previous,immediate,settled:await frame.evaluate(()=>document.body.style.overflow),elapsedMs:Date.now()-start});
 }
 async function popup(page,frame,button,embedded,label,expectedFragments=[]) {

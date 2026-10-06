@@ -70,10 +70,10 @@ async function main() {
       const total = euros(prixPiste * pistes);
       const parPiste = bowling.maxPlayersPerLane || 6;
       if (pistes < 2) {
-        ok(carte === `1 piste × ${euros(prixPiste)} = ${total}` && information.includes(`${parPiste} joueurs par piste en confort`) && information.includes('jusqu’à 7 joueurs par piste'), `[A] ${pax} joueur(s), carte : calcul court, confort et secours dans le popup`, carte);
+        ok(carte === `1 heure · 1 piste × ${euros(prixPiste)} = ${total}` && information.includes(`${parPiste} joueurs par piste en confort`) && information.includes('jusqu’à 7 joueurs par piste'), `[A] ${pax} joueur(s), carte : calcul court, confort et secours dans le popup`, carte);
         ok(heures.note === `${parPiste} joueurs par piste : ${pax} joueurs = 1 piste × ${euros(prixPiste)} = ${total}.` && / · 1 piste$/.test(heures.detail), `[A] ${pax} joueur(s), heures : « 1 piste », calcul exact`, JSON.stringify(heures));
       } else {
-        ok(carte === `${pistes} pistes × ${euros(prixPiste)} = ${total}` && information.includes(`${parPiste} joueurs par piste en confort : ${pistes} pistes × ${euros(prixPiste)} = ${total}`) && information.includes('jusqu’à 7 joueurs par piste'), `[A] ${pax} joueurs, carte : calcul court, confort, secours et calcul dans le popup`, carte);
+        ok(carte === `1 heure · ${pistes} pistes × ${euros(prixPiste)} = ${total}` && information.includes(`${parPiste} joueurs par piste en confort : ${pistes} pistes × ${euros(prixPiste)} = ${total}`) && information.includes('jusqu’à 7 joueurs par piste'), `[A] ${pax} joueurs, carte : calcul court, confort, secours et calcul dans le popup`, carte);
         ok(heures.detail.endsWith(` · ${pistes} pistes`), `[A] ${pax} joueurs, en-tete des heures : ${pistes} pistes`, heures.detail);
         ok(heures.note.indexOf(`${parPiste} joueurs par piste : ${pax} joueurs = ${pistes} pistes × ${euros(prixPiste)} = ${total}`) === 0,
           `[A] ${pax} joueurs, ecran des heures : le calcul du prix des pistes`, heures.note);

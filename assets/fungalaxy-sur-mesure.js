@@ -851,8 +851,8 @@
       rendreSmCompteur(false);
       $('#smEnviesErr').hidden = true;
     }
-    function retirerSmActivite(id) { var card = $('.fg-card[data-sm="' + id + '"]', smGridAct); basculerSm(card, true); $('.fg-card-select', card.closest('.fg-grid__item')).focus({ preventScroll:true }); }
-    function basculerSm(card, cocher) {
+    function retirerSmActivite(id) { var card = $('.fg-card[data-sm="' + id + '"]', smGridAct); basculerSm(card); $('.fg-card-select', card.closest('.fg-grid__item')).focus({ preventScroll:true }); }
+    function basculerSm(card) {
       if (!card) return;
       if (card.classList.contains('is-refus')) {
         var pourquoi = card.querySelector('.fg-for__off');
@@ -861,7 +861,6 @@
       }
       var liste = card.dataset.kind === 'formule' ? sm.formules : sm.activites;
       var id = card.dataset.sm, i = liste.indexOf(id);
-      if (card.dataset.kind === 'activite' && i >= 0 && !cocher) return;
       if (i >= 0) liste.splice(i, 1); else liste.push(id);
       var on = i < 0;
       chargerPhotoCarte(card);
@@ -883,7 +882,7 @@
     });
     smGridAct.addEventListener('click', function (e) {
       var choix = e.target.closest('[data-activity-toggle]');
-      if (choix) { basculerSm($('.fg-card', choix.closest('.fg-grid__item')), true); return; }
+      if (choix) { basculerSm($('.fg-card', choix.closest('.fg-grid__item'))); return; }
       var btn = e.target.closest('[data-pas]'), pill = e.target.closest('.fg-pill');
       if (btn && !btn.disabled) {
         var a = activite(btn.closest('[data-sm-activity]').dataset.smActivity);

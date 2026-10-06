@@ -499,8 +499,12 @@
       tarifs = ar.time.map(function (o) { if (ar.mode === 'time' && o.id === ar.offer.id) o = ar.offer; return o.minutes + ' min à volonté : ' + euros(o.price) + ' / carte, une carte par personne.'; })
         .concat(ar.credit.map(function (o) { if (ar.mode === 'credit' && o.id === ar.offer.id) o = ar.offer; return euros(o.price) + ' / carte : ' + credits(o.credits) + ' crédits + ' + credits(o.bonusCredits || 0) + ' bonus = ' + credits(Number(o.credits) + Number(o.bonusCredits || 0)) + ' crédits.'; }));
       var mode = ar.mode === 'time' ? 'Au temps' : 'En crédits';
-      var tempsInfo = ar.config.timedDescription === 'Une carte par personne. Jeux sans cadeaux en illimité pendant la durée choisie ; jeux permettant de gagner des cadeaux exclus.' ? 'Une carte par personne. Accès illimité pendant la durée choisie, hors jeux permettant de gagner des cadeaux.' : ar.config.timedDescription;
-      sections.push({ titre: selectionnee ? mode : 'Deux façons de jouer', lignes: selectionnee ? [ar.mode === 'time' ? tempsInfo : ar.config.creditDescription].concat(ar.mode === 'credit' ? ['Tous les jeux, cadeaux inclus · ' + credits(ar.offer.gameCostMin == null ? ar.config.creditGameCostMin : ar.offer.gameCostMin) + ' à ' + credits(ar.offer.gameCostMax == null ? ar.config.creditGameCostMax : ar.offer.gameCostMax) + ' crédits par jeu.'] : []) : [tempsInfo, ar.config.creditDescription] });
+      var lisible = function (d) { return d === 'Une carte par personne. Jeux sans cadeaux en illimité pendant la durée choisie ; jeux permettant de gagner des cadeaux exclus.' ? 'Une carte par personne. Accès illimité pendant la durée choisie, hors jeux permettant de gagner des cadeaux.' : d; };
+      var tempsInfo = lisible(ar.config.timedDescription);
+      // Comme ses couts par jeu, la carte retenue garde la description que le
+      // serveur a confirmee avec son prix : elle prime sur le catalogue en cache.
+      var retenue = lisible(ar.offer.description || (ar.mode === 'time' ? ar.config.timedDescription : ar.config.creditDescription));
+      sections.push({ titre: selectionnee ? mode : 'Deux façons de jouer', lignes: selectionnee ? [retenue].concat(ar.mode === 'credit' ? ['Tous les jeux, cadeaux inclus · ' + credits(ar.offer.gameCostMin == null ? ar.config.creditGameCostMin : ar.offer.gameCostMin) + ' à ' + credits(ar.offer.gameCostMax == null ? ar.config.creditGameCostMax : ar.offer.gameCostMax) + ' crédits par jeu.'] : []) : [tempsInfo, ar.config.creditDescription] });
     }
     if (tarifs.length) sections.push({ titre: 'Les offres disponibles', lignes: tarifs });
     sections.push({ titre: 'À savoir', lignes: ['Montants indicatifs, recalculés selon vos choix avant confirmation. Aucun paiement en ligne ; règlement à l’accueil.'] });
@@ -2064,8 +2068,8 @@
     prix.textContent = prixCarte(a) + (precisionsCarte(a) ? ' · ' + precisionsCarte(a) : '');
     if (anime && prix.textContent !== avant) rejouer(prix, 'is-maj');
   }
-  function retirerActivite(id) { var card = $('.fg-card[data-activity="' + id + '"]', gridAct); basculerActivite(card, true); $('.fg-card-select', card.closest('.fg-grid__item')).focus({ preventScroll:true }); }
-  function basculerActivite(card, cocher) {
+  function retirerActivite(id) { var card = $('.fg-card[data-activity="' + id + '"]', gridAct); basculerActivite(card); $('.fg-card-select', card.closest('.fg-grid__item')).focus({ preventScroll:true }); }
+  function basculerActivite(card) {
     // Refusee pour ce groupe : on fait lire la raison, on ne coche pas.
     if (card && card.classList.contains('is-refus')) {
       var pourquoi = card.querySelector('.fg-for__off');
@@ -2077,7 +2081,6 @@
     var item = card.closest('.fg-grid__item');
     var id = item.dataset.activity;
     var i = state.selection.indexOf(id);
-    if (i >= 0 && !cocher) return;
     if (i >= 0) state.selection.splice(i, 1); else state.selection.push(id);
     var on = i < 0;
     card.classList.toggle('is-on', on);
@@ -2139,7 +2142,7 @@
   });
   gridAct.addEventListener('click', function (e) {
     var choix = e.target.closest('[data-activity-toggle]');
-    if (choix) { basculerActivite($('.fg-card', choix.closest('.fg-grid__item')), true); return; }
+    if (choix) { basculerActivite($('.fg-card', choix.closest('.fg-grid__item'))); return; }
     var pas = e.target.closest('[data-pas]');
     if (pas) { if (!pas.disabled) changerCompteur(pas); return; }
     var pill = e.target.closest('.fg-pill');
@@ -4802,7 +4805,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261005source';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261006decoche';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261003info';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {

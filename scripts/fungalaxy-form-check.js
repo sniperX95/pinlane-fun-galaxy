@@ -36,10 +36,10 @@
 //       grille, prix de chacune), la retenue part dans le programme, les
 //       fleches du clavier passent d une option a l autre, et les cartes d une
 //       rangee gardent la meme hauteur ; un tiroir ferme sort du parcours
-//       clavier, un tiroir ouvert y entre. Depuis le 2026-10-05 (journal,
-//       entrees 377 et 379) : retoucher une carte cochee la laisse cochee,
-//       ses reglages deplies dans la carte ; sa case explicite
-//       ([data-activity-toggle]) la retire.
+//       clavier, un tiroir ouvert y entre. Depuis le 2026-10-06 (journal,
+//       entree 387, demande de Movsar) : retoucher une carte cochee la
+//       decoche, comme sa case explicite ([data-activity-toggle]) ; ses
+//       reglages, poses hors de la carte, ne la decochent jamais.
 //   [C] HEURES : une piste par activite planifiee, TOUTES les heures du jour
 //       rangees en trois menus (matin, apres-midi, soiree), chacune dans l etat
 //       du moteur : possible, SERREE (choisissable, la visite finira a la
@@ -250,10 +250,10 @@
 //       prend le premier toucher pour un survol des qu il devoile quelque
 //       chose). Chaque regle :hover de la feuille servie est sous
 //       @media (hover: hover) ; sur un telephone emule (hover: none), UN
-//       toucher coche, la photo prend le voile de la carte cochee, le garde
-//       quand la carte est retouchee (elle reste cochee depuis l entree 377
-//       du journal) et repart a 0 une fois decochee par sa case explicite (le
-//       survol ne reste plus colle) ; un doigt qui
+//       toucher coche, la photo prend le voile de la carte cochee et repart
+//       a 0 quand la carte est retouchee (elle se decoche, entree 387 du
+//       journal) comme quand sa case explicite la retire (le survol ne reste
+//       plus colle) ; un doigt qui
 //       fait defiler sur une carte, au vrai geste, ne la coche pas et ne
 //       telecharge pas sa photo ; a la souris, le survol la devoile toujours.
 //   [T] LE TELEPHONE EN DEUX COLONNES (2026-09-24, la liste d une carte par
@@ -412,7 +412,7 @@
 // jour propose ne dit plus « Aujourd hui »), sensmois (« mois suivant » glisse
 // a l envers), rejouemois (la reouverture rejoue le glissement du mois), coche
 // (cocher ne fait plus claquer la case), retouche (retoucher une carte cochee
-// la decoche de nouveau), caseexplicite (la case d une carte cochee ne la
+// ne la decoche plus), caseexplicite (la case d une carte cochee ne la
 // retire plus), eveilreste (le bouton qui avance
 // garde sa classe de reveil), eveilinactif (« Continuer » s eveille a chaque
 // choix), eveilgarde (« Garder » s eveille a chaque heure posee), onglets (les
@@ -748,10 +748,10 @@ const MUTATIONS = {
   modevol: ['state.dispoCle = cle;', 'state.dispoCle = cleDemande();'],
   plafond: ['var auMax = state.pax >= PAX_MAX;', 'var auMax = false;'],
   coche: ["if (on) rejouer(card, 'is-coche'); else card.classList.remove('is-coche');", 'void 0;'],
-  // 2026-10-06 (journal, entrees 377 et 379) : retouche (retoucher une carte
-  // cochee la decoche de nouveau), caseexplicite (sa case ne la retire plus).
-  retouche: ['    if (i >= 0 && !cocher) return;\n', ''],
-  caseexplicite: ["if (choix) { basculerActivite($('.fg-card', choix.closest('.fg-grid__item')), true); return; }", 'if (choix) return;'],
+  // 2026-10-06 (journal, entree 387) : retouche (retoucher une carte cochee
+  // ne la decoche plus), caseexplicite (sa case ne la retire plus).
+  retouche: ["    basculerActivite(e.target.closest('.fg-card'));", "    var touchee = e.target.closest('.fg-card'); if (!touchee || !touchee.classList.contains('is-on')) basculerActivite(touchee);"],
+  caseexplicite: ["if (choix) { basculerActivite($('.fg-card', choix.closest('.fg-grid__item'))); return; }", 'if (choix) return;'],
   eveilreste: ["btn._eveil = setTimeout(function () { btn.classList.remove('is-wake'); }, 600);", 'void 0;'],
   eveilinactif: ['if (bump && etaitInactif && !goHours.disabled) eveiller(goHours);', 'if (bump && !goHours.disabled) eveiller(goHours);'],
   eveilgarde: ['if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }', 'if (slot && reveilGarder) { eveiller(goContact); }'],
@@ -2260,11 +2260,12 @@ async function main() {
     ok(carte('bowling').titre === 'Durée de piste' && carte('laser_game').titre === 'Parties', '[B] chaque tiroir dit ce qu on choisit (duree, parties)', `${carte('bowling').titre} / ${carte('laser_game').titre}`);
     ok(cartes.every((c) => c.tiroir === null || c.tiroir === 0), '[B] les tiroirs restent fermes tant que la carte n est pas cochee', cartes.map((c) => `${c.id}:${c.tiroir}`).join(' '));
     ok(await page.evaluate(() => document.querySelector('#goHours').disabled), '[B] sans selection, « Continuer » est inactif');
-    // RETOUCHER UNE CARTE COCHEE NE LA DECOCHE PLUS (mis a jour le 2026-10-06,
-    // journal Pinlane entrees 377 et 379, demande de Movsar des 2026-10-04/05) :
-    // une carte cochee deplie ses reglages DANS la carte, et la retoucher ne
-    // la retire plus ; on la retire par sa case explicite
-    // ([data-activity-toggle], la .fg-card-select de son .fg-grid__item).
+    // RETOUCHER UNE CARTE COCHEE LA DECOCHE (2026-10-06, journal Pinlane
+    // entree 387, demande de Movsar : viser la coche pour retirer une
+    // activite etait penible). Ses reglages deplies sont poses hors de la
+    // carte (.fg-card__opt, voisin de la .fg-card) : les toucher ne la retire
+    // jamais. Sa case explicite ([data-activity-toggle], la .fg-card-select
+    // de son .fg-grid__item) la retire aussi.
     // Jusqu ici ce gate decochait en retouchant la carte : le Fun Run et le
     // minigolf restaient coches, cinq activites partaient au lieu de quatre,
     // et tout [B] [C] [D] [E] rougissait en cascade.
@@ -2278,10 +2279,15 @@ async function main() {
       const info = await page.locator('.fg-info-text').textContent();
       ok(info.includes(id === 'fun_run' ? '5 joueurs par session' : '12 trous'), '[B] le popup conserve la note précise saisie par le centre : ' + id, info);
       await page.keyboard.press('Escape');
-      await page.click('#gridAct .fg-card[data-activity="' + id + '"]');
+      await page.click('#gridAct li[data-activity="' + id + '"] .fg-card__opt', { position: { x: 6, y: 6 } });
       await dormir(150);
-      const retouchee = await etatCarte(id);
-      ok(retouchee.carte === 'true' && retouchee.caseExplicite === 'true' && retouchee.cochees === 1, '[B] retoucher une carte cochee la laisse cochee, ses reglages restent deplies (entrees 377 et 379) : ' + id, JSON.stringify(retouchee));
+      const reglee = await etatCarte(id);
+      ok(reglee.carte === 'true' && reglee.caseExplicite === 'true' && reglee.cochees === 1, '[B] toucher les reglages deplies d une carte cochee ne la decoche pas : ' + id, JSON.stringify(reglee));
+      await page.click('#gridAct .fg-card[data-activity="' + id + '"]');
+      ok(await attendre(page, (i) => { const li = document.querySelector(`#gridAct li[data-activity="${i}"]`); return li.querySelector('.fg-card').getAttribute('aria-checked') === 'false' && li.querySelector('[data-activity-toggle]').getAttribute('aria-checked') === 'false' && !li.classList.contains('is-on') && document.querySelectorAll('#gridAct .fg-card.is-on').length === 0; }, 3000, id),
+        '[B] retoucher une carte cochee la decoche (carte et case decochees, plus rien de choisi, entree 387) : ' + id, JSON.stringify(await etatCarte(id)));
+      await page.click('#gridAct .fg-card[data-activity="' + id + '"]');
+      ok(await attendre(page, (i) => document.querySelector(`#gridAct li[data-activity="${i}"]`).classList.contains('is-on'), 3000, id), 'MONTAGE [B] recochee d un toucher sur la carte : ' + id, JSON.stringify(await etatCarte(id)));
       await page.click('#gridAct li[data-activity="' + id + '"] [data-activity-toggle]');
       ok(await attendre(page, (i) => { const li = document.querySelector(`#gridAct li[data-activity="${i}"]`); return li.querySelector('.fg-card').getAttribute('aria-checked') === 'false' && li.querySelector('[data-activity-toggle]').getAttribute('aria-checked') === 'false' && !li.classList.contains('is-on') && document.querySelectorAll('#gridAct .fg-card.is-on').length === 0; }, 3000, id),
         '[B] sa case explicite la retire (carte et case decochees, plus rien de choisi) : ' + id, JSON.stringify(await etatCarte(id)));
@@ -4944,15 +4950,18 @@ async function main() {
     await dormir(700);
     const touche1 = await lireCarteS(idTouche);
     ok(touche1.coche === 'true' && touche1.opacite === '0.55', '[S] telephone : UN toucher coche la carte, et sa photo prend le voile de la carte cochee (0,55), jamais le plein du survol', JSON.stringify(Object.assign({ id: idTouche }, touche1)));
-    // LE TOUCHER SUIVANT NE DECOCHE PLUS (mis a jour le 2026-10-06, journal
-    // Pinlane entrees 377 et 379) : retouchee, une carte cochee garde ses
-    // reglages deplies ; c est sa case explicite qui la retire. Le survol ne
-    // doit toujours pas coller : retouchee deux fois, sa photo garde le voile
-    // de la carte cochee, puis, decochee par sa case, elle repart a 0.
+    // LE TOUCHER SUIVANT DECOCHE (2026-10-06, journal Pinlane entree 387,
+    // demande de Movsar) et le survol ne doit toujours pas coller :
+    // retouchee, la carte se decoche et sa photo repart a 0 ; recochee puis
+    // retiree par sa case explicite, elle repart a 0 aussi.
     await pS.tap(`#gridAct .fg-card[data-activity="${idTouche}"]`);
     await dormir(700);
     const touche2 = await lireCarteS(idTouche);
-    ok(touche2.coche === 'true' && touche2.opacite === '0.55', '[S] telephone : retouchee, la carte reste cochee (entrees 377 et 379) et sa photo garde le voile 0,55, jamais le plein d un survol colle', JSON.stringify(touche2));
+    ok(touche2.coche === 'false' && touche2.opacite === '0', '[S] telephone : retouchee, la carte se decoche (entree 387) et sa photo repart a 0, jamais le plein d un survol colle', JSON.stringify(touche2));
+    await pS.tap(`#gridAct .fg-card[data-activity="${idTouche}"]`);
+    await dormir(700);
+    const touche2b = await lireCarteS(idTouche);
+    ok(touche2b.coche === 'true' && touche2b.opacite === '0.55', 'MONTAGE [S] telephone : recochee d un toucher, voile 0,55', JSON.stringify(touche2b));
     await pS.tap(`#gridAct li[data-activity="${idTouche}"] [data-activity-toggle]`);
     await dormir(700);
     const touche3 = await lireCarteS(idTouche);

@@ -3986,7 +3986,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261005donnees';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261006encaisse';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20260925h';
 const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261003b';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20260925e';
@@ -23933,6 +23933,77 @@ function resumeGroupe(r) {
 }
 
 // Encaisser = payer AVEC le moyen. Le statut et le moyen partent ensemble.
+// CE QUI A ETE ENCAISSE, ET LE GROUPE QUI N EST PAS VENU (2026-10-06, 0056).
+// Paye : la somme reellement encaissee, corrigeable (remise, geste, joueur en
+// moins), la raison obligatoire si elle differe du prix. Pas encore venu et
+// l heure passee : « Pas venu », qui sort le groupe des visites et du chiffre
+// de la Direction. Un serveur pas encore migre le dit, rien ne casse.
+function groupeHeurePassee(r) {
+  if (!r || !r.date) return false;
+  if (r.date < todayStr()) return true;
+  return r.date === todayStr() && Math.round(currentTimeDecimal() * 60) >= Math.round(timeToNum(r.startTime) * 60);
+}
+function renderGroupeEncaisseAbsence(r) {
+  if (!r) return '';
+  const peutEncaisser = canUseStaffPermission(['payments.markPaid']);
+  const peutStatut = canUseStaffPermission(['reservations.status', 'reservations.edit']);
+  if (r.status === 'paid' && prixDossierConnu(r)) {
+    const montant = r.amountPaid != null ? Number(r.amountPaid) : Number(r.price) || 0;
+    const remise = r.amountPaid != null;
+    return `<div class="pos-encaisse">
+      <span class="pos-encaisse-ligne">Encaissé <strong>${escapeHtml(formatMoneyCentimes(montant))}</strong>${remise ? ` sur ${escapeHtml(formatMoneyCentimes(r.price))}${r.discountReason ? `, ${escapeHtml(r.discountReason)}` : ''}` : ''}</span>
+      ${peutEncaisser && Object.prototype.hasOwnProperty.call(r, 'amountPaid') ? `<details class="pos-encaisse-corriger">
+        <summary>Corriger le montant</summary>
+        <div class="pos-encaisse-form">
+          <label>Montant encaissé<input type="number" id="encaisse-montant-${r.id}" min="0" step="0.01" inputmode="decimal" value="${montant}"></label>
+          <label>Pourquoi il diffère<input type="text" id="encaisse-raison-${r.id}" maxlength="200" placeholder="Remise, geste, joueur en moins…" value="${escapeHtml(r.discountReason || '')}"></label>
+          <button type="button" class="gc-btn is-primary" onclick="noterEncaisse(${r.id}, event)">Enregistrer</button>
+        </div>
+      </details>` : ''}
+    </div>`;
+  }
+  if (!peutStatut || !Object.prototype.hasOwnProperty.call(r, 'absentAt')) return '';
+  if (r.absentAt) {
+    return `<div class="pos-absent is-on"><span>Noté absent : le groupe n’est pas venu.</span><button type="button" class="gc-btn" onclick="basculerAbsence(${r.id}, false, event)">Annuler</button></div>`;
+  }
+  return '';
+}
+// « Pas venu » vit dans le pli « Client en retard » : c est la suite de la
+// meme question (il arrive, ou il ne viendra pas), et la fiche garde son
+// plafond de boutons visibles.
+function renderGroupePasVenu(r) {
+  if (!r || r.absentAt || !Object.prototype.hasOwnProperty.call(r, 'absentAt')) return '';
+  if (!canUseStaffPermission(['reservations.status', 'reservations.edit'])) return '';
+  if (!['pending', 'confirmed'].includes(r.status) || !groupeHeurePassee(r)) return '';
+  return `<div class="pos-absent"><span>Le groupe ne viendra pas ?</span><button type="button" class="gc-btn" onclick="basculerAbsence(${r.id}, true, event)">Pas venu</button></div>`;
+}
+async function ecrireGesteGroupe(id, geste, ev) {
+  const r = (state.reservations || []).find(x => String(x.id) === String(id)) || state.selectedRes;
+  if (!r) { toast('Réservation introuvable.'); return; }
+  const bouton = ev?.target?.closest?.('button');
+  if (bouton) { bouton.disabled = true; bouton.setAttribute('aria-busy', 'true'); }
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || r.center_id || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, ...geste }) });
+    if (!payload?.ok || !payload.reservation) throw new Error('Le serveur n’a pas confirmé. Actualisez le dossier.');
+    applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+  } catch (error) {
+    const fresh = error.reservation || (error.status === 409 && error.payload?.reservation);
+    if (fresh) applyOptimisticReservation(fresh, { preserveEditState: true });
+    toast(error.message || 'Impossible d’enregistrer.');
+  } finally {
+    if (bouton?.isConnected) { bouton.disabled = false; bouton.removeAttribute('aria-busy'); }
+  }
+}
+function noterEncaisse(id, ev) {
+  const montant = Number(String((document.getElementById(`encaisse-montant-${id}`) || {}).value || '').replace(',', '.'));
+  const raison = String((document.getElementById(`encaisse-raison-${id}`) || {}).value || '').trim();
+  if (!Number.isFinite(montant) || montant < 0) { toast('Indiquez le montant encaissé.'); return; }
+  return ecrireGesteGroupe(id, { encaissement: { montant, raison } }, ev);
+}
+function basculerAbsence(id, absent, ev) {
+  return ecrireGesteGroupe(id, { absent: Boolean(absent) }, ev);
+}
+
 function encaisserReservation(id, moyen, ev) {
   setReservationStatusDirect(id, 'paid', ev, { paymentMethod: moyen });
 }
@@ -24750,6 +24821,7 @@ function renderPosDetails(r) {
           return `<button type="button" class="res-status-btn paid ${actif ? 'active paid' : ''}" aria-pressed="${actif}" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">Payé · ${m.mot}</button>`;
         }).join('')}
       </div>
+      ${renderGroupeEncaisseAbsence(r)}
     </section>
     ${renderGroupeEncadres(r, { large: true, sansValidation: true, sansNotes: true })}
     ${renderGroupeNotes(r)}
@@ -24788,6 +24860,7 @@ function renderPosDetails(r) {
         <input type="number" id="delayCustomMinutes" min="1" max="240" placeholder="Minutes" inputmode="numeric" onclick="event.stopPropagation()">
         <button type="button" class="delay-chip delay-chip-run" onclick="openDelayImpactCustom(${r.id}, event)">Analyser ce retard</button>
       </div>
+      ${renderGroupePasVenu(r)}
     </details>
   </div>`;
 }
@@ -26423,7 +26496,7 @@ function renderDossierLaserEditor(r) {
     const label = `Partie ${unit.countIndex}${unit.waveCount > 1 ? ` · vague ${unit.waveIndex}/${unit.waveCount}` : ''}`;
     const field = `dossierLaserTime-${unit.unitKey.replace('.', '-')}`;
     return `<div class="dossier-laser-unit" data-laser-unit="${unit.unitKey}">
-      <div class="dossier-laser-unit-title"><strong>${label}</strong><span class="muted">${players} joueur${players > 1 ? 's' : ''} · ${placed ? `${escapeHtml(formatClockDisplay(placed.start))}–${escapeHtml(formatClockDisplay(placed.end))}` : 'À placer'}</span></div>
+      <div class="dossier-laser-unit-title"><strong>${label}</strong><span class="muted">${players} joueur${players > 1 ? 's' : ''} · ${placed ? `${escapeHtml(formatClockDisplay(placed.start))}-${escapeHtml(formatClockDisplay(placed.end))}` : 'À placer'}</span></div>
       <div class="dossier-laser-unit-actions"><label class="sr-only" for="${field}">Heure de ${label}</label><input id="${field}" class="input" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" aria-label="Heure de ${label}" value="${placed ? escapeHtml(numToTime(placed.start)) : ''}" ${dossierLaserSaving ? 'disabled' : ''}>
       <button type="button" class="btn-secondary" onclick="saveDossierLaserUnit('${unit.unitKey}')" ${dossierLaserSaving ? 'disabled' : ''}>${placed ? 'Déplacer' : 'Placer'}</button>${placed ? `<button type="button" class="edit-adapter-btn" onclick="saveDossierLaserUnit('${unit.unitKey}',true)" ${dossierLaserSaving ? 'disabled' : ''}>Retirer du planning</button>` : ''}</div>
     </div>`;

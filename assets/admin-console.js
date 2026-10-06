@@ -2877,6 +2877,8 @@ function dirDonClientsInner() {
     ['Entre deux visites', f.joursMoyensEntreVisites == null ? '·' : `${dirDonNum(f.joursMoyensEntreVisites)} j`, 'en moyenne'],
     ['Dépense par client', dirDonEur(f.depenseMoyenneParClient), 'sur tout l’historique'],
     ['Chiffre des fidèles', dirDonPct(f.partChiffreFideles), 'fait par ceux qui reviennent'],
+    ['Pas venus', dirDonNum(t.absences || 0), `${dirDonPct(t.tauxAbsence || 0)} des groupes attendus`],
+    ['Remises', dirDonEur(t.remises || 0), `sur ${dirDonEur(t.encaisse)} encaissés`],
   ]);
   const repartition = dirDonTable('Combien de fois ils sont venus', [{ t: 'Visites' }, { t: 'Clients', num: 1 }],
     f.repartition.map((r) => [escapeHtml(r.visites), dirDonNum(r.clients)]), 'Aucun client.');
@@ -2895,8 +2897,8 @@ function dirDonProvenanceInner() {
   const t = data.totaux;
   const suivi = t.reservations ? Math.round((t.reservationsAvecSource / t.reservations) * 100) : 0;
   return `<div class="dir-grid">
-    ${dirDonTable('Ce que rapporte chaque source', [{ t: 'Source' }, { t: 'Réservations', num: 1 }, { t: 'Nouveaux clients', num: 1 }, { t: 'Joueurs', num: 1 }, { t: 'Chiffre', num: 1 }, { t: 'Panier moyen', num: 1 }],
-      data.sources.map((s) => [escapeHtml(s.source), dirDonNum(s.reservations), dirDonNum(s.nouveauxClients), dirDonNum(s.joueurs), dirDonEur(s.chiffre), dirDonEur(s.panierMoyen)]),
+    ${dirDonTable('Ce que rapporte chaque source', [{ t: 'Source' }, { t: 'Réservations', num: 1 }, { t: 'Nouveaux clients', num: 1 }, { t: 'Joueurs', num: 1 }, { t: 'Chiffre', num: 1 }, { t: 'Panier moyen', num: 1 }, { t: 'Pas venus', num: 1 }],
+      data.sources.map((s) => [escapeHtml(s.source), dirDonNum(s.reservations), dirDonNum(s.nouveauxClients), dirDonNum(s.joueurs), dirDonEur(s.chiffre), dirDonEur(s.panierMoyen), dirDonNum(s.absences || 0)]),
       'Aucune réservation sur cette période.', { large: true, note: `Provenance connue pour ${suivi} % des réservations de la période. Les réservations prises avant la mise en place du suivi restent « Inconnue ».` })}
     ${dirDonTable('Entonnoir en ligne', [{ t: 'Source' }, { t: 'Créneaux retenus', num: 1 }, { t: 'Confirmés', num: 1 }, { t: 'Partis sans réserver', num: 1 }, { t: 'Confirmation', num: 1 }],
       data.entonnoir.map((e) => [escapeHtml(e.source), dirDonNum(e.creneauxRetenus), dirDonNum(e.confirmes), dirDonNum(e.abandons), dirDonPct(e.tauxConfirmation)]),

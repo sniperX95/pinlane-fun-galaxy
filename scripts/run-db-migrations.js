@@ -279,6 +279,11 @@ const MIGRATIONS = [
     file: 'database/donnees-marketing-schema.sql',
     description: "Donnees pour comprendre les clients : reservations.acquisition (source, campagne, gclid/fbclid, pages, appareil), client_key (un client = une regle, tenue par trigger) et paid_at (date de paiement, tenue par trigger). Colonnes additives, existant rempli. Rollback : database/rollbacks/0055_donnees_marketing.down.sql (garde les colonnes)",
   },
+  {
+    id: '0056_encaisse_absence',
+    file: 'database/encaisse-absence-schema.sql',
+    description: "Ce qui a vraiment ete encaisse (reservations.amount_paid, discount_reason) et le groupe qui n est pas venu (absent_at). Colonnes additives ; un trigger efface le montant quand le dossier n est plus paye et l absence quand le groupe est pointe arrive ou paye. Rollback : database/rollbacks/0056_encaisse_absence.down.sql (garde les colonnes)",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

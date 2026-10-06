@@ -357,7 +357,11 @@ module.exports = async (req, res) => {
       if (!current) throw createHttpError('Reservation introuvable.', 404);
 
       const requestedCenterId = body.centerId || body.center_id || current.centerId || 'libramont';
-      const permission = patchNeedsOnlyStatus(body) ? ['reservations.status', 'reservations.edit'] : 'reservations.edit';
+      // L encaisse et l absence (0056) sont des gestes d accueil : meme droit
+      // de base que changer un statut (l encaisse redemande payments.markPaid).
+      const gesteAccueil = Object.keys(body).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
+      const estGesteAccueil = gesteAccueil.length === 1 && ['encaissement', 'absent'].includes(gesteAccueil[0]);
+      const permission = patchNeedsOnlyStatus(body) || estGesteAccueil ? ['reservations.status', 'reservations.edit'] : 'reservations.edit';
       const session = await requireStaffPermission(req, res, permission, { centerId: current.centerId || 'libramont' });
       if (!session) return;
 
@@ -372,6 +376,22 @@ module.exports = async (req, res) => {
       // refait ce controle sous verrou : c est lui qui fait foi.
       const versionAttendue = lireVersionAttendue(body.baseUpdatedAt);
       if (versionAttendue !== null && !memeVersion(current.updatedAt, versionAttendue)) throw reservationModifieeEntreTemps(current);
+
+      // CE QUI A ETE ENCAISSE / LE GROUPE QUI N EST PAS VENU (0056) : deux
+      // gestes de l accueil, seuls dans leur PATCH. L encaisse demande le
+      // droit d encaisser ; l absence, celui de changer un statut.
+      const gesteKeys = Object.keys(body).filter(key => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
+      if (gesteKeys.length === 1 && (gesteKeys[0] === 'encaissement' || gesteKeys[0] === 'absent')) {
+        if (gesteKeys[0] === 'encaissement') {
+          const paymentSession = await requireStaffPermission(req, res, 'payments.markPaid', { centerId: requestedCenterId });
+          if (!paymentSession) return;
+        }
+        const { noterEncaisseOuAbsence } = require('../lib/database');
+        const reservation = await noterEncaisseOuAbsence({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, ...(gesteKeys[0] === 'encaissement' ? { encaissement: body.encaissement } : { absent: body.absent === true }) });
+        const audit = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: gesteKeys[0] === 'encaissement' ? 'noterEncaisse' : 'noterAbsence', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation), requestId: newRequestId() });
+        sendJson(res, 200, { ok: true, reservation, ...(audit.warning ? { warnings: [audit.warning] } : {}) });
+        return;
+      }
 
       const statusKeys = Object.keys(body).filter(key => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
       if (statusKeys.includes('status') && statusKeys.every(key => ['status', 'paymentMethod', 'payment_method'].includes(key))) {

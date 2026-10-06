@@ -2559,11 +2559,14 @@ body.is-embed .fg-info-dialog { inset:auto; top:50%; left:50%; margin:0; transfo
 :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__opt { display:grid; flex:none; }
 :is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { flex:none; border-radius:0 0 8px 8px; }
 :is(#gridAct,#smGridAct) > .fg-grid__item.is-on > .fg-card__info { border-radius:0; }
-/* Une activite non cochee ne montre que son « i » : son resume ne sert qu une
-   fois cochee, quand il dit le calcul (Movsar, 2026-10-06 : « ça pollue, s ils
-   veulent des details ils ont le i »). */
-:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info { justify-content:flex-end; }
+/* Une activite non cochee n a pas de bande sous la carte : son resume ne sert
+   qu une fois cochee, quand il dit le calcul, et son « i » se pose dans le coin
+   bas-droit de la carte, dans la colonne de droite qu elle garde deja libre
+   pour sa case (padding-right). Movsar, 2026-10-06 : « ça pollue, s ils veulent
+   des details ils ont le i », puis « le i extend genre 25 % de la carte ». */
+:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info { position:absolute; right:2px; bottom:2px; z-index:2; margin:0; padding:0; border:0; background:none; }
 :is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info .fg-card__rot { display:none; }
+:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card { border-bottom-left-radius:8px; border-bottom-right-radius:8px; }
 :is(#gridAct,#smGridAct) .fg-card__optbox { background:#101010; border-top:0; padding:12px; }
 .fg-card-select { position:absolute; z-index:2; right:6px; top:4px; display:grid; place-items:center; width:44px; height:44px; padding:11px; border:0; background:transparent; color:var(--fg-text); cursor:pointer; }
 .fg-card-select svg { width:22px; height:22px; padding:4px; border:1px solid var(--fg-line-2); border-radius:5px; stroke-dasharray:22; stroke-dashoffset:22; }

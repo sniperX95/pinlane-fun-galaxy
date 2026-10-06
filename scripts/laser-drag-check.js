@@ -64,6 +64,16 @@ async function installMock(page) {
       const u = new URL(raw, window.location.origin);
       const m = String(init.method || 'GET').toUpperCase();
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
+      // Les notes client internes (API du 2026-10-05, journal Pinlane 378) : la console
+      // les precharge pour chaque carte. Absente, elle repondait 404 et ce gate rougissait
+      // sur « aucune erreur console ». Meme forme que lib/customer-notes.js (voir le
+      // mock commun de planning-matrix-check.js).
+      if (u.pathname === '/api/staff-customer-notes' && String(init.method || 'GET').toUpperCase() === 'GET') {
+        const sansNote = (id) => ({ eligible: true, clientKey: `p:qa${id}`, note: null });
+        const lot = u.searchParams.get('reservationIds');
+        if (lot !== null) return J({ ok: true, notesByReservationId: Object.fromEntries(lot.split(',').filter(Boolean).map((id) => [String(Number(id)), sansNote(Number(id))])) });
+        return J({ ok: true, ...sansNote(Number(u.searchParams.get('reservationId'))) });
+      }
       if (u.pathname === '/api/staff-state') {
         const d = u.searchParams.get('date') || new Date().toISOString().slice(0,10);
         const base = build(d).map(r => window.__QA_STORE__[r.id] ? { ...r, ...window.__QA_STORE__[r.id] } : r);
@@ -366,7 +376,11 @@ async function main() {
         const cb = card.getBoundingClientRect();
         const slots = [...document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]')].map(s => ({ s, b: s.getBoundingClientRect() })).filter(o => o.b.top > 160 && o.b.bottom < window.innerHeight - 40);
         const pick = slots[Math.floor(slots.length/2)] || slots[0];
-        return { card: { x: cb.x + cb.width/2, y: cb.y + cb.height/2 }, tgt: pick ? { x: pick.b.x + pick.b.width/2, y: pick.b.y + pick.b.height/2, t: pick.s.dataset.laserDropStart } : null };
+        // Depuis le 2026-10-05 (journaux 378 et 380) la partie prend l heure SOUS
+        // le pointeur, a 5 min pres : on lache 2 px sous le haut de la ligne,
+        // dont l heure de debut est alors la bonne reponse.
+        const ligne = pick && (pick.s.closest('.laser-agenda-row[data-laser-time-start]') || pick.s);
+        return { card: { x: cb.x + cb.width/2, y: cb.y + cb.height/2 }, tgt: pick ? { x: pick.b.x + pick.b.width/2, y: ligne.getBoundingClientRect().top + 2, t: ligne.dataset.laserTimeStart ?? pick.s.dataset.laserDropStart } : null };
       });
       if (ok(!!posC.tgt, 'un slot vide visible pour le drop')) {
         const beforeC = await page.evaluate(() => document.querySelector('.laser-planning-box.expanded .laser-agenda').scrollTop);
@@ -423,7 +437,9 @@ async function main() {
         const pick = slots[Math.floor(slots.length/2)] || slots[0];
         if (!card || !pick) return null;
         const c = card.getBoundingClientRect();
-        return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, tgt: { x: pick.b.x + pick.b.width/2, y: pick.b.y + pick.b.height/2, t: pick.s.dataset.laserDropStart } };
+        // Meme regle que [C] : l heure sous le pointeur, lache en haut de ligne.
+        const ligne = pick.s.closest('.laser-agenda-row[data-laser-time-start]') || pick.s;
+        return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, tgt: { x: pick.b.x + pick.b.width/2, y: ligne.getBoundingClientRect().top + 2, t: ligne.dataset.laserTimeStart ?? pick.s.dataset.laserDropStart } };
       });
       if (ok(!!posE, 'carte en attente + slot vide présents')) {
         await page.mouse.move(posE.card.x, posE.card.y); await page.mouse.down();

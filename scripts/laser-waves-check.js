@@ -174,7 +174,14 @@ async function main() {
       const b = cible.el.getBoundingClientRect();
       const dansLaBande = (r) => r.height > 4 && r.top > hautBande && r.bottom < basBande;
       if (!dansLaBande(c) || !dansLaBande(b)) return { raison: `bande ${hautBande}-${Math.round(basBande)}, carte ${Math.round(c.top)}-${Math.round(c.bottom)}, cible ${Math.round(b.top)}-${Math.round(b.bottom)}, agenda defilable ${ag.scrollHeight}>${ag.clientHeight}` };
-      return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, tgt: { x: b.x + b.width/2, y: b.y + b.height/2, t: cible.t } };
+      // DEPUIS LE 2026-10-05 (journaux 378 et 380), une partie lachee sur une
+      // ligne de 30 min prend l heure SOUS LE POINTEUR, a 5 min pres
+      // (laserTimeFromPoint) : au milieu de la ligne 18:30, c est 18:45. On lache
+      // donc 2 px sous le haut de la ligne, la ou l heure attendue est son debut.
+      const ligne = cible.el.closest('.laser-agenda-row[data-laser-time-start]') || cible.el;
+      const rl = ligne.getBoundingClientRect();
+      const debut = Number(ligne.dataset.laserTimeStart ?? cible.t);
+      return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, tgt: { x: b.x + b.width/2, y: rl.top + 2, t: debut } };
     }, { unit: DRAG_UNIT, avoid: beforeReal.windows.map(w => w.start) });
     if (!ok(Boolean(pos && pos.card), `carte ${DRAG_UNIT} + slot vide amenes dans la vue${pos && pos.raison ? ' :: ' + pos.raison : ''}`)) { throw new Error('setup drag introuvable'); }
 

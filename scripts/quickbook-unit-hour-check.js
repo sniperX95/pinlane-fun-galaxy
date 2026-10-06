@@ -86,6 +86,16 @@ async function installMock(page) {
       const raw = typeof input === 'string' ? input : (input && input.url) || '';
       const u = new URL(raw, window.location.origin);
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [], events: [], permissions: perms } });
+      // Les notes client internes (API du 2026-10-05, journal Pinlane 378) : la console
+      // les precharge pour chaque carte. Absente, elle repondait 404 et ce gate rougissait
+      // sur « aucune erreur console ». Meme forme que lib/customer-notes.js (voir le
+      // mock commun de planning-matrix-check.js).
+      if (u.pathname === '/api/staff-customer-notes' && String(init.method || 'GET').toUpperCase() === 'GET') {
+        const sansNote = (id) => ({ eligible: true, clientKey: `p:qa${id}`, note: null });
+        const lot = u.searchParams.get('reservationIds');
+        if (lot !== null) return J({ ok: true, notesByReservationId: Object.fromEntries(lot.split(',').filter(Boolean).map((id) => [String(Number(id)), sansNote(Number(id))])) });
+        return J({ ok: true, ...sansNote(Number(u.searchParams.get('reservationId'))) });
+      }
       if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: [], laneStatuses: Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {}), centerId: 'libramont' });
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: [], laneStatuses: {}, centerId: 'libramont', revision: 'qa', syncedAt: new Date().toISOString() });
       if (u.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'POST') {

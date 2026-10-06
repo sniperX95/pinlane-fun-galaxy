@@ -75,6 +75,16 @@ async function installMock(page, perms, denied) {
       const u = new URL(raw, window.location.origin);
       const note403 = (label) => { window.__QA_403__.push(label); return deny(); };
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'manager', selectedMemberId: 'mgr', roles: [{ id: 'manager', name: 'Manager', code: 'MG', tone: 'ops', accessCode: 'X', updatedAt: new Date().toISOString(), locked: false, permissions: perms }], members: [{ id: 'mgr', name: 'Manager partage', contact: 'm@x', roleId: 'manager', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
+      // Les notes client internes (API du 2026-10-05, journal Pinlane 378) : la console
+      // les precharge pour chaque carte. Absente, elle repondait 404 et ce gate rougissait
+      // sur « aucune erreur console ». Meme forme que lib/customer-notes.js (voir le
+      // mock commun de planning-matrix-check.js).
+      if (u.pathname === '/api/staff-customer-notes' && String(init.method || 'GET').toUpperCase() === 'GET') {
+        const sansNote = (id) => ({ eligible: true, clientKey: `p:qa${id}`, note: null });
+        const lot = u.searchParams.get('reservationIds');
+        if (lot !== null) return J({ ok: true, notesByReservationId: Object.fromEntries(lot.split(',').filter(Boolean).map((id) => [String(Number(id)), sansNote(Number(id))])) });
+        return J({ ok: true, ...sansNote(Number(u.searchParams.get('reservationId'))) });
+      }
       if (u.pathname === '/api/staff-state') {
         if (!has('planning.view') && !has('dashboard.view') && !has('reservations.view')) return note403('staff-state');
         return J({ ok: true, revision: 'qa', reservations: R, laneStatuses: lanes(), centerId: 'libramont' });

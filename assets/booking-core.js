@@ -423,8 +423,12 @@ function getLaserOptionsCatalog() {
   return Array.isArray(options) && options.length ? options : LASER_GAME_OPTIONS;
 }
 
+// Le formateur se construit une fois : en construire un a chaque appel coutait
+// 31 ms par rendu du planning sur tablette (processeur ralenti 4x), l heure
+// etant demandee pour chaque carte. Il rend exactement les memes parties.
+var businessNowFormat = null; // var : peut etre appele avant cette ligne au chargement
 function getBusinessNowParts(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
+  if (!businessNowFormat) businessNowFormat = new Intl.DateTimeFormat('en-GB', {
     timeZone: BUSINESS_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
@@ -432,7 +436,8 @@ function getBusinessNowParts(date = new Date()) {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  }).formatToParts(date);
+  });
+  const parts = businessNowFormat.formatToParts(date);
   const read = type => Number(parts.find(part => part.type === type)?.value || 0);
   return {
     year: read('year'),

@@ -171,6 +171,7 @@
   function cascade(racine) {
     var hote = racine && racine.querySelectorAll ? racine : document;
     var listes = hote.querySelectorAll('[data-pl-stagger]');
+    var aDecaler = [];
     for (var i = 0; i < listes.length; i += 1) {
       var liste = listes[i];
       var cle = liste.getAttribute('data-pl-stagger');
@@ -185,13 +186,23 @@
       // rejoue pas. La signature vient d etre memorisee ci-dessus, donc
       // elle ne rejouera pas non plus au retrait de la classe.
       if (liste.closest && liste.closest('.is-repaint')) continue;
-      for (var j = 0; j < n && j < CASCADE_MAX; j += 1) {
-        var e = enfants[j];
-        e.classList.remove('pl-in');
-        void e.offsetWidth;          // force le redemarrage de l'animation
-        e.style.animationDelay = (j * CASCADE_PAS) + 'ms';
-        e.classList.add('pl-in');
-      }
+      for (var j = 0; j < n && j < CASCADE_MAX; j += 1) aDecaler.push([enfants[j], j]);
+    }
+    // UN SEUL RECALCUL POUR TOUTES LES LIGNES (2026-10-07). Le redemarrage se
+    // faisait ligne par ligne (retirer, lire offsetWidth, remettre) : autant de
+    // recalculs de style et de mises en page forces que de lignes decalees,
+    // 41 sur une journee chargee (110 ms sur tablette, processeur ralenti 4x).
+    // Retirer partout, lire une fois, remettre partout redemarre les memes
+    // animations avec le meme decalage. Une ligne neuve (rendu par innerHTML)
+    // n a pas encore la classe : il n y a alors rien a redemarrer, et rien a lire.
+    var relancer = false;
+    for (var r = 0; r < aDecaler.length; r += 1) {
+      if (aDecaler[r][0].classList.contains('pl-in')) { aDecaler[r][0].classList.remove('pl-in'); relancer = true; }
+    }
+    if (relancer) void document.documentElement.offsetWidth;   // force le redemarrage, une fois
+    for (var a = 0; a < aDecaler.length; a += 1) {
+      aDecaler[a][0].style.animationDelay = (aDecaler[a][1] * CASCADE_PAS) + 'ms';
+      aDecaler[a][0].classList.add('pl-in');
     }
   }
 
@@ -269,18 +280,23 @@
     var r = bandeau.getBoundingClientRect();
     return r.width ? { x: r.left - base.left + 40, y: r.top - base.top, bandeau: bandeau } : null;
   }
-  function deplacements(racine) {
+  // LIRE TOUT, PUIS ECRIRE TOUT (2026-10-07). La boucle lisait la place d une
+  // carte puis l animait, carte apres carte : chaque animation posee salissait
+  // le style, et la lecture suivante recalculait la page (jusqu a 70 mises en
+  // page forcees pour un seul « Arrivé » sur une journee chargee, tablette au
+  // processeur ralenti 4x). Les places se relevent d abord, toutes, puis les
+  // memes decisions s appliquent. Le rendu et les trajets sont inchanges.
+  function mesurerDeplacements(racine) {
     var hote = racine && racine.querySelectorAll ? racine : document;
     var listes = hote.querySelectorAll('.gc-sections');
+    var plans = [];
     for (var l = 0; l < listes.length; l += 1) {
       var liste = listes[l];
       var base = liste.getBoundingClientRect();
       if (!base.width) continue;
       var cartes = liste.querySelectorAll('[data-res-row-id]');
+      var releves = [];
       var vues = Object.create(null);
-      var vusNoeuds = Object.create(null);
-      var bandeauxTouches = [];
-      var nouvelles = [];
       for (var i = 0; i < cartes.length && i < FLIP_MAX; i += 1) {
         var carte = cartes[i];
         var cle = carte.getAttribute('data-res-row-id');
@@ -288,6 +304,35 @@
         if (!r.width) continue;
         var ici = { x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height, s: sectionDe(carte) };
         vues[cle] = ici;
+        releves.push({ carte: carte, cle: cle, ici: ici });
+      }
+      // Les cibles des cartes parties (leur bandeau, s il est replie) se
+      // mesurent aussi avant toute ecriture.
+      var cibles = Object.create(null);
+      var partis = [];
+      for (var g in places) if (!vues[g]) partis.push(g);
+      // Au-dela de trois parties, rien ne s anime (voir « calme ») : rien a mesurer.
+      if (partis.length <= 3) partis.forEach(function (k) { cibles[k] = cibleDe(liste, k, base); });
+      var bandeaux = [];
+      var bds = liste.querySelectorAll('.gc-section .gc-band');
+      for (var b = 0; b < bds.length; b += 1) bandeaux.push({ bandeau: bds[b], cle: sectionDe(bds[b]), n: Number((bds[b].querySelector('.count') || {}).textContent) || 0 });
+      plans.push({ liste: liste, releves: releves, vues: vues, cibles: cibles, bandeaux: bandeaux, hauteur: window.innerHeight });
+    }
+    return plans;
+  }
+  function jouerDeplacements(plans) {
+    for (var l = 0; l < plans.length; l += 1) {
+      var plan = plans[l];
+      var liste = plan.liste;
+      var vues = plan.vues;
+      var vusNoeuds = Object.create(null);
+      var bandeauxTouches = [];
+      var nouvelles = [];
+      var allumer = [];
+      for (var i = 0; i < plan.releves.length; i += 1) {
+        var carte = plan.releves[i].carte;
+        var cle = plan.releves[i].cle;
+        var ici = plan.releves[i].ici;
         vusNoeuds[cle] = carte;
         var avant = places[cle];
         if (reduit || carte.__plPlace) continue;
@@ -302,9 +347,9 @@
         var dy = avant.y - ici.y;
         var change = avant.s !== ici.s;
         if (Math.abs(dx) < 3 && Math.abs(dy) < 3) continue;
-        if (Math.abs(dy) > window.innerHeight * 1.5) {
+        if (Math.abs(dy) > plan.hauteur * 1.5) {
           // Trop loin pour glisser : elle s allume la ou elle arrive.
-          if (change) { carte.classList.remove('pl-arrive'); void carte.offsetWidth; carte.classList.add('pl-arrive'); }
+          if (change) allumer.push(carte);
           continue;
         }
         anime(carte, [{ transform: 'translate(' + dx + 'px,' + dy + 'px)' + (change ? ' scale(.97)' : '') }, { transform: 'none' }], { duration: change ? DUREE + 80 : DUREE, easing: COURBE });
@@ -313,6 +358,13 @@
           var bd = carte.closest('.gc-section') ? carte.closest('.gc-section').querySelector('.gc-band') : null;
           if (bd) bandeauxTouches.push(bd);
         }
+      }
+      // L allumage redemarre en une passe : retirer partout, une lecture, remettre.
+      if (allumer.length) {
+        var relancer = false;
+        allumer.forEach(function (c) { if (c.classList.contains('pl-arrive')) { c.classList.remove('pl-arrive'); relancer = true; } });
+        if (relancer) void document.documentElement.offsetWidth;
+        allumer.forEach(function (c) { c.classList.add('pl-arrive'); });
       }
       // LES CARTES PARTIES : un fantome de l ancienne carte part de son
       // ancienne place vers son nouveau bandeau (s il est replie) et s efface.
@@ -331,7 +383,7 @@
           var vieux = noeuds[k];
           var p = places[k];
           if (!vieux || !p || !p.w) continue;
-          var cible = cibleDe(liste, k, base);
+          var cible = plan.cibles[k];
           var fantome = vieux.cloneNode(true);
           fantome.removeAttribute('data-res-row-id');
           fantome.setAttribute('aria-hidden', 'true');
@@ -351,13 +403,10 @@
         }
       }
       // LE BANDEAU QUI RECOIT s illumine une fois.
-      var bandeaux = liste.querySelectorAll('.gc-section .gc-band');
-      for (var j = 0; j < bandeaux.length; j += 1) {
-        var bandeau = bandeaux[j];
-        var cleB = sectionDe(bandeau);
-        var n = Number((bandeau.querySelector('.count') || {}).textContent) || 0;
-        if (comptes[cleB] !== undefined && n > comptes[cleB]) bandeauxTouches.push(bandeau);
-        comptes[cleB] = n;
+      for (var j = 0; j < plan.bandeaux.length; j += 1) {
+        var info = plan.bandeaux[j];
+        if (comptes[info.cle] !== undefined && info.n > comptes[info.cle]) bandeauxTouches.push(info.bandeau);
+        comptes[info.cle] = info.n;
       }
       if (!reduit) {
         var deja = [];
@@ -373,6 +422,7 @@
       noeuds = vusNoeuds;
     }
   }
+  function deplacements(racine) { jouerDeplacements(mesurerDeplacements(racine)); }
 
   /* ---- LA COCHE QUI REPOND ----------------------------------------------
      Une case cochee « saute » une fois (220 ms) quand son etat CHANGE, jamais
@@ -382,6 +432,7 @@
   function cochesChangees(racine) {
     var hote = racine && racine.querySelectorAll ? racine : document;
     var cases = hote.querySelectorAll('.gc-check[data-pl-focus], .gc-libre[data-pl-focus]');
+    var sautent = [];
     for (var i = 0; i < cases.length; i += 1) {
       var c = cases[i];
       var cle = c.getAttribute('data-pl-focus');
@@ -389,10 +440,13 @@
       var avant = coches[cle];
       coches[cle] = on;
       if (avant === undefined || avant === on || reduit) continue;
-      c.classList.remove('pl-pop');
-      void c.offsetWidth;
-      c.classList.add('pl-pop');
+      sautent.push(c);
     }
+    // Meme redemarrage en une passe que la cascade : une lecture pour toutes.
+    var relancer = false;
+    sautent.forEach(function (x) { if (x.classList.contains('pl-pop')) { x.classList.remove('pl-pop'); relancer = true; } });
+    if (relancer) void document.documentElement.offsetWidth;
+    sautent.forEach(function (x) { x.classList.add('pl-pop'); });
   }
 
   /* ---- LE DECLENCHEUR ----------------------------------------------------
@@ -409,18 +463,42 @@
      faisait un aller-retour visible (40, puis 0, puis 40). Trouve par le test de
      monotonie, pas a la relecture. */
   var arme = false;
+  // LA PASSE LIT AVANT D ECRIRE (2026-10-07) : les places des cartes se
+  // relevent avant que la cascade et les coches ne posent leurs classes. Dans
+  // l ordre d avant, la cascade salissait le style puis le releve des places
+  // recalculait toute la page pour le lire.
+  function passe() {
+    arme = false;
+    chiffres(document);
+    var plans = mesurerDeplacements(document);
+    cascade(document);
+    jouerDeplacements(plans);
+    cochesChangees(document);
+  }
+  // CE QUE LE MOTION ECRIT LUI-MEME NE RELANCE PAS LA PASSE. Un compteur qui
+  // monte reecrit son texte a chaque image pendant pres d une seconde, et un
+  // fantome de carte entre puis sort : sans ce filtre, chacune de ces
+  // ecritures relancait la passe entiere (quatre balayages du document et le
+  // releve de toutes les cartes) a l image suivante.
+  function propre(m) {
+    var t = m.target && m.target.nodeType === 1 ? m.target : (m.target && m.target.parentNode);
+    if (t && t.closest && t.closest('[data-pl-anim]')) return true;
+    var noeuds = [];
+    var k;
+    for (k = 0; k < m.addedNodes.length; k += 1) noeuds.push(m.addedNodes[k]);
+    for (k = 0; k < m.removedNodes.length; k += 1) noeuds.push(m.removedNodes[k]);
+    return noeuds.length > 0 && noeuds.every(function (n) { return n.nodeType === 1 && n.classList && n.classList.contains('pl-fantome'); });
+  }
   function observer() {
     var cible = document.body;
     if (!cible || typeof MutationObserver !== 'function') return;
-    new MutationObserver(function () {
+    new MutationObserver(function (enregistrements) {
       if (arme) return;
+      if (enregistrements && enregistrements.length && enregistrements.every(propre)) return;
       arme = true;
-      window.requestAnimationFrame(function () { arme = false; chiffres(document); cascade(document); deplacements(document); cochesChangees(document); });
+      window.requestAnimationFrame(passe);
     }).observe(cible, { childList: true, subtree: true });
-    chiffres(document);          // pose la valeur de reference sans animer
-    cascade(document);
-    deplacements(document);      // pose les places de reference
-    cochesChangees(document);
+    passe();                     // pose les valeurs et les places de reference sans animer
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observer);
   else observer();

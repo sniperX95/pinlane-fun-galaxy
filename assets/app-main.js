@@ -2154,18 +2154,27 @@ function staffRepaintKey() {
 }
 
 function renderStaffData() {
-  const staffRoot = document.getElementById('staffView');
-  const key = staffRepaintKey();
-  const isRepaint = staffRoot && !staffRoot.classList.contains('hidden') && staffRepaintLastKey === key;
-  staffRepaintLastKey = key;
-  if (isRepaint) {
-    repaintKeepingScroll(staffRoot, () => renderStaffDataInner());
-    return;
-  }
-  renderStaffDataInner();
+  // Le lot s ouvre AVANT repaintKeepingScroll : sa classe is-repaint salit le
+  // style de toute la console, et une lecture de position faite apres la
+  // recalculerait pour rien (voir ouvrirLotDefilement).
+  avecLotDefilement(() => {
+    const staffRoot = document.getElementById('staffView');
+    const key = staffRepaintKey();
+    const isRepaint = staffRoot && !staffRoot.classList.contains('hidden') && staffRepaintLastKey === key;
+    staffRepaintLastKey = key;
+    if (isRepaint) {
+      repaintKeepingScroll(staffRoot, () => renderStaffDataInner());
+      return;
+    }
+    renderStaffDataInner();
+  });
 }
 
 function renderStaffDataInner() {
+  return avecLotDefilement(renderStaffDataPage);
+}
+
+function renderStaffDataPage() {
   // Fusion Clients+Groupes : « groups » n'est plus une page, tout état legacy
   // (onglet sauvegardé, hash) retombe sur Clients, segment « À venir ».
   if (getStaffMenuPage() === 'groups') {
@@ -20686,6 +20695,63 @@ function openStaffReservationDetail(id) {
   renderPos();
 }
 
+// LE DEFILEMENT SE LIT AVANT LE RENDU ET SE REPOSE APRES (2026-10-07).
+// Chaque grille memorisait sa position au milieu du rendu (`wrap.scrollTop`)
+// puis la reposait juste apres son innerHTML. Une lecture de geometrie qui suit
+// une ecriture oblige le navigateur a recalculer TOUTE la page sur le champ :
+// mesure sur tablette (processeur ralenti 4x, journee chargee), un rendu du
+// planning payait trois mises en page completes de plus que l image elle-meme
+// (renderPlanning lecture 144 ms, renderPlanning repose 92 ms, renderTable
+// repose 113 ms). Les positions se lisent donc une fois, AVANT la premiere
+// ecriture, et se reposent toutes a la fin : une seule mise en page, celle que
+// l image aurait faite de toute facon. Une position nulle ne se repose pas :
+// remplacer le contenu ne fait jamais defiler un conteneur qui etait en haut.
+var defilementsDuRendu = null; // var : renderStaffData peut tourner avant cette ligne au chargement
+function ouvrirLotDefilement() {
+  if (defilementsDuRendu) return false;
+  const lus = new Map();
+  if (state.view === 'staff' && isStaffPlanningPageActive()) {
+    const laser = document.getElementById('laserPlanningGridWrap');
+    [
+      document.getElementById('planningGridWrap'),
+      laser,
+      laser && laser.querySelector('.laser-agenda'),
+      laser && laser.querySelector('.laser-pass-queue'),
+      document.getElementById('resList'),
+    ].forEach((el) => { if (el) lus.set(el, [el.scrollTop, el.scrollLeft]); });
+  }
+  defilementsDuRendu = { lus, aPoser: new Map() };
+  return true;
+}
+function fermerLotDefilement() {
+  const lot = defilementsDuRendu;
+  defilementsDuRendu = null;
+  if (!lot) return;
+  lot.aPoser.forEach(([top, left], el) => {
+    if (!el.isConnected || (!top && !left)) return;
+    el.scrollTop = top;
+    el.scrollLeft = left;
+  });
+}
+function lireDefilementRendu(el) {
+  if (!el) return [0, 0];
+  const lot = defilementsDuRendu;
+  // Un conteneur deja reconstruit dans ce lot rend la position qu il attend.
+  const connu = lot && (lot.aPoser.get(el) || lot.lus.get(el));
+  return connu ? [connu[0], connu[1]] : [el.scrollTop, el.scrollLeft];
+}
+function poserDefilementRendu(el, top, left) {
+  if (!el) return;
+  if (defilementsDuRendu) { defilementsDuRendu.aPoser.set(el, [top || 0, left || 0]); return; }
+  if (!top && !left) return;
+  el.scrollTop = top;
+  el.scrollLeft = left;
+}
+function avecLotDefilement(rendre) {
+  const ouvert = ouvrirLotDefilement();
+  try { return rendre(); } finally { if (ouvert) fermerLotDefilement(); }
+}
+
 function renderStaff() {
   if (!hasSavedAuth()) {
     renderStaffShell(todaysReservations());
@@ -20693,6 +20759,10 @@ function renderStaff() {
     return;
   }
   guardStaffPage();
+  return avecLotDefilement(renderStaffPage);
+}
+
+function renderStaffPage() {
   const dayReservations = todaysReservations();
   queueMicrotask(() => window.PinlaneStaffNotes?.prefetch(dayReservations));
   renderStaffShell(dayReservations);
@@ -20828,7 +20898,7 @@ function syncExpandedPlanningControls() {
     if (!head) continue;
     let controls = head.querySelector('.planning-expanded-controls');
     if (!controls) { controls = document.createElement('div'); controls.className = 'planning-expanded-controls'; head.appendChild(controls); }
-    controls.innerHTML = `${staffDateNavHtml()}${canUseStaffPermission('reservations.quick') ? `<button type="button" class="btn-primary planning-expanded-create" onclick="openQuickBook({date:state.currentDate,type:getStaffResourceView()==='laser'?'laser':'bowling'})">+ Réservation rapide</button>` : ''}`;
+    poserHtmlSurface(controls, `${staffDateNavHtml()}${canUseStaffPermission('reservations.quick') ? `<button type="button" class="btn-primary planning-expanded-create" onclick="openQuickBook({date:state.currentDate,type:getStaffResourceView()==='laser'?'laser':'bowling'})">+ Réservation rapide</button>` : ''}`);
   }
 }
 
@@ -22620,6 +22690,46 @@ function renderPlanningHead() {
   }
 }
 
+// UNE SURFACE IDENTIQUE NE SE RECONSTRUIT PAS (2026-10-07). Le sondage, le
+// tic de l horloge et chaque geste re-rendent les deux plannings et la liste ;
+// le plus souvent l une des trois (la grille cachee, celle que le geste n a
+// pas touchee) ressort au caractere pres. La reconstruire coutait quand meme
+// l analyse du HTML, le style, la mise en page, l accessibilite et la peinture
+// de centaines d elements : sur tablette (processeur ralenti 4x, journee
+// chargee), un re-rendu sans changement prenait plus d une demi-seconde.
+// La surface n est gardee que si son HTML est identique ET si personne n a
+// touche a son contenu depuis (classe posee par un geste, texte reecrit,
+// fantome) : un observateur le note, et dans le doute on reconstruit. Le
+// resultat a l ecran est donc toujours celui d un rendu complet.
+var rendusDeSurface = typeof WeakMap === 'function' ? new WeakMap() : null;
+function surfaceTouchee(conteneur, mutations) {
+  return mutations.some((m) => m.type === 'childList' || m.target !== conteneur);
+}
+function poserHtmlSurface(conteneur, html) {
+  if (!conteneur) return false;
+  if (!rendusDeSurface || typeof MutationObserver !== 'function') { conteneur.innerHTML = html; return true; }
+  let suivi = rendusDeSurface.get(conteneur);
+  if (suivi) {
+    if (surfaceTouchee(conteneur, suivi.observateur.takeRecords())) suivi.touchee = true;
+    if (!suivi.touchee && suivi.html === html) return false;
+  } else {
+    suivi = { html: '', touchee: false, observateur: null };
+    suivi.observateur = new MutationObserver((mutations) => { if (surfaceTouchee(conteneur, mutations)) suivi.touchee = true; });
+    suivi.observateur.observe(conteneur, { childList: true, subtree: true, attributes: true, characterData: true });
+    rendusDeSurface.set(conteneur, suivi);
+  }
+  conteneur.innerHTML = html;
+  suivi.observateur.takeRecords();
+  suivi.html = html;
+  suivi.touchee = false;
+  return true;
+}
+// Une variable de style reecrite a l identique invalide quand meme le style de
+// toute la boite : on ne l ecrit que si elle change.
+function poserVariableSiChange(el, nom, valeur) {
+  if (el && el.style.getPropertyValue(nom) !== valeur) el.style.setProperty(nom, valeur);
+}
+
 function renderPlanning() {
   ensureAvailabilityBlocksForPlanning();
   ensureStaffCenterConfigForPlanning();
@@ -22628,11 +22738,11 @@ function renderPlanning() {
   const planningBox = document.getElementById('planningBox');
   // Le re-render (polling 4s / 60s) reconstruit innerHTML et remet le scroll à 0.
   // On mémorise la position pour ne pas faire sauter la vue en mode plein écran.
-  const prevScrollTop = wrap ? wrap.scrollTop : 0;
-  const prevScrollLeft = wrap ? wrap.scrollLeft : 0;
+  // Lue avant le rendu, reposée après (voir ouvrirLotDefilement).
+  const [prevScrollTop, prevScrollLeft] = lireDefilementRendu(wrap);
   const config = planningDisplayWindow('bowling');
   if (config.closed && !config.showExisting) {
-    wrap.innerHTML = '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>';
+    poserHtmlSurface(wrap, '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>');
 
     return;
   }
@@ -22682,9 +22792,9 @@ function renderPlanning() {
     HH = Math.max(MIN_HOUR_H, computedHeight);
   }
   if (planningBox) {
-    planningBox.style.setProperty('--planning-header-h', `${HEADER_H}px`);
-    planningBox.style.setProperty('--planning-hour-h', `${HH}px`);
-    planningBox.style.setProperty('--planning-hour-col', state.staffPlanningExpanded ? '76px' : '54px');
+    poserVariableSiChange(planningBox, '--planning-header-h', `${HEADER_H}px`);
+    poserVariableSiChange(planningBox, '--planning-hour-h', `${HH}px`);
+    poserVariableSiChange(planningBox, '--planning-hour-col', state.staffPlanningExpanded ? '76px' : '54px');
   }
   const res = getPlanningVisibleReservations('bowling').filter(r => getBowlingWindowsFromReservation(r).length > 0);
   const isToday = state.currentDate === todayStr();
@@ -22863,7 +22973,7 @@ function renderPlanning() {
   const nowBadge = curPos >= HEADER_H
     ? `<div class="current-badge" style="top:${curPos}px" aria-hidden="true">${formatClockDisplay(curH)}</div>`
     : '';
-  wrap.innerHTML = `
+  poserHtmlSurface(wrap, `
     ${planningClosedNotice(config)}
     <div class="planning-grid">
       ${curPos >= HEADER_H ? `<div class="current-line" style="top:${curPos}px"></div>` : ''}
@@ -22873,9 +22983,8 @@ function renderPlanning() {
         ${nowBadge}
       </div>
       <div class="lanes-row">${lanesHtml}</div>
-    </div>`;
-  wrap.scrollTop = prevScrollTop;
-  wrap.scrollLeft = prevScrollLeft;
+    </div>`);
+  poserDefilementRendu(wrap, prevScrollTop, prevScrollLeft);
   markPlanningGridFresh(wrap, state.currentDate);
   refreshPlanningMoveHighlights();
 }
@@ -22920,21 +23029,18 @@ function renderLaserPlanning() {
   const sub = document.getElementById('laserPlanningSub');
   if (!wrap) return;
   // Préserve le scroll (heures + horizontal) entre deux re-renders du polling.
-  const prevScrollTop = wrap.scrollTop;
-  const prevScrollLeft = wrap.scrollLeft;
+  // Lu avant le rendu, reposé après (voir ouvrirLotDefilement).
+  const [prevScrollTop, prevScrollLeft] = lireDefilementRendu(wrap);
   // En PLEIN ÉCRAN, le wrap est en overflow:hidden (grille 2 colonnes) : le vrai
   // scroller vertical est la timeline `.laser-agenda` (et la file `.laser-pass-queue`
   // à gauche défile aussi). Comme on reconstruit tout le innerHTML, ces éléments
   // repartaient à 0 → « ça remet tout en haut à chaque déplacement ». On mémorise
   // donc leur position pour la restaurer après le rebuild. (Signalé Movsar 2026-07-12.)
-  const prevAgenda = wrap.querySelector('.laser-agenda');
-  const prevAgendaTop = prevAgenda ? prevAgenda.scrollTop : 0;
-  const prevAgendaLeft = prevAgenda ? prevAgenda.scrollLeft : 0;
-  const prevQueue = wrap.querySelector('.laser-pass-queue');
-  const prevQueueTop = prevQueue ? prevQueue.scrollTop : 0;
+  const [prevAgendaTop, prevAgendaLeft] = lireDefilementRendu(wrap.querySelector('.laser-agenda'));
+  const [prevQueueTop] = lireDefilementRendu(wrap.querySelector('.laser-pass-queue'));
   const config = planningDisplayWindow('laser');
   if (config.closed && !config.showExisting) {
-    wrap.innerHTML = '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>';
+    poserHtmlSurface(wrap, '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>');
     if (sub) sub.textContent = 'Centre fermé';
     return;
   }
@@ -23180,7 +23286,7 @@ function renderLaserPlanning() {
   }
 
   const laserBlockBanner = renderLaserBlockBanner(state.currentDate);
-  wrap.innerHTML = `
+  poserHtmlSurface(wrap, `
     ${planningClosedNotice(config)}
     ${pendingQueueHtml}
     ${laserBlockBanner}
@@ -23191,16 +23297,10 @@ function renderLaserPlanning() {
         <div>Capacité</div>
       </div>
       <div class="laser-agenda-body">${rowsHtml}</div>
-    </div>`;
-  wrap.scrollTop = prevScrollTop;
-  wrap.scrollLeft = prevScrollLeft;
-  const nextAgenda = wrap.querySelector('.laser-agenda');
-  if (nextAgenda) {
-    nextAgenda.scrollTop = prevAgendaTop;
-    nextAgenda.scrollLeft = prevAgendaLeft;
-  }
-  const nextQueue = wrap.querySelector('.laser-pass-queue');
-  if (nextQueue) nextQueue.scrollTop = prevQueueTop;
+    </div>`);
+  poserDefilementRendu(wrap, prevScrollTop, prevScrollLeft);
+  poserDefilementRendu(wrap.querySelector('.laser-agenda'), prevAgendaTop, prevAgendaLeft);
+  poserDefilementRendu(wrap.querySelector('.laser-pass-queue'), prevQueueTop, 0);
   refreshPlanningMoveHighlights();
 }
 
@@ -24129,7 +24229,8 @@ function renderTable() {
   // La liste garde SA position, comme les deux plannings le font depuis
   // toujours : innerHTML la remet a zero, et un poll toutes les quelques
   // secondes renverrait le comptoir en haut de liste au milieu d une lecture.
-  const listScrollTop = list ? list.scrollTop : 0;
+  // Lue avant le rendu, reposée après (voir ouvrirLotDefilement).
+  const [listScrollTop, listScrollLeft] = lireDefilementRendu(list);
   const resourceName = view === 'all' ? 'pour ce jour' : view === 'laser' ? 'Laser Game pour ce jour' : 'Bowling pour ce jour';
   const planningName = view === 'all' ? 'sur un planning' : view === 'laser' ? 'Laser Game' : 'Bowling';
   // LES ONGLETS NE DISAIENT PAS TOUS LA MÊME CHOSE, ET RIEN NE LE DISAIT.
@@ -24175,12 +24276,12 @@ function renderTable() {
     </div>
   </div>`;
   if (!filtered.length) {
-    list.innerHTML = `${toolbar}<div class="empty-state">
+    poserHtmlSurface(list, `${toolbar}<div class="empty-state">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       <div class="e-title">${state.searchTerm ? 'Aucun résultat' : `Aucune réservation ${resourceName}`}</div>
       <div class="e-sub">${state.searchTerm ? 'Essayez un autre mot-clé' : `Cliquez sur "Réservation rapide" ou ${planningName} pour en créer une`}</div>
-    </div>`;
-    if (list) list.scrollTop = listScrollTop;
+    </div>`);
+    poserDefilementRendu(list, listScrollTop, listScrollLeft);
     return;
   }
   // LES SECTIONS DU COMPTOIR (2026-10-01). Le RETARD sort d « À venir » et
@@ -24217,12 +24318,12 @@ function renderTable() {
   // « Terminées » ne montre QUE des payes : la section s ouvre d elle-meme.
   const payesOuverts = state.staffStatusFilter === 'done' || (!sections.length && payes.length > 0) || Boolean(state.staffPayeesOuvertes);
 
-  list.innerHTML = `${toolbar}
+  poserHtmlSurface(list, `${toolbar}
   <div class="res-sections gc-sections">
     ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows, moments)).join('')}
     ${payes.length ? renderReservationSection('done', 'Déjà payées', 'Encaissées : rien à faire à la caisse', payes, moments, { repliable: true, ouvert: payesOuverts }) : ''}
-  </div>`;
-  if (list) list.scrollTop = listScrollTop;
+  </div>`);
+  poserDefilementRendu(list, listScrollTop, listScrollLeft);
 }
 
 function quickAction(id, status) {
@@ -30298,6 +30399,10 @@ document.getElementById('quickBookOverlay').addEventListener('click', e => {
 
 setInterval(() => {
   if (state.view !== 'staff') return;
+  avecLotDefilement(tickHorlogeStaff);
+}, 60000);
+
+function tickHorlogeStaff() {
   // Tick d horloge (barre « maintenant ») : repaint invisible, et CHAQUE
   // grille dans SA racine. Enveloppe sur #staffView entier, il parcourait
   // toute la console et coupait les animations de la page reellement ouverte
@@ -30327,7 +30432,7 @@ setInterval(() => {
   // Accueil : « En ce moment » suit l heure (un groupe passe en retard, un
   // autre finit sa partie) sans attendre qu une donnee change.
   if (isStaffDashboardActive()) renderStaffDashboard();
-}, 60000);
+}
 
 // Échap ferme le mode plein écran du planning (bowling ou laser).
 document.addEventListener('keydown', (event) => {

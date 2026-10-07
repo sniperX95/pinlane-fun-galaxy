@@ -3331,6 +3331,9 @@ body:is(.staff-mode, .admin-mode) .laser-group-list { gap: 8px; align-items: str
 body:is(.staff-mode, .admin-mode) .laser-group-item { display: flex; align-items: center; gap: 4px; max-width: 320px; min-width: 180px; }
 body:is(.staff-mode, .admin-mode) .laser-group-item .laser-group-card { flex: 1; min-width: 0; min-height: 56px; padding: 8px 10px; }
 body:is(.staff-mode, .admin-mode) .laser-group-item .delay-indicator { flex: 0 0 44px; width: 44px; height: 44px; margin: 0; border-radius: 8px; font-size: 11px; }
+body:is(.staff-mode, .admin-mode) .laser-pass-item { display: flex; align-items: center; gap: 4px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .laser-pass-item .laser-pass-card { flex: 1 1 auto; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .laser-pass-item .delay-indicator { flex: 0 0 44px; width: 44px; height: 44px; margin: 0; border-radius: 8px; font-size: 11px; }
 body:is(.staff-mode, .admin-mode) .laser-card-pills:empty { display: none; }
 body:is(.staff-mode, .admin-mode) .laser-plan-estimate { display: inline-grid; place-items: center; width: 14px; height: 14px; border: 1px solid var(--muted); border-radius: 50%; color: var(--muted); font-size: 10px; line-height: 1; }
 body:is(.staff-mode, .admin-mode) .laser-session-slot.has-session { background: var(--surface); border-color: var(--line); border-left-color: var(--line-strong); }
@@ -19877,3 +19880,51 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
    ici, a la meme place dans la cascade (la feuille se chargeait juste apres
    celle-ci). */
 .staff-note-scope{border:0;margin:0 0 12px;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.staff-note-scope legend{font-size:12px;font-weight:600;margin-bottom:8px;color:var(--muted)}.staff-note-scope label{display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;min-height:44px}.staff-note-scope label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}.staff-note-scope label:has(input:disabled){opacity:.6;cursor:default}.staff-note-scope input{margin:3px 0 0;accent-color:var(--accent)}.staff-note-scope span{font-size:13px;font-weight:600}.staff-note-scope small{display:block;font-size:12px;font-weight:400;color:var(--muted);line-height:1.45;margin-top:3px}.staff-note-scope-caption{font-size:12px;color:var(--muted);line-height:1.5;margin:6px 0 10px}.staff-note-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.staff-note-actions button,.staff-client-note-head button,.staff-note-load-error button{min-height:44px;padding:8px 12px}.staff-client-note{padding:12px 0;margin-bottom:12px;border-bottom:1px solid var(--line)}.staff-client-note-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.staff-client-note-head>b{font-size:13px}.staff-client-note-head>span{font-size:12px;color:var(--muted)}.staff-client-note-head>button{margin-left:auto}.staff-client-note>p{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;line-height:1.55}.staff-client-note-editor{margin-bottom:16px}.staff-client-note-editor>label{display:block;font-size:13px;font-weight:600;margin-bottom:8px}.staff-note-error{font-size:13px;color:var(--warning);line-height:1.5;margin:8px 0}.staff-note-load-error{display:flex;align-items:center;gap:8px;justify-content:space-between;font-size:12px;color:var(--muted)}.gc-note-equipe .staff-note-actions{flex-shrink:0}.staff-note-scope input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(max-width:420px){.staff-note-scope{grid-template-columns:1fr}.staff-client-note-head>button{margin-left:0}}
+
+/* LE PLANNING LASER TIENT SUR UN TELEPHONE (2026-10-07).
+   A 390 px, le plein ecran gardait ses deux colonnes de comptoir : la file
+   « Parties a placer » (340 px) prenait l ecran et la grille des heures etait
+   repoussee hors de l ecran, a droite (50 px visibles). Hors plein ecran,
+   l agenda gardait 900 px de large et sa colonne Capacite ne se voyait qu en
+   faisant defiler de cote. Sous 600 px : la file passe AU-DESSUS, en bandeau
+   qu on fait defiler de cote, et la grille prend toute la largeur dessous ; les
+   trois colonnes de l agenda se partagent la largeur de l ecran. Le glisser au
+   doigt reste le meme : appui long sur une partie, puis la tranche voulue (la
+   timeline defile seule au bord de l ecran). Tablette et ordinateur : rien ne
+   change. */
+@media (max-width: 600px) {
+  .laser-agenda { min-width: 0; }
+  .laser-agenda-header,
+  .laser-agenda-row,
+  .planning-box.expanded .laser-agenda-header,
+  .planning-box.expanded .laser-agenda-row { grid-template-columns: 58px minmax(0, 1fr) 64px; }
+  .laser-agenda-header > div { padding: 8px; }
+  .laser-agenda-time,
+  .laser-agenda-capacity { padding: 8px; }
+  .laser-session-slot { margin: 6px; }
+  .laser-session-stack { padding: 6px; }
+  .laser-agenda-row.is-empty .laser-session-slot.is-empty { padding: 0 10px; }
+
+  .laser-planning-box.expanded .planning-grid-wrap {
+    display: flex;
+    flex-direction: column;
+  }
+  .laser-planning-box.expanded .laser-pass-queue {
+    flex: 0 0 auto;
+    height: auto;
+    max-height: 34vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .laser-planning-box.expanded .laser-pass-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 2px;
+  }
+  .laser-planning-box.expanded .laser-pass-list > * { flex: 0 0 auto; max-width: 78vw; }
+  .laser-planning-box.expanded .laser-pass-card { width: auto; min-width: 168px; }
+  .laser-planning-box.expanded .laser-agenda { flex: 1 1 auto; }
+}

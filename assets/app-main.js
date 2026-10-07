@@ -301,7 +301,14 @@ function scrollLaserDragBy(deltaY) {
   // la vue reste là où Movsar l'a laissée. (Cf. journal 2026-07-12.)
   if (activeWrap && activeWrap.scrollHeight > activeWrap.clientHeight) {
     activeWrap.scrollTop += deltaY;
+    return;
   }
+  // Le Laser en plein écran ne défile pas dans le wrap (overflow hidden) mais
+  // dans sa timeline : c'est elle qui suit le doigt ou la souris au bord. Sur
+  // téléphone, la file est au-dessus et la timeline dessous ; sans ça, une
+  // partie ne pouvait se poser que sur les tranches déjà visibles.
+  const agenda = laserPointerDrag && activeWrap ? activeWrap.querySelector('.laser-agenda') : null;
+  if (agenda && agenda.scrollHeight > agenda.clientHeight) agenda.scrollTop += deltaY;
 }
 
 function stopLaserDragAutoScroll() {
@@ -23104,7 +23111,11 @@ function renderLaserPlanning() {
         const unitLabel = pass.waveCount > 1
           ? `Vague ${pass.waveIndex}/${pass.waveCount}${pass.totalGames > 1 ? ` · Partie ${pass.countIndex}/${pass.totalGames}` : ''}`
           : `Partie ${pass.countIndex}/${pass.totalGames}`;
-        return `<button type="button" class="laser-pass-card" data-laser-res-id="${reservation.id}" data-laser-unit="${unitKey}" draggable="false" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'laser',${reservation.id},null,null,'${unitKey}')" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation(); openPos(${reservation.id})" title="Glisser pour placer cette vague">
+        // La carte et sa puce de retard sont soeurs dans un meme bloc, comme dans
+        // un lancement : la balise ouvrante manquait, et le </div> orphelin
+        // fermait la liste apres la PREMIERE partie (les suivantes tombaient
+        // hors de la liste, une par rangee de la file).
+        return `<div class="laser-pass-item"><button type="button" class="laser-pass-card" data-laser-res-id="${reservation.id}" data-laser-unit="${unitKey}" draggable="false" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'laser',${reservation.id},null,null,'${unitKey}')" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation(); openPos(${reservation.id})" title="Glisser pour placer cette vague">
           <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
           <span class="laser-pass-meta">${unitLabel} · ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
           <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>

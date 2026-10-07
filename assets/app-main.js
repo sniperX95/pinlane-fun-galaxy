@@ -329,7 +329,11 @@ function runLaserDragAutoScroll() {
   } else if (viewportHeight && laserDragLastY > viewportHeight - edge) {
     delta = Math.ceil(((laserDragLastY - (viewportHeight - edge)) / edge) * 24);
   }
-  if (delta) scrollLaserDragBy(delta);
+  // Au-dessus de la file « Parties à placer », le geste vise la file (retirer
+  // la partie du planning) : la timeline voisine ne défile pas sous le bord.
+  // Sur tablette en plein écran, la file longe tout le bas de l écran, et y
+  // déposer une partie faisait filer la timeline jusqu au soir.
+  if (delta && !laserUnplaceDropTarget) scrollLaserDragBy(delta);
   laserDragScrollRaf = requestAnimationFrame(runLaserDragAutoScroll);
 }
 
@@ -22705,12 +22709,46 @@ function renderPlanningHead() {
 // de centaines d elements : sur tablette (processeur ralenti 4x, journee
 // chargee), un re-rendu sans changement prenait plus d une demi-seconde.
 // La surface n est gardee que si son HTML est identique ET si personne n a
-// touche a son contenu depuis (classe posee par un geste, texte reecrit,
-// fantome) : un observateur le note, et dans le doute on reconstruit. Le
-// resultat a l ecran est donc toujours celui d un rendu complet.
+// touche a son contenu depuis (classe posee par un geste, texte reecrit) : un
+// observateur le note, et dans le doute on reconstruit. Au repos, l ecran est
+// donc toujours celui d un rendu complet.
+//
+// CE QUE LE MOTION ECRIT N EST PAS UN ETAT. Ses classes d animation (pl-in de
+// la cascade, pl-arrive, pl-pop, la couleur d un compteur qui monte ou
+// descend), le delai de la cascade, le fantome d une carte partie et le texte
+// d un compteur en course (data-pl-anim) changent la facon dont la surface
+// S ANIME, pas ce qu elle montre : au repos, une carte qui les porte s affiche
+// exactement comme une carte neuve. Les compter comme une retouche
+// reconstruisait la liste au sondage suivant chaque cascade, et coupait au
+// passage une animation en cours. Toute autre ecriture (classe d un geste,
+// texte reecrit, noeud ajoute) reste une retouche.
+var CLASSES_DU_MOTION = ['pl-in', 'pl-arrive', 'pl-pop', 'pl-num-up', 'pl-num-down'];
 var rendusDeSurface = typeof WeakMap === 'function' ? new WeakMap() : null;
+function sansDelaiDeCascade(style) {
+  return String(style || '').replace(/(^|;)\s*animation-delay\s*:[^;]*;?/g, '$1').replace(/[\s;]+$/, '').trim();
+}
+function ecritureDuMotion(m) {
+  const cible = m.target && m.target.nodeType === 1 ? m.target : m.target && m.target.parentNode;
+  if (cible && cible.closest && cible.closest('[data-pl-anim]')) return true;
+  if (m.type === 'attributes') {
+    if (m.attributeName === 'data-pl-anim') return true;
+    if (m.attributeName === 'class') {
+      const avant = String(m.oldValue || '').split(/\s+/).filter(Boolean);
+      const apres = String(m.target.getAttribute('class') || '').split(/\s+/).filter(Boolean);
+      const change = avant.filter((c) => !apres.includes(c)).concat(apres.filter((c) => !avant.includes(c)));
+      return change.every((c) => CLASSES_DU_MOTION.includes(c));
+    }
+    if (m.attributeName === 'style') return sansDelaiDeCascade(m.oldValue) === sansDelaiDeCascade(m.target.getAttribute('style'));
+    return false;
+  }
+  if (m.type === 'childList') {
+    const noeuds = [...m.addedNodes, ...m.removedNodes];
+    return noeuds.length > 0 && noeuds.every((n) => n.nodeType === 1 && n.classList.contains('pl-fantome'));
+  }
+  return false;
+}
 function surfaceTouchee(conteneur, mutations) {
-  return mutations.some((m) => m.type === 'childList' || m.target !== conteneur);
+  return mutations.some((m) => !ecritureDuMotion(m) && (m.type === 'childList' || m.target !== conteneur));
 }
 function poserHtmlSurface(conteneur, html) {
   if (!conteneur) return false;
@@ -22722,7 +22760,7 @@ function poserHtmlSurface(conteneur, html) {
   } else {
     suivi = { html: '', touchee: false, observateur: null };
     suivi.observateur = new MutationObserver((mutations) => { if (surfaceTouchee(conteneur, mutations)) suivi.touchee = true; });
-    suivi.observateur.observe(conteneur, { childList: true, subtree: true, attributes: true, characterData: true });
+    suivi.observateur.observe(conteneur, { childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true });
     rendusDeSurface.set(conteneur, suivi);
   }
   conteneur.innerHTML = html;

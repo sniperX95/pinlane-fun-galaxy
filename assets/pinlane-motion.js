@@ -76,7 +76,11 @@
       if (p < 1) requestAnimationFrame(pas);
       else {
         el.textContent = modele;
-        el.removeAttribute('data-pl-anim');
+        // Le marqueur tombe APRES que les observateurs ont lu cette derniere
+        // ecriture (leur notification est deja en file, avant cette promesse).
+        // Retire sur-le-champ, la valeur finale passait pour une retouche : la
+        // passe repartait, et la liste se reconstruisait au sondage suivant.
+        Promise.resolve().then(function () { el.removeAttribute('data-pl-anim'); });
         window.setTimeout(function () {
           if (enCours[cle] === jeton) el.classList.remove('pl-num-up', 'pl-num-down');
         }, 900);

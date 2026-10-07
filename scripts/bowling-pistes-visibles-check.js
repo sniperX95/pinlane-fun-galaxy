@@ -8,8 +8,9 @@
 //       prix (« 3 pistes × 39 € = 117 € »), pour 1, 6, 7, 14 et 24 joueurs ;
 //       le nombre de pistes est celui que le serveur facture
 //       (getBilledLaneCount) et le total est celui du recapitulatif.
-//   [B] sur telephone, la legende des heures ne garde que ses trois mots et
-//       le bloc du laser tient en peu de texte.
+//   [B] sur telephone, plus de legende des heures (le programme pas a pas se
+//       lit seul, Movsar 2026-10-07 : « pas bcp de texte ») et le bloc du
+//       laser tient en peu de texte.
 //
 // Lancement : node scripts/bowling-pistes-visibles-check.js
 'use strict';
@@ -55,6 +56,10 @@ async function main() {
       await page.click('#goHours');
       await page.waitForSelector('.fg-track[data-activity="bowling"]', { timeout: 20000 });
       await page.waitForTimeout(800);
+      // Le laser se lit dans SA ligne du programme, ouverte comme le client
+      // l ouvre (pas a pas, 2026-10-07) : repliee, sa note ne s affiche pas.
+      const ligneLaser = page.locator('#hourZone .fg-etape[data-activity="laser_game"]:not(.is-open) .fg-etape__tete').first();
+      if (await ligneLaser.count()) { await ligneLaser.click(); await page.waitForTimeout(700); }
       const heures = await page.evaluate(() => {
         const t = document.querySelector('.fg-track[data-activity="bowling"]');
         const lignes = Array.from(document.querySelectorAll('.fg-visit__prices *')).map((n) => n.textContent.replace(/\s+/g, ' ').trim());
@@ -63,6 +68,7 @@ async function main() {
           note: ((t.querySelector('.fg-track__lanes') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
           prixBowling: lignes.filter((l) => /^Bowling/.test(l)).join(' | '),
           legende: String((document.querySelector('.fg-legend') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
+          programme: document.querySelectorAll('#hourZone .fg-etape[data-cle]').length,
           laser: String((document.querySelector('.fg-track[data-activity="laser_game"] .fg-track__share') || {}).innerText || '').replace(/\s+/g, ' ').trim(),
         };
       });
@@ -80,7 +86,7 @@ async function main() {
         ok(heures.prixBowling.indexOf(total) >= 0, `[A] ${pax} joueurs, le recapitulatif facture le meme total (${total})`, heures.prixBowling);
       }
       if (largeur < 680 && pax >= 2) {
-        ok(heures.legende === 'Serré Décale Complet', `[B] ${pax} joueur(s), telephone : la legende ne garde que ses trois mots`, heures.legende);
+        ok(heures.legende === '' && heures.programme > 0, `[B] ${pax} joueur(s), telephone : plus de legende, le programme pas a pas se lit seul`, JSON.stringify({ legende: heures.legende, lignes: heures.programme }));
         ok(heures.laser.length > 0 && heures.laser.length <= 130, `[B] ${pax} joueur(s), telephone : le bloc du laser tient en 130 caracteres`, `${heures.laser.length} « ${heures.laser} »`);
       }
       ok(erreurs.length === 0, `[A] ${pax} joueur(s) : aucune erreur de page`, erreurs.join(' | '));
@@ -90,7 +96,7 @@ async function main() {
     await browser.close();
     server.close();
   }
-  console.log(fautes ? `\nbowling-pistes-visibles-check: ${fautes} defaut(s).` : '\nbowling-pistes-visibles-check: ALL OK (pistes et prix du bowling visibles a la carte et aux heures, legende et laser courts sur telephone)');
+  console.log(fautes ? `\nbowling-pistes-visibles-check: ${fautes} defaut(s).` : '\nbowling-pistes-visibles-check: ALL OK (pistes et prix du bowling visibles a la carte et aux heures, sans legende et laser court sur telephone)');
   process.exit(fautes ? 1 : 0);
 }
 

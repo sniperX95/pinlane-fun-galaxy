@@ -49,7 +49,9 @@ declare
     -- Le registre (0052, 0053) : les reservations supprimees et l historique
     -- des notes client sont des donnees de centre, cloisonnees comme le reste.
     'reservation_archive',
-    'client_note_versions'
+    'client_note_versions',
+    -- Les gestes de la fenetre des offres (0057) : des statistiques de centre.
+    'upsell_events'
   ];
 begin
   foreach target in array tenant_tables loop

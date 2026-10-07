@@ -472,6 +472,16 @@ async function gate() {
     await page.goto(`${BASE_URL}/perf-host.html`, { waitUntil: 'load', timeout: 90000 });
     const cadre = await cadreEmbarque(page);
     await attendre(cadre, () => document.querySelector('#dayLabel') && document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 90000);
+    // LE JOUR DU GATE EST CELUI DU MOCK (2026-10-07), jamais celui que le
+    // formulaire propose d office : c est aujourd hui, et le soir il ne reste
+    // aucune combinaison avant la fermeture (l ecran des heures n arrivait
+    // jamais, le gate rougissait passe 20 h). Le samedi qui vient, 10h-minuit.
+    await cadre.click('#dayBtn');
+    await attendre(cadre, () => { const p = document.querySelector('#dayPop'); return p && !p.hidden && p.getClientRects().length; });
+    if (!(await cadre.$(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`))) await cadre.click('#calNext');
+    await cadre.waitForFunction((d) => { const b = document.querySelector(`#calGrid .fg-cal__day[data-date="${d}"]`); return b && !b.disabled && !b.classList.contains('is-loading'); }, mock.DATE, { timeout: 30000, polling: 50 });
+    await cadre.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+    await attendre(cadre, () => document.querySelector('#dayPop').hidden);
     await calme(cadre, 6000);
     const ctx = { page, cadre, cdp, couches: { n: 0, draw: 0, mo: 0 }, resultats: {}, shots: '', embed: true, trace: false, traces: [] };
     const scene = (nom) => cadre.waitForFunction((n) => { const s = document.querySelector('.fg-scene[data-scene="' + n + '"]'); return s && s.classList.contains('is-active') && !s.classList.contains('is-entering'); }, nom, { timeout: 60000, polling: 50 });
@@ -543,10 +553,17 @@ async function gate() {
     await cadre.click('#goHours');
     await attendre(cadre, () => { const z = document.querySelector('#hourZone'); const s = document.querySelector('.fg-scene[data-scene="heures"]'); return s && s.classList.contains('is-active') && !s.classList.contains('is-entering') && z && z.querySelector('.fg-track') && !z.classList.contains('is-busy') && !z.querySelector('.fg-skel'); }, 90000);
     await calme(cadre, 6000);
+    // Le prerequis d abord : la plage touchee etait fermee et s ouvre. Sinon
+    // la mesure ne mesure rien (le soir, sur le jour d office, elle passait a
+    // vide : 0 hauteur postee, aucune plage ouverte).
+    const plage = '#hourZone .fg-track .fg-period:last-child';
+    const ouverteAvant = await cadre.$eval(plage, (p) => p.classList.contains('is-open'));
     avant = await nbHauteurs();
     await sonderCoupes(cadre, 900);
-    await cadre.click('#hourZone .fg-track .fg-period:last-child .fg-period__btn');
+    await cadre.click(`${plage} .fg-period__btn`);
     await cadre.waitForTimeout(900);
+    const ouverteApres = await cadre.$eval(plage, (p) => p.classList.contains('is-open'));
+    ok(!ouverteAvant && ouverteApres, 'la plage touchee etait fermee et s ouvre', `avant ${ouverteAvant ? 'ouverte' : 'fermee'}, apres ${ouverteApres ? 'ouverte' : 'fermee'}`);
     coupes = await cadre.evaluate(() => window.__fgCoupes);
     postees = (await nbHauteurs()) - avant;
     ok(postees <= 1, 'une plage horaire qui s ouvre redimensionne le cadre au plus une fois', `${postees} hauteur(s) postee(s)`);

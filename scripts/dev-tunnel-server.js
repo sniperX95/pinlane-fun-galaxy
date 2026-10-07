@@ -109,7 +109,7 @@ function prixChangeDev(corps, dossier) {
 // sont poses AVANT le premier chargement de l API : elle les lit a son
 // chargement.
 const communications = require('../lib/ops-communications');
-const dernierePose = { body: null, demande: null, accuses: 0, blocages: [] };
+const dernierePose = { body: null, demande: null, accuses: 0, blocages: [], gestes: [] };
 database.createCustomRequest = async (input) => {
   dernierePose.demande = JSON.parse(JSON.stringify(input));
   return {
@@ -304,6 +304,22 @@ function createServer(options = {}) {
         res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(`Impossible de charger la copie locale de Fun Galaxy: ${error.message}`);
       }
+      return;
+    }
+    // LES GESTES DE LA FENETRE DES OFFRES : jugés par le vrai lecteur du
+    // serveur (gestesVitrine), gardés ici pour les gates, jamais en base.
+    if (url.pathname === '/api/public-booking-meta' && req.method === 'POST') {
+      let corps = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => { corps += c; });
+      req.on('end', () => {
+        let body = null;
+        try { body = JSON.parse(corps); } catch (error) { body = null; }
+        const envoi = body && body.kind === 'vitrine' ? bookingMeta.__test.gestesVitrine(body) : null;
+        if (envoi) dernierePose.gestes.push(...envoi.lignes.map((l) => ({ ...l, visite: envoi.visite, centerId: envoi.centerId })));
+        res.writeHead(envoi ? 202 : 400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(envoi ? { ok: true, enregistres: 0 } : { ok: false }));
+      });
       return;
     }
     if (url.pathname === '/api/public-booking-meta') {

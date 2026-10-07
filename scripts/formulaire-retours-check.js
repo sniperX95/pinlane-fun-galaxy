@@ -37,7 +37,26 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
 const LF = String.fromCharCode(10);
-const JOUR = '2026-10-07'; // un mercredi : 12:00 - 22:00
+// LE JOUR SUIT LE CALENDRIER (2026-10-07). Il etait ecrit en dur
+// (« 2026-10-07 ») : le jour meme, passe 16 h, les heures de 16:30 et 18:30
+// des scenarios etaient deja passees, et le lendemain la date entiere. C est
+// le prochain mercredi, a partir de demain, ou le centre ouvre de 12:00 a
+// 22:00 (les scenarios en dependent : la fermeture, ce qui deborde), lu dans
+// son horaire reel. Calcule dans main(), apres le crochet des contre-epreuves.
+let JOUR = '';
+function prochainMercredi() {
+  const { getSchedule } = require('../lib/booking-config');
+  const centre = require('../lib/ops-knowledge').getCenter('libramont');
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
+  const c = new Date(Date.UTC(y, m - 1, d));
+  for (let k = 0; k < 120; k += 1) {
+    c.setUTCDate(c.getUTCDate() + 1);
+    const jour = c.toISOString().slice(0, 10);
+    const h = c.getUTCDay() === 3 ? getSchedule(jour, centre) : null;
+    if (h && Number(h.open) === 12 && Number(h.close) === 22) return jour;
+  }
+  throw new Error('aucun mercredi ouvert de 12:00 a 22:00 dans les 120 prochains jours');
+}
 
 const MUTATIONS = [
   {
@@ -85,8 +104,10 @@ const MUTATIONS = [
   {
     nom: 'la plaine se paie de nouveau pour tout le groupe',
     fichier: 'lib/visit-program.js',
-    de: '        item.participants = declared >= 1 ? Math.min(people, declared) : people;',
-    vers: '        item.participants = people;',
+    // Le compte par activite (2026-10-03) a remplace l ancienne ligne : la
+    // mutation vise celle qui decide aujourd hui des joueurs de la ligne.
+    de: '    const players = declaredParticipants == null ? people : Number(declaredParticipants);',
+    vers: '    const players = people;',
   },
   {
     nom: 'la duree des cartes compte la marge de l equipe',
@@ -164,6 +185,8 @@ const piste = (rep, id) => ((rep.anchors && rep.anchors.activities) || []).find(
 const heure = (p, t) => (p.times || []).find((x) => x.time === t) || {};
 
 async function main() {
+  JOUR = prochainMercredi();
+  console.log(`jour du gate : ${JOUR}`);
   const { attenteDuSousGroupe } = require('../lib/ops-engine');
 
   section('A. DEUX PARTIES NE SONT PAS DEUX VAGUES');

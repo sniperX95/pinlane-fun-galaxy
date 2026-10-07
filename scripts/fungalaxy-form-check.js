@@ -624,8 +624,28 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // Plafonds stricts 303104 / 83968 octets : marges 287 / 1010 octets.
 // Aucun fichier exclu, aucune dependance ajoutee ; les contrepreuves police
 // et bibliotheque et la mesure du vrai build/brotli restent obligatoires.
-const BUDGET_SERVI = 296 * 1024;
-const BUDGET_TRANSFERE = 82 * 1024;
+// REDERIVE LE 2026-10-07, apres la fiche « i » et le programme pas a pas des
+// heures (une ligne par partie de laser). Base production caa47cc contre
+// l arbre, memes trois fichiers passes par le build, brotli qualite 3 :
+// 285 840 -> 302 653 octets servis (+16 813) ; 82 048 -> 86 387 transferes
+// (+4 339, environ 87 ms a 400 kbit/s). Poids mort retire AVANT de toucher au
+// chiffre : la legende des heures et le cadre des parties (remplaces), puis,
+// herites et deja morts en production, l ancienne liste d offres du
+// recapitulatif (.fg-plus__item & co) et l ancien panneau d options
+// (.fg-activity-editor) ; releve par script, les 351 fonctions nommees sont
+// toutes citees. Mesure A/B (fungalaxy-form-perf-bench, formulaire embarque,
+// processeur ralenti 6 fois, 5 passages alternes par appareil, machine
+// chargee par un rendu video d une autre session, que l alternance compense) :
+// telephone, taches 18 801 -> 18 370 ms, longues taches 3 466 -> 3 013 ms,
+// images perdues 124 -> 114 ; tablette, taches 19 206 -> 15 849 ms, longues
+// taches 3 473 -> 2 460 ms, images perdues 124 -> 91. Un seul pas plus lent :
+// l ouverture de la fiche « i » (interaction 248 -> 344 ms sur tablette,
+// 280 -> 320 ms sur telephone, au processeur ralenti 6 fois : environ 16 ms
+// reels). Plafonds : 310 Ko a analyser, 90 Ko a transferer, soit 14,8 et
+// 5,8 Ko de marge : une police (20 Ko compresses) ou une bibliotheque font
+// toujours sauter l un et l autre.
+const BUDGET_SERVI = 310 * 1024;
+const BUDGET_TRANSFERE = 90 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {
@@ -1308,6 +1328,22 @@ function ecartsPlan(ecran, o) {
   return e;
 }
 
+// LE PROGRAMME PAS A PAS (2026-10-07) : ses lignes dans l ordre de l ecran,
+// celles qui sont ouvertes, et ses bornes (arrivee, fin).
+async function lireProgramme(page) {
+  return page.evaluate(() => ({
+    legende: Boolean(document.querySelector('.fg-legend')),
+    lignes: Array.from(document.querySelectorAll('#hourZone .fg-etape[data-cle]')).map((li) => ({ cle: li.dataset.cle, heure: li.querySelector('.fg-etape__heure').dataset.mot || '', etat: ['choisi', 'propose', 'vide', 'surplace'].find((k) => li.classList.contains('is-' + k)) || '' })),
+    ouvertes: Array.from(document.querySelectorAll('#hourZone .fg-etape.is-open')).map((li) => li.dataset.cle),
+    arrivee: ((document.querySelector('#hourZone .fg-etape--arrivee .fg-etape__heure') || {}).textContent || '').trim(),
+    fin: ((document.querySelector('#hourZone .fg-etape--fin .fg-etape__heure') || {}).textContent || '').trim(),
+  }));
+}
+// L ordre de la journee : les heures croissantes, les lignes sans heure a la fin.
+function ordreJournee(lignes) {
+  const h = lignes.map((x) => (/^\d\d:\d\d$/.test(x.heure) ? x.heure : '99:99'));
+  return h.every((x, i) => i === 0 || h[i - 1] <= x);
+}
 async function lirePistes(page) {
   return page.evaluate(() => Array.from(document.querySelectorAll('#hourZone .fg-track')).map((t) => ({
     id: t.dataset.activity,
@@ -1339,17 +1375,12 @@ async function lirePistes(page) {
     reset: !t.querySelector('[data-reset]').hidden,
     note: t.querySelector('.fg-track__note') && !t.querySelector('.fg-track__note').hidden ? t.querySelector('.fg-track__note').textContent : '',
     vagues: t.querySelector('.fg-track__waves') && !t.querySelector('.fg-track__waves').hidden ? t.querySelector('.fg-track__waves').textContent.replace(/\s+/g, ' ').trim() : '',
-    // Le cadre des parties (plusieurs parties de laser).
-    parts: (() => {
-      const b = t.querySelector('.fg-parts');
-      if (!b) return null;
-      const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-      return {
-        tete: txt(b.querySelector('.fg-parts__head > span')),
-        compte: txt(b.querySelector('.fg-parts__head > b')),
-        items: Array.from(b.querySelectorAll('.fg-parts__item')).map((li) => ({ texte: txt(li.querySelector(':scope > span')), classe: ['is-set', 'is-proposed', 'is-free'].find((k) => li.classList.contains(k)) || '' })),
-      };
-    })(),
+    // Les lignes du programme de cette activite (une par partie de laser).
+    lignes: Array.from(document.querySelectorAll(`#hourZone .fg-etape[data-activity="${t.dataset.activity}"]`)).map((li) => ({
+      cle: li.dataset.cle,
+      etat: ['choisi', 'propose', 'vide', 'surplace'].find((k) => li.classList.contains(`is-${k}`)) || '',
+      heure: li.querySelector('.fg-etape__heure').dataset.mot || '',
+    })),
   })));
 }
 // L ETAT D UNE HEURE, redit en Node a partir de la reponse :
@@ -1535,36 +1566,34 @@ function ecartsPiste(p, a, actifs, propose, d, laserParts) {
   e.push(...ecartsParties(p, a, d, parts));
   return e;
 }
-// LE CADRE DES PARTIES (Movsar, 2026-09-24 : « faut que ca montre qu ils ont
-// selectionne x heures sur x parties ») : sur la piste d un laser de
-// plusieurs parties, « Vos N parties », le compte des heures choisies sur N,
-// puis une ligne par partie : son heure et la fin de son dernier groupe (le
-// plan), « proposee » tant qu aucune heure n est choisie, ou « sur place avec
-// l equipe » quand rien ne la pose. Le bandeau dit « N parties de X ».
+// LES PARTIES, UNE LIGNE CHACUNE AU PROGRAMME (pas a pas, Movsar, 2026-10-07 ;
+// avant : le cadre « Vos N parties », 2026-09-24 « faut que ca montre qu ils
+// ont selectionne x heures sur x parties »). Un laser de N parties a N lignes
+// « 1/N » a « N/N » : chacune son heure choisie, sinon celle que le plan
+// propose (tant qu aucune n est choisie), sinon « À choisir » (le plan la
+// laisse a l equipe, dans la foulee). Le bandeau (cache) dit toujours « N
+// parties de X ».
 function ecartsParties(p, a, d, laserParts) {
   const id = a.activityId;
   const total = Math.max(1, Number(a.count) || 1);
-  if (!(id === 'laser_game' && total > 1)) return p.parts ? [`${id}: cadre des parties pour ${total} partie`] : [];
-  if (!p.parts) return [`${id}: cadre des parties absent pour ${total} parties`];
+  const lignes = p.lignes || [];
+  if (!(id === 'laser_game' && total > 1)) return lignes.length === 1 && lignes[0].cle === id ? [] : [`${id}: ${lignes.length} ligne(s) au programme pour une activite d une seule partie`];
   const e = [];
   const bandeau = `${a.participants} joueur${a.participants > 1 ? 's' : ''} · ${total} parties de ${minutesLabelQa(jeuLaserQa() || a.durationMinutes)}`;
   if (p.detail !== bandeau) e.push(`${id}: bandeau « ${p.detail} » vs « ${bandeau} »`);
   const n = laserParts.length;
   // Le plan ne pose que les parties choisies : une partie sans heure passe
-  // bien sur place (sinon « sur place avec l equipe » serait faux).
+  // bien sur place (sinon « À choisir » cacherait une heure deja posee).
   const posees = debutsQa(d, id);
   if (n && JSON.stringify(posees) !== JSON.stringify(laserParts.slice().sort())) e.push(`${id}: le plan pose ${posees.join(', ') || 'rien'} pour les parties choisies ${laserParts.join(', ')}`);
   const heures = n ? laserParts.slice() : posees;
-  const compte = n ? `${n} heure${n > 1 ? 's' : ''} choisie${n > 1 ? 's' : ''} sur ${total}` : 'aucune heure choisie';
-  if (p.parts.tete !== `Vos ${total} parties` || p.parts.compte !== compte) e.push(`${id}: cadre « ${p.parts.tete} / ${p.parts.compte} » vs « Vos ${total} parties / ${compte} »`);
   const attendus = [];
   for (let k = 0; k < total; k += 1) {
     const h = heures[k] || '';
-    const plage = h ? plageQa(d, id, h) : '';
-    const fin = plage ? plage.split(' à ').pop() : '';
-    attendus.push({ texte: `Partie ${k + 1} : ${h ? `${h}${fin ? ` → ${heureAffichee(fin)}` : ''}${n ? '' : ' proposée'}` : 'dans la foulée'}`, classe: h ? (n ? 'is-set' : 'is-proposed') : 'is-free' });
+    attendus.push({ cle: `${id}#${k + 1}`, etat: h ? (n ? 'choisi' : 'propose') : 'vide', heure: h || 'À choisir' });
   }
-  if (JSON.stringify(p.parts.items) !== JSON.stringify(attendus)) e.push(`${id}: parties ${JSON.stringify(p.parts.items)} vs ${JSON.stringify(attendus)}`);
+  const vues = lignes.slice().sort((x, y) => x.cle.localeCompare(y.cle));
+  if (JSON.stringify(vues) !== JSON.stringify(attendus)) e.push(`${id}: lignes ${JSON.stringify(vues)} vs ${JSON.stringify(attendus)}`);
   return e;
 }
 // LES RAISONS SOUS CHAQUE PLAGE (Movsar, 2026-09-23 : « pour les choix des
@@ -1650,12 +1679,37 @@ function ecartsMenus(p, a, actifs, propose) {
   const attendu = menuUtile(a, actifs, propose);
   return ouverts.length === 1 && ouverts[0] === attendu ? [] : [`${a.activityId}: menus ouverts ${ouverts.join('+') || 'aucun'} vs ${attendu}`];
 }
-// Poser une heure : ouvrir son menu s il est ferme, puis toucher la case.
+// LA LIGNE DU PROGRAMME OU SE POSE UNE HEURE (pas a pas, 2026-10-07) : celle
+// de son activite ; pour un laser de plusieurs parties, la partie que le
+// toucher vise : la sienne si l heure est deja posee, sinon la premiere partie
+// sans heure, sinon la plus tot (c est elle que la nouvelle heure remplace,
+// comme l ancienne regle « la plus tot part quand tout est pose »). Une heure
+// qui deplace une partie (verdict `move`, groupe suivant) garde la ligne ouverte.
+async function ouvrirLigne(page, id, t) {
+  const cle = await page.evaluate(({ id, t }) => {
+    const lignes = Array.from(document.querySelectorAll(`#hourZone .fg-etape[data-activity="${id}"]`));
+    if (lignes.length < 2) return lignes.length ? lignes[0].dataset.cle : '';
+    const piste = document.querySelector(`#hourZone .fg-track[data-activity="${id}"]`);
+    const poses = Array.from(piste.querySelectorAll('.fg-chip.is-on')).map((c) => c.dataset.time).sort();
+    const chip = piste.querySelector(`.fg-chip[data-time="${t}"]`);
+    const i = poses.indexOf(t);
+    if (i >= 0) return `${id}#${i + 1}`;
+    if (chip && (chip.dataset.replaces || chip.dataset.state === 'wave')) { const ouverte = document.querySelector(`#hourZone .fg-etape.is-open[data-activity="${id}"]`); return ouverte ? ouverte.dataset.cle : `${id}#1`; }
+    return `${id}#${poses.length < lignes.length ? poses.length + 1 : 1}`;
+  }, { id, t });
+  if (!cle) return;
+  const ouverte = await page.evaluate((c) => { const li = document.querySelector(`#hourZone .fg-etape[data-cle="${c}"]`); return Boolean(li && li.classList.contains('is-open')); }, cle);
+  if (ouverte) return;
+  await page.click(`#hourZone .fg-etape[data-cle="${cle}"] .fg-etape__tete`);
+  await attendre(page, (c) => { const li = document.querySelector(`#hourZone .fg-etape[data-cle="${c}"]`); const d = li && li.querySelector('.fg-etape__dedans'); return Boolean(d) && getComputedStyle(d).visibility === 'visible' && li.querySelector('.fg-etape__corps').getBoundingClientRect().height >= d.scrollHeight - 1; }, 4000, cle);
+}
+// Poser une heure : ouvrir sa ligne et son menu s ils sont fermes, puis toucher la case.
 async function toucherHeure(page, id, t) {
   const sel = `#hourZone .fg-track[data-activity="${id}"] .fg-chip[data-time="${t}"]`;
+  await ouvrirLigne(page, id, t);
   const periode = await page.evaluate((s) => { const c = document.querySelector(s); const sec = c && c.closest('.fg-period'); return sec && !sec.classList.contains('is-open') ? sec.dataset.period : ''; }, sel);
   if (periode) await page.click(`#hourZone .fg-track[data-activity="${id}"] .fg-period[data-period="${periode}"] .fg-period__btn`);
-  await attendre(page, (s) => { const c = document.querySelector(s); if (!c) return false; const r = c.getBoundingClientRect(); const ul = c.closest('.fg-chips'); return r.height > 30 && ul.getBoundingClientRect().height >= r.height && getComputedStyle(ul).opacity === '1'; }, 4000, sel);
+  await attendre(page, (s) => { const c = document.querySelector(s); if (!c) return false; const r = c.getBoundingClientRect(); const ul = c.closest('.fg-chips'); return r.height > 30 && ul.getBoundingClientRect().height >= r.height && getComputedStyle(ul).opacity === '1' && getComputedStyle(c).visibility === 'visible'; }, 4000, sel);
   await page.click(sel);
 }
 // Une pose recalcule la piste : on attend LA reponse de la route, puis la fin
@@ -2354,7 +2408,6 @@ async function main() {
     const sousTitre = await page.evaluate(() => document.querySelector('#hourSub').textContent.replace(/\s+/g, ' ').trim());
     const jourMock = oracleJours[mock.DATE];
     ok(/6 personnes · Bowling \+ Laser Game \+ Minigolf Blacklight \+ Arcades/.test(sousTitre) && (!jourMock || plat(sousTitre).indexOf(plat(`Ouvert ${horaire(jourMock.schedule)}`)) >= 0), '[C] le sous-titre reprend groupe, activites et horaire du jour', sousTitre);
-    ok(await page.evaluate(() => { const l = document.querySelector('.fg-legend'); return Boolean(l) && /Serré/.test(l.textContent) && /Décale/.test(l.textContent) && /Complet/.test(l.textContent); }), '[C] une legende dit ce que veulent « serre », « decale » et « complet »');
     const base = { centerId: 'libramont', date: mock.DATE, type: 'visite', pax: '6', program: JSON.stringify(PROGRAMME), softReserve: '1' };
     const route = async (extra) => {
       const q = new URLSearchParams(base);
@@ -2366,7 +2419,12 @@ async function main() {
       const pistes = await lirePistes(pg);
       const defauts = (d.anchors && d.anchors.defaultTimes) || {};
       const e = [];
-      if (pistes.map((p) => p.id).join(',') !== ancresDe(d).map((a) => a.activityId).join(',')) e.push(`pistes ${pistes.map((p) => p.id).join(',')} vs ${ancresDe(d).map((a) => a.activityId).join(',')}`);
+      // UNE PISTE PAR ANCRE, rangee dans la ligne de son activite : l ordre a
+      // l ecran est celui de la journee (programme pas a pas, 2026-10-07).
+      const ids = (liste) => liste.slice().sort().join(',');
+      if (ids(pistes.map((p) => p.id)) !== ids(ancresDe(d).map((a) => a.activityId))) e.push(`pistes ${pistes.map((p) => p.id).join(',')} vs ${ancresDe(d).map((a) => a.activityId).join(',')}`);
+      const prog = await lireProgramme(pg);
+      if (!ordreJournee(prog.lignes)) e.push(`programme hors de l ordre de la journee : ${prog.lignes.map((x) => `${x.cle} ${x.heure}`).join(', ')}`);
       ancresDe(d).forEach((a) => {
         const actifs = a.activityId === 'laser_game' && laserParts.length ? laserParts : (pins[a.activityId] ? [pins[a.activityId]] : []);
         const propose = actifs.length ? '' : (defauts[a.activityId] || '');
@@ -2421,11 +2479,24 @@ async function main() {
     const o0 = lignePlan(d0);
     const va0 = o0 ? visiteAttendue(o0) : null;
     ok(Boolean(va0 && va0.prix), 'MONTAGE [C] sans pose, la somme des montants connus EST le prix : le detail du prix est exerce sur un vrai plan', va0 ? `${va0.connus} connus pour ${o0.prix}` : 'aucun plan');
+    // LE PROGRAMME PAS A PAS (Movsar, 2026-10-07 : « pas bcp de texte » ; les
+    // clients ne comprenaient pas qu il faut une heure PAR partie de laser).
+    // Plus de legende : une ligne par chose a placer, une par partie, rangees
+    // dans l ordre de la journee entre l arrivee et la fin du plan ; une seule
+    // ligne ouverte, la premiere a placer.
+    const prog0 = await lireProgramme(page);
+    ok(!prog0.legende && prog0.lignes.map((x) => x.cle).sort().join(',') === 'bowling,laser_game#1,laser_game#2' && ordreJournee(prog0.lignes)
+      && prog0.ouvertes.length === 1 && prog0.ouvertes[0] === prog0.lignes[0].cle && Boolean(o0) && prog0.arrivee === o0.arrivee && prog0.fin === heureAffichee(o0.fin),
+      '[C] plus de legende : le programme a une ligne par chose a placer (une par partie de laser), dans l ordre de la journee, entre l arrivee et la fin du plan, la premiere ouverte', JSON.stringify(prog0));
     // LES MENUS REPLIES SORTENT DU PARCOURS CLAVIER : plus d arret sur une
     // heure invisible (le repli dure 0,4 s, on le laisse finir).
     await dormir(500);
-    const menus = await page.evaluate(() => { const vis = (s) => Array.from(document.querySelectorAll(s)).map((c) => getComputedStyle(c).visibility); return { fermees: vis('#hourZone .fg-period:not(.is-open) .fg-chip'), ouvertes: vis('#hourZone .fg-period.is-open .fg-chip') }; });
-    ok(menus.fermees.length > 0 && menus.fermees.every((v) => v === 'hidden') && menus.ouvertes.length > 0 && menus.ouvertes.every((v) => v === 'visible'), '[C] les heures d un menu replie sortent du parcours clavier, celles du menu ouvert y sont', `${menus.fermees.length} repliees, ${menus.ouvertes.length} ouvertes`);
+    const menus = await page.evaluate(() => {
+      const toutes = Array.from(document.querySelectorAll('#hourZone .fg-chip'));
+      const vues = new Set(document.querySelectorAll('#hourZone .fg-etape.is-open .fg-period.is-open .fg-chip'));
+      return { fermees: toutes.filter((c) => !vues.has(c)).map((c) => getComputedStyle(c).visibility), ouvertes: [...vues].map((c) => getComputedStyle(c).visibility) };
+    });
+    ok(menus.fermees.length > 0 && menus.fermees.every((v) => v === 'hidden') && menus.ouvertes.length > 0 && menus.ouvertes.every((v) => v === 'visible'), '[C] les heures d un menu replie ou d une ligne repliee sortent du parcours clavier, celles du menu ouvert de la ligne ouverte y sont', `${menus.fermees.length} cachees, ${menus.ouvertes.length} visibles`);
     ok(await page.evaluate(() => !document.querySelector('#hourZone').hasAttribute('aria-live') && document.querySelector('#fgLive').getAttribute('role') === 'status' && !document.querySelector('#fgLive').closest('.fg-scene')), '[C] une seule voix : la zone des heures se tait, #fgLive (hors des scenes) parle');
     ok(await page.evaluate(() => document.querySelector('#keepLabel').textContent.trim() === 'Ces horaires me vont'), '[C] le bouton dit « Ces horaires me vont »');
     const centres = await centrages(page);
@@ -2442,9 +2513,19 @@ async function main() {
     const observerPose = (s) => page.evaluate((sel) => { const c = document.querySelector(sel); window.__qaPose = { attente: false, onde: false }; new MutationObserver(() => { if (c.classList.contains('is-pending')) window.__qaPose.attente = true; if (c.classList.contains('is-pose')) window.__qaPose.onde = true; }).observe(c, { attributes: true, attributeFilter: ['class'] }); }, s);
     await observerPose(selB);
     ok(await poserEtAttendre(page, 'bowling', B), '[C] poser une heure de bowling recalcule (une demande, puis fin du voile)', B);
-    const suivi = await page.evaluate((s) => { const c = document.querySelector(s); return { meme: c === window.__qaCase, on: c.classList.contains('is-on'), transform: getComputedStyle(c).transform, saut: Math.abs(c.getBoundingClientRect().top + window.scrollY - window.__qaHaut), focus: document.activeElement === c }; }, selB);
-    ok(suivi.meme && suivi.on && suivi.transform === 'none' && suivi.saut <= 1, '[C] la case posee est LA MEME (mise a jour sur place), sans transformation ni deplacement : aucun tremblement', JSON.stringify(suivi));
-    ok(suivi.focus, '[C] la case posee garde le focus (clavier)');
+    await attendre(page, () => !document.querySelector('#hourZone .fg-etape[style*="transform"]'), 2000);
+    const suivi = await page.evaluate((s) => {
+      const c = document.querySelector(s), li = c.closest('.fg-etape'), f = document.activeElement;
+      return {
+        meme: c === window.__qaCase, on: c.classList.contains('is-on'), transform: getComputedStyle(c).transform,
+        ligne: li ? { choisie: li.classList.contains('is-choisi'), heure: li.querySelector('.fg-etape__heure').dataset.mot, ouverte: li.classList.contains('is-open') } : null,
+        ouverte: Array.from(document.querySelectorAll('#hourZone .fg-etape.is-open')).map((x) => x.dataset.cle).join(','),
+        focus: f === c ? 'case' : f && f.classList.contains('fg-etape__tete') ? `ligne ${f.closest('.fg-etape').dataset.cle}` : (f ? f.tagName : ''),
+      };
+    }, selB);
+    ok(suivi.meme && suivi.on && suivi.transform === 'none' && Boolean(suivi.ligne) && suivi.ligne.choisie && suivi.ligne.heure === B && !suivi.ligne.ouverte,
+      '[C] la case posee est LA MEME (mise a jour sur place), sans transformation ; sa ligne dit l heure choisie et se replie', JSON.stringify(suivi));
+    ok(suivi.ouverte === 'laser_game#1' && suivi.focus === 'ligne laser_game#1', '[C] la ligne suivante a placer s ouvre seule (le laser, partie 1) et le focus la suit, jamais la page', JSON.stringify(suivi));
     const poseB = await page.evaluate(() => window.__qaPose);
     ok(poseB.attente && poseB.onde, '[C] la case touchee s entoure des le toucher, puis une onde part d elle quand le plan du serveur la retient', JSON.stringify(poseB));
     const d1 = await route({ preferredTimes: { bowling: B } });
@@ -2499,6 +2580,7 @@ async function main() {
     const v3 = await verifierPlan(d3, '[C] DEUX PARTIES : « votre visite » = la route, avec DEUX blocs de laser');
     ok(v3.o && v3.o.blocs.filter((b) => b.id === 'laser_game').length === 2, '[C] (la route compose bien deux blocs de laser)');
     // 5. LAISSER L EQUIPE PLACER : les poses s effacent, la proposition revient.
+    await ouvrirLigne(page, 'laser_game', parts[0]);
     const reponseReset = page.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
     await page.click('#hourZone [data-reset="laser_game"]');
     ok(Boolean(await reponseReset) && await attendre(page, () => !document.querySelector('#hourZone').classList.contains('is-busy') && document.querySelector('#planZone .fg-visit'), 25000), '[C] « laisser l equipe placer » recalcule');
@@ -3731,43 +3813,24 @@ async function main() {
       '[J] reculer d un ecran VIDE le segment qu on quitte', JSON.stringify(recule));
     ok(await barreEst(pageJ, '11110'), '[J] et la barre revient a quatre segments pleins sur cinq');
     await pageJ.click('.fg-scene.is-active [data-back]');
-    ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && document.querySelector('.fg-legend'), 8000), '[J] retour a l ecran des heures');
-    const lireLegende = () => pageJ.evaluate(() => {
-      const l = document.querySelector('.fg-legend');
-      const vu = (el) => el && getComputedStyle(el).display !== 'none' && el.offsetParent !== null;
-      const cles = Array.from(l.querySelectorAll('.fg-legend__key i')).filter(vu).map((n) => n.textContent.trim());
-      const consigne = (l.querySelector('.fg-legend__tip') || {}).textContent || '';
-      // Le texte REELLEMENT lu. `innerText` et lui seul : il respecte
-      // `display: none` ET il voit le texte NU. Une premiere version
-      // assemblait les elements-feuilles ; la contre-epreuve `legende` sort
-      // justement une glose de sa balise, le texte devenait un noeud de texte
-      // nu dans un `<span>` qui, lui, avait un enfant : la sonde ne le voyait
-      // plus et le verdict passait au vert sur un code casse.
-      const lu = String(l.innerText || '').replace(/\s+/g, ' ').trim();
-      return {
-        cles,
-        gloses: Array.from(l.querySelectorAll('.fg-legend__key em')).filter(vu).length,
-        lu,
-        // Ce que le telephone doit lire, et rien d autre : les trois mots
-        // (Movsar, 2026-10-01 : « enormement de texte » ; la consigne ne se
-        // lit plus qu en large). Ajouter du texte rend le gate rouge.
-        attenduCourt: cles.join(' ').replace(/\s+/g, ' ').trim(),
-        consigne: consigne.trim(),
-        caracteres: lu.length,
-      };
-    });
-    const legLarge = await lireLegende();
-    ok(legLarge.cles.join('|') === 'Serré|Décale|Complet' && legLarge.gloses === 3,
-      '[J] sur 1440 px, les trois cles portent leur glose', JSON.stringify(legLarge));
+    ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && document.querySelector('#hourZone .fg-etape[data-cle]'), 8000), '[J] retour a l ecran des heures');
+    // PLUS DE LEGENDE NI DE MUR DE RAISONS (Movsar, 2026-10-07 : « pas bcp de
+    // texte, sinon ca fait trop long a lire, et sur mobile c est encore bcp plus
+    // pire »). Le programme se lit seul ; la raison d une heure qui coince
+    // existe (le lecteur d ecran la lit en arrivant sur l heure) mais ne
+    // s affiche qu au toucher de cette heure.
+    const lireTexteHeures = () => pageJ.evaluate(() => ({
+      legende: Boolean(document.querySelector('.fg-legend')),
+      raisons: document.querySelectorAll('#hourZone .fg-why-list__item').length,
+      raisonsVues: Array.from(document.querySelectorAll('#hourZone .fg-why-list__item')).filter((l) => l.getClientRects().length > 0).map((l) => l.textContent.replace(/\s+/g, ' ').trim()),
+      lignes: document.querySelectorAll('#hourZone .fg-etape[data-cle]').length,
+    }));
+    const texteLarge = await lireTexteHeures();
     await pageJ.setViewportSize({ width: 375, height: 812 });
     await dormir(250);
-    const legEtroit = await lireLegende();
-    ok(legEtroit.cles.join('|') === 'Serré|Décale|Complet'
-      && legEtroit.gloses === 0
-      && legEtroit.lu === legEtroit.attenduCourt
-      && legEtroit.caracteres < legLarge.caracteres,
-      '[J] sur 375 px, la legende ne porte PLUS QUE les trois mots',
-      `« ${legEtroit.lu} » (${legEtroit.caracteres} caracteres contre ${legLarge.caracteres} en large)`);
+    const texteEtroit = await lireTexteHeures();
+    ok(!texteLarge.legende && !texteEtroit.legende && texteLarge.lignes > 0 && texteLarge.raisons > 0 && texteLarge.raisonsVues.length === 0 && texteEtroit.raisonsVues.length === 0,
+      '[J] plus de legende, et au repos aucune raison ne s affiche, en large comme sur 375 px (elles existent : le lecteur d ecran et le toucher les disent)', JSON.stringify({ texteLarge, texteEtroit }));
 
     // --- L heure RETENUE emporte celle de son 2e groupe -------------------
     // Movsar, 2026-09-23 : « quand ya des groupes a scinder, ca doit montrer
@@ -3828,6 +3891,7 @@ async function main() {
       '[J] la partie PART a l heure touchee : elle se deplace, rien ne s ajoute', `${qSoi.get('laserGameTimes')} / ${qSoi.get('preferredTimes')}`);
     // Retour a l etat d avant : la main rendue a l equipe, puis la partie
     // reposee a son heure.
+    await ouvrirLigne(pageJ, 'laser_game', hSoi);
     const rendueLJ = pageJ.waitForResponse((r) => r.url().indexOf('/api/public-availability?') >= 0, { timeout: 25000 }).catch(() => null);
     await pageJ.click('#hourZone [data-reset="laser_game"]');
     ok(Boolean(await rendueLJ) && await attendre(pageJ, () => !document.querySelector('#hourZone').classList.contains('is-busy'), 25000) && await poserEtAttendre(pageJ, 'laser_game', LJ),
@@ -3857,9 +3921,9 @@ async function main() {
     const tardivesOk = tardives.filter((h) => verdictP2(h).ok !== false);
     ok(Boolean(refusee) && tardivesOk.length > 0,
       '[J] MONTAGE : deux parties posees ; le moteur REFUSE de deplacer la plus tot a l heure de son 2e groupe et ACCEPTE de deplacer la plus tardive a la sienne', JSON.stringify({ parties: partsJ, jugees, tardives, refusee, tardivesOk }));
-    await verifierPistes(dP2, { laser_game: partsJ[0] }, partsJ, '[J] DEUX PARTIES : les pistes = la route ; chaque heure de 2e groupe porte le verdict du deplacement de SA partie, le cadre dit « 2 heures choisies sur 2 »', pageJ);
-    // Le depart refuse : la toucher ne demande rien ; elle eclaire SA partie
-    // dans le cadre des parties, et la voix le dit.
+    await verifierPistes(dP2, { laser_game: partsJ[0] }, partsJ, '[J] DEUX PARTIES : les pistes = la route ; chaque heure de 2e groupe porte le verdict du deplacement de SA partie, les deux lignes des parties disent leur heure choisie', pageJ);
+    // Le depart refuse : la toucher ne demande rien ; elle eclaire la ligne de
+    // SA partie au programme, et la voix le dit.
     const avantRefus = demandesJ.length;
     await toucherHeure(pageJ, 'laser_game', refusee);
     const voixRefus = `${refusee} : votre partie 1 joue à cette heure.`;
@@ -3872,7 +3936,7 @@ async function main() {
       };
     }, refusee);
     ok(lecturesNeuves(demandesJ, avantRefus).length === 0 && luRefus.ok === 'false' && luRefus.mot === 'partie 1'
-      && luRefus.eclaires.join() === 'fg-parts__item#1' && luRefus.voix === voixRefus && luRefus.titre.indexOf(`La faire partir à ${refusee} est impossible`) >= 0,
+      && luRefus.eclaires.join() === 'fg-etape#1' && luRefus.voix === voixRefus && luRefus.titre.indexOf(`La faire partir à ${refusee} est impossible`) >= 0,
       '[J] l heure du 2e groupe que le moteur refuse de deplacer reste marquee « partie 1 », ne se prend pas ; la toucher eclaire SA partie et le dit', JSON.stringify(luRefus));
     // Celle qu il accepte : la toucher fait partir la partie tardive a cette
     // heure ; la plus tot ne bouge pas.
@@ -3890,6 +3954,7 @@ async function main() {
     // emporte la premiere de la suivante : le menu de celle-ci le dit.
     const plus30 = (h) => { const [a, b] = h.split(':').map(Number); const m = a * 60 + b + 30; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
     const bordJ = libresJ.find((h) => periodeDe(h) !== periodeDe(plus30(h)));
+    await ouvrirLigne(pageJ, 'laser_game', partsTardive[0]);
     await pageJ.click('#hourZone [data-reset="laser_game"]');
     await attendre(pageJ, () => !document.querySelector('#hourZone').classList.contains('is-busy'), 25000);
     ok(Boolean(bordJ) && await poserEtAttendre(pageJ, 'laser_game', bordJ), '[J] MONTAGE : une partie de laser retenue a la derniere demi-heure d une plage', bordJ || `aucune heure libre en bord de plage (${libresJ.join(' ')})`);
@@ -3907,8 +3972,8 @@ async function main() {
       ok(Boolean(hBord) && Boolean(menuBord) && menuBord.resume.indexOf(`partie 1 à ${hBord}`) === 0,
         '[J] le menu de cette plage, replie ou non, dit l heure de la partie (son 2e groupe)', JSON.stringify(menuBord));
     }
-    await lisibles('.fg-legend__tip, .fg-legend__key i, .fg-legend__key em, #hourZone .fg-period.is-open .fg-why-list__item > span, #hourZone .fg-period.is-open .fg-why-list__item b, #hourZone .fg-period.is-open .fg-key, #hourZone .fg-period.is-open .fg-chip b, #hourZone .fg-period.is-open .fg-chip small, #hourZone .fg-parts__head span, #hourZone .fg-parts__head b, #hourZone .fg-parts__item > span, #hourZone .fg-parts__item > i, #hourZone .fg-track__waves',
-      '[J] la legende, les heures ouvertes, leurs raisons, le cadre des parties et la note des groupes gardent 4,5:1 au pire moment (sur la photo la plus claire possible, voile compris)');
+    await lisibles('#hourZone .fg-etape__quoi b, #hourZone .fg-etape__quoi small, #hourZone .fg-etape__heure, #hourZone .fg-etape--borne .fg-etape__quoi, #hourZone .fg-etape.is-open .fg-period__name, #hourZone .fg-etape.is-open .fg-period.is-open .fg-chip b, #hourZone .fg-etape.is-open .fg-period.is-open .fg-chip small, #hourZone .fg-etape.is-open .fg-track__waves',
+      '[J] le programme (noms, durees, heures, bornes), les plages et les heures ouvertes, et la note des groupes gardent 4,5:1 au pire moment (sur la photo la plus claire possible, voile compris)');
     await tour.close();
 
     // =====================================================================
@@ -4828,7 +4893,9 @@ async function main() {
       await dormir(400);
       const sb2 = await suitLeContenu(pob, fob);
       ok(sb2.ok, '[O] embarque, 1440x900 : heures, le cadre a la hauteur du formulaire', JSON.stringify(sb2));
-      const db = await descente(pob, fob, async () => { await pob.mouse.move(720, 540); await pob.mouse.wheel(0, 400); await dormir(450); });
+      // UN CRAN DE MOLETTE (120 px, celui de Chrome) : l ecran des heures pas a pas
+      // est plus court, 400 px d un coup le descendaient en un seul geste.
+      const db = await descente(pob, fob, async () => { await pob.mouse.move(720, 540); await pob.mouse.wheel(0, 120); await dormir(450); });
       ok(db.gestes >= 2 && db.perdus === 0 && db.sy >= db.max - 1 && db.dedans === 0, '[O] embarque, 1440x900, heures : a la molette, chaque cran fait descendre la page jusqu en bas', JSON.stringify(db));
       await attendre(fob, () => !document.querySelector('#goContact').disabled, 25000);
       await fob.click('#goContact');

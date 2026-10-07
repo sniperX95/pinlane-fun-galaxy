@@ -36,9 +36,12 @@ async function geometry(page,frame,embedded,label,attempt=0) {
     // The host screen owns the visual centre. The visible iframe intersection
     // constrains the popup when the frame does not cover the entire screen.
     const hostCentre=viewportHeight/2-box.y;
-    const wanted=Math.max(visibleTop+r.height/2+8,Math.min(visibleBottom-r.height/2-8,hostCentre));
+    // Sur telephone (moins de 600 px), la fiche est un tiroir pose 8 px au-dessus
+    // du bas de ce qu on voit (Movsar, 2026-10-07) : son centre attendu en decoule.
+    const sheet=innerWidth<600;
+    const wanted=sheet?visibleBottom-8-r.height/2:Math.max(visibleTop+r.height/2+8,Math.min(visibleBottom-r.height/2-8,hostCentre));
     const css=getComputedStyle(d);
-    return {label,top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:innerWidth,height:r.height,offsetHeight:d.offsetHeight,styleTop:d.style.top,styleMaxHeight:d.style.maxHeight,cssTop:css.top,cssBottom:css.bottom,cssTransform:css.transform,cssPosition:css.position,cssMargin:css.margin,hostVue:window.__qaVue,visibleTop,visibleBottom,wanted,center:(r.top+r.bottom)/2,open:d.open,iframeTop:box.y,iframeHeight:box.height};
+    return {label,sheet,top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:innerWidth,height:r.height,offsetHeight:d.offsetHeight,styleTop:d.style.top,styleMaxHeight:d.style.maxHeight,cssTop:css.top,cssBottom:css.bottom,cssTransform:css.transform,cssPosition:css.position,cssMargin:css.margin,hostVue:window.__qaVue,visibleTop,visibleBottom,wanted,center:(r.top+r.bottom)/2,open:d.open,iframeTop:box.y,iframeHeight:box.height};
   },{box,viewportHeight:page.viewportSize().height,label});
   record.settlementAttempt=attempt;
   measurements.push(record);
@@ -50,7 +53,7 @@ async function geometry(page,frame,embedded,label,attempt=0) {
   if(record.top<record.visibleTop-2||record.bottom>record.visibleBottom+2||Math.abs(record.center-record.wanted)>4)await page.screenshot({path:path.join(out,label.replace(/[^a-z0-9_-]/gi,'-')+'-geometry.png')});
   check(record.open && record.left>=-1 && record.right<=record.width+1,label+' modal fits horizontal viewport');
   check(record.top>=record.visibleTop-2 && record.bottom<=record.visibleBottom+2,label+' modal fits actual visible iframe intersection');
-  check(Math.abs(record.center-record.wanted)<=4,label+' modal centered on host screen and constrained to visible intersection, not full iframe');
+  check(Math.abs(record.center-record.wanted)<=4,label+(record.sheet?' phone sheet rests on the bottom of the visible intersection, not of the full iframe':' modal centered on host screen and constrained to visible intersection, not full iframe'));
 }
 async function mounted(page,embedded) {
   await page.goto(origin+(embedded?'/information-host':'/fungalaxy/libramont'),{waitUntil:'domcontentloaded'});
@@ -94,6 +97,9 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
     const scroll=await frame.locator('.fg-info-body').evaluate(body=>{body.scrollTop=body.scrollHeight;const rect=body.getBoundingClientRect(),last=body.lastElementChild.getBoundingClientRect();return {canScroll:body.scrollHeight>body.clientHeight,scrolled:body.scrollTop>0,lastReachable:last.bottom<=rect.bottom+2&&last.bottom>=rect.top};});
     check(scroll.canScroll&&scroll.scrolled&&scroll.lastReachable,label+' long configured details scroll and final text remains reachable');
   }
+  // La photo a le temps de finir de charger (3 s au plus) : une machine chargee
+  // la recevait apres la verification. Une image cassee rougit toujours.
+  await frame.locator('.fg-info-photo').evaluate(img=>img.hidden||img.complete||new Promise(done=>{img.addEventListener('load',done,{once:true});img.addEventListener('error',done,{once:true});setTimeout(done,3000);}));
   check(await frame.locator('.fg-info-photo').evaluate(img=>img.hidden||img.complete&&img.naturalWidth>0&&!!img.alt),label+' actual photograph loads or is honestly absent');
   const focusBefore=await frame.evaluate(()=>document.activeElement?.outerHTML.slice(0,200));
   await page.keyboard.press('Tab');
@@ -213,7 +219,9 @@ async function run() {
    }
    const availableKids=metadata.formules.find(formula=>formula.kidsOnly && formula.type==='per_pax' && formula.minPax<=16);
    check(!!availableKids,label+' fixture includes a children formula for price synchronization');
-   const kidsDate=new Date(metadata.today+'T12:00:00Z');
+   // Demain au plus tot : le jour meme, la formule se refuse des que son heure
+   // de fin est passee (Kids Fun Day finit a 17h ; le gate tournait rouge le soir).
+   const kidsDate=new Date(metadata.today+'T12:00:00Z');kidsDate.setUTCDate(kidsDate.getUTCDate()+1);
    while(Array.isArray(availableKids.validDays)&&!availableKids.validDays.includes(kidsDate.getUTCDay()))kidsDate.setUTCDate(kidsDate.getUTCDate()+1);
    const kidsDay=kidsDate.toISOString().slice(0,10);
    await frame.click('.fg-scene[data-scene="activites"] [data-back]');await frame.click('#dayBtn');await frame.click('.fg-cal__day[data-date="'+kidsDay+'"]');await frame.click('#goActivities');await frame.click('#tabFor');

@@ -34,6 +34,14 @@
 //       le total ne bouge pas.
 //   [D] sobriete : aucun degrade, aucune pastille ; a 390 px rien ne deborde.
 //   [E] contre-epreuves : chaque regle retiree, ce gate ROUGIT.
+//   LA MEILLEURE POUR VOUS (Movsar, 2026-10-07) : chaque carte porte la raison
+//   de son fait (un sous-groupe attend, une pause entre deux activites, la
+//   partie de plus coute moins cher qu une partie seule) et la priorite qui
+//   la met en avant ; une remise ne s affiche qu avec sa reference ; la
+//   fenetre montre UNE offre en avant (sa raison, son prix barre, son taquet,
+//   le seul « Ajouter ») et les autres en rangees qu une touche fait passer
+//   devant ; chaque geste part en statistique, sans rien de personnel, et la
+//   reservation partie compte l offre acceptee.
 //
 // AUCUNE BASE, AUCUN ENVOI : les cles sont retirees avant tout chargement, la
 // reservation part vers le serveur de dev, qui la garde en memoire.
@@ -107,8 +115,9 @@ function charger() {
     catalogue: require(path.join(ROOT, 'lib/activity-catalog.js')),
   };
 }
-function appel(api, programme, pax) {
+function appel(api, programme, pax, extra = {}) {
   const params = new URLSearchParams({ centerId: CENTRE, date: DATE, type: 'visite', pax: String(pax), program: JSON.stringify(programme), softReserve: '1' });
+  Object.entries(extra).forEach(([k, v]) => params.set(k, typeof v === 'string' ? v : JSON.stringify(v)));
   return new Promise((resolve, reject) => {
     const req = { method: 'GET', url: `/api/public-availability?${params.toString()}`, headers: { host: '127.0.0.1' }, on() {}, setEncoding() {} };
     const res = { statusCode: 0, setHeader() {}, writeHead(c) { this.statusCode = c; }, end(b) { try { resolve(JSON.parse(String(b || '{}'))); } catch (e) { reject(e); } } };
@@ -247,6 +256,9 @@ async function serveurA() {
   ok(rr.attente && rr.tarif === premiere.prixParPersonne && rr.apres === rr.avant,
     'la ligne d attente se range et se relit a l identique (vrai filtre de la base) : meme drapeau, meme tarif, meme prix', JSON.stringify(rr));
 
+  section('[A2] LES RAISONS, LES PRIORITES, LES REMISES PROUVEES');
+  const raisons = await raisonsServeur(availability, vp, grand, alaFois, r0);
+  verifierRaisons(raisons);
   section('[E] CONTRE-EPREUVES DU SERVEUR');
   try {
     // La regle du groupe scinde decide du TARIF (les cartes, elles, lisent
@@ -298,7 +310,54 @@ async function serveurA() {
       async () => { const m = charger(); return tempsA(m.availability, FUN, 12, longue); }) : null;
     ok(mesure(ignoree) && !tempsJuste(ignoree), 'ignoree, l offre plus longue que l attente n allonge plus rien : ce gate ROUGIRAIT', JSON.stringify(ignoree));
   } catch (error) { ok(false, 'contre-epreuve du debordement montable', error.message); }
-  return { grand, premiere };
+  const mutRaison = async (de, vers, run) => { try { return await avecMutation('lib/booking-complements.js', de, vers, run); } catch (error) { return { erreur: error.message }; } };
+  const sansPriorite = await mutRaison("      priorite = 100;\n", "      priorite = 0;\n", async () => { const m = charger(); return verifierRaisons(await raisonsServeur(m.availability, m.vp, grand, alaFois, await appel(m.availability, DUCK, grand), true)); });
+  ok(sansPriorite.erreur === undefined && sansPriorite.attente === false, 'sans la priorite de l attente, l offre pour ceux qui attendent ne passe plus devant : ce gate ROUGIRAIT', JSON.stringify(sansPriorite));
+  const fausseReference = await mutRaison('      const une = prixDUnePartie(context, palier.activityId, palier.joueurs);\n', '      const une = 99;\n', async () => { const m = charger(); return verifierRaisons(await raisonsServeur(m.availability, m.vp, grand, alaFois, await appel(m.availability, DUCK, grand), true)); });
+  ok(fausseReference.erreur === undefined && fausseReference.suite === false, 'avec une reference inventee, le prix barre de la partie en plus ne tient plus : ce gate ROUGIRAIT', JSON.stringify(fausseReference));
+  const pauseAveugle = await mutRaison('  const sansLibre = !context.programme.items.some((item) => !item.planned && item.waitOffer !== true);\n', '  const sansLibre = true;\n', async () => { const m = charger(); return verifierRaisons(await raisonsServeur(m.availability, m.vp, grand, alaFois, await appel(m.availability, DUCK, grand), true)); });
+  ok(pauseAveugle.erreur === undefined && pauseAveugle.pauseLibre === false, 'sans le garde des activites libres deja la, une « pause » se dit alors que le groupe a deja de quoi faire : ce gate ROUGIRAIT', JSON.stringify(pauseAveugle));
+  return { grand, premiere, raisons };
+}
+
+// LES RAISONS DU SERVEUR, sur des visites reelles du harnais (aucune base) :
+//   suite    bowling + laser 1 partie, 6 personnes : la 2e partie coute moins
+//            cher qu une partie seule, chiffree par le meme calcul ;
+//   attente  le duckpin a `grand` : ceux qui attendent, devant tout ;
+//   pause    bowling 14:00 et laser 16:00 : 1 h sans rien, le duckpin d 1 h y
+//            tient ; avec une activite libre deja dans la visite, plus de pause.
+async function raisonsServeur(availability, vp, grand, alaFois, rDuck, silencieux = false) {
+  const PAIRE = [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }];
+  const rPaire = await appel(availability, PAIRE, 6);
+  const rTrou = await appel(availability, PAIRE, 6, { preferredTimes: { bowling: '14:00', laser_game: '16:00' }, laserGameTimes: ['16:00'] });
+  const rLibre = await appel(availability, [...PAIRE, { activityId: 'fun_run', minutes: 15 }], 6, { preferredTimes: { bowling: '14:00', laser_game: '16:00' }, laserGameTimes: ['16:00'] });
+  const unePartie = (() => { const p = vp.normalizeProgram([{ activityId: 'laser_game', games: 1, participants: 6 }], { centerId: CENTRE, pax: 6, publicBooking: true }); const l = p.items.find((i) => i.activityId === 'laser_game'); return l && l.priceKnown ? Number(l.price) : null; })();
+  return { rPaire, rTrou, rLibre, rDuck, unePartie, grand, alaFois, silencieux };
+}
+function verifierRaisons(x) {
+  const juger = (cond, label, detail) => (x.silencieux ? Boolean(cond) : ok(cond, label, detail));
+  const cartes = (r) => (r && r.complements) || [];
+  const laser = cartes(x.rPaire).find((c) => c.kind === 'laser') || null;
+  const sans = cartes(x.rPaire).filter((c) => c.kind !== 'laser');
+  const ecartLaser = laser ? Math.round((x.unePartie - laser.deltaTotal) * 100) / 100 : null;
+  const verdict = {};
+  verdict.suite = juger(Boolean(laser) && x.unePartie > 0 && laser.raison && laser.raison.code === 'suite' && laser.raison.titre === 'La 2e partie coûte moins cher'
+    && laser.promo && laser.promo.base === 'partie_seule' && laser.promo.reference === x.unePartie && laser.promo.pourcent === Math.round((100 * ecartLaser) / x.unePartie) && laser.priorite === 60,
+  'la partie de plus dit qu elle coute moins cher, et son prix barre est le prix d UNE partie pour ces joueurs, chiffre par le meme calcul', JSON.stringify(laser && { raison: laser.raison, promo: laser.promo, delta: laser.deltaTotal, unePartie: x.unePartie }));
+  verdict.sansPreuve = juger(sans.length > 0 && sans.every((c) => c.promo === null && c.raison === null && c.priorite === 40),
+    'une offre sans fait a dire ne porte ni raison ni remise', JSON.stringify(sans.map((c) => ({ id: c.id, raison: c.raison, promo: c.promo, priorite: c.priorite }))));
+  const att = cartes(x.rDuck).filter((c) => c.kind === 'attente');
+  const n = x.grand - x.alaFois;
+  verdict.attente = juger(att.length >= 2 && att.every((c) => c.raison && c.raison.code === 'attente' && c.raison.titre === `${n} d’entre vous attendent 1h` && c.priorite === 100)
+    && cartes(x.rDuck).slice(0, att.length).every((c) => c.kind === 'attente'),
+  `le groupe qui attend : « ${n} d’entre vous attendent 1h », et ces offres passent devant toutes les autres`, JSON.stringify(cartes(x.rDuck).map((c) => ({ id: c.id, raison: c.raison && c.raison.titre, priorite: c.priorite }))));
+  const duck = cartes(x.rTrou).find((c) => c.patch && c.patch.activityId === 'duckpin_bowling') || null;
+  verdict.pause = juger(Boolean(duck) && duck.minutesEnPlus === 60 && duck.raison && duck.raison.code === 'pause' && duck.raison.titre === '1h de pause entre Bowling et Laser Game' && duck.priorite === 80
+    && cartes(x.rTrou)[0] && cartes(x.rTrou)[0].id === duck.id,
+  'bowling a 14:00 et laser a 16:00 : « 1h de pause entre Bowling et Laser Game », le duckpin d 1 h y tient et passe devant', JSON.stringify(cartes(x.rTrou).map((c) => ({ id: c.id, raison: c.raison && c.raison.titre, minutes: c.minutesEnPlus, priorite: c.priorite }))));
+  verdict.pauseLibre = juger(cartes(x.rLibre).length > 0 && cartes(x.rLibre).every((c) => !c.raison || c.raison.code !== 'pause'),
+    'avec une activite libre deja dans la visite, aucune « pause » : elle se joue dans ce trou', JSON.stringify(cartes(x.rLibre).map((c) => ({ id: c.id, raison: c.raison && c.raison.titre }))));
+  return verdict;
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +452,15 @@ async function lireRecapPlus(page) {
       rappel: txt(b && b.querySelector('[data-vitrine-ouvrir]')),
       fenetre: Boolean(v && !v.hidden),
       titre: txt(document.querySelector('#vitrineTitre')),
-      offres: v ? Array.from(v.querySelectorAll('[data-plus]')).map((x) => x.dataset.plus) : [],
+      offres: v ? Array.from(v.querySelectorAll('.fg-vitrine__carte[data-carte]')).map((x) => x.dataset.carte) : [],
+      ajouter: v ? Array.from(v.querySelectorAll('[data-plus]')).map((x) => x.dataset.plus) : [],
+      vedette: v ? ((v.querySelector('.fg-vitrine__carte.is-vedette') || {}).dataset || {}).carte || '' : '',
+      lignes: v ? Array.from(v.querySelectorAll('.fg-vitrine__ligne [data-vitrine-vedette]')).map((x) => x.dataset.vitrineVedette) : [],
+      pour: txt(v && v.querySelector('.is-vedette .fg-vitrine__pour')),
+      raison: txt(v && v.querySelector('.is-vedette .fg-vitrine__raison')),
+      barre: txt(v && v.querySelector('.is-vedette .fg-vitrine__barre')).replace(/^au lieu de /, ''),
+      remise: txt(v && v.querySelector('.is-vedette .fg-vitrine__remise')).replace(/^soit /, ''),
+      bascule: Boolean(v && v.querySelector('.fg-vitrine__cartes.is-bascule')),
       montants: v ? Array.from(v.querySelectorAll('.fg-vitrine__prix')).map(txt) : [],
       cartes: v ? Array.from(v.querySelectorAll('.fg-vitrine__carte')).map(txt) : [],
       photos: v ? Array.from(v.querySelectorAll('.fg-vitrine__photo')).map((p) => { const i = p.querySelector('img'); return i ? (i.complete && i.naturalWidth > 0 ? 'photo' : 'photo non chargee') : (p.querySelector('svg') ? 'icone' : 'rien'); }) : [],
@@ -416,12 +483,14 @@ async function lireRecapPlus(page) {
 // ---------------------------------------------------------------------------
 // Les cartes d attente de la fenetre : leur id, leur compteur, leur montant.
 async function lireAttenteFenetre(page) {
-  return page.evaluate(() => Array.from(document.querySelectorAll('#vitrine .fg-vitrine__carte')).map((c) => {
+  return page.evaluate(() => Array.from(document.querySelectorAll('#vitrine .fg-vitrine__carte[data-carte]')).map((c) => {
     const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
     const moins = c.querySelector('[data-vitrine-pas="-1"]');
     const plusB = c.querySelector('[data-vitrine-pas="1"]');
     return {
-      id: (c.querySelector('[data-plus]') || {}).dataset ? c.querySelector('[data-plus]').dataset.plus : '',
+      id: c.dataset.carte,
+      vedette: c.classList.contains('is-vedette'),
+      voir: Boolean(c.querySelector('[data-vitrine-vedette]')),
       n: txt(c.querySelector('.fg-vitrine__n')),
       compteur: Boolean(moins && plusB),
       moinsOff: Boolean(moins && moins.disabled),
@@ -497,10 +566,11 @@ function verifierAttente(res, attendu, retire = 3) {
     juger(res.heures && !res.heures.bloc && !res.heures.texte, 'l ecran des horaires ne propose plus rien : ni bloc « Pendant l attente », ni bouton', JSON.stringify(res.heures)),
     juger(res.ouverte && cartes.length >= 1 && f0.slice(0, cartes.length).map((x) => x.id).join(' ') === cartes.map((x) => x.id).join(' '),
       'la fenetre s ouvre d elle-meme et porte les offres d attente du serveur, dans son ordre, en tete', f0.map((x) => x.id).join(' ')),
-    juger(f0.slice(0, cartes.length).every((x, i) => x.compteur && x.n === String(cartes[i].attente.personnes) && x.plusOff && !x.moinsOff && x.montant === `+${euros(cartes[i].deltaTotal)}`),
-      'chacune a son compteur, regle par defaut sur ceux qui attendent (« + » eteint), et le montant du serveur pour eux', JSON.stringify(f0.map((x) => ({ id: x.id, n: x.n, montant: x.montant })))),
-    juger(f0.every((x) => !/par personne/.test(x.texte)) && f0.slice(0, cartes.length).every((x, i) => x.texte.indexOf(`${cartes[i].attente.personnes} personnes attendent leur tour`) >= 0),
-      'elle dit qui attend, sans prix par personne', f0.map((x) => x.texte).join(' | ')),
+    juger(f0[0] && f0[0].vedette && f0[0].compteur && f0[0].n === String(cartes[0].attente.personnes) && f0[0].plusOff && !f0[0].moinsOff
+      && f0.slice(0, cartes.length).every((x, i) => x.montant === `+${euros(cartes[i].deltaTotal)}`) && f0.slice(1, cartes.length).every((x) => !x.vedette && x.voir && !x.compteur),
+      'l offre en avant a son compteur, regle sur ceux qui attendent (« + » eteint) ; les autres sont des rangees a toucher, chacune avec le montant du serveur', JSON.stringify(f0.map((x) => ({ id: x.id, vedette: x.vedette, n: x.n, montant: x.montant })))),
+    juger(f0.every((x) => !/par personne/.test(x.texte)) && f0[0] && f0[0].texte.indexOf(`${cartes[0].attente.personnes} d’entre vous attendent`) >= 0,
+      'sa raison dit qui attend et combien de temps, sans prix par personne', f0.map((x) => x.texte).join(' | ')),
     juger(f1[0] && f1[0].n === String(n) && f1[0].montant === `+${euros(pp * n)}` && !f1[0].plusOff,
       `${retire} fois « - » : ${n} personnes, le montant suit (${euros(pp * n)})`, JSON.stringify(f1[0])),
     juger(r1.total === r0.total + pp * n && r1.ton === 'ok' && r1.annuler && !r1.fenetre,
@@ -573,6 +643,7 @@ async function recapC(browser, mock, { largeur = 1440, hauteur = 900, etiquette 
     res.pret = s.pret && await remplirContact(page);
     res.rep0 = derniere(s.reponses);
     res.cartes = ((res.rep0 && res.rep0.complements) || []).filter((c) => c.kind !== 'attente');
+    res.gestes0 = mock.dernierePose.gestes.length;
     // La fenetre s ouvre d elle-meme, une fois l ecran entre.
     res.auto = await attendre(page, () => { const v = document.querySelector('#vitrine'); return v && !v.hidden && !v.hasAttribute('data-attendue'); }, 5000);
     if (arret === 'ouverture') return res;
@@ -639,6 +710,19 @@ async function recapC(browser, mock, { largeur = 1440, hauteur = 900, etiquette 
     await page.click('#plus-recap [data-vitrine-ouvrir]');
     await attendre(page, () => !document.querySelector('#vitrine').hidden, 3000);
     res.r3 = await lireRecapPlus(page);
+    // UNE AUTRE OFFRE PASSE DEVANT : la premiere rangee touchee.
+    const autre = res.r3.lignes[0];
+    if (autre) {
+      await page.click(`#vitrine [data-vitrine-vedette="${autre}"]`);
+      await page.waitForTimeout(500);
+      res.r4 = await lireRecapPlus(page);
+      res.r4.focusAjouter = await page.evaluate(() => Boolean(document.activeElement && document.activeElement.matches('.is-vedette [data-plus]')));
+      res.autre = autre;
+    }
+    // Les gestes partis (par paquets) : la page les envoie a la fermeture.
+    await page.keyboard.press('Escape');
+    for (let k = 0; k < 40 && !mock.dernierePose.gestes.slice(res.gestes0).some((g) => g.evenement === 'vedette'); k += 1) await page.waitForTimeout(100);
+    res.gestes = mock.dernierePose.gestes.slice(res.gestes0);
     return res;
   } finally { await s.ctx.close(); }
 }
@@ -658,6 +742,32 @@ function verifierRecap(res, etiquette) {
   ok(res.sobre && res.sobre.deborde === 0 && !res.sobre.pageLarge && res.sobre.dansLEcran, 'rien ne deborde de la fenetre ni de la page, et elle tient dans l ecran', JSON.stringify(res.sobre));
   ok(res.echap, 'Echap la ferme : le focus revient au titre de l ecran, la page redevient active');
   ok(r0.tete === 'Envie d’un peu plus ? Vos horaires ne bougent pas.' && /^Voir (les \d options|l’option)$/.test(r0.rappel), 'le recapitulatif garde de quoi la rouvrir', `« ${r0.tete} » « ${r0.rappel} »`);
+  // LA MEILLEURE POUR VOUS : la premiere du serveur, sa raison et sa remise.
+  const tete = cartes[0] || {};
+  const remiseAttendue = tete.promo ? `−${tete.promo.pourcent} %` : '';
+  ok(r0.vedette === tete.id && r0.ajouter.join(' ') === tete.id && r0.lignes.join(' ') === cartes.slice(1).map((c) => c.id).join(' ') && (cartes.length < 2 || r0.pour === 'La meilleure pour vous'),
+    'la premiere offre du serveur est en avant (« La meilleure pour vous »), seule a porter « Ajouter » ; les autres sont des rangees', JSON.stringify({ vedette: r0.vedette, ajouter: r0.ajouter, lignes: r0.lignes, pour: r0.pour }));
+  ok(tete.raison ? r0.raison === tete.raison.titre.replace(/'/g, '’') : r0.raison === '', 'elle dit sa raison, celle du serveur, mot pour mot', `« ${r0.raison} » / ${JSON.stringify(tete.raison)}`);
+  ok(tete.promo ? (r0.barre === euros(tete.promo.reference) && r0.remise === remiseAttendue) : (r0.barre === '' && r0.remise === ''),
+    'son prix barre et son taquet sont ceux que le serveur prouve, et rien sans preuve', JSON.stringify({ barre: r0.barre, remise: r0.remise, promo: tete.promo }));
+  if (res.r4) {
+    ok(res.r4.vedette === res.autre && res.r4.ajouter.join(' ') === res.autre && res.r4.lignes.indexOf(tete.id) >= 0 && res.r4.bascule && res.r4.focusAjouter,
+      'une rangee touchee passe devant (sa bascule seule s anime), l ancienne devient une rangee, le focus va sur son « Ajouter »', JSON.stringify({ vedette: res.r4.vedette, ajouter: res.r4.ajouter, lignes: res.r4.lignes, bascule: res.r4.bascule, focus: res.r4.focusAjouter }));
+    ok(res.r4.pour === '', 'l offre que le client fait passer devant ne se dit pas « la meilleure pour vous » : seule la premiere du serveur porte ce titre', `« ${res.r4.pour} »`);
+  } else if (cartes.length > 1) ok(false, 'une rangee a toucher pour la bascule');
+  // LES GESTES, en statistiques : la fenetre vue (chaque offre a sa place, sa
+  // raison), l ajout et ce que le serveur en a fait, l annulation, la
+  // fermeture, la bascule. Une seule visite, rien de personnel.
+  const g = res.gestes || [];
+  const vues = g.filter((x) => x.evenement === 'vue').slice(0, cartes.length);
+  const cles = new Set(['evenement', 'carte', 'genre', 'activite', 'raison', 'priorite', 'rang', 'promo', 'montant', 'personnes', 'reservationId', 'visite', 'centerId']);
+  ok(vues.length === cartes.length && vues.every((x, i) => x.carte === cartes[i].id && x.rang === i && x.raison === ((cartes[i].raison && cartes[i].raison.code) || '') && x.priorite === cartes[i].priorite),
+    'chaque offre vue part avec sa place (0 = en avant), sa raison et sa priorite', JSON.stringify(vues));
+  const ajout = g.find((x) => x.evenement === 'ajout'), acceptee = g.find((x) => x.evenement === 'acceptee'), annulee = g.find((x) => x.evenement === 'annulee');
+  ok(Boolean(ajout && acceptee && annulee) && [ajout, acceptee, annulee].every((x) => x.carte === tete.id && x.montant === tete.deltaTotal) && g.some((x) => x.evenement === 'fermee') && g.some((x) => x.evenement === 'vedette' && x.carte === res.autre),
+    'l ajout, ce que le serveur en fait, l annulation, la fermeture et la bascule partent aussi', JSON.stringify(g.map((x) => `${x.evenement}:${x.carte || ''}`)));
+  ok(g.length > 0 && new Set(g.map((x) => x.visite)).size === 1 && /^[a-f0-9]{24}$/.test(g[0].visite) && g.every((x) => Object.keys(x).every((k) => cles.has(k))),
+    'une seule visite, tiree au hasard, et aucune donnee personnelle (ni nom, ni mail, ni telephone)', JSON.stringify(g[0]));
   ok(res.uneFois === true, 'revenu au recapitulatif, elle ne se rouvre pas d elle-meme pour les memes offres');
   ok(res.rouverte, 'le rappel du recapitulatif la rouvre');
   if (!res.r1) { ok(false, 'aucune offre a accepter'); return; }
@@ -743,9 +853,11 @@ async function personnalisationPlus(browser, mock) {
       try { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(j) }); } catch (_) { /* Old request aborted by the real form. */ }
     });
     const tile = page.locator('#vitrine .fg-vitrine__carte').first();
+    // Le texte VU, sans ce qui n est dit qu au lecteur d ecran (« au lieu de », « soit »).
+    const texteVu = (loc) => loc.evaluate((el) => { const c = el.cloneNode(true); c.querySelectorAll('.sr-only').forEach((x) => x.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); });
     await tile.locator('[data-vitrine-pas="-1"]').click();
     await attendre(page, () => document.querySelector('#vitrine .fg-vitrine__prix').textContent === '+45 €', 4000);
-    ok((await tile.locator('.fg-vitrine__economie').innerText()) === 'Économie de 5 €', 'pour cinq, le serveur annonce 45 EUR et 5 EUR economises, meme pourcentage');
+    ok(await texteVu(tile.locator('.fg-vitrine__barre')) === '50 €' && await texteVu(tile.locator('.fg-vitrine__remise')) === '−10 %', 'pour cinq, le serveur annonce 45 EUR au lieu de 50 : prix barre et taquet de la meme remise');
     ok(quantities[0].raw.some(i => i.upsell && i.participants === 5 && i.upsell.participants === 5 && !('discountAmount' in i.upsell)), 'le programme demande cinq participants sans jamais envoyer de remise calculee');
     mode = 'stale';
     await tile.locator('[data-vitrine-pas="1"]').click();
@@ -771,7 +883,7 @@ async function personnalisationPlus(browser, mock) {
     mode = 'missing';
     await tile.locator('[data-vitrine-pas="1"]').click();
     await attendre(page, () => Boolean(document.querySelector('[data-plus-requote]')), 4000);
-    ok(await tile.locator('[data-plus]').isDisabled() && (await tile.locator('.fg-vitrine__economie').innerText()).includes('Cette offre n’est plus disponible.'), 'aucun ajout si le serveur ne confirme plus le contrat configure');
+    ok(await tile.locator('[data-plus]').isDisabled() && (await tile.locator('.fg-vitrine__etat').innerText()).includes('Cette offre n’est plus disponible.'), 'aucun ajout si le serveur ne confirme plus le contrat configure');
     mode = 'per-person';
     await tile.locator('[data-vitrine-pas="-1"]').click();
     await attendre(page, () => !document.querySelector('#vitrine [data-plus]').disabled, 4000);
@@ -781,9 +893,26 @@ async function personnalisationPlus(browser, mock) {
     ok(detail === '1 partie + 1 partie supplémentaire pour 2 joueurs', 'le recapitulatif explique exactement la partie originale et les participants au supplement');
     mode='free';await tile.locator('[data-vitrine-pas="1"]').click();
     await attendre(page,()=>document.querySelector('#vitrine .fg-vitrine__prix').textContent==='+0 €',4000);
-    ok(!await tile.locator('[data-plus]').isDisabled()&&(await tile.locator('.fg-vitrine__economie').innerText())==='Économie de 30 €','une remise autoritaire de cent pour cent reste ajoutable et affiche son economie entiere');
+    ok(!await tile.locator('[data-plus]').isDisabled()&&await texteVu(tile.locator('.fg-vitrine__barre'))==='30 €'&&await texteVu(tile.locator('.fg-vitrine__remise'))==='−100 %','une remise autoritaire de cent pour cent reste ajoutable : 30 EUR barres, taquet a 100 %');
     ok(s.erreurs.length === 0, 'aucune erreur JS dans la personnalisation');
   } finally { instrumenterPlus = false; if (s) await s.ctx.close(); }
+}
+
+// La contre-epreuve du prorata : deux joueurs sur la partie en plus, le prix
+// barre devrait disparaitre ; rend true quand il reste (le code casse).
+async function laserSansPreuve(browser, mock) {
+  const s = await jusquAuxHoraires(browser, mock, { pax: 6, activites: ['bowling', 'laser_game'], largeur: 390, hauteur: 844, etiquette: 'laser-prorata' });
+  try {
+    const { page } = s;
+    const card = (derniere(s.reponses).complements || []).find((c) => c.kind === 'laser');
+    if (!s.pret || !card || !(await remplirContact(page))) return false;
+    await attendre(page, () => !document.querySelector('#vitrine').hidden, 5000);
+    if (await page.locator(`#vitrine [data-vitrine-vedette="${card.id}"]`).count()) await page.click(`#vitrine [data-vitrine-vedette="${card.id}"]`);
+    const tile = page.locator(`#vitrine .fg-vitrine__carte:has([data-plus="${card.id}"])`);
+    for (let k = 0; k < 4; k += 1) await tile.locator('[data-vitrine-pas="-1"]').click();
+    await attendre(page, (id) => !document.querySelector(`[data-plus="${id}"]`).disabled, 6000, card.id);
+    return (await tile.locator('.fg-vitrine__barre').count()) > 0;
+  } finally { await s.ctx.close(); }
 }
 
 async function laserSousGroupe(browser, mock) {
@@ -795,10 +924,15 @@ async function laserSousGroupe(browser, mock) {
     const card=(initial.complements||[]).find(c=>c.kind==='laser');
     ok(s.pret&&Boolean(card)&&await remplirContact(page),'montage supplement laser reel');
     await attendre(page,()=>!document.querySelector('#vitrine').hidden,5000);
+    const gestes0=mock.dernierePose.gestes.length;
+    if(await page.locator(`#vitrine [data-vitrine-vedette="${card.id}"]`).count())await page.click(`#vitrine [data-vitrine-vedette="${card.id}"]`);
     const tile=page.locator(`#vitrine .fg-vitrine__carte:has([data-plus="${card.id}"])`);
     for(let k=0;k<4;k++)await tile.locator('[data-vitrine-pas="-1"]').click();
     await attendre(page,id=>!document.querySelector(`[data-plus="${id}"]`).disabled,6000,card.id);
     const shown=await tile.locator('.fg-vitrine__prix').innerText();
+    // AUCUN PRORATA : la reference d une partie seule valait pour six joueurs ;
+    // pour deux, aucun devis ne la prouve, le prix barre disparait.
+    ok(card.promo && (await tile.locator('.fg-vitrine__barre').count())===0,'pour deux joueurs, plus de prix barre : la reference du serveur valait pour six, rien ne la recalcule ici',JSON.stringify(card.promo));
     await tile.locator('[data-plus]').click();
     await attendre(page,()=>document.querySelector('#vitrine').hidden&&document.querySelector('#plus-recap .fg-plus__statut')?.dataset.ton==='ok',15000);
     const recap=await lireRecapPlus(page);
@@ -811,6 +945,9 @@ async function laserSousGroupe(browser, mock) {
     ok(Number(laser.games||1)===1&&(laser.participants==null||laser.participants===6)&&laser.extraLaser?.participants===2&&laser.extraLaser.games===2,'l envoi preserve les six participants de base et une partie, plus le sous-groupe distinct');
     const receipt=await page.locator('#finBody').innerText();
     ok(receipt.includes('1 partie supplémentaire pour 2 joueurs')&&Number(raw.price)===recap.total,'le vrai recu de succes conserve le supplement et le prix affiche');
+    for(let k=0;k<40&&!mock.dernierePose.gestes.slice(gestes0).some(g=>g.evenement==='reservee');k++)await page.waitForTimeout(100);
+    const reservee=mock.dernierePose.gestes.slice(gestes0).find(g=>g.evenement==='reservee');
+    ok(Boolean(reservee)&&reservee.carte===card.id&&reservee.reservationId>0&&reservee.personnes===2,'la reservation partie compte l offre acceptee (« reservee », avec son dossier et ses deux joueurs)',JSON.stringify(reservee));
     ok(s.erreurs.length===0,'aucune erreur JS dans le parcours laser et recu');
   }finally{await s.ctx.close();}
 }
@@ -862,6 +999,18 @@ async function main() {
         de: '    programmerVitrine();\n',
         jouer: async () => { const r = await recapC(browser, mock, { etiquette: 'auto-casse', arret: 'ouverture' }); return Boolean(r.pret) && (r.cartes || []).length > 0 && !r.auto; },
         label: 'sans l ouverture a l arrivee, la fenetre ne s ouvre plus d elle-meme : ce gate ROUGIRAIT',
+      },
+      {
+        de: "    return cartes.filter(function (c) { return c.id === plus.vedette; })[0] || cartes[0] || null;\n",
+        vers: '    return cartes[0] || null;\n',
+        jouer: async () => { const r = await recapC(browser, mock, { etiquette: 'bascule-casse' }); return Boolean(r.r4) && r.r4.vedette !== r.autre; },
+        label: 'sans l offre choisie par le client, une rangee touchee ne passe plus devant : ce gate ROUGIRAIT',
+      },
+      {
+        de: "      if (c.promo && d.participants === personnesInitiales(c)) ref = Math.max(ref, Number(c.promo.reference) || 0);\n",
+        vers: "      if (c.promo) ref = Math.max(ref, Number(c.promo.reference) || 0);\n",
+        jouer: async () => laserSansPreuve(browser, mock),
+        label: 'sans le garde du nombre de personnes, un prix barre reste affiche sans reference pour ce nombre : ce gate ROUGIRAIT',
       },
       {
         de: '    vitrineVues[signatureVitrine()] = 1;\n',

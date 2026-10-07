@@ -137,12 +137,24 @@
   // de ce que gagne la colonne la plus haute.
   function hauteurDArrivee() {
     var h = Math.max(body.scrollHeight, body.offsetHeight);
-    var parGrille = new Map(), incomplet = false;
+    var parGrille = new Map(), parOnglets = new Map(), incomplet = false;
     tiroirsEnCours.forEach(function (minuteur, el) {
       var parent = el.parentElement, contenu = el.firstElementChild;
       if (!el.isConnected || !parent) return;
       var ouvrant = parent.classList.contains('is-on') || parent.classList.contains('is-open');
       if (ouvrant && contenu && getComputedStyle(contenu).contentVisibility === 'hidden') { incomplet = true; return; }
+      // Des onglets (parent en display: contents, les plages de l ecran des
+      // heures pas a pas) : leurs corps partagent UNE case de la grille, que
+      // le plus haut fait. Celui qui se ferme et celui qui s ouvre ne
+      // s additionnent pas : la case passe du plus haut d avant au plus haut
+      // d apres (les additionner retirait deux fois la plage fermee, 54 px).
+      if (getComputedStyle(parent).display === 'contents') {
+        var onglets = parent.parentElement, o = parOnglets.get(onglets) || { avant: 0, apres: 0 };
+        o.avant = Math.max(o.avant, el.getBoundingClientRect().height);
+        o.apres = Math.max(o.apres, ouvrant && contenu ? contenu.scrollHeight : 0);
+        parOnglets.set(onglets, o);
+        return;
+      }
       var ecart = (ouvrant && contenu ? contenu.scrollHeight : 0) - el.getBoundingClientRect().height;
       var grille = parent.parentElement;
       if (grille && grille._fgMasonryObserver) {
@@ -159,6 +171,7 @@
       });
       h += Math.max.apply(null, hauteurs) - espace - grille.getBoundingClientRect().height;
     });
+    parOnglets.forEach(function (o) { h += o.apres - o.avant; });
     return incomplet ? 0 : Math.ceil(h);
   }
   function lacherTiroir(el) {
@@ -642,15 +655,53 @@
     }
     return '<div class="fg-card__info fg-for__info"><p class="fg-card__rot">' + esc(bref) + '</p>' + boutonInfo('data-formula-info', f.id, f.name, sections, image) + '</div>';
   }
+  // LA FICHE D UNE ACTIVITE (Movsar, 2026-10-07 : « description complete quand
+  // meme », mais belle, jamais toute la page, et pas « IA »). Le texte reste
+  // mot pour mot celui des sections, que les gates comparent a data-info-text :
+  // seules des balises s ajoutent, pour mettre le prix en avant, poser les
+  // conditions en tuiles et les tarifs en liste.
+  var GENRES_INFO = { 'Le tarif': 'lead', 'Votre sélection': 'lead', 'Accès et participants': 'faits', 'Les offres disponibles': 'tarifs', 'Ce qui est inclus': 'inclus', 'À savoir': 'note' };
+  function montantsEnAvant(texte) { return esc(texte).replace(/\d[\d   .,]*\s?€/g, function (m) { return '<b class="fg-info-num">' + m + '</b>'; }); }
+  function ligneCoupee(l, classe) {
+    var i = l.indexOf(' : '), k, sep, v;
+    if (i > 0) { k = l.slice(0, i); sep = ' : '; v = l.slice(i + 3); }
+    else { var m = /^(Au moins|Dès|Jusqu’à) (.+)$/.exec(l); if (!m) return '<p class="' + classe + '"><span class="' + classe + '__v">' + esc(l) + '</span></p>'; k = m[1]; sep = ' '; v = m[2]; }
+    var fin = classe === 'fg-info-fait' && /\.$/.test(v) ? '.' : '';
+    if (fin) v = v.slice(0, -1);
+    return '<p class="' + classe + '"><span class="' + classe + '__k">' + esc(k) + '</span><span class="fg-info-sep">' + sep + '</span><span class="' + classe + '__v">' + esc(v) + (fin ? '<span class="fg-info-sep">.</span>' : '') + '</span></p>';
+  }
+  function htmlSectionInfo(s) {
+    var genre = GENRES_INFO[s.titre] || 'texte';
+    var lignes = s.lignes.filter(Boolean).map(function (l, i) {
+      if (genre === 'lead') return '<p' + (i ? '' : ' class="fg-info-prix"') + '>' + montantsEnAvant(l) + '</p>';
+      if (genre === 'faits') return ligneCoupee(l, 'fg-info-fait');
+      if (genre === 'tarifs') return ligneCoupee(l, 'fg-info-tarif');
+      return '<p>' + esc(l) + '</p>';
+    });
+    return '<section class="fg-info-section fg-info-section--' + genre + '"><h3>' + esc(s.titre) + '</h3>\n' + lignes.join('\n\n') + '</section>';
+  }
   function placerInfoFenetre(demander) {
-    if (!activityDialog || !activityDialog.open || !EMBED) return;
+    if (!activityDialog || !activityDialog.open) return;
+    // Sur telephone, la fiche est un tiroir pose en bas de ce qu on voit.
+    var tiroir = window.innerWidth < 600;
+    activityDialog.classList.toggle('is-sheet', tiroir);
+    if (!EMBED) return;
     activityDialog.classList.toggle('is-short', ecranHote > 0 && ecranHote <= 500);
+    if (tiroir) {
+      var haut = 0, bas = window.innerHeight;
+      if (ecranHote && hautCadre !== null) { haut = Math.max(0, -hautCadre); bas = Math.min(window.innerHeight, ecranHote - hautCadre); }
+      if (bas <= haut) return;
+      activityDialog.style.maxHeight = Math.max(120, bas - haut - 16) + 'px';
+      activityDialog.style.top = Math.round(bas - 8) + 'px';
+      return;
+    }
     centrerDansLaVue(activityDialog, demander);
     if (ecranHote && hautCadre !== null) {
       var debutVisible = Math.max(0, -hautCadre), finVisible = Math.min(window.innerHeight, ecranHote - hautCadre);
       if (finVisible > debutVisible) {
         var hauteurMax = Math.max(80, Math.min(ecranHote - 24, finVisible - debutVisible - 16));
         activityDialog.style.maxHeight = hauteurMax + 'px';
+        activityDialog.style.setProperty('--fi-max', hauteurMax + 'px');
         var demiHauteur = Math.min(activityDialog.offsetHeight, hauteurMax) / 2;
         activityDialog.style.top = Math.round(Math.max(debutVisible + demiHauteur + 8, Math.min(finVisible - demiHauteur - 8, ecranHote / 2 - hautCadre))) + 'px';
       }
@@ -672,7 +723,7 @@
     if (!activityDialog) {
       activityDialog = doc.createElement('dialog'); activityDialog.className = 'fg-info-dialog';
       activityDialog.setAttribute('aria-labelledby', 'fgInfoTitle');
-      activityDialog.innerHTML = '<div class="fg-info-hero"><img class="fg-info-photo" alt=""><button type="button" class="fg-info-close" aria-label="Fermer les informations">×</button></div><div class="fg-info-body" tabindex="0" role="region" aria-labelledby="fgInfoTitle"><h2 id="fgInfoTitle"></h2><div class="fg-info-text"></div></div>';
+      activityDialog.innerHTML = '<div class="fg-info-hero"><img class="fg-info-photo" alt=""></div><span class="fg-info-grip" aria-hidden="true"></span><button type="button" class="fg-info-close" aria-label="Fermer les informations"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button><div class="fg-info-body" tabindex="0" role="region" aria-labelledby="fgInfoTitle"><h2 id="fgInfoTitle"></h2><div class="fg-info-text"></div></div>';
       doc.body.appendChild(activityDialog);
       if ('ResizeObserver' in window) infoResizeObserver = new ResizeObserver(function () { placerInfoFenetre(false); });
       $('.fg-info-photo', activityDialog).addEventListener('load', function () { placerInfoFenetre(false); });
@@ -685,18 +736,18 @@
         ev.preventDefault(); accessibles[prochain].focus({ preventScroll: true });
       });
       activityDialog.addEventListener('click', function (ev) { var r = activityDialog.getBoundingClientRect(); if (ev.target === activityDialog && (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom)) activityDialog.close(); });
-      activityDialog.addEventListener('close', function () { if (infoResizeObserver) infoResizeObserver.disconnect(); infoCentreDemande = false; doc.body.style.overflow = activityDialog._overflow; activityDialog.style.top = ''; activityDialog.style.maxHeight = ''; var type = infoOpener && infoOpener.dataset.formulaInfo ? 'formula' : 'activity'; var id = infoOpener && infoOpener.dataset[type + 'Info']; var focus = infoOpener && (infoOpener.isConnected ? infoOpener : $('[data-' + type + '-info="' + id + '"]', $('.fg-scene.is-active') || doc)); if (focus) focus.focus({ preventScroll: true }); });
+      activityDialog.addEventListener('close', function () { if (infoResizeObserver) infoResizeObserver.disconnect(); infoCentreDemande = false; doc.body.style.overflow = activityDialog._overflow; var type = infoOpener && infoOpener.dataset.formulaInfo ? 'formula' : 'activity'; var id = infoOpener && infoOpener.dataset[type + 'Info']; var focus = infoOpener && (infoOpener.isConnected ? infoOpener : $('[data-' + type + '-info="' + id + '"]', $('.fg-scene.is-active') || doc)); if (focus) focus.focus({ preventScroll: true }); });
     }
     infoOpener = btn;
     $('#fgInfoTitle', activityDialog).textContent = btn.dataset.infoTitle;
     var contenu = $('.fg-info-text', activityDialog), sections;
     try { sections = JSON.parse(btn.dataset.infoSections || 'null'); } catch (_) { sections = null; }
-    if (sections) contenu.innerHTML = sections.map(function (s) { return '<section class="fg-info-section' + (s.titre === 'Les offres disponibles' ? ' fg-info-section--offers' : s.titre === 'À savoir' ? ' fg-info-section--note' : '') + '"><h3>' + esc(s.titre) + '</h3>\n' + s.lignes.filter(Boolean).map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('\n\n') + '</section>'; }).join('\n\n');
+    if (sections) contenu.innerHTML = sections.map(htmlSectionInfo).join('\n\n');
     else contenu.textContent = btn.dataset.infoText;
     var image = $('.fg-info-photo', activityDialog), centre = meta && meta.center && meta.center.id || CENTER;
     var sujet = btn.dataset.infoImage || btn.dataset.activityInfo;
     var p = centre === 'libramont' ? photo(sujet) : centre === 'gembloux' && sujet === 'golf_oclock' ? 'gembloux-golf-salle' : '';
-    image.hidden = !p; $('.fg-info-hero', activityDialog).classList.toggle('has-photo', !!p); if (p) { image.src = '/assets/fungalaxy/' + p + '-800.webp'; image.alt = btn.dataset.infoTitle; } else { image.removeAttribute('src'); image.alt = ''; }
+    image.hidden = !p; $('.fg-info-hero', activityDialog).classList.toggle('has-photo', !!p); activityDialog.classList.toggle('has-photo', !!p); if (p) { image.src = '/assets/fungalaxy/' + p + '-800.webp'; image.alt = btn.dataset.infoTitle; } else { image.removeAttribute('src'); image.alt = ''; }
     activityDialog._overflow = doc.body.style.overflow; doc.body.style.overflow = 'hidden';
     activityDialog.showModal(); $('.fg-info-body', activityDialog).scrollTop = 0; placerInfoFenetre(false); $('.fg-info-close', activityDialog).focus({ preventScroll: true });
     if (infoResizeObserver) infoResizeObserver.observe(activityDialog);
@@ -2387,7 +2438,7 @@
   var reveilGarder = false;    // « Garder » s eveille a la premiere reponse apres l arrivee sur les heures, pas a chaque heure posee
   var signaturePistes = '';    // les pistes rendues (activites + heures) : sinon, on met a jour sur place
   var adaptation = null;       // { deplace, pour, t } : l activite deplacee pour l heure posee
-  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; goContact.disabled = true; libererBlocage(); }
+  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; libererBlocage(); }
   // LES LIGNES CHOISIES a l ecran des activites, puis l offre d attente
   // acceptee, tant que la demande est celle pour laquelle elle a ete
   // proposee (meme jour, meme groupe, memes activites et options). Changer
@@ -2480,7 +2531,11 @@
     var f = doc.activeElement;
     if (f && f !== body && f.isConnected && getComputedStyle(f).visibility !== 'hidden') return;
     var piste = r.piste !== null ? $('.fg-track[data-activity="' + r.piste + '"]', hourZone) : null;
-    var cible = (piste && ($('.fg-period.is-open .fg-chip[aria-selected="true"]', piste) || $('.fg-period.is-open .fg-period__btn', piste)))
+    // Une piste dans une ligne repliee ne se voit pas : le focus va a sa ligne.
+    var ligne = piste && piste.closest('.fg-etape');
+    var visible = piste && (!ligne || ligne.classList.contains('is-open'));
+    var cible = (visible && ($('.fg-period.is-open .fg-chip[aria-selected="true"]', piste) || $('.fg-period.is-open .fg-period__btn', piste)))
+      || (ligne && $('.fg-etape__tete', ligne))
       || (r.plan && $('#planZone button'))
       || $('.fg-period.is-open .fg-period__btn', hourZone) || $('#t-hour');
     if (!cible) return;
@@ -2512,7 +2567,7 @@
         rendreHeures();
         $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); });
         var posee = idAttente ? $('.fg-track[data-activity="' + idAttente + '"] .fg-chip[data-time="' + heureAttente + '"]', hourZone) : null;
-        if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) rejouer(posee, 'is-pose');
+        if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) { rejouer(posee, 'is-pose'); avancerEtape(); }
         goContact.disabled = !slot;
         if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }
         majRefusHoraires();
@@ -2923,11 +2978,10 @@
     return laser && state.laserParts.length ? state.laserParts : (state.pins[a.activityId] ? [state.pins[a.activityId]] : []);
   }
   // LES PARTIES DE LASER, UNE PAR UNE (Movsar, 2026-09-24 : « faut que ca
-  // montre qu ils ont selectionne x heures sur x parties »). Chaque partie :
-  // son heure et la fin de son dernier groupe (le plan), ou « sur place avec
-  // l equipe » quand aucune heure ne la pose (le moteur la laisse alors a
-  // l equipe, lib/ops-engine.js). Sans heure choisie, la partie que l equipe
-  // propose se dit proposee.
+  // montre qu ils ont selectionne x heures sur x parties »). Chaque partie a
+  // sa ligne au programme (etapesDe) : son heure, ou « sur place » quand
+  // aucune heure ne la pose (le moteur la laisse alors a l equipe,
+  // lib/ops-engine.js). Sans heure choisie, celle que l equipe propose.
   function debutsDesParties(cr, id) {
     var parParties = {};
     ((cr && cr.slot && cr.slot.opsPlan && cr.slot.opsPlan.resourceBlocks) || []).forEach(function (b) {
@@ -2936,42 +2990,6 @@
       if (!parParties[k] || String(b.startTime) < parParties[k]) parParties[k] = String(b.startTime);
     });
     return Object.keys(parParties).map(function (k) { return parParties[k]; }).sort();
-  }
-  function rendreParties(track, a) {
-    var boite = $('.fg-parts', track);
-    if (!boite) return;
-    var total = Math.max(1, Number(a.count) || 1);
-    var n = state.laserParts.length;
-    var heures = n ? state.laserParts.slice() : debutsDesParties(state.creneau, a.activityId);
-    var avant = $$('.fg-parts__item', boite).map(function (li) { return li.textContent; });
-    var html = '<p class="fg-parts__head"><span>Vos ' + total + ' parties</span><b>'
-      + (n ? n + ' heure' + (n > 1 ? 's' : '') + ' choisie' + (n > 1 ? 's' : '') + ' sur ' + total : 'aucune heure choisie') + '</b></p><ol class="fg-parts__list">';
-    for (var k = 0; k < total; k += 1) {
-      var h = heures[k] || '';
-      var plage = h ? plageOccupee(state.creneau, a.activityId, h) : '';
-      var fin = plage ? plage.split(' à ').pop() : '';
-      html += '<li class="fg-parts__item ' + (h ? (n ? 'is-set' : 'is-proposed') : 'is-free') + '" data-partie="' + (k + 1) + '">'
-        + '<i aria-hidden="true">' + (k + 1) + '</i><span><span class="sr-only">Partie ' + (k + 1) + ' : </span>'
-        + (h ? '<b>' + esc(h) + '</b>' + (fin ? ' → ' + esc(heureAffichee(fin)) : '') + (n ? '' : ' <small>proposée</small>') : 'dans la foulée')
-        + '</span></li>';
-    }
-    html += '</ol>';
-    // UNE PARTIE SANS HEURE RESTE POSSIBLE, MAIS ELLE SE JOUE AUX PLACES QUI
-    // RESTENT (Movsar, 2026-09-28 : « ils peuvent la placer sur place, mais
-    // c est mieux s ils choisissent ; la premiere est obligatoire »). Le cadre
-    // le dit la ou le client peut agir, juste au-dessus des heures. La
-    // premiere partie a toujours son heure : choisie, ou proposee par l equipe.
-    var sansHeure = [];
-    for (var r = 1; r < total; r += 1) if (!heures[r]) sansHeure.push(String(r + 1));
-    if (sansHeure.length) {
-      var plusieurs = sansHeure.length > 1;
-      html += '<p class="fg-parts__note"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
-        + (plusieurs ? 'Parties ' : 'Partie ') + esc(joindreListe(sansHeure, ' et ')) + ' sans heure : ' + (plusieurs ? 'placées' : 'placée') + ' sur place avec l’équipe. '
-        + '<b>Touchez une heure ci-dessous</b> pour ' + (plusieurs ? 'les' : 'la') + ' choisir.</span></p>';
-    }
-    boite.innerHTML = html;
-    // Ce qui a change (une partie posee, deplacee, retiree) monte a sa place.
-    $$('.fg-parts__item', boite).forEach(function (li, k) { if (k < avant.length && li.textContent !== avant[k]) li.classList.add('is-maj'); });
   }
   function majPistes(d) {
     var ancres = (d.anchors && d.anchors.activities) || [];
@@ -3022,7 +3040,6 @@
         vagues.innerHTML = v ? noteVagues(v, multi) : '';
         vagues.hidden = !v;
       }
-      if (multi) rendreParties(track, a);
       var reset = $('[data-reset]', track);
       if (reset) reset.hidden = !actifs.length;
       majPeriodes(track);
@@ -3073,6 +3090,7 @@
     var signature = signatureDe(d) + '|' + JSON.stringify(state.creneau && [state.creneau.slot.laneCount, state.creneau.slot.bowlingCapacity, state.creneau.reponse.price]);
     if (signature === signaturePistes && $('.fg-track', hourZone)) {
       majPistes(d);
+      if (ancres.length) majEtapes(d);
       rendreVisite();
       posterHauteur();
       return;
@@ -3106,16 +3124,12 @@
         + '</span></p>';
     }
     if (ancres.length) {
-      // Quarante-huit mots de legende sur un telephone, c etait un mur
-      // (Movsar, 2026-09-23 : « ya trop de texte c est abusé surtout sur
-      // mobile »). Chaque cle PORTE le contour de la puce qu elle decrit :
-      // sous 680 px, les trois contours parlent seuls et la glose disparait.
-      html += '<p class="fg-legend fg-rise" style="--i:0">'
-        + '<span class="fg-legend__tip">Ce qui coince est expliqué sous chaque plage horaire.</span>'
-        + '<span class="fg-legend__key fg-legend__key--soft"><i>Serré</i><em>tout ne tiendra peut-être pas</em></span>'
-        + '<span class="fg-legend__key fg-legend__key--shift"><i>Décale</i><em>l’autre activité se déplace</em></span>'
-        + '<span class="fg-legend__key fg-legend__key--off"><i>Complet</i><em>impossible ce jour-là</em></span>'
-        + '</p>';
+      // PLUS DE LEGENDE (Movsar, 2026-10-07 : « pas bcp de texte, sinon ca
+      // fait trop long a lire »). Une heure qui coince le dit sur sa puce, et
+      // sa raison s eclaire quand on la touche. Les pistes se rangent dans les
+      // lignes du programme (htmlEtapes) : chacune dans la ligne de son
+      // activite, celle du laser dans la ligne de la partie ouverte.
+      var pistesHtml = {};
       ancres.forEach(function (a, i) {
         var laser = a.activityId === 'laser_game';
         var count = Math.max(1, Number(a.count) || 1);
@@ -3129,47 +3143,220 @@
         if (state.onglet !== 'formules') detail = joueurs(joueursDe(activite(a.activityId))) + ' · ' + detail;
         var pistes = a.activityId === 'bowling' ? pistesBowling() : null;
         if (pistes) detail += ' · ' + pistes.pistes + ' piste' + (pistes.pistes > 1 ? 's' : '');
-        html += '<section class="fg-track fg-rise" style="--i:' + (i + 1) + '" data-activity="' + esc(a.activityId) + '" data-count="' + count + '">'
+        detailsEtapes[a.activityId] = detail;
+        pistesHtml[a.activityId] = '<section class="fg-track" data-activity="' + esc(a.activityId) + '" data-count="' + count + '">'
           + '<div class="fg-track__head">'
           + (ancres.length > 1 ? '<span class="fg-track__num" aria-hidden="true">' + (i + 1) + '</span>' : '')
           + '<span class="fg-track__icon"><svg aria-hidden="true"><use href="#' + icone(a.activityId) + '"/></svg></span><b>' + esc(a.label || a.activityId) + '</b><span class="fg-track__detail">' + esc(detail) + '</span>'
           + '</div>'
-          // Ce qui EXPLIQUE les heures se lit avant elles ; ce qui AGIT sur
-          // elles se pose apres. Ni l un ni l autre dans le bandeau : lui ne
-          // porte que le rang, l icone, le nom et la duree.
-          + (laser ? notePartage() : '')
-          + (a.activityId === 'bowling' ? notePistes() : '')
-          + (multi ? '<div class="fg-parts"></div>' : '')
           + '<p class="fg-track__waves" hidden></p>'
           + rendreChips(a.times || [], multi, a.activityId)
+          // Ce qui EXPLIQUE les heures se lit en petit sous elles : les pistes
+          // du bowling, la partie de laser partagee.
+          + (laser ? notePartage() : '')
+          + (a.activityId === 'bowling' ? notePistes() : '')
           + '<div class="fg-track__foot">'
           + '<span class="fg-track__note" role="status" hidden></span>'
           + '<button type="button" class="fg-link fg-track__reset" data-reset="' + esc(a.activityId) + '" hidden>Revenir à l’heure proposée</button>'
           + '</div>'
           + '</section>';
       });
+      html += htmlEtapes(etapesDe(d), pistesHtml);
     } else {
       var slots = (d.slots || []).map(function (s) { return { time: s.time, ok: true }; });
       // Sans heure a proposer, l avis unique est celui du bloc de la visite
       // (rendreVisite) : un second avis ici disait deux fois la meme chose.
       if (slots.length) html += '<section class="fg-track fg-rise" style="--i:1" data-activity="">' + rendreChips(slots, false, 'slot') + '</section>';
     }
-    html += '<div id="planZone" class="fg-rise" style="--i:' + (ancres.length + 2) + '"></div>';
+    html += '<div id="planZone" class="fg-rise" style="--i:' + (ancres.length ? 1 : 2) + '"></div>';
     hourZone.innerHTML = html;
     signaturePistes = signature;
     keepLabel.textContent = ancres.length ? 'Ces horaires me vont' : 'Cette heure me va';
-    if (ancres.length) majPistes(d);
+    if (ancres.length) { majPistes(d); majEtapes(d); }
     else { $$('.fg-chip', hourZone).forEach(function (chip) { majChip(chip, { time: chip.dataset.time, ok: true }, state.heure ? [state.heure] : [], ''); }); $$('.fg-track', hourZone).forEach(majPeriodes); }
     rendreVisite();
     posterHauteur();
   }
+
+  /* --- LE PROGRAMME, PAS A PAS (Movsar, 2026-10-07) -------------------------
+     Une ligne par chose a placer, et une ligne PAR PARTIE de laser : deux
+     parties, deux lignes, deux heures (« les clients ne comprennent pas qu ils
+     doivent appuyer sur plusieurs horaires »). Les lignes se rangent dans
+     l ordre de la journee, entre l arrivee et la fin : la premiere activite
+     donne l heure d arrivee. Une seule ligne ouverte ; l heure posee et
+     retenue par le plan, la suivante s ouvre seule. Les heures, leurs etats et
+     leurs raisons restent celles des pistes (majPistes) : chaque piste se pose
+     dans sa ligne, celle du laser dans la ligne de la partie ouverte. */
+  var etapeOuverte = null;     // 'bowling', 'laser_game#2' : la ligne ouverte, null quand tout est replie
+  var etapeTouchee = false;    // le client a ouvert ou ferme une ligne : plus rien ne s ouvre a sa place, sauf apres une heure posee
+  var partiesSurPlace = false; // les parties de laser sans heure, laissees a l equipe en connaissance de cause
+  var detailsEtapes = {};      // le detail de chaque activite (« 6 joueurs · 1 heure · 1 piste »)
+  var visiteOuverte = false;   // le detail de « Votre visite » : replie, le programme dit deja les heures
+  function etapesDe(d) {
+    var ancres = (d.anchors && d.anchors.activities) || [], defauts = (d.anchors && d.anchors.defaultTimes) || {};
+    var liste = [];
+    ancres.forEach(function (a, rang) {
+      var id = a.activityId, compte = Math.max(1, Number(a.count) || 1), label = a.label || nomActivite(id);
+      if (!(id === 'laser_game' && compte > 1)) {
+        var choisi = state.pins[id] || '';
+        liste.push({ cle: id, id: id, partie: 0, compte: 1, rang: rang, label: label, heure: choisi || defauts[id] || '', etat: choisi ? 'choisi' : defauts[id] ? 'propose' : 'vide' });
+        return;
+      }
+      // Les heures des parties : choisies, sinon celles que le plan propose ;
+      // une partie sans heure se joue dans la foulee, placee par l equipe.
+      var n = state.laserParts.length, heures = n ? state.laserParts.slice() : debutsDesParties(state.creneau, id);
+      for (var k = 1; k <= compte; k += 1) {
+        var h = heures[k - 1] || '';
+        liste.push({ cle: id + '#' + k, id: id, partie: k, compte: compte, rang: rang, label: label, heure: h, etat: h ? (n ? 'choisi' : 'propose') : (partiesSurPlace ? 'surplace' : 'vide') });
+      }
+    });
+    return liste.sort(function (x, y) { return (x.heure ? 0 : 1) - (y.heure ? 0 : 1) || (x.heure < y.heure ? -1 : x.heure > y.heure ? 1 : 0) || x.rang - y.rang || x.partie - y.partie; });
+  }
+  function aPlacer(e) { return e.etat !== 'choisi' && e.etat !== 'surplace'; }
+  function detailPartie() {
+    var d = dureeLaser(), a = activite('laser_game');
+    return [state.onglet !== 'formules' && a ? joueurs(joueursDe(a)) : '', d ? minutesLabel(d.jeu) + ' de jeu' : ''].filter(Boolean).join(' · ');
+  }
+  function bornesVisite() {
+    var cr = state.creneau, slot = cr && cr.slot, plan = (slot && slot.opsPlan) || {};
+    var fin = slot ? (slot.visitEndTime || plan.endTime || '') : '';
+    return { arrivee: plan.arrivalTime || '', fin: fin ? heureAffichee(fin) : '', fermeture: Boolean(slot && slot.visitEndsAtClose) };
+  }
+  function idEtape(cle) { return 'etp-' + String(cle).replace(/[^a-z0-9_-]/gi, '-'); }
+  function htmlEtapes(etapes, pistes) {
+    var laserPose = false;
+    var html = '<div class="fg-prog fg-rise" style="--i:0"><ol class="fg-etapes">'
+      + '<li class="fg-etape fg-etape--borne fg-etape--arrivee" aria-hidden="true"><span class="fg-etape__point"></span><span class="fg-etape__quoi">Arrivée</span><span class="fg-etape__heure"></span></li>';
+    etapes.forEach(function (e) {
+      var piste = '';
+      if (e.partie) { if (!laserPose) { piste = pistes[e.id] || ''; laserPose = true; } }
+      else piste = pistes[e.id] || '';
+      html += '<li class="fg-etape" data-cle="' + esc(e.cle) + '" data-activity="' + esc(e.id) + '" data-partie="' + e.partie + '">'
+        + '<button type="button" class="fg-etape__tete" aria-expanded="false" aria-controls="' + idEtape(e.cle) + '">'
+        + '<span class="fg-etape__point" aria-hidden="true"></span>'
+        + '<span class="fg-etape__icone"><svg aria-hidden="true"><use href="#' + icone(e.id) + '"/></svg></span>'
+        + '<span class="fg-etape__quoi"><b>' + esc(e.label) + (e.partie ? ' <em><span class="sr-only">partie </span>' + e.partie + '<span aria-hidden="true">/</span><span class="sr-only"> sur </span>' + e.compte + '</em>' : '') + '</b><small></small></span>'
+        + '<span class="fg-etape__heure"></span>'
+        + '<svg class="fg-etape__chev" aria-hidden="true"><use href="#i-chevron"/></svg>'
+        + '</button>'
+        + '<div class="fg-etape__corps" id="' + idEtape(e.cle) + '"><div class="fg-etape__dedans"><div class="fg-etape__piste">' + piste + '</div>'
+        + (e.partie > 1 ? '<p class="fg-etape__alt"><button type="button" class="fg-etape__surplace" data-sur-place><svg aria-hidden="true"><use href="#i-users"/></svg>Laisser l’équipe la placer sur place</button></p>' : '')
+        + '</div></div></li>';
+    });
+    return html + '<li class="fg-etape fg-etape--borne fg-etape--fin" aria-hidden="true"><span class="fg-etape__point"></span><span class="fg-etape__quoi">Fin</span><span class="fg-etape__heure"></span></li></ol></div>';
+  }
+  function ouvrirEtape(cle) {
+    etapeOuverte = cle;
+    if (state.dispo) majEtapes(state.dispo);
+    posterHauteur();
+    setTimeout(posterHauteur, 450);
+  }
+  // Apres une heure posee et retenue : la prochaine ligne a placer s ouvre ;
+  // tout est place, tout se replie et le bouton s eveille.
+  function avancerEtape() {
+    if (!state.dispo) return;
+    var suivante = etapesDe(state.dispo).filter(aPlacer)[0];
+    var f = doc.activeElement, ligne = f && f.closest && f.closest('.fg-etape'), clavier = ligne ? focusClavier(f) : false;
+    ouvrirEtape(suivante ? suivante.cle : null);
+    if (!suivante && !goContact.disabled) eveiller(goContact);
+    // Le focus ne reste pas dans une ligne qui se replie : il suit le programme.
+    if (ligne && !ligne.classList.contains('is-open')) {
+      var vers = suivante ? $('.fg-etape[data-cle="' + suivante.cle + '"] .fg-etape__tete', hourZone) : goContact;
+      if (vers && !vers.disabled) { vers.focus({ preventScroll: true }); if (clavier) montrer(vers); }
+    }
+  }
+  function majEtapes(d) {
+    var ol = $('.fg-etapes', hourZone);
+    if (!ol) return;
+    var etapes = etapesDe(d);
+    if (etapeOuverte && !etapes.some(function (e) { return e.cle === etapeOuverte; })) etapeOuverte = null;
+    if (etapeOuverte === null && !etapeTouchee) { var premiere = etapes.filter(aPlacer)[0]; etapeOuverte = premiere ? premiere.cle : null; }
+    // L ORDRE DE LA JOURNEE. Une ligne qui change de place glisse jusqu a la
+    // nouvelle (FLIP : sa place d avant, puis la nouvelle, en un recalcul force).
+    var fin = $('.fg-etape--fin', ol);
+    var ordre = $$('.fg-etape[data-cle]', ol).map(function (li) { return li.dataset.cle; }).join('|');
+    var avant = {};
+    if (ordre !== etapes.map(function (e) { return e.cle; }).join('|')) {
+      $$('.fg-etape[data-cle]', ol).forEach(function (li) { avant[li.dataset.cle] = li.getBoundingClientRect().top; });
+      etapes.forEach(function (e) { var li = $('.fg-etape[data-cle="' + e.cle + '"]', ol); if (li) ol.insertBefore(li, fin); });
+    }
+    var bornes = bornesVisite();
+    $('.fg-etape--arrivee .fg-etape__heure', ol).textContent = bornes.arrivee;
+    $('.fg-etape--fin .fg-etape__quoi', ol).textContent = bornes.fermeture ? 'Fermeture' : 'Fin vers';
+    $('.fg-etape--fin .fg-etape__heure', ol).textContent = bornes.fin;
+    ol.classList.toggle('has-bornes', Boolean(bornes.arrivee && bornes.fin));
+    etapes.forEach(function (e) {
+      var li = $('.fg-etape[data-cle="' + e.cle + '"]', ol);
+      if (!li) return;
+      var ouverte = e.cle === etapeOuverte, heure = $('.fg-etape__heure', li);
+      var mot = e.etat === 'choisi' ? e.heure : e.etat === 'propose' ? e.heure : e.etat === 'surplace' ? 'Sur place' : 'À choisir';
+      var dit = e.etat === 'choisi' ? 'choisie ' : e.etat === 'propose' ? 'proposée ' : '';
+      if (heure.dataset.mot !== mot && heure.dataset.mot) rejouer(heure, 'is-maj');
+      heure.dataset.mot = mot;
+      heure.innerHTML = (dit ? '<span class="sr-only">Heure ' + dit + '</span>' : '') + esc(mot);
+      // Le rang d une partie est dans son badge (« 1/2 ») : dessous, ce qu elle dure.
+      $('.fg-etape__quoi small', li).textContent = e.partie ? detailPartie() : (detailsEtapes[e.id] || '');
+      ['choisi', 'propose', 'vide', 'surplace'].forEach(function (x) { li.classList.toggle('is-' + x, e.etat === x); });
+      li.classList.toggle('is-open', ouverte);
+      $('.fg-etape__tete', li).setAttribute('aria-expanded', String(ouverte));
+      var alt = $('.fg-etape__alt', li);
+      if (alt) alt.hidden = e.etat === 'choisi' || e.etat === 'surplace';
+    });
+    // La piste du laser suit la partie ouverte (sinon, la premiere partie).
+    var pisteLaser = $('.fg-track[data-activity="laser_game"]', ol);
+    if (pisteLaser && Number(pisteLaser.dataset.count) > 1) {
+      var cleLaser = etapeOuverte && etapeOuverte.indexOf('laser_game#') === 0 ? etapeOuverte : (etapes.filter(function (e) { return e.partie; })[0] || {}).cle;
+      var place = cleLaser ? $('.fg-etape[data-cle="' + cleLaser + '"] .fg-etape__piste', ol) : null;
+      if (place && pisteLaser.parentNode !== place) place.appendChild(pisteLaser);
+      // Dans la ligne d une partie, l heure d une AUTRE partie n est pas « la »
+      // sienne : elle se lit pour ce qu elle est, l heure de l autre partie.
+      var kLaser = cleLaser ? Number(cleLaser.split('#')[1]) : 0, sienne = kLaser ? state.laserParts[kLaser - 1] || '' : '';
+      $$('.fg-chip', pisteLaser).forEach(function (c) { c.classList.toggle('is-autre', c.classList.contains('is-on') && c.dataset.time !== sienne); });
+    }
+    var bouges = Object.keys(avant).map(function (cle) {
+      var li = $('.fg-etape[data-cle="' + cle + '"]', ol), dy = avant[cle] - li.getBoundingClientRect().top;
+      if (!dy || reduced) return null;
+      li.style.transition = 'none'; li.style.transform = 'translateY(' + dy + 'px)';
+      return li;
+    }).filter(Boolean);
+    if (bouges.length) {
+      void ol.offsetHeight;
+      bouges.forEach(function (li) { li.style.transition = 'transform .42s var(--fg-ease-out)'; li.style.transform = ''; });
+      setTimeout(function () { bouges.forEach(function (li) { li.style.transition = ''; }); }, 460);
+    }
+  }
   hourZone.addEventListener('click', function (e) {
+    var tete = e.target.closest('.fg-etape__tete');
+    if (tete) {
+      var ligne = tete.closest('.fg-etape');
+      etapeTouchee = true;
+      ouvrirEtape(ligne.classList.contains('is-open') ? null : ligne.dataset.cle);
+      return;
+    }
+    if (e.target.closest('[data-sur-place]')) {
+      // Les parties sans heure restent a l equipe : la ligne se dit « Sur place ».
+      partiesSurPlace = true;
+      avancerEtape();
+      return;
+    }
+    var voirVisite = e.target.closest('[data-visite-voir]');
+    if (voirVisite) {
+      visiteOuverte = !visiteOuverte;
+      var bloc = voirVisite.closest('.fg-visit');
+      bloc.classList.toggle('is-open', visiteOuverte);
+      voirVisite.setAttribute('aria-expanded', String(visiteOuverte));
+      posterHauteur();
+      setTimeout(posterHauteur, 450);
+      return;
+    }
     var enTete = e.target.closest('.fg-period__btn');
     if (enTete) {
       var sec = enTete.closest('.fg-period');
       var piste = sec.closest('.fg-track');
       if (piste) piste.dataset.touched = '1';
-      if (sec.classList.contains('is-open')) basculerPeriode(sec, false); else montrerPeriode(piste || sec.parentElement, sec);
+      // Dans une ligne du programme, les plages sont des onglets : celui qui
+      // est ouvert le reste.
+      if (sec.classList.contains('is-open')) { if (!sec.closest('.fg-etape')) basculerPeriode(sec, false); } else montrerPeriode(piste || sec.parentElement, sec);
       posterHauteur();
       setTimeout(posterHauteur, 450);
       return;
@@ -3192,7 +3379,7 @@
     var track = chip.closest('.fg-track');
     var t = chip.dataset.time;
     $$('.fg-chip.is-asked', hourZone).forEach(function (c) { c.classList.remove('is-asked'); });
-    $$('.fg-why-list__item.is-lit, .fg-parts__item.is-lit, .fg-track__waves.is-lit', hourZone).forEach(function (l) { l.classList.remove('is-lit'); });
+    $$('.fg-why-list__item.is-lit, .fg-etape.is-lit, .fg-track__waves.is-lit', hourZone).forEach(function (l) { l.classList.remove('is-lit'); });
     if (chip.dataset.ok === 'false') {
       // Une heure qui ne se prend pas s EXPLIQUE deja : sous sa plage (la
       // ligne qui la concerne s eclaire, plus de seconde boite qui repete), ou,
@@ -3201,7 +3388,7 @@
       chip.classList.add('is-asked');
       var cible = null;
       if (chip.dataset.state === 'wave') {
-        cible = chip.dataset.partie ? $('.fg-parts__item[data-partie="' + chip.dataset.partie + '"]', track) : $('.fg-track__waves', track);
+        cible = chip.dataset.partie ? $('.fg-etape[data-cle="laser_game#' + chip.dataset.partie + '"]', hourZone) : $('.fg-track__waves', track);
         dire(t + ' : votre ' + (chip.dataset.partie ? 'partie ' + chip.dataset.partie : $('small', chip).textContent) + ' joue à cette heure.');
       } else {
         var sec = chip.closest('.fg-period');
@@ -3252,8 +3439,14 @@
       // tot quand toutes sont posees (la regle que le serveur a jugee).
       var remplacee = chip.dataset.replaces || (vague ? vague.depuis : '');
       var j = remplacee ? state.laserParts.indexOf(remplacee) : -1;
+      // LA PARTIE DE LA LIGNE OUVERTE : son heure bouge, ou elle en recoit une.
+      // L heure d une AUTRE partie ouvre la ligne de celle-ci, sans rien poser.
+      var kOuvert = etapeOuverte && etapeOuverte.indexOf('laser_game#') === 0 ? Number(etapeOuverte.split('#')[1]) : 0;
+      var actuelle = kOuvert ? state.laserParts[kOuvert - 1] || '' : '';
+      if (i >= 0 && kOuvert && state.laserParts[i] !== actuelle) { ouvrirEtape('laser_game#' + (i + 1)); return; }
       if (i >= 0) state.laserParts.splice(i, 1);
       else if (j >= 0) state.laserParts[j] = t;
+      else if (actuelle) state.laserParts[kOuvert - 1] = t;
       else { if (state.laserParts.length >= count) state.laserParts.shift(); state.laserParts.push(t); }
       state.laserParts.sort();
       if (state.laserParts.length) state.pins.laser_game = state.laserParts[0]; else delete state.pins.laser_game;
@@ -3408,7 +3601,44 @@
   // L offre d attente (un sous-groupe attend son tour) ne s affiche plus a
   // l ecran des horaires : elle rejoint « Envie d un peu plus ? », avec le
   // nombre de personnes a choisir. Une seule offre d attente a la fois.
-  var plus = { enCours: '', refuses: {}, statut: null, annuler: null, personnes: {}, devis: {}, demandes: {} };
+  var plus = { enCours: '', refuses: {}, statut: null, annuler: null, personnes: {}, devis: {}, demandes: {}, vedette: '', vedetteSig: '', acceptees: {} };
+  // CE QUE LA FENETRE FAIT VRAIMENT (Movsar, 2026-10-07 : « tout repertorie
+  // dans les stats, qui a pris les add-on, les raisons [...] pour savoir les
+  // raisons qui font le plus prendre un add-on »). Chaque geste part avec la
+  // carte qu il touche : sa raison, sa place, sa remise prouvee, son montant.
+  // Rien de personnel : la visite est un identifiant tire au hasard pour cette
+  // page, jamais relie a un nom. Une statistique perdue ne gene jamais le
+  // client : envoi groupe, sans attente, erreur ignoree.
+  var VISITE = (function () {
+    try { var a = new Uint8Array(12); window.crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }
+    catch (e) { return ''; }
+  })();
+  var gestes = [], gestesMinuteur = 0;
+  function suivre(evenement, c, extra) {
+    if (!VISITE) return;
+    var g = { evenement: evenement };
+    if (c) {
+      var r = remiseDuPlus(c);
+      g.carte = String(c.id); g.genre = String(c.kind || ''); g.activite = String((c.patch && c.patch.activityId) || '');
+      g.raison = String((c.raison && c.raison.code) || ''); g.priorite = Number(c.priorite) || 0;
+      g.montant = montantDe(c); g.personnes = c.kind === 'formule' ? 0 : personnesDe(c);
+      if (r) g.promo = r.pourcent;
+    }
+    Object.keys(extra || {}).forEach(function (k) { g[k] = extra[k]; });
+    gestes.push(g);
+    clearTimeout(gestesMinuteur);
+    gestesMinuteur = setTimeout(envoyerGestes, 800);
+  }
+  function envoyerGestes() {
+    clearTimeout(gestesMinuteur);
+    while (gestes.length) {
+      var corps = JSON.stringify({ kind: 'vitrine', centerId: CENTER, visite: VISITE, gestes: gestes.splice(0, 20) });
+      var parti = false;
+      try { parti = Boolean(navigator.sendBeacon && navigator.sendBeacon('/api/public-booking-meta', new Blob([corps], { type: 'application/json' }))); } catch (e) { parti = false; }
+      if (!parti) fetch('/api/public-booking-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps, keepalive: true, credentials: 'omit' }).catch(function () {});
+    }
+  }
+  doc.addEventListener('visibilitychange', function () { if (doc.visibilityState === 'hidden') envoyerGestes(); });
   function cartesPlus() {
     var rep = state.creneau ? state.creneau.reponse : null;
     return ((rep && rep.complements) || []).filter(function (c) {
@@ -3435,11 +3665,12 @@
     var d = plus.devis[c.id];
     return d && d.cle === cleDemande() && d.cr === state.creneau && d.participants === personnesDe(c) ? d : null;
   }
+  // Le nombre de personnes pour lequel le serveur a chiffre la carte.
+  function personnesInitiales(c) { return Number(c.participants) || (c.kind === 'attente' ? attendentDe(c) : state.pax); }
   function plusPret(c) {
     if (c.kind === 'formule') return true;
     var b = bornesDuPlus(c), d = devisDuPlus(c);
-    var initial = Number(c.participants) || (c.kind === 'attente' ? attendentDe(c) : state.pax);
-    return b.max >= b.min && (d ? !d.pending && !d.error : personnesDe(c) === initial);
+    return b.max >= b.min && (d ? !d.pending && !d.error : personnesDe(c) === personnesInitiales(c));
   }
   function prixParPersonneDe(c) { return Number(c.prixParPersonne) > 0 ? Number(c.prixParPersonne) : Number(c.deltaPerPax) || 0; }
   function montantDe(c) { var d = devisDuPlus(c); return d && !d.pending && !d.error ? d.deltaTotal : c.kind === 'attente' ? Math.round(prixParPersonneDe(c) * personnesDe(c) * 100) / 100 : Number(c.deltaTotal) || 0; }
@@ -3567,7 +3798,8 @@
     state.dispo = j; state.dispoCle = cleDemande(); state.dispoTexte = JSON.stringify(j);
     state.creneau = creneauAvecDevis(slot, j);
     state.heure = slot.time;
-    plus.annuler = carte ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
+    plus.annuler = carte ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran, carte: carte } : null;
+    if (carte) { plus.acceptees[carte.id] = carte; suivre('acceptee', carte); }
     // Le montant dit est celui que le serveur vient d appliquer, jamais
     // celui de la carte : les deux ne different que si un tarif a baisse
     // entre-temps, et la phrase reste vraie.
@@ -3638,6 +3870,7 @@
       return true;
     }
     if (e.target.closest('[data-plus-annuler]')) {
+      if (plus.annuler && plus.annuler.carte) { delete plus.acceptees[plus.annuler.carte.id]; suivre('annulee', plus.annuler.carte); }
       if (plus.annuler) changerPanier(plus.annuler.panier, null, ecran, 'Annulé : votre visite revient à ce qu’elle était, sans ' + plus.annuler.nom + '.');
       return true;
     }
@@ -3866,11 +4099,16 @@
           + '<p class="fg-visit__pay"><svg aria-hidden="true"><use href="#i-card"/></svg>Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.</p>';
       }
     }
-    var html2 = '<div class="fg-visit"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
+    var html2 = '<div class="fg-visit' + (visiteOuverte ? ' is-open' : '') + '"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
       + (fin ? '<span class="fg-visit__span">' + (plan.arrivalTime ? 'de <b>' + esc(plan.arrivalTime) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : illimite ? 'à <b>' + esc(heureAffichee(fin)) + '</b>, fin de la formule' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(plan.arrivalTime, fin) + '</span>'
         : (journee && depart ? '<span class="fg-visit__span">dès <b>' + esc(depart) + '</b>, accès toute la journée</span>' : ''))
       + (prixVisible ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>+ ' + esc(nomsSansPrix(items)) + ', ' + PRIX_ACCUEIL + '</small>') + '</span>' : '')
-      + '</div><ol class="fg-visit__list">' + lignes + '</ol>';
+      // LE DETAIL SE REPLIE (Movsar, 2026-10-07 : moins de texte) : le
+      // programme au-dessus dit deja chaque heure ; ici, l en-tete garde la
+      // plage et le total, les avertissements restent visibles.
+      + '<button type="button" class="fg-visit__voir" data-visite-voir aria-expanded="' + visiteOuverte + '" aria-controls="fgVisiteDetail"><span>Détail</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>'
+      + '</div>';
+    var listeHtml = '<ol class="fg-visit__list">' + lignes + '</ol>';
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
     var secoursBowling = avertissementBowling(state.creneau);
     if (secoursBowling && avis.indexOf(secoursBowling) < 0) avis.push(secoursBowling);
@@ -3897,10 +4135,11 @@
       avis.unshift('À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.');
     }
     var avisSimples = horsHtml ? avis.slice(1) : avis;
-    // Ce qui ne tiendra pas se dit juste sous la liste qu il raye.
+    // Ce qui ne tiendra pas reste visible sous l en-tete, juste avant le
+    // detail replie qui porte la liste qu il raye.
     html2 += horsHtml;
     if (avisSimples.length) html2 += '<p class="fg-visit__warn">' + avisSimples.map(esc).join('<br>') + '</p>';
-    html2 += prixHtml;
+    html2 += '<div class="fg-visit__detail" id="fgVisiteDetail"><div class="fg-visit__inner">' + listeHtml + prixHtml + '</div></div>';
     // Ce que dit la voix est ce qui est ecrit dans le bloc : l arrivee, chaque
     // partie a son heure et sa fin, ce qui se joue dans la foulee, la fin, le
     // prix (et ce qui se regle sur place), les avertissements.
@@ -4488,20 +4727,52 @@
     }
     return p ? '<img src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async">' : '<svg><use href="#' + ico + '"/></svg>';
   }
-  function economieDuPlus(c) {
-    var d = devisDuPlus(c), remise = d ? d.discount : c.discount;
+  // LA REMISE SE PROUVE OU NE S AFFICHE PAS (Movsar, 2026-10-07 : « prix
+  // barre et badge »). Le prix de reference vient du serveur : l offre du
+  // centre avant sa remise, le catalogue face au tarif d attente, une partie
+  // de laser achetee seule ; ou du devis qu il vient de rendre pour ce nombre
+  // de personnes. Jamais un pourcentage calcule ici sur une base devinee,
+  // jamais un prorata : un autre nombre sans devis qui le prouve, pas de prix
+  // barre.
+  function remiseDuPlus(c) {
+    var d = devisDuPlus(c), ref = 0;
+    if (d) {
+      if (d.pending || d.error) return null;
+      if (d.discount && Number(d.discount.referencePrice) > 0) ref = Number(d.discount.referencePrice);
+      // La reference de la carte ne vaut que pour le nombre qu elle a chiffre.
+      if (c.promo && d.participants === personnesInitiales(c)) ref = Math.max(ref, Number(c.promo.reference) || 0);
+    } else if (c.promo) ref = Number(c.promo.reference) || 0;
+    var montant = montantDe(c);
+    return ref > montant ? { reference: ref, pourcent: Math.round(100 * (ref - montant) / ref) } : null;
+  }
+  // Le prix d abord pour la voix (« +48 €, au lieu de 60 €, moins 20 % ») ;
+  // a l oeil, l ancien prix passe devant (order), barre.
+  function htmlMontant(c) {
+    var d = devisDuPlus(c), r = remiseDuPlus(c);
+    return '<b class="fg-vitrine__prix">' + (d && d.pending ? '…' : d && d.error ? 'À recalculer' : '+' + esc(euros(montantDe(c)))) + '</b>'
+      + (r ? '<s class="fg-vitrine__barre"><span class="sr-only">au lieu de </span>' + esc(euros(r.reference)) + '</s>'
+        + '<em class="fg-vitrine__remise"><span class="sr-only">soit </span>−' + r.pourcent + '&nbsp;%</em>' : '');
+  }
+  function etatDuPrix(c) {
+    var d = devisDuPlus(c);
     if (d && d.pending) return 'Vérification du prix…';
     if (d && d.error) return esc(d.error) + ' <button type="button" class="fg-vitrine__retry" data-plus-requote="' + esc(c.id) + '">Réessayer</button>';
-    return remise && Number(remise.discountAmount) > 0 ? 'Économie de ' + esc(euros(remise.discountAmount)) : '';
+    return '';
   }
+  function carteVitrineDe(id) { return $$('.fg-vitrine__carte[data-carte]', vitrineCartes).filter(function (li) { return li.dataset.carte === id; })[0] || null; }
   function rafraichirPrixDuPlus(c) {
-    var carte = $$('[data-plus]').filter(function (b) { return b.dataset.plus === c.id; })[0];
-    if (!carte) return;
-    var li = carte.closest('.fg-vitrine__carte'), d = devisDuPlus(c);
-    $('.fg-vitrine__prix', li).textContent = d && d.pending ? '…' : d && d.error ? 'À recalculer' : '+' + euros(montantDe(c));
-    $('.fg-vitrine__economie', li).innerHTML = economieDuPlus(c);
-    carte.disabled = Boolean(plus.enCours) || !plusPret(c);
-    carte.setAttribute('aria-label', 'Ajouter ' + nomDuPlus(c) + ' pour ' + euros(montantDe(c)) + ' de plus');
+    var li = carteVitrineDe(c.id);
+    if (!li) return;
+    $('.fg-vitrine__montant', li).innerHTML = htmlMontant(c);
+    var etat = $('.fg-vitrine__etat', li);
+    if (etat) etat.innerHTML = etatDuPrix(c);
+    var b = $('[data-plus]', li);
+    if (b) {
+      b.disabled = Boolean(plus.enCours) || !plusPret(c);
+      b.setAttribute('aria-label', 'Ajouter ' + nomDuPlus(c) + ' pour ' + euros(montantDe(c)) + ' de plus');
+    }
+    var voir = $('[data-vitrine-vedette]', li);
+    if (voir) voir.setAttribute('aria-label', libelleLigne(c));
   }
   function chiffrerDuPlus(c) {
     var ancien = plus.demandes[c.id];
@@ -4532,37 +4803,97 @@
         rafraichirPrixDuPlus(c);
       });
   }
-  function carteVitrine(c, i) {
-    var p = photoDuPlus(c);
-    var ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
-    var attente = c.kind === 'attente';
-    var duree = attente ? Math.trunc(Number((c.attente || {}).dureeOffre) || 0) : 0;
-    var quoi = attente ? (duree ? dureeExacte(duree) + ' ' : '') + 'pendant l’attente de votre tour' : motsServeur(c.addsLabel);
+  // Ce que l offre ajoute, en une ligne (« 1h de Duckpin Bowling »).
+  function quoiDuPlus(c) {
+    if (c.kind === 'attente') {
+      var duree = Math.trunc(Number((c.attente || {}).dureeOffre) || 0);
+      return (duree ? dureeExacte(duree) + ' ' : '') + 'pendant l’attente de votre tour';
+    }
+    var quoi = motsServeur(c.addsLabel);
     if (c.kind === 'configured') {
       var option = (c.patch && c.patch.options) || {};
       quoi = option.extraLaser ? quoi.replace(/ · \d+ joueurs$/, '') : option.duration ? heuresLabel(option.duration) : option.hours ? heuresLabel(option.hours) : option.minutes ? minutesLabel(option.minutes) : '';
       if (option.arcadeOfferId) { var ar = avecPanier(panierDe(c), function () { return reglageArcade(activite(c.patch.activityId)); }); if (ar) quoi = ar.mode === 'time' ? minutesLabel(ar.offer.minutes) + ' par carte' : credits(Number(ar.offer.credits) + Number(ar.offer.bonusCredits || 0)) + ' crédits par carte'; }
     }
-    var att = c.attente || {};
-    // Sans prix par personne, comme les autres offres de la fenetre (Movsar,
-    // 2026-09-29) : le compteur et le montant de la carte disent tout.
-    var note = attente
-      ? attendentDe(c) + ' personne' + (attendentDe(c) > 1 ? 's attendent' : ' attend') + ' leur tour' + (Number(att.minutes) > 0 ? ' (' + dureeExacte(att.minutes) + ')' : '')
-      : [personnesDe(c) === (Number(c.participants) || bornesDuPlus(c).max) ? c.totalLabel : '', c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
-    var bornes = bornesDuPlus(c), n = personnesDe(c), d = devisDuPlus(c);
-    var qui = c.kind !== 'formule' ? '<span class="fg-vitrine__qui"><span class="fg-vitrine__quimot" id="qui-' + esc(c.id) + '">' + (seCompteParEnfant(activite(c.patch.activityId)) ? 'Enfants' : 'Joueurs') + '</span>'
+    return quoi;
+  }
+  // Sans prix par personne, comme les autres offres de la fenetre (Movsar,
+  // 2026-09-29) : le compteur et le montant de la carte disent tout. La raison
+  // d une offre d attente dit deja qui attend : la note ne le repete pas.
+  function noteDuPlus(c) {
+    if (c.kind === 'attente') {
+      if (c.raison && c.raison.code === 'attente') return '';
+      var att = c.attente || {};
+      return attendentDe(c) + ' personne' + (attendentDe(c) > 1 ? 's attendent' : ' attend') + ' leur tour' + (Number(att.minutes) > 0 ? ' (' + dureeExacte(att.minutes) + ')' : '');
+    }
+    return [personnesDe(c) === (Number(c.participants) || bornesDuPlus(c).max) ? c.totalLabel : '', c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
+  }
+  function quiDuPlus(c) {
+    if (c.kind === 'formule') return '';
+    var bornes = bornesDuPlus(c), n = personnesDe(c);
+    return '<span class="fg-vitrine__qui"><span class="fg-vitrine__quimot" id="qui-' + esc(c.id) + '">' + (seCompteParEnfant(activite(c.patch.activityId)) ? 'Enfants' : 'Joueurs') + '</span>'
       + '<span class="fg-stepper fg-vitrine__stepper" role="group" aria-labelledby="qui-' + esc(c.id) + '">'
       + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="-1" data-carte="' + esc(c.id) + '" aria-label="Une personne de moins"' + (n <= bornes.min ? ' disabled' : '') + '>&minus;</button>'
       + '<output class="fg-vitrine__n" aria-live="polite">' + n + '</output>'
       + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="1" data-carte="' + esc(c.id) + '" aria-label="Une personne de plus"' + (n >= bornes.max ? ' disabled' : '') + '>+</button>'
-      + '</span></span><small class="fg-vitrine__validite">' + (bornes.min === bornes.max ? bornes.min + ' participant' + (bornes.min > 1 ? 's' : '') : 'De ' + bornes.min + ' à ' + bornes.max + ' participants') + '</small>' : '';
-    return '<li class="fg-vitrine__carte" style="--i:' + i + '">'
+      + '</span></span><small class="fg-vitrine__validite">' + (bornes.min === bornes.max ? bornes.min + ' participant' + (bornes.min > 1 ? 's' : '') : 'De ' + bornes.min + ' à ' + bornes.max + ' participants') + '</small>';
+  }
+  // LA MEILLEURE POUR VOUS (Movsar, 2026-10-07). La raison est un fait du
+  // creneau retenu, ecrit par le serveur (qui attend et combien de temps, la
+  // pause entre deux activites, la partie de plus qui coute moins cher) ; son
+  // icone dit de quoi elle parle.
+  var ICONE_RAISON = { attente: 'i-users', pause: 'i-clock', suite: 'a-laser' };
+  // « La meilleure pour vous » est une affirmation : seule la premiere du
+  // serveur la porte. Une offre que le client fait passer devant n en est pas
+  // devenue la meilleure, elle garde sa raison et perd le titre.
+  function carteVedette(c, seule, enTete) {
+    var p = photoDuPlus(c), ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
+    var quoi = quoiDuPlus(c), note = noteDuPlus(c), raison = c.raison && c.raison.titre ? motsServeur(c.raison.titre) : '';
+    return '<li class="fg-vitrine__carte is-vedette" data-carte="' + esc(c.id) + '">'
       + '<span class="fg-vitrine__photo" aria-hidden="true">' + imageDuPlus(c, p, ico) + '</span>'
-      + '<span class="fg-vitrine__corps"><b class="fg-vitrine__nom"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>' + esc(nomDuPlus(c)) + '</b>'
+      + '<span class="fg-vitrine__corps">'
+      + (seule || !enTete ? '' : '<span class="fg-vitrine__pour">La meilleure pour vous</span>')
+      + (raison ? '<span class="fg-vitrine__raison"><svg aria-hidden="true"><use href="#' + (ICONE_RAISON[c.raison.code] || 'i-info') + '"/></svg>' + esc(raison) + '</span>' : '')
+      + '<b class="fg-vitrine__nom"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>' + esc(nomDuPlus(c)) + '</b>'
       + (quoi ? '<span class="fg-vitrine__quoi">' + esc(quoi) + '</span>' : '')
-      + (note ? '<small class="fg-vitrine__note">' + esc(note) + '</small>' : '') + qui + '</span>'
-      + '<span class="fg-vitrine__achat"><span><b class="fg-vitrine__prix">' + (d && d.pending ? '…' : '+' + esc(euros(montantDe(c)))) + '</b><small class="fg-vitrine__economie">' + economieDuPlus(c) + '</small></span>'
+      + (note ? '<small class="fg-vitrine__note">' + esc(note) + '</small>' : '') + quiDuPlus(c) + '</span>'
+      + '<span class="fg-vitrine__achat"><span class="fg-vitrine__chiffre"><span class="fg-vitrine__montant">' + htmlMontant(c) + '</span><small class="fg-vitrine__etat">' + etatDuPrix(c) + '</small></span>'
       + '<button type="button" class="fg-btn fg-vitrine__ajouter" data-plus="' + esc(c.id) + '"' + (!plusPret(c) ? ' disabled' : '') + ' aria-label="Ajouter ' + esc(nomDuPlus(c)) + ' pour ' + esc(euros(montantDe(c))) + ' de plus">Ajouter</button></span></li>';
+  }
+  // Les autres offres : une rangee chacune, que l on touche pour la voir en
+  // avant (son compteur, son detail, son « Ajouter »).
+  function libelleLigne(c) {
+    var dit = c.raison && c.raison.titre ? motsServeur(c.raison.titre) : quoiDuPlus(c), d = devisDuPlus(c);
+    return 'Voir ' + nomDuPlus(c) + (dit ? ', ' + dit : '') + ', ' + (d && d.pending ? 'prix en vérification' : euros(montantDe(c)) + ' de plus');
+  }
+  function ligneVitrine(c, i) {
+    var p = photoDuPlus(c), ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
+    var dit = c.raison && c.raison.titre ? motsServeur(c.raison.titre) : quoiDuPlus(c);
+    return '<li class="fg-vitrine__carte fg-vitrine__ligne" data-carte="' + esc(c.id) + '" style="--i:' + i + '">'
+      + '<button type="button" class="fg-vitrine__voir" data-vitrine-vedette="' + esc(c.id) + '" aria-label="' + esc(libelleLigne(c)) + '">'
+      + '<span class="fg-vitrine__photo" aria-hidden="true">' + imageDuPlus(c, p, ico) + '</span>'
+      + '<span class="fg-vitrine__ltxt" aria-hidden="true"><b class="fg-vitrine__nom">' + esc(nomDuPlus(c)) + '</b>' + (dit ? '<small>' + esc(dit) + '</small>' : '') + '</span>'
+      + '<span class="fg-vitrine__montant" aria-hidden="true">' + htmlMontant(c) + '</span>'
+      + '<svg class="fg-vitrine__fleche" aria-hidden="true"><use href="#i-arrow"/></svg>'
+      + '</button></li>';
+  }
+  // L offre en avant : celle que le client a touchee, tant qu elle est la ;
+  // sinon la premiere du serveur, qui les range par la force de leur raison.
+  function vedetteDe(cartes) {
+    return cartes.filter(function (c) { return c.id === plus.vedette; })[0] || cartes[0] || null;
+  }
+  function basculerVedette(id) {
+    if (plus.enCours || plus.vedette === id) return;
+    var c = cartesPlus().filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    var avant = $$('.fg-vitrine__carte[data-carte]', vitrineCartes).map(function (li) { return li.dataset.carte; }).indexOf(id);
+    plus.vedette = id;
+    rendreVitrine('bascule');
+    suivre('vedette', c, { rang: Math.max(0, avant) });
+    var ajouter = $('.is-vedette [data-plus]', vitrineCartes);
+    (ajouter && !ajouter.disabled ? ajouter : vitrinePanneau).focus({ preventScroll: true });
+    if (vitrinePanneau.scrollTop > 0) vitrinePanneau.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+    dire('En avant : ' + nomDuPlus(c) + ', ' + euros(montantDe(c)) + ' de plus.');
   }
   // Le compteur d une offre d attente : le nombre, le prix et le bouton
   // suivent sur place, sans redessiner la fenetre (le focus reste).
@@ -4582,12 +4913,19 @@
     if ((btn.disabled) && $('[data-vitrine-pas]:not([disabled])', carte)) $('[data-vitrine-pas]:not([disabled])', carte).focus({ preventScroll: true });
     dire(n + ' personne' + (n > 1 ? 's' : '') + ', vérification du prix.');
   }
-  // `calme` : redessinee apres un refus, ses cartes ne rejouent pas leur entree.
-  function rendreVitrine(calme) {
-    var cartes = cartesPlus();
-    vitrineCartes.innerHTML = cartes.map(carteVitrine).join('');
+  // `mode` : true, redessinee apres un refus (rien ne rejoue son entree) ;
+  // 'bascule', une autre offre passe devant (elle seule entre) ; sinon,
+  // l ouverture.
+  function rendreVitrine(mode) {
+    var cartes = cartesPlus(), vedette = vedetteDe(cartes);
+    plus.vedette = vedette ? vedette.id : '';
+    var autres = cartes.filter(function (c) { return c !== vedette; });
+    vitrineCartes.innerHTML = (vedette ? carteVedette(vedette, !autres.length, vedette === cartes[0]) : '')
+      + (autres.length ? '<li class="fg-vitrine__aussi" aria-hidden="true" style="--i:1">Autres options</li>' : '')
+      + autres.map(function (c, i) { return ligneVitrine(c, i + 1); }).join('');
     vitrineCartes.dataset.n = String(cartes.length);
-    vitrineCartes.classList.toggle('is-calme', Boolean(calme));
+    vitrineCartes.classList.toggle('is-calme', mode === true);
+    vitrineCartes.classList.toggle('is-bascule', mode === 'bascule');
     var s = plus.statut && plus.statut.ecran === 'recap' && plus.statut.ton !== 'ok' ? plus.statut : null;
     vitrineStatut.textContent = s ? s.texte : '';
     vitrineStatut.dataset.ton = s ? s.ton : '';
@@ -4607,9 +4945,15 @@
   function ouvrirVitrine() {
     if (!vitrine || vitrineOuverte() || !cartesPlus().length) return;
     vitrineVues[signatureVitrine()] = 1;
+    // D autres offres que la derniere fois : la meilleure repasse devant.
+    if (plus.vedetteSig !== signatureVitrine()) { plus.vedette = ''; plus.vedetteSig = signatureVitrine(); }
     vitrineRetour = doc.activeElement;
     vitrine.hidden = false;
     rendreVitrine(false);
+    $$('.fg-vitrine__carte[data-carte]', vitrineCartes).forEach(function (li, rang) {
+      var c = cartesPlus().filter(function (x) { return x.id === li.dataset.carte; })[0];
+      if (c) suivre('vue', c, { rang: rang });
+    });
     pageInerte(true);
     root.classList.add('fg-vitrine-ouverte');
     placerVitrine(true);
@@ -4645,19 +4989,23 @@
   }
   if (vitrine) {
     vitrine.addEventListener('click', function (e) {
-      if (e.target.closest('[data-vitrine-fermer]')) { fermerVitrine(true); return; }
+      if (e.target.closest('[data-vitrine-fermer]')) { suivre('fermee'); fermerVitrine(true); return; }
+      var voir = e.target.closest('[data-vitrine-vedette]');
+      if (voir) { basculerVedette(voir.dataset.vitrineVedette); return; }
       var pas = e.target.closest('[data-vitrine-pas]');
       if (pas) { if (!pas.disabled) changerPersonnes(pas); return; }
       if (e.target.closest('[data-plus-requote]')) { surPlus(e, 'recap'); return; }
       var b = e.target.closest('[data-plus]');
       if (!b || b.disabled) return;
       b.classList.add('is-busy');
+      var ajoutee = cartesPlus().filter(function (x) { return x.id === b.dataset.plus; })[0];
+      if (ajoutee) suivre('ajout', ajoutee, { rang: 0 });
       surPlus(e, 'recap');
     });
     // Echap ferme ; Tab tourne dans la fenetre.
     doc.addEventListener('keydown', function (e) {
       if (!vitrineOuverte()) return;
-      if (e.key === 'Escape') { e.preventDefault(); fermerVitrine(true); return; }
+      if (e.key === 'Escape') { e.preventDefault(); suivre('fermee'); fermerVitrine(true); return; }
       if (e.key !== 'Tab') return;
       var f = $$('button:not([disabled]), [href]', vitrinePanneau);
       if (!f.length) { e.preventDefault(); vitrinePanneau.focus(); return; }
@@ -4899,6 +5247,12 @@
       }
     }
     aller('fin');
+    Object.keys(plus.acceptees).forEach(function (id) {
+      var c = plus.acceptees[id], act = c.patch && c.patch.activityId;
+      if (act && itemsFin.some(function (it) { return it.activityId === act; })) suivre('reservee', c, { reservation: Number(r.id) || 0 });
+    });
+    plus.acceptees = {};
+    envoyerGestes();
     // La mesure de conversion pour le site hote : relue dans le dossier cree,
     // sans aucune donnee personnelle.
     poster({ type: 'pinlane:booking', detail: {

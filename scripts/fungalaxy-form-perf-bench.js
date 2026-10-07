@@ -41,10 +41,13 @@
 //   - pendant que trois tiroirs s ouvrent, au plus 1,8 layout par image (la
 //     maconnerie lit tout puis ecrit tout) ;
 //   - un tiroir ferme sort du calcul (content-visibility: hidden), l ouvert y est ;
-//   - aucune entree finie ne garde de couche composee permanente hors des cartes ;
+//   - aucune entree finie ne garde de couche composee permanente hors des cartes,
+//     et un seul will-change dans la feuille (la photo qui derive en continu) ;
+//   - un retour puis un aller sur l ecran des activites garde les memes cartes
+//     (rien n est reconstruit quand le jour et le groupe n ont pas change) ;
 //   - ce qui anime a chaque changement d ecran ne touche que opacity /
 //     transform : le compositeur le joue sans la main.
-// Contre-preuves : --gate --casse=vue | tenue | accents | fill | mesure | tiroir | jauge
+// Contre-preuves : --gate --casse=vue | tenue | accents | fill | mesure | tiroir | couche | grilles
 // (le fichier servi est casse expres a cet endroit : le gate doit rougir).
 'use strict';
 const fs = require('fs');
@@ -403,8 +406,6 @@ function proprietesDesKeyframes(css, nom) {
   bloc.replace(/\{([^}]*)\}/g, (_, corps) => { corps.split(';').forEach((d) => { const p = d.split(':')[0].trim(); if (p) props.push(p); }); return ''; });
   return props;
 }
-// Les evenements d une trace, sur le fil principal du rendu (celui qui porte
-// les recalculs de style) : le cadre embarque partage ce fil avec la page hote.
 // Les evenements d une trace, sur le fil principal du rendu (celui qui porte
 // les recalculs de style) : le cadre embarque partage ce fil avec la page hote.
 async function tracer(cdp, action) {

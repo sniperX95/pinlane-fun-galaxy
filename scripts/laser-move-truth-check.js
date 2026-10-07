@@ -335,6 +335,22 @@ async function declencheursDeProduction(planF1) {
   bench.semer([moteur(), ligne(7204, { start_time: '18:00', lanes: [5, 6], pax: 4 })]);
   const libre = await patchHttp(7201, { activityId: 'bowling', startTime: '18:00', lanes: [3, 4] });
   check(libre.status === 200 && (await db.getReservationById(7201)).opsPlan.resourceBlocks.find((b) => b.resourceType === 'bowling_lane').startTime === '18:00', 'piste libre : le bowling bouge toujours');
+  // Une partie ne se pose pas sur une autre partie du MEME groupe (memes joueurs,
+  // une seule arene) : le serveur refuse comme l ecran, sans rien ecrire.
+  // La formule f1 n a qu une partie : on lui en ajoute une deuxieme, une heure
+  // apres la premiere, et on pose la 1.1 dessus.
+  const dossierDeux = moteur();
+  const premiere = (dossierDeux.ops_plan.resourceBlocks || []).find((b) => b.resourceType === 'laser_arena');
+  check(Boolean(premiere), 'MONTAGE meme groupe : la formule f1 porte une partie Laser a doubler');
+  const heure = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const autrePartie = { ...premiere, countIndex: 2, groupWaveIndex: 1, start: premiere.start + 60, end: premiere.end + 60, startTime: heure(premiere.start + 60), endTime: heure(premiere.end + 60) };
+  dossierDeux.ops_plan.resourceBlocks.push(autrePartie);
+  bench.semer([dossierDeux]);
+  const ecrituresAvantGroupe = ecrituresSql;
+  const surSoi = await patchHttp(7201, { activityId: 'laser_game', unitKey: '1.1', startTime: autrePartie.startTime });
+  // Refus de buildActivityMove (lib/reservation-activity-move.js), 422.
+  check(surSoi.status === 422 && /^Ce déplacement chevauche le Laser Game à \d\d:\d\d\. Cet horaire reste inchangé\.$/.test(surSoi.message || ''), `meme groupe : refus 422 en une ligne (${surSoi.message})`);
+  check(ecrituresSql === ecrituresAvantGroupe && JSON.stringify(await laserBase(7201, '1.1')) === JSON.stringify(['17:00']), 'meme groupe : aucun UPDATE, la base est inchangee');
 }
 
 async function main() {

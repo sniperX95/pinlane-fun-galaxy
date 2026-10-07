@@ -149,7 +149,14 @@ function lireVisite(page) {
       groupes: [...zone.querySelectorAll('.fg-visit__group')].map(t),
       encadre: Boolean(zone.querySelector('.fg-visit__incl')),
       tete: t(zone.querySelector('.fg-visit__span')),
-      parties: t(document.querySelector('.fg-track[data-activity="laser_game"] .fg-parts__note')),
+      // La partie sans heure : sa ligne au programme (« À choisir ») et la
+      // sortie « Laisser l equipe la placer sur place ».
+      partie2: (() => {
+        const li = document.querySelector('#hourZone .fg-etape[data-cle="laser_game#2"]');
+        if (!li) return null;
+        const alt = li.querySelector('.fg-etape__alt');
+        return { heure: li.querySelector('.fg-etape__heure').dataset.mot || '', vide: li.classList.contains('is-vide'), sortie: alt && !alt.hidden ? t(alt) : '' };
+      })(),
       sous: t(document.querySelector('#hourSub')),
     };
   });
@@ -243,8 +250,8 @@ function verifierF4(bureau, tel) {
   const compris = suite.filter((e) => /fg-visit__step--incl/.test(e.genre)).map((e) => e.titre);
   ok(JSON.stringify(compris) === JSON.stringify(attenduDansLaFoulee) && !v.encadre,
     'ce que comprend la formule se lit DANS la visite, dans les mots de sa carte (minigolf, boissons), sans encadre a part', `${compris.join(' | ')} / attendu ${attenduDansLaFoulee.join(' | ')}`);
-  ok(/Partie 2 sans heure : placée sur place avec l’équipe/.test(v.parties) && /Touchez une heure ci-dessous pour la choisir/.test(v.parties),
-    'le cadre des parties previent : la 2e sans heure est placee sur place, toucher une heure la choisit', `« ${v.parties} »`);
+  ok(Boolean(v.partie2) && v.partie2.vide && v.partie2.heure === 'À choisir' && /placer sur place/.test(v.partie2.sortie),
+    'la 2e partie sans heure a sa ligne « À choisir » au programme, avec la sortie « laisser l equipe la placer sur place »', JSON.stringify(v.partie2));
 
   section('C. LES PLAGES REPLIEES DISENT CE QU ELLES CACHENT');
   ok(bureau.pose, 'MONTAGE le bowling se pose a 11:00');

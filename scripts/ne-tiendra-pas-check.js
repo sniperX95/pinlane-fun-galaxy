@@ -29,7 +29,7 @@
 // L horloge est figee au mercredi 7 octobre 2026, 19:25 a Bruxelles (serveur
 // et page) : le gate se rejoue a l identique, quel que soit le jour.
 //
-// Contre-epreuve : node scripts/ne-tiendra-pas-check.js --mutate (7 mutations,
+// Contre-epreuve : node scripts/ne-tiendra-pas-check.js --mutate (8 mutations,
 // servies en memoire, aucun fichier touche).
 'use strict';
 process.env.TZ = 'Europe/Brussels';
@@ -108,6 +108,12 @@ const MUTATIONS = [
     fichier: 'assets/fungalaxy-booking.js',
     de: '      var tiendra = !horsLibres[it.activityId];',
     vers: '      var tiendra = true;',
+  },
+  {
+    nom: 'l encadre se replie avec le detail de la visite',
+    fichier: 'assets/fungalaxy-booking.js',
+    de: "    html2 += horsHtml;\n    if (avisSimples.length) html2 += '<p class=\"fg-visit__warn\">' + avisSimples.map(esc).join('<br>') + '</p>';\n    html2 += '<div class=\"fg-visit__detail\" id=\"fgVisiteDetail\"><div class=\"fg-visit__inner\">' + listeHtml + prixHtml + '</div></div>';",
+    vers: "    if (avisSimples.length) html2 += '<p class=\"fg-visit__warn\">' + avisSimples.map(esc).join('<br>') + '</p>';\n    html2 += '<div class=\"fg-visit__detail\" id=\"fgVisiteDetail\"><div class=\"fg-visit__inner\">' + listeHtml + horsHtml + prixHtml + '</div></div>';",
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
@@ -265,7 +271,18 @@ async function ecran() {
           notice: txt(document.querySelector('.fg-notice')),
           notes: Array.from(document.querySelectorAll('.fg-track')).map((t) => ({ id: t.dataset.activity, note: (t.querySelector('.fg-track__note') && !t.querySelector('.fg-track__note').hidden) ? txt(t.querySelector('.fg-track__note')) : '' })),
           encadre: txt(document.querySelector('#planZone .fg-visit__hors')),
-          sousLaListe: (() => { const h = document.querySelector('#planZone .fg-visit__hors'); return Boolean(h) && Boolean(h.previousElementSibling && h.previousElementSibling.classList.contains('fg-visit__list')) && !document.querySelector('#planZone [data-plus], #planZone .fg-plus'); })(),
+          // La liste vit dans le detail replie de la visite (2026-10-07) :
+          // l encadre reste visible sous l en-tete, juste avant ce detail
+          // (seuls les autres avertissements s intercalent), jamais dedans.
+          sousLaListe: (() => {
+            const h = document.querySelector('#planZone .fg-visit__hors');
+            if (!h || document.querySelector('#planZone [data-plus], #planZone .fg-plus')) return false;
+            if (h.closest('.fg-visit__detail')) return false;
+            if (h.previousElementSibling && h.previousElementSibling.classList.contains('fg-visit__list')) return true;
+            let s = h.nextElementSibling;
+            while (s && s.classList.contains('fg-visit__warn')) s = s.nextElementSibling;
+            return Boolean(s && s.classList.contains('fg-visit__detail') && s.querySelector('.fg-visit__list'));
+          })(),
           rayees: Array.from(document.querySelectorAll('#planZone .fg-visit__step--hors')).map((li) => ({ nom: txt(li.querySelector('i')) || txt(li.querySelector(':scope > span')), detail: txt(li.querySelector('small')) })),
           tient: Array.from(document.querySelectorAll('#planZone .fg-visit__step--free:not(.fg-visit__step--hors) i')).map(txt),
           voix: txt(document.querySelector('#fgLive')),

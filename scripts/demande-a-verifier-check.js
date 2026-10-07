@@ -291,14 +291,19 @@ async function main() {
     await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
 
     console.log('\n[4] LE TABLEAU DE BORD ET LES FORMULES');
+    // DEPUIS LE 2026-10-08, le tableau de bord dit le mot de la LISTE (sa
+    // section, a l heure de la page), plus le statut enregistre : « Confirmé »
+    // sur un groupe en retard etait le bug. La page vit le 18 juillet a 9:00.
     const meta = await page.evaluate(() => ({
-      review: getStaffDashboardStatusMeta({ status: 'pending', validationStatus: 'staff_review' }),
-      confirme: getStaffDashboardStatusMeta({ status: 'pending', validationStatus: 'confirmed' }),
-      arrive: getStaffDashboardStatusMeta({ status: 'arrived', validationStatus: 'staff_review' }),
+      review: getStaffDashboardStatusMeta({ id: 9101, date: todayStr(), startTime: '15:00', duration: 1, status: 'pending', validationStatus: 'staff_review' }),
+      reviewPassee: getStaffDashboardStatusMeta({ id: 9104, date: todayStr(), startTime: '07:00', duration: 1, status: 'pending', validationStatus: 'staff_review' }),
+      confirme: getStaffDashboardStatusMeta({ id: 9102, date: todayStr(), startTime: '15:00', duration: 1, status: 'pending', validationStatus: 'confirmed' }),
+      arrive: getStaffDashboardStatusMeta({ id: 9103, date: todayStr(), startTime: '08:30', duration: 1, status: 'arrived', validationStatus: 'staff_review' }),
       libelle: getStaffReservationStateLabel({ status: 'pending', validationStatus: 'staff_review' }),
     }));
     ok(meta.review.label === 'À vérifier' && meta.review.className === 'review', 'le tableau de bord dit « À vérifier » pour une demande en attente', JSON.stringify(meta.review));
-    ok(meta.confirme.label === 'Confirmé' && meta.arrive.label === 'Arrivé', 'et garde « Confirmé » validee, « Arrivé » une fois le groupe la', `${meta.confirme.label} / ${meta.arrive.label}`);
+    ok(meta.reviewPassee.label === 'À vérifier', 'une demande en attente dont l heure est passee dit encore « À vérifier »', JSON.stringify(meta.reviewPassee));
+    ok(meta.confirme.label === 'À venir' && meta.arrive.label === 'Sur place', 'validee, elle dit son moment comme la liste : « À venir », puis « Sur place » une fois le groupe la', `${meta.confirme.label} / ${meta.arrive.label}`);
     ok(meta.libelle === 'À vérifier', 'la carte des formules et l export lisent le meme libelle', meta.libelle);
 
     console.log('\n[5] LA VISITE SANS PISTE');

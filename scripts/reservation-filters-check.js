@@ -21,6 +21,21 @@
 //   A gerer     tout sauf Terminees       UNION de trois etats
 //   Avec note   porte une note            ATTRIBUT, vrai dans tout etat
 //
+// DEPUIS LE 2026-10-08 : UNE PUCE PAR SECTION. La liste montrait ses sections
+// (« En retard » en tete, les payes replies en bas) pendant que les puces
+// comptaient les moments : « À venir 7 » au-dessus de « En retard 2 » et
+// « À venir 5 », « Sur place » qui comptait les payes ranges dans « Déjà
+// payées ». Les puces sont maintenant les sections, avec leur nombre :
+//   En retard   heure passee, pas pointe (montree seulement s il y en a)
+//   A venir     pas commence et pas pointe, pas paye
+//   Sur place   pointe arrive (ou une activite cochee) pendant sa fenetre
+//   A cloturer  fini, pas paye ; « Non pointé » s il n a jamais ete pointe
+//   Payées      paye, qu il joue encore ou qu il ait fini (paye = arrive)
+//   Pas venus   note « Pas venu » dans la fiche (montree s il y en a)
+// Elles restent exclusives et se totalisent a « Tout ». « À gérer » (tout
+// sauf les payes) est partie : « Tout » le montre deja, payes replies en bas.
+// « Avec note » reste a part : un attribut, vrai dans toute section.
+//
 // Pourquoi le moment et plus le statut (etat des lieux du 30/09) : selon le
 // statut, le club fini depuis dix minutes restait « Sur place », le groupe en
 // retard « A venir » sans marque, a l'inverse du Terrain. Deux ecrans du meme
@@ -138,18 +153,17 @@ const JEU = [
   { id: 71016, status: 'paid', start: '11:00', duree: 1, piste: null, note: '', off: true, moment: 'done' },
   { id: 71017, status: 'pending', start: '12:00', duree: 1, piste: null, note: '', off: true, moment: 'closing', nonPointe: true },
 ];
-const MOMENTS = ['upcoming', 'onsite', 'closing', 'done'];
+// La section attendue d'un dossier : paye en bas, retard en tete, sinon son
+// moment (ecrit a la main dans le jeu).
+const sectionAttendue = (r) => (r.status === 'paid' ? 'paid' : r.retard ? 'late' : r.moment);
+const SECTIONS = ['late', 'upcoming', 'onsite', 'closing', 'paid'];
 const ATTENDU = {
   all: JEU.map((r) => r.id),
-  upcoming: JEU.filter((r) => r.moment === 'upcoming').map((r) => r.id),
-  onsite: JEU.filter((r) => r.moment === 'onsite').map((r) => r.id),
-  closing: JEU.filter((r) => r.moment === 'closing').map((r) => r.id),
-  done: JEU.filter((r) => r.moment === 'done').map((r) => r.id),
-  open: JEU.filter((r) => r.moment !== 'done').map((r) => r.id),
+  ...Object.fromEntries(SECTIONS.map((cle) => [cle, JEU.filter((r) => sectionAttendue(r) === cle).map((r) => r.id)])),
   notes: JEU.filter((r) => r.note).map((r) => r.id),
 };
 // Libelle de chaque puce, dans l'ordre de la barre.
-const PUCES = [['all', 'Tout'], ['upcoming', 'À venir'], ['onsite', 'Sur place'], ['closing', 'À clôturer'], ['done', 'Terminées'], ['open', 'À gérer'], ['notes', 'Avec note']];
+const PUCES = [['all', 'Tout'], ['late', 'En retard'], ['upcoming', 'À venir'], ['onsite', 'Sur place'], ['closing', 'À clôturer'], ['paid', 'Payées'], ['notes', 'Avec note']];
 const heure = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h + m / 60; };
 
 async function installMock(page, jeu) {
@@ -361,18 +375,18 @@ function controler(vue) {
   const dans = (cle, id) => (vue[cle]?.ids || []).includes(id);
   const pastilles = vue.all?.pastilles || {};
   JEU.filter((r) => r.retard).forEach((r) => {
-    c(dans('upcoming', r.id) && !dans('onsite', r.id), `[2] le retard ${r.id} (${r.start}) reste « À venir », pas « Sur place »`);
+    c(dans('late', r.id) && !dans('onsite', r.id) && !dans('upcoming', r.id), `[2] le retard ${r.id} (${r.start}) est « En retard », ni « À venir » ni « Sur place »`);
     const lu = (pastilles[r.id] || {}).retard || '';
     c(lu === `En retard · ${r.retard} min`, `[2] et sa pastille dit depuis quand il est attendu`, `« ${lu} » pour « En retard · ${r.retard} min »`);
   });
   const sansRetard = JEU.filter((r) => !r.retard && (pastilles[r.id] || {}).retard);
   c(sansRetard.length === 0, '[2] aucune autre ligne ne porte « En retard »', sansRetard.map((r) => r.id).join(', '));
   c(dans('onsite', 71007), '[2] l arrivee pointee en AVANCE est « Sur place »');
-  c(dans('onsite', 71008), '[2] le groupe qui a paye PENDANT sa partie est « Sur place »');
   // PAYE = ARRIVE (2026-10-02, Movsar : « s ils ont paye c est qu ils sont
-  // arrives, le paiement est que sur place ») : avant son heure, un groupe
-  // paye est « Sur place », jamais « À venir ».
-  c(dans('onsite', 71003), '[2] le groupe qui a paye avant son heure est « Sur place » (paye = arrive)');
+  // arrives, le paiement est que sur place ») et PAYE EN BAS (2026-10-01) :
+  // paye pendant ou avant sa partie, il est dans « Payées », jamais « À venir ».
+  c(dans('paid', 71008) && !dans('onsite', 71008), '[2] le groupe qui a paye PENDANT sa partie est dans « Payées »');
+  c(dans('paid', 71003) && !dans('upcoming', 71003), '[2] le groupe qui a paye avant son heure est dans « Payées », pas « À venir »');
   c(dans('closing', 71013), '[2] fini a la minute pile, il est « À clôturer »');
   JEU.filter((r) => r.nonPointe).forEach((r) => {
     c(dans('closing', r.id) && (pastilles[r.id] || {}).nonPointe, `[2] le fini jamais pointe ${r.id} est « À clôturer » avec « Non pointé »`);
@@ -381,36 +395,39 @@ function controler(vue) {
   c(nonPointesEnTrop.length === 0, '[2] « Non pointé » ne se pose sur aucune autre ligne', nonPointesEnTrop.map((r) => r.id).join(', '));
 
   // [3] L EXCLUSION
-  for (let i = 0; i < MOMENTS.length; i += 1) {
-    for (let j = i + 1; j < MOMENTS.length; j += 1) {
-      const [a, b] = [MOMENTS[i], MOMENTS[j]];
+  for (let i = 0; i < SECTIONS.length; i += 1) {
+    for (let j = i + 1; j < SECTIONS.length; j += 1) {
+      const [a, b] = [SECTIONS[i], SECTIONS[j]];
       const inter = (vue[a]?.ids || []).filter((id) => (vue[b]?.ids || []).includes(id));
       c(inter.length === 0, `[3] « ${a} » et « ${b} » n ont aucune reservation en commun`, inter.length ? `communes : ${inter.join(', ')}` : '');
     }
   }
-  const union = MOMENTS.flatMap((e) => vue[e]?.ids || []);
-  c(union.length === new Set(union).size, '[3] aucune reservation n apparait dans deux etats', `${union.length} lignes pour ${new Set(union).size} dossiers`);
-  c(memeEnsemble(union, vue.all?.ids || []), '[3] l union des quatre etats est EXACTEMENT « Tout »', `${union.length} vs ${(vue.all?.ids || []).length}`);
+  const union = SECTIONS.flatMap((e) => vue[e]?.ids || []);
+  c(union.length === new Set(union).size, '[3] aucune reservation n apparait dans deux sections', `${union.length} lignes pour ${new Set(union).size} dossiers`);
+  c(memeEnsemble(union, vue.all?.ids || []), '[3] l union des sections est EXACTEMENT « Tout »', `${union.length} vs ${(vue.all?.ids || []).length}`);
 
-  // [4] LES COMPTEURS
+  // [4] LES COMPTEURS : une puce annonce sa section, et elles se totalisent.
   const chips = vue.all?.chips || {};
   const n = (nom) => (chips[nom] === undefined ? null : chips[nom]);
-  c(['Tout', 'À venir', 'Sur place', 'À clôturer', 'Terminées'].every((nom) => n(nom) !== null), '[4] les cinq puces d etat portent un compte', JSON.stringify(chips));
-  const somme = (n('À venir') || 0) + (n('Sur place') || 0) + (n('À clôturer') || 0) + (n('Terminées') || 0);
-  c(somme === n('Tout'), '[4] À venir + Sur place + À clôturer + Terminées = Tout', `${somme} pour ${n('Tout')}`);
-  c(n('À gérer') === (n('À venir') || 0) + (n('Sur place') || 0) + (n('À clôturer') || 0), '[4] « À gérer » vaut exactement À venir + Sur place + À clôturer', `${n('À gérer')}`);
+  const motsSections = PUCES.filter(([cle]) => SECTIONS.includes(cle)).map(([, nom]) => nom);
+  c(['Tout', ...motsSections].every((nom) => n(nom) !== null), '[4] « Tout » et chaque puce de section portent un compte', JSON.stringify(chips));
+  const somme = motsSections.reduce((t, nom) => t + (n(nom) || 0), 0);
+  c(somme === n('Tout'), `[4] ${motsSections.join(' + ')} = Tout`, `${somme} pour ${n('Tout')}`);
+  c(n('À gérer') === null && n('Terminées') === null, '[4] plus de puce « À gérer » ni « Terminées »', JSON.stringify(chips));
   PUCES.forEach(([cle, nom]) => {
     c(n(nom) === (vue[cle]?.ids || []).length, `[4] « ${nom} » annonce le nombre de lignes qu il rend`, `${n(nom)} annonce / ${(vue[cle]?.ids || []).length} rendues`);
   });
+  const sectionsTout = vue.all?.sections || [];
+  SECTIONS.forEach((cle) => {
+    const s = sectionsTout.find((x) => x.cle === (cle === 'paid' ? 'done' : cle));
+    const mot = (PUCES.find(([k]) => k === cle) || [])[1];
+    c((s ? s.ids.length : 0) === n(mot), `[4] la puce « ${mot} » annonce les cartes de sa section dans « Tout »`, `${n(mot)} / ${s ? s.ids.length : 0}`);
+  });
 
-  // [5] UNION ET ATTRIBUT
-  const openIds = vue.open?.ids || [];
-  c(memeEnsemble(openIds, [...(vue.upcoming?.ids || []), ...(vue.onsite?.ids || []), ...(vue.closing?.ids || [])]),
-    '[5] « À gérer » = À venir + Sur place + À clôturer, ni plus ni moins', `${openIds.length} lignes`);
-  c(openIds.every((id) => !(vue.done?.ids || []).includes(id)), '[5] aucune reservation terminee ne se glisse dans « À gérer »');
+  // [5] L ATTRIBUT
   const notesIds = vue.notes?.ids || [];
-  const notesParEtat = MOMENTS.map((e) => notesIds.filter((id) => (vue[e]?.ids || []).includes(id)).length);
-  c(notesParEtat.every((x) => x > 0), '[5] « Avec note » pioche dans les QUATRE etats', notesParEtat.join(' · '));
+  const notesParSection = SECTIONS.map((e) => notesIds.filter((id) => (vue[e]?.ids || []).includes(id)).length);
+  c(notesParSection.filter((x) => x > 0).length >= 4, '[5] « Avec note » pioche dans quatre sections', notesParSection.join(' · '));
 
   // [6] LE DOM
   PUCES.forEach(([cle]) => {
@@ -439,10 +456,10 @@ function controler(vue) {
   // [7] LA FORME
   const f = vue.forme || {};
   c(f.nbGroupes === 2, '[7] la barre porte DEUX groupes, pas une rangee unique', `${f.nbGroupes} groupes`);
-  c((f.etats || []).join(' · ') === 'Tout · À venir · Sur place · À clôturer · Terminées', '[7] le premier groupe ne porte QUE les etats, dans l ordre de la journee', (f.etats || []).join(' · '));
-  c((f.croisements || []).length === 2 && f.croisements.includes('À gérer') && f.croisements.includes('Avec note'), '[7] le second groupe porte les deux vues qui recoupent', (f.croisements || []).join(' · '));
-  c(f.reperes === (f.croisements || []).length && f.reperesEtat === 0, '[7] chaque puce qui recoupe porte le repere, aucune puce d etat n en porte', `${f.reperes} / ${f.reperesEtat}`);
-  c((f.titres || []).every((t) => /recoupe les états/i.test(t)) && (f.aria || []).every((a) => /recoupe les états/i.test(a)), '[7] le recoupement est dit en toutes lettres, y compris a la synthese vocale');
+  c((f.etats || []).join(' · ') === 'Tout · En retard · À venir · Sur place · À clôturer · Payées', '[7] le premier groupe ne porte QUE les sections, dans l ordre de la liste', (f.etats || []).join(' · '));
+  c((f.croisements || []).join(' · ') === 'Avec note', '[7] le second groupe porte la vue qui recoupe, « Avec note »', (f.croisements || []).join(' · '));
+  c(f.reperes === (f.croisements || []).length && f.reperesEtat === 0, '[7] la puce qui recoupe porte le repere, aucune puce de section n en porte', `${f.reperes} / ${f.reperesEtat}`);
+  c((f.titres || []).every((t) => /recoupe les sections/i.test(t)) && (f.aria || []).every((a) => /recoupe les sections/i.test(a)), '[7] le recoupement est dit en toutes lettres, y compris a la synthese vocale');
   c(f.filetLargeur === '1px', '[7] un filet separe les deux groupes', f.filetLargeur);
   c(!/=\s*\d/.test(f.barre || ''), '[7] aucune phrase-formule n explique l ecran sous les filtres', f.barre);
   return out;
@@ -484,20 +501,21 @@ async function main() {
         // LE RETOUR EN ARRIERE ENTIER : la liste retombe sur le statut seul
         // (le club fini reste « Sur place », le retard « À venir » sans marque).
         nom: 'la liste retombe sur le statut',
-        de: "function getStaffReservationMomentState(moments, reservation) {\n  const entry = moments.get(String(reservation.id));\n  return entry ? entry.etat : 'upcoming';\n}",
-        vers: "function getStaffReservationMomentState(moments, reservation) {\n  return reservation.status === 'paid' ? 'done' : reservation.status === 'arrived' ? 'onsite' : 'upcoming';\n}",
+        de: "function getStaffListeSection(moments, r) {\n  const m = moments.get(String(r.id));",
+        vers: "function getStaffListeSection(moments, r) {\n  return r.status === 'paid' ? 'paid' : r.status === 'arrived' ? 'onsite' : 'upcoming';\n  const m = moments.get(String(r.id));",
         attendu: /^\[(1|2)\]/,
       },
       {
-        nom: 'un compteur qui ment : « Terminées » compte les payes',
-        de: "  const done = compter('done');",
-        vers: "  const done = reservations.filter(r => r.status === 'paid').length;",
+        // LE DEFAUT DU 2026-10-08 : une puce qui ne compte pas sa section.
+        nom: 'un compteur qui ment : « Payées » compte aussi les arrives',
+        de: "  reservations.forEach(r => { counts[getStaffListeSection(moments, r)] += 1; });",
+        vers: "  reservations.forEach(r => { counts[getStaffListeSection(moments, r)] += 1; });\n  counts.paid += reservations.filter(r => r.status === 'arrived').length;",
         attendu: /^\[4\]/,
       },
       {
-        nom: 'une section d etat prend les lignes d une autre',
-        de: "rows: inState('closing') }",
-        vers: "rows: inState('done') }",
+        nom: 'une section prend les lignes d une autre',
+        de: "  const payes = parSection('paid');",
+        vers: "  const payes = parSection('closing');",
         attendu: /^\[(1|4|6)\]/,
       },
       {
@@ -513,9 +531,9 @@ async function main() {
         attendu: /^\[2\]/,
       },
       {
-        nom: 'le recoupement redevient une puce d etat comme les autres',
-        de: '      <div class="status-group status-group-cross" role="group" aria-label="Vues qui recoupent les états ci-dessus">',
-        vers: '      <div class="status-group" role="group" aria-label="Vues qui recoupent les états ci-dessus">',
+        nom: 'le recoupement redevient une puce de section comme les autres',
+        de: '<div class="status-group status-group-cross" role="group" aria-label="Vue qui recoupe les sections">',
+        vers: '<div class="status-group" role="group" aria-label="Vue qui recoupe les sections">',
         attendu: /^\[7\]/,
       },
     ];

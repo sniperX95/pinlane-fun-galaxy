@@ -323,7 +323,8 @@
     "test:laser-move-truth": "node scripts/laser-move-truth-check.js",
     "test:planning-status": "node scripts/planning-status-contract-check.js",
     "test:planning-tablet": "node scripts/planning-tablet-controls-check.js",
-    "test:documents-secours": "node scripts/documents-secours-check.js"
+    "test:documents-secours": "node scripts/documents-secours-check.js",
+    "test:fungalaxy-perf": "node scripts/fungalaxy-form-perf-bench.js --gate"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

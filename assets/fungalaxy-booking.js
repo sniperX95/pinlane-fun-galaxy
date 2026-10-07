@@ -23,6 +23,9 @@
   var $$ = function (sel, ctx) { return Array.prototype.slice.call((ctx || doc).querySelectorAll(sel)); };
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var finPointer = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  // La colonne etroite des cartes (maconnerie) : une seule requete, relue a
+  // chaque image d un tiroir qui s ouvre, au lieu d une nouvelle par mesure.
+  var petitEcran = window.matchMedia ? window.matchMedia('(max-width:560px)') : { matches: false };
 
   /* --- L adresse : le centre, le mode embarque, le fond de l hote ------------ */
 
@@ -92,6 +95,18 @@
     try { window.parent.postMessage(message, parentOrigin); } catch (e) {}
   }
   var derniereHauteur = 0;
+  // UN TIROIR QUI S OUVRE NE REDIMENSIONNE LE CADRE QU UNE FOIS. Le tiroir
+  // d une carte et le menu d une plage horaire se deplient en
+  // grid-template-rows (0,4 s) : la hauteur du contenu change a chaque image.
+  // Suivie image par image, elle redimensionnait le cadre a chaque image, et
+  // chaque redimensionnement coute un layout du document entier, le recalcul
+  // des unites d ecran et le travail de la page hote (mesure 2026-10-07, 4x :
+  // la moitie des images perdues a l ouverture d une plage). Pendant ces
+  // transitions, la hauteur du cadre est TENUE : posee d emblee a la hauteur
+  // d arrivee (calculee au depart), elle ne redescend qu une fois tout pose.
+  // Le formulaire ne bouge pas d un pixel ; seule la page hote, SOUS le
+  // cadre, se pose en une fois au lieu de glisser.
+  var tiroirsEnCours = new Map(), hauteurTenue = 0, tenueAFaire = false;
   function posterHauteur() {
     if (!EMBED || !parentOrigin) return;
     // body.scrollHeight, jamais documentElement : le second vaut au moins la
@@ -102,9 +117,71 @@
     // qu au-dela de 8 px : quelques pixels vides en bas ne genent personne,
     // un arrondi qui tremble si.
     var h = Math.max(body.scrollHeight, body.offsetHeight);
+    if (tiroirsEnCours.size) {
+      // La hauteur d arrivee se calcule des que le contenu des tiroirs qui
+      // s ouvrent se mesure : replie en content-visibility: hidden, il ne
+      // revient au layout qu a la premiere image de la transition.
+      if (tenueAFaire) {
+        var arrivee = hauteurDArrivee();
+        if (arrivee) { hauteurTenue = Math.max(hauteurTenue, arrivee); tenueAFaire = false; }
+      }
+      h = Math.max(h, hauteurTenue);
+    }
     if (!h || h === derniereHauteur || (h < derniereHauteur && derniereHauteur - h < 8)) return;
     derniereHauteur = h;
     poster({ type: 'pinlane:height', height: h });
+  }
+  // La hauteur du corps une fois les tiroirs en cours arrives : ce que chacun
+  // va gagner (son contenu entier s il s ouvre) ou perdre (tout s il se
+  // ferme). Dans une maconnerie (cartes d activites), le cadre ne grandit que
+  // de ce que gagne la colonne la plus haute.
+  function hauteurDArrivee() {
+    var h = Math.max(body.scrollHeight, body.offsetHeight);
+    var parGrille = new Map(), incomplet = false;
+    tiroirsEnCours.forEach(function (minuteur, el) {
+      var parent = el.parentElement, contenu = el.firstElementChild;
+      if (!el.isConnected || !parent) return;
+      var ouvrant = parent.classList.contains('is-on') || parent.classList.contains('is-open');
+      if (ouvrant && contenu && getComputedStyle(contenu).contentVisibility === 'hidden') { incomplet = true; return; }
+      var ecart = (ouvrant && contenu ? contenu.scrollHeight : 0) - el.getBoundingClientRect().height;
+      var grille = parent.parentElement;
+      if (grille && grille._fgMasonryObserver) {
+        if (!parGrille.has(grille)) parGrille.set(grille, new Map());
+        parGrille.get(grille).set(parent, ecart);
+      } else h += ecart;
+    });
+    parGrille.forEach(function (ecarts, grille) {
+      var colonnes = getComputedStyle(grille).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+      var espace = petitEcran.matches ? 10 : 14;
+      var hauteurs = Array(colonnes).fill(0);
+      Array.from(grille.children).filter(function (x) { return x.classList.contains('fg-grid__item'); }).forEach(function (tuile, i) {
+        hauteurs[i % colonnes] += Math.ceil(tuile.getBoundingClientRect().height) + (ecarts.get(tuile) || 0) + espace;
+      });
+      h += Math.max.apply(null, hauteurs) - espace - grille.getBoundingClientRect().height;
+    });
+    return incomplet ? 0 : Math.ceil(h);
+  }
+  function lacherTiroir(el) {
+    if (!tiroirsEnCours.has(el)) return;
+    clearTimeout(tiroirsEnCours.get(el));
+    tiroirsEnCours.delete(el);
+    if (!tiroirsEnCours.size) { hauteurTenue = 0; tenueAFaire = false; posterHauteur(); }
+  }
+  if (EMBED) {
+    doc.addEventListener('transitionrun', function (e) {
+      if (e.propertyName !== 'grid-template-rows') return;
+      // Filet : un tiroir retire du document en pleine course ne previent pas.
+      clearTimeout(tiroirsEnCours.get(e.target));
+      tiroirsEnCours.set(e.target, setTimeout(function () { lacherTiroir(e.target); }, 1200));
+      // Rien ne redescend pendant la course ; la hauteur d arrivee se pose
+      // des qu elle se mesure.
+      hauteurTenue = Math.max(hauteurTenue, derniereHauteur);
+      tenueAFaire = true;
+      posterHauteur();
+    });
+    var finTiroir = function (e) { if (e.propertyName === 'grid-template-rows') lacherTiroir(e.target); };
+    doc.addEventListener('transitionend', finTiroir);
+    doc.addEventListener('transitioncancel', finTiroir);
   }
   if (EMBED) {
     if ('ResizeObserver' in window) new ResizeObserver(posterHauteur).observe(body);
@@ -117,8 +194,13 @@
       // Seul embed.js envoie la zone visible : l hote suit donc la hauteur, et
       // le cadre peut se verrouiller (voir html.fg-pilote dans la feuille).
       if (!root.classList.contains('fg-pilote')) root.classList.add('fg-pilote');
-      root.style.setProperty('--tunnel-vue-haut', (Number(d.cacheEnHaut) || 0) + 'px');
-      root.style.setProperty('--tunnel-vue-ecran', (Number(d.hauteurEcran) || 0) + 'px');
+      // La zone visible reste en JS (hautCadre, ecranHote) : aucune regle du
+      // formulaire ne la lit. Posee en variables CSS sur la racine, elle
+      // changeait a chaque image d un defilement de la page hote (et du
+      // defilement doux qui suit chaque changement d ecran), et une variable
+      // heritee qui change sur la racine fait recalculer le style de TOUT le
+      // document : un millier d elements, 40 a 150 ms par image a 4x (mesure
+      // du 2026-10-07).
       var haut = Number(d.hautCadre);
       if (isFinite(haut)) hautCadre = haut;
       ecranHote = Number(d.hauteurEcran) || 0;
@@ -205,10 +287,19 @@
   // Rejoue une animation CSS une fois : retire la classe, force un recalcul,
   // la repose. Elle repart d elle-meme ensuite : restee posee, elle rejouerait
   // chaque fois que l element repasse de display:none a affiche.
+  // Le recalcul force (void offsetWidth) ne sert qu a RELANCER une animation
+  // dont la classe est deja posee : une classe absente se pose sans rien
+  // forcer. Chaque recalcul force est un layout de la page au milieu d un
+  // geste (banc 2026-10-07, 4x : trois touches de « + » passent de 62 a
+  // 33 ms de longues taches).
+  function relancer(el, cls) {
+    if (el.classList.contains(cls)) { el.classList.remove(cls); void el.offsetWidth; }
+    el.classList.add(cls);
+  }
   var minuteursRejoue = new WeakMap();
   function rejouer(el, cls) {
     if (!el || reduced) return;
-    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    relancer(el, cls);
     clearTimeout(minuteursRejoue.get(el));
     minuteursRejoue.set(el, setTimeout(function () { el.classList.remove(cls); }, 700));
   }
@@ -869,7 +960,14 @@
         + (cliquable ? '<button type="button" data-goto="' + e.id + '" aria-label="Revenir à l’étape ' + esc(e.label) + '">' + inner + '</button>' : inner)
         + '</li>';
     }).join('');
-    $$('[data-steps]').forEach(function (ol) { ol.innerHTML = html; });
+    // Le fil ne s ecrit que dans l ecran qui arrive : les cinq autres listes
+    // le recevront quand leur ecran viendra (rendreEtapes est appele a chaque
+    // changement d ecran, avant que l ecran ne s affiche). Six analyses HTML
+    // par geste pour cinq listes invisibles (banc 2026-10-07, 4x : l arrivee
+    // sur les activites passe de 200 a 158 ms de longues taches).
+    var courante = $('.fg-scene[data-scene="' + sceneCourante + '"] [data-steps]');
+    if (courante) courante.innerHTML = html;
+    else $$('[data-steps]').forEach(function (ol) { ol.innerHTML = html; });
   }
 
   /* --- Les titres, mot par mot -------------------------------------------------- */
@@ -923,9 +1021,14 @@
     });
   }
   function espacerTitreActif() { espacerAccents($('.fg-scene.is-active .fg-title')); }
-  var accentsEnAttente = false;
+  // La coupure des lignes ne depend que de la LARGEUR. Dans le cadre du
+  // client, la hauteur change a chaque image d un tiroir qui s ouvre (l hote
+  // suit le contenu) : relire la position des mots a chaque fois forcait un
+  // layout par image pour rien.
+  var accentsEnAttente = false, largeurAccents = window.innerWidth;
   window.addEventListener('resize', function () {
-    if (accentsEnAttente) return;
+    if (accentsEnAttente || window.innerWidth === largeurAccents) return;
+    largeurAccents = window.innerWidth;
     accentsEnAttente = true;
     requestAnimationFrame(function () { accentsEnAttente = false; espacerTitreActif(); });
   });
@@ -1542,9 +1645,9 @@
   var minuteurBump = 0;
   function battrePax(sens) {
     if (reduced) return;
-    paxInput.classList.remove('is-up', 'is-down');
-    void paxInput.offsetWidth;
-    paxInput.classList.add(sens > 0 ? 'is-up' : 'is-down');
+    var sensCls = sens > 0 ? 'is-up' : 'is-down';
+    paxInput.classList.remove(sens > 0 ? 'is-down' : 'is-up');
+    relancer(paxInput, sensCls);
     if (paxBox) {
       paxBox.classList.add('is-bump');
       clearTimeout(minuteurBump);
@@ -1620,6 +1723,7 @@
     if (!state.date) { direErreur('Choisissez d’abord un jour.'); dayBtn.focus(); return; }
     if (journeeFinie(state.date)) { direJour(state.date); rendreCalendrier(); direErreur('Le centre est fermé pour aujourd’hui : la journée est finie. Choisissez un autre jour.'); dayBtn.focus(); return; }
     direErreur('');
+    var selectionAvant = state.selection.length, formuleAvant = state.formuleId;
     // Le groupe a pu changer depuis le dernier rendu : une activite bornee
     // (Fun Run, 5 joueurs) sort de la selection si le groupe la depasse.
     state.selection = state.selection.filter(function (id) {
@@ -1632,12 +1736,36 @@
       var choisie = ((meta && meta.formules) || []).filter(function (x) { return x.id === state.formuleId; })[0];
       if (!choisie || !verdictFormule(choisie).ok) state.formuleId = '';
     }
-    rendreActivites();
-    rendreFormules();
+    // Les deux grilles ne se reconstruisent que si ce qui les ecrit depuis
+    // l exterieur a change (le jour, le groupe, le catalogue) ou si le tri
+    // ci-dessus vient de retirer une carte ou la formule : sur l ecran
+    // lui-meme, chaque geste les met deja a jour sur place. Reconstruire dix
+    // cartes et quatorze formules a chaque retour, pour un ecran identique,
+    // doublait le travail du geste (banc 2026-10-07, 4x : 25 layouts et 95 ms
+    // de script, contre 14 et 42).
+    if (empreinteGrilles() !== grillesRendues || state.selection.length !== selectionAvant || state.formuleId !== formuleAvant) {
+      rendreActivites();
+      // Les formules vivent dans un panneau cache tant que leur onglet n est
+      // pas choisi : quatorze cartes se construisent apres le premier rendu de
+      // l ecran, pas dans le geste qui y mene (banc 2026-10-07, 4x : 270 ms de
+      // longues taches contre 158). L onglet qui s ouvre avant les construit
+      // tout de suite (choisirOnglet).
+      if (state.onglet === 'formules') rendreFormules(); else programmerFormules();
+      grillesRendues = empreinteGrilles();
+    }
     rendreCompteur(false);
     aller('activites');
     placerBarre();
   });
+  var grillesRendues = '';
+  function empreinteGrilles() { return [state.date, state.pax, empreinteCatalogue].join('|'); }
+  var formulesEnRetard = false;
+  function rendreFormulesEnRetard() { if (!formulesEnRetard) return; formulesEnRetard = false; rendreFormules(); }
+  function programmerFormules() {
+    formulesEnRetard = true;
+    if (window.requestIdleCallback) requestIdleCallback(rendreFormulesEnRetard, { timeout: 600 });
+    else setTimeout(rendreFormulesEnRetard, 150);
+  }
 
   /* --- Etape 2 : les activites et les formules ----------------------------------- */
 
@@ -1728,9 +1856,22 @@
       grille._fgMesure = 0;
       if (!grille.getBoundingClientRect().width) return;
       var colonnes = getComputedStyle(grille).gridTemplateColumns.split(' ').filter(Boolean).length;
-      var espace = window.matchMedia('(max-width:560px)').matches ? 10 : 14;
+      var espace = petitEcran.matches ? 10 : 14;
       var hauteurs = Array(colonnes).fill(0);
-      tuiles.forEach(function (tile, i) { var col = i % colonnes, h = Math.ceil(tile.getBoundingClientRect().height); tile.style.gridColumn = String(col + 1); tile.style.gridRow = String(hauteurs[col] + 1) + ' / span ' + h; hauteurs[col] += h + espace; });
+      // TOUTES les lectures, PUIS toutes les ecritures. Lire la hauteur d une
+      // tuile apres avoir ecrit la rangee de la precedente force un layout par
+      // tuile ; pendant qu un tiroir s ouvre (0,4 s), l observateur rappelle
+      // cette mesure a chaque image (banc 2026-10-07, 4x : 80 layouts par
+      // tiroir ouvert, 48 ainsi). Une valeur inchangee ne se reecrit pas :
+      // rien n est invalide pour rien.
+      var mesures = tuiles.map(function (tile) { return Math.ceil(tile.getBoundingClientRect().height); });
+      tuiles.forEach(function (tile, i) {
+        var col = i % colonnes, h = mesures[i];
+        var colonne = String(col + 1), rangee = String(hauteurs[col] + 1) + ' / span ' + h;
+        if (tile.style.gridColumn !== colonne) tile.style.gridColumn = colonne;
+        if (tile.style.gridRow !== rangee) tile.style.gridRow = rangee;
+        hauteurs[col] += h + espace;
+      });
       posterHauteur();
     }
     function attendreMesure() { if (!grille._fgMesure) grille._fgMesure = requestAnimationFrame(mesurer); }
@@ -2023,7 +2164,7 @@
   // cachee est en display:none, et son retour redemarre toute animation CSS).
   function eveiller(btn) {
     clearTimeout(btn._eveil);
-    btn.classList.remove('is-wake'); void btn.offsetWidth; btn.classList.add('is-wake');
+    relancer(btn, 'is-wake');
     btn._eveil = setTimeout(function () { btn.classList.remove('is-wake'); }, 600);
   }
   // A zero, la barre dit quoi faire, et rappelle ce qui reste choisi dans
@@ -2037,7 +2178,7 @@
       ? 'Choisissez une formule' + (nA ? ', ou revenez à ' + (nA > 1 ? 'vos ' + nA + ' activités' : 'votre activité') : '') + '.'
       : (nF ? 'Cochez des activités, ou revenez à votre formule.' : 'Cochez une ou plusieurs activités.');
     var b = $('b', actCount);
-    if (bump && b) { b.classList.remove('is-bump'); void b.offsetWidth; b.classList.add('is-bump'); }
+    if (bump && b) relancer(b, 'is-bump');
     var etaitInactif = goHours.disabled;
     goHours.disabled = n === 0;
     if (bump && etaitInactif && !goHours.disabled) eveiller(goHours);
@@ -2073,7 +2214,7 @@
     // Refusee pour ce groupe : on fait lire la raison, on ne coche pas.
     if (card && card.classList.contains('is-refus')) {
       var pourquoi = card.querySelector('.fg-for__off');
-      if (pourquoi) { pourquoi.classList.remove('is-pulse'); void pourquoi.offsetWidth; pourquoi.classList.add('is-pulse'); dire(pourquoi.textContent.trim()); }
+      if (pourquoi) { relancer(pourquoi, 'is-pulse'); dire(pourquoi.textContent.trim()); }
       return;
     }
     if (!card || card.classList.contains('is-off')) return;
@@ -2169,7 +2310,7 @@
       var pourquoi = card.querySelector('.fg-for__off');
       // La raison se dit aussi : dans une carte role="radio", les enfants sont
       // presentationnels, une region vivante posee dedans ne parlait pas.
-      if (pourquoi) { pourquoi.classList.remove('is-pulse'); void pourquoi.offsetWidth; pourquoi.classList.add('is-pulse'); dire(pourquoi.textContent.trim()); }
+      if (pourquoi) { relancer(pourquoi, 'is-pulse'); dire(pourquoi.textContent.trim()); }
       return;
     }
     if (!card || card.classList.contains('is-off')) return;
@@ -2209,6 +2350,7 @@
   function choisirOnglet(quel) {
     state.onglet = quel;
     var act = quel === 'activites';
+    if (!act) rendreFormulesEnRetard();
     $('#tabAct').setAttribute('aria-selected', String(act));
     $('#tabFor').setAttribute('aria-selected', String(!act));
     $('#tabAct').tabIndex = act ? 0 : -1;
@@ -2573,7 +2715,7 @@
     sec.classList.toggle('is-open', ouvrir);
     if (btn) btn.setAttribute('aria-expanded', String(ouvrir));
     var ul = $('.fg-chips', sec);
-    if (ouvrir && ul) { ul.classList.remove('is-fresh'); void ul.offsetWidth; ul.classList.add('is-fresh'); }
+    if (ouvrir && ul) relancer(ul, 'is-fresh');
   }
   // Un seul menu ouvert par piste : ouvrir une periode referme les autres.
   function montrerPeriode(track, sec) {
@@ -4193,7 +4335,7 @@
   // apres le redemarrage et tuerait la nouvelle secousse.
   function secouer(wrap) {
     if (!wrap || reduced) return;
-    wrap.classList.remove('is-nudge'); void wrap.offsetWidth; wrap.classList.add('is-nudge');
+    relancer(wrap, 'is-nudge');
   }
   form.addEventListener('animationend', function (e) {
     if (!e.target.matches('.fg-input, .fg-occasions, .fg-check__box')) return;
@@ -4955,6 +5097,7 @@
         if (state.formuleId && !((meta.formules || []).filter(function (x) { return x.id === state.formuleId; })[0])) state.formuleId = '';
         rendreActivites();
         rendreFormules();
+        grillesRendues = empreinteGrilles();
         rendreCompteur(false);
         // Les heures deja posees restent : seule la disponibilite se recalcule.
         state.dispo = null;
@@ -4999,6 +5142,7 @@
         rendrePax();
         rendreActivites();
         rendreFormules();
+        grillesRendues = empreinteGrilles();
         rendreCompteur(false);
         choisirOnglet('activites');
         body.classList.add('is-ready');

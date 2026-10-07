@@ -90,7 +90,7 @@
   transform: translateX(-110%) skewX(-12deg);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .fg-curtain { animation: fg-curtain 1.05s cubic-bezier(0.7, 0, 0.2, 1) both; }
+  .fg-curtain { animation: fg-curtain 1.05s cubic-bezier(0.7, 0, 0.2, 1) backwards; }
 }
 @keyframes fg-curtain {
   0% { visibility: visible; transform: translateX(-110%) skewX(-12deg); }
@@ -399,12 +399,19 @@ html.fg-pilote .fg { overflow: visible; }
    avancant : le segment atteint se remplit, celui qu on quitte passe au
    blanc. En reculant : celui qu on quitte se vide. A la fin : les cinq se
    balaient de gauche a droite. Le libelle en cours monte de 5 px. */
+/* Les entrees ne gardent que leur etat de DEPART (backwards) : leur etat
+   d arrivee est l etat naturel de l element. Une animation finie en fill
+   both reste « en cours » pour le navigateur : l element garde sa couche
+   composee pour toujours (mesure 2026-10-07 sur l ecran des heures : 23 a 30
+   couches au repos, 7 sans). Seules les cartes gardent both : leur fill
+   l emporte aujourd hui sur l opacite d une carte grisee, qu il faut garder
+   telle quelle. */
 @media (prefers-reduced-motion: no-preference) {
-  .fg-steps__item.is-filling .fg-steps__seg::after { animation: fg-seg-fill 0.75s var(--fg-ease-out) 0.18s both; }
-  .fg-steps__item.is-settling .fg-steps__seg::after { animation: fg-seg-settle 0.7s var(--fg-ease) 0.1s both; }
-  .fg-steps__item.is-draining .fg-steps__seg::after { animation: fg-seg-drain 0.6s var(--fg-ease) 0.1s both; }
-  .fg-steps__item.is-sweep .fg-steps__seg::after { animation: fg-seg-fill 0.55s var(--fg-ease-out) both; animation-delay: calc(90ms * var(--i, 0) + 0.25s); }
-  .fg-steps__item.is-active .fg-steps__txt { animation: fg-step-in 0.5s var(--fg-ease-out) 0.22s both; }
+  .fg-steps__item.is-filling .fg-steps__seg::after { animation: fg-seg-fill 0.75s var(--fg-ease-out) 0.18s backwards; }
+  .fg-steps__item.is-settling .fg-steps__seg::after { animation: fg-seg-settle 0.7s var(--fg-ease) 0.1s backwards; }
+  .fg-steps__item.is-draining .fg-steps__seg::after { animation: fg-seg-drain 0.6s var(--fg-ease) 0.1s backwards; }
+  .fg-steps__item.is-sweep .fg-steps__seg::after { animation: fg-seg-fill 0.55s var(--fg-ease-out) backwards; animation-delay: calc(90ms * var(--i, 0) + 0.25s); }
+  .fg-steps__item.is-active .fg-steps__txt { animation: fg-step-in 0.5s var(--fg-ease-out) 0.22s backwards; }
 }
 @keyframes fg-seg-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes fg-seg-settle { from { background: var(--fg-purple-2); } to { background: rgba(255, 255, 255, 0.78); } }
@@ -442,7 +449,7 @@ html.fg-pilote .fg { overflow: visible; }
    interligne de 0,94 em), avec 0,09 em d air. */
 .fg-title .w.w--accent { padding-top: 0.26em; margin-top: 0; }
 @media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-title .w > span { animation: fg-word 0.6s var(--fg-ease-out) both; animation-delay: calc(60ms * var(--i, 0) + 80ms); }
+  .fg-scene.is-active .fg-title .w > span { animation: fg-word 0.6s var(--fg-ease-out) backwards; animation-delay: calc(60ms * var(--i, 0) + 80ms); }
 }
 @keyframes fg-word { from { transform: translateY(110%); } to { transform: none; } }
 .fg-sub {
@@ -480,7 +487,8 @@ html.fg-pilote .fg { overflow: visible; }
 /* --- Apparition en cascade des blocs d une scene ----------------------------- */
 
 @media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-rise { animation: fg-rise 0.55s var(--fg-ease-out) both; animation-delay: calc(70ms * var(--i, 0) + 120ms); }
+  .fg-scene.is-active .fg-rise { animation: fg-rise 0.55s var(--fg-ease-out) backwards; animation-delay: calc(70ms * var(--i, 0) + 120ms); }
+  .fg-scene.is-active .fg-card.fg-rise { animation-fill-mode: both; }
 }
 @keyframes fg-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
@@ -858,7 +866,9 @@ html.fg-pilote .fg { overflow: visible; }
   text-decoration: none;
   box-shadow: 6px 6px 0 var(--fg-teal);
   transition: transform 0.18s var(--fg-ease), box-shadow 0.18s var(--fg-ease), background-color 0.2s, opacity 0.2s;
-  will-change: transform;
+  /* Pas de will-change : il faisait de chaque bouton une couche composee
+     permanente (deux de plus par ecran, mesure 2026-10-07). Le navigateur
+     promeut le bouton le temps de sa transition, c est suffisant. */
 }
 .fg-btn svg { width: 18px; height: 18px; flex: none; transition: transform 0.25s var(--fg-ease); }
 @media (hover: hover) {
@@ -1030,7 +1040,7 @@ html.fg-pilote .fg { overflow: visible; }
   cursor: pointer;
   user-select: none;
   transition: border-color 0.25s, transform 0.25s var(--fg-ease), box-shadow 0.25s, border-radius 0.3s var(--fg-ease);
-  will-change: transform;
+  /* Pas de will-change (voir .fg-btn). */
 }
 .fg-card > * { position: relative; z-index: 1; }
 /* La photo de l activite se devoile derriere la carte au survol de la
@@ -1238,8 +1248,19 @@ html.fg-pilote .fg { overflow: visible; }
 /* Ferme, le tiroir sort aussi du parcours clavier et du lecteur d ecran
    (visibility), une fois son repli de 0,4 s fini ; ouvert, il y entre tout
    de suite. */
-.fg-card__optin { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-6px); visibility: hidden; transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), visibility 0s linear 0.4s; }
-.fg-grid__item.is-on .fg-card__optin { opacity: 1; transform: none; visibility: visible; transition-delay: 0s; }
+/* Ferme, le tiroir ne se calcule plus (content-visibility: hidden) : ses
+   pastilles, ses compteurs et sa requete de conteneur sortaient quand meme
+   du layout et du style a chaque image d un tiroir voisin qui s ouvre. La
+   bascule est discrete (allow-discrete) : visible des le premier instant de
+   l ouverture, cache seulement a la fin du repli (0,4 s), comme visibility.
+   Un navigateur qui ignore content-visibility garde le comportement d avant.
+   Banc 2026-10-07, 4x : l arrivee sur les activites passe de 234 a 158 ms de
+   longues taches, l ouverture d une plage de 13 a 8 images perdues. */
+.fg-card__optin { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-6px); visibility: hidden; content-visibility: hidden; transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), visibility 0s linear 0.4s; }
+/* Declaree a part : un navigateur qui ne connait pas allow-discrete (Safari
+   avant 17.4) jette cette ligne entiere et garde la precedente. */
+.fg-card__optin { transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), visibility 0s linear 0.4s, content-visibility 0.4s allow-discrete; }
+.fg-grid__item.is-on .fg-card__optin { opacity: 1; transform: none; visibility: visible; content-visibility: visible; transition-delay: 0s; }
 .fg-card__optbox {
   padding: 10px 12px 12px;
   border: 1.5px solid var(--fg-purple-2);
@@ -1666,8 +1687,12 @@ html.fg-pilote .fg { overflow: visible; }
 /* Replie, un menu sort du parcours clavier et du lecteur d ecran quand son
    repli (0,4 s) est fini : plus d arret sur une heure invisible. Ouvert, il y
    entre tout de suite. */
-.fg-period__inner { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear 0.4s; }
-.fg-period.is-open .fg-period__inner { visibility: visible; transition-delay: 0s; }
+/* Un menu replie ne se calcule plus (content-visibility, meme regle que le
+   tiroir d une carte) : deux plages repliees sur trois, c est une quarantaine
+   d heures et leurs raisons qui sortaient du layout a chaque mise a jour. */
+.fg-period__inner { min-height: 0; overflow: hidden; visibility: hidden; content-visibility: hidden; transition: visibility 0s linear 0.4s; }
+.fg-period__inner { transition: visibility 0s linear 0.4s, content-visibility 0.4s allow-discrete; }
+.fg-period.is-open .fg-period__inner { visibility: visible; content-visibility: visible; transition-delay: 0s; }
 .fg-period__inner > .fg-chips { margin: 0; padding: 0 14px; opacity: 0; transform: translateY(-4px); transition: opacity 0.3s, transform 0.35s var(--fg-ease-out), padding 0.4s var(--fg-ease); }
 .fg-period.is-open .fg-period__inner > .fg-chips { padding: 4px 14px 14px; opacity: 1; transform: none; }
 /* LES RAISONS D UNE PLAGE, sous ses heures : une ligne par raison, la cle au
@@ -1897,8 +1922,8 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-recall__bar { width: 46px; height: 3px; background: var(--fg-purple-2); margin-top: 12px; border-radius: 2px; transform-origin: left center; }
 @media (prefers-reduced-motion: no-preference) {
-  .fg-scene.is-active .fg-recall { animation: fg-rise 0.6s var(--fg-ease-out) 0.35s both; }
-  .fg-scene.is-active .fg-recall__bar { animation: fg-grow 0.6s var(--fg-ease-out) 0.7s both; }
+  .fg-scene.is-active .fg-recall { animation: fg-rise 0.6s var(--fg-ease-out) 0.35s backwards; }
+  .fg-scene.is-active .fg-recall__bar { animation: fg-grow 0.6s var(--fg-ease-out) 0.7s backwards; }
 }
 @keyframes fg-grow { from { transform: scaleX(0); } to { transform: none; } }
 
@@ -2035,7 +2060,7 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-alert__btn { display: flex; align-items: center; width: fit-content; min-height: 44px; margin-top: 10px; padding: 0 16px; border: 1.5px solid var(--fg-teal); border-radius: var(--fg-radius); color: var(--fg-teal-ink); font-size: 14px; font-weight: 700; transition: background-color 0.2s; }
 @media (hover: hover) { .fg-alert__btn:hover { background: rgba(103, 186, 172, 0.12); } }
 @media (prefers-reduced-motion: no-preference) {
-  .fg-alert:not([hidden]) { animation: fg-rise 0.3s var(--fg-ease-out) both; }
+  .fg-alert:not([hidden]) { animation: fg-rise 0.3s var(--fg-ease-out) backwards; }
 }
 
 /* --- Les horaires bloques : le decompte ------------------------------------------ */

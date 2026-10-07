@@ -43,6 +43,8 @@ const { customRequestChanges, ACTEUR_FORMULAIRE_PUBLIC } = require('../lib/regis
 //   POST /api/custom-request       -> bespoke enquiry lead (companies / special
 //                                      needs). Both POSTs are rewritten here in
 //                                      vercel.json; discriminated by body.kind.
+//   POST /api/public-booking-meta  -> body.kind 'vitrine' : les gestes du client
+//                                      dans la fenetre des offres (stats, 0057).
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Miroir de OCCASION_VALUES (lib/reservation-request.js) : les occasions
@@ -52,6 +54,81 @@ const CUSTOM_REQUEST_OCCASIONS = new Set(['anniversaire', 'amis', 'famille', 'en
 function clean(value, maxLength) {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, maxLength);
+}
+
+// LES GESTES DANS LA FENETRE DES OFFRES (2026-10-07, Movsar : « tout
+// repertorie dans les stats [...] pour savoir les raisons qui font le plus
+// prendre un add-on »). Un envoi porte les gestes d UNE visite de la page :
+// au plus vingt, chacun d un type connu ; tout le reste est refuse, jamais
+// devine. Aucune donnee personnelle : `visite` est tire au hasard par le
+// formulaire. Une reservation annoncee « reservee » n est comptee que si elle
+// existe, dans ce centre, et vient d etre creee. Sans base (developpement,
+// gates), rien ne s ecrit et la reponse le dit.
+const EVENEMENTS_VITRINE = new Set(['vue', 'vedette', 'ajout', 'acceptee', 'annulee', 'fermee', 'reservee']);
+const RAISONS_VITRINE = new Set(['attente', 'pause', 'suite', 'centre']);
+function gestesVitrine(body) {
+  const centerId = clean(body.centerId, 60);
+  const visite = clean(body.visite, 40);
+  if (!/^[a-z0-9_-]{1,60}$/.test(centerId) || !/^[a-z0-9]{16,40}$/i.test(visite) || !Array.isArray(body.gestes)) return null;
+  const entier = (v, min, max) => { const n = Number(v); return Number.isInteger(n) && n >= min && n <= max ? n : null; };
+  const lignes = [];
+  for (const g of body.gestes.slice(0, 20)) {
+    const evenement = clean(g && g.evenement, 20);
+    if (!EVENEMENTS_VITRINE.has(evenement)) continue;
+    const raison = clean(g.raison, 20);
+    const montant = Number(g.montant);
+    lignes.push({
+      evenement,
+      carte: clean(g.carte, 120),
+      genre: clean(g.genre, 20),
+      activite: clean(g.activite, 60),
+      raison: RAISONS_VITRINE.has(raison) ? raison : '',
+      priorite: entier(g.priorite, 0, 1000),
+      rang: entier(g.rang, 0, 50),
+      promo: entier(g.promo, 0, 100),
+      montant: Number.isFinite(montant) && montant >= 0 && montant < 100000 ? Math.round(montant * 100) / 100 : null,
+      personnes: entier(g.personnes, 0, 500),
+      reservationId: evenement === 'reservee' ? entier(g.reservation, 1, Number.MAX_SAFE_INTEGER) : null,
+    });
+  }
+  return lignes.length ? { centerId, visite, lignes } : null;
+}
+async function handleVitrine(req, res, body) {
+  if (enforceRateLimit(req, res, { scope: 'vitrine', limit: 120, windowMs: 600_000 })) return;
+  const envoi = gestesVitrine(body);
+  if (!envoi) { sendError(res, 400, 'Requête invalide.'); return; }
+  try {
+    getCenter(envoi.centerId);
+  } catch (error) {
+    sendError(res, 404, 'Centre inconnu.');
+    return;
+  }
+  const pool = getPool();
+  if (!pool) { sendJson(res, 202, { ok: true, enregistres: 0 }); return; }
+  try {
+    // Une « reservee » sans reservation de ce centre creee dans l heure ne
+    // compte pas : un navigateur ne fabrique pas un client.
+    const annoncees = envoi.lignes.filter((l) => l.evenement === 'reservee').map((l) => l.reservationId).filter(Boolean);
+    const reelles = new Set();
+    if (annoncees.length) {
+      const r = await pool.query("select id from reservations where center_id = $1 and id = any($2::bigint[]) and created_at > now() - interval '1 hour'", [envoi.centerId, annoncees]);
+      r.rows.forEach((row) => reelles.add(Number(row.id)));
+    }
+    const gardees = envoi.lignes.filter((l) => l.evenement !== 'reservee' || reelles.has(l.reservationId));
+    if (!gardees.length) { sendJson(res, 202, { ok: true, enregistres: 0 }); return; }
+    const valeurs = [];
+    const lignesSql = gardees.map((l, i) => {
+      const b = i * 13;
+      valeurs.push(envoi.centerId, envoi.visite, l.evenement, l.carte, l.genre, l.activite, l.raison, l.priorite, l.rang, l.promo, l.montant, l.personnes, l.reservationId);
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}, $${b + 13})`;
+    });
+    await pool.query(`insert into upsell_events (center_id, visite, evenement, carte, genre, activite, raison, priorite, rang, promo, montant, personnes, reservation_id) values ${lignesSql.join(', ')}`, valeurs);
+    sendJson(res, 201, { ok: true, enregistres: gardees.length });
+  } catch (error) {
+    // Une statistique perdue ne casse jamais le formulaire : elle laisse une trace.
+    console.error('[public-booking-meta] vitrine', error && (error.code || error.message));
+    sendJson(res, 202, { ok: true, enregistres: 0 });
+  }
 }
 
 // LEAD sur mesure : enregistré hors planning (table custom_requests), jamais
@@ -500,6 +577,10 @@ module.exports = async (req, res) => {
       return;
     }
     const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+    if (body?.kind === 'vitrine' && url.pathname.endsWith('/public-booking-meta')) {
+      await handleVitrine(req, res, body);
+      return;
+    }
     const isCustomRequest = body?.kind === 'custom-request' || url.pathname.endsWith('/custom-request');
     if (isCustomRequest) {
       await handleCustomRequest(req, res, body || {});
@@ -835,4 +916,4 @@ function buildCalendar(blocks, days, center, centerId, from = '') {
 // Expose pour les gates (scripts/availability-day-check.js,
 // scripts/wallonia-calendar-check.js, le mock du serveur de dev) : le verdict
 // se teste unitairement, sans reseau ni base.
-module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques };
+module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine };

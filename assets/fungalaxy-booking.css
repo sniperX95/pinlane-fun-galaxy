@@ -2358,54 +2358,99 @@ html.fg-pilote .fg { overflow: visible; }
 .fg-vitrine__titre { margin: 0; padding-right: 36px; font-family: var(--fg-display); font-weight: 400; font-size: clamp(30px, 4.6vw, 40px); line-height: 1.04; letter-spacing: 0.01em; text-transform: uppercase; text-wrap: balance; color: var(--fg-text); }
 .fg-vitrine__titre em { font-style: normal; color: var(--fg-purple-em); }
 .fg-vitrine__sous { margin: 10px 0 22px; font-size: 14px; color: var(--fg-muted); }
-.fg-vitrine__cartes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.fg-vitrine__cartes[data-n="1"] { grid-template-columns: minmax(0, 1fr); max-width: 340px; }
+/* LA MEILLEURE POUR VOUS (Movsar, 2026-10-07). Une offre en avant, photo
+   franche a gauche, sa raison sur un filet sarcelle ; les autres en rangees
+   qu une touche fait passer devant. Un seul « Ajouter ». La remise est un prix
+   barre et un taquet carre : ni degrade, ni pastille. */
+.fg-vitrine__cartes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .fg-vitrine__cartes[data-n="0"] { display: none; }
-.fg-vitrine__carte { display: flex; flex-direction: column; min-width: 0; background: var(--fg-card); border: 1px solid var(--fg-line); border-radius: 8px; transition: border-color 0.2s; }
-@media (hover: hover) { .fg-vitrine__carte:hover { border-color: var(--fg-purple-2); } }
-.fg-vitrine__photo { display: grid; place-items: center; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 7px 7px 0 0; background: #141414; color: var(--fg-purple-ink); }
+.fg-vitrine__carte { min-width: 0; }
+.fg-vitrine__carte.is-vedette { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); grid-template-areas: "photo corps" "photo achat"; background: var(--fg-card); border: 1px solid var(--fg-line-2); border-radius: 12px; overflow: hidden; }
+.fg-vitrine__photo { display: grid; place-items: center; overflow: hidden; background: #141414; color: var(--fg-purple-ink); }
 .fg-vitrine__photo img { width: 100%; height: 100%; object-fit: cover; }
 .fg-vitrine__photo svg { width: 44px; height: 44px; }
-.fg-vitrine__corps { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; padding: 14px 16px 0; }
-.fg-vitrine__nom { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; line-height: 1.25; color: var(--fg-text); }
+.is-vedette .fg-vitrine__photo { grid-area: photo; min-height: 100%; }
+.fg-vitrine__corps { grid-area: corps; display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 18px 20px 0; }
+.fg-vitrine__pour { font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-purple-ink); }
+.fg-vitrine__raison { display: flex; align-items: flex-start; gap: 8px; margin: 3px 0 5px; padding: 8px 10px; border-left: 2px solid var(--fg-teal); border-radius: 0 6px 6px 0; background: rgba(103, 186, 172, 0.09); font-size: 13.5px; font-weight: 600; line-height: 1.35; color: var(--fg-teal-ink); }
+.fg-vitrine__raison svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+.fg-vitrine__nom { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 700; line-height: 1.2; color: var(--fg-text); }
 .fg-vitrine__nom svg { width: 20px; height: 20px; flex: none; color: var(--fg-purple-ink); }
 .fg-vitrine__quoi { font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--fg-purple-ink); }
 .fg-vitrine__note { font-size: 12.5px; line-height: 1.45; color: var(--fg-muted); }
-/* LE NOMBRE DE PERSONNES D UNE OFFRE D ATTENTE (Movsar, 2026-10-01 : « s il
-   ca donne pour x personnes, ils peuvent choisir pour combien ») : un petit
-   compteur sous la note, le prix de la carte le suit. */
+/* LE NOMBRE DE PERSONNES (Movsar, 2026-10-01 : « s il ca donne pour x
+   personnes, ils peuvent choisir pour combien ») : le prix de la carte suit. */
 .fg-vitrine__qui { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .fg-vitrine__quimot { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-muted); }
 .fg-vitrine__stepper { flex: none; grid-template-columns: 44px 42px 44px; height: 44px; }
 .fg-vitrine__stepper .fg-stepper__btn { font-size: 18px; }
 .fg-vitrine__n { display: grid; place-items: center; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg-text); }
-.fg-vitrine__achat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 18px; }
-.fg-vitrine__prix { font-size: 22px; font-weight: 700; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.fg-vitrine__economie { display: block; max-width: 180px; margin-top: 4px; color: var(--fg-teal-ink); font-size: 12px; line-height: 1.4; }
-.fg-vitrine__ajouter { min-height: 46px; padding: 0 22px; }
+.fg-vitrine__achat { grid-area: achat; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 14px 20px 18px; }
+.fg-vitrine__chiffre { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fg-vitrine__montant { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.fg-vitrine__prix { font-size: 24px; font-weight: 700; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fg-vitrine__barre { order: -1; position: relative; font-size: 14px; font-weight: 600; color: var(--fg-faint); text-decoration: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fg-vitrine__barre::after { content: ""; position: absolute; left: -2px; right: -2px; top: 50%; height: 1.5px; background: currentColor; transform-origin: left center; }
+.fg-vitrine__remise { padding: 3px 6px; border-radius: 4px; background: var(--fg-teal); color: #04110f; font-size: 12px; font-weight: 800; font-style: normal; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fg-vitrine__etat { display: block; max-width: 220px; color: var(--fg-teal-ink); font-size: 12px; line-height: 1.4; }
+.fg-vitrine__etat:empty { display: none; }
+.fg-vitrine__ajouter { min-height: 48px; padding: 0 24px; }
+.fg-vitrine__aussi { margin: 10px 0 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-muted); }
+.fg-vitrine__voir { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto 16px; align-items: center; gap: 12px; width: 100%; min-height: 72px; padding: 8px 14px 8px 8px; border: 1px solid var(--fg-line); border-radius: 10px; background: var(--fg-card); color: var(--fg-text); text-align: left; transition: border-color 0.2s, background-color 0.2s, transform 0.2s var(--fg-ease-out); }
+.fg-vitrine__voir:active { transform: scale(0.99); }
+.fg-vitrine__ligne .fg-vitrine__photo { width: 56px; height: 56px; border-radius: 8px; }
+.fg-vitrine__ligne .fg-vitrine__photo svg { width: 26px; height: 26px; }
+.fg-vitrine__ltxt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fg-vitrine__ltxt .fg-vitrine__nom { font-size: 15px; }
+.fg-vitrine__ltxt small { font-size: 12.5px; line-height: 1.35; color: var(--fg-muted); }
+.fg-vitrine__ligne .fg-vitrine__montant { justify-content: flex-end; }
+.fg-vitrine__ligne .fg-vitrine__prix { font-size: 17px; }
+.fg-vitrine__ligne .fg-vitrine__barre { display: none; }
+.fg-vitrine__fleche { width: 16px; height: 16px; color: var(--fg-muted); transition: transform 0.25s var(--fg-ease), color 0.2s; }
+@media (hover: hover) {
+  .fg-vitrine__voir:hover { border-color: var(--fg-purple-2); background: #111; }
+  .fg-vitrine__voir:hover .fg-vitrine__fleche { color: var(--fg-text); transform: translateX(3px); }
+}
 .fg-vitrine__statut { margin: 14px 0 0; }
 .fg-vitrine__pied { display: flex; justify-content: center; margin-top: 22px; }
 html.fg-vitrine-ouverte:not(.fg-pilote), html.fg-vitrine-ouverte:not(.fg-pilote) body { overflow: hidden; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-vitrine:not([hidden]) .fg-vitrine__voile { animation: fg-voile 0.24s ease-out; }
   .fg-vitrine:not([hidden]) .fg-vitrine__panneau { animation: fg-pop-milieu 0.32s var(--fg-ease-out); }
-  .fg-vitrine:not([hidden]) .fg-vitrine__carte { animation: fg-rise 0.5s var(--fg-ease-out) both; animation-delay: calc(90ms * var(--i, 0) + 140ms); }
-  .fg-vitrine__cartes.is-calme .fg-vitrine__carte { animation: none; }
+  /* L entree, en une phrase : la photo se pose, la raison glisse sur son
+     filet, le nom monte ; puis le prix : l ancien se barre, le taquet de la
+     remise tombe. Les rangees suivent. Rien que de l opacite et des
+     transformations. */
+  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__photo img { animation: fg-vit-photo 0.9s var(--fg-ease-out) both; }
+  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__raison { animation: fg-vit-raison 0.5s var(--fg-ease-out) 0.16s both; }
+  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__nom,
+  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__quoi { animation: fg-rise 0.5s var(--fg-ease-out) 0.22s both; }
+  .fg-vitrine__cartes:not(.is-calme) .is-vedette .fg-vitrine__barre::after { animation: fg-vit-barre 0.34s var(--fg-ease-out) 0.5s both; }
+  .fg-vitrine__cartes:not(.is-calme) .fg-vitrine__remise { animation: fg-vit-taquet 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) 0.72s both; }
+  .fg-vitrine__cartes:not(.is-calme):not(.is-bascule) .fg-vitrine__ligne,
+  .fg-vitrine__cartes:not(.is-calme):not(.is-bascule) .fg-vitrine__aussi { animation: fg-rise 0.5s var(--fg-ease-out) both; animation-delay: calc(70ms * var(--i, 0) + 240ms); }
+  /* Une autre offre passe devant : elle entre par la droite, seule. */
+  .fg-vitrine__cartes.is-bascule .is-vedette { animation: fg-vit-bascule 0.4s var(--fg-ease-out) both; }
 }
-/* Sur telephone : une carte par rangee, la photo a gauche, comme une borne. */
+@keyframes fg-vit-photo { from { opacity: 0; scale: 1.08; } to { opacity: 1; scale: 1; } }
+@keyframes fg-vit-raison { from { opacity: 0; translate: -10px 0; } to { opacity: 1; translate: 0 0; } }
+@keyframes fg-vit-barre { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes fg-vit-taquet { from { opacity: 0; transform: scale(0.6) rotate(-8deg); } to { opacity: 1; transform: none; } }
+@keyframes fg-vit-bascule { from { opacity: 0; translate: 14px 0; } to { opacity: 1; translate: 0 0; } }
+/* Sur telephone : la photo en haut de l offre en avant, les rangees dessous. */
 @media (max-width: 560px) {
   .fg-vitrine__panneau { padding: 24px 18px 20px; }
   .fg-vitrine__sous { margin-bottom: 18px; }
-  .fg-vitrine__cartes, .fg-vitrine__cartes[data-n="1"] { grid-template-columns: minmax(0, 1fr); max-width: none; gap: 12px; }
-  .fg-vitrine__carte { display: grid; grid-template-columns: 96px minmax(0, 1fr); grid-template-areas: "photo corps" "photo achat"; }
-  .fg-vitrine__photo { grid-area: photo; aspect-ratio: auto; height: 100%; border-radius: 7px 0 0 7px; }
-  .fg-vitrine__corps { grid-area: corps; padding: 12px 14px 0; }
-  .fg-vitrine__achat { grid-area: achat; padding: 10px 14px 14px; flex-wrap: wrap; }
+  .fg-vitrine__carte.is-vedette { grid-template-columns: minmax(0, 1fr); grid-template-areas: "photo" "corps" "achat"; }
+  .is-vedette .fg-vitrine__photo { min-height: 0; aspect-ratio: 16 / 9; }
+  .fg-vitrine__corps { padding: 14px 16px 0; }
+  .fg-vitrine__achat { padding: 12px 16px 16px; flex-wrap: wrap; }
   .fg-vitrine__qui { flex-wrap: wrap; }
-  .fg-vitrine__nom { font-size: 16px; }
-  .fg-vitrine__nom svg { display: none; }
-  .fg-vitrine__prix { font-size: 19px; }
-  .fg-vitrine__ajouter { padding: 0 16px; }
+  .fg-vitrine__nom { font-size: 18px; }
+  .fg-vitrine__prix { font-size: 21px; }
+  .fg-vitrine__ajouter { padding: 0 18px; }
+  .fg-vitrine__voir { grid-template-columns: 48px minmax(0, 1fr) auto 14px; gap: 10px; padding: 8px 10px 8px 8px; }
+  .fg-vitrine__ligne .fg-vitrine__photo { width: 48px; height: 48px; }
 }
 
 /* --- Moins de mouvement -------------------------------------------------------- */

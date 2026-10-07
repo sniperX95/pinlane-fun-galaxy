@@ -3601,7 +3601,44 @@
   // L offre d attente (un sous-groupe attend son tour) ne s affiche plus a
   // l ecran des horaires : elle rejoint « Envie d un peu plus ? », avec le
   // nombre de personnes a choisir. Une seule offre d attente a la fois.
-  var plus = { enCours: '', refuses: {}, statut: null, annuler: null, personnes: {}, devis: {}, demandes: {} };
+  var plus = { enCours: '', refuses: {}, statut: null, annuler: null, personnes: {}, devis: {}, demandes: {}, vedette: '', vedetteSig: '', acceptees: {} };
+  // CE QUE LA FENETRE FAIT VRAIMENT (Movsar, 2026-10-07 : « tout repertorie
+  // dans les stats, qui a pris les add-on, les raisons [...] pour savoir les
+  // raisons qui font le plus prendre un add-on »). Chaque geste part avec la
+  // carte qu il touche : sa raison, sa place, sa remise prouvee, son montant.
+  // Rien de personnel : la visite est un identifiant tire au hasard pour cette
+  // page, jamais relie a un nom. Une statistique perdue ne gene jamais le
+  // client : envoi groupe, sans attente, erreur ignoree.
+  var VISITE = (function () {
+    try { var a = new Uint8Array(12); window.crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }
+    catch (e) { return ''; }
+  })();
+  var gestes = [], gestesMinuteur = 0;
+  function suivre(evenement, c, extra) {
+    if (!VISITE) return;
+    var g = { evenement: evenement };
+    if (c) {
+      var r = remiseDuPlus(c);
+      g.carte = String(c.id); g.genre = String(c.kind || ''); g.activite = String((c.patch && c.patch.activityId) || '');
+      g.raison = String((c.raison && c.raison.code) || ''); g.priorite = Number(c.priorite) || 0;
+      g.montant = montantDe(c); g.personnes = c.kind === 'formule' ? 0 : personnesDe(c);
+      if (r) g.promo = r.pourcent;
+    }
+    Object.keys(extra || {}).forEach(function (k) { g[k] = extra[k]; });
+    gestes.push(g);
+    clearTimeout(gestesMinuteur);
+    gestesMinuteur = setTimeout(envoyerGestes, 800);
+  }
+  function envoyerGestes() {
+    clearTimeout(gestesMinuteur);
+    while (gestes.length) {
+      var corps = JSON.stringify({ kind: 'vitrine', centerId: CENTER, visite: VISITE, gestes: gestes.splice(0, 20) });
+      var parti = false;
+      try { parti = Boolean(navigator.sendBeacon && navigator.sendBeacon('/api/public-booking-meta', new Blob([corps], { type: 'application/json' }))); } catch (e) { parti = false; }
+      if (!parti) fetch('/api/public-booking-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps, keepalive: true, credentials: 'omit' }).catch(function () {});
+    }
+  }
+  doc.addEventListener('visibilitychange', function () { if (doc.visibilityState === 'hidden') envoyerGestes(); });
   function cartesPlus() {
     var rep = state.creneau ? state.creneau.reponse : null;
     return ((rep && rep.complements) || []).filter(function (c) {
@@ -3628,11 +3665,12 @@
     var d = plus.devis[c.id];
     return d && d.cle === cleDemande() && d.cr === state.creneau && d.participants === personnesDe(c) ? d : null;
   }
+  // Le nombre de personnes pour lequel le serveur a chiffre la carte.
+  function personnesInitiales(c) { return Number(c.participants) || (c.kind === 'attente' ? attendentDe(c) : state.pax); }
   function plusPret(c) {
     if (c.kind === 'formule') return true;
     var b = bornesDuPlus(c), d = devisDuPlus(c);
-    var initial = Number(c.participants) || (c.kind === 'attente' ? attendentDe(c) : state.pax);
-    return b.max >= b.min && (d ? !d.pending && !d.error : personnesDe(c) === initial);
+    return b.max >= b.min && (d ? !d.pending && !d.error : personnesDe(c) === personnesInitiales(c));
   }
   function prixParPersonneDe(c) { return Number(c.prixParPersonne) > 0 ? Number(c.prixParPersonne) : Number(c.deltaPerPax) || 0; }
   function montantDe(c) { var d = devisDuPlus(c); return d && !d.pending && !d.error ? d.deltaTotal : c.kind === 'attente' ? Math.round(prixParPersonneDe(c) * personnesDe(c) * 100) / 100 : Number(c.deltaTotal) || 0; }
@@ -3760,7 +3798,8 @@
     state.dispo = j; state.dispoCle = cleDemande(); state.dispoTexte = JSON.stringify(j);
     state.creneau = creneauAvecDevis(slot, j);
     state.heure = slot.time;
-    plus.annuler = carte ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran } : null;
+    plus.annuler = carte ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran, carte: carte } : null;
+    if (carte) { plus.acceptees[carte.id] = carte; suivre('acceptee', carte); }
     // Le montant dit est celui que le serveur vient d appliquer, jamais
     // celui de la carte : les deux ne different que si un tarif a baisse
     // entre-temps, et la phrase reste vraie.
@@ -3831,6 +3870,7 @@
       return true;
     }
     if (e.target.closest('[data-plus-annuler]')) {
+      if (plus.annuler && plus.annuler.carte) { delete plus.acceptees[plus.annuler.carte.id]; suivre('annulee', plus.annuler.carte); }
       if (plus.annuler) changerPanier(plus.annuler.panier, null, ecran, 'Annulé : votre visite revient à ce qu’elle était, sans ' + plus.annuler.nom + '.');
       return true;
     }
@@ -4687,20 +4727,52 @@
     }
     return p ? '<img src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async">' : '<svg><use href="#' + ico + '"/></svg>';
   }
-  function economieDuPlus(c) {
-    var d = devisDuPlus(c), remise = d ? d.discount : c.discount;
+  // LA REMISE SE PROUVE OU NE S AFFICHE PAS (Movsar, 2026-10-07 : « prix
+  // barre et badge »). Le prix de reference vient du serveur : l offre du
+  // centre avant sa remise, le catalogue face au tarif d attente, une partie
+  // de laser achetee seule ; ou du devis qu il vient de rendre pour ce nombre
+  // de personnes. Jamais un pourcentage calcule ici sur une base devinee,
+  // jamais un prorata : un autre nombre sans devis qui le prouve, pas de prix
+  // barre.
+  function remiseDuPlus(c) {
+    var d = devisDuPlus(c), ref = 0;
+    if (d) {
+      if (d.pending || d.error) return null;
+      if (d.discount && Number(d.discount.referencePrice) > 0) ref = Number(d.discount.referencePrice);
+      // La reference de la carte ne vaut que pour le nombre qu elle a chiffre.
+      if (c.promo && d.participants === personnesInitiales(c)) ref = Math.max(ref, Number(c.promo.reference) || 0);
+    } else if (c.promo) ref = Number(c.promo.reference) || 0;
+    var montant = montantDe(c);
+    return ref > montant ? { reference: ref, pourcent: Math.round(100 * (ref - montant) / ref) } : null;
+  }
+  // Le prix d abord pour la voix (« +48 €, au lieu de 60 €, moins 20 % ») ;
+  // a l oeil, l ancien prix passe devant (order), barre.
+  function htmlMontant(c) {
+    var d = devisDuPlus(c), r = remiseDuPlus(c);
+    return '<b class="fg-vitrine__prix">' + (d && d.pending ? '…' : d && d.error ? 'À recalculer' : '+' + esc(euros(montantDe(c)))) + '</b>'
+      + (r ? '<s class="fg-vitrine__barre"><span class="sr-only">au lieu de </span>' + esc(euros(r.reference)) + '</s>'
+        + '<em class="fg-vitrine__remise"><span class="sr-only">soit </span>−' + r.pourcent + '&nbsp;%</em>' : '');
+  }
+  function etatDuPrix(c) {
+    var d = devisDuPlus(c);
     if (d && d.pending) return 'Vérification du prix…';
     if (d && d.error) return esc(d.error) + ' <button type="button" class="fg-vitrine__retry" data-plus-requote="' + esc(c.id) + '">Réessayer</button>';
-    return remise && Number(remise.discountAmount) > 0 ? 'Économie de ' + esc(euros(remise.discountAmount)) : '';
+    return '';
   }
+  function carteVitrineDe(id) { return $$('.fg-vitrine__carte[data-carte]', vitrineCartes).filter(function (li) { return li.dataset.carte === id; })[0] || null; }
   function rafraichirPrixDuPlus(c) {
-    var carte = $$('[data-plus]').filter(function (b) { return b.dataset.plus === c.id; })[0];
-    if (!carte) return;
-    var li = carte.closest('.fg-vitrine__carte'), d = devisDuPlus(c);
-    $('.fg-vitrine__prix', li).textContent = d && d.pending ? '…' : d && d.error ? 'À recalculer' : '+' + euros(montantDe(c));
-    $('.fg-vitrine__economie', li).innerHTML = economieDuPlus(c);
-    carte.disabled = Boolean(plus.enCours) || !plusPret(c);
-    carte.setAttribute('aria-label', 'Ajouter ' + nomDuPlus(c) + ' pour ' + euros(montantDe(c)) + ' de plus');
+    var li = carteVitrineDe(c.id);
+    if (!li) return;
+    $('.fg-vitrine__montant', li).innerHTML = htmlMontant(c);
+    var etat = $('.fg-vitrine__etat', li);
+    if (etat) etat.innerHTML = etatDuPrix(c);
+    var b = $('[data-plus]', li);
+    if (b) {
+      b.disabled = Boolean(plus.enCours) || !plusPret(c);
+      b.setAttribute('aria-label', 'Ajouter ' + nomDuPlus(c) + ' pour ' + euros(montantDe(c)) + ' de plus');
+    }
+    var voir = $('[data-vitrine-vedette]', li);
+    if (voir) voir.setAttribute('aria-label', libelleLigne(c));
   }
   function chiffrerDuPlus(c) {
     var ancien = plus.demandes[c.id];
@@ -4731,37 +4803,97 @@
         rafraichirPrixDuPlus(c);
       });
   }
-  function carteVitrine(c, i) {
-    var p = photoDuPlus(c);
-    var ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
-    var attente = c.kind === 'attente';
-    var duree = attente ? Math.trunc(Number((c.attente || {}).dureeOffre) || 0) : 0;
-    var quoi = attente ? (duree ? dureeExacte(duree) + ' ' : '') + 'pendant l’attente de votre tour' : motsServeur(c.addsLabel);
+  // Ce que l offre ajoute, en une ligne (« 1h de Duckpin Bowling »).
+  function quoiDuPlus(c) {
+    if (c.kind === 'attente') {
+      var duree = Math.trunc(Number((c.attente || {}).dureeOffre) || 0);
+      return (duree ? dureeExacte(duree) + ' ' : '') + 'pendant l’attente de votre tour';
+    }
+    var quoi = motsServeur(c.addsLabel);
     if (c.kind === 'configured') {
       var option = (c.patch && c.patch.options) || {};
       quoi = option.extraLaser ? quoi.replace(/ · \d+ joueurs$/, '') : option.duration ? heuresLabel(option.duration) : option.hours ? heuresLabel(option.hours) : option.minutes ? minutesLabel(option.minutes) : '';
       if (option.arcadeOfferId) { var ar = avecPanier(panierDe(c), function () { return reglageArcade(activite(c.patch.activityId)); }); if (ar) quoi = ar.mode === 'time' ? minutesLabel(ar.offer.minutes) + ' par carte' : credits(Number(ar.offer.credits) + Number(ar.offer.bonusCredits || 0)) + ' crédits par carte'; }
     }
-    var att = c.attente || {};
-    // Sans prix par personne, comme les autres offres de la fenetre (Movsar,
-    // 2026-09-29) : le compteur et le montant de la carte disent tout.
-    var note = attente
-      ? attendentDe(c) + ' personne' + (attendentDe(c) > 1 ? 's attendent' : ' attend') + ' leur tour' + (Number(att.minutes) > 0 ? ' (' + dureeExacte(att.minutes) + ')' : '')
-      : [personnesDe(c) === (Number(c.participants) || bornesDuPlus(c).max) ? c.totalLabel : '', c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
-    var bornes = bornesDuPlus(c), n = personnesDe(c), d = devisDuPlus(c);
-    var qui = c.kind !== 'formule' ? '<span class="fg-vitrine__qui"><span class="fg-vitrine__quimot" id="qui-' + esc(c.id) + '">' + (seCompteParEnfant(activite(c.patch.activityId)) ? 'Enfants' : 'Joueurs') + '</span>'
+    return quoi;
+  }
+  // Sans prix par personne, comme les autres offres de la fenetre (Movsar,
+  // 2026-09-29) : le compteur et le montant de la carte disent tout. La raison
+  // d une offre d attente dit deja qui attend : la note ne le repete pas.
+  function noteDuPlus(c) {
+    if (c.kind === 'attente') {
+      if (c.raison && c.raison.code === 'attente') return '';
+      var att = c.attente || {};
+      return attendentDe(c) + ' personne' + (attendentDe(c) > 1 ? 's attendent' : ' attend') + ' leur tour' + (Number(att.minutes) > 0 ? ' (' + dureeExacte(att.minutes) + ')' : '');
+    }
+    return [personnesDe(c) === (Number(c.participants) || bornesDuPlus(c).max) ? c.totalLabel : '', c.noteLabel].filter(Boolean).map(motsServeur).join(' · ');
+  }
+  function quiDuPlus(c) {
+    if (c.kind === 'formule') return '';
+    var bornes = bornesDuPlus(c), n = personnesDe(c);
+    return '<span class="fg-vitrine__qui"><span class="fg-vitrine__quimot" id="qui-' + esc(c.id) + '">' + (seCompteParEnfant(activite(c.patch.activityId)) ? 'Enfants' : 'Joueurs') + '</span>'
       + '<span class="fg-stepper fg-vitrine__stepper" role="group" aria-labelledby="qui-' + esc(c.id) + '">'
       + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="-1" data-carte="' + esc(c.id) + '" aria-label="Une personne de moins"' + (n <= bornes.min ? ' disabled' : '') + '>&minus;</button>'
       + '<output class="fg-vitrine__n" aria-live="polite">' + n + '</output>'
       + '<button type="button" class="fg-stepper__btn" data-vitrine-pas="1" data-carte="' + esc(c.id) + '" aria-label="Une personne de plus"' + (n >= bornes.max ? ' disabled' : '') + '>+</button>'
-      + '</span></span><small class="fg-vitrine__validite">' + (bornes.min === bornes.max ? bornes.min + ' participant' + (bornes.min > 1 ? 's' : '') : 'De ' + bornes.min + ' à ' + bornes.max + ' participants') + '</small>' : '';
-    return '<li class="fg-vitrine__carte" style="--i:' + i + '">'
+      + '</span></span><small class="fg-vitrine__validite">' + (bornes.min === bornes.max ? bornes.min + ' participant' + (bornes.min > 1 ? 's' : '') : 'De ' + bornes.min + ' à ' + bornes.max + ' participants') + '</small>';
+  }
+  // LA MEILLEURE POUR VOUS (Movsar, 2026-10-07). La raison est un fait du
+  // creneau retenu, ecrit par le serveur (qui attend et combien de temps, la
+  // pause entre deux activites, la partie de plus qui coute moins cher) ; son
+  // icone dit de quoi elle parle.
+  var ICONE_RAISON = { attente: 'i-users', pause: 'i-clock', suite: 'a-laser' };
+  // « La meilleure pour vous » est une affirmation : seule la premiere du
+  // serveur la porte. Une offre que le client fait passer devant n en est pas
+  // devenue la meilleure, elle garde sa raison et perd le titre.
+  function carteVedette(c, seule, enTete) {
+    var p = photoDuPlus(c), ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
+    var quoi = quoiDuPlus(c), note = noteDuPlus(c), raison = c.raison && c.raison.titre ? motsServeur(c.raison.titre) : '';
+    return '<li class="fg-vitrine__carte is-vedette" data-carte="' + esc(c.id) + '">'
       + '<span class="fg-vitrine__photo" aria-hidden="true">' + imageDuPlus(c, p, ico) + '</span>'
-      + '<span class="fg-vitrine__corps"><b class="fg-vitrine__nom"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>' + esc(nomDuPlus(c)) + '</b>'
+      + '<span class="fg-vitrine__corps">'
+      + (seule || !enTete ? '' : '<span class="fg-vitrine__pour">La meilleure pour vous</span>')
+      + (raison ? '<span class="fg-vitrine__raison"><svg aria-hidden="true"><use href="#' + (ICONE_RAISON[c.raison.code] || 'i-info') + '"/></svg>' + esc(raison) + '</span>' : '')
+      + '<b class="fg-vitrine__nom"><svg aria-hidden="true"><use href="#' + ico + '"/></svg>' + esc(nomDuPlus(c)) + '</b>'
       + (quoi ? '<span class="fg-vitrine__quoi">' + esc(quoi) + '</span>' : '')
-      + (note ? '<small class="fg-vitrine__note">' + esc(note) + '</small>' : '') + qui + '</span>'
-      + '<span class="fg-vitrine__achat"><span><b class="fg-vitrine__prix">' + (d && d.pending ? '…' : '+' + esc(euros(montantDe(c)))) + '</b><small class="fg-vitrine__economie">' + economieDuPlus(c) + '</small></span>'
+      + (note ? '<small class="fg-vitrine__note">' + esc(note) + '</small>' : '') + quiDuPlus(c) + '</span>'
+      + '<span class="fg-vitrine__achat"><span class="fg-vitrine__chiffre"><span class="fg-vitrine__montant">' + htmlMontant(c) + '</span><small class="fg-vitrine__etat">' + etatDuPrix(c) + '</small></span>'
       + '<button type="button" class="fg-btn fg-vitrine__ajouter" data-plus="' + esc(c.id) + '"' + (!plusPret(c) ? ' disabled' : '') + ' aria-label="Ajouter ' + esc(nomDuPlus(c)) + ' pour ' + esc(euros(montantDe(c))) + ' de plus">Ajouter</button></span></li>';
+  }
+  // Les autres offres : une rangee chacune, que l on touche pour la voir en
+  // avant (son compteur, son detail, son « Ajouter »).
+  function libelleLigne(c) {
+    var dit = c.raison && c.raison.titre ? motsServeur(c.raison.titre) : quoiDuPlus(c), d = devisDuPlus(c);
+    return 'Voir ' + nomDuPlus(c) + (dit ? ', ' + dit : '') + ', ' + (d && d.pending ? 'prix en vérification' : euros(montantDe(c)) + ' de plus');
+  }
+  function ligneVitrine(c, i) {
+    var p = photoDuPlus(c), ico = c.kind === 'formule' ? 'a-formule' : icone(c.patch.activityId);
+    var dit = c.raison && c.raison.titre ? motsServeur(c.raison.titre) : quoiDuPlus(c);
+    return '<li class="fg-vitrine__carte fg-vitrine__ligne" data-carte="' + esc(c.id) + '" style="--i:' + i + '">'
+      + '<button type="button" class="fg-vitrine__voir" data-vitrine-vedette="' + esc(c.id) + '" aria-label="' + esc(libelleLigne(c)) + '">'
+      + '<span class="fg-vitrine__photo" aria-hidden="true">' + imageDuPlus(c, p, ico) + '</span>'
+      + '<span class="fg-vitrine__ltxt" aria-hidden="true"><b class="fg-vitrine__nom">' + esc(nomDuPlus(c)) + '</b>' + (dit ? '<small>' + esc(dit) + '</small>' : '') + '</span>'
+      + '<span class="fg-vitrine__montant" aria-hidden="true">' + htmlMontant(c) + '</span>'
+      + '<svg class="fg-vitrine__fleche" aria-hidden="true"><use href="#i-arrow"/></svg>'
+      + '</button></li>';
+  }
+  // L offre en avant : celle que le client a touchee, tant qu elle est la ;
+  // sinon la premiere du serveur, qui les range par la force de leur raison.
+  function vedetteDe(cartes) {
+    return cartes.filter(function (c) { return c.id === plus.vedette; })[0] || cartes[0] || null;
+  }
+  function basculerVedette(id) {
+    if (plus.enCours || plus.vedette === id) return;
+    var c = cartesPlus().filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    var avant = $$('.fg-vitrine__carte[data-carte]', vitrineCartes).map(function (li) { return li.dataset.carte; }).indexOf(id);
+    plus.vedette = id;
+    rendreVitrine('bascule');
+    suivre('vedette', c, { rang: Math.max(0, avant) });
+    var ajouter = $('.is-vedette [data-plus]', vitrineCartes);
+    (ajouter && !ajouter.disabled ? ajouter : vitrinePanneau).focus({ preventScroll: true });
+    if (vitrinePanneau.scrollTop > 0) vitrinePanneau.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+    dire('En avant : ' + nomDuPlus(c) + ', ' + euros(montantDe(c)) + ' de plus.');
   }
   // Le compteur d une offre d attente : le nombre, le prix et le bouton
   // suivent sur place, sans redessiner la fenetre (le focus reste).
@@ -4781,12 +4913,19 @@
     if ((btn.disabled) && $('[data-vitrine-pas]:not([disabled])', carte)) $('[data-vitrine-pas]:not([disabled])', carte).focus({ preventScroll: true });
     dire(n + ' personne' + (n > 1 ? 's' : '') + ', vérification du prix.');
   }
-  // `calme` : redessinee apres un refus, ses cartes ne rejouent pas leur entree.
-  function rendreVitrine(calme) {
-    var cartes = cartesPlus();
-    vitrineCartes.innerHTML = cartes.map(carteVitrine).join('');
+  // `mode` : true, redessinee apres un refus (rien ne rejoue son entree) ;
+  // 'bascule', une autre offre passe devant (elle seule entre) ; sinon,
+  // l ouverture.
+  function rendreVitrine(mode) {
+    var cartes = cartesPlus(), vedette = vedetteDe(cartes);
+    plus.vedette = vedette ? vedette.id : '';
+    var autres = cartes.filter(function (c) { return c !== vedette; });
+    vitrineCartes.innerHTML = (vedette ? carteVedette(vedette, !autres.length, vedette === cartes[0]) : '')
+      + (autres.length ? '<li class="fg-vitrine__aussi" aria-hidden="true" style="--i:1">Autres options</li>' : '')
+      + autres.map(function (c, i) { return ligneVitrine(c, i + 1); }).join('');
     vitrineCartes.dataset.n = String(cartes.length);
-    vitrineCartes.classList.toggle('is-calme', Boolean(calme));
+    vitrineCartes.classList.toggle('is-calme', mode === true);
+    vitrineCartes.classList.toggle('is-bascule', mode === 'bascule');
     var s = plus.statut && plus.statut.ecran === 'recap' && plus.statut.ton !== 'ok' ? plus.statut : null;
     vitrineStatut.textContent = s ? s.texte : '';
     vitrineStatut.dataset.ton = s ? s.ton : '';
@@ -4806,9 +4945,15 @@
   function ouvrirVitrine() {
     if (!vitrine || vitrineOuverte() || !cartesPlus().length) return;
     vitrineVues[signatureVitrine()] = 1;
+    // D autres offres que la derniere fois : la meilleure repasse devant.
+    if (plus.vedetteSig !== signatureVitrine()) { plus.vedette = ''; plus.vedetteSig = signatureVitrine(); }
     vitrineRetour = doc.activeElement;
     vitrine.hidden = false;
     rendreVitrine(false);
+    $$('.fg-vitrine__carte[data-carte]', vitrineCartes).forEach(function (li, rang) {
+      var c = cartesPlus().filter(function (x) { return x.id === li.dataset.carte; })[0];
+      if (c) suivre('vue', c, { rang: rang });
+    });
     pageInerte(true);
     root.classList.add('fg-vitrine-ouverte');
     placerVitrine(true);
@@ -4844,19 +4989,23 @@
   }
   if (vitrine) {
     vitrine.addEventListener('click', function (e) {
-      if (e.target.closest('[data-vitrine-fermer]')) { fermerVitrine(true); return; }
+      if (e.target.closest('[data-vitrine-fermer]')) { suivre('fermee'); fermerVitrine(true); return; }
+      var voir = e.target.closest('[data-vitrine-vedette]');
+      if (voir) { basculerVedette(voir.dataset.vitrineVedette); return; }
       var pas = e.target.closest('[data-vitrine-pas]');
       if (pas) { if (!pas.disabled) changerPersonnes(pas); return; }
       if (e.target.closest('[data-plus-requote]')) { surPlus(e, 'recap'); return; }
       var b = e.target.closest('[data-plus]');
       if (!b || b.disabled) return;
       b.classList.add('is-busy');
+      var ajoutee = cartesPlus().filter(function (x) { return x.id === b.dataset.plus; })[0];
+      if (ajoutee) suivre('ajout', ajoutee, { rang: 0 });
       surPlus(e, 'recap');
     });
     // Echap ferme ; Tab tourne dans la fenetre.
     doc.addEventListener('keydown', function (e) {
       if (!vitrineOuverte()) return;
-      if (e.key === 'Escape') { e.preventDefault(); fermerVitrine(true); return; }
+      if (e.key === 'Escape') { e.preventDefault(); suivre('fermee'); fermerVitrine(true); return; }
       if (e.key !== 'Tab') return;
       var f = $$('button:not([disabled]), [href]', vitrinePanneau);
       if (!f.length) { e.preventDefault(); vitrinePanneau.focus(); return; }
@@ -5098,6 +5247,12 @@
       }
     }
     aller('fin');
+    Object.keys(plus.acceptees).forEach(function (id) {
+      var c = plus.acceptees[id], act = c.patch && c.patch.activityId;
+      if (act && itemsFin.some(function (it) { return it.activityId === act; })) suivre('reservee', c, { reservation: Number(r.id) || 0 });
+    });
+    plus.acceptees = {};
+    envoyerGestes();
     // La mesure de conversion pour le site hote : relue dans le dossier cree,
     // sans aucune donnee personnelle.
     poster({ type: 'pinlane:booking', detail: {

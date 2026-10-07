@@ -284,6 +284,11 @@ const MIGRATIONS = [
     file: 'database/encaisse-absence-schema.sql',
     description: "Ce qui a vraiment ete encaisse (reservations.amount_paid, discount_reason) et le groupe qui n est pas venu (absent_at). Colonnes additives ; un trigger efface le montant quand le dossier n est plus paye et l absence quand le groupe est pointe arrive ou paye. Rollback : database/rollbacks/0056_encaisse_absence.down.sql (garde les colonnes)",
   },
+  {
+    id: '0057_upsell_events',
+    file: 'database/upsell-events-schema.sql',
+    description: "Les gestes du client dans la fenetre des offres de fin de reservation (vue, mise en avant, ajout, accepte, annule, ferme, reserve), avec la raison de chaque offre, son rang et sa remise prouvee : de quoi savoir quelles raisons font prendre un add-on. Aucune donnee personnelle (visite = identifiant au hasard). Table additive ; retour : database/rollbacks/0057_upsell_events.down.sql.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

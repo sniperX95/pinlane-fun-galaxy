@@ -106,8 +106,8 @@ async function main() {
     ok(Boolean(insert) && !insert.sql.includes(VISITE) && !insert.sql.includes('laser_game') && insert.valeurs.length === 26 && insert.valeurs.includes(4201) && !insert.valeurs.includes(9999),
       'une seule requete, parametree : rien du client dans le texte SQL', insert ? insert.sql.slice(0, 120) : 'aucune insertion');
     const verif = requetes.find((q) => /from reservations/i.test(q.sql));
-    ok(Boolean(verif) && /center_id = \$1/.test(verif.sql) && /interval '1 hour'/.test(verif.sql) && verif.valeurs[0] === 'libramont',
-      'la reservation annoncee se verifie dans CE centre, creee dans l heure', verif ? verif.sql : 'aucune verification');
+    ok(Boolean(verif) && /center_id = \$1/.test(verif.sql) && /interval '1 hour'/.test(verif.sql) && /channel, ''\) not in \('sim-/.test(verif.sql) && verif.valeurs[0] === 'libramont',
+      'la reservation annoncee se verifie dans CE centre, creee dans l heure, et jamais une reservation de simulation', verif ? verif.sql : 'aucune verification');
     const sansBase = charger([], { sansBase: true });
     const r2 = await poster(sansBase.api, { kind: 'vitrine', centerId: 'libramont', visite: VISITE, gestes: [geste('vue')] });
     ok(r2.status === 202 && r2.json && r2.json.enregistres === 0, 'sans base : rien ne s ecrit, la reponse le dit (202)', JSON.stringify(r2));

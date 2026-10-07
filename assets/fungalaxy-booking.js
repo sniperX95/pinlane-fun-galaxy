@@ -642,15 +642,53 @@
     }
     return '<div class="fg-card__info fg-for__info"><p class="fg-card__rot">' + esc(bref) + '</p>' + boutonInfo('data-formula-info', f.id, f.name, sections, image) + '</div>';
   }
+  // LA FICHE D UNE ACTIVITE (Movsar, 2026-10-07 : « description complete quand
+  // meme », mais belle, jamais toute la page, et pas « IA »). Le texte reste
+  // mot pour mot celui des sections, que les gates comparent a data-info-text :
+  // seules des balises s ajoutent, pour mettre le prix en avant, poser les
+  // conditions en tuiles et les tarifs en liste.
+  var GENRES_INFO = { 'Le tarif': 'lead', 'Votre sélection': 'lead', 'Accès et participants': 'faits', 'Les offres disponibles': 'tarifs', 'Ce qui est inclus': 'inclus', 'À savoir': 'note' };
+  function montantsEnAvant(texte) { return esc(texte).replace(/\d[\d   .,]*\s?€/g, function (m) { return '<b class="fg-info-num">' + m + '</b>'; }); }
+  function ligneCoupee(l, classe) {
+    var i = l.indexOf(' : '), k, sep, v;
+    if (i > 0) { k = l.slice(0, i); sep = ' : '; v = l.slice(i + 3); }
+    else { var m = /^(Au moins|Dès|Jusqu’à) (.+)$/.exec(l); if (!m) return '<p class="' + classe + '"><span class="' + classe + '__v">' + esc(l) + '</span></p>'; k = m[1]; sep = ' '; v = m[2]; }
+    var fin = classe === 'fg-info-fait' && /\.$/.test(v) ? '.' : '';
+    if (fin) v = v.slice(0, -1);
+    return '<p class="' + classe + '"><span class="' + classe + '__k">' + esc(k) + '</span><span class="fg-info-sep">' + sep + '</span><span class="' + classe + '__v">' + esc(v) + (fin ? '<span class="fg-info-sep">.</span>' : '') + '</span></p>';
+  }
+  function htmlSectionInfo(s) {
+    var genre = GENRES_INFO[s.titre] || 'texte';
+    var lignes = s.lignes.filter(Boolean).map(function (l, i) {
+      if (genre === 'lead') return '<p' + (i ? '' : ' class="fg-info-prix"') + '>' + montantsEnAvant(l) + '</p>';
+      if (genre === 'faits') return ligneCoupee(l, 'fg-info-fait');
+      if (genre === 'tarifs') return ligneCoupee(l, 'fg-info-tarif');
+      return '<p>' + esc(l) + '</p>';
+    });
+    return '<section class="fg-info-section fg-info-section--' + genre + '"><h3>' + esc(s.titre) + '</h3>\n' + lignes.join('\n\n') + '</section>';
+  }
   function placerInfoFenetre(demander) {
-    if (!activityDialog || !activityDialog.open || !EMBED) return;
+    if (!activityDialog || !activityDialog.open) return;
+    // Sur telephone, la fiche est un tiroir pose en bas de ce qu on voit.
+    var tiroir = window.innerWidth < 600;
+    activityDialog.classList.toggle('is-sheet', tiroir);
+    if (!EMBED) return;
     activityDialog.classList.toggle('is-short', ecranHote > 0 && ecranHote <= 500);
+    if (tiroir) {
+      var haut = 0, bas = window.innerHeight;
+      if (ecranHote && hautCadre !== null) { haut = Math.max(0, -hautCadre); bas = Math.min(window.innerHeight, ecranHote - hautCadre); }
+      if (bas <= haut) return;
+      activityDialog.style.maxHeight = Math.max(120, bas - haut - 16) + 'px';
+      activityDialog.style.top = Math.round(bas - 8) + 'px';
+      return;
+    }
     centrerDansLaVue(activityDialog, demander);
     if (ecranHote && hautCadre !== null) {
       var debutVisible = Math.max(0, -hautCadre), finVisible = Math.min(window.innerHeight, ecranHote - hautCadre);
       if (finVisible > debutVisible) {
         var hauteurMax = Math.max(80, Math.min(ecranHote - 24, finVisible - debutVisible - 16));
         activityDialog.style.maxHeight = hauteurMax + 'px';
+        activityDialog.style.setProperty('--fi-max', hauteurMax + 'px');
         var demiHauteur = Math.min(activityDialog.offsetHeight, hauteurMax) / 2;
         activityDialog.style.top = Math.round(Math.max(debutVisible + demiHauteur + 8, Math.min(finVisible - demiHauteur - 8, ecranHote / 2 - hautCadre))) + 'px';
       }
@@ -672,7 +710,7 @@
     if (!activityDialog) {
       activityDialog = doc.createElement('dialog'); activityDialog.className = 'fg-info-dialog';
       activityDialog.setAttribute('aria-labelledby', 'fgInfoTitle');
-      activityDialog.innerHTML = '<div class="fg-info-hero"><img class="fg-info-photo" alt=""><button type="button" class="fg-info-close" aria-label="Fermer les informations">×</button></div><div class="fg-info-body" tabindex="0" role="region" aria-labelledby="fgInfoTitle"><h2 id="fgInfoTitle"></h2><div class="fg-info-text"></div></div>';
+      activityDialog.innerHTML = '<div class="fg-info-hero"><img class="fg-info-photo" alt=""></div><span class="fg-info-grip" aria-hidden="true"></span><button type="button" class="fg-info-close" aria-label="Fermer les informations"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button><div class="fg-info-body" tabindex="0" role="region" aria-labelledby="fgInfoTitle"><h2 id="fgInfoTitle"></h2><div class="fg-info-text"></div></div>';
       doc.body.appendChild(activityDialog);
       if ('ResizeObserver' in window) infoResizeObserver = new ResizeObserver(function () { placerInfoFenetre(false); });
       $('.fg-info-photo', activityDialog).addEventListener('load', function () { placerInfoFenetre(false); });
@@ -685,18 +723,18 @@
         ev.preventDefault(); accessibles[prochain].focus({ preventScroll: true });
       });
       activityDialog.addEventListener('click', function (ev) { var r = activityDialog.getBoundingClientRect(); if (ev.target === activityDialog && (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom)) activityDialog.close(); });
-      activityDialog.addEventListener('close', function () { if (infoResizeObserver) infoResizeObserver.disconnect(); infoCentreDemande = false; doc.body.style.overflow = activityDialog._overflow; activityDialog.style.top = ''; activityDialog.style.maxHeight = ''; var type = infoOpener && infoOpener.dataset.formulaInfo ? 'formula' : 'activity'; var id = infoOpener && infoOpener.dataset[type + 'Info']; var focus = infoOpener && (infoOpener.isConnected ? infoOpener : $('[data-' + type + '-info="' + id + '"]', $('.fg-scene.is-active') || doc)); if (focus) focus.focus({ preventScroll: true }); });
+      activityDialog.addEventListener('close', function () { if (infoResizeObserver) infoResizeObserver.disconnect(); infoCentreDemande = false; doc.body.style.overflow = activityDialog._overflow; var type = infoOpener && infoOpener.dataset.formulaInfo ? 'formula' : 'activity'; var id = infoOpener && infoOpener.dataset[type + 'Info']; var focus = infoOpener && (infoOpener.isConnected ? infoOpener : $('[data-' + type + '-info="' + id + '"]', $('.fg-scene.is-active') || doc)); if (focus) focus.focus({ preventScroll: true }); });
     }
     infoOpener = btn;
     $('#fgInfoTitle', activityDialog).textContent = btn.dataset.infoTitle;
     var contenu = $('.fg-info-text', activityDialog), sections;
     try { sections = JSON.parse(btn.dataset.infoSections || 'null'); } catch (_) { sections = null; }
-    if (sections) contenu.innerHTML = sections.map(function (s) { return '<section class="fg-info-section' + (s.titre === 'Les offres disponibles' ? ' fg-info-section--offers' : s.titre === 'À savoir' ? ' fg-info-section--note' : '') + '"><h3>' + esc(s.titre) + '</h3>\n' + s.lignes.filter(Boolean).map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('\n\n') + '</section>'; }).join('\n\n');
+    if (sections) contenu.innerHTML = sections.map(htmlSectionInfo).join('\n\n');
     else contenu.textContent = btn.dataset.infoText;
     var image = $('.fg-info-photo', activityDialog), centre = meta && meta.center && meta.center.id || CENTER;
     var sujet = btn.dataset.infoImage || btn.dataset.activityInfo;
     var p = centre === 'libramont' ? photo(sujet) : centre === 'gembloux' && sujet === 'golf_oclock' ? 'gembloux-golf-salle' : '';
-    image.hidden = !p; $('.fg-info-hero', activityDialog).classList.toggle('has-photo', !!p); if (p) { image.src = '/assets/fungalaxy/' + p + '-800.webp'; image.alt = btn.dataset.infoTitle; } else { image.removeAttribute('src'); image.alt = ''; }
+    image.hidden = !p; $('.fg-info-hero', activityDialog).classList.toggle('has-photo', !!p); activityDialog.classList.toggle('has-photo', !!p); if (p) { image.src = '/assets/fungalaxy/' + p + '-800.webp'; image.alt = btn.dataset.infoTitle; } else { image.removeAttribute('src'); image.alt = ''; }
     activityDialog._overflow = doc.body.style.overflow; doc.body.style.overflow = 'hidden';
     activityDialog.showModal(); $('.fg-info-body', activityDialog).scrollTop = 0; placerInfoFenetre(false); $('.fg-info-close', activityDialog).focus({ preventScroll: true });
     if (infoResizeObserver) infoResizeObserver.observe(activityDialog);

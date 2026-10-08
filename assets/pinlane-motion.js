@@ -210,6 +210,28 @@
     }
   }
 
+  /* ---- UNE ENTREE FINIE NE SE REJOUE PAS (2026-10-08) --------------------
+     Une classe d entree (pl-in de la cascade, pl-arrive, pl-pop) restait sur
+     la carte apres son animation. Or le repaint invisible coupe toutes les
+     animations le temps du rendu (`.is-repaint * { animation: none }`) : en se
+     retirant, il rendait leur animation aux cartes qui gardaient la classe, et
+     elle repartait de zero. Le tic de la minute redessine la liste du planning
+     dans un repaint : trois cartes y rejouaient leur entree TOUTES LES MINUTES
+     (sonde du 2026-10-08, refresh-invisible-check [1b]). Une entree finie, ou
+     coupee, n a plus rien a dire : sa classe part avec elle, et le delai de la
+     cascade aussi. Ce retrait est une ecriture du motion (CLASSES_DU_MOTION,
+     app-main.js) : il ne fait pas reconstruire la liste au rendu suivant. */
+  var ENTREES = { plIn: 'pl-in', plFlash: 'pl-arrive', plPop: 'pl-pop' };
+  function entreeFinie(e) {
+    var classe = ENTREES[e.animationName];
+    var el = e.target;
+    if (!classe || !el || !el.classList || !el.classList.contains(classe)) return;
+    el.classList.remove(classe);
+    if (classe === 'pl-in' && el.style && el.style.animationDelay) el.style.animationDelay = '';
+  }
+  document.addEventListener('animationend', entreeFinie, true);
+  document.addEventListener('animationcancel', entreeFinie, true);
+
   /* ---- CE QUI VIENT D'ARRIVER -------------------------------------------
      Une reservation tombee du site pendant le service doit se voir DANS la
      liste et DANS le planning, pas seulement dans un bandeau en coin qu'on rate

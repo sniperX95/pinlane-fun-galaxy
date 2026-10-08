@@ -56,14 +56,14 @@ const checks = `
   // v5 (2026-10-08) : chaque activite a sa ligne ; les joueurs du bowling et
   // du laser vivent dans leur detail, que « Tout regler » ouvre. Le compteur
   // se lit sur SA ligne : la valeur ET l activite qui la porte.
-  const lireCompteurs=()=>pg.evaluate(()=>{const parLigne={};for(const ligne of document.querySelectorAll('.qb-liste [data-rv-ligne]'))parLigne[ligne.dataset.rvLigne]=[...ligne.querySelectorAll('.qb-visit-compteur .qb-step-valeur')].map(e=>e.textContent.trim()).join(',');return {parLigne,total:document.querySelectorAll('.qb-liste .qb-visit-compteur .qb-step-valeur').length};});
+  const lireCompteurs=()=>pg.evaluate(()=>{const parLigne={};let total=0;for(const ligne of document.querySelectorAll('#quickBookOverlay .rv-lignes > [data-rv-ligne]')){const id=ligne.dataset.rvLigne;const compteur=ligne.querySelector('.rv-joueurs-l .rv-qte')||ligne.querySelector('.rv-lc-h .rv-qte[aria-label$="joueurs"], .rv-lc-h .rv-qte[aria-label$="enfants"]');if(!compteur)continue;total+=1;parLigne[id]=compteur.querySelector('b').textContent.trim()+' / '+quickBookState.pax;}return {parLigne,total};});
   const counters=await lireCompteurs();
   ok(counters.total===8&&JSON.stringify(counters.parLigne)===JSON.stringify({bowling:'6 / 18',laser_game:'4 / 18',minigolf_blacklight:'3 / 18',billards:'8 / 18',arcade_time:'5 / 18',playground:'2 / 18',duckpin_bowling:'6 / 18',fun_run:'4 / 18'}),'live quickbook all8 counters retain distinct counts: '+JSON.stringify(counters));
   for(const width of [1440,390]) {
     await pg.setViewportSize({width,height:900});
-    const min=await pg.evaluate(()=>Math.min(...Array.from(document.querySelectorAll('.qb-liste .qb-step-btn')).flatMap(b=>[b.getBoundingClientRect().width,b.getBoundingClientRect().height])));
+    const min=await pg.evaluate(()=>Math.min(...Array.from(document.querySelectorAll('#quickBookOverlay .rv-qte button')).flatMap(b=>[b.getBoundingClientRect().width,b.getBoundingClientRect().height])));
     ok(min>=44,'counter targets at '+width+'px: '+min+'px');
-    const clipped=await pg.evaluate(()=>[...document.querySelectorAll('.qb-liste .qb-visit-compteur')].some(el=>el.getBoundingClientRect().right>innerWidth));
+    const clipped=await pg.evaluate(()=>[...document.querySelectorAll('#quickBookOverlay .rv-qte')].some(el=>el.getBoundingClientRect().right>innerWidth));
     ok(!clipped,'participant controls fit '+width+'px viewport');
     await pg.screenshot({path:p.join(REPO,'tmp','staff-participants-'+width+'.png')});
   }

@@ -380,7 +380,13 @@
         }
         anime(carte, [{ transform: 'translate(' + dx + 'px,' + dy + 'px)' + (change ? ' scale(.97)' : '') }, { transform: 'none' }], { duration: change ? DUREE + 80 : DUREE, easing: COURBE });
         if (change) {
-          (function (c) { window.setTimeout(function () { c.classList.add('pl-arrive'); }, DUREE + 60); }(carte));
+          // ELLE GLISSE, ELLE NE S ALLUME PAS (2026-10-08). Le trajet dit deja
+          // ou va la carte ; un allumage a l arrivee ajoutait une animation a
+          // la coche (Movsar : « aucune animation »). Il ne se voyait qu une
+          // fois par carte tant que sa classe restait posee ; depuis que la
+          // classe part en fin d animation (2e684d8), il rejouait a chaque
+          // passage, par exemple une resa « En retard » cochee qui passe
+          // « Sur place ». L allumage reste aux cartes trop loin pour glisser.
           var bd = carte.closest('.gc-section') ? carte.closest('.gc-section').querySelector('.gc-band') : null;
           if (bd) bandeauxTouches.push(bd);
         }

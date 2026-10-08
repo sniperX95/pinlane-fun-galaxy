@@ -222,7 +222,7 @@ async function main() {
       if (phone) phone.focus();
     }, { date: TEST_DATE });
     // UN SEUL clic réel sur « Créer la réservation »
-    await page.click('#quickBookOverlay .qb-btn-save');
+    await page.click('#rvCreer');
     await page.waitForFunction(() => window.__RES_POSTS__ && window.__RES_POSTS__.length >= 1, null, { timeout: 5000 }).catch(() => {});
     const postsAfterOneClick = await page.evaluate(() => window.__RES_POSTS__.length);
     assert(postsAfterOneClick === 1, `1 clic (champ tél. focus) → exactement 1 POST (obtenu ${postsAfterOneClick})`);
@@ -352,7 +352,7 @@ async function main() {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
       renderQuickBook();
     }, { date: TEST_DATE });
-    const paxSelector = '#quickBookOverlay input[type="number"]';
+    const paxSelector = '#qbPax';
     await page.click(paxSelector);
     await page.evaluate((sel) => { const el = document.querySelector(sel); el.focus(); el.value = ''; }, paxSelector);
     // Tape « 40 » chiffre par chiffre.
@@ -363,7 +363,10 @@ async function main() {
     }, paxSelector);
     assert(paxStep.focused && paxStep.value === '40' && paxStep.statePax === 40, `après « 40 » : focus conservé, champ = 40, état = 40 (obtenu focus=${paxStep.focused} val=${paxStep.value} pax=${paxStep.statePax})`);
     // Backspace jusqu'à vide : PAS de « 1 » forcé pendant la frappe, focus conservé.
+    // v5 : le champ a la largeur de ses chiffres ; un clic au milieu pose le
+    // curseur entre « 4 » et « 0 ». On efface depuis la fin, comme le doigt.
     await page.click(paxSelector);
+    await page.keyboard.press('End');
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Backspace');
     paxStep = await page.evaluate((sel) => {
@@ -375,6 +378,12 @@ async function main() {
     await page.evaluate((sel) => { document.querySelector(sel).blur(); }, paxSelector);
     const paxBlur = await page.evaluate((sel) => ({ value: document.querySelector(sel).value, statePax: quickBookState.pax }), paxSelector);
     assert(paxBlur.value === '1' && paxBlur.statePax === 1, `au blur : valeur normalisée à 1 (obtenu val=${paxBlur.value} pax=${paxBlur.statePax})`);
+    // Toucher le nombre le selectionne en entier : la frappe le REMPLACE
+    // (« 1 » puis 15 donne 15, pas 151 ni 115).
+    await page.click(paxSelector);
+    await page.keyboard.type('15', { delay: 20 });
+    const remplace = await page.evaluate((sel) => ({ value: document.querySelector(sel).value, statePax: quickBookState.pax }), paxSelector);
+    assert(remplace.value === '15' && remplace.statePax === 15, `toucher le nombre puis taper le remplace (obtenu val=${remplace.value} pax=${remplace.statePax})`);
     await page.evaluate(() => closeQuickBook());
 
     // ============ CHANTIER 4 : « Plus d'options » repensé + email en essentiel ============
@@ -383,13 +392,21 @@ async function main() {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
       quickBookState.moreOpen = false;
       renderQuickBook();
-      // v5 (2026-10-08) : le repli n est plus une region a part. Chaque ligne
-      // ouvre son detail (.rv-lc-d) au chevron, « Tout régler » les ouvre
-      // tous. L essentiel = ce qui se voit SANS rien ouvrir : hors detail.
-      const toggle = document.querySelector('.qb-more-toggle');
+      // v5 fidele a la maquette (2026-10-08) : plus de repli global. Chaque
+      // ligne ouvre son detail (.rv-lc-d) a son chevron, qui dit ce qu il
+      // ouvre ; toggleQuickBookMore les ouvre toutes d un coup. L essentiel
+      // = ce qui se voit SANS rien ouvrir : hors detail.
+      const toggle = document.querySelector('#quickBookOverlay .rv-ouvrir[aria-controls]');
+      // Maquette v5 : l e-mail est a un geste dans le billet (« + E-mail »),
+      // jamais dans le detail d une ligne ; saisi une fois, il reste ouvert.
       const email = document.querySelector('#quickBookOverlay input[type="email"]');
-      const emailInEssential = Boolean(email && !email.closest('.rv-lc-d') && email.getClientRects().length);
-      const toggleLabel = toggle.textContent.trim();
+      const plusEmail = document.getElementById('rvPlusEmail');
+      const essentiel = (el) => Boolean(el && !el.closest('.rv-lc-d') && el.getClientRects().length);
+      const emailInEssential = essentiel(email) || essentiel(plusEmail);
+      const toggleLabel = toggle ? toggle.getAttribute('aria-label') || '' : '';
+      // Le depart precis se regle sur la ligne : son heure ouvre l horloge.
+      const depart = document.querySelector('#quickBookOverlay [data-rv-ligne] .rv-heure[aria-haspopup="dialog"]');
+      const departLabel = depart ? depart.getAttribute('aria-label') || '' : '';
       quickBookState.moreOpen = true;
       renderQuickBook();
       const blockLabels = [...document.querySelectorAll('#quickBookOverlay .rv-lc-d .rv-lbl, #quickBookOverlay .rv-lc-d .rv-precis')].map((el) => el.textContent.trim());
@@ -398,18 +415,19 @@ async function main() {
       const advancedHasEmail = /type="email"/i.test(advancedRegion);
       const hasNotesTextarea = Boolean(document.querySelector('#quickBookOverlay textarea'));
       const hasNoteLabel = Boolean(document.querySelector('#quickBookOverlay label[for="qbNotes"]'));
-      return { emailInEssential, toggleLabel, blockLabels, advancedHasEmail, hasNotesTextarea, hasNoteLabel };
+      return { emailInEssential, toggleLabel, departLabel, blockLabels, advancedHasEmail, hasNotesTextarea, hasNoteLabel };
     }, { date: TEST_DATE });
-    assert(options.emailInEssential, 'l\'email reste un champ ESSENTIEL visible/saisissable (hors « Plus d\'options »)');
+    assert(options.emailInEssential, 'l\'e-mail reste à un geste dans le billet (« + E-mail » ou le champ), jamais dans le détail d\'une ligne');
     assert(!/email/i.test(options.toggleLabel), `le libellé du repli ne mentionne plus « email » ("${options.toggleLabel}")`);
     // LES OPTIONS REMISES EN ORDRE (2026-10-02, Movsar : « les + d options
     // c est moche et illogique ») : le repli dit ce qu il ouvre, chaque section
     // porte son titre ; plus de cartes qui repetent la ligne d etat, plus de
     // durees en double (elles vivent dans la liste des activites).
-    // v5 : « Tout régler » ouvre le detail de chaque ligne ; le depart precis
-    // y vit sous « Heure précise », la note dans le billet (toujours lisible).
-    assert(/Tout régler/.test(options.toggleLabel), `le repli dit ce qu il ouvre ("${options.toggleLabel}")`);
-    assert(options.blockLabels.some((l) => /Heure précise/i.test(l)), `section « Départ précis » présente (${options.blockLabels.join(' | ')})`);
+    // v5 : le chevron de chaque ligne dit ce qu il ouvre et pour quelle
+    // activite ; le depart precis se regle a l heure de la ligne (l horloge),
+    // la note dans le billet (toujours lisible).
+    assert(/^(Régler en détail|Refermer le détail) : \S/.test(options.toggleLabel), `le repli dit ce qu il ouvre ("${options.toggleLabel}")`);
+    assert(/^Heure de .+ : \d{2}:\d{2}/.test(options.departLabel), `le départ précis se règle sur la ligne, à son horloge ("${options.departLabel}")`);
     assert(options.blockLabels.some((l) => /^Pistes$|Arène laser/i.test(l)), 'section des pistes présente et étiquetée');
     assert(options.hasNoteLabel, 'la note pour l équipe est présente et étiquetée');
     assert(!options.advancedHasEmail, 'l\'email n\'est plus noyé dans « Plus d\'options »');

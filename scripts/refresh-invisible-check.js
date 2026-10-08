@@ -379,14 +379,14 @@ async function main() {
     const modale = await page.evaluate(async () => {
       // CE QUI DEFILE, quel qu il soit : la modale entiere, ou sa colonne de
       // saisie depuis la refonte du 2026-10-01 (recapitulatif fixe a droite).
-      const candidats = ['.qb-body', '.qb-modal'];
+      const candidats = ['.rv-plan', '.qb-body', '.qb-modal'];
       const choisi = candidats.find((sel) => { const el = document.querySelector(`#quickBookOverlay ${sel}`); return el && el.scrollHeight - el.clientHeight > 80; }) || '.qb-modal';
       const boite = document.querySelector(`#quickBookOverlay ${choisi}`);
       if (!boite) return { erreur: 'modale absente' };
       const course = boite.scrollHeight - boite.clientHeight;
       boite.scrollTop = course;
       const avant = boite.scrollTop;
-      const boutons = [...document.querySelectorAll('#quickBookOverlay .qb-dur-btn')];
+      const boutons = [...document.querySelectorAll('#quickBookOverlay [data-rv-ligne="bowling"] .rv-seg[aria-label="Durée du bowling"] button, #quickBookOverlay .qb-dur-btn')];
       const cible = boutons[boutons.length - 1];
       if (cible) cible.click();
       await new Promise((r) => setTimeout(r, 700));

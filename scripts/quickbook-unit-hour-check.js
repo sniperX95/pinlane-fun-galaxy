@@ -148,12 +148,12 @@ async function main() {
 
     // --- A. Les deux reglages existent -------------------------------------
     await page.evaluate(() => {
-      window.openQuickBook();
+      window.openQuickBook({ date: (() => { const d = new Date(todayStr() + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })() });
       window.setQuickStartTime('14:00');
       window.setQuickType('visite');
       window.toggleQuickVisitActivity('billards');
     });
-    await page.waitForSelector('.qb-visit-row', { timeout: 8000 });
+    await page.waitForSelector('[data-rv-ligne="billards"]', { timeout: 8000 });
     // v5 (2026-10-08) : les reglages d une activite vivent dans le detail de
     // sa ligne ; le comptoir l ouvre au chevron, le gate aussi.
     await page.evaluate(() => {
@@ -163,8 +163,7 @@ async function main() {
     await page.waitForTimeout(400);
 
     const reglages = await page.evaluate(() => {
-      const rangee = [...document.querySelectorAll('.qb-visit-row')]
-        .find((r) => /Billards/i.test(r.textContent || ''));
+      const rangee = document.querySelector('[data-rv-ligne="billards"]');
       if (!rangee) return { absente: true, tables: [], durees: [] };
       const val = (sel) => [...rangee.querySelectorAll(sel)].map((b) => b.textContent.trim());
       return { absente: false, tables: val('[data-opt="units"]'), durees: val('[data-opt="hours"]') };
@@ -201,9 +200,12 @@ async function main() {
 
     // --- C. Le mode « une seule activite » n est pas un trou ----------------
     await page.evaluate(() => {
-      window.openQuickBook();
+      window.openQuickBook({ date: (() => { const d = new Date(todayStr() + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })() });
       window.setQuickStartTime('14:00');
       window.setQuickType('activity', 'billards');
+      // v5 : les reglages vivent dans le detail de la ligne, au chevron.
+      const ligne = document.querySelector('[data-rv-ligne="billards"]');
+      if (ligne && !ligne.classList.contains('is-ouverte')) ligne.querySelector('.rv-ouvrir').click();
     });
     await page.waitForTimeout(500);
     const seule = await page.evaluate(() => ({
@@ -227,7 +229,7 @@ async function main() {
 
     // --- E. Non-regression : minutes et participants ------------------------
     await page.evaluate(async () => {
-      window.openQuickBook();
+      window.openQuickBook({ date: (() => { const d = new Date(todayStr() + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })() });
       window.setQuickStartTime('14:00');
       window.setQuickType('visite');
       window.toggleQuickVisitActivity('fun_run');

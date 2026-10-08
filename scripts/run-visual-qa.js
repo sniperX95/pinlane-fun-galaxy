@@ -2148,9 +2148,11 @@ async function main() {
     await page.waitForTimeout(400);
 
     // ------------------------------------------------------------------
-    // Réservation rapide contextuelle : UNE base + variantes par point
-    // d'entrée : le contexte pré-remplit ET élague (jamais redemander ce
-    // qui est déjà su), l'avancé vit replié dans « Plus d'options ».
+    // RESERVER, LA FENETRE UNIQUE (v5, maquette validee le 2026-10-08) :
+    // chaque point d entree PRE-REMPLIT la fenetre (la piste et l heure de
+    // la case, le depart verrouille d un lancement laser, le client de sa
+    // fiche) au lieu de l elaguer ; le detail de chaque ligne vit replie
+    // derriere son chevron, et rien ne se resaisit.
     // ------------------------------------------------------------------
     await page.evaluate(() => {
       setView('staff');
@@ -2166,35 +2168,53 @@ async function main() {
     });
     await page.waitForTimeout(500);
 
+    // LES PLAFONDS DE CONTROLES VISIBLES, derives de la maquette validee
+    // (mesure du 2026-10-08 sur la fenetre fidele, vitrine a 1440 px : generique 36, case 36, laser 36, lancement 35, formule 32) avec une
+    // marge de trois : un controle de plus passe, un repli qui saute (le
+    // detail d une ligne ouvert d office, la grille des pistes, les tailles
+    // en double) en ajoute six ou plus et rougit. Toute capacite nouvelle
+    // au-dela se justifie ici.
+    const PLAFOND_GENERIQUE = 39;
+    const PLAFOND_CASE = 39;
+    const PLAFOND_LASER = 39;
+    const PLAFOND_LANCEMENT = 38;
+    const PLAFOND_FORMULE = 35;
     const readQuickBook = () => page.evaluate(() => {
-      const modal = document.querySelector('.qb-modal');
+      const modal = document.querySelector('.qb-modal.rv');
       if (!modal) return null;
       const visible = (el) => {
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
         return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
       };
+      const controles = Array.from(modal.querySelectorAll('button, input, select, textarea')).filter(visible);
+      const heure = (id) => {
+        const bouton = modal.querySelector(`#rvHeure-${id}`);
+        if (!bouton) return null;
+        return { texte: (bouton.querySelector('[data-rv-heure]') || bouton).textContent.trim(), fermee: bouton.disabled, verrou: Boolean(bouton.querySelector('.rv-verrou')) };
+      };
       return {
-        title: modal.querySelector('h3')?.textContent.trim() || '',
-        eyebrow: modal.querySelector('.ticket-id')?.textContent.trim() || '',
-        interactive: Array.from(modal.querySelectorAll('button, input, select, textarea')).filter(visible).length,
-        participantButtons: Array.from(modal.querySelectorAll('.qb-visit-compteur .qb-step-btn')).filter(visible).length,
-        interactiveListe: Array.from(modal.querySelectorAll('button, input, select, textarea')).filter(visible).map((el) => (el.textContent || el.placeholder || el.type || el.tagName).trim().slice(0, 18)).join(' | '),
-        chips: Array.from(modal.querySelectorAll('.qb-context-chip .k')).map((el) => el.textContent.trim()),
-        chipValues: Array.from(modal.querySelectorAll('.qb-context-chip .v')).map((el) => el.textContent.trim()),
-        hasTypeRow: Boolean(modal.querySelector('.qb-type-row')),
-        hasDateInput: Boolean(modal.querySelector('input[type="date"]')),
-        hasTimeInput: Boolean(modal.querySelector('input[type="time"]')),
-        hasPaxInput: Boolean(modal.querySelector('input[type="number"]')),
-        hasNameInput: Boolean(modal.querySelector('input[placeholder="Marie Dupont"]')),
-        hasEmailInput: Boolean(modal.querySelector('input[type="email"]')),
-        hasNotesTextarea: Boolean(modal.querySelector('textarea')),
-        hasSlotStrip: Boolean(modal.querySelector('.qb-slot-strip')),
-        hasLaneGrid: Boolean(modal.querySelector('.qb-lane-grid')),
-        hasFormuleGrid: Boolean(modal.querySelector('.qb-formule-grid')),
-        durBtns: modal.querySelectorAll('.qb-dur-btn').length,
-        moreToggle: Boolean(modal.querySelector('.qb-more-toggle')),
-        lockChip: Boolean(modal.querySelector('.qb-chip-lock')),
+        title: modal.querySelector('#qbTitle')?.textContent.trim() || '',
+        interactive: controles.length,
+        interactiveListe: controles.map((el) => (el.getAttribute('aria-label') || el.textContent || el.placeholder || el.type || el.tagName).trim().slice(0, 18)).join(' | '),
+        lignes: Array.from(modal.querySelectorAll('.rv-lignes > [data-rv-ligne]')).map((el) => el.dataset.rvLigne),
+        lignesOuvertes: Array.from(modal.querySelectorAll('.rv-lignes > [data-rv-ligne].is-ouverte')).map((el) => el.dataset.rvLigne),
+        hasDateInput: Boolean(modal.querySelector('#qbDate')),
+        hasPaxInput: Boolean(modal.querySelector('#qbPax')),
+        hasPhoneInput: Boolean(modal.querySelector('#qbPhone')),
+        hasNameInput: Boolean(modal.querySelector('#qbName')),
+        emailAtteignable: Boolean(modal.querySelector('#qbEmail') || modal.querySelector('#rvPlusEmail')),
+        hasNotesTextarea: Boolean(modal.querySelector('#qbNotes')),
+        hasLaneGrid: Array.from(modal.querySelectorAll('.rv-pistes-choix')).some(visible),
+        formules: modal.querySelectorAll('[data-rv-formule]').length,
+        mode: modal.querySelector('.rv-plan-tete [role="tab"][aria-selected="true"]')?.textContent.trim() || '',
+        durBtns: modal.querySelectorAll('[data-rv-ligne="bowling"] .rv-seg[aria-label="Durée du bowling"] button').length,
+        dureeBowling: Boolean(modal.querySelector('[data-rv-ligne="bowling"] .rv-lc-h .rv-qte[aria-label="Durée du bowling"]')),
+        parties: Boolean(modal.querySelector('[data-rv-ligne="laser_game"] .rv-lc-h .rv-qte[aria-label="Parties de laser"]')),
+        heureBowling: heure('bowling'),
+        heureLaser: heure('laser_game'),
+        placeBowling: modal.querySelector('[data-rv-ligne="bowling"] .rv-lc-h .rv-place')?.textContent.replace(/\s+/g, ' ').trim() || '',
+        clientAcquis: modal.querySelector('.rv-acquis')?.textContent.replace(/\s+/g, ' ').trim() || '',
         state: {
           type: quickBookState.type,
           date: quickBookState.date,
@@ -2207,46 +2227,46 @@ async function main() {
       };
     });
 
-    // 1) Base générique (bouton « Réservation rapide ») : 2 temps, moitié
-    // d'éléments visibles minimum par rapport à l'ancienne modale (38).
+    // 1) Generique (bouton « Réserver ») : le bowling par defaut, l essentiel
+    // a l ecran, le detail des lignes replie.
     await page.evaluate(() => openQuickBook());
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
     const qbGeneric = await readQuickBook();
-    assert(qbGeneric, 'Réservation rapide générique : la modale doit s ouvrir.');
-    assert(qbGeneric.title === 'Réservation rapide', `Générique : titre attendu « Réservation rapide » (reçu ${qbGeneric.title}).`);
-    assert(qbGeneric.participantButtons === 2, 'Générique : un compteur propre à l activité avec deux boutons est visible.');
-    assert(qbGeneric.interactive - qbGeneric.participantButtons <= 20, `Générique : max 20 éléments interactifs hors compteur d activité requis (reçu ${qbGeneric.interactive} dont ${qbGeneric.participantButtons} boutons du compteur : ${qbGeneric.interactiveListe}).`);
-    assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput && qbGeneric.hasEmailInput, 'Générique : les essentiels (activité, date, heure, joueurs, nom, téléphone, email) doivent être visibles, email visible/saisissable (non obligatoire côté staff).');
-    assert(!qbGeneric.hasSlotStrip && !qbGeneric.hasLaneGrid && !qbGeneric.hasNotesTextarea, 'Générique : créneaux, pistes et notes internes doivent être repliés à l ouverture (email reste essentiel, visible).');
-    assert(qbGeneric.moreToggle, 'Générique : le bouton « Plus d options » est requis.');
+    assert(qbGeneric, 'Réserver générique : la fenêtre doit s ouvrir.');
+    assert(qbGeneric.title === 'Réserver', `Générique : titre « Réserver » attendu (reçu ${qbGeneric.title}).`);
+    assert(qbGeneric.lignes.join(',') === 'bowling' && qbGeneric.heureBowling && qbGeneric.dureeBowling, `Générique : une ligne bowling avec sa durée et son heure (reçu ${qbGeneric.lignes.join(',') || 'aucune ligne'}).`);
+    assert(qbGeneric.hasDateInput && qbGeneric.hasPaxInput && qbGeneric.hasPhoneInput && qbGeneric.hasNameInput && qbGeneric.emailAtteignable, 'Générique : les essentiels (jour, joueurs, téléphone, nom, e-mail à un geste) sont à l écran.');
+    assert(!qbGeneric.hasLaneGrid && !qbGeneric.hasNotesTextarea && !qbGeneric.lignesOuvertes.length, `Générique : le détail des lignes (grille des pistes) et la note sont repliés à l ouverture (ouvertes : ${qbGeneric.lignesOuvertes.join(',') || 'aucune'}).`);
+    assert(qbGeneric.interactive <= PLAFOND_GENERIQUE, `Générique : au plus ${PLAFOND_GENERIQUE} contrôles visibles (reçu ${qbGeneric.interactive} : ${qbGeneric.interactiveListe}).`);
     await screenshot(page, 'quickbook-generic');
     issues.push(...await collectIssues(page, 'quickbook-generic'));
-    // Zéro perte de capacité : l'avancé replié rouvre tout.
+    // Zéro perte de capacité : tout ouvrir rend la grille, les durées et la note.
     await page.evaluate(() => toggleQuickBookMore());
     await page.waitForTimeout(250);
     const qbGenericMore = await readQuickBook();
-    assert(qbGenericMore.hasSlotStrip && qbGenericMore.hasLaneGrid && qbGenericMore.hasNotesTextarea && qbGenericMore.durBtns >= 4, 'Générique déplié : créneaux, grille pistes, durée et notes internes doivent réapparaître.');
+    assert(qbGenericMore.hasLaneGrid && qbGenericMore.hasNotesTextarea && qbGenericMore.durBtns >= 4, `Générique déplié : grille des pistes, durées et note réapparaissent (grille ${qbGenericMore.hasLaneGrid}, note ${qbGenericMore.hasNotesTextarea}, durées ${qbGenericMore.durBtns}).`);
     await screenshot(page, 'quickbook-generic-more');
     issues.push(...await collectIssues(page, 'quickbook-generic-more'));
     await page.evaluate(() => closeQuickBook());
 
-    // 2) Case du planning bowling : piste + date + heure acquises, jamais redemandées.
+    // 2) Case du planning bowling : la ligne reprend la piste et l heure de la case.
     await page.evaluate(() => quickFromCell(7, 15));
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
     const qbCell = await readQuickBook();
-    assert(/piste 7/.test(qbCell.title) && /15:00/.test(qbCell.title), `Case planning : titre contextuel « Réserver la piste 7 · 15:00 » attendu (reçu ${qbCell.title}).`);
-    assert(!qbCell.hasTypeRow && !qbCell.hasDateInput && !qbCell.hasTimeInput, 'Case planning : activité, date et heure sont acquises, ne pas les redemander.');
-    assert(qbCell.chips.includes('Piste') && qbCell.chips.includes('Départ') && qbCell.chips.includes('Date'), 'Case planning : les acquis doivent être rappelés en chips.');
+    assert(qbCell.lignes.join(',') === 'bowling' && qbCell.heureBowling && qbCell.heureBowling.texte === '15:00' && /Piste 7/.test(qbCell.placeBowling), `Case planning : la ligne bowling reprend la case, 15:00 et piste 7 (reçu ${JSON.stringify({ heure: qbCell.heureBowling, place: qbCell.placeBowling })}).`);
     assert(qbCell.state.lanes.length === 1 && qbCell.state.lanes[0] === 7 && qbCell.state.startTime === '15:00' && qbCell.state.autoAssign === false, 'Case planning : piste 7 et 15:00 doivent être préremplies.');
-    assert(qbCell.durBtns >= 4 && qbCell.hasNameInput && qbCell.hasEmailInput && qbCell.hasPaxInput, 'Case planning : l essentiel restant = client (nom, téléphone, email visible), joueurs, durée.');
-    assert(qbCell.interactive - qbCell.participantButtons <= 20, `Case planning : la variante doit rester compacte hors compteur d activité (reçu ${qbCell.interactive}, dont ${qbCell.participantButtons} boutons du compteur).`);
+    assert(qbCell.dureeBowling && qbCell.hasNameInput && qbCell.emailAtteignable && qbCell.hasPaxInput, 'Case planning : il reste le client (nom, téléphone, e-mail à un geste), les joueurs et la durée.');
+    assert(qbCell.interactive <= PLAFOND_CASE, `Case planning : au plus ${PLAFOND_CASE} contrôles visibles (reçu ${qbCell.interactive} : ${qbCell.interactiveListe}).`);
     await screenshot(page, 'quickbook-bowling-cell');
     issues.push(...await collectIssues(page, 'quickbook-bowling-cell'));
-    // « Modifier » sur un acquis rouvre le contrôle (capacité préservée).
-    await page.evaluate(() => unlockQuickField('startTime'));
+    // L heure de la case reste modifiable : son bouton ouvre l horloge.
+    assert(qbCell.heureBowling && !qbCell.heureBowling.fermee, 'Case planning : l heure de la case se change (son bouton n est pas verrouillé).');
+    await page.click('#rvHeure-bowling');
     await page.waitForTimeout(250);
-    const qbCellUnlocked = await readQuickBook();
-    assert(qbCellUnlocked.hasTimeInput, 'Case planning : « Modifier » sur le départ doit rouvrir le champ heure.');
+    const horlogeOuverte = await page.evaluate(() => Boolean(document.getElementById('rvHorloge')));
+    assert(horlogeOuverte, 'Case planning : l heure de la ligne ouvre l horloge.');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
     // Soumission : payload identique au contrat existant (channel staff, pistes, statuts).
     await page.evaluate(() => { window.__PINLANE_QA_RES_POSTS__ = []; });
     await page.evaluate(async () => {
@@ -2262,58 +2282,48 @@ async function main() {
     assert(qbPost.channel === 'staff' && qbPost.status === 'pending' && qbPost.requiresLanes === true && Number(qbPost.laneCount) === 1, 'Case planning : contrat API inchangé (channel, status, laneCount, requiresLanes).');
     assert(Number(qbPost.price) === Number(qbPost.basePrice) && Number(qbPost.pax) === 4 && Number(qbPost.duration) === 1, 'Case planning : montants et durée inchangés par défaut.');
     const qbClosedAfterSave = await page.evaluate(() => document.getElementById('quickBookOverlay').classList.contains('hidden') || !document.querySelector('.qb-modal'));
-    assert(qbClosedAfterSave, 'Case planning : la modale doit se fermer après création.');
+    assert(qbClosedAfterSave, 'Case planning : la fenêtre doit se fermer après création.');
 
-    // 3) Créneau vide du planning laser : départ + activité acquis.
+    // 3) Créneau vide du planning laser : la ligne laser part à 16:00.
     await page.evaluate(() => openQuickBook({ date: state.currentDate, startTime: '16:00', type: 'laser' }));
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
     const qbLaser = await readQuickBook();
-    assert(/Nouvelle session laser/.test(qbLaser.title) && /16:00/.test(qbLaser.title), `Laser : titre contextuel attendu (reçu ${qbLaser.title}).`);
-    assert(!qbLaser.hasTypeRow && !qbLaser.hasTimeInput && !qbLaser.hasDateInput, 'Laser : activité, date et départ sont acquis.');
-    assert(qbLaser.durBtns === 3 && !qbLaser.hasLaneGrid, 'Laser : le choix des parties (1/2/3) est l essentiel, pas les pistes.');
-    assert(qbLaser.interactive <= 16, `Laser : variante compacte requise (reçu ${qbLaser.interactive}).`);
+    assert(qbLaser.lignes.join(',') === 'laser_game' && qbLaser.heureLaser && qbLaser.heureLaser.texte === '16:00', `Laser : une ligne laser à 16:00 (reçu ${qbLaser.lignes.join(',')} ${JSON.stringify(qbLaser.heureLaser)}).`);
+    assert(qbLaser.parties && !qbLaser.hasLaneGrid, 'Laser : le nombre de parties est l essentiel, pas les pistes.');
+    assert(qbLaser.interactive <= PLAFOND_LASER, `Laser : au plus ${PLAFOND_LASER} contrôles visibles (reçu ${qbLaser.interactive} : ${qbLaser.interactiveListe}).`);
     await screenshot(page, 'quickbook-laser-slot');
     issues.push(...await collectIssues(page, 'quickbook-laser-slot'));
     await page.evaluate(() => closeQuickBook());
 
     // 4) Rejoindre un lancement laser existant : départ verrouillé.
     await page.evaluate(() => openQuickBookForLaserSession(18, 12));
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
     const qbJoin = await readQuickBook();
-    assert(/Rejoindre le lancement/.test(qbJoin.title), `Lancement laser : titre « Rejoindre le lancement » attendu (reçu ${qbJoin.title}).`);
-    assert(qbJoin.state.lockStartTime === true && qbJoin.lockChip, 'Lancement laser : le départ doit être affiché verrouillé.');
-    assert(!qbJoin.hasTimeInput && !qbJoin.hasTypeRow, 'Lancement laser : ni heure ni activité à redemander.');
-    assert(qbJoin.interactive <= 13, `Lancement laser : variante minimale requise (reçu ${qbJoin.interactive}).`);
+    assert(qbJoin.state.lockStartTime === true && qbJoin.heureLaser && qbJoin.heureLaser.fermee && qbJoin.heureLaser.verrou, `Lancement laser : le départ est affiché verrouillé et ne s ouvre pas (reçu ${JSON.stringify(qbJoin.heureLaser)}).`);
+    assert(qbJoin.interactive <= PLAFOND_LANCEMENT, `Lancement laser : au plus ${PLAFOND_LANCEMENT} contrôles visibles (reçu ${qbJoin.interactive} : ${qbJoin.interactiveListe}).`);
     await screenshot(page, 'quickbook-laser-session');
     issues.push(...await collectIssues(page, 'quickbook-laser-session'));
     await page.evaluate(() => closeQuickBook());
 
-    // 5) Groupes & anniversaires : orientée formule.
+    // 5) Groupes & anniversaires : la fenêtre s ouvre sur les formules.
     await page.evaluate(() => openQuickBook({ date: state.currentDate, type: 'formule' }));
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
     const qbGroup = await readQuickBook();
-    assert(/groupe/i.test(qbGroup.title) && /anniversaire/i.test(qbGroup.title), `Groupes : titre orienté groupe/anniversaire attendu (reçu ${qbGroup.title}).`);
-    assert(qbGroup.hasFormuleGrid && !qbGroup.hasTypeRow && !qbGroup.hasLaneGrid, 'Groupes : le choix de formule est central, pistes et type repliés.');
-    // Plafond releve de 26 a 27 le 2026-08-26 : la review manager a demande le
-    // prix ajustable cas par cas (« prix d ami ») : UN bouton « Modifier le
-    // prix » dans le resume, pour les roles porteurs de reservations.edit.
-    // Le plafond continue de proteger la simplicite de la modale : toute
-    // nouvelle capacite au-dela de ce bouton doit se justifier ici.
-    assert(qbGroup.interactive < 27, `Groupes : moins d éléments que l ancienne modale (reçu ${qbGroup.interactive}).`);
+    assert(qbGroup.mode === 'Formule' && qbGroup.formules >= 1 && !qbGroup.hasLaneGrid, `Groupes : le choix de formule est central (onglet ${qbGroup.mode}, ${qbGroup.formules} tuiles), pistes repliées.`);
+    assert(qbGroup.interactive <= PLAFOND_FORMULE, `Groupes : au plus ${PLAFOND_FORMULE} contrôles visibles (reçu ${qbGroup.interactive} : ${qbGroup.interactiveListe}).`);
     await screenshot(page, 'quickbook-groupe');
     issues.push(...await collectIssues(page, 'quickbook-groupe'));
     await page.evaluate(() => closeQuickBook());
 
     // 6) Fiche client : coordonnées acquises, jamais resaisies.
     await page.evaluate(() => openQuickBook({ name: 'Marie Dupont', phone: '+32 470 00 00 01', email: 'marie@example.test', date: state.currentDate, type: 'bowling' }));
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
     const qbClient = await readQuickBook();
-    assert(/Marie Dupont/.test(qbClient.title), `Fiche client : titre nominatif attendu (reçu ${qbClient.title}).`);
-    assert(!qbClient.hasNameInput && qbClient.chips.includes('Client'), 'Fiche client : le client acquis est rappelé, pas resaisi.');
-    assert(qbClient.hasTimeInput && qbClient.hasPaxInput, 'Fiche client : il reste l heure et les joueurs.');
+    assert(/Marie Dupont/.test(qbClient.clientAcquis) && !qbClient.hasNameInput, `Fiche client : le client acquis est rappelé, pas resaisi (reçu « ${qbClient.clientAcquis} »).`);
+    assert(qbClient.heureBowling && !qbClient.heureBowling.fermee && qbClient.hasPaxInput, 'Fiche client : il reste l heure et les joueurs.');
     await screenshot(page, 'quickbook-client');
     issues.push(...await collectIssues(page, 'quickbook-client'));
-    // Thème clair : la variante contextuelle est bi-thème.
+    // Thème clair : la fenêtre est bi-thème.
     await page.evaluate(() => setStaffTheme('light'));
     await page.waitForTimeout(300);
     await screenshot(page, 'quickbook-client-light');

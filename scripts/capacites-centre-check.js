@@ -218,9 +218,9 @@ async function scenarios(browser, echecs) {
     // La grille des pistes vit dans « Plus d options », repliee a l ouverture.
     toggleQuickBookMore();
     await new Promise((res) => setTimeout(res, 150));
-    r.rapide = document.querySelectorAll('.qb-lane-grid .qb-lane-btn:not(.auto)').length;
+    r.rapide = document.querySelectorAll('#quickBookOverlay .rv-pistes-choix [data-piste]').length;
     const overlay = document.getElementById('quickBookOverlay');
-    r.rapideDiag = `overlay ${overlay ? (overlay.classList.contains('hidden') ? 'cache' : 'ouvert') : 'absent'}, ${overlay ? overlay.textContent.replace(/\s+/g, ' ').slice(0, 600) : ''}, type ${quickBookState && quickBookState.type}, grilles ${document.querySelectorAll('.qb-lane-grid').length}, boutons ${document.querySelectorAll('.qb-lane-btn').length}`;
+    r.rapideDiag = `overlay ${overlay ? (overlay.classList.contains('hidden') ? 'cache' : 'ouvert') : 'absent'}, ${overlay ? overlay.textContent.replace(/\s+/g, ' ').slice(0, 600) : ''}, type ${quickBookState && quickBookState.type}, grilles ${document.querySelectorAll('#quickBookOverlay .rv-pistes-choix').length}, boutons ${document.querySelectorAll('#quickBookOverlay .rv-pistes-choix [data-piste]').length}`;
     closeQuickBook();
     const avant = availabilityBlocksCache.blocks;
     availabilityBlocksCache.blocks = [{ id: 1, scopeType: 'center', scopeRef: null, recurrence: 'once', date: jour, startTime: null, endTime: null, reason: 'QA' }];
@@ -406,7 +406,7 @@ async function serveur(echecs, remplacement = null) {
 const MUTATIONS = [
   { vise: 'A2', file: 'assets/app-main.js', find: "for (let i = 1; i <= laneCount; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') count++;", replace: "for (let i = 1; i <= TOTAL_LANES; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') count++;" },
   { vise: 'A3', file: 'assets/app-main.js', find: '${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {', replace: '${Array.from({ length: TOTAL_LANES }, (_, index) => index + 1).map(lane => {' },
-  { vise: 'A4', file: 'assets/app-main.js', find: '${Array.from({ length: getAvailabilityLaneCount() }, (_, idx) => idx + 1).map(lane => {', replace: '${Array.from({ length: TOTAL_LANES }, (_, idx) => idx + 1).map(lane => {' },
+  { vise: 'A4', file: 'assets/app-main.js', find: '${Array.from({ length: getAvailabilityLaneCount() }, (_, idx) => idx + 1).map((lane) => {', replace: '${Array.from({ length: TOTAL_LANES }, (_, idx) => idx + 1).map((lane) => {' },
   { vise: 'A5', file: 'assets/app-main.js', find: 'for (let lane = 1; lane <= laneCount; lane += 1) push(lane, toWindow(block));', replace: 'for (let lane = 1; lane <= TOTAL_LANES; lane += 1) push(lane, toWindow(block));' },
   { vise: 'A6', file: 'assets/app-main.js', find: 'if (launchCount > lancementsMax) {', replace: 'if (launchCount > 1) {' },
   { vise: 'A7', file: 'assets/app-main.js', find: 'const postesArene = getAvailabilityLaserCapacity();', replace: 'const postesArene = LASER_GAME_MAX_PLAYERS;' },

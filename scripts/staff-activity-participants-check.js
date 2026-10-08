@@ -177,7 +177,8 @@ assert.equal(ctx.quickBookState.visit.bowling.duration,1.5);
 {
   const from=app.indexOf('async function saveQuickBook(');
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
-  ctx.document={querySelector:()=>null};ctx.toast=()=>{};
+  // La fenetre v5 tient la liste de ses resas (rvResas) : une seule ici.
+  ctx.document={querySelector:()=>null,getElementById:()=>null};ctx.toast=()=>{};ctx.rvResas=[ctx.quickBookState];
   ctx.quickBookState.pax=1000;ctx.quickBookState.name='Groupe';ctx.quickBookState.phone='';ctx.quickBookState.email='';ctx.quickBookState.submitting=false;
   run('saveQuickBook()');
   assert.match(ctx.quickBookState.error,/240 personnes.*planifiée manuellement/);

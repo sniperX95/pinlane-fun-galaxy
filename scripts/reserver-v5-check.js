@@ -62,6 +62,12 @@ const MUTATIONS = {
   plafond: { fichier: 'assets/app-main.js', de: 'const RV_PARTIES_MAX = 12;', vers: 'const RV_PARTIES_MAX = 3;', vise: ['B'] },
   // Un refus du plan part quand meme, en silence.
   refus: { fichier: 'assets/app-main.js', de: '  if (!lot && plan && !plan.disponible && !etat.forcer) {', vers: '  if (false) {', vise: ['C'] },
+  // « Créer quand même » vaut meme quand le plan tient : le dossier part
+  // « a placer » sans raison.
+  forcerPerime: { fichier: 'assets/app-main.js', de: '  const forcer = !simulation && Boolean(s.forcer) && Boolean(planActuel && !planActuel.disponible);', vers: '  const forcer = !simulation && Boolean(s.forcer);', vise: ['C'] },
+  // « Création… » pose a la main sur le bouton : apres un refus, il reste
+  // desactive (la zone du pied se croit a jour).
+  creation: { fichier: 'assets/app-main.js', de: '  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  renderQuickBook();', vers: "  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  { const b = document.getElementById('rvCreer'); if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); b.textContent = 'Création…'; } }", vise: ['C'] },
   // L horloge n envoie plus ses heures : les points ne viennent plus du planning.
   horloge: { fichier: 'assets/app-main.js', de: "body: JSON.stringify({ ...base, dryRun: true, candidats: variantes })", vers: "body: JSON.stringify({ ...base, dryRun: true, candidats: [] })", vise: ['D'] },
   // Plusieurs resas : seule celle a l ecran part.
@@ -73,8 +79,10 @@ const MUTATIONS = {
   fermeture: { fichier: 'assets/app-main.js', de: '    if (rvResas === lotSauve) closeQuickBook();', vers: '    if (quickBookState === etat || rvResas.includes(quickBookState)) closeQuickBook();', vise: ['H'] },
   // Le repeint ne respecte plus le champ qu on tape.
   saisie: { fichier: 'assets/app-main.js', de: "  if (actif && actif !== zone && zone.contains(actif) && actif.matches(", vers: "  if (false && actif && actif !== zone && zone.contains(actif) && actif.matches(", vise: ['F'] },
+  // Le repeint ne rend plus le focus au controle remplace.
+  focus: { fichier: 'assets/app-main.js', de: '  if (actif && !actif.isConnected) {', vers: '  if (false) {', vise: ['F'] },
   // Au telephone, le pied ne colle plus en bas : « Créer » sort de l ecran.
-  pied: { fichier: 'assets/pinlane-staff.css', de: '  .rv-pied { position: sticky; bottom: 0;', vers: '  .rv-pied { position: static; bottom: 0;', vise: ['G'] },
+  pied: { fichier: 'assets/pinlane-staff.css', de: '  .qb-modal.rv .rv-pied { position: sticky; bottom: 0;', vers: '  .qb-modal.rv .rv-pied { position: static; bottom: 0;', vise: ['G'] },
 };
 
 let mutationActive = null;
@@ -248,7 +256,16 @@ async function scenarioAB(page, verifier) {
     ouverte: quickBookState.ouverte,
   }));
   await page.evaluate(() => { if (!quickBookState.moreOpen) toggleQuickBookMore(); });
-  const bandeaux = await page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay .rv-hors')].map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  // Le laser dit son depassement dans un bandeau ; le bowling, dans sa rangee
+  // « Durée » : la duree choisie, puis le prix et l etiquette « hors catalogue ».
+  const bandeaux = await page.evaluate(() => [
+    ...[...document.querySelectorAll('#quickBookOverlay .rv-hors')].map((e) => e.textContent),
+    ...[...document.querySelectorAll('#quickBookOverlay [data-rv-ligne="bowling"] [data-rv-prix-piste]')].map((note) => {
+      const rangee = note.closest('.rv-rg');
+      const choisie = rangee ? rangee.querySelector('button[aria-pressed="true"]') : null;
+      return `${choisie ? choisie.textContent : ''} : ${note.textContent}`;
+    }),
+  ].map((e) => e.replace(/\s+/g, ' ').trim()));
   await page.evaluate(() => toggleQuickBookMore());
   await planPose(page, true);
   const simule = await page.evaluate(() => window.__QA_SIMS__[window.__QA_SIMS__.length - 1] || null);
@@ -296,7 +313,10 @@ async function scenarioC(page, verifier) {
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
   await page.click('#rvCreer');
   await page.waitForTimeout(900);
-  const avant = await page.evaluate(() => ({ posts: window.__QA_CREES__.length, erreur: quickBookState ? quickBookState.error : '', ecran: (document.querySelector('#rvVerdict .qb-warn') || {}).textContent || '' }));
+  const avant = await page.evaluate(() => ({ posts: window.__QA_CREES__.length, erreur: quickBookState ? quickBookState.error : '', ecran: (document.querySelector('#rvVerdict .rv-erreur') || {}).textContent || '' }));
+  // Le refus rend la main : « Créer » se reclique (ni desactive, ni occupe,
+  // ni « Création… »), et le clavier reste dans la fenetre.
+  const main = await page.evaluate(() => { const b = document.getElementById('rvCreer'); return { desactive: Boolean(b && b.disabled), occupe: b ? b.getAttribute('aria-busy') : null, texte: b ? b.textContent.trim() : '', dedans: Boolean(document.activeElement && document.activeElement.closest('.qb-modal.rv')) }; });
   await page.click('#rvForcer');
   const libelle = await page.evaluate(() => (document.getElementById('rvCreer') || {}).textContent || '');
   await page.click('#rvCreer');
@@ -305,12 +325,32 @@ async function scenarioC(page, verifier) {
   const cFerme = await fenetreFermee(page);
   await page.evaluate(() => { window.__QA_REFUS__ = null; });
 
-  verifier('C', /Impossible tel quel/.test(verdict) && /il manque 4 places/.test(verdict), 'AVANT : le verdict dit le refus et son conflit', verdict.replace(/\s+/g, ' ').slice(0, 160));
+  verifier('C', /Laser à 20:00 impossible/.test(verdict) && /il manque 4 places/.test(verdict), 'AVANT : le verdict dit ce qui bloque, a quelle heure, et son conflit', verdict.replace(/\s+/g, ' ').slice(0, 160));
   verifier('C', avant.posts === 0, '« Créer » sur un plan refuse n envoie rien', `${avant.posts} POST`);
+  verifier('C', !main.desactive && main.occupe !== 'true' && !/Création/.test(main.texte) && main.dedans, 'apres le refus, « Créer » rend la main (cliquable, sans « Création… ») et le focus reste dans la fenetre', JSON.stringify(main));
   verifier('C', /Créer quand même/.test(avant.erreur) && /Créer quand même/.test(avant.ecran), 'il dit pourquoi et quoi faire, dans la fenetre', avant.erreur.slice(0, 160));
   verifier('C', /Créer quand même/.test(libelle), '« Créer quand même » change le bouton', libelle.trim());
   verifier('C', Boolean(cree && cree.forcer === true), '« Créer quand même » envoie le dossier avec forcer (cree « a placer »)', cree ? `forcer=${cree.forcer}` : 'aucun POST');
   verifier('C', cFerme, 'le dossier a placer cree, la fenetre se ferme');
+
+  // « Créer quand même » arme, puis le plan redevient possible sans que
+  // rien ne le desarme (une taille de groupe) : le dossier part normal.
+  await page.evaluate((jour) => {
+    window.__QA_REFUS__ = '20:00';
+    closeQuickBook();
+    openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
+  }, JOUR);
+  await planPose(page, false);
+  await page.click('#rvForcer');
+  await page.evaluate(() => { window.__QA_REFUS__ = null; window.__QA_CREES__.length = 0; setQuickPax(4); });
+  await planPose(page, true);
+  await page.fill('#qbName', 'Groupe Rendu Possible');
+  const rendu = await page.evaluate(() => ({ arme: Boolean(quickBookState && quickBookState.forcer), libelle: ((document.getElementById('rvCreer') || {}).textContent || '').trim() }));
+  await page.click('#rvCreer');
+  await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
+  const normal = await page.evaluate(() => window.__QA_CREES__[0] || null);
+  verifier('C', rendu.arme && /^Créer · 20:00/.test(rendu.libelle), 'MONTAGE : « Créer quand même » reste arme, le plan redevenu possible redit « Créer »', JSON.stringify(rendu));
+  verifier('C', Boolean(normal) && normal.forcer !== true, 'le plan redevenu possible, le dossier part normal (pas « a placer »)', normal ? `forcer=${normal.forcer}` : 'aucun POST');
 }
 
 // ── [D] ───────────────────────────────────────────────────────────────────────
@@ -426,6 +466,19 @@ async function scenarioF(page, verifier) {
   verifier('F', pendant.meme && pendant.focus, 'pendant la frappe, le repeint ne remplace pas le champ et garde le focus', JSON.stringify(pendant));
   verifier('F', pendant.valeur === 'Dupont' && pendant.etat === 'Dupont', 'le texte tape est entier, a l ecran et dans le dossier', `${pendant.valeur} / ${pendant.etat}`);
   verifier('F', apres.neuf && apres.valeur === 'Dupont', 'le champ rendu, le repeint attendu se fait, avec le texte tape', JSON.stringify(apres));
+  // Un BOUTON focalise, sa zone repeinte (le plan arrive pendant qu on
+  // tabule) : le focus revient au meme controle, jamais au document.
+  const bouton = await page.evaluate(() => {
+    const avant = document.getElementById('rvCreer');
+    avant.focus();
+    avant.__qa = 1;
+    quickBookState.plan = null;
+    rvRepeindre();
+    const apres = document.getElementById('rvCreer');
+    return { remplace: Boolean(apres && apres.__qa === undefined), focus: document.activeElement === apres, actif: document.activeElement ? (document.activeElement.id || document.activeElement.tagName) : null };
+  });
+  verifier('F', bouton.remplace, 'MONTAGE : le repeint a bien remplace le bouton « Créer »', JSON.stringify(bouton));
+  verifier('F', bouton.focus, 'le bouton remplace par le repeint garde le focus (le clavier ne tombe pas derriere la fenetre)', JSON.stringify(bouton));
 }
 
 // ── [G] ───────────────────────────────────────────────────────────────────────

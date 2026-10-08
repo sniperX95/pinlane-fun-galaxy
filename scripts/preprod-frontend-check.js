@@ -93,14 +93,19 @@ async function main({ roiOnly = false, capture = false } = {}) {
         const ax = await page.evaluate(() => {
           const modal = document.querySelector('.qb-modal');
           return { role: modal?.getAttribute('role'), name: document.getElementById(modal?.getAttribute('aria-labelledby'))?.textContent,
-            inside: modal?.contains(document.activeElement), close: modal?.querySelector('.close-btn')?.getAttribute('aria-label'),
+            inside: modal?.contains(document.activeElement), close: modal?.querySelector('.close-btn, .rv-fermer')?.getAttribute('aria-label'),
             fields: [...modal.querySelectorAll('input,textarea,select')].map(el => ({ id: el.id, named: !!(el.labels?.length || el.getAttribute('aria-label')) })) };
         });
         ok(ax.role === 'dialog' && ax.name && ax.inside && ax.close && ax.fields.every(f => f.named), 'F1-semantics-' + suffix, ax);
         ok((await contained(page, '.qb-modal')).length === 0, 'F1-trap-' + suffix, '30 mixed Tab/Shift+Tab');
-        await page.locator('.qb-more-toggle').click();
-        const restored = await page.evaluate(() => document.activeElement.classList.contains('qb-more-toggle'));
-        ok(restored, 'F1-rerender-' + suffix, 'advanced toggle retains focus');
+        // v5 : le detail s ouvre au chevron de la ligne ; le re-rendu lui
+        // garde le focus et le chevron dit qu il a bascule.
+        const chevron = page.locator('#quickBookOverlay .rv-ouvrir[aria-controls]').first();
+        const chevronId = await chevron.getAttribute('id');
+        const avant = await chevron.getAttribute('aria-expanded');
+        await chevron.click();
+        const restored = await page.evaluate(({ id, avant }) => document.activeElement.id === id && document.activeElement.getAttribute('aria-expanded') !== avant, { id: chevronId, avant });
+        ok(restored, 'F1-rerender-' + suffix, 'line chevron retains focus and toggles');
         await shot(page, 'quickbook-' + suffix);
         await page.keyboard.press('Escape');
         ok(await page.evaluate(() => !quickBookState && document.activeElement === window.__trigger), 'F1-close-' + suffix, 'Escape and opener focus');
@@ -111,7 +116,9 @@ async function main({ roiOnly = false, capture = false } = {}) {
           openQuickBook(); toggleQuickBookMore();
           return [...document.querySelectorAll('.qb-modal input,.qb-modal textarea')].map(el => ({ id: el.id, name: el.labels?.[0]?.textContent || el.getAttribute('aria-label') }));
         });
-        ok(full.length >= 7 && full.every(f => f.name), 'F1-full-fields', full);
+        // v5 : le formulaire complet = le jour, les joueurs, le contact, l e-mail
+        // et la note ; l heure se regle a l horloge de chaque ligne.
+        ok(['qbDate', 'qbPax', 'qbPhone', 'qbName', 'qbEmail', 'qbNotes'].every((id) => full.some((f) => f.id === id)) && full.every(f => f.name), 'F1-full-fields', full);
         const focusCases = await page.evaluate(() => {
           const root = document.querySelector('.qb-modal'), fixture = document.createElement('div');
           fixture.innerHTML = '<details><summary id="qa-summary">Options QA</summary><button id="qa-closed">Caché</button></details><button id="qa-disabled" disabled>Inactif</button><button id="qa-minus" tabindex="-1">Sans tabulation</button><div inert><button id="qa-inert">Inerte</button></div>';
@@ -210,7 +217,7 @@ async function main({ roiOnly = false, capture = false } = {}) {
           openQuickBook({ date, startTime: '16:00', type: 'bowling', name: 'QA', email: 'invalid', pax: 4 });
           window.__PINLANE_QA_RES_POSTS__ = [];
         });
-        await page.locator('.qb-btn-save').click();
+        await page.locator('#rvCreer').click();
         ok(await page.evaluate(() => !window.__PINLANE_QA_RES_POSTS__.length && !quickBookState.submitting && !!quickBookState.error && !!document.activeElement.closest('.qb-modal')), 'submit-invalid', 'invalid email blocked, button/focus recovered');
         await page.locator('#qbEmail').fill('qa@example.test');
         await page.evaluate(() => {

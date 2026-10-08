@@ -1077,7 +1077,29 @@ function testStaffLaserGameCountSurvivesOpsPreparationShape() {
   assert.strictEqual(request.laserGames, 3);
   assert.strictEqual(plan.plan.laserGames, 3);
   assert.strictEqual(plan.plan.recommended.laserPassPlan.totalGames, 3);
-  assert.strictEqual(plan.plan.recommended.laserPassPlan.remainingGames, 2);
+  // LE COMPTOIR POSE SES 3 PARTIES (2026-10-08, regle S1 de la fenetre
+  // Reserver) : plus aucune « a placer », et les parties 2 et 3 portent
+  // manualLaserPass pour que la base et le moteur les comptent. Le tunnel,
+  // lui, en laisse toujours 2 a placer, comme avant (ci-dessous).
+  assert.strictEqual(plan.plan.recommended.laserPassPlan.remainingGames, 0);
+  assert.deepStrictEqual(
+    plan.plan.recommended.resourceBlocks.filter((block) => block.resourceType === 'laser_arena').map((block) => `${block.countIndex}${block.manualLaserPass ? 'm' : ''}`),
+    ['1', '2m', '3m'],
+  );
+  const publicRequest = normalizeReservationRequest({
+    centerId: 'libramont',
+    channel: 'public',
+    type: 'laser',
+    date: TEST_DATE,
+    startTime: '16:00',
+    pax: 9,
+    duration: 0.5,
+    laserGames: 3,
+    label: 'Laser Game',
+  }, { channel: 'public' });
+  const publicPlan = planningAgent(publicRequest, { reservations: [], laneStatuses: {} });
+  assert.strictEqual(publicPlan.plan.recommended.laserPassPlan.totalGames, 3);
+  assert.strictEqual(publicPlan.plan.recommended.laserPassPlan.remainingGames, 2);
 }
 
 function makeMockResponse(req) {

@@ -543,7 +543,9 @@ const SCENARIOS = {
         return { haut: Math.round(box.height), ecran: innerHeight, etapes };
       });
       c(m.haut >= m.ecran - 30, '[M] telephone : la liste prend l ecran entier', `${m.haut} pour ${m.ecran}`);
-      c(m.etapes.length > 0 && m.etapes.every((d) => d < 16), '[M] telephone : l aide d une activite est sur la ligne de son nom', m.etapes.join(', '));
+      // Une liste cachee donne 0 - 0 = 0 < 16 : l ecart ne se lit que sur une
+      // liste affichee (rouge de la suite du 2026-10-08, boite a 0 px).
+      c(m.haut > 0 && m.etapes.length > 0 && m.etapes.every((d) => d < 16), '[M] telephone : l aide d une activite est sur la ligne de son nom', `${m.etapes.join(', ')} (liste ${m.haut} px)`);
     } finally { await tel.ctx.close(); }
     return out;
   },

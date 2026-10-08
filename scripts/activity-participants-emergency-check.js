@@ -16,6 +16,13 @@ function stock(free) {
 async function choose(page, players, duration = 1) {
   await page.goto(`http://127.0.0.1:${PORT}/fungalaxy/libramont?embed=1`, {waitUntil:'networkidle'});
   await page.waitForFunction(() => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour');
+  // Le samedi du serveur de dev, pas aujourd hui : le stock synthetique est
+  // pose sur mock.DATE, et le jour choisi d office (aujourd hui) n a plus de
+  // creneau le soir. Le gate rougissait des 19:45 (suite du 2026-10-08).
+  await page.click('#dayBtn');
+  await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).click();
+  await page.click('#dayBtn');
+  check(await page.locator(`.fg-cal__day[data-date="${mock.DATE}"]`).getAttribute('aria-selected') === 'true', 'emergency fixture selects its future Saturday');
   await page.fill('#paxInput', '18'); await page.press('#paxInput','Enter'); await page.click('#goActivities');
   await page.click('#gridAct li[data-activity="bowling"] .fg-card');
   const input = page.locator('#gridAct li[data-activity="bowling"] input[type="number"]');

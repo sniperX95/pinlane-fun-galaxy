@@ -96,6 +96,13 @@ async function installMock(page) {
         }
         return J({ ok: true, revision, reservations: base, laneStatuses: lanes(), centerId: 'libramont' }, revision);
       }
+      // LA FENETRE RESERVER SIMULE (dryRun) ET LIT (client, departs) depuis
+      // le 2026-10-08 : le serveur repond, rien ne se cree.
+      if (u.pathname === '/api/staff-reservations' && m === 'POST') {
+        const b = JSON.parse(init.body || '{}');
+        if (b.dryRun) return J({ ok: true, dryRun: true, plan: { disponible: true, debut: b.startTime || '', fin: '', blocs: [], etapes: [], prix: null } });
+      }
+      if (u.pathname === '/api/staff-reservations' && m === 'GET') return J({ ok: true, client: null, departs: [] });
       if (u.pathname === '/api/staff-reservations' && m === 'PATCH') {
         const b = JSON.parse(init.body || '{}');
         let base = build().find(r => Number(r.id) === Number(b.id)) || {};

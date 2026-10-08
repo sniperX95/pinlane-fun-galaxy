@@ -52,9 +52,13 @@ const checks = `
   ok(data.unknownText.includes('Prix sur place')&&data.unknownText.includes('prix au comptoir'),'actual card+detail unknown price stays payable onsite');
   const info=await pg.locator('#posOverlay').innerText();
   ok(/Minigolf Blacklight/.test(info)&&/3 joueurs/.test(info)&&/Arcades/.test(info)&&/5 joueurs/.test(info),'live staff detail shows activity counts');
-  await pg.evaluate(()=>{closePos();openQuickBook({pax:18,date:state.currentDate,startTime:'14:00'});quickBookState.type='visite';quickBookState.visit={bowling:{on:true,duration:1},laser_game:{on:true,games:2},others:{minigolf_blacklight:true,billards:true,arcade_time:true,playground:true,duckpin_bowling:true,fun_run:true},options:{bowling:{participants:6},laser_game:{participants:4},minigolf_blacklight:{participants:3},billards:{participants:8,units:2,hours:2},arcade_time:{participants:5},playground:{participants:2},duckpin_bowling:{participants:6},fun_run:{participants:4,minutes:30}}};syncQuickBookDuration();renderQuickBook();});
-  const counters=await pg.locator('.qb-liste .qb-visit-compteur .qb-step-valeur').allTextContents();
-  ok(JSON.stringify(counters)===JSON.stringify(['4 / 18','3 / 18','8 / 18','5 / 18','2 / 18','6 / 18','4 / 18','6 / 18']),'live quickbook all8 counters retain distinct counts');
+  await pg.evaluate(()=>{closePos();openQuickBook({pax:18,date:state.currentDate,startTime:'14:00'});quickBookState.type='visite';quickBookState.visit={bowling:{on:true,duration:1},laser_game:{on:true,games:2},others:{minigolf_blacklight:true,billards:true,arcade_time:true,playground:true,duckpin_bowling:true,fun_run:true},options:{bowling:{participants:6},laser_game:{participants:4},minigolf_blacklight:{participants:3},billards:{participants:8,units:2,hours:2},arcade_time:{participants:5},playground:{participants:2},duckpin_bowling:{participants:6},fun_run:{participants:4,minutes:30}}};syncQuickBookDuration();renderQuickBook();if(!quickBookState.moreOpen)toggleQuickBookMore();});
+  // v5 (2026-10-08) : chaque activite a sa ligne ; les joueurs du bowling et
+  // du laser vivent dans leur detail, que « Tout regler » ouvre. Le compteur
+  // se lit sur SA ligne : la valeur ET l activite qui la porte.
+  const lireCompteurs=()=>pg.evaluate(()=>{const parLigne={};for(const ligne of document.querySelectorAll('.qb-liste [data-rv-ligne]'))parLigne[ligne.dataset.rvLigne]=[...ligne.querySelectorAll('.qb-visit-compteur .qb-step-valeur')].map(e=>e.textContent.trim()).join(',');return {parLigne,total:document.querySelectorAll('.qb-liste .qb-visit-compteur .qb-step-valeur').length};});
+  const counters=await lireCompteurs();
+  ok(counters.total===8&&JSON.stringify(counters.parLigne)===JSON.stringify({bowling:'6 / 18',laser_game:'4 / 18',minigolf_blacklight:'3 / 18',billards:'8 / 18',arcade_time:'5 / 18',playground:'2 / 18',duckpin_bowling:'6 / 18',fun_run:'4 / 18'}),'live quickbook all8 counters retain distinct counts: '+JSON.stringify(counters));
   for(const width of [1440,390]) {
     await pg.setViewportSize({width,height:900});
     const min=await pg.evaluate(()=>Math.min(...Array.from(document.querySelectorAll('.qb-liste .qb-step-btn')).flatMap(b=>[b.getBoundingClientRect().width,b.getBoundingClientRect().height])));
@@ -79,12 +83,13 @@ const checks = `
     const item={id:'sm-all8',contactName:'Demande test',email:'',phone:'',payload:{demande}};
     staffCustomRequestsCache.key=String(getActiveOpsCenterId());staffCustomRequestsCache.items=[item];
     staffRequestToBooking(item.id);
+    if(quickBookState&&!quickBookState.moreOpen)toggleQuickBookMore();
     return {type:quickBookState.type,pax:quickBookState.pax,source:quickBookState.sourceRequestId,bowling:quickBookState.visit.bowling,laser:quickBookState.visit.laser_game,duckpin:ligneProgrammeQuick('duckpin_bowling'),billard:ligneProgrammeQuick('billards'),fun:ligneProgrammeQuick('fun_run'),labels:crActivites(demande).join(' | '),display:document.querySelector('#quickBookOverlay').textContent};
   });
   ok(transfer.type==='visite'&&transfer.pax===18&&transfer.source==='sm-all8','actual custom request becomes visit preserving source and18 visitors');
   ok(transfer.bowling.duration===1.5&&transfer.laser.games===3&&transfer.duckpin.duration===0.5&&transfer.billard.units===2&&transfer.billard.hours===2&&transfer.fun.minutes===30&&transfer.fun.participants===6,'actual custom transfer retains all durations/parts/tables/sessions/counts');
-  const smCounters=await pg.locator('.qb-liste .qb-visit-compteur .qb-step-valeur').allTextContents();
-  ok(JSON.stringify(smCounters)===JSON.stringify(['4 / 18','3 / 18','8 / 18','5 / 18','2 / 18','6 / 18','6 / 18','6 / 18']),'actual custom request all8 visible counters retain distinct counts');
+  const smCounters=await lireCompteurs();
+  ok(smCounters.total===8&&JSON.stringify(smCounters.parLigne)===JSON.stringify({bowling:'6 / 18',laser_game:'4 / 18',minigolf_blacklight:'3 / 18',billards:'8 / 18',arcade_time:'5 / 18',playground:'2 / 18',duckpin_bowling:'6 / 18',fun_run:'6 / 18'}),'actual custom request all8 visible counters retain distinct counts: '+JSON.stringify(smCounters));
   ok(transfer.labels.includes('Billard : 8 joueurs · 2 tables · 2h')&&transfer.labels.includes('Laser Game : 4 joueurs · 3 parties'),'actual request labels show players+full choices');
   const emergency=await pg.evaluate(()=>{
     const savedReservations=state.reservations;const savedStatuses=state.laneStatuses;const savedQuick=quickBookState;const savedSelected=state.selectedRes;const savedEdit=state.editState;const savedDate=state.currentDate;
@@ -119,7 +124,7 @@ const checks = `
   ok(emergency.editNeed.requiredCount===1&&emergency.editPrice===39&&emergency.advice.includes('70 min'),'editing own7 of group18 ignores own lane and retains39 emergency estimate');
   ok(emergency.normal.requiredCount===3&&!emergency.normal.bowlingCapacity.emergency,'actual stock3 own13 retains normal comfort6');
   const refused=await pg.evaluate(async()=>{
-    let posts=0;const previous=window.fetch;window.fetch=async(input,init)=>{if(String(init?.method||'').toUpperCase()==='POST')posts++;return previous(input,init);};
+    let posts=0;const previous=window.fetch;window.fetch=async(input,init)=>{if(String(init?.method||'').toUpperCase()==='POST'&&!JSON.parse(String(init?.body||'{}')).dryRun)posts++;return previous(input,init);};
     try {quickBookState.pax=1000;renderQuickBook();await saveQuickBook();return {pax:quickBookState.pax,options:quickBookState.visit.options,posts,error:quickBookState.error,visible:document.querySelector('#quickBookOverlay').textContent};}finally{window.fetch=previous;}
   });
   ok(refused.pax===1000&&refused.options.bowling.participants===6&&refused.options.billards.units===2&&refused.posts===0,'group1000 refusal preserves count/options and sends no POST');

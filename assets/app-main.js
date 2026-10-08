@@ -27374,7 +27374,34 @@ function createQuickBookState(prefill = {}) {
     moreOpen: false,
     error: '',
     payNow: false,
-    submitting: false
+    submitting: false,
+    // LA FENETRE RESERVER (v5, 2026-10-08). Chaque activite a son heure : la
+    // premiere ligne porte l heure d arrivee (startTime), les suivantes une
+    // heure choisie (heures[id]) ou rien, et rien veut dire « dans la
+    // foulee », dans l ordre des lignes (ordre). Le laser porte l ecart de
+    // chaque partie (partiesEcarts, minutes depuis la premiere) quand on les
+    // espace ou qu on pose une pause ; « pour vous seuls » vit dans arene.
+    occasion: prefill.occasion || '',
+    notesInitiales: prefill.notes || '',
+    heures: {},
+    ordre: [],
+    ouverte: '',
+    horloge: null,
+    horlogeH: null,
+    departsOuverts: false,
+    arene: 'auto',
+    partiesEcarts: null,
+    espacement: 30,
+    pistesNombre: null,
+    forcer: false,
+    candidats: null,
+    aide: false,
+    ouverts: {},
+    prixRaison: '',
+    prixRaisonLibre: '',
+    adaptee: false,
+    plan: null,
+    clientConnu: null,
   };
 }
 
@@ -27383,6 +27410,9 @@ let quickBookDialogRelease = null;
 function openQuickBook(prefill = {}) {
   if (!requireClientPermission('reservations.quick', 'Votre rôle ne permet pas la réservation rapide.')) return;
   quickBookState = createQuickBookState(prefill);
+  rvResas = [quickBookState];
+  rvResaIndex = 0;
+  rvDepartsEtat = null;
   if (!quickBookState.startTime) {
     const schedule = getSchedule(quickBookState.date, state.isHolidayMode);
     if (schedule) {
@@ -27392,10 +27422,18 @@ function openQuickBook(prefill = {}) {
   }
   syncQuickBookDuration();
   reconcileQuickLaneSelection();
+  const overlay = document.getElementById('quickBookOverlay');
+  if (overlay && !overlay.dataset.rvEcoute) {
+    overlay.dataset.rvEcoute = '1';
+    overlay.addEventListener('focusout', rvApresSaisie);
+    overlay.addEventListener('keydown', rvToucheEntree);
+  }
   renderQuickBook();
   if (!quickBookDialogRelease) {
     quickBookDialogRelease = containStaffDialog(document.getElementById('quickBookOverlay'), '.qb-modal', '#qbName, #qbEmail, #qbPax', () => {
-      // Une création en vol reste visible jusqu'à sa réponse, comme son bouton occupé.
+      // Échap ferme d'abord l'horloge, puis la fenêtre. Une création en vol
+      // reste visible jusqu'à sa réponse, comme son bouton occupé.
+      if (quickBookState?.horloge) { rvFermerHorloge(); return; }
       if (!quickBookState?.submitting) closeQuickBook();
     });
   }
@@ -27414,6 +27452,12 @@ function quickFromCell(lane, startTime) {
 
 function closeQuickBook() {
   quickBookState = null;
+  rvResas = [];
+  rvResaIndex = 0;
+  rvZones.clear();
+  rvZonesEnAttente.clear();
+  clearTimeout(rvSimulationTimer);
+  clearTimeout(rvClientTimer);
   const overlay = document.getElementById('quickBookOverlay');
   overlay.classList.add('hidden');
   overlay.innerHTML = '';
@@ -27427,7 +27471,10 @@ function syncQuickBookDuration() {
     quickBookState.duration = getFormuleLaneDuration(formule);
     quickBookState.totalDuration = getFormuleTotalDuration(formule);
   } else if (quickBookState.type === 'laser') {
-    if (!LASER_GAME_OPTIONS.some(option => Number(option.value) === Number(quickBookState.duration))) {
+    // Une partie = 30 min. Le staff en pose jusqu a 12 (le plafond du moteur,
+    // MAX_LASER_GAMES_PER_RESERVATION) ; le catalogue public s arrete a 3.
+    const parties = Math.round(Number(quickBookState.duration) * 2);
+    if (!(parties >= 1 && parties <= 12) || Math.abs(parties / 2 - Number(quickBookState.duration)) > 1e-9) {
       quickBookState.duration = LASER_GAME_OPTIONS[0].value;
     }
     quickBookState.totalDuration = Number(quickBookState.duration) * getLaserWaveCount(quickBookState.pax);
@@ -27706,7 +27753,8 @@ function setQuickVisitLaserGames(games) {
   if (!quickBookState) return;
   const visit = ensureQuickVisit();
   visit.laser_game.on = true;
-  visit.laser_game.games = Math.max(1, Math.min(3, Math.trunc(Number(games) || 1)));
+  // Le staff pose jusqu a 12 parties (plafond du moteur), le site s arrete a 3.
+  visit.laser_game.games = Math.max(1, Math.min(12, Math.trunc(Number(games) || 1)));
   syncQuickBookDuration();
   renderQuickBook();
 }
@@ -27761,6 +27809,11 @@ function majQuickPrixAffiche() {
   const champPersonne = document.getElementById('qbCustomPricePerPerson');
   if (champTotal && document.activeElement !== champTotal && custom != null) champTotal.value = String(custom);
   if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((total / joueurs) * 100) / 100);
+  const gros = document.getElementById('rvPrixGros');
+  if (gros) {
+    const reference = rvTotalReference();
+    gros.innerHTML = `${custom != null && custom !== reference ? `<s>${escapeHtml(formatMoney(reference))}</s>` : ''}${escapeHtml(formatMoney(total))}`;
+  }
 }
 
 // MEME REGLE QUE DANS LA FICHE : le total reste la valeur qui part au serveur,
@@ -27795,18 +27848,12 @@ function setQuickPax(value) {
 function patchQuickBookPaxDerived() {
   if (!quickBookState) return;
   const overlay = document.getElementById('quickBookOverlay');
-  if (!overlay) return;
-  const summary = getQuickBookSummary();
-  const amt = overlay.querySelector('.qb-summary .amt');
-  const desc = overlay.querySelector('.qb-summary .desc');
-  const customPriceValue = getQuickBookCustomPrice();
-  if (amt) amt.textContent = `${customPriceValue != null ? customPriceValue : summary.total}€`;
-  if (desc) desc.textContent = `${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}`;
-  const recapPax = overlay.querySelector('#qbRecapPax');
-  if (recapPax) recapPax.textContent = String(Number(quickBookState.pax) || 1);
-  const liste = overlay.querySelector('.qb-liste');
-  if (liste && quickBookState.type !== 'formule') liste.outerHTML = renderQuickActiviteListe();
+  if (!overlay || !overlay.querySelector('.qb-modal.rv')) return;
+  // v5 : chaque zone se repeint si elle a change ; celle qui tient le champ
+  // qu on tape attend qu il rende la main (rvPoser). Le plan du serveur suit.
+  rvRepeindre({ sauf: ['rvJoueursSaisie'] });
   patchQuickBookStatusLine(overlay);
+  rvPlanifierSimulation();
 }
 
 // La ligne d'etat, recalculee a partir du MEME etat que le rendu complet.
@@ -27816,37 +27863,11 @@ function patchQuickBookPaxDerived() {
 function patchQuickBookStatusLine(overlay) {
   const host = (overlay || document).querySelector('.qb-status-line');
   if (!host || !quickBookState) return;
-  const schedule = typeof getSchedule === 'function' ? getSchedule(quickBookState.date, state.isHolidayMode) : null;
-  const { needsLanes, requiredCount } = getQuickBookLaneNeed();
-  const suggestedLanes = quickBookState.startTime && needsLanes
-    ? allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration) || []
-    : [];
-  const parts = [];
-  if (schedule) parts.push(`Ouvert ${schedule.label}`);
-  if (quickBookState.type === 'laser') {
-    const vagues = getLaserWaveCount(quickBookState.pax);
-    const parties = getLaserGameCount(Number(quickBookState.duration) || 0.5);
-    parts.push(`${quickBookState.pax} joueurs · ${parties} partie${parties > 1 ? 's' : ''}`);
-    // Le groupe ne tient pas dans une arene : on DIT le decoupage au lieu
-    // de l appeler « session », mot qui designe deja le lancement.
-    if (vagues > 1) parts.push(`groupe divisé en ${vagues} passages (${getAvailabilityLaserCapacity()} armes)`);
-  } else if (needsLanes) {
-    parts.push(`${requiredCount} piste${requiredCount > 1 ? 's' : ''} requise${requiredCount > 1 ? 's' : ''}`);
-    parts.push(quickBookState.autoAssign
-      ? `Attribution auto${suggestedLanes.length ? ` : pistes ${suggestedLanes.join(' · ')}` : ''}`
-      : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}`);
-    if (quickBookState.startTime) {
-      const free = getFreeCount(quickBookState.date, quickBookState.startTime, quickBookState.duration);
-      const libres = Math.max(free, 0);
-      parts.push(`${libres} piste${libres > 1 ? 's' : ''} libre${libres > 1 ? 's' : ''}`);
-    }
-  } else if (quickBookState.type === 'formule') {
-    parts.push('Sans piste de bowling');
-  }
   const emergencyMessage = bowlingCapacityMessage(getQuickBookLaneNeed().bowlingCapacity);
   const warning = (overlay || document).querySelector('[data-bowling-capacity-warning]');
   if (warning) { warning.textContent = emergencyMessage; warning.hidden = !emergencyMessage; }
-  host.innerHTML = parts.map(part => `<span>${escapeHtml(part)}</span>`).join('');
+  const html = rvConsequenceHtml();
+  if (host.innerHTML !== html) host.innerHTML = html;
 }
 
 // Champ « Joueurs » de la modale staff : saisie NORMALE sans re-render destructif.
@@ -28014,58 +28035,12 @@ function quickActiviteRetenue(id) {
   return quickBookState.type === 'activity' && String(quickBookState.activityId || '') === id;
 }
 
-// L ETAPE « ACTIVITE », UNE SEULE FACON DE CHOISIR (2026-10-02, Movsar :
-// « y a deux moyens de cocher, c est con, je prefere celui du bas ou il y a
-// toutes les activites rangees une par une, garde que celle-la et ameliore-la »).
-// Deux modes seulement, en haut : Activites ou Formule. En mode Activites, LA
-// liste : une ligne par activite, ses reglages dessous quand elle est cochee.
-// Derriere, rien ne change pour le serveur : une activite cochee = la
-// reservation classique de cette activite, deux ou plus = une visite.
-// « Sur mesure » devient ce qu il voulait dire : des EXTRAS comme dans une
-// formule (arcades au temps ou en argent, nourriture, boissons...).
-function renderQuickBookTypeButtons() {
-  const enFormule = quickBookState.type === 'formule';
-  const seg = `<div class="qb-mode-seg" role="tablist" aria-label="Composer la réservation">`
-    + `<button type="button" role="tab" class="qb-mode-tab${enFormule ? '' : ' is-on'}" aria-selected="${!enFormule}" onclick="setQuickModeActivites()">Activités</button>`
-    + `<button type="button" role="tab" class="qb-mode-tab${enFormule ? ' is-on' : ''}" aria-selected="${enFormule}" onclick="setQuickType('formule')">Formule</button>`
-    + `</div>`;
-  if (enFormule) return seg;
-  return seg + renderQuickActiviteListe() + renderQuickExtras();
-}
-
+// LES DEUX MODES DE LA FENETRE : Activites ou Formule. Revenir aux activites
+// depuis une formule repart du bowling, l activite socle du centre.
 function setQuickModeActivites() {
   if (!quickBookState) return;
   if (quickBookState.type !== 'formule') return;
   setQuickType('bowling');
-}
-
-function renderQuickActiviteListe() {
-  const choices = getQuickBookActivityChoices();
-  const enVisite = quickBookState.type === 'visite';
-  const visit = quickBookState.visit || {};
-  const rows = choices.map((choice) => {
-    const on = quickActiviteRetenue(choice.id);
-    let options = '';
-    if (on && choice.id === 'bowling') {
-      const courant = enVisite ? Number(visit.bowling?.duration) : Number(quickBookState.duration);
-      options = `<div class="qb-visit-options"><span class="qb-opt-legend">Durée</span>${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${courant === Number(opt.value) ? 'active' : ''}" onclick="${enVisite ? `setQuickVisitBowlingDuration(${opt.value})` : `setQuickDuration(${opt.value})`}">${opt.label}</button>`).join('')}</div>`;
-    } else if (on && choice.id === 'laser_game') {
-      options = enVisite
-        ? `<div class="qb-visit-options"><span class="qb-opt-legend">Parties</span>${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn ${Number(visit.laser_game?.games) === games ? 'active' : ''}" onclick="setQuickVisitLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`
-        : `<div class="qb-visit-options"><span class="qb-opt-legend">Parties</span>${LASER_GAME_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${Number(quickBookState.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}<small>${opt.price}€/pers</small></button>`).join('')}</div>`;
-    } else if (on) {
-      options = renderQuickVisitOptions(choice);
-    }
-    return `<div class="qb-visit-row ${on ? 'is-on' : ''}">
-      <button type="button" class="qb-visit-toggle" aria-pressed="${on ? 'true' : 'false'}" onclick="toggleQuickListe('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
-      ${on ? renderActivityParticipantsControl(choice.id) : ''}${options}
-    </div>`;
-  }).join('');
-  const n = choices.filter((c) => quickActiviteRetenue(c.id)).length;
-  return `<div class="qb-liste">
-    <div class="qb-visit-grid">${rows}</div>
-    <div class="qb-field-note">${n > 1 ? `${n} activités dans une seule réservation : le programme s’enchaîne, pistes et lancements sont attribués à la création.` : 'Cochez une ou plusieurs activités : tout part dans une seule réservation.'}</div>
-  </div>`;
 }
 
 // Cocher / decocher dans LA liste. Une activite : la reservation classique de
@@ -28085,7 +28060,7 @@ function toggleQuickListe(id) {
   if (apres.length === 1) {
     const seul = apres[0];
     if (seul === 'bowling') { setQuickType('bowling'); quickBookState.duration = dureeBowling || 1; }
-    else if (seul === 'laser_game') { setQuickType('laser'); quickBookState.duration = Math.min(1.5, Math.max(0.5, partiesLaser / 2)); }
+    else if (seul === 'laser_game') { setQuickType('laser'); quickBookState.duration = Math.min(6, Math.max(0.5, partiesLaser / 2)); }
     else setQuickType('activity', seul);
     if ((seul === 'bowling' || seul === 'laser_game') && getQuickVisitParticipants(seul) < Number(quickBookState.pax)) {
       const visit = ensureQuickVisit();
@@ -28245,6 +28220,9 @@ function setQuickType(type, activityId = '') {
     quickBookState.autoAssign = type === 'bowling';
   }
   if (type === 'activity') {
+    // v5 : une activite libre seule ouvre son detail, ses reglages (tables,
+    // heures, sessions) sont l essentiel de sa ligne.
+    quickBookState.ouverte = String(activityId || '');
     if (activityId === 'arcade_time' && !getQuickVisitOptions(activityId).arcadeMode) Object.assign(getQuickVisitOptions(activityId),defaultArcadeOptions(getCenterActivity(activityId)));
     // Une activite libre ne prend ni piste ni arene : la selection de pistes
     // n'a plus de sens, et le moteur ne planifie pas de ressource pour elle.
@@ -28399,7 +28377,13 @@ function getQuickBookLaneNeed(time = quickBookState && quickBookState.startTime)
   const duration = quickBookState.type === 'visite' ? Number(quickBookState.visit.bowling.duration) || 1 : Number(quickBookState.duration) || 1;
   const free = time ? getFreeCount(quickBookState.date, time, duration) : getTotalLanes();
   const servicePlayers = Math.max(...splitGroupIntoBowlingServices(players));
-  return { needsLanes: true, ...getBowlingCapacityPlan(servicePlayers, free, duration * 60) };
+  const plan = getBowlingCapacityPlan(servicePlayers, free, duration * 60);
+  // UN BOWLING SEUL PEUT PRENDRE PLUS DE PISTES QUE LE MINIMUM (Movsar,
+  // 2026-10-08 : « on est le staff ») : 12 joueurs sur 3 pistes, 4 par piste.
+  // Jamais moins que le minimum, jamais plus que le parc.
+  const voulu = quickBookState.type === 'bowling' ? Math.trunc(Number(quickBookState.pistesNombre) || 0) : 0;
+  if (voulu > (Number(plan.requiredCount) || 0)) return { needsLanes: true, ...plan, requiredCount: Math.min(voulu, getTotalLanes()) };
+  return { needsLanes: true, ...plan };
 }
 
 function bowlingCapacityMessage(capacity) {
@@ -28576,8 +28560,10 @@ function quickFieldKnown(field) {
 function unlockQuickField(field) {
   if (!quickBookState) return;
   quickBookState.unlocked[field] = true;
-  // Les contrôles avancés (pistes, créneaux) vivent dans « Plus d'options ».
-  if (field === 'lanes') quickBookState.moreOpen = true;
+  // v5 : le controle vit sur la ligne. Les pistes s ouvrent dans le detail du
+  // bowling, le depart dans celui de la premiere ligne (heure precise).
+  if (field === 'lanes') quickBookState.ouverte = 'bowling';
+  if (field === 'startTime' || field === 'duration') quickBookState.ouverte = rvActivites()[0] || quickBookState.ouverte;
   renderQuickBook();
 }
 
@@ -28615,8 +28601,12 @@ function getQuickBookHeader(formule) {
   if (src === 'client') {
     return { eyebrow: 'Fiche client', title: `Réserver pour ${s.name || 'ce client'}`, sub: 'Coordonnées reprises de la fiche, choisissez le créneau.' };
   }
-  if (src === 'activite') {
-    return { eyebrow: 'Comptoir', title: s.type === 'laser' ? 'Nouvelle session laser' : 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
+  if (src === 'activite' && s.type === 'bowling') {
+    return { eyebrow: 'Comptoir', title: 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
+  }
+  if (s.type === 'activity' && s.activityId) {
+    const activite = typeof getCenterActivity === 'function' ? getCenterActivity(s.activityId) : null;
+    return { eyebrow: 'Comptoir', title: (activite && activite.name) || 'Activité', sub: '' };
   }
   if (s.type === 'visite') {
     return { eyebrow: s.surMesure ? 'Sur mesure' : 'Plusieurs activités', title: decrireVisiteRetenue() || 'Visite multi-activités', sub: 'Composez les activités et ajustez le prix si besoin : tout part dans une seule réservation.' };
@@ -28644,467 +28634,2383 @@ function renderQuickBook() {
   renderQuickBookInner();
 }
 
-function renderQuickBookInner() {
-  if (!quickBookState) return;
-  const overlay = document.getElementById('quickBookOverlay');
-  const schedule = getSchedule(quickBookState.date, state.isHolidayMode);
-  const formule = quickBookState.type === 'formule' ? resolveDisplayFormule(quickBookState.formuleId) : null;
-  const formuleChoices = getQuickBookFormulaChoices();
-  const availableSlots = getQuickBookAvailableSlots();
-  const firstSlot = availableSlots[0] || null;
-  const selectedSlot = availableSlots.find(slot => slot.time === quickBookState.startTime) || null;
-  // Sur mesure : les pistes sont attribuees par le serveur, l UI n en
-  // demande aucune (reservationNeedsLanes('visite') lirait state.booking,
-  // l etat du TUNNEL, jamais celui du comptoir).
-  const { needsLanes, requiredCount } = getQuickBookLaneNeed();
-  const occupied = quickBookState.startTime ? getOccupiedLanes(quickBookState.date, quickBookState.startTime, quickBookState.duration) : new Set();
-  const suggestedLanes = quickBookState.startTime && needsLanes
-    ? allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration) || []
-    : [];
-  const summary = getQuickBookSummary();
-  const formuleAvailability = formule ? getFormuleAvailability(formule, quickBookState.date, quickBookState.pax, quickBookState.startTime) : { ok: true, message: '' };
-  const slotCheck = quickBookState.startTime
-    ? validateSlotWindow(quickBookState.date, quickBookState.startTime, quickBookState.totalDuration, {
-      allowPastStart: quickBookAllowsPastSelectedTime()
-    })
-    : { ok: false, message: 'Sélectionnez une heure.' };
-  const laserAvailability = quickBookState.type === 'laser' && quickBookState.startTime
-    ? getLaserAvailability(quickBookState.date, quickBookState.startTime, quickBookState.duration, quickBookState.pax)
-    : { ok: true, message: '' };
-  const warning = !schedule
-    ? 'Centre fermé à cette date.'
-    : !slotCheck.ok ? slotCheck.message : formule && !formuleAvailability.ok ? formuleAvailability.message : !laserAvailability.ok ? laserAvailability.message : '';
-  const activeLanes = quickBookState.autoAssign ? suggestedLanes : quickBookState.lanes;
-  const activeLaneText = activeLanes.length ? activeLanes.join(' · ') : 'À attribuer';
-  const freeCount = selectedSlot
-    ? selectedSlot.freeCount
-    : quickBookState.startTime && needsLanes
-      ? getFreeCount(quickBookState.date, quickBookState.startTime, quickBookState.duration)
-      : 0;
-  const autoLaneMessage = needsLanes
-    ? quickBookState.autoAssign
-      ? `Attribution auto de ${requiredCount} piste${requiredCount > 1 ? 's' : ''}${suggestedLanes.length ? ` · suggestion ${suggestedLanes.join(' · ')}` : ''}`
-      : `Sélection actuelle : ${quickBookState.lanes.length}/${requiredCount} piste${requiredCount > 1 ? 's' : ''}`
-    : 'Sans piste de bowling';
-  const laserOption = quickBookState.type === 'laser' ? getLaserOption(quickBookState.duration) : null;
-  const typeLabel = quickBookState.type === 'bowling'
-    ? 'Bowling classique'
-    : quickBookState.type === 'laser'
-      ? `Laser Game · ${laserOption.label}`
-      : quickBookState.type === 'visite'
-        ? (decrireVisiteRetenue() || 'Sur mesure')
-        : formule ? formule.name : 'Choisir une formule';
-  const selectedSlotLabel = selectedSlot
-    ? `${selectedSlot.time} · ${quickBookState.type === 'laser' ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : needsLanes ? `${selectedSlot.freeCount} piste${selectedSlot.freeCount > 1 ? 's' : ''} libre${selectedSlot.freeCount > 1 ? 's' : ''}` : 'disponible'}`
-    : firstSlot
-      ? `Premier créneau ${firstSlot.time}`
-      : 'Aucun créneau trouvé';
-  const laserVagues = getLaserWaveCount(quickBookState.pax);
-  const laserParties = getLaserGameCount(Number(quickBookState.duration) || 0.5);
-  const laneNeedLabel = quickBookState.type === 'laser'
-    ? `${quickBookState.pax} joueurs · ${laserParties} partie${laserParties > 1 ? 's' : ''}${laserVagues > 1 ? ` · ${laserVagues} passages` : ''}`
-    : needsLanes ? `${requiredCount} piste${requiredCount > 1 ? 's' : ''} requise${requiredCount > 1 ? 's' : ''}` : 'Sans piste';
-  const laneSuggestionLabel = !needsLanes
-    ? 'Cette réservation ne prend pas de piste.'
-    : suggestedLanes.length
-      ? `Suggestion actuelle : piste${suggestedLanes.length > 1 ? 's' : ''} ${suggestedLanes.join(' · ')}`
-      : 'Aucune suggestion automatique sur ce créneau.';
-  const laneSelectionLabel = !needsLanes
-    ? 'Aucune affectation'
-    : quickBookState.autoAssign
-      ? `Mode auto${activeLanes.length ? ` · ${activeLaneText}` : ''}`
-      : quickBookState.lanes.length
-        ? `Sélection manuelle · ${quickBookState.lanes.join(' · ')}`
-        : 'Sélection manuelle en attente';
+// ── RESERVER : LA FENETRE UNIQUE (v5, lot I2 de la console, 2026-10-08) ─────
+// Movsar sur les maquettes : « une fenetre simple partout mais ou on peut
+// ajouter plein d info », « tout doit suivre », « on est le staff, on doit
+// pouvoir faire ce qu on veut », et sur la v4 : « c est peut-etre complique a
+// tout voir direct ». A gauche la composition : le jour, les joueurs, UNE
+// ligne compacte par activite (sa quantite, SON heure, son placement, ce qui
+// reste), le detail au chevron ; a droite le billet : ce que le client
+// entendra au telephone, son contact, le prix et « Créer ».
+//
+// LE MODELE DU MOTEUR, mesure le 2026-10-08 (sonde sur prepareReservationOps) :
+// dans une visite, le bowling et le laser sont des ANCRES. Chaque ancre porte
+// son heure, chaque partie de laser aussi, sur la grille des heures pleines et
+// des demies. Sans elles le plan echoue et le dossier part « a verifier » sans
+// un mot. La fenetre envoie donc toujours une heure par ancre : celle qu on a
+// choisie, ou « dans la foulee », la fin de la ligne d avant arrondie a la
+// demi-heure. Le plan exact vient du serveur (simulation a blanc, le MEME
+// moteur que la creation) : l ecran ne promet jamais ce que la creation
+// refuserait, et ce qu il ne sait pas encore, il le dit.
+//
+// LE RENDU PAR ZONES. La coquille de la fenetre est posee une fois ; chaque
+// zone (tete, joueurs, plan, billet, pied, horloge) ne se repeint que si son
+// HTML change. Un clic sur « Créer » arrive toujours sur le bouton vise, la
+// frappe garde son champ, le plan garde son defilement.
+const RV_ANCRABLES = ['bowling', 'laser_game'];
+// Les plafonds du STAFF, ceux du moteur et pas ceux du catalogue public :
+// 12 parties = MAX_LASER_GAMES_PER_RESERVATION (lib/ops-engine.js), 6 h de
+// bowling = la borne staff du serveur. Le tunnel public garde ses options.
+const RV_PARTIES_MAX = 12;
+const RV_BOWLING_MAX = 6;
+const RV_TAILLES = [2, 4, 6, 8, 10, 12, 15, 20];
+const RV_OCCASIONS = [['anniversaire', 'Anniversaire'], ['entreprise', 'Entreprise'], ['ecole', 'École'], ['famille', 'Famille'], ['amis', 'Entre amis'], ['evg', 'EVG / EVJF'], ['autre', 'Autre']];
+const RV_RAISONS_PRIX = ['Geste commercial', 'Client fidèle', 'Groupe', 'Erreur de tarif'];
+const RV_DUREES_BOWLING = [0.5, 1, 1.5, 2, 2.5, 3];
+const rvSvg = (trace, epaisseur = 2.2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${epaisseur}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${trace}</svg>`;
+const RV_I = {
+  horloge: rvSvg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  lien: rvSvg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  pers: rvSvg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', 2),
+  tel: rvSvg('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>', 2),
+  mail: rvSvg('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>', 2),
+  note: rvSvg('<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/>', 2),
+  ok: rvSvg('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 3),
+  ko: rvSvg('<path d="M12 7v6M12 17h.01"/>', 3),
+  eclair: rvSvg('<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>'),
+  plus: rvSvg('<path d="M12 5v14M5 12h14"/>', 2.4),
+  ordre: rvSvg('<path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/>'),
+  chev: rvSvg('<path d="m6 9 6 6 6-6"/>', 2.4),
+  place: rvSvg('<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>'),
+  pin: rvSvg('<path d="M9 4h6l-1 6 4 3H6l4-3z"/><path d="M12 13v7"/>', 2.4),
+  cal: rvSvg('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>', 2),
+  arene: rvSvg('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>', 2),
+};
 
-  const customPriceValue = getQuickBookCustomPrice();
-  const canAdjustPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
-  // Une visite a besoin de pistes, mais ne les CHOISIT pas : le serveur les
-  // attribue a la creation. Le selecteur manuel et la grille de duree
-  // mono-activite ne la concernent donc pas (sa duree vient du composeur).
-  const showLanePicker = needsLanes && quickBookState.type !== 'visite';
-  // POURQUOI il n y a aucun creneau. « Changez l heure » est un mauvais
-  // conseil quand le groupe demande plus de pistes que le centre n en a :
-  // aucune heure ne conviendra jamais. On nomme alors le vrai obstacle.
-  const parcPistes = typeof getAvailabilityLaneCount === "function" ? getAvailabilityLaneCount() : TOTAL_LANES;
-  const motifAucunCreneau = needsLanes && requiredCount > parcPistes
-    ? `${quickBookState.pax} joueurs demandent ${requiredCount} pistes : le centre en a ${parcPistes}. Scindez le groupe en plusieurs réservations, ou choisissez une activité sans piste.`
-    : `Aucun créneau automatique avec ces critères. Changez la date, l'heure, le nombre de joueurs ou la formule.`;
-  const header = getQuickBookHeader(formule);
-  const showClient = !quickFieldKnown('client');
-  const showType = !quickFieldKnown('type');
-  const showDate = !quickFieldKnown('date');
-  const showTime = !quickFieldKnown('startTime');
-  const durationEssential = !quickFieldKnown('duration') && (
-    quickBookState.type === 'laser'
-    || (quickBookState.type === 'bowling' && (quickFieldKnown('type') || quickFieldKnown('startTime') || quickFieldKnown('lanes')))
-  );
-  const showFormuleGrid = quickBookState.type === 'formule' && (!quickFieldKnown('formule') || !formule);
-  const manualLanesShort = needsLanes && !quickBookState.autoAssign && quickBookState.lanes.length < requiredCount;
-  // Email = champ visible et saisissable, mais NON obligatoire côté staff (contact
-  // libre au comptoir). On le montre dans le bloc client ; s'il est déjà connu mais
-  // renseigné avec un format invalide, on le signale sans jamais bloquer la création.
-  const emailValid = isValidEmail(quickBookState.email);
-  const emailInputHtml = `
-    <div>
-      <label class="qb-mini-label" for="qbEmail">Email</label>
-      <input id="qbEmail" class="qb-input ${quickBookState.email && !emailValid ? 'qb-input-invalid' : ''}" type="email" value="${escapeHtml(quickBookState.email)}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
-      ${quickBookState.email && !emailValid ? '<div class="qb-field-note danger">Format email invalide.</div>' : '<div class="qb-field-note">Sert aux confirmations et rappels automatiques.</div>'}
-    </div>`;
+// Plusieurs resas pour un meme client, un seul envoi (Movsar, 2026-10-08) :
+// chaque resa garde son etat complet ; quickBookState est celle qu on regarde.
+let rvResas = [];
+let rvResaIndex = 0;
+const rvZones = new Map();
 
-  // Rappel des acquis du contexte : affichés, jamais redemandés, modifiables.
-  const chips = [];
-  if (!showClient) chips.push({ k: 'Client', v: `${escapeHtml(quickBookState.name)} · ${escapeHtml(quickBookState.phone)}`, field: 'client' });
-  if (!showType) chips.push({ k: 'Activité', v: quickBookState.type === 'laser' ? 'Laser Game' : escapeHtml(typeLabel), field: 'type' });
-  if (!showDate) chips.push({ k: 'Date', v: formatQuickBookDateLabel(quickBookState.date), field: 'date' });
-  if (!showTime) chips.push({ k: 'Départ', v: quickBookState.startTime || '--:--', field: quickBookState.lockStartTime ? '' : 'startTime', lock: quickBookState.lockStartTime });
-  if (quickFieldKnown('lanes')) chips.push({ k: quickBookState.lanes.length > 1 ? 'Pistes' : 'Piste', v: quickBookState.lanes.join(' · ') || 'Auto', field: 'lanes' });
-  if (!durationEssential && quickFieldKnown('duration')) chips.push({ k: 'Durée', v: quickBookState.type === 'laser' ? getLaserOption(quickBookState.duration).label : formatDurationLabel(quickBookState.duration), field: 'duration' });
-  if (quickBookState.type === 'formule' && quickFieldKnown('formule') && formule) chips.push({ k: 'Formule', v: escapeHtml(formule.name), field: 'formule' });
-
-  const contextStripHtml = chips.length ? `
-    <div class="qb-context-strip">
-      ${chips.map(chip => `
-        <div class="qb-context-chip">
-          <div><div class="k">${chip.k}</div><div class="v">${chip.v}</div></div>
-          ${chip.lock ? '<span class="qb-chip-lock">Verrouillé</span>' : chip.field ? `<button type="button" class="qb-chip-edit" onclick="unlockQuickField('${chip.field}')">Modifier</button>` : ''}
-        </div>
-      `).join('')}
-    </div>
-  ` : '';
-
-  // Cellules essentielles restantes (date/heure/joueurs) selon le contexte.
-  const essentialCells = [];
-  if (showDate) essentialCells.push(`
-    <div>
-      <label class="qb-mini-label" for="qbDate">Date</label>
-      <input id="qbDate" class="qb-input" type="date" value="${quickBookState.date}" oninput="quickBookState.date=this.value; renderQuickBook()">
-    </div>`);
-  if (showTime) essentialCells.push(`
-    <div>
-      <label class="qb-mini-label" for="qbTime">Heure</label>
-      <input id="qbTime" class="qb-input" type="time" step="1800" value="${quickBookState.startTime}" oninput="quickBookState.startTime=this.value; renderQuickBook()">
-    </div>`);
-  essentialCells.push(`
-    <div>
-      <label class="qb-mini-label" for="qbPax">Joueurs</label>
-      <input id="qbPax" class="qb-input" type="number" min="1" max="240" value="${quickBookState.pax}" oninput="onQuickPaxInput(this.value)" onblur="onQuickPaxBlur(this, event)">
-      ${Number(quickBookState.pax) > 240 ? '<small class="qb-section-note">Ce groupe dépasse 240 personnes : conservez le devis et planifiez la demande manuellement avec l’équipe.</small>' : ''}
-    </div>`);
-
-  const essentialActions = [];
-  if (manualLanesShort && suggestedLanes.length) {
-    essentialActions.push(`<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Compléter les pistes (${suggestedLanes.join(' · ')})</button>`);
-  }
-
-  // Ligne d'état compacte : la synthèse dispo/pistes/sessions sans les 3 cartes.
-  const statusParts = [];
-  if (schedule) statusParts.push(`Ouvert ${schedule.label}`);
-  if (quickBookState.type === 'laser') {
-    statusParts.push(laneNeedLabel);
-    if (selectedSlot) statusParts.push(getLaserSlotAfterText(selectedSlot, quickBookState.pax));
-    if (selectedSlot && (selectedSlot.sharedSession || selectedSlot.mayShareSession)) statusParts.push('Session partagée possible selon l’affluence');
-  } else if (showLanePicker) {
-    statusParts.push(laneNeedLabel);
-    statusParts.push(quickBookState.autoAssign ? `Attribution auto${suggestedLanes.length ? ` : pistes ${suggestedLanes.join(' · ')}` : ''}` : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}${manualLanesShort ? ` (${quickBookState.lanes.length}/${requiredCount})` : ''}`);
-    if (quickBookState.startTime && selectedSlot) statusParts.push(`${Math.max(freeCount, 0)} piste${freeCount > 1 ? 's' : ''} libre${freeCount > 1 ? 's' : ''}`);
-  } else if (quickBookState.type === 'visite') {
-    const visit = quickBookState.visit || {};
-    statusParts.push(visit.bowling?.on ? 'Pistes attribuées automatiquement à la création' : 'Sans piste de bowling');
-  } else if (quickBookState.type === 'formule' && formule) {
-    statusParts.push('Sans piste de bowling');
-  }
-
-  const formuleGridHtml = showFormuleGrid ? `
-    <div style="margin-top:12px;">
-      <label class="qb-mini-label">Formules disponibles</label>
-      <div class="qb-formule-grid">
-        ${formuleChoices.map(item => {
-          const timeWindow = item.timeLimit
-            ? item.timeLimit.min && item.timeLimit.max
-              ? `${item.timeLimit.min}h-${item.timeLimit.max}h`
-              : item.timeLimit.max
-                ? `avant ${item.timeLimit.max}h`
-                : `dès ${item.timeLimit.min}h`
-            : item.validDays
-              ? `${item.validDays.length} jour(s)`
-              : 'Libre';
-          const isActive = quickBookState.formuleId === item.id;
-          // LE STAFF PEUT DONNER UNE FORMULE HORS REGLES (2026-10-02, Movsar :
-          // « c est nous le staff, on peut quand meme donner meme si ca
-          // respecte pas les regles, mais laisse affiche les regles, dis
-          // pourquoi »). La carte reste cliquable, la raison reste ecrite.
-          return `
-            <button class="qb-formule-card ${isActive ? 'active' : ''} ${item.available ? '' : 'unavailable'}" onclick="setQuickFormule('${item.id}')">
-              <div class="qb-formule-top">
-                <div class="qb-formule-name">${item.name}</div>
-                <div class="qb-formule-price">${item.price}EUR/${item.type === 'per_lane' ? 'piste' : 'pers'}</div>
-              </div>
-              <div class="qb-formule-sub">${item.family} - ${timeWindow}</div>
-              <div class="qb-formule-status">
-                <span class="qb-status-pill ${item.available ? 'ok' : 'no'}">${item.available ? 'Dans les règles' : 'Hors règles'}</span>
-                <span class="qb-inline-note">${item.available ? item.desc[0] : `${item.reason} · possible au comptoir`}</span>
-              </div>
-            </button>
-          `;
-        }).join('')}
-      </div>
-    </div>
-  ` : '';
-
-  const durationEssentialHtml = durationEssential
-    ? quickBookState.type === 'laser'
-      ? `
-        <div style="margin-top:12px;">
-          <label class="qb-mini-label">Parties</label>
-          <div class="qb-dur-grid laser">
-            ${LASER_GAME_OPTIONS.map(opt => `<button class="qb-dur-btn ${Number(quickBookState.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}<small>${opt.price}€/pers</small></button>`).join('')}
-          </div>
-        </div>`
-      : `
-        <div style="margin-top:12px;">
-          <label class="qb-mini-label">Durée</label>
-          <div class="qb-dur-grid">
-            ${DURATION_OPTIONS.map(opt => `<button class="qb-dur-btn ${quickBookState.duration === opt.value ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}</button>`).join('')}
-          </div>
-        </div>`
-    : '';
-
-  // SUR MESURE : la grille des activites du catalogue en TOGGLES : bowling
-  // avec sa duree, laser avec ses parties, le reste en simple coche. Le
-  // serveur renormalise le programme et attribue les ressources.
-  // UNE ACTIVITE SEULE A LES MEMES REGLAGES QU EN VISITE. Le composeur ne
-  // s affichait qu en mode « visite » : choisir les billards SEULS au comptoir
-  // ne laissait regler ni les tables, ni la duree, et la reservation partait en
-  // 1 x 1h. Le meme bloc de reglages, sans une deuxieme facon de le rendre.
-  const activityOptionsHtml = quickBookState.type === 'activity' && quickBookState.activityId ? (() => {
-    const activite = typeof getCenterActivity === 'function' ? getCenterActivity(quickBookState.activityId) : null;
-    if (!activite) return '';
-    const bloc = renderQuickVisitOptions({ id: quickBookState.activityId, label: activite.name || '' });
-    if (!bloc) return '';
-    return `<div style="margin-top:12px;"><label class="qb-mini-label">${escapeHtml(activite.name || 'Activité')}</label>${bloc}</div>`;
-  })() : '';
-
-  const visitComposerHtml = quickBookState.type === 'visite' ? (() => {
-    const visit = quickBookState.visit || {};
-    const choices = getQuickBookActivityChoices();
-    const rows = choices.map(choice => {
-      const isBowling = choice.id === 'bowling';
-      const isLaser = choice.id === 'laser_game';
-      const on = isBowling ? !!visit.bowling?.on : isLaser ? !!visit.laser_game?.on : !!(visit.others || {})[choice.id];
-      let optionsHtml = '';
-      if (on && isBowling) {
-        optionsHtml = `<div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${Number(visit.bowling?.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickVisitBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div>`;
-      }
-      if (on && isLaser) {
-        optionsHtml = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn ${Number(visit.laser_game?.games) === games ? 'active' : ''}" onclick="setQuickVisitLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
-      }
-      if (on && !isBowling && !isLaser) optionsHtml = renderQuickVisitOptions(choice);
-      return `<div class="qb-visit-row ${on ? 'is-on' : ''}">
-        <button type="button" class="qb-visit-toggle" aria-pressed="${on ? 'true' : 'false'}" onclick="toggleQuickVisitActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
-        ${optionsHtml}
-      </div>`;
-    }).join('');
-    return `<div style="margin-top:12px;">
-      <label class="qb-mini-label">Activités de la visite</label>
-      <div class="qb-visit-grid">${rows}</div>
-      <div class="qb-field-note">Autant d\'activités que le groupe en vit, dans UNE réservation : le serveur enchaîne le programme et attribue pistes et lancements.</div>
-    </div>`;
-  })() : '';
-
-  // « Plus d'options » : toutes les capacités avancées restent là, repliées.
-  const advancedHtml = quickBookState.moreOpen ? `
-    <div class="qb-block qb-step-note">
-      <label class="qb-mini-label" for="qbNotes">Note pour l’équipe <span class="qb-opt">(facultatif, jamais envoyée au client)</span></label>
-      <textarea id="qbNotes" class="qb-input qb-textarea" rows="2" oninput="quickBookState.notes=this.value" placeholder="Ex. gâteau à prévoir, paiement à l’arrivée…">${escapeHtml(quickBookState.notes || '')}</textarea>
-    </div>
-    <div class="qb-block">
-      <div class="blk-label">Départ précis</div>
-      <div class="qb-slot-head">
-        <label class="qb-mini-label" style="margin-bottom:0;">Créneaux disponibles</label>
-        <div class="qb-section-note">${quickBookState.type === 'laser' ? (selectedSlot ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : `${getLaserWaveCount(quickBookState.pax)} session${getLaserWaveCount(quickBookState.pax) > 1 ? 's' : ''} à planifier`) : needsLanes ? `${Math.max(freeCount, 0)} piste${freeCount > 1 ? 's' : ''} libre${freeCount > 1 ? 's' : ''} sur le créneau choisi` : 'Sélection rapide de l’heure de départ'}</div>
-      </div>
-      ${availableSlots.length ? `
-        <div class="qb-slot-strip">
-          ${availableSlots.slice(0, 8).map(slot => `
-            <button class="qb-slot-chip ${slot.selected ? 'active' : ''} ${quickBookState.lockStartTime ? 'locked' : ''}" ${quickBookState.lockStartTime ? 'disabled aria-disabled="true"' : `onclick="setQuickStartTime('${slot.time}')"`}>
-              <span class="time">${slot.time}</span>
-              <span class="sub">${quickBookState.type === 'laser' ? getLaserSlotCapacityText(slot, quickBookState.pax) : needsLanes ? `${slot.freeCount} piste${slot.freeCount > 1 ? 's' : ''} libre${slot.freeCount > 1 ? 's' : ''}` : 'disponible'}</span>
-              <span class="lanes">${slot.selected ? (quickBookState.lockStartTime ? 'Lancement verrouillé' : 'Sélectionné') : quickBookState.type === 'laser' && slot.sharedSession ? 'Rejoindre session' : 'Choisir ce départ'}</span>
-            </button>
-          `).join('')}
-        </div>
-      ` : `
-        <div class="qb-empty-note">${motifAucunCreneau}</div>
-      `}
-    </div>
-
-    ${(quickBookState.type === 'formule' && !formule) || quickBookState.type === 'laser' || showLanePicker ? `<div class="qb-block">
-      <div class="blk-label">${quickBookState.type === 'laser' ? 'Arène laser' : 'Pistes'}</div>
-      ${quickBookState.type === 'formule' && !formule ? `
-        <div class="qb-warn">Sélectionnez d'abord une formule pour voir la logique de durée et de pistes.</div>
-      ` : quickBookState.type === 'laser' ? `
-        <div class="qb-lane-focus laser-focus">
-          <div>
-            <div class="qb-lane-focus-title">Arène Laser Game</div>
-            <div class="qb-lane-focus-sub">${selectedSlot ? `${getLaserSlotAfterText(selectedSlot, quickBookState.pax)}${selectedSlot.sharedSession ? ' · session déjà partagée' : ''}` : 'Choisissez un départ disponible'}</div>
-          </div>
-          <div class="qb-action-stack">
-            ${firstSlot && !quickBookState.lockStartTime ? `<button class="qb-ghost-btn" onclick="setQuickStartTime('${firstSlot.time}')">Premier départ ${firstSlot.time}</button>` : ''}
-          </div>
-        </div>
-        <div class="qb-warn">Prévenir le client : une session Laser Game peut être complétée avec d'autres joueurs selon l'affluence.</div>
-      ` : showLanePicker ? `
-        <div class="qb-lane-focus">
-          <div>
-            <div class="qb-lane-focus-title">${laneNeedLabel}</div>
-            <div class="qb-lane-focus-sub">${laneSuggestionLabel}</div>
-          </div>
-          <div class="qb-action-stack">
-            ${quickBookState.startTime && suggestedLanes.length ? `<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Appliquer ${suggestedLanes.join(' · ')}</button>` : ''}
-            <button class="qb-ghost-btn" onclick="setQuickAutoAssign()">Mode auto</button>
-          </div>
-        </div>
-        <div class="qb-lane-grid">
-          <button class="qb-lane-btn auto ${quickBookState.autoAssign ? 'active' : ''}" onclick="setQuickAutoAssign()">Auto</button>
-          ${Array.from({ length: getAvailabilityLaneCount() }, (_, idx) => idx + 1).map(lane => {
-            const busy = occupied.has(lane);
-            const maint = state.laneStatuses[lane] === 'maintenance';
-            const active = !quickBookState.autoAssign && quickBookState.lanes.includes(lane);
-            const suggested = quickBookState.autoAssign && suggestedLanes.includes(lane);
-            const cls = `${active ? 'active' : ''} ${busy ? 'busy' : ''} ${maint ? 'maint' : ''} ${suggested ? 'suggested' : ''}`.trim();
-            const action = busy || maint ? '' : `onclick="toggleQuickLane(${lane})"`;
-            const disabledAttr = busy || maint ? 'disabled aria-disabled="true"' : '';
-            return `<button class="qb-lane-btn ${cls}" ${disabledAttr} ${action}>${lane}</button>`;
-          }).join('')}
-        </div>
-        <div class="qb-lane-footer">
-          <div class="qb-lane-selection">${laneSelectionLabel}</div>
-          <div class="schedule-hint">${quickBookState.autoAssign ? `<span class="open">${autoLaneMessage}</span>` : `<span class="${quickBookState.lanes.length >= requiredCount ? 'open' : 'closed'}">${autoLaneMessage}</span>`}</div>
-        </div>
-      ` : ''}
-    </div>` : ''}
-
-  ` : '';
-
-  // LE RECAPITULATIF, toujours visible : ce qui va etre cree, le total, le
-  // bouton. A droite sur grand ecran, en bas sur telephone.
-  const visitBowling = quickBookState.type === 'visite' && quickBookState.visit && quickBookState.visit.bowling && quickBookState.visit.bowling.on;
-  const pistesRecap = quickBookState.type === 'visite'
-    ? (visitBowling ? 'Attribuées à la création' : '')
-    : needsLanes ? (activeLanes.length ? `${activeLanes.length > 1 ? 'Pistes' : 'Piste'} ${activeLaneText}` : `${requiredCount} à attribuer`) : '';
-  const recap = [
-    ['Client', quickBookState.name ? escapeHtml(quickBookState.name) : '<span class="qb-recap-vide">À compléter</span>'],
-    ['Activité', escapeHtml(typeLabel)],
-    ['Date', escapeHtml(formatQuickBookDateLabel(quickBookState.date))],
-    ['Départ', quickBookState.startTime ? escapeHtml(quickBookState.startTime) : '<span class="qb-recap-vide">À choisir</span>'],
-    ['Personnes présentes', `<span id="qbRecapPax">${Number(quickBookState.pax) || 1}</span>`],
-    ['Durée estimée', escapeHtml(formatDurationLabel(quickBookState.totalDuration))],
-    ...(pistesRecap ? [['Pistes', escapeHtml(pistesRecap)]] : []),
-    ...(quickExtrasLignes().length ? [['Extras', escapeHtml(`${quickExtrasLignes().length} ligne${quickExtrasLignes().length > 1 ? 's' : ''} · ${formatMoneyCentimes(quickExtrasTotal())}`)]] : []),
-  ];
-  const etape = (n, titre) => `<div class="qb-step-head"><span class="qb-step-n" aria-hidden="true">${n}</span><span class="blk-label">${titre}</span></div>`;
-  let numero = 0;
-  overlay.classList.remove('hidden');
-  overlay.className = 'qb-overlay';
-  overlay.innerHTML = `
-    <div class="qb-modal qb-v2 qb-context-${quickBookState.context.source}" role="dialog" aria-modal="true" aria-labelledby="qbTitle" tabindex="-1">
-      <div class="qb-head">
-        <div>
-          <div class="ticket-id">${header.eyebrow}</div>
-          <h3 id="qbTitle">${header.title}</h3>
-          ${header.sub ? `<div class="sub">${header.sub}</div>` : ''}
-        </div>
-        <button type="button" class="close-btn" aria-label="Fermer la réservation rapide" onclick="closeQuickBook()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="qb-layout">
-        <div class="qb-body">
-          ${contextStripHtml}
-          ${showClient || !emailValid ? `
-          <section class="qb-block qb-step">
-            ${etape(++numero, showClient ? 'Client' : 'Email client (facultatif)')}
-            ${showClient ? `
-            <div class="qb-row two">
-              <div>
-                <label class="qb-mini-label" for="qbName">Nom</label>
-                <input id="qbName" class="qb-input" value="${escapeHtml(quickBookState.name)}" oninput="quickBookState.name=this.value; majQuickRecapClient()" placeholder="Marie Dupont" autocomplete="off">
-              </div>
-              <div>
-                <label class="qb-mini-label" for="qbPhone">Téléphone</label>
-                <input id="qbPhone" class="qb-input" type="tel" value="${escapeHtml(quickBookState.phone)}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
-              </div>
-            </div>` : ''}
-            <div class="qb-row" ${showClient ? 'style="margin-top:12px;"' : ''}>
-              ${emailInputHtml}
-            </div>
-          </section>` : ''}
-          ${showType || durationEssentialHtml || visitComposerHtml || activityOptionsHtml || formuleGridHtml ? `
-          <section class="qb-block qb-step">
-            ${etape(++numero, 'Activité')}
-            ${showType ? `<div class="qb-type-row">${renderQuickBookTypeButtons()}</div>` : ''}
-            ${showType ? '' : durationEssentialHtml}
-            ${showType ? '' : visitComposerHtml}
-            ${showType ? '' : activityOptionsHtml}
-            ${formuleGridHtml}
-          </section>` : ''}
-          <section class="qb-block qb-step">
-            ${etape(++numero, 'Quand')}
-            <div class="qb-row auto">
-              ${essentialCells.join('')}
-            </div>
-            ${essentialActions.length ? `<div class="qb-inline-actions" style="margin-top:12px;">${essentialActions.join('')}</div>` : ''}
-            <div class="qb-field-note danger" role="status" data-bowling-capacity-warning ${bowlingCapacityMessage(getQuickBookLaneNeed().bowlingCapacity) ? '' : 'hidden'}>${escapeHtml(bowlingCapacityMessage(getQuickBookLaneNeed().bowlingCapacity))}</div>
-            ${statusParts.length ? `<div class="qb-status-line">${statusParts.map(part => `<span>${part}</span>`).join('')}</div>` : ''}
-          </section>
-
-          ${warning ? `<div class="qb-warn">${warning}</div>` : ''}
-          ${quickBookState.error ? `<div class="qb-warn danger">${quickBookState.error}</div>` : ''}
-
-          <button type="button" class="qb-more-toggle" aria-expanded="${quickBookState.moreOpen ? 'true' : 'false'}" onclick="toggleQuickBookMore()">
-            ${quickBookState.moreOpen ? 'Masquer' : (quickBookState.notes || '').trim() ? 'Départ précis, pistes et note (1 note)' : 'Départ précis, pistes et note'}
-          </button>
-
-          ${advancedHtml}
-        </div>
-        <aside class="qb-aside" aria-label="Récapitulatif">
-          <div class="qb-recap">
-            <div class="qb-recap-title">Récapitulatif</div>
-            <dl>${recap.map(([k, v]) => `<div><dt>${k}</dt><dd${k === 'Client' ? ' id="qbRecapClient"' : ''}>${v}</dd></div>`).join('')}</dl>
-          </div>
-          <div class="qb-summary">
-            <div>
-              <div class="lbl">${customPriceValue != null ? 'Prix ajusté' : 'Total estimé'}</div>
-              <div class="desc">${summary.detail} · durée estimée ${formatDurationLabel(quickBookState.totalDuration)}${customPriceValue != null ? ` · référence ${summary.total} €` : ''}</div>
-              ${canAdjustPrice ? (quickBookState.priceOpen ? `
-                <div class="qb-price-edit">
-                  <input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(quickBookState.customPrice ?? ''))}" placeholder="${summary.total}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">
-                  <span>€</span>
-                  <label class="qb-price-sep" for="qbCustomPricePerPerson">ou par personne</label>
-                  <input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((customPriceValue != null ? customPriceValue : summary.total) / Math.max(1, Number(quickBookState.pax) || 1) * 100) / 100))}" aria-label="Prix par personne en euros" oninput="onQuickCustomPricePerPersonInput(this.value)">
-                  <span>€ / pers.</span>
-                  <button type="button" class="qb-ghost-btn" onclick="clearQuickCustomPrice()">Prix catalogue</button>
-                </div>
-                <div class="qb-field-note">Ne change que cette réservation : la formule et la grille du centre restent intactes.</div>
-              ` : `<button type="button" class="qb-price-toggle" onclick="toggleQuickCustomPrice()">Modifier le prix</button>`) : ''}
-            </div>
-            <div class="amt">${customPriceValue != null ? customPriceValue : summary.total}€</div>
-          </div>
-          <div class="qb-actions">
-            <button class="qb-btn-cancel" onclick="closeQuickBook()">Annuler</button>
-            <button class="qb-btn-save" onclick="saveQuickBook()">Créer la réservation</button>
-          </div>
-        </aside>
-      </div>
-    </div>
-  `;
+// UNE COULEUR PAR FAMILLE D ACTIVITE, lue dans l identifiant du catalogue (un
+// centre qui ajoute un « minigolf_pirate » herite de la couleur du minigolf),
+// sinon une couleur stable tiree de l identifiant.
+const RV_FAMILLES = [['laser', 'laser'], ['duckpin', 'duckpin'], ['bowling', 'bowling'], ['golf', 'minigolf'], ['arcade', 'arcades'], ['billard', 'billard'], ['fun_run', 'funrun'], ['funrun', 'funrun'], ['plaine', 'plaine'], ['playground', 'plaine'], ['jeux', 'plaine'], ['table', 'table'], ['anniv', 'table']];
+const RV_REPLIS = ['minigolf', 'arcades', 'duckpin', 'billard', 'funrun', 'plaine', 'table'];
+function rvCouleur(id) {
+  const cle = String(id || '').toLowerCase();
+  const famille = RV_FAMILLES.find(([motif]) => cle.includes(motif));
+  if (famille) return `var(--act-${famille[1]})`;
+  let h = 0;
+  for (const c of cle) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `var(--act-${RV_REPLIS[h % RV_REPLIS.length]})`;
 }
 
-// Le nom tape se lit dans le recapitulatif, sans redessiner la fenetre.
+function rvIso(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function rvPluriel(n, mot, pluriel = `${mot}s`) {
+  return `${n} ${n > 1 ? pluriel : mot}`;
+}
+
+function rvHeuresLabel(heures) {
+  const h = Math.floor(heures);
+  const m = Math.round((heures - h) * 60);
+  if (!h) return `${m} min`;
+  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
+}
+
+function rvIdsDeComposition(visit) {
+  if (!visit) return [];
+  const ids = [];
+  if (visit.bowling && visit.bowling.on) ids.push('bowling');
+  if (visit.laser_game && visit.laser_game.on) ids.push('laser_game');
+  Object.entries(visit.others || {}).forEach(([id, on]) => { if (on) ids.push(id); });
+  return ids;
+}
+
+function rvFormule() {
+  return quickBookState && quickBookState.type === 'formule' ? resolveDisplayFormule(quickBookState.formuleId) : null;
+}
+
+// Ce que la fenetre compose, sous une seule forme (celle d une visite), quel
+// que soit le mode : une activite seule, une visite, une formule ou une
+// formule adaptee. Le laser seul compte ses parties par demi-heure de duree :
+// 4 parties = 2 h, la regle de ses options (1 partie = 30 min).
+function rvComposition() {
+  const s = quickBookState;
+  const vide = { bowling: { on: false }, laser_game: { on: false }, others: {} };
+  if (!s) return vide;
+  if (s.type === 'formule') {
+    const formule = rvFormule();
+    if (!formule) return vide;
+    if (s.adaptee && s.visit) return s.visit;
+    return buildEditProgramFromReservation({ formuleId: formule.id });
+  }
+  if (s.type === 'visite') return s.visit || vide;
+  if (s.type === 'bowling') return { bowling: { on: true, duration: Number(s.duration) || 1 }, laser_game: { on: false }, others: {} };
+  if (s.type === 'laser') return { bowling: { on: false }, laser_game: { on: true, games: Math.max(1, Math.round((Number(s.duration) || 0.5) * 2)) }, others: {} };
+  if (s.type === 'activity' && s.activityId) return { bowling: { on: false }, laser_game: { on: false }, others: { [s.activityId]: true } };
+  return vide;
+}
+
+// Une formule non adaptee se lit, elle ne se regle pas : ses activites et leur
+// enchainement sont ceux du catalogue. « Adapter » ouvre les reglages.
+function rvModifiable() {
+  return Boolean(quickBookState) && (quickBookState.type !== 'formule' || Boolean(quickBookState.adaptee));
+}
+
+// Les activites de la fenetre, dans l ordre de ses lignes : l ordre ou on les
+// a ajoutees, qui est aussi celui de « dans la foulee ».
+function rvActivites() {
+  if (!quickBookState) return [];
+  const ids = rvIdsDeComposition(rvComposition());
+  const ordre = quickBookState.ordre || (quickBookState.ordre = []);
+  ids.forEach((id) => { if (!ordre.includes(id)) ordre.push(id); });
+  return ordre.filter((id) => ids.includes(id));
+}
+
+function rvNomActivite(id) {
+  if (id === 'bowling') return 'Bowling';
+  if (id === 'laser_game') return 'Laser Game';
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  return (activite && activite.name) || id;
+}
+
+function rvPartiesLaser() {
+  const c = rvComposition();
+  return Math.max(1, Math.trunc(Number(c.laser_game && c.laser_game.games) || 1));
+}
+
+function rvVaguesLaser() {
+  return Math.max(1, getLaserWaveCount(getQuickVisitParticipants('laser_game')));
+}
+
+// LES PARTIES DU LASER. Chaque partie part a son ecart (en minutes) de la
+// premiere ; sans reglage, elles s enchainent a l espacement choisi. Une
+// partie ne part jamais avant que toutes les vagues de la precedente aient
+// joue : un groupe de 40 sur une arene de 30 joue en deux vagues, 18:00 puis
+// 18:30, et sa partie suivante part a 19:00 (le moteur refuse 18:30).
+function rvPasLaser() {
+  return 30 * rvVaguesLaser();
+}
+
+function rvEspacementCourant() {
+  return Math.max(rvPasLaser(), Number(quickBookState && quickBookState.espacement) || 30);
+}
+
+function rvEcartsLaser() {
+  const s = quickBookState;
+  const n = rvPartiesLaser();
+  const pas = rvPasLaser();
+  const espacement = rvEspacementCourant();
+  const manuels = Array.isArray(s && s.partiesEcarts) ? s.partiesEcarts : [];
+  const ecarts = [0];
+  for (let k = 1; k < n; k += 1) {
+    const voulu = Number.isFinite(Number(manuels[k])) && manuels[k] !== null ? Number(manuels[k]) : ecarts[k - 1] + espacement;
+    ecarts.push(Math.max(ecarts[k - 1] + pas, voulu));
+  }
+  return ecarts;
+}
+
+function rvDepartsLaser(heure) {
+  if (!heure) return [];
+  const base = Math.round(timeToNum(heure) * 60);
+  return rvEcartsLaser().map((minutes) => numToTime((base + minutes) / 60));
+}
+
+// Combien de minutes la ligne occupe le groupe : les memes regles que
+// syncQuickBookDuration, lues sans rien creer dans l etat.
+function rvMinutesActivite(id) {
+  const c = rvComposition();
+  if (id === 'bowling') {
+    const heures = Number(c.bowling && c.bowling.duration) || 1;
+    return Math.round(heures * 60) * Math.max(1, splitGroupIntoBowlingServices(getQuickVisitParticipants('bowling')).length);
+  }
+  if (id === 'laser_game') {
+    const ecarts = rvEcartsLaser();
+    return ecarts[ecarts.length - 1] + 30 * rvVaguesLaser();
+  }
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  if (!activite) return 30;
+  const participants = getQuickVisitParticipants(id);
+  const options = (quickBookState.visit && quickBookState.visit.options && quickBookState.visit.options[id]) || {};
+  if (activite.priceType === 'grid_fun_run') return getQuickVisitMinutes(id) * getActivitySessionCount(activite, participants);
+  if (activite.priceType === 'grid_bowling') return (Number(options.duration) || 1) * 60 * getActivityUnitPlan(activite, participants).tours;
+  if (activite.priceType === 'per_unit_hour') return getQuickVisitHours(id) * 60;
+  if (id === 'arcade_time') {
+    const devis = getArcadeOfferQuote(activite, options, participants);
+    return devis && devis.offer && devis.offer.mode === 'time' ? Number(devis.offer.minutes) : Number(activite.defaultMinutes) || 30;
+  }
+  return Number(activite.defaultMinutes) || 30;
+}
+
+// LE PLAN DU SERVEUR, s il repond a la composition qu on regarde : une reponse
+// pour une ancienne composition ne s affiche jamais. La cle se calcule une
+// fois par peinture (rvActualiserCle) : elle reconstruit le dossier entier.
+function rvPlanCourant() {
+  const p = quickBookState && quickBookState.plan;
+  if (!p || p.etat !== 'ok' || !p.resultat) return null;
+  return p.cle && p.cle === quickBookState.cleCourante ? p.resultat : null;
+}
+
+function rvPlanEnCalcul() {
+  const p = quickBookState && quickBookState.plan;
+  return Boolean(p && p.etat === 'calcul' && p.cle === quickBookState.cleCourante);
+}
+
+function rvActualiserCle() {
+  if (quickBookState) quickBookState.cleCourante = rvCleSimulation();
+}
+
+function rvBlocsPlan(id) {
+  const plan = rvPlanCourant();
+  if (!plan) return [];
+  return (plan.blocs || []).filter((b) => b.activite === id && b.debut).sort((a, b) => timeToNum(a.debut) - timeToNum(b.debut));
+}
+
+function rvHeurePlanifiee(id) {
+  const bloc = rvBlocsPlan(id)[0];
+  if (bloc) return bloc.debut;
+  const plan = rvPlanCourant();
+  const etape = plan ? (plan.etapes || []).find((e) => e.activite === id && e.debut) : null;
+  return etape ? etape.debut : '';
+}
+
+// L HEURE DE CHAQUE LIGNE. La premiere porte l heure d arrivee ; une ancre
+// suivante porte l heure choisie, sinon « dans la foulee » ; une activite
+// libre n a pas d heure a elle quand une ancre fixe la visite. Une formule
+// non adaptee affiche les heures de son plan.
+function rvHeuresDesLignes(ids = rvActivites()) {
+  const s = quickBookState;
+  const res = {};
+  if (!s) return res;
+  const modifiable = rvModifiable();
+  const ancree = ids.length > 1 && ids.some((id) => RV_ANCRABLES.includes(id));
+  let fin = null;
+  ids.forEach((id, i) => {
+    const ancrable = RV_ANCRABLES.includes(id);
+    let heure = '';
+    let choisie = false;
+    let foulee = false;
+    let libre = false;
+    if (i === 0) {
+      heure = s.startTime || '';
+      choisie = true;
+    } else if (!modifiable) {
+      heure = rvHeurePlanifiee(id);
+      libre = !ancrable && ancree;
+    } else if (ancrable && s.heures && s.heures[id]) {
+      heure = s.heures[id];
+      choisie = true;
+    } else if (ancrable) {
+      heure = fin != null ? numToTime(roundUpHalfHour(fin)) : '';
+      foulee = true;
+    } else {
+      libre = ancree;
+    }
+    res[id] = { heure, choisie, foulee, libre, ancrable, index: i };
+    const debut = heure ? timeToNum(heure) : fin;
+    if (debut != null) fin = debut + rvMinutesActivite(id) / 60;
+  });
+  return res;
+}
+
+// CE QUI RESTE A CETTE HEURE, pour CETTE activite, sur la journee de ce poste
+// (en attendant le plan du serveur). Les memes regles que la creation.
+function rvDispoLaser(heure) {
+  const joueurs = getQuickVisitParticipants('laser_game');
+  const capacite = getAvailabilityLaserCapacity() || 30;
+  return rvDepartsLaser(heure).map((depart) => {
+    const a = getLaserAvailability(quickBookState.date, depart, 0.5, joueurs);
+    const vague = a.waveCount > 1 ? Math.ceil(joueurs / a.waveCount) : joueurs;
+    const libres = Math.max(0, Math.min(capacite, (Number(a.remainingPlaces) || 0) + (a.ok ? vague : 0)));
+    return { depart, ok: a.ok, libres, apres: Number(a.remainingPlaces) || 0, autres: Math.max(0, capacite - libres), vague, vagues: a.waveCount, message: a.message };
+  });
+}
+
+function rvBowlingDuree() {
+  return Number(rvComposition().bowling && rvComposition().bowling.duration) || 1;
+}
+
+// Le besoin en pistes de la ligne bowling A SON HEURE (qui n est plus
+// forcement l heure d arrivee) : la regle de getQuickBookLaneNeed.
+function rvBesoinPistes(heure) {
+  const s = quickBookState;
+  if (s.type === 'bowling') return { duree: rvBowlingDuree(), ...getQuickBookLaneNeed(heure) };
+  const duree = rvBowlingDuree();
+  const libres = heure ? getFreeCount(s.date, heure, duree) : getTotalLanes();
+  const joueurs = getQuickVisitParticipants('bowling');
+  return { duree, ...getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(joueurs)), libres, duree * 60) };
+}
+
+function rvPlacementManuel() {
+  const s = quickBookState;
+  return Boolean(s && !s.autoAssign && (s.lanes || []).length > 0);
+}
+
+function rvPistesDuBowling(heure) {
+  const s = quickBookState;
+  const { duree, requiredCount } = rvBesoinPistes(heure);
+  const besoin = requiredCount || 1;
+  const libres = heure ? Math.max(0, getFreeCount(s.date, heure, duree)) : 0;
+  const manuelles = rvPlacementManuel();
+  const pistes = manuelles ? [...s.lanes] : (heure ? (allocateLanes(besoin, s.date, heure, duree) || []) : []);
+  return { besoin, libres, pistes, manuelles, duree };
+}
+
+function rvListePistes(pistes) {
+  const liste = [...pistes].sort((a, b) => a - b);
+  return liste.length > 2 ? `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}` : liste.join(' et ');
+}
+
+// L OCCUPATION DE CHAQUE PISTE pendant la fenetre de la ligne bowling : prise
+// jusqu a quelle heure, par qui, et quelle part de la fenetre elle mange.
+function rvOccupationPistes(heure, duree) {
+  const s = quickBookState;
+  const parc = getAvailabilityLaneCount();
+  const res = {};
+  if (!heure) return res;
+  const debut = timeToNum(heure);
+  const fenetres = state.reservations
+    .filter((r) => r.date === s.date && r.status !== 'cancelled' && (r.lanes || []).length > 0)
+    .flatMap((r) => getBowlingWindowsFromReservation(r).map((w) => ({ ...w, nom: r.name || '' })));
+  for (let piste = 1; piste <= parc; piste += 1) {
+    if (state.laneStatuses[piste] === 'maintenance') { res[piste] = { etat: 'maint', part: 1, texte: 'en maintenance' }; continue; }
+    const prises = fenetres.filter((w) => w.lanes.includes(piste) && overlap(debut, duree, w.start, w.duration));
+    if (!prises.length) { res[piste] = { etat: 'libre', part: 0, texte: 'libre' }; continue; }
+    const occupe = prises.reduce((t, w) => t + Math.max(0, Math.min(debut + duree, w.start + w.duration) - Math.max(debut, w.start)), 0);
+    const debutPrise = Math.min(...prises.map((w) => w.start));
+    const finPrise = Math.max(...prises.map((w) => w.start + w.duration));
+    const texte = debutPrise <= debut ? `prise jusqu’à ${numToTime(finPrise)}` : `prise dès ${numToTime(debutPrise)}`;
+    res[piste] = { etat: 'pris', part: Math.min(1, occupe / duree), texte, nom: prises[0].nom };
+  }
+  return res;
+}
+
+// L ETAT D UNE LIGNE, a droite : ce qui reste a son heure, en mots et en
+// barre (les autres groupes en gris, ce groupe a sa couleur). Le plan du
+// serveur fait foi des qu il est la ; avant, la journee de ce poste.
+function rvEtatLigne(id, ligne) {
+  const s = quickBookState;
+  if (ligne.libre) return { html: 'Accès libre', barre: [], etat: 'ok' };
+  if (!ligne.heure) return { html: RV_ANCRABLES.includes(id) ? 'Choisissez l’heure' : '', barre: [], etat: '' };
+  if (id === 'laser_game') {
+    const capacite = getAvailabilityLaserCapacity() || 30;
+    const blocs = rvBlocsPlan('laser_game');
+    const departs = blocs.length
+      ? blocs.filter((b) => (Number(b.vague) || 1) === 1).map((b) => ({ ok: true, autres: Number(b.joueursAvant) || 0, nous: Number(b.joueurs) || 0 }))
+      : rvDispoLaser(ligne.heure).map((d) => ({ ok: d.ok, autres: d.autres, nous: d.vague, message: d.message }));
+    const refus = departs.find((d) => !d.ok);
+    if (refus) return { html: `<span class="rv-ko">${escapeHtml(refus.message || 'Arène complète')}</span>`, barre: [], etat: 'ko' };
+    if (!departs.length) return { html: '', barre: [], etat: '' };
+    const totaux = departs.map((d) => d.autres + d.nous);
+    const min = Math.min(...totaux);
+    const max = Math.max(...totaux);
+    const partagee = departs.some((d) => d.autres > 0);
+    const quoi = s.arene === 'seuls' ? 'pour vous seuls' : partagee ? 'partagée' : 'pour vous';
+    const premier = departs[0];
+    return {
+      html: `<b>${min === max ? min : `${min} à ${max}`}</b>/${capacite} · ${quoi}`,
+      barre: [{ cls: 'is-autres', part: premier.autres / capacite }, { cls: 'is-nous', part: premier.nous / capacite }],
+      etat: partagee ? 'att' : 'ok',
+    };
+  }
+  if (id === 'bowling') {
+    const parc = getAvailabilityLaneCount() || 1;
+    const { besoin, libres, pistes } = rvPistesDuBowling(ligne.heure);
+    const blocs = rvBlocsPlan('bowling');
+    const posees = blocs.length ? [...new Set(blocs.flatMap((b) => b.pistes || []))] : pistes;
+    if (!blocs.length && pistes.length < besoin) {
+      return { html: `<span class="rv-ko">${rvPluriel(libres, 'piste libre', 'pistes libres')}, il en faut ${besoin}</span>`, barre: [{ cls: 'is-autres', part: (parc - libres) / parc }], etat: 'ko' };
+    }
+    const reste = Math.max(0, libres - posees.length);
+    return {
+      html: `<span class="${reste ? 'rv-ok' : 'rv-att'}">${rvPluriel(reste, 'piste')}</span> ${reste > 1 ? 'restent libres' : 'reste libre'}`,
+      barre: [{ cls: 'is-autres', part: Math.max(0, parc - libres) / parc }, { cls: 'is-nous', part: posees.length / parc }],
+      etat: reste ? 'ok' : 'att',
+    };
+  }
+  const plan = rvPlanCourant();
+  const etape = plan ? (plan.etapes || []).find((e) => e.activite === id) : null;
+  if (etape && etape.libre) return { html: 'Accès libre', barre: [], etat: 'ok' };
+  if (etape && etape.debut) return { html: `De <b>${escapeHtml(etape.debut)}</b>${etape.fin ? ` à ${escapeHtml(etape.fin)}` : ''}`, barre: [], etat: 'ok' };
+  return { html: `${escapeHtml(rvHeuresLabel(rvMinutesActivite(id) / 60))} prévues`, barre: [], etat: 'ok' };
+}
+
+function rvBarreHtml(barre) {
+  if (!barre.length) return '';
+  return `<span class="rv-barre-l" aria-hidden="true">${barre.map((b) => `<i class="${b.cls}" style="width:${Math.round(Math.min(1, Math.max(0, b.part)) * 1000) / 10}%"></i>`).join('')}</span>`;
+}
+
+// LA QUANTITE de la ligne : la duree du bowling, les parties du laser, et
+// pour le reste le compteur de l activite (joueurs ou enfants). Aucun plafond
+// de catalogue : 4 parties, 2 h 30, c est le staff qui decide.
+function rvQuantiteHtml(id, modifiable) {
+  const s = quickBookState;
+  if (id === 'bowling') {
+    const duree = rvBowlingDuree();
+    if (!modifiable) return `<span class="rv-qte-fixe">${escapeHtml(rvHeuresLabel(duree))}</span>`;
+    return `<span class="rv-qte" role="group" aria-label="Durée du bowling"><button type="button" aria-label="Bowling : 30 minutes de moins" ${duree <= 0.5 ? 'disabled' : ''} onclick="rvBowlingPas(-0.5)">−</button><b>${escapeHtml(rvHeuresLabel(duree))}</b><button type="button" aria-label="Bowling : 30 minutes de plus" ${duree >= RV_BOWLING_MAX ? 'disabled' : ''} onclick="rvBowlingPas(0.5)">+</button></span>`;
+  }
+  if (id === 'laser_game') {
+    const parties = rvPartiesLaser();
+    if (!modifiable) return `<span class="rv-qte-fixe">${rvPluriel(parties, 'partie')}</span>`;
+    return `<span class="rv-qte" role="group" aria-label="Parties de laser"><button type="button" aria-label="Laser : une partie de moins" ${parties <= 1 ? 'disabled' : ''} onclick="rvLaserParties(-1)">−</button><b>${parties}</b><span>partie${parties > 1 ? 's' : ''}</span><button type="button" aria-label="Laser : une partie de plus" ${parties >= RV_PARTIES_MAX ? 'disabled' : ''} onclick="rvLaserParties(1)">+</button></span>`;
+  }
+  if (!modifiable) return `<span class="rv-qte-fixe">${escapeHtml(rvPluriel(getQuickVisitParticipants(id), 'joueur'))}</span>`;
+  return renderActivityParticipantsControl(id);
+}
+
+// LE PLACEMENT, en un mot sur la ligne : les pistes (Auto ou choisies),
+// l arene, ou le reglage propre a l activite (tables, session...).
+function rvPlacementHtml(id, ligne, modifiable) {
+  const s = quickBookState;
+  const ouvrir = modifiable ? ` onclick="rvOuvrirLigne('${escapeHtml(id)}')"` : ' disabled';
+  if (id === 'bowling') {
+    const { pistes, manuelles } = rvPistesDuBowling(ligne.heure);
+    const blocs = rvBlocsPlan('bowling');
+    const posees = blocs.length ? [...new Set(blocs.flatMap((b) => b.pistes || []))].sort((a, b) => a - b) : pistes;
+    const texte = manuelles
+      ? `<b>${posees.length > 1 ? 'Pistes' : 'Piste'} ${escapeHtml(rvListePistes(posees))}</b>`
+      : `Auto${posees.length ? ` · ${escapeHtml(posees.join('-'))}` : ''}`;
+    return `<button type="button" class="rv-place${manuelles ? ' is-manuel' : ''}" aria-label="Placement des pistes : ${manuelles ? 'choisi' : 'automatique'}"${ouvrir}>${RV_I.place}${texte}</button>`;
+  }
+  if (id === 'laser_game') {
+    const seuls = s.arene === 'seuls';
+    return `<button type="button" class="rv-place${seuls ? ' is-manuel' : ''}" aria-label="Arène : ${seuls ? 'pour vous seuls' : 'automatique'}"${ouvrir}>${RV_I.arene}${seuls ? '<b>Pour vous seuls</b>' : 'Arène · Auto'}</button>`;
+  }
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  if (!activite) return '<span></span>';
+  let resume = '';
+  if (activite.priceType === 'per_unit_hour') {
+    const unites = getQuickVisitUnits(id);
+    resume = `${rvPluriel(unites, /table/i.test(activite.unitLabel || '') ? 'table' : 'unité')} · ${rvHeuresLabel(getQuickVisitHours(id))}`;
+  } else if (activite.priceType === 'grid_fun_run') {
+    resume = `${getQuickVisitMinutes(id)} min`;
+  } else if (activite.priceType === 'grid_bowling') {
+    resume = rvHeuresLabel(Number(getQuickVisitOptions(id).duration) || 1);
+  } else if (id === 'arcade_time') {
+    resume = getQuickVisitOptions(id).arcadeOfferId ? 'Offre choisie' : 'Offre à choisir';
+  }
+  if (!resume) return '<span></span>';
+  return `<button type="button" class="rv-place" aria-label="Réglages de ${escapeHtml(rvNomActivite(id))}"${ouvrir}>${escapeHtml(resume)}</button>`;
+}
+
+// L HEURE DE LA LIGNE : un toucher ouvre l horloge (chaque heure dit si TOUT
+// le plan tient pour ce groupe). La premiere ligne porte l heure d arrivee,
+// verrouillee quand on rejoint un lancement laser.
+function rvHeureHtml(id, ligne, modifiable) {
+  const s = quickBookState;
+  const nom = rvNomActivite(id);
+  if (ligne.libre) return '<span class="rv-heure-wrap"><span class="rv-heure is-libre">pendant la visite</span></span>';
+  const verrou = ligne.index === 0 && s.lockStartTime;
+  const ouvert = s.horloge && s.horloge.id === id && s.horloge.partie <= 0;
+  const etat = rvEtatLigne(id, ligne).etat;
+  const cls = `rv-heure${ouvert ? ' is-ouvert' : ''}${etat === 'ko' ? ' is-ko' : ''}${ligne.foulee ? ' is-foulee' : ''}`;
+  const choix = modifiable && !verrou && (ligne.index === 0 || ligne.ancrable);
+  const sous = verrou ? '<small class="qb-chip-lock">verrouillé</small>' : ligne.foulee ? '<small>foulée</small>' : '';
+  const libelle = `Heure de ${nom} : ${ligne.heure || 'à choisir'}${ligne.foulee ? ', dans la foulée' : ''}${verrou ? ', départ verrouillé' : ''}`;
+  return `<span class="rv-heure-wrap"><button type="button" class="${cls}" id="rvHeure-${escapeHtml(id)}" aria-haspopup="dialog" aria-expanded="${Boolean(ouvert)}" aria-label="${escapeHtml(libelle)}" ${choix ? `onclick="rvOuvrirHorloge('${escapeHtml(id)}',0)"` : 'disabled'}>${ligne.foulee ? RV_I.lien : RV_I.horloge}<span data-rv-heure="${escapeHtml(id)}">${escapeHtml(ligne.heure || '--:--')}</span>${sous}</button></span>`;
+}
+
+function rvLigneHtml(id, ligne, { modifiable, retirable }) {
+  const s = quickBookState;
+  const nom = rvNomActivite(id);
+  const ouverte = s.moreOpen || s.ouverte === id;
+  const etat = rvEtatLigne(id, ligne);
+  const detail = ouverte ? rvDetailHtml(id, ligne, modifiable) : '';
+  const retirer = retirable
+    ? `<button type="button" class="rv-x1 rv-retirer qb-visit-toggle" aria-label="Retirer ${escapeHtml(nom)}" onclick="rvRetirerActivite('${escapeHtml(id)}')"><span class="rv-sr">${escapeHtml(nom)}</span></button>`
+    : '<span></span>';
+  return `<div class="rv-lc qb-visit-row is-on${ouverte ? ' is-ouverte' : ''}${etat.etat === 'ko' ? ' is-ko' : ''}" data-rv-ligne="${escapeHtml(id)}" style="--rv-c:${rvCouleur(id)}">
+    <div class="rv-lc-h">
+      <span class="rv-nom"><i class="rv-pt" aria-hidden="true"></i><span>${escapeHtml(nom)}</span></span>
+      ${rvQuantiteHtml(id, modifiable)}
+      ${rvHeureHtml(id, ligne, modifiable)}
+      ${rvPlacementHtml(id, ligne, modifiable)}
+      <span class="rv-etat-l" data-rv-dispo="${escapeHtml(id)}">${rvBarreHtml(etat.barre)}<span>${etat.html}</span></span>
+      <button type="button" class="rv-ouvrir" id="rvOuvrir-${escapeHtml(id)}" aria-expanded="${Boolean(ouverte)}" aria-controls="rvDetail-${escapeHtml(id)}" aria-label="${ouverte ? 'Refermer le détail' : 'Régler en détail'} : ${escapeHtml(nom)}" onclick="rvBasculerLigne('${escapeHtml(id)}')">${RV_I.chev}</button>
+      ${retirer}
+    </div>
+    ${ouverte ? `<div class="rv-lc-d" id="rvDetail-${escapeHtml(id)}">${detail}</div>` : ''}
+  </div>`;
+}
+
+// Une ligne retiree d une formule adaptee reste lisible, barree, avec
+// « Remettre » : on voit ce que le groupe ne fera pas.
+function rvLigneRetireeHtml(id) {
+  return `<div class="rv-lc qb-visit-row is-retiree" data-rv-ligne="${escapeHtml(id)}" style="--rv-c:${rvCouleur(id)}"><div class="rv-lc-h"><span class="rv-nom"><i class="rv-pt" aria-hidden="true"></i><span>${escapeHtml(rvNomActivite(id))}</span></span><span></span><span></span><span></span><span class="rv-etat-l"><button type="button" class="rv-remettre" onclick="rvBasculerDansFormule('${escapeHtml(id)}')">Remettre</button></span><span></span><span></span></div></div>`;
+}
+
+// LE DETAIL : tout ce qui se regle, sans plafond, et ce que chaque reglage
+// change (heures, places, prix).
+function rvDetailHtml(id, ligne, modifiable) {
+  const s = quickBookState;
+  const rangs = [];
+  if (!modifiable) {
+    rangs.push(`<p class="rv-texte">Dans la formule telle quelle : ${escapeHtml(rvEtatLigneTexte(id, ligne))}. « Adapter pour ce groupe » ouvre les réglages.</p>`);
+    return rangs.join('');
+  }
+  if (id === 'laser_game') rangs.push(rvDetailLaserHtml(ligne));
+  else if (id === 'bowling') rangs.push(rvDetailBowlingHtml(ligne));
+  else {
+    const options = renderQuickVisitOptions({ id, label: rvNomActivite(id) });
+    rangs.push(options ? `<div class="rv-rg rv-options-autres">${options}</div>` : '<p class="rv-texte">Rien à régler : l’activité suit le groupe.</p>');
+    if (ligne.libre) rangs.push('<p class="rv-texte">En accès libre pendant la visite : le planning ne lui réserve pas d’heure à part.</p>');
+  }
+  if (ligne.index === 0 && !s.lockStartTime) {
+    rangs.push(`<label class="rv-precis">Heure précise <input id="qbTime" type="time" step="1800" value="${escapeHtml(s.startTime || '')}" aria-label="Heure précise d’arrivée" onchange="rvChoisirHeure('${escapeHtml(id)}',0,this.value)"></label>`);
+  }
+  return rangs.join('');
+}
+
+function rvEtatLigneTexte(id, ligne) {
+  const div = document.createElement('div');
+  div.innerHTML = rvEtatLigne(id, ligne).html;
+  return div.textContent || '';
+}
+
+function rvDetailLaserHtml(ligne) {
+  const s = quickBookState;
+  const capacite = getAvailabilityLaserCapacity() || 30;
+  const joueurs = getQuickVisitParticipants('laser_game');
+  const vagues = rvVaguesLaser();
+  const pas = rvPasLaser();
+  const departs = rvDepartsLaser(ligne.heure);
+  const ecarts = rvEcartsLaser();
+  const blocs = rvBlocsPlan('laser_game');
+  const locaux = blocs.length ? [] : rvDispoLaser(ligne.heure);
+  const rangs = [];
+  rangs.push(`<div class="rv-rg"><span class="rv-lbl">Joueurs</span>${renderActivityParticipantsControl('laser_game')}${vagues > 1 ? `<span class="rv-note-r"><b>${vagues} vagues de ${Math.ceil(joueurs / vagues)}</b> : l’arène tient ${capacite} joueurs, la vague suivante part 30 min après.</span>` : ''}</div>`);
+  rangs.push(`<div class="rv-rg"><span class="rv-lbl">Arène</span><span class="rv-seg" role="group" aria-label="Arène">${[['auto', 'Auto'], ['seuls', 'Pour vous seuls']].map(([valeur, mot]) => `<button type="button" class="${s.arene === valeur ? 'is-on' : ''}" aria-pressed="${s.arene === valeur}" onclick="rvChoisirArene('${valeur}')">${mot}</button>`).join('')}</span><span class="rv-note-r">${s.arene === 'seuls' ? 'Aucun autre groupe dans vos parties : le planning réserve toute l’arène.' : 'Une partie peut se jouer avec un autre groupe si l’arène a de la place.'}</span></div>`);
+  if (departs.length > 1) {
+    const espacements = [30, 60, 90].filter((m) => m >= pas);
+    rangs.push(`<div class="rv-rg"><span class="rv-lbl">Espacement</span><span class="rv-seg" role="group" aria-label="Espacement des parties">${espacements.map((m) => `<button type="button" class="${!s.partiesEcarts && rvEspacementCourant() === m ? 'is-on' : ''}" aria-pressed="${!s.partiesEcarts && rvEspacementCourant() === m}" onclick="rvChoisirEspacement(${m})">${escapeHtml(rvHeuresLabel(m / 60))}</button>`).join('')}</span>${s.partiesEcarts ? '<span class="rv-note-r">Heures posées à la main.</span>' : ''}</div>`);
+  }
+  departs.forEach((depart, k) => {
+    if (k > 0) {
+      const pause = ecarts[k] - ecarts[k - 1] - pas;
+      if (pause > 0) rangs.push(`<div class="rv-pause"><span class="rv-p">Pause</span><span>${escapeHtml(rvHeuresLabel(pause / 60))}${pause >= 30 ? ' · goûter, bar ou arcades' : ''}</span><button type="button" class="rv-x1" aria-label="Retirer la pause avant la partie ${k + 1}" onclick="rvRetirerPause(${k})">×</button></div>`);
+    }
+    const bloc = blocs.find((b) => (Number(b.partie) || 1) === k + 1 && (Number(b.vague) || 1) === 1);
+    const local = locaux[k];
+    const autres = bloc ? Number(bloc.joueursAvant) || 0 : local ? local.autres : 0;
+    const nous = bloc ? Number(bloc.joueurs) || 0 : local ? local.vague : joueurs;
+    const refus = !bloc && local && !local.ok ? local.message : '';
+    const cases = Array.from({ length: capacite }, (_, i) => `<i class="${i < autres ? 'is-autres' : i < autres + nous ? 'is-nous' : ''}"></i>`).join('');
+    const cpt = refus
+      ? `<span class="rv-ko">${escapeHtml(refus)}</span>`
+      : `<b>${autres + nous}/${capacite}</b> · ${s.arene === 'seuls' ? 'pour vous seuls' : autres ? `partagée (${autres})` : 'pour vous'}${vagues > 1 ? ` · ${vagues} vagues` : ''}`;
+    const ouverte = s.horloge && s.horloge.id === 'laser_game' && s.horloge.partie === k;
+    const heure = k === 0
+      ? `<button type="button" class="rv-heure${ouverte ? ' is-ouvert' : ''}" aria-label="Heure de la partie 1 : ${escapeHtml(depart)}" ${ligne.index === 0 && s.lockStartTime ? 'disabled' : `onclick="rvOuvrirHorloge('laser_game',0)"`}>${RV_I.horloge}${escapeHtml(depart)}</button>`
+      : `<button type="button" class="rv-heure${ouverte ? ' is-ouvert' : ''}" aria-label="Heure de la partie ${k + 1} : ${escapeHtml(depart)}" onclick="rvOuvrirHorloge('laser_game',${k})">${RV_I.horloge}${escapeHtml(depart)}</button>`;
+    rangs.push(`<div class="rv-pr"><span class="rv-p">Partie ${k + 1}</span>${heure}<span class="rv-jauge" style="--rv-cases:${capacite}" aria-hidden="true">${cases}</span><span class="rv-cpt">${cpt}</span>${k > 0 ? `<button type="button" class="rv-x1" aria-label="Retirer la partie ${k + 1}" onclick="rvRetirerPartie(${k})">×</button>` : '<span></span>'}</div>`);
+  });
+  rangs.push(`<div class="rv-rg"><span class="rv-ajouts-l"><button type="button" ${departs.length >= RV_PARTIES_MAX ? 'disabled' : ''} onclick="rvLaserParties(1)">+ Partie</button>${departs.length > 1 ? '<button type="button" onclick="rvAjouterPause()">+ Pause</button>' : ''}</span></div>`);
+  const hors = rvHorsCatalogueLaserHtml(departs.length);
+  if (hors) rangs.push(hors);
+  return rangs.join('');
+}
+
+function rvOptionsLaserCentre() {
+  const options = typeof getLaserOptionsCatalog === 'function' ? getLaserOptionsCatalog() : LASER_GAME_OPTIONS;
+  return (Array.isArray(options) && options.length ? options : LASER_GAME_OPTIONS).map((o) => ({ games: Number(o.games), price: Number(o.price) })).filter((o) => o.games > 0 && Number.isFinite(o.price));
+}
+
+// AU-DELA DU CATALOGUE, palier puis unite (Movsar, 2026-10-08) : on le dit sur
+// la ligne, avec le prix propose et ce qui le compose. Le staff peut changer.
+function rvHorsCatalogueLaserHtml(parties) {
+  const options = rvOptionsLaserCentre();
+  const max = Math.max(0, ...options.map((o) => o.games));
+  if (!max || parties <= max) return '';
+  const prix = typeof prixLaserAuPalier === 'function' ? prixLaserAuPalier(options, parties) : null;
+  const palier = options.filter((o) => o.games < parties).sort((a, b) => a.games - b.games).pop();
+  const unite = options.find((o) => o.games === 1);
+  const detail = prix != null && palier && unite
+    ? `Prix proposé : <b>${escapeHtml(formatMoney(prix))} / joueur</b>, soit ${escapeHtml(formatMoney(palier.price))} les ${palier.games} plus ${escapeHtml(formatMoney(unite.price))} par partie en plus.`
+    : 'Le prix se vérifie avant de créer.';
+  const peutChanger = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit');
+  return `<div class="rv-hors"><span class="rv-ic" aria-hidden="true">!</span><span><b>${parties} parties, hors catalogue</b> (le site s’arrête à ${max}). ${detail}</span>${peutChanger ? '<button type="button" onclick="toggleQuickCustomPrice()">Changer</button>' : ''}</div>`;
+}
+
+function rvHorsCatalogueBowlingHtml(duree) {
+  const grille = typeof getBowlingPriceGrid === 'function' ? getBowlingPriceGrid() : BOWLING_PRICES;
+  const pas = Object.keys(grille || {}).map(Number).filter((h) => h > 0);
+  const max = Math.max(0, ...pas);
+  if (!max || duree <= max) return '';
+  const prix = typeof prixBowlingAuPalier === 'function' ? prixBowlingAuPalier(grille, duree) : null;
+  const reste = duree - max;
+  const detail = prix != null
+    ? `<b>${escapeHtml(formatMoney(prix))} par piste</b> : ${escapeHtml(rvHeuresLabel(max))} à ${escapeHtml(formatMoney(grille[max]))}, plus ${escapeHtml(rvHeuresLabel(reste))} au tarif de l’heure et de la demi-heure.`
+    : 'Le prix se vérifie avant de créer.';
+  return `<div class="rv-hors"><span class="rv-ic" aria-hidden="true">!</span><span><b>${escapeHtml(rvHeuresLabel(duree))}, hors catalogue</b> (le site s’arrête à ${escapeHtml(rvHeuresLabel(max))}). ${detail}</span></div>`;
+}
+
+function rvDetailBowlingHtml(ligne) {
+  const s = quickBookState;
+  const heure = ligne.heure || s.startTime;
+  const duree = rvBowlingDuree();
+  const joueurs = getQuickVisitParticipants('bowling');
+  const { besoin, pistes, manuelles } = rvPistesDuBowling(heure);
+  const rangs = [];
+  rangs.push(`<div class="rv-rg"><span class="rv-lbl">Joueurs</span>${renderActivityParticipantsControl('bowling')}</div>`);
+  if (s.type === 'bowling') {
+    const auto = getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(joueurs)), getAvailabilityLaneCount(), duree * 60).requiredCount || 1;
+    const parPiste = typeof getBookingCatalogConfig === 'function' && getBookingCatalogConfig() ? Number(getBookingCatalogConfig().normalCapacityPerLane) || 6 : 6;
+    rangs.push(`<div class="rv-rg"><span class="rv-lbl">Pistes</span><span class="rv-qte" role="group" aria-label="Nombre de pistes"><button type="button" aria-label="Une piste de moins" ${besoin <= auto ? 'disabled' : ''} onclick="rvPistesNombre(-1)">−</button><b>${besoin}</b><span>piste${besoin > 1 ? 's' : ''}</span><button type="button" aria-label="Une piste de plus" ${besoin >= getAvailabilityLaneCount() ? 'disabled' : ''} onclick="rvPistesNombre(1)">+</button></span><span class="rv-note-r">Auto : <b>${rvPluriel(auto, 'piste')}</b> pour ${joueurs} joueurs (${parPiste} au plus par piste).${besoin > auto ? ` Avec ${besoin}, ils sont ${Math.ceil(joueurs / besoin)} par piste.` : ''}</span></div>`);
+  }
+  rangs.push(`<div class="rv-rg"><span class="rv-lbl">Placement</span><span class="rv-seg" role="group" aria-label="Placement des pistes"><button type="button" class="${manuelles ? '' : 'is-on'}" aria-pressed="${!manuelles}" onclick="setQuickAutoAssign()">Auto</button><button type="button" class="${manuelles ? 'is-on' : ''}" aria-pressed="${manuelles}" onclick="rvPlacementChoisir()">Choisir</button></span><span class="rv-note-r">${manuelles ? `${rvPluriel(s.lanes.length, 'piste choisie', 'pistes choisies')} sur ${besoin}.` : pistes.length ? `Auto prendra ${escapeHtml(rvListePistes(pistes))}.` : 'Auto : le planning choisit à la création.'} Touchez une piste pour la choisir.</span></div>`);
+  rangs.push(rvGrillePistesHtml(heure, duree, besoin));
+  rangs.push(`<div class="rv-rg"><span class="rv-lbl">Durée</span><span class="rv-seg qb-dur-grid" role="group" aria-label="Durée du bowling">${RV_DUREES_BOWLING.map((h) => `<button type="button" class="qb-dur-btn${duree === h ? ' is-on active' : ''}" aria-pressed="${duree === h}" onclick="rvBowlingFixer(${h})">${escapeHtml(rvHeuresLabel(h))}</button>`).join('')}</span><span class="rv-note-r">Au-delà, le « + » de la ligne monte par 30 min jusqu’à ${RV_BOWLING_MAX} h.</span></div>`);
+  const hors = rvHorsCatalogueBowlingHtml(duree);
+  if (hors) rangs.push(hors);
+  return rangs.join('');
+}
+
+// LA GRILLE DES PISTES : chaque piste dit si elle est libre a l heure du
+// bowling, prise jusqu a quand, ou en maintenance. Le nombre de cases vient
+// du centre (getAvailabilityLaneCount), jamais d une constante.
+function rvGrillePistesHtml(heure, duree, besoin) {
+  const s = quickBookState;
+  const occupation = rvOccupationPistes(heure, duree);
+  const manuelles = rvPlacementManuel();
+  const suggerees = !manuelles && heure ? (allocateLanes(besoin, s.date, heure, duree) || []) : [];
+  return `<div class="rv-pistes-choix qb-lane-grid" style="--rv-pistes:${Math.min(8, getAvailabilityLaneCount())}" role="group" aria-label="Pistes à ${escapeHtml(heure || '')}">
+    ${Array.from({ length: getAvailabilityLaneCount() }, (_, idx) => idx + 1).map(lane => {
+      const o = occupation[lane] || { etat: 'libre', part: 0, texte: 'libre' };
+      const on = manuelles && s.lanes.includes(lane);
+      const bloquee = o.etat === 'pris' || o.etat === 'maint';
+      const cls = `rv-pc qb-lane-btn${on ? ' is-on active' : ''}${o.etat === 'pris' ? ' is-pris busy' : ''}${o.etat === 'maint' ? ' is-maint maint' : ''}${suggerees.includes(lane) ? ' is-suggeree suggested' : ''}`;
+      const libelle = `Piste ${lane} : ${on ? 'choisie' : o.texte}${o.nom && o.etat === 'pris' ? ` (${o.nom})` : ''}`;
+      return `<button type="button" class="${cls}" aria-pressed="${on}" aria-label="${escapeHtml(libelle)}" ${bloquee && !on ? 'disabled aria-disabled="true"' : `onclick="toggleQuickLane(${lane})"`}><b>${lane}</b><span class="rv-occ" aria-hidden="true"><i style="width:${Math.round(o.part * 100)}%"></i></span><small>${escapeHtml(on ? 'choisie' : suggerees.includes(lane) ? 'auto' : o.texte)}</small></button>`;
+    }).join('')}
+  </div>`;
+}
+
+// ENTRE DEUX LIGNES : « dans la foulee » (et combien apres), ou detachee.
+function rvLienHtml(precedent, id, ligne, modifiable) {
+  if (!ligne || ligne.libre || !ligne.ancrable) return '';
+  const nomAvant = rvNomActivite(precedent).toLowerCase();
+  if (!modifiable) return `<div class="rv-lien">${RV_I.lien}<span><b>${escapeHtml(rvNomActivite(id))}</b> à ${escapeHtml(ligne.heure || '--:--')}, d’après la formule</span></div>`;
+  if (ligne.foulee) {
+    const heures = rvHeuresDesLignes();
+    const avant = heures[precedent];
+    const finAvant = avant && avant.heure ? timeToNum(avant.heure) + rvMinutesActivite(precedent) / 60 : null;
+    const ecart = finAvant != null && ligne.heure ? Math.round((timeToNum(ligne.heure) - finAvant) * 60) : null;
+    const quand = ecart == null ? '' : ecart <= 0 ? ` · juste après le ${escapeHtml(nomAvant)}` : ` · ${ecart} min après la fin du ${escapeHtml(nomAvant)}`;
+    return `<div class="rv-lien">${RV_I.lien}<span><b>Dans la foulée</b>${quand}</span><button type="button" class="rv-det" onclick="rvDetacher('${escapeHtml(id)}')">Détacher</button></div>`;
+  }
+  return `<div class="rv-lien">${RV_I.lien}<span>Détaché : le ${escapeHtml(rvNomActivite(id).toLowerCase())} a sa propre heure</span><button type="button" class="rv-det" onclick="rvChoisirHeure('${escapeHtml(id)}',1,'')">Remettre dans la foulée</button></div>`;
+}
+
+// LES ACTIVITES A AJOUTER : tout le catalogue vivant du centre, une pastille
+// par activite absente. La ligne d une activite retenue porte son « × ».
+function rvAjoutsHtml(absentes, action) {
+  if (!absentes.length) return '';
+  return `<div class="rv-ajouts" role="group" aria-label="Ajouter une activité">${absentes.map((c) => `<span class="qb-visit-row"><button type="button" class="rv-ajout qb-visit-toggle" style="--rv-c:${rvCouleur(c.id)}" aria-label="Ajouter ${escapeHtml(c.label)}" onclick="${action}('${escapeHtml(c.id)}')"><i class="rv-pt" aria-hidden="true"></i>${escapeHtml(c.label)}</button></span>`).join('')}</div>`;
+}
+
+// ── LES ZONES ────────────────────────────────────────────────────────────────
+function rvAide(texte) {
+  return quickBookState && quickBookState.aide ? `<p class="rv-aide">${texte}</p>` : '';
+}
+
+// LES JOURS : aujourd hui, demain, le week-end qui vient, et n importe quelle
+// date. C est la premiere question au telephone.
+function rvJoursHtml() {
+  const s = quickBookState;
+  const aujourdHui = todayStr();
+  const decaler = (iso, n) => { const d = parseLocalDate(iso); d.setDate(d.getDate() + n); return rvIso(d); };
+  const court = (iso, options) => { try { return new Intl.DateTimeFormat('fr-BE', options).format(parseLocalDate(iso)).replace('.', ''); } catch (e) { return iso; } };
+  const jours = [[aujourdHui, 'Aujourd’hui', court(aujourdHui, { weekday: 'short', day: 'numeric' })], [decaler(aujourdHui, 1), 'Demain', court(decaler(aujourdHui, 1), { weekday: 'short', day: 'numeric' })]];
+  const jourSemaine = parseLocalDate(aujourdHui).getDay();
+  const samedi = decaler(aujourdHui, ((6 - jourSemaine + 7) % 7) || 7);
+  [samedi, decaler(samedi, 1)].forEach((iso) => {
+    if (!jours.some(([j]) => j === iso)) {
+      const libelle = court(iso, { weekday: 'short', day: 'numeric' });
+      jours.push([iso, libelle.charAt(0).toUpperCase() + libelle.slice(1), '']);
+    }
+  });
+  const autre = !jours.some(([iso]) => iso === s.date);
+  const boutons = jours.map(([iso, mot, sous]) => `<button type="button" class="rv-jour${s.date === iso ? ' is-on' : ''}" aria-pressed="${s.date === iso}" onclick="rvChoisirDate('${iso}')">${escapeHtml(mot)}${sous ? ` <small>${escapeHtml(sous)}</small>` : ''}</button>`).join('');
+  return `<div class="rv-jours" role="group" aria-label="Jour de la réservation">${boutons}<label class="rv-jour${autre ? ' is-on' : ''}">${RV_I.cal}<span>${autre ? escapeHtml(formatQuickBookDateLabel(s.date)) : 'Autre'}</span><input id="qbDate" type="date" value="${escapeHtml(s.date)}" aria-label="Date de la réservation" onclick="try { this.showPicker(); } catch (e) {}" onchange="rvChoisirDate(this.value)"></label></div>`;
+}
+
+function rvTeteHtml() {
+  const s = quickBookState;
+  const header = getQuickBookHeader(rvFormule());
+  return `<h3 id="qbTitle">${escapeHtml(header.title)}</h3>
+    ${rvJoursHtml()}
+    <div class="rv-droite">
+      <button type="button" class="rv-rond${s.aide ? ' is-on' : ''}" id="rvAide" aria-pressed="${Boolean(s.aide)}" aria-label="Aide" onclick="rvBasculerAide()">?</button>
+      <button type="button" class="rv-rond close-btn" aria-label="Fermer la réservation rapide" onclick="closeQuickBook()">×</button>
+    </div>`;
+}
+
+function rvJoueursSaisieHtml() {
+  const s = quickBookState;
+  const pax = Number(s.pax) || 1;
+  return `<span class="rv-stepper"><button type="button" id="rvMoins" aria-label="Un joueur de moins" ${pax <= 1 ? 'disabled' : ''} onclick="rvPasJoueurs(-1)">−</button><input id="qbPax" type="number" min="1" max="240" inputmode="numeric" value="${escapeHtml(String(s.pax))}" aria-label="Joueurs" oninput="onQuickPaxInput(this.value)" onblur="onQuickPaxBlur(this, event)"><span class="rv-suf">joueurs</span><button type="button" id="rvPlus" aria-label="Un joueur de plus" ${pax >= 240 ? 'disabled' : ''} onclick="rvPasJoueurs(1)">+</button></span>`;
+}
+
+// CE QUE LE NOMBRE DE JOUEURS CHANGE, ecrit a cote du nombre : les pistes
+// requises au bowling, les vagues au laser.
+function rvConsequenceHtml() {
+  if (!quickBookState) return '';
+  const ids = rvActivites();
+  const parts = [];
+  if (ids.includes('bowling')) {
+    const n = rvBesoinPistes(rvHeuresDesLignes(ids).bowling?.heure || quickBookState.startTime).requiredCount || 1;
+    parts.push(`<span><b>${rvPluriel(n, 'piste')}</b> requise${n > 1 ? 's' : ''} au bowling</span>`);
+  }
+  if (ids.includes('laser_game')) {
+    const v = rvVaguesLaser();
+    const joueurs = getQuickVisitParticipants('laser_game');
+    parts.push(`<span><b>${rvPluriel(v, 'vague')}</b>${v > 1 ? ` de ${Math.ceil(joueurs / v)}` : ''} au laser</span>`);
+  }
+  if (!parts.length) parts.push('<span>Sans piste ni arène</span>');
+  return parts.join('');
+}
+
+function rvJoueursSuiteHtml() {
+  const s = quickBookState;
+  const pax = Number(s.pax) || 1;
+  return `<span class="rv-tailles" role="group" aria-label="Taille du groupe">${RV_TAILLES.map((t) => `<button type="button" class="${t === pax ? 'is-on' : ''}" aria-pressed="${t === pax}" onclick="setQuickPax(${t})">${t}</button>`).join('')}</span>
+    <span class="rv-consequence qb-status-line" aria-live="polite">${rvConsequenceHtml()}</span>`;
+}
+
+// LES ACQUIS DU CONTEXTE (une case du planning, un lancement, une fiche
+// client) : rappeles en pastilles, jamais redemandes, toujours modifiables
+// sur leur ligne.
+function rvContexteHtml() {
+  const s = quickBookState;
+  const chips = [];
+  if (quickFieldKnown('client')) chips.push({ k: 'Client', v: [s.name, s.phone && s.phone.replace(/\D/g, '').length > 2 ? s.phone : ''].filter(Boolean).join(' · ') });
+  if (quickFieldKnown('lanes')) chips.push({ k: s.lanes.length > 1 ? 'Pistes' : 'Piste', v: s.lanes.join(' · ') || 'Auto' });
+  if (quickFieldKnown('startTime')) chips.push({ k: 'Départ', v: s.startTime || '--:--', lock: s.lockStartTime });
+  if (quickFieldKnown('date')) chips.push({ k: 'Date', v: formatQuickBookDateLabel(s.date) });
+  if (quickFieldKnown('formule') && rvFormule()) chips.push({ k: 'Formule', v: rvFormule().name });
+  if (!chips.length) return '';
+  return `<div class="rv-contexte" aria-label="Repris de là où vous venez">${chips.map((c) => `<span class="qb-context-chip"><span class="k">${escapeHtml(c.k)}</span><span class="v">${escapeHtml(c.v)}</span>${c.lock ? '<span class="qb-chip-lock">verrouillé</span>' : ''}</span>`).join('')}</div>`;
+}
+
+function rvPlanTeteHtml(ids, modifiable) {
+  const s = quickBookState;
+  const enFormule = s.type === 'formule';
+  const ordre = ids.length > 1 && modifiable
+    ? `<button type="button" class="rv-puce" id="rvOrdre" aria-label="Inverser l’ordre : ${escapeHtml(rvNomActivite(ids[1]))} d’abord" onclick="rvInverserOrdre()">${RV_I.ordre}<b>${escapeHtml(rvNomActivite(ids[0]))}</b> puis ${escapeHtml(rvNomActivite(ids[1]).toLowerCase())}</button>`
+    : '';
+  return `<div class="rv-plan-tete">
+    <span class="rv-seg qb-mode-seg" role="tablist" aria-label="Composer la réservation"><button type="button" role="tab" class="qb-mode-tab${enFormule ? '' : ' is-on'}" aria-selected="${!enFormule}" onclick="rvModeActivites()">Activités</button><button type="button" role="tab" class="qb-mode-tab${enFormule ? ' is-on' : ''}" aria-selected="${enFormule}" onclick="rvModeFormule()">Formule</button></span>
+    <span class="rv-dr">
+      <button type="button" class="rv-puce${s.departsOuverts ? ' is-on' : ''}" id="rvDeparts" aria-expanded="${Boolean(s.departsOuverts)}" onclick="rvBasculerDeparts()">${RV_I.eclair}Départs rapides</button>
+      ${ordre}
+      <button type="button" class="rv-puce rv-garder qb-more-toggle${s.moreOpen ? ' is-on' : ''}" id="rvTout" aria-expanded="${Boolean(s.moreOpen)}" onclick="toggleQuickBookMore()">${s.moreOpen ? 'Replier' : 'Tout régler'}</button>
+    </span>
+  </div>`;
+}
+
+function rvFormulesHtml() {
+  const s = quickBookState;
+  const choix = getQuickBookFormulaChoices();
+  if (!choix.length) return '<p class="rv-texte">Aucune formule au catalogue de ce centre.</p>';
+  return `<div class="rv-departs qb-formule-grid" role="group" aria-label="Formules">${choix.map((f) => `<button type="button" class="rv-depart qb-formule-card${s.formuleId === f.id ? ' is-on active' : ''}${f.available ? '' : ' is-hors unavailable'}" aria-pressed="${s.formuleId === f.id}" onclick="rvChoisirFormule('${escapeHtml(f.id)}')"><b>${escapeHtml(f.name)} · ${escapeHtml(String(f.price))} €</b><span>par ${f.type === 'per_lane' ? 'piste' : 'personne'}${f.family ? ` · ${escapeHtml(f.family)}` : ''}</span>${f.available ? '' : `<em>${escapeHtml(f.reason || 'hors règles')} · possible au comptoir</em>`}</button>`).join('')}</div>`;
+}
+
+// LA COMPOSITION : les lignes, les liens entre elles, ce qu on peut ajouter.
+function rvCompositionHtml() {
+  const s = quickBookState;
+  const ids = rvActivites();
+  const heures = rvHeuresDesLignes(ids);
+  const modifiable = rvModifiable();
+  const enFormule = s.type === 'formule';
+  const formule = rvFormule();
+  const morceaux = [];
+  ids.forEach((id, i) => {
+    if (i > 0) morceaux.push(rvLienHtml(ids[i - 1], id, heures[id], modifiable));
+    // La derniere activite garde son « × » : le toucher dit « Gardez au moins
+    // une activite » (toggleQuickListe) au lieu de disparaitre sans un mot.
+    morceaux.push(rvLigneHtml(id, heures[id], { modifiable, retirable: modifiable }));
+  });
+  if (enFormule && formule) {
+    const base = rvIdsDeComposition(buildEditProgramFromReservation({ formuleId: formule.id }));
+    const retirees = s.adaptee ? base.filter((id) => !ids.includes(id)) : [];
+    retirees.forEach((id) => morceaux.push(rvLigneRetireeHtml(id)));
+    if (s.adaptee) {
+      morceaux.push(rvAjoutsHtml(getQuickBookActivityChoices().filter((c) => !ids.includes(c.id) && !retirees.includes(c.id)), 'rvBasculerDansFormule'));
+      morceaux.push(`<button type="button" class="rv-lien-btn" onclick="rvAdapterFormule(false)">Revenir à ${escapeHtml(formule.name)} telle quelle</button>`);
+    } else if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit')) {
+      morceaux.push('<button type="button" class="rv-plus-act" onclick="rvAdapterFormule(true)">' + RV_I.plus + '<b>Adapter pour ce groupe</b><span>retirer, remettre ou ajouter une activité</span></button>');
+    }
+  } else if (!enFormule) {
+    morceaux.push(rvAjoutsHtml(getQuickBookActivityChoices().filter((c) => !ids.includes(c.id)), 'rvAjouterActivite'));
+  }
+  return `<div class="rv-lignes qb-liste"><div class="qb-visit-grid rv-grille">${morceaux.join('')}</div></div>`;
+}
+
+function rvPlanCompoHtml() {
+  const s = quickBookState;
+  const ids = rvActivites();
+  const modifiable = rvModifiable();
+  const enFormule = s.type === 'formule';
+  const capacite = bowlingCapacityMessage(getQuickBookLaneNeed().bowlingCapacity);
+  return `${rvContexteHtml()}
+    <section class="rv-sec qb-type-row" aria-label="Composition">
+      ${rvPlanTeteHtml(ids, modifiable)}
+      ${s.departsOuverts ? rvDepartsHtml() : ''}
+      ${enFormule ? rvFormulesHtml() : ''}
+      ${enFormule && !rvFormule() ? '<p class="rv-texte">Choisissez une formule : ses activités et leurs heures s’affichent ici.</p>' : rvCompositionHtml()}
+      ${enFormule ? '' : renderQuickExtras()}
+    </section>
+    <p class="rv-texte is-danger" role="status" data-bowling-capacity-warning ${capacite ? '' : 'hidden'}>${escapeHtml(capacite)}</p>
+    ${rvAide(enFormule
+      ? '« Adapter » retire, remet ou ajoute une activité pour ce groupe seulement : le catalogue ne change pas, le dossier garde le prix de la formule sauf si vous le revoyez.'
+      : 'Chaque activité a SON heure : touchez l’heure pour ouvrir l’horloge, ses deux points disent si tout le plan tient à :00 et à :30. Le chevron ouvre le détail (joueurs, pistes, parties, pauses). « Dans la foulée » place l’activité juste après la précédente.')}`;
+}
+
+// CE QUI COINCE AVANT MEME LE PLAN : un jour ferme, une heure hors horaires,
+// une formule hors regles (possible au comptoir, la raison part en note).
+function rvAvertissement() {
+  const s = quickBookState;
+  const schedule = getSchedule(s.date, state.isHolidayMode);
+  if (!schedule) return 'Centre fermé à cette date.';
+  if (!s.startTime) return 'Choisissez une heure.';
+  syncQuickBookDuration();
+  const slotCheck = validateSlotWindow(s.date, s.startTime, s.totalDuration, { allowPastStart: quickBookAllowsPastSelectedTime() });
+  if (!slotCheck.ok) return slotCheck.message;
+  const formule = rvFormule();
+  if (formule) {
+    const a = getFormuleAvailability(formule, s.date, s.pax, s.startTime);
+    if (!a.ok) return `${formule.name} hors règles : ${a.message}. Possible au comptoir, la raison part dans la note.`;
+  }
+  return '';
+}
+
+// LE VERDICT DU PLANNING. Vert : le moteur a pose tout le plan. Orange : il
+// tient, mais avec un ecart a connaitre (une piste choisie prise, une partie
+// partagee, un dossier « a verifier »). Rouge : il ne tient pas, et il dit
+// pourquoi, avec des sorties. « Créer quand meme » reste possible (Movsar) :
+// le conflit s explique avant, et reste ecrit apres, dans la fiche.
+function rvVerdictHtml() {
+  const s = quickBookState;
+  if (!s) return '';
+  const morceaux = [];
+  if (s.error) morceaux.push(`<p class="rv-texte is-danger qb-warn danger">${escapeHtml(s.error)}</p>`);
+  const avertissement = rvAvertissement();
+  const plan = rvPlanCourant();
+  if (avertissement && !plan) {
+    morceaux.push(`<div class="rv-vc is-att"><span class="rv-ic">${RV_I.ko}</span><span><b>${escapeHtml(avertissement)}</b></span></div>`);
+    return morceaux.join('');
+  }
+  if (!plan) {
+    if (s.plan && s.plan.etat === 'erreur' && s.plan.cle === s.cleCourante) {
+      morceaux.push(`<div class="rv-vc is-att"><span class="rv-ic">${RV_I.ko}</span><span><b>Plan du planning indisponible</b> <span class="rv-sp">· ${escapeHtml(s.plan.message || 'réseau')} : la création vérifiera tout.</span></span></div>`);
+    } else {
+      morceaux.push(`<div class="rv-vc is-calcul"><span class="rv-ic">${RV_I.horloge}</span><span><b>Le planning vérifie</b> <span class="rv-sp">· pistes, arène et horaires de tout le plan</span></span></div>`);
+    }
+    return morceaux.join('');
+  }
+  const conflits = Array.isArray(plan.conflits) ? plan.conflits : [];
+  if (!plan.disponible) {
+    const titre = plan.refus || plan.avertissement || 'Le planning ne trouve pas de place pour ce plan.';
+    const alternatives = rvAlternativesHtml();
+    morceaux.push(`<div class="rv-verdict"><div class="rv-verdict-h"><span class="rv-ic">${RV_I.ko}</span><span><b>Impossible tel quel</b><span>${escapeHtml(titre)}</span></span></div>
+      ${conflits.length ? `<ul class="rv-conflits">${conflits.map((c) => `<li>${escapeHtml(c.message || '')}</li>`).join('')}</ul>` : ''}
+      ${alternatives}
+      <button type="button" class="rv-forcer${s.forcer ? ' is-on' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}" onclick="rvBasculerForcer()">${s.forcer ? 'Créer quand même : activé' : 'Créer quand même, à placer'}</button>
+      ${s.forcer ? '<p class="rv-texte">Le dossier sera créé « à placer » : aucune piste ni arène bloquée, le conflit écrit dans sa note, à reprendre au planning.</p>' : ''}
+    </div>`);
+    return morceaux.join('');
+  }
+  const ecarts = [];
+  conflits.forEach((c) => { if (c && c.message) ecarts.push(c.message); });
+  if (plan.validation === 'staff_review') ecarts.push(plan.raison || 'Le dossier partira « à vérifier ».');
+  if (plan.avertissement) ecarts.push(plan.avertissement);
+  (plan.aSurveiller || []).slice(0, 2).forEach((phrase) => ecarts.push(phrase));
+  const ids = rvActivites();
+  const autres = (plan.etapes || []).filter((e) => !ids.includes(e.activite) && e.libelle && !/accueil/i.test(e.libelle));
+  if (autres.length) ecarts.push(`Aussi au programme : ${autres.map((e) => `${e.libelle} à ${e.debut}`).join(', ')}.`);
+  const partage = rvBlocsPlan('laser_game').some((b) => b.partagee || Number(b.joueursAvant) > 0);
+  const titre = ecarts.length ? 'Possible, avec un point à savoir' : partage ? 'Possible, partie partagée' : 'Possible, sans attente';
+  const sous = `${plan.fin ? `fin ${escapeHtml(plan.fin)}, ` : ''}vérifié par le planning`;
+  morceaux.push(`<div class="rv-vc${ecarts.length ? ' is-att' : ''}"><span class="rv-ic">${ecarts.length ? RV_I.ko : RV_I.ok}</span><span><b>${titre}</b> <span class="rv-sp">· ${sous}</span></span><button type="button" class="rv-autres" onclick="rvOuvrirHorloge('${escapeHtml(ids[0] || '')}',0)">Autres heures ›</button></div>`);
+  if (ecarts.length) morceaux.push(`<ul class="rv-conflits rv-conflits-att">${ecarts.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>`);
+  return morceaux.join('');
+}
+
+// LES SORTIES D UN REFUS : les heures voisines ou TOUT le plan tient, lues
+// dans l horloge du serveur (memes regles que la creation).
+function rvAlternativesHtml() {
+  const s = quickBookState;
+  const c = s.candidats;
+  if (!c || c.etat !== 'ok' || c.base !== s.cleCourante || c.id !== rvActivites()[0] || c.partie !== 0) {
+    return '<div class="rv-alts"><span>Le planning cherche les heures où tout tient…</span></div>';
+  }
+  const depart = timeToNum(s.startTime || '00:00');
+  const bonnes = [...c.resultats.values()].filter((r) => r.statut !== 'ko' && r.heure !== s.startTime)
+    .sort((a, b) => Math.abs(timeToNum(a.heure) - depart) - Math.abs(timeToNum(b.heure) - depart)).slice(0, 4);
+  if (!bonnes.length) return '<div class="rv-alts"><span>Aucune autre heure ne tient ce jour-là : changez le nombre de joueurs, une activité, ou la date.</span></div>';
+  return `<div class="rv-alts"><span>Ce plan tient à</span>${bonnes.map((r) => `<button type="button" class="rv-alt" onclick="rvChoisirHeure('${escapeHtml(rvActivites()[0])}',0,'${escapeHtml(r.heure)}')"><i class="rv-d${r.statut === 'ok' ? '' : ' is-att'}"></i>${escapeHtml(r.heure)}${r.fin ? `<small>fin ${escapeHtml(r.fin)}</small>` : ''}</button>`).join('')}</div>`;
+}
+
+// LES DEPARTS RAPIDES : les compositions les plus reservees ce jour de la
+// semaine, et celles que le gerant epingle. Un toucher compose la ligne.
+function rvDepartsHtml() {
+  const s = quickBookState;
+  const d = rvDepartsEtat;
+  if (!d || d.etat === 'calcul') return '<div class="rv-departs"><p class="rv-departs-pied">Les départs du centre se chargent…</p></div>';
+  const tuiles = rvTuilesDeparts();
+  if (!tuiles.length) return '<p class="rv-departs-pied">Pas encore assez de réservations pour proposer des départs : ils apparaîtront d’eux-mêmes.</p>';
+  const epingler = Boolean(d.epinglage);
+  return `<div class="rv-departs" role="group" aria-label="Départs rapides">${tuiles.map((t, i) => `<div class="rv-depart${t.actif ? ' is-on' : ''}" style="--rv-c:${rvCouleur(t.ids[0] || '')}"><button type="button" class="rv-depart-btn" onclick="rvAppliquerDepart(${i})"><span class="rv-pts">${t.ids.map((id) => `<i style="--rv-c:${rvCouleur(id)}"></i>`).join('')}</span><b>${escapeHtml(t.titre)}</b><span>${escapeHtml(t.sous)}</span></button>${epingler ? `<button type="button" class="rv-epingle${t.epingle ? ' is-on' : ''}" aria-pressed="${t.epingle}" aria-label="${t.epingle ? 'Désépingler' : 'Épingler'} ${escapeHtml(t.titre)}" onclick="rvEpinglerDepart(${i})">${RV_I.pin}</button>` : ''}</div>`).join('')}</div>
+    <p class="rv-departs-pied">${d.source === 'centre' ? `Épinglés par le centre, puis les plus réservés le ${escapeHtml(rvNomJour(s.date))} sur 90 jours.` : 'Les départs du catalogue : les vôtres apparaîtront avec les réservations.'}</p>`;
+}
+
+function rvNomJour(iso) {
+  try { return new Intl.DateTimeFormat('fr-BE', { weekday: 'long' }).format(parseLocalDate(iso)); } catch (e) { return 'jour'; }
+}
+
+// ── LE BILLET ────────────────────────────────────────────────────────────────
+// Ce que le client entendra : le jour, de quelle heure a quelle heure, chaque
+// etape, puis son contact et le prix. Le plan du serveur fait foi.
+function rvEtapesDuBillet() {
+  const s = quickBookState;
+  const ids = rvActivites();
+  const heures = rvHeuresDesLignes(ids);
+  const plan = rvPlanCourant();
+  const etapes = [];
+  ids.forEach((id) => {
+    const ligne = heures[id];
+    const nom = rvNomActivite(id);
+    if (id === 'laser_game') {
+      const departs = rvBlocsPlan('laser_game').length
+        ? [...new Map(rvBlocsPlan('laser_game').map((b) => [Number(b.partie) || 1, b])).values()].map((b) => ({ h: b.debut, fin: b.fin, autres: Number(b.joueursAvant) || 0 }))
+        : rvDepartsLaser(ligne.heure).map((h) => ({ h, fin: numToTime(timeToNum(h) + 0.5), autres: 0 }));
+      departs.forEach((d, k) => etapes.push({ id, h: d.h, debut: timeToNum(d.h), fin: timeToNum(d.fin || d.h) , q: `Laser · partie ${k + 1}`, d: s.arene === 'seuls' ? 'l’arène pour vous seuls' : d.autres ? `partagée avec ${rvPluriel(d.autres, 'joueur')}` : 'l’arène pour vous' }));
+      return;
+    }
+    if (id === 'bowling') {
+      const blocs = rvBlocsPlan('bowling');
+      const pistes = blocs.length ? [...new Set(blocs.flatMap((b) => b.pistes || []))] : rvPistesDuBowling(ligne.heure).pistes;
+      const debut = blocs.length ? blocs[0].debut : ligne.heure;
+      const fin = blocs.length ? blocs[blocs.length - 1].fin : (ligne.heure ? numToTime(timeToNum(ligne.heure) + rvMinutesActivite(id) / 60) : '');
+      if (debut) etapes.push({ id, h: debut, debut: timeToNum(debut), fin: fin ? timeToNum(fin) : timeToNum(debut) + 1, q: `Bowling · ${rvHeuresLabel(rvBowlingDuree())}`, d: `${pistes.length ? `${pistes.length > 1 ? 'pistes' : 'piste'} ${rvListePistes(pistes)}` : 'pistes à attribuer'}${ligne.foulee ? ', dans la foulée' : ''}` });
+      return;
+    }
+    const etape = plan ? (plan.etapes || []).find((e) => e.activite === id) : null;
+    const debut = etape && etape.debut ? etape.debut : ligne.heure;
+    if (ligne.libre || (etape && etape.libre)) { etapes.push({ id, h: '', debut: null, fin: null, q: nom, d: 'accès libre pendant la visite' }); return; }
+    if (debut) etapes.push({ id, h: debut, debut: timeToNum(debut), fin: etape && etape.fin ? timeToNum(etape.fin) : timeToNum(debut) + rvMinutesActivite(id) / 60, q: nom, d: rvHeuresLabel(rvMinutesActivite(id) / 60) });
+  });
+  return etapes.sort((a, b) => (a.debut ?? 99) - (b.debut ?? 99));
+}
+
+function rvFriseHtml(etapes, debut, fin) {
+  if (!(fin > debut)) return '';
+  const pc = (t) => ((t - debut) / (fin - debut)) * 100;
+  const segments = etapes.filter((e) => e.debut != null).map((e) => `<i style="--rv-c:${rvCouleur(e.id)};left:${pc(e.debut).toFixed(2)}%;width:calc(${Math.max(1, pc(Math.min(e.fin, fin)) - pc(e.debut)).toFixed(2)}% - 2px)"></i>`).join('');
+  const pas = fin - debut <= 2.5 ? 0.5 : 1;
+  const graduations = [];
+  for (let t = Math.ceil(debut / pas) * pas; t <= fin + 1e-9; t += pas) graduations.push(t);
+  if (graduations[0] !== debut) graduations.unshift(debut);
+  if (graduations[graduations.length - 1] !== fin) graduations.push(fin);
+  const axe = graduations.filter((t, i) => i === 0 || i === graduations.length - 1 || (t - graduations[0] >= pas * 0.9 && fin - t >= pas * 0.9));
+  return `<div class="rv-frise" aria-hidden="true">${segments}</div><div class="rv-frise-axe" aria-hidden="true">${axe.map((t) => `<span style="left:${pc(t).toFixed(2)}%">${numToTime(t)}</span>`).join('')}</div>`;
+}
+
+function rvRecapHtml() {
+  const s = quickBookState;
+  const plan = rvPlanCourant();
+  const etapes = rvEtapesDuBillet();
+  const datees = etapes.filter((e) => e.debut != null);
+  const debut = datees.length ? Math.min(...datees.map((e) => e.debut)) : (s.startTime ? timeToNum(s.startTime) : null);
+  const finLocale = datees.length ? Math.max(...datees.map((e) => e.fin)) : null;
+  const fin = plan && plan.fin ? timeToNum(plan.fin) : finLocale;
+  let jour = s.date;
+  try { jour = new Intl.DateTimeFormat('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }).format(parseLocalDate(s.date)); jour = jour.charAt(0).toUpperCase() + jour.slice(1); } catch (e) { /* date brute */ }
+  const occasion = (RV_OCCASIONS.find(([v]) => v === s.occasion) || [])[1];
+  const badge = occasion ? `${occasion}${s.name ? ` · ${s.name}` : ''}` : rvPluriel(Number(s.pax) || 1, 'joueur');
+  const sous = debut != null
+    ? `Arrivée conseillée ${numToTime(debut - 10 / 60)}${fin != null ? ` · fin des activités ${numToTime(fin)}` : ''}${rvPlanEnCalcul() ? ' · le planning vérifie' : ''}`
+    : 'Choisissez une heure';
+  return `<div class="rv-recap">
+    <div class="rv-eyebrow"><span>${escapeHtml(jour)}</span><em>${escapeHtml(badge)}</em></div>
+    <div class="rv-heures">${debut != null ? numToTime(debut) : '--:--'}<span>→</span>${fin != null ? numToTime(fin) : '--:--'}</div>
+    <div class="rv-heures-sous">${escapeHtml(sous)}</div>
+    ${debut != null && fin != null ? rvFriseHtml(datees, debut, fin) : ''}
+    <div class="rv-etapes">${etapes.map((e) => `<div class="rv-etape" style="--rv-c:${rvCouleur(e.id)}"><span class="rv-h">${escapeHtml(e.h || '')}</span><i class="rv-pt" aria-hidden="true"></i><span class="rv-q">${escapeHtml(e.q)}<small>${escapeHtml(e.d)}</small></span></div>`).join('') || '<p class="rv-texte">Ajoutez une activité.</p>'}</div>
+  </div>`;
+}
+
+function rvClientConnuHtml() {
+  const c = quickBookState && quickBookState.clientConnu;
+  if (!c || c.etat !== 'ok' || !c.resultat) return '';
+  const r = c.resultat;
+  const initiales = String(r.nom || quickBookState.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((m) => m.charAt(0).toUpperCase()).join('') || '?';
+  const quand = r.derniere ? `dernière le ${escapeHtml(formatQuickBookDateLabel(r.derniere))}` : '';
+  const quoi = r.derniereActivite ? `${escapeHtml(r.derniereActivite)}${r.dernieresPersonnes ? `, ${r.dernieresPersonnes} pers.` : ''}` : '';
+  const prochaine = r.prochaine ? `déjà réservé le ${escapeHtml(formatQuickBookDateLabel(r.prochaine))}` : '';
+  const refaire = r.derniereComposition ? '<button type="button" class="rv-refaire" onclick="rvRefaire()">Refaire</button>' : '';
+  return `<span class="rv-av" aria-hidden="true">${escapeHtml(initiales)}</span><span><b>${r.visites ? rvPluriel(r.visites, 'visite') : 'Pas encore venu'}</b>${quand ? ` · ${quand}` : ''}${quoi ? `<br>${quoi}` : ''}${prochaine ? `<br>${prochaine}` : ''}</span>${refaire}`;
+}
+
+// LE CLIENT : le telephone d abord (il reconnait un client deja venu), le nom,
+// l e-mail (confirmation et rappel automatiques), puis ce qu on ajoute.
+function rvClientHtml() {
+  const s = quickBookState;
+  const o = s.ouverts || {};
+  const tout = Boolean(s.moreOpen);
+  const emailValid = !s.email || isValidEmail(s.email);
+  const acquis = quickFieldKnown('client');
+  const morceaux = [];
+  if (acquis) {
+    morceaux.push(`<div class="rv-acquis"><span><b>${escapeHtml(s.name || 'Client')}</b><span>${escapeHtml([s.phone && s.phone.replace(/\D/g, '').length > 2 ? s.phone : ''].filter(Boolean).join(' · '))}</span></span><button type="button" onclick="unlockQuickField('client')">Modifier</button></div>`);
+  } else {
+    morceaux.push(`<label class="rv-saisie">${RV_I.tel}<input id="qbPhone" type="tel" value="${escapeHtml(s.phone)}" aria-label="Téléphone" placeholder="Téléphone" autocomplete="off" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value); rvPlanifierClientConnu()" onblur="onQuickPhoneBlur(this)"></label>`);
+    morceaux.push(`<label class="rv-saisie">${RV_I.pers}<input id="qbName" value="${escapeHtml(s.name)}" aria-label="Nom du client" placeholder="Nom du client" autocomplete="off" oninput="quickBookState.name=this.value; majQuickRecapClient()">${s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat ? '<span class="rv-tag">reconnu</span>' : ''}</label>`);
+  }
+  morceaux.push(`<div class="rv-connu" id="rvClientConnu" role="status">${rvClientConnuHtml()}</div>`);
+  morceaux.push(`<label class="rv-saisie${emailValid ? '' : ' is-invalide'}">${RV_I.mail}<input id="qbEmail" type="email" value="${escapeHtml(s.email)}" aria-label="E-mail du client, pour la confirmation et le rappel" placeholder="E-mail · confirmation et rappel" autocomplete="off" oninput="quickBookState.email=this.value"></label>${emailValid ? '' : '<p class="rv-texte is-danger">Format e-mail invalide.</p>'}`);
+  if (o.occasion || s.occasion || tout) {
+    morceaux.push(`<div class="rv-plus" role="group" aria-label="Occasion">${RV_OCCASIONS.map(([v, mot]) => `<button type="button" class="${s.occasion === v ? 'is-on' : ''}" aria-pressed="${s.occasion === v}" onclick="rvChoisirOccasion('${v}')">${mot}</button>`).join('')}</div>`);
+  }
+  if (o.note || (s.notes || '').trim() || tout) {
+    morceaux.push(`<div class="rv-note-champ"><label class="rv-etq" for="qbNotes">Note pour l’équipe · jamais envoyée au client</label><span class="rv-saisie is-zone">${RV_I.note}<textarea id="qbNotes" rows="2" maxlength="500" placeholder="Ex. gâteau à sortir vers 19:45, paiement à l’arrivée…" oninput="quickBookState.notes=this.value">${escapeHtml(s.notes || '')}</textarea></span></div>`);
+  }
+  const plus = [];
+  if (!(o.occasion || s.occasion || tout)) plus.push('<button type="button" onclick="rvBasculerOuvert(\'occasion\')">+ Occasion</button>');
+  if (!(o.note || (s.notes || '').trim() || tout)) plus.push('<button type="button" onclick="rvBasculerOuvert(\'note\',\'qbNotes\')">+ Note pour l’équipe</button>');
+  if (plus.length) morceaux.push(`<div class="rv-plus">${plus.join('')}</div>`);
+  morceaux.push(rvAide('Le numéro reconnaît un client déjà venu dans ce centre. La note part dans les notes de l’équipe du dossier, avec votre nom et l’heure.'));
+  return morceaux.join('');
+}
+
+// LE PRIX DE REFERENCE : celui du serveur des que son plan est la (c est lui
+// qui sera enregistre), sinon l estimation de ce poste.
+function rvTotalReference(summary = getQuickBookSummary()) {
+  const plan = rvPlanCourant();
+  return plan && plan.prix != null ? plan.prix : summary.total;
+}
+
+function rvRaisonsPrix() {
+  const s = quickBookState;
+  const formule = rvFormule();
+  const raisons = [...RV_RAISONS_PRIX];
+  if (formule && s.adaptee) {
+    const base = rvIdsDeComposition(buildEditProgramFromReservation({ formuleId: formule.id }));
+    const ids = rvIdsDeComposition(s.visit);
+    base.filter((id) => !ids.includes(id)).forEach((id) => raisons.unshift(`Sans ${rvNomActivite(id).toLowerCase()}`));
+  }
+  if (rvPartiesLaser() > Math.max(0, ...rvOptionsLaserCentre().map((o) => o.games)) || rvBowlingDuree() > 2) raisons.unshift('Hors catalogue');
+  return raisons;
+}
+
+function rvDetailPrix(summary) {
+  const plan = rvPlanCourant();
+  if (plan && Array.isArray(plan.lignesPrix) && plan.lignesPrix.length) {
+    return plan.lignesPrix.map((l) => `${String(l.libelle || rvNomActivite(l.activite) || '').toLowerCase()} ${formatMoney(l.prix)}`).join(' · ');
+  }
+  return summary.detail || '';
+}
+
+function rvPrixHtml() {
+  const s = quickBookState;
+  const summary = getQuickBookSummary();
+  const custom = getQuickBookCustomPrice();
+  const reference = rvTotalReference(summary);
+  const total = custom != null ? custom : reference;
+  const joueurs = Math.max(1, Number(s.pax) || 1);
+  const peutAjuster = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit');
+  const parPersonne = Math.round((total / joueurs) * 100) / 100;
+  const tete = `<div class="rv-prix"><div class="rv-m" id="rvPrixGros">${custom != null && custom !== reference ? `<s>${escapeHtml(formatMoney(reference))}</s>` : ''}${escapeHtml(formatMoney(total))}</div>
+    <div class="rv-pp"><b>${escapeHtml(formatMoney(parPersonne))}</b> / joueur<br><span id="rvPrixDetail">${escapeHtml(rvDetailPrix(summary))}</span></div>
+    ${peutAjuster && !s.priceOpen ? '<button type="button" class="rv-revoir qb-price-toggle" onclick="toggleQuickCustomPrice()">Revoir</button>' : ''}</div>`;
+  if (!s.priceOpen || !peutAjuster) return tete;
+  return `${tete}<div class="rv-prix-edit">
+    <div class="rv-prix-champs">
+      <label>Total<span class="rv-saisie"><input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(s.customPrice ?? ''))}" placeholder="${escapeHtml(String(reference))}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">€</span></label>
+      <label>ou par personne<span class="rv-saisie"><input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(parPersonne))}" aria-label="Prix par personne en euros" oninput="onQuickCustomPricePerPersonInput(this.value)">€</span></label>
+    </div>
+    <div class="rv-raisons" role="group" aria-label="Raison du prix">${rvRaisonsPrix().map((r) => `<button type="button" class="${s.prixRaison === r ? 'is-on' : ''}" aria-pressed="${s.prixRaison === r}" data-raison="${escapeHtml(r)}" onclick="rvChoisirRaison(this.dataset.raison)">${escapeHtml(r)}</button>`).join('')}</div>
+    <label class="rv-saisie"><input id="rvRaisonLibre" value="${escapeHtml(s.prixRaisonLibre || '')}" maxlength="120" placeholder="Autre raison…" aria-label="Autre raison du prix" oninput="quickBookState.prixRaisonLibre=this.value"></label>
+    <p class="rv-texte">La raison part dans les notes du dossier. Seul ce dossier change : la grille du centre reste la même. <button type="button" class="rv-lien-btn" onclick="clearQuickCustomPrice()">Prix catalogue</button></p>
+  </div>`;
+}
+
+function rvResasHtml() {
+  if (rvResas.length < 2) return '';
+  return `<div class="rv-resas" role="tablist" aria-label="Réservations du même client">${rvResas.map((r, i) => {
+    const ids = rvIdsDeCompositionPour(r);
+    const nom = (RV_OCCASIONS.find(([v]) => v === r.occasion) || [])[1] || (ids[0] ? rvNomActivite(ids[0]) : 'Résa');
+    const onglet = `<button type="button" role="tab" class="${i === rvResaIndex ? 'is-on' : ''}" aria-selected="${i === rvResaIndex}" onclick="rvChoisirResa(${i})"><i class="rv-pt" style="--rv-c:${rvCouleur(ids[0] || '')}" aria-hidden="true"></i>${escapeHtml(nom)} · ${Number(r.pax) || 1}</button>`;
+    return i === rvResaIndex ? `${onglet}<button type="button" class="rv-x" aria-label="Retirer cette réservation : ${escapeHtml(nom)}" onclick="rvRetirerResa(${i})">×</button>` : onglet;
+  }).join('')}</div>`;
+}
+
+function rvIdsDeCompositionPour(etat) {
+  const garde = quickBookState;
+  try { quickBookState = etat; return rvActivites(); } finally { quickBookState = garde; }
+}
+
+// LE PIED : l etat en un mot, le total, « Créer ». Plusieurs resas : un seul
+// envoi. Un refus : le bouton le dit, et « Créer quand meme » le change.
+function rvPiedHtml() {
+  const s = quickBookState;
+  const plan = rvPlanCourant();
+  const custom = getQuickBookCustomPrice();
+  const total = custom != null ? custom : rvTotalReference();
+  const totalLot = rvResas.length > 1 ? rvTotalDuLot() : null;
+  let etat = 'calcul';
+  let texte = '<b>Le planning vérifie</b>';
+  if (rvAvertissement() && !plan) { etat = 'att'; texte = `<b>${escapeHtml(rvAvertissement())}</b>`; }
+  else if (plan && !plan.disponible) { etat = 'ko'; texte = s.forcer ? '<b>Créé à placer</b>, conflit écrit dans la note' : `<b>Impossible tel quel</b>, voir le planning`; }
+  else if (plan) {
+    const ecart = (plan.conflits || []).length || plan.validation === 'staff_review' || plan.avertissement;
+    etat = ecart ? 'att' : 'ok';
+    texte = ecart ? '<b>Possible</b>, un point à savoir' : '<b>Possible</b>, vérifié par le planning';
+  } else if (s.plan && s.plan.etat === 'erreur') { etat = 'att'; texte = '<b>Plan indisponible</b>, la création vérifiera'; }
+  if (rvResas.length > 1) texte = `<b>${rvPluriel(rvResas.length, 'réservation')}</b>, même client`;
+  const heure = s.startTime ? ` · ${escapeHtml(s.startTime)}` : '';
+  const libelle = s.submitting ? 'Création…' : rvResas.length > 1 ? `Créer les ${rvResas.length}${heure}` : s.forcer && plan && !plan.disponible ? `Créer quand même${heure}` : `Créer${heure}`;
+  return `<div class="rv-etat-pied is-${etat}"><i class="rv-d" aria-hidden="true"></i><span>${texte}</span><span class="qb-summary"><span class="amt">${escapeHtml(String(totalLot != null ? totalLot : total))}€</span></span></div>
+    <div class="rv-boutons"><button type="button" class="qb-btn-save rv-creer${s.forcer && plan && !plan.disponible ? ' is-forcer' : ''}" id="rvCreer" ${s.submitting ? 'disabled aria-busy="true"' : ''} onclick="saveQuickBook()">${libelle}${s.submitting ? '' : '<kbd>Entrée</kbd>'}</button><button type="button" class="rv-encore" id="rvEncore" aria-label="Ajouter une autre réservation pour ce client" onclick="rvAjouterResa()">${RV_I.plus}Résa</button></div>`;
+}
+
+function rvTotalDuLot() {
+  const garde = quickBookState;
+  let total = 0;
+  try {
+    rvResas.forEach((etat) => {
+      quickBookState = etat;
+      rvActualiserCle();
+      const custom = getQuickBookCustomPrice();
+      total += Number(custom != null ? custom : rvTotalReference()) || 0;
+    });
+  } finally { quickBookState = garde; rvActualiserCle(); }
+  return Math.round(total * 100) / 100;
+}
+
+// ── L HORLOGE ────────────────────────────────────────────────────────────────
+// Un toucher sur une heure ouvre l horloge : chaque heure de la journee porte
+// deux points, :00 et :30, et chaque point dit si TOUT le plan tient pour CE
+// groupe a cette heure (vert), tient avec une partie partagee ou un ecart
+// (orange), ou ne tient pas (cercle rouge). C est le serveur qui juge, sur la
+// journee lue en base, avec le meme moteur que la creation ; en attendant sa
+// reponse, les points sont gris.
+function rvBornesHorloge(id) {
+  const s = quickBookState;
+  const schedule = getSchedule(s.date, state.isHolidayMode);
+  if (!schedule) return null;
+  let debut = schedule.open;
+  if (s.date === todayStr() && !quickBookAllowsPastSelectedTime()) debut = Math.max(debut, roundUpHalfHour(currentTimeDecimal()));
+  const minutes = id && rvActivites().includes(id) ? rvMinutesActivite(id) : 30;
+  return { debut, fin: Math.max(debut, schedule.close - minutes / 60), ouverture: schedule.open, fermeture: schedule.close };
+}
+
+function rvHeuresHorloge(id) {
+  const bornes = rvBornesHorloge(id);
+  if (!bornes) return [];
+  const heures = [];
+  for (let t = Math.ceil(bornes.debut * 2) / 2; t <= bornes.fin + 1e-9; t += 0.5) heures.push(numToTime(t));
+  return heures;
+}
+
+// L heure de la ligne (ou de la partie) que l horloge regle.
+function rvHeureReglee(id, partie) {
+  const heures = rvHeuresDesLignes();
+  const ligne = heures[id];
+  if (!ligne) return '';
+  if (id === 'laser_game' && partie > 0) return rvDepartsLaser(ligne.heure)[partie] || '';
+  return ligne.heure || '';
+}
+
+// LE CORPS QUE LA FENETRE ENVERRAIT si cette ligne (ou cette partie) partait
+// a cette heure, avec toutes les regles de l ecran : la foulee suit, une ligne
+// detachee garde son heure, les pauses restent. La copie d etat ne touche
+// jamais la vraie.
+function rvVariante(id, partie, heure) {
+  const garde = quickBookState;
+  const copie = JSON.parse(JSON.stringify(garde));
+  try {
+    quickBookState = copie;
+    const index = rvActivites().indexOf(id);
+    if (id === 'laser_game' && partie > 0) {
+      const ecarts = rvEcartsLaser();
+      const base = timeToNum(rvHeuresDesLignes().laser_game.heure) * 60;
+      const delta = Math.round(timeToNum(heure) * 60 - base) - ecarts[partie];
+      copie.partiesEcarts = ecarts.map((m, k) => (k >= partie ? m + delta : m));
+    } else if (index <= 0) {
+      copie.startTime = heure;
+    } else {
+      copie.heures = { ...(copie.heures || {}), [id]: heure };
+    }
+    const corps = rvCorpsDeSimulation();
+    if (!corps) return null;
+    const variante = { heure, startTime: corps.startTime };
+    if (corps.preference) variante.preference = corps.preference;
+    if (Array.isArray(corps.lanes)) variante.lanes = corps.lanes;
+    if (corps.laneCount != null) variante.laneCount = corps.laneCount;
+    return variante;
+  } catch (error) {
+    return null;
+  } finally {
+    quickBookState = garde;
+  }
+}
+
+let rvCandidatsSeq = 0;
+async function rvChargerCandidats(id, partie) {
+  const s = quickBookState;
+  if (!s || (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reservations.create'))) return;
+  const base = rvCorpsDeSimulation();
+  if (!base) return;
+  const cle = JSON.stringify(base);
+  if (s.candidats && s.candidats.base === cle && s.candidats.id === id && s.candidats.partie === partie && s.candidats.etat !== 'erreur') return;
+  const variantes = rvHeuresHorloge(id).map((h) => rvVariante(id, partie, h)).filter(Boolean).slice(0, 48);
+  const seq = ++rvCandidatsSeq;
+  s.candidats = { base: cle, id, partie, etat: 'calcul', resultats: new Map() };
+  rvRepeindre();
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...base, dryRun: true, candidats: variantes }) });
+    if (!quickBookState || seq !== rvCandidatsSeq) return;
+    const liste = payload && Array.isArray(payload.candidats) ? payload.candidats : null;
+    quickBookState.candidats = liste
+      ? { base: cle, id, partie, etat: 'ok', resultats: new Map(liste.map((r) => [r.heure, r])) }
+      : { base: cle, id, partie, etat: 'local', resultats: new Map() };
+  } catch (error) {
+    if (!quickBookState || seq !== rvCandidatsSeq) return;
+    quickBookState.candidats = { base: cle, id, partie, etat: 'erreur', resultats: new Map(), message: (error && error.message) || 'réseau' };
+  }
+  rvRepeindre();
+}
+
+// Le verdict d une heure : celui du serveur, sinon l estimation de ce poste
+// pour CETTE ligne seulement (le reste du plan n est pas juge), marquee comme
+// telle.
+function rvEtatHeure(id, heure) {
+  const s = quickBookState;
+  const c = s.candidats;
+  if (c && c.id === s.horloge?.id && c.partie === s.horloge?.partie && c.base === s.cleCourante) {
+    if (c.etat === 'calcul') return { etat: 'calcul', mot: 'vérification…' };
+    if (c.etat === 'ok') {
+      const r = c.resultats.get(heure);
+      if (!r) return { etat: 'hors', mot: 'hors horaires' };
+      const conflits = Array.isArray(r.conflits) ? r.conflits.filter((x) => x && x.message) : [];
+      if (r.statut === 'ko') return { etat: 'ko', mot: r.raison || 'impossible' };
+      if (r.statut === 'partage' || conflits.length) return { etat: 'att', mot: conflits.length ? conflits[0].message : (r.raison || 'partagée'), fin: r.fin };
+      return { etat: 'ok', mot: r.fin ? `tout tient, fin ${r.fin}` : 'tout tient', fin: r.fin };
+    }
+  }
+  if (id === 'laser_game') {
+    const departs = rvDispoLaserA(heure);
+    if (departs.some((d) => !d.ok)) return { etat: 'ko', mot: (departs.find((d) => !d.ok) || {}).message || 'arène complète', local: true };
+    return { etat: departs.some((d) => d.autres > 0) ? 'att' : 'ok', mot: `${departs[0] ? departs[0].libres : 0} places (estimation)`, local: true };
+  }
+  if (id === 'bowling') {
+    const { besoin, libres, duree } = rvPistesDuBowling(heure);
+    const pistes = allocateLanes(besoin, s.date, heure, duree) || [];
+    if (pistes.length < besoin) return { etat: 'ko', mot: `${rvPluriel(libres, 'piste libre', 'pistes libres')}, il en faut ${besoin}`, local: true };
+    return { etat: libres <= besoin ? 'att' : 'ok', mot: `${rvPluriel(libres, 'piste libre', 'pistes libres')} (estimation)`, local: true };
+  }
+  return { etat: 'ok', mot: 'libre', local: true };
+}
+
+// Les departs laser si la ligne partait a cette heure (parties decalees du
+// meme ecart), lus sur la journee de ce poste.
+function rvDispoLaserA(heure) {
+  const s = quickBookState;
+  const joueurs = getQuickVisitParticipants('laser_game');
+  const capacite = getAvailabilityLaserCapacity() || 30;
+  const base = Math.round(timeToNum(heure) * 60);
+  return rvEcartsLaser().map((m) => {
+    const depart = numToTime((base + m) / 60);
+    const a = getLaserAvailability(s.date, depart, 0.5, joueurs);
+    const vague = a.waveCount > 1 ? Math.ceil(joueurs / a.waveCount) : joueurs;
+    const libres = Math.max(0, Math.min(capacite, (Number(a.remainingPlaces) || 0) + (a.ok ? vague : 0)));
+    return { depart, ok: a.ok, libres, autres: Math.max(0, capacite - libres), message: a.message };
+  });
+}
+
+function rvHorlogeHtml() {
+  const s = quickBookState;
+  const { id, partie } = s.horloge;
+  const ids = rvActivites();
+  if (!ids.includes(id)) return '';
+  const nom = rvNomActivite(id);
+  const bornes = rvBornesHorloge(id);
+  const courante = rvHeureReglee(id, partie);
+  const index = ids.indexOf(id);
+  const titre = id === 'laser_game' && partie > 0 ? `Partie ${partie + 1} du laser` : index === 0 ? `Heure ${id === 'laser_game' ? 'du laser' : id === 'bowling' ? 'du bowling' : 'd’arrivée'}` : `Heure du ${nom.toLowerCase()}`;
+  let jour = s.date;
+  try { jour = new Intl.DateTimeFormat('fr-BE', { weekday: 'long' }).format(parseLocalDate(s.date)); } catch (e) { /* date brute */ }
+  const quoi = ids.length > 1 ? `, ${ids.map((x) => rvNomActivite(x).toLowerCase()).join(' puis ')}` : '';
+  const fermer = '<button type="button" class="rv-x1" id="rvHorlogeFermer" aria-label="Fermer l’horloge" onclick="rvFermerHorloge()">×</button>';
+  if (!bornes) return `<div class="rv-horloge" role="dialog" aria-label="${escapeHtml(titre)}"><div class="rv-horloge-h"><div><b>${escapeHtml(titre)}</b><span>Centre fermé ce jour-là.</span></div>${fermer}</div></div>`;
+  const heures = rvHeuresHorloge(id);
+  const parHeure = new Map();
+  heures.forEach((h) => { const hh = Number(h.slice(0, 2)); if (!parHeure.has(hh)) parHeure.set(hh, []); parHeure.get(hh).push(h); });
+  const choisie = s.horlogeH != null ? s.horlogeH : (courante ? Number(courante.slice(0, 2)) : null);
+  const cadran = [...parHeure.entries()].map(([hh, demi]) => {
+    const points = [`${String(hh).padStart(2, '0')}:00`, `${String(hh).padStart(2, '0')}:30`].map((h) => (demi.includes(h) ? rvEtatHeure(id, h).etat : 'hors'));
+    const toutKo = points.every((p) => p === 'ko' || p === 'hors');
+    return `<button type="button" class="rv-hc${choisie === hh ? ' is-on' : ''}${toutKo ? ' is-ko' : ''}" aria-pressed="${choisie === hh}" aria-label="${hh} heures : ${points.map((p, i) => `${i ? 'et demie' : 'pile'} ${p === 'ok' ? 'tout tient' : p === 'att' ? 'tient avec un écart' : p === 'ko' ? 'impossible' : p === 'calcul' ? 'en vérification' : 'hors horaires'}`).join(', ')}" onclick="rvHorlogeHeure(${hh})"><b>${String(hh).padStart(2, '0')}</b><span class="rv-dd" aria-hidden="true">${points.map((p) => `<i class="${p === 'ok' ? '' : `is-${p}`}"></i>`).join('')}</span></button>`;
+  }).join('');
+  const minutes = choisie == null ? '' : `<div class="rv-minutes" role="group" aria-label="Minutes">${[`${String(choisie).padStart(2, '0')}:00`, `${String(choisie).padStart(2, '0')}:30`].map((h) => {
+    if (!heures.includes(h)) return `<button type="button" class="rv-mn is-ko" disabled><b>${h}</b><span>hors horaires</span></button>`;
+    const e = rvEtatHeure(id, h);
+    return `<button type="button" class="rv-mn${h === courante ? ' is-on' : ''}${e.etat === 'ko' ? ' is-ko' : e.etat === 'att' ? ' is-att' : ''}" aria-label="${escapeHtml(`${h} : ${e.mot}`)}" onclick="rvChoisirHeure('${escapeHtml(id)}',${id === 'laser_game' && partie > 0 ? 100 + partie : index},'${h}')"><b>${h}</b><span>${escapeHtml(e.mot)}</span></button>`;
+  }).join('')}</div>`;
+  const c = s.candidats;
+  const source = c && c.base === s.cleCourante && c.id === id && c.partie === partie
+    ? c.etat === 'ok' ? 'vérifié par le planning' : c.etat === 'calcul' ? 'le planning vérifie chaque heure…' : c.etat === 'erreur' ? 'planning injoignable : estimation de ce poste' : 'estimation de ce poste'
+    : 'le planning vérifie chaque heure…';
+  const ligne = rvHeuresDesLignes(ids)[id];
+  const foulee = index > 0 && ligne && ligne.ancrable && !(id === 'laser_game' && partie > 0)
+    ? `<button type="button" class="rv-foulee-btn${ligne.foulee ? ' is-on' : ''}" onclick="rvChoisirHeure('${escapeHtml(id)}',${index},'')">Dans la foulée${ligne.foulee && ligne.heure ? ` · ${escapeHtml(ligne.heure)}` : ''}</button>`
+    : '';
+  return `<div class="rv-horloge" id="rvHorloge" role="dialog" aria-label="${escapeHtml(titre)}">
+    <div class="rv-horloge-h"><div><b>${escapeHtml(titre)}</b><span>${escapeHtml(`${jour} · ouvert ${numToTime(bornes.ouverture)} → ${numToTime(bornes.fermeture)} · pour ${rvPluriel(Number(s.pax) || 1, 'joueur')}${quoi}`)}</span></div>${fermer}</div>
+    <div class="rv-cadran">${cadran || '<span class="rv-texte">Aucune heure dans les horaires.</span>'}</div>
+    ${minutes}
+    ${foulee}
+    <div class="rv-legende"><span><i></i>tout le plan tient</span><span><i class="is-att"></i>tient, avec un écart</span><span><i class="is-ko"></i>impossible</span><span class="rv-droite">${escapeHtml(source)}</span></div>
+    <label class="rv-precis">Heure précise <input type="time" step="1800" value="${escapeHtml(courante)}" aria-label="Heure précise : ${escapeHtml(titre)}" onchange="rvChoisirHeure('${escapeHtml(id)}',${id === 'laser_game' && partie > 0 ? 100 + partie : index},this.value)"></label>
+  </div>`;
+}
+
+function rvCoucheHtml() {
+  const s = quickBookState;
+  if (!s || !s.horloge) return '';
+  const horloge = rvHorlogeHtml();
+  return horloge ? `<div class="rv-couche-voile" onclick="rvFermerHorloge()"></div>${horloge}` : '';
+}
+
+// La position de l horloge : sous le bouton qui l a ouverte, collee a son bord
+// droit, retournee au-dessus si la place manque. Au telephone, le CSS en fait
+// une feuille en bas de l ecran.
+function rvPlacerHorloge() {
+  const s = quickBookState;
+  const horloge = document.getElementById('rvHorloge');
+  if (!s || !s.horloge || !horloge) return;
+  const { id, partie } = s.horloge;
+  // La partie k est la k-ieme ligne .rv-pr du detail (les pauses et les
+  // reglages sont des lignes a part).
+  const parties = document.querySelectorAll(`#rvDetail-${CSS.escape(id)} .rv-pr .rv-heure`);
+  const declencheur = (partie > 0 && parties[partie]) || document.getElementById(`rvHeure-${id}`);
+  if (!declencheur) return;
+  const r = declencheur.getBoundingClientRect();
+  const largeur = horloge.offsetWidth || 468;
+  const hauteur = horloge.offsetHeight || 360;
+  const gauche = Math.max(12, Math.min(window.innerWidth - largeur - 12, r.right - largeur));
+  let haut = r.bottom + 8;
+  let origine = 'top right';
+  if (haut + hauteur > window.innerHeight - 12 && r.top - hauteur - 8 > 12) { haut = r.top - hauteur - 8; origine = 'bottom right'; }
+  horloge.style.left = `${gauche}px`;
+  horloge.style.top = `${Math.max(12, haut)}px`;
+  horloge.style.setProperty('--rv-origine', origine);
+}
+
+// ── LE RENDU PAR ZONES ───────────────────────────────────────────────────────
+function rvCoquilleHtml() {
+  return `<div class="qb-modal rv" role="dialog" aria-modal="true" aria-labelledby="qbTitle" tabindex="-1">
+    <div class="rv-compo">
+      <div class="rv-tete" id="rvTete"></div>
+      <div class="rv-joueurs"><span class="rv-zone-contenu" id="rvJoueursSaisie"></span><span class="rv-zone-contenu" id="rvJoueursSuite"></span></div>
+      <div class="rv-plan qb-body" id="rvPlan"><div class="rv-zone-contenu" id="rvPlanCompo"></div><div id="rvVerdict" class="rv-verdict-zone" role="status" aria-live="polite"></div></div>
+    </div>
+    <aside class="rv-billet" aria-label="Billet de la réservation">
+      <div class="rv-billet-corps" id="rvBilletCorps">
+        <div class="rv-zone-contenu" id="rvResasZone"></div>
+        <div class="rv-carte">
+          <div class="rv-zone-contenu" id="rvRecap"></div>
+          <div class="rv-perfo" aria-hidden="true"></div>
+          <div class="rv-champs" id="rvChamps"></div>
+          <div class="rv-perfo" aria-hidden="true"></div>
+          <div class="rv-zone-contenu" id="rvPrixZone"></div>
+        </div>
+      </div>
+      <div class="rv-pied" id="rvPied"></div>
+    </aside>
+    <div class="rv-couche" id="rvCouche"></div>
+  </div>`;
+}
+
+// UNE ZONE NE SE REPEINT QUE SI SON HTML A CHANGE, et jamais sous les doigts :
+// une zone qui contient le champ qu on tape attend que le champ rende la main
+// (la reponse du planning arrive pendant qu on ecrit le nom, le nom reste).
+const rvZonesEnAttente = new Set();
+function rvPoser(id, html) {
+  const zone = document.getElementById(id);
+  if (!zone) return false;
+  if (rvZones.get(id) === html && zone.childNodes.length) { rvZonesEnAttente.delete(id); return false; }
+  const actif = document.activeElement;
+  if (actif && actif !== zone && zone.contains(actif) && actif.matches('input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="date"]):not([type="time"]), textarea')) {
+    rvZonesEnAttente.add(id);
+    return false;
+  }
+  zone.innerHTML = html;
+  rvZones.set(id, html);
+  rvZonesEnAttente.delete(id);
+  return true;
+}
+
+// Le champ rend la main : ce qui a attendu se repeint.
+function rvApresSaisie() {
+  if (!quickBookState || !rvZonesEnAttente.size) return;
+  setTimeout(() => { if (quickBookState && rvZonesEnAttente.size) rvRepeindre(); }, 0);
+}
+
+// Entree dans le nom, le telephone ou l e-mail cree la reservation : au
+// telephone, on tape le numero puis on valide.
+function rvToucheEntree(event) {
+  if (!quickBookState || event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+  const cible = event.target;
+  if (!cible || typeof cible.matches !== 'function' || !cible.matches('#qbName, #qbPhone, #qbEmail')) return;
+  event.preventDefault();
+  if (cible.id === 'qbPhone') onQuickPhoneBlur(cible);
+  saveQuickBook();
+}
+
+// Toutes les zones sauf celles qu on nomme (la saisie des joueurs pendant la
+// frappe, par exemple).
+function rvRepeindre({ sauf = [] } = {}) {
+  if (!quickBookState) return;
+  const overlay = document.getElementById('quickBookOverlay');
+  if (!overlay || !overlay.querySelector('.qb-modal.rv')) return;
+  syncQuickBookDuration();
+  rvActualiserCle();
+  const zones = [
+    ['rvTete', rvTeteHtml],
+    ['rvJoueursSaisie', rvJoueursSaisieHtml],
+    ['rvJoueursSuite', rvJoueursSuiteHtml],
+    ['rvPlanCompo', rvPlanCompoHtml],
+    ['rvVerdict', rvVerdictHtml],
+    ['rvResasZone', rvResasHtml],
+    ['rvRecap', rvRecapHtml],
+    ['rvChamps', rvClientHtml],
+    ['rvPrixZone', rvPrixHtml],
+    ['rvPied', rvPiedHtml],
+    ['rvCouche', rvCoucheHtml],
+  ];
+  zones.forEach(([id, rendu]) => { if (!sauf.includes(id)) rvPoser(id, rendu()); });
+  rvPlacerHorloge();
+}
+
+function renderQuickBookInner() {
+  if (!quickBookState) return;
+  const s = quickBookState;
+  const overlay = document.getElementById('quickBookOverlay');
+  syncQuickBookDuration();
+  overlay.classList.remove('hidden');
+  if (overlay.className !== 'qb-overlay is-rv') overlay.className = 'qb-overlay is-rv';
+  if (!overlay.querySelector(':scope > .qb-modal.rv')) {
+    rvZones.clear();
+    overlay.innerHTML = rvCoquilleHtml();
+  }
+  const modal = overlay.querySelector('.qb-modal.rv');
+  const classes = `qb-modal rv qb-context-${s.context.source}${s.horloge ? ' is-horloge' : ''}`;
+  if (modal.className !== classes) modal.className = classes;
+  rvRepeindre();
+  rvPlanifierSimulation();
+  if (s.horloge) rvChargerCandidats(s.horloge.id, s.horloge.partie);
+  if (s.departsOuverts) rvChargerDeparts();
+}
+
+// Le nom tape se lit dans le billet, sans redessiner la fenetre.
 function majQuickRecapClient() {
-  const cell = document.getElementById('qbRecapClient');
-  if (cell && quickBookState) cell.innerHTML = quickBookState.name ? escapeHtml(quickBookState.name) : '<span class="qb-recap-vide">À compléter</span>';
+  if (!quickBookState) return;
+  const badge = document.querySelector('#quickBookOverlay .rv-eyebrow em');
+  const occasion = (RV_OCCASIONS.find(([v]) => v === quickBookState.occasion) || [])[1];
+  if (badge && occasion) badge.textContent = `${occasion}${quickBookState.name ? ` · ${quickBookState.name}` : ''}`;
+}
+
+// ── LES GESTES ───────────────────────────────────────────────────────────────
+// Changer une heure. `cible` : 0 = la premiere ligne (l heure d arrivee),
+// un rang = une ancre suivante, 100 + k = la partie k du laser. Une heure vide
+// remet l ancre « dans la foulee ».
+function rvChoisirHeure(id, cible, heure) {
+  const s = quickBookState;
+  if (!s) return;
+  const valeur = String(heure || '').slice(0, 5);
+  if (valeur && !/^\d{2}:\d{2}$/.test(valeur)) return;
+  const rang = Number(cible) || 0;
+  if (rang >= 100) {
+    if (!valeur) return;
+    const partie = rang - 100;
+    const ecarts = rvEcartsLaser();
+    const ligne = rvHeuresDesLignes().laser_game;
+    if (!ligne || !ligne.heure || !ecarts[partie]) return;
+    const delta = Math.round((timeToNum(valeur) - timeToNum(ligne.heure)) * 60) - ecarts[partie];
+    s.partiesEcarts = ecarts.map((m, k) => (k >= partie ? m + delta : m));
+  } else if (rang === 0) {
+    if (!valeur) return;
+    if (s.lockStartTime && valeur !== s.startTime) return;
+    s.startTime = valeur;
+  } else if (valeur) {
+    s.heures = { ...(s.heures || {}), [id]: valeur };
+  } else if (s.heures) {
+    delete s.heures[id];
+  }
+  s.error = '';
+  s.forcer = false;
+  s.horloge = null;
+  s.horlogeH = null;
+  reconcileQuickLaneSelection();
+  renderQuickBook();
+}
+
+function rvOuvrirHorloge(id, partie = 0) {
+  const s = quickBookState;
+  if (!s || !id) return;
+  const meme = s.horloge && s.horloge.id === id && s.horloge.partie === Number(partie);
+  s.horloge = meme ? null : { id, partie: Number(partie) || 0 };
+  s.horlogeH = null;
+  renderQuickBook();
+  if (!meme) {
+    const premier = document.querySelector('#rvHorloge .rv-hc.is-on') || document.querySelector('#rvHorloge .rv-hc');
+    if (premier) premier.focus({ preventScroll: true });
+  }
+}
+
+function rvFermerHorloge() {
+  const s = quickBookState;
+  if (!s || !s.horloge) return;
+  const { id } = s.horloge;
+  s.horloge = null;
+  s.horlogeH = null;
+  renderQuickBook();
+  const retour = document.getElementById(`rvHeure-${id}`);
+  if (retour) retour.focus({ preventScroll: true });
+}
+
+function rvHorlogeHeure(h) {
+  if (!quickBookState) return;
+  quickBookState.horlogeH = Number(h);
+  renderQuickBook();
+}
+
+// Une seule ligne ouverte a la fois (« tout se lit d un regard ») ; « Tout
+// regler » les ouvre toutes.
+function rvBasculerLigne(id) {
+  const s = quickBookState;
+  if (!s) return;
+  if (s.moreOpen) { s.moreOpen = false; s.ouverte = id; }
+  else s.ouverte = s.ouverte === id ? '' : id;
+  renderQuickBook();
+}
+
+function rvOuvrirLigne(id) {
+  const s = quickBookState;
+  if (!s) return;
+  if (!s.moreOpen) s.ouverte = id;
+  renderQuickBook();
+}
+
+// Le pas des joueurs lit l etat au moment du clic : un nombre fige dans le
+// bouton au dernier rendu repartirait de 4 apres qu on a tape 9.
+function rvPasJoueurs(delta) {
+  if (!quickBookState) return;
+  setQuickPax(Math.min(240, Math.max(1, (Number(quickBookState.pax) || 1) + Number(delta || 0))));
+}
+
+function rvBowlingFixer(heures) {
+  const s = quickBookState;
+  if (!s) return;
+  const h = Math.min(RV_BOWLING_MAX, Math.max(0.5, Math.round(Number(heures) * 2) / 2));
+  s.forcer = false;
+  // Franchir la grille du centre ouvre la ligne : son bandeau dit le prix.
+  const grille = typeof getBowlingPriceGrid === 'function' ? getBowlingPriceGrid() : BOWLING_PRICES;
+  const maxGrille = Math.max(0, ...Object.keys(grille || {}).map(Number).filter((x) => x > 0));
+  if (maxGrille && h > maxGrille && rvBowlingDuree() <= maxGrille && !s.moreOpen) s.ouverte = 'bowling';
+  if (s.type === 'bowling') { s.duration = h; syncQuickBookDuration(); reconcileQuickLaneSelection(); renderQuickBook(); return; }
+  if (s.type === 'formule' && s.adaptee && s.visit) { s.visit.bowling = { ...(s.visit.bowling || {}), on: true, duration: h }; syncQuickBookDuration(); renderQuickBook(); return; }
+  setQuickVisitBowlingDuration(h);
+}
+
+function rvBowlingPas(delta) {
+  rvBowlingFixer(rvBowlingDuree() + Number(delta || 0));
+}
+
+// Les parties du laser, sans plafond de catalogue (le moteur en pose 12).
+function rvLaserParties(delta) {
+  const s = quickBookState;
+  if (!s) return;
+  const n = Math.min(RV_PARTIES_MAX, Math.max(1, rvPartiesLaser() + Number(delta || 0)));
+  s.forcer = false;
+  // Franchir le catalogue du centre ouvre la ligne : son bandeau dit le prix.
+  const maxCatalogue = Math.max(0, ...rvOptionsLaserCentre().map((o) => o.games));
+  if (maxCatalogue && n > maxCatalogue && rvPartiesLaser() <= maxCatalogue && !s.moreOpen) s.ouverte = 'laser_game';
+  if (Array.isArray(s.partiesEcarts)) s.partiesEcarts = s.partiesEcarts.slice(0, n);
+  if (s.type === 'laser') { s.duration = n / 2; syncQuickBookDuration(); renderQuickBook(); return; }
+  if (s.type === 'formule' && s.adaptee && s.visit) { s.visit.laser_game = { ...(s.visit.laser_game || {}), on: true, games: n }; syncQuickBookDuration(); renderQuickBook(); return; }
+  setQuickVisitLaserGames(n);
+}
+
+function rvRetirerPartie(k) {
+  const s = quickBookState;
+  if (!s || k < 1) return;
+  const ecarts = rvEcartsLaser();
+  ecarts.splice(k, 1);
+  s.partiesEcarts = ecarts;
+  rvLaserParties(-1);
+}
+
+// Une pause posee a la main : 30 min avant la derniere partie (on la deplace
+// ensuite avec l heure de chaque partie).
+function rvAjouterPause() {
+  const s = quickBookState;
+  if (!s) return;
+  const ecarts = rvEcartsLaser();
+  if (ecarts.length < 2) return;
+  const k = ecarts.length - 1;
+  s.partiesEcarts = ecarts.map((m, i) => (i >= k ? m + 30 : m));
+  s.forcer = false;
+  renderQuickBook();
+}
+
+function rvRetirerPause(k) {
+  const s = quickBookState;
+  if (!s) return;
+  const ecarts = rvEcartsLaser();
+  const pause = ecarts[k] - ecarts[k - 1] - rvPasLaser();
+  if (!(pause > 0)) return;
+  s.partiesEcarts = ecarts.map((m, i) => (i >= k ? m - pause : m));
+  renderQuickBook();
+}
+
+function rvChoisirEspacement(minutes) {
+  const s = quickBookState;
+  if (!s) return;
+  s.espacement = Number(minutes) || 30;
+  s.partiesEcarts = null;
+  renderQuickBook();
+}
+
+function rvChoisirArene(valeur) {
+  const s = quickBookState;
+  if (!s) return;
+  s.arene = valeur === 'seuls' ? 'seuls' : 'auto';
+  s.forcer = false;
+  renderQuickBook();
+}
+
+// Le nombre de pistes d un bowling seul, au-dessus du minimum si le staff le
+// veut (« avec 3, ils sont 4 par piste »). La grille suit.
+function rvPistesNombre(delta) {
+  const s = quickBookState;
+  if (!s || s.type !== 'bowling') return;
+  const auto = getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(Number(s.pax) || 1)), getAvailabilityLaneCount(), (Number(s.duration) || 1) * 60).requiredCount || 1;
+  const actuel = Math.max(auto, Number(s.pistesNombre) || auto);
+  const voulu = Math.min(getAvailabilityLaneCount(), Math.max(auto, actuel + Number(delta || 0)));
+  s.pistesNombre = voulu > auto ? voulu : null;
+  if (rvPlacementManuel() && s.lanes.length > voulu) s.lanes = s.lanes.slice(0, voulu);
+  s.forcer = false;
+  reconcileQuickLaneSelection();
+  renderQuickBook();
+}
+
+function rvPlacementChoisir() {
+  const s = quickBookState;
+  if (!s) return;
+  if (rvPlacementManuel()) return;
+  const heure = rvHeuresDesLignes().bowling?.heure || s.startTime;
+  const { pistes } = rvPistesDuBowling(heure);
+  if (pistes.length) { s.autoAssign = false; s.lanes = [...pistes]; }
+  else { s.autoAssign = false; s.lanes = []; }
+  renderQuickBook();
+}
+
+function rvDetacher(id) {
+  const s = quickBookState;
+  if (!s) return;
+  const ligne = rvHeuresDesLignes()[id];
+  if (!ligne || !ligne.heure) return;
+  s.heures = { ...(s.heures || {}), [id]: ligne.heure };
+  renderQuickBook();
+}
+
+// Inverser l ordre des deux premieres lignes : les heures repartent de
+// l arrivee, la seconde « dans la foulee ».
+function rvInverserOrdre() {
+  const s = quickBookState;
+  if (!s) return;
+  const ids = rvActivites();
+  if (ids.length < 2) return;
+  const ordre = [ids[1], ids[0], ...ids.slice(2)];
+  s.ordre = [...ordre, ...(s.ordre || []).filter((id) => !ordre.includes(id))];
+  s.heures = {};
+  s.partiesEcarts = null;
+  s.forcer = false;
+  renderQuickBook();
+}
+
+function rvBasculerForcer() {
+  if (!quickBookState) return;
+  quickBookState.forcer = !quickBookState.forcer;
+  renderQuickBook();
+}
+
+// Changer de mode repart propre : une formule adaptee ou des heures choisies
+// pour une autre composition ne survivent pas au changement.
+function rvModeActivites() {
+  if (!quickBookState) return;
+  quickBookState.adaptee = false;
+  quickBookState.heures = {};
+  quickBookState.forcer = false;
+  setQuickModeActivites();
+}
+
+function rvModeFormule() {
+  if (!quickBookState || quickBookState.type === 'formule') return;
+  quickBookState.adaptee = false;
+  quickBookState.heures = {};
+  quickBookState.forcer = false;
+  setQuickType('formule');
+}
+
+function rvChoisirDate(valeur) {
+  const s = quickBookState;
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(String(valeur || ''))) return;
+  if (s.date === valeur) return;
+  s.date = valeur;
+  s.heures = {};
+  s.forcer = false;
+  s.horloge = null;
+  if (!s.startTime) {
+    const schedule = getSchedule(valeur, state.isHolidayMode);
+    if (schedule) s.startTime = numToTime(valeur === todayStr() ? Math.max(schedule.open, roundUpHalfHour(currentTimeDecimal())) : schedule.open);
+  }
+  syncQuickBookDuration();
+  renderQuickBook();
+  if (!isDateSyncFresh(valeur)) {
+    syncDateReservations(valeur, { silent: true, skipRender: true })
+      .then(() => { if (quickBookState && quickBookState.date === valeur) renderQuickBook(); })
+      .catch(() => {});
+  }
+}
+
+function rvBasculerAide() {
+  if (!quickBookState) return;
+  quickBookState.aide = !quickBookState.aide;
+  renderQuickBook();
+}
+
+function rvBasculerOuvert(cle, focus) {
+  if (!quickBookState) return;
+  quickBookState.ouverts = { ...(quickBookState.ouverts || {}), [cle]: !(quickBookState.ouverts || {})[cle] };
+  renderQuickBook();
+  if (focus) { const el = document.getElementById(focus); if (el) el.focus(); }
+}
+
+function rvChoisirOccasion(valeur) {
+  if (!quickBookState) return;
+  quickBookState.occasion = quickBookState.occasion === valeur ? '' : valeur;
+  renderQuickBook();
+}
+
+function rvChoisirRaison(raison) {
+  if (!quickBookState) return;
+  quickBookState.prixRaison = quickBookState.prixRaison === raison ? '' : String(raison || '');
+  renderQuickBook();
+}
+
+function rvChoisirFormule(id) {
+  if (!quickBookState) return;
+  quickBookState.adaptee = false;
+  quickBookState.visit = null;
+  quickBookState.heures = {};
+  quickBookState.forcer = false;
+  setQuickFormule(id);
+}
+
+function rvAjouterActivite(id) {
+  if (!quickBookState) return;
+  quickBookState.forcer = false;
+  toggleQuickListe(id);
+  if (quickBookState && quickActiviteRetenue(id) && !quickBookState.moreOpen) {
+    quickBookState.ouverte = RV_ANCRABLES.includes(id) ? quickBookState.ouverte : id;
+    renderQuickBook();
+  }
+}
+
+function rvRetirerActivite(id) {
+  const s = quickBookState;
+  if (!s) return;
+  if (s.type === 'formule') { rvBasculerDansFormule(id); return; }
+  if (s.heures) delete s.heures[id];
+  if (s.ouverte === id) s.ouverte = '';
+  if (s.horloge && s.horloge.id === id) s.horloge = null;
+  if (id === 'laser_game') s.partiesEcarts = null;
+  s.forcer = false;
+  toggleQuickListe(id);
+}
+
+// LA FORMULE ADAPTEE DES LA CREATION : sa composition devient une visite que
+// le comptoir regle ; la formule reste le nom et le prix de reference.
+function rvAdapterFormule(on) {
+  const s = quickBookState;
+  if (!s || s.type !== 'formule') return;
+  const formule = rvFormule();
+  if (!formule) return;
+  if (on) {
+    const base = buildEditProgramFromReservation({ formuleId: formule.id });
+    s.visit = { bowling: { ...base.bowling }, laser_game: { ...base.laser_game }, others: { ...base.others }, options: { ...(base.othersOptions || {}) } };
+    s.adaptee = true;
+  } else {
+    s.adaptee = false;
+    s.visit = null;
+    s.heures = {};
+  }
+  s.forcer = false;
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+function rvBasculerDansFormule(id) {
+  const s = quickBookState;
+  if (!s || s.type !== 'formule' || !s.adaptee || !s.visit) return;
+  const v = s.visit;
+  const avant = rvIdsDeComposition(v);
+  if (avant.includes(id) && avant.length <= 1) { toast('Gardez au moins une activité.'); return; }
+  if (id === 'bowling') v.bowling = { ...(v.bowling || {}), on: !(v.bowling && v.bowling.on), duration: (v.bowling && v.bowling.duration) || 1 };
+  else if (id === 'laser_game') v.laser_game = { ...(v.laser_game || {}), on: !(v.laser_game && v.laser_game.on), games: (v.laser_game && v.laser_game.games) || 1 };
+  else v.others = { ...(v.others || {}), [id]: !(v.others || {})[id] };
+  if (s.heures) delete s.heures[id];
+  s.forcer = false;
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+// La formule adaptee differe-t-elle vraiment de la formule ? Sinon elle part
+// comme la formule, sans programme.
+function rvFormuleVraimentAdaptee() {
+  const s = quickBookState;
+  const formule = rvFormule();
+  if (!s || !formule || !s.adaptee || !s.visit) return false;
+  const base = buildEditProgramFromReservation({ formuleId: formule.id });
+  const cle = (v) => JSON.stringify([rvIdsDeComposition(v).sort(), Number(v.bowling && v.bowling.on && v.bowling.duration) || 0, Number(v.laser_game && v.laser_game.on && v.laser_game.games) || 0]);
+  const reglages = Object.values((s.visit && s.visit.options) || {}).some((o) => o && Object.keys(o).length);
+  return cle(base) !== cle(s.visit) || reglages || Object.keys(s.heures || {}).length > 0;
+}
+
+// LES HEURES ENVOYEES AU MOTEUR. Une visite (ou une formule adaptee) porte
+// une heure par ancre et une par partie de laser, dans l ordre des lignes ;
+// le laser seul porte ses parties quand on les a espacees ou posees a la
+// main. L arene « pour vous seuls » voyage avec.
+function rvPreference(ids, heures, programme) {
+  const s = quickBookState;
+  const avecLaser = ids.includes('laser_game');
+  const preference = {};
+  if (programme) {
+    preference.activityOrder = [...ids];
+    const preferredTimes = {};
+    ids.filter((id) => RV_ANCRABLES.includes(id)).forEach((id) => {
+      const h = heures[id] && heures[id].heure;
+      if (h) preferredTimes[id] = h;
+    });
+    if (Object.keys(preferredTimes).length) preference.preferredTimes = preferredTimes;
+    if (preferredTimes.laser_game) {
+      preference.laserGameTimes = rvDepartsLaser(preferredTimes.laser_game);
+      preference.laserPlacement = 'scheduled';
+    }
+  } else if (s.type === 'laser' && s.startTime && (rvPartiesLaser() > 1)) {
+    const auto = rvEcartsLaser().every((m, k) => m === k * 30);
+    if (!auto) {
+      preference.laserGameTimes = rvDepartsLaser(s.startTime);
+      preference.laserPlacement = 'scheduled';
+    }
+  }
+  if (avecLaser && s.arene === 'seuls') preference.arene = 'seuls';
+  return Object.keys(preference).length ? preference : undefined;
+}
+
+// ── LE DOSSIER QUE LA FENETRE CREE ───────────────────────────────────────────
+// Une seule construction pour la simulation et la creation : ce que le plan
+// montre est ce que « Créer » envoie. En simulation, le contact, la note et le
+// prix saisi restent dehors (le plan n en depend pas, et une frappe ne doit
+// pas relancer le moteur). `forcer` : le staff cree malgre un refus du plan,
+// le dossier part « a placer » (le serveur bloque alors aucune ressource).
+function rvConstruire({ simulation = false } = {}) {
+  const s = quickBookState;
+  if (!s) return { erreur: 'La fenêtre est fermée.' };
+  if (!s.startTime) return { erreur: 'Choisissez une heure.' };
+  const formule = s.type === 'formule' ? resolveDisplayFormule(s.formuleId) : null;
+  if (s.type === 'formule' && !formule) return { erreur: 'Sélectionnez une formule.' };
+  const adaptee = Boolean(formule) && rvFormuleVraimentAdaptee();
+  const programme = s.type === 'visite' || adaptee;
+  syncQuickBookDuration();
+  const ids = rvActivites();
+  const heures = rvHeuresDesLignes(ids);
+  let visitProgram = null;
+  if (programme) {
+    const visit = s.visit || {};
+    visitProgram = [];
+    ids.forEach((id) => {
+      if (id === 'bowling' && visit.bowling && visit.bowling.on) visitProgram.push({ ...ligneProgrammeQuick('bowling'), duration: Number(visit.bowling.duration || 1) });
+      else if (id === 'laser_game' && visit.laser_game && visit.laser_game.on) visitProgram.push({ ...ligneProgrammeQuick('laser_game'), games: Math.max(1, Math.trunc(Number(visit.laser_game.games || 1))) });
+      else if (id !== 'bowling' && id !== 'laser_game' && (visit.others || {})[id]) visitProgram.push(ligneProgrammeQuick(id));
+    });
+    if (!visitProgram.length) return { erreur: 'Choisissez au moins une activité.' };
+  }
+  const forcer = !simulation && Boolean(s.forcer);
+  const duration = Number(s.duration);
+  const totalDuration = Number(s.totalDuration || duration);
+  const slotCheck = validateSlotWindow(s.date, s.startTime, totalDuration, { allowPastStart: quickBookAllowsPastSelectedTime() });
+  if (!slotCheck.ok && !forcer) return { erreur: slotCheck.message };
+  // Une formule hors regles part quand meme (choix du comptoir) : la raison
+  // s ecrit dans la note du dossier, pour que la caisse la comprenne.
+  let horsRegles = '';
+  if (formule) {
+    const availability = getFormuleAvailability(formule, s.date, s.pax, s.startTime);
+    if (!availability.ok) horsRegles = `${formule.name} hors règles (${availability.message}) : choix du comptoir.`;
+  }
+  let { needsLanes, requiredCount } = getQuickBookLaneNeed();
+  let lanes = [];
+  if (programme) {
+    needsLanes = visitProgram.some((ligne) => ligne.activityId === 'bowling');
+    requiredCount = 0;
+    if (needsLanes) {
+      const heureBowling = (heures.bowling && heures.bowling.heure) || s.startTime;
+      const besoin = rvBesoinPistes(heureBowling);
+      requiredCount = besoin.requiredCount;
+      // Les pistes CHOISIES voyagent (le serveur les honore si elles sont
+      // libres et dit sinon lesquelles il a prises) ; en Auto, il attribue.
+      if (rvPlacementManuel()) lanes = [...s.lanes].sort((a, b) => a - b);
+    }
+  } else if (needsLanes) {
+    lanes = s.autoAssign ? (allocateLanes(requiredCount, s.date, s.startTime, duration) || []) : [...s.lanes];
+    if (!forcer && !simulation) {
+      if (lanes.length < requiredCount) return { erreur: `Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} disponible${requiredCount > 1 ? 's' : ''}.` };
+      if (lanes.some((l) => state.laneStatuses[l] === 'maintenance')) return { erreur: 'Une des pistes choisies est en maintenance.' };
+      if (lanesConflict(s.date, s.startTime, duration, lanes).length) return { erreur: 'Conflit détecté sur les pistes choisies.' };
+    }
+  }
+  const prixSaisi = simulation ? null : getQuickBookCustomPrice();
+  // Une VISITE et une ACTIVITE LIBRE laissent le serveur tarifer leur
+  // programme (lib/visit-program) ; une formule adaptee garde le prix de sa
+  // formule. On n envoie un prix que s il a ete saisi : « pas de prix » et
+  // « 0 EUR » sont deux intentions differentes, et le serveur garde un 0
+  // envoye comme un prix offert (l ancienne fenetre envoyait 0 pour une
+  // activite seule : getBasePrice('activity') vaut 0).
+  const tarifeParLeServeur = programme || s.type === 'activity';
+  const basePrice = tarifeParLeServeur ? undefined : getBasePrice(s.type, duration, lanes.length || requiredCount, s.pax, s.formuleId, s.date);
+  const extras = quickExtrasLignes();
+  let price = prixSaisi != null ? prixSaisi : basePrice;
+  if (!tarifeParLeServeur && prixSaisi == null && extras.length) price = Math.round(((Number(basePrice) || 0) + quickExtrasTotal()) * 100) / 100;
+  const reservation = {
+    name: simulation ? 'Simulation' : (s.name.trim() || 'Client'),
+    phone: simulation ? '' : rvTelephoneEnvoye(),
+    email: simulation ? '' : s.email.trim(),
+    notes: simulation ? '' : rvNotesEnvoyees({ horsRegles, prixSaisi, formule }),
+    occasion: simulation ? '' : (s.occasion || ''),
+    date: s.date,
+    startTime: s.startTime,
+    duration,
+    totalDuration,
+    lanes,
+    pax: Number(s.pax),
+    status: 'pending',
+    basePrice,
+    price,
+    type: adaptee ? 'formule' : s.type,
+    formuleId: s.type === 'formule' ? s.formuleId : '',
+    // UNE ACTIVITE LIBRE PART EN PROGRAMME (2026-08-19), le meme contrat que
+    // le tunnel public : le serveur renormalise via lib/visit-program.
+    program: programme
+      ? visitProgram
+      : s.type === 'activity' && s.activityId ? [ligneProgrammeQuick(s.activityId)] : undefined,
+    label: adaptee
+      ? `${formule.name} (adaptée)`.slice(0, 160)
+      : formule
+        ? formule.name
+        : s.type === 'laser'
+          ? 'Laser Game'
+          // AUCUN LIBELLE IMPOSE POUR UNE VISITE : le serveur la decrit depuis
+          // son programme (« Bowling 1h · Laser 2 parties »).
+          : s.type === 'visite'
+            ? undefined
+            : s.type === 'activity'
+              ? ((typeof getCenterActivity === 'function' && getCenterActivity(s.activityId)?.name) || 'Activité')
+              : 'Bowling Classique',
+    laserGames: s.type === 'laser' ? rvPartiesLaser() : 0,
+    allowPastStart: quickBookAllowsPastSelectedTime(),
+    preference: rvPreference(ids, heures, programme),
+    extras,
+  };
+  if (forcer) reservation.forcer = true;
+  return { reservation, needsLanes, requiredCount: programme ? requiredCount : Math.max(requiredCount, lanes.length) };
+}
+
+function rvTelephoneEnvoye() {
+  const chiffres = quickBookState.phone.replace(/\D/g, '');
+  return chiffres && chiffres !== '32' ? normalizePhoneInput(quickBookState.phone) : '';
+}
+
+// LES NOTES DU DOSSIER. Le contexte d ouverture (une demande sur mesure) part
+// tel quel, comme avant ; ce que le comptoir ecrit, et la raison d un prix
+// revu, partent en notes de l equipe, signees et datees : la fiche les range
+// avec les autres.
+function rvNotesEnvoyees({ horsRegles = '', prixSaisi = null, formule = null } = {}) {
+  const s = quickBookState;
+  const auteur = (state.staffAuthSession && state.staffAuthSession.member && state.staffAuthSession.member.name) || '';
+  const lignes = [];
+  if (horsRegles) lignes.push(horsRegles);
+  const texte = String(s.notes || '').trim().slice(0, 500);
+  const instant = Date.now();
+  if (texte && texte === String(s.notesInitiales || '').trim()) lignes.push(texte);
+  else if (texte) lignes.push(NOTE_EQUIPE_TAG + JSON.stringify({ t: texte, par: auteur, le: new Date(instant).toISOString() }));
+  const raison = [s.prixRaison, String(s.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200);
+  if (prixSaisi != null && raison) {
+    const reference = rvTotalReference();
+    const quoi = formule ? `${formule.name}${s.adaptee ? ' (adaptée)' : ''}` : 'Prix';
+    lignes.push(NOTE_EQUIPE_TAG + JSON.stringify({ t: `${quoi} : ${formatMoney(prixSaisi)} au lieu de ${formatMoney(reference)}. ${raison}`, par: auteur, le: new Date(instant + 1).toISOString() }));
+  }
+  return lignes.join('\n');
+}
+
+// ── LE PLAN DU SERVEUR (simulation a blanc) ──────────────────────────────────
+let rvSimulationTimer = null;
+let rvSimulationSeq = 0;
+function rvCorpsDeSimulation() {
+  const construit = rvConstruire({ simulation: true });
+  if (construit.erreur) return null;
+  return buildReservationApiPayload(construit.reservation, { channel: 'staff', laneCount: construit.requiredCount, requiresLanes: construit.needsLanes });
+}
+
+function rvCleSimulation() {
+  const corps = rvCorpsDeSimulation();
+  return corps ? JSON.stringify(corps) : '';
+}
+
+// Les resas d avant dans le meme envoi : la deuxieme voit les pistes que la
+// premiere aura prises (le serveur les simule d abord).
+function rvAutresDuLot() {
+  if (rvResas.length < 2) return [];
+  const garde = quickBookState;
+  const corps = [];
+  try {
+    rvResas.slice(0, rvResaIndex).forEach((etat) => {
+      quickBookState = etat;
+      const c = rvCorpsDeSimulation();
+      if (c) corps.push(c);
+    });
+  } finally { quickBookState = garde; }
+  return corps;
+}
+
+function rvPlanifierSimulation() {
+  if (!quickBookState) return;
+  clearTimeout(rvSimulationTimer);
+  rvSimulationTimer = setTimeout(rvSimuler, 260);
+}
+
+async function rvSimuler() {
+  const s = quickBookState;
+  if (!s || s.submitting) return;
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reservations.create')) return;
+  const corps = rvCorpsDeSimulation();
+  if (!corps) { rvRepeindre(); return; }
+  const cle = JSON.stringify(corps);
+  s.cleCourante = cle;
+  const autres = rvAutresDuLot();
+  const cleLot = autres.length ? `${cle}|${JSON.stringify(autres)}` : cle;
+  if (s.plan && s.plan.cleLot === cleLot && (s.plan.etat === 'ok' || s.plan.etat === 'calcul')) return;
+  const seq = ++rvSimulationSeq;
+  s.plan = { cle, cleLot, etat: 'calcul', resultat: null };
+  rvRepeindre({ sauf: ['rvJoueursSaisie'] });
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...corps, dryRun: true, ...(autres.length ? { autres } : {}) }) });
+    if (!quickBookState || seq !== rvSimulationSeq) return;
+    quickBookState.plan = payload && payload.dryRun && payload.plan
+      ? { cle, cleLot, etat: 'ok', resultat: payload.plan }
+      : { cle, cleLot, etat: 'erreur', resultat: null, message: 'réponse sans plan' };
+  } catch (error) {
+    if (!quickBookState || seq !== rvSimulationSeq) return;
+    quickBookState.plan = { cle, cleLot, etat: 'erreur', resultat: null, message: (error && error.message) || 'plan indisponible' };
+  }
+  const plan = rvPlanCourant();
+  // Un refus : on cherche tout de suite les heures ou TOUT tient.
+  if (plan && !plan.disponible) {
+    const premiere = rvActivites()[0];
+    if (premiere) rvChargerCandidats(premiere, 0);
+  }
+  rvRepeindre({ sauf: ['rvJoueursSaisie'] });
+}
+
+// ── PLUSIEURS RESAS POUR UN MEME CLIENT ──────────────────────────────────────
+// « Même client, un envoi » (Movsar, 2026-10-08) : un anniversaire et le
+// bowling des parents partent ensemble. Le contact est commun, le reste est
+// propre a chaque resa.
+function rvPartagerClient(depuis, vers) {
+  if (!depuis || !vers || depuis === vers) return;
+  vers.name = depuis.name;
+  vers.phone = depuis.phone;
+  vers.email = depuis.email;
+  vers.clientConnu = depuis.clientConnu;
+}
+
+function rvAjouterResa() {
+  const s = quickBookState;
+  if (!s || s.submitting) return;
+  if (!rvResas.length) rvResas = [s];
+  const nouvelle = createQuickBookState({ date: s.date, startTime: s.startTime, pax: 4, type: 'bowling' });
+  nouvelle.context = { source: s.context.source, known: [] };
+  rvPartagerClient(s, nouvelle);
+  rvResas.push(nouvelle);
+  rvResaIndex = rvResas.length - 1;
+  quickBookState = nouvelle;
+  syncQuickBookDuration();
+  renderQuickBook();
+  toast('Deuxième réservation pour le même client : composez-la, tout part en un envoi.');
+}
+
+function rvChoisirResa(i) {
+  const s = quickBookState;
+  if (!s || !rvResas[i] || i === rvResaIndex) return;
+  rvResas.forEach((autre) => rvPartagerClient(s, autre));
+  rvResaIndex = i;
+  quickBookState = rvResas[i];
+  quickBookState.horloge = null;
+  renderQuickBook();
+}
+
+function rvRetirerResa(i) {
+  if (rvResas.length < 2 || !rvResas[i]) return;
+  const s = quickBookState;
+  rvResas.forEach((autre) => rvPartagerClient(s, autre));
+  rvResas.splice(i, 1);
+  rvResaIndex = Math.max(0, Math.min(rvResaIndex >= i ? rvResaIndex - 1 : rvResaIndex, rvResas.length - 1));
+  quickBookState = rvResas[rvResaIndex];
+  if (rvResas.length === 1) rvResas = [quickBookState];
+  renderQuickBook();
+}
+
+// ── LES DEPARTS RAPIDES ──────────────────────────────────────────────────────
+let rvDepartsEtat = null;
+async function rvChargerDeparts() {
+  const s = quickBookState;
+  if (!s) return;
+  if (rvDepartsEtat && rvDepartsEtat.date === s.date && rvDepartsEtat.etat !== 'erreur') return;
+  rvDepartsEtat = { date: s.date, etat: 'calcul', liste: [], epingles: [], epinglage: false, source: '' };
+  try {
+    const payload = await apiRequest(`${API_ENDPOINTS.staffReservations}?departs=1&date=${encodeURIComponent(s.date)}`, { method: 'GET' });
+    const liste = payload && Array.isArray(payload.departs) ? payload.departs : null;
+    rvDepartsEtat = liste
+      ? { date: s.date, etat: 'ok', liste, epingles: Array.isArray(payload.epingles) ? payload.epingles : [], epinglage: Array.isArray(payload.epingles), source: 'centre' }
+      : { date: s.date, etat: 'ok', liste: [], epingles: [], epinglage: false, source: 'catalogue' };
+  } catch (error) {
+    rvDepartsEtat = { date: s.date, etat: 'ok', liste: [], epingles: [], epinglage: false, source: 'catalogue' };
+  }
+  if (quickBookState) rvRepeindre();
+}
+
+function rvCleDepart(d) {
+  return JSON.stringify([d.type || '', d.formuleId || '', (d.program || []).map((l) => [l.activityId, l.duration || 0, l.games || 0, l.minutes || 0])]);
+}
+
+// Les tuiles : les epinglees d abord, puis les plus reservees, au plus 4 ;
+// sans historique, les departs du catalogue (bowling 1 h, laser 2 parties,
+// laser puis bowling, la premiere formule).
+function rvTuilesDeparts() {
+  const d = rvDepartsEtat || { liste: [], epingles: [] };
+  const vues = new Set();
+  const brutes = [];
+  [...(d.epingles || []).map((x) => ({ ...x, epingle: true })), ...(d.liste || [])].forEach((x) => {
+    const cle = rvCleDepart(x);
+    if (vues.has(cle)) return;
+    vues.add(cle);
+    brutes.push(x);
+  });
+  if (!brutes.length) {
+    const ids = getQuickBookActivityChoices().map((c) => c.id);
+    if (ids.includes('bowling')) brutes.push({ type: 'bowling', duration: 1 });
+    if (ids.includes('laser_game')) brutes.push({ type: 'laser', laserGames: 2 });
+    if (ids.includes('bowling') && ids.includes('laser_game')) brutes.push({ type: 'visite', program: [{ activityId: 'laser_game', games: 2 }, { activityId: 'bowling', duration: 1 }] });
+    const formule = getQuickBookFormulaChoices().find((f) => f.available);
+    if (formule) brutes.push({ type: 'formule', formuleId: formule.id });
+  }
+  return brutes.slice(0, 4).map((x) => {
+    const ids = x.type === 'visite' ? (x.program || []).map((l) => l.activityId) : x.type === 'bowling' ? ['bowling'] : x.type === 'laser' ? ['laser_game'] : x.type === 'activity' ? [(x.program && x.program[0] && x.program[0].activityId) || ''] : [];
+    let titre = '';
+    let sous = x.count ? `${x.count} fois en 90 jours` : '';
+    if (x.type === 'bowling') { titre = `Bowling · ${rvHeuresLabel(Number(x.duration) || 1)}`; sous = sous || 'par piste'; }
+    else if (x.type === 'laser') { const n = Number(x.laserGames || x.games) || 1; titre = `Laser · ${rvPluriel(n, 'partie')}`; sous = sous || 'par joueur'; }
+    else if (x.type === 'formule') { const f = resolveDisplayFormule(x.formuleId); titre = f ? f.name : 'Formule'; sous = sous || (f ? `${f.price} € / ${f.type === 'per_lane' ? 'piste' : 'pers.'}` : ''); }
+    else { titre = ids.map((id) => rvNomActivite(id)).join(' puis '); sous = sous || (x.program || []).map((l) => (l.games ? rvPluriel(l.games, 'partie') : l.duration ? rvHeuresLabel(l.duration) : '')).filter(Boolean).join(' + '); }
+    return { brut: x, ids, titre, sous, epingle: Boolean(x.epingle), actif: false };
+  });
+}
+
+function rvAppliquerDepart(i) {
+  const s = quickBookState;
+  const tuile = rvTuilesDeparts()[i];
+  if (!s || !tuile) return;
+  rvAppliquerComposition(tuile.brut);
+}
+
+// RECOMPOSER une composition connue (un depart rapide, la derniere visite
+// d un client) : type, duree, parties, programme ou formule.
+function rvAppliquerComposition(x) {
+  const s = quickBookState;
+  if (!s || !x) return;
+  s.heures = {};
+  s.partiesEcarts = null;
+  s.forcer = false;
+  s.adaptee = false;
+  s.ordre = [];
+  if (x.pax && Number(x.pax) > 0 && x.reprendreJoueurs) s.pax = Number(x.pax);
+  if (x.type === 'formule' && x.formuleId) {
+    if (s.type !== 'formule') setQuickType('formule');
+    setQuickFormule(x.formuleId);
+    return;
+  }
+  if (x.type === 'bowling') { setQuickType('bowling'); s.duration = Math.min(RV_BOWLING_MAX, Math.max(0.5, Number(x.duration) || 1)); syncQuickBookDuration(); renderQuickBook(); return; }
+  if (x.type === 'laser') { setQuickType('laser'); s.duration = Math.min(RV_PARTIES_MAX, Math.max(1, Number(x.laserGames || x.games) || 1)) / 2; syncQuickBookDuration(); renderQuickBook(); return; }
+  const lignes = Array.isArray(x.program) ? x.program.filter((l) => l && l.activityId) : [];
+  if (!lignes.length) return;
+  if (lignes.length === 1 && lignes[0].activityId !== 'bowling' && lignes[0].activityId !== 'laser_game') {
+    setQuickType('activity', lignes[0].activityId);
+    return;
+  }
+  const visit = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {}, options: {} };
+  lignes.forEach((l) => {
+    if (l.activityId === 'bowling') visit.bowling = { on: true, duration: Math.min(RV_BOWLING_MAX, Math.max(0.5, Number(l.duration) || 1)) };
+    else if (l.activityId === 'laser_game') visit.laser_game = { on: true, games: Math.min(RV_PARTIES_MAX, Math.max(1, Number(l.games) || 1)) };
+    else {
+      visit.others[l.activityId] = true;
+      const o = {};
+      ['duration', 'minutes', 'units', 'hours'].forEach((k) => { if (l[k] != null) o[k] = l[k]; });
+      if (Object.keys(o).length) visit.options[l.activityId] = o;
+    }
+  });
+  s.type = 'visite';
+  s.visit = visit;
+  s.surMesure = false;
+  s.activityId = '';
+  s.formuleId = '';
+  s.lanes = [];
+  s.autoAssign = false;
+  s.ordre = lignes.map((l) => l.activityId);
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+async function rvEpinglerDepart(i) {
+  const tuile = rvTuilesDeparts()[i];
+  const d = rvDepartsEtat;
+  if (!tuile || !d || !d.epinglage) return;
+  const cle = rvCleDepart(tuile.brut);
+  const epingles = tuile.epingle
+    ? d.epingles.filter((x) => rvCleDepart(x) !== cle)
+    : [...d.epingles, { type: tuile.brut.type, formuleId: tuile.brut.formuleId, duration: tuile.brut.duration, laserGames: tuile.brut.laserGames, program: tuile.brut.program }].slice(0, 4);
+  try {
+    const payload = await apiRequest(`${API_ENDPOINTS.staffReservations}?departs=1`, { method: 'POST', body: JSON.stringify({ epingles }) });
+    rvDepartsEtat = { ...d, epingles: payload && Array.isArray(payload.epingles) ? payload.epingles : epingles };
+    toast(tuile.epingle ? 'Départ désépinglé.' : 'Départ épinglé pour tout le centre.');
+  } catch (error) {
+    toast((error && error.message) || 'Épingle impossible.');
+  }
+  if (quickBookState) rvRepeindre();
+}
+
+function rvBasculerDeparts() {
+  const s = quickBookState;
+  if (!s) return;
+  s.departsOuverts = !s.departsOuverts;
+  renderQuickBook();
+}
+
+// ── LE CLIENT DEJA VENU ──────────────────────────────────────────────────────
+let rvClientTimer = null;
+let rvClientSeq = 0;
+function rvPlanifierClientConnu() {
+  clearTimeout(rvClientTimer);
+  rvClientTimer = setTimeout(rvChercherClientConnu, 450);
+}
+
+async function rvChercherClientConnu() {
+  const s = quickBookState;
+  if (!s) return;
+  if (typeof canUseStaffPermission === 'function' && !['reservations.create', 'reservations.view', 'clients.view'].some((p) => canUseStaffPermission(p))) return;
+  const chiffres = String(s.phone || '').replace(/\D/g, '');
+  const zone = () => document.getElementById('rvClientConnu');
+  if (chiffres.length < 8) {
+    if (s.clientConnu) { s.clientConnu = null; if (zone()) zone().innerHTML = ''; }
+    return;
+  }
+  if (s.clientConnu && s.clientConnu.cle === chiffres && s.clientConnu.etat !== 'erreur') return;
+  const seq = ++rvClientSeq;
+  s.clientConnu = { cle: chiffres, etat: 'calcul', resultat: null };
+  try {
+    const payload = await apiRequest(`${API_ENDPOINTS.staffReservations}?client=${encodeURIComponent(chiffres)}`, { method: 'GET' });
+    if (!quickBookState || seq !== rvClientSeq) return;
+    quickBookState.clientConnu = { cle: chiffres, etat: 'ok', resultat: payload && payload.client ? payload.client : null };
+    const r = quickBookState.clientConnu.resultat;
+    if (r && r.nom && !String(quickBookState.name || '').trim()) {
+      quickBookState.name = r.nom;
+      const champ = document.getElementById('qbName');
+      if (champ && document.activeElement !== champ) champ.value = r.nom;
+    }
+  } catch (error) {
+    if (!quickBookState || seq !== rvClientSeq) return;
+    quickBookState.clientConnu = { cle: chiffres, etat: 'erreur', resultat: null };
+  }
+  if (zone()) zone().innerHTML = rvClientConnuHtml();
+}
+
+// « Refaire » : la derniere visite de ce client, recomposee en un geste.
+function rvRefaire() {
+  const s = quickBookState;
+  const r = s && s.clientConnu && s.clientConnu.resultat;
+  if (!r || !r.derniereComposition) return;
+  rvAppliquerComposition({ ...r.derniereComposition, reprendreJoueurs: true });
+  toast('Dernière visite reprise : vérifiez l’heure et le jour.');
+}
+
+// ── LA CREATION ──────────────────────────────────────────────────────────────
+// Ce que la creation a fait de chaque dossier, dit en clair : cree, cree « a
+// placer » avec son conflit, ou refuse avec sa raison.
+function rvApresCreation(reservations) {
+  (reservations || []).filter(Boolean).forEach((reservation) => {
+    upsertReservationInState(reservation);
+    markReservationMutation(reservation.id, reservation, ['status', 'startTime', 'lanes']);
+  });
+  save();
+}
+
+// Plusieurs resas, un seul envoi : chaque dossier est construit avec ses
+// propres regles, le contact commun, puis le serveur les cree dans l ordre.
+// « Créer quand même » voyage sur CHAQUE dossier (rvConstruire), jamais sur le
+// lot : un forcer global creerait « a placer » une resa dont le plan tient.
+async function rvCreerLeLot() {
+  const garde = quickBookState;
+  const dossiers = [];
+  let erreur = '';
+  try {
+    rvResas.forEach((etat, i) => {
+      if (erreur) return;
+      rvPartagerClient(garde, etat);
+      quickBookState = etat;
+      const construit = rvConstruire();
+      if (construit.erreur) { erreur = `Réservation ${i + 1} : ${construit.erreur}`; return; }
+      dossiers.push(buildReservationApiPayload(construit.reservation, { channel: 'staff', laneCount: construit.requiredCount, requiresLanes: construit.needsLanes }));
+    });
+  } finally { quickBookState = garde; }
+  if (erreur) throw Object.assign(new Error(erreur), { expose: true });
+  try {
+    return await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dossiers }) });
+  } catch (error) {
+    // UN LOT EN PARTIE REFUSE N EST PAS UNE PANNE : le serveur repond ok:false
+    // (207, ou 422 si tout est refuse) avec les dossiers crees ET les refus.
+    // Les crees sortent de la fenetre, sinon un second clic les recreerait.
+    const reponse = error && error.payload;
+    if (reponse && (Array.isArray(reponse.reservations) || Array.isArray(reponse.echecs))) return reponse;
+    throw error;
+  }
 }
 
 async function saveQuickBook() {
@@ -29119,16 +31025,18 @@ async function saveQuickBook() {
     saveBtn.setAttribute('aria-busy', 'true');
     saveBtn.textContent = 'Création…';
   }
-  // Contact STAFF libre : on ne bloque pas sur nom/tél/email manquants. Fallback
-  // propre pour le payload (nom par défaut « Client » si vide, tél vide autorisé)
-  // afin de ne pas casser createReservation. L'email obligatoire reste au CLIENT.
-  const name = quickBookState.name.trim() || 'Client';
-  const phoneDigits = quickBookState.phone.replace(/\D/g, '');
-  const phone = phoneDigits && phoneDigits !== '32' ? normalizePhoneInput(quickBookState.phone) : '';
+  // LA RESA QU ON CREE, tenue a part : si la fenetre se ferme pendant l envoi
+  // (croix, fond, changement de page), la reponse arrive quand meme et ne lit
+  // jamais un etat remis a null.
+  const etat = quickBookState;
+  // Le lot affiche au moment du clic : la reponse ne touche la fenetre que si
+  // elle le montre encore (openQuickBook et closeQuickBook en posent un autre).
+  const lotSauve = rvResas;
   const failQuickBook = (message) => {
-    // Ré-active le bouton (le re-render reconstruit « Créer la réservation »).
-    quickBookState.submitting = false;
-    quickBookState.error = message;
+    // Ré-active le bouton (le re-render reconstruit « Créer »).
+    etat.submitting = false;
+    etat.error = message;
+    if (quickBookState !== etat) { toast(message); return; }
     renderQuickBook();
     // LE FOCUS RESTE DANS LA FENETRE. Le bouton desactive pendant l envoi
     // perdait le focus (Chrome le rend au document) : apres un refus, le
@@ -29144,149 +31052,97 @@ async function saveQuickBook() {
   // (on évite d'enregistrer une adresse cassée). Un email vide reste accepté.
   if (email && !isValidEmail(email)) { failQuickBook('Adresse email invalide. Format attendu : nom@domaine.com'); return; }
   if (!quickBookState.startTime) { failQuickBook('Choisissez une heure.'); return; }
-  const formule = quickBookState.type === 'formule' ? resolveDisplayFormule(quickBookState.formuleId) : null;
-  if (quickBookState.type === 'formule' && !formule) { failQuickBook('Sélectionnez une formule.'); return; }
-  let visitProgram = null;
-  if (quickBookState.type === 'visite') {
-    const visit = quickBookState.visit || {};
-    visitProgram = [];
-    if (visit.bowling?.on) visitProgram.push({ ...ligneProgrammeQuick('bowling'), duration: Number(visit.bowling.duration || 1) });
-    if (visit.laser_game?.on) visitProgram.push({ ...ligneProgrammeQuick('laser_game'), games: Math.max(1, Math.trunc(Number(visit.laser_game.games || 1))) });
-    Object.entries(visit.others || {}).forEach(([activityId, on]) => {
-      if (!on) return;
-      visitProgram.push(ligneProgrammeQuick(activityId));
-    });
-    if (!visitProgram.length) { failQuickBook('Choisissez au moins une activité.'); return; }
-  }
-
+  const lot = rvResas.length > 1 && rvResas.includes(etat);
   // Pas d'aller-retour réseau superflu sur le chemin de création : le poll
   // (4 s) garde la date courante fraîche. On ne re-synchronise ici que si la
   // donnée locale est vieille (> 10 s) : le serveur re-valide de toute façon.
-  if (!isDateSyncFresh(quickBookState.date)) {
-    await syncDateReservations(quickBookState.date, { silent: true, skipRender: true });
+  if (!isDateSyncFresh(etat.date)) {
+    await syncDateReservations(etat.date, { silent: true, skipRender: true });
   }
-  syncQuickBookDuration();
-  const duration = Number(quickBookState.duration);
-  const totalDuration = Number(quickBookState.totalDuration || duration);
-  const slotCheck = validateSlotWindow(quickBookState.date, quickBookState.startTime, totalDuration, {
-    allowPastStart: quickBookAllowsPastSelectedTime()
-  });
-  if (!slotCheck.ok) { failQuickBook(slotCheck.message); return; }
-  // Une formule hors regles part quand meme (choix du comptoir) : la raison
-  // s ecrit dans la note du dossier, pour que la caisse la comprenne.
-  let horsRegles = '';
-  if (formule) {
-    const availability = getFormuleAvailability(formule, quickBookState.date, quickBookState.pax, quickBookState.startTime);
-    if (!availability.ok) horsRegles = `${formule.name} hors règles (${availability.message}) : choix du comptoir.`;
+  if (quickBookState !== etat) { etat.submitting = false; return; }
+  // UN REFUS DU PLANNING NE PART PAS EN SILENCE (Movsar, 2026-10-08 : « elle
+  // peut créer, mais il doit afficher l erreur avant, après »). Sans « Créer
+  // quand même », le refus est dit ici ; avec, le dossier part « à placer »
+  // et son conflit est écrit dans sa note.
+  const plan = rvPlanCourant();
+  if (!lot && plan && !plan.disponible && !etat.forcer) {
+    failQuickBook(`${plan.refus || plan.avertissement || 'Le planning ne trouve pas de place pour ce plan.'} Choisissez une autre heure, ou « Créer quand même » pour le créer à placer.`);
+    return;
   }
-  if (quickBookState.type === 'laser') {
-    const laserAvailability = getLaserAvailability(quickBookState.date, quickBookState.startTime, duration, quickBookState.pax);
-    if (!laserAvailability.ok) { failQuickBook(laserAvailability.message); return; }
-  }
-
-  const { needsLanes, requiredCount } = getQuickBookLaneNeed();
-  let lanes = [];
-  if (needsLanes && quickBookState.type === 'visite') {
-    // On ne POSTE pas de pistes pour une visite (le serveur les attribue), mais
-    // on refuse de partir si le parc ne peut pas les fournir : c est ce
-    // controle manquant qui laissait creer une reservation que le serveur
-    // rejetait ensuite avec « Aucune piste disponible ».
-    const dispo = allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, duration);
-    if (!dispo || dispo.length < requiredCount) {
-      failQuickBook(`Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} libre${requiredCount > 1 ? 's' : ''} à ${quickBookState.startTime} : ce créneau ne les a pas.`);
+  if (lot) {
+    // La meme regle pour chaque resa du lot : une resa refusee sans « Créer
+    // quand même » arrete l envoi, et la fenetre montre SON onglet.
+    const refusee = rvResas.findIndex((r) => {
+      const garde = quickBookState;
+      try { quickBookState = r; rvActualiserCle(); const p = rvPlanCourant(); return Boolean(p && !p.disponible && !r.forcer); } finally { quickBookState = garde; rvActualiserCle(); }
+    });
+    if (refusee >= 0) {
+      etat.submitting = false;
+      rvResaIndex = refusee;
+      quickBookState = rvResas[refusee];
+      quickBookState.error = `Réservation ${refusee + 1} : le planning ne la place pas telle quelle. Choisissez une autre heure, ou « Créer quand même » pour la créer à placer.`;
+      renderQuickBook();
+      const bouton = document.querySelector('#quickBookOverlay .qb-btn-save');
+      if (bouton) bouton.focus({ preventScroll: true });
+      toast(quickBookState.error);
       return;
     }
-  } else if (needsLanes) {
-    if (quickBookState.autoAssign) lanes = allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, duration);
-    else lanes = [...quickBookState.lanes];
-    if (!lanes || lanes.length < requiredCount) { failQuickBook(`Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} disponible${requiredCount > 1 ? 's' : ''}.`); return; }
-    if (lanes.some(l => state.laneStatuses[l] === 'maintenance')) { failQuickBook('Une des pistes choisies est en maintenance.'); return; }
-    if (lanesConflict(quickBookState.date, quickBookState.startTime, duration, lanes).length) { failQuickBook('Conflit détecté sur les pistes choisies.'); return; }
   }
-
-  const customPriceValue = getQuickBookCustomPrice();
-  const estVisite = quickBookState.type === 'visite';
-  // Une VISITE laisse le serveur tarifer son programme (lib/visit-program) :
-  // le navigateur ne connait pas les paliers d activites libres. On n envoie
-  // donc AUCUN prix, sauf si le comptoir en a saisi un : « pas de prix » et
-  // « prix a 0 EUR » sont deux intentions differentes, et le serveur les
-  // distingue depuis le 2026-08-26.
-  const basePrice = estVisite
-    ? undefined
-    : getBasePrice(quickBookState.type, duration, lanes.length, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
-  const reservation = {
-    name,
-    phone,
-    email,
-    notes: [horsRegles, (quickBookState.notes || '').trim()].filter(Boolean).join('\n'),
-    date: quickBookState.date,
-    startTime: quickBookState.startTime,
-    duration,
-    totalDuration,
-    lanes,
-    pax: Number(quickBookState.pax),
-    status: 'pending',
-    basePrice,
-    // Prix AJUSTE cas par cas : ne touche que CE dossier (la formule et la
-    // grille du centre restent intactes). Une visite sans prix saisi part
-    // SANS prix : c est le serveur qui facture son programme.
-    price: customPriceValue != null ? customPriceValue : basePrice,
-    type: quickBookState.type,
-    formuleId: quickBookState.formuleId,
-    // UNE ACTIVITE LIBRE PART EN PROGRAMME (2026-08-19), le meme contrat que
-    // le tunnel public : le serveur renormalise via lib/visit-program (le
-    // panier du navigateur n'est jamais lu tel quel) et en derive le type, le
-    // libelle et le prix. Sans cette ligne, une activite choisie ici serait
-    // partie en « bowling » et aurait consomme une piste pour rien.
-    program: quickBookState.type === 'visite'
-      ? visitProgram
-      : quickBookState.type === 'activity' && quickBookState.activityId
-        ? [ligneProgrammeQuick(quickBookState.activityId)]
-        : undefined,
-    label: formule
-      ? formule.name
-      : quickBookState.type === 'laser'
-        ? 'Laser Game'
-        : quickBookState.type === 'visite'
-          // AUCUN LIBELLE IMPOSE POUR UNE VISITE. Le serveur sait la decrire
-          // depuis son programme (« Bowling 1h · Laser 2 parties »), et il garde
-          // le libelle du comptoir quand il y en a un : lui envoyer « Sur
-          // mesure » ecrasait cette description par un mot creux, et le planning
-          // affichait « Sur mesure » pour un dossier qui contient simplement
-          // deux activites.
-          ? undefined
-          : quickBookState.type === 'activity'
-            ? ((typeof getCenterActivity === 'function' && getCenterActivity(quickBookState.activityId)?.name) || 'Activité')
-            : 'Bowling Classique',
-    laserGames: quickBookState.type === 'laser' ? getLaserGameCount(quickBookState.duration) : 0,
-    allowPastStart: quickBookAllowsPastSelectedTime(),
-    // Le sur mesure : les extras du comptoir. Une visite les fait additionner
-    // par le serveur ; une reservation simple les ajoute ici au montant.
-    extras: quickExtrasLignes()
-  };
-  if (!estVisite && customPriceValue == null && reservation.extras.length) {
-    reservation.price = Math.round(((Number(basePrice) || 0) + quickExtrasTotal()) * 100) / 100;
+  let construit = null;
+  if (!lot) {
+    construit = rvConstruire();
+    if (construit.erreur) { failQuickBook(construit.erreur); return; }
   }
-
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'POST',
-      body: JSON.stringify(buildReservationApiPayload(reservation, {
-        channel: 'staff',
-        laneCount: requiredCount,
-        requiresLanes: needsLanes
-      }))
-    });
-    upsertReservationInState(payload.reservation);
+    const payload = lot
+      ? await rvCreerLeLot()
+      : await apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'POST',
+        body: JSON.stringify(buildReservationApiPayload(construit.reservation, {
+          channel: 'staff',
+          laneCount: construit.requiredCount,
+          requiresLanes: construit.needsLanes
+        }))
+      });
+    // Un lot rend chaque dossier cree avec son rang et son sort ({ index,
+    // reservation, aPlacer, conflits }) ; une creation seule, le dossier.
+    const brutes = Array.isArray(payload && payload.reservations) ? payload.reservations : payload && payload.reservation ? [payload.reservation] : [];
+    const creees = brutes.filter(Boolean).map((x) => (x.reservation && typeof x.reservation === 'object' ? { ...x.reservation, aPlacer: Boolean(x.aPlacer || x.reservation.aPlacer) } : x));
+    if (!payload.reservation && creees[0]) payload.reservation = creees[0];
+    const echecs = Array.isArray(payload && payload.echecs) ? payload.echecs : [];
     // Protège la création contre un snapshot staff-state parti AVANT le commit
-    // serveur et appliqué APRÈS : sans cette entrée, replaceReservationsForDate
-    // retirerait la résa fraîchement créée (flicker) jusqu'au poll suivant.
-    markReservationMutation(payload.reservation.id, payload.reservation, ['status', 'startTime', 'lanes']);
-    save();
+    // serveur et appliqué APRÈS (flicker jusqu'au poll suivant).
+    rvApresCreation(creees);
     // Lu AVANT closeQuickBook : celui-ci remet quickBookState a null.
-    const demandeOrigine = quickBookState.sourceRequestId;
-    closeQuickBook();
+    const demandeOrigine = etat.sourceRequestId;
+    const aPlacer = creees.filter((r) => r && (r.aPlacer || payload.aPlacer)).length;
+    if (echecs.length) {
+      // UN LOT EN PARTIE CREE : les resas creees partent, celles qui ont
+      // echoue restent dans la fenetre avec leur raison. Jamais d echec muet.
+      etat.submitting = false;
+      const raisons = echecs.map((e) => `Réservation ${Number(e.index) + 1} : ${e.message}`).join(' · ');
+      if (rvResas !== lotSauve) {
+        // La fenetre montre deja autre chose : le refus se dit, sans la toucher.
+        renderStaff();
+        toast(`${creees.length} créée${creees.length > 1 ? 's' : ''}, ${echecs.length} refusée${echecs.length > 1 ? 's' : ''}. ${raisons}`);
+        return;
+      }
+      const restantes = echecs.map((e) => lotSauve[Number(e.index)]).filter(Boolean);
+      rvResas = restantes.length ? restantes : [etat];
+      rvResaIndex = 0;
+      quickBookState = rvResas[0];
+      quickBookState.submitting = false;
+      quickBookState.error = raisons;
+      renderQuickBook();
+      renderStaff();
+      toast(`${creees.length} créée${creees.length > 1 ? 's' : ''}, ${echecs.length} refusée${echecs.length > 1 ? 's' : ''} : voir la fenêtre.`);
+      return;
+    }
+    if (rvResas === lotSauve) closeQuickBook();
     renderStaff();
+    const message = creees.length > 1
+      ? `${creees.length} réservations créées${aPlacer ? `, dont ${aPlacer} à placer` : ''}`
+      : aPlacer ? 'Réservation créée à placer : le conflit est écrit dans sa note' : 'Réservation créée';
     if (demandeOrigine) {
       // La demande est traitee : la reservation existe. Le classement ne
       // doit jamais voler le message de ce qui compte (la reservation),
@@ -29298,9 +31154,9 @@ async function saveQuickBook() {
         reservationId: payload.reservation && payload.reservation.id,
         reservationDate: payload.reservation && payload.reservation.date,
       });
-      toast(classee ? 'Réservation créée · demande classée « Traitée »' : 'Réservation créée · la demande reste à traiter');
+      toast(classee ? `${message} · demande classée « Traitée »` : `${message} · la demande reste à traiter`);
     } else {
-      toast('Réservation créée');
+      toast(message);
     }
   } catch (error) {
     failQuickBook(error.message || 'Impossible de créer la réservation.');

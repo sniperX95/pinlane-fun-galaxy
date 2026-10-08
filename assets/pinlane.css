@@ -91,6 +91,18 @@
      (rouge). Fonctionnel, jamais decoratif. #0f766e : 5.1:1 sur son -soft. */
   --occasion: #0f766e;
   --occasion-soft: #e3f4f1;
+  /* Activites (fenetre Reserver v5, 2026-10-08) : une couleur par famille
+     d activite, la meme sur la ligne, la frise et le billet, pour qu un
+     programme se lise d un regard. Fonctionnel : le texte reste --text. */
+  --act-laser: #6b46e5;
+  --act-bowling: #0a8bb0;
+  --act-minigolf: #c2268f;
+  --act-arcades: #a07400;
+  --act-table: #c9502c;
+  --act-duckpin: #0f9e86;
+  --act-billard: #4f8a22;
+  --act-plaine: #c26a00;
+  --act-funrun: #d43c5b;
 
   /* Tenant : la marque du CENTRE, servie en donnée par /api/public-booking-meta
      (center.branding) et posée à l'exécution sur <body>. Par défaut = l'accent
@@ -209,6 +221,15 @@
   --info-strong: var(--accent-strong);
   --occasion: #2dd4bf;
   --occasion-soft: #08241f;
+  --act-laser: #a78bff;
+  --act-bowling: #33c9ee;
+  --act-minigolf: #ff66cc;
+  --act-arcades: #ffd24d;
+  --act-table: #ff9a6b;
+  --act-duckpin: #47e3c4;
+  --act-billard: #9ad86f;
+  --act-plaine: #ffb347;
+  --act-funrun: #ff7d95;
 
   /* Data-viz : steps recalés pour surface sombre (validés L 0.48-0.67) */
   --chart-1: #3291ff;

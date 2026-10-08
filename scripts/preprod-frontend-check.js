@@ -216,7 +216,9 @@ async function main({ roiOnly = false, capture = false } = {}) {
         await page.evaluate(() => {
           const original = apiRequest;
           apiRequest = async (url, options = {}) => {
-            if (String(url).includes('staff-reservations') && options.method === 'POST') await new Promise(r => { window.__releaseSubmit = r; });
+            // La creation reste en vol ; la simulation (dryRun) de la fenetre,
+            // qui n est pas une creation, passe sans attendre (2026-10-08).
+            if (String(url).includes('staff-reservations') && options.method === 'POST' && !JSON.parse(String(options.body || '{}')).dryRun) await new Promise(r => { window.__releaseSubmit = r; });
             return original(url, options);
           };
           window.__saveTask = Promise.all([saveQuickBook(), saveQuickBook()]).finally(() => { apiRequest = original; });

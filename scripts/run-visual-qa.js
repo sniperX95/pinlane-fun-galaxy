@@ -521,9 +521,17 @@ async function installQaApi(page) {
 
       if (url.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'POST') {
         const body = JSON.parse(init.body || '{}');
+        // LA FENETRE SIMULE AVANT DE CREER (dryRun, 2026-10-08) : une
+        // simulation n est pas une creation, elle ne se compte pas.
+        if (body.dryRun) return jsonResponse({ ok: true, dryRun: true, plan: { disponible: true, debut: body.startTime || '', fin: '', blocs: [], etapes: [], prix: null } });
         window.__PINLANE_QA_RES_POSTS__ = window.__PINLANE_QA_RES_POSTS__ || [];
         window.__PINLANE_QA_RES_POSTS__.push(body);
         return jsonResponse({ ok: true, reservation: { ...body, id: 9990 } });
+      }
+
+      // Les lectures de la fenetre (client deja venu, departs rapides).
+      if (url.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'GET') {
+        return jsonResponse({ ok: true, client: null, departs: [] });
       }
 
       if (url.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'PATCH') {

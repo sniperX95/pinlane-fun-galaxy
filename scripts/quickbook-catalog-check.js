@@ -64,9 +64,15 @@ async function installMock(page) {
       if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: [], laneStatuses: Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {}), centerId: 'libramont' });
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: [], laneStatuses: {}, centerId: 'libramont', revision: 'qa', syncedAt: new Date().toISOString() });
       if (u.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'POST') {
-        window.__QA_POSTS__.push(JSON.parse(init.body || '{}'));
+        const corps = JSON.parse(init.body || '{}');
+        // LA FENETRE SIMULE AVANT DE CREER (dryRun, 2026-10-08) : une
+        // simulation n est pas une creation, elle ne se compte pas.
+        if (corps.dryRun) return J({ ok: true, dryRun: true, plan: { disponible: true, debut: corps.startTime || '', fin: '', blocs: [], etapes: [], prix: null } });
+        window.__QA_POSTS__.push(corps);
         return J({ ok: true, reservation: { id: 4242, date: today, startTime: '14:00', pax: 4, status: 'pending', type: 'visite', lanes: [] } });
       }
+      // Le client deja venu et les departs rapides : lectures de la fenetre.
+      if (u.pathname === '/api/staff-reservations') return J({ ok: true, client: null, departs: [] });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], customRequests: [] });
       if (u.pathname === '/api/public-booking-meta') {
         return J({

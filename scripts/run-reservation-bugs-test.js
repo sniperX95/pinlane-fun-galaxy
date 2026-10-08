@@ -95,6 +95,9 @@ async function installApi(page) {
       }
       if (url.pathname === '/api/staff-reservations' && method === 'POST') {
         const body = JSON.parse(init.body || '{}');
+        // LA FENETRE SIMULE AVANT DE CREER (dryRun, 2026-10-08) : une
+        // simulation n est pas une creation, elle ne se compte pas.
+        if (body.dryRun) return jsonResponse({ ok: true, dryRun: true, plan: { disponible: true, debut: body.startTime || '', fin: '', blocs: [], etapes: [], prix: null } });
         window.__RES_POSTS__.push(body);
         return jsonResponse({ ok: true, reservation: { ...body, id: 9990 + window.__RES_POSTS__.length } });
       }
@@ -380,23 +383,22 @@ async function main() {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
       quickBookState.moreOpen = false;
       renderQuickBook();
-      const modal = document.querySelector('#quickBookOverlay .qb-modal');
+      // v5 (2026-10-08) : le repli n est plus une region a part. Chaque ligne
+      // ouvre son detail (.rv-lc-d) au chevron, « Tout régler » les ouvre
+      // tous. L essentiel = ce qui se voit SANS rien ouvrir : hors detail.
       const toggle = document.querySelector('.qb-more-toggle');
-      // Bloc essentiel = tout ce qui précède le bouton « Plus d'options ».
-      const essentialHtml = modal.innerHTML.split(toggle.outerHTML)[0];
-      const emailInEssential = /type="email"/i.test(essentialHtml);
+      const email = document.querySelector('#quickBookOverlay input[type="email"]');
+      const emailInEssential = Boolean(email && !email.closest('.rv-lc-d') && email.getClientRects().length);
       const toggleLabel = toggle.textContent.trim();
       quickBookState.moreOpen = true;
       renderQuickBook();
-      const blockLabels = [...document.querySelectorAll('#quickBookOverlay .blk-label')].map((el) => el.textContent.trim());
-      const helps = [...document.querySelectorAll('#quickBookOverlay .qb-block-help')].map((el) => el.textContent.trim());
-      // Région « avancée » = tout ce qui suit le bouton « Plus d'options ».
-      const toggle2 = document.querySelector('.qb-more-toggle');
-      const advancedRegion = document.querySelector('#quickBookOverlay .qb-modal').innerHTML.split(toggle2.outerHTML)[1] || '';
+      const blockLabels = [...document.querySelectorAll('#quickBookOverlay .rv-lc-d .rv-lbl, #quickBookOverlay .rv-lc-d .rv-precis')].map((el) => el.textContent.trim());
+      // Région « avancée » = les details que « Tout régler » vient d ouvrir.
+      const advancedRegion = [...document.querySelectorAll('#quickBookOverlay .rv-lc-d')].map((el) => el.innerHTML).join('');
       const advancedHasEmail = /type="email"/i.test(advancedRegion);
       const hasNotesTextarea = Boolean(document.querySelector('#quickBookOverlay textarea'));
       const hasNoteLabel = Boolean(document.querySelector('#quickBookOverlay label[for="qbNotes"]'));
-      return { emailInEssential, toggleLabel, blockLabels, helps, advancedHasEmail, hasNotesTextarea, hasNoteLabel };
+      return { emailInEssential, toggleLabel, blockLabels, advancedHasEmail, hasNotesTextarea, hasNoteLabel };
     }, { date: TEST_DATE });
     assert(options.emailInEssential, 'l\'email reste un champ ESSENTIEL visible/saisissable (hors « Plus d\'options »)');
     assert(!/email/i.test(options.toggleLabel), `le libellé du repli ne mentionne plus « email » ("${options.toggleLabel}")`);
@@ -404,8 +406,10 @@ async function main() {
     // c est moche et illogique ») : le repli dit ce qu il ouvre, chaque section
     // porte son titre ; plus de cartes qui repetent la ligne d etat, plus de
     // durees en double (elles vivent dans la liste des activites).
-    assert(/Départ précis/.test(options.toggleLabel) && /note/.test(options.toggleLabel), `le repli dit ce qu il ouvre ("${options.toggleLabel}")`);
-    assert(options.blockLabels.some((l) => /Départ précis/i.test(l)), `section « Départ précis » présente (${options.blockLabels.join(' | ')})`);
+    // v5 : « Tout régler » ouvre le detail de chaque ligne ; le depart precis
+    // y vit sous « Heure précise », la note dans le billet (toujours lisible).
+    assert(/Tout régler/.test(options.toggleLabel), `le repli dit ce qu il ouvre ("${options.toggleLabel}")`);
+    assert(options.blockLabels.some((l) => /Heure précise/i.test(l)), `section « Départ précis » présente (${options.blockLabels.join(' | ')})`);
     assert(options.blockLabels.some((l) => /^Pistes$|Arène laser/i.test(l)), 'section des pistes présente et étiquetée');
     assert(options.hasNoteLabel, 'la note pour l équipe est présente et étiquetée');
     assert(!options.advancedHasEmail, 'l\'email n\'est plus noyé dans « Plus d\'options »');

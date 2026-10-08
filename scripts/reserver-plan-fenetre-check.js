@@ -8,7 +8,8 @@
 //       et 6 demandees, arene « pour vous seuls ») porte ses conflits : l arene
 //       occupee (« Arène déjà occupée par 6 joueurs à 15:00. »), la piste 5
 //       prise (la piste, l heure, le nom de l occupant, la piste prise a la
-//       place) ; et ses lignes de prix, qui font le prix ;
+//       place) ; et ses lignes de prix, qui font le prix ; ses blocs laser
+//       disent la place retenue (30) ET le groupe (joueursReels 8) ;
 //   [2] les heures de l horloge (forme chaine) : chacune avec statut, raison,
 //       fin et conflits ; l arene occupee ferme l heure ; UNE seule lecture de
 //       la journee pour toute la demande ;
@@ -104,8 +105,12 @@ function verifier(f, afficher = true) {
   const somme = lignes.reduce((s, l) => s + (Number(l.prix) || 0), 0);
   v(lignes.length === 2 && lignes.find((l) => l.activite === 'laser_game' && l.prix === 144) && lignes.find((l) => l.activite === 'bowling' && l.prix === 78) && somme === f.plan.prix,
     `[1] lignes de prix : ${lignes.map((l) => `${l.activite}=${l.prix}`).join(', ')} ; somme ${somme} = prix ${f.plan.prix}`);
-  v((f.plan.blocs || []).filter((b) => b.activite === 'laser_game').every((b) => b.joueurs === 30),
-    `[1] l arene privatisee retient ses 30 places (${(f.plan.blocs || []).filter((b) => b.activite === 'laser_game').map((b) => b.joueurs).join(',')})`);
+  const blocsLaser = (f.plan.blocs || []).filter((b) => b.activite === 'laser_game');
+  const blocsBowling = (f.plan.blocs || []).filter((b) => b.activite === 'bowling');
+  v(blocsLaser.length === 2 && blocsLaser.every((b) => b.joueurs === 30 && b.joueursReels === 8 && b.arene === 'seuls'),
+    `[1] l arene privatisee retient ses 30 places, le resume garde les 8 joueurs du groupe (${blocsLaser.map((b) => `${b.joueurs}|${b.joueursReels}|${b.arene}`).join(',')})`);
+  v(blocsBowling.length > 0 && blocsBowling.every((b) => b.joueursReels === null && b.arene === ''),
+    `[1] un bloc sans arene privatisee : joueursReels null, arene vide (${blocsBowling.map((b) => `${b.joueursReels}|${b.arene}`).join(',')})`);
   const c15 = parHeure(f.candidats1, '15:00')[0] || {};
   const c17 = parHeure(f.candidats1, '17:00')[0] || {};
   v(c15.statut === 'ko' && c15.raison === 'Arène déjà occupée par 6 joueurs à 15:00.' && Array.isArray(c15.conflits) && c15.conflits.some((c) => c.type === 'arene'),
@@ -182,6 +187,9 @@ async function contrePreuve(nom, mutation, attendu) {
     await contrePreuve('les lignes de prix perdent leur montant',
       { fichier: 'lib/reserver-fenetre.js', de: '    prix: item.priceKnown === true && Number.isFinite(Number(item.price)) ? Number(item.price) : null,', vers: '    prix: null,' },
       /\[1\] lignes de prix/);
+    await contrePreuve('le resume perd les joueurs du groupe',
+      { fichier: 'lib/reserver-fenetre.js', de: '      joueursReels: nombreDuPlan(bloc.joueursReels),', vers: '      joueursReels: null,' },
+      /\[1\] l arene privatisee retient ses 30 places/);
   } catch (error) {
     console.error('\nreserver-plan-fenetre-check ERREUR', error.stack || error.message);
     failures += 1;

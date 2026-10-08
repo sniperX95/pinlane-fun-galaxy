@@ -1716,10 +1716,14 @@ function replaceReservationsForDate(dateStr, reservations) {
   reconcileMonthCacheForDate(dateStr, serverList);
   if (!pendingReservationMutations.size) {
     state.reservations = sortReservations([...others, ...serverList]);
-    return;
+    return false;
   }
   const now = Date.now();
   const serverKeys = new Set(serverList.map(r => getReservationWriteKey(r.id)));
+  // Rendu VRAI quand une valeur du serveur a ete masquee par une ecriture
+  // locale encore en vol : la journee montree n est pas celle du serveur, sa
+  // revision ne doit pas etre retenue (voir syncDateReservations).
+  let masque = false;
   // 1) Fusion champ par champ : pour chaque résa du snapshot serveur qui a une
   //    mutation en attente, on protège UNIQUEMENT les champs mutés localement
   //    tant que le serveur n'a pas confirmé la valeur attendue (ou tant que le
@@ -1734,6 +1738,7 @@ function replaceReservationsForDate(dateStr, reservations) {
       pendingReservationWriteIds.delete(key);
       return serverReservation;
     }
+    masque = true;
     return applyExpectedMutationFields(serverReservation, entry);
   });
   // 2) Résas absentes du snapshot serveur (création/déplacement pas encore visible)
@@ -1752,6 +1757,7 @@ function replaceReservationsForDate(dateStr, reservations) {
     return true;
   });
   state.reservations = sortReservations([...others, ...merged, ...pendingMissing]);
+  return masque || pendingMissing.length > 0;
 }
 
 function upsertReservationInState(reservation) {
@@ -2044,6 +2050,13 @@ function etatEditionDepuis(reservation) {
 // tags). `updatedAt` sort ; `name`, `phone`, `notes`, `occasion` et `label`
 // entrent, parce qu'ils se dessinent et qu'ils n'etaient couverts que par
 // ricochet, via `updatedAt`.
+// Les coches comptent par activite faite, pas par leur horodatage : l echo du
+// serveur porte son heure a lui, la meme minute affichee, et ne doit rien
+// repeindre (meme regle que toggleFormulaActivity, « une coche, un rendu »).
+function empreinteCoches(progression) {
+  return Object.keys(progression || {}).filter(cle => progression[cle] && progression[cle].done).sort().join(',');
+}
+
 function reservationRenderSignature(r) {
   return {
     id: Number(r.id),
@@ -2067,7 +2080,17 @@ function reservationRenderSignature(r) {
     // (isReservationAwaitingReview) et les activites d une visite avec leurs
     // durees. Absents, valider une demande ne redessinait pas sa ligne.
     validationStatus: r.validationStatus || '',
-    programKey: JSON.stringify((r.program?.items || []).map(item => [item.activityId, item.minutes, item.games, item.duration, item.sessions, item.sessionMinutes, item.units, item.hours, item.participants, item.upsell, item.extraLaser]))
+    programKey: JSON.stringify((r.program?.items || []).map(item => [item.activityId, item.minutes, item.games, item.duration, item.sessions, item.sessionMinutes, item.units, item.hours, item.participants, item.upsell, item.extraLaser])),
+    // Se dessinent aussi (2026-10-08) : les coches d activite (« Fait », « En
+    // cours », le passage a « À clôturer »), l absence notee (« Pas venus »),
+    // le montant reellement encaisse et les accompagnants. Absents, la coche
+    // ou le « Pas venu » d un autre poste attendaient le tic d une minute, et
+    // le « Pas venu » de ce poste-ci ne redessinait rien.
+    activityProgress: empreinteCoches(r.activityProgress),
+    absentAt: r.absentAt || '',
+    amountPaid: r.amountPaid ?? null,
+    discountReason: r.discountReason || '',
+    companions: Number(r.companions) || 0
   };
 }
 
@@ -2134,6 +2157,17 @@ function getSelectedReservationSignature() {
     // La fiche dit « Cette demande attend votre validation » et « Valider »
     // tant que la demande attend : la valider doit la redessiner.
     validationStatus: state.selectedRes.validationStatus || '',
+    // Ce que la fiche montre aussi (2026-10-08) : son mot, qui suit l heure
+    // (« À venir » puis « En retard »), et tout ce qu un autre poste peut
+    // changer sous ses yeux.
+    moment: getStaffDashboardStatusMeta(state.selectedRes).label,
+    name: state.selectedRes.name || '',
+    phone: state.selectedRes.phone || '',
+    notes: state.selectedRes.notes || '',
+    activityProgress: empreinteCoches(state.selectedRes.activityProgress),
+    absentAt: state.selectedRes.absentAt || '',
+    amountPaid: state.selectedRes.amountPaid ?? null,
+    discountReason: state.selectedRes.discountReason || '',
     activeTab: state.activeTab,
     editState: state.editState ? {
       name: state.editState.name,
@@ -2232,7 +2266,7 @@ function renderStaffDataPage() {
 }
 
 function applyOptimisticReservation(reservation, options = {}) {
-  if (!reservation) return;
+  if (!reservation) return { liste: false, fiche: false };
   const beforeData = state.view === 'staff' ? getStaffDataSignature() : '';
   const beforeSelected = getSelectedReservationSignature();
   upsertReservationInState(reservation);
@@ -2243,8 +2277,12 @@ function applyOptimisticReservation(reservation, options = {}) {
     }
   }
   save();
-  if (state.view === 'staff' && beforeData !== getStaffDataSignature()) renderStaffData();
-  if (state.selectedRes && state.selectedRes.id === reservation.id && beforeSelected !== getSelectedReservationSignature()) renderPos();
+  // Dit ce qu il a deja repeint : un geste qui repeint aussi de lui-meme ne
+  // refait que le reste (« une coche, un rendu »).
+  const peint = { liste: false, fiche: false };
+  if (state.view === 'staff' && beforeData !== getStaffDataSignature()) { renderStaffData(); peint.liste = true; }
+  if (state.selectedRes && state.selectedRes.id === reservation.id && beforeSelected !== getSelectedReservationSignature()) { renderPos(); peint.fiche = true; }
+  return peint;
 }
 
 function removeOptimisticReservation(id) {
@@ -2585,9 +2623,20 @@ function getRemoteSyncIndicator() {
 }
 
 function updateRemoteSyncIndicator() {
+  const indicator = getRemoteSyncIndicator();
+  // LA LISTE DU JOUR LE DIT AUSSI (2026-10-08) : le signal ne vivait que sur
+  // l accueil, et la liste d a cote de la caisse pouvait rester figee sans
+  // rien montrer. Rien quand tout va bien ; « Reconnexion… » puis « Données
+  // périmées depuis 15:02 » sinon.
+  const liste = document.getElementById('tableSyncState');
+  if (liste) {
+    const enPanne = indicator.tone !== 'live';
+    if (liste.hidden === enPanne) liste.hidden = !enPanne;
+    if (liste.textContent !== (enPanne ? indicator.label : '')) liste.textContent = enPanne ? indicator.label : '';
+    liste.classList.toggle('is-stale', indicator.tone === 'stale');
+  }
   const dot = document.querySelector('.dash-live-dot');
   if (!dot) return;
-  const indicator = getRemoteSyncIndicator();
   dot.classList.toggle('warning', indicator.tone === 'warning');
   dot.classList.toggle('stale', indicator.tone === 'stale');
   const label = dot.nextElementSibling;
@@ -2952,6 +3001,33 @@ function getDateRangeDays(startDate, endDate) {
 
 // Direction/admin console renderers live in ./assets/admin-console.js.
 // Ops communications, agent stack and simulation renderers live in ./assets/ops-console.js.
+// Au-dela, une lecture de la journee est abandonnee : la boucle reessaie.
+const STAFF_SYNC_TIMEOUT_MS = 15000;
+
+// LA FICHE OUVERTE SUIT LE SERVEUR ET L HEURE (2026-10-08). Le poll
+// rafraichissait selectedRes (hydrateSelectedReservation) sans jamais
+// redessiner la fiche : un autre poste pointait « Arrivé », la liste disait
+// « Sur place » et la fiche ouverte « À venir », et son bouton « Arrivé »
+// sortait sans rien dire. Elle se redessine quand ce qu elle montre a change
+// depuis sa derniere peinture (le dossier et son mot), sauf pendant une
+// saisie : onglet Modifier, ou un champ de la fiche qui a le focus. Elle
+// rattrape au tour suivant.
+let ficheFaitsPeints = '';
+function getFicheFaitsSignature() {
+  const r = state.selectedRes;
+  return r ? JSON.stringify([reservationRenderSignature(r), getStaffDashboardStatusMeta(r).label]) : '';
+}
+function repeindreFicheSiChangee() {
+  const overlay = document.getElementById('posOverlay');
+  if (!state.selectedRes || !overlay || overlay.classList.contains('hidden')) return false;
+  if (state.activeTab === 'modifier') return false;
+  if (getFicheFaitsSignature() === ficheFaitsPeints) return false;
+  const actif = document.activeElement;
+  if (actif && overlay.contains(actif) && actif.matches('input, textarea, select, [contenteditable="true"]')) return false;
+  renderPos();
+  return true;
+}
+
 async function syncDateReservations(dateStr, opts = {}) {
   if (!dateStr) return false;
   // UNE JOURNEE DEMANDEE PENDANT UNE LECTURE EN VOL N EST PLUS PERDUE
@@ -2976,6 +3052,12 @@ async function syncDateReservations(dateStr, opts = {}) {
   // sync (plus bas) : en vue client sans session, on ne demande rien.
   if (state.view === 'client' && !hasSavedAuth()) return false;
   remoteSyncBusy = true;
+  // UNE LECTURE QUI NE REPOND PAS NE FIGE PLUS LA JOURNEE (2026-10-08). Sans
+  // delai, un fetch pendu (wifi du centre) gardait remoteSyncBusy : la boucle,
+  // le reveil de la tablette et les clics attendaient en file, et la liste
+  // restait figee sans le dire.
+  const delaiLecture = new AbortController();
+  const minuteurLecture = setTimeout(() => delaiLecture.abort(), STAFF_SYNC_TIMEOUT_MS);
   try {
     const beforeData = state.view === 'staff' && state.currentDate === dateStr ? getStaffDataSignature(dateStr) : '';
     const centerId = encodeURIComponent(getCurrentStaffCenterId());
@@ -2984,7 +3066,8 @@ async function syncDateReservations(dateStr, opts = {}) {
     const syncHeaders = staffAuthHeaders(knownRevision ? { 'If-None-Match': knownRevision } : {});
     const response = await fetch(`${API_ENDPOINTS.staffState}?date=${encodeURIComponent(dateStr)}&centerId=${centerId}`, {
       cache: 'no-store',
-      headers: syncHeaders
+      headers: syncHeaders,
+      signal: delaiLecture.signal
     });
     // Le centre a change pendant la lecture : cette reponse est celle de
     // l ancien, elle ne remplace pas la journee du nouveau, relue juste apres.
@@ -3003,15 +3086,23 @@ async function syncDateReservations(dateStr, opts = {}) {
       error.status = response.status;
       throw error;
     }
+    // LE MODE SECOURS N EST PAS UNE JOURNEE VIDE (2026-10-08). Base
+    // indisponible, staff-state repond 200 avec `reservations: []` et
+    // `degraded: true` : la console effacait la journee et fermait la fiche
+    // ouverte. C est une panne : on garde ce qu on a, et on le dit.
+    if (payload.degraded) {
+      const error = new Error(payload.storageMessage || 'Données temps réel temporairement indisponibles.');
+      error.status = 503;
+      throw error;
+    }
     const nextRevision = response.headers.get('ETag') || payload.revision || '';
     const changed = nextRevision !== knownRevision;
     // Baseline connu (pas le 1er sync) + IDs déjà en mémoire AVANT remplacement :
     // sert à repérer les résas réellement nouvelles venues du serveur.
     const hadBaseline = Boolean(knownRevision);
     const beforeResIds = new Set(state.reservations.filter(r => r.date === dateStr).map(r => r.id));
-    staffRevisionByDate[revisionKey] = nextRevision;
     staffSyncAtByDate[revisionKey] = Date.now();
-    replaceReservationsForDate(dateStr, payload.reservations || []);
+    const masque = replaceReservationsForDate(dateStr, payload.reservations || []);
     memoriserBlocagesEnLigne(getCurrentStaffCenterId(), dateStr, payload.holds);
     if (payload.laneStatuses) state.laneStatuses = payload.laneStatuses;
     if (payload.laneMaintenance) state.laneMaintenance = payload.laneMaintenance;
@@ -3022,10 +3113,29 @@ async function syncDateReservations(dateStr, opts = {}) {
     if (payload.accueil) state.staffAccueil = payload.accueil;
     hydrateSelectedReservation();
     save();
-    if (!opts.skipRender && changed && state.view === 'staff' && state.currentDate === dateStr) {
-      const afterData = getStaffDataSignature(dateStr);
-      if (beforeData !== afterData) renderStaffData();
+    // LA REVISION SE RETIENT APRES LE RENDU, ET SEULEMENT SI L ECRAN MONTRE LA
+    // VERSION DU SERVEUR (2026-10-08). Retenue avant, un rendu qui plantait
+    // (compte comme une panne reseau) laissait la journee a moitie dessinee,
+    // et les 304 suivants ne la redessinaient plus jamais. Une ecriture
+    // locale encore en vol qui masquait la valeur d un autre poste (la garde
+    // de 9 s) faisait pareil : la valeur ecrasee, puis 304 jusqu au prochain
+    // changement. Dans ces deux cas la lecture suivante redemande tout.
+    // La lecture d avant n a pas ete montree (rendu plante, valeur masquee) :
+    // la journee en memoire est deja la bonne, avant et apres se ressemblent,
+    // il faut redessiner quand meme.
+    const aMontrer = String(knownRevision || '').startsWith('a-relire:');
+    let rendu = true;
+    try {
+      if (!opts.skipRender && changed && state.view === 'staff' && state.currentDate === dateStr) {
+        const afterData = getStaffDataSignature(dateStr);
+        if (beforeData !== afterData || aMontrer) renderStaffData();
+      }
+      if (!opts.skipRender) repeindreFicheSiChangee();
+    } catch (erreurRendu) {
+      rendu = false;
+      console.error('[sync] rendu de la journée', erreurRendu);
     }
+    staffRevisionByDate[revisionKey] = masque || !rendu ? `a-relire:${nextRevision}` : nextRevision;
     // Notif + son pour toute NOUVELLE réservation du jour même reçue du serveur
     // (site public / autre poste). Les créations locales sont déjà dans l'état
     // avant le poll → jamais notifiées ici. Skip au 1er sync (baseline).
@@ -3045,9 +3155,10 @@ async function syncDateReservations(dateStr, opts = {}) {
     return changed;
   } catch (error) {
     markRemoteSyncFailure(error);
-    if (!opts.silent) toast(error.message || 'Synchronisation impossible.');
+    if (!opts.silent) toast(error.name === 'AbortError' ? 'Le serveur ne répond pas. Nouvel essai dans quelques secondes.' : (error.message || 'Synchronisation impossible.'));
     return false;
   } finally {
+    clearTimeout(minuteurLecture);
     remoteSyncBusy = false;
     relancerLaJourneeEnAttente();
   }
@@ -10854,7 +10965,10 @@ function splitStaffTerrainOnsite(board) {
   const due = [];
   const seuil = getStaffLateThresholdMinutes() / 60;
   board.onsite.forEach(item => {
-    if (!isUpcomingReservationStatus(item.reservation.status || 'pending') || item.start > board.now) present.push(item);
+    // Une activite cochee prouve que le groupe est la, meme sans « Arrivé » :
+    // ses etapes disaient « En cours » pendant que sa tete criait au retard
+    // et proposait encore « Arrivé » (2026-10-08).
+    if (!isUpcomingReservationStatus(item.reservation.status || 'pending') || item.start > board.now || groupeAJoue(item.reservation)) present.push(item);
     else if (board.now - item.start >= seuil - 1e-9) late.push(item);
     else due.push(item);
   });
@@ -11657,12 +11771,26 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
   return getStaffDashboardDetailConfig('alerts', kind, metrics);
 }
 
+// LE MOT D UN DOSSIER EST CELUI DE LA LISTE (2026-10-08). La fiche et les
+// lignes de la Vue d ensemble lisaient le STATUT enregistre : « Confirmé »
+// sur un groupe que la liste montrait « En retard » ou « À clôturer »,
+// « Arrivé » sur un groupe parti depuis une heure. Elles disent maintenant sa
+// section (getStaffListeSection), calculee sur le jour du dossier.
 function getStaffDashboardStatusMeta(reservation) {
-  if (reservation.status === 'paid') return { label: 'Payé', className: 'paid' };
-  if (reservation.status === 'arrived') return { label: 'Arrivé', className: 'arrived' };
   if (reservation.status === 'cancelled') return { label: 'Annulé', className: 'cancelled' };
-  if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', className: 'review' };
-  return { label: 'Confirmé', className: 'pending' };
+  const moments = getStaffReservationMoments([reservation], reservation.date || state.currentDate);
+  const section = getStaffListeSection(moments, reservation);
+  // Une demande qui attend sa validation le dit d abord, meme en retard ou
+  // finie : c est le geste qui reste a faire (« Valider »).
+  if (section !== 'paid' && section !== 'absent' && isReservationAwaitingReview(reservation)) return { label: 'À vérifier', className: 'review' };
+  return {
+    late: { label: 'En retard', className: 'late' },
+    upcoming: { label: 'À venir', className: 'pending' },
+    onsite: { label: 'Sur place', className: 'arrived' },
+    closing: { label: 'À clôturer', className: 'closing' },
+    paid: { label: 'Payé', className: 'paid' },
+    absent: { label: 'Pas venu', className: 'absent' },
+  }[section];
 }
 
 function getStaffDashboardReservationOffer(reservation) {
@@ -12796,6 +12924,11 @@ function getStaffTerrainSpan(reservation) {
 
 function getStaffTerrainPhase(reservation, span, context) {
   const status = reservation.status || 'pending';
+  // « PAS VENU » SORT DU TRAVAIL (2026-10-08). L absence notee dans la fiche
+  // (0056) n etait lue par aucun moment : le groupe restait « En retard » ou
+  // « Non pointé » sur la liste, l accueil et le Terrain. Il n est plus
+  // attendu, plus sur place, plus a cloturer.
+  if (reservation.absentAt && status !== 'paid') return 'absent';
   if (context.when === 'future') return 'upcoming';
   if (context.when === 'past' || span.end <= context.now || groupeToutFait(reservation)) return status === 'paid' ? 'done' : 'closing';
   // PAYE = ARRIVE (2026-10-02, Movsar : « s ils ont paye c est qu ils sont
@@ -12805,11 +12938,11 @@ function getStaffTerrainPhase(reservation, span, context) {
   return 'upcoming';
 }
 
-function getStaffTerrainBoard(reservations = getStaffUtilityReservations()) {
+function getStaffTerrainBoard(reservations = getStaffUtilityReservations(), jour = state.currentDate) {
   const today = todayStr();
-  const when = state.currentDate < today ? 'past' : state.currentDate > today ? 'future' : 'today';
+  const when = jour < today ? 'past' : jour > today ? 'future' : 'today';
   const context = { when, now: currentTimeDecimal() };
-  const board = { when, now: context.now, total: reservations.length, upcoming: [], onsite: [], closing: [], done: [] };
+  const board = { when, now: context.now, total: reservations.length, upcoming: [], onsite: [], closing: [], done: [], absent: [] };
   reservations.forEach(reservation => {
     const span = getStaffTerrainSpan(reservation);
     board[getStaffTerrainPhase(reservation, span, context)].push({ reservation, ...span });
@@ -13275,7 +13408,7 @@ function renderFormuleTrackingCard(reservation, phase = 'upcoming') {
       </div>
       <div class="formules-card-id">
         <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
-        <span>${escapeHtml([getReservationLabel(reservation), formatStaffTerrainCount(pax, 'joueur'), getStaffReservationStateLabel(reservation)].join(' · '))}</span>
+        <span>${escapeHtml([getReservationLabel(reservation), formatStaffTerrainCount(pax, 'joueur'), getStaffDashboardStatusMeta(reservation).label].join(' · '))}</span>
       </div>
       ${count}
       <button type="button" class="formules-card-open" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">Ouvrir</button>
@@ -20984,7 +21117,7 @@ function toggleTableExpanded() {
 }
 
 function setStaffStatusFilter(filter) {
-  state.staffStatusFilter = ['all', 'open', 'notes', ...STAFF_MOMENT_STATES].includes(filter) ? filter : 'all';
+  state.staffStatusFilter = normaliserFiltreListe(filter);
   save();
   repaintKeepingScroll(document.getElementById('staffView'), () => {
     renderPlanning();
@@ -21067,7 +21200,7 @@ function showStaffFloatingMenu(event, html) {
 }
 
 function applyPlanningStatusFilter(filter) {
-  state.staffStatusFilter = ['all', 'open', ...STAFF_MOMENT_STATES].includes(filter) ? filter : 'all';
+  state.staffStatusFilter = normaliserFiltreListe(filter);
   save();
   closeStaffFloatingMenus();
   repaintKeepingScroll(document.getElementById('staffView'), () => renderStaff());
@@ -21079,23 +21212,15 @@ function applyPlanningStatusFilter(filter) {
 // « Terminées », et rangeait « À gérer » entre deux états comme s'il en était
 // un troisième. Un même filtre qui porte deux noms selon l'endroit où on le
 // touche, c'est la même classe d'erreur que les compteurs qui ne se
-// recomposent pas. Les trois états d'abord, dans l'ordre de la liste ; le
-// recoupement ensuite, sous son propre intitulé.
+// recomposent pas. Depuis le 2026-10-08 : les sections de la liste, dans son
+// ordre et sous ses mots (STAFF_LISTE_MOTS).
 function togglePlanningFilterMenu(event) {
-  const active = state.staffStatusFilter || 'all';
+  const active = normaliserFiltreListe(state.staffStatusFilter);
   const bouton = ([key, label]) => `<button type="button" class="${active === key ? 'active' : ''}" onclick="applyPlanningStatusFilter('${key}')">${label}</button>`;
-  const etats = [
-    ['all', 'Toutes'],
-    ['upcoming', 'À venir'],
-    ['onsite', 'Sur place'],
-    ['closing', 'À clôturer'],
-    ['done', 'Terminées']
-  ];
+  const etats = [['all', 'Toutes'], ...STAFF_LISTE_SECTIONS.map(cle => [cle, STAFF_LISTE_MOTS[cle]])];
   showStaffFloatingMenu(event, `
     <div class="staff-action-popover-title">Filtrer le planning</div>
     ${etats.map(bouton).join('')}
-    <div class="staff-action-popover-title">Recoupe ces états</div>
-    ${bouton(['open', 'À gérer'])}
   `);
 }
 
@@ -23533,13 +23658,21 @@ function renderReservationFirstStatusButton(r, { fiche = false } = {}) {
 //   upcoming : pas commence et pas pointe ; le retard en fait partie, marque ;
 //   onsite   : pointe arrive, ou paye, pendant sa fenetre ;
 //   closing  : fini, pas paye ;
-//   done     : fini et paye.
-// Les quatre etats sont exclusifs et se totalisent (decision du 2026-08-14,
-// reservation-filters-check) ; « À gérer » recoupe les trois premiers.
-const STAFF_MOMENT_STATES = ['upcoming', 'onsite', 'closing', 'done'];
+//   done     : fini et paye ;
+//   absent   : note « Pas venu » dans la fiche (0056), sorti du travail.
+//
+// LA LISTE, SES PUCES ET LE FILTRE DES PLANNINGS RANGENT PAR SECTION
+// (2026-10-08). Les puces comptaient les moments pendant que la liste montrait
+// ses sections : « À venir 7 » au-dessus de « En retard 2 » et « À venir 5 »,
+// « Sur place » qui comptait les payes ranges plus bas dans « Payées ». Une
+// puce = une section, avec le meme nombre ; elles sont exclusives et se
+// totalisent (la regle du 2026-08-14 tient). « À gérer » (tout sauf les
+// payes) part : « Tout » le montre deja, les payes replies en bas.
+const STAFF_LISTE_SECTIONS = ['late', 'upcoming', 'onsite', 'closing', 'paid', 'absent'];
+const STAFF_LISTE_MOTS = { late: 'En retard', upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer', paid: 'Payées', absent: 'Pas venus' };
 
-function getStaffReservationMoments(reservations) {
-  const board = getStaffTerrainBoard(reservations);
+function getStaffReservationMoments(reservations, jour = state.currentDate) {
+  const board = getStaffTerrainBoard(reservations, jour);
   const partage = splitStaffTerrainOnsite(board);
   const moments = new Map();
   const poser = (items, etat, late = false) => items.forEach(item => {
@@ -23551,6 +23684,7 @@ function getStaffReservationMoments(reservations) {
   poser(partage.present, 'onsite');
   poser(board.closing, 'closing');
   poser(board.done, 'done');
+  poser(board.absent, 'absent');
   return moments;
 }
 
@@ -23559,30 +23693,39 @@ function getStaffReservationMomentState(moments, reservation) {
   return entry ? entry.etat : 'upcoming';
 }
 
+// La section d un dossier : son moment, sauf qu un paye descend dans
+// « Payées » (2026-10-01, Movsar : « ceux qui sont payes, tout en bas ») et
+// qu un retard monte dans « En retard ».
+function getStaffListeSection(moments, r) {
+  const m = moments.get(String(r.id));
+  const etat = m ? m.etat : 'upcoming';
+  if (etat === 'absent') return 'absent';
+  if (r.status === 'paid' || etat === 'done') return 'paid';
+  if (etat === 'upcoming' && m && m.late) return 'late';
+  return etat;
+}
+
+// Un filtre garde par un poste d avant le 2026-10-08 (« open », « done »)
+// retrouve sa section, ou « Tout ».
+function normaliserFiltreListe(filter) {
+  if (filter === 'done') return 'paid';
+  return filter === 'notes' || STAFF_LISTE_SECTIONS.includes(filter) ? filter : 'all';
+}
+
 function filterReservationsForStaff(reservations, filter) {
-  if (filter === 'notes') return reservations.filter(hasReservationNote);
-  if (filter !== 'open' && !STAFF_MOMENT_STATES.includes(filter)) return reservations;
+  const cle = normaliserFiltreListe(filter);
+  if (cle === 'notes') return reservations.filter(hasReservationNote);
+  if (cle === 'all') return reservations;
   const moments = getStaffReservationMoments(reservations);
-  if (filter === 'open') return reservations.filter(r => getStaffReservationMomentState(moments, r) !== 'done');
-  return reservations.filter(r => getStaffReservationMomentState(moments, r) === filter);
+  return reservations.filter(r => getStaffListeSection(moments, r) === cle);
 }
 
 function getStaffStatusCounts(reservations) {
   const moments = getStaffReservationMoments(reservations);
-  const compter = etat => reservations.filter(r => getStaffReservationMomentState(moments, r) === etat).length;
-  const upcoming = compter('upcoming');
-  const onsite = compter('onsite');
-  const closing = compter('closing');
-  const done = compter('done');
-  return {
-    all: reservations.length,
-    open: upcoming + onsite + closing,
-    upcoming,
-    onsite,
-    closing,
-    done,
-    notes: reservations.filter(hasReservationNote).length
-  };
+  const counts = { all: reservations.length, notes: reservations.filter(hasReservationNote).length };
+  STAFF_LISTE_SECTIONS.forEach(cle => { counts[cle] = 0; });
+  reservations.forEach(r => { counts[getStaffListeSection(moments, r)] += 1; });
+  return counts;
 }
 
 // LES JOUEURS D UN DOSSIER, ET CEUX QUI LES ACCOMPAGNENT (migration 0048) :
@@ -23987,7 +24130,7 @@ function renderGroupeActions(r, moment) {
     boutons.push(`<button type="button" class="gc-btn is-review" onclick="validateReservationDirect(${r.id}, event)">Valider</button>`);
   }
   const fini = moment && (moment.etat === 'closing' || moment.etat === 'done');
-  if (isUpcomingReservationStatus(r.status) && !fini) {
+  if (isUpcomingReservationStatus(r.status) && !fini && !groupeAJoue(r)) {
     boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
   } else {
     // Le groupe est la, ou il a fini : la carte attend l encaissement.
@@ -24215,9 +24358,12 @@ function renderReservationSection(statusKey, title, subtitle, reservations, mome
     // « ceux qui sont payes, encaisses, tu peux les mettre tout en bas pour ne
     // voir plus que ceux qui restent »). Paye = arrive (le paiement ne se fait
     // que sur place, 2026-10-02) : un paye joue encore (« Sur place ») ou a fini.
-    const encore = ordered.filter(r => { const m = moments ? moments.get(String(r.id)) : null; return m && m.etat !== 'done'; }).length;
-    const motDe = r => { const m = moments ? moments.get(String(r.id)) : null; if (!m || m.etat === 'done') return null; return { cle: 'onsite', mot: 'Sur place' }; };
-    return `<details class="res-section gc-section ${statusKey} is-repliable"${options.ouvert ? ' open' : ''} ontoggle="state.staffPayeesOuvertes = this.open">
+    // Les absents (2026-10-08) se replient de la meme facon, sous les payes :
+    // on les rouvre seulement pour annuler un « Pas venu » note par erreur.
+    const payees = statusKey === 'done';
+    const encore = payees ? ordered.filter(r => { const m = moments ? moments.get(String(r.id)) : null; return m && m.etat !== 'done'; }).length : 0;
+    const motDe = r => { const m = moments ? moments.get(String(r.id)) : null; if (!payees || !m || m.etat === 'done') return null; return { cle: 'onsite', mot: 'Sur place' }; };
+    return `<details class="res-section gc-section ${statusKey} is-repliable"${options.ouvert ? ' open' : ''} ontoggle="state.${payees ? 'staffPayeesOuvertes' : 'staffAbsentsOuverts'} = this.open">
       ${tete('summary', `${encore ? `<span class="gc-section-note">dont ${encore} encore sur place</span>` : ''}<span class="gc-section-toggle" aria-hidden="true"></span>`)}
       <div class="res-dense-list gc-grid is-compacte" data-pl-stagger="resa.liste.${escapeHtml(statusKey)}">${ordered.map(r => carte(r, { compacte: true, encore: motDe(r) })).join('')}</div>
     </details>`;
@@ -24257,6 +24403,7 @@ const GC_BAND_ICONS = {
   onsite: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   closing: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
   done: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  absent: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/></svg>',
 };
 
 function renderTable() {
@@ -24307,21 +24454,22 @@ function renderTable() {
   // planning » qui la précédait est le titre de la première section.
   const crossHint = (label, text) => ` title="${escapeHtml(text)}" aria-label="${escapeHtml(`${label} : ${text}`)}"`;
   const crossMark = `<svg class="chip-cross-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>`;
-  const openHint = 'recoupe les états ci-dessus : les réservations à venir, sur place et à clôturer réunies';
-  const notesHint = 'recoupe les états ci-dessus : les réservations qui portent une note, quel que soit leur état';
+  const notesHint = 'recoupe les sections : les réservations qui portent une note, quelle que soit leur section';
+  // UNE PUCE PAR SECTION, AVEC LE NOMBRE DE SA SECTION (2026-10-08, voir
+  // STAFF_LISTE_SECTIONS). « En retard » et « Pas venus » ne se montrent que
+  // s il y en a, ou si le filtre est pose dessus.
+  const filtreActif = normaliserFiltreListe(state.staffStatusFilter);
+  const puce = (cle, mot, n) => `<button class="status-chip ${filtreActif === cle ? `active ${cle}` : ''}${cle === 'late' ? ' is-late' : ''}" onclick="setStaffStatusFilter('${cle}')">${mot} <span>${n}</span></button>`;
+  const pucesVues = STAFF_LISTE_SECTIONS.filter(cle => !['late', 'absent'].includes(cle) || counts[cle] > 0 || filtreActif === cle);
   const toolbar = `<div class="table-toolbar">
     <div class="status-filters">
-      <div class="status-group" role="group" aria-label="Filtrer par moment. Les quatre états ne se recoupent pas et se totalisent.">
-        <button class="status-chip ${state.staffStatusFilter === 'all' ? 'active' : ''}" onclick="setStaffStatusFilter('all')">Tout <span>${counts.all}</span></button>
-        <button class="status-chip ${state.staffStatusFilter === 'upcoming' ? 'active upcoming' : ''}" onclick="setStaffStatusFilter('upcoming')">À venir <span>${counts.upcoming}</span></button>
-        <button class="status-chip ${state.staffStatusFilter === 'onsite' ? 'active onsite' : ''}" onclick="setStaffStatusFilter('onsite')">Sur place <span>${counts.onsite}</span></button>
-        <button class="status-chip ${state.staffStatusFilter === 'closing' ? 'active closing' : ''}" onclick="setStaffStatusFilter('closing')">À clôturer <span>${counts.closing}</span></button>
-        <button class="status-chip ${state.staffStatusFilter === 'done' ? 'active done' : ''}" onclick="setStaffStatusFilter('done')">Terminées <span>${counts.done}</span></button>
+      <div class="status-group" role="group" aria-label="Filtrer par section. Les sections ne se recoupent pas et se totalisent.">
+        ${puce('all', 'Tout', counts.all)}
+        ${pucesVues.map(cle => puce(cle, STAFF_LISTE_MOTS[cle], counts[cle])).join('')}
       </div>
-      <div class="status-group status-group-cross" role="group" aria-label="Vues qui recoupent les états ci-dessus">
-        <button class="status-chip is-cross ${state.staffStatusFilter === 'open' ? 'active open' : ''}" onclick="setStaffStatusFilter('open')"${crossHint('À gérer', openHint)}>${crossMark}À gérer <span>${counts.open}</span></button>
-        ${(counts.notes || state.staffStatusFilter === 'notes') ? `<button class="status-chip is-cross ${state.staffStatusFilter === 'notes' ? 'active notes' : ''}" onclick="setStaffStatusFilter('notes')"${crossHint('Avec note', notesHint)}>${crossMark}Avec note <span>${counts.notes}</span></button>` : ''}
-      </div>
+      ${(counts.notes || filtreActif === 'notes') ? `<div class="status-group status-group-cross" role="group" aria-label="Vue qui recoupe les sections">
+        <button class="status-chip is-cross ${filtreActif === 'notes' ? 'active notes' : ''}" onclick="setStaffStatusFilter('notes')"${crossHint('Avec note', notesHint)}>${crossMark}Avec note <span>${counts.notes}</span></button>
+      </div>` : ''}
     </div>
   </div>`;
   if (!filtered.length) {
@@ -24337,43 +24485,68 @@ function renderTable() {
   // passe en tete, en rouge : c est la premiere chose a voir. Les dossiers
   // « hors planning » (ni piste ni arene) ne forment plus une section a part :
   // la carte dit leurs activites, ils vivent dans leur moment comme les autres.
-  // Les puces gardent leurs quatre etats exclusifs : « À venir » compte aussi
-  // les retards, que sa section rouge montre en premier.
-  const inState = etat => filtered.filter(r => getStaffReservationMomentState(moments, r) === etat);
-  const enRetard = r => Boolean(moments.get(String(r.id)) && moments.get(String(r.id)).late);
-  // CE QUI RESTE EN HAUT, LE PAYE EN BAS (2026-10-01). Un dossier paye quitte
-  // son moment pour la section repliee « Déjà payées » : la liste de travail
-  // ne montre plus que ce qui demande encore quelque chose a la caisse.
-  const payee = r => r.status === 'paid';
-  const sections = [
-    { key: 'late', parent: 'upcoming', title: 'En retard', subtitle: 'Heure passée, pas encore pointés arrivés', rows: inState('upcoming').filter(r => enRetard(r) && !payee(r)) },
-    { key: 'upcoming', title: 'À venir', subtitle: 'Pas encore arrivés, par heure', rows: inState('upcoming').filter(r => !enRetard(r) && !payee(r)) },
-    { key: 'onsite', title: 'Sur place', subtitle: 'Arrivés, pendant leur visite', rows: inState('onsite').filter(r => !payee(r)) },
-    { key: 'closing', title: 'À clôturer', subtitle: 'Visite finie, pas encore payée', rows: inState('closing') },
-  ].filter(section => {
-    const cle = section.parent || section.key;
-    if (STAFF_MOMENT_STATES.includes(state.staffStatusFilter)) return cle === state.staffStatusFilter;
-    return true;
-  }).filter(section => section.rows.length > 0);
-  // Les payes du filtre courant : tous (« Tout », « Avec note »), ceux du
-  // moment choisi, ou ceux qui ne sont pas finis (« À gérer »).
-  const payes = filtered.filter(r => {
-    if (!payee(r)) return false;
-    const etat = getStaffReservationMomentState(moments, r);
-    if (STAFF_MOMENT_STATES.includes(state.staffStatusFilter)) return etat === state.staffStatusFilter;
-    if (state.staffStatusFilter === 'open') return etat !== 'done';
-    return true;
-  });
-  // « Terminées » ne montre QUE des payes : la section s ouvre d elle-meme.
-  const payesOuverts = state.staffStatusFilter === 'done' || (!sections.length && payes.length > 0) || Boolean(state.staffPayeesOuvertes);
+  // CE QUI RESTE EN HAUT, LE PAYE EN BAS (2026-10-01) : un dossier paye
+  // descend dans « Payées », repliee ; la liste de travail ne montre plus que
+  // ce qui demande encore quelque chose a la caisse. Chaque section est celle
+  // de sa puce (getStaffListeSection), le filtre a deja garde la bonne.
+  const parSection = cle => filtered.filter(r => getStaffListeSection(moments, r) === cle);
+  const sousTitres = {
+    late: 'Heure passée, pas encore pointés arrivés',
+    upcoming: 'Pas encore arrivés, par heure',
+    onsite: 'Arrivés, pendant leur visite',
+    closing: 'Visite finie, pas encore payée',
+  };
+  const sections = ['late', 'upcoming', 'onsite', 'closing']
+    .map(cle => ({ key: cle, title: STAFF_LISTE_MOTS[cle], subtitle: sousTitres[cle], rows: parSection(cle) }))
+    .filter(section => section.rows.length > 0);
+  const payes = parSection('paid');
+  const absents = parSection('absent');
+  // Une section repliee choisie par sa puce s ouvre d elle-meme, comme la
+  // seule qui reste a montrer.
+  const payesOuverts = filtreActif === 'paid' || (!sections.length && payes.length > 0) || Boolean(state.staffPayeesOuvertes);
+  const absentsOuverts = filtreActif === 'absent' || (!sections.length && !payes.length) || Boolean(state.staffAbsentsOuverts);
 
   poserHtmlSurface(list, `${toolbar}
   <div class="res-sections gc-sections">
     ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows, moments)).join('')}
-    ${payes.length ? renderReservationSection('done', 'Déjà payées', 'Encaissées : rien à faire à la caisse', payes, moments, { repliable: true, ouvert: payesOuverts }) : ''}
+    ${payes.length ? renderReservationSection('done', STAFF_LISTE_MOTS.paid, 'Encaissées : rien à faire à la caisse', payes, moments, { repliable: true, ouvert: payesOuverts }) : ''}
+    ${absents.length ? renderReservationSection('absent', STAFF_LISTE_MOTS.absent, 'Notés « Pas venu » dans la fiche', absents, moments, { repliable: true, ouvert: absentsOuverts }) : ''}
   </div>`);
   poserDefilementRendu(list, listScrollTop, listScrollLeft);
+  ajusterHauteurListe();
 }
+
+// LA LISTE DESCEND JUSQU AU BAS DE L ECRAN (2026-10-08) : sa boite fait la
+// hauteur de l ecran moins ce qui la precede et ce qui la suit (les marges
+// du bas de page), soit --liste-haut, lu par pinlane-staff.css : la page ne
+// defile pas, seule la liste defile. Quand elle commence sous la moitie de
+// l ecran (telephone, en-tete empile), elle prend l ecran entier : on y
+// arrive en faisant defiler la page, puis elle le remplit.
+function ajusterHauteurListe() {
+  const box = document.getElementById('staffTableBox');
+  if (!box || box.classList.contains('hidden') || box.classList.contains('expanded')) return;
+  const haut = Math.round(box.getBoundingClientRect().top + window.scrollY);
+  const valeur = `${haut > window.innerHeight * 0.55 ? 0 : haut + espaceSousLaListe(box)}px`;
+  if (box.style.getPropertyValue('--liste-haut') !== valeur) box.style.setProperty('--liste-haut', valeur);
+}
+// Ce qui suit la boite dans la page : les marges basses de ses parents et
+// leurs freres suivants dans le flux. Mesure sur les styles, pas sur la
+// hauteur du document, qui vaut au moins l ecran et ferait tourner le calcul
+// en rond (la boite retrecie laisserait du vide compte comme une marge).
+function espaceSousLaListe(box) {
+  let bas = parseFloat(getComputedStyle(box).marginBottom) || 0;
+  for (let el = box; el.parentElement && el !== document.body; el = el.parentElement) {
+    for (let suivant = el.nextElementSibling; suivant; suivant = suivant.nextElementSibling) {
+      const cs = getComputedStyle(suivant);
+      if (cs.display === 'none' || cs.position === 'fixed' || cs.position === 'absolute') continue;
+      bas += suivant.getBoundingClientRect().height + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+    }
+    const parent = getComputedStyle(el.parentElement);
+    bas += (parseFloat(parent.paddingBottom) || 0) + (parseFloat(parent.borderBottomWidth) || 0);
+  }
+  return Math.round(bas);
+}
+window.addEventListener('resize', () => ajusterHauteurListe());
 
 function quickAction(id, status) {
   setReservationStatusDirect(id, status);
@@ -24402,7 +24575,16 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
   const moyenDemande = status === 'paid' ? String(options.paymentMethod || '').trim() : '';
   const corrigeMoyen = Boolean(moyenDemande) && current.status === 'paid' && moyenDemande !== current.paymentMethod;
   // Le dossier est deja dans l etat que le bouton demande : rien a ecrire.
-  if (reservationAlreadyInStatus(current, status) && !corrigeMoyen) return;
+  // Un autre poste l a deja fait (2026-10-08) : le clic sortait sans un mot
+  // et le bouton restait la. On le dit, et l ecran se remet a jour.
+  if (reservationAlreadyInStatus(current, status) && !corrigeMoyen) {
+    if (ev) {
+      toast({ arrived: 'Ce groupe est déjà pointé arrivé.', paid: 'Ce dossier est déjà payé.' }[status] || 'C’est déjà fait.');
+      renderStaffData();
+      repeindreFicheSiChangee();
+    }
+    return;
+  }
   // Anti double-envoi : même statut déjà en vol → on ignore. La résa affiche
   // déjà la valeur voulue (optimiste), inutile de re-PATCH.
   if (isReservationMutationInFlight(id, 'status', status)) return;
@@ -24482,12 +24664,12 @@ function toggleFormulaActivity(reservationId, key, ev) {
   const requestSeq = ++activitySaveSeq;
   activitySaveLatestSeqByReservation[requestKey] = requestSeq;
   const isLatestRequest = () => activitySaveLatestSeqByReservation[requestKey] === requestSeq;
-  // Les signatures de re-render (getStaffDataSignature / getSelectedReservationSignature)
-  // n'incluent pas activityProgress → applyOptimisticReservation zapperait le re-render.
-  // On rafraîchit donc explicitement la surface courante + l'overlay détail s'il est ouvert.
-  const refreshSurfaces = () => {
-    if (state.view === 'staff') { try { renderStaffData(); } catch (e) { /* page peut ne plus être montée */ } }
-    if (state.selectedRes && Number(state.selectedRes.id) === Number(reservationId)) { try { renderPos(); } catch (e) { /* overlay fermé */ } }
+  // La surface courante et la fiche ouverte se repeignent, sauf ce que
+  // applyOptimisticReservation vient deja de repeindre : depuis le 2026-10-08
+  // ses signatures comptent les coches, et la fiche se peignait deux fois.
+  const refreshSurfaces = (deja = {}) => {
+    if (state.view === 'staff' && !deja.liste) { try { renderStaffData(); } catch (e) { /* page peut ne plus être montée */ } }
+    if (state.selectedRes && Number(state.selectedRes.id) === Number(reservationId) && !deja.fiche) { try { renderPos(); } catch (e) { /* overlay fermé */ } }
   };
   // CE QUI EST DEJA A L ECRAN NE SE REPEINT PAS (2026-08-26, Movsar : « quand
   // on coche ou decoche ca rafraichit 2 fois »). Le clic peint l etat optimiste ;
@@ -24500,8 +24682,7 @@ function toggleFormulaActivity(reservationId, key, ev) {
   );
   const empreinteOptimiste = empreinteProgression(progress);
   markReservationMutation(reservationId, nextReservation, ['activityProgress']);
-  applyOptimisticReservation(nextReservation, { preserveEditState: true });
-  refreshSurfaces();
+  refreshSurfaces(applyOptimisticReservation(nextReservation, { preserveEditState: true }));
   // UNE COCHE, PAS TOUT LE SUIVI (2026-09-25) : le serveur ajoute ou retire
   // CETTE cle sur ce qui est en base (setReservationActivityDone). Envoyer le
   // suivi entier effacait la coche qu un autre poste venait de poser sur une
@@ -24518,15 +24699,15 @@ function toggleFormulaActivity(reservationId, key, ev) {
     if (!isLatestRequest()) return;
     if (payload?.reservation) {
       const empreinteServeur = empreinteProgression(payload.reservation.activityProgress);
-      applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+      const peint = applyOptimisticReservation(payload.reservation, { preserveEditState: true });
       markReservationMutation(reservationId, payload.reservation, ['activityProgress']);
-      if (empreinteServeur !== empreinteOptimiste) refreshSurfaces();
+      if (empreinteServeur !== empreinteOptimiste) refreshSurfaces(peint);
     }
   }).catch(error => {
     if (!isLatestRequest()) return;
-    applyOptimisticReservation(current, { preserveEditState: true });
+    const peint = applyOptimisticReservation(current, { preserveEditState: true });
     clearReservationMutation(reservationId);
-    refreshSurfaces();
+    refreshSurfaces(peint);
     toast(error.message || "Impossible d'enregistrer l'activité.");
   }).finally(() => {
     if (isLatestRequest()) delete activitySaveLatestSeqByReservation[requestKey];
@@ -24650,6 +24831,7 @@ function montrerAuPlanning(reservationId, ressource, essais) {
 
 function closePos() {
   state.selectedRes = null;
+  ficheFaitsPeints = '';
   const overlay = document.getElementById('posOverlay');
   overlay.classList.add('hidden');
   overlay.classList.remove('centered');
@@ -25089,9 +25271,11 @@ function fermerNoteEquipe(reservationId) {
 function envoyerNoteEquipe(reservationId, geste, avant, apres) {
   const idKey = String(reservationId);
   markReservationMutation(reservationId, apres, ['notes']);
-  applyOptimisticReservation(apres, { preserveEditState: true });
-  if (state.selectedRes && String(state.selectedRes.id) === idKey) renderPos();
-  if (state.view === 'staff') { try { renderStaffData(); } catch (e) { /* page demontee */ } }
+  // Ce que applyOptimisticReservation a deja repeint ne se repeint pas une
+  // seconde fois (la note compte dans la signature de la fiche, 2026-10-08).
+  const peint = applyOptimisticReservation(apres, { preserveEditState: true }) || {};
+  if (state.selectedRes && String(state.selectedRes.id) === idKey && !peint.fiche) renderPos();
+  if (state.view === 'staff' && !peint.liste) { try { renderStaffData(); } catch (e) { /* page demontee */ } }
   return enchainerEcritureReservation(reservationId, () => apiRequest(API_ENDPOINTS.staffReservations, {
     method: 'PATCH',
     body: JSON.stringify({
@@ -25101,15 +25285,15 @@ function envoyerNoteEquipe(reservationId, geste, avant, apres) {
     })
   })).then(payload => {
     if (payload?.reservation) {
-      applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+      const peintEcho = applyOptimisticReservation(payload.reservation, { preserveEditState: true }) || {};
       markReservationMutation(reservationId, payload.reservation, ['notes']);
-      if (state.selectedRes && String(state.selectedRes.id) === idKey) renderPos();
+      if (state.selectedRes && String(state.selectedRes.id) === idKey && !peintEcho.fiche) renderPos();
     }
     return true;
   }).catch(error => {
-    applyOptimisticReservation(error?.reservation || error?.payload?.reservation || avant, { preserveEditState: true });
+    const peintRefus = applyOptimisticReservation(error?.reservation || error?.payload?.reservation || avant, { preserveEditState: true }) || {};
     clearReservationMutation(reservationId);
-    if (state.selectedRes && String(state.selectedRes.id) === idKey) renderPos();
+    if (state.selectedRes && String(state.selectedRes.id) === idKey && !peintRefus.fiche) renderPos();
     toast(error?.message ? `Note non enregistrée : ${error.message}` : 'Note non enregistrée. Réessayez.');
     return false;
   });
@@ -25963,17 +26147,19 @@ async function applyPosPrice() {
   if (!current) return;
   const next = { ...current, price: value };
   posPriceEditOpen = false;
-  applyOptimisticReservation(next, { preserveEditState: true });
+  // La fiche ne se repeint a la fin que si rien ne l a deja fait (un prix
+  // change la peignait deux fois : l etat optimiste, puis ce rendu final).
+  let fichePeinte = !!(applyOptimisticReservation(next, { preserveEditState: true }) || {}).fiche;
   try {
     const payload = await envoyerModificationReservation(current, (dossier) => ({ ...dossier, price: value }));
-    applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+    fichePeinte = !!(applyOptimisticReservation(payload.reservation, { preserveEditState: true }) || {}).fiche || fichePeinte;
     markReservationMutation(next.id, payload.reservation, ['price']);
     toast('Prix mis à jour pour ce dossier.');
   } catch (error) {
-    applyOptimisticReservation(error.reservation || current, { preserveEditState: true });
+    fichePeinte = !!(applyOptimisticReservation(error.reservation || current, { preserveEditState: true }) || {}).fiche || fichePeinte;
     toast(error.message || 'Impossible de modifier le prix.');
   }
-  renderPos();
+  if (!fichePeinte) renderPos();
 }
 
 function renderPosCaisse(r) {
@@ -29837,6 +30023,7 @@ function renderPosInner() {
       <div class="edit-modal-body" data-scroll-key="fiche.corps">${bodyHtml}</div>
     </div>
   `;
+  ficheFaitsPeints = getFicheFaitsSignature();
   if (!overlay.dataset.keyboardBound) {
     overlay.addEventListener('keydown', handlePosKeydown);
     overlay.dataset.keyboardBound = '1';
@@ -30446,10 +30633,42 @@ document.getElementById('quickBookOverlay').addEventListener('click', e => {
   if (e.target.id === 'quickBookOverlay') closeQuickBook();
 });
 
-setInterval(() => {
+// LE TIC TOMBE A LA MINUTE PILE (2026-10-08). Un setInterval de 60 s partait
+// de l heure de chargement : un groupe de 15:00 restait « À venir » jusqu a
+// 59 s apres son seuil de retard, et une tablette reveillee attendait le tic
+// suivant (le poll du reveil repond 304 et ne redessine rien). Le tic se
+// recale sur chaque minute, le reveil le joue tout de suite, et il redessine
+// aussi la fiche ouverte quand son mot a change (« À venir » → « En retard »).
+function tickStaffMinute() {
   if (state.view !== 'staff') return;
+  if (suivreLeJour()) return;
   avecLotDefilement(tickHorlogeStaff);
-}, 60000);
+  repeindreFicheSiChangee();
+}
+(function planifierTicMinute() {
+  setTimeout(() => { tickStaffMinute(); planifierTicMinute(); }, 60000 - (Date.now() % 60000) + 250);
+})();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') tickStaffMinute();
+});
+
+// LE JOUR AVANCE TOUT SEUL (2026-10-08). La date de travail n etait recalee
+// qu au chargement (reconcileWorkingDates) : une console laissee ouverte la
+// nuit montrait encore la veille le lendemain, toute la journee d hier en
+// « À clôturer ». Elle passe au jour qui commence, sauf si l equipe regardait
+// volontairement une autre date. On attend 5 h : un centre ouvert jusqu a
+// 1 h clôture encore sa soiree apres minuit.
+const STAFF_JOUR_BASCULE_HEURE = 5;
+let jourSuiviParLeTic = todayStr();
+function suivreLeJour() {
+  const aujourdhui = todayStr();
+  if (aujourdhui === jourSuiviParLeTic || currentTimeDecimal() < STAFF_JOUR_BASCULE_HEURE) return false;
+  const veille = jourSuiviParLeTic;
+  jourSuiviParLeTic = aujourdhui;
+  if (state.currentDate !== veille) return false;
+  setStaffToday();
+  return true;
+}
 
 function tickHorlogeStaff() {
   // Tick d horloge (barre « maintenant ») : repaint invisible, et CHAQUE

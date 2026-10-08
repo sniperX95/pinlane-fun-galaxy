@@ -69,9 +69,10 @@ const LF = String.fromCharCode(10);
 const lireLF = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').split(String.fromCharCode(13) + LF).join(LF);
 
 const MUTATIONS = [
+  // Depuis le 2026-10-08, la section d un dossier vient de getStaffListeSection :
+  // le retard y monte dans « En retard » ; sans cette ligne il reste « À venir ».
   { nom: 'le retard reste dans « À venir »', cible: '[A]', fichier: 'assets/app-main.js',
-    de: "    { key: 'late', parent: 'upcoming', title: 'En retard',", vers: "    { key: 'late', parent: 'upcoming', hidden: true, title: 'En retard'," ,
-    plus: { de: "  ].filter(section => {\n    const cle = section.parent || section.key;", vers: "  ].filter(section => !section.hidden).filter(section => {\n    const cle = section.parent || section.key;" } },
+    de: "  if (etat === 'upcoming' && m && m.late) return 'late';\n", vers: '' },
   { nom: 'le seuil de retard est ignore (retard des la minute pile)', cible: '[D]', fichier: 'assets/app-main.js',
     de: '    else if (board.now - item.start >= seuil - 1e-9) late.push(item);', vers: '    else if (board.now - item.start >= 0) late.push(item);' },
   { nom: 'Encaisser oublie le moyen', cible: '[E]', fichier: 'assets/app-main.js',

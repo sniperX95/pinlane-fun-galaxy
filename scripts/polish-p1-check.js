@@ -895,8 +895,8 @@ const PROPRIETES = [
       nom: 'l ecriture de statut redevient aveugle a l etat courant (un bouton deja enfonce ecrit quand meme)',
       vise: /n ecrit RIEN et ne retrograde pas/,
       fichier: 'assets/app-main.js',
-      de: '  // Le dossier est deja dans l etat que le bouton demande : rien a ecrire.\n  if (reservationAlreadyInStatus(current, status) && !corrigeMoyen) return;',
-      vers: '  // MUTATION DU GATE : plus aucune garde d idempotence.',
+      de: '  if (reservationAlreadyInStatus(current, status) && !corrigeMoyen) {',
+      vers: '  if (false) { // MUTATION DU GATE : plus aucune garde d idempotence.',
     },
   },
   {

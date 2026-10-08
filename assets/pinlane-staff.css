@@ -18729,7 +18729,6 @@ button.pv2-cal-cell:focus-visible {
 .gc-section-toggle { width: 8px; height: 8px; margin-left: auto; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); transition: transform var(--dur-fast) var(--ease); }
 .gc-section.is-repliable[open] .gc-section-toggle { transform: rotate(-135deg); }
 .gc-grid.is-compacte { grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
-.gc-tag.is-upcoming { color: var(--accent-strong, var(--accent)); }
 .gc-tag.is-onsite { color: var(--success); }
 /* CHAQUE ACTIVITE SE COCHE D UN TOUCHER (2026-10-01) : la ligne entiere, sur
    la carte comme dans la fiche. Fait : la ligne s efface, le mot reste. */
@@ -18871,6 +18870,7 @@ button.pv2-cal-cell:focus-visible {
 .gc-section.onsite { --band: var(--success); --band-soft: var(--success-soft); }
 .gc-section.closing { --band: var(--warning); --band-soft: var(--warning-soft); }
 .gc-section.done { --band: var(--muted); --band-soft: var(--subtle); }
+.gc-section.absent { --band: var(--muted); --band-soft: var(--subtle); }
 .gc-section > .res-section-head.gc-band {
   position: sticky; top: 0; z-index: 3;
   display: flex; align-items: center; gap: 10px;
@@ -18896,10 +18896,6 @@ button.pv2-cal-cell:focus-visible {
 .gc-section.is-repliable > .gc-band .gc-band-sum + .gc-section-toggle,
 .gc-section.is-repliable > .gc-band .gc-section-toggle { margin-left: 12px; }
 .gc-section.is-repliable:not([open]) > .gc-band { margin-bottom: 0; }
-
-/* La carte porte le filet de sa categorie. */
-.gc-section .res-row.gc { box-shadow: inset 3px 0 0 var(--band); }
-.gc-section.done .res-row.gc { box-shadow: inset 3px 0 0 var(--line-strong); }
 
 /* « À venir » par heure (7 groupes et plus) : l heure a gauche, ses cartes a
    droite, un filet entre deux heures. */
@@ -19928,3 +19924,74 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
   .laser-planning-box.expanded .laser-pass-card { width: auto; min-width: 168px; }
   .laser-planning-box.expanded .laser-agenda { flex: 1 1 auto; }
 }
+
+/* --- TOUTES LES RESERVATIONS, RESSERREE (2026-10-08) ---------------------
+   Movsar : « les cartes juste un peu plus petites », « plus simple, plus
+   visible ». Le dessin ne change pas : memes blocs, memes couleurs. Part ce
+   qui prenait de la place sans rien dire de plus :
+   - la boite de la liste plafonnee a 704 px : sur une tablette debout, un
+     tiers de l ecran restait noir sous la derniere carte. Elle descend
+     jusqu au bas de l ecran (--liste-haut, pose par ajusterHauteurListe) ;
+   - un encadre sur deux lignes, son titre seul sur la premiere : le titre
+     passe devant son texte ;
+   - au telephone, l aide d une activite (« Dans 20 min ») seule sur une
+     troisieme ligne : elle remonte a droite du nom ;
+   - les marges des bandeaux, des sections et des cartes ;
+   - trois tailles de nom selon l ecran (17, 16 et 15 px) : une seule. */
+.table-box#staffTableBox:not(.hidden):not(.expanded) { max-height: max(480px, calc(100dvh - var(--liste-haut, 280px) - 12px)); }
+#staffTableBox .gc-sections { gap: 14px; padding: 10px 12px 16px; }
+#staffTableBox .gc-section > .res-section-head.gc-band { margin-bottom: 8px; padding: 6px 12px; }
+#staffTableBox .gc-band-icon { width: 24px; height: 24px; }
+#staffTableBox .res-row.gc { padding: 10px 12px; gap: 8px; }
+#staffTableBox .res-row.gc.is-done { padding: 8px 12px; gap: 0; }
+#staffTableBox .gc-grid { gap: 8px; }
+#staffTableBox .gc-who h4.res-row-name { font-size: 16px; }
+#staffTableBox .gc-flags { gap: 4px; }
+#staffTableBox .gc-flag { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 5px 10px; line-height: 1.4; }
+#staffTableBox .gc-flag b { flex: none; }
+#staffTableBox .gc-flag.tone-note span { font-size: 13px; }
+/* Plein ecran : les cartes s alignent sur les puces et l en-tete. */
+#staffTableBox.expanded:not(.hidden) .gc-sections { padding-inline: clamp(18px, 2.6vw, 46px); }
+#staffTableBox.expanded:not(.hidden) .gc-sections .res-section-head { padding-inline: 12px; }
+/* Les puces de la tablette debout tiennent sur une ligne qui defile, comme
+   au telephone : repliees sur deux lignes, le filet de « Avec note »
+   tombait seul en tete de la seconde. */
+@media (min-width: 769px) and (max-width: 1180px) {
+  #staffTableBox .status-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  #staffTableBox .status-filters::-webkit-scrollbar { display: none; }
+  #staffTableBox .status-group { flex-wrap: nowrap; }
+  #staffTableBox .status-chip { flex: none; }
+}
+/* Sur une ligne qui defile, un groupe de puces ne retrecit pas : il glissait
+   sous « Avec note » et coupait « Payées » en deux. */
+@media (max-width: 1180px) {
+  #staffTableBox .status-group { flex: none; }
+}
+@media (max-width: 560px) {
+  #staffTableBox .gc-sections { padding: 10px 8px 14px; }
+  #staffTableBox .res-row.gc { padding: 10px; }
+  #staffTableBox .gc-step-state { grid-column: 3; grid-row: 1; justify-self: end; align-self: start; }
+  #staffTableBox .gc-step.is-cochable .gc-step-state { grid-column: 4; grid-row: 1; }
+  #staffTableBox .gc-step-price { grid-row: 2; }
+}
+/* « En retard » se voit avant d etre choisie ; les nouvelles puces ont la
+   couleur de leur bandeau (Payées comme les terminees, Pas venus neutre). */
+.status-chip.is-late:not(.active) { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line-strong)); }
+.status-chip.active.late { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.status-chip.active.paid { background: var(--success-soft); border-color: var(--success); color: var(--success); }
+.status-chip.active.absent { background: var(--subtle); border-color: var(--line-strong); color: var(--text); }
+/* La fiche et la Vue d ensemble disent le mot de la liste, dans sa couleur. */
+body:is(.staff-mode, .admin-mode) .dossier-status.is-pending { background: var(--accent-soft); color: var(--accent-strong); }
+body:is(.staff-mode, .admin-mode) .dossier-status.is-late { background: var(--danger-soft); color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .dossier-status.is-arrived { background: var(--success-soft); color: var(--success); }
+body:is(.staff-mode, .admin-mode) .dossier-status.is-closing { background: var(--warning-soft); color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .dossier-status.is-absent { background: var(--subtle); color: var(--muted); }
+.dashboard-detail-row.late { border-left: 2px solid var(--danger); }
+.dashboard-detail-row.arrived { border-left-color: var(--success); }
+.dashboard-detail-row.closing { border-left: 2px solid var(--warning); }
+.dashboard-detail-row.absent { border-left: 2px solid var(--line-strong); }
+/* Le signal de synchronisation de la liste : absent quand tout va bien. */
+.liste-sync { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; padding: 3px 10px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.liste-sync::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.liste-sync.is-stale { background: var(--danger-soft); color: var(--danger); }
+.liste-sync[hidden] { display: none; }

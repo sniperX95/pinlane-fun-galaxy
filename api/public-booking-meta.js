@@ -22,6 +22,7 @@ const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
 const { sendCustomRequestAck } = require('../lib/ops-communications');
+const { simulationSqlExclusion } = require('../lib/simulation-filter');
 const {
   loadAvailabilityBlocks,
   isCenterClosedAt,
@@ -107,11 +108,12 @@ async function handleVitrine(req, res, body) {
   if (!pool) { sendJson(res, 202, { ok: true, enregistres: 0 }); return; }
   try {
     // Une « reservee » sans reservation de ce centre creee dans l heure ne
-    // compte pas : un navigateur ne fabrique pas un client.
+    // compte pas : un navigateur ne fabrique pas un client. Une reservation de
+    // simulation non plus : ce sont des statistiques de vente.
     const annoncees = envoi.lignes.filter((l) => l.evenement === 'reservee').map((l) => l.reservationId).filter(Boolean);
     const reelles = new Set();
     if (annoncees.length) {
-      const r = await pool.query("select id from reservations where center_id = $1 and id = any($2::bigint[]) and created_at > now() - interval '1 hour'", [envoi.centerId, annoncees]);
+      const r = await pool.query(`select id from reservations where center_id = $1 and id = any($2::bigint[]) and created_at > now() - interval '1 hour' and ${simulationSqlExclusion()}`, [envoi.centerId, annoncees]);
       r.rows.forEach((row) => reelles.add(Number(row.id)));
     }
     const gardees = envoi.lignes.filter((l) => l.evenement !== 'reservee' || reelles.has(l.reservationId));

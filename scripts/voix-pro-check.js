@@ -246,8 +246,15 @@ const RE_MOT_SEUL = new RegExp(`(^|[\\s(«])(${SANS_ACCENT.map((m) => m.replace(
 // motif de recherche, pas une phrase lue : booking-core cherche « toutes les
 // activites illimitees » dans une description passee par normalize('NFD').
 const COMPARAISON = /(?:includes|indexOf|startsWith|endsWith|test|match|search)\(\s*$|[!=]==?\s*$/;
+// UN SELECTEUR CSS N EST PAS DU TEXTE LU, MEME AVEC UN COMBINATEUR
+// (2026-10-08) : « .fg-etape__quoi small » passait pour une phrase (deux mots
+// separes d une espace) et « etape » y criait a l accent manquant. Un
+// selecteur commence par « . » ou « # » et n est fait que d identifiants et de
+// combinateurs ; une lettre accentuee n en fait jamais partie.
+const SELECTEUR_CSS = /^[.#][\w-]+(?:\s*[>+~]?\s*[.#]?[\w-]+)*$/;
 function sansAccent(l) {
   if (COMPARAISON.test(l.avant.replace(/\s+$/, ''))) return null;
+  if (SELECTEUR_CSS.test(String(l.texte).trim())) return null;
   // Une requete SQL nomme ses tables (« from reservations ») : pas du texte lu.
   if (/^\s*(select|insert|update|delete|with)\s/i.test(l.texte)) return null;
   const t = String(l.texte)
@@ -363,6 +370,9 @@ const MUTATIONS = [
   { nom: 'ops-console reprend « Validation staff »', fichier: 'assets/ops-console.js', de: '<span class="ops-pill">À vérifier</span>', vers: '<span class="ops-pill">Validation staff</span>' },
   { nom: 'un mot seul entre deux valeurs perd ses accents', fichier: 'assets/founder-cockpit.js', de: "${sentN} envoyé${sentN > 1 ? 's' : ''}", vers: "${sentN} envoye${sentN > 1 ? 's' : ''}" },
   { nom: 'un en-tete de colonne perd ses accents', fichier: 'assets/staff-pages-v2.js', de: '<th>Après</th>', vers: '<th>Apres</th>' },
+  // L exemption des selecteurs reste etroite : dans le meme fichier, une vraie
+  // phrase sans accent est toujours vue.
+  { nom: 'une phrase du formulaire public perd ses accents', fichier: 'assets/fungalaxy-booking.js', de: "bornes.fermeture ? 'Fermeture' : 'Fin vers'", vers: "bornes.fermeture ? 'Fermeture' : 'Fin de la derniere etape'" },
 ];
 let mordent = 0;
 for (const m of MUTATIONS) {

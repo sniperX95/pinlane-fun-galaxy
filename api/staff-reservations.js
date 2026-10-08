@@ -13,6 +13,7 @@ const {
   lireVersionAttendue,
   memeVersion,
   reservationModifieeEntreTemps,
+  lireHistoriqueClient,
 } = require('../lib/database');
 const { readJson, sendError, sendJson } = require('../lib/http');
 const { enqueueReservationCommunications } = require('../lib/ops-communications');
@@ -23,7 +24,7 @@ const { requireStaffPermission, getStaffSessionFromRequest } = require('../lib/s
 const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
 const { reservationChanges, reservationSnapshot, libelleMembre } = require('../lib/registre');
 const { refreshCenterOverrides } = require('../lib/ops-knowledge');
-const { refreshFormuleOverrides } = require('../lib/booking-config');
+const { refreshFormuleOverrides, getBasePrice } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 
@@ -278,8 +279,109 @@ async function requireAnyStaffSession(req, res) {
   return session;
 }
 
+// LA FENETRE RESERVER LIT LE PLAN AVANT DE CREER (2026-10-08, Movsar : « tout
+// bien reference », « aucun bug quand on change d horaire »). Un corps qui porte
+// `dryRun: true` est normalise et planifie par le MEME moteur que la creation,
+// sur la journee lue en base, puis la reponse part sans rien ecrire : la
+// fenetre montre les heures, les pistes et les departs laser que la creation
+// posera, au lieu d une estimation du navigateur.
+function heureDuPlan(valeur) {
+  return typeof valeur === 'string' && /^\d{1,2}:\d{2}/.test(valeur) ? valeur.slice(0, 5) : '';
+}
+function nombreDuPlan(valeur) {
+  return valeur === undefined || valeur === null || valeur === '' || !Number.isFinite(Number(valeur)) ? null : Number(valeur);
+}
+// La fin annoncee est celle des ACTIVITES : opsPlan.endTime ajoute la marge de
+// risque du moteur (5 a 30 min), un tampon pour l equipe, pas une heure a
+// dire au client.
+function finDesActivites(plan) {
+  const minutes = (heure) => { const [h, m] = String(heure || '').split(':').map(Number); return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null; };
+  const fins = [...(plan.resourceBlocks || []), ...(plan.timeline || [])].map((pas) => minutes(heureDuPlan(pas && pas.endTime))).filter((v) => v !== null);
+  if (fins.length) { const fin = Math.max(...fins); return `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}`; }
+  const brute = minutes(heureDuPlan(plan.endTime));
+  if (brute === null) return '';
+  const fin = brute - (Number(plan.bufferMinutes) || 0);
+  return `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}`;
+}
+// `dossier` est l objet exact que createReservation recevrait : le prix, le
+// libelle et le plan se lisent la, jamais dans la requete d avant le moteur.
+function resumerPlanPourLaFenetre(dossier = {}, ops = {}) {
+  const plan = dossier.opsPlan && typeof dossier.opsPlan === 'object' ? dossier.opsPlan : null;
+  const blocs = Array.isArray(plan && plan.resourceBlocks) ? plan.resourceBlocks : [];
+  const etapes = Array.isArray(plan && plan.timeline) ? plan.timeline : [];
+  const activiteDuBloc = (bloc) => String(bloc.activityId
+    || (bloc.resourceType === 'bowling_lane' ? 'bowling' : bloc.resourceType === 'laser_arena' ? 'laser_game' : ''));
+  return {
+    disponible: Boolean(plan) && ops.planAvailable !== false,
+    debut: heureDuPlan(plan && plan.startTime) || heureDuPlan(dossier.startTime),
+    fin: plan ? finDesActivites(plan) : '',
+    validation: ops.validationStatus || '',
+    refus: ops.planRefusal ? String(ops.planRefusal) : '',
+    avertissement: ops.planWarning ? String(ops.planWarning) : '',
+    raison: (ops.validation && ops.validation.raison) || '',
+    aSurveiller: ((ops.validation && ops.validation.aSurveiller) || []).map((item) => item && item.phrase).filter(Boolean),
+    blocs: blocs.map((bloc) => ({
+      activite: activiteDuBloc(bloc),
+      ressource: String(bloc.resourceType || ''),
+      debut: heureDuPlan(bloc.startTime),
+      fin: heureDuPlan(bloc.endTime),
+      pistes: Array.isArray(bloc.lanes) ? bloc.lanes.map(Number).filter(Number.isFinite) : [],
+      joueurs: nombreDuPlan(bloc.players),
+      partie: nombreDuPlan(bloc.countIndex),
+      vague: nombreDuPlan(bloc.groupWaveIndex),
+      vagues: nombreDuPlan(bloc.groupWaveCount),
+      joueursAvant: nombreDuPlan(bloc.playersBefore),
+      placesRestantes: nombreDuPlan(bloc.remainingWeapons),
+      partagee: Boolean(bloc.sharedSession),
+    })),
+    etapes: etapes.map((etape) => ({
+      activite: String(etape.activityId || ''),
+      debut: heureDuPlan(etape.startTime),
+      fin: heureDuPlan(etape.endTime),
+      libelle: String(etape.label || ''),
+      libre: Boolean(etape.flexible),
+    })).filter((etape) => etape.activite && etape.debut),
+    prix: nombreDuPlan(dossier.price),
+    prixReference: nombreDuPlan(dossier.basePrice),
+    libelle: String(dossier.label || ''),
+  };
+}
+
+// UNE FORMULE ADAPTEE DES LA CREATION (2026-10-08). La fiche savait deja
+// adapter une formule apres coup (retirer le minigolf, ajouter une partie) :
+// elle envoie la formule et son programme, et le moteur repart du document de
+// la formule (buildAdaptedFormula, qui garde la table et les boissons). A la
+// creation, le programme effacait la formule (normalizeReservationRequest) :
+// le dossier devenait une visite libre et perdait sa table au planning. Une
+// creation qui porte les deux est donc planifiee et enregistree comme une
+// formule adaptee, exactement comme celle que la fiche aurait produite.
+function formuleAdapteeDuCorps(body = {}) {
+  const formuleId = String(body.formuleId || body.formulaId || '').trim();
+  const program = body.program;
+  const items = Array.isArray(program) ? program : (program && Array.isArray(program.items) ? program.items : []);
+  return formuleId && items.length ? formuleId : '';
+}
+
 module.exports = async (req, res) => {
   try {
+    // LE CLIENT DEJA VENU (2026-10-08) : la fenetre Reserver demande, pour un
+    // numero tape, si ce client est deja venu dans CE centre. Lecture seule,
+    // centre de la session, un resume et rien d autre.
+    if (req.method === 'GET') {
+      const requestUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+      const session = await requireStaffPermission(req, res, ['reservations.create', 'reservations.view', 'clients.view'], { centerId: requestUrl.searchParams.get('centerId') || '' });
+      if (!session) return;
+      const chiffres = String(requestUrl.searchParams.get('client') || '').replace(/\D/g, '');
+      if (chiffres.length < 8 || chiffres.length > 15) {
+        sendError(res, 422, 'Numéro incomplet : 8 chiffres au moins.');
+        return;
+      }
+      const aujourdhui = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date());
+      const client = await lireHistoriqueClient({ centerId: session.authorizedCenterId, telephone: chiffres, aujourdhui });
+      sendJson(res, 200, { ok: true, client });
+      return;
+    }
+
     if (req.method === 'POST') {
       const body = await readJson(req);
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });
@@ -293,12 +395,36 @@ module.exports = async (req, res) => {
       // range chez 'libramont' QUEL QUE SOIT le centre authentifie, et la
       // barriere inter-clients ne voyait rien (requestedCenterId vide).
       const request = normalizeReservationRequest(body, { channel: 'staff', centerId: session.authorizedCenterId });
-      const ops = await prepareReservationOps(request, 'staff');
-      const reservation = await createReservation({
+      const formuleAdaptee = formuleAdapteeDuCorps(body);
+      if (formuleAdaptee) {
+        // Le prix de reference est celui de la formule ; le prix facture,
+        // celui que la fenetre envoie (sinon la reference).
+        const reference = getBasePrice('formule', request.duration, Number(request.laneCount) || 0, Number(request.pax) || 1, formuleAdaptee, request.centerId);
+        request.type = 'formule';
+        request.basePrice = reference;
+        const envoye = body.price === undefined || body.price === null || body.price === '' ? null : Number(body.price);
+        request.price = Number.isFinite(envoye) && envoye >= 0 ? envoye : reference;
+      }
+      const ops = await prepareReservationOps(formuleAdaptee ? { ...request, formuleId: formuleAdaptee } : request, 'staff');
+      const dossier = {
         ...request,
         ...ops,
+        // Apres le plan : le moteur reecrit type, libelle et prix d un dossier
+        // a programme ; une formule adaptee garde les siens.
+        ...(formuleAdaptee ? {
+          type: 'formule',
+          formuleId: formuleAdaptee,
+          label: request.label || ops.label || '',
+          basePrice: request.basePrice,
+          price: request.price,
+        } : {}),
         channel: request.channel || 'staff',
-      });
+      };
+      if (body.dryRun === true) {
+        sendJson(res, 200, { ok: true, dryRun: true, plan: resumerPlanPourLaFenetre(dossier, ops) });
+        return;
+      }
+      const reservation = await createReservation(dossier);
       const postCreate = await afterReservationCreated(reservation, request);
 
       // T5 : l'ecriture du journal a lieu ICI, apres le retour de

@@ -14,19 +14,25 @@ const {
   memeVersion,
   reservationModifieeEntreTemps,
   lireHistoriqueClient,
+  lireDepartsRapides,
+  lireEpinglesDeparts,
+  ecrireEpinglesDeparts,
+  readStaffState,
 } = require('../lib/database');
 const { readJson, sendError, sendJson } = require('../lib/http');
 const { enqueueReservationCommunications } = require('../lib/ops-communications');
 const { enqueueReservationAutomation } = require('../lib/ops-jobs');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
-const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { requireStaffPermission, getStaffSessionFromRequest } = require('../lib/staff-auth');
 const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
 const { reservationChanges, reservationSnapshot, libelleMembre } = require('../lib/registre');
 const { refreshCenterOverrides } = require('../lib/ops-knowledge');
-const { refreshFormuleOverrides, getBasePrice } = require('../lib/booking-config');
+const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
+const { finDesActivites, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
+const { simulerCandidats } = require('../lib/reserver-simulation');
+const { normaliserEpingles } = require('../lib/departs-rapides');
 
 // LE COMPTOIR CONNAIT LES MEMES CENTRES QUE LE TUNNEL (2026-08-21).
 //
@@ -280,95 +286,158 @@ async function requireAnyStaffSession(req, res) {
 }
 
 // LA FENETRE RESERVER LIT LE PLAN AVANT DE CREER (2026-10-08, Movsar : « tout
-// bien reference », « aucun bug quand on change d horaire »). Un corps qui porte
-// `dryRun: true` est normalise et planifie par le MEME moteur que la creation,
-// sur la journee lue en base, puis la reponse part sans rien ecrire : la
-// fenetre montre les heures, les pistes et les departs laser que la creation
-// posera, au lieu d une estimation du navigateur.
-function heureDuPlan(valeur) {
-  return typeof valeur === 'string' && /^\d{1,2}:\d{2}/.test(valeur) ? valeur.slice(0, 5) : '';
+// bien reference », « aucun bug quand on change d horaire »). La simulation,
+// la creation et le lot passent par la MEME preparation
+// (planifierPourLaFenetre, lib/reserver-fenetre.js) : la fenetre montre les
+// heures, les pistes, les conflits et le prix que la creation posera.
+const LOT_MAX = 12;
+
+// Les erreurs d infrastructure (Postgres, Neon, reseau) ne s affichent jamais :
+// elles se journalisent, et le staff lit une phrase qui dit de reessayer.
+function estErreurInfra(error) {
+  const raw = String((error && error.message) || '');
+  return !raw || /tuple concurrently|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
 }
-function nombreDuPlan(valeur) {
-  return valeur === undefined || valeur === null || valeur === '' || !Number.isFinite(Number(valeur)) ? null : Number(valeur);
+const MESSAGE_INFRA = 'Opération réservation impossible pour le moment. Réessayez.';
+
+function dateValide(valeur) {
+  const texte = String(valeur || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(texte)) return false;
+  const date = new Date(`${texte}T12:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === texte;
 }
-// La fin annoncee est celle des ACTIVITES : opsPlan.endTime ajoute la marge de
-// risque du moteur (5 a 30 min), un tampon pour l equipe, pas une heure a
-// dire au client.
-function finDesActivites(plan) {
-  const minutes = (heure) => { const [h, m] = String(heure || '').split(':').map(Number); return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null; };
-  const fins = [...(plan.resourceBlocks || []), ...(plan.timeline || [])].map((pas) => minutes(heureDuPlan(pas && pas.endTime))).filter((v) => v !== null);
-  if (fins.length) { const fin = Math.max(...fins); return `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}`; }
-  const brute = minutes(heureDuPlan(plan.endTime));
-  if (brute === null) return '';
-  const fin = brute - (Number(plan.bufferMinutes) || 0);
-  return `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}`;
+
+function aujourdhuiABruxelles() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date());
 }
-// `dossier` est l objet exact que createReservation recevrait : le prix, le
-// libelle et le plan se lisent la, jamais dans la requete d avant le moteur.
-function resumerPlanPourLaFenetre(dossier = {}, ops = {}) {
-  const plan = dossier.opsPlan && typeof dossier.opsPlan === 'object' ? dossier.opsPlan : null;
-  const blocs = Array.isArray(plan && plan.resourceBlocks) ? plan.resourceBlocks : [];
-  const etapes = Array.isArray(plan && plan.timeline) ? plan.timeline : [];
-  const activiteDuBloc = (bloc) => String(bloc.activityId
-    || (bloc.resourceType === 'bowling_lane' ? 'bowling' : bloc.resourceType === 'laser_arena' ? 'laser_game' : ''));
+
+// Creer un dossier deja prepare, le tracer, et rendre ce que la fenetre lit.
+// Le journal s ecrit APRES le COMMIT, hors du verrou de la journee (T5) ; son
+// echec remonte dans `warnings` (T4 point c), jamais en silence.
+async function creerDepuisLaFenetre(prepare, session, contexte = {}) {
+  const { ops, conflits, aPlacer } = prepare;
+  const reservation = await createReservation(prepare.dossier);
+  const postCreate = await afterReservationCreated(reservation, prepare.request);
+  const auditCreate = await writeAuditLog({
+    centerId: reservation.centerId || 'libramont',
+    ...actorFromSession(session),
+    surface: 'api/staff-reservations.js',
+    action: 'createReservation',
+    method: 'POST',
+    entityType: 'reservation',
+    entityId: reservation.id,
+    outcome: 'success',
+    changes: buildReservationAuditChanges({}, reservation),
+    context: {
+      canal: reservation.channel || 'staff',
+      validationStatus: reservation.validationStatus || '',
+      ...(aPlacer ? { aPlacer: true, conflits: conflits.map((conflit) => conflit.message) } : {}),
+      ...contexte,
+    },
+    requestId: newRequestId(),
+  });
   return {
-    disponible: Boolean(plan) && ops.planAvailable !== false,
-    debut: heureDuPlan(plan && plan.startTime) || heureDuPlan(dossier.startTime),
-    fin: plan ? finDesActivites(plan) : '',
-    validation: ops.validationStatus || '',
-    refus: ops.planRefusal ? String(ops.planRefusal) : '',
-    avertissement: ops.planWarning ? String(ops.planWarning) : '',
-    raison: (ops.validation && ops.validation.raison) || '',
-    aSurveiller: ((ops.validation && ops.validation.aSurveiller) || []).map((item) => item && item.phrase).filter(Boolean),
-    blocs: blocs.map((bloc) => ({
-      activite: activiteDuBloc(bloc),
-      ressource: String(bloc.resourceType || ''),
-      debut: heureDuPlan(bloc.startTime),
-      fin: heureDuPlan(bloc.endTime),
-      pistes: Array.isArray(bloc.lanes) ? bloc.lanes.map(Number).filter(Number.isFinite) : [],
-      joueurs: nombreDuPlan(bloc.players),
-      partie: nombreDuPlan(bloc.countIndex),
-      vague: nombreDuPlan(bloc.groupWaveIndex),
-      vagues: nombreDuPlan(bloc.groupWaveCount),
-      joueursAvant: nombreDuPlan(bloc.playersBefore),
-      placesRestantes: nombreDuPlan(bloc.remainingWeapons),
-      partagee: Boolean(bloc.sharedSession),
-    })),
-    etapes: etapes.map((etape) => ({
-      activite: String(etape.activityId || ''),
-      debut: heureDuPlan(etape.startTime),
-      fin: heureDuPlan(etape.endTime),
-      libelle: String(etape.label || ''),
-      libre: Boolean(etape.flexible),
-    })).filter((etape) => etape.activite && etape.debut),
-    prix: nombreDuPlan(dossier.price),
-    prixReference: nombreDuPlan(dossier.basePrice),
-    libelle: String(dossier.label || ''),
+    reservation,
+    ops: {
+      riskLevel: reservation.riskLevel,
+      riskScore: reservation.riskScore,
+      validationStatus: reservation.validationStatus,
+      planWarning: ops.planWarning,
+      autoDecision: ops.requiresHumanReview || aPlacer ? 'human_review_required' : 'auto_confirmed',
+    },
+    communications: postCreate.communications,
+    warnings: auditCreate.warning
+      ? [...(postCreate.warnings || []), auditCreate.warning]
+      : postCreate.warnings,
+    aPlacer,
+    conflits,
   };
 }
 
-// UNE FORMULE ADAPTEE DES LA CREATION (2026-10-08). La fiche savait deja
-// adapter une formule apres coup (retirer le minigolf, ajouter une partie) :
-// elle envoie la formule et son programme, et le moteur repart du document de
-// la formule (buildAdaptedFormula, qui garde la table et les boissons). A la
-// creation, le programme effacait la formule (normalizeReservationRequest) :
-// le dossier devenait une visite libre et perdait sa table au planning. Une
-// creation qui porte les deux est donc planifiee et enregistree comme une
-// formule adaptee, exactement comme celle que la fiche aurait produite.
-function formuleAdapteeDuCorps(body = {}) {
-  const formuleId = String(body.formuleId || body.formulaId || '').trim();
-  const program = body.program;
-  const items = Array.isArray(program) ? program : (program && Array.isArray(program.items) ? program.items : []);
-  return formuleId && items.length ? formuleId : '';
+// LA SIMULATION (dryRun). UNE lecture de la journee, partagee par le dossier,
+// les autres dossiers du meme envoi et chaque heure de l horloge : deux
+// heures ne se comparent pas sur deux etats differents de la base.
+async function simulerPourLaFenetre(body, session) {
+  const lectures = new Map();
+  const readState = (jour, centre) => {
+    const cle = `${centre}|${jour}`;
+    if (!lectures.has(cle)) lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true }));
+    return lectures.get(cle);
+  };
+  const corps = { ...body };
+  ['dryRun', 'autres', 'candidats', 'forcer', 'dossiers'].forEach((champ) => { delete corps[champ]; });
+  const autres = Array.isArray(body.autres) ? body.autres.slice(0, LOT_MAX) : [];
+  const { virtuelles, plans } = autres.length
+    ? await simulerAutres(autres, session, { readState })
+    : { virtuelles: [], plans: [] };
+  const principal = await planifierPourLaFenetre(corps, session, { readState, virtuelles });
+  const reponse = { ok: true, dryRun: true, plan: principal.plan };
+  if (autres.length) reponse.autres = plans;
+  if (Array.isArray(body.candidats)) {
+    reponse.candidats = await simulerCandidats({
+      corps,
+      candidats: body.candidats,
+      planifier: async (essai) => {
+        const resultat = await planifierPourLaFenetre(essai, session, { readState, virtuelles });
+        return { ops: resultat.ops, dossier: resultat.dossier, conflits: resultat.conflits };
+      },
+      finDuPlan: finDesActivites,
+    });
+  }
+  return reponse;
+}
+
+// LE LOT (2026-10-08) : les dossiers d un meme envoi, crees dans l ordre, chacun
+// planifie apres que le precedent est en base. Un dossier refuse ne bloque pas
+// les suivants, et son refus est rendu avec son rang : aucun echec muet.
+// « Créer quand même » se decide DOSSIER PAR DOSSIER (`forcer` dans le
+// dossier) : un `forcer` pose sur le lot est ignore, sinon il enverrait « à
+// placer » un dossier dont le plan tient et que personne n a choisi de forcer.
+async function creerLeLot(body, session) {
+  const dossiers = body.dossiers;
+  if (!dossiers.length || dossiers.length > LOT_MAX) throw createHttpError(`Un envoi porte de 1 à ${LOT_MAX} dossiers.`, 422);
+  const reservations = [];
+  const echecs = [];
+  for (let index = 0; index < dossiers.length; index += 1) {
+    const corps = dossiers[index];
+    try {
+      if (!corps || typeof corps !== 'object' || Array.isArray(corps)) throw createHttpError('Dossier invalide.', 422);
+      const prepare = await planifierPourLaFenetre(corps, session, { forcer: corps.forcer === true });
+      const cree = await creerDepuisLaFenetre(prepare, session, { lot: { index, total: dossiers.length } });
+      reservations.push({ index, reservation: cree.reservation, ops: cree.ops, aPlacer: cree.aPlacer, conflits: cree.conflits, warnings: cree.warnings });
+    } catch (error) {
+      const infra = estErreurInfra(error);
+      if (infra) console.error('[staff-reservations] lot, dossier', index, error && (error.stack || error.message || error));
+      echecs.push({ index, message: infra ? MESSAGE_INFRA : String(error.message), infra });
+    }
+  }
+  const statut = !echecs.length ? 201 : reservations.length ? 207 : echecs.every((echec) => echec.infra) ? 503 : 422;
+  return { statut, corps: { ok: !echecs.length, reservations, echecs: echecs.map(({ index, message }) => ({ index, message })) } };
 }
 
 module.exports = async (req, res) => {
   try {
-    // LE CLIENT DEJA VENU (2026-10-08) : la fenetre Reserver demande, pour un
-    // numero tape, si ce client est deja venu dans CE centre. Lecture seule,
-    // centre de la session, un resume et rien d autre.
     if (req.method === 'GET') {
       const requestUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+      // LES DEPARTS RAPIDES (2026-10-08) : les compositions que le centre vend
+      // le plus ce jour de la semaine, et celles que le gerant a epinglees.
+      if (requestUrl.searchParams.get('departs') === '1') {
+        const sessionDeparts = await requireStaffPermission(req, res, 'reservations.create', { centerId: requestUrl.searchParams.get('centerId') || '' });
+        if (!sessionDeparts) return;
+        const date = String(requestUrl.searchParams.get('date') || '');
+        if (!dateValide(date)) {
+          sendError(res, 422, 'Date invalide : AAAA-MM-JJ attendu.');
+          return;
+        }
+        const centre = sessionDeparts.authorizedCenterId;
+        const lus = await lireDepartsRapides({ centerId: centre, date, aujourdhui: aujourdhuiABruxelles() });
+        const epingles = await lireEpinglesDeparts(centre);
+        sendJson(res, 200, { ok: true, date, jourSemaine: lus.jourSemaine, depuis: lus.depuis, jusqua: lus.jusqua, departs: lus.departs, epingles: epingles.epingles });
+        return;
+      }
+      // LE CLIENT DEJA VENU (2026-10-08) : la fenetre Reserver demande, pour un
+      // numero tape, si ce client est deja venu dans CE centre. Lecture seule,
+      // centre de la session, un resume et rien d autre.
       const session = await requireStaffPermission(req, res, ['reservations.create', 'reservations.view', 'clients.view'], { centerId: requestUrl.searchParams.get('centerId') || '' });
       if (!session) return;
       const chiffres = String(requestUrl.searchParams.get('client') || '').replace(/\D/g, '');
@@ -383,7 +452,34 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'POST') {
+      const requestUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
       const body = await readJson(req);
+      // LES DEPARTS EPINGLES (2026-10-08) : le gerant choisit les compositions
+      // que la fenetre montre en premier. Droit « Tarifs » (pricing.manage) :
+      // c est un choix commercial du centre, que le role Manager porte et que
+      // le comptoir (staff-bar) ne porte pas.
+      if (requestUrl.searchParams.get('departs') === '1') {
+        const sessionEpingles = await requireStaffPermission(req, res, 'pricing.manage', { centerId: body.centerId || body.center_id });
+        if (!sessionEpingles) return;
+        const epingles = normaliserEpingles(body.epingles);
+        const centre = sessionEpingles.authorizedCenterId;
+        const avant = await lireEpinglesDeparts(centre);
+        const apres = await ecrireEpinglesDeparts({ centerId: centre, epingles, par: libelleMembre(sessionEpingles) });
+        const auditEpingles = await writeAuditLog({
+          centerId: centre,
+          ...actorFromSession(sessionEpingles),
+          surface: 'api/staff-reservations.js',
+          action: 'ecrireDepartsEpingles',
+          method: 'POST',
+          entityType: 'center',
+          entityId: centre,
+          outcome: 'success',
+          changes: buildChanges({ epingles: avant.epingles }, { epingles: apres.epingles }, ['epingles']),
+          requestId: newRequestId(),
+        });
+        sendJson(res, 200, { ok: true, epingles: apres.epingles, ...(auditEpingles.warning ? { warnings: [auditEpingles.warning] } : {}) });
+        return;
+      }
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });
       if (!session) return;
       await warmCenterKnowledge();
@@ -391,86 +487,24 @@ module.exports = async (req, res) => {
       // crée souvent une résa au comptoir sans tout saisir. L'email obligatoire
       // reste réservé au parcours CLIENT PUBLIC (api/public-reservations.js).
       // Le centre de la SESSION voyage avec la requete (meme discipline que
-      // withCenter dans api/ops.js) : sans lui, un body sans centerId etait
-      // range chez 'libramont' QUEL QUE SOIT le centre authentifie, et la
-      // barriere inter-clients ne voyait rien (requestedCenterId vide).
-      const request = normalizeReservationRequest(body, { channel: 'staff', centerId: session.authorizedCenterId });
-      const formuleAdaptee = formuleAdapteeDuCorps(body);
-      if (formuleAdaptee) {
-        // Le prix de reference est celui de la formule ; le prix facture,
-        // celui que la fenetre envoie (sinon la reference).
-        const reference = getBasePrice('formule', request.duration, Number(request.laneCount) || 0, Number(request.pax) || 1, formuleAdaptee, request.centerId);
-        request.type = 'formule';
-        request.basePrice = reference;
-        const envoye = body.price === undefined || body.price === null || body.price === '' ? null : Number(body.price);
-        request.price = Number.isFinite(envoye) && envoye >= 0 ? envoye : reference;
-      }
-      const ops = await prepareReservationOps(formuleAdaptee ? { ...request, formuleId: formuleAdaptee } : request, 'staff');
-      const dossier = {
-        ...request,
-        ...ops,
-        // Apres le plan : le moteur reecrit type, libelle et prix d un dossier
-        // a programme ; une formule adaptee garde les siens.
-        ...(formuleAdaptee ? {
-          type: 'formule',
-          formuleId: formuleAdaptee,
-          label: request.label || ops.label || '',
-          basePrice: request.basePrice,
-          price: request.price,
-        } : {}),
-        channel: request.channel || 'staff',
-      };
-      if (body.dryRun === true) {
-        sendJson(res, 200, { ok: true, dryRun: true, plan: resumerPlanPourLaFenetre(dossier, ops) });
+      // withCenter dans api/ops.js) : planifierPourLaFenetre le pose sur chaque
+      // dossier, celui d un lot compris.
+      if (Array.isArray(body.dossiers)) {
+        const lot = await creerLeLot(body, session);
+        sendJson(res, lot.statut, lot.corps);
         return;
       }
-      const reservation = await createReservation(dossier);
-      const postCreate = await afterReservationCreated(reservation, request);
-
-      // T5 : l'ecriture du journal a lieu ICI, apres le retour de
-      // createReservation, donc APRES le COMMIT et hors du
-      // pg_advisory_xact_lock que lockDate tient par (centre, date) jusqu'a la
-      // fin de la transaction. La placer dans la transaction ajouterait un
-      // aller-retour Neon a la fenetre de detention du verrou et serialiserait
-      // toutes les creations d'une meme date. Meme placement que le
-      // createOpsEvent qui existait deja ; ce qui n'est PAS repris, c'est son
-      // `.catch(() => null)`.
-      const auditCreate = await writeAuditLog({
-        centerId: reservation.centerId || 'libramont',
-        ...actorFromSession(session),
-        surface: 'api/staff-reservations.js',
-        action: 'createReservation',
-        method: 'POST',
-        entityType: 'reservation',
-        entityId: reservation.id,
-        outcome: 'success',
-        changes: buildReservationAuditChanges({}, reservation),
-        context: {
-          canal: reservation.channel || 'staff',
-          validationStatus: reservation.validationStatus || '',
-        },
-        requestId: newRequestId(),
-      });
-
-      sendJson(res, 201, {
-        ok: true,
-        reservation,
-        ops: {
-          riskLevel: reservation.riskLevel,
-          riskScore: reservation.riskScore,
-          validationStatus: reservation.validationStatus,
-          planWarning: ops.planWarning,
-          autoDecision: ops.requiresHumanReview ? 'human_review_required' : 'auto_confirmed',
-        },
-        communications: postCreate.communications,
-        // T4 point (c) : l'echec de trace remonte a l'ecran, dans le champ
-        // `warnings` qui existait deja. La personne qui vient de creer la
-        // reservation voit que sa trace a saute. C'est ce qui distingue
-        // "non bloquant" de "silencieux".
-        warnings: auditCreate.warning
-          ? [...(postCreate.warnings || []), auditCreate.warning]
-          : postCreate.warnings,
-      });
+      if (body.dryRun === true) {
+        sendJson(res, 200, await simulerPourLaFenetre(body, session));
+        return;
+      }
+      // « Créer quand même » (`forcer`) : un dossier en conflit part à placer.
+      const prepare = await planifierPourLaFenetre(body, session, { forcer: body.forcer === true });
+      // T5 : le journal s ecrit apres le COMMIT (creerDepuisLaFenetre). T4
+      // point (c) : l echec de trace remonte dans `warnings`, jamais en
+      // silence ; c est ce qui distingue « non bloquant » de « silencieux ».
+      const cree = await creerDepuisLaFenetre(prepare, session);
+      sendJson(res, 201, { ok: true, ...cree });
       return;
     }
 
@@ -807,10 +841,9 @@ module.exports = async (req, res) => {
     // On masque UNIQUEMENT les erreurs d'infrastructure (Postgres/Neon/réseau)
     // qui ne doivent jamais fuir à l'écran, et on les log.
     const raw = String((error && error.message) || '');
-    const isInfra = !raw || /tuple concurrently|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
-    if (isInfra) {
+    if (estErreurInfra(error)) {
       console.error('[staff-reservations] échec', error && (error.stack || raw || error));
-      sendError(res, 503, 'Opération réservation impossible pour le moment. Réessayez.');
+      sendError(res, 503, MESSAGE_INFRA);
       return;
     }
     // 409 : la version actuelle voyage avec le refus, le client rejoue son

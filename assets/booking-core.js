@@ -686,6 +686,62 @@ function splitGroupIntoBowlingServices(pax) {
   return Array.from({ length: services }, (_, index) => base + (index < extra ? 1 : 0));
 }
 
+// LE PRIX AU-DELA DE LA GRILLE : PALIER PUIS UNITE (Movsar, 2026-10-08).
+// Jumeaux exacts de lib/prix-palier.js (scripts/prix-palier-check.js compare
+// les deux de 1 a 12 parties et de 30 min a 6 h). Le comptoir vend 4 parties
+// ou 2 h 30 : le plus grand palier de la grille, puis l unite pour le reste
+// (laser : 25 EUR les 3 parties, puis 10 EUR la partie ; bowling : 78 EUR les
+// 2 h, puis 39 EUR l heure et 20 EUR la demi-heure). Le tunnel ne propose que
+// les options de la grille : pour lui, rien ne change.
+function prixLaserAuPalier(options, parties) {
+  const n = Math.trunc(Number(parties));
+  const liste = (Array.isArray(options) ? options : [])
+    .map((option) => ({ games: Math.trunc(Number(option && option.games)), price: Number(option && option.price) }))
+    .filter((option) => option.games > 0 && Number.isFinite(option.price) && option.price >= 0)
+    .sort((a, b) => a.games - b.games);
+  if (!Number.isFinite(n) || n < 1 || !liste.length) return null;
+  const exact = liste.find((option) => option.games === n);
+  if (exact) return exact.price;
+  const palier = liste.filter((option) => option.games < n).pop();
+  const unite = liste.find((option) => option.games === 1);
+  if (!palier || !unite) return null;
+  return palier.price + (n - palier.games) * unite.price;
+}
+
+function prixBowlingAuPalier(prix, heures) {
+  const duree = Number(heures);
+  if (!Number.isFinite(duree) || duree <= 0 || Math.round(duree * 2) !== duree * 2) return null;
+  const grille = Object.entries(prix && typeof prix === 'object' ? prix : {})
+    .map(([cle, valeur]) => ({ heures: Number(cle), price: Number(valeur) }))
+    .filter((pas) => pas.heures > 0 && Number.isFinite(pas.price) && pas.price >= 0)
+    .sort((a, b) => a.heures - b.heures);
+  if (!grille.length) return null;
+  const exact = grille.find((pas) => pas.heures === duree);
+  if (exact) return exact.price;
+  const palier = grille.filter((pas) => pas.heures < duree).pop();
+  const heure = grille.find((pas) => pas.heures === 1);
+  const demi = grille.find((pas) => pas.heures === 0.5);
+  if (!palier || !heure) return null;
+  const reste = duree - palier.heures;
+  const heuresPleines = Math.floor(reste);
+  const avecDemi = reste - heuresPleines >= 0.5;
+  if (avecDemi && !demi) return null;
+  return palier.price + heuresPleines * heure.price + (avecDemi ? demi.price : 0);
+}
+
+// L option de N parties (1 a 12, la borne du comptoir), dans la forme de la
+// grille : une partie vaut 0,5 h et 30 min, comme 1, 2 et 3 parties.
+function optionLaserAuPalier(options, parties) {
+  const n = Number(parties);
+  if (!Number.isInteger(n) || n < 1 || n > 12) return null;
+  const grille = Array.isArray(options) ? options : [];
+  const exacte = grille.find((option) => Math.trunc(Number(option && option.games)) === n);
+  if (exacte) return exacte;
+  const prix = prixLaserAuPalier(grille, n);
+  if (prix === null) return null;
+  return { games: n, value: n / 2, label: `${n} parties`, price: prix, durationMinutes: n * 30 };
+}
+
 function getBasePrice(type, duration, laneCount, pax, formuleId, dateStr) {
   if (type === 'bowling') {
     const gameOptions = getBowlingGameOptions(dateStr, { pax, laneCount });
@@ -693,12 +749,13 @@ function getBasePrice(type, duration, laneCount, pax, formuleId, dateStr) {
       const chosen = gameOptions.find(o => Number(o.value) === Number(duration));
       return chosen ? chosen.price * pax : 0;
     }
-    return (getBowlingPrices()[duration] || 0) * laneCount;
+    const grille = getBowlingPrices();
+    return (grille[duration] || prixBowlingAuPalier(grille, duration) || 0) * laneCount;
   }
   if (type === 'laser') {
-    const options = getLaserOptionsCatalog();
-    const option = options.find(x => Number(x.value) === Number(duration)) || options[0];
-    return option.price * pax;
+    // Number() : jamais `undefined`, qui ferait lire l etat du tunnel par le
+    // parametre par defaut de getLaserOption.
+    return getLaserOption(Number(duration)).price * pax;
   }
   const formule = resolveDisplayFormule(formuleId);
   if (!formule) return 0;
@@ -727,9 +784,14 @@ function formatDurationLabel(hours) {
   return `${m} min`;
 }
 
+// Au-dela de la grille (4 parties = 2 h), l option composee au palier : avant,
+// 4 parties retombaient sur la PREMIERE option, et le comptoir affichait « 1
+// partie » a 10 EUR pour un groupe qui en jouait quatre.
 function getLaserOption(duration = state.booking?.duration || 0.5) {
   const options = getLaserOptionsCatalog();
-  return options.find(x => Number(x.value) === Number(duration)) || options[0];
+  return options.find(x => Number(x.value) === Number(duration))
+    || optionLaserAuPalier(options, Number(duration) * 2)
+    || options[0];
 }
 
 function getLaserGameCount(duration = state.booking?.duration || 0.5) {
@@ -1871,6 +1933,9 @@ function getFormulaActivityProgressSummary(reservation) {
     getRequiredLaneCount,
     getBasePrice,
     getBasePriceForReservation,
+    prixLaserAuPalier,
+    prixBowlingAuPalier,
+    optionLaserAuPalier,
     normalizeActivityText,
     formatDurationLabel,
     getLaserOption,

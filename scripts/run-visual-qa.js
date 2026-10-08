@@ -2203,6 +2203,12 @@ async function main() {
         hasPaxInput: Boolean(modal.querySelector('#qbPax')),
         hasPhoneInput: Boolean(modal.querySelector('#qbPhone')),
         hasNameInput: Boolean(modal.querySelector('#qbName')),
+        // Au comptoir (un depart dans la demi-heure, maquette v5) : un champ
+        // unique « Prénom ou téléphone », l autre moitie a un toucher.
+        auComptoir: (modal.querySelector('.rv-eyebrow em')?.textContent || '').trim() === 'au comptoir',
+        clientSaisissable: (modal.querySelector('.rv-eyebrow em')?.textContent || '').trim() === 'au comptoir'
+          ? Boolean(modal.querySelector('#qbQui') && (modal.querySelector('#rvPlusAutre') || modal.querySelector('#qbPhone') || modal.querySelector('#qbName')))
+          : Boolean(modal.querySelector('#qbPhone') && modal.querySelector('#qbName')),
         emailAtteignable: Boolean(modal.querySelector('#qbEmail') || modal.querySelector('#rvPlusEmail')),
         hasNotesTextarea: Boolean(modal.querySelector('#qbNotes')),
         hasLaneGrid: Array.from(modal.querySelectorAll('.rv-pistes-choix')).some(visible),
@@ -2235,7 +2241,10 @@ async function main() {
     assert(qbGeneric, 'Réserver générique : la fenêtre doit s ouvrir.');
     assert(qbGeneric.title === 'Réserver', `Générique : titre « Réserver » attendu (reçu ${qbGeneric.title}).`);
     assert(qbGeneric.lignes.join(',') === 'bowling' && qbGeneric.heureBowling && qbGeneric.dureeBowling, `Générique : une ligne bowling avec sa durée et son heure (reçu ${qbGeneric.lignes.join(',') || 'aucune ligne'}).`);
-    assert(qbGeneric.hasDateInput && qbGeneric.hasPaxInput && qbGeneric.hasPhoneInput && qbGeneric.hasNameInput && qbGeneric.emailAtteignable, 'Générique : les essentiels (jour, joueurs, téléphone, nom, e-mail à un geste) sont à l écran.');
+    // Le bouton « Réserver » ouvre la demi-heure qui vient : au comptoir aux
+    // heures d ouverture, la fenetre ordinaire avant. Les deux formes du
+    // client se jugent ici ; laquelle selon l heure, dans reserver-v5-check [I].
+    assert(qbGeneric.hasDateInput && qbGeneric.hasPaxInput && qbGeneric.clientSaisissable && qbGeneric.emailAtteignable, `Générique : les essentiels (jour, joueurs, client ${qbGeneric.auComptoir ? 'au comptoir' : 'téléphone et nom'}, e-mail à un geste) sont à l écran.`);
     assert(!qbGeneric.hasLaneGrid && !qbGeneric.hasNotesTextarea && !qbGeneric.lignesOuvertes.length, `Générique : le détail des lignes (grille des pistes) et la note sont repliés à l ouverture (ouvertes : ${qbGeneric.lignesOuvertes.join(',') || 'aucune'}).`);
     assert(qbGeneric.interactive <= PLAFOND_GENERIQUE, `Générique : au plus ${PLAFOND_GENERIQUE} contrôles visibles (reçu ${qbGeneric.interactive} : ${qbGeneric.interactiveListe}).`);
     await screenshot(page, 'quickbook-generic');
@@ -2255,7 +2264,7 @@ async function main() {
     const qbCell = await readQuickBook();
     assert(qbCell.lignes.join(',') === 'bowling' && qbCell.heureBowling && qbCell.heureBowling.texte === '15:00' && /Piste 7/.test(qbCell.placeBowling), `Case planning : la ligne bowling reprend la case, 15:00 et piste 7 (reçu ${JSON.stringify({ heure: qbCell.heureBowling, place: qbCell.placeBowling })}).`);
     assert(qbCell.state.lanes.length === 1 && qbCell.state.lanes[0] === 7 && qbCell.state.startTime === '15:00' && qbCell.state.autoAssign === false, 'Case planning : piste 7 et 15:00 doivent être préremplies.');
-    assert(qbCell.dureeBowling && qbCell.hasNameInput && qbCell.emailAtteignable && qbCell.hasPaxInput, 'Case planning : il reste le client (nom, téléphone, e-mail à un geste), les joueurs et la durée.');
+    assert(qbCell.dureeBowling && qbCell.clientSaisissable && qbCell.emailAtteignable && qbCell.hasPaxInput, 'Case planning : il reste le client (nom, téléphone, e-mail à un geste), les joueurs et la durée.');
     assert(qbCell.interactive <= PLAFOND_CASE, `Case planning : au plus ${PLAFOND_CASE} contrôles visibles (reçu ${qbCell.interactive} : ${qbCell.interactiveListe}).`);
     await screenshot(page, 'quickbook-bowling-cell');
     issues.push(...await collectIssues(page, 'quickbook-bowling-cell'));

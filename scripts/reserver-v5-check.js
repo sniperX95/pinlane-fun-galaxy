@@ -33,6 +33,17 @@
 //       une autre fenetre ouverte avant la reponse : la reponse range le
 //       dossier cree au planning et laisse la nouvelle fenetre ouverte (trouve
 //       par ce gate le 2026-10-08 : elle la fermait).
+//   [I] AU COMPTOIR (maquette v5, X4). Un groupe qui joue dans la demi-heure :
+//       « au comptoir », UN champ facultatif « Prénom ou téléphone » qui range
+//       des lettres en nom et des chiffres en telephone ; « + Téléphone »
+//       devient « + Nom » sur place ; Entree y cree ; un numero deja venu dit
+//       « reconnu » et montre son nom, un autre numero ne garde pas le nom de
+//       l ancien ; un nom tape a part reste. Demain a la meme heure : la
+//       fenetre ordinaire (contre-preuve dans le scenario).
+//   [J] LA PASTILLE DES PISTES N EST JAMAIS COUPEE. « Pistes 7 et 8 » en
+//       entier (Movsar, 2026-10-08 : « Pistes 7 et… »), et de 1 a 8 pistes, a
+//       1280 et 1180 px, mesure au noeud de texte ; la liste entiere reste
+//       dans le libelle du bouton.
 //   [*] Zero erreur JS ni erreur console.
 //
 // Le serveur est simule dans la page (ses reponses suivent le contrat de
@@ -83,6 +94,24 @@ const MUTATIONS = {
   focus: { fichier: 'assets/app-main.js', de: '  if (actif && !actif.isConnected) {', vers: '  if (false) {', vise: ['F'] },
   // Au telephone, le pied ne colle plus en bas : « Créer » sort de l ecran.
   pied: { fichier: 'assets/pinlane-staff.css', de: '  .qb-modal.rv .rv-pied { position: sticky; bottom: 0;', vers: '  .qb-modal.rv .rv-pied { position: static; bottom: 0;', vise: ['G'] },
+  // Le comptoir n existe plus : un depart dans la demi-heure redemande
+  // telephone et nom.
+  comptoir: { fichier: 'assets/app-main.js', de: '  return ecart <= 1 && ecart >= -0.5;', vers: '  return false;', vise: ['I'] },
+  // Entree dans le champ unique ne cree plus.
+  comptoirEntree: { fichier: 'assets/app-main.js', de: "'#qbName, #qbPhone, #qbEmail, #qbQui'", vers: "'#qbName, #qbPhone, #qbEmail'", vise: ['I'] },
+  // Le nom reconnu d un numero reste quand on en tape un autre.
+  nomPerime: { fichier: 'assets/app-main.js', de: "    if (avant === 'nom' || !String(s.name || '').trim() || (s.nomReconnu && s.name === s.nomReconnu)) {", vers: "    if (avant === 'nom' || !String(s.name || '').trim()) {", vise: ['I'] },
+  // « + Téléphone » ne devient plus « + Nom » pendant la frappe : la zone
+  // attend que le champ rende la main pour se repeindre.
+  boutonSurPlace: { fichier: 'assets/app-main.js', de: "  if (bouton) bouton.textContent = role === 'tel' ? '+ Nom' : '+ Téléphone';", vers: "  if (bouton) rvPoser('rvChamps', rvClientHtml());", vise: ['I'] },
+  // « reconnu » ne se pose plus que dans le champ du nom, absent au comptoir.
+  reconnu: { fichier: 'assets/app-main.js', de: "    const champ = document.getElementById('qbQui') || document.getElementById('qbName');", vers: "    const champ = document.getElementById('qbName');", vise: ['I'] },
+  // Le nom reconnu reste dans le dossier sans jamais s afficher.
+  nomCache: { fichier: 'assets/app-main.js', de: "      else if (!champ && document.getElementById('qbQui')) rvPoser('rvChamps', rvClientHtml());", vers: '', vise: ['I'] },
+  // La pastille dit toujours la liste entiere : 3 pistes la coupent.
+  pastille: { fichier: 'assets/app-main.js', de: '  if (enLettres.length <= RV_PASTILLE_MAX) return enLettres;', vers: '  return enLettres;', vise: ['J'] },
+  // La colonne de la pastille revient a 118 px : « Pistes 7 et… ».
+  pastilleColonne: { fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 128px minmax(0, 1fr) 34px;', vers: '.qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 118px minmax(0, 1fr) 34px;', vise: ['J'] },
 };
 
 let mutationActive = null;
@@ -150,7 +179,12 @@ async function installMock(page) {
         if (lot !== null) return J({ ok: true, notesByReservationId: Object.fromEntries(lot.split(',').filter(Boolean).map((id) => [String(Number(id)), sansNote(Number(id))])) });
         return J({ ok: true, ...sansNote(Number(u.searchParams.get('reservationId'))) });
       }
-      if (u.pathname === '/api/staff-reservations' && m === 'GET') return J({ ok: true, client: null, departs: [] });
+      if (u.pathname === '/api/staff-reservations' && m === 'GET') {
+        // Un seul client deja venu : le numero du scenario [I] (ses 9 derniers chiffres).
+        const tape = String(u.searchParams.get('client') || '');
+        const client = tape.endsWith('470556677') ? { nom: 'Lucas Martin', visites: 3, derniere: '2026-06-14', derniereActivite: 'Bowling', dernieresPersonnes: 6 } : null;
+        return J({ ok: true, client, departs: [] });
+      }
       if (u.pathname === '/api/staff-reservations' && m === 'POST') {
         const corps = JSON.parse(init.body || '{}');
         if (corps.dryRun && Array.isArray(corps.candidats)) {
@@ -541,7 +575,192 @@ async function scenarioH(page, verifier) {
   await page.evaluate(() => closeQuickBook());
 }
 
-const SCENARIOS = { A: scenarioAB, B: scenarioAB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH };
+// ── [I] ───────────────────────────────────────────────────────────────────────
+// Le comptoir se juge a l heure du centre : [I] tourne dans une page figee a
+// 15:12, heure de Bruxelles, aujourd hui (centre ouvert, depart a 15:30 dans
+// la demi-heure), quelle que soit l heure du gate. Le soir, la fenetre disait
+// « hors horaires » et le plan du serveur ne venait jamais (2026-10-08).
+function instantComptoir() {
+  const jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date());
+  const [y, m, d] = jour.split('-').map(Number);
+  for (let decalage = -3; decalage <= 3; decalage += 1) {
+    const t = new Date(Date.UTC(y, m - 1, d, 15 - decalage, 12, 0));
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).formatToParts(t);
+    const lire = (k) => (parts.find((p) => p.type === k) || {}).value;
+    if (`${lire('year')}-${lire('month')}-${lire('day')}` === jour && Number(lire('hour')) % 24 === 15) return t;
+  }
+  throw new Error(`15:12 introuvable a Bruxelles le ${jour}`);
+}
+
+// Un groupe qui joue dans la demi-heure qui vient, a l heure lue dans la
+// page. `demain` : la meme heure demain.
+async function ouvrirAuComptoir(page, { demain = false } = {}) {
+  return page.evaluate((demain) => {
+    closeQuickBook();
+    const maintenant = currentTimeDecimal();
+    const prochaine = Math.ceil(maintenant * 2) / 2;
+    const heure = numToTime(prochaine < 24 ? prochaine : Math.floor(maintenant * 2) / 2);
+    let date = todayStr();
+    if (demain) {
+      const d = parseLocalDate(date);
+      d.setDate(d.getDate() + 1);
+      date = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+    }
+    openQuickBook({ date, startTime: heure, type: 'bowling', pax: 4 });
+    return { date, heure };
+  }, demain);
+}
+
+function lireClient(page) {
+  return page.evaluate(() => {
+    const m = document.querySelector('#quickBookOverlay .qb-modal.rv');
+    const q = (sel) => (m ? m.querySelector(sel) : null);
+    const qui = q('#qbQui');
+    return {
+      badge: ((q('.rv-eyebrow em') || {}).textContent || '').trim(),
+      qui: Boolean(qui),
+      invite: qui ? qui.placeholder : '',
+      tel: Boolean(q('#qbPhone')),
+      nom: Boolean(q('#qbName')),
+      nomValeur: q('#qbName') ? q('#qbName').value : null,
+      plus: m ? [...m.querySelectorAll('[id^="rvPlus"]')].map((b) => b.textContent.trim()) : [],
+      reconnu: Boolean(qui && qui.parentElement.querySelector('.rv-tag')),
+      etat: quickBookState ? { name: quickBookState.name, phone: quickBookState.phone } : null,
+    };
+  });
+}
+
+async function scenarioI(page, verifier) {
+  // 1. L ouverture : un seul champ, rien d obligatoire, le billet le dit.
+  const ouvert = await ouvrirAuComptoir(page);
+  await planPose(page, true);
+  const a = await lireClient(page);
+  verifier('I', a.badge === 'au comptoir', 'MONTAGE : un depart dans la demi-heure ouvre la fenetre « au comptoir »', `${ouvert.date} ${ouvert.heure}, badge « ${a.badge} »`);
+  verifier('I', a.qui && a.invite === 'Prénom ou téléphone (facultatif)' && !a.tel && !a.nom, 'au comptoir, UN champ « Prénom ou téléphone (facultatif) », ni telephone ni nom a remplir', JSON.stringify(a));
+  verifier('I', a.plus.includes('+ Téléphone') && a.plus.includes('+ Note pour l’équipe') && a.plus.includes('+ E-mail'), 'le reste se rajoute d un toucher (+ Téléphone, + Note, + E-mail)', a.plus.join(' · '));
+
+  // 2. Des lettres : le nom. Puis des chiffres : le telephone, et « +
+  // Téléphone » devient « + Nom » SUR PLACE (le meme bouton sous le doigt).
+  await page.click('#qbQui');
+  await page.evaluate(() => { document.getElementById('rvPlusAutre').__qa = 1; });
+  await page.keyboard.type('Lucas', { delay: 10 });
+  const lettres = await lireClient(page);
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('0470 99 88 77', { delay: 10 });
+  const chiffres = await page.evaluate(() => { const b = document.getElementById('rvPlusAutre'); return { meme: Boolean(b && b.__qa === 1), texte: b ? b.textContent.trim() : '', focus: document.activeElement ? document.activeElement.id : '', name: quickBookState.name, phone: quickBookState.phone }; });
+  verifier('I', lettres.etat.name === 'Lucas' && lettres.etat.phone.replace(/\D/g, '').length <= 2 && lettres.plus.includes('+ Téléphone'), 'des lettres : c est le nom, le telephone reste vide', JSON.stringify(lettres.etat));
+  verifier('I', chiffres.phone === '0470 99 88 77' && chiffres.name === '', 'des chiffres : c est le telephone, et les lettres d avant ne restent pas en nom', JSON.stringify(chiffres));
+  verifier('I', chiffres.meme && chiffres.texte === '+ Nom' && chiffres.focus === 'qbQui', '« + Téléphone » devient « + Nom » sur place, le champ garde le focus', JSON.stringify(chiffres));
+
+  // 3. Entree dans le champ unique cree : numero mis en forme, nom par defaut.
+  await page.waitForTimeout(600);
+  await planPose(page, true);
+  await page.evaluate(() => { window.__QA_CREES__.length = 0; });
+  await page.focus('#qbQui');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
+  const cree = await page.evaluate(() => window.__QA_CREES__[0] || null);
+  const ferme = await fenetreFermee(page);
+  verifier('I', Boolean(cree) && /^\+32/.test(String(cree.phone || '')) && String(cree.phone).replace(/\D/g, '').endsWith('470998877') && cree.name === 'Client', 'Entree dans le champ unique cree le dossier (numero mis en forme, nom par defaut)', cree ? `${cree.name} / ${cree.phone}` : 'aucun POST');
+  verifier('I', ferme, 'la fenetre se ferme une fois le dossier cree');
+
+  // 4. Un numero deja venu : « reconnu » pendant la frappe, son nom parait
+  // sous le numero quand le champ rend la main.
+  await ouvrirAuComptoir(page);
+  await planPose(page, true);
+  await page.click('#qbQui');
+  await page.keyboard.type('0470 55 66 77', { delay: 10 });
+  await page.waitForFunction(() => quickBookState && quickBookState.clientConnu && quickBookState.clientConnu.etat === 'ok', null, { timeout: 5000 }).catch(() => {});
+  const pendant = await lireClient(page);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.waitForTimeout(150);
+  const rendu = await lireClient(page);
+  verifier('I', pendant.reconnu && pendant.etat.name === 'Lucas Martin', 'un numero deja venu : « reconnu » dans le champ pendant la frappe, son nom repris', JSON.stringify(pendant));
+  verifier('I', rendu.nom && rendu.nomValeur === 'Lucas Martin' && !rendu.plus.includes('+ Nom'), 'le champ rendu, le nom reconnu parait sous le numero', JSON.stringify(rendu));
+
+  // 5. Un autre numero : le nom de l ancien ne part pas avec lui.
+  await page.click('#qbQui');
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('0470 99 88 77', { delay: 10 });
+  const change = await lireClient(page);
+  await page.waitForTimeout(600);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.waitForTimeout(150);
+  const apresChange = await lireClient(page);
+  await planPose(page, true);
+  await page.evaluate(() => { window.__QA_CREES__.length = 0; });
+  await page.click('#rvCreer');
+  await page.waitForFunction(() => window.__QA_CREES__.length >= 1, null, { timeout: 8000 }).catch(() => {});
+  const cree2 = await page.evaluate(() => window.__QA_CREES__[0] || null);
+  await fenetreFermee(page);
+  verifier('I', change.etat.name === '' && change.nomValeur === '', 'un autre numero efface le nom reconnu de l ancien, a l ecran comme dans le dossier', JSON.stringify(change));
+  verifier('I', !apresChange.nom && apresChange.plus.includes('+ Nom') && !apresChange.reconnu, 'le champ rendu, « + Nom » revient et « reconnu » s en va', JSON.stringify(apresChange));
+  verifier('I', Boolean(cree2) && cree2.name === 'Client' && String(cree2.phone || '').replace(/\D/g, '').endsWith('470998877'), 'le dossier part avec le nouveau numero, sans le nom de l autre client', cree2 ? `${cree2.name} / ${cree2.phone}` : 'aucun POST');
+
+  // 6. « + Nom » ouvre le nom ; un nom tape a part reste quand on corrige le
+  // numero. Le clic arrive alors que le plan du serveur est en route.
+  await ouvrirAuComptoir(page);
+  await page.click('#qbQui');
+  await page.keyboard.type('0470 99 88 77', { delay: 10 });
+  await page.click('#rvPlusAutre');
+  const focusNom = await page.evaluate(() => (document.activeElement ? document.activeElement.id : ''));
+  await page.keyboard.type('Dupont', { delay: 10 });
+  await page.click('#qbQui');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('8', { delay: 10 });
+  const garde = await lireClient(page);
+  verifier('I', focusNom === 'qbName', '« + Nom » ouvre le champ du nom, le focus dedans', `focus : ${focusNom}`);
+  verifier('I', garde.etat.name === 'Dupont' && garde.nomValeur === 'Dupont' && garde.etat.phone === '+32 470 99 88 78', 'un nom tape a part reste quand on corrige le numero', JSON.stringify(garde));
+
+  // 7. Tout deplie : l autre moitie du client se montre aussi.
+  await ouvrirAuComptoir(page);
+  await page.evaluate(() => toggleQuickBookMore());
+  const tout = await lireClient(page);
+  verifier('I', tout.qui && tout.tel && !tout.plus.includes('+ Téléphone'), 'tout deplie, le telephone se montre sous le champ unique', JSON.stringify(tout));
+
+  // 8. CONTRE-PREUVE : demain a la meme heure, ce n est plus le comptoir.
+  await ouvrirAuComptoir(page, { demain: true });
+  const demain = await lireClient(page);
+  verifier('I', demain.badge !== 'au comptoir' && !demain.qui && demain.tel && demain.nom, 'demain a la meme heure : la fenetre ordinaire (telephone et nom), sans « au comptoir »', JSON.stringify(demain));
+  await page.evaluate(() => closeQuickBook());
+}
+
+// ── [J] ───────────────────────────────────────────────────────────────────────
+async function scenarioJ(page, verifier) {
+  const CAS = [[7, 8], [6, 7, 8], [1, 3, 5], [1, 2, 4, 5], [1, 2, 3, 4, 5, 6, 7, 8], [8]];
+  const enLettres = (p) => (p.length > 2 ? `${p.slice(0, -1).join(', ')} et ${p[p.length - 1]}` : p.join(' et '));
+  const lus = [];
+  try {
+    for (const largeur of [1280, 1180]) {
+      await page.setViewportSize({ width: largeur, height: 820 });
+      for (const pistes of CAS) {
+        await page.evaluate(({ jour, pistes }) => { closeQuickBook(); openQuickBook({ date: jour, startTime: '14:00', type: 'bowling', pax: pistes.length * 6, lanes: pistes }); }, { jour: JOUR, pistes });
+        await page.waitForTimeout(150);
+        lus.push(await page.evaluate(({ largeur, pistes }) => {
+          const bouton = document.querySelector('[data-rv-ligne="bowling"] .rv-lc-h .rv-place');
+          const b = bouton ? bouton.querySelector('b') : null;
+          if (!b) return { largeur, pistes, texte: '', coupe: true, libelle: bouton ? bouton.getAttribute('aria-label') : '' };
+          const r = document.createRange();
+          r.selectNodeContents(b);
+          return { largeur, pistes, texte: b.textContent, coupe: r.getBoundingClientRect().width > b.getBoundingClientRect().width + 0.5, libelle: bouton.getAttribute('aria-label') || '' };
+        }, { largeur, pistes }));
+      }
+    }
+  } finally {
+    await page.setViewportSize({ width: 1280, height: 820 });
+    await page.evaluate(() => closeQuickBook());
+  }
+  const coupees = lus.filter((l) => l.coupe);
+  const deux = lus.find((l) => l.largeur === 1280 && l.pistes.join() === '7,8');
+  const sansListe = lus.filter((l) => !l.libelle.endsWith(`${l.pistes.length > 1 ? 'pistes' : 'piste'} ${enLettres(l.pistes)}`));
+  verifier('J', lus.length === CAS.length * 2 && lus.every((l) => l.texte), 'MONTAGE : chaque pastille de pistes choisies est a l ecran', lus.map((l) => `${l.largeur}:${l.texte || '(rien)'}`).join(' | '));
+  verifier('J', coupees.length === 0, 'aucune pastille de pistes coupee, de 1 a 8 pistes, a 1280 et 1180 px', coupees.length ? coupees.map((l) => `${l.largeur} ${JSON.stringify(l.pistes)} « ${l.texte} »`).join(' | ') : [...new Set(lus.map((l) => l.texte))].join(' · '));
+  verifier('J', Boolean(deux) && deux.texte === 'Pistes 7 et 8', 'deux pistes se disent en toutes lettres : « Pistes 7 et 8 », comme la maquette', deux ? deux.texte : 'absente');
+  verifier('J', sansListe.length === 0, 'le libelle du bouton garde la liste entiere des pistes', sansListe.map((l) => l.libelle).join(' | ') || 'ok');
+}
+
+const SCENARIOS = { A: scenarioAB, B: scenarioAB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI, J: scenarioJ };
 
 async function passe(browser, lettres, { bavard = true } = {}) {
   const echecs = new Set();
@@ -549,11 +768,12 @@ async function passe(browser, lettres, { bavard = true } = {}) {
     if (bavard || !cond) console.log(`${cond ? 'OK  ' : 'FAIL'} [${lettre}] ${label}${detail ? `  ->  ${detail}` : ''}`);
     if (!cond) echecs.add(lettre);
   };
-  const tablette = lettres.filter((l) => l !== 'G');
-  const lancer = async (viewport, liste) => {
+  const tablette = lettres.filter((l) => l !== 'G' && l !== 'I');
+  const lancer = async (viewport, liste, { horloge = null } = {}) => {
     if (!liste.length) return;
     const contexte = await browser.newContext({ viewport, deviceScaleFactor: 1 });
     const page = await contexte.newPage();
+    if (horloge) await page.clock.setFixedTime(horloge);
     page.setDefaultTimeout(8000);
     const erreurs = [];
     page.on('pageerror', (e) => erreurs.push(`PAGEERROR: ${e.message}`));
@@ -575,6 +795,7 @@ async function passe(browser, lettres, { bavard = true } = {}) {
     }
   };
   await lancer({ width: 1280, height: 820 }, tablette);
+  if (lettres.includes('I')) await lancer({ width: 1280, height: 820 }, ['I'], { horloge: instantComptoir() });
   if (lettres.includes('G')) await lancer({ width: 390, height: 844 }, ['G']);
   return echecs;
 }
@@ -586,7 +807,7 @@ async function main() {
   let rouge = false;
   try {
     if (!arg) {
-      const echecs = await passe(browser, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
+      const echecs = await passe(browser, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
       rouge = echecs.size > 0;
       console.log(rouge ? `\nreserver-v5-check : ${[...echecs].join(', ')} en echec` : '\nreserver-v5-check: ALL OK, la fenetre cree ce qu elle montre.');
     } else {

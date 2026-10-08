@@ -10923,7 +10923,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 /* UNE LIGNE PAR ACTIVITE : tout d un regard, le detail au chevron */
 .qb-modal.rv .rv-lc { position: relative; border: 1px solid var(--rv-line); border-radius: 16px; background: var(--rv-raised); }
 .qb-modal.rv .rv-lc::before { content: ''; position: absolute; left: -1px; top: 16px; height: 30px; width: 3px; border-radius: 0 3px 3px 0; background: var(--rv-c); }
-.qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 118px minmax(0, 1fr) 34px; align-items: center; column-gap: 10px; min-height: 56px; padding: 8px 10px 8px 18px; }
+.qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 128px minmax(0, 1fr) 34px; align-items: center; column-gap: 10px; min-height: 56px; padding: 8px 10px 8px 18px; }
 .qb-modal.rv .rv-lc-h > * { justify-self: start; min-width: 0; }
 .qb-modal.rv .rv-lc-h .rv-etat-l { justify-self: end; min-width: auto; }
 .qb-modal.rv .rv-lc.is-ouverte { border-color: color-mix(in srgb, var(--rv-c) 55%, var(--rv-line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-c) 12%, transparent); }
@@ -11267,7 +11267,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 /* TABLETTE ETROITE : la ligne passe sur deux rangs, le billet se resserre */
 @media (max-width: 1240px) {
   .qb-modal.rv { grid-template-columns: minmax(0, 1fr) 356px; }
-  .qb-modal.rv .rv-lc-h { grid-template-columns: 112px 140px 168px 112px minmax(0, 1fr) 34px; column-gap: 8px; }
+  .qb-modal.rv .rv-lc-h { grid-template-columns: 112px 140px 168px 124px minmax(0, 1fr) 34px; column-gap: 8px; }
   .qb-modal.rv .rv-tailles button:nth-child(n+8) { display: none; }
 }
 @media (max-width: 1100px) {

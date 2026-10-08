@@ -112,13 +112,28 @@ async function main({ roiOnly = false, capture = false } = {}) {
         await page.evaluate(() => closeQuickBook());
       });
       if (width === 1440 && theme === 'light') await scenario('dialog-edge-cases', async () => {
-        const full = await page.evaluate(() => {
-          openQuickBook(); toggleQuickBookMore();
-          return [...document.querySelectorAll('.qb-modal input,.qb-modal textarea')].map(el => ({ id: el.id, name: el.labels?.[0]?.textContent || el.getAttribute('aria-label') }));
-        });
+        // Le jour vient du scenario, jamais de l heure du gate : une fenetre
+        // ouverte pour la demi-heure qui vient est « au comptoir » (un champ
+        // unique, maquette v5), une autre heure redemande telephone et nom.
+        const champs = (auComptoir) => page.evaluate((auComptoir) => {
+          let date = todayStr(), startTime = numToTime(Math.min(23.5, Math.ceil(currentTimeDecimal() * 2) / 2));
+          if (!auComptoir) {
+            const d = parseLocalDate(state.currentDate); d.setDate(d.getDate() + 7);
+            date = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+            startTime = '16:00';
+          }
+          openQuickBook({ date, startTime }); toggleQuickBookMore();
+          const lus = [...document.querySelectorAll('.qb-modal input,.qb-modal textarea')].map(el => ({ id: el.id, name: el.labels?.[0]?.textContent || el.getAttribute('aria-label') }));
+          closeQuickBook();
+          return lus;
+        }, auComptoir);
+        const full = await champs(false);
         // v5 : le formulaire complet = le jour, les joueurs, le contact, l e-mail
         // et la note ; l heure se regle a l horloge de chaque ligne.
         ok(['qbDate', 'qbPax', 'qbPhone', 'qbName', 'qbEmail', 'qbNotes'].every((id) => full.some((f) => f.id === id)) && full.every(f => f.name), 'F1-full-fields', full);
+        const comptoir = await champs(true);
+        ok(['qbDate', 'qbPax', 'qbQui', 'qbPhone', 'qbEmail', 'qbNotes'].every((id) => comptoir.some((f) => f.id === id)) && !comptoir.some((f) => f.id === 'qbName') && comptoir.every(f => f.name), 'F1-full-fields-comptoir', comptoir);
+        await page.evaluate(() => { openQuickBook(); });
         const focusCases = await page.evaluate(() => {
           const root = document.querySelector('.qb-modal'), fixture = document.createElement('div');
           fixture.innerHTML = '<details><summary id="qa-summary">Options QA</summary><button id="qa-closed">Caché</button></details><button id="qa-disabled" disabled>Inactif</button><button id="qa-minus" tabindex="-1">Sans tabulation</button><div inert><button id="qa-inert">Inerte</button></div>';

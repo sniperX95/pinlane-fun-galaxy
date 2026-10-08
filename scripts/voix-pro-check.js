@@ -251,7 +251,11 @@ const COMPARAISON = /(?:includes|indexOf|startsWith|endsWith|test|match|search)\
 // separes d une espace) et « etape » y criait a l accent manquant. Un
 // selecteur commence par « . » ou « # » et n est fait que d identifiants et de
 // combinateurs ; une lettre accentuee n en fait jamais partie.
-const SELECTEUR_CSS = /^[.#][\w-]+(?:\s*[>+~]?\s*[.#]?[\w-]+)*$/;
+// Chaque repetition commence par un separateur (combinateur, blanc, ou « . »
+// / « # » colle) : un identifiant ne se redecoupe pas d une repetition a
+// l autre. La forme « tout facultatif sauf le mot » backtrackait en 2^n sur un
+// litteral qui commence par « . » et echoue (une lecture : 1 s -> 50 s).
+const SELECTEUR_CSS = /^[.#][\w-]+(?:(?:\s*[>+~]\s*|\s+)[.#]?[\w-]+|[.#][\w-]+)*$/;
 function sansAccent(l) {
   if (COMPARAISON.test(l.avant.replace(/\s+$/, ''))) return null;
   if (SELECTEUR_CSS.test(String(l.texte).trim())) return null;

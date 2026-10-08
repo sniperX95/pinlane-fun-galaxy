@@ -345,10 +345,23 @@ async function tablette(browser, seulement) {
     if (veut('E')) {
       const r = await page.evaluate(() => { state.staffResourceView = 'all'; renderStaff(); return document.querySelectorAll('#resList [data-pl-stagger] > *').length; });
       await repos(page, 600);
+      // UNE ENTREE EN COURS (2026-10-08). Depuis que le motion retire pl-in a la
+      // fin de l animation (2e684d8), une cascade rejouee sur des lignes au
+      // repos n a rien a redemarrer : ni la lecture unique ni la contre-preuve
+      // ne s executaient plus. E garde le REDEMARRAGE : une premiere cascade
+      // remet les lignes en entree (sa mise en page soldee avant la mesure),
+      // la cascade mesuree les relance pendant qu elles le sont encore.
+      await page.evaluate(() => { PinlaneMotion.oublier(); PinlaneMotion.cascade(document); void document.documentElement.offsetWidth; });
       const m0 = await metriques(cdp);
-      const decalees = await page.evaluate(() => { PinlaneMotion.oublier(); PinlaneMotion.cascade(document); return document.querySelectorAll('#resList .pl-in').length; });
+      const { enEntree, decalees } = await page.evaluate(() => {
+        const enEntree = document.querySelectorAll('#resList .pl-in').length;
+        PinlaneMotion.oublier();
+        PinlaneMotion.cascade(document);
+        return { enEntree, decalees: document.querySelectorAll('#resList .pl-in').length };
+      });
       const m1 = await metriques(cdp);
       const mises = m1.LayoutCount - m0.LayoutCount;
+      verifier('E', enEntree >= 20, 'MONTAGE : la cascade est rejouee sur des lignes encore en entree', `${enEntree} lignes en entree sur ${r}`);
       verifier('E', decalees >= 20, 'MONTAGE : la cascade redemarre beaucoup de lignes', `${decalees} lignes decalees sur ${r}`);
       verifier('E', mises <= 2, 'la cascade redemarre toutes ses lignes en une seule lecture', `${mises} mise(s) en page pour ${decalees} lignes`);
       await repos(page);

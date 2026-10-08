@@ -92,7 +92,7 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
   check(title.trim().length>0&&text.trim().length>0,label+' meaningful named details');
   for(const fragment of expectedFragments) { const present=fragment==='sans cadeaux' ? /(?:sans|hors).{0,60}cadeaux/i.test(text) : text.includes(fragment); check(present,label+' preserves known rule '+fragment+(present?'':' in '+JSON.stringify(text))); }
   if(text.includes('Information longue pour vérifier le défilement')) {
-    await frame.locator('.fg-info-body').evaluate(body=>{body.scrollTop=0;body.focus();});await page.keyboard.press('PageDown');await page.waitForTimeout(100);
+    await frame.locator('.fg-info-body').evaluate(body=>{body.scrollTop=0;body.focus();});await page.keyboard.press('PageDown');await frame.waitForFunction(()=>document.querySelector('.fg-info-body').scrollTop>0,null,{timeout:2000}).catch(()=>{});
     check(await frame.locator('.fg-info-body').evaluate(body=>body.scrollTop>0),label+' long details are scrollable with the keyboard');
     const scroll=await frame.locator('.fg-info-body').evaluate(body=>{body.scrollTop=body.scrollHeight;const rect=body.getBoundingClientRect(),last=body.lastElementChild.getBoundingClientRect();return {canScroll:body.scrollHeight>body.clientHeight,scrolled:body.scrollTop>0,lastReachable:last.bottom<=rect.bottom+2&&last.bottom>=rect.top};});
     check(scroll.canScroll&&scroll.scrolled&&scroll.lastReachable,label+' long configured details scroll and final text remains reachable');

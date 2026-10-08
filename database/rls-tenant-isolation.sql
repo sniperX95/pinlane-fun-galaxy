@@ -51,7 +51,9 @@ declare
     'reservation_archive',
     'client_note_versions',
     -- Les gestes de la fenetre des offres (0057) : des statistiques de centre.
-    'upsell_events'
+    'upsell_events',
+    -- Les departs epingles de la fenetre Reserver (0058) : un reglage de centre.
+    'reservation_departs_epingles'
   ];
 begin
   foreach target in array tenant_tables loop

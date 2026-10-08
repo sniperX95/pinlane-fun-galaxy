@@ -289,6 +289,11 @@ const MIGRATIONS = [
     file: 'database/upsell-events-schema.sql',
     description: "Les gestes du client dans la fenetre des offres de fin de reservation (vue, mise en avant, ajout, accepte, annule, ferme, reserve), avec la raison de chaque offre, son rang et sa remise prouvee : de quoi savoir quelles raisons font prendre un add-on. Aucune donnee personnelle (visite = identifiant au hasard). Table additive ; retour : database/rollbacks/0057_upsell_events.down.sql.",
   },
+  {
+    id: '0058_departs_epingles',
+    file: 'database/departs-epingles-schema.sql',
+    description: "Les departs rapides epingles par le gerant dans la fenetre Reserver de la console : une ligne par centre, une liste courte de compositions nommees (type, formule, activites, parties ou duree). Aucune donnee de client. Table additive, lecture fail-soft tant qu elle n existe pas. Rollback : database/rollbacks/0058_departs_epingles.down.sql (la table est renommee, jamais supprimee)",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -251,12 +251,10 @@
   function htmlPlanning(combien) {
     var visibles = D.RESERVATIONS.filter(function (r) {
       if (etat.filtre === 'all') return true;
-      if (etat.filtre === 'open') return r.statut !== 'paid';
       return r.statut === etat.filtre;
     });
     var comptes = {
       all: D.RESERVATIONS.length,
-      open: D.RESERVATIONS.filter(function (r) { return r.statut !== 'paid'; }).length,
       arrived: D.RESERVATIONS.filter(function (r) { return r.statut === 'arrived'; }).length,
       pending: D.RESERVATIONS.filter(function (r) { return r.statut === 'pending'; }).length,
       paid: D.RESERVATIONS.filter(function (r) { return r.statut === 'paid'; }).length,
@@ -306,7 +304,7 @@
 
     h += '<div class="d-boite" data-d-bloc="liste">'
       + '<div class="d-boite-tete"><div><h2>Réservations Bowling</h2>'
-      + '<p>Bowling uniquement · ' + comptes.open + ' à gérer maintenant · ' + comptes.paid + ' terminées</p></div></div>'
+      + '<p>Bowling uniquement · ' + comptes.pending + ' à venir · ' + comptes.arrived + ' sur place · ' + comptes.paid + ' payées</p></div></div>'
       + '<div class="d-filtres">';
     D.FILTRES.forEach(function (f) {
       h += '<button type="button" class="d-puce' + (etat.filtre === f.cle ? ' is-actif' : '') + '"'
@@ -318,7 +316,7 @@
     }
     visibles.forEach(function (r, i) {
       var etiq = r.statut === 'arrived' ? ['is-arr', 'Sur place']
-        : (r.statut === 'paid' ? ['is-pay', 'Terminée'] : ['is-att', 'À venir']);
+        : (r.statut === 'paid' ? ['is-pay', 'Payé'] : ['is-att', 'À venir']);
       h += '<div class="d-ligne" data-d-casc="' + Math.min(i + 1, 8) + '">'
         + '<span class="d-ligne-h">' + D.heures(r.start) + '</span>'
         + '<span class="d-ligne-qui"><b>' + ech(r.name) + '</b>'

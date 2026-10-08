@@ -140,12 +140,15 @@
     { cle: 'toutes', titre: 'Toutes les réservations', sous: '2 hors planning', compte: DEMO.length + 12 },
   ];
 
+  /* Les puces de la liste du produit depuis le 2026-10-08 : « À gérer » et
+     « Terminées » n'existent plus, « Payées » range les dossiers encaissés.
+     La démonstration n'a ni retard ni clôture : elle garde les trois états
+     qu'elle montre, dans l'ordre du produit. */
   var FILTRES = [
     { cle: 'all', libelle: 'Tout' },
-    { cle: 'open', libelle: 'À gérer' },
-    { cle: 'arrived', libelle: 'Sur place' },
     { cle: 'pending', libelle: 'À venir' },
-    { cle: 'paid', libelle: 'Terminées' },
+    { cle: 'arrived', libelle: 'Sur place' },
+    { cle: 'paid', libelle: 'Payées' },
   ];
 
   /* ---- L'AGENT MARKETING ---------------------------------------------------

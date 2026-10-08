@@ -197,10 +197,66 @@ async function main() {
     await page.evaluate(INSTRUMENT);
 
     console.log('\n[1] LA CONSOLE AU REPOS NE BOUGE PAS');
+    // Le tic de la minute redessine le planning : l heure avance, c est une vraie
+    // nouvelle. Le repos se mesure donc ENTRE deux minutes, et le tic a sa propre
+    // mesure en [1b]. Une fenetre qui chevauchait la minute rougissait ou passait
+    // selon l heure du lancement (2026-10-08).
+    await page.waitForFunction(() => { const s = (Date.now() % 60000) / 1000; return s > 1 && s < 49; }, null, { timeout: 65000, polling: 200 });
     const repos = await mesurerRepos(page, 9);
     ok(repos.renders.staffData === 0 && repos.renders.table === 0,
       `rien ne se re-rend quand rien ne change (staffData ${repos.renders.staffData}, table ${repos.renders.table})`);
     ok(repos.anim.length === 0, `aucune animation au repos (${repos.anim.length}${repos.anim.length ? ' : ' + detail(repos.anim) : ''})`);
+
+    console.log('\n[1b] LE TIC DE LA MINUTE REDESSINE SANS QUE CA SE VOIE');
+    // Sonde du 2026-10-08 : a chaque minute, trois cartes rejouaient leur entree.
+    // Leur classe pl-in restait apres l animation, et le repaint invisible du tic
+    // (animation coupee le temps du rendu, puis rendue) la faisait repartir.
+    const mesurerTic = async () => {
+      await page.evaluate(() => {
+        window.__ANIM__ = []; window.__RENDERS__ = { staffData: 0, table: 0, pos: 0, planning: 0 };
+        tickStaffMinute();
+      });
+      await page.waitForTimeout(1500);
+      return page.evaluate(() => ({ anim: window.__ANIM__, renders: window.__RENDERS__ }));
+    };
+    const tic = await mesurerTic();
+    ok(tic.renders.table >= 1, `le tic a bien redessine le planning (table ${tic.renders.table})`);
+    ok(tic.anim.length === 0, `aucune animation au tic de la minute (${tic.anim.length}${tic.anim.length ? ' : ' + detail(tic.anim) : ''})`);
+
+    // Contre-preuve : les cartes visibles rejouent une entree comme la cascade la
+    // pose, pendant que la fin d animation est arretee avant le module de
+    // mouvement (capture sur window, qui passe avant document). La classe reste
+    // alors posee comme avant le correctif, et le meme tic doit rejouer. La liste
+    // est d abord stabilisee par un tic : celui qui suit un changement de jour
+    // la reconstruit, et des cartes neuves n ont rien a rejouer (sonde du
+    // 2026-10-08).
+    const rejouerUneEntree = () => page.evaluate(() => {
+      const cartes = [...document.querySelectorAll('#resList .res-row')].filter((el) => el.getClientRects().length > 0).slice(0, 6);
+      cartes.forEach((el) => el.classList.remove('pl-in'));
+      cartes.forEach((el) => { void el.offsetWidth; el.classList.add('pl-in'); });
+      return cartes.length;
+    });
+    const bloquerLaFin = (oui) => page.evaluate((poser) => {
+      if (!window.__BLOQUE_FIN__) window.__BLOQUE_FIN__ = (e) => e.stopPropagation();
+      ['animationend', 'animationcancel'].forEach((type) => {
+        if (poser) window.addEventListener(type, window.__BLOQUE_FIN__, true);
+        else window.removeEventListener(type, window.__BLOQUE_FIN__, true);
+      });
+    }, oui);
+    await mesurerTic();
+    await bloquerLaFin(true);
+    const rejouees = await rejouerUneEntree();
+    await page.waitForTimeout(900);
+    const restees = await page.evaluate(() => [...document.querySelectorAll('#resList .pl-in')].filter((el) => el.getClientRects().length > 0).length);
+    ok(rejouees >= 1 && restees >= 1, `contre-preuve montee : ${restees} carte(s) visible(s) gardent pl-in apres leur entree`);
+    const ticMute = await mesurerTic();
+    ok(ticMute.anim.length > 0, `classes d entree laissees en place : le tic REJOUE des entrees (${ticMute.anim.length}${ticMute.anim.length ? ' : ' + detail(ticMute.anim) : ''})`);
+    await bloquerLaFin(false);
+    await rejouerUneEntree();
+    await page.waitForTimeout(900);
+    const ticRestaure = await mesurerTic();
+    ok(ticRestaure.renders.table >= 1 && ticRestaure.anim.length === 0,
+      `restauration : la meme entree, puis le tic redessine (table ${ticRestaure.renders.table}) sans rien rejouer (${ticRestaure.anim.length})`);
 
     console.log('\n[2] LE SERVEUR CHANGE UNE RESA A CHAQUE POLL : ca se RAFRAICHIT sans se VOIR');
     const mute = await mesurerMutations(page, 12);

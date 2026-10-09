@@ -10891,7 +10891,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-seg button.is-on { background: var(--rv-vide); color: var(--rv-text); }
 .qb-modal.rv .rv-seg button:disabled { opacity: .4; }
 .qb-modal.rv .rv-plan-tete .rv-dr { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.qb-modal.rv .rv-puce { height: 30px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--rv-line); background: transparent; font-size: 12.5px; font-weight: 600; line-height: 1; color: var(--rv-muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.qb-modal.rv .rv-puce { height: 40px; padding: 0 11px; border-radius: 8px; border: 1px solid transparent; background: transparent; font-size: 12.5px; font-weight: 600; line-height: 1; color: var(--rv-muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .qb-modal.rv .rv-puce svg { width: 14px; height: 14px; }
 .qb-modal.rv .rv-puce b { color: var(--rv-text); font-weight: 650; }
 .qb-modal.rv .rv-legende-departs { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
@@ -11171,7 +11171,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-connu b { color: var(--rv-text); font-weight: 650; }
 .qb-modal.rv .rv-connu .rv-refaire { margin-left: auto; height: 30px; padding: 0 11px; border-radius: 999px; border: 0; background: var(--rv-bleu); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; flex: none; }
 .qb-modal.rv .rv-plus { display: flex; flex-wrap: wrap; gap: 6px; }
-.qb-modal.rv .rv-plus button { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--rv-line); background: transparent; font-size: 12.5px; font-weight: 600; line-height: 1; color: var(--rv-muted); }
+.qb-modal.rv .rv-plus button { height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; font-size: 12.5px; font-weight: 600; line-height: 1; color: var(--rv-muted); }
 .qb-modal.rv .rv-plus button.is-on { border-style: solid; border-color: color-mix(in srgb, var(--rv-bleu) 45%, transparent); background: var(--rv-bleu-voile); color: var(--rv-text); }
 .qb-modal.rv .rv-note-champ { display: flex; flex-direction: column; gap: 5px; }
 .qb-modal.rv .rv-prix { display: flex; align-items: flex-end; gap: 12px; }
@@ -11181,7 +11181,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-prix .rv-pp b { color: var(--rv-text); font-weight: 650; }
 .qb-modal.rv .rv-prix.is-vide .rv-m { color: var(--rv-faint); }
 .qb-modal.rv .rv-prix.is-vide .rv-pp, .qb-modal.rv .rv-prix.is-vide .rv-revoir { visibility: hidden; }
-.qb-modal.rv .rv-revoir { flex: none; height: 30px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--rv-line-strong); background: transparent; font-size: 12.5px; font-weight: 650; line-height: 1; color: var(--rv-bleu-texte); white-space: nowrap; }
+.qb-modal.rv .rv-revoir { flex: none; height: 40px; padding: 0 11px; border-radius: 8px; border: 1px solid transparent; background: transparent; font-size: 12.5px; font-weight: 600; line-height: 1; color: var(--rv-muted); text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+@media (hover: hover) {
+  .qb-modal.rv :is(.rv-puce, .rv-plus button, .rv-revoir):hover { background: var(--rv-vide); color: var(--rv-text); }
+}
+.qb-modal.rv :is(.rv-puce, .rv-plus button, .rv-revoir):active { background: var(--rv-vide); color: var(--rv-text); }
 .qb-modal.rv .rv-prix-edit { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .qb-modal.rv .rv-prix-champs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .qb-modal.rv .rv-prix-champs label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 650; color: var(--rv-faint); }
@@ -20858,7 +20862,7 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
      (2026-10-08, « les couleurs sont pas les memes partout »). */
   --lp-page: var(--page); --lp-surface: var(--surface); --lp-line: var(--line); --lp-line-strong: var(--line-strong);
   --lp-text: var(--text); --lp-muted: var(--muted); --lp-faint: var(--faint); --lp-vide: var(--subtle);
-  /* Le contour d une case libre : 3:1 au moins sur la rangee au repos, survolee
+  /* Le contour commun de la capacite libre : 3:1 sur la rangee au repos, survolee
      et cible d un depot (3,62 / 3,36 / 3,18 en clair, 3,72 / 3,43 / 3,12 en
      sombre). Aucun gris de la console ne tombe entre le filet (1,7:1) et le
      texte pale (7:1), d ou une valeur propre. */
@@ -20973,31 +20977,31 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 
 /* LA JOURNEE : chaque depart, ses armes en cases. */
 .lp-journee { background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 20px; overflow: hidden; }
-.lp-journee__h { display: flex; align-items: center; min-height: 52px; padding: 8px 12px 8px 18px; border-bottom: 1px solid var(--lp-line); gap: 8px; }
+.lp-journee__h { display: flex; align-items: center; min-height: 36px; padding: 0 12px 0 14px; border-bottom: 1px solid var(--lp-line); gap: 8px; }
 .lp-journee__h .lp-lbl { font-size: 15px; letter-spacing: 0; text-transform: none; }
 .lp-passe { margin-left: auto; height: 36px; padding: 0 8px; border: 0; background: transparent; color: var(--lp-faint); border-radius: 8px; }
 .lp-passe:hover { color: var(--lp-text); }
 .lp-dep { position: relative; display: grid; grid-template-columns: 58px minmax(0, 1fr) 72px; grid-template-rows: auto auto; column-gap: 16px; row-gap: 4px; align-items: center; padding: 11px 18px 12px; border-top: 1px solid var(--lp-line); cursor: pointer; transition: background-color .15s ease, opacity .15s ease; }
 .lp-journee__h + .lp-dep { border-top: 0; }
 .lp-dep__h { grid-row: 1 / span 2; align-self: start; padding-top: 1px; font-size: 17px; font-weight: 700; }
-.lp-dep__jauge { grid-column: 2; grid-row: 1; display: block; width: 100%; padding: 0; border: 0; background: transparent; border-radius: 6px; text-align: left; }
+.lp-dep__jauge { grid-column: 2; grid-row: 1; display: flex; align-items: center; width: 100%; min-height: 16px; padding: 0; border: 0; background: transparent; border-radius: 6px; text-align: left; }
 .lp-dep__n { grid-column: 3; grid-row: 1 / span 2; align-self: start; text-align: right; line-height: 1.15; }
 .lp-dep__n b { display: block; font-size: 16px; font-weight: 700; }
 .lp-dep__n small { display: block; font-size: 12px; font-weight: 500; color: var(--lp-faint); }
 .lp-dep__n .is-plein, .lp-dep__n .is-trop { color: var(--lp-rouge-texte); font-weight: 650; }
 .lp-dep__n .is-plus { color: var(--lp-bleu-texte); }
-.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), minmax(0, 1fr)); gap: 3px; }
-/* Libre ou pris se lit a la FORME : une case libre est un contour, une case
-   prise est pleine. Un gris plein ne se voyait pas (1,2:1 sur la rangee,
-   2026-10-09) et le foncer l aurait confondu avec un groupe. */
-.lp-cases i { height: 16px; border-radius: 4px; }
-.lp-cases i:not([class]) { box-shadow: inset 0 0 0 1px var(--lp-case); }
+.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), minmax(0, 1fr)); gap: 0; width: 100%; background: var(--lp-vide); border-radius: 4px; box-shadow: inset 0 0 0 1px var(--lp-case); overflow: hidden; }
+/* Une barre continue, pas une boite par arme : le contour commun garde la
+   capacite libre lisible, les bandes colorees reperent les groupes. Chaque
+   arme garde son element pour les gestes et le compte exact du moteur. */
+.lp-cases i { height: 8px; border-radius: 0; }
+.lp-cases i:not([class]) { box-shadow: none; }
 .lp-cases i[class^='st-'], .lp-cases i[class*=' st-'] { background: var(--lp-c); }
 .lp-cases i.is-prive { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--lp-c) 55%, transparent) 0 3px, color-mix(in srgb, var(--lp-c) 22%, transparent) 3px 6px); }
 .lp-cases i.is-enligne { background: repeating-linear-gradient(135deg, var(--lp-line-strong) 0 3px, var(--lp-vide) 3px 6px); }
 .lp-cases i.is-chevauche { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--lp-faint) 55%, transparent) 0 2px, transparent 2px 5px); }
-.lp-cases i.is-fantome { background: var(--lp-bleu-clair); box-shadow: inset 0 0 0 1.5px var(--lp-bleu); }
-.lp-cases i.is-choisi { box-shadow: inset 0 0 0 2px var(--lp-surface), 0 0 0 1.5px var(--lp-c); }
+.lp-cases i.is-fantome { background: var(--lp-bleu-clair); box-shadow: inset 0 -2px 0 var(--lp-bleu); }
+.lp-cases i.is-choisi { box-shadow: inset 0 -2px 0 var(--lp-surface); }
 /* Les cases d un groupe se prennent a la main (lpSourisJauge) : la main le dit. */
 .lp-cases i[data-lp-id] { cursor: grab; }
 .lp-qui { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; gap: 2px 14px; min-height: 22px; align-items: center; }
@@ -21094,6 +21098,62 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-dep.is-pose { animation: none; background: var(--lp-bleu-clair); }
 }
 
+/* La vue B : heure, groupes, capacite sur UNE ligne. Les gestes et les
+   elements de la jauge restent identiques ; les groupes nombreux defilent
+   horizontalement dans leur depart, jamais au-dessus d une autre heure. */
+@media (min-width: 901px) {
+  .lp-compact { --lp-row-height: 28px; gap: 6px; padding: 6px 16px 0; }
+  .lp-compact .lp-journee { border-radius: 12px; }
+  .lp-compact .lp-journee.is-two-columns { display: grid; grid-template-columns: repeat(var(--lp-columns, 2), minmax(0, 1fr)); grid-template-rows: 36px repeat(var(--lp-column-rows), var(--lp-row-height)); grid-auto-flow: column; }
+  .lp-compact .lp-journee.is-two-columns .lp-journee__h { grid-column: 1 / -1; grid-row: 1; }
+  .lp-compact .lp-journee.is-two-columns .lp-dep { grid-template-columns: 44px minmax(0, 1fr) 50px 70px; gap: 8px; border-right: 1px solid var(--lp-line); }
+  .lp-compact .lp-dep { grid-template-columns: 56px minmax(0, 1fr) 100px 92px; grid-template-rows: minmax(0, 1fr); column-gap: 12px; row-gap: 0; min-height: var(--lp-row-height); height: var(--lp-row-height); padding: 0 14px; }
+  .lp-compact .lp-dep__h { grid-column: 1; grid-row: 1; align-self: center; padding: 0; font-size: 12px; white-space: nowrap; }
+  .lp-compact .lp-dep__jauge { grid-column: 3; grid-row: 1; min-width: 0; min-height: 16px; align-self: center; }
+  .lp-compact .lp-dep__n { grid-column: 4; grid-row: 1; align-self: center; display: flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; font-size: 10px; }
+  .lp-compact .lp-dep__n b { display: inline; font-size: 12px; }
+  .lp-compact .lp-dep__n small { display: inline; font-size: 10px; }
+  .lp-compact .lp-qui { grid-column: 2; grid-row: 1; flex-wrap: nowrap; min-width: 0; min-height: 22px; height: 100%; gap: 12px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+  .lp-compact .lp-g { flex: none; max-width: none; min-height: 22px; margin: 0; padding: 0 3px; font-size: 11.5px; border-radius: 4px; }
+  .lp-compact .lp-g b { overflow: visible; text-overflow: clip; }
+  .lp-compact .lp-g i { width: 6px; height: 6px; border-radius: 50%; }
+  .lp-compact .lp-qui .lp-g:focus-visible { outline-offset: -2px; }
+  .lp-compact .lp-libre { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .lp-compact .lp-dep.is-enjeu .lp-dep__h::after { display: inline; content: ' ·'; font-size: 11px; margin: 0; }
+  .lp-compact .lp-g.is-la b::after { width: 5px; height: 5px; margin-left: 4px; vertical-align: 1px; }
+  .lp-compact .lp-file { padding-top: 6px; padding-bottom: 6px; }
+  .lp-compact .lp-file__h { min-height: 24px; }
+  .lp-compact .lp-jeton { padding-top: 3px; padding-bottom: 3px; }
+  .lp-compact .lp-synthese .lp-groupes { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .lp-compact .lp-synthese .lp-groupe { flex-shrink: 0; }
+}
+@media (min-width: 1101px) {
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-head { margin-bottom: 8px; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-head > div:first-child { display: flex; align-items: baseline; gap: 12px; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-head h1 { font-size: 18px; margin: 0; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-head .sub { margin: 0; font-size: 12px; }
+  .laser-planning-box:not(.expanded):has(.lp-compact) .planning-head { padding: 4px 14px; min-height: 48px; }
+  .laser-planning-box:not(.expanded):has(.lp-compact) .planning-title-stack { flex-direction: row; align-items: baseline; gap: 8px; }
+  .laser-planning-box:not(.expanded):has(.lp-compact) .planning-head h2 { margin: 0; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .kpi-grid:not(.hidden) { margin-bottom: 8px; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .kpi-grid .kpi { padding: 7px 12px; flex-wrap: nowrap; align-items: center; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .kpi-grid .kpi .label { flex: none; margin: 0; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .kpi-grid .kpi .value { font-size: 16px; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-resource-tabs { margin-bottom: 8px; }
+  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-resource-tab:not(.hidden) { min-height: 36px; padding: 4px 10px; }
+  .lp-compact .lp-prochain { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'quand groupes armes'; }
+  .lp-compact .lp-prochain__quand { max-width: 190px; }
+  .lp-compact .lp-prochain__quand .lp-lbl { flex-basis: 100%; }
+  .lp-compact .lp-prochain__d { font-size: 11px; }
+  .lp-compact .lp-groupes { min-width: 0; }
+  .lp-compact .lp-groupe__t { flex-direction: column; align-items: flex-start; gap: 0; }
+  .lp-compact .lp-groupe__t b { font-size: 12px; }
+  .lp-compact .lp-groupe__t .lp-n { font-size: 10px; }
+  .lp-compact .lp-etat { padding: 0 8px; font-size: 11px; }
+  .lp-compact .lp-alerte { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .lp-compact .lp-alerte > * { flex-shrink: 0; }
+}
+
 @media (max-width: 1100px) {
   .lp-synthese { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
@@ -21111,8 +21171,7 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-dep { grid-template-columns: 48px minmax(0, 1fr) 46px; padding: 10px 14px; column-gap: 10px; row-gap: 6px; }
   .lp-dep__n small { display: none; }
   .lp-dep__n b { font-size: 15px; }
-  .lp-cases { gap: 2px; }
-  .lp-cases i { height: 13px; border-radius: 3px; }
+  .lp-dep__jauge { min-height: 13px; }
   .lp-qui { flex-direction: column; align-items: flex-start; gap: 4px; }
   /* Une ligne de 196 px pour le nom, ses pictos et son compte : les pictos
      cedent du dernier au premier, comme sur une carte bowling serree, et le

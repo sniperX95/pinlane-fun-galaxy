@@ -1,0 +1,48 @@
+'use strict';
+// Fixture-only geometry gate: the whole 10:00–24:00 Laser day must remain
+// visible on desktop. No application API, database or mail access.
+const fs=require('fs'),path=require('path'),Module=require('module');
+process.env.PINLANE_RESERVER_PORT=process.env.PINLANE_FIT_DAY_PORT||'5182';
+const ROOT=path.resolve(__dirname,'..'),FILE=path.join(__dirname,'planning-laser-check.js');
+const mod=new Module(FILE,module);mod.filename=FILE;mod.paths=Module._nodeModulePaths(__dirname);
+mod._compile(fs.readFileSync(FILE,'utf8').replace(/main\(\)\.catch\([\s\S]*?\);\s*$/,'module.exports={journee,installerServeur};'),FILE);
+const lp=mod.exports,fixture=require('./reserver-v5-check'),{chromium}=require('playwright-core');
+const OUT=path.join(ROOT,'artifacts/laser-fit-day-20261010');
+const CLOSE=Number(process.env.PINLANE_FIT_DAY_CLOSE||24);
+async function main(){
+fs.mkdirSync(OUT,{recursive:true});const server=await fixture.serveStatic(),browser=await chromium.launch({executablePath:fixture.BROWSER_PATH,headless:true});const results=[];
+try{for(const viewport of (process.env.PINLANE_FIT_DAY_FAST?[{width:1366,height:768}]:[{width:1440,height:900},{width:1705,height:886},{width:1366,height:768}]))for(const theme of (process.env.PINLANE_FIT_DAY_FAST?['dark']:['dark','light'])){
+const context=await browser.newContext({viewport,serviceWorkers:'block'});await context.route('**/*',r=>new URL(r.request().url()).origin===fixture.BASE_URL?r.continue():r.abort());
+const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+const dossiers=lp.journee();const three=dossiers.find(d=>d.name==='Kinepolis');three.laserGames=3;three.duration=three.totalDuration=1.5;three.opsPlan.laserPassPlan.totalGames=3;three.opsPlan.laserPassPlan.pendingPasses.push({countIndex:3,status:'pending',pax:three.pax});
+const instant=new Date('2026-10-10T15:12:00');await page.clock.setFixedTime(instant);await fixture.installMock(page,{maintenant:instant.getTime()});await lp.installerServeur(page,dossiers);
+await page.addInitScript(close=>{const prior=window.fetch;window.fetch=async(...args)=>{const result=await prior(...args),url=new URL(typeof args[0]==='string'?args[0]:args[0].url,location.origin);if(url.pathname==='/api/public-booking-meta'){const data=await result.json();data.center.day.schedule={open:10,close,label:`10h - ${close}h`};return new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}});}return result;};},CLOSE);
+await fixture.boot(page,{installer:false});await page.evaluate(t=>{state.staffTheme=t;applyStaffTheme();state.currentDate='2026-10-10';state.reservations=window.__LP_DOSSIERS__.map(d=>JSON.parse(JSON.stringify(d)));openStaffPlanningResource('laser');},theme);
+for(const mode of ['window','full']){if(mode==='full')await page.evaluate(()=>goFullscreenResource('laser'));await page.waitForTimeout(350);
+let restPositions=null;
+for(const selection of ['rest','pending3','placed']){
+await page.evaluate(selection=>{lpAnnuler();if(selection!=='rest'){const d=state.reservations.find(d=>d.name===(selection==='pending3'?'Kinepolis':'Anniv. Emma'));lpChoisir(d.id,selection==='pending3'?'3.1':'1.1');}},selection);await page.waitForTimeout(150);
+const metrics=await page.evaluate(()=>{const root=document.querySelector('#laserPlanningGridWrap'),rr=root.getBoundingClientRect(),rows=[...root.querySelectorAll('.lp-dep')],file=root.querySelector('.lp-file'),fr=file?.getBoundingClientRect();const bounds={left:Math.max(0,rr.left),right:Math.min(innerWidth,rr.right),top:Math.max(0,rr.top),bottom:Math.min(innerHeight,rr.bottom,fr?fr.top:innerHeight)};
+const data=rows.map(e=>{const r=e.getBoundingClientRect();return{time:Number(e.dataset.lpT),left:r.left,right:r.right,top:r.top,bottom:r.bottom,height:r.height,visible:r.top>=bounds.top-.6&&r.bottom<=bounds.bottom+.6&&r.left>=bounds.left-.6&&r.right<=bounds.right+.6};});
+const hourText=rows.map(e=>{const x=e.querySelector('.lp-dep__h'),s=x&&getComputedStyle(x);return s?{time:e.dataset.lpT,font:s.fontSize,color:s.color}:null;});
+const cut=[...root.querySelectorAll('.lp-qui')].filter(e=>e.scrollWidth>e.clientWidth+1).map(e=>{const groups=[...e.querySelectorAll('.lp-g')];return{name:e.textContent.trim(),overflow:getComputedStyle(e).overflowX,groups:groups.map(g=>({name:g.textContent.trim(),title:g.getAttribute('title'),button:g.tagName==='BUTTON',tabIndex:g.tabIndex}))};});
+const scroll=[...root.querySelectorAll('*'),root].filter(e=>/(auto|scroll)/.test(getComputedStyle(e).overflowY)&&e.scrollHeight>e.clientHeight+1).map(e=>({class:e.className,height:e.clientHeight,scrollHeight:e.scrollHeight}));
+const captionOverflow=[...root.querySelectorAll('.lp-libre')].filter(e=>{const a=e.getBoundingClientRect(),b=e.closest('.lp-dep')?.getBoundingClientRect();return b&&(a.top<b.top-1||a.bottom>b.bottom+1);}).map(e=>e.textContent.trim());
+return{data,hourText,bounds,cut,scroll,captionOverflow,fileBox:fr?{top:fr.top,bottom:fr.bottom,height:fr.height}:null,wrapBox:{top:rr.top,bottom:rr.bottom,height:rr.height,clientHeight:root.clientHeight,scrollHeight:root.scrollHeight},rootOverflow:root.scrollHeight>root.clientHeight+1,pageOverflowX:document.documentElement.scrollWidth>innerWidth,queue:root.querySelector('.lp-attente')?.textContent||'',classes:root.className};});
+const overflowFocus=await page.evaluate(async()=>{const out=[];for(const e of [...document.querySelectorAll('#laserPlanningGridWrap .lp-qui')].filter(e=>e.scrollWidth>e.clientWidth+1)){const last=e.querySelector('.lp-g:last-child');if(!last){out.push({accessible:false});continue;}last.focus({preventScroll:false});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const a=e.getBoundingClientRect(),b=last.getBoundingClientRect(),oversized=b.width>a.width+1,title=last.getAttribute('title')||'',name=last.querySelector('b')?.textContent.trim()||'',focused=document.activeElement===last;out.push({name:last.textContent.trim(),id:last.dataset.laserResId,unit:last.dataset.laserUnit,title,oversized,focused,parent:{left:a.left,right:a.right},group:{left:b.left,right:b.right},scrollLeft:e.scrollLeft,accessible:focused&&(oversized?b.right>a.left&&b.left<a.right&&title.includes(name):b.left>=a.left-1&&b.right<=a.right+1)});}return out;});
+const enterProof=[];
+if(selection==='rest')for(const item of overflowFocus.filter(x=>x.oversized&&x.accessible)){
+await page.evaluate(()=>lpAnnuler());const chip=page.locator(`#laserPlanningGridWrap .lp-g[data-laser-res-id="${item.id}"][data-laser-unit="${item.unit}"]`).first();await chip.focus();await page.keyboard.press('Enter');
+const opened=await page.waitForFunction(id=>state.selectedRes&&Number(state.selectedRes.id)===Number(id),item.id,{timeout:4000}).then(()=>true,()=>false);enterProof.push({id:item.id,unit:item.unit,opened});await page.evaluate(()=>closePos());
+}
+const overflowAccessible=overflowFocus.every(x=>x.accessible)&&enterProof.every(x=>x.opened);
+const expected=Array.from({length:(CLOSE-10)*2},(_,i)=>10+i/2),got=metrics.data.map(r=>r.time),physical=metrics.data.slice().sort((a,b)=>Math.abs(a.left-b.left)>1?a.left-b.left:a.top-b.top).map(r=>r.time);const geometryPass=JSON.stringify(expected)===JSON.stringify(got)&&JSON.stringify(expected)===JSON.stringify(physical)&&metrics.data.every(r=>r.visible)&&metrics.scroll.length===0&&!metrics.pageOverflowX&&metrics.captionOverflow.length===0&&overflowAccessible&&errors.length===0;
+if(selection==='rest')restPositions=metrics.data.map(r=>r.top);
+const positionChange=restPositions?Math.max(...metrics.data.map((r,i)=>Math.abs(r.top-restPositions[i]))):0;
+const pass=geometryPass&&positionChange<=1;
+await page.evaluate(()=>{document.activeElement?.blur();document.querySelectorAll('#laserPlanningGridWrap .lp-qui').forEach(e=>e.scrollLeft=0);});
+const name=`${viewport.width}x${viewport.height}-${theme}-${mode}${selection==='rest'?'':`-${selection}`}${CLOSE===24?'':`-close${CLOSE}`}`;await page.screenshot({path:path.join(OUT,`${name}.png`)});results.push({name,pass,metrics,overflowAccessible,overflowFocus,enterProof,positionChange,errors});console.log(`${pass?'PASS':'FAIL'} ${name} rows=${got.length} visible=${metrics.data.filter(r=>r.visible).length} scroll=${metrics.scroll.length} overflowAccessible=${overflowAccessible} positionChange=${positionChange}`);
+}}await context.close();}}finally{await browser.close();server.close();}
+fs.writeFileSync(path.join(OUT,CLOSE===24?'results.json':`results-close${CLOSE}.json`),JSON.stringify(results,null,2));if(results.some(x=>!x.pass))process.exitCode=1;
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

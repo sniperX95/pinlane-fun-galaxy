@@ -23595,10 +23595,13 @@ function lpEncore(d) {
 function lpLegende(modele, d, choisi) {
   const encore = lpEncore(d);
   if (!d.ici.length && !d.holds.length) {
-    if (d.ferme) return `<span class="lp-libre">${d.ferme.centre ? 'Centre fermé' : 'Laser Game bloqué'}${d.ferme.raison ? ` · ${escapeHtml(d.ferme.raison)}` : ''}</span>`;
-    if (d.hors) return '<span class="lp-libre">Hors des horaires</span>';
-    if (d.joue) return `<span class="lp-libre">${encore || 'Personne'}</span>`;
-    return `<span class="lp-libre">${encore || 'Libre'} · toucher pour réserver</span>`;
+    if (d.ferme) {
+      const label = `${d.ferme.centre ? 'Centre fermé' : 'Laser Game bloqué'}${d.ferme.raison ? ` · ${d.ferme.raison}` : ''}`;
+      return `<span class="lp-libre" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+    }
+    if (d.hors) return '<span class="lp-libre" title="Hors des horaires">Hors des horaires</span>';
+    if (d.joue) return `<span class="lp-libre" title="${escapeHtml(encore || 'Personne')}">${encore || 'Personne'}</span>`;
+    return `<span class="lp-libre" title="${escapeHtml(`${encore || 'Libre'} · toucher pour réserver`)}">${encore || 'Libre'} · toucher pour réserver</span>`;
   }
   const teintes = lpTeintesDuDepart(d);
   const groupes = d.ici.map(w => {
@@ -23788,7 +23791,7 @@ function lpFileHtml(modele, choisi) {
 
 function lpHtml(modele) {
   const choisi = lpChoisiValide(modele);
-  return `<div class="lp${choisi ? ' is-choix' : ''}" style="--lp-cases:${Math.max(1, modele.capacite)}">
+  return `<div class="lp lp-compact${choisi ? ' is-choix' : ''}" style="--lp-cases:${Math.max(1, modele.capacite)};--lp-departs:${Math.max(1, modele.departs.length)}">
     ${planningClosedNotice(modele.config)}
     ${modele.aujourdHui ? `<div class="lp-synthese">${lpProchainHtml(modele)}${lpBandeHtml(modele)}</div>` : ''}
     ${lpJourneeHtml(modele, choisi)}
@@ -23844,12 +23847,64 @@ function renderLaserPlanning() {
     return;
   }
   poserHtmlSurface(wrap, lpHtml(modele));
+  lpAjusterJournee(wrap);
   poserDefilementRendu(wrap, prevScrollTop, prevScrollLeft);
   if (focus && !wrap.contains(document.activeElement)) {
     const cible = wrap.querySelector(focus);
     if (cible) cible.focus({ preventScroll: true });
   }
 }
+
+// Meme principe que le Bowling : la hauteur suit la place disponible, sans
+// comprimer les noms au-dessous du plancher lisible. Seul le rendu change.
+function lpAjusterJournee(wrap) {
+  const lp = wrap.querySelector('.lp-compact');
+  const journee = lp && lp.querySelector('.lp-journee');
+  if (!journee || window.innerWidth <= 900) return;
+  const rows = journee.querySelectorAll('.lp-dep').length;
+  if (!rows) return;
+  const top = lp.getBoundingClientRect().top;
+  const summary = lp.querySelector('.lp-synthese');
+  const file = lp.querySelector('.lp-file');
+  const head = journee.querySelector('.lp-journee__h');
+  const notice = lp.querySelector('.planning-closed-notice');
+  const fixed = (summary ? summary.getBoundingClientRect().height : 0)
+    // Le bandeau d un placement utilise cette reserve sans recalibrer les
+    // heures : choisir un groupe ne fait pas sauter le depart vise.
+    + Math.max(146, file ? file.getBoundingClientRect().height : 0)
+    + (head ? head.getBoundingClientRect().height : 0)
+    + (notice ? notice.getBoundingClientRect().height : 0) + 42;
+  const available = window.innerHeight - top - fixed - 16;
+  let columns = available / rows < 24 && window.innerWidth >= 1100 ? 2 : 1;
+  if (columns === 2 && available / Math.ceil(rows / 2) < 22) columns = 3;
+  journee.classList.toggle('is-two-columns', columns > 1);
+  const columnRows = Math.ceil(rows / columns);
+  const rowHeight = Math.max(22, Math.min(36, Math.floor(available / columnRows)));
+  poserVariableSiChange(lp, '--lp-row-height', `${rowHeight}px`);
+  poserVariableSiChange(lp, '--lp-column-rows', String(columnRows));
+  poserVariableSiChange(lp, '--lp-columns', String(columns));
+  const heading = journee.querySelector('.lp-journee__h .lp-lbl');
+  if (heading) heading.textContent = columns > 1 ? 'La journée · lecture de gauche à droite' : 'La journée';
+}
+
+let lpResizeFrame = 0;
+window.addEventListener('resize', () => {
+  if (lpResizeFrame) cancelAnimationFrame(lpResizeFrame);
+  lpResizeFrame = requestAnimationFrame(() => {
+    lpResizeFrame = 0;
+    const wrap = document.getElementById('laserPlanningGridWrap');
+    if (wrap && !lpEtat.glisse) lpAjusterJournee(wrap);
+  });
+});
+document.addEventListener('focusin', event => {
+  const group = event.target && event.target.closest ? event.target.closest('.lp-compact .lp-qui .lp-g') : null;
+  if (!group) return;
+  const scroller = group.closest('.lp-qui');
+  const item = group.getBoundingClientRect();
+  const frame = scroller.getBoundingClientRect();
+  if (item.right > frame.right) scroller.scrollLeft += item.right - frame.right + 2;
+  else if (item.left < frame.left) scroller.scrollLeft -= frame.left - item.left + 2;
+});
 
 // ── LES GESTES ─────────────────────────────────────────────────────────────
 function lpChoisir(id, unitKey, ev) {
@@ -24193,6 +24248,12 @@ function lpDefileur() {
 
 function lpDefilerDemarrer() {
   if (lpEtat.defile) return;
+  const wrap = document.getElementById('laserPlanningGridWrap');
+  const rows = wrap ? [...wrap.querySelectorAll('.lp-compact .lp-dep')] : [];
+  // Une journee qui tient deja ne bouge pas sous le pointeur. Le grand bord
+  // de defilement reste utile sur mobile et dans une grille qui deborde.
+  if (window.innerWidth > 900 && rows.length && wrap.scrollHeight <= wrap.clientHeight + 1
+    && rows.every(row => { const rect = row.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; })) return;
   const etat = { avant: 0, raf: 0 };
   lpEtat.defile = etat;
   const pas = (instant) => {
@@ -24201,6 +24262,10 @@ function lpDefilerDemarrer() {
     etat.avant = instant;
     const g = lpEtat.glisse;
     const defileur = lpDefileur();
+    if (defileur.scrollHeight <= defileur.clientHeight + 1) {
+      etat.raf = requestAnimationFrame(pas);
+      return;
+    }
     const page = defileur === document.scrollingElement || defileur === document.documentElement;
     const cadre = page ? { top: 0, bottom: window.innerHeight } : defileur.getBoundingClientRect();
     const file = document.querySelector('#laserPlanningGridWrap .lp-file');

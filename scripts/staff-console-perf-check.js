@@ -101,7 +101,7 @@ const MUTATIONS = {
   cascade: ['assets/pinlane-motion.js', "      if (aDecaler[r][0].classList.contains('pl-in')) { aDecaler[r][0].classList.remove('pl-in'); relancer = true; }", "      if (aDecaler[r][0].classList.contains('pl-in')) { aDecaler[r][0].classList.remove('pl-in'); void aDecaler[r][0].offsetWidth; }", ['E']],
   // Le planning Laser de la maquette E (2026-10-08) : 40 px par case, 12
   // armes font 502 px, la jauge sort du telephone.
-  telephone: ['assets/pinlane-staff.css', '.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), minmax(0, 1fr)); gap: 3px; }', '.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), 40px); gap: 3px; }', ['H']],
+  telephone: ['assets/pinlane-staff.css', '.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), minmax(0, 1fr)); gap: 0; width: 100%; background: var(--lp-vide); border-radius: 4px; box-shadow: inset 0 0 0 1px var(--lp-case); overflow: hidden; }', '.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), 40px); gap: 0; width: 100%; background: var(--lp-vide); border-radius: 4px; box-shadow: inset 0 0 0 1px var(--lp-case); overflow: hidden; }', ['H']],
   // Le defilement du bord ne bouge plus le planning (lpDefilerDemarrer).
   defile: ['assets/app-main.js', '      defileur.scrollTop = avantPos + vitesse * dt / 1000;', '      void avantPos;', ['K']],
   // Le bord bas oublie la file : le pointeur sur la file fait defiler.

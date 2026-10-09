@@ -26,9 +26,9 @@
 //       de joueurs : « 4 de trop » ;
 //   [L] toucher un groupe du jour ouvre SA fiche sans le prendre (Movsar,
 //       2026-10-08 : « Ouvrir sa fiche ») ; au clavier, M le prend ;
-//   [M] libre ou pris se lit a la forme : une case libre est un contour a 3:1
-//       sur sa rangee (repos, survol, cible d un depot), une case prise est
-//       pleine, dans les deux themes ;
+//   [M] la capacite se lit dans une barre continue : piste libre contournee
+//       a 3:1, groupes pleins, compte accessible ; pas de cadre par arme,
+//       dans les deux themes ;
 //   [N] deux vagues hors grille qui se suivent (16:55 puis 17:25) ne
 //       s additionnent pas : chaque depart compte ce qui le chevauche
 //       vraiment, comme le serveur, et 16:30 reste libre ;
@@ -519,7 +519,8 @@ async function scenarios(browser, mutation = null) {
         };
         const lum = (c) => { const v = [c.r, c.g, c.b].map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
         const ratio = (a, b) => { const x = lum(a); const y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-        const ombre = getComputedStyle(libre).boxShadow;
+        const barre = r.querySelector('.lp-cases');
+        const ombre = getComputedStyle(barre).boxShadow;
         // La couleur vient en tete de l ombre calculee : « rgb(...) 0px 0px 0px 1px inset ».
         const trait = lire((ombre.match(/^[a-z-]+\([^)]*\)|^#[0-9a-f]+/i) || [])[0]);
         const epaisseur = Number((ombre.match(/(-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px/) || [])[4] || 0);
@@ -530,6 +531,11 @@ async function scenarios(browser, mutation = null) {
           videPeint: (lire(getComputedStyle(libre).backgroundColor) || { a: 0 }).a,
           prisePeinte: (lire(getComputedStyle(prise).backgroundColor) || { a: 0 }).a,
           priseContour: getComputedStyle(prise).boxShadow,
+          libreContour: getComputedStyle(libre).boxShadow,
+          ecart: getComputedStyle(barre).columnGap,
+          hauteur: barre.getBoundingClientRect().height,
+          cibleHauteur: r.querySelector('.lp-dep__jauge').getBoundingClientRect().height,
+          etiquette: r.querySelector('.lp-dep__jauge').getAttribute('aria-label'),
           // Ce que la rangee peint elle-meme (alpha), et le fond compose vu
           // derriere la case.
           rangPeint: fondRang ? Number(fondRang.a.toFixed(2)) : 0,
@@ -544,12 +550,14 @@ async function scenarios(browser, mutation = null) {
       await page.click('#laserPlanningGridWrap .lp-jeton:has-text("Famille Renard")');
       await rang(page, 16).hover();
       const cible = await mesure(16);
-      ok(repos && repos.videPeint === 0 && repos.prisePeinte >= 0.999 && repos.priseContour === 'none', `[M] ${theme} : libre = contour, pris = plein`, JSON.stringify(repos));
+      ok(repos && repos.videPeint === 0 && repos.prisePeinte >= 0.999 && repos.priseContour === 'none' && repos.libreContour === 'none'
+        && repos.ecart === '0px' && repos.hauteur === 8 && repos.cibleHauteur >= 16 && /18 sur 30/.test(repos.etiquette),
+      `[M] ${theme} : barre continue, groupes pleins et compte accessible, sans contour par arme`, JSON.stringify(repos));
       // Le prerequis : le survol et la cible se peignent vraiment (la rangee a
       // un fond, et ce n est pas le meme), sinon les mesures relisent le repos.
       ok(repos && survol && cible && repos.rangPeint === 0 && survol.rangPeint > 0.5 && /is-cible/.test(cible.classes) && cible.rangPeint > 0.5 && cible.fond !== survol.fond,
         `[M] ${theme} : le survol et la cible d un depot se peignent`, JSON.stringify({ repos: repos && repos.fond, survol: survol && [survol.rangPeint, survol.fond], cible: cible && [cible.classes, cible.rangPeint, cible.fond] }));
-      ok([repos, survol, cible].every((m) => m && m.contour >= 3), `[M] ${theme} : le contour d une case libre tient 3:1 (repos, survol, cible)`, [repos, survol, cible].map((m) => m && m.contour).join(' / '));
+      ok([repos, survol, cible].every((m) => m && m.contour >= 3), `[M] ${theme} : le contour de la capacite libre tient 3:1 (repos, survol, cible)`, [repos, survol, cible].map((m) => m && m.contour).join(' / '));
       ok(erreurs.length === 0, `[M] ${theme} : zero erreur JS ni console`, erreurs.slice(0, 3).join(' | '));
     } finally { await ctx.close(); }
   }
@@ -719,8 +727,8 @@ const MUTATIONS = [
   // sonde-mutation-telephone.js, aucune des quatre regles du telephone n est
   // seule porteuse.)
   { nom: 'largeur', lettre: '[I] telephone : rien du planning ne sort', fichier: 'assets/pinlane-staff.css',
-    de: '.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), minmax(0, 1fr)); gap: 3px; }',
-    vers: '.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), 14px); gap: 3px; }' },
+    de: '.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), minmax(0, 1fr)); gap: 0; width: 100%; background: var(--lp-vide); border-radius: 4px; box-shadow: inset 0 0 0 1px var(--lp-case); overflow: hidden; }',
+    vers: '.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), 14px); gap: 0; width: 100%; background: var(--lp-vide); border-radius: 4px; box-shadow: inset 0 0 0 1px var(--lp-case); overflow: hidden; }' },
   // La boite du planning redevient un cadre de defilement : la file ne colle
   // plus au bas de l ecran.
   { nom: 'collee', lettre: '[I] telephone : la file reste en bas', fichier: 'assets/pinlane-staff.css',
@@ -732,14 +740,14 @@ const MUTATIONS = [
     vers: "const toucher = `lpChoisir(${id}, '${unitKey}', event)`;" },
   // Le contour d une case libre palit au gris d un filet (1,7:1 en clair) :
   // une case libre ne se distingue plus du fond.
-  { nom: 'contour', lettre: '[M] light : le contour d une case libre tient 3:1', fichier: 'assets/pinlane-staff.css',
+  { nom: 'contour', lettre: '[M] light : le contour de la capacite libre tient 3:1', fichier: 'assets/pinlane-staff.css',
     de: '  --lp-case: #86868c;',
     vers: '  --lp-case: #c2c2c8;' },
   // Les cases libres reprennent un fond gris : libre et pris ne se lisent
   // plus a la forme.
-  { nom: 'plein', lettre: '[M] dark : libre = contour, pris = plein', fichier: 'assets/pinlane-staff.css',
-    de: '.lp-cases i { height: 16px; border-radius: 4px; }',
-    vers: '.lp-cases i { height: 16px; border-radius: 4px; background: var(--lp-vide); }' },
+  { nom: 'plein', lettre: '[M] dark : barre continue, groupes pleins et compte accessible', fichier: 'assets/pinlane-staff.css',
+    de: '.lp-cases i { height: 8px; border-radius: 0; }',
+    vers: '.lp-cases i { height: 8px; border-radius: 0; background: var(--lp-vide); }' },
   // Une partie hors grille se range de nouveau a la demi-heure inferieure :
   // la vague de 17:25 compte a 17:00 avec celle de 16:55 encore en jeu.
   { nom: 'creneau', lettre: '[N] 17:00 : la vague de 16:55', fichier: 'assets/app-main.js',

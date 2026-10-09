@@ -222,8 +222,16 @@ function amener(page, selecteur) {
     const pageEntiere = cadre === document.scrollingElement || cadre === document.documentElement;
     const r = pageEntiere ? { top: 0, bottom: innerHeight } : cadre.getBoundingClientRect();
     const file = document.querySelector('#laserPlanningGridWrap .lp-file');
-    const haut = Math.max(0, r.top) + 96 + 12;
-    const bas = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity) - 96 - 12;
+    const wrap = document.getElementById('laserPlanningGridWrap');
+    const rangees = [...document.querySelectorAll('#laserPlanningGridWrap .lp-dep')];
+    const limite = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity);
+    const tient = wrap && wrap.querySelector('.lp-compact') && wrap.scrollHeight <= wrap.clientHeight + 2
+      && rangees.length > 0 && rangees.every(e => { const b = e.getBoundingClientRect(); return b.top >= Math.max(0, r.top) && b.bottom <= limite; });
+    // Aucun defilement si toute la journee tient : les derniers departs sont
+    // de vraies cibles, meme dans l ancienne bande reservee au defilement.
+    const marge = tient ? 4 : 96 + 12;
+    const haut = Math.max(0, r.top) + marge;
+    const bas = limite - marge;
     for (let essai = 0; essai < 14; essai += 1) {
       const b = el.getBoundingClientRect();
       const ecart = (b.top + b.height / 2) - (haut + bas) / 2;

@@ -158,8 +158,14 @@ async function main() {
       const pageEntiere = cadre === document.scrollingElement || cadre === document.documentElement;
       const r = pageEntiere ? { top: 0, bottom: innerHeight } : cadre.getBoundingClientRect();
       const file = document.querySelector('#laserPlanningGridWrap .lp-file');
-      const haut = Math.max(0, r.top) + 96 + 12;
-      const bas = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity) - 96 - 12;
+      const wrap = document.getElementById('laserPlanningGridWrap');
+      const rangees = [...document.querySelectorAll('#laserPlanningGridWrap .lp-dep')];
+      const limite = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity);
+      const tient = wrap && wrap.querySelector('.lp-compact') && wrap.scrollHeight <= wrap.clientHeight + 2
+        && rangees.length > 0 && rangees.every(e => { const b = e.getBoundingClientRect(); return b.top >= Math.max(0, r.top) && b.bottom <= limite; });
+      const marge = tient ? 4 : 96 + 12;
+      const haut = Math.max(0, r.top) + marge;
+      const bas = limite - marge;
       for (let essai = 0; essai < 12; essai += 1) {
         const b = el.getBoundingClientRect();
         const ecart = (b.top + b.height / 2) - (haut + bas) / 2;
@@ -173,12 +179,13 @@ async function main() {
     }, selecteur);
 
     // ON CHOISIT LA CIBLE : un depart vide, a une heure au moins des heures
-    // prises, le plus proche du groupe.
+    // prises, APRES les parties deja placees : la distance a l ecran seule
+    // choisissait 10:30 dans la grille a deux colonnes, avant la partie 1.
     const choix = await page.evaluate((args) => {
       const { unit, avoid } = args;
       const groupe = document.querySelector(`#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9500"][data-laser-unit="${unit}"]`);
       const vides = [...document.querySelectorAll('#laserPlanningGridWrap .lp-dep.is-vide[data-lp-t]')];
-      const eligibles = vides.map(el => ({ el, t: Number(el.dataset.lpT) })).filter(o => avoid.every(a => Math.abs(o.t - a) >= 1.0));
+      const eligibles = vides.map(el => ({ el, t: Number(el.dataset.lpT) })).filter(o => o.t >= Math.max(...avoid) + 1 && avoid.every(a => Math.abs(o.t - a) >= 1.0));
       if (!groupe || !eligibles.length) return { raison: `legende=${Boolean(groupe)}, ${eligibles.length} depart(s) vide(s) a 1h des heures prises sur ${vides.length}` };
       const cible = eligibles
         .map(o => ({ t: o.t, d: Math.abs(o.el.getBoundingClientRect().top - groupe.getBoundingClientRect().top) }))

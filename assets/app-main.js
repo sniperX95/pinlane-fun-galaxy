@@ -23863,24 +23863,26 @@ function lpAjusterJournee(wrap) {
   if (!journee || window.innerWidth <= 900) return;
   const rows = journee.querySelectorAll('.lp-dep').length;
   if (!rows) return;
-  const top = lp.getBoundingClientRect().top;
-  const summary = lp.querySelector('.lp-synthese');
   const file = lp.querySelector('.lp-file');
   const head = journee.querySelector('.lp-journee__h');
-  const notice = lp.querySelector('.planning-closed-notice');
-  const fixed = (summary ? summary.getBoundingClientRect().height : 0)
-    // Le bandeau d un placement utilise cette reserve sans recalibrer les
-    // heures : choisir un groupe ne fait pas sauter le depart vise.
-    + Math.max(146, file ? file.getBoundingClientRect().height : 0)
-    + (head ? head.getBoundingClientRect().height : 0)
-    + (notice ? notice.getBoundingClientRect().height : 0) + 42;
-  const available = window.innerHeight - top - fixed - 16;
-  let columns = available / rows < 24 && window.innerWidth >= 1100 ? 2 : 1;
+  // Le stock garde une seule ligne ; le bandeau de placement utilise cette
+  // reserve constante. Une file vide ne reserve pas la hauteur de jetons.
+  const fileReserve = file && file.querySelector('.lp-jeton') ? 120 : 92;
+  const dayTop = journee.getBoundingClientRect().top;
+  const available = window.innerHeight - dayTop
+    - (head ? head.getBoundingClientRect().height : 0) - fileReserve - 24;
+  let columns = available / rows < 40 && window.innerWidth >= 1100 ? 2 : 1;
   if (columns === 2 && available / Math.ceil(rows / 2) < 22) columns = 3;
   journee.classList.toggle('is-two-columns', columns > 1);
   const columnRows = Math.ceil(rows / columns);
-  const rowHeight = Math.max(22, Math.min(36, Math.floor(available / columnRows)));
+  const rowHeight = Math.max(22, Math.floor(available / columnRows));
   poserVariableSiChange(lp, '--lp-row-height', `${rowHeight}px`);
+  poserVariableSiChange(lp, '--lp-group-font', rowHeight >= 26 ? '14px' : '13px');
+  poserVariableSiChange(lp, '--lp-hour-font', rowHeight >= 26 ? '16px' : '14px');
+  poserVariableSiChange(lp, '--lp-hour-column', rowHeight >= 26 ? '60px' : '44px');
+  poserVariableSiChange(lp, '--lp-count-font', rowHeight >= 26 ? '14px' : '12px');
+  poserVariableSiChange(lp, '--lp-unit-font', rowHeight >= 26 && columns < 3 ? '12px' : '10px');
+  poserVariableSiChange(lp, '--lp-count-width', rowHeight >= 26 && columns < 3 ? '92px' : '70px');
   poserVariableSiChange(lp, '--lp-column-rows', String(columnRows));
   poserVariableSiChange(lp, '--lp-columns', String(columns));
   const heading = journee.querySelector('.lp-journee__h .lp-lbl');

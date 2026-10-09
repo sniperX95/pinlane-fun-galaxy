@@ -67,6 +67,12 @@ async function installMock(page) {
       const raw = typeof input === 'string' ? input : input?.url || '';
       const u = new URL(raw, window.location.origin);
       const m = String(init.method || 'GET').toUpperCase();
+      if (u.pathname === '/api/staff-customer-notes' && m === 'GET') {
+        const sansNote = (id) => ({ eligible: true, clientKey: `p:qa${id}`, note: null });
+        const lot = u.searchParams.get('reservationIds');
+        if (lot !== null) return J({ ok: true, notesByReservationId: Object.fromEntries(lot.split(',').filter(Boolean).map((id) => [String(Number(id)), sansNote(Number(id))])) });
+        return J({ ok: true, ...sansNote(Number(u.searchParams.get('reservationId'))) });
+      }
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
       if (u.pathname === '/api/staff-state') { const d = u.searchParams.get('date') || new Date().toISOString().slice(0,10); const base = build(d).map(r => window.__QA_STORE__[r.id] ? { ...r, ...window.__QA_STORE__[r.id] } : r); return J({ ok: true, revision: `qa-${d}-${Object.keys(window.__QA_STORE__).length}`, reservations: base, laneStatuses: lanes(), centerId: 'libramont' }); }
       if (u.pathname === '/api/staff-reservations' && m === 'PATCH') { const b = JSON.parse(init.body || '{}'); window.__QA_PATCHES__.push(b); if (b.activityMove) { const current={...state.reservations.find(r=>Number(r.id)===Number(b.id)),centerId:'libramont'};const result=await window.__qaActivityMove({current,body:b});if(!result.ok)return new Response(JSON.stringify(result),{status:result.status,headers:{'content-type':'application/json'}});window.__QA_STORE__[b.id]=result.reservation;return J(result); } let merged = { ...b }; try { if (typeof state !== 'undefined' && Array.isArray(state.reservations)) { const f = state.reservations.find(r => Number(r.id) === Number(b.id)); if (f) merged = { ...f, ...b }; } } catch (e) {} window.__QA_STORE__[b.id] = { startTime: merged.startTime, opsPlan: merged.opsPlan, lanes: merged.lanes }; return J({ ok: true, reservation: merged, automation: { communications: 0, jobs: 0, refreshed: true } }); }

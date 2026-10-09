@@ -1142,7 +1142,7 @@ async function main() {
         overflow: root ? (root.scrollHeight - root.clientHeight) : 0,
       });
       // 9001 = bowling 30 min (dens-xs), 9002 = bowling 1h (durée standard),
-      // 9004 = bowling 2h (dens-lg, durée ≠1h). Cartes laser via .laser-group-card.
+      // 9004 = bowling 2h (dens-lg, durée ≠1h).
       const bTagVisible = (root) => {
         // L OFFRE A CHANGE DE PARENT le 2026-08-14 : elle a sa propre ligne
         // (`.booking-offer`) sur une carte haute, et reste dans le pied sur une
@@ -1153,16 +1153,10 @@ async function main() {
         if (!bt) return false;
         return window.getComputedStyle(bt).display !== 'none';
       };
-      const laserCards = Array.from(document.querySelectorAll('.laser-group-card'));
       return {
         min30: { ...scan(booking(9001)), bTagVisible: bTagVisible(booking(9001)) },
         h1: scan(booking(9002)),
         h2: { ...scan(booking(9004)), bTagVisible: bTagVisible(booking(9004)) },
-        laser: laserCards.map((card) => ({
-          hasPax: Boolean(card.querySelector('.bk-pax')),
-          hasDur: Boolean(card.querySelector('.bk-dur')),
-          classes: card.className,
-        })),
         allBowlingHaveStats: Array.from(document.querySelectorAll('.booking')).every(
           (el) => el.querySelector('.bk-pax') && el.querySelector('.bk-dur')
         ),
@@ -1187,8 +1181,6 @@ async function main() {
     assert(cardAudit.h2.bTagVisible, 'Planning : carte 2h affiche le détail complet (activité).');
     assert(cardAudit.h2.durSpecial, 'Planning : durée 2h ≠1h est mise en évidence.');
     assert(cardAudit.h2.overflow <= 1, `Planning : carte 2h ne déborde pas (overflow=${cardAudit.h2.overflow}).`);
-    assert(cardAudit.laser.length > 0, 'Planning : au moins une carte laser présente.');
-    assert(cardAudit.laser.every((c) => c.hasPax && c.hasDur), 'Planning : cartes laser portent effectif + durée.');
 
     // Emphase « gros groupe » : un groupe de 40 joueurs doit passer au niveau
     // maximal (grp-xl / pastille inversée).

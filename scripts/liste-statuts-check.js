@@ -38,6 +38,12 @@
 //       defilement de page, telephone plein ecran), les encadres tiennent sur
 //       une ligne, et au telephone l aide d une activite remonte a cote du nom
 //   [N] « Arrivé » sur un groupe deja pointe par un autre poste le dit
+//   [O] les cartes des gens reliees aux plannings (2026-10-09) : le lisere a
+//       la couleur de l etat (bleu confirme, ambre arrive, vert paye, rouge
+//       en retard) dans les deux themes, une seule grille (l heure en tete de
+//       sa rangee), des encadres d une ligne sans fond dont le texte coupe se
+//       lit au survol, des etapes resserrees, le prix ajuste en ambre, des
+//       boutons qui gardent 44 px
 //
 // CONTRE-EPREUVE (--contre-preuves) : chaque correction est defaite EN
 // MEMOIRE dans le fichier servi, et le gate doit rougir sur sa lettre. Le
@@ -566,6 +572,120 @@ const SCENARIOS = {
     } finally { await ctx.close(); }
     return out;
   },
+
+  // [O] les cartes des gens reliees aux plannings (2026-10-09, maquettes « B »
+  // et « C ») : le lisere a la couleur de l etat, une seule grille, des
+  // encadres d une ligne sans fond, des etapes resserrees, le prix ajuste en
+  // ambre, des boutons qui gardent 44 px.
+  async cartes(browser, base) {
+    const out = [];
+    const c = (cond, label, detail = '') => out.push({ cond: Boolean(cond), label, detail });
+    const mesurer = (page, theme) => page.evaluate(async (theme) => {
+      state.staffTheme = theme;
+      applyStaffTheme();
+      document.querySelectorAll('#staffTableBox details.gc-section:not([open])').forEach((d) => { d.open = true; });
+      // Le theme se fond en 150 ms : une couleur lue pendant le fondu ment.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await Promise.race([Promise.all(document.getAnimations().map((a) => a.finished)), new Promise((r) => setTimeout(r, 1500))]);
+      // Toute couleur calculee passe par un pixel de canvas (rgb, oklab d une
+      // transition, color(srgb) d un color-mix) ; celle d une ombre est en
+      // tete de sa valeur calculee.
+      const toile = document.createElement('canvas');
+      toile.width = 1; toile.height = 1;
+      const g = toile.getContext('2d', { willReadFrequently: true });
+      const lire = (s) => {
+        if (!s || !CSS.supports('color', s)) return null;
+        g.clearRect(0, 0, 1, 1); g.fillStyle = s; g.fillRect(0, 0, 1, 1);
+        const p = g.getImageData(0, 0, 1, 1).data;
+        return { a: Number((p[3] / 255).toFixed(2)), hex: `#${[p[0], p[1], p[2]].map((x) => x.toString(16).padStart(2, '0')).join('')}` };
+      };
+      const boite = document.getElementById('staffTableBox');
+      const sonde = (valeur) => { const e = document.createElement('i'); e.style.color = valeur; boite.appendChild(e); const v = lire(getComputedStyle(e).color); e.remove(); return v ? v.hex : ''; };
+      const vu = (e) => e.getBoundingClientRect().width > 0;
+      const cartes = [...boite.querySelectorAll('.res-row.gc[data-res-row-id]')].filter(vu).map((carte) => {
+        const ombre = getComputedStyle(carte).boxShadow;
+        const couleur = lire((ombre.match(/^[a-z-]+\([^)]*\)|^#[0-9a-f]+/i) || [])[0]);
+        const r = carte.getBoundingClientRect();
+        return {
+          id: Number(carte.dataset.resRowId), etat: carte.dataset.etat || '', tard: carte.classList.contains('is-late'),
+          barre: /inset/.test(ombre) && couleur && couleur.a > 0.99 ? couleur.hex : '',
+          gauche: Math.round(r.left), largeur: Math.round(r.width), compacte: carte.classList.contains('is-done'),
+        };
+      });
+      const encadres = [...boite.querySelectorAll('.gc-flag')].filter(vu).map((f) => {
+        const texte = f.querySelector(':scope > span');
+        return {
+          ton: [...f.classList].find((x) => x.startsWith('tone-')) || '',
+          haut: Math.round(f.getBoundingClientRect().height),
+          fond: (lire(getComputedStyle(f).backgroundColor) || { a: 0 }).a,
+          coupe: texte ? texte.scrollWidth > texte.clientWidth + 1 : false,
+          title: f.getAttribute('title') || '',
+          plein: texte ? texte.textContent.trim() : '',
+          couleurTitre: (lire(getComputedStyle(f.querySelector('b')).color) || {}).hex || '',
+        };
+      });
+      const etapes = [...boite.querySelectorAll('.gc-step')].filter(vu).map((s) => {
+        const cs = getComputedStyle(s);
+        const quoi = s.querySelector('.gc-step-what, .gc-libres');
+        return { haut: Math.round(s.getBoundingClientRect().height), quoi: quoi ? Math.round(quoi.getBoundingClientRect().height) : 0, marge: Math.max(parseFloat(cs.paddingTop) || 0, parseFloat(cs.paddingBottom) || 0) };
+      });
+      const boutons = [...boite.querySelectorAll('.gc-btn')].filter(vu).map((b) => Math.round(b.getBoundingClientRect().height));
+      const heures = [...boite.querySelectorAll('.gc-hour-row')].filter(vu).map((h) => {
+        const etiquette = h.querySelector('.gc-hour').getBoundingClientRect();
+        const premiere = h.querySelector('.res-row.gc').getBoundingClientRect();
+        return { basEtiquette: Math.round(etiquette.bottom), hautCarte: Math.round(premiere.top), gaucheCarte: Math.round(premiere.left) };
+      });
+      return { cartes, encadres, etapes, boutons, heures, danger: sonde('var(--danger)'), warning: sonde('var(--warning)') };
+    }, theme);
+    // L etat attendu de chaque dossier, d apres la journee servie.
+    const statut = Object.fromEntries(base.map((r) => [Number(r.id), r.status]));
+    const etatDe = (id) => ({ paid: 'paid', arrived: 'arr' }[statut[id]] || 'conf');
+    const TEINTES = {
+      light: { conf: '#0070f3', arr: '#f5a623', paid: '#22c55e' },
+      dark: { conf: '#3291ff', arr: '#f5a623', paid: '#3dd68c' },
+    };
+    for (const theme of ['light', 'dark']) {
+      const { ctx, page } = await ouvrir(browser, variante(base));
+      try {
+        const m = await mesurer(page, theme);
+        const t = TEINTES[theme];
+        // Le prerequis : chaque etat a au moins une carte a l ecran.
+        const vus = new Set(m.cartes.map((x) => (x.tard ? 'retard' : x.etat)));
+        c(['conf', 'arr', 'paid', 'retard'].every((k) => vus.has(k)), `[O] ${theme} : une carte de chaque etat a l ecran (confirme, arrive, paye, en retard)`, [...vus].join(','));
+        const fausses = m.cartes.filter((x) => x.etat !== etatDe(x.id) || x.barre !== (x.tard ? m.danger : t[x.etat]));
+        c(m.cartes.length > 0 && fausses.length === 0, `[O] ${theme} : le lisere de chaque carte a la couleur de son etat (rouge en retard)`,
+          fausses.map((x) => `${x.id} ${x.etat}/${etatDe(x.id)}${x.tard ? ' retard' : ''} ${x.barre || 'sans lisere'}`).join(' | ') || `${m.cartes.length} cartes`);
+        if (theme === 'light') {
+          c(m.encadres.length > 0 && m.encadres.every((e) => e.fond === 0 && e.haut <= 24), '[O] un encadre tient sur une ligne, sans fond', m.encadres.map((e) => `${e.ton} ${e.haut}px fond ${e.fond}`).join(' | '));
+          const coupes = m.encadres.filter((e) => e.coupe);
+          c(coupes.length > 0 && coupes.every((e) => e.title.includes(e.plein)), '[O] un texte coupe au bord se lit en entier au survol (title)', coupes.map((e) => `${e.ton} « ${e.title.slice(0, 40)} »`).join(' | ') || 'aucun texte coupe');
+          const prix = m.encadres.find((e) => e.ton === 'tone-price');
+          c(prix && prix.couleurTitre === m.warning, '[O] le prix ajuste parle ambre, comme sur les plannings', prix ? `${prix.couleurTitre} pour ${m.warning}` : 'pas d encadre de prix');
+          c(m.etapes.length > 0 && m.etapes.every((e) => e.marge <= 5), '[O] les etapes sont resserrees (5 px de marge, 8 avant)', [...new Set(m.etapes.map((e) => e.marge))].join(','));
+          // Deux lignes (le nom, puis son detail) tiennent en 48 px ; une etape
+          // plus longue l est par son contenu (l explication d une capacite).
+          const deuxLignes = m.etapes.filter((e) => e.quoi > 0 && e.quoi <= 40);
+          c(deuxLignes.length > 0 && deuxLignes.every((e) => e.haut <= 48), '[O] une etape de deux lignes tient en 48 px (57 avant)', deuxLignes.map((e) => e.haut).join(','));
+          c(m.boutons.length > 0 && m.boutons.every((h) => h >= 44), '[O] les boutons gardent 44 px (le doigt)', m.boutons.join(','));
+        }
+      } finally { await ctx.close(); }
+    }
+    // Une seule grille : a 10:30, sept groupes a venir sur plusieurs heures,
+    // la liste se range par heure.
+    const matin = await ouvrir(browser, variante(base), { instant: `${JOUR}T10:30:00+02:00` });
+    try {
+      const m = await mesurer(matin.page, 'light');
+      // Les cartes payees et les absents ont leur grille compacte (340 px) :
+      // la grille commune est celle des cartes a servir.
+      const servir = m.cartes.filter((x) => !x.compacte);
+      const largeurs = servir.map((x) => x.largeur);
+      const gauche = Math.min(...servir.map((x) => x.gauche));
+      c(m.heures.length >= 2, '[O] a 10:30 la liste se range par heure (prerequis)', `${m.heures.length} rangees`);
+      c(largeurs.length > 0 && Math.max(...largeurs) - Math.min(...largeurs) <= 1, '[O] une seule grille : toutes les cartes a servir ont la meme largeur', [...new Set(largeurs)].join(','));
+      c(m.heures.length >= 2 && m.heures.every((h) => h.basEtiquette <= h.hautCarte && h.gaucheCarte === gauche), '[O] l heure est en tete de sa rangee, ses cartes au meme bord gauche que les autres', JSON.stringify(m.heures));
+    } finally { await matin.ctx.close(); }
+    return out;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -608,9 +728,23 @@ const MUTATIONS = [
   { lettre: 'M', scenario: 'ecran', fichier: CSS, nom: 'la boite replafonnee a 704 px',
     de: '.table-box#staffTableBox:not(.hidden):not(.expanded) { max-height: max(480px, calc(100dvh - var(--liste-haut, 280px) - 12px)); }', vers: '' },
   { lettre: 'M', scenario: 'ecran', fichier: CSS, nom: 'l encadre reprend deux lignes',
-    de: '#staffTableBox .gc-flag { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 5px 10px; line-height: 1.4; }', vers: '' },
+    de: '#staffTableBox .gc-flag { flex-direction: row; flex-wrap: nowrap; align-items: baseline; gap: 8px; min-width: 0; padding: 1px 0; border: 0; border-radius: 0; background: none; line-height: 1.4; }', vers: '' },
   { lettre: 'M', scenario: 'ecran', fichier: CSS, nom: 'l aide repasse sous le nom au telephone',
-    de: '  #staffTableBox .gc-step-state { grid-column: 3; grid-row: 1; justify-self: end; align-self: start; }', vers: '' },
+    de: '  #staffTableBox .gc-step-state { grid-column: 3; grid-row: 1; justify-self: end; align-self: start; }\n  #staffTableBox .gc-step.is-cochable .gc-step-state { grid-column: 4; grid-row: 1; }', vers: '' },
+  { lettre: 'O', scenario: 'cartes', fichier: CSS, nom: 'le lisere disparait',
+    de: '#staffTableBox .res-row.gc { box-shadow: inset 3px 0 0 var(--gc-barre, transparent); }', vers: '' },
+  { lettre: 'O', scenario: 'cartes', fichier: JS, nom: 'la carte oublie son etat (tout en bleu)',
+    de: '  const etat = lpTeinte(r).slice(3);', vers: '  const etat = \'conf\';' },
+  { lettre: 'O', scenario: 'cartes', fichier: CSS, nom: 'l heure repasse a gauche de sa rangee',
+    de: '#staffTableBox .gc-hour-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }', vers: '' },
+  { lettre: 'O', scenario: 'cartes', fichier: CSS, nom: 'l encadre reprend son fond',
+    de: '#staffTableBox .gc-flag { flex-direction: row; flex-wrap: nowrap; align-items: baseline; gap: 8px; min-width: 0; padding: 1px 0; border: 0; border-radius: 0; background: none; line-height: 1.4; }', vers: '#staffTableBox .gc-flag { flex-direction: row; flex-wrap: nowrap; align-items: baseline; gap: 8px; min-width: 0; padding: 1px 0; line-height: 1.4; }' },
+  { lettre: 'O', scenario: 'cartes', fichier: JS, nom: 'le texte coupe perd son title',
+    de: '${e.texte ? ` title="${escapeHtml(`${e.titre} : ${e.texte}`)}"` : \'\'}', vers: '' },
+  { lettre: 'O', scenario: 'cartes', fichier: CSS, nom: 'les etapes reprennent leur marge',
+    de: '#staffTableBox .gc-step { padding: 5px 6px; margin: 0 -6px; gap: 8px; }', vers: '' },
+  { lettre: 'O', scenario: 'cartes', fichier: CSS, nom: 'le prix ajuste repasse au bleu',
+    de: '.gc-flag.tone-price b { color: var(--warning); }', vers: '.gc-flag.tone-price b { color: var(--accent-strong); }' },
   { lettre: 'N', scenario: 'dejaFait', fichier: JS, nom: 'le clic deja fait se tait',
     de: "      toast({ arrived: 'Ce groupe est déjà pointé arrivé.', paid: 'Ce dossier est déjà payé.' }[status] || 'C’est déjà fait.');", vers: '' },
 ];

@@ -21035,14 +21035,33 @@ function togglePlanningExpanded() {
   renderStaff();
 }
 
+// L EN-TETE DU PLEIN ECRAN SUR UNE LIGNE (Movsar, 2026-10-08 : « l endroit
+// pour changer la date et la reservation rapide sont en dessous de l entete,
+// ca cree une entete super grosse, met tout sur une ligne »). La date se range
+// a cote du titre, dans sa pile ; « + Réserver » rejoint les actions, avant
+// « Réduire ». Le planning Laser a deja le sien (le prochain depart) : un
+// second bouton y ferait doublon.
 function syncExpandedPlanningControls() {
   for (const id of ['planningBox', 'laserPlanningBox', 'staffTableBox']) {
     const box = document.getElementById(id);
     const head = box?.querySelector('.planning-head, .table-head');
-    if (!head) continue;
-    let controls = head.querySelector('.planning-expanded-controls');
-    if (!controls) { controls = document.createElement('div'); controls.className = 'planning-expanded-controls'; head.appendChild(controls); }
-    poserHtmlSurface(controls, `${staffDateNavHtml()}${canUseStaffPermission('reservations.quick') ? `<button type="button" class="btn-primary planning-expanded-create" onclick="openQuickBook({date:state.currentDate,type:getStaffResourceView()==='laser'?'laser':'bowling'})">+ Réservation rapide</button>` : ''}`);
+    const pile = head?.querySelector('.planning-title-stack');
+    const actions = head?.querySelector('.planning-actions, .table-actions');
+    if (!pile || !actions) continue;
+    let date = pile.querySelector(':scope > .pec-date');
+    if (!date) { date = document.createElement('div'); date.className = 'pec-date'; pile.appendChild(date); }
+    poserHtmlSurface(date, staffDateNavHtml({ court: true }));
+    let creer = actions.querySelector(':scope > .planning-expanded-create');
+    const avecCreer = id !== 'laserPlanningBox' && canUseStaffPermission('reservations.quick');
+    if (avecCreer && !creer) {
+      creer = document.createElement('button');
+      creer.type = 'button';
+      creer.className = 'btn-primary planning-expanded-create';
+      creer.textContent = '+ Réserver';
+      creer.setAttribute('onclick', "openQuickBook({date:state.currentDate,type:getStaffResourceView()==='laser'?'laser':'bowling'})");
+      actions.insertBefore(creer, actions.querySelector(':scope > .planning-toggle'));
+    }
+    if (!avecCreer && creer) creer.remove();
   }
 }
 
@@ -21293,9 +21312,12 @@ const STAFF_CAL_CHEVRON_RIGHT = '<svg width="18" height="18" viewBox="0 0 24 24"
 // Widget date reutilisable : navigation jour (fleches), label cliquable qui
 // ouvre le calendrier custom, bouton Aujourd'hui. Le MEME controle sur toutes
 // les surfaces staff (planning, dashboard, pages Terrain).
-function staffDateNavHtml() {
+// `court` : l annee de l annee en cours se tait (l en-tete du plein ecran,
+// ou chaque pixel compte) ; celle d une autre annee reste dite.
+function staffDateNavHtml({ court = false } = {}) {
   const d = parseLocalDate(state.currentDate || todayStr());
-  const shortText = d.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(',', '');
+  const autreAnnee = d.getFullYear() !== parseLocalDate(todayStr()).getFullYear();
+  const shortText = d.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', ...(court && !autreAnnee ? {} : { year: 'numeric' }) }).replace(',', '');
   const label = shortText.charAt(0).toUpperCase() + shortText.slice(1);
   return `<div class="staff-date-widget">
       <div class="date-nav">
@@ -21753,8 +21775,15 @@ function getBookingDensityClass(height, expanded) {
     // Polices plus grandes en plein écran : une cellule très courte (≈30 min)
     // ne tient toujours pas 2 lignes → ligne unique essentielle. Les créneaux
     // plus longs profitent de la hauteur pour afficher davantage de détail.
-    if (height < 54) return 'dens-xs';
-    return height >= 108 ? 'dens-lg' : 'dens-md';
+    // LES SEUILS SE MESURENT SUR LES POLICES DU PLEIN ECRAN (2026-10-09). Ils
+    // valaient 54 et 108 px : sur un ecran de 950 px une heure fait 50 px de
+    // carte, et chaque reservation d une heure tombait sur UNE ligne de 11 px,
+    // une carte de 2 h sur deux, au milieu d un vide (Movsar : « les cartes du
+    // planning bowling, a ameliorer »). Deux lignes demandent nom 17,25 +
+    // gouttiere 2 + pied 14,4 + marges 11 + bordures 2 = 46,65 px ; trois,
+    // avec le nom sur deux lignes (34,8) et l offre (15,4), 79,6 px.
+    if (height < 47) return 'dens-xs';
+    return height >= 80 ? 'dens-lg' : 'dens-md';
   }
   // LE SEUIL D'UNE LIGNE EST CELUI OU DEUX LIGNES NE TIENNENT PLUS, et il se
   // MESURE. Il valait 40px, choisi avant que la carte porte son contenu actuel :
@@ -22316,20 +22345,75 @@ function renderCardFlags(reservation, options = {}) {
       path: '<path d="M5 21h14M6 21v-6h12v6M12 9V6"/><path d="M6 15a2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0 2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0"/><circle cx="12" cy="4.4" r="1.1"/>',
     });
   }
+  // TOUT GROUPE QUI JOUE AU LASER LE DIT, PAS SEULEMENT A DEUX PARTIES
+  // (2026-10-09, Movsar : « des petits badges en fonction de ce qu ils ont,
+  // super complet, super bien relié »). Une visite bowling + une partie de
+  // laser ne portait aucun marqueur : le comptoir ne savait pas qu elle
+  // passait a l arene. Le marqueur nu dit « laser », le chiffre n apparait
+  // qu a partir de deux parties ; l heure des departs, celle du planning
+  // Laser, est dans son titre et sur le badge du pied quand il a la place.
   const parties = getLaserGameCountForReservation(reservation);
-  if (parties > 1 && !options.partiesEcrites) {
+  if (parties >= 1 && !options.partiesEcrites) {
+    const departs = getCardLaserDeparts(reservation);
+    const quand = departs.heures.length ? ` : ${departs.heures.join(', ')}` : '';
+    const reste = departs.aPlacer ? `, ${departs.aPlacer} à placer` : '';
     marques.push({
-      cls: 'flag-laser',
-      label: `${parties} parties de laser`,
-      texte: `x${parties}`,
+      cls: parties > 1 ? 'flag-laser' : 'flag-laser flag-laser-seul',
+      label: `${parties > 1 ? `${parties} parties de laser` : 'Laser'}${quand}${reste}`,
+      texte: parties > 1 ? `x${parties}` : '',
       path: '<circle cx="12" cy="12" r="6.4"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3"/>',
     });
   }
   if (!marques.length) return '';
-  return `<span class="bk-flags">${marques.map(m => `<span class="bk-flag ${m.cls}" role="img" aria-label="${m.label}" title="${m.label}">`
+  // La boite dont le seul marqueur est le laser part avec lui quand le badge
+  // du pied le reprend (feuille de style) : sinon elle garderait sa gouttiere.
+  const seulLaser = marques.length === 1 && /flag-laser/.test(marques[0].cls);
+  return `<span class="bk-flags${seulLaser ? ' is-laser-seul' : ''}">${marques.map(m => `<span class="bk-flag ${m.cls}" role="img" aria-label="${m.label}" title="${m.label}">`
     + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${m.path}</svg>`
     + (m.texte ? `<span class="bk-flag-num">${escapeHtml(m.texte)}</span>` : '')
     + `</span>`).join('')}</span>`;
+}
+
+// LES DEPARTS LASER D UN GROUPE, TELS QUE LE PLANNING LASER LES POSE
+// (2026-10-09). Les memes fenetres que le tableau des departs
+// (getLaserWindowsFromReservation) : la carte bowling ne peut pas dire une
+// autre heure que lui. Une partie ou une vague = une heure ; les parties pas
+// encore posees se comptent a part.
+function getCardLaserDeparts(reservation) {
+  const minutes = [...new Set(getLaserWindowsFromReservation(reservation).map(w => Math.round(Number(w.start) * 60)))].sort((a, b) => a - b);
+  return {
+    heures: minutes.map(m => formatClockDisplay(m / 60)),
+    aPlacer: getPendingLaserPassesForReservation(reservation).length,
+  };
+}
+
+// LE BADGE LASER DU PIED : l heure du premier depart, « +1 » pour tout ce qui
+// suit au laser (une autre partie, une autre vague, une partie a placer), ou
+// « à placer » quand rien n est pose. Il vit dans la PLACE LIBRE du pied, une
+// boite de conteneur qui prend ce que les chiffres laissent (le meme mecanisme
+// « entier ou absent » que l offre) : complet s il y tient, sinon reduit a
+// son pictogramme, sinon absent. Aucun seuil de largeur choisi d avance, donc
+// rien a recalibrer quand le pied change. Le marqueur laser de la tete se
+// retire des que la carte a ce badge (feuille de style, `a-laser-pied`).
+function renderCardLaserBadge(reservation) {
+  if (getLaserGameCountForReservation(reservation) < 1) return '';
+  const departs = getCardLaserDeparts(reservation);
+  if (!departs.heures.length && !departs.aPlacer) return '';
+  const autres = departs.heures.length - 1 + (departs.heures.length ? departs.aPlacer : 0);
+  const texte = departs.heures.length
+    ? `${departs.heures[0]}${autres > 0 ? ` +${autres}` : ''}`
+    : 'à placer';
+  const titre = `Laser${departs.heures.length ? ` : ${departs.heures.join(', ')}` : ''}${departs.aPlacer ? `${departs.heures.length ? ',' : ' :'} ${departs.aPlacer} partie${departs.aPlacer > 1 ? 's' : ''} à placer` : ''}`;
+  const picto = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="6.4"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3"/></svg>';
+  const etat = departs.heures.length ? '' : ' is-a-placer';
+  // La classe de longueur dit au CSS quelle place reclame le texte. Les
+  // chiffres sont tabulaires : chaque motif a UNE largeur, mesuree une fois
+  // (feuille de style) : « 17:00 » (lc-5), « 17:30 +1 » (lc-8), « 17:30 +10 »
+  // (lc-9), « à placer » (lc-p).
+  return `<span class="b-tag bk-reste lc-${departs.heures.length ? Math.min(9, texte.length) : 'p'}">`
+    + `<span class="bk-laser${etat}" role="img" aria-label="${escapeHtml(titre)}" title="${escapeHtml(titre)}">${picto}<span class="bk-laser-t">${escapeHtml(texte)}</span></span>`
+    + `<span class="bk-laser is-compact${etat}" role="img" aria-label="${escapeHtml(titre)}" title="${escapeHtml(titre)}">${picto}</span>`
+    + '</span>';
 }
 
 // `contexteSeul` : ne rend QUE ce que la ligne ne dit pas deja ailleurs.
@@ -23069,7 +23153,14 @@ function renderPlanning() {
       const prixHtml = (densClass === 'dens-lg' || densClass === 'dens-md')
         ? renderReservationPriceMark(r, { forme: 'montant', base: `bk-price ${classeLongueur}` })
         : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      // Le badge laser prend la place libre d un pied qui n a pas deja l offre
+      // (renderCardLaserBadge) ; une formule d une heure, dont l offre occupe
+      // cette place, garde son marqueur laser dans la tete : l offre passe
+      // avant. Pas de badge sur une carte d une seule ligne.
+      const progressionHtml = renderActivityProgressPill(r);
+      const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
+      const casLaser = laserHtml ? ' a-laser-pied' : '';
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}${casLaser}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
@@ -23088,9 +23179,10 @@ function renderPlanning() {
         ${offreSurSaLigne ? `<div class="booking-offer">${offreHtml}</div>` : ''}
         <div class="booking-foot">
           ${offreSurSaLigne ? '' : offreHtml}
+          ${laserHtml}
           ${statsHtml}
           ${prixHtml}
-          ${renderActivityProgressPill(r)}
+          ${progressionHtml}
         </div>
       </div>`;
     });
@@ -23186,10 +23278,555 @@ function getPlanningBookingDisplayName(reservation) {
   base = base.replace(/^Anniversaire\b/i, 'Anniv.');
   let candidate = id && !base.includes(id) ? `${base} ${id}` : base;
   if (candidate.length <= 26) return candidate;
-  const firstWord = base.split(/\s+/).filter(Boolean)[0] || base;
-  candidate = id ? `${firstWord} ${id}` : firstWord;
-  if (candidate.length <= 24) return candidate;
-  return id ? `${firstWord.slice(0, 14)} ${id}` : firstWord.slice(0, 24);
+  // Un mot generique en tete (Visite, Famille, Groupe...) ne dit pas QUI :
+  // c est lui qui saute, jamais le nom propre. Garder le premier mot
+  // affichait « Visite » pour « Visite Collège Saint-Joseph » (2026-10-08).
+  // Ce qui reste trop long, la carte le coupe a l ellipse, ou sur deux lignes
+  // quand elle est haute.
+  const propre = base.replace(/^(?:visite|famille|groupe|soir[ée]e|team|f[êe]te|sortie|classe|anniv\.)\s+/i, '').trim() || base;
+  return id && !propre.includes(id) ? `${propre} ${id}` : propre;
+}
+
+// ── LE PLANNING LASER : LE TABLEAU DES DEPARTS (lot I3, 2026-10-08) ─────────
+// Maquette E validee par Movsar le 08/10 (« ça va », a rendre plus pro). Un
+// rang par depart (:00 et :30), la jauge des armes du centre remplie par les
+// groupes ; en tete le prochain depart et ses armes a preparer, la partie en
+// jeu et les groupes en retard avec le geste qui les decale ; en bas les
+// parties a placer. Toucher un groupe du jour ouvre sa fiche ; le deplacer :
+// le glisser, aussi loin qu il faut (la page defile toute seule), ou le
+// prendre (appui long au doigt, M au clavier) puis toucher son depart. Une
+// partie a placer : la toucher puis son depart. Les departs possibles
+// s allument, toucher un autre dit pourquoi il ne va pas.
+// Le moteur ne change pas : memes unites (partie.vague), meme PATCH
+// activityMove (scheduleLaserPass / unscheduleLaserPass), meme verdict du
+// serveur. L ecran explique d avance ce que le serveur dirait.
+
+const lpEtat = { choisi: null, raison: '', geste: null, glisse: null, enCours: null, joues: false, differe: false, ignorerClicJusqua: 0, defile: null };
+
+function lpMinutes() {
+  const activite = (typeof getCenterActivities === 'function' ? getCenterActivities() : []).find(a => a && a.id === 'laser_game') || {};
+  return {
+    jeu: Number(activite.gameMinutes || activite.defaultMinutes) || 22,
+    briefing: Number(activite.briefingMinutes) || 8,
+    bloc: LASER_GAME_ARENA_MINUTES,
+  };
+}
+
+function lpHeure(t) { return formatClockDisplay(t); }
+function lpDuree(minutes) {
+  const m = Math.max(0, Math.round(minutes));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const reste = m % 60;
+  return reste ? `${h} h ${String(reste).padStart(2, '0')}` : `${h} h`;
+}
+function lpPluriel(n, mot) { return `${n} ${mot}${Math.abs(n) > 1 ? 's' : ''}`; }
+function lpCourt(nom) { return String(nom || 'Groupe').replace(/^Famille\s+/i, ''); }
+function lpRang(k) { return Number(k) === 1 ? '1re' : `${Number(k)}e`; }
+
+// Les joueurs qu une fenetre RETIENT sur l arene (30 quand le groupe la
+// privatise) et ceux du GROUPE (ce que l equipe compte et equipe).
+function lpArene(w) { return Math.max(0, Number(w.players || w.reservation?.pax || 0)); }
+function lpGroupe(w) { return Math.max(1, Number(w.joueursReels ?? w.players) || Number(w.reservation?.pax) || 1); }
+
+function lpBlocages(jour) {
+  if (typeof availabilityBlocksCache === 'undefined' || !availabilityBlocksCache.loaded) return [];
+  return getAvailabilityBlocksForDate(jour)
+    .filter(b => b.scopeType === 'center' || (b.scopeType === 'activity' && b.scopeRef === 'laser_game'))
+    .map(b => {
+      const a = availabilityBlockStartMin(b);
+      const z = availabilityBlockEndMin(b);
+      return { debut: a == null ? 0 : a / 60, fin: z == null ? 24 : z / 60, raison: b.reason || '', centre: b.scopeType === 'center' };
+    });
+}
+
+// LA COULEUR D UN GROUPE EST CELLE DE SON ETAT (Movsar, 2026-10-09 : huit
+// teintes, « trop de couleurs comme ca, ca fait pas pro » ; choix « Couleur de
+// l etat » sur maquettes). La legende du planning bowling, la meme sur les
+// deux ecrans : bleu confirme, ambre arrive, vert paye ; un groupe pas venu
+// passe au gris. Deux groupes voisins d un meme depart dans le meme etat
+// s alternent en deux tons (is-alt), pour qu on voie ou l un finit.
+function lpTeinte(r) {
+  if (r.absentAt && r.status !== 'paid') return 'st-absent';
+  if (r.status === 'paid') return 'st-paid';
+  if (r.status === 'arrived') return 'st-arr';
+  return 'st-conf';
+}
+// LES PICTOS DES CARTES BOWLING, APRES LE NOM (2026-10-09, Movsar : « Pictos
+// du bowling »). Les memes marques que la tete d une carte bowling : la note a
+// lire, l anniversaire, et le prix ajuste en signal (l etiquette de prix que
+// la carte bowling pose devant son montant). Le marqueur laser n a rien a dire
+// sur un planning ou tout le monde joue au laser : `partiesEcrites` le retire.
+// Chaque marque est titree et vocalisee (role="img") et ne porte aucun texte :
+// le nom et le compte du groupe se lisent comme avant.
+function lpPictos(r) {
+  const marques = renderCardFlags(r, { partiesEcrites: true }) + renderReservationPriceMark(r, { forme: 'signal', base: 'bk-flag flag-prix' });
+  return marques ? `<span class="lp-pictos">${marques}</span>` : '';
+}
+function lpTeintesDuDepart(d) {
+  const teintes = new Map();
+  let avant = '';
+  let alt = false;
+  d.ici.forEach(w => {
+    const t = lpTeinte(w.reservation);
+    alt = t === avant ? !alt : false;
+    avant = t;
+    teintes.set(w, alt ? `${t} is-alt` : t);
+  });
+  return teintes;
+}
+
+// LA JOURNEE EN DONNEES : chaque depart avec ses groupes, ce qu il reste,
+// ce qui le ferme ; le prochain depart, la partie en jeu, les retards ; les
+// parties a placer. Tous les dossiers comptent (la recherche ne fait que
+// griser) : une jauge ne ment jamais sur les armes.
+function lpModele() {
+  const jour = state.currentDate;
+  const config = planningDisplayWindow('laser');
+  const capacite = getAvailabilityLaserCapacity();
+  const lancements = getAvailabilityLaserParallelLaunches();
+  const minutes = lpMinutes();
+  const bloc = minutes.bloc / 60;
+  const aujourdHui = jour === todayStr();
+  const maintenant = aujourdHui ? currentTimeDecimal() : (jour < todayStr() ? 48 : -1);
+  const resas = todaysReservations();
+  const fenetres = resas.flatMap(r => getLaserWindowsFromReservation(r).map(w => ({ ...w, reservation: r })));
+  const enLigne = getBlocagesEnLigne(jour).flatMap(b => getLaserWindowsFromReservation(b).map(w => ({ ...w, reservation: b, enLigne: true })));
+  const attente = getPendingLaserPasses(jour)
+    .slice()
+    .sort((a, b) => timeToNum(a.reservation.startTime || '00:00') - timeToNum(b.reservation.startTime || '00:00') || a.countIndex - b.countIndex || a.waveIndex - b.waveIndex);
+  // UNE PARTIE HORS GRILLE SE RANGE AU DEPART LE PLUS PROCHE (2026-10-09). A
+  // la demi-heure inferieure, la vague de 17:25 comptait au depart de 17:00
+  // en plus de celle de 16:55 encore en jeu : « 45, 15 de trop » pour 23
+  // armes au plus, et 16:30 se disait pris par une partie qui ne commence
+  // qu a 16:55. Au plus proche (a egalite, le plus tot), une partie de 25 min
+  // chevauche toujours son depart, et chaque rang compte ce qui chevauche
+  // [t, t + bloc), comme ensureLaserCapacity cote serveur.
+  const creneau = (debut) => config.open + Math.round((Number(debut) - config.open) * 2 - 0.001) / 2;
+  const blocages = lpBlocages(jour);
+  const recherche = String(state.searchTerm || '').trim().toLowerCase();
+  const trouve = (r) => !recherche || `${r.name || ''} ${r.phone || ''} ${r.email || ''}`.toLowerCase().includes(recherche);
+
+  const cles = new Set();
+  for (let t = config.open; t < config.close - 0.001; t += 0.5) cles.add(Math.round(t * 60));
+  fenetres.concat(enLigne).forEach(w => cles.add(Math.round(creneau(w.start) * 60)));
+  const departs = [...cles].sort((a, b) => a - b).map(m => {
+    const t = m / 60;
+    const fin = t + bloc;
+    const dedans = (w) => Math.abs(creneau(w.start) - t) < 0.001;
+    const ici = fenetres.filter(dedans).sort((a, b) => Number(a.reservation.id) - Number(b.reservation.id) || Number(a.countIndex || 1) - Number(b.countIndex || 1));
+    const holds = enLigne.filter(dedans);
+    const chevauche = fenetres.concat(enLigne).filter(w => !dedans(w) && w.start < fin - 0.001 && w.end > t + 0.001);
+    const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + lpArene(w), 0);
+    const ferme = blocages.find(b => b.debut < fin - 0.001 && b.fin > t + 0.001) || null;
+    const hors = t < config.open - 0.001 || t > config.close - 0.5 + 0.001;
+    return {
+      t, fin, ici, holds, chevauche, occupe,
+      places: capacite - occupe,
+      ferme, hors,
+      joue: maintenant >= t + minutes.jeu / 60,
+      enJeu: maintenant >= t && maintenant < t + minutes.jeu / 60,
+    };
+  });
+
+  // Le prochain depart est celui de l horloge (le suivant, ouvert), qu il ait
+  // des groupes ou non, comme la maquette : la liste reprend APRES lui.
+  const prochain = aujourdHui ? departs.find(d => d.t > maintenant + 0.0001 && !d.ferme && !d.hors) || null : null;
+  const enJeu = aujourdHui ? departs.find(d => d.enJeu && d.ici.length) || null : null;
+
+  // LES RETARDS : le meme mot que la liste (« En retard », lot I1), pour un
+  // groupe dont le depart laser est passe. « Decaler a » vise le premier
+  // depart ou toutes ses parties suivantes tiennent, du meme ecart.
+  let retards = [];
+  if (aujourdHui && typeof getStaffReservationMoments === 'function') {
+    const moments = getStaffReservationMoments(resas, jour);
+    retards = resas
+      .filter(r => getStaffListeSection(moments, r) === 'late')
+      .map(r => {
+        const siennes = fenetres.filter(w => Number(w.reservation.id) === Number(r.id)).sort((a, b) => a.start - b.start);
+        const manquee = siennes.find(w => w.start <= maintenant + 0.0001);
+        if (!manquee) return null;
+        return { reservation: r, fenetre: manquee, cible: lpCibleDecalage({ departs, capacite, lancements, maintenant, bloc }, r, siennes.filter(w => w.start >= manquee.start - 0.0001), manquee.start) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.fenetre.start - b.fenetre.start);
+  }
+
+  return { jour, config, capacite, lancements, minutes, bloc, aujourdHui, maintenant, resas, fenetres, enLigne, attente, departs, prochain, enJeu, retards, trouve, creneau };
+}
+
+function lpCibleDecalage(modele, reservation, siennes, depuis) {
+  const id = Number(reservation.id);
+  const libre = (t, fenetre) => {
+    const d = modele.departs.find(x => Math.abs(x.t - t) < 0.001);
+    if (!d || d.ferme || d.hors) return false;
+    const autres = [...d.ici, ...d.holds, ...d.chevauche].filter(w => Number(w.reservation?.id) !== id);
+    if (autres.some(w => w.arene === 'seuls') || (fenetre.arene === 'seuls' && autres.length)) return false;
+    const sessions = new Set(autres.map(w => `${Math.round(w.start * 60)}-${Math.round(w.end * 60)}`));
+    const cle = `${Math.round(t * 60)}-${Math.round((t + fenetre.end - fenetre.start) * 60)}`;
+    if (sessions.size + (sessions.has(cle) ? 0 : 1) > modele.lancements) return false;
+    return autres.reduce((s, w) => s + lpArene(w), 0) + lpArene(fenetre) <= modele.capacite;
+  };
+  const candidats = modele.departs.filter(d => d.t > modele.maintenant + 0.0001 && d.t > depuis);
+  for (const d of candidats) {
+    const ecart = d.t - depuis;
+    if (siennes.every(w => libre(w.start + ecart, w))) return d.t;
+  }
+  return null;
+}
+
+// Le groupe choisi, s il existe encore ce jour, dans ce centre.
+function lpChoisiValide(modele) {
+  const c = lpEtat.choisi;
+  if (!c) return null;
+  if (c.date !== state.currentDate || c.centre !== getCurrentStaffCenterId()) { lpEtat.choisi = null; return null; }
+  const reservation = modele.resas.find(r => Number(r.id) === c.id);
+  if (!reservation) { lpEtat.choisi = null; return null; }
+  const placee = modele.fenetres.find(w => Number(w.reservation.id) === c.id && laserBlockUnitKey(w) === c.unitKey) || null;
+  const enAttente = modele.attente.find(p => Number(p.reservation.id) === c.id && p.unitKey === c.unitKey) || null;
+  if (!placee && !enAttente) { lpEtat.choisi = null; return null; }
+  const unite = laserUnitInfo(reservation, c.unitKey);
+  // Le choix sauvegarde reste valable quand aucune partie n est placee.
+  // buildActivityMove retient alors toute l arene, pas seulement le groupe.
+  const prive = placee ? placee.arene === 'seuls' : reservation.opsPlan?.arene === 'seuls';
+  return {
+    id: c.id,
+    unitKey: c.unitKey,
+    reservation,
+    placee,
+    countIndex: unite.countIndex,
+    waveIndex: unite.waveIndex,
+    waveCount: unite.waveCount,
+    arene: placee ? lpArene(placee) : prive ? modele.capacite : Math.max(1, Number(unite.players) || 1),
+    groupe: placee ? lpGroupe(placee) : Math.max(1, Number(enAttente?.players || unite.players) || 1),
+    prive,
+  };
+}
+
+function lpNomUnite(c) {
+  const parts = [];
+  if (Number(c.countIndex || 1) > 1) parts.push(`${lpRang(c.countIndex)} partie`);
+  if (Number(c.waveCount || c.groupWaveCount || 1) > 1) parts.push(`vague ${Number(c.waveIndex || c.groupWaveIndex || 1)}/${Number(c.waveCount || c.groupWaveCount || 1)}`);
+  return parts.join(' · ');
+}
+
+// CE DEPART PEUT-IL LA PRENDRE ? Les regles du serveur, dites d avance :
+// ouvert, pas passe, le groupe n y joue pas deja, ses parties restent dans
+// l ordre, son autre activite ne tombe pas dessus, les armes et les
+// lancements tiennent.
+function lpVerdict(modele, choisi, d) {
+  const h = lpHeure(d.t);
+  if (choisi.placee && Math.abs(modele.creneau(choisi.placee.start) - d.t) < 0.001) return { ok: false, ici: true, raison: `Elle est déjà à ${lpHeure(choisi.placee.start)}.` };
+  if (modele.config.closed) return { ok: false, raison: 'Centre fermé ce jour.' };
+  if (d.ferme) return { ok: false, raison: `${h} : ${d.ferme.centre ? 'centre fermé' : 'Laser Game bloqué'}${d.ferme.raison ? ` (${d.ferme.raison})` : ''}.` };
+  if (d.hors) return { ok: false, raison: `${h} : hors des horaires du jour.` };
+  if (modele.aujourdHui && d.t <= modele.maintenant + 0.0001) return { ok: false, raison: `${h} : ce départ est déjà parti.` };
+  const id = choisi.id;
+  const siennes = modele.fenetres.filter(w => Number(w.reservation.id) === id && laserBlockUnitKey(w) !== choisi.unitKey);
+  const fin = d.t + modele.bloc;
+  const dessus = siennes.find(w => w.start < fin - 0.001 && w.end > d.t + 0.001);
+  if (dessus) return { ok: false, raison: `${h} : ce groupe y joue déjà${lpNomUnite(dessus) ? ` (${lpNomUnite(dessus)})` : ''}.` };
+  const avant = siennes.filter(w => Number(w.countIndex || 1) < choisi.countIndex && w.start >= d.t - 0.001).sort((a, b) => b.start - a.start)[0];
+  if (avant) return { ok: false, raison: `${h} : avant sa ${lpRang(avant.countIndex)} partie (${lpHeure(avant.start)}).` };
+  const apres = siennes.filter(w => Number(w.countIndex || 1) > choisi.countIndex && w.start <= d.t + 0.001).sort((a, b) => a.start - b.start)[0];
+  if (apres) return { ok: false, raison: `${h} : après sa ${lpRang(apres.countIndex)} partie (${lpHeure(apres.start)}).` };
+  const pax = Math.max(1, Number(choisi.reservation.pax) || 1);
+  const bowling = getBowlingWindowsFromReservation(choisi.reservation).find(w => w.start < fin - 0.001 && w.end > d.t + 0.001);
+  if (bowling && choisi.groupe + Math.max(0, Number(bowling.players) || pax) > pax) {
+    return { ok: false, raison: `${h} : son bowling est de ${lpHeure(bowling.start)} à ${lpHeure(bowling.end)}.` };
+  }
+  const autres = [...d.ici, ...d.holds, ...d.chevauche].filter(w => !(Number(w.reservation?.id) === id && laserBlockUnitKey(w) === choisi.unitKey));
+  const occupe = autres.reduce((s, w) => s + lpArene(w), 0);
+  const prive = autres.find(w => w.arene === 'seuls');
+  if (prive) return { ok: false, raison: `${h} : arène privatisée par ${prive.reservation?.name || 'un groupe'}.` };
+  if (choisi.prive && autres.length) return { ok: false, raison: `${h} : ce groupe a l’arène pour lui seul, il lui faut un départ vide.` };
+  if (occupe + choisi.arene > modele.capacite) {
+    const reste = Math.max(0, modele.capacite - occupe);
+    return { ok: false, raison: reste ? `${h} : il reste ${lpPluriel(reste, 'place')}, il en faut ${choisi.arene}.` : `${h} : complet.` };
+  }
+  const sessions = new Set(autres.map(w => `${Math.round(w.start * 60)}-${Math.round(w.end * 60)}`));
+  const cle = `${Math.round(d.t * 60)}-${Math.round(fin * 60)}`;
+  if (sessions.size + (sessions.has(cle) ? 0 : 1) > modele.lancements) {
+    return { ok: false, raison: modele.lancements > 1 ? `${h} : l’arène tourne déjà ${modele.lancements} lancements.` : `${h} : un autre lancement tourne déjà à cette heure.` };
+  }
+  return { ok: true, apres: occupe + choisi.arene };
+}
+
+// ── LE RENDU ──────────────────────────────────────────────────────────────
+function lpCases(modele, d, choisi, verdict) {
+  const cases = [];
+  const pousser = (n, classe, attrs = '') => { for (let i = 0; i < n; i += 1) cases.push(`<i${classe ? ` class="${classe}"` : ''}${attrs}></i>`); };
+  const teintes = lpTeintesDuDepart(d);
+  d.ici.forEach(w => {
+    const k = teintes.get(w);
+    const groupe = lpGroupe(w);
+    const estChoisi = choisi && Number(w.reservation.id) === choisi.id && laserBlockUnitKey(w) === choisi.unitKey;
+    // Les cases du groupe le portent : on les attrape pour le deplacer.
+    const attrs = ` data-lp-id="${Number(w.reservation.id)}" data-lp-unit="${escapeHtml(laserBlockUnitKey(w))}"`;
+    pousser(groupe, `${k}${estChoisi ? ' is-choisi' : ''}`, attrs);
+    if (w.arene === 'seuls') pousser(Math.max(0, lpArene(w) - groupe), `${k} is-prive`, attrs);
+  });
+  d.holds.forEach(w => pousser(lpArene(w), 'is-enligne'));
+  d.chevauche.forEach(w => pousser(lpArene(w), 'is-chevauche'));
+  if (choisi && verdict && verdict.ok) pousser(choisi.arene, 'is-fantome');
+  const vides = Math.max(0, modele.capacite - cases.length);
+  pousser(vides, '');
+  return cases.slice(0, Math.max(modele.capacite, 1)).join('');
+}
+
+// Un groupe du jour : le toucher ouvre sa fiche, le glisser le deplace
+// (Movsar, 2026-10-08 : « Ouvrir sa fiche ») ; au doigt, un appui long sans
+// bouger le prend aussi, et au clavier la touche M. Une partie a placer : la
+// toucher la prend, puis on touche son depart (la maquette).
+function lpAttrsGroupe(id, unitKey, { fiche = false } = {}) {
+  const toucher = fiche ? `lpToucherGroupe(${id}, event)` : `lpChoisir(${id}, '${unitKey}', event)`;
+  const clavier = fiche ? ` onkeydown="lpClavierGroupe(event, ${id}, '${unitKey}')" aria-keyshortcuts="M"` : '';
+  return `data-laser-res-id="${id}" data-laser-unit="${unitKey}" onclick="${toucher}"${clavier} onmousedown="lpSouris(event, ${id}, '${unitKey}')" ${planningTouchAttrs(`lpDoigt(event, ${id}, '${unitKey}')`)}`;
+}
+
+// Les armes d un lancement parti plus tot (place a la main hors de la grille)
+// et encore en jeu a ce depart : la jauge les hachure, le texte dit pourquoi.
+function lpEncore(d) {
+  const enJeu = d.chevauche.filter(w => !w.enLigne);
+  if (!enJeu.length) return '';
+  return `${enJeu.reduce((s, w) => s + lpArene(w), 0)} en jeu jusqu’à ${lpHeure(Math.max(...enJeu.map(w => w.end)))}`;
+}
+
+function lpLegende(modele, d, choisi) {
+  const encore = lpEncore(d);
+  if (!d.ici.length && !d.holds.length) {
+    if (d.ferme) return `<span class="lp-libre">${d.ferme.centre ? 'Centre fermé' : 'Laser Game bloqué'}${d.ferme.raison ? ` · ${escapeHtml(d.ferme.raison)}` : ''}</span>`;
+    if (d.hors) return '<span class="lp-libre">Hors des horaires</span>';
+    if (d.joue) return `<span class="lp-libre">${encore || 'Personne'}</span>`;
+    return `<span class="lp-libre">${encore || 'Libre'} · toucher pour réserver</span>`;
+  }
+  const teintes = lpTeintesDuDepart(d);
+  const groupes = d.ici.map(w => {
+    const r = w.reservation;
+    const id = Number(r.id);
+    const unitKey = laserBlockUnitKey(w);
+    const k = teintes.get(w);
+    const suite = [lpNomUnite(w), w.arene === 'seuls' ? 'arène pour eux seuls' : '', Math.abs(w.start - d.t) > 0.001 ? `à ${lpHeure(w.start)}` : '']
+      .filter(Boolean).join(' · ');
+    const etat = r.absentAt && r.status !== 'paid' ? ' is-absent' : (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';
+    const choisiIci = choisi && choisi.id === id && choisi.unitKey === unitKey ? ' is-choisi' : '';
+    const grise = modele.trouve(r) ? '' : ' is-grise';
+    const titre = `${r.name || 'Groupe'} : ${lpPluriel(lpGroupe(w), 'joueur')}${suite ? `, ${suite}` : ''}. Toucher : sa fiche. Glisser : le déplacer.`;
+    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}" ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(titre)}"><i aria-hidden="true"></i><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)} <span>${lpGroupe(w)}${suite ? ` · ${escapeHtml(suite)}` : ''}${etat === ' is-absent' ? ' · pas venu' : ''}</span></button>`;
+  });
+  // Un client retient ces armes en ligne : la carte dit quand elles se
+  // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
+  d.holds.forEach(w => {
+    const libre = heureLiberationBlocage(w.reservation);
+    groupes.push(`<span class="lp-g is-enligne" title="${escapeHtml(texteBlocageEnLigne(w.reservation))}" onclick="event.stopPropagation()"><i aria-hidden="true"></i><b>En ligne</b> <span>${lpArene(w)} · ${libre ? `libre à ${escapeHtml(libre)}` : 'en cours'}</span></span>`);
+  });
+  if (encore) groupes.push(`<span class="lp-libre">+ ${encore}</span>`);
+  return groupes.join('');
+}
+
+function lpCompte(modele, d, verdict) {
+  if (verdict && verdict.ok) return `<b class="is-plus">${verdict.apres}</b> <small>après</small>`;
+  if (d.places < 0) return `<b class="is-trop">${d.occupe}</b> <small class="is-trop">${-d.places} de trop</small>`;
+  if (!d.occupe) return `<b>0</b> <small>${lpPluriel(modele.capacite, 'place')}</small>`;
+  return `<b>${d.occupe}</b> <small${d.places === 0 ? ' class="is-plein"' : ''}>${d.places === 0 ? 'complet' : lpPluriel(d.places, 'place')}</small>`;
+}
+
+function lpRangDepart(modele, d, choisi) {
+  const verdict = choisi ? lpVerdict(modele, choisi, d) : null;
+  const classes = ['lp-dep'];
+  if (d.joue && modele.aujourdHui) classes.push('is-joue');
+  if (d.enJeu) classes.push('is-enjeu');
+  if (modele.prochain && modele.prochain.t === d.t) classes.push('is-prochain');
+  if (!d.ici.length && !d.holds.length) classes.push('is-vide');
+  if (d.ferme || d.hors) classes.push('is-ferme');
+  if (d.places < 0) classes.push('is-trop');
+  if (verdict) classes.push(verdict.ok ? 'is-cible' : verdict.ici ? 'is-ici' : 'is-terne');
+  if (lpEtat.enCours && Math.abs(lpEtat.enCours.t - d.t) < 0.001) classes.push('is-pose');
+  const h = lpHeure(d.t);
+  const qui = [
+    ...d.ici.map(w => `${w.reservation.name || 'Groupe'} ${lpGroupe(w)}`),
+    ...d.holds.map(w => {
+      const libre = heureLiberationBlocage(w.reservation);
+      return `En ligne ${lpArene(w)}${libre ? `, libre à ${libre}` : ''}`;
+    }),
+  ].join(', ');
+  const encore = lpEncore(d);
+  const reste = d.places < 0 ? `, ${-d.places} de trop` : `, ${lpPluriel(Math.max(0, d.places), 'place')}`;
+  const toucher = d.places > 0 && !d.joue && !d.ferme && !d.hors ? ` Toucher pour réserver à ${h}.` : '';
+  const etiquette = verdict
+    ? (verdict.ok ? `Placer ici, à ${h} : ${verdict.apres} sur ${modele.capacite} après.` : verdict.raison)
+    : d.ici.length || d.holds.length || d.occupe
+      ? `${h} : ${d.occupe} sur ${modele.capacite}${reste}.${qui ? ` ${qui}.` : ''}${encore ? ` ${encore}.` : ''}${toucher}`
+      : `${h} : libre, ${lpPluriel(modele.capacite, 'place')}.${toucher}`;
+  return `<div class="${classes.join(' ')}" data-laser-time-start="${d.t}" data-lp-t="${d.t}" onclick="lpToucherDepart(${d.t}, event)">
+    <span class="lp-dep__h">${h}</span>
+    <button type="button" class="lp-dep__jauge" data-lp-t="${d.t}" aria-label="${escapeHtml(etiquette)}" onclick="lpToucherDepart(${d.t}, event)" onmousedown="lpSourisJauge(event)" ${planningTouchAttrs('lpDoigtJauge(event)')}><span class="lp-cases" aria-hidden="true">${lpCases(modele, d, choisi, verdict)}</span></button>
+    <span class="lp-dep__n">${lpCompte(modele, d, verdict)}</span>
+    <div class="lp-qui">${lpLegende(modele, d, choisi)}</div>
+  </div>`;
+}
+
+function lpProchainHtml(modele) {
+  const d = modele.prochain;
+  if (!modele.aujourdHui) return '';
+  if (!d) {
+    return '<section class="lp-prochain is-calme" aria-label="Prochain départ"><div class="lp-prochain__quand"><span class="lp-lbl">Prochain départ</span> <span class="lp-prochain__d">Plus aucun départ aujourd’hui.</span></div></section>';
+  }
+  const maintenantMin = modele.maintenant * 60;
+  const briefing = d.t * 60 - modele.minutes.briefing;
+  const quand = maintenantMin >= briefing ? 'briefing en cours' : `briefing dans ${lpDuree(briefing - maintenantMin)}`;
+  if (!d.ici.length) {
+    return `<section class="lp-prochain is-calme" data-lp-t="${d.t}" aria-label="Prochain départ, ${lpHeure(d.t)}">
+      <div class="lp-prochain__quand"><span class="lp-lbl">Prochain départ</span> <span class="lp-prochain__t">${lpHeure(d.t)}</span> <span class="lp-prochain__d">Personne pour l’instant</span></div>
+      <span class="lp-prochain__g"><b>${Math.max(0, d.places)}</b> <small>place${Math.max(0, d.places) > 1 ? 's' : ''} libre${Math.max(0, d.places) > 1 ? 's' : ''}</small></span>
+    </section>`;
+  }
+  const armes = d.ici.reduce((s, w) => s + (w.reservation.absentAt && w.reservation.status !== 'paid' ? 0 : lpGroupe(w)), 0);
+  const groupes = d.ici.map(w => {
+    const r = w.reservation;
+    const unitKey = laserBlockUnitKey(w);
+    const k = lpTeinte(r);
+    const la = r.status === 'arrived' || r.status === 'paid';
+    const absent = r.absentAt && r.status !== 'paid';
+    const detail = [lpPluriel(lpGroupe(w), 'joueur'), lpNomUnite(w), w.arene === 'seuls' ? 'arène pour eux seuls' : ''].filter(Boolean).join(' · ');
+    const action = absent
+      ? '<span class="lp-etat lp-etat--absent">Pas venus</span>'
+      : la
+        ? `<span class="lp-etat lp-etat--la"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Arrivés</span>`
+        : `<button type="button" class="lp-etat lp-etat--marquer" onclick="lpIlsSontLa(${Number(r.id)}, event)">Ils sont là</button>`;
+    return `<div class="lp-groupe ${k}"><button type="button" class="lp-groupe__sel" ${lpAttrsGroupe(Number(r.id), unitKey, { fiche: true })} title="${escapeHtml(`${r.name || 'Groupe'} : toucher pour sa fiche, glisser pour le déplacer`)}"><span class="lp-pastille" aria-hidden="true"></span> <span class="lp-groupe__t"><span class="lp-nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span> <span class="lp-n">${escapeHtml(detail)}</span></span></button>${action}</div>`;
+  }).join('');
+  return `<section class="lp-prochain" data-lp-t="${d.t}" aria-label="Prochain départ, ${lpHeure(d.t)}">
+    <div class="lp-prochain__quand"><span class="lp-lbl">Prochain départ</span> <span class="lp-prochain__t">${lpHeure(d.t)}</span> <span class="lp-prochain__d">${quand}</span></div>
+    <div class="lp-groupes">${groupes}</div>
+    <span class="lp-prochain__g"><b>${armes}</b> <small>arme${armes > 1 ? 's' : ''} à préparer</small></span>
+  </section>`;
+}
+
+function lpBandeHtml(modele) {
+  if (!modele.aujourdHui) return '';
+  const e = modele.enJeu;
+  const jeu = e
+    ? (() => {
+      const fait = Math.min(1, Math.max(0, (modele.maintenant - e.t) * 60 / modele.minutes.jeu));
+      const reste = Math.max(0, e.t * 60 + modele.minutes.jeu - modele.maintenant * 60);
+      return `<div class="lp-jeu"><span class="lp-lbl">En jeu</span> <b>${lpHeure(e.t)}</b> <span class="lp-prog" role="progressbar" aria-label="Partie de ${lpHeure(e.t)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(fait * 100)}"><i style="width:${Math.round(fait * 100)}%"></i></span> <span class="lp-fin">fin dans ${lpDuree(reste)}</span></div>`;
+    })()
+    : `<div class="lp-jeu is-libre"><span class="lp-lbl">Arène</span> <b>Libre</b>${modele.prochain ? `<span class="lp-fin">jusqu’à ${lpHeure(modele.prochain.t)}</span>` : ''}</div>`;
+  const alertes = modele.retards.slice(0, 3).map(a => {
+    const r = a.reservation;
+    const id = Number(r.id);
+    const ecart = a.cible == null ? null : Math.round((a.cible - a.fenetre.start) * 60);
+    const decaler = a.cible == null
+      ? '<span class="lp-alerte__rien">Aucun départ libre pour eux aujourd’hui</span>'
+      : `<button type="button" class="lp-btn lp-btn--rouge" onclick="lpDecaler(${id}, ${ecart}, event)">Décaler à ${lpHeure(a.cible)}</button>`;
+    return `<div class="lp-alerte" role="status"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6v4M8 11.2v.2"/></svg><span class="lp-alerte__t"><b>${escapeHtml(lpCourt(r.name))}</b> pas venus à ${lpHeure(a.fenetre.start)}</span>${decaler}<button type="button" class="lp-lien" onclick="lpPasVenus(${id}, event)">Pas venus</button></div>`;
+  }).join('');
+  return `<div class="lp-bande${alertes ? '' : ' is-seule'}">${jeu}${alertes ? `<div class="lp-alertes">${alertes}</div>` : ''}</div>`;
+}
+
+// Aujourd hui, la liste reprend APRES le prochain depart (il est en tete, avec
+// ses armes), comme la maquette. Les departs deja partis se replient : ceux
+// qui ont eu des groupes se rouvrent d un toucher, les vides ne reviennent
+// jamais (du bruit). Un groupe choisi fait revenir le prochain depart : c est
+// une cible comme une autre.
+function lpJourneeHtml(modele, choisi) {
+  const parti = (d) => modele.aujourdHui && d.t <= modele.maintenant + 0.0001;
+  // Le compte dit les departs JOUES (la partie finie) ; celle en jeu est dans
+  // la bande du haut, et revient dans la liste avec eux quand on l ouvre.
+  const jouesAvecGroupes = modele.departs.filter(d => modele.aujourdHui && d.joue && d.ici.length).length;
+  const montres = modele.departs.filter(d => {
+    if (!modele.aujourdHui) return true;
+    if (parti(d)) return lpEtat.joues && d.ici.length > 0;
+    // Le prochain depart revient dans la liste pour un placement au toucher.
+    // Pas pendant un glisser : la ligne inseree en tete decalait tout d un
+    // rang sous le doigt, et le groupe tombait un depart trop tot (2026-10-08) ;
+    // la carte du prochain depart sert alors de cible (lpCibleSous).
+    if (modele.prochain && Math.abs(d.t - modele.prochain.t) < 0.001) return Boolean(choisi) && !(lpEtat.geste && lpEtat.geste.glisse);
+    return true;
+  });
+  const tete = jouesAvecGroupes
+    ? `<button type="button" class="lp-passe" onclick="lpBasculerJoues(event)" aria-expanded="${lpEtat.joues ? 'true' : 'false'}">${lpPluriel(jouesAvecGroupes, 'départ')} joué${jouesAvecGroupes > 1 ? 's' : ''} · ${lpEtat.joues ? 'Masquer' : 'Afficher'}</button>`
+    : '';
+  const rangs = montres.map(d => lpRangDepart(modele, d, choisi)).join('');
+  return `<section class="lp-journee" aria-label="La journée">
+    <div class="lp-journee__h"><span class="lp-lbl">La journée</span>${tete}</div>
+    ${rangs || '<div class="lp-vide">Aucun départ ce jour.</div>'}
+  </section>`;
+}
+
+function lpFileHtml(modele, choisi) {
+  const jetons = modele.attente.map(p => {
+    const r = p.reservation;
+    const id = Number(r.id);
+    const k = lpTeinte(r);
+    const sous = p.countIndex > 1 || p.waveCount > 1
+      ? lpNomUnite({ countIndex: p.countIndex, waveIndex: p.waveIndex, waveCount: p.waveCount })
+      : `arrive vers ${escapeHtml(String(r.startTime || '').slice(0, 5))}`;
+    const choisiIci = choisi && choisi.id === id && choisi.unitKey === p.unitKey ? ' is-choisi' : '';
+    const grise = modele.trouve(r) ? '' : ' is-grise';
+    return `<button type="button" class="lp-jeton ${k}${choisiIci}${grise}" ${lpAttrsGroupe(id, p.unitKey)} title="${escapeHtml(`${r.name || 'Groupe'} : ${lpPluriel(p.players, 'joueur')}, ${sous}. Toucher, puis toucher son départ.`)}"><span class="lp-jeton__n">${p.players}</span> <span class="lp-jeton__t"><span class="lp-nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span> <small>${sous}</small></span></button>`;
+  }).join('');
+  let bandeau = '';
+  if (choisi) {
+    const nom = `<b>${escapeHtml(choisi.reservation.name || 'Groupe')} (${choisi.groupe})</b>${lpNomUnite(choisi) ? ` · ${escapeHtml(lpNomUnite(choisi))}` : ''}`;
+    const texte = lpEtat.enCours
+      ? `Placement de ${nom} à ${lpHeure(lpEtat.enCours.t)}…`
+      : lpEtat.raison
+        ? escapeHtml(lpEtat.raison)
+        : choisi.placee
+          ? `Déplacer ${nom}, à ${lpHeure(choisi.placee.start)} ? Touchez un départ en bleu.`
+          : `Où placer ${nom} ? Touchez un départ en bleu.`;
+    const retirer = choisi.placee && !lpEtat.enCours ? '<button type="button" class="lp-btn" onclick="lpRetirer(event)">Retirer du planning</button>' : '';
+    bandeau = `<div class="lp-placer${lpEtat.raison ? ' is-raison' : ''}" role="status" aria-live="polite"><span class="lp-placer__t">${texte}</span> <span class="lp-placer__a"><button type="button" class="lp-btn" onclick="lpFiche(event)">Fiche</button>${retirer}<button type="button" class="lp-btn" onclick="lpAnnuler(event)">Annuler</button></span></div>`;
+  }
+  const n = modele.attente.length;
+  return `<div class="lp-file${n ? '' : ' is-vide'}${choisi ? ' is-choix' : ''}" aria-label="Parties à placer">
+    ${bandeau}
+    <div class="lp-file__h"><span class="lp-lbl">À placer</span> <span class="lp-file__n">${n}</span> <span class="lp-aide">${n ? 'Touchez un groupe, puis son départ' : choisi && choisi.placee ? 'Glissez un groupe ici pour le retirer du planning' : 'Toutes les parties sont placées'}</span></div>
+    ${n ? `<div class="lp-jetons">${jetons}</div>` : ''}
+  </div>`;
+}
+
+function lpHtml(modele) {
+  const choisi = lpChoisiValide(modele);
+  return `<div class="lp${choisi ? ' is-choix' : ''}" style="--lp-cases:${Math.max(1, modele.capacite)}">
+    ${planningClosedNotice(modele.config)}
+    ${lpProchainHtml(modele)}
+    ${lpBandeHtml(modele)}
+    ${lpJourneeHtml(modele, choisi)}
+    ${lpFileHtml(modele, choisi)}
+  </div>`;
+}
+
+// Les joueurs se comptent une fois par dossier, comme la case « Réservations
+// laser » juste au-dessus (renderKpis : la somme des pax) : un groupe qui joue
+// deux parties n est pas deux fois plus de monde (139 contre 114 sur la meme
+// page, 2026-10-08).
+function lpSousTitre(modele) {
+  const lancements = modele.departs.filter(d => d.ici.length).length;
+  const dossiers = new Map();
+  [...modele.fenetres, ...modele.attente].forEach(x => dossiers.set(Number(x.reservation.id), x.reservation));
+  const joueurs = [...dossiers.values()].reduce((s, r) => s + (Number(r.pax) || 0), 0);
+  const attente = modele.attente.length;
+  const enLigne = new Set(modele.enLigne.map(w => w.reservation.id)).size;
+  return [
+    lpPluriel(lancements, 'départ'),
+    lpPluriel(joueurs, 'joueur'),
+    attente ? `${attente} à placer` : '',
+    enLigne ? `${enLigne} en ligne en cours` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+// Le focus survit au repeint : meme groupe (dossier et partie), sinon meme
+// depart. Sans ca, le clavier retombait sur la page a chaque sondage.
+function lpFocusAvant(wrap) {
+  const actif = document.activeElement;
+  if (!actif || !wrap.contains(actif)) return null;
+  if (actif.dataset.laserResId) return `[data-laser-res-id="${actif.dataset.laserResId}"][data-laser-unit="${actif.dataset.laserUnit}"]`;
+  if (actif.dataset.lpT) return `.lp-dep__jauge[data-lp-t="${actif.dataset.lpT}"]`;
+  const onclick = actif.getAttribute('onclick');
+  return onclick ? `[onclick="${onclick.replace(/"/g, '\\"')}"]` : null;
 }
 
 function renderLaserPlanning() {
@@ -23198,286 +23835,407 @@ function renderLaserPlanning() {
   const wrap = document.getElementById('laserPlanningGridWrap');
   const sub = document.getElementById('laserPlanningSub');
   if (!wrap) return;
-  // Préserve le scroll (heures + horizontal) entre deux re-renders du polling.
-  // Lu avant le rendu, reposé après (voir ouvrirLotDefilement).
+  // Pendant un glisser, rien ne se repeint sous le doigt : le sondage et le
+  // tic attendent le lacher, puis le repeint se fait (rien n est perdu).
+  if (lpEtat.glisse) { lpEtat.differe = true; return; }
   const [prevScrollTop, prevScrollLeft] = lireDefilementRendu(wrap);
-  // En PLEIN ÉCRAN, le wrap est en overflow:hidden (grille 2 colonnes) : le vrai
-  // scroller vertical est la timeline `.laser-agenda` (et la file `.laser-pass-queue`
-  // à gauche défile aussi). Comme on reconstruit tout le innerHTML, ces éléments
-  // repartaient à 0 → « ça remet tout en haut à chaque déplacement ». On mémorise
-  // donc leur position pour la restaurer après le rebuild. (Signalé Movsar 2026-07-12.)
-  const [prevAgendaTop, prevAgendaLeft] = lireDefilementRendu(wrap.querySelector('.laser-agenda'));
-  const [prevQueueTop] = lireDefilementRendu(wrap.querySelector('.laser-pass-queue'));
-  const config = planningDisplayWindow('laser');
-  if (config.closed && !config.showExisting) {
+  const focus = lpFocusAvant(wrap);
+  const modele = lpModele();
+  if (sub) sub.textContent = modele.config.closed && !modele.config.showExisting ? 'Centre fermé' : lpSousTitre(modele);
+  if (modele.config.closed && !modele.config.showExisting) {
     poserHtmlSurface(wrap, '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>');
-    if (sub) sub.textContent = 'Centre fermé';
     return;
   }
-
-  const windows = getPlanningVisibleReservations('laser')
-    .flatMap(r => getLaserWindowsFromReservation(r).map(window => ({ ...window, reservation: r })))
-    .filter(window => window.end > config.open && window.start < config.close);
-  // Les horaires retenus par un client en ligne prennent des armes comme une
-  // reservation (le serveur les compte) : ils entrent dans les lancements et
-  // dans la capacite, avec une carte en attente, sans nom ni action.
-  const fenetresEnLigne = getBlocagesEnLigne(state.currentDate)
-    .flatMap(b => getLaserWindowsFromReservation(b).map(window => ({ ...window, reservation: b, enLigne: true })))
-    .filter(window => window.end > config.open && window.start < config.close);
-  const sessionGroups = new Map();
-  windows.concat(fenetresEnLigne).forEach(window => {
-    const key = `${window.start}-${window.end}`;
-    if (!sessionGroups.has(key)) {
-      sessionGroups.set(key, { start: window.start, end: window.end, windows: [] });
-    }
-    sessionGroups.get(key).windows.push(window);
-  });
-  const sessions = [...sessionGroups.values()].sort((a, b) => a.start - b.start);
-  sessions.forEach(session => {
-    session.players = session.windows.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), 0);
-  });
-  const players = windows.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), 0);
-  // Capacite REELLE (armes) du centre affiche, repli sur la constante si config absente.
-  const capacity = getAvailabilityLaserCapacity();
-  const lancementsMax = getAvailabilityLaserParallelLaunches();
-  const pendingPasses = getPendingLaserPasses(state.currentDate);
-  const lancements = sessions.filter(s => s.windows.some(window => !window.enLigne)).length;
-  const enLigne = new Set(fenetresEnLigne.map(window => window.reservation.id)).size;
-  if (sub) sub.textContent = `${lancements} lancement${lancements > 1 ? 's' : ''} · ${players} passages · ${pendingPasses.length} partie${pendingPasses.length > 1 ? 's' : ''} à placer${enLigne ? ` · ${enLigne} réservation${enLigne > 1 ? 's' : ''} en ligne en cours` : ''} · capacité ${capacity} armes`;
-
-  const startHour = config.open;
-  const closeHour = config.close;
-  const halfSlots = Math.max((closeHour - startHour) * 2, 1);
-  const isToday = state.currentDate === todayStr();
-  const curH = currentTimeDecimal();
-  const sessionsBySlot = new Map();
-  sessions.forEach(session => {
-    // La rangee = la demi-heure ou la session DEMARRE (plancher). Les plans
-    // neufs sont sur la grille (:00/:30) ; un vieux plan a l heure fine
-    // (12:12) reste dans SA tranche, avec son heure reelle affichee, au lieu
-    // de remonter dans une rangee anterieure a son depart.
-    const slotIndex = Math.max(0, Math.min(halfSlots - 1, Math.floor((session.start - startHour) * 2 + 0.001)));
-    if (!sessionsBySlot.has(slotIndex)) sessionsBySlot.set(slotIndex, []);
-    sessionsBySlot.get(slotIndex).push(session);
-  });
-  // La file « Parties à placer » est TOUJOURS rendue en plein écran (zone
-  // permanente) pour ne jamais oublier une partie ; en mode réduit elle
-  // n'apparaît que s'il reste des parties à placer.
-  const showPassQueue = pendingPasses.length > 0 || state.staffLaserPlanningExpanded;
-  const passListHtml = pendingPasses.length
-    ? pendingPasses.map(pass => {
-        const reservation = pass.reservation;
-        const scheduled = getLaserWindowsFromReservation(reservation)
-          .filter(window => Number(window.countIndex || 1) === 1)
-          .sort((a, b) => a.start - b.start)[0];
-        const unitKey = pass.unitKey || `${pass.countIndex}.${pass.waveIndex || 1}`;
-        const unitLabel = pass.waveCount > 1
-          ? `Vague ${pass.waveIndex}/${pass.waveCount}${pass.totalGames > 1 ? ` · Partie ${pass.countIndex}/${pass.totalGames}` : ''}`
-          : `Partie ${pass.countIndex}/${pass.totalGames}`;
-        // La carte et sa puce de retard sont soeurs dans un meme bloc, comme dans
-        // un lancement : la balise ouvrante manquait, et le </div> orphelin
-        // fermait la liste apres la PREMIERE partie (les suivantes tombaient
-        // hors de la liste, une par rangee de la file).
-        return `<div class="laser-pass-item"><button type="button" class="laser-pass-card" data-laser-res-id="${reservation.id}" data-laser-unit="${unitKey}" draggable="false" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'laser',${reservation.id},null,null,'${unitKey}')" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation(); openPos(${reservation.id})" title="Glisser pour placer cette vague">
-          <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
-          <span class="laser-pass-meta">${unitLabel} · ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
-          <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
-        </button>${renderDelayIndicator(reservation)}</div>`;
-      }).join('')
-    : `<div class="laser-pass-empty">Aucune partie en attente. Toutes les parties sont placées.</div>`;
-  const pendingQueueHtml = showPassQueue ? `
-    <div class="laser-pass-queue${pendingPasses.length ? '' : ' is-empty'}" aria-label="Parties Laser Game à placer">
-      <div class="laser-pass-queue-copy">
-        <strong>Parties à placer${pendingPasses.length ? ` · ${pendingPasses.length}` : ''}</strong>
-        <span>Glissez une partie <b>ici</b> pour la retirer du planning, ou sur un lancement pour la placer.</span>
-      </div>
-      <div class="laser-pass-list">
-        ${passListHtml}
-      </div>
-    </div>` : '';
-
-  const groupesDeLaSession = (session) => {
-    const reels = session.windows.filter(window => !window.enLigne).length;
-    const enCours = session.windows.length - reels;
-    return [
-      reels || !enCours ? `${reels} groupe${reels > 1 ? 's' : ''}` : '',
-      enCours ? `${enCours} en ligne` : '',
-    ].filter(Boolean).join(' + ');
-  };
-  const renderLaserSession = (session, timeValue, slotRemaining = null) => {
-    if (!session) {
-      if (config.closed) return `<div class="laser-session-slot is-empty is-closed"><span class="laser-empty-title">Fermé</span></div>`;
-      // Les armes LIBRES de la tranche, pas la capacite theorique : une
-      // session qui chevauche la tranche (vieux plan a l heure fine) les
-      // consomme. « 17 pistes libres » puis « impossible » a l ajout, c est
-      // exactement ce mensonge (2026-08-25, capture Movsar).
-      const freeGuns = Number.isFinite(Number(slotRemaining)) ? Number(slotRemaining) : capacity;
-      if (freeGuns <= 0) {
-        return `<div class="laser-session-slot is-empty is-busy" data-laser-drop-start="${timeValue}" title="Un lancement en cours chevauche cette tranche">
-          <span class="laser-empty-title">Occupé</span>
-          <span class="laser-empty-sub">un lancement en cours chevauche cette tranche</span>
-        </div>`;
-      }
-      // Une tranche libre est une LIGNE BASSE (lot C, 2026-09-30) : « Libre »,
-      // et le nombre d armes seulement quand un lancement voisin en prend une
-      // partie. Vingt-huit « Disponible · 30 armes libres » repetaient la
-      // colonne Capacite et noyaient les lancements.
-      return `<button type="button" class="laser-session-slot is-empty" data-laser-drop-start="${timeValue}" title="Réserver à ${formatClockDisplay(timeValue)}" onclick="openQuickBook({ date: state.currentDate, startTime: '${numToTime(timeValue)}', type: 'laser' })" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${timeValue})">
-        <span class="laser-empty-title">Libre</span>
-        ${freeGuns < capacity ? `<span class="laser-empty-sub">${freeGuns} arme${freeGuns > 1 ? 's' : ''} libre${freeGuns > 1 ? 's' : ''}</span>` : ''}
-        <span class="laser-empty-add" aria-hidden="true">Réserver</span>
-      </button>`;
-    }
-
-    const sessionPlayers = session.players;
-    // Les places d un lancement se comptent sur l arene, comme le serveur :
-    // un lancement parallele (Gembloux) prend les memes armes.
-    const arenaPlayers = getLaserSessionArenaPlayers(session, sessions);
-    const remaining = Math.max(0, capacity - arenaPlayers);
-    // Le genre du lancement se lit sur ses VRAIS groupes. Un lancement qui ne
-    // porte qu une reservation en ligne en cours n est encore ni direct ni
-    // formule : il reste neutre, en pointilles.
-    const reelles = session.windows.filter(window => !window.enLigne);
-    const seulementEnLigne = !reelles.length;
-    const hasFormula = reelles.some(window => window.reservation?.type === 'formule' || window.reservation?.formuleId);
-    const hasDirect = reelles.some(window => window.reservation?.type === 'laser');
-    const shared = session.windows.length > 1;
-    const fill = Math.min(100, Math.max(0, (sessionPlayers / capacity) * 100));
-    const addStart = getQuickBookStartForLaserSession(session, Math.min(4, Math.max(1, remaining || 1)));
-    let cursor = 0;
-    const meterSegments = session.windows.map(window => {
-      const players = Math.max(1, Number(window.players || window.reservation?.pax || 0));
-      const width = Math.min(100 - cursor, Math.max(4, (players / capacity) * 100));
-      const left = cursor;
-      cursor = Math.min(100, cursor + width);
-      const typeClass = window.enLigne ? 'hold' : window.reservation?.type === 'formule' ? 'formula' : 'direct';
-      return `<span class="laser-meter-segment ${typeClass}" style="left:${left}%;width:${width}%;"></span>`;
-    }).join('');
-    const groupChips = session.windows.map(window => {
-      const reservation = window.reservation;
-      // Le groupe, pas les armes qu il retient (arene pour lui seul).
-      const players = Math.max(1, Number(window.joueursReels ?? window.players) || Number(reservation?.pax) || 0);
-      if (window.enLigne) {
-        const heure = heureLiberationBlocage(reservation);
-        return `<div class="laser-group-card is-hold" role="note" title="${escapeHtml(texteBlocageEnLigne(reservation))}" onclick="event.stopPropagation()">
-        <span class="laser-group-main">
-          <strong>Réservation en ligne</strong>
-          <small>En cours${heure ? ` · libre à ${escapeHtml(heure)} sans confirmation` : ''}</small>
-        </span>
-        <span class="booking-stats laser-group-stats">
-          <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}">${players}<span class="u">j</span></span>
-        </span>
-      </div>`;
-      }
-      const isFormulaGroup = reservation.type === 'formule' || reservation.formuleId;
-      const typeClass = isFormulaGroup ? 'formula' : 'direct';
-      const statusClass = reservation.status === 'paid' ? 'paid' : reservation.status === 'arrived' ? 'arrived' : 'confirmed';
-      const waveCount = Number(window.groupWaveCount || 1);
-      const waveIndex = Number(window.groupWaveIndex || 1);
-      const waveLabel = waveCount > 1 ? `Vague ${waveIndex}/${waveCount}` : '';
-      const laserGames = getLaserGameCountForReservation(reservation);
-      const passIndex = Number(window.countIndex || 1);
-      const unitKey = window.unitKey || `${passIndex}.${waveIndex}`;
-      const passLabel = laserGames > 1 ? `Partie ${passIndex}/${laserGames}` : 'Partie unique';
-      const label = isFormulaGroup
-        ? `${getReservationLabel(reservation)}${laserGames > 1 ? ` · ${passLabel}` : ' · Laser'}`
-        : laserGames > 1 ? `Laser · ${passLabel}` : 'Laser direct';
-      const pillHtml = `<span class="laser-card-pills">
-        ${renderCardFlags(reservation, { partiesEcrites: true })}
-        ${renderReservationPriceMark(reservation, { forme: 'signal', base: 'bk-flag flag-price' })}
-        ${window.formulaFallback ? '<span class="laser-plan-estimate" role="img" aria-label="Plan estimé : ouvrir la fiche pour les détails" title="Plan estimé : vérifier les horaires dans la fiche">i</span>' : ''}
-      </span>`;
-      const dragTitle = waveCount > 1
-        ? `Déplacer la vague ${waveIndex}/${waveCount}${laserGames > 1 ? ` (partie ${passIndex})` : ''}`
-        : passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
-      const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
-      return `<div class="laser-group-item"><button type="button" data-laser-res-id="${reservation.id}" data-laser-unit="${unitKey}" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'laser',${reservation.id},null,null,'${unitKey}')" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" ${planningTouchAttrs(`startLaserPassTouchDrag(event, ${reservation.id}, '${unitKey}')`)} onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();openPos(${reservation.id})" title="${escapeHtml(dragTitle)}">
-        <span class="laser-group-main">
-          <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
-          <small>${escapeHtml(label)}${waveLabel ? ` · ${escapeHtml(waveLabel)}` : ''}</small>
-          ${pillHtml}
-        </span>
-        <span class="booking-stats laser-group-stats">
-          ${renderActivityProgressPill(reservation)}
-          <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}${window.arene === 'seuls' ? ', arène pour eux seuls' : ''}">${players}<span class="u">j</span></span>
-          <span class="bk-dur laser-dur" title="Durée ${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}">${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}</span>
-        </span>
-      </button>${renderDelayIndicator(reservation)}</div>`;
-    }).join('');
-    const sessionType = seulementEnLigne ? 'en ligne' : hasFormula && hasDirect ? 'mixte' : hasFormula ? 'formule' : 'direct';
-
-    return `<div class="laser-session-slot has-session ${shared ? 'is-shared' : ''} ${seulementEnLigne ? 'is-en-ligne' : hasFormula ? 'has-formula' : 'has-direct'}" data-laser-drop-start="${session.start}" data-laser-drop-end="${session.end}" role="button" tabindex="0" onclick="if(!getPlanningWindow(state.currentDate).closed)openQuickBookForLaserSession(${session.start}, ${remaining})" onkeydown="if(event.target!==event.currentTarget)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();if(!getPlanningWindow(state.currentDate).closed)openQuickBookForLaserSession(${session.start}, ${remaining});}" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${session.start}, ${session.end})" title="Ajouter un groupe sur ce lancement">
-      <div class="laser-session-top">
-        <div>
-          <div class="laser-session-title">${formatClockDisplay(session.start)} - ${formatClockDisplay(session.end)}</div>
-          <div class="laser-session-sub">${groupesDeLaSession(session)} · ${arenaPlayers > sessionPlayers ? `${sessionPlayers} joueurs · arène ${arenaPlayers}/${capacity}` : `${sessionPlayers}/${capacity} joueurs`}</div>
-        </div>
-        <span class="laser-session-kind">${remaining > 0 ? `+ groupe · ${addStart}` : sessionType}</span>
-      </div>
-      <div class="laser-group-list">${groupChips}</div>
-      <div class="laser-capacity-line" aria-label="${sessionPlayers} joueurs sur ${capacity}">
-        <span class="laser-capacity-fill" style="width:${fill}%;"></span>
-        ${meterSegments}
-      </div>
-    </div>`;
-  };
-
-  let rowsHtml = '';
-  for (let slot = 0; slot < halfSlots; slot += 1) {
-    const timeValue = startHour + (slot * 0.5);
-    const isHalf = slot % 2 === 1;
-    const slotSessions = sessionsBySlot.get(slot) || [];
-    const current = isToday && curH >= timeValue && curH < timeValue + 0.5;
-    // Occupation par tranche = pic de joueurs simultanés parmi les sessions qui
-    // CHEVAUCHENT la tranche [timeValue, +30 min), pas seulement celles qui y
-    // démarrent : sinon une vague qui déborde (ex. 10:55-11:20) laisse la tranche
-    // 11:00 à « 30 armes libres » alors qu'elle est occupée. Une seule arene
-    // a la fois : `max` (pas somme), deux vagues séquentielles ne tournent
-    // jamais en même temps. Plusieurs lancements paralleles (Gembloux, six sur
-    // 20 armes) : ils tournent ENSEMBLE sur les memes armes, et le serveur
-    // additionne les joueurs de tout ce qui chevauche.
-    const slotStart = timeValue;
-    const slotEnd = timeValue + 0.5;
-    const activeSessions = sessions.filter(s => s.start < slotEnd && s.end > slotStart);
-    const sessionPlayers = lancementsMax > 1
-      ? activeSessions.reduce((sum, s) => sum + s.players, 0)
-      : activeSessions.reduce((peak, s) => Math.max(peak, s.players), 0);
-    const remaining = Math.max(0, capacity - sessionPlayers);
-    const sessionHtml = slotSessions.length
-      ? `<div class="laser-session-stack">${slotSessions.map(session => renderLaserSession(session, timeValue)).join('')}</div>`
-      : renderLaserSession(null, timeValue, remaining);
-    const auRepos = !slotSessions.length && sessionPlayers === 0;
-    rowsHtml += `<div class="laser-agenda-row ${slotSessions.length ? 'has-session' : 'is-empty'}${auRepos ? ' is-idle' : ''} ${isHalf ? 'is-half' : 'is-hour'} ${current ? 'is-current' : ''}" data-laser-time-start="${timeValue}">
-      <div class="laser-agenda-time">
-        <strong>${formatClockDisplay(timeValue)}</strong>
-        <span>+5 min</span>
-      </div>
-      ${sessionHtml}
-      <div class="laser-agenda-capacity">
-        <strong>${sessionPlayers}/${capacity}</strong>
-        <span>${remaining} libre${remaining > 1 ? 's' : ''}</span>
-      </div>
-    </div>`;
-  }
-
-  const laserBlockBanner = renderLaserBlockBanner(state.currentDate);
-  poserHtmlSurface(wrap, `
-    ${planningClosedNotice(config)}
-    ${pendingQueueHtml}
-    ${laserBlockBanner}
-    <div class="laser-agenda">
-      <div class="laser-agenda-header">
-        <div>Heure</div>
-        <div>Laser Game <span class="planning-move-instruction">Maintenir 1 s pour sélectionner · glisser pour déplacer</span></div>
-        <div>Capacité</div>
-      </div>
-      <div class="laser-agenda-body">${rowsHtml}</div>
-    </div>`);
+  poserHtmlSurface(wrap, lpHtml(modele));
   poserDefilementRendu(wrap, prevScrollTop, prevScrollLeft);
-  poserDefilementRendu(wrap.querySelector('.laser-agenda'), prevAgendaTop, prevAgendaLeft);
-  poserDefilementRendu(wrap.querySelector('.laser-pass-queue'), prevQueueTop, 0);
-  refreshPlanningMoveHighlights();
+  if (focus && !wrap.contains(document.activeElement)) {
+    const cible = wrap.querySelector(focus);
+    if (cible) cible.focus({ preventScroll: true });
+  }
 }
+
+// ── LES GESTES ─────────────────────────────────────────────────────────────
+function lpChoisir(id, unitKey, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  if (Date.now() < lpEtat.ignorerClicJusqua || lpEtat.enCours) return;
+  const meme = lpEtat.choisi && lpEtat.choisi.id === Number(id) && lpEtat.choisi.unitKey === String(unitKey);
+  lpEtat.choisi = meme ? null : { id: Number(id), unitKey: String(unitKey), date: state.currentDate, centre: getCurrentStaffCenterId() };
+  lpEtat.raison = '';
+  renderLaserPlanning();
+}
+
+function lpToucherGroupe(id, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  // Le clic qui suit un glisser lache n est pas un toucher.
+  if (Date.now() < lpEtat.ignorerClicJusqua || lpEtat.enCours) return;
+  // Pendant un placement, toute la rangee vise son depart, ses groupes
+  // compris : on ne tombe pas dans une fiche en plein geste.
+  const rang = lpEtat.choisi && ev && ev.currentTarget && ev.currentTarget.closest ? ev.currentTarget.closest('[data-lp-t]') : null;
+  if (rang) { lpViser(Number(rang.dataset.lpT)); return; }
+  openPos(Number(id));
+}
+
+function lpClavierGroupe(ev, id, unitKey) {
+  if ((ev.key !== 'm' && ev.key !== 'M') || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  lpChoisir(id, unitKey, ev);
+}
+
+function lpAnnuler(ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  if (lpEtat.enCours) return;
+  lpEtat.choisi = null;
+  lpEtat.raison = '';
+  renderLaserPlanning();
+}
+
+function lpFiche(ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const c = lpEtat.choisi;
+  if (c) openPos(c.id);
+}
+
+function lpBasculerJoues(ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  lpEtat.joues = !lpEtat.joues;
+  renderLaserPlanning();
+}
+
+// « Voir au planning » depuis la fiche : un groupe dont toutes les parties
+// placees sont jouees (ou en jeu) est dans le pli des departs joues. On
+// l ouvre, sinon le planning dirait qu il n a aucune partie placee.
+function lpRevelerGroupe(id) {
+  if (state.currentDate !== todayStr()) return;
+  const modele = lpModele();
+  const siens = modele.departs.filter(d => d.ici.some(w => Number(w.reservation.id) === Number(id)));
+  if (siens.length && siens.every(d => d.t <= modele.maintenant + 0.0001)) lpEtat.joues = true;
+}
+
+function lpReserver(t, places) {
+  const pax = Math.max(1, Math.min(4, Number(places) || 4));
+  openQuickBook({ date: state.currentDate, startTime: numToTime(t), type: 'laser', duration: 0.5, totalDuration: 0.5, pax, allowPastStart: true, pastStartDate: state.currentDate, pastStartTime: numToTime(t) });
+}
+
+// « + Réserver » de la tete : le premier depart encore ouvert qui a de la
+// place (aujourd hui, apres maintenant), sinon la fenetre a son heure a elle.
+function lpReserverAuProchain(ev) {
+  if (ev) ev.stopPropagation();
+  const modele = lpModele();
+  const d = modele.departs.find(x => !x.joue && !x.ferme && !x.hors && x.places > 0 && (!modele.aujourdHui || x.t > modele.maintenant + 0.0001));
+  if (d) lpReserver(d.t, d.places);
+  else openQuickBook({ date: state.currentDate, type: 'laser', duration: 0.5, totalDuration: 0.5 });
+}
+
+// LES CASES D UN GROUPE SE PRENNENT COMME SON NOM (Movsar, 2026-10-08 : « il
+// faut qu on puisse drag and drop les activites deja placees ») : les cases
+// colorees SONT le groupe a l ecran, c est elles qu on attrape. Les glisser
+// deplace le groupe, les toucher ouvre sa fiche ; une case vide garde son
+// geste (reserver a cette heure).
+function lpCaseDuGroupe(ev) {
+  const c = ev && ev.target && ev.target.closest ? ev.target.closest('[data-lp-id]') : null;
+  return c ? { id: Number(c.dataset.lpId), unitKey: c.dataset.lpUnit } : null;
+}
+function lpSourisJauge(ev) {
+  const c = lpCaseDuGroupe(ev);
+  if (c) lpSouris(ev, c.id, c.unitKey);
+}
+function lpDoigtJauge(ev) {
+  const c = lpCaseDuGroupe(ev);
+  if (c) lpDoigt(ev, c.id, c.unitKey);
+}
+
+async function lpToucherDepart(t, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  // Le clic que le navigateur envoie apres un glisser lache ici n est pas un
+  // second geste : le depot l a deja traite.
+  if (Date.now() < lpEtat.ignorerClicJusqua) return;
+  const c = lpCaseDuGroupe(ev);
+  if (c && !lpEtat.choisi && !lpEtat.enCours) { openPos(c.id); return; }
+  await lpViser(t);
+}
+
+async function lpViser(t) {
+  if (lpEtat.enCours) return;
+  const modele = lpModele();
+  const d = modele.departs.find(x => Math.abs(x.t - Number(t)) < 0.001);
+  if (!d) return;
+  const choisi = lpChoisiValide(modele);
+  if (!choisi) {
+    if (modele.config.closed || d.ferme || d.hors || d.joue) return;
+    if (d.places <= 0) { toast(`${lpHeure(d.t)} : complet.`); return; }
+    lpReserver(d.t, d.places);
+    return;
+  }
+  const verdict = lpVerdict(modele, choisi, d);
+  if (!verdict.ok) {
+    lpEtat.raison = verdict.raison;
+    renderLaserPlanning();
+    return;
+  }
+  await lpPoser(choisi, d.t);
+}
+
+async function lpPoser(choisi, t) {
+  lpEtat.enCours = { id: choisi.id, unitKey: choisi.unitKey, t };
+  lpEtat.raison = '';
+  renderLaserPlanning();
+  let resultat;
+  try {
+    resultat = await scheduleLaserPass(choisi.id, choisi.unitKey, t);
+  } finally {
+    lpEtat.enCours = null;
+    if (resultat === true) { lpEtat.choisi = null; lpEtat.raison = ''; }
+    else lpEtat.raison = `${lpHeure(t)} : ce départ n’a pas été pris, le message dit pourquoi. Rien n’a bougé.`;
+    renderLaserPlanning();
+  }
+}
+
+async function lpRetirer(ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const c = lpEtat.choisi;
+  if (!c || lpEtat.enCours) return;
+  lpEtat.enCours = { id: c.id, unitKey: c.unitKey, t: -1 };
+  let ok = false;
+  try { ok = await unscheduleLaserPass(c.id, c.unitKey); }
+  finally {
+    lpEtat.enCours = null;
+    if (ok) { lpEtat.choisi = null; lpEtat.raison = ''; }
+    renderLaserPlanning();
+  }
+}
+
+function lpIlsSontLa(id, ev) {
+  if (ev) ev.stopPropagation();
+  setReservationStatusDirect(id, 'arrived', ev);
+}
+
+function lpDecaler(id, minutes, ev) {
+  if (ev) ev.stopPropagation();
+  openDelayImpact(id, minutes, ev);
+}
+
+function lpPasVenus(id, ev) {
+  if (ev) ev.stopPropagation();
+  basculerAbsence(id, true, ev);
+}
+
+// Le glisser : a la souris des 5 px, au doigt apres un appui de 280 ms
+// (assets/pinlane-touch-drag.js). Prendre et poser en un seul geste.
+function lpSouris(ev, id, unitKey) {
+  if (ev.button !== 0 || lpEtat.enCours) return;
+  ev.stopPropagation();
+  lpEtat.geste = { id: Number(id), unitKey: String(unitKey), source: ev.currentTarget, x0: ev.clientX, y0: ev.clientY, x: ev.clientX, y: ev.clientY, glisse: false, doigt: false };
+  document.addEventListener('mousemove', lpSourisBouge, true);
+  document.addEventListener('mouseup', lpSourisLache, true);
+}
+
+function lpSourisBouge(ev) {
+  const g = lpEtat.geste;
+  if (!g || g.doigt) return;
+  g.x = ev.clientX;
+  g.y = ev.clientY;
+  if (!g.glisse) {
+    if (Math.hypot(g.x - g.x0, g.y - g.y0) < 5) return;
+    lpLever(g);
+  }
+  ev.preventDefault();
+  lpSuivre();
+}
+
+function lpSourisLache(ev) {
+  document.removeEventListener('mousemove', lpSourisBouge, true);
+  document.removeEventListener('mouseup', lpSourisLache, true);
+  const g = lpEtat.geste;
+  if (!g || g.doigt) return;
+  lpEtat.geste = null;
+  if (!g.glisse) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  lpEtat.ignorerClicJusqua = Date.now() + 350;
+  lpDeposer(g, ev.clientX, ev.clientY);
+}
+
+function lpDoigt(ev, id, unitKey) {
+  if (!window.PinlaneTouchDrag || lpEtat.enCours) return;
+  const source = ev.currentTarget;
+  window.PinlaneTouchDrag.demarrer(ev, {
+    lever(p) {
+      lpEtat.geste = { id: Number(id), unitKey: String(unitKey), source, x0: p.clientX, y0: p.clientY, x: p.clientX, y: p.clientY, glisse: false, doigt: true };
+      lpLever(lpEtat.geste);
+    },
+    bouger(p) {
+      const g = lpEtat.geste;
+      if (!g) return;
+      g.x = p.clientX;
+      g.y = p.clientY;
+      lpSuivre();
+    },
+    deposer(p) {
+      const g = lpEtat.geste;
+      lpEtat.geste = null;
+      if (!g) return;
+      lpEtat.ignorerClicJusqua = Date.now() + 350;
+      lpDeposer(g, p.clientX, p.clientY);
+    },
+    annuler(etaitLeve) {
+      const g = lpEtat.geste;
+      lpEtat.geste = null;
+      if (g && etaitLeve) lpFinGlisse(g);
+    },
+  }, { maintienMs: 280 });
+}
+
+function lpLever(g) {
+  g.glisse = true;
+  lpEtat.choisi = { id: g.id, unitKey: g.unitKey, date: state.currentDate, centre: getCurrentStaffCenterId() };
+  lpEtat.raison = '';
+  renderLaserPlanning();
+  lpEtat.glisse = g;
+  const modele = lpModele();
+  const choisi = lpChoisiValide(modele);
+  g.verdicts = new Map(choisi ? modele.departs.map(d => [Math.round(d.t * 60), lpVerdict(modele, choisi, d)]) : []);
+  g.placee = Boolean(choisi && choisi.placee);
+  const nom = state.reservations.find(r => Number(r.id) === g.id)?.name || 'Groupe';
+  const fantome = document.createElement('div');
+  fantome.className = 'lp-fantome';
+  const source = document.querySelector(`#laserPlanningGridWrap [data-laser-res-id="${g.id}"][data-laser-unit="${g.unitKey}"]`) || g.source;
+  const k = [...(source?.classList || [])].find(c => /^st-/.test(c)) || 'st-conf';
+  fantome.classList.add(k);
+  fantome.innerHTML = `<i aria-hidden="true"></i><b>${escapeHtml(nom)}</b> <small class="lp-fantome__vers">Choisissez un départ</small>`;
+  document.body.appendChild(fantome);
+  g.fantome = fantome;
+  g.fl = fantome.offsetWidth;
+  g.fh = fantome.offsetHeight;
+  document.body.classList.add('lp-glisse');
+  lpSuivre();
+  lpDefilerDemarrer();
+}
+
+// La cible sous le pointeur : un depart, ou la file (retirer du planning).
+function lpCibleSous(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  const file = el.closest('#laserPlanningGridWrap .lp-file');
+  if (file) return { file };
+  const rang = el.closest('#laserPlanningGridWrap .lp-dep, #laserPlanningGridWrap .lp-prochain[data-lp-t]');
+  return rang ? { rang, t: Number(rang.dataset.lpT) } : null;
+}
+
+function lpSuivre() {
+  const g = lpEtat.glisse;
+  if (!g || !g.fantome) return;
+  const haut = g.doigt ? Math.max(4, g.y - g.fh - 24) : g.y + 14;
+  const gauche = g.doigt ? g.x - g.fl / 2 : g.x + 14;
+  g.fantome.style.transform = `translate3d(${Math.round(gauche)}px, ${Math.round(haut)}px, 0)`;
+  const cible = lpCibleSous(g.x, g.y);
+  document.querySelectorAll('#laserPlanningGridWrap .is-survol').forEach(el => el.classList.remove('is-survol'));
+  const vers = g.fantome.querySelector('.lp-fantome__vers');
+  g.fantome.classList.remove('is-ok', 'is-non');
+  if (cible && cible.rang) {
+    cible.rang.classList.add('is-survol');
+    // Le verdict de chaque depart est calcule une fois, au lever : le planning
+    // ne se repeint pas pendant le glisser, ses donnees non plus.
+    const verdict = g.verdicts ? g.verdicts.get(Math.round(cible.t * 60)) : null;
+    g.fantome.classList.add(verdict && verdict.ok ? 'is-ok' : 'is-non');
+    if (vers) vers.textContent = verdict ? (verdict.ok ? `Vers ${lpHeure(cible.t)} · ${verdict.apres} après` : verdict.raison) : 'Choisissez un départ';
+  } else if (cible && cible.file) {
+    cible.file.classList.add('is-survol');
+    g.fantome.classList.add(g.placee ? 'is-ok' : 'is-non');
+    if (vers) vers.textContent = g.placee ? 'Lâcher : retirer du planning' : 'Elle attend déjà ici';
+  } else if (vers) {
+    vers.textContent = 'Choisissez un départ';
+  }
+}
+
+function lpFinGlisse(g) {
+  lpDefilerArreter();
+  document.body.classList.remove('lp-glisse');
+  if (g && g.fantome) g.fantome.remove();
+  document.querySelectorAll('#laserPlanningGridWrap .is-survol').forEach(el => el.classList.remove('is-survol'));
+  lpEtat.glisse = null;
+  if (lpEtat.differe) { lpEtat.differe = false; }
+  renderLaserPlanning();
+}
+
+async function lpDeposer(g, x, y) {
+  const cible = lpCibleSous(x, y);
+  lpFinGlisse(g);
+  if (!cible) return;
+  const modele = lpModele();
+  const choisi = lpChoisiValide(modele);
+  if (cible.file) {
+    if (choisi && choisi.placee) await lpRetirer();
+    return;
+  }
+  // Lache sur son propre depart. Au doigt, c est l appui long sans bouger :
+  // le groupe reste pris, le bandeau dit de toucher un depart. A la souris,
+  // c est un glisser rendu : il ne s est rien passe. Jamais une erreur.
+  const d = modele.departs.find(x2 => Math.abs(x2.t - cible.t) < 0.001);
+  if (choisi && d && lpVerdict(modele, choisi, d).ici) {
+    if (!g.doigt) lpEtat.choisi = null;
+    lpEtat.raison = '';
+    renderLaserPlanning();
+    return;
+  }
+  await lpViser(cible.t);
+}
+
+// LE DEFILEMENT DU BORD : la page (ou le planning en plein ecran) defile
+// pres du haut et du bas de ce qu on voit, plus vite pres du bord, au temps
+// reel (pas a la frequence de l ecran), aussi loin qu il faut : un groupe de
+// 15:00 se depose a 21:00 sans lacher. La file en bas n est pas une zone de
+// defilement : elle reste la cible « retirer du planning ».
+function lpDefileur() {
+  let el = document.getElementById('laserPlanningGridWrap');
+  while (el && el !== document.body) {
+    const style = getComputedStyle(el);
+    if (/(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 1) return el;
+    el = el.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
+function lpDefilerDemarrer() {
+  if (lpEtat.defile) return;
+  const etat = { avant: 0, raf: 0 };
+  lpEtat.defile = etat;
+  const pas = (instant) => {
+    if (lpEtat.defile !== etat || !lpEtat.glisse) return;
+    const dt = etat.avant ? Math.min(64, instant - etat.avant) : 16;
+    etat.avant = instant;
+    const g = lpEtat.glisse;
+    const defileur = lpDefileur();
+    const page = defileur === document.scrollingElement || defileur === document.documentElement;
+    const cadre = page ? { top: 0, bottom: window.innerHeight } : defileur.getBoundingClientRect();
+    const file = document.querySelector('#laserPlanningGridWrap .lp-file');
+    const basFile = file ? file.getBoundingClientRect().top : Infinity;
+    const haut = Math.max(0, cadre.top);
+    const bas = Math.min(window.innerHeight, cadre.bottom, basFile);
+    const bord = 96;
+    let vitesse = 0;
+    if (g.y < haut + bord && g.y >= haut - 40) vitesse = -Math.pow(Math.min(1, (haut + bord - g.y) / bord), 1.6) * 1400;
+    else if (g.y > bas - bord && g.y <= bas + 4) vitesse = Math.pow(Math.min(1, (g.y - (bas - bord)) / bord), 1.6) * 1400;
+    if (vitesse) {
+      const avantPos = defileur.scrollTop;
+      defileur.scrollTop = avantPos + vitesse * dt / 1000;
+      if (defileur.scrollTop !== avantPos) lpSuivre();
+    }
+    etat.raf = requestAnimationFrame(pas);
+  };
+  etat.raf = requestAnimationFrame(pas);
+}
+
+function lpDefilerArreter() {
+  const etat = lpEtat.defile;
+  lpEtat.defile = null;
+  if (etat && etat.raf) cancelAnimationFrame(etat.raf);
+}
+
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && lpEtat.choisi && !lpEtat.enCours && !document.querySelector('.qb-overlay.open, #posOverlay.open')) {
+    ev.preventDefault();
+    lpAnnuler();
+  }
+});
 
 // Maintenance datée : fenêtre [du, au], la piste reste réservable hors
 // fenêtre et se libère automatiquement après (résolution par date côté
@@ -24077,7 +24835,7 @@ function renderGroupeEncadres(r, options = {}) {
   const encadres = getGroupeEncadres(r).filter(e => !(options.sansValidation && e.ton === 'review')
     && !(options.sansNotes && ['note', 'equipe', 'suivi'].includes(e.ton)));
   if (!encadres.length) return '';
-  return `<div class="gc-flags${options.large ? ' is-large' : ''}">${encadres.map(e => `<div class="gc-flag tone-${e.ton}">
+  return `<div class="gc-flags${options.large ? ' is-large' : ''}">${encadres.map(e => `<div class="gc-flag tone-${e.ton}"${e.texte ? ` title="${escapeHtml(`${e.titre} : ${e.texte}`)}"` : ''}>
     <b>${escapeHtml(e.titre)}</b>${e.html ? e.html : e.texte ? `<span>${escapeHtml(e.texte)}</span>` : ''}
   </div>`).join('')}</div>`;
 }
@@ -24188,13 +24946,16 @@ function renderReservationRow(r, moment = null, options = {}) {
     isReservationAwaitingReview(r) ? 'is-review' : '',
     getReservationHighlightClasses(r),
   ].filter(Boolean).join(' ');
+  // LE LISERE DIT L ETAT, la regle du planning Laser (lpTeinte) : bleu
+  // confirme, ambre arrive, vert paye, gris pas venu (2026-10-09, « B »).
+  const etat = lpTeinte(r).slice(3);
   // UN GROUPE SUR AUCUNE GRILLE (table et plaine d un anniversaire, Kids Fun
   // Day) se dit sur sa carte : c est ici ou nulle part qu on le voit (decision
   // du 2026-07, off-planning-check). L onglet porte aussi « N hors planning ».
   const horsPlanning = getStaffResourceView() === 'all' && isOffPlanningReservation(r);
   // Une carte terminee et payee tient sur sa tete : il n y a plus rien a faire.
   if (termine) {
-    return `<article class="${classes}" data-res-row-id="${r.id}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'){openPos(${r.id})}">
+    return `<article class="${classes}" data-res-row-id="${r.id}" data-etat="${etat}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'){openPos(${r.id})}">
       <div class="gc-head">
         <div class="gc-when"><b>${formatClockDisplay(span.start)}</b><small>${formatClockDisplay(span.end)}</small></div>
         <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${options.encore ? `<b class="gc-tag is-${escapeHtml(options.encore.cle)}">${escapeHtml(options.encore.mot)}</b> · ` : ''}${escapeHtml(joueursDuDossier(r))}${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' }) ? ` · ${renderReservationPriceMark(r, { forme: 'mot', base: 'gc-price-mark is-word' })}` : ''}</span>${renderActivitesCourtes(r)}</div>
@@ -24202,7 +24963,7 @@ function renderReservationRow(r, moment = null, options = {}) {
       </div>
     </article>`;
   }
-  return `<article class="${classes}" data-res-row-id="${r.id}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'&&event.target===this){openPos(${r.id})}">
+  return `<article class="${classes}" data-res-row-id="${r.id}" data-etat="${etat}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'&&event.target===this){openPos(${r.id})}">
     <div class="gc-head">
       <div class="gc-when"><b>${formatClockDisplay(span.start)}</b><small>${formatClockDisplay(span.end)}</small></div>
       <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${escapeHtml(joueursDuDossier(r))}${horsPlanning ? ' · <b class="gc-tag">Hors planning</b>' : ''}</span></div>
@@ -24515,6 +25276,30 @@ function renderTable() {
   </div>`);
   poserDefilementRendu(list, listScrollTop, listScrollLeft);
   ajusterHauteurListe();
+  suivreBarreDeLaListe(list);
+}
+
+// LES TITRES DE SECTION COLLENT SOUS LES FILTRES, JAMAIS DESSOUS (Movsar,
+// 2026-10-08 : « j aime pas quand le truc avec a venir, cloturer etc passe
+// au-dessus des categories »). La barre des filtres et les bandeaux de
+// section collaient tous deux en haut de la liste : le bandeau passait sous
+// la barre. Les bandeaux collent desormais a la hauteur de la barre, mesuree
+// ici (elle passe sur deux lignes quand l ecran se resserre).
+let observateurBarreListe = null;
+function suivreBarreDeLaListe(list) {
+  const barre = list && list.querySelector(':scope > .table-toolbar');
+  if (!barre) return;
+  const poser = () => {
+    const valeur = `${Math.ceil(barre.getBoundingClientRect().height)}px`;
+    if (list.style.getPropertyValue('--liste-barre-h') !== valeur) list.style.setProperty('--liste-barre-h', valeur);
+  };
+  poser();
+  if (typeof ResizeObserver !== 'function') return;
+  if (observateurBarreListe && observateurBarreListe.cible === barre) return;
+  if (observateurBarreListe) observateurBarreListe.disconnect();
+  observateurBarreListe = new ResizeObserver(poser);
+  observateurBarreListe.cible = barre;
+  observateurBarreListe.observe(barre);
 }
 
 // LA LISTE DESCEND JUSQU AU BAS DE L ECRAN (2026-10-08) : sa boite fait la
@@ -24802,6 +25587,7 @@ function voirAuPlanning(reservationId, ressource, ev) {
   state.staffTableExpanded = false;
   const autreJour = r.date && r.date !== state.currentDate;
   if (autreJour) state.currentDate = r.date;
+  if (cible === 'laser') lpRevelerGroupe(r.id);
   openStaffPlanningResource(cible);
   if (state.staffMenuPage !== 'planning') return;
   if (autreJour) syncDateReservations(r.date, { silent: true });

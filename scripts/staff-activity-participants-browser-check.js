@@ -17,6 +17,13 @@ mount = mount.replace('    const J = (payload)', `    const ACTIVITIES = ${JSON.
     const items = ACTIVITIES.map((a,index)=>({...a,activityId:a.id,participants:counts[index],priceKnown:a.id!=='arcade_time',price:[39,72,30,40,0,24,39,55][index],duration:1,games:2,units:a.id==='billards'?2:1,hours:2,minutes:a.id==='fun_run'?30:60,sessions:1}));
     R.push({id:9900,name:'TOUS LES EFFECTIFS',pax:18,date:today,startTime:'14:00',duration:1,totalDuration:4,lanes:[1],price:299,basePrice:299,type:'bowling',status:'pending',centerId:'libramont',extras:[],program:{items,price:299,priceComplete:false},opsPlan:{resourceBlocks:[{activityId:'bowling',resourceType:'bowling_lane',start:840,end:900,startTime:'14:00',endTime:'15:00',players:6,lanes:[1],durationMinutes:60},{activityId:'laser_game',resourceType:'laser_arena',start:930,end:955,startTime:'15:30',endTime:'15:55',players:4,countIndex:1,groupPlayers:4,durationMinutes:25}]}});
     const J = (payload)`);
+// L HORLOGE DE LA PAGE EST FIGEE A 09:00 du jour du centre : le dossier 9900
+// joue sa partie laser a 15:30 ce jour-la, et le planning Laser replie les
+// departs joues (le soir, sa legende n y serait plus). La fixture lit le jour
+// avec new Date() dans la page : elle prend le meme.
+const ancreHorloge = "  await pg.goto('http://127.0.0.1:' + PORT + '/?v=' + Date.now(), { waitUntil: 'networkidle' });";
+if (mount.split(ancreHorloge).length !== 2) throw new Error('montage : le chargement de la page est introuvable dans le harnais');
+mount = mount.replace(ancreHorloge, "  await pg.clock.setFixedTime(new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) + 'T09:00:00'));\n" + ancreHorloge);
 const checks = `
   const data = await pg.evaluate(() => {
     const row=state.reservations.find(r=>r.id===9900);
@@ -26,7 +33,7 @@ const checks = `
     const timeline=getGroupeProgramme(row).map(step=>step.nom+' '+step.quoi).join(' | ');
     renderPlanning();renderLaserPlanning();
     const bowling=[...document.querySelectorAll('.booking[data-booking-res-id="9900"] .bk-pax')].map(el=>el.title);
-    const laser=[...document.querySelectorAll('.laser-group-card[data-laser-res-id="9900"] .laser-group-count')].map(el=>el.title);
+    const laser=[...document.querySelectorAll('#laserPlanningGridWrap .lp-g[data-laser-res-id="9900"]')].map(el=>({titre:el.title,cases:el.closest('.lp-dep').querySelectorAll('.lp-cases i[data-lp-id="9900"]').length}));
     const terrain=getStaffTerrainSteps(row).map(step=>step.label||step.nom||'').join(' | ');
     const free={...row,price:0,basePrice:0,program:{priceComplete:true,items:[{activityId:'minigolf_blacklight',participants:3,price:0,priceKnown:true}]}};
     const unknown={...free,program:{priceComplete:false,items:[{activityId:'arcade_time',participants:5,price:0,priceKnown:false}]}};
@@ -40,7 +47,7 @@ const checks = `
   ok(/Minigolf Blacklight\s*3 joueurs/.test(data.summary)&&/Arcades\s*5 joueurs/.test(data.summary),'actual all activities card says Minigolf3 and Arcades5, total visitors18');
   ok(/Bowling 6 joueurs/.test(data.timeline)&&/Laser Game 4 joueurs/.test(data.timeline)&&/Arcades 5 joueurs/.test(data.timeline),'timeline says own bowling6 laser4 arcade5');
   ok(data.bowling.length>0&&data.bowling.every(count=>count==='6 joueurs'),'actual bowling planning cards show6 players: '+JSON.stringify(data.bowling));
-  ok(data.laser.length>0&&data.laser.every(count=>count==='4 joueurs'),'actual laser planning cards show4 players: '+JSON.stringify(data.laser));
+  ok(data.laser.length>0&&data.laser.every(g=>/^TOUS LES EFFECTIFS : 4 joueurs\\b/.test(g.titre)&&g.cases===4),'actual laser planning legend and gauge show4 players: '+JSON.stringify(data.laser));
   for(const [name,count] of [['Bowling',6],['Laser Game',4],['Minigolf Blacklight',3],['Billard',8],['Arcades',5],['Playground',2],['Duckpin Bowling',6],['Fun Run',4]]) {
     ok(data.timeline.includes(name+' '+count+' joueurs')||data.timeline.includes(name+' '+count+' enfants'),'all activities timeline '+name+' count'+count);
     const compact=data.summary.split(/\\s+/).join('');

@@ -44,6 +44,10 @@
 //       entier (Movsar, 2026-10-08 : « Pistes 7 et… »), et de 1 a 8 pistes, a
 //       1280 et 1180 px, mesure au noeud de texte ; la liste entiere reste
 //       dans le libelle du bouton.
+//   [K] TABLETTE EN PORTRAIT (800 px). Une colonne comme au telephone, le billet
+//       sous la composition ; chaque jour entier ; rien ne se pose sur son
+//       voisin dans une ligne (en deux colonnes : « Demain ven… », « pour
+//       vous » sous le chevron).
 //   [*] Zero erreur JS ni erreur console.
 //
 // Le serveur est simule dans la page (ses reponses suivent le contrat de
@@ -110,6 +114,8 @@ const MUTATIONS = {
   nomCache: { fichier: 'assets/app-main.js', de: "      else if (!champ && document.getElementById('qbQui')) rvPoser('rvChamps', rvClientHtml());", vers: '', vise: ['I'] },
   // La pastille dit toujours la liste entiere : 3 pistes la coupent.
   pastille: { fichier: 'assets/app-main.js', de: '  if (enLettres.length <= RV_PASTILLE_MAX) return enLettres;', vers: '  return enLettres;', vise: ['J'] },
+  // La tablette en portrait revient aux deux colonnes serrees.
+  portrait: { fichier: 'assets/pinlane-staff.css', de: '@media (max-width: 900px) {\n  .qb-overlay.is-rv { padding: 0; align-items: stretch; }', vers: '@media (max-width: 700px) {\n  .qb-overlay.is-rv { padding: 0; align-items: stretch; }', vise: ['K'] },
   // La colonne de la pastille revient a 118 px : « Pistes 7 et… ».
   pastilleColonne: { fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 128px minmax(0, 1fr) 34px;', vers: '.qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 118px minmax(0, 1fr) 34px;', vise: ['J'] },
 };
@@ -146,8 +152,11 @@ const ACTIVITIES = [
   { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', order: 3, defaultMinutes: 45 },
 ];
 
-async function installMock(page) {
-  const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+// La session du faux serveur vit 24 h apres l heure de la PAGE : une page
+// figee plus loin (le samedi du planning Laser) la trouvait expiree et la
+// console restait verrouillee (2026-10-08).
+async function installMock(page, { maintenant = Date.now() } = {}) {
+  const expiresAt = new Date(Number(maintenant) + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, ACTIVITIES }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.quick', 'reservations.edit', 'reservations.status', 'clients.view', 'payments.view', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
@@ -261,8 +270,11 @@ function dossierCompare(corps) {
   return JSON.stringify(Object.keys(copie).sort().reduce((o, k) => { o[k] = copie[k]; return o; }, {}));
 }
 
-async function boot(page) {
-  await installMock(page);
+// `installer: false` : l appelant a deja pose ce faux serveur, et le sien
+// par-dessus (le planning Laser) ; le reposer ici le recouvrirait, et ses
+// routes ne verraient plus rien passer.
+async function boot(page, { installer = true, maintenant } = {}) {
+  if (installer) await installMock(page, { maintenant });
   await page.goto(`${BASE_URL}/?v=rv5-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
   await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
   await page.evaluate(() => window.setView('staff'));
@@ -760,7 +772,48 @@ async function scenarioJ(page, verifier) {
   verifier('J', sansListe.length === 0, 'le libelle du bouton garde la liste entiere des pistes', sansListe.map((l) => l.libelle).join(' | ') || 'ok');
 }
 
-const SCENARIOS = { A: scenarioAB, B: scenarioAB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI, J: scenarioJ };
+// ── [K] ───────────────────────────────────────────────────────────────────────
+// Tablette en portrait (800 px) : une colonne, comme au telephone, ou rien
+// n est coupe ni pose sur son voisin. En deux colonnes, les jours finissaient
+// sur « Demain ven… » et « pour vous » passait sous le chevron (vu sur les
+// photos du planning Laser, 2026-10-08).
+async function scenarioK(page, verifier) {
+  for (const [nom, prefill] of [['bowling', { startTime: '14:00', type: 'bowling', pax: 4 }], ['laser', { startTime: '18:00', type: 'laser', pax: 4, duration: 0.5, totalDuration: 0.5 }]]) {
+    await page.evaluate(({ jour, prefill }) => { closeQuickBook(); openQuickBook({ date: jour, ...prefill }); }, { jour: JOUR, prefill });
+    await planPose(page, true);
+    await page.waitForTimeout(250);
+    const m = await page.evaluate(() => {
+      const modal = document.querySelector('#quickBookOverlay .qb-modal.rv');
+      const boite = (sel) => { const e = modal.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
+      const jours = modal.querySelector('.rv-jours');
+      const cadreJours = jours ? jours.getBoundingClientRect() : null;
+      const joursCoupes = jours ? [...jours.querySelectorAll('button')].filter((b) => { const r = b.getBoundingClientRect(); return r.left < cadreJours.left - 0.5 || r.right > cadreJours.right + 0.5; }).map((b) => b.textContent.replace(/\s+/g, ' ').trim()) : ['(pas de jours)'];
+      // Les morceaux de l en-tete de ligne ne se posent pas l un sur l autre.
+      const poses = [];
+      modal.querySelectorAll('.rv-lc-h').forEach((h) => {
+        const enfants = [...h.children].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+        for (let i = 0; i < enfants.length; i += 1) {
+          for (let j = i + 1; j < enfants.length; j += 1) {
+            const a = enfants[i].getBoundingClientRect();
+            const b = enfants[j].getBoundingClientRect();
+            const l = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+            const hauteur = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+            if (l * hauteur > 4) poses.push(`${enfants[i].className} / ${enfants[j].className}`);
+          }
+        }
+      });
+      const compo = boite('.rv-compo');
+      const recap = boite('.rv-recap');
+      return { largeur: Math.round(modal.getBoundingClientRect().width), joursCoupes, poses, colonne: Boolean(compo && recap && recap.top >= compo.bottom - 1), recapVu: Boolean(recap && recap.height > 0) };
+    });
+    verifier('K', m.colonne && m.recapVu, `${nom} a 800 px : une colonne, le billet (heures et fil du temps) sous la composition`, JSON.stringify(m));
+    verifier('K', m.joursCoupes.length === 0, `${nom} a 800 px : chaque jour se lit entier`, m.joursCoupes.join(' | ') || 'aucun coupe');
+    verifier('K', m.poses.length === 0, `${nom} a 800 px : rien ne se pose sur son voisin dans la ligne`, m.poses.join(' | ') || 'aucun');
+  }
+  await page.evaluate(() => closeQuickBook());
+}
+
+const SCENARIOS = { A: scenarioAB, B: scenarioAB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI, J: scenarioJ, K: scenarioK };
 
 async function passe(browser, lettres, { bavard = true } = {}) {
   const echecs = new Set();
@@ -768,7 +821,7 @@ async function passe(browser, lettres, { bavard = true } = {}) {
     if (bavard || !cond) console.log(`${cond ? 'OK  ' : 'FAIL'} [${lettre}] ${label}${detail ? `  ->  ${detail}` : ''}`);
     if (!cond) echecs.add(lettre);
   };
-  const tablette = lettres.filter((l) => l !== 'G' && l !== 'I');
+  const tablette = lettres.filter((l) => l !== 'G' && l !== 'I' && l !== 'K');
   const lancer = async (viewport, liste, { horloge = null } = {}) => {
     if (!liste.length) return;
     const contexte = await browser.newContext({ viewport, deviceScaleFactor: 1 });
@@ -797,6 +850,7 @@ async function passe(browser, lettres, { bavard = true } = {}) {
   await lancer({ width: 1280, height: 820 }, tablette);
   if (lettres.includes('I')) await lancer({ width: 1280, height: 820 }, ['I'], { horloge: instantComptoir() });
   if (lettres.includes('G')) await lancer({ width: 390, height: 844 }, ['G']);
+  if (lettres.includes('K')) await lancer({ width: 800, height: 1280 }, ['K']);
   return echecs;
 }
 
@@ -807,7 +861,7 @@ async function main() {
   let rouge = false;
   try {
     if (!arg) {
-      const echecs = await passe(browser, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
+      const echecs = await passe(browser, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']);
       rouge = echecs.size > 0;
       console.log(rouge ? `\nreserver-v5-check : ${[...echecs].join(', ')} en echec` : '\nreserver-v5-check: ALL OK, la fenetre cree ce qu elle montre.');
     } else {

@@ -7,9 +7,11 @@
 // Scénarios :
 //   A. Bowling (mode normal) : déposer une carte ne fait PAS remonter la page.
 //   B. Bowling : curseur près du bord haut pendant le drag ne happe PAS la page.
-//   C. Laser PLEIN ÉCRAN : déposer une carte ne remet PAS la timeline en haut.
-//   D. Laser : glisser une carte placée vers « Parties à placer » la dé-planifie.
-//   E. Laser : re-glisser la carte en attente vers un slot la replace.
+//   C. Laser PLEIN ÉCRAN (planning de la maquette E, un rang par départ) :
+//      déposer un groupe sur un autre départ ne remet PAS le planning en haut.
+//   D. Laser : glisser un groupe placé sur la file « À placer » le dé-planifie,
+//      et un vrai sondage du serveur ne le ramène pas.
+//   E. Laser : re-glisser son jeton de la file vers un départ le replace.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -357,98 +359,120 @@ async function main() {
       }
     }
 
-    // --- C/D/E : laser plein écran ---
+    // --- C/D/E : laser plein écran (planning de la maquette E) ---
+    // Le planning defile dans son cadre (lpDefileur) ; pendant un glisser, il
+    // defile seul a moins de 96 px du haut du cadre et du haut de la file
+    // « À placer ». Groupe et cible s amenent entre les deux : le trajet du
+    // pointeur ne fait alors rien defiler, et le depot vise ce qu on a choisi.
     await page.evaluate(() => { state.reservations = window.__QA_BUILD__(state.currentDate); state.staffResourceView = 'laser'; state.staffLaserPlanningExpanded = true; save(); renderStaff(); });
     await page.waitForTimeout(400);
-
-    console.log('\n[C] Laser plein écran : drop ne remet pas la timeline en haut');
-    const agC = await page.evaluate(() => {
-      const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-      const card = document.querySelector('.laser-group-card[onmousedown*="9010"]');
-      if (!ag || !card) return { ok: false };
-      const top = card.getBoundingClientRect().top - ag.getBoundingClientRect().top + ag.scrollTop;
-      ag.scrollTop = Math.max(120, top - 240);
-      return { ok: true, canScroll: ag.scrollHeight > ag.clientHeight + 1, scrollTop: ag.scrollTop };
+    const cadreLaser = () => page.evaluate(() => { const c = lpDefileur(); return c && c.id === 'laserPlanningGridWrap' ? c.scrollTop : null; });
+    const amener = (selecteur) => page.evaluate((selecteur) => {
+      const el = document.querySelector(selecteur);
+      const cadre = lpDefileur();
+      if (!el || !cadre) return { raison: `${selecteur} : ${el ? 'aucun cadre de defilement' : 'absent'}` };
+      const r = cadre.getBoundingClientRect();
+      const file = document.querySelector('#laserPlanningGridWrap .lp-file');
+      const haut = Math.max(0, r.top) + 96 + 12;
+      const bas = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity) - 96 - 12;
+      for (let essai = 0; essai < 12; essai += 1) {
+        const b = el.getBoundingClientRect();
+        const ecart = (b.top + b.height / 2) - (haut + bas) / 2;
+        if (Math.abs(ecart) <= 2) break;
+        cadre.scrollTop += ecart;
+      }
+      const b = el.getBoundingClientRect();
+      const y = b.top + b.height / 2;
+      if (!(b.height > 4 && y > haut && y < bas)) return { raison: `${selecteur} au centre ${Math.round(y)}, bande ${Math.round(haut)}-${Math.round(bas)}` };
+      return { x: b.left + Math.min(b.width / 2, 60), y };
+    }, selecteur);
+    // Un depart vide, sans personne en jeu, le plus proche du groupe 9010.
+    const departVide = () => page.evaluate(() => {
+      const g = document.querySelector('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]');
+      const repere = g ? g.getBoundingClientRect().top : innerHeight / 2;
+      const vides = [...document.querySelectorAll('#laserPlanningGridWrap .lp-dep.is-vide[data-lp-t]')]
+        .filter((d) => (d.querySelector('.lp-dep__n b') || {}).textContent === '0')
+        .map((d) => ({ t: Number(d.dataset.lpT), d: Math.abs(d.getBoundingClientRect().top - repere) }))
+        .filter((o) => o.d > 100)
+        .sort((a, b) => a.d - b.d);
+      return vides.length ? vides[0].t : null;
     });
-    if (ok(agC.ok && agC.canScroll, 'timeline laser défilable en plein écran')) {
-      const posC = await page.evaluate(() => {
-        const card = document.querySelector('.laser-group-card[onmousedown*="9010"]');
-        const cb = card.getBoundingClientRect();
-        const slots = [...document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]')].map(s => ({ s, b: s.getBoundingClientRect() })).filter(o => o.b.top > 160 && o.b.bottom < window.innerHeight - 40);
-        const pick = slots[Math.floor(slots.length/2)] || slots[0];
-        // Depuis le 2026-10-05 (journaux 378 et 380) la partie prend l heure SOUS
-        // le pointeur, a 5 min pres : on lache 2 px sous le haut de la ligne,
-        // dont l heure de debut est alors la bonne reponse.
-        const ligne = pick && (pick.s.closest('.laser-agenda-row[data-laser-time-start]') || pick.s);
-        return { card: { x: cb.x + cb.width/2, y: cb.y + cb.height/2 }, tgt: pick ? { x: pick.b.x + pick.b.width/2, y: ligne.getBoundingClientRect().top + 2, t: ligne.dataset.laserTimeStart ?? pick.s.dataset.laserDropStart } : null };
-      });
-      if (ok(!!posC.tgt, 'un slot vide visible pour le drop')) {
-        const beforeC = await page.evaluate(() => document.querySelector('.laser-planning-box.expanded .laser-agenda').scrollTop);
-        await page.mouse.move(posC.card.x, posC.card.y); await page.mouse.down();
-        await page.mouse.move(posC.card.x + 8, posC.card.y + 8, { steps: 2 });
-        await page.mouse.move(posC.tgt.x, posC.tgt.y, { steps: 8 }); await page.mouse.up();
+    const fini = () => page.waitForFunction(() => !lpEtat.enCours && !lpEtat.glisse && !lpEtat.geste, null, { timeout: 8000 }).then(() => true, () => false);
+
+    console.log('\n[C] Laser plein écran : drop ne remet pas le planning en haut');
+    const montageC = await page.evaluate(() => {
+      const cadre = lpDefileur();
+      return { cadre: cadre ? cadre.id || cadre.className : null, defilable: Boolean(cadre) && cadre.scrollHeight > cadre.clientHeight + 1, departs: document.querySelectorAll('#laserPlanningGridWrap .lp-dep').length, groupe: Boolean(document.querySelector('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]')) };
+    });
+    if (ok(montageC.cadre === 'laserPlanningGridWrap' && montageC.defilable && montageC.departs > 0 && montageC.groupe, `planning laser défilable en plein écran, groupe 9010 dans son départ (${JSON.stringify(montageC)})`)) {
+      const tC = await departVide();
+      const srcC = await amener('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]');
+      if (ok(tC !== null && srcC && srcC.y, `un départ vide pour le drop (${tC})${srcC && srcC.raison ? ' :: ' + srcC.raison : ''}`)) {
+        await page.mouse.move(srcC.x, srcC.y); await page.mouse.down();
+        await page.mouse.move(srcC.x + 8, srcC.y + 8, { steps: 2 });
+        const tgtC = await amener(`#laserPlanningGridWrap .lp-dep[data-lp-t="${tC}"] .lp-dep__jauge`);
+        const beforeC = await cadreLaser();
+        if (ok(tgtC && tgtC.y, `MONTAGE : groupe levé, départ ${tC} dans la vue${tgtC && tgtC.raison ? ' :: ' + tgtC.raison : ''}`)) {
+          await page.mouse.move(tgtC.x, tgtC.y, { steps: 8 });
+        }
+        await page.mouse.up();
+        const posee = await fini();
         await page.waitForTimeout(400);
-        const afterC = await page.evaluate(() => { const a = document.querySelector('.laser-planning-box.expanded .laser-agenda'); return a ? a.scrollTop : null; });
+        const afterC = await cadreLaser();
         const movedC = await page.evaluate(() => { const r = state.reservations.find(x=>x.id===9010); const w = getLaserWindowsFromReservation(r); return w.length ? w[0].start : null; });
-        ok(Math.abs(afterC - beforeC) <= 20, `timeline immobile pendant le drop (${beforeC} -> ${afterC})`);
-        ok(movedC !== null && Math.abs(Number(movedC) - Number(posC.tgt.t)) <= 0.01, `la partie s'est bien déplacée (${posC.tgt.t})`);
+        ok(beforeC !== null && afterC !== null && Math.abs(afterC - beforeC) <= 20, `planning immobile pendant le drop (${beforeC} -> ${afterC})`);
+        ok(posee && movedC !== null && Math.abs(Number(movedC) - Number(tC)) <= 0.01, `la partie s'est bien déplacée (${tC}, lu ${movedC})`);
       }
     }
 
-    console.log('\n[D] Laser : glisser une carte placée vers « Parties à placer » = dé-planifier');
-    await page.evaluate(() => {
-      const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-      const card = document.querySelector('.laser-group-card[onmousedown*="9010"]');
-      if (ag && card) { const top = card.getBoundingClientRect().top - ag.getBoundingClientRect().top + ag.scrollTop; ag.scrollTop = Math.max(0, top - 220); }
-    });
-    await page.waitForTimeout(150);
-    const posD = await page.evaluate(() => {
-      const card = document.querySelector('.laser-group-card[onmousedown*="9010"]');
-      const queue = document.querySelector('.laser-pass-queue');
-      if (!card || !queue) return null;
-      const c = card.getBoundingClientRect(), q = queue.getBoundingClientRect();
-      return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, queue: { x: q.x + q.width/2, y: Math.min(q.y + 120, q.y + q.height/2) } };
-    });
-    if (ok(!!posD, 'carte placée + file « Parties à placer » présentes')) {
-      await page.mouse.move(posD.card.x, posD.card.y); await page.mouse.down();
-      await page.mouse.move(posD.card.x + 8, posD.card.y + 8, { steps: 2 });
-      await page.mouse.move(posD.queue.x, posD.queue.y, { steps: 10 }); await page.mouse.up();
+    console.log('\n[D] Laser : glisser un groupe placé vers la file « À placer » = dé-planifier');
+    const srcD = await amener('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]');
+    if (ok(srcD && srcD.y && await page.evaluate(() => Boolean(document.querySelector('#laserPlanningGridWrap .lp-file'))), `groupe placé + file « À placer » présents${srcD && srcD.raison ? ' :: ' + srcD.raison : ''}`)) {
+      const nD = await page.evaluate(() => (window.__QA_PATCHES__ || []).length);
+      await page.mouse.move(srcD.x, srcD.y); await page.mouse.down();
+      await page.mouse.move(srcD.x + 8, srcD.y + 8, { steps: 2 });
+      const fileD = await page.evaluate(() => { const q = document.querySelector('#laserPlanningGridWrap .lp-file').getBoundingClientRect(); return { x: q.x + q.width / 2, y: q.y + q.height / 2 }; });
+      await page.mouse.move(fileD.x, fileD.y, { steps: 10 }); await page.mouse.up();
+      await fini();
       await page.waitForTimeout(450);
-      const afterD = await page.evaluate(() => {
+      const afterD = await page.evaluate((n) => {
         const r = state.reservations.find(x => x.id === 9010);
-        const patch = (window.__QA_PATCHES__ || []).slice(-1)[0] || null;
-        return { windows: getLaserWindowsFromReservation(r).length, laserManual: !!r.opsPlan?.laserManual, pending: getPendingLaserPasses(state.currentDate).map(p => p.reservation.id), inQueue: !!document.querySelector('.laser-pass-card[onmousedown*="9010"]'), onGrid: !!document.querySelector('.laser-group-card[onmousedown*="9010"]'), skipReplan: patch ? !!patch.activityMove : null, patchManual: patch ? !!patch.activityMove?.unplace : null };
-      });
+        const patchs = (window.__QA_PATCHES__ || []).slice(n);
+        const patch = patchs.slice(-1)[0] || null;
+        return { windows: getLaserWindowsFromReservation(r).length, laserManual: !!r.opsPlan?.laserManual, pending: getPendingLaserPasses(state.currentDate).map(p => p.reservation.id), inQueue: !!document.querySelector('#laserPlanningGridWrap .lp-file .lp-jeton[data-laser-res-id="9010"]'), onGrid: !!document.querySelector('#laserPlanningGridWrap .lp-dep [data-laser-res-id="9010"], #laserPlanningGridWrap .lp-cases i[data-lp-id="9010"]'), patchs: patchs.length, skipReplan: patch ? !!patch.activityMove : null, patchManual: patch ? !!patch.activityMove?.unplace : null };
+      }, nD);
       ok(afterD.windows === 0, 'la partie quitte le planning');
       ok(afterD.laserManual === true, 'opsPlan.laserManual = true');
-      ok(afterD.pending.includes(9010), 'apparaît dans « Parties à placer »');
-      ok(afterD.inQueue && !afterD.onGrid, 'carte dans la file, plus sur le grid');
-      ok(afterD.skipReplan === true && afterD.patchManual === true, 'PATCH persiste le marqueur (skipReplan + laserManual)');
-      // survit à un poll serveur
-      await page.evaluate(async () => { if (typeof refreshStaffState === 'function') { try { await refreshStaffState(); } catch (e) {} } });
+      ok(afterD.pending.includes(9010), 'apparaît dans « À placer »');
+      ok(afterD.inQueue && !afterD.onGrid, 'jeton dans la file, plus dans aucun départ');
+      ok(afterD.patchs === 1 && afterD.skipReplan === true && afterD.patchManual === true, `UN PATCH cible, qui persiste le retrait (activityMove.unplace) (${afterD.patchs})`);
+      // survit à un vrai sondage du serveur (le faux serveur garde le dossier
+      // tel que le PATCH l a laisse)
+      const sonde = await page.evaluate(async () => { try { await syncDateReservations(state.currentDate); return true; } catch (e) { return String(e.message); } });
       await page.waitForTimeout(300);
-      const poll = await page.evaluate(() => { const r = state.reservations.find(x=>x.id===9010); return { w: getLaserWindowsFromReservation(r).length, p: getPendingLaserPasses(state.currentDate).map(x=>x.reservation.id) }; });
-      ok(poll.w === 0 && poll.p.includes(9010), 'reste dé-placé après un poll serveur');
+      const poll = await page.evaluate(() => { const r = state.reservations.find(x=>x.id===9010); return { w: getLaserWindowsFromReservation(r).length, p: getPendingLaserPasses(state.currentDate).map(x=>x.reservation.id), jeton: !!document.querySelector('#laserPlanningGridWrap .lp-jeton[data-laser-res-id="9010"]') }; });
+      ok(sonde === true && poll.w === 0 && poll.p.includes(9010) && poll.jeton, `reste dé-placé après un sondage du serveur (${JSON.stringify({ sonde, ...poll })})`);
 
-      console.log('\n[E] Laser : re-glisser la carte en attente vers un slot = replacer');
-      const posE = await page.evaluate(() => {
-        const card = document.querySelector('.laser-pass-card[onmousedown*="9010"]');
-        const slots = [...document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]')].map(s => ({ s, b: s.getBoundingClientRect() })).filter(o => o.b.top > 160 && o.b.bottom < window.innerHeight - 40);
-        const pick = slots[Math.floor(slots.length/2)] || slots[0];
-        if (!card || !pick) return null;
-        const c = card.getBoundingClientRect();
-        // Meme regle que [C] : l heure sous le pointeur, lache en haut de ligne.
-        const ligne = pick.s.closest('.laser-agenda-row[data-laser-time-start]') || pick.s;
-        return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, tgt: { x: pick.b.x + pick.b.width/2, y: ligne.getBoundingClientRect().top + 2, t: ligne.dataset.laserTimeStart ?? pick.s.dataset.laserDropStart } };
-      });
-      if (ok(!!posE, 'carte en attente + slot vide présents')) {
-        await page.mouse.move(posE.card.x, posE.card.y); await page.mouse.down();
-        await page.mouse.move(posE.card.x + 8, posE.card.y + 8, { steps: 2 });
-        await page.mouse.move(posE.tgt.x, posE.tgt.y, { steps: 10 }); await page.mouse.up();
+      console.log('\n[E] Laser : re-glisser le jeton en attente vers un départ = replacer');
+      const jetonE = await page.evaluate(() => { const j = document.querySelector('#laserPlanningGridWrap .lp-file .lp-jeton[data-laser-res-id="9010"]'); if (!j) return null; const c = j.getBoundingClientRect(); return { x: c.x + c.width / 2, y: c.y + c.height / 2, visible: c.top >= 0 && c.bottom <= innerHeight }; });
+      const tE = await departVide();
+      if (ok(jetonE && jetonE.visible && tE !== null, `jeton en attente + départ vide présents (${tE})`)) {
+        // Saisi dans la file, il se leve sans quitter la file (pas de bord) ;
+        // la cible s amene dans la bande, et le pointeur y saute d un coup : la
+        // bande du bas, au-dessus de la file, ferait defiler au passage.
+        await page.mouse.move(jetonE.x, jetonE.y); await page.mouse.down();
+        await page.mouse.move(jetonE.x + 8, jetonE.y, { steps: 2 });
+        const tgtE = await amener(`#laserPlanningGridWrap .lp-dep[data-lp-t="${tE}"] .lp-dep__jauge`);
+        const permis = await page.evaluate((t) => ({ leve: Boolean(lpEtat.glisse), classes: (document.querySelector(`#laserPlanningGridWrap .lp-dep[data-lp-t="${t}"]`) || {}).className || '' }), tE);
+        if (ok(tgtE && tgtE.y && permis.leve && /\bis-cible\b/.test(permis.classes), `MONTAGE : jeton levé, le départ ${tE} l accepte (${permis.classes})${tgtE && tgtE.raison ? ' :: ' + tgtE.raison : ''}`)) {
+          await page.mouse.move(tgtE.x, tgtE.y, { steps: 1 });
+        }
+        await page.mouse.up();
+        await fini();
         await page.waitForTimeout(450);
-        const afterE = await page.evaluate(() => { const r = state.reservations.find(x=>x.id===9010); const w = getLaserWindowsFromReservation(r); return { start: w.length ? w[0].start : null, pending: getPendingLaserPasses(state.currentDate).map(p=>p.reservation.id), onGrid: !!document.querySelector('.laser-group-card[onmousedown*="9010"]') }; });
-        ok(afterE.start !== null && Math.abs(Number(afterE.start) - Number(posE.tgt.t)) <= 0.01, `re-placée au créneau ${posE.tgt.t}`);
-        ok(!afterE.pending.includes(9010) && afterE.onGrid, 'de retour sur le planning, plus dans la file');
+        const afterE = await page.evaluate(() => { const r = state.reservations.find(x=>x.id===9010); const w = getLaserWindowsFromReservation(r); return { start: w.length ? w[0].start : null, pending: getPendingLaserPasses(state.currentDate).map(p=>p.reservation.id), onGrid: !!document.querySelector('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]'), jeton: !!document.querySelector('#laserPlanningGridWrap .lp-jeton[data-laser-res-id="9010"]') }; });
+        ok(afterE.start !== null && Math.abs(Number(afterE.start) - Number(tE)) <= 0.01, `re-placée au départ ${tE} (lu ${afterE.start})`);
+        ok(!afterE.pending.includes(9010) && afterE.onGrid && !afterE.jeton, 'de retour sur le planning, plus dans la file');
       }
     }
 

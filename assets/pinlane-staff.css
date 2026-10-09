@@ -3536,7 +3536,7 @@ body:is(.staff-mode, .admin-mode) .laser-capacity-line { height: 3px; }
 
 .res-section-head {
   position: sticky;
-  top: 0;
+  top: var(--liste-barre-h, 0px);
   z-index: 2;
   display: flex;
   justify-content: space-between;
@@ -11285,8 +11285,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv .rv-pistes-choix { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
-/* TELEPHONE : une colonne, le client sous le plan, « Créer » colle en bas */
-@media (max-width: 700px) {
+/* TELEPHONE ET TABLETTE EN PORTRAIT : une colonne, le client sous le plan,
+   « Créer » colle en bas. Jusqu a 900 px : a 800 px en portrait, les deux
+   colonnes coupaient les jours (« Demain ven… ») et la ligne posait « pour
+   vous » sous son chevron (2026-10-08). */
+@media (max-width: 900px) {
   .qb-overlay.is-rv { padding: 0; align-items: stretch; }
   .qb-modal.rv { width: 100%; height: 100dvh; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
   .qb-modal.rv .rv-compo { flex: none; }
@@ -11352,7 +11355,13 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv .rv-legende .rv-droite { margin-left: 0; flex-basis: 100%; }
   .qb-modal.rv .rv-couche-voile { position: fixed; inset: 0; z-index: 439; background: rgb(0 0 0 / .5); }
 }
-@media (min-width: 701px) { .qb-modal.rv .rv-couche-voile { display: none; } }
+@media (min-width: 901px) { .qb-modal.rv .rv-couche-voile { display: none; } }
+/* TABLETTE EN PORTRAIT (701 a 900 px) : la colonne du telephone, avec ce que
+   la largeur garde : le billet (heures et fil du temps) et les departs rapides. */
+@media (min-width: 701px) and (max-width: 900px) {
+  .qb-modal.rv .rv-recap { display: block; margin-bottom: 4px; padding-bottom: 14px; border-bottom: 1px solid var(--rv-line); }
+  .qb-modal.rv .rv-plan-tete .rv-dr .rv-puce:not(.rv-garder) { display: inline-flex; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .qb-modal.rv .rv-horloge { animation: none; }
@@ -18805,7 +18814,6 @@ button.pv2-cal-cell:focus-visible {
 .table-box.expanded:not(.hidden) .table-head {
   padding: 12px clamp(18px, 2.6vw, 46px);
 }
-.table-box.expanded:not(.hidden) .table-head > h2 { margin-right: auto; }
 .table-box.expanded:not(.hidden) .search-wrap { width: min(360px, 26vw); margin-left: auto; }
 .table-box.expanded:not(.hidden) .search-wrap input { width: 100%; }
 
@@ -19176,11 +19184,11 @@ button.pv2-cal-cell:focus-visible {
    chiffres, son nom accessible) prend la tenue de l encadre : le titre porte
    deja le mot et la couleur, une deuxieme pastille ambre n ajouterait rien. */
 .gc-flag .gc-price-mark.pl-price-adjusted { padding: 0; border: 0; border-radius: 0; background: none; color: var(--text); font-family: var(--font-data); font-weight: 600; font-variant-numeric: tabular-nums; white-space: normal; }
-.gc-who .gc-price-mark.pl-price-adjusted { padding: 0; border: 0; background: none; color: var(--accent-strong); font-weight: 600; }
+.gc-who .gc-price-mark.pl-price-adjusted { padding: 0; border: 0; background: none; color: var(--warning); font-weight: 600; }
 .gc-flag.tone-review { background: var(--warning-soft); border-left-color: var(--warning); }
 .gc-flag.tone-review b { color: var(--warning); }
-.gc-flag.tone-price { background: var(--accent-soft); border-left-color: var(--accent); }
-.gc-flag.tone-price b { color: var(--accent-strong); }
+.gc-flag.tone-price { background: var(--warning-soft); border-left-color: var(--warning); }
+.gc-flag.tone-price b { color: var(--warning); }
 .gc-flag.tone-occasion { background: var(--occasion-soft); border-left-color: var(--occasion); }
 .gc-flag.tone-occasion b { color: var(--occasion); }
 .gc-flag.tone-note span { font-size: 14px; }
@@ -19410,8 +19418,10 @@ button.pv2-cal-cell:focus-visible {
 .gc-section.closing { --band: var(--warning); --band-soft: var(--warning-soft); }
 .gc-section.done { --band: var(--muted); --band-soft: var(--subtle); }
 .gc-section.absent { --band: var(--muted); --band-soft: var(--subtle); }
+/* Colle SOUS la barre des filtres (--liste-barre-h, mesuree par
+   suivreBarreDeLaListe) : a top 0, le bandeau passait sous elle. */
 .gc-section > .res-section-head.gc-band {
-  position: sticky; top: 0; z-index: 3;
+  position: sticky; top: var(--liste-barre-h, 0px); z-index: 3;
   display: flex; align-items: center; gap: 10px;
   margin: 0 0 12px; padding: 10px 14px;
   border: 1px solid color-mix(in srgb, var(--band) 30%, var(--line));
@@ -19441,7 +19451,7 @@ button.pv2-cal-cell:focus-visible {
 .gc-hours { display: flex; flex-direction: column; }
 .gc-hour-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; padding: 12px 0; border-top: 1px dashed var(--line); }
 .gc-hour-row:first-child { border-top: 0; padding-top: 0; }
-.gc-hour { position: sticky; top: 64px; align-self: start; display: flex; flex-direction: column; gap: 4px; }
+.gc-hour { position: sticky; top: calc(var(--liste-barre-h, 0px) + 64px); align-self: start; display: flex; flex-direction: column; gap: 4px; }
 .gc-hour span { font-family: var(--font-data); font-size: 20px; font-weight: 700; line-height: 1; color: var(--accent-strong); font-variant-numeric: tabular-nums; }
 .gc-hour small { display: flex; flex-direction: column; font-size: 11.5px; line-height: 1.35; color: var(--muted); }
 @media (max-width: 760px) {
@@ -19478,7 +19488,21 @@ button.pv2-cal-cell:focus-visible {
    2. En plein ecran, le bandeau garde son propre retrait (la regle des
       en-tetes de section lui donnait jusqu a 46 px a gauche).
    3. Les cartes deja payees : une ligne nette, les activites en puces. */
-.gc-section > .res-section-head.gc-band { position: relative; top: auto; backdrop-filter: none; }
+/* 08/10 (Movsar : « j aime pas quand le truc avec a venir, cloturer etc
+   passe au-dessus des categories ») : decolles, les bandeaux passaient sous
+   la barre des filtres en defilant. Ni dessous a la meme hauteur (02/10), ni
+   recouverts (08/10) : le bandeau de la categorie en cours colle JUSTE SOUS
+   la barre (--liste-barre-h, mesuree par suivreBarreDeLaListe), sur un fond
+   opaque ; la barre reste au-dessus quand un bandeau s en va. */
+.gc-section > .res-section-head.gc-band {
+  position: sticky;
+  top: var(--liste-barre-h, 0px);
+  z-index: 3;
+  backdrop-filter: none;
+  background-color: var(--bg);
+  background-image: linear-gradient(color-mix(in srgb, var(--band-soft) 70%, var(--bg)), color-mix(in srgb, var(--band-soft) 70%, var(--bg)));
+}
+#resList > .table-toolbar { z-index: 5; }
 .gc-hour { position: static; }
 .table-box.expanded:not(.hidden) .gc-section > .res-section-head.gc-band { padding: 10px 14px; }
 .res-row.gc.is-done { padding: 12px 16px; }
@@ -19597,7 +19621,14 @@ button.pv2-cal-cell:focus-visible {
 
 /* Console 2026-10-03 : graphite et papier, meme vocabulaire dans les deux
    themes. Les donnees du planning gardent leurs couleurs semantiques.
-   Cette couche est reservee au produit : aucun jeton du tunnel client. */
+   Cette couche est reservee au produit : aucun jeton du tunnel client.
+   LES COULEURS SONT CELLES DE PINLANE (2026-10-08, Movsar : « couleur plus
+   vive genre le bleu, rouge etc, partout sur tout Pinlane SaaS ») : le bleu,
+   le vert, l ambre et le rouge ne sont plus redefinis ici en tons sourds
+   (bleu acier en clair, pastels en sombre, bouton principal noir en clair).
+   Ils viennent d assets/pinlane.css, la meme source que le site client ;
+   seul le bouton principal du sombre garde un bleu plus profond que l accent,
+   pour son texte blanc (4,55:1 ; #3291ff ne fait que 3,17:1). */
 body:is(.staff-mode, .admin-mode) {
   /* LISIBILITE (2026-10-05, Movsar : « des fois c est du gris sur du blanc, on
      capte pas »). Le texte courant passe de #242424 a presque noir, le texte
@@ -19614,18 +19645,14 @@ body:is(.staff-mode, .admin-mode) {
   --text: #111113;
   --muted: #45454b;
   --faint: #57575e;
-  --accent: #315d87;
-  --accent-strong: #284e73;
-  --accent-soft: #e8eef4;
-  --accent-contrast: #ffffff;
   --h-md: 40px;
   --h-lg: 44px;
   --shadow-overlay: 0 16px 56px rgb(0 0 0 / 0.18);
-  --console-selected: #242424;
+  --console-selected: var(--accent);
   --console-selected-text: #ffffff;
-  --console-selected-surface: #f4f4f4;
+  --console-selected-surface: var(--accent-soft);
   --console-input: #ffffff;
-  --console-focus: #315d87;
+  --console-focus: var(--accent);
   caret-color: var(--text);
   scrollbar-color: var(--line-strong) var(--page);
 }
@@ -19643,24 +19670,14 @@ body:is(.staff-mode, .admin-mode) {
   --text: #f5f5f6;
   --muted: #c8c8cd;
   --faint: #a0a0a6;
-  --accent: #74b6ff;
-  --accent-strong: #a0cdff;
-  --accent-soft: #111d2a;
-  --accent-contrast: #0b1727;
   --shadow-overlay: 0 16px 56px rgb(0 0 0 / 0.42);
   /* Le bouton principal du sombre etait bleu pastel a texte marine : il se
-     lisait comme un etat, pas comme un bouton. Bleu franc, texte blanc (4,9:1). */
-  --console-selected: #2f6fcc;
+     lisait comme un etat, pas comme un bouton. Bleu franc, texte blanc (4,55:1 depuis le bleu Pinlane #0070f3, 2026-10-08). */
+  --console-selected: #0070f3;
   --console-selected-text: #ffffff;
-  --console-selected-surface: #111d2a;
+  --console-selected-surface: var(--accent-soft);
   --console-input: #090909;
-  --console-focus: #74b6ff;
-  --success: #52dda0;
-  --success-soft: #102c22;
-  --warning: #ffc168;
-  --warning-soft: #34250f;
-  --danger: #ff808a;
-  --danger-soft: #361a22;
+  --console-focus: var(--accent);
 }
 body:is(.staff-mode, .admin-mode) ::selection { background: var(--accent-soft); color: var(--text); }
 body:is(.staff-mode, .admin-mode) .lane-header .num { color: var(--text); }
@@ -19881,31 +19898,15 @@ body:is(.staff-mode, .admin-mode) .pv2-cal-count-label { display: none; }
   #staffTableBox .gc-head { gap:10px; }
   #staffTableBox .gc-who h4.res-row-name { font-size:16px; }
   #staffTableBox .gc-when b, #staffTableBox .gc-price b { font-size:19px; }
-  #staffTableBox .gc-step { padding:5px 6px; margin:0 -6px; gap:8px; }
-  #staffTableBox .gc-step-what { line-height:1.3; }
-  #staffTableBox .gc-alert, #staffTableBox .gc-flag { padding:6px 10px; }
+  #staffTableBox .gc-alert { padding:6px 10px; }
   #staffTableBox .gc-btn { min-height:44px; padding-inline:12px; }
   #staffTableBox .gc-step.is-cochable { min-height:44px; }
   #staffTableBox .gc-libre { min-height:44px; }
 }
-.planning-expanded-controls { display:none; }
 #staffTableBox .gc-btn { min-height:44px; min-width:44px; }
-:is(.planning-box,.table-box).expanded:not(.hidden) :is(.planning-head,.table-head) > .planning-expanded-controls {
-  display:flex; grid-column:1 / -1; grid-row:2; justify-self:stretch;
-  align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px;
-  padding-top:10px; border-top:1px solid var(--line);
-}
-.planning-expanded-controls .staff-date-widget { min-width:0; }
-.planning-expanded-controls .date-nav { height:44px; }
-.planning-expanded-controls .date-nav button { min-width:44px; }
-.planning-expanded-controls .date-nav button.staff-date-label { min-width:0; }
-.planning-expanded-controls .staff-today-btn { height:44px; }
 .planning-expanded-create { min-height:44px; padding:0 16px; border:1px solid var(--accent); border-radius:var(--radius-sm); background:var(--accent); color:var(--accent-contrast); font:600 13px/1 var(--font-ui); cursor:pointer; }
 .planning-expanded-create:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .planning-closed-notice { margin:0; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--warning-soft); color:var(--text); font-size:13px; line-height:1.4; }
-@media (max-width:768px) {
-  :is(.planning-box,.table-box).expanded:not(.hidden) :is(.planning-head,.table-head) > .planning-expanded-controls { grid-row:4; }
-}
 /* Direct selection stays on the booking, inside the planning. */
 .is-move-selected{outline:2px solid var(--accent,#74b5ff)!important;outline-offset:2px;cursor:grab!important}
 .is-move-selected:active{cursor:grabbing!important}
@@ -20037,39 +20038,7 @@ body:is(.staff-mode, .admin-mode) .fs-switch-btn { color: var(--muted); font-wei
 #staffTableBox .gc-hour small,
 #staffTableBox .gc-hour small span { font-size: 12px; font-weight: 500; line-height: 1.35; color: var(--muted); font-family: var(--font-ui); }
 
-/* EN-TETE DU PLEIN ECRAN, DEUX RANGEES SYMETRIQUES. Depuis que la date et
-   « Reservation rapide » y sont entrees, quatre blocs se disputaient une ligne :
-   la bascule recouvrait « Reduire » (1440 px) ou la recherche (1024 px).
-   Rangee 1 : titre | bascule | Reduire. Rangee 2 : date | recherche | Reservation
-   rapide. La recherche a la largeur de la bascule, au centre. */
-@media (min-width: 1181px) {
-  #staffTableBox.expanded:not(.hidden) .table-head {
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    row-gap: 12px;
-  }
-  #staffTableBox.expanded:not(.hidden) .table-head > :is(.table-actions, .planning-expanded-controls) { display: contents; }
-  #staffTableBox.expanded:not(.hidden) .table-head > h2 { grid-column: 1; grid-row: 1; margin-right: 0; }
-  #staffTableBox.expanded:not(.hidden) .table-head > .fs-switch { grid-column: 2; grid-row: 1; }
-  #staffTableBox.expanded:not(.hidden) .table-head #tableToggle { grid-column: 3; grid-row: 1; justify-self: end; }
-  #staffTableBox.expanded:not(.hidden) .table-head .staff-date-widget { grid-column: 1; grid-row: 2; justify-self: start; }
-  #staffTableBox.expanded:not(.hidden) .table-head .search-wrap { grid-column: 2; grid-row: 2; justify-self: stretch; width: auto; margin: 0; }
-  #staffTableBox.expanded:not(.hidden) .table-head .planning-expanded-create { grid-column: 3; grid-row: 2; justify-self: end; }
-}
-@media (min-width: 769px) and (max-width: 1180px) {
-  #staffTableBox.expanded:not(.hidden) .table-head {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-rows: auto auto auto;
-    row-gap: 10px;
-  }
-  #staffTableBox.expanded:not(.hidden) .table-head > :is(.table-actions, .planning-expanded-controls) { display: contents; }
-  #staffTableBox.expanded:not(.hidden) .table-head > h2 { grid-column: 1 / 3; grid-row: 1; margin-right: 0; }
-  #staffTableBox.expanded:not(.hidden) .table-head #tableToggle { grid-column: 3; grid-row: 1; justify-self: end; }
-  #staffTableBox.expanded:not(.hidden) .table-head > .fs-switch { grid-column: 1 / -1; grid-row: 2; justify-self: center; width: auto; margin: 0; order: 0; }
-  #staffTableBox.expanded:not(.hidden) .table-head .staff-date-widget { grid-column: 1; grid-row: 3; justify-self: start; }
-  #staffTableBox.expanded:not(.hidden) .table-head .search-wrap { grid-column: 2; grid-row: 3; justify-self: stretch; width: auto; margin: 0; }
-  #staffTableBox.expanded:not(.hidden) .table-head .planning-expanded-create { grid-column: 3; grid-row: 3; justify-self: end; }
-}
+/* (L en-tete du plein ecran : voir « L EN-TETE DU PLEIN ECRAN SUR UNE LIGNE ».) */
 
 /* AU TELEPHONE : les filtres sur UNE ligne qui defile, au lieu de trois lignes
    avec un filet orphelin ; les trois onglets cote a cote, a parts egales. */
@@ -20485,8 +20454,6 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 #staffTableBox .res-row.gc.is-done { padding: 8px 12px; gap: 0; }
 #staffTableBox .gc-grid { gap: 8px; }
 #staffTableBox .gc-who h4.res-row-name { font-size: 16px; }
-#staffTableBox .gc-flags { gap: 4px; }
-#staffTableBox .gc-flag { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 5px 10px; line-height: 1.4; }
 #staffTableBox .gc-flag b { flex: none; }
 #staffTableBox .gc-flag.tone-note span { font-size: 13px; }
 /* Plein ecran : les cartes s alignent sur les puces et l en-tete. */
@@ -20534,3 +20501,629 @@ body:is(.staff-mode, .admin-mode) .dossier-status.is-absent { background: var(--
 .liste-sync::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .liste-sync.is-stale { background: var(--danger-soft); color: var(--danger); }
 .liste-sync[hidden] { display: none; }
+
+/* --- LES CARTES DES GENS, RELIEES AUX PLANNINGS (2026-10-09) -------------
+   Movsar, sur maquettes photographiees : « B » (le lisere d etat et une seule
+   grille), les cartes « trop hautes », les encadres « trop lourds » ; les
+   boutons restent en bas de la carte (« C », pas dans la tete).
+   - le lisere dit l etat avec la legende des plannings (data-etat, la regle
+     du planning Laser) : bleu confirme, ambre arrive, vert paye, gris pas
+     venu, rouge quand le groupe est en retard ;
+   - l heure passe en tete de sa rangee, comme au telephone : toutes les
+     sections partagent la meme grille (memes largeurs, meme bord gauche), et
+     une colonne de plus tient a 1 700 px ;
+   - les etapes prennent partout la tenue de la tablette (57 px la ligne sur
+     ordinateur, 44 ensuite) ; boutons et lignes a cocher gardent 44 px ;
+   - un encadre tient sur une ligne, sans fond ni cadre : son titre garde son
+     mot et sa couleur, le texte se coupe au bord (en entier au survol et dans
+     la fiche) ;
+   - le prix ajuste parle ambre, comme sur les plannings, le Terrain et la Vue
+     d ensemble : il etait bleu ici seulement. */
+#staffTableBox { --gc-conf: #0070f3; --gc-arr: #f5a623; --gc-paid: #22c55e; --gc-absent: var(--line-strong); }
+[data-theme='dark'] #staffTableBox { --gc-conf: #3291ff; --gc-paid: #3dd68c; }
+#staffTableBox .res-row.gc { box-shadow: inset 3px 0 0 var(--gc-barre, transparent); }
+#staffTableBox .res-row.gc[data-etat='conf'] { --gc-barre: var(--gc-conf); }
+#staffTableBox .res-row.gc[data-etat='arr'] { --gc-barre: var(--gc-arr); }
+#staffTableBox .res-row.gc[data-etat='paid'] { --gc-barre: var(--gc-paid); }
+#staffTableBox .res-row.gc[data-etat='absent'] { --gc-barre: var(--gc-absent); }
+#staffTableBox .res-row.gc.is-late[data-etat] { --gc-barre: var(--danger); }
+#staffTableBox .gc-hour-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+#staffTableBox .gc-hour { position: static; flex-direction: row; align-items: baseline; gap: 8px; }
+#staffTableBox .gc-hour small { flex-direction: row; gap: 4px; }
+#staffTableBox .gc-hour small span + span::before { content: "· "; }
+#staffTableBox .gc-step { padding: 5px 6px; margin: 0 -6px; gap: 8px; }
+#staffTableBox .gc-step-what { line-height: 1.3; }
+#staffTableBox .gc-flags { gap: 3px; }
+#staffTableBox .gc-flag { flex-direction: row; flex-wrap: nowrap; align-items: baseline; gap: 8px; min-width: 0; padding: 1px 0; border: 0; border-radius: 0; background: none; line-height: 1.4; }
+#staffTableBox .gc-flag > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* L EN-TETE DU PLEIN ECRAN SUR UNE LIGNE (Movsar, 2026-10-08 : « l endroit
+   pour changer la date et la reservation rapide sont en dessous de l entete,
+   ca cree une entete super grosse, met tout sur une ligne et adapte tout
+   bien »). Les trois plein ecrans ont la meme tete : a gauche le titre et la
+   date, au centre la bascule (toujours au milieu, 2026-08-27), a droite la
+   recherche, les actions, « + Réserver » puis « Réduire ». Les colonnes
+   laterales sont egales : la bascule reste au centre exact.
+   - de 1400 a 1799 px, les onglets disent le mot court (« Bowling 6 ») ;
+   - sous 1600 px, la legende cede sa place et le titre se resserre ;
+   - sous 1400 px, deux rangees : titre, date et actions, puis la bascule.
+     Le titre garde toute sa largeur (max-content) et c est la recherche
+     qui se resserre : a minmax(0, 1fr), la colonne du titre tombait a
+     zero et la date passait sur « Toutes les réservations » (85 px a
+     769 px, 60 a 820, 2026-10-09) ;
+   - sous 960 px, la date passe sous le titre : sur une seule rangee, les
+     actions la recouvraient (69 px a 820, 31 a 860, rien a 900) ;
+   - sous 601 px, la bascule dit ses mots courts : les trois noms entiers
+     sortaient de l ecran (55 px a 390, deja vrai avant ce lot) ;
+   Chaque cote vaut au moins son contenu (max-content) : quand la place
+   manque, la bascule se decale de quelques pixels au lieu de passer sous
+   le titre (« Aujourd hui » recouvert a 1440 px, 2026-10-08).
+   - au telephone, la date passe sous le titre. */
+.pec-date,
+.planning-expanded-create { display: none; }
+:is(.planning-box, .table-box).expanded:not(.hidden) .pec-date { display: flex; align-items: center; min-width: 0; }
+:is(.planning-box, .table-box).expanded:not(.hidden) .planning-expanded-create { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 0 16px; white-space: nowrap; }
+.pec-date .staff-date-widget { flex-wrap: nowrap; min-width: 0; }
+.pec-date .date-nav { height: 40px; }
+.pec-date .date-nav button { min-width: 40px; }
+.pec-date .date-nav button.staff-date-label { min-width: 0; white-space: nowrap; }
+body:is(.staff-mode, .admin-mode) :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) :is(.planning-toggle, .staff-today-btn, .planning-expanded-create, .lp-reserver) { height: 40px; }
+:is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+  grid-template-rows: auto;
+  align-items: center;
+  column-gap: 20px;
+  row-gap: 10px;
+}
+:is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .planning-title-stack {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 20px;
+  row-gap: 2px;
+}
+:is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > :is(h2, .planning-sub) { grid-column: 1; min-width: 0; white-space: nowrap; }
+:is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > h2 { grid-row: 1; }
+:is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > .planning-sub { grid-row: 2; }
+:is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > .pec-date { grid-column: 2; grid-row: 1 / span 2; }
+:is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .fs-switch {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  position: static;
+  transform: none;
+  width: auto;
+  margin: 0;
+}
+:is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > :is(.planning-actions, .table-actions) {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+:is(.planning-box, .table-box).expanded:not(.hidden) .table-actions .planning-toggle { order: 9; }
+:is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) :is(.planning-search-inline, .search-wrap) { flex: 0 1 200px; min-width: 96px; width: auto; margin: 0; }
+:is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) :is(.planning-search-inline, .search-wrap) input { width: 100%; min-width: 0; height: 40px; }
+/* La liste n a ni legende ni menu : sa recherche prend la place, et son
+   texte d aide se lit en entier. */
+:is(.planning-box, .table-box).expanded:not(.hidden) .table-head .search-wrap { flex-basis: 280px; }
+/* « + Réserver » est l action principale ; « Réduire » reste a sa place, au
+   bout de la ligne, en bouton secondaire : deux boutons pleins cote a cote
+   ne disaient plus lequel compte. */
+body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.hidden) :is(#tableToggle, #planningToggle, #laserPlanningToggle) {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.hidden) :is(#tableToggle, #planningToggle, #laserPlanningToggle):hover {
+  background: var(--subtle);
+  border-color: var(--line-strong);
+}
+@media (min-width: 1400px) and (max-width: 1799px) {
+  :is(.planning-box, .table-box).expanded:not(.hidden) .fs-mot { display: none; }
+}
+@media (max-width: 1599px) {
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) .legend { display: none; }
+  :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > h2 { font-size: 17px; }
+  :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack { column-gap: 14px; }
+}
+@media (max-width: 1399px) {
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) { grid-template-columns: max-content minmax(0, 1fr); }
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .fs-switch { grid-column: 1 / -1; grid-row: 2; }
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > :is(.planning-actions, .table-actions) { grid-column: 2; }
+}
+@media (max-width: 959px) {
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .planning-title-stack { grid-template-columns: max-content; }
+  :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > .pec-date { grid-column: 1; grid-row: 3; margin-top: 6px; }
+}
+@media (max-width: 768px) {
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) { grid-template-columns: minmax(0, 1fr); }
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .planning-title-stack { grid-template-columns: minmax(0, 1fr); width: 100%; }
+  :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > .pec-date { grid-column: 1; grid-row: 3; margin-top: 6px; }
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > :is(.planning-actions, .table-actions) { grid-column: 1; grid-row: 2; justify-self: stretch; flex-wrap: wrap; }
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) :is(.planning-search-inline, .search-wrap) { flex: 1 1 140px; }
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .fs-switch { grid-column: 1; grid-row: 3; justify-self: stretch; }
+}
+@media (max-width: 600px) {
+  :is(.planning-box, .table-box).expanded:not(.hidden) .fs-mot { display: none; }
+}
+
+/* ── LES CARTES DU PLANNING BOWLING (2026-10-08) ─────────────────────────────
+   Movsar : « plus beau, plus stylé, des petits badges bien plus quali selon ce
+   qu ils ont, super complet, super bien relié entre eux, aucune erreur ».
+   LA CARTE PREND LA COULEUR DE SON ETAT, ENCRE COMPRISE. Un fond a peine
+   teinte sous un texte gris se lisait « une boite avec du texte dedans ». La
+   teinte va maintenant jusqu a l encre : le nom dans l encre profonde de la
+   teinte, les chiffres dans son encre moyenne, une barre de 3 px pleine. Une
+   carte confirmee est bleue, une arrivee ambre, une payee verte, d un bloc.
+   La teinte d un etat est sa couleur VIVE (l ambre et le vert de remplissage),
+   pas son encre de texte : --warning et --success sont des encres, un fond
+   tire d elles virait au beige et au kaki en theme clair.
+   AUCUNE DIMENSION NE BOUGE : les planchers de la carte sont mesures au pixel
+   (planning-matrix), la barre de 3 px est une ombre interne posee contre la
+   bordure de 2 px, pas une bordure plus large.
+   DES VALEURS ECRITES, PAS DES MELANGES : un color-mix() se lit
+   `color(srgb ...)` et les gates de contraste (planning-matrix, console) ne
+   savent lire que rgb() ; ils sautaient la carte sans un mot. Les teintes
+   sont donc calculees une fois (scratchpad demo/contrastes-cartes.js) et
+   posees telles quelles. Le fond PLEIN est le haut du degrade, le pire cas
+   pour l encre dans les deux themes : c est lui que les gates mesurent.
+   Contrastes au pire (haut ou bas du fond), bleu / ambre / vert :
+   clair, nom 7,5 / 7,1 / 7,1:1, chiffres 5,3 / 5,4 / 5,5:1, duree ambre
+   4,6 / 5,0 / 4,9:1 ; sombre, nom 11:1 et plus, chiffres 7,4:1 et plus. */
+.booking {
+  --bk-haut: #d9eafd; --bk-bas: #ebf4fe; --bk-cadre: #aecbed;
+  --bk-barre: #0070f3; --bk-encre: #004597; --bk-encre-2: #005ac2;
+  --bk-pastille: #b9d6fb;
+}
+.booking.arr {
+  --bk-haut: #fef2de; --bk-bas: #fef8ed; --bk-cadre: #eed9b7;
+  --bk-barre: #f5a623; --bk-encre: #6e4b10; --bk-encre-2: #875b13;
+  --bk-pastille: #fbdcae;
+}
+.booking.paid {
+  --bk-haut: #def6e7; --bk-bas: #edfaf2; --bk-cadre: #b7e1c6;
+  --bk-barre: #22c55e; --bk-encre: #0b5c2d; --bk-encre-2: #0e6f36;
+  --bk-pastille: #b6eac9;
+}
+[data-theme='dark'] .booking {
+  --bk-haut: #142a45; --bk-bas: #0f1c2a; --bk-cadre: #2a4a70;
+  --bk-barre: #3291ff; --bk-encre: #deedff; --bk-encre-2: #84bdff;
+  --bk-pastille: #1f4470;
+}
+[data-theme='dark'] .booking.arr {
+  --bk-haut: #422f10; --bk-bas: #291e0d; --bk-cadre: #6c5225;
+  --bk-barre: #f5a623; --bk-encre: #fdefd7; --bk-encre-2: #f8bf61;
+  --bk-pastille: #6a4a14;
+}
+[data-theme='dark'] .booking.paid {
+  --bk-haut: #163b29; --bk-bas: #11251b; --bk-cadre: #2e6249;
+  --bk-barre: #3dd68c; --bk-encre: #e0f8ed; --bk-encre-2: #7fe4b3;
+  --bk-pastille: #1f5c3f;
+}
+/* Le retard applique garde sa barre ambre, quel que soit l etat. */
+.booking.is-delayed { --bk-barre: #f5a623; }
+.booking.conf, .booking.arr, .booking.paid {
+  background-color: var(--bk-haut);
+  background-image: linear-gradient(180deg, var(--bk-haut), var(--bk-bas));
+  border-color: var(--bk-cadre);
+  border-left-color: var(--bk-barre);
+  color: var(--bk-encre);
+  box-shadow: inset 1px 0 0 var(--bk-barre);
+}
+[data-theme='dark'] :is(.booking.conf, .booking.arr, .booking.paid) {
+  box-shadow: inset 1px 0 0 var(--bk-barre), inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+/* Le survol allume la carte par-dessus SON fond : la regle de survol posait un
+   voile en `background-image` que le fond d etat ecrasait aussitot (meme
+   poids, ecrite plus bas), il ne s est donc jamais vu. */
+.booking:is(.conf, .arr, .paid):hover {
+  background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)), linear-gradient(180deg, var(--bk-haut), var(--bk-bas));
+  border-color: var(--bk-barre);
+  border-left-color: var(--bk-barre);
+}
+/* La nouvelle venue garde son halo : l ombre de la barre l aurait remplace,
+   au repos comme sans mouvement (prefers-reduced-motion). */
+.booking.is-neuve-calme { box-shadow: inset 1px 0 0 var(--bk-barre), 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .booking.is-neuve { box-shadow: inset 1px 0 0 var(--bk-barre), 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+}
+.booking .booking-name { color: var(--bk-encre); }
+.booking .bk-time,
+.booking .bk-pax,
+.booking .bk-dur,
+.booking .bk-sep,
+.booking .booking-stats .u { color: var(--bk-encre-2); }
+.booking .booking-stats .u { opacity: 0.8; }
+.booking .bk-pax.grp-m { color: var(--bk-encre); }
+.booking .bk-pax.grp-l { background: var(--bk-pastille); color: var(--bk-encre); }
+.booking .bk-pax.grp-xl { background: var(--bk-encre); color: var(--surface); }
+/* Sous 190 px de piste la pastille de l effectif tombe (RANG 0 de l echelle) :
+   le chiffre reste, dans l encre de la carte. */
+@container piste (max-width: 190px) {
+  .booking .bk-pax.grp-l,
+  .booking .bk-pax.grp-xl { background: none; color: var(--bk-encre); }
+}
+/* La duree inhabituelle reste AMBRE (Movsar, 2026-08-14 : en couleur de texte
+   « on ne remarque pas assez du tout les heures differentes de 1h »). */
+.booking .bk-dur.dur-special { color: var(--warning); }
+.booking .bk-state,
+.booking.arr .bk-state,
+.booking.paid .bk-state { color: var(--bk-encre-2); }
+.booking .booking-offer .b-tag,
+.booking.arr .booking-offer .b-tag,
+.booking.paid .booking-offer .b-tag { color: var(--bk-encre); }
+
+/* LE BADGE LASER DU PIED (2026-10-09, Movsar : « des petits badges en
+   fonction de ce qu ils ont, super bien relié entre eux »). L heure du premier
+   depart laser du groupe, celle du planning Laser (renderCardLaserBadge),
+   « +1 » pour ce qui suit, « à placer » en ambre quand rien n est pose. Une
+   pastille dans la teinte de la carte, en chiffres tabulaires.
+   IL VIT DANS LA PLACE LIBRE DU PIED, ENTIER OU ABSENT. Sa boite est une
+   etiquette (`.b-tag`, conteneur `etiquette`) qui prend ce que l effectif, la
+   duree, le prix et la progression laissent : le badge complet s affiche si
+   elle le contient, sinon son pictogramme seul, sinon rien. Aucun plancher de
+   piste choisi d avance, au pire des cas : il se montre sur toute carte ou il
+   tient, et nulle part ailleurs (cartes-bowling-check le mesure dans les deux
+   sens). Les seuils sont la largeur du badge lui-meme, en `em` de la boite
+   (10 px en fenetre, 12 en plein ecran), mesures au navigateur (sonde-badge) ;
+   la console ecrit ses chiffres en Geist tabulaire, chaque motif a donc une
+   seule largeur : pictogramme seul 1,85 em, « 17:00 » 4,87 (`lc-5`),
+   « 17:30 +1 » 6,23 (`lc-8`), « 17:30 +10 » 6,83 (`lc-9`), « à placer » 5,91
+   (`lc-p`) ; chaque seuil garde 0,03 em de marge.
+   Avec lui l effectif garde sa forme courte (« 34 j ») : la place va a
+   l information, pas au confort. La carte qui le porte (`a-laser-pied`)
+   retire le marqueur laser de sa tete : elle ne dit pas deux fois « laser ».
+   Une formule d une heure, dont l offre occupe deja cette place, garde le
+   marqueur de tete (renderPlanning) : l offre passe avant. */
+.booking-foot .bk-reste { display: flex; align-items: center; }
+.bk-laser {
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  gap: 0.3em;
+  height: 1.5em;
+  padding: 0 0.5em 0 0.42em;
+  border-radius: var(--radius-full);
+  background: var(--bk-pastille);
+  color: var(--bk-encre);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.bk-laser svg { width: 1.05em; height: 1.05em; flex: none; }
+.bk-laser.is-compact { padding: 0 0.45em; }
+.bk-laser.is-a-placer { background: var(--warning-soft); color: var(--warning); }
+@container etiquette (min-width: 1.88em) {
+  .bk-reste .bk-laser.is-compact { display: inline-flex; }
+}
+@container etiquette (min-width: 4.9em) {
+  .bk-reste.lc-5 .bk-laser:not(.is-compact) { display: inline-flex; }
+  .bk-reste.lc-5 .bk-laser.is-compact { display: none; }
+}
+@container etiquette (min-width: 6.26em) {
+  .bk-reste.lc-8 .bk-laser:not(.is-compact) { display: inline-flex; }
+  .bk-reste.lc-8 .bk-laser.is-compact { display: none; }
+}
+@container etiquette (min-width: 6.87em) {
+  .bk-reste.lc-9 .bk-laser:not(.is-compact) { display: inline-flex; }
+  .bk-reste.lc-9 .bk-laser.is-compact { display: none; }
+}
+@container etiquette (min-width: 5.95em) {
+  .bk-reste.lc-p .bk-laser:not(.is-compact) { display: inline-flex; }
+  .bk-reste.lc-p .bk-laser.is-compact { display: none; }
+}
+.booking:not(.dens-xs):has(.bk-laser) .booking-stats .u-long { display: none; }
+.booking:not(.dens-xs):has(.bk-laser) .booking-stats .u-short { display: inline; }
+.booking.a-laser-pied:not(.dens-xs) :is(.bk-flag.flag-laser, .bk-flags.is-laser-seul) { display: none; }
+
+/* Une ligne de 30 minutes en plein ecran lisait le nom en 11 px, la taille de
+   la fenetre normale, au milieu d une carte deux fois plus large. */
+.planning-box.expanded .booking.dens-xs .booking-name { font-size: 13px; }
+
+/* ── LE PLANNING LASER : LE TABLEAU DES DEPARTS (lot I3, 2026-10-08) ─────────
+   Maquette E validee par Movsar (scratchpad maquettes-laser/e-vif.html et
+   e-sombre.html) : memes mesures, memes couleurs, aucune classe de l ancien
+   agenda (laser-agenda-*, laser-session-*, laser-group-*). Les jetons sont
+   ceux de la fenetre Reserver (--rv-*), pour que les deux ecrans parlent la
+   meme langue. Un groupe a la couleur de son etat, la legende du
+   planning bowling (2026-10-09). */
+#laserPlanningGridWrap:has(> .lp) { overflow: visible; max-height: none; height: auto; padding: 0; background: transparent; border: 0; }
+/* La file « À placer » colle au bas de l ecran (position: sticky). La boite du
+   planning coupait ses coins en overflow: hidden, ce qui en faisait le cadre
+   du sticky : la file finissait sous la journee, hors de l ecran (2 172 px
+   sur un telephone de 844, gate [I] du 2026-10-08). overflow: clip coupe les
+   coins sans devenir un cadre de defilement. */
+.laser-planning-box:has(#laserPlanningGridWrap > .lp) { overflow: clip; }
+/* Plein ecran (« Agrandir ») : l ancien agenda y faisait deux colonnes (file a
+   gauche, chronologie a droite). Le tableau des departs est UNE colonne qui
+   defile dans le cadre, la file collee en bas de ce cadre. */
+.laser-planning-box.expanded #laserPlanningGridWrap:has(> .lp) { display: block; flex: 1; min-height: 0; height: auto; overflow-x: hidden; overflow-y: auto; }
+.lp-reserver { height: 40px; padding: 0 16px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--console-selected); background: var(--console-selected); color: var(--console-selected-text, #fff); font: 600 13px/1 var(--font-ui); white-space: nowrap; cursor: pointer; box-shadow: 0 1px 2px rgb(0 0 0 / .18), inset 0 1px 0 rgb(255 255 255 / .12); transition: background-color .12s ease; }
+.lp-reserver:hover { background: color-mix(in srgb, var(--console-selected) 86%, #000); border-color: color-mix(in srgb, var(--console-selected) 86%, #000); }
+.lp-reserver:active { transform: scale(.97); }
+.lp {
+  /* Les jetons de la console (assets/pinlane.css, puis la couche staff) : le
+     planning parle les memes gris et le meme bleu que le reste de Pinlane
+     (2026-10-08, « les couleurs sont pas les memes partout »). */
+  --lp-page: var(--page); --lp-surface: var(--surface); --lp-line: var(--line); --lp-line-strong: var(--line-strong);
+  --lp-text: var(--text); --lp-muted: var(--muted); --lp-faint: var(--faint); --lp-vide: var(--subtle);
+  /* Le contour d une case libre : 3:1 au moins sur la rangee au repos, survolee
+     et cible d un depot (3,62 / 3,36 / 3,18 en clair, 3,72 / 3,43 / 3,12 en
+     sombre). Aucun gris de la console ne tombe entre le filet (1,7:1) et le
+     texte pale (7:1), d ou une valeur propre. */
+  --lp-case: #86868c;
+  --lp-bleu: var(--console-selected); --lp-bleu-texte: var(--accent-strong); --lp-bleu-clair: var(--accent-soft); --lp-bleu-voile: color-mix(in srgb, var(--accent-soft) 55%, var(--surface));
+  --lp-ok: var(--success); --lp-ok-clair: var(--success-soft);
+  --lp-rouge: var(--danger); --lp-rouge-texte: var(--danger); --lp-rouge-clair: var(--danger-soft);
+  --lp-ombre-bleue: 0 10px 30px color-mix(in srgb, var(--console-selected) 25%, transparent);
+  --lp-cases: 30;
+  display: grid;
+  /* Une colonne qui peut retrecir : sans elle, la carte du prochain depart
+     imposait sa largeur minimale (388 px sur un telephone de 390). */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px 20px 0;
+  background: var(--lp-page);
+  color: var(--lp-text);
+  font: 400 14px/1.4 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+[data-theme='dark'] .lp { --lp-ombre-bleue: 0 10px 34px color-mix(in srgb, var(--console-selected) 30%, transparent); --lp-case: #6c6c72; }
+.lp *, .lp *::before, .lp *::after { box-sizing: border-box; }
+/* La remise a zero des boutons ne pese rien (:where) : en .lp button, elle
+   battait chaque classe (.lp-btn, .lp-passe, .lp-etat, .lp-g) sur la police, la
+   couleur et les marges (« 6 départs joués » collait au titre, 2026-10-08). */
+:where(.lp) button { margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+/* LA COULEUR D UN GROUPE EST CELLE DE SON ETAT (Movsar, 2026-10-09 : « trop
+   de couleurs comme ca, ca fait pas pro »). La legende du planning bowling :
+   bleu confirme, ambre arrive, vert paye, gris pas venu. En clair des tons
+   assez profonds pour 3:1 contre le fond de la rangee ; le second ton (is-alt, un
+   voisin dans le meme etat) s eloigne du fond. --lp-sur est l encre posee sur
+   la teinte (le chiffre d une partie a placer), 4,5:1 au moins. */
+.lp .st-conf, .lp-fantome.st-conf { --lp-c: #0070f3; --lp-sur: #fff; }
+.lp .st-conf.is-alt { --lp-c: #0a4fb0; }
+.lp .st-arr, .lp-fantome.st-arr { --lp-c: #b86f00; --lp-sur: #1f1300; }
+.lp .st-arr.is-alt { --lp-c: #8a5300; --lp-sur: #fff; }
+.lp .st-paid, .lp-fantome.st-paid { --lp-c: #1f9d55; --lp-sur: #04210f; }
+.lp .st-paid.is-alt { --lp-c: #12703b; --lp-sur: #fff; }
+.lp .st-absent, .lp-fantome.st-absent { --lp-c: #6b7280; --lp-sur: #fff; }
+[data-theme='dark'] :is(.lp .st-conf, .lp-fantome.st-conf) { --lp-c: #3291ff; --lp-sur: #031027; }
+[data-theme='dark'] .lp .st-conf.is-alt { --lp-c: #8cbcff; }
+[data-theme='dark'] :is(.lp .st-arr, .lp-fantome.st-arr) { --lp-c: #f5a623; --lp-sur: #1f1300; }
+[data-theme='dark'] .lp .st-arr.is-alt { --lp-c: #f8c977; }
+[data-theme='dark'] :is(.lp .st-paid, .lp-fantome.st-paid) { --lp-c: #3dd68c; --lp-sur: #04210f; }
+[data-theme='dark'] .lp .st-paid.is-alt { --lp-c: #8be6b9; }
+[data-theme='dark'] :is(.lp .st-absent, .lp-fantome.st-absent) { --lp-c: #6b7280; --lp-sur: #fff; }
+.lp-lbl { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.lp-btn { height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--lp-line-strong); background: var(--lp-surface); font-size: 13.5px; font-weight: 650; line-height: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; transition: background-color .12s ease, border-color .12s ease; }
+.lp-btn:hover { border-color: var(--lp-faint); }
+.lp-btn:active { transform: scale(.97); }
+.lp :focus-visible { outline: 2px solid var(--lp-bleu); outline-offset: 2px; }
+/* Le groupe amene depuis sa fiche (« voir au planning ») : le meme appel que
+   le planning bowling, un contour qui pulse deux fois puis s eteint. */
+.lp .is-called { outline: 3px solid var(--lp-bleu); outline-offset: 2px; animation: plAppel .9s cubic-bezier(.23, 1, .32, 1) 2; }
+.lp .lp-groupe__sel.is-called { outline-color: #fff; }
+@media (prefers-reduced-motion: reduce) { .lp .is-called { animation: none; } }
+
+/* LE PROCHAIN DEPART : la carte bleue, ce que l operateur prepare. */
+/* UNE LIGNE (2026-10-08, « haut compact ») : quand | ses groupes | armes. */
+.lp-prochain { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "quand groupes armes"; align-items: center; column-gap: 20px; row-gap: 10px; min-height: 64px; background: var(--lp-bleu); color: #fff; border-radius: 16px; padding: 10px 12px 10px 18px; box-shadow: var(--lp-ombre-bleue); }
+.lp-prochain__quand { grid-area: quand; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+.lp-prochain__quand .lp-lbl { font-size: 11px; opacity: .85; }
+.lp-prochain__t { font-size: 28px; line-height: 1; font-weight: 750; letter-spacing: -.02em; }
+.lp-prochain__d { font-size: 14px; opacity: .92; }
+.lp-prochain__g { grid-area: armes; display: flex; align-items: baseline; gap: 6px; justify-self: end; white-space: nowrap; line-height: 1; padding-right: 6px; }
+.lp-prochain__g b { font-size: 24px; font-weight: 750; letter-spacing: -.02em; }
+.lp-prochain__g small { font-size: 13px; opacity: .9; }
+.lp-prochain.is-calme { background: var(--lp-surface); color: var(--lp-text); border: 1px solid var(--lp-line); box-shadow: none; }
+.lp-prochain.is-calme .lp-lbl { color: var(--lp-bleu-texte); opacity: 1; }
+.lp-prochain.is-calme .lp-prochain__d { color: var(--lp-muted); opacity: 1; }
+.lp-groupes { grid-area: groupes; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.lp-groupe { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; padding: 4px 4px 4px 12px; border-radius: 12px; background: rgb(255 255 255 / .14); min-height: 44px; }
+.lp-groupe__sel { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; touch-action: manipulation; border-radius: 10px; }
+.lp-groupe__sel:focus-visible { outline-color: #fff; outline-offset: 4px; }
+.lp-groupe__sel.is-choisi .lp-groupe__t b { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.lp-pastille { width: 14px; height: 14px; border-radius: 5px; flex: none; background: var(--lp-c); box-shadow: 0 0 0 2px rgb(255 255 255 / .9); }
+.lp-groupe__t { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.lp-groupe__t b { font-size: 15.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-groupe__t .lp-n { opacity: .9; white-space: nowrap; }
+.lp-etat { margin-left: auto; height: 36px; padding: 0 14px; border-radius: 9px; border: 0; display: inline-flex; align-items: center; gap: 7px; font-weight: 650; white-space: nowrap; flex: none; }
+.lp-etat--la { background: #fff; color: #0f9d58; }
+.lp-etat--marquer { background: transparent; color: #fff; box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .75); transition: background-color .12s ease; }
+.lp-etat--marquer:hover { background: rgb(255 255 255 / .12); }
+.lp-etat--marquer:active { transform: scale(.97); }
+.lp-etat--marquer:focus-visible { outline-color: #fff; }
+.lp-etat--absent { background: rgb(255 255 255 / .16); color: #fff; opacity: .85; }
+
+/* EN JEU, et les groupes en retard a cote. */
+/* La partie en jeu et les retards sur une ligne quand ils tiennent, sinon les
+   retards passent dessous : « fin dans 10 min » ne se coupe jamais. */
+.lp-bande { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
+.lp-bande > .lp-jeu { flex: 1 1 300px; min-width: 0; }
+.lp-alertes { flex: 1 1 auto; min-width: 0; }
+.lp-jeu { display: flex; align-items: center; gap: 14px; min-height: 48px; background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 14px; padding: 6px 16px; }
+.lp-jeu .lp-lbl { font-size: 11.5px; color: var(--lp-bleu-texte); }
+.lp-jeu b { font-size: 18px; font-weight: 700; }
+.lp-prog { flex: 1; min-width: 60px; height: 8px; border-radius: 4px; background: var(--lp-vide); overflow: hidden; }
+.lp-prog i { display: block; height: 100%; background: var(--lp-bleu); border-radius: 4px; }
+.lp-fin { color: var(--lp-muted); white-space: nowrap; }
+.lp-jeu.is-libre .lp-fin { margin-left: auto; }
+.lp-alertes { display: grid; gap: 8px; }
+.lp-alerte { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 48px; padding: 4px 6px 4px 14px; border-radius: 14px; background: var(--lp-rouge-clair); color: var(--lp-rouge-texte); font-weight: 600; }
+.lp-alerte svg { flex: none; }
+.lp-alerte__t b { color: var(--lp-text); }
+.lp-btn--rouge { margin-left: 4px; height: 38px; border-color: var(--lp-rouge); color: var(--lp-rouge-texte); background: var(--lp-surface); }
+[data-theme='dark'] .lp-btn--rouge { background: transparent; }
+.lp-lien { height: 40px; padding: 0 8px; border: 0; background: transparent; color: var(--lp-rouge-texte); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.lp-alerte__rien { color: var(--lp-muted); font-weight: 500; }
+
+/* LA JOURNEE : chaque depart, ses armes en cases. */
+.lp-journee { background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 20px; overflow: hidden; }
+.lp-journee__h { display: flex; align-items: center; min-height: 52px; padding: 8px 12px 8px 18px; border-bottom: 1px solid var(--lp-line); gap: 8px; }
+.lp-journee__h .lp-lbl { font-size: 15px; letter-spacing: 0; text-transform: none; }
+.lp-passe { margin-left: auto; height: 36px; padding: 0 8px; border: 0; background: transparent; color: var(--lp-faint); border-radius: 8px; }
+.lp-passe:hover { color: var(--lp-text); }
+.lp-dep { position: relative; display: grid; grid-template-columns: 58px minmax(0, 1fr) 72px; grid-template-rows: auto auto; column-gap: 16px; row-gap: 4px; align-items: center; padding: 11px 18px 12px; border-top: 1px solid var(--lp-line); cursor: pointer; transition: background-color .15s ease, opacity .15s ease; }
+.lp-journee__h + .lp-dep { border-top: 0; }
+.lp-dep__h { grid-row: 1 / span 2; align-self: start; padding-top: 1px; font-size: 17px; font-weight: 700; }
+.lp-dep__jauge { grid-column: 2; grid-row: 1; display: block; width: 100%; padding: 0; border: 0; background: transparent; border-radius: 6px; text-align: left; }
+.lp-dep__n { grid-column: 3; grid-row: 1 / span 2; align-self: start; text-align: right; line-height: 1.15; }
+.lp-dep__n b { display: block; font-size: 16px; font-weight: 700; }
+.lp-dep__n small { display: block; font-size: 12px; font-weight: 500; color: var(--lp-faint); }
+.lp-dep__n .is-plein, .lp-dep__n .is-trop { color: var(--lp-rouge-texte); font-weight: 650; }
+.lp-dep__n .is-plus { color: var(--lp-bleu-texte); }
+.lp-cases { display: grid; grid-template-columns: repeat(var(--lp-cases), minmax(0, 1fr)); gap: 3px; }
+/* Libre ou pris se lit a la FORME : une case libre est un contour, une case
+   prise est pleine. Un gris plein ne se voyait pas (1,2:1 sur la rangee,
+   2026-10-09) et le foncer l aurait confondu avec un groupe. */
+.lp-cases i { height: 16px; border-radius: 4px; }
+.lp-cases i:not([class]) { box-shadow: inset 0 0 0 1px var(--lp-case); }
+.lp-cases i[class^='st-'], .lp-cases i[class*=' st-'] { background: var(--lp-c); }
+.lp-cases i.is-prive { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--lp-c) 55%, transparent) 0 3px, color-mix(in srgb, var(--lp-c) 22%, transparent) 3px 6px); }
+.lp-cases i.is-enligne { background: repeating-linear-gradient(135deg, var(--lp-line-strong) 0 3px, var(--lp-vide) 3px 6px); }
+.lp-cases i.is-chevauche { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--lp-faint) 55%, transparent) 0 2px, transparent 2px 5px); }
+.lp-cases i.is-fantome { background: var(--lp-bleu-clair); box-shadow: inset 0 0 0 1.5px var(--lp-bleu); }
+.lp-cases i.is-choisi { box-shadow: inset 0 0 0 2px var(--lp-surface), 0 0 0 1.5px var(--lp-c); }
+/* Les cases d un groupe se prennent a la main (lpSourisJauge) : la main le dit. */
+.lp-cases i[data-lp-id] { cursor: grab; }
+.lp-qui { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; gap: 2px 14px; min-height: 22px; align-items: center; }
+.lp-g { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; margin: -2px -6px; padding: 2px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--lp-muted); white-space: nowrap; max-width: 100%; transition: background-color .12s ease; touch-action: manipulation; }
+.lp-g i { width: 10px; height: 10px; border-radius: 3px; flex: none; background: var(--lp-c); }
+.lp-g b { color: var(--lp-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.lp-g:hover { background: var(--lp-bleu-voile); }
+.lp-g.is-choisi { background: var(--lp-bleu-clair); box-shadow: inset 0 0 0 1.5px var(--lp-bleu); }
+.lp-g.is-la b::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--lp-ok); vertical-align: 2px; }
+.lp-g.is-absent { opacity: .55; text-decoration: line-through; text-decoration-color: var(--lp-faint); }
+.lp-g.is-grise { opacity: .35; }
+.lp-g.is-enligne { cursor: default; }
+.lp-g.is-enligne i { background: repeating-linear-gradient(135deg, var(--lp-line-strong) 0 2px, var(--lp-vide) 2px 4px); }
+/* LES PICTOS DU BOWLING APRES LE NOM (2026-10-09). 13 px ici contre 12 sur la
+   carte bowling : le nom y est ecrit plus grand (14 a 15,5 px contre 12,5).
+   L etiquette de prix, dessinee pour 9 px, reprend le trait des deux autres.
+   Le nom et ses pictos tiennent dans une meme boite (.lp-nom) : au telephone,
+   ou la carte du prochain depart empile le nom et son detail, les pictos
+   restent sur la ligne du nom, et c est le nom seul qui se coupe. */
+.lp-pictos { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.lp-pictos .bk-flags { gap: 4px; }
+.lp-pictos .bk-flag { width: 13px; height: 13px; }
+.lp-pictos .flag-prix svg { stroke-width: 2; }
+.lp-nom { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+/* Sur la carte bleue du prochain depart, ou tout est blanc, les pictos passent
+   au blanc : l ambre et le bleu n y tiennent pas 3:1, la forme les distingue. */
+.lp-prochain .lp-pictos { --warning: #fff; --accent-strong: #fff; }
+.lp-libre { color: var(--lp-faint); }
+.lp-dep:hover { background: var(--lp-bleu-voile); }
+.lp-dep.is-joue, .lp-dep.is-ferme { cursor: default; }
+.lp-dep.is-joue { opacity: .55; }
+.lp-dep.is-joue:hover, .lp-dep.is-ferme:hover { background: transparent; }
+/* Un depart ferme n a pas de case libre : ses cases vides se hachurent sans
+   contour. Un groupe pose la avant le blocage garde sa couleur, le conflit
+   reste visible. */
+.lp-dep.is-ferme .lp-cases i:not([class]) { box-shadow: none; background: repeating-linear-gradient(135deg, var(--lp-line-strong) 0 1.5px, transparent 1.5px 5px); }
+.lp-dep.is-enjeu .lp-dep__h::after { content: 'en jeu'; display: block; margin-top: 3px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--lp-bleu-texte); }
+.lp-dep.is-trop .lp-cases { box-shadow: 0 0 0 2px var(--lp-surface), 0 0 0 3.5px var(--lp-rouge); border-radius: 5px; }
+.lp.is-choix .lp-dep { cursor: default; }
+.lp-dep.is-cible { cursor: pointer; background: var(--lp-bleu-voile); box-shadow: inset 4px 0 0 var(--lp-bleu); }
+.lp-dep.is-cible:hover, .lp-dep.is-cible.is-survol { background: var(--lp-bleu-clair); }
+.lp-dep.is-terne { opacity: .32; }
+.lp-dep.is-terne.is-survol { opacity: .6; }
+.lp-dep.is-ici { box-shadow: inset 4px 0 0 var(--lp-line-strong); }
+.lp-dep.is-pose { animation: lp-pose 1s ease-in-out infinite alternate; }
+@keyframes lp-pose { from { background: var(--lp-bleu-voile); } to { background: var(--lp-bleu-clair); } }
+.lp-vide { padding: 18px; color: var(--lp-faint); }
+
+/* A PLACER : collee en bas de ce qu on voit, cible « retirer du planning ». */
+/* LA FILE SUR UNE LIGNE (2026-10-08, « haut compact ») : « À placer », son
+   compte, les parties qui defilent de cote, l aide au bout. La journee garde
+   la hauteur (62 px au lieu de 120). */
+.lp-file { position: sticky; bottom: 0; z-index: 5; margin: 0 -20px; padding: 8px 20px 10px; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-auto-flow: row dense; align-items: center; column-gap: 10px; row-gap: 8px; background: var(--lp-surface); border-top: 1px solid var(--lp-line); box-shadow: 0 -10px 30px rgb(0 0 0 / .08); transition: background-color .15s ease; }
+.lp-file > .lp-placer { grid-column: 1 / -1; }
+.lp-file__h { display: contents; }
+.lp-file__h .lp-lbl { grid-column: 1; }
+.lp-file__h .lp-file__n { grid-column: 2; }
+.lp-file .lp-jetons { grid-column: 3; }
+.lp-file .lp-aide { grid-column: 4; }
+[data-theme='dark'] .lp-file { box-shadow: 0 -10px 30px rgb(0 0 0 / .45); }
+.lp-file.is-survol { background: var(--lp-bleu-voile); }
+/* La carte du prochain depart recoit le groupe qu on glisse sur elle. */
+.lp-prochain.is-survol { box-shadow: 0 0 0 3px var(--lp-surface), 0 0 0 6px var(--lp-bleu); }
+.lp-file__h .lp-lbl { font-size: 14px; letter-spacing: 0; text-transform: none; }
+.lp-file__n { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--lp-bleu); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.lp-file.is-vide .lp-file__n { background: var(--lp-vide); color: var(--lp-muted); }
+.lp-aide { margin-left: auto; color: var(--lp-faint); font-size: 13px; text-align: right; }
+.lp-jetons { display: flex; gap: 8px; overflow-x: auto; padding: 3px; scrollbar-width: thin; }
+.lp-jeton { flex: none; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 14px 4px 5px; border: 1px solid var(--lp-line-strong); border-radius: 14px; background: var(--lp-surface); text-align: left; touch-action: manipulation; transition: border-color .12s ease, box-shadow .12s ease; }
+.lp-jeton:hover { border-color: var(--lp-faint); }
+.lp-jeton__n { width: 34px; height: 34px; border-radius: 9px; background: var(--lp-c); color: var(--lp-sur, #fff); font-weight: 750; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+.lp-jeton__t b { display: block; font-weight: 650; }
+.lp-jeton__t small { color: var(--lp-muted); font-size: 12.5px; }
+.lp-jeton.is-choisi { border-color: var(--lp-bleu); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-bleu) 25%, transparent); }
+.lp-jeton.is-grise { opacity: .35; }
+.lp-placer { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border-radius: 12px; background: var(--lp-bleu-clair); color: var(--lp-bleu-texte); font-weight: 500; }
+.lp-placer b { color: var(--lp-text); }
+.lp-placer.is-raison { background: var(--lp-rouge-clair); color: var(--lp-rouge-texte); }
+.lp-placer__a { margin-left: auto; display: flex; gap: 6px; flex: none; }
+.lp-placer .lp-btn { height: 34px; }
+
+/* LE FANTOME du glisser : il suit le pointeur, il dit ou il va. */
+.lp-fantome { position: fixed; left: 0; top: 0; z-index: 10050; pointer-events: none; display: flex; flex-direction: column; gap: 2px; max-width: 280px; padding: 9px 14px 9px 30px; border-radius: 12px; background: var(--lp-surface, #fff); color: var(--lp-text, #0b1a3a); border: 1px solid var(--lp-line-strong, #cdd7e8); box-shadow: 0 18px 44px rgb(11 26 58 / .25); font: 400 13px/1.3 var(--font-ui); will-change: transform; }
+.lp-fantome i { position: absolute; left: 12px; top: 13px; width: 10px; height: 10px; border-radius: 3px; background: var(--lp-c, #0070f3); }
+.lp-fantome b { font-weight: 650; font-size: 14px; }
+.lp-fantome small { color: var(--lp-muted, #4a5878); }
+.lp-fantome.is-ok { border-color: var(--lp-bleu, #0664fe); }
+.lp-fantome.is-ok small { color: var(--lp-bleu-texte, #0450cc); font-weight: 600; }
+.lp-fantome.is-non small { color: var(--lp-rouge-texte, #c81e3f); }
+[data-theme='dark'] .lp-fantome { --lp-surface: #151a23; --lp-text: #f3f6fb; --lp-line-strong: #343e4e; --lp-muted: #a6afbf; --lp-bleu: #226ef2; --lp-bleu-texte: #8ab8ff; --lp-rouge-texte: #ff8a9d; box-shadow: 0 18px 44px rgb(0 0 0 / .6); }
+body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-dep.is-pose { animation: none; background: var(--lp-bleu-clair); }
+}
+
+@media (max-width: 900px) {
+  .lp-prochain { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "quand armes" "groupes groupes"; }
+}
+@media (max-width: 560px) {
+  .lp { padding: 12px 12px 0; gap: 10px; }
+  .lp-prochain { padding: 10px 10px 10px 14px; border-radius: 14px; }
+  .lp-prochain__quand { flex-wrap: wrap; row-gap: 2px; white-space: normal; }
+  .lp-prochain__quand .lp-lbl { flex-basis: 100%; }
+  .lp-prochain__t { font-size: 26px; }
+  .lp-prochain__g { flex-direction: column; align-items: flex-end; gap: 2px; }
+  .lp-prochain__g b { font-size: 22px; }
+  .lp-groupe { flex: 1 1 100%; }
+  .lp-groupe__t { flex-direction: column; gap: 0; }
+  .lp-etat { padding: 0 12px; font-size: 14px; }
+  .lp-dep { grid-template-columns: 48px minmax(0, 1fr) 46px; padding: 10px 14px; column-gap: 10px; row-gap: 6px; }
+  .lp-dep__n small { display: none; }
+  .lp-dep__n b { font-size: 15px; }
+  .lp-cases { gap: 2px; }
+  .lp-cases i { height: 13px; border-radius: 3px; }
+  .lp-qui { flex-direction: column; align-items: flex-start; gap: 4px; }
+  /* Une ligne de 196 px pour le nom, ses pictos et son compte : les pictos
+     cedent du dernier au premier, comme sur une carte bowling serree, et le
+     survivant est la consigne (la note d abord). Avec les trois, « Anniv.
+     Noah » tombait a « An… ». La carte du prochain depart, la file et la
+     fiche les gardent tous. */
+  .lp-qui .lp-pictos .bk-flags .bk-flag:nth-child(n+2), .lp-qui .lp-pictos .bk-flags ~ .flag-prix { display: none; }
+  .lp-file { margin: 0 -12px; padding: 10px 12px 12px; }
+  .lp-aide { display: none; }
+  .lp-placer { flex-wrap: wrap; }
+  .lp-placer__a { margin-left: 0; }
+}

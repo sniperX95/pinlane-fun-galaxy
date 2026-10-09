@@ -254,7 +254,19 @@ async function scenarios(browser, echecs) {
     r.s1 = modele.sessions.find((s) => Math.abs(s.start - 17.5) < 0.01);
     r.s1 = r.s1 ? { arena: r.s1.arena, remaining: r.s1.remaining } : null;
     renderLaserPlanning();
-    r.planning = (document.getElementById('laserPlanningGridWrap')?.textContent || '').replace(/\s+/g, ' ');
+    // Le planning dit, pour chaque depart, l arene entiere : ses groupes et
+    // ceux d un lancement parallele encore en jeu a cette heure.
+    const depart = (t) => {
+      const rang = document.querySelector(`#laserPlanningGridWrap .lp-dep[data-lp-t="${t}"]`);
+      if (!rang) return null;
+      return {
+        occupe: (rang.querySelector('.lp-dep__n b') || {}).textContent || '',
+        reste: (rang.querySelector('.lp-dep__n small') || {}).textContent || '',
+        dit: (rang.querySelector('.lp-dep__jauge') || { getAttribute: () => '' }).getAttribute('aria-label') || '',
+        qui: ((rang.querySelector('.lp-qui') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+      };
+    };
+    r.planning = { s1: depart(17.5), s2: depart(18) };
     renderKpis();
     r.occ = document.getElementById('kpiOcc')?.textContent || '';
     const win = getPlanningWindow(jour);
@@ -268,7 +280,14 @@ async function scenarios(browser, echecs) {
   controle(laserVue.s1 && laserVue.s1.arena === 18 && laserVue.s1.remaining === 2
     && /18\/20/.test(laserVue.tableau) && /dont 6 joueurs sur un lancement en parallèle/.test(laserVue.tableau) && /Ajouter un groupe · 2 places/.test(laserVue.tableau),
   'A8 tableau laser : arene 18/20, 2 places, lancement parallele dit', JSON.stringify(laserVue.s1));
-  controle(/8 joueurs · arène 18\/20|12 joueurs · arène 18\/20/.test(laserVue.planning), 'A9 planning laser : la carte du lancement compte l arene (18/20)');
+  // S2 (17:45-18:10) part dans la demi-heure de 17:30 et joue encore au
+  // depart de 18:00 : 17:30 compte 12 + 6 ; 18:00 compte ses 6 armes prises
+  // et dit pourquoi (jamais « Libre » ni « 20 places »).
+  const p9 = laserVue.planning;
+  controle(Boolean(p9.s1 && p9.s2) && p9.s1.occupe === '18' && p9.s1.reste === '2 places' && /^17:30 : 18 sur 20, 2 places\./.test(p9.s1.dit)
+    && p9.s2.occupe === '6' && p9.s2.reste === '14 places' && /^18:00 : 6 sur 20, 14 places\. 6 en jeu jusqu’à 18:10\./.test(p9.s2.dit)
+    && p9.s2.qui === '6 en jeu jusqu’à 18:10',
+  'A9 planning laser : chaque depart compte l arene entiere et dit le lancement encore en jeu (17:30 18/20, 18:00 6/20)', JSON.stringify(p9));
   controle(laserVue.joueurs === 28 && laserVue.occ === laserVue.occAttendue, 'A10 occupation laser : armes x departs, pas x lancements', `affiche ${laserVue.occ}, attendu ${laserVue.occAttendue}`);
   controle(laserVue.tarif.capacity === '20 joueurs en même temps au plus' && laserVue.tarif.availability === '6 lancements simultanés' && (laserVue.tarif.tags || []).includes('20 armes'),
     'A11 tarifs laser : 20 armes, 6 lancements', JSON.stringify(laserVue.tarif));
@@ -411,7 +430,8 @@ const MUTATIONS = [
   { vise: 'A6', file: 'assets/app-main.js', find: 'if (launchCount > lancementsMax) {', replace: 'if (launchCount > 1) {' },
   { vise: 'A7', file: 'assets/app-main.js', find: 'const postesArene = getAvailabilityLaserCapacity();', replace: 'const postesArene = LASER_GAME_MAX_PLAYERS;' },
   { vise: 'A8', file: 'assets/app-main.js', find: 'session.arena = getLaserSessionArenaPlayers(session, sessions);', replace: 'session.arena = session.players;' },
-  { vise: 'A9', file: 'assets/app-main.js', find: 'const arenaPlayers = getLaserSessionArenaPlayers(session, sessions);', replace: 'const arenaPlayers = session.players;' },
+  { vise: 'A9', file: 'assets/app-main.js', find: 'const occupe = [...ici, ...holds, ...chevauche].reduce((s, w) => s + lpArene(w), 0);', replace: 'const occupe = [...ici, ...holds].reduce((s, w) => s + lpArene(w), 0);' },
+  { vise: 'A9', file: 'assets/app-main.js', find: 'const enJeu = d.chevauche.filter(w => !w.enLigne);', replace: 'const enJeu = [];' },
   { vise: 'A10', file: 'assets/app-main.js', find: '? armes * lancementsDuJour', replace: '? armes * getAvailabilityLaserParallelLaunches() * lancementsDuJour' },
   { vise: 'A11', file: 'assets/app-main.js', find: 'capacity: `${armes} joueurs en même temps au plus`,', replace: 'capacity: `${LASER_GAME_MAX_PLAYERS} joueurs en même temps au plus`,' },
   { vise: 'E1', file: 'assets/app-main.js', find: '+ (avecArene ? lancementsDuJour : 0)', replace: '+ lancementsDuJour' },

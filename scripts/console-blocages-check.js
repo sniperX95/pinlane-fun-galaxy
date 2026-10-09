@@ -84,7 +84,7 @@ const MUTATIONS = [
     nom: 'un blocage qui arrive ne change pas la signature du planning',
     de: '    blocagesEnLigne: getBlocagesEnLigne(dateStr).map(b => `${b.id}@${b.blocage.expiresAt}`),\n',
     vers: '',
-    cible: 'arrive',
+    cible: 'signature',
   },
   {
     nom: 'un blocage echu se dessine encore',
@@ -94,8 +94,8 @@ const MUTATIONS = [
   },
   {
     nom: 'le planning laser ignore les blocages',
-    de: '  windows.concat(fenetresEnLigne).forEach(window => {',
-    vers: '  windows.forEach(window => {',
+    de: '  const enLigne = getBlocagesEnLigne(jour).flatMap(',
+    vers: '  const enLigne = [].flatMap(',
     cible: 'laser',
   },
   {
@@ -231,6 +231,14 @@ async function parcours(browser, centres) {
   F.serveur = { piste: hB && hB.lanes[0], heureB: hB && heureBruxelles(hB.blocage.expiresAt), heureL: hL && heureBruxelles(hL.blocage.expiresAt), joueurs: hL && hL.pax };
   servirJournee(etat);
   F.arrive = await attendre(page, () => document.querySelector('#planningGridWrap .planning-hold'), null, DELAI);
+  // Une peinture encore en vol au demarrage peut afficher le blocage meme
+  // sans son empreinte. Garder la preuve du contrat de rafraichissement,
+  // independamment de cette peinture : identite ET echeance dans la signature.
+  F.signatureBlocages = await page.evaluate(() => {
+    const signature = JSON.parse(getStaffDataSignature(state.currentDate));
+    const attendus = getBlocagesEnLigne(state.currentDate).map(b => `${b.id}@${b.blocage.expiresAt}`);
+    return attendus.length > 0 && JSON.stringify(signature.blocagesEnLigne) === JSON.stringify(attendus);
+  });
   F.carte = await page.evaluate(() => {
     const cartes = [...document.querySelectorAll('#planningGridWrap .planning-hold')];
     const c = cartes[0];
@@ -270,27 +278,34 @@ async function parcours(browser, centres) {
 
   // [B] Le planning laser.
   await page.evaluate(() => setStaffResourceView('laser'));
-  F.laserVu = await attendre(page, () => document.querySelector('#laserPlanningGridWrap .laser-group-card.is-hold'), null, DELAI);
+  F.laserVu = await attendre(page, () => document.querySelector('#laserPlanningGridWrap .lp-g.is-enligne'), null, DELAI);
   F.laser = await page.evaluate(() => {
-    const carte = document.querySelector('#laserPlanningGridWrap .laser-group-card.is-hold');
+    const carte = document.querySelector('#laserPlanningGridWrap .lp-g.is-enligne');
     if (!carte) return null;
-    const rangee = carte.closest('.laser-agenda-row');
+    // Le planning Laser (maquette E) : une ligne par depart ; sa jauge compte
+    // les armes, son libelle les dit au lecteur d ecran.
+    const rangee = carte.closest('.lp-dep');
     const sub = document.getElementById('laserPlanningSub');
+    const cases = rangee ? [...rangee.querySelectorAll('.lp-cases i')] : [];
     return {
       texte: carte.textContent.replace(/\s+/g, ' ').trim(),
-      heureRangee: rangee ? rangee.querySelector('.laser-agenda-time strong').textContent.trim() : '',
-      capacite: rangee ? rangee.querySelector('.laser-agenda-capacity strong').textContent.trim() : '',
+      heureRangee: rangee ? rangee.querySelector('.lp-dep__h').textContent.trim() : '',
+      capacite: rangee ? `${rangee.querySelector('.lp-dep__n b').textContent.trim()}/${getAvailabilityLaserCapacity()}` : '',
+      dit: rangee ? rangee.querySelector('.lp-dep__jauge').getAttribute('aria-label') : '',
       sous: sub ? sub.textContent.trim() : '',
-      neutre: Boolean(rangee && rangee.querySelector('.laser-session-slot.has-session.is-en-ligne:not(.has-direct):not(.has-formula)')),
+      // Neutre : ni la couleur d un groupe sur la carte, ni sur la jauge ;
+      // ses 10 cases sont celles de la reservation en ligne.
+      neutre: Boolean(rangee) && !/\bk\d\b/.test(carte.className) && !cases.some((i) => /\bk\d\b/.test(i.className))
+        && cases.filter((i) => i.classList.contains('is-enligne')).length === 10,
     };
   });
   F.capaciteArmes = await page.evaluate(() => getAvailabilityLaserCapacity());
   if (F.laserVu) {
-    await page.click('#laserPlanningGridWrap .laser-group-card.is-hold');
+    await page.click('#laserPlanningGridWrap .lp-g.is-enligne');
     await pause(400);
   }
   F.clicSansEffet = await page.evaluate(() => quickBookState === null && document.getElementById('quickBookOverlay').classList.contains('hidden'));
-  await capture(page, 'console-planning-laser', '#laserPlanningGridWrap .laser-group-card.is-hold');
+  await capture(page, 'console-planning-laser', '#laserPlanningGridWrap .lp-g.is-enligne');
 
   // [C] Un blocage echu ne se dessine plus, meme avant la prochaine lecture :
   // la journee est servie avec le blocage bowling qui echoit dans 6 s.
@@ -313,16 +328,15 @@ async function parcours(browser, centres) {
   // Le serveur ne le sert plus : dix minutes passent, la journee relue n a
   // plus aucun blocage, le planning laser rend ses armes.
   await page.evaluate(() => setStaffResourceView('laser'));
-  F.laserAvantEcheance = await attendre(page, () => document.querySelector('#laserPlanningGridWrap .laser-group-card.is-hold'), null, DELAI);
+  F.laserAvantEcheance = await attendre(page, () => document.querySelector('#laserPlanningGridWrap .lp-g.is-enligne'), null, DELAI);
   banc.base.horloge += 11 * 60 * 1000;
   const apres = await S.db.readStaffState(banc.JOUR, 'libramont', { blocagesAPart: true });
   F.serveurVide = apres.holds.length === 0 && apres.revision !== etat.revision;
   servirJournee(apres);
-  F.laserParti = await attendre(page, () => !document.querySelector('#laserPlanningGridWrap .laser-group-card.is-hold'), null, DELAI);
+  F.laserParti = await attendre(page, () => !document.querySelector('#laserPlanningGridWrap .lp-g.is-enligne'), null, DELAI);
   F.armesRendues = await page.evaluate(() => {
-    const rangee = [...document.querySelectorAll('#laserPlanningGridWrap .laser-agenda-row')]
-      .find((r) => (r.querySelector('.laser-agenda-time strong') || {}).textContent === '16:00');
-    return rangee ? rangee.querySelector('.laser-agenda-capacity strong').textContent.trim() : '';
+    const rangee = document.querySelector('#laserPlanningGridWrap .lp-dep[data-lp-t="16"]');
+    return rangee ? `${rangee.querySelector('.lp-dep__n b').textContent.trim()}/${getAvailabilityLaserCapacity()}` : '';
   });
   F.erreurs = P.erreurs.slice();
   await P.ctx.close();
@@ -333,16 +347,19 @@ function verdict(F) {
   ok(F.pret && F.aucuneAvant, 'pret', '[A] le planning est ouvert, le groupe de 14:00 sur la piste 1, aucune carte en attente');
   ok(F.retenus === '201,201', 'retenus', '[A] deux clients retiennent en ligne (serveur reel)', F.retenus);
   ok(F.arrive && F.carte.n === 1, 'arrive', '[A] le blocage arrive : une carte « En ligne », sans rechargement', `${F.carte.n} carte(s)`);
+  ok(F.signatureBlocages, 'signature', '[A] la signature du planning porte l identite et l echeance des blocages recus');
   ok(F.carte.piste === F.serveur.piste && F.carte.colonne === F.serveur.piste && F.carte.debut === 14, 'arrive', '[A] sur la piste que le serveur a retenue, a 14:00', `piste ${F.carte.piste} (serveur ${F.serveur.piste}), debut ${F.carte.debut}`);
   ok(F.carte.texte === `En ligne libre à ${F.serveur.heureB}` && /^Réservation en ligne en cours : sans confirmation, la place se libère à \d{2}:\d{2}\.$/.test(F.carte.titre), 'arrive', '[A] elle dit quand la piste se libere', `${F.carte.texte} / ${F.carte.titre}`);
   ok(F.carte.heureEntiere, 'arrive', '[A] l heure de liberation se lit en entier, sur une piste etroite');
   ok(F.carte.recouvre, 'arrive', '[A] elle recouvre les cases : aucune reservation ne s y lance');
   ok(F.groupe === 1 && F.pasUneReservation, 'arrive', '[A] le groupe reste piste 1 ; le blocage n est pas une reservation du poste', `groupe piste ${F.groupe}`);
   ok(F.sansRechargement, 'arrive', '[A] sans rechargement (le temoin a survecu)');
-  ok(F.laserVu && F.laser && /^Réservation en ligne En cours · libre à \d{2}:\d{2} sans confirmation 10j$/.test(F.laser.texte) && F.laser.texte.includes(`libre à ${F.serveur.heureL}`), 'laser', '[B] le planning laser montre la carte en attente, ses 10 joueurs et l heure de liberation', F.laser && F.laser.texte);
-  ok(F.laser && F.laser.heureRangee === '16:00' && F.laser.capacite === `10/${F.capaciteArmes}`, 'laser', '[B] les 10 joueurs comptent dans la capacite de 16:00', F.laser && `${F.laser.heureRangee} ${F.laser.capacite}`);
-  ok(F.laser && /· 1 réservation en ligne en cours ·/.test(F.laser.sous) && /^0 lancement ·/.test(F.laser.sous), 'laser', '[B] l en-tete la compte a part, pas comme un lancement', F.laser && F.laser.sous);
-  ok(F.laser && F.laser.neutre, 'laser', '[B] un lancement qui ne porte que la reservation en ligne reste neutre (ni direct ni formule)');
+  ok(F.laserVu && F.laser && /^En ligne 10 · libre à \d{2}:\d{2}$/.test(F.laser.texte) && F.laser.texte.includes(`libre à ${F.serveur.heureL}`), 'laser', '[B] le planning laser montre la carte en attente, ses 10 joueurs et l heure de liberation', F.laser && F.laser.texte);
+  ok(F.laser && F.laser.heureRangee === '16:00' && F.laser.capacite === `10/${F.capaciteArmes}`
+    && F.laser.dit.startsWith(`16:00 : 10 sur ${F.capaciteArmes}, ${F.capaciteArmes - 10} places. En ligne 10, libre à ${F.serveur.heureL}.`),
+  'laser', '[B] les 10 joueurs comptent dans la capacite de 16:00', F.laser && `${F.laser.heureRangee} ${F.laser.capacite} / ${F.laser.dit}`);
+  ok(F.laser && F.laser.sous === '0 départ · 0 joueur · 1 en ligne en cours', 'laser', '[B] l en-tete la compte a part, pas comme un depart', F.laser && F.laser.sous);
+  ok(F.laser && F.laser.neutre, 'laser', '[B] un depart qui ne porte que la reservation en ligne reste neutre (aucune couleur de groupe)');
   ok(F.clicSansEffet, 'laser', '[B] un clic sur la carte en attente ne lance rien');
   // Le serveur sert encore le blocage (sa liste est celle d avant l echeance) :
   // seul le filtre de la console peut le retirer.

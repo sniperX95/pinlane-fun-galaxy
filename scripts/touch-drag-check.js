@@ -23,8 +23,9 @@
 //   N. Bowling : le planning se redessine pendant le glisser (un autre poste a
 //      modifie une reservation), la carte tenue quitte la page : le depot
 //      arrive quand meme.
-//   D. Laser : appui long, glisser une carte placee vers « Parties a placer ».
-//   E. Laser : appui long, glisser la carte en attente vers un lancement libre.
+//   D. Laser (planning de la maquette E) : appui long, glisser un groupe place
+//      vers la file « À placer ».
+//   E. Laser : appui long, glisser son jeton de la file vers un depart libre.
 //   L. Laser : un geste interrompu ne retire rien du planning.
 //   F. Bowling multi-pistes : glisser au doigt deplace le groupe comme la souris;
 //      maintien1s conserve une selection apres relachement. Les pistes explicites
@@ -245,6 +246,8 @@ function ecartMax(avant, apres) {
 async function ouvrirPlanning(page, vue) {
   const poser = (v) => {
     if(typeof cancelPlanningMove === 'function')cancelPlanningMove(false);
+    // Le planning Laser garde le groupe pris d un scenario a l autre : on le rend.
+    if (typeof lpEtat === 'object' && lpEtat) { lpEtat.choisi = null; lpEtat.raison = ''; }
     const d = '2026-07-18';
     state.currentDate = d; state.staffMenuPage = 'planning'; state.staffResourceView = v; state.staffTheme = 'dark';
     state.staffLaserPlanningExpanded = v === 'laser'; state.staffPlanningExpanded = false;
@@ -463,106 +466,121 @@ async function main() {
       ok(envoyeN && resN.start === '16:00' && JSON.stringify(resN.lanes) === '[5]' && !resN.fantome, `le depot arrive quand meme : 9002 a 16:00 piste 5, sans fantome oublie (${resN.start}, pistes ${JSON.stringify(resN.lanes)})`);
     }
 
-    // --- D : laser, carte placee vers « Parties a placer » -----------------
-    console.log('\n[D] Laser : appui long, glisser une carte placee vers « Parties a placer »');
+    // --- D, E, L : le planning Laser de la maquette E, plein ecran ----------
+    // Un rang par depart, la file « À placer » collee en bas. Pendant un
+    // glisser, le planning defile seul a moins de 96 px du haut de son cadre et
+    // du haut de la file (lpDefilerDemarrer) : ce que le doigt saisit s amene
+    // entre les deux (la ou poser le doigt ne fait rien defiler).
+    const amenerLaser = (selecteur) => page.evaluate((selecteur) => {
+      const el = document.querySelector(selecteur);
+      const cadre = lpDefileur();
+      if (!el || !cadre) return null;
+      const r = cadre.getBoundingClientRect();
+      const file = document.querySelector('#laserPlanningGridWrap .lp-file');
+      const haut = Math.max(0, r.top) + 96 + 12;
+      const bas = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity) - 96 - 12;
+      for (let essai = 0; essai < 12; essai += 1) {
+        const b = el.getBoundingClientRect();
+        const ecart = (b.top + b.height / 2) - (haut + bas) / 2;
+        if (Math.abs(ecart) <= 2) break;
+        cadre.scrollTop += ecart;
+      }
+      const b = el.getBoundingClientRect();
+      const y = b.top + b.height / 2;
+      return { x: b.left + Math.min(b.width / 2, 60), y, visible: b.height > 4 && y > haut && y < bas };
+    }, selecteur);
+    const centreFile = () => page.evaluate(() => { const q = document.querySelector('#laserPlanningGridWrap .lp-file'); if (!q) return null; const b = q.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+    const GROUPE_9010 = '#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9010"]';
+
+    // --- D : laser, groupe place vers la file « À placer » -----------------
+    console.log('\n[D] Laser : appui long, glisser un groupe place vers la file « À placer »');
     await ouvrirPlanning(page, 'laser');
-    await page.evaluate(() => {
-      const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-      const card = document.querySelector('.laser-group-card[onmousedown*="9010"]');
-      if (ag && card) { const top = card.getBoundingClientRect().top - ag.getBoundingClientRect().top + ag.scrollTop; ag.scrollTop = Math.max(0, top - 220); }
-    });
-    await page.waitForTimeout(150);
-    const posD = await page.evaluate(() => {
-      const card = document.querySelector('.laser-group-card[onmousedown*="9010"]');
-      const queue = document.querySelector('.laser-pass-queue');
-      if (!card || !queue) return null;
-      const c = card.getBoundingClientRect(); const q = queue.getBoundingClientRect();
-      return { card: { x: c.x + c.width / 2, y: c.y + c.height / 2 }, queue: { x: q.x + q.width / 2, y: Math.min(q.y + 120, q.y + q.height / 2) }, visible: c.top >= 0 && c.bottom <= window.innerHeight };
-    });
-    if (ok(posD && posD.visible, 'MONTAGE : carte laser placee a l ecran et file « Parties a placer » presente')) {
-      await touche.poser(posD.card);
+    const srcD = await amenerLaser(GROUPE_9010);
+    const fileD = await centreFile();
+    if (ok(srcD && srcD.visible && fileD, 'MONTAGE : groupe laser place a l ecran et file « À placer » presente')) {
+      const nD = await page.evaluate(() => window.__QA_PATCHES__.length);
+      await touche.poser(srcD);
       await page.waitForTimeout(500);
-      const fantomeD = await fantome(page, '.laser-drag-ghost', posD.card);
-      await touche.aller(posD.card, posD.queue);
+      const fantomeD = await fantome(page, '.lp-fantome', srcD);
+      await touche.aller(srcD, await centreFile());
       await touche.lever();
       ok(fantomeD && fantomeD.ecart >= 4 && fantomeD.haut >= 0 && Math.abs(fantomeD.decentre) <= 2, `le fantome laser s affiche au-dessus du doigt, centre (${JSON.stringify(fantomeD)})`);
       await attendre(page, () => getLaserWindowsFromReservation(state.reservations.find((x) => x.id === 9010)).length === 0, null, 3000);
-      const resD = await page.evaluate(() => {
+      const resD = await page.evaluate((n) => {
         const r = state.reservations.find((x) => x.id === 9010);
-        const patch = (window.__QA_PATCHES__ || []).slice(-1)[0] || null;
-        return { fenetres: getLaserWindowsFromReservation(r).length, attente: getPendingLaserPasses(state.currentDate).map((p) => p.reservation.id), manuel: !!(patch && patch.activityMove && patch.activityMove.unplace) };
-      });
-      ok(resD.fenetres === 0 && resD.attente.includes(9010), `la partie quitte le planning et attend dans la file (${resD.fenetres} fenetre(s))`);
-      ok(resD.manuel, 'la modification envoyee porte le marqueur laserManual');
+        const patchs = (window.__QA_PATCHES__ || []).slice(n);
+        const patch = patchs.slice(-1)[0] || null;
+        return { fenetres: getLaserWindowsFromReservation(r).length, attente: getPendingLaserPasses(state.currentDate).map((p) => p.reservation.id), jeton: !!document.querySelector('#laserPlanningGridWrap .lp-file .lp-jeton[data-laser-res-id="9010"]'), patchs: patchs.length, manuel: !!(patch && patch.activityMove && patch.activityMove.unplace) };
+      }, nD);
+      ok(resD.fenetres === 0 && resD.attente.includes(9010) && resD.jeton, `la partie quitte le planning et attend dans la file (${resD.fenetres} fenetre(s), jeton ${resD.jeton})`);
+      ok(resD.patchs === 1 && resD.manuel, `la modification envoyee porte le retrait (activityMove.unplace) (${resD.patchs} modification(s))`);
     }
 
-    // --- E : laser, carte en attente vers un lancement libre ----------------
+    // --- E : laser, jeton en attente vers un depart libre ------------------
     // Independant de D : la partie est mise en attente A LA SOURIS (chemin prouve
     // par laser-drag-check), puis replacee au doigt.
-    console.log('\n[E] Laser : appui long, glisser la carte en attente vers un lancement libre');
+    console.log('\n[E] Laser : appui long, glisser le jeton en attente vers un depart libre');
     await ouvrirPlanning(page, 'laser');
-    const miseEnAttente = await page.evaluate(() => {
-      const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-      const card = document.querySelector('.laser-group-card[onmousedown*="9010"]');
-      const queue = document.querySelector('.laser-pass-queue');
-      if (!ag || !card || !queue) return null;
-      const top = card.getBoundingClientRect().top - ag.getBoundingClientRect().top + ag.scrollTop;
-      ag.scrollTop = Math.max(0, top - 220);
-      const c = card.getBoundingClientRect(); const q = queue.getBoundingClientRect();
-      return { card: { x: c.x + c.width / 2, y: c.y + c.height / 2 }, queue: { x: q.x + q.width / 2, y: Math.min(q.y + 120, q.y + q.height / 2) } };
-    });
-    if (miseEnAttente) {
-      await page.mouse.move(miseEnAttente.card.x, miseEnAttente.card.y); await page.mouse.down();
-      await page.mouse.move(miseEnAttente.card.x + 8, miseEnAttente.card.y + 8, { steps: 2 });
-      await page.mouse.move(miseEnAttente.queue.x, miseEnAttente.queue.y, { steps: 10 }); await page.mouse.up();
-      await attendre(page, () => !!document.querySelector('.laser-pass-card[onmousedown*="9010"]'), null, 3000);
+    const miseEnAttente = await amenerLaser(GROUPE_9010);
+    if (miseEnAttente && miseEnAttente.visible) {
+      await page.mouse.move(miseEnAttente.x, miseEnAttente.y); await page.mouse.down();
+      await page.mouse.move(miseEnAttente.x + 8, miseEnAttente.y + 8, { steps: 2 });
+      const fileE = await centreFile();
+      await page.mouse.move(fileE.x, fileE.y, { steps: 10 }); await page.mouse.up();
+      await attendre(page, () => !!document.querySelector('#laserPlanningGridWrap .lp-file .lp-jeton[data-laser-res-id="9010"]'), null, 3000);
     }
-    const posE = await page.evaluate(() => {
-      const card = document.querySelector('.laser-pass-card[onmousedown*="9010"]');
-      const slots = [...document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]')].map((s) => ({ s, b: s.getBoundingClientRect() })).filter((o) => o.b.top > 160 && o.b.bottom < window.innerHeight - 40);
-      const pick = slots[Math.floor(slots.length / 2)] || slots[0];
-      if (!card || !pick) return null;
-      const c = card.getBoundingClientRect();
-      return { card: { x: c.x + c.width / 2, y: c.y + c.height / 2 }, tgt: { x: pick.b.x + pick.b.width / 2, y: pick.b.y + pick.b.height / 2, t: laserTimeFromPoint(pick.s.closest('.laser-agenda-row'), pick.b.y + pick.b.height / 2) }, visible: c.top >= 0 && c.bottom <= window.innerHeight };
-    });
-    if (ok(posE && posE.visible, 'MONTAGE : carte en attente a l ecran et lancement libre visible')) {
-      await touche.glisser(posE.card, posE.tgt, { maintien: 500 });
+    const jetonE = await page.evaluate(() => { const j = document.querySelector('#laserPlanningGridWrap .lp-file .lp-jeton[data-laser-res-id="9010"]'); if (!j) return null; const b = j.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2, visible: b.top >= 0 && b.bottom <= innerHeight }; });
+    if (ok(jetonE && jetonE.visible, 'MONTAGE : jeton en attente a l ecran, dans la file')) {
+      await touche.poser(jetonE);
+      await page.waitForTimeout(500);
+      // Le jeton leve, la file a grandi de sa barre : le planning va au bout
+      // de la journee (il n a plus rien a defiler vers le bas, le doigt peut
+      // traverser la bande du bas), et la cible est le depart libre le plus
+      // proche du milieu de la bande.
+      const tgtE = await page.evaluate(() => {
+        const cadre = lpDefileur();
+        cadre.scrollTop = cadre.scrollHeight;
+        const r = cadre.getBoundingClientRect();
+        const haut = Math.max(0, r.top) + 96 + 12;
+        const bas = Math.min(innerHeight, r.bottom, document.querySelector('#laserPlanningGridWrap .lp-file').getBoundingClientRect().top) - 96 - 12;
+        const rangs = [...document.querySelectorAll('#laserPlanningGridWrap .lp-dep.is-cible[data-lp-t]')]
+          .map((d) => { const b = d.querySelector('.lp-dep__jauge').getBoundingClientRect(); return { t: Number(d.dataset.lpT), x: b.left + Math.min(b.width / 2, 60), y: b.top + b.height / 2 }; })
+          .filter((o) => o.y > haut && o.y < bas)
+          .sort((a, b) => Math.abs(a.y - (haut + bas) / 2) - Math.abs(b.y - (haut + bas) / 2));
+        return { leve: Boolean(lpEtat.glisse), cible: rangs[0] || null };
+      });
+      if (ok(tgtE.leve && tgtE.cible, `MONTAGE : jeton leve, un depart libre l accepte (${tgtE.cible ? tgtE.cible.t : 'aucun'})`)) {
+        await touche.aller(jetonE, tgtE.cible);
+      }
+      await touche.lever();
       await attendre(page, () => getLaserWindowsFromReservation(state.reservations.find((x) => x.id === 9010)).length > 0, null, 3000);
       const resE = await page.evaluate(() => { const w = getLaserWindowsFromReservation(state.reservations.find((x) => x.id === 9010)); return w.length ? w[0].start : null; });
-      ok(resE !== null && Math.abs(Number(resE) - Number(posE.tgt.t)) <= 0.01, `la partie est placee au lancement vise (${posE.tgt.t}, lu ${resE})`);
+      ok(tgtE.cible && resE !== null && Math.abs(Number(resE) - Number(tgtE.cible.t)) <= 0.01, `la partie est placee au depart vise (${tgtE.cible ? tgtE.cible.t : '?'}, lu ${resE})`);
     }
 
     // --- L : laser, geste interrompu -----------------------------------------
     console.log('\n[L] Laser : un geste interrompu ne retire rien du planning');
     await ouvrirPlanning(page, 'laser');
-    const posL = await page.evaluate(() => {
-      const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-      const card = document.querySelector('.laser-group-card[onmousedown*="9010"]');
-      const queue = document.querySelector('.laser-pass-queue');
-      if (!ag || !card || !queue) return null;
-      const top = card.getBoundingClientRect().top - ag.getBoundingClientRect().top + ag.scrollTop;
-      ag.scrollTop = Math.max(0, top - 220);
-      const c = card.getBoundingClientRect(); const q = queue.getBoundingClientRect();
-      return { card: { x: c.x + c.width / 2, y: c.y + c.height / 2 }, queue: { x: q.x + q.width / 2, y: Math.min(q.y + 120, q.y + q.height / 2) }, visible: c.top >= 0 && c.bottom <= window.innerHeight };
-    });
-    if (ok(posL && posL.visible, 'MONTAGE : carte laser placee a l ecran et file « Parties a placer » presente')) {
+    const srcL = await amenerLaser(GROUPE_9010);
+    const fileL = await centreFile();
+    if (ok(srcL && srcL.visible && fileL, 'MONTAGE : groupe laser place a l ecran et file « À placer » presente')) {
       const avantL = await page.evaluate(() => ({ patchs: window.__QA_PATCHES__.length, fenetres: getLaserWindowsFromReservation(state.reservations.find((x) => x.id === 9010)).length }));
-      await touche.poser(posL.card);
+      await touche.poser(srcL);
       await page.waitForTimeout(500);
-      await touche.aller(posL.card, posL.queue);
-      const viseeL = await page.evaluate(() => !!document.querySelector('.is-unplace-target'));
+      await touche.aller(srcL, await centreFile());
+      const viseeL = await page.evaluate(() => !!document.querySelector('#laserPlanningGridWrap .lp-file.is-survol') && Boolean(lpEtat.glisse));
       await touche.interrompre();
       await page.waitForTimeout(500);
       const resL = await page.evaluate((n) => ({
         patchs: window.__QA_PATCHES__.length - n,
         fenetres: getLaserWindowsFromReservation(state.reservations.find((x) => x.id === 9010)).length,
-        fantome: !!document.querySelector('.laser-drag-ghost'),
-        cible: !!document.querySelector('.is-unplace-target, .laser-session-slot.is-drop-target'),
-        enGlisser: document.body.classList.contains('laser-dragging') || !!document.querySelector('.laser-group-card.is-dragging, .laser-pass-card.is-dragging'),
+        fantome: !!document.querySelector('.lp-fantome'),
+        cible: !!document.querySelector('#laserPlanningGridWrap .is-survol'),
+        enGlisser: document.body.classList.contains('lp-glisse') || Boolean(lpEtat.glisse) || Boolean(lpEtat.geste),
       }), avantL.patchs);
-      ok(viseeL && avantL.fenetres > 0, `MONTAGE : la partie etait au planning et la file « Parties a placer » etait visee a l interruption (${avantL.fenetres} fenetre(s))`);
+      ok(viseeL && avantL.fenetres > 0, `MONTAGE : la partie etait au planning et la file « À placer » etait visee a l interruption (${avantL.fenetres} fenetre(s))`);
       ok(resL.patchs === 0 && resL.fenetres === avantL.fenetres, `interrompu, la partie reste au planning (${resL.patchs} modification(s), ${resL.fenetres} fenetre(s))`);
-      ok(!resL.fantome && !resL.cible && !resL.enGlisser, 'ni fantome, ni file surlignee, ni etat « en glisser » ne restent');
+      ok(!resL.fantome && !resL.cible && !resL.enGlisser, `ni fantome, ni file surlignee, ni etat « en glisser » ne restent (${JSON.stringify(resL)})`);
     }
 
     // --- F : bowling multi-pistes, groupe ou piste seule --------------------

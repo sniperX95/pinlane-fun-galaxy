@@ -2,17 +2,21 @@
 // regle S6 de la fenetre Reserver).
 //
 // Un groupe de 8 qui privatise l arene retient ses 30 armes : le bloc laser
-// porte players = 30 (l occupation : la session est pleine) et joueursReels
-// = 8 (le groupe). Le planning dit le GROUPE partout ou il ecrit « N
-// joueurs », et garde l occupation pleine.
-//   [1] la puce du groupe au planning laser dit 8 j, et pourquoi la session
-//       est pleine (« arène pour eux seuls ») ;
-//   [2] la session reste pleine : sa jauge est a 100 % ;
+// porte players = 30 (l occupation : le depart est plein) et joueursReels
+// = 8 (le groupe). Le planning dit le GROUPE partout ou il ecrit un nombre
+// de joueurs, et garde l occupation pleine.
+//   [1] le groupe, dans la ligne de son depart, dit 8 (jamais 30) et pourquoi
+//       le depart est plein (« arène pour eux seuls ») ;
+//   [1b] le prochain depart dit « 8 armes à préparer », pas 30 ;
+//   [2] le depart reste plein : 30 sur 30, « complet », ses 30 cases prises
+//       (8 au groupe, 22 tenues pour lui) ;
 //   [3] la fiche dit « 8 joueurs » pour la partie, jamais 30 ;
-//   [4] un groupe ordinaire (sans le choix) garde son compte (6 j), sans la
+//   [4] un groupe ordinaire (sans le choix) garde son compte (6), sans la
 //       mention ;
-//   [5] contre-preuves : la puce relue sur players dit 30 j, et [1] rougit ;
+//   [5] contre-preuves : le groupe relu sur players dit 30, et [1] rougit ;
 //       la fiche relue sur players dit 30 joueurs, et [3] rougit.
+// La page est figee a 14:55 d un samedi : 15:00 est le prochain depart, quelle
+// que soit l heure du lancement du gate.
 // Le serveur et le moteur ont leur gate (reserver-arene-seuls-check).
 'use strict';
 const fs = require('fs');
@@ -21,9 +25,12 @@ const { chromium } = require('playwright-core');
 const { serveStatic, installMock, boot, BROWSER_PATH } = require('./reserver-v5-check');
 
 const ROOT = path.resolve(__dirname, '..');
+const JOUR = '2026-10-10';
+const MAINTENANT = new Date(`${JOUR}T14:55:00`);
+// Le groupe relu sur les armes qu il retient : il dit 30.
 const MUTATION = {
-  de: 'Number(window.joueursReels ?? window.players) || Number(reservation?.pax) || 0);',
-  vers: 'Number(window.players) || Number(reservation?.pax) || 0);',
+  de: 'function lpGroupe(w) { return Math.max(1, Number(w.joueursReels ?? w.players) || Number(w.reservation?.pax) || 1); }',
+  vers: 'function lpGroupe(w) { return Math.max(1, Number(w.players) || Number(w.reservation?.pax) || 1); }',
 };
 // La fiche relue sur les armes : la partie dit 30 joueurs.
 const MUTATION_FICHE = {
@@ -79,26 +86,50 @@ async function mesurer(browser, mutation) {
     await page.route('**/assets/app-main.js*', (route) => route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: mute }));
   }
   try {
-    await installMock(page);
+    // A 13:55, 14:00 est le prochain depart : 15:00 et 17:00 sont dans la
+    // liste de la journee.
+    const avant = new Date(MAINTENANT.getTime() - 60 * 60 * 1000);
+    await page.clock.setFixedTime(avant);
+    await installMock(page, { maintenant: avant.getTime() });
     await installerGroupes(page);
-    await boot(page);
+    await boot(page, { installer: false });
     await page.evaluate(() => {
       state.reservations = window.__GROUPES__();
       state.currentDate = todayStr();
-      state.staffMenuPage = 'planning';
-      state.staffResourceView = 'laser';
-      renderStaff();
+      openStaffPlanningResource('laser');
     });
-    await page.waitForSelector('.laser-group-card[data-laser-res-id="9401"]', { timeout: 8000 });
+    await page.waitForSelector('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9401"]', { timeout: 8000 });
     const f = await page.evaluate(() => {
       const puce = (id) => {
-        const el = document.querySelector(`.laser-group-card[data-laser-res-id="${id}"] .laser-group-count`);
-        return el ? { texte: el.textContent.replace(/\s+/g, ''), titre: el.getAttribute('title') || '' } : null;
+        const el = document.querySelector(`#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="${id}"]`);
+        const n = el ? el.querySelector('span') : null;
+        return el ? { texte: (n ? n.textContent : '').replace(/\s+/g, ' ').trim(), titre: el.getAttribute('title') || '' } : null;
       };
-      const carte = document.querySelector('.laser-group-card[data-laser-res-id="9401"]');
-      const session = carte ? carte.closest('.laser-session-slot') : null;
-      const jauge = session ? [...session.querySelectorAll('.laser-meter-segment')].reduce((s, seg) => s + (parseFloat(seg.style.width) || 0), 0) : 0;
-      return { seuls: puce(9401), normal: puce(9402), jauge: Math.round(jauge) };
+      const rang = document.querySelector('#laserPlanningGridWrap .lp-dep[data-lp-t="15"]');
+      const cases = rang ? [...rang.querySelectorAll('.lp-cases i')] : [];
+      const depart = rang ? {
+        occupe: (rang.querySelector('.lp-dep__n b') || {}).textContent || '',
+        reste: (rang.querySelector('.lp-dep__n small') || {}).textContent || '',
+        cases: cases.length,
+        // Une case du groupe porte son dossier (data-lp-id), quelle que soit sa couleur.
+        groupe: cases.filter((i) => i.hasAttribute('data-lp-id') && !i.classList.contains('is-prive')).length,
+        tenues: cases.filter((i) => i.classList.contains('is-prive')).length,
+        vides: cases.filter((i) => !i.className).length,
+      } : null;
+      return { seuls: puce(9401), normal: puce(9402), depart };
+    });
+    // A 14:55, 15:00 est le prochain depart : la carte du haut dit les armes
+    // a preparer pour lui.
+    await page.clock.setFixedTime(MAINTENANT);
+    await page.evaluate(() => renderLaserPlanning());
+    f.prochain = await page.evaluate(() => {
+      const p = document.querySelector('#laserPlanningGridWrap .lp-prochain[data-lp-t="15"]');
+      if (!p) return null;
+      const g = p.querySelector('.lp-groupe__sel[data-laser-res-id="9401"] .lp-n');
+      return {
+        armes: [...p.querySelectorAll('.lp-prochain__g b, .lp-prochain__g small')].map((e) => e.textContent.trim()).join(' '),
+        detail: g ? g.textContent.replace(/\s+/g, ' ').trim() : '',
+      };
     });
     await page.evaluate(() => openPos(9401));
     await page.waitForTimeout(400);
@@ -117,14 +148,18 @@ async function main() {
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   try {
     const f = await mesurer(browser, null);
-    ok(Boolean(f.seuls && f.normal), 'MONTAGE : les deux groupes sont au planning laser', JSON.stringify({ seuls: f.seuls, normal: f.normal }));
-    ok(Boolean(f.seuls) && f.seuls.texte === '8j' && /arène pour eux seuls/.test(f.seuls.titre), '[1] la puce dit le groupe (8 j) et pourquoi la session est pleine', JSON.stringify(f.seuls));
-    ok(f.jauge >= 99, '[2] la session reste pleine : la jauge est a 100 %', `${f.jauge} %`);
+    ok(Boolean(f.seuls && f.normal && f.depart), 'MONTAGE : les deux groupes et le depart de 15:00 sont au planning laser', JSON.stringify({ seuls: f.seuls, normal: f.normal }));
+    ok(Boolean(f.seuls) && f.seuls.texte === '8 · arène pour eux seuls' && /: 8 joueurs, arène pour eux seuls\./.test(f.seuls.titre) && !/30/.test(f.seuls.titre),
+      '[1] le groupe dit 8, et pourquoi le depart est plein', JSON.stringify(f.seuls));
+    ok(Boolean(f.prochain) && f.prochain.armes === '8 armes à préparer' && f.prochain.detail === '8 joueurs · arène pour eux seuls',
+      '[1b] le prochain depart dit 8 armes a preparer, pas 30', JSON.stringify(f.prochain));
+    ok(Boolean(f.depart) && f.depart.occupe === '30' && f.depart.reste === 'complet' && f.depart.cases === 30 && f.depart.groupe === 8 && f.depart.tenues === 22 && f.depart.vides === 0,
+      '[2] le depart reste plein : 30 sur 30, 8 cases au groupe, 22 tenues pour lui', JSON.stringify(f.depart));
     ok(f.fiche8 && !f.fiche30, '[3] la fiche dit « 8 joueurs », jamais 30', JSON.stringify({ huit: f.fiche8, trente: f.fiche30 }));
-    ok(Boolean(f.normal) && f.normal.texte === '6j' && !/seuls/.test(f.normal.titre), '[4] un groupe ordinaire garde son compte, sans la mention', JSON.stringify(f.normal));
+    ok(Boolean(f.normal) && f.normal.texte === '6' && /: 6 joueurs\./.test(f.normal.titre) && !/seuls/.test(f.normal.titre), '[4] un groupe ordinaire garde son compte, sans la mention', JSON.stringify(f.normal));
     ok(f.erreurs.length === 0, 'zero erreur JS ni console', f.erreurs.slice(0, 3).join(' | '));
     const m = await mesurer(browser, MUTATION);
-    ok(Boolean(m.seuls) && m.seuls.texte === '30j', '[5] contre-preuve : la puce relue sur les armes dit 30 j, [1] rougirait', JSON.stringify(m.seuls));
+    ok(Boolean(m.seuls) && /^30 · arène pour eux seuls$/.test(m.seuls.texte), '[5] contre-preuve : le groupe relu sur les armes dit 30, [1] rougirait', JSON.stringify(m.seuls));
     const mf = await mesurer(browser, MUTATION_FICHE);
     ok(mf.fiche30, '[5] contre-preuve : la fiche relue sur les armes dit 30 joueurs, [3] rougirait', JSON.stringify({ huit: mf.fiche8, trente: mf.fiche30 }));
   } finally {

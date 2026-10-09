@@ -151,8 +151,14 @@ function verifier(sources) {
   const voir = extraire(sources.app, 'voirAuPlanning');
   c(/ev\.stopPropagation\(\)/.test(voir), '[E] suivre le lien ne coche pas l activite de la ligne');
   c(/openStaffPlanningResource\(cible\)/.test(voir) && /montrerAuPlanning\(/.test(voir), '[E] le planning s ouvre et le groupe y est montre');
+  // Le planning Laser (maquette E) : chaque groupe d un depart, du prochain
+  // depart et de la file porte ses attributs par lpAttrsGroupe ; un groupe
+  // deja joue sort du pli avant d etre montre (planning-laser-check [M] le
+  // prouve dans le navigateur).
   const montrer = extraire(sources.app, 'montrerAuPlanning');
-  c(/data-laser-res-id/.test(montrer) && /data-booking-res-id/.test(montrer) && /data-laser-res-id="\$\{reservation\.id\}"[^>]*class="laser-group-card/.test(sources.app), '[E] les blocs des deux plannings portent le numero du dossier');
+  const attrs = extraire(sources.app, 'lpAttrsGroupe');
+  c(/data-laser-res-id/.test(montrer) && /data-booking-res-id/.test(montrer) && /data-laser-res-id="\$\{id\}"/.test(attrs)
+    && /class="lp-g \$\{k\}[^"]*" \$\{lpAttrsGroupe\(id, unitKey/.test(sources.app) && /lpRevelerGroupe\(r\.id\)/.test(voir), '[E] les blocs des deux plannings portent le numero du dossier');
   return resultats;
 }
 

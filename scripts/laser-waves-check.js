@@ -102,99 +102,103 @@ async function main() {
     };
     await page.evaluate(seed);
     await page.waitForTimeout(500);
-    // L AGENDA DOIT MESURER QUELQUE CHOSE. Le demarrage de la console est
+    // LE PLANNING DOIT MESURER QUELQUE CHOSE. Le demarrage de la console est
     // asynchrone : un rendu tardif reprend la main apres le seed et referme le
-    // planning laser. Les cartes existent alors dans le DOM, mais tous leurs
-    // rectangles valent zero (mesure : « carte 0-0, cible 0-0, agenda defilable
-    // 0>0 »), et le geste tombe dans le vide. On re-impose la vue tant que
-    // l agenda ne mesure rien.
-    let agendaPret = false;
-    for (let essai = 0; essai < 8 && !agendaPret; essai += 1) {
-      agendaPret = await page.evaluate(() => {
-        const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-        return Boolean(ag) && ag.getBoundingClientRect().height > 100;
+    // planning laser. Les groupes existent alors dans le DOM, mais tous leurs
+    // rectangles valent zero, et le geste tombe dans le vide. On re-impose la
+    // vue tant que le planning (maquette E, plein ecran) ne mesure rien.
+    let planningPret = false;
+    for (let essai = 0; essai < 8 && !planningPret; essai += 1) {
+      planningPret = await page.evaluate(() => {
+        const wrap = document.querySelector('.laser-planning-box.expanded #laserPlanningGridWrap');
+        return Boolean(wrap && wrap.querySelector('.lp .lp-dep')) && wrap.getBoundingClientRect().height > 100;
       });
-      if (!agendaPret) { await page.evaluate(seed); await page.waitForTimeout(400); }
+      if (!planningPret) { await page.evaluate(seed); await page.waitForTimeout(400); }
     }
-    ok(agendaPret, 'montage : l agenda du planning laser est rendu et mesurable');
+    ok(planningPret, 'montage : le planning laser (un rang par depart) est rendu et mesurable');
 
     const DRAG_UNIT = process.env.DRAG_UNIT || '1.2'; // unité (jeu.vague) à glisser
 
-    // État initial : toutes les unités laser (jeu.vague) et leurs positions
+    // État initial : toutes les unités laser (jeu.vague), leurs positions, et
+    // la legende de chacune dans le rang de son depart.
     const beforeReal = await page.evaluate(() => {
       const r = state.reservations.find(x => x.id === 9500);
       const uf = (x) => `${Number(x.countIndex || 1)}.${Number(x.groupWaveIndex || 1)}`;
       const w = getLaserWindowsFromReservation(r).map(x => ({ unit: uf(x), start: x.start, startTime: x.startTime })).sort((a,b)=>a.start-b.start);
-      return { windows: w, cardCount: document.querySelectorAll('.laser-group-card[onmousedown*="9500"]').length };
+      const legendes = [...document.querySelectorAll('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9500"]')].map(g => g.dataset.laserUnit);
+      return { windows: w, legendes, cardCount: legendes.length };
     });
-    console.log('AVANT : unités:', JSON.stringify(beforeReal.windows), '| cartes:', beforeReal.cardCount);
+    console.log('AVANT : unités:', JSON.stringify(beforeReal.windows), '| legendes:', JSON.stringify(beforeReal.legendes));
     if (process.env.LASER_SHOT) {
       await page.evaluate(() => {
-        const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-        const card = document.querySelector('.laser-group-card[onmousedown*="9500"]');
-        if (ag && card) { const top = card.getBoundingClientRect().top - ag.getBoundingClientRect().top + ag.scrollTop; ag.scrollTop = Math.max(0, top - 180); }
+        const g = document.querySelector('#laserPlanningGridWrap .lp-g[data-laser-res-id="9500"]');
+        if (g) g.scrollIntoView({ block: 'center' });
       });
       await page.waitForTimeout(250);
       await page.screenshot({ path: `${process.env.LASER_SHOT}/laser-waves.png`, clip: { x: 0, y: 0, width: 1200, height: 700 } });
     }
-    ok(beforeReal.cardCount === beforeReal.windows.length, `1 carte par unité (${beforeReal.cardCount})`);
+    ok(beforeReal.cardCount === beforeReal.windows.length && beforeReal.windows.every(w => beforeReal.legendes.includes(w.unit)), `1 legende par unité, dans le rang de son depart (${beforeReal.cardCount} : ${beforeReal.legendes.join(', ')})`);
     ok(beforeReal.windows.some(w => w.unit === DRAG_UNIT), `unité ${DRAG_UNIT} présente au départ`);
     const startBefore = Object.fromEntries(beforeReal.windows.map(w => [w.unit, w.start]));
 
-    // ON CHOISIT LA CIBLE, PUIS ON L AMENE DANS LA VUE AVEC LA CARTE.
-    // L ancien montage defilait pour amener la CARTE au milieu, puis cherchait
-    // un slot vide qui se trouvait PAR CHANCE dans la bande visible et assez
-    // loin des heures deja prises : un lancement sur deux n en trouvait aucun.
-    const pos = await page.evaluate((args) => {
-      const { unit, avoid } = args;
-      const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-      const card = [...document.querySelectorAll('.laser-group-card[onmousedown*="9500"]')]
-        .find(c => c.getAttribute('onmousedown').includes(`, '${unit}')`));
-      if (!ag || !card) return { raison: `agenda=${Boolean(ag)} carte=${Boolean(card)}` };
-      const eligibles = [...document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]')]
-        .map(el => ({ el, t: Number(el.dataset.laserDropStart) }))
-        .filter(o => avoid.every(a => Math.abs(o.t - a) >= 1.0));
-      if (!eligibles.length) return { raison: `aucun slot vide a 1h des heures prises (${document.querySelectorAll('.laser-session-slot.is-empty[data-laser-drop-start]').length} vides au total)` };
-      // La plus proche de la carte : elles tiennent alors ensemble dans la vue.
-      const cible = eligibles
-        .map(o => ({ ...o, d: Math.abs(o.el.getBoundingClientRect().top - card.getBoundingClientRect().top) }))
-        .sort((a, b) => a.d - b.d)[0];
-      const hautBande = 150;
-      const basBande = window.innerHeight - 40;
-      const milieuVise = hautBande + (basBande - hautBande) / 2;
+    // LA BANDE OU LE POINTEUR NE FAIT RIEN DEFILER. Pendant un glisser, le
+    // planning defile seul a moins de 96 px du haut de son cadre et du haut de
+    // la file « À placer » (lpDefilerDemarrer) : groupe et cible s amenent
+    // entre les deux, le trajet de l un a l autre aussi.
+    const amener = (selecteur) => page.evaluate((selecteur) => {
+      const el = document.querySelector(selecteur);
+      const cadre = lpDefileur();
+      if (!el || !cadre) return { raison: `${selecteur} : ${el ? 'aucun cadre de defilement' : 'absent'}` };
+      const pageEntiere = cadre === document.scrollingElement || cadre === document.documentElement;
+      const r = pageEntiere ? { top: 0, bottom: innerHeight } : cadre.getBoundingClientRect();
+      const file = document.querySelector('#laserPlanningGridWrap .lp-file');
+      const haut = Math.max(0, r.top) + 96 + 12;
+      const bas = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity) - 96 - 12;
       for (let essai = 0; essai < 12; essai += 1) {
-        const bc = card.getBoundingClientRect();
-        const bs = cible.el.getBoundingClientRect();
-        const centre = ((bc.top + bc.height / 2) + (bs.top + bs.height / 2)) / 2;
-        const ecart = centre - milieuVise;
+        const b = el.getBoundingClientRect();
+        const ecart = (b.top + b.height / 2) - (haut + bas) / 2;
         if (Math.abs(ecart) <= 2) break;
-        ag.scrollTop += ecart;
+        cadre.scrollTop += ecart;
       }
-      const c = card.getBoundingClientRect();
-      const b = cible.el.getBoundingClientRect();
-      const dansLaBande = (r) => r.height > 4 && r.top > hautBande && r.bottom < basBande;
-      if (!dansLaBande(c) || !dansLaBande(b)) return { raison: `bande ${hautBande}-${Math.round(basBande)}, carte ${Math.round(c.top)}-${Math.round(c.bottom)}, cible ${Math.round(b.top)}-${Math.round(b.bottom)}, agenda defilable ${ag.scrollHeight}>${ag.clientHeight}` };
-      // DEPUIS LE 2026-10-05 (journaux 378 et 380), une partie lachee sur une
-      // ligne de 30 min prend l heure SOUS LE POINTEUR, a 5 min pres
-      // (laserTimeFromPoint) : au milieu de la ligne 18:30, c est 18:45. On lache
-      // donc 2 px sous le haut de la ligne, la ou l heure attendue est son debut.
-      const ligne = cible.el.closest('.laser-agenda-row[data-laser-time-start]') || cible.el;
-      const rl = ligne.getBoundingClientRect();
-      const debut = Number(ligne.dataset.laserTimeStart ?? cible.t);
-      return { card: { x: c.x + c.width/2, y: c.y + c.height/2 }, tgt: { x: b.x + b.width/2, y: rl.top + 2, t: debut } };
+      const b = el.getBoundingClientRect();
+      const y = b.top + b.height / 2;
+      if (!(b.height > 4 && y > haut && y < bas)) return { raison: `${selecteur} au centre ${Math.round(y)}, bande ${Math.round(haut)}-${Math.round(bas)}` };
+      return { x: b.left + Math.min(b.width / 2, 60), y, haut, bas };
+    }, selecteur);
+
+    // ON CHOISIT LA CIBLE : un depart vide, a une heure au moins des heures
+    // prises, le plus proche du groupe.
+    const choix = await page.evaluate((args) => {
+      const { unit, avoid } = args;
+      const groupe = document.querySelector(`#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9500"][data-laser-unit="${unit}"]`);
+      const vides = [...document.querySelectorAll('#laserPlanningGridWrap .lp-dep.is-vide[data-lp-t]')];
+      const eligibles = vides.map(el => ({ el, t: Number(el.dataset.lpT) })).filter(o => avoid.every(a => Math.abs(o.t - a) >= 1.0));
+      if (!groupe || !eligibles.length) return { raison: `legende=${Boolean(groupe)}, ${eligibles.length} depart(s) vide(s) a 1h des heures prises sur ${vides.length}` };
+      const cible = eligibles
+        .map(o => ({ t: o.t, d: Math.abs(o.el.getBoundingClientRect().top - groupe.getBoundingClientRect().top) }))
+        .sort((a, b) => a.d - b.d)[0];
+      return { t: cible.t };
     }, { unit: DRAG_UNIT, avoid: beforeReal.windows.map(w => w.start) });
-    if (!ok(Boolean(pos && pos.card), `carte ${DRAG_UNIT} + slot vide amenes dans la vue${pos && pos.raison ? ' :: ' + pos.raison : ''}`)) { throw new Error('setup drag introuvable'); }
+    const source = choix.t === undefined ? choix : await amener(`#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="9500"][data-laser-unit="${DRAG_UNIT}"]`);
+    if (!ok(Boolean(source && source.y), `legende ${DRAG_UNIT} amenee dans la vue, depart vide choisi (${choix.t !== undefined ? choix.t : '?'})${source && source.raison ? ' :: ' + source.raison : ''}`)) { throw new Error('setup drag introuvable'); }
 
     await page.evaluate(() => {
       window.__NOTICES__ = [];
       if (typeof showPlanningMoveNotice === 'function') { const orig = showPlanningMoveNotice; window.showPlanningMoveNotice = (a,b,c) => { window.__NOTICES__.push({ a, b, c }); return orig(a,b,c); }; }
       if (typeof toast === 'function') { const t = toast; window.toast = (m) => { window.__NOTICES__.push({ toast: m }); return t(m); }; }
     });
-    await page.mouse.move(pos.card.x, pos.card.y); await page.mouse.down();
-    await page.mouse.move(pos.card.x + 8, pos.card.y + 8, { steps: 2 });
-    await page.mouse.move(pos.tgt.x, pos.tgt.y, { steps: 10 }); await page.mouse.up();
+    // Saisir la vague : le planning passe en choix (la file grandit de la
+    // barre « Où placer »), puis la cible s amene dans la bande ainsi mesuree.
+    await page.mouse.move(source.x, source.y); await page.mouse.down();
+    await page.mouse.move(source.x + 8, source.y + 8, { steps: 2 });
+    const tgt = await amener(`#laserPlanningGridWrap .lp-dep[data-lp-t="${choix.t}"] .lp-dep__jauge`);
+    const permis = await page.evaluate((t) => ({ leve: Boolean(lpEtat.glisse), classes: (document.querySelector(`#laserPlanningGridWrap .lp-dep[data-lp-t="${t}"]`) || {}).className || '' }), choix.t);
+    if (!ok(Boolean(tgt && tgt.y) && permis.leve && /\bis-cible\b/.test(permis.classes), `MONTAGE : la vague est levee et le depart de ${choix.t} h l accepte (${permis.classes})${tgt && tgt.raison ? ' :: ' + tgt.raison : ''}`)) { await page.mouse.up(); throw new Error('cible introuvable'); }
+    await page.mouse.move(tgt.x, tgt.y, { steps: 10 }); await page.mouse.up();
+    await page.waitForFunction(() => !lpEtat.enCours && !lpEtat.glisse, null, { timeout: 8000 });
     await page.waitForTimeout(500);
-    const trace = await page.evaluate(() => ({ patches: (window.__QA_PATCHES__||[]).map(p => ({ laser: (p.opsPlan?.resourceBlocks||[]).filter(b=>b.resourceType==='laser_arena').map(b=>`${b.countIndex}.${b.groupWaveIndex||1}@${b.startTime}`) })), notices: window.__NOTICES__ || [] }));
+    const pos = { tgt: { t: choix.t } };
+    const trace = await page.evaluate(() => ({ patches: (window.__QA_PATCHES__||[]).map(p => ({ activityMove: p.activityMove || null })), notices: window.__NOTICES__ || [] }));
     console.log('TRACE dernier patch:', JSON.stringify(trace.patches.slice(-1)));
     console.log('TRACE notices:', JSON.stringify(trace.notices));
 

@@ -20,6 +20,10 @@ function preserved(before,after,unit){
       api.setStored(fixture);api.setOther([]);
       const mobile=type==='custom_request';const context=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},hasTouch:mobile});
       const page=await context.newPage(),errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));
+      // La page vit la veille de la fixture (datee 2026-10-10 en dur) : a l heure
+      // reelle, le groupe passerait aujourd hui, puis dans un jour passe. Le gate
+      // ne fait que toucher et cliquer, une heure figee ne bloque aucun geste.
+      await page.clock.setFixedTime(new Date('2026-10-09T12:00:00'));
       await page.exposeFunction('__qaReadReservation',()=>api.getStored());
       await page.exposeFunction('__qaPatchActivity',async body=>{requests.push(body);return body.activityMove?api.call(body.activityMove,{id:body.id,centerId:body.centerId,baseUpdatedAt:body.baseUpdatedAt}):api.call(undefined,body);});
       await installMock(page);await page.addInitScript(()=>{const old=window.fetch;window.fetch=async(input,init={})=>{const u=new URL(typeof input==='string'?input:input.url,location.origin),method=init.method||'GET';
@@ -28,11 +32,18 @@ function preserved(before,after,unit){
         if(!['GET','HEAD'].includes(method))return new Response('{}',{status:503});return old(input,init);};});
       await page.goto('http://127.0.0.1:'+process.env.PINLANE_CAPACITY_PORT+'/',{waitUntil:'networkidle'});
       await page.evaluate(async()=>{await ensureStaffConsolesLoaded();const r=await window.__qaReadReservation();state.currentDate=r.date;state.reservations=[r];state.adminCenterId=r.centerId;state.staffMenuPage='planning';state.staffResourceView='laser';setView('staff');await loadStaffCenterConfig(true);renderStaff();});
-      const card=page.locator('.laser-group-card[data-laser-res-id="99001"]').first();await card.scrollIntoViewIfNeeded();if(mobile)await card.tap();else await card.click();
-      check(await page.evaluate(()=>state.activeTab==='details'),'Laser card opens Infos '+type);
-      await page.evaluate(()=>closePos());await card.focus();await page.keyboard.press('Enter');check(await page.evaluate(()=>state.activeTab==='details'),'keyboard opens Infos '+type);
+      // Le planning Laser de la maquette E : un groupe du jour est un bouton de
+      // son depart (.lp-g), ou de la carte du prochain depart (.lp-groupe__sel)
+      // le jour meme ; les departs joues se replient, on les rouvre d abord.
+      await page.waitForSelector('#laserPlanningGridWrap .lp-dep',{timeout:10000});
+      if(await page.locator('#laserPlanningGridWrap .lp-passe[aria-expanded="false"]').count())await page.locator('#laserPlanningGridWrap .lp-passe').click();
+      const card=page.locator('#laserPlanningGridWrap :is(.lp-g, .lp-groupe__sel)[data-laser-res-id="99001"]').first();await card.scrollIntoViewIfNeeded();if(mobile)await card.tap();else await card.click();
+      check(await page.evaluate(()=>state.selectedRes?.id===99001&&state.activeTab==='details'),'Laser card opens Infos '+type);
+      await page.evaluate(()=>closePos());await card.focus();await page.keyboard.press('Enter');check(await page.evaluate(()=>state.selectedRes?.id===99001&&state.activeTab==='details'),'keyboard opens Infos '+type);
       check(await page.locator('.dossier-tabs').isVisible(),'keyboard opens actual reservation sheet '+type);
-      await page.evaluate(async()=>{closePos();await unscheduleLaserPass(99001,'2.1');});const pending=page.locator('.laser-pass-card[data-laser-res-id="99001"]').first();await pending.click();check(await page.evaluate(()=>state.selectedRes?.id===99001&&state.activeTab==='details'),'pending part opens Infos '+type);
+      // Une partie a placer se choisit au toucher (lpChoisir) : sa fiche s ouvre
+      // par le bouton « Fiche » de la barre de placement.
+      await page.evaluate(async()=>{closePos();await unscheduleLaserPass(99001,'2.1');});const pending=page.locator('#laserPlanningGridWrap .lp-jeton[data-laser-res-id="99001"]').first();await pending.click();await page.locator('#laserPlanningGridWrap .lp-placer button').filter({hasText:/^Fiche$/}).click();check(await page.evaluate(()=>state.selectedRes?.id===99001&&state.activeTab==='details'),'pending part opens Infos '+type);
       await page.locator('.dossier-tabs .tab').filter({hasText:'Modifier'}).click();
       check(await page.locator('.dossier-laser-editor').isVisible(),'direct Laser section '+type);
       check(await page.locator('.dossier-laser-unit').count()>=2,'each part listed '+type);

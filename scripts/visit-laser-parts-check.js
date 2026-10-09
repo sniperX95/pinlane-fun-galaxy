@@ -138,6 +138,12 @@ srv.listen(PORT, '127.0.0.1', async () => {
     window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(qaSession));
   }, { expiresAt, FORMULES });
 
+  // L HORLOGE DE LA PAGE EST FIGEE A 09:00 du jour du centre : le planning
+  // Laser replie les departs joues et sort le prochain de la liste, la partie
+  // placee a 16:30 n y serait plus le soir (ni a 16:10, dans la carte du
+  // prochain depart). La fixture prend ce jour-la, la page aussi.
+  const jourCentre = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  await pg.clock.setFixedTime(new Date(`${jourCentre}T09:00:00`));
   await pg.goto('http://127.0.0.1:' + PORT + '/?v=' + Date.now(), { waitUntil: 'networkidle' });
   await pg.waitForFunction(() => typeof window.setView === 'function');
   await pg.evaluate(() => window.setView('staff'));
@@ -176,28 +182,34 @@ srv.listen(PORT, '127.0.0.1', async () => {
 
   // -- [3] CE QUI EST DESSINE SUR LE PLANNING LASER ---------------------------
   console.log('\n[3] Le planning laser l ecrit a l ecran');
+  // Le planning de la maquette E : la file « À placer » en bas (un jeton par
+  // partie qui attend, son compte en pastille), chaque partie posee dans le
+  // rang de son depart (sa legende et ses cases, une par joueur).
   await pg.evaluate(() => openStaffPlanningResource('laser'));
-  await pg.waitForSelector('.laser-pass-queue, .laser-group-card', { timeout: 20000 });
+  await pg.waitForSelector('#laserPlanningGridWrap .lp-dep', { timeout: 20000 });
   const ecran = await pg.evaluate(() => {
-    const cartes = [...document.querySelectorAll('.laser-pass-card')].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
-    const groupes = [...document.querySelectorAll('.laser-group-card')].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
+    const wrap = document.getElementById('laserPlanningGridWrap');
+    const rang = wrap.querySelector('.lp-dep[data-lp-t="16.5"]');
+    const placee = rang && rang.querySelector('.lp-g[data-laser-res-id="4101"][data-laser-unit="1.1"]');
     return {
-      cartesEnAttente: cartes,
-      groupes,
-      entete: (document.querySelector('.laser-pass-queue-copy strong') || {}).textContent || '',
+      jetons: [...wrap.querySelectorAll('.lp-file .lp-jeton')].map((n) => ({ id: Number(n.dataset.laserResId), unite: n.dataset.laserUnit, texte: n.textContent.replace(/\s+/g, ' ').trim() })),
+      compte: ((wrap.querySelector('.lp-file .lp-file__n') || {}).textContent || '').trim(),
+      placee: placee ? placee.title : '',
+      cases: rang ? rang.querySelectorAll('.lp-cases i[data-lp-id="4101"][data-lp-unit="1.1"]').length : 0,
     };
   });
-  const attente4101 = ecran.cartesEnAttente.filter((t) => /VISITE 3 PARTIES/.test(t));
-  ok(attente4101.length === 2, `2 cartes « a placer » pour la visite (${attente4101.length}) : ${JSON.stringify(attente4101)}`);
-  ok(attente4101.some((t) => /Partie 2\/3/.test(t)) && attente4101.some((t) => /Partie 3\/3/.test(t)),
-    'les cartes disent QUELLE partie attend (2/3 et 3/3)');
-  // L entete annonce le compte REEL de la journee (toutes reservations
+  const attente4101 = ecran.jetons.filter((j) => /VISITE 3 PARTIES/.test(j.texte));
+  ok(attente4101.length === 2 && attente4101.every((j) => j.id === 4101), `2 parties « a placer » pour la visite dans la file (${attente4101.length}) : ${JSON.stringify(attente4101.map((j) => j.texte))}`);
+  ok(attente4101.some((j) => j.unite === '2.1' && /2e partie/.test(j.texte)) && attente4101.some((j) => j.unite === '3.1' && /3e partie/.test(j.texte)),
+    'les jetons disent QUELLE partie attend (2e et 3e partie)');
+  // La pastille annonce le compte REEL de la journee (toutes reservations
   // confondues), pas un nombre choisi a la main : on le compare a la source.
   const attendues = await pg.evaluate(() => getPendingLaserPasses(state.currentDate).length);
-  ok(ecran.entete.includes(String(attendues)),
-    `l entete de la file annonce le compte du jour (${JSON.stringify(ecran.entete)} pour ${attendues} en attente)`);
-  const groupe4101 = ecran.groupes.find((t) => /VISITE 3 PARTIES/.test(t)) || '';
-  ok(/P1\/3|Partie 1\/3/.test(groupe4101), `la session placee est nommee « partie 1/3 » (${JSON.stringify(groupe4101.slice(0, 120))})`);
+  ok(attendues > 0 && ecran.compte === String(attendues),
+    `la pastille de la file annonce le compte du jour (${JSON.stringify(ecran.compte)} pour ${attendues} en attente)`);
+  // La 1re partie ne porte pas de rang (« 2e partie » n apparait qu a partir
+  // de la deuxieme) : la partie posee se reconnait a son depart et a ses cases.
+  ok(/^VISITE 3 PARTIES : 8 joueurs\b/.test(ecran.placee) && ecran.cases === 8, `la partie placee est dessinee a 16:30 : sa legende et ses 8 cases (${JSON.stringify(ecran.placee.slice(0, 80))}, ${ecran.cases} cases)`);
 
   // -- [3bis] LES PARTIES CHOISIES PAR LE CLIENT SONT TOUTES DESSINEES --------
   console.log('\n[3bis] Le client a pose les parties 1 et 3 : les deux se dessinent');

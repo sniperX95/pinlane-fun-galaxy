@@ -193,10 +193,10 @@ async function recharger(page) {
   }, JOUR);
   let pret = false;
   for (let essai = 0; essai < 8 && !pret; essai += 1) {
-    pret = await page.evaluate(() => { const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda'); return Boolean(ag) && ag.getBoundingClientRect().height > 100; });
+    pret = await page.evaluate(() => { const wrap = document.querySelector('.laser-planning-box.expanded #laserPlanningGridWrap'); return Boolean(wrap && wrap.querySelector('.lp .lp-dep')) && wrap.getBoundingClientRect().height > 100; });
     if (!pret) { await page.evaluate(() => { state.staffResourceView = 'laser'; state.staffLaserPlanningExpanded = true; renderStaff(); }); await page.waitForTimeout(300); }
   }
-  assert.ok(pret, 'agenda laser rendu et mesurable');
+  assert.ok(pret, 'planning laser (un rang par depart) rendu et mesurable');
 }
 
 // Les fenetres laser d un dossier telles que la console les PROJETTE.
@@ -210,43 +210,71 @@ const fenetresBase = async (page, id) => {
   return page.evaluate((row) => getLaserWindowsFromReservation(row).map((w) => ({ unit: laserBlockUnitKey(w), start: Number(w.start), startTime: numToTime(Number(w.start)) })).sort((a, b) => a.start - b.start), row);
 };
 
-// Glisser une unite (carte posee ou carte de la file) jusqu au DEBUT d une rangee.
-async function glisser(page, { id, unit, vers, enFile = false }) {
-  const pos = await page.evaluate(({ id, unit, vers, enFile }) => {
-    const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');
-    const carte = document.querySelector(`${enFile ? '.laser-pass-card' : '.laser-group-card'}[data-laser-res-id="${id}"][data-laser-unit="${unit}"]`);
-    const ligne = document.querySelector(`.laser-agenda-row[data-laser-time-start="${vers}"]`);
-    if (!ag || !carte || !ligne) {
-      const r = state.reservations.find((x) => Number(x.id) === Number(id));
-      const file = [...document.querySelectorAll('.laser-pass-card')].map((el) => `${el.dataset.laserResId}/${el.dataset.laserUnit}`);
-      const attente = r ? getPendingLaserPassesForReservation(r).map((p) => p.unitKey) : null;
-      return { raison: `agenda=${Boolean(ag)} carte=${Boolean(carte)} ligne=${Boolean(ligne)} ; file=${JSON.stringify(file)} ; attente=${JSON.stringify(attente)} ; plan=${JSON.stringify(r?.opsPlan?.laserPassPlan)} ; blocs=${JSON.stringify((r?.opsPlan?.resourceBlocks || []).filter((b) => b.resourceType === 'laser_arena').map((b) => [b.countIndex, b.groupWaveIndex, b.startTime, b.manualLaserPass]))}` };
-    }
-    const haut = 150, bas = window.innerHeight - 40, milieu = haut + (bas - haut) / 2;
-    const scroller = enFile ? null : ag;
-    for (let essai = 0; essai < 14 && scroller; essai += 1) {
-      const bc = carte.getBoundingClientRect(), bl = ligne.getBoundingClientRect();
-      const centre = ((bc.top + bc.height / 2) + (bl.top + bl.height / 2)) / 2;
-      const ecart = centre - milieu;
+// Amene un element du planning Laser (maquette E) dans la bande ou le pointeur
+// ne fait rien defiler : pendant un glisser, le planning defile seul a moins
+// de 96 px du haut de son cadre et du haut de la file « À placer »
+// (lpDefilerDemarrer). Rend le point a viser, ou la raison.
+function amener(page, selecteur) {
+  return page.evaluate((selecteur) => {
+    const el = document.querySelector(selecteur);
+    const cadre = lpDefileur();
+    if (!el || !cadre) return { raison: `${selecteur} : ${el ? 'aucun cadre de defilement' : 'absent'}` };
+    const pageEntiere = cadre === document.scrollingElement || cadre === document.documentElement;
+    const r = pageEntiere ? { top: 0, bottom: innerHeight } : cadre.getBoundingClientRect();
+    const file = document.querySelector('#laserPlanningGridWrap .lp-file');
+    const haut = Math.max(0, r.top) + 96 + 12;
+    const bas = Math.min(innerHeight, r.bottom, file ? file.getBoundingClientRect().top : Infinity) - 96 - 12;
+    for (let essai = 0; essai < 14; essai += 1) {
+      const b = el.getBoundingClientRect();
+      const ecart = (b.top + b.height / 2) - (haut + bas) / 2;
       if (Math.abs(ecart) <= 2) break;
-      scroller.scrollTop += ecart;
+      cadre.scrollTop += ecart;
     }
-    if (enFile) { ligne.scrollIntoView({ block: 'center' }); carte.scrollIntoView({ block: 'nearest' }); }
-    const c = carte.getBoundingClientRect(), l = ligne.getBoundingClientRect();
-    const visible = (r) => r.height > 4 && r.top > haut && r.bottom < bas;
-    if (!visible(c) || !visible(l)) return { raison: `carte ${Math.round(c.top)}-${Math.round(c.bottom)}, ligne ${Math.round(l.top)}-${Math.round(l.bottom)}, fenetre ${window.innerHeight}` };
-    return { carte: { x: c.x + c.width / 2, y: c.y + c.height / 2 }, cible: { x: l.x + Math.min(l.width - 40, l.width * 0.45), y: l.top + 2 } };
-  }, { id, unit, vers, enFile });
-  assert.ok(pos && pos.carte, `carte ${id}/${unit} et rangee ${vers} visibles ensemble${pos && pos.raison ? ' :: ' + pos.raison : ''}`);
+    const b = el.getBoundingClientRect();
+    const y = b.top + b.height / 2;
+    if (!(b.height > 4 && y > haut && y < bas)) return { raison: `${selecteur} au centre ${Math.round(y)}, bande ${Math.round(haut)}-${Math.round(bas)}, fenetre ${innerHeight}` };
+    return { x: b.left + Math.min(b.width / 2, 60), y };
+  }, selecteur);
+}
+
+// Glisser une unite (groupe pose dans son depart, ou jeton de la file « À
+// placer ») jusqu au rang d un depart. Saisie, l unite fait passer le planning
+// en choix (la file grandit de sa barre) : la cible s amene ensuite dans la
+// bande. Un jeton se saisit dans la file, et le pointeur y saute d un coup
+// vers sa cible : la bande au-dessus de la file ferait defiler au passage.
+async function glisser(page, { id, unit, vers, enFile = false }) {
+  const selecteur = enFile
+    ? `#laserPlanningGridWrap .lp-file .lp-jeton[data-laser-res-id="${id}"][data-laser-unit="${unit}"]`
+    : `#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="${id}"][data-laser-unit="${unit}"]`;
+  const source = enFile
+    ? await page.evaluate((selecteur) => { const j = document.querySelector(selecteur); if (!j) return null; j.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const b = j.getBoundingClientRect(); return b.height > 4 && b.top >= 0 && b.bottom <= innerHeight ? { x: b.left + b.width / 2, y: b.top + b.height / 2 } : { raison: `jeton ${Math.round(b.top)}-${Math.round(b.bottom)}, fenetre ${innerHeight}` }; }, selecteur)
+    : await amener(page, selecteur);
+  if (!(source && source.y)) {
+    const etat = await page.evaluate((id) => {
+      const r = state.reservations.find((x) => Number(x.id) === Number(id));
+      const file = [...document.querySelectorAll('#laserPlanningGridWrap .lp-jeton')].map((el) => `${el.dataset.laserResId}/${el.dataset.laserUnit}`);
+      const attente = r ? getPendingLaserPassesForReservation(r).map((p) => p.unitKey) : null;
+      return `file=${JSON.stringify(file)} ; attente=${JSON.stringify(attente)} ; plan=${JSON.stringify(r?.opsPlan?.laserPassPlan)} ; blocs=${JSON.stringify((r?.opsPlan?.resourceBlocks || []).filter((b) => b.resourceType === 'laser_arena').map((b) => [b.countIndex, b.groupWaveIndex, b.startTime, b.manualLaserPass]))}`;
+    }, id);
+    assert.fail(`groupe ${id}/${unit} a l ecran${source && source.raison ? ' :: ' + source.raison : ''} :: ${etat}`);
+  }
   await page.evaluate(() => { window.__NOTICES__ = []; });
   const avant = requetes.length;
-  await page.mouse.move(pos.carte.x, pos.carte.y); await page.mouse.down();
-  await page.mouse.move(pos.carte.x + 8, pos.carte.y + 8, { steps: 2 });
-  await page.mouse.move(pos.cible.x, pos.cible.y, { steps: 12 }); await page.mouse.up();
+  await page.mouse.move(source.x, source.y); await page.mouse.down();
+  await page.mouse.move(source.x + 8, source.y + (enFile ? 0 : 8), { steps: 2 });
+  const cible = await amener(page, `#laserPlanningGridWrap .lp-dep[data-lp-t="${vers}"] .lp-dep__jauge`);
+  const leve = await page.evaluate((vers) => ({ glisse: Boolean(lpEtat.glisse), classes: (document.querySelector(`#laserPlanningGridWrap .lp-dep[data-lp-t="${vers}"]`) || {}).className || '' }), vers);
+  if (!(cible && cible.y) || !leve.glisse) { await page.mouse.up(); assert.fail(`groupe ${id}/${unit} leve et rang ${vers} dans la vue (leve ${leve.glisse})${cible && cible.raison ? ' :: ' + cible.raison : ''}`); }
+  await page.mouse.move(cible.x, cible.y, { steps: enFile ? 1 : 12 }); await page.mouse.up();
   // La reponse du serveur et son traitement : on attend que plus rien ne soit en vol.
-  await page.waitForFunction(() => !planningMoveSelection?.saving && !laserPointerDrag, null, { timeout: 8000 });
+  await page.waitForFunction(() => !lpEtat.enCours && !lpEtat.glisse && !lpEtat.geste, null, { timeout: 8000 });
   await page.waitForTimeout(400);
-  return { requetes: requetes.slice(avant), notices: await page.evaluate(() => window.__NOTICES__.slice()) };
+  return {
+    requetes: requetes.slice(avant),
+    notices: await page.evaluate(() => window.__NOTICES__.slice()),
+    classes: leve.classes,
+    raisons: await page.evaluate(() => [...document.querySelectorAll('#laserPlanningGridWrap .lp-placer.is-raison .lp-placer__t')].map((e) => e.textContent.replace(/\s+/g, ' ').trim())),
+  };
 }
 
 const succes = (notices) => notices.filter((n) => (n.toast && /plac/i.test(n.toast)) || n.tone === 'success');
@@ -259,7 +287,7 @@ async function verifierDeplacement(page, { id, unit, vers, label, enFile = false
   const resultat = await glisser(page, { id, unit, vers, enFile });
   const apresBase = await fenetresBase(page, id);
   const uniteBase = apresBase.find((w) => w.unit === unit);
-  console.log(`   ${label} :: base avant ${JSON.stringify(avantBase)} -> apres ${JSON.stringify(apresBase)} ; notices ${JSON.stringify(resultat.notices)}`);
+  console.log(`   ${label} :: base avant ${JSON.stringify(avantBase)} -> apres ${JSON.stringify(apresBase)} ; notices ${JSON.stringify(resultat.notices)} ; rang vise ${resultat.classes}`);
   check(resultat.requetes.length === 1 && resultat.requetes[0].activityMove?.unitKey === unit && resultat.requetes[0].activityMove?.startTime === numToTime(vers), `${label} : UNE requete ciblee ${unit} -> ${numToTime(vers)}`);
   check(uniteBase && Math.abs(uniteBase.start - vers) < 0.001, `${label} : la base porte ${unit} a ${numToTime(vers)} (lu ${uniteBase ? uniteBase.startTime : 'absente'})`);
   for (const autre of avantBase.filter((w) => w.unit !== unit)) {
@@ -396,8 +424,8 @@ async function main() {
     await verifierDeplacement(page, { id: 7102, unit: '1.1', vers: 20, label: 'laser direct ancien, partie 1', autres: [7101] });
     //    puis sa partie 2, depuis la file « Parties a placer » -> 21:00.
     await verifierDeplacement(page, { id: 7102, unit: '2.1', vers: 21, label: 'laser direct ancien, partie 2 en file', enFile: true, autres: [7101] });
-    // 3. Grand groupe : la vague 2 seule -> 18:30 (la vague 1 reste). Les cibles
-    //    restent a moins de trois heures de la carte : la souris ne defile pas.
+    // 3. Grand groupe : la vague 2 seule -> 18:30 (la vague 1 reste). La cible
+    //    s amene dans la vue une fois la vague saisie : la souris ne defile pas.
     const vagues = await fenetres(page, 7103);
     check(vagues.length === 2 && vagues.every((w) => w.unit.startsWith('1.')), `le grand groupe a deux vagues (${JSON.stringify(vagues)})`);
     await verifierDeplacement(page, { id: 7103, unit: '1.2', vers: 18.5, label: 'grand groupe, vague 2', autres: [7101, 7102] });
@@ -417,16 +445,21 @@ async function main() {
     const avantRefus = await fenetresBase(page, 7101);
     const ecritures = requetes.length;
     const r = await glisser(page, { id: 7101, unit: '1.1', vers: 17.5 });
-    console.log(`   refus :: notices ${JSON.stringify(r.notices)}`);
+    console.log(`   refus :: notices ${JSON.stringify(r.notices)} ; barre ${JSON.stringify(r.raisons)} ; rang vise ${r.classes}`);
     check(succes(r.notices).length === 0, 'refus : aucun message de succes');
-    check(refus(r.notices).length === 1, 'refus : UN message');
-    const texte = refus(r.notices)[0] || {};
-    check(mots(`${texte.title || ''} ${texte.message || texte.toast || ''}`) <= 16, `refus : court (${mots(`${texte.title || ''} ${texte.message || texte.toast || ''}`)} mots) : « ${texte.title || ''} · ${texte.message || texte.toast || ''} »`);
-    check(/complet|plein|arme|joueur/i.test(`${texte.title || ''} ${texte.message || texte.toast || ''}`), 'refus : il dit pourquoi (capacite)');
+    // Le planning de la maquette E refuse AVANT le serveur, avec ses regles
+    // (lpVerdict) : la raison s ecrit dans la barre de placement, rien ne part.
+    check(r.requetes.length === 0 && requetes.length === ecritures, `refus : aucune requete au serveur (${requetes.length - ecritures})`);
+    check(r.raisons.length === 1 && refus(r.notices).length === 0, 'refus : UN message, dans la barre de placement');
+    const texte = r.raisons[0] || '';
+    check(mots(texte) <= 16, `refus : court (${mots(texte)} mots) : « ${texte} »`);
+    check(/place|complet/i.test(texte), 'refus : il dit pourquoi (capacite)');
     assert.deepEqual(await fenetresBase(page, 7101), avantRefus); checks += 1; console.log('OK refus : la base est inchangee');
     const relu = (await fenetres(page, 7101)).find((w) => w.unit === '1.1');
     check(relu && Math.abs(relu.start - avantRefus.find((w) => w.unit === '1.1').start) < 0.001, 'refus : la carte reste a son heure a l ecran');
-    console.log(`   refus :: ${requetes.length - ecritures} requete(s) serveur`);
+    // Le groupe reste pris apres un refus : « Annuler » rend la main, sans rien envoyer.
+    await page.locator('#laserPlanningGridWrap .lp-placer button').filter({ hasText: /^Annuler$/ }).click();
+    check(await page.evaluate(() => !lpEtat.choisi && !document.querySelector('#laserPlanningGridWrap .lp.is-choix')) && requetes.length === ecritures, 'refus : « Annuler » rend la main sans rien envoyer');
 
     // 7. CONTRE-EPREUVE DU SUCCES : un 200 qui ne prouve pas le nouvel horaire
     //    n est pas un succes. Le serveur repond oui sans rien ecrire ; la

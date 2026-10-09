@@ -137,6 +137,25 @@ async function applyMode(page, mode, resourceView) {
   await page.waitForTimeout(250);
 }
 
+// Ce que le planning Laser montre de la capacite : les cases de chaque jauge,
+// la variable qui dessine sa grille (et les colonnes qu elle donne vraiment),
+// les places annoncees par un depart sans personne.
+function lireCapaciteLaser(page) {
+  return page.evaluate(() => {
+    const lp = document.querySelector('#laserPlanningGridWrap > .lp');
+    const departs = [...document.querySelectorAll('#laserPlanningGridWrap .lp-dep')];
+    const vide = departs.find((d) => (d.querySelector('.lp-dep__n b') || {}).textContent === '0');
+    const jauge = document.querySelector('#laserPlanningGridWrap .lp-dep .lp-cases');
+    return {
+      departs: departs.length,
+      cases: departs.map((d) => d.querySelectorAll('.lp-cases > i').length),
+      variable: lp ? lp.style.getPropertyValue('--lp-cases').trim() : '',
+      colonnes: jauge ? getComputedStyle(jauge).gridTemplateColumns.split(' ').filter(Boolean).length : 0,
+      vide: vide ? (vide.querySelector('.lp-dep__n small') || {}).textContent.trim() : null,
+    };
+  });
+}
+
 async function main() {
   const server = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -156,10 +175,16 @@ async function main() {
     ok(confLanes === 6, `le planning rend 6 lignes de piste (obtenu ${confLanes})`);
     ok(confDrop === 6, `6 pistes distinctes cibles de drop (obtenu ${confDrop}) : capacite reduite reflete la config`);
 
+    // LA CAPACITE LASER SE VOIT DANS LA JAUGE (planning de la maquette E,
+    // 2026-10-08) : le sous-titre ne dit plus « N armes » (lpSousTitre compte
+    // departs et joueurs). Chaque depart a une case par arme du centre, la
+    // grille de la jauge suit --lp-cases, et un depart vide annonce ses places.
     await applyMode(page, 'configured', 'laser');
-    const confLaser = await page.evaluate(() => (document.getElementById('laserPlanningSub')?.textContent || ''));
-    ok(/12\s*armes/.test(confLaser), `capacite laser du planning reflete la config (12 armes) : "${confLaser.trim()}"`);
-    ok(!/30\s*armes/.test(confLaser), 'la capacite laser n est plus la constante 30 en dur');
+    const confLaser = await lireCapaciteLaser(page);
+    ok(confLaser.departs > 0 && confLaser.vide !== null, `MONTAGE : le planning laser est rendu, avec un depart vide (${confLaser.departs} departs)`);
+    ok(confLaser.cases.length > 0 && confLaser.cases.every((n) => n === 12) && confLaser.variable === '12' && confLaser.colonnes === 12, `capacite laser du planning reflete la config : 12 cases par depart, une par arme (${JSON.stringify({ cases: [...new Set(confLaser.cases)], variable: confLaser.variable, colonnes: confLaser.colonnes })})`);
+    ok(confLaser.vide === '12 places', `un depart vide annonce les 12 places du centre : "${confLaser.vide}"`);
+    ok(!confLaser.cases.some((n) => n === 30), 'la capacite laser n est plus la constante 30 en dur');
 
     // --- Scenario REPLI : aucune config -> constantes 8 / 30 ---
     console.log('\n[1b] Aucune config -> repli sur les constantes (8 pistes / 30 armes)');
@@ -168,13 +193,13 @@ async function main() {
     ok(fbLanes === 8, `repli: 8 lignes de piste comme la constante TOTAL_LANES (obtenu ${fbLanes})`);
 
     await applyMode(page, 'empty', 'laser');
-    const fbLaser = await page.evaluate(() => (document.getElementById('laserPlanningSub')?.textContent || ''));
-    ok(/30\s*armes/.test(fbLaser), `repli: capacite laser = constante 30 armes (obtenu "${fbLaser.trim()}")`);
+    const fbLaser = await lireCapaciteLaser(page);
+    ok(fbLaser.cases.length > 0 && fbLaser.cases.every((n) => n === 30) && fbLaser.variable === '30' && fbLaser.colonnes === 30 && fbLaser.vide === '30 places', `repli: capacite laser = constante 30 armes, 30 cases par depart (${JSON.stringify({ cases: [...new Set(fbLaser.cases)], variable: fbLaser.variable, colonnes: fbLaser.colonnes, vide: fbLaser.vide })})`);
 
     // --- Contre-preuve : la valeur vient de la config, pas d un 6 code en dur ---
     console.log('\n[1c] Contre-preuve : configure (6/12) != repli (8/30)');
     ok(confLanes !== fbLanes, `pistes: configure ${confLanes} != repli ${fbLanes} (la valeur suit la config)`);
-    ok(!/12\s*armes/.test(fbLaser), 'armes: le repli ne montre pas 12 (la valeur suit la config)');
+    ok(confLaser.cases[0] !== fbLaser.cases[0] && fbLaser.vide !== '12 places', `armes: configure ${confLaser.cases[0]} cases != repli ${fbLaser.cases[0]} (la valeur suit la config)`);
 
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); failures += errs.length; }
   } catch (e) {

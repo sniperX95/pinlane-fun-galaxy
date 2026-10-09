@@ -242,7 +242,9 @@ async function scenarios(browser, mutation = null) {
     const { ctx, page, erreurs } = await ouvrir(browser, { mutation });
     try {
       const heures = await page.$$eval('#laserPlanningGridWrap .lp-dep', (r) => r.map(x => Number(x.dataset.lpT)));
-      ok(heures[0] === 16 && heures[heures.length - 1] === 21.5 && heures.length === 12, '[A] un rang par depart apres le prochain (16:00 a 21:30)', heures.join(','));
+      const aVenir = heures.filter(t => t >= 15.5);
+      ok(aVenir[0] === 15.5 && aVenir[aVenir.length - 1] === 21.5 && aVenir.length === 13, '[A] un rang par depart, prochain compris (15:30 a 21:30)', heures.join(','));
+      ok(heures.includes(10) && heures.includes(10.5) && heures.includes(15), '[A] toute la grille passee est visible sans action, meme 10:00 vide', heures.join(','));
       const r16 = await lireRang(page, 16);
       ok(r16 && r16.cases === 30, '[A] la jauge a les 30 cases du centre', String(r16 && r16.cases));
       ok(r16 && r16.pleines === 18 && r16.compte === '18' && /12 places/.test(r16.places), '[A] 16:00 : 18 joueurs, 12 places', JSON.stringify(r16 && { p: r16.pleines, c: r16.compte, l: r16.places }));
@@ -265,11 +267,13 @@ async function scenarios(browser, mutation = null) {
       const r18 = await lireRang(page, 18);
       ok(r18 && /Libre/.test(r18.libre) && r18.compte === '0' && /30 places/.test(r18.places), '[A] un depart vide dit « Libre » et 30 places', JSON.stringify(r18 && { l: r18.libre, c: r18.compte, p: r18.places }));
       const tete = await page.textContent('#laserPlanningGridWrap .lp-passe');
-      ok(/6 départs joués · Afficher/.test(tete || ''), '[A] les departs joues sont replies', tete);
+      ok(/6 départs joués · Masquer/.test(tete || ''), '[A] les departs joues sont ouverts par defaut', tete);
+      await page.click('#laserPlanningGridWrap .lp-passe');
+      const replies = await page.$$eval('#laserPlanningGridWrap .lp-dep', (r) => r.map(x => Number(x.dataset.lpT)));
+      ok(replies.every(t => t >= 15.5) && replies.length === 13, '[A] Masquer replie les departs passes pour cette journee', replies.join(','));
       await page.click('#laserPlanningGridWrap .lp-passe');
       const rouverts = await page.$$eval('#laserPlanningGridWrap .lp-dep', (r) => r.map(x => Number(x.dataset.lpT)));
-      ok(rouverts.includes(10.5) && rouverts.includes(15) && !rouverts.includes(10) && !rouverts.includes(15.5), '[A] « Afficher » rouvre les departs joues qui ont eu des groupes', rouverts.join(','));
-      await page.click('#laserPlanningGridWrap .lp-passe');
+      ok(rouverts.includes(10) && rouverts.includes(10.5) && rouverts.includes(15) && rouverts.includes(15.5), '[A] « Afficher » rouvre toute la grille passee, vide ou occupee', rouverts.join(','));
 
       const prochain = await page.textContent('#laserPlanningGridWrap .lp-prochain');
       ok(/15:30/.test(prochain) && /briefing dans 10 min/.test(prochain) && /30\s*armes à préparer/.test(prochain) && !/gilet/i.test(prochain), '[B] le prochain depart : 15:30, briefing dans 10 min, 30 armes', prochain.replace(/\s+/g, ' ').slice(0, 120));
@@ -302,7 +306,7 @@ async function scenarios(browser, mutation = null) {
       const r16 = await lireRang(page, 16);
       ok(r16 && /is-cible/.test(r16.classes) && r16.fantomes === 5 && r16.compte === '23', '[D] un depart possible s allume avec les 5 cases et « 23 apres »', JSON.stringify(r16 && { c: r16.classes, f: r16.fantomes, n: r16.compte }));
       const r1530 = await lireRang(page, 15.5);
-      ok(r1530 && /is-terne/.test(r1530.classes), '[D] le prochain depart revient pendant le choix, plein donc terni', JSON.stringify(r1530 && r1530.classes));
+      ok(r1530 && /is-terne/.test(r1530.classes), '[D] le prochain depart reste visible pendant le choix, plein donc terni', JSON.stringify(r1530 && r1530.classes));
       await rang(page, 15.5).click();
       const raison = await page.textContent('#laserPlanningGridWrap .lp-placer');
       ok(/15:30/.test(raison) && /complet/.test(raison), '[D] toucher un depart plein dit pourquoi', raison.replace(/\s+/g, ' '));

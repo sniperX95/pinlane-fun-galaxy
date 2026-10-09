@@ -20918,15 +20918,17 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 @media (prefers-reduced-motion: reduce) { .lp .is-called { animation: none; } }
 
 /* LE PROCHAIN DEPART : la carte bleue, ce que l operateur prepare. */
-/* UNE LIGNE (2026-10-08, « haut compact ») : quand | ses groupes | armes. */
-.lp-prochain { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "quand groupes armes"; align-items: center; column-gap: 20px; row-gap: 10px; min-height: 64px; background: var(--lp-bleu); color: #fff; border-radius: 16px; padding: 10px 12px 10px 18px; box-shadow: var(--lp-ombre-bleue); }
-.lp-prochain__quand { grid-area: quand; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+/* Deux resumes compacts cote a cote ; les groupes restent sous leur depart. */
+.lp-synthese { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; align-items: start; min-width: 0; }
+.lp-prochain { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "quand armes"; align-items: center; column-gap: 12px; row-gap: 8px; min-width: 0; min-height: 48px; background: var(--lp-bleu); color: #fff; border-radius: 12px; padding: 8px 12px; box-shadow: var(--lp-ombre-bleue); }
+.lp-prochain:has(.lp-groupes) { grid-template-areas: "quand armes" "groupes groupes"; }
+.lp-prochain__quand { grid-area: quand; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
 .lp-prochain__quand .lp-lbl { font-size: 11px; opacity: .85; }
-.lp-prochain__t { font-size: 28px; line-height: 1; font-weight: 750; letter-spacing: -.02em; }
-.lp-prochain__d { font-size: 14px; opacity: .92; }
+.lp-prochain__t { font-size: 24px; line-height: 1; font-weight: 750; letter-spacing: -.02em; }
+.lp-prochain__d { font-size: 13px; opacity: .92; }
 .lp-prochain__g { grid-area: armes; display: flex; align-items: baseline; gap: 6px; justify-self: end; white-space: nowrap; line-height: 1; padding-right: 6px; }
-.lp-prochain__g b { font-size: 24px; font-weight: 750; letter-spacing: -.02em; }
-.lp-prochain__g small { font-size: 13px; opacity: .9; }
+.lp-prochain__g b { font-size: 20px; font-weight: 750; letter-spacing: -.02em; }
+.lp-prochain__g small { font-size: 12px; opacity: .9; }
 .lp-prochain.is-calme { background: var(--lp-surface); color: var(--lp-text); border: 1px solid var(--lp-line); box-shadow: none; }
 .lp-prochain.is-calme .lp-lbl { color: var(--lp-bleu-texte); opacity: 1; }
 .lp-prochain.is-calme .lp-prochain__d { color: var(--lp-muted); opacity: 1; }
@@ -20950,10 +20952,10 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 /* EN JEU, et les groupes en retard a cote. */
 /* La partie en jeu et les retards sur une ligne quand ils tiennent, sinon les
    retards passent dessous : « fin dans 10 min » ne se coupe jamais. */
-.lp-bande { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
-.lp-bande > .lp-jeu { flex: 1 1 300px; min-width: 0; }
+.lp-bande { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; min-width: 0; }
+.lp-bande > .lp-jeu { flex: 1 1 100%; min-width: 0; }
 .lp-alertes { flex: 1 1 auto; min-width: 0; }
-.lp-jeu { display: flex; align-items: center; gap: 14px; min-height: 48px; background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 14px; padding: 6px 16px; }
+.lp-jeu { display: flex; align-items: center; gap: 10px; min-height: 48px; background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 12px; padding: 6px 12px; flex-wrap: wrap; }
 .lp-jeu .lp-lbl { font-size: 11.5px; color: var(--lp-bleu-texte); }
 .lp-jeu b { font-size: 18px; font-weight: 700; }
 .lp-prog { flex: 1; min-width: 60px; height: 8px; border-radius: 4px; background: var(--lp-vide); overflow: hidden; }
@@ -21026,7 +21028,7 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
 .lp-libre { color: var(--lp-faint); }
 .lp-dep:hover { background: var(--lp-bleu-voile); }
 .lp-dep.is-joue, .lp-dep.is-ferme { cursor: default; }
-.lp-dep.is-joue { opacity: .55; }
+.lp-dep.is-joue .lp-dep__h { color: var(--lp-muted); }
 .lp-dep.is-joue:hover, .lp-dep.is-ferme:hover { background: transparent; }
 /* Un depart ferme n a pas de case libre : ses cases vides se hachurent sans
    contour. Un groupe pose la avant le blocage garde sa couleur, le conflit
@@ -21092,17 +21094,17 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-dep.is-pose { animation: none; background: var(--lp-bleu-clair); }
 }
 
-@media (max-width: 900px) {
-  .lp-prochain { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "quand armes" "groupes groupes"; }
+@media (max-width: 1100px) {
+  .lp-synthese { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
 @media (max-width: 560px) {
   .lp { padding: 12px 12px 0; gap: 10px; }
-  .lp-prochain { padding: 10px 10px 10px 14px; border-radius: 14px; }
+  .lp-prochain { padding: 8px 10px 8px 12px; }
   .lp-prochain__quand { flex-wrap: wrap; row-gap: 2px; white-space: normal; }
   .lp-prochain__quand .lp-lbl { flex-basis: 100%; }
-  .lp-prochain__t { font-size: 26px; }
+  .lp-prochain__t { font-size: 24px; }
   .lp-prochain__g { flex-direction: column; align-items: flex-end; gap: 2px; }
-  .lp-prochain__g b { font-size: 22px; }
+  .lp-prochain__g b { font-size: 20px; }
   .lp-groupe { flex: 1 1 100%; }
   .lp-groupe__t { flex-direction: column; gap: 0; }
   .lp-etat { padding: 0 12px; font-size: 14px; }

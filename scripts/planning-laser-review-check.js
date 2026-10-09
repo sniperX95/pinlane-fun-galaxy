@@ -43,4 +43,32 @@ missed.players = 30;
 assert.equal(context.lpCibleDecalage(delayModel, reservation, [missed], 15), 16.5, 'private delayed group requires empty arena');
 delayModel.departs = [row(16, [other])];
 assert.equal(context.lpCibleDecalage(delayModel, reservation, [missed], 15), null, 'no false suggestion when every departure conflicts');
-console.log('planning-laser-review-check: private pending preview and delay launch checks OK');
+// La preference de masque ne doit pas faire disparaitre la grille du lendemain
+// ou d un autre centre. Le faux modele couvre aussi une journee finie et vide.
+const dayState = { currentDate: '2026-10-10' };
+let dayCenter = 'test';
+const dayContext = vm.createContext({
+  state: dayState,
+  getCurrentStaffCenterId: () => dayCenter,
+  lpPluriel: (n, mot) => `${n} ${mot}${n > 1 ? 's' : ''}`,
+  lpRangDepart: (_modele, d) => `<div class="row" data-time="${d.t}"></div>`,
+});
+vm.runInContext(source.match(/^const lpEtat = .*;$/m)[0] + extract('lpJourneeHtml', 'lpFileHtml'), dayContext);
+assert.equal(vm.runInContext('lpEtat.joues', dayContext), true, 'past hours start expanded');
+const dayModel = { aujourdHui: true, maintenant: 23, prochain: null, departs: [
+  { t: 10, joue: true, ici: [] }, { t: 10.5, joue: true, ici: [{}] },
+] };
+let dayHtml = dayContext.lpJourneeHtml(dayModel, null);
+assert.match(dayHtml, /data-time="10"/, 'empty past opening slot is present by default');
+assert.match(dayHtml, /data-time="10.5"/, 'occupied past slot is present by default');
+vm.runInContext('lpEtat.joues = false', dayContext);
+dayHtml = dayContext.lpJourneeHtml(dayModel, null);
+assert.doesNotMatch(dayHtml, /class="row"/, 'manual hide applies to current day');
+assert.match(dayHtml, /Les départs passés sont masqués/, 'hidden departures are not called an empty day');
+dayState.currentDate = '2026-10-11';
+assert.match(dayContext.lpJourneeHtml(dayModel, null), /data-time="10"/, 'new day restores all hours');
+vm.runInContext('lpEtat.joues = false', dayContext);
+dayCenter = 'other';
+assert.match(dayContext.lpJourneeHtml(dayModel, null), /data-time="10"/, 'new centre restores all hours');
+assert.match(dayContext.lpJourneeHtml({ ...dayModel, aujourdHui: false }, null), /data-time="10"/, 'other dates keep their full grid');
+console.log('planning-laser-review-check: private pending preview, delay launch and full-day grid checks OK');

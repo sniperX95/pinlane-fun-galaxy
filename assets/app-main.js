@@ -23301,7 +23301,7 @@ function getPlanningBookingDisplayName(reservation) {
 // activityMove (scheduleLaserPass / unscheduleLaserPass), meme verdict du
 // serveur. L ecran explique d avance ce que le serveur dirait.
 
-const lpEtat = { choisi: null, raison: '', geste: null, glisse: null, enCours: null, joues: false, differe: false, ignorerClicJusqua: 0, defile: null };
+const lpEtat = { choisi: null, raison: '', geste: null, glisse: null, enCours: null, joues: true, journeeScope: null, differe: false, ignorerClicJusqua: 0, defile: null };
 
 function lpMinutes() {
   const activite = (typeof getCenterActivities === 'function' ? getCenterActivities() : []).find(a => a && a.id === 'laser_game') || {};
@@ -23725,24 +23725,22 @@ function lpBandeHtml(modele) {
   return `<div class="lp-bande${alertes ? '' : ' is-seule'}">${jeu}${alertes ? `<div class="lp-alertes">${alertes}</div>` : ''}</div>`;
 }
 
-// Aujourd hui, la liste reprend APRES le prochain depart (il est en tete, avec
-// ses armes), comme la maquette. Les departs deja partis se replient : ceux
-// qui ont eu des groupes se rouvrent d un toucher, les vides ne reviennent
-// jamais (du bruit). Un groupe choisi fait revenir le prochain depart : c est
-// une cible comme une autre.
+// La journee affiche toute la grille d ouverture, meme les departs vides et
+// le prochain depart resume en tete. L operateur peut masquer le passe pour
+// cette journee ; le choix d un groupe ne decale plus les lignes sous le doigt.
 function lpJourneeHtml(modele, choisi) {
+  const scope = `${state.currentDate}|${getCurrentStaffCenterId()}`;
+  if (lpEtat.journeeScope !== scope) {
+    lpEtat.journeeScope = scope;
+    lpEtat.joues = true;
+  }
   const parti = (d) => modele.aujourdHui && d.t <= modele.maintenant + 0.0001;
-  // Le compte dit les departs JOUES (la partie finie) ; celle en jeu est dans
-  // la bande du haut, et revient dans la liste avec eux quand on l ouvre.
+  // Le compte dit les departs JOUES (la partie finie) ; la grille inclut aussi
+  // les anciens creneaux vides et la partie encore en jeu.
   const jouesAvecGroupes = modele.departs.filter(d => modele.aujourdHui && d.joue && d.ici.length).length;
   const montres = modele.departs.filter(d => {
     if (!modele.aujourdHui) return true;
-    if (parti(d)) return lpEtat.joues && d.ici.length > 0;
-    // Le prochain depart revient dans la liste pour un placement au toucher.
-    // Pas pendant un glisser : la ligne inseree en tete decalait tout d un
-    // rang sous le doigt, et le groupe tombait un depart trop tot (2026-10-08) ;
-    // la carte du prochain depart sert alors de cible (lpCibleSous).
-    if (modele.prochain && Math.abs(d.t - modele.prochain.t) < 0.001) return Boolean(choisi) && !(lpEtat.geste && lpEtat.geste.glisse);
+    if (parti(d)) return lpEtat.joues;
     return true;
   });
   const tete = jouesAvecGroupes
@@ -23751,7 +23749,7 @@ function lpJourneeHtml(modele, choisi) {
   const rangs = montres.map(d => lpRangDepart(modele, d, choisi)).join('');
   return `<section class="lp-journee" aria-label="La journée">
     <div class="lp-journee__h"><span class="lp-lbl">La journée</span>${tete}</div>
-    ${rangs || '<div class="lp-vide">Aucun départ ce jour.</div>'}
+    ${rangs || `<div class="lp-vide">${modele.aujourdHui && !lpEtat.joues && modele.departs.some(parti) ? 'Les départs passés sont masqués.' : 'Aucun départ ce jour.'}</div>`}
   </section>`;
 }
 
@@ -23792,8 +23790,7 @@ function lpHtml(modele) {
   const choisi = lpChoisiValide(modele);
   return `<div class="lp${choisi ? ' is-choix' : ''}" style="--lp-cases:${Math.max(1, modele.capacite)}">
     ${planningClosedNotice(modele.config)}
-    ${lpProchainHtml(modele)}
-    ${lpBandeHtml(modele)}
+    ${modele.aujourdHui ? `<div class="lp-synthese">${lpProchainHtml(modele)}${lpBandeHtml(modele)}</div>` : ''}
     ${lpJourneeHtml(modele, choisi)}
     ${lpFileHtml(modele, choisi)}
   </div>`;

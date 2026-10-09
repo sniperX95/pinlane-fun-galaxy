@@ -183,11 +183,12 @@ async function scenarios(browser, mutation = null) {
 // ── [K] LES CONTRE-PREUVES ─────────────────────────────────────────────────
 const S = ':is(.planning-box, .table-box).expanded:not(.hidden)';
 const MUTATIONS = [
-  // La colonne du titre retombe a minmax(0, 1fr) : la date passe dessus.
-  { nom: 'colonne', lettre: '[B] all de 360 a 1199 px', fichier: 'assets/pinlane-staff.css',
-    de: `  ${S} :is(.planning-head, .table-head) { grid-template-columns: max-content minmax(0, 1fr); }`,
-    vers: `  ${S} :is(.planning-head, .table-head) { grid-template-columns: minmax(0, 1fr) auto; }` },
-  // La date reste a cote du titre sous 960 px : les actions la recouvrent.
+  // L ancienne largeur 236 px recoupe le titre Toutes et son badge : la
+  // date se peint dessus. La largeur partagee se teste sur le texte reel.
+  { nom: 'colonne', lettre: '[B] all de 1200 a 1920 px', fichier: 'assets/pinlane-staff.css',
+    de: '  grid-template-columns: 320px auto;',
+    vers: '  grid-template-columns: 236px auto;' },
+  // La date reste a cote du titre sous 1101 px : les actions la recouvrent.
   { nom: 'repli', lettre: '[A] all de 360 a 1199 px', fichier: 'assets/pinlane-staff.css',
     de: `  ${S} .planning-title-stack > .pec-date { grid-column: 1; grid-row: 3; margin-top: 6px; }\n}\n@media (max-width: 768px) {`,
     vers: '}\n@media (max-width: 768px) {' },

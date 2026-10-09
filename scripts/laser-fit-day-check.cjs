@@ -12,7 +12,7 @@ const CLOSE=Number(process.env.PINLANE_FIT_DAY_CLOSE||24);
 const READABLE=!!process.env.PINLANE_FIT_DAY_READABLE;
 async function main(){
 fs.mkdirSync(OUT,{recursive:true});const server=await fixture.serveStatic(),browser=await chromium.launch({executablePath:fixture.BROWSER_PATH,headless:true});const results=[];
-try{for(const dataset of (READABLE?['busy','empty']:['busy']))for(const viewport of (READABLE?[{width:1702,height:1045}]:process.env.PINLANE_FIT_DAY_FAST?[{width:1366,height:768}]:[{width:1440,height:900},{width:1705,height:886},{width:1366,height:768}]))for(const theme of (READABLE||process.env.PINLANE_FIT_DAY_FAST?['dark']:['dark','light'])){
+try{for(const dataset of (READABLE?['busy','empty']:['busy']))for(const viewport of (READABLE?[{width:1702,height:1045}]:process.env.PINLANE_FIT_DAY_MEDIUM?[{width:1440,height:900}]:process.env.PINLANE_FIT_DAY_FAST?[{width:1366,height:768}]:[{width:1440,height:900},{width:1705,height:886},{width:1366,height:768}]))for(const theme of (READABLE||process.env.PINLANE_FIT_DAY_FAST?['dark']:['dark','light'])){
 const context=await browser.newContext({viewport,serviceWorkers:'block'});await context.route('**/*',r=>new URL(r.request().url()).origin===fixture.BASE_URL?r.continue():r.abort());
 const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
 const dossiers=lp.journee();const three=dossiers.find(d=>d.name==='Kinepolis');three.laserGames=3;three.duration=three.totalDuration=1.5;three.opsPlan.laserPassPlan.totalGames=3;three.opsPlan.laserPassPlan.pendingPasses.push({countIndex:3,status:'pending',pax:three.pax});
@@ -47,6 +47,6 @@ const pass=geometryPass&&positionChange<=1&&readablePass;
 await page.evaluate(()=>{document.activeElement?.blur();document.querySelectorAll('#laserPlanningGridWrap .lp-qui').forEach(e=>e.scrollLeft=0);});
 const name=`${viewport.width}x${viewport.height}-${theme}-${mode}${dataset==='empty'?'-empty':''}${selection==='rest'?'':`-${selection}`}${CLOSE===24?'':`-close${CLOSE}`}`;await page.screenshot({path:path.join(OUT,`${name}.png`)});results.push({name,pass,metrics,readablePass,overflowAccessible,overflowFocus,enterProof,positionChange,errors});console.log(`${pass?'PASS':'FAIL'} ${name} rows=${got.length} visible=${metrics.data.filter(r=>r.visible).length} scroll=${metrics.scroll.length} overflowAccessible=${overflowAccessible} positionChange=${positionChange} fill=${metrics.fill.toFixed(2)} groupFont=${Math.min(...metrics.groupFonts)} hourFont=${Math.min(...metrics.hourText.map(x=>parseFloat(x.font)))}`);
 }}await context.close();}}finally{await browser.close();server.close();}
-fs.writeFileSync(path.join(OUT,READABLE?`results-readable-close${CLOSE}.json`:CLOSE===24?'results.json':`results-close${CLOSE}.json`),JSON.stringify(results,null,2));if(results.some(x=>!x.pass))process.exitCode=1;
+fs.writeFileSync(path.join(OUT,READABLE?`results-readable-close${CLOSE}.json`:process.env.PINLANE_FIT_DAY_MEDIUM?`results-medium-close${CLOSE}.json`:CLOSE===24?'results.json':`results-close${CLOSE}.json`),JSON.stringify(results,null,2));if(results.some(x=>!x.pass))process.exitCode=1;
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

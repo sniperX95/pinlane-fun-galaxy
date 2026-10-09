@@ -22821,7 +22821,9 @@ function renderKpis() {
     if (!card) return;
     card.querySelector('.label').textContent = tile.label;
     card.querySelector('.value').textContent = tile.value;
-    card.querySelector('.hint').textContent = tile.hint;
+    const hint = card.querySelector('.hint');
+    hint.textContent = tile.hint;
+    hint.title = tile.hint;
     if (tile.title) card.title = tile.title; else card.removeAttribute('title');
   });
 }

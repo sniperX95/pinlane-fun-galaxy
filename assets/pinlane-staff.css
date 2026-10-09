@@ -20575,6 +20575,9 @@ body:is(.staff-mode, .admin-mode) :is(.planning-box, .table-box).expanded:not(.h
   align-items: center;
   column-gap: 20px;
   row-gap: 10px;
+  padding: 12px 24px;
+  min-height: 80px;
+  box-sizing: border-box;
 }
 :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .planning-title-stack {
   grid-column: 1;
@@ -20582,13 +20585,16 @@ body:is(.staff-mode, .admin-mode) :is(.planning-box, .table-box).expanded:not(.h
   justify-self: start;
   min-width: 0;
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: 320px auto;
+  grid-template-rows: 24px 14px;
   align-items: center;
   column-gap: 20px;
   row-gap: 2px;
 }
 :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > :is(h2, .planning-sub) { grid-column: 1; min-width: 0; white-space: nowrap; }
 :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > h2 { grid-row: 1; }
+:is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) h2 { margin: 0; font-size: 19px; line-height: 24px; gap: 10px; }
+:is(.planning-box, .table-box).expanded:not(.hidden) .planning-sub { line-height: 14px; }
 :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > .planning-sub { grid-row: 2; }
 :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > .pec-date { grid-column: 2; grid-row: 1 / span 2; }
 :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .fs-switch {
@@ -20615,7 +20621,7 @@ body:is(.staff-mode, .admin-mode) :is(.planning-box, .table-box).expanded:not(.h
 :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) :is(.planning-search-inline, .search-wrap) input { width: 100%; min-width: 0; height: 40px; }
 /* La liste n a ni legende ni menu : sa recherche prend la place, et son
    texte d aide se lit en entier. */
-:is(.planning-box, .table-box).expanded:not(.hidden) .table-head .search-wrap { flex-basis: 280px; }
+:is(.planning-box, .table-box).expanded:not(.hidden) .table-head .search-wrap { flex-basis: 200px; }
 /* « + Réserver » est l action principale ; « Réduire » reste a sa place, au
    bout de la ligne, en bouton secondaire : deux boutons pleins cote a cote
    ne disaient plus lequel compte. */
@@ -20629,7 +20635,7 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
   background: var(--subtle);
   border-color: var(--line-strong);
 }
-@media (min-width: 1400px) and (max-width: 1799px) {
+@media (min-width: 1400px) and (max-width: 1919px) {
   :is(.planning-box, .table-box).expanded:not(.hidden) .fs-mot { display: none; }
 }
 @media (max-width: 1599px) {
@@ -20637,13 +20643,14 @@ body:is(.staff-mode, .admin-mode) :is(.table-box, .planning-box).expanded:not(.h
   :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > h2 { font-size: 17px; }
   :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack { column-gap: 14px; }
 }
-@media (max-width: 1399px) {
+@media (max-width: 1640px) {
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .planning-title-stack { grid-template-columns: 300px auto; }
   :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) { grid-template-columns: max-content minmax(0, 1fr); }
   :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .fs-switch { grid-column: 1 / -1; grid-row: 2; }
   :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > :is(.planning-actions, .table-actions) { grid-column: 2; }
 }
-@media (max-width: 959px) {
-  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .planning-title-stack { grid-template-columns: max-content; }
+@media (max-width: 1100px) {
+  :is(.planning-box, .table-box).expanded:not(.hidden) :is(.planning-head, .table-head) > .planning-title-stack { grid-template-columns: max-content; grid-template-rows: auto auto auto; }
   :is(.planning-box, .table-box).expanded:not(.hidden) .planning-title-stack > .pec-date { grid-column: 1; grid-row: 3; margin-top: 6px; }
 }
 @media (max-width: 768px) {
@@ -21128,19 +21135,24 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-synthese .lp-groupe { flex-shrink: 0; }
 }
 @media (min-width: 1101px) {
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-head { margin-bottom: 8px; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-head > div:first-child { display: flex; align-items: baseline; gap: 12px; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-head h1 { font-size: 18px; margin: 0; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-head .sub { margin: 0; font-size: 12px; }
-  .laser-planning-box:not(.expanded):has(.lp-compact) .planning-head { padding: 4px 14px; min-height: 48px; }
-  .laser-planning-box:not(.expanded):has(.lp-compact) .planning-title-stack { flex-direction: row; align-items: baseline; gap: 8px; }
-  .laser-planning-box:not(.expanded):has(.lp-compact) .planning-head h2 { margin: 0; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .kpi-grid:not(.hidden) { margin-bottom: 8px; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .kpi-grid .kpi { padding: 7px 12px; flex-wrap: nowrap; align-items: center; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .kpi-grid .kpi .label { flex: none; margin: 0; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .kpi-grid .kpi .value { font-size: 16px; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-resource-tabs { margin-bottom: 8px; }
-  #staffView:has(.laser-planning-box:not(.expanded):not(.hidden) .lp-compact) .staff-resource-tab:not(.hidden) { min-height: 36px; padding: 4px 10px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head { margin-bottom: 8px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head > div:first-child { display: flex; align-items: baseline; gap: 12px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head h1 { font-size: 18px; margin: 0; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-head .sub { margin: 0; font-size: 12px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-head, .table-head) { padding: 4px 14px; min-height: 50px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-search-inline, .search-wrap) { width: 190px; flex: 0 1 190px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-search-inline, .search-wrap) input { width: 100%; height: 40px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-toggle, .planning-more-btn, .lp-reserver) { height: 40px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .table-box:not(.expanded) .table-actions .planning-toggle { order: 9; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) .planning-title-stack { flex-direction: row; align-items: baseline; gap: 8px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) :is(.planning-box, .table-box):not(.expanded) :is(.planning-head, .table-head) h2 { margin: 0; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid:not(.hidden) { margin-bottom: 8px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi { min-height: 36px; padding: 7px 12px; flex-wrap: nowrap; align-items: center; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi .label { flex: none; margin: 0; white-space: nowrap; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi .value { flex: none; font-size: 16px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .kpi-grid .kpi .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-resource-tabs { margin-bottom: 8px; }
+  #staffView:has(.staff-resource-tabs:not(.hidden)) .staff-resource-tab:not(.hidden) { min-height: 36px; padding: 4px 10px; }
   .lp-compact .lp-prochain { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'quand groupes armes'; }
   .lp-compact .lp-prochain__quand { max-width: 190px; }
   .lp-compact .lp-prochain__quand .lp-lbl { flex-basis: 100%; }

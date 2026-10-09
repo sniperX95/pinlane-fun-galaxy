@@ -10780,32 +10780,32 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
    que tu m avais montre », « c est dans les plus petits details que vient la
    qualite ». Ce bloc est donc la maquette v5 portee regle pour regle
    (scratchpad maquettes-reserver/reserver-v5.html) : memes tailles, memes
-   graisses, memes espacements, memes couleurs. La fenetre a SES jetons
-   (--rv-*), ceux de la maquette, clairs puis sombres ; un controle n y porte
+   graisses, memes espacements. Les surfaces et textes reprennent les jetons
+   neutres du SaaS (affinage du 2026-10-09) ; les accents fonctionnels restent
+   propres a la fenetre (--rv-*), clairs puis sombres. Un controle n y porte
    aucune ancienne classe (qb-*, staff-stepper, close-btn...) : ces classes
    gardaient l habillage de l ancienne fenetre et le repeignaient en douce
    (66 regles mesurees le 2026-10-08). Le bleu sombre est descendu de #2b7bff
    a #226ef2 : le blanc y lit 4,6:1 (AA), contre 3,9:1. */
-.qb-overlay.is-rv { padding: 16px; background: rgb(11 26 58 / .3); }
-[data-theme='dark'] .qb-overlay.is-rv { background: rgb(3 6 12 / .62); }
+.qb-overlay.is-rv { padding: 16px; background: var(--backdrop); }
 
 .qb-modal.rv {
-  --rv-surface: #ffffff; --rv-raised: #ffffff; --rv-sunk: #f4f7fd;
-  --rv-line: #e3e9f4; --rv-line-strong: #cdd7e8;
-  --rv-text: #0b1a3a; --rv-muted: #4a5878; --rv-faint: #64708b; --rv-vide: #e6ecf6;
+  --rv-surface: var(--surface); --rv-raised: var(--raised); --rv-sunk: var(--page);
+  --rv-line: var(--line); --rv-line-strong: var(--line-strong);
+  --rv-text: var(--text); --rv-muted: var(--muted); --rv-faint: var(--faint); --rv-vide: var(--subtle);
   --rv-bleu: #0664fe; --rv-bleu-texte: #0450cc; --rv-bleu-clair: #e9f1ff; --rv-bleu-voile: #f3f7ff;
   --rv-ok: #0f9d58; --rv-ok-texte: #0b7d46; --rv-ok-clair: #e3f6ec;
   --rv-orange: #c26a00; --rv-orange-texte: #a35a00; --rv-orange-clair: #fff1dc;
   --rv-rouge: #e5254a; --rv-rouge-texte: #c81e3f; --rv-rouge-clair: #ffe9ee;
   --rv-autres: color-mix(in srgb, var(--rv-muted) 45%, transparent);
-  --rv-ombre: 0 40px 100px rgb(11 26 58 / .22), 0 0 0 1px rgb(11 26 58 / .06);
-  --rv-ombre-pop: 0 24px 60px rgb(11 26 58 / .2), 0 0 0 1px rgb(11 26 58 / .06);
+  --rv-ombre: 0 32px 96px rgb(0 0 0 / .2), 0 0 0 1px var(--rv-line);
+  --rv-ombre-pop: 0 24px 60px rgb(0 0 0 / .18), 0 0 0 1px var(--rv-line);
   --rv-c: var(--rv-bleu);
   --rv-cases: 30;
   --rv-pistes: 8;
   position: relative;
   width: min(1216px, 100%);
-  height: min(780px, calc(100dvh - 32px));
+  height: min(680px, calc(100dvh - 32px));
   max-height: none;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 392px;
@@ -10816,7 +10816,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   background: var(--rv-surface);
   color: var(--rv-text);
   border: 0;
-  border-radius: 22px;
+  border-radius: 18px;
   box-shadow: var(--rv-ombre);
   font: 400 14px/1.4 var(--font-ui);
   font-variant-numeric: tabular-nums;
@@ -10825,15 +10825,12 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   -webkit-font-smoothing: antialiased;
 }
 [data-theme='dark'] .qb-modal.rv {
-  --rv-surface: #0f131a; --rv-raised: #151a23; --rv-sunk: #0b0e14;
-  --rv-line: #222a36; --rv-line-strong: #343e4e;
-  --rv-text: #f3f6fb; --rv-muted: #a7b0c0; --rv-faint: #7f899c; --rv-vide: #1f2632;
   --rv-bleu: #226ef2; --rv-bleu-texte: #8ab8ff; --rv-bleu-clair: #11264d; --rv-bleu-voile: #0c1832;
   --rv-ok: #2fd27a; --rv-ok-texte: #63e39d; --rv-ok-clair: #0d261a;
   --rv-orange: #ffb547; --rv-orange-texte: #ffc56e; --rv-orange-clair: #2a1d09;
   --rv-rouge: #ff5470; --rv-rouge-texte: #ff8a9d; --rv-rouge-clair: #2b0f17;
-  --rv-ombre: 0 1px 0 rgb(255 255 255 / .05) inset, 0 40px 120px rgb(0 0 0 / .7), 0 0 0 1px rgb(0 0 0 / .4);
-  --rv-ombre-pop: 0 24px 64px rgb(0 0 0 / .6), 0 0 0 1px rgb(0 0 0 / .3);
+  --rv-ombre: 0 32px 100px rgb(0 0 0 / .7), 0 0 0 1px var(--rv-line);
+  --rv-ombre-pop: 0 24px 64px rgb(0 0 0 / .6), 0 0 0 1px var(--rv-line-strong);
 }
 .qb-modal.rv *, .qb-modal.rv *::before, .qb-modal.rv *::after { box-sizing: border-box; }
 .qb-modal.rv button { margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -10860,8 +10857,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-jours::-webkit-scrollbar { display: none; }
 .qb-modal.rv .rv-jour { position: relative; flex: none; height: 36px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--rv-line-strong); background: transparent; font-size: 13px; font-weight: 600; line-height: 1; color: var(--rv-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background-color var(--dur-press) var(--ease-out-strong), border-color var(--dur-press) var(--ease-out-strong); }
 .qb-modal.rv .rv-jour small { font-size: 11.5px; font-weight: 500; color: var(--rv-faint); }
-.qb-modal.rv .rv-jour.is-on { background: var(--rv-bleu); border-color: var(--rv-bleu); color: #fff; box-shadow: 0 6px 18px color-mix(in srgb, var(--rv-bleu) 35%, transparent); }
-.qb-modal.rv .rv-jour.is-on small { color: rgb(255 255 255 / .82); }
+.qb-modal.rv .rv-jour.is-on { background: var(--rv-vide); border-color: var(--rv-line-strong); color: var(--rv-text); }
+.qb-modal.rv .rv-jour.is-on small { color: var(--rv-muted); }
 .qb-modal.rv .rv-jour svg { width: 15px; height: 15px; }
 .qb-modal.rv .rv-jour input[type='date'] { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; opacity: 0; cursor: pointer; }
 .qb-modal.rv .rv-tete .rv-droite { margin-left: auto; padding-left: 8px; flex: none; display: flex; align-items: center; gap: 6px; }
@@ -10891,7 +10888,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-plan-tete { display: flex; align-items: center; gap: 10px; min-height: 36px; }
 .qb-modal.rv .rv-seg { display: inline-flex; flex: none; padding: 3px; border-radius: 999px; background: var(--rv-sunk); border: 1px solid var(--rv-line); }
 .qb-modal.rv .rv-seg button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font-size: 12.5px; font-weight: 650; line-height: 1; color: var(--rv-muted); white-space: nowrap; }
-.qb-modal.rv .rv-seg button.is-on { background: var(--rv-raised); color: var(--rv-text); box-shadow: 0 0 0 1px var(--rv-line-strong) inset, 0 1px 2px rgb(0 0 0 / .25); }
+.qb-modal.rv .rv-seg button.is-on { background: var(--rv-vide); color: var(--rv-text); }
 .qb-modal.rv .rv-seg button:disabled { opacity: .4; }
 .qb-modal.rv .rv-plan-tete .rv-dr { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .qb-modal.rv .rv-puce { height: 30px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--rv-line); background: transparent; font-size: 12.5px; font-weight: 600; line-height: 1; color: var(--rv-muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -10926,12 +10923,12 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-lc-h { display: grid; grid-template-columns: 120px 144px 168px 128px minmax(0, 1fr) 34px; align-items: center; column-gap: 10px; min-height: 56px; padding: 8px 10px 8px 18px; }
 .qb-modal.rv .rv-lc-h > * { justify-self: start; min-width: 0; }
 .qb-modal.rv .rv-lc-h .rv-etat-l { justify-self: end; min-width: auto; }
-.qb-modal.rv .rv-lc.is-ouverte { border-color: color-mix(in srgb, var(--rv-c) 55%, var(--rv-line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-c) 12%, transparent); }
+.qb-modal.rv .rv-lc.is-ouverte { border-color: color-mix(in srgb, var(--rv-c) 40%, var(--rv-line)); }
 .qb-modal.rv .rv-lc.is-ko { border-color: color-mix(in srgb, var(--rv-rouge) 55%, var(--rv-line)); }
 .qb-modal.rv .rv-nom { display: flex; align-items: center; gap: 9px; max-width: 100%; font-size: 15.5px; font-weight: 690; line-height: 1.2; letter-spacing: -.01em; }
 .qb-modal.rv .rv-nom > span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .qb-modal.rv .rv-pt { width: 10px; height: 10px; border-radius: 3.5px; background: var(--rv-c); flex: none; }
-.qb-modal.rv .rv-qte { display: inline-flex; align-items: center; height: 40px; border-radius: 12px; border: 1px solid var(--rv-line); background: var(--rv-surface); }
+.qb-modal.rv .rv-qte { display: inline-flex; align-items: center; height: 40px; border-radius: 10px; border: 1px solid transparent; background: var(--rv-surface); }
 /* La cible du pouce fait 44 px sans grossir le dessin : la boite du bouton
    deborde de 3 px en haut et en bas, de 6 px sur les cotes, et ses marges
    negatives la ramenent a 32 x 38 dans la mise en page. L anneau de focus
@@ -10955,7 +10952,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-heure.is-foulee svg { color: var(--rv-muted); }
 .qb-modal.rv .rv-heure:disabled { cursor: default; }
 .qb-modal.rv .rv-heure-libre { font-size: 12.5px; font-weight: 600; color: var(--rv-muted); white-space: nowrap; }
-.qb-modal.rv .rv-place { height: 40px; max-width: 100%; padding: 0 11px; border-radius: 12px; border: 1px dashed var(--rv-line-strong); background: transparent; font-size: 12.5px; font-weight: 650; line-height: 1; color: var(--rv-muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
+.qb-modal.rv .rv-place { height: 40px; max-width: 100%; padding: 0 11px; border-radius: 10px; border: 1px solid var(--rv-line); background: transparent; font-size: 12.5px; font-weight: 650; line-height: 1; color: var(--rv-muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
 .qb-modal.rv .rv-place svg { width: 14px; height: 14px; }
 .qb-modal.rv .rv-place b { color: var(--rv-text); font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
 .qb-modal.rv .rv-place.is-manuel { border-style: solid; border-color: color-mix(in srgb, var(--rv-c) 65%, transparent); background: color-mix(in srgb, var(--rv-c) 12%, transparent); color: var(--rv-text); }
@@ -11036,7 +11033,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-lien .rv-det { margin-left: auto; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--rv-line); background: transparent; font-size: 12px; font-weight: 600; line-height: 1; color: var(--rv-muted); white-space: nowrap; }
 
 /* AJOUTER : une activite du catalogue, ou du sur mesure */
-.qb-modal.rv .rv-plus-act { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 6px 16px; border-radius: 14px; border: 1px dashed var(--rv-line-strong); background: transparent; color: var(--rv-muted); font-size: 13.5px; font-weight: 650; line-height: 1.3; }
+.qb-modal.rv .rv-plus-act { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 6px 16px; border-radius: 12px; border: 1px solid var(--rv-line); background: transparent; color: var(--rv-muted); font-size: 13.5px; font-weight: 650; line-height: 1.3; }
 .qb-modal.rv .rv-plus-act b { color: var(--rv-text); }
 .qb-modal.rv .rv-plus-act svg { width: 16px; height: 16px; color: var(--rv-bleu-texte); }
 .qb-modal.rv .rv-plus-act span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -11076,7 +11073,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-verdict-zone { display: flex; flex-direction: column; gap: 8px; }
 .qb-modal.rv .rv-verdict-zone:empty { display: none; }
 .qb-modal.rv .rv-erreur { padding: 9px 12px; border-radius: 12px; background: var(--rv-rouge-clair); border: 1px solid color-mix(in srgb, var(--rv-rouge) 35%, transparent); font-size: 12.5px; line-height: 1.45; color: var(--rv-text); }
-.qb-modal.rv .rv-vc { display: flex; align-items: center; gap: 11px; padding: 10px 10px 10px 12px; border-radius: 14px; background: var(--rv-ok-clair); border: 1px solid color-mix(in srgb, var(--rv-ok) 28%, transparent); }
+.qb-modal.rv .rv-vc { display: flex; align-items: center; gap: 11px; padding: 10px 10px 10px 12px; border-radius: 12px; background: var(--rv-sunk); border: 1px solid var(--rv-line); }
 .qb-modal.rv .rv-vc .rv-ic { width: 26px; height: 26px; border-radius: 50%; background: var(--rv-ok); color: #04170d; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .qb-modal.rv .rv-vc .rv-ic svg { width: 15px; height: 15px; }
 .qb-modal.rv .rv-vc > span:nth-child(2) { min-width: 0; }
@@ -11128,7 +11125,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-resa .rv-x { width: 24px; height: 24px; margin-right: 3px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--rv-faint); font-size: 15px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
 .qb-modal.rv .rv-resa .rv-x:hover { background: var(--rv-sunk); color: var(--rv-text); }
 .qb-modal.rv .rv-resa-plus { height: 30px; padding: 0 11px; border-radius: 999px; border: 1px dashed var(--rv-line-strong); background: transparent; font-size: 12.5px; font-weight: 650; line-height: 1; color: var(--rv-muted); white-space: nowrap; }
-.qb-modal.rv .rv-carte { position: relative; background: var(--rv-surface); border: 1px solid var(--rv-line); border-radius: 18px; padding: 14px 15px 13px; }
+.qb-modal.rv .rv-carte { position: relative; background: transparent; border: 0; border-radius: 0; padding: 14px 15px 13px; }
 .qb-modal.rv .rv-eyebrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; color: var(--rv-faint); }
 .qb-modal.rv .rv-eyebrow em { font-style: normal; letter-spacing: .02em; text-transform: none; font-weight: 650; color: var(--rv-bleu-texte); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qb-modal.rv .rv-heures { margin-top: 5px; display: flex; align-items: baseline; gap: 8px; font-size: 30px; font-weight: 780; letter-spacing: -.04em; line-height: 1; }
@@ -11152,8 +11149,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-etape.is-ko .rv-h, .qb-modal.rv .rv-etape.is-ko .rv-q { color: var(--rv-rouge-texte); }
 .qb-modal.rv .rv-etape.is-ko .rv-pt { background: var(--rv-rouge); }
 .qb-modal.rv .rv-perfo { position: relative; height: 16px; margin: 8px -15px; }
-.qb-modal.rv .rv-perfo::before { content: ''; position: absolute; left: 18px; right: 18px; top: 50%; border-top: 1.5px dashed var(--rv-line-strong); }
-.qb-modal.rv .rv-perfo::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 0 50%, var(--rv-sunk) 9px, transparent 9.5px), radial-gradient(circle at 100% 50%, var(--rv-sunk) 9px, transparent 9.5px); }
+.qb-modal.rv .rv-perfo::before { content: ''; position: absolute; left: 15px; right: 15px; top: 50%; border-top: 1px solid var(--rv-line); }
 .qb-modal.rv .rv-champs { display: grid; gap: 7px; }
 .qb-modal.rv .rv-saisie { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--rv-line-strong); background: var(--rv-sunk); font-size: 14.5px; font-weight: 560; cursor: text; }
 .qb-modal.rv .rv-saisie svg { width: 16px; height: 16px; color: var(--rv-faint); }
@@ -11175,7 +11171,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-connu b { color: var(--rv-text); font-weight: 650; }
 .qb-modal.rv .rv-connu .rv-refaire { margin-left: auto; height: 30px; padding: 0 11px; border-radius: 999px; border: 0; background: var(--rv-bleu); color: #fff; font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; flex: none; }
 .qb-modal.rv .rv-plus { display: flex; flex-wrap: wrap; gap: 6px; }
-.qb-modal.rv .rv-plus button { height: 30px; padding: 0 10px; border-radius: 999px; border: 1px dashed var(--rv-line-strong); background: transparent; font-size: 12.5px; font-weight: 600; line-height: 1; color: var(--rv-muted); }
+.qb-modal.rv .rv-plus button { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--rv-line); background: transparent; font-size: 12.5px; font-weight: 600; line-height: 1; color: var(--rv-muted); }
 .qb-modal.rv .rv-plus button.is-on { border-style: solid; border-color: color-mix(in srgb, var(--rv-bleu) 45%, transparent); background: var(--rv-bleu-voile); color: var(--rv-text); }
 .qb-modal.rv .rv-note-champ { display: flex; flex-direction: column; gap: 5px; }
 .qb-modal.rv .rv-prix { display: flex; align-items: flex-end; gap: 12px; }
@@ -11206,10 +11202,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-etat-pied b { color: var(--rv-text); font-weight: 650; }
 .qb-modal.rv .rv-etat-pied .rv-tot { margin-left: auto; font-weight: 700; color: var(--rv-text); white-space: nowrap; }
 .qb-modal.rv .rv-boutons { display: flex; gap: 8px; }
-.qb-modal.rv .rv-creer { flex: 1; min-width: 0; height: 56px; padding: 0 14px; border: 0; border-radius: 15px; background: var(--rv-bleu); color: #fff; font-size: 16.5px; font-weight: 760; line-height: 1; letter-spacing: -.01em; display: inline-flex; align-items: center; justify-content: center; gap: 10px; white-space: nowrap; box-shadow: 0 12px 30px color-mix(in srgb, var(--rv-bleu) 38%, transparent), 0 1px 0 rgb(255 255 255 / .18) inset; transition: transform var(--dur-press) var(--ease-out-strong); }
+.qb-modal.rv .rv-creer { flex: 1; min-width: 0; height: 56px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--rv-bleu); color: #fff; font-size: 16.5px; font-weight: 760; line-height: 1; letter-spacing: -.01em; display: inline-flex; align-items: center; justify-content: center; gap: 10px; white-space: nowrap; box-shadow: 0 1px 0 rgb(255 255 255 / .12) inset; transition: transform var(--dur-press) var(--ease-out-strong); }
 .qb-modal.rv .rv-creer:active:not(:disabled):not([aria-busy="true"]) { transform: scale(.98); }
-.qb-modal.rv .rv-creer kbd { padding: 2px 7px; border: 0; border-radius: 6px; background: rgb(255 255 255 / .18); box-shadow: none; color: inherit; font: 650 11px/1.4 var(--font-ui); letter-spacing: 0; }
-.qb-modal.rv .rv-creer.is-forcer { background: var(--rv-rouge); box-shadow: 0 12px 30px color-mix(in srgb, var(--rv-rouge) 34%, transparent), 0 1px 0 rgb(255 255 255 / .18) inset; }
+.qb-modal.rv .rv-creer kbd { padding: 2px 7px; border: 0; border-radius: 6px; background: rgb(0 0 0 / .2); box-shadow: none; color: inherit; font: 650 11px/1.4 var(--font-ui); letter-spacing: 0; }
+.qb-modal.rv .rv-creer.is-forcer { background: var(--rv-rouge); }
 .qb-modal.rv .rv-creer.is-bloque, .qb-modal.rv .rv-creer:disabled, .qb-modal.rv .rv-creer[aria-busy="true"] { background: var(--rv-raised); color: var(--rv-muted); border: 1px solid var(--rv-line-strong); box-shadow: none; }
 .qb-modal.rv .rv-creer[aria-busy="true"] { cursor: progress; }
 .qb-modal.rv .rv-creer .rv-ou.is-haut { display: none; }

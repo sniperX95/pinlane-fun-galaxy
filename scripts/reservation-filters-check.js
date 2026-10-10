@@ -155,7 +155,7 @@ const JEU = [
 ];
 // La section attendue d'un dossier : paye en bas, retard en tete, sinon son
 // moment (ecrit a la main dans le jeu).
-const sectionAttendue = (r) => (r.status === 'paid' ? 'paid' : r.retard ? 'late' : r.moment);
+const sectionAttendue = (r) => (r.status === 'paid' ? 'onsite' : r.retard ? 'late' : r.moment);
 const SECTIONS = ['late', 'upcoming', 'onsite', 'closing', 'paid'];
 const ATTENDU = {
   all: JEU.map((r) => r.id),
@@ -163,7 +163,7 @@ const ATTENDU = {
   notes: JEU.filter((r) => r.note).map((r) => r.id),
 };
 // Libelle de chaque puce, dans l'ordre de la barre.
-const PUCES = [['all', 'Tout'], ['late', 'En retard'], ['upcoming', 'À venir'], ['onsite', 'Sur place'], ['closing', 'À clôturer'], ['paid', 'Payées'], ['notes', 'Avec note']];
+const PUCES = [['all', 'Tout'], ['late', 'En retard'], ['upcoming', 'À venir'], ['onsite', 'Sur place'], ['closing', 'À clôturer'], ['paid', 'Terminées'], ['notes', 'Avec note']];
 const heure = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h + m / 60; };
 
 async function installMock(page, jeu) {
@@ -274,7 +274,7 @@ async function cliquerPuce(page, libelle) {
   return page.evaluate(() => {
     const rows = [...document.querySelectorAll('#resList .res-row[data-res-row-id]')];
     const sections = [...document.querySelectorAll('#resList .res-section')].map((s) => ({
-      cle: [...s.classList].find((c) => ['late', 'upcoming', 'onsite', 'closing', 'done'].includes(c)) || '?',
+      cle: [...s.classList].find((c) => ['active', 'late', 'upcoming', 'onsite', 'closing', 'done'].includes(c)) || '?',
       ids: [...s.querySelectorAll('.res-row[data-res-row-id]')].map((r) => Number(r.getAttribute('data-res-row-id'))),
     }));
     const chips = {};
@@ -385,8 +385,8 @@ function controler(vue) {
   // PAYE = ARRIVE (2026-10-02, Movsar : « s ils ont paye c est qu ils sont
   // arrives, le paiement est que sur place ») et PAYE EN BAS (2026-10-01) :
   // paye pendant ou avant sa partie, il est dans « Payées », jamais « À venir ».
-  c(dans('paid', 71008) && !dans('onsite', 71008), '[2] le groupe qui a paye PENDANT sa partie est dans « Payées »');
-  c(dans('paid', 71003) && !dans('upcoming', 71003), '[2] le groupe qui a paye avant son heure est dans « Payées », pas « À venir »');
+  c(dans('onsite', 71008) && !dans('paid', 71008), '[2] le groupe payé pendant sa partie reste Sur place');
+  c(dans('onsite', 71003) && !dans('paid', 71003), '[2] le groupe payé avant son heure reste à suivre sur place');
   c(dans('closing', 71013), '[2] fini a la minute pile, il est « À clôturer »');
   JEU.filter((r) => r.nonPointe).forEach((r) => {
     c(dans('closing', r.id) && (pastilles[r.id] || {}).nonPointe, `[2] le fini jamais pointe ${r.id} est « À clôturer » avec « Non pointé »`);
@@ -413,21 +413,21 @@ function controler(vue) {
   c(['Tout', ...motsSections].every((nom) => n(nom) !== null), '[4] « Tout » et chaque puce de section portent un compte', JSON.stringify(chips));
   const somme = motsSections.reduce((t, nom) => t + (n(nom) || 0), 0);
   c(somme === n('Tout'), `[4] ${motsSections.join(' + ')} = Tout`, `${somme} pour ${n('Tout')}`);
-  c(n('À gérer') === null && n('Terminées') === null, '[4] plus de puce « À gérer » ni « Terminées »', JSON.stringify(chips));
+  c(n('À gérer') === null && n('Payées') === null, '[4] pas de filtre caisse qui masquerait les activités restantes', JSON.stringify(chips));
   PUCES.forEach(([cle, nom]) => {
     c(n(nom) === (vue[cle]?.ids || []).length, `[4] « ${nom} » annonce le nombre de lignes qu il rend`, `${n(nom)} annonce / ${(vue[cle]?.ids || []).length} rendues`);
   });
   const sectionsTout = vue.all?.sections || [];
   SECTIONS.forEach((cle) => {
-    const s = sectionsTout.find((x) => x.cle === (cle === 'paid' ? 'done' : cle));
+    const s = vue[cle]?.sections.find((x) => x.cle === (cle === 'paid' ? 'done' : cle));
     const mot = (PUCES.find(([k]) => k === cle) || [])[1];
-    c((s ? s.ids.length : 0) === n(mot), `[4] la puce « ${mot} » annonce les cartes de sa section dans « Tout »`, `${n(mot)} / ${s ? s.ids.length : 0}`);
+    c((s ? s.ids.length : 0) === n(mot), `[4] la puce « ${mot} » annonce les cartes rendues par son filtre`, `${n(mot)} / ${s ? s.ids.length : 0}`);
   });
 
   // [5] L ATTRIBUT
   const notesIds = vue.notes?.ids || [];
   const notesParSection = SECTIONS.map((e) => notesIds.filter((id) => (vue[e]?.ids || []).includes(id)).length);
-  c(notesParSection.filter((x) => x > 0).length >= 4, '[5] « Avec note » pioche dans quatre sections', notesParSection.join(' · '));
+  c(notesParSection.filter((x) => x > 0).length >= 3, '[5] « Avec note » recoupe les sections opérationnelles', notesParSection.join(' · '));
 
   // [6] LE DOM
   PUCES.forEach(([cle]) => {
@@ -446,17 +446,17 @@ function controler(vue) {
   const fausses = [];
   (vue.all?.sections || []).forEach((s) => s.ids.forEach((id) => {
     const r = JEU.find((x) => x.id === id);
-    const attendue = r.status === 'paid' ? 'done' : r.retard ? 'late' : r.moment;
+    const attendue = 'active';
     if (s.cle !== attendue) fausses.push(`${id} dans « ${s.cle} » au lieu de « ${attendue} »`);
   }));
-  c(fausses.length === 0, '[6] chaque ligne est dans la section de son moment', fausses.join(' · '));
+  c(fausses.length === 0, '[6] Tout conserve les visites non terminées dans la même grille active', fausses.join(' · '));
   const ordre = (vue.all?.sections || []).map((s) => s.cle).join(' > ');
-  c(ordre === 'late > upcoming > onsite > closing > done', '[6] le retard en tete, puis les sections dans l ordre de la journee', ordre);
+  c(ordre === 'active', '[6] Tout présente une grille stable des visites à suivre', ordre);
 
   // [7] LA FORME
   const f = vue.forme || {};
   c(f.nbGroupes === 2, '[7] la barre porte DEUX groupes, pas une rangee unique', `${f.nbGroupes} groupes`);
-  c((f.etats || []).join(' · ') === 'Tout · En retard · À venir · Sur place · À clôturer · Payées', '[7] le premier groupe ne porte QUE les sections, dans l ordre de la liste', (f.etats || []).join(' · '));
+  c((f.etats || []).join(' · ') === 'Tout · En retard · À venir · Sur place · À clôturer · Terminées', '[7] filtres opérationnels et visites réellement terminées', (f.etats || []).join(' · '));
   c((f.croisements || []).join(' · ') === 'Avec note', '[7] le second groupe porte la vue qui recoupe, « Avec note »', (f.croisements || []).join(' · '));
   c(f.reperes === (f.croisements || []).length && f.reperesEtat === 0, '[7] la puce qui recoupe porte le repere, aucune puce de section n en porte', `${f.reperes} / ${f.reperesEtat}`);
   c((f.titres || []).every((t) => /recoupe les sections/i.test(t)) && (f.aria || []).every((a) => /recoupe les sections/i.test(a)), '[7] le recoupement est dit en toutes lettres, y compris a la synthese vocale');

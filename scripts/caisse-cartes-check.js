@@ -229,10 +229,11 @@ async function ouvrir(browser, jour, { heure = '15:10', largeur = 1440, seuil = 
 const lireListe = (page) => page.evaluate(() => {
   const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
   return [...document.querySelectorAll('#resList .gc-section')].map((sec) => ({
-    cle: [...sec.classList].find((c) => ['late', 'upcoming', 'onsite', 'closing', 'done'].includes(c)),
+    cle: [...sec.classList].find((c) => ['active', 'late', 'upcoming', 'onsite', 'closing', 'done'].includes(c)),
     titre: txt(sec.querySelector('.res-section-head .label')),
     cartes: [...sec.querySelectorAll('.gc[data-res-row-id]')].map((c) => ({
       id: Number(c.dataset.resRowId),
+      phase: (() => { const m = getStaffReservationMoments(state.reservations).get(String(c.dataset.resRowId)); return m?.late ? 'late' : m?.etat; })(),
       quand: txt(c.querySelector('.gc-when')),
       prix: txt(c.querySelector('.gc-price')),
       alerte: txt(c.querySelector('.gc-alert')),
@@ -246,7 +247,7 @@ const lireListe = (page) => page.evaluate(() => {
     })),
   }));
 });
-const carte = (sections, id) => sections.flatMap((s) => s.cartes.map((c) => ({ ...c, section: s.cle }))).find((c) => c.id === id) || null;
+const carte = (sections, id) => sections.flatMap((s) => s.cartes.map((c) => ({ ...c, section: c.phase || s.cle }))).find((c) => c.id === id) || null;
 
 // Un bloc qui plante rougit SA lettre et laisse les autres se jouer.
 async function bloc(lettre, fn) {
@@ -262,13 +263,13 @@ async function scenarioBlocs(browser, jour) {
   await bloc('[A]', async () => {
     const { ctx, page, erreurs } = await ouvrir(browser, jour);
     const sections = await lireListe(page);
-    ok(sections.map((s) => s.cle).join(',') === 'late,upcoming,onsite,closing,done', '[A] l ordre des sections : En retard, À venir, Sur place, À clôturer, Terminées', sections.map((s) => s.cle).join(','));
-    const ids = (cle) => (sections.find((s) => s.cle === cle) || { cartes: [] }).cartes.map((c) => c.id).join(',');
+    ok(sections.map((s) => s.cle).join(',') === 'active', '[A] les visites non terminées restent dans une grille active stable', sections.map((s) => s.cle).join(','));
+    const ids = (cle) => sections.flatMap(s => s.cartes).filter(c => c.phase === cle).sort((a,b) => a.quand.localeCompare(b.quand)).map(c => c.id).join(',');
     ok(ids('late') === '81006,81007', '[A] en retard : Martin (14:30) puis Nguyen (15:00)', ids('late'));
     ok(ids('upcoming') === '81008,81009,81010,81011,81012', '[A] à venir, par heure', ids('upcoming'));
-    ok(ids('onsite') === '81004', '[A] sur place : Dupont', ids('onsite'));
+    ok(ids('onsite') === '81001,81004', '[A] sur place : payé non terminé Peeters et Dupont', ids('onsite'));
     ok(ids('closing').split(',').sort().join(',') === '81002,81003,81005', '[A] à clôturer : Léa, FC Bertrix, Hôtel des Ardennes', ids('closing'));
-    ok(ids('done') === '81001', '[A] terminées : Peeters', ids('done'));
+    ok(ids('done') === '', '[A] aucune visite terminée sans suivi entièrement coché', ids('done'));
     const tous = sections.flatMap((s) => s.cartes.map((c) => c.id));
     ok(tous.length === jour.length && new Set(tous).size === jour.length, '[A] chaque dossier une fois', `${tous.length} cartes`);
     const martin = carte(sections, 81006);
@@ -276,8 +277,8 @@ async function scenarioBlocs(browser, jour) {
     ok(martin && martin.appel === 'tel:+32470006' + '2145', '[A] le numero a appeler est un lien', martin && martin.appel);
     ok(martin && martin.boutons.join('|') === 'Arrivé', '[A] le seul geste d un retard : Arrivé', martin && martin.boutons.join('|'));
     const peeters = carte(sections, 81001);
-    ok(peeters && peeters.termine && peeters.etapes.length === 0 && /Payé · Espèces/.test(peeters.prix), '[A] une carte terminée tient sur sa tête, avec « Payé · Espèces »', peeters && JSON.stringify(peeters));
-    const titreRetard = await page.evaluate(() => { const el = document.querySelector('.gc-section.late .res-section-head .label'); return el ? getComputedStyle(el).color : ''; });
+    ok(peeters && !peeters.termine && peeters.etapes.length > 0 && /Payé · Espèces/.test(peeters.prix), '[A] payé ne masque pas le programme restant', peeters && JSON.stringify(peeters));
+    const titreRetard = await page.evaluate(() => { const el = document.querySelector('.gc-alert.is-late b'); return el ? getComputedStyle(el).color : ''; });
     // UN RETARD SE DIT UNE FOIS (2026-10-05) : la carte garde un filet neutre et
     // porte le rouge en liseré a gauche (ombre interne), de la couleur exacte
     // du titre de section. Le controle lit ce liseré, plus le bord.

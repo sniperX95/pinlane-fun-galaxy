@@ -24509,7 +24509,7 @@ function renderReservationFirstStatusButton(r, { fiche = false } = {}) {
 // totalisent (la regle du 2026-08-14 tient). « À gérer » (tout sauf les
 // payes) part : « Tout » le montre deja, les payes replies en bas.
 const STAFF_LISTE_SECTIONS = ['late', 'upcoming', 'onsite', 'closing', 'paid', 'absent'];
-const STAFF_LISTE_MOTS = { late: 'En retard', upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer', paid: 'Payées', absent: 'Pas venus' };
+const STAFF_LISTE_MOTS = { late: 'En retard', upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer', paid: 'Terminées', absent: 'Pas venus' };
 
 function getStaffReservationMoments(reservations, jour = state.currentDate) {
   const board = getStaffTerrainBoard(reservations, jour);
@@ -24525,6 +24525,15 @@ function getStaffReservationMoments(reservations, jour = state.currentDate) {
   poser(board.closing, 'closing');
   poser(board.done, 'done');
   poser(board.absent, 'absent');
+  // Encaisser ne termine aucune activité. Seules les coches du programme
+  // permettent de ranger un dossier payé parmi les visites terminées.
+  reservations.forEach(r => {
+    const moment = moments.get(String(r.id));
+    if (r.status === 'paid' && moment && moment.etat !== 'absent') {
+      moment.etat = groupeToutFait(r) ? 'done' : 'onsite';
+      moment.late = false;
+    }
+  });
   return moments;
 }
 
@@ -24533,14 +24542,13 @@ function getStaffReservationMomentState(moments, reservation) {
   return entry ? entry.etat : 'upcoming';
 }
 
-// La section d un dossier : son moment, sauf qu un paye descend dans
-// « Payées » (2026-10-01, Movsar : « ceux qui sont payes, tout en bas ») et
-// qu un retard monte dans « En retard ».
+// La section suit la visite : un paiement ne termine pas le programme.
+// Le paiement ET les activités faites autorisent seuls le rangement en bas.
 function getStaffListeSection(moments, r) {
   const m = moments.get(String(r.id));
   const etat = m ? m.etat : 'upcoming';
   if (etat === 'absent') return 'absent';
-  if (r.status === 'paid' || etat === 'done') return 'paid';
+  if (etat === 'done') return 'paid';
   if (etat === 'upcoming' && m && m.late) return 'late';
   return etat;
 }
@@ -25034,6 +25042,7 @@ function renderReservationRow(r, moment = null, options = {}) {
   // Day) se dit sur sa carte : c est ici ou nulle part qu on le voit (decision
   // du 2026-07, off-planning-check). L onglet porte aussi « N hors planning ».
   const horsPlanning = getStaffResourceView() === 'all' && isOffPlanningReservation(r);
+  const suivi = moment?.late ? 'En retard' : ({ upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer' }[moment?.etat] || '');
   // Une carte terminee et payee tient sur sa tete : il n y a plus rien a faire.
   if (termine) {
     return `<article class="${classes}" data-res-row-id="${r.id}" data-etat="${etat}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'){openPos(${r.id})}">
@@ -25047,7 +25056,7 @@ function renderReservationRow(r, moment = null, options = {}) {
   return `<article class="${classes}" data-res-row-id="${r.id}" data-etat="${etat}" onclick="openPos(${r.id})" tabindex="0" onkeydown="if(event.key==='Enter'&&event.target===this){openPos(${r.id})}">
     <div class="gc-head">
       <div class="gc-when"><b>${formatClockDisplay(span.start)}</b><small>${formatClockDisplay(span.end)}</small></div>
-      <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${escapeHtml(joueursDuDossier(r))}${horsPlanning ? ' · <b class="gc-tag">Hors planning</b>' : ''}</span></div>
+      <div class="gc-who"><h4 class="res-row-name">${escapeHtml(r.name)}</h4><span>${escapeHtml(joueursDuDossier(r))}${horsPlanning ? ' · <b class="gc-tag">Hors planning</b>' : ''}</span>${suivi ? `<small class="gc-visit-state">${escapeHtml(suivi)}</small>` : ''}</div>
       ${renderGroupePrix(r, moment)}
     </div>
     ${renderGroupeAlerte(r, moment)}
@@ -25173,7 +25182,7 @@ function renderReservationSection(statusKey, title, subtitle, reservations, mome
   const ordered = [...reservations].sort((a, b) => {
     if (statusKey === 'done' && !options.repliable) return span(b).start - span(a).start;
     if (statusKey === 'onsite' || statusKey === 'closing') return span(a).end - span(b).end || span(a).start - span(b).start;
-    return span(a).start - span(b).start;
+    return span(a).start - span(b).start || String(a.id).localeCompare(String(b.id));
   });
   // LES CATEGORIES SE VOIENT (2026-10-02, Movsar : « categorisation moche »,
   // « un beau truc pour categoriser par heure, par chose cloturee »). Chaque
@@ -25189,7 +25198,7 @@ function renderReservationSection(statusKey, title, subtitle, reservations, mome
     done: montant > 0 ? `${formatMoney(montant)} encaissés` : '',
   }[statusKey] || '';
   const tete = (balise, extra = '') => `<${balise} class="res-section-head gc-band" title="${escapeHtml(subtitle)}">
-      <span class="gc-band-icon" aria-hidden="true">${GC_BAND_ICONS[statusKey] || ''}</span>
+      <span class="gc-band-icon" aria-hidden="true">${GC_BAND_ICONS[statusKey === 'active' ? 'upcoming' : statusKey] || ''}</span>
       <span class="label">${title}</span>
       <span class="count" data-pl-num="liste.section.${escapeHtml(statusKey)}">${ordered.length}</span>
       ${resume ? `<span class="gc-band-sum">${escapeHtml(resume)}</span>` : ''}
@@ -25328,10 +25337,8 @@ function renderTable() {
   // passe en tete, en rouge : c est la premiere chose a voir. Les dossiers
   // « hors planning » (ni piste ni arene) ne forment plus une section a part :
   // la carte dit leurs activites, ils vivent dans leur moment comme les autres.
-  // CE QUI RESTE EN HAUT, LE PAYE EN BAS (2026-10-01) : un dossier paye
-  // descend dans « Payées », repliee ; la liste de travail ne montre plus que
-  // ce qui demande encore quelque chose a la caisse. Chaque section est celle
-  // de sa puce (getStaffListeSection), le filtre a deja garde la bonne.
+  // Les dossiers terminés ET payés se replient. Un groupe qui a réglé avant
+  // de jouer garde son programme complet parmi les visites à suivre.
   const parSection = cle => filtered.filter(r => getStaffListeSection(moments, r) === cle);
   const sousTitres = {
     late: 'Heure passée, pas encore pointés arrivés',
@@ -25342,6 +25349,12 @@ function renderTable() {
   const sections = ['late', 'upcoming', 'onsite', 'closing']
     .map(cle => ({ key: cle, title: STAFF_LISTE_MOTS[cle], subtitle: sousTitres[cle], rows: parSection(cle) }))
     .filter(section => section.rows.length > 0);
+  // Le comptoir garde les groupes à leur heure : pointer ou encaisser ne
+  // déplace plus la carte au milieu du service. Les puces restent des filtres.
+  if (filtreActif === 'all' || filtreActif === 'notes') {
+    const visites = sections.flatMap(section => section.rows);
+    sections.splice(0, sections.length, ...(visites.length ? [{ key: 'active', title: 'Visites à suivre', subtitle: 'Par heure de début · les paiements ne terminent pas les activités', rows: visites }] : []));
+  }
   const payes = parSection('paid');
   const absents = parSection('absent');
   // Une section repliee choisie par sa puce s ouvre d elle-meme, comme la
@@ -25352,7 +25365,7 @@ function renderTable() {
   poserHtmlSurface(list, `${toolbar}
   <div class="res-sections gc-sections">
     ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows, moments)).join('')}
-    ${payes.length ? renderReservationSection('done', STAFF_LISTE_MOTS.paid, 'Encaissées : rien à faire à la caisse', payes, moments, { repliable: true, ouvert: payesOuverts }) : ''}
+    ${payes.length ? renderReservationSection('done', 'Terminées et payées', 'Toutes les activités sont cochées comme faites et le dossier est payé', payes, moments, { repliable: true, ouvert: payesOuverts }) : ''}
     ${absents.length ? renderReservationSection('absent', STAFF_LISTE_MOTS.absent, 'Notés « Pas venu » dans la fiche', absents, moments, { repliable: true, ouvert: absentsOuverts }) : ''}
   </div>`);
   poserDefilementRendu(list, listScrollTop, listScrollLeft);
@@ -25422,6 +25435,7 @@ function quickAction(id, status) {
 async function setReservationStatusDirect(id, status, ev, options = {}) {
   if (ev) ev.stopPropagation();
   const key = String(id);
+  const filtreAvant = state.staffStatusFilter;
   let current = state.reservations.find(r => String(r.id) === key);
   if (!current) {
     // Depuis Terrain/Groupes la résa peut ne pas être dans state.reservations
@@ -25470,7 +25484,27 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     return payload;
   }).then(payload => {
     if (!isLatestRequest()) return;
+    // Mesuré à la réponse : on respecte aussi un défilement fait pendant
+    // l'enregistrement, et aucune ancre n'est posée si l'on a quitté la liste.
+    const ancreY = document.querySelector(`[data-res-row-id="${Number(id)}"]`)?.getBoundingClientRect().top;
+    // Un filtre ciblé ne doit pas faire disparaître le groupe que l'on sert.
+    // On rejoint la vue complète seulement si ce dossier quitte le filtre.
+    if (state.staffStatusFilter === filtreAvant && !['all', 'notes'].includes(normaliserFiltreListe(filtreAvant))
+      && !filterReservationsForStaff([payload.reservation], filtreAvant).length) state.staffStatusFilter = 'all';
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+    if (Number.isFinite(ancreY)) requestAnimationFrame(() => {
+      const carte = document.querySelector(`[data-res-row-id="${Number(id)}"]`);
+      if (!carte) return;
+      let parent = carte.parentElement;
+      while (parent && parent !== document.body) {
+        if (parent.scrollHeight > parent.clientHeight && /auto|scroll/.test(getComputedStyle(parent).overflowY)) {
+          parent.scrollTop += carte.getBoundingClientRect().top - ancreY;
+          return;
+        }
+        parent = parent.parentElement;
+      }
+      window.scrollBy(0, carte.getBoundingClientRect().top - ancreY);
+    });
     // Ré-ancre la protection sur la valeur confirmée par le serveur et repousse
     // le délai de grâce : les lectures (staff-state) peuvent encore être en
     // retard sur l'écriture qui vient d'être committée.

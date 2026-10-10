@@ -257,14 +257,16 @@ const lireListe = (page) => page.evaluate(() => {
     puces[clone.textContent.replace(/\s+/g, ' ').trim()] = nombre;
   });
   const sections = [...document.querySelectorAll('#resList .gc-section')].map((s) => ({
-    cle: ['late', 'upcoming', 'onsite', 'closing', 'done', 'absent'].find((k) => s.classList.contains(k)) || '?',
+    cle: ['active', 'late', 'upcoming', 'onsite', 'closing', 'done', 'absent'].find((k) => s.classList.contains(k)) || '?',
     titre: ((s.querySelector('.res-section-head .label') || {}).textContent || '').trim(),
     annonce: Number(((s.querySelector('.res-section-head .count') || {}).textContent || '').trim()),
     ids: [...s.querySelectorAll('.gc[data-res-row-id]')].map((c) => Number(c.dataset.resRowId)),
   }));
-  return { puces, sections };
+  const moments = getStaffReservationMoments(state.reservations);
+  const phases = Object.fromEntries(state.reservations.map(r => { const m = moments.get(String(r.id)); return [r.id, r.absentAt ? 'absent' : m?.late ? 'late' : m?.etat]; }));
+  return { puces, sections, phases };
 });
-const sectionDe = (liste, id) => (liste.sections.find((s) => s.ids.includes(id)) || {}).cle || 'aucune';
+const sectionDe = (liste, id) => liste.phases[id] || (liste.sections.find((s) => s.ids.includes(id)) || {}).cle || 'aucune';
 const motDeFiche = (page, id) => page.evaluate((x) => {
   openPos(x);
   const t = ((document.querySelector('#posOverlay .dossier-status') || {}).textContent || '').trim();
@@ -303,27 +305,28 @@ const SCENARIOS = {
       c(liste.puces['En retard'] === 1, '[B] et « En retard » ne compte plus que Martin', `${liste.puces['En retard']}`);
       // [C]
       const mots = {};
-      for (const [id, attendu] of [[81006, 'En retard'], [81003, 'À clôturer'], [81001, 'Payé'], [81008, 'À vérifier'], [81010, 'À venir'], [81004, 'Sur place'], [81007, 'Pas venu']]) {
+      for (const [id, attendu] of [[81006, 'En retard'], [81003, 'À clôturer'], [81001, 'Sur place'], [81008, 'À vérifier'], [81010, 'À venir'], [81004, 'Sur place'], [81007, 'Pas venu']]) {
         mots[id] = await motDeFiche(page, id);
         c(mots[id] === attendu, `[C] la fiche de ${id} dit « ${attendu} », le mot de la liste`, `« ${mots[id]} »`);
       }
       // [D]
-      const motDeSection = { late: 'En retard', upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer', done: 'Payées', absent: 'Pas venus' };
+      const motDeSection = { late: 'En retard', upcoming: 'À venir', onsite: 'Sur place', closing: 'À clôturer', done: 'Terminées', absent: 'Pas venus' };
       liste.sections.forEach((s) => {
-        c(liste.puces[motDeSection[s.cle]] === s.ids.length && s.annonce === s.ids.length, `[D] la puce et le bandeau « ${s.titre} » annoncent ses ${s.ids.length} cartes`, `puce ${liste.puces[motDeSection[s.cle]]} · bandeau ${s.annonce}`);
+        const compteAttendu = s.cle === 'active' ? jour.length - (liste.puces['Terminées'] || 0) - (liste.puces['Pas venus'] || 0) : liste.puces[motDeSection[s.cle]];
+        c(compteAttendu === s.ids.length && s.annonce === s.ids.length, `[D] le bandeau « ${s.titre} » annonce ses cartes réelles`, `${compteAttendu} · bandeau ${s.annonce}`);
       });
       const somme = Object.entries(liste.puces).filter(([mot]) => !['Tout', 'Avec note'].includes(mot)).reduce((t, [, n]) => t + (n || 0), 0);
       c(somme === liste.puces.Tout && liste.puces.Tout === jour.length, '[D] les puces de section se totalisent a « Tout »', `${somme} pour ${liste.puces.Tout}`);
       const toutesCartes = liste.sections.flatMap((s) => s.ids);
       c(toutesCartes.length === new Set(toutesCartes).size && toutesCartes.length === jour.length, '[D] chaque dossier est dans une section, une seule', `${toutesCartes.length} cartes`);
-      c(!('À gérer' in liste.puces) && !('Terminées' in liste.puces), '[D] plus de puce qui recoupe les sections (« À gérer ») ni de « Terminées »', Object.keys(liste.puces).join(' · '));
+      c(!('À gérer' in liste.puces) && !('Payées' in liste.puces), '[D] aucun filtre caisse qui masque les activités restantes', Object.keys(liste.puces).join(' · '));
       // Chaque puce, cliquee, ne rend que sa section.
       for (const [cle, mot] of Object.entries(motDeSection)) {
         if (!(mot in liste.puces)) continue;
         await page.evaluate((k) => setStaffStatusFilter(k === 'done' ? 'paid' : k), cle);
         const filtree = await lireListe(page);
         const ids = filtree.sections.flatMap((s) => s.ids).sort();
-        const attendus = (liste.sections.find((s) => s.cle === cle) || { ids: [] }).ids.slice().sort();
+        const attendus = Object.entries(liste.phases).filter(([, phase]) => phase === cle).map(([id]) => Number(id)).sort();
         c(ids.join(',') === attendus.join(','), `[D] la puce « ${mot} » rend exactement sa section`, `${ids.length} pour ${attendus.length}`);
       }
       await page.evaluate(() => setStaffStatusFilter('all'));
@@ -680,9 +683,10 @@ const SCENARIOS = {
       const servir = m.cartes.filter((x) => !x.compacte);
       const largeurs = servir.map((x) => x.largeur);
       const gauche = Math.min(...servir.map((x) => x.gauche));
-      c(m.heures.length >= 2, '[O] a 10:30 la liste se range par heure (prerequis)', `${m.heures.length} rangees`);
+      c(servir.length >= 7 && await matin.page.locator('#resList .gc-section.active').count() === 1, '[O] a 10:30 toutes les visites à suivre partagent une seule grille stable', `${servir.length} cartes`);
       c(largeurs.length > 0 && Math.max(...largeurs) - Math.min(...largeurs) <= 1, '[O] une seule grille : toutes les cartes a servir ont la meme largeur', [...new Set(largeurs)].join(','));
-      c(m.heures.length >= 2 && m.heures.every((h) => h.basEtiquette <= h.hautCarte && h.gaucheCarte === gauche), '[O] l heure est en tete de sa rangee, ses cartes au meme bord gauche que les autres', JSON.stringify(m.heures));
+      const horaires = await matin.page.locator('#resList .gc-section.active .gc-when b').allTextContents();
+      c(horaires.length === servir.length && horaires.every((h, i) => !i || h >= horaires[i - 1]), '[O] chaque carte affiche son heure en ordre chronologique', horaires.join(' · '));
     } finally { await matin.ctx.close(); }
     return out;
   },

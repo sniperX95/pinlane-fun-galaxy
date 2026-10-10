@@ -263,7 +263,7 @@ async function scenarios(browser, mutation = null) {
       const kevin = r1930 && r1930.qui.find(g => /Kevin/.test(g.texte));
       ok(scouts && kevin && scouts.etat === 'conf' && kevin.etat === 'conf' && scouts.fondCase && kevin.fondCase && scouts.fondCase !== kevin.fondCase && kevin.fond === kevin.fondCase,
         '[A] deux voisins dans le meme etat se distinguent (deux tons de bleu)', JSON.stringify([scouts && scouts.fondCase, kevin && kevin.fondCase]));
-      ok(/2e partie/.test((r17 && r17.qui.find(g => /Emma/.test(g.texte)) || {}).texte || ''), '[A] la 2e partie se dit', JSON.stringify(r17 && r17.qui));
+      ok(/P2\/2/.test((r17 && r17.qui.find(g => /Emma/.test(g.texte)) || {}).texte || ''), '[A] la 2e partie se dit', JSON.stringify(r17 && r17.qui));
       const r18 = await lireRang(page, 18);
       ok(r18 && /Libre/.test(r18.libre) && r18.compte === '0' && /30 places/.test(r18.places), '[A] un depart vide dit « Libre » et 30 places', JSON.stringify(r18 && { l: r18.libre, c: r18.compte, p: r18.places }));
       const tete = await page.textContent('#laserPlanningGridWrap .lp-passe');
@@ -321,7 +321,7 @@ async function scenarios(browser, mutation = null) {
 
       // [L] Toucher un groupe du jour ouvre SA fiche, sans le prendre
       // (Movsar, 2026-10-08 : « Ouvrir sa fiche » ; on le deplace en le glissant).
-      const thomas = '#laserPlanningGridWrap .lp-g:has-text("EVG Thomas"):has-text("2e partie")';
+      const thomas = '#laserPlanningGridWrap .lp-g:has-text("EVG Thomas"):has-text("P2/2")';
       await page.click(thomas);
       await page.waitForTimeout(300);
       const fiche = await page.evaluate(() => ({
@@ -403,7 +403,7 @@ async function scenarios(browser, mutation = null) {
         const g = [...document.querySelectorAll('#laserPlanningGridWrap .lp-g')].find(x => /Kevin/.test(x.textContent));
         return g ? g.textContent.replace(/\s+/g, ' ').trim() : '';
       });
-      ok(/^Kevin\s*3\b/.test(kevin), '[H] le repeint differe s est fait au lacher (Kevin a 3 a l ecran)', kevin);
+      ok(/^KevinConfirmé3 j\b/.test(kevin), '[H] le repeint differe s est fait au lacher (Kevin a 3 a l ecran)', kevin);
       ok(erreurs.length === 0, '[F-H] zero erreur JS ni console', erreurs.slice(0, 3).join(' | '));
     } finally { await ctx.close(); }
   }
@@ -462,7 +462,7 @@ async function scenarios(browser, mutation = null) {
     const { ctx, page, erreurs } = await ouvrir(browser, { dossiers: d, mutation });
     try {
       const r1830 = await lireRang(page, 18.5);
-      ok(r1830 && r1830.pleines === 30 && r1830.privees === 24 && /pour eux seuls/.test(JSON.stringify(r1830.qui)), '[J] arene privatisee : 6 joueurs, 24 cases hachurees', JSON.stringify(r1830 && { p: r1830.pleines, h: r1830.privees }));
+      ok(r1830 && r1830.pleines === 30 && r1830.privees === 24 && /privée/.test(JSON.stringify(r1830.qui)), '[J] arene privatisee : 6 joueurs, 24 cases hachurees', JSON.stringify(r1830 && { p: r1830.pleines, h: r1830.privees }));
       const r1930 = await lireRang(page, 19.5);
       ok(r1930 && /is-trop/.test(r1930.classes) && /4 de trop/.test(r1930.places), '[J] 18 + 16 sur 30 armes : « 4 de trop »', JSON.stringify(r1930 && { c: r1930.classes, p: r1930.places }));
       ok(erreurs.length === 0, '[J] zero erreur JS ni console', erreurs.slice(0, 3).join(' | '));
@@ -582,9 +582,9 @@ async function scenarios(browser, mutation = null) {
       const r17 = await lireRang(page, 17);
       const r1730 = await lireRang(page, 17.5);
       const qui = (r) => JSON.stringify(r && r.qui.map(g => g.texte));
-      ok(r17 && r17.compte === '23' && !/is-trop/.test(r17.classes) && /vague 1\/2/.test(qui(r17)) && /à 16:55/.test(qui(r17)),
+      ok(r17 && r17.compte === '23' && !/is-trop/.test(r17.classes) && /V1\/2/.test(qui(r17)) && /à 16:55/.test(qui(r17)),
         '[N] 17:00 : la vague de 16:55, 23 armes, rien de trop', JSON.stringify(r17 && { c: r17.compte, p: r17.places, k: r17.classes, q: qui(r17) }));
-      ok(r1730 && r1730.compte === '22' && /vague 2\/2/.test(qui(r1730)) && /à 17:25/.test(qui(r1730)),
+      ok(r1730 && r1730.compte === '22' && /V2\/2/.test(qui(r1730)) && /à 17:25/.test(qui(r1730)),
         '[N] 17:30 : la vague de 17:25, 22 armes', JSON.stringify(r1730 && { c: r1730.compte, q: qui(r1730) }));
       ok(r1630 && r1630.compte === '0' && /30 places/.test(r1630.places),
         '[N] 16:30 reste libre : sa partie finit quand la premiere vague commence', JSON.stringify(r1630 && { c: r1630.compte, p: r1630.places }));

@@ -72,6 +72,7 @@ async function main() {
     await page.waitForFunction(() => !lpEtat.enCours && !lpEtat.glisse); await page.waitForTimeout(400);
     const after = api.getStored(), third = after.opsPlan.resourceBlocks.find(b => b.activityId === 'laser_game' && b.countIndex === 3);
     check(third && third.startTime === '19:00' && third.players === 2, 'troisieme partie sauvegardee a 19:00 avec ses deux joueurs');
+    check(third.endTime === '19:25', 'heure de fin de la troisieme partie conserve ses 25 minutes');
     preserved(before, after);
     const remaining = await stock();
     check(remaining.includes('2.1') && !remaining.includes('3.1'), 'deuxieme partie encore a placer, troisieme sortie du stock');

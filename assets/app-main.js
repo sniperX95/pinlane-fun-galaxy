@@ -23617,7 +23617,13 @@ function lpLegende(modele, d, choisi) {
     const choisiIci = choisi && choisi.id === id && choisi.unitKey === unitKey ? ' is-choisi' : '';
     const grise = modele.trouve(r) ? '' : ' is-grise';
     const titre = `${r.name || 'Groupe'} : ${lpPluriel(lpGroupe(w), 'joueur')}${suite ? `, ${suite}` : ''}. Toucher : sa fiche. Glisser : le déplacer.`;
-    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}" ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(titre)}"><i aria-hidden="true"></i><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)} <span>${lpGroupe(w)}${suite ? ` · ${escapeHtml(suite)}` : ''}${etat === ' is-absent' ? ' · pas venu' : ''}</span></button>`;
+    const statut = r.status === 'paid' ? 'Payé' : r.absentAt ? 'Pas venu' : r.status === 'arrived' ? 'Arrivé' : 'Confirmé';
+    const partie = Number(w.countIndex || 1);
+    const totalParties = getLaserGameCountForReservation(r);
+    const vague = Number(w.waveIndex || w.groupWaveIndex || 1);
+    const vagues = Number(w.waveCount || w.groupWaveCount || 1);
+    const infos = `${lpGroupe(w)} j · P${partie}/${totalParties}${vagues > 1 ? ` · V${vague}/${vagues}` : ''} · fin ${lpHeure(w.end)}${w.arene === 'seuls' ? ' · privée' : ''}${Math.abs(w.start - d.t) > 0.001 ? ` · à ${lpHeure(w.start)}` : ''}`;
+    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}" ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(`${titre} ${infos} · ${statut}`)}"><i aria-hidden="true"></i><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}<span class="lp-card-status">${statut}</span><span class="lp-card-info">${escapeHtml(infos)}</span></button>`;
   });
   // Un client retient ces armes en ligne : la carte dit quand elles se
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
@@ -23869,15 +23875,15 @@ function lpAjusterJournee(wrap) {
   const head = journee.querySelector('.lp-journee__h');
   // Le stock garde une seule ligne ; le bandeau de placement utilise cette
   // reserve constante. Une file vide ne reserve pas la hauteur de jetons.
-  const fileReserve = file && file.querySelector('.lp-jeton') ? 120 : 92;
+  const fileReserve = file && file.querySelector('.lp-jeton') ? 108 : 80;
   const dayTop = journee.getBoundingClientRect().top;
   const available = window.innerHeight - dayTop
     - (head ? head.getBoundingClientRect().height : 0) - fileReserve - 24;
-  let columns = available / rows < 40 && window.innerWidth >= 1100 ? 2 : 1;
-  if (columns === 2 && available / Math.ceil(rows / 2) < 22) columns = 3;
+  const columns = window.innerWidth >= 1100 ? 2 : 1;
   journee.classList.toggle('is-two-columns', columns > 1);
   const columnRows = Math.ceil(rows / columns);
   const rowHeight = Math.max(22, Math.floor(available / columnRows));
+  lp.classList.toggle('lp-cards-tight', rowHeight < 38);
   poserVariableSiChange(lp, '--lp-row-height', `${rowHeight}px`);
   poserVariableSiChange(lp, '--lp-group-font', rowHeight >= 26 ? '14px' : '13px');
   poserVariableSiChange(lp, '--lp-hour-font', rowHeight >= 26 ? '16px' : '14px');
@@ -23901,6 +23907,15 @@ window.addEventListener('resize', () => {
   });
 });
 document.addEventListener('focusin', event => {
+  const alertAction = event.target && event.target.closest ? event.target.closest('.lp-compact .lp-alertes button') : null;
+  if (alertAction) requestAnimationFrame(() => {
+    if (document.activeElement !== alertAction) return;
+    const scroller = alertAction.closest('.lp-alertes');
+    const item = alertAction.getBoundingClientRect();
+    const frame = scroller.getBoundingClientRect();
+    if (item.right > frame.right) scroller.scrollLeft += item.right - frame.right + 2;
+    else if (item.left < frame.left) scroller.scrollLeft -= frame.left - item.left + 2;
+  });
   const group = event.target && event.target.closest ? event.target.closest('.lp-compact .lp-qui .lp-g') : null;
   if (!group) return;
   const scroller = group.closest('.lp-qui');

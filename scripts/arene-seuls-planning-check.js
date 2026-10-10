@@ -102,7 +102,7 @@ async function mesurer(browser, mutation) {
     const f = await page.evaluate(() => {
       const puce = (id) => {
         const el = document.querySelector(`#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id="${id}"]`);
-        const n = el ? el.querySelector('span') : null;
+        const n = el ? el.querySelector('.lp-card-info') : null;
         return el ? { texte: (n ? n.textContent : '').replace(/\s+/g, ' ').trim(), titre: el.getAttribute('title') || '' } : null;
       };
       const rang = document.querySelector('#laserPlanningGridWrap .lp-dep[data-lp-t="15"]');
@@ -149,17 +149,17 @@ async function main() {
   try {
     const f = await mesurer(browser, null);
     ok(Boolean(f.seuls && f.normal && f.depart), 'MONTAGE : les deux groupes et le depart de 15:00 sont au planning laser', JSON.stringify({ seuls: f.seuls, normal: f.normal }));
-    ok(Boolean(f.seuls) && f.seuls.texte === '8 · arène pour eux seuls' && /: 8 joueurs, arène pour eux seuls\./.test(f.seuls.titre) && !/30/.test(f.seuls.titre),
+    ok(Boolean(f.seuls) && /^8 j · P1\/1 · fin 15:25 · privée$/.test(f.seuls.texte) && /: 8 joueurs, arène pour eux seuls\./.test(f.seuls.titre) && !/30/.test(f.seuls.titre),
       '[1] le groupe dit 8, et pourquoi le depart est plein', JSON.stringify(f.seuls));
     ok(Boolean(f.prochain) && f.prochain.armes === '8 armes à préparer' && f.prochain.detail === '8 joueurs · arène pour eux seuls',
       '[1b] le prochain depart dit 8 armes a preparer, pas 30', JSON.stringify(f.prochain));
     ok(Boolean(f.depart) && f.depart.occupe === '30' && f.depart.reste === 'complet' && f.depart.cases === 30 && f.depart.groupe === 8 && f.depart.tenues === 22 && f.depart.vides === 0,
       '[2] le depart reste plein : 30 sur 30, 8 cases au groupe, 22 tenues pour lui', JSON.stringify(f.depart));
     ok(f.fiche8 && !f.fiche30, '[3] la fiche dit « 8 joueurs », jamais 30', JSON.stringify({ huit: f.fiche8, trente: f.fiche30 }));
-    ok(Boolean(f.normal) && f.normal.texte === '6' && /: 6 joueurs\./.test(f.normal.titre) && !/seuls/.test(f.normal.titre), '[4] un groupe ordinaire garde son compte, sans la mention', JSON.stringify(f.normal));
+    ok(Boolean(f.normal) && /^6 j · P1\/1 · fin 17:25$/.test(f.normal.texte) && /: 6 joueurs\./.test(f.normal.titre) && !/seuls/.test(f.normal.titre), '[4] un groupe ordinaire garde son compte, sans la mention', JSON.stringify(f.normal));
     ok(f.erreurs.length === 0, 'zero erreur JS ni console', f.erreurs.slice(0, 3).join(' | '));
     const m = await mesurer(browser, MUTATION);
-    ok(Boolean(m.seuls) && /^30 · arène pour eux seuls$/.test(m.seuls.texte), '[5] contre-preuve : le groupe relu sur les armes dit 30, [1] rougirait', JSON.stringify(m.seuls));
+    ok(Boolean(m.seuls) && /^30 j · P1\/1 · fin 15:25 · privée$/.test(m.seuls.texte), '[5] contre-preuve : le groupe relu sur les armes dit 30, [1] rougirait', JSON.stringify(m.seuls));
     const mf = await mesurer(browser, MUTATION_FICHE);
     ok(mf.fiche30, '[5] contre-preuve : la fiche relue sur les armes dit 30 joueurs, [3] rougirait', JSON.stringify({ huit: mf.fiche8, trente: mf.fiche30 }));
   } finally {

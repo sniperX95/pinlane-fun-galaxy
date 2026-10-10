@@ -137,8 +137,8 @@ srv.listen(PORT, '127.0.0.1', async () => {
       ok(!form.labels.some(label => /^Parties(?: Laser)?$/.test(label)), 'bowling : aucune notion de parties laser');
     } else {
       ok(!form.lanePicker, 'laser : AUCUN selecteur de pistes (il n en occupe pas)');
-      ok(form.labels.includes('Parties Laser'), 'laser : la duree se compte en PARTIES Laser');
-      ok(form.labels.includes('Sessions'), 'laser : ses sessions sont dites a la place des pistes');
+      ok(await pg.locator('[data-edit-activity="laser_game"] [aria-label="Nombre de parties Laser Game"]').count() === 1, 'laser : un seul choix de parties dans son activite');
+      ok(await pg.locator('#editDurationInput').count() === 0, 'laser : pas de second controle de parties contradictoire');
       ok(!form.labels.includes('Pistes'), 'laser : le mot « Pistes » a disparu de sa fiche');
     }
 
@@ -238,7 +238,6 @@ srv.listen(PORT, '127.0.0.1', async () => {
     const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
     if (tab) tab.click();
   });
-  await pg.locator('.dossier-bowling-lanes summary').click();
   await pg.waitForSelector('.lane-picker .lane-chip', { timeout: 20000 });
   // 12 joueurs = 2 pistes requises. On en coche deux de plus, au vrai clic.
   for (const lane of [7, 8]) {
@@ -267,9 +266,9 @@ srv.listen(PORT, '127.0.0.1', async () => {
   });
   await pg.waitForSelector('.edit-form #editNameInput', { timeout: 20000 });
   const ficheF = await pg.evaluate(() => ({
-    contenu: [...document.querySelectorAll('.edit-formule-list li')].map((n) => n.textContent.trim()),
+    contenu: [...document.querySelectorAll('[data-edit-activity] h5')].map((n) => n.textContent.trim()),
     lanePicker: !!document.querySelector('.lane-picker'),
-    labels: [...document.querySelectorAll('.edit-form .lbl')].map((l) => l.textContent.trim()),
+    labels: [...document.querySelectorAll('.edit-form .lbl, .dossier-formula-origin strong')].map((l) => l.textContent.trim()),
   }));
   ok(ficheF.contenu.length >= 3, 'le contenu REEL de la formule est liste (' + JSON.stringify(ficheF.contenu) + ')');
   ok(ficheF.contenu.some((l) => /laser/i.test(l)), 'le laser de cette formule est NOMME a l ecran');
@@ -286,7 +285,6 @@ srv.listen(PORT, '127.0.0.1', async () => {
     const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
     if (tab) tab.click();
   });
-  await pg.locator('.dossier-bowling-lanes summary').click();
   await pg.waitForSelector('.lane-picker .lane-chip', { timeout: 20000 });
   const cocheesLC = await pg.evaluate(() => [...document.querySelectorAll('.lane-picker .lane-chip.is-on')].map((n) => Number(n.textContent.trim())));
   await pg.click('.edit-form button[type="submit"]');

@@ -64,6 +64,14 @@ async function add(page, id, text, scope = 'reservation') {
   const pane = page.locator('#posOverlay'), touch = await page.evaluate(() => navigator.maxTouchPoints > 0);
   await pane.locator('.gc-note-ouvrir')[touch ? 'tap' : 'click']();
   if (!await pane.locator(`input[value="${scope}"]`).isChecked()) await pane.locator(`label:has(input[value="${scope}"])`)[touch ? 'tap' : 'click']();
+  const geometry = await pane.locator('.gc-note-ajout').evaluate((form) => {
+    const field = form.querySelector('textarea'), box = form.getBoundingClientRect(), area = field.getBoundingClientRect();
+    const choices = [...form.querySelectorAll('label:has(input[type="radio"])')].map(el => el.getBoundingClientRect());
+    return { width: area.width, formWidth: box.width, height: area.height, choices: choices.map(r => ({ height: r.height, bottom: r.bottom })), top: area.top };
+  });
+  check(geometry.width >= geometry.formWidth * .85 && geometry.height >= 72, `${scope} note has full-width comfortable textarea`);
+  check(geometry.choices.length === 2 && geometry.choices.every(r => r.height <= 52 && r.bottom <= geometry.top + 1), `${scope} choices compact and above text`);
+  await page.screenshot({ path: path.join(out, `${page.viewportSize().width}-${scope}-composer.png`), fullPage: false });
   await pane.locator('#gcNoteEquipe' + id).fill(text); await pane.locator('.gc-note-ajout .gc-note-ok')[touch ? 'tap' : 'click'](); await page.waitForTimeout(250);
 }
 (async () => {

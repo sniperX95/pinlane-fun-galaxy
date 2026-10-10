@@ -175,7 +175,7 @@ async function main() {
     await page.waitForTimeout(200);
     const edit = await page.evaluate(() => {
       const labels = [...document.querySelectorAll('#posOverlay label.lbl')];
-      const danger = document.querySelector('#posOverlay .edit-actions .btn-secondary.danger');
+      const danger = document.querySelector('#posOverlay .dossier-other-actions .btn-secondary.danger');
       const primary = document.querySelector('#posOverlay .edit-actions .btn-primary');
       return {
         titre: (document.getElementById('posTitle') || {}).textContent || '',
@@ -184,7 +184,7 @@ async function main() {
         associes: labels.filter((l) => l.htmlFor && document.getElementById(l.htmlFor)).length,
         dangerGroupe: !!document.querySelector('#posOverlay .edit-actions-destructive .btn-secondary.danger'),
         primaryGroupe: !!document.querySelector('#posOverlay .edit-actions-main .btn-primary'),
-        ecart: danger && primary ? Math.round(primary.getBoundingClientRect().left - danger.getBoundingClientRect().right) : -1,
+        dangerFolded: !!danger && !!danger.closest('details:not([open])') && !danger.closest('.dossier-actions'),
         dangerCouleur: danger ? getComputedStyle(danger).color : '',
         primaireCouleur: primary ? getComputedStyle(primary).color : '',
       };
@@ -202,7 +202,7 @@ async function main() {
     ok(!/#\d+/.test(edit.ident), 'la ligne d identite ne porte PLUS de reference technique #id');
     ok(edit.labels > 0 && edit.associes === edit.labels, `${edit.associes}/${edit.labels} libelles de champ associes a leur champ`);
     ok(edit.dangerGroupe && edit.primaryGroupe, 'Supprimer et Enregistrer sont dans deux groupes distincts');
-    ok(edit.ecart > 200, `ecart MESURE entre Supprimer et Enregistrer : ${edit.ecart}px (minimum 200)`);
+    ok(edit.dangerFolded, 'actions destructives repliees hors de la barre Enregistrer');
     ok(edit.dangerCouleur !== edit.primaireCouleur, 'Supprimer ne porte pas la meme couleur que l action principale');
 
     // -----------------------------------------------------------------------
@@ -253,7 +253,7 @@ async function main() {
           redites: faits.filter((f) => {
             if (!/^\d+\s+(joueurs?|enfants?)$/.test(f)) return corps.includes(f);
             const copie=body.cloneNode(true);
-            copie.querySelectorAll('.gc-step-what > small, .gc-bill-lines dt small').forEach(el=>{el.textContent=el.textContent.split(f).join('');});
+            copie.querySelectorAll('.gc-step-what > small, .gc-bill-lines dt small, [data-edit-activity] .dossier-participants-explanation, .dossier-price-section #editPrixEstime').forEach(el=>{el.textContent=el.textContent.split(f).join('');});
             return copie.textContent.includes(f);
           }),
           effectifsActivites:[...body.querySelectorAll('.gc-step-what > small')].map(el=>(el.textContent.match(/^(\d+) joueurs?/)||[])[1]).filter(Boolean),
@@ -346,29 +346,19 @@ async function main() {
     await page.waitForTimeout(140);
     const remis = await page.evaluate(() => document.getElementById('posOverlay').classList.contains('hidden'));
     ok(remis, 'gestionnaire remis : Echap referme');
-    // (c) on colle les deux groupes d'actions : l'ecart doit tomber sous le seuil.
+    // (c) remettre Supprimer dans la barre principale doit etre detecte.
     const mutEcart = await page.evaluate(async () => {
       openPos(state.reservations[0].id);
       setTab('modifier');
       await new Promise((r) => setTimeout(r, 140));
-      const style = document.createElement('style');
-      style.id = 'qa-mutation-actions';
-      style.textContent = '#posOverlay .edit-actions{justify-content:flex-end !important;}';
-      document.head.appendChild(style);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      const d = document.querySelector('#posOverlay .btn-secondary.danger');
-      const p = document.querySelector('#posOverlay .btn-primary');
-      const ecart = Math.round(p.getBoundingClientRect().left - d.getBoundingClientRect().right);
-      style.remove();
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      const restaure = Math.round(
-        document.querySelector('#posOverlay .btn-primary').getBoundingClientRect().left
-        - document.querySelector('#posOverlay .btn-secondary.danger').getBoundingClientRect().right
-      );
-      return { ecart, restaure };
+      const d = document.querySelector('#posOverlay .btn-secondary.danger'), parent = d.parentElement, next = d.nextSibling;
+      document.querySelector('#posOverlay .dossier-actions').append(d);
+      const mixed = !!d.closest('.dossier-actions');
+      parent.insertBefore(d, next);
+      return { mixed, restored: !!d.closest('.dossier-other-actions') && !d.closest('.dossier-actions') };
     });
-    ok(mutEcart.ecart < 200, `contre-epreuve : groupes recolles, l ecart tombe a ${mutEcart.ecart}px (le seuil mesure vraiment quelque chose)`);
-    ok(mutEcart.restaure > 200, `mutation retiree : l ecart remonte a ${mutEcart.restaure}px`);
+    ok(mutEcart.mixed, 'contre-epreuve : Supprimer remis dans la barre principale est detecte');
+    ok(mutEcart.restored, 'mutation retiree : Supprimer revient dans Autres actions');
     await page.evaluate(() => closePos());
 
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); failures += errs.length; }

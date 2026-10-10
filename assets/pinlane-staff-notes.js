@@ -75,9 +75,9 @@
     const s = scope(row), editing = editors.get(key(row));
     if (editing?.kind === 'reservation') return '<p class="staff-note-scope-caption">Cette réservation · modification</p>';
     return `<fieldset class="staff-note-scope"><legend>Cette note concerne</legend>
-      <label><input type="radio" name="noteScope${Number(row.id)}" value="reservation" ${s === 'reservation' ? 'checked' : ''} ${canNoteReservation(row) ? '' : 'disabled'} onchange="PinlaneStaffNotes.setScope(${Number(row.id)},this.value)"><span>Cette réservation<small>Visible sur ce dossier uniquement</small></span></label>
-      <label><input type="radio" name="noteScope${Number(row.id)}" value="client" ${s === 'client' ? 'checked' : ''} ${canEdit() ? '' : 'disabled'} onchange="PinlaneStaffNotes.setScope(${Number(row.id)},this.value)"><span>Ce client<small>Reste sur ses prochaines réservations${canEdit() ? '' : ' · accès client requis'}</small></span></label>
-      </fieldset>${s === 'client' ? '<p class="staff-note-scope-caption">Note interne au personnel. Elle complète la note client existante.</p>' : ''}`;
+      <label><input type="radio" name="noteScope${Number(row.id)}" value="reservation" ${s === 'reservation' ? 'checked' : ''} ${canNoteReservation(row) ? '' : 'disabled'} onchange="PinlaneStaffNotes.setScope(${Number(row.id)},this.value)"><span>Cette réservation</span></label>
+      <label><input type="radio" name="noteScope${Number(row.id)}" value="client" ${s === 'client' ? 'checked' : ''} ${canEdit() ? '' : 'disabled'} onchange="PinlaneStaffNotes.setScope(${Number(row.id)},this.value)"><span>Ce client</span></label>
+      </fieldset><p class="staff-note-scope-caption">${s === 'client' ? 'Note interne conservée sur les prochaines réservations de ce client. Elle complète sa note existante.' : 'Note interne visible sur cette réservation uniquement.'}${canEdit() ? '' : ' L’accès aux notes client nécessite une autorisation.'}</p>`;
   }
   function render(row) {
     const e = entry(row), id = Number(row.id), edit = editor(row);

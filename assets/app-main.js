@@ -1561,6 +1561,13 @@ function setEditField(field, value, syncLanes = false) {
   }
   if (syncLanes) syncEditLaneAssignment();
   else refreshEditPreview();
+  if (field === 'pax' && state.editState.programmeEdite) {
+    // Refresh derived activity limits without replacing the input being typed.
+    document.querySelectorAll('.dossier-activity[data-edit-activity]').forEach(row => {
+      const counter = row.querySelector('.dossier-activity-count');
+      if (counter) counter.outerHTML = renderActivityParticipantsControl(row.dataset.editActivity, 'edit', true);
+    });
+  }
 }
 
 function setEditLanes(value) {
@@ -27490,6 +27497,7 @@ function setEditLaserGames(nombre) {
   programme.laser_game.on = true;
   if (programme.laser_game.extraLaser && Number(nombre) !== Number(programme.laser_game.games)) { delete programme.laser_game.extraLaser; toast('La partie supplémentaire est retirée : ce nouveau choix concerne tous les joueurs du laser.'); }
   programme.laser_game.games = Math.max(1, Math.min(3, Math.trunc(Number(nombre) || 1)));
+  if (state.selectedRes?.type === 'laser') state.editState.duration = programme.laser_game.games * 0.5;
   renderPos();
 }
 
@@ -27596,36 +27604,14 @@ function toggleEditProgrammeOuvert() {
   renderPos();
 }
 
-// Le contenu du dossier : LISTE par defaut (la fiche reste courte et se lit
-// d un coup), EDITABLE quand un manager le demande. Le cas par cas est une
-// exception : il ne doit pas allonger la fiche de tout le monde, tous les
-// jours (le gate de hauteur de la fiche le mesure).
-function renderEditFormuleBloc(r, formule, lignes) {
+// Les activités sélectionnées sont directement éditables, les ajouts restent
+// à part. Les permissions et les setters métier restent les mêmes.
+function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   if (!peutAdapterFormule()) {
-    if (!lignes.length) return '';
+    const items = Array.isArray(r.program?.items) ? r.program.items : [];
     return `<div class="pos-field dossier-program">
       <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'la formule')}</span>
-      <ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>
-    </div>`;
-  }
-  const ouvert = !!(state.editState && state.editState.programmeOuvert);
-  const listeHtml = lignes.length
-    ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>`
-    : '';
-  if (!ouvert) {
-    // Une visite sans formule dit ce qu elle contient (les activites en
-    // puces), au lieu d un bouton seul.
-    const items = Array.isArray(r.program?.items) ? r.program.items : [];
-    const puces = !lignes.length ? (items.length ? `<ul class="dossier-program-summary">${items.map(item => {
-      const activity = getCenterActivity(item.activityId);
-      const players = participantsLigneProgramme(item, r.pax);
-      const unit = activity && activityCountsChildren(activity) ? 'enfant' : 'joueur';
-      return `<li><span>${escapeHtml(nomActivite(item))}</span><strong>${players} ${unit}${players > 1 ? 's' : ''}</strong></li>`;
-    }).join('')}</ul>` : `<p class="field-hint">${escapeHtml(getReservationLabel(r))}</p>`) : '';
-    return `<div class="pos-field dossier-program">
-      ${formule?.name ? `<span class="lbl">${escapeHtml(formule.name)}</span>` : ''}
-      ${listeHtml}${puces}
-      <button type="button" class="edit-adapter-btn" onclick="toggleEditProgrammeOuvert()">Adapter pour ce dossier</button>
+      ${items.length ? `<ul class="dossier-program-summary">${items.map(item => `<li><span>${escapeHtml(nomActivite(item))}</span><strong>${participantsLigneProgramme(item, r.pax)} ${getCenterActivity(item.activityId) && activityCountsChildren(getCenterActivity(item.activityId)) ? 'enfants' : 'joueurs'}</strong></li>`).join('')}</ul>` : lignes.length ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>` : `<p class="field-hint">${escapeHtml(getReservationLabel(r))} · ${Number(r.pax) || 0} participants</p>`}
     </div>`;
   }
   const programme = ensureEditProgram(r);
@@ -27636,24 +27622,39 @@ function renderEditFormuleBloc(r, formule, lignes) {
   const supplement = Object.keys(programme.others || {})
     .filter((id) => !connus.has(id))
     .map((id) => ({ id, label: (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || (typeof FORMULA_ACTIVITY_LABELS !== 'undefined' && FORMULA_ACTIVITY_LABELS[id]) || id }));
+  const ajouts = [];
   const rangees = [...choix, ...supplement].map((choice) => {
     const estBowling = choice.id === 'bowling';
     const estLaser = choice.id === 'laser_game';
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
+    if (!actif) {
+      ajouts.push(`<button type="button" class="btn-secondary dossier-add-activity" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">+ ${escapeHtml(choice.label)}</button>`);
+      return '';
+    }
     let options = '';
     if (actif && estBowling) {
-      options = `<div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div>`;
+      options = controls.bowlingDuration || `<div class="dossier-activity-setting"><span class="lbl">Durée bowling</span><div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div></div>`;
     }
     if (actif && choice.id === 'arcade_time') options = renderStaffArcadeOptions(getCenterActivity(choice.id),programme.othersOptions[choice.id] || {},participantsLigneProgramme(programme.othersOptions[choice.id] || {},state.editState.pax),'edit');
     if (actif && estLaser) {
-      options = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
+      options = `<div class="dossier-activity-setting"><span class="lbl">Parties par joueur</span><div class="dossier-options" role="group" aria-label="Nombre de parties Laser Game">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" aria-pressed="${Number(programme.laser_game.games) === games}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div></div>`;
       const extra = programme.laser_game.extraLaser;
       if (extra) options += `<small class="muted">+ ${extra.games - programme.laser_game.games} partie pour ${extra.participants} joueurs · ${escapeHtml(formatMoneyCentimes(extra.price))}${Number(extra.discountAmount) > 0 ? ` · remise ${escapeHtml(formatMoneyCentimes(extra.discountAmount))}` : ''}</small>`;
     }
-    return `<div class="qb-visit-row dossier-activity ${actif ? 'is-on' : ''}">
-      <button type="button" class="qb-visit-toggle dossier-activity-head" aria-pressed="${actif ? 'true' : 'false'}" onclick="toggleEditActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
-      ${actif ? `<div class="dossier-activity-body">${renderActivityParticipantsControl(choice.id, 'edit')}${options}</div>` : ''}
-    </div>`;
+    const item = !estBowling && !estLaser && choice.id !== 'arcade_time' ? getEditProgramItems().find(line => line.activityId === choice.id) : null;
+    // Readonly presentation retains stored units/day metadata that is not edited here.
+    const savedItem = item ? (r.program?.items || []).find(line => line.activityId === choice.id) : null;
+    const detailItem = item ? { ...savedItem, ...item } : null;
+    // The draft stores Fun Run minutes per session; identify that unit for the display helper.
+    if (detailItem && choice.id === 'fun_run' && Number(item.minutes) > 0) detailItem.sessionMinutes = Number(item.minutes);
+    const detail = detailItem ? detailLigneProgrammeSansEffectif(detailItem, r) : '';
+    return `<section class="qb-visit-row dossier-activity is-on" data-edit-activity="${escapeHtml(choice.id)}" aria-label="${escapeHtml(choice.label)}">
+      <div class="dossier-activity-heading"><h5>${escapeHtml(choice.label)}</h5><button type="button" class="dossier-remove-activity" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeHtml(choice.id)}')">Retirer</button></div>
+      ${detail ? `<p class="dossier-edit-help">${escapeHtml(detail)}</p>` : ''}
+      <div class="dossier-activity-body">${renderActivityParticipantsControl(choice.id, 'edit', true)}${options}</div>
+      ${estBowling ? controls.lanes || '' : ''}
+      ${estLaser ? renderDossierLaserEditor(r) : ''}
+    </section>`;
   }).join('');
   const prixValeur = getEditPriceValue();
   // Le montant ecrit sous le champ : ce qui sera facture, et ce que ca fait
@@ -27694,10 +27695,11 @@ function renderEditFormuleBloc(r, formule, lignes) {
   const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
   const modifie = editProgramAChange();
   return `<div class="pos-field dossier-program">
-    <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'ce dossier')} <em class="edit-cas-tag">cas par cas</em>
-      <button type="button" class="edit-adapter-btn is-open" onclick="toggleEditProgrammeOuvert()">Replier</button></span>
-    ${listeHtml ? `<div class="edit-formule-origine">${listeHtml}</div>` : ''}
+    ${formule?.name ? `<p class="dossier-formula-origin">Formule : <strong>${escapeHtml(formule.name)}</strong> · les changements concernent uniquement cette visite.</p>` : ''}
+    <p class="dossier-edit-help">Réglez les joueurs et les options de chaque activité, puis cliquez sur Enregistrer.</p>
     <div class="qb-visit-grid dossier-activities">${rangees}</div>
+    ${ajouts.length ? `<details class="dossier-add-activities"><summary>Ajouter une activité</summary><div>${ajouts.join('')}</div></details>` : ''}
+    <section class="dossier-price-section" aria-labelledby="dossierPriceHeading"><h4 id="dossierPriceHeading">Prix de la visite</h4>
     <div class="edit-price-row">
       <label for="editPriceInput">Prix facturé</label>
       <input id="editPriceInput" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)">
@@ -27708,9 +27710,9 @@ function renderEditFormuleBloc(r, formule, lignes) {
       ${state.editState.prixFige ? `<button type="button" class="edit-adapter-btn" onclick="recalculerEditPrix()">Recalculer</button>` : '<small class="edit-prix-auto">calculé automatiquement</small>'}
     </div>
     <div class="edit-prix-estime" id="editPrixEstime">${escapeHtml(prixLigne)}</div>
-    ${detailHtml}
+    ${detailHtml ? `<details class="dossier-price-detail"><summary>Voir le détail du calcul</summary>${detailHtml}</details>` : ''}
     ${reference > 0 ? `<div class="qb-field-note">Tarif catalogue des activités : ${Math.round((reference) * 100) / 100} €</div>` : ''}
-    <div class="qb-field-note">${modifie ? 'Les activités seront replanifiées à l\'enregistrement. ' : ''}Ne change QUE ce dossier : la formule du centre et le formulaire de réservation en ligne ne bougent pas.</div>
+    <div class="qb-field-note">${modifie ? 'Le programme a changé : les activités seront replanifiées à l\'enregistrement.' : 'Le montant actuel est conservé tant que les activités ou les effectifs ne changent pas.'}</div></section>
   </div>`;
 }
 
@@ -27746,12 +27748,10 @@ function renderDossierLaserEditor(r) {
       <button type="button" class="btn-secondary" onclick="saveDossierLaserUnit('${unit.unitKey}')" ${dossierLaserSaving ? 'disabled' : ''}>${placed ? 'Déplacer' : 'Placer'}</button>${placed ? `<button type="button" class="edit-adapter-btn" onclick="saveDossierLaserUnit('${unit.unitKey}',true)" ${dossierLaserSaving ? 'disabled' : ''}>Retirer du planning</button>` : ''}</div>
     </div>`;
   }).join('');
-  return `<section class="es-card es-wide dossier-section dossier-section-wide dossier-laser-editor" aria-labelledby="dossierLaserHeading">
-    <div class="es-head dossier-section-heading"><h4 id="dossierLaserHeading">Laser Game</h4><span class="muted">${placedCount} ${unitName}${placedCount > 1 ? 's' : ''} placée${placedCount > 1 ? 's' : ''} sur ${units.length}</span></div>
-    ${canAdapt && laser?.on ? `<div class="dossier-laser-program">${renderActivityParticipantsControl('laser_game', 'edit', true)}<div class="dossier-laser-games"><span class="lbl">Parties par joueur</span><div class="dossier-options" role="group" aria-label="Nombre de parties Laser Game">${[1,2,3].map(games => `<button type="button" class="dossier-option ${Number(laser.games) === games ? 'active' : ''}" aria-pressed="${Number(laser.games) === games}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div></div>${laser.extraLaser ? `<small class="muted">Partie supplémentaire : ${laser.extraLaser.participants} joueurs.</small>` : ''}<small class="muted">Validez les joueurs et le nombre de parties avec <strong>Enregistrer</strong>. Les horaires seront recalculés si vous changez ce programme.</small></div>` : `<p class="muted">${getReservationActivityPlayers(r, 'laser_game')} joueurs · ${getLaserGameCountForReservation(r)} partie${getLaserGameCountForReservation(r)>1?'s':''}</p>`}
+  return `<div class="dossier-laser-editor">
     ${estimate?.utilisable ? `<p class="field-hint">Activités après modification : ${escapeHtml(String(estimate.total))} €${state.editState.prixFige ? ' · prix facturé fixé manuellement' : ''}. ${estimate.complet ? '' : 'Certaines activités se règlent sur place.'}</p>` : ''}
-    <details class="dossier-laser-schedule" ${r.type === 'laser' || getStaffResourceView() === 'laser' ? 'open' : ''}><summary>Horaires des parties <span class="muted">${placedCount} sur ${units.length} au planning</span></summary><p class="field-hint">Ces actions s’enregistrent immédiatement. Pour changer les joueurs ou le nombre de parties, cliquez d’abord sur Enregistrer.</p><div class="dossier-laser-units">${rows}</div></details>
-  </section>`;
+    <details class="dossier-laser-schedule"><summary>Horaires des parties <span class="muted">${placedCount} ${unitName}${placedCount > 1 ? 's' : ''} placée${placedCount > 1 ? 's' : ''} sur ${units.length}</span></summary><p class="field-hint">Placer, déplacer ou retirer une partie s’enregistre immédiatement. Enregistrez d’abord les changements de joueurs ou de programme.</p><div class="dossier-laser-units">${rows}</div></details>
+  </div>`;
 }
 
 async function saveDossierLaserUnit(unitKey, unplace = false) {
@@ -27821,7 +27821,6 @@ function renderPosEdit(r) {
     contenu: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>',
   };
   const statuts = [['pending', 'Confirmé'], ['arrived', 'Arrivé'], ['paid', 'Payé']];
-  const contenuBloc = renderEditFormuleBloc(r, editFormule, editFormuleLignes);
   const pistesBloc = !editNeedsLanes ? (editFormuleLignes.length ? '' : `
           <div class="pos-field dossier-field">
             <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
@@ -27843,12 +27842,25 @@ function renderPosEdit(r) {
             </div>
             <p class="field-hint" id="editLanesHint">${editLaneAdvice(r, e)}</p>
           </div>`;
+  const durationControl = `<div class="pos-field dossier-field">
+              <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties Laser' : editNeedsLanes ? 'Durée bowling' : 'Durée'}</label>
+              <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
+                ${isLaserRes
+                  ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${option.price}€ / joueur)</option>`).join('')
+                  : [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
+                ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
+              </select>
+            </div>`;
+  const contenuBloc = renderEditFormuleBloc(r, editFormule, editFormuleLignes, {
+    bowlingDuration: editNeedsLanes ? durationControl.replace("setEditField('duration', this.value, true)", "setEditField('duration', this.value, true);setEditBowlingDuration(this.value)") : '',
+    lanes: editNeedsLanes ? pistesBloc : ''
+  });
   return `<div class="edit-shell es2 ${posSheetClass()}">
     <form class="edit-form" onsubmit="saveEdit(event)">
       <fieldset class="dossier-edit-lock" ${dossierLaserSaving ? 'disabled' : ''}>
       <div class="es-grid dossier-edit-grid">
-        <section class="es-card dossier-section">
-          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.client}</span><h4>Client</h4></div>
+        <section class="es-card dossier-section dossier-contact-section">
+          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.client}</span><h4>Coordonnées du client</h4></div>
           <div class="pos-field dossier-field">
             <label class="lbl" for="editNameInput">Nom</label>
             <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" autocomplete="off" oninput="setEditField('name', this.value)" required>
@@ -27864,22 +27876,14 @@ function renderPosEdit(r) {
             </div>
           </div>
         </section>
-        <section class="es-card dossier-section">
-          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.quand}</span><h4>Visite et groupe</h4></div>
-          <div class="es-trio">
+        <section class="es-card dossier-section dossier-visit-section">
+          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.quand}</span><h4>Organisation de la visite</h4></div>
+          <div class="es-trio dossier-visit-fields">
             <div class="pos-field dossier-field">
               <label class="lbl" for="editStartInput">Début de visite</label>
               <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
             </div>
-            <div class="pos-field dossier-field">
-              <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties Laser' : editNeedsLanes ? 'Durée bowling' : 'Durée'}</label>
-              <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
-                ${isLaserRes
-                  ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${option.price}€ / joueur)</option>`).join('')
-                  : [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
-                ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
-              </select>
-            </div>
+${!peutAdapterFormule() || (!isLaserRes && !editNeedsLanes) ? durationControl : ''}
             <div class="pos-field dossier-field">
               <label class="lbl" for="editPaxInput">Groupe total</label>
               <div class="es-stepper staff-stepper">
@@ -27897,17 +27901,19 @@ function renderPosEdit(r) {
           </div>
         </section>
         ${contenuBloc || pistesBloc ? `<section class="es-card es-wide dossier-section dossier-section-wide">
-          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.contenu}</span><h4>Activités de la visite</h4></div>
-          <div class="es-contenu">${contenuBloc}${editNeedsLanes ? `<details class="dossier-bowling-lanes"><summary>Pistes de bowling <span class="muted">${getEditLaneNumbers().join(', ') || 'À attribuer'}</span></summary>${pistesBloc}</details>` : pistesBloc}</div>
+          <div class="es-head dossier-section-heading"><span class="es-ico">${ico.contenu}</span><h4>Activités et placement</h4></div>
+          <div class="es-contenu">${contenuBloc}${!peutAdapterFormule() ? pistesBloc : ''}</div>
         </section>` : ''}
-        ${renderDossierLaserEditor(r)}
+        ${!peutAdapterFormule() ? renderDossierLaserEditor(r) : ''}
       </div>
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
-      <div class="edit-actions es-actions dossier-actions">
+      <details class="dossier-other-actions"><summary>Autres actions</summary>
         <div class="edit-actions-destructive">
           <button type="button" class="btn-secondary warn es-lien" onclick="cancelRes(${r.id})">Annuler la réservation</button>
           <button type="button" class="btn-secondary danger es-lien" onclick="deleteRes(${r.id})">Supprimer</button>
         </div>
+      </details>
+      <div class="edit-actions es-actions dossier-actions">
         <div class="edit-actions-main">
           <button type="button" class="btn-secondary" onclick="closePos()">Fermer</button>
           <button type="submit" class="btn-primary es-save">Enregistrer</button>
@@ -28621,10 +28627,10 @@ function renderActivityParticipantsControl(id, mode = 'quick', explicit = false)
   const setter = mode === 'edit' ? 'setEditActivityParticipants' : 'setQuickVisitParticipants';
   const nom = (activite && activite.name) || id;
   return `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(nom)} : ${unite}s">`
-    + `<span class="qb-opt-legend">${explicit ? 'Joueurs au Laser' : enfants ? 'Enfants' : 'Joueurs'}</span>`
+    + `<span class="qb-opt-legend">${enfants ? 'Enfants' : 'Joueurs'}</span>`
     + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant - 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
     + `<span class="qb-step-valeur staff-stepper-value">${explicit ? courant : `${courant} / ${plafond}`}</span>`
-    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explicit ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''} au Laser sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}</div>`;
+    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeHtml(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explicit ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}</div>`;
 }
 
 function setEditActivityParticipants(id, nombre) {

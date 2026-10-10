@@ -48,14 +48,14 @@ function preserved(before,after,unit){
       await page.locator('.dossier-tabs .tab').filter({hasText:'Modifier'}).click();
       check(await page.locator('.dossier-laser-editor').isVisible(),'direct Laser section '+type);
       check(await page.locator('.dossier-laser-unit').count()>=2,'each part listed '+type);
-      check(await page.locator('.dossier-laser-program').isVisible(),'participants and games available directly '+type);
+      check(await page.locator('[data-edit-activity="laser_game"] .dossier-activity-count').isVisible(),'participants and games available directly '+type);
       const unit='2.1',row=page.locator(`[data-laser-unit="${unit}"]`);await openSchedule(page);await row.locator('input').fill('19:00');const before=api.getStored();
       await row.getByRole('button',{name:/Placer|Déplacer/,exact:true}).click();await page.waitForFunction(()=>!dossierLaserSaving);
       check(api.getStored().opsPlan.resourceBlocks.some(b=>b.activityId==='laser_game'&&b.countIndex===2&&b.startTime==='19:00'),'direct unit saves through real API '+type+' '+await page.locator('#editError').textContent());
       if(type!=='legacy')preserved(before,api.getStored(),unit);
       check(requests.at(-1).activityMove.unitKey===unit&&!('startTime'in requests.at(-1)),'scoped intent only '+type);
-      await row.getByRole('button',{name:'Retirer du planning'}).click();await page.waitForFunction(()=>!dossierLaserSaving);check(!api.getStored().opsPlan.resourceBlocks.some(b=>b.activityId==='laser_game'&&b.countIndex===2),'unplace durable '+type);
-      await row.locator('input').fill('19:30');await row.getByRole('button',{name:'Placer',exact:true}).click();await page.waitForFunction(()=>!dossierLaserSaving);
+      await openSchedule(page);await row.getByRole('button',{name:'Retirer du planning'}).click();await page.waitForFunction(()=>!dossierLaserSaving);check(!api.getStored().opsPlan.resourceBlocks.some(b=>b.activityId==='laser_game'&&b.countIndex===2),'unplace durable '+type);
+      await openSchedule(page);await row.locator('input').fill('19:30');await row.getByRole('button',{name:'Placer',exact:true}).click();await page.waitForFunction(()=>!dossierLaserSaving);
       await page.reload({waitUntil:'networkidle'});await page.evaluate(async()=>{await ensureStaffConsolesLoaded();const r=await window.__qaReadReservation();state.reservations=[r];state.currentDate=r.date;state.adminCenterId=r.centerId;setView('staff');openPos(r.id);setTab('modifier');});
       await openSchedule(page);check(await row.locator('input').inputValue()==='19:30','reload keeps saved hour '+type);
       const n=requests.length;await page.locator('#editNameInput').fill('Brouillon non enregistré');await openSchedule(page);await row.locator('input').fill('20:00');await row.getByRole('button',{name:'Déplacer',exact:true}).click();check(requests.length===n,'unsaved draft blocks schedule '+type);check(/Enregistrez d’abord/.test(await page.locator('#editError').textContent()),'clear draft notice '+type);
@@ -64,12 +64,14 @@ function preserved(before,after,unit){
       await page.evaluate(()=>{state.editError='';state.editState=etatEditionDepuis(state.selectedRes);renderPos();});
       await page.screenshot({path:path.join(out,type+'.png'),fullPage:true});
       check(await page.evaluate(()=>document.querySelector('.edit-modal').scrollWidth<=document.querySelector('.edit-modal').clientWidth+1),'editor has no horizontal overflow '+type);
-      await page.locator('.dossier-laser-program button[aria-label*="retirer"]').click();
-      await page.locator('.dossier-laser-program button').filter({hasText:'1 partie'}).click();
+      await page.locator('[data-edit-activity="laser_game"] .dossier-activity-count button[aria-label*="retirer"]').click();
+      await page.locator('[data-edit-activity="laser_game"] .dossier-options button').filter({hasText:'1 partie'}).click();
       const expected=await page.evaluate(()=>({participants:state.editState.programmeEdite.laser_game.participants,games:state.editState.programmeEdite.laser_game.games,price:getEditPrixEstime()?.total}));
       check(expected.participants===3&&expected.games===1,'direct commercial controls update own participants and games '+type);
       await page.locator('.es-save').click();await page.waitForFunction(()=>!state.selectedRes);
       const saved=api.getStored(),laser=saved.program.items.find(i=>i.activityId==='laser_game');check(laser.participants===3&&laser.games===1,'participants and games saved by existing program API '+type);check(!requests.at(-1).activityMove,'commercial edit uses existing program contract '+type);check(saved.price===requests.at(-1).price,'saved price equals existing quote payload '+type);
+      if(type==='legacy')check(saved.duration===.5&&requests.at(-1).duration===.5,'pure Laser single games control synchronizes saved duration '+type);
+      else check(saved.program.items.find(i=>i.activityId==='bowling')?.duration===prior.program.items.find(i=>i.activityId==='bowling')?.duration,'Laser games edit preserves Bowling duration '+type);
       check(errors.length===0,'no JS errors '+type);await context.close();
     }
     console.log(JSON.stringify({ok:true,checks,fixtureOnly:true}));

@@ -133,11 +133,11 @@ srv.listen(PORT, '127.0.0.1', async () => {
     ok(form.hasForm, 'le formulaire de modification est rendu');
     if (kind === 'BOWLING') {
       ok(form.lanePicker, 'bowling : le selecteur de pistes est la');
-      ok(form.labels.includes('Durée'), 'bowling : la duree se compte en heures');
-      ok(!form.labels.includes('Parties'), 'bowling : aucune notion de parties laser');
+      ok(form.labels.includes('Durée bowling'), 'bowling : la duree se compte en heures de bowling');
+      ok(!form.labels.some(label => /^Parties(?: Laser)?$/.test(label)), 'bowling : aucune notion de parties laser');
     } else {
       ok(!form.lanePicker, 'laser : AUCUN selecteur de pistes (il n en occupe pas)');
-      ok(form.labels.includes('Parties'), 'laser : la duree se compte en PARTIES');
+      ok(form.labels.includes('Parties Laser'), 'laser : la duree se compte en PARTIES Laser');
       ok(form.labels.includes('Sessions'), 'laser : ses sessions sont dites a la place des pistes');
       ok(!form.labels.includes('Pistes'), 'laser : le mot « Pistes » a disparu de sa fiche');
     }
@@ -238,6 +238,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
     const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
     if (tab) tab.click();
   });
+  await pg.locator('.dossier-bowling-lanes summary').click();
   await pg.waitForSelector('.lane-picker .lane-chip', { timeout: 20000 });
   // 12 joueurs = 2 pistes requises. On en coche deux de plus, au vrai clic.
   for (const lane of [7, 8]) {
@@ -273,7 +274,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
   ok(ficheF.contenu.length >= 3, 'le contenu REEL de la formule est liste (' + JSON.stringify(ficheF.contenu) + ')');
   ok(ficheF.contenu.some((l) => /laser/i.test(l)), 'le laser de cette formule est NOMME a l ecran');
   ok(!ficheF.lanePicker, 'formule sans bowling : aucun selecteur de pistes');
-  ok(ficheF.labels.some((l) => /Contenu de/i.test(l)), 'la fiche annonce le contenu de la formule (' + JSON.stringify(ficheF.labels) + ')');
+  ok(ficheF.labels.includes(FORMULES.find(f => f.id === 'f2').name), 'la fiche annonce le nom réel de la formule (' + JSON.stringify(ficheF.labels) + ')');
   await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
   await pg.waitForTimeout(400);
 
@@ -285,6 +286,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
     const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
     if (tab) tab.click();
   });
+  await pg.locator('.dossier-bowling-lanes summary').click();
   await pg.waitForSelector('.lane-picker .lane-chip', { timeout: 20000 });
   const cocheesLC = await pg.evaluate(() => [...document.querySelectorAll('.lane-picker .lane-chip.is-on')].map((n) => Number(n.textContent.trim())));
   await pg.click('.edit-form button[type="submit"]');

@@ -6,6 +6,7 @@ const api=require('./activity-drag-contract-check');
 const {chromium}=require('playwright-core');
 const out=path.resolve(__dirname,'../tests/artifacts/laser-reservation-editor');fs.mkdirSync(out,{recursive:true});
 let checks=0;function check(value,message){assert.ok(value,message);checks++;console.log('OK '+message);}
+async function openSchedule(page){const d=page.locator('.dossier-laser-schedule');if(await d.count()&&!(await d.evaluate(el=>el.open)))await d.locator('summary').click();}
 function preserved(before,after,unit){
   for(const key of ['date','startTime','duration','totalDuration','price','basePrice','pax','program','extras','status']){assert.deepEqual(after[key],before[key],key);checks++;}
   const outside=b=>b.activityId!=='laser_game'||`${b.countIndex||1}.${b.groupWaveIndex||1}`!==unit;
@@ -48,7 +49,7 @@ function preserved(before,after,unit){
       check(await page.locator('.dossier-laser-editor').isVisible(),'direct Laser section '+type);
       check(await page.locator('.dossier-laser-unit').count()>=2,'each part listed '+type);
       check(await page.locator('.dossier-laser-program').isVisible(),'participants and games available directly '+type);
-      const unit='2.1',row=page.locator(`[data-laser-unit="${unit}"]`);await row.locator('input').fill('19:00');const before=api.getStored();
+      const unit='2.1',row=page.locator(`[data-laser-unit="${unit}"]`);await openSchedule(page);await row.locator('input').fill('19:00');const before=api.getStored();
       await row.getByRole('button',{name:/Placer|Déplacer/,exact:true}).click();await page.waitForFunction(()=>!dossierLaserSaving);
       check(api.getStored().opsPlan.resourceBlocks.some(b=>b.activityId==='laser_game'&&b.countIndex===2&&b.startTime==='19:00'),'direct unit saves through real API '+type+' '+await page.locator('#editError').textContent());
       if(type!=='legacy')preserved(before,api.getStored(),unit);
@@ -56,10 +57,10 @@ function preserved(before,after,unit){
       await row.getByRole('button',{name:'Retirer du planning'}).click();await page.waitForFunction(()=>!dossierLaserSaving);check(!api.getStored().opsPlan.resourceBlocks.some(b=>b.activityId==='laser_game'&&b.countIndex===2),'unplace durable '+type);
       await row.locator('input').fill('19:30');await row.getByRole('button',{name:'Placer',exact:true}).click();await page.waitForFunction(()=>!dossierLaserSaving);
       await page.reload({waitUntil:'networkidle'});await page.evaluate(async()=>{await ensureStaffConsolesLoaded();const r=await window.__qaReadReservation();state.reservations=[r];state.currentDate=r.date;state.adminCenterId=r.centerId;setView('staff');openPos(r.id);setTab('modifier');});
-      check(await row.locator('input').inputValue()==='19:30','reload keeps saved hour '+type);
-      const n=requests.length;await page.locator('#editNameInput').fill('Brouillon non enregistré');await row.locator('input').fill('20:00');await row.getByRole('button',{name:'Déplacer',exact:true}).click();check(requests.length===n,'unsaved draft blocks schedule '+type);check(/Enregistrez d’abord/.test(await page.locator('#editError').textContent()),'clear draft notice '+type);
+      await openSchedule(page);check(await row.locator('input').inputValue()==='19:30','reload keeps saved hour '+type);
+      const n=requests.length;await page.locator('#editNameInput').fill('Brouillon non enregistré');await openSchedule(page);await row.locator('input').fill('20:00');await row.getByRole('button',{name:'Déplacer',exact:true}).click();check(requests.length===n,'unsaved draft blocks schedule '+type);check(/Enregistrez d’abord/.test(await page.locator('#editError').textContent()),'clear draft notice '+type);
       await page.evaluate(()=>{state.editState=etatEditionDepuis(state.selectedRes);renderPos();});const prior=api.getStored();api.setStored({...prior,updatedAt:'2026-10-05T08:09:00.000Z',notes:'Autre poste'});
-      await row.locator('input').fill('20:00');await row.getByRole('button',{name:'Déplacer',exact:true}).click();await page.waitForFunction(()=>!dossierLaserSaving);check(api.getStored().opsPlan.resourceBlocks.some(b=>b.countIndex===2&&b.startTime==='19:30'),'409 cannot move '+type);check(/autre poste|changé/.test(await page.locator('#editError').textContent()),'409 remains visible '+type);
+      await openSchedule(page);await row.locator('input').fill('20:00');await row.getByRole('button',{name:'Déplacer',exact:true}).click();await page.waitForFunction(()=>!dossierLaserSaving);check(api.getStored().opsPlan.resourceBlocks.some(b=>b.countIndex===2&&b.startTime==='19:30'),'409 cannot move '+type);check(/autre poste|changé/.test(await page.locator('#editError').textContent()),'409 remains visible '+type);
       await page.evaluate(()=>{state.editError='';state.editState=etatEditionDepuis(state.selectedRes);renderPos();});
       await page.screenshot({path:path.join(out,type+'.png'),fullPage:true});
       check(await page.evaluate(()=>document.querySelector('.edit-modal').scrollWidth<=document.querySelector('.edit-modal').clientWidth+1),'editor has no horizontal overflow '+type);

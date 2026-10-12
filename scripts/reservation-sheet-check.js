@@ -287,18 +287,25 @@ async function main() {
       openPos(state.reservations[0].id); setTab('details');
       const transparent = (v) => !v || v === 'transparent' || /rgba\([^)]*,\s*0\)/.test(v);
       const act = document.querySelector('#posOverlay .pos-act');
-      const groupes = [...document.querySelectorAll('#posOverlay .pos-sheet > .info-block')];
+      // LA FICHE SOBRE (2026-10-12) range les groupes en deux colonnes (le
+      // programme et les notes, puis l addition et le client) : chacun est
+      // plat, et chacun se separe du precedent de sa colonne par un filet.
+      const colonnes = [...document.querySelectorAll('#posOverlay .pos-sheet :is(.fx-principal, .fx-cote)')];
+      const groupes = colonnes.flatMap((c) => [...c.children]);
+      const suivants = colonnes.flatMap((c) => [...c.children].slice(1));
       return {
         actPresent: !!act && act.checkVisibility() && act.getBoundingClientRect().width > 0,
+        colonnes: colonnes.length,
         groupes: groupes.length,
         groupesAvecFond: groupes.filter((g) => !transparent(getComputedStyle(g).backgroundColor)).length,
-        groupesAvecFilet: groupes.filter((g) => parseFloat(getComputedStyle(g).borderTopWidth) > 0).length,
+        suivants: suivants.length,
+        groupesAvecFilet: suivants.filter((g) => parseFloat(getComputedStyle(g).borderTopWidth) > 0).length,
       };
     });
     await page.waitForTimeout(160);
     ok(relief.actPresent, 'le bloc d action reste present et visible dans la composition neutre');
     ok(relief.groupes > 0 && relief.groupesAvecFond === 0, `les ${relief.groupes} groupes du corps sont plats (${relief.groupesAvecFond} avec fond)`);
-    ok(relief.groupes === relief.groupesAvecFilet, `les ${relief.groupes} groupes se separent par un filet`);
+    ok(relief.colonnes === 2 && relief.suivants > 0 && relief.suivants === relief.groupesAvecFilet, `les ${relief.suivants} groupes qui en suivent un autre s en separent par un filet (${relief.colonnes} colonnes)`);
 
     // LE DEPLIANT RANGE SANS SUPPRIMER. Sa hauteur propre grandit a l'ouverture,
     // meme lorsque le modal a atteint son plafond. Les quatre controles sont
@@ -416,7 +423,8 @@ async function main() {
       // Depuis le 2026-10-01, programme et suivi sont UN SEUL bloc
       // « Programme » : les activites d une formule s y cochent. « Ne
       // coexistent pas » se lit donc : un seul bloc, qui porte les coches.
-      const etiquettes = () => [...document.querySelectorAll('#posOverlay .info-label, .pos-sheet .info-label')]
+      // LA FICHE SOBRE (2026-10-12) ecrit ses titres de bloc en .fx-titre.
+      const etiquettes = () => [...document.querySelectorAll('#posOverlay .info-label, .pos-sheet .info-label, #posOverlay .fx-titre')]
         .map((n) => n.textContent.trim());
       const limite = Date.now() + 5000;
       while (Date.now() < limite) {

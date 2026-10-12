@@ -279,13 +279,39 @@ async function main() {
     await page.evaluate(() => { window.__ANIM__ = []; window.__RENDERS__ = { staffData: 0, table: 0, pos: 0, planning: 0 }; });
     // Mettre la cible réellement sous les yeux avant de mesurer : le clic
     // navigateur peut sinon défiler pour focaliser une case hors du cadre.
-    const caseAct = await page.$('#posOverlay .gc-check');
+    // LA FICHE SOBRE (2026-10-12) met le programme en tete de colonne : la
+    // premiere case se voit sans defiler, et une mesure faite a 0 px ne
+    // prouverait rien. Le corps descend donc aussi loin qu il peut en gardant
+    // la DERNIERE case du programme dans le cadre : la mesure porte sur une
+    // fiche defilee.
+    const defilerSurLaDerniereCase = () => page.evaluateHandle(() => {
+      const corps = document.querySelector('#posOverlay .edit-modal-body');
+      const cases = [...document.querySelectorAll('#posOverlay .gc-check')];
+      const derniere = cases[cases.length - 1] || null;
+      if (corps && derniere) {
+        const haut = derniere.getBoundingClientRect().top - corps.getBoundingClientRect().top + corps.scrollTop;
+        corps.scrollTop = Math.min(corps.scrollHeight - corps.clientHeight, Math.max(0, Math.round(haut - 8)));
+      }
+      return derniere;
+    });
+    const caseAct = (await defilerSurLaDerniereCase()).asElement();
     if (caseAct) await caseAct.scrollIntoViewIfNeeded();
+    // CE QUI NE DOIT PAS BOUGER, C EST LA CASE SOUS LE DOIGT (2026-10-13).
+    // Comparer le defilement au pixel rougissait le soir : sur un groupe
+    // jamais pointe dont la visite est finie, cocher retire a juste titre le
+    // bandeau « Jamais pointé arrivé » au-dessus, et le defilement doit alors
+    // baisser d autant pour que la case reste ou elle est.
+    const cleCase = caseAct ? await caseAct.getAttribute('data-pl-focus') : '';
+    const hautCase = (cle) => page.evaluate((c) => {
+      const n = [...document.querySelectorAll('#posOverlay [data-pl-focus]')].find((x) => x.getAttribute('data-pl-focus') === c);
+      return n ? Math.round(n.getBoundingClientRect().top) : null;
+    }, cle);
     const avant = await page.evaluate(() => {
       const corps = document.querySelector('#posOverlay .edit-modal-body');
       if (!corps) return null;
       return { scroll: corps.scrollTop, scrollable: corps.scrollHeight - corps.clientHeight };
     });
+    if (avant) avant.haut = await hautCase(cleCase);
     ok(!!avant && avant.scrollable > 40, `la fiche a de quoi defiler (${avant && avant.scrollable} px)`);
     if (caseAct) await caseAct.click();
     await page.waitForTimeout(1600);
@@ -310,17 +336,23 @@ async function main() {
     const autres = coche.anim.filter((a) => !/plPop/.test(JSON.stringify(a)));
     ok(autres.length === 0, `aucune autre animation sur la coche que le saut de la case (${autres.length}${autres.length ? ' : ' + detail(autres) : ''})`);
     ok(sauts.length >= 1 && sauts.length <= 2, `la case cochee saute une fois (${sauts.length} saut(s) : la fiche et la carte)`);
-    ok(!!avant && coche.scroll === avant.scroll, `le defilement de la fiche est conserve (${avant && avant.scroll} -> ${coche.scroll})`);
+    const hautApres = await hautCase(cleCase);
+    ok(!!avant && avant.haut !== null && hautApres !== null && Math.abs(hautApres - avant.haut) <= 1 && (coche.scroll > 0 || avant.scroll === 0),
+      `la case cochee reste sous le doigt (haut ${avant && avant.haut} -> ${hautApres}, defilement ${avant && avant.scroll} -> ${coche.scroll})`);
     ok(String(coche.focus || '').indexOf('fiche.activite.') === 0, `le focus reste sur la case cliquee (${coche.focus})`);
 
     // Contre-preuve : retirer uniquement la restauration, garder le vrai
     // clic et le focus. Le même oracle doit détecter la perte de position.
+    // Depuis le 2026-10-13, deux mecanismes la tiennent : le defilement rendu
+    // au pixel et l element touche garde a sa place ; on retire les deux.
     await page.evaluate(() => {
       window.__ORIG_REPAINT__ = window.repaintKeepingScroll;
       window.repaintKeepingScroll = function (root, render) { render(); };
+      window.__ORIG_ANCRE__ = window.garderElementToucheEnPlace;
+      window.garderElementToucheEnPlace = function (overlay, rendre) { rendre(); };
     });
     try {
-      const caseSansRestauration = await page.$('#posOverlay .gc-check');
+      const caseSansRestauration = (await defilerSurLaDerniereCase()).asElement();
       if (caseSansRestauration) await caseSansRestauration.scrollIntoViewIfNeeded();
       const positionMutation = await page.evaluate(() => document.querySelector('#posOverlay .edit-modal-body')?.scrollTop);
       ok(positionMutation > 40, `contre-preuve située dans la fiche défilée (${positionMutation} px)`);
@@ -330,7 +362,7 @@ async function main() {
       ok(positionSansRestauration !== positionMutation,
         `restauration retirée : la perte de défilement est détectée (${positionMutation} -> ${positionSansRestauration})`);
     } finally {
-      await page.evaluate(() => { window.repaintKeepingScroll = window.__ORIG_REPAINT__; });
+      await page.evaluate(() => { window.repaintKeepingScroll = window.__ORIG_REPAINT__; window.garderElementToucheEnPlace = window.__ORIG_ANCRE__; });
     }
 
     const ouvertureManuelle = await page.evaluate(async () => {
@@ -342,11 +374,25 @@ async function main() {
         return origineScroll.apply(this, arguments);
       };
       try {
+        // DEPUIS LA FICHE SOBRE (2026-10-12) le pli ne s ouvre plus tout
+        // seul : son titre dit le retard. Ouvert par la personne, il le reste
+        // au rendu suivant, sans redemander de defilement.
         window.getLateArrivalMinutes = () => 15;
         renderPos();
         await new Promise(resolve => setTimeout(resolve, 100));
-        const dejaOuvert = document.querySelector('#posOverlay .delay-control-block');
-        const automatiqueMarque = dejaOuvert?.open && dejaOuvert.dataset.vu === '1' && demandesDefilement === 0;
+        const pliRetard = document.querySelector('#posOverlay .delay-control-block');
+        const fermeEnRetard = !!pliRetard && !pliRetard.open && /\+15 min/.test(pliRetard.querySelector('summary').textContent) && demandesDefilement === 0;
+        pliRetard.querySelector('summary').click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const defilementOuverture = demandesDefilement;
+        renderPos();
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const apresRendu = document.querySelector('#posOverlay .delay-control-block');
+        const resteOuvert = !!apresRendu && apresRendu.open && demandesDefilement === defilementOuverture;
+        if (apresRendu && apresRendu.open) {
+          apresRendu.querySelector('summary').click();
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
         window.getLateArrivalMinutes = () => 0;
         renderPos();
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -355,13 +401,15 @@ async function main() {
         demandesDefilement = 0;
         ferme.querySelector('summary').click();
         await new Promise(resolve => setTimeout(resolve, 100));
-        return { automatiqueMarque, fermeAuDepart, ouvert: ferme.open, demandesDefilement };
+        return { fermeEnRetard, defilementOuverture, resteOuvert, fermeAuDepart, ouvert: ferme.open, demandesDefilement };
       } finally {
         window.getLateArrivalMinutes = origineRetard;
         Element.prototype.scrollIntoView = origineScroll;
       }
     });
-    ok(ouvertureManuelle.automatiqueMarque, 'bloc retard déjà ouvert automatiquement : aucun défilement demandé au montage');
+    ok(ouvertureManuelle.fermeEnRetard, 'en retard, le pli reste fermé et son titre dit le retard : aucun défilement demandé au montage');
+    ok(ouvertureManuelle.defilementOuverture === 1 && ouvertureManuelle.resteOuvert,
+      `ouvert par la personne, le pli le reste au rendu suivant sans redemander de défilement (${ouvertureManuelle.defilementOuverture} à l ouverture)`);
     ok(ouvertureManuelle.fermeAuDepart && ouvertureManuelle.ouvert && ouvertureManuelle.demandesDefilement === 1,
       `ouverture manuelle du bloc fermé : défilement conservé une fois (${ouvertureManuelle.demandesDefilement})`);
 

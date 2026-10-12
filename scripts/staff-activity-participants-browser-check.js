@@ -55,8 +55,10 @@ const checks = `
   }
   ok(data.terrain.includes('Bowling · 6 joueurs')&&data.terrain.includes('Laser Game · 4 joueurs'),'terrain program own bowling6 laser4');
   ok(data.summary.includes('18 personnes présentes'),'mixed participants group header describes18 visitors');
-  ok(data.freeCard.startsWith('0')&&data.freeCard.includes('€')&&data.freeText.includes('À encaisser · 0')&&!data.freeText.toLowerCase().includes('prix sur place')&&!data.freeText.toLowerCase().includes('prix au comptoir'),'actual card+detail known free price stays0');
-  ok(data.unknownText.includes('Prix sur place')&&data.unknownText.includes('prix au comptoir'),'actual card+detail unknown price stays payable onsite');
+  // La fiche sobre (2026-10-12) ecrit « À encaisser : 0 € » ; la regle reste :
+  // un prix connu nul se dit 0, jamais « prix au comptoir ».
+  ok(data.freeCard.startsWith('0')&&data.freeCard.includes('€')&&/À encaisser\W+0/.test(data.freeText)&&!data.freeText.toLowerCase().includes('prix sur place')&&!data.freeText.toLowerCase().includes('prix au comptoir'),'actual card+detail known free price stays0');
+  ok(data.unknownText.includes('Prix sur place')&&data.unknownText.toLowerCase().includes('prix au comptoir'),'actual card+detail unknown price stays payable onsite');
   const info=await pg.locator('#posOverlay').innerText();
   ok(/Minigolf Blacklight/.test(info)&&/3 joueurs/.test(info)&&/Arcades/.test(info)&&/5 joueurs/.test(info),'live staff detail shows activity counts');
   await pg.evaluate(()=>{closePos();openQuickBook({pax:18,date:state.currentDate,startTime:'14:00'});quickBookState.type='visite';quickBookState.visit={bowling:{on:true,duration:1},laser_game:{on:true,games:2},others:{minigolf_blacklight:true,billards:true,arcade_time:true,playground:true,duckpin_bowling:true,fun_run:true},options:{bowling:{participants:6},laser_game:{participants:4},minigolf_blacklight:{participants:3},billards:{participants:8,units:2,hours:2},arcade_time:{participants:5},playground:{participants:2},duckpin_bowling:{participants:6},fun_run:{participants:4,minutes:30}}};syncQuickBookDuration();renderQuickBook();if(!quickBookState.moreOpen)toggleQuickBookMore();});

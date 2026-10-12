@@ -1542,6 +1542,12 @@ function syncEditLaneAssignment() {
     refreshEditPreview();
     return [];
   }
+  // Un autre jour : la console n a pas ses dossiers, le serveur attribue les
+  // pistes a l enregistrement (changerJourEdition).
+  if (state.editState.date && state.editState.date !== state.selectedRes.date) {
+    refreshEditPreview();
+    return null;
+  }
   const requiredCount = getEditBowlingCapacityNeed(state.selectedRes, state.editState).requiredCount;
   const duration = Number(state.editState.duration || state.selectedRes.duration || 0);
   const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, state.editState.startTime, duration, state.selectedRes.id, state.editState.lanesStr);
@@ -11608,7 +11614,9 @@ async function dashboardDetailPayAllUnpaid(ev) {
   const rows = (alert && alert.rows ? alert.rows : []).filter(r => r.status !== 'paid' && r.status !== 'cancelled');
   if (!rows.length) { toast('Aucune réservation à encaisser.'); return; }
   if (!(await staffConfirm({ title: `Marquer ${rows.length} réservation${rows.length > 1 ? 's' : ''} comme payée${rows.length > 1 ? 's' : ''} ?`, confirmLabel: 'Encaisser' }))) return;
-  rows.forEach(r => setReservationStatusDirect(r.id, 'paid'));
+  // Un encaissement en lot ne se rattrape pas d un toast : le dernier
+  // dossier seul serait annulable.
+  rows.forEach(r => setReservationStatusDirect(r.id, 'paid', null, { sansAnnulation: true }));
   refreshStaffDashboardDetailSoon(240);
 }
 
@@ -24485,13 +24493,15 @@ function isReservationAwaitingReview(reservation) {
 
 // Le premier bouton du selecteur d etat. Tant que la demande attend, il porte
 // l action qui leve le doute, « Valider » ; ensuite, « Confirmé » comme avant.
-function renderReservationFirstStatusButton(r, { fiche = false } = {}) {
+// `suivant` : ce bouton est le geste que la fiche attend (ficheGesteSuivant).
+function renderReservationFirstStatusButton(r, { fiche = false, suivant = false } = {}) {
+  const marque = suivant ? ' is-suivant' : '';
   if (isReservationAwaitingReview(r)) {
-    return `<button type="button" class="res-status-btn review active review" aria-pressed="false" title="Cette demande attend votre validation : Valider la confirme" onclick="validateReservationDirect(${r.id}, event)">Valider</button>`;
+    return `<button type="button" class="res-status-btn${marque} review active review" aria-pressed="false" title="Cette demande attend votre validation : Valider la confirme" onclick="validateReservationDirect(${r.id}, event)">Valider</button>`;
   }
   const actif = isUpcomingReservationStatus(r.status);
   return fiche
-    ? `<button type="button" class="res-status-btn pending ${actif ? 'active pending' : ''}" aria-pressed="${actif}" onclick="setReservationStatusDirect(${r.id}, 'pending')">Confirmé</button>`
+    ? `<button type="button" class="res-status-btn${marque} pending ${actif ? 'active pending' : ''}" aria-pressed="${actif}" onclick="setReservationStatusDirect(${r.id}, 'pending')">Confirmé</button>`
     : `<button class="res-status-btn ${actif ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending', event)">Confirmé</button>`;
 }
 
@@ -24797,7 +24807,8 @@ function renderGroupeTerminer(r) {
   if (!etapes.length || r.status === 'cancelled') return '';
   const reste = etapes.filter(etape => !etape.fait).length;
   if (!reste) return '<span class="gc-done-all">Tout est fait</span>';
-  if (reste < 2) return '';
+  // Cocher demande le droit de changer un statut (activityToggle, serveur).
+  if (reste < 2 || !canUseStaffPermission(['reservations.status', 'reservations.edit'])) return '';
   return `<button type="button" class="gc-btn gc-finish" data-pl-focus="fiche.terminer.${Number(r.id)}" onclick="terminerGroupe(${Number(r.id)}, event)">Tout est fait${reste < etapes.length ? ` (${reste} restante${reste > 1 ? 's' : ''})` : ''}</button>`;
 }
 
@@ -24811,6 +24822,9 @@ function renderGroupeEtapes(r, moment, options = {}) {
   const vivantes = ['lancer', 'encours', 'attente', 'bientot', 'prevu'];
   const focus = contexte.aujourdhui ? phases.findIndex(p => vivantes.includes(p.cle)) : -1;
   const prix = options.prix ? getGroupePrixParActivite(r) : null;
+  // Une case ne se coche que si le role peut l ecrire (activityToggle :
+  // reservations.status ou .edit) ; sinon l etape se lit sans se toucher.
+  const peutCocher = canUseStaffPermission(['reservations.status', 'reservations.edit']);
   // LES ACTIVITES LIBRES, EN UNE LIGNE SUR LA CARTE (2026-10-01, Movsar :
   // « quand y aura une trentaine de reservations ca va etre super galere »).
   // Six activites sans heure prenaient six rangees ; la carte les range en
@@ -24821,7 +24835,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
   const ligneLibres = () => {
     const toutFait = libres.every(etape => etape.fait);
     const puces = libres.map(etape => {
-      const cochable = Boolean(etape.coche) && r.status !== 'cancelled';
+      const cochable = Boolean(etape.coche) && r.status !== 'cancelled' && peutCocher;
       const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)` : '';
       return `<button type="button" class="gc-libre${etape.fait ? ' is-fait' : ''}" ${cochable ? `onclick="${appel}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" data-pl-focus="carte.activite.${Number(r.id)}.${escapeHtml(etape.coche)}"` : 'disabled'}>${etape.fait ? ACTIVITY_CHECK_SVG : ''}<span>${escapeHtml(etape.nom)}</span>${etape.quoi ? `<small>${escapeHtml(etape.quoi)}</small>` : ''}</button>`;
     }).join('');
@@ -24856,7 +24870,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     // que ca a ete fait, et terminer »). La case remplace l icone ; toute la
     // ligne coche au toucher (la case porte le nom pour le clavier et les
     // lecteurs d ecran). Sur la carte, la ligne coche au lieu d ouvrir la fiche.
-    const cochable = Boolean(etape.coche) && r.status !== 'cancelled';
+    const cochable = Boolean(etape.coche) && r.status !== 'cancelled' && peutCocher;
     const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(etape.coche)}', event)` : '';
     const repere = cochable
       ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${options.coches ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : `<span class="gc-check-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`}</button>`
@@ -24977,17 +24991,21 @@ function renderGroupePrix(r, moment) {
 // LES GESTES, UN SEUL A LA FOIS : ce que la carte attend maintenant. Valider
 // une demande, pointer l arrivee, encaisser (Carte ou Espèces). Revenir en
 // arriere, modifier, annuler : dans la fiche.
+// Chaque geste de la carte suit le role, comme dans la fiche (ficheDroits) :
+// Valider demande la modification, Arrivé un statut, Encaisser l encaissement.
 function renderGroupeActions(r, moment) {
   if (r.status === 'paid' || r.status === 'cancelled') return '';
   const boutons = [];
-  const aValider = isReservationAwaitingReview(r);
+  const aValider = isReservationAwaitingReview(r) && canUseStaffPermission('reservations.edit');
   if (aValider) {
     boutons.push(`<button type="button" class="gc-btn is-review" onclick="validateReservationDirect(${r.id}, event)">Valider</button>`);
   }
   const fini = moment && (moment.etat === 'closing' || moment.etat === 'done');
   if (isUpcomingReservationStatus(r.status) && !fini && !groupeAJoue(r)) {
-    boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
-  } else {
+    if (canUseStaffPermission(['reservations.status', 'reservations.edit'])) {
+      boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
+    }
+  } else if (canUseStaffPermission('payments.markPaid')) {
     // Le groupe est la, ou il a fini : la carte attend l encaissement.
     const montant = prixDossierConnu(r) ? ` ${formatMoneyCentimes(r.price)}` : '';
     boutons.push(`<span class="gc-pay" role="group" aria-label="Encaisser${escapeHtml(montant)}">
@@ -24998,6 +25016,7 @@ function renderGroupeActions(r, moment) {
   if (moment && moment.late && r.phone) {
     boutons.push(`<a class="gc-call" href="tel:${escapeHtml(String(r.phone).replace(/\s+/g, ''))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>`);
   }
+  if (!boutons.length) return '';
   return `<div class="gc-actions" onclick="event.stopPropagation()">${boutons.join('')}</div>`;
 }
 
@@ -25100,7 +25119,9 @@ function renderGroupeEncaisseAbsence(r) {
   const peutStatut = canUseStaffPermission(['reservations.status', 'reservations.edit']);
   if (r.status === 'paid' && prixDossierConnu(r)) {
     const montant = r.amountPaid != null ? Number(r.amountPaid) : Number(r.price) || 0;
-    const remise = r.amountPaid != null;
+    // La regle du serveur (noterEncaisseOuAbsence) : un encaisse egal au prix,
+    // au centime, n est pas une remise et ne dit pas « sur ».
+    const remise = r.amountPaid != null && Math.round(Number(r.amountPaid) * 100) !== Math.round((Number(r.price) || 0) * 100);
     return `<div class="pos-encaisse">
       <span class="pos-encaisse-ligne">Encaissé <strong>${escapeHtml(formatMoneyCentimes(montant))}</strong>${remise ? ` sur ${escapeHtml(formatMoneyCentimes(r.price))}${r.discountReason ? `, ${escapeHtml(r.discountReason)}` : ''}` : ''}</span>
       ${peutEncaisser && Object.prototype.hasOwnProperty.call(r, 'amountPaid') ? `<details class="pos-encaisse-corriger">
@@ -25484,8 +25505,12 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
   const clicked = ev?.target?.closest?.('button') || ev?.currentTarget;
   const previousLabel = clicked?.textContent;
   if (clicked?.tagName === 'BUTTON') { clicked.disabled = true; clicked.setAttribute('aria-busy','true'); clicked.textContent = 'Enregistrement…'; }
+  // La version sur laquelle le geste s ecrit : c est elle que « Annuler »
+  // remet (un « Payé » enchaine sur un « Arrivé » se defait en « Arrivé »).
+  let versionEcrite = current;
   return enchainerEcritureReservation(id, async derniere => {
     const base = derniere && String(derniere.id) === key ? derniere : current;
+    versionEcrite = base;
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: base.id, centerId: base.centerId || base.center_id || getCurrentStaffCenterId(), baseUpdatedAt: base.updatedAt, status, ...(moyenDemande ? { paymentMethod: moyenDemande } : {}) }) });
     if (!payload?.ok || !payload.reservation || String(payload.reservation.id) !== key || String(payload.reservation.centerId || payload.reservation.center_id) !== String(base.centerId || base.center_id || getCurrentStaffCenterId()) || payload.reservation.status !== status || (moyenDemande && payload.reservation.paymentMethod !== moyenDemande)) throw new Error('Le serveur n’a pas confirmé ce statut. Actualisez le dossier.');
     return payload;
@@ -25522,6 +25547,10 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     // l'ecran a deja dit, et c'est ce troisieme signal (rendu optimiste, puis
     // re-rendu a l'echo, puis message) qui donnait l'impression d'un double
     // clic. L'echec, lui, garde son message : il dit quelque chose de neuf.
+    // ANNULER UN GESTE (2026-10-12) dit aussi quelque chose de neuf : le
+    // chemin du retour. « Arrivé » et « Payé » laissent quelques secondes un
+    // toast qui porte « Annuler » ; c est le seul message d un statut reussi.
+    if (!options.sansAnnulation && ['arrived', 'paid'].includes(status)) proposerAnnulationGeste(versionEcrite, payload.reservation);
   }).catch(error => {
     if (!isLatestRequest()) return;
     const fresh = error.reservation || (error.status === 409 && error.payload?.reservation);
@@ -25680,6 +25709,7 @@ function editRes(id, ev) {
 
 function openPos(id) {
   posPriceEditOpen = false;
+  plisRetardOuverts.clear();
   const reservation = findStaffReservationById(id);
   if (!reservation) {
     toast('Réservation introuvable ou non chargée.');
@@ -25752,11 +25782,66 @@ function closePos() {
   posReturnFocus = null;
 }
 
+// LE GARDE-FOU DE « MODIFIER » (2026-10-12). Fermer la fiche (croix, Échap,
+// clic dehors, « Fermer ») ou revenir a « Infos » avec une saisie non
+// enregistree demande confirmation ; elle se perdait sans un mot. La saisie
+// se compare au formulaire tel qu il s est ouvert (pistes deja proposees
+// comprises), et le contenu d une formule a sa propre empreinte.
+function empreinteFormulaireEdition(etat) {
+  return valeurReservationComparable(['name', 'phone', 'email', 'date', 'startTime', 'duration', 'pax', 'status', 'lanesStr', 'price', 'prixFige'].map(champ => etat[champ]));
+}
+
+function noterFormulaireEdition() {
+  const edition = state.editState && departsEdition().get(state.editState);
+  if (edition) edition.formulaire = empreinteFormulaireEdition(state.editState);
+}
+
+function ficheEditionModifiee() {
+  const es = state.editState;
+  if (state.activeTab !== 'modifier' || !es || !state.selectedRes) return false;
+  if (editProgramAChange()) return true;
+  const edition = departsEdition().get(es);
+  if (edition && edition.formulaire) return empreinteFormulaireEdition(es) !== edition.formulaire;
+  // Apres un conflit, la reference est le dossier d origine.
+  const origine = (edition && edition.origine) || state.selectedRes;
+  return empreinteFormulaireEdition(es) !== empreinteFormulaireEdition({ ...origine, lanesStr: (origine.lanes || []).join(', ') });
+}
+
+function confirmerAbandonEdition() {
+  return staffConfirm({
+    title: 'Quitter sans enregistrer ?',
+    body: 'Les changements de ce dossier ne sont pas enregistrés.',
+    confirmLabel: 'Quitter sans enregistrer',
+    cancelLabel: 'Continuer la saisie',
+    danger: true,
+  });
+}
+
+// Fermer la fiche a la demande de la personne. Les fermetures du code
+// (apres un enregistrement, une annulation, vers le planning) gardent closePos.
+function fermerFiche() {
+  if (!ficheEditionModifiee()) { closePos(); return; }
+  confirmerAbandonEdition().then(ok => { if (ok && state.selectedRes) closePos(); });
+}
+
 function setTab(t) {
-  state.activeTab = t === 'caisse' ? 'details' : t;
+  const cible = t === 'caisse' ? 'details' : t;
+  if (cible === 'modifier' && !ficheDroits().modifier) return;
+  // Re-toucher « Modifier » remettait le formulaire a zero, saisie comprise.
+  if (cible === 'modifier' && state.activeTab === 'modifier' && ficheEditionModifiee()) return;
+  if (cible !== 'modifier' && ficheEditionModifiee()) {
+    confirmerAbandonEdition().then(ok => { if (ok && state.selectedRes) ouvrirOngletFiche(cible); });
+    return;
+  }
+  ouvrirOngletFiche(cible);
+}
+
+function ouvrirOngletFiche(cible) {
+  state.activeTab = cible;
   if (state.activeTab === 'modifier') {
     state.editState = etatEditionDepuis(state.selectedRes);
     syncEditLaneAssignment();
+    noterFormulaireEdition();
   }
   renderPos();
 }
@@ -26014,84 +26099,172 @@ function dureeProgrammeHeures(reservation) {
   return minutes > 0 ? minutes / 60 : 0;
 }
 
-// LA FICHE « INFOS » : L'EN-TETE DIT QUI EST LA, LE CORPS DIT QUOI FAIRE.
+// LA FICHE « INFOS », VERSION SOBRE (2026-10-12).
 //
-// Etat mesure avant refonte (2026-08-14) : 868 px, 11 boutons, CINQ blocs au
-// meme poids typographique, et le premier - le plus visible - recopiait MOT
-// POUR MOT le sous-titre de l'en-tete (activite, horaire, effectif, piste).
-// « Suivi rapide » affichait le statut DEUX FOIS cote a cote (une pastille et,
-// a 8 px de la, le meme mot en bouton actif) : exactement le defaut deja
-// corrige dans la liste du jour le 2026-08-13, laisse vivre a cote parce que
-// le retrait avait ete scope a un seul ecran. Et « Resume » remontait le
-// montant, deja present dans l'en-tete, tout en bas de l'ecran.
+// Movsar sur la premiere maquette : « c bien mais rend le moins ia, tes effets
+// font ia, fais en sorte que ca fasse pro clean super gere ». La fiche parle la
+// grammaire de la console (filets, la couleur reservee aux etats et au geste
+// suivant) et se lit dans l ordre du comptoir :
+//   - ce qui ne va pas, en bandeau, « Appeler » a cote : le retard, la demande
+//     a verifier, la visite finie sans arrivee pointee ;
+//   - le moment en une phrase (« Sur place, fin prévue à 16:30 »), l argent en
+//     face, puis les quatre boutons d etat, le geste suivant en bouton
+//     principal ;
+//   - deux colonnes : le programme et les notes, puis l addition et le client,
+//     dont le telephone et l e-mail se touchent ;
+//   - le retard se replanifie dans un pli ferme, sous l etat quand le groupe
+//     est en retard, sur le cote sinon.
+// La version du 2026-08-14 ecrivait « État du dossier » au-dessus des
+// boutons, l occasion et le prix ajuste en encadres, et ouvrait le pli du
+// retard d office. L occasion monte dans l en-tete (renderPosInner), le prix
+// ajuste reste une ligne de l addition : aucun geste ne disparait.
 //
-// L'ORDRE DE LECTURE D'UN COMPTOIR est : qui, quand, ou, combien, et QUELLE
-// ACTION FAIRE. L'en-tete porte deja les quatre premiers (nom en titre, puis
-// reference, activite, horaire, lieu, effectif, montant en ligne de donnee) :
-// le corps n'a donc qu'une seule chose a dire en premier, l'action.
-//
-// DEUX POIDS, PAS CINQ. Le bloc d'action est la seule surface qui se souleve
-// (fond, bordure, ombre courte) ; tout le reste est plat et se separe par un
-// filet, ce qui le range visuellement SOUS l'action sans ajouter une couleur.
-// Le retard est une action occasionnelle qui ouvre sa propre fenetre : il se
-// range derriere un depliant natif au lieu d'occuper six controles en
-// permanence. Aucune fonctionnalite retiree ; l'encaissement, seule donnee du
-// bloc « Resume » absente de l'en-tete, remonte dans le bloc d'action, la ou
-// on s'en sert.
-function renderPosDetails(r) {
-  const moment = getStaffReservationMoments([r]).get(String(r.id)) || null;
+// CHAQUE BOUTON SUIT LE ROLE (2026-10-12) : un geste que le serveur refuserait
+// ne s affiche plus. Un role sans encaissement ne voit pas « Payé », un role
+// sans modification n a pas l onglet « Modifier » (ficheDroits).
+function ficheDroits() {
+  // Les termes du serveur : api/staff-reservations.js pour le dossier (un
+  // statut seul demande reservations.status ou .edit, la validation .edit,
+  // l encaissement payments.markPaid), api/ops.js pour le retard et les
+  // messages.
+  return {
+    valider: canUseStaffPermission('reservations.edit'),
+    statut: canUseStaffPermission(['reservations.status', 'reservations.edit']),
+    encaisser: canUseStaffPermission('payments.markPaid'),
+    replanifier: canUseStaffPermission(['reservations.edit', 'planning.drag']),
+    ecrire: canUseStaffPermission('emails.send'),
+    modifier: canUseStaffPermission('reservations.edit'),
+    annuler: canUseStaffPermission('reservations.cancel'),
+  };
+}
+
+// LE GESTE QUI RESTE A FAIRE passe en bouton principal : valider la demande,
+// pointer l arrivee le jour meme, encaisser une fois le groupe la ou sa visite
+// finie. Rien a faire (paye, annule, absent, un autre jour) : aucun.
+function ficheGesteSuivant(r, moment) {
+  if (r.status === 'cancelled' || r.absentAt) return '';
+  if (isReservationAwaitingReview(r)) return 'valider';
+  const paye = r.status === 'paid';
+  const arrive = r.status === 'arrived' || paye;
+  const fini = Boolean(moment) && (moment.etat === 'closing' || moment.etat === 'done');
+  if (!arrive && r.date === todayStr() && !fini) return 'arrive';
+  if (!paye && (arrive || fini)) return 'payer';
+  return '';
+}
+
+// LE MOMENT EN UNE PHRASE. Le retard et la demande a verifier ont leur
+// bandeau ; la phrase dit le reste, l argent en face.
+function fichePhraseMoment(r, moment) {
+  const span = moment && moment.item ? moment.item : getStaffTerrainSpan(r);
+  const aujourdhui = r.date === todayStr();
+  if (r.status === 'cancelled') return 'Réservation annulée';
+  if (r.absentAt) return 'Noté pas venu';
+  // « Demande à … » se lit comme un tutoiement (voix-pro-check).
+  if (isReservationAwaitingReview(r)) return 'En attente de validation';
+  if (moment && moment.late) return 'Pas encore arrivé';
+  if (r.status === 'paid') {
+    if (moment && moment.etat === 'done') return 'Visite terminée';
+    return aujourdhui && span.end <= currentTimeDecimal()
+      ? `Visite finie à ${formatClockDisplay(span.end)}, activités à cocher`
+      : `Sur place, fin prévue à ${formatClockDisplay(span.end)}`;
+  }
+  if (moment && moment.etat === 'onsite') return `Sur place, fin prévue à ${formatClockDisplay(span.end)}`;
+  if (moment && moment.etat === 'closing') return `Visite finie à ${formatClockDisplay(span.end)}`;
+  if (aujourdhui) {
+    const dans = span.start - currentTimeDecimal();
+    return dans <= 5 / 60 ? `Attendu maintenant, à ${formatClockDisplay(span.start)}` : `Arrive dans ${formatStaffTerrainDelay(dans)}, à ${formatClockDisplay(span.start)}`;
+  }
+  const jour = r.date ? parseLocalDate(r.date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  return `${r.date > todayStr() ? 'Prévue' : 'Était prévue'} le ${jour} à ${formatClockDisplay(span.start)}`;
+}
+
+function ficheAppeler(r) {
+  if (!r.phone) return '';
+  return `<a class="fx-appel" href="tel:${escapeHtml(String(r.phone).replace(/[^0-9+]/g, ''))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Appeler</span></a>`;
+}
+
+// L ETAT DU DOSSIER : le bandeau de ce qui ne va pas, le moment et l argent,
+// les boutons d etat que le role peut toucher.
+function ficheEtat(r, moment, droits) {
   const paid = r.status === 'paid';
   const moyen = getMoyenPaiementLabel(r.paymentMethod);
-  const lateMinutes = getLateArrivalMinutes(r);
-  const aEncaisser = prixDossierConnu(r) ? formatMoneyCentimes(r.price) : 'prix au comptoir';
-  return `<div class="${posSheetClass()} gc-sheet">
-    ${renderGroupeAlerte(r, moment)}
-    <section class="pos-act">
+  const montant = prixDossierConnu(r) ? formatMoneyCentimes(paid && r.amountPaid != null ? r.amountPaid : r.price) : '';
+  const argent = paid
+    ? `Payé${montant ? ` ${escapeHtml(montant)}` : ''}${moyen ? `, ${escapeHtml(moyen.toLowerCase())}` : ''}`
+    : (montant ? `À encaisser : <b>${escapeHtml(montant)}</b>` : 'Prix au comptoir');
+  const suivant = ficheGesteSuivant(r, moment);
+  let bandeau = '';
+  if (isReservationAwaitingReview(r)) {
+    const texte = getReservationValidationTexte(r);
+    bandeau = `<div class="fx-bandeau is-verifier" role="status"><p><b>À vérifier.</b> ${texte.raison ? `${escapeHtml(texte.raison)} ` : ''}Pas encore confirmée au client : ${droits.valider ? 'validez-la ou appelez-le' : 'un responsable doit la valider'}.</p>${ficheAppeler(r)}</div>`;
+  } else if (moment && moment.late) {
+    bandeau = `<div class="fx-bandeau is-retard" role="status"><p><b>En retard de ${escapeHtml(formatStaffTerrainDelay(moment.now - moment.item.start))}.</b> Attendu à ${formatClockDisplay(moment.item.start)}.</p>${ficheAppeler(r)}</div>`;
+  } else if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r)) {
+    bandeau = '<div class="fx-bandeau is-neutre" role="status"><p><b>Jamais pointé arrivé.</b> La visite est finie : le groupe n’est peut-être pas venu.</p></div>';
+  }
+  const boutons = [];
+  if (isReservationAwaitingReview(r) ? droits.valider : droits.statut) {
+    boutons.push(renderReservationFirstStatusButton(r, { fiche: true, suivant: suivant === 'valider' }));
+  }
+  if (droits.statut) {
+    boutons.push(`<button type="button" class="res-status-btn arrived${suivant === 'arrive' ? ' is-suivant' : ''} ${r.status === 'arrived' ? 'active arrived' : ''}" aria-pressed="${r.status === 'arrived'}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>`);
+  }
+  if (droits.encaisser) {
+    GROUPE_MOYENS.forEach(m => {
+      const actif = paid && moyen === m.mot;
+      boutons.push(`<button type="button" class="res-status-btn paid${suivant === 'payer' ? ' is-suivant' : ''} ${actif ? 'active paid' : ''}" aria-pressed="${actif}" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">Payé · ${m.mot}</button>`);
+    });
+  }
+  return `${bandeau}
+    <section class="pos-act fx-act" aria-label="État du dossier">
       <div class="pos-act-head">
-        <span class="pos-eyebrow">État du dossier</span>
-        <span class="pos-act-money ${paid ? 'is-paid' : ''}">${paid
-          ? `Payé${moyen ? ` · ${escapeHtml(moyen)}` : ''}`
-          : `À encaisser · ${escapeHtml(aEncaisser)}`}</span>
+        <span class="pos-eyebrow">${escapeHtml(fichePhraseMoment(r, moment))}</span>
+        <span class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</span>
       </div>
-      ${isReservationAwaitingReview(r) ? `<p class="pos-act-review">${getReservationValidationTexte(r).raison ? `${escapeHtml(getReservationValidationTexte(r).raison)} ` : ''}Cette demande attend votre validation. Tant que vous ne l’avez pas validée, la réservation du client n’est pas confirmée.</p>` : ''}
-      <div class="res-status-row pos-act-row gc-sheet-states">
-        ${renderReservationFirstStatusButton(r, { fiche: true })}
-        <button type="button" class="res-status-btn arrived ${r.status === 'arrived' ? 'active arrived' : ''}" aria-pressed="${r.status === 'arrived'}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>
-        ${GROUPE_MOYENS.map(m => {
-          const actif = paid && getMoyenPaiementLabel(r.paymentMethod) === m.mot;
-          return `<button type="button" class="res-status-btn paid ${actif ? 'active paid' : ''}" aria-pressed="${actif}" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">Payé · ${m.mot}</button>`;
-        }).join('')}
-      </div>
+      ${r.status === 'cancelled' || !boutons.length ? '' : `<div class="res-status-row pos-act-row gc-sheet-states">${boutons.join('')}</div>`}
       ${renderGroupeEncaisseAbsence(r)}
-    </section>
-    ${renderGroupeEncadres(r, { large: true, sansValidation: true, sansNotes: true })}
-    ${renderGroupeNotes(r)}
-    <section class="info-block gc-sheet-block">
-      <div class="gc-sheet-head"><div class="info-label">Programme</div>${renderGroupeTerminer(r)}</div>
-      ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
-    </section>
-    ${renderGroupeAddition(r)}
-    <section class="info-block">
-      <div class="pos-group-head">
-        <span class="info-label">Contact</span>
-        <button type="button" class="comm-open-btn" onclick="openCommCenter(${r.id}, event)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          Envoyer un message
-        </button>
-      </div>
-      <div class="pos-contact">
-        <span class="pos-contact-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${escapeHtml(r.phone || 'Non renseigné')}</span>
-        <span class="pos-contact-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(r.email || 'Non renseigné')}</span>
-      </div>
-    </section>
-    <details class="info-block pos-fold delay-control-block"${lateMinutes > 0 ? ' open data-vu="1"' : ''} ontoggle="if(this.open && this.isConnected && !this.dataset.vu){this.dataset.vu='1';this.scrollIntoView({block:'nearest'});}">
+    </section>`;
+}
+
+// LE CLIENT : le telephone et l e-mail se touchent, puis d ou vient le dossier.
+function ficheClient(r, droits) {
+  const quand = r.createdAt ? new Date(r.createdAt) : null;
+  const valide = quand && !Number.isNaN(quand.getTime());
+  const creee = valide ? quand.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', ...(quand.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : '';
+  const origine = { staff: 'Saisie par l’équipe', public: 'Réservée en ligne' }[String(r.channel || '').toLowerCase()] || 'Créée';
+  const tel = String(r.phone || '').replace(/[^0-9+]/g, '');
+  return `<section class="fx-bloc fx-client" aria-label="Client">
+      <h4 class="fx-titre">Client</h4>
+      <dl class="fx-lignes">
+        <div><dt>Téléphone</dt><dd>${r.phone ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(r.phone)}</a>` : '<span class="fx-vide">Non renseigné</span>'}</dd></div>
+        <div><dt>E-mail</dt><dd>${r.email ? `<a href="mailto:${escapeHtml(r.email)}">${escapeHtml(r.email)}</a>` : '<span class="fx-vide">Non renseigné</span>'}</dd></div>
+      </dl>
+      ${droits.ecrire ? `<button type="button" class="comm-open-btn fx-message" onclick="openCommCenter(${r.id}, event)">Envoyer un message</button>` : ''}
+      ${valide || origine !== 'Créée' ? `<p class="fx-origine">${escapeHtml(origine)}${creee ? ` le ${escapeHtml(creee)}` : ''}.</p>` : ''}
+    </section>`;
+}
+
+// Le pli garde son etat d un rendu a l autre : ouvert par la personne, il ne
+// se referme pas sous ses doigts au releve suivant. Une fiche qui s ouvre
+// repart fermee (openPos).
+const plisRetardOuverts = new Set();
+
+// LE RETARD SE REPLANIFIE DANS UN PLI FERME : le titre dit le retard, le
+// contenu est celui d avant (les minutes, l analyse, « Pas venu »). Un role
+// qui ne replanifie pas garde « Pas venu » seul, sans pli.
+function fichePliRetard(r, droits) {
+  const pasVenu = renderGroupePasVenu(r);
+  if (!droits.replanifier) return pasVenu;
+  const late = getLateArrivalMinutes(r);
+  const ouvert = plisRetardOuverts.has(Number(r.id));
+  return `<details class="info-block pos-fold delay-control-block fx-pli"${ouvert ? ' open data-vu="1"' : ''} ontoggle="if(this.open){plisRetardOuverts.add(${Number(r.id)});}else{plisRetardOuverts.delete(${Number(r.id)});}if(this.open && this.isConnected && !this.dataset.vu){this.dataset.vu='1';this.scrollIntoView({block:'nearest'});}">
       <summary class="pos-group-head">
-        <span class="info-label">Client en retard</span>
+        <span class="fx-titre">${late > 0 ? `Replanifier le retard (+${late} min)` : 'Replanifier un retard'}</span>
         <svg class="pos-fold-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </summary>
-      <p class="pos-note">Choisissez le retard : le meilleur plan s'affiche avant validation.</p>
+      <p class="pos-note">Choisissez le retard : le meilleur plan s’affiche avant validation.</p>
       <div class="delay-control-actions">
-        ${lateMinutes > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="openDelayImpact(${r.id}, ${lateMinutes}, event)">Arrivé maintenant (+${lateMinutes} min)</button>` : ''}
+        ${late > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="openDelayImpact(${r.id}, ${late}, event)">Arrivé maintenant (+${late} min)</button>` : ''}
         <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 5, event)">+5 min</button>
         <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 10, event)">+10 min</button>
         <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 15, event)">+15 min</button>
@@ -26101,8 +26274,34 @@ function renderPosDetails(r) {
         <input type="number" id="delayCustomMinutes" min="1" max="240" placeholder="Minutes" inputmode="numeric" onclick="event.stopPropagation()">
         <button type="button" class="delay-chip delay-chip-run" onclick="openDelayImpactCustom(${r.id}, event)">Analyser ce retard</button>
       </div>
-      ${renderGroupePasVenu(r)}
-    </details>
+      ${pasVenu}
+    </details>`;
+}
+
+function renderPosDetails(r) {
+  // Le moment du jour DU DOSSIER : une fiche ouverte depuis une autre date
+  // (recherche, clients) ne se lit pas a l heure de la page.
+  const moment = getStaffReservationMoments([r], r.date || state.currentDate).get(String(r.id)) || null;
+  const droits = ficheDroits();
+  const enRetard = Boolean(moment && moment.late);
+  const pli = fichePliRetard(r, droits);
+  return `<div class="${posSheetClass()} gc-sheet fx">
+    ${ficheEtat(r, moment, droits)}
+    ${enRetard ? pli : ''}
+    <div class="fx-colonnes">
+      <div class="fx-principal">
+        <section class="info-block gc-sheet-block fx-programme">
+          <div class="gc-sheet-head"><h4 class="fx-titre">Programme</h4>${renderGroupeTerminer(r)}</div>
+          ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
+        </section>
+        ${renderGroupeNotes(r)}
+      </div>
+      <aside class="fx-cote">
+        ${renderGroupeAddition(r)}
+        ${ficheClient(r, droits)}
+        ${enRetard ? '' : pli}
+      </aside>
+    </div>
   </div>`;
 }
 
@@ -26141,7 +26340,10 @@ function renderGroupeNotes(r) {
         const pousse = Number(flag.sourceId) > 0 && Number(flag.sourceId) !== id;
         const mot = pousse ? `Décalé de ${mins} min par un retard` : `En retard de ${mins} min`;
         return `<div class="gc-retard"><span class="gc-retard-dot" aria-hidden="true"></span><p><b>${escapeHtml(mot)}</b>${flag.from && flag.to ? ` <small>${escapeHtml(flag.from)} → ${escapeHtml(flag.to)}</small>` : ''}</p>`
-          + `<button type="button" class="gc-retard-btn" data-pl-focus="fiche.retard.${id}" onclick="revertDelay(event, ${id})">${pousse ? 'Remettre à son heure' : 'Retirer le retard'}</button></div>`;
+          // Retirer le retard demande le droit de replanifier (api/ops.js).
+          + (typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['reservations.edit', 'planning.drag'])
+            ? `<button type="button" class="gc-retard-btn" data-pl-focus="fiche.retard.${id}" onclick="revertDelay(event, ${id})">${pousse ? 'Remettre à son heure' : 'Retirer le retard'}</button>` : '')
+          + '</div>';
       }
       return parts.suivi.length ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '';
     })()}
@@ -27402,7 +27604,7 @@ function getEditPrixEstime() {
   if (!e || !r) return null;
   const items = getEditProgramItems();
   if (!items.length) return null;
-  return estimerPrixProgramme(items, e.pax, r.date, e.startTime || r.startTime);
+  return estimerPrixProgramme(items, e.pax, e.date || r.date, e.startTime || r.startTime);
 }
 
 function ensureEditProgram(r) {
@@ -27820,8 +28022,22 @@ function renderPosEdit(r) {
     quand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     contenu: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>',
   };
-  const statuts = [['pending', 'Confirmé'], ['arrived', 'Arrivé'], ['paid', 'Payé']];
-  const pistesBloc = !editNeedsLanes ? (editFormuleLignes.length ? '' : `
+  // « Payé » suit le droit d encaisser (il reste affiche sur un dossier deja
+  // paye, pour que l etat se lise).
+  const statuts = [['pending', 'Confirmé'], ['arrived', 'Arrivé'], ['paid', 'Payé']]
+    .filter(([v]) => v !== 'paid' || e.status === 'paid' || canUseStaffPermission('payments.markPaid'));
+  const droits = ficheDroits();
+  // UN AUTRE JOUR (2026-10-12) : la console n a que les dossiers du jour
+  // affiche. Les pistes et le laser du nouveau jour sont attribues par le
+  // serveur a l enregistrement : la fiche le dit au lieu de montrer les pistes
+  // d aujourd hui.
+  const autreJour = Boolean(e.date) && e.date !== r.date;
+  const jourLong = e.date ? parseLocalDate(e.date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  const pistesBloc = autreJour ? (editNeedsLanes ? `
+          <div class="pos-field dossier-field">
+            <span class="lbl">Pistes de bowling</span>
+            <p class="field-hint">Attribuées à l’enregistrement parmi les pistes libres du ${escapeHtml(jourLong)}.</p>
+          </div>` : '') : !editNeedsLanes ? (editFormuleLignes.length ? '' : `
           <div class="pos-field dossier-field">
             <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
             <p class="field-hint">${isLaserRes
@@ -27879,6 +28095,10 @@ function renderPosEdit(r) {
         <section class="es-card dossier-section dossier-visit-section">
           <div class="es-head dossier-section-heading"><span class="es-ico">${ico.quand}</span><h4>Organisation de la visite</h4></div>
           <div class="es-trio dossier-visit-fields">
+            <div class="pos-field dossier-field es-jour">
+              <label class="lbl" for="editDateInput">Jour</label>
+              <input id="editDateInput" class="input" type="date" value="${escapeHtml(e.date || r.date || '')}"${r.date && r.date >= todayStr() ? ` min="${todayStr()}"` : ''} data-pl-focus="fiche.edit.jour" onchange="changerJourEdition(this.value)" required>
+            </div>
             <div class="pos-field dossier-field">
               <label class="lbl" for="editStartInput">Début de visite</label>
               <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
@@ -27899,29 +28119,43 @@ ${!peutAdapterFormule() || (!isLaserRes && !editNeedsLanes) ? durationControl : 
               ${statuts.map(([v, mot]) => `<button type="button" role="radio" class="es-seg-btn is-${v}${e.status === v ? ' is-on' : ''}" aria-checked="${e.status === v}" data-statut="${v}" onclick="setEditStatut('${v}')">${mot}</button>`).join('')}
             </div>
           </div>
+          ${autreJour ? `<p class="field-hint es-jour-indice" id="editJourHint">Nouveau jour : ${escapeHtml(jourLong)}. Les pistes et le laser y sont replacés à l’enregistrement.</p>` : ''}
         </section>
         ${contenuBloc || pistesBloc ? `<section class="es-card es-wide dossier-section dossier-section-wide">
           <div class="es-head dossier-section-heading"><span class="es-ico">${ico.contenu}</span><h4>Activités et placement</h4></div>
           <div class="es-contenu">${contenuBloc}${!peutAdapterFormule() ? pistesBloc : ''}</div>
         </section>` : ''}
-        ${!peutAdapterFormule() ? renderDossierLaserEditor(r) : ''}
+        ${!peutAdapterFormule() && !autreJour ? renderDossierLaserEditor(r) : ''}
       </div>
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
-      <details class="dossier-other-actions"><summary>Autres actions</summary>
+      ${droits.annuler ? `<details class="dossier-other-actions"><summary>Autres actions</summary>
         <div class="edit-actions-destructive">
           <button type="button" class="btn-secondary warn es-lien" onclick="cancelRes(${r.id})">Annuler la réservation</button>
           <button type="button" class="btn-secondary danger es-lien" onclick="deleteRes(${r.id})">Supprimer</button>
         </div>
-      </details>
+      </details>` : ''}
       <div class="edit-actions es-actions dossier-actions">
         <div class="edit-actions-main">
-          <button type="button" class="btn-secondary" onclick="closePos()">Fermer</button>
+          <button type="button" class="btn-secondary" onclick="fermerFiche()">Fermer</button>
           <button type="submit" class="btn-primary es-save">Enregistrer</button>
         </div>
       </div>
       </fieldset>
     </form>
   </div>`;
+}
+
+// LE JOUR DU DOSSIER (2026-10-12). Changer la date replace tout le dossier ce
+// jour-la : le serveur replanifie sur la nouvelle date (prepareReservationOps)
+// puis controle les pistes et le laser sous le verrou de ce jour
+// (ensureAssignableLanes, ensureLaserCapacity). Le formulaire se redessine
+// pour dire ce qui sera attribue ; revenir au jour d origine repropose ses
+// pistes.
+function changerJourEdition(valeur) {
+  if (!state.editState || !state.selectedRes) return;
+  setEditField('date', String(valeur || ''));
+  if (state.editState.date === state.selectedRes.date) syncEditLaneAssignment();
+  renderPos();
 }
 
 // Les joueurs en + / − : le meme chemin que la saisie (pistes resynchronisees).
@@ -27980,13 +28214,22 @@ async function saveEdit(e) {
   const requiredCount = requiresLanes ? getEditBowlingCapacityNeed(state.selectedRes, es).requiredCount : 0;
   const duration = Number(es.duration);
   const pax = Number(es.pax);
-  const slotCheck = validateSlotWindow(state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
+  // UN AUTRE JOUR : ses horaires d ouverture valent, ses pistes et son laser
+  // sont controles par le serveur (la console n a que les dossiers du jour
+  // affiche). On ne deplace pas un dossier dans le passe.
+  const jourChange = Boolean(es.date) && es.date !== state.selectedRes.date;
+  const jourLong = jourChange ? parseLocalDate(es.date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  if (jourChange && es.date < todayStr()) { failEdit('Choisissez aujourd’hui ou un jour à venir pour déplacer ce dossier.'); return; }
+  const slotCheck = validateSlotWindow(jourChange ? es.date : state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) { failEdit(slotCheck.message); return; }
-  let lanes = parseLaneInput(es.lanesStr);
+  // Un autre jour part avec les pistes du dossier, inchangees : le serveur les
+  // remplace par celles qu il attribue ce jour-la. Celles que le formulaire a
+  // proposees valaient pour le jour d origine.
+  let lanes = jourChange ? (origine.lanes || []).map(Number) : parseLaneInput(es.lanesStr);
   // CE QUE LE STAFF A COCHE, garde avant toute substitution : c'est la seule
   // reference honnete pour lui dire, apres coup, si on a du changer.
   const lanesVoulues = lanes.slice();
-  if (requiresLanes) {
+  if (requiresLanes && !jourChange) {
     const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, es.startTime, duration, state.selectedRes.id, es.lanesStr);
     if (!suggested || suggested.length < requiredCount) {
       failEdit('Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau. Changez l’heure, la durée, ou libérez une piste.');
@@ -27995,10 +28238,10 @@ async function saveEdit(e) {
     lanes = suggested;
     state.editState.lanesStr = formatLaneInput(lanes);
   }
-  if (lanes.some(l => state.laneStatuses[l] === 'maintenance')) { failEdit('Une des pistes choisies est en maintenance.'); return; }
-  const conflicts = lanesConflict(state.selectedRes.date, es.startTime, duration, lanes, state.selectedRes.id);
+  if (!jourChange && lanes.some(l => state.laneStatuses[l] === 'maintenance')) { failEdit('Une des pistes choisies est en maintenance.'); return; }
+  const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, es.startTime, duration, lanes, state.selectedRes.id);
   if (conflicts.length) { failEdit('Conflit avec une autre réservation sur ce créneau (pistes ' + conflicts.join(', ') + ').'); return; }
-  if (state.selectedRes.type === 'laser') {
+  if (state.selectedRes.type === 'laser' && !jourChange) {
     const laserAvailability = getLaserAvailability(state.selectedRes.date, es.startTime, duration, pax, state.selectedRes.id);
     if (!laserAvailability.ok) { failEdit(laserAvailability.message); return; }
   }
@@ -28007,7 +28250,7 @@ async function saveEdit(e) {
   // seuls ceux-la sont poses sur le dossier. Un statut qu elle n a pas touche
   // reste celui qui est en base, meme si un collegue l a change pendant
   // qu elle tapait.
-  const champsSaisis = { name: es.name, phone: es.phone, email: String(es.email || '').trim(), pax, duration, startTime: es.startTime, status: es.status };
+  const champsSaisis = { name: es.name, phone: es.phone, email: String(es.email || '').trim(), pax, duration, startTime: es.startTime, status: es.status, date: es.date || origine.date };
   const touches = Object.keys(champsSaisis)
     .filter((champ) => valeurReservationComparable(champsSaisis[champ]) !== valeurReservationComparable(origine[champ]));
   const lanesFinales = requiresLanes ? lanes : [];
@@ -28051,7 +28294,7 @@ async function saveEdit(e) {
     // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
     const ecartPrix = getReservationPriceGap(dossier);
     const programmeArcades=(dossier.program?.items || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId);
-    const changementOperationnel=Boolean(programme) || touches.some(champ=>['pax','duration','startTime'].includes(champ)) || pistesTouchees;
+    const changementOperationnel=Boolean(programme) || touches.some(champ=>['pax','duration','startTime','date'].includes(champ)) || pistesTouchees;
     if (programmeArcades && !changementOperationnel) { updated.basePrice=dossier.basePrice; updated.price=dossier.price; }
     else {
       const quote=programmeArcades ? getEditPrixEstime() : null;
@@ -28073,6 +28316,9 @@ async function saveEdit(e) {
     const lignes = horaires.map(block => `${block.label || (typeof getCenterActivity === 'function' && getCenterActivity(block.activityId)?.name) || ACTIVITY_LABELS[block.activityId] || block.activityId || 'Activité'} : ${block.startTime} → ${numToTime(timeToNum(block.startTime) + delta)}`).join('\n');
     if (!window.confirm(`Déplacer l’heure de tout le dossier de ${origine.startTime} à ${es.startTime} ?\n\n${lignes}\n\nCes horaires sont une prévision : le serveur vérifie les disponibilités. Pour ne déplacer qu’une activité, faites glisser sa carte dans le planning.`)) return;
   }
+  // Changer de jour se confirme dans la fenetre de la console : un jour mal
+  // touche dans le calendrier deplacerait le groupe sans qu il le sache.
+  if (jourChange && !(await staffConfirm({ title: `Déplacer la réservation au ${jourLong} ?`, body: 'Les pistes et le laser sont replacés ce jour-là. Pensez à prévenir le client.', confirmLabel: 'Déplacer' }))) return;
   // Sans preserveEditState : le formulaire garde la saisie telle quelle, rien
   // a retaper si le serveur signale un conflit.
   applyOptimisticReservation(appliquer(state.selectedRes));
@@ -28109,7 +28355,12 @@ async function saveEdit(e) {
     const aVerifier = payload.reservation && payload.reservation.validationStatus === 'staff_review';
     // LE DOSSIER AVAIT CHANGE PENDANT LA SAISIE : on dit ce qui a ete garde,
     // sinon la personne croit relire sa version et lit celle d un collegue.
-    const constat = requiresLanes && voulues && voulues !== obtenues
+    const pistesObtenues = (payload.reservation && payload.reservation.lanes) || [];
+    const constat = jourChange
+      ? (aVerifier
+        ? `Réservation déplacée au ${jourLong}, mais le moteur n’a pas pu la placer : elle passe en « à surveiller ».`
+        : `Réservation déplacée au ${jourLong}${requiresLanes && pistesObtenues.length ? `, piste${pistesObtenues.length > 1 ? 's' : ''} ${obtenues}` : ''}.`)
+      : requiresLanes && voulues && voulues !== obtenues
       ? `Réservation mise à jour, mais pas sur les pistes demandées : ${obtenues || 'aucune'} au lieu de ${voulues}. Le créneau ne les laissait pas libres.`
       : aVerifier
         ? 'Réservation mise à jour, mais le moteur n’a pas pu replacer ce créneau : elle passe en « à surveiller ».'
@@ -28135,7 +28386,8 @@ async function saveEdit(e) {
     // La saisie est GARDEE a l'ecran (rien a retaper), donc l'ecran montrerait
     // des valeurs que la base n'a pas : le motif doit rester lisible a cote du
     // bouton, sinon l'ecart passe pour un bug muet.
-    failEdit((error.message || 'Impossible de mettre à jour la réservation.') + ' Rien n’a été enregistré.');
+    const motif = error.message || 'Impossible de mettre à jour la réservation.';
+    failEdit(`${jourChange ? `Pas de déplacement au ${jourLong} : ${motif}` : motif} Rien n’a été enregistré.`);
   }
 }
 
@@ -32810,6 +33062,42 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2500);
 }
 
+// LE TOAST D UN GESTE QU ON PEUT DEFAIRE (2026-10-12) : le meme toast, six
+// secondes (le temps d atteindre le bouton), et seul son bouton prend le clic
+// (#toast reste transparent, voir pinlane-staff.css). Le survol ou le focus
+// du bouton suspend la fermeture. Un toast suivant le remplace.
+function toastAnnulable(msg, annuler) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> <span>${escapeHtml(String(msg ?? ''))}</span><button type="button" class="toast-annuler">Annuler</button>`;
+  el.classList.remove('hidden');
+  const fermerDans = (delai) => { clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), delai); };
+  const bouton = el.querySelector('.toast-annuler');
+  bouton.onclick = (ev) => { ev.stopPropagation(); clearTimeout(toastTimer); el.classList.add('hidden'); annuler(); };
+  bouton.onmouseenter = bouton.onfocus = () => clearTimeout(toastTimer);
+  bouton.onmouseleave = bouton.onblur = () => fermerDans(2500);
+  fermerDans(6000);
+}
+
+// « Annuler » remet le statut d avant, et le moyen de paiement s il a ete
+// corrige. Le retour suit les memes droits que l aller (le serveur les
+// redemande) : sans eux, aucun bouton.
+function proposerAnnulationGeste(avant, apres) {
+  if (!avant || !apres || !avant.status) return;
+  // « Confirmé » s ecrit 'pending', le seul statut d attente que le serveur
+  // accepte : un ancien dossier 'confirmed' y revient.
+  const statutAvant = isUpcomingReservationStatus(avant.status) ? 'pending' : avant.status;
+  if (statutAvant === apres.status && String(avant.paymentMethod || '') === String(apres.paymentMethod || '')) return;
+  const retourPaye = statutAvant === 'paid';
+  const peut = retourPaye ? canUseStaffPermission('payments.markPaid') : canUseStaffPermission(['reservations.status', 'reservations.edit']);
+  if (!peut) return;
+  const moyen = getMoyenPaiementLabel(apres.paymentMethod);
+  const geste = apres.status === 'arrived' ? 'arrivé'
+    : `payé${moyen === 'Carte' ? ' par carte' : moyen === 'Espèces' ? ' en espèces' : ''}`;
+  const options = { sansAnnulation: true, ...(retourPaye && avant.paymentMethod ? { paymentMethod: avant.paymentMethod } : {}) };
+  toastAnnulable(`${apres.name || 'Groupe'} : ${geste}.`, () => setReservationStatusDirect(apres.id, statutAvant, null, options));
+}
+
 /* ============================================================================
    Notification « nouvelle réservation du jour » : bip + carte, visible même
    avec le planning en plein écran (z-index au-dessus). Déclenchée par le poll
@@ -33452,17 +33740,35 @@ function containStaffDialog(host, modalSelector, initialSelector, onEscape) {
 // (retard, communication, accès staff) les avaient déjà.
 function handlePosKeydown(ev) {
   if (!state.selectedRes) return;
-  if (ev.key === 'Escape') { ev.stopPropagation(); closePos(); return; }
+  if (ev.key === 'Escape') { ev.stopPropagation(); fermerFiche(); return; }
   trapDialogFocus(ev, document.querySelector('#posOverlay .edit-modal'));
 }
 
 function renderPos() {
   const posOverlayEl = document.getElementById('posOverlay');
   if (posOverlayEl && !posOverlayEl.classList.contains('hidden')) {
-    repaintKeepingScroll(posOverlayEl, () => renderPosInner());
+    garderElementToucheEnPlace(posOverlayEl, () => repaintKeepingScroll(posOverlayEl, () => renderPosInner()));
     return;
   }
   renderPosInner();
+}
+
+// L ELEMENT TOUCHE GARDE SA PLACE A L ECRAN (2026-10-13). Le defilement se
+// rend au pixel, mais un bloc du haut peut changer de taille au meme rendu :
+// cocher une activite d un groupe jamais pointe retire le bandeau « Jamais
+// pointé arrivé », et la case touchee remontait d autant sous le doigt. On
+// reprend l ecart de l element qui a le focus dans le corps de la fiche.
+function garderElementToucheEnPlace(overlay, rendre) {
+  const corpsAvant = overlay.querySelector('.edit-modal-body');
+  const actif = corpsAvant && corpsAvant.contains(document.activeElement) ? document.activeElement : null;
+  const cle = actif && actif.getAttribute ? actif.getAttribute('data-pl-focus') : '';
+  const hautAvant = cle ? actif.getBoundingClientRect().top : null;
+  rendre();
+  if (!cle || hautAvant === null) return;
+  const corps = overlay.querySelector('.edit-modal-body');
+  const repose = corps ? Array.from(corps.querySelectorAll('[data-pl-focus]')).find(n => n.getAttribute('data-pl-focus') === cle) : null;
+  const ecart = repose ? Math.round(repose.getBoundingClientRect().top - hautAvant) : 0;
+  if (ecart) corps.scrollTop += ecart;
 }
 
 function renderPosInner() {
@@ -33471,7 +33777,10 @@ function renderPosInner() {
   const overlay = document.getElementById('posOverlay');
   const wasOpen = !overlay.classList.contains('hidden');
   if (!wasOpen) posReturnFocus = document.activeElement;
-  const isEdit = state.activeTab === 'modifier';
+  // L onglet « Modifier » suit le role (ficheDroits) : sans reservations.edit,
+  // le serveur refusait l enregistrement apres la saisie.
+  const peutModifier = ficheDroits().modifier;
+  const isEdit = state.activeTab === 'modifier' && peutModifier;
   // La référence du dossier vit ICI, et nulle part ailleurs dans l'écran : c'est
   // l'endroit où on la lit quand on a un client au téléphone. C'est
   // l'identifiant réel de la réservation, celui qui est stocké et qui sort dans
@@ -33479,7 +33788,11 @@ function renderPosInner() {
   const identity = getPosIdentityParts(r);
   const dossierStatus = getStaffDashboardStatusMeta(r);
   const identityLabels = r.date ? ['Date', 'Horaires', 'Ressources', 'Groupe'] : ['Horaires', 'Ressources', 'Groupe'];
-  const facts = identity.map((value, index) => `<div class="dossier-fact"><span>${identityLabels[index]}</span><strong>${value}</strong></div>`).join('');
+  const facts = identity.map((value, index) => `<div class="dossier-fact"><span>${identityLabels[index]}</span><strong>${value}</strong></div>`).join('')
+    + `<div class="dossier-fact fx-numero"><span>Réservation</span><strong>n° ${escapeHtml(String(r.id))}</strong></div>`;
+  // L occasion (et la formule) et « À surveiller » se lisent sous les faits :
+  // ce sont les seuls encadres de la carte que la fiche ne dit pas ailleurs.
+  const etiquettes = getGroupeEncadres(r).filter(e => e.ton === 'occasion' || (e.ton === 'suivi' && e.titre === 'À surveiller'));
   // LA FICHE NE S OUVRE QU UNE FOIS. Son animation d entree (.fade-in) vivait
   // sur un conteneur reconstruit a CHAQUE rendu : cocher une activite, un poll,
   // un changement d etat la faisaient re-apparaitre en fondu sous les yeux du
@@ -33499,19 +33812,20 @@ function renderPosInner() {
   overlay.classList.remove('hidden');
   overlay.classList.add('centered');
   overlay.innerHTML = `
-    <div class="edit-modal" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">
+    <div class="edit-modal fx-modal" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">
       <div class="edit-modal-head dossier-head">
         <div class="edit-modal-ident dossier-heading">
           <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
           <div class="dossier-facts">${facts}</div>
+          ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => `<span class="fx-etiquette${e.ton === 'suivi' ? ' is-suivi' : ''}">${escapeHtml(e.titre)}${e.texte ? `<small>${escapeHtml(e.texte)}</small>` : ''}</span>`).join('')}</p>` : ''}
         </div>
-        <button type="button" class="close-btn" aria-label="Fermer la fiche" onclick="closePos()">
+        <button type="button" class="close-btn" aria-label="Fermer la fiche" onclick="fermerFiche()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
-        <div class="modal-tabs dossier-tabs" role="tablist" aria-label="Vues de la fiche">
+        ${peutModifier ? `<div class="modal-tabs dossier-tabs" role="tablist" aria-label="Vues de la fiche">
           <button type="button" role="tab" aria-selected="${!isEdit}" class="tab ${!isEdit ? 'active' : ''}" onclick="setTab('details')">Infos</button>
           <button type="button" role="tab" aria-selected="${isEdit}" class="tab ${isEdit ? 'active' : ''}" onclick="setTab('modifier')">Modifier</button>
-        </div>
+        </div>` : ''}
       </div>
       <div class="edit-modal-body" data-scroll-key="fiche.corps">${bodyHtml}</div>
     </div>
@@ -34116,7 +34430,7 @@ window.addEventListener('hashchange', syncRouteFromHash);
 window.addEventListener('popstate', syncRouteFromHash);
 
 document.getElementById('posOverlay').addEventListener('click', e => {
-  if (e.target.id === 'posOverlay') closePos();
+  if (e.target.id === 'posOverlay') fermerFiche();
 });
 
 document.getElementById('delayOverlay').addEventListener('click', e => {

@@ -34,9 +34,10 @@
 //   [K] un rendu qui plante ne laisse plus la journee a moitie dessinee : la
 //       lecture suivante redessine
 //   [L] le jour avance tout seul a 5 h, si l equipe regardait la veille
-//   [M] la boite de la liste descend jusqu au bas de l ecran (tablette sans
-//       defilement de page, telephone plein ecran), les encadres tiennent sur
-//       une ligne, et au telephone l aide d une activite remonte a cote du nom
+//   [M] la boite de la liste remplit l ecran : sous le planning global (vue
+//       « Toutes », tablette et telephone), on y arrive en faisant defiler la
+//       page, puis elle defile en elle-meme ; les encadres tiennent sur une
+//       ligne, et au telephone l aide d une activite remonte a cote du nom
 //   [N] « Arrivé » sur un groupe deja pointe par un autre poste le dit
 //   [O] les cartes des gens reliees aux plannings (2026-10-09) : le lisere a
 //       la couleur de l etat (bleu confirme, ambre arrive, vert paye, rouge
@@ -529,13 +530,20 @@ const SCENARIOS = {
     const tablette = await ouvrir(browser, variante(base), { appareil: 'tablette' });
     try {
       const m = await tablette.page.evaluate(() => {
-        const box = document.getElementById('staffTableBox').getBoundingClientRect();
+        const planning = document.getElementById('globalPlanningBox');
+        const boite = document.getElementById('staffTableBox');
+        boite.scrollIntoView({ block: 'start' });
+        const box = boite.getBoundingClientRect();
         const encadres = [...document.querySelectorAll('#staffTableBox .gc-flag')].filter((f) => f.textContent.trim().length < 60).map((f) => Math.round(f.getBoundingClientRect().height));
-        return { bas: Math.round(box.bottom), ecran: innerHeight, page: document.scrollingElement.scrollHeight, encadres };
+        return { planning: Boolean(planning && !planning.classList.contains('hidden') && planning.getBoundingClientRect().height > 0), haut: Math.round(box.height), bas: Math.round(box.bottom + window.scrollY), ecran: innerHeight, page: document.scrollingElement.scrollHeight, encadres };
       });
-      // Sous la boite, il ne reste que la marge basse de la page (48 px) et 12 px d air.
-      c(m.bas >= m.ecran - 72 && m.bas <= m.ecran, '[M] tablette : la liste descend jusqu au bas de l ecran (a la marge de la page pres)', `bas ${m.bas} pour ${m.ecran}`);
-      c(m.page <= m.ecran + 1, '[M] tablette : sans faire defiler la page', `page ${m.page} pour ${m.ecran}`);
+      c(m.planning, '[M] tablette : la vue « Toutes » montre le planning global au-dessus de la liste');
+      // La boite fait l ecran moins 12 px d air (ajusterHauteurListe, branche
+      // « elle commence sous la moitie de l ecran ») ; sans cette regle elle
+      // prend la hauteur de ses cartes et depasse l ecran.
+      c(m.haut >= m.ecran - 72 && m.haut <= m.ecran, '[M] tablette : quand on y arrive, la liste remplit l ecran et defile en elle-meme', `${m.haut} pour ${m.ecran}`);
+      // Sous la boite, il ne reste que la marge basse de la page (48 px).
+      c(m.page - m.bas <= 72, '[M] tablette : rien sous la liste que la marge de la page', `page ${m.page}, bas de la liste ${m.bas}`);
       c(m.encadres.length > 0 && m.encadres.every((h) => h <= 34), '[M] un encadre court tient sur une ligne', m.encadres.join(', '));
     } finally { await tablette.ctx.close(); }
     const tel = await ouvrir(browser, variante(base), { appareil: 'telephone' });
@@ -729,8 +737,8 @@ const MUTATIONS = [
     de: '        if (beforeData !== afterData || aMontrer) renderStaffData();', vers: '        if (beforeData !== afterData) renderStaffData();' },
   { lettre: 'L', scenario: 'jourSuivant', fichier: JS, nom: 'le jour ne suit plus',
     de: '  if (suivreLeJour()) return;\n', vers: '' },
-  { lettre: 'M', scenario: 'ecran', fichier: CSS, nom: 'la boite replafonnee a 704 px',
-    de: '.table-box#staffTableBox:not(.hidden):not(.expanded) { max-height: max(480px, calc(100dvh - var(--liste-haut, 280px) - 12px)); }', vers: '' },
+  { lettre: 'M', scenario: 'ecran', fichier: CSS, nom: 'la boite replafonnee a 704 px (son plancher sous un planning part avec elle)',
+    de: '.table-box#staffTableBox:not(.hidden):not(.expanded) { max-height: max(480px, calc(100dvh - var(--liste-haut, 280px) - 12px)); }\n/* Sous un planning (elle commence sous la moitie de l ecran), elle garde\n   cette hauteur meme quand ses cartes raccourcissent : la page ne remonte\n   pas sous le doigt (2026-10-12). */\n.table-box#staffTableBox.is-plein-ecran:not(.hidden):not(.expanded) { min-height: calc(100dvh - 12px); }', vers: '' },
   { lettre: 'M', scenario: 'ecran', fichier: CSS, nom: 'l encadre reprend deux lignes',
     de: '#staffTableBox .gc-flag { flex-direction: row; flex-wrap: nowrap; align-items: baseline; gap: 8px; min-width: 0; padding: 1px 0; border: 0; border-radius: 0; background: none; line-height: 1.4; }', vers: '' },
   { lettre: 'M', scenario: 'ecran', fichier: CSS, nom: 'l aide repasse sous le nom au telephone',

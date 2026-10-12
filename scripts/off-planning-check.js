@@ -211,7 +211,10 @@ async function main() {
       };
     });
     ok(list.offRows.length === 1 && list.offRows[0].includes('Anniversaire Lea'), 'une seule carte porte « Hors planning » : l anniversaire FORMULE 6');
-    ok(/\bupcoming\b/.test(list.offSection), `elle vit dans son moment, « À venir » (obtenu « ${list.offSection} »)`);
+    // Depuis le 2026-10-10 (f52cb20), « Tout » range les visites vivantes dans
+    // une seule section par heure (« Visites à suivre », cle active) : le
+    // groupe hors planning y vit avec les autres, jamais dans une section a part.
+    ok(/\b(active|upcoming)\b/.test(list.offSection), `elle vit avec les autres visites, « Visites à suivre » ou « À venir » (obtenu « ${list.offSection} »)`);
     ok(list.leaOccurrences === 1, `la resa hors planning n est PAS dupliquee dans les sections de statut (${list.leaOccurrences} occurrence(s))`);
     ok(list.totalRows === 4, `les 4 resas du jour restent listees (obtenu ${list.totalRows})`);
 

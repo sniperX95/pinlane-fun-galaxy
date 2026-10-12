@@ -20534,6 +20534,10 @@ body:is(.staff-mode,.admin-mode) .es2 :is(.dossier-remove-activity,summary):focu
    - les marges des bandeaux, des sections et des cartes ;
    - trois tailles de nom selon l ecran (17, 16 et 15 px) : une seule. */
 .table-box#staffTableBox:not(.hidden):not(.expanded) { max-height: max(480px, calc(100dvh - var(--liste-haut, 280px) - 12px)); }
+/* Sous un planning (elle commence sous la moitie de l ecran), elle garde
+   cette hauteur meme quand ses cartes raccourcissent : la page ne remonte
+   pas sous le doigt (2026-10-12). */
+.table-box#staffTableBox.is-plein-ecran:not(.hidden):not(.expanded) { min-height: calc(100dvh - 12px); }
 #staffTableBox .gc-sections { gap: 14px; padding: 10px 12px 16px; }
 #staffTableBox .gc-section > .res-section-head.gc-band { margin-bottom: 8px; padding: 6px 12px; }
 #staffTableBox .gc-band-icon { width: 24px; height: 24px; }

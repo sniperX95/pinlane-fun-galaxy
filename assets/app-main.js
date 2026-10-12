@@ -2269,6 +2269,7 @@ function renderStaffDataPage() {
   syncStaffResourceTabs(dayReservations, view);
   renderPlanning();
   renderLaserPlanning();
+  renderGlobalPlanningSurface();
   renderTable();
 }
 
@@ -3482,6 +3483,7 @@ function loadState() {
     staffPlanningExpanded: false,
     staffLaserPlanningExpanded: false,
     staffTableExpanded: false,
+    staffGlobalExpanded: false,
     staffResourceView: 'bowling',
     staffStatusFilter: 'all',
     staffTheme: 'dark',
@@ -3952,7 +3954,7 @@ function applyAuthState() {
   // rôle jusqu'à un refresh manuel. On le rebâtit à chaque transition d'auth
   // (login/logout) : reconstruction DOM pure, aucune requête serveur.
   if (typeof window.renderStaffMenu === 'function') window.renderStaffMenu();
-  if (!locked) document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded || state.staffTableExpanded) ? 'hidden' : '';
+  if (!locked) document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded || state.staffTableExpanded || state.staffGlobalExpanded) ? 'hidden' : '';
 }
 
 function openSaasAccess(target = 'staff') {
@@ -13840,6 +13842,8 @@ async function loadStaffCenterConfig(force = false) {
     if (planningBox && !planningBox.classList.contains('hidden')) repaintKeepingScroll(planningBox, () => renderPlanning());
     const laserBox = document.getElementById('laserPlanningBox');
     if (laserBox && !laserBox.classList.contains('hidden')) repaintKeepingScroll(laserBox, () => renderLaserPlanning());
+    const globalBox = document.getElementById('globalPlanningBox');
+    if (globalBox && !globalBox.classList.contains('hidden')) repaintKeepingScroll(globalBox, () => renderGlobalPlanningSurface());
   }
 }
 
@@ -16646,6 +16650,7 @@ function refreshAvailabilityBlocksUi() {
   if (state.view === 'staff') {
     if (document.getElementById('planningGridWrap')) renderPlanning();
     if (document.getElementById('laserPlanningGridWrap')) renderLaserPlanning();
+    renderGlobalPlanningSurface();
     // Les pistes libres maintenant attendaient les blocages : elles se disent
     // des qu ils arrivent.
     if (isStaffPlanningPageActive()) renderKpis();
@@ -20983,6 +20988,8 @@ function renderStaffPage() {
   if (laserPlanningBox) laserPlanningBox.classList.toggle('expanded', !!state.staffLaserPlanningExpanded);
   const staffTableBox = document.getElementById('staffTableBox');
   if (staffTableBox) staffTableBox.classList.toggle('expanded', !!state.staffTableExpanded);
+  const globalPlanningBox = document.getElementById('globalPlanningBox');
+  if (globalPlanningBox) globalPlanningBox.classList.toggle('expanded', !!state.staffGlobalExpanded);
   syncExpandedPlanningControls();
   const planningToggle = document.getElementById('planningToggle');
   if (planningToggle) planningToggle.textContent = state.staffPlanningExpanded ? 'Réduire' : 'Agrandir';
@@ -20990,11 +20997,14 @@ function renderStaffPage() {
   if (laserPlanningToggle) laserPlanningToggle.textContent = state.staffLaserPlanningExpanded ? 'Réduire' : 'Agrandir';
   const tableToggle = document.getElementById('tableToggle');
   if (tableToggle) tableToggle.textContent = state.staffTableExpanded ? 'Réduire' : 'Agrandir';
-  document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded || state.staffTableExpanded) ? 'hidden' : '';
+  const globalPlanningToggle = document.getElementById('globalPlanningToggle');
+  if (globalPlanningToggle) globalPlanningToggle.textContent = state.staffGlobalExpanded ? 'Réduire' : 'Agrandir';
+  document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded || state.staffTableExpanded || state.staffGlobalExpanded) ? 'hidden' : '';
   attachPlanningFullscreenResize();
   renderKpis();
   renderPlanning();
   renderLaserPlanning();
+  renderGlobalPlanningSurface();
   renderTable();
 }
 
@@ -21033,6 +21043,7 @@ function togglePlanningExpanded() {
   state.staffPlanningExpanded = next;
   state.staffLaserPlanningExpanded = false;
   state.staffTableExpanded = false;
+  state.staffGlobalExpanded = false;
   // « Des qu on repart sur le planning, on fait agrandir et ca revient
   // directement » (Movsar 2026-08-25) : le filtre repart sur Tout.
   state.staffStatusFilter = 'all';
@@ -21049,7 +21060,7 @@ function togglePlanningExpanded() {
 // « Réduire ». Le planning Laser a deja le sien (le prochain depart) : un
 // second bouton y ferait doublon.
 function syncExpandedPlanningControls() {
-  for (const id of ['planningBox', 'laserPlanningBox', 'staffTableBox']) {
+  for (const id of ['planningBox', 'laserPlanningBox', 'staffTableBox', 'globalPlanningBox']) {
     const box = document.getElementById(id);
     const head = box?.querySelector('.planning-head, .table-head');
     const pile = head?.querySelector('.planning-title-stack');
@@ -21091,6 +21102,7 @@ function toggleLaserPlanningExpanded() {
   state.staffLaserPlanningExpanded = next;
   state.staffPlanningExpanded = false;
   state.staffTableExpanded = false;
+  state.staffGlobalExpanded = false;
   state.staffStatusFilter = 'all';
   if (next) attachPlanningFullscreenResize();
   else detachPlanningFullscreenResize();
@@ -21099,10 +21111,11 @@ function toggleLaserPlanningExpanded() {
 }
 
 function collapseStaffPlanningFullscreen() {
-  if (!state.staffPlanningExpanded && !state.staffLaserPlanningExpanded && !state.staffTableExpanded) return false;
+  if (!state.staffPlanningExpanded && !state.staffLaserPlanningExpanded && !state.staffTableExpanded && !state.staffGlobalExpanded) return false;
   state.staffPlanningExpanded = false;
   state.staffLaserPlanningExpanded = false;
   state.staffTableExpanded = false;
+  state.staffGlobalExpanded = false;
   state.staffStatusFilter = 'all';
   detachPlanningFullscreenResize();
   save();
@@ -21124,7 +21137,10 @@ function goFullscreenResource(cible) {
   state.staffResourceView = surface;
   state.staffPlanningExpanded = surface === 'bowling';
   state.staffLaserPlanningExpanded = surface === 'laser';
-  state.staffTableExpanded = surface === 'all';
+  // « Toutes » est le planning global (2026-10-12) : la liste garde son
+  // propre « Agrandir ».
+  state.staffTableExpanded = false;
+  state.staffGlobalExpanded = surface === 'all';
   state.staffStatusFilter = 'all';
   save();
   renderStaff();
@@ -21137,9 +21153,66 @@ function toggleTableExpanded() {
   state.staffTableExpanded = next;
   state.staffPlanningExpanded = false;
   state.staffLaserPlanningExpanded = false;
+  state.staffGlobalExpanded = false;
   state.staffStatusFilter = 'all';
   save();
   renderStaff();
+}
+
+// LE PLANNING GLOBAL (2026-10-12) : toutes les activites du jour dans la
+// grille d heures du bowling, une colonne par activite
+// (assets/pinlane-planning-global.js). Il s agrandit comme les deux autres,
+// une seule surface plein ecran a la fois, et ne se dessine que sous son
+// onglet : cache, il ne coute rien.
+function toggleGlobalPlanningExpanded() {
+  const next = !state.staffGlobalExpanded;
+  state.staffGlobalExpanded = next;
+  state.staffPlanningExpanded = false;
+  state.staffLaserPlanningExpanded = false;
+  state.staffTableExpanded = false;
+  state.staffStatusFilter = 'all';
+  save();
+  renderStaff();
+}
+
+// LA LISTE SUIT LA TAILLE DU PLANNING AU-DESSUS D ELLE (2026-10-12). Sa
+// hauteur se calcule sur sa position dans la page (ajusterHauteurListe).
+// Rendue avant que le planning global ait pris sa taille, elle gardait un
+// plafond de 480 px et defilait en elle-meme ; le rendu suivant la remettait
+// a la hauteur de l ecran et la carte qu on venait de toucher sautait de
+// 38 px (rush-status). Chaque changement de taille de la boite la recale.
+let observateurPlanningGlobal = null;
+function renderGlobalPlanningSurface() {
+  const box = document.getElementById('globalPlanningBox');
+  const wrap = document.getElementById('globalPlanningGridWrap');
+  if (!box || !wrap || box.classList.contains('hidden') || typeof window.renderGlobalPlanning !== 'function') return;
+  window.renderGlobalPlanning(wrap);
+  ajusterHauteurListe();
+  if (typeof ResizeObserver !== 'function' || (observateurPlanningGlobal && observateurPlanningGlobal.cible === box)) return;
+  if (observateurPlanningGlobal) observateurPlanningGlobal.disconnect();
+  observateurPlanningGlobal = new ResizeObserver(() => ajusterHauteurListe());
+  observateurPlanningGlobal.cible = box;
+  observateurPlanningGlobal.observe(box);
+}
+
+// La liste du jour vit sous le planning, comme sous les deux autres : « Voir
+// la liste » y descend (en quittant le plein ecran s il le faut).
+function voirListeDuJour() {
+  closeStaffFloatingMenus();
+  if (state.staffGlobalExpanded) toggleGlobalPlanningExpanded();
+  document.getElementById('staffTableBox')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function toggleGlobalPlanningActionsMenu(event) {
+  showStaffFloatingMenu(event, `
+    <div class="staff-action-popover-title">Actions planning</div>
+    <button type="button" onclick="toggleGlobalPlanningExpanded(); closeStaffFloatingMenus();">${state.staffGlobalExpanded ? 'Réduire le planning' : 'Agrandir le planning'}</button>
+    <button type="button" onclick="voirListeDuJour()">Voir la liste des réservations</button>
+    <button type="button" onclick="telechargerSecours('feuille'); closeStaffFloatingMenus();">Feuille de secours (PDF)</button>
+    <button type="button" onclick="refreshStaffPlanning()">Actualiser les données</button>
+    <button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>
+    <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>
+  `);
 }
 
 function setStaffStatusFilter(filter) {
@@ -21148,6 +21221,7 @@ function setStaffStatusFilter(filter) {
   repaintKeepingScroll(document.getElementById('staffView'), () => {
     renderPlanning();
     renderLaserPlanning();
+    renderGlobalPlanningSurface();
     renderTable();
   });
 }
@@ -21176,7 +21250,7 @@ function getPlanningVisibleReservations(view = getStaffResourceView()) {
 let staffSearchDebounceTimer = null;
 function applyStaffSearch(value, opts = {}) {
   state.searchTerm = value;
-  ['searchInput', 'planningSearchInput', 'laserPlanningSearchInput'].forEach(id => {
+  ['searchInput', 'planningSearchInput', 'laserPlanningSearchInput', 'globalPlanningSearchInput'].forEach(id => {
     const el = document.getElementById(id);
     if (el && el !== document.activeElement && el.value !== value) el.value = value;
   });
@@ -21185,6 +21259,7 @@ function applyStaffSearch(value, opts = {}) {
     if (state.view !== 'staff') return;
     renderPlanning();
     renderLaserPlanning();
+    renderGlobalPlanningSurface();
     renderTable();
   };
   clearTimeout(staffSearchDebounceTimer);
@@ -21662,6 +21737,8 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   if (view === 'bowling' && !hasBowling) view = 'all';
   document.getElementById('planningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'bowling');
   document.getElementById('laserPlanningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'laser');
+  // « Toutes » montre le planning global (2026-10-12), la liste du jour en dessous.
+  document.getElementById('globalPlanningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'all');
   // LA LISTE DU JOUR SUIVAIT LE VISITEUR PARTOUT (2026-08-14). Movsar :
   // « le truc reservations s'affiche sur toutes les categories ». Les deux
   // plannings etaient masques au changement de page ; la boite de la liste
@@ -25413,8 +25490,14 @@ function ajusterHauteurListe() {
   const box = document.getElementById('staffTableBox');
   if (!box || box.classList.contains('hidden') || box.classList.contains('expanded')) return;
   const haut = Math.round(box.getBoundingClientRect().top + window.scrollY);
-  const valeur = `${haut > window.innerHeight * 0.55 ? 0 : haut + espaceSousLaListe(box)}px`;
+  const enDessous = haut > window.innerHeight * 0.55;
+  const valeur = `${enDessous ? 0 : haut + espaceSousLaListe(box)}px`;
   if (box.style.getPropertyValue('--liste-haut') !== valeur) box.style.setProperty('--liste-haut', valeur);
+  // Sous un planning, elle garde la hauteur de l ecran meme quand elle se
+  // vide : une carte qui raccourcit (un paiement retire sa rangee de boutons)
+  // raccourcissait la page, le navigateur la remontait et la carte touchee
+  // sautait (rush-status, 52 px).
+  if (box.classList.contains('is-plein-ecran') !== enDessous) box.classList.toggle('is-plein-ecran', enDessous);
 }
 // Ce qui suit la boite dans la page : les marges basses de ses parents et
 // leurs freres suivants dans le flux. Mesure sur les styles, pas sur la
@@ -25707,6 +25790,7 @@ function voirAuPlanning(reservationId, ressource, ev) {
   state.staffPlanningExpanded = false;
   state.staffLaserPlanningExpanded = false;
   state.staffTableExpanded = false;
+  state.staffGlobalExpanded = false;
   const autreJour = r.date && r.date !== state.currentDate;
   if (autreJour) state.currentDate = r.date;
   if (cible === 'laser') lpRevelerGroupe(r.id);
@@ -34175,6 +34259,12 @@ function tickHorlogeStaff() {
   const laserBox = document.getElementById('laserPlanningBox');
   if (laserBox && !laserBox.classList.contains('hidden')) {
     repaintKeepingScroll(laserBox, () => renderLaserPlanning());
+  }
+  // Le planning global aussi : sa barre de l heure et l etat de ses cartes
+  // (en cours, fini, en retard) suivent la minute.
+  const globalBox = document.getElementById('globalPlanningBox');
+  if (globalBox && !globalBox.classList.contains('hidden')) {
+    repaintKeepingScroll(globalBox, () => renderGlobalPlanningSurface());
   }
   // Planning : les pistes libres maintenant et la liste du jour (a venir, sur
   // place, a cloturer) suivent l heure, comme le Terrain.

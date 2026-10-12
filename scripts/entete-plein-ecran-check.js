@@ -5,7 +5,8 @@
 // pouvait tomber a zero pendant que les actions gardaient toute leur largeur
 // (85 px de recouvrement a 769, 60 a 820). Au telephone, la bascule sortait
 // de l ecran des deux cotes (55 px a 390, deja vrai avant). Pour chaque plein
-// ecran (Bowling, Laser Game, Toutes les reservations), de 360 a 1920 px :
+// ecran (Bowling, Laser Game, Planning global, et la liste du jour qui garde
+// son propre « Agrandir »), de 360 a 1920 px :
 //   [A] le titre, le sous-titre, la date, les actions et la bascule ne se
 //       recouvrent pas, et rien ne sort de l en-tete ;
 //   [B] le titre se lit en entier : ni coupe, ni cache par un voisin ;
@@ -20,7 +21,9 @@ const { serveStatic, installMock, boot, BROWSER_PATH } = require('./reserver-v5-
 const ROOT = path.resolve(__dirname, '..');
 const JOUR = '2026-10-10';
 const LARGEURS = [360, 390, 430, 600, 601, 768, 769, 800, 820, 860, 900, 959, 960, 1024, 1180, 1280, 1366, 1399, 1400, 1440, 1600, 1799, 1800, 1920];
-const VUES = ['bowling', 'laser', 'all'];
+// « all » est le planning global depuis le 2026-10-12 ; la liste du jour
+// s agrandit par son propre bouton (« liste »).
+const VUES = ['bowling', 'laser', 'all', 'liste'];
 
 let echecs = 0;
 const lignes = [];
@@ -151,7 +154,11 @@ async function scenarios(browser, mutation = null) {
     const { ctx, page, erreurs } = await ouvrir(browser, { tactile, mutation });
     try {
       for (const vue of VUES) {
-        await page.evaluate(({ vue, jour }) => { state.currentDate = jour; goFullscreenResource(vue); }, { vue, jour: JOUR });
+        await page.evaluate(({ vue, jour }) => {
+          state.currentDate = jour;
+          if (vue === 'liste') { collapseStaffPlanningFullscreen(); setStaffResourceView('all'); toggleTableExpanded(); }
+          else goFullscreenResource(vue);
+        }, { vue, jour: JOUR });
         const rates = { A: [], B: [], C: [] };
         const titres = new Set();
         let mesurees = 0;
@@ -168,7 +175,7 @@ async function scenarios(browser, mutation = null) {
         }
         const ecran = tactile ? 'de 360 a 1199 px' : 'de 1200 a 1920 px';
         // Le prerequis : chaque largeur a mesure l en-tete du BON plein ecran.
-        const attendu = { bowling: /^Planning \d+ pistes$/, laser: /^Planning Laser Game$/, all: /^Toutes les réservations$/ }[vue];
+        const attendu = { bowling: /^Planning \d+ pistes$/, laser: /^Planning Laser Game$/, all: /^Planning global$/, liste: /^Toutes les réservations$/ }[vue];
         ok(mesurees === LARGEURS.filter((l) => (tactile ? l < 1200 : l >= 1200)).length && titres.size === 1 && attendu.test([...titres][0]),
           `[A] ${vue} ${ecran} : le plein ecran est ouvert a chaque largeur`, `${mesurees} mesures, ${[...titres].join(' / ')}`);
         ok(rates.A.length === 0, `[A] ${vue} ${ecran} : titre, date, actions et bascule ne se recouvrent pas, rien ne sort`, rates.A.slice(0, 4).join(' ; '));
@@ -185,11 +192,11 @@ const S = ':is(.planning-box, .table-box).expanded:not(.hidden)';
 const MUTATIONS = [
   // L ancienne largeur 236 px recoupe le titre Toutes et son badge : la
   // date se peint dessus. La largeur partagee se teste sur le texte reel.
-  { nom: 'colonne', lettre: '[B] all de 1200 a 1920 px', fichier: 'assets/pinlane-staff.css',
+  { nom: 'colonne', lettre: '[B] liste de 1200 a 1920 px', fichier: 'assets/pinlane-staff.css',
     de: '  grid-template-columns: 320px auto;',
     vers: '  grid-template-columns: 236px auto;' },
   // La date reste a cote du titre sous 1101 px : les actions la recouvrent.
-  { nom: 'repli', lettre: '[A] all de 360 a 1199 px', fichier: 'assets/pinlane-staff.css',
+  { nom: 'repli', lettre: '[A] liste de 360 a 1199 px', fichier: 'assets/pinlane-staff.css',
     de: `  ${S} .planning-title-stack > .pec-date { grid-column: 1; grid-row: 3; margin-top: 6px; }\n}\n@media (max-width: 768px) {`,
     vers: '}\n@media (max-width: 768px) {' },
   // Les mots longs de la bascule au telephone : elle sort de l ecran.

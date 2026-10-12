@@ -1318,6 +1318,30 @@
   // (« Failed to fetch », « Load failed », « Unexpected token »).
   function erreurLisible(j, repli) { var e = new Error(j && j.message ? String(j.message) : repli); e.lisible = true; return e; }
   var panneMeta = '';          // la panne du catalogue, redite par Continuer
+  // UNE LECTURE DU SERVEUR NE PEND JAMAIS (2026-10-12). Sur un reseau qui
+  // cale, fetch attend sans fin : l ecran des heures restait sur son squelette
+  // et « Ces horaires me vont » gris, sans un mot (sonde sous lenteur : plus
+  // de 20 s, et rien). Chaque GET part avec un delai au plus, puis echoue
+  // comme une panne, que l appelant dit deja. Celui qui le lance peut aussi
+  // l annuler (une demande plus recente le remplace) : l annulation se tait.
+  // Le corps se lit toujours, meme en erreur : laisse non lu, il garde la
+  // requete ouverte. Le texte brut reste : une relecture le compare tel quel,
+  // sans rien reserialiser.
+  var DELAI_LECTURE = 12000;
+  function lire(url, reglages) {
+    reglages = reglages || {};
+    var controle = new AbortController(), parDelai = false, externe = reglages.signal || null;
+    var suivre = function () { controle.abort(); };
+    if (externe) { if (externe.aborted) controle.abort(); else externe.addEventListener('abort', suivre); }
+    var minuteur = setTimeout(function () { parDelai = true; controle.abort(); }, reglages.delai || DELAI_LECTURE);
+    var finir = function () { clearTimeout(minuteur); if (externe) externe.removeEventListener('abort', suivre); };
+    return fetch(url, { credentials: 'omit', headers: reglages.headers || {}, signal: controle.signal })
+      .then(function (r) { return r.text().then(function (texte) { finir(); return { statut: r.status, ok: r.ok, texte: texte }; }); })
+      .catch(function () { finir(); var e = new Error(parDelai ? 'delai' : 'reseau'); e.delai = parDelai; e.annule = !parDelai && controle.signal.aborted; throw e; });
+  }
+  function lu(rep) { try { return JSON.parse(rep.texte); } catch (e) { return null; } }
+  // Un bouton qui travaille : la roue de .is-busy, et aria-busy pour qui ne la voit pas.
+  function occuper(btn, oui) { if (!btn) return; btn.classList.toggle('is-busy', oui); if (oui) btn.setAttribute('aria-busy', 'true'); else btn.removeAttribute('aria-busy'); }
   // UNE SEULE VOIX pour les gestes : une phrase courte, deja ecrite a
   // l ecran. Videe puis reposee 80 ms plus tard : la meme phrase deux fois
   // de suite se relit.
@@ -1450,9 +1474,10 @@
     }
     if (!premier) { moisCharges[cle] = true; return Promise.resolve(); }
     var q = new URLSearchParams(); q.set('centerId', CENTER); q.set('calendar', String(Math.min(90, n))); q.set('calendarFrom', premier);
-    var p = fetch('/api/public-booking-meta?' + q.toString(), { credentials: 'omit' })
-      .then(function (r) { return r.json(); })
-      .then(function (j) { absorberCalendrier(j && j.center && j.center.calendar); moisCharges[cle] = true; })
+    // Un mois qui ne vient pas (panne, refus, delai) se redemande au prochain
+    // passage : marque charge, il gardait ses jours « Chargement… » pour toujours.
+    var p = lire('/api/public-booking-meta?' + q.toString())
+      .then(function (rep) { var j = lu(rep); if (!j || j.ok === false || !(j.center && Array.isArray(j.center.calendar))) throw new Error('mois'); absorberCalendrier(j.center.calendar); moisCharges[cle] = true; })
       .catch(function () { delete moisCharges[cle]; });
     moisCharges[cle] = p;
     return p;
@@ -1768,8 +1793,29 @@
   paxInput.addEventListener('blur', function () { paxInput.value = String(state.pax); ajusterLargeurPax(); });
   paxInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); paxInput.blur(); } });
 
-  $('#goActivities').addEventListener('click', function () {
-    if (!meta) { direErreur(panneMeta || 'Le formulaire se charge encore. Réessayez dans un instant.'); return; }
+  // UN TOUCHER AVANT LE CATALOGUE EST GARDE (2026-10-12). Le premier ecran
+  // s affiche avant que le catalogue n arrive. Sur un reseau lent, « Choisir
+  // mes activites » repondait « Le formulaire se charge encore. Reessayez
+  // dans un instant. », en rouge, en haut de la page, loin du doigt, et le
+  // geste etait perdu (sonde : toujours sur le premier ecran une fois le
+  // catalogue arrive). Le bouton travaille, et le geste repart des que le
+  // catalogue est la ; seul le dernier compte, c est le plus recent. Une
+  // panne du catalogue, elle, se redit (panneMeta).
+  var gesteAvantCatalogue = null;
+  function apresCatalogue(btn, faire) {
+    if (gesteAvantCatalogue && gesteAvantCatalogue.btn !== btn) occuper(gesteAvantCatalogue.btn, false);
+    gesteAvantCatalogue = { btn: btn, faire: faire };
+    occuper(btn, true);
+  }
+  function rejouerGeste() {
+    var g = gesteAvantCatalogue;
+    gesteAvantCatalogue = null;
+    if (!g) return;
+    occuper(g.btn, false);
+    if (meta) g.faire(); else if (panneMeta) direErreur(panneMeta);
+  }
+  function allerAuxActivites() {
+    if (!meta) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }
     if (grandGroupe()) { ouvrirSurMesure($('#goActivities')); return; }
     if (!state.date) { direErreur('Choisissez d’abord un jour.'); dayBtn.focus(); return; }
     if (journeeFinie(state.date)) { direJour(state.date); rendreCalendrier(); direErreur('Le centre est fermé pour aujourd’hui : la journée est finie. Choisissez un autre jour.'); dayBtn.focus(); return; }
@@ -1807,7 +1853,8 @@
     rendreCompteur(false);
     aller('activites');
     placerBarre();
-  });
+  }
+  $('#goActivities').addEventListener('click', allerAuxActivites);
   var grillesRendues = '';
   function empreinteGrilles() { return [state.date, state.pax, empreinteCatalogue].join('|'); }
   var formulesEnRetard = false;
@@ -2100,10 +2147,10 @@
     if(dureesChargement)dureesChargement.abort();
     dureesChargement=new AbortController();var controller=dureesChargement;
     dureesEnCours = realKey;
-    fetch('/api/public-availability?' + new URLSearchParams({ centerId: CENTER, date: state.date, pax: String(state.pax), type: 'durees' }).toString(), { credentials: 'omit', signal:controller.signal })
+    lire('/api/public-availability?' + new URLSearchParams({ centerId: CENTER, date: state.date, pax: String(state.pax), type: 'durees' }).toString(), { signal: controller.signal })
       // Le corps se lit meme en erreur : laisse non lu (404 d un centre
       // inconnu), il garde la requete ouverte dans le navigateur.
-      .then(function (r) { return r.json().then(function (j) { return r.ok ? j : null; }, function () { return null; }); })
+      .then(function (r) { return r.ok ? lu(r) : null; })
       .then(function (rep) {
         var d = rep && rep.ok && rep.durees ? rep.durees : null;
         if (d) dureesCache[cle] = d;
@@ -2435,10 +2482,24 @@
   // doit passer pour une reponse.
   var SQUELETTE = '<div class="fg-skel"><p class="fg-skel__txt">On regarde ce qui est libre…</p><div class="fg-skel__card" aria-hidden="true"><i></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i></div></div>';
   var requeteEnCours = 0;
+  var planEnCours = null;      // la lecture du plan en route : une plus recente, ou une demande qui change, l annule
+  var contactRetenu = false;   // « Ces horaires me vont » touche pendant un recalcul : il part a la reponse
   var reveilGarder = false;    // « Garder » s eveille a la premiere reponse apres l arrivee sur les heures, pas a chaque heure posee
   var signaturePistes = '';    // les pistes rendues (activites + heures) : sinon, on met a jour sur place
   var adaptation = null;       // { deplace, pour, t } : l activite deplacee pour l heure posee
-  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; libererBlocage(); }
+  function invaliderDispo() { if (state.attente && state.attente.cle !== cleBase()) state.attente = null; state.dispo = null; state.creneau = null; state.heure = ''; state.pins = {}; state.laserParts = []; adaptation = null; signaturePistes = ''; etapeOuverte = null; etapeTouchee = false; partiesSurPlace = false; goContact.disabled = true; annulerPlan(); libererBlocage(); }
+  // UNE DEMANDE QUI CHANGE COUPE SON CALCUL EN ROUTE (2026-10-12) : le retour
+  // aux activites pendant un calcul, puis un geste. La reponse ne servait
+  // plus a rien (la cle de la demande la jetait), mais elle se telechargeait
+  // et se lisait quand meme, sur un telephone deja lent.
+  function annulerPlan() {
+    if (!planEnCours) return;
+    planEnCours.abort(); planEnCours = null;
+    requeteEnCours += 1;
+    hourZone.classList.remove('is-busy');
+    lacherContact();
+  }
+  function lacherContact() { if (!contactRetenu) return; contactRetenu = false; occuper(goContact, false); }
   // LES LIGNES CHOISIES a l ecran des activites, puis l offre d attente
   // acceptee, tant que la demande est celle pour laquelle elle a ete
   // proposee (meme jour, meme groupe, memes activites et options). Changer
@@ -2552,30 +2613,35 @@
     // plan du serveur la retient.
     var attente = $('.fg-chip.is-pending', hourZone), pisteAttente = attente ? attente.closest('.fg-track') : null;
     var idAttente = pisteAttente ? pisteAttente.dataset.activity : '', heureAttente = attente ? attente.dataset.time : '';
-    goContact.disabled = true;
+    // LE CALCUL PERIME EST COUPE (2026-10-12). Trois heures touchees vite :
+    // trois calculs, et les deux premiers se telechargeaient et se lisaient
+    // jusqu au bout pour rien (sonde : 3 partis, 3 finis, aucun coupe). Le
+    // plus recent annule le precedent.
+    if (planEnCours) planEnCours.abort();
+    var controle = planEnCours = new AbortController();
+    // UN PLAN AFFICHE GARDE SON BOUTON PENDANT LE RECALCUL (2026-10-12). Grise
+    // a chaque calcul, « Ces horaires me vont » avalait le toucher qui tombait
+    // dans la fenetre, sans un mot (sonde : 4 s de calcul, toucher perdu). Il
+    // reste touchable, le toucher est retenu et part a la reponse
+    // (garderHoraires, poserPlan). Sans plan a l ecran (premier calcul,
+    // panne), rien a garder : il reste gris.
+    if (!(state.dispo && state.creneau)) goContact.disabled = true;
     hourZone.classList.add('is-busy');
-    fetch(urlDispo(), { credentials: 'omit', headers: enteteBlocage() }).then(function (r) { return r.json(); })
-      .then(function (j) {
+    lire(urlDispo(), { headers: enteteBlocage(), signal: controle.signal })
+      .then(function (rep) {
         if (id !== requeteEnCours) return;
+        var j = lu(rep);
         if (!j || j.ok === false) throw erreurLisible(j, 'Les horaires ne se sont pas chargés. Réessayez dans un instant.');
-        state.dispo = j; state.dispoCle = cle; state.dispoTexte = JSON.stringify(j);
-        plus.statut = null; plus.annuler = null; plus.refuses = {};
-        var slot = (j.slots || [])[0] || null;
-        state.creneau = slot ? creneauAvecDevis(slot, j) : null;
-        state.heure = slot ? slot.time : '';
-        hourZone.classList.remove('is-busy');
-        rendreHeures();
-        $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); });
-        var posee = idAttente ? $('.fg-track[data-activity="' + idAttente + '"] .fg-chip[data-time="' + heureAttente + '"]', hourZone) : null;
-        if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) { rejouer(posee, 'is-pose'); avancerEtape(); }
-        goContact.disabled = !slot;
-        if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }
-        majRefusHoraires();
-        rendreFocus(repere);
+        if (planEnCours === controle) planEnCours = null;
+        poserPlan(j, rep.texte, cle, repere, idAttente, heureAttente);
       })
       .catch(function (err) {
-        if (id !== requeteEnCours) return;
+        if (id !== requeteEnCours || (err && err.annule)) return;
+        if (planEnCours === controle) planEnCours = null;
         hourZone.classList.remove('is-busy');
+        // Plus de plan : plus rien a garder, le toucher retenu tombe avec lui.
+        goContact.disabled = true;
+        lacherContact();
         var msgErr = err && err.lisible ? err.message : 'Les horaires ne se sont pas chargés. Réessayez dans un instant.';
         hourZone.innerHTML = '<div class="fg-notice fg-notice--warn"><b>' + esc(msgErr) + '</b><span class="fg-suggest"><button type="button" class="fg-suggest__btn" data-retry>Réessayer</button></span></div>';
         state.dispo = null;
@@ -2585,6 +2651,36 @@
         if (sceneCourante === 'heures') dire(msgErr);
         rendreFocus(repere);
       });
+  }
+  // LA REPONSE DEVIENT LE PLAN : celle du calcul demande (chargerPlan), ou
+  // celle de la relecture de fond qui a vu un changement (relireHeures), sans
+  // la redemander. `texte` : la reponse telle que recue, que la relecture
+  // compare.
+  function poserPlan(j, texte, cle, repere, idAttente, heureAttente) {
+    state.dispo = j; state.dispoCle = cle; state.dispoTexte = texte;
+    heuresLues = Date.now();
+    plus.statut = null; plus.annuler = null; plus.refuses = {};
+    var slot = (j.slots || [])[0] || null;
+    state.creneau = slot ? creneauAvecDevis(slot, j) : null;
+    state.heure = slot ? slot.time : '';
+    hourZone.classList.remove('is-busy');
+    rendreHeures();
+    $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); });
+    var posee = idAttente ? $('.fg-track[data-activity="' + idAttente + '"] .fg-chip[data-time="' + heureAttente + '"]', hourZone) : null;
+    // La ligne avance bouton eteint, comme quand il l etait pendant tout le
+    // calcul : ni reveil, ni focus pour lui (« Garder » s eveille une fois, a
+    // l arrivee sur les heures). Rallume dans la meme tache, il garde son focus.
+    goContact.disabled = true;
+    if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) { rejouer(posee, 'is-pose'); avancerEtape(); }
+    goContact.disabled = !slot;
+    var retenu = contactRetenu;
+    lacherContact();
+    if (slot && reveilGarder) { reveilGarder = false; eveiller(goContact); }
+    majRefusHoraires();
+    rendreFocus(repere);
+    // Le toucher retenu part sur le plan qui vient d arriver. Sans creneau,
+    // le bouton reste gris et le bloc de la visite dit pourquoi.
+    if (retenu && slot && sceneCourante === 'heures') garderHoraires();
   }
   // Les etats d une heure, lus dans la reponse :
   //   ok    : rien a dire ;
@@ -3747,8 +3843,12 @@
     var url = avecPanier(c, urlDispo);
     plus.statut = { ecran: ecran, texte: 'Vérification…', ton: 'busy' };
     rendrePlus(ecran, false);
-    fetch(url, { credentials: 'omit', headers: enteteBlocage() }).then(function (r) { return r.json(); })
-      .then(function (j) {
+    // Borne comme toute lecture : sans elle, une reponse qui ne vient pas
+    // laissait « Vérification… » et tous les « Ajouter » eteints pour toujours.
+    lire(url, { headers: enteteBlocage() })
+      .then(function (rep) {
+        var j = lu(rep), texte = rep.texte;
+        if (!j) throw new Error('illisible');
         plus.enCours = '';
         // La reponse ne sert que si rien n a bouge pendant l aller-retour.
         if (state.creneau !== cr || cleDemande() !== cleAvant) return;
@@ -3771,7 +3871,7 @@
             if (r.pris || r.refus || r.prixChange) {
               if (carte) plus.refuses[carte.id] = 1;
               plus.statut = { ecran: ecran, texte: carte ? 'Cette option n’est plus disponible sur vos horaires.' : 'Ce changement n’est plus possible sur vos horaires.', ton: 'ko' };
-            } else appliquerPanier(c, carte, ecran, texteOk, j, cr);
+            } else appliquerPanier(c, carte, ecran, texteOk, j, cr, texte);
             rendrePlus(ecran, true);
           });
           return;
@@ -3779,7 +3879,7 @@
         if (refus) {
           if (carte) plus.refuses[carte.id] = 1;
           plus.statut = { ecran: ecran, texte: refus, ton: 'ko' };
-        } else appliquerPanier(c, carte, ecran, texteOk, j, cr);
+        } else appliquerPanier(c, carte, ecran, texteOk, j, cr, texte);
         rendrePlus(ecran, true);
       })
       .catch(function () {
@@ -3791,11 +3891,11 @@
   }
   // Le panier propose devient celui du client, avec le creneau que le
   // serveur vient de rendre.
-  function appliquerPanier(c, carte, ecran, texteOk, j, cr) {
+  function appliquerPanier(c, carte, ecran, texteOk, j, cr, texte) {
     var avant = copiePanier();
     state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId;
     var slot = j.slots[0];
-    state.dispo = j; state.dispoCle = cleDemande(); state.dispoTexte = JSON.stringify(j);
+    state.dispo = j; state.dispoCle = cleDemande(); state.dispoTexte = texte;
     state.creneau = creneauAvecDevis(slot, j);
     state.heure = slot.time;
     plus.annuler = carte ? { panier: avant, nom: nomDuPlus(carte), ecran: ecran, carte: carte } : null;
@@ -4195,8 +4295,10 @@
     rendreBlocage();
     aller('contact');
   }
-  goContact.addEventListener('click', function () {
+  function garderHoraires() {
     if (goContact.disabled || !state.creneau || goContact.classList.contains('is-busy')) return;
+    // Un recalcul en route : le toucher attend sa reponse, le bouton travaille.
+    if (planEnCours) { contactRetenu = true; occuper(goContact, true); return; }
     var cle = cleBlocage();
     // Le meme choix, encore bloque (retour arriere, puis Continuer) : le
     // decompte continue, il ne repart pas. Dix minutes par choix, pas plus.
@@ -4216,7 +4318,8 @@
       }
       versLeContact();
     });
-  });
+  }
+  goContact.addEventListener('click', garderHoraires);
 
   /* --- Les horaires bloques pendant que le client finit ------------------------- */
 
@@ -4252,22 +4355,46 @@
   }
   function heureLocale(ms) { var d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function decompte(ms) { var s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+  // UN BLOCAGE QUI TRAINE NE RETIENT PAS LE CLIENT (2026-10-12). Sur un reseau
+  // qui cale, « Ces horaires me vont » tournait sans fin (sonde : 14 s, la
+  // roue toujours la). Passe DELAI_BLOCAGE, le client avance sans blocage,
+  // comme apres toute panne technique : la confirmation reverifie tout, et la
+  // file se libere (la confirmation n attend plus ce blocage). La demande
+  // n est pas coupee : un blocage qui arrive apres coup pour un premier choix
+  // est rendu aussitot. Garde, il tiendrait dix minutes une place que plus
+  // personne n attend, et la confirmation du client lui-meme s y heurterait.
+  var DELAI_BLOCAGE = 8000;
   function retenir(corps, cle) {
     var version = blocage.version;
-    return enFile(function () { return demanderBlocage(corps, cle, 1, version); });
+    return enFile(function () {
+      var ticket = { abandonne: false };
+      return new Promise(function (resolve) {
+        var minuteur = setTimeout(function () {
+          ticket.abandonne = true;
+          if (version !== blocage.version) { resolve({ obsolete: true }); return; }
+          arreterDecompte();
+          resolve({ sans: true });
+        }, DELAI_BLOCAGE);
+        demanderBlocage(corps, cle, 1, version, ticket).then(function (r) { clearTimeout(minuteur); resolve(r); });
+      });
+    });
   }
-  function demanderBlocage(corps, cle, essais, version) {
+  function demanderBlocage(corps, cle, essais, version, ticket) {
     if (version !== blocage.version) return Promise.resolve({ obsolete: true });
+    var avaitJeton = Boolean(blocage.jeton);
     if (blocage.jeton) corps.holdToken = blocage.jeton;
     corps.acquisition = ACQUISITION;
+    var abandonne = function () { return version !== blocage.version || Boolean(ticket && ticket.abandonne); };
     return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (x) { return { statut: r.status, json: x || {} }; }); })
       .then(function (res) {
         var x = res.json;
         // Le groupe ou le panier a changé pendant le réseau : rendre la place
-        // obtenue pour l'ancien choix, sans remplacer le blocage courant.
-        if (version !== blocage.version) {
-          if (res.statut === 201 && x.holdToken) {
+        // obtenue pour l'ancien choix, sans remplacer le blocage courant. De
+        // meme pour un premier choix arrive apres le delai (le client est
+        // passe sans lui) ; le jeton que le client garde, lui, reste le sien.
+        if (abandonne()) {
+          if (res.statut === 201 && x.holdToken && (version !== blocage.version || !avaitJeton)) {
             return fetch('/api/public-holds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ release: true, holdToken: x.holdToken }), credentials: 'omit', keepalive: true })
               .catch(function () {}).then(function () { return { obsolete: true }; });
           }
@@ -4276,7 +4403,7 @@
         if (res.statut === 201 && x.ok !== false && x.holdToken) { if (cle === cleBlocage()) actualiserDevis(x, true); poserBlocage(x, cle); return { ok: true }; }
         if (res.statut === 409 && x.code === 'price_changed') return { prixChange: true, devis: x };
         // Deux demandes de cet ecran se sont croisees au serveur : une fois.
-        if (res.statut === 409 && x.code === 'hold_retry' && essais > 0) return demanderBlocage(corps, cle, essais - 1, version);
+        if (res.statut === 409 && x.code === 'hold_retry' && essais > 0) return demanderBlocage(corps, cle, essais - 1, version, ticket);
         if (res.statut === 409 && (x.code === 'slot_taken' || x.code === 'slot_unavailable')) return { pris: true, message: x.message || '' };
         // Un refus du centre (fermé, groupe trop grand) vient de NOTRE API :
         // JSON ok:false et sa phrase. Un 404 sans elle, c est l adresse du
@@ -4286,7 +4413,9 @@
         arreterDecompte();
         return { sans: true };
       })
-      .catch(function () { if (version !== blocage.version) return { obsolete: true }; arreterDecompte(); return { sans: true }; });
+      // Une panne arrivee apres le delai ne touche plus a rien : un autre
+      // blocage a pu etre pose depuis.
+      .catch(function () { if (abandonne()) return { obsolete: true }; arreterDecompte(); return { sans: true }; });
   }
   // Le decompte part de ce que le SERVEUR a pose (echeance moins son heure) :
   // l horloge du telephone peut avancer ou retarder, pas la duree.
@@ -4412,23 +4541,31 @@
     hourErr.hidden = true; hourErr.innerHTML = ''; delete hourErr.dataset.cle;
     posterHauteur();
   }
-  // LES HEURES SE RELISENT TOUTES LES 15 S sur leur ecran : un creneau retenu
-  // ou reserve par un autre client s y voit sans recharger, et le sien reste
-  // libre pour lui (le jeton voyage dans l en-tete). Rien ne bouge si rien
-  // n a change ; jamais pendant un calcul, un ajout ou un blocage en cours.
+  // LES HEURES SE RELISENT sur leur ecran (veille, plus bas) : un creneau
+  // retenu ou reserve par un autre client s y voit sans recharger, et le sien
+  // reste libre pour lui (le jeton voyage dans l en-tete). Rien ne bouge si
+  // rien n a change ; jamais pendant un calcul, un ajout ou un blocage en
+  // cours. LA RELECTURE NE REFAIT RIEN POUR RIEN (2026-10-12) : elle
+  // re-serialisait la reponse entiere pour la comparer, puis, au moindre
+  // changement, redemandait le meme calcul (deux lectures, deux analyses, sur
+  // un telephone deja lent). Le texte recu se compare tel quel, et ce qui a
+  // change s applique sans rien redemander.
+  var CADENCE_HEURES = 20000, heuresLues = 0;
   function relireHeures() {
     if (sceneCourante !== 'heures' || doc.hidden || !state.dispo || !state.dispoTexte) return;
     if (hourZone.classList.contains('is-busy') || plus.enCours || goContact.classList.contains('is-busy')) return;
+    heuresLues = Date.now();
     var id = requeteEnCours, cle = cleDemande(), avant = state.dispoTexte;
-    fetch(urlDispo(), { credentials: 'omit', headers: enteteBlocage() }).then(function (r) { return r.json(); })
-      .then(function (x) {
-        if (id !== requeteEnCours || cle !== cleDemande() || sceneCourante !== 'heures' || !x || x.ok === false) return;
-        if (JSON.stringify(x) === avant || hourZone.classList.contains('is-busy') || plus.enCours) return;
-        chargerPlan();
+    lire(urlDispo(), { headers: enteteBlocage() })
+      .then(function (rep) {
+        if (id !== requeteEnCours || cle !== cleDemande() || sceneCourante !== 'heures' || rep.texte === avant || state.dispoTexte !== avant) return;
+        if (hourZone.classList.contains('is-busy') || plus.enCours || goContact.classList.contains('is-busy')) return;
+        var x = lu(rep);
+        if (!x || x.ok === false) return;
+        poserPlan(x, rep.texte, cle, repereFocus(), '', '');
       })
       .catch(function () {});
   }
-  setInterval(relireHeures, 15000);
   // L onglet quitte : le blocage est rendu tout de suite, pas dans dix
   // minutes. Revenu par le bouton Retour (page restauree), le bandeau dit
   // qu il n est plus garanti et propose de le reprendre.
@@ -4783,7 +4920,9 @@
     plus.devis[c.id] = devis;
     rafraichirPrixDuPlus(c);
     var panier = panierDe(c), url = avecPanier(panier, urlDispo);
-    fetch(url, { credentials: 'omit', headers: enteteBlocage(), signal: controller.signal }).then(function (r) { if (!r.ok) throw new Error('Cette offre ne peut pas être chiffrée.'); return r.json(); })
+    // Le corps se lit aussi en erreur (lire) : jete sans etre lu, il gardait la
+    // requete ouverte ; et un prix qui ne vient pas ne reste plus « … ».
+    lire(url, { headers: enteteBlocage(), signal: controller.signal }).then(function (r) { var j = r.ok ? lu(r) : null; if (!j) throw new Error('Cette offre ne peut pas être chiffrée.'); return j; })
       .then(function (j) {
         if (controller.signal.aborted || plus.devis[c.id] !== devis || state.creneau !== cr || cleDemande() !== cle) return;
         var refus = refusDuPlus(j, cr, Object.assign({}, c, { deltaTotal: Number.MAX_VALUE }));
@@ -4954,10 +5093,20 @@
       var c = cartesPlus().filter(function (x) { return x.id === li.dataset.carte; })[0];
       if (c) suivre('vue', c, { rang: rang });
     });
-    pageInerte(true);
     root.classList.add('fg-vitrine-ouverte');
     placerVitrine(true);
     vitrinePanneau.focus({ preventScroll: true });
+    // LA PAGE SE TAIT UNE FOIS LA FENETRE A L ECRAN (2026-10-12). Rendue
+    // inerte dans la meme tache que la fenetre (sonde a 6x : meme image), la
+    // page entiere se recalculait avant que la fenetre ne se peigne. Deux
+    // images plus tard, la fenetre a ete peinte ; la decision prise
+    // (data-attendue) se dit alors.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (vitrineOuverte()) pageInerte(true);
+        vitrine.removeAttribute('data-attendue');
+      });
+    });
   }
   function fermerVitrine(rendreFocus) {
     if (!vitrineOuverte()) return;
@@ -4974,17 +5123,32 @@
   // A l arrivee au recapitulatif, une fois l ecran entre : jamais pendant
   // l envoi, jamais deux fois pour les memes offres. Tant que la decision
   // n est pas prise, la fenetre porte data-attendue ; « Valider » l annule.
+  // ELLE ATTEND QUE L ECRAN SOIT POSE (2026-10-12). Elle partait a 750 ms
+  // fixes, au milieu de l entree du recapitulatif (sonde a 6x : ouverte 500 ms
+  // avant la fin de ses animations), et les deux se disputaient chaque image.
+  // Elle s ouvre a la fin de l entree, lignes et photo comprises, 4 s au plus
+  // apres l arrivee.
+  var vitrineDecision = 0;
   function programmerVitrine() {
     clearTimeout(vitrineMinuteur);
+    var jeton = ++vitrineDecision, parti = false;
     if (vitrine) vitrine.setAttribute('data-attendue', '');
-    vitrineMinuteur = setTimeout(function () {
-      if (vitrine) vitrine.removeAttribute('data-attendue');
-      if (sceneCourante !== 'recap' || confirmBtn.classList.contains('is-busy') || vitrineVues[signatureVitrine()]) return;
-      ouvrirVitrine();
-    }, reduced ? 200 : 750);
+    var decider = function () {
+      if (parti || jeton !== vitrineDecision) return;
+      parti = true;
+      clearTimeout(vitrineMinuteur);
+      vitrineMinuteur = setTimeout(function () {
+        if (jeton !== vitrineDecision) return;
+        if (sceneCourante === 'recap' && !confirmBtn.classList.contains('is-busy') && !vitrineVues[signatureVitrine()]) ouvrirVitrine();
+        if (vitrine && !vitrineOuverte()) vitrine.removeAttribute('data-attendue');
+      }, reduced ? 200 : 0);
+    };
+    vitrineMinuteur = setTimeout(decider, 4000);
+    apresAnimations($('.fg-scene[data-scene="recap"]'), decider);
   }
   function annulerVitrine() {
     clearTimeout(vitrineMinuteur);
+    vitrineDecision += 1;
     if (vitrine) vitrine.removeAttribute('data-attendue');
   }
   if (vitrine) {
@@ -5089,11 +5253,31 @@
     erreurEnvoi('');
     chargerHeures();
   });
+  // LA CONFIRMATION N EST JAMAIS COUPEE (2026-10-12) : le dossier a pu etre
+  // ecrit avant la reponse, une coupure ferait renvoyer une reservation deja
+  // faite. Mais elle ne se tait plus : passe ENVOI_LONG, la ligne sous le
+  // bouton dit que c est toujours en cours et qu il ne faut pas recharger
+  // (sonde : 16 s de roue, sans un mot). Elle reprend sa phrase a la reponse.
+  var ENVOI_LONG = 15000, envoiMinuteur = 0, noteEnvoi = $('.fg-scene[data-scene="recap"] .fg-confirm__note'), noteEnvoiAvant = '';
+  function envoiEnCours(oui) {
+    clearTimeout(envoiMinuteur);
+    if (!noteEnvoi) return;
+    if (noteEnvoiAvant) { noteEnvoi.textContent = noteEnvoiAvant; noteEnvoiAvant = ''; posterHauteur(); }
+    if (!oui) return;
+    envoiMinuteur = setTimeout(function () {
+      var t = 'Votre réservation est toujours en cours d’envoi. Ne rechargez pas la page.';
+      noteEnvoiAvant = noteEnvoi.textContent;
+      noteEnvoi.textContent = t;
+      dire(t);
+      posterHauteur();
+    }, ENVOI_LONG);
+  }
   confirmBtn.addEventListener('click', function () {
     if (confirmBtn.classList.contains('is-busy')) return;
     annulerVitrine();
     erreurEnvoi('');
     confirmBtn.classList.add('is-busy'); confirmBtn.setAttribute('aria-busy', 'true');
+    envoiEnCours(true);
     // Apres un blocage encore en route (un ajout au recapitulatif), jamais en
     // meme temps : la file les passe l un apres l autre. Le jeton fait du
     // blocage la reservation ; une confirmation renvoyee (reponse perdue)
@@ -5106,6 +5290,7 @@
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j || {} }; }); })
       .then(function (res) {
         confirmBtn.classList.remove('is-busy'); confirmBtn.removeAttribute('aria-busy');
+        envoiEnCours(false);
         if ((res.status === 201 || (res.status === 200 && res.json.replay === true)) && res.json.ok !== false && res.json.reservation) { finirBlocage(); reussite(res.json); return; }
         // 409 : le serveur refuse de confirmer en ligne ce creneau. Ses
         // alternatives sont dites, sans le creneau refuse ni les doublons.
@@ -5159,6 +5344,7 @@
       // a renvoyer.
       .catch(function () {
         confirmBtn.classList.remove('is-busy'); confirmBtn.removeAttribute('aria-busy');
+        envoiEnCours(false);
         var appel = appelCentre();
         erreurEnvoi('<b>Impossible de savoir si votre demande est partie.</b> Avant de la renvoyer, ' + (appel ? appel + ' ou regardez vos e-mails.' : 'regardez vos e-mails.'));
       });
@@ -5334,17 +5520,24 @@
   // L OUVERTURE. Sur un reseau lent, le bouton touche dit qu il travaille ; un
   // echec se dit en clair, avec le numero du centre.
   function ouvrirSurMesure(bouton) {
-    if (!meta) { direErreur(panneMeta || 'Le formulaire se charge encore. Réessayez dans un instant.'); return; }
+    var btn = bouton && bouton.classList ? bouton : null;
+    if (!meta) { if (panneMeta) direErreur(panneMeta); else apresCatalogue(btn, function () { ouvrirSurMesure(bouton); }); return; }
     direErreur('');
     if (smModule) { smModule.ouvrir(); return; }
-    var btn = bouton && bouton.classList ? bouton : null;
-    var occupe = function (on) { if (!btn) return; btn.classList.toggle('is-busy', on); if (on) btn.setAttribute('aria-busy', 'true'); else btn.removeAttribute('aria-busy'); };
-    occupe(true);
-    chargerSurMesure().then(function (m) { occupe(false); m.ouvrir(); }).catch(function () {
-      occupe(false);
+    // Borne comme une lecture (2026-10-12) : un fichier qui ne vient pas
+    // laissait le bouton tourner sans fin. Arrive apres coup, il ne s ouvre
+    // pas tout seul ; le toucher suivant l ouvre aussitot.
+    var fini = false;
+    var echec = function () {
+      if (fini) return;
+      fini = true;
+      occuper(btn, false);
       var c = meta && meta.center && meta.center.contact;
       direErreur('La demande sur mesure ne s’est pas chargée. Vérifiez votre connexion et réessayez' + (c && c.phone ? ', ou appelez le centre au ' + c.phone : '') + '.');
-    });
+    };
+    var delai = setTimeout(echec, DELAI_LECTURE);
+    occuper(btn, true);
+    chargerSurMesure().then(function (m) { if (fini) return; fini = true; clearTimeout(delai); occuper(btn, false); m.ouvrir(); }).catch(function () { clearTimeout(delai); echec(); });
   }
   if (smDoor) {
     $('#smDoorBtn').addEventListener('click', function (e) { ouvrirSurMesure(e.currentTarget); });
@@ -5421,21 +5614,26 @@
   // « que ça corrige à la seconde sur le formulaire »). Le centre change ses
   // tables, ses pistes ou une formule dans la console : le serveur l applique
   // aussitot, et le formulaire deja ouvert relit le catalogue en revenant sur
-  // l onglet, en entrant dans les activites, et toutes les 10 s tant qu il
-  // montre les activites ou les heures. Rien ne bouge si rien n a change ;
-  // sinon les cartes se redessinent, la selection et les reglages gardes
-  // (ramenes aux nouvelles limites), et les heures se recalculent.
-  var empreinteCatalogue = '';
+  // l onglet, en entrant dans les activites, et toutes les 30 s (la veille,
+  // plus bas) tant qu il montre les activites ou les heures. Rien ne bouge si
+  // rien n a change ; sinon les cartes se redessinent, la selection et les
+  // reglages gardes (ramenes aux nouvelles limites), et les heures se
+  // recalculent. Le texte recu identique au dernier ne se relit meme pas : ni
+  // analyse, ni empreinte reserialisee (2026-10-12).
+  var empreinteCatalogue = '', catalogueTexte = '', catalogueLu = 0;
   function empreinteDuCatalogue(j) { return JSON.stringify([(j && j.activities) || [], (j && j.formules) || [], (j && j.center && j.center.customRequest) || null]); }
   function rafraichirCatalogue() {
     // Pas pendant les coordonnees ni le recapitulatif : le client relit ce
     // qu il va envoyer, et le serveur revalide tout a l envoi.
     if (!meta || doc.hidden || ['date', 'activites', 'heures', 'sm-envies'].indexOf(sceneCourante) < 0) return;
+    catalogueLu = Date.now();
     var q = new URLSearchParams(); q.set('centerId', CENTER);
-    fetch('/api/public-booking-meta?' + q.toString(), { credentials: 'omit' })
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
+    lire('/api/public-booking-meta?' + q.toString())
+      .then(function (rep) {
+        if (rep.texte === catalogueTexte) return;
+        var j = lu(rep);
         if (!j || j.ok === false || !Array.isArray(j.activities)) return;
+        catalogueTexte = rep.texte;
         var neuve = empreinteDuCatalogue(j);
         if (neuve === empreinteCatalogue) return;
         empreinteCatalogue = neuve;
@@ -5460,8 +5658,26 @@
       .catch(function () {});
   }
   doc.addEventListener('visibilitychange', function () { if (!doc.hidden) rafraichirCatalogue(); });
-  setInterval(function () { if (sceneCourante === 'activites' || sceneCourante === 'heures' || sceneCourante === 'sm-envies') rafraichirCatalogue(); if(!doc.hidden && sceneCourante==='activites' && state.onglet==='formules')chargerDurees(); }, 10000);
   $('#goActivities').addEventListener('click', function () { rafraichirCatalogue(); });
+  // LA VEILLE SE TAIT QUAND ON TOUCHE (2026-10-12). Les relectures de fond (les
+  // heures, le catalogue et les durees des formules) partaient a heure fixe,
+  // toutes les 15 et 10 s, au milieu des gestes : sur un telephone modeste,
+  // leur lecture et leur rendu tombaient sur le toucher suivant. Elles
+  // attendent que la main se pose (CALME_APRES_GESTE sans toucher ni touche)
+  // et s espacent : CADENCE_HEURES pour les heures, CADENCE_CATALOGUE pour le
+  // catalogue. Une lecture faite par ailleurs (un calcul, l entree dans les
+  // activites) compte : la suivante attend sa cadence entiere.
+  var CADENCE_CATALOGUE = 30000, CALME_APRES_GESTE = 8000, dernierGeste = 0;
+  ['pointerdown', 'keydown'].forEach(function (t) { doc.addEventListener(t, function () { dernierGeste = Date.now(); }, true); });
+  setInterval(function () {
+    var t = Date.now();
+    if (doc.hidden || t - dernierGeste < CALME_APRES_GESTE) return;
+    if (t - heuresLues >= CADENCE_HEURES) relireHeures();
+    if (t - catalogueLu < CADENCE_CATALOGUE || !(sceneCourante === 'activites' || sceneCourante === 'heures' || sceneCourante === 'sm-envies')) return;
+    catalogueLu = t;
+    rafraichirCatalogue();
+    if (sceneCourante === 'activites' && state.onglet === 'formules') chargerDurees();
+  }, 1000);
 
   /* --- Le demarrage ----------------------------------------------------------------- */
 
@@ -5472,9 +5688,9 @@
     rendreEtapes();
     rendrePax();
     var q = new URLSearchParams(); q.set('centerId', CENTER); q.set('calendar', '45');
-    fetch('/api/public-booking-meta?' + q.toString(), { credentials: 'omit' })
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
+    lire('/api/public-booking-meta?' + q.toString())
+      .then(function (rep) {
+        var j = lu(rep);
         if (!j || j.ok === false) throw erreurLisible(j, 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.');
         meta = j; direErreur('');
         empreinteCatalogue = empreinteDuCatalogue(j);
@@ -5490,9 +5706,15 @@
         }
         absorberCalendrier(meta.center && meta.center.calendar);
         // Le premier jour ouvert : aujourd hui si le centre est ouvert, sinon
-        // le prochain.
+        // le prochain. UN JOUR DEJA CHOISI RESTE (2026-10-12) : le calendrier
+        // charge son mois seul, et sur un reseau lent le client y choisit son
+        // jour avant l arrivee du catalogue, qui le remplacait par le premier
+        // jour ouvert (sonde : samedi choisi, mardi affiche). Ouvert, le
+        // calendrier se redessine avec les jours arrives.
         var premier = Object.keys(jours).sort().filter(function (s) { return ouvertCeJour(s); })[0];
-        if (premier) choisirJour(premier);
+        if (state.date) direJour(state.date);
+        else if (premier) choisirJour(premier);
+        if (!dayPop.hidden) rendreCalendrier();
         rendrePax();
         rendreActivites();
         rendreFormules();
@@ -5501,8 +5723,9 @@
         choisirOnglet('activites');
         body.classList.add('is-ready');
         posterHauteur();
+        rejouerGeste();
       })
-      .catch(function (err) { panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.add('is-ready'); });
+      .catch(function (err) { panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.add('is-ready'); rejouerGeste(); });
     posterHauteur();
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', demarrer); else demarrer();

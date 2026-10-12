@@ -289,7 +289,7 @@ async function scenarioLesAutres(browser, mock, etiquette) {
   semer(mock);
   // Quatre clients ouvrent les horaires AVANT que le premier bloque. B et C
   // arrivent en dernier et continuent aussitot apres A, ensemble : leurs
-  // horaires n ont pas encore ete relus (toutes les 15 s depuis leur
+  // horaires n ont pas encore ete relus (toutes les 20 s depuis leur
   // arrivee), ils visent la place que A vient de prendre. D, arrive le
   // premier, ne touche a rien.
   const D = await client(browser, mock, { etiquette: `${etiquette}-d` });
@@ -315,7 +315,7 @@ async function scenarioLesAutres(browser, mock, etiquette) {
   };
   const [b, c] = await Promise.all([lire(B), lire(C)]);
   await captureAu(B.page, `${etiquette}-pris`, '#hourErr');
-  // D ne touche a rien : ses horaires se relisent seuls (toutes les 15 s).
+  // D ne touche a rien : ses horaires se relisent seuls (toutes les 20 s).
   const dAvant = heures[3];
   await attendre(D.page, (h) => {
     const t = document.querySelector('#hourZone .fg-track[data-activity="bowling"]');
@@ -483,7 +483,7 @@ function verifierLesAutres(r, dire = true) {
     [r.b.surHoraires && libere.test(r.b.alerte), '[B] le deuxieme reste sur les horaires : la phrase dit qu elle n est plus libre, et quand elle se libere', r.b.alerte],
     [r.c.surHoraires && libere.test(r.c.alerte), '[B] le troisieme aussi', r.c.alerte],
     [r.b.heure && r.b.heure !== r.heures[0], '[B] leurs horaires se relisent : la place prise n est plus proposee', `${r.heures[0]} -> ${r.b.heure}`],
-    [r.dApres && r.dApres !== r.dAvant, '[B] le quatrieme, sans rien toucher, voit ses horaires bouger (relus toutes les 15 s)', `${r.dAvant} -> ${r.dApres}`],
+    [r.dApres && r.dApres !== r.dAvant, '[B] le quatrieme, sans rien toucher, voit ses horaires bouger (relus toutes les 20 s)', `${r.dAvant} -> ${r.dApres}`],
     [r.actifs === 1, '[B] un seul blocage en cours', String(r.actifs)],
     [!r.erreurs.length, '[B] aucune erreur de page', r.erreurs.join(' | ')],
   ];
@@ -561,8 +561,10 @@ async function main() {
         label: 'sans le blocage au passage, les autres clients passent aussi : ce gate ROUGIRAIT',
       },
       {
-        de: "    fetch(urlDispo(), { credentials: 'omit', headers: enteteBlocage() }).then(function (r) { return r.json(); })\n      .then(function (j) {\n        if (id !== requeteEnCours) return;",
-        vers: "    fetch(urlDispo(), { credentials: 'omit' }).then(function (r) { return r.json(); })\n      .then(function (j) {\n        if (id !== requeteEnCours) return;",
+        // Le calcul passe par la lecture bornee (lire, 2026-10-12) : meme regle,
+        // le jeton voyage dans son en-tete.
+        de: "    lire(urlDispo(), { headers: enteteBlocage(), signal: controle.signal })\n      .then(function (rep) {\n        if (id !== requeteEnCours) return;",
+        vers: "    lire(urlDispo(), { signal: controle.signal })\n      .then(function (rep) {\n        if (id !== requeteEnCours) return;",
         jouer: async () => !verifierTenir(await scenarioTenir(browser, mock, 'k-sans-entete'), false),
         label: 'sans le jeton dans la lecture des horaires, le client ne voit plus sa propre place : ce gate ROUGIRAIT',
       },
@@ -579,8 +581,8 @@ async function main() {
         label: 'sans le jeton a la confirmation, le blocage ne devient pas la reservation : ce gate ROUGIRAIT',
       },
       {
-        de: 'goContact.disabled = true; libererBlocage(); }',
-        vers: 'goContact.disabled = true; }',
+        de: 'goContact.disabled = true; annulerPlan(); libererBlocage(); }',
+        vers: 'goContact.disabled = true; annulerPlan(); }',
         jouer: async () => !verifierChanger(await scenarioChanger(browser, mock, 'k-sans-liberation'), false),
         label: 'sans la liberation, un programme change garde la place dix minutes : ce gate ROUGIRAIT',
       },

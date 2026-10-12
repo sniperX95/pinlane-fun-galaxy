@@ -824,7 +824,7 @@ const MUTATIONS = {
   numero: ["    $('#finBody').innerHTML = '<div class=\"fg-done__ticket", "    $('#finBody').innerHTML = '<div>Réservation n° ' + esc(r.id) + '</div><div class=\"fg-done__ticket"],
   relance: ["if (e.target.closest('[data-retry]')) {", 'if (false) {'],
   lisiblemeta: ['panneMeta = err && err.lisible ? err.message : ', 'panneMeta = err.message || '],
-  panneredite: ['    if (!meta) { direErreur(panneMeta ||', '    if (false) { direErreur(panneMeta ||'],
+  panneredite: ["    if (!meta) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }", "    if (false) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }"],
   survoldoigt: ["    if (e.pointerType === 'touch') return;\n", ''],
   anneauhote: ["    if (el && el.matches && el.matches('.fg-card, .fg-pill, .fg-tab') && focusClavier(el)) montrer(el);\n", ''],
   perdu: ['    if (enTransition) { allerEnAttente = { cible: cible, retour: retour }; return; }\n', '    if (enTransition) return;\n'],
@@ -4960,7 +4960,8 @@ async function main() {
     ok(plat(aR.texte) === plat(REPLI_F) && !ANGLAIS.test(aR.texte) && aR.gauche >= 20 && aR.droite >= 20, '[R] catalogue coupe : fait constate en francais, alerte hors des bords', JSON.stringify(aR));
     await pR2.click('#goActivities');
     aR = await alerteR(pR2);
-    ok(plat(aR.texte) === plat(REPLI_F) && aR.ecran === 'date', '[R] Continuer sans catalogue redit la panne, jamais Choisissez d abord un jour', JSON.stringify(aR));
+    const roueR2 = await pR2.evaluate(() => document.querySelector('#goActivities').classList.contains('is-busy'));
+    ok(plat(aR.texte) === plat(REPLI_F) && aR.ecran === 'date' && !roueR2, '[R] Continuer sans catalogue redit la panne, jamais Choisissez d abord un jour, et ne reste pas a tourner', JSON.stringify(Object.assign({ roue: roueR2 }, aR)));
     await ctxR2.close();
     let lacherMeta = null; const tenu = new Promise((r) => { lacherMeta = r; });
     const ctxR3 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -4969,9 +4970,14 @@ async function main() {
     await pR3.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'domcontentloaded' });
     await pR3.click('#goActivities');
     aR = await alerteR(pR3);
-    ok(aR.vue && plat(aR.texte) === plat('Le formulaire se charge encore. Réessayez dans un instant.'), '[R] catalogue en route : Continuer dit qu il charge, pas qu il a echoue', JSON.stringify(aR));
+    // LE TOUCHER EST GARDE (2026-10-12). La regle n est plus de dire « se
+    // charge encore » en alerte rouge, loin du doigt, le toucher perdu : le
+    // bouton travaille, et le geste repart a l arrivee du catalogue
+    // (formulaire-lenteur-check [H1] le prouve sous lenteur).
+    const occupeR3 = await pR3.evaluate(() => ({ roue: document.querySelector('#goActivities').classList.contains('is-busy'), aria: document.querySelector('#goActivities').getAttribute('aria-busy') }));
+    ok(!aR.vue && aR.ecran === 'date' && occupeR3.roue && occupeR3.aria === 'true', '[R] catalogue en route : Continuer dit qu il travaille (is-busy, aria-busy), sans alerte d echec', JSON.stringify(Object.assign({}, aR, occupeR3)));
     lacherMeta();
-    ok(await attendre(pR3, () => document.body.classList.contains('is-ready') && document.querySelector('#fgAlert').hidden, 10000), '[R] catalogue arrive : l alerte d attente s efface');
+    ok(await attendre(pR3, () => document.body.classList.contains('is-ready') && document.querySelector('#fgAlert').hidden && document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('#goActivities').classList.contains('is-busy'), 10000), '[R] catalogue arrive : le geste retenu mene aux activites, sans alerte');
     await ctxR3.close();
 
     // =====================================================================

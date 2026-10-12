@@ -123,12 +123,14 @@ async function adversarialSourceChecks() {
   const adoptedQuotes = [];
   let resolveOld;
   // ACQUISITION : la provenance part avec chaque blocage depuis 1049c17.
+  // MINUTEURS : depuis 2026-10-12, retenir borne le blocage par un delai
+  // (setTimeout) ; le bac les fournit comme le navigateur.
   const context = { blocage: { version: 0, file: Promise.resolve(), jeton: '', cle: '', etat: '' },
     fetch: (url, options) => {
       const body = JSON.parse(options.body); requests.push(body);
       if (body.release) return Promise.resolve({ status: 200 });
       return new Promise(resolve => { resolveOld = resolve; });
-    }, Date, JSON, Number, String, Math, Promise, clearInterval() {}, setInterval() { return 1; }, rendreBlocage() {}, cleBlocage() { return 'new-three'; }, actualiserDevis(x) { adoptedQuotes.push(x); }, tic() {}, ACQUISITION: {} };
+    }, Date, JSON, Number, String, Math, Promise, setTimeout, clearTimeout, clearInterval() {}, setInterval() { return 1; }, rendreBlocage() {}, cleBlocage() { return 'new-three'; }, actualiserDevis(x) { adoptedQuotes.push(x); }, tic() {}, ACQUISITION: {} };
   vm.createContext(context); vm.runInContext(holdsSource, context);
   const old = context.retenir({ participants: 8 }, 'old-eight');
   await Promise.resolve();

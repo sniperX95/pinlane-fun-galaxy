@@ -518,9 +518,9 @@ async function main() {
 
     console.log('\n[F] CONTRE-PREUVES');
     const ECRAN = [
-      { nom: 'les etats sans droit', motif: /^\[A\] Technique/, de: "    statut: canUseStaffPermission(['reservations.status', 'reservations.edit']),", vers: '    statut: true,' },
-      { nom: 'Arrivé sur la carte sans droit', motif: /^\[A\] Technique/, de: "    if (canUseStaffPermission(['reservations.status', 'reservations.edit'])) {\n      boutons.push(`<button type=\"button\" class=\"gc-btn ${aValider ? '' : 'is-primary'}\"", vers: "    if (true) {\n      boutons.push(`<button type=\"button\" class=\"gc-btn ${aValider ? '' : 'is-primary'}\"" },
-      { nom: 'Payé dans la fiche sans droit', motif: /^\[A\] Marketing/, de: '    encaisser: canUseStaffPermission(\'payments.markPaid\'),', vers: '    encaisser: true,' },
+      { nom: 'les etats sans droit', motif: /^\[A\] Technique/, de: "    statut: peut(['reservations.status', 'reservations.edit']),", vers: '    statut: true,' },
+      { nom: 'Arrivé sur la carte sans droit', motif: /^\[A\] Technique/, de: "    if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['reservations.status', 'reservations.edit'])) {\n      boutons.push(`<button type=\"button\" class=\"gc-btn ${aValider ? '' : 'is-primary'}\"", vers: "    if (true) {\n      boutons.push(`<button type=\"button\" class=\"gc-btn ${aValider ? '' : 'is-primary'}\"" },
+      { nom: 'Payé dans la fiche sans droit', motif: /^\[A\] Marketing/, de: '    encaisser: peut(\'payments.markPaid\'),', vers: '    encaisser: true,' },
       { nom: 'pas d offre d annuler', motif: /^\[B\] « Arrivé » ecrit arrived/, de: "    if (!options.sansAnnulation && ['arrived', 'paid'].includes(status)) proposerAnnulationGeste(versionEcrite, payload.reservation);", vers: '' },
       { nom: 'annuler remet un mauvais statut', motif: /^\[B\] un encaissement se defait/, de: "() => setReservationStatusDirect(apres.id, statutAvant, null, options));", vers: "() => setReservationStatusDirect(apres.id, 'pending', null, options));" },
       { nom: 'la croix ferme sans demander', motif: /^\[C\] avec une saisie, la croix demande/, de: 'function fermerFiche() {\n  if (!ficheEditionModifiee()) { closePos(); return; }', vers: 'function fermerFiche() {\n  { closePos(); return; }' },

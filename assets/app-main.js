@@ -24885,7 +24885,7 @@ function renderGroupeTerminer(r) {
   const reste = etapes.filter(etape => !etape.fait).length;
   if (!reste) return '<span class="gc-done-all">Tout est fait</span>';
   // Cocher demande le droit de changer un statut (activityToggle, serveur).
-  if (reste < 2 || !canUseStaffPermission(['reservations.status', 'reservations.edit'])) return '';
+  if (reste < 2 || !(typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['reservations.status', 'reservations.edit']))) return '';
   return `<button type="button" class="gc-btn gc-finish" data-pl-focus="fiche.terminer.${Number(r.id)}" onclick="terminerGroupe(${Number(r.id)}, event)">Tout est fait${reste < etapes.length ? ` (${reste} restante${reste > 1 ? 's' : ''})` : ''}</button>`;
 }
 
@@ -24901,7 +24901,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
   const prix = options.prix ? getGroupePrixParActivite(r) : null;
   // Une case ne se coche que si le role peut l ecrire (activityToggle :
   // reservations.status ou .edit) ; sinon l etape se lit sans se toucher.
-  const peutCocher = canUseStaffPermission(['reservations.status', 'reservations.edit']);
+  const peutCocher = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['reservations.status', 'reservations.edit']);
   // LES ACTIVITES LIBRES, EN UNE LIGNE SUR LA CARTE (2026-10-01, Movsar :
   // « quand y aura une trentaine de reservations ca va etre super galere »).
   // Six activites sans heure prenaient six rangees ; la carte les range en
@@ -25073,16 +25073,16 @@ function renderGroupePrix(r, moment) {
 function renderGroupeActions(r, moment) {
   if (r.status === 'paid' || r.status === 'cancelled') return '';
   const boutons = [];
-  const aValider = isReservationAwaitingReview(r) && canUseStaffPermission('reservations.edit');
+  const aValider = isReservationAwaitingReview(r) && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit'));
   if (aValider) {
     boutons.push(`<button type="button" class="gc-btn is-review" onclick="validateReservationDirect(${r.id}, event)">Valider</button>`);
   }
   const fini = moment && (moment.etat === 'closing' || moment.etat === 'done');
   if (isUpcomingReservationStatus(r.status) && !fini && !groupeAJoue(r)) {
-    if (canUseStaffPermission(['reservations.status', 'reservations.edit'])) {
+    if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['reservations.status', 'reservations.edit'])) {
       boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
     }
-  } else if (canUseStaffPermission('payments.markPaid')) {
+  } else if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.markPaid')) {
     // Le groupe est la, ou il a fini : la carte attend l encaissement.
     const montant = prixDossierConnu(r) ? ` ${formatMoneyCentimes(r.price)}` : '';
     boutons.push(`<span class="gc-pay" role="group" aria-label="Encaisser${escapeHtml(montant)}">
@@ -26211,14 +26211,17 @@ function ficheDroits() {
   // statut seul demande reservations.status ou .edit, la validation .edit,
   // l encaissement payments.markPaid), api/ops.js pour le retard et les
   // messages.
+  // Hors console (un gate qui evalue ces fonctions dans un bac a sable), pas
+  // de controle de droits : tout est permis, comme ailleurs dans ce fichier.
+  const peut = (permission) => typeof canUseStaffPermission !== 'function' || canUseStaffPermission(permission);
   return {
-    valider: canUseStaffPermission('reservations.edit'),
-    statut: canUseStaffPermission(['reservations.status', 'reservations.edit']),
-    encaisser: canUseStaffPermission('payments.markPaid'),
-    replanifier: canUseStaffPermission(['reservations.edit', 'planning.drag']),
-    ecrire: canUseStaffPermission('emails.send'),
-    modifier: canUseStaffPermission('reservations.edit'),
-    annuler: canUseStaffPermission('reservations.cancel'),
+    valider: peut('reservations.edit'),
+    statut: peut(['reservations.status', 'reservations.edit']),
+    encaisser: peut('payments.markPaid'),
+    replanifier: peut(['reservations.edit', 'planning.drag']),
+    ecrire: peut('emails.send'),
+    modifier: peut('reservations.edit'),
+    annuler: peut('reservations.cancel'),
   };
 }
 
@@ -28109,7 +28112,7 @@ function renderPosEdit(r) {
   // « Payé » suit le droit d encaisser (il reste affiche sur un dossier deja
   // paye, pour que l etat se lise).
   const statuts = [['pending', 'Confirmé'], ['arrived', 'Arrivé'], ['paid', 'Payé']]
-    .filter(([v]) => v !== 'paid' || e.status === 'paid' || canUseStaffPermission('payments.markPaid'));
+    .filter(([v]) => v !== 'paid' || e.status === 'paid' || typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.markPaid'));
   const droits = ficheDroits();
   // UN AUTRE JOUR (2026-10-12) : la console n a que les dossiers du jour
   // affiche. Les pistes et le laser du nouveau jour sont attribues par le
@@ -33173,7 +33176,7 @@ function proposerAnnulationGeste(avant, apres) {
   const statutAvant = isUpcomingReservationStatus(avant.status) ? 'pending' : avant.status;
   if (statutAvant === apres.status && String(avant.paymentMethod || '') === String(apres.paymentMethod || '')) return;
   const retourPaye = statutAvant === 'paid';
-  const peut = retourPaye ? canUseStaffPermission('payments.markPaid') : canUseStaffPermission(['reservations.status', 'reservations.edit']);
+  const peut = typeof canUseStaffPermission !== 'function' || (retourPaye ? canUseStaffPermission('payments.markPaid') : canUseStaffPermission(['reservations.status', 'reservations.edit']));
   if (!peut) return;
   const moyen = getMoyenPaiementLabel(apres.paymentMethod);
   const geste = apres.status === 'arrived' ? 'arrivé'

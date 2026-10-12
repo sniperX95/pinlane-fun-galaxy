@@ -7,9 +7,22 @@ const { prepareReservationOps } = require('../lib/reservation-ops');
 const { listCenterActivities } = require('../lib/activity-catalog');
 const { buildMessage } = require('../lib/ops-communications');
 
+// LA DATE DU BANC EST LE PROCHAIN SAMEDI (2026-10-13). Ecrite en dur au
+// 2026-10-10, elle est passee le lendemain : le gate refusait alors « Cette
+// date est déjà passée » quel que soit le code, et coupait la chaine des
+// participants avant ses sept autres maillons. Meme calcul que
+// anchor-hours-truth-check (jour du centre, Europe/Brussels).
+function prochainSamedi() {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date()).split('-').map(Number);
+  const c = new Date(Date.UTC(y, m - 1, d));
+  do { c.setUTCDate(c.getUTCDate() + 1); } while (c.getUTCDay() !== 6);
+  return c.toISOString().slice(0, 10);
+}
+
 async function main() {
   const centerId = 'libramont';
-  const date = '2026-10-10';
+  const date = prochainSamedi();
   const pax = 40;
   const lines = [
     { activityId: 'bowling', participants: 6, duration: 1 },

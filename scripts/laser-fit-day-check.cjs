@@ -1,5 +1,5 @@
 'use strict';
-// Fixture-only geometry gate: the whole 10:00–24:00 Laser day must remain
+// Fixture-only geometry gate: the whole 10:00 to 24:00 Laser day must remain
 // visible on desktop. No application API, database or mail access.
 const fs=require('fs'),path=require('path'),Module=require('module');
 process.env.PINLANE_RESERVER_PORT=process.env.PINLANE_FIT_DAY_PORT||'5182';

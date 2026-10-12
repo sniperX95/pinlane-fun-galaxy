@@ -56,8 +56,9 @@ const checks = `
   ok(data.terrain.includes('Bowling · 6 joueurs')&&data.terrain.includes('Laser Game · 4 joueurs'),'terrain program own bowling6 laser4');
   ok(data.summary.includes('18 personnes présentes'),'mixed participants group header describes18 visitors');
   // La fiche sobre (2026-10-12) ecrit « À encaisser : 0 € » ; la regle reste :
-  // un prix connu nul se dit 0, jamais « prix au comptoir ».
-  ok(data.freeCard.startsWith('0')&&data.freeCard.includes('€')&&/À encaisser\W+0/.test(data.freeText)&&!data.freeText.toLowerCase().includes('prix sur place')&&!data.freeText.toLowerCase().includes('prix au comptoir'),'actual card+detail known free price stays0');
+  // un prix connu nul se dit 0, jamais « prix au comptoir ». Ce controle vit
+  // dans un gabarit evalue par la page : l antislash s y double.
+  ok(data.freeCard.startsWith('0')&&data.freeCard.includes('€')&&/À encaisser\\W+0/.test(data.freeText)&&!data.freeText.toLowerCase().includes('prix sur place')&&!data.freeText.toLowerCase().includes('prix au comptoir'),'actual card+detail known free price stays0');
   ok(data.unknownText.includes('Prix sur place')&&data.unknownText.toLowerCase().includes('prix au comptoir'),'actual card+detail unknown price stays payable onsite');
   const info=await pg.locator('#posOverlay').innerText();
   ok(/Minigolf Blacklight/.test(info)&&/3 joueurs/.test(info)&&/Arcades/.test(info)&&/5 joueurs/.test(info),'live staff detail shows activity counts');

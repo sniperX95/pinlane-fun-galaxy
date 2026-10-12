@@ -21313,3 +21313,91 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-placer { flex-wrap: wrap; }
   .lp-placer__a { margin-left: 0; }
 }
+
+/* LA FICHE, VERSION SOBRE (2026-10-12). Les jetons de la console et rien
+   d autre : surfaces neutres, filets, la couleur reservee aux etats et au
+   geste suivant. Pas de halo, pas d icone en bulle, pas de barre de couleur,
+   pas de carte dans la carte. Chaque regle part de
+   « body:is(.staff-mode, .admin-mode) .fx-modal » : la couche commune des
+   boutons de la console (son :is() pese le poids de son argument le plus
+   lourd) l emportait en sombre sur une regle plus courte. */
+body:is(.staff-mode, .admin-mode) .edit-modal.fx-modal { width: min(1040px, calc(100vw - 32px)); }
+
+/* L en-tete : « Sur place » parle ambre comme la carte d un groupe arrive sur
+   les plannings (il etait vert, la couleur du paye). */
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status.is-arrived { background: var(--warning-soft); color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquettes { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 8px; border-radius: 6px; background: var(--subtle); color: var(--text); font-size: 12.5px; font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette small { font-size: 12.5px; font-weight: 400; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette.is-suivi { background: var(--warning-soft); color: var(--warning); }
+
+/* Le bandeau du retard ou de la demande a verifier : un aplat doux de la
+   teinte d alerte, le texte, l appel a droite. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-bandeau { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 12px; border-radius: 8px; background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-bandeau p { flex: 1 1 260px; margin: 0; font-size: 14px; line-height: 1.45; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-bandeau b { font-weight: 650; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-bandeau.is-retard { background: var(--danger-soft); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-bandeau.is-retard b { color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-bandeau.is-verifier { background: var(--warning-soft); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-bandeau.is-verifier b { color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-appel { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-appel svg { color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-appel:hover { border-color: var(--control-border); }
+
+/* Le geste suivant : le bouton principal de la console. Le bouton de l etat
+   actuel garde sa coche et sa teinte d etat. */
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-sheet-states .res-status-btn.is-suivant:not([aria-pressed='true']) { background: var(--console-selected); border-color: var(--console-selected); color: var(--console-selected-text); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-sheet-states .res-status-btn.is-suivant:not([aria-pressed='true']):hover:not(:disabled) { background: color-mix(in srgb, var(--console-selected) 88%, var(--text)); border-color: color-mix(in srgb, var(--console-selected) 88%, var(--text)); }
+/* « Confirmé » choisi : son bleu passait a 4:1 sur son aplat (console-contrast). */
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-sheet-states .res-status-btn.pending[aria-pressed='true'] { --status-color: #0b5bb8; }
+[data-theme='dark'] body:is(.staff-mode, .admin-mode) .fx-modal .gc-sheet-states .res-status-btn.pending[aria-pressed='true'] { --status-color: var(--info); }
+
+/* Les deux colonnes, separees par un filet. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes { display: grid; gap: 20px; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-principal, .fx-cote) { display: grid; gap: 18px; align-content: start; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-principal, .fx-cote) > * + * { padding-top: 18px; border-top: 1px solid var(--line); }
+@media (min-width: 900px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes { grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 0; align-items: start; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-principal { padding-right: 24px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-cote { padding-left: 24px; border-left: 1px solid var(--line); }
+}
+@media (max-width: 899.98px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-cote { padding-top: 18px; border-top: 1px solid var(--line); }
+}
+
+/* Les titres de section en clair, comme « État du dossier ». */
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-titre, .pos-sheet .info-label) { margin: 0 0 10px; font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-sheet-head .fx-titre { margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fx-principal, .fx-cote) > .info-block { margin: 0; padding-left: 0; padding-right: 0; padding-bottom: 0; border-left: 0; border-right: 0; border-bottom: 0; border-radius: 0; background: none; box-shadow: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fx-principal, .fx-cote) > .info-block:first-child { padding-top: 0; border-top: 0; }
+
+/* Le client : etiquette a gauche, valeur a droite, la valeur se touche. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-client { display: grid; gap: 10px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-client .fx-titre { margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes { display: grid; gap: 4px; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: baseline; gap: 12px; min-height: 32px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes dt { font-size: 13px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes dd { margin: 0; min-width: 0; font-size: 14px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes a { color: var(--accent-strong); font-weight: 600; text-decoration: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes a:hover { text-decoration: underline; text-underline-offset: 3px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-vide { color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-message { justify-self: start; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-origine { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* Le pli du retard : ferme, son titre dit le retard. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx > .fx-pli { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-pli summary .fx-titre { margin: 0; }
+/* Ferme, le pli n a que son titre : la marge qui le separe du contenu
+   l aurait decentre (13 px dessus, 25 px dessous). */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx > .fx-pli:not([open]) > summary { margin-bottom: 0; }
+
+/* LE JOUR DU DOSSIER dans « Modifier » (2026-10-12) : le premier champ de la
+   rangee de l heure ; ce que change un autre jour se dit sous la carte, sur
+   toute sa largeur. */
+body:is(.staff-mode, .admin-mode) .fx-modal .es2 .dossier-visit-section > .es-jour-indice { grid-column: 1 / -1; margin: -4px 0 0; }
+
+/* ANNULER UN GESTE (2026-10-12). Le toast reste transparent aux clics (les
+   cartes de 30 min dessous, voir #toast) ; seul son bouton en prend un. */
+#toast .toast-annuler { pointer-events: auto; min-height: 32px; margin-left: 6px; padding: 0 12px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-weight: 650; cursor: pointer; }
+#toast .toast-annuler:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+#toast .toast-annuler:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

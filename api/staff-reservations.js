@@ -524,6 +524,18 @@ module.exports = async (req, res) => {
       const permission = patchNeedsOnlyStatus(body) || estGesteAccueil ? ['reservations.status', 'reservations.edit'] : 'reservations.edit';
       const session = await requireStaffPermission(req, res, permission, { centerId: current.centerId || 'libramont' });
       if (!session) return;
+      // ANNULER UN DOSSIER, OU LE RESTAURER, DEMANDE LE DROIT D ANNULER
+      // (2026-10-12). La console ne montre « Annuler la réservation » qu a
+      // reservations.cancel ; un PATCH qui faisait passer le statut a
+      // cancelled (ou l en sortait) ne demandait que le droit de changer un
+      // statut, et n importe quel role du comptoir annulait par l API. Le
+      // dossier entier renvoye par « Modifier » porte son statut : seul un
+      // CHANGEMENT d annulation est juge.
+      if (Object.prototype.hasOwnProperty.call(body, 'status')
+        && (String(body.status || '') === 'cancelled') !== (current.status === 'cancelled')) {
+        const sessionAnnulation = await requireStaffPermission(req, res, 'reservations.cancel', { centerId: current.centerId || 'libramont' });
+        if (!sessionAnnulation) return;
+      }
 
       if (requestedCenterId !== (current.centerId || 'libramont')) {
         const switchSession = await requireStaffPermission(req, res, 'centers.switch', { centerId: requestedCenterId });
@@ -693,6 +705,24 @@ module.exports = async (req, res) => {
         const auditMove = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'moveReservationActivity', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { activityMove: body.activityMove }), requestId: newRequestId() });
         sendJson(res, 200, { ok: true, reservation, activityMove: { ...body.activityMove, unchangedActivities: true }, automation, ...(auditMove.warning ? { warnings: [auditMove.warning] } : {}) });
         return;
+      }
+      // ENCAISSER PAR « MODIFIER » DEMANDE LE DROIT D ENCAISSER (2026-10-12).
+      // Le chemin du statut seul le demandait deja ; le dossier entier passait
+      // a paid, ou changeait le moyen de paiement, avec reservations.edit.
+      const moyenEnvoye = Object.prototype.hasOwnProperty.call(body, 'paymentMethod') || Object.prototype.hasOwnProperty.call(body, 'payment_method');
+      const devientPaye = body.status === 'paid' && current.status !== 'paid';
+      const moyenChange = moyenEnvoye && String(body.paymentMethod ?? body.payment_method ?? '') !== String(current.paymentMethod || '');
+      if (devientPaye || moyenChange) {
+        const sessionEncaisse = await requireStaffPermission(req, res, 'payments.markPaid', { centerId: requestedCenterId });
+        if (!sessionEncaisse) return;
+      }
+      // UN PRIX SE BORNE (2026-10-12) : le comptoir ecrit le montant qu il a
+      // sous les yeux, entre 0 et 100 000 EUR, comme l encaisse
+      // (noterEncaisseOuAbsence). Sans prix envoye (absent, null, vide), le
+      // dossier garde le sien.
+      if (Object.prototype.hasOwnProperty.call(body, 'price') && body.price !== null && body.price !== '') {
+        const prix = Number(body.price);
+        if (!Number.isFinite(prix) || prix < 0 || prix > 100000) throw createHttpError('Prix invalide : entre 0 et 100 000 €.', 422);
       }
       const patch = {
         ...body,

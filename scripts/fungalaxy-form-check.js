@@ -1368,7 +1368,8 @@ async function lirePistes(page) {
         etat: l.dataset.etat || '',
         heures: String(l.dataset.heures || '').split(' ').filter(Boolean),
         cle: (l.querySelector('.fg-key') || {}).textContent || '',
-        gras: (l.querySelector('b') || {}).textContent || '',
+        gras: (l.querySelector('.fg-why-list__quand') || l.querySelector('b') || {}).textContent || '',
+        phrase: ((l.querySelector('.fg-why-list__quand + span') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
         texte: l.textContent.replace(/\s+/g, ' ').trim(),
       })),
     })),
@@ -1601,10 +1602,33 @@ function ecartsParties(p, a, d, laserParts) {
 // complet aussi » ; 2026-09-24 : « trop long, mal explique »). Les regles :
 // chaque heure qui n est ni libre, ni choisie, ni proposee, ni l heure d une
 // de SES parties (nommee sur la case) s explique UNE fois, et aucune autre ;
-// chaque ligne dit la VERITE de la reponse : la raison du moteur mot pour mot
-// (refus, avertissement), l activite, la plage reelle et le sort de ce qui se
-// deplacerait (decalage) ; sa cle porte le mot de la case, ses heures sont en
-// gras.
+// chaque ligne dit la VERITE de la reponse : la raison du moteur (refus,
+// avertissement), l activite, la plage reelle et le sort de ce qui se
+// deplacerait (decalage) ; sa cle porte le mot de la case ; ses heures sont
+// dans l etiquette, en suites (« 13:00 à 14:00 » vaut 13:00, 13:30 et 14:00).
+// UN COMPLET DIT SES CHIFFRES, COURT (Movsar, 2026-10-12 : « explique
+// brievement et joliment ») : ce qu il faut et ce qui est libre, lus dans la
+// reponse, en 90 signes au plus, sans redire « complet » (la case le dit).
+function heuresDeLEtiquette(etiquette) {
+  const min = (h) => { const [x, y] = String(h).split(':').map(Number); return x * 60 + y; };
+  const hh = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  return String(etiquette || '').split(/, | et /).reduce((acc, morceau) => {
+    const suite = /^(\d{2}:\d{2}) à (\d{2}:\d{2})$/.exec(morceau.trim());
+    if (!suite) return acc.concat(/^\d{2}:\d{2}$/.test(morceau.trim()) ? [morceau.trim()] : [`?${morceau.trim()}`]);
+    for (let m = min(suite[1]); m <= min(suite[2]); m += 30) acc.push(hh(m));
+    return acc;
+  }, []);
+}
+// Les places libres qu une ligne annonce : un nombre, ou une fourchette.
+function placesAnnoncees(phrase) {
+  let m = /Les (\d+) places de l’arène sont prises/.exec(phrase); if (m) return [0, 0];
+  if (/une seule est libre/.test(phrase)) return [1, 1];
+  if (/au plus une est libre/.test(phrase)) return [0, 1];
+  m = /au plus (\d+) sont libres/.exec(phrase); if (m) return [0, Number(m[1])];
+  m = /(\d+) (?:ou|à) (\d+) sont libres/.exec(phrase); if (m) return [Number(m[1]), Number(m[2])];
+  m = /(\d+) sont libres/.exec(phrase); if (m) return [Number(m[1]), Number(m[1])];
+  return null;
+}
 function ecartsRaisons(p, a, actifs, propose, d, etatDe, parPeriode, multi, parts) {
   const e = [];
   const id = a.activityId;
@@ -1629,8 +1653,8 @@ function ecartsRaisons(p, a, actifs, propose, d, etatDe, parPeriode, multi, part
     vues.filter((h) => attendues.indexOf(h) < 0).forEach((h) => e.push(`${id} ${h}: expliquee sous « ${nom} » sans rien qui coince`));
     if (x.listeCachee !== (x.raisons.length === 0)) e.push(`${id} ${nom}: liste des raisons ${x.listeCachee ? 'cachee' : 'visible'} avec ${x.raisons.length} ligne(s)`);
     x.raisons.forEach((r) => {
-      const enGras = r.gras.match(/\d{1,2}:\d{2}/g) || [];
-      if (enGras.length !== r.heures.length || r.heures.some((h) => enGras.indexOf(h) < 0)) e.push(`${id} ${nom}: la ligne « ${r.texte} » met en gras « ${r.gras} » pour ${r.heures.join(' ')}`);
+      const dites = heuresDeLEtiquette(r.gras);
+      if (dites.length !== r.heures.length || r.heures.some((h) => dites.indexOf(h) < 0)) e.push(`${id} ${nom}: la ligne « ${r.texte} » dit « ${r.gras} » (${dites.join(' ')}) pour ${r.heures.join(' ')}`);
       const basse = r.texte.toLowerCase();
       r.heures.forEach((h) => {
         const t = liste.find((y) => y.time === h);
@@ -1647,9 +1671,36 @@ function ecartsRaisons(p, a, actifs, propose, d, etatDe, parPeriode, multi, part
           const plage = plageQa(d, v.conflict.activityId, v.conflict.time);
           const phrase = `Votre partie${k ? ` ${k}` : ''} de ${String(a.label || id).toLowerCase()} joue ${plage ? `de ${plage}` : `à ${v.conflict.time}`}.`;
           if (r.texte.indexOf(phrase) < 0) e.push(`${id} ${h}: « ${r.texte} » sans « ${phrase} »`);
+        } else if (etat === 'hard' && v.code === 'capacity' && (Number(v.lanesNeeded) > 0 || v.arenaBusy || (Number(v.placesNeeded) > 0 && Number(v.arenaPlaces) > 0))) {
+          const ph = r.phrase;
+          // Un nombre se cherche hors des heures : « 14:30 » ne vaut pas 30.
+          const nb = (n) => new RegExp(`(^|[^0-9])${Number(n)}([^0-9]|$)`).test(ph.replace(/\d{1,2}:\d{2}/g, ' '));
+          if (/complet/i.test(ph) || ph.length > 90) e.push(`${id} ${h}: « ${ph} » ${ph.length > 90 ? `fait ${ph.length} signes` : 'redit « complet »'}`);
+          if (Number(v.lanesNeeded) > 0) {
+            const libres = Number(v.lanesFree) || 0;
+            const ditLibres = libres === 0 ? /aucune n’est libre/.test(ph) : libres === 1 ? /une seule est libre/.test(ph) : nb(libres);
+            if (!nb(v.lanesNeeded) || !/pistes?/.test(ph) || !ditLibres) e.push(`${id} ${h}: « ${ph} » ne dit pas ${v.lanesNeeded} piste(s) dont ${libres} libre(s)`);
+            if (Number(v.serviceCount) > 1 && !nb(v.serviceCount)) e.push(`${id} ${h}: « ${ph} » ne dit pas ses ${v.serviceCount} groupes`);
+            if (v.serviceTime && v.serviceTime !== h && ph.indexOf(v.serviceTime) < 0) e.push(`${id} ${h}: « ${ph} » ne dit pas que le manque tombe a ${v.serviceTime}`);
+          } else if (v.arenaBusy) {
+            if (!/déjà lancée/.test(ph)) e.push(`${id} ${h}: « ${ph} » ne dit pas qu une partie est deja lancee`);
+          } else {
+            const libres = Number(v.placesFree) || 0;
+            const fourchette = placesAnnoncees(ph);
+            if (!nb(v.placesNeeded) && libres > 0) e.push(`${id} ${h}: « ${ph} » ne dit pas les ${v.placesNeeded} places qu il faut`);
+            if (!fourchette || libres < fourchette[0] || libres > fourchette[1]) e.push(`${id} ${h}: « ${ph} » n annonce pas ses ${libres} places libres`);
+            if (fourchette && fourchette[1] === 0 && !nb(v.arenaPlaces)) e.push(`${id} ${h}: « ${ph} » ne dit pas les ${v.arenaPlaces} places de l arene`);
+          }
+          if ((v.waveTime && v.waveTime !== h && !v.lanesNeeded) && ph.indexOf(v.waveTime) < 0) e.push(`${id} ${h}: « ${ph} » ne dit pas que le manque tombe a ${v.waveTime}`);
         } else if (etat === 'hard' || etat === 'soft') {
           const raison = etat === 'soft' ? (v.warning.reason || 'Peu de temps pour le reste de la visite') : (v.reason || 'Indisponible');
-          if (basse.indexOf(String(raison).toLowerCase()) < 0) e.push(`${id} ${h}: « ${r.texte} » sans la raison du moteur « ${raison} »`);
+          // La fin apres la fermeture se dit « Finirait après minuit » ; une
+          // heure bloquee sans raison, « Fermé à cette heure ».
+          const fin = etat === 'hard' && v.code === 'schedule' ? /^fin apr[eè]s (.+)$/i.exec(raison) : null;
+          const dit = fin ? basse.indexOf(`après ${fin[1].toLowerCase()}`) >= 0
+            : etat === 'hard' && v.code === 'blocked' && raison === 'Indisponible' ? /fermé/.test(basse)
+            : basse.indexOf(String(raison).toLowerCase()) >= 0;
+          if (!dit) e.push(`${id} ${h}: « ${r.texte} » sans la raison du moteur « ${raison} »`);
         }
         if (etat === 'shift') {
           // L activite qui bougerait, sa plage reelle, et son SORT : une
@@ -1659,7 +1710,7 @@ function ecartsRaisons(p, a, actifs, propose, d, etatDe, parPeriode, multi, part
           const nomAutre = String((autre && autre.label) || v.conflict.activityId).toLowerCase();
           const plage = plageQa(d, v.conflict.activityId, v.conflict.time);
           const quand = plage ? `(${plage})` : `de ${v.conflict.time}`;
-          const sort = v.conflict.activityId === 'laser_game' && parts.length > 1 && rangQa(parts, v.conflict.time) ? 'qui passe dans la foulée, sans heure fixe.' : 'qui se décale avant ou après.';
+          const sort = v.conflict.activityId === 'laser_game' && parts.length > 1 && rangQa(parts, v.conflict.time) ? 'passera dans la foulée, sans heure fixe.' : 'se décalera avant ou après.';
           if (basse.indexOf(nomAutre) < 0 || r.texte.indexOf(quand) < 0 || !r.texte.endsWith(sort)) e.push(`${id} ${h}: « ${r.texte} » ne dit pas « ${nomAutre} », « ${quand} » et « ${sort} »`);
         }
       });
@@ -2283,7 +2334,7 @@ async function main() {
       const tiroir = li.querySelector('.fg-card__optin');
       return {
         id: li.dataset.activity,
-        prix: c.querySelector('.fg-card__price').textContent.trim(),
+        prix: c.querySelector('.fg-card__price').textContent.replace(/\s+/g, ' ').trim(),
         off: c.classList.contains('is-off') && c.getAttribute('aria-disabled') === 'true',
         pastilles: Array.from(li.querySelectorAll('.fg-pill')).map((p) => ({ valeur: p.dataset.valeur, label: p.querySelector('b').textContent.trim(), prix: p.querySelector('small').textContent.trim(), on: p.getAttribute('aria-checked') === 'true' })),
         tiroir: tiroir ? Math.round(tiroir.getBoundingClientRect().height) : null,
@@ -2300,7 +2351,7 @@ async function main() {
     ok(carte('bowling').prix === `Dès ${euros(minPiste)} / piste`, '[B] bowling : « des » = minimum de la grille servie', carte('bowling').prix);
     // Le minimum de joueurs voyage a cote du prix (catalogue : minPax 2), comme
     // la capacite d une session du Fun Run.
-    ok(carte('laser_game').prix === `Dès ${euros(minLaser)} / personne · 2\u00a0joueurs minimum`, '[B] laser : « des » = minimum des parties servies, et le minimum de joueurs', carte('laser_game').prix);
+    ok(carte('laser_game').prix.replace(/\s+/g, ' ') === `Dès ${euros(minLaser)} / personne · 2 joueurs minimum`, '[B] laser : « des » = minimum des parties servies, et le minimum de joueurs', carte('laser_game').prix);
     ok(carte('fun_run').prix === `Dès ${euros(minFunRun)} / session`, '[B] fun run : « des » = minimum des sessions servies, prix court sur la carte', carte('fun_run').prix);
     ok(carte('minigolf_blacklight').prix === 'Dès 10 € / personne', '[B] minigolf : tarif exact du centre, prix court sur la carte', carte('minigolf_blacklight').prix);
     ok(carte('arcade_time').prix === 'Prix à l’accueil', '[B] arcades : sans tarif saisi, « Prix à l’accueil », jamais un chiffre (tout se regle sur place : « sur place » ne distinguait rien)', carte('arcade_time').prix);
@@ -2385,11 +2436,11 @@ async function main() {
     await page.click('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]');
     const participantsLaser = Number(await page.locator('#gridAct li[data-activity="laser_game"] [data-compteur="participants"] input').inputValue());
     const prixLaserSelection = option => `${euros(Number(option.price) * participantsLaser)} · ${participantsLaser}\u00a0joueurs · 2\u00a0joueurs minimum`;
-    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true', 3000, prixLaserSelection(deuxParties)), '[B] toucher « 2 parties » la retient et met son prix sur la carte', prixLaserSelection(deuxParties));
+    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.replace(/\s+/g, ' ').trim() === attendu.replace(/\s+/g, ' ') && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true', 3000, prixLaserSelection(deuxParties)), '[B] toucher « 2 parties » la retient et met son prix sur la carte', prixLaserSelection(deuxParties));
     await page.keyboard.press('ArrowRight');
-    ok(await attendre(page, (attendu) => { const p = document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="3"]'); return p.getAttribute('aria-checked') === 'true' && document.activeElement === p && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu; }, 3000, prixLaserSelection(troisParties)), '[B] au clavier, la fleche droite passe a « 3 parties » (focus et prix suivent)');
+    ok(await attendre(page, (attendu) => { const p = document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="3"]'); return p.getAttribute('aria-checked') === 'true' && document.activeElement === p && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.replace(/\s+/g, ' ').trim() === attendu.replace(/\s+/g, ' '); }, 3000, prixLaserSelection(troisParties)), '[B] au clavier, la fleche droite passe a « 3 parties » (focus et prix suivent)');
     await page.keyboard.press('ArrowLeft');
-    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true' && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.trim() === attendu, 3000, prixLaserSelection(deuxParties)), '[B] la fleche gauche revient a « 2 parties »');
+    ok(await attendre(page, (attendu) => document.querySelector('#gridAct li[data-activity="laser_game"] .fg-pill[data-valeur="2"]').getAttribute('aria-checked') === 'true' && document.querySelector('#gridAct li[data-activity="laser_game"] .fg-card__price').textContent.replace(/\s+/g, ' ').trim() === attendu.replace(/\s+/g, ' '), 3000, prixLaserSelection(deuxParties)), '[B] la fleche gauche revient a « 2 parties »');
     ok(await page.evaluate(() => document.querySelectorAll('#gridAct .fg-card.is-on[aria-checked="true"]').length === 4 && !document.querySelector('#goHours').disabled), '[B] quatre cartes cochees, « Continuer » actif');
 
     // =====================================================================
@@ -2552,10 +2603,19 @@ async function main() {
           visible: Boolean(l) && l.getBoundingClientRect().height > 0,
         };
       }, { id: dure.id, h: dure.t.time });
+      // La raison du moteur, dite court (2026-10-12) : « Fin après minuit »
+      // devient « Finirait après minuit », un complet chiffre dit ce qu il
+      // faut, une heure bloquee sans raison dit « Fermé ».
       const raisonDure = String(dure.t.reason || 'Indisponible').toLowerCase();
+      const finDure = dure.t.code === 'schedule' ? /^fin apr[eè]s (.+)$/i.exec(raisonDure) : null;
+      const texteDure = lu.texte.toLowerCase();
+      const ditDure = finDure ? texteDure.indexOf(`après ${finDure[1]}`) >= 0
+        : dure.t.code === 'blocked' && raisonDure === 'indisponible' ? /fermé/.test(texteDure)
+        : dure.t.code === 'capacity' && (Number(dure.t.lanesNeeded) > 0 || Number(dure.t.placesNeeded) > 0 || dure.t.arenaBusy) ? /il faut|déjà lancée|sont prises/.test(texteDure)
+        : texteDure.indexOf(raisonDure) >= 0;
       ok(lu.asked.length === 1 && lu.asked[0] === dure.t.time && lu.eclairees === 1 && lu.memePlage && lu.heures.indexOf(dure.t.time) >= 0
-        && lu.texte.toLowerCase().indexOf(raisonDure) >= 0 && lu.visible,
-        '[C] toucher une heure impossible eclaire SA ligne sous sa plage : l heure y est, la raison du moteur aussi, mot pour mot', `${dure.t.time} « ${lu.texte} »`);
+        && ditDure && lu.visible,
+        '[C] toucher une heure impossible eclaire SA ligne sous sa plage : l heure y est, et la raison du moteur, dite court', `${dure.t.time} « ${lu.texte} »`);
       await dormir(300);
       ok(lecturesNeuves(demandes, avantDure).length === 0 && await page.evaluate((s) => document.querySelector(s).classList.contains('is-on'), selB), '[C] et ne demande rien, ne change rien a l heure posee');
     } else {
@@ -3269,7 +3329,7 @@ async function main() {
     const funCarte = await pageV.evaluate(() => {
       const c = document.querySelector('#gridAct .fg-card[data-activity="fun_run"]');
       if (!c) return null;
-      return { off: c.classList.contains('is-off'), aria: c.getAttribute('aria-disabled'), tab: c.getAttribute('tabindex'), prix: (c.querySelector('.fg-card__price') || {}).textContent.trim() };
+      return { off: c.classList.contains('is-off'), aria: c.getAttribute('aria-disabled'), tab: c.getAttribute('tabindex'), prix: (c.querySelector('.fg-card__price') || {}).textContent.replace(/\s+/g, ' ').trim() };
     });
     ok(Boolean(funCarte) && funCarte.off === false && !funCarte.aria && funCarte.tab === '0',
       '[I] a 12 personnes, le Fun Run se choisit (avant, la carte etait eteinte)', JSON.stringify(funCarte));
@@ -3814,23 +3874,47 @@ async function main() {
     ok(await barreEst(pageJ, '11110'), '[J] et la barre revient a quatre segments pleins sur cinq');
     await pageJ.click('.fg-scene.is-active [data-back]');
     ok(await attendre(pageJ, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && document.querySelector('#hourZone .fg-etape[data-cle]'), 8000), '[J] retour a l ecran des heures');
-    // PLUS DE LEGENDE NI DE MUR DE RAISONS (Movsar, 2026-10-07 : « pas bcp de
-    // texte, sinon ca fait trop long a lire, et sur mobile c est encore bcp plus
-    // pire »). Le programme se lit seul ; la raison d une heure qui coince
-    // existe (le lecteur d ecran la lit en arrivant sur l heure) mais ne
-    // s affiche qu au toucher de cette heure.
-    const lireTexteHeures = () => pageJ.evaluate(() => ({
-      legende: Boolean(document.querySelector('.fg-legend')),
-      raisons: document.querySelectorAll('#hourZone .fg-why-list__item').length,
-      raisonsVues: Array.from(document.querySelectorAll('#hourZone .fg-why-list__item')).filter((l) => l.getClientRects().length > 0).map((l) => l.textContent.replace(/\s+/g, ' ').trim()),
-      lignes: document.querySelectorAll('#hourZone .fg-etape[data-cle]').length,
-    }));
+    // PLUS DE LEGENDE (Movsar, 2026-10-07 : « pas bcp de texte ») ET LES
+    // RAISONS SE LISENT SANS TOUCHER, COURTES (2026-10-12 : « la description
+    // visible des heures ou y a un probleme, il doit etre explique brievement
+    // et joliment »). Au repos, chaque heure qui coince de la plage OUVERTE de
+    // l etape ouverte a sa ligne a l ecran, et rien d autre ne s affiche ; sur
+    // 375 px, aucune ligne ne prend plus de deux lignes de texte.
+    await pageJ.evaluate(() => {
+      // Une etape et une plage qui ont des raisons, ouvertes comme le client le ferait.
+      const etape = Array.from(document.querySelectorAll('#hourZone .fg-etape[data-cle]')).find((li) => li.querySelector('.fg-why-list__item'));
+      if (!etape) return;
+      const tete = etape.querySelector('.fg-etape__tete');
+      if (tete && tete.getAttribute('aria-expanded') !== 'true') tete.click();
+      const plage = Array.from(etape.querySelectorAll('.fg-period')).find((s) => s.querySelector('.fg-why-list__item'));
+      if (plage && !plage.classList.contains('is-open')) plage.querySelector('.fg-period__btn').click();
+    });
+    await dormir(700);
+    const lireTexteHeures = () => pageJ.evaluate(() => {
+      const vue = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+      const items = Array.from(document.querySelectorAll('#hourZone .fg-why-list__item'));
+      const ouvertes = items.filter((l) => l.closest('.fg-etape.is-open') && l.closest('.fg-period.is-open'));
+      return {
+        legende: Boolean(document.querySelector('.fg-legend')),
+        raisons: items.length,
+        attendues: ouvertes.length,
+        cachees: ouvertes.filter((l) => !vue(l)).map((l) => l.textContent.replace(/\s+/g, ' ').trim()),
+        enTrop: items.filter((l) => ouvertes.indexOf(l) < 0 && vue(l)).map((l) => l.textContent.replace(/\s+/g, ' ').trim()),
+        longues: ouvertes.filter(vue).map((l) => {
+          const s = l.querySelector('.fg-why-list__quand + span') || l;
+          const lh = parseFloat(getComputedStyle(s).lineHeight) || 18;
+          return { t: s.textContent.replace(/\s+/g, ' ').trim(), lignes: Math.round(s.getBoundingClientRect().height / lh) };
+        }).filter((x) => x.lignes > 2),
+        lignes: document.querySelectorAll('#hourZone .fg-etape[data-cle]').length,
+      };
+    });
     const texteLarge = await lireTexteHeures();
     await pageJ.setViewportSize({ width: 375, height: 812 });
     await dormir(250);
     const texteEtroit = await lireTexteHeures();
-    ok(!texteLarge.legende && !texteEtroit.legende && texteLarge.lignes > 0 && texteLarge.raisons > 0 && texteLarge.raisonsVues.length === 0 && texteEtroit.raisonsVues.length === 0,
-      '[J] plus de legende, et au repos aucune raison ne s affiche, en large comme sur 375 px (elles existent : le lecteur d ecran et le toucher les disent)', JSON.stringify({ texteLarge, texteEtroit }));
+    ok(!texteLarge.legende && !texteEtroit.legende && texteLarge.lignes > 0 && texteLarge.attendues > 0
+      && !texteLarge.cachees.length && !texteEtroit.cachees.length && !texteLarge.enTrop.length && !texteEtroit.enTrop.length && !texteEtroit.longues.length,
+      '[J] plus de legende ; au repos, les raisons de la plage ouverte se lisent sans toucher, en large comme sur 375 px, chacune en deux lignes au plus, et aucune autre ne s affiche', JSON.stringify({ texteLarge, texteEtroit }));
 
     // --- L heure RETENUE emporte celle de son 2e groupe -------------------
     // Movsar, 2026-09-23 : « quand ya des groupes a scinder, ca doit montrer

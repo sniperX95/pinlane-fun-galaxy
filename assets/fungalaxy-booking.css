@@ -2725,10 +2725,20 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape .fg-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
 .fg-etape .fg-chip { width: 100%; min-width: 0; height: 52px; border-radius: 12px; }
 .fg-etape .fg-chip.is-on { box-shadow: 3px 3px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
-/* Les raisons ne se lisent plus en mur : seule celle de l heure touchee
-   s allume, sous les heures. */
-.fg-etape .fg-why-list:not(:has(.is-lit)) { display: none; }
-.fg-etape .fg-why-list__item:not(.is-lit) { display: none; }
+/* LES RAISONS SE LISENT SANS TOUCHER (Movsar, 2026-10-12 : « explique
+   brievement et joliment » ; maquette D). Une ligne par cause sous les
+   heures de la plage ouverte : les heures dans une etiquette au contour de
+   la puce qu elle explique (tirets gris pour complet, pointilles ambre pour
+   serre, tirets violets pour decale), puis la phrase courte. La cle (le mot
+   de la puce) ne se repete pas a l ecran. Toucher une heure impossible
+   allume sa ligne. */
+.fg-etape .fg-why-list { gap: 8px; margin: 0 0 14px; padding: 2px 0 0; border-top: 0; }
+.fg-etape .fg-why-list__item { display: flex; align-items: center; gap: 10px; margin: 0 -6px; padding: 3px 6px; font-size: 13.5px; line-height: 1.35; }
+.fg-etape .fg-why-list__item > .fg-key { display: none; }
+.fg-etape .fg-why-list__quand { flex: none; padding: 4px 9px; border: 1px dashed rgba(255, 255, 255, 0.26); border-radius: 8px; color: var(--fg-muted); font-size: 12.5px; letter-spacing: 0.01em; white-space: nowrap; transition: border-color 0.3s, color 0.3s; }
+.fg-etape .fg-why-list__item[data-etat="soft"] .fg-why-list__quand { border-style: dotted; border-color: rgba(227, 179, 65, 0.7); color: var(--fg-amber-ink); }
+.fg-etape .fg-why-list__item[data-etat="shift"] .fg-why-list__quand { border-color: rgba(176, 79, 176, 0.75); color: var(--fg-purple-ink); }
+.fg-etape .fg-why-list__item.is-lit[data-etat="hard"] .fg-why-list__quand { border-color: var(--fg-danger); color: var(--fg-danger); }
 /* « Votre visite » : l en-tete (la plage et le total) et ses avertissements ;
    le detail se deplie. */
 .fg-visit__voir { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; margin: 0 -6px 0 4px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--fg-teal-ink); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
@@ -2757,6 +2767,16 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   .fg-etape .fg-period__btn { padding: 6px 10px; gap: 6px; }
   .fg-etape .fg-chips { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+/* SUR TELEPHONE, LA LIGNE DU PROGRAMME NE TRAVERSE PAS L ETAPE OUVERTE
+   (2026-10-12, vu au balayage a 360 px : elle passait derriere les onglets
+   des plages et sur le « i » de la note). Le corps ouvert, plein, la couvre ;
+   elle reprend sous lui jusqu a l etape suivante. Sur grand ecran, le corps
+   est en retrait et la ligne court dans la marge. */
+@media (max-width: 680px) {
+  .fg-etape__dedans { position: relative; background: #0e0c0f; }
+}
+/* Le calcul des pistes, d un bloc (voir notePistes). */
+.fg-calcul { display: inline-block; }
 @media (prefers-reduced-motion: reduce) {
   .fg-etape__corps, .fg-visit__detail { transition: none; }
   .fg-etape__heure.is-maj { animation: none; }

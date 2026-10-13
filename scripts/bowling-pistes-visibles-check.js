@@ -49,7 +49,7 @@ async function main() {
       await page.fill('#paxInput', String(pax));
       await page.click('#goActivities');
       for (const id of ['bowling', 'laser_game']) await page.click(`#gridAct .fg-card[data-activity="${id}"]`);
-      const carte = await page.evaluate(() => ((document.querySelector('#gridAct li[data-activity="bowling"] .fg-card__rot') || {}).textContent || '').trim());
+      const carte = await page.evaluate(() => ((document.querySelector('#gridAct li[data-activity="bowling"] .fg-card__rot') || {}).textContent || '').replace(/\s+/g, ' ').trim());
       await page.click('#gridAct li[data-activity="bowling"] [data-activity-info]');
       const information = await page.locator('.fg-info-text').textContent();
       await page.keyboard.press('Escape');

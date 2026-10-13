@@ -31,7 +31,11 @@
 //     pistes, aucune libre), celui du laser ses places (8 libres sur 30 a
 //     15:30, 9 a 16:00, il en faut 10).
 // [B] LE FORMULAIRE (fungalaxy.html, dans le navigateur) les ecrit, et la
-//     piste du laser dit que la partie se partage.
+//     piste du laser dit que la partie se partage. Depuis le 2026-10-12
+//     (Movsar : « explique brievement et joliment »), la ligne sous les heures
+//     est COURTE : ce qu il faut et ce qui est libre, sans redire « complet »
+//     (la case le dit) ; le « 6 joueurs par piste » se lit dans la note des
+//     pistes, juste dessous, et la taille de l arene dans la note du partage.
 //
 // CONTRE-EPREUVE (--mutate) : chaque correctif est retire EN MEMOIRE, le
 // moteur au chargement de son module, le formulaire au moment ou il est
@@ -83,6 +87,12 @@ const MUTATIONS = [
     fichier: 'assets/fungalaxy-booking.js',
     de: "raison: t.code === 'capacity' ? raisonComplet(t) : (t.reason || 'Indisponible'),",
     vers: "raison: t.reason || 'Indisponible',",
+  },
+  {
+    nom: 'la ligne sous les heures perd ses chiffres courts (elle retombe sur la phrase longue)',
+    fichier: 'assets/fungalaxy-booking.js',
+    de: "    var chiffres = e.etat === 'hard' && v.ok === false && v.code === 'capacity' ? chiffresComplet(v) : null;",
+    vers: '    var chiffres = null;',
   },
   {
     nom: 'la piste du laser ne dit plus que la partie se partage',
@@ -284,22 +294,40 @@ async function verifierFormulaire(browser) {
     const lu = await page.evaluate(() => {
       const piste = (id) => document.querySelector(`#hourZone .fg-track[data-activity="${id}"]`);
       const raisons = (id) => Array.from((piste(id) || document.createElement('div')).querySelectorAll('.fg-why-list__item'))
-        .map((li) => ({ heures: li.dataset.heures || '', texte: li.textContent.replace(/\s+/g, ' ').trim() }));
+        .map((li) => ({
+          heures: li.dataset.heures || '',
+          texte: li.textContent.replace(/\s+/g, ' ').trim(),
+          phrase: ((li.querySelector('.fg-why-list__quand + span') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+        }));
+      const titre = (id, h) => { const c = piste(id) && piste(id).querySelector(`.fg-chip[data-time="${h}"]`); return c ? c.getAttribute('title') || '' : ''; };
       const partage = piste('laser_game') && piste('laser_game').querySelector('.fg-track__share');
       return {
         bowling: raisons('bowling'),
         laser: raisons('laser_game'),
+        titreBowling13: titre('bowling', '13:00'),
         partage: partage ? partage.textContent.replace(/\s+/g, ' ').trim() : '',
         partageBowling: Boolean(piste('bowling') && piste('bowling').querySelector('.fg-track__share')),
       };
     });
-    const ligne = (liste, heure) => liste.find((l) => l.heures.split(' ').includes(heure)) || { texte: '' };
-    ok(/Complet pour votre groupe : 6 joueurs max par piste, il vous faut 2 pistes et aucune n’est libre\./.test(ligne(lu.bowling, '13:00').texte),
-      '[B] bowling 13:00 : « 6 joueurs max par piste, il vous faut 2 pistes et aucune n’est libre »', ligne(lu.bowling, '13:00').texte);
-    ok(/Complet pour votre groupe : 8 places libres sur 30, il en faut 10\./.test(ligne(lu.laser, '15:30').texte),
-      '[B] laser 15:30 : « 8 places libres sur 30, il en faut 10 »', ligne(lu.laser, '15:30').texte);
-    ok(/Complet pour votre groupe : 9 places libres sur 30, il en faut 10\./.test(ligne(lu.laser, '16:00').texte) && ligne(lu.laser, '16:00').heures.split(' ').includes('16:30'),
-      '[B] laser 16:00 et 16:30, sur une ligne : « 9 places libres sur 30, il en faut 10 »', ligne(lu.laser, '16:00').texte);
+    const ligne = (liste, heure) => liste.find((l) => l.heures.split(' ').includes(heure)) || { texte: '', phrase: '', heures: '' };
+    // Les places libres annoncees : un nombre, ou une fourchette qui contient celui de l heure.
+    const libresDites = (phrase) => {
+      let m = /(\d+) (?:ou|à) (\d+) sont libres/.exec(phrase); if (m) return [Number(m[1]), Number(m[2])];
+      m = /(\d+) sont libres/.exec(phrase); if (m) return [Number(m[1]), Number(m[1])];
+      return null;
+    };
+    const court = (p) => p.length > 0 && p.length <= 60 && !/complet/i.test(p);
+    const b13 = ligne(lu.bowling, '13:00');
+    ok(court(b13.phrase) && /\b2 pistes\b/.test(b13.phrase) && /aucune n’est libre/.test(b13.phrase),
+      '[B] bowling 13:00, en une ligne courte sans redire « complet » : il faut 2 pistes, aucune n’est libre', b13.texte);
+    ok(/6 joueurs max par piste, il vous faut 2 pistes et aucune n’est libre/.test(lu.titreBowling13),
+      '[B] et la case de 13:00 garde le calcul entier en titre (6 joueurs max par piste, 2 pistes, aucune libre)', lu.titreBowling13);
+    const l1530 = ligne(lu.laser, '15:30'), l1600 = ligne(lu.laser, '16:00');
+    const f1530 = libresDites(l1530.phrase), f1600 = libresDites(l1600.phrase);
+    ok(court(l1530.phrase) && /\b10 places\b/.test(l1530.phrase) && Boolean(f1530) && f1530[0] <= 8 && f1530[1] >= 8,
+      '[B] laser 15:30, en une ligne courte : il faut 10 places, et ses 8 places libres sont dites', l1530.texte);
+    ok(court(l1600.phrase) && /\b10 places\b/.test(l1600.phrase) && Boolean(f1600) && f1600[0] <= 9 && f1600[1] >= 9 && l1600.heures.split(' ').includes('16:30'),
+      '[B] laser 16:00 et 16:30, sur une meme ligne : il faut 10 places, et leurs 9 places libres sont dites', l1600.texte);
     const parLibre = lu.bowling.concat(lu.laser).filter((l) => /billard|duckpin|fun run/i.test(l.texte));
     ok(parLibre.length === 0, '[B] aucune ligne ne ferme une heure a cause du billard, du duckpin ou du Fun Run', parLibre.map((l) => l.texte).join(' | '));
     ok(lu.partage === 'Partie de 20 min, + 5 à 10 min de règles. Partie partagée (jusqu’à 30 joueurs) : d’autres groupes peuvent jouer avec vous.',

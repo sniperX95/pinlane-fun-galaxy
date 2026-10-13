@@ -79,8 +79,26 @@
   // stricte, sinon color-scheme: dark peint un rectangle gris chez le client.
   // Il devient AUSSI le fond de reference des degrades (--fg-bg) : les bords
   // des photos se fondent dans la page du client, pas dans notre noir a nous.
+  // ET SEULEMENT S IL EST SOMBRE (2026-10-12, vu au balayage : sur une page
+  // au fond blanc, le recapitulatif ecrit en blanc devenait illisible). Le
+  // formulaire ecrit en clair : un fond clair, ou trop transparent pour en
+  // etre sur, garde le noir du formulaire. Seuil : luminance relative 0,03,
+  // ou le gris des textes secondaires garde plus de 6 de contraste.
+  function fondAssezSombre(c) {
+    var r, g, b, a = 1, m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+    if (m) {
+      var h = m[1].length === 3 ? m[1].replace(/(.)/g, '$1$1') : m[1];
+      r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+    } else if ((m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+)(%?))?\s*\)$/i.exec(c))) {
+      r = Number(m[1]); g = Number(m[2]); b = Number(m[3]);
+      if (m[4] != null) a = m[5] ? Number(m[4]) / 100 : Number(m[4]);
+    } else return false;
+    if (!(a >= 0.95)) return false;
+    var lin = function (v) { v = v / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) <= 0.03;
+  }
   var fond = params.get('fond') || '';
-  if (fond && fond.length < 40 && /^[0-9a-fA-F#rgbaRGBA(), .%]+$/.test(fond)) {
+  if (fond && fond.length < 40 && /^[0-9a-fA-F#rgbaRGBA(), .%]+$/.test(fond) && fondAssezSombre(fond)) {
     root.style.background = fond;
     body.style.background = fond;
     root.style.setProperty('--fg-bg', fond);
@@ -297,6 +315,23 @@
   // un long nom entier.
   function insecable(s) { return String(s == null ? '' : s).replace(/ /g, '\u00a0'); }
   function finInsecable(s) { return String(s == null ? '' : s).replace(/ ([^ ]+)$/, '\u00a0$1'); }
+  // LES MOTS QUI NE SE SEPARENT PAS (2026-10-12, vu au balayage a 360 px :
+  // « 2 » en fin de ligne et « pistes » dessous, un « × » ou un « = » pendus,
+  // « / » puis « personne »). Un nombre reste avec son unite, un « · » avec
+  // ce qui le precede, un « × » ou un « = » avec ce qui le suit, un prix
+  // avec ce qu il paie, « sur place » d un seul tenant.
+  var UNITES = '€|min|h|heures?|pistes?|joueurs?|parties?|personnes?|groupes?|places?|ans|enfants?|tables?|cartes?|sessions?|participants?';
+  var NOMBRE_UNITE = new RegExp('(\\d) (?=(?:' + UNITES + ')(?![A-Za-zÀ-ÿ]))', 'g');
+  function typo(s) {
+    return String(s == null ? '' : s)
+      .replace(/(\d) h (\d)/g, '$1\u00a0h\u00a0$2')
+      .replace(NOMBRE_UNITE, '$1\u00a0')
+      .replace(/ · /g, '\u00a0· ')
+      .replace(/ ([×=]) /g, ' $1\u00a0')
+      .replace(/ \/ /g, '\u00a0/\u00a0')
+      .replace(/ sur place/g, '\u00a0sur\u00a0place')
+      .replace(/joueurs minimum/g, 'joueurs\u00a0minimum');
+  }
   // Rejoue une animation CSS une fois : retire la classe, force un recalcul,
   // la repose. Elle repart d elle-meme ensuite : restee posee, elle rejouerait
   // chaque fois que l element repasse de display:none a affiche.
@@ -622,7 +657,7 @@
     return '<button type="button" class="fg-info-btn" ' + attribut + '="' + esc(id) + '" data-info-title="' + esc(titre) + '" data-info-text="' + esc(texteSectionsInfo(sections)) + '" data-info-sections="' + esc(JSON.stringify(sections)) + '" data-info-image="' + esc(image || '') + '" aria-label="Informations sur ' + esc(titre) + '" aria-haspopup="dialog"><svg class="fg-info-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle class="fg-info-dot" cx="12" cy="7.5" r=".8"/></svg></button>';
   }
   function htmlInfo(a) {
-    return '<div class="fg-card__info"><p class="fg-card__rot">' + esc(noteCourte(a)) + '</p>' + boutonInfo('data-activity-info', a.id, a.name, sectionsInfoActivite(a), a.id) + '</div>';
+    return '<div class="fg-card__info"><p class="fg-card__rot">' + esc(typo(noteCourte(a))) + '</p>' + boutonInfo('data-activity-info', a.id, a.name, sectionsInfoActivite(a), a.id) + '</div>';
   }
   function htmlInfoFormule(f, contexte) {
     contexte = contexte || {};
@@ -1952,8 +1987,23 @@
     });
     function mesurer() {
       grille._fgMesure = 0;
-      if (!grille.getBoundingClientRect().width) return;
-      var colonnes = getComputedStyle(grille).gridTemplateColumns.split(' ').filter(Boolean).length;
+      var largeur = grille.getBoundingClientRect().width;
+      if (!largeur) return;
+      // LES COLONNES DE LA FEUILLE, PAS CELLES DE NOS PLACEMENTS (2026-10-12).
+      // gridTemplateColumns compte aussi les colonnes implicites, et nos
+      // grid-column: 3 et 4, ecrits a 4 colonnes, en creaient des que la
+      // feuille passait a 2 (telephone tourne, fenetre retrecie) : la mesure
+      // relisait 4, les deux vraies colonnes tombaient a 0 px et les cartes
+      // s empilaient. Quand la fenetre ou la grille change de largeur, les
+      // placements sont retires AVANT de compter : la grille revient a ses
+      // seules colonnes. Une lecture de plus, au redimensionnement seulement.
+      var cle = window.innerWidth + 'x' + largeur;
+      if (grille._fgCle !== cle) {
+        tuiles.forEach(function (tile) { tile.style.gridColumn = ''; tile.style.gridRow = ''; });
+        grille._fgColonnes = getComputedStyle(grille).gridTemplateColumns.split(' ').filter(Boolean).length;
+        grille._fgCle = cle;
+      }
+      var colonnes = grille._fgColonnes;
       var espace = petitEcran.matches ? 10 : 14;
       var hauteurs = Array(colonnes).fill(0);
       // TOUTES les lectures, PUIS toutes les ecritures. Lire la hauteur d une
@@ -2008,7 +2058,7 @@
       });
     });
     var rot = $('.fg-card__rot', tile);
-    if (rot) rot.textContent = noteCourte(a);
+    if (rot) rot.textContent = typo(noteCourte(a));
     var info = $('[data-activity-info]', tile); if (info) { var sections = sectionsInfoActivite(a); info.dataset.infoText = texteSectionsInfo(sections); info.dataset.infoSections = JSON.stringify(sections); }
   }
   function rendreActivites() {
@@ -2026,7 +2076,7 @@
         + (p ? '<span class="fg-card__photo" aria-hidden="true"><img data-src="/assets/fungalaxy/' + p + '-800.webp" alt="" decoding="async"></span>' : '')
         + '<span class="fg-card__icon" aria-hidden="true"><svg><use href="#' + icone(a.id) + '"/></svg></span>'
         + '<span class="fg-card__name">' + esc(a.name) + '</span>'
-        + '<span class="fg-card__price">' + esc(prixCarte(a)) + (precisionsCarte(a) ? ' · ' + esc(precisionsCarte(a)) : '') + '</span>'
+        + '<span class="fg-card__price">' + esc(typo(prixCarte(a) + (precisionsCarte(a) ? ' · ' + precisionsCarte(a) : ''))) + '</span>'
         + (peu ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Il faut être au moins ' + a.minPax + ' joueurs. Vous êtes ' + state.pax + '.</span>' : '')
         + (ferme ? '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>Indisponible ' + esc(minuscule(jourLong(state.date))) + '.</span>' : '')
         + '</div>' + caseActivite(a.id, a.name, on)
@@ -2304,7 +2354,7 @@
     var prix = $('.fg-card__price', item);
     if (!prix || !a) return;
     var avant = prix.textContent;
-    prix.textContent = prixCarte(a) + (precisionsCarte(a) ? ' · ' + precisionsCarte(a) : '');
+    prix.textContent = typo(prixCarte(a) + (precisionsCarte(a) ? ' · ' + precisionsCarte(a) : ''));
     if (anime && prix.textContent !== avant) rejouer(prix, 'is-maj');
   }
   function retirerActivite(id) { var card = $('.fg-card[data-activity="' + id + '"]', gridAct); basculerActivite(card); $('.fg-card-select', card.closest('.fg-grid__item')).focus({ preventScroll:true }); }
@@ -2720,6 +2770,27 @@
     }
     return t.reason || 'Complet';
   }
+  // LES CHIFFRES D UN « COMPLET », pour la ligne courte sous les heures
+  // (phraseRaison) : les memes que raisonComplet, sans la phrase. L heure ou
+  // le manque se produit (le 2e groupe, le 2e service) ne se dit que si
+  // elle n est pas l heure elle-meme.
+  function chiffresComplet(t) {
+    if (Number(t.lanesNeeded) > 0) return { pistes: Number(t.lanesNeeded), libres: Number(t.lanesFree) || 0, groupes: Number(t.serviceCount) || 1, quand: t.serviceTime || '' };
+    if (t.arenaBusy) return { lancee: true, quand: t.waveTime || '' };
+    if (Number(t.placesNeeded) > 0 && Number(t.arenaPlaces) > 0) return { besoin: Number(t.placesNeeded), places: Number(t.placesFree) || 0, arene: Number(t.arenaPlaces), quand: t.waveTime || '' };
+    return null;
+  }
+  // Les heures d une ligne, en suites : trois demi-heures qui se suivent ou
+  // plus se disent « 13:00 à 14:00 », deux « 16:00 et 16:30 ». Jamais une
+  // plage qui engloberait une heure libre.
+  function plageHeures(liste) {
+    var suites = [];
+    (liste || []).forEach(function (h) {
+      var s = suites[suites.length - 1];
+      if (s && minutesDe(h) - minutesDe(s[s.length - 1]) === 30) s.push(h); else suites.push([h]);
+    });
+    return joindreHeures(suites.map(function (s) { return s.length > 2 ? s[0] + ' à ' + s[s.length - 1] : s.join(suites.length > 1 ? ', ' : ' et '); }));
+  }
   var MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', schedule_free: 'trop tard', resource_conflict: 'complet', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo', anchor_overlap: 'occupé' };
   function etatHeure(t, idPiste) {
     if (t.ok === false) {
@@ -2794,10 +2865,12 @@
   }
   function nomBas(s) { return String(s || '').toLowerCase(); }
   // LA PHRASE D UNE RAISON, pour un groupe d heures qui la partagent. Courte
-  // (Movsar, 2026-09-24 : « trop long, mal explique ») : ce qui coince, et ce
-  // que le toucher fait quand il fait bouger autre chose. Chaque phrase CITE ce
-  // que le moteur a dit : sa raison, ou l activite en conflit avec la plage
-  // que le plan lui donne. Rien n est invente, tout se retrouve dans la reponse.
+  // (Movsar, 2026-09-24 : « trop long, mal explique » ; 2026-10-12 : « explique
+  // brievement et joliment ») : ce qui manque, avec les chiffres du moteur, ou
+  // ce que le toucher fera bouger. Le mot de la puce (« complet ») ne se
+  // repete pas : l etiquette des heures porte deja son contour. Rien n est
+  // invente, tout se retrouve dans la reponse ; la phrase longue reste le
+  // titre de la puce.
   function phraseRaison(g, nomPiste) {
     var piste = nomBas(nomPiste || 'activité');
     if (g.etat === 'shift') {
@@ -2806,22 +2879,39 @@
       // Une partie de laser parmi d autres posees : elle seule se libere et
       // passe sans heure. Seule posee, le moteur la replace, comme le bowling.
       if (g.conflit.id === 'laser_game' && state.laserParts.length > 1 && rangPartie(g.conflit.time)) {
-        return 'Pendant votre partie ' + rangPartie(g.conflit.time) + ' de laser game' + quand + ', qui passe dans la foulée, sans heure fixe.';
+        return 'Votre partie ' + rangPartie(g.conflit.time) + ' de laser game' + quand + ' passera dans la foulée, sans heure fixe.';
       }
-      return 'Pendant votre ' + nomBas(String(g.conflit.label || 'autre activité').replace(/\s*\(partie \d+\)$/, '')) + quand + ', qui se décale avant ou après.';
+      return 'Votre ' + nomBas(String(g.conflit.label || 'autre activité').replace(/\s*\(partie \d+\)$/, '')) + quand + ' se décalera avant ou après.';
     }
     if (g.etat === 'soft') return 'Possible, mais ' + minuscule(g.raison) + '.';
     var r = g.raison || 'Indisponible';
+    var x = g.chiffres, a = g.quand ? ' à ' + g.quand : '';
+    if (x && x.pistes) {
+      return 'Il faut ' + nombre(x.pistes, 'piste', 'pistes') + (x.groupes > 1 ? ' pour chacun de vos ' + x.groupes + ' groupes' : '')
+        + ' : ' + (x.libres === 0 ? 'aucune n’est libre' : x.libres === 1 ? 'une seule est libre' : x.libres + ' seulement sont libres') + a + '.';
+    }
+    if (x && x.lancee) return 'Une autre partie de laser est déjà lancée' + a + '.';
+    if (x && x.besoin) {
+      var bas = Math.min.apply(null, g.places), haut = Math.max.apply(null, g.places);
+      if (haut === 0) return 'Les ' + x.arene + ' places de l’arène sont prises' + a + '.';
+      // Comme le bowling : ce qu il faut, puis ce qui est libre. La taille de
+      // l arene se lit deja dans la note du partage, juste dessous.
+      var libres = bas === haut ? (haut === 1 ? 'une seule est libre' : haut + ' sont libres')
+        : bas === 0 ? (haut === 1 ? 'au plus une est libre' : 'au plus ' + haut + ' sont libres')
+        : bas + (haut === bas + 1 ? ' ou ' : ' à ') + haut + ' sont libres';
+      return 'Il faut ' + nombre(x.besoin, 'place', 'places') + ' : ' + libres + a + '.';
+    }
     switch (g.code) {
       case 'capacity':
       case 'resource_conflict':
-        return 'Complet pour votre groupe' + (r && r !== 'Complet' ? ' : ' + minuscule(r) : '') + '.';
+        return r && r !== 'Complet' ? r.charAt(0).toUpperCase() + r.slice(1) + '.' : 'Complet pour votre groupe.';
       case 'schedule':
-        return 'Trop tard : ' + minuscule(r) + '.';
+        var fin = /^fin apr[eè]s (.+)$/i.exec(r);
+        return fin ? 'Finirait après ' + fin[1] + '.' : 'Trop tard : ' + minuscule(r) + '.';
       case 'schedule_free':
         return 'Trop tard pour tout faire : ' + minuscule(r) + '.';
       case 'blocked':
-        return 'Fermé : ' + minuscule(r) + '.';
+        return r === 'Indisponible' ? 'Fermé à cette heure.' : 'Fermé : ' + minuscule(r) + '.';
       case 'anchor_overlap':
         // SA PROPRE PARTIE, que rien ne deplace ici : laquelle, et quand elle joue.
         if (!g.conflit.time) return 'Votre autre partie de ' + piste + ' joue à cette heure.';
@@ -2901,6 +2991,14 @@
       sec.classList.toggle('is-empty', n === 0);
       if (!utile && (choisis.length || propose)) utile = sec;
     });
+    // L heure retenue ou proposee CHANGE DE PLAGE sans que le client touche
+    // cette piste (le bowling part a 23:00, le moteur replace le laser a
+    // 22:30) : sa plage s ouvre, meme si le client avait feuillete ses onglets
+    // avant. Le laser restait sur « Après-midi », son heure en soiree
+    // (2026-10-12).
+    var plageUtile = utile ? String(secs.indexOf(utile)) : '';
+    if (plageUtile && track.dataset.plageUtile && track.dataset.plageUtile !== plageUtile) delete track.dataset.touched;
+    if (plageUtile) track.dataset.plageUtile = plageUtile;
     if (secs.length && !track.dataset.touched) {
       montrerPeriode(track, utile || secs.filter(function (x) { return !x.classList.contains('is-empty'); })[0] || secs[0]);
     }
@@ -2987,6 +3085,8 @@
     chip.dataset.ok = e.etat === 'hard' || e.sous === 'hard' ? 'false' : 'true';
     // Ce qu il faut pour ecrire la phrase de la plage, sans rien relire ailleurs.
     chip.dataset.code = v.ok === false && e.etat !== 'wave' ? String(v.code || '') : '';
+    var chiffres = e.etat === 'hard' && v.ok === false && v.code === 'capacity' ? chiffresComplet(v) : null;
+    if (chiffres) chip.dataset.court = JSON.stringify(chiffres); else delete chip.dataset.court;
     if (deplace) chip.dataset.replaces = deplace; else delete chip.dataset.replaces;
     if (e.etat === 'wave') { chip.dataset.sous = e.sous; chip.dataset.motif = e.motif; } else { delete chip.dataset.sous; delete chip.dataset.motif; }
     if (e.etat === 'wave' && multi) chip.dataset.partie = String(rangPartie(vague.depuis)); else delete chip.dataset.partie;
@@ -3021,21 +3121,30 @@
       // la puce (« partie 1 », « 2e groupe »), sa plage dans le cadre des
       // parties ou la note des groupes.
       if (!etat || etat === 'ok' || etat === 'wave' || c.classList.contains('is-on') || c.classList.contains('is-proposed')) return;
-      var cle = etat + '|' + (c.dataset.code || '') + '|' + (c.dataset.conflictLabel || '') + '@' + (c.dataset.conflictTime || '') + '|' + (etat === 'shift' ? '' : c.dataset.reason || '');
+      // Les heures qui manquent de la MEME chose (les memes pistes, le meme
+      // nombre de places) partagent une ligne ; les places libres de chacune
+      // se disent en fourchette (« 8 à 9 sont libres »).
+      var chiffres = null;
+      try { chiffres = c.dataset.court ? JSON.parse(c.dataset.court) : null; } catch (err) { chiffres = null; }
+      var quand = chiffres && chiffres.quand && chiffres.quand !== c.dataset.time ? chiffres.quand : '';
+      var cause = !chiffres ? '' : chiffres.pistes ? 'pistes:' + chiffres.pistes + ':' + chiffres.libres + ':' + chiffres.groupes + '@' + quand : chiffres.besoin ? 'places:' + chiffres.besoin + ':' + chiffres.arene + '@' + quand : 'lancee@' + quand;
+      var cle = etat + '|' + (c.dataset.code || '') + '|' + (c.dataset.conflictLabel || '') + '@' + (c.dataset.conflictTime || '') + '|' + (cause || (etat === 'shift' ? '' : c.dataset.reason || ''));
       if (!index[cle]) {
         index[cle] = {
           etat: etat, code: c.dataset.code || '', raison: c.dataset.reason || '', mot: ($('small', c) || {}).textContent || '',
           conflit: { id: c.dataset.conflict || '', label: c.dataset.conflictLabel || '', time: c.dataset.conflictTime || '' }, heures: [], puces: [],
+          chiffres: chiffres, quand: quand, places: [],
         };
         groupes.push(index[cle]);
       }
       index[cle].heures.push(c.dataset.time);
       index[cle].puces.push(c);
+      if (chiffres && chiffres.besoin) index[cle].places.push(chiffres.places);
     });
     liste.innerHTML = groupes.map(function (g, k) {
       return '<li class="fg-why-list__item" id="' + esc(racine) + '-why-' + k + '" data-etat="' + esc(g.etat) + '" data-heures="' + esc(g.heures.join(' ')) + '">'
         + '<i class="fg-key fg-key--' + esc(g.etat) + '">' + esc(g.mot) + '</i>'
-        + '<span><b>' + esc(joindreHeures(g.heures)) + '</b> · ' + esc(phraseRaison(g, nomPiste)) + '</span></li>';
+        + '<b class="fg-why-list__quand">' + esc(plageHeures(g.heures)) + '</b> <span>' + esc(phraseRaison(g, nomPiste)) + '</span></li>';
     }).join('');
     groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.setAttribute('aria-describedby', racine + '-why-' + k); }); });
     liste.hidden = !groupes.length;
@@ -3215,8 +3324,10 @@
       if (!a || !p) return '';
       var opt = optionChoisie(a), prix = opt ? Number(opt.prix) || 0 : 0;
       return '<p class="fg-track__lanes"><svg aria-hidden="true"><use href="#i-info"/></svg><span>'
-        + '<b>' + p.parPiste + ' joueurs par piste</b> : ' + p.joueurs + ' joueurs = ' + p.pistes + ' piste' + (p.pistes > 1 ? 's' : '')
-        + (prix ? ' × ' + esc(euros(prix)) + ' = <b>' + esc(euros(prix * p.pistes)) + '</b>' : '') + (p.services > 1 ? ', en ' + p.services + ' tours' : '') + '.'
+        // Le calcul se lit d un bloc : sur un ecran etroit, il passe entier a
+        // la ligne apres les deux-points, au lieu de pendre un « × ».
+        + '<b>' + p.parPiste + '\u00a0joueurs par piste</b>\u00a0: <span class="fg-calcul">' + typo(p.joueurs + ' joueurs = ' + p.pistes + ' piste' + (p.pistes > 1 ? 's' : ''))
+        + (prix ? ' ×\u00a0' + esc(typo(euros(prix))) + ' =\u00a0<b>' + esc(typo(euros(prix * p.pistes))) + '</b>' : '') + (p.services > 1 ? typo(', en ' + p.services + ' tours') : '') + '.</span>'
         + '</span></p>';
     }
     if (ancres.length) {
@@ -3391,7 +3502,7 @@
       heure.dataset.mot = mot;
       heure.innerHTML = (dit ? '<span class="sr-only">Heure ' + dit + '</span>' : '') + esc(mot);
       // Le rang d une partie est dans son badge (« 1/2 ») : dessous, ce qu elle dure.
-      $('.fg-etape__quoi small', li).textContent = e.partie ? detailPartie() : (detailsEtapes[e.id] || '');
+      $('.fg-etape__quoi small', li).textContent = typo(e.partie ? detailPartie() : (detailsEtapes[e.id] || ''));
       ['choisi', 'propose', 'vide', 'surplace'].forEach(function (x) { li.classList.toggle('is-' + x, e.etat === x); });
       li.classList.toggle('is-open', ouverte);
       $('.fg-etape__tete', li).setAttribute('aria-expanded', String(ouverte));
@@ -3615,7 +3726,7 @@
   // programme porte la duree d UN service, pas des deux).
   function surPlace(debut, fin) {
     var m = minutesEntre(debut, fin);
-    return m > 0 ? '\u00a0· <b>' + esc(insecable(dureeExacte(m))) + '</b> sur place' : '';
+    return m > 0 ? '\u00a0· <b>' + esc(insecable(dureeExacte(m))) + '</b>\u00a0sur\u00a0place' : '';
   }
   // Ce qu une ligne de programme achete, en mots : les parties, les sessions
   // d un groupe qui tourne, ou la duree (par groupe quand il en joue deux).

@@ -2827,15 +2827,27 @@
     return joindreHeures(suites.map(function (s) { return s.length > 2 ? s[0] + ' à ' + s[s.length - 1] : s.join(suites.length > 1 ? ', ' : ' et '); }));
   }
   var MOTS_DURS = { capacity: 'complet', blocked: 'fermé', schedule: 'trop tard', schedule_free: 'trop tard', resource_conflict: 'complet', business_rules: 'non valable', off_grid: 'hors grille', unknown_anchor: 'indispo', anchor_overlap: 'occupé',
-    arrival_wait: 'attente', arrival_visit: 'trop long', arrival_full: 'complet', arrival_before: 'trop tôt', arrival_welcome: 'accueil', arrival_after_anchor: 'trop tard' };
+    arrival_full: 'complet', arrival_after_anchor: 'trop tard' };
+  // L AUTRE QUI BOUGE, et l heure se prend : elle chevauche une autre activite
+  // posee, ou se prend avant l arrivee choisie (ou pendant son accueil) et
+  // l avance. Le dernier choix gagne (Movsar, 2026-10-13 : « on peut prendre
+  // l heure qu on veut, juste si c est vraiment impossible on peut pas »).
+  var DECALENT = { anchor_overlap: 1, arrival_before: 1, arrival_welcome: 1 };
+  // Le mot d un avis : une longue attente, une longue visite (les bornes de
+  // l arrivee, qui previennent sans refuser), sinon une fin serree.
+  var MOTS_AVIS = { arrival_wait: 'attente', arrival_visit: 'longue' };
+  function avisDArrivee(w) { return Boolean(w && MOTS_AVIS[w.code]); }
   function etatHeure(t, idPiste) {
     if (t.ok === false) {
-      var autre = t.code === 'anchor_overlap' && t.conflict && t.conflict.activityId && t.conflict.activityId !== idPiste;
+      var autre = DECALENT[t.code] && t.conflict && t.conflict.activityId && t.conflict.activityId !== idPiste;
       if (autre) return { etat: 'shift', mot: 'décale', raison: t.reason || 'Chevauche une autre activité', conflit: t.conflict };
       // Sa propre partie garde son conflit : la phrase dira laquelle, et quand elle joue.
       return { etat: 'hard', mot: MOTS_DURS[t.code] || 'indispo', raison: t.code === 'capacity' ? raisonComplet(t) : (t.reason || 'Indisponible'), conflit: t.code === 'anchor_overlap' ? (t.conflict || null) : null };
     }
-    if (t.warning) return { etat: 'soft', mot: 'serré', raison: t.warning.reason || 'Peu de temps pour le reste de la visite', conflit: null };
+    // Une arrivee qui libere des heures posees avant elle : elle se prend, et
+    // le serveur les replace apres elle.
+    if (t.libere) return { etat: 'shift', mot: 'décale', raison: t.libere.raison, conflit: t.libere };
+    if (t.warning) return { etat: 'soft', mot: MOTS_AVIS[t.warning.code] || 'serré', raison: t.warning.reason || 'Peu de temps pour le reste de la visite', conflit: null };
     return { etat: 'ok', mot: '', raison: '', conflit: null };
   }
   function minutesDe(h) { var p = /^(\d{1,2}):(\d{2})$/.exec(String(h || '')); return p ? Number(p[1]) * 60 + Number(p[2]) : NaN; }
@@ -2909,6 +2921,14 @@
   // titre de la puce.
   function phraseRaison(g, nomPiste) {
     var piste = nomBas(nomPiste || 'activité');
+    if (g.etat === 'shift' && g.conflit.id === 'arrivee') {
+      // L heure se prend avant l arrivee choisie : l arrivee avance, le plan
+      // la conseille alors juste avant cette heure.
+      var accueil = Number(arrivees.bornes && arrivees.bornes.welcomeMinutes) || 0;
+      return typo('Avance votre arrivée (' + g.conflit.time + ')' + (accueil ? ' : vous arriverez ' + accueil + ' min avant votre ' + piste + '.' : '.'));
+    }
+    // L arrivee libere des heures posees avant elle (liberePar).
+    if (g.etat === 'shift' && g.piste === 'arrivee') return typo(g.raison);
     if (g.etat === 'shift') {
       var plage = g.conflit.id ? plageOccupee(state.creneau, g.conflit.id, g.conflit.time) : '';
       var quand = plage ? ' (' + plage + ')' : ' de ' + g.conflit.time;
@@ -2919,7 +2939,20 @@
       }
       return 'Votre ' + nomBas(String(g.conflit.label || 'autre activité').replace(/\s*\(partie \d+\)$/, '')) + quand + ' se décalera avant ou après.';
     }
-    if (g.etat === 'soft') return 'Possible, mais ' + minuscule(g.raison) + '.';
+    // UN AVIS DE L ARRIVEE (2026-10-13) : la longue attente ou la longue
+    // visite, des heures de la ligne, en fourchette ; pour une arrivee, avec
+    // ce qui la fait attendre (`cause` du serveur), pour une activite, depuis
+    // l arrivee choisie.
+    var avis = g.chiffres;
+    if (g.etat === 'soft' && avis && avis.minutes) {
+      var court = Math.min.apply(null, g.places), long = Math.max.apply(null, g.places);
+      var duree = dureeExacte(court) + (long > court ? ' à ' + dureeExacte(long) : '');
+      if (avis.avis === 'arrival_visit') return typo('Possible, la visite dure ' + duree + '.');
+      var pourquoi = avis.cause ? (/^avec /i.test(avis.cause) ? ', ' : ' : ') + minuscule(avis.cause)
+        : g.piste !== 'arrivee' && state.arrivee ? ' après votre arrivée (' + state.arrivee + ')' : '';
+      return typo('Possible, avec ' + duree + ' sans activité' + pourquoi + '.');
+    }
+    if (g.etat === 'soft') return 'Possible, mais ' + minuscule(g.raison).replace(/\.$/, '') + '.';
     var r = g.raison || 'Indisponible';
     var x = g.chiffres, a = g.quand ? ' à ' + g.quand : '';
     if (x && x.pistes) {
@@ -2936,15 +2969,6 @@
         : bas === 0 ? (haut === 1 ? 'au plus une est libre' : 'au plus ' + haut + ' sont libres')
         : bas + (haut === bas + 1 ? ' ou ' : ' à ') + haut + ' sont libres';
       return 'Il faut ' + nombre(x.besoin, 'place', 'places') + ' : ' + libres + a + '.';
-    }
-    // UNE HEURE D ARRIVEE REFUSEE pour sa borne : l attente sans activite, ou
-    // la duree de la visite, des heures de la ligne, en fourchette.
-    if (x && x.minutes) {
-      var mini = Math.min.apply(null, g.places), maxi = Math.max.apply(null, g.places);
-      // Un minimum seulement : les heures loin de l arrivee, ecartees par la
-      // borne sure du serveur, sans leur mesure exacte.
-      var duree = x.auMoins ? 'au moins ' + dureeExacte(mini) : dureeExacte(mini) + (maxi > mini ? ' à ' + dureeExacte(maxi) : '');
-      return typo(g.code === 'arrival_visit' ? 'Visite trop longue : ' + duree + '.' : 'Trop d’attente : ' + duree + ' sans activité.');
     }
     switch (g.code) {
       case 'arrival_full':
@@ -2965,11 +2989,7 @@
         var k = rangPartie(g.conflit.time);
         var sienne = plageOccupee(state.creneau, g.conflit.id || '', g.conflit.time);
         return 'Votre partie' + (k ? ' ' + k : '') + ' de ' + piste + ' joue ' + (sienne ? 'de ' + sienne : 'à ' + g.conflit.time) + '.';
-      // L heure d arrivee choisie borne celles des activites (2026-10-13) : la
-      // phrase du serveur dit avant l arrivee, pendant l accueil, ou apres une
-      // activite deja posee.
-      case 'arrival_before':
-      case 'arrival_welcome':
+      // Une arrivee apres une activite deja posee : la phrase du serveur.
       case 'arrival_after_anchor':
         return typo(r.charAt(0).toUpperCase() + r.slice(1).replace(/\.$/, '') + '.');
       default:
@@ -3079,8 +3099,12 @@
       phrases.push(decale.length + (decale.length > 1 ? ' décalent ' : ' décale ') + (cibles.length === 1 ? 'votre ' + minuscule(cibles[0]) : 'une autre activité'));
     }
     if (serre.length) {
-      cles.push(['soft', 'serré']);
-      phrases.push(serre.length + (serre.length > 1 ? ' serrées' : ' serrée'));
+      // Le mot de l avis, celui des puces : « attente » depuis l arrivee,
+      // sinon « serré ».
+      var motsAvis = uniques(serre.map(function (c) { return (($('small', c) || {}).textContent || '').trim(); }));
+      var motAvis = motsAvis.length === 1 ? motsAvis[0] : 'serré';
+      cles.push(['soft', motAvis]);
+      phrases.push(serre.length + (motAvis === 'attente' ? ' avec de l’attente' : motAvis === 'longue' ? (serre.length > 1 ? ' longues' : ' longue') : serre.length > 1 ? ' serrées' : ' serrée'));
     }
     if (dur.length) {
       var mots = uniques(dur.map(function (c) { return (($('small', c) || {}).textContent || '').trim(); }));
@@ -3101,8 +3125,9 @@
     // Quand TOUTES les heures possibles de la piste sont serrees, le mot ne
     // dit plus rien sur l heure : la cause est ailleurs (une autre activite
     // posee tard, ou une journee trop courte). Les puces restent normales,
-    // la piste porte une seule note, et la raison reste au survol.
-    if (toutSerre && e.etat === 'soft') { e.etat = 'ok'; e.mot = ''; }
+    // la piste porte une seule note, et la raison reste au survol. Une attente
+    // depuis l arrivee, elle, depend de l heure : elle se dit.
+    if (toutSerre && e.etat === 'soft' && !avisDArrivee(v.warning)) { e.etat = 'ok'; e.mot = ''; }
     var on = actifs.indexOf(t.time) >= 0;
     var prop = !on && propose === t.time;
     // La partie que le toucher deplace (verdict `move`), s il en deplace une.
@@ -3139,13 +3164,13 @@
     chip.dataset.ok = e.etat === 'hard' || e.sous === 'hard' ? 'false' : 'true';
     // Ce qu il faut pour ecrire la phrase de la plage, sans rien relire ailleurs.
     chip.dataset.code = v.ok === false && e.etat !== 'wave' ? String(v.code || '') : '';
-    // Une heure refusee pour la borne de l arrivee (2026-10-13) porte ses
-    // minutes, comme une heure d arrivee : la ligne les dit en fourchette, « au
-    // moins » quand le serveur n a mesure qu un minimum (waitIsMinimum).
-    var bornee = e.etat === 'hard' && v.ok === false && (v.code === 'arrival_wait' || v.code === 'arrival_visit')
-      ? Number(v.code === 'arrival_wait' ? v.waitMinutes : v.visitMinutes) || 0 : 0;
+    // L AVIS D UNE BORNE DE L ARRIVEE (2026-10-13) porte ses minutes : la ligne
+    // les dit en fourchette. Sa cause ne se dit que pour une arrivee : pour une
+    // activite, c est cette heure-la qui fait attendre.
+    var avis = e.etat === 'soft' && avisDArrivee(v.warning)
+      ? Number(v.warning.code === 'arrival_wait' ? v.warning.waitMinutes : v.warning.visitMinutes) || 0 : 0;
     var chiffres = e.etat === 'hard' && v.ok === false && v.code === 'capacity' ? chiffresComplet(v)
-      : bornee > 0 ? (v.waitIsMinimum ? { minutes: bornee, auMoins: true } : { minutes: bornee }) : null;
+      : avis > 0 ? { minutes: avis, avis: v.warning.code, cause: idPiste === 'arrivee' ? String(v.warning.cause || '') : '' } : null;
     if (chiffres) chip.dataset.court = JSON.stringify(chiffres); else delete chip.dataset.court;
     if (deplace) chip.dataset.replaces = deplace; else delete chip.dataset.replaces;
     if (e.etat === 'wave') { chip.dataset.sous = e.sous; chip.dataset.motif = e.motif; } else { delete chip.dataset.sous; delete chip.dataset.motif; }
@@ -3173,6 +3198,7 @@
     var liste = $('.fg-why-list', sec);
     if (!liste) return;
     var racine = ($('.fg-period__body', sec) || {}).id || 'per';
+    var idPiste = ((sec.closest('.fg-track') || {}).dataset || {}).activity || '';
     var groupes = [], index = {};
     $$('.fg-chip', sec).forEach(function (c) {
       c.removeAttribute('aria-describedby');
@@ -3187,13 +3213,15 @@
       var chiffres = null;
       try { chiffres = c.dataset.court ? JSON.parse(c.dataset.court) : null; } catch (err) { chiffres = null; }
       var quand = chiffres && chiffres.quand && chiffres.quand !== c.dataset.time ? chiffres.quand : '';
-      var cause = !chiffres ? '' : chiffres.pistes ? 'pistes:' + chiffres.pistes + ':' + chiffres.libres + ':' + chiffres.groupes + '@' + quand : chiffres.besoin ? 'places:' + chiffres.besoin + ':' + chiffres.arene + '@' + quand : chiffres.minutes ? 'minutes' + (chiffres.auMoins ? '+' : '') : 'lancee@' + quand;
-      var cle = etat + '|' + (c.dataset.code || '') + '|' + (c.dataset.conflictLabel || '') + '@' + (c.dataset.conflictTime || '') + '|' + (cause || (etat === 'shift' ? '' : c.dataset.reason || ''));
+      var cause = !chiffres ? '' : chiffres.pistes ? 'pistes:' + chiffres.pistes + ':' + chiffres.libres + ':' + chiffres.groupes + '@' + quand : chiffres.besoin ? 'places:' + chiffres.besoin + ':' + chiffres.arene + '@' + quand : chiffres.minutes ? 'minutes:' + (chiffres.avis || '') + ':' + (chiffres.cause || '') : 'lancee@' + quand;
+      // Ce qui decale se groupe par ce qui bouge (l heure avant l arrivee et
+      // celle de son accueil l avancent pareil).
+      var cle = etat + '|' + (etat === 'shift' ? '' : c.dataset.code || '') + '|' + (c.dataset.conflictLabel || '') + '@' + (c.dataset.conflictTime || '') + '|' + (cause || (etat === 'shift' ? '' : c.dataset.reason || ''));
       if (!index[cle]) {
         index[cle] = {
           etat: etat, code: c.dataset.code || '', raison: c.dataset.reason || '', mot: ($('small', c) || {}).textContent || '',
           conflit: { id: c.dataset.conflict || '', label: c.dataset.conflictLabel || '', time: c.dataset.conflictTime || '' }, heures: [], puces: [],
-          chiffres: chiffres, quand: quand, places: [],
+          chiffres: chiffres, quand: quand, places: [], piste: idPiste,
         };
         groupes.push(index[cle]);
       }
@@ -3263,9 +3291,12 @@
     // plus proche de « Votre visite ») : deux pistes serrees le disaient deux
     // fois, et l ecran des heures a deja trop de texte sur telephone.
     var dernierSerre = '';
+    // « Serré » parle de la fin de la visite : une attente depuis l arrivee
+    // n en est pas un (elle se dit sur ses heures).
+    var serree = function (v) { return v.warning && !avisDArrivee(v.warning); };
     ancres.forEach(function (a) {
       var p = (a.times || []).map(verdictDu).filter(function (v) { return v.ok !== false; });
-      if (p.length > 0 && p.every(function (v) { return v.warning; })) dernierSerre = a.activityId;
+      if (p.length > 0 && p.every(serree)) dernierSerre = a.activityId;
     });
     ancres.forEach(function (a) {
       var track = $('.fg-track[data-activity="' + a.activityId + '"]', hourZone);
@@ -3274,7 +3305,7 @@
       var propose = actifs.length ? '' : (defauts[a.activityId] || '');
       // Ce qui se PREND, deplacements compris : leur verdict est le leur.
       var possibles = (a.times || []).map(verdictDu).filter(function (v) { return v.ok !== false; });
-      var toutSerre = possibles.length > 0 && possibles.every(function (v) { return v.warning; });
+      var toutSerre = possibles.length > 0 && possibles.every(serree);
       var emportees = heuresEmportees(state.creneau, a.activityId, actifs);
       var compte = Math.max(1, Number(a.count) || 1);
       var multi = a.activityId === 'laser_game' && compte > 1;
@@ -3705,10 +3736,41 @@
         posterHauteur();
       });
   }
+  // LE DERNIER CHOIX GAGNE (Movsar, 2026-10-13 : « c est vraiment pas normal
+  // de pouvoir choisir aucun horaire »). Une arrivee a t libere les heures
+  // posees avant elle et ses minutes d accueil (welcomeMinutes : la regle de
+  // la liste du serveur, api/public-availability.js poseesApres) ; le serveur
+  // replace ces activites apres elle.
+  function poseesAvant(t) {
+    var seuil = minutesDe(t) + (Number(arrivees.bornes && arrivees.bornes.welcomeMinutes) || 0);
+    var avant = function (h) { return minutesDe(h) < seuil; };
+    var parties = state.laserParts.length ? state.laserParts : (state.pins.laser_game ? [state.pins.laser_game] : []);
+    return {
+      pins: Object.keys(state.pins).filter(function (id) { return id !== 'laser_game' && avant(state.pins[id]); }),
+      parties: parties.filter(avant),
+      restantes: parties.filter(function (h) { return !avant(h); }),
+    };
+  }
+  // Ce qu une arrivee libere, dit sur sa puce : les activites que le serveur
+  // a jugees liberees (`releases`), avec leurs heures posees.
+  function liberePar(t, ids) {
+    var liste = Array.isArray(ids) ? ids : [];
+    if (!liste.length) return null;
+    var avant = poseesAvant(t);
+    var heureDe = function (id) { return id === 'laser_game' ? joindreHeures(avant.parties) : state.pins[id] || ''; };
+    var dites = liste.map(function (id) { return 'votre ' + nomBas(nomActivite(id)) + (heureDe(id) ? ' (' + heureDe(id) + ')' : ''); });
+    var phrase = joindreListe(dites, ' et ') + (liste.length > 1 ? ' se replaceront' : ' se replacera') + ' après votre arrivée.';
+    return {
+      activityId: liste.join(','),
+      label: joindreListe(liste.map(nomActivite), ' et '),
+      time: liste.map(heureDe).filter(Boolean).join(', '),
+      raison: phrase.charAt(0).toUpperCase() + phrase.slice(1),
+    };
+  }
   // LES HEURES D ARRIVEE, avec la grammaire des heures des activites : le mot
   // court sur la puce, une ligne par cause sous la plage, la phrase longue du
-  // serveur en titre. Une heure refusee pour sa borne porte ses minutes : la
-  // ligne les dit en fourchette.
+  // serveur en titre. Une longue attente est un avis, ses minutes se disent en
+  // fourchette ; une arrivee qui libere des heures posees se dit « décale ».
   function rendreArrivees() {
     var track = $('.fg-track[data-activity="arrivee"]', hourZone);
     if (!track) return;
@@ -3731,9 +3793,8 @@
     $$('.fg-chip', track).forEach(function (chip) {
       var x = parHeure[chip.dataset.time] || {}, refus = x.ok === false;
       var court = refus ? String((x.shortReason && x.shortReason !== 'Indisponible' ? x.shortReason : x.reason) || 'Indisponible').replace(/\.$/, '') : '';
-      majChip(chip, { time: chip.dataset.time, ok: !refus, code: x.code, reason: court, warning: x.warning }, state.arrivee ? [state.arrivee] : [], '', false, 'arrivee', null, 1);
-      var minutes = Number(x.code === 'arrival_wait' ? x.waitMinutes : x.code === 'arrival_visit' ? x.visitMinutes : 0) || 0;
-      if (refus && minutes > 0) chip.dataset.court = JSON.stringify({ minutes: minutes });
+      var libere = refus || state.arrivee === chip.dataset.time ? null : liberePar(chip.dataset.time, x.releases);
+      majChip(chip, { time: chip.dataset.time, ok: !refus, code: x.code, reason: court, warning: x.warning, libere: libere }, state.arrivee ? [state.arrivee] : [], '', false, 'arrivee', null, 1);
       if (refus && x.reason) chip.setAttribute('title', x.reason);
     });
     $$('.fg-period', track).forEach(function (sec) { expliquerPeriode(sec, 'arrivée'); });
@@ -3742,13 +3803,26 @@
     majPeriodes(track);
   }
   // UNE HEURE D ARRIVEE CHOISIE : le serveur pose a partir d elle le bowling
-  // et le laser encore libres. LES HEURES DEJA POSEES RESTENT (Movsar,
+  // et le laser encore libres. LES HEURES POSEES APRES ELLE RESTENT (Movsar,
   // 2026-10-13 : « quand ils choisissent l heure d arrivee on peut pas
-  // choisir les heures qu on veut pour les autres activites ») : la liste des
-  // arrivees les a jugees avec elles. Retouchee, l arrivee se retire.
+  // choisir les heures qu on veut pour les autres activites ») ; celles
+  // d avant se liberent, le serveur les replace apres elle, la visite le dit
+  // (adaptation). La liste des arrivees a juge chacune ainsi. Retouchee,
+  // l arrivee se retire.
   function choisirArrivee(t, puce) {
-    state.arrivee = state.arrivee === t ? '' : t;
     adaptation = null;
+    if (state.arrivee === t) state.arrivee = '';
+    else {
+      state.arrivee = t;
+      var avant = poseesAvant(t), liberees = avant.pins.slice();
+      avant.pins.forEach(function (id) { delete state.pins[id]; });
+      if (avant.parties.length) {
+        liberees.push('laser_game');
+        if (state.laserParts.length) state.laserParts = avant.restantes;
+        if (avant.restantes.length) state.pins.laser_game = avant.restantes[0]; else delete state.pins.laser_game;
+      }
+      if (liberees.length) adaptation = { liberees: liberees, pour: 'arrivee', t: t };
+    }
     $$('.fg-chip.is-pending', hourZone).forEach(function (c) { c.classList.remove('is-pending'); });
     if (puce) puce.classList.add('is-pending');
     chargerPlan();
@@ -3844,7 +3918,7 @@
     }
     adaptation = null;
     var vague = chip.dataset.state === 'wave' && chip.dataset.wave ? JSON.parse(chip.dataset.wave) : null;
-    if ((chip.dataset.state === 'shift' || (vague && chip.dataset.sous === 'shift')) && chip.dataset.conflict) {
+    if ((chip.dataset.state === 'shift' || (vague && chip.dataset.sous === 'shift')) && chip.dataset.conflict && chip.dataset.conflict !== 'arrivee') {
       // L heure chevauche l AUTRE activite posee : c est l AUTRE qui bouge. Le
       // bowling se leve, le moteur le replace autour de l heure choisie. Une
       // partie de laser parmi d autres se libere seule et passe sans heure
@@ -3859,6 +3933,15 @@
         if (autre === 'laser_game') state.laserParts = [];
         adaptation = { deplace: autre, pour: idA, t: t };
       }
+    }
+    // UNE HEURE PRISE AVANT L ARRIVEE CHOISIE, ou pendant son accueil : le
+    // dernier choix gagne, l arrivee tombe et le plan la conseille juste avant
+    // la premiere activite (la grille l a dit « décale » : arrival_before,
+    // arrival_welcome). Une partie de laser deplacee la-bas fait de meme.
+    var accueil = Number(arrivees.bornes && arrivees.bornes.welcomeMinutes) || 0;
+    if (state.arrivee && minutesDe(t) < minutesDe(state.arrivee) + accueil) {
+      if (!adaptation) adaptation = { deplace: 'arrivee', pour: idA, t: t, avant: state.arrivee };
+      state.arrivee = '';
     }
     var count = Number(track.dataset.count) || 1;
     if (idA === 'laser_game' && count > 1) {
@@ -4459,8 +4542,12 @@
     var parArrivee = plan.arrivalPlan || null, attenteA = parArrivee ? Number(parArrivee.waitMinutes) || 0 : 0;
     if (arrivee) {
       var avance = parts.length ? minutesEntre(arrivee, parts[0].debut) : 0;
+      // L arrivee choisie que l heure d une activite a fait avancer (le dernier
+      // choix gagne) : la ligne le dit.
+      var avancee = !parArrivee && adaptation && adaptation.deplace === 'arrivee' && adaptation.avant ? 'au lieu de ' + adaptation.avant : '';
       lignes += etapeVisite(parArrivee ? { genre: 'in', heure: arrivee, titre: 'Arrivée', detail: typo('à votre heure' + (attenteA > 0 ? ' · ' + dureeExacte(attenteA) + ' d’attente en tout' : '')) }
-        : { genre: 'in', heure: arrivee, titre: 'Arrivée conseillée', detail: avance > 0 ? avance + ' min avant votre ' + nomBas(premiere) : 'on vous accueille' });
+        : { genre: 'in', heure: arrivee, titre: 'Arrivée conseillée', detail: [avance > 0 ? avance + ' min avant votre ' + nomBas(premiere) : 'on vous accueille', avancee].filter(Boolean).join(' · '), bouge: Boolean(avancee) });
+      if (avancee) dits.push('Arrivée avancée, ' + avancee);
     }
     function lignePartie(p) {
       var it = items.filter(function (x) { return x.activityId === p.id; })[0] || {};
@@ -4469,10 +4556,14 @@
       // « partie 2 sur 3 » compte les PARTIES (countIndex), jamais les groupes
       // d une meme partie : un grand groupe joue chaque partie en plusieurs.
       var quoi = total > 1 ? 'partie ' + p.partie + ' sur ' + total : total === 1 ? '1 partie' : (detailSessions(it) || (it.minutes ? minutesLabel(it.minutes) + (p.groupes.length > 1 ? ' par groupe' : '') : ''));
-      var bouge = Boolean(adaptation && adaptation.deplace === p.id);
+      // Deplacee pour une autre heure posee, ou liberee par l arrivee choisie
+      // et replacee apres elle (une partie de laser gardee, elle, n a pas bouge).
+      var replacee = Boolean(adaptation && adaptation.liberees && adaptation.liberees.indexOf(p.id) >= 0
+        && (p.id !== 'laser_game' || state.laserParts.indexOf(p.debut) < 0));
+      var bouge = Boolean(adaptation && adaptation.deplace === p.id) || replacee;
       var jeuPartie = p.id === 'laser_game' && dureeLaser() ? dureeLaser().jeu : 0;
       var detail = [participantsLigne(it), jeuPartie ? jeuPartie + ' min de jeu' : '', p.fin ? 'jusqu’à ' + heureAffichee(p.fin) + (jeuPartie ? ' avec les règles et la préparation' : '') : '', texteGroupes(p, true), p.pistes > 0 ? p.pistes + ' piste' + (p.pistes > 1 ? 's' : '') : '',
-        bouge ? 'déplacé pour votre ' + nomActivite(adaptation.pour) + ' à ' + adaptation.t : ''].filter(Boolean).join(' · ');
+        replacee ? 'replacé après votre arrivée (' + adaptation.t + ')' : bouge ? 'déplacé pour votre ' + nomActivite(adaptation.pour) + ' à ' + adaptation.t : ''].filter(Boolean).join(' · ');
       // La frise dit ses attentes elle-meme : son ecart ne se recompte pas.
       if (!parLaFrise && finPrec) ligneAttente(minutesEntre(finPrec, p.debut));
       var duree = minutesEntre(p.debut, p.fin);

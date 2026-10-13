@@ -14,10 +14,12 @@
 //       proposee ou non ; sans reglage dans la meta, ou arrivalFirst false,
 //       la ligne reste la borne d arrivee d avant ;
 //   [B] la liste des heures d arrivee ne part qu a l ouverture de sa ligne ;
-//       chaque heure dit si elle tient et sinon pourquoi (le mot court, une
-//       ligne par cause sous la plage, la phrase longue du serveur en titre) ;
-//       une heure choisie pose le bowling et le laser du serveur ; la ligne du
-//       bowling garde ses heures, jugees avec l arrivee ;
+//       chaque heure dit si elle tient (le mot court, une ligne par cause sous
+//       la plage) ; une longue attente se dit « attente », en fourchette et
+//       avec sa cause, et se prend (Movsar, 2026-10-13 : « si y a un petit
+//       probleme tu le notifies mais on peut quand meme cliquer ») ; une heure
+//       choisie pose le bowling et le laser du serveur ; la ligne du bowling
+//       garde ses heures, jugees avec l arrivee ;
 //   [C] arriver a 10:00 quand tout est pris jusqu a 10:30 : les arcades a
 //       10:00, le bowling a 10:30, le laser apres, la fin du serveur ; 10:00
 //       partout, l accueil compris (jamais 09:50) ; le blocage et la
@@ -29,18 +31,24 @@
 //       sans grille garde au bowling l heure du plan de l arrivee ;
 //   [E] le centre coupe l arrivee (arrivalBounds.arrivalFirst false, dans la
 //       liste ou dans le plan) : l option disparait, l arrivee choisie tombe ;
-//   [F] une arrivee prise entre la liste et le choix : le refus du serveur,
-//       la liste relue, l arrivee suivante proposee d un toucher ;
+//   [F] une arrivee devenue impossible entre la liste et le choix (le
+//       bowling bloque au planning) : le refus du serveur, la liste relue, la
+//       phrase longue du serveur en titre de la puce, l arrivee suivante
+//       proposee d un toucher ;
 //   [G] au telephone (360 px) : rien ne deborde, des cibles de 44 px, le
 //       focus se voit, les memes boutons que les heures des activites ;
 //   [H] (2026-10-13, Movsar : « quand ils choisissent l heure d arrivee on
-//       peut pas choisir les heures qu on veut pour les autres activites »)
-//       journee libre : arriver a 10:30, puis le bowling a 11:30, l arrivee
-//       reste ; l heure proposee est celle du plan de l arrivee ; avant
-//       l arrivee « trop tôt », a l arrivee « accueil », loin d elle
-//       « attente » (au moins) ; la liste des arrivees se relit avec le
-//       bowling pose ; une autre arrivee garde le bowling ; une reponse
-//       d arrivee sans grille garde les lignes du programme.
+//       peut pas choisir les heures qu on veut pour les autres activites »,
+//       puis « on peut prendre l heure qu on veut, juste si c est vraiment
+//       impossible on peut pas ») journee libre : arriver a 10:30, puis le
+//       bowling a 11:30, l arrivee reste ; l heure proposee est celle du plan
+//       de l arrivee ; avant l arrivee et a son accueil, le bowling « décale »
+//       (il avance l arrivee), loin d elle « attente », tout se prend ; la
+//       liste des arrivees se relit avec le bowling pose ; une autre arrivee
+//       garde le bowling ; une arrivee apres lui le libere et le serveur le
+//       replace apres elle ; un bowling avant l arrivee la fait tomber, le
+//       plan la conseille juste avant lui ; une reponse d arrivee sans grille
+//       garde les lignes du programme.
 //   --mutate : une regle cassee a la fois, en memoire (le formulaire servi au
 //       navigateur, ou le moteur compile pour le serveur) : chacune doit faire
 //       rougir le gate ; le disque n est jamais ecrit, et on le verifie.
@@ -131,27 +139,43 @@ const MUTATIONS = [
     de: 'defauts = (state.arrivee ? plan0.anchorPlan && plan0.anchorPlan.times : a0.defaultTimes) || {};', vers: 'defauts = a0.defaultTimes || {};' },
   { nom: 'la ligne d arrivee promet des arcades a toute formule', fichier: JS, scenarios: ['D'],
     de: "'À votre heure : ' + nomBas(libres[0].label) + ' en attendant '", vers: "'À votre heure : arcades en attendant '" },
-  { nom: 'une arrivee refusee pour l attente perd son mot court', fichier: JS, scenarios: ['B'],
-    de: "    arrival_wait: 'attente', arrival_visit: 'trop long', arrival_full: 'complet', arrival_before: 'trop tôt', arrival_welcome: 'accueil', arrival_after_anchor: 'trop tard' };",
-    vers: "    arrival_visit: 'trop long', arrival_full: 'complet', arrival_before: 'trop tôt', arrival_welcome: 'accueil', arrival_after_anchor: 'trop tard' };" },
+  { nom: 'une arrivee avec attente perd son mot « attente »', fichier: JS, scenarios: ['B'],
+    de: "  var MOTS_AVIS = { arrival_wait: 'attente', arrival_visit: 'longue' };", vers: "  var MOTS_AVIS = { arrival_visit: 'longue' };" },
+  { nom: 'une longue attente refuse de nouveau l arrivee (serveur)', fichier: 'lib/ops-engine.js', scenarios: ['B'],
+    de: "      return { ok: true, code: '', reason: '', scenario: decorated, arrival: borne, warning: warning || avis };",
+    vers: '      return { ok: false, code: borne.code, reason: borne.reason, scenario: decorated, arrival: borne };' },
   { nom: 'la ligne sous la plage ne dit plus l attente en fourchette', fichier: JS, scenarios: ['B'],
-    de: '    if (x && x.minutes) {', vers: '    if (false) {' },
-  { nom: 'la phrase longue du serveur n est plus en titre', fichier: JS, scenarios: ['B'],
+    de: "    if (g.etat === 'soft' && avis && avis.minutes) {", vers: '    if (false) {' },
+  { nom: 'la ligne d une attente ne dit plus sa cause', fichier: JS, scenarios: ['B'],
+    de: "      var pourquoi = avis.cause ? (/^avec /i.test(avis.cause) ? ', ' : ' : ') + minuscule(avis.cause)", vers: "      var pourquoi = false ? ''" },
+  { nom: 'la phrase longue du serveur n est plus en titre', fichier: JS, scenarios: ['F'],
     de: "      if (refus && x.reason) chip.setAttribute('title', x.reason);", vers: '      void 0;' },
-  { nom: 'choisir une arrivee efface les heures posees', fichier: JS, scenarios: ['H'],
-    de: "    state.arrivee = state.arrivee === t ? '' : t;\n    adaptation = null;",
-    vers: "    state.arrivee = state.arrivee === t ? '' : t;\n    state.pins = {}; state.laserParts = [];\n    adaptation = null;" },
+  { nom: 'choisir une arrivee efface toutes les heures posees', fichier: JS, scenarios: ['H'],
+    de: '      avant.pins.forEach(function (id) { delete state.pins[id]; });',
+    vers: '      Object.keys(state.pins).forEach(function (id) { delete state.pins[id]; }); state.laserParts = [];' },
+  { nom: 'choisir une arrivee garde les heures posees avant elle', fichier: JS, scenarios: ['H'],
+    de: '      avant.pins.forEach(function (id) { delete state.pins[id]; });', vers: '      void 0;' },
   { nom: 'la liste des arrivees part sans les heures posees', fichier: JS, scenarios: ['H'],
     de: "    if (liste) { q.set('arrivals', '1'); return '/api/public-availability?' + q.toString(); }",
     vers: "    if (liste) { q.delete('preferredTimes'); q.delete('laserGameTimes'); q.set('arrivals', '1'); return '/api/public-availability?' + q.toString(); }" },
   { nom: 'les heures du bowling se cachent quand une arrivee est choisie', fichier: JS, scenarios: ['H'],
     de: "      if (alt) alt.hidden = e.etat === 'choisi' || e.etat === 'surplace';\n    });",
     vers: "      if (alt) alt.hidden = e.etat === 'choisi' || e.etat === 'surplace';\n      var pisteE = $('.fg-etape__piste', li); if (pisteE && e.cle !== 'arrivee') pisteE.hidden = Boolean(state.arrivee);\n    });" },
-  { nom: 'une heure a l accueil perd son mot', fichier: JS, scenarios: ['H'],
-    de: "arrival_before: 'trop tôt', arrival_welcome: 'accueil', arrival_after_anchor: 'trop tard' };", vers: "arrival_before: 'trop tôt', arrival_after_anchor: 'trop tard' };" },
-  { nom: 'une attente minimale se dit en fourchette', fichier: JS, scenarios: ['H'],
-    de: "      var duree = x.auMoins ? 'au moins ' + dureeExacte(mini) : dureeExacte(mini) + (maxi > mini ? ' à ' + dureeExacte(maxi) : '');",
-    vers: "      var duree = dureeExacte(mini) + (maxi > mini ? ' à ' + dureeExacte(maxi) : '');" },
+  { nom: 'une heure avant l arrivee ne decale plus, elle se refuse', fichier: JS, scenarios: ['H'],
+    de: '  var DECALENT = { anchor_overlap: 1, arrival_before: 1, arrival_welcome: 1 };', vers: '  var DECALENT = { anchor_overlap: 1 };' },
+  { nom: 'une heure prise avant l arrivee la garde', fichier: JS, scenarios: ['H'],
+    de: "      if (!adaptation) adaptation = { deplace: 'arrivee', pour: idA, t: t, avant: state.arrivee };\n      state.arrivee = '';",
+    vers: '      void 0;' },
+  { nom: 'la visite ne dit plus l arrivee avancee', fichier: JS, scenarios: ['H'],
+    de: "avancee].filter(Boolean).join(' · '), bouge: Boolean(avancee) });", vers: "''].filter(Boolean).join(' · ') });" },
+  { nom: 'une arrivee qui libere le bowling ne se dit plus « décale »', fichier: JS, scenarios: ['H'],
+    de: "    if (t.libere) return { etat: 'shift', mot: 'décale', raison: t.libere.raison, conflit: t.libere };", vers: '' },
+  { nom: 'la visite ne dit plus le bowling replace apres l arrivee', fichier: JS, scenarios: ['H'],
+    de: "        replacee ? 'replacé après votre arrivée (' + adaptation.t + ')' : bouge ?", vers: '        bouge ?' },
+  { nom: 'la liste ne libere plus les heures posees avant chaque arrivee (serveur)', fichier: 'api/public-availability.js', scenarios: ['H'],
+    de: '          const garde = (texte) => !(minutesDe(texte) < seuil);', vers: '          const garde = () => true;' },
+  { nom: 'l attente d une activite ne dit plus depuis quelle arrivee', fichier: JS, scenarios: ['H'],
+    de: "        : g.piste !== 'arrivee' && state.arrivee ? ' après votre arrivée (' + state.arrivee + ')' : '';", vers: "        : '';" },
   { nom: 'la reponse d une arrivee ne porte plus la grille jugee avec elle (serveur)', fichier: 'api/public-availability.js', scenarios: ['H'],
     de: '            anchorMeta = formulaArrivalAnchorGrid({ centerId, date, formuleId, pax, duration, arrival: heureArrivee, preference: posees, anchorMeta, snapshot, guardFor: gardeDuPlan, proposees: entree.ok ? entree.anchors : null });',
     vers: '            void formulaArrivalAnchorGrid;' },
@@ -160,7 +184,7 @@ const MUTATIONS = [
   { nom: 'une arrivee choisie reste quand le centre la coupe', fichier: JS, scenarios: ['E'],
     de: '    if (state.arrivee && j.arrivalBounds && j.arrivalBounds.arrivalFirst === false) {', vers: '    if (false) {' },
   { nom: 'la puce d arrivee ignore l avertissement du moteur', fichier: JS, scenarios: ['D'],
-    de: 'reason: court, warning: x.warning }', vers: 'reason: court }' },
+    de: 'reason: court, warning: x.warning, libere: libere }', vers: 'reason: court, libere: libere }' },
   { nom: 'la liste des arrivees perd l avertissement de la porte (serveur)', fichier: 'lib/ops-engine.js', scenarios: ['D'],
     de: '    ...(choix.result.warning ? { warning: choix.result.warning } : {}),', vers: '    ...({}),' },
   { nom: 'une arrivee refusee laisse la liste perimee', fichier: JS, scenarios: ['F'],
@@ -264,9 +288,16 @@ function pleines(date, debut, fin) {
   }
   return dossiers;
 }
+// Le bowling bloque au planning sur [debut, fin) (la console, « Entretien ») :
+// une arrivee a 10:00 devient impossible (la garde finale de la creation),
+// 10:30 tient.
+function blocageBowling(date, debut, fin) {
+  return [{ id: 530, centerId: 'libramont', date, scopeType: 'activity', scopeRef: 'bowling', startMin: minutesDe(debut), endMin: minutesDe(fin), recurrence: 'once', reason: 'Entretien' }];
+}
 function semer(mock, plages) {
   mock.blocagesDev.clear();
   mock.occupationDev.length = 0;
+  mock.blocsDev.length = 0;
   mock.dernierePose.body = null;
   mock.dernierePose.blocages.length = 0;
   plages.forEach(([debut, fin]) => mock.occupationDev.push(...pleines(mock.DATE, debut, fin)));
@@ -451,6 +482,15 @@ function toucher(page, piste, heure) {
     return true;
   }, { id: piste, h: heure });
 }
+// Une heure d une plage repliee : sa plage s ouvre d abord, comme au doigt.
+async function ouvrirPlage(page, piste, heure) {
+  await page.evaluate(({ id, h }) => {
+    const c = document.querySelector(`.fg-track[data-activity="${id}"] .fg-chip[data-time="${h}"]`);
+    const sec = c && c.closest('.fg-period');
+    if (sec && !sec.classList.contains('is-open')) sec.querySelector('.fg-period__btn').click();
+  }, { id: piste, h: heure });
+  await page.waitForTimeout(450);
+}
 async function ouvrirArrivees(page) {
   await page.click('#hourZone .fg-etape[data-cle="arrivee"] .fg-etape__tete');
   const chargee = await attendre(page, () => document.querySelectorAll('.fg-track[data-activity="arrivee"] .fg-chip').length > 0, 20000);
@@ -574,38 +614,34 @@ async function scenarioB(browser, mock) {
         if (p.ok !== 'false' || p.etat !== 'hard' || !p.mot) ecarts.push(`${x.time} refusee (${x.code}) : ${p.ok}/${p.etat}/« ${p.mot} »`);
         if (p.titre !== norm(x.reason)) ecarts.push(`${x.time} titre « ${p.titre} » au lieu de « ${x.reason} »`);
       } else if (x.warning) {
-        if (p.etat !== 'soft' || p.mot !== 'serré') ecarts.push(`${x.time} serree : ${p.etat}/« ${p.mot} »`);
+        const mot = ({ arrival_wait: 'attente', arrival_visit: 'longue' })[x.warning.code] || 'serré';
+        if (p.etat !== 'soft' || p.ok !== 'true' || p.mot !== mot) ecarts.push(`${x.time} avec avis (${x.warning.code}) : ${p.ok}/${p.etat}/« ${p.mot} »`);
       } else if (p.ok !== 'true' || p.mot !== '') ecarts.push(`${x.time} libre : ${p.ok}/« ${p.mot} »`);
     });
-    ok(puces.length === entrees.length && ecarts.length === 0, 'chaque heure d arrivee a sa puce et son verdict : libre sans mot, refusee avec son mot court et la phrase du serveur en titre', ecarts.slice(0, 4).join(' | '));
-    const attentes = entrees.filter((x) => x.ok === false && x.code === 'arrival_wait');
-    ok(attentes.length >= 2, `MONTAGE des arrivees refusees pour l attente sans activite (${attentes.map((x) => x.time).join(', ')})`);
-    ok(attentes.length > 0 && attentes.every((x) => puceDe(x.time).mot === 'attente'), 'une arrivee refusee pour l attente se dit « attente » sur sa puce', attentes.map((x) => `${x.time}:${puceDe(x.time).mot}`).join(' '));
+    ok(puces.length === entrees.length && ecarts.length === 0, 'chaque heure d arrivee a sa puce et son verdict : libre sans mot, avec un avis son mot (« attente ») et prenable, refusee avec son mot court', ecarts.slice(0, 4).join(' | '));
+    // UNE LONGUE ATTENTE SE DIT ET SE PREND (Movsar, 2026-10-13 : « si y a un
+    // petit probleme tu le notifies mais on peut quand meme cliquer »).
+    const attentes = entrees.filter((x) => x.ok && x.warning && x.warning.code === 'arrival_wait');
+    ok(attentes.length >= 2 && !entrees.some((x) => x.ok === false && x.code === 'arrival_wait'), `MONTAGE des arrivees qui attendent sans activite, aucune refusee pour ca (${attentes.map((x) => x.time).join(', ')})`);
+    ok(attentes.length > 0 && attentes.every((x) => puceDe(x.time).mot === 'attente' && puceDe(x.time).ok === 'true'), 'une arrivee qui attend se dit « attente » sur sa puce, et se prend', attentes.map((x) => `${x.time}:${puceDe(x.time).mot}/${puceDe(x.time).ok}`).join(' '));
     const pourquoi = await lirePourquoi(page, 'arrivee');
     const lAttente = pourquoi.find((l) => attentes.length > 0 && attentes.every((x) => l.heures.includes(x.time))) || null;
-    const minutes = attentes.map((x) => Number(x.waitMinutes) || 0);
+    const minutes = attentes.map((x) => Number(x.warning.waitMinutes) || 0);
     const bas = libelleDuree(Math.min(...minutes));
     const haut = libelleDuree(Math.max(...minutes));
-    ok(Boolean(lAttente) && lAttente.cle === 'attente' && /attente/i.test(lAttente.texte) && lAttente.texte.includes(bas) && lAttente.texte.includes(haut) && /sans activit/.test(lAttente.texte),
-      `sous la plage, une ligne pour ces heures : l attente sans activite, en fourchette (${bas} a ${haut})`, JSON.stringify(lAttente || pourquoi));
-    ok(Boolean(lAttente) && attentes.every((x) => puceDe(x.time).decrite === lAttente.id), 'chaque heure refusee pointe sa ligne (aria-describedby)');
+    const cause = attentes.length ? minuscule(norm(attentes[0].warning.cause)) : '';
+    ok(Boolean(lAttente) && lAttente.cle === 'attente' && lAttente.etat === 'soft' && lAttente.texte.includes(bas) && lAttente.texte.includes(haut) && /sans activit/.test(lAttente.texte) && Boolean(cause) && lAttente.texte.includes(cause),
+      `sous la plage, une ligne pour ces heures : l attente sans activite, en fourchette (${bas} a ${haut}), et sa cause (${cause})`, JSON.stringify(lAttente || pourquoi));
+    ok(Boolean(lAttente) && attentes.every((x) => puceDe(x.time).decrite === lAttente.id), 'chaque heure qui attend pointe sa ligne (aria-describedby)');
     const cles = lisible(await page.evaluate((t) => {
       const puce = document.querySelector(`.fg-track[data-activity="arrivee"] .fg-chip[data-time="${t}"]`);
       const sec = puce && puce.closest('.fg-period');
       return sec ? [...sec.querySelectorAll('.fg-period__keys .fg-key')].map((k) => k.textContent) : [];
     }, attentes.length ? attentes[0].time : ''));
     ok(cles.includes('attente'), 'l en-tete de la plage le dit aussi, comme pour les heures des activites', cles.join(','));
-    // Une arrivee refusee touchee : elle s explique, elle ne se prend pas.
-    if (attentes.length) {
-      const n = suivi.demandes.length;
-      await page.click(`.fg-track[data-activity="arrivee"] .fg-chip[data-time="${attentes[0].time}"]`);
-      await page.waitForTimeout(450);
-      const lue = (await lirePourquoi(page, 'arrivee')).find((l) => l.heures.includes(attentes[0].time));
-      ok(suivi.demandes.length === n && Boolean(lue && lue.lit), 'toucher une arrivee refusee ne la choisit pas : sa ligne s eclaire, aucune demande ne part', `${suivi.demandes.length - n} demande(s)`);
-    }
-    // La premiere arrivee qui tient, choisie.
+    // La premiere arrivee, choisie : elle attend, elle se prend quand meme.
     const premiere = entrees.find((x) => x.ok) || null;
-    if (!ok(Boolean(premiere), 'MONTAGE une arrivee tient ce jour-la')) return;
+    if (!ok(Boolean(premiere) && attentes.length > 0 && premiere.time === attentes[0].time, 'MONTAGE la premiere arrivee du jour est l une de celles qui attendent', premiere && premiere.time)) return;
     await page.click(`.fg-track[data-activity="arrivee"] .fg-chip[data-time="${premiere.time}"]`);
     await calme(page);
     const rep = await reponseAttendue(suivi, (u) => params(u).get('arrival') === premiere.time);
@@ -614,6 +650,8 @@ async function scenarioB(browser, mock) {
     const plan = (slot && slot.opsPlan) || {};
     const heures = (plan.anchorPlan && plan.anchorPlan.times) || {};
     ok(Boolean(slot) && plan.arrivalPlan && plan.arrivalPlan.arrivalTime === premiere.time, `MONTAGE l arrivee de ${premiere.time} se compose (bowling ${heures.bowling}, laser ${heures.laser_game})`, rep && rep.message);
+    ok(Boolean(slot) && rep.arrival && rep.arrival.ok === true && rep.arrival.warning && rep.arrival.warning.code === 'arrival_wait',
+      `l arrivee de ${premiere.time}, qui attend, se reserve : le plan se compose, avec son avis`, JSON.stringify(rep && rep.arrival && rep.arrival.warning));
     ok(Boolean(url) && JSON.stringify([...params(url).keys()]) === JSON.stringify(['centerId', 'date', 'pax', 'type', 'formuleId', 'arrival']),
       'l heure choisie part seule, en dernier, sans heure d activite posee', url);
     const apres = await lireProgramme(page);
@@ -758,7 +796,8 @@ async function scenarioD(browser, mock) {
     const entrees = (liste && liste.arrivals) || [];
     const puces = await lirePuces(page, 'arrivee');
     const pourquoi = await lirePourquoi(page, 'arrivee');
-    const serree = entrees.find((x) => x.ok && x.warning && x.warning.reason) || null;
+    // L avis de la fermeture, pas celui d une attente (« attente », en [B]).
+    const serree = entrees.find((x) => x.ok && x.warning && x.warning.reason && !['arrival_wait', 'arrival_visit'].includes(x.warning.code)) || null;
     if (ok(Boolean(serree), 'MONTAGE une arrivee du soir tient, mais sa visite deborde la fermeture : le serveur la donne avec son avertissement', entrees.filter((x) => x.ok).slice(-2).map((x) => x.time).join(', '))) {
       const p = puces.find((c) => c.time === serree.time) || {};
       ok(p.etat === 'soft' && p.mot === 'serré' && p.ok === 'true' && p.titre === norm(serree.warning.reason), `${serree.time} se dit « serré », reste possible, la raison du moteur en titre`, JSON.stringify(p));
@@ -888,9 +927,9 @@ async function scenarioE(browser, mock) {
 // [F] UNE ARRIVEE PRISE ENTRE LA LISTE ET LE CHOIX
 // ---------------------------------------------------------------------------
 async function scenarioF(browser, mock) {
-  section('F. UNE ARRIVEE PRISE ENTRE LA LISTE ET LE CHOIX');
+  section('F. UNE ARRIVEE DEVENUE IMPOSSIBLE ENTRE LA LISTE ET LE CHOIX');
   reglage = REGLAGE;
-  semer(mock, [['10:00', '10:30']]);
+  semer(mock, []);
   const { ctx, page, suivi } = await ouvrir(browser);
   try {
     const arrive = await versHeures(page, mock, 'f1');
@@ -899,8 +938,11 @@ async function scenarioF(browser, mock) {
     const avant = await lirePuces(page, 'arrivee');
     const listes = suivi.demandes.filter(estListe).length;
     if (!ok(arrive && (avant.find((c) => c.time === '10:00') || {}).ok === 'true', 'MONTAGE la liste dit qu arriver a 10:00 tient')) return;
-    // Un autre groupe prend tout jusqu a 12:00 pendant que le client hesite.
-    mock.occupationDev.push(...pleines(mock.DATE, '10:30', '12:00'));
+    // Le centre bloque le bowling au planning de 10:00 a 10:30 pendant que le
+    // client hesite : la garde finale de la creation refuse une arrivee a
+    // 10:00, 10:30 tient. Une longue attente, elle, ne refuse plus rien
+    // (2026-10-13) : c est un vrai impossible qu il faut ici.
+    mock.blocsDev.push(...blocageBowling(mock.DATE, '10:00', '10:30'));
     await page.click('.fg-track[data-activity="arrivee"] .fg-chip[data-time="10:00"]');
     await calme(page);
     await attendre(page, () => document.querySelector('#planZone .fg-notice'), 8000);
@@ -912,6 +954,13 @@ async function scenarioF(browser, mock) {
     ok(v.vers.length === 1 && v.vers[0].heure === suivante && v.vers[0].texte === `Arriver à ${suivante}`, `un toucher propose l arrivee suivante qui tient (${suivante})`, JSON.stringify(v.vers));
     const relue = await attendre(page, () => { const c = document.querySelector('.fg-track[data-activity="arrivee"] .fg-chip[data-time="10:00"]'); return Boolean(c && c.dataset.ok === 'false'); }, 12000);
     ok(relue && suivi.demandes.filter(estListe).length === listes + 1, 'la liste ouverte se relit : 10:00 s y dit refusee, comme le plan', `${suivi.demandes.filter(estListe).length - listes} relecture(s)`);
+    const listeRelue = await reponseAttendue(suivi, estListe);
+    const dixRelue = ((listeRelue && listeRelue.arrivals) || []).find((x) => x.time === '10:00') || {};
+    const puceRelue = (await lirePuces(page, 'arrivee')).find((c) => c.time === '10:00') || {};
+    // Elle reste « choisi » (le refus se lit dans la visite, avec l arrivee
+    // suivante) ; son titre dit pourquoi.
+    ok(dixRelue.ok === false && puceRelue.etat === 'hard' && puceRelue.ok === 'false' && Boolean(dixRelue.reason) && puceRelue.titre === norm(dixRelue.reason),
+      'la puce refusee porte la phrase longue du serveur en titre', `${JSON.stringify(puceRelue)} / ${dixRelue.reason}`);
     await page.click('#planZone [data-arrivee-vers]');
     await calme(page);
     const lA = ligneDe(await lireProgramme(page), 'arrivee');
@@ -1031,15 +1080,19 @@ async function scenarioH(browser, mock) {
     // sans arrivee (10:00) se disait « proposé » sur une heure refusee.
     ok(Boolean(heures.bowling) && p(heures.bowling).mot === 'proposé' && puces.filter((c) => c.mot === 'proposé').length === 1,
       `le bowling propose est celui du plan de l arrivee (${heures.bowling}), et lui seul`, puces.filter((c) => c.mot === 'proposé').map((c) => c.time).join(', '));
-    ok(p('10:00').ok === 'false' && p('10:00').mot === 'trop tôt', 'le bowling de 10:00, avant l arrivee de 10:30, se dit « trop tôt »', JSON.stringify(p('10:00')));
-    ok(p('10:30').ok === 'false' && p('10:30').mot === 'accueil', 'le bowling de 10:30, a l heure de l arrivee, se dit « accueil »', JSON.stringify(p('10:30')));
+    // AVANT L ARRIVEE ET A SON ACCUEIL, le bowling se prend : il avance
+    // l arrivee (« décale »). Loin d elle, il attend (« attente ») et se prend.
+    ok(p('10:00').ok === 'true' && p('10:00').etat === 'shift' && p('10:00').mot === 'décale', 'le bowling de 10:00, avant l arrivee de 10:30, se dit « décale » et se prend', JSON.stringify(p('10:00')));
+    ok(p('10:30').ok === 'true' && p('10:30').etat === 'shift' && p('10:30').mot === 'décale', 'le bowling de 10:30, a l accueil de l arrivee, se dit « décale » et se prend', JSON.stringify(p('10:30')));
     ok(p('11:30').ok === 'true', 'le bowling de 11:30 se prend avec cette arrivee', JSON.stringify(p('11:30')));
-    ok(p('16:00').ok === 'false' && p('16:00').mot === 'attente', 'le bowling de 16:00, loin de l arrivee, se dit « attente »', JSON.stringify(p('16:00')));
+    ok(p('16:00').ok === 'true' && p('16:00').etat === 'soft' && p('16:00').mot === 'attente', 'le bowling de 16:00, loin de l arrivee, se dit « attente » et se prend', JSON.stringify(p('16:00')));
     const pourquoi = await lirePourquoi(page, 'bowling');
     const lTot = pourquoi.find((l) => l.heures.includes('10:00')) || null;
-    ok(Boolean(lTot) && /avant votre arrivée/i.test(lTot.texte), 'sous la plage, la ligne de 10:00 dit « avant votre arrivée »', JSON.stringify(lTot));
+    ok(Boolean(lTot) && lTot.heures.includes('10:30') && lTot.cle === 'décale' && /avance votre arrivée \(10:30\)/i.test(lTot.texte) && /10 min avant votre bowling/.test(lTot.texte),
+      'sous la plage, une ligne pour 10:00 et 10:30 : elles avancent l arrivee (10:30), arrivee 10 min avant le bowling', JSON.stringify(lTot));
     const lLoin = pourquoi.find((l) => l.heures.includes('16:00')) || null;
-    ok(Boolean(lLoin) && /au moins/.test(lLoin.texte) && /sans activit/.test(lLoin.texte), 'l attente des heures lointaines se dit « au moins », sans fourchette inventee', JSON.stringify(lLoin));
+    ok(Boolean(lLoin) && lLoin.cle === 'attente' && /sans activit/.test(lLoin.texte) && /après votre arrivée \(10:30\)/.test(lLoin.texte) && !/au moins/.test(lLoin.texte),
+      'l attente des heures lointaines se dit en fourchette, depuis l arrivee (10:30)', JSON.stringify(lLoin));
     // Le bowling touche a 11:30 : l arrivee reste.
     const n = suivi.demandes.length;
     ok(await toucher(page, 'bowling', '11:30'), 'MONTAGE le bowling de 11:30 se touche');
@@ -1061,14 +1114,56 @@ async function scenarioH(browser, mock) {
     ok(listes.length === 1 && ptL.bowling === '11:30', 'la ligne d arrivee rouverte relit sa liste, avec le bowling pose a 11:30', listes.join(' | '));
     const pucesA = await lirePuces(page, 'arrivee');
     const a = (h) => pucesA.find((c) => c.time === h) || {};
-    ok(a('12:00').ok === 'false' && a('12:00').mot === 'trop tard', 'arriver a 12:00, apres le bowling pose a 11:30, se dit « trop tard »', JSON.stringify(a('12:00')));
-    // Une autre arrivee garde le bowling.
+    // LE DERNIER CHOIX GAGNE : une arrivee apres le bowling pose le libere, il
+    // se replacera apres elle. Elle se prend (« décale »), jamais « trop tard ».
+    ok(a('12:00').ok === 'true' && a('12:00').etat === 'shift' && a('12:00').mot === 'décale', 'arriver a 12:00, apres le bowling pose a 11:30, se dit « décale » et se prend', JSON.stringify(a('12:00')));
+    const lLibere = (await lirePourquoi(page, 'arrivee')).find((l) => l.heures.includes('12:00')) || null;
+    ok(Boolean(lLibere) && /votre bowling \(11:30\) se replacera après votre arrivée/i.test(lLibere.texte), 'sous la plage : « Votre bowling (11:30) se replacera après votre arrivée »', JSON.stringify(lLibere));
+    ok(a('11:00').ok === 'true' && a('11:00').etat !== 'shift', 'arriver a 11:00 garde le bowling de 11:30 : rien ne decale', JSON.stringify(a('11:00')));
+    // Une autre arrivee, avant le bowling, le garde.
     const nA = suivi.demandes.length;
     await page.click('.fg-track[data-activity="arrivee"] .fg-chip[data-time="11:00"]');
     await calme(page);
     const dem = suivi.demandes.slice(nA).filter((u) => !estListe(u)).pop() || '';
     const ptA = dem ? JSON.parse(params(dem).get('preferredTimes') || '{}') : {};
     ok(Boolean(dem) && params(dem).get('arrival') === '11:00' && ptA.bowling === '11:30', 'choisir une autre arrivee (11:00) garde le bowling pose (11:30)', dem);
+    // Une arrivee APRES le bowling (12:00) : le bowling se libere, la demande
+    // part sans lui, le serveur le replace apres l arrivee, la visite le dit.
+    if (!(ligneDe(await lireProgramme(page), 'arrivee') || {}).ouverte) await ouvrirArrivees(page);
+    await calme(page);
+    await ouvrirPlage(page, 'arrivee', '12:00');
+    const nM = suivi.demandes.length;
+    await page.click('.fg-track[data-activity="arrivee"] .fg-chip[data-time="12:00"]');
+    await calme(page);
+    const demM = suivi.demandes.slice(nM).filter((u) => !estListe(u)).pop() || '';
+    const repM = await reponseAttendue(suivi, (u) => params(u).get('arrival') === '12:00' && !params(u).has('preferredTimes'));
+    const heuresM = (((((repM && repM.slots && repM.slots[0]) || {}).opsPlan || {}).anchorPlan || {}).times) || {};
+    ok(Boolean(demM) && params(demM).get('arrival') === '12:00' && !params(demM).has('preferredTimes') && minutesDe(heuresM.bowling) >= minutesDe('12:10'),
+      `choisir l arrivee de 12:00 libere le bowling de 11:30 : la demande part sans lui, le serveur le replace a ${heuresM.bowling}`, demM);
+    const vM = await lireVisite(page);
+    const blocB = vM.etapes.find((e) => /bowling/i.test(e.titre)) || {};
+    ok(blocB.b === heuresM.bowling && /replacé après votre arrivée \(12:00\)/.test(blocB.detail), 'la visite dit le bowling replace apres l arrivee (12:00)', JSON.stringify(blocB));
+    const progM = await lireProgramme(page);
+    ok((ligneDe(progM, 'arrivee') || {}).heure === '12:00' && /is-choisi/.test((ligneDe(progM, 'arrivee') || {}).classe) && /is-propose/.test((ligneDe(progM, 'bowling') || {}).classe),
+      'le programme : arrivee 12:00 choisie, le bowling propose par le serveur', resumeLignes(progM));
+    // UN BOWLING AVANT L ARRIVEE (10:00) : il se prend, l arrivee tombe, le
+    // plan la conseille juste avant lui ; la visite dit qu elle a avance.
+    if (!(ligneDe(await lireProgramme(page), 'bowling') || {}).ouverte) {
+      await page.click('#hourZone .fg-etape[data-cle="bowling"] .fg-etape__tete');
+      await page.waitForTimeout(400);
+    }
+    const nT = suivi.demandes.length;
+    ok(await toucher(page, 'bowling', '10:00'), 'avec l arrivee de 12:00, le bowling de 10:00 se touche (« décale »)');
+    await calme(page);
+    const demT = suivi.demandes.slice(nT).filter((u) => !estListe(u)).pop() || '';
+    const ptT = demT ? JSON.parse(params(demT).get('preferredTimes') || '{}') : {};
+    ok(Boolean(demT) && !params(demT).has('arrival') && ptT.bowling === '10:00', 'la demande part avec le bowling de 10:00, sans l arrivee de 12:00', demT);
+    const progT = await lireProgramme(page);
+    const lAT = ligneDe(progT, 'arrivee') || {};
+    ok(lAT.heure === '09:50' && /is-propose/.test(lAT.classe) && /is-choisi/.test((ligneDe(progT, 'bowling') || {}).classe), 'le programme : le bowling 10:00 choisi, l arrivee conseillee a 09:50', resumeLignes(progT));
+    const vT = await lireVisite(page);
+    const arrT = vT.etapes.find((e) => /Arrivée/.test(e.titre)) || {};
+    ok(arrT.b === '09:50' && /au lieu de 12:00/.test(arrT.detail), 'la visite dit l arrivee avancee (au lieu de 12:00)', JSON.stringify(arrT));
     // Une reponse d arrivee sans grille (son calcul a echoue au serveur) : le
     // programme garde ses lignes, celles de la derniere demande sans arrivee.
     await page.route((url) => url.pathname === '/api/public-availability' && url.searchParams.has('arrival'), async (route) => {
@@ -1079,6 +1174,7 @@ async function scenarioH(browser, mock) {
     });
     // Une heure choisie replie la ligne d arrivee : la rouvrir pour en toucher une autre.
     if (!(ligneDe(await lireProgramme(page), 'arrivee') || {}).ouverte) await ouvrirArrivees(page);
+    await ouvrirPlage(page, 'arrivee', '10:30');
     await page.click('.fg-track[data-activity="arrivee"] .fg-chip[data-time="10:30"]');
     await calme(page);
     const prog3 = await lireProgramme(page);

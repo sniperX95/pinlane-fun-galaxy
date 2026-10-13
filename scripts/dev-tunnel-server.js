@@ -56,6 +56,9 @@ const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', ye
 // gate voit l echeance sans attendre dix minutes.
 const blocagesDev = new Map(); // jeton -> { dossier, expiresAt, etat }
 const occupationDev = [];
+// Les blocages du planning qu un gate y pose (une piste en entretien) : vide
+// par defaut, comme avant.
+const blocsDev = [];
 function dureeBlocageDev() { return Math.max(1, Number(process.env.PINLANE_DEVTUNNEL_HOLD_SECONDS) || 600) * 1000; }
 function blocagesActifsDev(sauf) {
   const maintenant = Date.now();
@@ -66,7 +69,7 @@ function blocagesActifsDev(sauf) {
 }
 database.readAvailabilitySnapshot = async (date, centerId, options = {}) => ({
   reservations: occupationDev.concat(blocagesActifsDev(String((options && options.saufJeton) || ''))),
-  laneStatuses: {}, blocks: [], date: DATE, centerId: 'libramont',
+  laneStatuses: {}, blocks: blocsDev.slice(), date: DATE, centerId: 'libramont',
 });
 // Le controle d un blocage ou d une confirmation : la vraie verification des
 // ressources. Le serveur de dev ne refuse QUE ce que les blocages des autres
@@ -419,7 +422,7 @@ function createServer(options = {}) {
   });
 }
 
-module.exports = { ACTIVITIES, DATE, TODAY, PORT, createServer, metaPayload, dernierePose, blocagesDev, occupationDev };
+module.exports = { ACTIVITIES, DATE, TODAY, PORT, createServer, metaPayload, dernierePose, blocagesDev, occupationDev, blocsDev };
 
 if (require.main === module) {
   createServer({ port: PORT }).listen(PORT, '127.0.0.1', () => {

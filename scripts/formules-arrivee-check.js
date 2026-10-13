@@ -16,9 +16,12 @@
 //       duree historique, signature d une demande sans arrivee inchangee ;
 //   [B] F1, 10 personnes, pistes et arene pleines de 10:00 a 10:30, arrivee
 //       10:00 : arcades d abord, bowling 10:30, laser apres ;
-//   [C] pleines jusqu a 12:00 : l attente depasse la borne, le refus dit
-//       pourquoi et propose la premiere arrivee possible ;
-//   [D] la borne de duree de la visite, explicite puis automatique ;
+//   [C] pleines jusqu a 12:00 : l attente depasse la borne, l arrivee se
+//       reserve quand meme et l avis dit pourquoi (Movsar, 2026-10-13 : « on
+//       peut prendre l heure qu on veut, juste si c est vraiment impossible on
+//       peut pas, et si y a un petit probleme tu le notifies ») ;
+//   [D] la borne de duree de la visite, explicite puis automatique : un avis,
+//       jamais un refus ;
 //   [E] la duree du minigolf (freeDurationPolicy) deplace la fin d une
 //       formule avec minigolf, aux deux endroits ou le moteur la lit ;
 //   [F] le POST avec preference.arrivalTime : dossier coherent, signature,
@@ -33,9 +36,11 @@
 //   [K] (2026-10-13) la reponse d une arrivee porte la grille du bowling et
 //       du laser, jugee avec elle : chaque heure dit ce que sa demande dira,
 //       « serré » compris, le soir aussi, et avec une partie de laser deja
-//       posee (Formule 4) ; ses heures proposees sont celles du plan de
-//       l arrivee, aucune quand elle est refusee ; la liste des arrivees se
-//       juge avec les heures deja posees.
+//       posee (Formule 4) ; une heure avant l arrivee ou pendant son accueil
+//       se prend et avance l arrivee ; ses heures proposees sont celles du
+//       plan de l arrivee, aucune quand elle est refusee ; la liste des
+//       arrivees se juge avec les heures posees apres chacune, celles d avant
+//       se liberent (le dernier choix gagne).
 //   --mutate : une mutation EN MEMOIRE par regle (crochet de compilation, le
 //       disque n est jamais ecrit, son empreinte est comparee avant et apres) ;
 //       chacune doit faire rougir ce gate.
@@ -531,7 +536,7 @@ async function scenarioB(H) {
 }
 
 // ---------------------------------------------------------------------------
-// [C] PLEINES JUSQU A 12:00 : L ATTENTE DEPASSE LA BORNE
+// [C] PLEINES JUSQU A 12:00 : L ATTENTE DEPASSE LA BORNE, L ARRIVEE SE PREND
 // ---------------------------------------------------------------------------
 async function scenarioC(H) {
   const v = [];
@@ -539,19 +544,29 @@ async function scenarioC(H) {
   const libre = H.engine.getFormulaAnchorModel(H.knowledge.getFormula('f1')).freeMinutes;
   const rep = await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00' });
   const arrivee = arriveeDe(rep);
-  const message = String((rep.json && rep.json.message) || '');
+  const avis = arrivee.warning || {};
   const attendue = minutesDe('12:00') - minutesDe('10:00') - libre;
-  v.push(verdict(rep.status === 200 && rep.json.slots.length === 0 && arrivee.ok === false && arrivee.code === 'arrival_wait', 'arriver a 10:00 est refuse pour l attente', `${arrivee.code} ${message}`));
-  v.push(verdict(arrivee.waitMinutes === attendue && arrivee.maxWaitMinutes === 30, `l attente sans activite vaut les deux heures prises moins le libre de la formule (${attendue} min), la borne 30 min`, `${arrivee.waitMinutes} / ${arrivee.maxWaitMinutes}`));
-  v.push(verdict(message.includes('12:00') && message.includes(libelleDuree(attendue)), `la raison dit jusqu a quand c est complet (12:00) et l attente (${libelleDuree(attendue)})`, message));
+  v.push(verdict(rep.status === 200 && rep.json.slots.length === 1 && arrivee.ok === true && avis.code === 'arrival_wait',
+    'arriver a 10:00 se reserve, avec un avis d attente (plus aucun refus)', `${arrivee.code || ''} ${arrivee.reason || ''} ${JSON.stringify(avis)}`));
+  v.push(verdict(arrivee.anchors && Object.values(arrivee.anchors).length === 2 && Math.min(...Object.values(arrivee.anchors).map(minutesDe)) === minutesDe('12:00'),
+    'le bowling et le laser se jouent des qu ils sont libres (12:00)', JSON.stringify(arrivee.anchors)));
+  v.push(verdict(avis.waitMinutes === attendue && arrivee.waitMinutes === attendue && avis.maxWaitMinutes === 30,
+    `l attente sans activite vaut les deux heures prises moins le libre de la formule (${attendue} min), la borne 30 min`, `${avis.waitMinutes} / ${arrivee.waitMinutes} / ${avis.maxWaitMinutes}`));
+  v.push(verdict(String(avis.reason).includes('12:00') && String(avis.reason).includes(libelleDuree(attendue)) && /complets? jusqu’à 12:00/.test(String(avis.cause)) && !/arriver/i.test(String(avis.cause)),
+    `l avis dit jusqu a quand c est complet (12:00) et l attente (${libelleDuree(attendue)}), sa cause sans l heure d arrivee`, `${avis.reason} | ${avis.cause}`));
+  // LA TRANSACTION : le POST de cette arrivee cree le dossier, aux heures que
+  // l ecran a montrees.
+  const post = await verdictDuPost(H, corpsFormule('f1', '10:00', { arrivalTime: '10:00' }));
+  v.push(verdict(post.ok === true && heuresDuPlan(post.ops.opsPlan) === JSON.stringify(arrivee.anchors || {}),
+    'le POST de cette arrivee se reserve, aux heures montrees', post.ok ? heuresDuPlan(post.ops.opsPlan) : post.raison));
   const liste = await H.get({ type: 'formule', formuleId: 'f1', arrivals: '1' });
   const entrees = (liste.json && liste.json.arrivals) || [];
-  const premiere = entrees.find((entree) => entree.ok);
-  v.push(verdict(premiere && premiere.time === '11:00' && entrees.filter((entree) => minutesDe(entree.time) < minutesDe('11:00')).every((entree) => !entree.ok),
-    'la premiere arrivee possible est 11:00 (10:00 et 10:30 attendraient trop)', JSON.stringify(entrees.slice(0, 3).map((entree) => [entree.time, entree.ok, entree.waitMinutes]))));
-  v.push(verdict(premiere && premiere.waitMinutes <= 30, 'a 11:00 l attente tient dans la borne', premiere && String(premiere.waitMinutes)));
-  v.push(verdict(arrivee.firstAcceptableTime === '11:00' && message.includes('11:00') && liste.json.firstAcceptableArrival === '11:00',
-    'le refus propose cette premiere arrivee (11:00), comme la liste', `${arrivee.firstAcceptableTime} | ${message}`));
+  const sansAvis = entrees.find((entree) => entree.ok && !entree.warning);
+  const avant = entrees.filter((entree) => minutesDe(entree.time) < minutesDe('11:00'));
+  v.push(verdict(sansAvis && sansAvis.time === '11:00' && avant.length === 2 && avant.every((entree) => entree.ok && entree.warning && entree.warning.code === 'arrival_wait' && entree.waitMinutes > 30),
+    'la liste : 10:00 et 10:30 se prennent avec leur avis d attente, 11:00 est la premiere sans', JSON.stringify(entrees.slice(0, 3).map((entree) => [entree.time, entree.ok, entree.waitMinutes, entree.warning && entree.warning.code]))));
+  v.push(verdict(sansAvis && sansAvis.waitMinutes <= 30, 'a 11:00 l attente tient dans la borne', sansAvis && String(sansAvis.waitMinutes)));
+  v.push(verdict(liste.json.firstAcceptableArrival === '10:00', 'la premiere arrivee possible est 10:00, l attente ne la retire pas', String(liste.json.firstAcceptableArrival)));
   return v;
 }
 
@@ -566,27 +581,30 @@ async function scenarioD(H) {
   await avecReglage(H, { maxWaitMinutes: 120, maxVisitMinutes: naturelle }, async () => {
     poserEtat({ reservations: pleines('10:00', '10:30') });
     const pile = arriveeDe(await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00' }));
-    v.push(verdict(pile.ok === true, `borne de duree a ${naturelle} min : une visite qui dure exactement la borne passe`, `${pile.code} ${pile.reason}`));
+    v.push(verdict(pile.ok === true && !pile.warning, `borne de duree a ${naturelle} min : une visite qui dure exactement la borne passe, sans avis`, `${pile.code} ${pile.reason} ${JSON.stringify(pile.warning)}`));
     poserEtat({ reservations: pleines('10:00', '12:00') });
     const rep = await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00' });
     const arrivee = arriveeDe(rep);
-    v.push(verdict(arrivee.ok === false && arrivee.code === 'arrival_visit' && arrivee.visitMinutes > naturelle && arrivee.maxVisitMinutes === naturelle,
-      'attente acceptee (120 min) mais visite trop longue : refus pour la duree', `${arrivee.code} ${arrivee.visitMinutes}/${arrivee.maxVisitMinutes}`));
-    v.push(verdict(String(rep.json.message || '').includes(libelleDuree(naturelle)), 'la raison dit la duree acceptee', rep.json.message));
+    const avis = arrivee.warning || {};
+    v.push(verdict(arrivee.ok === true && rep.json.slots.length === 1 && avis.code === 'arrival_visit' && avis.visitMinutes > naturelle && avis.maxVisitMinutes === naturelle,
+      'attente acceptee (120 min), visite plus longue que la borne : elle se reserve avec un avis de duree', `${arrivee.code || ''} ${JSON.stringify(avis)}`));
+    v.push(verdict(String(avis.reason).includes(libelleDuree(avis.visitMinutes)), 'l avis dit la duree de la visite', avis.reason));
     const entrees = ((await H.get({ type: 'formule', formuleId: 'f1', arrivals: '1' })).json || {}).arrivals || [];
-    const premiere = entrees.find((entree) => entree.ok);
-    v.push(verdict(premiere && premiere.visitMinutes <= naturelle && entrees.filter((entree) => minutesDe(entree.time) < minutesDe(premiere.time)).every((entree) => !entree.ok && entree.code === 'arrival_visit'),
-      `la premiere arrivee possible (${premiere && premiere.time}) tient dans la duree, les precedentes sont refusees pour la duree`, JSON.stringify(entrees.slice(0, 4).map((entree) => [entree.time, entree.code, entree.visitMinutes]))));
+    const sansAvis = entrees.find((entree) => entree.ok && !entree.warning);
+    const avant = sansAvis ? entrees.filter((entree) => minutesDe(entree.time) < minutesDe(sansAvis.time)) : [];
+    v.push(verdict(sansAvis && sansAvis.visitMinutes <= naturelle && avant.length > 0 && avant.every((entree) => entree.ok && entree.warning && entree.warning.code === 'arrival_visit'),
+      `la premiere arrivee sans avis (${sansAvis && sansAvis.time}) tient dans la duree, les precedentes se prennent avec l avis de duree`, JSON.stringify(entrees.slice(0, 4).map((entree) => [entree.time, entree.ok, entree.warning && entree.warning.code, entree.visitMinutes]))));
   });
   // Automatique (0) : la duree naturelle plus deux heures.
   await avecReglage(H, { maxWaitMinutes: 240, maxVisitMinutes: 0 }, async () => {
     poserEtat({ reservations: pleines('10:00', '12:00') });
     const accepte = arriveeDe(await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00' }));
-    v.push(verdict(accepte.ok === true && accepte.visitMinutes <= naturelle + 120, `borne automatique : ${accepte.visitMinutes} min tiennent sous ${naturelle} + 120`, `${accepte.code} ${accepte.reason}`));
+    v.push(verdict(accepte.ok === true && !accepte.warning && accepte.visitMinutes <= naturelle + 120, `borne automatique : ${accepte.visitMinutes} min tiennent sous ${naturelle} + 120, sans avis`, `${accepte.code} ${accepte.reason} ${JSON.stringify(accepte.warning)}`));
     poserEtat({ reservations: pleines('10:00', '14:00') });
-    const refuse = arriveeDe(await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00' }));
-    v.push(verdict(refuse.ok === false && refuse.code === 'arrival_visit' && refuse.maxVisitMinutes === naturelle + 120 && refuse.waitMinutes <= 240,
-      `borne automatique : pleines jusqu a 14:00, l attente passe (240) mais la visite depasse ${naturelle} + 120`, `${refuse.code} ${refuse.visitMinutes}/${refuse.maxVisitMinutes} attente ${refuse.waitMinutes}`));
+    const longue = arriveeDe(await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00' }));
+    const avisLong = longue.warning || {};
+    v.push(verdict(longue.ok === true && avisLong.code === 'arrival_visit' && avisLong.maxVisitMinutes === naturelle + 120 && avisLong.waitMinutes <= 240,
+      `borne automatique : pleines jusqu a 14:00, l attente passe (240), la visite depasse ${naturelle} + 120 : avis de duree`, `${longue.code || ''} ${JSON.stringify(avisLong)}`));
   });
   return v;
 }
@@ -704,17 +722,23 @@ async function scenarioF(H) {
     'au comptoir, le dossier prend l heure d arrivee (10:00), pas l heure envoyee (10:30)', `${comptoir.startTime} ${comptoir.opsPlan && comptoir.opsPlan.startTime}`));
 
   // LES ALTERNATIVES D UNE ARRIVEE REFUSEE : d autres arrivees, chacune a son
-  // heure, la premiere celle que la liste propose.
-  poserEtat({ reservations: pleines('10:00', '12:00') });
-  const refus = await H.post({ ...corpsFormule('f1', '10:00', { arrivalTime: '10:00' }) });
+  // heure, les heures du client relachees. Une longue attente ne refuse plus
+  // rien (2026-10-13) : le refus est ici une arrivee apres le bowling que la
+  // demande pose (11:00, bowling 10:30), que l ecran ne laisse plus partir
+  // mais que le serveur doit refuser.
+  poserEtat({ reservations: pleines('10:00', '10:30') });
+  const refus = await H.post({ ...corpsFormule('f1', '11:00', { arrivalTime: '11:00', preferredTimes: { bowling: '10:30' } }) });
   const alternatives = (refus.json && refus.json.alternatives) || [];
-  v.push(verdict(refus.status === 409 && alternatives.length > 0, 'une arrivee refusee au POST rend des alternatives', `${refus.status} ${refus.json && refus.json.message}`));
+  v.push(verdict(refus.status === 409 && alternatives.length > 1, 'une arrivee refusee au POST rend des alternatives', `${refus.status} ${refus.json && refus.json.message} (${alternatives.length})`));
   const incoherentes = alternatives.filter((alt) => !(alt.opsPlan && alt.opsPlan.arrivalPlan && alt.opsPlan.arrivalPlan.arrivalTime === alt.startTime
     && minutesDe(alt.startTime) % 30 === 0 && String(alt.summary || '').includes(`Arrivée ${alt.startTime}`)));
-  v.push(verdict(alternatives.length > 0 && incoherentes.length === 0, 'chaque alternative est une arrivee a son heure (grille, plan et resume d accord)',
-    incoherentes.slice(0, 2).map((alt) => `${alt.date} ${alt.startTime} ${alt.summary}`).join(' | ')));
-  v.push(verdict(alternatives[0] && alternatives[0].date === DATE && alternatives[0].startTime === '11:00', 'la premiere alternative est la premiere arrivee possible du jour (11:00)',
-    alternatives[0] && `${alternatives[0].date} ${alternatives[0].startTime}`));
+  const heuresAlt = alternatives.map((alt) => `${alt.date} ${alt.startTime}`);
+  v.push(verdict(alternatives.length > 1 && incoherentes.length === 0 && new Set(heuresAlt).size === heuresAlt.length, 'chaque alternative est une arrivee a son heure, toutes differentes (grille, plan et resume d accord)',
+    `${incoherentes.slice(0, 2).map((alt) => `${alt.date} ${alt.startTime} ${alt.summary}`).join(' | ')} [${heuresAlt.join(', ')}]`));
+  const premiereAlt = alternatives[0] || {};
+  const bowlingAlt = minutesDe(JSON.parse(heuresDuPlan(premiereAlt.opsPlan || {}) || '{}').bowling);
+  v.push(verdict(premiereAlt.date === DATE && premiereAlt.startTime === '11:00' && bowlingAlt >= minutesDe('11:10'),
+    'la premiere alternative garde l arrivee demandee (11:00), le bowling replace apres elle', `${premiereAlt.date} ${premiereAlt.startTime} ${heuresDuPlan(premiereAlt.opsPlan || {})}`));
   return v;
 }
 
@@ -829,15 +853,39 @@ async function scenarioK(H) {
     const grille = (rep.json && rep.json.anchors && rep.json.anchors.activities) || [];
     // Les activites a heure fixe de la formule, lues dans sa grille sans arrivee.
     const sans = await H.get({ type: 'formule', formuleId });
-    const attendues = ((sans.json && sans.json.anchors && sans.json.anchors.activities) || []).map((a) => a.activityId).join(', ');
+    const grilleSans = (sans.json && sans.json.anchors && sans.json.anchors.activities) || [];
+    const attendues = grilleSans.map((a) => a.activityId).join(', ');
     v.push(verdict(rep.status === 200 && grille.length > 0 && grille.map((a) => a.activityId).join(', ') === attendues && grille.every((a) => Array.isArray(a.times) && a.times.length > 0),
       `${nom}, arrivee ${arrivee} : la reponse porte la grille de ses activites a heure fixe (${attendues})`, `${rep.status} ${grille.map((a) => `${a.activityId}:${(a.times || []).length}`).join(' ')}`));
     const ecarts = [];
     let prenables = 0;
     let serrees = 0;
+    let avancees = 0;
+    let gardees = 0;
     for (const activite of grille) {
       for (const entree of activite.times) {
-        if (apresAccueil && minutesDe(entree.time) < minutesDe(arrivee) + 10) continue;
+        // AVANT L ARRIVEE OU PENDANT SON ACCUEIL (le dernier choix gagne,
+        // 2026-10-13) : l heure que la journee sans arrivee prend se prend, elle
+        // decale l arrivee (conflit « arrivee ») et dit l heure ou elle l avance ;
+        // celle qu elle refuse garde ce refus (le soir, la fermeture).
+        const debut = minutesDe(entree.time);
+        if (debut < minutesDe(arrivee) + 10) {
+          const sansArrivee = ((grilleSans.find((a) => a.activityId === activite.activityId) || { times: [] }).times.find((x) => x.time === entree.time)) || { ok: false, code: 'absente' };
+          const code = debut < minutesDe(arrivee) ? 'arrival_before' : 'arrival_welcome';
+          if (sansArrivee.ok !== false) {
+            avancees += 1;
+            if (!(entree.ok === false && entree.code === code && entree.conflict && entree.conflict.activityId === 'arrivee' && entree.conflict.time === arrivee
+              && String(entree.reason).includes(`avance votre arrivée à ${heureDe(debut - 10)}`))) {
+              ecarts.push(`${activite.activityId}@${entree.time} avant la fin de l accueil : ${entree.ok === false ? entree.code : 'ok'} ${JSON.stringify(entree.conflict || null)} ${entree.reason || ''}`);
+            }
+          } else if (entree.ok !== false || entree.code !== sansArrivee.code) {
+            gardees += 1;
+            ecarts.push(`${activite.activityId}@${entree.time} refusee sans arrivee (${sansArrivee.code}) mais ${entree.ok === false ? entree.code : 'ok'} avec`);
+          } else {
+            gardees += 1;
+          }
+          if (apresAccueil) continue;
+        }
         const pose = { [activite.activityId]: entree.time };
         const seule = await H.get({ type: 'formule', formuleId, arrival: arrivee, preferredTimes: pose, ...(activite.activityId === 'laser_game' ? { laserGameTimes: [entree.time] } : {}) });
         const verdictSeul = arriveeDe(seule);
@@ -845,12 +893,10 @@ async function scenarioK(H) {
         if (entree.warning) serrees += 1;
         if ((entree.ok !== false) !== (verdictSeul.ok === true)) ecarts.push(`${activite.activityId}@${entree.time} grille ${entree.ok === false ? entree.code : 'ok'} / demande ${verdictSeul.ok ? 'ok' : verdictSeul.code}`);
         else if (entree.ok !== false && Boolean(entree.warning) !== Boolean(verdictSeul.warning)) ecarts.push(`${activite.activityId}@${entree.time} grille ${entree.warning ? 'serre' : 'sans avis'} / demande ${verdictSeul.warning ? 'serre' : 'sans avis'}`);
-        const debut = minutesDe(entree.time);
-        if (debut < minutesDe(arrivee) && entree.code !== 'arrival_before' && entree.ok !== false) ecarts.push(`${activite.activityId}@${entree.time} avant l arrivee mais ${entree.code || 'ok'}`);
-        if (debut >= minutesDe(arrivee) && debut < minutesDe(arrivee) + 10 && entree.ok !== false) ecarts.push(`${activite.activityId}@${entree.time} pendant l accueil mais prenable`);
+        else if (entree.ok !== false && String(entree.endTime || '') !== String(verdictSeul.endTime || '')) ecarts.push(`${activite.activityId}@${entree.time} grille fin ${entree.endTime} / demande fin ${verdictSeul.endTime}`);
       }
     }
-    v.push(verdict(prenables > 0 && ecarts.length === 0, `${nom}, arrivee ${arrivee} : chaque heure de la grille dit ce que sa demande dira, « serré » compris (${prenables} prenables, ${serrees} serrees)`, ecarts.slice(0, 4).join(' | ')));
+    v.push(verdict(prenables > 0 && ecarts.length === 0, `${nom}, arrivee ${arrivee} : chaque heure de la grille dit ce que sa demande dira, « serré » et la fin compris ; avant la fin de l accueil, l heure avance l arrivee ou garde son refus (${prenables} prenables, ${serrees} avec avis, ${avancees} qui avancent l arrivee, ${gardees} refus gardes)`, ecarts.slice(0, 4).join(' | ')));
     return grille;
   };
   // Une formule a plusieurs parties de laser (Formule 4), une partie deja
@@ -880,7 +926,11 @@ async function scenarioK(H) {
         jugees += 1;
         if (attendu) prenables += 1;
         const seule = arriveeDe(await H.get({ type: 'formule', formuleId: 'f4', arrival: arrivee, ...demande }));
+        // Le verdict que l ecran lira : celui du deplacement, s il y en a un.
+        const lu = entree.ok === false && entree.move ? entree.move : entree;
         if (attendu !== (seule.ok === true)) ecarts.push(`${activite.activityId}@${entree.time} grille ${attendu ? 'ok' : entree.code} / demande ${seule.ok ? 'ok' : seule.code}`);
+        else if (attendu && Boolean(lu.warning) !== Boolean(seule.warning)) ecarts.push(`${activite.activityId}@${entree.time} grille ${lu.warning ? lu.warning.code : 'sans avis'} / demande ${seule.warning ? seule.warning.code : 'sans avis'}`);
+        else if (attendu && lu === entree && String(entree.endTime || '') !== String(seule.endTime || '')) ecarts.push(`${activite.activityId}@${entree.time} grille fin ${entree.endTime} / demande fin ${seule.endTime}`);
       }
     }
     v.push(verdict(rep.status === 200 && grille.length === 2 && prenables > 0 && ecarts.length === 0,
@@ -890,10 +940,12 @@ async function scenarioK(H) {
   const libre = await verifierGrille('journee libre', '10:00');
   const bowling = (libre.find((a) => a.activityId === 'bowling') || { times: [] }).times;
   const dix = bowling.find((t) => t.time === '10:00') || {};
-  v.push(verdict(dix.ok === false && dix.code === 'arrival_welcome' && /accueil/.test(String(dix.reason)), 'le bowling de 10:00, a l heure de l arrivee, est a l accueil', `${dix.code} ${dix.reason}`));
+  v.push(verdict(dix.ok === false && dix.code === 'arrival_welcome' && dix.conflict && dix.conflict.activityId === 'arrivee' && /accueil/.test(String(dix.reason)) && /avance votre arrivée à 09:50/.test(String(dix.reason)),
+    'le bowling de 10:00, pendant l accueil de l arrivee de 10:00 : il se prend et avance l arrivee a 09:50', `${dix.code} ${JSON.stringify(dix.conflict || null)} ${dix.reason}`));
   const loin = bowling.find((t) => t.time === '15:00') || {};
-  v.push(verdict(loin.ok === false && loin.code === 'arrival_wait' && loin.waitIsMinimum === true && /au moins/.test(String(loin.reason)) && /votre bowling à 15:00/.test(String(loin.reason)),
-    'le bowling de 15:00, loin de l arrivee de 10:00 : refuse pour l attente, au moins, avec le bowling dans la raison', `${loin.code} ${loin.reason}`));
+  const avisLoin = loin.warning || {};
+  v.push(verdict(loin.ok !== false && avisLoin.code === 'arrival_wait' && avisLoin.waitMinutes > 30 && /votre bowling à 15:00/.test(String(avisLoin.reason)) && avisLoin.cause === 'Avec votre bowling à 15:00',
+    'le bowling de 15:00, loin de l arrivee de 10:00 : il se prend, avec un avis d attente qui dit le bowling', `${loin.ok === false ? loin.code : 'ok'} ${JSON.stringify(avisLoin)}`));
   await verifierGrille('journee libre', '14:00');
   // LE SOIR, PRES DE LA FERMETURE (cas releves au banc le 13/10). Formule 3 :
   // sans arrivee, le bowling de 21:30 a 22:30 est refuse pour la fermeture
@@ -924,41 +976,60 @@ async function scenarioK(H) {
   v.push(verdict(avecPlan.json && avecPlan.json.arrival && avecPlan.json.arrival.ok === true && Object.keys(duPlan).length === 2
     && JSON.stringify(proposees) === JSON.stringify(duPlan) && minutesDe(proposees.bowling) >= minutesDe('10:40') && tenues,
   `journee libre, arrivee 10:30 : les heures proposees de la grille sont celles du plan de l arrivee (${JSON.stringify(proposees)}), prenables`, `grille ${JSON.stringify(proposees)} / plan ${JSON.stringify(duPlan)}`));
-  poserEtat({ reservations: pleines('10:00', '12:00') });
+  // Une arrivee vraiment impossible (la garde finale de la creation refuse
+  // 10:00, le bowling bloque au planning) ne propose aucune heure d activite.
+  poserEtat({ reservations: [], blocks: blocageBowling('10:00', '10:30') });
   const refusee = await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00' });
   const sansPlan = (refusee.json && refusee.json.anchors && refusee.json.anchors.defaultTimes) || null;
   v.push(verdict(refusee.json && refusee.json.arrival && refusee.json.arrival.ok === false && sansPlan && Object.keys(sansPlan).length === 0,
-    'une arrivee refusee (pleines jusqu a 12:00, arrivee 10:00) ne propose aucune heure d activite', JSON.stringify(sansPlan)));
+    `une arrivee refusee (${refusee.json && refusee.json.arrival && refusee.json.arrival.code}, arrivee 10:00) ne propose aucune heure d activite`, JSON.stringify(sansPlan)));
   // Des heures prises au milieu de la matinee : certaines heures tiennent,
-  // d autres sont completes, d autres attendraient trop.
+  // d autres sont completes, d autres font attendre (un avis, plus un refus).
   poserEtat({ reservations: pleines('12:00', '13:00') });
   const prise = await verifierGrille('pistes et arene pleines de 12:00 a 13:00', '10:00');
   const codes = new Set(prise.flatMap((a) => a.times.filter((t) => t.ok === false).map((t) => t.code)));
-  v.push(verdict(codes.has('capacity') && codes.has('arrival_wait'), 'MONTAGE cette journee-la, la grille porte des heures completes et des heures trop loin de l arrivee', [...codes].join(',')));
-  // La raison d une attente que cause une heure POSEE dit cette heure, et ne
+  const attentes = prise.flatMap((a) => a.times.filter((t) => t.ok !== false && t.warning && t.warning.code === 'arrival_wait'));
+  v.push(verdict(codes.has('capacity') && !codes.has('arrival_wait') && attentes.length > 0,
+    'MONTAGE cette journee-la, la grille porte des heures completes, et des heures loin de l arrivee qui se prennent avec un avis d attente', `${[...codes].join(',')} / ${attentes.length} avis`));
+  // L avis d une attente que cause une heure POSEE dit cette heure, et ne
   // pretend aucun complet un jour libre (« Laser Game est complet jusqu a
   // 10:30 » s ecrivait, la demi-heure de l accueil prise pour du complet).
   poserEtat({ reservations: [] });
   const attendre = arriveeDe(await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00', preferredTimes: { bowling: '13:00' } }));
-  v.push(verdict(attendre.ok === false && attendre.code === 'arrival_wait' && /Avec votre bowling à 13:00/.test(String(attendre.reason)) && !/complet/i.test(String(attendre.reason)),
-    'journee libre, bowling pose a 13:00, arrivee 10:00 : la raison dit le bowling pose, aucun complet', attendre.reason));
-  // La liste des arrivees, avec le bowling pose a 14:00 : chaque heure dit ce
-  // que la demande de cette arrivee, avec ce bowling, dira.
+  const avisAttendre = attendre.warning || {};
+  v.push(verdict(attendre.ok === true && avisAttendre.code === 'arrival_wait' && /Avec votre bowling à 13:00/.test(String(avisAttendre.reason)) && !/complet/i.test(String(avisAttendre.reason)) && avisAttendre.cause === 'Avec votre bowling à 13:00',
+    'journee libre, bowling pose a 13:00, arrivee 10:00 : elle se prend, l avis dit le bowling pose, aucun complet', JSON.stringify(avisAttendre)));
+  // LA LISTE DES ARRIVEES, avec le bowling pose a 14:00 : LE DERNIER CHOIX
+  // GAGNE (Movsar, 2026-10-13 : « c est vraiment pas normal de pouvoir choisir
+  // aucun horaire »). Une arrivee avant 13:50 garde le bowling ; une arrivee
+  // apres le libere (`releases`), et se juge sans lui, comme l ecran la
+  // demandera. Chaque heure dit ce que cette demande dira.
   const liste = await H.get({ type: 'formule', formuleId: 'f1', arrivals: '1', preferredTimes: { bowling: '14:00' } });
   const entrees = (liste.json && liste.json.arrivals) || [];
   const ecarts = [];
   for (const entree of entrees) {
-    const seule = arriveeDe(await H.get({ type: 'formule', formuleId: 'f1', arrival: entree.time, preferredTimes: { bowling: '14:00' } }));
-    if (Boolean(entree.ok) !== Boolean(seule.ok) || (!entree.ok && entree.code !== seule.code)) ecarts.push(`${entree.time} liste ${entree.ok ? 'ok' : entree.code} / demande ${seule.ok ? 'ok' : seule.code}`);
+    const libere = minutesDe(entree.time) + 10 > minutesDe('14:00');
+    if (libere !== (JSON.stringify(entree.releases || []) === JSON.stringify(['bowling']))) ecarts.push(`${entree.time} libere ${JSON.stringify(entree.releases || [])}`);
+    const seule = arriveeDe(await H.get({ type: 'formule', formuleId: 'f1', arrival: entree.time, ...(libere ? {} : { preferredTimes: { bowling: '14:00' } }) }));
+    if (Boolean(entree.ok) !== Boolean(seule.ok) || (!entree.ok && entree.code !== seule.code) || (entree.ok && JSON.stringify(entree.anchors) !== JSON.stringify(seule.anchors))) {
+      ecarts.push(`${entree.time} liste ${entree.ok ? JSON.stringify(entree.anchors) : entree.code} / demande ${seule.ok ? JSON.stringify(seule.anchors) : seule.code}`);
+    }
   }
   const tiennent = entrees.filter((entree) => entree.ok).map((entree) => entree.time);
-  v.push(verdict(entrees.length > 0 && ecarts.length === 0 && tiennent.length > 0 && tiennent.every((t) => minutesDe(t) <= minutesDe('13:50')),
-    `la liste des arrivees se juge avec le bowling pose a 14:00 (tiennent : ${tiennent.join(', ')})`, ecarts.slice(0, 4).join(' | ')));
+  const gardent = entrees.filter((entree) => entree.ok && !entree.releases);
+  v.push(verdict(entrees.length > 0 && ecarts.length === 0 && gardent.length > 0 && gardent.every((entree) => entree.anchors && entree.anchors.bowling === '14:00'),
+    `la liste des arrivees se juge avec le bowling pose a 14:00 apres chacune, libere avant (tiennent : ${tiennent.join(', ')})`, ecarts.slice(0, 4).join(' | ')));
   const apres = entrees.find((entree) => entree.time === '14:30') || {};
-  v.push(verdict(apres.ok === false && apres.code === 'arrival_after_anchor', 'arriver a 14:30, apres le bowling pose a 14:00, est refuse', `${apres.code} ${apres.reason}`));
+  v.push(verdict(apres.ok === true && JSON.stringify(apres.releases) === JSON.stringify(['bowling']) && apres.anchors && minutesDe(apres.anchors.bowling) >= minutesDe('14:40'),
+    'arriver a 14:30, apres le bowling pose a 14:00 : l arrivee se prend, le bowling se libere et se replace apres elle', `${apres.ok === false ? apres.code : 'ok'} ${JSON.stringify(apres.releases)} ${JSON.stringify(apres.anchors)}`));
   const sans = await H.get({ type: 'formule', formuleId: 'f1', arrivals: '1' });
-  const tiennentSans = ((sans.json && sans.json.arrivals) || []).filter((entree) => entree.ok).length;
-  v.push(verdict(tiennentSans > tiennent.length, `sans heure posee, la liste reste celle de la journee (${tiennentSans} arrivees tiennent, ${tiennent.length} avec le bowling a 14:00)`));
+  const entreesSans = (sans.json && sans.json.arrivals) || [];
+  const memes = entrees.filter((entree) => entree.releases).every((entree) => {
+    const libre = entreesSans.find((x) => x.time === entree.time) || {};
+    return libre.ok === entree.ok && JSON.stringify(libre.anchors) === JSON.stringify(entree.anchors) && !libre.releases;
+  });
+  v.push(verdict(entreesSans.length === entrees.length && entreesSans.every((entree) => !entree.releases) && memes,
+    'sans heure posee, la liste ne libere rien ; une arrivee qui libere le bowling dit ce que la journee libre dit', `${entreesSans.length} / ${entrees.length}`));
   return v;
 }
 
@@ -992,7 +1063,8 @@ async function scenarioI(H) {
     v.push(verdict(meta.status === 200 && meta.json && meta.json.center && egal(meta.json.center.formulaVisit, attendu), 'la meta publique donne le reglage au formulaire', JSON.stringify(meta.json && meta.json.center && meta.json.center.formulaVisit)));
     poserEtat({ reservations: [] });
     const dispo = await H.get({ type: 'formule', formuleId: 'f1', arrivals: '1' });
-    v.push(verdict(dispo.json && egal(dispo.json.arrivalBounds, attendu), 'la liste des arrivees annonce les bornes du centre', JSON.stringify(dispo.json && dispo.json.arrivalBounds)));
+    v.push(verdict(dispo.json && egal(dispo.json.arrivalBounds, { ...attendu, welcomeMinutes: H.engine.FORMULA_ARRIVAL_MINUTES }) && H.engine.FORMULA_ARRIVAL_MINUTES === 10,
+      'la liste des arrivees annonce les bornes du centre, et les dix minutes d accueil avec lesquelles l ecran libere les heures d avant', JSON.stringify(dispo.json && dispo.json.arrivalBounds)));
   });
   const ligne = H.centerScope.projectCenterRow({ id: CENTRE, name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', settings: { config: { formulaVisit: brut } } });
   v.push(verdict(egal(ligne.formulaVisit, attendu), 'projectCenterRow (ecran Etablissement) rend le reglage borne', JSON.stringify(ligne.formulaVisit)));
@@ -1055,13 +1127,16 @@ async function differentiel(commit) {
 // [J] LES CONTRE-EPREUVES (--mutate)
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
-  { nom: 'la borne d attente ne refuse plus', fichier: 'lib/ops-engine.js',
+  { nom: 'la borne d attente ne previent plus', fichier: 'lib/ops-engine.js',
     de: '  if (plan.waitMinutes > reglage.maxWaitMinutes) {', vers: '  if (false && plan.waitMinutes > reglage.maxWaitMinutes) {', scenarios: ['C'] },
-  { nom: 'la borne de duree de visite ne refuse plus', fichier: 'lib/ops-engine.js',
+  { nom: 'la borne de duree de visite ne previent plus', fichier: 'lib/ops-engine.js',
     de: '  if (plan.visitMinutes > maxVisitMinutes) {', vers: '  if (false && plan.visitMinutes > maxVisitMinutes) {', scenarios: ['D'] },
-  { nom: 'la porte de la reservation ne juge plus les bornes (seule la recherche les lit)', fichier: 'lib/ops-engine.js',
-    de: '    if (!borne.ok) return { ok: false, code: borne.code, reason: borne.reason, scenario: decorated, arrival: borne };',
-    vers: '    if (false) return { ok: false, code: borne.code, reason: borne.reason, scenario: decorated, arrival: borne };', scenarios: ['C'] },
+  { nom: 'la porte de la reservation ne previent plus des bornes (seule la recherche les lit)', fichier: 'lib/ops-engine.js',
+    de: "      return { ok: true, code: '', reason: '', scenario: decorated, arrival: borne, warning: warning || avis };",
+    vers: "      return { ok: true, code: '', reason: '', scenario: decorated, arrival: borne, ...(warning ? { warning } : {}) };", scenarios: ['C'] },
+  { nom: 'une borne depassee refuse de nouveau l arrivee', fichier: 'lib/ops-engine.js',
+    de: "      return { ok: true, code: '', reason: '', scenario: decorated, arrival: borne, warning: warning || avis };",
+    vers: '      return { ok: false, code: borne.code, reason: borne.reason, scenario: decorated, arrival: borne };', scenarios: ['C', 'K'] },
   { nom: 'le libre ne remplit plus l attente avant la premiere ancre', fichier: 'lib/ops-engine.js',
     de: '  const place = meilleurRangement(trous.map((trou) => trou.fin - trou.debut), libres.map((libre) => libre.minutes));',
     vers: '  const place = libres.map(() => -1);', scenarios: ['B'] },
@@ -1105,15 +1180,31 @@ const MUTATIONS = [
     vers: "        return { ...base, ok: true, code: '', reason: '', ...(verdict.endTime ? { endTime: verdict.endTime } : {}) };", scenarios: ['K'] },
   { nom: 'un refus pour la fermeture ne se rejuge plus avec l arrivee', fichier: 'lib/availability-slots.js',
     de: "  const REJUGES = new Set(['schedule', 'schedule_free']);", vers: '  const REJUGES = new Set();', scenarios: ['K'] },
-  { nom: 'la borne sure du mode rapide oublie ce qui remplit l attente', fichier: 'lib/ops-engine.js',
-    de: '    const auMoins = premiereFixe - arrivee - remplissable;', vers: '    const auMoins = premiereFixe - arrivee;', scenarios: ['K'] },
   { nom: 'la liste des arrivees se juge sans les heures posees', fichier: 'api/public-availability.js',
-    de: '              ? formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: posees, times: grille.times, snapshot, guardFor: gardeDuPlan })',
-    vers: '              ? formulaArrivalEntries({ centerId, date, formuleId, pax, duration, times: grille.times, snapshot, guardFor: gardeDuPlan })', scenarios: ['K'] },
+    de: '                formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: groupe.preference, times: groupe.times, snapshot, guardFor: gardeDuPlan, memo })',
+    vers: '                formulaArrivalEntries({ centerId, date, formuleId, pax, duration, times: groupe.times, snapshot, guardFor: gardeDuPlan, memo })', scenarios: ['K'] },
+  { nom: 'la liste juge chaque arrivee avec toutes les heures posees (le dernier choix ne gagne plus)', fichier: 'api/public-availability.js',
+    de: '          const garde = (texte) => !(minutesDe(texte) < seuil);', vers: '          const garde = () => true;', scenarios: ['K'] },
+  { nom: 'la liste libere aussi les heures posees apres l arrivee', fichier: 'api/public-availability.js',
+    de: '          const garde = (texte) => !(minutesDe(texte) < seuil);', vers: '          const garde = () => false;', scenarios: ['K'] },
+  { nom: 'la liste ne dit plus ce que l arrivee libere', fichier: 'api/public-availability.js',
+    de: '.forEach((entree, rang) => verdicts.set(groupe.times[rang], groupe.releases.length ? { ...entree, releases: groupe.releases } : entree));',
+    vers: '.forEach((entree, rang) => verdicts.set(groupe.times[rang], entree));', scenarios: ['K'] },
+  { nom: 'une heure avant l arrivee se refuse de nouveau', fichier: 'lib/availability-slots.js',
+    de: "        if (entry.ok === false) return entry;\n        const { endTime: _finSansArrivee, ...sansArrivee } = entry;",
+    vers: "        return { time: entry.time, ok: false, code: debut < arrivee ? 'arrival_before' : 'arrival_welcome', reason: 'Avant votre arrivée.' };\n        const { endTime: _finSansArrivee, ...sansArrivee } = entry;", scenarios: ['K'] },
+  { nom: 'une heure avant l arrivee perd son conflit « arrivee »', fichier: 'lib/availability-slots.js',
+    de: "          conflict: { activityId: 'arrivee', label: 'Arrivée', time: heure },", vers: '', scenarios: ['K'] },
+  // (Garder le refus sans arrivee d une heure d avant l arrivee ne se montre
+  // pas ici : les journees du gate n ont aucune heure refusee pour la
+  // fermeture avant une arrivee. La regle sert aux formules bornees dans la
+  // journee et aux parties de laser deplacees.)
   { nom: 'la demi-heure de l accueil se dit « complet »', fichier: 'lib/ops-engine.js',
     de: '      .filter((item) => Number.isFinite(item.heure) && item.heure > premiereGrille)', vers: '      .filter((item) => Number.isFinite(item.heure) && item.heure > arrivee)', scenarios: ['K'] },
-  { nom: 'le refus ne dit plus l heure posee qui le cause', fichier: 'lib/ops-engine.js',
+  { nom: 'l avis ne dit plus l heure posee qui le cause', fichier: 'lib/ops-engine.js',
     de: "    return posees.length ? `Avec ${posees.join(' et ')}` : '';", vers: "    return '';", scenarios: ['K'] },
+  { nom: 'l avis perd sa cause (l ecran ne peut plus regrouper les attentes)', fichier: 'lib/ops-engine.js',
+    de: '    return { ...verdict, warning: { ...verdict.warning, reason, ...(cause ? { cause } : {}) } };', vers: '    return { ...verdict, warning: { ...verdict.warning, reason } };', scenarios: ['C', 'K'] },
   { nom: 'la signature ignore l arrivee', fichier: 'lib/demande-publique.js',
     de: "    ...(arrivee ? [['arrivalTime', arrivee]] : []),", vers: '    ...([]),', scenarios: ['F'] },
   { nom: 'l ecart d une modification se mesure a la premiere ancre', fichier: 'lib/reservation-ops.js',
@@ -1132,7 +1223,9 @@ const MUTATIONS = [
   { nom: 'la liste des arrivees saute la garde finale de la creation', fichier: 'lib/availability-slots.js',
     de: '    const refus = finalGuardRefusal(slot, guardFor(recommended));', vers: "    const refus = '';", scenarios: ['G|bowling bloque au planning 10:00-10:30'] },
   { nom: 'le refus ne propose plus la premiere arrivee possible', fichier: 'api/public-availability.js',
-    de: '          const premiere = possibles.length ? possibles[0].time : null;', vers: '          const premiere = null;', scenarios: ['C'] },
+    de: '          const premiere = possibles.length ? possibles[0].time : null;', vers: '          const premiere = null;', scenarios: ['H'] },
+  { nom: 'les bornes ne donnent plus les minutes d accueil a l ecran', fichier: 'api/public-availability.js',
+    de: '            welcomeMinutes: FORMULA_ARRIVAL_MINUTES,', vers: '', scenarios: ['I'] },
   { nom: 'la configuration chargee perd le reglage', fichier: 'lib/center-config.js',
     de: '    formulaVisit: normalizeFormulaVisit(merged.formulaVisit),', vers: '    formulaVisit: normalizeFormulaVisit(null),', scenarios: ['I'] },
   { nom: 'toEditableConfig perd le reglage', fichier: 'lib/center-config.js',

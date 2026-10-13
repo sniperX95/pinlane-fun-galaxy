@@ -1304,7 +1304,7 @@ module.exports = async (req, res) => {
         // formulaArrivalEntries. La liste et l heure seule disent donc la meme
         // chose que le POST qui suivra.
         const { formulaArrivalEntries, formulaArrivalAnchorGrid } = require('../lib/availability-slots');
-        const { listFormulaArrivalTimes } = require('../lib/ops-engine');
+        const { listFormulaArrivalTimes, FORMULA_ARRIVAL_MINUTES } = require('../lib/ops-engine');
         const { formulaVisitOf } = require('../lib/formula-visit');
         const reglage = formulaVisitOf(centerDoc);
         const gardeDuPlan = (scenario) => ({ ...guardContext, laneCount: plannedLaneCount(scenario, laneCount) });
@@ -1318,13 +1318,57 @@ module.exports = async (req, res) => {
           ...(laserGameTimes.length ? { laserGameTimes } : {}),
           laserPlacement: String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled',
         };
+        // LE DERNIER CHOIX GAGNE (Movsar, 2026-10-13 : « c est vraiment pas
+        // normal de pouvoir choisir aucun horaire »). Une arrivee se juge avec
+        // les heures posees qui restent apres elle et ses dix minutes
+        // d accueil ; celles d avant, l ecran les libere quand le client la
+        // choisit, et l entree le dit (`releases`). Juger toute la liste avec
+        // le bowling pose a 13:00 disait « trop tard » a toutes les arrivees
+        // de l apres-midi.
+        const minutesDe = (texte) => {
+          const m = /^(\d{1,2}):(\d{2})$/.exec(String(texte || ''));
+          return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+        };
+        const poseesApres = (heure) => {
+          const seuil = minutesDe(heure) + FORMULA_ARRIVAL_MINUTES;
+          const garde = (texte) => !(minutesDe(texte) < seuil);
+          const heures = {};
+          const releases = [];
+          Object.entries(preferredTimes || {}).forEach(([id, texte]) => {
+            if (id === 'laser_game') return;
+            if (garde(texte)) heures[id] = texte; else releases.push(id);
+          });
+          const parties = laserGameTimes.length ? laserGameTimes : (preferredTimes.laser_game ? [preferredTimes.laser_game] : []);
+          const partiesGardees = parties.filter(garde);
+          if (partiesGardees.length < parties.length) releases.push('laser_game');
+          if (partiesGardees.length) heures.laser_game = partiesGardees[0];
+          return {
+            releases,
+            preference: { ...posees, preferredTimes: heures, ...(laserGameTimes.length ? { laserGameTimes: partiesGardees } : {}) },
+          };
+        };
         let journee = null;
         const toutesLesArrivees = () => {
           if (!journee) {
             const grille = listFormulaArrivalTimes({ centerId, formuleId, date });
-            journee = grille.ok
-              ? formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: posees, times: grille.times, snapshot, guardFor: gardeDuPlan })
-              : [];
+            if (!grille.ok) {
+              journee = [];
+            } else {
+              const memo = new Map();
+              const parGroupe = new Map();
+              grille.times.forEach((heure) => {
+                const apres = poseesApres(heure);
+                const cle = apres.releases.join(',');
+                if (!parGroupe.has(cle)) parGroupe.set(cle, { ...apres, times: [] });
+                parGroupe.get(cle).times.push(heure);
+              });
+              const verdicts = new Map();
+              parGroupe.forEach((groupe) => {
+                formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: groupe.preference, times: groupe.times, snapshot, guardFor: gardeDuPlan, memo })
+                  .forEach((entree, rang) => verdicts.set(groupe.times[rang], groupe.releases.length ? { ...entree, releases: groupe.releases } : entree));
+              });
+              journee = grille.times.map((heure) => verdicts.get(heure));
+            }
           }
           return journee;
         };
@@ -1334,6 +1378,9 @@ module.exports = async (req, res) => {
             maxWaitMinutes: reglage.maxWaitMinutes,
             maxVisitMinutes: reglage.maxVisitMinutes,
             freeDurationPolicy: reglage.freeDurationPolicy,
+            // Les minutes d accueil apres l arrivee : l ecran libere avec elles
+            // les heures posees avant une arrivee choisie (poseesApres).
+            welcomeMinutes: FORMULA_ARRIVAL_MINUTES,
           },
         };
         if (listeArrivees) {

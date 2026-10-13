@@ -1166,14 +1166,16 @@ module.exports = async (req, res) => {
       // programme qui commence a cette heure (le groupe fait d abord le libre
       // de la formule, puis le bowling et le laser des qu ils sont libres).
       // `arrivals=1` : chaque heure d arrivee de la journee, son verdict et le
-      // resume de son programme. Sans ces deux parametres, rien ne change ; avec
-      // eux, la grille par activite (anchorMeta) n est pas calculee.
+      // resume de son programme, jugee avec les heures deja posees. Sans ces
+      // deux parametres, rien ne change. Avec `arrival`, la grille par activite
+      // (anchorMeta) se juge AVEC l arrivee (2026-10-13, plus bas) ; la liste
+      // seule ne la calcule pas.
       const heureArrivee = String(url.searchParams.get('arrival') || '').trim().slice(0, 8);
       const listeArrivees = url.searchParams.get('arrivals') === '1';
       const demandeArrivee = Boolean(heureArrivee) || listeArrivees;
       let anchorMeta = null;
       try {
-        anchorMeta = demandeArrivee ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes }, engineContext);
+        anchorMeta = listeArrivees && !heureArrivee ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes }, engineContext);
       } catch (error) {
         anchorMeta = null;
       }
@@ -1301,18 +1303,27 @@ module.exports = async (req, res) => {
         // l arrivee, puis la garde finale) : lib/availability-slots,
         // formulaArrivalEntries. La liste et l heure seule disent donc la meme
         // chose que le POST qui suivra.
-        const { formulaArrivalEntries } = require('../lib/availability-slots');
+        const { formulaArrivalEntries, formulaArrivalAnchorGrid } = require('../lib/availability-slots');
         const { listFormulaArrivalTimes } = require('../lib/ops-engine');
         const { formulaVisitOf } = require('../lib/formula-visit');
         const reglage = formulaVisitOf(centerDoc);
         const gardeDuPlan = (scenario) => ({ ...guardContext, laneCount: plannedLaneCount(scenario, laneCount) });
         const sansCreneau = ({ slot: _slot, ...entree }) => entree;
+        // Les heures deja posees par le client restent les siennes : seules
+        // les autres se cherchent. La liste des arrivees se juge AVEC elles
+        // (2026-10-13) : le bowling pose a 14:00, l arrivee de 10:00 dit son
+        // attente au lieu d une visite qui ne serait plus la sienne.
+        const posees = {
+          preferredTimes,
+          ...(laserGameTimes.length ? { laserGameTimes } : {}),
+          laserPlacement: String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled',
+        };
         let journee = null;
         const toutesLesArrivees = () => {
           if (!journee) {
             const grille = listFormulaArrivalTimes({ centerId, formuleId, date });
             journee = grille.ok
-              ? formulaArrivalEntries({ centerId, date, formuleId, pax, duration, times: grille.times, snapshot, guardFor: gardeDuPlan })
+              ? formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: posees, times: grille.times, snapshot, guardFor: gardeDuPlan })
               : [];
           }
           return journee;
@@ -1331,14 +1342,20 @@ module.exports = async (req, res) => {
           extra.firstAcceptableArrival = (entrees.find((entree) => entree.ok) || {}).time || null;
         }
         if (heureArrivee) {
-          // Les heures deja posees par le client restent les siennes : seules
-          // les autres se cherchent.
-          const posees = {
-            preferredTimes,
-            ...(laserGameTimes.length ? { laserGameTimes } : {}),
-            laserPlacement: String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled',
-          };
           const [entree] = formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: posees, times: [heureArrivee], snapshot, guardFor: gardeDuPlan });
+          // LES HEURES DES ACTIVITES RESTENT A CHOISIR (2026-10-13) : chacune
+          // jugee avec cette arrivee et les autres heures posees, par la meme
+          // porte. Le client change son bowling sans perdre son arrivee.
+          // L heure proposee de chaque activite est celle du plan de CETTE
+          // arrivee, aucune quand elle est refusee : celle de la journee sans
+          // arrivee (bowling 10:00 pour une arrivee a 10:30) se disait
+          // « proposé » sur une heure refusee.
+          try {
+            anchorMeta = formulaArrivalAnchorGrid({ centerId, date, formuleId, pax, duration, arrival: heureArrivee, preference: posees, anchorMeta, snapshot, guardFor: gardeDuPlan, proposees: entree.ok ? entree.anchors : null });
+          } catch (error) {
+            console.error('[public-availability] grille avec arrivee', error && (error.stack || error.message));
+            anchorMeta = null;
+          }
           if (entree.ok) {
             respondFormula([entree.slot], '', [], null, { ...extra, arrival: sansCreneau(entree) });
             return;

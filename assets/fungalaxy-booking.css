@@ -2682,14 +2682,14 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape.is-open .fg-etape__dedans { visibility: visible; transition-delay: 0s; }
 .fg-etape .fg-period.is-open .fg-period__inner { visibility: inherit; }
 .fg-etape__piste { padding: 2px 20px 6px 80px; }
-.fg-etape__alt, .fg-etape__arr { margin: 0; padding: 0 20px 16px 80px; }
+.fg-etape__alt { margin: 0; padding: 0 20px 16px 80px; }
 .fg-etape__surplace { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 16px; border: 1.5px dashed rgba(255, 255, 255, 0.2); border-radius: 12px; background: transparent; color: var(--fg-text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; }
 .fg-etape__surplace svg { width: 18px; height: 18px; color: var(--fg-teal-ink); }
 @media (hover: hover) { .fg-etape__surplace:hover { border-color: var(--fg-teal); background: rgba(103, 186, 172, 0.06); } }
 .fg-etape__surplace:focus-visible { outline: 2px solid var(--fg-teal-ink); outline-offset: 2px; }
 .fg-etape .fg-chip.is-on.is-autre { background: rgba(148, 66, 146, 0.12); border-color: rgba(176, 79, 176, 0.55); box-shadow: none; color: var(--fg-purple-ink); }
 .fg-etape .fg-chip.is-on.is-autre small { color: var(--fg-purple-ink); }
-.fg-etape__alt[hidden], .fg-etape__arr[hidden] { display: none; }
+.fg-etape__alt[hidden] { display: none; }
 /* La piste dans sa ligne : plus de carte ni de bandeau, la ligne les porte. */
 .fg-etape .fg-track { max-width: none; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
 .fg-etape .fg-track::before, .fg-etape .fg-track__head { display: none; }
@@ -2762,7 +2762,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   .fg-etape--borne .fg-etape__point { width: 8px; height: 8px; }
   .fg-etape--borne .fg-etape__heure { padding-right: 24px; }
   .fg-etape__piste { padding: 2px 14px 6px; }
-  .fg-etape__alt, .fg-etape__arr { padding: 0 14px 14px; }
+  .fg-etape__alt { padding: 0 14px 14px; }
   .fg-etape .fg-periods { grid-template-columns: repeat(3, minmax(0, auto)) 1fr; }
   .fg-etape .fg-period__btn { padding: 6px 10px; gap: 6px; }
   .fg-etape .fg-chips { grid-template-columns: repeat(4, minmax(0, 1fr)); }

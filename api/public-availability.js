@@ -439,6 +439,11 @@ module.exports = async (req, res) => {
     } catch (error) {
       laserGameTimes = [];
     }
+    // L HEURE D ARCADE CHOISIE (2026-10-13), avec une heure d arrivee : le
+    // moteur la pose a cette heure-la (lib/ops-engine.js poserArrivee).
+    let heureArcade = /^\d{1,2}:\d{2}$/.test(String(url.searchParams.get('arcade') || '').trim())
+      ? String(url.searchParams.get('arcade')).trim()
+      : '';
     const pauseMinutes = 0;
 
     if (!date) {
@@ -482,6 +487,10 @@ module.exports = async (req, res) => {
         laserGameTimes = laserGameTimes.filter((t) => t && !passee(t));
         if (laserGameTimes.length) preferredTimes.laser_game = laserGameTimes[0];
         else delete preferredTimes.laser_game;
+      }
+      if (passee(heureArcade)) {
+        heuresPassees.push({ activityId: 'arcade_time', time: heureArcade });
+        heureArcade = '';
       }
       if (heuresPassees.length) scheduleMeta.heuresPassees = heuresPassees;
     }
@@ -1172,10 +1181,14 @@ module.exports = async (req, res) => {
       // seule ne la calcule pas.
       const heureArrivee = String(url.searchParams.get('arrival') || '').trim().slice(0, 8);
       const listeArrivees = url.searchParams.get('arrivals') === '1';
+      // `arcades=1` avec `arrival` (2026-10-13) : les heures d arcade de cette
+      // arrivee, chacune jugee par la porte de la reservation. Seules : ni la
+      // grille des activites ni le plan, que la demande sans elle rend deja.
+      const listeArcades = url.searchParams.get('arcades') === '1' && Boolean(heureArrivee);
       const demandeArrivee = Boolean(heureArrivee) || listeArrivees;
       let anchorMeta = null;
       try {
-        anchorMeta = listeArrivees && !heureArrivee ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes }, engineContext);
+        anchorMeta = (listeArrivees && !heureArrivee) || listeArcades ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes }, engineContext);
       } catch (error) {
         anchorMeta = null;
       }
@@ -1304,7 +1317,7 @@ module.exports = async (req, res) => {
         // formulaArrivalEntries. La liste et l heure seule disent donc la meme
         // chose que le POST qui suivra.
         const { formulaArrivalEntries, formulaArrivalAnchorGrid } = require('../lib/availability-slots');
-        const { listFormulaArrivalTimes, FORMULA_ARRIVAL_MINUTES } = require('../lib/ops-engine');
+        const { listFormulaArrivalTimes, FORMULA_ARRIVAL_MINUTES, minutesToTime } = require('../lib/ops-engine');
         const { formulaVisitOf } = require('../lib/formula-visit');
         const reglage = formulaVisitOf(centerDoc);
         const gardeDuPlan = (scenario) => ({ ...guardContext, laneCount: plannedLaneCount(scenario, laneCount) });
@@ -1317,6 +1330,7 @@ module.exports = async (req, res) => {
           preferredTimes,
           ...(laserGameTimes.length ? { laserGameTimes } : {}),
           laserPlacement: String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled',
+          ...(heureArcade ? { arcadeTime: heureArcade } : {}),
         };
         // LE DERNIER CHOIX GAGNE (Movsar, 2026-10-13 : « c est vraiment pas
         // normal de pouvoir choisir aucun horaire »). Une arrivee se juge avec
@@ -1342,9 +1356,14 @@ module.exports = async (req, res) => {
           const partiesGardees = parties.filter(garde);
           if (partiesGardees.length < parties.length) releases.push('laser_game');
           if (partiesGardees.length) heures.laser_game = partiesGardees[0];
+          // Les arcades posees avant cette arrivee (ou pendant son accueil) se
+          // liberent comme le reste : la frise les range.
+          const { arcadeTime: _arcade, ...sansArcade } = posees;
+          const arcadeGardee = Boolean(heureArcade) && garde(heureArcade);
+          if (heureArcade && !arcadeGardee) releases.push('arcade_time');
           return {
             releases,
-            preference: { ...posees, preferredTimes: heures, ...(laserGameTimes.length ? { laserGameTimes: partiesGardees } : {}) },
+            preference: { ...sansArcade, preferredTimes: heures, ...(laserGameTimes.length ? { laserGameTimes: partiesGardees } : {}), ...(arcadeGardee ? { arcadeTime: heureArcade } : {}) },
           };
         };
         let journee = null;
@@ -1383,13 +1402,97 @@ module.exports = async (req, res) => {
             welcomeMinutes: FORMULA_ARRIVAL_MINUTES,
           },
         };
+        // LES HEURES D ARCADE D UNE ARRIVEE (Movsar, 2026-10-13 : « ils peuvent
+        // choisir heure d arrivee mais aussi arcade [...] mettre arcade pendant
+        // temps d attente »). De la fin de l accueil a la fermeture, sur la
+        // grille ; chacune jugee par la porte de la reservation, avec les heures
+        // posees. Une arcade sur une activite que le client a posee la libere (le
+        // dernier choix gagne) : l entree le dit (`releases`, `conflict`) et se
+        // juge sans elle, le moteur la replace autour des arcades.
+        const lesHeuresDArcade = () => {
+          const { freeStepHasTime, freeStepMinutes } = require('../lib/formula-visit');
+          const { getActivity } = require('../lib/ops-knowledge');
+          const modele = getFormulaAnchorModel(formulaDoc, { freeDurationPolicy: reglage.freeDurationPolicy });
+          const etape = (modele.freeSteps || []).find((step) => freeStepHasTime(step, getActivity(step.activityId)?.durationModel));
+          const arrivee = minutesDe(heureArrivee);
+          if (!etape || !Number.isFinite(arrivee) || !schedule) return [];
+          const duree = freeStepMinutes(etape, getActivity(etape.activityId)?.durationModel, reglage.freeDurationPolicy);
+          const fermeture = Math.round(Number(schedule.close) * 60);
+          const memo = new Map();
+          const juger = (preference) => formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference, times: [heureArrivee], snapshot, guardFor: gardeDuPlan, memo })[0] || {};
+          const resume = (time, verdict, conflit = null) => (verdict.ok
+            ? { time, ok: true, ...(verdict.endTime ? { endTime: verdict.endTime } : {}), ...(verdict.warning ? { warning: verdict.warning } : {}), ...(conflit ? { releases: [conflit.activityId], conflict: conflit } : {}) }
+            : { time, ok: false, code: verdict.code || 'arrival_none', reason: verdict.reason || 'Indisponible', shortReason: verdict.shortReason || 'Indisponible' });
+          const sansLaPose = (preference, conflit) => {
+            const heures = { ...(preference.preferredTimes || {}) };
+            if (conflit.activityId !== 'laser_game') {
+              delete heures[conflit.activityId];
+              return { ...preference, preferredTimes: heures };
+            }
+            const parties = (preference.laserGameTimes || []).filter((partie) => partie && partie !== conflit.time);
+            if (parties.length) heures.laser_game = parties[0]; else delete heures.laser_game;
+            return { ...preference, preferredTimes: heures, ...(preference.laserGameTimes ? { laserGameTimes: parties } : {}) };
+          };
+          // La fin de l accueil d abord (10:10 pour une arrivee a 10:00) : les
+          // arcades des l arrivee, quand les pistes et l arene sont pleines ;
+          // puis la grille des demi-heures.
+          const finAccueil = arrivee + FORMULA_ARRIVAL_MINUTES;
+          const candidates = [];
+          for (let t = Math.ceil(finAccueil / 30) * 30; t + duree <= fermeture; t += 30) candidates.push(t);
+          if (finAccueil % 30 && finAccueil % 5 === 0 && finAccueil + duree <= fermeture) candidates.unshift(finAccueil);
+          const liste = [];
+          for (const t of candidates) {
+            const time = minutesToTime(t);
+            const essai = { ...posees, arcadeTime: time };
+            const verdict = juger(essai);
+            const conflit = verdict.ok ? null : verdict.conflict;
+            const posee = Boolean(conflit) && (conflit.activityId === 'laser_game'
+              ? (laserGameTimes.includes(conflit.time) || preferredTimes.laser_game === conflit.time)
+              : Boolean(preferredTimes[conflit.activityId]));
+            liste.push(!verdict.ok && verdict.code === 'arcade_overlap' && posee
+              ? resume(time, juger(sansLaPose(essai, conflit)), conflit)
+              : resume(time, verdict));
+          }
+          return liste;
+        };
+        if (listeArcades) {
+          respondFormula([], '', [], null, { ...extra, arcadeTimes: reglage.arrivalFirst ? lesHeuresDArcade() : [] });
+          return;
+        }
         if (listeArrivees) {
           const entrees = reglage.arrivalFirst ? toutesLesArrivees() : [];
           extra.arrivals = entrees.map(sansCreneau);
           extra.firstAcceptableArrival = (entrees.find((entree) => entree.ok) || {}).time || null;
         }
+        // ARRIVER PLUS TARD, MEME PROGRAMME (2026-10-13, Movsar : « des pop up
+        // adaptées en fonction du temps libre »). L attente d avant la premiere
+        // activite, quand rien ne la couvre, se rend au client : la plus tardive
+        // des demi-heures (trois essais au plus) qui ne libere aucune heure
+        // posee, garde le bowling et le laser aux memes heures et attend moins.
+        // Chaque essai passe par la porte de la reservation, avec les heures
+        // posees du client : c est la visite qu il aura en la touchant.
+        const memoArrivee = new Map();
+        const arriveePlusTard = (entree) => {
+          const debut = minutesDe(entree.time) + FORMULA_ARRIVAL_MINUTES;
+          const attente = (entree.frise || []).find((segment) => segment.kind === 'wait' && segment.placement === 'before' && minutesDe(segment.gapStartTime) === debut);
+          if (!attente) return null;
+          const memes = (autre) => JSON.stringify(autre.anchors || {}) === JSON.stringify(entree.anchors || {})
+            && JSON.stringify(autre.laserGameTimes || []) === JSON.stringify(entree.laserGameTimes || []);
+          let essais = 0;
+          for (let k = Math.floor(Number(attente.minutes) / 30); k >= 1 && essais < 3; k -= 1) {
+            const time = minutesToTime(minutesDe(entree.time) + 30 * k);
+            const apres = poseesApres(time);
+            if (apres.releases.length) continue;
+            essais += 1;
+            const [autre] = formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: apres.preference, times: [time], snapshot, guardFor: gardeDuPlan, memo: memoArrivee });
+            if (autre && autre.ok && memes(autre) && Number(autre.waitMinutes) < Number(entree.waitMinutes)) {
+              return { time, waitMinutes: Number(autre.waitMinutes), savedMinutes: Number(entree.waitMinutes) - Number(autre.waitMinutes), ...(autre.endTime ? { endTime: autre.endTime } : {}) };
+            }
+          }
+          return null;
+        };
         if (heureArrivee) {
-          const [entree] = formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: posees, times: [heureArrivee], snapshot, guardFor: gardeDuPlan });
+          const [entree] = formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: posees, times: [heureArrivee], snapshot, guardFor: gardeDuPlan, memo: memoArrivee });
           // LES HEURES DES ACTIVITES RESTENT A CHOISIR (2026-10-13) : chacune
           // jugee avec cette arrivee et les autres heures posees, par la meme
           // porte. Le client change son bowling sans perdre son arrivee.
@@ -1404,7 +1507,13 @@ module.exports = async (req, res) => {
             anchorMeta = null;
           }
           if (entree.ok) {
-            respondFormula([entree.slot], '', [], null, { ...extra, arrival: sansCreneau(entree) });
+            let plusTard = null;
+            try {
+              plusTard = arriveePlusTard(entree);
+            } catch (error) {
+              console.error('[public-availability] arrivee plus tard', error && (error.stack || error.message));
+            }
+            respondFormula([entree.slot], '', [], null, { ...extra, arrival: { ...sansCreneau(entree), ...(plusTard ? { later: plusTard } : {}) } });
             return;
           }
           // LA PREMIERE ARRIVEE QUI TIENT CE JOUR-LA, quand le refus tient a

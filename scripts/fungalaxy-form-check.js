@@ -1375,7 +1375,9 @@ async function lirePistes(page) {
     chips: Array.from(t.querySelectorAll('.fg-chip')).map((c) => ({
       t: c.dataset.time, etat: c.dataset.state, ok: c.dataset.ok === 'true', reason: c.dataset.reason || '', conflit: c.dataset.conflict || '', sous: c.dataset.sous || '',
       replaces: c.dataset.replaces || '', partie: c.dataset.partie || '',
-      mot: (c.querySelector('small') || {}).textContent || '', on: c.classList.contains('is-on'), proposed: c.classList.contains('is-proposed'),
+      // Le mot de l heure est porte par la puce (2026-10-13) : pour un probleme,
+      // il ne s ecrit plus dessous.
+      mot: c.dataset.mot || '', on: c.classList.contains('is-on'), proposed: c.classList.contains('is-proposed'),
       titre: c.getAttribute('title') || '', periode: c.closest('.fg-period') ? c.closest('.fg-period').dataset.period : '',
       // La ligne que l heure POINTE (aria-describedby), lue par ses heures.
       decrit: (() => { const id = c.getAttribute('aria-describedby'); if (!id) return ''; const l = document.getElementById(id); return l ? `#${String(l.dataset.heures || '')}` : '#absente'; })(),

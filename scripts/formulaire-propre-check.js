@@ -14,9 +14,12 @@
 //     chaque etape et la note des pistes : aucun espace secable entre un nombre
 //     et son unite, avant un « · », apres un « × » ou un « = », autour d un
 //     « / » ; le calcul des pistes se lit d un bloc.
-// [C] LA LIGNE DU PROGRAMME NE TRAVERSE PAS L ETAPE OUVERTE SUR TELEPHONE :
-//     son corps, plein, la couvre (sur grand ecran, le corps est en retrait et
-//     la ligne court dans la marge : rien ne la couvre).
+// [C] LE PROGRAMME N A NI FIL NI POINT (Movsar, 2026-10-13 : « le point qui
+//     clignote a cote du logo horloge c est typique IA »). Le fil vertical qui
+//     reliait les lignes et le point de chaque ligne sont partis, et avec eux
+//     le defaut du 2026-10-12 (sur telephone, le fil traversait l etape
+//     ouverte). A 360 px comme a 1280 px : la liste ne dessine aucun fil,
+//     aucune ligne n a de point, et l icone ouvre chaque ligne.
 // [D] LA GRILLE DES ACTIVITES SUIT LA FENETRE. Passee de 4 colonnes a 2
 //     (telephone qu on tourne, fenetre qu on retrecit), elle gardait ses
 //     colonnes 3 et 4 : le placement les recomptait dans les colonnes
@@ -48,7 +51,8 @@ const MUTATIONS = [
   { nom: 'le fond de l hote est repris meme clair', fichier: 'assets/fungalaxy-booking.js', de: ' && fondAssezSombre(fond)) {', vers: ') {' },
   { nom: 'typo() ne soude plus rien', fichier: 'assets/fungalaxy-booking.js', de: "  function typo(s) {\n    return String(s == null ? '' : s)\n", vers: "  function typo(s) {\n    return String(s == null ? '' : s); return String(s)\n" },
   { nom: 'le calcul des pistes ne se tient plus d un bloc', fichier: 'assets/fungalaxy-booking.css', de: '.fg-calcul { display: inline-block; }\n', vers: '' },
-  { nom: 'le corps de l etape ouverte ne couvre plus la ligne sur telephone', fichier: 'assets/fungalaxy-booking.css', de: '  .fg-etape__dedans { position: relative; background: #0e0c0f; }\n', vers: '' },
+  { nom: 'le fil du programme revient', fichier: 'assets/fungalaxy-booking.css', de: '.fg-etape { position: relative; }\n', vers: '.fg-etapes::before { content: ""; position: absolute; left: 28px; top: 30px; bottom: 30px; width: 2px; background: rgba(255, 255, 255, 0.09); }\n.fg-etape { position: relative; }\n' },
+  { nom: 'le point revient devant l icone de chaque ligne', fichier: 'assets/fungalaxy-booking.js', de: "      + '<span class=\"fg-etape__icone\">", vers: "      + '<span class=\"fg-etape__point\" aria-hidden=\"true\"></span><span class=\"fg-etape__icone\">" },
   { nom: 'la grille des activites recompte ses colonnes sans retirer ses placements', fichier: 'assets/fungalaxy-booking.js', de: "        tuiles.forEach(function (tile) { tile.style.gridColumn = ''; tile.style.gridRow = ''; });\n", vers: '' },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
@@ -148,7 +152,7 @@ async function verifierHotes(browser) {
 }
 
 async function verifierPetitEcran(browser) {
-  console.log('\n[B] LES MOTS QUI NE SE SEPARENT PAS, et [C] LA LIGNE DU PROGRAMME, A 360 PX');
+  console.log('\n[B] LES MOTS QUI NE SE SEPARENT PAS, et [C] NI FIL NI POINT SUR LE PROGRAMME, A 360 PX');
   const ctx = await browser.newContext({ viewport: { width: 360, height: 740 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
   const erreurs = [];
@@ -188,17 +192,29 @@ async function verifierPetitEcran(browser) {
     ok(fautesHeures.length === 0, '[B] heures : la ligne des etapes et la note des pistes ne se coupent pas au mauvais endroit', JSON.stringify(fautesHeures));
     ok(heures.calcul === 'inline-block', '[B] le calcul des pistes (10 joueurs = 2 pistes × 39 € = 78 €) se tient d un bloc', heures.calcul);
 
-    const corps = await page.evaluate(() => {
-      const d = document.querySelector('#hourZone .fg-etape.is-open .fg-etape__dedans');
-      if (!d) return null;
-      const cs = getComputedStyle(d);
-      return { position: cs.position, fond: cs.backgroundColor };
+    // Le fil se lit sur le pseudo-element de la liste ; le point, sur la
+    // ligne elle-meme : l icone en est le premier element peint, au ras de
+    // son retrait.
+    const sansFil = () => page.evaluate(() => {
+      const liste = document.querySelector('#hourZone .fg-etapes');
+      if (!liste) return null;
+      const tetes = Array.from(document.querySelectorAll('#hourZone .fg-etape__tete'));
+      return {
+        fil: getComputedStyle(liste, '::before').content,
+        points: document.querySelectorAll('#hourZone .fg-etape__point').length,
+        lignes: tetes.length,
+        decalees: tetes.filter((t) => {
+          const i = t.querySelector('.fg-etape__icone');
+          return !i || Math.abs(i.getBoundingClientRect().left - t.getBoundingClientRect().left - parseFloat(getComputedStyle(t).paddingLeft)) > 1;
+        }).length,
+      };
     });
-    ok(Boolean(corps) && corps.position === 'relative' && corps.fond === 'rgb(14, 12, 15)', '[C] a 360 px, le corps de l etape ouverte est plein et couvre la ligne du programme', JSON.stringify(corps));
+    const etroit = await sansFil();
+    ok(Boolean(etroit) && etroit.lignes >= 2 && etroit.fil === 'none' && etroit.points === 0 && etroit.decalees === 0, '[C] a 360 px, le programme n a ni fil ni point : l icone ouvre chaque ligne', JSON.stringify(etroit));
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(300);
-    const large = await page.evaluate(() => { const d = document.querySelector('#hourZone .fg-etape.is-open .fg-etape__dedans'); return d ? getComputedStyle(d).backgroundColor : null; });
-    ok(large === 'rgba(0, 0, 0, 0)', '[C] sur grand ecran, rien ne couvre la ligne : elle court dans la marge', String(large));
+    const large = await sansFil();
+    ok(Boolean(large) && large.lignes >= 2 && large.fil === 'none' && large.points === 0 && large.decalees === 0, '[C] a 1280 px non plus, ni fil ni point', JSON.stringify(large));
     ok(erreurs.length === 0, '[B] aucune erreur de page', erreurs.slice(0, 3).join(' | '));
   } finally { await ctx.close(); }
 }
@@ -289,7 +305,7 @@ async function main() {
     console.error(`\nformulaire-propre-check: ${failures} defaut(s).`);
     process.exit(1);
   }
-  console.log('\nformulaire-propre-check: ALL OK (fond d hote sombre seulement, mots insecables, ligne du programme couverte sur telephone, grille des activites qui suit la fenetre)');
+  console.log('\nformulaire-propre-check: ALL OK (fond d hote sombre seulement, mots insecables, ni fil ni point sur le programme, grille des activites qui suit la fenetre)');
   process.exit(0);
 }
 

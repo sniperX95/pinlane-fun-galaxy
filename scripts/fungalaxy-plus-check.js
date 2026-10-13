@@ -525,7 +525,13 @@ async function attenteParcours(browser, mock, { grand, etiquette, retire = 3 }) 
     const carte = page.locator(`#vitrine .fg-vitrine__carte:has([data-plus="${cible.id}"])`);
     // Un bouton eteint (code casse) ne bloque pas le gate : il le mesure.
     const pas = async (sens) => { for (let k = 0; k < retire; k += 1) await carte.locator(`[data-vitrine-pas="${sens}"]`).click({ timeout: 2000 }).catch(() => {}); };
+    // Le montant suit le compteur apres l aller-retour du serveur (le devis,
+    // une dizaine de millisecondes) : il se juge une fois sorti de « … », au
+    // plus 3 s apres le dernier toucher. Un prix qui ne vient jamais reste
+    // « … » et rougit.
+    const prixRendu = () => attendre(page, (id) => { const p = document.querySelector(`#vitrine .fg-vitrine__carte:has([data-plus="${id}"]) .fg-vitrine__prix`); return Boolean(p) && p.textContent.trim() !== '\u2026'; }, 3000, cible.id);
     await pas(-1);
+    await prixRendu();
     res.f1 = await lireAttenteFenetre(page);
     await carte.locator('[data-plus]').click();
     await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return document.querySelector('#vitrine').hidden && z && z.dataset.ton === 'ok'; }, 15000);
@@ -540,6 +546,7 @@ async function attenteParcours(browser, mock, { grand, etiquette, retire = 3 }) 
     await page.waitForTimeout(500);
     res.f2 = await lireAttenteFenetre(page);
     await pas(1);
+    await prixRendu();
     res.f3 = await lireAttenteFenetre(page);
     await carte.locator('[data-plus]').click();
     await attendre(page, () => { const z = document.querySelector('#plus-recap .fg-plus__statut'); return document.querySelector('#vitrine').hidden && z && z.dataset.ton === 'ok'; }, 15000);

@@ -20,9 +20,10 @@
 //       probleme tu le notifies mais on peut quand meme cliquer ») ; une heure
 //       choisie pose le bowling et le laser du serveur ; la ligne du bowling
 //       garde ses heures, jugees avec l arrivee ;
-//   [C] arriver a 10:00 quand tout est pris jusqu a 10:30 : les arcades a
-//       10:00, le bowling a 10:30, le laser apres, la fin du serveur ; 10:00
-//       partout, l accueil compris (jamais 09:50) ; le blocage et la
+//   [C] arriver a 10:00 quand tout est pris jusqu a 11:00 : l accueil, les
+//       arcades a 10:10 (jamais a l heure d arrivee), le bowling a 11:00, le
+//       laser apres, la fin du serveur ; 10:00 partout, l accueil compris
+//       (jamais 09:50) ; le blocage et la
 //       reservation partent avec preference.arrivalTime ; le recapitulatif et
 //       l ecran final disent « Arrivée à 10:00 » ;
 //   [D] une formule sans arcades (Formule 4) commence par son minigolf et ne
@@ -49,6 +50,25 @@
 //       replace apres elle ; un bowling avant l arrivee la fait tomber, le
 //       plan la conseille juste avant lui ; une reponse d arrivee sans grille
 //       garde les lignes du programme.
+//   [I] (2026-10-13, Movsar : « pourquoi tu mets automatiquement l heure
+//       d arrivee a arcade [...] mettre arcade pendant temps d attente [...]
+//       des pop up adaptees en fonction du temps libre [...] pointille »)
+//       au telephone : la ligne des arcades (apres l accueil, ses heures a
+//       l ouverture, relues quand l arrivee change), l heure choisie qui part
+//       au serveur et au blocage ; l attente ou quelque chose tient devient un
+//       cadre en pointille qui se deplie (« Y faire vos arcades » quand elles
+//       sont apres les activites, « Arriver a » verifie par le serveur) ;
+//       l heure du plan hors de la grille garde sa puce ; le bowling pose
+//       sur les arcades les decale, les arcades posees sur le bowling le
+//       liberent ; rien a proposer quand le libre de la formule couvre
+//       l attente.
+//   [J] (2026-10-13, Movsar : « pas de mot décale mais [...] entouré en
+//       pointillé les heures où y a besoin d explication [...] et expliqué
+//       super proprement en bas avec couleur différente par problème »),
+//       dans [B] et [H] : une heure serree, decalee ou impossible n ecrit
+//       plus son mot (il reste porte par la puce), son contour est en
+//       tirets de la teinte de SA ligne, et deux lignes d une plage n ont
+//       jamais la meme teinte.
 //   --mutate : une regle cassee a la fois, en memoire (le formulaire servi au
 //       navigateur, ou le moteur compile pour le serveur) : chacune doit faire
 //       rougir le gate ; le disque n est jamais ecrit, et on le verifie.
@@ -87,6 +107,7 @@ const SEULEMENT = String(process.env.PINLANE_ARRIVEE_FORM_SCENARIOS || '').split
 const REGLAGE = { arrivalFirst: true, maxWaitMinutes: 30, maxVisitMinutes: 0, freeDurationPolicy: 'default' };
 const COUPEE = 'La réservation par heure d’arrivée n’est pas proposée par ce centre.';
 const JS = 'assets/fungalaxy-booking.js';
+const CSS = 'assets/fungalaxy-booking.css';
 
 // ---------------------------------------------------------------------------
 // LES CONTRE-EPREUVES : une regle cassee chacune, et les scenarios qui la
@@ -102,8 +123,8 @@ const MUTATIONS = [
   { nom: 'les bornes du serveur n effacent plus l option', fichier: JS, scenarios: ['E'],
     de: ' && !(b && b.arrivalFirst === false);', vers: ';' },
   { nom: 'la liste des arrivees part des l arrivee sur les heures', fichier: JS, scenarios: ['A'],
-    de: '    if (ancres.length) { majPistes(d); majEtapes(d); rendreArrivees(); }',
-    vers: '    if (ancres.length) { majPistes(d); majEtapes(d); if (avecArrivee) chargerArrivees(); }' },
+    de: '    if (ancres.length) { majPistes(d); majEtapes(d); rendreArrivees(); rendreArcades(); }',
+    vers: '    if (ancres.length) { majPistes(d); majEtapes(d); if (avecArrivee) chargerArrivees(); rendreArcades(); }' },
   { nom: 'une demande sans arrivee porte un parametre de plus', fichier: JS, scenarios: ['A'],
     de: "    if (state.arrivee) q.set('arrival', state.arrivee);", vers: "    q.set('arrival', state.arrivee);" },
   { nom: 'l heure d arrivee choisie ne part pas au serveur', fichier: JS, scenarios: ['C'],
@@ -162,7 +183,7 @@ const MUTATIONS = [
     de: "      if (alt) alt.hidden = e.etat === 'choisi' || e.etat === 'surplace';\n    });",
     vers: "      if (alt) alt.hidden = e.etat === 'choisi' || e.etat === 'surplace';\n      var pisteE = $('.fg-etape__piste', li); if (pisteE && e.cle !== 'arrivee') pisteE.hidden = Boolean(state.arrivee);\n    });" },
   { nom: 'une heure avant l arrivee ne decale plus, elle se refuse', fichier: JS, scenarios: ['H'],
-    de: '  var DECALENT = { anchor_overlap: 1, arrival_before: 1, arrival_welcome: 1 };', vers: '  var DECALENT = { anchor_overlap: 1 };' },
+    de: '  var DECALENT = { anchor_overlap: 1, arrival_before: 1, arrival_welcome: 1, arcade_overlap: 1 };', vers: '  var DECALENT = { anchor_overlap: 1, arcade_overlap: 1 };' },
   { nom: 'une heure prise avant l arrivee la garde', fichier: JS, scenarios: ['H'],
     de: "      if (!adaptation) adaptation = { deplace: 'arrivee', pour: idA, t: t, avant: state.arrivee };\n      state.arrivee = '';",
     vers: '      void 0;' },
@@ -171,7 +192,7 @@ const MUTATIONS = [
   { nom: 'une arrivee qui libere le bowling ne se dit plus « décale »', fichier: JS, scenarios: ['H'],
     de: "    if (t.libere) return { etat: 'shift', mot: 'décale', raison: t.libere.raison, conflit: t.libere };", vers: '' },
   { nom: 'la visite ne dit plus le bowling replace apres l arrivee', fichier: JS, scenarios: ['H'],
-    de: "        replacee ? 'replacé après votre arrivée (' + adaptation.t + ')' : bouge ?", vers: '        bouge ?' },
+    de: ": 'replacé après votre arrivée (' + adaptation.t + ')')", vers: ": '')" },
   { nom: 'la liste ne libere plus les heures posees avant chaque arrivee (serveur)', fichier: 'api/public-availability.js', scenarios: ['H'],
     de: '          const garde = (texte) => !(minutesDe(texte) < seuil);', vers: '          const garde = () => true;' },
   { nom: 'l attente d une activite ne dit plus depuis quelle arrivee', fichier: JS, scenarios: ['H'],
@@ -191,6 +212,55 @@ const MUTATIONS = [
     de: "    if (state.arrivee && !slot && arrivees.liste) { arrivees.lu = 0; if (etapeOuverte === 'arrivee') chargerArrivees(); }", vers: '    void 0;' },
   { nom: 'le refus d une arrivee ne propose plus la suivante', fichier: JS, scenarios: ['F'],
     de: '      if (versA) {', vers: '      if (false) {' },
+  // Les arcades a leur heure et le temps libre (2026-10-13).
+  { nom: 'la ligne des arcades n existe plus', fichier: JS, scenarios: ['I'],
+    de: '    if (aDesArcades(d)) {\n      var rangee = arcadeDuPlan();', vers: '    if (false) {\n      var rangee = arcadeDuPlan();' },
+  { nom: 'les heures d arcade se demandent des que l arrivee est choisie', fichier: JS, scenarios: ['I'],
+    de: '    if (ancres.length) { majPistes(d); majEtapes(d); rendreArrivees(); rendreArcades(); }',
+    vers: '    if (ancres.length) { majPistes(d); majEtapes(d); rendreArrivees(); if (aDesArcades(d)) chargerArcades(); }' },
+  { nom: 'la ligne ouverte garde les heures d arcade d une autre arrivee', fichier: JS, scenarios: ['I'],
+    de: "    if (etapeOuverte === 'arcade_time' && arcades.cle !== cleArcades() && arcades.enCours !== cleArcades()) { chargerArcades(); return; }", vers: '' },
+  { nom: 'l heure d arcade choisie ne part pas au serveur', fichier: JS, scenarios: ['I'],
+    de: "    if (state.arrivee && state.arcade) q.set('arcade', state.arcade);", vers: '    void 0;' },
+  { nom: 'le temps libre ne propose plus les arcades', fichier: JS, scenarios: ['I'],
+    de: "      if (dureeArc && arc.placement === 'after' && m >= dureeArc) {", vers: '      if (false) {' },
+  { nom: 'le temps libre propose de deplacer des arcades deja dans une attente', fichier: JS, scenarios: ['I'],
+    de: "      if (dureeArc && arc.placement === 'after' && m >= dureeArc) {", vers: '      if (dureeArc && m >= dureeArc) {' },
+  { nom: 'l idee des arcades ne dit plus ou elles etaient', fichier: JS, scenarios: ['I'],
+    de: "', au lieu de ' + arc.startTime });", vers: "'' });" },
+  { nom: 'l heure du plan hors de la grille n a plus sa puce', fichier: JS, scenarios: ['I'],
+    de: '    if (liste && duPlan && !liste.some(function (x) { return x.time === duPlan; })) liste = ', vers: '    if (false) liste = ' },
+  { nom: 'l arrivee plus tard ne se propose plus', fichier: JS, scenarios: ['I'],
+    de: "      if (s.placement === 'before' && tard && tard.time && Number(tard.savedMinutes) > 0) {", vers: '      if (false) {' },
+  { nom: 'le cadre du temps libre ne se deplie plus', fichier: JS, scenarios: ['I'],
+    de: '        if (choix) choix.hidden = !ici;', vers: '        void 0;' },
+  { nom: 'une heure de bowling sur les arcades ne les decale plus', fichier: JS, scenarios: ['I'],
+    de: '  var DECALENT = { anchor_overlap: 1, arrival_before: 1, arrival_welcome: 1, arcade_overlap: 1 };', vers: '  var DECALENT = { anchor_overlap: 1, arrival_before: 1, arrival_welcome: 1 };' },
+  { nom: 'decaler les arcades garde leur heure', fichier: JS, scenarios: ['I'],
+    de: "      if (autre === 'arcade_time') {\n        state.arcade = '';", vers: "      if (autre === 'arcade_time') {\n        void 0;" },
+  { nom: 'des arcades sur le bowling pose ne le liberent plus', fichier: JS, scenarios: ['I'],
+    de: '        } else delete state.pins[c.activityId];', vers: '        } else void 0;' },
+  { nom: 'la visite ne dit plus le bowling replace autour des arcades', fichier: JS, scenarios: ['I'],
+    de: "'replacé autour de vos arcades (' + adaptation.t + ')'", vers: "''" },
+  { nom: 'la visite ne dit plus les arcades a l heure du client', fichier: JS, scenarios: ['I'],
+    de: "    var ouA = !leveeA ? (s.chosen ? 'à votre heure' : '')", vers: "    var ouA = !leveeA ? ('')" },
+  { nom: 'le mot d un probleme revient sous l heure', fichier: JS, scenarios: ['B', 'H'],
+    de: "    $('small', chip).textContent = on || prop || e.etat === 'wave' || e.nom ? mot : '';", vers: "    $('small', chip).textContent = mot;" },
+  { nom: 'deux problemes d une plage ont la meme teinte', fichier: JS, scenarios: ['B', 'H'],
+    de: '  function teinteDe(k) { return String(k % TEINTES); }', vers: "  function teinteDe(k) { return '0'; }" },
+  { nom: 'une heure a probleme ne prend pas la teinte de sa ligne', fichier: JS, scenarios: ['B', 'H'],
+    de: '    groupes.forEach(function (g, k) { g.puces.forEach(function (c) { c.dataset.teinte = teinteDe(k); }); });\n', vers: '' },
+  { nom: 'les heures a probleme ne sont plus entourees en tirets', fichier: CSS, scenarios: ['B', 'H'],
+    de: '.fg-chip.is-soft, .fg-chip.is-shift, .fg-chip.is-off { border-style: dashed;', vers: '.fg-chip.is-soft, .fg-chip.is-shift, .fg-chip.is-off { border-style: solid;' },
+  { nom: 'la phrase sous la plage double le point final', fichier: JS, scenarios: ['I'],
+    de: "    var r = String(g.raison || 'Indisponible').replace(/\\.+$/, '');", vers: "    var r = g.raison || 'Indisponible';" },
+  { nom: 'le blocage part sans l heure d arcade', fichier: JS, scenarios: ['I'],
+    de: '      if (state.arcade) base.preference.arcadeTime = state.arcade;', vers: '      void 0;' },
+  { nom: 'le libre de la formule ne couvre plus l attente (serveur)', fichier: 'lib/ops-engine.js', scenarios: ['I'],
+    de: '  const mobiles = libres.map((libre, rang) => rang).filter((rang) => !Number.isFinite(libres[rang].start));',
+    vers: '  const mobiles = libres.map((libre, rang) => rang).filter((rang) => !Number.isFinite(libres[rang].start) && libres[rang].aHeure);' },
+  { nom: 'le refus des arcades ne nomme plus l activite posee (serveur)', fichier: 'lib/ops-engine.js', scenarios: ['I'],
+    de: '  if (!sonde.ok) return refusArrivee(time, sonde.code, sonde.reason, sonde.conflict ? { conflict: sonde.conflict } : {});', vers: '  if (!sonde.ok) return refusArrivee(time, sonde.code, sonde.reason);' },
 ];
 const MUTATION_PREUVE = '[mutation] servie :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_ARRIVEE_FORM_MUTATION || 0);
@@ -310,6 +380,13 @@ function serveur(mock) {
     // adresse (60 demandes par minute) les compterait ensemble.
     const seaux = globalThis.__pinlaneRateBuckets;
     if (seaux) [...seaux.keys()].filter((k) => /^public-(availability|holds|reservations):/.test(k)).forEach((k) => seaux.delete(k));
+    if (url.pathname === `/${CSS}` && MUTATION && MUTATION.fichier === CSS) {
+      const feuille = muter(fs.readFileSync(path.join(ROOT, CSS), 'utf8'), MUTATION);
+      direPreuve();
+      res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(feuille);
+      return;
+    }
     if (url.pathname === `/${JS}` && (servirAncien || (MUTATION && MUTATION.fichier === JS))) {
       let corps = servirAncien;
       if (!corps) {
@@ -463,7 +540,9 @@ async function lireVisite(page) {
 }
 async function lirePuces(page, piste) {
   return lisible(await page.evaluate((id) => [...document.querySelectorAll(`.fg-track[data-activity="${id}"] .fg-chip`)].map((c) => ({
-    time: c.dataset.time, ok: c.dataset.ok, etat: c.dataset.state || '', mot: (c.querySelector('small') || {}).textContent || '',
+    // Le mot de l heure est porte par la puce (2026-10-13) : il ne s ecrit
+    // plus dessous pour un probleme ([J]).
+    time: c.dataset.time, ok: c.dataset.ok, etat: c.dataset.state || '', mot: c.dataset.mot || '',
     titre: c.getAttribute('title') || '', decrite: c.getAttribute('aria-describedby') || '',
   })), piste));
 }
@@ -472,6 +551,61 @@ async function lirePourquoi(page, piste) {
     id: li.id, etat: li.dataset.etat || '', heures: String(li.dataset.heures || '').split(' ').filter(Boolean),
     cle: (li.querySelector('.fg-key') || {}).textContent || '', texte: (li.querySelector('span') || {}).textContent || '', lit: li.classList.contains('is-lit'),
   })), piste));
+}
+// [J] LES HEURES QUI POSENT PROBLEME, partout dans l ecran des heures (les
+// plages repliees comprises) : plus de mot sous l heure (seuls « choisi »,
+// « proposé » et le nom d une partie s ecrivent), un contour en tirets de la
+// teinte de la ligne qu elle pointe, et une teinte par ligne dans une plage.
+// Lu au repos : les transitions de couleur finies. Une heure survolee
+// (contour plein) ou demandee (contour d alerte) ne se juge pas sur sa
+// couleur.
+const vusProblemes = { lignes: 0, deuxLignes: 0, puces: 0 };
+async function problemesEnCouleur(page, label) {
+  await attendre(page, () => document.getAnimations().every((a) => a.playState !== 'running' || a.effect.getComputedTiming().iterations === Infinity), 5000);
+  const r = await page.evaluate(() => {
+    const fautes = [];
+    // Les couleurs se lisent au repos : une heure qui vient de changer d etat
+    // demarre sa transition de contour au moment meme de la lecture, et se
+    // lirait a la couleur d avant. Le temps de la lecture, plus de transition.
+    const gel = document.createElement('style');
+    gel.textContent = '#hourZone .fg-chip, #hourZone .fg-why-list__quand { transition: none !important; }';
+    document.head.appendChild(gel);
+    let lignes = 0;
+    let deuxLignes = 0;
+    let puces = 0;
+    document.querySelectorAll('#hourZone .fg-track .fg-period').forEach((sec) => {
+      const ou = `${sec.closest('.fg-track').dataset.activity}/${sec.dataset.period}`;
+      const items = [...sec.querySelectorAll('.fg-why-list__item')];
+      const teintes = items.map((li) => {
+        const q = li.querySelector('.fg-why-list__quand');
+        const s = q ? getComputedStyle(q) : null;
+        if (!s || s.borderTopStyle !== 'dashed' || s.borderTopColor !== s.color) fautes.push(`${ou} ligne ${li.dataset.heures} : contour ${s && s.borderTopStyle} ${s && s.borderTopColor}, texte ${s && s.color}`);
+        return s ? s.borderTopColor : '';
+      });
+      lignes += items.length;
+      if (items.length >= 2) deuxLignes += 1;
+      if (new Set(teintes).size !== teintes.length) fautes.push(`${ou} : ${items.length} lignes pour ${new Set(teintes).size} teintes`);
+      sec.querySelectorAll('.fg-chip').forEach((c) => {
+        if (!['soft', 'shift', 'hard'].includes(c.dataset.state) || c.classList.contains('is-on') || c.classList.contains('is-proposed')) return;
+        puces += 1;
+        const ecrit = ((c.querySelector('small') || {}).textContent || '').trim();
+        if (ecrit && !/^partie \d/.test(ecrit)) fautes.push(`${ou} ${c.dataset.time} ecrit « ${ecrit} »`);
+        const q = (document.getElementById(c.getAttribute('aria-describedby') || '') || { querySelector: () => null }).querySelector('.fg-why-list__quand');
+        if (!q) { fautes.push(`${ou} ${c.dataset.time} sans sa ligne`); return; }
+        if (c.matches(':hover') || c.classList.contains('is-asked')) return;
+        const cs = getComputedStyle(c);
+        if (cs.borderTopStyle !== 'dashed') fautes.push(`${ou} ${c.dataset.time} contour ${cs.borderTopStyle}`);
+        if (cs.borderTopColor !== getComputedStyle(q).borderTopColor) fautes.push(`${ou} ${c.dataset.time} ${cs.borderTopColor}, sa ligne ${getComputedStyle(q).borderTopColor}`);
+      });
+    });
+    gel.remove();
+    return { fautes, lignes, deuxLignes, puces };
+  });
+  vusProblemes.lignes += r.lignes;
+  vusProblemes.deuxLignes += r.deuxLignes;
+  vusProblemes.puces += r.puces;
+  ok(r.puces > 0 && r.fautes.length === 0, `[J] ${label} : chaque heure qui pose probleme est sans mot, entouree en tirets de la teinte de sa ligne, une teinte par ligne (${r.puces} heures, ${r.lignes} lignes, ${r.deuxLignes} plages a deux lignes ou plus)`, r.fautes.slice(0, 4).join(' | '));
+  return r;
 }
 // Une heure touchee au doigt, si elle se prend.
 function toucher(page, piste, heure) {
@@ -619,6 +753,7 @@ async function scenarioB(browser, mock) {
       } else if (p.ok !== 'true' || p.mot !== '') ecarts.push(`${x.time} libre : ${p.ok}/« ${p.mot} »`);
     });
     ok(puces.length === entrees.length && ecarts.length === 0, 'chaque heure d arrivee a sa puce et son verdict : libre sans mot, avec un avis son mot (« attente ») et prenable, refusee avec son mot court', ecarts.slice(0, 4).join(' | '));
+    await problemesEnCouleur(page, '[B] la liste des arrivees');
     // UNE LONGUE ATTENTE SE DIT ET SE PREND (Movsar, 2026-10-13 : « si y a un
     // petit probleme tu le notifies mais on peut quand meme cliquer »).
     const attentes = entrees.filter((x) => x.ok && x.warning && x.warning.code === 'arrival_wait');
@@ -693,9 +828,9 @@ async function scenarioB(browser, mock) {
 // [C] ARRIVER A 10:00 QUAND TOUT EST PRIS JUSQU A 10:30, JUSQU A LA RESERVATION
 // ---------------------------------------------------------------------------
 async function scenarioC(browser, mock) {
-  section('C. ARRIVER A 10:00 QUAND TOUT EST PRIS JUSQU A 10:30');
+  section('C. ARRIVER A 10:00 QUAND TOUT EST PRIS JUSQU A 11:00');
   reglage = REGLAGE;
-  semer(mock, [['10:00', '10:30']]);
+  semer(mock, [['10:00', '11:00']]);
   const { ctx, page, suivi } = await ouvrir(browser);
   try {
     const arrive = await versHeures(page, mock, 'f1');
@@ -703,7 +838,7 @@ async function scenarioC(browser, mock) {
     await ouvrirArrivees(page);
     const liste = await reponseAttendue(suivi, estListe);
     const dix = ((liste && liste.arrivals) || []).find((x) => x.time === '10:00') || {};
-    if (!ok(arrive && dix.ok === true, 'MONTAGE Formule 1, 10 personnes, pistes et arene pleines de 10:00 a 10:30 : arriver a 10:00 tient', JSON.stringify(dix).slice(0, 160))) return;
+    if (!ok(arrive && dix.ok === true, 'MONTAGE Formule 1, 10 personnes, pistes et arene pleines de 10:00 a 11:00 : arriver a 10:00 tient', JSON.stringify(dix).slice(0, 160))) return;
     await page.click('.fg-track[data-activity="arrivee"] .fg-chip[data-time="10:00"]');
     await calme(page);
     const rep = await reponseAttendue(suivi, (u) => params(u).get('arrival') === '10:00');
@@ -715,10 +850,11 @@ async function scenarioC(browser, mock) {
     const arcades = frise.find((s) => s.kind === 'free' && s.timed && s.placement === 'before') || null;
     const fin = heureAffichee((slot && slot.visitEndTime) || '');
     // L accueil commence a l heure choisie (2026-10-13) : la veille de dix
-    // minutes (09:50) ne se dit nulle part.
+    // minutes (09:50) ne se dit nulle part. Les arcades viennent apres lui
+    // (10:10), jamais a l heure d arrivee (Movsar, meme jour).
     const veille = heureDe(minutesDe('10:00') - 10);
-    if (!ok(Boolean(slot) && plan.arrivalPlan && plan.arrivalPlan.arrivalTime === '10:00' && Boolean(arcades) && arcades.startTime === '10:00' && heures.bowling === arcades.endTime && Boolean(fin),
-      `MONTAGE le serveur compose la visite : arcades 10:00, bowling ${heures.bowling}, laser ${heures.laser_game}, fin ${fin}`, rep && rep.message)) return;
+    if (!ok(Boolean(slot) && plan.arrivalPlan && plan.arrivalPlan.arrivalTime === '10:00' && Boolean(arcades) && arcades.startTime === '10:10' && heures.bowling === '11:00' && minutesDe(arcades.endTime) <= minutesDe(heures.bowling) && Boolean(fin),
+      `MONTAGE le serveur compose la visite : arcades 10:10 apres l accueil, bowling ${heures.bowling}, laser ${heures.laser_game}, fin ${fin}`, `${rep && rep.message} ${JSON.stringify(arcades)}`)) return;
     ok(accueil === '10:00', `l accueil commence a l heure choisie (10:00), jamais dix minutes avant (${veille})`, accueil);
     const prog = await lireProgramme(page);
     const lA = ligneDe(prog, 'arrivee');
@@ -731,11 +867,11 @@ async function scenarioC(browser, mock) {
     const v = await lireVisite(page);
     const rang = (f) => v.etapes.findIndex(f);
     const iArr = rang((e) => e.b === '10:00' && e.titre === 'Arrivée');
-    const iArc = rang((e) => e.b === '10:00' && e.titre.includes(arcades.label) && e.detail.includes(`jusqu’à ${heureAffichee(arcades.endTime)}`));
+    const iArc = rang((e) => e.b === '10:10' && e.titre.includes(arcades.label) && e.detail.includes(`jusqu’à ${heureAffichee(arcades.endTime)}`));
     const iBow = rang((e) => e.b === heures.bowling && /bowling/i.test(e.titre));
     const iLas = rang((e) => e.b === heures.laser_game && /laser/i.test(e.titre));
     const derniere = v.etapes[v.etapes.length - 1] || {};
-    ok(iArr === 0 && iArr < iArc && iArc < iBow && iBow < iLas, 'la visite se lit dans l ordre : arrivee 10:00, arcades 10:00, bowling, laser', v.etapes.map((e) => `${e.b} ${e.titre}`).join(' | '));
+    ok(iArr === 0 && iArr < iArc && iArc < iBow && iBow < iLas, 'la visite se lit dans l ordre : arrivee 10:00, arcades 10:10, bowling, laser', v.etapes.map((e) => `${e.b} ${e.titre}`).join(' | '));
     ok(derniere.titre === 'Fin de la visite' && derniere.b === fin, `la visite finit a l heure du serveur (${fin}), jamais recalculee`, `${derniere.b} ${derniere.titre}`);
     ok(v.tete.startsWith('de 10:00 ') && v.somme.includes(`10:00 → ${fin}`), 'l en-tete de la visite et la barre du bas partent de 10:00', `« ${v.tete} » / « ${v.somme} »`);
     ok(!v.zone.includes(veille) && !v.somme.includes(veille), `aucune heure dix minutes avant l arrivee (${veille}) ne se dit a l ecran des heures : l accueil commence a 10:00`);
@@ -1086,6 +1222,7 @@ async function scenarioH(browser, mock) {
     ok(p('10:30').ok === 'true' && p('10:30').etat === 'shift' && p('10:30').mot === 'décale', 'le bowling de 10:30, a l accueil de l arrivee, se dit « décale » et se prend', JSON.stringify(p('10:30')));
     ok(p('11:30').ok === 'true', 'le bowling de 11:30 se prend avec cette arrivee', JSON.stringify(p('11:30')));
     ok(p('16:00').ok === 'true' && p('16:00').etat === 'soft' && p('16:00').mot === 'attente', 'le bowling de 16:00, loin de l arrivee, se dit « attente » et se prend', JSON.stringify(p('16:00')));
+    await problemesEnCouleur(page, '[H] le bowling juge avec l arrivee de 10:30');
     const pourquoi = await lirePourquoi(page, 'bowling');
     const lTot = pourquoi.find((l) => l.heures.includes('10:00')) || null;
     ok(Boolean(lTot) && lTot.heures.includes('10:30') && lTot.cle === 'décale' && /avance votre arrivée \(10:30\)/i.test(lTot.texte) && /10 min avant votre bowling/.test(lTot.texte),
@@ -1117,6 +1254,7 @@ async function scenarioH(browser, mock) {
     // LE DERNIER CHOIX GAGNE : une arrivee apres le bowling pose le libere, il
     // se replacera apres elle. Elle se prend (« décale »), jamais « trop tard ».
     ok(a('12:00').ok === 'true' && a('12:00').etat === 'shift' && a('12:00').mot === 'décale', 'arriver a 12:00, apres le bowling pose a 11:30, se dit « décale » et se prend', JSON.stringify(a('12:00')));
+    await problemesEnCouleur(page, '[H] les arrivees avec le bowling pose a 11:30');
     const lLibere = (await lirePourquoi(page, 'arrivee')).find((l) => l.heures.includes('12:00')) || null;
     ok(Boolean(lLibere) && /votre bowling \(11:30\) se replacera après votre arrivée/i.test(lLibere.texte), 'sous la plage : « Votre bowling (11:30) se replacera après votre arrivée »', JSON.stringify(lLibere));
     ok(a('11:00').ok === 'true' && a('11:00').etat !== 'shift', 'arriver a 11:00 garde le bowling de 11:30 : rien ne decale', JSON.stringify(a('11:00')));
@@ -1185,7 +1323,229 @@ async function scenarioH(browser, mock) {
   }
 }
 
-const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH]];
+// ---------------------------------------------------------------------------
+// [I] LES ARCADES A LEUR HEURE, LE TEMPS LIBRE (2026-10-13)
+// ---------------------------------------------------------------------------
+// Movsar : « pourquoi tu mets automatiquement l heure d arrivee a arcade [...]
+// ils peuvent choisir heure d arrivee mais aussi arcade, mettre arcade pendant
+// temps d attente [...] des pop up adaptees en fonction du temps libre [...] si
+// ils ont des activites a choisir sur place deja et que ca couvre tout le temps
+// libre faut pas proposer [...] super puissant et pointille ».
+const estArcades = (u) => params(u).get('arcades') === '1';
+const estPlan = (u) => !estListe(u) && !estArcades(u);
+async function lireLibres(page) {
+  return lisible(await page.evaluate(() => [...document.querySelectorAll('#planZone .fg-visit__gap--libre')].map((li) => {
+    const b = li.querySelector('[data-libre]');
+    const choix = li.querySelector('.fg-libre__choix');
+    return {
+      cle: b ? b.dataset.libre : '',
+      quoi: (li.querySelector('.fg-libre__quoi') || {}).textContent || '',
+      expanded: b ? b.getAttribute('aria-expanded') : '',
+      cible: Boolean(b && document.getElementById(b.getAttribute('aria-controls') || '')),
+      ouvert: Boolean(choix && !choix.hidden),
+      hauteur: b ? b.getBoundingClientRect().height : 0,
+      bordure: b ? getComputedStyle(b).borderTopStyle : '',
+      actions: choix ? [...choix.querySelectorAll('.fg-libre__action')].map((a) => ({
+        arcades: a.dataset.libreArcades || '', arrivee: a.dataset.libreArrivee || '',
+        titre: (a.querySelector('b') || {}).textContent || '', detail: (a.querySelector('small') || {}).textContent || '',
+        hauteur: a.getBoundingClientRect().height,
+      })) : [],
+    };
+  })));
+}
+async function ouvrirLigne(page, cle) {
+  if ((ligneDe(await lireProgramme(page), cle) || {}).ouverte) return;
+  await page.click(`#hourZone .fg-etape[data-cle="${cle}"] .fg-etape__tete`);
+  await page.waitForTimeout(400);
+}
+async function scenarioI(browser, mock) {
+  section('I. LES ARCADES A LEUR HEURE, LE TEMPS LIBRE (pistes et arene pleines de 10:00 a 12:00, au telephone)');
+  reglage = REGLAGE;
+  semer(mock, [['10:00', '12:00']]);
+  const { ctx, page, suivi } = await ouvrir(browser, { largeur: 360, hauteur: 780 });
+  try {
+    const arrive = await versHeures(page, mock, 'f1');
+    await calme(page);
+    const prog0 = await lireProgramme(page);
+    ok(arrive && !ligneDe(prog0, 'arcade_time'), 'MONTAGE Formule 1 au telephone : sans heure d arrivee choisie, pas de ligne des arcades (le pass de la visite)', resumeLignes(prog0));
+    await ouvrirArrivees(page);
+    await ouvrirPlage(page, 'arrivee', '10:00');
+    await page.click('.fg-track[data-activity="arrivee"] .fg-chip[data-time="10:00"]');
+    await calme(page);
+    // 1. La ligne des arcades : l heure ou la frise les range, apres l accueil.
+    const rep1 = await reponseAttendue(suivi, (u) => estPlan(u) && params(u).get('arrival') === '10:00' && !params(u).has('arcade'));
+    const frise1 = ((((rep1 && rep1.slots && rep1.slots[0]) || {}).opsPlan || {}).arrivalPlan || {}).frise || [];
+    const arc1 = frise1.find((s) => s.kind === 'free' && s.activityId === 'arcade_time') || {};
+    const lArc1 = ligneDe(await lireProgramme(page), 'arcade_time');
+    ok(Boolean(lArc1) && arc1.startTime === '10:10' && lArc1.heure === '10:10' && /is-propose/.test(lArc1.classe) && /30 min/.test(lArc1.detail) && /pendant l’attente/.test(lArc1.detail),
+      'arrivee 10:00 choisie : une ligne « Arcades », 10:10 proposee (apres l accueil, jamais a l heure d arrivee), « 30 min · comprises · pendant l’attente »', JSON.stringify(lArc1));
+    ok(!suivi.demandes.some(estArcades), 'les heures d arcade ne se demandent pas tant que leur ligne n est pas ouverte');
+    // 2. La ligne ouverte : une demande, ses heures.
+    const n2 = suivi.demandes.length;
+    await page.click('#hourZone .fg-etape[data-cle="arcade_time"] .fg-etape__tete');
+    const chargees = await attendre(page, () => document.querySelectorAll('.fg-track[data-activity="arcade_time"] .fg-chip').length > 0, 20000);
+    await page.waitForTimeout(350);
+    const listes2 = suivi.demandes.slice(n2).filter(estArcades);
+    const q2 = listes2[0] ? params(listes2[0]) : new URLSearchParams();
+    ok(chargees && listes2.length === 1 && q2.get('arrival') === '10:00' && !q2.has('arcade'), 'ouvrir la ligne demande les heures d arcade de cette arrivee, une fois', listes2.join(' | '));
+    const grille2 = await reponseAttendue(suivi, estArcades);
+    const heures2 = (grille2 && grille2.arcadeTimes) || [];
+    const puces2 = await lirePuces(page, 'arcade_time');
+    ok(heures2.length > 1 && puces2.length === heures2.length && heures2[0].time === '10:10' && puces2[0].time === '10:10' && puces2[0].mot === 'proposé' && heures2[1].time === '10:30',
+      `chaque heure d arcade du serveur a sa puce (${puces2.length}) : 10:10 d abord (la fin de l accueil, la ou le plan les range, « proposé »), puis les demi-heures`, puces2.slice(0, 3).map((c) => `${c.time}:${c.mot}`).join(','));
+    // 3. Les arcades a 14:00, apres les activites.
+    const n3 = suivi.demandes.length;
+    await ouvrirPlage(page, 'arcade_time', '14:00');
+    ok(await toucher(page, 'arcade_time', '14:00'), 'MONTAGE les arcades de 14:00 se touchent');
+    await calme(page);
+    const dem3 = suivi.demandes.slice(n3).filter(estPlan).pop() || '';
+    ok(Boolean(dem3) && params(dem3).get('arrival') === '10:00' && params(dem3).get('arcade') === '14:00', 'la demande porte l arrivee (10:00) et les arcades choisies (14:00)', dem3);
+    const lArc3 = ligneDe(await lireProgramme(page), 'arcade_time') || {};
+    const eArc3 = (await lireVisite(page)).etapes.find((e) => /arcades/i.test(e.titre)) || {};
+    ok(lArc3.heure === '14:00' && /is-choisi/.test(lArc3.classe) && /à votre heure/.test(lArc3.detail), 'la ligne des arcades : 14:00, choisie, « à votre heure »', JSON.stringify(lArc3));
+    ok(eArc3.b === '14:00' && /à votre heure/.test(eArc3.detail), 'la visite : les arcades a 14:00, « à votre heure »', JSON.stringify(eArc3));
+    // 4. Les arcades apres les activites : chaque attente qui les tient devient
+    //    un cadre en pointille qui propose d y faire les arcades (avant le
+    //    bowling, apres le laser).
+    const libres4 = await lireLibres(page);
+    const avecArcades = libres4.filter((l) => l.actions.some((a) => a.arcades));
+    const cadre = avecArcades[0] || null;
+    ok(avecArcades.length === 2 && cadre.bordure === 'dashed' && cadre.expanded === 'false' && cadre.cible && !cadre.ouvert && cadre.hauteur >= 44 && /de libre/.test(cadre.quoi),
+      'les deux attentes ou les arcades tiennent (avant le bowling, apres le laser) deviennent des cadres en pointille, replies, de 44 px au moins', JSON.stringify(libres4));
+    if (cadre) await page.click(`#planZone [data-libre="${cadre.cle}"]`);
+    await page.waitForTimeout(250);
+    const deplie = (await lireLibres(page)).find((l) => cadre && l.cle === cadre.cle) || {};
+    const idee = (deplie.actions || []).find((a) => a.arcades) || {};
+    ok(deplie.ouvert === true && deplie.expanded === 'true' && idee.arcades === '10:10' && /Y faire vos arcades/.test(idee.titre) && /de 10:10 à 10:40, au lieu de 14:00/.test(idee.detail) && idee.hauteur >= 44,
+      'touche, il se deplie sur place : « Y faire vos arcades, de 10:10 a 10:40, au lieu de 14:00 », une cible de 44 px', JSON.stringify(deplie));
+    const apres = avecArcades[1] || null;
+    if (apres) await page.click(`#planZone [data-libre="${apres.cle}"]`);
+    await page.waitForTimeout(250);
+    const libres4b = await lireLibres(page);
+    const deplie2 = libres4b.find((l) => apres && l.cle === apres.cle) || {};
+    const idee2 = (deplie2.actions || []).find((a) => a.arcades) || {};
+    const premier = libres4b.find((l) => cadre && l.cle === cadre.cle) || {};
+    ok(deplie2.ouvert === true && premier.ouvert === false && idee2.arcades === '13:25' && /de 13:25 à 13:55, au lieu de 14:00/.test(idee2.detail),
+      'l attente d apres le laser se deplie, la premiere se replie : « Y faire vos arcades, de 13:25 a 13:55, au lieu de 14:00 »', JSON.stringify(deplie2));
+    const n4 = suivi.demandes.length;
+    if (deplie2.ouvert && idee2.arcades) await page.click(`#planZone [data-libre-arcades="${idee2.arcades}"]`);
+    await calme(page);
+    const dem4 = suivi.demandes.slice(n4).filter(estPlan).pop() || '';
+    ok(Boolean(dem4) && params(dem4).get('arcade') === '13:25', 'l idee se pose comme une heure choisie : la demande porte les arcades a 13:25', dem4);
+    // L heure prise hors de la grille des demi-heures (la fin du laser) a sa
+    // puce, choisie.
+    await ouvrirLigne(page, 'arcade_time');
+    await attendre(page, () => document.querySelector('.fg-track[data-activity="arcade_time"] .fg-chip[data-time="13:25"]'), 8000);
+    const a4 = (await lirePuces(page, 'arcade_time')).find((c) => c.time === '13:25') || {};
+    ok(a4.mot === 'choisi' && a4.ok === 'true', 'les arcades de 13:25, hors de la grille, ont leur puce, choisie', JSON.stringify(a4));
+    // 5. Revenir a l heure proposee : l attente d avant le bowling propose
+    //    d arriver plus tard, ce que le serveur a verifie, et rien d autre.
+    await ouvrirLigne(page, 'arcade_time');
+    const n5 = suivi.demandes.length;
+    await page.click('#hourZone [data-reset="arcade_time"]');
+    await calme(page);
+    const dem5 = suivi.demandes.slice(n5).filter(estPlan).pop() || '';
+    const rep5 = await reponseAttendue(suivi, (u) => u === dem5);
+    const later = (rep5 && rep5.arrival && rep5.arrival.later) || {};
+    ok(Boolean(dem5) && !params(dem5).has('arcade') && params(dem5).get('arrival') === '10:00' && Boolean(later.time),
+      `« Revenir a l heure proposee » : la demande part sans arcade, le serveur propose d arriver a ${later.time}`, dem5);
+    const libres5 = await lireLibres(page);
+    const cadre5 = libres5.find((l) => l.actions.some((a) => a.arrivee)) || null;
+    const tard = cadre5 ? cadre5.actions.find((a) => a.arrivee) : {};
+    ok(Boolean(cadre5) && cadre5.actions.length === 1 && tard.arrivee === later.time && /^Arriver à /.test(tard.titre) && /même programme/.test(tard.detail) && tard.detail.includes(libelleDuree(later.savedMinutes)),
+      `l attente d avant le bowling propose « Arriver a ${later.time} » (meme programme, ${libelleDuree(later.savedMinutes)} d attente en moins), et rien d autre : les arcades y sont deja`, JSON.stringify(libres5));
+    if (cadre5) await page.click(`#planZone [data-libre="${cadre5.cle}"]`);
+    await page.waitForTimeout(250);
+    const n5b = suivi.demandes.length;
+    if (tard.arrivee && ((await lireLibres(page)).find((l) => l.cle === cadre5.cle) || {}).ouvert) await page.click(`#planZone [data-libre-arrivee="${tard.arrivee}"]`);
+    await calme(page);
+    const dem5b = suivi.demandes.slice(n5b).filter(estPlan).pop() || '';
+    ok(Boolean(dem5b) && params(dem5b).get('arrival') === later.time, `l idee se pose : la demande porte l arrivee de ${later.time}`, dem5b);
+    // 6. Les arcades a 14:00, puis le bowling pose sur elles les decale.
+    await ouvrirLigne(page, 'arcade_time');
+    // L arrivee a change : la ligne ouverte relit ses heures (arcades=1, 11:00).
+    await attendre(page, () => document.querySelectorAll('.fg-track[data-activity="arcade_time"] .fg-chip').length > 0 && !document.querySelector('.fg-track[data-activity="arcade_time"] .fg-loading'), 20000);
+    await page.waitForTimeout(350);
+    const relue = suivi.demandes.filter(estArcades).pop() || '';
+    ok(params(relue).get('arrival') === later.time, `l arrivee changee, la ligne des arcades ouverte relit ses heures (arrivee ${later.time})`, relue);
+    await ouvrirPlage(page, 'arcade_time', '14:00');
+    ok(await toucher(page, 'arcade_time', '14:00'), 'MONTAGE les arcades de 14:00 se touchent');
+    await calme(page);
+    await ouvrirLigne(page, 'bowling');
+    await ouvrirPlage(page, 'bowling', '14:00');
+    const b6 = (await lirePuces(page, 'bowling')).find((c) => c.time === '14:00') || {};
+    ok(b6.ok === 'true' && b6.etat === 'shift' && b6.mot === 'décale', 'le bowling de 14:00, sur les arcades choisies, se dit « décale » et se prend', JSON.stringify(b6));
+    const pourquoi6 = (await lirePourquoi(page, 'bowling')).find((l) => l.heures.includes('14:00')) || null;
+    ok(Boolean(pourquoi6) && /vos arcades \(14:00\) se replaceront/i.test(pourquoi6.texte), 'sous la plage : « Vos arcades (14:00) se replaceront avant ou après »', JSON.stringify(pourquoi6));
+    const n6 = suivi.demandes.length;
+    ok(await toucher(page, 'bowling', '14:00'), 'MONTAGE le bowling de 14:00 se touche');
+    await calme(page);
+    const dem6 = suivi.demandes.slice(n6).filter(estPlan).pop() || '';
+    const pt6 = dem6 ? JSON.parse(params(dem6).get('preferredTimes') || '{}') : {};
+    ok(Boolean(dem6) && !params(dem6).has('arcade') && pt6.bowling === '14:00', 'la demande part avec le bowling de 14:00, sans les arcades : la frise les replace', dem6);
+    const eArc6 = (await lireVisite(page)).etapes.find((e) => /arcades/i.test(e.titre)) || {};
+    ok(/déplacées pour votre bowling à 14:00/.test(eArc6.detail), 'la visite dit les arcades deplacees pour le bowling de 14:00', JSON.stringify(eArc6));
+    // 7. Les arcades sur le bowling pose le liberent.
+    await ouvrirLigne(page, 'arcade_time');
+    await attendre(page, () => document.querySelectorAll('.fg-track[data-activity="arcade_time"] .fg-chip').length > 0 && !document.querySelector('.fg-track[data-activity="arcade_time"] .fg-loading'), 20000);
+    await page.waitForTimeout(350);
+    await ouvrirPlage(page, 'arcade_time', '14:00');
+    const a7 = (await lirePuces(page, 'arcade_time')).find((c) => c.time === '14:00') || {};
+    ok(a7.ok === 'true' && a7.etat === 'shift' && a7.mot === 'décale' && /votre bowling \(14:00\) se replacera autour de vos arcades/i.test(a7.titre),
+      'les arcades de 14:00, sur le bowling pose : « décale », « Votre bowling (14:00) se replacera autour de vos arcades »', JSON.stringify(a7));
+    const n7 = suivi.demandes.length;
+    ok(await toucher(page, 'arcade_time', '14:00'), 'MONTAGE les arcades de 14:00 se touchent de nouveau');
+    await calme(page);
+    const dem7 = suivi.demandes.slice(n7).filter(estPlan).pop() || '';
+    const pt7 = dem7 ? JSON.parse(params(dem7).get('preferredTimes') || '{}') : {};
+    ok(Boolean(dem7) && params(dem7).get('arcade') === '14:00' && !pt7.bowling, 'la demande part avec les arcades de 14:00, sans le bowling : le serveur le replace', dem7);
+    const eB7 = (await lireVisite(page)).etapes.find((e) => /bowling/i.test(e.titre)) || {};
+    ok(/replacé autour de vos arcades \(14:00\)/.test(eB7.detail), 'la visite dit le bowling replace autour des arcades', JSON.stringify(eB7));
+    // 8. Le blocage part avec l heure d arcade ; rien ne deborde au telephone ;
+    //    chaque phrase sous les plages finit par un seul point, celles des
+    //    heures trop tardives du soir comprises (« pour cette formule.. » en
+    //    prod le 13/10).
+    await page.waitForTimeout(500);
+    const phrases = await page.evaluate(() => [...document.querySelectorAll('#hourZone .fg-why-list__item span')].map((s) => s.textContent.trim()));
+    const doubles = phrases.filter((p) => /\.\.(\s|$)/.test(p));
+    ok(phrases.some((p) => /^Trop tard/.test(p)) && doubles.length === 0, `sous les plages, chaque phrase finit par un seul point, celles des heures trop tardives comprises (${phrases.length} phrases)`, doubles.slice(0, 2).join(' | '));
+    const largeur = await page.evaluate(() => ({ page: document.scrollingElement.scrollWidth, ecran: window.innerWidth }));
+    ok(largeur.page <= largeur.ecran, 'au telephone (360 px), rien ne deborde', JSON.stringify(largeur));
+    const nB = suivi.blocages.length;
+    await page.click('#goContact');
+    const contact = await attendre(page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 12000);
+    const bloc = suivi.blocages.length > nB ? suivi.blocages[suivi.blocages.length - 1] : null;
+    ok(contact && Boolean(bloc && bloc.preference) && bloc.preference.arcadeTime === '14:00' && bloc.preference.arrivalTime === later.time,
+      'le blocage part avec l heure d arrivee et les arcades choisies (14:00)', JSON.stringify(bloc && bloc.preference));
+  } finally {
+    ok(suivi.erreurs.length === 0, '[I] aucune erreur JavaScript', suivi.erreurs.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+  // 9. Rien a proposer quand le libre de la formule couvre l attente : la
+  //    Formule 2 fait son minigolf avant le laser, aucun cadre.
+  semer(mock, []);
+  const deux = await ouvrir(browser, { largeur: 360, hauteur: 780 });
+  try {
+    const arriveF2 = await versHeures(deux.page, mock, 'f2');
+    await calme(deux.page);
+    await ouvrirArrivees(deux.page);
+    await ouvrirPlage(deux.page, 'arrivee', '10:00');
+    await deux.page.click('.fg-track[data-activity="arrivee"] .fg-chip[data-time="10:00"]');
+    await calme(deux.page);
+    const repF2 = await reponseAttendue(deux.suivi, (u) => estPlan(u) && params(u).get('arrival') === '10:00');
+    const planF2 = (((repF2 && repF2.slots && repF2.slots[0]) || {}).opsPlan || {}).arrivalPlan || {};
+    const couvert = (planF2.frise || []).some((s) => s.kind === 'free' && s.activityId === 'minigolf_blacklight' && s.placement === 'before');
+    ok(arriveF2 && couvert && planF2.waitMinutes === 0, 'MONTAGE Formule 2, journee libre, arrivee 10:00 : le minigolf se fait avant le laser, aucune attente', JSON.stringify({ attente: planF2.waitMinutes, couvert }));
+    const libresF2 = await lireLibres(deux.page);
+    const trous = await deux.page.evaluate(() => document.querySelectorAll('#planZone .fg-visit__gap').length);
+    ok(libresF2.length === 0 && trous === 0, 'le minigolf couvre le temps libre : aucun cadre, rien a proposer', JSON.stringify({ libresF2, trous }));
+  } finally {
+    ok(deux.suivi.erreurs.length === 0, '[I] Formule 2 : aucune erreur JavaScript', deux.suivi.erreurs.slice(0, 3).join(' | '));
+    await deux.ctx.close();
+  }
+}
+
+const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH], ['I', scenarioI]];
 
 async function main() {
   const mock = require('./dev-tunnel-server');

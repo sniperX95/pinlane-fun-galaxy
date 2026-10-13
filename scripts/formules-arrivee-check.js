@@ -824,11 +824,14 @@ async function scenarioK(H) {
   const v = [];
   // `apresAccueil` : seules les heures que la porte juge (celles d avant la fin
   // de l accueil se disent sans calcul, et les journees du matin les prouvent).
-  const verifierGrille = async (nom, arrivee, apresAccueil = false) => {
-    const rep = await H.get({ type: 'formule', formuleId: 'f1', arrival: arrivee });
+  const verifierGrille = async (nom, arrivee, { apresAccueil = false, formuleId = 'f1' } = {}) => {
+    const rep = await H.get({ type: 'formule', formuleId, arrival: arrivee });
     const grille = (rep.json && rep.json.anchors && rep.json.anchors.activities) || [];
-    v.push(verdict(rep.status === 200 && grille.length === 2 && grille.every((a) => Array.isArray(a.times) && a.times.length > 0),
-      `${nom}, arrivee ${arrivee} : la reponse porte la grille du bowling et du laser`, `${rep.status} ${grille.map((a) => `${a.activityId}:${(a.times || []).length}`).join(' ')}`));
+    // Les activites a heure fixe de la formule, lues dans sa grille sans arrivee.
+    const sans = await H.get({ type: 'formule', formuleId });
+    const attendues = ((sans.json && sans.json.anchors && sans.json.anchors.activities) || []).map((a) => a.activityId).join(', ');
+    v.push(verdict(rep.status === 200 && grille.length > 0 && grille.map((a) => a.activityId).join(', ') === attendues && grille.every((a) => Array.isArray(a.times) && a.times.length > 0),
+      `${nom}, arrivee ${arrivee} : la reponse porte la grille de ses activites a heure fixe (${attendues})`, `${rep.status} ${grille.map((a) => `${a.activityId}:${(a.times || []).length}`).join(' ')}`));
     const ecarts = [];
     let prenables = 0;
     let serrees = 0;
@@ -836,7 +839,7 @@ async function scenarioK(H) {
       for (const entree of activite.times) {
         if (apresAccueil && minutesDe(entree.time) < minutesDe(arrivee) + 10) continue;
         const pose = { [activite.activityId]: entree.time };
-        const seule = await H.get({ type: 'formule', formuleId: 'f1', arrival: arrivee, preferredTimes: pose, ...(activite.activityId === 'laser_game' ? { laserGameTimes: [entree.time] } : {}) });
+        const seule = await H.get({ type: 'formule', formuleId, arrival: arrivee, preferredTimes: pose, ...(activite.activityId === 'laser_game' ? { laserGameTimes: [entree.time] } : {}) });
         const verdictSeul = arriveeDe(seule);
         if (entree.ok !== false) prenables += 1;
         if (entree.warning) serrees += 1;
@@ -892,10 +895,24 @@ async function scenarioK(H) {
   v.push(verdict(loin.ok === false && loin.code === 'arrival_wait' && loin.waitIsMinimum === true && /au moins/.test(String(loin.reason)) && /votre bowling à 15:00/.test(String(loin.reason)),
     'le bowling de 15:00, loin de l arrivee de 10:00 : refuse pour l attente, au moins, avec le bowling dans la raison', `${loin.code} ${loin.reason}`));
   await verifierGrille('journee libre', '14:00');
-  // Le soir, pres de la fermeture : un refus sans arrivee pour la fermeture se
-  // rejuge avec elle, et « serré » vient du verdict de l arrivee.
-  await verifierGrille('journee libre', '21:00', true);
-  await verifierParties('journee libre', '10:00', '13:00');
+  // LE SOIR, PRES DE LA FERMETURE (cas releves au banc le 13/10). Formule 3 :
+  // sans arrivee, le bowling de 21:30 a 22:30 est refuse pour la fermeture
+  // (le minigolf et les arcades viendraient apres lui) ; arrive a 21:00, le
+  // groupe les fait avant, et ces heures se prennent. Formule 4 : avec une
+  // arrivee a 21:00, la visite deborde la fermeture, « serré » vient du
+  // verdict de l arrivee.
+  const grilleDe = (rep) => (rep && rep.json && rep.json.anchors && rep.json.anchors.activities) || [];
+  const heuresDe = (grille, id) => (grille.find((a) => a.activityId === id) || { times: [] }).times;
+  const f3Sans = heuresDe(grilleDe(await H.get({ type: 'formule', formuleId: 'f3' })), 'bowling');
+  const f3Soir = heuresDe(await verifierGrille('journee libre, Formule 3', '21:00', { apresAccueil: true, formuleId: 'f3' }), 'bowling');
+  const levees = f3Soir.filter((t) => t.ok !== false && minutesDe(t.time) >= minutesDe('21:10')
+    && ['schedule', 'schedule_free'].includes((f3Sans.find((x) => x.time === t.time) || {}).code)).map((t) => t.time);
+  v.push(verdict(levees.length > 0, `Formule 3, arrivee 21:00 : des heures de bowling refusees sans arrivee pour la fermeture se prennent avec elle (${levees.join(', ')})`,
+    f3Soir.filter((t) => minutesDe(t.time) >= minutesDe('21:10')).map((t) => `${t.time} ${t.ok === false ? t.code : 'ok'} (sans arrivee ${(f3Sans.find((x) => x.time === t.time) || {}).code || 'ok'})`).join(' | ')));
+  const f4Soir = await verifierGrille('journee libre, Formule 4', '21:00', { apresAccueil: true, formuleId: 'f4' });
+  const serreesSoir = f4Soir.flatMap((a) => a.times.filter((t) => t.ok !== false && t.warning).map((t) => `${a.activityId} ${t.time}`));
+  v.push(verdict(serreesSoir.length > 0, `Formule 4, arrivee 21:00 : les heures dont la visite deborde la fermeture se disent « serré » (${serreesSoir.slice(0, 4).join(', ')})`));
+  await verifierParties('journee libre', '10:00', '11:00');
   // L HEURE PROPOSEE de chaque activite est celle du plan de cette arrivee :
   // celle de la journee sans arrivee (bowling 10:00 pour une arrivee a 10:30)
   // se disait « proposé » sur une heure refusee pendant l accueil.
@@ -1083,8 +1100,9 @@ const MUTATIONS = [
     de: '  return { ...anchorMeta, defaultTimes, activities };', vers: '  return { ...anchorMeta, activities };', scenarios: ['K'] },
   { nom: 'une heure de laser se juge seule, sans la partie deja posee', fichier: 'lib/availability-slots.js',
     de: '      essai.laserGameTimes = [...autres, time].sort();', vers: '      essai.laserGameTimes = [time];', scenarios: ['K'] },
-  { nom: 'la grille avec arrivee garde l avis « serré » de la grille sans elle', fichier: 'lib/availability-slots.js',
-    de: '      const { warning: _avis, endTime: _fin, ...base } = entry;', vers: '      const { endTime: _fin, ...base } = entry;', scenarios: ['K'] },
+  { nom: 'la grille avec arrivee perd l avis « serré » de l arrivee', fichier: 'lib/availability-slots.js',
+    de: "        return { ...base, ok: true, code: '', reason: '', ...(verdict.endTime ? { endTime: verdict.endTime } : {}), ...(verdict.warning ? { warning: verdict.warning } : {}) };",
+    vers: "        return { ...base, ok: true, code: '', reason: '', ...(verdict.endTime ? { endTime: verdict.endTime } : {}) };", scenarios: ['K'] },
   { nom: 'un refus pour la fermeture ne se rejuge plus avec l arrivee', fichier: 'lib/availability-slots.js',
     de: "  const REJUGES = new Set(['schedule', 'schedule_free']);", vers: '  const REJUGES = new Set();', scenarios: ['K'] },
   { nom: 'la borne sure du mode rapide oublie ce qui remplit l attente', fichier: 'lib/ops-engine.js',

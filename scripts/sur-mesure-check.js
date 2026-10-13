@@ -300,7 +300,11 @@ async function reglesServeur(S) {
   const centre = S.opsKnowledge.getCenter('libramont');
   let samedi = prochain(aujourdHui, 6, 3);
   for (let k = 0; k < 10 && S.bookingConfig.isFormulaBlockedDate(samedi, centre); k += 1) samedi = prochain(samedi, 6, 1);
-  const lundi = prochain(aujourdHui, 1, 2);
+  // Un lundi ou le centre est FERME : pendant les vacances scolaires il ouvre
+  // tous les jours, et le lundi 19 octobre 2026 (conge d automne) ne se
+  // refusait plus pour « fermé » mais pour la formule (rouge du 2026-10-13).
+  let lundi = prochain(aujourdHui, 1, 2);
+  for (let k = 0; k < 10 && S.bookingConfig.getSchedule(lundi, centre); k += 1) lundi = prochain(lundi, 1, 1);
   S.trace.lignes.length = 0; S.trace.accuses.length = 0;
   const post = (corps) => appel(S.meta, 'POST', '/api/custom-request', corps);
   const r = {};

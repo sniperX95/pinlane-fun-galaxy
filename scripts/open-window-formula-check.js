@@ -69,12 +69,21 @@ database.readAvailabilitySnapshot = async (args) => ({ reservations: [], laneSta
 const availability = require('../api/public-availability.js');
 const { planningAgent } = require('../lib/ops-agents');
 
-// Des jours STRICTEMENT futurs, un par jour de semaine utile.
+// Des jours STRICTEMENT futurs, un par jour de semaine utile, HORS VACANCES
+// SCOLAIRES ET FERIES : ces jours-la le centre suit ses horaires vacances et
+// MATIN MALIN comme KIDS FUN DAY ne se prennent pas. Le 2026-10-13, le mardi
+// suivant (20 octobre, conge d automne) rougissait la section B : le message
+// parlait des vacances, pas de l ouverture a 14:00.
 function nextDow(dow) {
   const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date()).split('-').map(Number);
+  const centre = require('../lib/ops-knowledge').getCenter('libramont');
   const c = new Date(Date.UTC(y, m - 1, d));
-  do { c.setUTCDate(c.getUTCDate() + 1); } while (c.getUTCDay() !== dow);
+  for (let semaines = 0; semaines < 12; semaines += 1) {
+    do { c.setUTCDate(c.getUTCDate() + 1); } while (c.getUTCDay() !== dow);
+    const jour = c.toISOString().slice(0, 10);
+    if (!bookingConfig.isHolidayScheduleDate(jour, centre) && !bookingConfig.isFormulaBlockedDate(jour, centre)) return jour;
+  }
   return c.toISOString().slice(0, 10);
 }
 const SAMEDI = nextDow(6);

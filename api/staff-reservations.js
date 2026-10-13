@@ -30,7 +30,7 @@ const { refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
-const { finDesActivites, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
+const { finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
 const { simulerCandidats } = require('../lib/reserver-simulation');
 const { normaliserEpingles } = require('../lib/departs-rapides');
 
@@ -381,7 +381,7 @@ async function simulerPourLaFenetre(body, session) {
         const resultat = await planifierPourLaFenetre(essai, session, { readState, virtuelles });
         return { ops: resultat.ops, dossier: resultat.dossier, conflits: resultat.conflits };
       },
-      finDuPlan: finDesActivites,
+      finDuPlan: finDeLaVisite,
     });
   }
   return reponse;

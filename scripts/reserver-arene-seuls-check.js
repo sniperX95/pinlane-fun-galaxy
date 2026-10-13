@@ -145,7 +145,9 @@ function verifier(f, afficher = true) {
   v(f.seulsBlocs === '30|8|seuls|0', `[1] le bloc laser retient l arene : players|joueursReels|arene|places restantes = ${f.seulsBlocs}`);
   v(f.prix === '80/80 contre 80/80', `[1] le prix ne bouge pas (base/prix seuls ${f.prix})`);
   v(/^30\|8 30\|8 ; prix (\d+) contre \1$/.test(f.visite), `[1] une visite aussi : ses deux parties privatisees, meme prix (${f.visite})`);
-  v(/^Laser charge a 15:00: 34\/30 joueurs/.test(f.secondMoteur), `[2] le moteur voit la session pleine (${f.secondMoteur})`);
+  // Le refus dit ce qui reste (2026-10-12) : plus aucune des 30 places pour
+  // les 4 du second groupe, a 15:00.
+  v(/15:00/.test(f.secondMoteur) && /\b(aucune|0) place\b/.test(f.secondMoteur) && /\b30\b/.test(f.secondMoteur) && /\b4\b/.test(f.secondMoteur), `[2] le moteur voit la session pleine (${f.secondMoteur})`);
   v(/^Laser Game complet sur ce créneau \(34\/30 joueurs/.test(f.secondBase), `[2] la base aussi (${f.secondBase})`);
   v(f.conflit === JSON.stringify([{ type: 'arene', message: 'Arène déjà occupée par 6 joueurs à 15:00.', heure: '15:00', joueurs: 6 }]),
     `[3] le conflit dit l arene occupee (${f.conflit})`);

@@ -11037,6 +11037,15 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-plus-act b { color: var(--rv-text); }
 .qb-modal.rv .rv-plus-act svg { width: 16px; height: 16px; color: var(--rv-bleu-texte); }
 .qb-modal.rv .rv-plus-act span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Repliee, la rangee « + Activité » garde sa forme, et chaque nom se touche. */
+.qb-modal.rv .rv-plus-act.is-direct { justify-content: flex-start; flex-wrap: wrap; gap: 2px 4px; padding: 4px 8px; }
+.qb-modal.rv .rv-plus-act.is-direct .rv-plus-noms { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; overflow: visible; white-space: normal; }
+.qb-modal.rv .rv-plus-ouvrir, .qb-modal.rv .rv-plus-nom { height: 38px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--rv-muted); font-size: 13.5px; font-weight: 600; line-height: 1; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.qb-modal.rv .rv-plus-ouvrir { font-weight: 650; }
+.qb-modal.rv .rv-plus-nom { color: var(--rv-text); }
+.qb-modal.rv .rv-plus-nom.is-suite { color: var(--rv-muted); }
+@media (hover: hover) { .qb-modal.rv :is(.rv-plus-ouvrir, .rv-plus-nom):hover { background: var(--rv-vide); color: var(--rv-text); } }
+.qb-modal.rv :is(.rv-plus-ouvrir, .rv-plus-nom):active { background: var(--rv-vide); color: var(--rv-text); }
 .qb-modal.rv .rv-ajouts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; border-radius: 14px; border: 1px dashed var(--rv-line-strong); }
 .qb-modal.rv .rv-ajout { --rv-c: var(--rv-bleu); height: 34px; padding: 0 12px 0 10px; border-radius: 999px; border: 1px solid var(--rv-line); background: var(--rv-raised); font-size: 13px; font-weight: 600; line-height: 1; color: var(--rv-text); display: inline-flex; align-items: center; gap: 7px; }
 .qb-modal.rv .rv-ajout .rv-pt { width: 8px; height: 8px; border-radius: 3px; }
@@ -11087,6 +11096,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-points { margin: 0; padding: 0 4px 0 49px; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; line-height: 1.45; color: var(--rv-text); }
 .qb-modal.rv .rv-points li { position: relative; }
 .qb-modal.rv .rv-points li::before { content: ''; position: absolute; left: -12px; top: .6em; width: 5px; height: 5px; border-radius: 50%; background: var(--rv-orange); }
+/* Une information (le reste du programme) n est pas un ecart : pas d orange. */
+.qb-modal.rv .rv-points li.is-info { color: var(--rv-muted); }
+.qb-modal.rv .rv-points li.is-info::before { background: var(--rv-line-strong); }
 .qb-modal.rv .rv-verdict { border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: var(--rv-rouge-clair); border: 1px solid color-mix(in srgb, var(--rv-rouge) 35%, transparent); }
 .qb-modal.rv .rv-verdict-h { display: flex; align-items: center; gap: 11px; }
 .qb-modal.rv .rv-verdict .rv-ic { width: 28px; height: 28px; border-radius: 50%; background: var(--rv-rouge); color: #fff; display: inline-flex; align-items: center; justify-content: center; flex: none; }
@@ -11126,8 +11138,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-resa .rv-x:hover { background: var(--rv-sunk); color: var(--rv-text); }
 .qb-modal.rv .rv-resa-plus { height: 30px; padding: 0 11px; border-radius: 999px; border: 1px dashed var(--rv-line-strong); background: transparent; font-size: 12.5px; font-weight: 650; line-height: 1; color: var(--rv-muted); white-space: nowrap; }
 .qb-modal.rv .rv-carte { position: relative; background: transparent; border: 0; border-radius: 0; padding: 14px 15px 13px; }
-.qb-modal.rv .rv-eyebrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; color: var(--rv-faint); }
-.qb-modal.rv .rv-eyebrow em { font-style: normal; letter-spacing: .02em; text-transform: none; font-weight: 650; color: var(--rv-bleu-texte); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qb-modal.rv .rv-eyebrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; font-size: 11px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; color: var(--rv-faint); }
+/* Le badge passe a la ligne plutot que d etre coupe (« au com… » a 1024). */
+.qb-modal.rv .rv-eyebrow em { flex: none; max-width: 100%; font-style: normal; letter-spacing: .02em; text-transform: none; font-weight: 650; color: var(--rv-bleu-texte); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qb-modal.rv .rv-heures { margin-top: 5px; display: flex; align-items: baseline; gap: 8px; font-size: 30px; font-weight: 780; letter-spacing: -.04em; line-height: 1; }
 .qb-modal.rv .rv-heures span { font-size: 20px; font-weight: 500; color: var(--rv-faint); }
 .qb-modal.rv .rv-heures-sous { margin-top: 5px; font-size: 12.5px; color: var(--rv-muted); }
@@ -11240,7 +11253,12 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-dd i.is-ko { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rv-rouge); }
 .qb-modal.rv .rv-dd i.is-calcul { background: var(--rv-line-strong); }
 .qb-modal.rv .rv-dd i.is-hors { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rv-line-strong); }
-.qb-modal.rv .rv-hc.is-ko b { color: var(--rv-faint); }
+/* Une heure deja passee n est jamais peinte libre : un trait, pas un point. */
+.qb-modal.rv .rv-dd i.is-passe { height: 2px; margin-top: 2.5px; border-radius: 1px; background: var(--rv-faint); opacity: .7; }
+.qb-modal.rv .rv-hc.is-ko b, .qb-modal.rv .rv-hc.is-passe b { color: var(--rv-faint); }
+.qb-modal.rv .rv-hc.is-passe:not(.is-on) { background: transparent; border-style: dashed; }
+.qb-modal.rv .rv-mn.is-passe { border-style: dashed; background: transparent; }
+.qb-modal.rv .rv-mn.is-passe .rv-mn-t, .qb-modal.rv .rv-mn.is-passe small { color: var(--rv-muted); }
 .qb-modal.rv .rv-hc.is-on { background: var(--rv-bleu); border-color: var(--rv-bleu); color: #fff; box-shadow: 0 8px 20px color-mix(in srgb, var(--rv-bleu) 40%, transparent); }
 .qb-modal.rv .rv-hc.is-on b { color: #fff; }
 .qb-modal.rv .rv-hc.is-on .rv-dd i { box-shadow: 0 0 0 1.5px rgb(255 255 255 / .9); }
@@ -11258,6 +11276,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-legende i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--rv-ok); }
 .qb-modal.rv .rv-legende i.is-att { background: var(--rv-orange); }
 .qb-modal.rv .rv-legende i.is-ko { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rv-rouge); }
+.qb-modal.rv .rv-legende i.is-passe { height: 2px; border-radius: 1px; vertical-align: middle; background: var(--rv-faint); }
 .qb-modal.rv .rv-legende .rv-droite { margin-left: auto; }
 .qb-modal.rv .rv-foulee-btn { margin-top: 10px; width: 100%; height: 40px; border-radius: 12px; border: 1px dashed var(--rv-line-strong); background: transparent; font-size: 13px; font-weight: 650; line-height: 1; color: var(--rv-muted); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .qb-modal.rv .rv-foulee-btn svg { width: 14px; height: 14px; color: var(--rv-bleu-texte); }
@@ -11265,13 +11284,18 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv .rv-poignee { display: none; }
 
 /* TABLETTE ETROITE : la ligne passe sur deux rangs, le billet se resserre */
+/* Les tailles du groupe se resserrent au lieu de disparaitre : a 1024, 15 et
+   20 etaient masquees (2026-10-12). */
 @media (max-width: 1240px) {
   .qb-modal.rv { grid-template-columns: minmax(0, 1fr) 356px; }
   .qb-modal.rv .rv-lc-h { grid-template-columns: 112px 140px 168px 124px minmax(0, 1fr) 34px; column-gap: 8px; }
-  .qb-modal.rv .rv-tailles button:nth-child(n+8) { display: none; }
+  .qb-modal.rv .rv-tailles { gap: 4px; }
+  .qb-modal.rv .rv-tailles button { min-width: 33px; padding: 0 6px; }
 }
 @media (max-width: 1100px) {
-  .qb-modal.rv { grid-template-columns: minmax(0, 1fr) 320px; }
+  /* 336 et non 320 : l invite « Prénom ou téléphone (facultatif) » du champ
+     client tient entiere a 1024 (coupee le 2026-10-12). */
+  .qb-modal.rv { grid-template-columns: minmax(0, 1fr) 336px; }
   .qb-modal.rv .rv-lc-h { grid-template-columns: auto auto minmax(0, 1fr) 34px; grid-template-areas: 'nom nom etat ouvrir' 'qte heure place place'; row-gap: 8px; column-gap: 8px; padding: 10px 10px 10px 18px; }
   .qb-modal.rv .rv-lc-h .rv-nom { grid-area: nom; }
   .qb-modal.rv .rv-lc-h .rv-etat-l { grid-area: etat; flex-direction: row; align-items: center; }
@@ -11279,7 +11303,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv .rv-lc-h .rv-qte, .qb-modal.rv .rv-lc-h .rv-qte-fixe { grid-area: qte; }
   .qb-modal.rv .rv-lc-h .rv-heure-wrap { grid-area: heure; }
   .qb-modal.rv .rv-lc-h .rv-place, .qb-modal.rv .rv-lc-h .rv-place-vide { grid-area: place; }
-  .qb-modal.rv .rv-tailles button:nth-child(n+7) { display: none; }
   .qb-modal.rv .rv-consequence { font-size: 12px; }
   .qb-modal.rv .rv-departs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qb-modal.rv .rv-pistes-choix { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -11291,7 +11314,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
    vous » sous son chevron (2026-10-08). */
 @media (max-width: 900px) {
   .qb-overlay.is-rv { padding: 0; align-items: stretch; }
-  .qb-modal.rv { width: 100%; height: 100dvh; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+  /* La tete et le pied collent : ce qu on fait defiler jusqu a soi (un champ,
+     « + Note ») s arrete au-dessus d eux, jamais dessous (2026-10-12). */
+  .qb-modal.rv { width: 100%; height: 100dvh; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: 120px; scroll-padding-bottom: 132px; }
   .qb-modal.rv .rv-compo { flex: none; }
   .qb-modal.rv .rv-tete { height: auto; flex-wrap: wrap; padding: 12px 14px 10px; row-gap: 10px; position: sticky; top: 0; z-index: 4; background: var(--rv-surface); }
   .qb-modal.rv .rv-tete h3 { font-size: 19px; }
@@ -11302,7 +11327,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv .rv-tailles { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .qb-modal.rv .rv-tailles::-webkit-scrollbar { display: none; }
   .qb-modal.rv .rv-tailles button { flex: none; }
-  .qb-modal.rv .rv-tailles button:nth-child(n+7) { display: inline-block; }
   .qb-modal.rv .rv-consequence { margin-left: 0; text-align: left; flex-basis: 100%; }
   .qb-modal.rv .rv-plan { flex: none; overflow: visible; padding: 12px 14px 14px; }
   .qb-modal.rv .rv-plan-tete .rv-dr .rv-puce:not(.rv-garder) { display: none; }
@@ -11356,6 +11380,12 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv .rv-couche-voile { position: fixed; inset: 0; z-index: 439; background: rgb(0 0 0 / .5); }
 }
 @media (min-width: 901px) { .qb-modal.rv .rv-couche-voile { display: none; } }
+/* TABLETTE EN PAYSAGE (901 a 1100 px) : les jours tiennent sur la tete,
+   « Autre » compris (coupe a 1024, 2026-10-12) ; le jour de la semaine sous
+   « Aujourd’hui » se lit deja dans le billet. */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .qb-modal.rv .rv-jour small { display: none; }
+}
 /* TABLETTE EN PORTRAIT (701 a 900 px) : la colonne du telephone, avec ce que
    la largeur garde : le billet (heures et fil du temps) et les departs rapides. */
 @media (min-width: 701px) and (max-width: 900px) {

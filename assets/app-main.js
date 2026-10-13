@@ -3150,6 +3150,9 @@ async function syncDateReservations(dateStr, opts = {}) {
       console.error('[sync] rendu de la journée', erreurRendu);
     }
     staffRevisionByDate[revisionKey] = masque || !rendu ? `a-relire:${nextRevision}` : nextRevision;
+    // La fenetre Reserver ouverte sur cette journee refait son plan : un
+    // autre poste vient peut-etre de prendre la place qu elle annoncait.
+    if (changed && typeof rvJourneeChangee === 'function') rvJourneeChangee(dateStr);
     // Notif + son pour toute NOUVELLE réservation du jour même reçue du serveur
     // (site public / autre poste). Les créations locales sont déjà dans l'état
     // avant le poll → jamais notifiées ici. Skip au 1er sync (baseline).
@@ -12912,6 +12915,19 @@ function getVisiteLibreApres(reservation, windows) {
     if (finCourante !== null && i.debut > finCourante) trous += i.debut - finCourante;
     finCourante = finCourante === null ? i.fin : Math.max(finCourante, i.fin);
   });
+  // MOINS LES PARTIES DE LASER JOUEES DANS LA FOULEE (2026-10-13, Movsar : « il
+  // ne compte pas les activités qui sont dans la foulée »). Elles s enchainent
+  // dans ces memes trous quand elles y tiennent : le libre n y prend que le
+  // reste. Meme regle que le moteur (intersticesPourLeLibre) : ce que la fin du
+  // plan, sans la marge, depasse le dernier bloc est la foulee jouee apres lui.
+  const plan = reservation && reservation.opsPlan;
+  const foulee = Math.max(0, Math.round(Number(plan && plan.laserPassPlan && plan.laserPassPlan.followOnMinutes) || 0));
+  if (foulee && trous && finCourante !== null) {
+    const marge = Math.max(0, Number(plan.bufferMinutes) || 0);
+    const finPlan = typeof plan.endTime === 'string' && /^\d{1,2}:\d{2}/.test(plan.endTime) ? Math.round(timeToNum(plan.endTime) * 60) - marge : null;
+    const dehors = finPlan !== null ? Math.min(foulee, Math.max(0, finPlan - finCourante)) : 0;
+    trous = Math.max(0, trous - (foulee - dehors));
+  }
   return Math.max(0, minutes - trous) / 60;
 }
 
@@ -19987,12 +20003,16 @@ function staffClientDaysBetween(left, right) {
   return Math.round((parseLocalDate(left) - parseLocalDate(right)) / 86400000);
 }
 
+// Un dossier du comptoir sans telephone, sans e-mail ni nom tape part sous le
+// nom « Client » (la fenetre Reserver) : ce n est pas un client, il n a pas de
+// cle (sinon tous ces dossiers faisaient UN client « Client », lib/donnees-clients).
 function getStaffClientReservationKey(reservation) {
   const phone = String(reservation.phone || '').replace(/\D/g, '');
   if (phone) return `tel:${phone}`;
   const email = String(reservation.email || '').trim().toLowerCase();
   if (email) return `mail:${email}`;
-  return `name:${String(reservation.name || 'client').trim().toLowerCase()}`;
+  const nom = String(reservation.name || '').trim().toLowerCase();
+  return nom && nom !== 'client' ? `name:${nom}` : '';
 }
 
 function getStaffClientOfferLabel(reservation) {
@@ -20030,6 +20050,7 @@ function buildStaffClientRowsFromReservations(reservations = []) {
   reservations.forEach(reservation => {
     if (!reservation || !reservation.name) return;
     const key = getStaffClientReservationKey(reservation);
+    if (!key) return;
     const profile = groups.get(key) || {
       key,
       id: `client-${key.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 70) || groups.size}`,
@@ -28171,7 +28192,7 @@ function renderPosEdit(r) {
           <div class="es-pair dossier-fields">
             <div class="pos-field dossier-field">
               <label class="lbl" for="editPhoneInput">Téléphone</label>
-              <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" required>
+              <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" placeholder="facultatif">
             </div>
             <div class="pos-field dossier-field">
               <label class="lbl" for="editEmailInput">E-mail</label>
@@ -28618,11 +28639,16 @@ function createQuickBookState(prefill = {}) {
     duration: prefill.duration || 1,
     totalDuration: prefill.totalDuration || prefill.duration || 1,
     lanes: Array.isArray(prefill.lanes) ? [...prefill.lanes] : [],
+    lanesALaMain: Array.isArray(prefill.lanes) ? [...prefill.lanes] : [],
     autoAssign: !prefill.lanes || !prefill.lanes.length,
     allowPastStart: prefill.allowPastStart === false ? false : true,
     pastStartDate: prefill.pastStartDate || prefill.date || state.currentDate || todayStr(),
     pastStartTime: prefill.pastStartTime || prefill.startTime || '',
     lockStartTime: Boolean(prefill.lockStartTime),
+    // « Réservation rapide » sans activite demandee part d un bowling : une
+    // proposition, que le premier toucher sur une autre activite remplace
+    // tant qu on ne l a pas regle (rvAjouterActivite).
+    bowlingParDefaut: !prefill.type,
     context: deriveQuickBookContext(prefill),
     unlocked: {},
     moreOpen: false,
@@ -28681,6 +28707,7 @@ function openQuickBook(prefill = {}) {
     overlay.dataset.rvEcoute = '1';
     overlay.addEventListener('focusout', rvApresSaisie);
     overlay.addEventListener('keydown', rvToucheEntree);
+    overlay.addEventListener('keydown', rvToucheHorloge);
   }
   renderQuickBook();
   if (!quickBookDialogRelease) {
@@ -29574,8 +29601,40 @@ function getQuickBookFormulaChoices() {
   });
 }
 
-function quickBookAllowsPastSelectedTime() {
-  return Boolean(quickBookState && quickBookState.allowPastStart);
+// L HEURE PASSEE AU COMPTOIR (2026-10-12). A 15:12, la fenetre proposait
+// « Le plus proche · 14:00 » et peignait 10:00 a 14:30 en vert : rien ne
+// separait le passe du present, faute de plancher (allowPastStart, vrai par
+// defaut, servait a la fois au creneau en cours et au passe). Le plancher est
+// le creneau de la demi-heure en cours : a 15:12, 15:00 reste proposable (un
+// groupe qui arrive joue tout de suite), 14:30 non. Avant lui, une heure ne se
+// propose jamais ; elle ne se choisit qu avec le droit « Modifier une date
+// passée » (planning.past), ou quand c est la case du planning qui a ouvert la
+// fenetre a cette heure-la.
+function rvPlancherDuJour(date) {
+  return date && date === todayStr() ? Math.floor(currentTimeDecimal() * 2) / 2 : null;
+}
+
+function rvHeurePassee(date, heure) {
+  if (!date) return false;
+  if (typeof isPastBusinessDate === 'function' && isPastBusinessDate(date)) return true;
+  const plancher = rvPlancherDuJour(date);
+  return plancher !== null && Boolean(heure) && timeToNum(heure) < plancher - 1e-9;
+}
+
+function rvPeutNoterLePasse() {
+  return typeof canUseStaffPermission !== 'function' || canUseStaffPermission('planning.past');
+}
+
+// Le drapeau que le serveur attend pour une heure deja commencee (son
+// plancher du jour est l heure + 15 min : sans lui, 15:00 a 15:12 etait
+// refuse). Il part pour le creneau en cours et les heures a venir ; pour une
+// heure vraiment passee, seulement avec le droit ou la case du planning.
+function quickBookAllowsPastSelectedTime(heure = quickBookState && quickBookState.startTime) {
+  const s = quickBookState;
+  if (!s || !s.allowPastStart) return false;
+  if (!rvHeurePassee(s.date, heure)) return true;
+  if (rvPeutNoterLePasse()) return true;
+  return Boolean(heure) && heure === s.pastStartTime && s.date === s.pastStartDate;
 }
 
 function getQuickBookSelectedSlotIfValid({ duration, totalDuration, needsLanes, requiredCount, formule = null } = {}) {
@@ -29685,15 +29744,15 @@ function getQuickBookAvailableSlots() {
     if (formule.timeLimit.min) minTime = Math.max(minTime, formule.timeLimit.min);
     if (formule.timeLimit.max) maxTime = Math.min(maxTime, formule.timeLimit.max - totalDuration);
   }
-  if (quickBookState.date === todayStr() && !quickBookAllowsPastSelectedTime()) {
-    minTime = Math.max(minTime, roundUpHalfHour(currentTimeDecimal()));
-  }
+  // Les creneaux proposes partent du creneau en cours, jamais d avant.
+  const plancher = rvPlancherDuJour(quickBookState.date);
+  if (plancher !== null) minTime = Math.max(minTime, plancher);
 
   const slots = [];
   for (let value = minTime; value <= maxTime; value += 0.5) {
     const time = numToTime(value);
     const slotCheck = validateSlotWindow(quickBookState.date, time, totalDuration, {
-      allowPastStart: quickBookAllowsPastSelectedTime()
+      allowPastStart: quickBookAllowsPastSelectedTime(time)
     });
     if (!slotCheck.ok) continue;
     if (formule) {
@@ -29759,19 +29818,26 @@ function applyQuickSuggestedLanes() {
   renderQuickBook();
 }
 
+// Les pistes touchees a la main sont retenues a part (lanesALaMain) : celles
+// que la fenetre ajoute quand le groupe grandit (reconcileQuickLaneSelection)
+// ne se disent pas « choisies à la main » sur le billet.
 function toggleQuickLane(lane) {
   if (!quickBookState) return;
   if (quickBookState.autoAssign) quickBookState.autoAssign = false;
+  quickBookState.bowlingParDefaut = false;
   const lanes = new Set(quickBookState.lanes);
-  if (lanes.has(lane)) lanes.delete(lane);
-  else lanes.add(lane);
+  const main = new Set(quickBookState.lanesALaMain || []);
+  if (lanes.has(lane)) { lanes.delete(lane); main.delete(lane); }
+  else { lanes.add(lane); main.add(lane); }
   quickBookState.lanes = Array.from(lanes).sort((a, b) => a - b);
+  quickBookState.lanesALaMain = Array.from(main).sort((a, b) => a - b);
   renderQuickBook();
 }
 
 function setQuickAutoAssign() {
   quickBookState.autoAssign = true;
   quickBookState.lanes = [];
+  quickBookState.lanesALaMain = [];
   renderQuickBook();
 }
 
@@ -30292,7 +30358,9 @@ function rvDansCombien(heure) {
   const s = quickBookState;
   if (!heure || !s || s.date !== todayStr()) return '';
   const minutes = Math.round((timeToNum(heure) - currentTimeDecimal()) * 60);
-  if (minutes < 0 || minutes > 180) return '';
+  // Le creneau en cours (15:00 a 15:12) : le groupe joue maintenant.
+  if (minutes < 0) return rvHeurePassee(s.date, heure) ? '' : 'maintenant';
+  if (minutes > 180) return '';
   if (minutes < 1) return 'maintenant';
   if (minutes < 60) return `dans ${minutes} min`;
   return `dans ${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}`;
@@ -30372,9 +30440,11 @@ function rvEtatLigne(id, ligne) {
       const jusqua = rvPistesLibresJusqua(posees, ligne.heure, duree);
       return { html: `<span class="rv-ok">${posees.length > 1 ? 'Libres' : 'Libre'}</span>${jusqua ? ` jusqu’à ${escapeHtml(jusqua)}` : ''}`, barre: [], etat: 'ok' };
     }
+    // Ce qui reste A COTE de ce groupe : « 7 pistes libres » sur un planning
+    // vide se lisait comme une piste deja prise par quelqu un d autre.
     const reste = Math.max(0, libres - posees.length);
     return {
-      html: reste > 1 ? `<span class="rv-ok">${reste} pistes</span> libres` : reste === 1 ? '<span class="rv-ok">1 piste</span> reste' : '<span class="rv-att">Dernières pistes</span>',
+      html: reste > 1 ? `<span class="rv-ok">${reste} autres pistes</span> libres` : reste === 1 ? '<span class="rv-ok">1 autre piste</span> libre' : '<span class="rv-att">Dernières pistes</span>',
       barre: [{ cls: 'is-autres', part: Math.max(0, parc - libres) / parc }, { cls: 'is-nous', part: posees.length / parc }],
       etat: reste ? 'ok' : 'att',
     };
@@ -30662,6 +30732,14 @@ function rvNotePrixBowling(duree) {
   return `<b>${escapeHtml(formatMoney(prix))} par piste</b> : ${escapeHtml(rvHeuresLabel(max))} à ${escapeHtml(formatMoney(grille[max]))}, plus ${escapeHtml(rvHeuresLabel(duree - max))} à ${escapeHtml(formatMoney(prix - grille[max]))} ${hors}`;
 }
 
+// Le nombre de pistes que le centre conseille pour ce groupe (la regle
+// « Auto ») : une seule source pour la ligne « Pistes », le compteur et la
+// phrase sous le nombre de joueurs.
+function rvPistesConseillees() {
+  const joueurs = getQuickVisitParticipants('bowling');
+  return getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(joueurs)), getAvailabilityLaneCount(), rvBowlingDuree() * 60).requiredCount || 1;
+}
+
 function rvDetailBowlingHtml(ligne, retirer = '') {
   const s = quickBookState;
   const heure = ligne.heure || s.startTime;
@@ -30671,17 +30749,22 @@ function rvDetailBowlingHtml(ligne, retirer = '') {
   const parc = getAvailabilityLaneCount();
   const rangs = [];
   if (s.type === 'bowling') {
-    const auto = getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(joueurs)), parc, duree * 60).requiredCount || 1;
+    const auto = rvPistesConseillees();
     const parPiste = typeof getBookingCatalogConfig === 'function' && getBookingCatalogConfig() ? Number(getBookingCatalogConfig().normalCapacityPerLane) || 6 : 6;
-    const suite = besoin > auto
-      ? ` Avec ${besoin}, ils sont ${Math.ceil(joueurs / besoin)} par piste.`
-      : auto + 1 <= parc ? ` Avec ${auto + 1}, ils sont ${Math.ceil(joueurs / (auto + 1))} par piste.` : '';
+    // « Avec 5 pistes : 4 joueurs par piste. » Le nombre dit ce qu il compte
+    // (« Avec 5, ils sont 4 par piste » se lisait 5 joueurs).
+    const avec = (n) => ` Avec ${rvPluriel(n, 'piste')} : ${rvPluriel(Math.ceil(joueurs / n), 'joueur')} par piste.`;
+    const suite = besoin > auto ? avec(besoin) : auto + 1 <= parc ? avec(auto + 1) : '';
     rangs.push(`<div class="rv-rg"><span class="rv-lbl">Pistes</span><span class="rv-qte" role="group" aria-label="Nombre de pistes"><button type="button" aria-label="Une piste de moins" ${besoin <= auto ? 'disabled' : ''} onclick="rvPistesNombre(-1)">−</button><b>${besoin}</b><span>piste${besoin > 1 ? 's' : ''}</span><button type="button" aria-label="Une piste de plus" ${besoin >= parc ? 'disabled' : ''} onclick="rvPistesNombre(1)">+</button></span><span class="rv-note-r">Auto : <b>${rvPluriel(auto, 'piste')}</b> pour ${joueurs} joueurs (${parPiste} maximum par piste).${suite}</span></div>`);
   }
   const autoPrendrait = manuelles && heure ? (allocateLanes(besoin, s.date, heure, duree) || []) : [];
+  // En Auto, ce que le planning a pose fait foi (la fenetre n envoie plus de
+  // pistes) ; avant sa reponse, l estimation de ce poste.
+  const poseesAuto = [...new Set(rvBlocsPlan('bowling').flatMap((b) => b.pistes || []))];
+  const prises = poseesAuto.length ? poseesAuto : pistes;
   const note = manuelles
     ? `${autoPrendrait.length ? `Auto aurait pris ${escapeHtml(rvListePistes(autoPrendrait))}. ` : ''}${s.lanes.length < besoin ? `Encore ${besoin - s.lanes.length} à toucher.` : 'Touchez les pistes voulues.'}`
-    : `${pistes.length ? `Auto prend ${escapeHtml(rvListePistes(pistes))}.` : 'Le planning choisit à la création.'} « Choisir » pour les poser à la main.`;
+    : `${prises.length ? `Auto prend ${escapeHtml(rvListePistes(prises))}.` : 'Le planning choisit à la création.'} « Choisir » pour les poser à la main.`;
   rangs.push(`<div class="rv-rg"><span class="rv-lbl">Placement</span><span class="rv-seg" role="group" aria-label="Placement des pistes"><button type="button" class="${manuelles ? '' : 'is-on'}" aria-pressed="${!manuelles}" onclick="setQuickAutoAssign()">Auto</button><button type="button" class="${manuelles ? 'is-on' : ''}" aria-pressed="${manuelles}" onclick="rvPlacementChoisir()">Choisir</button></span><span class="rv-note-r">${note}</span></div>`);
   rangs.push(rvGrillePistesHtml(heure, duree, besoin));
   const durees = [1, 1.5, 2, 2.5, 3];
@@ -30732,12 +30815,20 @@ function rvLienHtml(precedent, id, ligne, modifiable) {
 
 // AJOUTER : un seul bouton « + Activité » qui dit ce qu on peut ajouter ; au
 // toucher, une pastille par activite absente, et le sur mesure.
+// Replie, la rangee garde sa forme (« + Activité  laser, minigolf… ») mais
+// chaque nom se touche : un toucher ajoute l activite (ou remplace le bowling
+// propose, rvAjouterActivite) sans ouvrir la liste. « + Activité » l ouvre.
+const RV_AJOUTS_DIRECTS = 4;
 function rvAjouterHtml(absentes, action, { mesure = false } = {}) {
   const s = quickBookState;
   if (!absentes.length && !mesure) return '';
   if (!s.ajoutsOuverts) {
-    const noms = absentes.map((c) => rvNomBref(c.id, c.label)).join(', ');
-    return `<button type="button" class="rv-plus-act" id="rvPlusActivite" aria-expanded="false" onclick="rvBasculerAjouts()">${RV_I.plus}<b>Activité</b><span>${escapeHtml(noms || 'sur mesure : arcades, nourriture, boissons')}</span></button>`;
+    if (!absentes.length) return `<button type="button" class="rv-plus-act" id="rvPlusActivite" aria-expanded="false" onclick="rvBasculerAjouts()">${RV_I.plus}<b>Activité</b><span>sur mesure : arcades, nourriture, boissons</span></button>`;
+    const remplace = action === 'rvAjouterActivite' && rvBowlingProposeIntact();
+    const directes = absentes.slice(0, RV_AJOUTS_DIRECTS);
+    const noms = directes.map((c) => `<button type="button" class="rv-plus-nom" aria-label="${escapeHtml(remplace && c.id !== 'bowling' ? `${c.label} à la place du bowling` : `Ajouter ${c.label}`)}" onclick="${action}('${escapeHtml(c.id)}')">${escapeHtml(rvNomBref(c.id, c.label))}</button>`);
+    const suite = absentes.length > directes.length || mesure ? `<button type="button" class="rv-plus-nom is-suite" aria-label="Toutes les activités${mesure ? ' et le sur mesure' : ''}" onclick="rvBasculerAjouts()">…</button>` : '';
+    return `<div class="rv-plus-act is-direct" role="group" aria-label="${remplace ? 'Une autre activité à la place du bowling' : 'Ajouter une activité'}"><button type="button" class="rv-plus-ouvrir" id="rvPlusActivite" aria-expanded="false" onclick="rvBasculerAjouts()">${RV_I.plus}<b>Activité</b></button><span class="rv-plus-noms">${noms.join('')}${suite}</span></div>`;
   }
   return `<div class="rv-ajouts" role="group" aria-label="Ajouter une activité">${absentes.map((c) => `<button type="button" class="rv-ajout" style="--rv-c:${rvCouleur(c.id)}" data-rv-ajout="${escapeHtml(c.id)}" aria-label="Ajouter ${escapeHtml(c.label)}" onclick="${action}('${escapeHtml(c.id)}')"><i class="rv-pt" aria-hidden="true"></i>${escapeHtml(c.label)}</button>`).join('')}${mesure ? '<button type="button" class="rv-ajout is-mesure" id="rvSurMesure" onclick="setQuickSurMesure(true)">+ Sur mesure</button>' : ''}<button type="button" class="rv-mini" id="rvFermerAjouts" aria-label="Fermer la liste des activités" onclick="rvBasculerAjouts()">×</button></div>`;
 }
@@ -30870,7 +30961,13 @@ function rvConsequenceHtml() {
     const n = rvBesoinPistes(rvHeuresDesLignes(ids).bowling?.heure || s.startTime).requiredCount || 1;
     const voulu = s.type === 'bowling' ? Math.max(n, Number(s.pistesNombre) || 0) : n;
     if (ids.length === 1) {
-      lignes.push(`<b>${rvPluriel(voulu, 'piste')}</b> ${voulu > 1 ? 'conseillées' : 'conseillée'}`);
+      // Le nombre CONSEILLE est celui du centre (la regle « Auto ») ; un
+      // nombre pose au-dessus par le staff se dit « choisies » (2026-10-12 :
+      // « 2 pistes conseillées » a cote de « Auto : 1 piste pour 4 joueurs »).
+      const conseille = rvPistesConseillees();
+      lignes.push(voulu > conseille
+        ? `<b>${rvPluriel(voulu, 'piste')}</b> ${voulu > 1 ? 'choisies' : 'choisie'} · ${conseille} conseillée${conseille > 1 ? 's' : ''}`
+        : `<b>${rvPluriel(voulu, 'piste')}</b> ${voulu > 1 ? 'conseillées' : 'conseillée'}`);
       lignes.push(`${rvPluriel(Math.ceil(getQuickVisitParticipants('bowling') / voulu), 'joueur')} par piste`);
     } else {
       lignes.push(`<b>${rvPluriel(n, 'piste')}</b> au bowling`);
@@ -31101,7 +31198,6 @@ function rvVerdictHtml() {
     }
     return morceaux.join('');
   }
-  const conflits = Array.isArray(plan.conflits) ? plan.conflits.filter((c) => c && c.message) : [];
   const ids = rvActivites();
   if (!plan.disponible) {
     const refus = rvRefusDuPlan();
@@ -31112,13 +31208,11 @@ function rvVerdictHtml() {
     </div>`);
     return morceaux.join('');
   }
-  const ecarts = [];
-  conflits.forEach((c) => ecarts.push(c.message));
-  if (plan.validation === 'staff_review') ecarts.push(plan.raison || 'Le dossier partira « à vérifier ».');
-  if (plan.avertissement) ecarts.push(plan.avertissement);
-  (plan.aSurveiller || []).slice(0, 2).forEach((phrase) => ecarts.push(phrase));
+  const ecarts = rvEcartsDuPlan(plan);
+  // Le reste du programme (le minigolf d une formule) est une information,
+  // pas un ecart : il ne passe pas le verdict en orange.
   const autres = (plan.etapes || []).filter((e) => !ids.includes(e.activite) && e.libelle && !/accueil/i.test(e.libelle));
-  if (autres.length) ecarts.push(`Aussi au programme : ${autres.map((e) => `${e.libelle} à ${e.debut}`).join(', ')}.`);
+  const programme = autres.length ? `Aussi au programme : ${autres.map((e) => `${e.libelle} à ${e.debut}`).join(', ')}.` : '';
   const partage = rvBlocsPlan('laser_game').some((b) => b.partagee || Number(b.joueursAvant) > 0);
   const bowlingSeul = ids.length === 1 && ids[0] === 'bowling';
   const titre = ecarts.length ? 'Possible, avec un point à savoir' : partage ? 'Possible, partie partagée' : bowlingSeul ? 'Possible' : 'Possible, sans attente';
@@ -31137,8 +31231,23 @@ function rvVerdictHtml() {
   const premiere = ids[0] || '';
   const autresHeures = premiere && !s.lockStartTime ? `<button type="button" class="rv-autres" id="rvAutresHeures" onclick="rvOuvrirHorloge('${escapeHtml(premiere)}',0)">Autres heures ›</button>` : '';
   morceaux.push(`<div class="rv-vc${ecarts.length ? ' is-att' : ''}"><span class="rv-ic">${ecarts.length ? RV_I.ko : RV_I.ok}</span><span><b>${titre}</b> <span class="rv-sp">· ${sous}</span></span>${autresHeures}</div>`);
-  if (ecarts.length) morceaux.push(`<ul class="rv-points">${ecarts.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>`);
+  if (ecarts.length || programme) morceaux.push(`<ul class="rv-points">${ecarts.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}${programme ? `<li class="is-info">${escapeHtml(programme)}</li>` : ''}</ul>`);
   return morceaux.join('');
+}
+
+// CE QU IL FAUT SAVOIR D UN PLAN QUI TIENT, compte une seule fois pour le
+// verdict et pour le pied (2026-10-12 : un verdict orange « un point à
+// savoir » au-dessus d un pied vert « vérifié par le planning », chacun
+// comptait les siens). Couleur = etat : un ecart passe les deux en orange.
+function rvEcartsDuPlan(plan) {
+  const s = quickBookState;
+  if (!plan || !s) return [];
+  const ecarts = (Array.isArray(plan.conflits) ? plan.conflits : []).filter((c) => c && c.message).map((c) => c.message);
+  if (plan.validation === 'staff_review') ecarts.push(plan.raison || 'Le dossier partira « à vérifier ».');
+  if (plan.avertissement) ecarts.push(plan.avertissement);
+  (plan.aSurveiller || []).slice(0, 2).forEach((phrase) => ecarts.push(phrase));
+  if (rvHeurePassee(s.date, s.startTime)) ecarts.push(`${s.startTime} est déjà passée : à n’utiliser que pour noter un groupe déjà venu.`);
+  return ecarts;
 }
 
 // LES SORTIES D UN REFUS : les heures voisines ou TOUT le plan tient, lues
@@ -31154,7 +31263,8 @@ function rvAlternativesHtml() {
     return '<div class="rv-alts"><span>Le planning cherche les heures où tout tient…</span></div>';
   }
   const depart = timeToNum(s.startTime || '00:00');
-  const bonnes = [...c.resultats.values()].filter((r) => r.statut !== 'ko' && r.heure !== s.startTime)
+  // Jamais une heure deja passee : une sortie se joue maintenant ou plus tard.
+  const bonnes = [...c.resultats.values()].filter((r) => r.statut !== 'ko' && r.heure !== s.startTime && !rvHeurePassee(s.date, r.heure))
     .sort((a, b) => (Math.abs(timeToNum(a.heure) - depart) - Math.abs(timeToNum(b.heure) - depart)) || ((a.statut === 'ok' ? 0 : 1) - (b.statut === 'ok' ? 0 : 1)))
     .slice(0, 3);
   if (!bonnes.length) return '<div class="rv-alts"><span>Aucune autre heure ne tient ce jour-là : changez le nombre de joueurs, une activité, ou la date.</span></div>';
@@ -31250,8 +31360,13 @@ function rvEtapesDuBillet() {
       const pistes = blocs.length ? [...new Set(blocs.flatMap((b) => b.pistes || []))] : rvPistesDuBowling(ligne.heure).pistes;
       const debut = blocs.length ? blocs[0].debut : ligne.heure;
       const fin = blocs.length ? blocs[blocs.length - 1].fin : (ligne.heure ? numToTime(timeToNum(ligne.heure) + rvMinutesActivite(id) / 60) : '');
-      const choisies = rvPlacementManuel();
-      if (debut) etapes.push({ id, h: debut, debut: timeToNum(debut), fin: fin ? timeToNum(fin) : timeToNum(debut) + 1, q: `Bowling · ${rvHeuresLabel(rvBowlingDuree())}`, d: `${pistes.length ? `${pistes.length > 1 ? 'pistes' : 'piste'} ${rvListePistes(pistes)}` : 'pistes à attribuer'}${choisies ? ', choisies à la main' : ligne.foulee ? ', dans la foulée' : ''}` });
+      // « Choisies à la main » ne dit que les pistes touchees : celles que la
+      // fenetre ajoute pour un groupe qui grandit se disent ajoutees.
+      const aLaMain = rvPlacementManuel() ? (s.lanesALaMain || []).map(Number).filter((p) => pistes.map(Number).includes(p)) : [];
+      const main = !aLaMain.length ? (ligne.foulee ? ', dans la foulée' : '')
+        : aLaMain.length >= pistes.length ? ', choisies à la main'
+          : `, dont ${rvListePistes(aLaMain)} ${aLaMain.length > 1 ? 'choisies' : 'choisie'} à la main`;
+      if (debut) etapes.push({ id, h: debut, debut: timeToNum(debut), fin: fin ? timeToNum(fin) : timeToNum(debut) + 1, q: `Bowling · ${rvHeuresLabel(rvBowlingDuree())}`, d: `${pistes.length ? `${pistes.length > 1 ? 'pistes' : 'piste'} ${rvListePistes(pistes)}` : 'pistes à attribuer'}${main}` });
       return;
     }
     const etape = plan ? (plan.etapes || []).find((e) => e.activite === id) : null;
@@ -31311,11 +31426,15 @@ function rvRecapHtml() {
   // Sous les heures : l invite tant que rien n est compose, ce qui bloque en
   // cas de refus, sinon l arrivee conseillee et la fin (ou « Dans 18 minutes »
   // aujourd hui, ecrit en toutes lettres : la place ne manque pas ici).
+  // Une arrivee conseillee n est jamais deja passee : une heure passee (notee
+  // apres coup) se dit comme telle.
+  const finTexte = fin != null ? ` · fin des activités ${numToTime(fin)}` : '';
   const sous = vide ? (s.type === 'formule' ? 'Choisissez une formule' : 'Ajoutez une activité')
     : refus ? `${refus.bloque} : choisissez une sortie`
       : debut != null
         ? dans ? `${dans.charAt(0).toUpperCase()}${dans.slice(1).replace(/ min$/, ' minutes')} · ${rvPluriel(Number(s.pax) || 1, 'joueur')}${rvPlanEnCalcul() ? ' · le planning vérifie' : ''}`
-          : `Arrivée conseillée ${numToTime(debut - 10 / 60)}${fin != null ? ` · fin des activités ${numToTime(fin)}` : ''}${rvPlanEnCalcul() ? ' · le planning vérifie' : ''}`
+          : rvHeurePassee(s.date, numToTime(debut)) ? `Heure déjà passée${finTexte}`
+            : `Arrivée conseillée ${numToTime(debut - 10 / 60)}${finTexte}${rvPlanEnCalcul() ? ' · le planning vérifie' : ''}`
         : 'Choisissez une heure';
   return `<div class="rv-recap${refus ? ' is-ko' : ''}">
     <div class="rv-eyebrow"><span>${escapeHtml(jour)}</span><em>${escapeHtml(badge)}</em></div>
@@ -31358,7 +31477,7 @@ function rvClientHtml() {
   const reconnu = Boolean(s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat);
   const comptoir = !acquis && rvAuComptoir(s);
   const champTel = `<label class="rv-saisie">${RV_I.tel}<input id="qbPhone" type="tel" value="${escapeHtml(s.phone)}" aria-label="Téléphone" placeholder="Téléphone" autocomplete="off" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value); rvPlanifierClientConnu()" onblur="onQuickPhoneBlur(this)"></label>`;
-  const champNom = (etiquette) => `<label class="rv-saisie">${RV_I.pers}<input id="qbName" value="${escapeHtml(s.name)}" aria-label="Nom du client" placeholder="Nom du client" autocomplete="off" oninput="quickBookState.name=this.value; majQuickRecapClient()">${etiquette}</label>`;
+  const champNom = (etiquette) => `<label class="rv-saisie">${RV_I.pers}<input id="qbName" value="${escapeHtml(s.name)}" aria-label="Nom du client" placeholder="Nom du client" autocomplete="off" onfocus="rvNomAuFocus(this)" oninput="quickBookState.name=this.value; majQuickRecapClient()">${etiquette}</label>`;
   const etiquetteReconnu = reconnu ? '<span class="rv-tag">reconnu</span>' : '';
   const morceaux = [];
   if (acquis) {
@@ -31483,6 +31602,18 @@ function rvComptoirFormeAJour(s = quickBookState) {
     : !presents.length && Boolean(document.getElementById('rvPlusAutre'));
 }
 
+// LE NOM D UN CLIENT RECONNU SE REMPLACE D UN COUP (2026-10-12). Le numero
+// reconnu ecrit le nom dans son champ ; le toucher suivant posait le curseur
+// apres, et le nom retape s ajoutait : « Famille LambertFamille Lambert »
+// partait en base. Tant que le champ porte le nom reconnu tel quel, le
+// toucher le selectionne entier, comme le nombre de joueurs : la frappe le
+// remplace, un second toucher pose le curseur.
+function rvNomAuFocus(champ) {
+  const s = quickBookState;
+  if (!s || !champ || !s.nomReconnu || champ.value !== s.nomReconnu) return;
+  rvSelectionnerAuFocus(champ);
+}
+
 function rvSaisieComptoirFinie(champ) {
   const s = quickBookState;
   if (!s || !champ || rvRoleComptoir(s) !== 'tel') return;
@@ -31520,6 +31651,13 @@ function rvDetailPrix(summary) {
   const plan = rvPlanCourant();
   const extras = quickExtrasTotal();
   const plusExtras = extras ? ` · extras ${formatMoney(extras)}` : '';
+  // Une formule, adaptee ou non, se paie au prix de sa formule (« Adapter »
+  // ne le change pas, sauf « Revoir ») : son detail dit d ou vient le total.
+  // Adaptee, il listait les activites au prix a la carte (« bowling 78 € ·
+  // laser 180 € · minigolf sur place ») sous un total de 390 € qu elles ne
+  // faisaient pas.
+  const formule = rvFormule();
+  if (formule) return `${rvNomFormule(formule)}${s.adaptee ? ' adaptée' : ''} · ${formatMoney(formule.price)} ${formule.type === 'per_lane' ? 'la piste' : `× ${Number(s.pax) || 1}`}${plusExtras}`;
   if (plan && Array.isArray(plan.lignesPrix) && plan.lignesPrix.length) {
     const connues = plan.lignesPrix.filter((l) => l && l.prix != null);
     if (connues.length) return `${connues.map((l) => `${rvNomPrix(l.activite, l.libelle)} ${formatMoney(l.prix)}`).join(' · ')}${connues.length < plan.lignesPrix.length ? ' · le reste sur place' : ''}${plusExtras}`;
@@ -31537,8 +31675,6 @@ function rvDetailPrix(summary) {
     const unitaire = option ? option.price : (typeof prixLaserAuPalier === 'function' ? prixLaserAuPalier(options, parties) : null);
     return `${rvPluriel(parties, 'partie')}${unitaire != null ? ` à ${formatMoney(unitaire)}` : ''} × ${rvPluriel(Number(s.pax) || 1, 'joueur')}${plusExtras}`;
   }
-  const formule = rvFormule();
-  if (formule && !s.adaptee) return `${rvNomFormule(formule)} · ${formatMoney(formule.price)} ${formule.type === 'per_lane' ? 'la piste' : `× ${Number(s.pax) || 1}`}${plusExtras}`;
   const visit = s.visit || {};
   const items = rvActivites().map((id) => (id === 'bowling' ? { ...ligneProgrammeQuick('bowling'), duration: Number(visit.bowling && visit.bowling.duration) || 1 } : id === 'laser_game' ? { ...ligneProgrammeQuick('laser_game'), games: Number(visit.laser_game && visit.laser_game.games) || 1 } : ligneProgrammeQuick(id)));
   if (!items.length) return summary.detail || '';
@@ -31613,7 +31749,7 @@ function rvPiedHtml() {
   else if (rvAvertissement() && !plan) { etat = 'att'; texte = `<b>${escapeHtml(rvAvertissement())}</b>`; }
   else if (refuse) { etat = 'ko'; texte = s.forcer ? '<b>Créé à placer</b>, conflit écrit dans la note' : `<b>${escapeHtml(refus ? refus.court : 'Impossible tel quel')}</b>`; }
   else if (plan) {
-    const ecart = (plan.conflits || []).length || plan.validation === 'staff_review' || plan.avertissement;
+    const ecart = rvEcartsDuPlan(plan).length > 0;
     etat = ecart ? 'att' : 'ok';
     texte = ecart ? '<b>Possible</b>, un point à savoir' : '<b>Possible</b>, vérifié par le planning';
   } else if (s.plan && s.plan.etat === 'erreur') { etat = 'att'; texte = '<b>Plan indisponible</b>, la création vérifiera'; }
@@ -31657,8 +31793,11 @@ function rvBornesHorloge(id) {
   const s = quickBookState;
   const schedule = getSchedule(s.date, state.isHolidayMode);
   if (!schedule) return null;
-  let debut = schedule.open;
-  if (s.date === todayStr() && !quickBookAllowsPastSelectedTime()) debut = Math.max(debut, roundUpHalfHour(currentTimeDecimal()));
+  // Le jour meme, l horloge propose a partir du creneau en cours ; les heures
+  // d avant ne se jugent pas (elles ne se proposent jamais) et ne se montrent,
+  // grisees « passée », qu a qui peut noter le passe (rvHeuresPasseesHorloge).
+  const plancher = rvPlancherDuJour(s.date);
+  const debut = plancher !== null ? Math.max(schedule.open, plancher) : schedule.open;
   const minutes = id && rvActivites().includes(id) ? rvMinutesActivite(id) : 30;
   return { debut, fin: Math.max(debut, schedule.close - minutes / 60), ouverture: schedule.open, fermeture: schedule.close };
 }
@@ -31668,6 +31807,14 @@ function rvHeuresHorloge(id) {
   if (!bornes) return [];
   const heures = [];
   for (let t = Math.ceil(bornes.debut * 2) / 2; t <= bornes.fin + 1e-9; t += 0.5) heures.push(numToTime(t));
+  return heures;
+}
+
+function rvHeuresPasseesHorloge(id) {
+  const bornes = rvBornesHorloge(id);
+  if (!bornes || !rvPeutNoterLePasse()) return [];
+  const heures = [];
+  for (let t = Math.ceil(bornes.ouverture * 2) / 2; t < bornes.debut - 1e-9; t += 0.5) heures.push(numToTime(t));
   return heures;
 }
 
@@ -31720,7 +31867,7 @@ async function rvChargerCandidats(id, partie) {
   if (!s || (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reservations.create'))) return;
   const base = rvCorpsDeSimulation();
   if (!base) return;
-  const cle = JSON.stringify(base);
+  const cle = rvCleDe(base);
   if (s.candidats && s.candidats.base === cle && s.candidats.id === id && s.candidats.partie === partie && s.candidats.etat !== 'erreur') return;
   const variantes = rvHeuresHorloge(id).map((h) => rvVariante(id, partie, h)).filter(Boolean).slice(0, 48);
   const seq = ++rvCandidatsSeq;
@@ -31803,13 +31950,24 @@ function rvHorlogeHtml() {
   const fermer = '<button type="button" class="rv-x1" id="rvHorlogeFermer" aria-label="Fermer l’horloge" onclick="rvFermerHorloge()">×</button>';
   if (!bornes) return `<div class="rv-horloge" id="rvHorloge" role="dialog" aria-label="${escapeHtml(titre)}"><div class="rv-poignee" aria-hidden="true"></div><div class="rv-horloge-h"><div><b>${escapeHtml(titre)}</b><span>Centre fermé ce jour-là.</span></div>${fermer}</div></div>`;
   const heures = rvHeuresHorloge(id);
+  const passees = rvHeuresPasseesHorloge(id);
   const parHeure = new Map();
-  heures.forEach((h) => { const hh = Number(h.slice(0, 2)); if (!parHeure.has(hh)) parHeure.set(hh, []); parHeure.get(hh).push(h); });
+  [...passees, ...heures].forEach((h) => { const hh = Number(h.slice(0, 2)); if (!parHeure.has(hh)) parHeure.set(hh, []); parHeure.get(hh).push(h); });
   const choisie = s.horlogeH != null ? s.horlogeH : (courante ? Number(courante.slice(0, 2)) : null);
+  // UN SEUL ARRET DE TABULATION pour le cadran (l heure choisie, sinon la
+  // premiere proposable) : les fleches le parcourent (rvToucheHorloge).
+  const heuresDuCadran = [...parHeure.keys()];
+  const arret = heuresDuCadran.includes(choisie) ? choisie : (heures[0] ? Number(heures[0].slice(0, 2)) : heuresDuCadran[0]);
+  const passee = (h) => rvHeurePassee(s.date, h) && timeToNum(h) >= bornes.ouverture - 1e-9;
+  const etatDe = (h, demi) => (passee(h) ? 'passe' : demi.includes(h) ? rvEtatHeure(id, h).etat : 'hors');
+  const dire = (p) => (p === 'ok' ? 'tout tient' : p === 'att' ? 'tient avec un écart' : p === 'ko' ? 'impossible' : p === 'calcul' ? 'en vérification' : p === 'passe' ? 'déjà passée' : 'hors horaires');
+  let montrePasse = false;
   const cadran = [...parHeure.entries()].map(([hh, demi]) => {
-    const points = [`${String(hh).padStart(2, '0')}:00`, `${String(hh).padStart(2, '0')}:30`].map((h) => (demi.includes(h) ? rvEtatHeure(id, h).etat : 'hors'));
-    const toutKo = points.every((p) => p === 'ko' || p === 'hors');
-    return `<button type="button" class="rv-hc${choisie === hh ? ' is-on' : ''}${toutKo ? ' is-ko' : ''}" aria-pressed="${choisie === hh}" aria-label="${hh} heures : ${points.map((p, i) => `${i ? 'et demie' : 'pile'} ${p === 'ok' ? 'tout tient' : p === 'att' ? 'tient avec un écart' : p === 'ko' ? 'impossible' : p === 'calcul' ? 'en vérification' : 'hors horaires'}`).join(', ')}" onclick="rvHorlogeHeure(${hh})"><b>${String(hh).padStart(2, '0')}</b><span class="rv-dd" aria-hidden="true">${points.map((p) => `<i class="${p === 'ok' ? '' : `is-${p}`}"></i>`).join('')}</span></button>`;
+    const points = [`${String(hh).padStart(2, '0')}:00`, `${String(hh).padStart(2, '0')}:30`].map((h) => etatDe(h, demi));
+    if (points.includes('passe')) montrePasse = true;
+    const toutPasse = points.every((p) => p === 'passe' || p === 'hors') && points.includes('passe');
+    const toutKo = !toutPasse && points.every((p) => p === 'ko' || p === 'hors' || p === 'passe');
+    return `<button type="button" class="rv-hc${choisie === hh ? ' is-on' : ''}${toutKo ? ' is-ko' : ''}${toutPasse ? ' is-passe' : ''}" tabindex="${arret === hh ? 0 : -1}" aria-pressed="${choisie === hh}" aria-label="${hh} heures : ${points.map((p, i) => `${i ? 'et demie' : 'pile'} ${dire(p)}`).join(', ')}" onclick="rvHorlogeHeure(${hh})"><b>${String(hh).padStart(2, '0')}</b><span class="rv-dd" aria-hidden="true">${points.map((p) => `<i class="${p === 'ok' ? '' : `is-${p}`}"></i>`).join('')}</span></button>`;
   }).join('');
   const cible = id === 'laser_game' && partie > 0 ? 100 + partie : index;
   // Chaque demi-heure en deux lignes, comme la maquette : le verdict
@@ -31819,7 +31977,9 @@ function rvHorlogeHtml() {
     return `<span><span class="rv-mn-t">${escapeHtml(tete.charAt(0).toUpperCase() + tete.slice(1))}</span>${suite.length ? `<small>${escapeHtml(suite.join(', '))}</small>` : ''}</span>`;
   };
   const minutes = choisie == null ? '' : `<div class="rv-minutes" role="group" aria-label="Minutes">${[`${String(choisie).padStart(2, '0')}:00`, `${String(choisie).padStart(2, '0')}:30`].map((h) => {
-    if (!heures.includes(h)) return `<button type="button" class="rv-mn is-ko" disabled><b>${h}</b>${mots('hors horaires')}</button>`;
+    // Une heure passee se note (le droit planning.past), elle ne se propose pas.
+    if (passees.includes(h)) return `<button type="button" class="rv-mn is-passe${h === courante ? ' is-on' : ''}" aria-label="${escapeHtml(`${h} : déjà passée, pour noter un groupe déjà venu`)}" onclick="rvChoisirHeure('${escapeHtml(id)}',${cible},'${h}')"><b>${h}</b>${mots('déjà passée, à noter seulement')}</button>`;
+    if (!heures.includes(h)) return `<button type="button" class="rv-mn ${passee(h) ? 'is-passe' : 'is-ko'}" disabled><b>${h}</b>${mots(passee(h) ? 'déjà passée' : 'hors horaires')}</button>`;
     const e = rvEtatHeure(id, h);
     return `<button type="button" class="rv-mn${h === courante ? ' is-on' : ''}${e.etat === 'ko' ? ' is-ko' : e.etat === 'att' ? ' is-att' : ''}" aria-label="${escapeHtml(`${h} : ${e.mot}`)}" onclick="rvChoisirHeure('${escapeHtml(id)}',${cible},'${h}')"><b>${h}</b>${mots(e.mot)}</button>`;
   }).join('')}</div>`;
@@ -31840,7 +32000,7 @@ function rvHorlogeHtml() {
     <div class="rv-cadran">${cadran || '<span class="rv-texte">Aucune heure dans les horaires.</span>'}</div>
     ${minutes}
     ${foulee}
-    <div class="rv-legende"><span><i></i>tout le plan tient</span><span><i class="is-att"></i>tient, avec un écart</span><span><i class="is-ko"></i>impossible</span><span class="rv-droite">${escapeHtml(droite)}</span></div>
+    <div class="rv-legende"><span><i></i>tout le plan tient</span><span><i class="is-att"></i>tient, avec un écart</span><span><i class="is-ko"></i>impossible</span>${montrePasse ? '<span><i class="is-passe"></i>déjà passée</span>' : ''}<span class="rv-droite">${escapeHtml(droite)}</span></div>
   </div>`;
 }
 
@@ -32046,12 +32206,20 @@ function rvChoisirHeure(id, cible, heure) {
   } else if (s.heures) {
     delete s.heures[id];
   }
+  // Choisie dans l horloge, l heure rend le focus au bouton qui l a ouverte :
+  // l horloge fermee, le bouton de la minute disparaissait et le focus
+  // tombait sur la fenetre entiere (30 tabulations pour revenir au client).
+  const ouverte = s.horloge;
   s.error = '';
   s.forcer = false;
   s.horloge = null;
   s.horlogeH = null;
   reconcileQuickLaneSelection();
   renderQuickBook();
+  if (ouverte) {
+    const retour = (ouverte.id === 'laser_game' && ouverte.partie > 0 && document.getElementById(`rvPartie-${ouverte.partie}`)) || document.getElementById(`rvHeure-${ouverte.id}`);
+    if (retour) retour.focus({ preventScroll: true });
+  }
 }
 
 function rvOuvrirHorloge(id, partie = 0) {
@@ -32078,10 +32246,54 @@ function rvFermerHorloge() {
   if (retour) retour.focus({ preventScroll: true });
 }
 
+// Une heure touchee montre ses minutes, et le focus y va : au clavier, 18:00
+// arrivait apres les heures 19 a 23.
 function rvHorlogeHeure(h) {
   if (!quickBookState) return;
   quickBookState.horlogeH = Number(h);
   renderQuickBook();
+  const minute = document.querySelector('#rvHorloge .rv-mn.is-on:not([disabled])') || document.querySelector('#rvHorloge .rv-mn:not([disabled])');
+  if (minute) minute.focus({ preventScroll: true });
+}
+
+// LES FLECHES DANS L HORLOGE (2026-10-12) : gauche et droite d une heure ou
+// d une minute a l autre, haut et bas d une rangee du cadran, Debut et Fin.
+// Le cadran n a qu un arret de tabulation (rvHorlogeHtml).
+function rvToucheHorloge(event) {
+  if (!quickBookState || !quickBookState.horloge) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+  const cible = event.target;
+  if (!cible || typeof cible.closest !== 'function' || !cible.closest('#rvHorloge')) return;
+  const selecteur = cible.classList.contains('rv-hc') ? '#rvHorloge .rv-hc' : cible.classList.contains('rv-mn') ? '#rvHorloge .rv-mn:not([disabled])' : '';
+  if (!selecteur) return;
+  const groupe = [...document.querySelectorAll(selecteur)];
+  const i = groupe.indexOf(cible);
+  if (i < 0) return;
+  event.preventDefault();
+  let j = i;
+  if (event.key === 'Home') j = 0;
+  else if (event.key === 'End') j = groupe.length - 1;
+  else if (event.key === 'ArrowRight') j = Math.min(groupe.length - 1, i + 1);
+  else if (event.key === 'ArrowLeft') j = Math.max(0, i - 1);
+  else {
+    // Haut et bas : la meme colonne, une rangee plus loin.
+    const r = cible.getBoundingClientRect();
+    const bas = event.key === 'ArrowDown';
+    const rangee = groupe.filter((b) => { const q = b.getBoundingClientRect(); return bas ? q.top > r.top + 2 : q.bottom < r.bottom - 2; });
+    if (rangee.length) {
+      const proche = (b) => Math.abs(b.getBoundingClientRect().top - r.top);
+      const ligne = Math.min(...rangee.map(proche));
+      const memes = rangee.filter((b) => Math.abs(proche(b) - ligne) < 2);
+      const colonne = memes.reduce((m, b) => (Math.abs(b.getBoundingClientRect().left - r.left) < Math.abs(m.getBoundingClientRect().left - r.left) ? b : m), memes[0]);
+      j = groupe.indexOf(colonne);
+    }
+  }
+  const suivant = groupe[j];
+  if (!suivant || suivant === cible) return;
+  if (suivant.classList.contains('rv-hc')) {
+    groupe.forEach((b) => b.setAttribute('tabindex', b === suivant ? '0' : '-1'));
+  }
+  suivant.focus({ preventScroll: true });
 }
 
 // Une seule ligne ouverte a la fois (« tout se lit d un regard ») ; la
@@ -32191,11 +32403,11 @@ function rvChoisirArene(valeur) {
 }
 
 // Le nombre de pistes d un bowling seul, au-dessus du minimum si le staff le
-// veut (« avec 3, ils sont 4 par piste »). La grille suit.
+// veut (« avec 3 pistes : 4 joueurs par piste »). La grille suit.
 function rvPistesNombre(delta) {
   const s = quickBookState;
   if (!s || s.type !== 'bowling') return;
-  const auto = getBowlingCapacityPlan(Math.max(...splitGroupIntoBowlingServices(Number(s.pax) || 1)), getAvailabilityLaneCount(), (Number(s.duration) || 1) * 60).requiredCount || 1;
+  const auto = rvPistesConseillees();
   const actuel = Math.max(auto, Number(s.pistesNombre) || auto);
   const voulu = Math.min(getAvailabilityLaneCount(), Math.max(auto, actuel + Number(delta || 0)));
   s.pistesNombre = voulu > auto ? voulu : null;
@@ -32211,8 +32423,13 @@ function rvPlacementChoisir() {
   if (rvPlacementManuel()) return;
   const heure = rvHeuresDesLignes().bowling?.heure || s.startTime;
   const { pistes } = rvPistesDuBowling(heure);
-  if (pistes.length) { s.autoAssign = false; s.lanes = [...pistes]; }
-  else { s.autoAssign = false; s.lanes = []; }
+  // « Choisir » part des pistes que le planning a posees, sinon de l estimation.
+  const posees = [...new Set(rvBlocsPlan('bowling').flatMap((b) => b.pistes || []))].sort((a, b) => a - b);
+  const depart = posees.length ? posees : pistes;
+  s.autoAssign = false;
+  s.lanes = [...depart];
+  s.lanesALaMain = [...depart];
+  s.bowlingParDefaut = false;
   renderQuickBook();
 }
 
@@ -32247,20 +32464,42 @@ function rvBasculerForcer() {
 }
 
 // Changer de mode repart propre : une formule adaptee ou des heures choisies
-// pour une autre composition ne survivent pas au changement.
+// pour une autre composition ne survivent pas au changement. MAIS LES
+// ACTIVITES COMPOSEES REVIENNENT (2026-10-12) : passer de Formule a Activites
+// repartait du bowling seul, et le laser compose avant s effacait. La
+// composition d avant la formule est gardee, et rendue au retour.
 function rvModeActivites() {
   if (!quickBookState) return;
-  quickBookState.adaptee = false;
-  quickBookState.heures = {};
-  quickBookState.forcer = false;
+  const s = quickBookState;
+  s.adaptee = false;
+  s.heures = {};
+  s.forcer = false;
+  const avant = s.type === 'formule' ? s.activitesAvantFormule : null;
+  s.activitesAvantFormule = null;
+  if (avant) {
+    Object.assign(s, JSON.parse(JSON.stringify(avant)));
+    s.formuleId = '';
+    s.bowlingParDefaut = false;
+    syncQuickBookDuration();
+    reconcileQuickLaneSelection();
+    renderQuickBook();
+    return;
+  }
   setQuickModeActivites();
 }
 
 function rvModeFormule() {
   if (!quickBookState || quickBookState.type === 'formule') return;
-  quickBookState.adaptee = false;
-  quickBookState.heures = {};
-  quickBookState.forcer = false;
+  const s = quickBookState;
+  s.activitesAvantFormule = JSON.parse(JSON.stringify({
+    type: s.type, activityId: s.activityId || '', duration: s.duration, visit: s.visit || null, ordre: s.ordre || [],
+    lanes: s.lanes || [], autoAssign: Boolean(s.autoAssign), surMesure: Boolean(s.surMesure), pistesNombre: s.pistesNombre ?? null,
+    partiesEcarts: s.partiesEcarts || null, arene: s.arene || 'auto',
+  }));
+  s.adaptee = false;
+  s.heures = {};
+  s.forcer = false;
+  s.bowlingParDefaut = false;
   setQuickType('formule');
 }
 
@@ -32319,10 +32558,28 @@ function rvChoisirFormule(id) {
   setQuickFormule(id);
 }
 
+// LE BOWLING DE DEPART N EST QU UNE PROPOSITION (2026-10-12). Un laser seul
+// depuis « Réservation rapide » coutait 12 touchers (7 avant la nouvelle
+// fenetre) : la fenetre part en bowling, « + Activité » ouvrait une liste, le
+// laser s ajoutait au bowling, et « Retirer » vivait dans le detail. Tant que
+// ce bowling n a ete ni regle (duree, pistes, nombre de pistes) ni choisi
+// (depart rapide, formule), une autre activite le remplace.
+function rvBowlingProposeIntact() {
+  const s = quickBookState;
+  return Boolean(s && s.bowlingParDefaut && s.type === 'bowling' && s.autoAssign && !(s.lanes || []).length
+    && !(Number(s.pistesNombre) > 0) && Number(s.duration) === 1 && rvActivites().join() === 'bowling');
+}
+
 function rvAjouterActivite(id) {
   if (!quickBookState) return;
   quickBookState.forcer = false;
   quickBookState.ajoutsOuverts = false;
+  const remplace = id !== 'bowling' && rvBowlingProposeIntact();
+  quickBookState.bowlingParDefaut = false;
+  if (remplace) {
+    if (id === 'laser_game') { setQuickType('laser'); quickBookState.duration = 0.5; syncQuickBookDuration(); renderQuickBook(); } else setQuickType('activity', id);
+    return;
+  }
   toggleQuickListe(id);
   if (quickBookState && quickActiviteRetenue(id) && !quickBookState.moreOpen) {
     quickBookState.ouverte = RV_ANCRABLES.includes(id) ? quickBookState.ouverte : id;
@@ -32475,8 +32732,15 @@ function rvConstruire({ simulation = false } = {}) {
       // libres et dit sinon lesquelles il a prises) ; en Auto, il attribue.
       if (rvPlacementManuel()) lanes = [...s.lanes].sort((a, b) => a - b);
     }
-  } else if (needsLanes) {
-    lanes = s.autoAssign ? (allocateLanes(requiredCount, s.date, s.startTime, duration) || []) : [...s.lanes];
+  } else if (needsLanes && !s.autoAssign) {
+    // EN AUTO, AUCUNE PISTE NE PART (2026-10-12) : le serveur attribue, comme
+    // pour une visite. La fenetre envoyait les pistes calculees sur SA copie
+    // de la journee comme un choix du staff : la 2e resa d un meme envoi se
+    // voyait en conflit sur une piste que personne n avait choisie (« Piste 1
+    // prise par Simulation (même envoi) »), et une copie en retard refusait
+    // (« Il faut 1 piste disponible ») ce que le planning savait placer.
+    // Seules les pistes CHOISIES voyagent, et se verifient ici.
+    lanes = [...s.lanes];
     if (!forcer && !simulation) {
       if (lanes.length < requiredCount) return { erreur: `Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} disponible${requiredCount > 1 ? 's' : ''}.` };
       if (lanes.some((l) => state.laneStatuses[l] === 'maintenance')) return { erreur: 'Une des pistes choisies est en maintenance.' };
@@ -32496,7 +32760,10 @@ function rvConstruire({ simulation = false } = {}) {
   let price = prixSaisi != null ? prixSaisi : basePrice;
   if (!tarifeParLeServeur && prixSaisi == null && extras.length) price = Math.round(((Number(basePrice) || 0) + quickExtrasTotal()) * 100) / 100;
   const reservation = {
-    name: simulation ? 'Simulation' : (s.name.trim() || 'Client'),
+    // En simulation, aucun nom : le plan n en depend pas, et le serveur nomme
+    // un dossier du meme envoi par son rang (« la réservation 1 de cet envoi »),
+    // jamais « Simulation ».
+    name: simulation ? '' : (s.name.trim() || 'Client'),
     phone: simulation ? '' : rvTelephoneEnvoye(),
     email: simulation ? '' : s.email.trim(),
     notes: simulation ? '' : rvNotesEnvoyees({ horsRegles, prixSaisi, formule }),
@@ -32575,9 +32842,34 @@ function rvCorpsDeSimulation() {
   return buildReservationApiPayload(construit.reservation, { channel: 'staff', laneCount: construit.requiredCount, requiresLanes: construit.needsLanes });
 }
 
+// LE PLAN SUIT LA JOURNEE (2026-10-12). La cle du plan n etait faite que de
+// la demande : un autre poste prenait la derniere piste, la lecture de la
+// journee le voyait, et la fenetre gardait « Possible · piste 8 libre » ;
+// Entree repondait alors « Il faut 1 piste disponible. ». La revision de la
+// journee (l ETag de staff-state) entre dans la cle : la journee change, le
+// plan et l horloge se refont (rvJourneeChangee, appelee par la lecture).
+function rvRevisionDuJour(date) {
+  if (!date || typeof staffRevisionByDate === 'undefined') return '';
+  const centre = typeof getCurrentStaffCenterId === 'function' ? encodeURIComponent(getCurrentStaffCenterId()) : '';
+  return String(staffRevisionByDate[`${centre}:${date}`] || '').replace(/^a-relire:/, '');
+}
+
+function rvCleDe(corps) {
+  return corps ? `${JSON.stringify(corps)}|${rvRevisionDuJour(corps.date)}` : '';
+}
+
 function rvCleSimulation() {
-  const corps = rvCorpsDeSimulation();
-  return corps ? JSON.stringify(corps) : '';
+  return rvCleDe(rvCorpsDeSimulation());
+}
+
+function rvJourneeChangee(date) {
+  const s = quickBookState;
+  if (!s || s.submitting || s.date !== date) return;
+  const overlay = document.getElementById('quickBookOverlay');
+  if (!overlay || !overlay.querySelector('.qb-modal.rv')) return;
+  rvRepeindre({ sauf: ['rvJoueursSaisie'] });
+  rvPlanifierSimulation();
+  if (s.horloge) rvChargerCandidats(s.horloge.id, s.horloge.partie);
 }
 
 // Les resas d avant dans le meme envoi : la deuxieme voit les pistes que la
@@ -32608,7 +32900,7 @@ async function rvSimuler() {
   if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reservations.create')) return;
   const corps = rvCorpsDeSimulation();
   if (!corps) { rvRepeindre(); return; }
-  const cle = JSON.stringify(corps);
+  const cle = rvCleDe(corps);
   s.cleCourante = cle;
   const autres = rvAutresDuLot();
   const cleLot = autres.length ? `${cle}|${JSON.stringify(autres)}` : cle;
@@ -32804,6 +33096,8 @@ function rvAppliquerComposition(x) {
   s.adaptee = false;
   s.ordre = [];
   s.ajoutsOuverts = false;
+  s.bowlingParDefaut = false;
+  s.activitesAvantFormule = null;
   if (x.pax && Number(x.pax) > 0 && x.reprendreJoueurs) s.pax = Number(x.pax);
   const type = x.type === 'activity' ? 'activite' : x.type;
   const lignes = rvLignesDepart(x).filter((l) => l && l.activityId);

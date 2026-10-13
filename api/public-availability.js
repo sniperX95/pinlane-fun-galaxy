@@ -29,7 +29,7 @@ const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
 const {
   attenteDuSousGroupe,
-  intersticesDuGroupe,
+  mesurerLaVisite,
   buildDefaultAnchorTimes,
   evaluateAnchoredCombination,
   getFormulaAnchorAvailability,
@@ -664,21 +664,21 @@ module.exports = async (req, res) => {
       // CE QUI SE JOUE PENDANT L ATTENTE NE REPOUSSE PAS LA FIN. Le temps mort
       // se mesure sur le plan de CE creneau (les vagues n ont pas le meme ecart
       // partout), avec la regle du moteur, jamais une copie.
+      // La mesure elle-meme vit dans le moteur (mesurerLaVisite) : la fenetre
+      // Reserver de l equipe lit la meme fin que le client (2026-10-13). Les
+      // trous entre les activites a creneau y absorbent le libre, moins ce que
+      // les parties de laser jouees dans la foulee y prennent deja (Movsar :
+      // « il ne compte pas les activités qui sont dans la foulée »).
       const mesureDeVisite = (slot) => {
         if (!slot || !slot.time) return null;
-        const debut = Math.round(timeToNum(slot.time) * 60);
         const plan = slot.opsPlan || null;
-        const marge = Math.max(0, Number(plan && plan.bufferMinutes) || 0);
-        const finPlan = plan && plan.endTime ? Math.round(timeToNum(plan.endTime) * 60) - marge : debut;
-        const creux = laPlusLongue(attenteDuSousGroupe(plan && plan.resourceBlocks), attenteTours);
-        const couvert = Math.min(
-          Math.max(0, Math.round(Number(program.waitMinutes) || 0)),
-          Math.max(0, Math.round(Number(creux && creux.minutes) || 0)),
-        );
-        // Les trous entre les activites a creneau absorbent le libre : meme
-        // mesure que la reserve du moteur.
-        const trous = intersticesDuGroupe(plan && plan.resourceBlocks);
-        return { apresLePlan: Math.max(finPlan, debut), libreApres: Math.max(0, reserveAffichee - couvert - trous) };
+        return mesurerLaVisite({
+          debut: Math.round(timeToNum(slot.time) * 60),
+          plan,
+          libre: reserveAffichee,
+          attenteLibre: program.waitMinutes,
+          creux: laPlusLongue(attenteDuSousGroupe(plan && plan.resourceBlocks), attenteTours),
+        });
       };
       const finDeVisiteMinutes = (slot) => {
         const mesure = mesureDeVisite(slot);
@@ -772,7 +772,7 @@ module.exports = async (req, res) => {
       const installationsPleines = new Set();
       const gardeDesInstallations = (scenario) => {
         if (!scenario || !scenario.startTime) return '';
-        const slot = { time: scenario.startTime, opsPlan: { endTime: scenario.endTime, bufferMinutes: scenario.bufferMinutes, resourceBlocks: scenario.resourceBlocks || [] } };
+        const slot = { time: scenario.startTime, opsPlan: { endTime: scenario.endTime, bufferMinutes: scenario.bufferMinutes, resourceBlocks: scenario.resourceBlocks || [], laserPassPlan: scenario.laserPassPlan || null } };
         const pleine = dotationDuCreneau(slot, finDeVisiteMinutes(slot));
         if (pleine) installationsPleines.add(pleine);
         return pleine;

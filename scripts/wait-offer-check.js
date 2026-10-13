@@ -266,10 +266,11 @@ async function main() {
   }
 
   try {
-    // La fin AFFICHEE ne passe pas par le moteur : elle ajoute la reserve a la
-    // fin du plan. La mutation coupe donc la deduction LA, au seul endroit qui
-    // decide ce que le client lit. Sans elle, la fin recule de toute la duree
-    // de l activite au lieu de son seul debordement.
+    // La fin AFFICHEE n est pas le verdict du moteur : mesurerLaVisite
+    // (lib/ops-engine.js, depuis le 2026-10-13) ajoute la reserve a la fin du
+    // plan. La mutation coupe donc la deduction LA, au seul endroit qui decide
+    // ce que le client lit. Sans elle, la fin recule de toute la duree de
+    // l activite au lieu de son seul debordement.
     // La duree REELLE de chaque offre est celle du programme normalise, pas le
     // champ `minutes` du centre : le minigolf n en declare aucun et tient sa
     // duree du catalogue. Trier sur le champ aurait choisi la plus courte.
@@ -283,9 +284,9 @@ async function main() {
     const programmeLong = [...PROGRAMME, { activityId: plusLongue.activityId, waitOffer: true, participants: attendent }];
     const dureeLongue = dureeDe(plusLongue.activityId);
     const sansDeduction = await withSourceMutation(
-      path.join(ROOT, 'api/public-availability.js'),
-      'return { apresLePlan: Math.max(finPlan, debut), libreApres: Math.max(0, reserveAffichee - couvert - trous) };',
-      'return { apresLePlan: Math.max(finPlan, debut), libreApres: reserveAffichee };',
+      path.join(ROOT, 'lib/ops-engine.js'),
+      'return { apresLePlan: Math.max(finPlan, depart), libreApres: Math.max(0, Math.max(0, Math.round(Number(libre) || 0)) - couvert - trous) };',
+      'return { apresLePlan: Math.max(finPlan, depart), libreApres: Math.max(0, Math.round(Number(libre) || 0)) };',
       async () => {
         const neuf = charger();
         const enMinutes = (t) => (t ? Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5)) : null);

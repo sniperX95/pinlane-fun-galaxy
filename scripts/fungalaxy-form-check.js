@@ -644,8 +644,29 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // reels). Plafonds : 310 Ko a analyser, 90 Ko a transferer, soit 14,8 et
 // 5,8 Ko de marge : une police (20 Ko compresses) ou une bibliotheque font
 // toujours sauter l un et l autre.
-const BUDGET_SERVI = 310 * 1024;
-const BUDGET_TRANSFERE = 90 * 1024;
+// REDERIVE LE 2026-10-13, apres le lot formulaire de l etape 10 (heures
+// expliquees en court, formulaire sous lenteur, heure posee devenue passee,
+// mots insecables, hote clair). Base production 1addaec contre l arbre, memes
+// trois fichiers passes par le build, brotli qualite 3 : 304,3 -> 311,6 Ko
+// servis (+7,3) ; 86,4 -> 89,2 Ko transferes (+2,8, environ 56 ms a
+// 400 kbit/s). Poids mort cherche AVANT de toucher au chiffre, rien a retirer :
+// les 379 fonctions nommees sont toutes citees, les classes de la feuille sont
+// citees ou construites par morceaux (fg-key--, fg-visit__step--,
+// fg-info-section--), les commentaires HTML sont deja retires par le build.
+// Mesure A/B (fungalaxy-form-perf-bench, formulaire embarque, processeur
+// ralenti 6 fois, 5 passages alternes par appareil, machine chargee par une
+// autre session) : telephone, taches 24 676 -> 25 879 ms, script 2 248 ->
+// 2 001 ms, longues taches 5 149 -> 5 838 ms, images perdues 162 -> 173 ;
+// tablette, taches 25 592 -> 26 223 ms, script 2 142 -> 1 982 ms, longues
+// taches 5 007 -> 5 195 ms, images perdues 173 -> 172. Le pas qui coute :
+// l entree dans les heures (tablette, longues taches 703 -> 949 ms, mediane ;
+// recalcul de style 608 -> 922 ms dans une trace), plus de contenu a poser.
+// C est le chantier de la legerete (etape 10, point 4), mesure avec ce banc.
+// Plafonds : 325 Ko a analyser, 95 Ko a transferer, soit 13,4 et 5,8 Ko de
+// marge, la meme regle que le 07/10 : une police (20 Ko compresses) ou une
+// bibliotheque font toujours sauter l un et l autre.
+const BUDGET_SERVI = 325 * 1024;
+const BUDGET_TRANSFERE = 95 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {

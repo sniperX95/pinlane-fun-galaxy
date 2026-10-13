@@ -13,6 +13,11 @@ const COUNTS = { bowling: 7, laser_game: 3, minigolf_blacklight: 4, billards: 5,
   arcade_time: 2, playground: 6, duckpin_bowling: 13, fun_run: 8 };
 let checks = 0;
 function check(cond, message) { checks++; assert.ok(cond, message); console.log('OK ' + message); }
+// LE TEXTE SE LIT SANS SES ESPACES INSECABLES (2026-10-13) : le formulaire
+// lie un nombre a son unite (« 54 € », « 6 joueurs / piste ») pour qu un
+// telephone ne les coupe plus. Ce gate asserte les montants, les nombres et
+// les phrases, pas l espace qui les tient ensemble.
+const sansInsecable = (texte) => (texte === null || texte === undefined ? texte : String(texte).replace(/[\u00a0\u202f]/g, ' '));
 const card = id => `#smGridAct [data-sm-activity="${id}"]`;
 const input = id => `${card(id)} [data-compteur="participants"] input`;
 // Toucher une carte cochee la decoche depuis le 2026-10-06 (journal Pinlane,
@@ -75,10 +80,10 @@ async function main() {
       for (const [id, key, value] of [['bowling', 'duration', '2'], ['laser_game', 'games', '2'], ['billards', 'hours', '2'], ['fun_run', 'minutes', '15']]) {
         check(await page.locator(`${card(id)} .fg-pill[data-cle="${key}"][data-valeur="${value}"]`).getAttribute('aria-checked') === 'true', `[${width}] imported ${id} ${key}`);
       }
-      check(await page.locator(`${card('billards')} [data-compteur="units"] output`).textContent() === '2', `[${width}] imported two billard tables`);
+      check(await page.locator(`${card('billards')} [data-compteur="units"] output`).textContent().then(sansInsecable) === '2', `[${width}] imported two billard tables`);
       await cocher(page, `${card('fun_run')} .fg-card`);
       await page.locator(input('fun_run')).fill('31'); await page.locator(input('fun_run')).press('Tab');
-      check(/7 sessions/.test(await page.locator(`${card('fun_run')} .fg-card__rot`).textContent()), `[${width}] 31 Fun Run players rotate seven sessions`);
+      check(/7 sessions/.test(await page.locator(`${card('fun_run')} .fg-card__rot`).textContent().then(sansInsecable)), `[${width}] 31 Fun Run players rotate seven sessions`);
       await page.locator(input('fun_run')).fill('8'); await page.locator(input('fun_run')).press('Tab');
       await cocher(page, `${card('bowling')} .fg-card`);
       await page.locator(input('bowling')).fill(''); await page.locator(input('bowling')).press('Tab');
@@ -103,18 +108,18 @@ async function main() {
         await page.locator(input(id)).fill(String(count)); await page.locator(input(id)).press('Tab');
       }
       check(await page.locator('#gridAct [data-activity="bowling"] input').inputValue() === '7', `[${width}] custom context preserves normal form options`);
-      check((await page.locator('#smCount').textContent()).includes('539 €') && /sans Arcades/.test(await page.locator('#smCount').textContent()), `[${width}] known subtotal539 excludes unknown arcades`);
+      check((await page.locator('#smCount').textContent().then(sansInsecable)).includes('539 €') && /sans Arcades/.test(await page.locator('#smCount').textContent().then(sansInsecable)), `[${width}] known subtotal539 excludes unknown arcades`);
       if (width === 1440) {
         await page.click('.fg-scene[data-scene="sm-envies"] [data-back]'); await page.click('.fg-scene[data-scene="sm-date"] [data-back]');
         await page.fill('#smPax', '1000'); await page.press('#smPax', 'Tab'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
         for (const id of ['bowling', 'fun_run', 'duckpin_bowling']) { await cocher(page, `${card(id)} .fg-card`); await page.locator(input(id)).fill('1000'); await page.locator(input(id)).press('Tab'); }
         await cocher(page, `${card('bowling')} .fg-card`);
         await page.locator(`${card('bowling')} .fg-pill[data-valeur="1"]`).click();
-        const bowlingNote = await page.locator(`${card('bowling')} .fg-card__rot`).textContent();
+        const bowlingNote = await page.locator(`${card('bowling')} .fg-card__rot`).textContent().then(sansInsecable);
         check(/168 pistes/.test(bowlingNote) && /6[\s\u00a0\u202f]?552/.test(bowlingNote), '1000 bowling players use balanced168 lanes for6552EUR');
-        check(/200 sessions/.test(await page.locator(`${card('fun_run')} .fg-card__rot`).textContent()), '1000 players require200 real Fun Run sessions');
+        check(/200 sessions/.test(await page.locator(`${card('fun_run')} .fg-card__rot`).textContent().then(sansInsecable)), '1000 players require200 real Fun Run sessions');
         await page.click(`${card('duckpin_bowling')} [data-activity-info]`);
-        const duckpin = await page.locator('.fg-info-text').textContent();
+        const duckpin = await page.locator('.fg-info-text').textContent().then(sansInsecable);
         check(/167 pistes/.test(duckpin) && /84 tours/.test(duckpin), '1000 duckpin players require167 paid lanes across84 real tours');
         await page.keyboard.press('Escape');
         await page.click('.fg-scene[data-scene="sm-envies"] [data-back]'); await page.click('.fg-scene[data-scene="sm-date"] [data-back]');
@@ -129,11 +134,11 @@ async function main() {
       for (const [id, value] of [['smPrenom', 'QA'], ['smNom', 'Custom players'], ['smEmail', 'qa@pinlane.test'], ['smTel', '0470000000']]) await page.fill('#' + id, value);
       await page.check('#smConsent'); await page.click('#smGoRecap');
       await page.waitForSelector('.fg-scene[data-scene="sm-recap"].is-active');
-      const recap = await page.locator('.fg-scene[data-scene="sm-recap"]').textContent();
+      const recap = await page.locator('.fg-scene[data-scene="sm-recap"]').textContent().then(sansInsecable);
       check(recap.includes('Bowling (7 joueurs') && recap.includes('Billards (5 joueurs · 2 tables · 2 heures)'), `[${width}] recap describes counts and option details`);
       check(recap.includes('539 €') && /sans Arcades.*prix à l’accueil/.test(recap), `[${width}] recap honest activity estimate`);
       await page.click('#smSend'); await page.waitForSelector('.fg-scene[data-scene="fin"].is-active');
-      const receipt = await page.locator('#finBody').textContent();
+      const receipt = await page.locator('#finBody').textContent().then(sansInsecable);
       check(receipt.includes('Bowling (7 joueurs · 2 heures) : 156 €') && receipt.includes('539 €'), `[${width}] final custom receipt retains selected options and estimates`);
       check(/Arcades \(2 joueurs\) : prix à l’accueil/.test(receipt), `[${width}] final custom receipt makes unknown price explicit`);
       check(posted && posted.details.participants === 31, `[${width}] POST retains custom group size`);
@@ -173,7 +178,7 @@ async function main() {
     await page.click('#goActivities'); await page.waitForSelector('.fg-scene[data-scene="sm-groupe"].is-active'); await page.click('#smGoDate'); await page.click('#smGoEnvies');
     check(await page.locator(input('bowling')).inputValue() === '6', 'reopening unchanged base basket preserves custom edits');
     await page.locator(`${card('bowling')} .fg-card-select`).click(); await cocher(page, `${card('arcade_time')} .fg-card`);
-    const unknownOnly = await page.locator('#smCount').textContent();
+    const unknownOnly = await page.locator('#smCount').textContent().then(sansInsecable);
     check(/Prix des activités à l’accueil : Arcades/.test(unknownOnly) && !unknownOnly.includes('0 €'), 'unknown-only activity selection never presented as zero/free');
     for (const scene of ['sm-envies', 'sm-date', 'sm-groupe']) await page.click(`.fg-scene[data-scene="${scene}"] [data-back]`);
     await page.fill('#paxInput', '41'); await page.press('#paxInput', 'Enter'); await page.click('#goActivities');
@@ -184,7 +189,7 @@ async function main() {
     const future = mock.metaPayload('', 90).center.calendar.find(day => day.open && day.date > mock.DATE).date;
     await page.click('#dayBtn'); await page.locator(`.fg-cal__day[data-date="${future}"]`).click(); await page.click('#goActivities');
     await page.waitForSelector('.fg-scene[data-scene="sm-groupe"].is-active'); await page.click('#smGoDate');
-    check(!(await page.isChecked('#smFlexible')) && (await page.locator('#smDateLabel').textContent()).trim() !== 'Choisir un jour', 'base date change replaces prior custom flexible-date override');
+    check(!(await page.isChecked('#smFlexible')) && (await page.locator('#smDateLabel').textContent().then(sansInsecable)).trim() !== 'Choisir un jour', 'base date change replaces prior custom flexible-date override');
     await page.click('#smGoEnvies');
     for (const scene of ['sm-envies', 'sm-date', 'sm-groupe']) await page.click(`.fg-scene[data-scene="${scene}"] [data-back]`);
     await page.fill('#paxInput', '18'); await page.press('#paxInput', 'Enter'); await page.click('#goActivities');
@@ -195,7 +200,7 @@ async function main() {
     check(await page.locator(`#smGridFor .fg-card[data-sm="${formulaId}"]`).getAttribute('aria-checked') === 'true', 'normal selected formula imported unchanged');
     await cocher(page, `${card('bowling')} .fg-card`); await page.locator(input('bowling')).fill('7'); await page.locator(input('bowling')).press('Tab');
     await page.locator(`${card('bowling')} .fg-pill[data-valeur="1"]`).click();
-    check(/2 pistes/.test(await page.locator(`${card('bowling')} .fg-card__rot`).textContent()) && (await page.locator('#smCount').textContent()).includes('78 €'), 'custom subset bowling uses seven players even when normal form remains in formula mode');
+    check(/2 pistes/.test(await page.locator(`${card('bowling')} .fg-card__rot`).textContent().then(sansInsecable)) && (await page.locator('#smCount').textContent().then(sansInsecable)).includes('78 €'), 'custom subset bowling uses seven players even when normal form remains in formula mode');
     await ctx.close();
     console.log(`PASS ${checks} custom participant assertions`);
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

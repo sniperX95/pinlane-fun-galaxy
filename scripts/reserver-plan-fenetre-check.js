@@ -179,7 +179,7 @@ async function contrePreuve(nom, mutation, attendu) {
       { fichier: 'lib/reserver-simulation.js', de: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount'];", vers: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'pax'];" },
       /\[3\] pax, type et nom/);
     await contrePreuve('les conflits ne voyagent plus avec les heures',
-      { fichier: 'lib/reserver-simulation.js', de: "      resultats.push({ heure, ...verdict, fin: verdict.statut === 'ko' || typeof finDuPlan !== 'function' ? '' : finDuPlan(dossier.opsPlan), conflits: liste });", vers: "      resultats.push({ heure, ...verdict, fin: verdict.statut === 'ko' || typeof finDuPlan !== 'function' ? '' : finDuPlan(dossier.opsPlan), conflits: [] });" },
+      { fichier: 'lib/reserver-simulation.js', de: "      resultats.push({ heure, ...verdict, fin: verdict.statut === 'ko' || typeof finDuPlan !== 'function' ? '' : finDuPlan(dossier.opsPlan, dossier), conflits: liste });", vers: "      resultats.push({ heure, ...verdict, fin: verdict.statut === 'ko' || typeof finDuPlan !== 'function' ? '' : finDuPlan(dossier.opsPlan, dossier), conflits: [] });" },
       /\[3\] piste 5 choisie a 16:00/);
     await contrePreuve('les autres dossiers ne sont pas poses dans la journee',
       { fichier: 'lib/reserver-fenetre.js', de: '        virtuelles.push(reservationVirtuelle(resultat.dossier, index));', vers: '' },

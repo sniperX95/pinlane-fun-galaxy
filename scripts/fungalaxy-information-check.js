@@ -14,6 +14,11 @@ let checks = 0;
 const measurements = [];
 const closeMeasurements = [];
 function check(condition, label) { assert.ok(condition, label); checks++; console.log('OK ' + label); }
+// LE TEXTE SE LIT SANS SES ESPACES INSECABLES (2026-10-13) : le formulaire
+// lie un nombre a son unite (« 54 € », « 6 joueurs / piste ») pour qu un
+// telephone ne les coupe plus. Ce gate asserte les montants, les nombres et
+// les phrases, pas l espace qui les tient ensemble.
+const sansInsecable = (texte) => (texte === null || texte === undefined ? texte : String(texte).replace(/[\u00a0\u202f]/g, ' '));
 const base = mock.createServer({port});
 const serveFixture = base.listeners('request')[0];
 const server = http.createServer((req,res) => {
@@ -73,7 +78,7 @@ async function waitRestoredOverflow(frame,previous,label) {
   closeMeasurements.push({label,previous,immediate,settled:await frame.evaluate(()=>document.body.style.overflow),elapsedMs:Date.now()-start});
 }
 async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
-  const before=await frame.locator('.fg-scene.is-active').textContent();
+  const before=await frame.locator('.fg-scene.is-active').textContent().then(sansInsecable);
   const overflowBefore=await frame.evaluate(()=>document.body.style.overflow);
   await button.scrollIntoViewIfNeeded();
   const control=await button.evaluate(b=>({width:b.getBoundingClientRect().width,height:b.getBoundingClientRect().height,label:b.getAttribute('aria-label'),radio:b.closest('[aria-checked]')?.getAttribute('aria-checked')}));
@@ -87,8 +92,8 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
   await frame.waitForFunction(()=>document.querySelector('.fg-info-dialog')?.open);
   await page.waitForTimeout(300);
   await geometry(page,frame,embedded,label);
-  const text=await frame.locator('.fg-info-text').textContent();
-  const title=await frame.locator('#fgInfoTitle').textContent();
+  const text=await frame.locator('.fg-info-text').textContent().then(sansInsecable);
+  const title=await frame.locator('#fgInfoTitle').textContent().then(sansInsecable);
   check(title.trim().length>0&&text.trim().length>0,label+' meaningful named details');
   for(const fragment of expectedFragments) { const present=fragment==='sans cadeaux' ? /(?:sans|hors).{0,60}cadeaux/i.test(text) : text.includes(fragment); check(present,label+' preserves known rule '+fragment+(present?'':' in '+JSON.stringify(text))); }
   if(text.includes('Information longue pour vérifier le défilement')) {
@@ -119,7 +124,7 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
   check(!await frame.locator('.fg-info-dialog').evaluate(d=>d.open),label+' Escape closes');
   check(await button.evaluate(b=>document.activeElement===b),label+' Escape restores exact opener focus');
   check(await frame.evaluate(()=>document.body.style.overflow)===overflowBefore,label+' closing restores previous page scroll state');
-  check(await frame.locator('.fg-scene.is-active').textContent()===before,label+' info does not toggle selection or change prices/options');
+  check(await frame.locator('.fg-scene.is-active').textContent().then(sansInsecable)===before,label+' info does not toggle selection or change prices/options');
   await button.click();await frame.click('.fg-info-close');
   if(label.endsWith('/unselected-activity/0')) {
     const nextOpener=frame.locator('#gridAct [data-activity-info]').nth(1);
@@ -127,7 +132,7 @@ async function popup(page,frame,button,embedded,label,expectedFragments=[]) {
     // supersede the previous opener without retaining a hidden overflow state.
     await nextOpener.click();
     await frame.waitForFunction(()=>document.querySelector('.fg-info-dialog').open);
-    check((await frame.locator('#fgInfoTitle').textContent())===await nextOpener.getAttribute('data-info-title'),label+' immediate reopen displays the next activity');
+    check((await frame.locator('#fgInfoTitle').textContent().then(sansInsecable))===await nextOpener.getAttribute('data-info-title'),label+' immediate reopen displays the next activity');
     check(await frame.evaluate(()=>document.body.style.overflow==='hidden'),label+' immediate reopen maintains the active modal scroll lock');
     await page.keyboard.press('Escape');
     await waitRestoredOverflow(frame,overflowBefore,label+' immediate reopen Escape');
@@ -165,7 +170,7 @@ async function run() {
    check(await activities.count()===8,label+' all eight unselected activities expose information');
    for (const id of ['bowling','duckpin_bowling','fun_run']) {
     const item=frame.locator('#gridAct li[data-activity="'+id+'"]');
-    const brief=await item.locator('.fg-card__rot').innerText();
+    const brief=await item.locator('.fg-card__rot').innerText().then(sansInsecable);
     const details=JSON.parse(await item.locator('[data-activity-info]').getAttribute('data-info-sections'));
     check(!/[×=]/.test(brief)&&(id==='fun_run' ? brief.includes('au choix') : brief.includes('joueurs / piste')),label+'/'+id+' before selection has no invented total');
     check(details[0].titre==='Le tarif'&&!details[0].lignes.some(line=>/[×=]/.test(line)),label+'/'+id+' before selection modal has catalogue tariff, no presumed selection');
@@ -173,10 +178,10 @@ async function run() {
    await page.screenshot({path:path.join(out,label.replace('/','-')+'-unselected-cards.png')});
    for(let index=0;index<8;index++)await popup(page,frame,activities.nth(index),embedded,label+'/unselected-activity/'+index);
    await frame.locator('#gridAct .fg-card:not(.is-on)').evaluateAll(cards=>cards.forEach(card=>card.click()));
-   check(!(await frame.locator('#gridAct').textContent()).includes('Information longue pour vérifier le défilement'),label+' long explanations do not expand activity cards');
+   check(!(await frame.locator('#gridAct').textContent().then(sansInsecable)).includes('Information longue pour vérifier le défilement'),label+' long explanations do not expand activity cards');
    check(await activities.count()===8,label+' all eight activities expose information');
    const selectedBowling=frame.locator('#gridAct li[data-activity="bowling"]');
-   check((await selectedBowling.locator('.fg-card__rot').innerText()).includes('× 39 € ='),label+' selected bowling preserves exact default 1-hour calculation');
+   check((await selectedBowling.locator('.fg-card__rot').innerText().then(sansInsecable)).includes('× 39 € ='),label+' selected bowling preserves exact default 1-hour calculation');
    for(let index=0;index<8;index++) {
     const button=activities.nth(index),id=await button.getAttribute('data-activity-info'),activity=metadata.activities.find(value=>value.id===id),expected=[];
     if(activity.minAge)expected.push(String(activity.minAge));if(activity.maxAge)expected.push(String(activity.maxAge));if(activity.minPax)expected.push(String(activity.minPax));
@@ -192,19 +197,19 @@ async function run() {
    await arcade.locator('[data-compteur="participants"] input').fill('3');await arcade.locator('[data-compteur="participants"] input').press('Enter');
    for(const [id,total] of [['time-30',45],['time-60',90]]) {
     await arcade.locator('.fg-pill[data-cle="arcadeOfferId"][data-valeur="'+id+'"]').click();
-    check((await arcade.locator('.fg-card__price').textContent()).includes(total+' €'),label+' timed arcade chosen total remains exact');
+    check((await arcade.locator('.fg-card__price').textContent().then(sansInsecable)).includes(total+' €'),label+' timed arcade chosen total remains exact');
     await popup(page,frame,arcade.locator('[data-activity-info]'),embedded,label+'/arcade/'+id,['3 joueurs','3 cartes','sans cadeaux','illimité']);
    }
    await arcade.locator('.fg-pill[data-cle="arcadeMode"][data-valeur="credit"]').click();
    await arcade.locator('[data-compteur="cards"] input').fill('2');await arcade.locator('[data-compteur="cards"] input').press('Enter');
    for(const [id,total,credits] of [['credit-10',20,10],['credit-25',50,35],['credit-35',70,50],['credit-50',100,75]]) {
     await arcade.locator('select').selectOption(id);
-    check((await arcade.locator('.fg-card__price').textContent()).includes(total+' €'),label+' credit arcade chosen total remains exact');
+    check((await arcade.locator('.fg-card__price').textContent().then(sansInsecable)).includes(total+' €'),label+' credit arcade chosen total remains exact');
     await popup(page,frame,arcade.locator('[data-activity-info]'),embedded,label+'/arcade/'+id,['3 joueurs','2 cartes',credits+' crédits','cadeaux inclus','1,2 à 2,4']);
    }
    await frame.click('#tabFor');
    const formulas=frame.locator('.fg-scene.is-active [data-formula-info]');
-   check(!(await frame.locator('#panelFor').textContent()).includes('Information longue pour vérifier le défilement'),label+' long explanations do not expand formula cards');
+   check(!(await frame.locator('#panelFor').textContent().then(sansInsecable)).includes('Information longue pour vérifier le défilement'),label+' long explanations do not expand formula cards');
    check(await formulas.count()>0,label+' formulas expose information');
    for(let index=0;index<await formulas.count();index++) {
     const button=formulas.nth(index),id=await button.getAttribute('data-formula-info'),formula=metadata.formules.find(value=>value.id===id);
@@ -214,7 +219,7 @@ async function run() {
     if(formula.kidsOnly)check(/enfants?/i.test(text),label+'/'+id+' exposes children-only audience');
     if(id==='f6'||id==='f7')check(text.includes("8 crédits d'arcade (8€) par enfant"),label+'/'+id+' explicitly includes eight arcade credits per child');
     if(id==='mm')check(text.includes('terminées à 12h')&&/hors jeux à cadeaux|cadeaux ne sont pas inclus/.test(text),label+'/'+id+' requires completion at noon and excludes prize games');
-    if(id==='kfd')check((await button.locator('..').textContent()).includes('Toutes les activités illimitées'),label+'/'+id+' exposes unlimited activities before selection');
+    if(id==='kfd')check((await button.locator('..').textContent().then(sansInsecable)).includes('Toutes les activités illimitées'),label+'/'+id+' exposes unlimited activities before selection');
     if(Array.isArray(formula.validDays)&&formula.validDays.length===1)check(text.toLowerCase().includes(['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][Number(formula.validDays[0])]),label+'/'+id+' exposes known valid weekday');
    }
    const availableKids=metadata.formules.find(formula=>formula.kidsOnly && formula.type==='per_pax' && formula.minPax<=16);
@@ -230,9 +235,9 @@ async function run() {
    await kidsCard.click();
    const kidsControls=frame.locator('[data-kids-for="'+availableKids.id+'"]');
    await kidsControls.locator('[data-kids="-1"]').click();await kidsControls.locator('[data-kids="-1"]').click();
-   check((await kidsControls.locator('.fg-kids__n').textContent()).trim()==='16',label+' children counter independently changes from 18 to 16');
-   const kidsPrice=(await kidsControls.locator('.fg-kids__prix').textContent()).trim();
-   const kidsAdults=(await kidsControls.locator('.fg-kids__adults').textContent()).trim();
+   check((await kidsControls.locator('.fg-kids__n').textContent().then(sansInsecable)).trim()==='16',label+' children counter independently changes from 18 to 16');
+   const kidsPrice=(await kidsControls.locator('.fg-kids__prix').textContent().then(sansInsecable)).trim();
+   const kidsAdults=(await kidsControls.locator('.fg-kids__adults').textContent().then(sansInsecable)).trim();
    check(kidsPrice.includes(String(Number(availableKids.price)*16)),label+' children formula price matches 16 paying children');
    await popup(page,frame,frame.locator('#gridFor [data-formula-info="'+availableKids.id+'"]'),embedded,label+'/selected-kids/'+availableKids.id,[kidsPrice,kidsAdults]);
    await frame.click('.fg-scene[data-scene="activites"] [data-back]');await frame.fill('#paxInput','31');await frame.press('#paxInput','Enter');await frame.click('#goActivities');
@@ -257,7 +262,7 @@ async function run() {
     const text=await popup(page,frame,button,embedded,label+'/custom-formula/'+index);
     if(id==='f6'||id==='f7')check(text.includes("8 crédits d'arcade (8€) par enfant"),label+'/custom/'+id+' explicitly includes eight arcade credits per child');
     if(id==='mm')check(text.includes('terminées à 12h')&&/hors jeux à cadeaux|cadeaux ne sont pas inclus/.test(text),label+'/custom/'+id+' requires completion at noon and excludes prize games');
-    if(id==='kfd')check((await button.locator('..').textContent()).includes('Toutes les activités illimitées'),label+'/custom/'+id+' exposes unlimited activities before selection');
+    if(id==='kfd')check((await button.locator('..').textContent().then(sansInsecable)).includes('Toutes les activités illimitées'),label+'/custom/'+id+' exposes unlimited activities before selection');
    }
    await page.screenshot({path:path.join(out,'information-'+width+'-'+(embedded?'embed':'standalone')+'.png'),fullPage:false});
    await context.close();

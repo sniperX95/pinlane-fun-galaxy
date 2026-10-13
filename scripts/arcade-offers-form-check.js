@@ -11,6 +11,11 @@ const OUT = path.resolve(__dirname, '../tests/artifacts/activity-participants');
 const selector = '#gridAct li[data-activity="arcade_time"]';
 let checks = 0;
 function check(value, label) { assert(value, label); checks++; console.log('OK ' + label); }
+// LE TEXTE SE LIT SANS SES ESPACES INSECABLES (2026-10-13) : le formulaire
+// lie un nombre a son unite (« 54 € », « 6 joueurs / piste ») pour qu un
+// telephone ne les coupe plus. Ce gate asserte les montants, les nombres et
+// les phrases, pas l espace qui les tient ensemble.
+const sansInsecable = (texte) => (texte === null || texte === undefined ? texte : String(texte).replace(/[\u00a0\u202f]/g, ' '));
 async function number(page, root, key, value) {
   const input = page.locator(`${root} [data-compteur="${key}"] input`);
   await input.fill(String(value)); await input.press('Tab');
@@ -28,7 +33,7 @@ async function finish(page, expected) {
   await page.click('#goHours');
   const availability = await (await response).json();
   await page.waitForFunction(() => !document.querySelector('#goContact').disabled);
-  const timeline=await page.locator('.fg-scene[data-scene="heures"]').textContent();
+  const timeline=await page.locator('.fg-scene[data-scene="heures"]').textContent().then(sansInsecable);
   check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable/.test(timeline),'timeline keeps arcade choice compact and leaves access details in information popup');
   const item = availability.program.items.find(i => i.activityId === 'arcade_time');
   check(!item.arcadeOffer.description || !timeline.includes(item.arcadeOffer.description),'timeline omits the centre long arcade description');
@@ -39,7 +44,7 @@ async function finish(page, expected) {
   await page.fill('#cPrenom', 'QA'); await page.fill('#cNom', 'Arcades'); await page.fill('#cEmail', 'arcades@pinlane.test'); await page.fill('#cTel', '0470000000');
   await page.click('[data-occasion="amis"]'); await page.check('#cConsent'); await page.click('#goRecap');
   await page.waitForSelector('.fg-scene[data-scene="recap"].is-active');
-  const recap = await page.locator('#recap').textContent();
+  const recap = await page.locator('#recap').textContent().then(sansInsecable);
   check(recap.includes(`${expected.cards} cartes`) && recap.includes('3 joueurs'), 'recap says both card quantity and player subset');
   check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable/.test(recap),'recap does not repeat detailed arcade explanations');
   check(!item.arcadeOffer.description || !recap.includes(item.arcadeOffer.description),'price recap omits the centre long arcade description');
@@ -49,7 +54,7 @@ async function finish(page, expected) {
   const post = mock.dernierePose.body, sent = (post.program.items || post.program).find(i => i.activityId === 'arcade_time');
   check(sent.arcadeMode === expected.mode && sent.arcadeOfferId === expected.id && sent.cards === expected.cards, 'POST carries exact mode, offer and card count');
   check(post.quotedPrice === expected.price, 'POST guards exactly displayed total');
-  const receipt = await page.locator('#finBody').textContent();
+  const receipt = await page.locator('#finBody').textContent().then(sansInsecable);
   check(receipt.includes(`${expected.cards} cartes`) && receipt.includes('3 joueurs'), 'receipt preserves players and card count');
   check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable/.test(receipt)&&(!item.arcadeOffer.description||!receipt.includes(item.arcadeOffer.description)),'receipt keeps purchased offer compact without centre access description');
   if (expected.mode === 'credit') check(!/30 min|30 minutes/.test(receipt) && receipt.includes(String(expected.credits)), 'credit receipt preserves total credits and promises no duration');
@@ -62,14 +67,14 @@ async function informationMatrix(browser, errors) {
     for (const custom of [false,true]) {
       const grid=custom?'#smGridAct':'#gridAct';
       check(await page.locator(grid+' [data-activity-info]').count()===8,`[${width}] ${custom?'custom':'standard'} all eight information controls`);
-      check(!/confort|10 min par joueur|min de règles/.test(await page.locator(grid).textContent()),'long comfort and preparation notes leave activity cards');
-      const before=await page.locator(grid).textContent();
+      check(!/confort|10 min par joueur|min de règles/.test(await page.locator(grid).textContent().then(sansInsecable)),'long comfort and preparation notes leave activity cards');
+      const before=await page.locator(grid).textContent().then(sansInsecable);
       const buttons=page.locator(grid+' [data-activity-info]');
       for (let i=0;i<8;i++) {
         const btn=buttons.nth(i), id=await btn.getAttribute('data-activity-info'), expected=await btn.getAttribute('data-info-text');
         await btn.click();
         check(await page.locator('.fg-info-dialog').evaluate(d=>d.open),'information opens native modal');
-        check(await page.locator('.fg-info-text').textContent()===expected,'all precise activity information reaches popup intact');
+        check(await page.locator('.fg-info-text').textContent().then(sansInsecable)===expected,'all precise activity information reaches popup intact');
         check(await page.locator('.fg-info-photo').evaluate(img=>img.complete&&img.naturalWidth>0&&!!img.alt),'actual activity photo loads with useful alternative');
         check(await page.locator('.fg-info-dialog').evaluate(d=>{const r=d.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;}),'modal fits both viewport axes');
         check(await btn.evaluate(b=>{const r=b.getBoundingClientRect();return r.width>=44&&r.height>=44;}),'information control is at least 44px');
@@ -82,18 +87,18 @@ async function informationMatrix(browser, errors) {
         await page.keyboard.press('Escape');
         check(await btn.evaluate(b=>document.activeElement===b),'Escape restores information button focus');
       }
-      check(await page.locator(grid).textContent()===before,'opening information preserves selection, options, quantities and amount');
+      check(await page.locator(grid).textContent().then(sansInsecable)===before,'opening information preserves selection, options, quantities and amount');
       const laser=grid+(custom?' [data-sm-activity="laser_game"]':' li[data-activity="laser_game"]');
       const oldPlayers=await page.locator(laser+' [data-compteur="participants"] input').inputValue();
       await number(page,laser,'participants',3);
       for(const [games,unit,total] of [[2,18,54],[3,25,75]]) {
         await page.click(laser+' .fg-pill[data-cle="games"][data-valeur="'+games+'"]');
-        const beforePopup=await page.locator(custom?'#smCount':'#actCount').textContent();
-        check((await page.locator(laser+' .fg-card__price').textContent()).includes(total+' €'),'laser selected games determine exact card total '+games);
+        const beforePopup=await page.locator(custom?'#smCount':'#actCount').textContent().then(sansInsecable);
+        check((await page.locator(laser+' .fg-card__price').textContent().then(sansInsecable)).includes(total+' €'),'laser selected games determine exact card total '+games);
         await page.click(laser+' [data-activity-info]');
-        check((await page.locator('.fg-info-text').textContent()).includes(unit+' € / personne × 3 = '+total+' €'),'laser popup uses selected unit tariff rather than single-game baseline '+games);
+        check((await page.locator('.fg-info-text').textContent().then(sansInsecable)).includes(unit+' € / personne × 3 = '+total+' €'),'laser popup uses selected unit tariff rather than single-game baseline '+games);
         await page.keyboard.press('Escape');
-        check(await page.locator(custom?'#smCount':'#actCount').textContent()===beforePopup,'laser popup preserves actual basket total '+games);
+        check(await page.locator(custom?'#smCount':'#actCount').textContent().then(sansInsecable)===beforePopup,'laser popup preserves actual basket total '+games);
       }
       await page.click(laser+' .fg-pill[data-cle="games"][data-valeur="1"]');await number(page,laser,'participants',oldPlayers);
       check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'information matrix does not create horizontal overflow');
@@ -109,7 +114,7 @@ async function informationMatrix(browser, errors) {
         await page.fill('#smPax','1000');await page.press('#smPax','Tab');await page.click('#smGoDate');await page.click('#smGoEnvies');
         for(const id of ['bowling','duckpin_bowling']) {
           const root='#smGridAct [data-sm-activity="'+id+'"]';await number(page,root,'participants',1000);await page.click(root+' [data-activity-info]');
-          const content=await page.locator('.fg-info-text').textContent();
+          const content=await page.locator('.fg-info-text').textContent().then(sansInsecable);
           check(!content.includes('tout le groupe en même temps') && /se relaient/.test(content),'1000 participants never promise simultaneous whole-group access');
           if(id==='bowling') check(/168 pistes/.test(content) && /6[\s\u00a0\u202f]?552/.test(content),'1000 bowling participants retain168 billed lanes and6552EUR');
           else check(/167 pistes/.test(content) && /84 tours/.test(content),'1000 duckpin participants retain167 billed lanes and84 rotations');
@@ -134,8 +139,8 @@ async function gemblouxInformation(browser,errors) {
   for(const id of ['golf_oclock','arcade_time']) {
     const root='#gridAct li[data-activity="'+id+'"]';await page.click(root+' .fg-card');await number(page,root,'participants',3);
     await page.click(root+' [data-activity-info]');
-    check(await page.locator('#fgInfoTitle').textContent()===(id==='golf_oclock'?'Golf O’Clock':'Arcades'),'Gembloux popup preserves actual activity identity');
-    const text=await page.locator('.fg-info-text').textContent();check(text.includes('3 joueurs'),'Gembloux popup uses chosen subgroup');
+    check(await page.locator('#fgInfoTitle').textContent().then(sansInsecable)===(id==='golf_oclock'?'Golf O’Clock':'Arcades'),'Gembloux popup preserves actual activity identity');
+    const text=await page.locator('.fg-info-text').textContent().then(sansInsecable);check(text.includes('3 joueurs'),'Gembloux popup uses chosen subgroup');
     if(id==='golf_oclock') {
       check(text.includes('12 trous')&&text.includes('12,5 €'),'Gembloux Golf O’Clock preserves exact centre tariff and holes');
       check(await page.locator('.fg-info-photo').evaluate(img=>img.getAttribute('src')==='/assets/fungalaxy/gembloux-golf-salle-800.webp'&&img.complete&&img.naturalWidth>0),'Gembloux Golf O’Clock uses proven Gembloux activity photo');
@@ -170,12 +175,12 @@ async function gemblouxInformation(browser,errors) {
         await mounted(page);
         if(c.mode === 'credit') { await mode(page,selector,'credit'); await page.selectOption(selector+' select',c.id); await number(page,selector,'cards',2); }
         else await page.click(`${selector} .fg-pill[data-cle="arcadeOfferId"][data-valeur="${c.id}"]`);
-        const text = await page.locator(selector+' .fg-card__price').textContent();
-        check(await page.locator(selector+' .fg-pill[data-cle="arcadeMode"][data-valeur="time"] small').textContent()==='Sans cadeaux',`[${width}] ${c.id} timed mode never promises unlimited time`);
+        const text = await page.locator(selector+' .fg-card__price').textContent().then(sansInsecable);
+        check(await page.locator(selector+' .fg-pill[data-cle="arcadeMode"][data-valeur="time"] small').textContent().then(sansInsecable)==='Sans cadeaux',`[${width}] ${c.id} timed mode never promises unlimited time`);
         check(text.includes(String(c.price)) && text.includes(`${c.cards} cartes`), `[${width}] ${c.id} own total and card quantity`);
         check(await page.locator(selector+' [data-compteur="cards"]').count() === (c.mode==='credit'?1:0), `[${width}] ${c.id} timed cards cannot be altered`);
         await page.click(selector+' [data-activity-info]');
-        const information=await page.locator('.fg-info-text').textContent();
+        const information=await page.locator('.fg-info-text').textContent().then(sansInsecable);
         check(information.includes(`${c.cards} cartes`) && information.includes('3 joueurs') && (c.mode==='time'?/illimité/.test(information)&&/(?:sans|hors)[^.]{0,60}cadeaux/.test(information):information.includes(`${c.credits} crédits`) && /cadeaux inclus/.test(information) && /1,2 à 2,4/.test(information)),`[${width}] ${c.id} popup preserves counts, credits and exact access rights`);
         await page.keyboard.press('Escape');
         const targets = await page.locator(selector+' .fg-stepper>*,'+selector+' .fg-pill,'+selector+' select').evaluateAll(nodes => nodes.filter(n=>n.getBoundingClientRect().height>0).map(n=>({w:n.getBoundingClientRect().width,h:n.getBoundingClientRect().height,font:parseFloat(getComputedStyle(n).fontSize)})));
@@ -201,24 +206,24 @@ async function gemblouxInformation(browser,errors) {
       await page.click('.fg-scene[data-scene="activites"] [data-back]');await page.fill('#paxInput','31');await page.press('#paxInput','Enter');await page.click('#goActivities');
       await page.waitForSelector('.fg-scene[data-scene="sm-groupe"].is-active'); await page.click('.fg-occasion[data-type="amis"]');await page.click('#smGoDate');await page.check('#smFlexible');await page.fill('#smPeriod','Prochaines vacances');await page.click('.fg-sm-moment[data-moment="indifferent"]');await page.click('#smGoEnvies');
       await page.waitForSelector('.fg-scene[data-scene="sm-envies"].is-active');const sm='#smGridAct [data-sm-activity="arcade_time"]';
-      check(await page.locator(sm+' .fg-pill[data-cle="arcadeMode"][data-valeur="time"] small').textContent()==='Sans cadeaux',`[${width}] custom timed mode says exact excluded prize games`);
+      check(await page.locator(sm+' .fg-pill[data-cle="arcadeMode"][data-valeur="time"] small').textContent().then(sansInsecable)==='Sans cadeaux',`[${width}] custom timed mode says exact excluded prize games`);
       check(await page.locator(sm+' select').inputValue()==='credit-35' && await page.locator(sm+' [data-compteur="cards"] input').inputValue()==='9','custom form imports credit offer and independent cards');
       await mode(page,sm,'time'); await page.click(sm+' .fg-pill[data-valeur="time-30"]'); await mode(page,sm,'credit');
       check(await page.locator(sm+' select').inputValue()==='credit-35','custom string option modes preserve remembered offer');
       await page.selectOption(sm+' select','credit-50');await number(page,sm,'cards',4);
-      check((await page.locator(sm+' .fg-card__price').textContent()).includes('200') && (await page.locator('#smCount').textContent()).includes('200'),'custom subtotal uses card count rather than players');
+      check((await page.locator(sm+' .fg-card__price').textContent().then(sansInsecable)).includes('200') && (await page.locator('#smCount').textContent().then(sansInsecable)).includes('200'),'custom subtotal uses card count rather than players');
       check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'custom arcade choices no horizontal overflow');
       await page.screenshot({path:path.join(OUT,`arcades-custom-${width}.png`),fullPage:true});
       await page.click('#smGoContact');
       for(const [id,value] of [['smPrenom','QA'],['smNom','Arcades'],['smEmail','arcades@pinlane.test'],['smTel','0470000000']]) await page.fill('#'+id,value);
       await page.check('#smConsent');await page.click('#smGoRecap');await page.waitForSelector('.fg-scene[data-scene="sm-recap"].is-active');
-      const customRecap=await page.locator('.fg-scene[data-scene="sm-recap"]').textContent();
+      const customRecap=await page.locator('.fg-scene[data-scene="sm-recap"]').textContent().then(sansInsecable);
       check(customRecap.includes('4 cartes') && customRecap.includes('25 bonus') && !/30 min/.test(customRecap),'custom recap states bought cards and credits without estimated duration');
       check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable|Le temps de jeu dépend des machines/.test(customRecap),'custom recap leaves detailed arcade access rules in the information popup');
       await page.click('#smSend');await page.waitForSelector('.fg-scene[data-scene="fin"].is-active');
       const saved=mock.dernierePose.demande.payload.demande.activities.find(i=>i.id==='arcade_time');
       check(saved.arcadeMode==='credit' && saved.arcadeOfferId==='credit-50' && saved.cards===4 && saved.participants===2,'actual custom API preserves string choice, card count and subset');
-      check((await page.locator('#finBody').textContent()).includes('4 cartes'),'custom receipt spells out independent cards');
+      check((await page.locator('#finBody').textContent().then(sansInsecable)).includes('4 cartes'),'custom receipt spells out independent cards');
       await ctx.close();mock.blocagesDev.clear();
     }
     // Server-authoritative refresh: meta stays stale, response says the new deal.
@@ -243,12 +248,12 @@ async function gemblouxInformation(browser,errors) {
     });
     await page.click('#goContact');await page.waitForFunction(()=>document.querySelector('#hourErr')?.textContent.includes('Le montant a changé'));
     check(await page.locator('.fg-scene[data-scene="heures"].is-active').count()===1,'price_changed requires review and explicit retry before contact');
-    check((await page.locator('#hourSum').textContent()).includes('52,7'),'canonical price_changed replaces stale visit total');
+    check((await page.locator('#hourSum').textContent().then(sansInsecable)).includes('52,7'),'canonical price_changed replaces stale visit total');
     await page.click('.fg-scene[data-scene="heures"] [data-back]');await page.waitForSelector('.fg-scene[data-scene="activites"].is-active');
-    check((await page.locator(selector+' .fg-card__price').textContent()).includes('52,7'),'return to activity shows canonical total despite stale meta');
+    check((await page.locator(selector+' .fg-card__price').textContent().then(sansInsecable)).includes('52,7'),'return to activity shows canonical total despite stale meta');
     await page.click(selector+' [data-activity-info]');
-    const canonicalOption = await page.locator(selector+' select option:checked').textContent();
-    const canonicalPopup = await page.locator('.fg-info-text').textContent();
+    const canonicalOption = await page.locator(selector+' select option:checked').textContent().then(sansInsecable);
+    const canonicalPopup = await page.locator('.fg-info-text').textContent().then(sansInsecable);
     const canonicalDataset = await page.locator(selector+' [data-activity-info]').evaluate(button => ({ text: button.dataset.infoText, sections: JSON.parse(button.dataset.infoSections || 'null') }));
     console.log(JSON.stringify({ canonicalOption, canonicalPopup, canonicalDataset }));
     check(canonicalOption.includes('26,35'),'canonical unit price 26,35 replaces the stale selected card price');
@@ -260,15 +265,15 @@ async function gemblouxInformation(browser,errors) {
       'canonical footer text and structured sections stay connected to the popup snapshot');
     await page.keyboard.press('Escape');
     await number(page,selector,'cards',3);
-    check((await page.locator(selector+' .fg-card__price').textContent()).includes('79,05'),'card quantity recalculates canonical cents without stale price');
+    check((await page.locator(selector+' .fg-card__price').textContent().then(sansInsecable)).includes('79,05'),'card quantity recalculates canonical cents without stale price');
     await ctx.close();mock.blocagesDev.clear();
     activity.arcadeOffers.timeOffers[0].price=0;
     const freeCtx=await browser.newContext({viewport:{width:390,height:900},reducedMotion:'reduce',extraHTTPHeaders:{'x-forwarded-for':'192.0.2.251'}}), free=await freeCtx.newPage();
     await mounted(free);
-    check((await free.locator(selector+' .fg-card__price').textContent()).includes('0 €') && !(await free.locator(selector).textContent()).includes('Prix à l’accueil'),'explicit zero-price offer is known and free rather than unknown');
+    check((await free.locator(selector+' .fg-card__price').textContent().then(sansInsecable)).includes('0 €') && !(await free.locator(selector).textContent().then(sansInsecable)).includes('Prix à l’accueil'),'explicit zero-price offer is known and free rather than unknown');
     await free.click('.fg-scene[data-scene="activites"] [data-back]');await free.fill('#paxInput','31');await free.press('#paxInput','Enter');await free.click('#goActivities');
     await free.waitForSelector('.fg-scene[data-scene="sm-groupe"].is-active');await free.click('.fg-occasion[data-type="amis"]');await free.click('#smGoDate');await free.check('#smFlexible');await free.fill('#smPeriod','Vacances');await free.click('.fg-sm-moment[data-moment="indifferent"]');await free.click('#smGoEnvies');
-    check((await free.locator('#smCount').textContent()).includes('0 €') && !(await free.locator('#smCount').textContent()).includes('prix à l’accueil'),'custom zero estimate is explicitly known');
+    check((await free.locator('#smCount').textContent().then(sansInsecable)).includes('0 €') && !(await free.locator('#smCount').textContent().then(sansInsecable)).includes('prix à l’accueil'),'custom zero estimate is explicitly known');
     await freeCtx.close();activity.arcadeOffers.timeOffers[0].price=15;
     check(errors.length===0,'no page JavaScript errors throughout offer matrix');
     console.log(`arcade-offers-form-check: ALL OK (${checks} assertions)`);

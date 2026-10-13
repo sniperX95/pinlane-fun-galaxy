@@ -353,12 +353,21 @@ async function scenarioC(page, verifier) {
     closeQuickBook();
     openQuickBook({ date: jour, startTime: '20:00', type: 'laser', pax: 8 });
   }, JOUR);
+  // LA JOURNEE EST DEJA LUE, comme au comptoir ou la lecture tourne toutes
+  // les 4 s. Jouee seule (contre-preuves), la scene C ouvrait une page neuve
+  // et le clic « Créer » faisait aussi la premiere lecture du jour : sa
+  // revision entrait dans la cle du plan (rvCleDe), le pied repassait par
+  // « Le planning vérifie » et se redessinait, et un bouton reste
+  // « Création… » ne se voyait plus (contre-preuve « creation » aveugle).
+  await page.evaluate((jour) => syncDateReservations(jour, { silent: true }), JOUR);
   await planPose(page, false);
   const verdict = await page.evaluate(() => (document.getElementById('rvVerdict') || {}).textContent || '');
   await page.fill('#qbName', 'Groupe Refus');
   await page.evaluate(() => { window.__QA_CREES__.length = 0; });
+  const cleAvant = await page.evaluate(() => quickBookState.cleCourante);
   await page.click('#rvCreer');
   await page.waitForTimeout(900);
+  const cleApres = await page.evaluate(() => (quickBookState ? quickBookState.cleCourante : null));
   const avant = await page.evaluate(() => ({ posts: window.__QA_CREES__.length, erreur: quickBookState ? quickBookState.error : '', ecran: (document.querySelector('#rvVerdict .rv-erreur') || {}).textContent || '' }));
   // Le refus rend la main : « Créer » se reclique (ni desactive, ni occupe,
   // ni « Création… »), et le clavier reste dans la fenetre.
@@ -372,6 +381,7 @@ async function scenarioC(page, verifier) {
   await page.evaluate(() => { window.__QA_REFUS__ = null; });
 
   verifier('C', /Laser à 20:00 impossible/.test(verdict) && /il manque 4 places/.test(verdict), 'AVANT : le verdict dit ce qui bloque, a quelle heure, et son conflit', verdict.replace(/\s+/g, ' ').slice(0, 160));
+  verifier('C', cleAvant === cleApres, 'MONTAGE : le clic « Créer » ne refait pas le plan (la journee etait deja lue)', `${String(cleAvant).slice(-40)} / ${String(cleApres).slice(-40)}`);
   verifier('C', avant.posts === 0, '« Créer » sur un plan refuse n envoie rien', `${avant.posts} POST`);
   verifier('C', !main.desactive && main.occupe !== 'true' && !/Création/.test(main.texte) && main.dedans, 'apres le refus, « Créer » rend la main (cliquable, sans « Création… ») et le focus reste dans la fenetre', JSON.stringify(main));
   verifier('C', /Créer quand même/.test(avant.erreur) && /Créer quand même/.test(avant.ecran), 'il dit pourquoi et quoi faire, dans la fenetre', avant.erreur.slice(0, 160));

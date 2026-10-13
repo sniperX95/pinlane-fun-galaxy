@@ -51,6 +51,16 @@
 //       la partie de laser a la suite apres elles ; l attente qui dit son
 //       trou, l arrivee plus tard que le serveur verifie ; le POST, la
 //       signature et la modification au comptoir.
+//   [M] (2026-10-13, modele A, Movsar : « oui ok pour la A », l heure
+//       d arcade « Facultatif », « lorsque il commence a louverture du
+//       centre ils peuvent venir a lheure pile ») SANS heure d arrivee : les
+//       arcades a l heure du client ouvrent la visite, le bowling et le laser
+//       se proposent autour d elles et jamais dessus, une heure sur elles les
+//       decale ; l arrivee dix minutes avant la premiere activite, a l heure
+//       pile a l ouverture ; la liste des heures d arcade (arcades=1, de
+//       l ouverture a la fermeture) qui libere l activite posee qu elle
+//       chevauche ; le POST, la signature, la modification au comptoir ; les
+//       mails qui ne disent plus « 10 minutes plus tot » a l ouverture.
 //   --mutate : une mutation EN MEMOIRE par regle (crochet de compilation, le
 //       disque n est jamais ecrit, son empreinte est comparee avant et apres) ;
 //       chacune doit faire rougir ce gate.
@@ -249,6 +259,7 @@ function charger() {
     get: (params) => appeler(disponibilite, 'GET', '/api/public-availability', { centerId: CENTRE, date: DATE, pax: String(PAX), ...params }),
     meta: (params) => appeler(meta, 'GET', '/api/public-booking-meta', { centerId: CENTRE, ...params }),
     post: (corps) => appeler(reservationsApi, 'POST', '/api/public-reservations', null, corps),
+    comms: () => require(path.join(ROOT, 'lib/ops-communications.js')),
   };
 }
 
@@ -1188,9 +1199,12 @@ async function scenarioL(H) {
     'le bowling et le laser se placent autour des arcades (bowling 11:00, laser apres)', JSON.stringify(arrC.anchors)));
   v.push(verdict(etapeC.flexible === false && etapeC.startTime === '10:30' && etapeC.endTime === '11:00' && planC.arrivalPlan && planC.arrivalPlan.arcadeTime === '10:30',
     'le plan porte les arcades a 10:30 (etape a heure du planning) et leur heure choisie', JSON.stringify([etapeC.flexible, etapeC.startTime, etapeC.endTime])));
+  // Sans heure d arrivee, l heure d arcade se pose aussi (modele A, [M]).
   const sansArrivee = await H.get({ type: 'formule', formuleId: 'f1', preferredTimes: { bowling: '15:00' } });
   const sansArriveeArcade = await H.get({ type: 'formule', formuleId: 'f1', preferredTimes: { bowling: '15:00' }, arcade: '16:30' });
-  v.push(verdict(sansArrivee.status === 200 && sansArrivee.body === sansArriveeArcade.body, 'sans heure d arrivee, une heure d arcade ne change rien a la reponse, au caractere pres'));
+  const planSansArrivee = (((sansArriveeArcade.json && sansArriveeArcade.json.slots) || [])[0] || {}).opsPlan || {};
+  v.push(verdict(sansArrivee.status === 200 && sansArrivee.body !== sansArriveeArcade.body && etapeArcades(planSansArrivee).startTime === '16:30' && etapeArcades(planSansArrivee).flexible === false && !planSansArrivee.arrivalPlan,
+    'sans heure d arrivee, une heure d arcade se pose aussi (16:30, etape a heure), sans plan d arrivee', JSON.stringify([etapeArcades(planSansArrivee).startTime, etapeArcades(planSansArrivee).flexible, Boolean(planSansArrivee.arrivalPlan)])));
 
   // 3. Pendant l accueil, puis sur le bowling pose : refusees, avec ce qui les gene.
   const accueil = arriveeDe(await H.get({ type: 'formule', formuleId: 'f1', arrival: '10:00', arcade: '10:00' }));
@@ -1289,6 +1303,127 @@ async function scenarioL(H) {
   return v;
 }
 
+// ---------------------------------------------------------------------------
+// [M] LE MODELE A : SANS HEURE D ARRIVEE, LES ARCADES A L HEURE DU CLIENT
+// ---------------------------------------------------------------------------
+const premierCreneau = (rep) => ((rep && rep.json && rep.json.slots) || [])[0] || {};
+const grilleDe = (rep, id) => ((((rep && rep.json && rep.json.anchors) || {}).activities || []).find((activite) => activite.activityId === id) || { times: [] }).times;
+const heureDeLaGrille = (rep, id, heure) => grilleDe(rep, id).find((entree) => entree.time === heure) || {};
+async function scenarioM(H) {
+  const v = [];
+  const fermeture = Math.round(Number(H.bookingConfig.getSchedule(DATE, H.knowledge.getCenter(CENTRE)).close) * 60);
+  poserEtat({ reservations: [] });
+
+  // 1. Des arcades a 13:00 sans heure d arrivee : la visite commence avec
+  //    elles, le bowling et le laser s enchainent apres, l arrivee dix
+  //    minutes avant.
+  const a13 = await H.get({ type: 'formule', formuleId: 'f1', arcade: '13:00' });
+  const c13 = premierCreneau(a13);
+  const p13 = c13.opsPlan || {};
+  const e13 = etapeArcades(p13);
+  const h13 = (p13.anchorPlan && p13.anchorPlan.times) || {};
+  v.push(verdict(a13.status === 200 && c13.time === '13:00' && e13.flexible === false && e13.startTime === '13:00' && e13.endTime === '13:30' && p13.anchorPlan && p13.anchorPlan.arcadeTime === '13:00' && !p13.arrivalPlan && !(a13.json && a13.json.arrival),
+    'des arcades a 13:00, sans heure d arrivee : la visite commence avec elles (etape a heure, heure choisie au plan, aucun plan d arrivee)', JSON.stringify({ time: c13.time, etape: [e13.flexible, e13.startTime, e13.endTime], arcade: p13.anchorPlan && p13.anchorPlan.arcadeTime })));
+  v.push(verdict(h13.bowling === '13:30' && minutesDe(h13.laser_game) >= minutesDe('14:30') && p13.arrivalTime === '12:50' && p13.arrivalMinutes === 10,
+    'le bowling (13:30) et le laser s enchainent apres elles ; l arrivee dix minutes avant elles (12:50)', JSON.stringify({ heures: h13, arrivee: p13.arrivalTime, avance: p13.arrivalMinutes })));
+
+  // 2. La grille se juge avec elles : une heure sur les arcades les decale
+  //    (le dernier choix gagne), les autres se prennent.
+  const b1300 = heureDeLaGrille(a13, 'bowling', '13:00');
+  const b1230 = heureDeLaGrille(a13, 'bowling', '12:30');
+  const b1200 = heureDeLaGrille(a13, 'bowling', '12:00');
+  const l1300 = heureDeLaGrille(a13, 'laser_game', '13:00');
+  v.push(verdict(b1300.ok === false && b1300.code === 'arcade_overlap' && b1300.conflict && b1300.conflict.activityId === 'arcade_time' && b1300.conflict.time === '13:00'
+    && b1230.ok === false && b1230.code === 'arcade_overlap' && l1300.ok === false && l1300.code === 'arcade_overlap' && b1200.ok === true,
+    'la grille avec arcades a 13:00 : le bowling a 12:30 et 13:00 et le laser a 13:00 les decalent (conflit arcade_time), le bowling a 12:00 se prend', JSON.stringify({ b1300, b1230, b1200: b1200.ok, l1300: l1300.code })));
+  v.push(verdict(/arcades \(13:00\)/i.test(String(b1300.reason)) && /décale/.test(String(b1300.reason)) && a13.json.anchors.defaultTimes && a13.json.anchors.defaultTimes.bowling === '13:30',
+    'leur raison dit les arcades qu elles decalent ; l heure proposee du bowling est celle du plan (13:30)', `${b1300.reason} ${JSON.stringify(a13.json.anchors && a13.json.anchors.defaultTimes)}`));
+
+  // 3. Le bowling pose a 12:00, les arcades a 13:00 : le laser se propose
+  //    apres elles, jamais dessus.
+  const autour = await H.get({ type: 'formule', formuleId: 'f1', arcade: '13:00', preferredTimes: { bowling: '12:00' } });
+  const hA = ((premierCreneau(autour).opsPlan || {}).anchorPlan || {}).times || {};
+  v.push(verdict(hA.bowling === '12:00' && minutesDe(hA.laser_game) >= minutesDe('13:30'),
+    'bowling pose a 12:00, arcades a 13:00 : le laser se propose apres elles (13:30), jamais sur elles', JSON.stringify(hA)));
+
+  // 4. A l ouverture, l heure pile : sans rien choisir, la premiere visite
+  //    commence a l ouverture et l arrivee aussi, accueil et table compris ;
+  //    plus tard, dix minutes avant.
+  const defaut = await H.get({ type: 'formule', formuleId: 'f1' });
+  const d0 = premierCreneau(defaut);
+  const pd = d0.opsPlan || {};
+  const accueil = (pd.timeline || []).find((etape) => etape.label === 'Arrivée & accueil') || {};
+  const ouverture = Math.round(Number(H.bookingConfig.getSchedule(DATE, H.knowledge.getCenter(CENTRE)).open) * 60);
+  v.push(verdict(d0.time === heureDe(ouverture) && pd.arrivalTime === heureDe(ouverture) && pd.arrivalMinutes === 0 && accueil.startTime === heureDe(ouverture) && accueil.endTime === heureDe(ouverture),
+    `a l ouverture (${heureDe(ouverture)}), l heure pile : l arrivee est celle de la premiere activite, avance 0, l accueil ne passe pas avant l ouverture`, JSON.stringify({ time: d0.time, arrivee: pd.arrivalTime, avance: pd.arrivalMinutes, accueil: [accueil.startTime, accueil.endTime] })));
+  const phrase = String((pd.customerCommitment || [])[0] || '');
+  v.push(verdict(/à l'ouverture : présentez-vous à/.test(phrase) && !/minutes avant/.test(phrase), 'la phrase au client dit l ouverture, jamais « 0 minutes avant »', phrase));
+  const plusTard = premierCreneau(await H.get({ type: 'formule', formuleId: 'f1', preferredTimes: { bowling: heureDe(ouverture + 30) } })).opsPlan || {};
+  v.push(verdict(plusTard.arrivalTime === heureDe(ouverture + 20) && plusTard.arrivalMinutes === 10 && /présentez-vous 10 minutes avant/.test(String((plusTard.customerCommitment || [])[0] || '')),
+    `le bowling a ${heureDe(ouverture + 30)} : l arrivee dix minutes avant (${heureDe(ouverture + 20)}), la phrase le dit`, JSON.stringify([plusTard.arrivalTime, plusTard.arrivalMinutes])));
+  const arcOuv = premierCreneau(await H.get({ type: 'formule', formuleId: 'f1', arcade: heureDe(ouverture) })).opsPlan || {};
+  v.push(verdict(arcOuv.arrivalTime === heureDe(ouverture) && arcOuv.arrivalMinutes === 0 && etapeArcades(arcOuv).startTime === heureDe(ouverture),
+    'des arcades a l ouverture : l arrivee a leur heure, sans avance', JSON.stringify([arcOuv.arrivalTime, arcOuv.arrivalMinutes, etapeArcades(arcOuv).startTime])));
+
+  // 5. La liste des heures d arcade sans arrivee : de l ouverture a la
+  //    fermeture, seule ; une heure sur le bowling pose se prend et le
+  //    libere (le dernier choix gagne), les autres ne deplacent rien.
+  const liste = await H.get({ type: 'formule', formuleId: 'f1', arcades: '1', preferredTimes: { bowling: '14:00' } });
+  const heures = (liste.json && liste.json.arcadeTimes) || [];
+  const parHeure = Object.fromEntries(heures.map((entree) => [entree.time, entree]));
+  v.push(verdict(liste.status === 200 && heures.length > 10 && heures[0].time === heureDe(Math.ceil(ouverture / 30) * 30) && heures.every((entree) => minutesDe(entree.time) % 30 === 0 && minutesDe(entree.time) + 30 <= fermeture)
+    && !(liste.json.slots || []).length && !liste.json.anchors && !liste.json.arrival,
+    'la liste des heures d arcade sans arrivee part de l ouverture, demi-heure par demi-heure jusqu a la fermeture, seule (ni plan, ni grille, ni arrivee)', JSON.stringify(heures.slice(0, 3).map((entree) => entree.time))));
+  const x1400 = parHeure['14:00'] || {};
+  const x1330 = parHeure['13:30'] || {};
+  v.push(verdict(x1400.ok === true && x1400.conflict && x1400.conflict.activityId === 'bowling' && x1400.conflict.time === '14:00' && x1330.ok === true && !x1330.conflict && Boolean(x1330.endTime),
+    'arcades a 14:00, sur le bowling pose : se prennent et le liberent (conflit bowling) ; a 13:30, juste avant lui, sans rien deplacer, avec la fin de la visite', JSON.stringify({ x1400, x1330 })));
+  // A la fin du bowling pose (15:00) : les arcades se prennent sans rien
+  // deplacer, le laser se propose apres elles. Une heure proposee sur elles
+  // faisait refuser cette heure (« Plus de visite possible »).
+  const x1500 = parHeure['15:00'] || {};
+  v.push(verdict(x1500.ok === true && !x1500.conflict,
+    'arcades a 15:00, a la fin du bowling pose : se prennent sans rien deplacer (aucune heure proposee ne se pose sur elles)', JSON.stringify(x1500)));
+  const libreBowling = premierCreneau(await H.get({ type: 'formule', formuleId: 'f1', arcade: '14:00' })).opsPlan || {};
+  v.push(verdict(etapeArcades(libreBowling).startTime === '14:00' && ((libreBowling.anchorPlan || {}).times || {}).bowling !== '14:00',
+    'le clic qui libere le bowling : arcades a 14:00, le bowling replace ailleurs', JSON.stringify((libreBowling.anchorPlan || {}).times)));
+
+  // 6. Le POST, sa signature, la modification au comptoir.
+  const montre = await H.get({ type: 'formule', formuleId: 'f1', arcade: '13:00' });
+  const planMontre = premierCreneau(montre).opsPlan || {};
+  const pref = { arcadeTime: '13:00', preferredTimes: (planMontre.anchorPlan || {}).times || {}, laserGameTimes: [], laserPlacement: 'scheduled', arrivalConfidence: 'normal' };
+  const post = await verdictDuPost(H, corpsFormule('f1', '13:00', pref));
+  const planPost = (post.ops && post.ops.opsPlan) || {};
+  v.push(verdict(post.ok === true && etapeArcades(planPost).startTime === '13:00' && planPost.anchorPlan && planPost.anchorPlan.arcadeTime === '13:00' && !planPost.arrivalPlan && heuresDuPlan(planPost) === heuresDuPlan(planMontre),
+    'le POST avec preference.arcadeTime, sans arrivee : arcades a 13:00, les heures montrees', post.ok ? JSON.stringify([etapeArcades(planPost).startTime, heuresDuPlan(planPost)]) : post.raison));
+  const sig = JSON.parse(H.demande.signatureDemande(corpsFormule('f1', '13:00', pref)));
+  const { arcadeTime: _arc, ...prefSans } = pref;
+  const sigSans = JSON.parse(H.demande.signatureDemande(corpsFormule('f1', '13:00', prefSans)));
+  v.push(verdict(JSON.stringify(sig[sig.length - 1]) === JSON.stringify(['arcadeTime', '13:00']) && !JSON.stringify(sig).includes('arrivalTime') && JSON.stringify(sigSans) === JSON.stringify(sig.slice(0, -1)),
+    'la signature porte l heure d arcade sans arrivee, en dernier ; sans elle, la signature d avant', JSON.stringify(sig.slice(-2))));
+  const lire = async (date, centerId) => ({ date, centerId, laneStatuses: {}, reservations: reservationsDuJour(date, centerId) });
+  const dossier = { ...corpsFormule('f1', '13:00', { arrivalConfidence: 'normal' }), id: 8201, opsPlan: planPost, ignoreReservationId: 8201 };
+  const garde = await H.rops.prepareReservationOps({ ...dossier }, 'staff', { readState: lire });
+  const decale = await H.rops.prepareReservationOps({ ...dossier, startTime: '14:00' }, 'staff', { readState: lire });
+  v.push(verdict(etapeArcades(garde.opsPlan).startTime === '13:00' && heuresDuPlan(garde.opsPlan) === heuresDuPlan(planPost),
+    'modifier le dossier sans toucher a l heure garde les arcades a 13:00 et le bowling et le laser a leurs heures', JSON.stringify([etapeArcades(garde.opsPlan).startTime, heuresDuPlan(garde.opsPlan), garde.planRefusal || ''])));
+  v.push(verdict(etapeArcades(decale.opsPlan).startTime === '14:00' && ((decale.opsPlan || {}).anchorPlan || {}).times && decale.opsPlan.anchorPlan.times.bowling === '14:30',
+    'decale d une heure (14:00), les arcades et le bowling suivent (14:00, 14:30)', JSON.stringify([etapeArcades(decale.opsPlan).startTime, heuresDuPlan(decale.opsPlan), decale.planRefusal || ''])));
+
+  // 7. Les mails : a l ouverture, l heure pile ; sinon dix minutes avant.
+  const comms = H.comms();
+  const dossierMail = (avance) => ({ id: 8301, centerId: CENTRE, date: DATE, startTime: '10:00', type: 'formule', formuleId: 'f1', pax: PAX, name: 'Client', email: 'client@example.test', phone: '+32470000000', opsPlan: { arrivalTime: avance ? '09:50' : '10:00', arrivalMinutes: avance, resourceBlocks: [], timeline: [] } });
+  const texteMail = (avance, templateId, channel = 'email') => { const m = comms.buildMessage({ reservation: dossierMail(avance), templateId, channel }); return `${m.body || ''} ${m.preheader || ''}`; };
+  const conf0 = texteMail(0, 'confirmation');
+  const rap0 = texteMail(0, 'reminder_48h');
+  const sms0 = texteMail(0, 'confirmation', 'sms');
+  const conf10 = texteMail(10, 'confirmation');
+  v.push(verdict(/Rendez-vous à 10:00 : l'équipe vous accueille/.test(conf0) && !/minutes plus tôt|minutes avant|min avant/.test(conf0 + rap0 + sms0) && /tout le groupe à 10:00/.test(rap0),
+    'a l ouverture (avance 0), la confirmation, le rappel et le SMS disent l heure, jamais « 10 minutes plus tot »', [conf0, rap0, sms0].map((x) => x.slice(0, 160)).join(' || ')));
+  v.push(verdict(/Merci d'arriver 10 minutes plus tôt/.test(conf10), 'avec une avance de 10 min, la confirmation dit toujours de venir 10 minutes plus tot', conf10.slice(0, 200)));
+  return v;
+}
+
 const MUTATIONS = [
   { nom: 'la borne d attente ne previent plus', fichier: 'lib/ops-engine.js',
     de: '  if (plan.waitMinutes > reglage.maxWaitMinutes) {', vers: '  if (false && plan.waitMinutes > reglage.maxWaitMinutes) {', scenarios: ['C'] },
@@ -1371,7 +1506,7 @@ const MUTATIONS = [
   { nom: 'la signature ignore l arrivee', fichier: 'lib/demande-publique.js',
     de: "    ...(arrivee ? [['arrivalTime', arrivee]] : []),", vers: '    ...([]),', scenarios: ['F'] },
   { nom: 'l ecart d une modification se mesure a la premiere ancre', fichier: 'lib/reservation-ops.js',
-    de: '  const reference = Number.isFinite(arrivee) ? arrivee : Math.min(...starts);', vers: '  const reference = Math.min(...starts);', scenarios: ['F'] },
+    de: '  const reference = Number.isFinite(arrivee) ? arrivee : Math.min(...starts, ...(Number.isFinite(arcade) ? [arcade] : []));', vers: '  const reference = Math.min(...starts);', scenarios: ['F', 'M'] },
   { nom: 'une modification perd l arrivee de son plan', fichier: 'lib/reservation-ops.js',
     de: '  if (!Number.isFinite(arrivee) || demandeUneArrivee(preference)) return {};', vers: '  if (true) return {};', scenarios: ['F'] },
   { nom: 'une formule modifiee avec son programme perd l arrivee de son plan', fichier: 'lib/reservation-ops.js',
@@ -1411,7 +1546,7 @@ const MUTATIONS = [
     de: '  const frise = rangerLesLibres({ debut: finAccueil, occupees: [...plagesAncres, ...suite], libres });',
     vers: '  const frise = rangerLesLibres({ debut: arrivee, occupees: [...plagesAncres, ...suite], libres });', scenarios: ['L'] },
   { nom: 'la porte de la reservation ne voit plus l heure d arcade', fichier: 'lib/ops-engine.js',
-    de: '...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, arcadeStart } : {})', vers: '...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes } : {})', scenarios: ['L'] },
+    de: 'bowlingConfig, arcadeStart, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes } : {}) });', vers: 'bowlingConfig, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes } : {}) });', scenarios: ['L', 'M'] },
   { nom: 'le refus des arcades ne nomme plus l activite posee qu elles chevauchent', fichier: 'lib/ops-engine.js',
     de: '  if (!sonde.ok) return refusArrivee(time, sonde.code, sonde.reason, sonde.conflict ? { conflict: sonde.conflict } : {});', vers: '  if (!sonde.ok) return refusArrivee(time, sonde.code, sonde.reason);', scenarios: ['L'] },
   { nom: 'un refus cause par les arcades se dit « complet »', fichier: 'lib/ops-engine.js',
@@ -1437,6 +1572,41 @@ const MUTATIONS = [
     de: '    ...(garderArcade ? { arcadeTime: minutesToTime(timeToMinutes(arcade) + shiftMinutes) } : {}),', vers: '    ...({}),', scenarios: ['L'] },
   { nom: 'une modification decalee laisse les arcades a leur heure', fichier: 'lib/reservation-ops.js',
     de: '{ arcadeTime: minutesToTime(timeToMinutes(arcade) + shiftMinutes) }', vers: '{ arcadeTime: minutesToTime(timeToMinutes(arcade)) }', scenarios: ['L'] },
+  // Le modele A : sans heure d arrivee (2026-10-13).
+  { nom: 'sans arrivee, l heure d arcade ne se pose plus', fichier: 'lib/ops-engine.js',
+    de: '  if (sansArrivee && arcadeStart !== null && arcadeStart !== undefined && Number.isFinite(Number(arcadeStart))) {', vers: '  if (false) {', scenarios: ['M'] },
+  { nom: 'sans arrivee, des arcades sur une activite a heure fixe passent', fichier: 'lib/ops-engine.js',
+    de: '      const heurtee = orderedWindows.find((window) => overlap(arcade.start, arcade.end, window.start, window.end));', vers: '      const heurtee = null;', scenarios: ['M'] },
+  { nom: 'la visite ne commence plus avec les arcades', fichier: 'lib/ops-engine.js',
+    de: '  const firstStart = Math.min(...anchorBlocks.map((block) => block.start), ...(arcadeFixee ? [arcadeFixee.start] : []));', vers: '  const firstStart = Math.min(...anchorBlocks.map((block) => block.start));', scenarios: ['M'] },
+  { nom: 'l arrivee passe de nouveau avant l ouverture', fichier: 'lib/ops-engine.js',
+    de: '  const posee = demandeArrivee ? raw : arriveeALOuverture(raw, window.open);', vers: '  const posee = raw;', scenarios: ['M'] },
+  { nom: 'la phrase au client dit « 0 minutes avant » a l ouverture', fichier: 'lib/ops-engine.js',
+    de: '    customerCommitment.unshift(avance > 0', vers: '    customerCommitment.unshift(true', scenarios: ['M'] },
+  { nom: 'le creneau change une avance de 0 minute en rien', fichier: 'lib/availability-slots.js',
+    de: '      arrivalMinutes: Number.isFinite(scenario.arrivalMinutes) ? scenario.arrivalMinutes : null,', vers: '      arrivalMinutes: scenario.arrivalMinutes || null,', scenarios: ['M'] },
+  { nom: 'la grille des activites ne voit plus les arcades choisies', fichier: 'api/public-availability.js',
+    de: '      const arcadeDeLaGrille = !demandeArrivee && !listeArcadesSansArrivee && heureArcade ? { arcadeTime: heureArcade } : {};', vers: '      const arcadeDeLaGrille = {};', scenarios: ['M'] },
+  { nom: 'une heure sur les arcades se refuse au lieu de les decaler (sans arrivee)', fichier: 'lib/ops-engine.js',
+    de: '  if (arcadeEnCause && Number.isFinite(arcadeStart)) {', vers: '  if (false) {', scenarios: ['M'] },
+  { nom: 'les heures proposees se posent sur les arcades', fichier: 'lib/ops-engine.js',
+    de: '  const libre = (debut, activityId) => !arcade || !overlap(debut, debut + placeDe(activityId), arcade.start, arcade.end);', vers: '  const libre = () => true;', scenarios: ['M'] },
+  { nom: 'sans heure retenue, les heures proposees ne partent plus des arcades', fichier: 'lib/ops-engine.js',
+    de: '  if (!ancre && arcade && firstStart === null) {', vers: '  if (false) {', scenarios: ['M'] },
+  { nom: 'la liste des heures d arcade sans arrivee se tait', fichier: 'api/public-availability.js',
+    de: '        if (listeArcadesSansArrivee) {', vers: '        if (false) {', scenarios: ['M'] },
+  { nom: 'la liste des heures d arcade sans arrivee ne libere plus l activite posee', fichier: 'api/public-availability.js',
+    de: '          if (!touchee) {', vers: '          if (true) {', scenarios: ['M'] },
+  { nom: 'la demande avec arcades seules ne compose plus autour d elles', fichier: 'api/public-availability.js',
+    de: '          || Boolean(heureArcade);', vers: '          || false;', scenarios: ['M'] },
+  { nom: 'le plan demande sans l heure d arcade', fichier: 'api/public-availability.js',
+    de: '                ...(heureArcade ? { arcadeTime: heureArcade } : {}),', vers: '', scenarios: ['M'] },
+  { nom: 'la signature ne porte l heure d arcade qu avec une arrivee', fichier: 'lib/demande-publique.js',
+    de: "  const arcade = pref.arcadeTime !== undefined && pref.arcadeTime !== null ? String(pref.arcadeTime).trim().slice(0, 5) : '';", vers: "  const arcade = arrivee && pref.arcadeTime !== undefined && pref.arcadeTime !== null ? String(pref.arcadeTime).trim().slice(0, 5) : '';", scenarios: ['M'] },
+  { nom: 'une modification perd les arcades sans arrivee', fichier: 'lib/reservation-ops.js',
+    de: '    ...arcadeGardee(request, preference, { shiftMinutes }),', vers: '    ...({}),', scenarios: ['M'] },
+  { nom: 'le mail redit « 10 minutes plus tot » a l ouverture', fichier: 'lib/ops-communications.js',
+    de: '      : Math.max(0, Math.round(Number(avanceDuPlan)));', vers: '      : Math.max(0, Math.round(Number(avanceDuPlan))) || 10;', scenarios: ['M'] },
 ];
 
 const SCENARIOS = {
@@ -1451,6 +1621,7 @@ const SCENARIOS = {
   I: { titre: 'I. LE REGLAGE TRAVERSE LA CONFIGURATION', run: scenarioI },
   K: { titre: 'K. LES HEURES DES ACTIVITES AVEC UNE ARRIVEE CHOISIE', run: scenarioK },
   L: { titre: 'L. LES ARCADES A LEUR HEURE, LE TEMPS LIBRE', run: scenarioL },
+  M: { titre: 'M. LE MODELE A : LES ARCADES SANS HEURE D ARRIVEE, L ARRIVEE A L OUVERTURE', run: scenarioM },
 };
 
 async function jouer(H, cle) {

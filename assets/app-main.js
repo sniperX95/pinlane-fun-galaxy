@@ -7867,6 +7867,15 @@ function rendezVousLaser(blocks) {
   });
 }
 
+// L AVANCE D ARRIVEE D UN PLAN, en minutes : dix par defaut, et ZERO EST UNE
+// VALEUR (2026-10-13) : la premiere activite ouvre la journee, le groupe vient
+// a son heure. `arrivalMinutes || 10` lui faisait dire « 10 min avant ».
+function avanceDArrivee(plan) {
+  const brut = plan ? plan.arrivalMinutes : null;
+  if (brut === null || brut === undefined || brut === '' || !Number.isFinite(Number(brut))) return 10;
+  return Math.max(0, Math.round(Number(brut)));
+}
+
 // Carte « votre visite » : les rendez-vous (ancres), la table dès l'arrivée et
 // le pass liberté : sans aucune heure pour les activités libres.
 function renderFormulaVisitSummary(slot, formule) {
@@ -7893,7 +7902,7 @@ function renderFormulaVisitSummary(slot, formule) {
   rendezVous.sort((gauche, droite) => String(gauche.heure).localeCompare(String(droite.heure)));
   const appointments = rendezVous.map((item) => item.texte);
   const arrivalTime = plan.arrivalTime || '';
-  const arrivalMinutes = Number(plan.arrivalMinutes || 10);
+  const arrivalMinutes = avanceDArrivee(plan);
 
   const remainingLaser = Number(plan.laserPassPlan?.remainingGames || 0);
   const rows = [];
@@ -7901,7 +7910,7 @@ function renderFormulaVisitSummary(slot, formule) {
   // en deuxieme, sous les rendez-vous, alors que c est la premiere chose que le
   // client doit faire et la seule heure qu il doit retenir.
   if (arrivalTime) {
-    rows.push(`<div class="visit-line"><span class="visit-tag arrival">Arrivée</span><span><strong>${escapeHtml(arrivalTime)}</strong>, soit ${arrivalMinutes} min avant le début</span></div>`);
+    rows.push(`<div class="visit-line"><span class="visit-tag arrival">Arrivée</span><span><strong>${escapeHtml(arrivalTime)}</strong>, ${arrivalMinutes > 0 ? `soit ${arrivalMinutes} min avant le début` : 'à l’heure du début'}</span></div>`);
   }
   if (appointments.length) {
     rows.push(`<div class="visit-line"><span class="visit-tag reserved">Vos rendez-vous</span><strong>${appointments.map(escapeHtml).join(' · ')}</strong></div>`);
@@ -9903,7 +9912,7 @@ function renderRecap() {
     <div class="recap-item"><span class="recap-label">Téléphone</span><span class="recap-value">${escapeHtml(b.phone)}</span></div>
     <div class="recap-item"><span class="recap-label">Date</span><span class="recap-value">${dateLabel}</span></div>
     ${heureRetenue ? `<div class="recap-item"><span class="recap-label">${formule ? 'Première activité' : 'Horaire'}</span><span class="recap-value accent">${escapeHtml(heureRetenue)} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• ${b.duration}h</small></span></div>` : ''}
-    ${formule && b.opsPlan?.arrivalTime ? `<div class="recap-item"><span class="recap-label">Arrivée conseillée</span><span class="recap-value">${escapeHtml(b.opsPlan.arrivalTime)} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• accueil ${Number(b.opsPlan.arrivalMinutes || 10)} min avant</small></span></div>` : ''}
+    ${formule && b.opsPlan?.arrivalTime ? `<div class="recap-item"><span class="recap-label">Arrivée conseillée</span><span class="recap-value">${escapeHtml(b.opsPlan.arrivalTime)} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• ${avanceDArrivee(b.opsPlan) > 0 ? `accueil ${avanceDArrivee(b.opsPlan)} min avant` : 'à l’heure de la première activité'}</small></span></div>` : ''}
     <div class="recap-item"><span class="recap-label">Joueurs</span><span class="recap-value">${b.pax} personne${b.pax > 1 ? 's' : ''}</span></div>
     ${showLanes && pistesAssignees.length ? `<div class="recap-item"><span class="recap-label">Piste${pistesAssignees.length > 1 ? 's' : ''} assignée${pistesAssignees.length > 1 ? 's' : ''}</span><span class="recap-value teal">${escapeHtml(pistesAssignees.join(' & '))}</span></div>` : ''}
     ${visitProgramHtml}
@@ -10522,7 +10531,7 @@ async function confirmBooking() {
   const laserWaveCount = isLaser ? Number(b.opsPlan?.laserSharing?.waveCount || getLaserWaveCount(b.pax)) : 1;
   const laserLine = isLaser && laserWaveCount > 1 ? ` Votre groupe est réparti sur ${laserWaveCount} sessions Laser.` : '';
   const arrivalLine = b.type === 'formule' && b.opsPlan?.arrivalTime
-    ? ` Présentez-vous <b>${Number(b.opsPlan.arrivalMinutes || 10)} minutes avant</b> pour l'accueil (arrivée conseillée <b>${escapeHtml(b.opsPlan.arrivalTime)}</b>).`
+    ? (avanceDArrivee(b.opsPlan) > 0 ? ` Présentez-vous <b>${avanceDArrivee(b.opsPlan)} minutes avant</b> pour l'accueil (arrivée conseillée <b>${escapeHtml(b.opsPlan.arrivalTime)}</b>).` : ` Présentez-vous à <b>${escapeHtml(b.opsPlan.arrivalTime)}</b>, l'heure de votre première activité.`)
     : '';
   const successRecap = b.type === 'formule' ? getFormulaRecapModel(b) : null;
   const appointmentsLine = successRecap && successRecap.appointments.length

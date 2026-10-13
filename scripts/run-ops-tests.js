@@ -1482,7 +1482,13 @@ async function testPublicFormulaAvailabilityNewSemantics(query, { expectFirstAct
     if (expectFirstActivity) {
       assert.strictEqual(activities[0].activityId, expectFirstActivity, 'custom order must be respected');
     }
-    assert.strictEqual(toMinutes(slot.time) - toMinutes(plan.arrivalTime), 10, 'advised arrival must be 10 minutes before the chip');
+    // Dix minutes avant, jamais avant l ouverture : a l ouverture, l heure
+    // pile (Movsar, 2026-10-13).
+    const ouverture = Math.round(Number(response.payload.schedule && response.payload.schedule.open) * 60);
+    const avance = Math.min(10, toMinutes(slot.time) - ouverture);
+    assert.ok(Number.isFinite(ouverture), 'the availability must state the opening hour');
+    assert.strictEqual(toMinutes(slot.time) - toMinutes(plan.arrivalTime), avance, `advised arrival must be 10 minutes before the chip, never before the opening (chip ${slot.time}, opening ${ouverture})`);
+    assert.strictEqual(plan.arrivalMinutes, avance, 'the plan must state the same lead as its arrival time');
     const arrival = (plan.timeline || [])[0];
     assert.strictEqual(arrival.resourceType, 'bar_service', 'timeline must open with the arrival block');
     assert.strictEqual(arrival.endTime, slot.time, 'arrival block must end exactly at the chosen time');

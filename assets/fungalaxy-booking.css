@@ -2714,7 +2714,6 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape__tete:focus-visible { outline: 2px solid var(--fg-teal-ink); outline-offset: -4px; border-radius: 14px; }
 .fg-etape__icone { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--fg-purple); color: #fff; }
 .fg-etape__icone svg { width: 21px; height: 21px; }
-.fg-etape--arrivee .fg-etape__icone { background: var(--fg-teal); color: #0b0a0c; }
 .fg-etape__quoi { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fg-etape__quoi b { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.25; }
 .fg-etape__quoi b em { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.82); font-size: 12px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; vertical-align: 2px; }
@@ -2723,7 +2722,7 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape__heure { font-size: 20px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; text-align: right; white-space: nowrap; }
 .fg-etape.is-propose .fg-etape__heure { color: var(--fg-teal-ink); }
 .fg-etape.is-vide .fg-etape__heure { font-size: 14px; font-weight: 650; color: var(--fg-amber-ink); }
-.fg-etape.is-surplace .fg-etape__heure { font-size: 14px; font-weight: 600; color: var(--fg-muted); }
+.fg-etape.is-surplace .fg-etape__heure, .fg-etape.is-libre .fg-etape__heure { font-size: 14px; font-weight: 600; color: var(--fg-muted); }
 .fg-etape__heure.is-maj { animation: fg-etape-heure 0.5s var(--fg-ease-out); }
 @keyframes fg-etape-heure { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .fg-etape__chev { width: 18px; height: 18px; color: var(--fg-muted); transition: transform 0.35s var(--fg-ease-out); }

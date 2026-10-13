@@ -211,7 +211,7 @@ function toLaserSlot(scenario, pax) {
       endTime: scenario.endTime,
       totalMinutes: scenario.totalMinutes,
       arrivalTime: scenario.arrivalTime || null,
-      arrivalMinutes: scenario.arrivalMinutes || null,
+      arrivalMinutes: Number.isFinite(scenario.arrivalMinutes) ? scenario.arrivalMinutes : null,
       bufferMinutes: scenario.bufferMinutes,
       risk: scenario.risk,
       staffSummary: scenario.staffSummary,
@@ -439,8 +439,8 @@ module.exports = async (req, res) => {
     } catch (error) {
       laserGameTimes = [];
     }
-    // L HEURE D ARCADE CHOISIE (2026-10-13), avec une heure d arrivee : le
-    // moteur la pose a cette heure-la (lib/ops-engine.js poserArrivee).
+    // L HEURE D ARCADE CHOISIE (2026-10-13) : le moteur la pose a cette
+    // heure-la, avec une heure d arrivee (poserArrivee) comme sans (modele A).
     let heureArcade = /^\d{1,2}:\d{2}$/.test(String(url.searchParams.get('arcade') || '').trim())
       ? String(url.searchParams.get('arcade')).trim()
       : '';
@@ -1186,9 +1186,15 @@ module.exports = async (req, res) => {
       // grille des activites ni le plan, que la demande sans elle rend deja.
       const listeArcades = url.searchParams.get('arcades') === '1' && Boolean(heureArrivee);
       const demandeArrivee = Boolean(heureArrivee) || listeArrivees;
+      // `arcades=1` SANS arrivee (modele A, 2026-10-13) : les heures d arcade de
+      // la journee, jugees avec les heures posees. La grille qui les sert se
+      // calcule sans heure d arcade : la liste ne depend pas de celle choisie.
+      const listeArcadesSansArrivee = url.searchParams.get('arcades') === '1' && !demandeArrivee;
+      // Sans arrivee, la grille des activites se juge avec les arcades choisies.
+      const arcadeDeLaGrille = !demandeArrivee && !listeArcadesSansArrivee && heureArcade ? { arcadeTime: heureArcade } : {};
       let anchorMeta = null;
       try {
-        anchorMeta = (listeArrivees && !heureArrivee) || listeArcades ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes }, engineContext);
+        anchorMeta = (listeArrivees && !heureArrivee) || listeArcades ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes, ...arcadeDeLaGrille }, engineContext);
       } catch (error) {
         anchorMeta = null;
       }
@@ -1309,6 +1315,96 @@ module.exports = async (req, res) => {
           message,
           ...extra,
         });
+      };
+
+      // Le verdict de chaque heure d arcade, sans arrivee (modele A). La grille
+      // de la demande (anchorMeta, sans heure d arcade) donne les heures
+      // possibles des activites restees libres.
+      const heuresDArcadeSansArrivee = (laserPlacement) => {
+        const { freeStepHasTime, freeStepMinutes, formulaVisitOf } = require('../lib/formula-visit');
+        const { getActivity } = require('../lib/ops-knowledge');
+        const { buildDefaultAnchorTimes, arcadesHeurtentLesPosees, minutesToTime } = require('../lib/ops-engine');
+        const { finalGuardRefusal } = require('../lib/availability-slots');
+        if (!anchorMeta || !anchorMeta.ok || !schedule) return [];
+        const reglage = formulaVisitOf(centerDoc);
+        const etape = (anchorModel.freeSteps || []).find((step) => freeStepHasTime(step, getActivity(step.activityId)?.durationModel));
+        if (!etape) return [];
+        const duree = freeStepMinutes(etape, getActivity(etape.activityId)?.durationModel, reglage.freeDurationPolicy);
+        const minutesDe = (texte) => {
+          const m = /^(\d{1,2}):(\d{2})/.exec(String(texte || ''));
+          return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+        };
+        const candidatesByActivity = {};
+        (anchorMeta.activities || []).forEach((activity) => {
+          candidatesByActivity[activity.activityId] = (activity.times || []).filter((item) => item.ok !== false).map((item) => minutesDe(item.time));
+        });
+        const center = getCenter(centerId);
+        const contexte = { ...engineContext, sansSuggestions: true };
+        const posees = { ...preferredTimes };
+        const partiesPosees = laserGameTimes.filter(Boolean);
+        // Le verdict de la porte : les heures posees `heures`, les parties
+        // `parties`, les autres activites proposees autour des arcades.
+        const juger = (time, heures, parties) => {
+          const pinned = {};
+          Object.entries(heures).forEach(([id, texte]) => { const m = minutesDe(texte); if (Number.isFinite(m)) pinned[id] = m; });
+          const laserTenu = Number.isFinite(pinned.laser_game) || parties.length > 0 || laserPlacement === 'onsite';
+          const resteAPlacer = anchorModel.anchors.some((anchor) => (anchor.activityId === 'laser_game' ? !laserTenu : !Number.isFinite(pinned[anchor.activityId])));
+          let completes = { ...heures };
+          if (resteAPlacer) {
+            const defauts = buildDefaultAnchorTimes({
+              center, formula: formulaDoc, date, pax, model: anchorModel, candidatesByActivity,
+              reservations: snapshot.reservations, laneStatuses: snapshot.laneStatuses, blocks: snapshot.blocks || [],
+              pinned, arcadeStart: minutesDe(time),
+            });
+            if (!defauts) return { time, ok: false, code: 'arcade_none', reason: 'Plus de visite possible avec vos arcades à cette heure' };
+            completes = Object.fromEntries(Object.entries(defauts).map(([id, minutes]) => [id, minutesToTime(minutes)]));
+          }
+          const partiesCompletes = parties.length || laserPlacement === 'onsite' ? parties : (completes.laser_game ? [completes.laser_game] : []);
+          const reponse = planningAgent({
+            centerId, date, type, formuleId, pax, duration,
+            preference: { preferredTimes: completes, laserGameTimes: partiesCompletes, laserPlacement, arrivalConfidence: 'normal', arcadeTime: time },
+            pauseMinutes,
+          }, contexte);
+          const plan = (reponse && reponse.plan) || {};
+          const recommended = plan.recommended;
+          if (!(plan.ok && recommended && recommended.ok)) {
+            return { time, ok: false, code: plan.refusalCode || 'arcade_none', reason: plan.reason || 'Indisponible', ...(plan.refusalConflict ? { conflict: plan.refusalConflict } : {}) };
+          }
+          const slot = toFormulaSlot(recommended, snapshot, duration);
+          const refus = finalGuardRefusal(slot, { ...guardContext, laneCount: plannedLaneCount(recommended, laneCount) });
+          if (refus) return { time, ok: false, code: 'final_guard', reason: refus };
+          const fin = finDeFormule(slot);
+          return { time, ok: true, ...(fin && fin.visitEndTime ? { endTime: fin.visitEndTime } : {}) };
+        };
+        const ouverture = Math.round(Number(schedule.open) * 60);
+        const fermeture = Math.round(Number(schedule.close) * 60);
+        // Le jour meme, rien avant le plancher du moteur (maintenant + son delai).
+        const plancher = plancherDuJour(date);
+        const premiere = Math.ceil(Math.max(ouverture, plancher ?? ouverture) / 30) * 30;
+        const liste = [];
+        for (let t = premiere; t + duree <= fermeture; t += 30) {
+          const time = minutesToTime(t);
+          const touchee = arcadesHeurtentLesPosees({
+            center, formula: formulaDoc, pax, laneStatuses: snapshot.laneStatuses,
+            preference: { preferredTimes: posees, laserGameTimes: partiesPosees, laserPlacement },
+            arcadeStart: t,
+          });
+          if (!touchee) {
+            liste.push(juger(time, posees, partiesPosees));
+            continue;
+          }
+          // Le dernier choix gagne : l activite posee se libere, le moteur la
+          // replace autour des arcades.
+          const heures = { ...posees };
+          let parties = partiesPosees;
+          if (touchee.activityId === 'laser_game') {
+            parties = partiesPosees.filter((partie) => partie !== touchee.time);
+            if (parties.length) heures.laser_game = parties[0]; else delete heures.laser_game;
+          } else delete heures[touchee.activityId];
+          const libre = juger(time, heures, parties);
+          liste.push(libre.ok ? { ...libre, conflict: touchee } : libre);
+        }
+        return liste;
       };
 
       if (demandeArrivee) {
@@ -1543,8 +1639,29 @@ module.exports = async (req, res) => {
 
       if (anchorModel.anchors.length) {
         const laserPlacement = String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled';
+        // LES HEURES D ARCADE SANS ARRIVEE (modele A, Movsar, 2026-10-13 : l heure
+        // d arcade « Facultatif »). De l ouverture a la fermeture, sur la grille ;
+        // chacune jugee par la porte de la reservation (planningAgent, puis la
+        // garde finale), avec les heures que le client a posees et les autres
+        // proposees autour d elle (buildDefaultAnchorTimes), comme la demande
+        // qui suivra le clic. Une arcade sur une activite posee la libere (le
+        // dernier choix gagne) : l entree le dit (`conflict`) et se juge sans elle.
+        if (listeArcadesSansArrivee) {
+          let arcadeTimes = [];
+          try {
+            arcadeTimes = heuresDArcadeSansArrivee(laserPlacement);
+          } catch (error) {
+            console.error('[public-availability] heures d arcade', error && (error.stack || error.message));
+            arcadeTimes = [];
+          }
+          anchorMeta = null;
+          respondFormula([], '', [], null, { arcadeTimes });
+          return;
+        }
         const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game)
-          || laserGameTimes.some((time) => time) || laserPlacement === 'onsite';
+          || laserGameTimes.some((time) => time) || laserPlacement === 'onsite'
+          // Des arcades choisies sont un choix : le plan se pose autour d elles.
+          || Boolean(heureArcade);
 
         if (hasAnchorChoice) {
           // UNE HEURE CHOISIE N EN EXIGE PAS DEUX, EN FORMULE AUSSI (2026-09-29,
@@ -1582,6 +1699,7 @@ module.exports = async (req, res) => {
                 laserGameTimes: partiesCompletes,
                 laserPlacement,
                 arrivalConfidence: 'normal',
+                ...(heureArcade ? { arcadeTime: heureArcade } : {}),
               },
               pauseMinutes,
             },

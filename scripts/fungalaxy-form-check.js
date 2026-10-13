@@ -903,7 +903,7 @@ const MUTATIONS_CSS = {
   barretablette: ['  .fg-dock .fg-actions { flex-wrap: nowrap; gap: 10px; }\n  .fg-dock .fg-bar__count { min-width: 0; }\n  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }\n  .fg-dock .fg-btn--ghost .fg-btn__txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }\n', ''],
   barreetroite: ['  .fg-dock { flex-direction: column; align-items: stretch; gap: 8px; }\n', ''],
   retourcarre: ['  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; min-height: 54px; padding: 0; }\n', '  .fg-dock .fg-btn--ghost { flex: 0 0 54px; width: 54px; padding: 0; }\n'],
-  prixtabulaire: ['.fg-visit__price { margin-left: auto; display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; color: var(--fg-teal); font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }', '.fg-visit__price { margin-left: auto; display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; color: var(--fg-teal); font-weight: 700; font-size: 18px; }'],
+  prixtabulaire: ['.fg-visit__price { font-size: 21px; font-weight: 700; line-height: 1.2; color: var(--fg-teal); font-variant-numeric: tabular-nums; white-space: nowrap; }', '.fg-visit__price { font-size: 21px; font-weight: 700; line-height: 1.2; color: var(--fg-teal); white-space: nowrap; }'],
 };
 // Les contre-preuves d embed.js (le script que la page hote charge), relu en LF.
 const MUTATIONS_EMBED = {
@@ -1123,7 +1123,8 @@ async function lireEcranPlan(page) {
       finEtape: fin ? etape(fin) : null,
       span: txt(p.querySelector('.fg-visit__span')),
       prix: prixEl && prixEl.firstChild ? prixEl.firstChild.textContent.trim() : '',
-      reste: txt(prixEl && prixEl.querySelector('small')),
+      // Ce qui se regle a l accueil se lit sous la plage (l agenda, 2026-10-13).
+      reste: txt(p.querySelector('.fg-visit__reste')),
       avis: txt(p.querySelector('.fg-visit__warn')),
       prixLignes: Array.from(p.querySelectorAll('.fg-visit__prices > div:not(.fg-visit__total)')).map((l) => ({ dt: txt(l.querySelector('dt')), dd: txt(l.querySelector('dd')) })),
       prixTotal: total ? { dt: txt(total.querySelector('dt')), dd: txt(total.querySelector('dd')) } : null,

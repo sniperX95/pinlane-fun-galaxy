@@ -351,11 +351,14 @@ function verifierKfd(r) {
   const pax = r.demande ? new URL(r.demande).searchParams.get('pax') : '';
   ok(pax === '6', 'la disponibilite se demande pour les 6 enfants', `pax=${pax}`);
   const midi = r.visiteMidi || { etapes: [], compris: [] };
-  const illimiteMidi = midi.etapes.find((e) => /illimit/.test(e.b)) || {};
-  ok(/KIDS FUN DAY/.test(illimiteMidi.titre) && /jusqu’à 17:00/.test(illimiteMidi.detail) && /5 h de jeu/.test(illimiteMidi.detail) && /même prix à toute heure/.test(illimiteMidi.detail),
-    'arrivee a 12:00 : a volonte jusqu a 17:00, 5 h de jeu, meme prix a toute heure', JSON.stringify(illimiteMidi));
-  const tard = (r.visiteTard || { etapes: [] }).etapes.find((e) => /illimit/.test(e.b)) || {};
-  ok(r.tard && /30 min de jeu/.test(tard.detail), 'arrivee a 16:30 : l ecran dit 30 min de jeu (plus de visite de 5 h vendue pour 40 min sans le dire)', JSON.stringify(tard));
+  // L ILLIMITE EST UN BLOC DE L AGENDA (2026-10-13) : il part de l heure
+  // d arrivee, qu il porte dans la colonne des heures, et dit sa fin.
+  const illimiteDe = (v) => ((v || { etapes: [] }).etapes || []).find((e) => /fg-visit__step--illimite/.test(e.genre)) || {};
+  const illimiteMidi = illimiteDe(midi);
+  ok(illimiteMidi.b === '12:00' && /KIDS FUN DAY/.test(illimiteMidi.titre) && /jusqu’à 17:00/.test(illimiteMidi.detail) && /5 h de jeu/.test(illimiteMidi.detail) && /même prix à toute heure/.test(illimiteMidi.detail),
+    'arrivee a 12:00 : le bloc part de 12:00, a volonte jusqu a 17:00, 5 h de jeu, meme prix a toute heure', JSON.stringify(illimiteMidi));
+  const tard = illimiteDe(r.visiteTard);
+  ok(r.tard && tard.b === '16:30' && /30 min de jeu/.test(tard.detail), 'arrivee a 16:30 : le bloc part de 16:30 et dit 30 min de jeu (plus de visite de 5 h vendue pour 40 min sans le dire)', JSON.stringify(tard));
   ok(/fin de la formule/.test((r.visiteTard || {}).tete || ''), 'l en-tete dit « fin de la formule », pas une heure estimee', `« ${(r.visiteTard || {}).tete} »`);
   const { getEffectiveFormules } = require('../lib/booking-config');
   const kfd = getEffectiveFormules('libramont').find((f) => f.id === 'kfd');

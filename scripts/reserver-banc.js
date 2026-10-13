@@ -93,7 +93,47 @@ function absente() {
   return Object.assign(new Error('relation "reservation_departs_epingles" does not exist'), { code: '42P01' });
 }
 
-async function requeteDuLot(s, p) {
+// LA FICHE (2026-10-12, reserver-comptoir-check [D1]) : la lecture d un
+// dossier et son UPDATE complet (lib/database.js getReservationById,
+// updateReservation, ecrireReservation), sur la vue de la transaction du
+// client, comme les ecritures du banc : un dossier cree sans telephone doit se
+// modifier, et sans ces deux requetes le banc refusait tout PATCH.
+const DATES = ['expires_at', 'released_at', 'created_at', 'updated_at'];
+const copieLigne = (row) => JSON.parse(JSON.stringify(row), (k, val) => (DATES.includes(k) && val ? new Date(val) : val));
+function vueReservations(tx) {
+  const m = new Map(banc.base.reservations);
+  if (tx) tx.reservations.forEach((row, id) => m.set(id, row));
+  return m;
+}
+const COLONNES_UPDATE = ['center_id', 'channel', 'name', 'phone', 'email', 'date', 'start_time', 'duration', 'total_duration', 'lanes', 'pax', 'status', 'base_price', 'price', 'type', 'formule_id', 'label', 'occasion', 'extras', 'payment_method', 'notes', 'ops_plan', 'risk_level', 'risk_score', 'validation_status', 'activity_progress', 'program', 'companions'];
+const JSONB = new Set(['extras', 'ops_plan', 'activity_progress', 'program']);
+function requeteDeLaFiche(s, p, client) {
+  const tx = client && client.tx ? client.tx : null;
+  if (tx && tx.abandonnee) return null;
+  if (/^select \* from reservations where id = \$1 (limit 1|for update);?$/.test(s)) {
+    const row = vueReservations(tx).get(Number(p[0]));
+    return row ? { rows: [copieLigne(row)], rowCount: 1 } : { rows: [], rowCount: 0 };
+  }
+  const attendu = `update reservations set ${COLONNES_UPDATE.map((c, i) => `${c} = $${i + 2}${c === 'lanes' ? '::int[]' : JSONB.has(c) ? '::jsonb' : ''}`).join(', ')}, updated_at = now() where id = $1 returning *;`;
+  if (s === attendu || s === attendu.replace(/;$/, '')) {
+    const avant = vueReservations(tx).get(Number(p[0]));
+    if (!avant) return { rows: [], rowCount: 0 };
+    const row = { ...avant };
+    COLONNES_UPDATE.forEach((colonne, i) => {
+      const valeur = p[i + 1];
+      row[colonne] = colonne === 'lanes' ? (valeur || []).map(Number) : JSONB.has(colonne) ? (valeur ? JSON.parse(valeur) : null) : valeur;
+    });
+    const precedent = avant.updated_at ? new Date(avant.updated_at).getTime() : 0;
+    row.updated_at = new Date(Math.max(Date.now(), precedent + 1));
+    if (tx) tx.reservations.set(row.id, row); else banc.base.reservations.set(row.id, row);
+    return { rows: [copieLigne(row)], rowCount: 1 };
+  }
+  return null;
+}
+
+async function requeteDuLot(s, p, client) {
+  const fiche = requeteDeLaFiche(s, p, client);
+  if (fiche) return fiche;
   if (/^select \* from reservations where date = \$1 and center_id = \$2 and status <> 'cancelled' order by start_time asc, id asc;?$/.test(s)) {
     extra.lecturesJournee += 1;
     return null;
@@ -147,7 +187,7 @@ const pg = require(require.resolve('pg', { paths: [ROOT] }));
 const queryDuBanc = pg.Client.prototype.query;
 pg.Client.prototype.query = async function (sql, params = []) {
   const s = String(sql).replace(/\s+/g, ' ').trim();
-  const reponse = await requeteDuLot(s, params);
+  const reponse = await requeteDuLot(s, params, this);
   if (reponse) return reponse;
   return queryDuBanc.call(this, sql, params);
 };

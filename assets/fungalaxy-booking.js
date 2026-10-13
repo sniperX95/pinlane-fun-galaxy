@@ -1757,7 +1757,7 @@
     // defaut, jamais un ancien compte qui ne correspond plus a rien.
     state.enfants = null;
     rendrePax();
-    rendreActivites();
+    // La grille des activites n est pas a l ecran : elle se reconstruit une fois, en y allant (goActivities).
     majEnfants();
   }
   $('#paxMinus').addEventListener('click', function () { poserPax(state.pax - 1); paxInput.value = String(state.pax); ajusterLargeurPax(); battrePax(-1); });
@@ -3191,7 +3191,7 @@
   var etapeTouchee = false;    // le client a ouvert ou ferme une ligne : plus rien ne s ouvre a sa place, sauf apres une heure posee
   var partiesSurPlace = false; // les parties de laser sans heure, laissees a l equipe en connaissance de cause
   var detailsEtapes = {};      // le detail de chaque activite (« 6 joueurs · 1 heure · 1 piste »)
-  var visiteOuverte = false;   // le detail de « Votre visite » : replie, le programme dit deja les heures
+  var visiteOuverte = true;    // le detail de « Votre visite » : ouvert d office (Movsar, 2026-10-12), il se replie au toucher
   function etapesDe(d) {
     var ancres = (d.anchors && d.anchors.activities) || [], defauts = (d.anchors && d.anchors.defaultTimes) || {};
     var liste = [];

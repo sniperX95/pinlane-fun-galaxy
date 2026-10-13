@@ -1134,9 +1134,18 @@ module.exports = async (req, res) => {
       // combinaison par défaut valide. Les activités libres restent un pass
       // sans aucune heure, la table suit l'arrivée.
       const anchorModel = getFormulaAnchorModel(formulaDoc);
+      // LA FORMULE PAR HEURE D ARRIVEE (2026-10-12). `arrival=HH:MM` : le
+      // programme qui commence a cette heure (le groupe fait d abord le libre
+      // de la formule, puis le bowling et le laser des qu ils sont libres).
+      // `arrivals=1` : chaque heure d arrivee de la journee, son verdict et le
+      // resume de son programme. Sans ces deux parametres, rien ne change ; avec
+      // eux, la grille par activite (anchorMeta) n est pas calculee.
+      const heureArrivee = String(url.searchParams.get('arrival') || '').trim().slice(0, 8);
+      const listeArrivees = url.searchParams.get('arrivals') === '1';
+      const demandeArrivee = Boolean(heureArrivee) || listeArrivees;
       let anchorMeta = null;
       try {
-        anchorMeta = getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes }, engineContext);
+        anchorMeta = demandeArrivee ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes }, engineContext);
       } catch (error) {
         anchorMeta = null;
       }
@@ -1188,7 +1197,9 @@ module.exports = async (req, res) => {
         }
         return { ...slot, visitEndTime: numToTime(fin / 60) };
       };
-      const respondFormula = (slots, message, suggestions = [], retainedSlot = null) => {
+      // `extra` : les cles de la formule par heure d arrivee, ajoutees en fin de
+      // reponse et seulement quand elle est demandee.
+      const respondFormula = (slots, message, suggestions = [], retainedSlot = null, extra = {}) => {
         // LES MONTEES DE FORMULE VOYAGENT AVEC LE CRENEAU QUI VIENT D ETRE
         // RETENU (2026-09-04). Elles sont calculees APRES filterSlotsByFinalGuards,
         // sur un creneau qui a survecu a la garde : proposer une montee sur
@@ -1253,8 +1264,81 @@ module.exports = async (req, res) => {
           suggestions,
           complements,
           message,
+          ...extra,
         });
       };
+
+      if (demandeArrivee) {
+        // Chaque heure se juge par la porte de la reservation (le moteur avec
+        // l arrivee, puis la garde finale) : lib/availability-slots,
+        // formulaArrivalEntries. La liste et l heure seule disent donc la meme
+        // chose que le POST qui suivra.
+        const { formulaArrivalEntries } = require('../lib/availability-slots');
+        const { listFormulaArrivalTimes } = require('../lib/ops-engine');
+        const { formulaVisitOf } = require('../lib/formula-visit');
+        const reglage = formulaVisitOf(centerDoc);
+        const gardeDuPlan = (scenario) => ({ ...guardContext, laneCount: plannedLaneCount(scenario, laneCount) });
+        const sansCreneau = ({ slot: _slot, ...entree }) => entree;
+        let journee = null;
+        const toutesLesArrivees = () => {
+          if (!journee) {
+            const grille = listFormulaArrivalTimes({ centerId, formuleId, date });
+            journee = grille.ok
+              ? formulaArrivalEntries({ centerId, date, formuleId, pax, duration, times: grille.times, snapshot, guardFor: gardeDuPlan })
+              : [];
+          }
+          return journee;
+        };
+        const extra = {
+          arrivalBounds: {
+            arrivalFirst: reglage.arrivalFirst,
+            maxWaitMinutes: reglage.maxWaitMinutes,
+            maxVisitMinutes: reglage.maxVisitMinutes,
+            freeDurationPolicy: reglage.freeDurationPolicy,
+          },
+        };
+        if (listeArrivees) {
+          const entrees = reglage.arrivalFirst ? toutesLesArrivees() : [];
+          extra.arrivals = entrees.map(sansCreneau);
+          extra.firstAcceptableArrival = (entrees.find((entree) => entree.ok) || {}).time || null;
+        }
+        if (heureArrivee) {
+          // Les heures deja posees par le client restent les siennes : seules
+          // les autres se cherchent.
+          const posees = {
+            preferredTimes,
+            ...(laserGameTimes.length ? { laserGameTimes } : {}),
+            laserPlacement: String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled',
+          };
+          const [entree] = formulaArrivalEntries({ centerId, date, formuleId, pax, duration, preference: posees, times: [heureArrivee], snapshot, guardFor: gardeDuPlan });
+          if (entree.ok) {
+            respondFormula([entree.slot], '', [], null, { ...extra, arrival: sansCreneau(entree) });
+            return;
+          }
+          // LA PREMIERE ARRIVEE QUI TIENT CE JOUR-LA, quand le refus tient a
+          // la journee et pas a la demande elle-meme (centre qui ne propose
+          // pas l arrivee, formule sans activite a heure fixe).
+          const chercher = !['arrival_disabled', 'no_anchor', 'arrival_invalid'].includes(entree.code);
+          const possibles = chercher ? toutesLesArrivees().filter((item) => item.ok) : [];
+          const premiere = possibles.length ? possibles[0].time : null;
+          const suivante = possibles.find((item) => item.time > (entree.time || '')) || null;
+          const suite = !chercher ? '' : premiere ? ` Première arrivée possible ce jour-là : ${premiere}.` : ' Aucune arrivée possible ce jour-là.';
+          respondFormula([], `${entree.reason}${suite}`, [], null, {
+            ...extra,
+            arrival: {
+              ...sansCreneau(entree),
+              ...(chercher ? { firstAcceptableTime: premiere, nextAcceptableTime: suivante ? suivante.time : null } : {}),
+            },
+          });
+          return;
+        }
+        if (!reglage.arrivalFirst) {
+          respondFormula([], 'La réservation par heure d’arrivée n’est pas proposée par ce centre.', [], null, extra);
+          return;
+        }
+        respondFormula([], extra.firstAcceptableArrival ? '' : 'Aucune arrivée possible pour cette formule ce jour-là.', [], null, extra);
+        return;
+      }
 
       if (anchorModel.anchors.length) {
         const laserPlacement = String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled';

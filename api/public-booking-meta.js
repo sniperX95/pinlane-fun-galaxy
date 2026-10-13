@@ -32,7 +32,7 @@ const {
 } = require('../lib/availability-blocks');
 const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS, LASER_LAUNCH_GRID_MINUTES } = require('../lib/ops-engine');
 const { listSellableActivities } = require('../lib/activity-catalog');
-const { normalizeBranding, normalizeIdentity, customRequestFromPax } = require('../lib/center-config');
+const { normalizeBranding, normalizeIdentity, customRequestFromPax, normalizeFormulaVisit } = require('../lib/center-config');
 const surMesure = require('../lib/custom-request');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
 const { customRequestChanges, ACTEUR_FORMULAIRE_PUBLIC } = require('../lib/registre');
@@ -814,6 +814,11 @@ module.exports = async (req, res) => {
         // traite (null = jamais). Reglee dans Etablissement, relue ici a
         // chaque lecture du catalogue.
         customRequest: { fromPax: customRequestFromPax(center) },
+        // LA FORMULE PAR HEURE D ARRIVEE (2026-10-12) : si le centre la propose
+        // (arrivalFirst), l attente sans activite qu il accepte, la duree de
+        // visite acceptee (0 = automatique) et la duree retenue pour le
+        // minigolf et le golf. Bornee ici comme partout (lib/formula-visit).
+        formulaVisit: normalizeFormulaVisit(center.formulaVisit),
         // La MARQUE du centre (couleurs du tunnel). Bornee ici, comme partout :
         // quatre jetons hexadecimaux par theme, tout le reste est jete. null =
         // ce centre n'a pas de marque, le tunnel garde l'accent plateforme.

@@ -110,10 +110,12 @@ const MUTATIONS = [
     vers: '      var tiendra = true;',
   },
   {
-    nom: 'l encadre se replie avec le detail de la visite',
+    // L agenda (2026-10-13) n a plus de repli : l encadre perdrait sa place en
+    // passant sous le detail du prix, loin des lignes qu il raye.
+    nom: 'l encadre passe sous le detail du prix, loin de l agenda',
     fichier: 'assets/fungalaxy-booking.js',
-    de: "    html2 += horsHtml;\n    if (avisSimples.length) html2 += '<p class=\"fg-visit__warn\">' + avisSimples.map(esc).join('<br>') + '</p>';\n    html2 += '<div class=\"fg-visit__detail\" id=\"fgVisiteDetail\"><div class=\"fg-visit__inner\">' + listeHtml + prixHtml + '</div></div>';",
-    vers: "    if (avisSimples.length) html2 += '<p class=\"fg-visit__warn\">' + avisSimples.map(esc).join('<br>') + '</p>';\n    html2 += '<div class=\"fg-visit__detail\" id=\"fgVisiteDetail\"><div class=\"fg-visit__inner\">' + listeHtml + horsHtml + prixHtml + '</div></div>';",
+    de: "    html2 += horsHtml;\n    if (avisSimples.length) html2 += '<p class=\"fg-visit__warn\">' + avisSimples.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';\n    html2 += listeHtml + prixHtml;",
+    vers: "    if (avisSimples.length) html2 += '<p class=\"fg-visit__warn\">' + avisSimples.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';\n    html2 += listeHtml + prixHtml + horsHtml;",
   },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
@@ -271,17 +273,18 @@ async function ecran() {
           notice: txt(document.querySelector('.fg-notice')),
           notes: Array.from(document.querySelectorAll('.fg-track')).map((t) => ({ id: t.dataset.activity, note: (t.querySelector('.fg-track__note') && !t.querySelector('.fg-track__note').hidden) ? txt(t.querySelector('.fg-track__note')) : '' })),
           encadre: txt(document.querySelector('#planZone .fg-visit__hors')),
-          // La liste vit dans le detail replie de la visite (2026-10-07) :
-          // l encadre reste visible sous l en-tete, juste avant ce detail
-          // (seuls les autres avertissements s intercalent), jamais dedans.
+          // L encadre se lit sous l en-tete, juste avant l agenda qui porte les
+          // lignes qu il raye (seuls les autres avertissements s intercalent),
+          // ou juste apres lui ; affiche, jamais replie ni cache (l agenda,
+          // 2026-10-13, n a plus de repli).
           sousLaListe: (() => {
             const h = document.querySelector('#planZone .fg-visit__hors');
             if (!h || document.querySelector('#planZone [data-plus], #planZone .fg-plus')) return false;
-            if (h.closest('.fg-visit__detail')) return false;
+            if (!h.checkVisibility({ visibilityProperty: true, opacityProperty: true }) || !h.getBoundingClientRect().height) return false;
             if (h.previousElementSibling && h.previousElementSibling.classList.contains('fg-visit__list')) return true;
             let s = h.nextElementSibling;
             while (s && s.classList.contains('fg-visit__warn')) s = s.nextElementSibling;
-            return Boolean(s && s.classList.contains('fg-visit__detail') && s.querySelector('.fg-visit__list'));
+            return Boolean(s && s.classList.contains('fg-visit__list'));
           })(),
           rayees: Array.from(document.querySelectorAll('#planZone .fg-visit__step--hors')).map((li) => ({ nom: txt(li.querySelector('i')) || txt(li.querySelector(':scope > span')), detail: txt(li.querySelector('small')) })),
           tient: Array.from(document.querySelectorAll('#planZone .fg-visit__step--free:not(.fg-visit__step--hors) i')).map(txt),
@@ -299,7 +302,7 @@ async function ecran() {
         ok(v.encadre.indexOf(phrase) === 0, `[E] ${largeur} ${etiquette} : l encadre nomme tout, avec les durees`, v.encadre);
         ok(v.encadre.indexOf('Vos heures ne bougent pas : Bowling à 20:00 et Laser Game à 21:00.') >= 0, `[E] ${largeur} ${etiquette} : l encadre dit que les heures restent`, v.encadre);
         ok(v.encadre.indexOf('Le total indicatif compte encore Duckpin Bowling (78 €).') >= 0, `[E] ${largeur} ${etiquette} : le montant encore compte est dit (seul le duckpin a un tarif connu)`, v.encadre);
-        ok(v.sousLaListe, `[E] ${largeur} ${etiquette} : l encadre suit la liste qu il raye ; aucune offre a l ecran des horaires (elles vivent dans la fenetre de fin)`);
+        ok(v.sousLaListe, `[E] ${largeur} ${etiquette} : l encadre se lit contre l agenda qu il raye, affiche ; aucune offre a l ecran des horaires (elles vivent dans la fenetre de fin)`);
         ok(JSON.stringify(v.rayees.map((r) => r.nom.replace(/ \(.*$/, ''))) === JSON.stringify(ATTENDUS) && v.rayees.every((r) => r.detail.includes('ne tiendra pas avant 22:00') && /8 (joueurs|enfants)/.test(r.detail)),
           `[E] ${largeur} ${etiquette} : les trois lignes rayees, « ne tiendra pas avant 22:00 »`, JSON.stringify(v.rayees));
         ok(v.tient.length === 1 && v.tient[0].indexOf('Fun Run') === 0, `[E] ${largeur} ${etiquette} : le Fun Run reste « a votre rythme »`, JSON.stringify(v.tient));

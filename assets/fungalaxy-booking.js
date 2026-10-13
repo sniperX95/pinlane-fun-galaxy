@@ -4016,12 +4016,28 @@
       noms: joindreListe(liste.map(function (h) { return nomHorsDelai(h, avecDuree); }), ' et '),
     };
   }
+  // UNE LIGNE DE L AGENDA (Movsar, 2026-10-13, la maquette B : « la B, mais
+  // plus travaille, mieux fait et toujours moins IA »). L heure se lit dans la
+  // colonne des heures, puis le titre et son detail. Une activite a heure fixe
+  // porte sa duree (--m, en minutes) : la hauteur de son bloc en vient. Ni
+  // icone ni puce : l heure, la place et la couleur disent ce qu est la ligne.
   function etapeVisite(o) {
     var genres = [].concat(o.genre || []).map(function (g) { return ' fg-visit__step--' + g; }).join('');
-    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"><b>' + esc(o.heure || '') + '</b>'
-      + '<span>' + (o.titreHtml || ((o.icone ? '<svg aria-hidden="true"><use href="#' + o.icone + '"/></svg>' : '') + esc(o.titre))) + '</span>'
-      + '<small>' + esc(o.detail || '') + '</small>' + (o.detail2 ? '<small>' + esc(o.detail2) + '</small>' : '') + '</li>';
+    return '<li class="fg-visit__step' + genres + (o.bouge ? ' is-moved' : '') + '"' + (o.minutes > 0 ? ' style="--m:' + Math.round(o.minutes) + '"' : '') + '><b>' + esc(o.heure || '') + '</b>'
+      + '<span>' + (o.titreHtml || esc(typoVisite(o.titre))) + '</span>'
+      + '<small>' + esc(typoVisite(o.detail || '')) + '</small>' + (o.detail2 ? '<small>' + esc(typoVisite(o.detail2)) + '</small>' : '') + '</li>';
   }
+  // Une heure ne quitte pas le mot qui la porte, ni « partie 1 sur 2 » ses
+  // chiffres : dans un bloc etroit, « jusqu’à » restait seul en fin de ligne,
+  // « 11:25 » sous lui, et « sur 2 » passait a la ligne.
+  function typoVisite(s) {
+    return typo(s).replace(/ (\d{1,2}:\d{2}|minuit)(?![\w:])/g, '\u00a0$1')
+      .replace(/(parties?) (\d)/g, '$1\u00a0$2').replace(/(\d) sur (\d)/g, '$1\u00a0sur\u00a0$2');
+  }
+  // La teinte d un bloc, par famille, comme sur la maquette choisie : les
+  // pistes au violet de la marque, l arene au violet vif, le reste au violet
+  // profond.
+  function teinteBloc(id) { var s = String(id || ''); return /laser/.test(s) ? 'arene' : /bowling|duck/.test(s) ? 'piste' : 'libre'; }
   // LE BLOC « VOTRE VISITE », COMPLET (Movsar, 2026-09-24 : « plus complet et
   // serieux, vraiment un truc super complet »). L arrivee et son avance sur la
   // premiere activite ; chaque partie a son heure, jusqu a la fin de son
@@ -4430,6 +4446,25 @@
     var dits = [];
     var vus = {};
     var premiere = parts.length ? nomDePartie(parts[0]) : '';
+    // L ECHELLE DE L AGENDA : la hauteur d un bloc suit sa duree. Les minutes
+    // des activites a heure fixe se comptent ici ; l echelle (--px, posee sur
+    // la liste) se resserre pour une longue visite, et la feuille borne chaque
+    // bloc (une hauteur mini lisible, jamais plus de 200 px).
+    var minutesAgenda = 0;
+    var finPrec = '';
+    // LE TEMPS VIDE ENTRE DEUX ACTIVITES SE VOIT ET SE NOMME (Movsar,
+    // 2026-10-13, l agenda) : « 20 min d attente », a sa place. Celui de la
+    // frise est celui du serveur ; sans frise, c est l ecart des deux heures du
+    // plan. A partir de 10 min : en dessous, c est le passage d une activite a
+    // l autre, et l arrivee en garde le compte (« d attente en tout »).
+    function ligneAttente(minutes) {
+      var m = Math.round(Number(minutes) || 0);
+      if (m < 10) return;
+      var mots = dureeExacte(m) + ' d’attente';
+      lignes += '<li class="fg-visit__gap" style="--m:' + m + '">' + esc(typoVisite(mots)) + '</li>';
+      minutesAgenda += Math.min(m, 40);
+      dits.push(mots);
+    }
     // L arrivee choisie par le client se dit telle quelle, avec l attente que
     // son programme laisse ; sinon l arrivee conseillee et son avance.
     var parArrivee = plan.arrivalPlan || null, attenteA = parArrivee ? Number(parArrivee.waitMinutes) || 0 : 0;
@@ -4449,35 +4484,49 @@
       var jeuPartie = p.id === 'laser_game' && dureeLaser() ? dureeLaser().jeu : 0;
       var detail = [participantsLigne(it), jeuPartie ? jeuPartie + ' min de jeu' : '', p.fin ? 'jusqu’à ' + heureAffichee(p.fin) + (jeuPartie ? ' avec les règles et la préparation' : '') : '', texteGroupes(p, true), p.pistes > 0 ? p.pistes + ' piste' + (p.pistes > 1 ? 's' : '') : '',
         bouge ? 'déplacé pour votre ' + nomActivite(adaptation.pour) + ' à ' + adaptation.t : ''].filter(Boolean).join(' · ');
+      // La frise dit ses attentes elle-meme : son ecart ne se recompte pas.
+      if (!parLaFrise && finPrec) ligneAttente(minutesEntre(finPrec, p.debut));
+      var duree = minutesEntre(p.debut, p.fin);
+      minutesAgenda += duree;
+      if (p.fin > finPrec) finPrec = p.fin;
       dits.push(nom + (quoi ? ', ' + quoi : '') + ', de ' + p.debut + (p.fin ? ' à ' + heureAffichee(p.fin) : '') + (p.groupes.length > 1 ? ', en ' + p.groupes.length + ' groupes' : '') + (bouge ? ', déplacé' : ''));
-      lignes += etapeVisite({ heure: p.debut, icone: icone(p.id), titre: nom + (quoi ? ' · ' + quoi : ''), detail: detail, bouge: bouge });
+      lignes += etapeVisite({ genre: ['bloc', teinteBloc(p.id)], heure: p.debut, minutes: duree, titre: nom + (quoi ? ' · ' + quoi : ''), detail: detail, bouge: bouge });
     }
     // UNE VISITE PAR HEURE D ARRIVEE SE LIT DANS L ORDRE DE SA FRISE (2026-10-13) :
     // les arcades a leur heure, le libre fait en attendant la premiere
     // activite, puis le bowling et le laser. Les boissons et le reste du libre
-    // restent avec ce que comprend la formule, plus bas.
+    // restent avec ce que comprend la formule, plus bas. Ses attentes (kind
+    // « wait ») prennent leur place dans l agenda.
+    var parLaFrise = true;
     ((parArrivee && parArrivee.frise) || []).forEach(function (s) {
       if (s.kind === 'anchor') {
         var p = parts.filter(function (x) { return !x.dit && x.id === s.activityId && x.debut === s.startTime; })[0];
         if (p) { p.dit = 1; lignePartie(p); }
         return;
       }
+      if (s.kind === 'wait') { ligneAttente(s.minutes); return; }
       if (s.kind !== 'free' || estBoisson(s.label) || !(s.timed || s.placement === 'before')) return;
       vus[genreCompris(s.activityId)] = 1;
-      lignes += etapeVisite(s.timed ? { heure: s.startTime, icone: icone(s.activityId), titre: s.label, detail: 'jusqu’à ' + heureAffichee(s.endTime) }
-        : { genre: ['free', 'suite'], heure: '', icone: icone(s.activityId), titre: s.label, detail: 'en attendant votre ' + nomBas(premiere) });
+      var m = s.timed ? minutesEntre(s.startTime, s.endTime) : 0;
+      minutesAgenda += m;
+      if (s.timed && s.endTime > finPrec) finPrec = s.endTime;
+      lignes += etapeVisite(s.timed ? { genre: ['bloc', teinteBloc(s.activityId)], heure: s.startTime, minutes: m, titre: s.label, detail: 'jusqu’à ' + heureAffichee(s.endTime) }
+        : { genre: ['free', 'suite'], heure: '', titre: s.label, detail: 'en attendant votre ' + nomBas(premiere) });
       dits.push(s.label + (s.timed ? ', de ' + s.startTime + ' à ' + heureAffichee(s.endTime) : ', en attendant votre ' + nomBas(premiere)));
     });
+    parLaFrise = false;
     parts.forEach(function (p) { if (!p.dit) lignePartie(p); });
     // CE QUI N A PAS D HEURE SE RANGE SOUS « DANS LA FOULEE » (Movsar,
     // 2026-09-29 : « met "dans la foulee", pas une heure imposee, comme ca ils
     // comprennent bien ») : les parties de laser que l equipe place, les
     // activites libres d une visite, ce que comprend la carte d une formule.
-    // Un titre pour le groupe, une ligne par chose, jamais une heure.
+    // Un titre pour le groupe, une ligne par chose, jamais une heure : dans
+    // l agenda, le groupe se pose apres la derniere activite a heure, a part
+    // de l axe du temps (aucune heure, aucune hauteur de duree).
     var suite = '';
     var suiteDits = [];
     function ligneSuite(o, voix) {
-      suite += etapeVisite({ genre: [o.genre, 'suite'].concat(o.hors ? ['hors'] : []), heure: '', icone: o.icone, titre: o.titre, titreHtml: o.titreHtml, detail: o.detail });
+      suite += etapeVisite({ genre: [o.genre, 'suite'].concat(o.hors ? ['hors'] : []), heure: '', titre: o.titre, titreHtml: o.titreHtml, detail: o.detail });
       suiteDits.push(voix);
     }
     // LES PARTIES DE LASER SANS HEURE : l equipe les place sur place, et la
@@ -4496,7 +4545,7 @@
       var detail = (reste.length > 1 ? 'placées' : 'placée') + ' sur place avec l’équipe' + (id === 'laser_game' && aLaSuite && !participants ? ' · ' + environ(aLaSuite) : '')
         + (coupees.length ? ' · ' + (coupees.length > 1 ? 'parties ' + joindreListe(coupees, ' et ') + ' : ne tiendront pas' : 'partie ' + coupees[0] + ' : ne tiendra pas') + ' avant ' + heureAffichee(fin) : '');
       if (participants) detail = participants + ' joueur' + (participants > 1 ? 's' : '') + ' · ' + detail;
-      ligneSuite({ genre: 'onsite', hors: coupees.length > 0 && coupees.length === reste.length, icone: icone(id), titre: nomR + ' · ' + quelles, detail: detail }, nomR + ', ' + quelles + ', ' + detail);
+      ligneSuite({ genre: 'onsite', hors: coupees.length > 0 && coupees.length === reste.length, titre: nomR + ' · ' + quelles, detail: detail }, nomR + ', ' + quelles + ', ' + detail);
       vus[genreCompris(id)] = 1;
     }
     items.forEach(function (it) {
@@ -4512,7 +4561,7 @@
       var duree = !entre && !it.durationEstimated && Number(it.minutes) > 0 ? environ(it.minutes) : '';
       var tiendra = !horsLibres[it.activityId];
       var rythme = tiendra ? 'à votre rythme' : 'ne tiendra pas avant ' + heureAffichee(fin);
-      ligneSuite({ genre: 'free', hors: !tiendra, titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomL) + (entre ? ' (' + esc(entre) + ')' : '') + '</i>', detail: participantsLigne(it) + ' · ' + rythme + (duree ? ' · ' + duree : '') },
+      ligneSuite({ genre: 'free', hors: !tiendra, titreHtml: '<i>' + esc(typoVisite(nomL + (entre ? ' (' + entre + ')' : ''))) + '</i>', detail: participantsLigne(it) + ' · ' + rythme + (duree ? ' · ' + duree : '') },
         nomL + (entre ? ' (' + entre + ')' : '') + ', ' + rythme + (duree ? ', ' + duree : ''));
     });
     // L offre d attente prise a la fenetre de fin : une ligne de la visite,
@@ -4521,7 +4570,7 @@
       var nW = Math.max(1, Number(it.participants) || 1);
       var nomW = it.name || nomActivite(it.activityId);
       var detW = 'pendant l’attente · ' + nW + ' personne' + (nW > 1 ? 's' : '') + (Number(it.minutes) > 0 ? ' · ' + environ(it.minutes) : '');
-      ligneSuite({ genre: 'free', titreHtml: '<i><svg aria-hidden="true"><use href="#' + icone(it.activityId) + '"/></svg>' + esc(nomW) + '</i>', detail: detW }, nomW + ', ' + detW);
+      ligneSuite({ genre: 'free', titreHtml: '<i>' + esc(typoVisite(nomW)) + '</i>', detail: detW }, nomW + ', ' + detW);
     });
     // CE QUE COMPREND LA CARTE D UNE FORMULE, dans ses mots, c est ce que le
     // centre vend : ce qui a deja sa ligne a heure (bowling, laser, table) ne
@@ -4529,31 +4578,35 @@
     // boissons) est compris. Une formule a volonte le dit sur sa ligne.
     if (formule && !illimite) carte.forEach(function (c) {
       if (c.genre && vus[c.genre]) return;
-      if (c.genre) ligneSuite({ genre: 'incl', icone: icone(c.texte), titre: c.texte, detail: 'compris · à votre rythme' }, c.texte + ', compris');
-      else ligneSuite({ genre: 'incl', icone: estBoisson(c.texte) ? 'a-boisson' : 'a-formule', titre: c.texte, detail: 'compris' }, c.texte + ', compris');
+      if (c.genre) ligneSuite({ genre: 'incl', titre: c.texte, detail: 'compris · à votre rythme' }, c.texte + ', compris');
+      else ligneSuite({ genre: 'incl', titre: c.texte, detail: 'compris' }, c.texte + ', compris');
     });
     if (suite) {
       // Pendant la table d une formule anniversaire, les activites se jouent
       // pendant la table ; sans rien a heure, des l arrivee.
       var avecTable = parts.some(function (p) { return genreCompris(p.id) === 'table'; });
       var entete = !parts.length ? 'Dès votre arrivée' : avecTable ? 'Pendant votre table' : 'Dans la foulée';
-      lignes += '<li class="fg-visit__group"><svg aria-hidden="true"><use href="#i-arrow"/></svg><span><b>' + esc(entete) + '</b><small>sans heure fixe</small></span></li>' + suite;
+      lignes += '<li class="fg-visit__suite"><p class="fg-visit__group"><b>' + esc(entete) + '</b>, sans heure fixe</p><ul>' + suite + '</ul></li>';
       dits.push(entete + ', sans heure fixe : ' + suiteDits.join(' ; '));
     }
     // UNE FORMULE ILLIMITEE se joue a volonte jusqu a la fin de sa periode, au
     // meme prix quelle que soit l heure d arrivee : la ligne dit le temps de
     // jeu qui reste a cette heure-la (arrive a 16:30 au Kids Fun Day, 30 min),
-    // puis ce que comprend sa carte, dans ses mots.
+    // puis ce que comprend sa carte, dans ses mots. Dans l agenda, c est un
+    // bloc de l heure d arrivee a la fin de la periode (compresse : la feuille
+    // le borne), qui dit lui-meme son debut.
     var jeuRestant = illimite && fin ? minutesEntre(slot.time, fin) : 0;
     var motsIllimite = illimite ? carte.map(function (c) { return c.texte; }) : [];
     if (illimite && jeuRestant > 0) {
-      lignes += etapeVisite({ genre: 'free', heure: 'illimité', icone: 'a-formule', titre: formule.name, detail: 'à volonté jusqu’à ' + heureAffichee(fin) + ' · ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure', detail2: motsIllimite.join(' · ') });
-      dits.push(formule.name + ', à volonté jusqu’à ' + heureAffichee(fin) + ' : ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure' + (motsIllimite.length ? '. Compris : ' + motsIllimite.join(', ') : ''));
+      minutesAgenda += jeuRestant;
+      lignes += etapeVisite({ genre: ['bloc', 'free', 'illimite'], heure: slot.time, minutes: jeuRestant, titre: formule.name, detail: 'à volonté jusqu’à ' + heureAffichee(fin) + ' · ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure', detail2: motsIllimite.join(' · ') });
+      dits.push(formule.name + ', à partir de ' + slot.time + ', à volonté jusqu’à ' + heureAffichee(fin) + ' : ' + dureeExacte(jeuRestant) + ' de jeu, même prix à toute heure' + (motsIllimite.length ? '. Compris : ' + motsIllimite.join(', ') : ''));
     } else if (motsIllimite.length) {
-      lignes += etapeVisite({ genre: 'incl', heure: '', icone: 'a-formule', titre: motsIllimite.join(' · '), detail: 'compris dans ' + formule.name });
+      lignes += etapeVisite({ genre: ['incl', 'suite'], heure: '', titre: motsIllimite.join(' · '), detail: 'compris dans ' + formule.name });
       dits.push('Compris : ' + motsIllimite.join(', '));
     }
-    if (!parts.length && !libres.length && !arrivee) lignes = '<li class="fg-visit__step"><b>' + esc(slot.time) + '</b><span>Début</span><small></small></li>' + lignes;
+    var debut = !parts.length && !libres.length && !arrivee && !(illimite && jeuRestant > 0);
+    if (debut) lignes = '<li class="fg-visit__step fg-visit__step--debut"><b>' + esc(slot.time) + '</b><span>Début</span><small></small></li>' + lignes;
     if (fin) lignes += etapeVisite({ genre: 'out', heure: heureAffichee(fin), titre: 'Fin de la visite', detail: slot.visitEndsAtClose ? 'fermeture du centre' : illimite ? 'fin de la formule' : 'heure estimée' });
     // LE DETAIL DU PRIX : chaque ligne du programme et son montant, ce qui se
     // regle sur place, le total. Montre seulement quand la somme des montants
@@ -4565,25 +4618,34 @@
         var sait = it.priceKnown === true || (it.priceKnown !== false && Number(it.price) > 0);
         if (sait) connus += Number(it.price) || 0;
         var det = detailLigne(it);
-        return '<div><dt>' + esc(it.name || nomActivite(it.activityId)) + (det ? ' <small>· ' + esc(det) + '</small>' : '') + '</dt><dd>' + (sait ? esc(euros(it.price)) : PRIX_ACCUEIL) + '</dd></div>';
+        return '<div><dt>' + esc(typoVisite(it.name || nomActivite(it.activityId))) + (det ? ' <small>· ' + esc(typoVisite(det)) + '</small>' : '') + '</dt><dd>' + (sait ? esc(euros(it.price)) : PRIX_ACCUEIL) + '</dd></div>';
       });
       if (Math.abs(connus - prix) < 0.01) {
         prixHtml = '<dl class="fg-visit__prices">' + lp.join('')
           // Les lignes juste au-dessus disent lesquelles : le total reste court.
-          + '<div class="fg-visit__total"><dt>' + (complet ? 'Total indicatif' : 'Total indicatif, hors ' + PRIX_ACCUEIL) + '</dt><dd>' + esc(euros(prix)) + '</dd></div></dl>'
-          + '<p class="fg-visit__pay"><svg aria-hidden="true"><use href="#i-card"/></svg>Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.</p>';
+          + '<div class="fg-visit__total"><dt>' + (complet ? 'Total indicatif' : 'Total indicatif, hors ' + insecable(PRIX_ACCUEIL)) + '</dt><dd>' + esc(euros(prix)) + '</dd></div></dl>'
+          + '<p class="fg-visit__pay">Montants à titre indicatif. Aucun paiement en ligne : vous réglez sur place, par carte ou en espèces.</p>';
       }
     }
-    var html2 = '<div class="fg-visit' + (visiteOuverte ? ' is-open' : '') + '"><div class="fg-visit__head"><span class="fg-visit__title"><svg aria-hidden="true"><use href="#i-clock"/></svg>Votre visite</span>'
-      + (fin ? '<span class="fg-visit__span">' + (arrivee ? 'de <b>' + esc(arrivee) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : illimite ? 'à <b>' + esc(heureAffichee(fin)) + '</b>, fin de la formule' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(arrivee, fin) + '</span>'
-        : (journee && depart ? '<span class="fg-visit__span">dès <b>' + esc(depart) + '</b>, accès toute la journée</span>' : ''))
-      + (prixVisible ? '<span class="fg-visit__price">' + esc(euros(prix)) + (complet ? '' : '<small>+ ' + esc(nomsSansPrix(items)) + ', ' + PRIX_ACCUEIL + '</small>') + '</span>' : '')
-      // LE DETAIL SE REPLIE (Movsar, 2026-10-07 : moins de texte) : le
-      // programme au-dessus dit deja chaque heure ; ici, l en-tete garde la
-      // plage et le total, les avertissements restent visibles.
-      + '<button type="button" class="fg-visit__voir" data-visite-voir aria-expanded="' + visiteOuverte + '" aria-controls="fgVisiteDetail"><span>Détail</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>'
+    // L EN-TETE : le titre et le prix sur une ligne, la plage dessous, puis ce
+    // qui se regle a l accueil. Ni bandeau teinte ni icone. PLUS DE REPLI : il
+    // cachait une liste de texte (2026-10-07), ouverte d office depuis le
+    // 2026-10-12 ; l agenda est la visite elle-meme, replie il ne resterait que
+    // l en-tete, que la barre du bas redit deja.
+    var html2 = '<div class="fg-visit"><div class="fg-visit__head"><h3 class="fg-visit__title">Votre visite</h3>'
+      + (prixVisible ? '<span class="fg-visit__price">' + esc(euros(prix)) + '</span>' : '')
+      + (fin ? '<p class="fg-visit__span">' + (arrivee ? 'de <b>' + esc(arrivee) + '</b> ' : '') + (slot.visitEndsAtClose ? 'jusqu’à la fermeture (<b>' + esc(heureAffichee(fin)) + '</b>)' : illimite ? 'à <b>' + esc(heureAffichee(fin)) + '</b>, fin de la formule' : 'à <b>' + esc(heureAffichee(fin)) + '</b> environ') + surPlace(arrivee, fin) + '</p>'
+        : (journee && depart ? '<p class="fg-visit__span">dès <b>' + esc(depart) + '</b>, accès toute la journée</p>' : ''))
+      + (prixVisible && !complet ? '<p class="fg-visit__reste">+ ' + esc(typoVisite(nomsSansPrix(items))) + ', ' + insecable(PRIX_ACCUEIL) + '</p>' : '')
       + '</div>';
-    var listeHtml = '<ol class="fg-visit__list">' + lignes + '</ol>';
+    // L echelle de l agenda : 1,8 px par minute (une heure de bowling fait
+    // 108 px), resserree au-dela d environ 2 h 45 d activites, jamais sous
+    // 1 px par minute.
+    var echelle = Math.max(1, Math.min(1.8, 300 / Math.max(1, minutesAgenda)));
+    // Une visite sans aucune heure (la plaine seule) n a pas de colonne des
+    // heures : ses lignes reprennent toute la largeur.
+    var avecHeures = Boolean(arrivee || fin || parts.length || debut || (illimite && jeuRestant > 0));
+    var listeHtml = '<ol class="fg-visit__list' + (avecHeures ? '' : ' fg-visit__list--libre') + '" style="--px:' + echelle.toFixed(2) + 'px">' + lignes + '</ol>';
     var avis = (plan.comfortNotices || []).map(function (n) { return typeof n === 'string' ? n : (n && (n.message || n.label)) || ''; }).filter(Boolean);
     var secoursBowling = avertissementBowling(state.creneau);
     if (secoursBowling && avis.indexOf(secoursBowling) < 0) avis.push(secoursBowling);
@@ -4603,18 +4665,18 @@
         .filter(function (it) { return it && it.priceKnown === true && Number(it.price) > 0; });
       var compte = comptees.length ? 'Le total indicatif compte encore ' + joindreListe(comptees.map(function (it) { return (it.name || nomActivite(it.activityId)) + ' (' + euros(it.price) + ')'; }), ' et ') + '.' : '';
       var phrase = phraseHorsDelai(horsDelai, fin, true);
-      horsHtml = '<p class="fg-visit__warn fg-visit__hors"><b>' + esc(phrase.tete) + ' :</b> ' + esc(phrase.noms) + '.'
-        + (gardees || compte ? '<br>' + esc([gardees, compte].filter(Boolean).join(' ')) : '') + '</p>';
+      horsHtml = '<p class="fg-visit__warn fg-visit__hors"><b>' + esc(typoVisite(phrase.tete)) + '\u00a0:</b> ' + esc(typoVisite(phrase.noms)) + '.'
+        + (gardees || compte ? '<br>' + esc(typoVisite([gardees, compte].filter(Boolean).join(' '))) : '') + '</p>';
       avis.unshift([phrase.tete + ' : ' + phrase.noms + '.', gardees, compte].filter(Boolean).join(' '));
     } else if (slot.visitEndsAtClose && Number(slot.visitShortfallMinutes) > 0) {
       avis.unshift('À cette heure, tout ne tiendra pas avant la fermeture : il manque ' + dureeApprox(slot.visitShortfallMinutes) + '. Vous choisirez sur place ce que vous gardez.');
     }
     var avisSimples = horsHtml ? avis.slice(1) : avis;
-    // Ce qui ne tiendra pas reste visible sous l en-tete, juste avant le
-    // detail replie qui porte la liste qu il raye.
+    // Ce qui ne tiendra pas reste visible sous l en-tete, juste avant l agenda
+    // qui porte les lignes qu il raye.
     html2 += horsHtml;
-    if (avisSimples.length) html2 += '<p class="fg-visit__warn">' + avisSimples.map(esc).join('<br>') + '</p>';
-    html2 += '<div class="fg-visit__detail" id="fgVisiteDetail"><div class="fg-visit__inner">' + listeHtml + prixHtml + '</div></div>';
+    if (avisSimples.length) html2 += '<p class="fg-visit__warn">' + avisSimples.map(function (a) { return esc(typoVisite(a)); }).join('<br>') + '</p>';
+    html2 += listeHtml + prixHtml;
     // Ce que dit la voix est ce qui est ecrit dans le bloc : l arrivee, chaque
     // partie a son heure et sa fin, ce qui se joue dans la foulee, la fin, le
     // prix (et ce qui se regle sur place), les avertissements.

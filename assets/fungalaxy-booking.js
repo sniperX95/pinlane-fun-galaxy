@@ -3483,7 +3483,6 @@
   var etapeTouchee = false;    // le client a ouvert ou ferme une ligne : plus rien ne s ouvre a sa place, sauf apres une heure posee
   var partiesSurPlace = false; // les parties de laser sans heure, laissees a l equipe en connaissance de cause
   var detailsEtapes = {};      // le detail de chaque activite (« 6 joueurs · 1 heure · 1 piste »)
-  var visiteOuverte = true;    // le detail de « Votre visite » : ouvert d office (Movsar, 2026-10-12), il se replie au toucher
   // Une heure d arrivee choisie : les heures que le client n a pas posees sont
   // celles que le serveur a placees a partir d elle, et les parties sans heure
   // se jouent a la suite, placees par l equipe.
@@ -3777,16 +3776,6 @@
       return;
     }
     if (e.target.closest('[data-arrivees]')) { chargerArrivees(); return; }
-    var voirVisite = e.target.closest('[data-visite-voir]');
-    if (voirVisite) {
-      visiteOuverte = !visiteOuverte;
-      var bloc = voirVisite.closest('.fg-visit');
-      bloc.classList.toggle('is-open', visiteOuverte);
-      voirVisite.setAttribute('aria-expanded', String(visiteOuverte));
-      posterHauteur();
-      setTimeout(posterHauteur, 450);
-      return;
-    }
     var enTete = e.target.closest('.fg-period__btn');
     if (enTete) {
       var sec = enTete.closest('.fg-period');

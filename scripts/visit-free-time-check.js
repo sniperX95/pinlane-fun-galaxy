@@ -185,7 +185,9 @@ async function main() {
   section('Contre-epreuve par mutation du code de production');
   const MOTEUR = path.join(ROOT, 'lib/ops-engine.js');
   const moteurOriginal = fs.readFileSync(MOTEUR, 'utf8');
-  const ancreTrous = ' - couvert - intersticesDuGroupe(raw.resourceBlocks));';
+  // Depuis le 2026-10-13 les trous se comptent nets de la foulee
+  // (intersticesPourLeLibre) ; la mutation coupe toujours toute la deduction.
+  const ancreTrous = ' - couvert - intersticesPourLeLibre(raw.resourceBlocks, raw.laserPassPlan, raw.end));';
   const nombreTrous = moteurOriginal.split(ancreTrous).length - 1;
   record('contre-epreuve montable : la reserve du moteur deduit les trous a un seul endroit', nombreTrous === 1, `${nombreTrous} occurrence(s)`);
   if (nombreTrous === 1) {

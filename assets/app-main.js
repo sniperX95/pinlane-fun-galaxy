@@ -12915,6 +12915,19 @@ function getVisiteLibreApres(reservation, windows) {
     if (finCourante !== null && i.debut > finCourante) trous += i.debut - finCourante;
     finCourante = finCourante === null ? i.fin : Math.max(finCourante, i.fin);
   });
+  // MOINS LES PARTIES DE LASER JOUEES DANS LA FOULEE (2026-10-13, Movsar : « il
+  // ne compte pas les activités qui sont dans la foulée »). Elles s enchainent
+  // dans ces memes trous quand elles y tiennent : le libre n y prend que le
+  // reste. Meme regle que le moteur (intersticesPourLeLibre) : ce que la fin du
+  // plan, sans la marge, depasse le dernier bloc est la foulee jouee apres lui.
+  const plan = reservation && reservation.opsPlan;
+  const foulee = Math.max(0, Math.round(Number(plan && plan.laserPassPlan && plan.laserPassPlan.followOnMinutes) || 0));
+  if (foulee && trous && finCourante !== null) {
+    const marge = Math.max(0, Number(plan.bufferMinutes) || 0);
+    const finPlan = typeof plan.endTime === 'string' && /^\d{1,2}:\d{2}/.test(plan.endTime) ? Math.round(timeToNum(plan.endTime) * 60) - marge : null;
+    const dehors = finPlan !== null ? Math.min(foulee, Math.max(0, finPlan - finCourante)) : 0;
+    trous = Math.max(0, trous - (foulee - dehors));
+  }
   return Math.max(0, minutes - trous) / 60;
 }
 

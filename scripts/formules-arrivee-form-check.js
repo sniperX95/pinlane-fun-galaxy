@@ -169,7 +169,17 @@ function ok(condition, message, detail) {
   return Boolean(condition);
 }
 function section(titre) { console.log(`\n${titre}`); }
-const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+// Le formulaire soude ses nombres a leurs unites (typo, espaces insecables) :
+// le gate lit son texte sans eux, avec le meme helper que les autres gates.
+const sansInsecable = (texte) => (texte === null || texte === undefined ? texte : String(texte).replace(/[\u00a0\u202f]/g, ' '));
+const norm = (s) => String(sansInsecable(s) || '').replace(/\s+/g, ' ').trim();
+// Une lecture de la page, chacun de ses textes passe par sansInsecable.
+function lisible(v) {
+  if (typeof v === 'string') return norm(v);
+  if (Array.isArray(v)) return v.map(lisible);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, lisible(x)]));
+  return v;
+}
 const minuscule = (s) => { const t = String(s || ''); return t.charAt(0).toLowerCase() + t.slice(1); };
 const heureAffichee = (t) => (t === '24:00' ? 'minuit' : String(t || ''));
 const params = (u) => new URL(u, BASE_URL).searchParams;
@@ -309,6 +319,12 @@ async function versHeures(page, mock, formuleId) {
   await page.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
   await attendre(page, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
   await page.click('#dayBtn');
+  // Le pointeur quitte la grille : a 560 px et moins, le calendrier s ouvre au
+  // milieu de l ecran, sous l endroit du bouton. Survole, un jour a la note
+  // sur deux lignes grandit la fenetre centree, la grille glisse sous le
+  // pointeur, un autre jour est survole, et ainsi de suite (le jour a viser
+  // n est jamais « stable »). Un telephone n a pas de pointeur pose.
+  await page.mouse.move(0, 0);
   const [y, mo] = mock.DATE.split('-').map(Number);
   const cible = `${cap(MOIS[mo - 1])} ${y}`;
   for (let k = 0; k < 16; k += 1) {
@@ -336,9 +352,9 @@ async function versHeures(page, mock, formuleId) {
 }
 // Le programme, ligne par ligne : la cle, l etat, l heure dite, ce qui est
 // deplie (les heures de la piste, ou « Choisir l’heure moi-même »).
-function lireProgramme(page) {
-  return page.evaluate(() => {
-    const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
+async function lireProgramme(page) {
+  return lisible(await page.evaluate(() => {
+    const t = (n) => (n ? n.textContent : '');
     const ol = document.querySelector('#hourZone .fg-etapes');
     if (!ol) return { lignes: [] };
     return {
@@ -360,14 +376,14 @@ function lireProgramme(page) {
         };
       }),
     };
-  });
+  }));
 }
 const ligneDe = (programme, cle) => ((programme && programme.lignes) || []).find((l) => l.cle === cle) || null;
 const estBorneArrivee = (l) => /fg-etape--borne/.test(l.classe) && /fg-etape--arrivee/.test(l.classe) && l.cache;
 const resumeLignes = (programme) => ((programme && programme.lignes) || []).map((l) => `${l.cle || l.classe.replace(/\bfg-etape\b\s*/g, '').trim()}:${l.heure}`).join(' | ');
-function lireVisite(page) {
-  return page.evaluate(() => {
-    const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
+async function lireVisite(page) {
+  return lisible(await page.evaluate(() => {
+    const t = (n) => (n ? n.textContent : '');
     const zone = document.querySelector('#planZone');
     return {
       etapes: zone ? [...zone.querySelectorAll('.fg-visit__step')].map((li) => ({ b: t(li.querySelector('b')), titre: t(li.querySelector('span')), detail: t(li.querySelector('small')), genre: li.className })) : [],
@@ -377,19 +393,19 @@ function lireVisite(page) {
       somme: t(document.querySelector('#hourSum')),
       zone: t(document.querySelector('#hourZone')),
     };
-  });
+  }));
 }
-function lirePuces(page, piste) {
-  return page.evaluate((id) => [...document.querySelectorAll(`.fg-track[data-activity="${id}"] .fg-chip`)].map((c) => ({
-    time: c.dataset.time, ok: c.dataset.ok, etat: c.dataset.state || '', mot: ((c.querySelector('small') || {}).textContent || '').trim(),
+async function lirePuces(page, piste) {
+  return lisible(await page.evaluate((id) => [...document.querySelectorAll(`.fg-track[data-activity="${id}"] .fg-chip`)].map((c) => ({
+    time: c.dataset.time, ok: c.dataset.ok, etat: c.dataset.state || '', mot: (c.querySelector('small') || {}).textContent || '',
     titre: c.getAttribute('title') || '', decrite: c.getAttribute('aria-describedby') || '',
-  })), piste);
+  })), piste));
 }
-function lirePourquoi(page, piste) {
-  return page.evaluate((id) => [...document.querySelectorAll(`.fg-track[data-activity="${id}"] .fg-why-list__item`)].map((li) => ({
+async function lirePourquoi(page, piste) {
+  return lisible(await page.evaluate((id) => [...document.querySelectorAll(`.fg-track[data-activity="${id}"] .fg-why-list__item`)].map((li) => ({
     id: li.id, etat: li.dataset.etat || '', heures: String(li.dataset.heures || '').split(' ').filter(Boolean),
-    cle: ((li.querySelector('.fg-key') || {}).textContent || '').trim(), texte: ((li.querySelector('span') || {}).textContent || '').replace(/\s+/g, ' ').trim(), lit: li.classList.contains('is-lit'),
-  })), piste);
+    cle: (li.querySelector('.fg-key') || {}).textContent || '', texte: (li.querySelector('span') || {}).textContent || '', lit: li.classList.contains('is-lit'),
+  })), piste));
 }
 // Une heure touchee au doigt, si elle se prend.
 function toucher(page, piste, heure) {
@@ -521,7 +537,7 @@ async function scenarioB(browser, mock) {
       if (!p) { ecarts.push(`${x.time} sans puce`); return; }
       if (x.ok === false) {
         if (p.ok !== 'false' || p.etat !== 'hard' || !p.mot) ecarts.push(`${x.time} refusee (${x.code}) : ${p.ok}/${p.etat}/« ${p.mot} »`);
-        if (p.titre !== x.reason) ecarts.push(`${x.time} titre « ${p.titre} » au lieu de « ${x.reason} »`);
+        if (p.titre !== norm(x.reason)) ecarts.push(`${x.time} titre « ${p.titre} » au lieu de « ${x.reason} »`);
       } else if (x.warning) {
         if (p.etat !== 'soft' || p.mot !== 'serré') ecarts.push(`${x.time} serree : ${p.etat}/« ${p.mot} »`);
       } else if (p.ok !== 'true' || p.mot !== '') ecarts.push(`${x.time} libre : ${p.ok}/« ${p.mot} »`);
@@ -538,11 +554,11 @@ async function scenarioB(browser, mock) {
     ok(Boolean(lAttente) && lAttente.cle === 'attente' && /attente/i.test(lAttente.texte) && lAttente.texte.includes(bas) && lAttente.texte.includes(haut) && /sans activit/.test(lAttente.texte),
       `sous la plage, une ligne pour ces heures : l attente sans activite, en fourchette (${bas} a ${haut})`, JSON.stringify(lAttente || pourquoi));
     ok(Boolean(lAttente) && attentes.every((x) => puceDe(x.time).decrite === lAttente.id), 'chaque heure refusee pointe sa ligne (aria-describedby)');
-    const cles = await page.evaluate((t) => {
+    const cles = lisible(await page.evaluate((t) => {
       const puce = document.querySelector(`.fg-track[data-activity="arrivee"] .fg-chip[data-time="${t}"]`);
       const sec = puce && puce.closest('.fg-period');
-      return sec ? [...sec.querySelectorAll('.fg-period__keys .fg-key')].map((k) => k.textContent.trim()) : [];
-    }, attentes.length ? attentes[0].time : '');
+      return sec ? [...sec.querySelectorAll('.fg-period__keys .fg-key')].map((k) => k.textContent) : [];
+    }, attentes.length ? attentes[0].time : ''));
     ok(cles.includes('attente'), 'l en-tete de la plage le dit aussi, comme pour les heures des activites', cles.join(','));
     // Une arrivee refusee touchee : elle s explique, elle ne se prend pas.
     if (attentes.length) {
@@ -665,7 +681,7 @@ async function scenarioC(browser, mock) {
     await page.click('#goRecap');
     const recap = await attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 8000);
     await passerLaVitrine(page);
-    const lignes = await page.evaluate(() => [...document.querySelectorAll('.fg-scene[data-scene="recap"] .fg-recap__row')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
+    const lignes = lisible(await page.evaluate(() => [...document.querySelectorAll('.fg-scene[data-scene="recap"] .fg-recap__row')].map((r) => r.textContent)));
     ok(recap && lignes.some((l) => l.includes('Arrivée à 10:00')) && !lignes.some((l) => /conseill/.test(l) || l.includes(accueil)), 'le recapitulatif dit « Arrivée à 10:00 », pas l accueil conseille', lignes.join(' | '));
     mock.dernierePose.body = null;
     await page.click('#confirmBtn');
@@ -708,7 +724,7 @@ async function scenarioD(browser, mock) {
     const serree = entrees.find((x) => x.ok && x.warning && x.warning.reason) || null;
     if (ok(Boolean(serree), 'MONTAGE une arrivee du soir tient, mais sa visite deborde la fermeture : le serveur la donne avec son avertissement', entrees.filter((x) => x.ok).slice(-2).map((x) => x.time).join(', '))) {
       const p = puces.find((c) => c.time === serree.time) || {};
-      ok(p.etat === 'soft' && p.mot === 'serré' && p.ok === 'true' && p.titre === serree.warning.reason, `${serree.time} se dit « serré », reste possible, la raison du moteur en titre`, JSON.stringify(p));
+      ok(p.etat === 'soft' && p.mot === 'serré' && p.ok === 'true' && p.titre === norm(serree.warning.reason), `${serree.time} se dit « serré », reste possible, la raison du moteur en titre`, JSON.stringify(p));
       const l = pourquoi.find((x) => x.heures.includes(serree.time)) || null;
       ok(Boolean(l) && l.etat === 'soft' && l.cle === 'serré' && norm(l.texte).includes(minuscule(norm(serree.warning.reason))), 'sous sa plage, la ligne dit ce qui ne tiendra pas', JSON.stringify(l));
     }
@@ -933,7 +949,7 @@ async function main() {
       try {
         await jouer(browser, mock);
       } catch (error) {
-        ok(false, `[${cle}] le parcours va jusqu au bout`, String((error && error.message) || error).split('\n').slice(0, 2).join(' | '));
+        ok(false, `[${cle}] le parcours va jusqu au bout`, String((error && error.message) || error).split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 8).join(' | '));
       }
     }
   } finally {

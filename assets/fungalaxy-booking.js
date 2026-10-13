@@ -2940,7 +2940,7 @@
     if (x && x.minutes) {
       var mini = Math.min.apply(null, g.places), maxi = Math.max.apply(null, g.places);
       var duree = dureeExacte(mini) + (maxi > mini ? ' à ' + dureeExacte(maxi) : '');
-      return g.code === 'arrival_visit' ? 'Visite trop longue : ' + duree + '.' : 'Trop d’attente : ' + duree + ' sans activité.';
+      return typo(g.code === 'arrival_visit' ? 'Visite trop longue : ' + duree + '.' : 'Trop d’attente : ' + duree + ' sans activité.');
     }
     switch (g.code) {
       case 'arrival_full':
@@ -4428,7 +4428,7 @@
     var parArrivee = plan.arrivalPlan || null, attenteA = parArrivee ? Number(parArrivee.waitMinutes) || 0 : 0;
     if (arrivee) {
       var avance = parts.length ? minutesEntre(arrivee, parts[0].debut) : 0;
-      lignes += etapeVisite(parArrivee ? { genre: 'in', heure: arrivee, titre: 'Arrivée', detail: 'à votre heure' + (attenteA > 0 ? ' · ' + dureeExacte(attenteA) + ' d’attente en tout' : '') }
+      lignes += etapeVisite(parArrivee ? { genre: 'in', heure: arrivee, titre: 'Arrivée', detail: typo('à votre heure' + (attenteA > 0 ? ' · ' + dureeExacte(attenteA) + ' d’attente en tout' : '')) }
         : { genre: 'in', heure: arrivee, titre: 'Arrivée conseillée', detail: avance > 0 ? avance + ' min avant votre ' + nomBas(premiere) : 'on vous accueille' });
     }
     function lignePartie(p) {

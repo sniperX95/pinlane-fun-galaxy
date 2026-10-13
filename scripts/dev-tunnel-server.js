@@ -124,7 +124,7 @@ const availability = require('../api/public-availability.js');
 // conges scolaires, horaires de vacances du centre reel), sans base : blocages vides.
 const bookingMeta = require('../api/public-booking-meta.js');
 const { buildCalendar, calendarFromParam } = bookingMeta.__test;
-const { customRequestFromPax } = require('../lib/center-config');
+const { customRequestFromPax, normalizeFormulaVisit } = require('../lib/center-config');
 
 const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
@@ -199,6 +199,10 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
       contact: { phone: info.phone || '', email: info.email || '' },
       // Le seuil de la demande sur mesure, lu comme le serveur le lit.
       customRequest: { fromPax: customRequestFromPax(FUN_GALAXY_CENTER) },
+      // La formule par heure d arrivee, lue comme la prod la sert
+      // (api/public-booking-meta, 2026-10-12) : sans reglage du centre, les
+      // defauts de lib/formula-visit, l arrivee proposee.
+      formulaVisit: normalizeFormulaVisit(FUN_GALAXY_CENTER.formulaVisit),
       branding: brandingFor(brandMode) || FUN_GALAXY_CENTER.branding,
       defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: null, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' }, 5: { open: '14:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} },
       holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {},

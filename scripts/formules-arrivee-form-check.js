@@ -88,8 +88,8 @@
 //
 // Le jour joue : le premier samedi a venir ou les Formules 1 a 4 se vendent
 // (ni vacances scolaires ni ferie), donne au serveur de dev
-// (PINLANE_DEVTUNNEL_DATE). Le samedi suivant tombait le 17/10, dans le conge
-// d automne.
+// (PINLANE_DEVTUNNEL_DATE). Le samedi suivant, seul, tombe dans le conge
+// d automne (19/10 au 01/11) des que le gate tourne apres le 17/10.
 //
 // Lancement : node scripts/formules-arrivee-form-check.js [--mutate]
 
@@ -1626,7 +1626,8 @@ const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', s
 // LE JOUR DU GATE : le premier samedi a venir ou les Formules 1 a 4 se
 // vendent (ni vacances scolaires ni ferie, lib/booking-config), au fuseau du
 // centre. Le serveur de dev le lit (PINLANE_DEVTUNNEL_DATE) : le samedi
-// suivant, qu il prendrait seul, tombait le 17/10 dans le conge d automne.
+// suivant, qu il prendrait seul, tombe dans le conge d automne (19/10 au
+// 01/11) des que le gate tourne apres le 17/10.
 function samediVendable() {
   const config = require('../lib/booking-config');
   const centre = require('../lib/ops-knowledge').getCenter('libramont');

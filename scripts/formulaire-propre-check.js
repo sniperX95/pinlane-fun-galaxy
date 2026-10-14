@@ -40,6 +40,13 @@ const http = require('http');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
+// Le noir du formulaire : le jeton --fg-bg de SA feuille, lu a la source. Le
+// gate juge la regle (sur un hote clair, le cadre garde ce noir, assez sombre
+// pour son texte blanc), pas une valeur recopiee qui rougit au premier
+// changement de teinte (la passe premium du 2026-10-14 l a vu).
+const NOIR_FORMULAIRE = ((/--fg-bg:\s*(#[0-9a-fA-F]{6})\s*;/.exec(fs.readFileSync(path.join(ROOT, 'assets', 'fungalaxy-booking.css'), 'utf8')) || [])[1] || '').toLowerCase();
+const rgbDe = (hex) => `rgb(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)})`;
+const luminance = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
 const PORT = Number(process.env.PINLANE_PROPRE_PORT || 4473);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -145,7 +152,7 @@ async function verifierHotes(browser) {
     };
     const blanc = await lire('/hote-blanc.html');
     ok(/255, 255, 255/.test(blanc.fond), '[A] MONTAGE : l hote blanc envoie bien sa couleur au cadre', JSON.stringify(blanc));
-    ok(blanc.corps === 'rgb(5, 5, 5)' && blanc.ref === '#050505', '[A] hote blanc : le cadre garde le noir du formulaire (texte blanc lisible)', JSON.stringify(blanc));
+    ok(/^#[0-9a-f]{6}$/.test(NOIR_FORMULAIRE) && luminance(NOIR_FORMULAIRE) < 0.02 && blanc.corps === rgbDe(NOIR_FORMULAIRE) && blanc.ref.toLowerCase() === NOIR_FORMULAIRE, '[A] hote blanc : le cadre garde le noir du formulaire (texte blanc lisible)', JSON.stringify({ ...blanc, noir: NOIR_FORMULAIRE }));
     const sombre = await lire('/hote-sombre.html');
     ok(/17, 17, 17/.test(sombre.fond) && sombre.corps === 'rgb(17, 17, 17)' && /17, 17, 17/.test(sombre.ref), '[A] hote sombre : le cadre se fond dans sa couleur', JSON.stringify(sombre));
   } finally { await ctx.close(); }

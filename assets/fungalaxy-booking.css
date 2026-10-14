@@ -2914,13 +2914,20 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 @media (hover: hover) {
   .fg-input:hover:not(:focus), .fg-day__btn:hover:not([aria-expanded="true"]) { border-color: rgba(255, 255, 255, 0.26); }
 }
-/* Le compteur : moins et plus sont deux boutons poses dans le champ (44 px de
-   haut, angles concentriques a ceux du champ), le nombre entre eux, sans
-   cases ni separateurs. */
-.fg-stepper__btn, .fg-stepper__btn:last-child { margin: 5px; border: 0; border-radius: 7px; background: rgba(255, 255, 255, 0.06); }
-@media (hover: hover) { .fg-stepper__btn:hover { background: rgba(148, 66, 146, 0.32); } }
-.fg-stepper__btn:active:not([disabled]) { background: var(--fg-purple); }
-.fg-stepper__btn[disabled] { background: rgba(255, 255, 255, 0.025); }
+/* Le compteur : moins et plus se dessinent comme deux boutons poses dans le
+   champ (5 px de retrait, angles concentriques a ceux du champ), le nombre
+   entre eux, sans cases ni separateurs. Seul le DESSIN est en retrait : la
+   zone touchee reste la case entiere, 44 px au moins, y compris dans le
+   compteur compact d une carte (un bouton en retrait y tombait a 32 px). */
+.fg-stepper__btn, .fg-stepper__btn:last-child { position: relative; isolation: isolate; border: 0; background: transparent; }
+.fg-stepper__btn::before { content: ""; position: absolute; inset: 5px; z-index: -1; border-radius: 7px; background: rgba(255, 255, 255, 0.06); transition: background-color 0.15s; }
+@media (hover: hover) {
+  .fg-stepper__btn:hover { background: transparent; }
+  .fg-stepper__btn:hover::before { background: rgba(148, 66, 146, 0.32); }
+}
+.fg-stepper__btn:active:not([disabled]) { background: transparent; }
+.fg-stepper__btn:active:not([disabled])::before { background: var(--fg-purple); }
+.fg-stepper__btn[disabled]::before { background: rgba(255, 255, 255, 0.025); }
 .fg-occasion { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
 /* Les options d une activite (duree, parties) : le filet fin et un angle de
    10 px ; choisie, elle garde son aplat et son ombre sarcelle. */

@@ -1516,6 +1516,18 @@ function ligneDeLaBase(f4, lignes) {
     is_birthday_formula: true, best: false, description_lines: lignes, sort_index: 4, source: 'seed', active: true,
   };
 }
+// LA CARTE DE LA FORMULE 4 REFORMULEE EN BASE APRES LA RESERVATION : sa ligne
+// du laser ne dit plus « Laser Game », donc le catalogue ne propose plus le
+// choix (choixApplicables, tout ou rien). Le temps de `fn`, rendue ensuite.
+async function sousLaCarteReformulee(f4, fn) {
+  const store = require(path.join(ROOT, 'lib/catalog-store.js'));
+  store.applyCatalogState({ centerClients: [{ id: CENTRE, client_id: 'fungalaxy' }], formulas: [ligneDeLaBase(f4, f4.desc.map((ligne) => (parleDuLaser(ligne) ? '2 parties en arene' : ligne)))] });
+  try {
+    return await fn();
+  } finally {
+    store.applyCatalogState({});
+  }
+}
 // Le refus d une variante inconnue : 409, son code, une phrase au client qui
 // suit les regles d ecriture (lib/client-writing), sans promesse.
 function refusDuChoix(rep) {
@@ -1802,6 +1814,32 @@ async function scenarioN(H, seulement = null) {
     v.push(verdict(Number(etapeDuPlan(planAdaptee, 'arcade_time').durationMinutes) === minutes && !blocsLaser(planAdaptee).length && varianteDuPlan(planAdaptee) === arcades.id,
       `adaptee au comptoir a son contenu (minigolf, bowling, arcades), elle part de la formule de la variante : ${minutes} min d arcades, sans laser, la variante gardee`,
       JSON.stringify({ arcades: etapeDuPlan(planAdaptee, 'arcade_time').durationMinutes, laser: blocsLaser(planAdaptee).length, variante: varianteDuPlan(planAdaptee), refus: adaptee.planRefusal || '' })));
+    // LE CENTRE REFORMULE SA CARTE APRES LA RESERVATION (la ligne du laser ne
+    // dit plus « Laser Game ») : le catalogue ne propose plus le choix. Le
+    // dossier garde ce qu il a achete, decale ou adapte au comptoir : la
+    // modification se rejoue depuis l instantane de son plan.
+    await sousLaCarteReformulee(f4, async () => {
+      const auCatalogue = require(path.join(ROOT, 'lib/formula-choice.js')).varianteDemandee('f4', arcades.id);
+      v.push(verdict(auCatalogue === null, 'MONTAGE la carte de la Formule 4 reformulee en base apres la reservation : le catalogue ne propose plus « 60 min d arcades »', JSON.stringify(auCatalogue)));
+      const decaleR = await H.rops.prepareReservationOps({ ...dossier, startTime: heureDe(minutesDe(debut) + 30) }, 'staff', {});
+      const adapteeR = await H.rops.prepareReservationOps({ ...dossier, program: programme }, 'staff', {});
+      const garde = (ops) => {
+        const planOps = ops.opsPlan || {};
+        return [varianteDuPlan(planOps), blocsLaser(planOps).length, Number(etapeDuPlan(planOps, 'arcade_time').durationMinutes), ops.planRefusal || ''];
+      };
+      const [d, a] = [garde(decaleR), garde(adapteeR)];
+      v.push(verdict([d, a].every(([variante, laser, duree]) => variante === arcades.id && laser === 0 && duree === minutes),
+        `la carte reformulee apres la reservation : decalee ou adaptee au comptoir, la Formule 4 garde sa variante et ses ${minutes} min d arcades, sans laser (l instantane du dossier, pas le catalogue)`,
+        JSON.stringify({ decale: d, adaptee: a })));
+    });
+    // Passee a une autre formule au comptoir, le dossier ne porte pas la
+    // variante de la Formule 4 a la nouvelle : la Formule 1 garde son laser.
+    const autre = await H.rops.prepareReservationOps({ ...corpsFormule('f1', debut), id: 8401, opsPlan: plan, ignoreReservationId: 8401 }, 'staff', {});
+    const planAutre = autre.opsPlan || {};
+    const laserAutre = blocsLaser(planAutre).length + ((planAutre.timeline || []).filter((etape) => etape && etape.activityId === 'laser_game').length) + (Number((planAutre.laserPassPlan || {}).totalGames) || 0);
+    v.push(verdict(laserAutre > 0 && !varianteDuPlan(planAutre),
+      'passee a la Formule 1 au comptoir, le dossier ne porte pas la variante de la Formule 4 a la nouvelle formule : la Formule 1 garde sa partie de laser',
+      JSON.stringify({ laser: blocsLaser(planAutre).length, variante: varianteDuPlan(planAutre), refus: autre.planRefusal || '' })));
   }
 
   // 5. Les dossiers du jour : la garde de la base ne prete pas de laser a la
@@ -1845,6 +1883,11 @@ async function scenarioN(H, seulement = null) {
     const retardAvec = retard(existant);
     v.push(verdict((retardSans.alternatives || []).length > 0 && avecLaser(retardSans) > 0, 'MONTAGE un retard de 15 min heurte les pistes prises : sans la variante gardee, les solutions de rechange replanifient les deux parties de laser', resume(retardSans)));
     v.push(verdict((retardAvec.alternatives || []).length > 0 && avecLaser(retardAvec) === 0, 'avec elle, les solutions de rechange du retard gardent les arcades : aucune partie de laser', resume(retardAvec)));
+    // LE CENTRE REFORMULE SA CARTE APRES LA RESERVATION : le retard se
+    // replanifie depuis l instantane du dossier, pas depuis le catalogue.
+    const retardReformule = await sousLaCarteReformulee(f4, async () => retard(existant));
+    v.push(verdict((retardReformule.alternatives || []).length > 0 && avecLaser(retardReformule) === 0,
+      'la carte de la Formule 4 reformulee en base apres la reservation : les solutions de rechange du retard gardent les arcades, aucune partie de laser (l instantane du dossier, pas le catalogue)', resume(retardReformule)));
   }
 
   // 7. Le planning : deplacer le bowling, un dossier a placer.
@@ -2163,7 +2206,7 @@ const MUTATIONS = [
   { nom: 'le creneau perd la variante de son plan', fichier: 'lib/availability-slots.js',
     de: '      ...(scenario.formulaChoice ? { formulaChoice: scenario.formulaChoice } : {}),', vers: '', scenarios: ['N|grille'] },
   { nom: 'le moteur ignore la variante de la demande', fichier: 'lib/ops-engine.js',
-    de: '  const avecChoix = formuleAvecChoix(rawFormula, varianteDemandee(rawFormula && rawFormula.id, preference.formulaChoice));', vers: '  const avecChoix = rawFormula;', scenarios: ['N|post'] },
+    de: '  const avecChoix = formuleAvecChoix(rawFormula, varianteDemandee(rawFormula && rawFormula.id, preference.formulaChoice));', vers: '  const avecChoix = rawFormula;', scenarios: ['N|grille'] },
   { nom: 'la garde de la base invente les deux lasers de la carte', fichier: 'lib/database.js',
     de: "    formula = require('./formula-choice').formuleDuDossier(getFormula(reservation.formuleId), reservation);", vers: '    formula = getFormula(reservation.formuleId);', scenarios: ['N|post', 'N|base'] },
   { nom: 'la signature ignore la variante', fichier: 'lib/demande-publique.js',
@@ -2174,11 +2217,19 @@ const MUTATIONS = [
   { nom: 'une variante inconnue se reserve sur la carte (blocage, reservation)', fichier: 'lib/demande-publique.js',
     de: '  if (formuleDemandee && choixInconnu(formuleDemandee, preference.formulaChoice)) {', vers: '  if (false) {', scenarios: ['N|post'] },
   { nom: 'une modification perd la variante de son plan', fichier: 'lib/reservation-ops.js',
-    de: '      if (choixFormule && preferenceMoteur.formulaChoice === undefined) preferenceMoteur = { ...preferenceMoteur, formulaChoice: choixFormule };', vers: '', scenarios: ['N|comptoir'] },
+    de: '            ...(visitFormula ? { formula: visitFormula } : formuleJouee ? { formula: formuleJouee } : {}),', vers: '            ...(visitFormula ? { formula: visitFormula } : {}),', scenarios: ['N|comptoir'] },
+  { nom: 'une modification relit la variante au catalogue', fichier: 'lib/formula-choice.js',
+    de: '  if (instantanePour(garde, formulaId) && idDe(garde.id) === voulu) return garde;\n', vers: '', scenarios: ['N|comptoir'] },
+  { nom: 'l instantane se rejoue sur une autre formule', fichier: 'lib/formula-choice.js',
+    de: "  return Boolean(garde) && idDe(garde.formulaId) !== '' && idDe(garde.formulaId) === idDe(formulaId);", vers: '  return Boolean(garde);', scenarios: ['N|comptoir'] },
+  { nom: 'l instantane ne garde plus sa formule', fichier: 'lib/formula-choice.js',
+    de: '  if (idDe(formulaId)) out.formulaId = idDe(formulaId);\n', vers: '', scenarios: ['N|base'] },
   { nom: 'la formule adaptee repart de la carte (deux lasers, arcades du catalogue)', fichier: 'lib/reservation-ops.js',
-    de: "    base = formuleAvecChoix(getFormula(formuleId, request.centerId || 'libramont'), varianteDemandee(formuleId, choix));", vers: "    base = getFormula(formuleId, request.centerId || 'libramont');", scenarios: ['N|comptoir'] },
+    de: "    base = formuleAvecChoix(getFormula(formuleId, request.centerId || 'libramont'), variante);", vers: "    base = getFormula(formuleId, request.centerId || 'libramont');", scenarios: ['N|comptoir'] },
   { nom: 'un retard se replanifie sans la variante', fichier: 'lib/ops-engine.js',
-    de: '      ...(choixGarde ? { formulaChoice: choixGarde.id } : {}),', vers: '', scenarios: ['N|retard'] },
+    de: '    ...(formula && formula.formulaChoice ? { formula } : {}),\n', vers: '', scenarios: ['N|retard'] },
+  { nom: 'un retard relit la variante au catalogue', fichier: 'lib/ops-engine.js',
+    de: '      formula = formuleDuDossier(getFormula(formuleId), dossierDuRetard);', vers: '      formula = formuleAvecChoix(getFormula(formuleId), varianteDemandee(formuleId, choixDuDossier(dossierDuRetard).id));', scenarios: ['N|retard'] },
   { nom: 'deplacer le bowling fait apparaitre les deux lasers de la carte', fichier: 'lib/reservation-activity-move.js',
     de: "    const formulaGames = current.formuleId ? (formuleDuDossier(getFormula(current.formuleId), current)?.steps || []).filter(step => step.activityId === 'laser_game').reduce((sum,step) => sum+Number(step.count || 1),0) : 0;",
     vers: "    const formulaGames = current.formuleId ? (getFormula(current.formuleId)?.steps || []).filter(step => step.activityId === 'laser_game').reduce((sum,step) => sum+Number(step.count || 1),0) : 0;", scenarios: ['N|planning'] },

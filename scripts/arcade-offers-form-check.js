@@ -24,6 +24,16 @@ async function mode(page, root, value) { await page.click(`${root} .fg-pill[data
 async function mounted(page) {
   await page.goto(`http://127.0.0.1:${PORT}/fungalaxy/libramont?embed=1`, { waitUntil: 'domcontentloaded', timeout:60000 });
   await page.waitForFunction(() => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour');
+  // LE SAMEDI DU MOCK, JAMAIS AUJOURD HUI (2026-10-14) : le formulaire ouvre
+  // sur le jour meme ; a 21 h 20 il ne restait plus 60 min d arcades avant la
+  // fermeture, « Continuer » restait gris et time-60 attendait 30 s.
+  await page.click('#dayBtn');
+  for (let k = 0; k < 4 && !(await page.locator(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`).count()); k += 1) {
+    await page.click('#calNext'); await page.waitForTimeout(300);
+  }
+  await page.waitForFunction((d) => { const b = document.querySelector(`#calGrid .fg-cal__day[data-date="${d}"]`); return b && !b.classList.contains('is-loading'); }, mock.DATE);
+  await page.click(`#calGrid .fg-cal__day[data-date="${mock.DATE}"]`);
+  await page.waitForFunction(() => document.querySelector('#dayPop').hidden);
   await page.fill('#paxInput', '18'); await page.press('#paxInput', 'Enter'); await page.click('#goActivities');
   await page.waitForSelector('.fg-scene[data-scene="activites"].is-active');
   await page.click(selector + ' .fg-card'); await number(page, selector, 'participants', 3);
@@ -31,7 +41,9 @@ async function mounted(page) {
 async function finish(page, expected) {
   const response = page.waitForResponse(r => r.url().includes('/api/public-availability?'));
   await page.click('#goHours');
-  const availability = await (await response).json();
+  const reponse = await response;
+  check(new URL(reponse.url()).searchParams.get('date') === mock.DATE, 'MONTAGE hours are asked for the mock Saturday, never today');
+  const availability = await reponse.json();
   await page.waitForFunction(() => !document.querySelector('#goContact').disabled);
   const timeline=await page.locator('.fg-scene[data-scene="heures"]').textContent().then(sansInsecable);
   check(!/cadeaux inclus|sans cadeaux|hors jeux permettant|crédits\/jeu|Durée variable/.test(timeline),'timeline keeps arcade choice compact and leaves access details in information popup');

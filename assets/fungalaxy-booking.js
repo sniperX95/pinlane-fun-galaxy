@@ -6270,15 +6270,18 @@
           erreurEnvoi('<b>Le montant a changé.</b> Vérifiez le nouveau montant avant de confirmer à nouveau.');
           return;
         }
-        // Une variante que le serveur ne connait plus : la carte repart de son
-        // contenu et les horaires se redemandent. Le creneau refuse reste celui
-        // du recapitulatif, comme pour tout refus (plus bas).
+        // UNE VARIANTE QUE LE SERVEUR NE CONNAIT PLUS : la carte repart de son
+        // contenu et le client revient a ses horaires, redemandes pour ce
+        // contenu, avec la phrase du serveur (variantePerdue), comme le fait
+        // « Choisir d autres horaires ». Le recapitulatif de la variante ne
+        // reste pas a l ecran avec son bouton : un second clic reserverait
+        // l autre contenu sans que le client l ait vu. L etat repart meme si
+        // le retour attend la fin d une transition (aller le rejoue alors).
         if (res.status === 409 && res.json.code === 'formula_choice_unavailable') {
-          var creneauRefuse = state.creneau, heureRefusee = state.heure;
           oublierVariante();
-          invaliderDispo();
-          state.creneau = creneauRefuse; state.heure = heureRefusee;
-          erreurEnvoi('<b>' + esc(res.json.message || VARIANTE_PERDUE) + '</b><button type="button" class="fg-alert__btn" data-rechoisir>Revoir vos horaires</button>');
+          erreurEnvoi('');
+          aller('heures', true);
+          variantePerdue(res.json.message);
           return;
         }
         if (res.status === 409) {

@@ -80,7 +80,8 @@
 //       laser et les arcades bloques, elle se grise ;
 //   [L] une variante que le serveur refuse (409, formula_choice_unavailable)
 //       sur les heures, le blocage ou la confirmation : la phrase du
-//       serveur s affiche, la variante sort de la carte et les horaires se
+//       serveur s affiche sur l ecran des heures (une confirmation refusee y
+//       ramene le client), la variante sort de la carte et les horaires se
 //       redemandent pour le contenu de la carte.
 //   --mutate : une regle cassee a la fois, en memoire (le formulaire servi au
 //       navigateur, ou le moteur compile pour le serveur) : chacune doit faire
@@ -266,6 +267,10 @@ const MUTATIONS = [
     de: "        if (r.code === 'formula_choice_unavailable' && oublierVariante()) { variantePerdue(r.message); return; }\n", vers: '' },
   { nom: 'la confirmation refusee garde la variante', fichier: JS, scenarios: ['L'],
     de: "        if (res.status === 409 && res.json.code === 'formula_choice_unavailable') {", vers: '        if (false) {' },
+  { nom: 'la confirmation refusee laisse le recapitulatif de la variante', fichier: JS, scenarios: ['L'],
+    de: "          erreurEnvoi('');\n          aller('heures', true);\n          variantePerdue(res.json.message);", vers: "          erreurEnvoi('');\n          variantePerdue(res.json.message);" },
+  { nom: 'la confirmation refusee revient aux heures sans les redemander', fichier: JS, scenarios: ['L'],
+    de: "          aller('heures', true);\n          variantePerdue(res.json.message);\n          return;", vers: "          aller('heures', true);\n          return;" },
 ];
 const MUTATION_PREUVE = '[mutation] servie :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_ARRIVEE_FORM_MUTATION || 0);
@@ -1586,7 +1591,9 @@ async function scenarioL(browser, mock) {
     await deux.ctx.close();
   }
 
-  // 3. La confirmation refuse la variante.
+  // 3. La confirmation refuse la variante : le client revient a ses heures,
+  //    redemandees pour le contenu de la carte, la phrase du serveur dite ;
+  //    le recapitulatif de la variante ne reste pas a l ecran avec son bouton.
   semer(mock);
   const trois = await ouvrir(browser);
   try {
@@ -1596,24 +1603,21 @@ async function scenarioL(browser, mock) {
     const contact = await attendre(trois.page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 12000);
     const recap = contact ? await remplirContact(trois.page) : false;
     if (recap) await passerLaVitrine(trois.page);
+    const n = trois.suivi.demandes.length;
     refusUnique = '/api/public-reservations';
     if (recap) await trois.page.click('#confirmBtn');
-    const dit = Boolean(recap) && await ditLaPhrase(trois.page, '#confirmErr');
+    const revenu = Boolean(recap) && await attendre(trois.page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering'), 10000);
+    const dit = revenu && await ditLaPhrase(trois.page, '#hourErr');
+    const pretApres = revenu && await attendre(trois.page, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone.is-busy'), 15000);
+    if (revenu) await calme(trois.page);
     const servi = refusUnique === '';
-    const n = trois.suivi.demandes.length;
-    let pretApres = false;
-    if (dit) {
-      await trois.page.click('#confirmErr [data-rechoisir]');
-      await attendre(trois.page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
-      pretApres = await attendre(trois.page, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone.is-busy'), 15000);
-      await calme(trois.page);
-    }
     const apres = demandesDeLaFormule(trois.suivi, n, 'f4');
     const p = await lireProgramme(trois.page);
+    const scene = await sceneActive(trois.page);
     ok(Boolean(pret && pris && contact && recap) && servi, 'MONTAGE la Formule 4 aux arcades jusqu au recapitulatif : la confirmation part et recoit le refus de la variante', JSON.stringify({ pret, pris, contact, recap, servi }));
-    ok(dit && pretApres && reprend(apres, p),
-      'la confirmation refusee : la phrase du serveur s affiche sous le bouton, « Revoir vos horaires » redemande les horaires pour le contenu de la carte',
-      JSON.stringify({ dit, pretApres, apres: apres.slice(0, 2), lignes: resumeLignes(p) }));
+    ok(revenu && dit && pretApres && scene === 'heures' && reprend(apres, p),
+      'la confirmation refusee : le client revient a ses heures, la phrase du serveur s affiche et les horaires se redemandent pour le contenu de la carte ; le recapitulatif de la variante ne reste pas a l ecran',
+      JSON.stringify({ revenu, dit, pretApres, scene, apres: apres.slice(0, 2), lignes: resumeLignes(p) }));
   } finally {
     refusUnique = '';
     ok(trois.suivi.erreurs.length === 0, '[L] confirmation refusee : aucune erreur JavaScript', trois.suivi.erreurs.slice(0, 3).join(' | '));

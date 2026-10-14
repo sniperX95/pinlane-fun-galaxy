@@ -2929,6 +2929,9 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-stepper__btn:active:not([disabled])::before { background: var(--fg-purple); }
 .fg-stepper__btn[disabled]::before { background: rgba(255, 255, 255, 0.025); }
 .fg-occasion { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
+/* L encart du grand groupe, au premier ecran, est fait de la matiere des
+   champs (voir plus haut) : il suit leur surface, leur filet et leurs angles. */
+.fg-sm-seuil { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
 /* Les options d une activite (duree, parties) : le filet fin et un angle de
    10 px ; choisie, elle garde son aplat et son ombre sarcelle. */
 .fg-pill { border: 1px solid var(--fg-hair-2); border-radius: 10px; background: rgba(255, 255, 255, 0.04); }

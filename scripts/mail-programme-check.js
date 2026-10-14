@@ -182,7 +182,7 @@ async function main() {
     `les arcades posees ont leur heure (${arcLigne.slice(2)}), jamais « à votre rythme »`);
   ok(/- Minigolf Blacklight, à votre rythme/.test(corpsDe(confA)), 'le minigolf, sans heure, se vit a votre rythme');
   const finA = moins(planA.endTime, Math.max(0, Number(planA.bufferMinutes) || 0));
-  ok(corpsDe(confA).includes(`Fin de la visite vers ${finA}.`), `la fin dite est celle du plan sans la marge de l equipe (${planA.endTime} - ${planA.bufferMinutes} min = ${finA})`);
+  ok(corpsDe(confA).includes(`Fin estimée vers ${finA}, à titre indicatif et sans heure de départ imposée.`), `la fin dite est celle du plan sans la marge de l equipe (${planA.endTime} - ${planA.bufferMinutes} min = ${finA}), une estimation et pas une heure de depart`);
   ok([...lignesA, arcLigne].every((l) => corpsDe(rapA).includes(l)), 'le rappel J-2 repete le programme entier', corpsDe(rapA).replace(/\n/g, ' / ').slice(0, 300));
   ok(/le reste se vit à votre rythme/.test(String(confA.note || '')), 'la note dit le rythme quand une activite s y vit', confA.note);
 

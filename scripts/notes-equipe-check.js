@@ -28,6 +28,7 @@ const vm = require('vm');
 const ROOT = path.resolve(__dirname, '..');
 const SOURCES = {
   app: fs.readFileSync(path.join(ROOT, 'assets', 'app-main.js'), 'utf8'),
+  core: fs.readFileSync(path.join(ROOT, 'assets', 'booking-core.js'), 'utf8'),
   db: fs.readFileSync(path.join(ROOT, 'lib', 'database.js'), 'utf8'),
   api: fs.readFileSync(path.join(ROOT, 'api', 'staff-reservations.js'), 'utf8'),
 };
@@ -64,7 +65,10 @@ function verifier(sources) {
       'const notesEquipeBrouillons = new Map();',
       'const notesEquipeOuvertes = new Set();',
       ...['lireNoteEquipeLigne', 'getReservationNotesEquipe', 'getReservationNoteText', 'getReservationNoteParts',
-        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'renderGroupeNotes', 'getReservationValidationTexte', 'getGroupeEncadres'].map((n) => extraire(sources.app, n)),
+        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres'].map((n) => extraire(sources.app, n)),
+      // L encadre de la carte nomme la formule avec la variante achetee
+      // (nomDeLaFormuleAchetee) : booking-core la lit dans le plan du dossier.
+      extraire(sources.core, 'getReservationFormulaChoice'),
     ].join('\n');
     const bac = {
       window: {},

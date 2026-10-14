@@ -90,8 +90,11 @@ const MUTATIONS = {
   dansLeFlux: ['css', '.fg-for__photo { position: absolute; inset: 0;', '.fg-for__photo { position: relative; inset: 0;'],
   voileClair: ['css', 'rgba(5, 5, 5, 0.74) 0%', 'rgba(5, 5, 5, 0.3) 0%'],
   refusAvecPhoto: ['css', '.fg-card.is-refus .fg-for__photo { display: none; }\n', ''],
-  festonCoupe: ['css', '0 0 / 85px 20px round no-repeat', '0 0 / 85px 20px repeat-x'],
+  festonCoupe: ['css', '0 0 / 72px 17px round no-repeat', '0 0 / 72px 17px repeat-x'],
+  guirlandeHaute: ['css', '0 0 / 72px 17px round no-repeat', '0 0 / 85px 20px round no-repeat'],
+  guirlandeLongue: ['css', 'z-index: 2; height: 17px;', 'z-index: 2; height: 20px;'],
   feries: ['meta', 'jours fériés', 'jours feries'],
+  remiseColle: ['css', '.fg-for__price:has(.fg-for__remise) { row-gap: 8px; }\n', ''],
 };
 let mutation = '';
 const lireSource = (f) => fs.readFileSync(path.join(ROOT, 'assets', f), 'utf8').replace(/\r\n/g, '\n');
@@ -196,7 +199,23 @@ async function lireCartes(page) {
         const r = c.getBoundingClientRect();
         const rp = ph ? ph.getBoundingClientRect() : null;
         const nom = c.querySelector('.fg-card__name');
+        // La boite du TEXTE du nom (la police deborde au-dessus de sa ligne) :
+        // c est elle que le contraste mesure, pixel par pixel.
+        const tn = nom && Array.from(nom.childNodes).find((x) => x.nodeType === 3 && x.textContent.trim());
+        let hautNom = null;
+        if (tn) { const rg = document.createRange(); rg.selectNodeContents(tn); const b = rg.getClientRects()[0]; hautNom = b ? b.top - r.top : null; }
         const remise = c.querySelector('.fg-for__remise');
+        // La pastille et la boite du TEXTE du prix (la police deborde sous sa
+        // ligne) : un fond sarcelle dans cette boite devient son pixel le
+        // plus clair.
+        const prixTexte = c.querySelector('.fg-for__price b');
+        const tp = prixTexte && Array.from(prixTexte.childNodes).find((x) => x.nodeType === 3 && x.textContent.trim());
+        let remiseTouche = false;
+        if (remise && tp) {
+          const rg = document.createRange(); rg.selectNodeContents(tp);
+          const p = remise.getBoundingClientRect();
+          remiseTouche = Array.from(rg.getClientRects()).some((b) => p.top < b.bottom - 0.5 && p.bottom > b.top + 0.5 && p.left < b.right - 0.5 && p.right > b.left + 0.5);
+        }
         const debord = Array.from(c.querySelectorAll('*')).filter((e) => e.getClientRects().length && getComputedStyle(e).position !== 'absolute')
           .some((e) => { const x = e.getBoundingClientRect(); return x.right > r.right + 0.5 || x.left < r.left - 0.5; });
         return {
@@ -207,6 +226,8 @@ async function lireCartes(page) {
           avantFond: avant.backgroundImage,
           avantRepetition: avant.backgroundRepeat,
           avantHauteur: parseFloat(avant.height) || 0,
+          avantTaille: avant.backgroundSize,
+          hautNom,
           hautInterne: parseFloat(cs.paddingTop),
           lignes: Array.from(c.querySelectorAll('.fg-for__list li')).map((li) => li.textContent),
           photo: img ? img.getAttribute('src') : '',
@@ -216,6 +237,7 @@ async function lireCartes(page) {
           voileMin: voile ? Math.min(...(voile.match(/rgba?\([^)]+\)/g) || ['rgba(0,0,0,0)']).map(alpha)) : null,
           texteZ: nom ? { position: getComputedStyle(nom.parentElement).position, z: getComputedStyle(nom.parentElement).zIndex } : null,
           remise: remise ? remise.textContent : '',
+          remiseTouche,
           hauteur: r.height,
           debord,
         };
@@ -247,6 +269,12 @@ function verifierFete(familles, largeur) {
   const enTrop = autres.flatMap((f) => f.cartes).filter((c) => c.fete || /svg/.test(c.avantFond));
   ok(enTrop.length === 0, 'aucune autre formule ne porte de guirlande', enTrop.map((c) => c.id).join(' '));
   ok(anniv.cartes.every((c) => /^round/.test(c.avantRepetition)), 'la tuile se repete « round » : jamais un feston coupe au bord', [...new Set(anniv.cartes.map((c) => c.avantRepetition))].join(' | '));
+  // Le dessin de la tuile garde sa hauteur : une guirlande plus haute que sa
+  // case serait coupee, plus basse que son dessin, ecrasee.
+  const hautTuile = (c) => { const m = /([\d.]+)px\s+([\d.]+)px/.exec(c.avantTaille || ''); return m ? Number(m[2]) : NaN; };
+  ok(anniv.cartes.every((c) => Math.abs(hautTuile(c) - c.avantHauteur) < 0.5), 'la tuile a la hauteur de sa case : rien de coupe, rien d ecrase', `${anniv.cartes[0].avantTaille} dans ${anniv.cartes[0].avantHauteur} px`);
+  const touche = anniv.cartes.filter((c) => !(c.hautNom !== null && c.hautNom >= c.avantHauteur + 0.5));
+  ok(touche.length === 0, 'la guirlande s arrete avant la boite du texte du nom (sinon un fanion devient son pixel le plus clair)', touche.map((c) => `${c.id} nom a ${c.hautNom && c.hautNom.toFixed(1)} px, guirlande jusqu a ${c.avantHauteur} px`).join(' ; ') || `nom a ${anniv.cartes[0].hautNom.toFixed(1)} px, guirlande jusqu a ${anniv.cartes[0].avantHauteur} px`);
   const base = autres.flatMap((f) => f.cartes)[0].hautInterne;
   ok(anniv.cartes.every((c) => Math.abs(c.hautInterne - (base + 9)) < 0.5), 'la guirlande prend 9 px en haut, rien d autre', `${anniv.cartes[0].hautInterne} px contre ${base} px`);
 }
@@ -295,6 +323,8 @@ function verifierRemise(familles, meta, largeur) {
   const faux = speciales.filter((c) => sansEspaces(c.remise) !== attendue(parId[c.id] || {}));
   ok(faux.length === 0, 'une offre speciale dit sa remise au pourcent pres, et rien sans ancien prix', faux.map((c) => `${c.id} « ${sansEspaces(c.remise)} » au lieu de « ${attendue(parId[c.id] || {})} »`).join(' ; ') || speciales.map((c) => `${c.id} ${sansEspaces(c.remise) || '-'}`).join(' '));
   ok(anniv && anniv.cartes.length > 0 && anniv.cartes.every((c) => !c.remise), 'un anniversaire ne porte jamais de remise', anniv ? anniv.cartes.filter((c) => c.remise).map((c) => c.id).join(' ') : '');
+  const colles = speciales.filter((c) => c.remiseTouche);
+  ok(colles.length === 0, 'la pastille ne touche jamais la boite du texte du prix (sinon son fond devient le pixel le plus clair du prix)', colles.map((c) => c.id).join(' '));
 }
 function verifierDebord(familles, page, largeur, scroll) {
   section(`H. RIEN NE DEBORDE (${largeur} px)`);
@@ -406,12 +436,15 @@ async function contreEpreuves(browser, mock, meta) {
   const empreintes = ['fungalaxy-booking.js', 'fungalaxy-booking.css'].map((f) => fs.readFileSync(path.join(ROOT, 'assets', f), 'utf8'));
   await contreEpreuve('fete', 'sans la famille des anniversaires reconnue, la guirlande disparait', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
   await contreEpreuve('festonCoupe', 'repetee sans « round », la guirlande coupe un feston au bord', () => parcoursComplet(browser, mock, 1440, meta, { seulement: ['A'] }));
+  await contreEpreuve('guirlandeHaute', 'la guirlande a sa taille d avant (20 px) touche le nom', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
+  await contreEpreuve('guirlandeLongue', 'une case plus haute que la tuile', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['A'] }));
   await contreEpreuve('repete', 'sans la seconde photo, une section montre deux fois la meme', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['B'] }));
   await contreEpreuve('refusAvecPhoto', 'une formule refusee qui garde sa photo', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['B'] }));
   await contreEpreuve('dansLeFlux', 'la photo posee dans le flux rallonge la carte', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['C'] }));
   await contreEpreuve('voileClair', 'un voile plus clair', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['D'] }));
   await contreEpreuve('remiseAnniv', 'la remise posee aussi sur les anniversaires', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['E'] }));
   await contreEpreuve('remiseFausse', 'une remise mal calculee', () => parcoursComplet(browser, mock, 390, meta, { seulement: ['E'] }));
+  await contreEpreuve('remiseColle', 'la pastille collee sous le prix', () => parcoursComplet(browser, mock, 375, meta, { seulement: ['E'] }));
   await contreEpreuve('tot', 'des photos chargees des l arrivee', () => verifierChargement(browser, mock));
   await contreEpreuve('partout', 'les photos de Libramont donnees a tous les centres', () => verifierAutreCentre(browser, mock));
   await contreEpreuve('feries', 'un catalogue qui ecrit « jours feries »', () => verifierFeries(browser, mock));
@@ -427,7 +460,7 @@ async function main() {
   try {
     const meta = await lireMeta();
     if (!ok(Array.isArray(meta.formules) && meta.formules.length > 0, 'MONTAGE le catalogue public est servi')) throw new Error('catalogue');
-    for (const largeur of [390, 1440, 320]) await parcoursComplet(browser, mock, largeur, meta, largeur === 320 ? { seulement: ['C', 'H'] } : {});
+    for (const largeur of [375, 1440, 390, 320]) await parcoursComplet(browser, mock, largeur, meta, largeur === 390 || largeur === 320 ? { seulement: ['C', 'E', 'H'] } : {});
     await verifierChargement(browser, mock);
     await verifierAutreCentre(browser, mock);
     await verifierFeries(browser, mock);

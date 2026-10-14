@@ -3008,7 +3008,9 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
      montre pas sa photo, comme une carte d activite.
    - Les anniversaires portent une guirlande de fanions, une tuile de deux
      festons par carte de telephone (repetee « round » : jamais un feston
-     coupe), aux couleurs de la marque ; elle prend 9 px en haut.
+     coupe), aux couleurs de la marque ; elle prend 9 px en haut, et s arrete
+     avant la boite du nom (la police deborde de 5 px au-dessus de sa ligne :
+     un fanion qui la touchait devenait son pixel le plus clair).
    - Les offres speciales gardent la carte des formules et disent leur
      remise quand le centre affiche un ancien prix. */
 .fg-for__photo { position: absolute; inset: 0; z-index: 0; overflow: hidden; border-radius: calc(var(--fg-r-card) - 1px); pointer-events: none; }
@@ -3021,8 +3023,11 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-card--formule.has-photo .fg-card__name, .fg-card--formule.has-photo .fg-for__price b { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7); }
 .fg-card--formule.is-fete { padding-top: 25px; }
 .fg-card--formule.is-fete .fg-card__box { top: 23px; }
-.fg-card--formule.is-fete::before { content: ""; position: absolute; top: 0; left: 0; right: 0; z-index: 2; height: 20px; border-radius: calc(var(--fg-r-card) - 1px) calc(var(--fg-r-card) - 1px) 0 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 85 20'%3E%3Cpath d='M0 2Q42.5 12 85 2' fill='none' stroke='rgba(255,255,255,0.55)' stroke-width='0.8'/%3E%3Cpath d='M3.39 2.84L13.61 4.76L6.65 13.63Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M16.83 5.25L27.17 6.42L21.1 13.79Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M30.3 6.66L40.7 7.07L35.11 16.86Z' fill='%23e3b341' stroke='%23e3b341' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M43.8 7.07L54.2 6.7L49.29 14.88Z' fill='%23f0648c' stroke='%23f0648c' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M57.33 6.47L67.67 5.32L63.6 15.83Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M70.89 4.84L81.11 2.95L77.46 11.76Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Ccircle cx='0' cy='2' r='1.6' fill='rgba(255,255,255,0.75)'/%3E%3Ccircle cx='85' cy='2' r='1.6' fill='rgba(255,255,255,0.75)'/%3E%3C/svg%3E") 0 0 / 85px 20px round no-repeat; pointer-events: none; }
+.fg-card--formule.is-fete::before { content: ""; position: absolute; top: 0; left: 0; right: 0; z-index: 2; height: 17px; border-radius: calc(var(--fg-r-card) - 1px) calc(var(--fg-r-card) - 1px) 0 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 85 20'%3E%3Cpath d='M0 2Q42.5 12 85 2' fill='none' stroke='rgba(255,255,255,0.55)' stroke-width='0.8'/%3E%3Cpath d='M3.39 2.84L13.61 4.76L6.65 13.63Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M16.83 5.25L27.17 6.42L21.1 13.79Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M30.3 6.66L40.7 7.07L35.11 16.86Z' fill='%23e3b341' stroke='%23e3b341' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M43.8 7.07L54.2 6.7L49.29 14.88Z' fill='%23f0648c' stroke='%23f0648c' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M57.33 6.47L67.67 5.32L63.6 15.83Z' fill='%23c25ec2' stroke='%23c25ec2' stroke-width='1.3' stroke-linejoin='round'/%3E%3Cpath d='M70.89 4.84L81.11 2.95L77.46 11.76Z' fill='%2367baac' stroke='%2367baac' stroke-width='1.3' stroke-linejoin='round'/%3E%3Ccircle cx='0' cy='2' r='1.6' fill='rgba(255,255,255,0.75)'/%3E%3Ccircle cx='85' cy='2' r='1.6' fill='rgba(255,255,255,0.75)'/%3E%3C/svg%3E") 0 0 / 72px 17px round no-repeat; pointer-events: none; }
 .fg-for__remise { align-self: center; padding: 2px 7px; border-radius: 6px; background: var(--fg-teal); color: #04110f; font-size: 11px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.4; font-variant-numeric: tabular-nums; }
+/* Passee sous le prix au telephone, la pastille ne touche pas la boite du
+   texte du prix (la police deborde de 6 px sous sa ligne). */
+.fg-for__price:has(.fg-for__remise) { row-gap: 8px; }
 @media (max-width: 560px) {
   .fg-card--formule.is-fete { padding-top: 22px; }
   .fg-card--formule.is-fete .fg-card__box { top: 20px; }

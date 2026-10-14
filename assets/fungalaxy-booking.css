@@ -21,14 +21,14 @@
    ========================================================================== */
 
 :root {
-  --fg-bg: #050505;
-  --fg-bg-2: #0b0b0b;
-  --fg-card: #0a0a0a;
-  --fg-line: #262626;
-  --fg-line-2: #3a3a3a;
+  --fg-bg: #09070b;
+  --fg-bg-2: #120f14;
+  --fg-card: #0f0c11;
+  --fg-line: #2a252d;
+  --fg-line-2: #3c3540;
   --fg-text: #ffffff;
-  --fg-muted: #b3b3b3;
-  --fg-faint: #7c7c7c;
+  --fg-muted: #b9b1bd;
+  --fg-faint: #887f8c;
   --fg-purple: #944292;
   --fg-purple-2: #b04fb0;
   --fg-purple-ink: #d98ad4;
@@ -219,7 +219,7 @@ html.fg-pilote .fg { overflow: visible; }
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(5, 5, 5, 0.96) 0%, rgba(5, 5, 5, 0.72) 32%, rgba(5, 5, 5, 0.35) 62%, rgba(5, 5, 5, 0.15) 100%);
+  background: linear-gradient(90deg, rgba(9, 7, 11, 0.96) 0%, rgba(9, 7, 11, 0.72) 32%, rgba(9, 7, 11, 0.35) 62%, rgba(9, 7, 11, 0.15) 100%);
 }
 .fg-art::before {
   content: "";
@@ -239,7 +239,7 @@ html.fg-pilote .fg { overflow: visible; }
   clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
 }
 .fg-scene--split .fg-art::after {
-  background: linear-gradient(90deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.05) 45%, rgba(5, 5, 5, 0.25) 100%);
+  background: linear-gradient(90deg, rgba(9, 7, 11, 0.55) 0%, rgba(9, 7, 11, 0.05) 45%, rgba(9, 7, 11, 0.25) 100%);
 }
 .fg-scene--split .fg-art::before {
   background:
@@ -253,7 +253,7 @@ html.fg-pilote .fg { overflow: visible; }
   clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
 }
 .fg-scene--split.fg-scene--art-left .fg-art::after {
-  background: linear-gradient(270deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.05) 45%, rgba(5, 5, 5, 0.25) 100%);
+  background: linear-gradient(270deg, rgba(9, 7, 11, 0.55) 0%, rgba(9, 7, 11, 0.05) 45%, rgba(9, 7, 11, 0.25) 100%);
 }
 .fg-scene--split.fg-scene--art-left .fg-art::before {
   background:
@@ -263,7 +263,7 @@ html.fg-pilote .fg { overflow: visible; }
 
 /* Scene pleine photo : le contenu passe dessus (maquettes 2 et 3). */
 .fg-scene--full .fg-art::after {
-  background: linear-gradient(90deg, rgba(5, 5, 5, 0.94) 0%, rgba(5, 5, 5, 0.86) 40%, rgba(5, 5, 5, 0.55) 75%, rgba(5, 5, 5, 0.4) 100%);
+  background: linear-gradient(90deg, rgba(9, 7, 11, 0.94) 0%, rgba(9, 7, 11, 0.86) 40%, rgba(9, 7, 11, 0.55) 75%, rgba(9, 7, 11, 0.4) 100%);
 }
 /* Contenu centre (heures, fin) : le voile descend de 0,55 a 0,94, et un
    second voile de 0,55 couvre une COLONNE de 700 px au milieu, la ou passent
@@ -273,8 +273,8 @@ html.fg-pilote .fg { overflow: visible; }
    les cotes, la photo reste aussi visible qu avant. */
 .fg-scene--full.fg-scene--center .fg-art::after {
   background:
-    linear-gradient(90deg, rgba(5, 5, 5, 0) calc(50% - 490px), rgba(5, 5, 5, 0.55) calc(50% - 350px), rgba(5, 5, 5, 0.55) calc(50% + 350px), rgba(5, 5, 5, 0) calc(50% + 490px)),
-    linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.78) 45%, rgba(5, 5, 5, 0.94) 100%);
+    linear-gradient(90deg, rgba(9, 7, 11, 0) calc(50% - 490px), rgba(9, 7, 11, 0.55) calc(50% - 350px), rgba(9, 7, 11, 0.55) calc(50% + 350px), rgba(9, 7, 11, 0) calc(50% + 490px)),
+    linear-gradient(180deg, rgba(9, 7, 11, 0.55) 0%, rgba(9, 7, 11, 0.78) 45%, rgba(9, 7, 11, 0.94) 100%);
 }
 
 .fg-scene__body {
@@ -1057,7 +1057,7 @@ html.fg-pilote .fg { overflow: visible; }
    photo reste vive derriere l icone. Avec l ancien degrade lineaire, un prix
    sur deux lignes tombait a 3,3:1 sur une photo claire, et sur telephone le
    nom lui-meme passait sous 4,5:1. */
-.fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%); }
+.fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(9, 7, 11, 0.3) 0%, rgba(9, 7, 11, 0.82) 34%, rgba(9, 7, 11, 0.92) 100%); }
 @media (hover: hover) {
   .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }
   .fg-card:hover .fg-card__photo { opacity: 1; }
@@ -1500,8 +1500,10 @@ html.fg-pilote .fg { overflow: visible; }
   height: 54px;
   padding: 0 12px;
   border-radius: var(--fg-radius);
-  border: 1.5px solid var(--fg-line-2);
-  background: rgba(10, 10, 10, 0.8);
+  /* Passe premium (2026-10-14) : la surface levee du programme et un filet
+     fin, comme ses lignes ; les heures a probleme gardent 1,5 px. */
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.03);
   line-height: 1.05;
   transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s, color 0.2s;
 }
@@ -1533,7 +1535,7 @@ html.fg-pilote .fg { overflow: visible; }
    un contour en tirets de la teinte de SA ligne d explication sous la
    grille (data-teinte) ; deux problemes d une meme plage n ont jamais la
    meme teinte. Gris tant que la ligne n est pas ecrite. */
-.fg-chip.is-soft, .fg-chip.is-shift, .fg-chip.is-off { border-style: dashed; border-color: rgba(255, 255, 255, 0.36); }
+.fg-chip.is-soft, .fg-chip.is-shift, .fg-chip.is-off { border-style: dashed; border-color: rgba(255, 255, 255, 0.36); border-width: 1.5px; }
 .fg-chip:is(.is-soft, .is-shift, .is-off)[data-teinte] { border-color: var(--teinte); }
 @media (hover: hover) { .fg-chip:is(.is-soft, .is-shift, .is-off)[data-teinte]:hover { border-style: solid; } }
 .fg-chip[data-teinte="0"], .fg-why-list__item[data-teinte="0"] { --teinte: var(--fg-amber); }
@@ -2165,7 +2167,7 @@ html.fg-pilote .fg { overflow: visible; }
   }
   .fg-scene--split.fg-scene--art-left .fg-art { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 78%); }
   .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after {
-    background: linear-gradient(180deg, rgba(5, 5, 5, 0.1) 0%, rgba(5, 5, 5, 0.75) 100%);
+    background: linear-gradient(180deg, rgba(9, 7, 11, 0.1) 0%, rgba(9, 7, 11, 0.75) 100%);
   }
   /* En colonne etroite, la photo est une bande : ses quatre bords s eteignent
      vers le fond de la page, sinon elle dessine un rectangle dans l hote. */
@@ -2175,7 +2177,7 @@ html.fg-pilote .fg { overflow: visible; }
       linear-gradient(90deg, var(--fg-bg) 0%, transparent 16%, transparent 84%, var(--fg-bg) 100%);
   }
   .fg-scene--split .fg-scene__body, .fg-scene--split.fg-scene--art-left .fg-scene__body { padding-left: var(--fg-gutter); padding-right: var(--fg-gutter); padding-top: 10px; }
-  .fg-scene--full .fg-art::after { background: linear-gradient(180deg, rgba(5, 5, 5, 0.9) 0%, rgba(5, 5, 5, 0.94) 100%); }
+  .fg-scene--full .fg-art::after { background: linear-gradient(180deg, rgba(9, 7, 11, 0.9) 0%, rgba(9, 7, 11, 0.94) 100%); }
   /* Sur telephone, la carte passe dans le flux, entre la photo et le
      formulaire, repliee sous sa ligne de resume : le bouton la deplie. */
   .fg-recall { float: none; width: auto; margin: 0 var(--fg-gutter) 22px; box-shadow: none; }
@@ -2841,3 +2843,118 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   .fg-etape__corps { transition: none; }
   .fg-etape__heure.is-maj { animation: none; }
 }
+
+/* =============================================================================
+   LA PASSE PREMIUM (Movsar, 2026-10-14 : « le formulaire de reservation il est
+   trop cheap » ; « Meme formulaire, en premium » ; le pire, a ses yeux :
+   cartes et boutons, texte et typo, l ecran des heures). Meme structure, memes
+   couleurs de marque, memes choix valides : le bouton d action garde son aplat
+   violet, son ombre sarcelle decalee et ses angles de 6 px ; une option
+   choisie garde son aplat et son ombre sarcelle ; l heure choisie reste un
+   aplat violet sans ombre ; « Votre visite » garde ses aplats.
+   Ce qui change, d un ecran a l autre :
+   - le noir de la page et les gris prennent la teinte de la marque (jetons
+     en tete de feuille, voiles des photos) ;
+   - les cartes, les champs et les heures se levent du fond : une surface un
+     cran plus claire que la page, un filet fin et une lumiere par le haut, au
+     lieu du noir sur noir cerne d un gris de 1,5 px ;
+   - une seule echelle d angles : 16 px les cartes, 12 px les champs, les
+     heures, les plages et les onglets, 10 px les options, 8 px les
+     etiquettes, 6 px le bouton d action ;
+   - le compteur : deux boutons poses dans son champ, plus de cases ;
+   - les chiffres (prix, heures, nombre de joueurs) en chasse fixe ;
+   - la case touchee s enfonce un instant, jamais sous mouvement reduit ;
+   - aucun mot seul en fin de ligne.
+   ========================================================================== */
+:root {
+  --fg-surface: #151118;
+  --fg-surface-2: #1b161e;
+  --fg-hair: rgba(255, 255, 255, 0.075);
+  --fg-hair-2: rgba(255, 255, 255, 0.14);
+  --fg-lift: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --fg-on-line: rgba(194, 94, 194, 0.85);
+  --fg-on-surface: #1f1022;
+  --fg-r-card: 16px;
+  --fg-r-ctl: 12px;
+  --fg-press: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Les cartes (activites, formules) : levees du fond, un filet fin, une ombre
+   longue et douce sous elles. Cochee : le filet violet, la surface teintee. */
+.fg-card { border: 1px solid var(--fg-hair); border-radius: var(--fg-r-card); background: var(--fg-surface); box-shadow: var(--fg-lift), 0 14px 34px -26px rgba(0, 0, 0, 0.95); }
+@media (hover: hover) {
+  .fg-card:hover { border-color: var(--fg-hair-2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 20px 44px -26px rgba(0, 0, 0, 0.95); }
+}
+.fg-card.is-on { border-color: var(--fg-on-line); background: var(--fg-on-surface); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 14px 34px -26px rgba(0, 0, 0, 0.95); }
+/* La bande sous la carte et le tiroir des options : la meme surface, un cran
+   plus claire, et les memes angles. */
+.fg-grid__item > .fg-card__info { border: 1px solid var(--fg-hair); border-top: 0; border-radius: 0 0 var(--fg-r-card) var(--fg-r-card); background: var(--fg-surface-2); }
+.fg-grid__item.is-on > .fg-card__info { border-color: var(--fg-on-line); }
+.fg-grid--for .fg-grid__item.is-on > .fg-card__info { border-radius: 0 0 var(--fg-r-card) var(--fg-r-card); }
+:is(#gridAct,#smGridAct) > .fg-grid__item > .fg-card__info { border-radius: 0 0 var(--fg-r-card) var(--fg-r-card); }
+:is(#gridAct,#smGridAct) > .fg-grid__item.is-on > .fg-card__info { border-radius: 0; }
+:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card__info { border: 0; background: none; }
+:is(#gridAct,#smGridAct) > .fg-grid__item:not(.is-on) > .fg-card { border-bottom-left-radius: var(--fg-r-card); border-bottom-right-radius: var(--fg-r-card); }
+.fg-card__optbox { border: 1px solid var(--fg-on-line); border-top: 1px solid var(--fg-hair); border-radius: 0 0 var(--fg-r-card) var(--fg-r-card); background: var(--fg-surface-2); }
+.fg-card-select svg { border-color: var(--fg-hair-2); border-radius: 6px; }
+.fg-card__box { border-width: 1px; border-color: var(--fg-hair-2); border-radius: 6px; }
+.fg-card--formule .fg-card__box { border-radius: 50%; }
+
+/* La formule : son nom dans la lettre des titres (« FORMULE 1 » est ecrit en
+   capitales au catalogue : en Anton, c est une enseigne, plus un cri), ses
+   conditions en etiquettes fines. */
+.fg-card--formule .fg-card__name { font-family: var(--fg-display); font-size: 23px; font-weight: 400; letter-spacing: 0.02em; line-height: 1.05; }
+.fg-for__list li { color: #d2cad6; }
+.fg-for__rules i { border: 1px solid var(--fg-hair-2); border-radius: 8px; background: rgba(255, 255, 255, 0.03); }
+
+/* Les champs, le jour, le compteur, les occasions : la surface levee, le filet
+   fin, les angles des champs. L ombre exterieure transparente reste en tete
+   (voir les controles plus haut) : l anneau de focus s y interpole. */
+.fg-input, .fg-day__btn, .fg-stepper { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); box-shadow: 0 0 0 transparent, var(--fg-lift); }
+@media (hover: hover) {
+  .fg-input:hover:not(:focus), .fg-day__btn:hover:not([aria-expanded="true"]) { border-color: rgba(255, 255, 255, 0.26); }
+}
+/* Le compteur : moins et plus sont deux boutons poses dans le champ (44 px de
+   haut, angles concentriques a ceux du champ), le nombre entre eux, sans
+   cases ni separateurs. */
+.fg-stepper__btn, .fg-stepper__btn:last-child { margin: 5px; border: 0; border-radius: 7px; background: rgba(255, 255, 255, 0.06); }
+@media (hover: hover) { .fg-stepper__btn:hover { background: rgba(148, 66, 146, 0.32); } }
+.fg-stepper__btn:active:not([disabled]) { background: var(--fg-purple); }
+.fg-stepper__btn[disabled] { background: rgba(255, 255, 255, 0.025); }
+.fg-occasion { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
+/* Les options d une activite (duree, parties) : le filet fin et un angle de
+   10 px ; choisie, elle garde son aplat et son ombre sarcelle. */
+.fg-pill { border: 1px solid var(--fg-hair-2); border-radius: 10px; background: rgba(255, 255, 255, 0.04); }
+.fg-pill.is-on { border-color: var(--fg-purple); }
+/* Activites ou formules : un rail leve, la pastille violette qui glisse. */
+.fg-tabs { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
+.fg-tab, .fg-tabs__bar { border-radius: 8px; }
+.fg-btn--ghost { border: 1px solid var(--fg-hair-2); background: rgba(21, 17, 24, 0.88); }
+
+/* L ecran des heures : chaque heure est une case levee, au filet fin, aux
+   angles des champs ; les plages prennent le meme angle. L anneau de l heure
+   touchee suit (2 px hors de la case, filet de 1 px). */
+.fg-chip { border-radius: var(--fg-r-ctl); border-color: var(--fg-hair-2); background: rgba(255, 255, 255, 0.045); }
+.fg-chip.is-on { border-color: var(--fg-purple); background: var(--fg-purple); }
+.fg-chip.is-proposed { border-color: var(--fg-teal); }
+.fg-chip.is-off { background: transparent; }
+.fg-chip.is-pending::after, .fg-chip.is-pose::after { inset: -3px; border-radius: calc(var(--fg-r-ctl) + 2px); }
+.fg-period { border-radius: var(--fg-r-ctl); }
+
+/* Les chiffres en chasse fixe la ou ils changent ou s alignent en colonnes :
+   les heures, les prix des options, le nombre de joueurs. Pas le prix d une
+   carte : plus larges, ses chiffres renvoyaient « 10 joueurs » a la ligne. */
+.fg-chip b, .fg-pill small, .fg-stepper__value, .fg-stepper__value input { font-variant-numeric: tabular-nums; }
+
+/* La case touchee s enfonce un instant (0,97, 160 ms) : le formulaire a
+   entendu. Jamais sous mouvement reduit. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-chip { transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s, color 0.2s, transform 0.16s var(--fg-press); }
+  .fg-chip:active:not(.is-off), .fg-pill:active, .fg-tab:active { transform: scale(0.97); }
+}
+
+/* Aucun mot seul en fin de ligne dans les textes de plusieurs lignes. Pas le
+   prix d une carte : equilibre, « 100 € · 10 joueurs · 2 joueurs minimum »
+   passait de deux lignes a trois. */
+.fg-card__rot, .fg-for__list li, .fg-for__off, .fg-etape__quoi small, .fg-why-list__item span,
+.fg-visit__span, .fg-visit__step > small, .fg-quand__dit, .fg-field__hint, .fg-confirm__note, .fg-libre__action small { text-wrap: pretty; }

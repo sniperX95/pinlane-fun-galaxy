@@ -665,8 +665,26 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // Plafonds : 325 Ko a analyser, 95 Ko a transferer, soit 13,4 et 5,8 Ko de
 // marge, la meme regle que le 07/10 : une police (20 Ko compresses) ou une
 // bibliotheque font toujours sauter l un et l autre.
-const BUDGET_SERVI = 325 * 1024;
-const BUDGET_TRANSFERE = 95 * 1024;
+// REDERIVE LE 2026-10-14, apres les retours de Movsar sur les formules (une
+// heure par partie de laser, l avance plus douce d une ligne a la suivante,
+// « venir quand meme » quand une heure est complete). Base production 5de2e61
+// contre l arbre, memes trois fichiers passes par le build, brotli qualite 3 :
+// 319,4 -> 326,8 Ko servis (+7,4) ; 92,4 -> 94,6 Ko transferes (+2,2, environ
+// 46 ms a 400 kbit/s). Poids mort cherche AVANT de toucher au chiffre : une
+// regle orpheline retiree (.fg-stepper__unit, plus produite depuis 4541321) ;
+// les 407 fonctions nommees sont toutes citees, les autres classes citees ou
+// construites par morceaux. Mesure A/B (fungalaxy-form-perf-bench, formulaire
+// embarque, processeur ralenti 6 fois, 5 passages alternes par appareil,
+// machine chargee par un rendu d une autre session) : telephone, taches
+// 17 554 -> 16 950 ms, longues taches 2 674 -> 2 639 ms, images perdues
+// 113 -> 104 ; tablette, taches 16 380 -> 18 894 ms, longues taches 2 623 ->
+// 3 197 ms, images perdues 92 -> 114, mais les passages d une meme version
+// vont de 2 249 a 5 098 ms (prod) et de 2 597 a 4 065 ms (lot), le lot plus
+// lent sur 3 paires sur 5 : pas de surcout constant. Plafonds : 340 Ko a
+// analyser, 100 Ko a transferer, soit 13,2 et 5,4 Ko de marge : une police
+// (20 Ko compresses) ou une bibliotheque font toujours sauter l un et l autre.
+const BUDGET_SERVI = 340 * 1024;
+const BUDGET_TRANSFERE = 100 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {

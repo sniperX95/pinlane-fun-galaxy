@@ -815,7 +815,6 @@ html.fg-pilote .fg { overflow: visible; }
 @keyframes fg-pax-down { 0% { transform: translateY(-80%); opacity: 0; } 100% { transform: none; opacity: 1; } }
 .fg-stepper__input::-webkit-outer-spin-button, .fg-stepper__input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .fg-stepper__input:focus { outline: none; }
-.fg-stepper__unit { font-size: 15px; font-weight: 600; color: var(--fg-muted); }
 
 /* Case a cocher. */
 .fg-check {

@@ -40,7 +40,10 @@ const MIME = {
 // Le samedi des gates : le premier a venir hors vacances scolaires et feries
 // (scripts/jour-de-test.js). Le premier samedi venu tombait dans le conge
 // d automne, et les formules « hors vacances » s y refusaient.
-const DATE = require('./jour-de-test').jourDeTest({ jour: 6 });
+// Un gate peut lui donner le sien (PINLANE_DEVTUNNEL_DATE, AAAA-MM-JJ) :
+// formules-arrivee-form lui passe celui ou les Formules 1 a 4 se vendent.
+// Sans la variable, celui de jour-de-test.
+const DATE = /^\d{4}-\d{2}-\d{2}$/.test(String(process.env.PINLANE_DEVTUNNEL_DATE || '')) ? String(process.env.PINLANE_DEVTUNNEL_DATE) : require('./jour-de-test').jourDeTest({ jour: 6 });
 const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 // LES HORAIRES RETENUS, EN MEMOIRE (en prod : table slot_holds, migration

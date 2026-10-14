@@ -21,7 +21,8 @@
 //       arriver a l heure du bowling, la visite dit « à l’ouverture » ; le
 //       bowling pose a 10:30, la borne dit 10:20, « 10 min avant votre
 //       bowling » ;
-//   [C] la ligne des arcades (Formules 1, 2, 3, jamais 4) : « Facultatif »,
+//   [C] la ligne des arcades (Formules 1, 2, 3 ; la 4 seulement avec sa
+//       variante aux arcades, [J]) : « Facultatif »,
 //       en petit, ne s ouvre pas seule, ses heures (arcades=1) ne se
 //       demandent qu a son ouverture, sans arrivee ni heure d arcade, de
 //       l ouverture a la fermeture ; une heure sur le bowling pose dit ce
@@ -68,10 +69,27 @@
 //       heures et le blocage la portent ; l ecran des heures, la visite et
 //       le recapitulatif disent ses arcades, aucun laser ; revenir a « 2
 //       parties de Laser Game » rend les lignes de laser et des demandes
-//       sans variante.
+//       sans variante. La variante touchee se dit, la fiche (i) de la carte
+//       la dit ; le panier d une carte « en plus » (joue a part, sans
+//       navigateur) garde la variante de sa formule, jamais celle d une
+//       autre ;
+//   [K] les variantes que le centre ou le jour ne jouent pas, telles que le
+//       vrai code du serveur les dit (api/public-booking-meta) : le laser
+//       coupe au centre ou bloque ce jour-la, la Formule 4 reste, avec ses
+//       arcades seulement, sans pastille, et ses demandes les portent ; le
+//       laser et les arcades bloques, elle se grise ;
+//   [L] une variante que le serveur refuse (409, formula_choice_unavailable)
+//       sur les heures, le blocage ou la confirmation : la phrase du
+//       serveur s affiche, la variante sort de la carte et les horaires se
+//       redemandent pour le contenu de la carte.
 //   --mutate : une regle cassee a la fois, en memoire (le formulaire servi au
 //       navigateur, ou le moteur compile pour le serveur) : chacune doit faire
 //       rougir le gate ; le disque n est jamais ecrit, et on le verifie.
+//
+// Le jour joue : le premier samedi a venir ou les Formules 1 a 4 se vendent
+// (ni vacances scolaires ni ferie), donne au serveur de dev
+// (PINLANE_DEVTUNNEL_DATE). Le samedi suivant tombait le 17/10, dans le conge
+// d automne.
 //
 // Lancement : node scripts/formules-arrivee-form-check.js [--mutate]
 
@@ -80,6 +98,7 @@ const http = require('http');
 const path = require('path');
 const Module = require('module');
 const { spawnSync } = require('child_process');
+const { Readable } = require('stream');
 
 // Aucune base, aucun envoi : seuls les NOMS des variables sont lus.
 for (const cle of Object.keys(process.env)) {
@@ -213,6 +232,40 @@ const MUTATIONS = [
     de: '      const variante = varianteDemandee(formuleId, choixFormule);', vers: '      const variante = null;' },
   { nom: 'le moteur ignore la variante de la demande', fichier: 'lib/ops-engine.js', scenarios: ['J'],
     de: '  const avecChoix = formuleAvecChoix(rawFormula, varianteDemandee(rawFormula && rawFormula.id, preference.formulaChoice));', vers: '  const avecChoix = rawFormula;' },
+  { nom: 'la fiche (i) dit la carte, pas la variante choisie', fichier: JS, scenarios: ['J'],
+    de: 'actualisationInfo.innerHTML = htmlInfoFormule(avecVariante(formuleInfo));', vers: 'actualisationInfo.innerHTML = htmlInfoFormule(formuleInfo);' },
+  { nom: 'le choix d une variante ne se dit pas', fichier: JS, scenarios: ['J'],
+    de: "    dire(f.name + ', avec ' + liste[rang].label + '.');", vers: '    void 0;' },
+  { nom: 'la copie du panier oublie la variante', fichier: JS, scenarios: ['J'],
+    de: 'formuleId: state.formuleId, choix: state.choix };', vers: 'formuleId: state.formuleId };' },
+  { nom: 'une carte vers une autre formule garde la variante de la premiere', fichier: JS, scenarios: ['J'],
+    de: "if (carte.formuleId !== c.formuleId) c.choix = ''; ", vers: '' },
+  { nom: 'le panier propose se juge avec la variante du moment', fichier: JS, scenarios: ['J'],
+    de: "state.formuleId = c.formuleId; state.choix = c.choix || '';\n    try { return fn(); }", vers: 'state.formuleId = c.formuleId;\n    try { return fn(); }' },
+  { nom: 'le panier accepte garde l ancienne variante', fichier: JS, scenarios: ['J'],
+    de: "state.formuleId = c.formuleId; state.choix = c.choix || '';\n    majVariantes();", vers: 'state.formuleId = c.formuleId;\n    majVariantes();' },
+  // Les variantes que le centre ou le jour ne jouent pas ([K]).
+  { nom: 'une formule dont la carte manque au centre disparait, ses arcades avec', fichier: JS, scenarios: ['K'],
+    de: 'return variantesDe(f).length ? variantesDuCentre(f).length > 0 : !manqueAuCentre(f);', vers: 'return !manqueAuCentre(f);' },
+  { nom: 'le centre ne retire plus les variantes qu il ne joue pas', fichier: JS, scenarios: ['K'],
+    de: 'function variantesDuCentre(f) { return variantesDe(f).filter(function (c) { return !manqueAuCentre(c); }); }', vers: 'function variantesDuCentre(f) { return variantesDe(f); }' },
+  { nom: 'le jour ne retire plus les variantes qu il bloque', fichier: JS, scenarios: ['K'],
+    de: '    return variantesDuCentre(f).filter(function (c) { return refusees.indexOf(c.id) < 0; });', vers: '    return variantesDuCentre(f);' },
+  { nom: 'la Formule 4 se grise des que sa carte ne se joue pas', fichier: JS, scenarios: ['K'],
+    de: 'if (variantesDe(f).length ? !variantesOffertes(f).length : (j.unavailableFormulaIds || []).indexOf(f.id) >= 0)', vers: 'if ((j.unavailableFormulaIds || []).indexOf(f.id) >= 0)' },
+  { nom: 'une seule variante jouable se propose en pastille', fichier: JS, scenarios: ['K'],
+    de: "(v.ok && variantesOffertes(f).length > 1 ? rendreVariantes(f) : '')", vers: "(v.ok && variantesDe(f).length > 1 ? rendreVariantes(f) : '')" },
+  // Une variante que le serveur refuse ([L]).
+  { nom: 'le serveur sert la carte a une variante qu il ne declare pas', fichier: 'api/public-availability.js', scenarios: ['L'],
+    de: '      if (choixInconnu(formuleId, choixFormule)) {', vers: '      if (false) {' },
+  { nom: 'les heures refusees gardent la variante inconnue', fichier: JS, scenarios: ['L'],
+    de: "if (j && j.code === 'formula_choice_unavailable' && oublierVariante()) {", vers: 'if (false) {' },
+  { nom: 'le blocage refuse la variante sans le dire', fichier: JS, scenarios: ['L'],
+    de: "        if (res.statut === 409 && x.code === 'formula_choice_unavailable') return { refus: true, message: x.message || '', code: x.code };\n", vers: '' },
+  { nom: 'le blocage refuse garde la variante', fichier: JS, scenarios: ['L'],
+    de: "        if (r.code === 'formula_choice_unavailable' && oublierVariante()) { variantePerdue(r.message); return; }\n", vers: '' },
+  { nom: 'la confirmation refusee garde la variante', fichier: JS, scenarios: ['L'],
+    de: "        if (res.status === 409 && res.json.code === 'formula_choice_unavailable') {", vers: '        if (false) {' },
 ];
 const MUTATION_PREUVE = '[mutation] servie :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_ARRIVEE_FORM_MUTATION || 0);
@@ -285,6 +338,13 @@ function corpsComparable(corps) {
 // celui du depot.
 // ---------------------------------------------------------------------------
 let reglage = REGLAGE;   // le reglage de la meta (null : la cle absente)
+// La meta du scenario ([K], [L]), retouchee par le vrai code du serveur : un
+// centre sans laser, un jour bloque, une variante que le serveur ne declare
+// pas. null : la meta du serveur de dev telle quelle.
+let retoucheMeta = null;
+// Un refus de la variante, une fois ([L]) : le chemin du blocage ou de la
+// reservation qui repond 409 formula_choice_unavailable. '' : aucun.
+let refusUnique = '';
 function semer(mock) {
   mock.blocagesDev.clear();
   mock.occupationDev.length = 0;
@@ -323,11 +383,33 @@ function serveur(mock) {
             if (reglage) j.center.formulaVisit = { ...reglage };
             else delete j.center.formulaVisit;
           }
+          if (j && retoucheMeta) retoucheMeta(j);
           return fin(JSON.stringify(j), ...reste);
         } catch (error) {
           return fin(corps, ...reste);
         }
       };
+    }
+    // LE REFUS DE LA VARIANTE, une fois ([L]) : le blocage ou la reservation
+    // repond comme le serveur pour une variante qu il ne declare plus. Une
+    // liberation d horaires passe au serveur de dev, telle quelle.
+    if (refusUnique && req.method === 'POST' && url.pathname === refusUnique) {
+      let corps = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => { corps += c; });
+      req.on('end', () => {
+        let lu = null;
+        try { lu = JSON.parse(corps); } catch (error) { lu = null; }
+        if (lu && lu.release === true) {
+          base.emit('request', Object.assign(Readable.from([Buffer.from(corps)]), { url: req.url, method: req.method, headers: req.headers }), res);
+          return;
+        }
+        refusUnique = '';
+        const { CODE_CHOIX_INCONNU, MESSAGE_CHOIX_INCONNU } = require('../lib/formula-choice');
+        res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ ok: false, code: CODE_CHOIX_INCONNU, message: MESSAGE_CHOIX_INCONNU }));
+      });
+      return;
     }
     base.emit('request', req, res);
   });
@@ -367,6 +449,12 @@ async function calme(page) {
 // `avantHeures` : ce que le scenario fait sur la carte choisie, avant
 // « Continuer » (le choix d une variante, [J]).
 async function versHeures(page, mock, formuleId, avantHeures = null) {
+  await versFormules(page, mock);
+  return versLesHeures(page, formuleId, avantHeures);
+}
+// Jusqu aux cartes des formules : le jour, le groupe, l onglet. Vrai quand
+// les cartes sont la.
+async function versFormules(page, mock) {
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   await page.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
   await attendre(page, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
@@ -392,7 +480,10 @@ async function versHeures(page, mock, formuleId, avantHeures = null) {
   await page.click('#goActivities');
   await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
   await page.click('#tabFor');
-  await attendre(page, () => !document.querySelector('#panelFor').hidden && document.querySelectorAll('#gridFor .fg-card').length > 0, 5000);
+  return attendre(page, () => !document.querySelector('#panelFor').hidden && document.querySelectorAll('#gridFor .fg-card').length > 0, 5000);
+}
+// La carte choisie, ce que le scenario y fait, puis l ecran des heures.
+async function versLesHeures(page, formuleId, avantHeures = null) {
   await page.click(`#gridFor .fg-card[data-formule="${formuleId}"]`);
   await page.waitForTimeout(250);
   if (avantHeures) await avantHeures();
@@ -678,7 +769,7 @@ async function scenarioC(browser, mock) {
   try {
     const arrive4 = await versHeures(quatre.page, mock, 'f4');
     const p4 = await lireProgramme(quatre.page);
-    ok(arrive4 && !ligneDe(p4, 'arcade_time') && Boolean(ligneDe(p4, 'bowling')), 'la Formule 4 (sans arcades) n a pas de ligne des arcades', resumeLignes(p4));
+    ok(arrive4 && !ligneDe(p4, 'arcade_time') && Boolean(ligneDe(p4, 'bowling')), 'la Formule 4 et le contenu de sa carte (deux parties de laser, sans arcades) : pas de ligne des arcades', resumeLignes(p4));
   } finally {
     ok(quatre.suivi.erreurs.length === 0, '[C] Formule 4 : aucune erreur JavaScript', quatre.suivi.erreurs.slice(0, 3).join(' | '));
     await quatre.ctx.close();
@@ -1190,8 +1281,56 @@ const pastillesVues = (page, formuleId, voulu) => attendre(page, ({ f, v }) => {
 // Les apostrophes droites ou typographiques se valent.
 const sansApostrophe = (s) => norm(s).replace(/[’']/g, "'");
 const demandesDeLaFormule = (suivi, n, formuleId) => suivi.demandes.slice(n).filter((u) => estPlan(u) && params(u).get('formuleId') === formuleId);
+// LA REGLE DU PROGRAMME, pas ses mots : une liste qui dit les arcades et plus
+// un mot de laser est celle de la variante ; une ligne de laser, celle de la
+// carte.
+const ditLeLaser = (lignes) => (lignes || []).some((l) => /laser/i.test(l));
+const ditLaVariante = (lignes) => (lignes || []).some((l) => /arcade/i.test(l)) && !ditLeLaser(lignes);
+// La carte d une formule : presente, grisee.
+const etatCarte = (page, id) => page.evaluate((f) => {
+  const c = document.querySelector(`#gridFor .fg-card[data-formule="${f}"]`);
+  return { presente: Boolean(c), refus: Boolean(c && c.classList.contains('is-refus')) };
+}, id);
+// LE PANIER D UNE CARTE « EN PLUS » ET LA VARIANTE, joue a part (sans
+// navigateur) : copiePanier, panierDe, avecPanier et appliquerPanier du
+// formulaire servi (casse quand la contre-epreuve le casse), sur un etat de
+// test. Une carte vers une autre formule repart du contenu de sa carte.
+function panierAvecVariante() {
+  const vm = require('vm');
+  let source = fs.readFileSync(path.join(ROOT, JS), 'utf8');
+  if (MUTATION && MUTATION.fichier === JS) { source = muter(source, MUTATION); direPreuve(); }
+  source = source.split('\r\n').join('\n');
+  const bac = { majs: 0 };
+  vm.createContext(bac);
+  vm.runInContext("var state = {}, plus = { acceptees: {}, annuler: null, statut: null }; function majVariantes() { majs += 1; } function cleDemande() { return 'cle'; } function creneauAvecDevis(slot, j) { return { slot: slot, reponse: j }; }", bac);
+  const manquantes = ['copiePanier', 'panierDe', 'avecPanier', 'appliquerPanier'].filter((nom) => {
+    const debut = source.indexOf(`\n  function ${nom}(`);
+    const fin = debut < 0 ? -1 : source.indexOf('\n  }\n', debut + 1);
+    if (fin < 0) return true;
+    vm.runInContext(source.slice(debut + 1, fin + 4), bac);
+    return false;
+  });
+  if (!ok(manquantes.length === 0, 'MONTAGE [J] le panier du formulaire servi, joue a part : copiePanier, panierDe, avecPanier, appliquerPanier', manquantes.join(', '))) return;
+  const jouer = (code) => { const r = vm.runInContext(code, bac); return r === undefined ? null : JSON.parse(JSON.stringify(r)); };
+  jouer("state = { selection: [], options: {}, attente: null, formuleId: 'f4', choix: 'arcade60' }; null");
+  const copie = jouer('copiePanier()');
+  const autre = jouer("panierDe({ kind: 'formule', formuleId: 'f5' })");
+  const meme = jouer("panierDe({ kind: 'formule', formuleId: 'f4' })");
+  const pendant = jouer("avecPanier(Object.assign(copiePanier(), { formuleId: 'f5', choix: 'neuve' }), function () { return [state.formuleId, state.choix]; })");
+  const apres = jouer('[state.formuleId, state.choix]');
+  jouer("appliquerPanier(Object.assign(copiePanier(), { formuleId: 'f5', choix: 'neuve' }), null, 'recap', 'ok', { slots: [{ time: '14:00' }], price: 0 }, { reponse: { price: 0 } }, ''); null");
+  const accepte = jouer('[state.formuleId, state.choix, majs]');
+  ok(Boolean(copie) && copie.choix === 'arcade60', '[J] la copie du panier garde la variante choisie', JSON.stringify(copie));
+  ok(Boolean(autre && meme) && autre.formuleId === 'f5' && autre.choix === '' && meme.choix === 'arcade60',
+    '[J] une carte vers une autre formule repart du contenu de sa carte ; vers la meme, la variante reste', JSON.stringify({ autre, meme }));
+  ok(JSON.stringify(pendant) === JSON.stringify(['f5', 'neuve']) && JSON.stringify(apres) === JSON.stringify(['f4', 'arcade60']),
+    '[J] le panier propose se juge avec sa propre variante, puis le panier du client revient tel quel', JSON.stringify({ pendant, apres }));
+  ok(Array.isArray(accepte) && accepte[0] === 'f5' && accepte[1] === 'neuve' && accepte[2] > 0,
+    '[J] le panier accepte devient celui du client, sa variante comprise, et les pastilles se redessinent', JSON.stringify(accepte));
+}
 async function scenarioJ(browser, mock) {
   section('J. LA FORMULE 4 AU CHOIX : 60 MIN D ARCADES A LA PLACE DES DEUX LASERS');
+  panierAvecVariante();
   semer(mock);
   const { ctx, page, suivi } = await ouvrir(browser);
   try {
@@ -1203,6 +1342,16 @@ async function scenarioJ(browser, mock) {
       await page.click('#gridFor [data-choix="arcade60"]');
       await attendreCochee(page, 'f4', 'arcade60');
       vu.arcades = await lireChoix(page, 'f4');
+      // Le choix se dit (la region vocale, #fgLive), avec le libelle de la
+      // variante lu sur sa pastille.
+      const libelleArcades = sansApostrophe((((vu.depart || {}).pastilles || []).find((p) => p.id === 'arcade60') || {}).texte || '');
+      vu.annonce = Boolean(libelleArcades) && await attendre(page, (l) => ((document.querySelector('#fgLive') || {}).textContent || '').replace(/\s+/g, ' ').replace(/[’']/g, "'").includes(l), 3000, libelleArcades);
+      // La fiche (i) de la carte : la formule telle que le client l a choisie.
+      await page.click('#gridFor [data-formula-info="f4"]');
+      vu.ficheOuverte = await attendre(page, () => { const d = document.querySelector('.fg-info-dialog'); return Boolean(d && d.open); }, 4000);
+      vu.fiche = norm(await page.evaluate(() => ((document.querySelector('.fg-info-dialog .fg-info-text') || {}).textContent || '')));
+      await page.keyboard.press('Escape');
+      await attendre(page, () => !document.querySelector('.fg-info-dialog[open]'), 3000);
       // Une autre formule choisie : la Formule 4 reprise repart de sa carte.
       await page.click('#gridFor .fg-card[data-formule="f1"]');
       vu.cachees = await pastillesVues(page, 'f4', false);
@@ -1218,8 +1367,6 @@ async function scenarioJ(browser, mock) {
     });
     const depart = vu.depart || {};
     const libelle = ((depart.pastilles || []).find((p) => p.id === 'arcade60') || {}).texte || '';
-    const ditLaVariante = (lignes) => (lignes || []).some((l) => sansApostrophe(l) === sansApostrophe(libelle));
-    const ditLeLaser = (lignes) => (lignes || []).some((l) => /laser/i.test(l));
     ok(arrive && vu.visibles && (depart.pastilles || []).length === 2 && cocheeDe(depart) === 'laser2' && depart.pastilles.every((p) => p.pastille && p.visible) && Boolean(libelle) && ditLeLaser(depart.carte),
       'MONTAGE la carte de la Formule 4 choisie montre ses deux variantes en pastilles d option, « 2 parties de Laser Game » cochee', JSON.stringify(depart));
     ok(cocheeDe(vu.arcades) === 'arcade60' && ditLaVariante((vu.arcades || {}).carte) && !ditLeLaser((vu.arcades || {}).carte),
@@ -1228,6 +1375,9 @@ async function scenarioJ(browser, mock) {
       'une autre formule choisie, les pastilles de la Formule 4 se cachent ; reprise, elle repart de sa carte (2 parties de Laser Game)', JSON.stringify({ cachees: vu.cachees, reprise: vu.reprise }));
     ok(cocheeDe(vu.clavier) === 'arcade60' && Boolean(((vu.clavier || {}).pastilles || []).find((p) => p.id === 'arcade60' && p.focus)),
       'au clavier, la fleche passe a « 60 min d arcades » et le focus la suit', JSON.stringify(vu.clavier));
+    ok(vu.annonce === true, 'le choix de « 60 min d arcades » se dit : la region vocale nomme la variante', libelle);
+    ok(vu.ficheOuverte === true && /arcade/i.test(vu.fiche || '') && !/laser/i.test(vu.fiche || ''),
+      'la fiche (i) de la Formule 4 dit la variante choisie : les arcades, aucun laser', (vu.fiche || '').slice(0, 240));
 
     const heures = demandesDeLaFormule(suivi, nChoix, 'f4');
     ok(heures.length > 0 && heures.every((u) => params(u).get('formulaChoice') === 'arcade60'),
@@ -1251,7 +1401,7 @@ async function scenarioJ(browser, mock) {
     ok(contact && Boolean(bloc && bloc.preference) && bloc.preference.formulaChoice === 'arcade60',
       'le blocage part avec la variante (preference.formulaChoice)', JSON.stringify(bloc && bloc.preference));
     const recap = sansApostrophe(await page.evaluate(() => (document.querySelector('#recallBody') || {}).textContent || ''));
-    ok(Boolean(libelle) && recap.includes(sansApostrophe(libelle)) && !/laser/i.test(recap), 'le recapitulatif dit le contenu de la variante, sans laser', recap.slice(0, 240));
+    ok(/arcade/i.test(recap) && !/laser/i.test(recap), 'le recapitulatif dit les arcades de la variante, sans laser', recap.slice(0, 240));
 
     // Revenir a la carte : les lignes de laser reviennent, sans variante.
     await page.click('.fg-scene[data-scene="contact"] [data-back]');
@@ -1280,10 +1430,226 @@ async function scenarioJ(browser, mock) {
   }
 }
 
-const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH], ['I', scenarioI], ['J', scenarioJ]];
+// ---------------------------------------------------------------------------
+// [K] LES VARIANTES QUE LE CENTRE OU LE JOUR NE JOUENT PAS
+// ---------------------------------------------------------------------------
+async function scenarioK(browser, mock) {
+  section('K. LES VARIANTES QUE LE CENTRE OU LE JOUR NE JOUENT PAS');
+  const leMeta = require('../api/public-booking-meta').__test;
+  // Le centre tel que le serveur de dev le lit (ops-knowledge/centers.json).
+  const centre = require('../ops-knowledge/centers.json').centers.find((c) => c.id === 'libramont');
+  const blocages = (...ids) => ids.map((id, rang) => ({ id: 760 + rang, centerId: 'libramont', scopeType: 'activity', scopeRef: id, recurrence: 'once', date: mock.DATE, startMin: null, endMin: null }));
+  // Une passe : la meta retouchee, les blocages du serveur, la Formule 4
+  // choisie si sa carte se prend.
+  const passe = async (retouche, blocs) => {
+    semer(mock);
+    mock.blocsDev.push(...blocs);
+    retoucheMeta = retouche;
+    const { ctx, page, suivi } = await ouvrir(browser);
+    const r = { suivi, carte: { presente: false, refus: false } };
+    try {
+      r.formules = await versFormules(page, mock);
+      r.carte = await etatCarte(page, 'f4');
+      if (r.carte.presente && !r.carte.refus) {
+        r.pret = await versLesHeures(page, 'f4', async () => { r.choix = await lireChoix(page, 'f4'); });
+        r.programme = await lireProgramme(page);
+      }
+    } finally {
+      retoucheMeta = null;
+      semer(mock);
+      await ctx.close();
+    }
+    return r;
+  };
+  const avecSesArcades = (r, quoi, label) => {
+    const heures = demandesDeLaFormule(r.suivi, 0, 'f4');
+    const lignes = ((r.programme || {}).lignes) || [];
+    ok(Boolean(r.formules && r.carte.presente && !r.carte.refus && r.pret) && (((r.choix || {}).pastilles) || []).length === 0 && ditLaVariante((r.choix || {}).carte)
+      && heures.length > 0 && heures.every((u) => params(u).get('formulaChoice') === 'arcade60') && !lignes.some((l) => /^laser_game/.test(l.cle)),
+      label, JSON.stringify({ carte: r.carte, choix: r.choix, sansVariante: heures.filter((u) => params(u).get('formulaChoice') !== 'arcade60').slice(0, 1), lignes: resumeLignes(r.programme) }));
+    ok(r.suivi.erreurs.length === 0, `[K] ${quoi} : aucune erreur JavaScript`, r.suivi.erreurs.slice(0, 3).join(' | '));
+  };
+  // 1. Le laser coupe au centre : les formules que le serveur sert a ce centre.
+  const sansLaser = { ...centre, activityAvailability: { ...(centre.activityAvailability || {}), laser_game: false } };
+  avecSesArcades(await passe((j) => {
+    j.formules = leMeta.formulesPubliques('libramont', sansLaser);
+    if (j.center) j.center.activityAvailability = sansLaser.activityAvailability;
+  }, []), 'laser coupe au centre',
+  'le laser coupe au centre : la Formule 4 reste, avec ses arcades seulement (aucune pastille, la carte dit leur programme), chaque demande des heures les porte, aucune ligne de laser');
+  // 2. Le laser bloque toute la journee : le jour que le serveur dit.
+  const leJour = (blocs) => (j) => {
+    const entree = leMeta.buildCalendar(blocs, 1, centre, 'libramont', mock.DATE)[0];
+    ((j.center && j.center.calendar) || []).forEach((e, k, liste) => { if (e && e.date === mock.DATE) liste[k] = entree; });
+  };
+  avecSesArcades(await passe(leJour(blocages('laser_game')), blocages('laser_game')), 'laser bloque ce jour-la',
+    'le laser bloque ce jour-la : la Formule 4 ne se grise pas, ses arcades seulement se proposent et partent avec chaque demande');
+  // 3. Le laser et les arcades bloques : plus rien ne se joue.
+  const rien = await passe(leJour(blocages('laser_game', 'arcade_time')), blocages('laser_game', 'arcade_time'));
+  ok(Boolean(rien.formules) && rien.carte.presente && rien.carte.refus, 'le laser et les arcades bloques ce jour-la : aucune variante ne se joue, la Formule 4 se grise', JSON.stringify(rien.carte));
+  ok(rien.suivi.erreurs.length === 0, '[K] tout bloque : aucune erreur JavaScript', rien.suivi.erreurs.slice(0, 3).join(' | '));
+}
+
+// ---------------------------------------------------------------------------
+// [L] UNE VARIANTE QUE LE SERVEUR REFUSE (409, formula_choice_unavailable)
+// ---------------------------------------------------------------------------
+async function remplirContact(page) {
+  await page.fill('#cPrenom', 'Camille');
+  await page.fill('#cNom', 'Test');
+  await page.fill('#cEmail', 'groupe@example.org');
+  await page.fill('#cTel', '0491301667');
+  await page.click('.fg-occasion[data-occasion="anniversaire"]');
+  await page.check('#cConsent');
+  await page.click('#goRecap');
+  return attendre(page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+}
+async function passerLaVitrine(page) {
+  await attendre(page, () => { const v = document.querySelector('#vitrine'); return !v || !v.hasAttribute('data-attendue'); }, 5000);
+  const ouverte = await page.evaluate(() => { const v = document.querySelector('#vitrine'); return Boolean(v && !v.hidden); });
+  if (ouverte) {
+    await page.click('#vitrine .fg-vitrine__non');
+    await attendre(page, () => document.querySelector('#vitrine').hidden, 3000);
+  }
+}
+const sceneActive = (page) => page.evaluate(() => ((document.querySelector('.fg-scene.is-active') || {}).dataset || {}).scene || '');
+// La Formule 4 aux arcades, choisie sur sa carte.
+const auxArcades = (page) => async () => {
+  await pastillesVues(page, 'f4', true);
+  await page.click('#gridFor [data-choix="arcade60"]');
+  await attendreCochee(page, 'f4', 'arcade60');
+};
+async function scenarioL(browser, mock) {
+  section('L. UNE VARIANTE QUE LE SERVEUR REFUSE : LA CARTE REPREND, L ECRAN LE DIT');
+  const { CODE_CHOIX_INCONNU, MESSAGE_CHOIX_INCONNU } = require('../lib/formula-choice');
+  const phrase = sansApostrophe(MESSAGE_CHOIX_INCONNU);
+  const ditLaPhrase = (page, sel) => attendre(page, ({ s, m }) => {
+    const e = document.querySelector(s);
+    return Boolean(e && !e.hidden && e.textContent.replace(/\s+/g, ' ').replace(/[’']/g, "'").includes(m));
+  }, 10000, { s: sel, m: phrase });
+  // Les heures redemandees pour le contenu de la carte : sans variante, avec
+  // les parties de laser.
+  const reprend = (apres, programme) => apres.length > 0 && apres.every((u) => !params(u).has('formulaChoice')) && ((programme && programme.lignes) || []).some((l) => /^laser_game/.test(l.cle));
+
+  // 1. Les heures : une variante que la meta sert et que le serveur ne
+  //    declare pas (une copie des arcades, sous un autre identifiant).
+  semer(mock);
+  retoucheMeta = (j) => {
+    const f4 = (j.formules || []).find((f) => f.id === 'f4');
+    const liste = (f4 && f4.choices) || [];
+    if (liste.length > 1) f4.choices = liste.concat([{ ...JSON.parse(JSON.stringify(liste[liste.length - 1])), id: 'retiree', label: 'Option retirée' }]);
+  };
+  const un = await ouvrir(browser);
+  try {
+    const pret = await versHeures(un.page, mock, 'f4', async () => {
+      await pastillesVues(un.page, 'f4', true);
+      await un.page.click('#gridFor [data-choix="retiree"]');
+      await attendreCochee(un.page, 'f4', 'retiree');
+    });
+    const dit = await ditLaPhrase(un.page, '#hourErr');
+    await calme(un.page);
+    const rang = un.suivi.demandes.findIndex((u) => params(u).get('formulaChoice') === 'retiree');
+    const refuse = un.suivi.reponses.some((r) => params(r.url).get('formulaChoice') === 'retiree' && r.json && r.json.code === CODE_CHOIX_INCONNU);
+    const apres = rang >= 0 ? un.suivi.demandes.slice(rang + 1).filter((u) => estPlan(u) && params(u).get('formuleId') === 'f4') : [];
+    const p = await lireProgramme(un.page);
+    const choix = await lireChoix(un.page, 'f4');
+    ok(rang >= 0 && refuse, 'MONTAGE une variante que la meta sert et que le serveur ne declare pas : la demande des heures la porte, le serveur la refuse (409, formula_choice_unavailable)', un.suivi.demandes.slice(-2).join(' | '));
+    ok(Boolean(pret && dit) && reprend(apres, p) && !choix.pastilles.some((x) => x.id === 'retiree'),
+      'les heures refusees : l ecran dit la phrase du serveur, la variante sort de la carte et les horaires se redemandent pour son contenu (les parties de laser)',
+      JSON.stringify({ pret, dit, apres: apres.slice(0, 2), lignes: resumeLignes(p), pastilles: choix.pastilles.map((x) => x.id) }));
+  } finally {
+    retoucheMeta = null;
+    ok(un.suivi.erreurs.length === 0, '[L] heures refusees : aucune erreur JavaScript', un.suivi.erreurs.slice(0, 3).join(' | '));
+    await un.ctx.close();
+  }
+
+  // 2. Le blocage refuse la variante.
+  semer(mock);
+  const deux = await ouvrir(browser);
+  try {
+    const pret = await versHeures(deux.page, mock, 'f4', auxArcades(deux.page));
+    const pris = await poser(deux.page, 'bowling', '14:00');
+    const n = deux.suivi.demandes.length;
+    refusUnique = '/api/public-holds';
+    await deux.page.click('#goContact');
+    const dit = await ditLaPhrase(deux.page, '#hourErr');
+    await calme(deux.page);
+    const servi = refusUnique === '';
+    const scene = await sceneActive(deux.page);
+    const apres = demandesDeLaFormule(deux.suivi, n, 'f4');
+    const p = await lireProgramme(deux.page);
+    ok(Boolean(pret && pris) && servi, 'MONTAGE la Formule 4 aux arcades, le bowling pose a 14:00 : le blocage part et recoit le refus de la variante', JSON.stringify({ pret, pris, servi }));
+    ok(dit && scene === 'heures' && reprend(apres, p),
+      'le blocage refuse : le client reste sur ses heures, la phrase du serveur s affiche et les horaires se redemandent pour le contenu de la carte',
+      JSON.stringify({ dit, scene, apres: apres.slice(0, 2), lignes: resumeLignes(p) }));
+  } finally {
+    refusUnique = '';
+    ok(deux.suivi.erreurs.length === 0, '[L] blocage refuse : aucune erreur JavaScript', deux.suivi.erreurs.slice(0, 3).join(' | '));
+    await deux.ctx.close();
+  }
+
+  // 3. La confirmation refuse la variante.
+  semer(mock);
+  const trois = await ouvrir(browser);
+  try {
+    const pret = await versHeures(trois.page, mock, 'f4', auxArcades(trois.page));
+    const pris = await poser(trois.page, 'bowling', '14:00');
+    await trois.page.click('#goContact');
+    const contact = await attendre(trois.page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 12000);
+    const recap = contact ? await remplirContact(trois.page) : false;
+    if (recap) await passerLaVitrine(trois.page);
+    refusUnique = '/api/public-reservations';
+    if (recap) await trois.page.click('#confirmBtn');
+    const dit = Boolean(recap) && await ditLaPhrase(trois.page, '#confirmErr');
+    const servi = refusUnique === '';
+    const n = trois.suivi.demandes.length;
+    let pretApres = false;
+    if (dit) {
+      await trois.page.click('#confirmErr [data-rechoisir]');
+      await attendre(trois.page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+      pretApres = await attendre(trois.page, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone.is-busy'), 15000);
+      await calme(trois.page);
+    }
+    const apres = demandesDeLaFormule(trois.suivi, n, 'f4');
+    const p = await lireProgramme(trois.page);
+    ok(Boolean(pret && pris && contact && recap) && servi, 'MONTAGE la Formule 4 aux arcades jusqu au recapitulatif : la confirmation part et recoit le refus de la variante', JSON.stringify({ pret, pris, contact, recap, servi }));
+    ok(dit && pretApres && reprend(apres, p),
+      'la confirmation refusee : la phrase du serveur s affiche sous le bouton, « Revoir vos horaires » redemande les horaires pour le contenu de la carte',
+      JSON.stringify({ dit, pretApres, apres: apres.slice(0, 2), lignes: resumeLignes(p) }));
+  } finally {
+    refusUnique = '';
+    ok(trois.suivi.erreurs.length === 0, '[L] confirmation refusee : aucune erreur JavaScript', trois.suivi.erreurs.slice(0, 3).join(' | '));
+    await trois.ctx.close();
+  }
+}
+
+const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH], ['I', scenarioI], ['J', scenarioJ], ['K', scenarioK], ['L', scenarioL]];
+
+// LE JOUR DU GATE : le premier samedi a venir ou les Formules 1 a 4 se
+// vendent (ni vacances scolaires ni ferie, lib/booking-config), au fuseau du
+// centre. Le serveur de dev le lit (PINLANE_DEVTUNNEL_DATE) : le samedi
+// suivant, qu il prendrait seul, tombait le 17/10 dans le conge d automne.
+function samediVendable() {
+  const config = require('../lib/booking-config');
+  const centre = require('../lib/ops-knowledge').getCenter('libramont');
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
+  const curseur = new Date(Date.UTC(y, m - 1, d + 1));
+  for (let essai = 0; essai < 120; essai += 1) {
+    const jour = curseur.toISOString().slice(0, 10);
+    const vendues = curseur.getUTCDay() === 6 && !config.isFormulaBlockedDate(jour, centre) && ['f1', 'f2', 'f3', 'f4'].every((id) => {
+      const formule = config.FORMULES.find((item) => item.id === id);
+      return Boolean(formule) && config.getFormuleAvailability(formule, jour, PAX, '', centre).ok;
+    });
+    if (vendues) return jour;
+    curseur.setUTCDate(curseur.getUTCDate() + 1);
+  }
+  return '';
+}
 
 async function main() {
+  const jour = samediVendable();
+  if (!ok(Boolean(jour), 'MONTAGE un samedi a venir ou les Formules 1 a 4 se vendent (hors vacances et feries)')) process.exit(1);
+  process.env.PINLANE_DEVTUNNEL_DATE = jour;
   const mock = require('./dev-tunnel-server');
+  if (!ok(mock.DATE === jour, `MONTAGE le serveur de dev joue le samedi ${jour}`, mock.DATE)) process.exit(1);
   const { chromium } = require('playwright-core');
   const server = await serveur(mock);
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -1304,7 +1670,7 @@ async function main() {
     console.error(`\nformules-arrivee-form-check: ${failures} defaut(s).`);
     process.exit(1);
   }
-  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre ; chaque partie de laser propose son heure ; une heure complete propose de venir quand meme, si le serveur le tient ; la Formule 4 se choisit avec ses arcades, de la carte au blocage)');
+  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre ; chaque partie de laser propose son heure ; une heure complete propose de venir quand meme, si le serveur le tient ; la Formule 4 se choisit avec ses arcades, de la carte au blocage ; une variante que le centre ou le jour ne jouent pas ne se propose pas, un refus du serveur repart de la carte)');
   process.exit(0);
 }
 

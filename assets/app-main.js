@@ -22046,7 +22046,8 @@ function formatCardDurationLabel(hours) {
 // besoin pour trancher : combien de caracteres il doit loger. Le libelle
 // complet reste dans l'infobulle et dans la fiche.
 function renderCardActivityTag(reservation, view = 'bowling') {
-  const complet = String(getReservationLabel(reservation) || '').trim();
+  // L infobulle dit l offre entiere, sa variante comprise (nomDeLaFormuleAchetee).
+  const complet = nomDeLaFormuleAchetee(reservation, String(getReservationLabel(reservation) || '').trim());
   const texte = getPlanningCardOfferLabel(reservation, view);
   // La boite reste, meme vide : c'est elle qui absorbe la place libre et
   // repousse les chiffres a droite. Sans elle, le pied se recollerait au nom.
@@ -22135,6 +22136,18 @@ function getPlanningCardLabel(reservation) {
   if (reservation && (reservation.type === 'formule' || reservation.formuleId)) return 'Formule';
   const premier = complet.split(/\s+/).filter(Boolean)[0] || '';
   return premier.length <= PLANNING_CARD_LABEL_MAX ? premier : '';
+}
+
+// LA FORMULE ACHETEE, NOMMEE AVEC SA VARIANTE (lib/formula-choice, la Formule
+// 4 « 60 min d'arcades » a la place des deux parties de laser) : « FORMULE 4 ·
+// 60 min d'arcades ». L infobulle de la carte du planning, l encadre du
+// groupe, ses puces et son resume la lisent ici. Sans variante, le nom tel
+// quel. Le texte de la carte du planning reste le nom seul : entier ou absent,
+// il disparaitrait des pistes etroites (regle plus haut).
+function nomDeLaFormuleAchetee(reservation, nom) {
+  const base = String(nom || '').trim();
+  const variante = getReservationFormulaChoice(reservation);
+  return base && variante ? `${base} · ${variante.label}` : base;
 }
 
 // Bloc effectif + durée commun aux cartes bowling ET laser. Le libellé texte
@@ -22606,9 +22619,7 @@ function renderReservationTags(reservation, options = {}) {
   const tags = [];
   const contexteSeul = Boolean(options.contexteSeul);
   const formule = reservation.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
-  // La variante achetee se lit avec la formule (« FORMULE 4 · 60 min d'arcades »).
-  const variante = getReservationFormulaChoice(reservation);
-  if (!contexteSeul && (reservation.type === 'formule' || formule)) tags.push({ cls: 'formula', label: (formule?.name || 'Formule') + (variante ? ` · ${escapeHtml(variante.label)}` : '') });
+  if (!contexteSeul && (reservation.type === 'formule' || formule)) tags.push({ cls: 'formula', label: formule?.name || 'Formule' });
   // L etiquette dit le temps de jeu VENDU (somme des blocs) : c est ce que le
   // client a paye et ce que le comptoir doit lire.
   const bowlingDuration = getBowlingTotalHoursForReservation(reservation);
@@ -25071,8 +25082,9 @@ function getGroupeEncadres(r) {
   if (marquePrix) encadres.push({ ton: 'price', titre: 'Prix ajusté', html: marquePrix });
   const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
   // Le nom de la formule vient du catalogue du centre ; s il n est pas encore
-  // charge, le libelle ecrit sur le dossier (« FORMULE 7 ») le dit.
-  const nomFormule = formule ? formule.name : (r.type === 'formule' || r.formuleId ? getReservationLabel(r) : '');
+  // charge, le libelle ecrit sur le dossier (« FORMULE 7 ») le dit. Sa
+  // variante le suit (nomDeLaFormuleAchetee).
+  const nomFormule = nomDeLaFormuleAchetee(r, formule ? formule.name : (r.type === 'formule' || r.formuleId ? getReservationLabel(r) : ''));
   const occasion = getReservationOccasion(r);
   const libelleOccasion = occasion ? (STAFF_OCCASION_LABELS[occasion] || '').split(' / ')[0] : '';
   if (libelleOccasion || nomFormule) {
@@ -25211,7 +25223,7 @@ function renderActivitesCourtes(r) {
   let noms = items.map(item => `${typeof nomActivite === 'function' ? nomActivite(item) : item.activityId} · ${participantsLigneProgramme(item, r.pax)}`).filter(Boolean);
   if (!noms.length) {
     const formule = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
-    noms = [formule ? formule.name : getReservationLabel(r)].filter(Boolean);
+    noms = [nomDeLaFormuleAchetee(r, formule ? formule.name : getReservationLabel(r))].filter(Boolean);
   }
   noms = [...new Set(noms)];
   const vus = noms.slice(0, 4);
@@ -25263,8 +25275,8 @@ function renderReservationRow(r, moment = null, options = {}) {
 // « Bowling 1h · Laser 2 parties » : le resume d une carte terminee.
 function resumeGroupe(r) {
   const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
-  if (formule) return formule.name;
-  if (r.type === 'formule' || r.formuleId) return getReservationLabel(r);
+  if (formule) return nomDeLaFormuleAchetee(r, formule.name);
+  if (r.type === 'formule' || r.formuleId) return nomDeLaFormuleAchetee(r, getReservationLabel(r));
   const programme = resumeProgrammeReservation(r);
   if (programme) return programme;
   return getReservationLabel(r);
@@ -27985,6 +27997,13 @@ function toggleEditProgrammeOuvert() {
   renderPos();
 }
 
+// LA FORMULE TELLE QUE LE DOSSIER L A ACHETEE (sa variante, booking-core) :
+// l onglet Modifier recopie son contenu, jamais celui de la carte (la Formule
+// 4 aux arcades n y affiche pas ses deux parties de laser).
+function formuleAcheteeDuDossier(r) {
+  return String((r && r.type) || '') === 'formule' ? applyReservationFormulaChoice(resolveDisplayFormule(r.formuleId), r) : null;
+}
+
 // Les activités sélectionnées sont directement éditables, les ajouts restent
 // à part. Les permissions et les setters métier restent les mêmes.
 function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
@@ -28185,9 +28204,7 @@ function renderPosEdit(r) {
   // qu'il n'a pas commande au lieu de la presence de ce qu'il a commande.
   // La description vient du catalogue, seule source de verite : la fiche
   // n'invente pas le contenu d'une formule, elle le RECOPIE.
-  const editFormule = String(r.type || '') === 'formule'
-    ? resolveDisplayFormule(r.formuleId)
-    : null;
+  const editFormule = formuleAcheteeDuDossier(r);
   const editFormuleLignes = editFormule && Array.isArray(editFormule.desc) ? editFormule.desc : [];
   // L ONGLET « MODIFIER », REFAIT (2026-10-02, Movsar : « cette page modifier
   // est moche a mort »). Memes fonctions, plus l e-mail du client (il sert aux

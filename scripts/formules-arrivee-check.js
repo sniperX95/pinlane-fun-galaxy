@@ -1584,16 +1584,31 @@ function laConsole() {
   const app = sourceNavigateur('assets/app-main.js');
   const manquantes = [];
   ['escapeHtml', 'formulaActivityToken', 'getFormulaActivityIds', 'getFormulaFreePassIds', 'getFormulaLaserGameCount',
-    'getLaserGameCountForReservation', 'buildEditProgramFromReservation', 'nomDeLaFormuleAchetee', 'resumeGroupe',
+    'getLaserGameCountForReservation', 'buildEditProgramFromReservation', 'nomDeLaFormuleAchetee', 'getGroupeEncadres',
+    'renderCardActivityTag', 'getPlanningCardOfferLabel', 'getPlanningCardLabel', 'planningLabelWidthUnits',
     'renderActivitesCourtes', 'formuleAcheteeDuDossier', 'renderEditFormuleBloc'].forEach((nom) => {
     const debut = app.indexOf(`\nfunction ${nom}(`);
     const fin = debut < 0 ? -1 : app.indexOf('\n}\n', debut + 1);
     if (fin < 0) { manquantes.push(nom); return; }
     vm.runInContext(app.slice(debut + 1, fin + 2), bac);
   });
-  // Ce que le resume et l onglet Modifier lisent d autre, sans rapport avec la
-  // formule : le comptoir (pas un manager), un dossier sans programme.
-  vm.runInContext("var peutAdapterFormule = function () { return false; }, resumeProgrammeReservation = function () { return ''; };", bac);
+  // Les constantes de la carte du planning, lues dans app-main comme ses
+  // fonctions (en `var`, que les scripts du bac partagent).
+  ['PLANNING_LABEL_NARROW', 'PLANNING_CARD_LABEL_MAX'].forEach((nom) => {
+    const debut = app.indexOf(`\nconst ${nom} = `);
+    const fin = debut < 0 ? -1 : app.indexOf(';\n', debut + 1);
+    if (fin < 0) { manquantes.push(nom); return; }
+    vm.runInContext(`var ${app.slice(debut + '\nconst '.length, fin + 1)}`, bac);
+  });
+  // Ce que la carte du groupe et l onglet Modifier lisent d autre, sans
+  // rapport avec la formule : le comptoir (pas un manager), un dossier
+  // confirme, sans prix ajuste, sans occasion ni note.
+  vm.runInContext([
+    'var peutAdapterFormule = function () { return false; };',
+    'var getReservationValidationTexte = function () { return {}; }, isReservationAwaitingReview = function () { return false; }, isUpcomingReservationStatus = function () { return true; };',
+    "var renderReservationPriceMark = function () { return ''; }, getReservationOccasion = function () { return ''; }, STAFF_OCCASION_LABELS = {};",
+    "var hasReservationNote = function () { return false; }, getReservationNoteParts = function () { return { mot: '', suivi: [] }; }, getReservationNoteTitre = function () { return ''; }, getReservationNotesEquipe = function () { return []; };",
+  ].join('\n'), bac);
   const appelle = (nom, ...args) => {
     const rendu = bac[nom](...args);
     return rendu === undefined ? null : JSON.parse(JSON.stringify(rendu));
@@ -1910,6 +1925,24 @@ async function scenarioN(H, seulement = null) {
     const placeAvec = aPlacer(existant);
     v.push(verdict(Number(((placeSans.opsPlan || {}).laserPassPlan || {}).totalGames) > 0, 'MONTAGE sans la variante gardee, le dossier a placer attend ses parties de laser', JSON.stringify((placeSans.opsPlan || {}).laserPassPlan || null)));
     v.push(verdict(!(placeAvec.opsPlan || {}).laserPassPlan && varianteDuPlan(placeAvec.opsPlan) === arcades.id, 'avec elle, le dossier a placer garde la variante et n attend aucune partie de laser', JSON.stringify({ variante: varianteDuPlan(placeAvec.opsPlan), parties: (placeAvec.opsPlan || {}).laserPassPlan || null })));
+    // UNE PARTIE DE LASER DEPLACEE A LA MAIN : la Formule 4 aux arcades n en
+    // compte aucune. Sa deuxieme partie n existe pas, et celle que l equipe
+    // pose n en fait attendre aucune autre.
+    const deplacerLaser = (dossierDeplace, partie) => {
+      try {
+        const rendu = H.deplacer().buildActivityMove(dossierDeplace, { activityId: 'laser_game', startTime: '17:30', unitKey: partie });
+        return { ok: true, attente: ((((rendu.opsPlan || {}).laserPassPlan || {}).pendingPasses) || []).map((passe) => passe.countIndex) };
+      } catch (error) {
+        return { ok: false, raison: String((error && error.message) || error) };
+      }
+    };
+    const deuxiemeSans = deplacerLaser({ ...existant, opsPlan: sansVariante(existant.opsPlan) }, '2.1');
+    const deuxieme = deplacerLaser(existant, '2.1');
+    const premiere = deplacerLaser(existant, '1.1');
+    v.push(verdict(deuxiemeSans.ok, 'MONTAGE sans la variante gardee, la deuxieme partie de laser de la carte se deplace a 17:30', JSON.stringify(deuxiemeSans)));
+    v.push(verdict(!deuxieme.ok && premiere.ok && premiere.attente.length === 0,
+      'avec elle, le planning ne connait pas de deuxieme partie de laser a deplacer, et une partie posee a la main n en fait attendre aucune autre',
+      JSON.stringify({ deuxieme, premiere })));
   }
 
   // 8. Les mails disent le programme de la variante ; l equipe la lit.
@@ -1937,8 +1970,9 @@ async function scenarioN(H, seulement = null) {
       'le mail de validation de l equipe nomme la variante avec l offre ; sans elle, l offre d avant', JSON.stringify({ offre, offreSans })));
   }
 
-  // 9. La console : le planning, la fiche, la modification, le resume et les
-  //    puces de la carte du groupe, l onglet Modifier.
+  // 9. La console : le planning, la fiche, la modification, l encadre et les
+  //    puces de la carte du groupe, l infobulle de la carte du planning,
+  //    l onglet Modifier.
   if (veut('console')) {
     const { plan, debut } = await laReference();
     const vue = laConsole();
@@ -1957,15 +1991,24 @@ async function scenarioN(H, seulement = null) {
       const on = (etat, id) => Boolean(etat && etat[id] && etat[id].on);
       v.push(verdict(on(modifSans, 'laser_game') && !on(modif, 'laser_game') && on(modif, 'bowling') && Boolean(modif.others && modif.others.arcade_time),
         'la modification repart du contenu de la variante : le bowling et les arcades, sans laser', JSON.stringify({ avec: [modif.laser_game, modif.others], sans: [modifSans.laser_game, modifSans.others] })));
-      // Le resume et les puces de la carte du groupe (surfaces vivantes du
-      // planning) nomment la variante avec la formule.
-      const nommee = (dossierConsole) => [String(vue.appelle('resumeGroupe', dossierConsole) || ''), String(vue.appelle('renderActivitesCourtes', dossierConsole) || '')];
-      const [resumeAvec, pucesAvec] = nommee(pourConsole);
-      const [resumeSans, pucesSans] = nommee(consoleSans);
+      // Les surfaces vivantes du planning nomment la variante avec la
+      // formule, aucun laser ; sans elle, le nom seul : l encadre de la carte
+      // du groupe (getGroupeEncadres, la carte et la fiche), l infobulle de la
+      // carte du planning (renderCardActivityTag) et les puces d une carte
+      // payee (renderActivitesCourtes).
       const echappee = String(vue.appelle('escapeHtml', arcades.label) || '');
-      v.push(verdict(Boolean(resumeSans) && resumeAvec.includes(resumeSans) && resumeAvec.includes(arcades.label) && !resumeSans.includes(arcades.label)
-        && Boolean(echappee) && pucesAvec.includes(echappee) && !pucesSans.includes(echappee) && !parleDuLaser(resumeAvec + pucesAvec),
-        'le resume et les puces de la carte du groupe nomment la variante avec la formule, aucun laser ; sans elle, le nom seul', JSON.stringify({ resumeAvec, resumeSans, pucesAvec })));
+      const encadre = (dossierConsole) => String(((vue.appelle('getGroupeEncadres', dossierConsole) || []).find((item) => item && item.ton === 'occasion') || {}).titre || '');
+      const [encadreAvec, encadreSans] = [encadre(pourConsole), encadre(consoleSans)];
+      v.push(verdict(Boolean(encadreSans) && encadreAvec.includes(encadreSans) && encadreAvec.includes(arcades.label) && !encadreSans.includes(arcades.label) && !parleDuLaser(encadreAvec),
+        'l encadre de la carte du groupe nomme la variante avec la formule, aucun laser ; sans elle, le nom seul', JSON.stringify({ encadreAvec, encadreSans })));
+      const infobulle = (dossierConsole) => String(vue.appelle('renderCardActivityTag', dossierConsole, 'bowling') || '');
+      const [bulleAvec, bulleSans] = [infobulle(pourConsole), infobulle(consoleSans)];
+      v.push(verdict(Boolean(echappee) && /title="/.test(bulleAvec) && bulleAvec.includes(echappee) && Boolean(bulleSans) && !bulleSans.includes(echappee) && !parleDuLaser(bulleAvec),
+        'l infobulle de la carte du planning dit la formule et sa variante, aucun laser ; sans elle, la formule seule', JSON.stringify({ bulleAvec, bulleSans })));
+      const puces = (dossierConsole) => String(vue.appelle('renderActivitesCourtes', dossierConsole) || '');
+      const [pucesAvec, pucesSans] = [puces(pourConsole), puces(consoleSans)];
+      v.push(verdict(Boolean(echappee) && pucesAvec.includes(echappee) && !pucesSans.includes(echappee) && !parleDuLaser(pucesAvec),
+        'les puces d une carte payee nomment la variante avec la formule, aucun laser ; sans elle, le nom seul', JSON.stringify({ pucesAvec, pucesSans })));
       // L onglet Modifier, au comptoir : le contenu que le dossier a achete.
       const ongletModifier = (dossierConsole) => {
         const formule = vue.appelle('formuleAcheteeDuDossier', dossierConsole);
@@ -2233,6 +2276,12 @@ const MUTATIONS = [
   { nom: 'deplacer le bowling fait apparaitre les deux lasers de la carte', fichier: 'lib/reservation-activity-move.js',
     de: "    const formulaGames = current.formuleId ? (formuleDuDossier(getFormula(current.formuleId), current)?.steps || []).filter(step => step.activityId === 'laser_game').reduce((sum,step) => sum+Number(step.count || 1),0) : 0;",
     vers: "    const formulaGames = current.formuleId ? (getFormula(current.formuleId)?.steps || []).filter(step => step.activityId === 'laser_game').reduce((sum,step) => sum+Number(step.count || 1),0) : 0;", scenarios: ['N|planning'] },
+  { nom: 'deplacer une partie de laser compte les deux lasers de la carte', fichier: 'lib/reservation-activity-move.js',
+    de: "    const formulaGames = current.formuleId ? (formuleDuDossier(getFormula(current.formuleId), current)?.steps || []).filter(step => step.activityId === 'laser_game').reduce((sum, step) => sum + Number(step.count || 1), 0) : 0;",
+    vers: "    const formulaGames = current.formuleId ? (getFormula(current.formuleId)?.steps || []).filter(step => step.activityId === 'laser_game').reduce((sum, step) => sum + Number(step.count || 1), 0) : 0;", scenarios: ['N|planning'] },
+  { nom: 'une partie de laser posee attend la deuxieme de la carte', fichier: 'lib/reservation-activity-move.js',
+    de: '(current.formuleId ? (formuleDuDossier(getFormula(current.formuleId), current)?.steps || []).filter(step => step.activityId === activity)',
+    vers: '(current.formuleId ? (getFormula(current.formuleId)?.steps || []).filter(step => step.activityId === activity)', scenarios: ['N|planning'] },
   { nom: 'le dossier a placer perd la variante', fichier: 'lib/reserver-fenetre.js',
     de: '    ...(avant.formulaChoice ? { formulaChoice: avant.formulaChoice } : {}),', vers: '', scenarios: ['N|planning'] },
   { nom: 'le dossier a placer attend les deux lasers de la carte', fichier: 'lib/reserver-fenetre.js',
@@ -2251,8 +2300,10 @@ const MUTATIONS = [
     de: '  const formule = r && r.formuleId ? applyReservationFormulaChoice(resolveDisplayFormule(r.formuleId), r) : null;', vers: '  const formule = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;', scenarios: ['N|console'] },
   { nom: 'la carte du groupe ne nomme plus la variante', fichier: 'assets/app-main.js',
     de: '  return base && variante ? `${base} \u00b7 ${variante.label}` : base;', vers: '  return base;', scenarios: ['N|console'] },
-  { nom: 'le resume du groupe repart du nom de la carte', fichier: 'assets/app-main.js',
-    de: '  if (formule) return nomDeLaFormuleAchetee(r, formule.name);', vers: '  if (formule) return formule.name;', scenarios: ['N|console'] },
+  { nom: 'l infobulle de la carte du planning tait la variante', fichier: 'assets/app-main.js',
+    de: "  const complet = nomDeLaFormuleAchetee(reservation, String(getReservationLabel(reservation) || '').trim());", vers: "  const complet = String(getReservationLabel(reservation) || '').trim();", scenarios: ['N|console'] },
+  { nom: 'l encadre du groupe repart du nom de la carte', fichier: 'assets/app-main.js',
+    de: "  const nomFormule = nomDeLaFormuleAchetee(r, formule ? formule.name : (r.type === 'formule' || r.formuleId ? getReservationLabel(r) : ''));", vers: "  const nomFormule = formule ? formule.name : (r.type === 'formule' || r.formuleId ? getReservationLabel(r) : '');", scenarios: ['N|console'] },
   { nom: 'les puces d une carte payee taisent la variante', fichier: 'assets/app-main.js',
     de: '    noms = [nomDeLaFormuleAchetee(r, formule ? formule.name : getReservationLabel(r))].filter(Boolean);',
     vers: '    noms = [formule ? formule.name : getReservationLabel(r)].filter(Boolean);', scenarios: ['N|console'] },

@@ -22141,7 +22141,7 @@ function getPlanningCardLabel(reservation) {
 // LA FORMULE ACHETEE, NOMMEE AVEC SA VARIANTE (lib/formula-choice, la Formule
 // 4 « 60 min d'arcades » a la place des deux parties de laser) : « FORMULE 4 ·
 // 60 min d'arcades ». L infobulle de la carte du planning, l encadre du
-// groupe, ses puces et son resume la lisent ici. Sans variante, le nom tel
+// groupe et les puces d une carte payee la lisent ici. Sans variante, le nom tel
 // quel. Le texte de la carte du planning reste le nom seul : entier ou absent,
 // il disparaitrait des pistes etroites (regle plus haut).
 function nomDeLaFormuleAchetee(reservation, nom) {
@@ -25270,16 +25270,6 @@ function renderReservationRow(r, moment = null, options = {}) {
     ${renderGroupeEncadres(r)}
     ${renderGroupeActions(r, moment)}
   </article>`;
-}
-
-// « Bowling 1h · Laser 2 parties » : le resume d une carte terminee.
-function resumeGroupe(r) {
-  const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
-  if (formule) return nomDeLaFormuleAchetee(r, formule.name);
-  if (r.type === 'formule' || r.formuleId) return nomDeLaFormuleAchetee(r, getReservationLabel(r));
-  const programme = resumeProgrammeReservation(r);
-  if (programme) return programme;
-  return getReservationLabel(r);
 }
 
 // Encaisser = payer AVEC le moyen. Le statut et le moyen partent ensemble.

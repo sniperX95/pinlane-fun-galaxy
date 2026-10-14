@@ -46,6 +46,16 @@
 //       l heure est celle de la partie 2 et la partie 1 garde son heure
 //       proposee ; la partie 1 posee, la ligne 2 s ouvre seule, sur la plage
 //       de son heure proposee.
+//   [I] venir quand meme (Movsar le 14/10 : « si le systeme voit que laser
+//       game et bowling sont full a des heures ça met que ils peuvent choisir
+//       arcades pendant cette heure ») : le bowling et le laser complets a
+//       15:00, une heure complete touchee propose les arcades a 15:00 et
+//       l activite a sa premiere heure libre apres, avec ce que le plan du
+//       serveur pose ensuite ; une autre heure complete remplace la
+//       proposition ; le toucher pose ce plan (arcades 15:00 choisies, le
+//       bowling a 16:00), le blocage part avec lui. Rien ne s affiche quand
+//       rien ne tient : ni sans heure libre apres, ni quand le serveur ferait
+//       commencer la visite avant 15:00.
 //   --mutate : une regle cassee a la fois, en memoire (le formulaire servi au
 //       navigateur, ou le moteur compile pour le serveur) : chacune doit faire
 //       rougir le gate ; le disque n est jamais ecrit, et on le verifie.
@@ -156,6 +166,16 @@ const MUTATIONS = [
     de: '    if (state.dispo && (partie(avant) || partie(cle))) majPistes(state.dispo);', vers: '    void partie;' },
   { nom: 'la plage ouverte suit l heure d une autre partie', fichier: JS, scenarios: ['H'],
     de: '    utile = sienne || proposee || utile;', vers: '    void sienne;' },
+  { nom: 'une heure complete touchee ne propose plus de venir quand meme', fichier: JS, scenarios: ['I'],
+    de: "      if (chip.dataset.state === 'hard' && /^(capacity|resource_conflict)$/.test(chip.dataset.code || '')) proposerQuandMeme(chip);", vers: '      if (false) proposerQuandMeme(chip);' },
+  { nom: 'la proposition s affiche sans que le serveur l ait tenue', fichier: JS, scenarios: ['I'],
+    de: '      if (!slot || !arcPose || !poseX || (debuts[0] && debuts[0] < T)) { boite.remove(); posterHauteur(); return; }', vers: '      if (!slot) { boite.remove(); posterHauteur(); return; }' },
+  { nom: 'la proposition ne dit plus ce que le plan pose apres', fichier: JS, scenarios: ['I'],
+    de: "        if (!b || !b.activityId || b.activityId === c.dabord || !/^(bowling_lane|laser_arena)$/.test(b.resourceType || '') || vus[b.activityId + '#' + (b.countIndex || 1)]) return;", vers: "        if (!b || b.activityId !== c.quoi || vus[b.activityId + '#' + (b.countIndex || 1)]) return;" },
+  { nom: 'le toucher de la proposition ne pose plus les arcades', fichier: JS, scenarios: ['I'],
+    de: "    state.pins = essai.c.pins; state.laserParts = []; state.arcade = essai.c.arcade || ''; adaptation = null;", vers: '    state.pins = essai.c.pins; state.laserParts = []; adaptation = null;' },
+  { nom: 'une autre heure complete garde la proposition d avant', fichier: JS, scenarios: ['I'],
+    de: "    if ($$('.fg-quand', hourZone).some(function (b) { return b.dataset.pour === idX + '@' + T; })) return;\n    $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });", vers: "    if ($$('.fg-quand', hourZone).some(function (b) { return b.dataset.pour === idX + '@' + T; })) return;" },
 ];
 const MUTATION_PREUVE = '[mutation] servie :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_ARRIVEE_FORM_MUTATION || 0);
@@ -925,7 +945,148 @@ async function scenarioH(browser, mock) {
   }
 }
 
-const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH]];
+// ---------------------------------------------------------------------------
+// [I] VENIR QUAND MEME
+// ---------------------------------------------------------------------------
+// Les 8 pistes de bowling prises de 15:00 a `bowlingJusqua`, les 30 places de
+// l arene a 15:00 : pour 10 joueurs, le bowling est complet de 14:30 a la fin
+// de cette occupation, le laser a 15:00.
+const blocDev = (resourceType, activityId, startTime, endTime, extra = {}) => ({ type: 'activity', resourceType, activityId, startTime, endTime, start: minutesDe(startTime), end: minutesDe(endTime), ...extra });
+function journeePleineA15h(mock, bowlingJusqua) {
+  const minutes = minutesDe(bowlingJusqua) - minutesDe('15:00');
+  mock.occupationDev.push({
+    id: 1601, centerId: 'libramont', date: mock.DATE, status: 'confirmed', validationStatus: 'confirmed', type: 'bowling', pax: 48,
+    startTime: '15:00', duration: minutes / 60, totalDuration: minutes / 60, lanes: [1, 2, 3, 4, 5, 6, 7, 8],
+    program: { items: [{ activityId: 'bowling', planned: true, minutes, duration: minutes / 60 }] },
+    opsPlan: { startTime: '15:00', endTime: bowlingJusqua, resourceBlocks: [blocDev('bowling_lane', 'bowling', '15:00', bowlingJusqua, { lanes: [1, 2, 3, 4, 5, 6, 7, 8], players: 48, groupPlayers: 48, groupWaveCount: 1 })] },
+  }, {
+    id: 1602, centerId: 'libramont', date: mock.DATE, status: 'confirmed', validationStatus: 'confirmed', type: 'activite', pax: 30,
+    startTime: '15:00', duration: 0.5, totalDuration: 0.5, lanes: [],
+    program: { items: [{ activityId: 'laser_game', planned: true, minutes: 30, duration: 0.5, games: 1 }] },
+    opsPlan: { startTime: '15:00', endTime: '15:25', resourceBlocks: [blocDev('laser_arena', 'laser_game', '15:00', '15:25', { players: 30, weaponNeed: 30, groupPlayers: 30, groupWaveCount: 1 })] },
+  });
+}
+// Une heure complete touchee au doigt (elle ne se prend pas : elle s explique).
+async function toucherComplet(page, piste, heure) {
+  await ouvrirLigne(page, piste);
+  await ouvrirPlage(page, piste, heure);
+  return page.evaluate(({ id, h }) => {
+    const c = document.querySelector(`.fg-track[data-activity="${id}"] .fg-chip[data-time="${h}"]`);
+    if (!c) return null;
+    const etat = { ok: c.dataset.ok, etat: c.dataset.state || '', code: c.dataset.code || '' };
+    c.click();
+    return etat;
+  }, { id: piste, h: heure });
+}
+async function lireQuand(page) {
+  return lisible(await page.evaluate(() => [...document.querySelectorAll('#hourZone .fg-quand')].map((b) => ({
+    piste: (b.closest('.fg-track') || { dataset: {} }).dataset.activity || '',
+    visible: !b.hidden && b.getClientRects().length > 0,
+    dit: (b.querySelector('.fg-quand__dit') || {}).textContent || '',
+    titre: (b.querySelector('[data-quand-meme] b') || {}).textContent || '',
+    detail: (b.querySelector('[data-quand-meme] small') || {}).textContent || '',
+  }))));
+}
+const quandVisible = (page, piste) => attendre(page, (id) => [...document.querySelectorAll('#hourZone .fg-quand')].some((b) => !b.hidden && (b.closest('.fg-track') || { dataset: {} }).dataset.activity === id), 15000, piste);
+// Les demandes de plan parties apres les `n` premieres (l essai de la
+// proposition en est une).
+const essaisDepuis = (suivi, n) => suivi.demandes.slice(n).filter(estPlan);
+async function scenarioI(browser, mock) {
+  section('I. VENIR QUAND MEME A UNE HEURE COMPLETE');
+  semer(mock);
+  journeePleineA15h(mock, '16:00');
+  const un = await ouvrir(browser);
+  try {
+    const arrive = await versHeures(un.page, mock, 'f1');
+    const p0 = await lireProgramme(un.page);
+    // Le laser complet a 15:00 : les arcades a 15:00, le laser a 15:30, et ce
+    // que le serveur pose ensuite (le bowling a 16:00).
+    let n = un.suivi.demandes.length;
+    const laser15 = await toucherComplet(un.page, 'laser_game', '15:00');
+    const vuLaser = await quandVisible(un.page, 'laser_game');
+    const qL = await lireQuand(un.page);
+    const essaiL = essaisDepuis(un.suivi, n).map((u) => ({ arcade: params(u).get('arcade'), pins: posees(u) }));
+    ok(arrive && Boolean(laser15) && laser15.ok === 'false' && laser15.etat === 'hard' && laser15.code === 'capacity',
+      'MONTAGE le laser est complet a 15:00 pour 10 joueurs (l arene prise)', JSON.stringify(laser15));
+    ok(vuLaser && qL.length === 1 && /^Venir à 15:00 quand même \?/.test(qL[0].dit) && /Vos arcades d’abord, puis le laser game à 15:30 et le bowling à 16:00\./.test(qL[0].dit)
+      && qL[0].titre === 'Arcades à 15:00, puis laser game à 15:30' && /^Arrivée à 14:50, fin vers \d\d:\d\d$/.test(qL[0].detail),
+      'touche, 15:00 au laser propose de venir quand meme : les arcades a 15:00, le laser a 15:30, puis le bowling a 16:00 (le plan du serveur)', JSON.stringify(qL));
+    ok(essaiL.some((e) => e.arcade === '15:00' && e.pins.laser_game === '15:30' && !e.pins.bowling),
+      'la proposition vient d un essai au serveur : arcade=15:00 et le laser a 15:30', JSON.stringify(essaiL));
+    const pL = await lireProgramme(un.page);
+    ok(resumeLignes(pL) === resumeLignes(p0), 'l essai ne change rien a l ecran tant qu il n est pas touche', `${resumeLignes(p0)} || ${resumeLignes(pL)}`);
+    // Le bowling complet a 15:00 : sa proposition remplace celle du laser.
+    n = un.suivi.demandes.length;
+    const bowling15 = await toucherComplet(un.page, 'bowling', '15:00');
+    const vuBowling = await quandVisible(un.page, 'bowling');
+    const qB = await lireQuand(un.page);
+    const essaiB = essaisDepuis(un.suivi, n).map((u) => ({ arcade: params(u).get('arcade'), pins: posees(u) }));
+    ok(Boolean(bowling15) && bowling15.ok === 'false' && bowling15.etat === 'hard' && bowling15.code === 'capacity',
+      'MONTAGE le bowling est complet a 15:00 (les 8 pistes prises)', JSON.stringify(bowling15));
+    ok(vuBowling && qB.length === 1 && qB[0].piste === 'bowling' && /Vos arcades d’abord, puis le bowling à 16:00 et le laser game à \d\d:\d\d\./.test(qB[0].dit)
+      && qB[0].titre === 'Arcades à 15:00, puis bowling à 16:00',
+      'touche ensuite, 15:00 au bowling remplace la proposition du laser : les arcades a 15:00, puis le bowling a 16:00 et le laser', JSON.stringify(qB));
+    ok(essaiB.some((e) => e.arcade === '15:00' && e.pins.bowling === '16:00' && !e.pins.laser_game),
+      'son essai part avec arcade=15:00 et le bowling a 16:00', JSON.stringify(essaiB));
+    // Le toucher pose ce plan.
+    const laserPropose = ((qB[0] || {}).dit.match(/le laser game à (\d\d:\d\d)/) || [])[1] || '';
+    await un.page.click('#hourZone .fg-quand [data-quand-meme]');
+    await calme(un.page);
+    const p1 = await lireProgramme(un.page);
+    const premiere = p1.lignes.find((l) => l.cle) || {};
+    const lb = ligneDe(p1, 'bowling') || {};
+    const ll = ligneDe(p1, 'laser_game') || {};
+    const reste = await lireQuand(un.page);
+    ok(premiere.cle === 'arcade_time' && premiere.heure === '15:00' && /\bis-choisi\b/.test(premiere.classe) && lb.heure === '16:00' && /\bis-choisi\b/.test(lb.classe) && ll.heure === laserPropose && (borneArrivee(p1) || {}).heure === '14:50' && reste.length === 0,
+      `touchee, la proposition pose son plan : la borne a 14:50, les arcades a 15:00 et le bowling a 16:00 choisis, le laser a ${laserPropose}`, resumeLignes(p1));
+    const nB = un.suivi.blocages.length;
+    await un.page.click('#goContact');
+    const contact = await attendre(un.page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 12000);
+    const bloc = await blocageAttendu(un.suivi, nB);
+    const pref = (bloc && bloc.preference) || {};
+    ok(contact && pref.arcadeTime === '15:00' && (pref.preferredTimes || {}).bowling === '16:00',
+      'le blocage part avec ce plan : les arcades a 15:00, le bowling a 16:00', JSON.stringify(pref));
+  } finally {
+    ok(un.suivi.erreurs.length === 0, '[I] aucune erreur JavaScript (proposition tenue)', un.suivi.erreurs.slice(0, 3).join(' | '));
+    await un.ctx.close();
+  }
+  // Rien ne tient : le bowling complet jusqu a la fermeture. Au bowling, rien
+  // a proposer (aucune heure libre apres) ; au laser, l essai part, mais le
+  // serveur ferait jouer le bowling avant 15:00 : la visite ne commencerait
+  // pas a 15:00, rien ne s affiche.
+  semer(mock);
+  journeePleineA15h(mock, '24:00');
+  const deux = await ouvrir(browser);
+  try {
+    await versHeures(deux.page, mock, 'f1');
+    let n = deux.suivi.demandes.length;
+    const bowling15 = await toucherComplet(deux.page, 'bowling', '15:00');
+    await deux.page.waitForTimeout(2500);
+    const qB = await lireQuand(deux.page);
+    const aQuinze = (u) => params(u).get('arcade') === '15:00';
+    ok(Boolean(bowling15) && bowling15.etat === 'hard' && qB.filter((q) => q.visible).length === 0 && essaisDepuis(deux.suivi, n).filter(aQuinze).length === 0,
+      'le bowling complet jusqu a la fermeture : 15:00 touche ne propose rien, et aucun essai ne part au serveur', JSON.stringify({ bowling15, qB }));
+    n = deux.suivi.demandes.length;
+    const laser15 = await toucherComplet(deux.page, 'laser_game', '15:00');
+    const fin = Date.now() + 8000;
+    while (Date.now() < fin && !essaisDepuis(deux.suivi, n).filter(aQuinze).length) await deux.page.waitForTimeout(100);
+    const essaiPart = essaisDepuis(deux.suivi, n).filter(aQuinze).length > 0;
+    await calme(deux.page);
+    await deux.page.waitForTimeout(1500);
+    const qL = await lireQuand(deux.page);
+    const essai = [...deux.suivi.reponses].reverse().find((r) => estPlan(r.url) && params(r.url).get('arcade') === '15:00');
+    const blocs = ((((essai && essai.json && essai.json.slots) || [])[0] || {}).opsPlan || {}).resourceBlocks || [];
+    const avant15 = blocs.filter((b) => b && b.startTime && b.startTime < '15:00').map((b) => `${b.activityId} ${b.startTime}`);
+    ok(Boolean(laser15) && laser15.etat === 'hard' && essaiPart && avant15.length > 0,
+      'MONTAGE au laser, l essai part et le serveur ferait jouer le bowling avant 15:00', JSON.stringify({ essaiPart, avant15 }));
+    ok(qL.filter((q) => q.visible).length === 0, 'la visite ne commencerait pas a 15:00 : rien ne s affiche', JSON.stringify(qL));
+  } finally {
+    ok(deux.suivi.erreurs.length === 0, '[I] aucune erreur JavaScript (rien ne tient)', deux.suivi.erreurs.slice(0, 3).join(' | '));
+    await deux.ctx.close();
+  }
+}
+
+const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH], ['I', scenarioI]];
 
 async function main() {
   const mock = require('./dev-tunnel-server');
@@ -949,7 +1110,7 @@ async function main() {
     console.error(`\nformules-arrivee-form-check: ${failures} defaut(s).`);
     process.exit(1);
   }
-  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre ; chaque partie de laser propose son heure)');
+  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre ; chaque partie de laser propose son heure ; une heure complete propose de venir quand meme, si le serveur le tient)');
   process.exit(0);
 }
 

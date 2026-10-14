@@ -1797,6 +1797,15 @@ html.fg-pilote .fg { overflow: visible; }
 }
 .fg-libre__action b { font-size: 14px; font-weight: 700; line-height: 20px; }
 .fg-libre__action small { font-size: 12.5px; font-weight: 500; line-height: 17px; color: var(--fg-muted); }
+/* VENIR QUAND MEME (2026-10-14) : sous les raisons d une plage, l idee qui
+   rend une heure complete possible, dans le pointille sarcelle du temps
+   libre, et son toucher. */
+.fg-quand { display: grid; gap: 8px; margin: 0 14px 14px; padding: 10px 12px 12px; border: 1.5px dashed rgba(143, 214, 201, 0.5); border-radius: 12px; }
+.fg-etape .fg-quand { margin: 0 0 14px; }
+.fg-quand[hidden] { display: none; }
+.fg-quand__dit { margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--fg-muted); }
+.fg-quand__dit b { color: var(--fg-text); font-weight: 700; }
+.fg-quand .fg-libre__action { border-radius: 10px; }
 /* LES BORNES : l arrivee et la fin, un trait sarcelle a leur heure, leur mot
    dessous. */
 .fg-visit__step--in, .fg-visit__step--out, .fg-visit__step--debut { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; padding: 7px 0 6px; border-top: 2px solid var(--fg-teal); }
@@ -2792,7 +2801,12 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape .fg-period.is-open .fg-period__icon { transform: none; }
 .fg-etape .fg-period__sum, .fg-etape .fg-period__chev { display: none; }
 .fg-etape .fg-period__keys { display: none; }
-.fg-etape .fg-period__body { grid-row: 2; grid-column: 1 / -1; }
+/* Les trois plages partagent la cellule : une plage repliee garde sa
+   hauteur nulle (sans align-self, elle s etirait sur celle ouverte et,
+   posee apres elle, prenait les touchers de ses boutons), et ne prend aucun
+   toucher pendant qu elle se replie. */
+.fg-etape .fg-period__body { grid-row: 2; grid-column: 1 / -1; align-self: start; }
+.fg-etape .fg-period:not(.is-open) .fg-period__body { pointer-events: none; }
 .fg-etape .fg-period__inner > .fg-chips { padding: 0; }
 .fg-etape .fg-period.is-open .fg-period__inner > .fg-chips { padding: 10px 0 12px; }
 .fg-etape .fg-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }

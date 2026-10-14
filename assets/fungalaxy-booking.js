@@ -2721,6 +2721,7 @@
   // compare.
   function poserPlan(j, texte, cle, repere, idAttente, heureAttente) {
     state.dispo = j; state.dispoCle = cle; state.dispoTexte = texte;
+    $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });
     heuresLues = Date.now();
     plus.statut = null; plus.annuler = null; plus.refuses = {};
     // UNE HEURE POSEE DEVENUE PASSEE (2026-09-30) : le serveur l a retiree
@@ -3752,6 +3753,103 @@
 
   // « votre bowling », « vos arcades » : le possessif de ce qu on deplace.
   function votre(id) { return id === 'arcade_time' ? 'vos ' + nomBas(nomActivite(id)) : 'votre ' + nomBas(nomActivite(id)); }
+  /* --- VENIR QUAND MEME (Movsar, 2026-10-14) ------------------------------------
+     « si le systeme voit que laser game et bowling sont full a des heures ça
+     met que ils peuvent choisir arcades pendant cette heure [...] comme ça ils
+     peuvent venir a 15h [...] et faire donc laser et bowling a genre 16h ».
+     Une heure COMPLETE touchee propose de venir a cette heure quand meme : les
+     arcades de la formule la prennent (sans elles, une autre activite libre a
+     cette heure passe d abord), et l activite complete prend sa premiere heure
+     libre apres. Rien ne s affiche avant que le serveur l ait tenu, la visite
+     commencant bien a cette heure ; le toucher pose exactement ce plan-la. */
+  function premiereLibreApres(a, depuis) {
+    return ((a && a.times) || []).filter(function (t) { return t && t.ok !== false && !t.move && !t.warning && minutesDe(t.time) >= depuis; })[0] || null;
+  }
+  function candidatQuandMeme(idX, T) {
+    var d = state.dispo, ancres = ancrage(d).activities || [];
+    var x = ancres.filter(function (a) { return a.activityId === idX; })[0];
+    // Les parties de laser deja posees, ou la ligne d une partie suivante : ce
+    // n est plus l heure de venir qui se cherche, c est celle de cette partie.
+    if (!x || state.laserParts.length || (idX === 'laser_game' && /#[2-9]/.test(String(etapeOuverte || '')))) return null;
+    var debut = minutesDe(T), pins = Object.assign({}, state.pins);
+    delete pins[idX];
+    // Les arcades de la formule, encore sans heure, prennent l heure pleine.
+    var dureeArc = Number(arcadeDuPlan().minutes) || 0;
+    if (aDesArcades(d) && !state.arcade && dureeArc > 0) {
+      var t2 = premiereLibreApres(x, debut + dureeArc);
+      if (t2) { pins[idX] = t2.time; return { arcade: T, pins: pins, dabord: 'arcade_time', quoi: idX, heure: t2.time }; }
+    }
+    // Sinon une autre activite a heure, que le client n a pas posee, libre a
+    // cette heure : elle passe d abord.
+    var y = ancres.filter(function (a) {
+      if (a.activityId === idX || state.pins[a.activityId]) return false;
+      var u = (a.times || []).filter(function (v) { return v.time === T; })[0];
+      return u && u.ok !== false && !u.move && !u.warning;
+    })[0];
+    var t3 = y ? premiereLibreApres(x, debut + Math.max(30, Number(y.durationMinutes) || 60)) : null;
+    if (y && t3) { pins[y.activityId] = T; pins[idX] = t3.time; return { arcade: state.arcade, pins: pins, dabord: y.activityId, quoi: idX, heure: t3.time }; }
+    return null;
+  }
+  function proposerQuandMeme(chip) {
+    var track = chip.closest('.fg-track'), sec = chip.closest('.fg-period'), idX = track ? track.dataset.activity : '', T = chip.dataset.time;
+    // La meme heure retouchee garde sa proposition : ni nouvel essai, ni
+    // clignotement.
+    if ($$('.fg-quand', hourZone).some(function (b) { return b.dataset.pour === idX + '@' + T; })) return;
+    $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });
+    var c = idX && idX !== 'arcade_time' ? candidatQuandMeme(idX, T) : null;
+    var liste = sec ? $('.fg-why-list', sec) : null;
+    if (!c || !liste) return;
+    var boite = doc.createElement('div');
+    boite.className = 'fg-quand';
+    boite.dataset.pour = idX + '@' + T;
+    boite.hidden = true;
+    liste.parentNode.insertBefore(boite, liste.nextSibling);
+    // L essai : le plan de ce choix, demande sans rien changer a l ecran.
+    var avant = { pins: state.pins, laserParts: state.laserParts, arcade: state.arcade };
+    state.pins = c.pins; state.laserParts = []; state.arcade = c.arcade || '';
+    var url = urlDispo();
+    state.pins = avant.pins; state.laserParts = avant.laserParts; state.arcade = avant.arcade;
+    var choix = cleChoix();
+    lire(url, { headers: enteteBlocage() }).then(function (rep) {
+      if (!boite.isConnected || cleChoix() !== choix) return;
+      var j = lu(rep), slot = j && j.ok !== false ? (j.slots || [])[0] : null, plan = (slot && slot.opsPlan) || {};
+      var debuts = (plan.resourceBlocks || []).filter(function (b) { return b && b.startTime; }).map(function (b) { return String(b.startTime); }).sort();
+      var arcPose = !c.arcade || (plan.timeline || []).some(function (e) { return e && e.activityId === 'arcade_time' && e.flexible === false && e.startTime === c.arcade; });
+      var poseX = (plan.resourceBlocks || []).some(function (b) { return b && b.activityId === c.quoi && b.startTime === c.heure; });
+      if (!slot || !arcPose || !poseX || (debuts[0] && debuts[0] < T)) { boite.remove(); posterHauteur(); return; }
+      // Ce que le plan pose apres, dit avec ses heures (« le bowling à 16:00 et
+      // le laser game à 17:00 »).
+      var vus = {}, ensuite = [];
+      (plan.resourceBlocks || []).slice().sort(function (a, b) { return String(a.startTime).localeCompare(String(b.startTime)); }).forEach(function (b) {
+        if (!b || !b.activityId || b.activityId === c.dabord || !/^(bowling_lane|laser_arena)$/.test(b.resourceType || '') || vus[b.activityId + '#' + (b.countIndex || 1)]) return;
+        vus[b.activityId + '#' + (b.countIndex || 1)] = 1;
+        ensuite.push('le ' + nomBas(nomActivite(b.activityId)) + ' à ' + b.startTime);
+      });
+      var arrivee = arriveeDe(plan), fin = slot.visitEndTime || '';
+      var tete = c.dabord === 'arcade_time' ? 'Vos arcades d’abord' : (nomActivite(c.dabord) + ' d’abord');
+      boite.innerHTML = '<p class="fg-quand__dit"><b>Venir à ' + esc(T) + ' quand même\u00a0?</b> ' + esc(typo(tete + ', puis ' + joindreListe(ensuite, ' et ') + '.')) + '</p>'
+        + '<button type="button" class="fg-libre__action fg-quand__oui" data-quand-meme><b>' + esc(typo((c.dabord === 'arcade_time' ? 'Arcades' : nomActivite(c.dabord)) + ' à ' + T + ', puis ' + nomBas(nomActivite(c.quoi)) + ' à ' + c.heure)) + '</b>'
+        + '<small>' + esc(typo([arrivee ? 'Arrivée à ' + arrivee : '', fin ? 'fin vers ' + heureAffichee(fin) : ''].filter(Boolean).join(', '))) + '</small></button>';
+      boite.hidden = false;
+      boite._essai = { c: c, j: j, texte: rep.texte, lu: Date.now() };
+      dire('Venir à ' + T + ' quand même : ' + tete + ', puis ' + joindreListe(ensuite, ' et ') + '.');
+      posterHauteur();
+    }, function () { if (boite.isConnected) boite.remove(); posterHauteur(); });
+  }
+  // Le toucher pose le plan essaye : celui que le serveur vient de tenir, ou,
+  // s il date, le meme choix redemande.
+  function poserQuandMeme(bouton) {
+    var boite = bouton.closest('.fg-quand'), essai = boite && boite._essai;
+    if (!essai) return;
+    state.pins = essai.c.pins; state.laserParts = []; state.arcade = essai.c.arcade || ''; adaptation = null;
+    etapeOuverte = null; etapeTouchee = false;
+    boite.remove();
+    if (Date.now() - essai.lu < 15000) {
+      requeteEnCours += 1;
+      if (planEnCours) { planEnCours.abort(); planEnCours = null; }
+      poserPlan(essai.j, essai.texte, cleDemande(), repereFocus(), '', '');
+    } else chargerPlan();
+  }
   /* --- LES ARCADES A L HEURE DU CLIENT (modele A, 2026-10-13) ----------------
      Movsar : « ils peuvent choisir heure d arrivee mais aussi arcade », puis
      l heure d arcade « Facultatif ». Sans heure, les arcades se font sur le
@@ -3880,6 +3978,8 @@
       return;
     }
     if (e.target.closest('[data-arcades]')) { chargerArcades(); return; }
+    var quand = e.target.closest('[data-quand-meme]');
+    if (quand) { poserQuandMeme(quand); return; }
     var enTete = e.target.closest('.fg-period__btn');
     if (enTete) {
       var sec = enTete.closest('.fg-period');
@@ -3928,9 +4028,12 @@
         cible = sec ? $$('.fg-why-list__item', sec).filter(function (l) { return (' ' + l.dataset.heures + ' ').indexOf(' ' + t + ' ') >= 0; })[0] : null;
       }
       if (cible) { void cible.offsetWidth; cible.classList.add('is-lit'); }
+      if (chip.dataset.state === 'hard' && /^(capacity|resource_conflict)$/.test(chip.dataset.code || '')) proposerQuandMeme(chip);
+      else $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });
       posterHauteur();
       return;
     }
+    $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });
     var idA = track.dataset.activity;
     if (idA === 'arcade_time') { choisirArcade(t, chip); return; }
     if (!idA) {

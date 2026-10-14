@@ -60,6 +60,15 @@
 //       bowling a 16:00), le blocage part avec lui. Rien ne s affiche quand
 //       rien ne tient : ni sans heure libre apres, ni quand le serveur ferait
 //       commencer la visite avant 15:00.
+//   [J] la Formule 4 au choix (Movsar le 13/10 : « oui », « 60 min
+//       d'arcades » a la place des deux parties de Laser Game) : sous la
+//       carte choisie, deux pastilles d option, « 2 parties de Laser Game »
+//       cochee ; la variante touchee (ou a la fleche) change la liste de la
+//       carte, une autre formule la remet a la carte ; chaque demande des
+//       heures et le blocage la portent ; l ecran des heures, la visite et
+//       le recapitulatif disent ses arcades, aucun laser ; revenir a « 2
+//       parties de Laser Game » rend les lignes de laser et des demandes
+//       sans variante.
 //   --mutate : une regle cassee a la fois, en memoire (le formulaire servi au
 //       navigateur, ou le moteur compile pour le serveur) : chacune doit faire
 //       rougir le gate ; le disque n est jamais ecrit, et on le verifie.
@@ -182,6 +191,28 @@ const MUTATIONS = [
     de: "    state.pins = essai.c.pins; state.laserParts = []; state.arcade = essai.c.arcade || ''; adaptation = null;", vers: '    state.pins = essai.c.pins; state.laserParts = []; adaptation = null;' },
   { nom: 'une autre heure complete garde la proposition d avant', fichier: JS, scenarios: ['I'],
     de: "    if ($$('.fg-quand', hourZone).some(function (b) { return b.dataset.pour === idX + '@' + T; })) return;\n    $$('.fg-quand', hourZone).forEach(function (b) { b.remove(); });", vers: "    if ($$('.fg-quand', hourZone).some(function (b) { return b.dataset.pour === idX + '@' + T; })) return;" },
+  // La Formule 4 au choix (2026-10-13).
+  { nom: 'la demande des heures part sans la variante', fichier: JS, scenarios: ['J'],
+    de: " if (choixEnvoye()) q.set('formulaChoice', choixEnvoye()); }", vers: ' }' },
+  { nom: 'le blocage part sans la variante', fichier: JS, scenarios: ['J'],
+    de: '    if (choixEnvoye()) base.preference.formulaChoice = choixEnvoye();', vers: '    void 0;' },
+  { nom: 'toucher une variante ne la choisit pas', fichier: JS, scenarios: ['J'],
+    de: "    state.choix = rang > 0 ? liste[rang].id : '';", vers: '    void rang;' },
+  { nom: 'les fleches ne passent plus d une variante a l autre', fichier: JS, scenarios: ['J'],
+    de: '      choisirVariante(pills[k]);\n      pills[k].focus({ preventScroll: true });', vers: '      void k;' },
+  { nom: 'la carte ne dit pas le contenu de la variante choisie', fichier: JS, scenarios: ['J'],
+    de: '      if (ul) ul.innerHTML = lignesCarte(avecVariante(f));', vers: '      void ul;' },
+  { nom: 'une autre formule garde la variante', fichier: JS, scenarios: ['J'],
+    de: "    if (state.choix) { state.choix = ''; majVariantes(); }", vers: '    void 0;' },
+  { nom: 'le recapitulatif dit le contenu de la carte', fichier: JS, scenarios: ['J'],
+    de: '    return f ? avecVariante(f) : null;', vers: '    return f;' },
+  { nom: 'les variantes ne sont plus des pastilles d option', fichier: JS, scenarios: ['J'],
+    de: "        return '<button type=\"button\" class=\"fg-pill' + (on ? ' is-on' : '') + '\" role=\"radio\" aria-checked=\"' + on + '\" tabindex=\"' + (on ? '0' : '-1') + '\" data-choix-for=\"'",
+    vers: "        return '<button type=\"button\" class=\"fg-choix' + (on ? ' is-on' : '') + '\" role=\"radio\" aria-checked=\"' + on + '\" tabindex=\"' + (on ? '0' : '-1') + '\" data-choix-for=\"'" },
+  { nom: 'le serveur ne lit plus la variante demandee', fichier: 'api/public-availability.js', scenarios: ['J'],
+    de: '      const variante = varianteDemandee(formuleId, choixFormule);', vers: '      const variante = null;' },
+  { nom: 'le moteur ignore la variante de la demande', fichier: 'lib/ops-engine.js', scenarios: ['J'],
+    de: '  const avecChoix = formuleAvecChoix(rawFormula, varianteDemandee(rawFormula && rawFormula.id, preference.formulaChoice));', vers: '  const avecChoix = rawFormula;' },
 ];
 const MUTATION_PREUVE = '[mutation] servie :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_ARRIVEE_FORM_MUTATION || 0);
@@ -333,7 +364,9 @@ async function calme(page) {
   await attendre(page, () => !document.querySelector('#hourZone.is-busy') && !document.querySelector('.fg-chip.is-pending'), 15000);
   await page.waitForTimeout(350);
 }
-async function versHeures(page, mock, formuleId) {
+// `avantHeures` : ce que le scenario fait sur la carte choisie, avant
+// « Continuer » (le choix d une variante, [J]).
+async function versHeures(page, mock, formuleId, avantHeures = null) {
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   await page.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
   await attendre(page, () => document.querySelector('#dayLabel').textContent.trim() !== 'Choisir un jour', 15000);
@@ -362,6 +395,7 @@ async function versHeures(page, mock, formuleId) {
   await attendre(page, () => !document.querySelector('#panelFor').hidden && document.querySelectorAll('#gridFor .fg-card').length > 0, 5000);
   await page.click(`#gridFor .fg-card[data-formule="${formuleId}"]`);
   await page.waitForTimeout(250);
+  if (avantHeures) await avantHeures();
   await page.click('#goHours');
   await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 8000);
   const pret = await attendre(page, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone.is-busy'), 15000);
@@ -1123,7 +1157,130 @@ async function scenarioI(browser, mock) {
   }
 }
 
-const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH], ['I', scenarioI]];
+// ---------------------------------------------------------------------------
+// [J] LA FORMULE 4 AU CHOIX : 60 MIN D ARCADES A LA PLACE DES DEUX LASERS
+// ---------------------------------------------------------------------------
+// Les pastilles du choix sous une carte de formule, et la liste de la carte.
+async function lireChoix(page, formuleId) {
+  return lisible(await page.evaluate((id) => {
+    const carte = document.querySelector(`#gridFor .fg-card[data-formule="${id}"]`);
+    const item = carte ? carte.closest('.fg-grid__item') : null;
+    const voit = (b) => (typeof b.checkVisibility === 'function' ? b.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true }) : b.getClientRects().length > 0);
+    return {
+      pastilles: item ? [...item.querySelectorAll('[data-choix]')].map((b) => ({
+        id: b.dataset.choix, texte: b.textContent, coche: b.getAttribute('aria-checked') === 'true', on: b.classList.contains('is-on'),
+        pastille: b.classList.contains('fg-pill') && b.getAttribute('role') === 'radio', visible: voit(b), focus: document.activeElement === b,
+      })) : [],
+      carte: item ? [...item.querySelectorAll('.fg-for__list li')].map((li) => li.textContent) : [],
+    };
+  }, formuleId));
+}
+const cocheeDe = (choix) => (((choix && choix.pastilles) || []).find((p) => p.coche) || {}).id || '';
+const attendreCochee = (page, formuleId, id) => attendre(page, ({ f, c }) => {
+  const carte = document.querySelector(`#gridFor .fg-card[data-formule="${f}"]`);
+  const b = carte && carte.closest('.fg-grid__item').querySelector(`[data-choix="${c}"]`);
+  return Boolean(b && b.getAttribute('aria-checked') === 'true');
+}, 4000, { f: formuleId, c: id });
+const pastillesVues = (page, formuleId, voulu) => attendre(page, ({ f, v }) => {
+  const carte = document.querySelector(`#gridFor .fg-card[data-formule="${f}"]`);
+  const b = carte && carte.closest('.fg-grid__item').querySelector('[data-choix]');
+  const voit = Boolean(b && (typeof b.checkVisibility === 'function' ? b.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true }) : b.getClientRects().length > 0));
+  return voit === v;
+}, 4000, { f: formuleId, v: voulu });
+// Les apostrophes droites ou typographiques se valent.
+const sansApostrophe = (s) => norm(s).replace(/[’']/g, "'");
+const demandesDeLaFormule = (suivi, n, formuleId) => suivi.demandes.slice(n).filter((u) => estPlan(u) && params(u).get('formuleId') === formuleId);
+async function scenarioJ(browser, mock) {
+  section('J. LA FORMULE 4 AU CHOIX : 60 MIN D ARCADES A LA PLACE DES DEUX LASERS');
+  semer(mock);
+  const { ctx, page, suivi } = await ouvrir(browser);
+  try {
+    const vu = {};
+    let nChoix = 0;
+    const arrive = await versHeures(page, mock, 'f4', async () => {
+      vu.visibles = await pastillesVues(page, 'f4', true);
+      vu.depart = await lireChoix(page, 'f4');
+      await page.click('#gridFor [data-choix="arcade60"]');
+      await attendreCochee(page, 'f4', 'arcade60');
+      vu.arcades = await lireChoix(page, 'f4');
+      // Une autre formule choisie : la Formule 4 reprise repart de sa carte.
+      await page.click('#gridFor .fg-card[data-formule="f1"]');
+      vu.cachees = await pastillesVues(page, 'f4', false);
+      await page.click('#gridFor .fg-card[data-formule="f4"]');
+      await pastillesVues(page, 'f4', true);
+      vu.reprise = await lireChoix(page, 'f4');
+      // Au clavier, comme un groupe radio : la fleche passe a la suivante.
+      await page.focus('#gridFor [data-choix="laser2"]');
+      await page.keyboard.press('ArrowRight');
+      await attendreCochee(page, 'f4', 'arcade60');
+      vu.clavier = await lireChoix(page, 'f4');
+      nChoix = suivi.demandes.length;
+    });
+    const depart = vu.depart || {};
+    const libelle = ((depart.pastilles || []).find((p) => p.id === 'arcade60') || {}).texte || '';
+    const ditLaVariante = (lignes) => (lignes || []).some((l) => sansApostrophe(l) === sansApostrophe(libelle));
+    const ditLeLaser = (lignes) => (lignes || []).some((l) => /laser/i.test(l));
+    ok(arrive && vu.visibles && (depart.pastilles || []).length === 2 && cocheeDe(depart) === 'laser2' && depart.pastilles.every((p) => p.pastille && p.visible) && Boolean(libelle) && ditLeLaser(depart.carte),
+      'MONTAGE la carte de la Formule 4 choisie montre ses deux variantes en pastilles d option, « 2 parties de Laser Game » cochee', JSON.stringify(depart));
+    ok(cocheeDe(vu.arcades) === 'arcade60' && ditLaVariante((vu.arcades || {}).carte) && !ditLeLaser((vu.arcades || {}).carte),
+      'touchee, « 60 min d arcades » se coche et la carte dit son contenu, sans laser', JSON.stringify(vu.arcades));
+    ok(vu.cachees && cocheeDe(vu.reprise) === 'laser2' && ditLeLaser((vu.reprise || {}).carte) && !ditLaVariante((vu.reprise || {}).carte),
+      'une autre formule choisie, les pastilles de la Formule 4 se cachent ; reprise, elle repart de sa carte (2 parties de Laser Game)', JSON.stringify({ cachees: vu.cachees, reprise: vu.reprise }));
+    ok(cocheeDe(vu.clavier) === 'arcade60' && Boolean(((vu.clavier || {}).pastilles || []).find((p) => p.id === 'arcade60' && p.focus)),
+      'au clavier, la fleche passe a « 60 min d arcades » et le focus la suit', JSON.stringify(vu.clavier));
+
+    const heures = demandesDeLaFormule(suivi, nChoix, 'f4');
+    ok(heures.length > 0 && heures.every((u) => params(u).get('formulaChoice') === 'arcade60'),
+      `chaque demande des heures de la Formule 4 porte la variante (${heures.length})`, heures.filter((u) => params(u).get('formulaChoice') !== 'arcade60').slice(0, 1).join(''));
+    const p = await lireProgramme(page);
+    const arc = ligneDe(p, 'arcade_time') || {};
+    ok(!p.lignes.some((l) => /^laser_game/.test(l.cle)) && Boolean(ligneDe(p, 'bowling')) && arc.heure === 'Facultatif' && /\b(1 heure|60 min)\b/.test(arc.detail || ''),
+      'l ecran des heures : le bowling et les arcades de la variante (facultatives, une heure), aucune ligne de laser', resumeLignes(p));
+    const v = await lireVisite(page);
+    ok(v.etapes.length > 0 && !/laser/i.test(JSON.stringify(v)), 'la visite ne parle d aucune partie de laser', JSON.stringify(v.etapes.map((e) => e.titre)));
+    const pris = await poser(page, 'bowling', '14:00');
+    const demande = dernierPlan(suivi);
+    const v2 = await lireVisite(page);
+    ok(pris && posees(demande).bowling === '14:00' && params(demande).get('formulaChoice') === 'arcade60' && v2.etapes.some((e) => /bowling/i.test(e.titre)) && !/laser/i.test(JSON.stringify(v2)),
+      'le bowling pose a 14:00 : la demande garde la variante, la visite dit le bowling et toujours aucun laser', `${demande} || ${JSON.stringify(v2.etapes.map((e) => `${e.b} ${e.titre}`))}`);
+
+    const nB = suivi.blocages.length;
+    await page.click('#goContact');
+    const contact = await attendre(page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active'), 12000);
+    const bloc = await blocageAttendu(suivi, nB);
+    ok(contact && Boolean(bloc && bloc.preference) && bloc.preference.formulaChoice === 'arcade60',
+      'le blocage part avec la variante (preference.formulaChoice)', JSON.stringify(bloc && bloc.preference));
+    const recap = sansApostrophe(await page.evaluate(() => (document.querySelector('#recallBody') || {}).textContent || ''));
+    ok(Boolean(libelle) && recap.includes(sansApostrophe(libelle)) && !/laser/i.test(recap), 'le recapitulatif dit le contenu de la variante, sans laser', recap.slice(0, 240));
+
+    // Revenir a la carte : les lignes de laser reviennent, sans variante.
+    await page.click('.fg-scene[data-scene="contact"] [data-back]');
+    await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+    await page.click('.fg-scene[data-scene="heures"] [data-back]');
+    const retour = await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+    await pastillesVues(page, 'f4', true);
+    await page.click('#gridFor [data-choix="laser2"]');
+    await attendreCochee(page, 'f4', 'laser2');
+    const carteLaser = await lireChoix(page, 'f4');
+    ok(retour && cocheeDe(carteLaser) === 'laser2' && ditLeLaser(carteLaser.carte) && !ditLaVariante(carteLaser.carte),
+      'revenue a la carte, « 2 parties de Laser Game » se coche de nouveau et la carte redit ses deux parties de laser', JSON.stringify(carteLaser));
+    const nRetour = suivi.demandes.length;
+    await page.click('#goHours');
+    await attendre(page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active'), 8000);
+    const pret = await attendre(page, () => document.querySelector('#planZone .fg-visit') && !document.querySelector('#hourZone.is-busy'), 15000);
+    await calme(page);
+    const sansVariante = demandesDeLaFormule(suivi, nRetour, 'f4');
+    const pL = await lireProgramme(page);
+    ok(pret && sansVariante.length > 0 && sansVariante.every((u) => !params(u).has('formulaChoice')),
+      `les demandes des heures repartent sans variante (${sansVariante.length})`, sansVariante.filter((u) => params(u).has('formulaChoice')).slice(0, 1).join(''));
+    ok(pL.lignes.some((l) => /^laser_game/.test(l.cle)) && !ligneDe(pL, 'arcade_time'), 'l ecran des heures rend les lignes de laser, et plus de ligne des arcades', resumeLignes(pL));
+  } finally {
+    ok(suivi.erreurs.length === 0, '[J] aucune erreur JavaScript', suivi.erreurs.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+}
+
+const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH], ['I', scenarioI], ['J', scenarioJ]];
 
 async function main() {
   const mock = require('./dev-tunnel-server');
@@ -1147,7 +1304,7 @@ async function main() {
     console.error(`\nformules-arrivee-form-check: ${failures} defaut(s).`);
     process.exit(1);
   }
-  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre ; chaque partie de laser propose son heure ; une heure complete propose de venir quand meme, si le serveur le tient)');
+  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre ; chaque partie de laser propose son heure ; une heure complete propose de venir quand meme, si le serveur le tient ; la Formule 4 se choisit avec ses arcades, de la carte au blocage)');
   process.exit(0);
 }
 

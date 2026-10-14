@@ -61,6 +61,16 @@
 //       l ouverture a la fermeture) qui libere l activite posee qu elle
 //       chevauche ; le POST, la signature, la modification au comptoir ; les
 //       mails qui ne disent plus « 10 minutes plus tot » a l ouverture.
+//   [N] (2026-10-13, Movsar : « oui » a la Formule 4 au choix) « 60 min
+//       d'arcades » a la place des deux parties de Laser Game : la variante
+//       declaree au socle et servie par la meta ; sans variante, avec la
+//       premiere ou un identifiant inconnu, la meme reponse au caractere
+//       pres ; la grille et chaque creneau sans laser, avec les arcades de
+//       la variante, libres ou posees ; le POST l arene pleine, la
+//       signature ; la modification au comptoir, decalee ou adaptee ; la
+//       garde de la base, le retard, le deplacement du bowling et le
+//       dossier a placer qui n inventent aucune partie ; les mails ; la
+//       console (planning, fiche, modification, etiquette).
 //   --mutate : une mutation EN MEMOIRE par regle (crochet de compilation, le
 //       disque n est jamais ecrit, son empreinte est comparee avant et apres) ;
 //       chacune doit faire rougir ce gate.
@@ -260,6 +270,8 @@ function charger() {
     meta: (params) => appeler(meta, 'GET', '/api/public-booking-meta', { centerId: CENTRE, ...params }),
     post: (corps) => appeler(reservationsApi, 'POST', '/api/public-reservations', null, corps),
     comms: () => require(path.join(ROOT, 'lib/ops-communications.js')),
+    deplacer: () => require(path.join(ROOT, 'lib/reservation-activity-move.js')),
+    fenetre: () => require(path.join(ROOT, 'lib/reserver-fenetre.js')),
   };
 }
 
@@ -1158,10 +1170,27 @@ async function differentiel(commit) {
   ok(ecartsGet.length === 0, `GET sans arrivee : ${avant.corpsGet.length} reponses identiques octet pour octet a ${commit}`, ecartsGet.slice(0, 3).join(' | '));
   ok(ecartsPost.length === 0, `coeur du POST sans arrivee : ${avant.corpsPost.length} plans identiques octet pour octet a ${commit}`, ecartsPost.slice(0, 3).join(' | '));
   ok(JSON.stringify(avant.signatures) === JSON.stringify(apres.signatures), `signatures sans arrivee : ${avant.signatures.length} identiques a ${commit}`);
-  const metaSansReglage = metaApres.json ? JSON.parse(metaApres.body) : null;
-  if (metaSansReglage && metaSansReglage.center) delete metaSansReglage.center.formulaVisit;
-  ok(metaAvant.json && metaSansReglage && JSON.stringify(metaAvant.json) === JSON.stringify(metaSansReglage) && metaApres.json.center && metaApres.json.center.formulaVisit,
-    `meta publique : identique a ${commit}, plus la seule cle center.formulaVisit`);
+  // La meta ne gagne que des cles : le reglage d arrivee du centre
+  // (center.formulaVisit) et les variantes d une formule (formules[].choices,
+  // lib/formula-choice), chacune comptee seulement quand le commit ne l a
+  // pas ; tout le reste au caractere pres.
+  const metaSansAjouts = metaApres.json ? JSON.parse(metaApres.body) : null;
+  const ajoutees = [];
+  const centreAvant = (metaAvant.json && metaAvant.json.center) || {};
+  if (metaSansAjouts && metaSansAjouts.center && !('formulaVisit' in centreAvant) && 'formulaVisit' in metaSansAjouts.center) {
+    delete metaSansAjouts.center.formulaVisit;
+    ajoutees.push('center.formulaVisit');
+  }
+  const formulesAvant = new Map(((metaAvant.json && metaAvant.json.formules) || []).map((formule) => [formule.id, formule]));
+  ((metaSansAjouts && metaSansAjouts.formules) || []).forEach((formule) => {
+    const avantElle = formulesAvant.get(formule.id);
+    if (avantElle && !('choices' in avantElle) && 'choices' in formule) {
+      delete formule.choices;
+      ajoutees.push(`formules[${formule.id}].choices`);
+    }
+  });
+  ok(metaAvant.json && metaSansAjouts && JSON.stringify(metaAvant.json) === JSON.stringify(metaSansAjouts) && metaApres.json.center && metaApres.json.center.formulaVisit,
+    `meta publique : identique a ${commit}, plus les seules cles ajoutees (${ajoutees.join(', ') || 'aucune'})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1424,6 +1453,338 @@ async function scenarioM(H) {
   return v;
 }
 
+// ---------------------------------------------------------------------------
+// [N] LA FORMULE 4 AU CHOIX : 60 MIN D ARCADES A LA PLACE DES DEUX LASERS
+// ---------------------------------------------------------------------------
+// Movsar, le 13/10 : « oui » a la Formule 4 au choix, « 2 parties de Laser
+// Game » (le contenu de sa carte, par defaut) ou « 60 min d'arcades » a leur
+// place, au meme prix et avec la meme duree de carte. La variante se declare
+// au socle de la formule (lib/booking-config, `choices`), lib/formula-choice
+// la joue, le plan la garde (`opsPlan.formulaChoice`) et chaque relecture du
+// dossier la reprend. Le scenario se joue par parties (N|grille, N|console...)
+// pour qu une contre-epreuve ne rejoue que ce qu elle touche.
+const blocsLaser = (plan) => ((plan && plan.resourceBlocks) || []).filter((bloc) => bloc && bloc.resourceType === 'laser_arena');
+const etapeDuPlan = (plan, id) => ((plan && plan.timeline) || []).find((etape) => etape && etape.activityId === id) || {};
+const varianteDuPlan = (plan) => (plan && plan.formulaChoice && plan.formulaChoice.id) || '';
+function sansVariante(plan) {
+  const { formulaChoice: _variante, ...reste } = plan || {};
+  return reste;
+}
+// L arene prise de `debut` a `fin` : 30 joueurs a chaque demi-heure.
+function arenePrise(debut, fin) {
+  const dossiers = [];
+  for (let t = minutesDe(debut); t < minutesDe(fin); t += 30) {
+    prochainId += 1;
+    dossiers.push({ id: prochainId, centerId: CENTRE, date: DATE, startTime: heureDe(t), duration: 0.5, pax: 30, type: 'laser', status: 'confirmed', validationStatus: 'confirmed', program: null,
+      opsPlan: { resourceBlocks: [{ resourceType: 'laser_arena', activityId: 'laser_game', start: t, end: t + 25, startTime: heureDe(t), endTime: heureDe(t + 25), players: 30 }] } });
+  }
+  return dossiers;
+}
+// La variante « 60 min d'arcades », lue au socle de la Formule 4.
+function varianteArcades(H) {
+  const f4 = H.bookingConfig.FORMULES.find((formule) => formule.id === 'f4') || {};
+  const socle = Array.isArray(f4.choices) ? f4.choices : [];
+  const arcades = socle[1] || {};
+  return { f4, socle, arcades, minutes: Number((((arcades.steps || [])[0]) || {}).durationMinutes) || 0 };
+}
+// Le bowling pose a 15:00, avec ou sans la variante.
+const preferenceDuBowling = (variante) => ({ preferredTimes: { bowling: '15:00' }, laserGameTimes: [], laserPlacement: 'scheduled', arrivalConfidence: 'normal', ...(variante ? { formulaChoice: variante.id } : {}) });
+// Le dossier de reference : la Formule 4 aux arcades, le bowling a 15:00, cree
+// par le coeur du POST sur une journee vide, puis enregistre tel quel.
+async function dossierAuxArcades(H, arcades) {
+  poserEtat({ reservations: [] });
+  const cree = await verdictDuPost(H, corpsFormule('f4', '15:00', preferenceDuBowling(arcades)));
+  const plan = (cree.ops && cree.ops.opsPlan) || {};
+  const debut = (cree.ops && cree.ops.startTime) || '15:00';
+  const montage = verdict(cree.ok && varianteDuPlan(plan) === arcades.id && !blocsLaser(plan).length,
+    'MONTAGE le dossier de reference : la Formule 4 aux arcades, le bowling a 15:00, cree par le coeur du POST sur une journee vide',
+    cree.ok ? JSON.stringify({ variante: varianteDuPlan(plan), laser: blocsLaser(plan).length }) : cree.raison);
+  const existant = { ...corpsFormule('f4', debut), id: 8402, opsPlan: plan, lanes: (plan.assignedLanes || []).slice(), status: 'confirmed', validationStatus: 'confirmed', notes: '' };
+  return { montage, plan, debut, existant };
+}
+// LA CONSOLE EN BAC A SABLE : booking-core entier, puis les fonctions de la
+// fiche et du planning extraites d app-main. Une contre-epreuve sur ces
+// fichiers s y applique comme le crochet de compilation (le disque n est
+// jamais ecrit).
+function sourceNavigateur(rel) {
+  let texte = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  ACTIVES.forEach((mutation) => {
+    if (mutation.fichier !== rel) return;
+    const fin = texte.includes('\r\n') ? '\r\n' : '\n';
+    const de = mutation.de.split('\n').join(fin);
+    const vers = mutation.vers.split('\n').join(fin);
+    mutation.trouvee = texte.split(de).length - 1;
+    if (mutation.trouvee === 1) {
+      texte = texte.split(de).join(vers);
+      mutation.appliquee += 1;
+    }
+  });
+  return texte.split('\r\n').join('\n');
+}
+function laConsole() {
+  const vm = require('vm');
+  const bac = {
+    window: {}, document: { addEventListener() {}, getElementById: () => null },
+    console: { log() {}, warn() {}, error() {} },
+    localStorage: { getItem: () => null, setItem() {} },
+    setTimeout, clearTimeout, state: { booking: {}, reservations: [] },
+  };
+  bac.globalThis = bac;
+  vm.createContext(bac);
+  vm.runInContext(sourceNavigateur('assets/booking-core.js'), bac, { timeout: 20000 });
+  const app = sourceNavigateur('assets/app-main.js');
+  const manquantes = [];
+  ['escapeHtml', 'formulaActivityToken', 'getFormulaActivityIds', 'getFormulaFreePassIds', 'getFormulaLaserGameCount',
+    'getLaserGameCountForReservation', 'buildEditProgramFromReservation', 'renderReservationTags'].forEach((nom) => {
+    const debut = app.indexOf(`\nfunction ${nom}(`);
+    const fin = debut < 0 ? -1 : app.indexOf('\n}\n', debut + 1);
+    if (fin < 0) { manquantes.push(nom); return; }
+    vm.runInContext(app.slice(debut + 1, fin + 2), bac);
+  });
+  // Ce que l etiquette lit d autre, sans rapport avec la formule ni le laser.
+  vm.runInContext("var getBowlingTotalHoursForReservation = function () { return 1; }, formatDurationLabel = function (h) { return h + ' h'; }, getReservationOccasion = function () { return ''; }, hasReservationNote = function () { return false; }, STAFF_OCCASION_LABELS = {};", bac);
+  const appelle = (nom, ...args) => {
+    const rendu = bac[nom](...args);
+    return rendu === undefined ? null : JSON.parse(JSON.stringify(rendu));
+  };
+  return { manquantes, appelle };
+}
+
+const PARTIES_N = ['donnee', 'grille', 'post', 'comptoir', 'base', 'retard', 'planning', 'mails', 'console'];
+async function scenarioN(H, seulement = null) {
+  const inconnues = (seulement || []).filter((partie) => !PARTIES_N.includes(partie));
+  if (inconnues.length) throw new Error(`scenario N : partie inconnue ${inconnues.join(', ')}`);
+  const veut = (partie) => !seulement || seulement.includes(partie);
+  const v = [];
+  const { f4, socle, arcades, minutes } = varianteArcades(H);
+  let reference = null;
+  const laReference = async () => {
+    if (!reference) {
+      reference = await dossierAuxArcades(H, arcades);
+      v.push(reference.montage);
+    }
+    return reference;
+  };
+
+  // 1. La donnee : le socle de la formule, la meta publique.
+  if (veut('donnee')) {
+    v.push(verdict(socle.map((choix) => choix.id).join(',') === 'laser2,arcade60' && minutes > 0 && Boolean(arcades.label),
+      'MONTAGE le socle de la Formule 4 declare deux variantes : 2 parties de Laser Game (sa carte), puis 60 min d arcades', JSON.stringify(socle)));
+    const meta = await H.meta({});
+    const formulesMeta = (meta.json && meta.json.formules) || [];
+    const metaF4 = formulesMeta.find((formule) => formule.id === 'f4') || {};
+    const declarent = formulesMeta.filter((formule) => Array.isArray(formule.choices)).map((formule) => formule.id);
+    v.push(verdict(meta.status === 200 && JSON.stringify(metaF4.choices) === JSON.stringify(socle) && declarent.join(',') === 'f4' && metaF4.price === f4.price,
+      'la meta publique sert les variantes de la Formule 4 telles quelles, au prix de sa carte ; aucune autre formule n en declare',
+      JSON.stringify({ meta: metaF4.choices || null, declarent, prix: [metaF4.price, f4.price] })));
+  }
+
+  // 2. La grille et les creneaux. Sans variante, avec la premiere ou un
+  //    identifiant inconnu : la meme reponse au caractere pres.
+  if (veut('grille')) {
+    poserEtat({ reservations: [] });
+    const ecarts = [];
+    for (const demande of [{}, { preferredTimes: { bowling: '15:00' } }, { arcades: '1' }]) {
+      const sans = await H.get({ type: 'formule', formuleId: 'f4', ...demande });
+      for (const formulaChoice of [socle.length ? socle[0].id : 'laser2', 'inconnue']) {
+        const avec = await H.get({ type: 'formule', formuleId: 'f4', ...demande, formulaChoice });
+        if (avec.body !== sans.body) ecarts.push(`${JSON.stringify(demande)} formulaChoice=${formulaChoice}`);
+      }
+    }
+    v.push(verdict(ecarts.length === 0, 'sans variante, avec la premiere ou un identifiant inconnu : la Formule 4 rend la meme reponse au caractere pres', ecarts.join(' | ')));
+
+    const rep = await H.get({ type: 'formule', formuleId: 'f4', formulaChoice: arcades.id });
+    const ancres = (rep.json && rep.json.anchors) || {};
+    const aHeure = (ancres.activities || []).map((activite) => activite.activityId);
+    const libres = (ancres.freePass || []).map((libre) => libre.activityId);
+    v.push(verdict(rep.status === 200 && aHeure.join(',') === 'bowling' && ancres.laserGames === 0 && libres.includes('arcade_time') && libres.includes('minigolf_blacklight'),
+      '« 60 min d arcades » : seul le bowling a une heure a choisir, aucune partie de laser, les arcades et le minigolf sont libres', JSON.stringify({ aHeure, laserGames: ancres.laserGames, libres })));
+    const creneaux = (rep.json && rep.json.slots) || [];
+    const fautifs = creneaux.filter((creneau) => {
+      const plan = creneau.opsPlan || {};
+      return blocsLaser(plan).length || Number(etapeDuPlan(plan, 'arcade_time').durationMinutes) !== minutes || !etapeDuPlan(plan, 'minigolf_blacklight').activityId || varianteDuPlan(plan) !== arcades.id;
+    }).map((creneau) => creneau.time);
+    v.push(verdict(creneaux.length >= 4 && fautifs.length === 0,
+      `chaque creneau propose (${creneaux.length}) pose le bowling, le minigolf et ${minutes} min d arcades, aucun laser, et son plan garde la variante`, fautifs.slice(0, 4).join(', ') || `${creneaux.length} creneaux`));
+
+    const pose = premierCreneau(await H.get({ type: 'formule', formuleId: 'f4', formulaChoice: arcades.id, preferredTimes: { bowling: '15:00' } })).opsPlan || {};
+    const heuresPose = (pose.anchorPlan && pose.anchorPlan.times) || {};
+    v.push(verdict(heuresPose.bowling === '15:00' && !('laser_game' in heuresPose) && !blocsLaser(pose).length && Number(etapeDuPlan(pose, 'arcade_time').durationMinutes) === minutes && varianteDuPlan(pose) === arcades.id,
+      'le bowling pose a 15:00 : le plan le garde, sans laser, avec les arcades de la variante, et garde la variante', JSON.stringify({ heures: heuresPose, laser: blocsLaser(pose).length, variante: varianteDuPlan(pose) })));
+
+    const a13 = premierCreneau(await H.get({ type: 'formule', formuleId: 'f4', formulaChoice: arcades.id, arcade: '13:00' })).opsPlan || {};
+    const e13 = etapeDuPlan(a13, 'arcade_time');
+    const fin13 = heureDe(minutesDe('13:00') + minutes);
+    v.push(verdict(e13.flexible === false && e13.startTime === '13:00' && e13.endTime === fin13 && !blocsLaser(a13).length && varianteDuPlan(a13) === arcades.id,
+      `les arcades posees a 13:00 durent les ${minutes} min de la variante (jusqu a ${fin13}), sans laser`, JSON.stringify([e13.startTime, e13.endTime, e13.flexible, blocsLaser(a13).length, varianteDuPlan(a13)])));
+
+    const liste = await H.get({ type: 'formule', formuleId: 'f4', formulaChoice: arcades.id, arcades: '1' });
+    const listeSans = await H.get({ type: 'formule', formuleId: 'f4', arcades: '1' });
+    const heures = (liste.json && liste.json.arcadeTimes) || [];
+    const heuresSans = (listeSans.json && listeSans.json.arcadeTimes) || [];
+    v.push(verdict(heures.some((entree) => entree.ok) && heuresSans.length === 0,
+      'la liste des heures d arcade (arcades=1) existe avec la variante, jamais sans elle (la carte de la Formule 4 n a pas d arcades)', `${heures.length} heures avec, ${heuresSans.length} sans`));
+  }
+
+  // 3. Le POST, l arene prise toute la journee : la variante se reserve, les
+  //    deux lasers non. La signature du blocage porte la variante.
+  if (veut('post')) {
+    const horaire = H.bookingConfig.getSchedule(DATE, H.knowledge.getCenter(CENTRE));
+    poserEtat({ reservations: arenePrise(heureDe(Math.round(Number(horaire.open) * 60)), heureDe(Math.round(Number(horaire.close) * 60))) });
+    const corpsDefaut = corpsFormule('f4', '15:00', preferenceDuBowling(null));
+    const corpsArcades = corpsFormule('f4', '15:00', preferenceDuBowling(arcades));
+    const defaut = await verdictDuPost(H, corpsDefaut);
+    const choisi = await verdictDuPost(H, corpsArcades);
+    const planChoisi = (choisi.ops && choisi.ops.opsPlan) || {};
+    v.push(verdict(!defaut.ok, 'MONTAGE l arene prise toute la journee : la Formule 4 et ses deux parties de laser ne se reservent pas', defaut.raison || 'reservee'));
+    v.push(verdict(choisi.ok && !blocsLaser(planChoisi).length && Number(etapeDuPlan(planChoisi, 'arcade_time').durationMinutes) === minutes && varianteDuPlan(planChoisi) === arcades.id,
+      'la meme demande avec « 60 min d arcades » se reserve : le dossier garde la variante et ses arcades, la garde de la base n invente aucune partie de laser',
+      choisi.ok ? JSON.stringify({ laser: blocsLaser(planChoisi).length, variante: varianteDuPlan(planChoisi) }) : choisi.raison));
+    const sigDefaut = JSON.parse(H.demande.signatureDemande(corpsDefaut));
+    const sigArcades = JSON.parse(H.demande.signatureDemande(corpsArcades));
+    v.push(verdict(sigArcades.length === sigDefaut.length + 1 && JSON.stringify(sigArcades.slice(0, -1)) === JSON.stringify(sigDefaut) && JSON.stringify(sigArcades[sigArcades.length - 1]) === JSON.stringify(['formulaChoice', arcades.id]),
+      'la signature du blocage porte la variante en dernier, le reste identique ; sans elle, la signature d avant', JSON.stringify(sigArcades.slice(-1))));
+  }
+
+  // 4. La modification au comptoir garde la variante, decalee ou adaptee.
+  if (veut('comptoir')) {
+    const { plan, debut } = await laReference();
+    const dossier = { ...corpsFormule('f4', debut), id: 8401, opsPlan: plan, ignoreReservationId: 8401 };
+    const decale = await H.rops.prepareReservationOps({ ...dossier, startTime: heureDe(minutesDe(debut) + 30) }, 'staff', {});
+    const planDecale = decale.opsPlan || {};
+    v.push(verdict(varianteDuPlan(planDecale) === arcades.id && !blocsLaser(planDecale).length && Number(etapeDuPlan(planDecale, 'arcade_time').durationMinutes) === minutes,
+      'decalee d une demi-heure au comptoir, sans rien renvoyer de la variante, la Formule 4 garde ses arcades, sans laser', JSON.stringify({ variante: varianteDuPlan(planDecale), laser: blocsLaser(planDecale).length, refus: decale.planRefusal || '' })));
+    const programme = [
+      { activityId: 'minigolf_blacklight', participants: PAX },
+      { activityId: 'bowling', duration: 1, participants: PAX },
+      { activityId: 'arcade_time', participants: PAX },
+    ];
+    const adaptee = await H.rops.prepareReservationOps({ ...dossier, program: programme }, 'staff', {});
+    const planAdaptee = adaptee.opsPlan || {};
+    v.push(verdict(Number(etapeDuPlan(planAdaptee, 'arcade_time').durationMinutes) === minutes && !blocsLaser(planAdaptee).length && varianteDuPlan(planAdaptee) === arcades.id,
+      `adaptee au comptoir a son contenu (minigolf, bowling, arcades), elle part de la formule de la variante : ${minutes} min d arcades, sans laser, la variante gardee`,
+      JSON.stringify({ arcades: etapeDuPlan(planAdaptee, 'arcade_time').durationMinutes, laser: blocsLaser(planAdaptee).length, variante: varianteDuPlan(planAdaptee), refus: adaptee.planRefusal || '' })));
+  }
+
+  // 5. Les dossiers du jour : la garde de la base ne prete pas de laser a la
+  //    Formule 4 aux arcades.
+  if (veut('base')) {
+    const { existant } = await laReference();
+    const laserDe25 = (heure) => ({ centerId: CENTRE, channel: 'public', name: 'Laser Gate', phone: '+32470000001', email: '', date: DATE, startTime: heure, duration: 0.5, totalDuration: 0.5,
+      pax: 25, status: 'pending', basePrice: 0, price: 0, type: 'laser', label: '1 partie Laser Game', laneCount: 0, requiresLanes: false, opsPlan: null });
+    const tiennent = (dossiers) => ['16:00', '16:30', '17:00'].filter((heure) => {
+      try {
+        H.database.validateReservationResources(laserDe25(heure), dossiers, {}, [], DATE);
+        return true;
+      } catch (error) {
+        return false;
+      }
+    });
+    const sansLaVariante = tiennent([{ ...existant, opsPlan: sansVariante(existant.opsPlan) }]);
+    const avecLaVariante = tiennent([existant]);
+    v.push(verdict(sansLaVariante.length < 3, 'MONTAGE sans la variante gardee, le meme dossier invente ses deux parties de laser apres le bowling et prend l arene', `tiennent : ${sansLaVariante.join(', ') || 'aucune'}`));
+    v.push(verdict(avecLaVariante.length === 3, 'avec elle, la garde de la base n invente aucune partie : un groupe de 25 au laser a 16:00, 16:30 et 17:00 se reserve a cote de la Formule 4 aux arcades', `tiennent : ${avecLaVariante.join(', ') || 'aucune'}`));
+  }
+
+  // 6. Un retard se replanifie avec la variante.
+  if (veut('retard')) {
+    const { existant, debut } = await laReference();
+    const pistesPrises = [];
+    for (let piste = 1; piste <= 8; piste += 1) {
+      prochainId += 1;
+      pistesPrises.push({ id: prochainId, centerId: CENTRE, date: DATE, startTime: heureDe(minutesDe(debut) + 60), duration: 1, totalDuration: 1, pax: 6, lanes: [piste], laneCount: 1, type: 'bowling', status: 'confirmed', validationStatus: 'confirmed', program: null, opsPlan: null });
+    }
+    const retard = (dossierRetard) => {
+      try {
+        return H.engine.analyzeDelay({ centerId: CENTRE, date: DATE, reservation: dossierRetard, plan: dossierRetard.opsPlan, delayMinutes: 15 }, { reservations: pistesPrises, laneStatuses: {} });
+      } catch (error) {
+        return { alternatives: [], erreur: String((error && error.message) || error) };
+      }
+    };
+    const avecLaser = (analyse) => (analyse.alternatives || []).filter((alternative) => (alternative.laser || []).length).length;
+    const resume = (analyse) => JSON.stringify(analyse.erreur || (analyse.alternatives || []).map((alternative) => [alternative.startTime, (alternative.laser || []).length]));
+    const retardSans = retard({ ...existant, opsPlan: sansVariante(existant.opsPlan) });
+    const retardAvec = retard(existant);
+    v.push(verdict((retardSans.alternatives || []).length > 0 && avecLaser(retardSans) > 0, 'MONTAGE un retard de 15 min heurte les pistes prises : sans la variante gardee, les solutions de rechange replanifient les deux parties de laser', resume(retardSans)));
+    v.push(verdict((retardAvec.alternatives || []).length > 0 && avecLaser(retardAvec) === 0, 'avec elle, les solutions de rechange du retard gardent les arcades : aucune partie de laser', resume(retardAvec)));
+  }
+
+  // 7. Le planning : deplacer le bowling, un dossier a placer.
+  if (veut('planning')) {
+    const { existant } = await laReference();
+    const deplacer = (dossierDeplace, heure) => {
+      try {
+        const rendu = H.deplacer().buildActivityMove(dossierDeplace, { activityId: 'bowling', startTime: heure, lanes: (dossierDeplace.lanes || []).slice() });
+        return { ok: true, laser: blocsLaser(rendu.opsPlan).length, variante: varianteDuPlan(rendu.opsPlan) };
+      } catch (error) {
+        return { ok: false, raison: String((error && error.message) || error) };
+      }
+    };
+    const deplaceSans = deplacer({ ...existant, opsPlan: sansVariante(existant.opsPlan) }, '17:30');
+    const deplaceAvec = deplacer(existant, '17:30');
+    v.push(verdict(deplaceSans.ok ? deplaceSans.laser > 0 : /laser/i.test(deplaceSans.raison), 'MONTAGE sans la variante gardee, deplacer le bowling fait apparaitre les deux parties de laser', JSON.stringify(deplaceSans)));
+    v.push(verdict(deplaceAvec.ok && deplaceAvec.laser === 0 && deplaceAvec.variante === arcades.id, 'avec elle, le bowling se deplace a 17:30 sans faire apparaitre de laser, et le plan garde la variante', JSON.stringify(deplaceAvec)));
+    const aPlacer = (dossierAPlacer) => H.fenetre().versAPlacer(dossierAPlacer, { conflits: [{ type: 'gate', message: 'Conflit de gate.' }], session: {}, demande: {} });
+    const placeSans = aPlacer({ ...existant, opsPlan: sansVariante(existant.opsPlan) });
+    const placeAvec = aPlacer(existant);
+    v.push(verdict(Number(((placeSans.opsPlan || {}).laserPassPlan || {}).totalGames) > 0, 'MONTAGE sans la variante gardee, le dossier a placer attend ses parties de laser', JSON.stringify((placeSans.opsPlan || {}).laserPassPlan || null)));
+    v.push(verdict(!(placeAvec.opsPlan || {}).laserPassPlan && varianteDuPlan(placeAvec.opsPlan) === arcades.id, 'avec elle, le dossier a placer garde la variante et n attend aucune partie de laser', JSON.stringify({ variante: varianteDuPlan(placeAvec.opsPlan), parties: (placeAvec.opsPlan || {}).laserPassPlan || null })));
+  }
+
+  // 8. Les mails disent le programme de la variante ; l equipe la lit.
+  if (veut('mails')) {
+    const { existant } = await laReference();
+    const comms = H.comms();
+    const client = { ...existant, name: 'Client Gate', email: 'client@example.test', phone: '+32470000000', label: 'FORMULE 4' };
+    const corpsMail = (reservation, templateId) => String((comms.buildMessage({ reservation, templateId, channel: 'email' }) || {}).body || '');
+    const confirmation = corpsMail(client, 'confirmation');
+    const rappel = corpsMail(client, 'reminder_48h');
+    // La regle : une ligne du programme dit les arcades et les minutes de la
+    // variante ; le laser n apparait nulle part.
+    const ditLesArcades = (texte) => texte.split('\n').some((ligne) => /arcade/i.test(ligne) && ligne.includes(`${minutes} min`));
+    v.push(verdict(ditLesArcades(confirmation) && ditLesArcades(rappel) && !/laser/i.test(confirmation + rappel),
+      'la confirmation et le rappel disent les arcades de la variante et ne parlent jamais de laser', [confirmation, rappel].map((texte) => texte.replace(/\n/g, ' / ').slice(0, 300)).join(' || ')));
+    const rappelSans = corpsMail({ ...client, opsPlan: sansVariante(client.opsPlan) }, 'reminder_48h');
+    v.push(verdict(/laser/i.test(rappelSans), 'MONTAGE sans variante, le rappel d une formule garde sa phrase d avant sur le laser', rappelSans.replace(/\n/g, ' / ').slice(-260)));
+    const offreDe = (plan) => {
+      const message = comms.buildMessage({ reservation: { ...client, opsPlan: { ...plan, validation: { mode: 'staff_review', raison: 'formule' } } }, templateId: 'staff_review_request', channel: 'email' }) || {};
+      return ((message.details || []).find((detail) => detail.label === 'Offre') || {}).value || '';
+    };
+    const offre = offreDe(client.opsPlan);
+    const offreSans = offreDe(sansVariante(client.opsPlan));
+    v.push(verdict(Boolean(offreSans) && !offreSans.includes(arcades.label) && offre.startsWith(offreSans) && offre.endsWith(arcades.label),
+      'le mail de validation de l equipe nomme la variante avec l offre ; sans elle, l offre d avant', JSON.stringify({ offre, offreSans })));
+  }
+
+  // 9. La console : le planning, la fiche, la modification, l etiquette.
+  if (veut('console')) {
+    const { plan, debut } = await laReference();
+    const vue = laConsole();
+    const pourConsole = { id: 8403, centerId: CENTRE, date: DATE, startTime: debut, type: 'formule', formuleId: 'f4', label: 'FORMULE 4', pax: PAX, duration: 1, lanes: (plan.assignedLanes || []).slice(), opsPlan: plan };
+    const consoleSans = { ...pourConsole, opsPlan: sansVariante(plan) };
+    v.push(verdict(vue.manquantes.length === 0, 'MONTAGE la console en bac a sable : booking-core entier et les fonctions de la fiche extraites d app-main', vue.manquantes.join(', ')));
+    if (!vue.manquantes.length) {
+      const sessions = (dossierConsole) => vue.appelle('getFormulaLaserFallbackWindows', dossierConsole).length;
+      v.push(verdict(sessions(consoleSans) > 0 && sessions(pourConsole) === 0, 'le planning de la console n estime aucune session de laser pour la variante (sans elle, ses sessions estimees)', JSON.stringify([sessions(pourConsole), sessions(consoleSans)])));
+      const fiche = (dossierConsole) => vue.appelle('getFormulaActivityChecklist', dossierConsole).map((item) => item.activityId);
+      v.push(verdict(fiche(consoleSans).includes('laser_game') && !fiche(pourConsole).includes('laser_game') && fiche(pourConsole).includes('arcade_time'), 'la fiche liste les arcades de la variante, aucune partie de laser', JSON.stringify({ avec: fiche(pourConsole), sans: fiche(consoleSans) })));
+      const parties = (dossierConsole) => vue.appelle('getLaserGameCountForReservation', dossierConsole);
+      v.push(verdict(parties(consoleSans) > 0 && parties(pourConsole) === 0, 'la console ne compte aucune partie de laser a la variante', JSON.stringify([parties(pourConsole), parties(consoleSans)])));
+      const modif = vue.appelle('buildEditProgramFromReservation', pourConsole) || {};
+      const modifSans = vue.appelle('buildEditProgramFromReservation', consoleSans) || {};
+      const on = (etat, id) => Boolean(etat && etat[id] && etat[id].on);
+      v.push(verdict(on(modifSans, 'laser_game') && !on(modif, 'laser_game') && on(modif, 'bowling') && Boolean(modif.others && modif.others.arcade_time),
+        'la modification repart du contenu de la variante : le bowling et les arcades, sans laser', JSON.stringify({ avec: [modif.laser_game, modif.others], sans: [modifSans.laser_game, modifSans.others] })));
+      const etiquettes = String(vue.appelle('renderReservationTags', pourConsole) || '');
+      const etiquettesSans = String(vue.appelle('renderReservationTags', consoleSans) || '');
+      const echappee = String(vue.appelle('escapeHtml', arcades.label) || '');
+      v.push(verdict(Boolean(echappee) && etiquettes.includes(echappee) && !/laser/i.test(etiquettes) && !etiquettesSans.includes(echappee) && /laser/i.test(etiquettesSans),
+        'l etiquette du planning nomme la variante, echappee, et ne compte aucune partie de laser', JSON.stringify({ etiquettes, etiquettesSans })));
+    }
+  }
+  return v;
+}
+
 const MUTATIONS = [
   { nom: 'la borne d attente ne previent plus', fichier: 'lib/ops-engine.js',
     de: '  if (plan.waitMinutes > reglage.maxWaitMinutes) {', vers: '  if (false && plan.waitMinutes > reglage.maxWaitMinutes) {', scenarios: ['C'] },
@@ -1607,6 +1968,56 @@ const MUTATIONS = [
     de: '    ...arcadeGardee(request, preference, { shiftMinutes }),', vers: '    ...({}),', scenarios: ['M'] },
   { nom: 'le mail redit « 10 minutes plus tot » a l ouverture', fichier: 'lib/ops-communications.js',
     de: '      : Math.max(0, Math.round(Number(avanceDuPlan)));', vers: '      : Math.max(0, Math.round(Number(avanceDuPlan))) || 10;', scenarios: ['M'] },
+  // La Formule 4 au choix (2026-10-13).
+  { nom: 'le catalogue ne relaie plus les variantes du socle', fichier: 'lib/catalog-store.js',
+    de: '    choices: bookingBase && Array.isArray(bookingBase.choices) ? choixApplicables(bookingBase.choices, steps) : [],', vers: '    choices: [],', scenarios: ['N|donnee'] },
+  { nom: 'la premiere variante ou un identifiant inconnu jouent la variante', fichier: 'lib/formula-choice.js',
+    de: '  return rang > 0 ? liste[rang] : null;', vers: '  return rang > 0 ? liste[rang] : liste[1] || null;', scenarios: ['N|grille'] },
+  { nom: 'la grille des activites ignore la variante (moteur)', fichier: 'lib/ops-engine.js',
+    de: '  const formula = formuleAvecChoix(formuleBrute, varianteDemandee(formuleBrute && formuleBrute.id, input.formulaChoice));', vers: '  const formula = formuleBrute;', scenarios: ['N|grille'] },
+  { nom: 'la grille des activites se demande sans la variante (serveur)', fichier: 'api/public-availability.js',
+    de: '...arcadeDeLaGrille, ...(variante ? { formulaChoice: variante.id } : {}) }, engineContext);', vers: '...arcadeDeLaGrille }, engineContext);', scenarios: ['N|grille'] },
+  { nom: 'le serveur ne lit plus la variante demandee', fichier: 'api/public-availability.js',
+    de: '      const variante = varianteDemandee(formuleId, choixFormule);', vers: '      const variante = null;', scenarios: ['N|grille'] },
+  { nom: 'le plan d une heure posee se demande sans la variante', fichier: 'api/public-availability.js',
+    de: '                ...(heureArcade ? { arcadeTime: heureArcade } : {}),\n                ...(variante ? { formulaChoice: variante.id } : {}),', vers: '                ...(heureArcade ? { arcadeTime: heureArcade } : {}),', scenarios: ['N|grille'] },
+  { nom: 'le plan ne garde plus la variante jouee', fichier: 'lib/ops-engine.js',
+    de: '    ...(formula && formula.formulaChoice ? { formulaChoice: formula.formulaChoice } : {}),', vers: '', scenarios: ['N|grille'] },
+  { nom: 'le creneau perd la variante de son plan', fichier: 'lib/availability-slots.js',
+    de: '      ...(scenario.formulaChoice ? { formulaChoice: scenario.formulaChoice } : {}),', vers: '', scenarios: ['N|grille'] },
+  { nom: 'le moteur ignore la variante de la demande', fichier: 'lib/ops-engine.js',
+    de: '  const avecChoix = formuleAvecChoix(rawFormula, varianteDemandee(rawFormula && rawFormula.id, preference.formulaChoice));', vers: '  const avecChoix = rawFormula;', scenarios: ['N|post'] },
+  { nom: 'la garde de la base invente les deux lasers de la carte', fichier: 'lib/database.js',
+    de: "    formula = require('./formula-choice').formuleDuDossier(getFormula(reservation.formuleId), reservation);", vers: '    formula = getFormula(reservation.formuleId);', scenarios: ['N|post', 'N|base'] },
+  { nom: 'la signature ignore la variante', fichier: 'lib/demande-publique.js',
+    de: "    ...(variante ? [['formulaChoice', variante]] : []),", vers: '    ...([]),', scenarios: ['N|post'] },
+  { nom: 'une modification perd la variante de son plan', fichier: 'lib/reservation-ops.js',
+    de: '      if (choixFormule && preferenceMoteur.formulaChoice === undefined) preferenceMoteur = { ...preferenceMoteur, formulaChoice: choixFormule };', vers: '', scenarios: ['N|comptoir'] },
+  { nom: 'la formule adaptee repart de la carte (deux lasers, arcades du catalogue)', fichier: 'lib/reservation-ops.js',
+    de: "    base = formuleAvecChoix(getFormula(formuleId, request.centerId || 'libramont'), varianteDemandee(formuleId, choix));", vers: "    base = getFormula(formuleId, request.centerId || 'libramont');", scenarios: ['N|comptoir'] },
+  { nom: 'un retard se replanifie sans la variante', fichier: 'lib/ops-engine.js',
+    de: '      ...(choixGarde ? { formulaChoice: choixGarde.id } : {}),', vers: '', scenarios: ['N|retard'] },
+  { nom: 'deplacer le bowling fait apparaitre les deux lasers de la carte', fichier: 'lib/reservation-activity-move.js',
+    de: "    const formulaGames = current.formuleId ? (formuleDuDossier(getFormula(current.formuleId), current)?.steps || []).filter(step => step.activityId === 'laser_game').reduce((sum,step) => sum+Number(step.count || 1),0) : 0;",
+    vers: "    const formulaGames = current.formuleId ? (getFormula(current.formuleId)?.steps || []).filter(step => step.activityId === 'laser_game').reduce((sum,step) => sum+Number(step.count || 1),0) : 0;", scenarios: ['N|planning'] },
+  { nom: 'le dossier a placer perd la variante', fichier: 'lib/reserver-fenetre.js',
+    de: '    ...(avant.formulaChoice ? { formulaChoice: avant.formulaChoice } : {}),', vers: '', scenarios: ['N|planning'] },
+  { nom: 'le dossier a placer attend les deux lasers de la carte', fichier: 'lib/reserver-fenetre.js',
+    de: "      return ((require('./formula-choice').formuleDuDossier(getFormula(dossier.formuleId), dossier) || {}).steps || [])", vers: '      return ((getFormula(dossier.formuleId) || {}).steps || [])', scenarios: ['N|planning'] },
+  { nom: 'le rappel promet le laser a la variante aux arcades', fichier: 'lib/ops-communications.js',
+    de: "    const laserPromis = !varianteDuDossier || ((formuleDuDossier(formula, reservation) || {}).steps || []).some((step) => step && step.activityId === 'laser_game');", vers: '    const laserPromis = true;', scenarios: ['N|mails'] },
+  { nom: 'le mail de l equipe ne nomme plus la variante', fichier: 'lib/ops-communications.js',
+    de: "        { label: 'Offre', value: varianteDuDossier ? `${offreLisible}, ${varianteDuDossier.label}` : offreLisible },", vers: "        { label: 'Offre', value: offreLisible },", scenarios: ['N|mails'] },
+  { nom: 'le planning de la console estime les deux lasers de la carte', fichier: 'assets/booking-core.js',
+    de: '  const formule = reservation.formuleId ? applyReservationFormulaChoice(FORMULES.find(x => x.id === reservation.formuleId), reservation) : null;', vers: '  const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;', scenarios: ['N|console'] },
+  { nom: 'la fiche liste les deux lasers de la carte', fichier: 'assets/booking-core.js',
+    de: '  const steps = applyReservationFormulaChoiceToSteps(getFormulaActivitySteps(getReservationFormulaId(reservation)), reservation);', vers: '  const steps = getFormulaActivitySteps(getReservationFormulaId(reservation));', scenarios: ['N|console'] },
+  { nom: 'la console compte les deux lasers de la carte', fichier: 'assets/app-main.js',
+    de: '  return getFormulaLaserGameCount(applyReservationFormulaChoice(formule, reservation));', vers: '  return getFormulaLaserGameCount(formule);', scenarios: ['N|console'] },
+  { nom: 'la modification repart de la carte', fichier: 'assets/app-main.js',
+    de: '  const formule = r && r.formuleId ? applyReservationFormulaChoice(resolveDisplayFormule(r.formuleId), r) : null;', vers: '  const formule = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;', scenarios: ['N|console'] },
+  { nom: 'l etiquette ne nomme plus la variante', fichier: 'assets/app-main.js',
+    de: "(formule?.name || 'Formule') + (variante ? ` \u00b7 ${escapeHtml(variante.label)}` : '')", vers: "(formule?.name || 'Formule')", scenarios: ['N|console'] },
 ];
 
 const SCENARIOS = {
@@ -1622,6 +2033,7 @@ const SCENARIOS = {
   K: { titre: 'K. LES HEURES DES ACTIVITES AVEC UNE ARRIVEE CHOISIE', run: scenarioK },
   L: { titre: 'L. LES ARCADES A LEUR HEURE, LE TEMPS LIBRE', run: scenarioL },
   M: { titre: 'M. LE MODELE A : LES ARCADES SANS HEURE D ARRIVEE, L ARRIVEE A L OUVERTURE', run: scenarioM },
+  N: { titre: 'N. LA FORMULE 4 AU CHOIX : 60 MIN D ARCADES A LA PLACE DES DEUX LASERS', run: scenarioN },
 };
 
 async function jouer(H, cle) {

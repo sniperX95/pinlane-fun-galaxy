@@ -21,14 +21,14 @@
    ========================================================================== */
 
 :root {
-  --fg-bg: #09070b;
-  --fg-bg-2: #120f14;
-  --fg-card: #0f0c11;
-  --fg-line: #2a252d;
-  --fg-line-2: #3c3540;
+  --fg-bg: #050505;
+  --fg-bg-2: #0b0b0b;
+  --fg-card: #0a0a0a;
+  --fg-line: #262626;
+  --fg-line-2: #3a3a3a;
   --fg-text: #ffffff;
-  --fg-muted: #b9b1bd;
-  --fg-faint: #887f8c;
+  --fg-muted: #b3b3b3;
+  --fg-faint: #7c7c7c;
   --fg-purple: #944292;
   --fg-purple-2: #b04fb0;
   --fg-purple-ink: #d98ad4;
@@ -219,7 +219,7 @@ html.fg-pilote .fg { overflow: visible; }
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(9, 7, 11, 0.96) 0%, rgba(9, 7, 11, 0.72) 32%, rgba(9, 7, 11, 0.35) 62%, rgba(9, 7, 11, 0.15) 100%);
+  background: linear-gradient(90deg, rgba(5, 5, 5, 0.96) 0%, rgba(5, 5, 5, 0.72) 32%, rgba(5, 5, 5, 0.35) 62%, rgba(5, 5, 5, 0.15) 100%);
 }
 .fg-art::before {
   content: "";
@@ -239,7 +239,7 @@ html.fg-pilote .fg { overflow: visible; }
   clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
 }
 .fg-scene--split .fg-art::after {
-  background: linear-gradient(90deg, rgba(9, 7, 11, 0.55) 0%, rgba(9, 7, 11, 0.05) 45%, rgba(9, 7, 11, 0.25) 100%);
+  background: linear-gradient(90deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.05) 45%, rgba(5, 5, 5, 0.25) 100%);
 }
 .fg-scene--split .fg-art::before {
   background:
@@ -253,7 +253,7 @@ html.fg-pilote .fg { overflow: visible; }
   clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
 }
 .fg-scene--split.fg-scene--art-left .fg-art::after {
-  background: linear-gradient(270deg, rgba(9, 7, 11, 0.55) 0%, rgba(9, 7, 11, 0.05) 45%, rgba(9, 7, 11, 0.25) 100%);
+  background: linear-gradient(270deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.05) 45%, rgba(5, 5, 5, 0.25) 100%);
 }
 .fg-scene--split.fg-scene--art-left .fg-art::before {
   background:
@@ -263,7 +263,7 @@ html.fg-pilote .fg { overflow: visible; }
 
 /* Scene pleine photo : le contenu passe dessus (maquettes 2 et 3). */
 .fg-scene--full .fg-art::after {
-  background: linear-gradient(90deg, rgba(9, 7, 11, 0.94) 0%, rgba(9, 7, 11, 0.86) 40%, rgba(9, 7, 11, 0.55) 75%, rgba(9, 7, 11, 0.4) 100%);
+  background: linear-gradient(90deg, rgba(5, 5, 5, 0.94) 0%, rgba(5, 5, 5, 0.86) 40%, rgba(5, 5, 5, 0.55) 75%, rgba(5, 5, 5, 0.4) 100%);
 }
 /* Contenu centre (heures, fin) : le voile descend de 0,55 a 0,94, et un
    second voile de 0,55 couvre une COLONNE de 700 px au milieu, la ou passent
@@ -273,8 +273,8 @@ html.fg-pilote .fg { overflow: visible; }
    les cotes, la photo reste aussi visible qu avant. */
 .fg-scene--full.fg-scene--center .fg-art::after {
   background:
-    linear-gradient(90deg, rgba(9, 7, 11, 0) calc(50% - 490px), rgba(9, 7, 11, 0.55) calc(50% - 350px), rgba(9, 7, 11, 0.55) calc(50% + 350px), rgba(9, 7, 11, 0) calc(50% + 490px)),
-    linear-gradient(180deg, rgba(9, 7, 11, 0.55) 0%, rgba(9, 7, 11, 0.78) 45%, rgba(9, 7, 11, 0.94) 100%);
+    linear-gradient(90deg, rgba(5, 5, 5, 0) calc(50% - 490px), rgba(5, 5, 5, 0.55) calc(50% - 350px), rgba(5, 5, 5, 0.55) calc(50% + 350px), rgba(5, 5, 5, 0) calc(50% + 490px)),
+    linear-gradient(180deg, rgba(5, 5, 5, 0.55) 0%, rgba(5, 5, 5, 0.78) 45%, rgba(5, 5, 5, 0.94) 100%);
 }
 
 .fg-scene__body {
@@ -1057,7 +1057,7 @@ html.fg-pilote .fg { overflow: visible; }
    photo reste vive derriere l icone. Avec l ancien degrade lineaire, un prix
    sur deux lignes tombait a 3,3:1 sur une photo claire, et sur telephone le
    nom lui-meme passait sous 4,5:1. */
-.fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(9, 7, 11, 0.3) 0%, rgba(9, 7, 11, 0.82) 34%, rgba(9, 7, 11, 0.92) 100%); }
+.fg-card__photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 5, 5, 0.3) 0%, rgba(5, 5, 5, 0.82) 34%, rgba(5, 5, 5, 0.92) 100%); }
 @media (hover: hover) {
   .fg-card:hover { border-color: #4a4a4a; transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 24px rgba(0, 0, 0, 0.45); }
   .fg-card:hover .fg-card__photo { opacity: 1; }
@@ -2167,7 +2167,7 @@ html.fg-pilote .fg { overflow: visible; }
   }
   .fg-scene--split.fg-scene--art-left .fg-art { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 78%); }
   .fg-scene--split .fg-art::after, .fg-scene--split.fg-scene--art-left .fg-art::after {
-    background: linear-gradient(180deg, rgba(9, 7, 11, 0.1) 0%, rgba(9, 7, 11, 0.75) 100%);
+    background: linear-gradient(180deg, rgba(5, 5, 5, 0.1) 0%, rgba(5, 5, 5, 0.75) 100%);
   }
   /* En colonne etroite, la photo est une bande : ses quatre bords s eteignent
      vers le fond de la page, sinon elle dessine un rectangle dans l hote. */
@@ -2177,7 +2177,7 @@ html.fg-pilote .fg { overflow: visible; }
       linear-gradient(90deg, var(--fg-bg) 0%, transparent 16%, transparent 84%, var(--fg-bg) 100%);
   }
   .fg-scene--split .fg-scene__body, .fg-scene--split.fg-scene--art-left .fg-scene__body { padding-left: var(--fg-gutter); padding-right: var(--fg-gutter); padding-top: 10px; }
-  .fg-scene--full .fg-art::after { background: linear-gradient(180deg, rgba(9, 7, 11, 0.9) 0%, rgba(9, 7, 11, 0.94) 100%); }
+  .fg-scene--full .fg-art::after { background: linear-gradient(180deg, rgba(5, 5, 5, 0.9) 0%, rgba(5, 5, 5, 0.94) 100%); }
   /* Sur telephone, la carte passe dans le flux, entre la photo et le
      formulaire, repliee sous sa ligne de resume : le bouton la deplie. */
   .fg-recall { float: none; width: auto; margin: 0 var(--fg-gutter) 22px; box-shadow: none; }
@@ -2853,11 +2853,12 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    choisie garde son aplat et son ombre sarcelle ; l heure choisie reste un
    aplat violet sans ombre ; « Votre visite » garde ses aplats.
    Ce qui change, d un ecran a l autre :
-   - le noir de la page et les gris prennent la teinte de la marque (jetons
-     en tete de feuille, voiles des photos) ;
-   - les cartes, les champs et les heures se levent du fond : une surface un
-     cran plus claire que la page, un filet fin et une lumiere par le haut, au
-     lieu du noir sur noir cerne d un gris de 1,5 px ;
+   - les fonds restent NOIRS (Movsar, le soir meme, sur la prod : « la couleur
+     juste j aime pas remet plus sombre [...] enfin sombre jdis noir » ; une
+     premiere version teintait le noir de violet et levait les cartes d un
+     cran de gris) ;
+   - les cartes, les champs et les heures se detachent par un filet fin et
+     une lumiere par le haut, au lieu de la bordure grise de 1,5 px ;
    - une seule echelle d angles : 16 px les cartes, 12 px les champs, les
      heures, les plages et les onglets, 10 px les options, 8 px les
      etiquettes, 6 px le bouton d action ;
@@ -2867,13 +2868,13 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    - aucun mot seul en fin de ligne.
    ========================================================================== */
 :root {
-  --fg-surface: #151118;
-  --fg-surface-2: #1b161e;
+  --fg-surface: #0a0a0a;
+  --fg-surface-2: #0f0f0f;
   --fg-hair: rgba(255, 255, 255, 0.075);
   --fg-hair-2: rgba(255, 255, 255, 0.14);
   --fg-lift: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --fg-on-line: rgba(194, 94, 194, 0.85);
-  --fg-on-surface: #1f1022;
+  --fg-on-surface: #0d080d;
   --fg-r-card: 16px;
   --fg-r-ctl: 12px;
   --fg-press: cubic-bezier(0.23, 1, 0.32, 1);
@@ -2904,7 +2905,8 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    capitales au catalogue : en Anton, c est une enseigne, plus un cri), ses
    conditions en etiquettes fines. */
 .fg-card--formule .fg-card__name { font-family: var(--fg-display); font-size: 23px; font-weight: 400; letter-spacing: 0.02em; line-height: 1.05; }
-.fg-for__list li { color: #d2cad6; }
+.fg-for__list li { color: #cfcfcf; }
+.fg-for__total { font-weight: 700; color: var(--fg-text); }
 .fg-for__rules i { border: 1px solid var(--fg-hair-2); border-radius: 8px; background: rgba(255, 255, 255, 0.03); }
 
 /* Les champs, le jour, le compteur, les occasions : la surface levee, le filet
@@ -2939,12 +2941,12 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 /* Activites ou formules : un rail leve, la pastille violette qui glisse. */
 .fg-tabs { border: 1px solid var(--fg-hair-2); border-radius: var(--fg-r-ctl); background: var(--fg-surface); }
 .fg-tab, .fg-tabs__bar { border-radius: 8px; }
-.fg-btn--ghost { border: 1px solid var(--fg-hair-2); background: rgba(21, 17, 24, 0.88); }
+.fg-btn--ghost { border: 1px solid var(--fg-hair-2); background: rgba(8, 8, 8, 0.86); }
 
 /* L ecran des heures : chaque heure est une case levee, au filet fin, aux
    angles des champs ; les plages prennent le meme angle. L anneau de l heure
    touchee suit (2 px hors de la case, filet de 1 px). */
-.fg-chip { border-radius: var(--fg-r-ctl); border-color: var(--fg-hair-2); background: rgba(255, 255, 255, 0.045); }
+.fg-chip { border-radius: var(--fg-r-ctl); border-color: var(--fg-hair-2); background: rgba(255, 255, 255, 0.03); }
 .fg-chip.is-on { border-color: var(--fg-purple); background: var(--fg-purple); }
 .fg-chip.is-proposed { border-color: var(--fg-teal); }
 .fg-chip.is-off { background: transparent; }
@@ -2968,3 +2970,29 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
    passait de deux lignes a trois. */
 .fg-card__rot, .fg-for__list li, .fg-for__off, .fg-etape__quoi small, .fg-why-list__item span,
 .fg-visit__span, .fg-visit__step > small, .fg-quand__dit, .fg-field__hint, .fg-confirm__note, .fg-libre__action small { text-wrap: pretty; }
+
+/* LES FORMULES AU TELEPHONE, DEUX PAR RANGEE (Movsar, 2026-10-14 au soir :
+   « choix des formules toujours aussi moche fait en deux colonne »), comme les
+   activites. La carte se resserre : nom, prix et contenu un cran plus petits,
+   les etiquettes et la bande passent a la ligne. Sous 360 px, une par rangee,
+   comme les activites : une carte de 150 px n y tient plus. */
+@media (max-width: 560px) {
+  .fg-grid--for { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 10px; }
+  .fg-card--formule { padding: 13px 12px 12px; gap: 8px; }
+  .fg-card--formule .fg-card__name { font-size: 19px; }
+  .fg-card--formule .fg-card__box { top: 11px; right: 10px; width: 20px; height: 20px; }
+  .fg-grid--for .fg-for__head { padding-right: 24px; gap: 4px 6px; }
+  .fg-grid--for .fg-for__price { gap: 2px 6px; }
+  .fg-grid--for .fg-for__price b { font-size: 24px; }
+  .fg-grid--for .fg-for__time { align-items: flex-start; font-size: 12px; }
+  .fg-grid--for .fg-for__time svg { margin-top: 1px; }
+  .fg-grid--for .fg-for__list li { font-size: 12px; }
+  .fg-grid--for .fg-for__rules i { padding: 2px 7px; font-size: 10px; }
+  .fg-grid--for .fg-card__rot { font-size: 12px; }
+  .fg-grid--for .fg-for__total { display: block; font-size: 14px; }
+  .fg-grid--for .fg-for__mot { display: none; }
+  .fg-grid--for .fg-for__time { text-wrap: balance; }
+}
+@media (max-width: 359px) {
+  .fg-grid--for { grid-template-columns: 1fr; }
+}

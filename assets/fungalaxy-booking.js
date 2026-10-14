@@ -689,15 +689,19 @@
     if (illimite) bref = illimite + ' · ' + bref;
     // Les conditions de la carte disent deja « dès 6 personnes » : la bande
     // donne ce qui ne se lit nulle part avant les heures, le montant du
-    // groupe (passe premium, 2026-10-14).
+    // groupe (passe premium, 2026-10-14). Le montant d abord, puis pour qui :
+    // « Pour 10 personnes : 260 € » s etalait sur trois lignes dans une carte
+    // des deux colonnes du telephone.
     var totalGroupe = !surMesure && f.type === 'per_pax' && !f.kidsOnly && Number(f.price) > 0 && n >= Math.max(1, Number(f.minPax) || 1) ? Math.round(Number(f.price) * n * 100) / 100 : null;
-    if (totalGroupe != null) bref = (illimite ? illimite + ' · ' : '') + 'Pour ' + personnes(n) + ' : ' + euros(totalGroupe);
+    var bande = totalGroupe != null
+      ? (illimite ? esc(typo(illimite)) + ' · ' : '') + '<b class="fg-for__total">' + esc(typo(euros(totalGroupe))) + '</b> <span class="fg-for__pour"><span class="fg-for__mot">pour </span>' + esc(typo(personnes(n))) + '</span>'
+      : esc(typo(bref));
     var image = (f.desc || []).filter(function (d) { return photo(d); })[0] || '';
     if (!image && (f.desc || []).some(function (d) { return /toutes les activit[eé]s/i.test(d); })) {
       var illimitee = activitesVendables().filter(function (a) { return photo(a.id); })[0];
       image = illimitee ? illimitee.id : '';
     }
-    return '<div class="fg-card__info fg-for__info"><p class="fg-card__rot">' + esc(typo(bref)) + '</p>' + boutonInfo('data-formula-info', f.id, f.name, sections, image) + '</div>';
+    return '<div class="fg-card__info fg-for__info"><p class="fg-card__rot">' + bande + '</p>' + boutonInfo('data-formula-info', f.id, f.name, sections, image) + '</div>';
   }
   // LA FICHE D UNE ACTIVITE (Movsar, 2026-10-07 : « description complete quand
   // meme », mais belle, jamais toute la page, et pas « IA »). Le texte reste

@@ -32,6 +32,7 @@ const {
 } = require('../lib/availability-blocks');
 const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS, LASER_LAUNCH_GRID_MINUTES } = require('../lib/ops-engine');
 const { listSellableActivities } = require('../lib/activity-catalog');
+const { formuleAvecChoix } = require('../lib/formula-choice');
 const { normalizeBranding, normalizeIdentity, customRequestFromPax, normalizeFormulaVisit } = require('../lib/center-config');
 const surMesure = require('../lib/custom-request');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
@@ -352,29 +353,57 @@ function estUnService(step) {
   }
   return TYPES_DE_SERVICE.has(type);
 }
-function activitesManquantes(formuleId, center) {
-  const availability = center && center.activityAvailability && typeof center.activityAvailability === 'object'
+function disponibiliteDuCentre(center) {
+  return center && center.activityAvailability && typeof center.activityAvailability === 'object'
     ? center.activityAvailability
     : null;
-  if (!availability) return [];
-  let doc = null;
-  try { doc = getFormula(formuleId); } catch (error) { return []; }
+}
+function absentesDuDocument(doc, availability) {
   const ids = new Set((doc && Array.isArray(doc.steps) ? doc.steps : [])
     .filter((step) => step && step.activityId && !estUnService(step))
     .map((step) => step.activityId));
   return [...ids].filter((id) => availability[id] === false);
 }
+function activitesManquantes(formuleId, center) {
+  const availability = disponibiliteDuCentre(center);
+  if (!availability) return [];
+  let doc = null;
+  try { doc = getFormula(formuleId); } catch (error) { return []; }
+  return absentesDuDocument(doc, availability);
+}
+
+// LES VARIANTES QUE CE CENTRE NE PEUT PAS JOUER (lib/formula-choice) : une
+// variante qui pose une activite coupee au centre porte ses
+// `missingActivityIds`, comme une formule. Le formulaire ne la propose pas, et
+// ne retire la formule que si aucune ne se joue ; la cle de la formule reste
+// celle de sa carte, pour qui ne lit pas les variantes. Posee seulement quand
+// elle dit quelque chose.
+function variantesDuCentre(formule, center) {
+  const availability = disponibiliteDuCentre(center);
+  if (!availability || !Array.isArray(formule.choices) || formule.choices.length < 2) return formule;
+  let doc = null;
+  try { doc = getFormula(formule.id); } catch (error) { return formule; }
+  if (!doc) return formule;
+  let manque = false;
+  const choices = formule.choices.map((choix, rang) => {
+    const absentes = absentesDuDocument(rang > 0 ? formuleAvecChoix(doc, choix) : doc, availability);
+    if (!absentes.length) return choix;
+    manque = true;
+    return { ...choix, missingActivityIds: absentes };
+  });
+  return manque ? { ...formule, choices } : formule;
+}
 
 // Les formules du centre telles que le public les recoit : overrides du
 // catalogue appliques, l interrupteur du staff (`offerOff`) et les activites
-// manquantes (`missingActivityIds`), deux cles ADDITIVES posees seulement
-// quand elles disent quelque chose. La lecture du catalogue et la demande sur
-// mesure lisent la meme liste.
+// manquantes (`missingActivityIds`, de la formule et de chacune de ses
+// variantes), des cles ADDITIVES posees seulement quand elles disent quelque
+// chose. La lecture du catalogue et la demande sur mesure lisent la meme liste.
 function formulesPubliques(centerId, center) {
   return getEffectiveFormules(centerId).map((formule) => {
     const publique = isOfferEnabled(formule.id, center) ? formule : { ...formule, offerOff: true };
     const manque = activitesManquantes(formule.id, center);
-    return manque.length ? { ...publique, missingActivityIds: manque } : publique;
+    return variantesDuCentre(manque.length ? { ...publique, missingActivityIds: manque } : publique, center);
   });
 }
 
@@ -542,6 +571,33 @@ function buildDayStatus(blocks, dayDate, center, centerId) {
     }
   });
 
+  // LES VARIANTES D UNE FORMULE, une par une (lib/formula-choice) : celle dont
+  // une ancre, ou une activite qu elle pose, est indisponible ce jour-la ne se
+  // propose pas (`unavailableFormulaChoiceIds`, cle posee seulement quand elle
+  // dit quelque chose). `unavailableFormulaIds` garde le verdict de la carte,
+  // pour qui ne lit pas les variantes ; le formulaire ne grise la formule que
+  // si aucune ne se joue.
+  const unavailableFormulaChoiceIds = {};
+  getEffectiveFormules(centerId).forEach((formule) => {
+    if (!Array.isArray(formule.choices) || formule.choices.length < 2) return;
+    try {
+      const bloquee = isFormulaFullyBlockedOn(blocks, dayDate, formule.id);
+      if (!bloquee && !unavailableActivityIds.length) return;
+      const doc = getFormula(formule.id);
+      if (!doc) return;
+      const refusees = formule.choices.filter((choix, rang) => {
+        if (bloquee) return true;
+        const jouee = rang > 0 ? formuleAvecChoix(doc, choix) : doc;
+        const siennes = rang > 0 && Array.isArray(choix.steps) ? choix.steps.map((step) => step && step.activityId) : [];
+        return (getFormulaAnchorModel(jouee).anchors || []).some((anchor) => unavailableActivityIds.includes(anchor.activityId))
+          || siennes.some((id) => unavailableActivityIds.includes(id));
+      }).map((choix) => choix.id);
+      if (refusees.length) unavailableFormulaChoiceIds[formule.id] = refusees;
+    } catch (error) {
+      // Formule absente du catalogue : ne jamais faire tomber le payload public.
+    }
+  });
+
   return {
     date: dayDate,
     open,
@@ -552,6 +608,7 @@ function buildDayStatus(blocks, dayDate, center, centerId) {
     unavailableFormulaIds,
     unavailableActivityIds,
     unavailableFormulaReason,
+    ...(Object.keys(unavailableFormulaChoiceIds).length ? { unavailableFormulaChoiceIds } : {}),
     // « Ce jour tombe-t-il dans une periode qui bloque les formules
     // noHolidays ? » Le TYPE de periode qui bloque se regle par centre
     // (holidaySettings.formulaBlockedPeriods) : un formulaire qui relirait
@@ -914,6 +971,7 @@ function buildCalendar(blocks, days, center, centerId, from = '') {
       holiday: context.active ? { type: context.periodType, label: context.label } : null,
       unavailableActivityIds: status.unavailableActivityIds,
       unavailableFormulaIds: status.unavailableFormulaIds,
+      ...(status.unavailableFormulaChoiceIds ? { unavailableFormulaChoiceIds: status.unavailableFormulaChoiceIds } : {}),
       formulaHolidayOff: status.formulaHolidayOff,
     });
   }

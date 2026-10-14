@@ -50,7 +50,7 @@ const {
 const { attenteDesTours, buildProgramFormula, describeProgram, groupIsSplit, normalizeProgram } = require('../lib/visit-program');
 const { activityMinPax } = require('../lib/activity-catalog');
 const { buildFormulaComplements, buildVisitComplements } = require('../lib/booking-complements');
-const { formuleAvecChoix, formuleDuDossier, varianteDemandee } = require('../lib/formula-choice');
+const { CODE_CHOIX_INCONNU, MESSAGE_CHOIX_INCONNU, choixInconnu, formuleAvecChoix, varianteDemandee } = require('../lib/formula-choice');
 // La projection d un scenario en creneau, la garde finale et les compositions
 // par defaut d une formule : le code que l agent lit aussi (proposedArrivals),
 // pour dire aux clients les heures et les durees que ce tunnel propose.
@@ -135,7 +135,7 @@ function laserWindowsFromReservation(reservation) {
 
 function getFormulaFallbackLaserWindows(reservation) {
   if (!reservation?.formuleId) return [];
-  const formulaDoc = formuleDuDossier(getFormula(reservation.formuleId), reservation);
+  const formulaDoc = getFormula(reservation.formuleId);
   const games = getFormulaStepCount(formulaDoc, 'laser_game');
   if (!games) return [];
 
@@ -558,6 +558,13 @@ module.exports = async (req, res) => {
           label: formule.name,
           message: 'Offre momentanement indisponible',
         });
+        return;
+      }
+      // UNE VARIANTE QUE LA FORMULE NE DECLARE PAS (ou plus) ne se joue pas en
+      // silence sur sa carte (lib/formula-choice) : la demande le dit, le
+      // formulaire repart du contenu de la carte.
+      if (choixInconnu(formuleId, choixFormule)) {
+        sendError(res, 409, MESSAGE_CHOIX_INCONNU, { code: CODE_CHOIX_INCONNU });
         return;
       }
       const availability = getFormuleAvailability(formule, date, pax, '', centerDoc);

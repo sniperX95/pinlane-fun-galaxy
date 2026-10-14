@@ -170,6 +170,7 @@
     "test:arene-seuls-planning": "node scripts/arene-seuls-planning-check.js",
     "test:heures-passees": "node scripts/heures-passees-check.js",
     "test:formules-visite": "node scripts/formules-visite-check.js",
+    "test:formules-fete": "node scripts/formules-fete-check.js",
     "test:parties-dans-la-foulee": "node scripts/parties-dans-la-foulee-check.js",
     "test:grille-journee-chargee": "node scripts/grille-journee-chargee-check.js",
     "test:formules-arrivee": "node scripts/formules-arrivee-check.js && node scripts/formules-arrivee-check.js --mutate",

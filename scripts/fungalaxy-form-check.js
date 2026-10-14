@@ -1895,8 +1895,9 @@ function lumQa(p) { return 0.2126 * linQa(p[0]) + 0.7152 * linQa(p[1]) + 0.0722 
 // Pendant la mesure, chaque photo devient donc un BLANC PUR, le pire qu une
 // photo puisse faire sous son voile, et la photo d une carte d activite est
 // montree comme au survol : un texte qui tient ici tient sur n importe quelle
-// photo, celles d aujourd hui comme celles qui viendront.
-const PHOTOS_BLANCHES = ' .fg-art, .fg-card__photo { background: #fff !important; } .fg-art img, .fg-card__photo img { visibility: hidden !important; } .fg-card:not(.is-on) .fg-card__photo { opacity: 1 !important; }';
+// photo, celles d aujourd hui comme celles qui viendront. La photo de fond
+// d une carte de formule (2026-10-14) l est aussi.
+const PHOTOS_BLANCHES = ' .fg-art, .fg-card__photo, .fg-for__photo { background: #fff !important; } .fg-art img, .fg-card__photo img, .fg-for__photo img { visibility: hidden !important; } .fg-card:not(.is-on) .fg-card__photo { opacity: 1 !important; }';
 // LE CONTRASTE D UN TEXTE, AU PIRE (WCAG 1.4.3 : 4,5:1, et 3:1 pour un grand
 // texte). Deux mesures, la plus severe gagne :
 //   - LES PIXELS : tout le texte de la page est rendu transparent, chaque

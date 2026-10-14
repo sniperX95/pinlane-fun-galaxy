@@ -447,6 +447,30 @@
     if (/fun_run|funrun|fun-run/.test(s)) return 'fun-run';
     return '';
   }
+  // LA PHOTO DE FOND D UNE FORMULE (Movsar, 2026-10-14 au soir : « des vraies
+  // images de Fun Galaxy », « dedans direct pour garder une taille ok »). Une
+  // activite que la formule contient, lue dans ses lignes par les memes
+  // indices que photo(), photographiee DANS le centre : seule Libramont a ses
+  // photos, un autre centre n en recoit aucune. Le bowling, le laser et les
+  // arcades ont une seconde photo : une section ne montre pas trois fois la
+  // meme quand une formule contient autre chose.
+  var PHOTOS_FORMULE = [[/duck/, ['duckpin']], [/bowling/, ['pistes-neon', 'salle-bowling']], [/laser/, ['laser-joueur', 'laser-couloir']], [/golf/, ['minigolf']], [/billard/, ['billards-libramont']], [/arcade/, ['arcades', 'simulateurs']], [/playground|plaine/, ['plaine']], [/fun_run|funrun|fun-run|fun run/, ['fun-run']]];
+  function photosDeTexte(t) {
+    var s = String(t || '').toLowerCase(), out = [];
+    PHOTOS_FORMULE.forEach(function (r) { if (r[0].test(s)) out = out.concat(r[1]); });
+    return out;
+  }
+  function photoFormule(f, vues) {
+    if ((meta && meta.center && meta.center.id || CENTER) !== 'libramont') return '';
+    var cands = [];
+    function prendre(t) { photosDeTexte(t).forEach(function (p) { if (cands.indexOf(p) < 0) cands.push(p); }); }
+    (f.desc || []).forEach(prendre);
+    // « Toutes les activites illimitees » : les activites du centre, dans l ordre.
+    if (!cands.length && (f.desc || []).some(function (d) { return /toutes les activit[eé]s/i.test(d); })) activitesVendables().forEach(function (a) { prendre(a.id); });
+    var p = cands.filter(function (c) { return !vues[c]; })[0] || cands[0] || '';
+    if (p) vues[p] = true;
+    return p;
+  }
   // Ce que nomme un mot de la carte d une formule (« 1 partie Minigolf »,
   // « 1 table privée pendant 2 heures ») ou un identifiant d activite, par les
   // memes indices que icone() : l activite, la table, ou rien (des boissons,
@@ -2241,18 +2265,24 @@
     });
     var n = 0;
     gridFor.innerHTML = familles.map(function (cle) {
+      // Les anniversaires sont une fete (guirlande) ; les autres familles
+      // disent leur remise. Une photo ne revient pas dans la meme section.
+      var fete = /anniv/i.test(cle), vues = {};
       var cartes = parFamille[cle].map(function (f) {
         var on = state.formuleId === f.id;
         var v = verdictFormule(f);
         var regles = reglesFormule(f);
+        var fond = photoFormule(f, vues);
+        var remise = !fete && Number(f.price) > 0 && Number(f.oldPrice) > Number(f.price) ? Math.round((1 - Number(f.price) / Number(f.oldPrice)) * 100) : 0;
         n += 1;
         return '<li class="fg-grid__item' + (on ? ' is-on' : '') + '">'
-          + '<div class="fg-card fg-card--formule fg-rise' + (on ? ' is-on' : '') + (v.ok ? '' : ' is-refus') + '" style="--i:' + (n % 8) + '" data-formule="' + esc(f.id) + '" role="radio" tabindex="0" aria-checked="' + on + '">'
+          + '<div class="fg-card fg-card--formule fg-rise' + (on ? ' is-on' : '') + (v.ok ? '' : ' is-refus') + (fond ? ' has-photo' : '') + (fete ? ' is-fete' : '') + '" style="--i:' + (n % 8) + '" data-formule="' + esc(f.id) + '" role="radio" tabindex="0" aria-checked="' + on + '">'
+          + (fond ? '<span class="fg-for__photo" aria-hidden="true"><img src="/assets/fungalaxy/' + fond + '-carte.webp" alt="" loading="lazy" decoding="async"></span>' : '')
           + '<span class="fg-card__box" aria-hidden="true"><svg><use href="#i-check"/></svg></span>'
           + '<span class="fg-for__head"><span class="fg-card__name">' + esc(f.name) + '</span>'
           + (f.best ? '<span class="fg-for__best">Bon plan</span>' : '') + '</span>'
           + '<span class="fg-for__price"><b>' + esc(euros(f.price)) + '</b><small>' + (f.type === 'per_lane' ? 'la piste' : f.kidsOnly ? 'par enfant' : 'par personne') + '</small>'
-          + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + '</span>'
+          + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + (remise >= 5 ? '<span class="fg-for__remise">' + esc(typo('-' + remise + ' %')) + '</span>' : '') + '</span>'
           + '<span class="fg-for__time is-wait" data-duree-for="' + esc(f.id) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span></span></span>'
           + '<ul class="fg-for__list">' + (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>'
           + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '')

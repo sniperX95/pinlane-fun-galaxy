@@ -788,7 +788,9 @@
     if (btn.dataset.formulaInfo && gridFor.contains(btn)) {
       var formuleInfo = ((meta && meta.formules) || []).filter(function (f) { return f.id === btn.dataset.formulaInfo; })[0];
       if (formuleInfo) {
-        var actualisationInfo = doc.createElement('div'); actualisationInfo.innerHTML = htmlInfoFormule(formuleInfo);
+        // La fiche dit la formule telle que le client l a choisie : sa
+        // variante (« 60 min d'arcades ») et l acces a ce qu elle pose.
+        var actualisationInfo = doc.createElement('div'); actualisationInfo.innerHTML = htmlInfoFormule(avecVariante(formuleInfo));
         var boutonActualise = $('[data-formula-info]', actualisationInfo);
         btn.dataset.infoText = boutonActualise.dataset.infoText; btn.dataset.infoSections = boutonActualise.dataset.infoSections;
       }
@@ -1502,6 +1504,8 @@
       formulaHolidayOff: Boolean(entry.formulaHolidayOff),
       unavailableFormulaIds: Array.isArray(entry.unavailableFormulaIds) ? entry.unavailableFormulaIds.slice() : [],
       unavailableActivityIds: Array.isArray(entry.unavailableActivityIds) ? entry.unavailableActivityIds.slice() : [],
+      // Les variantes d une formule qui ne se jouent pas ce jour-la (lib/formula-choice).
+      unavailableFormulaChoiceIds: entry.unavailableFormulaChoiceIds && typeof entry.unavailableFormulaChoiceIds === 'object' ? JSON.parse(JSON.stringify(entry.unavailableFormulaChoiceIds)) : {},
     };
   }
   function absorberCalendrier(liste) {
@@ -2154,7 +2158,9 @@
   function verdictFormule(f) {
     var j = jourInfo(state.date) || {};
     if (f.offerOff) return { ok: false, court: 'Indisponible', pourquoi: 'Cette offre est momentanément suspendue.' };
-    if ((j.unavailableFormulaIds || []).indexOf(f.id) >= 0) return { ok: false, court: 'Indisponible ce jour', pourquoi: 'Une des activités de cette formule n’est pas disponible ce jour-là.' };
+    // Une formule a variantes ne se grise que si aucune ne se joue ce jour-la
+    // (lib/formula-choice) : le serveur dit lesquelles ne se jouent pas.
+    if (variantesDe(f).length ? !variantesOffertes(f).length : (j.unavailableFormulaIds || []).indexOf(f.id) >= 0) return { ok: false, court: 'Indisponible ce jour', pourquoi: 'Une des activités de cette formule n’est pas disponible ce jour-là.' };
     if (f.minPax && state.pax < f.minPax) return { ok: false, court: 'Dès ' + f.minPax + ' personnes', pourquoi: f.minPaxLaser
       ? 'Le laser game de cette formule se joue à ' + f.minPax + ' minimum. Vous êtes ' + state.pax + '.'
       : 'Vous êtes ' + state.pax + ' : cette formule demande au moins ' + f.minPax + ' personnes.' };
@@ -2252,8 +2258,9 @@
   }
   function rendreFormules() {
     // Une formule dont une activite manque a ce centre (missingActivityIds,
-    // la plaine de jeux de Gembloux) ne peut jamais y etre planifiee.
-    var liste = ((meta && meta.formules) || []).filter(function (f) { return !(Array.isArray(f.missingActivityIds) && f.missingActivityIds.length); });
+    // la plaine de jeux de Gembloux) ne peut jamais y etre planifiee. Une
+    // formule a variantes reste tant qu une d elles s y joue.
+    var liste = ((meta && meta.formules) || []).filter(function (f) { return variantesDe(f).length ? variantesDuCentre(f).length > 0 : !manqueAuCentre(f); });
     if (!liste.length) { gridFor.innerHTML = '<p class="fg-empty">Aucune formule ne se réserve en ligne pour le moment.' + ligneCentre() + '</p>'; return; }
     // Une famille par section (anniversaires, offres speciales) : quatorze
     // cartes a la suite ne se lisaient pas. L ordre des familles est celui du
@@ -2289,9 +2296,9 @@
           + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '')
           + (v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(v.pourquoi) + '</span>')
           + '</div>'
-          + htmlInfoFormule(f)
+          + htmlInfoFormule(avecVariante(f))
           + (f.kidsOnly && v.ok ? rendreEnfants(f) : '')
-          + (v.ok && variantesDe(f).length ? rendreVariantes(f) : '')
+          + (v.ok && variantesOffertes(f).length > 1 ? rendreVariantes(f) : '')
           + '</li>';
       }).join('');
       return '<section class="fg-fam"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '<span>' + parFamille[cle].length + ' formule' + (parFamille[cle].length > 1 ? 's' : '') + '</span></h3>'
@@ -2334,7 +2341,7 @@
   // premiere variante (le contenu de la carte) est choisie tant que le
   // client n en touche pas une autre.
   function rendreVariantes(f) {
-    var liste = variantesDe(f), v = varianteChoisie(f), id = 'choix-' + String(f.id).replace(/[^a-z0-9_-]/gi, '');
+    var liste = variantesOffertes(f), v = varianteChoisie(f), id = 'choix-' + String(f.id).replace(/[^a-z0-9_-]/gi, '');
     return '<div class="fg-card__opt"><div class="fg-card__optin"><div class="fg-card__optbox">'
       + '<span class="fg-card__optlabel" id="' + id + '">Au choix</span>'
       + '<div class="fg-pills fg-pills--choix" role="radiogroup" aria-labelledby="' + id + '" data-n="' + liste.length + '">'
@@ -2350,8 +2357,14 @@
     $$('.fg-pills--choix', gridFor).forEach(function (g) {
       var pills = $$('[data-choix]', g), f = pills.length ? formuleParId(pills[0].dataset.choixFor) : null;
       if (!f) return;
-      var v = varianteChoisie(f), ul = $('.fg-for__list', g.closest('.fg-grid__item'));
-      pills.forEach(function (x, i) { var on = v ? x.dataset.choix === v.id : i === 0; x.classList.toggle('is-on', on); x.setAttribute('aria-checked', String(on)); x.tabIndex = on ? 0 : -1; });
+      var offertes = variantesOffertes(f), v = varianteChoisie(f) || offertes[0], ul = $('.fg-for__list', g.closest('.fg-grid__item'));
+      // Une variante qui ne se propose plus sort de la carte ; une seule ne
+      // laisse plus rien a choisir.
+      if (offertes.length < 2) g.closest('.fg-card__opt').remove();
+      else pills.forEach(function (x) {
+        if (!offertes.some(function (c) { return c.id === x.dataset.choix; })) { x.remove(); return; }
+        var on = x.dataset.choix === v.id; x.classList.toggle('is-on', on); x.setAttribute('aria-checked', String(on)); x.tabIndex = on ? 0 : -1;
+      });
       if (ul) ul.innerHTML = lignesCarte(avecVariante(f));
     });
   }
@@ -2364,7 +2377,11 @@
     var avant = state.choix;
     state.choix = rang > 0 ? liste[rang].id : '';
     majVariantes();
-    if (state.choix !== avant) invaliderDispo();
+    if (state.choix === avant) return;
+    invaliderDispo();
+    // Le choix se dit, comme le compte des enfants : dans un groupe radio, un
+    // toucher ne dit pas ce qu il change.
+    dire(f.name + ', avec ' + liste[rang].label + '.');
   }
   function rendreEnfants(f) {
     var n = enfantsDuGroupe(), t = textesEnfants(f), id = 'kids-' + String(f.id).replace(/[^a-z0-9_-]/gi, '');
@@ -2718,6 +2735,9 @@
   // le mode (activites ou formule) et ce qui est choisi. Changer d onglet ne
   // vide rien, et une reponse peut arriver apres un changement : sans cette
   // cle, une formule reprenait le plan et le prix calcules pour des activites.
+  // La variante y entre (`~` et son identifiant) : defensif, non prouve,
+  // choisir une autre variante annule deja la reponse en cours et le plan
+  // retenu (choisirVariante, invaliderDispo, annulerPlan).
   function cleDemande() { return state.date + '|' + state.pax + '|' + joueursDemandes() + '|' + (state.onglet === 'formules' ? 'f:' + state.formuleId + (choixEnvoye() ? '~' + choixEnvoye() : '') : 'v:' + JSON.stringify(programme())); }
   function chargerHeures() {
     if (state.dispo && state.dispoCle !== cleDemande()) invaliderDispo();
@@ -2787,6 +2807,9 @@
       .then(function (rep) {
         if (id !== requeteEnCours) return;
         var j = lu(rep);
+        // Une variante que le serveur ne connait plus : la carte repart de son
+        // contenu, et l ecran le dit.
+        if (j && j.code === 'formula_choice_unavailable' && oublierVariante()) { variantePerdue(j.message); return; }
         if (!j || j.ok === false) throw erreurLisible(j, 'Les horaires ne se sont pas chargés. Réessayez dans un instant.');
         if (planEnCours === controle) planEnCours = null;
         poserPlan(j, rep.texte, cle, repere, idAttente, heureAttente);
@@ -4362,12 +4385,27 @@
     return f ? avecVariante(f) : null;
   }
   function formuleParId(id) { return ((meta && meta.formules) || []).filter(function (x) { return x.id === id; })[0] || null; }
-  // Les variantes d une formule (la meta, `choices`), et celle que le
-  // client a choisie pour la formule choisie, autre que la premiere.
+  // Les variantes d une formule (la meta, `choices`) : deux au moins.
   function variantesDe(f) { return f && Array.isArray(f.choices) && f.choices.length > 1 ? f.choices : []; }
+  // CELLES QUI SE JOUENT ICI ET CE JOUR-LA : une variante qui pose une
+  // activite coupee au centre (`missingActivityIds`) ou indisponible ce
+  // jour-la (`unavailableFormulaChoiceIds` du jour) ne se propose pas. Le
+  // serveur le dit (api/public-booking-meta), le formulaire le lit.
+  function manqueAuCentre(x) { return Boolean(x) && Array.isArray(x.missingActivityIds) && x.missingActivityIds.length > 0; }
+  function variantesDuCentre(f) { return variantesDe(f).filter(function (c) { return !manqueAuCentre(c); }); }
+  function variantesOffertes(f) {
+    var refusees = ((jourInfo(state.date) || {}).unavailableFormulaChoiceIds || {})[f && f.id] || [];
+    return variantesDuCentre(f).filter(function (c) { return refusees.indexOf(c.id) < 0; });
+  }
+  // La variante que la carte dit, quand elle change quelque chose : celle que
+  // le client a choisie pour la formule choisie, sinon la premiere qui se
+  // joue. null : le contenu de la carte (la premiere variante).
   function varianteChoisie(f) {
-    if (!f || !state.choix || f.id !== state.formuleId) return null;
-    return variantesDe(f).filter(function (c, i) { return i > 0 && c && c.id === state.choix; })[0] || null;
+    var offertes = variantesOffertes(f);
+    if (!offertes.length) return null;
+    var voulue = f.id === state.formuleId && state.choix ? offertes.filter(function (c) { return c.id === state.choix; })[0] : null;
+    var v = voulue || offertes[0];
+    return v === variantesDe(f)[0] ? null : v;
   }
   function avecVariante(f) {
     var v = varianteChoisie(f);
@@ -4376,6 +4414,26 @@
   // La variante qui part au serveur : rien sans elle, la demande reste celle
   // d avant, au caractere pres.
   function choixEnvoye() { var v = state.onglet === 'formules' ? varianteChoisie(formuleParId(state.formuleId)) : null; return v ? v.id : ''; }
+  // UNE VARIANTE QUE LE SERVEUR NE CONNAIT PLUS (409, code
+  // formula_choice_unavailable, lib/formula-choice) : elle sort de la carte et
+  // le choix repart du contenu de la carte. Vrai quand une variante partait.
+  function oublierVariante() {
+    var f = formuleParId(state.formuleId), id = choixEnvoye();
+    if (!f || !id) return false;
+    f.choices = variantesDe(f).filter(function (c) { return c.id !== id; });
+    state.choix = '';
+    majVariantes();
+    return true;
+  }
+  // Sur l ecran des heures : la phrase du serveur reste affichee, les
+  // horaires se redemandent pour le contenu de la carte.
+  function variantePerdue(message) {
+    var phrase = message || 'Cette option n’est plus proposée pour cette formule.';
+    invaliderDispo();
+    refuserHoraires('<b>' + esc(phrase) + '</b> Les horaires affichés suivent le contenu de la carte.');
+    dire(phrase + ' Les horaires affichés suivent le contenu de la carte.');
+    chargerHeures();
+  }
   /* --- Le petit plus : l offre d attente et « Envie d un peu plus ? » ------------ */
 
   // Les cartes viennent du serveur avec le creneau retenu (public-availability,
@@ -4470,11 +4528,13 @@
   // change qu apres un aller-retour serveur reussi. Le serveur a derive les
   // options du catalogue (duree, palier, parties) : rien ne se devine ici.
   function copiePanier() {
-    return { selection: state.selection.slice(), options: JSON.parse(JSON.stringify(state.options)), attente: state.attente, formuleId: state.formuleId };
+    return { selection: state.selection.slice(), options: JSON.parse(JSON.stringify(state.options)), attente: state.attente, formuleId: state.formuleId, choix: state.choix };
   }
   function panierDe(carte) {
     var c = copiePanier();
-    if (carte.kind === 'formule') { c.formuleId = carte.formuleId; return c; }
+    // Une autre formule repart du contenu de sa carte : la variante choisie ne
+    // vaut que pour la sienne.
+    if (carte.kind === 'formule') { if (carte.formuleId !== c.formuleId) c.choix = ''; c.formuleId = carte.formuleId; return c; }
     var id = String(carte.patch.activityId), o = carte.patch.options || {};
     if (carte.kind === 'attente') c.attente = { activityId: id, participants: personnesDe(carte) };
     else {
@@ -4496,8 +4556,8 @@
   }
   function avecPanier(c, fn) {
     var avant = copiePanier();
-    state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId;
-    try { return fn(); } finally { state.selection = avant.selection; state.options = avant.options; state.attente = avant.attente; state.formuleId = avant.formuleId; }
+    state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId; state.choix = c.choix || '';
+    try { return fn(); } finally { state.selection = avant.selection; state.options = avant.options; state.attente = avant.attente; state.formuleId = avant.formuleId; state.choix = avant.choix; }
   }
   // LA VISITE NE BOUGE PAS : meme heure de debut, memes pistes, memes heures
   // posees ; et jamais plus cher que ce que la carte annoncait (un tarif change
@@ -4585,7 +4645,8 @@
   // serveur vient de rendre.
   function appliquerPanier(c, carte, ecran, texteOk, j, cr, texte) {
     var avant = copiePanier();
-    state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId;
+    state.selection = c.selection; state.options = c.options; state.attente = c.attente; state.formuleId = c.formuleId; state.choix = c.choix || '';
+    majVariantes();
     var slot = j.slots[0];
     state.dispo = j; state.dispoCle = cleDemande(); state.dispoTexte = texte;
     state.creneau = creneauAvecDevis(slot, j);
@@ -5170,6 +5231,7 @@
       if (r.prixChange) { actualiserDevis(r.devis); signaturePistes = ''; rendreHeures(); refuserHoraires('<b>Le montant a changé.</b> Vérifiez le nouveau montant, puis continuez à nouveau.'); return; }
       if (r.pris) { horairesPris(r.message); return; }
       if (r.refus) {
+        if (r.code === 'formula_choice_unavailable' && oublierVariante()) { variantePerdue(r.message); return; }
         if (r.code === 'custom_request_required' && meta && meta.center && r.fromPax) meta.center.customRequest = { fromPax: Number(r.fromPax) };
         refuserHoraires('<b>' + esc(r.message || 'Ces horaires ne peuvent pas être réservés en ligne.') + '</b>');
         return;
@@ -5263,6 +5325,8 @@
         // Deux demandes de cet ecran se sont croisees au serveur : une fois.
         if (res.statut === 409 && x.code === 'hold_retry' && essais > 0) return demanderBlocage(corps, cle, essais - 1, version, ticket);
         if (res.statut === 409 && (x.code === 'slot_taken' || x.code === 'slot_unavailable')) return { pris: true, message: x.message || '' };
+        // Une variante que le serveur ne connait plus : un refus, qui dit pourquoi.
+        if (res.statut === 409 && x.code === 'formula_choice_unavailable') return { refus: true, message: x.message || '', code: x.code };
         // Un refus du centre (fermé, groupe trop grand) vient de NOTRE API :
         // JSON ok:false et sa phrase. Un 404 sans elle, c est l adresse du
         // blocage qui manque (deploiement, reecriture) : le client avance sans
@@ -6194,6 +6258,17 @@
         if (res.status === 409 && res.json.code === 'price_changed') {
           actualiserDevis(res.json); rendreRecap();
           erreurEnvoi('<b>Le montant a changé.</b> Vérifiez le nouveau montant avant de confirmer à nouveau.');
+          return;
+        }
+        // Une variante que le serveur ne connait plus : la carte repart de son
+        // contenu et les horaires se redemandent. Le creneau refuse reste celui
+        // du recapitulatif, comme pour tout refus (plus bas).
+        if (res.status === 409 && res.json.code === 'formula_choice_unavailable') {
+          var creneauRefuse = state.creneau, heureRefusee = state.heure;
+          oublierVariante();
+          invaliderDispo();
+          state.creneau = creneauRefuse; state.heure = heureRefusee;
+          erreurEnvoi('<b>' + esc(res.json.message || 'Cette option n’est plus proposée pour cette formule.') + '</b><button type="button" class="fg-alert__btn" data-rechoisir>Revoir vos horaires</button>');
           return;
         }
         if (res.status === 409) {

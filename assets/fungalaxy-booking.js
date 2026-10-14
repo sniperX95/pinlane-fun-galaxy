@@ -4425,13 +4425,15 @@
     majVariantes();
     return true;
   }
-  // Sur l ecran des heures : la phrase du serveur reste affichee, les
-  // horaires se redemandent pour le contenu de la carte.
+  // Sur l ecran des heures : la phrase du serveur (ce qui s est passe, ce que
+  // le client peut faire) reste affichee, les horaires se redemandent pour le
+  // contenu de la carte.
+  var VARIANTE_PERDUE = 'Votre choix pour cette formule n’est plus proposé. Choisissez vos horaires pour son contenu habituel.';
   function variantePerdue(message) {
-    var phrase = message || 'Cette option n’est plus proposée pour cette formule.';
+    var phrase = message || VARIANTE_PERDUE;
     invaliderDispo();
-    refuserHoraires('<b>' + esc(phrase) + '</b> Les horaires affichés suivent le contenu de la carte.');
-    dire(phrase + ' Les horaires affichés suivent le contenu de la carte.');
+    refuserHoraires('<b>' + esc(phrase) + '</b>');
+    dire(phrase);
     chargerHeures();
   }
   /* --- Le petit plus : l offre d attente et « Envie d un peu plus ? » ------------ */
@@ -4564,6 +4566,14 @@
   // dans la console entre-temps). Sinon la carte se retire et dit pourquoi, le
   // panier reste celui du client. Meme loi que le tunnel.
   function refusDuPlus(j, cr, carte) {
+    // LE CHOIX DE LA FORMULE N EST PLUS PROPOSE (409, formula_choice_unavailable) :
+    // la carte se retire en nommant ce choix, pas l option qu elle proposait,
+    // et dit ou reprendre. Les heures et la confirmation le rattrapent ensuite
+    // (variantePerdue).
+    if (j && j.code === 'formula_choice_unavailable') {
+      var choisie = varianteChoisie(formuleParId(state.formuleId));
+      return 'Votre choix pour cette formule' + (choisie ? ' (' + motsServeur(choisie.label) + ')' : '') + ' n’est plus proposé. Choisissez vos horaires pour son contenu habituel.';
+    }
     if (!j || j.ok === false) return (j && j.message) || 'Cette option n’est plus disponible.';
     var slot = (j.slots || [])[0];
     if (!slot || slot.time !== cr.slot.time) return 'Cette option déplacerait vos horaires.';
@@ -6268,7 +6278,7 @@
           oublierVariante();
           invaliderDispo();
           state.creneau = creneauRefuse; state.heure = heureRefusee;
-          erreurEnvoi('<b>' + esc(res.json.message || 'Cette option n’est plus proposée pour cette formule.') + '</b><button type="button" class="fg-alert__btn" data-rechoisir>Revoir vos horaires</button>');
+          erreurEnvoi('<b>' + esc(res.json.message || VARIANTE_PERDUE) + '</b><button type="button" class="fg-alert__btn" data-rechoisir>Revoir vos horaires</button>');
           return;
         }
         if (res.status === 409) {

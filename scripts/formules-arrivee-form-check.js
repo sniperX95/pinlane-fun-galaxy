@@ -38,7 +38,14 @@
 //       qui les propose et les pose ; rien quand elles ont deja leur heure, ni
 //       quand le minigolf de la formule couvre ce temps ;
 //   [G] au telephone (360 px) : rien ne deborde, des cibles de 44 px, les memes
-//       boutons que les heures du bowling, le focus se voit.
+//       boutons que les heures du bowling, le focus se voit ;
+//   [H] une heure par partie de laser (Formule 2, Movsar le 14/10 : « l heure
+//       proposée pour la seconde partie de laser game est la même que la
+//       1re ») : la ligne de la partie 2 propose la premiere heure libre apres
+//       la partie 1, jamais l heure de celle-ci ; touchee dans la ligne 2,
+//       l heure est celle de la partie 2 et la partie 1 garde son heure
+//       proposee ; la partie 1 posee, la ligne 2 s ouvre seule, sur la plage
+//       de son heure proposee.
 //   --mutate : une regle cassee a la fois, en memoire (le formulaire servi au
 //       navigateur, ou le moteur compile pour le serveur) : chacune doit faire
 //       rougir le gate ; le disque n est jamais ecrit, et on le verifie.
@@ -141,6 +148,14 @@ const MUTATIONS = [
     de: '        if (choix) choix.hidden = !ici;', vers: '        void 0;' },
   { nom: 'l idee des arcades ne les pose plus', fichier: JS, scenarios: ['F'],
     de: "    if (versArcades) { libreOuvert = ''; adaptation = null; state.arcade = versArcades.dataset.libreArcades; chargerPlan(); return; }", vers: '    if (versArcades) return;' },
+  { nom: 'la ligne de la partie 2 propose l heure de la partie 1', fichier: JS, scenarios: ['H'],
+    de: '        if (kLigne > 1) propose = proposeePartie(a, kLigne, etapes);', vers: '        void proposeePartie;' },
+  { nom: 'une heure touchee dans la ligne 2 devient celle de la partie 1', fichier: JS, scenarios: ['H'],
+    de: '      if (kOuvert > 1 && !state.laserParts.length) {', vers: '      if (false) {' },
+  { nom: 'la piste du laser garde ses heures en changeant de ligne', fichier: JS, scenarios: ['H'],
+    de: '    if (state.dispo && (partie(avant) || partie(cle))) majPistes(state.dispo);', vers: '    void partie;' },
+  { nom: 'la plage ouverte suit l heure d une autre partie', fichier: JS, scenarios: ['H'],
+    de: '    utile = sienne || proposee || utile;', vers: '    void sienne;' },
 ];
 const MUTATION_PREUVE = '[mutation] servie :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_ARRIVEE_FORM_MUTATION || 0);
@@ -836,7 +851,81 @@ async function scenarioG(browser, mock) {
   }
 }
 
-const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG]];
+// ---------------------------------------------------------------------------
+// [H] UNE HEURE PAR PARTIE DE LASER
+// ---------------------------------------------------------------------------
+// La fin d une partie dans le dernier plan recu (ses groupes compris), celle
+// qui commence a `debut`.
+function finDePartie(suivi, debut) {
+  const plan = [...suivi.reponses].reverse().find((r) => estPlan(r.url));
+  const blocs = ((((plan && plan.json && plan.json.slots) || [])[0] || {}).opsPlan || {}).resourceBlocks || [];
+  const laser = blocs.filter((b) => b && b.activityId === 'laser_game');
+  const tete = laser.find((b) => b.startTime === debut);
+  if (!tete) return '';
+  return laser.filter((b) => (Number(b.countIndex) || 1) === (Number(tete.countIndex) || 1)).map((b) => String(b.endTime || '')).sort().pop() || '';
+}
+// L heure qu une ligne de partie doit proposer : la premiere libre (rien de
+// serre) apres la fin de la partie d avant, sans heure deja prise.
+const premiereLibreApres = (puces, fin) => (puces.find((c) => c.ok !== 'false' && c.etat === 'ok' && !c.on && minutesDe(c.time) >= minutesDe(fin)) || {}).time || '';
+async function plageOuverteDe(page, heure) {
+  return page.evaluate((h) => {
+    const c = document.querySelector(`.fg-track[data-activity="laser_game"] .fg-chip[data-time="${h}"]`);
+    const sec = c && c.closest('.fg-period');
+    return Boolean(sec && sec.classList.contains('is-open') && c.getClientRects().length);
+  }, heure);
+}
+async function scenarioH(browser, mock) {
+  section('H. UNE HEURE PAR PARTIE DE LASER');
+  semer(mock);
+  const un = await ouvrir(browser);
+  try {
+    const arrive = await versHeures(un.page, mock, 'f2');
+    const p0 = await lireProgramme(un.page);
+    const h1 = (ligneDe(p0, 'laser_game#1') || {}).heure || '';
+    const fin1 = finDePartie(un.suivi, h1);
+    ok(arrive && /^\d\d:\d\d$/.test(h1) && Boolean(fin1) && (ligneDe(p0, 'laser_game#2') || {}).heure === 'À choisir',
+      `MONTAGE Formule 2, rien de pose : la partie 1 proposee a ${h1} (jusqu a ${fin1}), la partie 2 a choisir`, resumeLignes(p0));
+    await ouvrirLigne(un.page, 'laser_game#2');
+    const puces = await lirePuces(un.page, 'laser_game');
+    const proposees = puces.filter((c) => c.prop).map((c) => c.time);
+    const attendue = premiereLibreApres(puces, fin1);
+    ok(Boolean(attendue) && proposees.length === 1 && proposees[0] === attendue && proposees[0] !== h1,
+      `ouverte a la main, la ligne de la partie 2 propose SA premiere heure libre apres la partie 1 (${attendue}), jamais celle de la partie 1 (${h1})`, `proposees ${proposees.join(',') || 'aucune'}`);
+    const pris = await poser(un.page, 'laser_game', attendue);
+    const parts = JSON.parse(params(dernierPlan(un.suivi)).get('laserGameTimes') || '[]');
+    const p1 = await lireProgramme(un.page);
+    const l1 = ligneDe(p1, 'laser_game#1') || {};
+    const l2 = ligneDe(p1, 'laser_game#2') || {};
+    ok(pris && JSON.stringify(parts) === JSON.stringify([h1, attendue]) && l1.heure === h1 && /is-choisi/.test(l1.classe) && l2.heure === attendue && /is-choisi/.test(l2.classe),
+      `touchee dans la ligne 2, ${attendue} est l heure de la partie 2 : la partie 1 garde ${h1}, la demande porte les deux`, `${JSON.stringify(parts)} || ${resumeLignes(p1)}`);
+  } finally {
+    ok(un.suivi.erreurs.length === 0, '[H] aucune erreur JavaScript (ligne 2 ouverte a la main)', un.suivi.erreurs.slice(0, 3).join(' | '));
+    await un.ctx.close();
+  }
+  // L enchainement : la partie 1 posee, la ligne 2 s ouvre seule et propose
+  // la suite, sur la plage de cette heure (une partie le matin, la suivante a
+  // midi).
+  semer(mock);
+  const deux = await ouvrir(browser);
+  try {
+    await versHeures(deux.page, mock, 'f2');
+    const pris = await poser(deux.page, 'laser_game', '11:30');
+    const fin1 = finDePartie(deux.suivi, '11:30');
+    const p = await lireProgramme(deux.page);
+    const puces = await lirePuces(deux.page, 'laser_game');
+    const attendue = premiereLibreApres(puces, fin1);
+    const proposees = puces.filter((c) => c.prop).map((c) => c.time);
+    const une = puces.find((c) => c.time === '11:30') || {};
+    ok(pris && (ligneDe(p, 'laser_game#2') || {}).ouverte && Boolean(attendue) && proposees.length === 1 && proposees[0] === attendue && une.on && une.ecrit === 'partie 1',
+      `la partie 1 posee a 11:30, la ligne 2 s ouvre seule et propose ${attendue} (apres ${fin1}) ; 11:30 s y lit « partie 1 »`, `${resumeLignes(p)} || proposees ${proposees.join(',') || 'aucune'}`);
+    ok(await plageOuverteDe(deux.page, attendue), `la plage ouverte dans la ligne 2 est celle de ${attendue}, pas celle de la partie 1`);
+  } finally {
+    ok(deux.suivi.erreurs.length === 0, '[H] aucune erreur JavaScript (enchainement)', deux.suivi.erreurs.slice(0, 3).join(' | '));
+    await deux.ctx.close();
+  }
+}
+
+const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH]];
 
 async function main() {
   const mock = require('./dev-tunnel-server');
@@ -860,7 +949,7 @@ async function main() {
     console.error(`\nformules-arrivee-form-check: ${failures} defaut(s).`);
     process.exit(1);
   }
-  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre)');
+  console.log('\nformules-arrivee-form-check: ALL OK (l arrivee est une borne, a l heure pile a l ouverture ; les arcades facultatives se posent, decalent et se proposent dans le temps libre ; chaque partie de laser propose son heure)');
   process.exit(0);
 }
 

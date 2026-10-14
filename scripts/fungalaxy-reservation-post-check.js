@@ -347,7 +347,7 @@ async function unParcours(page, pool, cas) {
   await attendre(f, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && document.querySelector('#totalAmount'), 8000);
   await passerLaVitrine(f);
   const vu = await f.evaluate(() => ({ total: Number(document.querySelector('#totalAmount').dataset.total), texte: document.querySelector('#recap').textContent.replace(/\s+/g, ' ').trim() }));
-  if (cas.formuleId) ok(/Début de la visite à \d{2}:\d{2}/.test(vu.texte), `[${cas.nom}] formule : le recapitulatif garde l heure de debut envoyee`, vu.texte.slice(-160));
+  if (cas.formuleId) ok(/Début\d{2}:\d{2}/.test(vu.texte) && !/Début de la visite à/.test(vu.texte), `[${cas.nom}] formule : le recapitulatif dit l heure de chacune de ses activites`, vu.texte.slice(-160));
   const avant = pool.inserted.length;
   await f.click('#confirmBtn');
   const fini = await attendre(f, () => document.querySelector('.fg-scene[data-scene="fin"].is-active') && document.querySelector('#finBody .fg-done__ticket'), 20000);

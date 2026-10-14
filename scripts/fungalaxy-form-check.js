@@ -377,7 +377,7 @@
 // posee), errglisse (les erreurs apparaissent d un coup : feuille cassee),
 // quirecap (le recapitulatif tait le telephone), modifier (« le jour ou le
 // groupe » ne ramene plus a l ecran 1 : PAGE servie cassee), debutformule
-// (une formule perd son heure de debut au recapitulatif), rechoisir
+// (une formule perd son programme heure par heure au recapitulatif), rechoisir
 // (« Choisir d autres horaires » ne redemande rien au serveur), alertefraiche
 // (l erreur perimee survit a « Modifier »), sousledoigt (l erreur nait hors
 // de l ecran), mailfin (l ecran final tait l e-mail mis en file), accuse (une
@@ -808,7 +808,7 @@ const MUTATIONS = {
   doublon: ["if (slots.length) html += '<section", "html += '<div class=\"fg-notice\"><b>x</b></div>'; if (slots.length) html += '<section"],
   attente: ["chip.classList.add('is-pending');", 'void 0;'],
   onde: ["rejouer(posee, 'is-pose');", 'void 0;'],
-  ondeplan: [' && planRetient(idAttente, heureAttente)) rejouer', ') rejouer'],
+  ondeplan: [' && planRetient(idAttente, heureAttente)) { rejouer', ') { rejouer'],
   roule: ["if (k < sumAvant.length && b.textContent !== sumAvant[k]) b.classList.add('is-maj');", "b.classList.add('is-maj');"],
   squelette: ['hourZone.innerHTML = SQUELETTE;', "hourZone.innerHTML = '<p class=\"fg-loading\">On regarde ce qui est libre…</p>';"],
   voix: ["(complet ? '' : ', plus ' + nomsSansPrix(items) + ', ' + PRIX_ACCUEIL)", "''"],
@@ -827,7 +827,7 @@ const MUTATIONS = {
   nudge: ["secouer(premier.closest('.fg-field, .fg-check'));", 'void 0;'],
   nudgereste: ["if (w) w.classList.remove('is-nudge');", 'void w;'],
   quirecap: ["esc(state.contact.email) + '&nbsp;· ' + esc(state.contact.telephone) + '</p>'", "esc(state.contact.email) + '</p>'"],
-  debutformule: ['var sansDebut = state.heure && !lignes.some(', 'var sansDebut = false && !lignes.some('],
+  debutformule: ['programmeDeLaFormule(cr).forEach(function (l) { lignes.push(l); });', 'void 0;'],
   rechoisir: ["state.dispo = null; signaturePistes = ''; goContact.disabled = true;", 'void 0;'],
   alertefraiche: ["erreurEnvoi(''); rendreRecap();", 'rendreRecap();'],
   sousledoigt: ['if (html) { posterHauteur(); montrer(confirmErr); }', 'if (html) { posterHauteur(); }'],
@@ -852,7 +852,7 @@ const MUTATIONS = {
   pris: ['function verdictDu(t) { return t && t.ok === false && t.move ? t.move : t; }', 'function verdictDu(t) { return t; }'],
   deplacement: ["var remplacee = chip.dataset.replaces || (vague ? vague.depuis : '');", "var remplacee = vague ? vague.depuis : '';"],
   comptex: ["' choisie' + (n > 1 ? 's' : '') + ' sur ' + total", "' choisie' + (n > 1 ? 's' : '') + ' sur ' + n"],
-  partiesproposees: ['var heures = n ? state.laserParts.slice() : debutsDesParties(state.creneau, a.activityId);', 'var heures = state.laserParts.slice();'],
+  partiesproposees: ['heures = n ? state.laserParts.slice() : debutsDesParties(state.creneau, id);', 'heures = state.laserParts.slice();'],
   detailprix: ['      if (Math.abs(connus - prix) < 0.01) {', '      if (false) {'],
   finvisite: ["    if (fin) lignes += etapeVisite({ genre: 'out'", "    if (false) lignes += etapeVisite({ genre: 'out'"],
   avance: ["detail: avance > 0 ? avance + ' min avant ' + votre(parts[0].id) : 'à l’ouverture' });", "detail: 'à l’ouverture' });"],
@@ -3464,9 +3464,9 @@ async function main() {
     await pageV.click('#goHours');
     ok(await attendre(pageV, () => document.querySelectorAll('#hourZone .fg-chip').length > 0 && !document.querySelector('#hourZone').classList.contains('is-busy'), 25000),
       '[I] et la FORMULE 1 trouve des heures ce samedi');
-    // UNE FORMULE N A PAS D HEURE PAR LIGNE (« a votre rythme ») : le
-    // recapitulatif garde l heure de debut envoyee, sinon aucune heure de
-    // debut n y serait plus dite.
+    // UNE FORMULE DIT SON PROGRAMME AU RECAPITULATIF (2026-10-14), comme le
+    // mail le redira : chaque partie a son heure, la premiere a l heure de
+    // debut envoyee, et « Début de la visite » ne la redit plus.
     const rF = await reponseF;
     let dF = {};
     try { dF = rF ? await rF.json() : {}; } catch (error) { dF = {}; }
@@ -3481,7 +3481,9 @@ async function main() {
     ok(await attendre(pageV, () => document.querySelector('.fg-scene[data-scene="recap"].is-active'), 6000), '[I] la formule va jusqu au recapitulatif');
     await passerLaVitrine(pageV);
     const quiF = await pageV.evaluate(() => (Array.from(document.querySelectorAll('#recap p.fg-recap__detail')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).find((t) => /Au nom de/.test(t)) || ''));
-    ok(Boolean(heureF) && quiF.indexOf(`Début de la visite à ${heureF}Au nom de Formule Debut`) === 0, '[I] une formule garde au recapitulatif l heure de debut envoyee', `« ${quiF} » attendait le debut a ${heureF}`);
+    const asidesF = await pageV.evaluate(() => Array.from(document.querySelectorAll('#recap .fg-recap__item')).map((n) => ((n.querySelector('.fg-recap__aside') || {}).textContent || '').replace(/\s+/g, ' ').trim()));
+    ok(Boolean(heureF) && asidesF.filter((a) => /^Début\d\d:\d\d$/.test(a))[0] === `Début${heureF}` && asidesF[0] === '' && quiF.indexOf('Au nom de Formule Debut') === 0,
+      '[I] une formule dit au recapitulatif l heure de chacune de ses activites, la premiere a l heure de debut envoyee, et plus de « Début de la visite » qui la redit', `${JSON.stringify(asidesF)} « ${quiF.slice(0, 60)} »`);
     // Retour aux heures de la FORMULE 1 par le lien du recapitulatif : la
     // suite part de cet ecran.
     await pageV.click('.fg-scene.is-active .fg-edit [data-goto="heures"]');

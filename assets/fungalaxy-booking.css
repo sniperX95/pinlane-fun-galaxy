@@ -2738,6 +2738,21 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 .fg-etape.is-open .fg-etape__corps { grid-template-rows: 1fr; }
 .fg-etape__dedans { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear 0.4s; }
 .fg-etape.is-open .fg-etape__dedans { visibility: visible; transition-delay: 0s; }
+/* LA SUITE SE VOIT (Movsar, 2026-10-14 : « trop brusque, on comprend pas bien
+   qu on passe a une autre activite »). Apres une pose, la ligne garde son
+   heure a l ecran un instant, puis se replie ; la suivante s ouvre ensuite, et
+   son en-tete s eclaire d un voile sarcelle qui s eteint. */
+@media (prefers-reduced-motion: no-preference) {
+  .fg-etape.is-quitte .fg-etape__corps { transition-delay: 0.42s; }
+  .fg-etape.is-quitte .fg-etape__dedans { transition-delay: 0.82s; }
+  .fg-etape.is-arrive .fg-etape__corps { transition-delay: 0.5s; }
+  .fg-etape.is-arrive .fg-etape__tete { animation: fg-etape-arrive 1.3s var(--fg-ease-out) 0.45s backwards; }
+}
+@keyframes fg-etape-arrive {
+  0% { background-color: rgba(103, 186, 172, 0); }
+  30% { background-color: rgba(103, 186, 172, 0.14); }
+  100% { background-color: rgba(103, 186, 172, 0); }
+}
 .fg-etape .fg-period.is-open .fg-period__inner { visibility: inherit; }
 .fg-etape__piste { padding: 2px 20px 6px 70px; }
 .fg-etape__alt { margin: 0; padding: 0 20px 16px 70px; }

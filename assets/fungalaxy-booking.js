@@ -346,12 +346,14 @@
     if (el.classList.contains(cls)) { el.classList.remove(cls); void el.offsetWidth; }
     el.classList.add(cls);
   }
+  // `ms` : le temps que la classe reste posee (700 ms, sinon celui de
+  // l animation plus longue qu elle porte).
   var minuteursRejoue = new WeakMap();
-  function rejouer(el, cls) {
+  function rejouer(el, cls, ms) {
     if (!el || reduced) return;
     relancer(el, cls);
     clearTimeout(minuteursRejoue.get(el));
-    minuteursRejoue.set(el, setTimeout(function () { el.classList.remove(cls); }, 700));
+    minuteursRejoue.set(el, setTimeout(function () { el.classList.remove(cls); }, ms || 700));
   }
   // Le telephone public du centre (public-booking-meta, publicInfo) : une
   // piste quand rien ne se reserve en ligne. Un point de contact, jamais une
@@ -2746,7 +2748,7 @@
     // calcul : ni reveil, ni focus pour lui (« Garder » s eveille une fois, a
     // l arrivee sur les heures). Rallume dans la meme tache, il garde son focus.
     goContact.disabled = true;
-    if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) { rejouer(posee, 'is-pose'); avancerEtape(); }
+    if (posee && posee.classList.contains('is-on') && planRetient(idAttente, heureAttente)) { rejouer(posee, 'is-pose'); avancerEtape(true); }
     goContact.disabled = !slot;
     var retenu = contactRetenu;
     lacherContact();
@@ -2902,6 +2904,11 @@
     var fin = blocs.filter(function (b) { return (Number(b.countIndex) || 1) === partie; }).map(function (b) { return String(b.endTime || ''); }).sort().pop();
     return fin ? debut + ' à ' + fin : '';
   }
+  // La fin de cette plage, seule (« 14:25 ») ; rien hors du plan.
+  function finOccupee(cr, id, debut) {
+    var plage = plageOccupee(cr, id, debut);
+    return plage ? plage.split(' à ')[1] : '';
+  }
   function nomBas(s) { return String(s || '').toLowerCase(); }
   // LA PHRASE D UNE RAISON, pour un groupe d heures qui la partagent. Courte
   // (Movsar, 2026-09-24 : « trop long, mal explique » ; 2026-10-12 : « explique
@@ -3034,7 +3041,7 @@
   // piste est a lui : plus rien ne s ouvre ni ne se ferme tout seul.
   function majPeriodes(track) {
     var secs = $$('.fg-period', track);
-    var utile = null;
+    var utile = null, sienne = null, proposee = null;
     secs.forEach(function (sec) {
       var chips = $$('.fg-chip', sec);
       var n = chips.filter(function (c) { return c.dataset.ok !== 'false'; }).length;
@@ -3054,7 +3061,13 @@
       sec.classList.toggle('is-picked', choisis.length > 0);
       sec.classList.toggle('is-empty', n === 0);
       if (!utile && (choisis.length || propose)) utile = sec;
+      // Dans la ligne d une partie de laser, la plage de l heure de CETTE
+      // partie, sinon de celle qu on lui propose, passe avant celle des autres
+      // parties (is-autre, majPistes).
+      if (!sienne && chips.some(function (c) { return c.classList.contains('is-on') && !c.classList.contains('is-autre'); })) sienne = sec;
+      if (!proposee && propose) proposee = sec;
     });
+    utile = sienne || proposee || utile;
     // L heure retenue ou proposee CHANGE DE PLAGE sans que le client touche
     // cette piste (le bowling part a 23:00, le moteur replace le laser a
     // 22:30) : sa plage s ouvre, meme si le client avait feuillete ses onglets
@@ -3305,6 +3318,7 @@
       var p = (a.times || []).map(verdictDu).filter(function (v) { return v.ok !== false; });
       if (p.length > 0 && p.every(serree)) dernierSerre = a.activityId;
     });
+    var etapes = null;
     ancres.forEach(function (a) {
       var track = $('.fg-track[data-activity="' + a.activityId + '"]', hourZone);
       if (!track) return;
@@ -3316,10 +3330,26 @@
       var emportees = heuresEmportees(state.creneau, a.activityId, actifs);
       var compte = Math.max(1, Number(a.count) || 1);
       var multi = a.activityId === 'laser_game' && compte > 1;
+      // UNE PARTIE A LA FOIS (Movsar, 2026-10-14 : « l heure proposée pour la
+      // seconde partie de laser game est la même que la 1re »). La piste du
+      // laser se pose dans la ligne d une partie (majEtapes) : au-dela de la
+      // premiere, elle propose l heure de CETTE partie, jamais celle d une autre.
+      var kLigne = 1;
+      if (multi) {
+        etapes = etapes || etapesDe(d);
+        kLigne = Number(String(cleLaserHote(etapes) || '#1').split('#')[1]) || 1;
+        if (kLigne > 1) propose = proposeePartie(a, kLigne, etapes);
+      }
       (a.times || []).forEach(function (t) {
         var chip = $('.fg-chip[data-time="' + t.time + '"]', track);
         if (chip) majChip(chip, t, actifs, propose, toutSerre, a.activityId, emportees, compte);
       });
+      // Dans la ligne d une partie, l heure d une AUTRE partie n est pas « la »
+      // sienne : elle se lit pour ce qu elle est, l heure de l autre partie.
+      if (multi) {
+        var sienne = state.laserParts[kLigne - 1] || '';
+        $$('.fg-chip', track).forEach(function (c) { c.classList.toggle('is-autre', c.classList.contains('is-on') && c.dataset.time !== sienne); });
+      }
       $$('.fg-period', track).forEach(function (sec) { expliquerPeriode(sec, a.label || a.activityId); });
       var note = $('.fg-track__note', track);
       if (note) {
@@ -3555,6 +3585,31 @@
   }
   // Une ligne a placer : ni choisie, ni sur place, ni facultative.
   function aPlacer(e) { return e.etat !== 'choisi' && e.etat !== 'surplace' && e.etat !== 'libre'; }
+  // La ligne ouverte, ou celle qui s ouvrira seule (la premiere a placer) tant
+  // que le client n a ouvert ni ferme de ligne.
+  function ligneAOuvrir(etapes) {
+    var cle = etapeOuverte && etapes.some(function (e) { return e.cle === etapeOuverte; }) ? etapeOuverte : null;
+    if (cle === null && !etapeTouchee) { var premiere = etapes.filter(aPlacer)[0]; cle = premiere ? premiere.cle : null; }
+    return cle;
+  }
+  // La ligne qui porte la piste du laser : la partie ouverte, sinon la premiere.
+  function cleLaserHote(etapes) {
+    var ouverte = ligneAOuvrir(etapes);
+    return ouverte && ouverte.indexOf('laser_game#') === 0 ? ouverte : (etapes.filter(function (e) { return e.partie; })[0] || {}).cle;
+  }
+  // L HEURE PROPOSEE D UNE PARTIE SUIVANTE : la premiere qui se prend sans
+  // rien deplacer apres la fin de la partie d avant (ses groupes compris),
+  // d abord sans rien de serre ; c est la que l equipe la jouerait, dans la
+  // foulee. Rien quand cette partie a son heure, ou que celle d avant n en a pas.
+  function proposeePartie(a, k, etapes) {
+    if (state.laserParts[k - 1]) return '';
+    var avant = etapes.filter(function (e) { return e.id === a.activityId && e.partie === k - 1; })[0];
+    var fin = avant && avant.heure ? minutesDe(finOccupee(state.creneau, a.activityId, avant.heure)) : NaN;
+    if (!isFinite(fin)) return '';
+    var apres = (a.times || []).filter(function (t) { return t && t.ok !== false && !t.move && minutesDe(t.time) >= fin && state.laserParts.indexOf(t.time) < 0; });
+    var libre = apres.filter(function (t) { return !t.warning; })[0] || apres[0];
+    return libre ? libre.time : '';
+  }
   function detailPartie() {
     var d = dureeLaser(), a = activite('laser_game');
     return [state.onglet !== 'formules' && a ? joueurs(joueursDe(a)) : '', d ? minutesLabel(d.jeu) + ' de jeu' : ''].filter(Boolean).join(' · ');
@@ -3601,7 +3656,12 @@
     return html + '<li class="fg-etape fg-etape--borne fg-etape--fin" aria-hidden="true"><span class="fg-etape__quoi">Fin</span><span class="fg-etape__heure"></span></li></ol></div>';
   }
   function ouvrirEtape(cle) {
+    var partie = function (c) { return Boolean(c) && String(c).indexOf('laser_game#') === 0; };
+    var avant = etapeOuverte;
     etapeOuverte = cle;
+    // La piste du laser change de ligne : ses heures (proposee, autre partie)
+    // sont celles de la nouvelle partie.
+    if (state.dispo && (partie(avant) || partie(cle))) majPistes(state.dispo);
     if (state.dispo) majEtapes(state.dispo);
     if (cle === 'arcade_time') chargerArcades();
     posterHauteur();
@@ -3609,10 +3669,20 @@
   }
   // Apres une heure posee et retenue : la prochaine ligne a placer s ouvre ;
   // tout est place, tout se replie et le bouton s eveille.
-  function avancerEtape() {
+  // LA SUITE SE VOIT (Movsar, 2026-10-14 : « trop brusque, on comprend pas
+  // bien qu on passe a une autre activite ») : apres une pose, la ligne garde
+  // son heure a l ecran un instant puis se replie, la suivante s ouvre ensuite
+  // et s eclaire (is-quitte, is-arrive : la feuille porte les delais), puis se
+  // montre si elle sort de l ecran.
+  function avancerEtape(apresPose) {
     if (!state.dispo) return;
     var suivante = etapesDe(state.dispo).filter(aPlacer)[0];
     var f = doc.activeElement, ligne = f && f.closest && f.closest('.fg-etape'), clavier = ligne ? focusClavier(f) : false;
+    var quitte = apresPose && etapeOuverte ? $('.fg-etape[data-cle="' + etapeOuverte + '"]', hourZone) : null;
+    var arrive = apresPose && suivante ? $('.fg-etape[data-cle="' + suivante.cle + '"]', hourZone) : null;
+    rejouer(quitte, 'is-quitte', 1000);
+    rejouer(arrive, 'is-arrive', 1900);
+    if (arrive) setTimeout(function () { if (arrive.classList.contains('is-open')) montrer($('.fg-period.is-open .fg-chips', arrive) || $('.fg-etape__dedans', arrive), $('.fg-etape__tete', arrive)); }, reduced ? 0 : 950);
     ouvrirEtape(suivante ? suivante.cle : null);
     if (!suivante && !goContact.disabled) eveiller(goContact);
     // Le focus ne reste pas dans une ligne qui se replie : il suit le programme.
@@ -3625,8 +3695,7 @@
     var ol = $('.fg-etapes', hourZone);
     if (!ol) return;
     var etapes = etapesDe(d);
-    if (etapeOuverte && !etapes.some(function (e) { return e.cle === etapeOuverte; })) etapeOuverte = null;
-    if (etapeOuverte === null && !etapeTouchee) { var premiere = etapes.filter(aPlacer)[0]; etapeOuverte = premiere ? premiere.cle : null; }
+    etapeOuverte = ligneAOuvrir(etapes);
     // L ORDRE DE LA JOURNEE. Une ligne qui change de place glisse jusqu a la
     // nouvelle (FLIP : sa place d avant, puis la nouvelle, en un recalcul force).
     // L arrivee reste en tete.
@@ -3660,16 +3729,13 @@
       var alt = $('.fg-etape__alt', li);
       if (alt) alt.hidden = e.etat === 'choisi' || e.etat === 'surplace';
     });
-    // La piste du laser suit la partie ouverte (sinon, la premiere partie).
+    // La piste du laser suit la partie ouverte (sinon, la premiere partie) ;
+    // ses heures sont celles de cette partie (majPistes).
     var pisteLaser = $('.fg-track[data-activity="laser_game"]', ol);
     if (pisteLaser && Number(pisteLaser.dataset.count) > 1) {
-      var cleLaser = etapeOuverte && etapeOuverte.indexOf('laser_game#') === 0 ? etapeOuverte : (etapes.filter(function (e) { return e.partie; })[0] || {}).cle;
+      var cleLaser = cleLaserHote(etapes);
       var place = cleLaser ? $('.fg-etape[data-cle="' + cleLaser + '"] .fg-etape__piste', ol) : null;
       if (place && pisteLaser.parentNode !== place) place.appendChild(pisteLaser);
-      // Dans la ligne d une partie, l heure d une AUTRE partie n est pas « la »
-      // sienne : elle se lit pour ce qu elle est, l heure de l autre partie.
-      var kLaser = cleLaser ? Number(cleLaser.split('#')[1]) : 0, sienne = kLaser ? state.laserParts[kLaser - 1] || '' : '';
-      $$('.fg-chip', pisteLaser).forEach(function (c) { c.classList.toggle('is-autre', c.classList.contains('is-on') && c.dataset.time !== sienne); });
     }
     var bouges = Object.keys(avant).map(function (cle) {
       var li = $('.fg-etape[data-cle="' + cle + '"]', ol), dy = avant[cle] - li.getBoundingClientRect().top;
@@ -3905,6 +3971,20 @@
     }
     var count = Number(track.dataset.count) || 1;
     if (idA === 'laser_game' && count > 1) {
+      // LA PARTIE DE LA LIGNE OUVERTE : son heure bouge, ou elle en recoit une.
+      // L heure d une AUTRE partie ouvre la ligne de celle-ci, sans rien poser.
+      var kOuvert = etapeOuverte && etapeOuverte.indexOf('laser_game#') === 0 ? Number(etapeOuverte.split('#')[1]) : 0;
+      // LES PARTIES D AVANT, SEULEMENT PROPOSEES, SE GARDENT (Movsar,
+      // 2026-10-14) : l heure touchee dans la ligne de la partie 2 est celle
+      // de la partie 2, et la partie 1 garde l heure que sa ligne propose.
+      // Sans elles, cette heure devenait celle de la partie 1. L heure d une
+      // partie proposee ouvre sa ligne ; une heure prise PENDANT elle la
+      // deplace (le dernier choix gagne).
+      if (kOuvert > 1 && !state.laserParts.length) {
+        var proposees = debutsDesParties(state.creneau, idA).slice(0, kOuvert - 1);
+        if (proposees.indexOf(t) >= 0) { ouvrirEtape('laser_game#' + (proposees.indexOf(t) + 1)); return; }
+        state.laserParts = proposees.filter(function (h) { var fin = finOccupee(state.creneau, idA, h); return !(fin && t > h && t < fin); });
+      }
       var i = state.laserParts.indexOf(t);
       // La partie DEPLACEE : celle que l heure chevauche (verdict `move` du
       // serveur), ou celle dont un groupe joue deja a cette heure ; les autres
@@ -3912,9 +3992,6 @@
       // tot quand toutes sont posees (la regle que le serveur a jugee).
       var remplacee = chip.dataset.replaces || (vague ? vague.depuis : '');
       var j = remplacee ? state.laserParts.indexOf(remplacee) : -1;
-      // LA PARTIE DE LA LIGNE OUVERTE : son heure bouge, ou elle en recoit une.
-      // L heure d une AUTRE partie ouvre la ligne de celle-ci, sans rien poser.
-      var kOuvert = etapeOuverte && etapeOuverte.indexOf('laser_game#') === 0 ? Number(etapeOuverte.split('#')[1]) : 0;
       var actuelle = kOuvert ? state.laserParts[kOuvert - 1] || '' : '';
       if (i >= 0 && kOuvert && state.laserParts[i] !== actuelle) { ouvrirEtape('laser_game#' + (i + 1)); return; }
       if (i >= 0) state.laserParts.splice(i, 1);
@@ -5248,13 +5325,42 @@
   // recap ici, y a juste un mini recap ») ; le dernier ecran le reprend, avec
   // les coordonnees qui partiront. Une seule fonction pour les deux :
   // deux rendus finiraient par se contredire.
+  // LE PROGRAMME D UNE FORMULE AU RECAPITULATIF (Movsar, 2026-10-14 : « les
+  // mails doivent etre connectes »), comme le mail de confirmation le redira
+  // (lib/ops-communications, lignesDuProgramme) : chaque partie a son heure,
+  // les arcades a la leur, la partie laissee a l equipe « sur place », ce qui
+  // n a pas d heure « à votre rythme ». Une seule ligne « à votre rythme »
+  // taisait les heures posees.
+  function programmeDeLaFormule(cr) {
+    var plan = cr && cr.slot ? (cr.slot.opsPlan || {}) : {};
+    var parts = partiesDuPlan(cr), arc = arcadeDuPlan(), passe = plan.laserPassPlan || {};
+    var reste = (passe.pendingPasses || []).map(function (x) { return Number(x && x.countIndex) || 0; }).filter(Boolean);
+    var total = Math.max(parts.filter(function (p) { return p.id === 'laser_game'; }).length + reste.length, Number(passe.totalGames) || 0);
+    var jeu = dureeLaser() ? dureeLaser().jeu : 0;
+    var out = parts.map(function (p) {
+      var laser = p.id === 'laser_game';
+      return { id: p.id, icone: icone(p.id), nom: nomActivite(p.id) + (laser && total > 1 ? ' · partie ' + p.partie + ' sur ' + total : ''), aside: p.debut,
+        detail: [laser && jeu ? jeu + ' min de jeu' : '', p.fin ? 'jusqu’à ' + heureAffichee(p.fin) : '', texteGroupes(p, false), p.pistes > 0 ? p.pistes + ' piste' + (p.pistes > 1 ? 's' : '') : ''].filter(Boolean).join(' · ') };
+    });
+    if (arc.startTime) out.push({ id: 'arcade_time', icone: icone('arcade_time'), nom: nomActivite('arcade_time'), aside: arc.startTime, detail: [arc.minutes ? minutesLabel(arc.minutes) : '', arc.endTime ? 'jusqu’à ' + heureAffichee(arc.endTime) : ''].filter(Boolean).join(' · ') });
+    out.sort(function (x, y) { return x.aside.localeCompare(y.aside); });
+    if (reste.length) out.push({ id: 'laser_game', icone: icone('laser_game'), nom: nomActivite('laser_game') + ' · partie' + (reste.length > 1 ? 's ' : ' ') + joindreListe(reste.map(String), ' et ') + ' sur ' + total, detail: 'placée' + (reste.length > 1 ? 's' : '') + ' sur place avec l’équipe', aside: '', mot: 'sur place' });
+    (plan.timeline || []).forEach(function (e) {
+      if (!e || !e.activityId || e.flexible !== true || e.activityId === 'service_drinks' || estBoisson(e.label)) return;
+      if (out.some(function (l) { return l.id === e.activityId; })) return;
+      out.push({ id: e.activityId, icone: icone(e.activityId), nom: nomActivite(e.activityId), detail: e.activityId === 'arcade_time' && Number(e.durationMinutes) > 0 ? minutesLabel(Number(e.durationMinutes)) : '', aside: '' });
+    });
+    return out;
+  }
   function htmlRecap(final) {
     var cr = state.creneau, rep = cr ? cr.reponse : {}, plan = cr ? (cr.slot.opsPlan || {}) : {}, arrivee = arriveeDe(plan);
     var lignes = [];
     var items = (rep.program && rep.program.items) || [];
     if (state.onglet === 'formules') {
       var f = ((meta && meta.formules) || []).filter(function (x) { return x.id === state.formuleId; })[0] || {};
-      lignes.push({ icone: 'a-formule', nom: f.name || rep.label || 'Formule', detail: (f.desc || []).join(' · '), aside: '' });
+      // La formule et ce qu elle comprend, sans heure ni rythme : son programme suit.
+      lignes.push({ icone: 'a-formule', nom: f.name || rep.label || 'Formule', detail: (f.desc || []).join(' · '), aside: '', mot: '' });
+      programmeDeLaFormule(cr).forEach(function (l) { lignes.push(l); });
     } else if (items.length) {
       items.forEach(function (it) {
         // L offre d attente acceptee : pour qui, et pendant quoi.
@@ -5302,7 +5408,7 @@
     lignes.forEach(function (l, i) {
       html += '<div class="fg-recap__item fg-rise" style="--i:' + (3 + i) + '"><span class="fg-recap__badge"><svg aria-hidden="true"><use href="#' + l.icone + '"/></svg></span>'
         + '<span><span class="fg-recap__name">' + esc(l.nom) + '</span>' + (l.detail ? '<br><span class="fg-recap__detail">' + esc(l.detail) + '</span>' : '') + '</span>'
-        + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : '<small>à votre rythme</small>') + '</span></div>';
+        + '<span class="fg-recap__aside">' + (l.aside ? 'Début<b>' + esc(l.aside) + '</b>' : (l.mot === undefined ? '<small>à votre rythme</small>' : l.mot ? '<small>' + esc(l.mot) + '</small>' : '')) + '</span></div>';
     });
     html += '<div class="fg-recap__sep"></div>'
       + (arrivee ? '<div class="fg-recap__row fg-rise" style="--i:' + (3 + lignes.length) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span>' + 'Arrivée conseillée à' + ' <b>' + esc(arrivee) + '</b>' + (fin ? (cr.slot.visitEndsAtClose ? ', jusqu’à la fermeture (' + esc(heureAffichee(fin)) + ')' : ', fin vers ' + esc(heureAffichee(fin))) : '') + surPlace(arrivee, fin) + '</span></div>' : '')

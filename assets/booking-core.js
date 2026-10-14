@@ -15,7 +15,8 @@ const FORMULES = [
   { id:'f1', name:'FORMULE 1', family:'Formules anniversaires', desc:["1h de Bowling","1 partie Laser Game","30 min arcades","2 cruches boissons"], price:26, oldPrice:34, type:'per_pax', minPax:6, noHolidays:true, hasBowling:true, bowlingDur:1, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
   { id:'f2', name:'FORMULE 2', family:'Formules anniversaires', desc:["1 partie Minigolf","2 parties Laser Game","30 min arcades","2 cruches boissons"], price:30, oldPrice:45, type:'per_pax', minPax:6, noHolidays:true, hasBowling:false, best:true, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
   { id:'f3', name:'FORMULE 3', family:'Formules anniversaires', desc:["1 partie Minigolf","1h de Bowling","30 min d'Arcades","2 cruches boissons"], price:28, oldPrice:34, type:'per_pax', minPax:6, noHolidays:true, hasBowling:true, bowlingDur:1, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
-  { id:'f4', name:'FORMULE 4', family:'Formules anniversaires', desc:["1 partie de Minigolf","1h de Bowling","2 parties Laser Game","2 cruches boissons"], price:39, oldPrice:48, type:'per_pax', minPax:6, noHolidays:true, hasBowling:true, bowlingDur:1, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
+  { id:'f4', name:'FORMULE 4', family:'Formules anniversaires', desc:["1 partie de Minigolf","1h de Bowling","2 parties Laser Game","2 cruches boissons"], price:39, oldPrice:48, type:'per_pax', minPax:6, noHolidays:true, hasBowling:true, bowlingDur:1, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"],
+    choices:[{ id:'laser2', label:'2 parties de Laser Game' }, { id:'arcade60', label:"60 min d'arcades", replaces:['laser_game'], steps:[{ activityId:'arcade_time', count:1, durationMinutes:60 }], desc:["1 partie de Minigolf","1h de Bowling","60 min d'arcades","2 cruches boissons"] }] },
   { id:'f5', name:'FORMULE 5', family:'Formules anniversaires', desc:["2 parties de Laser Game","1 partie de Minigolf","2 cruches boissons"], price:26, oldPrice:32, type:'per_pax', minPax:6, noHolidays:true, hasBowling:false, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
   { id:'f6', name:'FORMULE 6', family:'Formules anniversaires', desc:["1 table privée pendant 2 heures","1 entrée à la plaine de jeu","8 crédits d'arcade (8€) par enfant","2 cruches boissons"], price:18, oldPrice:20, type:'per_pax', minPax:6, noHolidays:true, hasBowling:false, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
   { id:'f7', name:'FORMULE 7', family:'Formules anniversaires', desc:["1 table privée pendant 2 heures","1 entrée à la plaine de jeu","1 entrée Mini Golf Blacklight","8 crédits d'arcade (8€) par enfant","2 cruches boissons"], price:24, oldPrice:30, type:'per_pax', minPax:6, noHolidays:true, hasBowling:false, notes:["Minimum 6 personnes","Non valable durant les vacances scolaires et jours fériés","Nourriture et boissons venues de l’extérieur non admises, sauf le gâteau d’anniversaire"] },
@@ -885,12 +886,42 @@ function getLaserCandidateWindows(startTime, duration, pax) {
   return windows;
 }
 
+// LA VARIANTE QU UN DOSSIER A ACHETEE (lib/formula-choice, la Formule 4 :
+// « 60 min d'arcades » a la place des deux parties de laser). Son plan la
+// garde (opsPlan.formulaChoice) : ce qu elle remplace, ce qu elle pose, son
+// programme. Sans elle, la formule telle quelle.
+function getReservationFormulaChoice(reservation) {
+  const choix = reservation && reservation.opsPlan && reservation.opsPlan.formulaChoice;
+  return choix && typeof choix === 'object' && choix.id && Array.isArray(choix.replaces) && Array.isArray(choix.steps) ? choix : null;
+}
+// La carte de la formule, dans les mots de la variante achetee.
+function applyReservationFormulaChoice(formule, reservation) {
+  const choix = getReservationFormulaChoice(reservation);
+  return formule && choix && Array.isArray(choix.desc) && choix.desc.length ? { ...formule, desc: choix.desc.slice() } : formule;
+}
+// Les etapes du miroir (FORMULA_ACTIVITY_STEPS), dans la variante achetee :
+// les siennes a la place de la premiere qu elle remplace.
+function applyReservationFormulaChoiceToSteps(steps, reservation) {
+  const choix = getReservationFormulaChoice(reservation);
+  const remplacees = new Set(choix ? choix.replaces.map(String) : []);
+  if (!Array.isArray(steps) || !steps.some(step => remplacees.has(step.a))) return steps;
+  const out = [];
+  let posees = false;
+  steps.forEach(step => {
+    if (!remplacees.has(step.a)) { out.push(step); return; }
+    if (posees) return;
+    posees = true;
+    choix.steps.forEach(etape => out.push({ a: String(etape.activityId), c: Math.max(1, Number(etape.count) || 1), ...(etape.label ? { label: String(etape.label) } : {}) }));
+  });
+  return out;
+}
+
 function getFormulaLaserFallbackWindows(reservation) {
   // Formule OU visite : les deux vendent des parties de laser sans etre de type
   // 'laser'. Une visite dont le plan n'a pas pu etre calcule doit quand meme
   // montrer sa session estimee, comme une formule.
   if (!(reservation?.type === 'formule' || reservation?.formuleId || getProgramLaserGameCount(reservation) > 0)) return [];
-  const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
+  const formule = reservation.formuleId ? applyReservationFormulaChoice(FORMULES.find(x => x.id === reservation.formuleId), reservation) : null;
   const laserItem = (reservation.program?.items || []).find(item => item?.activityId === 'laser_game');
   // Extra games remain pending: a missing plan must never fabricate their hour
   // or allocate the whole initial group to the smaller purchased subgroup.
@@ -1816,7 +1847,7 @@ function buildFormulaTimelineTimeIndex(reservation) {
 function getFormulaActivityChecklist(reservation) {
   const progress = reservation?.activityProgress && typeof reservation.activityProgress === 'object' ? reservation.activityProgress : {};
   const timeByKey = buildFormulaTimelineTimeIndex(reservation);
-  const steps = getFormulaActivitySteps(getReservationFormulaId(reservation));
+  const steps = applyReservationFormulaChoiceToSteps(getFormulaActivitySteps(getReservationFormulaId(reservation)), reservation);
   const mkItem = (activityId, occurrence, label) => {
     const key = `${activityId}-${occurrence}`;
     const entry = progress[key];
@@ -1945,6 +1976,9 @@ function getFormulaActivityProgressSummary(reservation) {
     getBalancedLaserWaveSizes,
     getLaserCandidateWindows,
     getFormulaLaserFallbackWindows,
+    getReservationFormulaChoice,
+    applyReservationFormulaChoice,
+    applyReservationFormulaChoiceToSteps,
     getQuickBookStartForLaserSession,
     getLaserSlotCapacityText,
     getLaserSlotAfterText,

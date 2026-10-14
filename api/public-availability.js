@@ -50,6 +50,7 @@ const {
 const { attenteDesTours, buildProgramFormula, describeProgram, groupIsSplit, normalizeProgram } = require('../lib/visit-program');
 const { activityMinPax } = require('../lib/activity-catalog');
 const { buildFormulaComplements, buildVisitComplements } = require('../lib/booking-complements');
+const { formuleAvecChoix, formuleDuDossier, varianteDemandee } = require('../lib/formula-choice');
 // La projection d un scenario en creneau, la garde finale et les compositions
 // par defaut d une formule : le code que l agent lit aussi (proposedArrivals),
 // pour dire aux clients les heures et les durees que ce tunnel propose.
@@ -134,7 +135,7 @@ function laserWindowsFromReservation(reservation) {
 
 function getFormulaFallbackLaserWindows(reservation) {
   if (!reservation?.formuleId) return [];
-  const formulaDoc = getFormula(reservation.formuleId);
+  const formulaDoc = formuleDuDossier(getFormula(reservation.formuleId), reservation);
   const games = getFormulaStepCount(formulaDoc, 'laser_game');
   if (!games) return [];
 
@@ -445,6 +446,10 @@ module.exports = async (req, res) => {
     let heureArcade = /^\d{1,2}:\d{2}$/.test(String(url.searchParams.get('arcade') || '').trim())
       ? String(url.searchParams.get('arcade')).trim()
       : '';
+    // LA VARIANTE DE LA FORMULE (lib/formula-choice, la Formule 4 « 60 min
+    // d'arcades ») : seulement quand elle est envoyee ; la demande sans elle
+    // reste celle d avant.
+    const choixFormule = String(url.searchParams.get('formulaChoice') || '').trim().slice(0, 40);
     const pauseMinutes = 0;
 
     if (!date) {
@@ -1211,7 +1216,12 @@ module.exports = async (req, res) => {
     }
 
     if (type === 'formule') {
-      const formulaDoc = getFormula(formuleId);
+      // La variante demandee, jouee sur la formule ; `avecChoix` la pose sur
+      // chaque demande au moteur. Sans elle, la meme formule et les memes
+      // demandes, au caractere pres.
+      const variante = varianteDemandee(formuleId, choixFormule);
+      const formulaDoc = formuleAvecChoix(getFormula(formuleId), variante);
+      const avecChoix = (preference) => (variante ? { ...preference, formulaChoice: variante.id } : preference);
       const engineContext = {
         reservations: snapshot.reservations,
         laneStatuses: snapshot.laneStatuses,
@@ -1245,7 +1255,7 @@ module.exports = async (req, res) => {
       const arcadeDeLaGrille = !demandeArrivee && !listeArcadesSansArrivee && heureArcade ? { arcadeTime: heureArcade } : {};
       let anchorMeta = null;
       try {
-        anchorMeta = (listeArrivees && !heureArrivee) || listeArcades ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes, ...arcadeDeLaGrille }, engineContext);
+        anchorMeta = (listeArrivees && !heureArrivee) || listeArcades ? null : getFormulaAnchorAvailability({ centerId, formuleId, date, pax, preferredTimes, laserGameTimes, ...arcadeDeLaGrille, ...(variante ? { formulaChoice: variante.id } : {}) }, engineContext);
       } catch (error) {
         anchorMeta = null;
       }
@@ -1415,7 +1425,7 @@ module.exports = async (req, res) => {
           const partiesCompletes = parties.length || laserPlacement === 'onsite' ? parties : (completes.laser_game ? [completes.laser_game] : []);
           const reponse = planningAgent({
             centerId, date, type, formuleId, pax, duration,
-            preference: { preferredTimes: completes, laserGameTimes: partiesCompletes, laserPlacement, arrivalConfidence: 'normal', arcadeTime: time },
+            preference: avecChoix({ preferredTimes: completes, laserGameTimes: partiesCompletes, laserPlacement, arrivalConfidence: 'normal', arcadeTime: time }),
             pauseMinutes,
           }, contexte);
           const plan = (reponse && reponse.plan) || {};
@@ -1480,6 +1490,7 @@ module.exports = async (req, res) => {
           ...(laserGameTimes.length ? { laserGameTimes } : {}),
           laserPlacement: String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled',
           ...(heureArcade ? { arcadeTime: heureArcade } : {}),
+          ...(variante ? { formulaChoice: variante.id } : {}),
         };
         // LE DERNIER CHOIX GAGNE (Movsar, 2026-10-13 : « c est vraiment pas
         // normal de pouvoir choisir aucun horaire »). Une arrivee se juge avec
@@ -1753,6 +1764,7 @@ module.exports = async (req, res) => {
                 laserPlacement,
                 arrivalConfidence: 'normal',
                 ...(heureArcade ? { arcadeTime: heureArcade } : {}),
+                ...(variante ? { formulaChoice: variante.id } : {}),
               },
               pauseMinutes,
             },
@@ -1814,12 +1826,12 @@ module.exports = async (req, res) => {
         duration,
         minTime,
         maxTime,
-        preference: {
+        preference: avecChoix({
           firstActivityId,
           activityOrder,
           arrivalConfidence: 'normal',
           preferredTimes,
-        },
+        }),
         pauseMinutes,
         snapshot,
         guardContext,

@@ -21890,7 +21890,7 @@ function getLaserGameCountForReservation(reservation) {
   if (programGames) return programGames;
   if (reservation.type === 'laser') return getLaserGameCount(Number(reservation.duration) || 0.5);
   const formule = reservation.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
-  return getFormulaLaserGameCount(formule);
+  return getFormulaLaserGameCount(applyReservationFormulaChoice(formule, reservation));
 }
 
 // La duree d UN BLOC de bowling (le premier). C est ce que demandent les
@@ -22606,7 +22606,9 @@ function renderReservationTags(reservation, options = {}) {
   const tags = [];
   const contexteSeul = Boolean(options.contexteSeul);
   const formule = reservation.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
-  if (!contexteSeul && (reservation.type === 'formule' || formule)) tags.push({ cls: 'formula', label: formule?.name || 'Formule' });
+  // La variante achetee se lit avec la formule (« FORMULE 4 · 60 min d'arcades »).
+  const variante = getReservationFormulaChoice(reservation);
+  if (!contexteSeul && (reservation.type === 'formule' || formule)) tags.push({ cls: 'formula', label: (formule?.name || 'Formule') + (variante ? ` · ${escapeHtml(variante.label)}` : '') });
   // L etiquette dit le temps de jeu VENDU (somme des blocs) : c est ce que le
   // client a paye et ce que le comptoir doit lire.
   const bowlingDuration = getBowlingTotalHoursForReservation(reservation);
@@ -27645,7 +27647,8 @@ function buildEditProgramFromReservation(r) {
     });
     return etat;
   }
-  const formule = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
+  // La formule telle que le dossier l a achetee (sa variante, booking-core).
+  const formule = r && r.formuleId ? applyReservationFormulaChoice(resolveDisplayFormule(r.formuleId), r) : null;
   if (formule) {
     if (formule.hasBowling) { etat.bowling.on = true; etat.bowling.duration = Number(formule.bowlingDur || 1); }
     const parties = getFormulaLaserGameCount(formule);

@@ -253,6 +253,7 @@
     options: {},               // id -> { duration | games | minutes } choisis sur la carte
     formuleId: '',             // ou une formule (onglet Formules)
     enfants: null,             // offre reservee aux enfants : combien le sont (null = tout le groupe)
+    choix: '',                 // la variante de la formule choisie (choices) ; '' : le contenu de sa carte
     onglet: 'activites',
     pins: {},                  // activityId -> 'HH:MM' : les heures que le client a posees
     laserParts: [],            // heures des parties de laser posees (si plusieurs parties)
@@ -2284,12 +2285,13 @@
           + '<span class="fg-for__price"><b>' + esc(euros(f.price)) + '</b><small>' + (f.type === 'per_lane' ? 'la piste' : f.kidsOnly ? 'par enfant' : 'par personne') + '</small>'
           + (f.oldPrice ? '<s>' + esc(euros(f.oldPrice)) + '</s>' : '') + (remise >= 5 ? '<span class="fg-for__remise">' + esc(typo('-' + remise + ' %')) + '</span>' : '') + '</span>'
           + '<span class="fg-for__time is-wait" data-duree-for="' + esc(f.id) + '"><svg aria-hidden="true"><use href="#i-clock"/></svg><span></span></span>'
-          + '<ul class="fg-for__list">' + (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ul>'
+          + '<ul class="fg-for__list">' + lignesCarte(avecVariante(f)) + '</ul>'
           + (regles.length ? '<span class="fg-for__rules">' + regles.map(function (r) { return '<i>' + esc(r) + '</i>'; }).join('') + '</span>' : '')
           + (v.ok ? '' : '<span class="fg-for__off"><svg aria-hidden="true"><use href="#i-info"/></svg>' + esc(v.pourquoi) + '</span>')
           + '</div>'
           + htmlInfoFormule(f)
           + (f.kidsOnly && v.ok ? rendreEnfants(f) : '')
+          + (v.ok && variantesDe(f).length ? rendreVariantes(f) : '')
           + '</li>';
       }).join('');
       return '<section class="fg-fam"><h3 class="fg-fam__title">' + esc(libelleFamille(cle)) + '<span>' + parFamille[cle].length + ' formule' + (parFamille[cle].length > 1 ? 's' : '') + '</span></h3>'
@@ -2324,6 +2326,45 @@
       adultes: a > 0 ? '+ ' + a + ' adulte' + (a > 1 ? 's' : '') + ' qui accompagne' + (a > 1 ? 'nt' : '') + ', sans payer la formule' : 'Aucun adulte accompagnant',
       prix: f.type === 'per_pax' && Number(f.price) > 0 ? euros(f.price * n) + ' pour ' + n + ' enfant' + (n > 1 ? 's' : '') : '',
     };
+  }
+  function lignesCarte(f) { return (f.desc || []).map(function (d) { return '<li>' + esc(d) + '</li>'; }).join(''); }
+  // LE CHOIX D UNE FORMULE (Movsar, 2026-10-13 : la Formule 4 se joue avec
+  // « 2 parties de Laser Game » ou « 60 min d'arcades » a leur place). Sous la
+  // carte choisie, en pastilles comme les options d une activite ; la
+  // premiere variante (le contenu de la carte) est choisie tant que le
+  // client n en touche pas une autre.
+  function rendreVariantes(f) {
+    var liste = variantesDe(f), v = varianteChoisie(f), id = 'choix-' + String(f.id).replace(/[^a-z0-9_-]/gi, '');
+    return '<div class="fg-card__opt"><div class="fg-card__optin"><div class="fg-card__optbox">'
+      + '<span class="fg-card__optlabel" id="' + id + '">Au choix</span>'
+      + '<div class="fg-pills fg-pills--choix" role="radiogroup" aria-labelledby="' + id + '" data-n="' + liste.length + '">'
+      + liste.map(function (c, i) {
+        var on = v ? c.id === v.id : i === 0;
+        return '<button type="button" class="fg-pill' + (on ? ' is-on' : '') + '" role="radio" aria-checked="' + on + '" tabindex="' + (on ? '0' : '-1') + '" data-choix-for="' + esc(f.id) + '" data-choix="' + esc(c.id) + '"><b>' + esc(c.label) + '</b></button>';
+      }).join('')
+      + '</div></div></div></div>';
+  }
+  // Les pastilles et la liste de chaque carte disent l etat : la variante
+  // de la formule choisie, la premiere ailleurs.
+  function majVariantes() {
+    $$('.fg-pills--choix', gridFor).forEach(function (g) {
+      var pills = $$('[data-choix]', g), f = pills.length ? formuleParId(pills[0].dataset.choixFor) : null;
+      if (!f) return;
+      var v = varianteChoisie(f), ul = $('.fg-for__list', g.closest('.fg-grid__item'));
+      pills.forEach(function (x, i) { var on = v ? x.dataset.choix === v.id : i === 0; x.classList.toggle('is-on', on); x.setAttribute('aria-checked', String(on)); x.tabIndex = on ? 0 : -1; });
+      if (ul) ul.innerHTML = lignesCarte(avecVariante(f));
+    });
+  }
+  // Une autre variante : les heures posees pour l ancienne ne valent plus
+  // (les parties de laser ou l heure d arcade), la demande repart sans elles.
+  function choisirVariante(pill) {
+    var f = formuleParId(pill.dataset.choixFor), liste = variantesDe(f), rang = -1;
+    liste.forEach(function (c, i) { if (c.id === pill.dataset.choix) rang = i; });
+    if (rang < 0 || state.formuleId !== f.id) return;
+    var avant = state.choix;
+    state.choix = rang > 0 ? liste[rang].id : '';
+    majVariantes();
+    if (state.choix !== avant) invaliderDispo();
   }
   function rendreEnfants(f) {
     var n = enfantsDuGroupe(), t = textesEnfants(f), id = 'kids-' + String(f.id).replace(/[^a-z0-9_-]/gi, '');
@@ -2507,6 +2548,8 @@
     if (!card || card.classList.contains('is-off')) return;
     var id = card.dataset.formule;
     state.formuleId = state.formuleId === id ? '' : id;
+    // Une autre formule repart du contenu de sa carte.
+    if (state.choix) { state.choix = ''; majVariantes(); }
     $$('.fg-card', gridFor).forEach(function (c) { var on = c.dataset.formule === state.formuleId; c.classList.toggle('is-on', on); c.closest('.fg-grid__item').classList.toggle('is-on', on); c.setAttribute('aria-checked', String(on)); if (!on) c.classList.remove('is-coche'); });
     if (state.formuleId === id) rejouer(card, 'is-coche');
     rendreCompteur(true);
@@ -2523,10 +2566,21 @@
       dire(n + ' enfant' + (n > 1 ? 's' : '') + (a > 0 ? ' et ' + a + ' adulte' + (a > 1 ? 's' : '') + ' accompagnant' + (a > 1 ? 's' : '') : '') + '.');
       return;
     }
+    var variante = e.target.closest('[data-choix]');
+    if (variante) { choisirVariante(variante); return; }
     choisirFormule(e.target.closest('.fg-card'));
   });
   gridFor.addEventListener('keydown', function (e) {
     if ((e.key === ' ' || e.key === 'Enter') && e.target.classList && e.target.classList.contains('fg-card')) { e.preventDefault(); choisirFormule(e.target); }
+    // Les variantes forment un groupe radio : les fleches passent de l une a l autre.
+    if (/^Arrow(Left|Right|Up|Down)$/.test(e.key) && e.target.dataset && e.target.dataset.choix) {
+      var pills = $$('[data-choix]', e.target.closest('.fg-pills'));
+      var k = pills.indexOf(e.target) + (e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1);
+      if (k < 0 || k >= pills.length) return;
+      e.preventDefault();
+      choisirVariante(pills[k]);
+      pills[k].focus({ preventScroll: true });
+    }
   });
   // Un geste se joue une fois : la classe part a la fin, sinon il rejouerait
   // chaque fois que l onglet ou l ecran se re-affiche (display none -> block).
@@ -2642,7 +2696,7 @@
   function urlDispo(liste) {
     var q = new URLSearchParams();
     q.set('centerId', CENTER); q.set('date', state.date); q.set('pax', String(joueursDemandes()));
-    if (state.onglet === 'formules') { q.set('type', 'formule'); q.set('formuleId', state.formuleId); }
+    if (state.onglet === 'formules') { q.set('type', 'formule'); q.set('formuleId', state.formuleId); if (choixEnvoye()) q.set('formulaChoice', choixEnvoye()); }
     else {
       q.set('type', 'visite'); q.set('program', JSON.stringify(programme()));
       // Le temps des activites libres est un conseil, pas un interdit : les
@@ -2664,7 +2718,7 @@
   // le mode (activites ou formule) et ce qui est choisi. Changer d onglet ne
   // vide rien, et une reponse peut arriver apres un changement : sans cette
   // cle, une formule reprenait le plan et le prix calcules pour des activites.
-  function cleDemande() { return state.date + '|' + state.pax + '|' + joueursDemandes() + '|' + (state.onglet === 'formules' ? 'f:' + state.formuleId : 'v:' + JSON.stringify(programme())); }
+  function cleDemande() { return state.date + '|' + state.pax + '|' + joueursDemandes() + '|' + (state.onglet === 'formules' ? 'f:' + state.formuleId + (choixEnvoye() ? '~' + choixEnvoye() : '') : 'v:' + JSON.stringify(programme())); }
   function chargerHeures() {
     if (state.dispo && state.dispoCle !== cleDemande()) invaliderDispo();
     var j = jourInfo(state.date);
@@ -4301,9 +4355,27 @@
   // dernier groupe, avec ses groupes et ses pistes ; les parties qui se placent
   // sur place ; les activites libres ; la fin ; puis le detail du prix et le
   // paiement. Tout vient de la reponse : le plan, le programme, le prix.
+  // La formule choisie, dans les mots de sa variante (desc) quand le client
+  // en a choisi une : la visite et le recapitulatif disent son programme.
   function formuleChoisie() {
-    return state.onglet === 'formules' ? (((meta && meta.formules) || []).filter(function (x) { return x.id === state.formuleId; })[0] || null) : null;
+    var f = state.onglet === 'formules' ? formuleParId(state.formuleId) : null;
+    return f ? avecVariante(f) : null;
   }
+  function formuleParId(id) { return ((meta && meta.formules) || []).filter(function (x) { return x.id === id; })[0] || null; }
+  // Les variantes d une formule (la meta, `choices`), et celle que le
+  // client a choisie pour la formule choisie, autre que la premiere.
+  function variantesDe(f) { return f && Array.isArray(f.choices) && f.choices.length > 1 ? f.choices : []; }
+  function varianteChoisie(f) {
+    if (!f || !state.choix || f.id !== state.formuleId) return null;
+    return variantesDe(f).filter(function (c, i) { return i > 0 && c && c.id === state.choix; })[0] || null;
+  }
+  function avecVariante(f) {
+    var v = varianteChoisie(f);
+    return v && Array.isArray(v.desc) && v.desc.length ? Object.assign({}, f, { desc: v.desc.slice() }) : f;
+  }
+  // La variante qui part au serveur : rien sans elle, la demande reste celle
+  // d avant, au caractere pres.
+  function choixEnvoye() { var v = state.onglet === 'formules' ? varianteChoisie(formuleParId(state.formuleId)) : null; return v ? v.id : ''; }
   /* --- Le petit plus : l offre d attente et « Envie d un peu plus ? » ------------ */
 
   // Les cartes viennent du serveur avec le creneau retenu (public-availability,
@@ -5558,7 +5630,7 @@
     var lignes = [];
     var items = (rep.program && rep.program.items) || [];
     if (state.onglet === 'formules') {
-      var f = ((meta && meta.formules) || []).filter(function (x) { return x.id === state.formuleId; })[0] || {};
+      var f = formuleChoisie() || {};
       // La formule et ce qu elle comprend, sans heure ni rythme : son programme suit.
       lignes.push({ icone: 'a-formule', nom: f.name || rep.label || 'Formule', detail: (f.desc || []).join(' · '), aside: '', mot: '' });
       programmeDeLaFormule(cr).forEach(function (l) { lignes.push(l); });
@@ -6042,6 +6114,8 @@
     // revalide exactement ce que le client a lu. Sans elle, la demande reste
     // celle d avant, au caractere pres.
     if (state.arcade) base.preference.arcadeTime = state.arcade;
+    // La variante de la formule, seulement quand le client en a choisi une.
+    if (choixEnvoye()) base.preference.formulaChoice = choixEnvoye();
     if (state.onglet === 'formules') { base.type = 'formule'; base.formuleId = state.formuleId; }
     else { base.type = 'visite'; base.program = programme(); }
     if (cr && cr.slot.lanes) base.lanes = cr.slot.lanes;

@@ -1339,6 +1339,10 @@ html.fg-pilote .fg { overflow: visible; }
 @media (hover: hover) { .fg-pill:hover { border-color: var(--fg-purple-2); } }
 .fg-pill.is-on { background: var(--fg-purple); border-color: var(--fg-purple); box-shadow: 3px 3px 0 var(--fg-teal), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
 .fg-pill.is-on small { color: rgba(255, 255, 255, 0.85); }
+/* Les variantes d une formule (« 2 parties de Laser Game », « 60 min
+   d'arcades ») : une par rangee, le libelle passe a la ligne au besoin. */
+.fg-pills.fg-pills--choix { grid-template-columns: 1fr; }
+.fg-pills--choix .fg-pill b { white-space: normal; text-align: center; }
 @media (prefers-reduced-motion: no-preference) {
   .fg-pill:active { transform: scale(0.96); }
 }

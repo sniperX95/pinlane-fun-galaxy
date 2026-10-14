@@ -19,6 +19,11 @@
 //      casser la conversion timeLimit heures<->minutes fait rougir l'identite de
 //      getFormuleAvailability ; casser la derivation hasBowling depuis les steps
 //      fait rougir l'identite deep-equal de getBookingFormule.
+//   + LES VARIANTES D UNE FORMULE (lib/formula-choice) : le programme d une
+//      variante se derive des lignes de la carte SERVIE. La comparaison au
+//      fichier ecarte ce seul programme derive, une assertion le juge (socle,
+//      carte reecrite en base), et deux contre-preuves EN MEMOIRE (le disque
+//      n est pas ecrit) montrent qu elle sait rougir.
 //
 // Lancement : node scripts/catalog-store-check.js
 
@@ -48,6 +53,53 @@ const DOC_FORMULAS = require(path.join(ROOT, 'ops-knowledge', 'formulas.json')).
 const ACTIVITIES = require(path.join(ROOT, 'ops-knowledge', 'activities.json')).activities;
 const bookingById = new Map(FORMULES.map((formule) => [formule.id, formule]));
 const docById = new Map(DOC_FORMULAS.map((doc) => [doc.id, doc]));
+
+// LE PROGRAMME D UNE VARIANTE SE DERIVE DE LA CARTE SERVIE (lib/formula-choice,
+// 2026-10-14). Le socle d une formule a variantes (`choices`) declare ce que
+// chacune remplace (`descReplaces`) et ce qu elle met a la place (`descWith`),
+// jamais son programme (`desc`) : le store le calcule sur les lignes VIVANTES
+// de la carte, celles de la base quand elle en a. La comparaison au fichier
+// ecarte donc ce seul `desc` derive (les variantes apres la premiere), et
+// programmesTiennent le juge a part, refait ici a la main : les lignes
+// servies, celles qui contiennent un des mots (sans accents ni casse)
+// remplacees par les siennes a la place de la premiere, les autres mot pour
+// mot.
+const AVEC_VARIANTES = FORMULES.filter((formule) => Array.isArray(formule.choices) && formule.choices.length > 1);
+function sansProgrammeDerive(formule) {
+  if (!formule || !Array.isArray(formule.choices)) return formule;
+  return {
+    ...formule,
+    choices: formule.choices.map((choix, rang) => {
+      if (rang === 0 || !choix || typeof choix !== 'object') return choix;
+      const { desc: _programme, ...declare } = choix;
+      return declare;
+    }),
+  };
+}
+const plier = (texte) => String(texte).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+function programmeAttendu(lignes, choix) {
+  const mots = (choix.descReplaces || []).map(plier);
+  const programme = [];
+  let posees = false;
+  (lignes || []).forEach((ligne) => {
+    if (!mots.some((mot) => plier(ligne).includes(mot))) { programme.push(ligne); return; }
+    if (posees) return;
+    posees = true;
+    programme.push(...(choix.descWith || []));
+  });
+  return programme;
+}
+function programmesTiennent(servie, socle) {
+  const declarees = socle && Array.isArray(socle.choices) ? socle.choices : [];
+  if (!declarees.length) return true;
+  if (!servie || !Array.isArray(servie.choices) || servie.choices.length !== declarees.length) return false;
+  return declarees.every((choix, rang) => rang === 0 || deepEq(servie.choices[rang].desc, programmeAttendu(servie.desc, choix)));
+}
+// La formule servie est celle du fichier (programme derive ecarte), et chaque
+// programme derive est celui de ses lignes servies.
+function memeQueLeFichier(servie, socle) {
+  return deepEq(sansProgrammeDerive(servie), socle) && programmesTiennent(servie, socle);
+}
 
 const store = require(path.join(ROOT, 'lib', 'catalog-store'));
 const bc = require(path.join(ROOT, 'lib', 'booking-config'));
@@ -126,12 +178,29 @@ function availabilityIdentityHolds(storeModule) {
 }
 
 // Identite deep-equal de getBookingFormule vs le fichier (hasBowling / bowlingDur
-// compris). Retourne true si les 14 concordent.
+// compris ; le programme derive des variantes, juge a part). Retourne true si
+// les 14 concordent.
 function bookingIdentityHolds(storeModule) {
   for (const fileFormule of FORMULES) {
-    if (!deepEq(storeModule.getBookingFormule(fileFormule.id), fileFormule)) return false;
+    if (!memeQueLeFichier(storeModule.getBookingFormule(fileFormule.id), fileFormule)) return false;
   }
   return true;
+}
+
+// Un seed ou la carte de la premiere formule a variantes est reecrite par son
+// centre : chaque ligne change de mots, celle que remplace la variante garde
+// les siens dans une autre casse. null sans formule a variantes.
+function carteReecrite() {
+  const socle = AVEC_VARIANTES[0];
+  if (!socle) return null;
+  const { state } = seedState();
+  const mots = (socle.choices[1].descReplaces || []).map(plier);
+  const lignes = socle.desc.map((ligne, rang) => (mots.some((mot) => plier(ligne).includes(mot)) ? `${ligne.toUpperCase()} (arene)` : `Ligne ${rang + 1}, ${ligne}`));
+  return {
+    socle,
+    lignes,
+    state: { ...state, formulas: state.formulas.map((row) => (row.id === socle.id ? { ...row, description_lines: lignes.slice() } : row)) },
+  };
 }
 
 // Prix attendu depuis le FICHIER (source de verite d'avant le refactor).
@@ -153,9 +222,11 @@ function expectedBasePrice(fileFormule, pax, laneCount) {
   ok(docFail === 0, `getFormulaDoc == ops-knowledge/formulas.json pour les ${DOC_FORMULAS.length} formules (deep-equal, steps compris)`);
   let bookFail = 0;
   for (const rawFormule of FORMULES) {
-    if (!deepEq(store.getBookingFormule(rawFormule.id), rawFormule)) { bookFail += 1; console.log(`    booking mismatch: ${rawFormule.id}`); }
+    if (!deepEq(sansProgrammeDerive(store.getBookingFormule(rawFormule.id)), rawFormule)) { bookFail += 1; console.log(`    booking mismatch: ${rawFormule.id}`); }
   }
-  ok(bookFail === 0, `getBookingFormule == booking-config FORMULES pour les ${FORMULES.length} formules (deep-equal)`);
+  ok(bookFail === 0, `getBookingFormule == booking-config FORMULES pour les ${FORMULES.length} formules (deep-equal, hors programme derive des variantes)`);
+  ok(AVEC_VARIANTES.length > 0 && AVEC_VARIANTES.every((formule) => programmesTiennent(store.getBookingFormule(formule.id), formule)),
+    `le programme servi de chaque variante est celui des lignes de la carte servie (${AVEC_VARIANTES.map((formule) => formule.id).join(',') || 'aucune formule a variantes'})`);
   let actFail = 0;
   for (const rawActivity of ACTIVITIES) {
     if (!deepEq(store.getActivityDoc(rawActivity.id), rawActivity)) { actFail += 1; console.log(`    activity mismatch: ${rawActivity.id}`); }
@@ -196,7 +267,7 @@ function expectedBasePrice(fileFormule, pax, laneCount) {
   ok(availabilityIdentityHolds(store), 'getFormuleAvailability(seed) == verdicts fichier (grille dates/heures/pax complete)');
 
   // 2d. getBookingFormule identique au fichier (bonus deep-equal)
-  ok(bookingIdentityHolds(store), 'getBookingFormule(seed) == fichier (deep-equal, hasBowling/bowlingDur derives)');
+  ok(bookingIdentityHolds(store), 'getBookingFormule(seed) == fichier (deep-equal, hasBowling/bowlingDur derives ; programme des variantes = lignes servies)');
 
   // 2e. modele d'ancrage identique (bowling/laser)
   let anchorFail = 0;
@@ -208,6 +279,16 @@ function expectedBasePrice(fileFormule, pax, laneCount) {
     if (!deepEq(model, fileModel)) { anchorFail += 1; console.log(`    anchor mismatch: ${rawDoc.id}`); }
   }
   ok(anchorFail === 0, `getFormulaAnchorModel(getFormulaDoc) == fichier (14 formules ; a ancres: ${anchored.join(',')})`);
+
+  // 2f. LES LIGNES VIVANTES : un centre qui reecrit en base la carte d une
+  // formule a variantes (description_lines) voit le programme de chaque
+  // variante derive de SES lignes, plus de celles du socle.
+  const reecrite = carteReecrite();
+  if (reecrite) store.applyCatalogState(reecrite.state);
+  const servieReecrite = reecrite ? store.getBookingFormule(reecrite.socle.id) : null;
+  ok(Boolean(servieReecrite) && deepEq(servieReecrite.desc, reecrite.lignes) && programmesTiennent(servieReecrite, reecrite.socle),
+    `carte reecrite en base : la carte servie est celle de la base et le programme de chaque variante en derive (${JSON.stringify(((servieReecrite || {}).choices || []).slice(1).map((choix) => choix.desc))})`);
+  store.applyCatalogState(state);
 
   // =========================================================================
   console.log('\n[3] Les formule_overrides s appliquent TOUJOURS PAR-DESSUS le catalogue DB');
@@ -346,6 +427,52 @@ function expectedBasePrice(fileFormule, pax, laneCount) {
     false,
     'derivation hasBowling depuis les steps cassee',
   );
+
+  // =========================================================================
+  console.log('\n[6b] Contre-preuves EN MEMOIRE du programme des variantes (le disque n est pas ecrit)');
+  // =========================================================================
+  // Le store recompile avec une ligne cassee, a cote du vrai : ses require
+  // (booking-config, formula-choice) restent les memes instances, et le
+  // fichier du depot n est jamais touche.
+  function storeMute(de, vers, label) {
+    const source = fs.readFileSync(storePath, 'utf8');
+    const trouvees = source.split(de).length - 1;
+    if (trouvees !== 1) {
+      console.error(`catalog-store-check: ancre de contre-preuve introuvable ou ambigue (${trouvees}) : ${label}`);
+      process.exit(1);
+    }
+    const Module = require('module');
+    const copie = new Module(storePath, module);
+    copie.filename = storePath;
+    copie.paths = Module._nodeModulePaths(path.dirname(storePath));
+    copie._compile(source.split(de).join(vers), storePath);
+    return copie.exports;
+  }
+  const contrePreuves = [
+    {
+      label: 'les variantes servies sans leur programme derive',
+      de: '  if (choix.length) formule.choices = choix;',
+      vers: '  if (choix.length) formule.choices = canonical.choices.slice();',
+      sonde: (mod) => { mod.applyCatalogState({}); return bookingIdentityHolds(mod); },
+    },
+    {
+      label: 'le programme des variantes relu sur le socle, pas sur la carte servie',
+      de: '  const choix = choixApplicables(canonical.choices, canonical.steps, formule.desc);',
+      vers: '  const choix = choixApplicables(canonical.choices, canonical.steps, (BOOKING_BASE_BY_ID.get(canonical.id) || formule).desc);',
+      sonde: (mod) => {
+        const carte = carteReecrite();
+        if (!carte) return false;
+        mod.applyCatalogState(carte.state);
+        return programmesTiennent(mod.getBookingFormule(carte.socle.id), carte.socle);
+      },
+    },
+  ];
+  for (const preuve of contrePreuves) {
+    ok(!preuve.sonde(storeMute(preuve.de, preuve.vers, preuve.label)), `contre-preuve "${preuve.label}" : l invariant est viole, le gate ROUGIRAIT`);
+    delete require.cache[require.resolve(storePath)];
+    ok(preuve.sonde(require(storePath)), `sans la contre-preuve "${preuve.label}" : l invariant tient`);
+  }
+  delete require.cache[require.resolve(storePath)];
 
   // =====================================================================
   // LA CATEGORIE SAISIE FAIT FOI JUSQU A L ECRAN (2026-08-22)

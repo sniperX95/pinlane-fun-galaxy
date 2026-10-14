@@ -855,7 +855,7 @@ const MUTATIONS = {
   partiesproposees: ['var heures = n ? state.laserParts.slice() : debutsDesParties(state.creneau, a.activityId);', 'var heures = state.laserParts.slice();'],
   detailprix: ['      if (Math.abs(connus - prix) < 0.01) {', '      if (false) {'],
   finvisite: ["    if (fin) lignes += etapeVisite({ genre: 'out'", "    if (false) lignes += etapeVisite({ genre: 'out'"],
-  avance: ["detail: avance > 0 ? avance + ' min avant votre ' + nomBas(premiere) : 'on vous accueille'", "detail: 'on vous accueille'"],
+  avance: ["detail: avance > 0 ? avance + ' min avant ' + votre(parts[0].id) : 'à l’ouverture' });", "detail: 'à l’ouverture' });"],
   occasionlibre: ['    if (!occ) ok = false;\n', ''],
   occasionperdue: ["occasion: state.contact.occasion || '',", "occasion: '',"],
   occasionrecap: ['if (final && state.contact.occasion) html +=', 'if (false) html +='],
@@ -1292,7 +1292,10 @@ function visiteAttendue(o) {
   const connus = o.items.filter((it) => it.sait).reduce((x, it) => x + it.prix, 0);
   const detaille = o.items.length > 1 && o.prix > 0 && Math.abs(connus - o.prix) < 0.01;
   return {
-    arriveeDetail: o.arrivee ? (avance > 0 ? `${avance} min avant votre ${nom(premiere.id).toLowerCase()}` : 'on vous accueille') : '',
+    // A l ouverture, l heure pile (Movsar, 2026-10-13 : « lorsque il commence a
+    // louverture du centre ils peuvent venir a lheure pile ») : une avance nulle
+    // veut dire que la premiere activite ouvre la journee.
+    arriveeDetail: o.arrivee ? (avance > 0 ? `${avance} min avant ${premiere.id === 'arcade_time' ? 'vos' : 'votre'} ${nom(premiere.id).toLowerCase()}` : 'à l’ouverture') : '',
     etapes,
     surPlace,
     fin: o.fin ? { t: heureAffichee(o.fin), nom: 'Fin de la visite', detail: o.fermeture ? 'fermeture du centre' : 'heure estimée' } : null,

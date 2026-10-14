@@ -144,6 +144,11 @@ async function mesurer(dispo, date) {
 // ou trois parties. Le plancher : rien ne se joue en meme temps, donc la
 // visite dure au moins, depuis sa premiere heure, ses fenetres a heure, ses
 // parties dans la foulee et son libre (et jamais moins que son dernier bloc).
+// LE LIBRE SE JOUE D UN BLOC (2026-10-14, Movsar : « FIN estimé a 17h et le
+// mini golf se joue quand du coup ? ») : un minigolf ne se coupe pas entre
+// deux attentes. La fin n est donc plus toujours le plancher : c est la fin
+// du rangement d un bloc (finDuRangement, refaite ici sans le moteur), qui ne
+// passe jamais sous lui.
 const PROGRAMME_F = (games) => [{ activityId: 'arcade_time' }, { activityId: 'laser_game', games }, { activityId: 'minigolf_blacklight' }, { activityId: 'bowling', duration: 1 }];
 const PISTES_PRISES = Array.from({ length: 8 }, (_, k) => ({
   id: 9101 + k, centerId: CENTRE, startTime: '13:30', duration: 2, totalDuration: 2, pax: 5,
@@ -162,7 +167,55 @@ async function mesurerFoulee(date) {
   }
   return { trou, chargee };
 }
-function plancherDeVisite(rep) {
+// La fin attendue : la fin du plan sans la marge, plus le libre qui ne tient
+// dans aucun trou. Un trou s ouvre entre deux parties du groupe ; la foulee en
+// prend le debut, apres la derniere partie de laser posee. Chaque activite
+// libre y tient TOUT ENTIERE ou se joue apres : toutes les places s essaient,
+// la plus tot gagne.
+function finDuRangement(p, lignes) {
+  const fenetres = new Map();
+  (p.resourceBlocks || []).filter((b) => b.activityId && b.startTime && b.endTime).forEach((b) => {
+    const cle = `${b.activityId}#${b.countIndex || 1}`;
+    const d = min(b.startTime);
+    const f = min(b.endTime);
+    const deja = fenetres.get(cle);
+    fenetres.set(cle, { d: deja ? Math.min(deja.d, d) : d, f: deja ? Math.max(deja.f, f) : f, laser: b.activityId === 'laser_game' });
+  });
+  const w = [...fenetres.values()].sort((a, b) => a.d - b.d);
+  const caps = [];
+  const debuts = [];
+  let fin = null;
+  w.forEach((x) => {
+    if (fin !== null && x.d > fin) { caps.push(x.d - fin); debuts.push(fin); }
+    fin = fin === null ? x.f : Math.max(fin, x.f);
+  });
+  const finPlan = min(p.endTime) - Math.max(0, Number(p.bufferMinutes) || 0);
+  const foulee = Math.max(0, Number((p.laserPassPlan || {}).followOnMinutes) || 0);
+  let dedans = foulee - Math.min(foulee, Math.max(0, finPlan - fin));
+  const lasers = w.filter((x) => x.laser).map((x) => x.f);
+  const depuis = lasers.length ? Math.max(...lasers) : -Infinity;
+  caps.map((_, i) => i).sort((a, b) => Number(debuts[a] < depuis) - Number(debuts[b] < depuis) || a - b).forEach((i) => {
+    const prise = Math.min(dedans, caps[i]);
+    caps[i] -= prise;
+    dedans -= prise;
+  });
+  const entiers = (lignes || []).filter((l) => l && !l.planned && l.waitOffer !== true && !l.dayAccess)
+    .map((l) => Math.max(0, Math.round(Number(l.minutes) || 0))).filter((m) => m > 0);
+  let apres = Infinity;
+  const essayer = (k, restes, dehors) => {
+    if (k === entiers.length) { apres = Math.min(apres, dehors); return; }
+    essayer(k + 1, restes, dehors + entiers[k]);
+    restes.forEach((r, i) => {
+      if (entiers[k] > r) return;
+      const n = restes.slice();
+      n[i] -= entiers[k];
+      essayer(k + 1, n, dehors);
+    });
+  };
+  essayer(0, caps, 0);
+  return finPlan + apres;
+}
+function plancherDeVisite(rep, lignesDuDossier = null) {
   const j = (rep && rep.json) || {};
   const s = (j.slots || [])[0];
   if (!s || !s.visitEndTime) return null;
@@ -181,7 +234,8 @@ function plancherDeVisite(rep) {
   const foulee = Math.max(0, Number((p.laserPassPlan || {}).followOnMinutes) || 0);
   const libre = Math.round(Number((j.program || {}).freeMinutes) || 0);
   const plancher = Math.max(Math.max(...w.map((x) => x.f)), Math.min(...w.map((x) => x.d)) + aHeure + foulee + libre);
-  return { fin: min(s.visitEndTime), plancher, detail: `affichee ${s.visitEndTime}, plancher ${hhmm(plancher)} (a heure ${aHeure}, foulee ${foulee}, libre ${libre})` };
+  const attendue = finDuRangement(p, Array.isArray(lignesDuDossier) ? lignesDuDossier : ((j.program || {}).freeItems || []));
+  return { fin: min(s.visitEndTime), plancher, attendue, detail: `affichee ${s.visitEndTime}, rangement d un bloc ${hhmm(attendue)}, plancher ${hhmm(plancher)} (a heure ${aHeure}, foulee ${foulee}, libre ${libre})` };
 }
 const sousLePlancher = (m) => [...Object.values(m.trou), ...Object.values(m.chargee)].map(plancherDeVisite).some((x) => !x || x.fin < x.plancher);
 
@@ -217,7 +271,7 @@ const plancherDeFenetre = (resultat) => {
   if (!(resultat && resultat.plan && resultat.dossier)) return null;
   const lignes = ((resultat.dossier.program || {}).items || []).filter((ligne) => ligne && !ligne.planned);
   const freeMinutes = lignes.reduce((total, ligne) => total + Math.max(0, Math.round(Number(ligne.minutes) || 0)), 0);
-  return plancherDeVisite({ json: { slots: [{ visitEndTime: resultat.plan.fin, opsPlan: resultat.dossier.opsPlan || {} }], program: { freeMinutes } } });
+  return plancherDeVisite({ json: { slots: [{ visitEndTime: resultat.plan.fin, opsPlan: resultat.dossier.opsPlan || {} }], program: { freeMinutes } } }, lignes);
 };
 const fenetreSousLePlancher = (g) => [...Object.values(g.trou), ...Object.values(g.chargee)].map(plancherDeFenetre).some((x) => !x || x.fin < x.plancher);
 
@@ -242,7 +296,7 @@ async function creerAuComptoir(date, slot) {
   return (ops && ops.opsPlan) || null;
 }
 const memePlanQueLeMoteur = (plan, slot) => Boolean(plan && slot) && plan.endTime === slot.opsPlan.endTime && Number(plan.totalMinutes) === Number(slot.opsPlan.totalMinutes);
-const ANCRE_FICHE = '    trous = Math.max(0, trous - (foulee - dehors));';
+const ANCRE_FICHE = '    let dedans = foulee - dehors;';
 function chargerFiche(muter = false) {
   const vm = require('vm');
   const fs = require('fs');
@@ -250,7 +304,7 @@ function chargerFiche(muter = false) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'assets', 'booking-core.js'), 'utf8'), ctx);
   let source = fs.readFileSync(path.join(ROOT, 'assets', 'app-main.js'), 'utf8').split('\r\n').join('\n');
   const trouvees = source.split(ANCRE_FICHE).length - 1;
-  if (muter) source = source.split(ANCRE_FICHE).join('    void 0;');
+  if (muter) source = source.split(ANCRE_FICHE).join('    let dedans = 0;');
   const fonction = (nom) => {
     const debut = source.indexOf(`\nfunction ${nom}(`);
     if (debut < 0) throw new Error(`${nom} introuvable dans app-main.js`);
@@ -359,7 +413,7 @@ async function main() {
   const f = await mesurerFoulee(date);
   for (const games of [2, 3]) {
     const x = plancherDeVisite(f.trou[games]);
-    ok(Boolean(x) && x.fin === x.plancher, `laser 13:00 et bowling 15:00, ${games} parties, arcades et mini golf : la fin est celle de ce qui se joue d affilee`, x ? x.detail : `aucun creneau : ${JSON.stringify(((f.trou[games] || {}).json || {}).message || '')}`);
+    ok(Boolean(x) && x.fin === x.attendue && x.fin >= x.plancher, `laser 13:00 et bowling 15:00, ${games} parties, arcades et mini golf : la fin est celle du rangement d un bloc, jamais sous ce qui se joue d affilee`, x ? x.detail : `aucun creneau : ${JSON.stringify(((f.trou[games] || {}).json || {}).message || '')}`);
   }
   const t2 = plancherDeVisite(f.trou[2]);
   const t3 = plancherDeVisite(f.trou[3]);
@@ -369,7 +423,7 @@ async function main() {
   // pour minute, et ne se fige plus a la meme heure quoi que le groupe joue.
   for (const games of [1, 2, 3]) {
     const x = plancherDeVisite(f.chargee[games]);
-    ok(Boolean(x) && x.fin === x.plancher, `pistes prises de 13:30 a 15:30, laser 13:00, ${games} partie(s) : la fin est celle de ce qui se joue d affilee`, x ? x.detail : `aucun creneau : ${JSON.stringify(((f.chargee[games] || {}).json || {}).message || '')}`);
+    ok(Boolean(x) && x.fin === x.attendue && x.fin >= x.plancher, `pistes prises de 13:30 a 15:30, laser 13:00, ${games} partie(s) : la fin est celle du rangement d un bloc, jamais sous ce qui se joue d affilee`, x ? x.detail : `aucun creneau : ${JSON.stringify(((f.chargee[games] || {}).json || {}).message || '')}`);
   }
 
   section('G. LA FENETRE RESERVER DIT LA FIN DU TUNNEL');
@@ -377,13 +431,13 @@ async function main() {
   for (const games of [2, 3]) {
     const x = plancherDeFenetre(comptoir.trou[games]);
     const tunnel = creneau(f.trou[games]);
-    ok(Boolean(x) && x.fin === x.plancher, `fenetre Reserver, laser 13:00 et bowling 15:00, ${games} parties : la fin est celle de ce qui se joue d affilee`, x ? x.detail : 'aucun plan');
+    ok(Boolean(x) && x.fin === x.attendue && x.fin >= x.plancher, `fenetre Reserver, laser 13:00 et bowling 15:00, ${games} parties : la fin est celle du rangement d un bloc, jamais sous ce qui se joue d affilee`, x ? x.detail : 'aucun plan');
     ok(Boolean(x && tunnel) && comptoir.trou[games].plan.fin === tunnel.visitEndTime, `fenetre Reserver, ${games} parties : la meme fin que le tunnel`, `fenetre ${comptoir.trou[games] && comptoir.trou[games].plan && comptoir.trou[games].plan.fin}, tunnel ${tunnel && tunnel.visitEndTime}`);
   }
   for (const games of [1, 2, 3]) {
     const x = plancherDeFenetre(comptoir.chargee[games]);
     const tunnel = creneau(f.chargee[games]);
-    ok(Boolean(x) && x.fin === x.plancher, `fenetre Reserver, pistes prises de 13:30 a 15:30, ${games} partie(s) : la fin est celle de ce qui se joue d affilee`, x ? x.detail : 'aucun plan');
+    ok(Boolean(x) && x.fin === x.attendue && x.fin >= x.plancher, `fenetre Reserver, pistes prises de 13:30 a 15:30, ${games} partie(s) : la fin est celle du rangement d un bloc, jamais sous ce qui se joue d affilee`, x ? x.detail : 'aucun plan');
     ok(Boolean(x && tunnel) && comptoir.chargee[games].plan.fin === tunnel.visitEndTime, `fenetre Reserver, jour charge, ${games} partie(s) : la meme fin que le tunnel`, `fenetre ${comptoir.chargee[games] && comptoir.chargee[games].plan && comptoir.chargee[games].plan.fin}, tunnel ${tunnel && tunnel.visitEndTime}`);
   }
 
@@ -409,7 +463,7 @@ async function main() {
     {
       nom: 'sans les parties a la suite dans la fin de visite',
       fichier: ENGINE,
-      ancre: '    visitEnd = Math.max(visitEnd, partiesALaSuite.end, firstStart + sequentialMinutes + partiesALaSuite.minutes);',
+      ancre: '    visitEnd = Math.max(visitEnd, partiesALaSuite.end, firstStart + sequentialMinutes + partiesALaSuite.minutes, passRetenu ? passRetenu.fin : 0);',
       remplace: '    void 0;',
       rougit: (m) => !verifierSuite(m.a1).ok && !verifierSuite(m.a2).ok,
     },
@@ -437,8 +491,8 @@ async function main() {
     {
       nom: 'le libre credite les trous ou la foulee se joue deja',
       fichier: ENGINE,
-      ancre: '  return Math.max(0, bruts - (foulee - dehors));',
-      remplace: '  return bruts;',
+      ancre: '  let dedans = foulee - dehors;',
+      remplace: '  let dedans = 0;',
       foulee: true,
       rougit: (m) => sousLePlancher(m),
     },

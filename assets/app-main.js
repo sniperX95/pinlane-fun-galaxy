@@ -12908,36 +12908,95 @@ function getStaffFormulaTimedItems(reservation) {
 // copie inventee (api/public-availability mesureDeVisite) : les activites
 // libres (ni a heure, ni a la journee, ni offertes pendant une attente) se
 // jouent d abord dans les trous entre les blocs, le reste apres le plan.
+// D UN BLOC (2026-10-14, Movsar : « FIN estimé a 17h et le mini golf se joue
+// quand du coup ? ») : une activite libre ne prend qu un trou qui la contient
+// tout entiere, comme le moteur (lib/ops-engine.js, rangerLeLibre). Deux
+// attentes de 35 min ne portent pas un minigolf de 45.
 function getVisiteLibreApres(reservation, windows) {
   const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
   const libres = items.filter(item => item && item.planned === false && !item.waitOffer && !ligneALaJournee(item));
-  const minutes = libres.reduce((total, item) => total + Math.max(0, Math.round(Number(item.minutes) || 0)), 0);
+  const durees = libres.map(item => Math.max(0, Math.round(Number(item.minutes) || 0))).filter(duree => duree > 0);
+  const minutes = durees.reduce((total, duree) => total + duree, 0);
   if (!minutes) return 0;
-  // Les trous entre les blocs du groupe (intersticesDuGroupe du moteur).
-  const intervalles = (windows || [])
-    .map(w => ({ debut: Math.round(Number(w.start) * 60), fin: Math.round(Number(w.end) * 60) }))
-    .filter(i => Number.isFinite(i.debut) && Number.isFinite(i.fin) && i.fin > i.debut)
-    .sort((a, b) => a.debut - b.debut);
-  let trous = 0;
+  // Les trous entre les PARTIES du groupe (trousDuGroupe du moteur) : les
+  // vagues d une meme partie ne font qu un bloc.
+  const parPartie = new Map();
+  (windows || []).forEach(w => {
+    const debut = Math.round(Number(w.start) * 60);
+    const fin = Math.round(Number(w.end) * 60);
+    if (!Number.isFinite(debut) || !Number.isFinite(fin) || fin <= debut) return;
+    const laser = w.activityId === 'laser_game' || w.resourceType === 'laser_arena';
+    const cle = `${laser ? 'laser_game' : (w.activityId || w.resourceType || '')}#${Number(w.countIndex) || 1}`;
+    const deja = parPartie.get(cle);
+    parPartie.set(cle, deja ? { debut: Math.min(deja.debut, debut), fin: Math.max(deja.fin, fin), laser } : { debut, fin, laser });
+  });
+  const intervalles = [...parPartie.values()].sort((a, b) => a.debut - b.debut);
+  const trous = [];
   let finCourante = null;
   intervalles.forEach(i => {
-    if (finCourante !== null && i.debut > finCourante) trous += i.debut - finCourante;
+    if (finCourante !== null && i.debut > finCourante) trous.push({ debut: finCourante, capacite: i.debut - finCourante });
     finCourante = finCourante === null ? i.fin : Math.max(finCourante, i.fin);
   });
   // MOINS LES PARTIES DE LASER JOUEES DANS LA FOULEE (2026-10-13, Movsar : « il
   // ne compte pas les activités qui sont dans la foulée »). Elles s enchainent
   // dans ces memes trous quand elles y tiennent : le libre n y prend que le
-  // reste. Meme regle que le moteur (intersticesPourLeLibre) : ce que la fin du
-  // plan, sans la marge, depasse le dernier bloc est la foulee jouee apres lui.
+  // reste. Meme regle que le moteur (trousPourLeLibre) : ce que la fin du plan,
+  // sans la marge, depasse le dernier bloc est la foulee jouee apres lui ; le
+  // reste prend le debut du trou qui s ouvre a la fin de la derniere partie.
   const plan = reservation && reservation.opsPlan;
   const foulee = Math.max(0, Math.round(Number(plan && plan.laserPassPlan && plan.laserPassPlan.followOnMinutes) || 0));
-  if (foulee && trous && finCourante !== null) {
+  if (foulee && trous.length && finCourante !== null) {
     const marge = Math.max(0, Number(plan.bufferMinutes) || 0);
     const finPlan = typeof plan.endTime === 'string' && /^\d{1,2}:\d{2}/.test(plan.endTime) ? Math.round(timeToNum(plan.endTime) * 60) - marge : null;
     const dehors = finPlan !== null ? Math.min(foulee, Math.max(0, finPlan - finCourante)) : 0;
-    trous = Math.max(0, trous - (foulee - dehors));
+    let dedans = foulee - dehors;
+    const finsLaser = intervalles.filter(i => i.laser).map(i => i.fin);
+    const depuis = finsLaser.length ? Math.max(...finsLaser) : -Infinity;
+    [...trous.filter(trou => trou.debut >= depuis), ...trous.filter(trou => trou.debut < depuis)].forEach(trou => {
+      const prise = Math.min(dedans, trou.capacite);
+      trou.capacite -= prise;
+      dedans -= prise;
+    });
   }
-  return Math.max(0, minutes - trous) / 60;
+  // Les minutes que les trous portent, chaque activite tout entiere dans un
+  // seul : le meilleur rangement du moteur (meilleurRangement), exact jusqu a
+  // 8 activites, au-dela le meme glouton (chaque trou dans l ordre, les plus
+  // longues d abord). La fin ne depend que de ce total.
+  function couvertParLesTrous(capacites, longueurs) {
+    const n = longueurs.length;
+    if (!n || !capacites.length) return 0;
+    if (n > 8) {
+      const prises = longueurs.map(() => false);
+      let total = 0;
+      capacites.forEach(capacite => {
+        let reste = capacite;
+        longueurs.map((duree, rang) => ({ duree, rang })).filter(item => !prises[item.rang])
+          .sort((a, b) => b.duree - a.duree || a.rang - b.rang)
+          .forEach(item => { if (item.duree <= reste) { prises[item.rang] = true; reste -= item.duree; total += item.duree; } });
+      });
+      return total;
+    }
+    const sommes = new Array(1 << n).fill(0);
+    for (let masque = 1; masque < (1 << n); masque += 1) {
+      const bas = masque & -masque;
+      sommes[masque] = sommes[masque ^ bas] + longueurs[Math.log2(bas)];
+    }
+    const memo = new Map();
+    const chercher = (trou, restant) => {
+      if (trou === capacites.length || !restant) return 0;
+      const cle = trou * (1 << n) + restant;
+      if (memo.has(cle)) return memo.get(cle);
+      let meilleur = 0;
+      for (let sous = restant; ; sous = (sous - 1) & restant) {
+        if (sommes[sous] <= capacites[trou]) meilleur = Math.max(meilleur, sommes[sous] + chercher(trou + 1, restant & ~sous));
+        if (!sous) break;
+      }
+      memo.set(cle, meilleur);
+      return meilleur;
+    };
+    return chercher(0, (1 << n) - 1);
+  }
+  return Math.max(0, minutes - couvertParLesTrous(trous.map(trou => trou.capacite), durees)) / 60;
 }
 
 function getStaffTerrainSpan(reservation) {

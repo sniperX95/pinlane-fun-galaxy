@@ -82,8 +82,8 @@ const MUTATIONS = [
   {
     nom: 'la premiere activite qui deborde emporte toutes les suivantes',
     fichier: 'api/public-availability.js',
-    de: '          if (minutes <= place) {\n            place -= minutes;',
-    vers: '          if (minutes <= place && !hors.some((h) => !h.partie)) {\n            place -= minutes;',
+    de: '          if (apres <= placeApres) {\n            placeApres -= apres;',
+    vers: '          if (apres <= placeApres && !hors.some((h) => !h.partie)) {\n            placeApres -= apres;',
   },
   {
     nom: 'les parties de laser sans heure ne sont jamais nommees',

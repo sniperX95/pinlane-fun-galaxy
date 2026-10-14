@@ -269,7 +269,8 @@ async function main() {
     // La fin AFFICHEE n est pas le verdict du moteur : mesurerLaVisite
     // (lib/ops-engine.js, depuis le 2026-10-13) ajoute la reserve a la fin du
     // plan. La mutation coupe donc la deduction LA, au seul endroit qui decide
-    // ce que le client lit. Sans elle, la fin recule de toute la duree de
+    // ce que le client lit (le temps mort couvert, depuis le 2026-10-14 passe
+    // aux morceaux du libre). Sans elle, la fin recule de toute la duree de
     // l activite au lieu de son seul debordement.
     // La duree REELLE de chaque offre est celle du programme normalise, pas le
     // champ `minutes` du centre : le minigolf n en declare aucun et tient sa
@@ -285,8 +286,8 @@ async function main() {
     const dureeLongue = dureeDe(plusLongue.activityId);
     const sansDeduction = await withSourceMutation(
       path.join(ROOT, 'lib/ops-engine.js'),
-      'return { apresLePlan: Math.max(finPlan, depart), libreApres: Math.max(0, Math.max(0, Math.round(Number(libre) || 0)) - couvert - trous) };',
-      'return { apresLePlan: Math.max(finPlan, depart), libreApres: Math.max(0, Math.round(Number(libre) || 0)) };',
+      '  const pieces = piecesDuLibre({ libres, libre, couvert });',
+      '  const pieces = piecesDuLibre({ libres, libre, couvert: 0 });',
       async () => {
         const neuf = charger();
         const enMinutes = (t) => (t ? Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5)) : null);

@@ -670,6 +670,19 @@ module.exports = async (req, res) => {
       const reserveAffichee = program.plannedItems.length
         ? Math.max(0, Math.round(Number(program.freeMinutes) || 0))
         : 0;
+      // LE LIBRE SE JOUE D UN BLOC (Movsar, 2026-10-14 : « FIN estimé a 17h et le
+      // mini golf se joue quand du coup ? ») : chaque ligne sans heure est un
+      // morceau (lib/ops-engine.js, piecesDuLibre), qui ne prend qu un trou ou
+      // il tient tout entier. Le moteur (la fermeture) et la fin affichee lisent
+      // les memes lignes, dans l ordre du programme.
+      const libresDuProgramme = program.plannedItems.length
+        ? (program.freeItems || []).map((item) => ({
+          activityId: item.activityId,
+          minutes: Math.max(0, Math.round(Number(item.minutes) || 0)),
+          ...(item.waitOffer === true ? { waitOffer: true } : {}),
+          ...(item.dayAccess ? { dayAccess: true } : {}),
+        }))
+        : [];
       // CE QUI SE JOUE PENDANT L ATTENTE NE REPOUSSE PAS LA FIN. Le temps mort
       // se mesure sur le plan de CE creneau (les vagues n ont pas le meme ecart
       // partout), avec la regle du moteur, jamais une copie.
@@ -685,6 +698,7 @@ module.exports = async (req, res) => {
           debut: Math.round(timeToNum(slot.time) * 60),
           plan,
           libre: reserveAffichee,
+          libres: libresDuProgramme,
           attenteLibre: program.waitMinutes,
           creux: laPlusLongue(attenteDuSousGroupe(plan && plan.resourceBlocks), attenteTours),
         });
@@ -737,17 +751,39 @@ module.exports = async (req, res) => {
             }
           });
         }
-        const placeApres = Math.max(0, fermeture - mesure.apresLePlan);
-        let place = Math.max(0, reserveAffichee - Math.max(0, mesure.libreApres - placeApres));
-        (program.freeItems || []).forEach((item) => {
+        // Ce qui se joue dans un trou tient : il finit avant l activite qui le
+        // suit. Le reste se joue apres le plan, dans l ordre du programme, tant
+        // que le temps avant la fermeture le permet (une plus courte, plus loin,
+        // peut encore tenir). Le meme rangement que la fin (mesurerLaVisite).
+        let placeApres = Math.max(0, fermeture - mesure.apresLePlan);
+        (program.freeItems || []).forEach((item, rang) => {
           const minutes = Math.max(0, Math.round(Number(item.minutes) || 0));
-          if (minutes <= place) {
-            place -= minutes;
+          const piece = mesure.pieces[rang];
+          const dedans = (mesure.rangement.dans[rang] || []).reduce((total, part) => total + part.minutes, 0);
+          const apres = Math.max(0, (piece ? piece.minutes : minutes) - dedans);
+          if (apres <= placeApres) {
+            placeApres -= apres;
             return;
           }
           hors.push({ activityId: item.activityId, name: item.name || item.activityId, minutes, ...(item.dayAccess ? { dayAccess: true } : {}) });
         });
         return hors;
+      };
+      // OU SE JOUE LE LIBRE, pour l ecran (2026-10-14) : chaque trou entre deux
+      // activites a heure qui recoit une activite libre tout entiere (un
+      // minigolf, un passage de duckpin), et ce qu elle y prend. Ce qui se
+      // partage (la plaine, le debordement d une offre d attente) reste ou
+      // l ecran le range deja.
+      const lesTrousDuLibre = (slot) => {
+        const mesure = mesureDeVisite(slot);
+        if (!mesure) return [];
+        return mesure.trous.map((trou, index) => ({
+          startTime: numToTime(trou.debut / 60),
+          endTime: numToTime(trou.fin / 60),
+          items: mesure.pieces
+            .filter((piece, rang) => piece.entier !== false && (mesure.rangement.dans[rang] || []).some((part) => part.trou === index))
+            .map((piece) => ({ activityId: piece.activityId, minutes: piece.minutes })),
+        })).filter((trou) => trou.items.length);
       };
       // UNE INSTALLATION COMPTEE SE JUGE A L ECRAN DES HEURES (audit du
       // 2026-09-28 : le duckpin complet ne se decouvrait qu au clic final, en
@@ -809,9 +845,10 @@ module.exports = async (req, res) => {
               visitEndsAtClose: true,
               visitShortfallMinutes: fin - fermeture,
               visitShortfallItems: ceQuiNeTiendraPas(slot, fermeture),
+              visitFreeGaps: lesTrousDuLibre(slot),
             };
           }
-          return { ...slot, visitEndTime: numToTime(fin / 60) };
+          return { ...slot, visitEndTime: numToTime(fin / 60), visitFreeGaps: lesTrousDuLibre(slot) };
         });
         sendJson(res, 200, {
           ok: true,
@@ -887,6 +924,7 @@ module.exports = async (req, res) => {
             // La fermeture se juge sur la VISITE ENTIERE : les activites libres
             // ne prennent aucune ressource, mais elles prennent du temps.
             reserveMinutes: program.freeMinutes,
+            reserveItems: libresDuProgramme,
             reserveLabel: program.freeLabel,
             reserveWaitMinutes: program.waitMinutes,
             reserveSoft,
@@ -1032,6 +1070,7 @@ module.exports = async (req, res) => {
               anchorTimes: defaultTimes,
               laserPlacement: 'scheduled',
               reserveMinutes: program.freeMinutes,
+              reserveItems: libresDuProgramme,
               reserveLabel: program.freeLabel,
               reserveWaitMinutes: program.waitMinutes,
               // LA MEME SOUPLESSE QUE LA GRILLE (Movsar, 2026-10-01 : « ça
@@ -1241,10 +1280,12 @@ module.exports = async (req, res) => {
         const debut = Math.round(timeToNum(slot.time) * 60);
         const fin = Math.max(debut, Math.round(timeToNum(plan.endTime) * 60) - Math.max(0, Number(plan.bufferMinutes) || 0));
         const fermeture = Math.round(Number(schedule && schedule.close) * 60);
+        // Ou se joue le libre de la formule : la liste du moteur (sans arrivee).
+        const lieux = Array.isArray(plan.freeGaps) ? { visitFreeGaps: plan.freeGaps } : {};
         if (Number.isFinite(fermeture) && fermeture > 0 && fin > fermeture) {
-          return { ...slot, visitEndTime: numToTime(fermeture / 60), visitEndsAtClose: true, visitShortfallMinutes: fin - fermeture };
+          return { ...slot, visitEndTime: numToTime(fermeture / 60), visitEndsAtClose: true, visitShortfallMinutes: fin - fermeture, ...lieux };
         }
-        return { ...slot, visitEndTime: numToTime(fin / 60) };
+        return { ...slot, visitEndTime: numToTime(fin / 60), ...lieux };
       };
       // `extra` : les cles de la formule par heure d arrivee, ajoutees en fin de
       // reponse et seulement quand elle est demandee.

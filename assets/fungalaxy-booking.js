@@ -4657,6 +4657,50 @@
     var ancrages = formule ? ancrage(d) : {};
     var illimite = Boolean(formule && formule.orderPolicy === 'open_window');
     var libres = items.filter(function (it) { return !planifies[it.activityId] && it.waitOffer !== true; });
+    // OU SE JOUE LE LIBRE (Movsar, 2026-10-14 : « FIN estimé a 17h et le mini
+    // golf se joue quand du coup ? »). Le serveur range chaque activite libre
+    // tout entiere dans un trou ou elle tient (slot.visitFreeGaps) : elle se
+    // dit la, entre les deux activites, et la fin ne la compte pas une seconde
+    // fois. Ce qui ne tient dans aucun trou reste « Dans la foulée », et la fin
+    // le compte. Les arcades d une formule gardent leur cadre en pointille
+    // (actionsDuTemps), les boissons leur ligne « compris ».
+    var trousServeur = Array.isArray(slot.visitFreeGaps) ? slot.visitFreeGaps : null;
+    var libresRanges = [];
+    function ligneDuLibre(it) {
+      var nomL = it.name || nomActivite(it.activityId);
+      var entre = it.arcadeOffer ? detailArcade(it) : it.dayAccess ? 'toute la journée' : detailSessions(it);
+      var duree = !entre && !it.durationEstimated && Number(it.minutes) > 0 ? environ(it.minutes) : '';
+      var tiendra = !horsLibres[it.activityId];
+      var rythme = tiendra ? 'à votre rythme' : 'ne tiendra pas avant ' + heureAffichee(fin);
+      return {
+        o: { genre: 'free', hors: !tiendra, titreHtml: '<i>' + esc(typoVisite(nomL + (entre ? ' (' + entre + ')' : ''))) + '</i>', detail: participantsLigne(it) + ' · ' + rythme + (duree ? ' · ' + duree : '') },
+        voix: nomL + (entre ? ' (' + entre + ')' : '') + ', ' + rythme + (duree ? ', ' + duree : ''),
+      };
+    }
+    // Ce que le serveur range entre `debutT` et `finT` : les lignes de la
+    // visite, ou les mots de la carte d une formule, chacune une seule fois.
+    function libresDuTrou(debutT, finT) {
+      var g = (trousServeur || []).filter(function (x) { return x && x.startTime === debutT && x.endTime === finT; })[0];
+      var ici = [];
+      ((g && g.items) || []).forEach(function (x) {
+        var id = x && x.activityId;
+        if (!id || id === 'arcade_time' || id === 'service_drinks' || estBoisson(id)) return;
+        if (formule) {
+          var genre = genreCompris(id);
+          var c = genre && !vus[genre] ? carte.filter(function (y) { return y.genre === genre; })[0] : null;
+          if (!c) return;
+          vus[genre] = 1;
+          ici.push({ minutes: Number(x.minutes) || 0, o: { genre: 'incl', titre: c.texte, detail: 'compris · à votre rythme' }, voix: c.texte + ', compris, à votre rythme' });
+          return;
+        }
+        var it = libres.filter(function (y) { return y.activityId === id && libresRanges.indexOf(y) < 0; })[0];
+        if (!it) return;
+        libresRanges.push(it);
+        var l = ligneDuLibre(it);
+        ici.push({ minutes: Number(x.minutes) || 0, o: l.o, voix: l.voix });
+      });
+      return ici;
+    }
     // LES MOTS DE LA CARTE DE LA FORMULE, chacun avec ce qu il nomme : ils
     // nomment la table d une formule anniversaire et se rangent dans la
     // visite, plus bas.
@@ -4741,17 +4785,22 @@
     // toucher les pose au debut de ce temps (modele A, 2026-10-13). Rien
     // quand les activites a faire sur place couvrent deja ce temps (Movsar,
     // meme jour : « si ils ont des activités à choisir sur place déjà et que
-    // ça couvre tout le temps libre faut pas proposer ») : le minigolf de la
-    // Formule 2 remplit l attente entre ses deux parties de laser.
+    // ça couvre tout le temps libre faut pas proposer ») : un minigolf range
+    // dans ce trou par le serveur. Il ne le couvre que s il y tient tout
+    // entier (2026-10-14) : deux attentes de 35 min ne portent pas ses 45.
     function actionsDuTemps(s, m) {
       var liste = [];
       if (!s || !s.gapStartTime || !aDesArcades(d)) return liste;
       var arc = arcadeDuPlan(), dureeArc = Number(arc.minutes) || 0;
       if (!dureeArc || arc.startTime || m < dureeArc) return liste;
-      var couvert = (plan.timeline || []).filter(function (e) {
-        return e && e.flexible && e.activityId && e.activityId !== 'arcade_time' && e.activityId !== 'service_drinks' && !estBoisson(e.label);
-      }).reduce(function (somme, e) { return somme + (Number(e.durationMinutes) || 0); }, 0);
-      if (couvert >= m) return liste;
+      // `m` est deja le temps que le libre range par le serveur laisse dans ce
+      // trou (2026-10-14) : un minigolf qui n y tient pas ne le couvre plus.
+      if (!trousServeur) {
+        var couvert = (plan.timeline || []).filter(function (e) {
+          return e && e.flexible && e.activityId && e.activityId !== 'arcade_time' && e.activityId !== 'service_drinks' && !estBoisson(e.label);
+        }).reduce(function (somme, e) { return somme + (Number(e.durationMinutes) || 0); }, 0);
+        if (couvert >= m) return liste;
+      }
       liste.push({ attr: 'data-libre-arcades="' + esc(s.gapStartTime) + '"', titre: 'Y faire vos arcades', detail: 'de ' + s.gapStartTime + ' à ' + hhmm(minutesDe(s.gapStartTime) + dureeArc) });
       return liste;
     }
@@ -4780,7 +4829,15 @@
           : bouge ? 'déplacé pour votre ' + nomActivite(adaptation.pour) + ' à ' + adaptation.t : ''].filter(Boolean).join(' · ');
       if (finPrec) {
         var ecart = minutesEntre(finPrec, p.debut);
-        ligneAttente(ecart, ecart > 0 ? { gapStartTime: finPrec, gapEndTime: p.debut } : null);
+        var ici = ecart > 0 ? libresDuTrou(finPrec, p.debut) : [];
+        var pris = ici.reduce(function (somme, x) { return somme + x.minutes; }, 0);
+        if (ici.length) {
+          lignes += '<li class="fg-visit__suite fg-visit__suite--trou"><p class="fg-visit__group"><b>Entre les deux</b>, sans heure fixe</p><ul>'
+            + ici.map(function (x) { return etapeVisite({ genre: [x.o.genre, 'suite'].concat(x.o.hors ? ['hors'] : []), heure: '', titre: x.o.titre, titreHtml: x.o.titreHtml, detail: x.o.detail }); }).join('') + '</ul></li>';
+          dits.push('Entre les deux, sans heure fixe : ' + ici.map(function (x) { return x.voix; }).join(' ; '));
+        }
+        var reste = Math.max(0, ecart - pris);
+        ligneAttente(reste, reste > 0 ? { gapStartTime: finPrec, gapEndTime: p.debut } : null);
       }
       var duree = minutesEntre(p.debut, p.fin);
       minutesAgenda += duree;
@@ -4829,13 +4886,9 @@
     // Les activites libres d une visite, a votre rythme. Une entree a la
     // journee ne dit aucune duree : ce temps-la n est pas achete.
     libres.forEach(function (it) {
-      var nomL = it.name || nomActivite(it.activityId);
-      var entre = it.arcadeOffer ? detailArcade(it) : it.dayAccess ? 'toute la journée' : detailSessions(it);
-      var duree = !entre && !it.durationEstimated && Number(it.minutes) > 0 ? environ(it.minutes) : '';
-      var tiendra = !horsLibres[it.activityId];
-      var rythme = tiendra ? 'à votre rythme' : 'ne tiendra pas avant ' + heureAffichee(fin);
-      ligneSuite({ genre: 'free', hors: !tiendra, titreHtml: '<i>' + esc(typoVisite(nomL + (entre ? ' (' + entre + ')' : ''))) + '</i>', detail: participantsLigne(it) + ' · ' + rythme + (duree ? ' · ' + duree : '') },
-        nomL + (entre ? ' (' + entre + ')' : '') + ', ' + rythme + (duree ? ', ' + duree : ''));
+      if (libresRanges.indexOf(it) >= 0) return;
+      var l = ligneDuLibre(it);
+      ligneSuite(l.o, l.voix);
     });
     // L offre d attente prise a la fenetre de fin : une ligne de la visite,
     // pour qui et pendant quoi (elle se retire a la fin, par « Annuler »).

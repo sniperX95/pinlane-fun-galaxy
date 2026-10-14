@@ -185,14 +185,15 @@ async function main() {
   section('Contre-epreuve par mutation du code de production');
   const MOTEUR = path.join(ROOT, 'lib/ops-engine.js');
   const moteurOriginal = fs.readFileSync(MOTEUR, 'utf8');
-  // Depuis le 2026-10-13 les trous se comptent nets de la foulee
-  // (intersticesPourLeLibre) ; la mutation coupe toujours toute la deduction.
-  const ancreTrous = ' - couvert - intersticesPourLeLibre(raw.resourceBlocks, raw.laserPassPlan, raw.end));';
+  // Depuis le 2026-10-13 les trous se comptent nets de la foulee, et depuis
+  // le 2026-10-14 chaque activite libre y tient tout entiere
+  // (trousPourLeLibre, rangerLeLibre) ; la mutation retire tous les trous.
+  const ancreTrous = 'trousPourLeLibre(raw.resourceBlocks, raw.laserPassPlan, raw.end)';
   const nombreTrous = moteurOriginal.split(ancreTrous).length - 1;
   record('contre-epreuve montable : la reserve du moteur deduit les trous a un seul endroit', nombreTrous === 1, `${nombreTrous} occurrence(s)`);
   if (nombreTrous === 1) {
     try {
-      fs.writeFileSync(MOTEUR, moteurOriginal.split(ancreTrous).join(' - couvert);'));
+      fs.writeFileSync(MOTEUR, moteurOriginal.split(ancreTrous).join('[]'));
       const apiSansTrous = chargerApi();
       const muteLoin = await disponibilite(apiSansTrous, TROIS, { preferredTimes: { laser_game: laserTot }, laserGameTimes: [laserTot] });
       const muteBowling = heuresBowling(muteLoin.body).find((item) => item.time === bowlingTard) || null;
@@ -205,13 +206,14 @@ async function main() {
   const original = fs.readFileSync(API, 'utf8');
   // La reserve part par DEUX chemins : la grille des heures et la combinaison
   // par defaut. La contre-epreuve doit couper les deux, sinon elle ne prouve
-  // rien sur celui qu elle laisse en place.
-  const ancre = 'reserveMinutes: program.freeMinutes';
+  // rien sur celui qu elle laisse en place. Depuis le 2026-10-14 le moteur
+  // lit la reserve ligne par ligne (`reserveItems`) : c est elle qui se coupe.
+  const ancre = 'reserveItems: libresDuProgramme';
   const nombre = original.split(ancre).length - 1;
   record('contre-epreuve montable : la reserve est passee aux deux chemins', nombre === 2, `${nombre} occurrence(s)`);
   if (nombre === 2) {
     try {
-      fs.writeFileSync(API, original.split(ancre).join('reserveMinutes: 0'));
+      fs.writeFileSync(API, original.split(ancre).join('reserveItems: []'));
       const apiMute = chargerApi();
       const mute = await disponibilite(apiMute, [{ activityId: 'bowling', duration: 1 }, { activityId: libre.id }]);
       const okMute = heuresOk(mute.body);

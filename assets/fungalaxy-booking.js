@@ -3608,7 +3608,10 @@
     var fin = avant && avant.heure ? minutesDe(finOccupee(state.creneau, a.activityId, avant.heure)) : NaN;
     if (!isFinite(fin)) return '';
     var apres = (a.times || []).filter(function (t) { return t && t.ok !== false && !t.move && minutesDe(t.time) >= fin && state.laserParts.indexOf(t.time) < 0; });
-    var libre = apres.filter(function (t) { return !t.warning; })[0] || apres[0];
+    // Seule une heure qui tient entiere se propose : une heure « serree » (la
+    // partie finirait apres la fermeture) reste dite serree, et la partie,
+    // placee sur place par l equipe, comme la route le dit.
+    var libre = apres.filter(function (t) { return !t.warning; })[0];
     return libre ? libre.time : '';
   }
   function detailPartie() {

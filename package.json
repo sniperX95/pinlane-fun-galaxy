@@ -173,6 +173,7 @@
     "test:formules-fete": "node scripts/formules-fete-check.js",
     "test:parties-dans-la-foulee": "node scripts/parties-dans-la-foulee-check.js",
     "test:libre-entier": "node scripts/libre-entier-check.js && node scripts/libre-entier-check.js --mutate",
+    "test:tables-sans-blocage": "node scripts/tables-sans-blocage-check.js && node scripts/tables-sans-blocage-check.js --mutate",
     "test:grille-journee-chargee": "node scripts/grille-journee-chargee-check.js",
     "test:formules-arrivee": "node scripts/formules-arrivee-check.js && node scripts/formules-arrivee-check.js --mutate",
     "test:formules-arrivee-form": "node scripts/formules-arrivee-form-check.js && node scripts/formules-arrivee-form-check.js --mutate",

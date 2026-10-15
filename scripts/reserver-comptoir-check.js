@@ -506,13 +506,16 @@ function jourDeVacances() {
   return '';
 }
 
-// Le premier jour ordinaire ouvert (ni vacances ni ferie), une semaine devant.
+// Le premier jour ordinaire ouvert (ni vacances ni ferie), une semaine devant
+// le jour de la page (JOUR : la console y est figee a 15:12). Compte depuis la
+// vraie date, il tombait avant la page des que le banc passait apres lui
+// (le 03/11 pour un banc au 07/11) : « 15:00 est déjà passée ».
 function jourHorsVacances() {
   const { isFormulaBlockedDate, getSchedule } = require(path.join(ROOT, 'lib/booking-config.js'));
   const { getCenter } = require(path.join(ROOT, 'lib/ops-knowledge.js'));
   const centre = getCenter('libramont');
   for (let n = 7; n < 400; n += 1) {
-    const d = decalerJour(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels' }).format(new Date()), n);
+    const d = decalerJour(JOUR, n);
     if (!isFormulaBlockedDate(d, centre) && getSchedule(d, centre)) return d;
   }
   return '';

@@ -87,10 +87,9 @@
 //       navigateur, ou le moteur compile pour le serveur) : chacune doit faire
 //       rougir le gate ; le disque n est jamais ecrit, et on le verifie.
 //
-// Le jour joue : le premier samedi a venir ou les Formules 1 a 4 se vendent
-// (ni vacances scolaires ni ferie), donne au serveur de dev
-// (PINLANE_DEVTUNNEL_DATE). Le samedi suivant, seul, tombe dans le conge
-// d automne (19/10 au 01/11) des que le gate tourne apres le 17/10.
+// Le jour joue : le samedi des gates (scripts/jour-de-test.js, le premier a
+// venir hors vacances scolaires et feries), ou les Formules 1 a 4 doivent se
+// vendre, donne au serveur de dev (PINLANE_DEVTUNNEL_DATE).
 //
 // Lancement : node scripts/formules-arrivee-form-check.js [--mutate]
 
@@ -1627,31 +1626,25 @@ async function scenarioL(browser, mock) {
 
 const SCENARIOS = [['A', scenarioA], ['B', scenarioB], ['C', scenarioC], ['D', scenarioD], ['E', scenarioE], ['F', scenarioF], ['G', scenarioG], ['H', scenarioH], ['I', scenarioI], ['J', scenarioJ], ['K', scenarioK], ['L', scenarioL]];
 
-// LE JOUR DU GATE : le premier samedi a venir ou les Formules 1 a 4 se
-// vendent (ni vacances scolaires ni ferie, lib/booking-config), au fuseau du
-// centre. Le serveur de dev le lit (PINLANE_DEVTUNNEL_DATE) : le samedi
-// suivant, qu il prendrait seul, tombe dans le conge d automne (19/10 au
-// 01/11) des que le gate tourne apres le 17/10.
+// LE JOUR DU GATE : le samedi des gates (scripts/jour-de-test.js : le premier
+// a venir hors vacances scolaires et feries ; PINLANE_AUJOURDHUI_DE_TEST le
+// rejoue depuis un autre jour), ou les Formules 1 a 4 doivent se vendre
+// (lib/booking-config). Le serveur de dev le joue (PINLANE_DEVTUNNEL_DATE) ;
+// sans la variable, il prendrait le meme.
 function samediVendable() {
   const config = require('../lib/booking-config');
   const centre = require('../lib/ops-knowledge').getCenter('libramont');
-  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-').map(Number);
-  const curseur = new Date(Date.UTC(y, m - 1, d + 1));
-  for (let essai = 0; essai < 120; essai += 1) {
-    const jour = curseur.toISOString().slice(0, 10);
-    const vendues = curseur.getUTCDay() === 6 && !config.isFormulaBlockedDate(jour, centre) && ['f1', 'f2', 'f3', 'f4'].every((id) => {
-      const formule = config.FORMULES.find((item) => item.id === id);
-      return Boolean(formule) && config.getFormuleAvailability(formule, jour, PAX, '', centre).ok;
-    });
-    if (vendues) return jour;
-    curseur.setUTCDate(curseur.getUTCDate() + 1);
-  }
-  return '';
+  const jour = require('./jour-de-test').jourDeTest({ jour: 6 });
+  const vendues = ['f1', 'f2', 'f3', 'f4'].every((id) => {
+    const formule = config.FORMULES.find((item) => item.id === id);
+    return Boolean(formule) && config.getFormuleAvailability(formule, jour, PAX, '', centre).ok;
+  });
+  return vendues ? jour : '';
 }
 
 async function main() {
   const jour = samediVendable();
-  if (!ok(Boolean(jour), 'MONTAGE un samedi a venir ou les Formules 1 a 4 se vendent (hors vacances et feries)')) process.exit(1);
+  if (!ok(Boolean(jour), 'MONTAGE le samedi des gates (jour-de-test, hors vacances et feries) vend les Formules 1 a 4')) process.exit(1);
   process.env.PINLANE_DEVTUNNEL_DATE = jour;
   const mock = require('./dev-tunnel-server');
   if (!ok(mock.DATE === jour, `MONTAGE le serveur de dev joue le samedi ${jour}`, mock.DATE)) process.exit(1);

@@ -65,6 +65,7 @@ const { llmProvider, callLlm } = require('../lib/llm-client');
 const { listDailyMetrics, listMarketingInsights, setInsightStatus, buildMarketingWeek, redoInsight } = require('../lib/center-metrics');
 const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
 const { stampDelayFlag, clearDelayFlagOnPlan } = require('../lib/delay-flag');
+const { alerterLimiteDeTables } = require('../lib/limite-tables');
 const {
   buildDirectionAnalytics,
   buildDirectionReportMarkdown,
@@ -343,6 +344,15 @@ function diffReservations(avantParId, apres = []) {
     for (const [field, value] of Object.entries(diff)) changes[`${id}.${field}`] = value;
   }
   return changes;
+}
+
+// Un retard (ou son retrait) deplace des dossiers dans le temps : chacun peut
+// depasser la limite de tables du centre, qui est alors prevenu. Rien n est
+// bloque, et une alerte qui echoue ne fait pas echouer le retard.
+async function alerterTablesApresDeplacement(avantParId, apres = []) {
+  for (const reservation of apres) {
+    await alerterLimiteDeTables(reservation, { avant: avantParId.get(Number(reservation && reservation.id)) || null });
+  }
 }
 
 async function handleGet(req, res, options = {}) {
@@ -1578,6 +1588,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         changes: diffReservations(avantParId, updatedReservations),
         context: { strategyId: strategy.id, delayMinutes: impact.delayMinutes, reason: impact.reason, dossiers: updatedReservations.map((item) => Number(item.id)) },
       });
+      await alerterTablesApresDeplacement(avantParId, updatedReservations);
     }
 
     const publicChanges = strategy.changes.map(({ update, ...rest }) => rest);
@@ -1856,6 +1867,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         changes: diffReservations(new Map([...(jour.reservations || []).map((item) => [Number(item.id), item]), [reservationId, reservation]]), toutesNettoyees),
         context: { origine: false, dossiers: toutesNettoyees.map((item) => Number(item.id)) },
       });
+      await alerterTablesApresDeplacement(new Map([...(jour.reservations || []).map((item) => [Number(item.id), item]), [reservationId, reservation]]), toutesNettoyees);
       const [cleared] = toutesNettoyees;
       await createOpsEvent({
         centerId: reservation.centerId || 'libramont',
@@ -1902,6 +1914,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       changes: diffReservations(new Map([...(jour.reservations || []).map((item) => [Number(item.id), item]), [reservationId, reservation]]), toutesRestaurees),
       context: { origine: true, restoredStartTime: origin.startTime, dossiers: toutesRestaurees.map((item) => Number(item.id)) },
     });
+    await alerterTablesApresDeplacement(new Map([...(jour.reservations || []).map((item) => [Number(item.id), item]), [reservationId, reservation]]), toutesRestaurees);
     await createOpsEvent({
       centerId: reservation.centerId || 'libramont',
       reservationId,

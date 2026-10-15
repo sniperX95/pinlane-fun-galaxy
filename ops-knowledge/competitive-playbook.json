@@ -112,7 +112,7 @@
   ],
   "implementationRules": [
     "Ne jamais copier du code, une marque ou un visuel concurrent.",
-    "Les conflits bowling, laser, table et horaires restent bloques par le moteur deterministe.",
+    "Les conflits bowling, laser et horaires restent bloques par le moteur deterministe ; les tables anniversaire ne bloquent jamais.",
     "Les agents IA peuvent conseiller, expliquer, relancer et auditer, mais pas outrepasser la capacite.",
     "Chaque scenario recommande doit exposer pourquoi il tient: ressources fixes, entitlements libres, risques, prochaines actions staff.",
     "L'apprentissage ajuste uniquement par suggestion approuvable tant qu'il n'y a pas assez de donnees terrain."

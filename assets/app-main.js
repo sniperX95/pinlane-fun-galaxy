@@ -2705,6 +2705,7 @@ function getOpsTemplateLabel(templateId = '') {
     staff_review_request: 'Réservation à valider',
     staff_alert: 'Alerte staff',
     delay_staff_attention: 'Retard : décision staff',
+    staff_tables_limit: 'Limite de tables dépassée',
     delay_update: 'Ajustement horaire client',
     delay_change: 'Changement annoncé au client',
     client_thanks: 'Remerciement client',
@@ -14520,7 +14521,8 @@ async function submitCenterConfig(centerId) {
       },
       partyTables: {
         softCapacity: Number(establishmentInputValue('estab-tableSoft', 6)),
-        hardCapacity: Number(establishmentInputValue('estab-tableHard', 8))
+        hardCapacity: Number(establishmentInputValue('estab-tableHard', 8)),
+        limitEnabled: chk('estab-tableLimit')
       },
       declared: establishmentDeclaredResourcesDraft.map(item => ({
         id: item.id,
@@ -15152,8 +15154,11 @@ function renderEstablishmentEditPanels(center, active) {
       <legend>Tables anniversaire</legend>
       <div class="estab-field-row">
         <div class="field"><label for="estab-tableSoft">Capacité conseillée</label><input type="number" id="estab-tableSoft" min="1" max="100" value="${Number(party.softCapacity || 6)}"></div>
-        <div class="field"><label for="estab-tableHard">Capacité max</label><input type="number" id="estab-tableHard" min="1" max="120" value="${Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8))}"></div>
+        <div class="field"><label for="estab-tableHard">Limite (tables en même temps)</label><input type="number" id="estab-tableHard" min="1" max="120" value="${Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8))}"></div>
       </div>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-tableLimit" ${party.limitEnabled === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Limite de tables</span></label>
+      <p class="estab-card-hint">Aucune réservation n’est jamais bloquée pour les tables. Allumée, la limite compte les tables anniversaire occupées en même temps : quand une réservation la dépasse, un mail prévient la boîte de secours du centre.</p>
+      ${center.secours && Array.isArray(center.secours.emails) && center.secours.emails.length ? '' : '<p class="estab-card-hint">La boîte de secours (onglet « Règles &amp; comptoir ») n’a aucune adresse : aucun mail ne partira.</p>'}
     </fieldset>
 
     <fieldset class="establishment-card">
@@ -15519,7 +15524,7 @@ function renderEstablishmentReadPanels(center, active) {
         ${stat(ICO.users, 'Secours / piste', Number(bowling.emergencyCapacityPerLane || 0), 'si les pistes disponibles ne suffisent pas')}
         ${stat(ICO.target, 'Armes laser', Number(laser.weaponCount || 0), 'joueurs en même temps au plus')}
         ${stat(ICO.bolt, 'Lancements', Number(laser.parallelLaunches || 0), 'en parallèle au plus')}
-        ${stat(ICO.cake, 'Tables', softCap, `anniversaire conseillées, ${hardCap} au plus`)}
+        ${stat(ICO.cake, 'Tables', softCap, party.limitEnabled === true ? `anniversaire conseillées, mail au-delà de ${hardCap}` : 'anniversaire conseillées')}
       </div>`)}
     ${(Array.isArray(center.resources?.declared) && center.resources.declared.length) ? section(ICO.grid, 'Installations déclarées', 'Les ressources propres au centre : le moteur les compte comme les pistes.', `
       <div class="estab-rules">

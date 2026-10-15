@@ -178,7 +178,7 @@
         "explainable-scenarios"
       ],
       "guardrails": [
-        "Aucun conflit bowling/laser/table ne peut etre confirme automatiquement.",
+        "Aucun conflit bowling/laser ne peut etre confirme automatiquement ; les tables anniversaire ne bloquent jamais.",
         "Les dates passees et horaires hors ouverture sont bloques.",
         "Le mode formule ne valide que les heures Bowling/Laser compatibles."
       ],

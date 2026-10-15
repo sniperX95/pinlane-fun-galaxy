@@ -23,6 +23,7 @@ const { readJson, sendError, sendJson } = require('../lib/http');
 const { enqueueReservationCommunications } = require('../lib/ops-communications');
 const { enqueueReservationAutomation } = require('../lib/ops-jobs');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
+const { alerterLimiteDeTables } = require('../lib/limite-tables');
 const { requireStaffPermission, getStaffSessionFromRequest } = require('../lib/staff-auth');
 const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
 const { reservationChanges, reservationSnapshot, libelleMembre } = require('../lib/registre');
@@ -260,6 +261,9 @@ async function refreshReservationAutomation(current, reservation, options = {}) 
     enqueueReservationCommunications(reservation, {
       validationMode: reservation.validationStatus || options.validationMode,
     }).catch(() => []),
+    // Un dossier deplace dans le temps peut depasser la limite de tables du
+    // centre : seule une plage de table nouvelle le previent (ne leve jamais).
+    alerterLimiteDeTables(reservation, { avant: current }),
   ]);
 
   return { ...cancelled, refreshed: true };
